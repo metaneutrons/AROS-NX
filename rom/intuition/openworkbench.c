@@ -258,9 +258,13 @@ static ULONG FindMode(ULONG width, ULONG height, ULONG depth, struct IntuitionBa
             FireScreenNotifyMessage((IPTR) NULL, SNOTIFY_BEFORE_OPENWB, IntuitionBase);
 
             wbscreen = OpenScreenTagList(NULL, screenTags);
-           
+            bug("[OpenWorkbench] OpenScreenTagList returned: 0x%p\n", wbscreen);
             if (wbscreen)
-                GetPrivIBase(IntuitionBase)->ActivePreferences.wb_Depth = GetBitMapAttr(wbscreen->RastPort.BitMap, BMA_DEPTH);
+            {
+                ULONG bmdepth = GetBitMapAttr(wbscreen->RastPort.BitMap, BMA_DEPTH);
+                bug("[OpenWorkbench] Screen bitmap depth: %d, requested: %d\n", bmdepth, depth);
+                GetPrivIBase(IntuitionBase)->ActivePreferences.wb_Depth = bmdepth;
+            }
         }
 
         if( !wbscreen )

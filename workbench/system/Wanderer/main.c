@@ -4,7 +4,7 @@
 
 #define MUIMASTER_YES_INLINE_STDARG
 
-#define DEBUG 0
+#define DEBUG 1
 #include <aros/debug.h>
 
 #include <dos/dos.h>
@@ -42,9 +42,10 @@ int main(void)
         bug("[Wanderer] %s: SPUpper @ %p \n", __PRETTY_FUNCTION__, me->tc_SPUpper);
     )
 
-    D(bug("[Wanderer] %s: Wanderer Initialising .. \n", __PRETTY_FUNCTION__));
+    bug("[Wanderer] Creating Wanderer object (class=0x%p)...\n", Wanderer_CLASS ? Wanderer_CLASS->mcc_Class : NULL);
     if ((_WandererIntern_AppObj = NewObject(Wanderer_CLASS->mcc_Class, NULL, TAG_DONE)) != NULL)
     {
+        bug("[Wanderer] Object created: 0x%p\n", _WandererIntern_AppObj);
         D(bug("[Wanderer] %s: Launching WBStartup items .. \n", __PRETTY_FUNCTION__));
         OpenWorkbenchObject("Wanderer:Tools/ExecuteStartup", TAG_DONE);
 

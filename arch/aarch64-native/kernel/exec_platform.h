@@ -13,6 +13,14 @@
 
 #define SCHEDQUANTUM_VALUE      4
 
+#define EXEC_REMTASK_NEEDSSWITCH
+
+/* RemTask self-removal: switch away from the dying task via SVC */
+#define krnSysCallSwitch() \
+    __asm__ volatile("svc #2" ::: "x30", "memory")  /* SC_SWITCH = 2 */
+#define krnSysCallReschedTask(task, state) \
+    do { (task)->tc_State = (state); Remove(&(task)->tc_Node); } while(0)
+
 struct Exec_PlatformData
 {
     /* No platform-specific data by default */

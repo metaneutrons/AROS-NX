@@ -299,7 +299,9 @@ int dosboot_Init(LIBBASETYPEPTR LIBBASE)
         dosboot_BootStrap(LIBBASE);
 
         if (!LIBBASE->bm_Screen)
+#if !defined(__aarch64__)
             LIBBASE->bm_Screen = NoBootMediaScreen(LIBBASE);
+#endif
 
         D(bug("No bootable disk was found.\n"));
         D(bug("Please insert a bootable disk in any drive.\n"));

@@ -132,6 +132,20 @@ void __dos_Boot(struct DosLibrary *DOSBase, ULONG BootFlags, UBYTE Flags)
 
     D(bug("[DOS] %s: preparing console\n", __func__);)
 
+#if defined(__aarch64__)
+    /* Open the Workbench screen before the boot console so the
+     * CON: handler opens its window on the WB screen instead of
+     * creating a separate screen. Single-framebuffer display. */
+    {
+        struct Library *IntuitionBase = TaggedOpenLibrary(TAGGEDOPEN_INTUITION);
+        if (IntuitionBase) {
+            AROS_LC0(IPTR, OpenWorkBench,
+                     struct Library *, IntuitionBase, 35, Intuition);
+            CloseLibrary(IntuitionBase);
+        }
+    }
+#endif
+
     if (BootFlags & BF_EMERGENCY_CONSOLE) {
         D(bug("[DOS] %s:     (emergency console)\n", __func__);)
         BootFlags |= BF_NO_STARTUP_SEQUENCE;
@@ -172,7 +186,7 @@ void __dos_Boot(struct DosLibrary *DOSBase, ULONG BootFlags, UBYTE Flags)
                            SYS_Input, cis,
                            SYS_Output, cos,
                            SYS_ScriptInput, cas,
-                           TAG_END) == -1) {
+                           TAG_END) == DOSFALSE) {
                 D(bug("[DOS] %s:  .. failed!\n", __func__);)
                 Alert(AT_DeadEnd | AN_BootStrap);
             }
