@@ -2229,6 +2229,39 @@ case "$target_os" in
         esac
         ;;
 
+    esp32p4)
+        aros_flavour="standalone"
+        aros_target_arch="esp32p4"
+        aros_isa_flags="$""(ISA_RISCV_FLAGS)"
+        aros_shared_default="no"
+        llvm_target_cpu="RISCV"
+        aros_kernel_toolchain=$aros_toolchain
+        kernel_toolchain_c_compiler=$toolchain_c_compiler
+        kernel_toolchain_cxx_compiler=$toolchain_cxx_compiler
+        if test "$aros_kernel_toolchain" = "llvm"; then
+            aros_kernel_llvmwrapper=yes
+        fi
+        dnl The HP cores are RV32IMAFC: single precision floats only, so
+        dnl the ilp32d default from the cpu switch above does not hold,
+        dnl and atomics arrive as the split zaamo/zalrsc extensions
+        dnl rather than as a whole A. Overridden here rather than guarded
+        dnl there because the cpu switch runs first.
+        gcc_default_cpu="rv32imafc_zicsr_zifencei_zaamo_zalrsc"
+        gcc_default_mode="ilp32f"
+        case "$target_cpu" in
+            *riscv64*)
+                AC_MSG_ERROR("The ESP32-P4 HP cores are 32bit - use --target=riscv-esp32p4")
+                ;;
+            *riscv*)
+                aros_target_cpu="riscv"
+                aros_object_format="riscvelf_aros"
+                ;;
+            *)
+                AC_MSG_ERROR("Unsupported CPU '$target_cpu' for ESP32-P4")
+                ;;
+        esac
+        ;;
+
     stm32f7_discovery)
         aros_flavour="standalone"
         aros_target_arch="stm32f7_discovery"
