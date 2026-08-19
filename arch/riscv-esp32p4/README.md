@@ -35,6 +35,8 @@ recorded in the milestone notes.
 | watchdogs | done | timer groups and LP off, super watchdog self-feeding |
 | CLIC interrupts | done | a raised line reaches the trap handler |
 | SYSTIMER tick | done | 100 Hz, verified at 16000000 counts per second |
+| context switch | written | compiles and links, cannot run until exec does |
+| memory list | done | 520096 bytes in two regions, every byte of SRAM accounted for |
 | kernel.resource | not started | |
 | exec.library | not started | |
 | M-mode trap and CLIC interrupts | not started | |

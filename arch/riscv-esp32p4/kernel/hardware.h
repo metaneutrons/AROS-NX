@@ -58,6 +58,32 @@
 #endif
 
 /*
+ * Where the heap may go, which is not the same question as where the
+ * image may be linked.
+ *
+ * The link ceiling exists because of who loads the image: the first stage
+ * ROM loader has its own stack somewhere above, and a second stage
+ * bootloader would be sitting at 0x4FF29ED0. Once this kernel is running
+ * neither is true any more - the loader is finished and the stack is ours
+ * - so at runtime the low window reaches much further up, stopping below
+ * the variables the ROM keeps for itself from about 0x4FF3FFC8. Leaving
+ * those alone costs nothing and keeps the ROM's own routines usable.
+ *
+ * The high window at 0x4FF40000 is whatever the L2 cache has not taken.
+ * The cache is carved from the top of SRAM on this silicon and its size
+ * is set by software - not by us, so far - which is why it is read from
+ * the controller rather than assumed.
+ */
+#define P4_HEAP_LOW_END         0x4FF3FFC0UL
+#define P4_HEAP_HIGH_BASE       0x4FF40000UL
+#define P4_HEAP_HIGH_SPAN       0x80000UL
+
+#define P4_CACHE_BASE           0x3FF10000UL
+#define P4_L2_CACHESIZE_CONF    0x0278
+#define  P4_L2_CACHESIZE_256    (1U << 0)
+#define  P4_L2_CACHESIZE_512    (1U << 1)
+
+/*
  * The system timer, and the matrix that carries its interrupt to a core.
  *
  * There is no mtime/mtimecmp on this chip, so the periodic tick has to

@@ -26,6 +26,7 @@ CFILES := \
         kernel_clic \
         kernel_timer \
         kernel_cpu \
+        kernel_ram \
         kernel_console \
         kernel_debug \
         kernel_traps \
