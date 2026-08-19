@@ -4,9 +4,8 @@
     Desc: ESP32-P4 RISC-V Timer (50 Hz tick) and Interrupt Matrix Controller.
 */
 
-#include <exec/types.h>
-#include <exec/interrupts.h>
-#include "../boot/uart.h"
+#include "types.h"
+#include "uart.h"
 
 /* RISC-V 64-bit cycle / time counter reader */
 static inline UQUAD get_mtime(void)

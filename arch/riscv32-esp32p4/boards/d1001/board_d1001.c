@@ -4,7 +4,7 @@
     Desc: Seeed Studio reTerminal D1001 Board Profile (ESP32-P4).
 */
 
-#include <exec/types.h>
+#include "types.h"
 #include "../../include/board.h"
 #include "../../boot/uart.h"
 

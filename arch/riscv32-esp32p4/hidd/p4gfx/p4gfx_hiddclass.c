@@ -4,7 +4,9 @@
     Desc: ESP32-P4 Display Framebuffer & 2D PPA graphics HIDD class.
 */
 
-#include <exec/types.h>
+#include "types.h"
+#include "uart.h"
+
 #define P4_LCD_WIDTH            1280    /* Landscape Amiga Workbench (Default) */
 #define P4_LCD_HEIGHT           800     /* Landscape Amiga Workbench (Default) */
 #define P4_LCD_BPP              2       /* 16-bit RGB565 (2.0 MB per buffer) */

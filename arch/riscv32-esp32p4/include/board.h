@@ -7,7 +7,7 @@
 #ifndef ESP32P4_BOARD_H
 #define ESP32P4_BOARD_H
 
-#include <exec/types.h>
+#include "types.h"
 
 struct ESP32P4_Board
 {

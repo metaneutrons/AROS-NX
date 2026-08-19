@@ -4,7 +4,7 @@
     Desc: ESP32-P4 Synopsys DWC2 USB 2.0 High-Speed Host (Poseidon Stack).
 */
 
-#include <exec/types.h>
+#include "types.h"
 #include "../boot/uart.h"
 
 #define ESP32P4_USB_OTG_BASE    0x50000000UL

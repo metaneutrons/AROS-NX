@@ -7,7 +7,7 @@
 #ifndef ESP32P4_UART_H
 #define ESP32P4_UART_H
 
-#include <exec/types.h>
+#include "types.h"
 
 #define ESP32P4_UART0_BASE      0x500C0000UL
 #define UART_FIFO_REG(base)     ((volatile ULONG *)((base) + 0x00))

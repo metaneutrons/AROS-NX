@@ -4,7 +4,7 @@
     Desc: ESP32-P4 4-bit SD/MMC Host Controller for MicroSD Workbench Boot.
 */
 
-#include <exec/types.h>
+#include "types.h"
 #include "../boot/uart.h"
 
 int p4sdcard_init(void)

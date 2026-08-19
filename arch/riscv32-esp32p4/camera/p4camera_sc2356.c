@@ -4,7 +4,7 @@
     Desc: SmartSens SC2356 2MP MIPI-CSI Camera & ISP driver for Seeed D1001 (camera.device).
 */
 
-#include <exec/types.h>
+#include "types.h"
 #include "../boot/uart.h"
 
 #define SC2356_I2C_ADDR         0x30    /* SmartSens SC2356 Sensor I2C Address */

@@ -4,10 +4,8 @@
     Desc: Main C kernel boot entry for ESP32-P4 (Seeed D1001).
 */
 
-#include <exec/types.h>
-#include <exec/execbase.h>
-#include <exec/memory.h>
-#include "../include/board.h"
+#include "types.h"
+#include "board.h"
 #include "uart.h"
 
 /* Memory map constants for ESP32-P4 */

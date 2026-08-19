@@ -4,11 +4,8 @@
     Desc: NXP PCF8563T I2C Real-Time Clock driver for battclock.resource (Seeed D1001).
 */
 
-#include <exec/types.h>
-#include <exec/libraries.h>
-#include <proto/exec.h>
-#include <proto/i2c.h>
-#include "../boot/uart.h"
+#include "types.h"
+#include "uart.h"
 
 #define PCF8563_I2C_ADDR    0x51
 #define PCF8563_REG_SEC     0x02

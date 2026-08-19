@@ -4,7 +4,7 @@
     Desc: Silead GSL3670 / Goodix I2C Capacitive Touchscreen to AROS mouse HIDD (Seeed D1001).
 */
 
-#include <exec/types.h>
+#include "types.h"
 #include "../../boot/uart.h"
 
 #define GSL3670_I2C_ADDR    0x40    /* Native touch controller on Seeed D1001 */

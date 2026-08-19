@@ -4,7 +4,7 @@
     Desc: Everest ES8311 I2S Audio Codec AHI driver for Seeed D1001.
 */
 
-#include <exec/types.h>
+#include "types.h"
 #include "../boot/uart.h"
 
 #define ES8311_I2C_ADDR     0x18    /* I2C Control Address */
