@@ -43,12 +43,15 @@ __BEGIN_DECLS
 extern const fenv_t	__fe_dfl_env;
 #define	FE_DFL_ENV	(&__fe_dfl_env)
 
-#if !defined(__riscv_float_abi_soft) && !defined(__riscv_float_abi_double)
-#if defined(__riscv_float_abi_single)
-#error single precision floating point ABI not supported
-#else
+/*
+ * Every hard float ABI is handled the same way below, single precision
+ * included: the floating point environment lives in fcsr, and fcsr,
+ * fflags and frm come with F. D widens the registers, not the control
+ * and status register, so there is nothing for it to change here.
+ */
+#if !defined(__riscv_float_abi_soft) && !defined(__riscv_float_abi_double) && \
+    !defined(__riscv_float_abi_single)
 #error compiler did not set soft/hard float macros
-#endif
 #endif
 
 #ifndef __riscv_float_abi_soft
