@@ -5,23 +5,26 @@
 */
 
 #include <exec/types.h>
-#include <exec/memory.h>
-#include "../../boot/uart.h"
+#define P4_LCD_WIDTH            1280    /* Landscape Amiga Workbench (Default) */
+#define P4_LCD_HEIGHT           800     /* Landscape Amiga Workbench (Default) */
+#define P4_LCD_BPP              2       /* 16-bit RGB565 (2.0 MB per buffer) */
 
-#define P4_LCD_WIDTH    1280    /* Landscape Amiga Workbench */
-#define P4_LCD_HEIGHT   800     /* Landscape Amiga Workbench */
-#define P4_LCD_BPP      2       /* 16-bit RGB565 (2.0 MB per buffer) */
+#define P4_MIPI_PANEL_W         800     /* Native Physical MIPI-DSI Panel Width */
+#define P4_MIPI_PANEL_H         1280    /* Native Physical MIPI-DSI Panel Height */
 
-#define P4_MIPI_PANEL_W 800     /* Native MIPI-DSI Panel Width */
-#define P4_MIPI_PANEL_H 1280    /* Native MIPI-DSI Panel Height */
+/* Orientation Modes */
+#define P4_ORIENTATION_PORTRAIT     0   /* Native 800x1280 */
+#define P4_ORIENTATION_LANDSCAPE_90 1   /* 1280x800 Landscape (Default) */
 
+static ULONG current_orientation = P4_ORIENTATION_LANDSCAPE_90;
 static APTR fb_front = NULL;
 static APTR fb_back = NULL;
 
 int p4gfx_init(void)
 {
     uart_puts("[p4gfx] Initializing Seeed D1001 8.0\" MIPI-DSI Display...\n");
-    uart_puts("[p4gfx] Mode: 1280x800 @ 16-bit RGB565 (Hardware 2D PPA Rotated)\n");
+    uart_puts("[p4gfx] Default Mode: LANDSCAPE (1280x800 @ 16-bit RGB565)\n");
+    uart_puts("[p4gfx] Hardware 2D PPA rotation active (90 deg to native 800x1280 panel)\n");
 
     /* Allocate double buffers in 32MB PSRAM (2 x 2.0MB = 4.0MB) */
     fb_front = (APTR)(0x48000000UL + 0x00100000UL);
