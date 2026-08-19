@@ -1,0 +1,12 @@
+
+include $(SRCDIR)/config/aros.cfg
+
+# Platform home for the esp32p4-riscv target. The ESP32-P4 has no
+# supervisor mode and no SBI implementation under it: the first stage ROM
+# loader hands control straight to this image and everything runs in
+# machine mode from there.
+
+#MM- kernel-exec-esp32p4-riscv : kernel-exec-riscv
+#MM- kernel-exec-esp32p4-riscv-kobj : kernel-exec-riscv-kobj
+
+%common
