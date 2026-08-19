@@ -58,6 +58,12 @@ void krnCLICPend(unsigned int line);
 void krnCLICClear(unsigned int line);
 int  krnCLICPending(unsigned int line);
 
+/* What memory there is (kernel_ram.c) */
+void krnRAMInit(void);
+void krnRAMReport(void);
+extern struct MemHeader *__esp32p4_mh_low;
+extern struct MemHeader *__esp32p4_mh_high;
+
 /* The periodic tick and the only clock there is (kernel_timer.c) */
 void krnTimerInit(void);
 void krnTimerAck(void);

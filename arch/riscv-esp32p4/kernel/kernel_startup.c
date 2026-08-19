@@ -170,6 +170,8 @@ static void report(unsigned long hartid)
     report_extent("data  ", &__data_start, &__data_end);
     report_extent("bss   ", &__bss_start, &__bss_end);
 
+    krnRAMReport();
+
     krnP4PutStr("[kernel] sram   ");
     krnP4PutHex32(P4_SRAM_BASE);
     krnP4PutStr(" - ");
@@ -201,6 +203,8 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 
     krnTimerInit();
     csr_set(mstatus, MSTATUS_MIE);
+
+    krnRAMInit();
 
     report(hartid);
 
