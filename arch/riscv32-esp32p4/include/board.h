@@ -27,6 +27,7 @@ struct ESP32P4_Board
     int (*init_audio)(void);
     int (*init_camera)(void);
     int (*init_rtc)(void);
+    int (*init_radio)(void);
 };
 
 /* Get active board descriptor */

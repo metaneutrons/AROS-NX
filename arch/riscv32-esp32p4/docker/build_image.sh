@@ -28,13 +28,14 @@ riscv64-unknown-elf-gcc $FLAGS audio/p4audio_es8311.c -o $OUT/p4audio.o
 riscv64-unknown-elf-gcc $FLAGS camera/p4camera_sc2356.c -o $OUT/p4camera.o
 riscv64-unknown-elf-gcc $FLAGS usb/p4usb_dwc2.c -o $OUT/p4usb.o
 riscv64-unknown-elf-gcc $FLAGS sdcard/p4sdcard_init.c -o $OUT/p4sdcard.o
+riscv64-unknown-elf-gcc $FLAGS radio/p4radio_c6.c -o $OUT/p4radio.o
 
 echo "[2/4] Linking AROS Standalone Kernel (ELF)..."
 riscv64-unknown-elf-gcc -march=rv32imafdc -mabi=ilp32d -nostdlib -Wl,--gc-sections \
   -T/aros/arch/riscv32-esp32p4/config/linker.ld \
   $OUT/startup.o $OUT/uart.o $OUT/boot.o $OUT/platform_p4.o $OUT/board_d1001.o \
   $OUT/p4gfx.o $OUT/p4touch.o $OUT/pcf8563.o $OUT/p4audio.o $OUT/p4camera.o \
-  $OUT/p4usb.o $OUT/p4sdcard.o -o $OUT/aros_esp32p4.elf
+  $OUT/p4usb.o $OUT/p4sdcard.o $OUT/p4radio.o -o $OUT/aros_esp32p4.elf
 
 echo "[3/4] Generating Genuine ESP32-P4 Application Image: aros_a.bin..."
 esptool.py --chip esp32p4 elf2image --flash-mode dio --flash-freq 80m --flash-size 32MB \

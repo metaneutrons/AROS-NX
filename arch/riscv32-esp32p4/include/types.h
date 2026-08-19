@@ -16,6 +16,8 @@ typedef signed char         BYTE;
 typedef unsigned long long  UQUAD;
 typedef signed long long    QUAD;
 typedef void *              APTR;
+typedef unsigned int        IPTR;
+typedef signed int          SIPTR;
 typedef char *              STRPTR;
 typedef const char *        CONST_STRPTR;
 typedef int                 BOOL;

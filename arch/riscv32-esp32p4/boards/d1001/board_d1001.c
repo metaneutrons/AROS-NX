@@ -14,6 +14,7 @@ extern int p4audio_init(void);
 extern int p4camera_init(void);
 extern int p4usb_init(void);
 extern int p4sdcard_init(void);
+extern int p4radio_init(void);
 
 static int d1001_init_board(void)
 {
@@ -23,9 +24,11 @@ static int d1001_init_board(void)
     uart_puts("[board] RTC: NXP PCF8563T (I2C 0x51)\n");
     uart_puts("[board] Audio: Everest ES8311 DAC + ES7210 Mic (I2C 0x18/0x41)\n");
     uart_puts("[board] Camera: SmartSens SC2356 2MP MIPI-CSI (0x500A0000)\n");
+    uart_puts("[board] Wireless: ESP32-C6 (802.15.4 Zigbee/Thread/Matter + Wi-Fi 6)\n");
 
     p4usb_init();
     p4sdcard_init();
+    p4radio_init();
     return 0;
 }
 
@@ -41,7 +44,8 @@ static const struct ESP32P4_Board d1001_board_descriptor = {
     .init_touch          = p4touch_init,
     .init_audio          = p4audio_init,
     .init_camera         = p4camera_init,
-    .init_rtc            = NULL
+    .init_rtc            = NULL,
+    .init_radio          = p4radio_init
 };
 
 const struct ESP32P4_Board *get_active_board(void)
