@@ -15,6 +15,7 @@
 #include <aros/riscv/cpucontext.h>
 #include <asm/cpu.h>
 
+#include "hardware.h"
 #include "kernel_intern.h"
 
 #include <kernel_globals.h>
@@ -242,6 +243,18 @@ void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
          * call on the way out, arrive with kernel_timer.c.
          */
         unsigned long line = mcause & 0xFFF;
+
+        /*
+         * The peripheral is acknowledged before the controller, and it
+         * matters in that order: the tick line is level triggered, so
+         * while SYSTIMER still has its interrupt raised the line is
+         * asserted again the moment the pending bit is cleared.
+         */
+        if (line == P4_TIMER_LINE)
+        {
+            krnTimerAck();
+            __esp32p4_ticks++;
+        }
 
         krnCLICClear(line);
         __esp32p4_irq_last = line;

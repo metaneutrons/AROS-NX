@@ -58,6 +58,14 @@ void krnCLICPend(unsigned int line);
 void krnCLICClear(unsigned int line);
 int  krnCLICPending(unsigned int line);
 
+/* The periodic tick and the only clock there is (kernel_timer.c) */
+void krnTimerInit(void);
+void krnTimerAck(void);
+uint64_t krnTimerCount(void);
+unsigned long krnTimerTicks(void);
+int  krnTimerWait(unsigned long ticks);
+extern volatile unsigned long __esp32p4_ticks;
+
 /* What the trap handler has seen (kernel_traps.c) */
 extern volatile unsigned long __esp32p4_irq_count;
 extern volatile unsigned long __esp32p4_irq_last;
