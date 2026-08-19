@@ -31,7 +31,7 @@ recorded in the milestone notes.
 | bring-up report | compiles | prints hart, misa, ids, section extents; then stops |
 | kickstart link | done | 128640 bytes of the 167 KB window, one segment at 0x4FF00000 |
 | flashable image | done | `gmake kernel-esp32p4-riscv`, 111248 bytes |
-| runs on hardware | not yet | written to ota_0 once, reverted by anti-rollback |
+| runs on hardware | **yes** | ROM loads it from 0x2000 and it reports; see below |
 | kernel.resource | not started | |
 | exec.library | not started | |
 | M-mode trap and CLIC interrupts | not started | |
@@ -260,6 +260,48 @@ Done when: modules outside the kickstart start from flash or MicroSD.
 
 **M7 - display and input.** MIPI-DSI framebuffer HIDD, touch HIDD, Intuition.
 Done when: a Workbench screen appears and the pointer follows a touch.
+
+## First boot
+
+Written to 0x2000 and started by the first stage ROM loader:
+
+    ESP-ROM:esp32p4-eco2-20240710
+    rst:0x7 (HP_SYS_HP_WDT_RESET),boot:0x30f (SPI_FAST_FLASH_BOOT)
+    SPI mode:DIO, clock div:1
+    load:0x4ff00000,len:0x1b248
+    entry 0x4ff00000
+
+    AROS/esp32p4-riscv
+    [kernel] hart   0
+    [kernel] misa   0x40901125  rv32acfimux
+    [kernel] vendor 0x00000612  arch 0x80000003  impl 0x00000001
+    [kernel] text   0x4ff00000 - 0x4ff10044  65604 bytes
+    [kernel] rodata 0x4ff10044 - 0x4ff1b230  45548 bytes
+    [kernel] data   0x4ff1b234 - 0x4ff1b248  20 bytes
+    [kernel] bss    0x4ff1b250 - 0x4ff1f680  17456 bytes
+    [kernel] sram   0x4ff00000 - 0x4ffc0000
+    [kernel] psram  0x48000000 - 0x4c000000  (not brought up)
+    [kernel] no memory list, no KernelBase, no exec yet - stopping here.
+
+Three things that were assumptions before and are facts now.
+
+`misa` reads 0x40901125: A, C, F, I, M, U and X, with MXL saying 32-bit. **No
+D**, so the single precision ABI is confirmed by the silicon rather than
+inferred from ESP-IDF's build files, and the two rv32 fixes it needed were a
+precondition rather than a precaution. **No S, but U is there**: there is no
+supervisor mode, as assumed, but user mode exists and will be available when
+tasks want separating.
+
+The ROM loader accepts an image at the bootloader offset and loads it to
+0x4FF00000, so the reasoning about the low window being free while it runs
+holds.
+
+And `rst:0x7 (HP_SYS_HP_WDT_RESET)`: the ROM leaves a watchdog armed, so a
+kernel that stops in wfi is restarted about once a second. Convenient for now,
+because a single banner cannot reliably be caught over USB-Serial/JTAG at all
+- the peripheral only takes data once a host has attached and is reading, and
+krnP4PutC drops bytes when it has not - but it has to be fed or disabled in
+platform_init before anything runs for longer than that.
 
 ## Verification
 
