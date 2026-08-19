@@ -107,4 +107,12 @@ SECTIONS
      */
     ASSERT(__kernel_end <= P4_SRAM_TOP,
         "the kickstart does not fit below P4_SRAM_TOP - see the ceilings at the top of this script")
+
+    /*
+     * The CLIC reads the trap entry as mtvec[31:6] << 6, so anything less
+     * than 64-byte aligned is silently rounded down to another address.
+     * traps.S aligns it; this makes sure nothing has undone that.
+     */
+    ASSERT((__trap_entry & 0x3F) == 0,
+        "__trap_entry must be 64-byte aligned - the CLIC ignores the low six bits of mtvec")
 }

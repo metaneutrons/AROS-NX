@@ -50,6 +50,18 @@ static inline int GetCPUNumber(void)
     return hartid;
 }
 
+/* The core local interrupt controller (kernel_clic.c) */
+void krnCLICInit(void);
+void krnCLICEnable(unsigned int line, int edge);
+void krnCLICDisable(unsigned int line);
+void krnCLICPend(unsigned int line);
+void krnCLICClear(unsigned int line);
+int  krnCLICPending(unsigned int line);
+
+/* What the trap handler has seen (kernel_traps.c) */
+extern volatile unsigned long __esp32p4_irq_count;
+extern volatile unsigned long __esp32p4_irq_last;
+
 /* Machine setup that has to happen before anything else (platform_init.c) */
 void platform_init(void);
 int  platform_wdt_quiet(void);

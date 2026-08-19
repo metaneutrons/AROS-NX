@@ -30,8 +30,15 @@
     krnTrapHandler owns it, so that it covers exactly the C handler.
 */
 
+/*
+ * 64-byte aligned, and not by preference. This CLIC does not take mtvec
+ * as the entry address: it jumps to mtvec[31:6] << 6, so the low six bits
+ * are not part of the address at all and an entry point that is merely
+ * 4-byte aligned gets rounded down to somewhere else entirely. The
+ * symptom is an interrupt that pends and is never seen.
+ */
 	.text
-	.balign	4
+	.balign	0x40
 	.globl	__trap_entry
 	.type	__trap_entry,%function
 __trap_entry:

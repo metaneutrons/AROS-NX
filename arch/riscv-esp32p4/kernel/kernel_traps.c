@@ -58,6 +58,10 @@ _Static_assert(sizeof(struct ExceptionContext) == 136,
 /* Trap/interrupt nesting depth, reported through KrnIsSuper() */
 extern int __esp32p4_trap_depth;
 
+/* What has arrived, for the bring-up report to be able to say so */
+volatile unsigned long __esp32p4_irq_count;
+volatile unsigned long __esp32p4_irq_last;
+
 static const char * const exc_names[] =
 {
     "Instruction address misaligned",   /*  0 */
@@ -225,15 +229,24 @@ void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
     if (mcause & MCAUSE_INTERRUPT)
     {
         /*
-         * Nothing enables an interrupt source yet - startup.S clears mie
-         * and leaves it cleared - so anything arriving here is genuinely
-         * unexpected and worth saying so. The timer and CLIC cases join
-         * this switch with kernel_timer.c and kernel_clic.c, and the
-         * scheduler call on the way out with them.
+         * With mtvec in direct mode the CLIC leaves the line number in
+         * mcause, so no vector table is consulted to find out what
+         * arrived. Acknowledging by clearing the pending bit is what
+         * stops a level triggered line from re-entering immediately; an
+         * edge triggered one has already cleared itself.
+         *
+         * Counting and remembering rather than printing: a line nobody
+         * handles would otherwise flood the console faster than it could
+         * be read. The bring-up report says how many arrived and which
+         * was last. Dispatch to registered handlers, and the scheduler
+         * call on the way out, arrive with kernel_timer.c.
          */
-        krnP4PutStr("\n[trap] unexpected interrupt, code ");
-        krnP4PutDec(mcause & ~MCAUSE_INTERRUPT);
-        krnP4PutStr("\n");
+        unsigned long line = mcause & 0xFFF;
+
+        krnCLICClear(line);
+        __esp32p4_irq_last = line;
+        __esp32p4_irq_count++;
+
         __esp32p4_trap_depth--;
         return;
     }

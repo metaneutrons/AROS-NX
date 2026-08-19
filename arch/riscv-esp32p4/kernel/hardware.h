@@ -58,6 +58,49 @@
 #endif
 
 /*
+ * The core local interrupt controller. Not a PLIC: this is a CLIC, and on
+ * silicon before revision 3 it is a non-standard one - the threshold
+ * lives in a memory mapped register rather than in the mintthresh CSR,
+ * and mintstatus sits at CSR 0x346 instead of 0xFB1. ESP-IDF selects
+ * between the two on the same revision switch that decides the SRAM
+ * layout, so one boundary governs both.
+ *
+ * Each interrupt has one 32-bit control word: pending at bit 0, enable at
+ * bit 8, hardware vectoring at bit 16, trigger at bits 18:17 and the
+ * level at bits 31:24. With NLBITS at 3 only the top three of those eight
+ * level bits are compared against the threshold.
+ *
+ * The register block is per core, the other core's copy sitting one
+ * DUALCORE offset further on. Only core 0 runs so far.
+ */
+#define P4_CLIC_BASE            0x20800000UL
+#define P4_CLIC_CTRL_BASE       0x20801000UL
+#define P4_CLIC_DUALCORE_OFF    0x10000
+
+#define P4_CLIC_INT_CONFIG      0x0000
+#define  P4_CLIC_NLBITS_S       1
+#define  P4_CLIC_NLBITS_M       0xF
+#define P4_CLIC_INT_THRESH      0x0008
+#define  P4_CLIC_THRESH_S       24
+
+#define P4_CLIC_CTRL(i)         (P4_CLIC_CTRL_BASE + (i) * 4)
+#define  P4_CLIC_INT_IP         (1U << 0)
+#define  P4_CLIC_INT_IE         (1U << 8)
+#define  P4_CLIC_INT_SHV        (1U << 16)
+#define  P4_CLIC_INT_TRIG_S     17
+#define  P4_CLIC_INT_TRIG_LEVEL 0
+#define  P4_CLIC_INT_TRIG_EDGE  1
+#define  P4_CLIC_INT_CTL_S      24
+
+/* How many level bits are compared, and the level everything is given */
+#define P4_CLIC_NLBITS          3
+#define P4_CLIC_LEVEL_DEFAULT   1
+
+/* The first sixteen lines are internal to the core; peripherals start here */
+#define P4_CLIC_EXT_OFFSET      16
+#define P4_CLIC_LINES           48
+
+/*
  * Watchdogs. The first stage ROM loader arms these in "flashboot" mode
  * before it enters the image, so that something which never finishes
  * booting gets reset rather than hanging. Software is expected to turn
