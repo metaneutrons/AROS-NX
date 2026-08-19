@@ -133,6 +133,6 @@ python3 -m serial.tools.miniterm /dev/cu.usbmodem* 115200 --raw
 
 ## 👤 Author & Copyright
 
-* **Copyright:** (C) 2026, The AROS Development Team & Fabian Schmieder.
+* **Copyright:** (C) 2026, The AROS Development Team. All rights reserved.
 * **Author:** Fabian Schmieder ([@metaneutrons](https://github.com/metaneutrons))
 * **License:** AROS Public License (APL)

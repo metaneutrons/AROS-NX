@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 2026, The AROS Development Team & Fabian Schmieder.
+    Copyright (C) 2026, The AROS Development Team. All rights reserved.
     Author: Fabian Schmieder (@metaneutrons)
 
     Desc: AROS World-Class Zune/MUI GUI Dual-Bank OTA Firmware Upgrade Application.
@@ -158,7 +158,7 @@ int main(int argc, char **argv)
     data.app = ApplicationObject,
         MUIA_Application_Title,       "AROS OTA Firmware Updater",
         MUIA_Application_Version,     "$VER: OTAUpdater 1.0 (19.08.2026)",
-        MUIA_Application_Copyright,   "Copyright (C) 2026, The AROS Development Team & Fabian Schmieder",
+        MUIA_Application_Copyright,   "Copyright (C) 2026, The AROS Development Team",
         MUIA_Application_Author,      "Fabian Schmieder",
         MUIA_Application_Description, "Dual-Bank OTA Firmware Upgrade Utility",
         MUIA_Application_Base,        "OTAUPDATER",

@@ -1,8 +1,8 @@
 /*
-    Copyright (C) 2026, The AROS Development Team & Fabian Schmieder.
+    Copyright (C) 2026, The AROS Development Team. All rights reserved.
     Author: Fabian Schmieder (@metaneutrons)
 
-    Desc: ESP32-P4 Hardware GPIO & gpio.resource Header for AROS.
+    Desc: ESP32-P4 GPIO Matrix & gpio.resource Definitions.
 */
 
 #ifndef RISCV32_GPIO_P4_H

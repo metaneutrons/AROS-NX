@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 2026, The AROS Development Team & Fabian Schmieder.
+    Copyright (C) 2026, The AROS Development Team. All rights reserved.
     Author: Fabian Schmieder (@metaneutrons)
 
     Desc: AROS CLI Dual-Bank OTA Firmware Flash Utility (C:OTAUpgrade).
