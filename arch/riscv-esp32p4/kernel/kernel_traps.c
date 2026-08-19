@@ -1,0 +1,246 @@
+/*
+    Copyright (c) 2026, The AROS Development Team. All rights reserved.
+
+    Desc: Machine mode trap handling for the esp32p4-riscv target.
+*/
+
+#define __KERNEL_NOLIBBASE__
+
+#include <inttypes.h>
+#include <stddef.h>
+
+#include <exec/types.h>
+#include <exec/execbase.h>
+#include <proto/exec.h>
+#include <aros/riscv/cpucontext.h>
+#include <asm/cpu.h>
+
+#include "kernel_intern.h"
+
+#include <kernel_globals.h>
+
+#include <proto/kernel.h>
+
+/*
+ * The offsets traps.S stores the frame at. Asserted rather than trusted:
+ * the two have to agree exactly, and nothing else would notice if they
+ * stopped agreeing.
+ */
+#define CHK(field, off) \
+    _Static_assert(offsetof(struct ExceptionContext, field) == (off), \
+                   "traps.S stores " #field " at " #off)
+CHK(x,          0);
+CHK(ra,         0);
+CHK(sp,         4);
+CHK(t0,         8);
+CHK(t1,        12);
+CHK(t2,        16);
+CHK(fp,        20);
+CHK(s1,        24);
+CHK(a0,        28);
+CHK(a7,        56);
+CHK(s2,        60);
+CHK(s11,       96);
+CHK(t3,       100);
+CHK(t6,       112);
+CHK(pc,       116);
+CHK(sr,       120);
+CHK(Flags,    124);
+CHK(fpuContext, 128);
+CHK(vecContext, 132);
+_Static_assert(sizeof(struct ExceptionContext) == 136,
+               "traps.S reserves 144 bytes for a 136 byte context plus alignment");
+#undef CHK
+
+/* The interrupt flag is the top bit, which on RV32 is bit 31 */
+#define MCAUSE_INTERRUPT    (1UL << 31)
+
+/* Trap/interrupt nesting depth, reported through KrnIsSuper() */
+extern int __esp32p4_trap_depth;
+
+static const char * const exc_names[] =
+{
+    "Instruction address misaligned",   /*  0 */
+    "Instruction access fault",         /*  1 */
+    "Illegal instruction",              /*  2 */
+    "Breakpoint",                       /*  3 */
+    "Load address misaligned",          /*  4 */
+    "Load access fault",                /*  5 */
+    "Store/AMO address misaligned",     /*  6 */
+    "Store/AMO access fault",           /*  7 */
+    "Environment call from U-mode",     /*  8 */
+    "Environment call from S-mode",     /*  9 */
+    NULL,                               /* 10 */
+    "Environment call from M-mode",     /* 11 */
+    "Instruction page fault",           /* 12 */
+    "Load page fault",                  /* 13 */
+    NULL,                               /* 14 */
+    "Store/AMO page fault",             /* 15 */
+};
+
+/* Instruction-side faults: mepc itself may not be readable */
+#define CAUSE_IS_IFETCH(c) \
+    ((c) == CAUSE_MISALIGNED_FETCH || (c) == CAUSE_FETCH_ACCESS || \
+     (c) == CAUSE_FETCH_PAGE_FAULT)
+
+static void krnDumpContext(struct ExceptionContext *ctx)
+{
+    static const char * const regnames[] =
+    {
+        "ra ", "sp ", "t0 ", "t1 ", "t2 ", "fp ", "s1 ",
+        "a0 ", "a1 ", "a2 ", "a3 ", "a4 ", "a5 ", "a6 ", "a7 ",
+        "s2 ", "s3 ", "s4 ", "s5 ", "s6 ", "s7 ", "s8 ", "s9 ",
+        "s10", "s11", "t3 ", "t4 ", "t5 ", "t6 "
+    };
+    int i;
+
+    for (i = 0; i < RISCV_REGSAVE_CNT; i++)
+    {
+        krnP4PutStr(regnames[i]);
+        krnP4PutStr("=");
+        krnP4PutHex32(ctx->x[i]);
+        krnP4PutStr(((i % 4) == 3) ? "\n" : "  ");
+    }
+    krnP4PutStr("\npc =");
+    krnP4PutHex32(ctx->pc);
+    krnP4PutStr("  sr =");
+    krnP4PutHex32(ctx->sr);
+    krnP4PutStr("\n");
+}
+
+/*
+ * The instruction stream around mepc, as bytes, with the faulting parcel
+ * marked. Enough to disassemble the crash site offline without the
+ * binary at hand. 16-bit parcels are what both compressed and full
+ * length instructions are built from, hence the pairing.
+ */
+static void krnDumpCode(struct ExceptionContext *ctx)
+{
+    unsigned char *pc = (unsigned char *)(ctx->pc & ~(IPTR)1);
+    int i;
+
+    if (!pc)
+        return;
+
+    krnP4PutStr("[trap] code  ");
+    for (i = -16; i < 16; i++)
+    {
+        static const char hexchars[] = "0123456789abcdef";
+        char pair[2];
+
+        if (i == 0)
+            krnP4PutStr("\n[trap] mepc> ");
+        pair[0] = hexchars[(pc[i] >> 4) & 0xF];
+        pair[1] = hexchars[pc[i] & 0xF];
+        krnP4PutC(pair[0]);
+        krnP4PutC(pair[1]);
+        if ((i & 1) && i != 15)
+            krnP4PutC(' ');
+    }
+    krnP4PutStr("\n");
+}
+
+/*
+ * Name mepc, ra and every stack word the symbol resolver can attribute
+ * to a module. With no frame chain to walk - this port omits frame
+ * pointers - the scan overreports, but the real call chain is in there.
+ */
+static void krnDumpBacktrace(struct ExceptionContext *ctx)
+{
+    struct KernelBase *kbase = getKernelBase();
+    APTR pcs[34];
+    ULONG n = 0;
+
+    if (!kbase)
+        return;
+
+    pcs[n++] = (APTR)ctx->pc;
+    if (ctx->ra && ctx->ra != ctx->pc)
+        pcs[n++] = (APTR)ctx->ra;
+
+    n += KrnBacktraceFromFrame((APTR)ctx->sp, &pcs[n], 32 - n);
+
+    KrnPrintBacktrace("[trap] ", pcs, n);
+}
+
+static void krnReportException(struct ExceptionContext *ctx,
+                               unsigned long mcause, unsigned long mtval)
+{
+    const char *name = (mcause < sizeof(exc_names) / sizeof(exc_names[0]))
+                        ? exc_names[mcause] : NULL;
+
+    krnP4PutStr("\n[trap] ");
+    if (name)
+        krnP4PutStr(name);
+    else
+    {
+        krnP4PutStr("Unknown exception ");
+        krnP4PutDec(mcause);
+    }
+    krnP4PutStr("\n       mepc  = ");
+    krnP4PutHex32(ctx->pc);
+    krnP4PutStr("\n       mtval = ");
+    krnP4PutHex32(mtval);
+    krnP4PutStr("\n");
+
+    krnDumpContext(ctx);
+
+    /*
+     * Name the faulting task, so a crash can be attributed to its owner,
+     * and print its stack bounds: a runaway stack explains a trap frame
+     * landing somewhere unlikely.
+     */
+    if (SysBase)
+    {
+        struct Task *t = FindTask(NULL);
+
+        if (t)
+        {
+            krnP4PutStr("[trap] task '");
+            krnP4PutStr(t->tc_Node.ln_Name ? t->tc_Node.ln_Name : "<unnamed>");
+            krnP4PutStr("' @ ");
+            krnP4PutHex32((IPTR)t);
+            krnP4PutStr("\n[trap] stack ");
+            krnP4PutHex32((IPTR)t->tc_SPLower);
+            krnP4PutStr(" - ");
+            krnP4PutHex32((IPTR)t->tc_SPUpper);
+            krnP4PutStr(" sp ");
+            krnP4PutHex32(ctx->sp);
+            krnP4PutStr(((IPTR)ctx->sp < (IPTR)t->tc_SPLower ||
+                         (IPTR)ctx->sp > (IPTR)t->tc_SPUpper)
+                        ? " OUTSIDE\n" : " in bounds\n");
+        }
+    }
+
+    if (!CAUSE_IS_IFETCH(mcause))
+        krnDumpCode(ctx);
+    krnDumpBacktrace(ctx);
+}
+
+void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
+                    unsigned long mtval)
+{
+    __esp32p4_trap_depth++;
+
+    if (mcause & MCAUSE_INTERRUPT)
+    {
+        /*
+         * Nothing enables an interrupt source yet - startup.S clears mie
+         * and leaves it cleared - so anything arriving here is genuinely
+         * unexpected and worth saying so. The timer and CLIC cases join
+         * this switch with kernel_timer.c and kernel_clic.c, and the
+         * scheduler call on the way out with them.
+         */
+        krnP4PutStr("\n[trap] unexpected interrupt, code ");
+        krnP4PutDec(mcause & ~MCAUSE_INTERRUPT);
+        krnP4PutStr("\n");
+        __esp32p4_trap_depth--;
+        return;
+    }
+
+    krnReportException(ctx, mcause, mtval);
+
+    krnP4PutStr("[trap] fatal - halting hart.\n");
+    for (;;)
+        asm volatile("wfi");
+}
