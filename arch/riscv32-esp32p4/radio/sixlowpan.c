@@ -101,9 +101,20 @@ WORD sixlowpan_compress_ipv6(const UBYTE *src_ipv6, UWORD src_len,
     }
 
     const UBYTE *dst_ip = &src_ipv6[24];
-    if (is_multicast_prefix(dst_ip)) {
+    BOOL is_mcast = is_multicast_prefix(dst_ip);
+    if (is_mcast) {
         iphc1 |= IPHC_M_MULTICAST;
-        iphc1 |= IPHC_DAM_128;
+        /* Check for ff02::XX link-local multicast */
+        BOOL is_ff02_8bit = (dst_ip[0] == 0xFF && dst_ip[1] == 0x02);
+        for (int i = 2; i < 15 && is_ff02_8bit; i++) {
+            if (dst_ip[i] != 0) is_ff02_8bit = FALSE;
+        }
+
+        if (is_ff02_8bit) {
+            iphc1 |= IPHC_DAM_0; /* DAM = 11: 8-bit inline (ff02::XX) */
+        } else {
+            iphc1 |= IPHC_DAM_128; /* DAM = 00: Full 128-bit inline */
+        }
     } else if (is_link_local_prefix(dst_ip) && dst_eui64 && match_iid_eui64(&dst_ip[8], dst_eui64)) {
         iphc1 |= IPHC_DAM_0;
     } else if (is_link_local_prefix(dst_ip)) {
@@ -140,12 +151,21 @@ WORD sixlowpan_compress_ipv6(const UBYTE *src_ipv6, UWORD src_len,
         out += 8;
     }
 
-    if ((iphc1 & 0x03) == IPHC_DAM_128) {
-        copy_mem(dst_ip, out, 16);
-        out += 16;
-    } else if ((iphc1 & 0x03) == IPHC_DAM_64) {
-        copy_mem(&dst_ip[8], out, 8);
-        out += 8;
+    if (is_mcast) {
+        if ((iphc1 & 0x03) == IPHC_DAM_0) {
+            *out++ = dst_ip[15]; /* 8-bit inline for ff02::XX */
+        } else {
+            copy_mem(dst_ip, out, 16);
+            out += 16;
+        }
+    } else {
+        if ((iphc1 & 0x03) == IPHC_DAM_128) {
+            copy_mem(dst_ip, out, 16);
+            out += 16;
+        } else if ((iphc1 & 0x03) == IPHC_DAM_64) {
+            copy_mem(&dst_ip[8], out, 8);
+            out += 8;
+        }
     }
 
     UWORD payload_offset = 40;
@@ -243,19 +263,30 @@ WORD sixlowpan_decompress_ipv6(const UBYTE *src_frame, UWORD src_len,
 
     UBYTE *dst_dst_ip = &dst_ipv6[24];
     UBYTE dam = (iphc1 & 0x03);
-    if (dam == IPHC_DAM_0) {
-        dst_dst_ip[0] = 0xFE; dst_dst_ip[1] = 0x80;
-        if (dst_eui64) {
-            dst_dst_ip[8] = dst_eui64[0] ^ 0x02;
-            copy_mem(&dst_eui64[1], &dst_dst_ip[9], 7);
+    if (iphc1 & IPHC_M_MULTICAST) {
+        if (dam == IPHC_DAM_0) { /* DAM = 11: 8-bit inline (ff02::XX) */
+            dst_dst_ip[0] = 0xFF;
+            dst_dst_ip[1] = 0x02;
+            dst_dst_ip[15] = *in++;
+        } else { /* DAM = 00: Full 128-bit inline */
+            copy_mem(in, dst_dst_ip, 16);
+            in += 16;
         }
-    } else if (dam == IPHC_DAM_64) {
-        dst_dst_ip[0] = 0xFE; dst_dst_ip[1] = 0x80;
-        copy_mem(in, &dst_dst_ip[8], 8);
-        in += 8;
     } else {
-        copy_mem(in, dst_dst_ip, 16);
-        in += 16;
+        if (dam == IPHC_DAM_0) {
+            dst_dst_ip[0] = 0xFE; dst_dst_ip[1] = 0x80;
+            if (dst_eui64) {
+                dst_dst_ip[8] = dst_eui64[0] ^ 0x02;
+                copy_mem(&dst_eui64[1], &dst_dst_ip[9], 7);
+            }
+        } else if (dam == IPHC_DAM_64) {
+            dst_dst_ip[0] = 0xFE; dst_dst_ip[1] = 0x80;
+            copy_mem(in, &dst_dst_ip[8], 8);
+            in += 8;
+        } else {
+            copy_mem(in, dst_dst_ip, 16);
+            in += 16;
+        }
     }
 
     UBYTE *out = &dst_ipv6[40];
