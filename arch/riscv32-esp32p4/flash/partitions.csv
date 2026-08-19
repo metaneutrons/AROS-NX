@@ -1,9 +1,9 @@
-# ESP-IDF Partition Table for AROS 32MB Dual-Bank OTA
+# ESP-IDF Partition Table for AROS 32MB Dual-Bank OTA (Secure Boot v2 & NVS Encryption)
 # Name,     Type,  SubType,   Offset,     Size,     Flags
 nvs,        data,  nvs,       0x9000,     0x6000,
 otadata,    data,  ota,       0xf000,     0x2000,
 phy_init,   data,  phy,       0x11000,    0x1000,
-nvs_key,    data,  nvs_keys,  0x12000,    0x1000,
+nvs_key,    data,  nvs_keys,  0x12000,    0x1000,   encrypted
 aros_a,     app,   ota_0,     0x20000,    0x800000,
 aros_b,     app,   ota_1,     0x820000,   0x800000,
 storage,    data,  fat,       0x1020000,  0xFE0000,
