@@ -39,4 +39,51 @@ AFILES := \
   mainmmake=kernel-kernel modname=kernel maindir=rom/kernel arch=esp32p4-riscv \
   files="$(CFILES) $(PLATFILES)" asmfiles="$(AFILES)" compiler=kernel
 
+#
+# The kickstart holds only what has to exist before anything can be
+# loaded: kernel.resource, exec.library and task.resource. Everything
+# else, utility.library included, belongs in a package the loader places
+# in RAM later - which is not written yet.
+#
+BSP_RES  := kernel task
+BSP_LIBS := exec
+
+BSP_KOBJS := \
+    $(addprefix $(KOBJSDIR)/, $(addsuffix _resource.o, $(BSP_RES))) \
+    $(addprefix $(KOBJSDIR)/, $(addsuffix _library.o, $(BSP_LIBS)))
+
+# -lexec is what carries SysBase into the image, and -lamiga what
+# satisfies libautoinit's error path.
+ELFCORELIBS := -L$(AROS_LIB) -lexec -larossupport -lautoinit -llibinit \
+               -lamiga -lstdc.static
+ifeq ("$(AROS_TOOLCHAIN)","gnu")
+ELFCORELIBS += -L$(CROSSTOOLSDIR)/lib/gcc/$(AROS_TARGET_CPU)-aros/$(TARGET_GCC_VER) -lgcc
+endif
+
+# The image declares the silicon it will run on. These are the pre-v3
+# numbers that go with the link script's memory windows; an image built
+# for one family must not be loaded by a bootloader on the other.
+ESP32P4_REV_MIN ?= 100
+ESP32P4_REV_MAX ?= 199
+ESPTOOL         ?= esptool
+
+#MM kernel-esp32p4-riscv : kernel-kernel-kobj kernel-exec-kobj kernel-task-kobj
+#MM
+kernel-esp32p4-riscv: $(OSGENDIR)/boot/aros-esp32p4.bin
+	$(Q)$(NOP)
+
+$(OSGENDIR)/boot/core.elf: $(BSP_KOBJS) $(SRCDIR)/$(CURDIR)/ldscript.lds
+	@$(ECHO) "Creating   $@"
+	%mkdirs_q $(OSGENDIR)/boot
+	@$(KERNEL_LD) -Map $(OSGENDIR)/boot/core.map \
+	    -T $(SRCDIR)/$(CURDIR)/ldscript.lds -o $@ $(filter %.o,$^) $(ELFCORELIBS)
+
+# An ESP32-P4 application image, the kind a second stage bootloader
+# already on the device loads out of an app partition.
+$(OSGENDIR)/boot/aros-esp32p4.bin: $(OSGENDIR)/boot/core.elf
+	@$(ECHO) "Creating   $@"
+	@$(ESPTOOL) --chip esp32p4 elf2image --flash-mode dio --flash-freq 80m \
+	    --flash-size 32MB --min-rev-full $(ESP32P4_REV_MIN) \
+	    --max-rev-full $(ESP32P4_REV_MAX) -o $@ $<
+
 %common

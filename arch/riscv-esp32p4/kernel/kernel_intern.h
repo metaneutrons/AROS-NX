@@ -35,6 +35,21 @@ extern unsigned long __boot_hartid;
  */
 extern int __esp32p4_trap_depth;
 
+/*
+ * Which hart this is. The shared rv32 layer's getcpunumber.c calls this
+ * and expects the platform to supply it. mhartid is readable here, so
+ * this answers for whichever hart asks rather than for the boot one -
+ * the supervisor mode ports have to cache the boot hart id instead,
+ * because mhartid is out of their reach.
+ */
+static inline int GetCPUNumber(void)
+{
+    int hartid;
+
+    __asm__ volatile("csrr %0, mhartid" : "=r"(hartid));
+    return hartid;
+}
+
 /* Early UART0 debug console (kernel_console.c) */
 void krnP4PutC(char c);
 void krnP4PutStr(const char *s);
