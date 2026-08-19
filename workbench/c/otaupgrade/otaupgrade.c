@@ -1,6 +1,5 @@
 /*
-    Copyright (C) 2026, The AROS Development Team & Fabian Schmieder.
-    Author: Fabian Schmieder (@metaneutrons)
+    Copyright (C) 2026, The AROS Development Team. All rights reserved.
 
     Desc: AROS CLI Dual-Bank OTA Firmware Flash Utility (C:OTAUpgrade).
 */
@@ -22,7 +21,7 @@ enum {
     NUM_ARGS
 };
 
-static const char version_tag[] = "$VER: OTAUpgrade 1.0 (19.08.2026) by Fabian Schmieder\r\n";
+static const char version_tag[] = "$VER: OTAUpgrade 1.0 (19.08.2026)\r\n";
 
 static void print_progress(ULONG current, ULONG total) {
     ULONG pct = (total > 0) ? (current * 100 / total) : 0;

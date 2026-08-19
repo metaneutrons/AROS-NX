@@ -1,6 +1,5 @@
 /*
-    Copyright (C) 2026, The AROS Development Team & Fabian Schmieder.
-    Author: Fabian Schmieder (@metaneutrons)
+    Copyright (C) 2026, The AROS Development Team. All rights reserved.
 
     Desc: AROS World-Class Zune/MUI GUI Dual-Bank OTA Firmware Upgrade Application.
 */
@@ -16,7 +15,7 @@
 #include <proto/muimaster.h>
 #include "../../../arch/riscv32-esp32p4/include/spiflash_ota.h"
 
-static const char version_tag[] = "$VER: OTAUpdater 1.0 (19.08.2026) by Fabian Schmieder\r\n";
+static const char version_tag[] = "$VER: OTAUpdater 1.0 (19.08.2026)\r\n";
 
 #define ID_ABOUT        0x1001
 #define ID_FLASH        0x1002
@@ -158,8 +157,8 @@ int main(int argc, char **argv)
     data.app = ApplicationObject,
         MUIA_Application_Title,       "AROS OTA Firmware Updater",
         MUIA_Application_Version,     "$VER: OTAUpdater 1.0 (19.08.2026)",
-        MUIA_Application_Copyright,   "Copyright (C) 2026, The AROS Development Team & Fabian Schmieder",
-        MUIA_Application_Author,      "Fabian Schmieder",
+        MUIA_Application_Copyright,   "The AROS Development Team",
+        MUIA_Application_Author,      "AROS",
         MUIA_Application_Description, "Dual-Bank OTA Firmware Upgrade Utility",
         MUIA_Application_Base,        "OTAUPDATER",
 
