@@ -1,0 +1,44 @@
+
+include $(SRCDIR)/config/aros.cfg
+
+%set_archincludes mainmmake=kernel-kernel maindir=rom/kernel \
+  modname=kernel pri=10 arch=esp32p4-riscv \
+  includes="-I$(SRCDIR)/$(CURDIR)"
+
+%get_archincludes modname=kernel \
+    includeflag=TARGET_KERNEL_INCLUDES maindir=rom/kernel
+
+%get_archincludes modname=exec \
+    includeflag=TARGET_EXEC_INCLUDES maindir=rom/exec
+
+PRIV_KERNEL_INCLUDES = \
+    $(TARGET_KERNEL_INCLUDES) \
+	-I$(SRCDIR)/rom/kernel \
+	$(TARGET_EXEC_INCLUDES) \
+	-I$(SRCDIR)/rom/exec
+
+USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
+USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__
+
+#
+# The privilege level functions and the UART console. startup.S and
+# traps.S are held back until kernel_cstart() and __trap_entry exist to
+# resolve against; startup.S is assembled and checked on its own in the
+# meantime.
+#
+CFILES := \
+        kernel_console \
+        kernel_debug \
+        cli \
+        sti \
+        issuper
+
+PLATFILES :=
+
+AFILES :=
+
+%build_archspecific \
+  mainmmake=kernel-kernel modname=kernel maindir=rom/kernel arch=esp32p4-riscv \
+  files="$(CFILES) $(PLATFILES)" compiler=kernel
+
+%common
