@@ -20,11 +20,8 @@ PRIV_KERNEL_INCLUDES = \
 USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__
 
-#
-# startup.S is held back until kernel_cstart() exists to resolve against;
-# it is assembled and test-linked on its own in the meantime.
-#
 CFILES := \
+        kernel_startup \
         kernel_console \
         kernel_debug \
         kernel_traps \
@@ -35,6 +32,7 @@ CFILES := \
 PLATFILES :=
 
 AFILES := \
+        startup \
         traps
 
 %build_archspecific \
