@@ -41,6 +41,7 @@ riscv64-unknown-elf-gcc $FLAGS radio/spinel.c -o $OUT/spinel.o
 riscv64-unknown-elf-gcc $FLAGS ethernet/emac_p4.c -o $OUT/emac_p4.o
 riscv64-unknown-elf-gcc $FLAGS ppa/ppa_p4.c -o $OUT/ppa_p4.o
 riscv64-unknown-elf-gcc $FLAGS flash/spiflash_ota.c -o $OUT/spiflash_ota.o
+riscv64-unknown-elf-gcc $FLAGS gpio/gpio_p4.c -o $OUT/gpio_p4.o
 
 echo "[2/4] Linking AROS Standalone Kernel (ELF)..."
 riscv64-unknown-elf-gcc -march=rv32imafdc -mabi=ilp32d -nostdlib -Wl,--gc-sections \
@@ -49,7 +50,7 @@ riscv64-unknown-elf-gcc -march=rv32imafdc -mabi=ilp32d -nostdlib -Wl,--gc-sectio
   $OUT/rom_residents.o $OUT/board_d1001.o $OUT/p4gfx.o $OUT/p4touch.o $OUT/pcf8563.o \
   $OUT/p4audio.o $OUT/p4audio_i2s.o $OUT/p4camera.o $OUT/p4usb.o $OUT/dwc2_hcd.o \
   $OUT/p4sdcard.o $OUT/sdmmc_host.o $OUT/p4radio.o $OUT/sixlowpan.o $OUT/ezsp_ash.o \
-  $OUT/spinel.o $OUT/emac_p4.o $OUT/ppa_p4.o $OUT/spiflash_ota.o -o $OUT/aros_esp32p4.elf
+  $OUT/spinel.o $OUT/emac_p4.o $OUT/ppa_p4.o $OUT/spiflash_ota.o $OUT/gpio_p4.o -o $OUT/aros_esp32p4.elf
 
 echo "[3/4] Generating Genuine ESP32-P4 Application Image: aros_a.bin..."
 esptool.py --chip esp32p4 elf2image --flash-mode dio --flash-freq 80m --flash-size 32MB \

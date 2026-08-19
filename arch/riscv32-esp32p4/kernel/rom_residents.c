@@ -19,8 +19,10 @@ extern int p4radio_init(void);
 extern int emac_p4_init(const UBYTE *mac);
 extern int p4audio_i2s_init(ULONG rate);
 extern int ppa_p4_init(void);
+extern int gpio_p4_init(void);
 
 static int resident_init_gfx(void)      { return p4gfx_init(); }
+static int resident_init_gpio(void)     { return gpio_p4_init(); }
 static int resident_init_touch(void)    { return p4touch_init(); }
 static int resident_init_sd(void)       { return sdmmc_host_init(); }
 static int resident_init_usb(void)      { return dwc2_hcd_init(); }
@@ -52,6 +54,18 @@ static const struct Resident g_rom_residents[] = {
         .rt_Flags       = RTF_COLDSTART,
         .rt_Version     = 1,
         .rt_Type        = NT_RESOURCE,
+        .rt_Pri         = 82,
+        .rt_Name        = "gpio.resource",
+        .rt_IdString    = "gpio.resource 1.0 (19.08.2026) GPIO Matrix & Buttons\r\n",
+        .rt_Init        = (APTR)resident_init_gpio
+    },
+    {
+        .rt_MatchWord   = RTC_MATCHWORD,
+        .rt_MatchTag    = (struct Resident *)&g_rom_residents[2],
+        .rt_EndSkip     = (APTR)&g_rom_residents[3],
+        .rt_Flags       = RTF_COLDSTART,
+        .rt_Version     = 1,
+        .rt_Type        = NT_RESOURCE,
         .rt_Pri         = 80,
         .rt_Name        = "p4gfx.hidd",
         .rt_IdString    = "p4gfx.hidd 1.0 (19.08.2026) MIPI-DSI Display\r\n",
@@ -59,8 +73,8 @@ static const struct Resident g_rom_residents[] = {
     },
     {
         .rt_MatchWord   = RTC_MATCHWORD,
-        .rt_MatchTag    = (struct Resident *)&g_rom_residents[2],
-        .rt_EndSkip     = (APTR)&g_rom_residents[3],
+        .rt_MatchTag    = (struct Resident *)&g_rom_residents[3],
+        .rt_EndSkip     = (APTR)&g_rom_residents[4],
         .rt_Flags       = RTF_COLDSTART,
         .rt_Version     = 1,
         .rt_Type        = NT_RESOURCE,
@@ -71,8 +85,8 @@ static const struct Resident g_rom_residents[] = {
     },
     {
         .rt_MatchWord   = RTC_MATCHWORD,
-        .rt_MatchTag    = (struct Resident *)&g_rom_residents[3],
-        .rt_EndSkip     = (APTR)&g_rom_residents[4],
+        .rt_MatchTag    = (struct Resident *)&g_rom_residents[4],
+        .rt_EndSkip     = (APTR)&g_rom_residents[5],
         .rt_Flags       = RTF_COLDSTART,
         .rt_Version     = 1,
         .rt_Type        = NT_DEVICE,
@@ -83,8 +97,8 @@ static const struct Resident g_rom_residents[] = {
     },
     {
         .rt_MatchWord   = RTC_MATCHWORD,
-        .rt_MatchTag    = (struct Resident *)&g_rom_residents[4],
-        .rt_EndSkip     = (APTR)&g_rom_residents[5],
+        .rt_MatchTag    = (struct Resident *)&g_rom_residents[5],
+        .rt_EndSkip     = (APTR)&g_rom_residents[6],
         .rt_Flags       = RTF_COLDSTART,
         .rt_Version     = 1,
         .rt_Type        = NT_DEVICE,
@@ -95,8 +109,8 @@ static const struct Resident g_rom_residents[] = {
     },
     {
         .rt_MatchWord   = RTC_MATCHWORD,
-        .rt_MatchTag    = (struct Resident *)&g_rom_residents[5],
-        .rt_EndSkip     = (APTR)&g_rom_residents[6],
+        .rt_MatchTag    = (struct Resident *)&g_rom_residents[6],
+        .rt_EndSkip     = (APTR)&g_rom_residents[7],
         .rt_Flags       = RTF_COLDSTART,
         .rt_Version     = 1,
         .rt_Type        = NT_DEVICE,
@@ -107,8 +121,8 @@ static const struct Resident g_rom_residents[] = {
     },
     {
         .rt_MatchWord   = RTC_MATCHWORD,
-        .rt_MatchTag    = (struct Resident *)&g_rom_residents[6],
-        .rt_EndSkip     = (APTR)&g_rom_residents[7],
+        .rt_MatchTag    = (struct Resident *)&g_rom_residents[7],
+        .rt_EndSkip     = (APTR)&g_rom_residents[8],
         .rt_Flags       = RTF_COLDSTART,
         .rt_Version     = 1,
         .rt_Type        = NT_DEVICE,
@@ -119,7 +133,7 @@ static const struct Resident g_rom_residents[] = {
     },
     {
         .rt_MatchWord   = RTC_MATCHWORD,
-        .rt_MatchTag    = (struct Resident *)&g_rom_residents[7],
+        .rt_MatchTag    = (struct Resident *)&g_rom_residents[8],
         .rt_EndSkip     = (APTR)0,
         .rt_Flags       = RTF_COLDSTART,
         .rt_Version     = 1,
