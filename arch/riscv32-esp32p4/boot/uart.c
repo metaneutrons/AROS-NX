@@ -55,3 +55,12 @@ void uart_puts(const char *s)
     while (*s)
         uart_putc(*s++);
 }
+
+void uart_puthex(ULONG val)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    uart_puts("0x");
+    for (int i = 28; i >= 0; i -= 4) {
+        uart_putc(hex[(val >> i) & 0x0F]);
+    }
+}

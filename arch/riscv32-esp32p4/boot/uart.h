@@ -24,6 +24,7 @@
 void uart_init(ULONG baudrate);
 void uart_putc(char c);
 void uart_puts(const char *s);
+void uart_puthex(ULONG val);
 void usj_putc(char c);
 void usj_flush(void);
 
