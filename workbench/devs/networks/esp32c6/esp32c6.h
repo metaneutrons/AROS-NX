@@ -37,6 +37,7 @@ struct esp32c6_unit
     struct MinList      read_queue;
     struct MinList      write_queue;
     struct SignalSemaphore lock;
+    struct Sana2DeviceStats stats;
 };
 
 struct esp32c6_base
