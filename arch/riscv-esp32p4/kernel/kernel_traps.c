@@ -17,8 +17,12 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
+#include "kernel_cpu.h"
 
 #include <kernel_globals.h>
+#include <kernel_intr.h>
+#include <kernel_scheduler.h>
+#include <kernel_syscall.h>
 
 #include <proto/kernel.h>
 
@@ -55,6 +59,15 @@ _Static_assert(sizeof(struct ExceptionContext) == 136,
 
 /* The interrupt flag is the top bit, which on RV32 is bit 31 */
 #define MCAUSE_INTERRUPT    (1UL << 31)
+
+/* a7 carries the syscall number (see krnSysCall in kernel_cpu.h) */
+#define CTX_REG_A7          14
+#define SC_MAX              0x100   /* SC_REBOOT is the highest code */
+
+/* What the dispatcher leaves for the scheduler, once the depth is down */
+#define TRAP_DONE       0
+#define TRAP_RESCHEDULE 1
+#define TRAP_SYSCALL    2
 
 /* Trap/interrupt nesting depth, reported through KrnIsSuper() */
 extern int __esp32p4_trap_depth;
@@ -222,11 +235,9 @@ static void krnReportException(struct ExceptionContext *ctx,
     krnDumpBacktrace(ctx);
 }
 
-void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
-                    unsigned long mtval)
+static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
+                           unsigned long mtval)
 {
-    __esp32p4_trap_depth++;
-
     if (mcause & MCAUSE_INTERRUPT)
     {
         /*
@@ -260,8 +271,21 @@ void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
         __esp32p4_irq_last = line;
         __esp32p4_irq_count++;
 
-        __esp32p4_trap_depth--;
-        return;
+        /* Something may have become runnable; let the scheduler look on
+           the way out */
+        return TRAP_RESCHEDULE;
+    }
+
+    if (mcause == CAUSE_MACHINE_ECALL && SysBase &&
+        ctx->x[CTX_REG_A7] <= SC_MAX)
+    {
+        /*
+         * A scheduler syscall - KrnDispatch, KrnSwitch, KrnSchedule and
+         * the rest - with the function code in a7. Step over the ecall,
+         * which is always four bytes; it has no compressed form.
+         */
+        ctx->pc += 4;
+        return TRAP_SYSCALL;
     }
 
     krnReportException(ctx, mcause, mtval);
@@ -269,4 +293,32 @@ void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
     krnP4PutStr("[trap] fatal - halting hart.\n");
     for (;;)
         asm volatile("wfi");
+
+    return TRAP_DONE;
+}
+
+void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
+                    unsigned long mtval)
+{
+    int action;
+
+    __esp32p4_trap_depth++;
+    action = krnTrapDispatch(ctx, mcause, mtval);
+
+    /*
+     * Only the outermost trap enters the scheduler. A trap taken while
+     * the kernel is already inside one - which includes one taken while
+     * the dispatcher itself is waiting - must not reschedule, or it
+     * re-enters the dispatcher from inside itself. The depth is held
+     * across the call so nesting stays visible to it, and released after.
+     */
+    if (SysBase && (__esp32p4_trap_depth == 1))
+    {
+        if (action == TRAP_RESCHEDULE)
+            core_ExitInterrupt(ctx);
+        else if (action == TRAP_SYSCALL)
+            core_SysCall((int)ctx->x[CTX_REG_A7], ctx);
+    }
+
+    __esp32p4_trap_depth--;
 }
