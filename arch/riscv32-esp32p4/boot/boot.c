@@ -1,0 +1,38 @@
+/*
+    Copyright (C) 2026, The AROS Development Team. All rights reserved.
+
+    Desc: Main C kernel boot entry for ESP32-P4 (Seeed D1001).
+*/
+
+#include <exec/types.h>
+#include <exec/execbase.h>
+#include <exec/memory.h>
+#include "uart.h"
+
+/* Memory map constants for ESP32-P4 */
+#define ESP32P4_SRAM_BASE       0x4FF00000UL
+#define ESP32P4_SRAM_SIZE       (768 * 1024)        /* 768 KB */
+
+#define ESP32P4_PSRAM_BASE      0x48000000UL
+#define ESP32P4_PSRAM_SIZE      (32 * 1024 * 1024)  /* 32 MB */
+
+extern void platform_init(void);
+
+void c_boot(void)
+{
+    uart_init(115200);
+    uart_puts("\n========================================\n");
+    uart_puts("   AROS Research Operating System\n");
+    uart_puts("   Architecture: RISC-V 32-bit (RV32IMAFDC)\n");
+    uart_puts("   Target: Espressif ESP32-P4 (Seeed D1001)\n");
+    uart_puts("   Flash: 32MB Dual-Bank OTA | PSRAM: 32MB\n");
+    uart_puts("========================================\n\n");
+
+    uart_puts("[boot] Initializing platform timers and interrupt matrix...\n");
+    platform_init();
+
+    uart_puts("[boot] Configuring Amiga memory pools:\n");
+    uart_puts("  - Internal SRAM: 768 KB (MEMF_LOCAL)\n");
+    uart_puts("  - Octal PSRAM:   32 MB  (MEMF_PUBLIC | MEMF_FAST)\n");
+    uart_puts("[boot] Launching exec.library scheduler...\n");
+}

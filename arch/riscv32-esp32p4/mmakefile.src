@@ -1,0 +1,32 @@
+# $Id$
+
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv32-esp32p4/config/aros-esp32p4.cfg
+
+BINDIR := $(GENDIR)/bin/esp32p4
+
+.PHONY: esp32p4-image esp32p4-flash esp32p4-app-flash esp32p4-monitor
+
+# Generate 32MB merged flash image
+esp32p4-image:
+	@mkdir -p $(BINDIR)
+	@python3 arch/riscv32-esp32p4/flash/merge_image.py \
+		$(BINDIR)/aros-esp32p4-merged-32mb.bin \
+		$(BINDIR)/bootloader.bin \
+		arch/riscv32-esp32p4/flash/partitions.bin \
+		$(BINDIR)/otadata.bin \
+		$(BINDIR)/aros_a.bin
+
+# Flash full 32MB image
+esp32p4-flash: esp32p4-image
+	esptool.py --chip esp32p4 --port $(ESP32_PORT) --baud $(ESP32_BAUD) \
+		write_flash 0x0 $(BINDIR)/aros-esp32p4-merged-32mb.bin
+
+# Fast incremental flash of AROS kernel into Slot A (0x20000)
+esp32p4-app-flash:
+	esptool.py --chip esp32p4 --port $(ESP32_PORT) --baud $(ESP32_BAUD) \
+		write_flash 0x20000 $(BINDIR)/aros_a.bin
+
+# Monitor serial console
+esp32p4-monitor:
+	python3 -m serial.tools.miniterm $(ESP32_PORT) 115200 --raw
