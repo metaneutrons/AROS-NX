@@ -69,11 +69,22 @@ static void report_misa(void)
     krnP4PutStr("\n");
 }
 
-void kernel_cstart(unsigned long hartid, void *fdt)
+/*
+ * Repeated rather than said once, and the reason is the console. The USB
+ * serial/JTAG peripheral only accepts data while a host is attached and
+ * reading, and krnP4PutC drops what it cannot hand over, so a report
+ * given at boot - before the host has enumerated the device - is given
+ * to nobody. Saying it again every so often means a listener can attach
+ * whenever it likes and still learn the whole state.
+ */
+static void report(unsigned long hartid)
 {
-    (void)fdt;
+    krnP4PutStr("\nAROS/esp32p4-riscv\n");
 
-    krnP4PutStr("\n\nAROS/esp32p4-riscv\n");
+    krnP4PutStr("[kernel] wdt    ");
+    krnP4PutStr(platform_wdt_quiet() ? "timer groups and low power watchdogs off, "
+                                       "super watchdog self-feeding\n"
+                                     : "STILL ARMED - expect a reset\n");
 
     krnP4PutStr("[kernel] hart   ");
     krnP4PutDec((uint32_t)hartid);
@@ -104,8 +115,43 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     krnP4PutHex32(P4_PSRAM_END);
     krnP4PutStr("  (not brought up)\n");
 
-    krnP4PutStr("[kernel] no memory list, no KernelBase, no exec yet - stopping here.\n");
+    krnP4PutStr("[kernel] no memory list, no KernelBase, no exec yet.\n");
+}
 
+void kernel_cstart(unsigned long hartid, void *fdt)
+{
+    unsigned long beat = 0;
+
+    (void)fdt;
+
+    /*
+     * platform_init() comes after a line of output, not before, so that a
+     * hang inside it is still attributable to it.
+     */
+    krnP4PutStr("\n\n[kernel] entered, silencing the watchdogs\n");
+    platform_init();
+
+    report(hartid);
+
+    /*
+     * The wait is a spin, because there is no timer yet. It is not
+     * calibrated and does not need to be; kernel_timer.c replaces both
+     * the wait and the counter.
+     */
     for (;;)
-        asm volatile("wfi");
+    {
+        volatile unsigned long spin;
+
+        for (spin = 0; spin < 20000000UL; spin++)
+            ;
+
+        if ((++beat & 15) == 0)
+            report(hartid);
+        else
+        {
+            krnP4PutStr("[kernel] alive ");
+            krnP4PutDec((uint32_t)beat);
+            krnP4PutStr("\n");
+        }
+    }
 }
