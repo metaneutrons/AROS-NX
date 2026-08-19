@@ -21,9 +21,12 @@ recorded in the milestone notes.
 
 | Area | State | Notes |
 | :--- | :--- | :--- |
-| configure target | done | `--target=esp32p4-riscv` recognised |
+| configure target | done | `--target=esp32p4-riscv`, configure completes |
 | rv32 CPU layer gaps | in progress | M-mode CSR names, cache clears, backtrace done |
-| crosstools (riscv-aros gcc) | not started | needs gcc 16.2.0 / binutils 2.47 |
+| crosstools binutils 2.47 | done | riscv-aros-as, -ld, -ar, -objdump built |
+| crosstools gcc 16.2.0 | in progress | |
+| trap entry | written | frame offsets asserted, assembles, links, mtvec-aligned |
+| link script | written | test-linked, both SRAM windows asserted |
 | kernel.resource | not started | |
 | exec.library | not started | |
 | M-mode trap and CLIC interrupts | not started | |
@@ -214,12 +217,43 @@ supports the machine `esp32c3` only, and upstream QEMU has no ESP32-P4
 model. Every milestone from M2 on is verified on a Seeed Studio reTerminal
 D1001 over its USB-C serial console.
 
+## Building
+
+    ./configure --target=esp32p4-riscv --enable-ccache
+    gmake crosstools
+
+Out of tree, from a build directory of its own. Three things about this host
+are worth writing down, because none of them is guessable:
+
+  - **`gmake`, not `make`.** The system make is GNU Make 3.81, which is old
+    enough to matter; Homebrew's is 4.4.1.
+  - **`PYTHONPATH` for the mako check.** `configure.in:677` requires the
+    Python mako module, though nothing in the tree imports it. It does not
+    have to be installed: the copy the Google Cloud SDK vendors satisfies
+    the check via
+    `PYTHONPATH=/opt/homebrew/share/google-cloud-sdk/lib/third_party`.
+    Note that Homebrew's `mako` formula is an unrelated JavaScript bundler.
+  - **A worktree of its own.** The build reads SRCDIR live, so anything that
+    changes the branch under a running build breaks it. If the main checkout
+    is also being worked in, put this branch in `git worktree add`.
+
 ## Host prerequisites on macOS
 
 Beyond what `configure` finds by default, this host needed `gawk`, netpbm
 (for `pngtopnm` and `ppmtoilbm`) and the Python `mako` module. `mako` is
 checked for in `configure.in:677` but nothing in this tree imports it, so
 it is a configure-time gate only.
+
+Two things in the build system had to be fixed before it would get as far as
+a compiler, both of them upstream problems rather than anything to do with
+this target, and both reproducible wherever the host compiler is clang:
+
+  - The host binutils names were built from the compiler's command line
+    rather than its name, giving `llvm-argcc`, `llvm-ranlibgcc` and
+    `llvm-ldgcc`. configure reported success anyway and `HOST_AR` reached
+    `host.cfg` as a bare `cr`.
+  - `CXXCPP` was set to the C preprocessor complete with `-std=gnu23`, which
+    gmp's `AC_PROG_CXXCPP` sanity check rejects.
 
 ## What was taken from the earlier attempt
 
