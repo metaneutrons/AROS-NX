@@ -80,6 +80,9 @@ static void report_misa(void)
 /* Set by clic_selftest() below, printed by the report */
 static int clic_selftest_passed;
 
+/* Whether the last wait was served by the tick or timed out spinning */
+static int timer_serving;
+
 /*
  * Does an interrupt actually arrive? Raise a line nobody uses by hand,
  * with machine interrupts briefly enabled, and see whether the trap
@@ -137,6 +140,17 @@ static void report(unsigned long hartid)
     krnP4PutDec((uint32_t)__esp32p4_irq_last);
     krnP4PutStr("\n");
 
+    krnP4PutStr("[kernel] timer  ");
+    krnP4PutDec(P4_TICK_HZ);
+    krnP4PutStr(" Hz on clic line ");
+    krnP4PutDec(P4_TIMER_LINE);
+    krnP4PutStr(", ticks ");
+    krnP4PutDec((uint32_t)__esp32p4_ticks);
+    krnP4PutStr(", counter ");
+    krnP4PutDec((uint32_t)krnTimerCount());
+    krnP4PutStr(timer_serving ? ", tick serving waits\n"
+                              : ", TICK NOT RUNNING - waits are spinning\n");
+
     krnP4PutStr("[kernel] hart   ");
     krnP4PutDec((uint32_t)hartid);
     krnP4PutStr("\n");
@@ -185,19 +199,15 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     krnCLICInit();
     clic_selftest();
 
+    krnTimerInit();
+    csr_set(mstatus, MSTATUS_MIE);
+
     report(hartid);
 
-    /*
-     * The wait is a spin, because there is no timer yet. It is not
-     * calibrated and does not need to be; kernel_timer.c replaces both
-     * the wait and the counter.
-     */
     for (;;)
     {
-        volatile unsigned long spin;
-
-        for (spin = 0; spin < 20000000UL; spin++)
-            ;
+        /* One second, from the tick if the tick is running */
+        timer_serving = krnTimerWait(P4_TICK_HZ);
 
         if ((++beat & 15) == 0)
             report(hartid);
@@ -205,7 +215,15 @@ void kernel_cstart(unsigned long hartid, void *fdt)
         {
             krnP4PutStr("[kernel] alive ");
             krnP4PutDec((uint32_t)beat);
-            krnP4PutStr("\n");
+            krnP4PutStr("  ticks ");
+            krnP4PutDec((uint32_t)__esp32p4_ticks);
+            krnP4PutStr("  counter ");
+            krnP4PutDec((uint32_t)krnTimerCount());
+            krnP4PutStr("  irqs ");
+            krnP4PutDec((uint32_t)__esp32p4_irq_count);
+            krnP4PutStr(" on line ");
+            krnP4PutDec((uint32_t)__esp32p4_irq_last);
+            krnP4PutStr(timer_serving ? "  (tick)\n" : "  (spun)\n");
         }
     }
 }

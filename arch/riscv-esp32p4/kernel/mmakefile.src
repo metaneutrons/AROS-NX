@@ -24,6 +24,7 @@ CFILES := \
         kernel_startup \
         platform_init \
         kernel_clic \
+        kernel_timer \
         kernel_console \
         kernel_debug \
         kernel_traps \
