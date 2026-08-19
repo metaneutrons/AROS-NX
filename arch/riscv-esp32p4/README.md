@@ -32,6 +32,9 @@ recorded in the milestone notes.
 | kickstart link | done | 128640 bytes of the 167 KB window, one segment at 0x4FF00000 |
 | flashable image | done | `gmake kernel-esp32p4-riscv`, 111248 bytes |
 | runs on hardware | **yes** | ROM loads it from 0x2000 and it reports; see below |
+| watchdogs | done | timer groups and LP off, super watchdog self-feeding |
+| CLIC interrupts | done | a raised line reaches the trap handler |
+| SYSTIMER tick | done | 100 Hz, verified at 16000000 counts per second |
 | kernel.resource | not started | |
 | exec.library | not started | |
 | M-mode trap and CLIC interrupts | not started | |

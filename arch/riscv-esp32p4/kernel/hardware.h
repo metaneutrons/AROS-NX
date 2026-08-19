@@ -58,6 +58,60 @@
 #endif
 
 /*
+ * The system timer, and the matrix that carries its interrupt to a core.
+ *
+ * There is no mtime/mtimecmp on this chip, so the periodic tick has to
+ * come from a peripheral. SYSTIMER is a 52-bit up counter with three
+ * comparators; comparator 0 in period mode reloads itself, which is
+ * exactly a tick and needs no arithmetic per interrupt.
+ *
+ * Its clock is the crystal through a fixed divider of 2.5. The crystal on
+ * this board is 40 MHz, so the counter advances at 16 MHz and one tick of
+ * 100 Hz is 160000 counts. The counter is also the only clock available
+ * for measuring anything at this stage.
+ *
+ * The interrupt matrix maps a peripheral source to a core interrupt line:
+ * one 6-bit register per source at base + source*4, holding the line
+ * number. Line numbers there are 0 to 31 and appear on the CLIC 16 higher,
+ * after the sixteen lines the core keeps for itself.
+ */
+#define P4_SYSTIMER_BASE        (P4_HPPERIPH1_BASE + 0x22000)
+#define P4_ST_CONF              0x0000
+#define  P4_ST_CLK_EN           (1U << 31)
+#define  P4_ST_UNIT0_WORK_EN    (1U << 30)
+#define  P4_ST_TARGET0_WORK_EN  (1U << 24)
+#define P4_ST_UNIT0_OP          0x0004
+#define  P4_ST_UNIT0_UPDATE     (1U << 30)
+#define  P4_ST_UNIT0_VALID      (1U << 29)
+#define P4_ST_TARGET0_CONF      0x0034
+#define  P4_ST_TARGET0_PERIOD_M 0x03FFFFFFU
+#define  P4_ST_TARGET0_PERIODIC (1U << 30)
+#define P4_ST_UNIT0_VALUE_HI    0x0040
+#define P4_ST_UNIT0_VALUE_LO    0x0044
+#define P4_ST_COMP0_LOAD        0x0050
+#define  P4_ST_COMP0_LOAD_BIT   (1U << 0)
+#define P4_ST_INT_ENA           0x0064
+#define P4_ST_INT_CLR           0x006C
+#define  P4_ST_TARGET0_INT      (1U << 0)
+
+#define P4_SYSTIMER_HZ          16000000UL
+#define P4_TICK_HZ              100
+#define P4_TICK_PERIOD          (P4_SYSTIMER_HZ / P4_TICK_HZ)
+
+#define P4_INTMTX_CORE0_BASE    (P4_HPPERIPH1_BASE + 0x16000)
+#define P4_INTMTX_MAP(source)   (P4_INTMTX_CORE0_BASE + (source) * 4)
+#define P4_SOURCE_SYSTIMER_T0   53
+
+/*
+ * Which line the tick is routed to. The number written into the matrix
+ * map register is the CLIC line index itself, not an external-interrupt
+ * index that the controller then offsets by sixteen - established by
+ * enabling both candidates and seeing which one the hardware raised.
+ * Anything from P4_CLIC_EXT_OFFSET up is available.
+ */
+#define P4_TIMER_LINE           20
+
+/*
  * The core local interrupt controller. Not a PLIC: this is a CLIC, and on
  * silicon before revision 3 it is a non-standard one - the threshold
  * lives in a memory mapped register rather than in the mintthresh CSR,
