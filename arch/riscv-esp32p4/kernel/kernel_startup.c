@@ -77,6 +77,47 @@ static void report_misa(void)
  * to nobody. Saying it again every so often means a listener can attach
  * whenever it likes and still learn the whole state.
  */
+/* Set by clic_selftest() below, printed by the report */
+static int clic_selftest_passed;
+
+/*
+ * Does an interrupt actually arrive? Raise a line nobody uses by hand,
+ * with machine interrupts briefly enabled, and see whether the trap
+ * handler counted it. Proves the whole path - CLIC configuration, mtvec,
+ * the trap entry, mcause carrying the line number - before anything
+ * depends on it.
+ */
+#define CLIC_TEST_LINE  (P4_CLIC_LINES - 1)
+
+static int clic_pended_ok;      /* did the pending bit take the write */
+
+static void clic_selftest(void)
+{
+    unsigned long before = __esp32p4_irq_count;
+    volatile unsigned long spin;
+
+    /*
+     * Edge triggered, not level. For a level triggered line the pending
+     * bit mirrors the input and software cannot raise it; only an edge
+     * triggered one is software settable, which is what makes a check
+     * like this possible at all.
+     */
+    krnCLICEnable(CLIC_TEST_LINE, 1);
+    csr_set(mstatus, MSTATUS_MIE);
+    krnCLICPend(CLIC_TEST_LINE);
+    clic_pended_ok = krnCLICPending(CLIC_TEST_LINE) ||
+                     __esp32p4_irq_count > before;
+
+    for (spin = 0; spin < 1000 && __esp32p4_irq_count == before; spin++)
+        ;
+
+    csr_clear(mstatus, MSTATUS_MIE);
+    krnCLICDisable(CLIC_TEST_LINE);
+
+    clic_selftest_passed = (__esp32p4_irq_count > before) &&
+                           (__esp32p4_irq_last == CLIC_TEST_LINE);
+}
+
 static void report(unsigned long hartid)
 {
     krnP4PutStr("\nAROS/esp32p4-riscv\n");
@@ -85,6 +126,16 @@ static void report(unsigned long hartid)
     krnP4PutStr(platform_wdt_quiet() ? "timer groups and low power watchdogs off, "
                                        "super watchdog self-feeding\n"
                                      : "STILL ARMED - expect a reset\n");
+
+    krnP4PutStr("[kernel] clic   ");
+    krnP4PutStr(clic_selftest_passed ? "raised line reached the trap handler"
+                : clic_pended_ok     ? "line pended but was NOT delivered"
+                                     : "line would NOT pend");
+    krnP4PutStr(", irqs seen ");
+    krnP4PutDec((uint32_t)__esp32p4_irq_count);
+    krnP4PutStr(", last line ");
+    krnP4PutDec((uint32_t)__esp32p4_irq_last);
+    krnP4PutStr("\n");
 
     krnP4PutStr("[kernel] hart   ");
     krnP4PutDec((uint32_t)hartid);
@@ -130,6 +181,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
      */
     krnP4PutStr("\n\n[kernel] entered, silencing the watchdogs\n");
     platform_init();
+
+    krnCLICInit();
+    clic_selftest();
 
     report(hartid);
 
