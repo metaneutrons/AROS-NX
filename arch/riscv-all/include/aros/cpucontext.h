@@ -59,10 +59,21 @@ struct ExceptionContext
     APTR  vecContext;               /* Vector register state, if saved */
 };
 
-/* FPU register state (FLEN=64, D extension) */
+/*
+ * FPU register state. FLEN is 64 with the D extension and 32 with F
+ * alone, and the platform's save and restore paths use fsd or fsw to
+ * match, so the stored register width follows what the build was
+ * compiled for. On a machine with no FPU the block is never filled in;
+ * it is still sized, so the context allocation arithmetic in
+ * kernel/cpu_init.c stays the same shape everywhere.
+ */
 struct FpuContext
 {
+#if defined(__riscv_flen) && (__riscv_flen == 64)
     UQUAD f[32];                    /* f0-f31                         */
+#else
+    ULONG f[32];                    /* f0-f31                         */
+#endif
     ULONG fcsr;
 };
 
