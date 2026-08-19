@@ -1,13 +1,24 @@
 /*
     Copyright (c) 2026, The AROS Development Team. All rights reserved.
 
-    Desc: Early UART0 debug console for the esp32p4-riscv target.
+    Desc: Early debug console for the esp32p4-riscv target.
 
     There is no firmware console call to borrow here, so output goes
-    straight at the UART. The first stage ROM loader has already brought
-    UART0 up to print its own messages, and it is left exactly as it was
-    found: reprogramming the divisor before the clock tree is understood
-    would lose the one channel that can report what went wrong.
+    straight at the hardware. Two channels are implemented and one is
+    compiled in (see P4_CONSOLE_USB in hardware.h):
+
+      - the USB serial/JTAG peripheral, which is what a board with only a
+        USB-C socket brings out, and
+
+      - UART0, for boards that route it to pins. It is left exactly as
+        the first stage ROM loader configured it to print its own
+        messages: reprogramming the divisor before the clock tree is
+        understood would lose the one channel that can report what went
+        wrong.
+
+    Both waits are bounded. A console that stops draining - an unclocked
+    UART, or a USB host that never attached - must not take the boot with
+    it, and a dropped character is the lesser loss.
 */
 
 #include <inttypes.h>
@@ -15,37 +26,77 @@
 #include "hardware.h"
 #include "kernel_intern.h"
 
-static inline uint32_t uart_rd(uint32_t off)
+#define SPIN_LIMIT      100000
+
+static inline uint32_t mmio_rd(uint32_t base, uint32_t off)
 {
-    return *(volatile uint32_t *)(P4_UART0_BASE + off);
+    return *(volatile uint32_t *)(base + off);
 }
 
-static inline void uart_wr(uint32_t off, uint32_t val)
+static inline void mmio_wr(uint32_t base, uint32_t off, uint32_t val)
 {
-    *(volatile uint32_t *)(P4_UART0_BASE + off) = val;
+    *(volatile uint32_t *)(base + off) = val;
 }
+
+#if P4_CONSOLE_USB
 
 /*
- * Wait for room in the transmit FIFO. Bounded: a UART whose FIFO never
- * drains - unclocked, or held in reset - must not take the boot with it,
- * and a dropped character is the lesser loss.
+ * Bytes accumulate in the endpoint buffer and are handed over on a
+ * newline or when it fills. Flushing every byte would work but would cap
+ * the console at one USB transaction per character.
  */
+static unsigned int usj_pending;
+
+static void usj_flush(void)
+{
+    unsigned int spins = SPIN_LIMIT;
+
+    if (!usj_pending)
+        return;
+
+    mmio_wr(P4_USJ_BASE, P4_USJ_EP1_CONF, P4_USJ_WR_DONE);
+    usj_pending = 0;
+
+    /* Wait for the host to collect it, so the next byte has somewhere to
+       go. If no host ever does, give up and keep going. */
+    while (spins--)
+    {
+        if (mmio_rd(P4_USJ_BASE, P4_USJ_EP1_CONF) & P4_USJ_IN_EP_DATA_FREE)
+            return;
+    }
+}
+
 void krnP4PutC(char c)
 {
-    unsigned int spins = 100000;
+    if (!(mmio_rd(P4_USJ_BASE, P4_USJ_EP1_CONF) & P4_USJ_IN_EP_DATA_FREE))
+        return;
+
+    mmio_wr(P4_USJ_BASE, P4_USJ_EP1, (uint32_t)(unsigned char)c);
+
+    if (++usj_pending >= P4_USJ_EP1_DEPTH || c == '\n')
+        usj_flush();
+}
+
+#else /* UART0 */
+
+void krnP4PutC(char c)
+{
+    unsigned int spins = SPIN_LIMIT;
 
     while (spins--)
     {
-        uint32_t used = (uart_rd(P4_UART_STATUS) >> P4_UART_TXFIFO_CNT_S)
-                      & P4_UART_TXFIFO_CNT_M;
+        uint32_t used = (mmio_rd(P4_UART0_BASE, P4_UART_STATUS)
+                            >> P4_UART_TXFIFO_CNT_S) & P4_UART_TXFIFO_CNT_M;
 
         if (used < P4_UART_FIFO_DEPTH)
         {
-            uart_wr(P4_UART_FIFO, (uint32_t)(unsigned char)c);
+            mmio_wr(P4_UART0_BASE, P4_UART_FIFO, (uint32_t)(unsigned char)c);
             return;
         }
     }
 }
+
+#endif
 
 void krnP4PutStr(const char *s)
 {
