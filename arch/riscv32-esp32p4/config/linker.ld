@@ -1,13 +1,12 @@
 /*
     ESP32-P4 Linker Script for AROS Standalone Kernel
-    PSRAM: 0x48000000 (32MB)
-    SRAM:  0x4FF00000 (768KB)
+    Internal SRAM (TCM): 0x4FF00000 (768KB, Zero-Wait-State @ 400MHz)
+    External PSRAM:      0x48000000 (32MB Fast Memory Heap)
 */
 
 MEMORY
 {
-    FLASH_APP (rx) : ORIGIN = 0x48020000, LENGTH = 8M
-    SRAM (rwx)     : ORIGIN = 0x4FF00000, LENGTH = 768K
+    SRAM (rwx) : ORIGIN = 0x4FF00000, LENGTH = 768K
 }
 
 ENTRY(_start)
@@ -18,7 +17,8 @@ SECTIONS
         KEEP(*(.text.entry))
         *(.text .text.*)
         *(.rodata .rodata.*)
-    } > FLASH_APP
+        . = ALIGN(4);
+    } > SRAM
 
     .data : {
         . = ALIGN(4);
@@ -26,7 +26,7 @@ SECTIONS
         *(.data .data.*)
         . = ALIGN(4);
         __data_end = .;
-    } > SRAM AT > FLASH_APP
+    } > SRAM
     __data_load = LOADADDR(.data);
 
     .bss : {
