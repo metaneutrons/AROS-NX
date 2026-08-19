@@ -58,6 +58,41 @@
 #endif
 
 /*
+ * Watchdogs. The first stage ROM loader arms these in "flashboot" mode
+ * before it enters the image, so that something which never finishes
+ * booting gets reset rather than hanging. Software is expected to turn
+ * that off once it has booted - the note in ESP-IDF's lpwdt_ll.h says as
+ * much - and until it does, a kernel that settles into wfi is restarted
+ * about once a second.
+ *
+ * Two of the three are timer group main watchdogs, one per group; the
+ * reset this board was observed taking, cause 0x07, is CORE_MWDT, so at
+ * least one of them is armed. The third is in the always-on low power
+ * domain, together with the super watchdog, which cannot be turned off
+ * and is instead told to feed itself.
+ *
+ * All four registers are write protected by the same key.
+ */
+#define P4_TIMG0_BASE           (P4_HPPERIPH1_BASE + 0x2000)
+#define P4_TIMG1_BASE           (P4_HPPERIPH1_BASE + 0x3000)
+#define P4_TIMG_WDTCONFIG0      0x0048
+#define  P4_TIMG_WDT_EN         (1U << 31)
+#define  P4_TIMG_WDT_FLASHBOOT  (1U << 14)
+#define P4_TIMG_WDTWPROTECT     0x0064
+
+#define P4_LPAON_BASE           0x50110000UL
+#define P4_LPWDT_BASE           (P4_LPAON_BASE + 0x6000)
+#define P4_LPWDT_CONFIG0        0x0000
+#define  P4_LPWDT_EN            (1U << 31)
+#define  P4_LPWDT_FLASHBOOT     (1U << 12)
+#define P4_LPWDT_WPROTECT       0x0018
+#define P4_LPWDT_SWD_CONFIG     0x001C
+#define  P4_LPWDT_SWD_AUTO_FEED (1U << 18)
+#define P4_LPWDT_SWD_WPROTECT   0x0020
+
+#define P4_WDT_WKEY             0x50D83AA1UL
+
+/*
  * Internal SRAM, as the address map sees it. How much of this the kernel
  * may actually use is smaller and not a constant: the L2 cache is carved
  * out of the low end (128, 256 or 512 KB, set at startup), and on

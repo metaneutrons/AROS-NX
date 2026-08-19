@@ -50,6 +50,10 @@ static inline int GetCPUNumber(void)
     return hartid;
 }
 
+/* Machine setup that has to happen before anything else (platform_init.c) */
+void platform_init(void);
+int  platform_wdt_quiet(void);
+
 /* Early UART0 debug console (kernel_console.c) */
 void krnP4PutC(char c);
 void krnP4PutStr(const char *s);
