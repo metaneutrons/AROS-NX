@@ -7,6 +7,7 @@
 #include <exec/types.h>
 #include <exec/execbase.h>
 #include <exec/memory.h>
+#include "../include/board.h"
 #include "uart.h"
 
 /* Memory map constants for ESP32-P4 */
@@ -20,16 +21,27 @@ extern void platform_init(void);
 
 void c_boot(void)
 {
+    const struct ESP32P4_Board *board = get_active_board();
+
     uart_init(115200);
     uart_puts("\n========================================\n");
     uart_puts("   AROS Research Operating System\n");
     uart_puts("   Architecture: RISC-V 32-bit (RV32IMAFDC)\n");
-    uart_puts("   Target: Espressif ESP32-P4 (Seeed D1001)\n");
+    uart_puts("   Target: Espressif ESP32-P4 SoC\n");
+    if (board && board->description)
+    {
+        uart_puts("   Board:  ");
+        uart_puts(board->description);
+        uart_puts("\n");
+    }
     uart_puts("   Flash: 32MB Dual-Bank OTA | PSRAM: 32MB\n");
     uart_puts("========================================\n\n");
 
     uart_puts("[boot] Initializing platform timers and interrupt matrix...\n");
     platform_init();
+
+    if (board && board->init_board)
+        board->init_board();
 
     uart_puts("[boot] Configuring Amiga memory pools:\n");
     uart_puts("  - Internal SRAM: 768 KB (MEMF_LOCAL)\n");
