@@ -30,6 +30,12 @@ esp32p4-image:
 		$(BINDIR)/aros_a.bin \
 		$(BINDIR)/workbench_flash.bin
 
+# Generate Full 512MB MicroSD Workbench disk image
+esp32p4-sdcard:
+	@mkdir -p $(BINDIR)
+	@python3 arch/riscv32-esp32p4/flash/create_sdcard_image.py \
+		$(BINDIR)/aros_sd_workbench.img
+
 # Flash full 32MB image
 esp32p4-flash: esp32p4-image
 	esptool.py --chip esp32p4 --port $(ESP32_PORT) --baud $(ESP32_BAUD) \

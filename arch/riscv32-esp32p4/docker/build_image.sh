@@ -69,8 +69,12 @@ echo "[4/4] Creating 32MB Merged Dual-Bank Flash Image (with Base Workbench)..."
 python3 /aros/arch/riscv32-esp32p4/flash/merge_image.py \
   $OUT/aros-esp32p4-merged-32mb.bin \
   "" $OUT/partitions.bin "" $OUT/aros_a.bin $OUT/workbench_flash.bin
+
+echo "[4b/4] Generating Full 512MB MicroSD Workbench Disk Image (DH0:)..."
+python3 /aros/arch/riscv32-esp32p4/flash/create_sdcard_image.py \
+  $OUT/aros_sd_workbench.img
 '
 
 echo ""
 echo "=== Build Complete! ==="
-ls -lh "$BIN_DIR/aros-esp32p4-merged-32mb.bin" "$BIN_DIR/aros_a.bin" "$BIN_DIR/partitions.bin" "$BIN_DIR/workbench_flash.bin"
+ls -lh "$BIN_DIR/aros-esp32p4-merged-32mb.bin" "$BIN_DIR/aros_a.bin" "$BIN_DIR/partitions.bin" "$BIN_DIR/workbench_flash.bin" "$BIN_DIR/aros_sd_workbench.img"
