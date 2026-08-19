@@ -22,6 +22,7 @@ USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__
 
 CFILES := \
         kernel_startup \
+        platform_init \
         kernel_console \
         kernel_debug \
         kernel_traps \
