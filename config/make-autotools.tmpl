@@ -243,7 +243,7 @@ ifeq (%(usecrosstoolsdir),yes)
 endif
     %(mmake)-cfg-env := %(config_env_extra) \
         CPP="$(HOST_CPP)" \
-        CXXCPP="$(HOST_CPP)" \
+        CXXCPP="$(strip $(%(mmake)-HOST_CXX) -E)" \
         CC="$(strip $(%(mmake)-HOST_CC) $(%(mmake)-HOST_CFLAGS) $(%(mmake)-crosstools-cflags))" \
         CXX="$(strip $(%(mmake)-HOST_CXX) $(%(mmake)-HOST_CXXFLAGS) $(%(mmake)-crosstools-cflags))" \
         LDFLAGS="$(strip $(%(mmake)-crosstools-ldflags) $(USER_LDFLAGS))"
