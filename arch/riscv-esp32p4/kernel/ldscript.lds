@@ -1,46 +1,51 @@
 /*
     Linker script for the esp32p4-riscv kickstart.
 
-    This is built as an ESP32-P4 application image, the kind a second
-    stage bootloader already on the device loads out of an app partition.
-    That keeps the bootloader out of what AROS distributes - it is
-    whatever the board came with - and lets the existing partition table
-    and OTA data stand.
+    Everything lands in one run of internal SRAM starting at 0x4FF00000,
+    and nothing is linked into the high window at 0x4FF40000 even though
+    there is room there. Two reasons, and the second is the important one:
 
-    The window is the one the bootloader leaves free, and it is a
-    property of the silicon revision. These are the pre-v3 numbers, which
-    is the revision this port has been able to test on:
+      - The high window only exists as RAM when the L2 cache is smaller
+        than 512 KB. On silicon before revision 3 the cache is carved out
+        of the top of SRAM, and its size is set by software - which, for
+        an image the ROM loader starts, is software that has not run yet.
+        Linking the boot stack into an address that may or may not be
+        cache is not a bet worth taking.
 
-      0x4FF00000 - 0x4FF2CBD0  179 KB, code and data, ends where the
-                               bootloader's own loader segment begins
-      0x4FF2CBD0 - 0x4FF40000   77 KB, reserved by the ROM
-      0x4FF40000 +             512 KB minus the L2 cache size, data only
-      top of SRAM               the L2 cache, 128, 256 or 512 KB
+      - The high window and PSRAM belong to exec as heap, added to the
+        memory list at runtime once their extent is known. That is a
+        better use for them than link-time sections, and it needs no
+        help from here.
 
-    From v3 on the cache moved to the bottom of SRAM and the rest is one
-    contiguous window; the numbers for that go in beside these when there
-    is silicon to check them against. See the port README.
+    Where the run may end depends on who loads the image, and the lower
+    of the two bounds is used, so that one image is valid either way:
 
-    Executable code therefore has 179 KB to fit in. .data and .bss go to
-    the high window, which is where the room is, and only .text and
-    .rodata compete for the low one.
+      0x4FF29ED0  loaded from the bootloader offset by the first stage
+                  ROM loader. This is the lowest address a working second
+                  stage image is placed at, so everything below it is
+                  demonstrably free while the ROM loader runs; the ROM
+                  keeps its own variables at the top of the window
+                  instead, from about 0x4FF3FFC8 up. 167 KB.
+
+      0x4FF2CBD0  loaded from an app partition by a second stage
+                  bootloader, this being where that bootloader's own
+                  loader segment begins. 179 KB.
+
+    Taking the lower costs 12032 bytes of headroom and buys an image that
+    can be written to either 0x2000 or an app partition without being
+    rebuilt. Pass -defsym P4_SRAM_TOP_OVERRIDE=0x4FF2CBD0 to spend that
+    headroom on an image that is only ever loaded by a bootloader.
 */
 
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
 
-/* L2 cache size, 0x20000 / 0x40000 / 0x80000. The high window ends
-   where the cache begins. */
-P4_L2_CACHE_SIZE = DEFINED(P4_L2_CACHE_SIZE) ? P4_L2_CACHE_SIZE : 0x20000;
-
-MEMORY
-{
-    sram_low  (rwx) : ORIGIN = 0x4FF00000, LENGTH = 0x2CBD0
-    sram_high (rw)  : ORIGIN = 0x4FF40000, LENGTH = 0x80000 - 0x20000
-}
+P4_SRAM_TOP = DEFINED(P4_SRAM_TOP_OVERRIDE) ? P4_SRAM_TOP_OVERRIDE : 0x4FF29ED0;
 
 SECTIONS
 {
+    . = 0x4FF00000;
+
     .text : {
         __text_start = .;
         *(SORT_NONE(.aros.init*))
@@ -48,7 +53,7 @@ SECTIONS
         *(.gnu.linkonce.t.*)
         . = ALIGN(4);
         __text_end = .;
-    } > sram_low
+    }
 
     .rodata : {
         __rodata_start = .;
@@ -59,7 +64,7 @@ SECTIONS
         *(.eh_frame)
         . = ALIGN(4);
         __rodata_end = .;
-    } > sram_low
+    }
 
     .data : {
         __data_start = .;
@@ -70,17 +75,17 @@ SECTIONS
         start_dtors = .; *(SORT(.dtor*)) LONG(0)
         . = ALIGN(4);
         __data_end = .;
-    } > sram_high
+    }
 
     /*
-     * gp addresses the 4 KB around __global_pointer$, so it has to sit
-     * with .sdata and .sbss, which is why they are adjacent and in the
-     * same region.
+     * gp addresses the 4 KB around __global_pointer$, so .sdata and
+     * .sbss have to sit next to it - which is why .bss follows straight
+     * on rather than being placed elsewhere.
      */
     .sdata : {
         __global_pointer$ = . + 0x800;
         *(.sdata*)
-    } > sram_high
+    }
 
     .bss (NOLOAD) : {
         . = ALIGN(4);
@@ -88,20 +93,18 @@ SECTIONS
         *(.sbss*)
         *(.bss*)
         *(.gnu.linkonce.b.*)
-        *(COMMON)
+        *(COMMON)                   /* "common" variables */
         . = ALIGN(4);
         __bss_end = .;
-    } > sram_high
+    }
 
     __kernel_end = .;
 
     /*
-     * Nothing is silently allowed to spill. Overflowing sram_low is the
-     * failure this port is most likely to hit, and a linker error naming
-     * it is worth more than an image that loads over the bootloader.
+     * Overflowing this is the failure this port is most likely to hit,
+     * and a linker error naming it is worth more than an image that
+     * loads over whatever put it there.
      */
-    ASSERT(__rodata_end <= 0x4FF2CBD0,
-        "kickstart .text/.rodata overflow the 179 KB below the bootloader's loader segment")
-    ASSERT(__kernel_end <= 0x4FF40000 + 0x80000 - P4_L2_CACHE_SIZE,
-        "kickstart .data/.bss overflow the high SRAM window left by the L2 cache")
+    ASSERT(__kernel_end <= P4_SRAM_TOP,
+        "the kickstart does not fit below P4_SRAM_TOP - see the ceilings at the top of this script")
 }

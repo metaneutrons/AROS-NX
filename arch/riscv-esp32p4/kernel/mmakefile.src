@@ -67,6 +67,10 @@ ESP32P4_REV_MIN ?= 100
 ESP32P4_REV_MAX ?= 199
 ESPTOOL         ?= esptool
 
+ELF2IMAGE = $(ESPTOOL) --chip esp32p4 elf2image --flash-mode dio \
+	    --flash-freq 80m --flash-size 32MB \
+	    --min-rev-full $(ESP32P4_REV_MIN) --max-rev-full $(ESP32P4_REV_MAX)
+
 #MM kernel-esp32p4-riscv : kernel-kernel-kobj kernel-exec-kobj kernel-task-kobj
 #MM
 kernel-esp32p4-riscv: $(OSGENDIR)/boot/aros-esp32p4.bin
@@ -78,12 +82,18 @@ $(OSGENDIR)/boot/core.elf: $(BSP_KOBJS) $(SRCDIR)/$(CURDIR)/ldscript.lds
 	@$(KERNEL_LD) -Map $(OSGENDIR)/boot/core.map \
 	    -T $(SRCDIR)/$(CURDIR)/ldscript.lds -o $@ $(filter %.o,$^) $(ELFCORELIBS)
 
-# An ESP32-P4 application image, the kind a second stage bootloader
-# already on the device loads out of an app partition.
+# One image for both boot paths, because the link script's ceiling is the
+# lower of the two and the layout is otherwise the same.
+#
+#   0x2000    the second stage bootloader offset, where the first stage
+#             ROM loader picks it up directly. Nothing in the way: no
+#             partition table, no OTA data and no rollback machinery,
+#             none of which an image that is not an ESP-IDF application
+#             can satisfy.
+#   0x20000   the ota_0 app partition, loaded by whatever second stage
+#             bootloader the device already carries.
 $(OSGENDIR)/boot/aros-esp32p4.bin: $(OSGENDIR)/boot/core.elf
 	@$(ECHO) "Creating   $@"
-	@$(ESPTOOL) --chip esp32p4 elf2image --flash-mode dio --flash-freq 80m \
-	    --flash-size 32MB --min-rev-full $(ESP32P4_REV_MIN) \
-	    --max-rev-full $(ESP32P4_REV_MAX) -o $@ $<
+	@$(ELF2IMAGE) -o $@ $<
 
 %common

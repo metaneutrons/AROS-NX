@@ -29,6 +29,9 @@ recorded in the milestone notes.
 | trap entry | compiles | frame offsets asserted against the struct |
 | link script | written | test-linked, both SRAM windows asserted |
 | bring-up report | compiles | prints hart, misa, ids, section extents; then stops |
+| kickstart link | done | 128640 bytes of the 167 KB window, one segment at 0x4FF00000 |
+| flashable image | done | `gmake kernel-esp32p4-riscv`, 111248 bytes |
+| runs on hardware | not yet | written to ota_0 once, reverted by anti-rollback |
 | kernel.resource | not started | |
 | exec.library | not started | |
 | M-mode trap and CLIC interrupts | not started | |
@@ -74,13 +77,24 @@ What does differ structurally is where the L2 cache is carved out of the
 | L2 cache | top of SRAM | bottom of SRAM, from 0x4FF00000 |
 | Code and data | 0x4FF00000 to 0x4FF2CBD0, 179 KB | 0x4FF00000 + L2 size to 0x4FFAEFC0 |
 | Data only | 0x4FF40000, 512 KB minus L2 size | - |
-| ROM-reserved hole | 0x4FF2CBD0 to 0x4FF40000, 77 KB | none |
+| Second stage and ROM working set | 0x4FF2CBD0 to 0x4FF40000, 77 KB | none |
 
 The L2 cache is 128, 256 or 512 KB, chosen at startup. On this board with
 256 KB, which is what the resident firmware selects, that leaves 179 KB of
 executable SRAM plus 256 KB of data SRAM; choosing 128 KB instead would give
 384 KB of data SRAM, and for a system that is not yet scanning a framebuffer
 out of PSRAM that is the better trade.
+
+That last row is not memory the ROM keeps from us, which is what it looked
+like from the app linker script alone. Reading the second stage bootloader out
+of the flash backup settles it: it loads into three segments spanning
+0x4FF29ED0 to 0x4FF354C4, and the ROM's own variables sit at the top of the
+window from about 0x4FF3FFC8 up (`rom_spiflash_legacy_data`, `ets_ops_table_ptr`,
+`uart_acm_dev` and the rest, in `components/esp_rom/esp32p4/ld/esp32p4.rom.ld`).
+The gap between the two is where the ROM loader's stack must live, which is
+also why a working second stage stops at 0x4FF354C4 instead of filling
+upwards. An image the ROM loads itself has all of it free, because then there
+is no second stage.
 
 The RAM inventory can therefore be decided at runtime, and cheaply: exec
 takes any number of disjoint memory regions, so the revision is read and the
@@ -172,6 +186,38 @@ earlier attempt assumed are wrong:
 Other pins from the same header: battery ADC 18, charge state 15, VSYS power
 good 4, USB insertion 17, LEDs on 22 (red), 36 (green) and 23 (blue), touch
 interrupt 16.
+
+## Where the image goes
+
+One image, two places it can be written, and no rebuild between them.
+
+    0x2000    the second stage bootloader offset, where the first stage ROM
+              loader picks it up directly
+    0x20000   the ota_0 app partition, loaded by whichever second stage
+              bootloader the device already carries
+
+The first is the one this port is built around. An app partition brings three
+mechanisms with it that all assume an ESP-IDF application is sitting there:
+the partition table, the OTA data with its state field, and anti-rollback. An
+image that is not such an application cannot hold up its end - it has no
+`esp_ota_mark_app_valid_cancel_rollback()` to call - so the bootloader does
+the right thing for the firmware it was built with and reverts. Observed
+exactly that on this board: written to ota_0, the next boot rolled back to the
+other slot, and the firmware there repaired ota_0 over the network.
+
+Everything is linked into one run of SRAM from 0x4FF00000, nothing into the
+high window at 0x4FF40000, for two reasons. The high window only exists as
+RAM while the L2 cache is smaller than 512 KB, and on this silicon the cache
+size is set by software that has not run yet when the ROM loader starts an
+image - so linking a boot stack there is a bet on a setting we do not yet
+control. And the high window and PSRAM are better given to exec as heap at
+runtime than spent on link-time sections.
+
+The link script's ceiling is the lower of the two bounds, 0x4FF29ED0, which
+costs 12032 bytes of headroom and is what makes one image valid on both
+paths. Overflowing it is a linker error naming the script, not an image that
+loads over whatever put it there; that assertion has been made to fire on
+purpose to check it works.
 
 ## Milestones
 
