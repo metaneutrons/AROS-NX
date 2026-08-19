@@ -7,15 +7,28 @@ BINDIR := $(GENDIR)/bin/esp32p4
 
 .PHONY: esp32p4-image esp32p4-flash esp32p4-app-flash esp32p4-monitor
 
-# Generate 32MB merged flash image
+#MM- distfiles-riscv32-esp32p4 : distfiles-esp32p4-storage
+
+#MM distfiles-esp32p4-storage : \
+#MM     kernel-package-esp32p4 \
+#MM     workbench-all \
+#MM     workbench-devs-networks-esp32c6
+
+# Generate 32MB merged flash image with Base Workbench
 esp32p4-image:
 	@mkdir -p $(BINDIR)
+	@python3 arch/riscv32-esp32p4/flash/compile_partitions.py \
+		arch/riscv32-esp32p4/flash/partitions.csv \
+		$(BINDIR)/partitions.bin
+	@python3 arch/riscv32-esp32p4/flash/create_workbench_disk.py \
+		$(BINDIR)/workbench_flash.bin
 	@python3 arch/riscv32-esp32p4/flash/merge_image.py \
 		$(BINDIR)/aros-esp32p4-merged-32mb.bin \
 		$(BINDIR)/bootloader.bin \
-		arch/riscv32-esp32p4/flash/partitions.bin \
+		$(BINDIR)/partitions.bin \
 		$(BINDIR)/otadata.bin \
-		$(BINDIR)/aros_a.bin
+		$(BINDIR)/aros_a.bin \
+		$(BINDIR)/workbench_flash.bin
 
 # Flash full 32MB image
 esp32p4-flash: esp32p4-image

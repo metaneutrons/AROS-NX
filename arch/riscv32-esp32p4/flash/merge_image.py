@@ -13,7 +13,7 @@ import os
 
 TOTAL_SIZE = 32 * 1024 * 1024  # 32MB
 
-def merge(output_path, bootloader_path, partitions_path, otadata_path, aros_path):
+def merge(output_path, bootloader_path, partitions_path, otadata_path, aros_path, storage_path=None):
     print(f"Creating 32MB merged image: {output_path}")
     image = bytearray([0xFF] * TOTAL_SIZE)
 
@@ -31,6 +31,8 @@ def merge(output_path, bootloader_path, partitions_path, otadata_path, aros_path
     write_at(0x010000, partitions_path)
     write_at(0x019000, otadata_path)
     write_at(0x020000, aros_path)
+    if storage_path:
+        write_at(0x1020000, storage_path)
 
     with open(output_path, "wb") as out:
         out.write(image)
@@ -38,6 +40,7 @@ def merge(output_path, bootloader_path, partitions_path, otadata_path, aros_path
 
 if __name__ == "__main__":
     if len(sys.argv) < 6:
-        print("Usage: merge_image.py <output.bin> <bootloader.bin> <partitions.bin> <otadata.bin> <aros_a.bin>")
+        print("Usage: merge_image.py <output.bin> <bootloader.bin> <partitions.bin> <otadata.bin> <aros_a.bin> [storage.bin]")
         sys.exit(1)
-    merge(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
+    storage = sys.argv[6] if len(sys.argv) > 6 else None
+    merge(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], storage)
