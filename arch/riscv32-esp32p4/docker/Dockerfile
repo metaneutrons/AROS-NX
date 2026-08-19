@@ -10,6 +10,7 @@ RUN apt-get update -qq && apt-get install -y -qq \
     python3-pip \
     git \
     make \
+    && pip install --break-system-packages esptool \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /aros

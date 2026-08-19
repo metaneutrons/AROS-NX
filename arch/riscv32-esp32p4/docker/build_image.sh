@@ -36,16 +36,21 @@ riscv64-unknown-elf-gcc -march=rv32imafdc -mabi=ilp32d -nostdlib -Wl,--gc-sectio
   $OUT/p4gfx.o $OUT/p4touch.o $OUT/pcf8563.o $OUT/p4audio.o $OUT/p4camera.o \
   $OUT/p4usb.o $OUT/p4sdcard.o -o $OUT/aros_esp32p4.elf
 
-echo "[3/4] Generating Flat Binary: aros_a.bin..."
-riscv64-unknown-elf-objcopy -O binary $OUT/aros_esp32p4.elf $OUT/aros_a.bin
-riscv64-unknown-elf-size $OUT/aros_esp32p4.elf
+echo "[3/4] Generating Genuine ESP32-P4 Application Image: aros_a.bin..."
+esptool.py --chip esp32p4 elf2image --flash-mode dio --flash-freq 80m --flash-size 32MB \
+  -o $OUT/aros_a.bin $OUT/aros_esp32p4.elf
+
+echo "[3b/4] Compiling Partition Table: partitions.bin..."
+python3 /aros/arch/riscv32-esp32p4/flash/compile_partitions.py \
+  /aros/arch/riscv32-esp32p4/flash/partitions.csv \
+  $OUT/partitions.bin
 
 echo "[4/4] Creating 32MB Merged Dual-Bank Flash Image..."
 python3 /aros/arch/riscv32-esp32p4/flash/merge_image.py \
   $OUT/aros-esp32p4-merged-32mb.bin \
-  "" "" "" $OUT/aros_a.bin
+  "" $OUT/partitions.bin "" $OUT/aros_a.bin
 '
 
 echo ""
 echo "=== Build Complete! ==="
-ls -lh "$BIN_DIR/aros-esp32p4-merged-32mb.bin" "$BIN_DIR/aros_a.bin"
+ls -lh "$BIN_DIR/aros-esp32p4-merged-32mb.bin" "$BIN_DIR/aros_a.bin" "$BIN_DIR/partitions.bin"

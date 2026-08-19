@@ -22,8 +22,12 @@ SECTIONS
 
     .data : {
         . = ALIGN(4);
+        __data_start = .;
         *(.data .data.*)
+        . = ALIGN(4);
+        __data_end = .;
     } > SRAM AT > FLASH_APP
+    __data_load = LOADADDR(.data);
 
     .bss : {
         . = ALIGN(4);
