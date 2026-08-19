@@ -23,8 +23,8 @@
 #include "hardware.h"
 #include "kernel_intern.h"
 
-/* Filled in by the link script */
-extern void *__kernel_end;
+/* Filled in by the link script; array form so the name is the address */
+extern char __kernel_end[];
 
 struct MemHeader *__esp32p4_mh_low;
 struct MemHeader *__esp32p4_mh_high;
@@ -52,7 +52,7 @@ void krnRAMInit(void)
     IPTR l2 = krnL2CacheSize();
 
     /* Immediately above this image, up to the ROM's own variables */
-    low_base = ((IPTR)&__kernel_end + 15) & ~(IPTR)15;
+    low_base = ((IPTR)__kernel_end + 15) & ~(IPTR)15;
     low_size = (low_base < P4_HEAP_LOW_END) ? P4_HEAP_LOW_END - low_base : 0;
 
     /* And whatever the cache left of the high window */

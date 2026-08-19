@@ -184,8 +184,15 @@ static void krnDumpBacktrace(struct ExceptionContext *ctx)
 static void krnReportException(struct ExceptionContext *ctx,
                                unsigned long mcause, unsigned long mtval)
 {
-    const char *name = (mcause < sizeof(exc_names) / sizeof(exc_names[0]))
-                        ? exc_names[mcause] : NULL;
+    /*
+     * With the CLIC, mcause carries more than the cause: the previous
+     * privilege and interrupt-enable bits and the previous level live in
+     * the upper bits, so the code is the low twelve and everything else
+     * has to be masked off before it means anything.
+     */
+    unsigned long code = mcause & 0xFFF;
+    const char *name = (code < sizeof(exc_names) / sizeof(exc_names[0]))
+                        ? exc_names[code] : NULL;
 
     krnP4PutStr("\n[trap] ");
     if (name)
@@ -193,9 +200,11 @@ static void krnReportException(struct ExceptionContext *ctx,
     else
     {
         krnP4PutStr("Unknown exception ");
-        krnP4PutDec(mcause);
+        krnP4PutDec(code);
     }
-    krnP4PutStr("\n       mepc  = ");
+    krnP4PutStr("  (mcause ");
+    krnP4PutHex32((uint32_t)mcause);
+    krnP4PutStr(")\n       mepc  = ");
     krnP4PutHex32(ctx->pc);
     krnP4PutStr("\n       mtval = ");
     krnP4PutHex32(mtval);
@@ -230,7 +239,7 @@ static void krnReportException(struct ExceptionContext *ctx,
         }
     }
 
-    if (!CAUSE_IS_IFETCH(mcause))
+    if (!CAUSE_IS_IFETCH(code))
         krnDumpCode(ctx);
     krnDumpBacktrace(ctx);
 }

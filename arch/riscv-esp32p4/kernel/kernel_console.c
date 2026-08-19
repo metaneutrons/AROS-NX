@@ -66,9 +66,29 @@ static void usj_flush(void)
     }
 }
 
+/*
+ * Waits for the host rather than dropping. During bring-up the important
+ * output is the earliest, and the host is typically not attached yet when
+ * it is produced - so dropping means the one sequence worth reading is
+ * the one that cannot be read. Waiting means a listener attaching a
+ * second later still gets it from the beginning.
+ *
+ * Still bounded, so a board with nothing attached boots rather than
+ * stopping to talk to itself; the bound is long enough for a host to
+ * finish enumerating and short enough not to look like a hang.
+ */
+#define ATTACH_SPINS    2000000
+
 void krnP4PutC(char c)
 {
-    if (!(mmio_rd(P4_USJ_BASE, P4_USJ_EP1_CONF) & P4_USJ_IN_EP_DATA_FREE))
+    unsigned int spins;
+
+    for (spins = 0; spins < ATTACH_SPINS; spins++)
+    {
+        if (mmio_rd(P4_USJ_BASE, P4_USJ_EP1_CONF) & P4_USJ_IN_EP_DATA_FREE)
+            break;
+    }
+    if (spins == ATTACH_SPINS)
         return;
 
     mmio_wr(P4_USJ_BASE, P4_USJ_EP1, (uint32_t)(unsigned char)c);
