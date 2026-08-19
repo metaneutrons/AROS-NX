@@ -1,0 +1,13 @@
+# $Id$
+
+include $(SRCDIR)/config/aros.cfg
+
+#MM- workbench-devs-networks : workbench-devs-networks-esp32c6
+
+#MM workbench-devs-networks-esp32c6 : includes linklibs
+
+FILES := esp32c6_dev esp32c6_sana2
+
+%build_module mmake=workbench-devs-networks-esp32c6 \
+    modname=esp32c6 modtype=device \
+    files="$(FILES)"
