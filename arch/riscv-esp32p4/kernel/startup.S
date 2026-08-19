@@ -83,12 +83,16 @@ __startup_hang:
 	.size	_start, . - _start
 
 	.section .bss
-	.balign	16
-__boot_stack:
-	.space	16384
-__boot_stack_end:
 
 	.globl	__boot_hartid
 	.balign	4
 __boot_hartid:
 	.space	4
+
+	/* Declared after the hart id so that the stack's end and the next
+	   object do not share an address; the stack grows down from
+	   __boot_stack_end, so sharing would be harmless but confusing. */
+	.balign	16
+__boot_stack:
+	.space	16384
+__boot_stack_end:
