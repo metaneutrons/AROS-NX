@@ -22,11 +22,13 @@ recorded in the milestone notes.
 | Area | State | Notes |
 | :--- | :--- | :--- |
 | configure target | done | `--target=esp32p4-riscv`, configure completes |
-| rv32 CPU layer gaps | in progress | M-mode CSR names, cache clears, backtrace done |
-| crosstools binutils 2.47 | done | riscv-aros-as, -ld, -ar, -objdump built |
-| crosstools gcc 16.2.0 | in progress | |
-| trap entry | written | frame offsets asserted, assembles, links, mtvec-aligned |
+| crosstools | done | binutils 2.47 and gcc 16.2.0 for riscv-aros, link libraries built |
+| rv32 CPU layer | done | M-mode CSR names, FLEN-aware FPU context, cache clears, backtrace, single-precision fenv, ABI-aware stub frames |
+| kernel arch layer | compiles | `gmake kernel-kernel-esp32p4-riscv` builds all nine objects |
+| exec arch layer | compiles | `gmake kernel-exec-esp32p4-riscv` builds all seven |
+| trap entry | compiles | frame offsets asserted against the struct |
 | link script | written | test-linked, both SRAM windows asserted |
+| bring-up report | compiles | prints hart, misa, ids, section extents; then stops |
 | kernel.resource | not started | |
 | exec.library | not started | |
 | M-mode trap and CLIC interrupts | not started | |
@@ -176,15 +178,18 @@ interrupt 16.
 Each milestone names what has to be true before it counts as done. No
 milestone is marked done on the strength of the code reading correctly.
 
-**M0 - build chain.** `configure --target=riscv-esp32p4` succeeds and
-`make crosstools` produces a working `riscv-aros-gcc` for
-`rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f`.
-Done when: the compiler builds a trivial object for the target ISA.
+**M0 - build chain.** Done. `configure --target=esp32p4-riscv` succeeds and
+`gmake crosstools` produces binutils 2.47 and gcc 16.2.0 for
+`rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f`, plus the AROS link
+libraries. Four things had to be fixed on the way, none of them in this
+platform: two host-side (see above) and two in the shared rv32 layer, where
+`fenv.h` rejected the single precision ABI outright and the library stub
+frames in `genmodule.h` were hardcoded to ILP32D.
 
-**M1 - CPU layer.** `arch/riscv-all` gains the missing generic files and the
-M-mode CSR names; `arch/riscv-esp32p4` gains its skeleton and link script.
-Done when: `make kernel-kernel-esp32p4-riscv` and
-`make kernel-exec-esp32p4-riscv` compile and link.
+**M1 - CPU layer.** Done. `gmake kernel-kernel-esp32p4-riscv` and
+`gmake kernel-exec-esp32p4-riscv` both build. Note they cannot share one
+gmake invocation under `-j`: genmf regenerates the same mmakefile from both
+and the loser of the race finds the temporary file already renamed.
 
 **M2 - first output.** M-mode startup, `mtvec` trap entry, UART0 debug
 console, kernel.resource and exec.library reaching `KrnBug()`.
