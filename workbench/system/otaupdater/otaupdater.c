@@ -13,6 +13,8 @@
 #include <proto/muimaster.h>
 #include "../../../arch/riscv32-esp32p4/include/spiflash_ota.h"
 
+static const char version_tag[] = "$VER: OTAUpdater 1.0 (19.08.2026)\r\n";
+
 struct OTAUpdaterApp
 {
     APTR    app;
