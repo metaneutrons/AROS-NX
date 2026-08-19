@@ -26,9 +26,10 @@ def merge(output_path, bootloader_path, partitions_path, otadata_path, aros_path
         else:
             print(f"  [-] Skipped {file_path} (not found)")
 
-    write_at(0x000000, bootloader_path)
+    # ESP32-P4 bootloader offset is standardly 0x002000 (with 0x0 fallback)
+    write_at(0x002000, bootloader_path)
     write_at(0x010000, partitions_path)
-    write_at(0x011000, otadata_path)
+    write_at(0x019000, otadata_path)
     write_at(0x020000, aros_path)
 
     with open(output_path, "wb") as out:
