@@ -20,16 +20,28 @@
 #include <exec/types.h>
 #include <asm/cpu.h>
 
+#include <exec/execbase.h>
+#include <exec/lists.h>
+#include <exec/memory.h>
+#include <aros/kernel.h>
+#include <utility/tagitem.h>
+#include <proto/exec.h>
+
+#include <kernel_base.h>
+#include <kernel_romtags.h>
+#include <tlsf.h>
+
 #include "hardware.h"
 #include "kernel_intern.h"
 
-/* Filled in by the link script */
-extern void *__text_start, *__text_end;
-extern void *__rodata_start, *__rodata_end;
-extern void *__data_start, *__data_end;
-extern void *__bss_start, *__bss_end;
+/* Filled in by the link script; array form so the name is the address */
+extern char __text_start[], __text_end[];
+extern char __rodata_start[], __rodata_end[];
+extern char __data_start[], __data_end[];
+extern char __bss_start[], __bss_end[];
+extern char __kernel_end[];
 
-static void report_extent(const char *what, void *from, void *to)
+static void report_extent(const char *what, const void *from, const void *to)
 {
     krnP4PutStr("[kernel] ");
     krnP4PutStr(what);
@@ -165,10 +177,10 @@ static void report(unsigned long hartid)
     krnP4PutHex32((uint32_t)csr_read(mimpid));
     krnP4PutStr("\n");
 
-    report_extent("text  ", &__text_start, &__text_end);
-    report_extent("rodata", &__rodata_start, &__rodata_end);
-    report_extent("data  ", &__data_start, &__data_end);
-    report_extent("bss   ", &__bss_start, &__bss_end);
+    report_extent("text  ", __text_start, __text_end);
+    report_extent("rodata", __rodata_start, __rodata_end);
+    report_extent("data  ", __data_start, __data_end);
+    report_extent("bss   ", __bss_start, __bss_end);
 
     krnRAMReport();
 
@@ -185,6 +197,126 @@ static void report(unsigned long hartid)
     krnP4PutStr("[kernel] no memory list, no KernelBase, no exec yet.\n");
 }
 
+/*
+ * What the kernel tells exec about the machine. The minimum here: where
+ * this image is, so exec does not hand it out, and what the heap is.
+ * There is no device tree and no command line to pass on.
+ */
+static struct TagItem BootTags[8];
+
+static struct TagItem *krnPrepareBootTags(void)
+{
+    struct TagItem *tag = BootTags;
+
+    tag->ti_Tag  = KRN_KernelBase;
+    tag->ti_Data = (IPTR)__text_start;
+    tag++;
+    tag->ti_Tag  = KRN_KernelLowest;
+    tag->ti_Data = (IPTR)__text_start;
+    tag++;
+    tag->ti_Tag  = KRN_KernelHighest;
+    tag->ti_Data = (IPTR)__kernel_end;
+    tag++;
+    tag->ti_Tag  = KRN_MEMLower;
+    tag->ti_Data = (IPTR)__kernel_end;
+    tag++;
+    tag->ti_Tag  = KRN_MEMUpper;
+    tag->ti_Data = P4_HEAP_LOW_END;
+    tag++;
+    tag->ti_Tag  = KRN_BootLoader;
+    tag->ti_Data = (IPTR)"ESP32-P4 ROM";
+    tag++;
+    tag->ti_Tag  = KRN_DebugInfo;
+    tag->ti_Data = 0;
+    tag++;
+    tag->ti_Tag  = TAG_DONE;
+    tag->ti_Data = 0;
+
+    return BootTags;
+}
+
+/*
+ * Hand the machine to exec. Everything above this point exists to make
+ * this call possible: a heap it can allocate from, the extent of the
+ * image it must not hand out, and a tick to schedule on.
+ */
+static void krnStartExec(void)
+{
+    struct MemHeader *mh = __esp32p4_mh_low;
+    UWORD *ranges[3];
+
+    if (!mh)
+    {
+        krnP4PutStr("[exec]   no usable heap - cannot start exec\n");
+        return;
+    }
+
+    /* TLSF, as the other modern ports do. The converted header is placed
+       at the first free chunk, so the returned pointer is not the region
+       base. */
+    {
+        struct MemHeader *tmh = krnConvertMemHeaderToTLSF(mh);
+
+        if (tmh)
+        {
+            mh = tmh;
+            krnP4PutStr("[exec]   TLSF allocator enabled\n");
+        }
+    }
+
+    ranges[0] = (UWORD *)__text_start;
+    ranges[1] = (UWORD *)__kernel_end;
+    ranges[2] = (UWORD *)-1;
+
+    krnP4PutStr("[exec]   preparing ExecBase\n");
+
+    if (!krnPrepareExecBase(ranges, mh, krnPrepareBootTags()))
+    {
+        krnP4PutStr("[exec]   krnPrepareExecBase FAILED\n");
+        return;
+    }
+
+    krnP4PutStr("[exec]   SysBase @ ");
+    krnP4PutHex32((uint32_t)(IPTR)SysBase);
+    krnP4PutStr("\n");
+
+    /* Exec owns a memory list now, so the data-only region can join it */
+    if (__esp32p4_mh_high)
+    {
+        Enqueue(&SysBase->MemList, &__esp32p4_mh_high->mh_Node);
+        krnP4PutStr("[exec]   data region added to the memory list\n");
+    }
+
+    krnP4PutStr("[exec]   InitCode(RTF_SINGLETASK)\n");
+    InitCode(RTF_SINGLETASK, 0);
+    krnP4PutStr("[exec]   InitCode(RTF_COLDSTART)\n");
+    InitCode(RTF_COLDSTART, 0);
+
+    /*
+     * With only kernel.resource, exec.library and task.resource in the
+     * kickstart there is nothing to take the machine over, so InitCode
+     * returns. Show that exec answers through its LVO table.
+     */
+    {
+        struct Task *me = FindTask(NULL);
+        APTR mem;
+
+        krnP4PutStr("[exec]   ThisTask = ");
+        krnP4PutStr((me && me->tc_Node.ln_Name) ? me->tc_Node.ln_Name
+                                                : "(unnamed)");
+        krnP4PutStr("\n[exec]   AvailMem(MEMF_ANY) = ");
+        krnP4PutDec((uint32_t)AvailMem(MEMF_ANY));
+        krnP4PutStr("\n");
+
+        mem = AllocMem(64 << 10, MEMF_ANY | MEMF_CLEAR);
+        krnP4PutStr("[exec]   AllocMem(64K) = ");
+        krnP4PutHex32((uint32_t)(IPTR)mem);
+        krnP4PutStr("\n");
+        if (mem)
+            FreeMem(mem, 64 << 10);
+    }
+}
+
 void kernel_cstart(unsigned long hartid, void *fdt)
 {
     unsigned long beat = 0;
@@ -195,8 +327,10 @@ void kernel_cstart(unsigned long hartid, void *fdt)
      * platform_init() comes after a line of output, not before, so that a
      * hang inside it is still attributable to it.
      */
-    krnP4PutStr("\n\n[kernel] entered, silencing the watchdogs\n");
+    krnP4PutStr("\n\n[kernel] entered\n");
+#ifndef P4_KEEP_WATCHDOG
     platform_init();
+#endif
 
     krnCLICInit();
     clic_selftest();
@@ -205,6 +339,17 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     csr_set(mstatus, MSTATUS_MIE);
 
     krnRAMInit();
+    krnRAMReport();
+    krnStartExec();
+
+#ifdef P4_KEEP_WATCHDOG
+    /*
+     * Diagnostic build: the watchdog is left armed through the bring-up
+     * so that a hang restarts the board and the whole sequence is said
+     * again. A single boot cannot be caught over this console.
+     */
+    platform_init();
+#endif
 
     report(hartid);
 

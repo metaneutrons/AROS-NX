@@ -33,6 +33,15 @@
  * blind.
  */
 
+/*
+ * There is no supervisor mode here - misa has no S - so anything shared
+ * that reaches for the status CSR has to reach for mstatus. Touching
+ * sstatus on this machine is an illegal instruction, not a read of zero.
+ */
+#define RISCV_XSTATUS               0x300   /* mstatus */
+#define RISCV_XSTATUS_VS            MSTATUS_VS
+#define RISCV_XSTATUS_VS_INITIAL    MSTATUS_VS_INITIAL
+
 #define ADDTIME(dest, src)			        \
     (dest)->tv_micro += (src)->tv_micro;	\
     (dest)->tv_secs  += (src)->tv_secs;		\
