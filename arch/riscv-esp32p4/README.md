@@ -4,10 +4,13 @@ Native AROS platform port for the ESP32-P4 SoC. The target name follows the
 AROS convention `$(AROS_TARGET_CPU)-$(AROS_TARGET_ARCH)`, so the platform is
 configured with
 
-    ./configure --target=riscv-esp32p4
+    ./configure --target=esp32p4-riscv
 
 and shares the CPU layer in `arch/riscv-all` with any other 32-bit RISC-V
-platform.
+platform. Note the two orders: an AROS target string is `<arch>-<cpu>`, built
+in `configure.in` as `$target_os-$target_cpu`, while the directory it selects
+is `<cpu>-<arch>`. Hence `--target=esp32p4-riscv` for `arch/riscv-esp32p4`,
+the same way `--target=opensbi-riscv64` selects `arch/riscv64-opensbi`.
 
 ## Status
 
@@ -18,7 +21,7 @@ recorded in the milestone notes.
 
 | Area | State | Notes |
 | :--- | :--- | :--- |
-| configure target | done | `--target=riscv-esp32p4` recognised |
+| configure target | done | `--target=esp32p4-riscv` recognised |
 | rv32 CPU layer gaps | in progress | M-mode CSR names, cache clears, backtrace done |
 | crosstools (riscv-aros gcc) | not started | needs gcc 16.2.0 / binutils 2.47 |
 | kernel.resource | not started | |

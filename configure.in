@@ -2248,9 +2248,13 @@ case "$target_os" in
         dnl there because the cpu switch runs first.
         gcc_default_cpu="rv32imafc_zicsr_zifencei_zaamo_zalrsc"
         gcc_default_mode="ilp32f"
+        dnl No paging hardware. There is a PMP and a cache address
+        dnl remapper, but nothing that translates, so kernel_mm and its
+        dnl allocator have nothing to drive.
+        aros_enable_mmu=no
         case "$target_cpu" in
             *riscv64*)
-                AC_MSG_ERROR("The ESP32-P4 HP cores are 32bit - use --target=riscv-esp32p4")
+                AC_MSG_ERROR("The ESP32-P4 HP cores are 32bit - use --target=esp32p4-riscv")
                 ;;
             *riscv*)
                 aros_target_cpu="riscv"

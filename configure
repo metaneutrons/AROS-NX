@@ -11402,9 +11402,10 @@ printf '%s\n' "$darwin_sdk_path" >&6; }
         fi
                                                 gcc_default_cpu="rv32imafc_zicsr_zifencei_zaamo_zalrsc"
         gcc_default_mode="ilp32f"
+                                aros_enable_mmu=no
         case "$target_cpu" in
             *riscv64*)
-                as_fn_error $? "\"The ESP32-P4 HP cores are 32bit - use --target=riscv-esp32p4\"" "$LINENO" 5
+                as_fn_error $? "\"The ESP32-P4 HP cores are 32bit - use --target=esp32p4-riscv\"" "$LINENO" 5
                 ;;
             *riscv*)
                 aros_target_cpu="riscv"
