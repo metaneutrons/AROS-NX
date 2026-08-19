@@ -44,5 +44,10 @@ void c_boot(void)
     uart_puts("[boot] Configuring Amiga memory pools:\n");
     uart_puts("  - Internal SRAM: 768 KB (MEMF_LOCAL)\n");
     uart_puts("  - Octal PSRAM:   32 MB  (MEMF_PUBLIC | MEMF_FAST)\n");
+
+    /* Scan and initialize all Kickstart ROM Resident drivers by priority */
+    extern void exec_init_coldstart_residents(void);
+    exec_init_coldstart_residents();
+
     uart_puts("[boot] Launching exec.library scheduler...\n");
 }

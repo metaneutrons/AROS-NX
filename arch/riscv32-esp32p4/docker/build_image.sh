@@ -22,6 +22,7 @@ riscv64-unknown-elf-gcc $FLAGS boot/boot.c -o $OUT/boot.o
 riscv64-unknown-elf-gcc $FLAGS kernel/platform_p4.c -o $OUT/platform_p4.o
 riscv64-unknown-elf-gcc $FLAGS kernel/cpu_switch.S -o $OUT/cpu_switch.o
 riscv64-unknown-elf-gcc $FLAGS kernel/traps.S -o $OUT/traps.o
+riscv64-unknown-elf-gcc $FLAGS kernel/rom_residents.c -o $OUT/rom_residents.o
 riscv64-unknown-elf-gcc $FLAGS boards/d1001/board_d1001.c -o $OUT/board_d1001.o
 riscv64-unknown-elf-gcc $FLAGS hidd/p4gfx/p4gfx_hiddclass.c -o $OUT/p4gfx.o
 riscv64-unknown-elf-gcc $FLAGS hidd/p4touch/p4touch_gt911.c -o $OUT/p4touch.o
@@ -44,10 +45,10 @@ echo "[2/4] Linking AROS Standalone Kernel (ELF)..."
 riscv64-unknown-elf-gcc -march=rv32imafdc -mabi=ilp32d -nostdlib -Wl,--gc-sections \
   -T/aros/arch/riscv32-esp32p4/config/linker.ld \
   $OUT/startup.o $OUT/uart.o $OUT/boot.o $OUT/platform_p4.o $OUT/cpu_switch.o $OUT/traps.o \
-  $OUT/board_d1001.o $OUT/p4gfx.o $OUT/p4touch.o $OUT/pcf8563.o $OUT/p4audio.o $OUT/p4audio_i2s.o \
-  $OUT/p4camera.o $OUT/p4usb.o $OUT/dwc2_hcd.o $OUT/p4sdcard.o $OUT/sdmmc_host.o \
-  $OUT/p4radio.o $OUT/sixlowpan.o $OUT/ezsp_ash.o $OUT/spinel.o $OUT/emac_p4.o $OUT/ppa_p4.o \
-  -o $OUT/aros_esp32p4.elf
+  $OUT/rom_residents.o $OUT/board_d1001.o $OUT/p4gfx.o $OUT/p4touch.o $OUT/pcf8563.o \
+  $OUT/p4audio.o $OUT/p4audio_i2s.o $OUT/p4camera.o $OUT/p4usb.o $OUT/dwc2_hcd.o \
+  $OUT/p4sdcard.o $OUT/sdmmc_host.o $OUT/p4radio.o $OUT/sixlowpan.o $OUT/ezsp_ash.o \
+  $OUT/spinel.o $OUT/emac_p4.o $OUT/ppa_p4.o -o $OUT/aros_esp32p4.elf
 
 echo "[3/4] Generating Genuine ESP32-P4 Application Image: aros_a.bin..."
 esptool.py --chip esp32p4 elf2image --flash-mode dio --flash-freq 80m --flash-size 32MB \
