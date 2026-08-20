@@ -1739,10 +1739,42 @@ diff -ruN gcc-16.2.0/libgcc/config.host gcc-16.2.0.aros/libgcc/config.host
  m68k-*-elf* | fido-*-elf)
  	tmake_file="$tmake_file m68k/t-floatlib"
  	;;
-@@ -1574,6 +1583,9 @@
+@@ -1574,6 +1583,41 @@
  	tmake_file="$tmake_file nvptx/t-nvptx"
  	extra_parts="crt0.o"
  	;;
++aarch64*-*-aros*)
++	# AROS has no signal frames, so the Linux unwinder is wrong here.
++	# The generic aarch64 one is what declares the return address
++	# signing helpers unwind-dw2-execute_cfa.h calls, and it needs
++	# nothing but ansidecl.h and stdbool.h.
++	md_unwind_def_header=aarch64/aarch64-unwind-def.h
++	md_unwind_header=aarch64/aarch64-unwind.h
++	# The generic aros case above leaves tmake_file empty, which on
++	# aarch64 leaves libgcc missing routines the compiler emits calls
++	# to. Two are needed here, both plain code with no OS dependency:
++	#
++	#   t-lse    out-of-line atomics. Without them libgcc lacks
++	#            __aarch64_cas* and __aarch64_swp*, called by
++	#            anything not built -mno-outline-atomics - AROS's
++	#            own libpthread among them.
++	#   t-softfp soft float for TFmode. long double is binary128
++	#            here and its arithmetic is done in software, so
++	#            without these stdc.library has no __addtf3,
++	#            __multf3, __extenddftf2 and the rest of that set.
++	#
++	# Four more that the linux case carries are left out on purpose.
++	# t-slibgcc-libgcc is for a shared libgcc, and AROS links static.
++	# t-crtfm builds crtfastmath.o, which is only of use with a
++	# matching extra_parts. t-heap-trampoline wants OS support this
++	# port has not got. And t-aarch64 would supply the one remaining
++	# gap, __aarch64_sync_cache_range, but it also turns -Werror on
++	# for libgcc, which then fails on an incomplete initialiser
++	# reached through AROS's own pthread.h - an AROS header to fix,
++	# not a reason to hold libgcc up. That symbol was already
++	# undefined before any of this, so nothing regresses by waiting.
++	tmake_file="${cpu_type}/t-lse ${cpu_type}/t-softfp t-softfp"
++	;;
 +*-*-aros*)
 +	tmake_file=
 +	;;
