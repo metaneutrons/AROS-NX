@@ -1,20 +1,24 @@
-
 include $(SRCDIR)/config/aros.cfg
 
-#MM- workbench-devs-networks-genet-aarch64 : workbench-devs-networks-genet
+#
+# SANA-II driver for the Broadcom GENET, v5 register generation, as found
+# on the BCM2711 that a Raspberry Pi 4 is built around.
+#
+# Only built for a target that asks for it, since the controller is found
+# through the platform's device tree rather than a probeable bus.
+#
 
-FILES := handler unit genet_hw genet_phy
+FILES := genet_dt genet_hw genet_unit genet_handler
 
-CFLAGSNORMAL = $(CFLAGS) -DDEBUG=0
-CFLAGSDEBUG = $(CFLAGS) -DDEBUG=1
-USER_INCLUDES := -I$(SRCDIR)/arch/aarch64-native/kernel
+USER_INCLUDES := -I$(SRCDIR)/arch/riscv-all/linklibs/fdt/include
+
 USER_LDFLAGS := -static
 
-#MM- workbench-devs-networks-genet : workbench-devs-networks-genet-normal
+#MM workbench-devs-networks-genet-aarch64 : linklibs-fdt
 
-%build_module mmake=workbench-devs-networks-genet-normal \
+%build_module mmake=workbench-devs-networks-genet-aarch64 \
     modname=genet modtype=device \
-    files="genet_init $(FILES)" cflags=$(CFLAGSNORMAL) \
-    objdir=$(OBJDIR)/normal moduledir=Devs/Networks
+    files="genet_init $(FILES)" \
+    moduledir=Devs/Networks uselibs="fdt"
 
 %common

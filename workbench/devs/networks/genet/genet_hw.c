@@ -1,242 +1,355 @@
 /*
     Copyright (C) 2026, The AROS Development Team. All rights reserved.
-    Author: Fabian Schmieder (@metaneutrons)
 
-    BCM2711 GENET Ethernet — Hardware access
-    Based on U-Boot drivers/net/bcmgenet.c
-    Copyright (C) 2019 Amit Singh Tomar (GPL-2.0+)
-    Adapted for AROS SANA-II.
+    Desc: GENETv5 register, mdio and PHY access, and the reset sequence.
+
+    The register sequences here are ported from FreeBSD's if_genet.c; see
+    genet.h for the copyright notice that travels with them.
 */
 
-#include <exec/types.h>
+#include <aros/debug.h>
+
 #include <proto/exec.h>
-#include <proto/kernel.h>
-#include <aros/macros.h>
 
 #include "genet.h"
 
-/* Register access */
-static inline ULONG genet_rd(struct GENETUnit *unit, ULONG off)
+/*
+ * Registers are reached through a plain volatile long. A struct laid
+ * over the block would have to be packed to pin the offsets down, and
+ * packing tells the compiler to assume nothing about alignment - on a
+ * strict alignment target it then splits every access into bytes, which
+ * a register does not accept.
+ *
+ * The block is mapped Device-nGnRnE, so accesses are neither reordered
+ * nor merged and no explicit barrier is needed between them.
+ */
+ULONG GENET_Read(struct genet_hw *hw, ULONG reg)
 {
-    return AROS_LE2LONG(*(volatile ULONG *)(unit->gn_RegBase + off));
+    return *(volatile ULONG *)(hw->base + reg);
 }
 
-static inline void genet_wr(struct GENETUnit *unit, ULONG off, ULONG val)
+void GENET_Write(struct genet_hw *hw, ULONG reg, ULONG val)
 {
-    *(volatile ULONG *)(unit->gn_RegBase + off) = AROS_LONG2LE(val);
+    *(volatile ULONG *)(hw->base + reg) = val;
 }
 
-static inline void genet_set(struct GENETUnit *unit, ULONG off, ULONG bits)
+static void genet_clr(struct genet_hw *hw, ULONG reg, ULONG bits)
 {
-    genet_wr(unit, off, genet_rd(unit, off) | bits);
+    GENET_Write(hw, reg, GENET_Read(hw, reg) & ~bits);
 }
 
-static inline void genet_clr(struct GENETUnit *unit, ULONG off, ULONG bits)
-{
-    genet_wr(unit, off, genet_rd(unit, off) & ~bits);
-}
-
-#define udelay genet_udelay
-
-/* ============================================================
- * UMAC Reset
- * ============================================================ */
-
-static void genet_umac_reset(struct GENETUnit *unit)
-{
-    ULONG reg;
-
-    /* Flush RX */
-    reg = genet_rd(unit, SYS_RBUF_FLUSH_CTRL);
-    reg |= (1 << 1);
-    genet_wr(unit, SYS_RBUF_FLUSH_CTRL, reg);
-    udelay(10);
-    reg &= ~(1 << 1);
-    genet_wr(unit, SYS_RBUF_FLUSH_CTRL, reg);
-    udelay(10);
-    genet_wr(unit, SYS_RBUF_FLUSH_CTRL, 0);
-    udelay(10);
-
-    /* Reset MAC */
-    genet_wr(unit, UMAC_CMD, 0);
-    genet_wr(unit, UMAC_CMD, CMD_SW_RESET | CMD_LCL_LOOP_EN);
-    udelay(2);
-    genet_wr(unit, UMAC_CMD, 0);
-
-    /* Clear MIB counters */
-    genet_wr(unit, UMAC_MIB_CTRL, MIB_RESET_RX | MIB_RESET_TX | MIB_RESET_RUNT);
-    genet_wr(unit, UMAC_MIB_CTRL, 0);
-
-    /* Max frame length */
-    genet_wr(unit, UMAC_MAX_FRAME_LEN, ETH_MAXPACKETSIZE);
-
-    /* Enable 2-byte alignment for IP headers */
-    genet_set(unit, RBUF_CTRL, RBUF_ALIGN_2B);
-    genet_wr(unit, RBUF_TBUF_SIZE_CTRL, 1);
-}
-
-/* ============================================================
- * MAC Address
- * ============================================================ */
-
-void genet_HW_SetMAC(struct GENETUnit *unit, UBYTE *addr)
-{
-    ULONG reg;
-
-    reg = (addr[0] << 24) | (addr[1] << 16) | (addr[2] << 8) | addr[3];
-    genet_wr(unit, UMAC_MAC0, reg);
-
-    reg = (addr[4] << 8) | addr[5];
-    genet_wr(unit, UMAC_MAC1, reg);
-}
-
-/* ============================================================
- * DMA Ring Setup
- * ============================================================ */
-
-static void genet_disable_dma(struct GENETUnit *unit)
-{
-    genet_clr(unit, TDMA_REG_BASE + DMA_CTRL, DMA_EN);
-    genet_clr(unit, RDMA_REG_BASE + DMA_CTRL, DMA_EN);
-    genet_wr(unit, UMAC_TX_FLUSH, 1);
-    udelay(10);
-    genet_wr(unit, UMAC_TX_FLUSH, 0);
-}
-
-static void genet_enable_dma(struct GENETUnit *unit)
-{
-    ULONG dma_ctrl = (1 << (DEFAULT_Q + DMA_RING_BUF_EN_SHIFT)) | DMA_EN;
-
-    genet_wr(unit, TDMA_REG_BASE + DMA_CTRL, dma_ctrl);
-    genet_set(unit, RDMA_REG_BASE + DMA_CTRL, dma_ctrl);
-}
-
-static void genet_rx_descs_init(struct GENETUnit *unit)
+/*
+ * A short spin, used where the reference driver waits ten microseconds.
+ * Reading a register off a non-posted device mapping is itself slow
+ * enough that the count only has to be a floor, not a measurement.
+ */
+static void genet_pause(struct genet_hw *hw)
 {
     ULONG i;
-    ULONG len_stat = (RX_BUF_LENGTH << DMA_BUFLENGTH_SHIFT) | DMA_OWN;
 
-    for (i = 0; i < RX_DESCS; i++) {
-        IPTR buf = (IPTR)unit->gn_RxBuffer + i * RX_BUF_LENGTH;
-        IPTR desc = unit->gn_RxDescBase + i * DMA_DESC_SIZE;
+    for (i = 0; i < 16; i++)
+        (void)GENET_Read(hw, GENET_SYS_REV_CTRL);
+}
 
-        *(volatile ULONG *)(desc + DMA_DESC_ADDRESS_LO) = AROS_LONG2LE((ULONG)(buf & 0xFFFFFFFF));
-        *(volatile ULONG *)(desc + DMA_DESC_ADDRESS_HI) = AROS_LONG2LE((ULONG)(buf >> 32));
-        *(volatile ULONG *)(desc + DMA_DESC_LENGTH_STATUS) = AROS_LONG2LE(len_stat);
+/* == mdio =============================================================== */
+
+/*
+ * The command register is loaded, read back, and only then started. The
+ * read back is not decorative: the write of the command and the write of
+ * the start bit have to be separate transactions or the block may latch
+ * a half-built command.
+ */
+LONG GENET_MDIORead(struct genet_hw *hw, ULONG phy, ULONG reg)
+{
+    ULONG val;
+    ULONG retry;
+
+    GENET_Write(hw, GENET_MDIO_CMD, GENET_MDIO_READ |
+                ((phy & 0x1f) << GENET_MDIO_ADDR_SHIFT) |
+                ((reg & 0x1f) << GENET_MDIO_REG_SHIFT));
+    val = GENET_Read(hw, GENET_MDIO_CMD);
+    GENET_Write(hw, GENET_MDIO_CMD, val | GENET_MDIO_START_BUSY);
+
+    for (retry = GENET_MDIO_RETRIES; retry > 0; retry--)
+    {
+        val = GENET_Read(hw, GENET_MDIO_CMD);
+        if ((val & GENET_MDIO_START_BUSY) == 0)
+        {
+            if (val & GENET_MDIO_READ_FAILED)
+                return -1;
+            return (LONG)(val & GENET_MDIO_VAL_MASK);
+        }
     }
+
+    D(bug("[genet] mdio read timed out, phy %u reg %u\n", phy, reg);)
+
+    return -1;
 }
 
-static void genet_rx_ring_init(struct GENETUnit *unit)
+BOOL GENET_MDIOWrite(struct genet_hw *hw, ULONG phy, ULONG reg, UWORD data)
 {
-    genet_wr(unit, RDMA_REG_BASE + DMA_SCB_BURST_SIZE, DMA_MAX_BURST_LENGTH);
-    genet_wr(unit, RDMA_RING_REG_BASE + DMA_START_ADDR, 0);
-    genet_wr(unit, RDMA_READ_PTR, 0);
-    genet_wr(unit, RDMA_WRITE_PTR, 0);
-    genet_wr(unit, RDMA_RING_REG_BASE + DMA_END_ADDR,
-             RX_DESCS * DMA_DESC_SIZE / 4 - 1);
+    ULONG val;
+    ULONG retry;
 
-    /* Align consumer index on producer */
-    unit->gn_RxConsIdx = genet_rd(unit, RDMA_PROD_INDEX);
-    genet_wr(unit, RDMA_CONS_INDEX, unit->gn_RxConsIdx);
-    unit->gn_RxIdx = unit->gn_RxConsIdx & 0xFF;
+    GENET_Write(hw, GENET_MDIO_CMD, GENET_MDIO_WRITE |
+                ((phy & 0x1f) << GENET_MDIO_ADDR_SHIFT) |
+                ((reg & 0x1f) << GENET_MDIO_REG_SHIFT) |
+                (data & GENET_MDIO_VAL_MASK));
+    val = GENET_Read(hw, GENET_MDIO_CMD);
+    GENET_Write(hw, GENET_MDIO_CMD, val | GENET_MDIO_START_BUSY);
 
-    genet_wr(unit, RDMA_RING_REG_BASE + DMA_RING_BUF_SIZE,
-             (RX_DESCS << DMA_RING_SIZE_SHIFT) | RX_BUF_LENGTH);
-    genet_wr(unit, RDMA_XON_XOFF_THRESH,
-             (DMA_FC_THRESH_LO << 16) | DMA_FC_THRESH_HI);
-    genet_wr(unit, RDMA_REG_BASE + DMA_RING_CFG, 1 << DEFAULT_Q);
+    for (retry = GENET_MDIO_RETRIES; retry > 0; retry--)
+    {
+        if ((GENET_Read(hw, GENET_MDIO_CMD) & GENET_MDIO_START_BUSY) == 0)
+            return TRUE;
+    }
+
+    D(bug("[genet] mdio write timed out, phy %u reg %u\n", phy, reg);)
+
+    return FALSE;
 }
 
-static void genet_tx_ring_init(struct GENETUnit *unit)
+/* == reset ============================================================== */
+
+/*
+ * Put the block back to a known state. The receive buffer is flushed
+ * first, then the MAC is taken through its software reset, then the
+ * statistics counters are cleared. Every register the driver cares about
+ * is written afterwards, so nothing here has to preserve anything.
+ */
+void GENET_Reset(struct genet_hw *hw)
 {
-    genet_wr(unit, TDMA_REG_BASE + DMA_SCB_BURST_SIZE, DMA_MAX_BURST_LENGTH);
-    genet_wr(unit, TDMA_RING_REG_BASE + DMA_START_ADDR, 0);
-    genet_wr(unit, TDMA_READ_PTR, 0);
-    genet_wr(unit, TDMA_WRITE_PTR, 0);
-    genet_wr(unit, TDMA_RING_REG_BASE + DMA_END_ADDR,
-             TX_DESCS * DMA_DESC_SIZE / 4 - 1);
+    ULONG val;
 
-    /* Align producer index on consumer */
-    unit->gn_TxProdIdx = genet_rd(unit, TDMA_CONS_INDEX);
-    genet_wr(unit, TDMA_PROD_INDEX, unit->gn_TxProdIdx);
-    unit->gn_TxConsIdx = unit->gn_TxProdIdx;
+    val = GENET_Read(hw, GENET_SYS_RBUF_FLUSH_CTRL);
+    GENET_Write(hw, GENET_SYS_RBUF_FLUSH_CTRL,
+                val | GENET_SYS_RBUF_FLUSH_RESET);
+    genet_pause(hw);
 
-    genet_wr(unit, TDMA_RING_REG_BASE + DMA_MBUF_DONE_THRESH, 1);
-    genet_wr(unit, TDMA_FLOW_PERIOD, 0);
-    genet_wr(unit, TDMA_RING_REG_BASE + DMA_RING_BUF_SIZE,
-             (TX_DESCS << DMA_RING_SIZE_SHIFT) | RX_BUF_LENGTH);
-    genet_wr(unit, TDMA_REG_BASE + DMA_RING_CFG, 1 << DEFAULT_Q);
+    GENET_Write(hw, GENET_SYS_RBUF_FLUSH_CTRL,
+                val & ~GENET_SYS_RBUF_FLUSH_RESET);
+    genet_pause(hw);
+
+    GENET_Write(hw, GENET_SYS_RBUF_FLUSH_CTRL, 0);
+    genet_pause(hw);
+
+    GENET_Write(hw, GENET_UMAC_CMD, 0);
+    GENET_Write(hw, GENET_UMAC_CMD,
+                GENET_UMAC_CMD_LCL_LOOP_EN | GENET_UMAC_CMD_SW_RESET);
+    genet_pause(hw);
+    GENET_Write(hw, GENET_UMAC_CMD, 0);
+
+    GENET_Write(hw, GENET_UMAC_MIB_CTRL, GENET_UMAC_MIB_RESET_RUNT |
+                GENET_UMAC_MIB_RESET_RX | GENET_UMAC_MIB_RESET_TX);
+    GENET_Write(hw, GENET_UMAC_MIB_CTRL, 0);
 }
 
-/* ============================================================
- * Public API
- * ============================================================ */
-
-void genet_HW_Init(struct GENETUnit *unit)
+/* Stop both DMA engines and detach the default queue from its buffer */
+void GENET_DMADisable(struct genet_hw *hw)
 {
-    unit->gn_TxDescBase = unit->gn_RegBase + GENET_TX_OFF;
-    unit->gn_RxDescBase = unit->gn_RegBase + GENET_RX_OFF;
-
-    /* Set port mode to external GPHY (RGMII) */
-    genet_wr(unit, SYS_PORT_CTRL, PORT_MODE_EXT_GPHY);
-
-    genet_umac_reset(unit);
-    genet_HW_SetMAC(unit, unit->gn_DevAddr);
-
-    genet_disable_dma(unit);
-
-    genet_rx_ring_init(unit);
-    genet_rx_descs_init(unit);
-    genet_tx_ring_init(unit);
-
-    genet_enable_dma(unit);
-
-    /* Configure RGMII interface */
-    genet_clr(unit, EXT_RGMII_OOB_CTRL, OOB_DISABLE);
-    genet_set(unit, EXT_RGMII_OOB_CTRL, RGMII_LINK | RGMII_MODE_EN);
-
-    /* Set speed (default 1000Mbps, updated after PHY negotiation) */
-    genet_wr(unit, UMAC_CMD, UMAC_SPEED_1000 << CMD_SPEED_SHIFT);
-
-    /* Enable TX and RX */
-    genet_set(unit, UMAC_CMD, CMD_TX_EN | CMD_RX_EN);
+    genet_clr(hw, GENET_TX_DMA_CTRL, GENET_DMA_CTRL_EN |
+              GENET_DMA_CTRL_RBUF_EN(GENET_DMA_DEFAULT_QUEUE));
+    genet_clr(hw, GENET_RX_DMA_CTRL, GENET_DMA_CTRL_EN |
+              GENET_DMA_CTRL_RBUF_EN(GENET_DMA_DEFAULT_QUEUE));
 }
 
-void genet_HW_Stop(struct GENETUnit *unit)
+/* == station address ==================================================== */
+
+void GENET_SetMACAddress(struct genet_hw *hw, const UBYTE *addr)
 {
-    /* Disable TX/RX */
-    genet_clr(unit, UMAC_CMD, CMD_TX_EN | CMD_RX_EN);
-    genet_disable_dma(unit);
+    GENET_Write(hw, GENET_UMAC_MAC0,
+                ((ULONG)addr[0] << 24) | ((ULONG)addr[1] << 16) |
+                ((ULONG)addr[2] << 8) | addr[3]);
+    GENET_Write(hw, GENET_UMAC_MAC1,
+                ((ULONG)addr[4] << 8) | addr[5]);
 }
 
-int genet_HW_Send(struct GENETUnit *unit, UBYTE *data, ULONG length)
+/*
+ * What the firmware left in the address registers, if it left anything.
+ * A block still held in receive-buffer reset has not been set up by
+ * anyone, so its registers say nothing.
+ */
+BOOL GENET_GetMACAddress(struct genet_hw *hw, UBYTE *addr)
 {
-    ULONG tx_idx = unit->gn_TxProdIdx & 0xFF;
-    IPTR desc = unit->gn_TxDescBase + tx_idx * DMA_DESC_SIZE;
-    ULONG len_stat;
-    ULONG cons;
-    int tries = 1000;
+    ULONG mac0, mac1;
 
-    /* Write descriptor */
-    *(volatile ULONG *)(desc + DMA_DESC_ADDRESS_LO) = AROS_LONG2LE((ULONG)((IPTR)data & 0xFFFFFFFF));
-    *(volatile ULONG *)(desc + DMA_DESC_ADDRESS_HI) = AROS_LONG2LE((ULONG)((IPTR)data >> 32));
+    if (GENET_Read(hw, GENET_SYS_RBUF_FLUSH_CTRL) &
+        GENET_SYS_RBUF_FLUSH_RESET)
+        return FALSE;
 
-    len_stat = (length << DMA_BUFLENGTH_SHIFT) |
-               (0x3F << DMA_TX_QTAG_SHIFT) |
-               DMA_TX_APPEND_CRC | DMA_SOP | DMA_EOP;
-    *(volatile ULONG *)(desc + DMA_DESC_LENGTH_STATUS) = AROS_LONG2LE(len_stat);
+    mac0 = GENET_Read(hw, GENET_UMAC_MAC0);
+    mac1 = GENET_Read(hw, GENET_UMAC_MAC1) & 0xffff;
 
-    /* Advance producer index */
-    unit->gn_TxProdIdx++;
-    genet_wr(unit, TDMA_PROD_INDEX, unit->gn_TxProdIdx);
+    if (mac0 == 0 && mac1 == 0)
+        return FALSE;
 
-    /* Wait for completion */
-    do {
-        cons = genet_rd(unit, TDMA_CONS_INDEX) & 0xFFFF;
-    } while (cons < unit->gn_TxProdIdx && --tries);
+    addr[0] = (mac0 >> 24) & 0xff;
+    addr[1] = (mac0 >> 16) & 0xff;
+    addr[2] = (mac0 >> 8) & 0xff;
+    addr[3] = mac0 & 0xff;
+    addr[4] = (mac1 >> 8) & 0xff;
+    addr[5] = mac1 & 0xff;
 
-    if (!tries)
-        return -1;
+    return TRUE;
+}
 
-    return 0;
+/* == link ============================================================== */
+
+/*
+ * Tell the MAC what the PHY negotiated. Two registers are involved: the
+ * RGMII out-of-band block, which has to be told there is a link and
+ * whether the internal delay applies, and the command register, which
+ * carries the line rate.
+ *
+ * Note what is not here. This map has no duplex bit that the reference
+ * driver sets, and none is written; at gigabit the link is full duplex
+ * in any case, and a half duplex 10/100 link is left to the PHY's own
+ * collision handling. The duplex the caller passes is recorded for
+ * reporting and otherwise unused.
+ */
+void GENET_SetSpeed(struct genet_hw *hw, ULONG mbps, BOOL fullduplex)
+{
+    ULONG val, speed;
+
+    (void)fullduplex;
+
+    switch (mbps)
+    {
+    case 1000:
+        speed = GENET_UMAC_CMD_SPEED_1000;
+        break;
+    case 100:
+        speed = GENET_UMAC_CMD_SPEED_100;
+        break;
+    default:
+        speed = GENET_UMAC_CMD_SPEED_10;
+        break;
+    }
+
+    val = GENET_Read(hw, GENET_EXT_RGMII_OOB_CTRL);
+    val &= ~GENET_EXT_RGMII_OOB_OOB_DISABLE;
+    val |= GENET_EXT_RGMII_OOB_RGMII_LINK;
+    val |= GENET_EXT_RGMII_OOB_RGMII_MODE_EN;
+
+    /*
+     * Plain "rgmii" means the board provides the clock skew itself, so
+     * the internal delay is switched off. Every -id variant wants it on.
+     */
+    if (hw->phyMode == GENET_PHY_MODE_RGMII)
+        val |= GENET_EXT_RGMII_OOB_ID_MODE_DISABLE;
+    else
+        val &= ~GENET_EXT_RGMII_OOB_ID_MODE_DISABLE;
+
+    GENET_Write(hw, GENET_EXT_RGMII_OOB_CTRL, val);
+
+    val = GENET_Read(hw, GENET_UMAC_CMD);
+    val &= ~GENET_UMAC_CMD_SPEED;
+    val |= speed;
+    GENET_Write(hw, GENET_UMAC_CMD, val);
+}
+
+/* == phy =============================================================== */
+
+/*
+ * Advertise everything the part can do and start negotiating. Whether
+ * the link comes up is asked separately, once a second, by the unit
+ * task - a gigabit negotiation takes longer than it is reasonable to
+ * block a device open for.
+ */
+BOOL GENET_PHYInit(struct genet_hw *hw)
+{
+    ULONG phy = hw->phyAddr;
+    LONG bmsr;
+    UWORD anar;
+
+    bmsr = GENET_MDIORead(hw, phy, MII_BMSR);
+    if (bmsr < 0)
+        return FALSE;
+
+    anar = ANAR_CSMA | ANAR_10HD | ANAR_10FD | ANAR_100HD | ANAR_100FD;
+    if (!GENET_MDIOWrite(hw, phy, MII_ANAR, anar))
+        return FALSE;
+
+    /* Gigabit is advertised in its own register, when the part has one */
+    if (bmsr & BMSR_ESTATEN)
+        GENET_MDIOWrite(hw, phy, MII_GBCR, GBCR_1000FD | GBCR_1000HD);
+
+    return GENET_MDIOWrite(hw, phy, MII_BMCR,
+                           BMCR_ANENABLE | BMCR_ANRESTART);
+}
+
+/*
+ * The current link state. Speed comes from what both ends advertised,
+ * which is where a clause-22 PHY keeps the negotiated result.
+ */
+BOOL GENET_PHYGetLink(struct genet_hw *hw, ULONG *mbps, BOOL *fullduplex)
+{
+    ULONG phy = hw->phyAddr;
+    LONG bmsr, anar, anlpar, gbcr, gbsr, common;
+
+    bmsr = GENET_MDIORead(hw, phy, MII_BMSR);
+    if (bmsr < 0)
+        return FALSE;
+
+    /*
+     * Link status latches low, so a single read can report a link that
+     * has since come back. Read it twice and believe the second.
+     */
+    bmsr = GENET_MDIORead(hw, phy, MII_BMSR);
+    if (bmsr < 0 || !(bmsr & BMSR_LSTATUS))
+        return FALSE;
+
+    if (!(bmsr & BMSR_ANEGCOMPLETE))
+        return FALSE;
+
+    gbcr = GENET_MDIORead(hw, phy, MII_GBCR);
+    gbsr = GENET_MDIORead(hw, phy, MII_GBSR);
+
+    if (gbcr >= 0 && gbsr >= 0)
+    {
+        if ((gbcr & GBCR_1000FD) && (gbsr & GBSR_LP1000FD))
+        {
+            *mbps = 1000;
+            *fullduplex = TRUE;
+            return TRUE;
+        }
+        if ((gbcr & GBCR_1000HD) && (gbsr & GBSR_LP1000HD))
+        {
+            *mbps = 1000;
+            *fullduplex = FALSE;
+            return TRUE;
+        }
+    }
+
+    anar = GENET_MDIORead(hw, phy, MII_ANAR);
+    anlpar = GENET_MDIORead(hw, phy, MII_ANLPAR);
+    if (anar < 0 || anlpar < 0)
+        return FALSE;
+
+    common = anar & anlpar;
+
+    if (common & ANAR_100FD)
+    {
+        *mbps = 100;
+        *fullduplex = TRUE;
+    }
+    else if (common & ANAR_100HD)
+    {
+        *mbps = 100;
+        *fullduplex = FALSE;
+    }
+    else if (common & ANAR_10FD)
+    {
+        *mbps = 10;
+        *fullduplex = TRUE;
+    }
+    else if (common & ANAR_10HD)
+    {
+        *mbps = 10;
+        *fullduplex = FALSE;
+    }
+    else
+        return FALSE;
+
+    return TRUE;
 }

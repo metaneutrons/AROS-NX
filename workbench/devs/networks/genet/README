@@ -1,0 +1,139 @@
+genet.device - Broadcom GENETv5 Ethernet
+========================================
+
+The gigabit Ethernet controller on the BCM2711, which is the SoC a
+Raspberry Pi 4 is built around. One controller, one unit, no options.
+
+
+Where the code comes from
+-------------------------
+
+The register map and the hardware bring-up sequences are ported from
+FreeBSD's driver for the same part:
+
+    sys/arm64/broadcom/genet/if_genet.c
+    sys/arm64/broadcom/genet/if_genetreg.h
+        Copyright (c) 2020 Michael J Karels
+        Copyright (c) 2016, 2020 Jared McNeill
+        Two-clause BSD licence
+
+which derive in turn from NetBSD's bcmgenet.c, also by Jared McNeill and
+also two-clause BSD. That licence permits reuse in source form provided
+the copyright notice, the conditions and the disclaimer travel with the
+code, and they do: the full notice is at the top of genet.h, and the
+files carrying ported sequences point at it.
+
+That is a deliberate choice of source. The previous driver in this
+directory was adapted from U-Boot's drivers/net/bcmgenet.c, which is
+GPL-2.0+, while carrying an "All rights reserved" AROS header and no
+LEGAL file - the licence stated and the licence owed did not match.
+Rather than correct the paperwork, the derivation was moved to a
+permissively licensed source. No part of this driver comes from U-Boot's
+bcmgenet or from Linux's, and neither was consulted while writing it.
+
+The SANA-II side - the opener list, the deferred request queues, the unit
+task, the command set - is AROS code, written to the same shape as
+workbench/devs/networks/dwmac.
+
+
+What the hardware does differently
+----------------------------------
+
+Three things about this controller are unusual enough that code written
+on ordinary assumptions will not work, and all three cost the previous
+driver dearly.
+
+*The DMA descriptors are registers, not memory.* They live inside the
+register block, 256 per direction, twelve bytes each. There is no
+descriptor ring in RAM, so there is nothing about the descriptors to keep
+coherent and no physical address to compute for them. Only the packet
+buffers they point at are in RAM.
+
+*The queue is number 16.* The block has seventeen queues per direction;
+sixteen priority ones and a seventeenth, index 16, where unclassified
+traffic arrives. Setting up queue 0 looks entirely reasonable and
+receives nothing at all.
+
+*Nothing is cache coherent.* The controller reaches memory through the
+SoC's system bus, and its accesses are not snooped by the processor
+caches. Packet buffers have to be memory the processor does not cache,
+which this driver arranges with KrnMapGlobal() and MAP_WriteThrough.
+Buffers left cacheable produce a driver that initialises cleanly, reports
+a link, and moves no data.
+
+MAP_WriteThrough is worth a word, because the name and the effect are not
+quite the same thing. On this platform the kernel maps that flag to
+Normal Non-Cacheable, which is what these buffers need and is stated as
+such in arch/aarch64-native/kernel/mmu.c. A port whose kernel reads the
+flag as write-back-with-write-through would give this driver cacheable
+buffers and the symptom above, so the mapping is worth checking before
+this code is trusted on other aarch64 hardware.
+
+The register block needs the matching treatment in the other direction:
+it is mapped MAP_CacheInhibit, so accesses to it are device accesses.
+Mapped as ordinary memory - which is what KrnMapGlobal() does when told
+neither MAP_CacheInhibit nor MAP_WriteThrough - register writes would sit
+in a cache line instead of reaching the block.
+
+
+Interrupt numbering
+-------------------
+
+The device tree states interrupts as a GIC specifier: a kind, a number
+within that kind, and flags. AROS counts in raw GIC interrupt ids, and so
+does the GIC itself, so the base of the kind has to be added back on -
+shared peripheral interrupts start at 32, private ones at 16. The Pi 4's
+tree gives the controller SPI 157 and 158, which are interrupt ids 189
+and 190.
+
+The previous driver used 157 directly. That is a valid interrupt id; it
+belongs to something else.
+
+Only the first of the two is taken. The second is raised for PHY and link
+events, which this driver learns about by asking the PHY once a second
+from the unit task instead.
+
+
+What is deliberately not implemented
+------------------------------------
+
+*Checksum offload*, in either direction. Enabling it puts a 64-byte
+status block on the front of every packet, and the receive path reads its
+lengths straight out of the descriptor instead.
+
+*Duplex.* This register map has no duplex bit, and the reference driver
+writes none. A gigabit link is full duplex in any case; a half duplex
+10/100 link is left to the PHY's own collision handling. The negotiated
+duplex is recorded and reported, and otherwise unused.
+
+*Priority queues.* One queue per direction is set up and given the whole
+descriptor area.
+
+*Multicast ranges wider than one address.* The hardware filter matches
+whole addresses, seventeen of them, while SANA-II hands out ranges. A
+range covering one address fits a filter slot. A wider one does not, and
+no filter setting expresses it, so it puts the receiver in promiscuous
+mode and the sorting is done in software by GENET_AddressFilter(), which
+compares against the ranges properly.
+
+
+Files
+-----
+
+genet.h            register map, private structures, the BSD notice
+genet_dt.c         finding the controller in the device tree
+genet_hw.c         registers, mdio, PHY, reset
+genet_unit.c       rings, interrupt, buffers, the unit task
+genet_handler.c    the SANA-II command set
+genet_init.c       device init, open and close
+
+
+A note on CacheClearE
+---------------------
+
+genet_unit.c does its own cache maintenance around the one point where a
+mapping changes between cacheable and not. That work belongs in
+CacheClearE(), and calling it is what the code ought to do - but on
+aarch64 CacheClearE() is currently a stub that returns without doing
+anything. When exec grows a real implementation, genet_cacheflush()
+should give way to it.

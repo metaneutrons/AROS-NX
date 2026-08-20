@@ -85,6 +85,14 @@ BOOL FDT_GetReg(fdt_node_t node, ULONG index, UQUAD *addr, UQUAD *size);
 BOOL FDT_GetRegNamed(fdt_node_t node, CONST_STRPTR name, UQUAD *addr,
                      UQUAD *size);
 
+/*
+ * The node's parent, or FDT_NONE for the root. Needed to walk up a bus
+ * hierarchy - a "reg" is stated in the parent bus's address space, so
+ * translating it to a CPU address means applying each "ranges" on the
+ * way to the root.
+ */
+fdt_node_t FDT_Parent(fdt_node_t node);
+
 /* #address-cells / #size-cells that apply to this node's own reg -
    i.e. the values its parent declares */
 ULONG FDT_ParentAddressCells(fdt_node_t node);

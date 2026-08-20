@@ -296,6 +296,11 @@ static fdt_node_t fdt_parent(fdt_node_t node)
     return FDT_NONE;
 }
 
+fdt_node_t FDT_Parent(fdt_node_t node)
+{
+    return fdt_parent(node);
+}
+
 ULONG FDT_ParentAddressCells(fdt_node_t node)
 {
     fdt_node_t p = fdt_parent(node);
