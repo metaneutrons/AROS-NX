@@ -671,6 +671,21 @@ void kernel_cstart(unsigned long hartid, void *fdt)
         {
             krnP4PutDec((uint32_t)(hz / 1000000));
             krnP4PutStr(" MHz off XTAL, controllers out of reset\n");
+            krnPSRAMConfigure();
+            krnP4PutStr("[psram]  ac     cs 4/4/3, split bursts, 2048 byte pages, dll on\n");
+#ifdef P4_PSRAM_IDENTIFY
+            {
+                unsigned char vendor = 0, density = 0;
+                int known = krnPSRAMIdentify(&vendor, &density);
+
+                krnP4PutStr("[psram]  chip   vendor ");
+                krnP4PutHex32((uint32_t)vendor);
+                krnP4PutStr("  mr2 ");
+                krnP4PutHex32((uint32_t)density);
+                krnP4PutStr(known ? "  AP part, it answers\n"
+                                  : "  not the expected vendor\n");
+            }
+#endif
         }
         else
             krnP4PutStr("did not take - the controller kept nothing\n");
