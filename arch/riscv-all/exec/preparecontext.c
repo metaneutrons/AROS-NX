@@ -67,9 +67,10 @@ BOOL PrepareContext(struct Task *task, APTR entryPoint, APTR fallBack,
     ctx->fp = 0;
     ctx->ra = (IPTR)fallBack;
     ctx->Flags = 0;
-    /* Return to S-mode with interrupts enabled and a fresh (Initial)
-       FPU state - first FP use marks it Dirty for the lazy switcher */
-    ctx->sr = SSTATUS_SPP | SSTATUS_SPIE | SSTATUS_FS_INITIAL;
+    /* Return to the privilege the kernel runs in, with interrupts
+       enabled and a fresh (Initial) FPU state - the first FP use marks
+       it Dirty for the lazy switcher */
+    ctx->sr = RISCV_CTX_STATUS_INITIAL;
 
     /* Set up the frame to be used by Dispatch() */
     ctx->sp = (IPTR)task->tc_SPReg;
