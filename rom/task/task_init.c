@@ -213,8 +213,16 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
 static LONG taskres_Exit(struct TaskResBase *TaskResBase)
 {
 #ifdef TASKRES_ENABLE
-    SetFunction((struct Library *)SysBase, -176*LIB_VECTSIZE, TaskResBase->trb_NewAddTask);
-    SetFunction((struct Library *)SysBase, -48*LIB_VECTSIZE, TaskResBase->trb_RemTask);
+    /*
+     * Only put back what was actually taken. The expunge set also runs
+     * when the init set fails, and taskres_Init has exits before it
+     * patches anything, so an unconditional restore writes a NULL over a
+     * vector exec installed itself.
+     */
+    if (TaskResBase->trb_NewAddTask)
+        SetFunction((struct Library *)SysBase, -176*LIB_VECTSIZE, TaskResBase->trb_NewAddTask);
+    if (TaskResBase->trb_RemTask)
+        SetFunction((struct Library *)SysBase, -48*LIB_VECTSIZE, TaskResBase->trb_RemTask);
 #endif /* TASKRES_ENABLE */
 
     CloseLibrary(TaskResBase->trb_UtilityBase);
