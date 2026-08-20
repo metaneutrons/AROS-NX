@@ -7,10 +7,11 @@
     nothing in a1; the second argument is where a built-in device tree
     would arrive if this platform grows one.
 
-    What it does at this stage is establish that the image loads, runs and
-    can be heard from, and report what the machine says about itself. The
-    memory list, KernelBase and the handover to exec follow; until they
-    do, this stops rather than pretending to continue.
+    The order it works in: silence the watchdogs the ROM armed, bring up
+    the CLIC and the 100 Hz tick, build the memory list, hand the machine
+    to exec. Then it reports what it found and keeps repeating that
+    report, because the USB console only carries what a host is attached
+    for and a one-shot line is lost to whoever was not listening yet.
 */
 
 #define __KERNEL_NOLIBBASE__
@@ -196,7 +197,23 @@ static void report(unsigned long hartid)
     krnP4PutHex32(P4_PSRAM_END);
     krnP4PutStr("  (not brought up)\n");
 
-    krnP4PutStr("[kernel] no memory list, no KernelBase, no exec yet.\n");
+    /*
+     * The report outlives the state it was first written for, so it says
+     * what is true when it runs rather than what was true when it was
+     * written: exec either took the machine or it did not.
+     */
+    if (SysBase)
+    {
+        struct KernelBase *kb = getKernelBase();
+
+        krnP4PutStr("[kernel] exec   SysBase ");
+        krnP4PutHex32((uint32_t)(IPTR)SysBase);
+        krnP4PutStr("  KernelBase ");
+        krnP4PutHex32((uint32_t)(IPTR)kb);
+        krnP4PutStr("  memory list handed over\n");
+    }
+    else
+        krnP4PutStr("[kernel] exec   not reached - no SysBase, no memory list\n");
 }
 
 /*
