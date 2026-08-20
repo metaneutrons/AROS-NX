@@ -54,7 +54,18 @@ void FormatAlertExtra(char *buffer, APTR stack, UBYTE type, APTR data, struct Ex
 
     }
 
-    if (DebugBase && (((struct DebugBase *)DebugBase)->db_Flags & DBFF_DISASSEMBLE))
+    /*
+     * Disassembling needs a CPU context to disassemble around, and data
+     * only is one when the type says so: the callers pass NULL for an
+     * alert with no context (see useralert.c), and for AT_MUNGWALL or
+     * AT_MEMORY they pass something else entirely. Reaching for ctx->PC
+     * without checking either turned an alert into a fault inside the
+     * alert display - which costs exactly the diagnosis the alert was
+     * raised to deliver, and only once debug.library is present with
+     * disassembly enabled, so it goes unnoticed until it does not.
+     */
+    if (DebugBase && (type == AT_CPU) && data &&
+        (((struct DebugBase *)DebugBase)->db_Flags & DBFF_DISASSEMBLE))
     {
         struct ExceptionContext *ctx = (struct ExceptionContext *)data;
 
