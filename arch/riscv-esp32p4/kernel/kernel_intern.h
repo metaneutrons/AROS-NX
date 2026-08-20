@@ -86,4 +86,22 @@ void krnP4PutStr(const char *s);
 void krnP4PutHex32(uint32_t val);
 void krnP4PutDec(uint32_t val);
 
+/*
+ * Code and data that must be in SRAM whatever the link script does.
+ *
+ * With ldscript-xip.lds the image's .text and .rodata are mapped from
+ * flash through the cache, which is fine until something has to touch the
+ * controller that serves that cache - reconfiguring MSPI, bringing PSRAM
+ * up, changing flash timing. Such code has to be fetched from somewhere
+ * else while the cache is off, and so does every byte it reads and every
+ * function it calls. ESP-IDF spells this IRAM_ATTR; here it is these two.
+ *
+ * The discipline they cannot enforce: a P4_SRAMCODE function may only call
+ * other P4_SRAMCODE functions and touch P4_SRAMDATA while the cache is
+ * disabled. noinline keeps the compiler from copying the body into a
+ * caller that lives in flash, which would defeat the point silently.
+ */
+#define P4_SRAMCODE __attribute__((section(".sramtext"), noinline, used))
+#define P4_SRAMDATA __attribute__((section(".sramdata"), used))
+
 #endif /* KERNEL_INTERN_H_ */
