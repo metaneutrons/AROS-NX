@@ -42,7 +42,7 @@ recorded in the milestone notes.
 | exec.library | runs | SysBase, both InitCode passes, AvailMem and AllocMem answer |
 | serial debug console | not started | UART0 |
 | PSRAM bring-up | not started | prerequisite for anything beyond exec |
-| timer.device | not started | |
+| timer.device | done | a 500 ms timerequest on the VBLANK unit returns after exactly 50 ticks |
 | SD/MMC block device | not started | |
 | MIPI-DSI framebuffer HIDD | not started | |
 | touch HIDD | not started | |
@@ -268,9 +268,29 @@ documented ESP-IDF bootloader dependency with its licence resolved.
 Done when: the image flashes with esptool and reaches M2's banner from a
 cold boot.
 
-**M4 - multitasking.** CLIC interrupt handling, SYSTIMER tick, context
-switch, lazy FPU state, the idle task, `timer.device`.
-Done when: two tasks alternate and a `Delay()` returns after the right time.
+**M4 - multitasking.** Done. Two tasks at equal priority share the CPU
+within a few hundred counts of each other over eleven heartbeats, and a
+500 ms timerequest on timer.device's VBLANK unit returns after exactly 50
+ticks, twenty-four times running.
+
+`Delay()` itself is dos.library's, which this kickstart has not got; the
+timerequest is what Delay() does internally, and it is measured in ticks
+because the tick is the thing being trusted. Both tests are behind
+`-DP4_TASK_TEST` and off by default.
+
+Two things had to be fixed to get here, neither of them in this platform.
+A prepared context named SPP where mret reads MPP, so every task returned
+to User mode and faulted on its first instruction fetch. And
+task.resource's expunge path restored exec's AddTask and RemTask vectors
+it had never taken, nulling them whenever its init failed - which in a
+kickstart without utility.library is every boot.
+
+The measurement that first came back said 56 ticks rather than 50, every
+time. That was not the timer: the waiting task sat at the same priority
+as a CPU-bound one, so it became ready on time and ran a quantum later.
+Raising it above the spinner gives exactly 50, which is worth recording
+because a systematic six-tick offset is the kind of thing that gets
+explained away as timer inaccuracy.
 
 **M5 - memory.** PSRAM MSPI bring-up, PSRAM added to the exec memory list.
 Done when: `AvailMem(MEMF_ANY)` reports the external RAM and a multi-MB

@@ -18,6 +18,17 @@ PRIV_KERNEL_INCLUDES = \
 	-I$(SRCDIR)/rom/exec
 
 USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
+
+#
+# Build-time switches, all off by default, set through P4_DEBUG_CPPFLAGS:
+#
+#   -DP4_KEEP_WATCHDOG  leave the ROM's watchdogs armed, so a hang reboots
+#                       and repeats its output instead of going quiet
+#   -DP4_TASK_TEST      add two tasks that prove the scheduler: one that
+#                       spins and counts, one that waits on timer.device,
+#                       both reported in the heartbeat
+#   -DP4_CONSOLE_UART   use UART0 instead of USB-Serial/JTAG
+#
 USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__ $(P4_DEBUG_CPPFLAGS)
 
 CFILES := \
@@ -53,10 +64,12 @@ AFILES := \
 #
 BSP_RES  := kernel task
 BSP_LIBS := exec debug
+BSP_DEVS := timer
 
 BSP_KOBJS := \
     $(addprefix $(KOBJSDIR)/, $(addsuffix _resource.o, $(BSP_RES))) \
-    $(addprefix $(KOBJSDIR)/, $(addsuffix _library.o, $(BSP_LIBS)))
+    $(addprefix $(KOBJSDIR)/, $(addsuffix _library.o, $(BSP_LIBS))) \
+    $(addprefix $(KOBJSDIR)/, $(addsuffix _device.o, $(BSP_DEVS)))
 
 # -lexec is what carries SysBase into the image, and -lamiga what
 # satisfies libautoinit's error path.
