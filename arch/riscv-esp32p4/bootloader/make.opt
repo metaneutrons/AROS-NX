@@ -1,13 +1,20 @@
 #
 #   The ESP-IDF version this port's bootloader is built from. Pinned, because
-#   the patch below is against these sources and the loader's assumptions
-#   about an application's shape change between releases.
+#   the patch is against these sources and the loader's assumptions about an
+#   application's shape change between releases.
+#
+#   The release asset rather than the git tag archive, and it is 1.7 GB. The
+#   tag archive is a tenth of that but carries no git submodules, and IDF's
+#   cmake walks every component whether the build needs it or not: mbedtls
+#   alone registers 36 include directories that then do not exist. The
+#   release zip is what Espressif publishes for people without git, and it
+#   is complete.
 #
 IDFVERSION       := 6.0.1
-IDFREPOSITORIES  := https://github.com/espressif/esp-idf/archive/refs/tags
-IDFARCHBASE      := v$(IDFVERSION)
-IDFBASEDIR       := esp-idf-$(IDFVERSION)
-IDFARCHSUFFIX    := "tar.gz"
+IDFREPOSITORIES  := https://github.com/espressif/esp-idf/releases/download/v$(IDFVERSION)
+IDFARCHBASE      := esp-idf-v$(IDFVERSION)
+IDFBASEDIR       := esp-idf-v$(IDFVERSION)
+IDFARCHSUFFIX    := "zip"
 IDFPATCHFILE     := esp-idf-$(IDFVERSION)-standalone-app.diff
 IDFPATCHSPEC     := $(IDFPATCHFILE):$(IDFBASEDIR):-f,-p1
 IDFARCHSRCDIR    := $(PORTSDIR)/esp-idf/$(IDFBASEDIR)

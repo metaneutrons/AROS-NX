@@ -45,8 +45,9 @@ $(IDFBOOTLOADER) : $(SRCDIR)/$(CURDIR)/project/sdkconfig.defaults \
 	@cd $(IDFPROJECTDIR) && \
 	    IDF_PATH=$(IDFARCHSRCDIR) \
 	    cmake -G Ninja -B build -DIDF_TARGET=esp32p4 \
-	          -DSDKCONFIG_DEFAULTS=sdkconfig.defaults >/dev/null && \
-	    ninja -C build bootloader >/dev/null
+	          -DSDKCONFIG_DEFAULTS=sdkconfig.defaults > cmake.log 2>&1 && \
+	    ninja -C build bootloader > build.log 2>&1 || \
+	    { $(ECHO) "failed - see $(IDFPROJECTDIR)/{cmake,build}.log" ; exit 1 ; }
 	@$(ECHO) "Built      $@"
 
 %common
