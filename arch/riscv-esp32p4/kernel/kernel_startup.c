@@ -37,6 +37,7 @@
 #include <tlsf.h>
 
 #include "hardware.h"
+#include "psram.h"
 #include "kernel_intern.h"
 
 /* Filled in by the link script; array form so the name is the address */
@@ -662,6 +663,18 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 
     krnRAMInit();
     krnRAMReport();
+    {
+        unsigned long hz = krnPSRAMClockUp(20000000UL);
+
+        krnP4PutStr("[psram]  mspi clock ");
+        if (hz)
+        {
+            krnP4PutDec((uint32_t)(hz / 1000000));
+            krnP4PutStr(" MHz off XTAL, controllers out of reset\n");
+        }
+        else
+            krnP4PutStr("did not take - the controller kept nothing\n");
+    }
 #ifdef P4_PSRAM_PROBE
     psram_probe();
 #endif
