@@ -1,0 +1,126 @@
+Four changes to an ESP-IDF second stage bootloader so it will load a
+standalone image - one whose segments all go to internal SRAM, with nothing
+mapped from flash. An IDF application always has a flash-mapped .text and
+.rodata, so the loader assumes those exist in several places.
+
+Against ESP-IDF v6.0.1. Apply with
+
+    cd $IDF_PATH && git apply <this file>
+
+and build the bootloader for pre-v3 silicon (see README, "Booting from an
+app partition"). Nothing here is AROS-specific in itself; the same four
+would be wanted by any bare-metal image loaded this way.
+
+  1. bootloader_common_check_efuse_blk_validity() reads the efuse block
+     revision bounds out of the application descriptor and rejects the
+     image if the part is outside them. Our descriptor says "no
+     constraint", but the check compares against fields this bootloader
+     reads before it looks at the descriptor's magic word, so an image
+     without one is rejected on garbage. Reduced to a pass.
+
+  2. unpack_load_app() asserted rom_index == 2, i.e. exactly two
+     flash-mapped segments. A standalone image has none.
+
+  3. The MMU entry the loader leaves pointing at the application's rodata
+     so the app can find its own boot partition is mapped unconditionally.
+     With no rodata segment its physical address is zero and the MMU HAL
+     asserts. Guarded on the segment existing.
+
+  4. The DROM and IROM mappings are guarded by s_flash_seg_needs_map(),
+     which asks whether a segment lives on PSRAM rather than whether it
+     exists at all. With no segment the address is zero, the guard says
+     yes, and mmu_hal_map_region() asserts on a vaddr outside the
+     external memory window. Guarded on the size as well.
+
+Found in that order, each one only visible once the previous was out of
+the way, which is worth knowing before assuming the list is complete for
+a different IDF version.
+
+diff --git a/components/bootloader_support/src/bootloader_common_loader.c b/components/bootloader_support/src/bootloader_common_loader.c
+index 95137eae..4f95cac6 100644
+--- a/components/bootloader_support/src/bootloader_common_loader.c
++++ b/components/bootloader_support/src/bootloader_common_loader.c
+@@ -93,25 +93,7 @@ int bootloader_common_get_active_otadata(esp_ota_select_entry_t *two_otadata)
+ #if !CONFIG_IDF_TARGET_ESP32
+ esp_err_t bootloader_common_check_efuse_blk_validity(uint32_t min_rev_full, uint32_t max_rev_full)
+ {
+-    esp_err_t err = ESP_OK;
+-#ifndef CONFIG_IDF_ENV_FPGA
+-    // Check whether the efuse block version satisfy the requirements of current image.
+-    uint32_t revision = efuse_hal_blk_version();
+-    uint32_t major_rev = revision / 100;
+-    uint32_t minor_rev = revision % 100;
+-    if (IS_FIELD_SET(min_rev_full) && !ESP_EFUSE_BLK_REV_ABOVE(revision, min_rev_full)) {
+-        ESP_LOGE(TAG, "Image requires efuse blk rev >= v%"PRIu32".%"PRIu32", but chip is v%"PRIu32".%"PRIu32,
+-                    min_rev_full / 100, min_rev_full % 100, major_rev, minor_rev);
+-        err = ESP_FAIL;
+-    }
+-    // If burnt `disable_blk_version_major` bit, skip the max version check
+-    if ((IS_FIELD_SET(max_rev_full) && (revision > max_rev_full) && !efuse_hal_get_disable_blk_version_major())) {
+-        ESP_LOGE(TAG, "Image requires efuse blk rev <= v%"PRIu32".%"PRIu32", but chip is v%"PRIu32".%"PRIu32,
+-                    max_rev_full / 100, max_rev_full % 100, major_rev, minor_rev);
+-        err = ESP_FAIL;
+-    }
+-#endif
+-    return err;
++    return ESP_OK;
+ }
+ #endif  // !CONFIG_IDF_TARGET_ESP32
+ 
+diff --git a/components/bootloader_support/src/bootloader_utility.c b/components/bootloader_support/src/bootloader_utility.c
+index b186cffe..c199e2ee 100644
+--- a/components/bootloader_support/src/bootloader_utility.c
++++ b/components/bootloader_support/src/bootloader_utility.c
+@@ -832,14 +832,15 @@ static void unpack_load_app(const esp_image_metadata_t *data)
+             /**
+              * D/I are shared, but there should not be a third segment on flash/psram
+              */
+-            assert(rom_index < 2);
+-            rom_addr[rom_index] = data->segment_data[i];
+-            rom_load_addr[rom_index] = header->load_addr;
+-            rom_size[rom_index] = header->data_len;
+-            rom_index++;
++            if (rom_index < 2) {
++                rom_addr[rom_index] = data->segment_data[i];
++                rom_load_addr[rom_index] = header->load_addr;
++                rom_size[rom_index] = header->data_len;
++                rom_index++;
++            }
+         }
+     }
+-    assert(rom_index == 2);
++    // Allow standalone Bare-Metal / AROS app boots with rom_index <= 2
+ 
+     ESP_EARLY_LOGD(TAG, "calling set_cache_and_start_app");
+     set_cache_and_start_app(rom_addr[0],
+@@ -1077,13 +1078,18 @@ static void set_cache_and_start_app(
+     ESP_EARLY_LOGV(TAG, "after mapping rodata, starting from paddr=0x%08" PRIx32 " and vaddr=0x%08" PRIx32 ", 0x%" PRIx32 " bytes are mapped", drom_addr_aligned, drom_load_addr_aligned, drom_page_count * SPI_FLASH_MMU_PAGE_SIZE);
+ #else
+     uint32_t actual_mapped_len = 0;
+-    if (s_flash_seg_needs_map(drom_load_addr_aligned)) {
++    if (drom_size != 0 && s_flash_seg_needs_map(drom_load_addr_aligned)) {
+         mmu_hal_map_region(0, MMU_TARGET_FLASH0, drom_load_addr_aligned, drom_addr_aligned, drom_size, &actual_mapped_len);
+         ESP_EARLY_LOGV(TAG, "after mapping rodata, starting from paddr=0x%08" PRIx32 " and vaddr=0x%08" PRIx32 ", 0x%" PRIx32 " bytes are mapped", drom_addr_aligned, drom_load_addr_aligned, actual_mapped_len);
+     }
+     //we use the MMU_LL_END_DROM_ENTRY_ID mmu entry as a map page for app to find the boot partition
+-    mmu_hal_map_region(0, MMU_TARGET_FLASH0, MMU_DROM_END_ENTRY_VADDR_FROM_VAL(mmu_page_size), drom_addr_aligned, mmu_page_size, &actual_mapped_len);
+-    ESP_EARLY_LOGV(TAG, "mapped one page of the rodata, from paddr=0x%08" PRIx32 " and vaddr=0x%08" PRIx32 ", 0x%" PRIx32 " bytes are mapped", drom_addr_aligned, MMU_LL_END_DROM_ENTRY_VADDR, actual_mapped_len);
++    // A standalone bare-metal / AROS image can have no flash-mapped segment at
++    // all, and then there is nothing for this entry to point at - mapping
++    // paddr 0 aborts inside the MMU HAL.
++    if (drom_size != 0) {
++        mmu_hal_map_region(0, MMU_TARGET_FLASH0, MMU_DROM_END_ENTRY_VADDR_FROM_VAL(mmu_page_size), drom_addr_aligned, mmu_page_size, &actual_mapped_len);
++        ESP_EARLY_LOGV(TAG, "mapped one page of the rodata, from paddr=0x%08" PRIx32 " and vaddr=0x%08" PRIx32 ", 0x%" PRIx32 " bytes are mapped", drom_addr_aligned, MMU_LL_END_DROM_ENTRY_VADDR, actual_mapped_len);
++    }
+ #endif
+ 
+     //-----------------------MAP IROM--------------------------
+@@ -1100,7 +1106,7 @@ static void set_cache_and_start_app(
+     ESP_LOGV(TAG, "rc=%d", rc);
+     ESP_EARLY_LOGV(TAG, "after mapping text, starting from paddr=0x%08" PRIx32 " and vaddr=0x%08" PRIx32 ", 0x%" PRIx32 " bytes are mapped", irom_addr_aligned, irom_load_addr_aligned, irom_page_count * SPI_FLASH_MMU_PAGE_SIZE);
+ #else
+-    if (s_flash_seg_needs_map(irom_load_addr_aligned)) {
++    if (irom_size != 0 && s_flash_seg_needs_map(irom_load_addr_aligned)) {
+         mmu_hal_map_region(0, MMU_TARGET_FLASH0, irom_load_addr_aligned, irom_addr_aligned, irom_size, &actual_mapped_len);
+         ESP_EARLY_LOGV(TAG, "after mapping text, starting from paddr=0x%08" PRIx32 " and vaddr=0x%08" PRIx32 ", 0x%" PRIx32 " bytes are mapped", irom_addr_aligned, irom_load_addr_aligned, actual_mapped_len);
+     }

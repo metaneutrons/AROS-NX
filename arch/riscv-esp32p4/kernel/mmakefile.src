@@ -32,6 +32,7 @@ USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__ $(P4_DEBUG_CPPFLAGS)
 
 CFILES := \
+        appdesc \
         kernel_startup \
         platform_init \
         kernel_clic \
