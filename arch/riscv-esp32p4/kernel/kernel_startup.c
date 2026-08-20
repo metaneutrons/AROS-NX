@@ -403,10 +403,6 @@ static void krnStartExec(void)
      */
     SysBase->VBlankFrequency = P4_TICK_HZ;
 
-    krnP4PutStr("[exec]   LVO176 after prepare ");
-    krnP4PutHex32((uint32_t)(IPTR)*(APTR *)((IPTR)SysBase - 176 * 4));
-    krnP4PutStr("\n");
-
     /* Exec owns a memory list now, so the data-only region can join it */
     if (__esp32p4_mh_high)
     {
@@ -468,19 +464,8 @@ static void krnStartExec(void)
         krnP4PutStr("\n");
     }
 
-    krnP4PutStr("[exec]   LVO176 after singletask ");
-    krnP4PutHex32((uint32_t)(IPTR)*(APTR *)((IPTR)SysBase - 176 * 4));
-    krnP4PutStr("\n[exec]   InitCode(RTF_COLDSTART)\n");
+    krnP4PutStr("[exec]   InitCode(RTF_COLDSTART)\n");
     InitCode(RTF_COLDSTART, 0);
-    krnP4PutStr("[exec]   LVO176 after coldstart ");
-    krnP4PutHex32((uint32_t)(IPTR)*(APTR *)((IPTR)SysBase - 176 * 4));
-    krnP4PutStr("\n");
-
-    /*
-     * With only kernel.resource, exec.library and task.resource in the
-     * kickstart there is nothing to take the machine over, so InitCode
-     * returns. Show that exec answers through its LVO table.
-     */
     {
         struct Task *me = FindTask(NULL);
         APTR mem;
