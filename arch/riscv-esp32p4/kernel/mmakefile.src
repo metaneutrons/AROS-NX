@@ -28,6 +28,12 @@ USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 #                       spins and counts, one that waits on timer.device,
 #                       both reported in the heartbeat
 #   -DP4_CONSOLE_UART   use UART0 instead of USB-Serial/JTAG
+#   -DP4_PSRAM_IDENTIFY ask the PSRAM chip for its vendor and density.
+#                       Hangs at present, see the note in psram_init.c -
+#                       the mode register read needs the MPLL, which the
+#                       XTAL shortcut does not provide
+#   -DP4_PSRAM_PROBE    read and write the PSRAM window and look for
+#                       aliasing, to measure its size once it answers
 #
 USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__ $(P4_DEBUG_CPPFLAGS)
 
