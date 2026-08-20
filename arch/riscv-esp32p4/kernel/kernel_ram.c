@@ -69,8 +69,23 @@ void krnRAMInit(void)
     if (high_size > sizeof(struct MemHeader) * 2)
     {
         __esp32p4_mh_high = (struct MemHeader *)high_base;
+        /*
+         * MEMF_KICK as well, despite the region not being able to hold
+         * code. Withholding it was an attempt to say "no code here",
+         * which is not what the flag means - it is about memory usable
+         * for KickTags - and the only thing it achieved was starving
+         * exec of three quarters of its RAM: AvailMem(MEMF_KICK) came
+         * back with 117120 of 510288 bytes and the coldstart residents
+         * ran out.
+         *
+         * So the region joins on equal terms and the restriction stays a
+         * documented property of the platform rather than a flag AROS
+         * does not have. It has to be honoured by whatever loads code -
+         * which is nothing yet, and is the module loader's problem when
+         * it arrives.
+         */
         krnCreateMemHeader("Data Memory", -10, (APTR)high_base, high_size,
-                           MEMF_FAST | MEMF_PUBLIC | MEMF_LOCAL);
+                           MEMF_FAST | MEMF_PUBLIC | MEMF_KICK | MEMF_LOCAL);
     }
 }
 
