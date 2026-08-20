@@ -36,6 +36,7 @@ recorded in the milestone notes.
 | CLIC interrupts | done | a raised line reaches the trap handler |
 | SYSTIMER tick | done | 100 Hz sustained, 1201 ticks over 12 heartbeats, 16000000 counts per second |
 | context switch | done | tasks are entered in M-mode and their syscalls dispatch |
+| preemptive multitasking | done | two equal-priority tasks share the CPU within a few hundred counts of each other over 11 heartbeats |
 | memory list | done | 520096 bytes in two regions, every byte of SRAM accounted for |
 | kernel.resource | done | initialises, KernelBase built, context size 283 |
 | exec.library | runs | SysBase, both InitCode passes, AvailMem and AllocMem answer |
