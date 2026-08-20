@@ -28,6 +28,7 @@
 #include <proto/exec.h>
 
 #include <kernel_base.h>
+#include <kernel_globals.h>
 #include <kernel_romtags.h>
 #include <tlsf.h>
 
@@ -268,6 +269,16 @@ static void krnStartExec(void)
     ranges[1] = (UWORD *)__kernel_end;
     ranges[2] = (UWORD *)-1;
 
+    {
+        struct KernelBase *kb = getKernelBase();
+
+        krnP4PutStr("[exec]   KernelBase @ ");
+        krnP4PutHex32((uint32_t)(IPTR)kb);
+        krnP4PutStr("  ContextSize ");
+        krnP4PutDec(kb ? (uint32_t)kb->kb_ContextSize : 0);
+        krnP4PutStr("\n");
+    }
+
     krnP4PutStr("[exec]   preparing ExecBase\n");
 
     if (!krnPrepareExecBase(ranges, mh, krnPrepareBootTags()))
@@ -325,6 +336,22 @@ static void krnStartExec(void)
 
     krnP4PutStr("[exec]   InitCode(RTF_SINGLETASK)\n");
     InitCode(RTF_SINGLETASK, 0);
+    /*
+     * Again, now that the resident scan has run. Before the handover this
+     * is necessarily zero and says nothing; what matters is whether
+     * kernel.resource came up before exec's own init needs a context
+     * size from it.
+     */
+    {
+        struct KernelBase *kb = getKernelBase();
+
+        krnP4PutStr("[exec]   KernelBase @ ");
+        krnP4PutHex32((uint32_t)(IPTR)kb);
+        krnP4PutStr("  ContextSize ");
+        krnP4PutDec(kb ? (uint32_t)kb->kb_ContextSize : 0);
+        krnP4PutStr("\n");
+    }
+
     krnP4PutStr("[exec]   InitCode(RTF_COLDSTART)\n");
     InitCode(RTF_COLDSTART, 0);
 
