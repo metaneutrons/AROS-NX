@@ -28,6 +28,8 @@
 #include <aros/kernel.h>
 #include <utility/tagitem.h>
 #include <proto/exec.h>
+#include <exec/io.h>
+#include <devices/timer.h>
 
 #include <kernel_base.h>
 #include <kernel_globals.h>
@@ -288,6 +290,7 @@ static void krnDumpResidents(UWORD *lo, UWORD *hi)
     }
 }
 
+#ifdef P4_TASK_TEST
 /*
  * Two tasks at the same priority as exec's bootstrap task, each doing
  * nothing but counting. If both counters climb, the tick reached exec's
@@ -306,10 +309,56 @@ static void test_task_a(void)
         __esp32p4_taskbeat[0]++;
 }
 
+/*
+ * M4's other half wants a wait that ends when it should. Delay() lives in
+ * dos.library, which this kickstart has not got, but what Delay() does
+ * internally is available: a timerequest on timer.device's VBLANK unit.
+ * Measured in ticks rather than in seconds, because the tick is the thing
+ * under test, and 500000 microseconds at 100 Hz should be 50 of them.
+ */
+volatile unsigned long __esp32p4_delay_ticks;
+volatile unsigned long __esp32p4_delay_rounds;
+
 static void test_task_b(void)
 {
+    struct MsgPort *mp = CreateMsgPort();
+    struct timerequest *tr = NULL;
+
+    if (mp)
+        tr = (struct timerequest *)AllocMem(sizeof(struct timerequest),
+                                            MEMF_CLEAR | MEMF_PUBLIC);
+    if (tr)
+    {
+        tr->tr_node.io_Message.mn_ReplyPort = mp;
+        if (OpenDevice("timer.device", UNIT_VBLANK,
+                       (struct IORequest *)tr, 0) != 0)
+        {
+            FreeMem(tr, sizeof(struct timerequest));
+            tr = NULL;
+        }
+    }
+
+    /* No timer.device to talk to: keep counting so the task still shows */
+    if (!tr)
+    {
+        for (;;)
+            __esp32p4_taskbeat[1]++;
+    }
+
+    tr->tr_node.io_Command = TR_ADDREQUEST;
+
     for (;;)
+    {
+        unsigned long before = __esp32p4_ticks;
+
+        tr->tr_time.tv_secs  = 0;
+        tr->tr_time.tv_micro = 500000;
+        DoIO((struct IORequest *)tr);
+
+        __esp32p4_delay_ticks = __esp32p4_ticks - before;
+        __esp32p4_delay_rounds++;
         __esp32p4_taskbeat[1]++;
+    }
 }
 
 static void test_task_exit(void)
@@ -320,7 +369,8 @@ static void test_task_exit(void)
         ;
 }
 
-static struct Task *spawn_counter_task(const char *name, void (*entry)(void))
+static struct Task *spawn_counter_task(const char *name, BYTE pri,
+                                      void (*entry)(void))
 {
     const ULONG stacksize = 4096;
     struct Task *t = AllocMem(sizeof(struct Task), MEMF_CLEAR | MEMF_PUBLIC);
@@ -330,7 +380,7 @@ static struct Task *spawn_counter_task(const char *name, void (*entry)(void))
         return NULL;
 
     t->tc_Node.ln_Type = NT_TASK;
-    t->tc_Node.ln_Pri  = 0;
+    t->tc_Node.ln_Pri  = pri;
     t->tc_Node.ln_Name = (char *)name;
     t->tc_SPLower      = stack;
     t->tc_SPUpper      = (APTR)((IPTR)stack + stacksize);
@@ -338,6 +388,8 @@ static struct Task *spawn_counter_task(const char *name, void (*entry)(void))
     /* NewAddTask fills in tc_SPReg, the MemEntry list and the ETask */
     return AddTask(t, (APTR)entry, (APTR)test_task_exit) ? t : NULL;
 }
+
+#endif /* P4_TASK_TEST */
 
 /*
  * Hand the machine to exec. Everything above this point exists to make
@@ -485,9 +537,18 @@ static void krnStartExec(void)
             FreeMem(mem, 64 << 10);
     }
 
+#ifdef P4_TASK_TEST
     {
-        struct Task *ta = spawn_counter_task("esp32p4 counter A", test_task_a);
-        struct Task *tb = spawn_counter_task("esp32p4 counter B", test_task_b);
+        /*
+         * A spins at the bootstrap task's own priority; the waiter sits
+         * above it, so that what the wait measures is the timer and not
+         * how long a CPU-bound task at equal priority holds on to its
+         * quantum afterwards.
+         */
+        struct Task *ta = spawn_counter_task("esp32p4 counter A", 0,
+                                             test_task_a);
+        struct Task *tb = spawn_counter_task("esp32p4 waiter B", 5,
+                                             test_task_b);
 
         krnP4PutStr("[exec]   AddTask A ");
         krnP4PutHex32((uint32_t)(IPTR)ta);
@@ -495,6 +556,7 @@ static void krnStartExec(void)
         krnP4PutHex32((uint32_t)(IPTR)tb);
         krnP4PutStr("\n");
     }
+#endif /* P4_TASK_TEST */
 }
 
 void kernel_cstart(unsigned long hartid, void *fdt)
@@ -553,10 +615,16 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutStr(" on line ");
             krnP4PutDec((uint32_t)__esp32p4_irq_last);
             krnP4PutStr(timer_serving ? "  (tick)" : "  (spun)");
+#ifdef P4_TASK_TEST
             krnP4PutStr("  tasks ");
             krnP4PutDec((uint32_t)__esp32p4_taskbeat[0]);
             krnP4PutStr("/");
             krnP4PutDec((uint32_t)__esp32p4_taskbeat[1]);
+            krnP4PutStr("  wait ");
+            krnP4PutDec((uint32_t)__esp32p4_delay_ticks);
+            krnP4PutStr(" ticks x");
+            krnP4PutDec((uint32_t)__esp32p4_delay_rounds);
+#endif
             krnP4PutStr("\n");
         }
     }
