@@ -1,0 +1,13 @@
+#
+#   The ESP-IDF version this port's bootloader is built from. Pinned, because
+#   the patch below is against these sources and the loader's assumptions
+#   about an application's shape change between releases.
+#
+IDFVERSION       := 6.0.1
+IDFREPOSITORIES  := https://github.com/espressif/esp-idf/archive/refs/tags
+IDFARCHBASE      := v$(IDFVERSION)
+IDFBASEDIR       := esp-idf-$(IDFVERSION)
+IDFARCHSUFFIX    := "tar.gz"
+IDFPATCHFILE     := esp-idf-$(IDFVERSION)-standalone-app.diff
+IDFPATCHSPEC     := $(IDFPATCHFILE):$(IDFBASEDIR):-f,-p1
+IDFARCHSRCDIR    := $(PORTSDIR)/esp-idf/$(IDFBASEDIR)
