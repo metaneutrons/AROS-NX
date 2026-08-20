@@ -11,6 +11,7 @@
 
 #include <exec/types.h>
 #include <exec/execbase.h>
+#include <hardware/intbits.h>
 #include <proto/exec.h>
 #include <aros/riscv/cpucontext.h>
 #include <asm/cpu.h>
@@ -283,6 +284,17 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
         {
             krnTimerAck();
             __esp32p4_ticks++;
+
+            /*
+             * The tick alone preempts nothing. What counts the quantum
+             * down and asks for a switch is exec's VBlankServer, which
+             * exec installs on INTB_VERTB itself, so the platform's part
+             * is to raise that vector; timer.device later hangs off the
+             * same chain. Skipped while interrupts are disabled, as the
+             * server would then run at the wrong moment.
+             */
+            if (SysBase && (IDNESTCOUNT_GET < 0))
+                core_Cause(INTB_VERTB, 1L << INTB_VERTB);
         }
 
         krnCLICClear(line);

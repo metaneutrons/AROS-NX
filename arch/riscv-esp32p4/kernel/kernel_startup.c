@@ -289,6 +289,57 @@ static void krnDumpResidents(UWORD *lo, UWORD *hi)
 }
 
 /*
+ * Two tasks at the same priority as exec's bootstrap task, each doing
+ * nothing but counting. If both counters climb, the tick reached exec's
+ * scheduler and the context switch works; if one stays put, the switch
+ * never happened, and the counters say which task kept the machine.
+ * Counting rather than printing, because two tasks writing to the
+ * console interleave mid-string and the output would be the least
+ * trustworthy part of the test.
+ */
+volatile unsigned long __esp32p4_taskbeat[2];
+
+
+static void test_task_a(void)
+{
+    for (;;)
+        __esp32p4_taskbeat[0]++;
+}
+
+static void test_task_b(void)
+{
+    for (;;)
+        __esp32p4_taskbeat[1]++;
+}
+
+static void test_task_exit(void)
+{
+    /* SysBase->TaskExitCode may be unset in a kickstart this small, and
+       NewAddTask uses it when finalPC is NULL, so name one explicitly. */
+    for (;;)
+        ;
+}
+
+static struct Task *spawn_counter_task(const char *name, void (*entry)(void))
+{
+    const ULONG stacksize = 4096;
+    struct Task *t = AllocMem(sizeof(struct Task), MEMF_CLEAR | MEMF_PUBLIC);
+    APTR stack = AllocMem(stacksize, MEMF_CLEAR);
+
+    if (!t || !stack)
+        return NULL;
+
+    t->tc_Node.ln_Type = NT_TASK;
+    t->tc_Node.ln_Pri  = 0;
+    t->tc_Node.ln_Name = (char *)name;
+    t->tc_SPLower      = stack;
+    t->tc_SPUpper      = (APTR)((IPTR)stack + stacksize);
+
+    /* NewAddTask fills in tc_SPReg, the MemEntry list and the ETask */
+    return AddTask(t, (APTR)entry, (APTR)test_task_exit) ? t : NULL;
+}
+
+/*
  * Hand the machine to exec. Everything above this point exists to make
  * this call possible: a heap it can allocate from, the extent of the
  * image it must not hand out, and a tick to schedule on.
@@ -345,6 +396,17 @@ static void krnStartExec(void)
     krnP4PutHex32((uint32_t)(IPTR)SysBase);
     krnP4PutStr("\n");
 
+    /*
+     * The rate the VBlank chain is raised at. timer.device reads it for
+     * its EClock and derives VBlankTime from it, so a wrong value here
+     * becomes wrong time everywhere later.
+     */
+    SysBase->VBlankFrequency = P4_TICK_HZ;
+
+    krnP4PutStr("[exec]   LVO176 after prepare ");
+    krnP4PutHex32((uint32_t)(IPTR)*(APTR *)((IPTR)SysBase - 176 * 4));
+    krnP4PutStr("\n");
+
     /* Exec owns a memory list now, so the data-only region can join it */
     if (__esp32p4_mh_high)
     {
@@ -399,34 +461,20 @@ static void krnStartExec(void)
     {
         struct KernelBase *kb = getKernelBase();
 
-        ULONG want = sizeof(struct ExceptionContext) + 15
-                   + sizeof(struct FpuContext);
-
         krnP4PutStr("[exec]   KernelBase @ ");
         krnP4PutHex32((uint32_t)(IPTR)kb);
         krnP4PutStr("  ContextSize ");
         krnP4PutDec(kb ? (uint32_t)kb->kb_ContextSize : 0);
-        krnP4PutStr("  want ");
-        krnP4PutDec((uint32_t)want);
-
-        /*
-         * An experiment, not a fix. If the field is implausible then
-         * cpu_Init has not run yet, KrnCreateContext will allocate
-         * nothing and exec's init will fail claiming no memory. Filling
-         * it in here says whether that really is the whole story - and
-         * if it is, the thing to repair is the order the two modules
-         * initialise in, not this.
-         */
-        if (kb && (kb->kb_ContextSize < want || kb->kb_ContextSize > 4096))
-        {
-            kb->kb_ContextSize = want;
-            krnP4PutStr("  -> forced");
-        }
         krnP4PutStr("\n");
     }
 
-    krnP4PutStr("[exec]   InitCode(RTF_COLDSTART)\n");
+    krnP4PutStr("[exec]   LVO176 after singletask ");
+    krnP4PutHex32((uint32_t)(IPTR)*(APTR *)((IPTR)SysBase - 176 * 4));
+    krnP4PutStr("\n[exec]   InitCode(RTF_COLDSTART)\n");
     InitCode(RTF_COLDSTART, 0);
+    krnP4PutStr("[exec]   LVO176 after coldstart ");
+    krnP4PutHex32((uint32_t)(IPTR)*(APTR *)((IPTR)SysBase - 176 * 4));
+    krnP4PutStr("\n");
 
     /*
      * With only kernel.resource, exec.library and task.resource in the
@@ -450,6 +498,17 @@ static void krnStartExec(void)
         krnP4PutStr("\n");
         if (mem)
             FreeMem(mem, 64 << 10);
+    }
+
+    {
+        struct Task *ta = spawn_counter_task("esp32p4 counter A", test_task_a);
+        struct Task *tb = spawn_counter_task("esp32p4 counter B", test_task_b);
+
+        krnP4PutStr("[exec]   AddTask A ");
+        krnP4PutHex32((uint32_t)(IPTR)ta);
+        krnP4PutStr("  B ");
+        krnP4PutHex32((uint32_t)(IPTR)tb);
+        krnP4PutStr("\n");
     }
 }
 
@@ -508,7 +567,12 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutDec((uint32_t)__esp32p4_irq_count);
             krnP4PutStr(" on line ");
             krnP4PutDec((uint32_t)__esp32p4_irq_last);
-            krnP4PutStr(timer_serving ? "  (tick)\n" : "  (spun)\n");
+            krnP4PutStr(timer_serving ? "  (tick)" : "  (spun)");
+            krnP4PutStr("  tasks ");
+            krnP4PutDec((uint32_t)__esp32p4_taskbeat[0]);
+            krnP4PutStr("/");
+            krnP4PutDec((uint32_t)__esp32p4_taskbeat[1]);
+            krnP4PutStr("\n");
         }
     }
 }
