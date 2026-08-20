@@ -422,6 +422,44 @@ explained away as timer inaccuracy.
 Done when: `AvailMem(MEMF_ANY)` reports the external RAM and a multi-MB
 allocation survives a write-read cycle.
 
+The part is known: AP hex PSRAM, 256 Mbit, X16 mode, 32 MB at 200 MHz,
+which the board's own firmware prints on its way up. The window at
+0x48000000 faults on the first read, so nothing is configured for us.
+
+One route was tried and abandoned, and the reasons are worth keeping so
+nobody spends the same afternoon on it. Bringing the chip up from the
+ESP-IDF bootloader, where ESP-IDF's own code and headers are, looks
+obvious and is not: `esp_psram` is written for the application
+environment, and moving it into a bootloader means rebuilding that
+environment there, one obstacle at a time.
+
+  1. `CONFIG_SPIRAM=y` makes `esp_hw_support` include a PSRAM header whose
+     include path is only added outside a non-OS build. That one is a real
+     inconsistency in ESP-IDF and a one-line fix.
+  2. `esp_psram/system_layer/esp_psram.c` needs FreeRTOS, and pulls in
+     `esp_mm`, which needs it too.
+  3. `device/esp_psram_impl_ap_hex.c`, the chip level file, needs no
+     FreeRTOS at all - so taking that file alone into a component of our
+     own gets past 2.
+  4. Its configuration symbols come from `esp_psram`'s Kconfig, which is
+     only read when that component is in the build. Statable by hand.
+  5. A component whose symbols nobody references is compiled and then
+     dropped at link time. The hook is a weak symbol, the build reports
+     success, the image does not change size, and the bootloader skips
+     the hook. `WHOLE_ARCHIVE` fixes it.
+  6. And then the link wants five functions a bootloader build does not
+     compile: `mspi_timing_psram_tuning`, `periph_rcc_enter`,
+     `periph_rcc_exit`, `periph_rtc_mpll_acquire`,
+     `periph_rtc_mpll_freq_set`.
+
+Six is where it stopped. What the list actually shows is that the
+expensive dependency is the timing calibration, and that it is only
+needed at high clock: ESP-IDF's own Kconfig offers 20 MHz, so the part
+runs there. At a conservative clock the calibration is unnecessary, and
+what remains - MPLL setup, a reset-and-clock critical section and the
+mode-register sequence - is a handful of registers this port can write
+from the reference manual, in `P4_SRAMCODE`, with no ESP-IDF at all.
+
 **M6 - storage and package loading.** SDMMC host, block device, the BSP
 package loaded and relocated by an ELF loader, resident scan.
 Done when: modules outside the kickstart start from flash or MicroSD.
