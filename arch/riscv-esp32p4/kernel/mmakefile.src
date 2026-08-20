@@ -96,11 +96,17 @@ ELF2IMAGE = $(ESPTOOL) --chip esp32p4 elf2image --flash-mode dio \
 kernel-esp32p4-riscv: $(OSGENDIR)/boot/aros-esp32p4.bin
 	$(Q)$(NOP)
 
-$(OSGENDIR)/boot/core.elf: $(BSP_KOBJS) $(SRCDIR)/$(CURDIR)/ldscript.lds
-	@$(ECHO) "Creating   $@"
+# ldscript.lds puts everything in SRAM and works on both boot paths;
+# ldscript-xip.lds leaves code and read-only data in flash for the
+# bootloader to map, which only the app partition path can do. Select with
+# P4_LDSCRIPT=ldscript-xip.lds.
+P4_LDSCRIPT ?= ldscript.lds
+
+$(OSGENDIR)/boot/core.elf: $(BSP_KOBJS) $(SRCDIR)/$(CURDIR)/$(P4_LDSCRIPT)
+	@$(ECHO) "Creating   $@ with $(P4_LDSCRIPT)"
 	%mkdirs_q $(OSGENDIR)/boot
 	@$(KERNEL_LD) -Map $(OSGENDIR)/boot/core.map \
-	    -T $(SRCDIR)/$(CURDIR)/ldscript.lds -o $@ $(filter %.o,$^) $(ELFCORELIBS)
+	    -T $(SRCDIR)/$(CURDIR)/$(P4_LDSCRIPT) -o $@ $(filter %.o,$^) $(ELFCORELIBS)
 
 # One image for both boot paths, because the link script's ceiling is the
 # lower of the two and the layout is otherwise the same.

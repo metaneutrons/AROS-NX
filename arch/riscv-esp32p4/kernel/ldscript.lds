@@ -53,7 +53,7 @@ SECTIONS
          * application descriptor before it will load the image, so that
          * has to come before any code. See appdesc.c.
          */
-        KEEP(*(.appdesc))
+        KEEP(*(.flash.appdesc))
         *(SORT_NONE(.aros.init*))
         *(.text*)                   /* wildcard for "gcc -ffunction-sections" */
         *(.gnu.linkonce.t.*)
@@ -103,6 +103,15 @@ SECTIONS
     }
 
     __kernel_end = .;
+
+    /*
+     * Where to look for resident modules, and which RAM the image itself
+     * occupies. Here they are the same span; the XIP script splits them.
+     */
+    __romtags_start   = __text_start;
+    __romtags_end     = __kernel_end;
+    __kernel_lowest   = __text_start;
+    __kernel_highest  = __kernel_end;
 
     /*
      * Overflowing this is the failure this port is most likely to hit,
