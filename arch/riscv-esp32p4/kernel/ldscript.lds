@@ -55,6 +55,7 @@ SECTIONS
          */
         KEEP(*(.flash.appdesc))
         *(SORT_NONE(.aros.init*))
+        *(.sramtext*)               /* see P4_SRAMCODE - already SRAM here */
         *(.text*)                   /* wildcard for "gcc -ffunction-sections" */
         *(.gnu.linkonce.t.*)
         . = ALIGN(4);
@@ -72,6 +73,7 @@ SECTIONS
 
     .data : {
         __data_start = .;
+        *(.sramdata*)               /* see P4_SRAMDATA */
         *(.data*)                   /* wildcard for "gcc -fdata-sections" */
         *(.gnu.linkonce.d.*)
         . = ALIGN(16);

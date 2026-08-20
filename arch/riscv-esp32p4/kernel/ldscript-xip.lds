@@ -73,8 +73,20 @@ SECTIONS
 
     . = P4_SRAM_BASE;
 
+    /*
+     * Code that has to run while the cache is off, and the data it reads.
+     * Kept out of the flash run above on purpose - see P4_SRAMCODE.
+     */
+    .sramtext : {
+        __sramtext_start = .;
+        *(.sramtext*)
+        . = ALIGN(4);
+        __sramtext_end = .;
+    }
+
     .data : {
         __data_start = .;
+        *(.sramdata*)
         *(.data*)
         *(.gnu.linkonce.d.*)
         . = ALIGN(16);

@@ -48,6 +48,16 @@ extern char __kernel_end[];
 extern char __romtags_start[], __romtags_end[];
 extern char __kernel_lowest[], __kernel_highest[];
 
+/*
+ * Nothing calls this for its effect. It exists so the report can say which
+ * window a P4_SRAMCODE function actually landed in, in a build where the
+ * rest of the code is mapped from flash - a claim about the link script
+ * that is cheap to check and expensive to get wrong later.
+ */
+P4_SRAMCODE void krnSRAMResidencyCheck(void)
+{
+}
+
 static void report_extent(const char *what, const void *from, const void *to)
 {
     krnP4PutStr("[kernel] ");
@@ -183,6 +193,11 @@ static void report(unsigned long hartid)
     krnP4PutStr("  impl ");
     krnP4PutHex32((uint32_t)csr_read(mimpid));
     krnP4PutStr("\n");
+
+    krnP4PutStr("[kernel] sramfn ");
+    krnP4PutHex32((uint32_t)(IPTR)krnSRAMResidencyCheck);
+    krnP4PutStr(((IPTR)krnSRAMResidencyCheck >= P4_SRAM_BASE) ? "  in SRAM\n"
+                                                             : "  NOT in SRAM\n");
 
     report_extent("text  ", __text_start, __text_end);
     report_extent("rodata", __rodata_start, __rodata_end);
