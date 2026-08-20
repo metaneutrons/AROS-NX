@@ -41,7 +41,7 @@ recorded in the milestone notes.
 | kernel.resource | done | initialises, KernelBase built, context size 283 |
 | exec.library | runs | SysBase, both InitCode passes, AvailMem and AllocMem answer |
 | serial debug console | not started | UART0 |
-| PSRAM bring-up | not started | prerequisite for anything beyond exec |
+| PSRAM bring-up | not started | the window faults on the first read, so the ROM leaves nothing behind; see M5 |
 | timer.device | done | a 500 ms timerequest on the VBLANK unit returns after exactly 50 ticks |
 | SD/MMC block device | not started | |
 | MIPI-DSI framebuffer HIDD | not started | |
