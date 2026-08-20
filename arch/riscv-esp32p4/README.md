@@ -218,6 +218,20 @@ image - so linking a boot stack there is a bet on a setting we do not yet
 control. And the high window and PSRAM are better given to exec as heap at
 runtime than spent on link-time sections.
 
+There is a second ceiling, and it is on the image rather than on the
+addresses: the first stage ROM loader stops loading a second stage somewhere
+between 120544 bytes, which it takes, and 142064 bytes, which it silently
+refuses - the flash is written and verified and not one byte comes out. 128 KB
+sits in that window and matches how the loader works, mapping flash in 64 KB
+pages, but the exact number has not been pinned down. Adding debug.library to
+the kickstart was enough to cross it.
+
+That bound is the reason debug.library is not in the kickstart. Its absence
+costs exec its DebugBase and moves where a failure lands, so it is a trade
+rather than a saving, and it is the argument for either trimming the kickstart
+or going back to loading from an app partition - which brings the OTA rollback
+machinery back with it.
+
 The link script's ceiling is the lower of the two bounds, 0x4FF29ED0, which
 costs 12032 bytes of headroom and is what makes one image valid on both
 paths. Overflowing it is a linker error naming the script, not an image that

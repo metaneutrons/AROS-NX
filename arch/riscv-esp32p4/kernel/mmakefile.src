@@ -52,7 +52,7 @@ AFILES := \
 # in RAM later - which is not written yet.
 #
 BSP_RES  := kernel task
-BSP_LIBS := exec debug
+BSP_LIBS := exec
 
 BSP_KOBJS := \
     $(addprefix $(KOBJSDIR)/, $(addsuffix _resource.o, $(BSP_RES))) \
