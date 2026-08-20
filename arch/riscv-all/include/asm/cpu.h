@@ -52,6 +52,37 @@ static inline void wfi(void)      { asm volatile("wfi"); }
 #define SSTATUS_SUM         0x00040000UL
 #define SSTATUS_MXR         0x00080000UL
 
+/*
+ * mstatus fields a context needs to name. mstatus is a superset of
+ * sstatus, but the privilege to return to does not live in the same
+ * place: mret reads MPP, sret reads SPP.
+ */
+#define MSTATUS_MPIE        0x00000080UL /* Interrupt enable to restore */
+#define MSTATUS_MPP         0x00001800UL /* Privilege level trapped from */
+#define MSTATUS_MPP_U       0x00000000UL
+#define MSTATUS_MPP_S       0x00000800UL
+#define MSTATUS_MPP_M       0x00001800UL
+
+/*
+ * The status a freshly prepared task context is entered with.
+ *
+ * Because mret and sret take the privilege to return to from different
+ * fields, a value that names only one of them is wrong on half the
+ * machines. An SSTATUS_SPP-only value on a core that implements M-mode
+ * alone leaves MPP at zero, mret returns to User, and the first
+ * instruction fetch of the task faults before a single one of its
+ * instructions has run - which reads as a task that cannot be entered
+ * rather than as a status value that is missing a field.
+ *
+ * Naming both fields costs nothing, because each platform reads only the
+ * half it owns: mstatus.SPP and mstatus.SPIE are read-only zero on a
+ * machine without S-mode, and sstatus does not expose MPP or MPIE at
+ * all, so the hardware drops the half that does not apply.
+ */
+#define RISCV_CTX_STATUS_INITIAL    (SSTATUS_SPP | SSTATUS_SPIE | \
+                                     MSTATUS_MPP_M | MSTATUS_MPIE | \
+                                     SSTATUS_FS_INITIAL)
+
 /* sie/sip interrupt-enable/pending bits */
 #define SIE_SSIE            0x00000002UL /* Supervisor software (IPI) */
 #define SIE_STIE            0x00000020UL /* Supervisor timer          */
