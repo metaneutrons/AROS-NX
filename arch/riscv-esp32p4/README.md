@@ -226,11 +226,15 @@ sits in that window and matches how the loader works, mapping flash in 64 KB
 pages, but the exact number has not been pinned down. Adding debug.library to
 the kickstart was enough to cross it.
 
-That bound is the reason debug.library is not in the kickstart. Its absence
-costs exec its DebugBase and moves where a failure lands, so it is a trade
-rather than a saving, and it is the argument for either trimming the kickstart
-or going back to loading from an app partition - which brings the OTA rollback
-machinery back with it.
+The room came from the unwind tables. .eh_frame was 25164 bytes of a 120544
+byte image, a fifth of it, and nothing reads it: the backtrace walks the frame
+pointer chain (UnwindFrame in arch/riscv-all/exec/alert_cpu.c) and there are no
+C++ exceptions in a kickstart. Discarding it in the link script leaves 95376
+bytes, and debug.library then fits at 114576 with about 14 KB still to spare.
+
+Which is worth stating as a measurement rather than a rule of thumb, because it
+inverts the obvious conclusion. debug.library looked like the thing that did
+not fit, and it was not; the tables nobody asked for were twice its weight.
 
 The link script's ceiling is the lower of the two bounds, 0x4FF29ED0, which
 costs 12032 bytes of headroom and is what makes one image valid on both

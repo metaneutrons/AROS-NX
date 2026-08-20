@@ -60,8 +60,6 @@ SECTIONS
         *(.rodata*)
         *(.srodata*)
         *(.gnu.linkonce.r.*)
-        *(.eh_frame_hdr)
-        *(.eh_frame)
         . = ALIGN(4);
         __rodata_end = .;
     }
@@ -115,4 +113,21 @@ SECTIONS
      */
     ASSERT((__trap_entry & 0x3F) == 0,
         "__trap_entry must be 64-byte aligned - the CLIC ignores the low six bits of mtvec")
+
+    /*
+     * The unwind tables are the single largest thing in this image that
+     * nothing reads: 25164 bytes of .eh_frame against a total of 120544,
+     * and the backtrace walks the frame pointer chain instead (see
+     * UnwindFrame in arch/riscv-all/exec/alert_cpu.c). There are no C++
+     * exceptions here either. Keeping them cost more than debug.library
+     * does, which is what made the difference between an image the ROM
+     * loader takes and one it drops on the floor.
+     */
+    /DISCARD/ : {
+        *(.eh_frame)
+        *(.eh_frame_hdr)
+        *(.riscv.attributes)
+        *(.comment)
+        *(.note*)
+    }
 }

@@ -84,6 +84,26 @@ static inline void wfi(void)      { asm volatile("wfi"); }
 #define MSTATUS_FS          0x00006000UL /* FPU state                   */
 #define MSTATUS_FS_OFF      0x00000000UL
 #define MSTATUS_FS_INITIAL  0x00002000UL
+
+/*
+ * The status a freshly prepared task context is entered with.
+ *
+ * mret and sret take the privilege to return to from different fields,
+ * MPP for mret and SPP for sret, so a value that names only one of them
+ * is wrong on half the machines. An SPP-only value on a core that
+ * implements M-mode alone leaves MPP at zero, mret returns to User, and
+ * the first instruction fetch of the task faults before a single one of
+ * its instructions runs.
+ *
+ * Naming both fields costs nothing, because each platform reads only the
+ * half it owns: mstatus.SPP and mstatus.SPIE are read-only zero without
+ * S-mode, and sstatus does not expose MPP or MPIE at all, so writes to
+ * the other half are dropped by the hardware rather than by us guessing
+ * which one the port needs.
+ */
+#define RISCV_CTX_STATUS_INITIAL    (SSTATUS_SPP | SSTATUS_SPIE | \
+                                     MSTATUS_MPP_M | MSTATUS_MPIE | \
+                                     MSTATUS_FS_INITIAL)
 #define MSTATUS_FS_CLEAN    0x00004000UL
 #define MSTATUS_FS_DIRTY    0x00006000UL
 #define MSTATUS_MPRV        0x00020000UL
