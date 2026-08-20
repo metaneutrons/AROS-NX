@@ -282,7 +282,20 @@ this tree: `make esp32p4-bootloader` fetches it at the pinned version, the
 patch is applied to the fetched copy, and the bootloader is built there.
 That target is not part of any default build, because it wants a host
 toolchain AROS does not otherwise ask for - cmake, ninja, riscv32-esp-elf
-and a python carrying ESP-IDF's requirements. The licence the fetched
+and a python carrying ESP-IDF's requirements.
+
+What it fetches is the release asset, `esp-idf-v6.0.1.zip`, and that is
+1.7 GB. The git tag archive is a tenth of the size and was tried first, but
+it carries no submodules, and IDF's cmake configures every component in the
+tree whether the build needs it or not: mbedtls alone registers 36 include
+directories that then do not exist, and satisfying them with placeholders
+answers only until the next one. The release zip is what Espressif
+publishes for people without git, and it is complete. It lands in the usual
+`bin/Sources` cache, so it is fetched once.
+
+The bootloader it produces identifies itself as `v6.0.1-dirty`, which is
+the patch showing up in the version string. That is accurate and worth
+leaving alone. The licence the fetched
 sources carry, and what it asks of anyone redistributing the result, is in
 the LEGAL file at the top of the tree; the patch doubles as the statement
 of changes that licence requires, which is why it explains each hunk. All four exist for the same
