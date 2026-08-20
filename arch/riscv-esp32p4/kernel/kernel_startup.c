@@ -391,6 +391,67 @@ static struct Task *spawn_counter_task(const char *name, BYTE pri,
 
 #endif /* P4_TASK_TEST */
 
+#ifdef P4_PSRAM_PROBE
+/*
+ * Does anything answer in the PSRAM window before we have configured a
+ * thing? The ESP-IDF second stage bootloader is what normally brings the
+ * MSPI PSRAM up, and this image replaces that bootloader, so the honest
+ * expectation is no. Worth asking rather than assuming, because the ROM
+ * does configure MSPI far enough to fetch this image out of flash, and
+ * whatever it left behind decides how much work M5 is.
+ *
+ * Build with -DP4_KEEP_WATCHDOG alongside this: an unconfigured external
+ * bus can hang rather than fault, and a hang with the watchdogs armed
+ * reboots and repeats its output instead of going quiet.
+ */
+static void psram_probe(void)
+{
+    volatile uint32_t *p = (volatile uint32_t *)P4_PSRAM_BASE;
+    uint32_t first, second;
+    int i;
+
+    krnP4PutStr("[psram]  window ");
+    krnP4PutHex32(P4_PSRAM_BASE);
+    krnP4PutStr(" - ");
+    krnP4PutHex32(P4_PSRAM_END);
+    krnP4PutStr("\n[psram]  reading, a fault here is an answer too\n");
+
+    first  = p[0];
+    second = p[1];
+    krnP4PutStr("[psram]  as found  ");
+    krnP4PutHex32(first);
+    krnP4PutStr(" ");
+    krnP4PutHex32(second);
+
+    p[0] = 0xA5A5A5A5;
+    p[1] = 0x5A5A5A5A;
+    krnP4PutStr("\n[psram]  read back ");
+    krnP4PutHex32(p[0]);
+    krnP4PutStr(" ");
+    krnP4PutHex32(p[1]);
+    krnP4PutStr((p[0] == 0xA5A5A5A5 && p[1] == 0x5A5A5A5A) ? "  HOLDS"
+                                                           : "  does not hold");
+
+    /*
+     * If it holds, how much of it is real? An uninitialised or smaller
+     * part answers the same bytes at several offsets, so walk powers of
+     * two and say where the window starts repeating itself.
+     */
+    for (i = 1; i <= 32; i <<= 1)
+    {
+        volatile uint32_t *q = (volatile uint32_t *)(P4_PSRAM_BASE
+                                                     + (unsigned long)i * 1024 * 1024);
+        p[0] = 0x11111111;
+        q[0] = 0x22222222;
+        krnP4PutStr("\n[psram]  +");
+        krnP4PutDec((uint32_t)i);
+        krnP4PutStr(" MB ");
+        krnP4PutStr(p[0] == 0x22222222 ? "aliases the base" : "is its own");
+    }
+    krnP4PutStr("\n");
+}
+#endif /* P4_PSRAM_PROBE */
+
 /*
  * Hand the machine to exec. Everything above this point exists to make
  * this call possible: a heap it can allocate from, the extent of the
@@ -582,6 +643,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 
     krnRAMInit();
     krnRAMReport();
+#ifdef P4_PSRAM_PROBE
+    psram_probe();
+#endif
     krnStartExec();
 
 #ifdef P4_KEEP_WATCHDOG
