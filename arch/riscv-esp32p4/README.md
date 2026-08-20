@@ -452,7 +452,42 @@ environment there, one obstacle at a time.
      `periph_rcc_exit`, `periph_rtc_mpll_acquire`,
      `periph_rtc_mpll_freq_set`.
 
-Six is where it stopped. What the list actually shows is that the
+Six is where it stopped, and the port writes its own instead. The
+sequence ESP-IDF performs is legible from its low level headers, which are
+the register documentation in machine readable form, and it is shorter than
+the dependency list suggests:
+
+    MPLL up at 400 MHz                  only needed above 20 MHz
+    module clocks on, controllers reset
+    clock source and bus divider        the divider is the whole speed question
+    pin drive, DQS, CS timing
+    split transactions, page size 2048
+    DLL on
+    mode registers MR0/MR4/MR8          latency, burst length, x16
+    read them back to confirm the part
+
+Two controllers share the bus, MSPI2 for data and MSPI3 for the mode
+registers, which is why most of it is done twice.
+
+The staged plan, and the ceiling stated up front. Stage one takes the
+clock off XTAL rather than the MPLL: 40 MHz divided down needs no
+calibration, and no MPLL has to be brought up first. That caps the bus at
+20 MHz, which is a tenth of the bandwidth and ten times the latency of
+what the part can do - deliberate, because the divider is the only thing
+that changes when the MPLL and the calibration arrive. Nothing else in the
+sequence differs between 20 MHz and 200 MHz.
+
+Where 20 MHz will not do is the display. A 1280x720 frame at 16 bits is
+1.8 MB, and scanning it out at 60 Hz wants about 110 MB/s against a
+theoretical 80 MB/s at this clock. As a heap for 32 MB that would
+otherwise not exist, it is fine.
+
+Reaching the maximum is therefore one function and its four helpers -
+`mspi_timing_psram_tuning`, `periph_rcc_enter`, `periph_rcc_exit`,
+`periph_rtc_mpll_acquire`, `periph_rtc_mpll_freq_set` - which is a much
+smaller and better defined problem than the component that was tried
+first. Note that 80 MHz does not escape it: ESP-IDF's own tables require
+tuning at 80, 200 and 250 MHz, and only 20 MHz is exempt. What the list actually shows is that the
 expensive dependency is the timing calibration, and that it is only
 needed at high clock: ESP-IDF's own Kconfig offers 20 MHz, so the part
 runs there. At a conservative clock the calibration is unnecessary, and
