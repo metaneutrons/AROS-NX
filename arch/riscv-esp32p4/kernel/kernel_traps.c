@@ -247,6 +247,15 @@ static void krnReportException(struct ExceptionContext *ctx,
 static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
                            unsigned long mtval)
 {
+    /*
+     * Only the low twelve bits of mcause are the cause here; the CLIC
+     * puts the interrupted privilege, its interrupt enable and the
+     * previous level in the ones above. Anything compared against a
+     * cause number has to use this rather than the raw register - the
+     * interrupt flag is the one thing read from the register itself.
+     */
+    unsigned long code = mcause & 0xFFF;
+
     if (mcause & MCAUSE_INTERRUPT)
     {
         /*
@@ -262,7 +271,7 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
          * was last. Dispatch to registered handlers, and the scheduler
          * call on the way out, arrive with kernel_timer.c.
          */
-        unsigned long line = mcause & 0xFFF;
+        unsigned long line = code;
 
         /*
          * The peripheral is acknowledged before the controller, and it
@@ -285,7 +294,7 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
         return TRAP_RESCHEDULE;
     }
 
-    if (mcause == CAUSE_MACHINE_ECALL && SysBase &&
+    if (code == CAUSE_MACHINE_ECALL && SysBase &&
         ctx->x[CTX_REG_A7] <= SC_MAX)
     {
         /*

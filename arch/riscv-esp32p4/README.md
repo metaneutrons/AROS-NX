@@ -28,19 +28,17 @@ recorded in the milestone notes.
 | exec arch layer | compiles | `gmake kernel-exec-esp32p4-riscv` builds all seven |
 | trap entry | compiles | frame offsets asserted against the struct |
 | link script | written | test-linked, both SRAM windows asserted |
-| bring-up report | compiles | prints hart, misa, ids, section extents; then stops |
-| kickstart link | done | 128640 bytes of the 167 KB window, one segment at 0x4FF00000 |
-| flashable image | done | `gmake kernel-esp32p4-riscv`, 111248 bytes |
+| bring-up report | works | hart, misa, ids, section extents, then a repeating heartbeat |
+| kickstart link | done | 132160 bytes of the 167 KB window, one segment at 0x4FF00000 |
+| flashable image | done | `gmake kernel-esp32p4-riscv`, 114640 bytes |
 | runs on hardware | **yes** | ROM loads it from 0x2000 and it reports; see below |
 | watchdogs | done | timer groups and LP off, super watchdog self-feeding |
 | CLIC interrupts | done | a raised line reaches the trap handler |
-| SYSTIMER tick | done | 100 Hz, verified at 16000000 counts per second |
-| context switch | written | compiles and links, cannot run until exec does |
+| SYSTIMER tick | done | 100 Hz sustained, 1201 ticks over 12 heartbeats, 16000000 counts per second |
+| context switch | done | tasks are entered in M-mode and their syscalls dispatch |
 | memory list | done | 520096 bytes in two regions, every byte of SRAM accounted for |
-| kernel.resource | not started | |
-| exec.library | not started | |
-| M-mode trap and CLIC interrupts | not started | |
-| SYSTIMER tick | not started | |
+| kernel.resource | done | initialises, KernelBase built, context size 283 |
+| exec.library | runs | SysBase, both InitCode passes, AvailMem and AllocMem answer |
 | serial debug console | not started | UART0 |
 | PSRAM bring-up | not started | prerequisite for anything beyond exec |
 | timer.device | not started | |
