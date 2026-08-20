@@ -277,7 +277,15 @@ ROM path nothing, because that loader takes the entry address from the
 image header rather than assuming the segment begins with code.
 
 **The bootloader needs four patches**, in
-bootloader/esp-idf-6.0.1-standalone-app.diff. All four exist for the same
+bootloader/esp-idf-6.0.1-standalone-app.diff. No ESP-IDF source is kept in
+this tree: `make esp32p4-bootloader` fetches it at the pinned version, the
+patch is applied to the fetched copy, and the bootloader is built there.
+That target is not part of any default build, because it wants a host
+toolchain AROS does not otherwise ask for - cmake, ninja, riscv32-esp-elf
+and a python carrying ESP-IDF's requirements. The licence the fetched
+sources carry, and what it asks of anyone redistributing the result, is in
+the LEGAL file at the top of the tree; the patch doubles as the statement
+of changes that licence requires, which is why it explains each hunk. All four exist for the same
 reason: an IDF application always has its .text and .rodata mapped from
 flash, and this image has neither - one segment, all of it in SRAM. The
 loader assumes those segments exist in four places, and each assumption

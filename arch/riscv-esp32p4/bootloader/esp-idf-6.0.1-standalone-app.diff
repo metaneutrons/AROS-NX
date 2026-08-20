@@ -3,13 +3,15 @@ standalone image - one whose segments all go to internal SRAM, with nothing
 mapped from flash. An IDF application always has a flash-mapped .text and
 .rodata, so the loader assumes those exist in several places.
 
-Against ESP-IDF v6.0.1. Apply with
+Against ESP-IDF v6.0.1, which the build fetches; this patch is applied to the
+fetched copy and no ESP-IDF source is kept in the AROS tree. It is also the
+statement of changes the Apache License asks for, which is why it carries a
+reason per hunk rather than only a diff.
 
-    cd $IDF_PATH && git apply <this file>
+    make esp32p4-bootloader
 
-and build the bootloader for pre-v3 silicon (see README, "Booting from an
-app partition"). Nothing here is AROS-specific in itself; the same four
-would be wanted by any bare-metal image loaded this way.
+Nothing here is AROS-specific in itself; the same four would be wanted by any
+bare-metal image loaded this way.
 
   1. bootloader_common_check_efuse_blk_validity() reads the efuse block
      revision bounds out of the application descriptor and rejects the
