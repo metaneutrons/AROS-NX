@@ -287,6 +287,42 @@ static void krnStartExec(void)
         krnP4PutStr("[exec]   data region added to the memory list\n");
     }
 
+    /*
+     * What exec thinks it has, before anything asks for it. The alert
+     * that follows a failed allocation says only that one failed, not
+     * which or from where - and the two candidate explanations, too
+     * little memory overall and a pool that only the smaller region
+     * qualifies for, are told apart by these four numbers.
+     */
+    {
+        struct MemHeader *m;
+
+        krnP4PutStr("[exec]   avail  ANY ");
+        krnP4PutDec((uint32_t)AvailMem(MEMF_ANY));
+        krnP4PutStr("  KICK ");
+        krnP4PutDec((uint32_t)AvailMem(MEMF_KICK));
+        krnP4PutStr("  LOCAL ");
+        krnP4PutDec((uint32_t)AvailMem(MEMF_LOCAL));
+        krnP4PutStr("  largest ");
+        krnP4PutDec((uint32_t)AvailMem(MEMF_ANY | MEMF_LARGEST));
+        krnP4PutStr("\n");
+
+        ForeachNode(&SysBase->MemList, m)
+        {
+            krnP4PutStr("[exec]   mh '");
+            krnP4PutStr(m->mh_Node.ln_Name ? m->mh_Node.ln_Name : "?");
+            krnP4PutStr("' ");
+            krnP4PutHex32((uint32_t)(IPTR)m->mh_Lower);
+            krnP4PutStr(" - ");
+            krnP4PutHex32((uint32_t)(IPTR)m->mh_Upper);
+            krnP4PutStr(" free ");
+            krnP4PutDec((uint32_t)m->mh_Free);
+            krnP4PutStr(" attr ");
+            krnP4PutHex32((uint32_t)m->mh_Attributes);
+            krnP4PutStr("\n");
+        }
+    }
+
     krnP4PutStr("[exec]   InitCode(RTF_SINGLETASK)\n");
     InitCode(RTF_SINGLETASK, 0);
     krnP4PutStr("[exec]   InitCode(RTF_COLDSTART)\n");
