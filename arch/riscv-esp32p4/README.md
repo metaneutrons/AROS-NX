@@ -241,6 +241,62 @@ paths. Overflowing it is a linker error naming the script, not an image that
 loads over whatever put it there; that assertion has been made to fire on
 purpose to check it works.
 
+## Booting from an app partition
+
+The ROM loads a second stage from 0x2000 and that is what this port did
+first, but the ROM stops taking an image somewhere between 120544 and
+142064 bytes, and that limit decided three separate design questions
+before it was worth removing. So there is a second path, and it is now the
+one the board runs:
+
+    0x2000     ESP-IDF second stage bootloader (22544 bytes)
+    0x8000     partition table
+    0x10000    otadata, pointing at slot 0
+    0x20000    ota_0, this image
+    0x820000   ota_1
+
+The partition table is the board's own, kept as it shipped. Pointing
+otadata at slot 0 is one command:
+
+    otatool.py --port <port> --partition-table-file <table> \
+               --partition-table-offset 0x8000 switch_ota_partition --slot 0
+
+Two things had to be built for this, and neither is optional.
+
+**The image needs an application descriptor.** An IDF bootloader reads the
+first bytes of segment 0 as an esp_app_desc_t and checks the efuse block
+revision range it finds there, without looking at the magic word first. An
+image with no descriptor is therefore not treated as "no constraint" - the
+bootloader reads whatever code is there and rejects the image:
+
+    E boot_comm: Image requires efuse blk rev >= v509.47, but chip is v0.3
+
+appdesc.c supplies one, and the link script puts it first. It costs the
+ROM path nothing, because that loader takes the entry address from the
+image header rather than assuming the segment begins with code.
+
+**The bootloader needs four patches**, in
+bootloader/esp-idf-6.0.1-standalone-app.diff. All four exist for the same
+reason: an IDF application always has its .text and .rodata mapped from
+flash, and this image has neither - one segment, all of it in SRAM. The
+loader assumes those segments exist in four places, and each assumption
+only becomes visible once the previous one is out of the way. Whoever
+tries this against another IDF version should expect the list to differ
+rather than assume it is complete.
+
+The bootloader also has to be built for pre-v3 silicon, and IDF treats
+pre-v3 and v3+ as mutually exclusive: CONFIG_ESP32P4_SELECTS_REV_LESS_V3
+opens the gate before CONFIG_ESP32P4_REV_MIN_100 can be chosen at all.
+Without it the bootloader declares a minimum of v3.1 and esptool refuses
+to flash it, which is the right answer to the wrong build.
+
+There is a third path worth naming, because all four patches exist only to
+work around the shape of this image rather than anything wrong with it.
+Linking .text and .rodata at flash-mapped addresses would need no patches,
+and would put AROS's code in flash instead of SRAM - which is a larger
+prize than the size limit, and the direction to weigh before writing the
+MSPI PSRAM bring-up.
+
 ## Milestones
 
 Each milestone names what has to be true before it counts as done. No

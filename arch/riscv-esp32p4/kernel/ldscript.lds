@@ -48,6 +48,12 @@ SECTIONS
 
     .text : {
         __text_start = .;
+        /*
+         * An ESP-IDF bootloader reads the first bytes of segment 0 as an
+         * application descriptor before it will load the image, so that
+         * has to come before any code. See appdesc.c.
+         */
+        KEEP(*(.appdesc))
         *(SORT_NONE(.aros.init*))
         *(.text*)                   /* wildcard for "gcc -ffunction-sections" */
         *(.gnu.linkonce.t.*)
