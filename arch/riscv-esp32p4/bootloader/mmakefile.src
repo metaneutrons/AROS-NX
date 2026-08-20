@@ -1,0 +1,52 @@
+#
+#   The second stage bootloader this port boots through.
+#
+#   Nothing of ESP-IDF is kept in the AROS tree. The sources are fetched at
+#   the pinned version, the one patch this port needs is applied to the
+#   fetched copy, and only that patch and this project's own three files
+#   live here. See LEGAL for the licence the fetched sources carry and what
+#   that requires of anyone redistributing the result.
+#
+#   Not part of any default target. Building it needs a host toolchain AROS
+#   does not otherwise ask for - cmake, ninja, riscv32-esp-elf and a python
+#   with ESP-IDF's requirements installed - so it is asked for by name:
+#
+#       make esp32p4-bootloader
+#
+#   The result is bootloader.bin under the ports directory, to be written to
+#   0x2000. See arch/riscv-esp32p4/README.md.
+#
+
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/$(CURDIR)/make.opt
+
+%fetch mmake=esp32p4-bootloader-fetch archive=$(IDFARCHBASE) \
+    destination=$(PORTSDIR)/esp-idf location=$(PORTSSOURCEDIR)/esp-idf \
+    archive_origins=$(IDFREPOSITORIES) suffixes=$(IDFARCHSUFFIX) \
+    patches_specs=$(IDFPATCHSPEC)
+
+%create_patch mmake=esp32p4-bootloader-create-patch \
+    archive=$(IDFARCHBASE) suffixes=$(IDFARCHSUFFIX) \
+    location=$(PORTSSOURCEDIR)/esp-idf destination=$(PORTSDIR)/esp-idf \
+    srcdir="$(IDFBASEDIR)"
+
+IDFPROJECTDIR := $(PORTSDIR)/esp-idf/project
+IDFBOOTLOADER := $(IDFPROJECTDIR)/build/bootloader/bootloader.bin
+
+#MM esp32p4-bootloader : esp32p4-bootloader-fetch
+esp32p4-bootloader : $(IDFBOOTLOADER)
+	@$(ECHO) "Bootloader is $(IDFBOOTLOADER)"
+
+$(IDFBOOTLOADER) : $(SRCDIR)/$(CURDIR)/project/sdkconfig.defaults \
+                   $(SRCDIR)/$(CURDIR)/$(IDFPATCHFILE)
+	@$(ECHO) "Building   esp32p4 bootloader from $(IDFBASEDIR)"
+	%mkdirs_q $(IDFPROJECTDIR)
+	@$(CP) -r $(SRCDIR)/$(CURDIR)/project/* $(IDFPROJECTDIR)/
+	@cd $(IDFPROJECTDIR) && \
+	    IDF_PATH=$(IDFARCHSRCDIR) \
+	    cmake -G Ninja -B build -DIDF_TARGET=esp32p4 \
+	          -DSDKCONFIG_DEFAULTS=sdkconfig.defaults >/dev/null && \
+	    ninja -C build bootloader >/dev/null
+	@$(ECHO) "Built      $@"
+
+%common
