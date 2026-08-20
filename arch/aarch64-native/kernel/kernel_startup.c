@@ -42,6 +42,22 @@
 extern struct TagItem *BootMsg;
 
 void __attribute__((used)) kernel_cstart(struct TagItem *msg);
+/*
+ * .aros.init holds both the entry point, which has to be executable, and
+ * a couple of stack pointers, which do not. Declaring it twice with
+ * different attributes is what the section comment is for: it ends the
+ * directive so the flags the compiler would append become a comment, and
+ * the section keeps the attributes the entry point asked for.
+ *
+ * configure leaves aros_targetsection_comment empty, so the definition
+ * arriving from the mmakefile is the empty string and the compiler's
+ * flags come through. binutils then rejects the second declaration with
+ * "changed section attributes". riscv-native works around it the same
+ * way; the real fix belongs in configure, for every target at once.
+ */
+#undef TARGET_SECTION_COMMENT
+#define TARGET_SECTION_COMMENT "\n#"
+
 static void __attribute__((used, noreturn, noinline)) kernel_cstart_user(void);
 
 uint64_t stack[AROS_STACKSIZE] __attribute__((used,aligned(16)));
