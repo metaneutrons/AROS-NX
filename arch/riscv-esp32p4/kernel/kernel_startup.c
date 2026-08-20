@@ -22,6 +22,7 @@
 
 #include <exec/execbase.h>
 #include <exec/lists.h>
+#include <exec/resident.h>
 #include <exec/memory.h>
 #include <aros/kernel.h>
 #include <utility/tagitem.h>
@@ -237,6 +238,40 @@ static struct TagItem *krnPrepareBootTags(void)
 }
 
 /*
+ * Every resident in the kickstart, in the order the scan meets them, with
+ * the priority that decides the order they are initialised in. If exec
+ * comes up before kernel.resource, the priorities say so here.
+ */
+static void krnDumpResidents(UWORD *lo, UWORD *hi)
+{
+    UWORD *p;
+
+    krnP4PutStr("[boot]   residents:\n");
+
+    for (p = lo; p < hi; p++)
+    {
+        struct Resident *res = (struct Resident *)p;
+
+        if (*p != RTC_MATCHWORD || res->rt_MatchTag != res)
+            continue;
+
+        krnP4PutStr("[boot]     ");
+        krnP4PutHex32((uint32_t)(IPTR)res);
+        krnP4PutStr("  pri ");
+        krnP4PutDec((uint32_t)(int)(signed char)res->rt_Pri);
+        krnP4PutStr("  type ");
+        krnP4PutDec((uint32_t)res->rt_Type);
+        krnP4PutStr("  flags ");
+        krnP4PutHex32((uint32_t)res->rt_Flags);
+        krnP4PutStr("  ");
+        krnP4PutStr(res->rt_Name ? (const char *)res->rt_Name : "(unnamed)");
+        krnP4PutStr("\n");
+
+        p = (UWORD *)((IPTR)res->rt_EndSkip - 2);
+    }
+}
+
+/*
  * Hand the machine to exec. Everything above this point exists to make
  * this call possible: a heap it can allocate from, the extent of the
  * image it must not hand out, and a tick to schedule on.
@@ -278,6 +313,8 @@ static void krnStartExec(void)
         krnP4PutDec(kb ? (uint32_t)kb->kb_ContextSize : 0);
         krnP4PutStr("\n");
     }
+
+    krnDumpResidents((UWORD *)__text_start, (UWORD *)__kernel_end);
 
     krnP4PutStr("[exec]   preparing ExecBase\n");
 
@@ -345,10 +382,29 @@ static void krnStartExec(void)
     {
         struct KernelBase *kb = getKernelBase();
 
+        ULONG want = sizeof(struct ExceptionContext) + 15
+                   + sizeof(struct FpuContext);
+
         krnP4PutStr("[exec]   KernelBase @ ");
         krnP4PutHex32((uint32_t)(IPTR)kb);
         krnP4PutStr("  ContextSize ");
         krnP4PutDec(kb ? (uint32_t)kb->kb_ContextSize : 0);
+        krnP4PutStr("  want ");
+        krnP4PutDec((uint32_t)want);
+
+        /*
+         * An experiment, not a fix. If the field is implausible then
+         * cpu_Init has not run yet, KrnCreateContext will allocate
+         * nothing and exec's init will fail claiming no memory. Filling
+         * it in here says whether that really is the whole story - and
+         * if it is, the thing to repair is the order the two modules
+         * initialise in, not this.
+         */
+        if (kb && (kb->kb_ContextSize < want || kb->kb_ContextSize > 4096))
+        {
+            kb->kb_ContextSize = want;
+            krnP4PutStr("  -> forced");
+        }
         krnP4PutStr("\n");
     }
 
