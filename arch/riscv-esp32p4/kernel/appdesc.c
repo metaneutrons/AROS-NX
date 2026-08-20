@@ -48,7 +48,7 @@ _Static_assert(__builtin_offsetof(struct esp_app_desc, min_efuse_blk_rev_full) =
                "the bootloader reads the revision bounds at a fixed offset");
 _Static_assert(sizeof(struct esp_app_desc) == 256, "esp_app_desc_t is 256 bytes");
 
-const struct esp_app_desc __attribute__((used, section(".appdesc"))) aros_app_desc =
+const struct esp_app_desc __attribute__((used, section(".flash.appdesc"))) aros_app_desc =
 {
     .magic_word             = 0xABCD5432,
     .version                = "AROS",

@@ -41,6 +41,7 @@ recorded in the milestone notes.
 | kernel.resource | done | initialises, KernelBase built, context size 283 |
 | exec.library | runs | SysBase, both InitCode passes, AvailMem and AllocMem answer |
 | serial debug console | not started | UART0 |
+| code from flash | done | .text and .rodata mapped from the app partition, 117744 bytes of SRAM returned |
 | PSRAM bring-up | not started | the window faults on the first read, so the ROM leaves nothing behind; see M5 |
 | timer.device | done | a 500 ms timerequest on the VBLANK unit returns after exactly 50 ticks |
 | SD/MMC block device | not started | |
@@ -290,12 +291,60 @@ opens the gate before CONFIG_ESP32P4_REV_MIN_100 can be chosen at all.
 Without it the bootloader declares a minimum of v3.1 and esptool refuses
 to flash it, which is the right answer to the wrong build.
 
-There is a third path worth naming, because all four patches exist only to
-work around the shape of this image rather than anything wrong with it.
-Linking .text and .rodata at flash-mapped addresses would need no patches,
-and would put AROS's code in flash instead of SRAM - which is a larger
-prize than the size limit, and the direction to weigh before writing the
-MSPI PSRAM bring-up.
+### Code from flash
+
+The four patches exist only because this image is shaped unlike an
+application: one segment, all of it in SRAM. Shaped the other way it needs
+none of them, so there is a second link script, ldscript-xip.lds, that
+leaves .text and .rodata in flash for the bootloader to map:
+
+    segment 0: paddr=00020020 vaddr=40000020 size=1cbd4h (117716) map
+    segment 1: paddr=0003cbfc vaddr=4ff00000 size=00018h (    24) load
+
+One mapped segment and a 24-byte load segment, which is the whole of
+.data. It runs: exec comes up, the residents are found at their flash
+addresses, and the 100 Hz tick keeps time from mapped code.
+
+    internal SRAM available   519936 -> 637680 bytes
+    AvailMem(MEMF_ANY)        426352 -> 538256 bytes
+
+117744 bytes returned, which is exactly what moved out. The number is not
+the point though: on this path the size of AROS's code stops being bounded
+by internal SRAM at all, and a megabyte of Intuition and graphics would
+not have to fit in 523 KB because it would not be there.
+
+Almost nothing had to change for it. A romtag at 0x400053bc works like one
+at 0x4ff053bc, and the module structures, the resident scan and the LVO
+tables never notice. Two things did:
+
+  - The address must be 0x40000020 exactly. The flash window is
+    0x40000000-0x44000000 and instruction and data mappings share it; the
+    mapped segment has to be first in the image, and its virtual address
+    must sit at the same offset inside a 64 KB MMU page as its physical
+    address. ota_0 is page aligned and the headers take 0x20 bytes. Give
+    the address to the output section explicitly, or an input section with
+    a stronger alignment pushes it to 0x40000040, esptool pads the file
+    with the SRAM segment to fix the alignment, that segment becomes
+    segment 0, and the bootloader looks for the application descriptor
+    inside it.
+
+  - "Where the modules are" and "which RAM the image occupies" stop being
+    the same span. They were the same symbol pair for as long as the image
+    was contiguous, so the romtag scan ran from __text_start to
+    __kernel_end - which here is 200 MB of mostly unmapped address space.
+    It found every module and then faulted in the emptiness beyond, with
+    no trap output, because the trap handler is in flash too. Both scripts
+    now define __romtags_start/_end and __kernel_lowest/_highest
+    themselves.
+
+What this path cannot do is boot from 0x2000: the first stage ROM loader
+is not asked to set up these mappings. So both scripts stay, ldscript.lds
+is the default, and P4_LDSCRIPT=ldscript-xip.lds selects the other.
+
+And one thing it will need before M5: code that runs with the cache
+disabled has to live in SRAM. Nothing does today, which is why this works
+at all, but the MSPI bring-up will, and that is what IDF's IRAM_ATTR
+exists for.
 
 ## Milestones
 

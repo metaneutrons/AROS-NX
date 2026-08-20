@@ -45,6 +45,8 @@ extern char __rodata_start[], __rodata_end[];
 extern char __data_start[], __data_end[];
 extern char __bss_start[], __bss_end[];
 extern char __kernel_end[];
+extern char __romtags_start[], __romtags_end[];
+extern char __kernel_lowest[], __kernel_highest[];
 
 static void report_extent(const char *what, const void *from, const void *to)
 {
@@ -232,11 +234,13 @@ static struct TagItem *krnPrepareBootTags(void)
     tag->ti_Tag  = KRN_KernelBase;
     tag->ti_Data = (IPTR)__text_start;
     tag++;
+    /* The RAM the image sits in, which is not where its code is when the
+       code is mapped from flash */
     tag->ti_Tag  = KRN_KernelLowest;
-    tag->ti_Data = (IPTR)__text_start;
+    tag->ti_Data = (IPTR)__kernel_lowest;
     tag++;
     tag->ti_Tag  = KRN_KernelHighest;
-    tag->ti_Data = (IPTR)__kernel_end;
+    tag->ti_Data = (IPTR)__kernel_highest;
     tag++;
     tag->ti_Tag  = KRN_MEMLower;
     tag->ti_Data = (IPTR)__kernel_end;
@@ -481,8 +485,8 @@ static void krnStartExec(void)
         }
     }
 
-    ranges[0] = (UWORD *)__text_start;
-    ranges[1] = (UWORD *)__kernel_end;
+    ranges[0] = (UWORD *)__romtags_start;
+    ranges[1] = (UWORD *)__romtags_end;
     ranges[2] = (UWORD *)-1;
 
     {
@@ -495,7 +499,7 @@ static void krnStartExec(void)
         krnP4PutStr("\n");
     }
 
-    krnDumpResidents((UWORD *)__text_start, (UWORD *)__kernel_end);
+    krnDumpResidents((UWORD *)__romtags_start, (UWORD *)__romtags_end);
 
     krnP4PutStr("[exec]   preparing ExecBase\n");
 
