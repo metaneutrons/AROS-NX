@@ -530,10 +530,136 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info)
     info->vendor = vendor;
     info->density = density;
     info->round_trip = krnPSRAMRoundTrip(&back) ? 1 : 0;
+    krnPSRAMAxiConfigure();
     info->size = (unsigned long)sizes[density & P4_PSRAM_MR2_DENSITY_MASK]
                  * 1024UL * 1024UL;
 
     return info->size != 0 && info->round_trip;
+}
+
+/*
+ * Tell MSPI2 how to serve a load or a store to the window.
+ *
+ * Everything before this configures the chip. This configures the path the
+ * cache uses to reach it: the two commands, the address length, the two
+ * dummy lengths, octal command and address with sixteen bit data, double
+ * transfer rate, and finally permission to answer AXI requests at all.
+ * The last of those is why a store to a correctly mapped window is a bus
+ * error until this has run.
+ *
+ * The dummy lengths are the pair for 80 MHz and below, like the latencies
+ * in the mode registers, and have to change with them when the clock rises.
+ */
+P4_SRAMCODE void krnPSRAMAxiConfigure(void)
+{
+    unsigned long v;
+
+    /* The commands the controller issues for a cache line */
+    p4_w32(P4_MSPI2_SRAM_DWR_CMD,
+           ((unsigned long)(16 - 1) << P4_SRAM_CMD_BITLEN_SHIFT)
+           | (P4_PSRAM_SYNC_WRITE & P4_SRAM_CMD_VALUE_MASK));
+    p4_w32(P4_MSPI2_SRAM_DRD_CMD,
+           ((unsigned long)(16 - 1) << P4_SRAM_CMD_BITLEN_SHIFT)
+           | (P4_PSRAM_SYNC_READ & P4_SRAM_CMD_VALUE_MASK));
+
+    v = p4_r32(P4_MSPI2_CACHE_SCTRL);
+    v &= ~(P4_SRAM_ADDR_BITLEN_MASK | P4_SRAM_RDUMMY_MASK | P4_SRAM_WDUMMY_MASK);
+    v |= P4_CACHE_SRAM_USR_WCMD | P4_CACHE_SRAM_USR_RCMD;
+    v |= P4_CACHE_USR_SADDR_4BYTE;
+    v |= P4_USR_WR_SRAM_DUMMY | P4_USR_RD_SRAM_DUMMY;
+    v |= P4_SRAM_OCT;
+    v |= (unsigned long)(P4_PSRAM_ADDR_BITLEN - 1) << P4_SRAM_ADDR_BITLEN_SHIFT;
+    v |= (unsigned long)(P4_PSRAM_RD_DUMMY_SLOW - 1) << P4_SRAM_RDUMMY_SHIFT;
+    v |= (unsigned long)(P4_PSRAM_WR_DUMMY_SLOW - 1) << P4_SRAM_WDUMMY_SHIFT;
+    p4_w32(P4_MSPI2_CACHE_SCTRL, v);
+
+    /* Octal for command and address, sixteen bits for data */
+    v = p4_r32(P4_MSPI2_SRAM_CMD);
+    v |= P4_MEM_SCMD_OCT | P4_MEM_SADDR_OCT | P4_MEM_SDOUT_OCT | P4_MEM_SDIN_OCT;
+    v |= P4_MEM_SDIN_HEX | P4_MEM_SDOUT_HEX;
+    v |= P4_MEM_SDUMMY_WOUT;
+    p4_w32(P4_MSPI2_SRAM_CMD, v);
+
+    /* Double transfer rate, no byte swapping, variable dummy on both
+       controllers as ESP-IDF sets it */
+    v = p4_r32(P4_MSPI2_SMEM_DDR);
+    v &= ~(P4_DDR_RDAT_SWP | P4_DDR_WDAT_SWP);
+    v |= P4_DDR_EN | P4_DDR_VAR_DUMMY;
+    p4_w32(P4_MSPI2_SMEM_DDR, v);
+    p4_w32(P4_MSPI3_DDR, p4_r32(P4_MSPI3_DDR) | P4_DDR_VAR_DUMMY);
+
+    /* Splice adjacent AXI bursts */
+    p4_w32(P4_MSPI2_CTRL1,
+           p4_r32(P4_MSPI2_CTRL1) | P4_MEM_AW_SPLICE_EN | P4_MEM_AR_SPLICE_EN);
+
+    /* And last, because until now there was nothing to answer with */
+    p4_w32(P4_MSPI2_CACHE_FCTRL,
+           (p4_r32(P4_MSPI2_CACHE_FCTRL) & ~P4_CLOSE_AXI_INF_EN)
+           | P4_MEM_AXI_REQ_EN);
+}
+
+/*
+ * Put the chip in the window at 0x48000000.
+ *
+ * Physical page n goes to virtual page n, which is the only arrangement
+ * that makes the window look like memory. The two functions below are the
+ * exception to this file's rule about running from SRAM: they touch the
+ * translation table and the window, not the controller's configuration, so
+ * the cache they are fetched through is not the one they are changing.
+ */
+void krnPSRAMMap(unsigned long size)
+{
+    unsigned long pages = size >> P4_MMU_PAGE_SHIFT;
+    unsigned long i;
+
+    if (pages > P4_MMU_ENTRIES)
+        pages = P4_MMU_ENTRIES;
+
+    for (i = 0; i < pages; i++)
+    {
+        p4_w32(P4_MMU_PSRAM_INDEX, i);
+        p4_w32(P4_MMU_PSRAM_CONTENT, i | P4_MMU_VALID | P4_MMU_ACCESS_PSRAM);
+    }
+}
+
+/*
+ * Check that the window really is that much memory.
+ *
+ * One word per megabyte, each holding something derived from its own
+ * address, all written before any is read back. Spreading the writes over
+ * the whole range and reading afterwards is what makes this a test of the
+ * memory rather than of the cache: 32 MB of writes cannot sit in 128 KB of
+ * cache, so every read has to go to the chip. A part that aliases, or a
+ * table with the wrong page in it, shows up as a word carrying another
+ * address's value.
+ *
+ * Returns non-zero if every word came back. On failure *failed_at is the
+ * address that did not.
+ */
+int krnPSRAMVerify(unsigned long size, unsigned long *failed_at)
+{
+    const unsigned long step = 1024UL * 1024UL;
+    volatile unsigned long *p;
+    unsigned long a;
+
+    for (a = 0; a < size; a += step)
+    {
+        p = (volatile unsigned long *)(P4_PSRAM_WINDOW_BASE + a);
+        *p = (P4_PSRAM_WINDOW_BASE + a) ^ 0xA5A5A5A5UL;
+    }
+
+    for (a = 0; a < size; a += step)
+    {
+        p = (volatile unsigned long *)(P4_PSRAM_WINDOW_BASE + a);
+        if (*p != ((P4_PSRAM_WINDOW_BASE + a) ^ 0xA5A5A5A5UL))
+        {
+            if (failed_at)
+                *failed_at = P4_PSRAM_WINDOW_BASE + a;
+            return 0;
+        }
+    }
+
+    return 1;
 }
 
 /*

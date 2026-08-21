@@ -271,6 +271,84 @@
 #define P4_PSRAM_MR2_DENSITY_MASK   0x07
 #define P4_PSRAM_SIZE_TABLE         { 0, 4, 0, 8, 0, 16, 64, 32 }   /* MB */
 
+/*
+ * The window at 0x48000000 and the table that puts the chip in it.
+ *
+ * The PSRAM has its own address translation table, separate from the
+ * flash's, in MSPI2's register block: one register selects an entry, the
+ * next carries its contents. Pages are 64 KB and there is no other size on
+ * this part, so an entry's contents are a physical page number plus two
+ * flags, and the entry's index is a virtual page number counted from the
+ * bottom of the window.
+ *
+ * Nothing here disables the cache. ESP-IDF's own mapping code does not
+ * either, and it must not: this port executes from flash, and the flash
+ * path runs through the cache that would be turned off. The per-range
+ * cache bus enables that older parts need do not exist here; on this part
+ * they are no-ops.
+ */
+/*
+ * The memory-mapped path, which is a separate matter from the transactions
+ * above.
+ *
+ * Those go through MSPI3 and are how the chip is configured. A load or
+ * store to the window is served by MSPI2 on its own, filling a cache line,
+ * and it has to be told what a read and a write look like: which command,
+ * how long the address is, how many dummy cycles, that the bus is octal
+ * for command and address and sixteen bits wide for data, and that it may
+ * answer AXI requests at all. Until the last of those is set, a store to
+ * the window is a bus error however correct the translation table is.
+ */
+#define P4_MSPI2_CTRL1              (P4_MSPI2_BASE + 0x0C)
+#define   P4_MEM_AR_SPLICE_EN       (1UL << 25)
+#define   P4_MEM_AW_SPLICE_EN       (1UL << 26)
+#define P4_MSPI2_CACHE_FCTRL        (P4_MSPI2_BASE + 0x3C)
+#define   P4_MEM_AXI_REQ_EN         (1UL << 0)
+#define   P4_CLOSE_AXI_INF_EN       (1UL << 31)
+#define P4_MSPI2_CACHE_SCTRL        (P4_MSPI2_BASE + 0x40)
+#define   P4_CACHE_USR_SADDR_4BYTE  (1UL << 0)
+#define   P4_USR_WR_SRAM_DUMMY      (1UL << 3)
+#define   P4_USR_RD_SRAM_DUMMY      (1UL << 4)
+#define   P4_CACHE_SRAM_USR_RCMD    (1UL << 5)
+#define   P4_SRAM_RDUMMY_SHIFT      6       /* six bits, value minus one */
+#define   P4_SRAM_RDUMMY_MASK       (0x3FUL << P4_SRAM_RDUMMY_SHIFT)
+#define   P4_SRAM_ADDR_BITLEN_SHIFT 14      /* six bits, value minus one */
+#define   P4_SRAM_ADDR_BITLEN_MASK  (0x3FUL << P4_SRAM_ADDR_BITLEN_SHIFT)
+#define   P4_CACHE_SRAM_USR_WCMD    (1UL << 20)
+#define   P4_SRAM_OCT               (1UL << 21)
+#define   P4_SRAM_WDUMMY_SHIFT      22      /* six bits, value minus one */
+#define   P4_SRAM_WDUMMY_MASK       (0x3FUL << P4_SRAM_WDUMMY_SHIFT)
+#define P4_MSPI2_SRAM_CMD           (P4_MSPI2_BASE + 0x44)
+#define   P4_MEM_SDIN_OCT           (1UL << 18)
+#define   P4_MEM_SDOUT_OCT          (1UL << 19)
+#define   P4_MEM_SADDR_OCT          (1UL << 20)
+#define   P4_MEM_SCMD_OCT           (1UL << 21)
+#define   P4_MEM_SDUMMY_WOUT        (1UL << 23)
+#define   P4_MEM_SDIN_HEX           (1UL << 26)
+#define   P4_MEM_SDOUT_HEX          (1UL << 27)
+#define P4_MSPI2_SRAM_DRD_CMD       (P4_MSPI2_BASE + 0x48)
+#define P4_MSPI2_SRAM_DWR_CMD       (P4_MSPI2_BASE + 0x4C)
+#define   P4_SRAM_CMD_VALUE_MASK    0xFFFFUL
+#define   P4_SRAM_CMD_BITLEN_SHIFT  28      /* four bits, value minus one */
+#define   P4_SRAM_CMD_BITLEN_MASK   (0xFUL << P4_SRAM_CMD_BITLEN_SHIFT)
+#define P4_MSPI2_SMEM_DDR           (P4_MSPI2_BASE + 0xD8)
+#define P4_MSPI3_DDR                (P4_MSPI3_BASE + 0xD4)
+#define   P4_DDR_EN                 (1UL << 0)
+#define   P4_DDR_VAR_DUMMY          (1UL << 1)
+#define   P4_DDR_RDAT_SWP           (1UL << 2)
+#define   P4_DDR_WDAT_SWP           (1UL << 3)
+
+#define P4_PSRAM_ADDR_BITLEN        32
+
+#define P4_MMU_PSRAM_INDEX          (P4_MSPI2_BASE + 0x380)
+#define P4_MMU_PSRAM_CONTENT        (P4_MSPI2_BASE + 0x37C)
+#define P4_MMU_PAGE_SHIFT           16      /* 64 KB, the only size */
+#define P4_MMU_ENTRIES              1024    /* 64 MB of window */
+#define   P4_MMU_ACCESS_PSRAM       (1UL << 10)
+#define   P4_MMU_VALID              (1UL << 11)
+
+#define P4_PSRAM_WINDOW_BASE        0x48000000UL
+
 struct p4_rom_spi_cmd
 {
     uint16_t cmd;
@@ -319,5 +397,8 @@ struct P4PSRAMInfo
 };
 
 int krnPSRAMBringUp(struct P4PSRAMInfo *info);
+void krnPSRAMAxiConfigure(void);
+void krnPSRAMMap(unsigned long size);
+int krnPSRAMVerify(unsigned long size, unsigned long *failed_at);
 
 #endif /* ESP32P4_PSRAM_H */
