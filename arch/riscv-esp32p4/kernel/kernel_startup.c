@@ -109,6 +109,7 @@ static void report_misa(void)
  */
 /* Set by the PSRAM bring-up, printed by the report */
 static unsigned long __esp32p4_psram_size;
+static struct MemHeader *__esp32p4_mh_psram;
 
 /* Set by clic_selftest() below, printed by the report */
 static int clic_selftest_passed;
@@ -228,7 +229,7 @@ static void report(unsigned long hartid)
     {
         krnP4PutStr("  ");
         krnP4PutDec((uint32_t)(__esp32p4_psram_size / (1024 * 1024)));
-        krnP4PutStr(" MB, not yet mapped\n");
+        krnP4PutStr(" MB, mapped and verified\n");
     }
     else
         krnP4PutStr("  (not brought up)\n");
@@ -559,6 +560,21 @@ static void krnStartExec(void)
         krnP4PutStr("[exec]   data region added to the memory list\n");
     }
 
+    /* And the external memory, converted like the primary region: thirty
+       two megabytes is more than the plain allocator's linear scan should
+       be asked to walk. */
+    if (__esp32p4_mh_psram)
+    {
+        struct MemHeader *tmh = krnConvertMemHeaderToTLSF(__esp32p4_mh_psram);
+
+        if (tmh)
+            __esp32p4_mh_psram = tmh;
+
+        Enqueue(&SysBase->MemList, &__esp32p4_mh_psram->mh_Node);
+        krnP4PutStr(tmh ? "[exec]   external memory added, TLSF\n"
+                        : "[exec]   external memory added\n");
+    }
+
     /*
      * What exec thinks it has, before anything asks for it. The alert
      * that follows a failed allocation says only that one failed, not
@@ -703,6 +719,43 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutStr(" MHz, vendor ");
             krnP4PutHex32((uint32_t)psram.vendor);
             krnP4PutStr(", a word written and read back\n");
+
+            {
+                unsigned long bad = 0;
+
+                krnPSRAMMap(psram.size);
+                if (krnPSRAMVerify(psram.size, &bad))
+                {
+                    krnP4PutStr("[psram]  window ");
+                    krnP4PutHex32(P4_PSRAM_WINDOW_BASE);
+                    krnP4PutStr(" mapped, one word per megabyte verified\n");
+
+                    /*
+                     * A header at the bottom of the window, so exec can
+                     * hand the range out once it has a memory list.
+                     *
+                     * Without MEMF_FAST, deliberately. Internal SRAM has
+                     * it and this does not, which is the one honest
+                     * difference between them: at 20 MHz over a sixteen
+                     * bit bus this is an order of magnitude slower than
+                     * the SRAM next to it. The low priority puts it last
+                     * in the list, so an allocation that does not ask for
+                     * anything in particular still comes out of SRAM
+                     * while there is SRAM left.
+                     */
+                    __esp32p4_mh_psram = (struct MemHeader *)P4_PSRAM_WINDOW_BASE;
+                    krnCreateMemHeader("External Memory", -20,
+                                       (APTR)P4_PSRAM_WINDOW_BASE, psram.size,
+                                       MEMF_PUBLIC | MEMF_KICK | MEMF_LOCAL);
+                }
+                else
+                {
+                    krnP4PutStr("[psram]  window mapped but ");
+                    krnP4PutHex32((uint32_t)bad);
+                    krnP4PutStr(" did not read back\n");
+                    psram.size = 0;
+                }
+            }
         }
         else if (!psram.mpll_up)
             krnP4PutStr("[psram]  chip   the mpll did not calibrate\n");
