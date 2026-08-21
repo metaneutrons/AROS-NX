@@ -1,7 +1,7 @@
 /*
     Copyright (C) 2026, The AROS Development Team. All rights reserved.
 
-    Desc: External PSRAM bring-up, first stage: the controller's clock.
+    Desc: External PSRAM bring-up: the PLL, the controller and the chip.
 */
 
 #include <inttypes.h>
@@ -19,17 +19,165 @@
  */
 
 /*
+ * Bring the MPLL up at 400 MHz, which is the bus clock's only usable
+ * source.
+ *
+ * The PLL's dividers are not memory mapped; they sit on the internal
+ * configuration bus described in psram.h, so most of this function is four
+ * accesses to that bus with a bounded wait around each. Every wait here is
+ * bounded on purpose: the failure this replaces was a hang, and a
+ * bring-up step that can hang is not an improvement on one that reports
+ * that it failed.
+ *
+ * Returns non-zero if the PLL reported its calibration done.
+ */
+P4_SRAMCODE static int p4_regi2c_idle(void)
+{
+    int spin = 100000;
+
+    while ((p4_r32(P4_I2C_ANA_MST_I2C0_CTRL) & P4_REGI2C_BUSY) && --spin)
+        ;
+
+    return spin != 0;
+}
+
+/* One slave block may be selected at a time, so both selection registers
+   are cleared before the MPLL is named. */
+P4_SRAMCODE static void p4_regi2c_select_mpll(void)
+{
+    p4_w32(P4_I2C_ANA_MST_ANA_CONF2,
+           p4_r32(P4_I2C_ANA_MST_ANA_CONF2) & ~P4_I2C_ANA_CONF_MASK);
+    p4_w32(P4_I2C_ANA_MST_ANA_CONF1,
+           p4_r32(P4_I2C_ANA_MST_ANA_CONF1) & ~P4_I2C_ANA_CONF_MASK);
+    p4_w32(P4_I2C_ANA_MST_ANA_CONF2,
+           p4_r32(P4_I2C_ANA_MST_ANA_CONF2) | P4_REGI2C_MPLL_MST_SEL);
+}
+
+P4_SRAMCODE static int p4_regi2c_read(unsigned char reg, unsigned char *out)
+{
+    p4_regi2c_select_mpll();
+    if (!p4_regi2c_idle())
+        return 0;
+
+    p4_w32(P4_I2C_ANA_MST_I2C0_CTRL,
+           ((unsigned long)P4_REGI2C_MPLL << P4_REGI2C_SLAVE_SHIFT)
+           | ((unsigned long)reg << P4_REGI2C_ADDR_SHIFT));
+
+    if (!p4_regi2c_idle())
+        return 0;
+
+    *out = (unsigned char)((p4_r32(P4_I2C_ANA_MST_I2C0_CTRL)
+                            >> P4_REGI2C_DATA_SHIFT) & 0xFF);
+    return 1;
+}
+
+P4_SRAMCODE static int p4_regi2c_write(unsigned char reg, unsigned char val)
+{
+    p4_regi2c_select_mpll();
+    if (!p4_regi2c_idle())
+        return 0;
+
+    p4_w32(P4_I2C_ANA_MST_I2C0_CTRL,
+           ((unsigned long)P4_REGI2C_MPLL << P4_REGI2C_SLAVE_SHIFT)
+           | ((unsigned long)reg << P4_REGI2C_ADDR_SHIFT)
+           | ((unsigned long)val << P4_REGI2C_DATA_SHIFT)
+           | P4_REGI2C_WRITE);
+
+    return p4_regi2c_idle();
+}
+
+P4_SRAMCODE int krnPSRAMMPLLUp(void)
+{
+    unsigned char rstb, dhref;
+    unsigned long div;
+    int spin;
+
+    /*
+     * The configuration bus master's clock and source. The ESP-IDF
+     * bootloader we boot behind leaves both set and says so in a comment,
+     * but setting a bit that is already set costs nothing and depending on
+     * another program's leftovers is the fragile choice.
+     */
+    p4_w32(P4_CLKRST_REF_CLK_CTRL2,
+           p4_r32(P4_CLKRST_REF_CLK_CTRL2) | P4_REF_160M_CLK_EN);
+    p4_w32(P4_LPPERI_CLK_EN, p4_r32(P4_LPPERI_CLK_EN) | P4_CK_EN_LP_I2CMST);
+    p4_w32(P4_I2C_ANA_MST_CLK160M,
+           p4_r32(P4_I2C_ANA_MST_CLK160M) | P4_CLK_I2C_MST_SEL_160M);
+
+    /* Power the PLL up, and open the gate that lets its output reach the
+       high power domain where MSPI lives */
+    p4_w32(P4_PMU_RF_PWC, p4_r32(P4_PMU_RF_PWC) | P4_PMU_MSPI_PHY_XPD);
+    p4_w32(P4_LP_CLKRST_HP_CLK_CTRL,
+           p4_r32(P4_LP_CLKRST_HP_CLK_CTRL) | P4_HP_MPLL_500M_CLK_EN);
+
+    /* The calibration runs while the stop bit is clear, so it has to be
+       cleared before the dividers are written, not after */
+    p4_w32(P4_CLKRST_ANA_PLL_CTRL0,
+           p4_r32(P4_CLKRST_ANA_PLL_CTRL0) & ~P4_MSPI_CAL_STOP);
+
+    /* Reference level to its maximum first */
+    if (!p4_regi2c_read(P4_MPLL_DHREF_REG, &dhref))
+        return 0;
+    if (!p4_regi2c_write(P4_MPLL_DHREF_REG,
+                         dhref | (3 << P4_MPLL_DHREF_SHIFT)))
+        return 0;
+
+    /* Then the calibration reset, low and back high */
+    if (!p4_regi2c_read(P4_MPLL_IR_CAL_RSTB_REG, &rstb))
+        return 0;
+    if (!p4_regi2c_write(P4_MPLL_IR_CAL_RSTB_REG,
+                         rstb & (unsigned char)~P4_MPLL_IR_CAL_RSTB))
+        return 0;
+    if (!p4_regi2c_write(P4_MPLL_IR_CAL_RSTB_REG,
+                         rstb | P4_MPLL_IR_CAL_RSTB))
+        return 0;
+
+    /* And the multiplier. ref_div stays at one, so the PLL sees half of
+       XTAL and the target divided by that, less one, is the field. */
+    div = P4_PSRAM_MPLL_HZ / (P4_XTAL_HZ / 2) - 1;
+    if (!p4_regi2c_write(P4_MPLL_DIV_REG,
+                         (unsigned char)((div << P4_MPLL_DIV_SHIFT)
+                                         | (1UL << P4_MPLL_REF_DIV_SHIFT))))
+        return 0;
+
+    spin = 1000000;
+    while (!(p4_r32(P4_CLKRST_ANA_PLL_CTRL0) & P4_MSPI_CAL_END) && --spin)
+        ;
+
+    p4_w32(P4_CLKRST_ANA_PLL_CTRL0,
+           p4_r32(P4_CLKRST_ANA_PLL_CTRL0) | P4_MSPI_CAL_STOP);
+
+    return spin != 0;
+}
+
+/*
+ * Read the PLL's three configuration bytes back off the configuration bus.
+ *
+ * A write there reports nothing, so this is the only way to tell a
+ * configured PLL from a write that went somewhere else. Returns the three
+ * bytes packed as rstb, div, dhref from the low byte up.
+ */
+P4_SRAMCODE unsigned long krnPSRAMMPLLState(void)
+{
+    unsigned char rstb = 0xFF, div = 0xFF, dhref = 0xFF;
+
+    p4_regi2c_read(P4_MPLL_IR_CAL_RSTB_REG, &rstb);
+    p4_regi2c_read(P4_MPLL_DIV_REG, &div);
+    p4_regi2c_read(P4_MPLL_DHREF_REG, &dhref);
+
+    return (unsigned long)rstb | ((unsigned long)div << 8)
+           | ((unsigned long)dhref << 16);
+}
+
+/*
  * Take the pair of MSPI controllers out of reset with their clocks on, and
  * set the bus clock as close to the requested rate as the divider allows.
  *
-* XTAL as the source was the plan and does not work, see the note below. The MPLL has to
- * be brought up and told a frequency before it can be selected, and at the
- * clocks it makes possible the read timing has to be calibrated per board;
- * XTAL is running before this code does, and 40 MHz divided down needs no
- * calibration at all. The cost is the ceiling: 20 MHz here against 200 MHz
- * there, a tenth of the bandwidth and ten times the latency. That is the
- * trade this stage takes on purpose, and the divider is the only thing
- * that has to change when the MPLL and the calibration arrive.
+ * The source is the MPLL, so krnPSRAMMPLLUp has to have run and reported
+ * success first. The controller's core clock is the PLL's own rate,
+ * undivided, and the counters written here divide that; a target that
+ * divides 400 MHz evenly is therefore exact, and 20, 40, 50, 80, 100 and
+ * 200 MHz all do.
  *
  * Returns the rate actually set, or 0 if the controller did not answer.
  */
@@ -53,18 +201,18 @@ P4_SRAMCODE unsigned long krnPSRAMClockUp(unsigned long target_hz)
     p4_w32(P4_CLKRST_HP_RST_EN0,
            p4_r32(P4_CLKRST_HP_RST_EN0) & ~P4_RST_EN_DUAL_MSPI_AXI);
 
-    p4_w32(P4_CLKRST_PERI_CLK_CTRL01,
-           (p4_r32(P4_CLKRST_PERI_CLK_CTRL01) & ~P4_PSRAM_CLK_SRC_MASK)
-           | ((unsigned long)P4_PSRAM_CLK_SRC_XTAL << P4_PSRAM_CLK_SRC_SHIFT));
+    p4_w32(P4_CLKRST_PERI_CLK_CTRL00,
+           (p4_r32(P4_CLKRST_PERI_CLK_CTRL00) & ~P4_PSRAM_CLK_SRC_MASK)
+           | ((unsigned long)P4_PSRAM_CLK_SRC_MPLL << P4_PSRAM_CLK_SRC_SHIFT));
 
     /* Round the divider up, so the bus never runs faster than asked */
     if (target_hz == 0)
         target_hz = 20000000UL;
-    div = (P4_XTAL_HZ + target_hz - 1) / target_hz;
+    div = (P4_PSRAM_MPLL_HZ + target_hz - 1) / target_hz;
     if (div < 1)
         div = 1;
-    if (div > 64)
-        div = 64;
+    if (div > 256)          /* the counters are eight bits each */
+        div = 256;
 
     if (div == 1)
     {
@@ -91,7 +239,7 @@ P4_SRAMCODE unsigned long krnPSRAMClockUp(unsigned long target_hz)
     if (readback != clkval)
         return 0;
 
-    return P4_XTAL_HZ / div;
+    return P4_PSRAM_MPLL_HZ / div;
 }
 
 /*
@@ -107,12 +255,39 @@ P4_SRAMCODE unsigned long krnPSRAMClockUp(unsigned long target_hz)
  * The DLL is enabled at every clock ESP-IDF supports, including the slowest,
  * so it is enabled here too rather than guessed about.
  */
+/*
+ * Raise every PSRAM pin's drive strength. Reset leaves them at zero, which
+ * is not enough for the chip to see anything, so this is a precondition for
+ * the bring-up rather than a tuning step.
+ *
+ * The table lives in SRAM, not in the read-only section, for the reason at
+ * the top of this file: a P4_SRAMCODE function may not reach through the
+ * cache that MSPI serves.
+ */
+P4_SRAMCODE static void p4_psram_pin_drive(unsigned long drv)
+{
+    P4_SRAMDATA static const struct { unsigned short off; unsigned char sh; }
+        pins[] = { P4_PSRAM_PIN_DRV_TABLE };
+    unsigned int i;
+
+    for (i = 0; i < sizeof(pins) / sizeof(pins[0]); i++)
+    {
+        unsigned long reg = P4_IOMUX_MSPI_PIN_BASE + pins[i].off;
+
+        p4_w32(reg, (p4_r32(reg) & ~(3UL << pins[i].sh))
+                    | ((drv & 3UL) << pins[i].sh));
+    }
+}
+
 P4_SRAMCODE void krnPSRAMConfigure(void)
 {
     unsigned long ac;
 
-    /* The strobe first: without it a DTR read never completes, and the
-       controller waits rather than complaining */
+    /* Drive strength before anything is sent, then the strobe: without the
+       strobe a DTR read never completes, and the controller waits rather
+       than complaining */
+    p4_psram_pin_drive(P4_PSRAM_PIN_DRV);
+
     p4_w32(P4_IOMUX_PSRAM_DQS_0,
            p4_r32(P4_IOMUX_PSRAM_DQS_0) | P4_IOMUX_DQS_XPD);
     p4_w32(P4_IOMUX_PSRAM_DQS_1,
@@ -139,19 +314,21 @@ P4_SRAMCODE void krnPSRAMConfigure(void)
 }
 
 /*
- * Ask the chip who it is.
+ * Talking to the chip, as opposed to the controller in front of it.
  *
- * The transaction itself is done by three functions in the part's own mask
- * ROM, at fixed published addresses. Writing an MSPI transaction engine to
- * send sixteen bits of command and read back eight would be work for its
- * own sake, and the ROM is always mapped, so calling it needs no cache.
+ * The transaction is done by three functions in the part's own mask ROM, at
+ * fixed published addresses. Writing an MSPI transaction engine to send
+ * sixteen bits of command and move two bytes would be work for its own
+ * sake, and the ROM is always mapped, so calling it needs no cache.
  *
- * Mode register 1 holds the vendor in its low five bits and mode register 2
- * the density. 0x0d there means Espressif's AP part, which is what this
- * board carries; anything else means the sequence above configured a
- * controller that has nothing on the other end.
+ * The operating mode is set before every transaction rather than once.
+ * ESP-IDF does the same, and it is the difference between the second
+ * transaction in a row answering and not answering.
  */
-P4_SRAMCODE int krnPSRAMIdentify(unsigned char *vendor, unsigned char *density)
+P4_SRAMCODE static void p4_psram_cmd(uint32_t cmd, uint32_t reg_addr,
+                                     uint32_t dummy,
+                                     uint32_t *tx, uint32_t tx_bits,
+                                     uint32_t *rx, uint32_t rx_bits)
 {
     void (*rom_set_op_mode)(int, int) =
         (void (*)(int, int))P4_ROM_SPI_SET_OP_MODE;
@@ -160,46 +337,104 @@ P4_SRAMCODE int krnPSRAMIdentify(unsigned char *vendor, unsigned char *density)
     void (*rom_cmd_start)(int, unsigned char *, uint32_t, uint32_t, int) =
         (void (*)(int, unsigned char *, uint32_t, uint32_t, int))P4_ROM_SPI_CMD_START;
 
-    uint32_t addr;
-    uint32_t rx;
-    struct p4_rom_spi_cmd cmd;
+    struct p4_rom_spi_cmd c;
+    uint32_t addr = reg_addr;
+
+    c.cmd = (uint16_t)cmd;
+    c.cmd_bitlen = 16;
+    c.addr = &addr;
+    c.addr_bitlen = 32;
+    c.tx_data = tx;
+    c.tx_data_bitlen = tx_bits;
+    c.rx_data = rx;
+    c.rx_data_bitlen = rx_bits;
+    c.dummy_bitlen = dummy;
+
+    rom_set_op_mode(P4_MSPI_ID_REG, P4_ROM_OPI_DTR_MODE);
+    rom_cmd_config(P4_MSPI_ID_REG, &c);
+    rom_cmd_start(P4_MSPI_ID_REG, (unsigned char *)rx, rx_bits / 8,
+                  P4_PSRAM_CS_INDEX, 0);
+}
+
+/*
+ * Mode registers come in pairs at even addresses, because the bus is
+ * sixteen bits wide and a transfer moves both halves. Address 0 carries
+ * mode register 0 in its low byte and mode register 1 in its high byte,
+ * address 4 carries 4 and 5, address 8 carries 8. A read at an odd address
+ * is not a way to reach the odd-numbered register.
+ */
+P4_SRAMCODE static void p4_psram_reg_read(uint32_t addr, uint32_t *pair)
+{
+    *pair = 0;
+    p4_psram_cmd(P4_PSRAM_REG_READ, addr, P4_PSRAM_RD_REG_DUMMY_SLOW,
+                 NULL, 0, pair, 16);
+}
+
+P4_SRAMCODE static void p4_psram_reg_write(uint32_t addr, uint32_t pair)
+{
+    uint32_t v = pair;
+
+    p4_psram_cmd(P4_PSRAM_REG_WRITE, addr, 0, &v, 16, NULL, 0);
+}
+
+/*
+ * Configure the chip through its mode registers, which has to happen before
+ * anything can be read from it.
+ *
+ * This is not an optimisation step. Mode register 8 selects the bus width,
+ * and until it is told otherwise the part does not drive all sixteen lanes;
+ * reading its identity first, which is what this file did at first, asks a
+ * chip in one configuration a question in another and gets an answer that
+ * looks like a floating bus. Each register is read, the fields this port
+ * owns are replaced, and the rest is written back untouched.
+ *
+ * The latencies are the pair for 80 MHz and below. They are the only values
+ * here that depend on the clock, which is why raising the clock later means
+ * revisiting this function and not just the divider.
+ */
+P4_SRAMCODE void krnPSRAMModeInit(void)
+{
+    /*
+     * Absolute values, not read-modify-write.
+     *
+     * ESP-IDF reads each register, replaces the fields it owns and writes
+     * the rest back, which is the right thing to do when the read can be
+     * trusted. Here it cannot: before the chip is configured a read returns
+     * a floating bus, and writing 0xff back sets every reserved bit along
+     * with a partial-array-refresh and refresh-rate setting nobody asked
+     * for. Writing the power-on configuration outright is both simpler and
+     * the only version that does not depend on the thing being fixed.
+     *
+     * mode register 0: drive strength 0, read latency 2, fixed latency
+     * mode register 4: write latency 2, no partial array refresh
+     * mode register 8: burst length 3, linear bursts, row crossing, x16
+     *
+     * The two latencies are the pair for 80 MHz and below and are the only
+     * values here that depend on the clock.
+     */
+    p4_psram_reg_write(0, (P4_PSRAM_RD_LATENCY_SLOW << 2) | (1UL << 5));
+    p4_psram_reg_write(4, P4_PSRAM_WR_LATENCY_SLOW << 5);
+    p4_psram_reg_write(8, 3UL | (1UL << 3) | (1UL << 6));
+}
+
+/*
+ * Ask the chip who it is.
+ *
+ * Mode register 1 holds the vendor in its low five bits, mode register 2 the
+ * density. 0x0d as the vendor means Espressif's AP part, which is what this
+ * board carries; anything else means the sequence above configured a
+ * controller with nothing on the other end.
+ */
+P4_SRAMCODE int krnPSRAMIdentify(unsigned char *vendor, unsigned char *density)
+{
+    uint32_t pair;
     unsigned char mr1, mr2;
 
-    /* Which ROM call the machine stops in, if it stops */
-    krnP4PutStr("[psram]  rom    table ");
-    krnP4PutHex32(*(volatile uint32_t *)P4_ROM_SPI_SET_OP_MODE);
-    krnP4PutStr(" ");
-    krnP4PutHex32(*(volatile uint32_t *)P4_ROM_SPI_CMD_CONFIG);
-    krnP4PutStr("\n[psram]  rom    set_op_mode\n");
-    rom_set_op_mode(P4_MSPI_ID_REG, P4_ROM_OPI_DTR_MODE);
-    krnP4PutStr("[psram]  rom    returned\n");
+    p4_psram_reg_read(0, &pair);
+    mr1 = (unsigned char)((pair >> 8) & P4_PSRAM_MR1_VENDOR_MASK);
 
-    /* mode register 1: the vendor */
-    addr = 1;
-    rx = 0;
-    cmd.cmd = P4_PSRAM_REG_READ;
-    cmd.cmd_bitlen = 16;
-    cmd.addr = &addr;
-    cmd.addr_bitlen = 32;
-    cmd.tx_data = NULL;
-    cmd.tx_data_bitlen = 0;
-    cmd.rx_data = &rx;
-    cmd.rx_data_bitlen = 8;
-    cmd.dummy_bitlen = P4_PSRAM_RD_REG_DUMMY_SLOW;
-    krnP4PutStr("[psram]  rom    cmd_config\n");
-    rom_cmd_config(P4_MSPI_ID_REG, &cmd);
-    krnP4PutStr("[psram]  rom    cmd_start\n");
-    rom_cmd_start(P4_MSPI_ID_REG, (unsigned char *)&rx, 1, P4_PSRAM_CS_MASK, 0);
-    krnP4PutStr("[psram]  rom    done\n");
-    mr1 = (unsigned char)(rx & P4_PSRAM_MR1_VENDOR_MASK);
-
-    /* mode register 2: the density */
-    addr = 2;
-    rx = 0;
-    cmd.rx_data = &rx;
-    rom_cmd_config(P4_MSPI_ID_REG, &cmd);
-    rom_cmd_start(P4_MSPI_ID_REG, (unsigned char *)&rx, 1, P4_PSRAM_CS_MASK, 0);
-    mr2 = (unsigned char)(rx & 0xFF);
+    p4_psram_reg_read(2, &pair);
+    mr2 = (unsigned char)(pair & 0xFF);
 
     if (vendor)
         *vendor = mr1;
@@ -210,25 +445,121 @@ P4_SRAMCODE int krnPSRAMIdentify(unsigned char *vendor, unsigned char *density)
 }
 
 /*
- * Where this stands, and the mistake in the plan above.
+ * Write a word to the chip and read it back.
  *
- * The chip does not answer yet. The mode register read reaches the ROM's
- * transaction call and never returns from it - set_op_mode and cmd_config
- * both return, cmd_start does not, which is a transaction that was started
- * and never completed rather than a rejected one.
+ * This answers a different question from the identity read: not whether the
+ * mode registers are being addressed correctly, but whether the controller,
+ * the pins, the clock and the chip carry data at all. ESP-IDF makes the same
+ * test, at the same address, with the same pattern, as its check for whether
+ * a chip is connected.
+ */
+P4_SRAMCODE int krnPSRAMRoundTrip(uint32_t *back)
+{
+    uint32_t out = P4_PSRAM_TEST_PATTERN;
+    uint32_t in = 0;
+
+    p4_psram_cmd(P4_PSRAM_SYNC_WRITE, 0, P4_PSRAM_WR_DUMMY_SLOW,
+                 &out, 32, NULL, 0);
+    p4_psram_cmd(P4_PSRAM_SYNC_READ, 0, P4_PSRAM_RD_DUMMY_SLOW,
+                 NULL, 0, &in, 32);
+
+    if (back)
+        *back = in;
+
+    return in == P4_PSRAM_TEST_PATTERN;
+}
+
+/*
+ * The same read, with the transaction started by hand.
  *
- * The strobe was the first suspect and is not the answer: enabling both
- * DQS pins changed nothing. The likelier one is the clock source. This file
- * takes the bus clock off XTAL to avoid bringing the MPLL up, on the
- * reasoning that 20 MHz needs no calibration - and the second half of that
- * is true while the first half is not. ESP-IDF's own 20 MHz configuration
- * still runs the MPLL at 400 MHz and divides it by twenty; the divider is
- * off the MPLL, not off XTAL. What the low clock avoids is the calibration,
- * not the PLL. The controller's own clock enable is named for a PLL, which
- * fits.
+ * Everything the mask ROM programs has been measured to match a working
+ * ESP-IDF run register for register, and the data still arrives as ones.
+ * That leaves the possibility that the ROM's start call is not doing what
+ * its name says on this part, so this does the last step directly: set the
+ * user transaction bit, wait for the controller to clear it, and read the
+ * data out of the controller's own buffer rather than out of a pointer the
+ * ROM copied into.
  *
- * So the next step is the MPLL after all, at 400 MHz, and then this
- * sequence unchanged behind it. That makes the 20 MHz stage a smaller
- * saving than it looked - the calibration only - and it makes the path to
- * 200 MHz shorter, because the MPLL will already be there.
+ * Returns the data word. The state machine's two status fields, sampled
+ * before and after, go into *state; a controller that never left its idle
+ * state would say so there.
+ */
+/*
+ * The whole bring-up, in the order it has to happen.
+ *
+ * The order is not a matter of taste. The PLL has to be running before a
+ * divider off it means anything; the pins have to be able to drive before
+ * a command can be seen; the mode registers have to be written before a
+ * read returns anything, because until then the chip is not driving all of
+ * its data lines.
+ *
+ * Interrupts are the caller's business. This runs from SRAM and does not
+ * print, so that the sequence is not interleaved with a console that lives
+ * in flash.
+ */
+P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info)
+{
+    P4_SRAMDATA static const unsigned char sizes[] = P4_PSRAM_SIZE_TABLE;
+    unsigned char vendor = 0, density = 0;
+    uint32_t back = 0;
+
+    info->clock_hz = 0;
+    info->size = 0;
+    info->vendor = 0;
+    info->density = 0;
+    info->round_trip = 0;
+
+    info->mpll_up = krnPSRAMMPLLUp() ? 1 : 0;
+    if (!info->mpll_up)
+        return 0;
+
+    info->clock_hz = krnPSRAMClockUp(20000000UL);
+    if (!info->clock_hz)
+        return 0;
+
+    krnPSRAMConfigure();
+    krnPSRAMModeInit();
+
+    if (!krnPSRAMIdentify(&vendor, &density))
+    {
+        info->vendor = vendor;
+        info->density = density;
+        return 0;
+    }
+
+    info->vendor = vendor;
+    info->density = density;
+    info->round_trip = krnPSRAMRoundTrip(&back) ? 1 : 0;
+    info->size = (unsigned long)sizes[density & P4_PSRAM_MR2_DENSITY_MASK]
+                 * 1024UL * 1024UL;
+
+    return info->size != 0 && info->round_trip;
+}
+
+/*
+ * Where this stands.
+ *
+ * Two things were wrong in the earlier version of this file and both are
+ * fixed above. The first was the clock source: taking the bus clock off
+ * XTAL to avoid bringing the MPLL up rests on the idea that 20 MHz needs
+ * no PLL, and ESP-IDF's own 20 MHz configuration runs the MPLL at 400 MHz
+ * and divides by twenty. The divider sits behind the PLL. What a low bus
+ * clock saves is the read timing calibration, and nothing else - which
+ * makes the slow bring-up a smaller saving than it looked, and the step to
+ * 200 MHz shorter, because the PLL will already be there.
+ *
+ * The second was an address. The source select field is in PERI_CLK_CTRL00
+ * and this file wrote PERI_CLK_CTRL01, so the two bits went into the wrong
+ * register. It went unnoticed because XTAL is encoded as zero and zero is
+ * the reset value, so the bus ran off XTAL either way and the read-back
+ * test on the divider still passed. Whatever bits 12 and 13 of CTRL01 are,
+ * they were being cleared for no reason.
+ *
+ * What is still not done, in the order it has to happen: the mode register
+ * writes (MR0 latency and drive, MR4 write latency, MR8 burst length and
+ * bus width), which ESP-IDF performs before it reads anything back rather
+ * than after; mapping the window at 0x48000000, which the bootloader
+ * unmaps on its way out; handing the range to exec; and then the clock,
+ * where 200 MHz needs the per-board read timing calibration and the pin
+ * drive strength that this file deliberately leaves at reset.
  */
