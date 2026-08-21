@@ -107,11 +107,19 @@ static void report_misa(void)
  * to nobody. Saying it again every so often means a listener can attach
  * whenever it likes and still learn the whole state.
  */
+/* Set by the PSRAM bring-up, printed by the report */
+static unsigned long __esp32p4_psram_size;
+
 /* Set by clic_selftest() below, printed by the report */
 static int clic_selftest_passed;
 
-/* Whether the last wait was served by the tick or timed out spinning */
-static int timer_serving;
+/*
+ * Whether the last wait was served by the tick or timed out spinning, and
+ * -1 while no wait has happened yet. The first report runs before the
+ * first wait, and without the third state it says the tick is not running
+ * when all that is true is that nothing has asked it to.
+ */
+static int timer_serving = -1;
 
 /*
  * Does an interrupt actually arrive? Raise a line nobody uses by hand,
@@ -178,8 +186,9 @@ static void report(unsigned long hartid)
     krnP4PutDec((uint32_t)__esp32p4_ticks);
     krnP4PutStr(", counter ");
     krnP4PutDec((uint32_t)krnTimerCount());
-    krnP4PutStr(timer_serving ? ", tick serving waits\n"
-                              : ", TICK NOT RUNNING - waits are spinning\n");
+    krnP4PutStr(timer_serving < 0 ? ", no wait measured yet\n"
+                : timer_serving ? ", tick serving waits\n"
+                                : ", TICK NOT RUNNING - waits are spinning\n");
 
     krnP4PutStr("[kernel] hart   ");
     krnP4PutDec((uint32_t)hartid);
@@ -215,7 +224,14 @@ static void report(unsigned long hartid)
     krnP4PutHex32(P4_PSRAM_BASE);
     krnP4PutStr(" - ");
     krnP4PutHex32(P4_PSRAM_END);
-    krnP4PutStr("  (not brought up)\n");
+    if (__esp32p4_psram_size)
+    {
+        krnP4PutStr("  ");
+        krnP4PutDec((uint32_t)(__esp32p4_psram_size / (1024 * 1024)));
+        krnP4PutStr(" MB, not yet mapped\n");
+    }
+    else
+        krnP4PutStr("  (not brought up)\n");
 
     /*
      * The report outlives the state it was first written for, so it says
@@ -664,31 +680,44 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     krnRAMInit();
     krnRAMReport();
     {
-        unsigned long hz = krnPSRAMClockUp(20000000UL);
+        struct P4PSRAMInfo psram;
+        int up;
 
-        krnP4PutStr("[psram]  mspi clock ");
-        if (hz)
+        /*
+         * With interrupts off. ESP-IDF brings the PSRAM up before its
+         * scheduler exists and so never has to think about this; here the
+         * timer is already running by the time this code is reached, and a
+         * bring-up sequence that can be interrupted between a controller
+         * write and the transaction that depends on it is not a sequence.
+         */
+        csr_clear(mstatus, MSTATUS_MIE);
+        up = krnPSRAMBringUp(&psram);
+        csr_set(mstatus, MSTATUS_MIE);
+
+        if (up)
         {
-            krnP4PutDec((uint32_t)(hz / 1000000));
-            krnP4PutStr(" MHz off XTAL, controllers out of reset\n");
-            krnPSRAMConfigure();
-            krnP4PutStr("[psram]  ac     cs 4/4/3, split bursts, 2048 byte pages, dll on\n");
-#ifdef P4_PSRAM_IDENTIFY
-            {
-                unsigned char vendor = 0, density = 0;
-                int known = krnPSRAMIdentify(&vendor, &density);
-
-                krnP4PutStr("[psram]  chip   vendor ");
-                krnP4PutHex32((uint32_t)vendor);
-                krnP4PutStr("  mr2 ");
-                krnP4PutHex32((uint32_t)density);
-                krnP4PutStr(known ? "  AP part, it answers\n"
-                                  : "  not the expected vendor\n");
-            }
-#endif
+            krnP4PutStr("[psram]  chip   ");
+            krnP4PutDec((uint32_t)(psram.size / (1024 * 1024)));
+            krnP4PutStr(" MB at ");
+            krnP4PutDec((uint32_t)(psram.clock_hz / 1000000));
+            krnP4PutStr(" MHz, vendor ");
+            krnP4PutHex32((uint32_t)psram.vendor);
+            krnP4PutStr(", a word written and read back\n");
         }
+        else if (!psram.mpll_up)
+            krnP4PutStr("[psram]  chip   the mpll did not calibrate\n");
+        else if (!psram.clock_hz)
+            krnP4PutStr("[psram]  chip   the controller kept no clock\n");
         else
-            krnP4PutStr("did not take - the controller kept nothing\n");
+        {
+            krnP4PutStr("[psram]  chip   no answer - vendor ");
+            krnP4PutHex32((uint32_t)psram.vendor);
+            krnP4PutStr(" mr2 ");
+            krnP4PutHex32((uint32_t)psram.density);
+            krnP4PutStr("\n");
+        }
+
+        __esp32p4_psram_size = psram.size;
     }
 #ifdef P4_PSRAM_PROBE
     psram_probe();
