@@ -42,7 +42,7 @@ recorded in the milestone notes.
 | exec.library | runs | SysBase, both InitCode passes, AvailMem and AllocMem answer |
 | serial debug console | not started | UART0 |
 | code from flash | done | .text and .rodata mapped from the app partition, 117744 bytes of SRAM returned |
-| PSRAM bring-up | not started | the window faults on the first read, so the ROM leaves nothing behind; see M5 |
+| PSRAM bring-up | done | 32 MB at 20 MHz, mapped at `0x48000000` and in exec's memory list; `AvailMem` reports 34,177,392 bytes |
 | timer.device | done | a 500 ms timerequest on the VBLANK unit returns after exactly 50 ticks |
 | SD/MMC block device | not started | |
 | MIPI-DSI framebuffer HIDD | not started | |
@@ -418,13 +418,10 @@ Raising it above the spinner gives exactly 50, which is worth recording
 because a systematic six-tick offset is the kind of thing that gets
 explained away as timer inaccuracy.
 
-**M5 - memory.** PSRAM MSPI bring-up, PSRAM added to the exec memory list.
-Done when: `AvailMem(MEMF_ANY)` reports the external RAM and a multi-MB
-allocation survives a write-read cycle.
-
-The part is known: AP hex PSRAM, 256 Mbit, X16 mode, 32 MB at 200 MHz,
-which the board's own firmware prints on its way up. The window at
-0x48000000 faults on the first read, so nothing is configured for us.
+**M5 - memory.** Done. 32 MB of AP hex PSRAM at 20 MHz, mapped at
+0x48000000 and in exec's memory list; `AvailMem(MEMF_ANY)` reports
+34,177,392 bytes where it reported 634,128, and a 30 MB allocation survives
+a write-read cycle across its whole length.
 
 One route was tried and abandoned, and the reasons are worth keeping so
 nobody spends the same afternoon on it. Bringing the chip up from the
@@ -452,48 +449,85 @@ environment there, one obstacle at a time.
      `periph_rcc_exit`, `periph_rtc_mpll_acquire`,
      `periph_rtc_mpll_freq_set`.
 
-Six is where it stopped, and the port writes its own instead. The
-sequence ESP-IDF performs is legible from its low level headers, which are
-the register documentation in machine readable form, and it is shorter than
-the dependency list suggests:
+Six is where it stopped, and the port writes its own instead. What that
+turned out to be, in the order it has to happen:
 
-    MPLL up at 400 MHz                  only needed above 20 MHz
+    MPLL up at 400 MHz              over the internal configuration bus
     module clocks on, controllers reset
-    clock source and bus divider        the divider is the whole speed question
-    pin drive, DQS, CS timing
+    clock source MPLL, divider 20   the divider is the whole speed question
+    pin drive strength 2 on all twenty pins
+    DQS enabled, CS setup/hold/delay 4/4/3
     split transactions, page size 2048
-    DLL on
-    mode registers MR0/MR4/MR8          latency, burst length, x16
-    read them back to confirm the part
+    DLL on, both controllers
+    mode registers MR0/MR4/MR8      latency, burst length, sixteen bit bus
+    identify: vendor 0x0d, density 7
+    a word written and read back
+    the AXI path: read and write commands, address and dummy lengths,
+      octal command and address with hex data, double rate, AXI enable
+    the translation table: physical page n to virtual page n
+    a memory header, without MEMF_FAST, at priority -20
 
-Two controllers share the bus, MSPI2 for data and MSPI3 for the mode
-registers, which is why most of it is done twice.
+Two controllers share the bus, MSPI2 for the memory-mapped path and MSPI3
+for the mode registers, which is why some of it is done twice.
 
-The staged plan, and the ceiling stated up front. Stage one takes the
-clock off XTAL rather than the MPLL: 40 MHz divided down needs no
-calibration, and no MPLL has to be brought up first. That caps the bus at
-20 MHz, which is a tenth of the bandwidth and ten times the latency of
-what the part can do - deliberate, because the divider is the only thing
-that changes when the MPLL and the calibration arrive. Nothing else in the
-sequence differs between 20 MHz and 200 MHz.
+Four things about this were wrong in the first attempt, and all four are
+the kind of mistake that produces silence rather than an error:
+
+  - **The clock source.** Taking the bus clock off XTAL to avoid bringing
+    the MPLL up rests on the idea that 20 MHz needs no PLL. ESP-IDF's own
+    20 MHz configuration runs the MPLL at 400 MHz and divides by twenty;
+    the divider sits behind the PLL. What a low bus clock saves is the read
+    timing calibration, and nothing else. This is a correction to what an
+    earlier version of this file claimed.
+  - **An address.** The clock source select field is in PERI_CLK_CTRL00,
+    not CTRL01. It went unnoticed because XTAL is encoded as zero and zero
+    is the reset value, so the bus ran off XTAL either way.
+  - **Pin drive strength.** Reset selects zero, the weakest of four, and at
+    that setting the chip does not answer at all. Leaving it alone was
+    justified as a signal integrity question with margin to spare at 20
+    MHz, which confuses two things: integrity is about the shape of an edge
+    that arrives, this is about whether the driver moves the line far
+    enough to be seen.
+  - **The AXI path.** A correct translation table is not enough. Until
+    MSPI2 is told what a read and a write look like and allowed to answer
+    AXI requests, a store to the mapped window is a bus error.
+
+The method is worth more than any of the four. An ESP-IDF application with
+PSRAM enabled, built from the same fetched sources and flashed to the same
+app partition, establishes that the hardware works and gives a reference
+to compare against. Then, in order: 688 registers across nine peripheral
+blocks diffed between the two; the MPLL's configuration read back off the
+internal bus, which is the only way to check a write there; and finally
+this port's own transaction code compiled into a working ESP-IDF session,
+which is what settled it. That last step also caught a mistake made while
+looking: the ROM's `cs_en_mask` is `1 << 1`, its header's wording ("0 for
+cs0, 1 for cs1") invites the other reading, and following it turns working
+reads into a floating bus.
+
+Two smaller things fall out of it. The bring-up runs with interrupts
+disabled, because a sequence that can be interrupted between a controller
+write and the transaction that depends on it is not a sequence. And the
+mode registers are written as absolute values rather than
+read-modify-write: before the chip is configured a read returns a floating
+bus, and writing 0xff back sets every reserved bit along with a
+partial-array-refresh setting nobody asked for. ESP-IDF read-modify-writes
+because it can trust the read.
+
+**The clock, which is where this is not finished.** 20 MHz against the
+200 MHz the part is rated for is a tenth of the bandwidth and ten times
+the latency. What stands between them is the per-board read timing
+calibration - `mspi_timing_psram_tuning` and its delay-line and phase
+sweep - plus the read and write latencies in MR0 and MR4 and the two dummy
+lengths in the AXI path, which are the values that depend on the clock.
+The MPLL is already at 400 MHz, so nothing about the PLL has to change:
+200 MHz is a divider of two, three latency constants and the calibration.
+Note that 80 MHz does not escape the calibration either; ESP-IDF's tables
+require it at 80, 200 and 250 MHz, and only 20 MHz is exempt.
 
 Where 20 MHz will not do is the display. A 1280x720 frame at 16 bits is
 1.8 MB, and scanning it out at 60 Hz wants about 110 MB/s against a
 theoretical 80 MB/s at this clock. As a heap for 32 MB that would
 otherwise not exist, it is fine.
-
-Reaching the maximum is therefore one function and its four helpers -
-`mspi_timing_psram_tuning`, `periph_rcc_enter`, `periph_rcc_exit`,
-`periph_rtc_mpll_acquire`, `periph_rtc_mpll_freq_set` - which is a much
-smaller and better defined problem than the component that was tried
-first. Note that 80 MHz does not escape it: ESP-IDF's own tables require
-tuning at 80, 200 and 250 MHz, and only 20 MHz is exempt. What the list actually shows is that the
-expensive dependency is the timing calibration, and that it is only
-needed at high clock: ESP-IDF's own Kconfig offers 20 MHz, so the part
-runs there. At a conservative clock the calibration is unnecessary, and
-what remains - MPLL setup, a reset-and-clock critical section and the
-mode-register sequence - is a handful of registers this port can write
-from the reference manual, in `P4_SRAMCODE`, with no ESP-IDF at all.
 
 **M6 - storage and package loading.** SDMMC host, block device, the BSP
 package loaded and relocated by an ELF loader, resident scan.
@@ -521,7 +555,7 @@ Written to 0x2000 and started by the first stage ROM loader:
     [kernel] data   0x4ff1b234 - 0x4ff1b248  20 bytes
     [kernel] bss    0x4ff1b250 - 0x4ff1f680  17456 bytes
     [kernel] sram   0x4ff00000 - 0x4ffc0000
-    [kernel] psram  0x48000000 - 0x4c000000  (not brought up)
+    [kernel] psram  0x48000000 - 0x4c000000  32 MB, mapped and verified
     [kernel] no memory list, no KernelBase, no exec yet - stopping here.
 
 Three things that were assumptions before and are facts now.
