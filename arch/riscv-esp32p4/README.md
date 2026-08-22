@@ -70,7 +70,7 @@ Read off the hardware with esptool 5.3, not taken from a datasheet.
 | Console | USB-Serial/JTAG, Espressif 303a:1001, enumerates without a bridge chip |
 | Flash | 32 MB, Winbond (manufacturer 0xef, device 0x4019) |
 | Flash layout | ESP-IDF table at 0x8000, nvs 0x9000, nvs_key 0xf000, otadata 0x10000, phy_init 0x12000, ota_0 0x20000 (8 MB), `arosbsp` 0x820000 (8064 KB), FAT storage 0x1020000 (15.9 MB) |
-| Currently flashed | patched ESP-IDF v6.0.1 second stage, AROS XIP diagnostic image in ota_0 and the four-member M6 BSP package in `arosbsp`; `storage` remains untouched |
+| Currently flashed | patched ESP-IDF v6.0.1 second stage, AROS XIP diagnostic image in ota_0 and the twelve-member A4 BSP package in `arosbsp`; `storage` remains untouched |
 
 Revision v1.3 means the pre-v3 memory layout applies. The hardware facts above
 were read before the first write. The bring-up now deliberately replaces only
@@ -300,10 +300,23 @@ than booting an unobserved new layout. It is not a dependency of the
 bootloader, kernel image or any default build.
 
 The package itself uses AROS's existing PKG container rather than a new disk
-format. The current bring-up package contains `sdcard.device`,
-`utility.library`, `partition.library` and `expansion.library`:
+format. The current package contains twelve members: `sdcard.device`,
+`utility.library`, `partition.library`, `expansion.library`, the A2 corpus
+fixture `ramtest.device`, and, added for A4, `dos.library`,
+`bootloader.resource`, `FileSystem.resource`, `lddemon.resource`,
+`shell.resource`, `shellcommands.resource` and the `fat` handler. Together
+that is 976,008 bytes, 11.8 % of the 0x7e0000-byte partition.
+`dosboot.resource` is deliberately still absent: its COLDSTART init never
+returns, which would make every diagnostic printed after `krnStartExec()`
+unreachable.
 
     gmake kernel-package-esp32p4-riscv
+
+`boot/audit-package.py` checks the built container. It reads the set of
+accepted relocation types out of `kernel/kernel_elf.c` itself, so it cannot
+drift away from the loader, and it fails if any member is not a little endian
+ELF32 relocatable RISC-V object or carries a relocation the loader does not
+implement.
 
 It produces `AROS/boot/esp32p4/aros-bsp.pkg`. At boot the kernel validates the
 container and its ELF32/RISC-V members, copies the exact declared package size
@@ -655,6 +668,20 @@ recovering through CMD12/CMD13, the invalid-request rejection cases and a live
 100 Hz heartbeat. The physical CMD and DAT0/D0 wire trace was never needed: it
 had been chosen to explain a selectivity that the card's own content showed
 does not exist.
+A4 has begun. The package now also carries `dos.library`, the four resources
+around it, the shell pair and the `fat` handler; twelve members load and
+relocate into PSRAM, the resident order on the board matches what the `.conf`
+files declare, and `FileSystem.resource` carries the three FAT DosTypes
+including the 0x46415402 the A3 image's partition reports. Three defects had
+to be fixed to get there, all outside this directory: `arch/riscv-all/crt`
+saved the callee-saved floating point registers with D-extension opcodes this
+target does not have, the `rom/dos/catalogs` submodule was not initialised so
+`dos.library` could not compile, and this platform never assigned kernel.
+resource's `BootMsg`, so `KrnGetBootInfo()` returned nothing and no boot
+argument could reach `bootloader.resource`. With that last one fixed, a
+`P4_CMDLINE`/`P4_HEADLESS_BOOT` build option supplies the
+`econsole nomonitors nocomposition` command line the headless route needs.
+`dosboot.resource` and `econsole` remain out of the package.
 Done when: modules outside the kickstart also start from MicroSD.
 The complete order, hardening work and test matrix are in
 [ROADMAP.md, Track A](ROADMAP.md#track-a-storage-and-normal-boot).
