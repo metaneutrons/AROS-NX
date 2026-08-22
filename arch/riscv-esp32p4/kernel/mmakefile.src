@@ -61,6 +61,17 @@ USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 #                       immediately following CMD17 recovery read to pass
 #   -DP4_PARTITION_TEST  open the package-loaded partition.library and read
 #                       one sector through its public root-partition API
+#   -DP4_CMDLINE="..." supply a kernel command line through the KRN_CmdLine
+#                       boot tag.  bootloader.resource splits it on
+#                       whitespace into the argument list dosboot reads;
+#                       there is no firmware source for one on this board
+#   -DP4_DOS_PROBE      the half of the A4 gate that can be asked before
+#                       dosboot.resource joins the package: bootloader
+#                       arguments, the FAT entries in FileSystem.resource,
+#                       and dos.library present but not self-starting.
+#                       Everything printed after krnStartExec() becomes
+#                       unreachable once dosboot is present, so this runs
+#                       in the step before it
 #
 ifeq ($(P4_A1_DIAGNOSTIC),1)
 P4_DEBUG_CPPFLAGS += -DP4_SDCARD_DEVICE_TEST -DP4_SDCARD_MULTIBLOCK_TEST \
@@ -88,6 +99,28 @@ endif
 # shared hash helper, so build it together with P4_A1_DIAGNOSTIC=1.
 ifdef P4_PARTITION_TEST
 P4_DEBUG_CPPFLAGS += -DP4_PARTITION_TEST
+endif
+
+# P4_DOS_PROBE=1 adds the pre-dosboot half of the A4 gate.  It needs the
+# DOS-side package members to be present but not dosboot itself, so it is
+# only meaningful for the measured step between the two.
+ifdef P4_DOS_PROBE
+P4_DEBUG_CPPFLAGS += -DP4_DOS_PROBE
+endif
+
+# P4_CMDLINE="..." sets the kernel command line.  P4_HEADLESS_BOOT=1 is the
+# recovery route the A4 phase describes and sets the three words it needs:
+# `nomonitors` and `nocomposition` together are what make dos.library skip
+# C:AROSMonDrvs, which the flash package does not contain, and `econsole`
+# gives it a console when no display driver has been brought up.  Note that
+# econsole also sets the no-Startup-Sequence boot flag, so a test that has
+# to run must be an AFTERDOS resident or an interactive command.
+ifeq ($(P4_HEADLESS_BOOT),1)
+P4_CMDLINE := econsole nomonitors nocomposition
+endif
+
+ifdef P4_CMDLINE
+P4_DEBUG_CPPFLAGS += -DP4_CMDLINE='"$(P4_CMDLINE)"'
 endif
 
 USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__ $(P4_DEBUG_CPPFLAGS)

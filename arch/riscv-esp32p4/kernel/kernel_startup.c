@@ -39,6 +39,11 @@
 #include <libraries/partition.h>
 #include <proto/partition.h>
 #endif
+#ifdef P4_DOS_PROBE
+#include <aros/bootloader.h>
+#include <resources/filesysres.h>
+#include <proto/bootloader.h>
+#endif
 
 #include <kernel_base.h>
 #include <kernel_globals.h>
@@ -124,6 +129,11 @@ static UWORD *__esp32p4_modules_high;
 
 #ifdef P4_PARTITION_TEST
 struct PartitionBase *PartitionBase;
+#ifdef P4_DOS_PROBE
+/* GetBootInfo() reaches the resource through this, the same way the
+   partition test reaches partition.library through PartitionBase. */
+APTR BootLoaderBase;
+#endif
 #endif
 
 /* Set by clic_selftest() below, printed by the report */
@@ -273,7 +283,12 @@ static void report(unsigned long hartid)
  * this image is, so exec does not hand it out, and what the heap is.
  * There is no device tree and no command line to pass on.
  */
-static struct TagItem BootTags[10];
+/*
+ * Room for every tag below plus TAG_DONE, with slack.  A boot tag list that
+ * runs off its own end is not diagnosable from the far side: the resource
+ * that reads it walks until TAG_DONE and finds whatever follows in memory.
+ */
+static struct TagItem BootTags[12];
 
 static struct TagItem *krnPrepareBootTags(void)
 {
@@ -299,11 +314,38 @@ static struct TagItem *krnPrepareBootTags(void)
     tag->ti_Tag  = KRN_BootLoader;
     tag->ti_Data = (IPTR)"ESP32-P4 ROM";
     tag++;
+#ifdef P4_CMDLINE
+    /*
+     * The kernel command line, which this platform has no firmware source
+     * for: there is no bootloader to be handed one by and no NVS entry is
+     * read yet, so the only honest place for it is the build.
+     *
+     * bootloader.resource splits this on whitespace into the argument list
+     * dosboot reads, so the words here are the boot arguments.  It matters
+     * which: `nomonitors nocomposition` together are what let dos.library
+     * skip C:AROSMonDrvs, which does not exist in the flash package, and
+     * `econsole` is what gives it a console when no display driver does.
+     */
+    tag->ti_Tag  = KRN_CmdLine;
+    tag->ti_Data = (IPTR)P4_CMDLINE;
+    tag++;
+#endif
     tag->ti_Tag  = KRN_DebugInfo;
     tag->ti_Data = (IPTR)__ks_debuginfo;
     tag++;
     tag->ti_Tag  = TAG_DONE;
     tag->ti_Data = 0;
+
+    /*
+     * And the same list where kernel.resource hands it out.  Passing it to
+     * krnPrepareExecBase() is not enough: that reaches exec, while
+     * KrnGetBootInfo() returns this global, and bootloader.resource reads
+     * only the latter.  Until this was set, that resource came up with no
+     * loader name and no arguments no matter what the tags said, which is
+     * how the command line looked plumbed and was not.  The sibling
+     * riscv-native/sifive_u port assigns it in the same place.
+     */
+    BootMsg = BootTags;
 
     return BootTags;
 }
@@ -329,7 +371,7 @@ static void krnDumpResidents(UWORD *lo, UWORD *hi)
         krnP4PutStr("[boot]     ");
         krnP4PutHex32((uint32_t)(IPTR)res);
         krnP4PutStr("  pri ");
-        krnP4PutDec((uint32_t)(int)(signed char)res->rt_Pri);
+        krnP4PutDecS((int32_t)(signed char)res->rt_Pri);
         krnP4PutStr("  type ");
         krnP4PutDec((uint32_t)res->rt_Type);
         krnP4PutStr("  flags ");
@@ -1714,6 +1756,173 @@ static void krnP4PartitionCorpusTest(void)
 
 #endif /* P4_PARTITION_TEST */
 
+#ifdef P4_DOS_PROBE
+/*
+ * What A4 can be asked before dosboot.resource exists.
+ *
+ * The package gains dos.library, the resources around it and the FAT
+ * handler in one step, and dosboot in the next.  That split is deliberate:
+ * dosboot's COLDSTART init never returns, so everything printed from here
+ * would become unreachable the moment it joins the package.  So the half
+ * of the A4 gate that concerns what is present rather than what boots is
+ * asked here, while it can still be read on the console.
+ *
+ * Four questions, each with a definite wrong answer:
+ *
+ *   - does bootloader.resource exist, and what did it make of the command
+ *     line?  The platform supplies none yet, so the honest expectation is
+ *     an empty argument list, and this is what will show the KRN_CmdLine
+ *     plumbing working when it arrives;
+ *   - does FileSystem.resource carry the FAT entries?  dos.library scans
+ *     that list exactly once during its own initialisation, so an entry
+ *     that is missing here is missing for good;
+ *   - is 0x46415402, the DosType the A3 image's partition actually
+ *     reports, among them?  Three FAT DosTypes are registered and only a
+ *     match on that one makes the medium mountable;
+ *   - is dos.library's romtag present but not marked for automatic
+ *     initialisation?  It has to be found by dosboot through
+ *     FindResident() and started by hand.  A COLDSTART bit here would
+ *     mean it starts on its own, in the wrong order, before dosboot has
+ *     chosen a boot node.
+ */
+static void krnP4DosProbe(void)
+{
+    struct FileSysResource *fsr;
+    struct Resident *res;
+    int fat_entries = 0;
+    int a3_dostype = 0;
+    int failed = 0;
+
+    krnP4PutStr("[dos]    pre-dosboot probe starting\n");
+
+    /* bootloader.resource and the command line it parsed */
+    BootLoaderBase = OpenResource("bootloader.resource");
+    krnP4PutStr("[dos]    bootloader.resource @ ");
+    krnP4PutHex32((uint32_t)(IPTR)BootLoaderBase);
+    if (!BootLoaderBase)
+    {
+        krnP4PutStr("  MISSING\n");
+        failed = 1;
+    }
+    else
+    {
+        struct List *args = (struct List *)GetBootInfo(BL_Args);
+        ULONG count = 0;
+
+        krnP4PutStr("  loader ");
+        {
+            const char *name = (const char *)GetBootInfo(BL_LoaderName);
+
+            krnP4PutHex32((uint32_t)(IPTR)name);
+            krnP4PutStr(" '");
+            krnP4PutStr(name ? name : "");
+            krnP4PutStr("'\n");
+        }
+
+        if (args)
+        {
+            struct Node *node;
+
+            ForeachNode(args, node)
+            {
+                krnP4PutStr("[dos]      arg ");
+                krnP4PutDec(count);
+                krnP4PutStr(" '");
+                krnP4PutStr(node->ln_Name ? node->ln_Name : "");
+                krnP4PutStr("'\n");
+                ++count;
+            }
+        }
+        krnP4PutStr("[dos]      command line arguments ");
+        krnP4PutDec(count);
+        krnP4PutStr(count ? "\n" : " (platform supplies none yet)\n");
+    }
+
+    /* FileSystem.resource and its entries */
+    fsr = (struct FileSysResource *)OpenResource("FileSystem.resource");
+    krnP4PutStr("[dos]    FileSystem.resource @ ");
+    krnP4PutHex32((uint32_t)(IPTR)fsr);
+    krnP4PutStr("\n");
+    if (!fsr)
+        failed = 1;
+    else
+    {
+        struct FileSysEntry *fse;
+
+        ForeachNode(&fsr->fsr_FileSysEntries, fse)
+        {
+            krnP4PutStr("[dos]      dostype ");
+            krnP4PutHex32((uint32_t)fse->fse_DosType);
+            krnP4PutStr("  version ");
+            krnP4PutDec((uint32_t)(fse->fse_Version >> 16));
+            krnP4PutStr(".");
+            krnP4PutDec((uint32_t)(fse->fse_Version & 0xffff));
+            krnP4PutStr("  pri ");
+            krnP4PutDecS((int32_t)fse->fse_Priority);
+            krnP4PutStr("  patch ");
+            krnP4PutHex32((uint32_t)fse->fse_PatchFlags);
+            krnP4PutStr("  seglist ");
+            krnP4PutHex32((uint32_t)(IPTR)fse->fse_SegList);
+            krnP4PutStr("  '");
+            krnP4PutStr(fse->fse_Node.ln_Name ? fse->fse_Node.ln_Name : "");
+            krnP4PutStr("'\n");
+
+            /* The three the FAT handler registers, 'FAT\0', 'FAT\1' and
+               'FAT\2'; the last is what the A3 image's partition reports. */
+            if ((fse->fse_DosType & 0xffffff00UL) == 0x46415400UL)
+                ++fat_entries;
+            if (fse->fse_DosType == 0x46415402UL)
+                a3_dostype = 1;
+        }
+    }
+
+    krnP4PutStr("[dos]    FAT entries ");
+    krnP4PutDec((uint32_t)fat_entries);
+    krnP4PutStr(fat_entries == 3 ? " (all three)" : " EXPECTED THREE");
+    krnP4PutStr(", A3 dostype 0x46415402 ");
+    krnP4PutStr(a3_dostype ? "present\n" : "MISSING\n");
+    if (fat_entries != 3 || !a3_dostype)
+        failed = 1;
+
+    /* the named handler resident the FAT entries point at by name */
+    res = FindResident("fat-handler");
+    krnP4PutStr("[dos]    resident 'fat-handler' @ ");
+    krnP4PutHex32((uint32_t)(IPTR)res);
+    krnP4PutStr("\n");
+    if (!res)
+        failed = 1;
+
+    /* dos.library: present, and deliberately not self-starting */
+    res = FindResident("dos.library");
+    krnP4PutStr("[dos]    resident 'dos.library' @ ");
+    krnP4PutHex32((uint32_t)(IPTR)res);
+    if (!res)
+    {
+        krnP4PutStr("  MISSING - dosboot could not start it\n");
+        failed = 1;
+    }
+    else
+    {
+        krnP4PutStr("  version ");
+        krnP4PutDec(res->rt_Version);
+        krnP4PutStr("  pri ");
+        krnP4PutDecS((int32_t)(signed char)res->rt_Pri);
+        krnP4PutStr("  flags ");
+        krnP4PutHex32((uint32_t)res->rt_Flags);
+        if (res->rt_Flags & (RTF_COLDSTART | RTF_SINGLETASK | RTF_AFTERDOS))
+        {
+            krnP4PutStr("  SELF-STARTING, must be started by dosboot\n");
+            failed = 1;
+        }
+        else
+            krnP4PutStr("  not self-starting, as required\n");
+    }
+
+    krnP4PutStr("[dos]    pre-dosboot probe ");
+    krnP4PutStr(failed ? "FAILED\n" : "passed\n");
+}
+#endif /* P4_DOS_PROBE */
+
 #ifdef P4_PSRAM_PROBE
 /*
  * Does anything answer in the PSRAM window before we have configured a
@@ -2258,6 +2467,10 @@ void kernel_cstart(unsigned long hartid, void *fdt)
         krnP4PartitionLibraryTest();
         krnP4PartitionCorpusTest();
     }
+#endif
+#ifdef P4_DOS_PROBE
+    if (SysBase)
+        krnP4DosProbe();
 #endif
 
 #ifdef P4_KEEP_WATCHDOG

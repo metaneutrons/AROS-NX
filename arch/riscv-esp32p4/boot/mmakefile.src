@@ -3,9 +3,15 @@
 #
 #   This is the standard AROS PKG v1 container, not a linked image.  Its
 #   members are complete relocatable module files; the platform ELF loader
-#   places and relocates them in PSRAM later.  Keep this package deliberately
-#   small while the read-only block-device path is brought up: utility,
-#   expansion, partition.library and sdcard.device only.
+#   places and relocates them in PSRAM later.
+#
+#   A4 grows the package in measured steps.  This step adds the DOS side
+#   without `dosboot.resource`: dos.library, the resources its
+#   initialisation and LoadSeg path need, the shell pair a CLI needs, and
+#   the FAT handler.  All of those can be observed while the
+#   post-krnStartExec() diagnostics still run, because nothing here takes
+#   over COLDSTART.  `dosboot.resource` is what does, and it is added only
+#   once these members are proven to load, relocate and initialise.
 #
 
 include $(SRCDIR)/config/aros.cfg
@@ -15,22 +21,43 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-expansion \
 #MM     kernel-partition \
 #MM     kernel-sdcard \
-#MM     kernel-ramtest
+#MM     kernel-ramtest \
+#MM     kernel-dos \
+#MM     kernel-bootloader \
+#MM     kernel-filesystem \
+#MM     kernel-lddemon \
+#MM     kernel-shell \
+#MM     kernel-shellcommands \
+#MM     kernel-fs-fat
 
 #MM kernel-package-esp32p4-riscv-quick : \
 #MM     kernel-utility-quick \
 #MM     kernel-expansion-quick \
 #MM     kernel-partition-quick \
 #MM     kernel-sdcard-quick \
-#MM     kernel-ramtest-quick
+#MM     kernel-ramtest-quick \
+#MM     kernel-dos-quick \
+#MM     kernel-bootloader-quick \
+#MM     kernel-filesystem-quick \
+#MM     kernel-lddemon-quick \
+#MM     kernel-shell-quick \
+#MM     kernel-shellcommands-quick \
+#MM     kernel-fs-fat-quick
 
 #
 #   ramtest.device is the A2 corpus fixture.  It carries only const data and
 #   has no write path, so including it costs a few kilobytes and no risk to
 #   the medium.  Drop it from the package once A2 is verified.
 #
+PKG_LIBS      := utility partition dos
+PKG_LIBS_ARCH := expansion
+PKG_RES       := bootloader FileSystem lddemon shell shellcommands
+PKG_DEVS      := sdcard ramtest
+PKG_HANDLERS  := fat
+
 %make_package mmake=kernel-package-esp32p4-riscv \
-    file=$(AROSARCHDIR)/aros-bsp.pkg libs="utility partition" \
-    arch_libs=expansion devs="sdcard ramtest"
+    file=$(AROSARCHDIR)/aros-bsp.pkg \
+    libs="$(PKG_LIBS)" arch_libs="$(PKG_LIBS_ARCH)" \
+    res="$(PKG_RES)" devs="$(PKG_DEVS)" handlers="$(PKG_HANDLERS)"
 
 %common
