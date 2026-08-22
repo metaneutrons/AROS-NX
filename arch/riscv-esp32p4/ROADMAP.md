@@ -115,7 +115,7 @@ tests.
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
-| A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `not started` | Requires A2 test layout |
+| A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `host verified` | Evidence entry 2026-08-23: `kernel-image-esp32p4-riscv` builds a byte-reproducible image, checked by the host parser, `fsck_msdos` and its manifest.  Open: writing it to a medium needs a second card or giving up the reference card |
 | A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `not started` | Requires A2 and A3 |
 | A5 | Command and library loaded from MicroSD | `not started` | Closes M6 |
 | B0 | Canonical D1001 display contract and provenance | `not started` | Resolve timing contradictions first |
@@ -2104,6 +2104,68 @@ and record substantive corrections as a new entry.
   until A4.
 - Next safe step: A3, a reproducible host-built read-only FAT32 image.  A2's
   discovery is now trustworthy enough to build on.
+
+### 2026-08-23 - A3 image target builds and verifies on the host
+
+- State: A3 moves from `not started` to `host verified`.  Every acceptance
+  point that does not require a medium holds.  The image has not been written
+  to a card, so there is no board run and no before/after pair from one yet.
+- What was added, all host-side and none of it running on the board:
+  `arch/riscv-esp32p4/image/mkfat32.py` writes the whole image, MBR through
+  directory entries, with no root privileges and no external tools;
+  `verify-image.sh` and `check-manifest.py` check the result with tools that
+  did not build it; `content/` holds the tracked part of the tree; and
+  `mmakefile.src` adds `kernel-image-esp32p4-riscv`, which is not part of any
+  default build.
+- Why the generator writes everything itself rather than calling a formatter:
+  mtools is not present on every host, and `newfs_msdos` stamps a volume
+  serial from the clock, which would make the output unreproducible.  Writing
+  it here means every field is controlled, and the only two that a formatter
+  would randomise, the volume serial and the per-entry timestamps, are build
+  parameters with fixed defaults.
+- Layout: 64 MiB, one MBR partition of type `0x0b` at LBA 2048, the same shape
+  as the D1001 card so discovery sees something it already reads correctly.
+  One sector per cluster, 126,976 clusters, two FATs of 1008 sectors.
+- Acceptance evidence, from `verify-image.sh` on the built artifact:
+  the host's own parser reports `FDisk_partition_scheme` and `DOS_FAT_32`;
+  `fsck_msdos -n` completes all three phases with no error; the mounted
+  contents match the manifest exactly, ten entries against ten; and the image
+  hash is identical before and after verification.  Rebuilding through the
+  make target from unchanged inputs produces a byte-identical image,
+  `c68961921b3ddd986caa1b7dc9dfae4e20ac03a4af6d3cc2d0773359d9afd9f6`.
+- Two defects the independent tools caught, which is the reason for using
+  them:
+  1. The `..` entry of every subdirectory pointed at the root's own cluster
+     number.  The specification requires zero when the parent is the root, and
+     `fsck` said so.
+  2. The first image had 16,092 clusters with eight-sector clusters, and the
+     host refused to mount it.  Correctly: FAT32 is only FAT32 above 65,524
+     clusters, and below that the specification calls the volume FAT16.  The
+     generator now refuses to emit such an image rather than producing one a
+     host rejects.
+- Verification detail worth recording: the mount is done on a copy, never on
+  the image.  macOS writes to a FAT volume as soon as it mounts it, creating
+  `.fseventsd`, which would change the image and invalidate exactly the
+  before/after hash that board runs depend on.  The manifest check ignores
+  that and the other known host artefacts by name, and reports anything else
+  unexpected rather than filtering broadly.
+- Content, deliberately minimal and to grow one audited line at a time:
+  `AROS.boot` carrying the CPU marker `__dos_IsBootable()` searches for with
+  `strstr`, taken from `$(AROS_TARGET_CPU)` so it cannot drift from the
+  target; a `S:Startup-Sequence` that only echoes, because the standard
+  sequence performs file management on `SYS:`; and the directory skeleton the
+  assigns expect.  The A5 proof command and library are not in it, because
+  they do not exist yet.
+- Safety: nothing was written to any medium.  The SD card was not touched and
+  the board was not involved.
+- Remaining risk and the open decision: the gate's before/after requirement
+  needs the image on a medium, and writing it to the test card would destroy
+  the reference the A1 and A2 evidence rests on.  That needs either a second
+  card or a deliberate decision to give up the current one.  Until then A3 is
+  `host verified` and not more.
+- Next safe step: decide the medium question, then A4.  Note that AGENTS.md
+  keeps `dosboot.resource` out of the package until A1 and A2 pass, which they
+  now do, so A4 is unblocked on that count.
 
 ## Evidence-entry template
 
