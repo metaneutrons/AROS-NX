@@ -25,7 +25,6 @@
    done twice. */
 #define P4_MSPI2_BASE               0x5008E000UL
 #define P4_MSPI3_BASE               0x5008F000UL
-#define P4_HP_SYS_CLKRST_BASE       0x500E6000UL
 
 /*
  * The MPLL, which is the bus clock's only usable source.
@@ -42,8 +41,6 @@
  * register and a poll on a busy bit. The registers for that master and
  * the field layout of the MPLL's three configuration bytes follow.
  */
-#define P4_PMU_BASE                 0x50115000UL
-#define P4_LP_CLKRST_BASE           0x50111000UL
 #define P4_LPPERI_BASE              0x50120000UL
 #define P4_I2C_ANA_MST_BASE         0x50124000UL
 
@@ -364,12 +361,24 @@ struct p4_rom_spi_cmd
 
 #define P4_XTAL_HZ                  40000000UL
 
-static inline void p4_w32(unsigned long a, unsigned long v)
+/*
+ * always_inline, not merely inline. These are called from P4_SRAMCODE
+ * functions, and at -Os the compiler is entitled to emit one out-of-line
+ * copy of a static inline and call it from everywhere - which it does, and
+ * that copy lands in .flash.text. Any such call inside a window where the
+ * flash cache is off would hang with no output. Nothing in the PSRAM path
+ * turns the flash cache off today, so this was latent rather than broken;
+ * kernel_flash.c does turn it off, and the promise P4_SRAMCODE makes has
+ * to actually hold before something relies on it.
+ */
+#define P4_ALWAYS_INLINE __attribute__((always_inline)) static inline
+
+P4_ALWAYS_INLINE void p4_w32(unsigned long a, unsigned long v)
 {
     *(volatile unsigned long *)a = v;
 }
 
-static inline unsigned long p4_r32(unsigned long a)
+P4_ALWAYS_INLINE unsigned long p4_r32(unsigned long a)
 {
     return *(volatile unsigned long *)a;
 }
