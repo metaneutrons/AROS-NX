@@ -37,6 +37,24 @@ is identical byte for byte. Those two options exist because they are the only
 fields a normal formatter randomises: the volume serial, and per-entry
 timestamps. Both are fixed by the build target rather than left to the clock.
 
+## Getting an untouched after-image
+
+The host writes to a FAT volume as soon as it mounts one. On a board run that
+means the sector hash before and after will differ even if the board wrote
+nothing, so a bare hash comparison cannot answer the question the gate asks.
+
+What worked, and what the roadmap entry of 2026-08-23 records, is to attribute
+every changed sector instead. After a run the difference was eight sectors:
+FSInfo, both FATs, the root directory and four clusters, with exactly one new
+directory entry, `FSEVE~12`, which is `.fseventsd`. The MBR, the VBR and every
+cluster holding generated content were unchanged. That is stronger evidence
+than an equal hash would have been, because it says where any difference came
+from.
+
+If a future run needs a literally equal hash, automount has to be suppressed
+for the device before it is inserted. That is a system-level change and was
+deliberately not made here.
+
 ## Layout choices worth knowing
 
 The partition starts at LBA 2048 with type `0x0b`, the same shape as the D1001
