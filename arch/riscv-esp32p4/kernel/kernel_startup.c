@@ -23,6 +23,7 @@
 
 #include <exec/execbase.h>
 #include <exec/lists.h>
+#include <exec/libraries.h>
 #include <exec/resident.h>
 #include <exec/memory.h>
 #include <aros/kernel.h>
@@ -30,6 +31,14 @@
 #include <proto/exec.h>
 #include <exec/io.h>
 #include <devices/timer.h>
+#ifdef P4_SDCARD_DEVICE_TEST
+#include <devices/trackdisk.h>
+#include <devices/newstyle.h>
+#endif
+#ifdef P4_PARTITION_TEST
+#include <libraries/partition.h>
+#include <proto/partition.h>
+#endif
 
 #include <kernel_base.h>
 #include <kernel_globals.h>
@@ -110,6 +119,12 @@ static void report_misa(void)
 /* Set by the PSRAM bring-up, printed by the report */
 static unsigned long __esp32p4_psram_size;
 static struct MemHeader *__esp32p4_mh_psram;
+static UWORD *__esp32p4_modules_low;
+static UWORD *__esp32p4_modules_high;
+
+#ifdef P4_PARTITION_TEST
+struct PartitionBase *PartitionBase;
+#endif
 
 /* Set by clic_selftest() below, printed by the report */
 static int clic_selftest_passed;
@@ -258,7 +273,7 @@ static void report(unsigned long hartid)
  * this image is, so exec does not hand it out, and what the heap is.
  * There is no device tree and no command line to pass on.
  */
-static struct TagItem BootTags[8];
+static struct TagItem BootTags[10];
 
 static struct TagItem *krnPrepareBootTags(void)
 {
@@ -285,7 +300,7 @@ static struct TagItem *krnPrepareBootTags(void)
     tag->ti_Data = (IPTR)"ESP32-P4 ROM";
     tag++;
     tag->ti_Tag  = KRN_DebugInfo;
-    tag->ti_Data = 0;
+    tag->ti_Data = (IPTR)__ks_debuginfo;
     tag++;
     tag->ti_Tag  = TAG_DONE;
     tag->ti_Data = 0;
@@ -323,7 +338,15 @@ static void krnDumpResidents(UWORD *lo, UWORD *hi)
         krnP4PutStr(res->rt_Name ? (const char *)res->rt_Name : "(unnamed)");
         krnP4PutStr("\n");
 
-        p = (UWORD *)((IPTR)res->rt_EndSkip - 2);
+        /*
+         * Match krnScanResidents(): most modules place EndSkip after the
+         * RomTag, but secondary residents may live in a later section and
+         * still point at the module's text-end marker.  Never follow such a
+         * pointer backwards or this diagnostic walk will rediscover the
+         * same resident forever before exec gets a chance to start.
+         */
+        if ((IPTR)res->rt_EndSkip > (IPTR)p)
+            p = (UWORD *)((IPTR)res->rt_EndSkip - 2);
     }
 }
 
@@ -428,6 +451,263 @@ static struct Task *spawn_counter_task(const char *name, BYTE pri,
 
 #endif /* P4_TASK_TEST */
 
+#ifdef P4_SDCARD_DEVICE_TEST
+/*
+ * Exercise the complete external-module path, rather than only the early
+ * controller probe: open the dynamically loaded device, ask its public
+ * trackdisk/NSD interfaces what they expose, and read exactly one sector.
+ * The buffer is deliberately in internal SRAM for this first PIO test.
+ */
+static uint32_t sdcard_device_sector[128] P4_SRAMDATA
+    __attribute__((aligned(4)));
+
+static int krnP4SDCardReadSector(struct IOStdReq *io, uint32_t lba,
+                                 int use_64bit)
+{
+    const unsigned char *sector =
+        (const unsigned char *)sdcard_device_sector;
+    uint64_t byte_offset = (uint64_t)lba << 9;
+    uint32_t hash = 2166136261U;
+    uint32_t nonzero = 0;
+    uint32_t unchanged = 0;
+    unsigned int i;
+
+    /* A nonzero sentinel catches a backend that reports success without
+       actually replacing the caller's buffer. */
+    for (i = 0; i < 128; ++i)
+        sdcard_device_sector[i] = 0xa5a5a5a5U;
+
+    io->io_Command = use_64bit ? NSCMD_TD_READ64 : CMD_READ;
+    io->io_Data = sdcard_device_sector;
+    io->io_Length = sizeof(sdcard_device_sector);
+    io->io_Actual = use_64bit ? (uint32_t)(byte_offset >> 32) : 0;
+    io->io_Offset = (uint32_t)byte_offset;
+    DoIO((struct IORequest *)io);
+
+    krnP4PutStr("[sddev]  LBA ");
+    krnP4PutDec(lba);
+    if (io->io_Error != 0 || io->io_Actual != sizeof(sdcard_device_sector))
+    {
+        krnP4PutStr(" read failed, error ");
+        krnP4PutDec((uint32_t)(unsigned char)io->io_Error);
+        krnP4PutStr(", actual ");
+        krnP4PutDec(io->io_Actual);
+        krnP4PutStr("\n");
+        return 0;
+    }
+
+    for (i = 0; i < sizeof(sdcard_device_sector); ++i)
+    {
+        hash ^= sector[i];
+        hash *= 16777619U;
+        if (sector[i] != 0)
+            ++nonzero;
+        if (sector[i] == 0xa5)
+            ++unchanged;
+    }
+
+    krnP4PutStr(" hash ");
+    krnP4PutHex32(hash);
+    krnP4PutStr(", nonzero ");
+    krnP4PutDec(nonzero);
+    krnP4PutStr(", a5 bytes ");
+    krnP4PutDec(unchanged);
+    krnP4PutStr(", signature ");
+    krnP4PutStr(sector[510] == 0x55 && sector[511] == 0xaa ?
+                "55aa\n" : "absent\n");
+    return 1;
+}
+
+static void krnP4SDCardDeviceTest(void)
+{
+    struct MsgPort *port = NULL;
+    struct IOStdReq *io = NULL;
+    struct DriveGeometry geometry;
+    struct NSDeviceQueryResult query;
+    static const uint32_t probe_lbas[] =
+        { 0, 1, 2, 2048, 8192, 32768, 65536 };
+    uint32_t total_sectors = 0;
+    unsigned int i;
+    LONG open_error;
+
+    krnP4PutStr("[sddev]  opening sdcard.device unit 0\n");
+
+    port = CreateMsgPort();
+    if (port)
+        io = (struct IOStdReq *)CreateIORequest(port, sizeof(*io));
+    if (!port || !io)
+    {
+        krnP4PutStr("[sddev]  could not allocate an IO request\n");
+        goto out;
+    }
+
+    open_error = OpenDevice("sdcard.device", 0,
+                            (struct IORequest *)io, 0);
+    if (open_error != 0)
+    {
+        krnP4PutStr("[sddev]  unit 0 is unavailable, error ");
+        krnP4PutDec((uint32_t)open_error);
+        krnP4PutStr("\n");
+        goto out;
+    }
+
+    io->io_Command = TD_GETGEOMETRY;
+    io->io_Data = &geometry;
+    io->io_Length = sizeof(geometry);
+    io->io_Actual = 0;
+    io->io_Offset = 0;
+    DoIO((struct IORequest *)io);
+    if (io->io_Error == 0 && io->io_Actual == sizeof(geometry))
+    {
+        krnP4PutStr("[sddev]  geometry sector ");
+        krnP4PutDec(geometry.dg_SectorSize);
+        krnP4PutStr(" bytes, total ");
+        krnP4PutDec(geometry.dg_TotalSectors);
+        krnP4PutStr(" sectors\n");
+        total_sectors = geometry.dg_TotalSectors;
+    }
+    else
+    {
+        krnP4PutStr("[sddev]  TD_GETGEOMETRY failed, error ");
+        krnP4PutDec((uint32_t)(unsigned char)io->io_Error);
+        krnP4PutStr("\n");
+    }
+
+    io->io_Command = NSCMD_DEVICEQUERY;
+    io->io_Data = &query;
+    io->io_Length = sizeof(query);
+    io->io_Actual = 0;
+    io->io_Offset = 0;
+    DoIO((struct IORequest *)io);
+    if (io->io_Error == 0 && io->io_Actual == sizeof(query))
+    {
+        krnP4PutStr("[sddev]  NSD type ");
+        krnP4PutDec(query.DeviceType);
+        krnP4PutStr(", query size ");
+        krnP4PutDec(query.SizeAvailable);
+        krnP4PutStr("\n");
+    }
+    else
+    {
+        krnP4PutStr("[sddev]  NSCMD_DEVICEQUERY failed, error ");
+        krnP4PutDec((uint32_t)(unsigned char)io->io_Error);
+        krnP4PutStr("\n");
+    }
+
+    for (i = 0; i < sizeof(probe_lbas) / sizeof(probe_lbas[0]); ++i)
+        if (!krnP4SDCardReadSector(io, probe_lbas[i], 0))
+            break;
+
+    /* Exercise the TD64 byte-offset convention near the end of an SDXC
+       card.  These still become single-block CMD17 transactions in the
+       backend, so the first-stage no-CMD18 safety boundary remains intact. */
+    if (i == sizeof(probe_lbas) / sizeof(probe_lbas[0]) &&
+        total_sectors > 33)
+    {
+        (void)krnP4SDCardReadSector(io, total_sectors - 33, 1);
+        (void)krnP4SDCardReadSector(io, total_sectors - 1, 1);
+        (void)krnP4SDCardReadSector(io, 0, 0);
+    }
+    krnP4PutStr("[sddev]  read-only device test complete\n");
+
+    CloseDevice((struct IORequest *)io);
+
+out:
+    if (io)
+        DeleteIORequest((struct IORequest *)io);
+    if (port)
+        DeleteMsgPort(port);
+}
+#endif /* P4_SDCARD_DEVICE_TEST */
+
+#ifdef P4_PARTITION_TEST
+static uint32_t partition_test_sector[128] P4_SRAMDATA
+    __attribute__((aligned(4)));
+
+static void krnP4PartitionLibraryTest(void)
+{
+    struct PartitionHandle *root = NULL;
+    const unsigned char *sector =
+        (const unsigned char *)partition_test_sector;
+    uint32_t hash = 2166136261U;
+    uint32_t nonzero = 0;
+    uint32_t a5bytes = 0;
+    LONG result;
+    unsigned int i;
+
+    krnP4PutStr("[part]   opening partition.library\n");
+    PartitionBase = (struct PartitionBase *)
+        OpenLibrary("partition.library", 3);
+    if (!PartitionBase)
+    {
+        krnP4PutStr("[part]   library unavailable\n");
+        return;
+    }
+
+    krnP4PutStr("[part]   base ");
+    krnP4PutHex32((uint32_t)(IPTR)PartitionBase);
+    krnP4PutStr(", version ");
+    krnP4PutDec(PartitionBase->lib.lib_Version);
+    krnP4PutStr("\n");
+
+    root = OpenRootPartition("sdcard.device", 0);
+    if (!root)
+    {
+        krnP4PutStr("[part]   OpenRootPartition failed\n");
+        goto out;
+    }
+
+    krnP4PutStr("[part]   root sector ");
+    krnP4PutDec(root->dg.dg_SectorSize);
+    krnP4PutStr(", total ");
+    krnP4PutDec(root->dg.dg_TotalSectors);
+    krnP4PutStr(", read command ");
+    krnP4PutHex32(root->bd->cmdread);
+    krnP4PutStr("\n");
+
+    for (i = 0; i < 128; ++i)
+        partition_test_sector[i] = 0xa5a5a5a5U;
+
+    /* Call the real ABI entry directly.  The legacy convenience macro in
+       partition.h has a historical argument-order mismatch. */
+    result = ReadPartitionDataQ(root, partition_test_sector, 512, 0);
+    for (i = 0; i < sizeof(partition_test_sector); ++i)
+    {
+        hash ^= sector[i];
+        hash *= 16777619U;
+        if (sector[i] != 0)
+            ++nonzero;
+        if (sector[i] == 0xa5)
+            ++a5bytes;
+    }
+
+    krnP4PutStr("[part]   LBA 0 result ");
+    krnP4PutDec((uint32_t)result);
+    krnP4PutStr(", actual ");
+    krnP4PutDec(root->bd->ioreq->iotd_Req.io_Actual);
+    krnP4PutStr(", hash ");
+    krnP4PutHex32(hash);
+    krnP4PutStr(", nonzero ");
+    krnP4PutDec(nonzero);
+    krnP4PutStr(", a5 bytes ");
+    krnP4PutDec(a5bytes);
+    krnP4PutStr(", signature ");
+    krnP4PutStr(sector[510] == 0x55 && sector[511] == 0xaa ?
+                "55aa\n" : "absent\n");
+
+    if (result == 0 &&
+        root->bd->ioreq->iotd_Req.io_Actual == 512 &&
+        a5bytes != 512)
+        krnP4PutStr("[part]   public read path complete\n");
+
+out:
+    if (root)
+        CloseRootPartition(root);
+    CloseLibrary((struct Library *)PartitionBase);
+    PartitionBase = NULL;
+}
+#endif /* P4_PARTITION_TEST */
+
 #ifdef P4_PSRAM_PROBE
 /*
  * Does anything answer in the PSRAM window before we have configured a
@@ -489,6 +769,115 @@ static void psram_probe(void)
 }
 #endif /* P4_PSRAM_PROBE */
 
+static uint32_t krnP4ReadBE32(const unsigned char *p)
+{
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+}
+
+/*
+ * Publish the part of PSRAM that the boot package did not reserve.  The
+ * MemHeader itself lives at the start of that free part, as it did when the
+ * whole window was free.  Keeping this in one place makes it impossible for
+ * the package-success and no-package paths to describe overlapping pools.
+ */
+static int krnP4PublishPSRAM(IPTR first_free)
+{
+    IPTR end = P4_PSRAM_WINDOW_BASE + __esp32p4_psram_size;
+
+    if (first_free > ~(IPTR)0 - 15)
+        return 0;
+    first_free = (first_free + 15) & ~(IPTR)15;
+    if (first_free >= end || end - first_free <= sizeof(struct MemHeader) * 2)
+    {
+        krnP4PutStr("[psram]  no room remains for an external memory header\n");
+        return 0;
+    }
+
+    __esp32p4_mh_psram = (struct MemHeader *)first_free;
+    krnCreateMemHeader("External Memory", -20, (APTR)first_free,
+                       end - first_free,
+                       MEMF_PUBLIC | MEMF_KICK | MEMF_LOCAL);
+    return 1;
+}
+
+/*
+ * Load the standard PKG container from its live partition.
+ *
+ * The flash mapping is read-only, while the ELF loader records placed
+ * section addresses back into each member's headers and debug.library keeps
+ * pointers into those headers.  Copy the declared package bytes to the
+ * bottom of PSRAM first and keep both that copy and every placed section
+ * below the MemHeader for the lifetime of the system.
+ */
+static int krnP4LoadBSPPackage(unsigned long part_off,
+                               unsigned long part_size)
+{
+    const unsigned char *flash;
+    unsigned char *copy = (unsigned char *)P4_PSRAM_WINDOW_BASE;
+    IPTR psram_end = P4_PSRAM_WINDOW_BASE + __esp32p4_psram_size;
+    IPTR pkg_size, memlow, lo = 0, hi = 0, used = 0;
+    IPTR i;
+    int modules;
+
+    flash = krnP4FlashMap(part_off, 8);
+    if (!flash || flash[0] != 'P' || flash[1] != 'K' ||
+        flash[2] != 'G' || flash[3] != 1)
+    {
+        krnP4PutStr("[flash] pkg   partition does not start with PKG v1\n");
+        return 0;
+    }
+
+    pkg_size = krnP4ReadBE32(flash + 4);
+    if (pkg_size < 8 || pkg_size > part_size ||
+        pkg_size > __esp32p4_psram_size)
+    {
+        krnP4PutStr("[flash] pkg   declared package size is outside its bounds\n");
+        return 0;
+    }
+
+    flash = krnP4FlashMap(part_off, pkg_size);
+    if (!flash)
+        return 0;
+
+    for (i = 0; i < pkg_size; i++)
+        copy[i] = flash[i];
+
+    if ((IPTR)copy > ~(IPTR)0 - pkg_size - 15)
+        return -1;
+    memlow = ((IPTR)copy + pkg_size + 15) & ~(IPTR)15;
+    if (memlow >= psram_end)
+        return -1;
+
+    modules = krnLoadPackage(copy, pkg_size, memlow, psram_end,
+                             &lo, &hi, &used);
+    if (modules <= 0 || !lo || hi <= lo || used < hi || used > psram_end)
+    {
+        krnP4PutStr("[flash] pkg   load failed; PSRAM withheld from exec\n");
+        return -1;
+    }
+
+    /* The loader wrote instructions through the data path. */
+    krnP4SyncCode((void *)lo, hi - lo);
+
+    __esp32p4_modules_low = (UWORD *)lo;
+    __esp32p4_modules_high = (UWORD *)hi;
+
+    krnP4PutStr("[flash] pkg   loaded ");
+    krnP4PutDec((uint32_t)modules);
+    krnP4PutStr(modules == 1 ? " module, reserved " : " modules, reserved ");
+    krnP4PutDec((uint32_t)(used - P4_PSRAM_WINDOW_BASE));
+    krnP4PutStr(" bytes of PSRAM\n");
+
+    if (!krnP4PublishPSRAM(used))
+    {
+        krnP4PutStr("[flash] pkg   loaded, but its remaining PSRAM is unusable\n");
+        return -1;
+    }
+
+    return modules;
+}
+
 /*
  * Hand the machine to exec. Everything above this point exists to make
  * this call possible: a heap it can allocate from, the extent of the
@@ -497,7 +886,7 @@ static void psram_probe(void)
 static void krnStartExec(void)
 {
     struct MemHeader *mh = __esp32p4_mh_low;
-    UWORD *ranges[3];
+    UWORD *ranges[5];
 
     if (!mh)
     {
@@ -520,7 +909,14 @@ static void krnStartExec(void)
 
     ranges[0] = (UWORD *)__romtags_start;
     ranges[1] = (UWORD *)__romtags_end;
-    ranges[2] = (UWORD *)-1;
+    if (__esp32p4_modules_high > __esp32p4_modules_low)
+    {
+        ranges[2] = __esp32p4_modules_low;
+        ranges[3] = __esp32p4_modules_high;
+        ranges[4] = (UWORD *)-1;
+    }
+    else
+        ranges[2] = (UWORD *)-1;
 
     {
         struct KernelBase *kb = getKernelBase();
@@ -533,6 +929,8 @@ static void krnStartExec(void)
     }
 
     krnDumpResidents((UWORD *)__romtags_start, (UWORD *)__romtags_end);
+    if (__esp32p4_modules_high > __esp32p4_modules_low)
+        krnDumpResidents(__esp32p4_modules_low, __esp32p4_modules_high);
 
     krnP4PutStr("[exec]   preparing ExecBase\n");
 
@@ -648,6 +1046,20 @@ static void krnStartExec(void)
         krnP4PutStr("\n");
         if (mem)
             FreeMem(mem, 64 << 10);
+
+        {
+            struct Library *utility = OpenLibrary("utility.library", 0);
+
+            krnP4PutStr("[exec]   OpenLibrary(utility.library) = ");
+            krnP4PutHex32((uint32_t)(IPTR)utility);
+            if (utility)
+            {
+                krnP4PutStr("  version ");
+                krnP4PutDec(utility->lib_Version);
+                CloseLibrary(utility);
+            }
+            krnP4PutStr("\n");
+        }
     }
 
 #ifdef P4_TASK_TEST
@@ -731,22 +1143,21 @@ void kernel_cstart(unsigned long hartid, void *fdt)
                     krnP4PutStr(" mapped, one word per megabyte verified\n");
 
                     /*
-                     * A header at the bottom of the window, so exec can
-                     * hand the range out once it has a memory list.
-                     *
-                     * Without MEMF_FAST, deliberately. Internal SRAM has
-                     * it and this does not, which is the one honest
-                     * difference between them: at 20 MHz over a sixteen
-                     * bit bus this is an order of magnitude slower than
-                     * the SRAM next to it. The low priority puts it last
-                     * in the list, so an allocation that does not ask for
-                     * anything in particular still comes out of SRAM
-                     * while there is SRAM left.
+                     * Do not create the MemHeader yet.  A package found
+                     * below will occupy the bottom of this window before
+                     * exec can allocate from it; the header then starts at
+                     * the loader's high-water mark.  With no package the
+                     * whole range is published after the table scan.
                      */
-                    __esp32p4_mh_psram = (struct MemHeader *)P4_PSRAM_WINDOW_BASE;
-                    krnCreateMemHeader("External Memory", -20,
-                                       (APTR)P4_PSRAM_WINDOW_BASE, psram.size,
-                                       MEMF_PUBLIC | MEMF_KICK | MEMF_LOCAL);
+#ifdef P4_PROBE
+                    /*
+                     * The two silicon questions, while the whole window is
+                     * still nobody's. The scratch it writes is the base of
+                     * the window, which the memory header below overwrites
+                     * a few lines later.
+                     */
+                    krnP4Probe((void *)P4_PSRAM_WINDOW_BASE);
+#endif
                 }
                 else
                 {
@@ -775,7 +1186,70 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 #ifdef P4_PSRAM_PROBE
     psram_probe();
 #endif
+
+#ifdef P4_SDMMC_PROBE
+    /*
+     * A deliberately small first step toward storage: power and identify
+     * the socket, negotiate one-bit SD mode, then read sector zero through
+     * the FIFO.  No command issued by this probe can modify card media.
+     */
+    krnP4SDMMCProbe();
+#endif
+
+    /*
+     * Survey the flash MMU and parse the live partition table.  The table
+     * read uses one temporary scratch mapping; a matching BSP partition is
+     * then validated, copied and relocated into the reserved low end of
+     * PSRAM before exec is allowed to publish the remaining memory.
+     */
+    krnP4FlashSurvey();
+    {
+        unsigned long pkg_off = 0, pkg_size = 0;
+        int found = krnP4PartitionScan(P4_BSP_PART_TYPE, P4_BSP_PART_LABEL,
+                                       &pkg_off, &pkg_size, 1);
+        int package_claimed_psram = 0;
+
+        if (found > 0)
+        {
+            krnP4PutStr("[flash] pkg   ");
+            krnP4PutStr(P4_BSP_PART_LABEL);
+            krnP4PutStr(" at ");
+            krnP4PutHex32((uint32_t)pkg_off);
+            krnP4PutStr(", ");
+            krnP4PutDec((uint32_t)(pkg_size / 1024));
+            krnP4PutStr(" KB\n");
+
+            if (__esp32p4_psram_size)
+            {
+                int loaded = krnP4LoadBSPPackage(pkg_off, pkg_size);
+
+                /* A negative result means bytes were already copied or
+                   placed.  Withhold that window rather than describe them
+                   to exec as free.  A bad header was rejected before any
+                   PSRAM write and can safely fall back to the full pool. */
+                package_claimed_psram = loaded != 0;
+            }
+            else
+                krnP4PutStr("[flash] pkg   PSRAM unavailable; cannot load\n");
+        }
+        else if (found == 0)
+            krnP4PutStr("[flash] pkg   no package partition on this board yet\n");
+
+        if (__esp32p4_psram_size && !__esp32p4_mh_psram &&
+            !package_claimed_psram)
+            (void)krnP4PublishPSRAM(P4_PSRAM_WINDOW_BASE);
+    }
+
     krnStartExec();
+
+#ifdef P4_SDCARD_DEVICE_TEST
+    if (SysBase)
+        krnP4SDCardDeviceTest();
+#endif
+#ifdef P4_PARTITION_TEST
+    if (SysBase)
+        krnP4PartitionLibraryTest();
+#endif
 
 #ifdef P4_KEEP_WATCHDOG
     /*

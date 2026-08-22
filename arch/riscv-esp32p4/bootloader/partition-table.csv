@@ -1,0 +1,14 @@
+# ESP-IDF Partition Table
+# Name, Type, SubType, Offset, Size, Flags
+#
+# This is the partition table read from the reTerminal D1001, with exactly
+# one change: ota_1 is replaced by the M6 BSP package partition.  Its size
+# stops it at the 16 MB cache-mapping limit; the original 128 KB gap before
+# the FAT partition at 0x1020000 remains untouched.
+nvs,      data, nvs,      0x9000,    0x6000,
+nvs_key,  data, nvs_keys, 0xf000,    0x1000,
+otadata,  data, ota,      0x10000,   0x2000,
+phy_init, data, phy,      0x12000,   0x1000,
+ota_0,    app,  ota_0,    0x20000,   0x800000,
+arosbsp,  0x40, 0x00,     0x820000,  0x7e0000,
+storage,  data, fat,      0x1020000, 0xfe0000,

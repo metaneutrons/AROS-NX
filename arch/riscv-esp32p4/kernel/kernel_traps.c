@@ -77,6 +77,15 @@ extern int __esp32p4_trap_depth;
 volatile unsigned long __esp32p4_irq_count;
 volatile unsigned long __esp32p4_irq_last;
 
+/*
+ * A fault a caller says it is about to cause, see kernel_intern.h. Defined
+ * here rather than in kernel_probe.c so that the probes can be compiled
+ * out entirely without leaving this file with an undefined reference.
+ */
+volatile unsigned long __esp32p4_trap_expect;
+volatile unsigned long __esp32p4_trap_addr;
+volatile unsigned long __esp32p4_trap_caught;
+
 static const char * const exc_names[] =
 {
     "Instruction address misaligned",   /*  0 */
@@ -316,6 +325,33 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
          */
         ctx->pc += 4;
         return TRAP_SYSCALL;
+    }
+
+    /*
+     * A fault the caller said it was going to cause, at the address it
+     * named. Only the bring-up probes use this, and only around the single
+     * access they are testing: the point of a probe is to find out whether
+     * the hardware traps, and it cannot find that out if the answer is a
+     * halt. Matching mtval as well as the cause keeps an unrelated fault
+     * from being mistaken for the measurement.
+     *
+     * Stepping over the faulting instruction needs its length, and RISC-V
+     * puts that in the instruction itself: both low bits set means four
+     * bytes, anything else means a compressed two. mepc is readable here
+     * because a misaligned data access faults with mepc on the instruction
+     * that made it, not on an unmapped fetch.
+     */
+    if (__esp32p4_trap_expect && code == __esp32p4_trap_expect &&
+        mtval == __esp32p4_trap_addr)
+    {
+        uint16_t parcel = *(volatile uint16_t *)ctx->pc;
+
+        /* Consume the expectation before returning to the probe. */
+        __esp32p4_trap_expect = 0;
+        __esp32p4_trap_addr = 0;
+        ctx->pc += ((parcel & 3) == 3) ? 4 : 2;
+        __esp32p4_trap_caught++;
+        return TRAP_DONE;
     }
 
     krnReportException(ctx, mcause, mtval);

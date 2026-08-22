@@ -1,0 +1,16 @@
+
+include $(SRCDIR)/config/aros.cfg
+
+USER_INCLUDES := -I$(SRCDIR)/$(CURDIR) -I$(SRCDIR)/rom/devs/sdcard
+
+ESP32P4SDCARDFILES := \
+    sdcard_esp32p4_init \
+    sdcard_esp32p4_bus \
+    sdcard_esp32p4_time
+
+%build_archspecific \
+  mainmmake=kernel-sdcard maindir=rom/devs/sdcard \
+  arch=esp32p4-riscv modname=sdcard \
+  files="$(ESP32P4SDCARDFILES)"
+
+%common

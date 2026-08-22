@@ -230,4 +230,89 @@
 #define P4_PSRAM_BASE           0x48000000UL
 #define P4_PSRAM_END            0x4C000000UL
 
+/*
+ * Native SD/MMC host and the reTerminal D1001 socket.
+ *
+ * The ESP32-P4 contains a Synopsys DesignWare MMC host in high-power
+ * peripheral group 0.  Slot 0 has dedicated IOMUX pins: D0..D3 on
+ * GPIO39..42, CLK on GPIO43 and CMD on GPIO44.  The D1001 uses what would
+ * otherwise be D4/D5 as a mechanical card-detect input and an external
+ * power-enable output, so this board must never select the host's 8-bit
+ * mode.
+ */
+#define P4_HPPERIPH0_BASE       0x50000000UL
+#define P4_SDMMC_BASE           (P4_HPPERIPH0_BASE + 0x83000)
+
+#define P4_GPIO_BASE            (P4_HPPERIPH1_BASE + 0x20000)
+#define P4_GPIO_OUT1_W1TS       0x0014
+#define P4_GPIO_OUT1_W1TC       0x0018
+#define P4_GPIO_ENABLE1_W1TS    0x0030
+#define P4_GPIO_ENABLE1_W1TC    0x0034
+#define P4_GPIO_IN1             0x0040
+
+#define P4_IOMUX_BASE           (P4_HPPERIPH1_BASE + 0x21000)
+#define P4_IOMUX_GPIO39         0x00A0
+#define P4_IOMUX_GPIO40         0x00A4
+#define P4_IOMUX_GPIO41         0x00A8
+#define P4_IOMUX_GPIO42         0x00AC
+#define P4_IOMUX_GPIO43         0x00B0
+#define P4_IOMUX_GPIO44         0x00B4
+#define P4_IOMUX_GPIO45         0x00B8
+#define P4_IOMUX_GPIO46         0x00BC
+#define  P4_IOMUX_FUN_PD        (1U << 7)
+#define  P4_IOMUX_FUN_PU        (1U << 8)
+#define  P4_IOMUX_FUN_IE        (1U << 9)
+#define  P4_IOMUX_FUN_DRV_S     10
+#define  P4_IOMUX_FUN_DRV_M     (3U << P4_IOMUX_FUN_DRV_S)
+#define  P4_IOMUX_MCU_SEL_S     12
+#define  P4_IOMUX_MCU_SEL_M     (7U << P4_IOMUX_MCU_SEL_S)
+#define  P4_IOMUX_FUNC_SDMMC    0
+#define  P4_IOMUX_FUNC_GPIO     1
+
+#define P4_SD_D0_GPIO           39
+#define P4_SD_D1_GPIO           40
+#define P4_SD_D2_GPIO           41
+#define P4_SD_D3_GPIO           42
+#define P4_SD_CLK_GPIO          43
+#define P4_SD_CMD_GPIO          44
+#define P4_SD_DETECT_GPIO       45
+#define P4_SD_POWER_GPIO        46
+
+/* SDMMC module gate and its low-speed PLL160M divider. */
+#define P4_HP_SYS_CLKRST_BASE   (P4_HPPERIPH1_BASE + 0x26000)
+#define P4_HP_SOC_CLK_CTRL1     0x0018
+#define  P4_HP_SDMMC_CLK_EN     (1U << 14)
+#define P4_HP_REF_CLK_CTRL2     0x002C
+#define  P4_HP_REF_160M_CLK_EN  (1U << 0)
+#define P4_HP_PERI_CLK_CTRL01   0x0034
+#define  P4_HP_SDIO_HS_MODE     (1U << 22)
+#define  P4_HP_SDIO_CLK_SRC     (1U << 23)
+#define  P4_HP_SDIO_CLK_EN      (1U << 24)
+#define P4_HP_PERI_CLK_CTRL02   0x0038
+#define  P4_HP_SDIO_UPDATE      (1U << 8)
+#define  P4_HP_SDIO_EDGE_L_S    9
+#define  P4_HP_SDIO_EDGE_H_S    13
+#define  P4_HP_SDIO_EDGE_N_S    17
+#define  P4_HP_SDIO_SLF_EDGE_S  21
+#define  P4_HP_SDIO_DRV_EDGE_S  23
+#define  P4_HP_SDIO_SAM_EDGE_S  25
+#define  P4_HP_SDIO_SLF_EN      (1U << 27)
+#define  P4_HP_SDIO_DRV_EN      (1U << 28)
+#define  P4_HP_SDIO_SAM_EN      (1U << 29)
+#define  P4_HP_SDIO_FIELDS_M    0x3FFFFF00U
+
+#define P4_LP_CLKRST_BASE       (P4_LPAON_BASE + 0x1000)
+#define P4_LP_SDMMC_RST_CTRL    0x004C
+#define  P4_LP_SDMMC_RST_EN     (1U << 28)
+
+/* D1001's SD I/O rail is ESP32-P4 LDO channel 4 at the 3.3-V bypass. */
+#define P4_PMU_BASE             (P4_LPAON_BASE + 0x5000)
+#define P4_PMU_LDO4_CTRL        0x01D8
+#define P4_PMU_LDO4_ANA         0x01DC
+#define  P4_PMU_LDO_FORCE_SW    (1U << 7)
+#define  P4_PMU_LDO_XPD         (1U << 8)
+#define  P4_PMU_LDO_TIEH_SEL_M  (7U << 9)
+#define  P4_PMU_LDO_3V3         (1U << 14)
+#define  P4_PMU_LDO_EN_VDET     (1U << 26)
+
 #endif /* ESP32P4_HARDWARE_H */

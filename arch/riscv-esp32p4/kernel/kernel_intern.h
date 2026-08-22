@@ -76,6 +76,53 @@ extern volatile unsigned long __esp32p4_ticks;
 extern volatile unsigned long __esp32p4_irq_count;
 extern volatile unsigned long __esp32p4_irq_last;
 
+/*
+ * A fault the caller is deliberately causing (kernel_probe.c). While
+ * expect holds a cause code and addr the matching mtval, a trap with both
+ * steps over the faulting instruction and bumps caught instead of halting
+ * the hart. Nothing outside bring-up probes should ever set them.
+ */
+extern volatile unsigned long __esp32p4_trap_expect;
+extern volatile unsigned long __esp32p4_trap_addr;
+extern volatile unsigned long __esp32p4_trap_caught;
+void krnP4Probe(void *psram_scratch);
+
+/* Read-only native-SD bring-up probe (kernel_sdmmc.c). */
+void krnP4SDMMCProbe(void);
+
+/* Cache maintenance and the cache-off window (kernel_cache.c) */
+void krnP4SyncCode(void *addr, unsigned long len);
+unsigned long krnP4CacheOff(void);
+void krnP4CacheOn(unsigned long token);
+
+/*
+ * Where the BSP package lives on flash.
+ *
+ * Its own partition, not a payload hidden inside the app partition. Type
+ * 0x40 is the bottom of the range ESP-IDF documents for custom partition
+ * types (docs/en/api-guides/partition-tables.rst), with any subtype free;
+ * the second stage bootloader falls through to `default: break;` for a
+ * type it does not know, so it neither boots it nor complains about it.
+ *
+ * On the board this is brought up on, the partition replaces ota_1 and
+ * runs 0x820000 to 0x1000000. It stops exactly at the 16 MB line rather
+ * than inheriting ota_1's 8 MB, because cache mapped flash ends there.
+ */
+#define P4_BSP_PART_TYPE    0x40
+#define P4_BSP_PART_LABEL   "arosbsp"
+
+/* Reading flash from code that executes out of it (kernel_flash.c) */
+void krnP4FlashSurvey(void);
+void *krnP4FlashMap(unsigned long paddr, unsigned long len);
+int krnP4PartitionScan(unsigned char want_type, const char *want_label,
+                       unsigned long *out_off, unsigned long *out_size,
+                       int report);
+
+/* Relocating boot-time ELF32 module loader (kernel_elf.c) */
+int krnLoadPackage(void *pkg, IPTR pkgsize, IPTR memlow, IPTR memhigh,
+                   IPTR *lo, IPTR *hi, IPTR *memused);
+extern void *__ks_debuginfo;
+
 /* Machine setup that has to happen before anything else (platform_init.c) */
 void platform_init(void);
 int  platform_wdt_quiet(void);
