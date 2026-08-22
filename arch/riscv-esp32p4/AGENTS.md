@@ -38,3 +38,14 @@ outside this directory but advances an ESP32-P4 roadmap phase.
 - Keep panel reset asserted and backlight dark on every display-init failure.
 - Use explicit flash offsets and do not touch bootloader, partition table or
   `storage` unless the task specifically authorizes that exact write.
+
+## D1001 development-board flash authorization
+
+On 2026-08-22 the user granted standing authorization for routine bring-up
+writes to the connected D1001 development board.  Do not request a fresh
+confirmation before writing a verified AROS core only to `ota_0` at `0x20000`
+and its verified BSP package only to `arosbsp` at `0x820000`.  Before each
+write, still identify the serial device, verify the artifact hashes and report
+the exact offsets in the roadmap evidence.  This standing authorization does
+not include bootloader, partition table, `otadata`, NVS or `storage`; those
+remain explicit-write targets.

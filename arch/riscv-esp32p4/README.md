@@ -52,7 +52,7 @@ its evidence entry in the same change.
 | PSRAM bring-up | done | 32 MB at 20 MHz, mapped at `0x48000000` and in exec's memory list; `AvailMem` reports 34,177,392 bytes |
 | BSP package from flash | done | `sdcard.device`, `utility.library`, `partition.library` and `expansion.library` copied from `arosbsp`, relocated into PSRAM and found as residents; utility opens as version 50 and partition as version 3 |
 | timer.device | done | a 500 ms timerequest on the VBLANK unit returns after exactly 50 ticks |
-| SD/MMC block device | read-only stage works | native DesignWare-MMC polling/PIO adapter; SDXC enumeration, low and 64-bit high-LBA single-sector reads, and a public `partition.library` root read verified on hardware |
+| SD/MMC block device | A1 hardware partial | read-only native DesignWare-MMC/IDMAC path.  Every read goes through the IDMAC, as in ESP-IDF.  One run passes 27 card-referenced cells, 1,000 repetitions and the invalid-request rejection cases, and separate runs pass the three injected fault modes and the heartbeat.  Open for A1: an external reference for the card-end READ64 range; see the A1 evidence in the roadmap |
 | MIPI-DSI framebuffer HIDD | not started | |
 | touch HIDD | not started | |
 | second core | not started | single hart until the rest works |
@@ -337,6 +337,14 @@ LBAs 0, 1, 2, 2048, 8192, 32768 and 65536, the final 33rd and final sectors
 through `NSCMD_TD_READ64`, and a repeat of LBA 0. Every request replaced its
 nonzero sentinel buffer, LBA 2048 contained real nonzero data, both LBA-0
 hashes matched, and the timer/IRQ heartbeat continued after the test.
+
+That last sentence needs a correction, added on 2026-08-22 after the card was
+read in a host reader. The two LBA-0 hashes match each other, and both are
+wrong. `0x4d7705c5` is the FNV-1a-32 of 512 zero bytes, while LBA 0 on this
+card holds a valid MBR whose hash is `0xdebe99c1`. What the sentinel test
+proved is coverage, that the buffer was overwritten, not that it was
+overwritten with the right sector. The card's own hashes are recorded in
+[sdcard/test-card-reference.md](sdcard/test-card-reference.md).
 
 The next hardware run opened `partition.library` version 3 and then
 `OpenRootPartition("sdcard.device", 0)`. The library selected
@@ -625,9 +633,25 @@ DesignWare-MMC adapter now registers the D1001 slot through the generic
 `sdcard.device`; it is intentionally read-only. Its no-card path, SDXC
 identification, geometry/NSD APIs, low-LBA CMD17 reads, high-LBA TD64 reads
 and one 512-byte read through `partition.library`'s public root API are
-verified on hardware. Multi-block CMD18 remains gated until CMD12 stop and
-error recovery are implemented and stress-tested; only then is a bounded
-partition-table scan the next safe storage step.
+verified on hardware. Generic CMD12/CMD13 cleanup is proven to return the
+card to TRAN. The long-standing CMD18 progression fault is resolved. Reading
+the test card in a host reader on 2026-08-22 showed that every returned sector
+consisted of 128 copies of its own first 32-bit word, because a CPU read of
+the data FIFO does not pop on this controller and because
+`CTRL.use_internal_dma` was defined on bit 26 instead of 25. With the bit
+corrected and every read routed through the IDMAC, as ESP-IDF does, all 24
+cells of the card-referenced matrix match. Historical note on the earlier
+attempts: a four-by-4-KiB receive-only
+IDMAC ring matching the local ESP-IDF transaction shape also times out at 32
+and 128 blocks before `DATA_OVER`. A complete ESP-IDF v5.4.2 descriptor/event
+state-model trial likewise leaves a full receive FIFO with RXDR pending after
+16 KiB, so it was rejected and the manual CMD12 baseline restored. Buffered
+P4 controller telemetry cannot distinguish the remaining card/CIU fault. A1
+therefore remains hardware-partial. The next safe evidence is the
+card-referenced matrix and the address probe, both of which are software; the
+physical CMD and DAT0/D0 wire trace is deferred behind them, because it was
+chosen to explain a selectivity that the card's content shows does not
+exist.
 Done when: modules outside the kickstart also start from MicroSD.
 The complete order, hardening work and test matrix are in
 [ROADMAP.md, Track A](ROADMAP.md#track-a-storage-and-normal-boot).
