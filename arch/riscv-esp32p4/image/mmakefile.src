@@ -1,0 +1,51 @@
+#
+#   The reproducible FAT32 test image for the read-only bring-up.
+#
+#   Host-side only: nothing here runs on the board and nothing here writes to
+#   a real medium.  The image is a disposable artefact, so it is not part of
+#   any default build; ask for it by name.
+#
+#   See README.md in this directory for what the target produces and how to
+#   verify it with tools that did not build it.
+#
+
+include $(SRCDIR)/config/aros.cfg
+
+IMAGEDIR   := $(AROSDIR)/boot/esp32p4
+IMAGE      := $(IMAGEDIR)/aros-test.img
+STAGE      := $(GENDIR)/$(CURDIR)/stage
+MKFAT32    := $(SRCDIR)/$(CURDIR)/mkfat32.py
+
+#   Fixed on purpose: these are the only two fields a formatter would
+#   otherwise take from the clock, and taking them from the clock would make
+#   the image unreproducible.
+IMAGE_SERIAL    ?= 0xa5051d00
+IMAGE_TIMESTAMP ?= 2026-01-01
+IMAGE_SIZE_MB   ?= 64
+
+#MM- kernel-image-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
+
+kernel-image-esp32p4-riscv-stage :
+	@$(RM) $(STAGE)
+	%mkdirs_q $(STAGE) $(IMAGEDIR)
+	@$(CP) -r $(SRCDIR)/$(CURDIR)/content/. $(STAGE)/
+	@# The directory skeleton the assigns expect.  Empty directories cannot
+	@# be tracked in git, so they are created here rather than committed.
+	%mkdirs_q $(STAGE)/C $(STAGE)/L $(STAGE)/Libs $(STAGE)/Devs \
+	          $(STAGE)/Devs/DOSDrivers $(STAGE)/Prefs $(STAGE)/T
+	@# The marker __dos_IsBootable() searches for with strstr().  Taken from
+	@# the build's own CPU name so it cannot drift from the target.
+	@$(ECHO) "AROS boot signature" > $(STAGE)/AROS.boot
+	@$(ECHO) "cpu $(AROS_TARGET_CPU)" >> $(STAGE)/AROS.boot
+	@$(ECHO) "arch $(AROS_TARGET_ARCH)" >> $(STAGE)/AROS.boot
+
+#MM kernel-image-esp32p4-riscv
+kernel-image-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
+	@$(ECHO) "Creating   $(IMAGE)"
+	@$(PYTHON) $(MKFAT32) --content $(STAGE) --out $(IMAGE) \
+	    --size-mb $(IMAGE_SIZE_MB) --serial $(IMAGE_SERIAL) \
+	    --timestamp $(IMAGE_TIMESTAMP)
+	@shasum -a 256 $(IMAGE) > $(basename $(IMAGE)).sha256
+	@$(ECHO) "Verify with: sh $(SRCDIR)/$(CURDIR)/verify-image.sh $(IMAGE)"
+
+%common
