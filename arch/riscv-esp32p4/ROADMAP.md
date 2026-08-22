@@ -115,7 +115,7 @@ tests.
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
-| A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `host verified` | Evidence entry 2026-08-23: `kernel-image-esp32p4-riscv` builds a byte-reproducible image, checked by the host parser, `fsck_msdos` and its manifest.  Open: writing it to a medium needs a second card or giving up the reference card |
+| A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `hardware verified` | Evidence entry 2026-08-23: byte-reproducible image, checked by the host parser, `fsck_msdos` and its manifest, and read correctly on the board at the values predicted from the image.  Every changed sector after the run is attributed to the host's mount |
 | A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `not started` | Requires A2 and A3 |
 | A5 | Command and library loaded from MicroSD | `not started` | Closes M6 |
 | B0 | Canonical D1001 display contract and provenance | `not started` | Resolve timing contradictions first |
@@ -2166,6 +2166,61 @@ and record substantive corrections as a new entry.
 - Next safe step: decide the medium question, then A4.  Note that AGENTS.md
   keeps `dosboot.resource` out of the package until A1 and A2 pass, which they
   now do, so A4 is unblocked on that count.
+
+### 2026-08-23 - A3 the generated image reads correctly on the board
+
+- State change: A3 moves from `host verified` to `hardware verified`.
+- Medium: a second card, 31.9 GB, 62,333,952 sectors, distinct from the
+  reference card at 249,737,216 sectors, so no A1 or A2 evidence was put at
+  risk.  It previously held a Zoom recorder's 140-byte `ZOOM.SYS` and an empty
+  `TRASH`, nothing else; the configuration file was copied off before writing,
+  SHA-256 `ef3ae44350e65c5f1c1e1b443f3e278b540db237725a4317866cab659b1aed1b`.
+  The user confirmed the card and authorised overwriting it.
+- Write and readback: the 64 MiB image, SHA-256
+  `c68961921b3ddd986caa1b7dc9dfae4e20ac03a4af6d3cc2d0773359d9afd9f6`, was
+  written with `dd` to `/dev/rdisk21` and read back bit-identically.
+- Board result, with the values predicted from the image beforehand rather
+  than read off afterwards:
+  | quantity | predicted on the host | reported by the board |
+  | :--- | :--- | :--- |
+  | LBA 0, the MBR | `0x100fcd1c` | `0x100fcd1c` |
+  | LBA 2048, the VBR | `0xaa126dff` | `0xaa126dff` |
+  | partition start | 2048 | 2048 |
+  | partition length | 129,024 sectors | 129,024 sectors |
+  | table type | MBR | `table type 2` |
+  Also `signature 55aa`, `nonzero 6`, which is exactly how many non-zero bytes
+  this generated MBR has against the reference card's thirteen, `dostype
+  0x46415402` and `partitions found 1, as expected`.  The trailing
+  `card 0x730d1cbd` on the read-after-discovery line is the compiled-in
+  reference for the *other* card and is meaningless here.
+- The before/after requirement, answered precisely rather than with a single
+  hash.  The sector hash does differ, `7b4b8d2a...` against `1ff47794...`, and
+  the reason is the host, not the board.  Eight sectors changed: FSInfo, both
+  FATs, the root directory and four clusters.  The only directory entry that
+  appeared is `FSEVE~12`, which is `.fseventsd`, created by macOS the moment it
+  mounted the card.  The MBR is unchanged, the VBR is unchanged, and every
+  cluster holding generated content is unchanged.  So nothing the board did
+  altered the medium, and the difference is fully attributed.
+- Why a plain hash comparison cannot be had here: macOS mounts a FAT volume on
+  insertion and writes to it before any command can intervene.  Getting an
+  untouched after-image would need automount suppressed for the device, which
+  is a system-level change and was not made.  Attributing every changed sector
+  is the stronger evidence anyway, and it is what was done.
+- Also recorded: an earlier attempt at this measurement produced the SHA-256 of
+  an empty file, because the card had been removed while the read ran and
+  `diskutil info` answered from cache.  The reading loop now waits for the
+  device to actually return data.  An earlier claim in this session that all
+  131,072 sectors had changed came from the same cause and was wrong.
+- Safety: the reference card was never in the reader or the board during any
+  of this.  Only the second card was written, once, deliberately and with
+  confirmation.  No AROS build has a media write path.
+- Remaining risk: the A1 matrix fails on this card, as it must, because its
+  reference tables describe the other one.  A run that wants both would need
+  either a second set of tables or a switch; today the two cards serve two
+  different purposes and that is fine.
+- Next safe step: A4, the resident DOS/FAT bootstrap.  AGENTS.md kept
+  `dosboot.resource` out of the package until A1 and A2 passed; both now do,
+  and A3 supplies the medium it needs.
 
 ## Evidence-entry template
 
