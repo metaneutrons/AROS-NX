@@ -2,8 +2,8 @@
     Copyright (C) 2026, The AROS Development Team. All rights reserved.
 
     Private definitions for the ESP32-P4 native SD/MMC controller on the
-    reTerminal D1001.  This first driver is deliberately polling-only and
-    read-only; it does not expose either the controller DMA or an IRQ path.
+    reTerminal D1001.  This driver is deliberately polling-only and read-only;
+    CMD18 receives through the controller's bounded IDMAC path.
 */
 
 #ifndef SDCARD_ESP32P4_INTERN_H
@@ -37,6 +37,15 @@ struct p4sd_private
 #define P4SD_CTRL                      0x0000
 #define  P4SD_CTRL_RESET_ALL           0x00000007UL
 #define  P4SD_CTRL_FIFO_RESET          (1UL << 1)
+#define  P4SD_CTRL_DMA_RESET           (1UL << 2)
+#define  P4SD_CTRL_DMA_ENABLE          (1UL << 5)
+/* Bit 25, not 26.  ESP-IDF's own register description for this peripheral
+   (components/soc/esp32p4/register/hw_ver1/soc/sdmmc_struct.h) places
+   card_voltage_a on 16..19, card_voltage_b on 20..23, enable_od_pullup on 24,
+   use_internal_dma on 25 and reserved3 from 26 up.  With bit 26 the internal
+   DMAC was never selected on the controller side while BMOD.DE still ran the
+   descriptor engine. */
+#define  P4SD_CTRL_USE_INTERNAL_DMA    (1UL << 25)
 #define P4SD_CLKDIV                    0x0008
 #define P4SD_CLKSRC                    0x000C
 #define P4SD_CLKENA                    0x0010
@@ -54,6 +63,7 @@ struct p4sd_private
 #define  P4SD_CMD_RESP_CRC             (1UL << 8)
 #define  P4SD_CMD_DATA                 (1UL << 9)
 #define  P4SD_CMD_WRITE                (1UL << 10)
+#define  P4SD_CMD_SEND_AUTO_STOP        (1UL << 12)
 #define  P4SD_CMD_STOP_ABORT           (1UL << 14)
 #define  P4SD_CMD_WAIT_DATA            (1UL << 13)
 #define  P4SD_CMD_SEND_INIT            (1UL << 15)
@@ -64,6 +74,7 @@ struct p4sd_private
 #define P4SD_RESP1                     0x0034
 #define P4SD_RESP2                     0x0038
 #define P4SD_RESP3                     0x003C
+#define P4SD_MINTSTS                   0x0040
 #define P4SD_RINTSTS                   0x0044
 #define  P4SD_INT_RESP_ERR             (1UL << 1)
 #define  P4SD_INT_CMD_DONE             (1UL << 2)
@@ -84,14 +95,39 @@ struct p4sd_private
                                         P4SD_INT_HTO | P4SD_INT_FRUN | \
                                         P4SD_INT_SBE | P4SD_INT_EBE)
 #define P4SD_STATUS                    0x0048
+#define  P4SD_STATUS_FIFO_EMPTY        (1UL << 2)
+#define  P4SD_STATUS_FIFO_FULL         (1UL << 3)
 #define  P4SD_STATUS_DATA_BUSY         (1UL << 9)
 #define  P4SD_STATUS_FIFO_COUNT_S      17
 #define  P4SD_STATUS_FIFO_COUNT_M      0x1FFFUL
 #define P4SD_FIFOTH                    0x004C
+#define  P4SD_FIFOTH_RX_WMARK          (127UL << 16)
+#define  P4SD_FIFOTH_DMA_MSIZE_8       (2UL << 28)
 #define P4SD_RST_N                     0x0078
+#define P4SD_TCBCNT                    0x005C
+#define P4SD_TBBCNT                    0x0060
 #define P4SD_BMOD                      0x0080
+#define  P4SD_BMOD_SWR                 (1UL << 0)
+#define  P4SD_BMOD_FB                  (1UL << 1)
+#define  P4SD_BMOD_DE                  (1UL << 7)
+#define  P4SD_BMOD_PBL_8               (2UL << 8)
+#define P4SD_PLDMND                    0x0084
+#define P4SD_DBADDR                    0x0088
 #define P4SD_IDSTS                     0x008C
+#define  P4SD_IDSTS_TI                 (1UL << 0)
+#define  P4SD_IDSTS_RI                 (1UL << 1)
+#define  P4SD_IDSTS_FBE                (1UL << 2)
+#define  P4SD_IDSTS_DU                 (1UL << 4)
+#define  P4SD_IDSTS_CES                (1UL << 5)
+#define  P4SD_IDSTS_NI                 (1UL << 8)
+#define  P4SD_IDSTS_ERRORS             (P4SD_IDSTS_FBE | P4SD_IDSTS_DU | \
+                                         P4SD_IDSTS_CES)
 #define P4SD_IDINTEN                   0x0090
+#define  P4SD_IDINTEN_TI                (1UL << 0)
+#define  P4SD_IDINTEN_RI                (1UL << 1)
+#define  P4SD_IDINTEN_NI                (1UL << 8)
+#define P4SD_DSCADDR                   0x0094
+#define P4SD_BUFADDR                   0x0098
 #define P4SD_CARDTHRCTL                0x0100
 #define P4SD_BUFFIFO                   0x0200
 #define P4SD_CLK_EDGE_SEL              0x0800
@@ -175,12 +211,44 @@ struct p4sd_private
 #define P4SD_BUSY_TIMEOUT_US           1000000UL
 #define P4SD_POWER_DELAY_US            100000UL
 /*
- * First-stage safety boundary: only single-block transfers are enabled.
- * Generic sdcard.device otherwise uses CMD18 for requests larger than one
- * sector.  Leave that path disabled until its error-time CMD12 recovery has
- * been exercised on this controller and board.
+ * A1 keeps transfers bounded to the generic sdcard.device chunk size.  The
+ * controller remains polling and read-only; larger requests are split by the
+ * generic layer before they reach this backend.
  */
-#define P4SD_MAX_DATA_LEN              512UL
+#define P4SD_MAX_READ_BLOCKS           128UL
+#define P4SD_MAX_DATA_LEN              (P4SD_MAX_READ_BLOCKS * 512UL)
+/* The D1001 A1 fallback keeps one bounded descriptor chain while the exact
+   v5.4.2 ring experiment remains recorded in ROADMAP.md. */
+/* The self-clearing CTRL.fifo_reset bit is an AHB event.  The register
+   description requires two system clocks plus a two-card-clock
+   synchronisation before the FIFO pointers are valid again, which is 5 us at
+   400 kHz.  Programming BLKSIZ, BYTCNT, CTRL, BMOD and the command start
+   inside that window left STATUS reporting a full FIFO where the card had
+   delivered almost nothing, and the read side then returned one real word
+   followed by 127 copies of it.  Twenty microseconds is eight card clocks at
+   the current probing frequency. */
+#define P4SD_FIFO_RESET_SETTLE_US        20UL
+
+#define P4SD_DMA_DESC_BYTES              512UL
+#define P4SD_DMA_DESC_COUNT             (P4SD_MAX_DATA_LEN / P4SD_DMA_DESC_BYTES)
+
+/* A build-only A1 diagnostic hook.  It is off unless passed to the sdcard
+   module as P4_SDCARD_FAULT_INJECT=<mode>; it never enables writes. */
+#define P4SD_FAULT_NONE                 0
+#define P4SD_FAULT_CMD_CRC              1
+#define P4SD_FAULT_DATA_CRC             2
+#define P4SD_FAULT_TIMEOUT              3
+#ifndef P4_SDCARD_FAULT_INJECT
+#define P4_SDCARD_FAULT_INJECT          P4SD_FAULT_NONE
+#endif
+
+/* This is a diagnostic-only controller trace, not another transfer mode.
+   It records the single known-bad CMD18 before emitting output so polling
+   timing is unchanged.  The normal package leaves it off. */
+#ifndef P4_SDCARD_TRACE
+#define P4_SDCARD_TRACE                 0
+#endif
+#define P4SD_TRACE_LBA                  2048UL
 
 void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus);
 void FNAME_P4SDBUS(SetClock)(ULONG speed, struct sdcard_Bus *bus);

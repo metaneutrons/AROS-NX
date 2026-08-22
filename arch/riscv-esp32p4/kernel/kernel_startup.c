@@ -458,18 +458,140 @@ static struct Task *spawn_counter_task(const char *name, BYTE pri,
  * trackdisk/NSD interfaces what they expose, and read exactly one sector.
  * The buffer is deliberately in internal SRAM for this first PIO test.
  */
+/* 64-byte aligned: that is the L1 cache line, and the backend's cache
+   maintenance operates on whole lines. */
 static uint32_t sdcard_device_sector[128] P4_SRAMDATA
-    __attribute__((aligned(4)));
+    __attribute__((aligned(64)));
+
+static int krnP4SDCardRead(struct IOStdReq *io, uint32_t lba,
+                           uint32_t sectors, int use_64bit, APTR buffer)
+{
+    uint64_t byte_offset = (uint64_t)lba << 9;
+    ULONG bytes = sectors << 9;
+
+    io->io_Command = use_64bit ? NSCMD_TD_READ64 : CMD_READ;
+    io->io_Data = buffer;
+    io->io_Length = bytes;
+    io->io_Actual = use_64bit ? (uint32_t)(byte_offset >> 32) : 0;
+    io->io_Offset = (uint32_t)byte_offset;
+    DoIO((struct IORequest *)io);
+
+    return io->io_Error == 0 && io->io_Actual == bytes;
+}
+
+/* Ground truth for the D1001 test card.  Captured read-only from the card in
+   a host reader on 2026-08-22; the first 2 MiB have SHA-256
+   3aeaff747c68f8c087cda1e3a9fcd877e323bb7ad238f9462efd5d9322fa6e45.
+
+   The matrix used to compare CMD17 against CMD18 and nothing else, so a
+   fault common to both pathways read as a pass.  LBA 0 did exactly that:
+   the card holds a valid MBR there, hash 0xdebe99c1, while the driver
+   returned 512 zero bytes and both sides of the comparison agreed on it.
+
+   LBA 2049, 2080 and 2081 are FAT32 FSInfo and FAT sectors.  A host that
+   mounts the volume rewrites them, so this table needs a fresh capture
+   after any mount.  Everything in LBA 0..4095 outside this list is
+   zero-filled, which is why a misdirected read almost always looks like
+   zeroes rather than like an error. */
+#define P4SD_HASH_ZERO                  0x4d7705c5U
+#define P4SD_HASH_SENTINEL              0x52c707c5U
+#define P4SD_SENTINEL_BYTE              0xa5
+#define P4SD_REF_LIMIT                  4096U
+
+struct p4sd_ref_sector
+{
+    uint32_t lba;
+    uint32_t hash;
+};
+
+static const struct p4sd_ref_sector p4sd_ref_sectors[] =
+{
+    {     0, 0xdebe99c1U },     /* MBR, one entry: type 0x0b, start 2048 */
+    {  2048, 0x730d1cbdU },     /* FAT32 VBR, OEM "BSD  4.4" */
+    {  2054, 0x730d1cbdU },     /* backup VBR, byte-identical to 2048 */
+    {  2055, 0xc7ef8842U },     /* backup FSInfo */
+    /* LBA 2049 (FSInfo) and 2080/2081 (FAT) are deliberately absent.  A host
+       that mounts the volume rewrites them, and it did: a run on 2026-08-22
+       found 2049 holding 0x758fc4ce where this table had said 0x1647bc76,
+       with CMD17 and CMD18 agreeing on the new value at every address.  A
+       naming table that asserts a volatile sector would mislabel blocks
+       rather than report them, so they are left unnamed. */
+    {  2083, 0x9a2ba598U },
+    {  2084, 0xcf015645U },
+    {  2085, 0x05ba934eU },
+};
+
+static uint32_t krnP4SDCardHash(const unsigned char *data, ULONG length)
+{
+    uint32_t hash = 2166136261U;
+    ULONG i;
+
+    for (i = 0; i < length; ++i)
+    {
+        hash ^= data[i];
+        hash *= 16777619U;
+    }
+    return hash;
+}
+
+/* TRUE when the card content of one sector is known.  Anything below the
+   captured limit that is not listed is zero. */
+static int krnP4SDCardRefSector(uint32_t lba, uint32_t *hash)
+{
+    unsigned int i;
+
+    for (i = 0; i < sizeof(p4sd_ref_sectors) / sizeof(p4sd_ref_sectors[0]);
+         ++i)
+        if (p4sd_ref_sectors[i].lba == lba)
+        {
+            *hash = p4sd_ref_sectors[i].hash;
+            return 1;
+        }
+    if (lba < P4SD_REF_LIMIT)
+    {
+        *hash = P4SD_HASH_ZERO;
+        return 1;
+    }
+    return 0;
+}
+
+/* Name what a block actually holds.  This is the difference between
+   "block 1 differs" and "block 1 holds LBA 2048 a second time".  2048 and
+   2054 are byte-identical, so both are printed when they match. */
+static void krnP4SDCardNameHash(uint32_t hash)
+{
+    unsigned int i, matches = 0;
+
+    if (hash == P4SD_HASH_SENTINEL)
+    {
+        krnP4PutStr("untouched a5");
+        return;
+    }
+    if (hash == P4SD_HASH_ZERO)
+    {
+        krnP4PutStr("zero sector");
+        return;
+    }
+    for (i = 0; i < sizeof(p4sd_ref_sectors) / sizeof(p4sd_ref_sectors[0]);
+         ++i)
+        if (p4sd_ref_sectors[i].hash == hash)
+        {
+            krnP4PutStr(matches++ ? "/" : "LBA ");
+            krnP4PutDec(p4sd_ref_sectors[i].lba);
+        }
+    if (!matches)
+        krnP4PutStr("unknown");
+}
 
 static int krnP4SDCardReadSector(struct IOStdReq *io, uint32_t lba,
                                  int use_64bit)
 {
     const unsigned char *sector =
         (const unsigned char *)sdcard_device_sector;
-    uint64_t byte_offset = (uint64_t)lba << 9;
     uint32_t hash = 2166136261U;
     uint32_t nonzero = 0;
     uint32_t unchanged = 0;
+    uint32_t expected;
     unsigned int i;
 
     /* A nonzero sentinel catches a backend that reports success without
@@ -477,16 +599,9 @@ static int krnP4SDCardReadSector(struct IOStdReq *io, uint32_t lba,
     for (i = 0; i < 128; ++i)
         sdcard_device_sector[i] = 0xa5a5a5a5U;
 
-    io->io_Command = use_64bit ? NSCMD_TD_READ64 : CMD_READ;
-    io->io_Data = sdcard_device_sector;
-    io->io_Length = sizeof(sdcard_device_sector);
-    io->io_Actual = use_64bit ? (uint32_t)(byte_offset >> 32) : 0;
-    io->io_Offset = (uint32_t)byte_offset;
-    DoIO((struct IORequest *)io);
-
     krnP4PutStr("[sddev]  LBA ");
     krnP4PutDec(lba);
-    if (io->io_Error != 0 || io->io_Actual != sizeof(sdcard_device_sector))
+    if (!krnP4SDCardRead(io, lba, 1, use_64bit, sdcard_device_sector))
     {
         krnP4PutStr(" read failed, error ");
         krnP4PutDec((uint32_t)(unsigned char)io->io_Error);
@@ -514,9 +629,556 @@ static int krnP4SDCardReadSector(struct IOStdReq *io, uint32_t lba,
     krnP4PutDec(unchanged);
     krnP4PutStr(", signature ");
     krnP4PutStr(sector[510] == 0x55 && sector[511] == 0xaa ?
-                "55aa\n" : "absent\n");
+                "55aa" : "absent");
+    /* State the card's own content where it is known.  A single-sector read
+       that silently returns zeroes is otherwise indistinguishable from a
+       sector that is genuinely zero. */
+    if (krnP4SDCardRefSector(lba, &expected))
+    {
+        krnP4PutStr(", card ");
+        krnP4PutHex32(expected);
+        krnP4PutStr(hash == expected ? ", match" : ", WRONG");
+    }
+    krnP4PutStr("\n");
     return 1;
 }
+
+/* Decide whether the LBA-0 fault is address dependent or an artefact of
+   being the first data transfer of the boot.  The old matrix always read
+   LBA 0 first, so those two explanations were indistinguishable.  Here
+   LBA 2048 goes first on purpose, LBA 0 is then read twice, and LBA 2048
+   is read again at the end to show the path still works. */
+static void krnP4SDCardAddressProbe(struct IOStdReq *io)
+{
+    static const uint32_t order[] = { 2048, 0, 0, 1, 2048, 2083 };
+    unsigned int step;
+
+    krnP4PutStr("[sddev]  address probe, LBA 2048 before LBA 0 on purpose\n");
+    for (step = 0; step < sizeof(order) / sizeof(order[0]); ++step)
+    {
+        uint32_t hash, expected;
+        unsigned int i;
+
+        for (i = 0; i < 128; ++i)
+            sdcard_device_sector[i] = 0xa5a5a5a5U;
+
+        krnP4PutStr("[sddev]    step ");
+        krnP4PutDec(step);
+        krnP4PutStr(" LBA ");
+        krnP4PutDec(order[step]);
+        if (!krnP4SDCardRead(io, order[step], 1, 0, sdcard_device_sector))
+        {
+            krnP4PutStr(" read failed, error ");
+            krnP4PutDec((uint32_t)(unsigned char)io->io_Error);
+            krnP4PutStr(", actual ");
+            krnP4PutDec(io->io_Actual);
+            krnP4PutStr("\n");
+            continue;
+        }
+
+        hash = krnP4SDCardHash((const unsigned char *)sdcard_device_sector,
+                               512);
+        krnP4PutStr(" got ");
+        krnP4PutHex32(hash);
+        krnP4PutStr(" (");
+        krnP4SDCardNameHash(hash);
+        krnP4PutStr(")");
+        if (krnP4SDCardRefSector(order[step], &expected))
+        {
+            krnP4PutStr(", card ");
+            krnP4PutHex32(expected);
+            krnP4PutStr(hash == expected ? ", match\n" : ", WRONG\n");
+        }
+        else
+            krnP4PutStr(", no card reference\n");
+    }
+}
+
+#ifdef P4_SDCARD_MULTIBLOCK_TEST
+
+/* P4_A1_DIAGNOSTIC selects this bounded, read-only matrix at build time. */
+
+#ifndef P4_SDCARD_REPEAT
+#define P4_SDCARD_REPEAT 1
+#endif
+
+/* How many block detail lines one cell may print.  A 128-sector cell would
+   otherwise emit 128 of them. */
+#define P4SD_BLOCK_REPORT_LIMIT         12
+
+struct p4sd_ref_range
+{
+    uint32_t lba;
+    uint32_t sectors;
+    uint32_t hash;
+};
+
+/* FNV-1a-32 over the whole requested range, not per sector, so it can be
+   compared against the hash the harness computes over its receive buffer. */
+static const struct p4sd_ref_range p4sd_ref_ranges[] =
+{
+    /* Only ranges that contain no volatile sector.  LBA 0 and 2083 are the
+       only addresses whose 1, 2, 32 and 128-sector ranges are all stable on
+       this card; the rest are straddle cases that stay below the FSInfo and
+       FAT sectors. */
+    {     0,   1, 0xdebe99c1U },
+    {     0,   2, 0x32fbe1c1U },
+    {     0,  32, 0xba6a51c1U },
+    {     0, 128, 0x6d6551c1U },
+    {  2047,   1, 0x4d7705c5U },
+    {  2047,   2, 0x44a784bdU },
+    {  2048,   1, 0x730d1cbdU },
+    {  2053,   1, 0x4d7705c5U },
+    {  2053,   2, 0x44a784bdU },
+    {  2054,   1, 0x730d1cbdU },
+    {  2054,   2, 0x00a2061aU },
+    {  2083,   1, 0x9a2ba598U },
+    {  2083,   2, 0xdbf2f318U },
+    {  2083,  32, 0xadc117e7U },
+    {  2083, 128, 0xe07e17e7U },
+};
+
+static const struct p4sd_ref_range *krnP4SDCardRefRange(uint32_t lba,
+                                                        uint32_t sectors)
+{
+    unsigned int i;
+
+    for (i = 0; i < sizeof(p4sd_ref_ranges) / sizeof(p4sd_ref_ranges[0]); ++i)
+        if (p4sd_ref_ranges[i].lba == lba &&
+            p4sd_ref_ranges[i].sectors == sectors)
+            return &p4sd_ref_ranges[i];
+    return NULL;
+}
+
+/* Compare one CMD18 request against independently issued CMD17 reads and,
+   where the card content is known, against the card itself.  The card is
+   the deciding reference: CMD17 and CMD18 share a controller, a FIFO and a
+   cache wrapper, so agreement between them proves nothing on its own.
+
+   Buffers are allocated separately and rounded to a 64-byte cache line.
+   The previous version carved both halves out of one AllocMem block, whose
+   alignment is 16 bytes, so a receive buffer could share its first and last
+   cache line with the reference buffer it was compared against. */
+static int krnP4SDCardCompareBlocks(struct IOStdReq *io, uint32_t lba,
+                                    uint32_t sectors, int use_64bit,
+                                    int report)
+{
+    ULONG bytes = sectors << 9;
+    const struct p4sd_ref_range *ref = krnP4SDCardRefRange(lba, sectors);
+    unsigned char *raw_single = NULL;
+    unsigned char *raw_multi = NULL;
+    unsigned char *single;
+    unsigned char *multi;
+    uint32_t single_hash = 0, multi_hash = 0, first_hash = 0;
+    ULONG i, first_bad = 0, printed = 0;
+    int have_bad = 0;
+    int reference_blocks_differ = 0;
+    int ok = 0;
+
+    if (sectors == 0 || sectors > 128)
+        return 0;
+
+    raw_single = AllocMem(bytes + 64, MEMF_PUBLIC | MEMF_CLEAR);
+    raw_multi = AllocMem(bytes + 64, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!raw_single || !raw_multi)
+    {
+        krnP4PutStr("[sddev]  CMD18 buffers unavailable\n");
+        goto out;
+    }
+    single = (unsigned char *)(((IPTR)raw_single + 63) & ~(IPTR)63);
+    multi = (unsigned char *)(((IPTR)raw_multi + 63) & ~(IPTR)63);
+
+    for (i = 0; i < sectors; ++i)
+        if (!krnP4SDCardRead(io, lba + i, 1, use_64bit, single + (i << 9)))
+        {
+            krnP4PutStr("[sddev]  CMD18 baseline CMD17 failed at LBA ");
+            krnP4PutDec(lba + i);
+            krnP4PutStr(", error ");
+            krnP4PutDec((uint32_t)(unsigned char)io->io_Error);
+            krnP4PutStr(", actual ");
+            krnP4PutDec(io->io_Actual);
+            krnP4PutStr("\n");
+            goto out;
+        }
+
+    for (i = 0; i < bytes; ++i)
+        multi[i] = P4SD_SENTINEL_BYTE;
+    if (!krnP4SDCardRead(io, lba, sectors, use_64bit, multi))
+    {
+        krnP4PutStr("[sddev]  CMD18 request failed, error ");
+        krnP4PutDec((uint32_t)(unsigned char)io->io_Error);
+        krnP4PutStr(", actual ");
+        krnP4PutDec(io->io_Actual);
+        krnP4PutStr("\n");
+        goto out;
+    }
+
+    single_hash = krnP4SDCardHash(single, bytes);
+    multi_hash = krnP4SDCardHash(multi, bytes);
+    first_hash = krnP4SDCardHash(multi, 512);
+
+    for (i = 0; i < bytes; ++i)
+        if (multi[i] != single[i])
+        {
+            have_bad = 1;
+            first_bad = i;
+            break;
+        }
+
+    for (i = 1; i < sectors; ++i)
+        if (krnP4SDCardHash(single + (i << 9), 512) !=
+            krnP4SDCardHash(single, 512))
+        {
+            reference_blocks_differ = 1;
+            break;
+        }
+
+    /* Accept against the card where the card is known.  Fall back to the
+       old self-comparison only where it is not, and say so. */
+    if (ref)
+        ok = single_hash == ref->hash && multi_hash == ref->hash;
+    else
+        ok = !have_bad;
+
+    if (report || !ok)
+    {
+        krnP4PutStr("[sddev]  CMD18 LBA ");
+        krnP4PutDec(lba);
+        krnP4PutStr(" x ");
+        krnP4PutDec(sectors);
+        krnP4PutStr(use_64bit ? " sectors READ64 " : " sectors READ ");
+        krnP4PutStr(ok ? "match\n" : "FAILED\n");
+
+        krnP4PutStr("[sddev]    buffers single ");
+        krnP4PutHex32((uint32_t)(IPTR)single);
+        krnP4PutStr(" multi ");
+        krnP4PutHex32((uint32_t)(IPTR)multi);
+        krnP4PutStr(", allocated ");
+        krnP4PutHex32((uint32_t)(IPTR)raw_single);
+        krnP4PutStr("/");
+        krnP4PutHex32((uint32_t)(IPTR)raw_multi);
+        krnP4PutStr("\n");
+
+        krnP4PutStr("[sddev]    cmd17 ");
+        krnP4PutHex32(single_hash);
+        krnP4PutStr(", cmd18 ");
+        krnP4PutHex32(multi_hash);
+        krnP4PutStr(", card ");
+        if (ref)
+            krnP4PutHex32(ref->hash);
+        else
+            krnP4PutStr("unknown");
+        krnP4PutStr("\n");
+
+        for (i = 0; i < sectors && printed < P4SD_BLOCK_REPORT_LIMIT; ++i)
+        {
+            uint32_t block_single = krnP4SDCardHash(single + (i << 9), 512);
+            uint32_t block_multi = krnP4SDCardHash(multi + (i << 9), 512);
+
+            /* Print every differing block, but only the leading few that
+               agree, so one cell cannot flood the console. */
+            if (block_single == block_multi && i >= 4)
+                continue;
+            ++printed;
+            krnP4PutStr("[sddev]    block ");
+            krnP4PutDec(i);
+            krnP4PutStr(": cmd17 ");
+            krnP4PutHex32(block_single);
+            krnP4PutStr(" (");
+            krnP4SDCardNameHash(block_single);
+            krnP4PutStr("), cmd18 ");
+            krnP4PutHex32(block_multi);
+            krnP4PutStr(" (");
+            krnP4SDCardNameHash(block_multi);
+            if (i != 0 && block_multi == first_hash)
+                krnP4PutStr(", repeat of block 0");
+            krnP4PutStr(block_single == block_multi ? ")\n" : ") MISMATCH\n");
+        }
+
+        if (have_bad)
+        {
+            krnP4PutStr("[sddev]    first differing byte ");
+            krnP4PutDec(first_bad);
+            krnP4PutStr("\n");
+        }
+        if (sectors > 1 && !reference_blocks_differ)
+            krnP4PutStr("[sddev]    warning every reference block is "
+                        "identical, a repeated block is undetectable here\n");
+        if (ref)
+        {
+            krnP4PutStr("[sddev]    verdict cmd17 ");
+            krnP4PutStr(single_hash == ref->hash ?
+                        "matches card, cmd18 " : "DIFFERS from card, cmd18 ");
+            krnP4PutStr(multi_hash == ref->hash ?
+                        "matches card\n" : "DIFFERS from card\n");
+        }
+        else
+            krnP4PutStr("[sddev]    verdict self-comparison only, "
+                        "no card reference for this range\n");
+    }
+
+out:
+    if (raw_multi)
+        FreeMem(raw_multi, bytes + 64);
+    if (raw_single)
+        FreeMem(raw_single, bytes + 64);
+    return ok;
+}
+
+/* The rejection point of the A1 gate.  Every malformed request must fail
+   without disturbing controller or card state, and the proof of the second
+   half is that a known-good read still matches the card afterwards.
+
+   Two limits are worth stating rather than papering over.  First, on a card
+   this large an out-of-range request cannot be expressed through 32-bit
+   CMD_READ at all: the largest byte offset a ULONG holds is block 8,388,607
+   while the card has 249,737,216, so every 32-bit offset is inside the media
+   and those cases have to go through READ64.  Second, the backend's own
+   P4SD_MAX_DATA_LEN cap sits behind the generic layer's chunking at 128
+   blocks, so a device request cannot reach it; it is defence in depth, and
+   the oversized case below is recorded rather than expected to fail. */
+static int krnP4SDCardRejectionTest(struct IOStdReq *io, uint32_t total_sectors)
+{
+    static const struct
+    {
+        const char *name;
+        uint32_t high;
+        uint32_t offset;
+        uint32_t length;
+        int use_64bit;
+        int must_fail;
+    } cases[] =
+    {
+        { "unaligned offset",         0, 256,          512,       0, 1 },
+        { "unaligned length",         0, 2048UL * 512, 511,       0, 1 },
+        { "both unaligned",           0, 1,            1,         0, 1 },
+        { "unaligned offset, READ64", 0, 256,          512,       1, 1 },
+        { "first sector past the end",0, 0,            512,       1, 1 },
+        { "far past the end",         0xFF, 0,         512,       1, 1 },
+        { "zero length",              0, 2048UL * 512, 0,         0, 0 },
+    };
+    /* There is deliberately no oversized case here.  The backend's
+       P4SD_MAX_DATA_LEN cap sits behind the generic layer's chunking at 128
+       blocks, so no device request can reach it, and an earlier attempt to
+       provoke it asked for 256 sectors into the 512-byte SRAM probe buffer.
+       That is a caller bug no layer can catch, because io_Length is the only
+       statement of the buffer's size, and it duly trapped with pc=0. */
+    unsigned int i;
+    int passed = 1;
+
+    krnP4PutStr("[sddev]  rejection test starting\n");
+    for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i)
+    {
+        uint32_t high = cases[i].high;
+        uint32_t offset = cases[i].offset;
+        uint32_t hash, expected;
+        int failed;
+
+        /* Case 4 needs the runtime capacity: the first byte beyond the last
+           sector, split across the READ64 offset pair. */
+        if (i == 4)
+        {
+            uint64_t past = (uint64_t)total_sectors << 9;
+
+            high = (uint32_t)(past >> 32);
+            offset = (uint32_t)past;
+        }
+
+        io->io_Command = cases[i].use_64bit ? NSCMD_TD_READ64 : CMD_READ;
+        io->io_Data = sdcard_device_sector;
+        io->io_Length = cases[i].length;
+        io->io_Actual = cases[i].use_64bit ? high : 0;
+        io->io_Offset = offset;
+        DoIO((struct IORequest *)io);
+        failed = io->io_Error != 0;
+
+        krnP4PutStr("[sddev]    ");
+        krnP4PutStr(cases[i].name);
+        krnP4PutStr(": high ");
+        krnP4PutHex32(high);
+        krnP4PutStr(" offset ");
+        krnP4PutHex32(offset);
+        krnP4PutStr(" length ");
+        krnP4PutDec(cases[i].length);
+        krnP4PutStr(" -> error ");
+        krnP4PutDec((uint32_t)(unsigned char)io->io_Error);
+        krnP4PutStr(", actual ");
+        krnP4PutDec(io->io_Actual);
+        if (cases[i].must_fail && !failed)
+        {
+            krnP4PutStr(", ACCEPTED BUT MUST BE REJECTED");
+            passed = 0;
+        }
+        else if (cases[i].must_fail)
+            krnP4PutStr(", rejected as required");
+        else
+            krnP4PutStr(", not a rejection case, recorded only");
+        krnP4PutStr("\n");
+
+        /* Controller and card state intact?  A known sector must still read
+           correctly, which is the half of the requirement that a plain
+           error code cannot show. */
+        if (!krnP4SDCardRead(io, 2048, 1, 0, sdcard_device_sector))
+        {
+            krnP4PutStr("[sddev]      follow-up read FAILED, error ");
+            krnP4PutDec((uint32_t)(unsigned char)io->io_Error);
+            krnP4PutStr("\n");
+            passed = 0;
+            continue;
+        }
+        hash = krnP4SDCardHash((const unsigned char *)sdcard_device_sector,
+                               512);
+        if (!krnP4SDCardRefSector(2048, &expected) || hash != expected)
+        {
+            krnP4PutStr("[sddev]      follow-up read WRONG, got ");
+            krnP4PutHex32(hash);
+            krnP4PutStr("\n");
+            passed = 0;
+        }
+    }
+
+    krnP4PutStr("[sddev]  rejection test ");
+    krnP4PutStr(passed ? "passed\n" : "FAILED\n");
+    return passed;
+}
+
+static int krnP4SDCardMultiblockTest(struct IOStdReq *io,
+                                     uint32_t total_sectors)
+{
+    static const uint32_t sector_counts[] = { 1, 2, 32, 128 };
+    /* Full sweeps only at the two addresses whose 1, 2, 32 and 128-sector
+       ranges are all free of volatile sectors.  2083 comes first so LBA 0 is
+       not the run's first data transfer. */
+    static const uint32_t test_lbas[] = { 2083, 0 };
+    /* Straddle and single-sector cases that stay clear of FSInfo and FAT.
+       2047/2048 crosses the partition start, 2053/2054 the backup boot
+       sector, and 2054 alone is byte-identical to 2048. */
+    static const struct
+    {
+        uint32_t lba;
+        uint32_t sectors;
+    } stable_extras[] =
+    {
+        { 2048, 1 }, { 2047, 1 }, { 2047, 2 },
+        { 2054, 1 }, { 2053, 1 }, { 2053, 2 }, { 2054, 2 },
+    };
+    unsigned int extra_index;
+    unsigned int lba_index, count_index, repeat;
+    int expected_fault =
+#ifdef P4_SDCARD_EXPECT_FAULT
+        1;
+#else
+        0;
+#endif
+    int passed = 1;
+
+    krnP4PutStr("[sddev]  CMD18 compare matrix starting\n");
+    for (lba_index = 0; lba_index < sizeof(test_lbas) / sizeof(test_lbas[0]);
+         ++lba_index)
+        for (count_index = 0;
+             count_index < sizeof(sector_counts) / sizeof(sector_counts[0]);
+             ++count_index)
+            if (!krnP4SDCardCompareBlocks(io, test_lbas[lba_index],
+                                           sector_counts[count_index], 0, 1))
+            {
+                if (expected_fault)
+                {
+                    expected_fault = 0;
+                    krnP4PutStr("[sddev]  expected injected failure; CMD17 recovery ");
+                    if (krnP4SDCardRead(io, test_lbas[lba_index], 1, 0,
+                                         sdcard_device_sector))
+                        krnP4PutStr("passed\n");
+                    else
+                    {
+                        krnP4PutStr("FAILED\n");
+                        passed = 0;
+                    }
+                }
+                else
+                    passed = 0;
+            }
+
+    /* The else used to bind to the inner if, not to this one, so every
+       successful READ64 cell set passed = 0 and the matrix could never
+       report success no matter what the hardware did. */
+    for (extra_index = 0;
+         extra_index < sizeof(stable_extras) / sizeof(stable_extras[0]);
+         ++extra_index)
+        if (!krnP4SDCardCompareBlocks(io, stable_extras[extra_index].lba,
+                                       stable_extras[extra_index].sectors,
+                                       0, 1))
+            passed = 0;
+
+    /* The 64-bit path at referenced addresses.  The gate asks for READ64
+       near the card end, and those cells run below, but no card reference
+       exists for that range, so they can only self-compare.  Running READ64
+       at the referenced addresses too is what actually proves the 64-bit
+       code path against the card. */
+    for (lba_index = 0; lba_index < sizeof(test_lbas) / sizeof(test_lbas[0]);
+         ++lba_index)
+        for (count_index = 0;
+             count_index < sizeof(sector_counts) / sizeof(sector_counts[0]);
+             ++count_index)
+            if (!krnP4SDCardCompareBlocks(io, test_lbas[lba_index],
+                                           sector_counts[count_index], 1, 1))
+                passed = 0;
+
+    if (total_sectors >= 128)
+    {
+        for (count_index = 0;
+             count_index < sizeof(sector_counts) / sizeof(sector_counts[0]);
+             ++count_index)
+            if (!krnP4SDCardCompareBlocks(io,
+                                           total_sectors - sector_counts[count_index],
+                                           sector_counts[count_index], 1, 1))
+                passed = 0;
+    }
+    else
+        passed = 0;
+
+    if (expected_fault)
+    {
+        krnP4PutStr("[sddev]  expected fault was not injected\n");
+        passed = 0;
+    }
+
+    /* The repetition point of the A1 gate.  Rotate the address rather than
+       hammering one, which costs nothing and covers both straddle cases and
+       the FAT sector as well.  Two sectors keeps one iteration at about two
+       kilobytes, so a thousand of them stay inside a reasonable capture. */
+    for (repeat = 0; passed && repeat < P4_SDCARD_REPEAT; ++repeat)
+    {
+        uint32_t lba = test_lbas[repeat % (sizeof(test_lbas) /
+                                           sizeof(test_lbas[0]))];
+
+        if (!krnP4SDCardCompareBlocks(io, lba, 2, 0, 0))
+        {
+            krnP4PutStr("[sddev]  repeated CMD18 mismatch at iteration ");
+            krnP4PutDec(repeat);
+            krnP4PutStr(", LBA ");
+            krnP4PutDec(lba);
+            krnP4PutStr("\n");
+            passed = 0;
+        }
+        else if ((repeat % 100) == 99)
+        {
+            /* Progress, so a long silent run is distinguishable from a
+               hang, both for a human and for a capture timeout. */
+            krnP4PutStr("[sddev]  repetitions completed ");
+            krnP4PutDec(repeat + 1);
+            krnP4PutStr("\n");
+        }
+    }
+
+    krnP4PutStr("[sddev]  CMD18 compare matrix ");
+    krnP4PutStr(passed ? "passed" : "FAILED");
+    krnP4PutStr(", two-sector repetitions ");
+    krnP4PutDec(repeat);
+    krnP4PutStr("\n");
+    return passed;
+}
+
+#endif /* P4_SDCARD_MULTIBLOCK_TEST */
 
 static void krnP4SDCardDeviceTest(void)
 {
@@ -594,6 +1256,8 @@ static void krnP4SDCardDeviceTest(void)
         krnP4PutStr("\n");
     }
 
+    krnP4SDCardAddressProbe(io);
+
     for (i = 0; i < sizeof(probe_lbas) / sizeof(probe_lbas[0]); ++i)
         if (!krnP4SDCardReadSector(io, probe_lbas[i], 0))
             break;
@@ -607,6 +1271,10 @@ static void krnP4SDCardDeviceTest(void)
         (void)krnP4SDCardReadSector(io, total_sectors - 33, 1);
         (void)krnP4SDCardReadSector(io, total_sectors - 1, 1);
         (void)krnP4SDCardReadSector(io, 0, 0);
+#ifdef P4_SDCARD_MULTIBLOCK_TEST
+        (void)krnP4SDCardMultiblockTest(io, total_sectors);
+        (void)krnP4SDCardRejectionTest(io, total_sectors);
+#endif
     }
     krnP4PutStr("[sddev]  read-only device test complete\n");
 

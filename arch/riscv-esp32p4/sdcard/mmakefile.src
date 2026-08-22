@@ -3,6 +3,25 @@ include $(SRCDIR)/config/aros.cfg
 
 USER_INCLUDES := -I$(SRCDIR)/$(CURDIR) -I$(SRCDIR)/rom/devs/sdcard
 
+# Keep the diagnostic core and the separately packaged sdcard.device in the
+# same observation configuration.  This switch adds only buffered read-side
+# telemetry; normal package builds leave it absent.
+ifeq ($(P4_A1_DIAGNOSTIC),1)
+P4_SDCARD_DEBUG_CPPFLAGS += -DP4_SDCARD_TRACE=1
+endif
+
+# P4_SDCARD_FAULT_INJECT=<1|2|3> makes the backend force one command-CRC,
+# data-CRC or timeout condition on the first CMD18 of a run, so the A1 gate's
+# recovery point can be observed without a media write and without waiting
+# for a real fault.  It enables no write path.  The matching core switch is
+# P4_SDCARD_EXPECT_FAULT, which tells the harness to tolerate exactly one
+# failure and then require the next read to succeed.  Build both together.
+ifdef P4_SDCARD_FAULT_INJECT
+P4_SDCARD_DEBUG_CPPFLAGS += -DP4_SDCARD_FAULT_INJECT=$(P4_SDCARD_FAULT_INJECT)
+endif
+
+USER_CPPFLAGS := $(P4_SDCARD_DEBUG_CPPFLAGS)
+
 ESP32P4SDCARDFILES := \
     sdcard_esp32p4_init \
     sdcard_esp32p4_bus \

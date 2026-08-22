@@ -20,7 +20,12 @@ PRIV_KERNEL_INCLUDES = \
 USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 
 #
-# Build-time switches, all off by default, set through P4_DEBUG_CPPFLAGS:
+# Build-time switches, all off by default, set through P4_DEBUG_CPPFLAGS.
+# P4_A1_DIAGNOSTIC=1 is the reproducible read-only CMD18 matrix build:
+# it enables both dependent device-test switches without changing normal
+# boot artifacts.  It also enables the passive controller trace for the
+# single known-bad LBA-2048 two-block transfer; the trace is emitted only
+# after that transfer completes or fails.
 #
 #   -DP4_KEEP_WATCHDOG  leave the ROM's watchdogs armed, so a hang reboots
 #                       and repeats its output instead of going quiet
@@ -42,9 +47,41 @@ USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 #   -DP4_SDCARD_DEVICE_TEST
 #                       after exec starts, open the package-loaded
 #                       sdcard.device, query it and read only sector zero
+#   -DP4_SDCARD_MULTIBLOCK_TEST
+#                       with P4_SDCARD_DEVICE_TEST, compare CMD18 reads of
+#                       1/2/32/128 sectors against CMD17 baselines and, where
+#                       the content is known, against the test card itself
+#                       (sdcard/test-card-reference.md).  A CMD17 baseline
+#                       alone cannot decide anything: it shares the
+#                       controller, FIFO and cache path with CMD18, and at
+#                       LBA 0 both returned zeroes over a real MBR.  Optional
+#                       P4_SDCARD_REPEAT=<n> repeats the two-sector case
+#   -DP4_SDCARD_EXPECT_FAULT
+#                       allow one injected CMD18 failure and require the
+#                       immediately following CMD17 recovery read to pass
 #   -DP4_PARTITION_TEST  open the package-loaded partition.library and read
 #                       one sector through its public root-partition API
 #
+ifeq ($(P4_A1_DIAGNOSTIC),1)
+P4_DEBUG_CPPFLAGS += -DP4_SDCARD_DEVICE_TEST -DP4_SDCARD_MULTIBLOCK_TEST \
+                     -DP4_SDCARD_TRACE=1
+endif
+
+# P4_SDCARD_REPEAT=<n> sets how many bounded two-sector repetitions the A1
+# matrix runs after its cells pass.  The gate asks for at least 1,000.  It
+# defaults to 1 in the source, so a normal diagnostic build stays short.
+ifdef P4_SDCARD_REPEAT
+P4_DEBUG_CPPFLAGS += -DP4_SDCARD_REPEAT=$(P4_SDCARD_REPEAT)
+endif
+
+# P4_SDCARD_EXPECT_FAULT is the core half of the fault-injection test; the
+# package half is P4_SDCARD_FAULT_INJECT in arch/riscv-esp32p4/sdcard.  With
+# it the matrix tolerates exactly one failed cell, requires the next CMD17 to
+# succeed, and fails the run if no fault was injected at all.
+ifdef P4_SDCARD_EXPECT_FAULT
+P4_DEBUG_CPPFLAGS += -DP4_SDCARD_EXPECT_FAULT
+endif
+
 USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__ $(P4_DEBUG_CPPFLAGS)
 
 CFILES := \
