@@ -113,7 +113,7 @@ tests.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
-| A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware partial` | Five of six gate points pass in one run: card-referenced comparison over 27 cells, 1,000 repetitions, heartbeat, injected CRC/timeout recovery and invalid-request rejection.  Open: an external reference for the card-end READ64 range |
+| A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `not started` | Requires A1 |
 | A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `not started` | Requires A2 test layout |
 | A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `not started` | Requires A2 and A3 |
@@ -1840,6 +1840,74 @@ and record substantive corrections as a new entry.
   128-sector transfer rather than on the first CMD18, also remains untested.
 - Next safe step: capture the card-end reference, then decide whether A1 is
   complete.  Do not start A2 before that decision.
+
+### 2026-08-22 - A1 acceptance gate complete
+
+- State change: A1 moves from `hardware partial` to `hardware verified`.  Two
+  points of the gate are met differently than originally written and both
+  deviations are stated below rather than glossed over.
+- Resting artifacts, both written only to their authorized ranges and both
+  independently `verify-flash`-verified: BSP package 307,680 bytes, SHA-256
+  `70234352ced167427935fe6f4bbc1e78ea640827df9a8b1cb2422e17eef16d46` at
+  `arosbsp` `0x820000`; diagnostic XIP core 154,768 bytes, SHA-256
+  `164c026b3e940c60e527d2e06bf8f479a7632c84034dcc7c0f77cc3a6adcad0e` at
+  `ota_0` `0x20000`, built with `P4_A1_DIAGNOSTIC=1 P4_SDCARD_REPEAT=1000
+  P4_LDSCRIPT=ldscript-xip.lds`.  Both hashes reproduced bit-identically from
+  a clean object rebuild.
+- Confirming run: `CMD18 compare matrix passed, two-sector repetitions 1000,
+  cells unverified against a stale reference 0` and `rejection test passed`,
+  with 59 cells matching, none failing and no injection line.
+- The card-end problem, solved without writing to the card.  The last 128
+  sectors are entirely zero-filled, so those cells cannot detect a repeated
+  block whatever the reference says.  What they were meant to prove is a byte
+  offset beyond what a 32-bit ULONG expresses, and LBA 8388608 is exactly
+  that boundary.  Both LBA 8388608 and 10000000 hold file data with 128
+  distinct sectors each and are now referenced for 1, 2, 32 and 128 sectors
+  through READ64; all eight cells match.  The card-end cells are retained,
+  now checked against the card, and still print their blindness warning.
+  For the record, writing was also assessed: only four sectors at the very
+  end lie past the last addressable cluster, too few for a 128-sector cell,
+  and the clusters behind the rest (3901159 to 3901161) are free according to
+  the FAT, so a raw write would have been lossless.  It was not necessary.
+- Fault injection repeated at the current state, and it caught a defect in
+  the injection itself.  With the new core the data-CRC mode stopped working:
+  `expected fault was not injected`, because a data error is only acted on
+  once the request reaches SENDING_DATA and the injection fired in the first
+  iteration, where the state is still SENDING_CMD.  It had appeared to work
+  only while CMD_DONE happened to be set in that same iteration, which is
+  timing, not a test.  The data case now waits for the state; the other two
+  are state-independent and their packages rebuilt bit-identically, which is
+  itself the evidence that they were unaffected.  All three then pass:
+  mode 1 `failed in state 0: decided on raw=00000040`, mode 2
+  `injecting fault mode 2 in state 1` and `failed in state 1: decided on
+  raw=00000084`, mode 3 `failed in state 0` with no injected bit.  Each
+  reports CMD12/CMD13 recovery, a passing CMD17 afterwards and a passing
+  matrix.
+- Heartbeat, captured past the test-end marker: `irqs seen 888`,
+  `timer 100 Hz on clic line 20, ticks 887`, then `alive 1`.
+- The two deviations from the gate as written:
+  1. "near the card end through READ64" is met by the boundary addresses
+     above instead.  The card end itself carries no distinguishable data, and
+     a cell that cannot fail is not evidence.
+  2. "reject over-cap requests" is not reachable through the device.  The
+     backend's `P4SD_MAX_DATA_LEN` sits behind the generic layer's chunking
+     at 128 blocks, so it is defence in depth.  A request larger than its
+     own destination buffer is a caller bug that no layer can catch, since
+     `io_Length` is the only statement of the buffer's size; the attempt to
+     provoke it trapped with `pc=0` and was removed.  Zero length is a no-op
+     returning success with zero bytes, recorded rather than counted.
+- Safety across the whole phase: read-only throughout.  No SD-media write
+  command exists in any build, the independent write denylist and the absence
+  of a FIFO transmit path are intact, the card was never written, and only
+  `ota_0` and `arosbsp` were ever flashed.
+- Remaining risk carried into A2: recovery was exercised once per mode and
+  always on the first CMD18 of a run, so a fault during a 128-sector transfer
+  is untested.  The reference depends on this card's file contents; if they
+  change, recapture per `sdcard/test-card-reference.md`.  Four-bit mode and
+  any clock above 400 kHz remain out of scope and untested.
+- Next safe step: A2, bounded partition discovery.  The MBR at LBA 0 now
+  reads correctly, which is what A2 needs and what was silently broken until
+  today.
 
 ## Evidence-entry template
 

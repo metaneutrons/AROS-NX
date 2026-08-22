@@ -508,14 +508,12 @@ static const struct p4sd_ref_sector p4sd_ref_sectors[] =
 {
     {     0, 0xdebe99c1U },     /* MBR, one entry: type 0x0b, start 2048 */
     {  2048, 0x730d1cbdU },     /* FAT32 VBR, OEM "BSD  4.4" */
+    {  2049, 0x5534e4b0U },     /* FSInfo, volatile */
     {  2054, 0x730d1cbdU },     /* backup VBR, byte-identical to 2048 */
     {  2055, 0xc7ef8842U },     /* backup FSInfo */
-    /* LBA 2049 (FSInfo) and 2080/2081 (FAT) are deliberately absent.  A host
-       that mounts the volume rewrites them, and it did: a run on 2026-08-22
-       found 2049 holding 0x758fc4ce where this table had said 0x1647bc76,
-       with CMD17 and CMD18 agreeing on the new value at every address.  A
-       naming table that asserts a volatile sector would mislabel blocks
-       rather than report them, so they are left unnamed. */
+    {  2080, 0xc747ea06U },     /* FAT 1, volatile */
+    {  2081, 0x1657a963U },     /* FAT 1, volatile */
+    {  2082, 0x672050ceU },     /* FAT 1, volatile */
     {  2083, 0x9a2ba598U },
     {  2084, 0xcf015645U },
     {  2085, 0x05ba934eU },
@@ -711,32 +709,73 @@ struct p4sd_ref_range
     uint32_t lba;
     uint32_t sectors;
     uint32_t hash;
+    int volatile_range;
 };
 
-/* FNV-1a-32 over the whole requested range, not per sector, so it can be
-   compared against the hash the harness computes over its receive buffer. */
+/* FNV-1a-32 over the whole requested range.  `volatile_range` marks a range
+   that contains FAT32 metadata a host rewrites when it mounts the volume.
+   Those hashes are true for the capture but go stale the moment the card
+   visits a host, so a mismatch there is treated differently below: if both
+   the CMD17 and the CMD18 path return the same value, the reference is old
+   rather than the driver wrong, and the cell is reported as unverified
+   instead of failed.  A disagreement between the two paths is always a
+   failure, volatile or not. */
 static const struct p4sd_ref_range p4sd_ref_ranges[] =
 {
-    /* Only ranges that contain no volatile sector.  LBA 0 and 2083 are the
-       only addresses whose 1, 2, 32 and 128-sector ranges are all stable on
-       this card; the rest are straddle cases that stay below the FSInfo and
-       FAT sectors. */
-    {     0,   1, 0xdebe99c1U },
-    {     0,   2, 0x32fbe1c1U },
-    {     0,  32, 0xba6a51c1U },
-    {     0, 128, 0x6d6551c1U },
-    {  2047,   1, 0x4d7705c5U },
-    {  2047,   2, 0x44a784bdU },
-    {  2048,   1, 0x730d1cbdU },
-    {  2053,   1, 0x4d7705c5U },
-    {  2053,   2, 0x44a784bdU },
-    {  2054,   1, 0x730d1cbdU },
-    {  2054,   2, 0x00a2061aU },
-    {  2083,   1, 0x9a2ba598U },
-    {  2083,   2, 0xdbf2f318U },
-    {  2083,  32, 0xadc117e7U },
-    {  2083, 128, 0xe07e17e7U },
+    {          0,   1, 0xdebe99c1U, 0 },
+    {          0,   2, 0x32fbe1c1U, 0 },
+    {          0,  32, 0xba6a51c1U, 0 },
+    {          0, 128, 0x6d6551c1U, 0 },
+    {       2047,   1, 0x4d7705c5U, 0 },
+    {       2047,   2, 0x44a784bdU, 0 },
+    {       2047,  32, 0x66f5bb97U, 1 },
+    {       2047, 128, 0xf4871f17U, 1 },
+    {       2048,   1, 0x730d1cbdU, 0 },
+    {       2048,   2, 0xa84cbdc8U, 1 },
+    {       2048,  32, 0xb306cb97U, 1 },
+    {       2048, 128, 0x69142f17U, 1 },
+    {       2049,   1, 0x5534e4b0U, 1 },
+    {       2049,   2, 0x34d664b0U, 1 },
+    {       2049,  32, 0x6b62b540U, 1 },
+    {       2049, 128, 0xd5ed1f1fU, 1 },
+    {       2053,   1, 0x4d7705c5U, 0 },
+    {       2053,   2, 0x44a784bdU, 0 },
+    {       2054,   1, 0x730d1cbdU, 0 },
+    {       2054,   2, 0x00a2061aU, 0 },
+    {       2083,   1, 0x9a2ba598U, 0 },
+    {       2083,   2, 0xdbf2f318U, 0 },
+    {       2083,  32, 0xadc117e7U, 0 },
+    {       2083, 128, 0xe07e17e7U, 0 },
+    /* The card end, where the original READ64 cells read.  Captured
+       2026-08-22: the last 128 sectors are entirely zero-filled, a single
+       distinct sector hash across all of them.  These cells can be checked
+       against the card, but they cannot detect a repeated block, and the
+       harness says so separately.  The clusters behind them are free
+       according to the FAT, so nothing was written to give them content;
+       the two ranges below make that unnecessary. */
+    {  249737215,   1, 0x4d7705c5U, 0 },
+    {  249737214,   2, 0x1f116dc5U, 0 },
+    {  249737184,  32, 0x38699dc5U, 0 },
+    {  249737088, 128, 0x5e509dc5U, 0 },
+    /* What the card-end cells were meant to prove is a byte offset beyond
+       what a 32-bit ULONG can express, and LBA 8388608 is exactly that
+       boundary: it is the first sector a 32-bit byte offset cannot reach.
+       Both ranges hold file data, 128 distinct sectors each, so unlike the
+       card end they can detect a repeated or misplaced block.  File contents
+       are far more stable than the FAT metadata above, but they are not
+       eternal: if the files on this card change, recapture. */
+    {    8388608,   1, 0x55a37550U, 0 },
+    {    8388608,   2, 0xeba3bb4fU, 0 },
+    {    8388608,  32, 0x3fc8a95eU, 0 },
+    {    8388608, 128, 0x894be777U, 0 },
+    {   10000000,   1, 0x73bf86bfU, 0 },
+    {   10000000,   2, 0xe462007bU, 0 },
+    {   10000000,  32, 0x02ddf4f0U, 0 },
+    {   10000000, 128, 0xa3d171beU, 0 },
 };
+
+/* Cells that could not be verified because their reference is stale. */
+static ULONG p4sd_unverified_cells;
 
 static const struct p4sd_ref_range *krnP4SDCardRefRange(uint32_t lba,
                                                         uint32_t sectors)
@@ -773,6 +812,7 @@ static int krnP4SDCardCompareBlocks(struct IOStdReq *io, uint32_t lba,
     ULONG i, first_bad = 0, printed = 0;
     int have_bad = 0;
     int reference_blocks_differ = 0;
+    int stale = 0;
     int ok = 0;
 
     if (sectors == 0 || sectors > 128)
@@ -836,7 +876,21 @@ static int krnP4SDCardCompareBlocks(struct IOStdReq *io, uint32_t lba,
     /* Accept against the card where the card is known.  Fall back to the
        old self-comparison only where it is not, and say so. */
     if (ref)
-        ok = single_hash == ref->hash && multi_hash == ref->hash;
+    {
+        if (single_hash == ref->hash && multi_hash == ref->hash)
+            ok = 1;
+        else if (ref->volatile_range && single_hash == multi_hash)
+        {
+            /* Both paths agree and only the reference disagrees, on a range
+               that holds FAT32 metadata a host rewrites.  That is a stale
+               reference, not a driver fault.  Do not call it a pass either. */
+            ok = 1;
+            stale = 1;
+            ++p4sd_unverified_cells;
+        }
+        else
+            ok = 0;
+    }
     else
         ok = !have_bad;
 
@@ -847,7 +901,8 @@ static int krnP4SDCardCompareBlocks(struct IOStdReq *io, uint32_t lba,
         krnP4PutStr(" x ");
         krnP4PutDec(sectors);
         krnP4PutStr(use_64bit ? " sectors READ64 " : " sectors READ ");
-        krnP4PutStr(ok ? "match\n" : "FAILED\n");
+        krnP4PutStr(stale ? "unverified, stale reference\n" :
+                    ok ? "match\n" : "FAILED\n");
 
         krnP4PutStr("[sddev]    buffers single ");
         krnP4PutHex32((uint32_t)(IPTR)single);
@@ -904,7 +959,10 @@ static int krnP4SDCardCompareBlocks(struct IOStdReq *io, uint32_t lba,
         if (sectors > 1 && !reference_blocks_differ)
             krnP4PutStr("[sddev]    warning every reference block is "
                         "identical, a repeated block is undetectable here\n");
-        if (ref)
+        if (ref && stale)
+            krnP4PutStr("[sddev]    verdict both paths agree, reference is "
+                        "stale for this volatile range, not verified\n");
+        else if (ref)
         {
             krnP4PutStr("[sddev]    verdict cmd17 ");
             krnP4PutStr(single_hash == ref->hash ?
@@ -1046,10 +1104,12 @@ static int krnP4SDCardMultiblockTest(struct IOStdReq *io,
                                      uint32_t total_sectors)
 {
     static const uint32_t sector_counts[] = { 1, 2, 32, 128 };
-    /* Full sweeps only at the two addresses whose 1, 2, 32 and 128-sector
-       ranges are all free of volatile sectors.  2083 comes first so LBA 0 is
-       not the run's first data transfer. */
-    static const uint32_t test_lbas[] = { 2083, 0 };
+    /* 2083 comes first so LBA 0 is not the run's first data transfer.  2047
+       and 2049 straddle the partition start in both directions.  Ranges that
+       reach into FAT32 metadata are flagged volatile in the reference table
+       and report as unverified rather than failed if a host has since
+       rewritten them. */
+    static const uint32_t test_lbas[] = { 2083, 0, 2047, 2048, 2049 };
     /* Straddle and single-sector cases that stay clear of FSInfo and FAT.
        2047/2048 crosses the partition start, 2053/2054 the backup boot
        sector, and 2054 alone is byte-identical to 2048. */
@@ -1062,6 +1122,9 @@ static int krnP4SDCardMultiblockTest(struct IOStdReq *io,
         { 2048, 1 }, { 2047, 1 }, { 2047, 2 },
         { 2054, 1 }, { 2053, 1 }, { 2053, 2 }, { 2054, 2 },
     };
+    /* Beyond LBA 8388608 a byte offset no longer fits in a ULONG, so these
+       only work through READ64.  8388608 is the boundary itself. */
+    static const uint32_t high_lbas[] = { 8388608UL, 10000000UL };
     unsigned int extra_index;
     unsigned int lba_index, count_index, repeat;
     int expected_fault =
@@ -1123,6 +1186,18 @@ static int krnP4SDCardMultiblockTest(struct IOStdReq *io,
                                            sector_counts[count_index], 1, 1))
                 passed = 0;
 
+    /* READ64 beyond the 32-bit byte-offset boundary, against real file data.
+       This is the cell the card end was supposed to be. */
+    for (lba_index = 0;
+         lba_index < sizeof(high_lbas) / sizeof(high_lbas[0]);
+         ++lba_index)
+        for (count_index = 0;
+             count_index < sizeof(sector_counts) / sizeof(sector_counts[0]);
+             ++count_index)
+            if (!krnP4SDCardCompareBlocks(io, high_lbas[lba_index],
+                                           sector_counts[count_index], 1, 1))
+                passed = 0;
+
     if (total_sectors >= 128)
     {
         for (count_index = 0;
@@ -1174,6 +1249,8 @@ static int krnP4SDCardMultiblockTest(struct IOStdReq *io,
     krnP4PutStr(passed ? "passed" : "FAILED");
     krnP4PutStr(", two-sector repetitions ");
     krnP4PutDec(repeat);
+    krnP4PutStr(", cells unverified against a stale reference ");
+    krnP4PutDec(p4sd_unverified_cells);
     krnP4PutStr("\n");
     return passed;
 }

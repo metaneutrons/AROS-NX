@@ -94,12 +94,28 @@ have stable 1, 2, 32 and 128-sector ranges.  The straddle cases use 2047,
 If this file is recaptured, the capture must be the last thing that touches
 the card before the run that uses it.
 
-## Known gap
+## The card end, and why the 32-bit boundary replaced it
 
-There is no reference for the card's last sectors, which is where the READ64
-cells of the matrix read.  The card was removed before that range could be
-captured.  Those cells therefore still run as self-comparisons, and the
-harness now says so in its own output rather than reporting a pass.  A FAT32
-volume of this size is almost certainly zero-filled there, which would make
-those cells unable to detect a repeated block at all; the harness prints that
-warning too, computed from the reference blocks it actually read.
+The last 128 sectors were captured on 2026-08-22 and are entirely zero-filled,
+a single distinct sector hash across all of them.  Their references are the
+zero-payload constants above.  Those cells can therefore be checked against
+the card, but they cannot detect a repeated or misplaced block, and the
+harness prints that warning separately.
+
+What the card-end cells were meant to prove is a byte offset beyond what a
+32-bit ULONG can express.  LBA 8388608 is exactly that boundary, the first
+sector a 32-bit byte offset cannot reach, and it holds file data:
+
+| start LBA | 1 sector   | 2 sectors  | 32 sectors | 128 sectors |
+|-----------|------------|------------|------------|-------------|
+| 8388608   | 0x55a37550 | 0xeba3bb4f | 0x3fc8a95e | 0x894be777 |
+| 10000000  | 0x73bf86bf | 0xe462007b | 0x02ddf4f0 | 0xa3d171be |
+
+Both ranges have 128 distinct sectors, so unlike the card end they can detect
+a repeat.  File contents are much more stable than the FAT metadata above, but
+they are not eternal: if the files on this card change, recapture.
+
+Nothing was written to the card to achieve this.  For the record, writing was
+assessed and would have been lossless: only four sectors at the very end lie
+past the last addressable cluster, and the clusters behind the last 128
+sectors (3901159 to 3901161) read as free in the FAT.  It was unnecessary.

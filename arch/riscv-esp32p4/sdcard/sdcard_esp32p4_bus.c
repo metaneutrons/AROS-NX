@@ -1070,8 +1070,18 @@ ULONG FNAME_P4SDBUS(SendCmd)(struct TagItem *tags, struct sdcard_Bus *bus)
 #endif
 
         /* This exercises the exact error branch without a media write. */
+        /* A data error can only be acted on once the request has reached
+           SENDING_DATA, so injecting one earlier does nothing: the bit is
+           checked under `state == P4SD_SENDING_DATA` and the local raw value
+           is rebuilt on the next iteration.  It appeared to work only while
+           CMD_DONE happened to be set in the same iteration that injected
+           it, which changed when the core's timing changed.  Hold the data
+           case back until the state is right; the other two act immediately
+           and are state-independent. */
         if (multi_read && !p4sd_fault_injected &&
-            P4_SDCARD_FAULT_INJECT != P4SD_FAULT_NONE)
+            P4_SDCARD_FAULT_INJECT != P4SD_FAULT_NONE &&
+            (P4_SDCARD_FAULT_INJECT != P4SD_FAULT_DATA_CRC ||
+             state == P4SD_SENDING_DATA))
         {
             p4sd_fault_injected = TRUE;
             /* Name the injected mode.  The failure line below prints the
