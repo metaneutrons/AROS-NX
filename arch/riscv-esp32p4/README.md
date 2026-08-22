@@ -52,7 +52,7 @@ its evidence entry in the same change.
 | PSRAM bring-up | done | 32 MB at 20 MHz, mapped at `0x48000000` and in exec's memory list; `AvailMem` reports 34,177,392 bytes |
 | BSP package from flash | done | `sdcard.device`, `utility.library`, `partition.library` and `expansion.library` copied from `arosbsp`, relocated into PSRAM and found as residents; utility opens as version 50 and partition as version 3 |
 | timer.device | done | a 500 ms timerequest on the VBLANK unit returns after exactly 50 ticks |
-| SD/MMC block device | A1 hardware partial | read-only native DesignWare-MMC/IDMAC path.  Every read goes through the IDMAC, as in ESP-IDF.  One run passes 27 card-referenced cells, 1,000 repetitions and the invalid-request rejection cases, and separate runs pass the three injected fault modes and the heartbeat.  Open for A1: an external reference for the card-end READ64 range; see the A1 evidence in the roadmap |
+| SD/MMC block device | A1 hardware verified | read-only native DesignWare-MMC/IDMAC path.  Every read goes through the IDMAC, as in ESP-IDF.  One run passes 59 card-referenced cells, 1,000 repetitions and the invalid-request rejection cases; separate runs pass the three injected fault modes with CMD12/CMD13 recovery and the heartbeat.  Two gate points are met differently and documented in the roadmap |
 | MIPI-DSI framebuffer HIDD | not started | |
 | touch HIDD | not started | |
 | second core | not started | single hart until the rest works |
@@ -647,11 +647,12 @@ and 128 blocks before `DATA_OVER`. A complete ESP-IDF v5.4.2 descriptor/event
 state-model trial likewise leaves a full receive FIFO with RXDR pending after
 16 KiB, so it was rejected and the manual CMD12 baseline restored. Buffered
 P4 controller telemetry cannot distinguish the remaining card/CIU fault. A1
-therefore remains hardware-partial. The next safe evidence is the
-card-referenced matrix and the address probe, both of which are software; the
-physical CMD and DAT0/D0 wire trace is deferred behind them, because it was
-chosen to explain a selectivity that the card's content shows does not
-exist.
+is complete: 59 card-referenced cells over 1, 2, 32 and 128 sectors at seven
+addresses, 1,000 bounded repetitions, three injected fault modes each
+recovering through CMD12/CMD13, the invalid-request rejection cases and a live
+100 Hz heartbeat. The physical CMD and DAT0/D0 wire trace was never needed: it
+had been chosen to explain a selectivity that the card's own content showed
+does not exist.
 Done when: modules outside the kickstart also start from MicroSD.
 The complete order, hardening work and test matrix are in
 [ROADMAP.md, Track A](ROADMAP.md#track-a-storage-and-normal-boot).
