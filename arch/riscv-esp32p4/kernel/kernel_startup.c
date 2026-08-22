@@ -1440,6 +1440,57 @@ static void krnP4PartitionLibraryTest(void)
     krnP4PutStr(sector[510] == 0x55 && sector[511] == 0xaa ?
                 "55aa\n" : "absent\n");
 
+    /* A2, first acceptance point: does bounded discovery find exactly the
+       partition the card actually has?  Until the A1 fault was fixed this
+       could not work at all, because LBA 0 read back as zeroes. */
+    if (OpenPartitionTable(root) == 0)
+    {
+        struct PartitionHandle *ph;
+        ULONG found = 0;
+
+        krnP4PutStr("[part]   table type ");
+        krnP4PutDec(root->table->type);
+        krnP4PutStr(" (2 = MBR, 3 = EBR, 4 = GPT)\n");
+
+        ForeachNode(&root->table->list, ph)
+        {
+            /* de_LowCyl and de_HighCyl are in the units the handler chose,
+               so convert back through the cylinder size it recorded. */
+            ULONG cyl = ph->dg.dg_CylSectors ? ph->dg.dg_CylSectors : 1;
+
+            krnP4PutStr("[part]     partition ");
+            krnP4PutDec(found);
+            krnP4PutStr(": start ");
+            krnP4PutDec(ph->de.de_LowCyl * cyl);
+            krnP4PutStr(", sectors ");
+            krnP4PutDec((ph->de.de_HighCyl - ph->de.de_LowCyl + 1) * cyl);
+            krnP4PutStr(", dostype ");
+            krnP4PutHex32(ph->de.de_DosType);
+            krnP4PutStr("\n");
+            ++found;
+        }
+
+        krnP4PutStr("[part]   partitions found ");
+        krnP4PutDec(found);
+        krnP4PutStr(found == 1 ? ", as expected\n" :
+                                ", EXPECTED EXACTLY ONE\n");
+        ClosePartitionTable(root);
+    }
+    else
+        krnP4PutStr("[part]   OpenPartitionTable found no table\n");
+
+    /* The gate requires a normal read to still work after discovery, whatever
+       discovery decided. */
+    for (i = 0; i < 128; ++i)
+        partition_test_sector[i] = 0xa5a5a5a5U;
+    result = ReadPartitionDataQ(root, partition_test_sector, 512, 2048);
+    krnP4PutStr("[part]   read after discovery: result ");
+    krnP4PutDec((uint32_t)result);
+    krnP4PutStr(", hash ");
+    krnP4PutHex32(krnP4SDCardHash((const unsigned char *)partition_test_sector,
+                                  512));
+    krnP4PutStr(", card 0x730d1cbd\n");
+
     if (result == 0 &&
         root->bd->ioreq->iotd_Req.io_Actual == 512 &&
         a5bytes != 512)
@@ -1451,6 +1502,216 @@ out:
     CloseLibrary((struct Library *)PartitionBase);
     PartitionBase = NULL;
 }
+
+/* A2 acceptance: every malformed table must be refused inside a budget, and
+   a normal read must still work afterwards.  The corpus lives in
+   ramtest.device, one case per unit, so nothing is ever written to a medium.
+
+   Two things the first version of this test got wrong, both recorded because
+   they change what the results mean.  It only opened the top-level table, so
+   a cyclic EBR chain was never walked and the cycle guard was never
+   exercised; nested tables are now opened too, under a depth limit.  And it
+   expected zero partitions everywhere, which is wrong for a broken GPT behind
+   a valid protective MBR: falling back to the MBR is correct, so a case now
+   states how many partitions it may yield and which table type it must never
+   accept. */
+#define P4_CORPUS_MAX_DEPTH 4
+
+static int krnP4PartitionOpenNested(struct PartitionHandle *ph,
+                                    unsigned int depth, ULONG *nested)
+{
+    struct PartitionHandle *child;
+    int ok = 1;
+
+    if (depth >= P4_CORPUS_MAX_DEPTH)
+    {
+        krnP4PutStr("[corpus]   depth limit reached, stopping\n");
+        return 1;
+    }
+
+    if (OpenPartitionTable(ph) != 0)
+    {
+        /* Say so explicitly.  A silent zero here is ambiguous: it could mean
+           the nested table was refused, which is the point of the cyclic
+           case, or that nothing was ever tried. */
+        krnP4PutStr("[corpus]     nested table at depth ");
+        krnP4PutDec(depth);
+        krnP4PutStr(" refused\n");
+        return 1;
+    }
+
+    ForeachNode(&ph->table->list, child)
+    {
+        ++*nested;
+        krnP4PutStr("[corpus]     nested at depth ");
+        krnP4PutDec(depth + 1);
+        krnP4PutStr(", type ");
+        krnP4PutDec(ph->table->type);
+        krnP4PutStr("\n");
+        if (*nested > 64)
+        {
+            krnP4PutStr("[corpus]     TOO MANY NESTED PARTITIONS\n");
+            ok = 0;
+            break;
+        }
+        if (!krnP4PartitionOpenNested(child, depth + 1, nested))
+            ok = 0;
+    }
+
+    ClosePartitionTable(ph);
+    return ok;
+}
+
+/*
+ * What each corpus unit may produce.  This mirrors the table in
+ * arch/riscv-esp32p4/ramtest/ramtest_corpus.c and has to be kept in the same
+ * order; the core and the device are separate modules, so the core cannot
+ * read the device's own copy.  Regenerating the corpus means updating this.
+ */
+static const struct
+{
+    UWORD max_partitions;
+    UWORD forbidden_type;   /* 0 = none, 4 = PHPTT_GPT */
+} p4CorpusExpect[] =
+{
+    { 0, 0 },   /* mbr entry past end of medium          */
+    { 0, 0 },   /* mbr entry wraps 32 bits               */
+    { 0, 0 },   /* mbr entry of zero length              */
+    { 1, 0 },   /* ebr chain cycles on itself            */
+    { 0, 4 },   /* gpt header size 0xffffffff            */
+    { 0, 4 },   /* gpt entry array wraps                 */
+    { 0, 4 },   /* gpt header bad crc                    */
+    { 0, 4 },   /* gpt truncated before entries          */
+    { 0, 4 },   /* gpt entry size below the structure    */
+    { 0, 4 },   /* gpt entry count zero                  */
+    { 1, 4 },   /* bad gpt behind a valid protective mbr */
+};
+
+static void krnP4PartitionCorpusTest(void)
+{
+    unsigned int unit;
+    int passed = 1;
+
+    PartitionBase = (struct PartitionBase *)
+        OpenLibrary("partition.library", 3);
+    if (!PartitionBase)
+    {
+        krnP4PutStr("[corpus] partition.library unavailable\n");
+        return;
+    }
+
+    krnP4PutStr("[corpus] hostile table corpus starting\n");
+
+    for (unit = 0; unit < 16; ++unit)
+    {
+        struct PartitionHandle *root;
+        ULONG found = 0;
+        ULONG nested = 0;
+        LONG opened;
+        ULONG type = 0;
+
+        root = OpenRootPartition("ramtest.device", unit);
+        if (!root)
+        {
+            if (unit == 0)
+            {
+                krnP4PutStr("[corpus] ramtest.device unavailable\n");
+                passed = 0;
+            }
+            break;
+        }
+
+        krnP4PutStr("[corpus] unit ");
+        krnP4PutDec(unit);
+        krnP4PutStr(": geometry ");
+        krnP4PutDec(root->dg.dg_TotalSectors);
+        krnP4PutStr(" sectors\n");
+
+        opened = OpenPartitionTable(root);
+        if (opened == 0)
+        {
+            struct PartitionHandle *ph;
+
+            type = root->table->type;
+            ForeachNode(&root->table->list, ph)
+            {
+                ++found;
+                /* Walk into the entry as well.  This is what makes a cyclic
+                   EBR chain actually get followed, and the only thing that
+                   can prove the cycle guard works. */
+                if (!krnP4PartitionOpenNested(ph, 1, &nested))
+                    passed = 0;
+            }
+
+            krnP4PutStr("[corpus]   table type ");
+            krnP4PutDec(type);
+            krnP4PutStr(", partitions ");
+            krnP4PutDec(found);
+            krnP4PutStr(", nested ");
+            krnP4PutDec(nested);
+            ClosePartitionTable(root);
+        }
+        else
+        {
+            krnP4PutStr("[corpus]   no table accepted, result ");
+            krnP4PutDec((uint32_t)opened);
+        }
+
+        /* Judge against what this case is allowed to produce. */
+        if (unit < sizeof(p4CorpusExpect) / sizeof(p4CorpusExpect[0]))
+        {
+            int bad = 0;
+
+            if (found > p4CorpusExpect[unit].max_partitions)
+            {
+                krnP4PutStr(", TOO MANY PARTITIONS, allowed ");
+                krnP4PutDec(p4CorpusExpect[unit].max_partitions);
+                bad = 1;
+            }
+            if (p4CorpusExpect[unit].forbidden_type != 0 &&
+                type == p4CorpusExpect[unit].forbidden_type)
+            {
+                krnP4PutStr(", ACCEPTED A FORBIDDEN TABLE TYPE");
+                bad = 1;
+            }
+            if (bad)
+                passed = 0;
+            else
+                krnP4PutStr(", within expectation");
+        }
+        else
+        {
+            krnP4PutStr(", NO EXPECTATION RECORDED FOR THIS UNIT");
+            passed = 0;
+        }
+        krnP4PutStr("\n");
+
+        /* A plain read has to work after every failure. */
+        {
+            static uint32_t probe[128] P4_SRAMDATA __attribute__((aligned(64)));
+            LONG r;
+            unsigned int k;
+
+            for (k = 0; k < 128; ++k)
+                probe[k] = 0xa5a5a5a5U;
+            r = ReadPartitionDataQ(root, probe, 512, 0);
+            krnP4PutStr("[corpus]   read after failure: result ");
+            krnP4PutDec((uint32_t)r);
+            krnP4PutStr(r == 0 ? ", usable\n" : ", UNUSABLE\n");
+            if (r != 0)
+                passed = 0;
+        }
+
+        CloseRootPartition(root);
+    }
+
+    krnP4PutStr("[corpus] hostile table corpus ");
+    krnP4PutStr(passed ? "passed\n" : "FAILED\n");
+
+    CloseLibrary((struct Library *)PartitionBase);
+    PartitionBase = NULL;
+}
+
 #endif /* P4_PARTITION_TEST */
 
 #ifdef P4_PSRAM_PROBE
@@ -1993,7 +2254,10 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 #endif
 #ifdef P4_PARTITION_TEST
     if (SysBase)
+    {
         krnP4PartitionLibraryTest();
+        krnP4PartitionCorpusTest();
+    }
 #endif
 
 #ifdef P4_KEEP_WATCHDOG

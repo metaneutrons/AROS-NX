@@ -68,6 +68,18 @@ static struct PartitionHandle *PartitionMBRNewHandle(struct Library *PartitionBa
 
     if (entry->first_sector != 0)
     {
+        /* Refuse an entry that cannot fit the disk before allocating for it.
+           An MBR is four fixed entries, so the loop itself is bounded, but
+           the three numbers inside each entry are not. */
+        if (!partitionRangeIsSane(root, AROS_LE2LONG(entry->first_sector),
+                                        AROS_LE2LONG(entry->count_sector)))
+        {
+            D(bug("[MBR] entry %u out of range: start %u count %u\n", position,
+                  AROS_LE2LONG(entry->first_sector),
+                  AROS_LE2LONG(entry->count_sector)));
+            return NULL;
+        }
+
         ph = AllocMem(sizeof(struct PartitionHandle), MEMF_PUBLIC | MEMF_CLEAR);
         if (ph)
         {
