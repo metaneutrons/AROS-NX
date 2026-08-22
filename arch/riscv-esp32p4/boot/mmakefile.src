@@ -1,0 +1,29 @@
+#
+#   The board-support package for the ESP32-P4 bring-up.
+#
+#   This is the standard AROS PKG v1 container, not a linked image.  Its
+#   members are complete relocatable module files; the platform ELF loader
+#   places and relocates them in PSRAM later.  Keep this package deliberately
+#   small while the read-only block-device path is brought up: utility,
+#   expansion, partition.library and sdcard.device only.
+#
+
+include $(SRCDIR)/config/aros.cfg
+
+#MM kernel-package-esp32p4-riscv : \
+#MM     kernel-utility \
+#MM     kernel-expansion \
+#MM     kernel-partition \
+#MM     kernel-sdcard
+
+#MM kernel-package-esp32p4-riscv-quick : \
+#MM     kernel-utility-quick \
+#MM     kernel-expansion-quick \
+#MM     kernel-partition-quick \
+#MM     kernel-sdcard-quick
+
+%make_package mmake=kernel-package-esp32p4-riscv \
+    file=$(AROSARCHDIR)/aros-bsp.pkg libs="utility partition" \
+    arch_libs=expansion devs=sdcard
+
+%common

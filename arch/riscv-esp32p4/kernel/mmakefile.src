@@ -30,12 +30,31 @@ USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 #   -DP4_CONSOLE_UART   use UART0 instead of USB-Serial/JTAG
 #   -DP4_PSRAM_PROBE    read and write the PSRAM window and look for
 #                       aliasing, to measure its size once it answers
+#   -DP4_PROBE          two bring-up probes: whether the core executes a
+#                       misaligned 32-bit access or traps on it, and
+#                       whether code written into PSRAM through the data
+#                       path can then be fetched as instructions. Both
+#                       decide the shape of the module loader
+#   -DP4_SDMMC_PROBE    power the D1001 SD socket, initialise one card in
+#                       1-bit/400-kHz mode and read only sector zero
+#   -DP4_SDMMC_IGNORE_CD with P4_SDMMC_PROBE, continue the bounded read-only
+#                       probe even when the mechanical GPIO45 contact is high
+#   -DP4_SDCARD_DEVICE_TEST
+#                       after exec starts, open the package-loaded
+#                       sdcard.device, query it and read only sector zero
+#   -DP4_PARTITION_TEST  open the package-loaded partition.library and read
+#                       one sector through its public root-partition API
 #
 USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__ $(P4_DEBUG_CPPFLAGS)
 
 CFILES := \
         appdesc \
         psram_init \
+        kernel_cache \
+        kernel_flash \
+        kernel_elf \
+        kernel_probe \
+        kernel_sdmmc \
         kernel_startup \
         platform_init \
         kernel_clic \
@@ -64,7 +83,7 @@ AFILES := \
 # The kickstart holds only what has to exist before anything can be
 # loaded: kernel.resource, exec.library and task.resource. Everything
 # else, utility.library included, belongs in a package the loader places
-# in RAM later - which is not written yet.
+# in RAM later.
 #
 BSP_RES  := kernel task
 BSP_LIBS := exec debug
@@ -105,11 +124,14 @@ kernel-esp32p4-riscv: $(OSGENDIR)/boot/aros-esp32p4.bin
 # P4_LDSCRIPT=ldscript-xip.lds.
 P4_LDSCRIPT ?= ldscript.lds
 
-$(OSGENDIR)/boot/core.elf: $(BSP_KOBJS) $(SRCDIR)/$(CURDIR)/$(P4_LDSCRIPT)
+$(OSGENDIR)/boot/core.elf: $(BSP_KOBJS) $(SRCDIR)/$(CURDIR)/$(P4_LDSCRIPT) \
+                          $(SRCDIR)/$(CURDIR)/check-sramtext.sh
 	@$(ECHO) "Creating   $@ with $(P4_LDSCRIPT)"
 	%mkdirs_q $(OSGENDIR)/boot
 	@$(KERNEL_LD) -Map $(OSGENDIR)/boot/core.map \
 	    -T $(SRCDIR)/$(CURDIR)/$(P4_LDSCRIPT) -o $@ $(filter %.o,$^) $(ELFCORELIBS)
+	@$(ECHO) "Checking   $@ SRAM residency"
+	@$(SHELL) $(SRCDIR)/$(CURDIR)/check-sramtext.sh "$(TARGET_OBJDUMP)" "$@"
 
 # One image for both boot paths, because the link script's ceiling is the
 # lower of the two and the layout is otherwise the same.

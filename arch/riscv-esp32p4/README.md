@@ -12,26 +12,33 @@ in `configure.in` as `$target_os-$target_cpu`, while the directory it selects
 is `<cpu>-<arch>`. Hence `--target=esp32p4-riscv` for `arch/riscv-esp32p4`,
 the same way `--target=opensbi-riscv64` selects `arch/riscv64-opensbi`.
 
+The ordered path from the current storage bring-up to a graphical Workbench,
+including mandatory hardware gates and the persistent evidence format, is in
+[ROADMAP.md](ROADMAP.md).  Work on this port must update that roadmap whenever
+a step starts, changes, becomes blocked or is verified.
+
 ## Status
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
 means the behaviour was verified on a board and how it was verified is
-recorded in the milestone notes.
+recorded in the milestone notes.  Documentation is part of the definition of
+done: a status change must update this table, the matching roadmap phase and
+its evidence entry in the same change.
 
 | Area | State | Notes |
 | :--- | :--- | :--- |
 | configure target | done | `--target=esp32p4-riscv`, configure completes |
 | crosstools | done | binutils 2.47 and gcc 16.2.0 for riscv-aros, link libraries built |
 | rv32 CPU layer | done | M-mode CSR names, FLEN-aware FPU context, cache clears, backtrace, single-precision fenv, ABI-aware stub frames |
-| kernel arch layer | compiles | `gmake kernel-kernel-esp32p4-riscv` builds all nine objects |
+| kernel arch layer | compiles | `gmake kernel-kernel-esp32p4-riscv` builds all platform objects |
 | exec arch layer | compiles | `gmake kernel-exec-esp32p4-riscv` builds all seven |
 | trap entry | compiles | frame offsets asserted against the struct |
 | link script | written | test-linked, both SRAM windows asserted |
 | bring-up report | works | hart, misa, ids, section extents, then a repeating heartbeat |
 | kickstart link | done | 132160 bytes of the 167 KB window, one segment at 0x4FF00000 |
-| flashable image | done | `gmake kernel-esp32p4-riscv`, 114640 bytes |
-| runs on hardware | **yes** | ROM loads it from 0x2000 and it reports; see below |
+| flashable image | done | `gmake kernel-esp32p4-riscv`; diagnostics-off image 138608 bytes, F0 hardware-diagnostic core 148848 bytes with hash in the roadmap |
+| runs on hardware | **yes** | patched ESP-IDF second stage maps the XIP image from ota_0; see below |
 | watchdogs | done | timer groups and LP off, super watchdog self-feeding |
 | CLIC interrupts | done | a raised line reaches the trap handler |
 | SYSTIMER tick | done | 100 Hz sustained, 1201 ticks over 12 heartbeats, 16000000 counts per second |
@@ -43,8 +50,9 @@ recorded in the milestone notes.
 | serial debug console | not started | UART0 |
 | code from flash | done | .text and .rodata mapped from the app partition, 117744 bytes of SRAM returned |
 | PSRAM bring-up | done | 32 MB at 20 MHz, mapped at `0x48000000` and in exec's memory list; `AvailMem` reports 34,177,392 bytes |
+| BSP package from flash | done | `sdcard.device`, `utility.library`, `partition.library` and `expansion.library` copied from `arosbsp`, relocated into PSRAM and found as residents; utility opens as version 50 and partition as version 3 |
 | timer.device | done | a 500 ms timerequest on the VBLANK unit returns after exactly 50 ticks |
-| SD/MMC block device | not started | |
+| SD/MMC block device | read-only stage works | native DesignWare-MMC polling/PIO adapter; SDXC enumeration, low and 64-bit high-LBA single-sector reads, and a public `partition.library` root read verified on hardware |
 | MIPI-DSI framebuffer HIDD | not started | |
 | touch HIDD | not started | |
 | second core | not started | single hart until the rest works |
@@ -59,12 +67,14 @@ Read off the hardware with esptool 5.3, not taken from a datasheet.
 | Crystal | 40 MHz |
 | Console | USB-Serial/JTAG, Espressif 303a:1001, enumerates without a bridge chip |
 | Flash | 32 MB, Winbond (manufacturer 0xef, device 0x4019) |
-| Flash layout | standard ESP-IDF: partition table at 0x8000, nvs 0x9000, nvs_key 0xf000, otadata 0x10000, phy_init 0x12000, ota_0 0x20000 (8 MB), ota_1 0x820000 (8 MB), FAT storage 0x1020000 (15.9 MB) |
-| Currently flashed | the owner's own `vellum-d1001` 1.9.0, built with IDF v6.0, entry point 0x4ff009d2, image header declaring min/max chip revision v1.00 to v1.99 |
+| Flash layout | ESP-IDF table at 0x8000, nvs 0x9000, nvs_key 0xf000, otadata 0x10000, phy_init 0x12000, ota_0 0x20000 (8 MB), `arosbsp` 0x820000 (8064 KB), FAT storage 0x1020000 (15.9 MB) |
+| Currently flashed | patched ESP-IDF v6.0.1 second stage, AROS XIP diagnostic image in ota_0 and the four-member M6 BSP package in `arosbsp`; `storage` remains untouched |
 
-Revision v1.3 means the pre-v3 memory layout applies. Nothing on this board
-has been written to; the readings above reset it into download mode and back
-a few times, which restarted the firmware that is on it.
+Revision v1.3 means the pre-v3 memory layout applies. The hardware facts above
+were read before the first write. The bring-up now deliberately replaces only
+ota_0 and the former ota_1 rollback slot in the current table; early direct-ROM
+experiments also replaced the original second stage and board-data sectors.
+The FAT `storage` partition has not been touched.
 
 ## Silicon revisions
 
@@ -254,13 +264,87 @@ one the board runs:
     0x8000     partition table
     0x10000    otadata, pointing at slot 0
     0x20000    ota_0, this image
-    0x820000   ota_1
+    0x820000   arosbsp, custom type 0x40
 
-The partition table is the board's own, kept as it shipped. Pointing
-otadata at slot 0 is one command:
+The table started as the board's own. Pointing otadata at slot 0 before
+repurposing the second slot is one command:
 
     otatool.py --port <port> --partition-table-file <table> \
                --partition-table-offset 0x8000 switch_ota_partition --slot 0
+
+M6 replaces the former second OTA/rollback slot in that table. The source is
+`bootloader/partition-table.csv`; `esp32p4-partition-table` runs ESP-IDF's
+own `gen_esp32part.py` in both directions and leaves these checked artifacts
+under `bin/esp32p4-riscv/gen/rom/boot`:
+
+    esp32p4-partition-table.bin
+    esp32p4-partition-table.decoded.csv
+
+The changed entry has custom type 0x40, subtype 0, label `arosbsp`, offset
+0x820000 and size 0x7e0000. It therefore ends at the 16 MB cache-mapping
+limit, while the FAT `storage` partition remains at 0x1020000. Building the
+table never touches the board. Its separate flash target requires both an
+explicit character-device path and an acknowledgement that `ota_1` is being
+replaced:
+
+    gmake esp32p4-flash-partition-table \
+        ESPTOOL="uvx esptool" \
+        ESP32P4_PORT=/dev/cu.usbmodem101 \
+        ESP32P4_PARTITION_CONFIRM=replace-ota_1-with-arosbsp
+
+That target validates the binary again immediately before writing only the
+partition-table sector at 0x8000. It leaves the chip in download mode rather
+than booting an unobserved new layout. It is not a dependency of the
+bootloader, kernel image or any default build.
+
+The package itself uses AROS's existing PKG container rather than a new disk
+format. The current bring-up package contains `sdcard.device`,
+`utility.library`, `partition.library` and `expansion.library`:
+
+    gmake kernel-package-esp32p4-riscv
+
+It produces `AROS/boot/esp32p4/aros-bsp.pkg`. At boot the kernel validates the
+container and its ELF32/RISC-V members, copies the exact declared package size
+through a temporary flash-MMU mapping, relocates the modules into PSRAM, syncs
+the generated code and gives the resident scanner a second address range. The
+package and loaded sections remain below the PSRAM MemHeader so Exec cannot
+allocate over them.
+
+The initial hardware run on the revision 1.3 D1001 loaded one 40,988-byte
+package, placed `utility.library` at `0x4800a020`, found its RomTag at
+`0x4800bc14`, reserved 48,900 bytes and exposed the remaining external memory
+from `0x4800bf40`. Both InitCode passes completed and
+`OpenLibrary("utility.library", 0)` returned version 50. The 100 Hz timer then
+continued for the full capture, so this is an end-to-end hardware result, not
+only a loader or build test.
+
+The expanded read-only SD diagnostic package initially had three members and
+was 186,416 bytes. Its no-card hardware boot reserved 230,764 bytes of PSRAM,
+found both residents in `sdcard.device` as well as the utility and expansion
+residents, failed opening unit 0 cleanly, and kept the 100 Hz heartbeat alive.
+The current four-member package is 290,904 bytes (SHA-256
+`cc18bc81c701b376294c4a39e024048adcee58a6e50595b831439dcce23885cc`). A
+hardware boot loaded all four members, including `partition.library` at
+`0x480504b0`, and reserved 361,308 bytes of PSRAM.
+
+The first-stage backend accepts exactly one 512-byte sector per request; it
+rejects CMD18 and larger requests before touching the controller until
+multi-block error recovery is proven on hardware. Card identification and the
+public-device reads are verified with a SanDisk `SN128` SDXC card (CID and CSD
+CRC7 both valid, manufactured September 2021): the decoded capacity is exactly
+249,737,216 sectors or 127,865,454,592 bytes. Ten single-sector reads covered
+LBAs 0, 1, 2, 2048, 8192, 32768 and 65536, the final 33rd and final sectors
+through `NSCMD_TD_READ64`, and a repeat of LBA 0. Every request replaced its
+nonzero sentinel buffer, LBA 2048 contained real nonzero data, both LBA-0
+hashes matched, and the timer/IRQ heartbeat continued after the test.
+
+The next hardware run opened `partition.library` version 3 and then
+`OpenRootPartition("sdcard.device", 0)`. The library selected
+`NSCMD_TD_READ64` (`0x0000c000`) from the device's public command list. A
+single `ReadPartitionDataQ()` of LBA 0 returned 0 with `io_Actual == 512`,
+replaced the sentinel buffer and produced the same `0x4d7705c5` hash as the
+direct device test. No partition-table scan or media write was issued, and
+the timer/IRQ heartbeat remained stable for the full capture.
 
 Two things had to be built for this, and neither is optional.
 
@@ -524,17 +608,34 @@ The MPLL is already at 400 MHz, so nothing about the PLL has to change:
 Note that 80 MHz does not escape the calibration either; ESP-IDF's tables
 require it at 80, 200 and 250 MHz, and only 20 MHz is exempt.
 
-Where 20 MHz will not do is the display. A 1280x720 frame at 16 bits is
-1.8 MB, and scanning it out at 60 Hz wants about 110 MB/s against a
-theoretical 80 MB/s at this clock. As a heap for 32 MB that would
-otherwise not exist, it is fine.
+Where 20 MHz will not do is the display. The native 800x1280 RGB565 frame is
+2,048,000 bytes. A 40 MHz RGB565 pixel stream can consume 80 MB/s, exactly the
+theoretical x16-DTR limit of PSRAM at this clock and with no margin for CPU or
+cache traffic; a full active-area redraw at a real 60 Hz would be 122.88 MB/s.
+The existing timing sources also disagree and neither produces 60 Hz at a
+40 MHz pixel clock. The timing and measured refresh therefore have their own
+gate in the roadmap rather than being assumed here. As a heap for 32 MB that
+would otherwise not exist, 20 MHz remains useful.
 
-**M6 - storage and package loading.** SDMMC host, block device, the BSP
-package loaded and relocated by an ELF loader, resident scan.
-Done when: modules outside the kickstart start from flash or MicroSD.
+**M6 - storage and package loading.** In progress. The flash half is done:
+the custom BSP partition, PKG build, hardened ELF32 loader, PSRAM relocation
+and second resident scan load `sdcard.device`, `utility.library`,
+`partition.library` and `expansion.library` on hardware. A native polling
+DesignWare-MMC adapter now registers the D1001 slot through the generic
+`sdcard.device`; it is intentionally read-only. Its no-card path, SDXC
+identification, geometry/NSD APIs, low-LBA CMD17 reads, high-LBA TD64 reads
+and one 512-byte read through `partition.library`'s public root API are
+verified on hardware. Multi-block CMD18 remains gated until CMD12 stop and
+error recovery are implemented and stress-tested; only then is a bounded
+partition-table scan the next safe storage step.
+Done when: modules outside the kickstart also start from MicroSD.
+The complete order, hardening work and test matrix are in
+[ROADMAP.md, Track A](ROADMAP.md#track-a-storage-and-normal-boot).
 
 **M7 - display and input.** MIPI-DSI framebuffer HIDD, touch HIDD, Intuition.
 Done when: a Workbench screen appears and the pointer follows a touch.
+The graphical boot and touch are separate gates in
+[ROADMAP.md, Tracks B and C](ROADMAP.md#track-b-panel-hardware-and-scanout).
 
 ## First boot
 
