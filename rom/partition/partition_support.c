@@ -123,6 +123,51 @@ LONG deviceError(LONG err)
  * Geometry will be inherited from parent and adjusted if needed
  * for given start block and length in blocks to fit in.
  */
+/*
+ * How many sectors the parent actually has.  A root handle gets its geometry
+ * from TD_GETGEOMETRY, where dg_TotalSectors is authoritative; a handle made
+ * by initPartitionHandle() below only has cylinders times cylinder sectors.
+ * Take whichever is larger so a valid table is never rejected over a
+ * rounding difference, and return 0 when the geometry says nothing at all.
+ */
+static UQUAD partitionExtent(struct PartitionHandle *root)
+{
+    UQUAD byCylinders = (UQUAD)root->dg.dg_Cylinders * root->dg.dg_CylSectors;
+    UQUAD byTotal     = (UQUAD)root->dg.dg_TotalSectors;
+
+    return (byTotal > byCylinders) ? byTotal : byCylinders;
+}
+
+/*
+ * Reject a partition range that cannot exist inside its parent, before any
+ * of it is used to derive a geometry or to read.  A table is attacker-supplied
+ * data: every entry has to be treated as three independent 32-bit values that
+ * happen to sit next to each other, not as a description that can be trusted
+ * to be self-consistent.
+ *
+ * The sum is computed in 64 bits precisely so that a start plus a count which
+ * wraps in 32 bits is caught rather than folded into a small, plausible
+ * number.  A zero count is refused too: it produces a zero-cylinder handle
+ * and a de_HighCyl that underflows below de_LowCyl.
+ */
+BOOL partitionRangeIsSane(struct PartitionHandle *root, ULONG first_sector, ULONG count_sector)
+{
+    UQUAD extent = partitionExtent(root);
+    UQUAD end    = (UQUAD)first_sector + (UQUAD)count_sector;
+
+    if (count_sector == 0)
+        return FALSE;
+
+    /* Unknown parent geometry: the overflow check above is all there is. */
+    if (extent == 0)
+        return TRUE;
+
+    if (end > extent)
+        return FALSE;
+
+    return TRUE;
+}
+
 void initPartitionHandle(struct PartitionHandle *root, struct PartitionHandle *ph, ULONG first_sector, ULONG count_sector)
 {
     ULONG cylsecs = root->de.de_BlocksPerTrack * root->de.de_Surfaces;

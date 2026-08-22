@@ -82,6 +82,14 @@ ifdef P4_SDCARD_EXPECT_FAULT
 P4_DEBUG_CPPFLAGS += -DP4_SDCARD_EXPECT_FAULT
 endif
 
+# P4_PARTITION_TEST=1 adds the A2 discovery test: it opens the
+# package-loaded partition.library, runs bounded table discovery on the card
+# and reports what it found.  It needs the SD device test as well, for the
+# shared hash helper, so build it together with P4_A1_DIAGNOSTIC=1.
+ifdef P4_PARTITION_TEST
+P4_DEBUG_CPPFLAGS += -DP4_PARTITION_TEST
+endif
+
 USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__ $(P4_DEBUG_CPPFLAGS)
 
 CFILES := \

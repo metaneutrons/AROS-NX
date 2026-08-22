@@ -53,6 +53,7 @@ its evidence entry in the same change.
 | BSP package from flash | done | `sdcard.device`, `utility.library`, `partition.library` and `expansion.library` copied from `arosbsp`, relocated into PSRAM and found as residents; utility opens as version 50 and partition as version 3 |
 | timer.device | done | a 500 ms timerequest on the VBLANK unit returns after exactly 50 ticks |
 | SD/MMC block device | A1 hardware verified | read-only native DesignWare-MMC/IDMAC path.  Every read goes through the IDMAC, as in ESP-IDF.  One run passes 59 card-referenced cells, 1,000 repetitions and the invalid-request rejection cases; separate runs pass the three injected fault modes with CMD12/CMD13 recovery and the heartbeat.  Two gate points are met differently and documented in the roadmap |
+| Partition discovery | A2 hardware verified | bounded MBR/GPT/EBR reading: range and overflow guards in the common funnel, GPT header and entry-array bounds, an EBR visited set and depth limit.  The card reports exactly its one partition; eleven malformed tables from `ramtest.device` are all refused within 4 to 36 sector reads |
 | MIPI-DSI framebuffer HIDD | not started | |
 | touch HIDD | not started | |
 | second core | not started | single hart until the rest works |

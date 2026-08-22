@@ -74,6 +74,7 @@ void PartitionNsdCheck(struct Library *, struct PartitionHandle *);
 ULONG getStartBlock(struct PartitionHandle *);
 LONG deviceError(LONG err);
 
+BOOL partitionRangeIsSane(struct PartitionHandle *root, ULONG first_sector, ULONG count_sector);
 void initPartitionHandle(struct PartitionHandle *root, struct PartitionHandle *ph, ULONG first_sector, ULONG count_sector);
 void setDosType(struct DosEnvec *de, ULONG type);
 

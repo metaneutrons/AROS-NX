@@ -1,0 +1,20 @@
+#
+#   The corpus device for the A2 acceptance gate.
+#
+#   It exists so that malformed partition tables can be served to bounded
+#   discovery without writing anything to a real medium.  It is a test
+#   fixture: keep it out of any package that is not a diagnostic build.
+#
+
+include $(SRCDIR)/config/aros.cfg
+
+USER_INCLUDES := -I $(SRCDIR)/$(CURDIR)
+USER_LDFLAGS := -static
+
+RAMTESTFILES = \
+    ramtest_device \
+    ramtest_corpus
+
+%build_module mmake=kernel-ramtest \
+  modname=ramtest modtype=device version=$(AROS_TARGET_PLATFORM) \
+  files="$(RAMTESTFILES)"

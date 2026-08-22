@@ -14,16 +14,23 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-utility \
 #MM     kernel-expansion \
 #MM     kernel-partition \
-#MM     kernel-sdcard
+#MM     kernel-sdcard \
+#MM     kernel-ramtest
 
 #MM kernel-package-esp32p4-riscv-quick : \
 #MM     kernel-utility-quick \
 #MM     kernel-expansion-quick \
 #MM     kernel-partition-quick \
-#MM     kernel-sdcard-quick
+#MM     kernel-sdcard-quick \
+#MM     kernel-ramtest-quick
 
+#
+#   ramtest.device is the A2 corpus fixture.  It carries only const data and
+#   has no write path, so including it costs a few kilobytes and no risk to
+#   the medium.  Drop it from the package once A2 is verified.
+#
 %make_package mmake=kernel-package-esp32p4-riscv \
     file=$(AROSARCHDIR)/aros-bsp.pkg libs="utility partition" \
-    arch_libs=expansion devs=sdcard
+    arch_libs=expansion devs="sdcard ramtest"
 
 %common

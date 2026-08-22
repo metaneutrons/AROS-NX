@@ -114,7 +114,7 @@ tests.
 | :--- | :--- | :--- | :--- |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
-| A2 | Hardened, bounded MBR/GPT/EBR discovery | `not started` | Requires A1 |
+| A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
 | A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `not started` | Requires A2 test layout |
 | A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `not started` | Requires A2 and A3 |
 | A5 | Command and library loaded from MicroSD | `not started` | Closes M6 |
@@ -1908,6 +1908,202 @@ and record substantive corrections as a new entry.
 - Next safe step: A2, bounded partition discovery.  The MBR at LBA 0 now
   reads correctly, which is what A2 needs and what was silently broken until
   today.
+
+### 2026-08-23 - A2 source audit: what the partition scanner does on hostile input
+
+- State: A2 moves from `not started` to `in development`.  This entry is a
+  source audit with no code change and no hardware run.  It exists because
+  the first item of the A2 gate, checked arithmetic for every byte, sector
+  and entry range, presupposes knowing where the unchecked ones are.
+- Scope audited: `rom/partition/partitionmbr.c` (488 lines),
+  `partitiongpt.c` (735), `partitionebr.c` (475) and
+  `partition_support.c` (198).  `rom/dosboot/bootscan.c` is named by the gate
+  but is out of the current path, because AGENTS.md keeps `dosboot.resource`
+  out of the package until A1 and A2 pass.
+- GPT, the largest attack surface.  Five defects, each reachable from a
+  crafted header:
+  1. `HeaderSize` is checked only downwards, `hdrSize >= GPT_MIN_HEADER_SIZE`
+     (`partitiongpt.c:264`), and then handed straight to
+     `Crc32_ComputeBuf(0, hdr, hdrSize)` at `:273`.  The buffer is one block,
+     512 bytes.  A header claiming 0xFFFFFFFF reads four gigabytes past it.
+  2. `entrysize * cnt` at `:344` is an unchecked 32-bit multiplication of two
+     attacker-controlled values, used for the allocation size.  It can wrap,
+     and the same product is then used as a length for
+     `Crc32_ComputeBuf(0, table, entrysize * cnt)` at `:361`, reading past a
+     buffer that was allocated from the wrapped value.
+  3. That allocation, `AllocMem(tablesize, MEMF_ANY)` at `:349`, has no cap.
+     `entrysize` 128 with `cnt` 0x1000000 asks for two gigabytes.
+  4. The entry loop runs `for (i = 0; i < cnt; i++)` at `:373` with `cnt`
+     straight from the header, so up to four billion iterations over a buffer
+     sized from the wrapped product.
+  5. `initPartitionHandle(root, &gph->ph, startblk, endblk - startblk + 1)`
+     at `:399` underflows to a huge count when `endblk < startblk`, and
+     neither block is checked against the root geometry.
+- EBR, the chain walk in `PartitionEBROpenPartitionTable`:
+  1. No cycle detection.  The next link is taken from
+     `ebr->pcpt[1].first_sector` at `:140` and the loop ends only when that
+     value is zero or a read fails.  Two sectors pointing at each other loop
+     forever.
+  2. No depth limit.  The loop counter `i` at `:115` is a `UBYTE` that appears
+     in no condition, so it bounds nothing at all.
+  3. `block_no + AROS_LE2LONG(ebr->pcpt[0].first_sector)` at `:127` is an
+     unchecked 32-bit addition.
+  4. No range check against the root geometry for either value.
+- MBR is the mildest, with a fixed four-entry loop at `:111`, but
+  `PartitionMBRNewHandle` at `:64` passes `first_sector` and `count_sector`
+  into `initPartitionHandle` with no bound beyond `first_sector != 0`.
+- `initPartitionHandle` (`partition_support.c:126`) is the common funnel and
+  the natural place for the geometry bound.  It derives cylinder counts by
+  division and copies the parent DosEnvec, and it currently accepts any
+  32-bit start and count without comparing them against the root's own
+  extent.
+- Why this matters here and not only in theory: the A1 work showed that
+  `partition.library` was reading a zero-filled sector where this card holds
+  its MBR, and reporting success.  The scanner was never actually exercised
+  on real table data on this port, so none of the above has ever run against
+  a real, let alone a hostile, table.
+- Safety: no code, flash or media change for this entry.
+- Open decision before implementation, recorded because it shapes the work:
+  the acceptance gate wants truncated, cyclic, overlapping, overflowing and
+  bad-CRC corpus images to fail within a documented budget.  Writing such
+  images to the test card is excluded by the read-only boundary, and the
+  medium hash must stay unchanged.  The candidate is a small RAM-backed
+  block device in the diagnostic core that serves crafted tables, so the
+  parser can be driven without touching any medium.  That keeps the corpus
+  out of shared code and off the card.
+- Next safe step: bound `initPartitionHandle` against the root geometry, then
+  harden GPT in the order above, then EBR.  Do not enable automatic
+  cold-start discovery until the corpus fails within budget.
+
+### 2026-08-23 - A2 hardening in place; the card's own table reads correctly
+
+- State: A2 stays `in development`.  The first acceptance point holds on
+  hardware.  The hostile corpus has not run.
+- Artifacts: BSP package 309,636 bytes, SHA-256
+  `84fa8c90c9142c48c59e86d4f6d8922f218394c9540e957e30ac52e3bb2ac3c5` at
+  `arosbsp` `0x820000`; diagnostic XIP core 157,536 bytes, SHA-256
+  `e682d5642bce0c412d97b3d0d7baafd3cd0db1290fb5bbcf9ede389d8c01cf73` at
+  `ota_0` `0x20000`, built with `P4_A1_DIAGNOSTIC=1 P4_PARTITION_TEST=1`.
+  Both independently `verify-flash`-verified.  The build produced no error and
+  no warning across 30 partition sources.
+- Result: the card's table is read correctly for the first time on this port.
+  `LBA 0 result 0, hash 0xdebe99c1, nonzero 13, signature 55aa` through the
+  public API, where before A1 the same call returned 512 zero bytes.
+  `table type 2` is MBR, and discovery reports exactly one partition,
+  `start 2048, sectors 249735168, dostype 0x46415402`.  Start and length match
+  the MBR entry read independently in a host reader, type `0x0b`, and the DOS
+  type is the expected FAT mapping.  A normal read after discovery returns
+  `0x730d1cbd`, the card's own VBR hash, which is the gate's requirement that
+  a plain read still works afterwards.
+- Hardening applied, all of it additive: a valid table behaves exactly as
+  before and only additional rejections were introduced.
+  1. `partitionRangeIsSane()` in `partition_support.c` is the common guard.
+     It computes start plus count in 64 bits so a 32-bit wrap is caught
+     instead of folded into a plausible small number, refuses a zero count,
+     which used to produce a zero-cylinder handle whose de_HighCyl underflows
+     below de_LowCyl, and compares the end against the parent's extent.  The
+     extent is the larger of dg_TotalSectors and cylinders times cylinder
+     sectors, so neither a root handle nor a derived one is misjudged, and an
+     unknown geometry falls back to the overflow check alone.
+  2. All three table handlers call it before allocating for an entry: MBR in
+     `PartitionMBRNewHandle`, EBR in `PartitionEBRNewHandle`, GPT per entry.
+  3. GPT `HeaderSize` is now bounded above as well, by `GPT_MAX_HEADER_SIZE`
+     and by the actual block size.  The constant already existed and had
+     never been used, while the unbounded value was passed straight to the
+     CRC as a length over a one-block buffer.
+  4. The GPT entry array is bounded before use: entry size at least the
+     structure the code reads and a multiple of eight, entry count non-zero
+     and capped, and the product computed in 64 bits and checked against
+     `GPT_MAX_TABLE_BYTES` before it is narrowed for the allocation.  The CRC
+     length now comes from that checked value.
+  5. EBR gets both bounds the gate asks for, a visited-sector set and a depth
+     limit of `EBR_MAX_CHAIN`.  Neither replaces the other: the set catches a
+     cycle of any length immediately, the limit catches a long non-repeating
+     chain.  The chain link is range-checked before the read, and the logical
+     start is computed in 64 bits before being narrowed.
+- Defect found while hardening, and fixed: the GPT entry loop advanced its
+  pointer at the bottom, and the `unused entry` path used `continue`, which
+  skipped that advance.  After the first unused entry the pointer stopped
+  moving and every later entry was read as a copy of that one, so the gaps
+  the code's own comment promises to tolerate were in fact not tolerated.
+  The advance now happens in the loop header, which makes every `continue`
+  correct by construction.
+- Safety: read-only throughout.  The card was not written and only the two
+  authorized flash ranges were touched.  The partition code's write paths were
+  not modified.
+- Remaining risk: this is shared AROS code on all architectures.  The changes
+  are additive rejections, and a valid table takes exactly the same path as
+  before, but only this port has been built and run.
+- Next safe step: the hostile corpus.  Build the RAM-backed block device in
+  the diagnostic core, serve truncated, cyclic, overlapping, overflowing and
+  bad-CRC tables from it, and require each to fail within a documented read
+  and time budget with a working read afterwards.
+
+### 2026-08-23 - A2 acceptance gate complete
+
+- State change: A2 moves from `in development` to `hardware verified`.
+- Artifacts: BSP package 344,696 bytes, SHA-256
+  `abafa7948027f2bf918642e1dab11ce3e8ff13e57093c2fe8219f5391b92fc49` at
+  `arosbsp` `0x820000`; diagnostic XIP core 159,968 bytes, SHA-256
+  `43419d5cb331ff0af94edc170843574842aff5e02d06364af36884eb61c73e4a` at
+  `ota_0` `0x20000`, built with `P4_A1_DIAGNOSTIC=1 P4_PARTITION_TEST=1
+  P4_LDSCRIPT=ldscript-xip.lds`.  Both independently `verify-flash`-verified.
+- The corpus device: `arch/riscv-esp32p4/ramtest` is a new read-only block
+  device carrying eleven deliberately malformed tables, one per unit.  The
+  unit number selects the case, so no side channel was needed to tell it what
+  to serve.  It holds only const data and has no write path at all, by
+  construction rather than by policy, and it makes the corpus repeatable
+  without ever touching a medium.  It is a test fixture and is to be dropped
+  from any package that is not a diagnostic build.
+- Result: `hostile table corpus passed`, all eleven cases within expectation,
+  a working read after every one, and no case exceeding a handful of sector
+  reads.
+  | unit | case | outcome | sectors read |
+  | :--- | :--- | :--- | :--- |
+  | 0 | mbr entry past end of medium | 0 partitions | 4 |
+  | 1 | mbr entry wraps 32 bits | 0 partitions | 4 |
+  | 2 | mbr entry of zero length | 0 partitions | 4 |
+  | 3 | ebr chain cycles on itself | nested table refused | 7 |
+  | 4 | gpt header size 0xffffffff | 0 partitions | 5 |
+  | 5 | gpt entry array wraps | refused, 212 | 4 |
+  | 6 | gpt header bad crc | refused, 225 | 5 |
+  | 7 | gpt truncated before entries | refused, 225 | 36 |
+  | 8 | gpt entry size below the structure | refused, 212 | 4 |
+  | 9 | gpt entry count zero | refused, 212 | 4 |
+  | 10 | bad gpt behind a valid protective mbr | refused, 225 | 5 |
+  The read budget is therefore between four and thirty-six sectors per case;
+  the outlier is the truncated GPT, where the parser reads toward a 128-entry
+  array before the medium stops answering, which is the behaviour under test.
+- Two corrections the corpus forced on the test itself, both recorded because
+  they change what a pass means:
+  1. The first version only opened the top-level table.  A cyclic EBR chain
+     was therefore never walked and the cycle guard never ran, while the test
+     reported a failure for a reason that had nothing to do with the cycle:
+     the extended entry is itself a legitimate MBR partition.  The test now
+     descends into nested tables under a depth limit, and unit 3 reports
+     `nested table at depth 1 refused`, which is the actual evidence that the
+     guard works.
+  2. The first version expected zero partitions everywhere.  That is wrong
+     for a broken GPT behind a valid protective MBR: falling back to the MBR
+     is correct behaviour.  A case now states how many partitions it may
+     yield and which table type it must never accept, so unit 10 documents
+     the fallback instead of failing it.
+- A third defect, in the fixture: the unit array was fixed at eight while the
+  corpus had eleven cases, and the run reported `passed` having silently never
+  executed the last three.  The array is now sized generously and the device
+  complains if the corpus outgrows it.
+- Safety: read-only throughout.  Nothing was written to the SD card, whose
+  content is unchanged, and only the two authorized flash ranges were used.
+  The corpus device cannot write anything.
+- Remaining risk: this is shared AROS code on every architecture.  The
+  changes are additive rejections and a valid table takes the same path as
+  before, but only this port has been built and run.  The corpus covers MBR,
+  EBR and GPT reading; the write paths were not modified and are not tested.
+  The recursive dosboot traversal named by the gate is still out of the
+  picture, because AGENTS.md keeps `dosboot.resource` out of the package
+  until A4.
+- Next safe step: A3, a reproducible host-built read-only FAT32 image.  A2's
+  discovery is now trustworthy enough to build on.
 
 ## Evidence-entry template
 
