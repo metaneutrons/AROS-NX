@@ -116,7 +116,7 @@ tests.
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
 | A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `hardware verified` | Evidence entry 2026-08-23: byte-reproducible image, checked by the host parser, `fsck_msdos` and its manifest, and read correctly on the board at the values predicted from the image.  Every changed sector after the run is attributed to the host's mount |
-| A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `not started` | Requires A2 and A3 |
+| A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `hardware partial` | Evidence entry 2026-08-23: twelve package members load and relocate, the resident order matches the `.conf` files, the command line arrives and `FileSystem.resource` carries the FAT entries.  `dosboot.resource` and `econsole` are still out of the package, so nothing boots yet |
 | A5 | Command and library loaded from MicroSD | `not started` | Closes M6 |
 | B0 | Canonical D1001 display contract and provenance | `not started` | Resolve timing contradictions first |
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `not started` | Requires B0; required before scanout |
@@ -2221,6 +2221,151 @@ and record substantive corrections as a new entry.
 - Next safe step: A4, the resident DOS/FAT bootstrap.  AGENTS.md kept
   `dosboot.resource` out of the package until A1 and A2 passed; both now do,
   and A3 supplies the medium it needs.
+
+### 2026-08-23 - A4 first measured step: the DOS side loads, without dosboot
+
+- State change: A4 `not started` to `build verified, hardware partial`.  Nine
+  new package members load, relocate and initialise on the D1001, and the
+  pre-dosboot half of the A4 gate passes.  `dosboot.resource` is deliberately
+  still absent, so nothing yet boots.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3, over
+  `/dev/cu.usbmodem101`.  **No SD card in the slot for this run**; the board
+  reported `GPIO45 high: no card present`, so the card-dependent A1 and A3
+  checks did not run and are still owed on the enlarged package.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `9d93afae8e`.
+- Artifacts:
+  - package `aros-bsp.pkg` 976,008 bytes,
+    `c2f4f7e9fa5d20c9382885bb7f9e599d8a8e95b120e8b15774f60979e05e2bf3`;
+  - final core `aros-esp32p4.bin` 162,096 bytes,
+    `59103f1740cd4b84e86230953f1ef758a3324a786691c0cad93f9bd10176768f`.
+  - Two earlier cores in the same session, kept because each answered one
+    question: `a2f0882c...f2435` (162,032 bytes at the time of writing, no
+    command line) showed the signed-priority defect and the dead
+    `KrnGetBootInfo()`; `ee7fa807...2a9b7c` showed that adding `KRN_CmdLine`
+    alone changed nothing, which is what pointed at `BootMsg`.
+- Configuration: `P4_A1_DIAGNOSTIC=1 P4_PARTITION_TEST=1 P4_DOS_PROBE=1
+  P4_HEADLESS_BOOT=1 P4_LDSCRIPT=ldscript-xip.lds`.  Flashed only to `ota_0`
+  at `0x20000` and `arosbsp` at `0x820000`, under the 2026-08-22 standing
+  authorisation; both writes verified by esptool hash.
+
+Package growth.  The declared set went from four members to twelve: added
+`dos.library`, `bootloader.resource`, `FileSystem.resource`,
+`lddemon.resource`, `shell.resource`, `shellcommands.resource` and the `fat`
+handler, on top of `utility`, `partition`, `expansion`, `sdcard` and the A2
+`ramtest` fixture.  976,008 bytes, 11.8 % of the `0x7e0000` partition, so
+size is not a constraint at this stage.  `dos64` was not added: nothing asked
+for it, and the phase requires evidence of a dependency rather than a guess.
+
+Three things had to be fixed before any of it could be built or seen, and
+each was a real defect rather than a configuration mistake.
+
+**The RISC-V C runtime did not assemble for this ABI.**  `compiler-stdc-riscv`
+failed with twelve `extension 'd' required` errors.  `arch/riscv-all/crt`
+saves the callee-saved floating point registers with `fsd`/`fld`, which is
+correct for `ilp32d` but not for this target: `configure.in:2251` selects
+`rv32imafc_zicsr_zifencei_zaamo_zalrsc` with `-mabi=ilp32f`, so the f
+registers are 32 bits wide and the D opcodes do not exist.  Five files
+carried the same twelve lines: `stdc/setjmp.s`, `stdc/longjmp.s`,
+`posixc/sigsetjmp.s`, `posixc/siglongjmp.s`, `posixc/vfork_longjmp.s`.  They
+now select opcode and stride from `__riscv_float_abi_double` /
+`__riscv_float_abi_single`, and skip the block entirely under a soft float
+ABI, which is the same three-way split `arch/riscv-all/include/aros/
+genmodule.h` already makes for `fa0`-`fa7`.  Verified by disassembly: all
+five now emit `fsw`/`flw` at 4-byte stride from offset 56 to 100, and all
+five agree on the slot addresses, which is the property that matters, since
+a `setjmp` and a `longjmp` that disagree would corrupt silently.  `_JMPLEN 37`
+is unchanged and still sized for the widest ABI.
+
+**The DOS catalogs were missing.**  `rom/dos/displayerror.c` includes
+`"strings.h"` for `MSG_STRING_RETRY` and its siblings, which
+`rom/dos/genstrings.py` produces from `catalogs/dos.cd`.  `rom/dos/catalogs`
+is a git submodule and was not initialised in this worktree, so the include
+fell through to the C library's `strings.h` and the symbols were undeclared.
+Initialising the submodule at the pinned `d06c8fc263` fixed it.  Worth
+recording because the failure does not name a submodule anywhere.
+
+**`KrnGetBootInfo()` returned nothing, so the command line was unreachable.**
+`bootloader.resource` reads its whole world from that one call, and the
+kernel global it returns, `BootMsg`, was never assigned by this platform.
+The boot tags did reach exec, because they are also passed to
+`krnPrepareExecBase()`, which is why nothing had noticed.  The first run
+showed it plainly: `loader 0x00000000 ''`.  Adding a `KRN_CmdLine` tag alone
+changed nothing, which is the observation that located the cause rather than
+the symptom.  `krnPrepareBootTags()` now assigns `BootMsg`, as the sibling
+`arch/riscv-native/sifive_u` port does in the same place.
+
+New build options, both in `kernel/mmakefile.src`:
+
+- `P4_CMDLINE="..."` adds the `KRN_CmdLine` boot tag.  There is no firmware
+  source for a command line on this board, so the build is the only honest
+  place for one.  `P4_HEADLESS_BOOT=1` sets the three words A4 requires,
+  `econsole nomonitors nocomposition`.
+- `P4_DOS_PROBE=1` asks the half of the A4 gate that can still be answered
+  before `dosboot.resource` exists.  This split is the point of the step:
+  dosboot's COLDSTART init never returns, so everything printed after
+  `krnStartExec()` becomes unreachable the moment it joins the package.
+
+Host-side audit, now reproducible as `boot/audit-package.py`.  It reads the
+accepted relocation set out of `kernel_elf.c` rather than restating it, so it
+cannot drift from the loader.  All twelve members are little endian ELF32
+`REL` RISC-V objects with flags `0x3, RVC, single-float ABI`, and the nine
+new ones introduce no relocation type the loader did not already implement:
+the union across the package is 20 types, all handled.  `dos.library` at
+274,368 bytes is the largest member and adds only `JAL` beyond what
+`sdcard.device` already used.
+
+Observed on the board:
+
+- twelve modules loaded and relocated, 1,237,892 bytes of PSRAM reserved, no
+  relocation rejected;
+- the resident list matches what the `.conf` files declare, in order:
+  `expansion` 110, `utility` 103, `bootloader` 100, `FileSystem` 80,
+  `partition` 40, `sdcard.device` 4, `ramtest.device` 3, `fat-handler` -1,
+  `SDCard boot wait` -49, `dos.library` -120, then `lddemon`, `shell` and
+  `shellcommands` at -123.  This is the gate's "expected resident and its
+  version in the intended order", checked against the source rather than
+  against itself;
+- `bootloader.resource` reports `loader 0x4001e3b0 'ESP32-P4 ROM'` and the
+  three arguments `econsole`, `nomonitors`, `nocomposition`, in order;
+- `FileSystem.resource` carries four entries from the FAT handler: the three
+  DosTypes `0x46415400`, `0x46415401`, `0x46415402` plus the named
+  `fat-handler` entry at DosType 0.  `0x46415402` is exactly what A3's board
+  run reported for the partition, so the medium and the handler agree;
+- `dos.library`'s romtag is present at -120 with `rt_Flags` 0, that is
+  present but not self-starting.  It has to be found by `FindResident()` and
+  started by hand from `dosboot_BootStrapDos()`; a COLDSTART bit here would
+  mean it started on its own, before dosboot had chosen a boot node;
+- the A2 corpus is unaffected by the larger package: all eleven malformed
+  tables refused, each within 4 to 36 sector reads, a working read after
+  every one of them;
+- the heartbeat ran for the full 59-beat capture with the tick serving.
+
+A defect in the port's own diagnostics, found by reading the output: signed
+priorities were printed through `krnP4PutDec()`, so -120 appeared as
+4294967176 and could not be compared with a `.conf` file at all.  Added
+`krnP4PutDecS()` and used it for the three places that print a priority.
+Every priority quoted above is from the corrected build.
+
+- Acceptance points passed: package below the partition; every new ELF member
+  and resident priority audited; UART lists every expected resident and its
+  version in the intended order; `FileSystem.resource` contains the FAT
+  entry; normal heartbeats continue.
+- Acceptance points not yet reached, all of them requiring `dosboot`: the SD
+  boot-wait resident running before dosboot; dosboot replacing the whole-disk
+  node; FAT starting, locking the volume and assigning `SYS:`; `Info()`
+  reporting write protection and mutations failing without a requester;
+  missing media falling back without a hang.
+- Safety: no media write path exists in any build.  The card was not in the
+  board for this run, which is also why nothing could have touched it.
+- Remaining risk: the card-dependent A1 and A3 checks have not been repeated
+  against the enlarged package.  They must be, before dosboot is added, since
+  the point of this step is to keep them observable while it is still
+  possible.  Also unverified: that `econsole` will be reachable, because the
+  handler is not yet in the package.
+- Next safe step: re-run this core with the A3 card in the slot to close the
+  card-dependent half; then FAT write protection, which is a source change
+  needing no board; then `econsole` and `dosboot` together as the last step,
+  after which this console goes quiet.
 
 ## Evidence-entry template
 

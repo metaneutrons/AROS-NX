@@ -153,3 +153,21 @@ void krnP4PutDec(uint32_t val)
 
     krnP4PutStr(&buf[i]);
 }
+
+/*
+ * Resident and node priorities are signed bytes, and printing them through
+ * krnP4PutDec() turns -120 into 4294967176 - a number that says nothing and
+ * cannot be compared against the priority written in a .conf file.  The
+ * negation is done on the unsigned value so that INT32_MIN has no special
+ * case.
+ */
+void krnP4PutDecS(int32_t val)
+{
+    if (val < 0)
+    {
+        krnP4PutStr("-");
+        krnP4PutDec(-(uint32_t)val);
+    }
+    else
+        krnP4PutDec((uint32_t)val);
+}

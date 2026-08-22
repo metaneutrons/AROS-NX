@@ -132,6 +132,7 @@ void krnP4PutC(char c);
 void krnP4PutStr(const char *s);
 void krnP4PutHex32(uint32_t val);
 void krnP4PutDec(uint32_t val);
+void krnP4PutDecS(int32_t val);
 
 /*
  * Code and data that must be in SRAM whatever the link script does.
