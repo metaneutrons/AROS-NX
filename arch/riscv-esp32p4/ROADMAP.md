@@ -119,7 +119,7 @@ tests.
 | A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `hardware verified` | Evidence entries 2026-08-23: all eight gate points.  `SYS:` assigned from the A3 image after `AROS.boot` was accepted, `Info()` reports `ID_WRITE_PROTECTED`, eight DOS mutations refused with error 214 and the file bit-identical afterwards, and a medium without `AROS.boot` falls back to a Shell prompt.  Five defects in shared code fixed on the way |
 | A5 | Command and library loaded from MicroSD | `hardware verified` | Evidence entries 2026-08-23: a command and a library loaded from FAT and run from both a kickstart resident and the Shell, every address outside the resident ranges, a marker neither side can fake, and four refusal cases each failing with its reason named and nothing leaked.  Closes M6.  One point met differently and documented |
 | B0 | Canonical D1001 display contract and provenance | `documented` | [display/DISPLAY-CONTRACT.md](display/DISPLAY-CONTRACT.md) is the one place display facts live, each value carrying an evidence class and a source file and line.  Three findings changed the plan: the running reference ignores the timing fields it is given and uses a different set, the rotation direction is no longer a hypothesis, and the DSI bridge registers differ by chip revision.  Nothing is `verified` yet, which is the honest state; the measured frame rate is B4's and is recorded as deferred |
-| B1 | Calibrated 200 MHz PSRAM with measured headroom | `hardware partial` | The calibration works and 200 MHz holds over all 32 MB with four bus patterns, identically across six warm resets.  The phase premise was wrong in an instructive way: the PSRAM bus was never the limit.  The CPU ran at 90 MHz because nothing configured it, and is now 360; sequential reads went 20 to 60 MB/s and internal SRAM 25 to 101.  The 100 MB/s gate is not assessable by a CPU loop and is reassigned to B5, with the reason recorded |
+| B1 | Calibrated 200 MHz PSRAM with measured headroom | `hardware partial` | The calibration works and 200 MHz holds over all 32 MB with four bus patterns, identically across six warm resets, and the whole storage stack passes on both media at 360 MHz.  The phase premise was wrong in an instructive way: the PSRAM bus was never the limit.  The CPU ran at 90 MHz because nothing configured it, and is now 360; sequential reads went 20 to 60 MB/s and internal SRAM 25 to 101.  The 100 MB/s gate is not assessable by a CPU loop and is reassigned to B5, with the reason recorded |
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `not started` | Requires B0; backlight remains dark |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `not started` | Requires B0 and B2 |
 | B4 | Stable internal DSI test pattern | `not started` | Requires B3; isolates panel from DMA/PSRAM |
@@ -3886,13 +3886,34 @@ that any scanout bandwidth claim before then is unfounded.
 - Safety impact: no medium was written.  The calibration's scratch is 128 bytes
   at PSRAM offset 0x80, before exec exists and before the memory header is
   created.  The only writes were cores to `ota_0`.
-- Remaining risk: the SD card path has not been exercised at 360 MHz.  The
-  regression run reported `GPIO45 high: no card present`, so it went over the
-  flash volume; the card's DMA path sees a doubled MEM_CLK and has to be shown
-  separately.  Also carried: everything else inherited from that bootloader is
-  unexamined in the same way the CPU divider was.
-- Next safe step: the SD path at 360 MHz with the card in the board, then B2,
-  the PCA9535 panel power sequence, which touches no data path at all.
+- Remaining risk: everything else inherited from that bootloader is
+  unexamined in the same way the CPU divider was, the flash clock and the cache
+  configuration in particular.
+- Next safe step: B2, the PCA9535 panel power sequence, which touches no data
+  path at all.
+
+**The SD path at 360 MHz**, run afterwards on the same core with the card back
+in the board.  This was the one open regression, because MEM_CLK doubled and
+the card is read by IDMAC:
+
+```text
+[clock]  set to    cpu /1  mem /2  sys /1  apb /2, asked for 360 MHz
+[SDBus00] MMC0: [30436MB Capacity]
+[DOSBoot:bootstrap] dosboot_BootStrap: Attempting SDCARD0P0 with DOS
+[sysfs]    blocks 129024, used 2187, block size 512
+[sysfs]  read SYS:AROS.boot = 43 bytes, hash 0xf949eb96
+[sysfs]  AFTERDOS probe passed, 8 mutation cases
+[a5]     load proof passed
+[a5rej]  rejection cases passed
+```
+
+The card wins the boot as it should, `SYS:` is the 129,024-block FAT32 volume,
+and `AROS.boot` hashes to `0xf949eb96`, the same value every earlier run
+produced and the same value the FAT16 flash volume produces.  No CRC error, no
+data timeout and no `refusing unaligned` retry appears anywhere in the capture;
+the only nine matches for those patterns are the FAT handler's own write
+refusals, which is what the A4 probe asked for.  No trap, and the heartbeat
+counts 500 ticks per five seconds throughout.
 
 ## Evidence-entry template
 
