@@ -133,9 +133,12 @@ endif
 # P4_HEADLESS_BOOT=1 P4_CMDLINE="bootdevice=..." silently lost all three
 # headless words.  Anything the caller passes is appended, so it can add to
 # the headless set or contradict a word in it, which dosboot resolves by
-# reading the arguments in order.
+# reading the arguments in order.  $(strip) because without it the empty
+# caller case leaves a trailing space in the string literal, which changes the
+# core's hash for no reason and hands the argument parser an empty word.
 ifeq ($(P4_HEADLESS_BOOT),1)
-override P4_CMDLINE := econsole nomonitors nocomposition $(P4_CMDLINE)
+override P4_CMDLINE := \
+    $(strip econsole nomonitors nocomposition $(P4_CMDLINE))
 endif
 
 ifdef P4_CMDLINE
