@@ -4921,6 +4921,109 @@ static void krnP4PanelProbe(void)
             krnP4PutStr("[dsi]    B3 stage two ");
             krnP4PutStr(init == P4_DSI_OK ? "passed\n" : "FAILED\n");
 
+#ifdef P4_SCANOUT_TEST
+            /*
+             * B5.  A frame from PSRAM, the bridge asking for it, the DMA
+             * feeding it, and the backlight last.
+             *
+             * The order is B4's safety property kept: the link carries a
+             * defined image before anything is lit, so a failure above leaves
+             * a dark panel rather than a bright one showing whatever the
+             * controller held.
+             *
+             * A single colour on purpose.  A wrong pixel format, a wrong
+             * stride or a half-running DMA cannot produce a flat field of the
+             * colour that was asked for, so what appears is evidence and not
+             * just light.
+             */
+            if (init == P4_DSI_OK && __esp32p4_psram_size)
+            {
+                struct P4DsiPattern pat;
+                struct P4ScanoutState sc;
+
+                /* 0x001f is blue: all of one channel, none of the others,
+                   which is also the pattern a byte-swap would ruin visibly */
+                krnP4ScanoutFill(0x001F);
+                krnP4CacheWriteback();
+
+                /* Host-side video timing, without the pattern generator */
+                (void)krnP4DsiPatternOn(&pat);
+
+                krnP4ScanoutBridgeUp();
+                krnP4ScanoutDmaUp();
+                krnP4ScanoutFeedOn();
+
+                krnTimerWait(10);               /* 100 ms of frames */
+
+                krnP4ScanoutState(&sc);
+                krnP4PutStr("[b5]     frame ");
+                krnP4PutDec((uint32_t)sc.words64);
+                krnP4PutStr(" x 64-bit, lli ");
+                krnP4PutHex32((uint32_t)sc.lli);
+                krnP4PutStr(", chen ");
+                krnP4PutHex32((uint32_t)sc.chen);
+                krnP4PutStr("\n");
+
+                krnP4PutStr("[b5]     dma  cfg1 ");
+                krnP4PutHex32((uint32_t)sc.ch_cfg1);
+                krnP4PutStr(" llp ");
+                krnP4PutHex32((uint32_t)sc.ch_llp);
+                krnP4PutStr(" sar ");
+                krnP4PutHex32((uint32_t)sc.ch_sar);
+                krnP4PutStr("\n");
+
+                krnP4PutStr("[b5]     brg  flow ");
+                krnP4PutHex32((uint32_t)sc.brg_flow);
+                krnP4PutStr(" rawnum ");
+                krnP4PutHex32((uint32_t)sc.brg_raw_num);
+                krnP4PutStr(" misc ");
+                krnP4PutHex32((uint32_t)sc.brg_misc);
+                krnP4PutStr(" int ");
+                krnP4PutHex32((uint32_t)sc.brg_int);
+                krnP4PutStr("\n");
+
+                {
+                    unsigned long pkt = 0, i0 = 0, i1 = 0;
+
+                    krnP4DsiCmdStatus(&pkt, &i0, &i1);
+                    krnP4PutStr("[b5]     host pkt ");
+                    krnP4PutHex32((uint32_t)pkt);
+                    krnP4PutStr(" int0 ");
+                    krnP4PutHex32((uint32_t)i0);
+                    krnP4PutStr(" int1 ");
+                    krnP4PutHex32((uint32_t)i1);
+                    krnP4PutStr((i1 & (1UL << 7)) ? "  DPI_PLD_WR_ERR\n"
+                                                  : "  no payload error\n");
+                }
+
+                /*
+                 * The source address is the measurement that says the DMA is
+                 * actually moving: it walks the frame while a transfer runs.
+                 * Read twice, because one reading proves nothing.
+                 */
+                {
+                    unsigned long a, b;
+
+                    krnP4ScanoutState(&sc);
+                    a = sc.ch_sar;
+                    krnTimerWait(2);
+                    krnP4ScanoutState(&sc);
+                    b = sc.ch_sar;
+
+                    krnP4PutStr("[b5]     sar ");
+                    krnP4PutHex32((uint32_t)a);
+                    krnP4PutStr(" then ");
+                    krnP4PutHex32((uint32_t)b);
+                    krnP4PutStr(a != b ? "  moving\n" : "  stalled\n");
+                }
+
+                krnP4PanelBacklightOn();
+                krnP4PutStr("[b5]     backlight on; left running\n");
+            }
+            else if (init == P4_DSI_OK)
+                krnP4PutStr("[b5]     no PSRAM, so no frame to scan out\n");
+#endif
+
 #ifdef P4_PATTERN_TEST
             /*
              * B4.  The host's own pattern generator, then the backlight.
