@@ -5,13 +5,21 @@
 #   members are complete relocatable module files; the platform ELF loader
 #   places and relocates them in PSRAM later.
 #
-#   A4 grows the package in measured steps.  This step adds the DOS side
-#   without `dosboot.resource`: dos.library, the resources its
-#   initialisation and LoadSeg path need, the shell pair a CLI needs, and
-#   the FAT handler.  All of those can be observed while the
+#   A4 grows the package in measured steps.  These steps add the DOS side
+#   without `dosboot.resource`: dos.library, the resources its initialisation
+#   and LoadSeg path need, the shell pair a CLI needs, the FAT handler and
+#   the emergency console.  All of those can be observed while the
 #   post-krnStartExec() diagnostics still run, because nothing here takes
 #   over COLDSTART.  `dosboot.resource` is what does, and it is added only
-#   once these members are proven to load, relocate and initialise.
+#   once these members are proven to load, relocate and initialise, so that
+#   its arrival is the single variable in that step.
+#
+#   Note that `econsole` and `sdcard.device`'s `SDCard boot wait` resident
+#   share priority -49.  That tie is harmless: one registers a boot node at
+#   bootpri -127 and the other waits for pending bus tasks, neither depends
+#   on the other, and dosboot at -50 follows both whichever way the link
+#   order falls.  A resident that does depend on the order would have to say
+#   so with a distinct priority rather than rely on this.
 #
 
 include $(SRCDIR)/config/aros.cfg
@@ -28,7 +36,8 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-lddemon \
 #MM     kernel-shell \
 #MM     kernel-shellcommands \
-#MM     kernel-fs-fat
+#MM     kernel-fs-fat \
+#MM     kernel-econsole
 
 #MM kernel-package-esp32p4-riscv-quick : \
 #MM     kernel-utility-quick \
@@ -42,7 +51,8 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-lddemon-quick \
 #MM     kernel-shell-quick \
 #MM     kernel-shellcommands-quick \
-#MM     kernel-fs-fat-quick
+#MM     kernel-fs-fat-quick \
+#MM     kernel-econsole-quick
 
 #
 #   ramtest.device is the A2 corpus fixture.  It carries only const data and
@@ -53,7 +63,7 @@ PKG_LIBS      := utility partition dos
 PKG_LIBS_ARCH := expansion
 PKG_RES       := bootloader FileSystem lddemon shell shellcommands
 PKG_DEVS      := sdcard ramtest
-PKG_HANDLERS  := fat
+PKG_HANDLERS  := fat econsole
 
 %make_package mmake=kernel-package-esp32p4-riscv \
     file=$(AROSARCHDIR)/aros-bsp.pkg \
