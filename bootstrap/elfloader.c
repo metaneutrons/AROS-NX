@@ -621,6 +621,12 @@ int LoadKernel(struct ELFNode *FirstELF, void *ptr_ro, void *ptr_rw, char *track
     struct ELFNode *n;
     unsigned int i;
     unsigned char need_entry = 1;
+    /*
+     * Section names, so the startup section can be recognised. Not an ALLOC
+     * section, so it is loaded the same way the relocation sections are.
+     */
+    const char *shnames = NULL;
+    unsigned char startup_found = 0;
     struct ELF_ModuleInfo_t *mod;
     struct ELF_ModuleInfo_t *prev_mod = NULL;
     struct KernelBSS_t *tracker = (struct KernelBSS_t *)tracker_p;
@@ -639,6 +645,26 @@ int LoadKernel(struct ELFNode *FirstELF, void *ptr_ro, void *ptr_rw, char *track
         {
             DisplayError("Failed to open file %s!\n", n->Name);
             return 0;
+        }
+
+        /*
+         * Section names, needed to recognise the startup section below. This
+         * is a plain read of a non-allocated section, as the relocation
+         * sections are read further down; a file without one simply leaves the
+         * entry selection on its first-code-section fallback.
+         */
+        shnames = NULL;
+        if (n->eh->shstrndx && n->eh->shstrndx < n->eh->shnum)
+        {
+            struct sheader *shstr = &n->sh[n->eh->shstrndx];
+            unsigned int nameerr = 0;
+
+            if (shstr->size)
+            {
+                shnames = load_block(file, shstr->offset, shstr->size, &nameerr);
+                if (nameerr)
+                    shnames = NULL;
+            }
         }
 
         /* Iterate over the section header in order to load some hunks */
@@ -672,11 +698,37 @@ int LoadKernel(struct ELFNode *FirstELF, void *ptr_ro, void *ptr_rw, char *track
                     }
                 }
 
-                /* Remember address of the first code section, this is our entry point */
+                /*
+                 * The entry point is the startup section if the image has
+                 * one, and the first code section otherwise.
+                 *
+                 * Taking the first code section alone is a guess, and it is
+                 * wrong as soon as any object contributes .text ahead of the
+                 * startup code. A module's start file does exactly that: for a
+                 * resource it holds only the Resident structure, so its .text
+                 * is present and empty, which puts .text first in the linked
+                 * image while start64 sits in .aros.startup further down. The
+                 * bootstrap then jumped to whatever happened to be first in
+                 * .text -- for x86_64 the file-scope asm() `delay` of
+                 * arch/x86_64-pc/kernel/kernel_startup.c:642, which clang
+                 * emits ahead of every function -- and the kernel ran off into
+                 * unmapped memory.
+                 *
+                 * .aros.startup is not a guess: __startup
+                 * (compiler/arossupport/include/system.h:258) exists to mark
+                 * the startup code and puts it there.
+                 */
                 if ((sh[i].flags & SHF_EXECINSTR) && need_entry)
                 {
                     *kernel_entry = (void *)(uintptr_t)sh[i].addr;
                     need_entry = 0;
+                }
+                if ((sh[i].flags & SHF_EXECINSTR) && shnames && !startup_found
+                    && !Strcmp(shnames + sh[i].name, ".aros.startup"))
+                {
+                    *kernel_entry = (void *)(uintptr_t)sh[i].addr;
+                    need_entry = 0;
+                    startup_found = 1;
                 }
             }
             D(else kprintf("Ignored\n");)
