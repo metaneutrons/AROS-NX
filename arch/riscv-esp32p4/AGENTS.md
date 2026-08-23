@@ -43,6 +43,53 @@ delete the objects that the changed switch affects:
 and state the artifact size and SHA-256 in the entry, because those are what
 show which build actually reached the board.
 
+## Capture the console from the first byte
+
+Use `tools/reset-and-log.py`, not esptool followed by a reader:
+
+    uv run --with pyserial python arch/riscv-esp32p4/tools/reset-and-log.py \
+        /dev/cu.usbmodem1101 12
+
+esptool has to own the serial port to reset the board, and by the time it
+releases it and something else opens it, the early output is already gone.  A
+boot that loads the module package prints around 60 KB against a much smaller
+USB CDC buffer, so everything before exec - the clock report, the whole PSRAM
+bring-up - is overwritten unread.  This script holds the port open and asserts
+the reset over the control lines instead.
+
+That is not a convenience.  Findings in this port have been measured twice
+because a first capture silently missed the lines that mattered, a diagnostic
+was moved into a later report only so it could be read, and a `SW_SYS_RESET`
+loop was misattributed for the same reason.  A measurement you cannot reliably
+read is not a measurement.
+
+## Comparing against the working reference
+
+When a hardware question survives several rounds of elimination, stop adding
+candidates and measure the difference against firmware that works.
+
+The vendor's own firmware runs on this board and its source is available.  The
+procedure that closed the PSRAM blocker: a branch in that tree, a read-only
+dump of the registers involved printed where the working path has already
+succeeded, and a comparison against the same set printed where this port's has
+failed.  One register differed, and it was one nothing in ESP-IDF's own P4
+sources pointed at - `PERIF_I2C_RSTB`, released by IDF only in the C5 and C61
+bootloader ports.  Eight hypotheses had been eliminated before that, each
+costing a build, a flash and a run; the comparison answered it in one.
+
+Two conditions make it worth reaching for:
+
+  - **A read-only dump.**  Print registers, write none.  The reference
+    firmware's behaviour has to stay the behaviour being compared against.
+  - **A branch, and cleaned up afterwards.**  The diagnostic belongs in that
+    tree's history, not in its main line, and the change is the owner's to
+    keep or drop.
+
+The inverse also holds and is worth stating: a value-by-value comparison of
+this port's code against ESP-IDF's found nothing, twice, because the fault was
+a register outside the sequence being compared.  Reading the reference's source
+tells you what it writes; reading the reference's *state* tells you what it has.
+
 ## Safety boundaries
 
 - Keep SD media read-only through the first graphical boot.  Preserve both
