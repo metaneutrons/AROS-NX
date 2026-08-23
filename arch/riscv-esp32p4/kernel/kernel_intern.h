@@ -104,6 +104,27 @@ struct P4PanelState
 int krnP4PanelClaim(struct P4PanelState *out);
 int krnP4PanelPowerUp(struct P4PanelState *out);
 int krnP4PanelSafe(void);
+
+/* DSI PHY bring-up results. */
+#define P4_DSI_OK               0
+#define P4_DSI_NO_LOCK          (-1)
+#define P4_DSI_NO_STOPSTATE     (-2)
+
+struct P4DsiState
+{
+    unsigned long ldo_reg;
+    unsigned long ldo_ana;
+    unsigned long status;
+    unsigned char locked;
+    unsigned char lanes_stopped;
+    unsigned char pll_n;
+    unsigned char hs_freq_sel;
+    unsigned short pll_m;
+};
+
+void krnP4DsiLdoUp(void);
+int  krnP4DsiPhyUp(struct P4DsiState *out);
+void krnP4DsiPhyDown(void);
 UWORD krnP4PanelStrayBits(void);
 const char *krnP4I2CResultName(int result);
 

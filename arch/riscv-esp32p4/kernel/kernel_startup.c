@@ -4541,6 +4541,80 @@ static void krnP4PanelProbe(void)
 
     krnP4PutStr("[panel]  B2 ");
     krnP4PutStr(passes == 2 ? "passed, twice\n" : "FAILED\n");
+
+#ifdef P4_DSI_PROBE
+    /*
+     * B3 stage one, only if B2 got that far.
+     *
+     * The panel has to be powered and out of reset before the PHY is asked to
+     * lock, and it has to stay that way afterwards, so this claims the pins
+     * again rather than running after the safe return above.  The backlight
+     * stays dark: this stage produces no image and lighting the panel would
+     * show whatever the controller happens to hold.
+     */
+    if (passes == 2)
+    {
+        struct P4PanelState st;
+        struct P4DsiState dsi;
+        int r;
+
+        krnP4PutStr("[dsi]    B3 stage one: supply, clocks and the phy pll\n");
+
+        if (krnP4PanelClaim(&st) != P4_I2C_OK
+            || krnP4PanelPowerUp(&st) != P4_I2C_OK)
+        {
+            krnP4PutStr("[dsi]    the panel would not power up\n");
+            (void)krnP4PanelSafe();
+            return;
+        }
+
+        r = krnP4DsiPhyUp(&dsi);
+
+        krnP4PutStr("[dsi]    ldo ");
+        krnP4PutHex32((uint32_t)dsi.ldo_reg);
+        krnP4PutStr(" ana ");
+        krnP4PutHex32((uint32_t)dsi.ldo_ana);
+        krnP4PutStr(", dref ");
+        krnP4PutDec((uint32_t)((dsi.ldo_ana & P4_LDO_DREF_MASK)
+                               >> P4_LDO_DREF_SHIFT));
+        krnP4PutStr(", mul ");
+        krnP4PutDec((uint32_t)((dsi.ldo_ana & P4_LDO_MUL_MASK)
+                               >> P4_LDO_MUL_SHIFT));
+        krnP4PutStr((dsi.ldo_reg & P4_LDO_XPD) ? ", enabled\n"
+                                               : ", NOT ENABLED\n");
+
+        krnP4PutStr("[dsi]    pll n ");
+        krnP4PutDec(dsi.pll_n);
+        krnP4PutStr(" m ");
+        krnP4PutDec(dsi.pll_m);
+        krnP4PutStr(", range ");
+        krnP4PutHex32(dsi.hs_freq_sel);
+        krnP4PutStr(", ");
+        krnP4PutDec((uint32_t)(40 * dsi.pll_m / dsi.pll_n));
+        krnP4PutStr(" Mbit/s per lane if the reference is 40 MHz\n");
+
+        krnP4PutStr("[dsi]    phy status ");
+        krnP4PutHex32((uint32_t)dsi.status);
+        krnP4PutStr(dsi.locked ? "  locked" : "  NOT LOCKED");
+        krnP4PutStr(dsi.lanes_stopped ? ", lanes in stop state\n"
+                                      : ", lanes NOT in stop state\n");
+
+        if (r == P4_DSI_OK)
+            krnP4PutStr("[dsi]    B3 stage one passed\n");
+        else
+        {
+            krnP4PutStr(r == P4_DSI_NO_LOCK
+                        ? "[dsi]    B3 stage one FAILED: the pll never locked."
+                          "  The fixed phy reference is the first suspect\n"
+                        : "[dsi]    B3 stage one FAILED: a lane never reached"
+                          " stop state\n");
+            krnP4DsiPhyDown();
+        }
+
+        (void)krnP4PanelSafe();
+        krnP4PutStr("[dsi]    panel returned to safe, backlight never on\n");
+    }
+#endif
 }
 #endif /* P4_PANEL_PROBE */
 
