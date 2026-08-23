@@ -159,6 +159,14 @@ ifdef P4_A5_PROBE
 P4_DEBUG_CPPFLAGS += -DP4_A5_PROBE
 endif
 
+# P4_FLASHDISK_PROBE=1 reads the flash development volume through
+# krnP4FlashMap() and checks that what is there is the FAT16 volume
+# image/mmakefile.src built.  It needs nothing but the flash, so it runs
+# before exec and is the measured step before a block device exists.
+ifdef P4_FLASHDISK_PROBE
+P4_DEBUG_CPPFLAGS += -DP4_FLASHDISK_PROBE
+endif
+
 ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
