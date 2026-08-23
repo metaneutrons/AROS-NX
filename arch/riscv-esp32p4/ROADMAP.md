@@ -3617,10 +3617,30 @@ it had before `override` existed.
   tests pass.
 - Safety impact: no card was in the board, so no medium could be touched.  The
   volume in flash was not rewritten.  The only write was the core to `ota_0`.
-- Remaining risk: the runtime device lookup has only been exercised on the
-  flash volume.  It has to report `SDCARD0P0:` with the card back in the
-  board, which is a regression run still to do.
-- Next safe step: that regression run, then Track B.
+- Remaining risk: none outstanding from this step.  The regression with the
+  card back in the board was run on the same core and is recorded below.
+- Next safe step: Track B, the MIPI-DSI framebuffer.
+
+**The regression, card back in.**  Same core,
+`8a65559c092fba8159420e95f26f6ebf6e176dec7200f1fb52061e07e60c0034`, nothing
+rebuilt and nothing rewritten, only a reset with the card in the board:
+
+```text
+[SDBus00] MMC0: [30436MB Capacity]
+[DOSBoot:bootscan] AddPartitionVolume: AddBootNode(SDCARD0P0, 0, 0x46415402, NULL)
+[DOSBoot:bootscan] AddPartitionVolume: AddBootNode(FLASHDISK0P0, 0, 0x46415401, NULL)
+[DOSBoot:bootstrap] dosboot_BootStrap: Attempting SDCARD0P0 with DOS
+[sysfs]    blocks 129024, used 2187, block size 512
+[sysfs]    SYS: is served by SDCARD0P0:
+[sysfs]  AFTERDOS probe passed, 8 mutation cases
+[fdvol]  identical, FAT16 in flash and FAT32 on the card agree
+```
+
+The lookup reports `SDCARD0P0:` here and reported `FLASHDISK0P0:` with no card,
+from the same binary, which is what it was written to do.  `SYS:` is the
+129,024-block card again, all eight mutations are refused with error 214, and
+the block-device, DOS-level, A5 load and A5 rejection tests pass.  Both boot
+paths therefore work from one core with no build-time choice in it.
 
 ## Evidence-entry template
 
