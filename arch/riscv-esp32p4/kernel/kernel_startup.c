@@ -4600,7 +4600,135 @@ static void krnP4PanelProbe(void)
                                       : ", lanes NOT in stop state\n");
 
         if (r == P4_DSI_OK)
+        {
+            unsigned char id[3] = { 0, 0, 0 };
+            int id_result = 0, init;
+
             krnP4PutStr("[dsi]    B3 stage one passed\n");
+
+            /* Stage two: command mode, then the panel's own sequence. */
+            (void)krnP4DsiCmdModeUp();
+            krnP4PutStr("[dsi]    command mode, clock lane low power,"
+                        " commands in low power\n");
+
+            init = krnP4DsiPanelInit(id, &id_result);
+
+            krnP4PutStr("[dsi]    dcs 0x04 identity read: ");
+            if (id_result > 0)
+            {
+                int k;
+
+                krnP4PutDec((uint32_t)id_result);
+                krnP4PutStr(" bytes,");
+                for (k = 0; k < id_result && k < 3; ++k)
+                {
+                    krnP4PutStr(" ");
+                    krnP4PutHex32(id[k]);
+                }
+                /* No expected value exists in any source, so this is recorded
+                   as a board fact rather than checked. */
+                krnP4PutStr("  recorded, not checked\n");
+            }
+            else
+                krnP4PutStr("no reply, which no source says is wrong\n");
+
+            /*
+             * Four more reads, because the silence above answers less than it
+             * seems to.
+             *
+             * A DSI write is not acknowledged: the host transmits and moves
+             * on, so a completed command sequence says the host sent it and
+             * nothing at all about whether the panel listened.  The identity
+             * read was the one chance of panel-side evidence and it produced
+             * none - but 0x04 is a vendor-defined read that this panel may
+             * simply not implement, so its silence does not separate "the
+             * panel is not answering" from "this driver's read path is
+             * broken".
+             *
+             * These four are standard DCS reads that most controllers do
+             * implement.  Any one of them answering settles both questions at
+             * once; all four silent leaves the read path itself under
+             * suspicion, and that is worth knowing before B4 depends on it.
+             */
+            {
+                static const struct { unsigned char cmd; const char *what; }
+                probes[4] =
+                {
+                    { 0x0A, "power mode" },
+                    { 0x0B, "address mode" },
+                    { 0x0C, "pixel format" },
+                    { 0x45, "scanline" },
+                };
+                unsigned char v[2];
+                unsigned int n;
+                int any = 0;
+
+                for (n = 0; n < 4; ++n)
+                {
+                    int got;
+
+                    /* A read that produced nothing leaves the host waiting,
+                       so every later one stacks on a busy controller and its
+                       result means nothing.  Stop at the first silence. */
+                    if (n && !any)
+                    {
+                        krnP4PutStr("[dsi]    stopping: the host is still"
+                                    " waiting on the previous read\n");
+                        break;
+                    }
+
+                    v[0] = v[1] = 0;
+                    got = krnP4DsiDcsRead(probes[n].cmd, v, 1);
+                    krnP4PutStr("[dsi]    dcs ");
+                    krnP4PutHex32(probes[n].cmd);
+                    krnP4PutStr(" ");
+                    krnP4PutStr(probes[n].what);
+                    krnP4PutStr(": ");
+                    if (got > 0)
+                    {
+                        krnP4PutHex32(v[0]);
+                        krnP4PutStr("\n");
+                        any = 1;
+                    }
+                    else
+                    {
+                        unsigned long pkt = 0, i0 = 0, i1 = 0;
+
+                        krnP4DsiCmdStatus(&pkt, &i0, &i1);
+                        krnP4PutStr("no reply, pkt ");
+                        krnP4PutHex32((uint32_t)pkt);
+                        krnP4PutStr(" int0 ");
+                        krnP4PutHex32((uint32_t)i0);
+                        krnP4PutStr(" int1 ");
+                        krnP4PutHex32((uint32_t)i1);
+                        krnP4PutStr("\n");
+                    }
+                }
+
+                krnP4PutStr(any
+                    ? "[dsi]    the panel answered, so it is listening and"
+                      " the read path works\n"
+                    : "[dsi]    nothing answered; the panel may be silent by"
+                      " design or the read path may be wrong, and B4's"
+                      " pattern is the first thing that can tell them apart\n");
+            }
+
+            if (init == P4_DSI_OK)
+                krnP4PutStr("[dsi]    the jd9365 sequence completed,"
+                            " display on, backlight still dark\n");
+            else
+            {
+                krnP4PutStr(init == P4_DSI_CMD_BUSY
+                            ? "[dsi]    B3 stage two FAILED: a command fifo"
+                              " never drained\n"
+                            : "[dsi]    B3 stage two FAILED: no reply where"
+                              " one was needed\n");
+                krnP4DsiPhyDown();
+            }
+
+            krnP4PutStr("[dsi]    B3 stage two ");
+            krnP4PutStr(init == P4_DSI_OK ? "passed\n" : "FAILED\n");
+        }
         else
         {
             krnP4PutStr(r == P4_DSI_NO_LOCK

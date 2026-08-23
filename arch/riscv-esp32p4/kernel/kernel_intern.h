@@ -122,7 +122,35 @@ struct P4DsiState
     unsigned short pll_m;
 };
 
+/*
+ * One entry of the panel's initialisation sequence.  A single parameter byte
+ * covers every command the JD9365 sequence uses; a command needing more would
+ * need this widened, and the table would say so.
+ */
+struct P4JD9365Cmd
+{
+    unsigned char cmd;
+    unsigned char param;
+    unsigned char param_bytes;
+    unsigned short delay_ms;
+};
+
+extern const struct P4JD9365Cmd krnP4JD9365Init[];
+extern const unsigned int krnP4JD9365InitCount;
+
+/* DSI command-path results. */
+#define P4_DSI_CMD_BUSY         (-3)
+#define P4_DSI_CMD_NO_REPLY     (-4)
+
 void krnP4DsiLdoUp(void);
+int  krnP4DsiCmdModeUp(void);
+int  krnP4DsiDcsWrite(unsigned char cmd, const unsigned char *param,
+                      unsigned int param_bytes);
+int  krnP4DsiDcsRead(unsigned char cmd, unsigned char *out,
+                     unsigned int want);
+int  krnP4DsiPanelInit(unsigned char *id, int *id_result);
+void krnP4DsiCmdStatus(unsigned long *pkt, unsigned long *int0,
+                       unsigned long *int1);
 int  krnP4DsiPhyUp(struct P4DsiState *out);
 void krnP4DsiPhyDown(void);
 UWORD krnP4PanelStrayBits(void);
