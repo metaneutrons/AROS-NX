@@ -51,6 +51,19 @@
 #include <dos/filehandler.h>
 #include <proto/dos.h>
 #endif
+#ifdef P4_A5_PROBE
+#include <aros/libcall.h>
+#include "../proof/proof_id.h"
+
+/* Written out rather than taken from <proto/sdproof.h>, for the same reason
+   the proof command does it: the library's generated headers are build
+   artefacts of a module the kickstart must not depend on. */
+#define SDPROOF_QUERY_LVO   5
+#define SDProofQuery(base, what)                                        \
+    AROS_LC1(ULONG, SDProofQuery,                                       \
+             AROS_LCA(ULONG, (what), D0),                               \
+             struct Library *, (base), SDPROOF_QUERY_LVO, SDProof)
+#endif
 
 #include <kernel_base.h>
 #include <kernel_globals.h>
@@ -133,8 +146,9 @@ static void report_misa(void)
    and needs to know how much of the external window is real. */
 unsigned long __esp32p4_psram_size;
 static struct MemHeader *__esp32p4_mh_psram;
-static UWORD *__esp32p4_modules_low;
-static UWORD *__esp32p4_modules_high;
+/* Not static: the A5 probe judges loaded addresses against this range. */
+UWORD *__esp32p4_modules_low;
+UWORD *__esp32p4_modules_high;
 
 #ifdef P4_PARTITION_TEST
 struct PartitionBase *PartitionBase;
@@ -1013,6 +1027,234 @@ static int krnP4AfterDosProbe(void)
     return passed;
 }
 
+#ifdef P4_A5_PROBE
+/*
+ * A5's non-interactive half: prove that code came off the card, and judge the
+ * addresses it came to.
+ *
+ * The judging is why this lives in the kickstart rather than in the proof
+ * files themselves.  The claim A5 has to support is that the command and the
+ * library were loaded, not merely that something with the right name ran, and
+ * the way to support it is that their addresses fall outside both the
+ * kickstart and the flash package.  Only code linked into the kickstart knows
+ * where those two are: the link script's symbols for one, and the range the
+ * package loader recorded for the other.  A proof file asked to check itself
+ * would have to be told those numbers, and then the check would only be as
+ * good as the telling.
+ *
+ * The command's own output is not visible from here.  RTF_AFTERDOS runs
+ * inside dos.library's boot process, whose standard output is not yet a
+ * console, and opening ECON: from here would start the emergency console
+ * handler early with the priority-10 spin the risk table describes.  So the
+ * command is run with NIL: handles and judged by its exit code, which is
+ * RETURN_OK only if it opened the library and the marker matched.  The
+ * readable version of the same run is what typing it at the prompt produces.
+ */
+
+/*
+ * Where the proof files must not be.
+ *
+ * Three intervals, not two, and the reason is worth stating because the first
+ * version of this got it wrong and said so on the first run.  The kickstart is
+ * not contiguous: in an XIP build its text and rodata are executed from flash
+ * around 0x40000000 while its data and bss live in SRAM around 0x4ff00000.
+ * Treating [__text_start, __kernel_end) as one interval spans everything
+ * between, which is the entire 32 MB external window - so a segment correctly
+ * loaded into PSRAM was reported as being inside the kickstart.  The link
+ * script says the same thing about scanning that gap; this is the same trap in
+ * a different place.
+ */
+static int krnP4InRange(IPTR address, IPTR lo, IPTR hi)
+{
+    return hi > lo && address >= lo && address < hi;
+}
+
+static int krnP4OutsideResident(IPTR address)
+{
+    /* The kickstart, as its two separate windows */
+    if (krnP4InRange(address, (IPTR)__text_start, (IPTR)__rodata_end))
+        return 0;
+    if (krnP4InRange(address, (IPTR)__data_start, (IPTR)__kernel_end))
+        return 0;
+    /* And the flash package, wherever the loader put it */
+    if (krnP4InRange(address, (IPTR)__esp32p4_modules_low,
+                     (IPTR)__esp32p4_modules_high))
+        return 0;
+    return 1;
+}
+
+static void krnP4ReportAddress(const char *what, IPTR address)
+{
+    krnP4PutStr(what);
+    krnP4PutHex32((uint32_t)address);
+    krnP4PutStr(krnP4OutsideResident(address)
+                ? "  outside the kickstart and the package\n"
+                : "  INSIDE A RESIDENT RANGE, not a fresh load\n");
+}
+
+static int krnP4A5Probe(void)
+{
+    struct Library *SDProofBase;
+    BPTR seg;
+    int passed = 1;
+
+    krnP4PutStr("[a5]     load proof starting\n");
+    krnP4PutStr("[a5]     excluded: kickstart code ");
+    krnP4PutHex32((uint32_t)(IPTR)__text_start);
+    krnP4PutStr(" - ");
+    krnP4PutHex32((uint32_t)(IPTR)__rodata_end);
+    krnP4PutStr(", kickstart data ");
+    krnP4PutHex32((uint32_t)(IPTR)__data_start);
+    krnP4PutStr(" - ");
+    krnP4PutHex32((uint32_t)(IPTR)__kernel_end);
+    krnP4PutStr(",\n[a5]               package ");
+    krnP4PutHex32((uint32_t)(IPTR)__esp32p4_modules_low);
+    krnP4PutStr(" - ");
+    krnP4PutHex32((uint32_t)(IPTR)__esp32p4_modules_high);
+    krnP4PutStr("\n");
+
+    /*
+     * The library first, then the command.  Not the order the phase describes
+     * them in, and deliberately so: the command is run through RunCommand(),
+     * and a command that hangs takes everything after it with it - which it
+     * did on the first attempt, losing the library result that had nothing to
+     * do with the failure.  The two tests are independent, so the one that
+     * cannot hang goes first.
+     */
+    /* The library, through lddemon */
+    SDProofBase = OpenLibrary((CONST_STRPTR)"sdproof.library", 1);
+    krnP4PutStr("[a5]     OpenLibrary(\"sdproof.library\", 1) = ");
+    krnP4PutHex32((uint32_t)(IPTR)SDProofBase);
+    krnP4PutStr("\n");
+    if (!SDProofBase)
+    {
+        krnP4PutStr("[a5]     library did NOT open\n");
+        passed = 0;
+    }
+    else
+    {
+        ULONG marker = SDProofQuery(SDProofBase, SDPROOF_Q_MARKER);
+        IPTR id_addr = (IPTR)SDProofQuery(SDProofBase, SDPROOF_Q_ID_ADDR);
+
+        krnP4ReportAddress("[a5]     library base at ", (IPTR)SDProofBase);
+        krnP4ReportAddress("[a5]     library id string at ", id_addr);
+
+        krnP4PutStr("[a5]     SDProofQuery marker ");
+        krnP4PutHex32(marker);
+        krnP4PutStr(" expected ");
+        krnP4PutHex32(SDPROOF_EXPECTED);
+        krnP4PutStr(marker == SDPROOF_EXPECTED ? "  match\n" : "  MISMATCH\n");
+        if (marker != SDPROOF_EXPECTED)
+            passed = 0;
+        if (!krnP4OutsideResident((IPTR)SDProofBase)
+            || !krnP4OutsideResident(id_addr))
+            passed = 0;
+
+        CloseLibrary(SDProofBase);
+    }
+
+
+    /*
+     * Both commands are loaded, and only one of them is run here.
+     *
+     * A normal AROS command cannot be RunCommand()ed from this context, and
+     * that is not a defect of this port.  The first entry in the
+     * PROGRAM_ENTRIES chain is __startup_fromwb(), which decides it was
+     * started from Workbench when the calling process has no CLI structure
+     * and then does WaitPort() for a WBStartup message.  RTF_AFTERDOS runs
+     * inside dos.library's boot process, which has no CLI, so that wait never
+     * ends - and because it is the boot process, the whole boot stops with
+     * it, Shell included.  Measured: the last line on the console was
+     * "Entering __startup_fromwb()".
+     *
+     * So the non-interactive route runs sdload-test, which is built without
+     * the C startup and therefore has no such chain, and sdboot-test is
+     * loaded and address-checked here but left to be run from the Shell,
+     * where a CLI exists.  Both halves of A5 are covered, by the route each
+     * one actually fits.
+     */
+    {
+        static const struct
+        {
+            const char *path;
+            int run;
+        } commands[] =
+        {
+            { "SYS:C/sdload-test", 1 },
+            { "SYS:C/sdboot-test", 0 }
+        };
+        unsigned int c;
+
+        for (c = 0; c < sizeof(commands) / sizeof(commands[0]); ++c)
+        {
+            seg = LoadSeg((CONST_STRPTR)commands[c].path);
+            krnP4PutStr("[a5]     LoadSeg(\"");
+            krnP4PutStr(commands[c].path);
+            krnP4PutStr("\") = ");
+            krnP4PutHex32((uint32_t)(IPTR)seg);
+            krnP4PutStr("\n");
+            if (!seg)
+            {
+                krnP4PutStr("[a5]     did NOT load, IoErr ");
+                krnP4PutDecS((int32_t)IoErr());
+                krnP4PutStr("\n");
+                passed = 0;
+                continue;
+            }
+
+            krnP4ReportAddress("[a5]     segment at ", (IPTR)BADDR(seg));
+
+            if (!commands[c].run)
+            {
+                krnP4PutStr("[a5]     not run here: it carries the C startup,"
+                            " whose first chain entry waits for a Workbench\n"
+                            "[a5]     message when the caller has no CLI."
+                            "  Run it from the Shell instead.\n");
+                UnLoadSeg(seg);
+                continue;
+            }
+
+            {
+                LONG rc;
+                BPTR in, out, oldin, oldout;
+
+                in = Open((CONST_STRPTR)"NIL:", MODE_OLDFILE);
+                out = Open((CONST_STRPTR)"NIL:", MODE_NEWFILE);
+                oldin = SelectInput(in);
+                oldout = SelectOutput(out);
+
+                /* The empty argument string still needs its terminating
+                   newline; ReadArgs() would otherwise run off the end. */
+                rc = RunCommand(seg, AROS_STACKSIZE, (CONST_STRPTR)"\n", 1);
+
+                SelectInput(oldin);
+                SelectOutput(oldout);
+                if (in)
+                    Close(in);
+                if (out)
+                    Close(out);
+
+                krnP4PutStr("[a5]     RunCommand returned ");
+                krnP4PutDecS((int32_t)rc);
+                if (rc == RETURN_OK)
+                    krnP4PutStr(", the command reports success\n");
+                else
+                {
+                    krnP4PutStr(", NOT RETURN_OK\n");
+                    passed = 0;
+                }
+            }
+
+            UnLoadSeg(seg);
+        }
+    }
+
+    krnP4PutStr("[a5]     load proof ");
+    krnP4PutStr(passed ? "passed\n" : "FAILED\n");
+    return passed;
+}
+#endif /* P4_A5_PROBE */
+
 extern const struct Resident krnP4AfterDosResident;
 
 AROS_UFH3(static APTR, krnP4AfterDosInit,
@@ -1028,6 +1270,9 @@ AROS_UFH3(static APTR, krnP4AfterDosInit,
     else
     {
         (void)krnP4AfterDosProbe();
+#ifdef P4_A5_PROBE
+        (void)krnP4A5Probe();
+#endif
         CloseLibrary((struct Library *)DOSBase);
         DOSBase = NULL;
     }
@@ -1039,9 +1284,15 @@ AROS_UFH3(static APTR, krnP4AfterDosInit,
 
 /*
  * RTF_AFTERDOS, so cliinit.c starts it once SYS: and the boot assigns exist.
- * Priority 0 within that pass: nothing else in this package is AFTERDOS
- * except lddemon, shell and shellcommands at -123, and this wants to run
- * before the Shell reaches a prompt and starts competing for the console.
+ *
+ * Priority -126, which is below lddemon, shell and shellcommands at -123 and
+ * is the correction to a first attempt at 0.  At 0 this ran before lddemon was
+ * initialised, and the A5 probe's OpenLibrary() of a disk-based library then
+ * did not fail cleanly - it hung, taking the boot with it, with no trap and no
+ * further output.  A library that is not resident has to be fetched by
+ * lddemon, so asking for one before lddemon exists is asking the wrong
+ * question.  Still ahead of the Shell reaching a prompt, since that happens
+ * in __dos_Boot() after this pass returns.
  */
 const struct Resident krnP4AfterDosResident =
 {
@@ -1051,7 +1302,7 @@ const struct Resident krnP4AfterDosResident =
     RTF_AFTERDOS,
     1,
     NT_TASK,
-    0,
+    -126,
     "esp32p4 sysfs probe",
     "esp32p4 sysfs probe 1.0",
     &krnP4AfterDosInit

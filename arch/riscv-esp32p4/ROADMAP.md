@@ -117,7 +117,7 @@ tests.
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
 | A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `hardware verified` | Evidence entry 2026-08-23: byte-reproducible image, checked by the host parser, `fsck_msdos` and its manifest, and read correctly on the board at the values predicted from the image.  Every changed sector after the run is attributed to the host's mount |
 | A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `hardware verified` | Evidence entries 2026-08-23: all eight gate points.  `SYS:` assigned from the A3 image after `AROS.boot` was accepted, `Info()` reports `ID_WRITE_PROTECTED`, eight DOS mutations refused with error 214 and the file bit-identical afterwards, and a medium without `AROS.boot` falls back to a Shell prompt.  Five defects in shared code fixed on the way |
-| A5 | Command and library loaded from MicroSD | `not started` | Requires A4, which now passes.  Both routes the phase names are open: the console can be typed into, and the A4 AFTERDOS resident is the non-interactive one.  Closes M6 |
+| A5 | Command and library loaded from MicroSD | `hardware partial` | Evidence entry 2026-08-23: a command and a library, neither in the kickstart or the package, loaded from FAT by DOS/LoadSeg and lddemon, run from both a kickstart resident and the Shell, with every address outside the resident ranges and a marker that neither side can fake.  Owed: the four negative fixtures.  One point met differently and documented |
 | B0 | Canonical D1001 display contract and provenance | `not started` | Resolve timing contradictions first |
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `not started` | Requires B0; required before scanout |
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `not started` | Requires B0; backlight remains dark |
@@ -2949,6 +2949,173 @@ heartbeat task.
   `KrnObtainInput()` is a setup call despite its name.  That work belongs with
   Track C's `con` handler and `keyboard.device`, not duplicated in econsole.
 - Next safe step: A5, unaffected by any of this.
+
+### 2026-08-23 - A5: code loaded off the card, on both routes
+
+- State change: A5 `not started` to `hardware partial`.  DOS/LoadSeg fetches
+  code from FAT, relocates it and runs it, and lddemon opens a library the
+  same way; both routes the phase names work.  What is still owed is the
+  negative fixtures and the two gate points discussed at the end.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3, A3 test
+  card in the board.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `a77d48f921`.
+- Artifacts:
+  - core 173,120 bytes,
+    `df08189ab3c767f4e2746b89586a2da031e08b1faeb6bef48d4a411d53681c41`;
+  - package unchanged at
+    `41fea833f4fd3ad01853a8febbf3352a3d7e12b8c3153e82d6ed6747c2241b7c`;
+  - image 67,108,864 bytes,
+    `77550d704b0deb6bd86454233f75390b9edd6a5a954fd9fb7c75fd158c24104b`,
+    thirteen manifest entries, `fsck_msdos` clean, manifest matching the
+    mounted contents, hash unchanged after verification;
+  - on the card and checked against the manifest after writing:
+    `C/sdboot-test` 38,140 bytes `45e43154...`, `C/sdload-test` 5,872 bytes
+    `fdf14c49...`, `Libs/sdproof.library` 18,292 bytes `871c9bd4...`.
+- Configuration: core with `P4_A5_PROBE=1` added to the A4 set; proof files
+  built by `kernel-proof-esp32p4-riscv`, with `STARTUP_DEBUG=1` and
+  `AUTOINIT_DEBUG=1` so the stretch between a program's entry point and its
+  main() narrates itself.
+
+Three files, none of which exists in the kickstart or the flash package, so
+running any of them is evidence in itself.  `sdproof.library` is opened
+through lddemon; `sdboot-test` is a normal AROS command; `sdload-test` is the
+same proof built without the C startup, for reasons that emerged during the
+run and are recorded below.
+
+Audited on the host by `proof/audit-proof.py`, a companion to
+`boot/audit-package.py` and deliberately a separate tool because it checks a
+different loader: the package is placed by `kernel_elf.c`, these files by
+`rom/dos/internalloadseg_elf.c`, and a relocation type one implements says
+nothing about the other.  As in the package audit the accepted set is read out
+of the loader's source rather than restated.  All three pass: 1,328, 178 and
+593 relocations in 18, 14 and 19 types, every type implemented, all ELF32
+little-endian `REL` RISC-V with OS/ABI AROS and flags `0x3, RVC, single-float
+ABI`.
+
+The library, through lddemon:
+
+```text
+[sdproof] init: id A5-sdproof-library-1, base 0x482bc370, marker 0x5d9200f1, id at 0x482bbc68
+[a5]     library base at 0x482bc370  outside the kickstart and the package
+[a5]     library id string at 0x482bbc68  outside the kickstart and the package
+[a5]     SDProofQuery marker 0xf8920af4 expected 0xf8920af4  match
+```
+
+The marker is the point.  `SDProofQuery()` is a register-argument call at LVO
+5 which returns the value its own initialisation wrote into the library base,
+mixed with a value the caller passes in.  Neither side can satisfy that with a
+constant, so a jump table built but wired to the wrong entry, or a base that
+was never initialised, would fail it.
+
+The command, non-interactively, from the AFTERDOS resident:
+
+```text
+[a5]     LoadSeg("SYS:C/sdload-test") = 0x482b9de4
+[a5]     segment at 0x482b9de4  outside the kickstart and the package
+[sdload] entered, id A5-sdboot-test-1-nostartup
+[sdload] entry at 0x482b9df8
+[sdload] id string at 0x482ba15c
+[sdload] argsize 0x00000001 SysBase 0x4ff074c0
+[sdload] sdproof base 0x482bc370
+[sdload] query marker 0xf8920af4 expected 0xf8920af4  match
+[sdload] passed, loaded from the card without the C startup
+[a5]     RunCommand returned 0, the command reports success
+```
+
+And the same command interactively, typed at the Shell prompt:
+
+```text
+__startup_entry_body("\n", 1, 4ff074c0)
+Entering __startup_fromwb()
+[__startup_stdiowin] Entering
+Entering __startup_initexit
+__startup_main: entering main ...
+[sdboot] entered main
+[sdboot] id A5-sdboot-test-1
+[sdboot] main at 0x482cdffa
+[sdboot] id string at 0x482ce2e4
+[sdboot] sdproof base 0x482bc370 version 1
+[sdboot] query marker 0xf8920af4 expected 0xf8920af4  match
+[sdboot] passed, loaded from the card
+__startup_entry_body: returning 0
+```
+
+Note the two addresses for `sdproof.library`: `0x482bc370` in both the
+AFTERDOS probe and the interactively run command.  It is the same open
+library, opened twice, which is what a working lddemon should give.
+
+**The finding that shaped the design, and it is not a defect of this port.**
+`sdboot-test` run from the AFTERDOS probe reached `__startup_entry_body()`
+with the right arguments and then stopped, with no trap and no further output
+from anything - the whole boot with it.  Bracketing it needed two build
+switches that did not exist: `compiler/startup/startup.c` and five files in
+`compiler/autoinit/` all had `#define DEBUG 0` written into the source, so the
+stretch between a loaded program's entry point and its `main()` could not be
+made to narrate from a build command.  Both are now `#ifndef`-guarded with
+`STARTUP_DEBUG=1` and `AUTOINIT_DEBUG=1` gates, the same treatment `dos`,
+`dosboot` and `fat` got for A4.
+
+With that, the last line was `Entering __startup_fromwb()`, and the cause is
+plain in `compiler/autoinit/fromwb.c`: when the calling process has no CLI
+structure, that function concludes the program was started from Workbench and
+does `WaitPort(&myproc->pr_MsgPort)` for a `WBStartup` message.  `RTF_AFTERDOS`
+runs inside dos.library's boot process, which has no CLI, so the wait never
+ends; and since it is the boot process, `cliInit()` never returns, `__dos_Boot()`
+is never called and the Shell never starts.  Any AROS would behave the same.
+
+So the two routes are covered by the file each one fits: `sdload-test`,
+without the C startup and therefore without that chain, for the resident
+route, and `sdboot-test`, a normal command, from the Shell where a CLI exists.
+The probe still loads and address-checks both and says in one line why it runs
+only one.
+
+Two smaller corrections made during the run, both mine:
+
+- the address judgement treated the kickstart as one interval from
+  `__text_start` to `__kernel_end`.  In an XIP build those are in different
+  windows - code around `0x40000000`, data around `0x4ff00000` - so the
+  interval spanned the entire external window and a segment correctly loaded
+  into PSRAM was reported as being inside the kickstart.  It is now three
+  intervals: kickstart code, kickstart data, and the package.  The link script
+  warns about the same gap in its own comment;
+- the AFTERDOS resident sat at priority 0, ahead of lddemon at -123, so the
+  first `OpenLibrary()` of a disk-based library asked a question lddemon did
+  not yet exist to answer, and hung.  Now -126, behind lddemon, shell and
+  shellcommands.
+
+- Acceptance points passed: DOS/LoadSeg executes the command from FAT and
+  lddemon opens the library; the identities printed match `proof/proof_id.h`,
+  which is the single place they are defined, and the file hashes on the card
+  match the image manifest; the addresses of code and of rodata in all three
+  files lie outside the kickstart and the flash package; the system remains
+  alive, with 21 heartbeats and no trap in the run.
+- Acceptance points still owed: the negative fixtures - missing, malformed,
+  wrong-machine and deliberately unsupported-relocation files, each of which
+  has to fail cleanly.  Those need files on the medium, which is the next
+  step and the reason for the flash volume below.
+- One acceptance point cannot be met as written, for the same reason as in
+  A4: "the test succeeds through the normal boot path as well as the recovery
+  path".  The normal path means `S:Startup-Sequence`, which requires
+  `Open("CON:")`, which requires a `con` handler and a console device that
+  are not in the package and belong to Track C.  `econsole` is mutually
+  exclusive with it by design, since `BF_EMERGENCY_CONSOLE` sets
+  `BF_NO_STARTUP_SEQUENCE` in `rom/dos/boot.c`.  What has been shown instead
+  is that the load works from two genuinely different callers, a kickstart
+  resident and a Shell, which is the substance of the point.  Recorded as met
+  differently, as A1's two points were.
+- Safety impact: no write path was exercised.  The same run's A4 probe
+  reports the volume write protected and eight mutations refused, and
+  `SYS:AROS.boot` hashing `0xf949eb96` before and after.  The card was written
+  once on the host, deliberately, with all three file hashes checked against
+  the manifest afterwards through a read-only mount.
+- Remaining risk: iteration on a proof file costs a card handoff, and this
+  phase took four.  That is the case for the flash-backed volume decided
+  next.
+- Next safe step: the flash `storage` partition as a read-only block device
+  with a FAT16 volume, so the negative fixtures and everything after can be
+  written with `esptool` instead of by hand.  Note that FAT32 cannot be used
+  there: it needs 65,525 clusters minimum, that is 33.5 MB at 512-byte
+  clusters, and the whole flash is 32 MB with `storage` at 15.875 MB.
 
 ## Evidence-entry template
 

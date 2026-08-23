@@ -149,6 +149,16 @@ ifdef P4_AFTERDOS_PROBE
 P4_DEBUG_CPPFLAGS += -DP4_AFTERDOS_PROBE
 endif
 
+# P4_A5_PROBE=1 adds A5's non-interactive load proof to the AFTERDOS resident:
+# LoadSeg the proof command off the card, judge its address against the
+# kickstart and package ranges, run it and check its exit code, then open the
+# proof library through lddemon and judge its base the same way.  It needs
+# P4_AFTERDOS_PROBE=1, which is where it runs from, and an image built with
+# kernel-proof-esp32p4-riscv on the card.
+ifdef P4_A5_PROBE
+P4_DEBUG_CPPFLAGS += -DP4_A5_PROBE
+endif
+
 ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
