@@ -686,7 +686,28 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * the link drops to low power and back would be a harder fault to read
      * than a pattern that never does.
      */
+    /*
+     * Burst with sync pulses, and for the scanout path every low-power
+     * transition and the frame acknowledge as well - which is what the
+     * reference does, its disable_lp flag being false for this panel.
+     *
+     * B4 cleared all of them deliberately, to keep the number of moving parts
+     * down while diagnosing.  That traded a configuration known to work on
+     * this hardware for one that does not, and the host stalled with
+     * DPI_PLD_WR_ERR.  The transitions are what give the host somewhere to go
+     * between lines; without them it carries high-speed continuously.
+     *
+     * Scoped to the scanout path rather than turned on everywhere, because
+     * the acknowledge asks the panel to answer each frame and no read from
+     * this panel has ever answered.
+     */
+#ifdef P4_SCANOUT_TEST
+    dsi_wr(P4_DSI_VID_MODE_CFG,
+           P4_DSI_VID_BURST_SYNC_PULSES | P4_DSI_VID_LP_ALL
+           | P4_DSI_VID_FRAME_ACK_EN);
+#else
     dsi_wr(P4_DSI_VID_MODE_CFG, P4_DSI_VID_BURST_SYNC_PULSES);
+#endif
     dsi_wr(P4_DSI_DPI_LP_CMD_TIM, 0);
 
     dsi_wr(P4_DSI_VID_PKT_SIZE, P4_PANEL_H_RES);

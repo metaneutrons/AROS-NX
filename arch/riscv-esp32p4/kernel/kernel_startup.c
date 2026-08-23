@@ -4956,7 +4956,9 @@ static void krnP4PanelProbe(void)
                 krnTimerWait(10);               /* 100 ms of frames */
 
                 krnP4ScanoutState(&sc);
-                krnP4PutStr("[b5]     frame ");
+                krnP4PutStr("[b5]     frame at ");
+                krnP4PutHex32((uint32_t)sc.fb_base);
+                krnP4PutStr(", ");
                 krnP4PutDec((uint32_t)sc.words64);
                 krnP4PutStr(" x 64-bit, lli ");
                 krnP4PutHex32((uint32_t)sc.lli);
@@ -5018,7 +5020,29 @@ static void krnP4PanelProbe(void)
                 }
 
                 krnP4PanelBacklightOn();
-                krnP4PutStr("[b5]     backlight on; left running\n");
+
+                /*
+                 * The backlight state, because it went out again.  It lit
+                 * during the B4 pattern run and does not here, with the same
+                 * call in the same place - so something this phase added is
+                 * reaching it, and a report is cheaper than a guess.
+                 */
+                {
+                    struct P4BacklightState bl;
+
+                    krnP4PanelBacklightState(&bl);
+                    krnP4PutStr("[b5]     backlight latch ");
+                    krnP4PutHex32((uint32_t)bl.latch);
+                    krnP4PutStr(" pin ");
+                    krnP4PutDec((uint32_t)bl.pin_level);
+                    krnP4PutStr(" duty ");
+                    krnP4PutDec((uint32_t)bl.samples_high);
+                    krnP4PutStr("/");
+                    krnP4PutDec((uint32_t)bl.samples);
+                    krnP4PutStr("\n");
+                }
+
+                krnP4PutStr("[b5]     left running\n");
             }
             else if (init == P4_DSI_OK)
                 krnP4PutStr("[b5]     no PSRAM, so no frame to scan out\n");
