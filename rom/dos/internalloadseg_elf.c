@@ -520,6 +520,22 @@ static int relocate
                     && ELF_R_TYPE(rel->info) != R_RISCV_ALIGN
 #endif
                    ) {
+                    /*
+                     * An unresolved weak symbol has the value zero. The link
+                     * editor leaves it undefined on purpose, so refusing it
+                     * here rejects an image that is well formed.
+                     *
+                     * __aros_libreq_<base> is the case that matters: every
+                     * module's generated start file reads it weakly to compare
+                     * the library version it needs (writestart.c, and
+                     * AROS_LIBSET in aros/symbolsets.h), and only a module
+                     * using ADD2LIBS defines it. Zero is the intended answer
+                     * for "no version required".
+                     */
+                    if (ELF_S_BIND(sym->info) == STB_WEAK) {
+                        s = 0;
+                        break;
+                    }
                     bug("[ELF Loader] Undefined symbol '%s'\n",
                         (STRPTR)sh[shsymtab->link].addr + sym->name);
                     SetIoErr(ERROR_BAD_HUNK);

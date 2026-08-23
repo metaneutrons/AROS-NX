@@ -163,6 +163,20 @@ static int relocate(struct elfheader *eh, struct sheader *sh, long shrel_idx, el
                 }
 
                 s = SysBase_ptr;
+            } else if (ELF_S_BIND(sym->info) == STB_WEAK) {
+                /*
+                 * An unresolved weak symbol has the value zero. The link
+                 * editor deliberately leaves it undefined, so refusing it
+                 * here rejects an image that is well formed.
+                 *
+                 * __aros_libreq_<base> is the case that matters: every
+                 * module's generated start file reads it weakly to compare
+                 * the library version it needs (see writestart.c and
+                 * AROS_LIBSET in aros/symbolsets.h), and only a module using
+                 * ADD2LIBS defines it. Zero is exactly the intended answer
+                 * for "no version required".
+                 */
+                s = 0;
             } else {
                 kprintf("[ELF Loader] Undefined symbol '%s'\n", name);
                 return 0;
