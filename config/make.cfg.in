@@ -208,11 +208,15 @@ AROS_CXXEXTS                  := cpp cxx cc c++
 AROS_AS                       := $(TARGET_AS)
 AROS_LD                       := $(TARGET_LD)
 
-# Optional -T linker script for the kernel-module partial link (AROS_LD -Ur), used
-# to order each module's sections so its Resident romtag lands at the module head
-# (see arch/m68k-amiga/boot/kobj-romtag.ld). Empty for every target except
-# amiga-m68k, so all other builds pass the identical -Ur command as before.
-KERNEL_KOBJ_LDSCRIPT          :=
+# The -T linker script for the kernel-module partial link (AROS_LD -Ur), which
+# orders each module's sections so its Resident romtag lands at the module head
+# and its End marker -- the rt_EndSkip the romtag scanner leaps to -- at the
+# module tail. Every target needs that ordering: without it the kickstart link
+# merges all the tags into one block and all the End markers into a block
+# behind it, so the first tag's rt_EndSkip skips every other module and the
+# scanner finds one resident. amiga-m68k has its own script, which folds
+# .rodata in as well.
+KERNEL_KOBJ_LDSCRIPT          := -T $(SRCDIR)/config/kobj-romtag.ld
 ifeq ($(AROS_TARGET_ARCH),amiga)
 ifeq ($(AROS_TARGET_CPU),m68k)
 KERNEL_KOBJ_LDSCRIPT          := -T $(SRCDIR)/arch/m68k-amiga/boot/kobj-romtag.ld
