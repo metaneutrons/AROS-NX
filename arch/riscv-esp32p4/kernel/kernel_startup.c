@@ -160,6 +160,17 @@ unsigned long __esp32p4_psram_size;
 signed char p4_psram_probe_latency_seen = -1;
 
 /*
+ * ANA_PLL_CTRL0 as the PSRAM bring-up found it, kept for the late report.
+ *
+ * Bit 8 is MSPI_CAL_END.  Clear here and PSRAM up means this boot calibrated
+ * the MSPI PLL itself; set here means it inherited a calibration from earlier
+ * firmware and proves nothing.  It belongs in the late report because the
+ * early [psram] lines are written before anything drains the USB serial buffer
+ * and are gone by the time a host can read them.
+ */
+unsigned long p4_psram_calib_entry;
+
+/*
  * The digital supply setting the bring-up left, which is the value that
  * decided the 23 August failure and the one a future one would turn on.
  */
@@ -302,7 +313,10 @@ static void report(unsigned long hartid)
     {
         krnP4PutStr("  ");
         krnP4PutDec((uint32_t)(__esp32p4_psram_size / (1024 * 1024)));
-        krnP4PutStr(" MB, mapped and verified, supply ");
+        krnP4PutStr(" MB, mapped and verified, pll ");
+        krnP4PutStr((p4_psram_calib_entry & (1UL << 8))
+                    ? "inherited" : "calibrated here");
+        krnP4PutStr(", supply ");
         krnP4PutDec((uint32_t)p4_psram_bias_seen);
         krnP4PutStr(", found in read latency ");
         if (p4_psram_probe_latency_seen >= 0)
@@ -5684,6 +5698,7 @@ void kernel_cstart(unsigned long hartid, void *fdt)
         up = krnPSRAMBringUp(&psram, P4_PSRAM_TARGET_HZ);
         csr_set(mstatus, MSTATUS_MIE);
         p4_psram_probe_latency_seen = psram.probe_latency;
+        p4_psram_calib_entry = psram.ana_trace[0];
         p4_psram_bias_seen = psram.bias_set;
 
         if (up)

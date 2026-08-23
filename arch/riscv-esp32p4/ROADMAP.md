@@ -671,7 +671,7 @@ Acceptance gate:
 | Undocumented DSI PHY constants | IDF's DSI bring-up writes `mipi_dsi_phy_ll_set_switch_time(50, 104, 46, 128)` and `set_max_read_time(6000)` with no derivation in any locally available source, and no ESP32-P4 technical reference manual is present on this machine.  They are carried over as opaque constants.  The failure mode is a PHY that locks but produces marginal signalling, which would look like a panel or timing problem rather than a PHY one, so a B4 pattern fault has to consider them before the timing set is blamed. |
 | CPU clock inherited, not configured | This port set no CPU clock and ran at 90 MHz until 2026-08-23 because the second-stage bootloader's divider was never touched.  Nothing failed, everything was four times slower than the silicon allows, and no diagnostic said so; it was found only by measuring `mcycle` against the system timer while chasing a bandwidth figure.  Anything else this port inherits from that bootloader is unexamined in the same way, the flash clock and the cache configuration in particular. |
 | CPU-loop bandwidth is a latency measurement | A scalar read loop costs 13.6 cycles per word from internal SRAM at both 90 and 360 MHz, which is one cache-line fill per sixteen words with a single fill outstanding.  It therefore measures fill latency and not the memory system's throughput, and no threshold about scanout can be argued from it.  A DMA engine is the only way to measure what the display will actually get, and until B5 exists any bandwidth claim about scanout is unfounded. |
-| The MSPI PLL does not calibrate from a cold boot | `MSPI_CAL_END` never appears, while `CPU_PLL_CAL_END` and `SYS_PLL_CAL_END` do.  Not a wrong register or bit - every one is verified against IDF - and not this port's code: IDF's own calibration sequence, run in the bootloader, does not complete either.  The vendor firmware succeeds because it runs `pmu_init` and `rtc_init` first, which neither this port nor the bootloader does.  Until this is found, PSRAM needs the chip to have been calibrated by other firmware, which is a release blocker. |
+| ~~The MSPI PLL does not calibrate from a cold boot~~ | **Closed.**  `PMU_RF_PWC` bit 26, `PERIF_I2C_RSTB`, holds the analogue peripheral I2C block in reset by default, and the PLL's calibration state machine runs over it.  The register interface works regardless, which is why every measurement said the bus was fine while the calibration never began, and the register survives a CPU reset, which is why a boot after other firmware worked and a cold one did not.  Released - and pulsed, so every boot starts from the state that used to fail.  Verified: `calib entry 0x24c done here`, 32 MB at 200 MHz. |
 | The port expander survives a CPU reset | The PCA9535 has no reset pin and keeps its direction and output registers across every reboot, so its state at boot is whatever the last firmware left, not the datasheet default.  Any code that writes a whole register drives pins it never considered; B2's first version pulled the battery-charge enable low that way.  Read-modify-write is the only safe form here, and a check that assumes cold defaults passes vacuously on a warm board. |  And it cannot be cold-started from software at all: the board has a battery, so removing USB changes nothing, and releasing PWR_HOLD with the board on battery was tried cleanly and did not switch it off - the next boot still read the direction register as all-outputs where a cold device reads all-inputs.  Any test that wants the datasheet defaults has to say so out loud.
 | The display has produced no panel-side evidence | Not one DCS reply and not one pixel.  The host reports a locked PHY, lanes in stop state, a clean command path, a running pattern generator with no underrun, and a measured PWM on the backlight pin, and the panel is dark and unlit.  Every register compared matches the vendor BSP and the working reference.  Until something comes back from the panel, every statement about the display path is a statement about the SoC. |
 | DSI reads get no reply | Five DCS reads, the vendor identity register and four standard ones, all return nothing with no protocol error flagged and the host left waiting.  Espressif's driver reads the same register with an unbounded wait and works on this board, so the panel answers there and this port's read path is wrong.  A software reset and the divider encoding have been eliminated.  Nothing in the port depends on reads yet, but a panel that cannot be interrogated cannot be diagnosed either, and B6's orientation work would rather have the scanline register than a photograph. |
@@ -4764,6 +4764,57 @@ written and read back after 1 attempt`, phase window 4 at 67.5 degrees, a
 - Next safe step: cold-start the board and confirm `done here`.  If it says
   that, the release blocker is closed and B3/B4's panel reorder can finally be
   run against DSI hardware.
+
+### 2026-08-23 - proved without opening the case: the port calibrates the PLL itself
+
+- State change: the release blocker is closed.  PSRAM comes up at 200 MHz from
+  a state where the calibration has not been done, on every boot, and the
+  proof no longer needs a battery disconnected behind a screwed-down panel.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+
+**The reset is pulsed, not just released.**  `PERIF_I2C_RSTB` survives a CPU
+reset, so a boot after firmware that already released it inherits a working
+block and demonstrates nothing - the failure only appears when the block
+arrives held down.  Asserting the reset first and then releasing it puts the
+block back into the state a cold boot leaves it in, so every boot exercises the
+path that was broken.  That also removes the need to reach the battery to test
+it, which on this board means removing the display.
+
+**And it is measured, not assumed.**  The kernel prints `ANA_PLL_CTRL0` as
+found, before it clears `MSPI_CAL_STOP`:
+
+```text
+[psram]  chip   32 MB at 200 MHz, vendor 0x0000000d, a word written and read back after 1 attempt
+[psram]  calib  entry 0x0000024c done here
+[psram]  found  read latency 4, set to 4
+[psram]  tuning phases  1111  window 4, chose 67.5 degrees
+```
+
+`0x24c` has bit 8 clear: no calibration had been done when this boot started.
+PSRAM then comes up anyway, so this port performed it.  Three consecutive boots,
+identical.
+
+**A tool, because the measurement kept being the hard part.**
+`tools/reset-and-log.py` holds the serial port open and asserts the reset over
+the control lines, so capture starts before the ROM's first line.  esptool has
+to own the port to reset the board, and by the time it releases it the early
+output is gone - on a boot that loads the module package the log is 60 KB
+against a much smaller USB CDC buffer.  Several findings this session were
+measured twice for that reason, and one dump had to be relocated into a later
+report just to be readable.  It is not a diagnostic of the port; it is the
+thing that should have existed on day one.
+
+- Acceptance points passed: PSRAM at the target clock from an uncalibrated
+  start, reproducibly, with the origin of the calibration printed rather than
+  inferred.
+- Acceptance points failed: none.
+- Remaining risk: none outstanding on PSRAM.  The vendor firmware's test branch
+  still carries the diagnostic dump that found this and should be cleaned up
+  when its owner is ready.
+- Next safe step: B3 stage two and B4 against DSI hardware.  The panel bring-up
+  reorder from the 23 August restore commit - supply, PHY lock, command mode,
+  then the panel's reset pulse - has never run, because PSRAM blocked it, and
+  the reference display path over a real framebuffer is now buildable.
 
 ## Evidence-entry template
 
