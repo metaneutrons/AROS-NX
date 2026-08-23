@@ -12,6 +12,23 @@ include $(SRCDIR)/config/aros.cfg
 
 STARTUP_DIRS := $(GENDIR)/$(CURDIR) $(GENDIR)/$(CURDIR)/nix $(GENDIR)/$(CURDIR)/cxx $(AROS_LIB)
 
+#
+# The D() macros in the startup code are compiled out, and the usual way to
+# turn them on is to edit the source.  That cannot be reproduced from a build
+# command, so they are also gated on a make variable:
+#
+#   gmake linklibs-startup STARTUP_DEBUG=1
+#
+# What it buys is an account of everything between a loaded program's entry
+# point and its main(): which resources and libraries were opened, which
+# PROGRAM_ENTRIES hooks ran, and whether main() was reached.  On a target
+# where no program has run before, that stretch is otherwise silent, and a
+# program that hangs in it produces no output at all.
+#
+ifeq ($(STARTUP_DEBUG),1)
+USER_CPPFLAGS += -DDEBUG=1
+endif
+
 NIXFILES := \
 	nixmain
 

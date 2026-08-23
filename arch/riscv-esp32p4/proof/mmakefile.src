@@ -1,0 +1,57 @@
+#
+#   The A5 proof files.
+#
+#   Neither of these may appear in the kickstart or in the flash package.
+#   The whole point is that they can only have come off the MicroSD card, so
+#   the image build stages them and nothing else references them.
+#
+
+include $(SRCDIR)/config/aros.cfg
+
+#MM- kernel-proof-esp32p4-riscv-lib : includes linklibs
+#
+#   The command calls the library through an explicit AROS_LC1 and does not
+#   include its generated headers, so there is no ordering requirement between
+#   the two halves; see the comment in sdboot_test.c.
+#
+#MM- kernel-proof-esp32p4-riscv-cmd : includes linklibs
+#MM- kernel-proof-esp32p4-riscv-nostartup : includes linklibs
+
+#
+#   Output goes to its own directory, not to the object directory.  With the
+#   two equal, %build_prog's copy step copies the binary onto itself and cp
+#   fails, which mmake reports only as "failed: 512".
+#
+PROOFDIR := $(AROSARCHDIR)/proof
+
+%rule_makedirs dirs="$(PROOFDIR)"
+
+%build_prog mmake=kernel-proof-esp32p4-riscv-cmd \
+    progname=sdboot-test targetdir=$(PROOFDIR) \
+    files="sdboot_test"
+
+#
+#   The same proof without the C startup.  usestartup=no leaves out startup.o
+#   and the autoinit chain, so what is left is the loader, the entry
+#   trampoline and the code itself; see the comment in sdload_test.c for why
+#   that separation is worth having.
+#
+%build_prog mmake=kernel-proof-esp32p4-riscv-nostartup \
+    progname=sdload-test targetdir=$(PROOFDIR) \
+    files="sdload_test" usestartup=no
+
+%build_module mmake=kernel-proof-esp32p4-riscv-lib \
+    modname=sdproof modtype=library \
+    files="sdproof_init" \
+    prefix=$(AROSARCHDIR) moduledir=proof
+
+#
+#   Dependency-only metatarget: both halves are built by the macros above, so
+#   this collects them rather than defining a rule of its own.  A plain #MM
+#   with a rule here silently builds nothing.
+#
+#MM- kernel-proof-esp32p4-riscv : kernel-proof-esp32p4-riscv-cmd \
+#MM-     kernel-proof-esp32p4-riscv-nostartup \
+#MM-     kernel-proof-esp32p4-riscv-lib
+
+%common
