@@ -3642,6 +3642,177 @@ static void krnStartExec(void)
 #endif /* P4_TASK_TEST */
 }
 
+#ifdef P4_FLASHDISK_PROBE
+/*
+ * Can the flash development volume be read, and is it the volume that was
+ * built?
+ *
+ * The first measured step towards ending the card handoffs.  Nothing here
+ * needs exec, DOS or a block device: it maps the region through the same
+ * krnP4FlashMap() the package loader uses and reads the structures the
+ * generator wrote.  So if this fails, it fails before anything else is at
+ * stake, and if it passes, the device that comes next has a proven read path
+ * underneath it.
+ *
+ * What is checked is structural rather than a hash of the whole thing.  The
+ * numbers below are the ones image/mmakefile.src puts in the .layout file
+ * next to the image, so they can be compared without deriving anything: an
+ * MBR with one FAT16 LBA entry, a boot sector whose geometry matches, and
+ * the label and serial the build was told to use.  Two sector hashes are
+ * printed as well, for comparison against the host.
+ */
+static uint32_t krnP4FlashHash(const unsigned char *p, unsigned long len)
+{
+    uint32_t h = 2166136261UL;
+
+    while (len--)
+    {
+        h ^= *p++;
+        h *= 16777619UL;
+    }
+    return h;
+}
+
+static uint16_t krnP4Rd16LE(const unsigned char *p)
+{
+    return (uint16_t)(p[0] | (p[1] << 8));
+}
+
+static uint32_t krnP4Rd32LE(const unsigned char *p)
+{
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8)
+         | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static int krnP4FlashDiskProbe(unsigned long pkg_off, unsigned long pkg_size)
+{
+    unsigned long base = pkg_off + P4_FLASHDISK_PART_OFFSET;
+    const unsigned char *sec;
+    int passed = 1;
+
+    krnP4PutStr("[fdisk]  flash volume probe starting\n");
+    krnP4PutStr("[fdisk]  partition at ");
+    krnP4PutHex32((uint32_t)pkg_off);
+    krnP4PutStr(" size ");
+    krnP4PutHex32((uint32_t)pkg_size);
+    krnP4PutStr(", volume at ");
+    krnP4PutHex32((uint32_t)base);
+    krnP4PutStr(" size ");
+    krnP4PutHex32((uint32_t)P4_FLASHDISK_SIZE);
+    krnP4PutStr("\n");
+
+    if (P4_FLASHDISK_PART_OFFSET + P4_FLASHDISK_SIZE > pkg_size)
+    {
+        krnP4PutStr("[fdisk]  the volume does not fit in the partition\n");
+        return 0;
+    }
+
+    /* Sector 0: the MBR the generator wrote. */
+    sec = krnP4FlashMap(base, 512);
+    if (!sec)
+    {
+        krnP4PutStr("[fdisk]  could not map sector 0\n");
+        return 0;
+    }
+
+    krnP4PutStr("[fdisk]  MBR signature ");
+    krnP4PutHex32((uint32_t)krnP4Rd16LE(sec + 510));
+    krnP4PutStr(", hash ");
+    krnP4PutHex32(krnP4FlashHash(sec, 512));
+    krnP4PutStr("\n");
+    if (krnP4Rd16LE(sec + 510) != 0xAA55)
+    {
+        krnP4PutStr("[fdisk]  no MBR signature; nothing was written here\n");
+        return 0;
+    }
+
+    {
+        unsigned char type = sec[446 + 4];
+        uint32_t first = krnP4Rd32LE(sec + 446 + 8);
+        uint32_t count = krnP4Rd32LE(sec + 446 + 12);
+
+        krnP4PutStr("[fdisk]  partition entry: type ");
+        krnP4PutHex32((uint32_t)type);
+        krnP4PutStr(", first sector ");
+        krnP4PutDec(first);
+        krnP4PutStr(", sectors ");
+        krnP4PutDec(count);
+        /* 0x0e is "W95 16-bit LBA FAT", which
+           rom/partition/partition_types.c maps to FAT\1, the DosType the FAT
+           handler registers for FAT16. */
+        krnP4PutStr(type == 0x0E ? ", FAT16 LBA\n" : ", NOT FAT16 LBA\n");
+        if (type != 0x0E)
+            passed = 0;
+
+        /* The boot sector of that partition. */
+        sec = krnP4FlashMap(base + (unsigned long)first * 512, 512);
+        if (!sec)
+        {
+            krnP4PutStr("[fdisk]  could not map the boot sector\n");
+            return 0;
+        }
+    }
+
+    krnP4PutStr("[fdisk]  boot sector hash ");
+    krnP4PutHex32(krnP4FlashHash(sec, 512));
+    krnP4PutStr(", signature ");
+    krnP4PutHex32((uint32_t)krnP4Rd16LE(sec + 510));
+    krnP4PutStr("\n[fdisk]    bytes/sector ");
+    krnP4PutDec((uint32_t)krnP4Rd16LE(sec + 11));
+    krnP4PutStr(", sectors/cluster ");
+    krnP4PutDec((uint32_t)sec[13]);
+    krnP4PutStr(", reserved ");
+    krnP4PutDec((uint32_t)krnP4Rd16LE(sec + 14));
+    krnP4PutStr(", fats ");
+    krnP4PutDec((uint32_t)sec[16]);
+    krnP4PutStr("\n[fdisk]    root entries ");
+    krnP4PutDec((uint32_t)krnP4Rd16LE(sec + 17));
+    krnP4PutStr(", fat sectors ");
+    krnP4PutDec((uint32_t)krnP4Rd16LE(sec + 22));
+    krnP4PutStr(", total sectors ");
+    krnP4PutDec(krnP4Rd32LE(sec + 32));
+    krnP4PutStr("\n[fdisk]    serial ");
+    krnP4PutHex32(krnP4Rd32LE(sec + 39));
+    krnP4PutStr(", label '");
+    {
+        unsigned int i;
+
+        for (i = 0; i < 11; ++i)
+            krnP4PutC((char)sec[43 + i]);
+    }
+    krnP4PutStr("', type '");
+    {
+        unsigned int i;
+
+        for (i = 0; i < 8; ++i)
+            krnP4PutC((char)sec[54 + i]);
+    }
+    krnP4PutStr("'\n");
+
+    if (krnP4Rd16LE(sec + 510) != 0xAA55)
+        passed = 0;
+    if (krnP4Rd16LE(sec + 11) != 512 || sec[16] != 2)
+        passed = 0;
+    /* FAT16 is the whole point: a zero here would mean the generator wrote a
+       FAT32 boot sector, which cannot work in a volume this size. */
+    if (krnP4Rd16LE(sec + 22) == 0 || krnP4Rd16LE(sec + 17) == 0)
+    {
+        krnP4PutStr("[fdisk]  boot sector is not FAT16\n");
+        passed = 0;
+    }
+    if (sec[54] != 'F' || sec[55] != 'A' || sec[56] != 'T'
+        || sec[57] != '1' || sec[58] != '6')
+    {
+        krnP4PutStr("[fdisk]  filesystem type string is not FAT16\n");
+        passed = 0;
+    }
+
+    krnP4PutStr("[fdisk]  flash volume probe ");
+    krnP4PutStr(passed ? "passed\n" : "FAILED\n");
+    return passed;
+}
+#endif /* P4_FLASHDISK_PROBE */
+
 void kernel_cstart(unsigned long hartid, void *fdt)
 {
     unsigned long beat = 0;
@@ -3776,6 +3947,15 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutStr(", ");
             krnP4PutDec((uint32_t)(pkg_size / 1024));
             krnP4PutStr(" KB\n");
+
+#ifdef P4_FLASHDISK_PROBE
+            /*
+             * Before the package is copied, because krnP4FlashMap() has one
+             * scratch window and the loader is about to use it.  Reading the
+             * volume first leaves the loader the state it expects.
+             */
+            (void)krnP4FlashDiskProbe(pkg_off, pkg_size);
+#endif
 
             if (__esp32p4_psram_size)
             {

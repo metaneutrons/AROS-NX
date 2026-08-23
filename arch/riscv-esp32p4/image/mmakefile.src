@@ -24,6 +24,16 @@ IMAGE_SERIAL    ?= 0xa5051d00
 IMAGE_TIMESTAMP ?= 2026-01-01
 IMAGE_SIZE_MB   ?= 64
 
+#   The flash development volume.  Its offset and size are also in
+#   kernel/hardware.h, where the board-side code reads them; the two have to
+#   agree and the probe prints both so a mismatch is visible rather than
+#   mysterious.
+FLASHDISK          := $(IMAGEDIR)/aros-flashdisk.img
+FLASHDISK_SIZE_MB  ?= 4
+FLASHDISK_OFFSET   ?= 0xc00000
+FLASHDISK_SERIAL   ?= 0xa5051d10
+FLASHDISK_LABEL    ?= AROSP4DEV
+
 #
 #   The A5 proof files are built separately and staged here.  They must not be
 #   in the kickstart or the flash package; the card is the only place they
@@ -57,6 +67,34 @@ kernel-image-esp32p4-riscv-stage :
 	@if $(TEST) -f $(PROOFDIR)/sdproof.library ; then \
 	    $(CP) $(PROOFDIR)/sdproof.library $(STAGE)/Libs/sdproof.library ; \
 	fi
+
+#
+#   The development volume that lives in flash rather than on a card.
+#
+#   Same staged content, same generator, FAT16 instead of FAT32.  FAT32 is
+#   not a choice here: it is only FAT32 above 65524 clusters, which is 33.5 MB
+#   at 512-byte clusters, and the whole flash is 32 MB.  FAT16 needs 4085,
+#   and four megabytes gives 6063.
+#
+#   It sits inside the `arosbsp` partition, after the package, rather than in
+#   the `storage` partition the ESP-IDF table declares.  Two reasons.  The
+#   flash cache mapping stops at 16 MB and `storage` begins at 16.9 MB, so
+#   krnP4FlashMap() cannot reach it at all; reading it would need raw SPI
+#   commands with the cache suspended, which is a great deal of new risk for
+#   a development convenience.  And `arosbsp` is a custom type this port
+#   defines, so its internal structure is ours to decide, whereas the
+#   partition table is an explicit-write target.
+#
+#MM kernel-flashdisk-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
+kernel-flashdisk-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
+	@$(ECHO) "Creating   $(FLASHDISK)"
+	@$(PYTHON) $(MKFAT32) --content $(STAGE) --out $(FLASHDISK) \
+	    --size-mb $(FLASHDISK_SIZE_MB) --fat-bits 16 \
+	    --serial $(FLASHDISK_SERIAL) --timestamp $(IMAGE_TIMESTAMP) \
+	    --label $(FLASHDISK_LABEL)
+	@shasum -a 256 $(FLASHDISK) > $(basename $(FLASHDISK)).sha256
+	@$(ECHO) "Write it with: esptool --chip esp32p4 --port <port> \
+write-flash $(FLASHDISK_OFFSET) $(FLASHDISK)"
 
 #MM kernel-image-esp32p4-riscv
 kernel-image-esp32p4-riscv : kernel-image-esp32p4-riscv-stage

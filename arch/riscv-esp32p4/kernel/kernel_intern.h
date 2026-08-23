@@ -113,6 +113,32 @@ void krnP4CacheOn(unsigned long token);
 #define P4_BSP_PART_TYPE    0x40
 #define P4_BSP_PART_LABEL   "arosbsp"
 
+/*
+ * The development volume, at the end of that same partition.
+ *
+ * The partition is a custom type this port defines, so how it is divided is
+ * this port's decision, and dividing it costs nothing: the package uses
+ * 1.16 MB of 8.25 MB.  The volume takes the last four megabytes and the
+ * package keeps everything below, which the build asserts, so growing the
+ * package past the split is a build error rather than a corrupted
+ * filesystem.
+ *
+ * Expressed as an offset inside the partition rather than as a flash
+ * address, so it follows the partition if the table ever moves.  On this
+ * board that lands it at 0x820000 + 0x3e0000 = 0xc00000, ending exactly at
+ * the 16 MB line where cache-mapped flash stops.  That matters: the
+ * `storage` partition the ESP-IDF table declares for filesystems begins at
+ * 0x1020000, past the limit, so krnP4FlashMap() cannot reach it at all.
+ *
+ * image/mmakefile.src writes the volume at FLASHDISK_OFFSET with
+ * FLASHDISK_SIZE_MB, and those two have to agree with these.  The probe
+ * prints both sides so a disagreement shows up as a wrong signature rather
+ * than as a mystery.
+ */
+#define P4_FLASHDISK_PART_OFFSET    0x003E0000UL
+#define P4_FLASHDISK_SIZE           0x00400000UL
+#define P4_FLASHDISK_PKG_LIMIT      P4_FLASHDISK_PART_OFFSET
+
 /* Reading flash from code that executes out of it (kernel_flash.c) */
 void krnP4FlashSurvey(void);
 void *krnP4FlashMap(unsigned long paddr, unsigned long len);

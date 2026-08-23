@@ -625,7 +625,8 @@ Acceptance gate:
 | CMD18 failure | Split ownership: generic code must run CMD12 cleanup and propagate STOP errors; the ESP32-P4 backend must recover controller/FIFO/data state and prove `TRAN`. |
 | Partition input | Treat all table bytes as untrusted and budget every traversal. |
 | Boot package | Boot-critical residents remain in internal flash; ordinary system files load from SD. |
-| Package capacity | `arosbsp` is 0x7e0000 bytes; size and every member hash are checked on each expansion. |
+| Package capacity | `arosbsp` is 0x7e0000 bytes and is now shared: the package has everything below `P4_FLASHDISK_PART_OFFSET` and the flash development volume the four megabytes above.  `kernel-package-esp32p4-riscv-checksize` fails the build if the package crosses the split, because past it the loader would read filesystem bytes as members.  Size and every member hash are checked on each expansion. |
+| Flash reads past 16 MB | `krnP4FlashMap()` refuses anything at or past the cache-mapping limit, so the `storage` partition at 0x1020000 is unreachable by that route.  Anything that needs it would have to use raw SPI commands with the cache suspended and a destination in internal SRAM, which is why the development volume was put inside `arosbsp` instead. |
 | Panel timing | Start from measured Vellum behavior, not the contradictory 60 Hz comment. |
 | PSRAM | 20 MHz remains the safe fallback; display scanout requires a calibrated, measured faster path. |
 | Rotation | Native portrait first; correct landscape only after stable scanout and VSYNC ownership. |
@@ -3230,6 +3231,111 @@ the reference command.
   Amiga filesystem was considered and rejected for now: it would need RDB,
   whose handler exists but which A2's hardening does not cover, and a second
   filesystem in the package where `fat` is already verified.
+
+### 2026-08-23 - a FAT16 development volume in flash, read from the board
+
+- State change: none to any roadmap phase.  This is infrastructure: the first
+  two of three measured steps towards writing test content with `esptool`
+  instead of by hand.  The generator can emit FAT16 and the board can read the
+  volume; a block device and a boot node come next.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3.  The A3
+  card stayed in the board throughout and was not touched.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `63868f24d6`.
+- Artifacts:
+  - `aros-flashdisk.img` 4,194,304 bytes,
+    `1ee0c7059c1471b1448d53b5ddfefc639c710e38ff6ad663d7da00ed4343035c`;
+  - core 178,704 bytes,
+    `3e235b2d577737f429056d2ec23c000600e743292f0bf0837e8e99115240b270`;
+  - the A3 image rebuilt to
+    `77550d704b0deb6bd86454233f75390b9edd6a5a954fd9fb7c75fd158c24104b`,
+    byte-identical to before the generator changed, which is the regression
+    check that matters here.
+- Written to `ota_0` at `0x20000` and to `arosbsp` at `0xc00000`, both
+  verified by esptool hash.  The second offset is new, and the standing
+  authorisation in AGENTS.md was extended to cover it on the user's decision.
+
+**Why FAT16 and not FAT32, and not an Amiga filesystem.**  FAT32 is only
+FAT32 above 65,524 clusters, which is 33.5 MB at 512-byte clusters, and the
+whole flash is 32 MB.  So the choice was FAT16 or an Amiga filesystem.  Both
+have independent host tooling - `fsck_msdos` and a mount for one, `xdftool`
+and `rdbtool`, both installed here, for the other - so that was not the
+deciding factor as first assumed.  What decided it: an FFS volume in an MBR
+partition is not recognised, because `rom/partition/partition_types.c` maps
+type bytes to FAT, NTFS and Linux DosTypes, so it would need RDB, whose
+handler exists but which A2's hardening does not cover.  A2 needed eleven
+malformed tables to secure MBR and GPT; a new unhardened table path is not a
+small price for a development convenience.  Beyond that it would mean a second
+filesystem in the package, where `fat` is already there and verified.
+
+**Where the volume lives, and why not in `storage`.**  The ESP-IDF table
+declares `storage, data, fat, 0x1020000, 0xfe0000`, and that is unusable:
+`krnP4FlashMap()` refuses anything at or past the 16 MB cache-mapping limit,
+and `storage` begins at 16.9 MB.  Reading it would need raw SPI commands with
+the cache suspended and the destination in internal SRAM rather than PSRAM,
+which is a great deal of new risk for a convenience.  So the volume takes the
+last four megabytes of `arosbsp` instead, which is a custom type this port
+defines and whose internal structure is therefore its own to decide.  The
+package uses 1,164,016 of the 4,063,232 bytes below the split, and
+`kernel-package-esp32p4-riscv-checksize` fails the build if it grows past it,
+because a package over the split would have the loader read filesystem bytes
+as members.
+
+**FAT16 in the generator.**  `mkfat32.py` grew a `--fat-bits` option.  The two
+formats differ in less than they share: the width of a FAT entry, where the
+root directory lives, how many reserved sectors precede the FATs, and the
+layout of the boot sector's second half.  Everything else - the MBR, short and
+long names, directory entries, cluster chains, the volume label entry - is
+written once for both.  The FAT16 cluster count is checked against its own
+range, 4085 to 65524, the same way FAT32's floor already was; a 3 MB volume
+was rejected at 4031 clusters, which is how that check earned its place.
+
+Verified by tools that did not build it: macOS reports the image as
+`Windows_FAT_16` named `AROSP4DEV`, `fsck_msdos` finds 13 files and no errors,
+and the two proof files read off a mount hash to the manifest values.  And the
+FAT32 path is unchanged, proved by the A3 image rebuilding to the same
+sha256 it had before.
+
+**Read from the board**, through the same `krnP4FlashMap()` the package loader
+uses, before exec exists and before any block device:
+
+```text
+[fdisk]  partition at 0x00820000 size 0x007e0000, volume at 0x00c00000 size 0x00400000
+[fdisk]  MBR signature 0x0000aa55, hash 0xb239b878
+[fdisk]  partition entry: type 0x0000000e, first sector 2048, sectors 6144, FAT16 LBA
+[fdisk]  boot sector hash 0x623c3a14, signature 0x0000aa55
+[fdisk]    bytes/sector 512, sectors/cluster 1, reserved 1, fats 2
+[fdisk]    root entries 512, fat sectors 24, total sectors 6144
+[fdisk]    serial 0xa5051d10, label 'AROSP4DEV  ', type 'FAT16   '
+[fdisk]  flash volume probe passed
+```
+
+Every value matches the host.  The two FNV hashes are the decisive ones:
+`0xb239b878` for the MBR and `0x623c3a14` for the boot sector, computed
+independently from the image file and reproduced byte for byte from flash.
+Type `0x0e` is what `partition_types.c` maps to `FAT\1`, the DosType the FAT
+handler already registers, so the package needs no change at all.
+
+A tooling improvement fell out of this and is worth keeping.  The probe runs
+before the package load, and its output was invisible: `esptool --after
+hard-reset` resets the board and exits, and a reader attaching afterwards has
+already missed the first lines.  The capture script now opens the port first
+and pulses RTS itself, the same line esptool uses, so nothing is lost in the
+gap.  That also made the bootloader's own partition listing readable, which
+independently confirms `arosbsp unknown 40 00 00820000 007e0000`.
+
+- Acceptance: the generator emits a FAT16 volume that three independent host
+  tools accept; the FAT32 output is unchanged; the board reads the volume's
+  MBR and boot sector from flash with both hashes matching the host; and the
+  A4 and A5 probes in the same run still pass, with no trap.
+- Safety impact: the SD card was untouched.  The flash write went only to the
+  region behind the package inside `arosbsp`, and the package size assertion
+  ran before it.
+- Remaining risk: `krnP4FlashMap()` has one scratch window and is not
+  re-entrant, so a block device built on it has to serialise its reads.  The
+  probe runs before the package loader for that reason and says so.
+- Next safe step: the block device over this volume, then a boot node with a
+  lower priority than the SD partition so a present card still wins, and a
+  `bootdevice=` option to force the flash.
 
 ## Evidence-entry template
 

@@ -69,9 +69,29 @@ PKG_RES       := bootloader FileSystem lddemon shell shellcommands \
 PKG_DEVS      := sdcard ramtest
 PKG_HANDLERS  := fat econsole
 
+#
+#   The package shares its partition with the flash development volume, which
+#   takes the last four megabytes; see P4_FLASHDISK_PART_OFFSET in
+#   kernel/kernel_intern.h.  Growing past the split would have the loader
+#   read filesystem bytes as package members, so it is a build error here
+#   instead.
+#
+PKG_LIMIT := 4063232
+
 %make_package mmake=kernel-package-esp32p4-riscv \
     file=$(AROSARCHDIR)/aros-bsp.pkg \
     libs="$(PKG_LIBS)" arch_libs="$(PKG_LIBS_ARCH)" \
     res="$(PKG_RES)" devs="$(PKG_DEVS)" handlers="$(PKG_HANDLERS)"
+
+#MM
+kernel-package-esp32p4-riscv-checksize : kernel-package-esp32p4-riscv
+	@size=`wc -c < $(AROSARCHDIR)/aros-bsp.pkg` ; \
+	if $(TEST) $$size -gt $(PKG_LIMIT) ; then \
+	    $(ECHO) "aros-bsp.pkg is $$size bytes, over the $(PKG_LIMIT)-byte" \
+	            "split with the flash development volume" ; \
+	    exit 1 ; \
+	else \
+	    $(ECHO) "Package     $$size of $(PKG_LIMIT) bytes before the flash volume" ; \
+	fi
 
 %common
