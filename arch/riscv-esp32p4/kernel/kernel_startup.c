@@ -5705,6 +5705,21 @@ void kernel_cstart(unsigned long hartid, void *fdt)
              * the part arrived configured by other firmware and the sweep is
              * what got in - the case that used to report an absent chip.
              */
+            /*
+             * Whether this boot calibrated the PLL or inherited a calibration.
+             *
+             * ana_trace[0] is ANA_PLL_CTRL0 as found, before this port clears
+             * MSPI_CAL_STOP.  Bit 8 set there means some earlier firmware left
+             * the calibration done and this run proves nothing about being able
+             * to start it; bit 8 clear there and PSRAM up means this port did
+             * the calibration itself.  Printed because the difference is the
+             * whole question and it is not visible any other way.
+             */
+            krnP4PutStr("[psram]  calib  entry ");
+            krnP4PutHex32((uint32_t)psram.ana_trace[0]);
+            krnP4PutStr((psram.ana_trace[0] & (1UL << 8))
+                        ? " inherited\n" : " done here\n");
+
             krnP4PutStr("[psram]  supply inherited ");
             krnP4PutDec((uint32_t)psram.bias_found);
             krnP4PutStr(", set ");
