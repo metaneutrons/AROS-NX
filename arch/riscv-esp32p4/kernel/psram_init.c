@@ -31,6 +31,46 @@
  *
  * Returns non-zero if the PLL reported its calibration done.
  */
+/*
+ * The clock-dependent parameters, chosen once from the target rate.
+ *
+ * These were compile-time constants while there was only one clock.  They
+ * are variables now rather than a parameter threaded through six functions,
+ * because every one of those functions runs before exec exists and is called
+ * from exactly one place in one order; a second caller would be the bug, not
+ * the shared state.  In SRAM, like the code that reads them.
+ */
+P4_SRAMDATA static uint32_t p4_rd_latency  = P4_PSRAM_RD_LATENCY_SLOW;
+P4_SRAMDATA static uint32_t p4_wr_latency  = P4_PSRAM_WR_LATENCY_SLOW;
+P4_SRAMDATA static uint32_t p4_rd_reg_dummy = P4_PSRAM_RD_REG_DUMMY_SLOW;
+P4_SRAMDATA static uint32_t p4_rd_dummy    = P4_PSRAM_RD_DUMMY_SLOW;
+P4_SRAMDATA static uint32_t p4_wr_dummy    = P4_PSRAM_WR_DUMMY_SLOW;
+
+/*
+ * Above 80 MHz the chip needs the longer latencies.  The threshold is the
+ * boundary ESP-IDF draws between its own parameter sets, and 200 MHz is the
+ * only rate above it this port asks for.
+ */
+P4_SRAMCODE static void p4_psram_select_params(unsigned long target_hz)
+{
+    if (target_hz > 80000000UL)
+    {
+        p4_rd_latency   = P4_PSRAM_RD_LATENCY_FAST;
+        p4_wr_latency   = P4_PSRAM_WR_LATENCY_FAST;
+        p4_rd_reg_dummy = P4_PSRAM_RD_REG_DUMMY_FAST;
+        p4_rd_dummy     = P4_PSRAM_RD_DUMMY_FAST;
+        p4_wr_dummy     = P4_PSRAM_WR_DUMMY_FAST;
+    }
+    else
+    {
+        p4_rd_latency   = P4_PSRAM_RD_LATENCY_SLOW;
+        p4_wr_latency   = P4_PSRAM_WR_LATENCY_SLOW;
+        p4_rd_reg_dummy = P4_PSRAM_RD_REG_DUMMY_SLOW;
+        p4_rd_dummy     = P4_PSRAM_RD_DUMMY_SLOW;
+        p4_wr_dummy     = P4_PSRAM_WR_DUMMY_SLOW;
+    }
+}
+
 P4_SRAMCODE static int p4_regi2c_idle(void)
 {
     int spin = 100000;
@@ -181,10 +221,57 @@ P4_SRAMCODE unsigned long krnPSRAMMPLLState(void)
  *
  * Returns the rate actually set, or 0 if the controller did not answer.
  */
+/*
+ * The divider alone, with no reset and nothing else touched.
+ *
+ * This exists because krnPSRAMClockUp() below is not a clock setter: it also
+ * takes both controllers out of reset, which is exactly right the first time
+ * and destroys everything the second.  Calling it again after the mode
+ * registers were written left the controller at its reset defaults and the
+ * next transaction never completed, which is a hang with no output at all.
+ * The calibration changes the clock three times, so it needs this.
+ *
+ * ESP-IDF's own clock change is the same three register writes and no reset,
+ * which is the confirmation that nothing else has to move with the divider.
+ * The DLL in particular stays as krnPSRAMConfigure() left it.
+ *
+ * Returns the rate actually set, or 0 if the controller kept nothing.
+ */
+P4_SRAMCODE unsigned long krnPSRAMClockSet(unsigned long target_hz)
+{
+    unsigned long div, n, clkval;
+
+    if (target_hz == 0)
+        target_hz = 20000000UL;
+
+    /* Round up, so the bus never runs faster than asked */
+    div = (P4_PSRAM_MPLL_HZ + target_hz - 1) / target_hz;
+    if (div < 1)
+        div = 1;
+    if (div > 256)              /* the counters are eight bits each */
+        div = 256;
+
+    if (div == 1)
+        clkval = P4_SCLK_EQU_SYSCLK;
+    else
+    {
+        n = div - 1;
+        clkval = (n << P4_SCLKCNT_N_SHIFT)
+               | ((div / 2 - 1) << P4_SCLKCNT_H_SHIFT)
+               | (n << P4_SCLKCNT_L_SHIFT);
+    }
+
+    p4_w32(P4_MSPI2_SRAM_CLK, clkval);
+    p4_w32(P4_MSPI3_CLOCK, clkval);
+
+    if (p4_r32(P4_MSPI2_SRAM_CLK) != clkval)
+        return 0;
+
+    return P4_PSRAM_MPLL_HZ / div;
+}
+
 P4_SRAMCODE unsigned long krnPSRAMClockUp(unsigned long target_hz)
 {
-    unsigned long div, n, clkval, readback;
-
     /* Module clocks first: the registers below do not answer without them */
     p4_w32(P4_CLKRST_SOC_CLK_CTRL0,
            p4_r32(P4_CLKRST_SOC_CLK_CTRL0) | P4_PSRAM_SYS_CLK_EN);
@@ -205,41 +292,13 @@ P4_SRAMCODE unsigned long krnPSRAMClockUp(unsigned long target_hz)
            (p4_r32(P4_CLKRST_PERI_CLK_CTRL00) & ~P4_PSRAM_CLK_SRC_MASK)
            | ((unsigned long)P4_PSRAM_CLK_SRC_MPLL << P4_PSRAM_CLK_SRC_SHIFT));
 
-    /* Round the divider up, so the bus never runs faster than asked */
-    if (target_hz == 0)
-        target_hz = 20000000UL;
-    div = (P4_PSRAM_MPLL_HZ + target_hz - 1) / target_hz;
-    if (div < 1)
-        div = 1;
-    if (div > 256)          /* the counters are eight bits each */
-        div = 256;
-
-    if (div == 1)
-    {
-        clkval = P4_SCLK_EQU_SYSCLK;
-    }
-    else
-    {
-        n = div - 1;
-        clkval = (n << P4_SCLKCNT_N_SHIFT)
-               | ((div / 2 - 1) << P4_SCLKCNT_H_SHIFT)
-               | (n << P4_SCLKCNT_L_SHIFT);
-    }
-
-    p4_w32(P4_MSPI2_SRAM_CLK, clkval);
-    p4_w32(P4_MSPI3_CLOCK, clkval);
-
     /*
-     * The read-back is the test. An unclocked or still-reset controller
-     * does not keep what was written to it, so a value that comes back
-     * unchanged says the two steps above took effect - which is the whole
-     * claim this stage makes.
+     * The divider, and its read-back is the test for everything above.  An
+     * unclocked or still-reset controller does not keep what was written to
+     * it, so a value that comes back unchanged says the reset was released
+     * and the module clocks are on, which is the whole claim this stage makes.
      */
-    readback = p4_r32(P4_MSPI2_SRAM_CLK);
-    if (readback != clkval)
-        return 0;
-
-    return P4_PSRAM_MPLL_HZ / div;
+    return krnPSRAMClockSet(target_hz);
 }
 
 /*
@@ -266,7 +325,7 @@ P4_SRAMCODE unsigned long krnPSRAMClockUp(unsigned long target_hz)
  */
 P4_SRAMCODE static void p4_psram_pin_drive(unsigned long drv)
 {
-    P4_SRAMDATA static const struct { unsigned short off; unsigned char sh; }
+    P4_SRAMRODATA static const struct { unsigned short off; unsigned char sh; }
         pins[] = { P4_PSRAM_PIN_DRV_TABLE };
     unsigned int i;
 
@@ -366,7 +425,7 @@ P4_SRAMCODE static void p4_psram_cmd(uint32_t cmd, uint32_t reg_addr,
 P4_SRAMCODE static void p4_psram_reg_read(uint32_t addr, uint32_t *pair)
 {
     *pair = 0;
-    p4_psram_cmd(P4_PSRAM_REG_READ, addr, P4_PSRAM_RD_REG_DUMMY_SLOW,
+    p4_psram_cmd(P4_PSRAM_REG_READ, addr, p4_rd_reg_dummy,
                  NULL, 0, pair, 16);
 }
 
@@ -412,8 +471,8 @@ P4_SRAMCODE void krnPSRAMModeInit(void)
      * The two latencies are the pair for 80 MHz and below and are the only
      * values here that depend on the clock.
      */
-    p4_psram_reg_write(0, (P4_PSRAM_RD_LATENCY_SLOW << 2) | (1UL << 5));
-    p4_psram_reg_write(4, P4_PSRAM_WR_LATENCY_SLOW << 5);
+    p4_psram_reg_write(0, (p4_rd_latency << 2) | (1UL << 5));
+    p4_psram_reg_write(4, p4_wr_latency << 5);
     p4_psram_reg_write(8, 3UL | (1UL << 3) | (1UL << 6));
 }
 
@@ -445,6 +504,43 @@ P4_SRAMCODE int krnPSRAMIdentify(unsigned char *vendor, unsigned char *density)
 }
 
 /*
+ * A block through the command path, in transaction-sized pieces.
+ *
+ * The controller's FIFO takes 64 bytes, so a 128-byte reference block is two
+ * transactions.  These exist for the tuning, which needs to write a known
+ * block at a clock it trusts and read it back at one it does not.
+ */
+P4_SRAMCODE void krnPSRAMBlockWrite(uint32_t addr, const uint32_t *words,
+                                    uint32_t count)
+{
+    while (count)
+    {
+        uint32_t n = count > P4_PSRAM_FIFO_WORDS ? P4_PSRAM_FIFO_WORDS : count;
+
+        p4_psram_cmd(P4_PSRAM_SYNC_WRITE, addr, p4_wr_dummy,
+                     (uint32_t *)words, n * 32, NULL, 0);
+        words += n;
+        addr += n * 4;
+        count -= n;
+    }
+}
+
+P4_SRAMCODE void krnPSRAMBlockRead(uint32_t addr, uint32_t *words,
+                                   uint32_t count)
+{
+    while (count)
+    {
+        uint32_t n = count > P4_PSRAM_FIFO_WORDS ? P4_PSRAM_FIFO_WORDS : count;
+
+        p4_psram_cmd(P4_PSRAM_SYNC_READ, addr, p4_rd_dummy,
+                     NULL, 0, words, n * 32);
+        words += n;
+        addr += n * 4;
+        count -= n;
+    }
+}
+
+/*
  * Write a word to the chip and read it back.
  *
  * This answers a different question from the identity read: not whether the
@@ -458,9 +554,9 @@ P4_SRAMCODE int krnPSRAMRoundTrip(uint32_t *back)
     uint32_t out = P4_PSRAM_TEST_PATTERN;
     uint32_t in = 0;
 
-    p4_psram_cmd(P4_PSRAM_SYNC_WRITE, 0, P4_PSRAM_WR_DUMMY_SLOW,
+    p4_psram_cmd(P4_PSRAM_SYNC_WRITE, 0, p4_wr_dummy,
                  &out, 32, NULL, 0);
-    p4_psram_cmd(P4_PSRAM_SYNC_READ, 0, P4_PSRAM_RD_DUMMY_SLOW,
+    p4_psram_cmd(P4_PSRAM_SYNC_READ, 0, p4_rd_dummy,
                  NULL, 0, &in, 32);
 
     if (back)
@@ -497,21 +593,42 @@ P4_SRAMCODE int krnPSRAMRoundTrip(uint32_t *back)
  * print, so that the sequence is not interleaved with a console that lives
  * in flash.
  */
-P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info)
+P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
+                                unsigned long target_hz)
 {
-    P4_SRAMDATA static const unsigned char sizes[] = P4_PSRAM_SIZE_TABLE;
+    P4_SRAMRODATA static const unsigned char sizes[] = P4_PSRAM_SIZE_TABLE;
     unsigned char vendor = 0, density = 0;
     uint32_t back = 0;
+    int fast;
 
     info->clock_hz = 0;
     info->size = 0;
     info->vendor = 0;
     info->density = 0;
     info->round_trip = 0;
+    info->fell_back = 0;
+    info->tuning.tuned = 0;
+
+    fast = target_hz > 80000000UL;
+    info->fast_requested = (unsigned char)fast;
 
     info->mpll_up = krnPSRAMMPLLUp() ? 1 : 0;
     if (!info->mpll_up)
         return 0;
+
+    /*
+     * The parameter set comes from the target, and the whole device
+     * configuration then runs at 20 MHz regardless.
+     *
+     * ESP-IDF configures the chip at the target rate with the sampling
+     * untuned, which works and is one risk this port has no reason to take:
+     * a longer latency is harmless at a lower clock, so the same registers
+     * can be written slowly and only the divider raised afterwards.  If the
+     * identity read fails, it fails at a clock where the answer means the
+     * chip, and not the sampling.
+     */
+    p4_psram_select_params(target_hz);
+    krnPSRAMTuningClear();
 
     info->clock_hz = krnPSRAMClockUp(20000000UL);
     if (!info->clock_hz)
@@ -530,6 +647,32 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info)
     info->vendor = vendor;
     info->density = density;
     info->round_trip = krnPSRAMRoundTrip(&back) ? 1 : 0;
+
+    if (fast && info->round_trip)
+    {
+        if (krnPSRAMTune(&info->tuning, target_hz))
+        {
+            info->clock_hz = target_hz;
+            /* The same question again, now at the tuned clock.  A window
+               found on 128 bytes that cannot round-trip one word is not a
+               window. */
+            info->round_trip = krnPSRAMRoundTrip(&back) ? 1 : 0;
+        }
+        if (!info->tuning.tuned || !info->round_trip)
+        {
+            /*
+             * Back to a rate that has never failed, with the sampling
+             * neutral again.  The parameter set stays as it was: it is
+             * correct at any lower clock, and rewriting the mode registers
+             * here would add a failure path to the recovery path.
+             */
+            info->fell_back = 1;
+            krnPSRAMTuningClear();
+            info->clock_hz = krnPSRAMClockSet(20000000UL);
+            info->round_trip = krnPSRAMRoundTrip(&back) ? 1 : 0;
+        }
+    }
+
     krnPSRAMAxiConfigure();
     info->size = (unsigned long)sizes[density & P4_PSRAM_MR2_DENSITY_MASK]
                  * 1024UL * 1024UL;
@@ -569,8 +712,8 @@ P4_SRAMCODE void krnPSRAMAxiConfigure(void)
     v |= P4_USR_WR_SRAM_DUMMY | P4_USR_RD_SRAM_DUMMY;
     v |= P4_SRAM_OCT;
     v |= (unsigned long)(P4_PSRAM_ADDR_BITLEN - 1) << P4_SRAM_ADDR_BITLEN_SHIFT;
-    v |= (unsigned long)(P4_PSRAM_RD_DUMMY_SLOW - 1) << P4_SRAM_RDUMMY_SHIFT;
-    v |= (unsigned long)(P4_PSRAM_WR_DUMMY_SLOW - 1) << P4_SRAM_WDUMMY_SHIFT;
+    v |= (unsigned long)(p4_rd_dummy - 1) << P4_SRAM_RDUMMY_SHIFT;
+    v |= (unsigned long)(p4_wr_dummy - 1) << P4_SRAM_WDUMMY_SHIFT;
     p4_w32(P4_MSPI2_CACHE_SCTRL, v);
 
     /* Octal for command and address, sixteen bits for data */

@@ -3772,6 +3772,424 @@ static void krnP4DosProbe(void)
 }
 #endif /* P4_DOS_PROBE */
 
+/*
+ * What the calibration measured, not just what it chose.
+ *
+ * The chosen setting alone is not evidence: a boot that picks index 17 tells
+ * you nothing about whether 16 and 18 also worked.  The pass masks are the
+ * measurement, so they are printed as they are, one character per candidate,
+ * and the window width is the number that says whether the rate is safe or
+ * merely lucky today.
+ */
+static void krnP4ReportPSRAMTuning(const struct P4PSRAMInfo *psram)
+{
+    static const char *phase_name[4] =
+        { "67.5", "78.75", "90", "101.25" };
+    const struct P4PSRAMTuning *t = &psram->tuning;
+    unsigned int i;
+
+    krnP4PutStr("[psram]  tuning phases  ");
+    for (i = 0; i < P4_PSRAM_PHASE_COUNT; ++i)
+        krnP4PutStr((t->phase_pass & (1u << i)) ? "1" : "0");
+    krnP4PutStr("  window ");
+    krnP4PutDec(t->phase_window);
+    if (t->phase_window)
+    {
+        krnP4PutStr(", chose ");
+        krnP4PutStr(phase_name[t->phase & 3]);
+        krnP4PutStr(" degrees");
+    }
+    krnP4PutStr("\n");
+
+    krnP4PutStr("[psram]  tuning delays  ");
+    for (i = 0; i < P4_PSRAM_DELAY_COUNT; ++i)
+        krnP4PutStr((t->delay_pass & (1UL << i)) ? "1" : "0");
+    krnP4PutStr("\n[psram]                 ");
+    /* A marker under the chosen index, so the middle is visible rather than
+       asserted. */
+    for (i = 0; i < P4_PSRAM_DELAY_COUNT; ++i)
+        krnP4PutStr((t->tuned && i == t->delay_index) ? "^" : " ");
+    krnP4PutStr("\n[psram]  window ");
+    krnP4PutDec(t->delay_window);
+    krnP4PutStr(" of ");
+    krnP4PutDec(P4_PSRAM_DELAY_COUNT);
+    krnP4PutStr(", index ");
+    krnP4PutDec(t->delay_index);
+    krnP4PutStr(" means data delay ");
+    krnP4PutDec(t->data_delay);
+    krnP4PutStr(", strobe delay ");
+    krnP4PutDec(t->dqs_delay);
+    krnP4PutStr("\n");
+
+    if (t->tuned && !psram->fell_back)
+    {
+        krnP4PutStr("[psram]  calibrated, running at ");
+        krnP4PutDec((uint32_t)(psram->clock_hz / 1000000));
+        krnP4PutStr(" MHz\n");
+    }
+    else
+    {
+        krnP4PutStr("[psram]  NOT calibrated, fell back to ");
+        krnP4PutDec((uint32_t)(psram->clock_hz / 1000000));
+        krnP4PutStr(" MHz");
+        if (!t->phase_window)
+            krnP4PutStr(" - no phase reproduced the reference\n");
+        else if (t->delay_window < 2)
+            krnP4PutStr(" - no delay window wider than one step\n");
+        else
+            krnP4PutStr(" - the chosen setting did not hold\n");
+    }
+}
+
+#ifdef P4_PSRAM_STRESS
+/*
+ * The whole window, every word, and how fast it goes.
+ *
+ * krnPSRAMVerify() checks one word per megabyte, which is the right test for
+ * "is the mapping there at all" and says nothing about a bus running eight
+ * times faster than it did.  A calibration window is a statement about 128
+ * bytes at one address; this is the statement about 8,388,608 words at every
+ * address, which is what a filesystem cache and a framebuffer will actually
+ * ask for.
+ *
+ * Runs before the memory header exists, so the whole window is scratch.  It
+ * is also the last moment at which it is: everything after this point has an
+ * owner.
+ */
+
+/* Time a pass, in bytes per second, from the 16 MHz counter.  Returned as a
+   whole number of MB/s because the measurement is not more precise than that
+   and printing more digits would suggest otherwise. */
+static uint32_t krnP4RateMB(uint64_t ticks, unsigned long bytes)
+{
+    uint64_t hz;
+
+    if (ticks == 0)
+        return 0;
+    hz = ((uint64_t)bytes * P4_SYSTIMER_HZ) / ticks;
+    return (uint32_t)(hz / (1024 * 1024));
+}
+
+static void krnP4ReportMismatch(const char *what, unsigned long offset,
+                                uint32_t expected, uint32_t got)
+{
+    krnP4PutStr("[stress] ");
+    krnP4PutStr(what);
+    krnP4PutStr(" FAILED at offset ");
+    krnP4PutHex32((uint32_t)offset);
+    krnP4PutStr(", expected ");
+    krnP4PutHex32(expected);
+    krnP4PutStr(", got ");
+    krnP4PutHex32(got);
+    krnP4PutStr("\n");
+}
+
+/*
+ * Every word carries a value derived from its own address, so a read that
+ * returns the right value for the wrong address fails.  That is the failure
+ * an address-line fault or a wrong page mapping produces, and a constant
+ * pattern cannot see it: aliased memory holds the constant just fine.
+ */
+static int krnP4StressAddresses(unsigned long size)
+{
+    volatile uint32_t *base = (volatile uint32_t *)P4_PSRAM_WINDOW_BASE;
+    unsigned long words = size / 4;
+    unsigned long i;
+    uint64_t t0, t1, t2;
+
+    t0 = krnTimerCount();
+    for (i = 0; i < words; ++i)
+        base[i] = (uint32_t)(i * 4) ^ 0x5A5A5A5AUL;
+    t1 = krnTimerCount();
+
+    for (i = 0; i < words; ++i)
+    {
+        uint32_t want = (uint32_t)(i * 4) ^ 0x5A5A5A5AUL;
+        uint32_t got = base[i];
+
+        if (got != want)
+        {
+            krnP4ReportMismatch("address uniqueness", i * 4, want, got);
+            return 0;
+        }
+    }
+    t2 = krnTimerCount();
+
+    krnP4PutStr("[stress] address uniqueness over ");
+    krnP4PutDec((uint32_t)(size / (1024 * 1024)));
+    krnP4PutStr(" MB passed, write ");
+    krnP4PutDec(krnP4RateMB(t1 - t0, size));
+    krnP4PutStr(" MB/s, read ");
+    krnP4PutDec(krnP4RateMB(t2 - t1, size));
+    krnP4PutStr(" MB/s\n");
+    return 1;
+}
+
+/*
+ * The four patterns that matter for a bus, over every word.
+ *
+ * All-zeros and all-ones find a line stuck at the other value.  The two
+ * alternating patterns put a transition on every line in both directions,
+ * which is what a sampling point too close to an edge fails on; they are the
+ * patterns a marginal calibration survives an address test but not this one.
+ */
+static int krnP4StressPatterns(unsigned long size)
+{
+    static const uint32_t patterns[4] =
+        { 0x00000000UL, 0xFFFFFFFFUL, 0xAAAAAAAAUL, 0x55555555UL };
+    volatile uint32_t *base = (volatile uint32_t *)P4_PSRAM_WINDOW_BASE;
+    unsigned long words = size / 4;
+    unsigned int p;
+
+    for (p = 0; p < 4; ++p)
+    {
+        unsigned long i;
+
+        for (i = 0; i < words; ++i)
+            base[i] = patterns[p];
+        for (i = 0; i < words; ++i)
+            if (base[i] != patterns[p])
+            {
+                krnP4PutStr("[stress] pattern ");
+                krnP4PutHex32(patterns[p]);
+                krnP4ReportMismatch("", i * 4, patterns[p], base[i]);
+                return 0;
+            }
+    }
+
+    krnP4PutStr("[stress] four bus patterns over ");
+    krnP4PutDec((uint32_t)(size / (1024 * 1024)));
+    krnP4PutStr(" MB passed\n");
+    return 1;
+}
+
+/*
+ * Sequential read bandwidth, which is the number B5 depends on.
+ *
+ * One linear pass over the whole window against a 128 KB cache misses almost
+ * everywhere, so this measures the PSRAM path and not the cache.  The words
+ * are summed rather than discarded because a loop whose result is unused is a
+ * loop the compiler may delete, and the sum is printed so the reader can see
+ * it was not.
+ *
+ * The threshold is not arbitrary.  An 800x1280 RGB565 frame at the panel's
+ * 33.82 Hz is 69.3 MB/s of scanout, and a rotation pass reads and writes
+ * another frame each, so the display alone can ask for three times that.  100
+ * MB/s is the floor at which scanout is possible at all; it is not comfort.
+ */
+static uint32_t krnP4StressBandwidth(unsigned long size)
+{
+    volatile uint32_t *base = (volatile uint32_t *)P4_PSRAM_WINDOW_BASE;
+    unsigned long words = size / 4;
+    unsigned long i;
+    uint32_t sum = 0;
+    uint32_t rate;
+    uint64_t t0, t1;
+
+    t0 = krnTimerCount();
+    for (i = 0; i < words; i += 8)
+    {
+        sum += base[i + 0];
+        sum += base[i + 1];
+        sum += base[i + 2];
+        sum += base[i + 3];
+        sum += base[i + 4];
+        sum += base[i + 5];
+        sum += base[i + 6];
+        sum += base[i + 7];
+    }
+    t1 = krnTimerCount();
+
+    rate = krnP4RateMB(t1 - t0, size);
+    krnP4PutStr("[stress] sequential read ");
+    krnP4PutDec(rate);
+    krnP4PutStr(" MB/s, checksum ");
+    krnP4PutHex32(sum);
+    krnP4PutStr(rate >= 100 ? "  at or above the 100 MB/s floor\n"
+                            : "  BELOW the 100 MB/s floor\n");
+    return rate;
+}
+
+/*
+ * How fast is the CPU, actually?
+ *
+ * This port configures no CPU clock at all: it inherits whatever the
+ * second-stage bootloader left, and that bootloader was built for a different
+ * application's configuration.  A bandwidth number is meaningless without
+ * this one, because a loop of loads is bounded by the core before it is
+ * bounded by the bus.  mcycle counts core cycles, the system timer counts a
+ * fixed 16 MHz, so the ratio is the answer and nothing has to be assumed.
+ */
+static uint32_t krnP4MeasureCPUMHz(void)
+{
+    uint64_t c0, c1, t0, t1;
+    unsigned long spin;
+
+    c0 = (uint64_t)csr_read(mcycle);
+    t0 = krnTimerCount();
+    /* Long enough that the counter's 62.5 ns resolution is noise. */
+    for (spin = 0; spin < 200000; ++spin)
+        asm volatile ("" ::: "memory");
+    t1 = krnTimerCount();
+    c1 = (uint64_t)csr_read(mcycle);
+
+    if (t1 <= t0)
+        return 0;
+    return (uint32_t)(((c1 - c0) * P4_SYSTIMER_HZ) / ((t1 - t0) * 1000000UL));
+}
+
+/*
+ * The same pass without volatile, and the same pass over internal SRAM.
+ *
+ * Two questions the volatile PSRAM number cannot answer on its own.  Volatile
+ * loads may not be reordered against each other, so the core cannot issue the
+ * next one while the last is still in flight; on a machine that stalls on
+ * load-use that is the measurement rather than the memory.  And a pass over
+ * SRAM has no external bus in it at all, so whatever it reaches is the ceiling
+ * this loop can reach for any memory.
+ *
+ * The sum is returned and printed for the same reason as before: a loop whose
+ * result nobody uses is a loop the compiler is entitled to delete.
+ */
+static uint32_t krnP4ReadRate(const uint32_t *base, unsigned long bytes,
+                              unsigned long repeats, uint32_t *out_sum)
+{
+    unsigned long words = bytes / 4;
+    unsigned long r, i;
+    uint32_t sum = 0;
+    uint64_t t0, t1;
+
+    t0 = krnTimerCount();
+    for (r = 0; r < repeats; ++r)
+        for (i = 0; i < words; i += 8)
+        {
+            sum += base[i + 0];
+            sum += base[i + 1];
+            sum += base[i + 2];
+            sum += base[i + 3];
+            sum += base[i + 4];
+            sum += base[i + 5];
+            sum += base[i + 6];
+            sum += base[i + 7];
+        }
+    t1 = krnTimerCount();
+
+    if (out_sum)
+        *out_sum = sum;
+    return krnP4RateMB(t1 - t0, bytes * repeats);
+}
+
+/*
+ * The same loop, but fetched from SRAM instead of flash.
+ *
+ * This image executes out of flash, so every instruction is a flash access
+ * through the cache.  A loop of loads therefore has two costs, the data and
+ * the instructions, and the numbers above cannot tell them apart: a loop that
+ * is fetch-bound produces the same figure whatever the data bus does, which
+ * is exactly the pattern the 20 MHz and 200 MHz runs showed.  Moving only the
+ * loop into SRAM changes the fetch cost and nothing else, so the difference is
+ * attributable.
+ */
+P4_SRAMCODE static uint32_t krnP4ReadRateSRAM(const uint32_t *base,
+                                              unsigned long words,
+                                              unsigned long repeats,
+                                              uint32_t *out_sum)
+{
+    unsigned long r, i;
+    uint32_t sum = 0;
+
+    for (r = 0; r < repeats; ++r)
+        for (i = 0; i < words; i += 8)
+        {
+            sum += base[i + 0];
+            sum += base[i + 1];
+            sum += base[i + 2];
+            sum += base[i + 3];
+            sum += base[i + 4];
+            sum += base[i + 5];
+            sum += base[i + 6];
+            sum += base[i + 7];
+        }
+
+    if (out_sum)
+        *out_sum = sum;
+    return 0;
+}
+
+static uint32_t krnP4TimedSRAMRead(const uint32_t *base, unsigned long bytes,
+                                   unsigned long repeats, uint32_t *out_sum)
+{
+    uint64_t t0, t1;
+
+    t0 = krnTimerCount();
+    (void)krnP4ReadRateSRAM(base, bytes / 4, repeats, out_sum);
+    t1 = krnTimerCount();
+
+    return krnP4RateMB(t1 - t0, bytes * repeats);
+}
+
+static void krnP4StressCompare(unsigned long size)
+{
+    uint32_t sum = 0, rate;
+
+    krnP4PutStr("[stress] cpu ");
+    krnP4PutDec(krnP4MeasureCPUMHz());
+    krnP4PutStr(" MHz measured from mcycle against the 16 MHz timer\n");
+
+    rate = krnP4ReadRate((const uint32_t *)P4_PSRAM_WINDOW_BASE, size, 1, &sum);
+    krnP4PutStr("[stress] psram read, not volatile  ");
+    krnP4PutDec(rate);
+    krnP4PutStr(" MB/s, checksum ");
+    krnP4PutHex32(sum);
+    krnP4PutStr("\n");
+
+    /*
+     * SRAM, over the data-only heap region.  Read-only, so exec's ownership
+     * of it does not matter, and 256 KB repeated sixty-four times is the same
+     * sixteen megabytes of traffic without an external bus in the path.
+     */
+    rate = krnP4ReadRate((const uint32_t *)P4_HEAP_HIGH_BASE, 256 * 1024, 64,
+                         &sum);
+    krnP4PutStr("[stress] sram read, same loop      ");
+    krnP4PutDec(rate);
+    krnP4PutStr(" MB/s, checksum ");
+    krnP4PutHex32(sum);
+    krnP4PutStr("\n");
+
+    /* And both again with the loop itself fetched from SRAM. */
+    rate = krnP4TimedSRAMRead((const uint32_t *)P4_PSRAM_WINDOW_BASE, size, 1,
+                              &sum);
+    krnP4PutStr("[stress] psram read, loop in sram  ");
+    krnP4PutDec(rate);
+    krnP4PutStr(" MB/s, checksum ");
+    krnP4PutHex32(sum);
+    krnP4PutStr("\n");
+
+    rate = krnP4TimedSRAMRead((const uint32_t *)P4_HEAP_HIGH_BASE, 256 * 1024,
+                              64, &sum);
+    krnP4PutStr("[stress] sram read, loop in sram   ");
+    krnP4PutDec(rate);
+    krnP4PutStr(" MB/s, checksum ");
+    krnP4PutHex32(sum);
+    krnP4PutStr("\n");
+}
+
+static void krnP4PSRAMStress(unsigned long size)
+{
+    if (size == 0)
+        return;
+
+    krnP4PutStr("[stress] the whole window, while it is still nobody's\n");
+
+    if (!krnP4StressAddresses(size))
+        return;
+    if (!krnP4StressPatterns(size))
+        return;
+    (void)krnP4StressBandwidth(size);
+    krnP4StressCompare(size);
+}
+#endif /* P4_PSRAM_STRESS */
+
 #ifdef P4_PSRAM_PROBE
 /*
  * Does anything answer in the PSRAM window before we have configured a
@@ -4342,6 +4760,54 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 
     krnRAMInit();
     krnRAMReport();
+
+    /*
+     * The CPU clock, before PSRAM.
+     *
+     * Deliberately in this order: the PSRAM read sampling is calibrated a few
+     * lines below, and a calibration made at one CPU and memory clock and used
+     * at another is a calibration for conditions that no longer hold.  The
+     * AXI path between the core and the controller runs on MEM_CLK, which
+     * doubles here.
+     */
+    {
+        struct P4CPUClock clk;
+
+        krnP4CPUClockRead(&clk);
+        krnP4PutStr("[clock]  as found  cpu /");
+        krnP4PutDec(clk.cpu_div);
+        krnP4PutStr("  mem /");
+        krnP4PutDec(clk.mem_div);
+        krnP4PutStr("  sys /");
+        krnP4PutDec(clk.sys_div);
+        krnP4PutStr("  apb /");
+        krnP4PutDec(clk.apb_div);
+        krnP4PutStr(clk.source == P4_HP_ROOT_SRC_CPLL ? "  root cpll\n"
+                  : clk.source == P4_HP_ROOT_SRC_XTAL ? "  root xtal\n"
+                                                      : "  root rc\n");
+
+#ifdef P4_CPU_MHZ
+        if (krnP4CPUClockSet(P4_CPU_MHZ))
+        {
+            krnP4CPUClockRead(&clk);
+            krnP4PutStr("[clock]  set to    cpu /");
+            krnP4PutDec(clk.cpu_div);
+            krnP4PutStr("  mem /");
+            krnP4PutDec(clk.mem_div);
+            krnP4PutStr("  sys /");
+            krnP4PutDec(clk.sys_div);
+            krnP4PutStr("  apb /");
+            krnP4PutDec(clk.apb_div);
+            krnP4PutStr(", asked for ");
+            krnP4PutDec(P4_CPU_MHZ);
+            krnP4PutStr(" MHz\n");
+        }
+        else
+            krnP4PutStr("[clock]  the divider change was refused,"
+                        " unchanged\n");
+#endif
+    }
+
     {
         struct P4PSRAMInfo psram;
         int up;
@@ -4354,7 +4820,7 @@ void kernel_cstart(unsigned long hartid, void *fdt)
          * write and the transaction that depends on it is not a sequence.
          */
         csr_clear(mstatus, MSTATUS_MIE);
-        up = krnPSRAMBringUp(&psram);
+        up = krnPSRAMBringUp(&psram, P4_PSRAM_TARGET_HZ);
         csr_set(mstatus, MSTATUS_MIE);
 
         if (up)
@@ -4366,6 +4832,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutStr(" MHz, vendor ");
             krnP4PutHex32((uint32_t)psram.vendor);
             krnP4PutStr(", a word written and read back\n");
+
+            if (psram.fast_requested)
+                krnP4ReportPSRAMTuning(&psram);
 
             {
                 unsigned long bad = 0;
@@ -4384,6 +4853,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
                      * the loader's high-water mark.  With no package the
                      * whole range is published after the table scan.
                      */
+#ifdef P4_PSRAM_STRESS
+                    krnP4PSRAMStress(psram.size);
+#endif
 #ifdef P4_PROBE
                     /*
                      * The two silicon questions, while the whole window is

@@ -186,6 +186,8 @@
 #define P4_PSRAM_CS_HOLD_DELAY      3
 #define P4_PSRAM_RD_LATENCY_SLOW    2
 #define P4_PSRAM_WR_LATENCY_SLOW    2
+#define P4_PSRAM_RD_LATENCY_FAST    4
+#define P4_PSRAM_WR_LATENCY_FAST    1
 #define P4_PSRAM_PAGE_SIZE_2048     3
 
 /*
@@ -257,6 +259,21 @@
 #define P4_PSRAM_RD_REG_DUMMY_SLOW  (2 * (5 - 1))
 #define P4_PSRAM_RD_DUMMY_SLOW      (2 * (10 - 1))
 #define P4_PSRAM_WR_DUMMY_SLOW      (2 * (5 - 1))
+/*
+ * And the set for 200 MHz.  The read latency in cycles is the mode register
+ * value doubled plus six, so 2 gives 10 and 4 gives 14, and the dummy length
+ * is twice that less one because a DTR transfer moves two bits per cycle.
+ * The two have to agree: a controller that stops driving dummy cycles before
+ * the chip starts driving data reads whatever the bus is floating at.
+ *
+ * A longer-than-necessary latency is harmless at a lower clock, which is what
+ * makes the whole bring-up sequence able to run at 20 MHz with the fast set
+ * already programmed.  The reverse is not true, which is why the set is
+ * chosen from the target and not raised afterwards.
+ */
+#define P4_PSRAM_RD_REG_DUMMY_FAST  (2 * (7 - 1))
+#define P4_PSRAM_RD_DUMMY_FAST      (2 * (14 - 1))
+#define P4_PSRAM_WR_DUMMY_FAST      (2 * (7 - 1))
 #define P4_PSRAM_TEST_PATTERN       0x5A6B7C8DUL
 #define P4_PSRAM_MR1_VENDOR_MASK    0x1F
 #define P4_PSRAM_VENDOR_AP          0x0D
@@ -371,21 +388,12 @@ struct p4_rom_spi_cmd
  * kernel_flash.c does turn it off, and the promise P4_SRAMCODE makes has
  * to actually hold before something relies on it.
  */
-#define P4_ALWAYS_INLINE __attribute__((always_inline)) static inline
 
-P4_ALWAYS_INLINE void p4_w32(unsigned long a, unsigned long v)
-{
-    *(volatile unsigned long *)a = v;
-}
-
-P4_ALWAYS_INLINE unsigned long p4_r32(unsigned long a)
-{
-    return *(volatile unsigned long *)a;
-}
 
 int krnPSRAMMPLLUp(void);
 unsigned long krnPSRAMMPLLState(void);
 unsigned long krnPSRAMClockUp(unsigned long target_hz);
+unsigned long krnPSRAMClockSet(unsigned long target_hz);
 void krnPSRAMConfigure(void);
 void krnPSRAMModeInit(void);
 int krnPSRAMIdentify(unsigned char *vendor, unsigned char *density);
@@ -395,6 +403,78 @@ int krnPSRAMRoundTrip(uint32_t *back);
  * What a bring-up found out, for the caller to report. size is zero if the
  * chip did not answer, in which case the other fields say how far it got.
  */
+/*
+ * The MSPI pin IOMUX, which is where the sampling is tuned.
+ *
+ * Two knobs.  The DQS phase shifts the strobe against the clock in four
+ * fixed steps, 67.5, 78.75, 90 and 101.25 degrees.  The delay lines shift
+ * individual pins in sixteen steps each, and the two directions - strobe
+ * later, or data later - together make one axis of relative delay from -15
+ * to +15 with zero in the middle.
+ *
+ * The register block and every field in it are identical between ESP32-P4
+ * hardware versions 1 and 3; only debug GPIO helper macros differ, which is
+ * worth stating because the DSI bridge registers are not identical and this
+ * port has to pick a set for that one.
+ */
+#define P4_MSPI_IOMUX_BASE          (P4_IOMUX_BASE + 0x200)
+/* d, q, wp, hold, dq4..dq7 */
+#define P4_MSPI_PSRAM_GRP0(n)       (P4_MSPI_IOMUX_BASE + 0x1C + (n) * 4)
+#define P4_MSPI_PSRAM_GRP0_COUNT    8
+#define P4_MSPI_PSRAM_DQS0          (P4_MSPI_IOMUX_BASE + 0x3C)
+/* ck, cs, dq8..dq15 */
+#define P4_MSPI_PSRAM_GRP1(n)       (P4_MSPI_IOMUX_BASE + 0x40 + (n) * 4)
+#define P4_MSPI_PSRAM_GRP1_COUNT    10
+#define P4_MSPI_PSRAM_DQS1          (P4_MSPI_IOMUX_BASE + 0x68)
+
+#define P4_PSRAM_PIN_DLC_SHIFT      4
+#define P4_PSRAM_PIN_DLC_MASK       (0xFUL << P4_PSRAM_PIN_DLC_SHIFT)
+#define P4_PSRAM_DQS_PHASE_SHIFT    1
+#define P4_PSRAM_DQS_PHASE_MASK     (0x3UL << P4_PSRAM_DQS_PHASE_SHIFT)
+#define P4_PSRAM_DQS_DLY90_SHIFT    7
+#define P4_PSRAM_DQS_DLY90_MASK     (0xFUL << P4_PSRAM_DQS_DLY90_SHIFT)
+#define P4_PSRAM_DQS_DLY270_SHIFT   17
+#define P4_PSRAM_DQS_DLY270_MASK    (0xFUL << P4_PSRAM_DQS_DLY270_SHIFT)
+
+#define P4_PSRAM_PHASE_COUNT        4       /* 67.5, 78.75, 90, 101.25 */
+#define P4_PSRAM_DELAY_COUNT        31      /* -15 .. +15 relative */
+#define P4_PSRAM_TUNE_WORDS         32      /* 128 bytes, the reference block */
+#define P4_PSRAM_TUNE_ADDR          0x80    /* scratch; exec does not exist yet */
+#define P4_PSRAM_FIFO_WORDS         16      /* 64 bytes per transaction */
+
+/*
+ * How many times each delay-line candidate is read before it counts as
+ * passing.  A phase is a coarse choice and one read separates the four; a
+ * delay-line step is a margin question, and a candidate that passes once and
+ * fails on the hundredth read is exactly the one that must not be chosen.
+ * ESP-IDF uses 1 and 100 for the same reason.
+ */
+#define P4_PSRAM_PHASE_TRIES        1
+#define P4_PSRAM_DELAY_TRIES        100
+
+/*
+ * The bus clock to ask for.  20 MHz unless the build says otherwise, because
+ * a rate becomes a default only after it has been shown to hold across cold
+ * and warm boots, not when it works once.
+ */
+#ifndef P4_PSRAM_MHZ
+#define P4_PSRAM_MHZ                20
+#endif
+#define P4_PSRAM_TARGET_HZ          (P4_PSRAM_MHZ * 1000000UL)
+
+struct P4PSRAMTuning
+{
+    unsigned char tuned;            /* both stages found a window */
+    unsigned char phase;            /* the phase index chosen */
+    unsigned char phase_pass;       /* bit n set: phase n passed */
+    unsigned char phase_window;     /* length of the run it was taken from */
+    unsigned char delay_index;      /* the delay-line candidate chosen */
+    unsigned char delay_window;     /* length of the run it sits in the middle of */
+    unsigned char data_delay;       /* the pair the chosen index means */
+    unsigned char dqs_delay;
+    unsigned long delay_pass;       /* bit n set: candidate n passed every try */
+};
+
 struct P4PSRAMInfo
 {
     unsigned long clock_hz;
@@ -403,11 +483,22 @@ struct P4PSRAMInfo
     unsigned char density;
     unsigned char mpll_up;
     unsigned char round_trip;
+    unsigned char fast_requested;   /* the caller asked for the tuned clock */
+    unsigned char fell_back;        /* it was asked for and did not hold */
+    struct P4PSRAMTuning tuning;
 };
 
-int krnPSRAMBringUp(struct P4PSRAMInfo *info);
+int krnPSRAMBringUp(struct P4PSRAMInfo *info, unsigned long target_hz);
 void krnPSRAMAxiConfigure(void);
 void krnPSRAMMap(unsigned long size);
 int krnPSRAMVerify(unsigned long size, unsigned long *failed_at);
+
+/* Used by the tuning, which lives in psram_tuning.c */
+unsigned long krnPSRAMClockUp(unsigned long target_hz);
+void krnPSRAMBlockWrite(uint32_t addr, const uint32_t *words, uint32_t count);
+void krnPSRAMBlockRead(uint32_t addr, uint32_t *words, uint32_t count);
+void krnPSRAMTuneReference(uint32_t *words, uint32_t count);
+int krnPSRAMTune(struct P4PSRAMTuning *out, unsigned long fast_hz);
+void krnPSRAMTuningClear(void);
 
 #endif /* ESP32P4_PSRAM_H */

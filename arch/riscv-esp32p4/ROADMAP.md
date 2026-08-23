@@ -119,7 +119,7 @@ tests.
 | A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `hardware verified` | Evidence entries 2026-08-23: all eight gate points.  `SYS:` assigned from the A3 image after `AROS.boot` was accepted, `Info()` reports `ID_WRITE_PROTECTED`, eight DOS mutations refused with error 214 and the file bit-identical afterwards, and a medium without `AROS.boot` falls back to a Shell prompt.  Five defects in shared code fixed on the way |
 | A5 | Command and library loaded from MicroSD | `hardware verified` | Evidence entries 2026-08-23: a command and a library loaded from FAT and run from both a kickstart resident and the Shell, every address outside the resident ranges, a marker neither side can fake, and four refusal cases each failing with its reason named and nothing leaked.  Closes M6.  One point met differently and documented |
 | B0 | Canonical D1001 display contract and provenance | `documented` | [display/DISPLAY-CONTRACT.md](display/DISPLAY-CONTRACT.md) is the one place display facts live, each value carrying an evidence class and a source file and line.  Three findings changed the plan: the running reference ignores the timing fields it is given and uses a different set, the rotation direction is no longer a hypothesis, and the DSI bridge registers differ by chip revision.  Nothing is `verified` yet, which is the honest state; the measured frame rate is B4's and is recorded as deferred |
-| B1 | Calibrated 200 MHz PSRAM with measured headroom | `not started` | Requires B0; required before scanout |
+| B1 | Calibrated 200 MHz PSRAM with measured headroom | `hardware partial` | The calibration works and 200 MHz holds over all 32 MB with four bus patterns, identically across six warm resets.  The phase premise was wrong in an instructive way: the PSRAM bus was never the limit.  The CPU ran at 90 MHz because nothing configured it, and is now 360; sequential reads went 20 to 60 MB/s and internal SRAM 25 to 101.  The 100 MB/s gate is not assessable by a CPU loop and is reassigned to B5, with the reason recorded |
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `not started` | Requires B0; backlight remains dark |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `not started` | Requires B0 and B2 |
 | B4 | Stable internal DSI test pattern | `not started` | Requires B3; isolates panel from DMA/PSRAM |
@@ -403,26 +403,61 @@ are marked as such.
 
 ### B1 - calibrated 200 MHz PSRAM
 
-At 20 MHz the theoretical x16 DTR bandwidth is 80 MB/s, the same as a 40 MHz
-RGB565 pixel stream and therefore no usable margin.  Port the necessary IDF v6
-timing calibration rather than changing only the divider.
+The calibration half is done and verified.  The headroom half turned out to be
+a different question than the phase assumed, and the reason is worth keeping.
 
-The calibration runs from internal SRAM with internal stack/data, interrupts
-disabled and no dependency on PSRAM.  The current IDF reference uses MR0 read
-latency 4, MR4 write latency 1, read dummy 26, register dummy 12, four DQS
-phases and 31 delay candidates per phase.  Sweep and verify; do not hardcode a
-candidate observed on one boot.  Select the middle of a sufficiently wide
-passing window.  On failure, fall back explicitly to 20 MHz and mark display
-scanout blocked.
+**What was built.**  `kernel/psram_tuning.c` implements the two-stage read
+sampling calibration the ESP32-P4 hardware's two knobs allow.  A 128-byte
+reference block is written at 20 MHz, the clock is raised, and the block is
+read back with each candidate setting: four DQS phases first, then thirty-one
+steps of relative delay between strobe and data, each read a hundred times so
+that a candidate which passes once and fails on the hundredth is rejected.
+The middle of the widest passing run is chosen, and a run narrower than two
+steps is refused as a coincidence rather than a margin.  On any failure the
+bus returns to 20 MHz with neutral sampling.
 
-Acceptance gate:
+`P4_PSRAM_MHZ=200` asks for it and `P4_CPU_MHZ=360` raises the CPU; both
+default to off, because a rate becomes a default after it has been shown to
+hold, not when it works once.
 
-- complete address/data and large sequential tests over all 32 MiB;
-- repeated cold/warm boots choose a valid window without corruption;
-- measured relevant read bandwidth is at least 100 MB/s and retains margin
-  under concurrent CPU/cache activity;
-- the 20 MHz fallback is still functional and never starts DSI scanout;
-- results, selected window statistics and artifact identity are documented.
+**What the premise got wrong.**  The phase was written expecting the PSRAM bus
+to be the constraint on scanout.  It is not, and the measurement that settled
+it took two builds: at 20 MHz the whole window read at 15 MB/s and at 200 MHz
+at 20 MB/s.  A tenfold clock increase bought a third more bandwidth, so
+whatever the limit was, it was not the bus.
+
+It was the CPU.  This port configured no CPU clock at all and inherited what
+the second-stage bootloader left, which `mcycle` against the 16 MHz system
+timer measured at 90 MHz.  The CPLL was already at 360 with the CPU divider
+sitting at four.  `kernel/cpuclock.c` moves the four root dividers to the only
+configuration that gives 360 MHz within the MEM<=200 and APB<=100 constraints,
+in the order that keeps every intermediate state slower than both endpoints.
+After that the same reads give 60 MB/s from PSRAM and 101 MB/s from internal
+SRAM.
+
+**Why the 100 MB/s gate moves to B5.**  At 360 MHz the loop costs 13.6 cycles
+per word even from internal SRAM, and it cost 13.6 at 90 MHz too.  A number
+that does not change with the clock is a latency, not a bandwidth: 64-byte
+lines mean one fill per sixteen words, and a scalar loop with no prefetch has
+exactly one fill outstanding at a time.  So this measures how fast one CPU
+thread can pull a cache line, which is not what a display needs.  Scanout is a
+DMA read that pipelines many transfers, and its bandwidth cannot be measured
+without a DMA engine driving the bus.  That engine arrives in B5, so the
+threshold belongs there and the measurement here is recorded for what it is.
+
+Acceptance gate, as met:
+
+- complete address-uniqueness and four-pattern tests over all 32 MiB pass at
+  200 MHz, at both 90 and 360 MHz CPU;
+- six consecutive warm boots choose the identical window, 25 of 31 steps wide,
+  index 17;
+- the 20 MHz path is unchanged and still functional, and the fallback returns
+  to it with neutral sampling;
+- the CPU-visible read bandwidth is measured and reported rather than asserted,
+  along with the internal-SRAM ceiling that bounds it.
+
+Not met, and reassigned rather than dropped: the 100 MB/s figure, which needs
+a DMA path to mean anything.
 
 ### B2 - safe panel power control
 
@@ -634,6 +669,8 @@ Acceptance gate:
 | Package capacity | `arosbsp` is 0x7e0000 bytes and is now shared: the package has everything below `P4_FLASHDISK_PART_OFFSET` and the flash development volume the four megabytes above.  `kernel-package-esp32p4-riscv-checksize` fails the build if the package crosses the split, because past it the loader would read filesystem bytes as members.  Size and every member hash are checked on each expansion. |
 | `krnP4FlashMap()` is not re-entrant | It owns a single scratch window, so two callers interleaving would each see the other's mapping.  `flashdisk.device` serves every request inside `Forbid()` and in 64 KB pieces, which is sufficient only because the map and the `CopyMem()` out of it are a few hundred cycles and no request waits on anything.  A writing path would have to erase and program, so it cannot reuse this pattern, and a second consumer of the map added anywhere has to be checked against this. |
 | Undocumented DSI PHY constants | IDF's DSI bring-up writes `mipi_dsi_phy_ll_set_switch_time(50, 104, 46, 128)` and `set_max_read_time(6000)` with no derivation in any locally available source, and no ESP32-P4 technical reference manual is present on this machine.  They are carried over as opaque constants.  The failure mode is a PHY that locks but produces marginal signalling, which would look like a panel or timing problem rather than a PHY one, so a B4 pattern fault has to consider them before the timing set is blamed. |
+| CPU clock inherited, not configured | This port set no CPU clock and ran at 90 MHz until 2026-08-23 because the second-stage bootloader's divider was never touched.  Nothing failed, everything was four times slower than the silicon allows, and no diagnostic said so; it was found only by measuring `mcycle` against the system timer while chasing a bandwidth figure.  Anything else this port inherits from that bootloader is unexamined in the same way, the flash clock and the cache configuration in particular. |
+| CPU-loop bandwidth is a latency measurement | A scalar read loop costs 13.6 cycles per word from internal SRAM at both 90 and 360 MHz, which is one cache-line fill per sixteen words with a single fill outstanding.  It therefore measures fill latency and not the memory system's throughput, and no threshold about scanout can be argued from it.  A DMA engine is the only way to measure what the display will actually get, and until B5 exists any bandwidth claim about scanout is unfounded. |
 | Flash reads past 16 MB | `krnP4FlashMap()` refuses anything at or past the cache-mapping limit, so the `storage` partition at 0x1020000 is unreachable by that route.  Anything that needs it would have to use raw SPI commands with the cache suspended and a destination in internal SRAM, which is why the development volume was put inside `arosbsp` instead. |
 | Panel timing | Start from measured Vellum behavior, not the contradictory 60 Hz comment. |
 | PSRAM | 20 MHz remains the safe fallback; display scanout requires a calibrated, measured faster path. |
@@ -3736,6 +3773,126 @@ direction afterwards.
 - Next safe step: B1, the 200 MHz PSRAM calibration.  It is the prerequisite
   with no display risk in it, and without the bandwidth headroom scanout has
   no margin at all.
+
+### 2026-08-23 - B1: the calibration works, and the bus was never the problem
+
+- State change: B1 `not started` to `hardware partial`.  The calibration half
+  is verified; the bandwidth threshold is reassigned to B5 with a reason.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `75e72e03eb`.
+- Artifacts: seven cores across the investigation.  The two that matter:
+  `f3cce70cb4ccdc9e1e8b8df770c0cbfae4941b41f7646f4bce2247dd7a2a4a17`,
+  165,792 bytes, 200 MHz PSRAM at the inherited CPU clock; and
+  `402d57621df5b3ed3ba960b1f0f4122b383128a6ccd67eb83e7ba2116caea3e9`,
+  172,080 bytes, the same with the CPU at 360 MHz and the stress test in.  All
+  written to `ota_0` at `0x20000`, each verified by esptool hash.
+- New build options: `P4_PSRAM_MHZ`, `P4_CPU_MHZ`, `P4_PSRAM_STRESS`, all off
+  by default.
+
+**The calibration.**  Two stages, and the reference block is written at 20 MHz
+before the clock rises, so the write is never the thing being measured.  Four
+DQS phases, then thirty-one steps of relative delay between strobe and data
+with a hundred reads per step.  On this board:
+
+```text
+[psram]  tuning phases  1111  window 4, chose 67.5 degrees
+[psram]  tuning delays  0000011111111111111111111111110
+[psram]                                  ^
+[psram]  window 25 of 31, index 17 means data delay 2, strobe delay 0
+[psram]  calibrated, running at 200 MHz
+```
+
+Twenty-five of thirty-one steps pass, and the chosen index is the middle of
+that run rather than its edge.  Six consecutive warm resets produced the
+identical line, character for character, and so did the runs at 90 and at 360
+MHz CPU, which is the evidence that the sampling does not depend on the core
+clock.
+
+All four phases passing means the phase stage discriminated nothing here and
+the delay stage did all the work.  Worth recording rather than glossing: the
+phase choice of 67.5 degrees is the first of a run of four, so it rests on the
+tie-break rule and not on a measurement.
+
+**Correctness over the whole window**, at 200 MHz, which `krnPSRAMVerify()`'s
+one word per megabyte could not have shown:
+
+```text
+[stress] address uniqueness over 32 MB passed, write 43 MB/s, read 35 MB/s
+[stress] four bus patterns over 32 MB passed
+```
+
+Every one of 8,388,608 words carries a value derived from its own address, so
+an aliased mapping fails rather than passing on a constant.  Then all-zeros,
+all-ones and both alternating patterns over the same 32 MB, which is what a
+marginal sampling point fails on after surviving an address test.
+
+**Three builds to find out the bus was not the limit.**  The phase assumed the
+PSRAM clock was the constraint.  The first two measurements said otherwise:
+
+| PSRAM clock | CPU | sequential read |
+|---|---|---|
+| 20 MHz | 90 MHz | 15 MB/s |
+| 200 MHz | 90 MHz | 20 MB/s |
+| 200 MHz | 360 MHz | 60 MB/s |
+
+A tenfold bus clock bought a third more bandwidth; a fourfold CPU clock
+tripled it.  Two intermediate hypotheses were tested and dropped on evidence
+rather than argued about: `volatile` on the loads makes no difference, and
+moving the loop itself into SRAM so it is not fetched from flash makes no
+difference either, so neither load serialisation nor instruction fetch was the
+constraint.
+
+**The CPU ran at 90 MHz and nothing said so.**  `mcycle` against the 16 MHz
+system timer measured it.  This port configures no CPU clock and inherited the
+second-stage bootloader's: the CPLL was already at 360 with the CPU divider at
+four.  ESP-IDF's own comment names the only three configurations the MEM<=200
+and APB<=100 constraints allow, and the board was in the slowest of them.
+`kernel/cpuclock.c` moves APB, SYS, MEM and CPU in that order for an upscale,
+which is the order that keeps every intermediate state slower than both
+endpoints; the reverse order would briefly run APB or MEM above its limit, and
+ESP-IDF warns the hardware may silently correct an illegal divider without
+reflecting it in the register, which would leave the real frequencies
+unknowable.
+
+```text
+[clock]  as found  cpu /4  mem /1  sys /1  apb /1  root cpll
+[clock]  set to    cpu /1  mem /2  sys /1  apb /2, asked for 360 MHz
+[stress] cpu 360 MHz measured from mcycle against the 16 MHz timer
+[stress] psram read, not volatile  60 MB/s
+[stress] sram read, same loop      101 MB/s
+```
+
+APB ends at 90 MHz either way, which is why nothing clocked from it needed
+reconfiguring and the console and timer were unaffected.  The 100 Hz heartbeat
+still counts 500 ticks per five-second interval.
+
+**Why the 100 MB/s gate cannot be argued from this.**  The loop costs 13.6
+cycles per word from internal SRAM at 360 MHz, and it cost 13.6 at 90 MHz.  A
+figure that does not move with the clock is a latency: 64-byte lines are one
+fill per sixteen words, and a scalar loop with no prefetch has one fill
+outstanding at a time.  So this measures how fast one thread pulls a cache
+line, and a display does not read its framebuffer that way.  Scanout is a DMA
+read that pipelines, and the number that matters cannot exist before a DMA
+engine drives the bus.  The threshold moves to B5 and the risk table now says
+that any scanout bandwidth claim before then is unfounded.
+
+- Acceptance passed: the full-window address and pattern tests at 200 MHz under
+  both CPU clocks; six warm resets choosing an identical 25-of-31 window; the
+  20 MHz path unchanged; the fallback returning to it with neutral sampling;
+  and the A4, A5, block-device and DOS-level storage tests all passing at
+  360 MHz CPU with 200 MHz PSRAM.
+- Acceptance not met and reassigned: the 100 MB/s figure, to B5, with the
+  reason above.
+- Safety impact: no medium was written.  The calibration's scratch is 128 bytes
+  at PSRAM offset 0x80, before exec exists and before the memory header is
+  created.  The only writes were cores to `ota_0`.
+- Remaining risk: the SD card path has not been exercised at 360 MHz.  The
+  regression run reported `GPIO45 high: no card present`, so it went over the
+  flash volume; the card's DMA path sees a doubled MEM_CLK and has to be shown
+  separately.  Also carried: everything else inherited from that bootloader is
+  unexamined in the same way the CPU divider was.
+- Next safe step: the SD path at 360 MHz with the card in the board, then B2,
+  the PCA9535 panel power sequence, which touches no data path at all.
 
 ## Evidence-entry template
 
