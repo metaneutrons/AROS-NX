@@ -389,6 +389,14 @@ struct p4_rom_spi_cmd
 
 
 int krnPSRAMMPLLUp(void);
+/*
+ * Why the MPLL did not come up.  The bus not answering and the calibration not
+ * finishing are different faults with different answers.
+ */
+#define P4_MPLL_OK              0
+#define P4_MPLL_NO_BUS          (-1)
+#define P4_MPLL_NO_CAL_END      (-2)
+
 unsigned long krnPSRAMMPLLState(void);
 unsigned long krnPSRAMClockUp(unsigned long target_hz);
 unsigned long krnPSRAMClockSet(unsigned long target_hz);
@@ -480,6 +488,10 @@ struct P4PSRAMInfo
     unsigned char vendor;
     unsigned char density;
     unsigned char mpll_up;
+    signed char   mpll_reason;      /* P4_MPLL_* */
+    unsigned long mpll_state;       /* rstb, div, dhref packed low to high */
+    unsigned long ana_pll_ctrl0;
+    unsigned char identify_attempts;
     unsigned char round_trip;
     unsigned char fast_requested;   /* the caller asked for the tuned clock */
     unsigned char fell_back;        /* it was asked for and did not hold */

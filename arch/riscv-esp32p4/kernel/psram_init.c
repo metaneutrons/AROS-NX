@@ -155,22 +155,29 @@ P4_SRAMCODE int krnPSRAMMPLLUp(void)
     p4_w32(P4_CLKRST_ANA_PLL_CTRL0,
            p4_r32(P4_CLKRST_ANA_PLL_CTRL0) & ~P4_MSPI_CAL_STOP);
 
+    /*
+     * Every step below returns a distinct reason, because "the mpll did not
+     * calibrate" conflates two failures that need different answers: the
+     * configuration bus not answering at all, and the bus answering while the
+     * calibration never completes.  A run that could not tell them apart cost
+     * a session's worth of guessing.
+     */
     /* Reference level to its maximum first */
     if (!p4_regi2c_read(P4_MPLL_DHREF_REG, &dhref))
-        return 0;
+        return P4_MPLL_NO_BUS;
     if (!p4_regi2c_write(P4_MPLL_DHREF_REG,
                          dhref | (3 << P4_MPLL_DHREF_SHIFT)))
-        return 0;
+        return P4_MPLL_NO_BUS;
 
     /* Then the calibration reset, low and back high */
     if (!p4_regi2c_read(P4_MPLL_IR_CAL_RSTB_REG, &rstb))
-        return 0;
+        return P4_MPLL_NO_BUS;
     if (!p4_regi2c_write(P4_MPLL_IR_CAL_RSTB_REG,
                          rstb & (unsigned char)~P4_MPLL_IR_CAL_RSTB))
-        return 0;
+        return P4_MPLL_NO_BUS;
     if (!p4_regi2c_write(P4_MPLL_IR_CAL_RSTB_REG,
                          rstb | P4_MPLL_IR_CAL_RSTB))
-        return 0;
+        return P4_MPLL_NO_BUS;
 
     /* And the multiplier. ref_div stays at one, so the PLL sees half of
        XTAL and the target divided by that, less one, is the field. */
@@ -178,7 +185,7 @@ P4_SRAMCODE int krnPSRAMMPLLUp(void)
     if (!p4_regi2c_write(P4_MPLL_DIV_REG,
                          (unsigned char)((div << P4_MPLL_DIV_SHIFT)
                                          | (1UL << P4_MPLL_REF_DIV_SHIFT))))
-        return 0;
+        return P4_MPLL_NO_BUS;
 
     spin = 1000000;
     while (!(p4_r32(P4_CLKRST_ANA_PLL_CTRL0) & P4_MSPI_CAL_END) && --spin)
@@ -187,7 +194,7 @@ P4_SRAMCODE int krnPSRAMMPLLUp(void)
     p4_w32(P4_CLKRST_ANA_PLL_CTRL0,
            p4_r32(P4_CLKRST_ANA_PLL_CTRL0) | P4_MSPI_CAL_STOP);
 
-    return spin != 0;
+    return spin ? P4_MPLL_OK : P4_MPLL_NO_CAL_END;
 }
 
 /*
@@ -612,7 +619,10 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     fast = target_hz > 80000000UL;
     info->fast_requested = (unsigned char)fast;
 
-    info->mpll_up = krnPSRAMMPLLUp() ? 1 : 0;
+    info->mpll_reason = (signed char)krnPSRAMMPLLUp();
+    info->mpll_up = (info->mpll_reason == P4_MPLL_OK) ? 1 : 0;
+    info->mpll_state = krnPSRAMMPLLState();
+    info->ana_pll_ctrl0 = p4_r32(P4_CLKRST_ANA_PLL_CTRL0);
     if (!info->mpll_up)
         return 0;
 
@@ -634,14 +644,39 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     if (!info->clock_hz)
         return 0;
 
-    krnPSRAMConfigure();
-    krnPSRAMModeInit();
-
-    if (!krnPSRAMIdentify(&vendor, &density))
+    /*
+     * Configure, then identify, and retry the pair if the chip does not answer.
+     *
+     * The chip's mode registers survive a CPU reset, exactly as the panel's
+     * port expander does, so a boot after different firmware finds the part in
+     * whatever bus width and latency that firmware chose.  Mode register 8
+     * selects the width, and a write sent at the wrong width may not be
+     * received - which leaves the first pass configuring a chip that could not
+     * hear it, and reading back a floating bus.  A second pass then speaks at
+     * the width the first one established.
+     *
+     * Three attempts rather than two because the first may be lost in either
+     * direction, and a bounded retry costs microseconds against a failure that
+     * costs the whole boot.
+     */
     {
-        info->vendor = vendor;
-        info->density = density;
-        return 0;
+        unsigned int attempt;
+
+        for (attempt = 0; attempt < 3; ++attempt)
+        {
+            krnPSRAMConfigure();
+            krnPSRAMModeInit();
+            if (krnPSRAMIdentify(&vendor, &density))
+                break;
+        }
+        info->identify_attempts = (unsigned char)(attempt + 1);
+
+        if (attempt == 3)
+        {
+            info->vendor = vendor;
+            info->density = density;
+            return 0;
+        }
     }
 
     info->vendor = vendor;

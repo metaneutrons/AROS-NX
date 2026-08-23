@@ -102,6 +102,8 @@ struct P4PanelState
 };
 
 int krnP4PanelClaim(struct P4PanelState *out);
+int krnP4PanelSupplyOn(struct P4PanelState *out);
+int krnP4PanelResetPulse(struct P4PanelState *out);
 int krnP4PanelPowerUp(struct P4PanelState *out);
 int krnP4PanelSafe(void);
 int krnP4PanelBacklightOn(void);

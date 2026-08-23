@@ -4632,10 +4632,19 @@ static void krnP4PanelProbe(void)
 
         krnP4PutStr("[dsi]    B3 stage one: supply, clocks and the phy pll\n");
 
+        /*
+         * Supply first, reset still asserted, and the reset pulse only after
+         * the PHY is locked with its lanes in stop state.
+         *
+         * This order is the working reference's and the earlier one was not.
+         * The D-PHY specification wants the lanes in LP-11 before a peripheral
+         * leaves reset; releasing the panel against unpowered floating lanes is
+         * what a dark panel and five silent reads look like.
+         */
         if (krnP4PanelClaim(&st) != P4_I2C_OK
-            || krnP4PanelPowerUp(&st) != P4_I2C_OK)
+            || krnP4PanelSupplyOn(&st) != P4_I2C_OK)
         {
-            krnP4PutStr("[dsi]    the panel would not power up\n");
+            krnP4PutStr("[dsi]    the panel supply would not come up\n");
             (void)krnP4PanelSafe();
             return;
         }
@@ -4678,10 +4687,20 @@ static void krnP4PanelProbe(void)
 
             krnP4PutStr("[dsi]    B3 stage one passed\n");
 
-            /* Stage two: command mode, then the panel's own sequence. */
+            /* Stage two: command mode, then the panel out of reset, then
+               its own sequence.  The reset comes here and not earlier. */
             (void)krnP4DsiCmdModeUp();
             krnP4PutStr("[dsi]    command mode, clock lane low power,"
                         " commands in low power\n");
+
+            if (krnP4PanelResetPulse(&st) != P4_I2C_OK)
+            {
+                krnP4PutStr("[dsi]    the reset pulse failed\n");
+                (void)krnP4PanelSafe();
+                return;
+            }
+            krnP4PutStr("[dsi]    panel out of reset, with the lanes already"
+                        " in stop state\n");
 
             init = krnP4DsiPanelInit(id, &id_result);
 
@@ -5561,7 +5580,10 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutDec((uint32_t)(psram.clock_hz / 1000000));
             krnP4PutStr(" MHz, vendor ");
             krnP4PutHex32((uint32_t)psram.vendor);
-            krnP4PutStr(", a word written and read back\n");
+            krnP4PutStr(", a word written and read back after ");
+            krnP4PutDec((uint32_t)psram.identify_attempts);
+            krnP4PutStr(psram.identify_attempts == 1 ? " attempt\n"
+                                                     : " attempts\n");
 
             if (psram.fast_requested)
                 krnP4ReportPSRAMTuning(&psram);
@@ -5606,7 +5628,17 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             }
         }
         else if (!psram.mpll_up)
-            krnP4PutStr("[psram]  chip   the mpll did not calibrate\n");
+        {
+            krnP4PutStr(psram.mpll_reason == P4_MPLL_NO_BUS
+                ? "[psram]  chip   the analogue configuration bus did not"
+                  " answer"
+                : "[psram]  chip   the mpll calibration never finished");
+            krnP4PutStr(", state ");
+            krnP4PutHex32((uint32_t)psram.mpll_state);
+            krnP4PutStr(", ana_pll_ctrl0 ");
+            krnP4PutHex32((uint32_t)psram.ana_pll_ctrl0);
+            krnP4PutStr("\n");
+        }
         else if (!psram.clock_hz)
             krnP4PutStr("[psram]  chip   the controller kept no clock\n");
         else
