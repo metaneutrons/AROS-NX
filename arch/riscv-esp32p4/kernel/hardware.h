@@ -254,6 +254,7 @@
 #define P4_GPIO_BASE            (P4_HPPERIPH1_BASE + 0x20000)
 /* The low bank, pins 0..31.  The SD host needed only the high bank, so these
    arrived with the first pin below 32 this port had to drive. */
+#define P4_GPIO_OUT             0x0004
 #define P4_GPIO_OUT_W1TS        0x0008
 #define P4_GPIO_OUT_W1TC       0x000C
 #define P4_GPIO_ENABLE_W1TS     0x0024
@@ -421,6 +422,61 @@
 #define P4_D1001_I2C1_SDA_GPIO  20
 #define P4_D1001_I2C1_SCL_GPIO  21
 #define P4_D1001_BACKLIGHT_GPIO 14
+/*
+ * LEDC, for the backlight, because a static level does not light it.
+ *
+ * Driving GPIO14 high with the expander's enable bit set left the panel dark
+ * with every register in the path reading back asserted.  The reference puts a
+ * 5 kHz PWM there, and a backlight driver whose dimming input needs a switching
+ * signal rather than a DC level is exactly what that difference produces.
+ *
+ * The source is the crystal, again for the reason the I2C bus uses it: it is
+ * the one clock no divider this port sets can move.  At 40 MHz, ten bits of
+ * resolution and 5 kHz, one counter step is 40e6 / 5000 / 1024 = 7.8125 source
+ * ticks, and the divider is that in Q8, so 2000 exactly.  The duty register is
+ * Q4, so a duty value is written shifted left four.
+ */
+#define P4_LEDC_BASE            (P4_HPPERIPH1_BASE + 0x13000)
+#define P4_LEDC_CH0_CONF0       0x000
+#define   P4_LEDC_TIMER_SEL_MASK 0x3UL
+#define   P4_LEDC_SIG_OUT_EN    (1UL << 2)
+#define   P4_LEDC_IDLE_LV       (1UL << 3)
+#define   P4_LEDC_PARA_UP       (1UL << 4)
+#define P4_LEDC_CH0_HPOINT      0x004
+#define P4_LEDC_CH0_DUTY        0x008
+#define P4_LEDC_CH0_CONF1       0x00C
+#define   P4_LEDC_DUTY_START    (1UL << 31)
+#define P4_LEDC_TIMER0_CONF     0x0A0
+#define   P4_LEDC_DUTY_RES_MASK 0x1FUL
+#define   P4_LEDC_CLK_DIV_SHIFT 5
+#define   P4_LEDC_CLK_DIV_MASK  (0x3FFFFUL << P4_LEDC_CLK_DIV_SHIFT)
+#define   P4_LEDC_TIMER_PAUSE   (1UL << 23)
+#define   P4_LEDC_TIMER_RST     (1UL << 24)
+#define   P4_LEDC_TICK_SEL      (1UL << 25)
+/*
+ * The timer's own parameter-commit bit, which is not the channel's.  Writing
+ * the divider and the resolution without it leaves the timer not counting, and
+ * a channel whose timer does not count holds its output at whatever the
+ * comparison gives with the counter at zero - which is high, and looks exactly
+ * like a working full-brightness backlight that does not light anything.
+ */
+#define   P4_LEDC_TIMER_PARA_UP (1UL << 26)
+#define P4_LEDC_CONF            0x170
+#define   P4_LEDC_APB_CLK_SEL_MASK 0x3UL
+#define   P4_LEDC_GLOBAL_CLK_EN (1UL << 31)
+
+#define P4_CLKRST_SOC_CLK_CTRL3 (P4_HP_SYS_CLKRST_BASE + 0x20)
+#define   P4_LEDC_APB_CLK_EN    (1UL << 0)
+#define P4_CLKRST_PERI_CLK_CTRL22 (P4_HP_SYS_CLKRST_BASE + 0x9C)
+#define   P4_LEDC_CLK_SRC_MASK  0x3UL      /* 0 XTAL, 1 fast RC, 2 PLL */
+#define   P4_LEDC_CLK_EN        (1UL << 2)
+#define   P4_RST_EN_LEDC        (1UL << 29)
+
+#define P4_SIG_LEDC_CH0_OUT     126
+#define P4_LEDC_BL_DUTY_RES     10
+#define P4_LEDC_BL_CLK_DIV      2000
+#define P4_LEDC_BL_PERCENT      20
+
 #define P4_PCA9535_ADDR         0x20
 #define P4_PCA9535_INPUT        0x00
 #define P4_PCA9535_OUTPUT       0x02
@@ -539,7 +595,30 @@
 #define P4_DSI_PHY_TST_CTRL1    0x0B8
 #define   P4_DSI_TESTDIN_MASK   0xFFUL
 #define   P4_DSI_TESTEN         (1UL << 16)
+#define P4_DSI_BRG_CLK_EN       0x000
+#define   P4_DSI_BRG_CLK_EN_BIT (1UL << 0)
 #define P4_DSI_BRG_EN           0x004
+#define P4_DSI_BRG_PIXEL_TYPE   0x018
+#define   P4_DSI_BRG_RAW_TYPE_MASK  0xFUL
+#define   P4_DSI_BRG_DPI_TYPE_SHIFT 4
+#define   P4_DSI_BRG_DPI_TYPE_MASK  (0x3UL << P4_DSI_BRG_DPI_TYPE_SHIFT)
+#define   P4_DSI_BRG_DATA_IN_TYPE   (1UL << 6)
+#define P4_DSI_BRG_DPI_V_CFG0   0x030
+#define P4_DSI_BRG_DPI_V_CFG1   0x034
+#define P4_DSI_BRG_DPI_H_CFG0   0x038
+#define P4_DSI_BRG_DPI_H_CFG1   0x03C
+#define   P4_DSI_BRG_TOTAL_SHIFT 0
+#define   P4_DSI_BRG_DISP_SHIFT  16
+#define   P4_DSI_BRG_BANK_SHIFT  0
+#define   P4_DSI_BRG_SYNC_SHIFT  16
+#define P4_DSI_BRG_DPI_MISC_CFG 0x040
+#define   P4_DSI_BRG_DPI_EN     (1UL << 0)
+#define P4_DSI_BRG_DPI_CFG_UPD  0x044
+#define   P4_DSI_BRG_CFG_UPDATE (1UL << 0)
+#define P4_DSI_BRG_INT_RAW      0x058
+#define   P4_DSI_BRG_UNDERRUN   (1UL << 0)
+#define P4_DSI_BRG_DMA_FLOW_CTL 0x088
+#define   P4_DSI_BRG_FLOW_BRIDGE (1UL << 0)
 #define   P4_DSI_BRG_DSI_EN     (1UL << 0)
 
 #define P4_DSI_CLKMGR_CFG       0x008
@@ -590,6 +669,57 @@
 #define   P4_DSI_LP2HS_SHIFT    0
 #define   P4_DSI_HS2LP_SHIFT    16
 #define P4_DSI_PHY_TMR_RD_CFG   0x0F4
+#define P4_DSI_DPI_VCID         0x00C
+#define P4_DSI_DPI_COLOR_CODING 0x010
+#define   P4_DSI_COLOR_16BIT_C1 0
+#define P4_DSI_DPI_CFG_POL      0x014
+#define P4_DSI_DPI_LP_CMD_TIM   0x018
+#define P4_DSI_VID_MODE_CFG     0x038
+#define   P4_DSI_VID_MODE_TYPE_MASK 0x3UL
+#define   P4_DSI_VID_BURST_SYNC_PULSES 2
+#define   P4_DSI_LP_VSA_EN      (1UL << 8)
+#define   P4_DSI_LP_VBP_EN      (1UL << 9)
+#define   P4_DSI_LP_VFP_EN      (1UL << 10)
+#define   P4_DSI_LP_VACT_EN     (1UL << 11)
+#define   P4_DSI_LP_HBP_EN      (1UL << 12)
+#define   P4_DSI_LP_HFP_EN      (1UL << 13)
+#define   P4_DSI_FRAME_BTA_ACK_EN (1UL << 14)
+#define   P4_DSI_LP_CMD_EN      (1UL << 15)
+#define   P4_DSI_VPG_EN         (1UL << 16)
+#define   P4_DSI_VPG_MODE       (1UL << 20)
+#define   P4_DSI_VPG_ORIENTATION (1UL << 24)
+#define P4_DSI_VID_PKT_SIZE     0x03C
+#define P4_DSI_VID_NUM_CHUNKS   0x040
+#define P4_DSI_VID_NULL_SIZE    0x044
+#define P4_DSI_VID_HSA_TIME     0x048
+#define P4_DSI_VID_HBP_TIME     0x04C
+#define P4_DSI_VID_HLINE_TIME   0x050
+#define P4_DSI_VID_VSA_LINES    0x054
+#define P4_DSI_VID_VBP_LINES    0x058
+#define P4_DSI_VID_VFP_LINES    0x05C
+#define P4_DSI_VID_VACTIVE_LINES 0x060
+
+/*
+ * The panel's timing, from display/DISPLAY-CONTRACT.md's Set A - the set the
+ * working reference actually writes, not the one its header declares.
+ */
+#define P4_PANEL_H_RES          800
+#define P4_PANEL_V_RES          1280
+#define P4_PANEL_HSYNC          20
+#define P4_PANEL_HBP            20
+#define P4_PANEL_HFP            40
+#define P4_PANEL_VSYNC          4
+#define P4_PANEL_VBP            30
+#define P4_PANEL_VFP            30
+#define P4_PANEL_DPI_MHZ        40
+
+/*
+ * The DPI clock: PLL_F240M divided by six is exactly 40 MHz, and the source
+ * selector for PLL_F240M is 1.
+ */
+#define P4_DSI_DPICLK_SRC_PLL240 1
+#define P4_DSI_DPICLK_DIV       6
+
 #define P4_DSI_INT_ST0          0x0BC
 #define P4_DSI_INT_ST1          0x0C0
 
