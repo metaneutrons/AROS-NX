@@ -97,6 +97,28 @@ void krnP4PutC(char c)
         usj_flush();
 }
 
+/*
+ * One character from the host, or -1 if it has sent none.
+ *
+ * Never waits.  A caller polling this has to be able to do something else,
+ * and the one caller that matters - econsole's Raw_Read() - reschedules
+ * between attempts.
+ *
+ * A pending transmit is flushed first.  Without that, a prompt written
+ * without a trailing newline sits in the endpoint buffer unsent while this
+ * waits for a reply to it, which is a deadlock made entirely of politeness.
+ */
+int krnP4GetC(void)
+{
+    if (usj_pending)
+        usj_flush();
+
+    if (!(mmio_rd(P4_USJ_BASE, P4_USJ_EP1_CONF) & P4_USJ_OUT_EP_DATA_AVAIL))
+        return -1;
+
+    return (int)(mmio_rd(P4_USJ_BASE, P4_USJ_EP1) & 0xFF);
+}
+
 #else /* UART0 */
 
 void krnP4PutC(char c)
@@ -114,6 +136,15 @@ void krnP4PutC(char c)
             return;
         }
     }
+}
+
+int krnP4GetC(void)
+{
+    if (((mmio_rd(P4_UART0_BASE, P4_UART_STATUS) >> P4_UART_RXFIFO_CNT_S)
+            & P4_UART_RXFIFO_CNT_M) == 0)
+        return -1;
+
+    return (int)(mmio_rd(P4_UART0_BASE, P4_UART_FIFO) & 0xFF);
 }
 
 #endif

@@ -28,6 +28,10 @@
 #define P4_UART_STATUS          0x001C
 #define  P4_UART_TXFIFO_CNT_S   16
 #define  P4_UART_TXFIFO_CNT_M   0xFF
+/* Same register, bits 7:0 - uart_struct.h calls it rxfifo_cnt, "Stores the
+   byte number of valid data in Rx-FIFO". */
+#define  P4_UART_RXFIFO_CNT_S   0
+#define  P4_UART_RXFIFO_CNT_M   0xFF
 #define P4_UART_FIFO_DEPTH      128
 
 #define P4_USJ_BASE             (P4_HPPERIPH1_BASE + 0x12000)
@@ -45,6 +49,10 @@
 #define P4_USJ_EP1_CONF         0x0004
 #define  P4_USJ_WR_DONE         (1 << 0)
 #define  P4_USJ_IN_EP_DATA_FREE (1 << 1)
+/* components/soc/esp32p4/register/hw_ver1/soc/usb_serial_jtag_struct.h:
+   serial_out_ep_data_avail, "1'b1: Indicate there is data in UART Rx FIFO".
+   Reading P4_USJ_EP1 pops one byte from that FIFO. */
+#define  P4_USJ_OUT_EP_DATA_AVAIL (1 << 2)
 #define P4_USJ_EP1_DEPTH        64
 
 /*
