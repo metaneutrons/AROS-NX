@@ -376,8 +376,6 @@ struct p4_rom_spi_cmd
     uint32_t dummy_bitlen;
 };
 
-#define P4_XTAL_HZ                  40000000UL
-
 /*
  * always_inline, not merely inline. These are called from P4_SRAMCODE
  * functions, and at -Os the compiler is entitled to emit one out-of-line
