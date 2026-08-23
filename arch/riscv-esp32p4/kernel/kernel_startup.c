@@ -5733,7 +5733,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutStr("[psram]  calib  entry ");
             krnP4PutHex32((uint32_t)psram.ana_trace[0]);
             krnP4PutStr((psram.ana_trace[0] & (1UL << 8))
-                        ? " inherited\n" : " done here\n");
+                        ? " inherited, " : " done here, ");
+            krnP4PutDec((uint32_t)psram.mpll_attempts);
+            krnP4PutStr(psram.mpll_attempts == 1 ? " attempt\n" : " attempts\n");
 
             krnP4PutStr("[psram]  supply inherited ");
             krnP4PutDec((uint32_t)psram.bias_found);

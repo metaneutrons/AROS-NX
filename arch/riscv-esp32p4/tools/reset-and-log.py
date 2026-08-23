@@ -42,15 +42,17 @@ def main():
     #   six came back silent - and a silent capture is indistinguishable from a
     #   boot that produced no output, which is exactly the confusion this
     #   script exists to remove.  So it retries until the first byte arrives.
-    #   RTS alone is the reset, the same two writes esptool's hard-reset makes.
-    #   DTR is left untouched on purpose: it selects boot mode, and driving it
-    #   low as part of the reset left the board sitting in the ROM's download
-    #   stub, which then needed esptool to recover.  Driving it high stopped
-    #   the reset from taking at all.
+    #   esptool's hard reset, line for line: DTR low the whole time so IO0
+    #   stays high and the ROM runs the application instead of its download
+    #   stub, RTS pulsed to drive EN.  Getting this wrong fails in both
+    #   directions - driving DTR high stopped the reset taking at all, and
+    #   toggling it as part of the pulse left the board in the download stub.
     for attempt in range(6):
         s.reset_input_buffer()
+        s.setDTR(False)
         s.setRTS(True)
-        time.sleep(0.05)
+        time.sleep(0.1)
+        s.setDTR(False)
         s.setRTS(False)
         time.sleep(0.15)
 
@@ -58,15 +60,27 @@ def main():
         if not first:
             continue
 
-        #   A board that came up in the download stub is not a boot; say so
-        #   rather than reporting an empty capture.
-        head = first + s.read(120)
+        #   Read enough of the ROM banner to see which way the board went.  It
+        #   prints its reset cause and boot mode within the first few lines,
+        #   and about half of these resets land in the download stub - the
+        #   line states are right for a run boot and the ROM sometimes latches
+        #   IO0 anyway.  Retrying is what makes this reliable; a 120-byte
+        #   window was not enough to notice, and silent captures were being
+        #   read as failed boots.
+        head = first
+        deadline = time.time() + 0.6
+        while time.time() < deadline and b"\n" * 6 not in head:
+            head += s.read(512)
+
+        if b"waiting for download" in head or b"DOWNLOAD" in head:
+            continue
+
         sys.stdout.buffer.write(head)
-        if b"waiting for download" in head:
-            sys.exit("\nboard entered the download stub, not a boot")
+        sys.stdout.buffer.flush()
         break
     else:
-        sys.exit("board did not restart after six attempts")
+        sys.exit("board would not boot in six attempts; it kept entering "
+                 "the ROM download stub")
 
     end = time.time() + seconds
     while time.time() < end:
