@@ -205,17 +205,109 @@ Descriptors, ISR data and controller state stay in internal SRAM.  CPU writes
 are not coherent with display DMA, so each dirty region is cleaned
 CPU-to-memory before presentation.
 
+## B3's register sequence, derived
+
+Everything below was derived from `IDF` and is `reference`: it is what the
+working driver does, expressed as register writes rather than as calls, with
+the values this board's parameters produce already substituted.  Nothing here
+has been executed by this port yet.  The point of writing it down is that the
+derivation is the hard part and the code is then mechanical; the point of
+marking it `reference` is that a value being correctly derived from a working
+driver is not the same as a value this port has seen work.
+
+### The PHY supply
+
+`BSP_MIPI_DSI_PHY_PWR_LDO_CHAN` is 3, and `IDF`'s channel-to-unit mapping is
+`unit = chan - 1` followed by `index_array[4] = {0, 3, 1, 4}`, so channel 3 is
+unit 2 is index 1, which is `PMU_EXT_LDO_P0_0P2A_REG` at PMU base + 0x1c0 with
+its analogue half at + 0x1c4.  Fields: `FORCE_TIEH_SEL` bit 7, `XPD` bit 8,
+`TIEH_SEL` bits 10:9, `TIEH` bit 14; `MUL` bits 25:23 and `DREF` bits 31:28 in
+the analogue register.
+
+The voltage is not a register value but a search.  `Vout = (Vref*K + Vos) *
+(1 + 0.25*mul*C)` with `Vref = dref < 9 ? 0.5 + dref*0.05 : 1 + (dref-9)*0.1`,
+and K, Vos and C are per-part trim constants in eFuse.  Uncalibrated, K=1,
+Vos=0, C=1, the exact solution for 2500 mV is **dref 9, mul 6**, and it is
+exact rather than nearest: 1.0 V reference times 2.5.
+
+This port will use those values without reading the eFuse trim, and that is a
+decision rather than an oversight.  It gives the nominal design point instead
+of a per-part corrected one, so a part whose trim constants are far from unity
+will sit a few percent off 2.5 V.  If the PHY behaves marginally, this is on
+the short list of causes, above the timing set and below the undocumented
+switch-time constants.
+
+### Clocks and resets
+
+| Step | Register | Field |
+|---|---|---|
+| DSI system clock | `HP_SYS_CLKRST` + 0x18 | bit 12 |
+| Bridge reset, assert then release | + 0xc0 | bit 26 |
+| PHY config clock | + 0x3c | bit 0 |
+| PHY PLL reference clock | + 0x3c | bit 1 |
+| PHY reference source select | + 0x38 | bits 31:30 |
+| DPI clock source | + 0x3c | bits 6:5 |
+| DPI clock enable | + 0x3c | bit 7 |
+| DPI clock divider | + 0x3c | bits 15:8, value less one |
+
+The PHY reference is the 40 MHz crystal with no division, the same choice and
+for the same reason as the I2C bus: it is the one clock no divider this port
+sets can move.
+
+### The PHY PLL, with this board's numbers
+
+`f_vco = M/N * f_ref`, M even, and `5 <= f_ref/N <= 40` MHz.  For a 40 MHz
+reference and 1000 Mbit/s per lane the search terminates immediately at
+**N = 2, M = 50**, which is exact rather than nearest.  The frequency-range
+selector for [1000, 1050) Mbit/s is **0x2A**.
+
+The PLL is not memory mapped.  It is written through the DesignWare test
+interface, one register at a time, address then value, each latched by a
+falling and then a rising edge of the test clock.  The five writes are:
+
+| PHY register | Value | Meaning |
+|---|---|---|
+| 0x44 | 0x54 | range selector, shifted left one |
+| 0x19 | 0x30 | take M and N from 0x17 and 0x18 |
+| 0x17 | 0x01 | N - 1 |
+| 0x18 | 0x11 | low five bits of M - 1 |
+| 0x18 | 0x81 | high bits of M - 1, with the load flag |
+
+0x18 is written twice on purpose; the second write carries bit 7 to commit.
+
+### The order the reference brings it up in
+
+1. LDO on, PHY config and reference clocks on, bridge out of reset.
+2. Write the five PLL registers.
+3. Wait for PLL lock, then for every data lane to reach stop state.  Both are
+   status bits and both must be bounded here, which is the half of B3's gate
+   that is about not hanging.
+4. Command mode: video mode off, clock lane in low power.
+5. `set_switch_time(50, 104, 46, 128)`, the four undocumented constants.
+6. Receive CRC and ECC on, end-of-transmission packet on.
+7. Timeout and escape clock dividers from the lane rate: byte clock is the lane
+   rate over eight, and each divider is that over the target frequency.
+8. Timeout counts all zero, which disables the timeout mechanism.
+9. `set_max_read_time(6000)` and `set_stop_wait_time(0x3F)`.
+
+Only then does the panel's own command sequence go out over DBI, and only then
+is the 120 ms of the reset pulse from B2 actually needed to have elapsed.
+
 ## Unresolved, carried forward
 
 1. Which timing set is correct.  Set A runs; whether Set B would also run, or
    run better, is unmeasured.  B4.
 2. The 60 Hz label in two sources that no timing set produces.
-3. The PHY numbers `mipi_dsi_phy_ll_set_switch_time(50, 104, 46, 128)` and
-   `set_max_read_time(6000)` in `IDF`
-   `components/esp_lcd/dsi/esp_lcd_mipi_dsi_bus.c:109,124`.  No derivation is
-   available in any local source and no ESP32-P4 technical reference manual is
-   present on this machine.  They will be carried over as opaque constants
-   with this note attached.
+3. The PHY numbers `set_switch_time(50, 104, 46, 128)`,
+   `set_max_read_time(6000)` and `set_stop_wait_time(0x3F)` in `IDF`
+   `components/esp_lcd/dsi/esp_lcd_mipi_dsi_bus.c`.  No derivation is available
+   in any local source and no ESP32-P4 technical reference manual is present on
+   this machine.  They will be carried over as opaque constants with this note
+   attached.  So will the PHY register 0x19 value 0x30, whose only
+   documentation is a comment saying it makes the PLL use 0x17 and 0x18.
+6. Whether the LDO's eFuse trim matters on this part.  The uncalibrated
+   solution is nominally exact; a part far from unity trim would sit a few
+   percent off.
 4. Whether the JD9365 answers a DCS `0x04` ID read, and with what.  No source
    states an expected value; inventing one is forbidden.  A stable
    non-degenerate response across resets becomes a board fact.
