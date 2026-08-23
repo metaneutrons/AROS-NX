@@ -745,13 +745,82 @@ const struct Resident krnP4HeartbeatResident =
 #ifdef P4_AFTERDOS_PROBE
 
 /*
- * The DOS device name dosboot gives the first MBR partition of unit 0:
- * bootscan.c builds it from the device name, the unit number, 'P' and the
- * partition position, so "sdcard.device" unit 0 partition 0 is SDCARD0P0.
+ * The Relabel case needs the name of the *device* node serving SYS:, because
+ * getdevpacketinfo() in rom/dos/packethelper.c refuses anything whose
+ * dol_Type is not DLT_DEVICE; an assign or a volume name returns
+ * ERROR_DEVICE_NOT_MOUNTED without the packet ever reaching the handler.
+ *
+ * A fixed name is wrong, and a run with no card in the board is what showed
+ * it: dosboot names that node from the device, the unit and the partition
+ * position in bootscan.c, so it is SDCARD0P0 when the card booted and
+ * FLASHDISK0P0 when the flash volume did.  krnP4SysDeviceName() finds it by
+ * matching the handler port SYS: resolves to against the device list, which
+ * is exact and needs no assumption about what booted.  A build can still pin
+ * it with -DP4_PROBE_DEVICE="...".
  */
 #ifndef P4_PROBE_DEVICE
-#define P4_PROBE_DEVICE "SDCARD0P0:"
+#define P4_PROBE_DEVICE ""
 #endif
+
+/* Writes "NAME:" into out, or leaves it empty if SYS: cannot be traced back
+   to a device node.  Returns 1 on success. */
+static int krnP4SysDeviceName(char *out, ULONG size)
+{
+    struct DevProc *dp;
+    struct DosList *dl;
+    int found = 0;
+
+    out[0] = '\0';
+
+    if (P4_PROBE_DEVICE[0] != '\0')
+    {
+        const char *fixed = P4_PROBE_DEVICE;
+        ULONG i = 0;
+
+        while (fixed[i] != '\0' && i + 1 < size)
+        {
+            out[i] = fixed[i];
+            ++i;
+        }
+        out[i] = '\0';
+        return 1;
+    }
+
+    dp = GetDeviceProc((CONST_STRPTR)"SYS:", NULL);
+    if (!dp)
+        return 0;
+
+    dl = LockDosList(LDF_DEVICES | LDF_READ);
+    while ((dl = NextDosEntry(dl, LDF_DEVICES | LDF_READ)) != NULL)
+    {
+        if (dl->dol_Task != dp->dvp_Port)
+            continue;
+
+        {
+            /* Copied to the terminator rather than by AROS_BSTR_strlen(),
+               which is strlen() here and the kernel is built freestanding. */
+            const char *name = AROS_BSTR_ADDR(dl->dol_Name);
+            ULONG i = 0;
+
+            while (name[i] != '\0' && i + 2 < size)
+            {
+                out[i] = name[i];
+                ++i;
+            }
+            if (i > 0)
+            {
+                out[i] = ':';
+                out[i + 1] = '\0';
+                found = 1;
+            }
+        }
+        break;
+    }
+    UnLockDosList(LDF_DEVICES | LDF_READ);
+    FreeDeviceProc(dp);
+
+    return found;
+}
 
 /*
  * The half of the A4 gate that only a running DOS can answer.
@@ -911,6 +980,7 @@ static int krnP4AfterDosProbe(void)
             LONG result;
             LONG error;
         } cases[8];
+        static char sysdevice[40];
         unsigned int n = 0, i;
         BPTR fh, dir;
 
@@ -968,15 +1038,32 @@ static int krnP4AfterDosProbe(void)
          * be sent to.
          */
         cases[n].name = "Relabel(device)";
-        cases[n].result = Relabel((CONST_STRPTR)P4_PROBE_DEVICE,
-                                  (CONST_STRPTR)"P4Probe");
-        cases[n].error = IoErr();
+        if (krnP4SysDeviceName(sysdevice, sizeof(sysdevice)))
+        {
+            krnP4PutStr("[sysfs]    SYS: is served by ");
+            krnP4PutStr(sysdevice);
+            krnP4PutStr("\n");
+            cases[n].result = Relabel((CONST_STRPTR)sysdevice,
+                                      (CONST_STRPTR)"P4Probe");
+            cases[n].error = IoErr();
+        }
+        else
+        {
+            /* Not a filesystem result, so it must not be scored as one. */
+            krnP4PutStr("[sysfs]    SYS: could not be traced to a device node,"
+                        " skipping Relabel\n");
+            cases[n].name = NULL;
+        }
         ++n;
-
-        mutations_run = (int)n;
 
         for (i = 0; i < n; ++i)
         {
+            /* A case that could not be set up at all is not a result.  It is
+               left out of the count rather than scored either way. */
+            if (cases[i].name == NULL)
+                continue;
+            ++mutations_run;
+
             krnP4PutStr("[sysfs]    ");
             krnP4PutStr(cases[i].name);
             krnP4PutStr(": result ");
