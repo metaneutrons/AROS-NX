@@ -61,6 +61,12 @@ USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 #                       immediately following CMD17 recovery read to pass
 #   -DP4_PARTITION_TEST  open the package-loaded partition.library and read
 #                       one sector through its public root-partition API
+#   -DP4_AFTERDOS_PROBE an RTF_AFTERDOS resident that asks the half of the A4
+#                       gate only a running DOS can answer: Info() reporting
+#                       the volume write protected, every mutating DOS call
+#                       refused as write protection, and the medium unchanged
+#                       afterwards.  It runs after SYS: exists and before the
+#                       Shell reaches a prompt
 #   -DP4_CMDLINE="..." supply a kernel command line through the KRN_CmdLine
 #                       boot tag.  bootloader.resource splits it on
 #                       whitespace into the argument list dosboot reads;
@@ -136,6 +142,13 @@ ifdef P4_HEARTBEAT_TASK
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_TASK
 endif
 
+# P4_AFTERDOS_PROBE=1 adds the RTF_AFTERDOS resident described above.  It
+# needs a bootable medium: without SYS: there is nothing for it to examine
+# and it says so and returns.
+ifdef P4_AFTERDOS_PROBE
+P4_DEBUG_CPPFLAGS += -DP4_AFTERDOS_PROBE
+endif
+
 ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
@@ -160,6 +173,7 @@ CFILES := \
         kernel_console \
         kernel_debug \
         kernel_traps \
+        maygetchar \
         cli \
         sti \
         issuper

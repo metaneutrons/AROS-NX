@@ -116,8 +116,8 @@ tests.
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
 | A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `hardware verified` | Evidence entry 2026-08-23: byte-reproducible image, checked by the host parser, `fsck_msdos` and its manifest, and read correctly on the board at the values predicted from the image.  Every changed sector after the run is attributed to the host's mount |
-| A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `hardware partial` | Evidence entries 2026-08-23: fourteen members load, dosboot replaces the whole-disk node with the partition node, FAT mounts and reports the medium write protected, and a card without `AROS.boot` falls back to a Shell prompt on the emergency console.  Owed: `SYS:` from a bootable medium, and `Info()` plus mutation refusals observed |
-| A5 | Command and library loaded from MicroSD | `not started` | Closes M6 |
+| A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `hardware verified` | Evidence entries 2026-08-23: all eight gate points.  `SYS:` assigned from the A3 image after `AROS.boot` was accepted, `Info()` reports `ID_WRITE_PROTECTED`, eight DOS mutations refused with error 214 and the file bit-identical afterwards, and a medium without `AROS.boot` falls back to a Shell prompt.  Five defects in shared code fixed on the way |
+| A5 | Command and library loaded from MicroSD | `not started` | Requires A4, which now passes.  Both routes the phase names are open: the console can be typed into, and the A4 AFTERDOS resident is the non-interactive one.  Closes M6 |
 | B0 | Canonical D1001 display contract and provenance | `not started` | Resolve timing contradictions first |
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `not started` | Requires B0; required before scanout |
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `not started` | Requires B0; backlight remains dark |
@@ -2718,6 +2718,143 @@ of free memory.  No trap anywhere in the run.
 - Next safe step: the A3 card in the slot, to close the two remaining gate
   points.  After that, `krnMayGetC()` so the console can be typed into, which
   A5 wants anyway.
+
+### 2026-08-23 - A4 complete: SYS: from the SD card, and every mutation refused
+
+- State change: A4 `hardware partial` to `hardware verified`.  All eight
+  acceptance points of the phase are met on the D1001.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3, with
+  the **A3 test card** in the slot - the one carrying the byte-reproducible
+  FAT32 image from the 2026-08-23 A3 entry.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `0df1a96b08`.
+- Artifacts:
+  - core 170,368 bytes,
+    `0f0a421e893f3fe632ae28d4bd7bbf203ebcf918edaf3b01d0824d2598c4c9bd`;
+  - package 1,164,016 bytes,
+    `41fea833f4fd3ad01853a8febbf3352a3d7e12b8c3153e82d6ed6747c2241b7c`,
+    fourteen members, 14.1 % of the partition.
+- Configuration: `P4_A1_DIAGNOSTIC=1 P4_PARTITION_TEST=1 P4_DOS_PROBE=1
+  P4_AFTERDOS_PROBE=1 P4_HEADLESS_BOOT=1 P4_HEARTBEAT_TASK=1
+  P4_LDSCRIPT=ldscript-xip.lds`; package with `FAT_DEBUG=1 DOS_DEBUG=1
+  DOSBOOT_DEBUG=1`.  Note that the A1, A2 and A3 diagnostics in
+  `kernel_startup.c` no longer run in a build like this: they sit after
+  `krnStartExec()`, and dosboot does not return from it.  That is the
+  diagnostic-ordering boundary this phase was structured around, and it has
+  now been crossed deliberately.
+
+The boot, from the A3 medium:
+
+- `dosboot_BootScan` replaced the whole-disk node with `SDCARD0P0`, DosType
+  `0x46415402`;
+- `dos.library` matched it against `FileSystem.resource`, started the FAT
+  handler, and FAT mounted the volume;
+- `__dos_IsBootable` opened `:AROS.boot`, read it and reported
+  `Signature 'riscv' found`, which is the `cpu riscv` line
+  `image/mmakefile.src` writes;
+- `Dos/CliInit: Proposed SYS: lock is: 482928a0`, and `SYS:` was assigned
+  from that volume;
+- the Shell reached its prompt on `ECON:` with the AROS banner.  No trap
+  anywhere in the run, and ten heartbeats over the capture.
+
+Two new instruments, both needed because there is no `C:` to load a command
+from and no resident `Info` in the shellcommands set.
+
+**Console input.**  `KrnMayGetChar()` had no implementation on this platform,
+so `RawMayGetChar()` always returned -1 and `ECON:` was output-only: a prompt
+that could be printed and never answered.  `arch/riscv-esp32p4/kernel/
+maygetchar.c` now returns `krnP4GetC()`, which reads the USB Serial/JTAG OUT
+endpoint when `serial_out_ep_data_avail` is set, or UART0's FIFO when
+`rxfifo_cnt` is non-zero; both field names and positions were taken from
+`components/soc/esp32p4/register/hw_ver1/soc/*_struct.h` in ESP-IDF v6.0.1
+rather than from memory.  A pending transmit is flushed first, since a prompt
+written without a trailing newline otherwise sits in the endpoint buffer while
+the reader waits for a reply to it.  Verified by typing at the prompt: the
+Shell echoed the line and answered.
+
+**An RTF_AFTERDOS probe.**  `rom/dos/cliinit.c` calls
+`InitCode(RTF_AFTERDOS)` once `SYS:` and the boot assigns exist and before the
+Shell starts, which is exactly the window this needs.  The resident lives in
+the kickstart, opens dos.library, and asks:
+
+```text
+[sysfs]  Lock("SYS:") = 0x482932d0
+[sysfs]  Info() id_DiskState 80 (ID_WRITE_PROTECTED)
+[sysfs]    blocks 129024, used 2064, block size 512, disk type 0x444f5300
+[sysfs]  read SYS:AROS.boot = 43 bytes, hash 0xf949eb96
+[sysfs]    Open(MODE_NEWFILE): result 0x00000000, IoErr 214  refused as write protection
+[sysfs]    Open(MODE_READWRITE): result 0x00000000, IoErr 214  refused as write protection
+[sysfs]    CreateDir: result 0x00000000, IoErr 214  refused as write protection
+[sysfs]    DeleteFile: result 0x00000000, IoErr 214  refused as write protection
+[sysfs]    Rename: result 0x00000000, IoErr 214  refused as write protection
+[sysfs]    SetProtection: result 0x00000000, IoErr 214  refused as write protection
+[sysfs]    SetComment: result 0x00000000, IoErr 214  refused as write protection
+[sysfs]    Relabel(device): result 0x00000000, IoErr 214  refused as write protection
+[sysfs]  re-read SYS:AROS.boot = 43 bytes, hash 0xf949eb96  unchanged
+[sysfs]  Info() id_DiskState after 80 (ID_WRITE_PROTECTED)
+[sysfs]  AFTERDOS probe passed, 8 mutation cases
+```
+
+`id_DiskState` 80 is `ID_WRITE_PROTECTED`; before the FAT change it would have
+been 82, `ID_VALIDATED`.  129,024 blocks is exactly the partition size the A3
+image declares.  214 is `ERROR_DISK_WRITE_PROTECTED`, and each of the eight
+came back immediately with no requester, because the refusal happens in
+`ProcessPackets()` before the dispatch switch.  The two reads either side of
+the mutations are what makes the claim about dirty cache state checkable:
+43 bytes hashing `0xf949eb96` both times, so nothing was written and nothing
+was left half-written in the cache either.
+
+One correction to this probe, made after the first run.  `Relabel("SYS:", ...)`
+returned `ERROR_DEVICE_NOT_MOUNTED` (218), which looked like a failure of the
+filesystem and was a defect in the test: `Relabel` wants a device, `SYS:` is
+an assign, and the packet never reached the handler.  Aimed at the device node
+`SDCARD0P0:` it is refused as write protection like the rest.  The first run's
+verdict of FAILED on 8 cases is therefore void; the corrected run passes all
+eight.
+
+One more defect in shared code had to be fixed on the way, found by typing
+`echo` at the prompt and getting an illegal-instruction trap at
+`mepc 0x4ff9d4ac` - again on a valid `auipc` at the head of an
+`__AROS_SET_FULLJMP` trampoline.  `workbench/c/shellcommands/
+shellcommands_init.c` builds such a trampoline for every resident command and
+flushes it with `CacheClearE()`, but the flush sat inside
+`#ifdef __AROS_USE_FULLJMP`.  That macro means something else: it says the
+*library jump table* holds instructions, which is why `MakeFunctions()` and
+`SetFunction()` consult it.  On 32-bit RISC-V `struct JumpVec` is a bare
+pointer, so the macro is correctly undefined, while the trampoline is three
+real instructions.  The flush is now unconditional, matching
+`CreateSegList()`, which has never guarded it.  Every resident shell command
+was unreachable until this.
+
+- Acceptance points passed, all eight: UART lists every expected resident and
+  its version in the intended order; the SD boot-wait resident at -49 runs
+  before dosboot and is bounded; `FileSystem.resource` contains the FAT entry;
+  dosboot replaces the whole-disk node with the expected partition node; FAT
+  starts, locks the volume, accepts `AROS.boot` and `SYS:` is assigned;
+  `Info()` reports the volume write-protected and eight representative
+  mutations fail immediately with no dirty cache and no requester, while a
+  denied block write reports `io_Actual == 0` (2026-08-23 device test);
+  missing media falls back to the emergency console without a hang
+  (2026-08-23, reference card); normal heartbeats continue.
+- Safety impact: the A3 card was mounted, read, subjected to eight deliberate
+  mutation attempts and read again, and `AROS.boot` is bit-identical across
+  all of it.  Every mutation was refused above the block device, and the block
+  device would have refused it again.
+- Remaining risk and one defect found in A3's own deliverable: FAT named the
+  volume `00D1-505A` rather than a label.  `mkfat32.py` writes
+  `AROSP4TEST` into the VBR's `BS_VolLab` field, but AROS's FAT handler reads
+  the name from a volume-label entry in the root directory, which the
+  generated image does not have.  The reference card, formatted by a host, has
+  one and was named `Amigatausch` correctly.  This is cosmetic for A4 but it
+  is a real gap in the generator, and the card currently in the board carries
+  the image without it.
+- Also outstanding: `ECON:` input now works, but the ECON handler still spins
+  at DOS's handler priority 10 whenever a shell waits for a keystroke, because
+  `Raw_Read()` has no way to block.  Anything below priority 10 is starved for
+  as long as a prompt is open, which is why the heartbeat sits at 20.
+- Next safe step: fix the volume-label entry in `mkfat32.py`, then A5 - load
+  and run a command and a library from the card.  A5's interactive route is
+  open now that the console can be typed into, and its AFTERDOS route is the
+  resident added here.
 
 ## Evidence-entry template
 
