@@ -4338,9 +4338,81 @@ static int krnP4PanelPass(int pass)
     return 1;
 }
 
+#ifdef P4_BACKLIGHT_ONLY
+/*
+ * The backlight and nothing else.
+ *
+ * B4's pattern ran with no host error and the panel stayed unlit, and every
+ * register in the backlight path read back asserted: the expander's enable bit
+ * confirmed at the pins, GPIO14 driven high and reading high.  So either the
+ * backlight does not come on for a reason outside those registers, or something
+ * in the DSI sequence undoes it.
+ *
+ * This separates the two.  It powers the panel, releases reset, turns the
+ * backlight on and stops - no PHY, no commands, no pattern.  If the panel
+ * lights, the backlight path is sound and the DSI sequence is doing something
+ * to it.  If it stays dark, the backlight path is wrong on its own and that is
+ * a far smaller thing to chase than a display pipeline.
+ */
+static void krnP4BacklightOnly(void)
+{
+    struct P4PanelState st;
+    struct P4BacklightState bl;
+
+    krnP4PutStr("[blonly] the backlight alone, no dsi at all\n");
+
+    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO, P4_D1001_I2C1_SCL_GPIO,
+                      100000UL))
+    {
+        krnP4PutStr("[blonly] I2C1 did not configure\n");
+        return;
+    }
+    if (krnP4PanelClaim(&st) != P4_I2C_OK)
+    {
+        krnP4PutStr("[blonly] the expander would not be claimed\n");
+        return;
+    }
+    if (krnP4PanelPowerUp(&st) != P4_I2C_OK)
+    {
+        krnP4PutStr("[blonly] the panel would not power up\n");
+        (void)krnP4PanelSafe();
+        return;
+    }
+    if (krnP4PanelBacklightOn() != P4_I2C_OK)
+    {
+        krnP4PutStr("[blonly] the backlight would not switch on\n");
+        (void)krnP4PanelSafe();
+        return;
+    }
+
+    krnP4PanelBacklightState(&bl);
+    krnP4PutStr("[blonly] latch ");
+    krnP4PutHex32(bl.latch);
+    krnP4PutStr(", pins ");
+    krnP4PutHex32(bl.expander_pins);
+    krnP4PutStr(", gpio14 driven ");
+    krnP4PutDec((uint32_t)bl.out_level);
+    krnP4PutStr(" reads ");
+    krnP4PutDec((uint32_t)bl.pin_level);
+    krnP4PutStr(", of ");
+    krnP4PutDec((uint32_t)bl.samples);
+    krnP4PutStr(" samples ");
+    krnP4PutDec((uint32_t)bl.samples_high);
+    krnP4PutStr(" high, ");
+    krnP4PutDec((uint32_t)(bl.samples_high * 100 / bl.samples));
+    krnP4PutStr(" percent\n[blonly] left on.  Is the panel lit, even"
+                " uniformly grey or white?\n");
+}
+#endif
+
 static void krnP4PanelProbe(void)
 {
     int r, passes = 0;
+
+#ifdef P4_BACKLIGHT_ONLY
+    krnP4BacklightOnly();
+    return;
+#endif
 
     krnP4PutStr("[panel]  B2: expander, panel supply and reset."
                 " No data path.\n");
@@ -4728,6 +4800,108 @@ static void krnP4PanelProbe(void)
 
             krnP4PutStr("[dsi]    B3 stage two ");
             krnP4PutStr(init == P4_DSI_OK ? "passed\n" : "FAILED\n");
+
+#ifdef P4_PATTERN_TEST
+            /*
+             * B4.  The host's own pattern generator, then the backlight.
+             *
+             * This order is the whole safety property of the phase: the link
+             * carries a defined image before anything is lit, so a failure
+             * anywhere above leaves a dark panel rather than a bright one
+             * showing whatever the controller held.
+             */
+            if (init == P4_DSI_OK)
+            {
+                struct P4DsiPattern pat;
+
+                (void)krnP4DsiPatternOn(&pat);
+
+                krnP4PutStr("[b4]     host timing: hsa ");
+                krnP4PutDec((uint32_t)pat.hsa);
+                krnP4PutStr(", hbp ");
+                krnP4PutDec((uint32_t)pat.hbp);
+                krnP4PutStr(", hact ");
+                krnP4PutDec((uint32_t)pat.hact);
+                krnP4PutStr(", hfp ");
+                krnP4PutDec((uint32_t)pat.hfp);
+                krnP4PutStr(", hline ");
+                krnP4PutDec((uint32_t)pat.hline);
+                krnP4PutStr("\n");
+
+                /*
+                 * The frame rate, derived and not measured, and the difference
+                 * matters.  Revision 1.x has no VSYNC interrupt in the bridge -
+                 * only underrun - and the panel's scanline register is behind
+                 * the read path that does not work, so there is no event this
+                 * port can count.  What follows is arithmetic from the
+                 * programmed totals and an exactly divided clock.
+                 */
+                krnP4PutStr("[b4]     ");
+                krnP4PutDec((uint32_t)pat.htotal_px);
+                krnP4PutStr(" x ");
+                krnP4PutDec((uint32_t)pat.vtotal_px);
+                krnP4PutStr(" at ");
+                krnP4PutDec((uint32_t)pat.frame_mhz);
+                krnP4PutStr(" MHz is ");
+                {
+                    unsigned long total = pat.htotal_px * pat.vtotal_px;
+                    unsigned long centihz = pat.frame_mhz * 100000000UL / total;
+
+                    krnP4PutDec((uint32_t)(centihz / 100));
+                    krnP4PutStr(".");
+                    krnP4PutDec((uint32_t)(centihz % 100));
+                    krnP4PutStr(" Hz, derived and not measured\n");
+                }
+
+                {
+                    unsigned long pkt = 0, i0 = 0, i1 = 0;
+                    unsigned long brg;
+
+                    krnTimerWait(10);           /* 100 ms of frames */
+                    krnP4DsiCmdStatus(&pkt, &i0, &i1);
+                    brg = p4_r32(P4_DSI_BRG_BASE + 0x58);   /* INT_RAW */
+                    krnP4PutStr("[b4]     after 100 ms: pkt ");
+                    krnP4PutHex32((uint32_t)pkt);
+                    krnP4PutStr(" int0 ");
+                    krnP4PutHex32((uint32_t)i0);
+                    krnP4PutStr(" int1 ");
+                    krnP4PutHex32((uint32_t)i1);
+                    krnP4PutStr(" brg ");
+                    krnP4PutHex32((uint32_t)brg);
+                    krnP4PutStr((brg & 1) ? "  UNDERRUN\n" : "  no underrun\n");
+                }
+
+                if (krnP4PanelBacklightOn() == P4_I2C_OK)
+                {
+                    struct P4BacklightState bl;
+
+                    krnP4PanelBacklightState(&bl);
+                    krnP4PutStr("[b4]     backlight: latch ");
+                    krnP4PutHex32(bl.latch);
+                    krnP4PutStr(", expander pins ");
+                    krnP4PutHex32(bl.expander_pins);
+                    krnP4PutStr(", gpio14 driven ");
+                    krnP4PutDec((uint32_t)bl.out_level);
+                    krnP4PutStr(" reads ");
+                    krnP4PutDec((uint32_t)bl.pin_level);
+                    krnP4PutStr(", out_sel ");
+                    krnP4PutHex32((uint32_t)bl.out_sel);
+                    krnP4PutStr(", iomux ");
+                    krnP4PutHex32((uint32_t)bl.iomux);
+                    krnP4PutStr("\n");
+                }
+                else
+                    krnP4PutStr("[b4]     the backlight would not switch on\n");
+
+                /*
+                 * Left running deliberately.  Everything else in this probe
+                 * returns the panel to safe, and here that would blank the one
+                 * thing there is to look at.  The next reset ends it.
+                 */
+                krnP4PutStr("[b4]     left running; reset to end it\n");
+                return;
+            }
+#endif
         }
         else
         {

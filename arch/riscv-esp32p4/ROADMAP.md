@@ -122,7 +122,7 @@ tests.
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `hardware partial` | The calibration works and 200 MHz holds over all 32 MB with four bus patterns, identically across six warm resets, and the whole storage stack passes on both media at 360 MHz.  The phase premise was wrong in an instructive way: the PSRAM bus was never the limit.  The CPU ran at 90 MHz because nothing configured it, and is now 360; sequential reads went 20 to 60 MB/s and internal SRAM 25 to 101.  The 100 MB/s gate is not assessable by a CPU loop and is reassigned to B5, with the reason recorded |
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware partial` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
-| B4 | Stable internal DSI test pattern | `not started` | Requires B3; isolates panel from DMA/PSRAM |
+| B4 | Stable internal DSI test pattern | `blocked` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
 | B5 | Native `800 x 1280` RGB565 PSRAM scanout | `not started` | Requires B1 and B4 |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
@@ -672,6 +672,7 @@ Acceptance gate:
 | CPU clock inherited, not configured | This port set no CPU clock and ran at 90 MHz until 2026-08-23 because the second-stage bootloader's divider was never touched.  Nothing failed, everything was four times slower than the silicon allows, and no diagnostic said so; it was found only by measuring `mcycle` against the system timer while chasing a bandwidth figure.  Anything else this port inherits from that bootloader is unexamined in the same way, the flash clock and the cache configuration in particular. |
 | CPU-loop bandwidth is a latency measurement | A scalar read loop costs 13.6 cycles per word from internal SRAM at both 90 and 360 MHz, which is one cache-line fill per sixteen words with a single fill outstanding.  It therefore measures fill latency and not the memory system's throughput, and no threshold about scanout can be argued from it.  A DMA engine is the only way to measure what the display will actually get, and until B5 exists any bandwidth claim about scanout is unfounded. |
 | The port expander survives a CPU reset | The PCA9535 has no reset pin and keeps its direction and output registers across every reboot, so its state at boot is whatever the last firmware left, not the datasheet default.  Any code that writes a whole register drives pins it never considered; B2's first version pulled the battery-charge enable low that way.  Read-modify-write is the only safe form here, and a check that assumes cold defaults passes vacuously on a warm board. |  And it cannot be cold-started without deciding to: the board has a battery, so removing USB changes nothing, and the only way to drop the rails is to release PWR_HOLD and power the board off.  Any test that wants the datasheet defaults has to say so out loud.
+| The display has produced no panel-side evidence | Not one DCS reply and not one pixel.  The host reports a locked PHY, lanes in stop state, a clean command path, a running pattern generator with no underrun, and a measured PWM on the backlight pin, and the panel is dark and unlit.  Every register compared matches the vendor BSP and the working reference.  Until something comes back from the panel, every statement about the display path is a statement about the SoC. |
 | DSI reads get no reply | Five DCS reads, the vendor identity register and four standard ones, all return nothing with no protocol error flagged and the host left waiting.  Espressif's driver reads the same register with an unbounded wait and works on this board, so the panel answers there and this port's read path is wrong.  A software reset and the divider encoding have been eliminated.  Nothing in the port depends on reads yet, but a panel that cannot be interrogated cannot be diagnosed either, and B6's orientation work would rather have the scanline register than a photograph. |
 | Flash reads past 16 MB | `krnP4FlashMap()` refuses anything at or past the cache-mapping limit, so the `storage` partition at 0x1020000 is unreachable by that route.  Anything that needs it would have to use raw SPI commands with the cache suspended and a destination in internal SRAM, which is why the development volume was put inside `arosbsp` instead. |
 | Panel timing | Start from measured Vellum behavior, not the contradictory 60 Hz comment. |
@@ -4210,6 +4211,93 @@ bug in a separate direction.  If nothing appears, both are suspect together.
   claim in this entry is about what the host did.
 - Next safe step: B4, the internal test pattern, which produces the first
   panel-side evidence and does not depend on the read path.
+
+### 2026-08-23 - B4: the host is clean, the panel is dark
+
+- State change: B4 `not started` to `blocked`.  Everything on the SoC side is
+  implemented and reports success; nothing appears on the panel.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3, CPU at
+  360 MHz.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `57db021f59`.
+- New build options: `P4_PATTERN_TEST=1` and `P4_BACKLIGHT_ONLY=1`, both off by
+  default.
+
+**What the host reports.**  The pattern generator runs with the timing the
+contract's Set A produces, and the arithmetic came out exactly as derived:
+
+```text
+[b4]     host timing: hsa 63, hbp 63, hact 2499, hfp 125, hline 2750
+[b4]     880 x 1344 at 40 MHz is 33.82 Hz, derived and not measured
+[b4]     after 100 ms: pkt 0x00050015 int0 0x0 int1 0x0 brg 0x0  no underrun
+```
+
+**Two real findings on the way there.**  The first version left the DSI bridge
+untouched, on the reasoning that a pattern generator inside the host is
+self-contained.  It is not: the host's DPI interface is fed by the bridge, and
+with the bridge off there is no timing to hang a frame on.  Enabling the bridge
+fully then produced `DPI_PLD_WR_ERR` in the host's second interrupt-status
+register - the bridge pushing pixels into a host that generates its own and
+consumes none.  The answer is `dsi_en` set and `dpi_en` clear, two bits that
+exist separately for exactly this.  In B5 it will be the other way round.
+
+**The frame rate is derived and cannot be measured here.**  Revision 1.x has no
+VSYNC interrupt in the bridge, only underrun, and the panel's scanline register
+is behind the read path that does not answer.  So there is no event this port
+can count, and B4's gate asking for a measured VSYNC is not satisfiable in
+software on this revision.  What would satisfy it: an external instrument, or
+the read path working.  33.82 Hz is arithmetic from an exactly divided clock and
+the programmed totals, and it is labelled as such wherever it appears.
+
+**The backlight, which turned into its own investigation.**  Three attempts,
+each eliminating something:
+
+1. A static high on GPIO14 with the expander's enable set.  Panel dark.  Every
+   register read back asserted, so the first suspicion was the reading rather
+   than the writing - and it was partly right: the pad's input enable was off,
+   so the level read was a blind register.  Fixed, the pin reads high.
+2. Still dark with the pin verifiably high.  The reference drives a 5 kHz PWM
+   rather than a level, and a backlight driver whose dimming input wants a
+   switching signal treats DC as nothing, so LEDC was implemented.  The first
+   version produced a constant high: 20,000 of 20,000 samples.  The timer has
+   its own parameter-commit bit, separate from the channel's, and without it the
+   divider and resolution never take effect, the counter never advances, and the
+   channel holds its output at whatever the comparison gives with the counter at
+   zero.  Which is high, and looks exactly like a working full-brightness
+   backlight that lights nothing.
+3. With that bit set the pin carries a real waveform, 3,680 of 20,000 samples
+   high, 18 per cent against 20 requested, which is sampling noise rather than
+   misconfiguration.  The panel is still dark.
+
+So the backlight path is asserted end to end and measured, and the panel does
+not light.  Every register in it matches the vendor BSP and the working
+reference: GPIO14, expander bit 0 for the panel supply, bit 7 for the backlight
+enable, ten-bit resolution, non-inverted duty.
+
+**The leading hypothesis, and why the isolation test was inconclusive.**  The
+`P4_BACKLIGHT_ONLY` build was meant to separate "the backlight path is wrong"
+from "something in the DSI sequence undoes it".  It cannot, if the panel
+module's LED string is fed from a rail the panel itself brings up once it is
+initialised - which some integrated modules do.  In that case a backlight can
+never be tested in isolation on this hardware, the isolation result means
+nothing, and the real question is the one that was already open: whether the
+JD9365 sequence is landing at all.  Which is also what the five silent DCS reads
+suggest.
+
+- Acceptance not met, and this is the phase's own gate: no pattern is visible,
+  so nothing can be said about geometry or RGB order.
+- Acceptance not satisfiable on this revision: a measured VSYNC.
+- Safety impact: no medium was written.  The backlight is only ever enabled
+  after a pattern is on the link, never on a failure path, and at a fifth of
+  full brightness.
+- Remaining risk: the whole display path has produced no panel-side evidence of
+  any kind - not one reply, not one pixel.  Every claim about it is a claim
+  about what the SoC did.
+- Next safe step: the decisive test is not another register.  Flashing the
+  working firmware and confirming the panel lights would separate "this port's
+  software" from "this board's hardware or its connector" in one attempt, and
+  that is the user's call because it overwrites AROS.  Failing that, the next
+  software step is to compare against the reference at the level of a full
+  register dump after its own initialisation rather than function by function.
 
 ## Evidence-entry template
 

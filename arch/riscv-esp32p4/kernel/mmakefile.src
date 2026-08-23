@@ -227,6 +227,21 @@ ifdef P4_DSI_PROBE
 P4_DEBUG_CPPFLAGS += -DP4_DSI_PROBE
 endif
 
+# P4_PATTERN_TEST=1 is B4: the DSI host's own pattern generator, then the
+# backlight.  It needs P4_DSI_PROBE=1.  This is the only build in the port that
+# lights the panel, and it does so only after a defined image is on the link.
+ifdef P4_PATTERN_TEST
+P4_DEBUG_CPPFLAGS += -DP4_PATTERN_TEST
+endif
+
+# P4_BACKLIGHT_ONLY=1 replaces the whole panel probe with the backlight alone:
+# power, reset, backlight, stop.  It exists to separate "the backlight path is
+# wrong" from "something in the DSI sequence undoes it", which no register read
+# could distinguish.
+ifdef P4_BACKLIGHT_ONLY
+P4_DEBUG_CPPFLAGS += -DP4_BACKLIGHT_ONLY
+endif
+
 ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
