@@ -116,7 +116,7 @@ tests.
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
 | A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `hardware verified` | Evidence entry 2026-08-23: byte-reproducible image, checked by the host parser, `fsck_msdos` and its manifest, and read correctly on the board at the values predicted from the image.  Every changed sector after the run is attributed to the host's mount |
-| A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `hardware partial` | Evidence entries 2026-08-23: thirteen package members load and relocate, the resident order matches the `.conf` files, the command line arrives, `FileSystem.resource` carries the FAT entries, and a deliberate `CMD_WRITE` is refused with `TDERR_WriteProt`, `io_Actual == 0` and the sector unchanged.  `dosboot.resource` is still out of the package, so nothing boots and FAT's own refusals are unobserved |
+| A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `hardware partial` | Evidence entries 2026-08-23: fourteen members load, dosboot replaces the whole-disk node with the partition node, FAT mounts and reports the medium write protected, and a card without `AROS.boot` falls back to a Shell prompt on the emergency console.  Owed: `SYS:` from a bootable medium, and `Info()` plus mutation refusals observed |
 | A5 | Command and library loaded from MicroSD | `not started` | Closes M6 |
 | B0 | Canonical D1001 display contract and provenance | `not started` | Resolve timing contradictions first |
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `not started` | Requires B0; required before scanout |
@@ -2571,6 +2571,153 @@ a small piece of work, but it is A5's and not this phase's.
 - Next safe step: add `dosboot.resource`, with `DOS_DEBUG=1` and
   `DOSBOOT_DEBUG=1` so the boot narrates itself, and accept that this
   console's post-`krnStartExec()` diagnostics go silent from that point.
+
+### 2026-08-23 - A4 fourth step: dosboot boots, and four defects it found
+
+- State change: A4 stays `hardware partial`, but the boot itself now happens.
+  `dosboot.resource` takes over COLDSTART, replaces the whole-disk node with
+  the partition node, `dos.library` starts, FAT mounts the card's volume,
+  and when the medium turns out not to be bootable the system falls back to
+  the emergency console and reaches a Shell prompt.  What is still owed is
+  the bootable case, which needs the A3 card.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3, with
+  the **reference card** in the slot.  That card carries a FAT32 volume
+  called `Amigatausch` and deliberately no `AROS.boot`, which is what made it
+  a good first test: it exercises mount, lock, reject and unmount rather than
+  only the happy path.  Note the serial device renamed itself from
+  `/dev/cu.usbmodem101` to `/dev/cu.usbmodem1101` partway through the
+  session; both are the same board.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `5839e1900f`.
+- Artifacts:
+  - core 165,296 bytes,
+    `30736daeeaf140f29102250be600b1a9afa3c461210c7b5a4efd16c815d0a969`;
+  - package 1,163,992 bytes,
+    `b06915b49ac54952fb076e1dca3f4bb8f00c4d6e8c45709e4b664a03f9a9e60c`,
+    fourteen members, 14.1 % of the partition, all passing
+    `boot/audit-package.py`.
+- Configuration: core with `P4_A1_DIAGNOSTIC=1 P4_PARTITION_TEST=1
+  P4_DOS_PROBE=1 P4_HEADLESS_BOOT=1 P4_HEARTBEAT_TASK=1
+  P4_LDSCRIPT=ldscript-xip.lds`; package with `FAT_DEBUG=1 DOS_DEBUG=1
+  DOSBOOT_DEBUG=1`, so the boot narrates itself.  Note that mmake does not
+  invalidate objects when a mmakefile changes: the first `DOS_DEBUG=1`
+  package still contained a silent dos.library and the objects had to be
+  deleted by hand.
+
+What the boot did, in order, all of it read off the UART:
+
+- `dosboot_Init` found the three command-line arguments and selected the
+  emergency console;
+- `dosboot_BootScan` opened `partition.library`, found the MBR partition and
+  replaced the whole-disk node `MMC0` with `SDCARD0P0` at DosType
+  `0x46415402`, leaving `ECON` as the second node.  This is the gate's
+  "dosboot replaces the whole-disk node with the expected partition node";
+- `dosboot_BootDos` found `dos.library`'s romtag and initialised it by hand;
+- `dos.library` matched `SDCARD0P0` against `FileSystem.resource` and started
+  the FAT handler as a process at priority 10;
+- FAT opened the device, detected NSD 64-bit support, read the boot sector at
+  sector 2048, identified FAT32 with 3,901,159 clusters, read the FSInfo
+  block, named the volume `Amigatausch` and put it in the DOS list;
+- `dos.library` locked the volume, looked for `:AROS.boot`, got error 205 and
+  reported "Does not have a bootable filesystem, unmounting...";
+- FAT shut down cleanly - volume destroyed, super block freed, disk-change
+  interrupt removed, device closed;
+- dosboot moved on to `ECON`, dos.library was initialised a second time, and
+  the Shell reached its prompt with the AROS banner.
+
+Write protection, which is what A4 asked for above the block device:
+
+```text
+[fat] TD_PROTSTATUS: error 0, actual -1
+[fat] the medium is write protected; every mutating packet will be refused
+```
+
+Four defects had to be fixed to get this far, and each was found by a
+failure that named itself.
+
+**1. `CacheClearE()` cleared nothing, so freshly written code was not
+executable.**  The first dosboot run took an illegal-instruction trap at
+`mepc 0x4ff73d18` with a backtrace through `CallEntry` in dos.library.  The
+bytes at that address disassemble to `auipc t0,0; lw t0,12(t0); jr t0` - a
+perfectly valid trampoline, which is what `CreateSegList()` builds through
+the data path before jumping to it.  It calls `CacheClearE()` in between
+exactly as it should; the problem was on the other end of that call.
+`arch/riscv-all/exec/cachecleare.c` is a bare `fence rw, rw` and says in its
+own comment that each platform is expected to replace it.  This one had not.
+`arch/riscv-esp32p4/exec/cpu_init.c` now installs `CacheClearE_P4` and
+`CacheClearU_P4` with `SetFunction` from `ADD2INITLIB`, both calling the
+port's existing `krnP4SyncCode()`, which does the three steps this SoC needs:
+write back the data caches, invalidate both L1 instruction caches and the L2,
+and `fence.i`.  A caller asking only for `CACRF_InvalidateD` is asking about
+a DMA buffer, so only the clear cases are routed there.  The ELF loader had
+been doing this by hand since M6, which is why nothing had noticed.
+
+**2. `sdcard.device` never initialised its disc-change interrupt list.**  The
+next run died in `cmd_AddChangeInt` with a Store/AMO access fault at
+`mtval 0x00000004` - a write through a zeroed `lh_Head`.  `sdcu_SoftList` is
+never `NEWLIST`ed at unit creation, and a zeroed list header is not an empty
+list.  `scsi.device` and `ata.device` both do this in their unit init;
+`sdcard.device`, the newest of the three, does not.  Nothing on this side had
+ever called `TD_ADDCHANGEINT`, and a filesystem does it on mounting, which is
+why it survived this long.  One `NEWLIST` in `sdcard_bus.c`.
+
+**3. The backend refused FAT's reads.**  FAT's cache reads 32 sectors at a
+time into a buffer it got from `AllocMem`, which is 32-byte aligned on this
+target and therefore unusable as an IDMAC destination: the cache maintenance
+around the descriptor chain works on whole 64-byte lines, and invalidating a
+partially covered line would discard a neighbour's dirty data.  The bounce
+buffer that exists for exactly this case was 512 bytes, so a 16 KiB request
+was refused - and FAT retried it 134,101 times in one boot, which is how the
+log reached 402,538 lines.  The bounce is now `P4SD_MAX_DATA_LEN`, 64 KiB.
+Splitting the request would also have worked, but it would mean issuing
+several commands where the card expects one, and the memory is not scarce:
+the buffer lives in the module's `.bss`, which the loader places in the 32 MB
+external window, so it costs PSRAM and none of the 230 KB internal heap.  It
+is also the already-proven DMA destination, since every unaligned read since
+A1 has landed there.
+
+**4. The heartbeat task was starved, and the priority took three attempts.**
+Recorded in full in the comment at `krnP4HeartbeatTask()`.  At -20 it never
+ran, because `krnTimerWait()` is a busy spin at priority 0 and
+`Reschedule()` only picks a ready task of equal or higher priority.  At 5 it
+beat correctly before dosboot and went silent after it: DOS starts the ECON
+handler as a process at `dn_Priority` 10, and `Raw_Read()` has no way to
+block, so it spins on `RawMayGetChar()` and `Reschedule()` at that priority
+for as long as a shell waits for a keystroke.  Since `KrnMayGetChar()` has no
+implementation on this platform and always returns -1, that is for ever, and
+nothing below priority 10 runs again once a shell reaches its prompt.  At 20
+it beats through the whole run.  Diagnosing it needed two extra print
+statements in the task, because a task that prints nothing gives no way to
+tell how far it got; those prints are kept.
+
+The heartbeat is what makes "normal heartbeats continue" answerable at all
+now, and it answers it: fifteen beats over the capture, 500 ticks apart at
+100 Hz, reporting 2 ready and 6 waiting tasks and a steady 30,658,576 bytes
+of free memory.  No trap anywhere in the run.
+
+- Acceptance points passed: UART lists every expected resident and version in
+  the intended order; the SD boot-wait resident at -49 runs before dosboot and
+  is bounded; `FileSystem.resource` contains the FAT entry; dosboot replaces
+  the whole-disk node with the expected partition node; FAT starts and locks
+  the volume; a medium without `AROS.boot` falls back to the emergency console
+  without a hang; normal heartbeats continue.
+- Acceptance points still owed, both needing the A3 card: FAT accepting
+  `AROS.boot` and `SYS:` being assigned from it; `Info()` reporting the volume
+  write-protected and representative mutations failing immediately with no
+  dirty cache and no requester.
+- Safety impact: the reference card was mounted, read and unmounted, and its
+  content is unchanged - the same run's write-denial test reports sector 2048
+  hashing `0x730d1cbd` before and after a deliberate `CMD_WRITE`.  FAT
+  announced the medium as write protected before touching it.
+- Remaining risk: `ECON:` is output-only, because `KrnMayGetChar()` is
+  unimplemented here, so the Shell prompt cannot be typed into.  That closes
+  the interactive route for A5 and leaves the AFTERDOS probe as the only one
+  until `krnMayGetC()` is written for the USB Serial/JTAG and UART0 receive
+  paths.  It also means the ECON handler spins at priority 10 for the rest of
+  the machine's life, which any later task below that priority has to account
+  for.
+- Next safe step: the A3 card in the slot, to close the two remaining gate
+  points.  After that, `krnMayGetC()` so the console can be typed into, which
+  A5 wants anyway.
 
 ## Evidence-entry template
 
