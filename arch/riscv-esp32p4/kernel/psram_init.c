@@ -128,22 +128,14 @@ P4_SRAMCODE static int p4_regi2c_write(unsigned char reg, unsigned char val)
 
 P4_SRAMDATA unsigned long p4_mpll_trace[4];
 P4_SRAMDATA unsigned long p4_mpll_spins;
+P4_SRAMDATA unsigned long p4_mpll_attempts;
 
-P4_SRAMCODE int krnPSRAMMPLLUp(void)
+P4_SRAMCODE static int p4_mpll_calibrate(void)
 {
     unsigned char rstb, dhref;
     unsigned long div;
     int spin;
 
-    /*
-     * The configuration bus master's clock and source. The ESP-IDF
-     * bootloader we boot behind leaves both set and says so in a comment,
-     * but setting a bit that is already set costs nothing and depending on
-     * another program's leftovers is the fragile choice.
-     */
-    p4_w32(P4_CLKRST_REF_CLK_CTRL2,
-           p4_r32(P4_CLKRST_REF_CLK_CTRL2) | P4_REF_160M_CLK_EN);
-    p4_w32(P4_LPPERI_CLK_EN, p4_r32(P4_LPPERI_CLK_EN) | P4_CK_EN_LP_I2CMST);
 
     /*
      * The analogue master's 160 MHz source is deliberately NOT selected.
@@ -340,6 +332,44 @@ P4_SRAMCODE int krnPSRAMMPLLUp(void)
            p4_r32(P4_CLKRST_ANA_PLL_CTRL0) | P4_MSPI_CAL_STOP);
 
     return spin ? P4_MPLL_OK : P4_MPLL_NO_CAL_END;
+}
+
+/*
+ * The calibration, retried until it takes.
+ *
+ * One attempt is not reliable.  With the analogue block released and given a
+ * settling wait, the calibration completed on most boots and not on all - and
+ * a first measurement of six consecutive successes does not refute a one-in-
+ * four failure rate, it is what a one-in-four rate produces about a fifth of
+ * the time.  Reasoning from that sample was a mistake.
+ *
+ * A longer wait would only move the rate, not remove it, so the answer is to
+ * try again rather than to wait harder: each attempt asserts the block's reset
+ * afresh, power-cycles the PLL and runs the sequence, which is the same work
+ * a cold boot would do.  Attempts are counted and reported, because a bring-up
+ * that quietly needs three tries is a bring-up that is still marginal and
+ * should be visible as one.
+ */
+P4_SRAMCODE int krnPSRAMMPLLUp(void)
+{
+    int reason = P4_MPLL_NO_CAL_END;
+    unsigned int attempt;
+
+    /* The bus master's clock and source, once: they are not what fails. */
+    p4_w32(P4_CLKRST_REF_CLK_CTRL2,
+           p4_r32(P4_CLKRST_REF_CLK_CTRL2) | P4_REF_160M_CLK_EN);
+    p4_w32(P4_LPPERI_CLK_EN, p4_r32(P4_LPPERI_CLK_EN) | P4_CK_EN_LP_I2CMST);
+
+    for (attempt = 0; attempt < P4_MPLL_CAL_TRIES; ++attempt)
+    {
+        p4_mpll_attempts = attempt + 1;
+
+        reason = p4_mpll_calibrate();
+        if (reason == P4_MPLL_OK || reason == P4_MPLL_NO_BUS)
+            break;
+    }
+
+    return reason;
 }
 
 /*
@@ -945,6 +975,7 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     info->ana_trace[2] = p4_mpll_trace[2];
     info->ana_trace[3] = p4_mpll_trace[3];
     info->ana_spins = p4_mpll_spins;
+    info->mpll_attempts = (unsigned char)p4_mpll_attempts;
     if (!info->mpll_up)
         return 0;
 
