@@ -637,7 +637,7 @@ Acceptance gate:
 | Touch | Not a GB0 dependency and not claimed as GSL3670 until probed. |
 | Console input fairness | `econsole` polls `RawMayGetChar()` and yields, so its handler process is permanently ready at DOS's `dn_Priority` 10 while a prompt waits for a line; measured at an idle prompt, two tasks are ready, ECON at 10 and the Shell at 0.  Nothing below 10 runs, and any latency or throughput figure taken with a prompt open is distorted.  A short timed wait on `timer.device` was tried and wedges the machine (evidence entry 2026-08-23), so the standing rule is that anything which must run alongside a prompt sits above priority 10.  The real fix is interrupt-driven console input, which belongs with Track C's `con` handler and `keyboard.device` rather than in `econsole`. |
 | `DoIO` from a handler's packet dispatch | Unexplained: `econsole`'s first `DoIO` on `timer.device` from inside `Raw_Read()` never returns, on either unit, and stops an unrelated pending timer request as well.  Anything in Track B or C that waits on a device from inside a handler's dispatch has to be treated as suspect until this is understood. |
-| Build flags and stale objects | mmake does not invalidate objects when a `-D` flag or a mmakefile changes.  Observed twice on 2026-08-23: a kernel built once without the `P4_*` diagnostics was not rebuilt when the flags returned, giving a 144,432-byte core instead of 165,296 which was then flashed; and a package built with `DOS_DEBUG=1` still carried a silent `dos.library`.  Since this roadmap records configurations as evidence, an artifact can silently disagree with the line written beside it, and a result can be falsely positive or falsely negative.  Delete the affected objects before any build whose outcome is documented; the rule is also in AGENTS.md. |
+| Build flags and stale objects | mmake does not invalidate objects when a `-D` flag or a mmakefile changes.  Observed twice on 2026-08-23: a kernel built once without the `P4_*` diagnostics was not rebuilt when the flags returned, giving a 144,432-byte core instead of 165,296 which was then flashed; and a package built with `DOS_DEBUG=1` still carried a silent `dos.library`.  Since this roadmap records configurations as evidence, an artifact can silently disagree with the line written beside it, and a result can be falsely positive or falsely negative.  Delete the affected objects before any build whose outcome is documented; the rule is also in AGENTS.md. | A related trap in the same file: a variable set on the make command line beats a plain assignment inside a makefile, so `P4_HEADLESS_BOOT=1 P4_CMDLINE="..."` silently dropped the headless words until that assignment was made `override`.  Any option that composes with a caller-supplied one has to be written that way.
 | DMA destination alignment | `AllocMem` does not return cache-line-aligned memory on this target, and the IDMAC needs 64 bytes because cache maintenance works on whole lines.  FAT's 32-sector cache reads arrive 32-byte aligned and go through the SD backend's bounce buffer for exactly that reason.  Only the SD backend knows this today; every further DMA driver has to bounce or align, and Track B's framebuffer is the next one. |
 | Storage diagnostics after dosboot | The A1, A2 and A3 diagnostics run after `krnStartExec()`, and `dosboot.resource` does not return from it.  A boot-capable build therefore cannot exercise them at all.  Regression-testing the storage stack needs a second build with `dosboot` out of the package, which is the same diagnostic-ordering boundary Track A was structured around, now permanent. |
 | Trampoline cache maintenance | Anything built with `__AROS_SET_FULLJMP` is real instructions written through the data path and needs a `CacheClearE()` that is not conditional on `__AROS_USE_FULLJMP`; that macro means the library jump table holds instructions, which is a different question and false on 32-bit RISC-V.  Four sites exist and all four are correct as of 2026-08-23: `rom/dos/internalloadseg_elf.c`, `arch/ppc-chrp/dos/internalloadseg_elf.c`, `compiler/arossupport/createseglist.c` and `workbench/c/shellcommands/shellcommands_init.c`, the last only after being fixed.  The failure mode is an illegal-instruction trap on a valid instruction, which reads as a compiler or linker fault and is neither. |
@@ -3424,6 +3424,128 @@ would have to erase and program, cannot use this pattern.
   the SD partition, so a present card still wins, plus a `bootdevice=` option
   to force the flash.  Then read `SYS:` content off the flash volume, which is
   the point of the whole exercise.
+
+### 2026-08-23 - the flash volume mounted, and booted from
+
+- State change: none to any roadmap phase.  This completes the flash-volume
+  infrastructure: `FLASHDISK0P0:` is mounted on every boot, the card still
+  wins when it is present, and `bootdevice=FLASHDISK0P0` boots the system
+  entirely out of flash.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3.  The A3
+  card stayed in the board for all three runs and was not touched.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `1fc3707e8e`.
+- Artifacts: three cores, all written to `ota_0` at `0x20000` and verified by
+  esptool hash:
+  - the boot-node run, 185,200 bytes,
+    `81b83b68fac6103a28cd0d7433c109048704c4d0dde519feaa5c2f5f441532b6`;
+  - with the DOS-level test, 187,392 bytes,
+    `9532c0aba5075bd19c213a135240f9fd2e1faadd028cd4db2e7a5cf8be864d05`;
+  - with `bootdevice=FLASHDISK0P0`, 187,408 bytes,
+    `51d161ec1a9a8006b3054a1026dbdaeaf6e9f30923ebbc2a4b02ef6f8a4b406f`.
+- The volume in flash was not rewritten; its hash from two entries ago stands.
+
+**How the card keeps winning, without touching shared code.**  This was the
+one real design question and reading settled it.  Both partitions end at
+`DE_BOOTPRI` 0 and nothing in the MBR path changes that: `initPartitionHandle()`
+copies the root handle's `DosEnvec` into each partition's, and the root's comes
+from `TD_GETGEOMETRY`, which has no boot priority in it.  `Enqueue()` is FIFO
+among equals.  So what decides the boot is the order in which the *whole-disk*
+nodes were scanned, and `dosboot_BootScan()` walks them in MountList order,
+which is priority order.  A negative priority on the flash device's whole-disk
+node is therefore the entire mechanism: the card is scanned first, its
+partition is enqueued first, and `dosboot_Init()` promotes the head of the
+list to 127.  Observed exactly so:
+
+```text
+[FlashDisk] boot node fd0 at priority -10, 8192 sectors
+[DOSBoot:bootscan] CheckPartitions('MMC0')
+[DOSBoot:bootscan] AddPartitionVolume: AddBootNode(SDCARD0P0, 0, 0x46415402, NULL)
+[DOSBoot:bootscan] CheckPartitions('fd0')
+[DOSBoot:bootscan] AddPartitionVolume: AddBootNode(FLASHDISK0P0, 0, 0x46415401, NULL)
+[DOSBoot] 3 devices in mountlist
+[DOSBoot:bootstrap] dosboot_BootStrap: Attempting SDCARD0P0 with DOS
+```
+
+`0x46415402` is `FAT\2` and `0x46415401` is `FAT\1`, so the two volumes are
+recognised as FAT32 and FAT16 respectively, from the MBR type bytes alone.
+The override needed nothing added: `bootdevice=` is dosboot's own argument and
+`selectBootDevice()` matches it against the DeviceNode name.
+
+**The volume through DOS**, which is the point of the whole exercise:
+
+```text
+[fdvol]  volume name 'Arosp4dev', the generated label
+[fdvol]  id_DiskState 80 (ID_WRITE_PROTECTED)
+[fdvol]    blocks 6144, used 215, block size 512, disk type 0x444f5300
+[fdvol]  AROS.boot from flash: 43 bytes, hash 0xf949eb96
+[fdvol]  AROS.boot from card:  43 bytes, hash 0xf949eb96
+[fdvol]  identical, FAT16 in flash and FAT32 on the card agree
+[fdvol]  Open(MODE_NEWFILE) = 0x00000000, IoErr 214 (ERROR_DISK_WRITE_PROTECTED)
+[fdvol]  DOS-level test passed
+```
+
+The cross-check is the sharp line.  The same staged file exists on the card as
+FAT32 and in flash as FAT16, and both come back as 43 bytes hashing to
+`0xf949eb96`.  Two filesystems on two media, served by two different block
+devices, produce identical bytes; neither the generator nor the FAT handler is
+transforming anything.
+
+**Booted entirely from flash.**  With `bootdevice=FLASHDISK0P0` and the card
+still in the board:
+
+```text
+[DOSBoot:bootstrap] dosboot_BootStrap: Attempting FLASHDISK0P0 with DOS
+[sysfs]    blocks 6144, used 215, block size 512
+[sysfs]  AFTERDOS probe passed, 8 mutation cases
+[a5]     OpenLibrary("sdproof.library", 1) = 0x48403ee0
+[a5]     SDProofQuery marker 0xf8920af4 expected 0xf8920af4  match
+[a5]     LoadSeg("SYS:C/sdload-test") = 0x48401924
+[a5]     RunCommand returned 0, the command reports success
+[a5]     load proof passed
+```
+
+`SYS:` has 6144 blocks, so it is the flash volume and not the 129,024-block
+card, and the A5 proof library and command were loaded and run from it.  That
+is the Track B enabler stated plainly: new test code reaches the board with
+one `esptool` command and no card handling at all.
+
+**Two wrong expectations in the test, both mine, both instructive.**  The first
+run reported the volume as `Arosp4dev`, not `AROSP4DEV`.  That is deliberate:
+`GetVolumeIdentity()` in `rom/filesys/fat/volume.c` keeps the first character
+of each word and lowercases the rest, so the eleven bytes on disk are not what
+comes back.  DOS comparison is case-insensitive, so both spellings address the
+volume; the test now compares without case and says why.  The second: `Info()`
+reports `id_DiskType` as `ID_DOS_DISK` (`0x444f5300`), not the `FAT\1` DosType
+the volume was mounted with, because `FillDiskInfo()` reports `ID_DOS_DISK` for
+every volume the FAT handler serves.  The card's volume reports the same value,
+which is how that was confirmed rather than guessed.  `Info()` is therefore not
+a way to tell FAT16 from FAT32.
+
+**A build trap fixed on the way.**  `P4_HEADLESS_BOOT=1` assigned
+`P4_CMDLINE` plainly, and a variable set on the make command line beats a
+plain assignment in a makefile.  So `P4_HEADLESS_BOOT=1
+P4_CMDLINE="bootdevice=..."` silently dropped all three headless words and
+would have booted without a console.  The assignment is now `override` and
+appends what the caller passed, so the two combine.
+
+- Acceptance: the flash volume is mounted as `FLASHDISK0P0:` on every boot;
+  with a card present the card is booted and the flash volume is only mounted;
+  the volume reports its generated label, its partition's block count and
+  `ID_WRITE_PROTECTED`; a file read off it is byte-identical to the same file
+  on the card; a mutation is refused with error 214; `bootdevice=` boots the
+  system out of flash and the A5 proof library and command load and run from
+  it; and the A4, A5 and block-device tests pass in every one of the three
+  runs.
+- Safety impact: the SD card was untouched in all three runs and the volume in
+  flash was not rewritten.  The only writes were cores to `ota_0`.
+- Remaining risk: the automatic fallback, meaning a boot with no card in the
+  board, is not tested.  The mechanism is that `sdcard.device` registers no
+  unit and therefore no boot node, leaving the flash volume as the only
+  candidate, but a missing card is a different case from A4's card without
+  `AROS.boot` and has not been run.  It needs the card physically removed.
+- Next safe step: Track B, the MIPI-DSI framebuffer.  Test content for it can
+  now be written with `esptool` and read from `FLASHDISK0P0:`, which is what
+  this infrastructure was for.
 
 ## Evidence-entry template
 

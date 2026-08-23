@@ -1265,6 +1265,182 @@ out:
     krnP4PutStr(passed ? "passed\n" : "FAILED\n");
     return passed;
 }
+
+/*
+ * The kernel is built freestanding and has no <string.h>, and this has to
+ * ignore case anyway.  AROS's FAT handler does not hand back the eleven bytes
+ * it read: GetVolumeIdentity() in rom/filesys/fat/volume.c keeps the first
+ * character of each word and lowercases the rest, so the label AROSP4DEV
+ * comes back as 'Arosp4dev'.  That is deliberate Amiga cosmetics rather than
+ * a defect, and DOS name comparison is case-insensitive, so both spellings
+ * address the volume.
+ */
+static int krnP4StrEqNoCase(const char *a, const char *b)
+{
+    while (*a && *b)
+    {
+        char ca = (*a >= 'a' && *a <= 'z') ? (char)(*a - 32) : *a;
+        char cb = (*b >= 'a' && *b <= 'z') ? (char)(*b - 32) : *b;
+
+        if (ca != cb)
+            return 0;
+        ++a;
+        ++b;
+    }
+    return *a == *b;
+}
+
+/*
+ * And the volume through DOS, which is what the whole exercise was for.
+ *
+ * Everything above this proves the bytes arrive.  This asks whether a program
+ * can read a file off the flash volume by name, which is the thing that ends
+ * the card handoffs.  The AROS.boot cross-check is the sharp part: the same
+ * staged file exists on the card as FAT32 and in flash as FAT16, so the two
+ * hashes must be equal.  If they are, two different filesystems on two
+ * different media served identical bytes, and neither the generator nor the
+ * FAT handler is quietly transforming anything.
+ */
+static int krnP4FlashVolumeDosTest(void)
+{
+    static struct InfoData info __attribute__((aligned(8)));
+    static struct FileInfoBlock fib __attribute__((aligned(8)));
+    BPTR lock;
+    uint32_t flash_hash = 0, card_hash = 0;
+    LONG flash_size, card_size;
+    int passed = 1;
+
+    krnP4PutStr("[fdvol]  FLASHDISK0P0: through DOS\n");
+
+    lock = Lock((CONST_STRPTR)"FLASHDISK0P0:", SHARED_LOCK);
+    krnP4PutStr("[fdvol]  Lock = ");
+    krnP4PutHex32((uint32_t)(IPTR)lock);
+    krnP4PutStr("\n");
+    if (!lock)
+    {
+        krnP4PutStr("[fdvol]  the volume did not mount, IoErr ");
+        krnP4PutDecS((int32_t)IoErr());
+        krnP4PutStr("\n");
+        return 0;
+    }
+
+    /* The volume name, which is the label the generator wrote as a root
+       directory entry.  A lock on a volume examines to the volume itself. */
+    if (Examine(lock, &fib))
+    {
+        krnP4PutStr("[fdvol]  volume name '");
+        krnP4PutStr(fib.fib_FileName);
+        krnP4PutStr("'");
+        if (krnP4StrEqNoCase(fib.fib_FileName, "AROSP4DEV"))
+            krnP4PutStr(", the generated label\n");
+        else
+        {
+            krnP4PutStr(", EXPECTED AROSP4DEV\n");
+            passed = 0;
+        }
+    }
+    else
+    {
+        krnP4PutStr("[fdvol]  Examine() failed, IoErr ");
+        krnP4PutDecS((int32_t)IoErr());
+        krnP4PutStr("\n");
+        passed = 0;
+    }
+
+    if (Info(lock, &info))
+    {
+        krnP4ReportState("[fdvol]  id_DiskState ", info.id_DiskState);
+        krnP4PutStr("[fdvol]    blocks ");
+        krnP4PutDec((uint32_t)info.id_NumBlocks);
+        krnP4PutStr(", used ");
+        krnP4PutDec((uint32_t)info.id_NumBlocksUsed);
+        krnP4PutStr(", block size ");
+        krnP4PutDec((uint32_t)info.id_BytesPerBlock);
+        krnP4PutStr(", disk type ");
+        krnP4PutHex32((uint32_t)info.id_DiskType);
+        krnP4PutStr("\n");
+        /*
+         * ID_DOS_DISK, not the FAT\1 DosType the volume was mounted with:
+         * FillDiskInfo() in rom/filesys/fat/volume.c reports ID_DOS_DISK for
+         * every volume it serves, so Info() is not a way to tell FAT16 from
+         * FAT32.  The card's volume reports the same value.  What has to hold
+         * here is the state, because the device refuses every write.
+         */
+        if (info.id_DiskState != ID_WRITE_PROTECTED
+            || (ULONG)info.id_DiskType != (ULONG)ID_DOS_DISK)
+            passed = 0;
+        if ((ULONG)info.id_NumBlocks != P4_FLASHDISK_SIZE / 512 - 2048)
+        {
+            /* The partition's own sector count, not the whole device's. */
+            krnP4PutStr("[fdvol]  block count does not match the partition\n");
+            passed = 0;
+        }
+    }
+    else
+    {
+        krnP4PutStr("[fdvol]  Info() failed, IoErr ");
+        krnP4PutDecS((int32_t)IoErr());
+        krnP4PutStr("\n");
+        passed = 0;
+    }
+
+    UnLock(lock);
+
+    /* The cross-check.  Same file, two filesystems, two media. */
+    flash_size = krnP4ProbeReadFile("FLASHDISK0P0:AROS.boot", &flash_hash);
+    card_size  = krnP4ProbeReadFile("SYS:AROS.boot", &card_hash);
+    krnP4PutStr("[fdvol]  AROS.boot from flash: ");
+    krnP4PutDecS((int32_t)flash_size);
+    krnP4PutStr(" bytes, hash ");
+    krnP4PutHex32(flash_hash);
+    krnP4PutStr("\n[fdvol]  AROS.boot from card:  ");
+    krnP4PutDecS((int32_t)card_size);
+    krnP4PutStr(" bytes, hash ");
+    krnP4PutHex32(card_hash);
+    krnP4PutStr("\n");
+    if (flash_size <= 0)
+    {
+        krnP4PutStr("[fdvol]  UNREADABLE from flash\n");
+        passed = 0;
+    }
+    else if (flash_size != card_size || flash_hash != card_hash)
+    {
+        krnP4PutStr("[fdvol]  THE TWO DIFFER, one of the two paths is"
+                    " transforming bytes\n");
+        passed = 0;
+    }
+    else
+        krnP4PutStr("[fdvol]  identical, FAT16 in flash and FAT32 on the card"
+                    " agree\n");
+
+    /* And one mutation, which FAT has to refuse before it touches anything. */
+    {
+        BPTR fh = Open((CONST_STRPTR)"FLASHDISK0P0:probe.tmp", MODE_NEWFILE);
+        LONG err = IoErr();
+
+        krnP4PutStr("[fdvol]  Open(MODE_NEWFILE) = ");
+        krnP4PutHex32((uint32_t)(IPTR)fh);
+        krnP4PutStr(", IoErr ");
+        krnP4PutDecS((int32_t)err);
+        if (fh)
+        {
+            krnP4PutStr(", ACCEPTED, MUST NOT BE\n");
+            Close(fh);
+            passed = 0;
+        }
+        else if (err != ERROR_DISK_WRITE_PROTECTED)
+        {
+            krnP4PutStr(", refused for the wrong reason\n");
+            passed = 0;
+        }
+        else
+            krnP4PutStr(" (ERROR_DISK_WRITE_PROTECTED)\n");
+    }
+
+    krnP4PutStr("[fdvol]  DOS-level test ");
+    krnP4PutStr(passed ? "passed\n" : "FAILED\n");
+    return passed;
+}
 #endif /* P4_FLASHDISK_TEST */
 
 /*
@@ -1904,6 +2080,7 @@ AROS_UFH3(static APTR, krnP4AfterDosInit,
         (void)krnP4AfterDosProbe();
 #ifdef P4_FLASHDISK_TEST
         (void)krnP4FlashDiskDeviceTest();
+        (void)krnP4FlashVolumeDosTest();
 #endif
 #ifdef P4_A5_PROBE
         (void)krnP4A5Probe();

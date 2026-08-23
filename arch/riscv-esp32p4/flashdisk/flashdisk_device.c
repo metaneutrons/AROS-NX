@@ -31,6 +31,7 @@
 #include <aros/debug.h>
 
 #include <proto/exec.h>
+#include <proto/expansion.h>
 
 #include <string.h>
 
@@ -40,6 +41,8 @@
 #include <exec/errors.h>
 #include <devices/trackdisk.h>
 #include <devices/newstyle.h>
+#include <dos/filehandler.h>
+#include <libraries/expansion.h>
 
 #include "kernel_intern.h"
 
@@ -305,6 +308,101 @@ AROS_LH1(LONG, AbortIO,
     AROS_LIBFUNC_EXIT
 }
 
+#if !defined(P4_NO_FLASHDISK_BOOTNODE)
+/*
+ * The whole-disk boot node, so dosboot finds the volume.
+ *
+ * Nothing here parses the partition table.  dosboot_BootScan() takes every
+ * boot node whose DeviceNode has no handler and no seglist, runs
+ * partition.library over it, and replaces it with one node per partition;
+ * for this device that yields FLASHDISK0P0, named from the device name, the
+ * unit and the partition index in rom/dosboot/bootscan.c.  The card's node
+ * is made the same way by sdcard.device and becomes SDCARD0P0.
+ *
+ * The priority is the whole point of this function.  Both partition nodes
+ * end up at DE_BOOTPRI 0, because partition.library copies the root's
+ * DosEnvec into each partition's and nothing in the MBR path sets a boot
+ * priority.  Enqueue() is FIFO among equals, so what decides which one dos
+ * boots is the order in which their parent disks were scanned, and that
+ * order is the MountList order of the whole-disk nodes, which is by
+ * priority.  A negative priority here therefore puts the card ahead of the
+ * flash without touching any shared code: a present card is scanned first,
+ * its partition is enqueued first, and dosboot_Init() promotes the head of
+ * the list to 127.  With no card, sdcard.device registers no unit at all and
+ * the flash volume is the only candidate left.
+ *
+ * bootdevice=FLASHDISK0P0 on the kernel command line overrides all of this;
+ * that mechanism is dosboot's own and needed nothing added for it.
+ */
+#if !defined(P4_FLASHDISK_BOOTPRI)
+#define P4_FLASHDISK_BOOTPRI    (-10)
+#endif
+
+static const TEXT fd_UnitName[] = "fd0";
+
+static void FlashDiskAddBootNode(void)
+{
+    IPTR pp[4 + DE_BOOTBLOCKS + 1] = { 0 };
+    struct DeviceNode *devnode;
+
+    if ((ExpansionBase = TaggedOpenLibrary(TAGGEDOPEN_EXPANSION)) == NULL)
+    {
+        bug("[FlashDisk] expansion.library did not open; no boot node\n");
+        return;
+    }
+
+    pp[0]                       = (IPTR)fd_UnitName;
+    pp[1]                       = (IPTR)MOD_NAME_STRING;
+    pp[2]                       = 0;                    /* unit */
+    pp[3]                       = 0;                    /* flags */
+
+    /*
+     * One sector per cylinder, which is flat LBA.  The geometry this device
+     * reports has no heads or tracks to speak of, and pretending otherwise
+     * would only give initPartitionHandle() a boundary to trip over.
+     */
+    pp[DE_TABLESIZE    + 4]     = DE_BOOTBLOCKS;
+    pp[DE_SIZEBLOCK    + 4]     = FLASHDISK_SECTOR_SIZE / 4;
+    pp[DE_NUMHEADS     + 4]     = 1;
+    pp[DE_SECSPERBLOCK + 4]     = 1;
+    pp[DE_BLKSPERTRACK + 4]     = 1;
+    pp[DE_RESERVEDBLKS + 4]     = 2;
+    pp[DE_LOWCYL       + 4]     = 0;
+    pp[DE_HIGHCYL      + 4]     = FlashDiskSectors() - 1;
+    pp[DE_NUMBUFFERS   + 4]     = 10;
+
+    /*
+     * These three are inherited by every non-RDB partition found below this
+     * node, in AddPartitionVolume(), because an MBR carries no equivalent.
+     * MEMF_PUBLIC without MEMF_31BIT: reads land wherever the caller asked,
+     * PSRAM at 0x48000000 included, because CopyMem() out of the mapped
+     * window has no addressing limit of its own.
+     */
+    pp[DE_BUFMEMTYPE   + 4]     = MEMF_PUBLIC;
+    pp[DE_MAXTRANSFER  + 4]     = 0x00200000;
+    pp[DE_MASK         + 4]     = 0x7FFFFFFE;
+
+    pp[DE_BOOTPRI      + 4]     = P4_FLASHDISK_BOOTPRI;
+    pp[DE_DOSTYPE      + 4]     = 0;
+    pp[DE_CONTROL      + 4]     = 0;
+    pp[DE_BOOTBLOCKS   + 4]     = 2;
+
+    devnode = MakeDosNode(pp);
+    if (devnode == NULL)
+    {
+        bug("[FlashDisk] MakeDosNode() failed; no boot node\n");
+        return;
+    }
+
+    if (AddBootNode(P4_FLASHDISK_BOOTPRI, 0, devnode, NULL))
+        bug("[FlashDisk] boot node %s at priority %ld, %lu sectors\n",
+            fd_UnitName, (long)P4_FLASHDISK_BOOTPRI,
+            (unsigned long)FlashDiskSectors());
+    else
+        bug("[FlashDisk] AddBootNode() refused %s\n", fd_UnitName);
+}
+#endif /* !P4_NO_FLASHDISK_BOOTNODE */
+
 static int FlashDiskInit(LIBBASETYPEPTR LIBBASE)
 {
     NEWLIST(&FlashDiskUnit0.unit.unit_MsgPort.mp_MsgList);
@@ -318,8 +416,13 @@ static int FlashDiskInit(LIBBASETYPEPTR LIBBASE)
         bug("[FlashDisk] no arosbsp partition was found;"
             " the device will refuse to open\n");
     else
+    {
         D(bug("[FlashDisk] volume at flash 0x%08lx, %lu sectors\n",
               __esp32p4_flashdisk_base, (unsigned long)FlashDiskSectors()));
+#if !defined(P4_NO_FLASHDISK_BOOTNODE)
+        FlashDiskAddBootNode();
+#endif
+    }
 
     return TRUE;
 }
