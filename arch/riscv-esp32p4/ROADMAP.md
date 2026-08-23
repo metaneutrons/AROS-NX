@@ -118,7 +118,7 @@ tests.
 | A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `hardware verified` | Evidence entry 2026-08-23: byte-reproducible image, checked by the host parser, `fsck_msdos` and its manifest, and read correctly on the board at the values predicted from the image.  Every changed sector after the run is attributed to the host's mount |
 | A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `hardware verified` | Evidence entries 2026-08-23: all eight gate points.  `SYS:` assigned from the A3 image after `AROS.boot` was accepted, `Info()` reports `ID_WRITE_PROTECTED`, eight DOS mutations refused with error 214 and the file bit-identical afterwards, and a medium without `AROS.boot` falls back to a Shell prompt.  Five defects in shared code fixed on the way |
 | A5 | Command and library loaded from MicroSD | `hardware verified` | Evidence entries 2026-08-23: a command and a library loaded from FAT and run from both a kickstart resident and the Shell, every address outside the resident ranges, a marker neither side can fake, and four refusal cases each failing with its reason named and nothing leaked.  Closes M6.  One point met differently and documented |
-| B0 | Canonical D1001 display contract and provenance | `not started` | Resolve timing contradictions first |
+| B0 | Canonical D1001 display contract and provenance | `documented` | [display/DISPLAY-CONTRACT.md](display/DISPLAY-CONTRACT.md) is the one place display facts live, each value carrying an evidence class and a source file and line.  Three findings changed the plan: the running reference ignores the timing fields it is given and uses a different set, the rotation direction is no longer a hypothesis, and the DSI bridge registers differ by chip revision.  Nothing is `verified` yet, which is the honest state; the measured frame rate is B4's and is recorded as deferred |
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `not started` | Requires B0; required before scanout |
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `not started` | Requires B0; backlight remains dark |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `not started` | Requires B0 and B2 |
@@ -366,34 +366,40 @@ Acceptance gate:
 
 ### B0 - freeze the display contract
 
-The native panel is JD9365, `800 x 1280` portrait, RGB565.  The product is
-mounted landscape, so the eventual logical surface is `1280 x 800`.  The
-reference implementation suggests a 270-degree transform, but the direction
-remains a hypothesis until an asymmetric B6 hardware pattern proves it.  One
-native framebuffer is 2,048,000 bytes.
+Done, as far as documentation can settle it.  The contract lives in
+[display/DISPLAY-CONTRACT.md](display/DISPLAY-CONTRACT.md) and that file wins
+over anything about the display written here or in the README.  Every value in
+it names an evidence class and a source file and line, and nothing in it is
+`verified`, because nothing in it has been measured on this port yet.
 
-The references currently disagree and must not be presented as one verified
-timing.  The D1001 header says horizontal `40/140/40`, vertical `4/16/16`,
-40 MHz and calls it 60 Hz; those totals yield about 29.8 Hz.  The running
-Vellum driver ignores those fields and uses horizontal `20/20/40`, vertical
-`4/30/30` at 40 MHz, about 33.82 Hz.  AROS starts with the latter reference
-and measures VSYNC; a timing change is a later, isolated experiment.
+What the work changed, rather than confirmed:
 
-Before implementation, record in this repo:
+- The timing contradiction is located, not merely noted.  The reference's
+  panel layer declares timing fields, is handed one set and writes a different
+  set literally into the DPI configuration, so the values in the board header
+  and in the Seeed BSP have never driven this panel.  AROS starts from the set
+  that runs.
+- The rotation direction is no longer a hypothesis.  Two independent paths in
+  the reference agree on 90 degrees clockwise from the logical landscape
+  surface to the physical portrait buffer.  What stays open is only which
+  physical corner the logical origin lands in, which a 180-degree mounting
+  difference would hide from both paths.
+- The reference disables PPA hardware rotation deliberately and rotates on the
+  CPU.  Its reason does not transfer to AROS, but neither does its evidence,
+  so bring-up uses the CPU path and the PPA becomes a measured experiment.
+- The DSI host registers are identical across ESP32-P4 hardware versions and
+  the bridge registers are not.  This board is revision 1.3, so `hw_ver1`, and
+  five bridge registers that exist only in `hw_ver3` must not be touched.
 
-- the exact reference register/command trace and measured frame rate;
-- lane count/rate, virtual channel, DBI widths, pixel format, pitch and reset
-  polarity/times;
-- the licence and provenance of every initialization table used.  The external
-  Vellum tree is a behavioral reference, not code that may be copied into AROS
-  without a compatible licence.
+Deferred with a reason rather than dropped: the measured frame rate and the
+reference register/command trace.  Neither can be obtained without driving the
+panel, so they belong to B4, and the contract says so in the entries they
+would promote.
 
-Known inputs to verify are DSI bus/VC 0, two lanes at 1,000 Mbit/s each, LDO
-channel 3 at 2.5 V, 8-bit DBI command/parameter widths and RGB565 output.
-
-Acceptance gate: one canonical display-contract table replaces the conflicting
-assumptions here and in the README, distinguishes verified facts from the
-rotation-direction hypothesis, and has a dated hardware/reference record.
+Acceptance gate: met for the documentation half.  One canonical table exists,
+it distinguishes evidence classes rather than asserting facts, it records the
+licence and provenance of every source, and the two entries needing hardware
+are marked as such.
 
 ### B1 - calibrated 200 MHz PSRAM
 
@@ -627,6 +633,7 @@ Acceptance gate:
 | Boot package | Boot-critical residents remain in internal flash; ordinary system files load from SD. |
 | Package capacity | `arosbsp` is 0x7e0000 bytes and is now shared: the package has everything below `P4_FLASHDISK_PART_OFFSET` and the flash development volume the four megabytes above.  `kernel-package-esp32p4-riscv-checksize` fails the build if the package crosses the split, because past it the loader would read filesystem bytes as members.  Size and every member hash are checked on each expansion. |
 | `krnP4FlashMap()` is not re-entrant | It owns a single scratch window, so two callers interleaving would each see the other's mapping.  `flashdisk.device` serves every request inside `Forbid()` and in 64 KB pieces, which is sufficient only because the map and the `CopyMem()` out of it are a few hundred cycles and no request waits on anything.  A writing path would have to erase and program, so it cannot reuse this pattern, and a second consumer of the map added anywhere has to be checked against this. |
+| Undocumented DSI PHY constants | IDF's DSI bring-up writes `mipi_dsi_phy_ll_set_switch_time(50, 104, 46, 128)` and `set_max_read_time(6000)` with no derivation in any locally available source, and no ESP32-P4 technical reference manual is present on this machine.  They are carried over as opaque constants.  The failure mode is a PHY that locks but produces marginal signalling, which would look like a panel or timing problem rather than a PHY one, so a B4 pattern fault has to consider them before the timing set is blamed. |
 | Flash reads past 16 MB | `krnP4FlashMap()` refuses anything at or past the cache-mapping limit, so the `storage` partition at 0x1020000 is unreachable by that route.  Anything that needs it would have to use raw SPI commands with the cache suspended and a destination in internal SRAM, which is why the development volume was put inside `arosbsp` instead. |
 | Panel timing | Start from measured Vellum behavior, not the contradictory 60 Hz comment. |
 | PSRAM | 20 MHz remains the safe fallback; display scanout requires a calibrated, measured faster path. |
@@ -3641,6 +3648,94 @@ from the same binary, which is what it was written to do.  `SYS:` is the
 129,024-block card again, all eight mutations are refused with error 214, and
 the block-device, DOS-level, A5 load and A5 rejection tests pass.  Both boot
 paths therefore work from one core with no build-time choice in it.
+
+### 2026-08-23 - B0: the display contract, and three things it changed
+
+- State change: B0 `not started` to `documented`.  No hardware was involved
+  and nothing is claimed as verified.
+- Hardware / revision: none used.  The contract records the target as ESP32-P4
+  revision 1.3, which is what decides the register set.
+- Source: worktree on `feat/riscv32-esp32p4-v2` at `ee92a00214`.
+- Artifact: `arch/riscv-esp32p4/display/DISPLAY-CONTRACT.md`, 221 lines.
+- Licence resolved: the copyright holder of the Vellum D1001 driver relicensed
+  it for AROS on this date, which removes the AGPL question the phase raised.
+  Espressif's JD9365 initialisation table stays Apache-2.0 in a file of its own
+  with its SPDX header intact rather than being mixed into an APL file.
+
+Every entry in the contract names an evidence class and a source file and
+line.  There is no `verified` row, because nothing has been measured on this
+port; `reference` means a product demonstrably drives this panel with that
+value, which is a different and weaker claim.
+
+**The timing contradiction is a defect, not a discrepancy.**  B0 was written
+expecting to pick between two plausible sets.  It is not that.
+`lcd_jd9365_config_t` declares `hsync, hbp, hfp, vsync, vbp, vfp`
+(`lcd_jd9365.h:17,18`), `panel_lcd.c:184` fills them from the board header with
+40/140/40 and 4/16/16, and `lcd_jd9365.c:55-60` then ignores the struct and
+writes 20/20/40 and 4/30/30 as literals into
+`esp_lcd_dpi_panel_config_t`.  So the values in the board header and,
+identically, in the Seeed BSP have never driven this panel, and editing them
+changes nothing.  Reported to the reference's author.  AROS starts from the set
+that runs, 33.82 Hz by arithmetic, and B4 measures it.
+
+Both sources label the mode 60 Hz.  Neither set produces it: 60 Hz at the
+running totals of 880 x 1344 needs 70.96 MHz, not 40.  Recorded as
+`unresolved` so it cannot be used as an expectation.
+
+**The rotation direction is settled as a reference fact.**  B0 called it a
+hypothesis.  Two independent paths in the reference agree on 90 degrees
+clockwise: `panel_lcd.c:172` selects `ESP_LV_ADAPTER_ROTATE_270`,
+counter-clockwise by that API's convention, and `lcd_rotation.h:13` maps the
+raw path as `(logical_width - 1 - logical_x) * physical_width + logical_y`,
+which is the same transform for 800 and 1280.  What stays open is narrower and
+now stated as such: which physical corner the logical origin occupies, since a
+180-degree mounting difference would be invisible to both paths.
+
+**A correction to my own recommendation.**  I proposed the PPA as the primary
+rotation path because `SOC_PPA_SUPPORTED` is 1 and IDF v6.0 ships
+`esp_driver_ppa` with a rotation angle enum.  The working reference disables it
+(`panel_lcd.c:214`, `enable_ppa_accel = false`) because IDF 6.0 needs an
+out-of-tree workaround for rotated triple-partial refresh and its own updates
+are small dirty regions.  That reason does not transfer, since AROS uses no
+LVGL adapter, but neither does the reference's evidence.  Bring-up therefore
+uses the CPU path, which has evidence, and the PPA becomes a measured
+experiment.  The number that decides it: a full-frame CPU rotation is 4 MB of
+PSRAM traffic per frame, 135 MB/s at 33.82 Hz, which is above what B1 aims to
+establish.
+
+**A register-set finding that would have been expensive to hit later.**  IDF
+splits the ESP32-P4 register definitions by hardware version
+(`components/soc/CMakeLists.txt:36-40`).  `mipi_dsi_host_reg.h` is
+byte-identical between `hw_ver1` and `hw_ver3` apart from a copyright year,
+which fits it being the unchanged DesignWare host core.
+`mipi_dsi_bridge_reg.h` is not: 73 lines exist only in `hw_ver3`, adding
+`DSI_BRG_DPI_TYPE`, `DSI_BRG_DPI_DBG_EN`, `DSI_BRG_DSI_BRIG_RST`,
+`DSI_BRG_VSYNC_INT_CLR` and a version-date register.  This board is revision
+1.3, so `hw_ver1`, and those five must not be touched.
+
+**One deliberate deviation from the reference, recorded now rather than
+discovered later.**  `d1001_board.c:165` sets the whole expander to output and
+only then writes the individual levels.  The PCA9535 output register powers up
+all-ones, so that order briefly drives LCD_BL_EN and AMP_EN high.  Harmless in
+a product that wants the backlight on; not harmless in B2 through B4, which
+must keep the panel dark.  This port writes the output latch first and changes
+direction afterwards.
+
+- Acceptance: met for the half documentation can settle.  One canonical table
+  exists, evidence classes replace assertions, every source's licence and
+  provenance is recorded, and the two entries that need hardware, the measured
+  frame rate and the reference command trace, are marked deferred to B4 rather
+  than dropped.
+- Safety impact: none, no hardware was touched.
+- Remaining risk: four items carried in the contract's own list, of which the
+  sharpest is that IDF's PHY constants
+  `set_switch_time(50, 104, 46, 128)` and `set_max_read_time(6000)` have no
+  derivation in any local source and no ESP32-P4 technical reference manual is
+  present on this machine.  They will be carried over as opaque constants with
+  that note attached.
+- Next safe step: B1, the 200 MHz PSRAM calibration.  It is the prerequisite
+  with no display risk in it, and without the bandwidth headroom scanout has
+  no margin at all.
 
 ## Evidence-entry template
 
