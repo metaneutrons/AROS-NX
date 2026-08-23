@@ -671,7 +671,7 @@ Acceptance gate:
 | Undocumented DSI PHY constants | IDF's DSI bring-up writes `mipi_dsi_phy_ll_set_switch_time(50, 104, 46, 128)` and `set_max_read_time(6000)` with no derivation in any locally available source, and no ESP32-P4 technical reference manual is present on this machine.  They are carried over as opaque constants.  The failure mode is a PHY that locks but produces marginal signalling, which would look like a panel or timing problem rather than a PHY one, so a B4 pattern fault has to consider them before the timing set is blamed. |
 | CPU clock inherited, not configured | This port set no CPU clock and ran at 90 MHz until 2026-08-23 because the second-stage bootloader's divider was never touched.  Nothing failed, everything was four times slower than the silicon allows, and no diagnostic said so; it was found only by measuring `mcycle` against the system timer while chasing a bandwidth figure.  Anything else this port inherits from that bootloader is unexamined in the same way, the flash clock and the cache configuration in particular. |
 | CPU-loop bandwidth is a latency measurement | A scalar read loop costs 13.6 cycles per word from internal SRAM at both 90 and 360 MHz, which is one cache-line fill per sixteen words with a single fill outstanding.  It therefore measures fill latency and not the memory system's throughput, and no threshold about scanout can be argued from it.  A DMA engine is the only way to measure what the display will actually get, and until B5 exists any bandwidth claim about scanout is unfounded. |
-| The PSRAM bring-up is not self-starting | An unchanged binary identified 32 MB one boot and read a floating bus the next.  Writing the reference firmware back brought the chip up immediately - vendor `0x0d`, 32 MB, memory test OK - and this port has worked on every boot since, so the board was never at fault.  What the port cannot do is start from a chip state it did not leave behind: the mode registers survive a CPU reset, reading them needs the read latency to be right already, and the retry loop uses one dummy-length set for all three attempts.  Sweep the latency sets in the identity read before concluding the chip is absent. |
+| The MSPI PLL does not calibrate from a cold boot | `MSPI_CAL_END` never appears, while `CPU_PLL_CAL_END` and `SYS_PLL_CAL_END` do.  Not a wrong register or bit - every one is verified against IDF - and not this port's code: IDF's own calibration sequence, run in the bootloader, does not complete either.  The vendor firmware succeeds because it runs `pmu_init` and `rtc_init` first, which neither this port nor the bootloader does.  Until this is found, PSRAM needs the chip to have been calibrated by other firmware, which is a release blocker. |
 | The port expander survives a CPU reset | The PCA9535 has no reset pin and keeps its direction and output registers across every reboot, so its state at boot is whatever the last firmware left, not the datasheet default.  Any code that writes a whole register drives pins it never considered; B2's first version pulled the battery-charge enable low that way.  Read-modify-write is the only safe form here, and a check that assumes cold defaults passes vacuously on a warm board. |  And it cannot be cold-started from software at all: the board has a battery, so removing USB changes nothing, and releasing PWR_HOLD with the board on battery was tried cleanly and did not switch it off - the next boot still read the direction register as all-outputs where a cold device reads all-inputs.  Any test that wants the datasheet defaults has to say so out loud.
 | The display has produced no panel-side evidence | Not one DCS reply and not one pixel.  The host reports a locked PHY, lanes in stop state, a clean command path, a running pattern generator with no underrun, and a measured PWM on the backlight pin, and the panel is dark and unlit.  Every register compared matches the vendor BSP and the working reference.  Until something comes back from the panel, every statement about the display path is a statement about the SoC. |
 | DSI reads get no reply | Five DCS reads, the vendor identity register and four standard ones, all return nothing with no protocol error flagged and the host left waiting.  Espressif's driver reads the same register with an unbounded wait and works on this board, so the panel answers there and this port's read path is wrong.  A software reset and the divider encoding have been eliminated.  Nothing in the port depends on reads yet, but a panel that cannot be interrogated cannot be diagnosed either, and B6's orientation work would rather have the scanline register than a photograph. |
@@ -4522,6 +4522,85 @@ address, and cannot leave, because leaving it needs the state it cannot reach.
 - Next safe step: the reorder from the panel bring-up commit has still never run
   against DSI hardware.  With PSRAM back, B3 stage two and B4 can be re-run, and
   the reference display path over a real framebuffer becomes buildable.
+
+### 2026-08-23 - the MSPI PLL does not calibrate from cold, and it is not this port's code
+
+- State change: the failure is located.  It is not PSRAM and not this port's
+  PSRAM sequence.  The MSPI PLL's calibration never starts on a cold-booted
+  board, and ESP-IDF's own implementation of that calibration, run in the
+  bootloader, does not start it either.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3, cold-started by
+  disconnecting battery and USB.
+- Artifacts: core 165,168 bytes and bootloader 22,928 bytes, both
+  esptool-hash verified.  New bootloader component
+  `bootloader/project/bootloader_components/aros_mpll/`.
+
+**What was measured.**  `ANA_PLL_CTRL0` traced through the sequence, from a
+board cold-started so nothing was inherited:
+
+```text
+[psram]  trace  0x0000024c 0x0000004c 0x0000004c 0x0000004c spins 1000000
+```
+
+Entry, after clearing `MSPI_CAL_STOP`, after the divider write, after the wait.
+The stop bit is cleared exactly as ESP-IDF clears it, every analogue register
+reads back the value written - divider byte `0x99`, which is what
+`(400/20-1)<<3 | 1` gives - and `MSPI_CAL_END` is absent after a million polls.
+Decoded, `0x4c` also says `CPU_PLL_CAL_END` and `SYS_PLL_CAL_END` are both set:
+the calibration machinery works, for the two PLLs the bootloader brings up, and
+not for this one.  The calibration is not failing.  It never starts.
+
+**What was eliminated, each by a run on hardware.**
+
+| hypothesis | result |
+| :--- | :--- |
+| digital supply too low | Cold start reads `PMU_HP_ACTIVE_DCM_VSET` = 27, above the 26 the vendor firmware sets.  Not it - and forcing the reset default of 20 hung the board so hard it stopped answering USB, which is how the supply step was learned to belong before the CPU clock rather than in the PSRAM bring-up |
+| CPU clock at 360 MHz | Fails identically with the clock left at the bootloader's `cpu /4` |
+| PLL not powered | Powering it down and back up before calibrating changes nothing |
+| no settling time | A millisecond after powering it changes nothing |
+| analogue master on 160 MHz | This port selected `I2C_ANA_MST_CLK160M`, which IDF never does for the P4.  Removing it changes nothing |
+| a missing register or bit | Every one verified against IDF: `PMU_RF_PWC` +0x15c bit 24, `LP_CLKRST_HP_CLK_CTRL` +0x40 bit 28, `CAL_END` bit 8, `CAL_STOP` bit 9, all four regi2c registers and their shifts |
+| ESP-IDF does it differently | It does not.  A bootloader component was written that calls IDF's own `clk_ll_mpll_enable`, `regi2c_ctrl_ll_mpll_calibration_start`, `clk_ll_mpll_set_config` and waits on `regi2c_ctrl_ll_mpll_calibration_is_done`.  With IDF's unbounded wait it hung the bootloader; with a bounded one it logs `mspi pll calibration did not complete`.  IDF's own code, on this silicon, from cold |
+| the bootloader could do it via `CONFIG_SPIRAM` | It cannot.  The IDF bootloader has no MPLL code at all - `grep` over `bootloader_support` finds nothing |
+| the ROM could do it | No MPLL or regi2c entry point exists in the P4 ROM symbol table |
+
+**So what does the vendor firmware do?**  It calibrates successfully, every
+time, and it is an ordinary IDF application.  Between the bootloader and
+`esp_psram_impl_enable` it runs `pmu_init`, `rtc_init` and the rest of the
+system startup, none of which this port or the bootloader performs.  The
+calibration therefore has a precondition established somewhere in that startup.
+Finding which one is the next question, and it is now a well-posed one rather
+than a search.
+
+**Fixed on the way, and worth keeping regardless.**
+
+  - The digital supply is raised to 26 before the CPU clock, in cpuclock.c.
+    Not the cause here, but the ordering is right and the failure it prevents
+    is a hard hang.
+  - The mode registers are written before anything is read, then the identity
+    is read, and only if that fails are all eight read latencies swept.  The
+    first version swept before writing and hung the boot dead on a
+    cold-started chip: the part is in its power-on width, and a read at the
+    wrong width does not fail, it does not return.  A write needs no dummy
+    cycles and is the one transaction safe to send into an unknown state.
+  - A settling wait after mode register 8, which selects that width.
+  - A missing `MSPI_CAL_END` stays fatal.  Letting the bring-up continue past
+    it was tried and hung at the first controller register: the bit is a real
+    signal, the PLL does not run uncalibrated.
+
+- Acceptance points passed: the fault is isolated to one analogue step, with
+  the port's own code eliminated as the cause by running IDF's implementation
+  of that step under IDF-like conditions.
+- Acceptance points failed: PSRAM is unavailable from a cold boot.  Everything
+  needing a framebuffer stays blocked.
+- Remaining risk: the port currently requires the chip to have been calibrated
+  by other firmware, which is not a state anyone installing AROS can be asked
+  to produce.  This is a release blocker, not a diagnostic curiosity.
+- Next safe step: bisect the IDF application startup for the precondition.
+  `pmu_init` and `rtc_init` are the candidates, both are self-contained, and
+  both can be called from the bootloader component that now exists - which
+  makes the next experiment a small addition to a file already in the tree
+  rather than new scaffolding.
 
 ## Evidence-entry template
 

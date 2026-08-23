@@ -187,6 +187,9 @@ UWORD krnP4PanelStrayBits(void);
 const char *krnP4I2CResultName(int result);
 
 /* The SoC clock-tree root dividers, as read back from the registers. */
+unsigned char krnP4SupplyLevel(void);
+unsigned char krnP4SupplyUp(void);
+
 struct P4CPUClock
 {
     unsigned char source;           /* 0 XTAL, 1 CPLL, 2 fast RC */

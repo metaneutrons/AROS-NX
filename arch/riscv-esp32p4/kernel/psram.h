@@ -276,6 +276,25 @@
 #define P4_PSRAM_WR_DUMMY_FAST      (2 * (7 - 1))
 #define P4_PSRAM_TEST_PATTERN       0x5A6B7C8DUL
 #define P4_PSRAM_MR1_VENDOR_MASK    0x1F
+/*
+ * Mode register 0 holds the read latency in three bits, so the chip can arrive
+ * in any of eight.  A read at the wrong one samples outside the window and
+ * returns a floating bus, which is indistinguishable from no chip at all.
+ *
+ * This matters because the mode registers survive a CPU reset: a boot after
+ * firmware that chose a different latency - ESP-IDF picks 2, 4 or 6 depending
+ * on the configured speed - finds the part in that firmware's setting, not in
+ * a reset default.  Asking in one latency only means a port that works after
+ * itself and after nothing else, which is not a port anyone can install.
+ *
+ * The dummy length for a latency is 2 * (latency + 2) bits: ESP-IDF's three
+ * pairs are latency 2 with 2*(5-1), latency 4 with 2*(7-1) and latency 6 with
+ * 2*(9-1), and that is the relation they follow.  Sweeping all eight is two
+ * register reads each and costs microseconds.
+ */
+#define P4_PSRAM_RD_LATENCIES       8
+#define P4_PSRAM_REG_DUMMY_FOR(lat) (2U * ((lat) + 2U))
+
 #define P4_PSRAM_VENDOR_AP          0x0D
 /*
  * Mode register 2's low three bits, as sizes. The codes are not in order
@@ -516,11 +535,16 @@ struct P4PSRAMInfo
     signed char   mpll_reason;      /* P4_MPLL_* */
     unsigned long mpll_state;       /* rstb, div, dhref packed low to high */
     unsigned long ana_pll_ctrl0;
+    unsigned long ana_trace[4];     /* entry, cal-start, after div, after wait */
+    unsigned long ana_spins;        /* iterations the wait actually took */
     unsigned char identify_attempts;
     unsigned char round_trip;
     unsigned char fast_requested;   /* the caller asked for the tuned clock */
     unsigned char fell_back;        /* it was asked for and did not hold */
     unsigned char connected;        /* the reference's write/read-back check */
+    signed char   probe_latency;    /* the read latency the chip arrived in, -1 none */
+    unsigned char bias_found;       /* PMU_HP_ACTIVE_DCM_VSET as inherited */
+    unsigned char bias_set;         /* and as this port left it */
     struct P4PSRAMEntry entry;      /* what the bootloader left behind */
     struct P4PSRAMTuning tuning;
 };

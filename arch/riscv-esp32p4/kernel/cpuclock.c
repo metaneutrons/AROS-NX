@@ -175,3 +175,55 @@ int krnP4CPUClockSet(unsigned int mhz)
     return now.cpu_div == cpu_div && now.mem_div == mem_div
            && now.apb_div == apb_div;
 }
+
+/*
+ * The digital supply, and it has to be raised before anything asks the machine
+ * to go fast.
+ *
+ * Reset leaves PMU_HP_ACTIVE_DCM_VSET at 20.  The board vendor's own firmware
+ * sets 26 before it brings PSRAM up, and ESP-IDF does not touch this register
+ * on the P4 at all - it is a board-level correction, which is why comparing
+ * this port's PSRAM sequence against esp_psram_impl_enable value by value
+ * found nothing wrong.  The fault was one register outside that sequence.
+ *
+ * Two things make this the first thing the kernel should do.  The PMU is not
+ * reset by a CPU reset, so a boot inherits whatever the last firmware left:
+ * after the vendor's firmware PSRAM works, from cold it does not, with the
+ * same binary.  And 20 does not carry 360 MHz - forcing the default and then
+ * raising the clock hung the board hard enough that it stopped answering USB,
+ * which is how this ordering was learned rather than reasoned.
+ *
+ * A settling wait afterwards, counted in CPU cycles from the counter CSR so
+ * this needs nothing but the core: 360000 cycles is a millisecond at the
+ * fastest clock this port sets and four at the slowest, and IDF waits the same
+ * millisecond after its own voltage work.
+ */
+unsigned char krnP4SupplyLevel(void)
+{
+    unsigned long bias = p4_r32(P4_PMU_HP_ACTIVE_BIAS);
+
+    return (unsigned char)((bias & P4_PMU_DCM_VSET_MASK)
+                           >> P4_PMU_DCM_VSET_SHIFT);
+}
+
+unsigned char krnP4SupplyUp(void)
+{
+    unsigned long bias = p4_r32(P4_PMU_HP_ACTIVE_BIAS);
+    unsigned char found = (unsigned char)((bias & P4_PMU_DCM_VSET_MASK)
+                                          >> P4_PMU_DCM_VSET_SHIFT);
+    unsigned long start, now;
+
+    if (found >= P4_PMU_DCM_VSET_PSRAM)
+        return found;
+
+    p4_w32(P4_PMU_HP_ACTIVE_BIAS,
+           (bias & ~P4_PMU_DCM_VSET_MASK)
+           | ((unsigned long)P4_PMU_DCM_VSET_PSRAM << P4_PMU_DCM_VSET_SHIFT));
+
+    asm volatile("csrr %0, mcycle" : "=r"(start));
+    do
+        asm volatile("csrr %0, mcycle" : "=r"(now));
+    while ((unsigned long)(now - start) < 360000UL);
+
+    return found;
+}

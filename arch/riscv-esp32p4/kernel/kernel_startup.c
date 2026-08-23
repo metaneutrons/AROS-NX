@@ -147,6 +147,24 @@ static void report_misa(void)
    and needs to know how much of the external window is real. */
 unsigned long __esp32p4_psram_size;
 
+/*
+ * Which read latency the chip was found in, kept for the late report.
+ *
+ * The early [psram] lines are written before anything drains the USB serial
+ * buffer, so on a boot that gets far enough to be chatty they are overwritten
+ * before a host can read them.  The one value worth not losing is this: it
+ * says whether the latency sweep is what got in, which is the difference
+ * between a port that works after any firmware and one that works only after
+ * itself.
+ */
+signed char p4_psram_probe_latency_seen = -1;
+
+/*
+ * The digital supply setting the bring-up left, which is the value that
+ * decided the 23 August failure and the one a future one would turn on.
+ */
+unsigned char p4_psram_bias_seen;
+
 /* Where the flash development volume starts, for flashdisk.device.  Zero
    until the arosbsp partition has been found, and left at zero if it never
    is, which is what makes the device refuse to open rather than serve
@@ -284,7 +302,14 @@ static void report(unsigned long hartid)
     {
         krnP4PutStr("  ");
         krnP4PutDec((uint32_t)(__esp32p4_psram_size / (1024 * 1024)));
-        krnP4PutStr(" MB, mapped and verified\n");
+        krnP4PutStr(" MB, mapped and verified, supply ");
+        krnP4PutDec((uint32_t)p4_psram_bias_seen);
+        krnP4PutStr(", found in read latency ");
+        if (p4_psram_probe_latency_seen >= 0)
+            krnP4PutDec((uint32_t)p4_psram_probe_latency_seen);
+        else
+            krnP4PutStr("none");
+        krnP4PutStr("\n");
     }
     else
         krnP4PutStr("  (not brought up)\n");
@@ -5573,6 +5598,31 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     krnRAMReport();
 
     /*
+     * The digital supply, before the clock that runs on it.
+     *
+     * This is the fix for the failure that cost 23 August, and its position
+     * here is the second half of that fix.  Reset leaves the setting at 20;
+     * this chip's PSRAM needs 26 and the vendor's own firmware sets it, while
+     * ESP-IDF does not touch the register on the P4 at all.  The PMU survives
+     * a CPU reset, so a boot after that firmware inherited a working supply
+     * and a boot from cold did not - the same binary, PSRAM present and
+     * silent, which is exactly what happened.
+     *
+     * It is not in the PSRAM bring-up because it is not a PSRAM setting.  Put
+     * there, with the clock raised first, the board hung so hard it stopped
+     * answering USB.  20 does not carry 360 MHz.
+     */
+    {
+        unsigned char supply = krnP4SupplyUp();
+
+        krnP4PutStr("[clock]  supply  found ");
+        krnP4PutDec((uint32_t)supply);
+        krnP4PutStr(", now ");
+        krnP4PutDec((uint32_t)krnP4SupplyLevel());
+        krnP4PutStr("\n");
+    }
+
+    /*
      * The CPU clock, before PSRAM.
      *
      * Deliberately in this order: the PSRAM read sampling is calibrated a few
@@ -5633,6 +5683,8 @@ void kernel_cstart(unsigned long hartid, void *fdt)
         csr_clear(mstatus, MSTATUS_MIE);
         up = krnPSRAMBringUp(&psram, P4_PSRAM_TARGET_HZ);
         csr_set(mstatus, MSTATUS_MIE);
+        p4_psram_probe_latency_seen = psram.probe_latency;
+        p4_psram_bias_seen = psram.bias_set;
 
         if (up)
         {
@@ -5646,6 +5698,27 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutDec((uint32_t)psram.identify_attempts);
             krnP4PutStr(psram.identify_attempts == 1 ? " attempt\n"
                                                      : " attempts\n");
+
+            /*
+             * Which read latency the chip was found in, as opposed to the one
+             * it was then set to.  A value other than this port's own means
+             * the part arrived configured by other firmware and the sweep is
+             * what got in - the case that used to report an absent chip.
+             */
+            krnP4PutStr("[psram]  supply inherited ");
+            krnP4PutDec((uint32_t)psram.bias_found);
+            krnP4PutStr(", set ");
+            krnP4PutDec((uint32_t)psram.bias_set);
+            krnP4PutStr("\n[psram]  found  read latency ");
+            if (psram.probe_latency >= 0)
+                krnP4PutDec((uint32_t)psram.probe_latency);
+            else
+                krnP4PutStr("none of eight");
+            krnP4PutStr(", set to ");
+            krnP4PutDec((uint32_t)(psram.clock_hz > 80000000UL
+                                   ? P4_PSRAM_RD_LATENCY_FAST
+                                   : P4_PSRAM_RD_LATENCY_SLOW));
+            krnP4PutStr("\n");
 
             if (psram.fast_requested)
                 krnP4ReportPSRAMTuning(&psram);
@@ -5699,6 +5772,18 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutHex32((uint32_t)psram.mpll_state);
             krnP4PutStr(", ana_pll_ctrl0 ");
             krnP4PutHex32((uint32_t)psram.ana_pll_ctrl0);
+            krnP4PutStr("\n[psram]  trace  ");
+            {
+                unsigned int t;
+
+                for (t = 0; t < 4; ++t)
+                {
+                    krnP4PutHex32((uint32_t)psram.ana_trace[t]);
+                    krnP4PutStr(" ");
+                }
+            }
+            krnP4PutStr("spins ");
+            krnP4PutDec((uint32_t)psram.ana_spins);
             krnP4PutStr("\n");
         }
         else if (!psram.clock_hz)
@@ -5730,6 +5815,13 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutHex32((uint32_t)psram.density);
             krnP4PutStr(", data ");
             krnP4PutStr(psram.connected ? "carried\n" : "lost\n");
+
+            krnP4PutStr("[psram]  found  no answer in any of eight read"
+                        " latencies, supply inherited ");
+            krnP4PutDec((uint32_t)psram.bias_found);
+            krnP4PutStr(", set ");
+            krnP4PutDec((uint32_t)psram.bias_set);
+            krnP4PutStr("\n");
 
             /*
              * The handover state: the registers this port inherits rather
