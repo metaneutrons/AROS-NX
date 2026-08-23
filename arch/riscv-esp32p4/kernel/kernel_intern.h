@@ -104,6 +104,21 @@ struct P4PanelState
 int krnP4PanelClaim(struct P4PanelState *out);
 int krnP4PanelPowerUp(struct P4PanelState *out);
 int krnP4PanelSafe(void);
+int krnP4PanelBacklightOn(void);
+
+struct P4BacklightState
+{
+    UWORD latch;            /* the expander latch this port believes in */
+    UWORD expander_pins;    /* the expander's input port, i.e. the pins */
+    unsigned long pin_level;/* GPIO14 as the input register reports it */
+    unsigned long out_level;/* what the output register is driving */
+    unsigned long samples;      /* how many times the pin was sampled */
+    unsigned long samples_high; /* how many of those were high */
+    unsigned long out_sel;  /* the matrix entry for GPIO14 */
+    unsigned long iomux;    /* the pad's own configuration */
+};
+
+void krnP4PanelBacklightState(struct P4BacklightState *out);
 
 /* DSI PHY bring-up results. */
 #define P4_DSI_OK               0
@@ -149,6 +164,18 @@ int  krnP4DsiDcsWrite(unsigned char cmd, const unsigned char *param,
 int  krnP4DsiDcsRead(unsigned char cmd, unsigned char *out,
                      unsigned int want);
 int  krnP4DsiPanelInit(unsigned char *id, int *id_result);
+/* What the pattern setup programmed, so the arithmetic can be checked. */
+struct P4DsiPattern
+{
+    unsigned long hsa, hbp, hfp, hact, hline;
+    unsigned long htotal_px, vtotal_px;
+    unsigned long frame_mhz;
+    unsigned long brg_en;
+};
+
+int  krnP4DsiPatternOn(struct P4DsiPattern *out);
+void krnP4DsiPatternOff(void);
+
 void krnP4DsiCmdStatus(unsigned long *pkt, unsigned long *int0,
                        unsigned long *int1);
 int  krnP4DsiPhyUp(struct P4DsiState *out);

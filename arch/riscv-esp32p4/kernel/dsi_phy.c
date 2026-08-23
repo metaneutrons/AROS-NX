@@ -59,6 +59,16 @@ static void dsi_clr(unsigned long off, unsigned long bits)
     dsi_wr(off, dsi_rd(off) & ~bits);
 }
 
+static void brg_wr(unsigned long off, unsigned long v)
+{
+    p4_w32(P4_DSI_BRG_BASE + off, v);
+}
+
+static unsigned long brg_rd(unsigned long off)
+{
+    return p4_r32(P4_DSI_BRG_BASE + off);
+}
+
 /*
  * The PHY supply.
  *
@@ -525,6 +535,174 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
     }
 
     return P4_DSI_OK;
+}
+
+/*
+ * B4: the host's own test pattern.
+ *
+ * The point of using the internal generator rather than a framebuffer is that
+ * it removes memory from the question.  If a pattern appears, then the panel,
+ * the PHY, the command sequence, the DPI timing and the colour coding are all
+ * right, and nothing about PSRAM, DMA or cache coherency has been involved.  If
+ * it does not appear, the fault is in that list and not in a list twice as long.
+ *
+ * The horizontal timing is scaled and the vertical is not, which looks
+ * asymmetric and is not.  Vertical timing is counted in lines and a line is a
+ * line; horizontal timing is counted in the host's own byte-clock, so pixel
+ * counts have to be converted by the ratio of the lane rate to the pixel rate.
+ * That ratio is 1000 / (40 * 8) = 25/8 here, which is exact, so the conversion
+ * is integer arithmetic and not a rounded approximation.
+ *
+ * The rounding compensation is the reference's and it earns its place: the four
+ * scaled intervals do not necessarily sum to the scaled total, and the host
+ * takes the total from a separate register.  Without the correction the line
+ * time and the sum of its parts disagree by a byte-clock, which is a tear.
+ */
+int krnP4DsiPatternOn(struct P4DsiPattern *out)
+{
+    /* Scale a pixel count to host byte-clocks: round(x * 25 / 8). */
+#define SCALE(x)    (((x) * 25 + 4) / 8)
+    unsigned long hsa = SCALE(P4_PANEL_HSYNC);
+    unsigned long hbp = SCALE(P4_PANEL_HBP);
+    unsigned long hfp = SCALE(P4_PANEL_HFP);
+    unsigned long act = SCALE(P4_PANEL_H_RES);
+    unsigned long htotal = SCALE(P4_PANEL_H_RES + P4_PANEL_HSYNC
+                                + P4_PANEL_HBP + P4_PANEL_HFP);
+    long compensation = (long)htotal - (long)(hsa + hbp + act + hfp);
+    unsigned long v;
+
+    act = (unsigned long)((long)act + compensation);
+
+    if (out)
+    {
+        out->hsa = hsa;
+        out->hbp = hbp;
+        out->hfp = hfp;
+        out->hact = act;
+        out->hline = act + hsa + hbp + hfp;
+        out->frame_mhz = P4_PANEL_DPI_MHZ;
+        out->htotal_px = P4_PANEL_H_RES + P4_PANEL_HSYNC + P4_PANEL_HBP
+                         + P4_PANEL_HFP;
+        out->vtotal_px = P4_PANEL_V_RES + P4_PANEL_VSYNC + P4_PANEL_VBP
+                         + P4_PANEL_VFP;
+    }
+
+    /* The DPI clock: 240 MHz over six is exactly the 40 MHz the panel wants. */
+    v = p4_r32(P4_CLKRST_PERI_CLK_CTRL03);
+    v &= ~(P4_DSI_DPICLK_SRC_MASK | P4_DSI_DPICLK_DIV_MASK);
+    v |= (unsigned long)P4_DSI_DPICLK_SRC_PLL240 << P4_DSI_DPICLK_SRC_SHIFT;
+    v |= (unsigned long)(P4_DSI_DPICLK_DIV - 1) << P4_DSI_DPICLK_DIV_SHIFT;
+    v |= P4_DSI_DPICLK_EN;
+    p4_w32(P4_CLKRST_PERI_CLK_CTRL03, v);
+
+    /*
+     * The bridge, which the first version of this function left alone
+     * entirely - and that is why the panel stayed dark.
+     *
+     * The host's pattern generator replaces the pixel *data* on the DPI
+     * interface and not the timing.  On this SoC that interface is fed by the
+     * DSI bridge, so a bridge that is neither configured nor enabled means the
+     * host has no timing to hang a frame on, and nothing is transmitted at all.
+     * Reading the register header rather than the driver hid this: a pattern
+     * generator sounds self-contained and is not.
+     *
+     * The flow controller is the bridge rather than the DMA engine, and that
+     * matters here more than anywhere else: with DMA as the controller the
+     * bridge waits for data that no one is going to send.
+     *
+     * These timings are in pixels, unscaled, unlike the host's below.  The
+     * bridge counts pixels because it is on the pixel side of the link.
+     */
+    brg_wr(P4_DSI_BRG_CLK_EN, P4_DSI_BRG_CLK_EN_BIT);
+
+    brg_wr(P4_DSI_BRG_DPI_V_CFG0,
+           ((unsigned long)P4_PANEL_V_RES << P4_DSI_BRG_DISP_SHIFT)
+           | ((unsigned long)(P4_PANEL_V_RES + P4_PANEL_VSYNC + P4_PANEL_VBP
+                              + P4_PANEL_VFP) << P4_DSI_BRG_TOTAL_SHIFT));
+    brg_wr(P4_DSI_BRG_DPI_V_CFG1,
+           ((unsigned long)P4_PANEL_VSYNC << P4_DSI_BRG_SYNC_SHIFT)
+           | ((unsigned long)P4_PANEL_VBP << P4_DSI_BRG_BANK_SHIFT));
+    brg_wr(P4_DSI_BRG_DPI_H_CFG0,
+           ((unsigned long)P4_PANEL_H_RES << P4_DSI_BRG_DISP_SHIFT)
+           | ((unsigned long)(P4_PANEL_H_RES + P4_PANEL_HSYNC + P4_PANEL_HBP
+                              + P4_PANEL_HFP) << P4_DSI_BRG_TOTAL_SHIFT));
+    brg_wr(P4_DSI_BRG_DPI_H_CFG1,
+           ((unsigned long)P4_PANEL_HSYNC << P4_DSI_BRG_SYNC_SHIFT)
+           | ((unsigned long)P4_PANEL_HBP << P4_DSI_BRG_BANK_SHIFT));
+
+    /* RGB565 in and out; both codes are zero, which is worth stating rather
+       than leaving as an untouched register. */
+    brg_wr(P4_DSI_BRG_PIXEL_TYPE, 0);
+
+    brg_wr(P4_DSI_BRG_DMA_FLOW_CTL, P4_DSI_BRG_FLOW_BRIDGE);
+
+    /*
+     * The bridge is enabled and its pixel feed is not, and the two are
+     * separate bits for a reason this stage found the hard way.
+     *
+     * Leaving the bridge off entirely left the panel dark.  Turning it fully
+     * on, pixel feed included, produced DPI_PLD_WR_ERR in the host's second
+     * interrupt-status register - a payload write error, which is an overflow:
+     * the bridge was pushing pixels into a host that generates its own and
+     * consumes none.  So `dsi_en` alone, which brings the link up, and
+     * `dpi_en` clear, which stops the feed.  With a framebuffer in B5 it will
+     * be the other way round and the generator will be off.
+     */
+    brg_wr(P4_DSI_BRG_DPI_MISC_CFG, 0);
+    brg_wr(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE);
+    brg_wr(P4_DSI_BRG_EN, P4_DSI_BRG_DSI_EN);
+
+    /* Virtual channel 0, RGB565, every sync signal active high. */
+    dsi_wr(P4_DSI_DPI_VCID, 0);
+    dsi_wr(P4_DSI_DPI_COLOR_CODING, P4_DSI_COLOR_16BIT_C1);
+    dsi_wr(P4_DSI_DPI_CFG_POL, 0);
+
+    /*
+     * Burst mode with sync pulses, and no low-power transitions anywhere in
+     * the frame.  Low power between video periods saves energy and is a
+     * complication this stage does not need: a pattern that only fails when
+     * the link drops to low power and back would be a harder fault to read
+     * than a pattern that never does.
+     */
+    dsi_wr(P4_DSI_VID_MODE_CFG, P4_DSI_VID_BURST_SYNC_PULSES);
+    dsi_wr(P4_DSI_DPI_LP_CMD_TIM, 0);
+
+    dsi_wr(P4_DSI_VID_PKT_SIZE, P4_PANEL_H_RES);
+    dsi_wr(P4_DSI_VID_NUM_CHUNKS, 0);
+    dsi_wr(P4_DSI_VID_NULL_SIZE, 0);
+
+    dsi_wr(P4_DSI_VID_HSA_TIME, hsa);
+    dsi_wr(P4_DSI_VID_HBP_TIME, hbp);
+    dsi_wr(P4_DSI_VID_HLINE_TIME, act + hsa + hbp + hfp);
+    dsi_wr(P4_DSI_VID_VSA_LINES, P4_PANEL_VSYNC);
+    dsi_wr(P4_DSI_VID_VBP_LINES, P4_PANEL_VBP);
+    dsi_wr(P4_DSI_VID_VFP_LINES, P4_PANEL_VFP);
+    dsi_wr(P4_DSI_VID_VACTIVE_LINES, P4_PANEL_V_RES);
+
+    /*
+     * Video mode, and the clock lane to high speed with it.  A pixel stream
+     * needs the clock lane running; leaving it in low power is what made the
+     * command phase safe and is exactly wrong here.
+     */
+    dsi_clr(P4_DSI_MODE_CFG, P4_DSI_CMD_VIDEO_MODE);
+    dsi_set(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS);
+
+    /* Vertical colour bars: pattern mode 0, orientation 0. */
+    dsi_set(P4_DSI_VID_MODE_CFG, P4_DSI_VPG_EN);
+
+    if (out)
+        out->brg_en = brg_rd(P4_DSI_BRG_EN);
+
+    return P4_DSI_OK;
+#undef SCALE
+}
+
+/* Pattern off, back to command mode with the clock lane in low power. */
+void krnP4DsiPatternOff(void)
+{
+    dsi_clr(P4_DSI_VID_MODE_CFG, P4_DSI_VPG_EN);
+    dsi_clr(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS);
+    dsi_set(P4_DSI_MODE_CFG, P4_DSI_CMD_VIDEO_MODE);
 }
 
 /*

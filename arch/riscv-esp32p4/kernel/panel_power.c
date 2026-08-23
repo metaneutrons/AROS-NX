@@ -145,9 +145,17 @@ static void panel_backlight_dark(void)
     p4_w32(P4_GPIO_BASE + P4_GPIO_OUT_W1TC,
            1UL << P4_D1001_BACKLIGHT_GPIO);
 
+    /*
+     * The input path is enabled as well as the output, which is not how a
+     * plain output pin has to be configured and is how this one is going to
+     * be: without it the GPIO input register reads zero whatever the pin is
+     * doing, and the first attempt to diagnose a dark backlight spent a run
+     * reading a blind register.
+     */
     v = p4_r32(iomux);
     v &= ~(P4_IOMUX_MCU_SEL_M | P4_IOMUX_FUN_PU | P4_IOMUX_FUN_PD);
     v |= (unsigned long)P4_IOMUX_FUNC_GPIO << P4_IOMUX_MCU_SEL_S;
+    v |= P4_IOMUX_FUN_IE;
     p4_w32(iomux, v);
 
     /* The GPIO register owns the pin, not a peripheral. */
@@ -291,6 +299,138 @@ int krnP4PanelPowerUp(struct P4PanelState *out)
         out->output = panel_latch;
     }
     return P4_I2C_OK;
+}
+
+/*
+ * The backlight on, at full brightness, and only when asked.
+ *
+ * B4 wants a low duty and this gives none: GPIO14 is the brightness input and
+ * driving it high is 100 per cent.  A low duty needs LEDC, which this port has
+ * not brought up, and bringing it up to dim a first test pattern would be work
+ * ahead of its purpose.  What matters for safety is the ordering rather than
+ * the level - nothing here can light the panel until a caller asks, and no
+ * failure path calls it - so the ordering is exact and the level is recorded as
+ * met differently.
+ *
+ * Called only after a pattern is already on the link.  Lighting a panel that is
+ * being driven with nothing shows whatever its controller happens to hold.
+ */
+/*
+ * LEDC on GPIO14, and only ever at a modest duty.
+ *
+ * The first version drove the pin high from the GPIO register and the panel
+ * stayed dark with everything reading back correct.  The reference puts a 5 kHz
+ * PWM there, and that difference is the whole explanation: a backlight driver
+ * whose dimming input wants a switching signal treats a DC level as no signal.
+ * So this is not the low duty B4 asks for being added for comfort - the
+ * switching is what makes it work at all, and the low duty comes free.
+ *
+ * The pin is re-routed from the GPIO register to the LEDC output here, and
+ * panel_backlight_dark() routes it back and drives it low.  That is why both
+ * functions touch the matrix rather than only the level.
+ */
+static void panel_backlight_pwm(unsigned int percent)
+{
+    unsigned long v;
+    unsigned long duty;
+
+    if (percent > 100)
+        percent = 100;
+    duty = ((1UL << P4_LEDC_BL_DUTY_RES) * percent) / 100;
+
+    /* Module clocks, then out of reset, then the crystal as the source. */
+    p4_w32(P4_CLKRST_SOC_CLK_CTRL3,
+           p4_r32(P4_CLKRST_SOC_CLK_CTRL3) | P4_LEDC_APB_CLK_EN);
+    v = p4_r32(P4_CLKRST_PERI_CLK_CTRL22);
+    v |= P4_LEDC_CLK_EN;
+    v &= ~P4_LEDC_CLK_SRC_MASK;             /* 0: the crystal */
+    p4_w32(P4_CLKRST_PERI_CLK_CTRL22, v);
+    p4_w32(P4_CLKRST_HP_RST_EN1,
+           p4_r32(P4_CLKRST_HP_RST_EN1) | P4_RST_EN_LEDC);
+    p4_w32(P4_CLKRST_HP_RST_EN1,
+           p4_r32(P4_CLKRST_HP_RST_EN1) & ~P4_RST_EN_LEDC);
+
+    /* The peripheral's own clock gate. */
+    p4_w32(P4_LEDC_BASE + P4_LEDC_CONF, P4_LEDC_GLOBAL_CLK_EN);
+
+    /* Timer 0: ten bits at 5 kHz from a 40 MHz crystal. */
+    p4_w32(P4_LEDC_BASE + P4_LEDC_TIMER0_CONF,
+           (unsigned long)P4_LEDC_BL_DUTY_RES
+           | ((unsigned long)P4_LEDC_BL_CLK_DIV << P4_LEDC_CLK_DIV_SHIFT)
+           | P4_LEDC_TIMER_RST);
+    p4_w32(P4_LEDC_BASE + P4_LEDC_TIMER0_CONF,
+           (unsigned long)P4_LEDC_BL_DUTY_RES
+           | ((unsigned long)P4_LEDC_BL_CLK_DIV << P4_LEDC_CLK_DIV_SHIFT)
+           | P4_LEDC_TIMER_PARA_UP);
+
+    /* Channel 0 on timer 0.  The duty register is Q4. */
+    p4_w32(P4_LEDC_BASE + P4_LEDC_CH0_HPOINT, 0);
+    p4_w32(P4_LEDC_BASE + P4_LEDC_CH0_DUTY, duty << 4);
+    p4_w32(P4_LEDC_BASE + P4_LEDC_CH0_CONF0,
+           P4_LEDC_SIG_OUT_EN | P4_LEDC_PARA_UP);
+    p4_w32(P4_LEDC_BASE + P4_LEDC_CH0_CONF1, P4_LEDC_DUTY_START);
+
+    /* And the pin follows LEDC rather than the GPIO register. */
+    v = p4_r32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_D1001_BACKLIGHT_GPIO));
+    v &= ~(P4_GPIO_OUT_SEL_MASK | P4_GPIO_OEN_SEL);
+    v |= (unsigned long)P4_SIG_LEDC_CH0_OUT;
+    p4_w32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_D1001_BACKLIGHT_GPIO), v);
+    p4_w32(P4_GPIO_BASE + P4_GPIO_ENABLE_W1TS,
+           1UL << P4_D1001_BACKLIGHT_GPIO);
+}
+
+int krnP4PanelBacklightOn(void)
+{
+    int r = panel_modify(P4_EXP_LCD_BL_EN, 0);
+
+    if (r != P4_I2C_OK)
+        return r;
+
+    panel_backlight_pwm(P4_LEDC_BL_PERCENT);
+    return P4_I2C_OK;
+}
+
+/*
+ * What the backlight path actually looks like, read back rather than assumed.
+ *
+ * The first attempt reported success and the panel stayed unlit, which means
+ * the expander accepted the enable bit - it is read back - and something after
+ * that did not happen.  So this reports the expander's latch, the pin's own
+ * level from the input register, and the two matrix registers that decide
+ * whether the GPIO register drives the pin at all.
+ */
+void krnP4PanelBacklightState(struct P4BacklightState *out)
+{
+    out->latch = panel_latch;
+    out->pin_level = (p4_r32(P4_GPIO_BASE + P4_GPIO_IN)
+                      >> P4_D1001_BACKLIGHT_GPIO) & 1;
+    out->out_level = (p4_r32(P4_GPIO_BASE + P4_GPIO_OUT)
+                      >> P4_D1001_BACKLIGHT_GPIO) & 1;
+    out->out_sel = p4_r32(P4_GPIO_BASE
+                          + P4_GPIO_FUNC_OUT_SEL(P4_D1001_BACKLIGHT_GPIO));
+    out->iomux = p4_r32(P4_IOMUX_BASE
+                        + P4_IOMUX_PIN(P4_D1001_BACKLIGHT_GPIO));
+    (void)panel_read16(P4_PCA9535_INPUT, &out->expander_pins);
+
+    /*
+     * Is a waveform actually there?
+     *
+     * One read of the input register cannot say: at a twenty per cent duty it
+     * returns zero four times out of five, which is indistinguishable from a
+     * pin that is simply low.  Counting many samples can say, and the count
+     * that comes back is the duty - which makes this a measurement of the thing
+     * that was in doubt rather than a check that a register was written.
+     */
+    {
+        unsigned long i, high = 0;
+
+        for (i = 0; i < 20000; ++i)
+            if (p4_r32(P4_GPIO_BASE + P4_GPIO_IN)
+                & (1UL << P4_D1001_BACKLIGHT_GPIO))
+                ++high;
+        out->samples = 20000;
+        out->samples_high = high;
+    }
 }
 
 /*
