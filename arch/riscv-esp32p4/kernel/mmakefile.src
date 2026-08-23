@@ -219,6 +219,14 @@ ifdef P4_PANEL_PROBE
 P4_DEBUG_CPPFLAGS += -DP4_PANEL_PROBE
 endif
 
+# P4_DSI_PROBE=1 is B3 stage one, and needs P4_PANEL_PROBE=1 because the panel
+# has to be powered and out of reset first.  It brings the PHY supply, the
+# clocks and the PLL up and waits, bounded, for lock and lane stop state.  It
+# produces no image and never enables the backlight.
+ifdef P4_DSI_PROBE
+P4_DEBUG_CPPFLAGS += -DP4_DSI_PROBE
+endif
+
 ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
@@ -235,6 +243,7 @@ USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__ $(P4_DEBUG_CPPFLAGS)
 CFILES := \
         appdesc \
         cpuclock \
+        dsi_phy \
         i2c_hw \
         panel_power \
         psram_init \
