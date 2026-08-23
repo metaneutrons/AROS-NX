@@ -4709,6 +4709,62 @@ does not run.
   second answers the question rather than guessing at it, which after this many
   eliminations is worth more than another candidate.
 
+### 2026-08-23 - the MSPI PLL needs the analogue I2C block out of reset, and that bit was never set
+
+- State change: PSRAM comes up, at 200 MHz, with the tuning succeeding and the
+  identity answering on the first attempt.  The missing piece is one bit.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+- Method: a read-only register dump added to the vendor firmware on a test
+  branch (`test/mpll-state-dump` in that tree), printing the eleven registers
+  involved at the top of `app_main` - after its calibration has succeeded -
+  for comparison against the same set after this port's has failed.
+
+**The difference was one register.**
+
+```text
+                     vendor firmware   this port
+PMU_RF_PWC           0x0d000000        bit 24 only
+```
+
+`0x0d000000` is bits 24, 26 and 27.  Bit 24 is `MSPI_PHY_XPD`, which this port
+sets.  Bit 26 is **`PERIF_I2C_RSTB`** and bit 27 is `XPD_PERIF_I2C`: the reset
+and the power of the analogue peripheral I2C block.  `PERIF_I2C_RSTB` defaults
+to zero, meaning reset asserted, so a cold-booted chip holds that block in
+reset - and the PLL calibration state machine runs over it.
+
+This explains every measurement taken over the whole investigation:
+
+  - The regi2c reads and writes worked throughout, returning correct values,
+    because the register interface is not what the reset holds down.  Every
+    diagnostic said the bus was fine, and it was.
+  - `CPU_PLL_CAL_END` and `SYS_PLL_CAL_END` were set while `MSPI_CAL_END` was
+    not, because those two were calibrated before this port ran.
+  - The calibration never *started* rather than failing, which is what a held
+    reset looks like.
+  - `PMU_RF_PWC` survives a CPU reset, so a boot after the vendor firmware
+    inherited the released reset and worked, and a boot from cold did not, with
+    an unchanged binary.  That is the regression that opened this whole line.
+  - And reading ESP-IDF's P4 sources could not find it: IDF releases these two
+    bits in `bootloader_soc.c` for the C5 and the C61, and nowhere for the P4.
+
+**Also confirmed by the same run:** with the PLL calibrating, the 200 MHz path
+works end to end.  `[psram] chip 32 MB at 200 MHz, vendor 0x0000000d, a word
+written and read back after 1 attempt`, phase window 4 at 67.5 degrees, a
+29-wide delay window, and the module package loading into PSRAM afterwards.
+
+- Acceptance points passed: PSRAM up at the target clock; the cause identified
+  by measurement rather than elimination; the fix is one register write with a
+  documented reason.
+- Acceptance points failed: none yet, but the proof is incomplete - see below.
+- Remaining risk: this run followed the vendor firmware, so the calibration
+  could have been inherited rather than performed.  The kernel now prints
+  `[psram] calib entry <ANA_PLL_CTRL0> inherited|done here` from the value read
+  before it clears `MSPI_CAL_STOP`, which distinguishes the two, and a cold
+  boot is needed to read it under the condition that matters.
+- Next safe step: cold-start the board and confirm `done here`.  If it says
+  that, the release blocker is closed and B3/B4's panel reorder can finally be
+  run against DSI hardware.
+
 ## Evidence-entry template
 
 ```text
