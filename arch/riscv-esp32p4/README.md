@@ -49,7 +49,8 @@ its evidence entry in the same change.
 | exec.library | runs | SysBase, both InitCode passes, AvailMem and AllocMem answer |
 | serial debug console | not started | UART0 |
 | code from flash | done | .text and .rodata mapped from the app partition, 117744 bytes of SRAM returned |
-| PSRAM bring-up | done | 32 MB at 20 MHz, mapped at `0x48000000` and in exec's memory list; `AvailMem` reports 34,177,392 bytes |
+| PSRAM bring-up | done | 32 MB mapped at `0x48000000` and in exec's memory list; `AvailMem` reports 34,177,392 bytes.  20 MHz by default, `P4_PSRAM_MHZ=200` with per-boot read-sampling calibration |
+| CPU clock | B1 hardware verified | the port configured none and inherited 90 MHz from the bootloader until 2026-08-23.  `P4_CPU_MHZ=360` moves the four root dividers to CPU /1, MEM /2, APB /2, measured back as 360 MHz from `mcycle`.  Sequential PSRAM reads go 20 to 60 MB/s and internal SRAM 25 to 101 |
 | BSP package from flash | done | fourteen members copied from `arosbsp`, relocated into PSRAM and found as residents in the order their `.conf` files declare; utility opens as version 50 and partition as version 3.  `boot/audit-package.py` checks every member against the loader's own relocation set |
 | timer.device | done | a 500 ms timerequest on the VBLANK unit returns after exactly 50 ticks |
 | SD/MMC block device | A1 hardware verified | read-only native DesignWare-MMC/IDMAC path.  Every read goes through the IDMAC, as in ESP-IDF.  One run passes 59 card-referenced cells, 1,000 repetitions and the invalid-request rejection cases; separate runs pass the three injected fault modes with CMD12/CMD13 recovery and the heartbeat.  Two gate points are met differently and documented in the roadmap |

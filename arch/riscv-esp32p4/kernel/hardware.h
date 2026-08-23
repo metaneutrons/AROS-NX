@@ -310,6 +310,78 @@
 #define  P4_HP_SDIO_FIELDS_M    0x3FFFFF00U
 
 #define P4_LP_CLKRST_BASE       (P4_LPAON_BASE + 0x1000)
+
+
+/*
+ * The two register accessors every file here uses.
+ *
+ * They lived in psram.h while PSRAM was the only thing reaching registers
+ * this directly.  Moved here when the clock tree needed them, because a
+ * CPU-clock file including a PSRAM header reads as a mistake even when it
+ * compiles.
+ */
+#define P4_ALWAYS_INLINE __attribute__((always_inline)) static inline
+
+P4_ALWAYS_INLINE void p4_w32(unsigned long a, unsigned long v)
+{
+    *(volatile unsigned long *)a = v;
+}
+
+P4_ALWAYS_INLINE unsigned long p4_r32(unsigned long a)
+{
+    return *(volatile unsigned long *)a;
+}
+
+/*
+ * The SoC clock tree's root dividers.
+ *
+ * This port configured no CPU clock at all and inherited what the
+ * second-stage bootloader left, which measured 90 MHz on 2026-08-23: the CPLL
+ * runs at 360 and the CPU divider sits at four.  ESP-IDF's own comment names
+ * the only three configurations the constraints allow, MEM_CLK at most 200 MHz
+ * and APB_CLK at most 100:
+ *
+ *   CPLL     CPU_CLK      MEM_CLK      SYS_CLK      APB_CLK
+ *   360  /1      360  /2      180  /1      180  /2       90
+ *   360  /2      180  /1      180  /1      180  /2       90
+ *   360  /4       90  /1       90  /1       90  /1       90
+ *
+ * Each stage divides the one before it, so the third row is what a boot
+ * arrives in and the first is what this port wants.  Note APB ends at 90
+ * either way, which is why nothing clocked from it has to be reconfigured.
+ *
+ * Upscaling has to move APB first and CPU last, and downscaling the reverse.
+ * Otherwise an intermediate state exists in which APB or MEM is above its
+ * limit while the CPU is already fast, and a peripheral access in that window
+ * is a fault with no obvious cause.  ESP-IDF says the hardware may silently
+ * correct an illegal divider without reflecting it in the register, which
+ * would leave the real frequencies unknowable; that is the reason the order
+ * matters rather than merely being tidy.
+ */
+#define P4_CLKRST_ROOT_CLK_CTRL0    (P4_HP_SYS_CLKRST_BASE + 0x4)
+#define   P4_SOC_CLK_DIV_UPDATE     (1UL << 4)
+#define   P4_CPU_CLK_DIV_NUM_SHIFT  5
+#define   P4_CPU_CLK_DIV_NUM_MASK   (0xFFUL << P4_CPU_CLK_DIV_NUM_SHIFT)
+#define   P4_CPU_CLK_DIV_NUMER_SHIFT 13
+#define   P4_CPU_CLK_DIV_NUMER_MASK (0xFFUL << P4_CPU_CLK_DIV_NUMER_SHIFT)
+#define   P4_CPU_CLK_DIV_DENOM_SHIFT 21
+#define   P4_CPU_CLK_DIV_DENOM_MASK (0xFFUL << P4_CPU_CLK_DIV_DENOM_SHIFT)
+
+#define P4_CLKRST_ROOT_CLK_CTRL1    (P4_HP_SYS_CLKRST_BASE + 0x8)
+#define   P4_MEM_CLK_DIV_NUM_SHIFT  0
+#define   P4_MEM_CLK_DIV_NUM_MASK   (0xFFUL << P4_MEM_CLK_DIV_NUM_SHIFT)
+#define   P4_SYS_CLK_DIV_NUM_SHIFT  24
+#define   P4_SYS_CLK_DIV_NUM_MASK   (0xFFUL << P4_SYS_CLK_DIV_NUM_SHIFT)
+
+#define P4_CLKRST_ROOT_CLK_CTRL2    (P4_HP_SYS_CLKRST_BASE + 0xC)
+#define   P4_APB_CLK_DIV_NUM_SHIFT  16
+#define   P4_APB_CLK_DIV_NUM_MASK   (0xFFUL << P4_APB_CLK_DIV_NUM_SHIFT)
+
+/* Which root the HP domain runs from: 0 XTAL, 1 CPLL, 2 the fast RC */
+#define P4_LP_CLKRST_HP_CLK_CTRL_R  (P4_LP_CLKRST_BASE + 0x40)
+#define   P4_HP_ROOT_SRC_MASK       0x3UL
+#define   P4_HP_ROOT_SRC_XTAL       0
+#define   P4_HP_ROOT_SRC_CPLL       1
 #define P4_LP_SDMMC_RST_CTRL    0x004C
 #define  P4_LP_SDMMC_RST_EN     (1U << 28)
 

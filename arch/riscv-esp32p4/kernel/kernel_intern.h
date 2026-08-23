@@ -65,6 +65,21 @@ extern struct MemHeader *__esp32p4_mh_low;
 extern struct MemHeader *__esp32p4_mh_high;
 
 /* The periodic tick and the only clock there is (kernel_timer.c) */
+/* The SoC clock-tree root dividers, as read back from the registers. */
+struct P4CPUClock
+{
+    unsigned char source;           /* 0 XTAL, 1 CPLL, 2 fast RC */
+    unsigned char cpu_div;
+    unsigned char cpu_numerator;
+    unsigned char cpu_denominator;
+    unsigned char mem_div;
+    unsigned char sys_div;
+    unsigned char apb_div;
+};
+
+void krnP4CPUClockRead(struct P4CPUClock *out);
+int krnP4CPUClockSet(unsigned int mhz);
+
 void krnTimerInit(void);
 void krnTimerAck(void);
 uint64_t krnTimerCount(void);
@@ -188,5 +203,12 @@ void krnP4PutDecS(int32_t val);
  */
 #define P4_SRAMCODE __attribute__((section(".sramtext"), noinline, used))
 #define P4_SRAMDATA __attribute__((section(".sramdata"), used))
+/*
+ * Constant data in SRAM.  A named section may not hold both const and
+ * non-const objects - gcc derives the section's flags from what it puts there
+ * first and then refuses the other kind - and the linker script globs
+ * .sramdata*, so the two names land in the same output section regardless.
+ */
+#define P4_SRAMRODATA __attribute__((section(".sramdata.ro"), used))
 
 #endif /* KERNEL_INTERN_H_ */
