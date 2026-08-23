@@ -23,6 +23,26 @@ them.  If a change has not reached hardware, use at most `build verified`.
 This rule also applies when the implementation change is in shared AROS code
 outside this directory but advances an ESP32-P4 roadmap phase.
 
+## Builds whose result gets documented
+
+mmake does not invalidate objects when a `-D` flag or a mmakefile changes.  A
+build command therefore does not determine what comes out of it: an object
+compiled once without a diagnostic switch is reused when the switch returns.
+This has already produced a flashed core that did not contain the diagnostics
+its command line asked for, and a package carrying a module built without the
+debug output the command line requested.
+
+Since every evidence entry records the configuration it was produced with, a
+stale object makes that record false, and a test can pass or fail for the
+wrong reason.  So before any build whose outcome is going to be documented,
+delete the objects that the changed switch affects:
+
+    find <build>/bin/<target>/gen/rom/kernel -name "*.o" -delete    # kernel
+    find <build>/bin/<target>/gen/rom/dos -name "*.o" -delete       # dos
+
+and state the artifact size and SHA-256 in the entry, because those are what
+show which build actually reached the board.
+
 ## Safety boundaries
 
 - Keep SD media read-only through the first graphical boot.  Preserve both
