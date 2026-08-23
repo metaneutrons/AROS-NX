@@ -165,7 +165,13 @@ static void cmd_Write32(struct IORequest *io, LIBBASETYPEPTR LIBBASE)
     if (unit->sdcu_Flags & (AF_Card_WriteProtect|AF_Card_Locked))
     {
         bug("[SDCard%02ld] %s: Error: Card is Locked/Write Protected\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__);
-        io->io_Error = IOERR_ABORTED;
+        /* TDERR_WriteProt rather than IOERR_ABORTED: a filesystem can act on
+           the first and only guess at the second, and TD_PROTSTATUS already
+           reports this unit as protected, so the two now agree.  io_Actual is
+           set explicitly, because a caller has to be able to read "nothing was
+           written" from the reply without knowing what it held before. */
+        IOStdReq(io)->io_Actual = 0;
+        io->io_Error = TDERR_WriteProt;
         return;
     }
 
@@ -233,7 +239,13 @@ static void cmd_Write64(struct IORequest *io, LIBBASETYPEPTR LIBBASE)
     if (unit->sdcu_Flags & (AF_Card_WriteProtect|AF_Card_Locked))
     {
         bug("[SDCard%02ld] %s: Error: Card is Locked/Write Protected\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__);
-        io->io_Error = IOERR_ABORTED;
+        /* TDERR_WriteProt rather than IOERR_ABORTED: a filesystem can act on
+           the first and only guess at the second, and TD_PROTSTATUS already
+           reports this unit as protected, so the two now agree.  io_Actual is
+           set explicitly, because a caller has to be able to read "nothing was
+           written" from the reply without knowing what it held before. */
+        IOStdReq(io)->io_Actual = 0;
+        io->io_Error = TDERR_WriteProt;
         return;
     }
 

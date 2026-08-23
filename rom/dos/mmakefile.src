@@ -86,6 +86,24 @@ FUNCTIONS := abortpkt addbuffers adddosentry addpart addsegment \
 #MM- core-linklibs : linklibs-dos
 
 DOS_CPPFLAGS += -DAROS_CPU="\"$(AROS_TARGET_CPU)\""
+
+#
+# The D() macros in this module are compiled out by default, and the usual way
+# to turn them on is to edit this file.  That cannot be reproduced from a build
+# command, which is what a cross build needs, so they are also gated on a make
+# variable:
+#
+#   gmake kernel-dos DOS_DEBUG=1
+#
+# What it buys is an account of __dos_Boot(): which boot flags arrived, whether
+# the display-driver loader was skipped, which console was opened and whether a
+# Startup-Sequence was run.  On a platform with no display that narration is
+# the only record of what the boot did.
+#
+ifeq ($(DOS_DEBUG),1)
+DOS_CPPFLAGS += -DDEBUG=1
+endif
+
 USER_CPPFLAGS := $(DOS_CPPFLAGS)
 #USER_CPPFLAGS += -DDEBUG=1
 

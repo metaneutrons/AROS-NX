@@ -13,16 +13,41 @@
 #ifndef FAT_HANDLER_H
 #define FAT_HANDLER_H
 
+/*
+ * Per-area defaults.  Guarded so that a build can raise any one of them from
+ * the command line without editing this file and without a redefinition
+ * warning; see mmakefile.src for the FAT_DEBUG shorthand.
+ */
+#ifndef DEBUG_DIRENTRY
 #define DEBUG_DIRENTRY      0
+#endif
+#ifndef DEBUG_FILE
 #define DEBUG_FILE          0
+#endif
+#ifndef DEBUG_DUMP
 #define DEBUG_DUMP          0
+#endif
+#ifndef DEBUG_LOCK
 #define DEBUG_LOCK          0
+#endif
+#ifndef DEBUG_NAMES
 #define DEBUG_NAMES         0
+#endif
+#ifndef DEBUG_NOTIFY
 #define DEBUG_NOTIFY        0
+#endif
+#ifndef DEBUG_OPS
 #define DEBUG_OPS           0
+#endif
+#ifndef DEBUG_PACKETS
 #define DEBUG_PACKETS       0
+#endif
+#ifndef DEBUG_CACHESTATS
 #define DEBUG_CACHESTATS    0
+#endif
+#ifndef DEBUG_MISC
 #define DEBUG_MISC          0
+#endif
 
 #include <dos/dos.h>
 #include <exec/interrupts.h>
@@ -287,6 +312,12 @@ struct Globals
     LONG disk_inhibited;
     BOOL disk_inserted;
     BOOL formatting;
+
+    /* What TD_PROTSTATUS said about the medium, re-asked on every insert.
+     * A device that answers "protected" is refused every mutating packet
+     * before it reaches the switch in ProcessPackets(), so no dirty cache
+     * block is ever produced for a write that cannot happen. */
+    BOOL disk_writeprotected;
 
     /* Character sets translation */
     UBYTE from_unicode[65536];

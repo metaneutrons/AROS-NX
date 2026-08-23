@@ -856,7 +856,13 @@ void FillDiskInfo(struct InfoData *id, struct Globals *glob)
 
     id->id_NumSoftErrors = 0;
     id->id_UnitNumber = glob->fssm->fssm_Unit;
-    id->id_DiskState = ID_VALIDATED;
+    /*
+     * ID_WRITE_PROTECTED is what Info() shows the user and what a program
+     * checks before it tries to write.  Reporting ID_VALIDATED for a medium
+     * that refuses every write leaves both to find out by failing.
+     */
+    id->id_DiskState = glob->disk_writeprotected
+        ? ID_WRITE_PROTECTED : ID_VALIDATED;
 
     if (glob->sb)
     {
@@ -878,8 +884,6 @@ void FillDiskInfo(struct InfoData *id, struct Globals *glob)
             * (de->de_HighCyl + 1 - de->de_LowCyl) / de->de_SectorPerBlock;
         id->id_NumBlocksUsed = id->id_NumBlocks;
         id->id_BytesPerBlock = de->de_SizeBlock << 2;
-
-        id->id_DiskState = ID_VALIDATED;
 
         if (glob->disk_inhibited != 0)
             id->id_DiskType = ID_BUSY;

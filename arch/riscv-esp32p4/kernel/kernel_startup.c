@@ -1142,6 +1142,138 @@ static int krnP4SDCardRejectionTest(struct IOStdReq *io, uint32_t total_sectors)
     return passed;
 }
 
+/*
+ * The device half of A4's read-only requirement.
+ *
+ * Two claims have to hold at the block-device level before FAT can be
+ * trusted to act on them, and neither is provable from source alone:
+ *
+ *   - TD_PROTSTATUS says the medium is protected.  This is what FAT asks at
+ *     mount time and what Info() ends up reporting, so if it answered
+ *     "writable" the whole chain above it would be wrong;
+ *   - a write is refused with TDERR_WriteProt and io_Actual left at zero.
+ *     The error code matters because a filesystem can act on TDERR_WriteProt
+ *     and can only guess at IOERR_ABORTED, and io_Actual matters because
+ *     "nothing was written" has to be readable from the reply itself.
+ *
+ * A write command is issued deliberately, at a sector whose content is
+ * known, and that sector is read back and compared afterwards.  The
+ * comparison is the point: an error code says the request was refused, and
+ * only the unchanged content says nothing reached the card.  The buffer
+ * handed over holds a pattern the sector demonstrably does not contain, so a
+ * write that did go through would be visible rather than merely unlikely.
+ */
+static int krnP4SDCardWriteDenialTest(struct IOStdReq *io)
+{
+    static const uint32_t probe_lba = 2048;
+    uint32_t hash_before, hash_after, expected = 0;
+    int passed = 1;
+    int have_reference;
+    unsigned int k;
+
+    krnP4PutStr("[sddev]  write denial test starting\n");
+
+    /* What TD_PROTSTATUS says */
+    io->io_Command = TD_PROTSTATUS;
+    io->io_Data = NULL;
+    io->io_Length = 0;
+    io->io_Actual = 0;
+    io->io_Offset = 0;
+    DoIO((struct IORequest *)io);
+    krnP4PutStr("[sddev]    TD_PROTSTATUS: error ");
+    krnP4PutDecS((int32_t)(signed char)io->io_Error);
+    krnP4PutStr(", actual ");
+    krnP4PutHex32(io->io_Actual);
+    if (io->io_Error == 0 && io->io_Actual != 0)
+        krnP4PutStr(", medium reported protected\n");
+    else
+    {
+        krnP4PutStr(", MEDIUM NOT REPORTED PROTECTED\n");
+        passed = 0;
+    }
+
+    /* The sector as it stands */
+    if (!krnP4SDCardRead(io, probe_lba, 1, 0, sdcard_device_sector))
+    {
+        krnP4PutStr("[sddev]    baseline read FAILED, cannot judge a write\n");
+        return 0;
+    }
+    hash_before = krnP4SDCardHash((const unsigned char *)sdcard_device_sector,
+                                  512);
+    have_reference = krnP4SDCardRefSector(probe_lba, &expected);
+
+    /* A write of something the sector demonstrably does not contain */
+    for (k = 0; k < 128; ++k)
+        sdcard_device_sector[k] = 0x5a5a5a5aU;
+
+    io->io_Command = CMD_WRITE;
+    io->io_Data = sdcard_device_sector;
+    io->io_Length = 512;
+    io->io_Actual = 0xdeadbeefU;        /* has to come back as zero */
+    io->io_Offset = probe_lba * 512UL;
+    DoIO((struct IORequest *)io);
+
+    krnP4PutStr("[sddev]    CMD_WRITE at LBA ");
+    krnP4PutDec(probe_lba);
+    krnP4PutStr(": error ");
+    krnP4PutDecS((int32_t)(signed char)io->io_Error);
+    krnP4PutStr(" (");
+    krnP4PutStr((signed char)io->io_Error == (signed char)TDERR_WriteProt
+                ? "TDERR_WriteProt" : "NOT TDERR_WriteProt");
+    krnP4PutStr("), actual ");
+    krnP4PutHex32(io->io_Actual);
+    krnP4PutStr("\n");
+
+    if (io->io_Error == 0)
+    {
+        krnP4PutStr("[sddev]    WRITE WAS ACCEPTED\n");
+        passed = 0;
+    }
+    else if ((signed char)io->io_Error != (signed char)TDERR_WriteProt)
+    {
+        krnP4PutStr("[sddev]    refused, but not as write protection\n");
+        passed = 0;
+    }
+    if (io->io_Actual != 0)
+    {
+        krnP4PutStr("[sddev]    io_Actual NOT ZERO after a denied write\n");
+        passed = 0;
+    }
+
+    /* And the medium is what it was */
+    for (k = 0; k < 128; ++k)
+        sdcard_device_sector[k] = 0xa5a5a5a5U;
+    if (!krnP4SDCardRead(io, probe_lba, 1, 0, sdcard_device_sector))
+    {
+        krnP4PutStr("[sddev]    read-back FAILED after the denied write\n");
+        return 0;
+    }
+    hash_after = krnP4SDCardHash((const unsigned char *)sdcard_device_sector,
+                                 512);
+
+    krnP4PutStr("[sddev]    sector hash before ");
+    krnP4PutHex32(hash_before);
+    krnP4PutStr(", after ");
+    krnP4PutHex32(hash_after);
+    if (hash_after != hash_before)
+    {
+        krnP4PutStr(", CHANGED\n");
+        passed = 0;
+    }
+    else if (have_reference && hash_after != expected)
+    {
+        krnP4PutStr(", unchanged but NEITHER MATCHES THE CARD REFERENCE\n");
+        passed = 0;
+    }
+    else
+        krnP4PutStr(have_reference ? ", unchanged and matching the card\n"
+                                   : ", unchanged\n");
+
+    krnP4PutStr("[sddev]  write denial test ");
+    krnP4PutStr(passed ? "passed\n" : "FAILED\n");
+    return passed;
+}
+
 static int krnP4SDCardMultiblockTest(struct IOStdReq *io,
                                      uint32_t total_sectors)
 {
@@ -1393,6 +1525,7 @@ static void krnP4SDCardDeviceTest(void)
 #ifdef P4_SDCARD_MULTIBLOCK_TEST
         (void)krnP4SDCardMultiblockTest(io, total_sectors);
         (void)krnP4SDCardRejectionTest(io, total_sectors);
+        (void)krnP4SDCardWriteDenialTest(io);
 #endif
     }
     krnP4PutStr("[sddev]  read-only device test complete\n");
