@@ -433,6 +433,17 @@ int krnPSRAMMPLLUp(void);
 #define P4_MPLL_NO_BUS          (-1)
 #define P4_MPLL_NO_CAL_END      (-2)
 
+/*
+ * How many times the calibration is attempted before giving up.
+ *
+ * One attempt is not reliable: with the analogue block released and given a
+ * settling wait it completed on most boots and not all.  Four covers what has
+ * been observed with margin, and the number of attempts actually used is
+ * reported, so a chip that starts needing three is visible rather than quietly
+ * marginal.
+ */
+#define P4_MPLL_CAL_TRIES       4
+
 unsigned long krnPSRAMMPLLState(void);
 unsigned long krnPSRAMClockUp(unsigned long target_hz);
 unsigned long krnPSRAMClockSet(unsigned long target_hz);
@@ -554,6 +565,7 @@ struct P4PSRAMInfo
     unsigned long ana_pll_ctrl0;
     unsigned long ana_trace[4];     /* entry, cal-start, after div, after wait */
     unsigned long ana_spins;        /* iterations the wait actually took */
+    unsigned char mpll_attempts;    /* calibration attempts the boot needed */
     unsigned char identify_attempts;
     unsigned char round_trip;
     unsigned char fast_requested;   /* the caller asked for the tuned clock */

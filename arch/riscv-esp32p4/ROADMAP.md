@@ -4888,6 +4888,61 @@ configuration 1.
   bridge, and the bridge configured as the reference configures it.  PSRAM is
   available and calibrated, which is what blocked this until today.
 
+### 2026-08-23 - the PSRAM calibration measured properly: 30 of 30, one attempt each
+
+- State change: the calibration is retried rather than merely waited for, and
+  its reliability is now measured on a sample that can support a claim.  Two of
+  my own statements from earlier today were wrong and are corrected here.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+
+**First correction: six successes proved nothing.**  Earlier today I reported
+six consecutive boots as confirmation that a settling wait had fixed a
+one-in-four failure.  It is not confirmation of anything: a one-in-four failure
+rate produces six clean boots about eighteen per cent of the time.  Reasoning
+from that sample was a mistake, and it is the kind that makes a marginal
+bring-up look finished.
+
+**Second correction: most of those failures were my instrument.**  The capture
+tool's reset landed in the ROM's download stub on roughly half of all attempts
+- `rst:0x17, boot:0x207 (DOWNLOAD)` - and a boot that never happened looks
+exactly like a boot that produced no diagnostic.  So the "three boots in four"
+figure was largely a measurement artefact.  One genuine failure was seen, in
+the first B3/B4 run, and one is not a rate.
+
+The tool now reads enough of the ROM banner to see which way the board went and
+retries past the stub.  Getting the line states right took three attempts and
+they fail in both directions: driving DTR high stops the reset taking at all,
+toggling it as part of the pulse lands in the stub, and even with esptool's own
+sequence the ROM sometimes latches IO0 anyway - so retrying is what makes it
+reliable, not the sequence.
+
+**The calibration is now retried, which is the right structure regardless.**
+`krnPSRAMMPLLUp` splits into a single-attempt `p4_mpll_calibrate` and a loop of
+up to four, each attempt asserting the analogue block's reset afresh and
+power-cycling the PLL - the same work a cold boot does.  A longer wait can only
+move a failure rate; another attempt removes the failure.  The number of
+attempts used is printed, so a chip that starts needing three is visible rather
+than quietly marginal.
+
+**The measurement.**  Thirty consecutive boots:
+
+```text
+  30 done here, 1 attempt
+```
+
+`done here` from `ANA_PLL_CTRL0` read before `MSPI_CAL_STOP` is cleared, so
+every one of those thirty calibrated the PLL itself rather than inheriting it.
+And every one needed a single attempt, so the retry is insurance and not a
+crutch.  Against a hypothetical one-in-four failure rate, thirty clean boots
+have a probability of about 0.018 per cent.
+
+- Acceptance points passed: the calibration is reliable on a sample that
+  supports saying so, and the failure path is bounded rather than absent.
+- Remaining risk: whether the settling wait is doing any work is not
+  established - the retry would cover its absence, and no failure has been seen
+  since to distinguish them.  Recorded as unknown rather than resolved.
+- Next safe step: unchanged, B5.
+
 ## Evidence-entry template
 
 ```text
