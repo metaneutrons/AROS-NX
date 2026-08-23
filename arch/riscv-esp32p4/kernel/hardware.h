@@ -553,6 +553,22 @@
  * P4_PSRAM_LOW_BIAS forces the default back, which reproduces the failure on
  * demand without needing a power cycle.
  */
+/*
+ * The digital regulator and the PVT block's system clock.
+ *
+ * Defined but not written.  ESP-IDF's PVT path sets PMU_DIG_DBIAS_INIT with
+ * the comment "start calibration", enables PVT_SYS_CLK_EN before it, and hands
+ * the supply to the PVT monitor afterwards - so these looked like the part of
+ * pmu_init that could gate another analogue calibration.  Setting all three
+ * ahead of the MSPI PLL calibration changed nothing, measured.  They are kept
+ * here because the full PVT setup is the remaining candidate and will need
+ * them; nothing in this port writes them today.
+ */
+#define P4_PMU_HP_REGULATOR0    (P4_PMU_BASE + 0x28)
+#define   P4_PMU_DBIAS_SEL      (1UL << 14)
+#define   P4_PMU_DBIAS_INIT     (1UL << 15)   /* write-triggered */
+#define   P4_PVT_SYS_CLK_EN     (1UL << 25)   /* in SOC_CLK_CTRL1 */
+
 #define P4_PMU_HP_ACTIVE_BIAS   (P4_PMU_BASE + 0x18)
 #define   P4_PMU_DCM_VSET_SHIFT 18
 #define   P4_PMU_DCM_VSET_MASK  (0x1FUL << P4_PMU_DCM_VSET_SHIFT)
