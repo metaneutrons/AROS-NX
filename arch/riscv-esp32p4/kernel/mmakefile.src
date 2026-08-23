@@ -185,6 +185,33 @@ ifdef P4_FLASHDISK_TEST
 P4_DEBUG_CPPFLAGS += -DP4_FLASHDISK_TEST
 endif
 
+# P4_PSRAM_MHZ=<n> asks the PSRAM bring-up for that bus clock.  Above 80 the
+# read sampling has to be calibrated on every boot, which psram_tuning.c does;
+# below it the margin is large enough that neutral sampling always works.  The
+# default is unchanged at 20, because a rate is only the default once it has
+# been shown to hold across cold and warm boots.  Only rates that divide the
+# 400 MHz MPLL exactly are exact: 20, 25, 40, 50, 80, 100, 200.
+ifdef P4_PSRAM_MHZ
+P4_DEBUG_CPPFLAGS += -DP4_PSRAM_MHZ=$(P4_PSRAM_MHZ)
+endif
+
+# P4_PSRAM_STRESS=1 tests every word of the window and measures sequential
+# read bandwidth, while the window is still nobody's.  This is B1's acceptance
+# evidence and it costs a few seconds of boot, so it is not a default.
+ifdef P4_PSRAM_STRESS
+P4_DEBUG_CPPFLAGS += -DP4_PSRAM_STRESS
+endif
+
+# P4_CPU_MHZ=<n> raises the CPU clock from what the bootloader left, which
+# measured 90 MHz.  Only 360, 180 and 90 exist: the memory and peripheral
+# dividers have to move with the CPU divider and only three combinations meet
+# the MEM<=200 and APB<=100 constraints.  Not a default until it has been
+# shown to hold across cold and warm boots with storage and display work
+# running.
+ifdef P4_CPU_MHZ
+P4_DEBUG_CPPFLAGS += -DP4_CPU_MHZ=$(P4_CPU_MHZ)
+endif
+
 ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
@@ -200,7 +227,9 @@ USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__ $(P4_DEBUG_CPPFLAGS)
 
 CFILES := \
         appdesc \
+        cpuclock \
         psram_init \
+        psram_tuning \
         kernel_cache \
         kernel_flash \
         kernel_elf \
