@@ -116,7 +116,7 @@ tests.
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
 | A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `hardware verified` | Evidence entry 2026-08-23: byte-reproducible image, checked by the host parser, `fsck_msdos` and its manifest, and read correctly on the board at the values predicted from the image.  Every changed sector after the run is attributed to the host's mount |
-| A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `hardware partial` | Evidence entry 2026-08-23: twelve package members load and relocate, the resident order matches the `.conf` files, the command line arrives and `FileSystem.resource` carries the FAT entries.  `dosboot.resource` and `econsole` are still out of the package, so nothing boots yet |
+| A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `hardware partial` | Evidence entries 2026-08-23: thirteen package members load and relocate, the resident order matches the `.conf` files, the command line arrives, `FileSystem.resource` carries the FAT entries, and a deliberate `CMD_WRITE` is refused with `TDERR_WriteProt`, `io_Actual == 0` and the sector unchanged.  `dosboot.resource` is still out of the package, so nothing boots and FAT's own refusals are unobserved |
 | A5 | Command and library loaded from MicroSD | `not started` | Closes M6 |
 | B0 | Canonical D1001 display contract and provenance | `not started` | Resolve timing contradictions first |
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `not started` | Requires B0; required before scanout |
@@ -2474,6 +2474,103 @@ The per-packet and per-write refusals stay under `D()`.
 - Next safe step: run the flashed core with the reference card in, which
   closes the device-level denial and re-checks the A1 matrix against the
   enlarged package; then `econsole` and `dosboot`.
+
+### 2026-08-23 - A4 third measured step: the device-level write refusal, on hardware
+
+- State change: the device half of A4's read-only requirement moves from
+  `build verified` to `hardware verified`, and A1 and A2 are re-confirmed
+  against the enlarged package.  A4 as a whole stays `hardware partial`;
+  `dosboot.resource` is still out of the package, so nothing boots.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3.  The
+  **reference card** (`sdcard/test-card-reference.md`), 249,737,216 sectors,
+  in the board slot.  Chosen over the A3 card because its content is what
+  `p4sd_ref_sectors` describes, so both the A1 matrix and the new write test
+  can be judged against known values rather than against ourselves.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `9372964c9b`.
+- Artifacts:
+  - core 163,728 bytes,
+    `4c481e81ba62f022b54d628d331c49fb80f3b6bc50c21998c8bb80f78b58cd0b`;
+  - package 1,026,228 bytes,
+    `b99120eef91fdf71e97969456b23c5a903acc0c119998ef909194ca68da39169`,
+    thirteen members, 12.4 % of the partition.  All thirteen pass
+    `boot/audit-package.py`.
+- Configuration: `P4_A1_DIAGNOSTIC=1 P4_PARTITION_TEST=1 P4_DOS_PROBE=1
+  P4_HEADLESS_BOOT=1 P4_LDSCRIPT=ldscript-xip.lds`, package built with
+  `FAT_DEBUG=1`.  Flashed to `ota_0` at `0x20000` and `arosbsp` at
+  `0x820000`, both verified by esptool hash.
+
+`econsole` joined the package in this step, as the last member before
+dosboot, so that dosboot's arrival is the only variable in the step after
+this one.  It loaded and its romtag came up at priority -49, sharing that
+priority with `sdcard.device`'s `SDCard boot wait` exactly as predicted.  The
+tie is harmless and now recorded as such: one registers a boot node at
+bootpri -127 and the other waits for pending bus tasks, neither reads the
+other's state, and dosboot at -50 follows both whichever way the link order
+falls.
+
+The write denial test, which is the point of this run:
+
+```text
+[sddev]  write denial test starting
+[sddev]    TD_PROTSTATUS: error 0, actual 0xffffffff, medium reported protected
+[SDCard00] cmd_Write32: Error: Card is Locked/Write Protected
+[sddev]    CMD_WRITE at LBA 2048: error 28 (TDERR_WriteProt), actual 0x00000000
+[sddev]    sector hash before 0x730d1cbd, after 0x730d1cbd, unchanged and matching the card
+[sddev]  write denial test passed
+```
+
+All four required properties hold.  `TD_PROTSTATUS` answers protected, which
+is the value FAT's new `ProbeWriteProtection()` will read at mount.  A real
+`CMD_WRITE` carrying a `0x5a5a5a5a` pattern is refused with error 28, that is
+`TDERR_WriteProt` and not the former `IOERR_ABORTED`.  `io_Actual` comes back
+zero from a deliberately poisoned `0xdeadbeef`, so a caller can read "nothing
+was written" from the reply without knowing its prior contents.  And the
+sector is byte-identical before and after and still matches the card
+reference, which is the only one of the four that shows nothing reached the
+card rather than merely that the request was refused.
+
+Everything else in the run, against the larger package:
+
+- thirteen modules loaded and relocated, 1,302,332 bytes of PSRAM reserved;
+- the A1 matrix passes unchanged: 59 card-referenced cells, all with
+  `cmd17 matches card, cmd18 matches card`, no `DIFFERS` anywhere, and zero
+  cells unverified against a stale reference;
+- the rejection test passes all seven cases with a correct follow-up read
+  after each;
+- A2 discovery on the card reports its one partition at start 2048,
+  249,735,168 sectors, DosType `0x46415402`, and the read after discovery
+  returns `0x730d1cbd`, matching the card;
+- the eleven-case hostile corpus passes;
+- the pre-dosboot probe passes, now including `econsole` in the resident list;
+- the heartbeat ran 85 beats with the tick serving throughout.
+
+A finding that changes the A5 plan rather than this one.  `econsole` reads its
+input through `RawMayGetChar()`, which reaches `KrnMayGetChar()`, whose
+generic implementation in `rom/kernel/maygetchar.c` returns -1 and which this
+platform does not override.  `ECON:` is therefore output-only here: it can
+give `dos.library` a console to write to and the synthetic `ECON:AROS.boot`
+to boot from, but nothing typed will ever arrive.  A4 does not need input,
+and the fallback requirement is about not hanging rather than about
+interaction.  A5 does: of the two routes the phase names, "an AFTERDOS probe
+or an interactive command", only the first is available until `krnMayGetC()`
+is written for the USB Serial/JTAG and UART0 receive paths.  Both channels
+are already understood by `kernel_console.c` on the transmit side, so this is
+a small piece of work, but it is A5's and not this phase's.
+
+- Acceptance points passed: read-only safety propagated to the block-device
+  reply in a form a filesystem can act on; a denied block write reports
+  `io_Actual == 0`; A1 and A2 unaffected by a package two and a half times
+  the size; normal heartbeats continue.
+- Safety impact: the only write ever issued to a card by any AROS build so
+  far was issued by this test, deliberately, and was refused before it
+  reached the controller.  The sector hash proves it: `0x730d1cbd` before and
+  after, equal to the reference.
+- Remaining risk: everything above the block device is still source
+  reasoning.  FAT's `ID_WRITE_PROTECTED`, its packet refusal and its
+  `AccessDisk()` guard cannot be observed until dosboot starts the handler.
+- Next safe step: add `dosboot.resource`, with `DOS_DEBUG=1` and
+  `DOSBOOT_DEBUG=1` so the boot narrates itself, and accept that this
+  console's post-`krnStartExec()` diagnostics go silent from that point.
 
 ## Evidence-entry template
 
