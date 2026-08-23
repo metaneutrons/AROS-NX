@@ -536,6 +536,29 @@
  * hardware rather than chosen, and the bridge is reset only through the system
  * reset register.  Writing the absent fields would be writing reserved bits.
  */
+/*
+ * The digital supply's active-mode setting.
+ *
+ * Reset leaves this at 20.  The board vendor's own firmware raises it to 26
+ * before it brings PSRAM up, and ESP-IDF does not do this for the P4 by
+ * itself - it is a board-level correction, not a chip-level one, so nothing
+ * in IDF's PSRAM path reveals it.
+ *
+ * It matters here because the PMU is not reset by a CPU reset.  A boot that
+ * follows the vendor firmware inherits 26 and PSRAM works; a boot from cold,
+ * or after any firmware that leaves the default, gets 20 and the chip carries
+ * no data at all.  That is the whole of the 23 August failure: the PSRAM
+ * registers were correct throughout and the supply underneath them was not.
+ *
+ * P4_PSRAM_LOW_BIAS forces the default back, which reproduces the failure on
+ * demand without needing a power cycle.
+ */
+#define P4_PMU_HP_ACTIVE_BIAS   (P4_PMU_BASE + 0x18)
+#define   P4_PMU_DCM_VSET_SHIFT 18
+#define   P4_PMU_DCM_VSET_MASK  (0x1FUL << P4_PMU_DCM_VSET_SHIFT)
+#define   P4_PMU_DCM_VSET_RESET 20
+#define   P4_PMU_DCM_VSET_PSRAM 26
+
 #define P4_PMU_EXT_LDO_VO3      (P4_PMU_BASE + 0x1C0)
 #define P4_PMU_EXT_LDO_VO3_ANA  (P4_PMU_BASE + 0x1C4)
 #define   P4_LDO_FORCE_TIEH_SEL (1UL << 7)

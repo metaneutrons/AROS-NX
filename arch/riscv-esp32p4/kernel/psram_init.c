@@ -126,6 +126,9 @@ P4_SRAMCODE static int p4_regi2c_write(unsigned char reg, unsigned char val)
     return p4_regi2c_idle();
 }
 
+P4_SRAMDATA unsigned long p4_mpll_trace[4];
+P4_SRAMDATA unsigned long p4_mpll_spins;
+
 P4_SRAMCODE int krnPSRAMMPLLUp(void)
 {
     unsigned char rstb, dhref;
@@ -141,19 +144,86 @@ P4_SRAMCODE int krnPSRAMMPLLUp(void)
     p4_w32(P4_CLKRST_REF_CLK_CTRL2,
            p4_r32(P4_CLKRST_REF_CLK_CTRL2) | P4_REF_160M_CLK_EN);
     p4_w32(P4_LPPERI_CLK_EN, p4_r32(P4_LPPERI_CLK_EN) | P4_CK_EN_LP_I2CMST);
-    p4_w32(P4_I2C_ANA_MST_CLK160M,
-           p4_r32(P4_I2C_ANA_MST_CLK160M) | P4_CLK_I2C_MST_SEL_160M);
 
-    /* Power the PLL up, and open the gate that lets its output reach the
-       high power domain where MSPI lives */
+    /*
+     * The analogue master's 160 MHz source is deliberately NOT selected.
+     *
+     * This file used to set I2C_ANA_MST_CLK160M bit 0, and that is the one
+     * write in the whole MPLL sequence that ESP-IDF does not make anywhere for
+     * this chip - the register's default is zero and IDF leaves it there.  The
+     * register writes still succeed at 160 MHz, which is why the bus never
+     * reported a fault; what did not work was the calibration that runs over
+     * the same analogue path, and MSPI_CAL_END never appeared.
+     */
+
+    /*
+     * Power the PLL down and back up, rather than only up.
+     *
+     * The measurement that forced this: on a cold-started chip the analogue
+     * registers all read back exactly what was written, MSPI_CAL_STOP was
+     * cleared as ESP-IDF clears it, and MSPI_CAL_END never appeared in a
+     * million polls.  The calibration was not failing, it was never starting.
+     *
+     * The PLL arrives powered - the bootloader leaves PMU_MSPI_PHY_XPD set and
+     * MSPI_CAL_STOP set with CAL_END clear - and setting a bit that is already
+     * set does nothing, so a calibration that needs the block to come up has
+     * nothing to come up from.  ESP-IDF never meets this state: its own
+     * rtc_clk_mpll_disable clears exactly this bit, and its PSRAM path
+     * acquires the MPLL through a reference count that powers it from zero.
+     *
+     * A boot that followed firmware which had already calibrated found CAL_END
+     * set from that run and continued, which is why this only ever failed from
+     * cold and why it looked like the chip rather than the clock.
+     */
+    p4_w32(P4_PMU_RF_PWC,
+           p4_r32(P4_PMU_RF_PWC) & ~P4_PMU_MSPI_PHY_XPD);
+
+    {
+        unsigned long start, now;
+
+        asm volatile("csrr %0, mcycle" : "=r"(start));
+        do
+            asm volatile("csrr %0, mcycle" : "=r"(now));
+        while ((unsigned long)(now - start) < 36000UL);
+    }
+
     p4_w32(P4_PMU_RF_PWC, p4_r32(P4_PMU_RF_PWC) | P4_PMU_MSPI_PHY_XPD);
     p4_w32(P4_LP_CLKRST_HP_CLK_CTRL,
            p4_r32(P4_LP_CLKRST_HP_CLK_CTRL) | P4_HP_MPLL_500M_CLK_EN);
+
+    /*
+     * Let the analogue block come up before its calibration is started.
+     *
+     * ESP-IDF has no explicit wait here, but it does not need one: it powers
+     * the PLL in rtc_clk_mpll_enable and calibrates in a separate function,
+     * with a mutex acquisition and two calls in between.  This file does both
+     * back to back, and on a cold-started chip the calibration then never
+     * completed - MSPI_CAL_END stayed clear while every register written over
+     * the configuration bus read back correctly.  A boot after firmware that
+     * had already calibrated found the bit set from that run and continued,
+     * which is why this only ever failed from cold.
+     *
+     * Counted in CPU cycles from the counter CSR, because this is SRAM-resident
+     * and may not reach a flash address.  360000 is a millisecond at the
+     * fastest clock this port sets and four at the slowest.
+     */
+    {
+        unsigned long start, now;
+
+        asm volatile("csrr %0, mcycle" : "=r"(start));
+        do
+            asm volatile("csrr %0, mcycle" : "=r"(now));
+        while ((unsigned long)(now - start) < 360000UL);
+    }
+
+    p4_mpll_trace[0] = p4_r32(P4_CLKRST_ANA_PLL_CTRL0);
 
     /* The calibration runs while the stop bit is clear, so it has to be
        cleared before the dividers are written, not after */
     p4_w32(P4_CLKRST_ANA_PLL_CTRL0,
            p4_r32(P4_CLKRST_ANA_PLL_CTRL0) & ~P4_MSPI_CAL_STOP);
+
+    p4_mpll_trace[1] = p4_r32(P4_CLKRST_ANA_PLL_CTRL0);
 
     /*
      * Every step below returns a distinct reason, because "the mpll did not
@@ -187,9 +257,13 @@ P4_SRAMCODE int krnPSRAMMPLLUp(void)
                                          | (1UL << P4_MPLL_REF_DIV_SHIFT))))
         return P4_MPLL_NO_BUS;
 
+    p4_mpll_trace[2] = p4_r32(P4_CLKRST_ANA_PLL_CTRL0);
+
     spin = 1000000;
     while (!(p4_r32(P4_CLKRST_ANA_PLL_CTRL0) & P4_MSPI_CAL_END) && --spin)
         ;
+    p4_mpll_spins = (unsigned long)(1000000 - spin);
+    p4_mpll_trace[3] = p4_r32(P4_CLKRST_ANA_PLL_CTRL0);
 
     p4_w32(P4_CLKRST_ANA_PLL_CTRL0,
            p4_r32(P4_CLKRST_ANA_PLL_CTRL0) | P4_MSPI_CAL_STOP);
@@ -580,6 +654,22 @@ P4_SRAMCODE void krnPSRAMModeInit(void)
     p4_psram_reg_write(0, (p4_rd_latency << 2) | (1UL << 5));
     p4_psram_reg_write(4, p4_wr_latency << 5);
     p4_psram_reg_write(8, 3UL | (1UL << 3) | (1UL << 6));
+
+    /*
+     * Mode register 8 selects the bus width, and the part needs a moment to
+     * change it internally before it will answer on the new one.  Counted in
+     * CPU cycles from the counter CSR because this is SRAM-resident code and
+     * may not reach a flash address: 36000 cycles is 100 us at the fastest
+     * clock this port sets and 400 us at the slowest.
+     */
+    {
+        unsigned long start, now;
+
+        asm volatile("csrr %0, mcycle" : "=r"(start));
+        do
+            asm volatile("csrr %0, mcycle" : "=r"(now));
+        while ((unsigned long)(now - start) < 36000UL);
+    }
 }
 
 /*
@@ -607,6 +697,37 @@ P4_SRAMCODE int krnPSRAMIdentify(unsigned char *vendor, unsigned char *density)
         *density = mr2;
 
     return (mr1 == P4_PSRAM_VENDOR_AP);
+}
+
+/*
+ * Ask the chip who it is in every read latency it can be in.
+ *
+ * The identity read above uses whatever dummy length this port selected for
+ * its own target clock.  That is correct once the chip has been told, and
+ * wrong before it has: the mode registers survive a CPU reset, so the part
+ * arrives in the latency the last firmware chose, and a read at any other
+ * one samples outside the window and returns a floating bus.  A port that
+ * only asks in its own latency therefore works after itself and after nothing
+ * else - which is exactly the failure that cost 23 August.
+ *
+ * Eight candidates, two register reads each.  Returns the latency that
+ * answered, or -1, and leaves the dummy length at the value that worked so
+ * the caller can see it; the caller restores its own with
+ * p4_psram_select_params.
+ */
+P4_SRAMCODE static int p4_psram_probe_latency(unsigned char *vendor,
+                                              unsigned char *density)
+{
+    unsigned int lat;
+
+    for (lat = 0; lat < P4_PSRAM_RD_LATENCIES; ++lat)
+    {
+        p4_rd_reg_dummy = P4_PSRAM_REG_DUMMY_FOR(lat);
+        if (krnPSRAMIdentify(vendor, density))
+            return (int)lat;
+    }
+
+    return -1;
 }
 
 /*
@@ -716,6 +837,9 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     info->tuning.tuned = 0;
 
     info->connected = 0;
+    info->probe_latency = -1;
+    info->bias_found = 0;
+    info->bias_set = 0;
 
     fast = target_hz > 80000000UL;
     info->fast_requested = (unsigned char)fast;
@@ -723,10 +847,33 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     /* Before anything here writes, so the print is the handover state */
     krnPSRAMEntryRead(&info->entry);
 
+    /*
+     * The supply is not raised here.  It is a machine-wide setting and it has
+     * to be up before the CPU clock, which is set earlier than this - see
+     * krnP4SupplyUp and the comment on it.  What this records is what that
+     * step left, so a failure can be read against it.
+     */
+    info->bias_found = (unsigned char)((p4_r32(P4_PMU_HP_ACTIVE_BIAS)
+                                        & P4_PMU_DCM_VSET_MASK)
+                                       >> P4_PMU_DCM_VSET_SHIFT);
+    info->bias_set   = info->bias_found;
+
     info->mpll_reason = (signed char)krnPSRAMMPLLUp();
     info->mpll_up = (info->mpll_reason == P4_MPLL_OK) ? 1 : 0;
+    /*
+     * A missing MSPI_CAL_END is fatal, and this was tested rather than assumed:
+     * letting the bring-up continue without it hung the boot at the first
+     * controller register, with no output at all.  The bit is a real signal -
+     * the PLL does not run uncalibrated - so stopping here is what keeps a
+     * failure diagnosable instead of silent.
+     */
     info->mpll_state = krnPSRAMMPLLState();
     info->ana_pll_ctrl0 = p4_r32(P4_CLKRST_ANA_PLL_CTRL0);
+    info->ana_trace[0] = p4_mpll_trace[0];
+    info->ana_trace[1] = p4_mpll_trace[1];
+    info->ana_trace[2] = p4_mpll_trace[2];
+    info->ana_trace[3] = p4_mpll_trace[3];
+    info->ana_spins = p4_mpll_spins;
     if (!info->mpll_up)
         return 0;
 
@@ -762,45 +909,82 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     krnPSRAMDllUp();
 
     /*
-     * Configure, then identify, and retry the pair if the chip does not answer.
+     * Find the chip, tell it what this port wants, then confirm.
      *
-     * The chip's mode registers survive a CPU reset, exactly as the panel's
-     * port expander does, so a boot after different firmware finds the part in
-     * whatever bus width and latency that firmware chose.  Mode register 8
-     * selects the width, and a write sent at the wrong width may not be
-     * received - which leaves the first pass configuring a chip that could not
-     * hear it, and reading back a floating bus.  A second pass then speaks at
-     * the width the first one established.
+     * The order matters and it is the lesson of 23 August.  The chip's mode
+     * registers survive a CPU reset, so the part arrives in the latency and
+     * width the last firmware chose rather than in a reset default.  Writing
+     * the wanted configuration first and reading afterwards works only if the
+     * arriving state happens to be the one this port assumes; when it is not,
+     * every read returns a floating bus, the retry repeats the same wrong
+     * assumption three times, and the boot reports an absent chip that is
+     * sitting there working.  That is not a hypothesis: writing the vendor's
+     * own firmware back brought the same chip up immediately, and this port
+     * then worked on every boot after it.
      *
-     * Three attempts rather than two because the first may be lost in either
-     * direction, and a bounded retry costs microseconds against a failure that
-     * costs the whole boot.
+     * So the sweep comes first.  It asks in all eight latencies, and the one
+     * that answers is both the way in and the measurement of what the chip
+     * arrived in.  The mode-register write then lands, and the confirmation
+     * runs in this port's own timing.
+     *
+     * The retry is kept for the case where the sweep finds nothing: a first
+     * transaction after the reset may be lost in either direction, and three
+     * bounded attempts cost microseconds against a failure that costs the
+     * whole boot.
      */
     {
         unsigned int attempt;
 
+        info->probe_latency = -1;
+
         for (attempt = 0; attempt < 3; ++attempt)
         {
+            int lat;
+
             krnPSRAMConfigure();
-            krnPSRAMModeInit();
 
             /*
-             * The connected check comes before the identity read, which is
-             * ESP-IDF's order and not the one this file had.
-             *
-             * It answers a different and stronger question: a word written
-             * and read back at address zero says the controller, the pins,
-             * the clock and the chip carry data.  The identity read only
-             * says the mode registers can be addressed.  Running the
-             * identity read first and returning on its failure meant this
-             * port never learned whether the chip carries data at all -
-             * every failure so far has been reported as "no answer" when
-             * the stronger test had not been tried.
+             * Write blind first.  After a cold start the part is in its
+             * power-on width, which is not the one this port reads in, and a
+             * read at the wrong width does not fail - it does not return.  A
+             * first version of this loop swept the latencies before writing
+             * anything and hung the boot dead on a cold-started chip, with no
+             * output at all where a diagnosis used to be.  The write needs no
+             * dummy cycles and is therefore the one transaction that is safe
+             * to send into an unknown state.
              */
+            krnPSRAMModeInit();
+
             info->connected = krnPSRAMRoundTrip(&back) ? 1 : 0;
 
             if (krnPSRAMIdentify(&vendor, &density))
+            {
+                if (info->probe_latency < 0)
+                    info->probe_latency = (signed char)p4_rd_latency;
                 break;
+            }
+
+            /*
+             * The write did not take, or the read is looking in the wrong
+             * place.  Now the sweep is worth its risk: ask in each latency,
+             * and if one answers, write again with this port's own timing and
+             * confirm.  This is the path that recovers a part left configured
+             * by other firmware.
+             */
+            lat = p4_psram_probe_latency(&vendor, &density);
+            p4_psram_select_params(target_hz);
+
+            if (lat >= 0)
+            {
+                if (info->probe_latency < 0)
+                    info->probe_latency = (signed char)lat;
+
+                krnPSRAMModeInit();
+                info->connected = krnPSRAMRoundTrip(&back) ? 1 : 0;
+
+                if (krnPSRAMIdentify(&vendor, &density))
+                    break;
+            }
         }
         info->identify_attempts = (unsigned char)(attempt + 1);
 
