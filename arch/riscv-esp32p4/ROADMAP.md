@@ -4663,6 +4663,52 @@ Rewritten and verified.
   contains no MPLL code, but it may change cache or clock configuration in ways
   that matter, and that has not been tested rather than ruled out.
 
+### 2026-08-23 - PVT's calibration bits tried in the kernel: still no MSPI_CAL_END
+
+- State change: none to the port beyond one kept correctness fix.  Three more
+  candidates eliminated.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+
+**What was tried.**  ESP-IDF's PVT path is where the last untested part of
+`pmu_init` lives, and three of its writes looked like they could gate another
+analogue calibration in the same domain:
+
+  - `PVT_SYS_CLK_EN` in `SOC_CLK_CTRL1`, which IDF enables before any PVT work
+  - `PMU_DIG_DBIAS_INIT` in `PMU_HP_ACTIVE_HP_REGULATOR0`, which IDF's own
+    comment describes as starting a calibration
+  - a settling wait after both
+
+Set in the kernel immediately before the MSPI PLL calibration, from a cold
+boot: `MSPI_CAL_END` still absent, trace unchanged at `0x24c 0x4c 0x4c 0x4c`.
+The writes have been removed again; the register definitions are kept because
+a full PVT implementation will need them.
+
+**A reset pulse with no width was also ruled out.**  The two regi2c writes that
+lower and raise `IR_CAL_RSTB` go back to back in IDF, and a pulse too short for
+the state machine to observe would look exactly like a calibration that never
+starts.  A wait between them changes nothing.  The wait is kept anyway: a reset
+that is a pulse should have a width, and each regi2c transaction is already
+microseconds of bus traffic, so it costs nothing.  Kept as correctness, not as
+a fix.
+
+**And the measurement is sound, which was worth confirming.**
+`krnPSRAMMPLLState` reads all three analogue registers back over the
+configuration bus rather than reporting what was written.  So `rstb 0x31` with
+the reset released, `div 0x99` for 400 MHz and `dhref 0x70` are real read-backs:
+the bus works, the values are in the PLL, and the calibration state machine
+does not run.
+
+- Remaining risk: unchanged, and it is a release blocker.
+- Next safe step: two options, and they differ in kind rather than in size.
+  Write PVT out in full - some forty registers plus two eFuse fields, with
+  IDF's `pmu_pvt.c` as an exact template; mechanical, and it either fixes the
+  calibration or eliminates PVT completely.  Or compare against the working
+  case directly: add a register dump to the vendor firmware immediately before
+  its `esp_psram_init`, which needs a change to that firmware and is therefore
+  the owner's call, and read what state it has that this port does not.  The
+  second answers the question rather than guessing at it, which after this many
+  eliminations is worth more than another candidate.
+
 ## Evidence-entry template
 
 ```text

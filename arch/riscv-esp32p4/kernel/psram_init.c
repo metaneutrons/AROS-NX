@@ -245,6 +245,25 @@ P4_SRAMCODE int krnPSRAMMPLLUp(void)
     if (!p4_regi2c_write(P4_MPLL_IR_CAL_RSTB_REG,
                          rstb & (unsigned char)~P4_MPLL_IR_CAL_RSTB))
         return P4_MPLL_NO_BUS;
+
+    /*
+     * Hold the calibration reset low before releasing it.
+     *
+     * ESP-IDF issues these two writes back to back.  This does not fix the
+     * calibration - it was tried for that and changed nothing - but a reset
+     * that is a pulse should have a width, and each regi2c transaction here is
+     * microseconds of bus traffic rather than a register write, so the cost is
+     * already paid.  Kept as correctness, not as a fix.
+     */
+    {
+        unsigned long start, now;
+
+        asm volatile("csrr %0, mcycle" : "=r"(start));
+        do
+            asm volatile("csrr %0, mcycle" : "=r"(now));
+        while ((unsigned long)(now - start) < 36000UL);
+    }
+
     if (!p4_regi2c_write(P4_MPLL_IR_CAL_RSTB_REG,
                          rstb | P4_MPLL_IR_CAL_RSTB))
         return P4_MPLL_NO_BUS;
