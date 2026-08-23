@@ -666,6 +666,8 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      */
 #ifdef P4_PATTERN_BRIDGE_FEED
     brg_wr(P4_DSI_BRG_DPI_MISC_CFG, P4_DSI_BRG_DPI_EN);
+#elif defined(P4_SCANOUT_TEST)
+    /* B5 configures and enables the feed itself, after the DMA is armed */
 #else
     brg_wr(P4_DSI_BRG_DPI_MISC_CFG, 0);
 #endif
@@ -718,7 +720,7 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * the only ones on the link, which is the path the vendor reference uses
      * and the one B5's framebuffer has to feed.
      */
-#ifndef P4_PATTERN_BRIDGE_FEED
+#if !defined(P4_PATTERN_BRIDGE_FEED) && !defined(P4_SCANOUT_TEST)
     dsi_set(P4_DSI_VID_MODE_CFG, P4_DSI_VPG_EN);
 #endif
 

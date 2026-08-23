@@ -128,6 +128,25 @@ P4_SRAMCODE void krnP4SyncCode(void *addr, unsigned long len)
  * disable pair is the fallback, and it needs the autoload bit read out of
  * the cache registers because there is no snapshot to restore from.
  */
+/*
+ * Push every dirty line out to memory, and leave the caches running.
+ *
+ * The DMA reads a frame from PSRAM over AXI and does not see the caches, so a
+ * frame written by the CPU is invisible to it until the lines are written back.
+ * A frame that is half in cache does not fail visibly: it shows as a partly
+ * wrong image, which is the kind of fault that gets blamed on timing.
+ *
+ * The ROM's own writeback-all is used rather than a loop over the range: it
+ * knows the line size and the level map, and this runs once per frame at most.
+ */
+void krnP4CacheWriteback(void)
+{
+    rom_cache_all_t wb_all = (rom_cache_all_t)P4_ROM_CACHE_WRITEBACK_ALL;
+
+    (void)wb_all(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2);
+    asm volatile("fence" ::: "memory");
+}
+
 P4_SRAMCODE unsigned long krnP4CacheOff(void)
 {
     rom_cache_all_t wb_all = (rom_cache_all_t)P4_ROM_CACHE_WRITEBACK_ALL;

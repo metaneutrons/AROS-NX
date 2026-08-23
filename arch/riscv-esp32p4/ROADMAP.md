@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware partial` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` RGB565 PSRAM scanout | `not started` | Requires B1 and B4 |
+| B5 | Native `800 x 1280` RGB565 PSRAM scanout | `hardware partial` | The path is built and moves data: bridge configured as the reference configures it, a DesignWare AXI DMA channel, one link-list item carrying the whole frame, and a cache writeback without which the engine reads a descriptor of zeroes.  8,704 bytes crossed before the transfer stalled with the host refusing payload and the bridge underrunning.  Three defects found by measurement, one host-side deviation left |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -4942,6 +4942,79 @@ have a probability of about 0.018 per cent.
   established - the retry would cover its absence, and no failure has been seen
   since to distinguish them.  Recorded as unknown rather than resolved.
 - Next safe step: unchanged, B5.
+
+### 2026-08-23 - B5 first light on the data path: the DMA moves a frame, then stalls
+
+- State change: pixel data crosses from PSRAM towards the panel for the first
+  time in this port.  8,704 bytes of it, and then the transfer stops.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+- Test defines: `P4_HEADLESS_BOOT=1 P4_PSRAM_MHZ=200 P4_CPU_MHZ=360
+  P4_PANEL_PROBE=1 P4_DSI_PROBE=1 P4_SCANOUT_TEST=1`.  Core 175,328 bytes.
+- New: `kernel/dsi_scanout.c`, the bridge's full configuration, a DesignWare
+  AXI DMA channel and one link-list item; `krnP4CacheWriteback`.
+
+**What was built.**  The reference's path, with its values: a 2,048,000-byte
+RGB565 frame at the base of the PSRAM window, the bridge as a puller rather
+than a pusher, and one DMA link-list item carrying the whole frame - which is
+not a simplification, the reference's own comment says it assumes exactly that.
+The item's next-pointer points at itself, so the transfer repeats without an
+interrupt to restart it; the reference marks its item last and restarts from a
+transfer-done callback, which this port has no handler for yet.
+
+**Three defects found, each by measurement.**
+
+  - *No module clock.*  `GDMA_CPU_CLK_EN`, `GDMA_SYS_CLK_EN` and the GDMA
+    system reset live outside the DMA's own register block.  Without them the
+    block still answered reads, still cleared its soft reset and still accepted
+    a channel enable - and never fetched a descriptor.  Everything readable
+    looked configured; only the engine was not running.
+  - *The pattern generator was still on.*  `krnP4DsiPatternOn` enables it
+    unless the bridge-feed switch is set, and B5 does not set that switch, so
+    both sources were driving the link.  Now excluded for the scanout path too.
+  - *The descriptor sat in cache.*  This is the one that mattered: the DMA
+    reads the link-list item over AXI and does not see the CPU's caches, so an
+    item in a dirty line is an item of zeroes to the engine.  It reads back as
+    a channel that is enabled and never starts, which is exactly what the first
+    two runs showed - `sar` stuck at zero.  With a writeback before the channel
+    is pointed at it, `sar` reads `0x48002200`: the engine loaded the
+    descriptor and walked 8,704 bytes into the frame.
+
+**Where it stops.**
+
+```text
+[b5]     dma  cfg1 0x0a020001 llp 0x4ff02680 sar 0x48002200
+[b5]     brg  flow 0x00000010 rawnum 0x0003e800 misc 0x00003201 int 0x00000001
+[b5]     host pkt 0x00040055 int0 0x00000000 int1 0x00000080  DPI_PLD_WR_ERR
+[b5]     sar 0x48002200 then 0x48002200  stalled
+```
+
+The bridge is configured as intended - flow controller DMA, 256,000
+sixty-four-bit words, DPI enabled, 800 as the discard count - and it now
+reports `INT_RAW` bit 0, an underrun, which it never did before.  The host
+still reports `DPI_PLD_WR_ERR`.  So the bridge ran dry while the host was
+refusing payload, and the DMA stopped with the frame one two-hundredth
+transferred.
+
+Read together those three say the host is not draining what the bridge hands
+it, the bridge therefore empties, and the DMA's hardware handshake goes quiet
+because nothing is asking.  The underrun-discard count exists to recover from
+exactly that and does not, which points at the host side rather than the feed.
+
+**One known deviation left on the host side.**  The reference enables frame
+acknowledge - `mipi_dsi_host_ll_dpi_enable_frame_ack(host, true)` - and this
+port does not.  Everything else in the video-mode configuration matches:
+burst with sync pulses, packet size 800, no chunking, no null packets, the Set
+A timings.  Frame acknowledge asks the panel to answer each frame, which is
+uncomfortable given that no read from this panel has ever answered, but it is
+the remaining difference and it is cheap to try.
+
+- Acceptance points passed: none of B5's yet.  The data path exists and moves.
+- Acceptance points failed: no sustained scanout, so no image.
+- Remaining risk: the host-side stall is unexplained, and the silent read path
+  makes frame acknowledge a test that could hang rather than fail.
+- Next safe step: try frame acknowledge, and if that does not free the host,
+  read the host's own FIFO and timing registers back rather than assuming the
+  write took - the same discipline that found the descriptor in cache.
 
 ## Evidence-entry template
 

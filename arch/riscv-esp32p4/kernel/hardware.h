@@ -655,6 +655,148 @@
 #define P4_DSI_BRG_DPI_CFG_UPD  0x044
 #define   P4_DSI_BRG_CFG_UPDATE (1UL << 0)
 #define P4_DSI_BRG_INT_RAW      0x058
+
+/*
+ * The bridge settings B4 never wrote, and the reason its host reported
+ * DPI_PLD_WR_ERR.
+ *
+ * B4 configured the bridge's timing, pixel type and flow control and nothing
+ * else.  With the pixel feed on, the host then reported a payload write error
+ * whether or not its own pattern generator was running, and the bridge never
+ * underran - so the bridge was pushing pixels the host could not take.  The
+ * reference sets six more things, and one of them is not a refinement: it
+ * makes the DMA the flow controller, where this port had the bridge itself,
+ * which is what "push without being asked" looks like in a register.
+ *
+ * Values are the reference's, for 800x1280 at sixteen bits:
+ *
+ *   raw_num_total    (800 * 1280 * 16 + 63) / 64 = 256000 sixty-four-bit words
+ *   discard count    800, one line
+ *   burst length     256
+ *   empty threshold  1024 - 256
+ *   multi-block      1, one DMA node carries the whole image
+ */
+#define P4_DSI_BRG_DMA_REQ_CFG  0x008
+#define   P4_DSI_BRG_BURST_LEN_MASK   0xFFFUL
+#define P4_DSI_BRG_RAW_NUM_CFG  0x00C
+#define   P4_DSI_BRG_RAW_NUM_MASK     0x3FFFFFUL
+#define   P4_DSI_BRG_UNALIGN_64BIT    (1UL << 22)
+#define   P4_DSI_BRG_RAW_NUM_SET      (1UL << 31)
+#define   P4_DSI_BRG_DISCARD_SHIFT    4
+#define   P4_DSI_BRG_DISCARD_MASK     (0xFFFUL << P4_DSI_BRG_DISCARD_SHIFT)
+#define P4_DSI_BRG_DMA_FRAME_INT 0x06C
+#define   P4_DSI_BRG_MULTIBLK_EN      (1UL << 28)
+#define P4_DSI_BRG_DMA_FLOW_CTRL 0x088
+#define   P4_DSI_BRG_FLOW_DMA         0UL   /* the reference's choice */
+#define   P4_DSI_BRG_FLOW_BRIDGE_SEL  1UL   /* the reset default, and B4's */
+#define   P4_DSI_BRG_MULTIBLK_SHIFT   4
+#define   P4_DSI_BRG_MULTIBLK_MASK    (0xFUL << P4_DSI_BRG_MULTIBLK_SHIFT)
+#define P4_DSI_BRG_EMPTY_THRD   0x08C
+#define   P4_DSI_BRG_EMPTY_MASK       0x7FFUL
+
+/* Where the bridge takes its pixels from: one fixed address, written by DMA */
+#define P4_DSI_BRG_MEM_BASE     0x50105000UL
+
+/*
+ * The DesignWare AXI DMA, which is what actually moves the frame.
+ *
+ * One channel, one link-list item, and the item carries the whole image - the
+ * reference's own comment says it assumes exactly that.  Channel registers are
+ * a flat block per channel starting at 0x100; only channel one is used here.
+ */
+/*
+ * The DMA's own clocks and reset, which are outside its register block.
+ *
+ * Missed on the first attempt, and the failure was quiet in an instructive
+ * way: the module's registers answered, the reset bit cleared, the channel
+ * enable read back set - and the channel never loaded its descriptor, so the
+ * source address stayed at zero.  Everything that could be read looked
+ * configured; only the engine was not running.
+ */
+#define P4_GDMA_CPU_CLK_EN      (1UL << 13)  /* in SOC_CLK_CTRL0 */
+#define P4_GDMA_SYS_CLK_EN      (1UL << 5)   /* in SOC_CLK_CTRL1 */
+#define P4_RST_EN_GDMA          (1UL << 21)  /* in HP_RST_EN0 */
+
+#define P4_DMAC_BASE            0x50081000UL
+#define P4_DMAC_CFG             (P4_DMAC_BASE + 0x010)
+#define   P4_DMAC_CFG_EN        (1UL << 0)
+#define   P4_DMAC_INT_EN        (1UL << 1)
+#define P4_DMAC_CHEN            (P4_DMAC_BASE + 0x018)
+#define   P4_DMAC_CH1_EN        (1UL << 0)
+#define   P4_DMAC_CH1_EN_WE     (1UL << 8)
+#define P4_DMAC_RESET           (P4_DMAC_BASE + 0x058)
+#define   P4_DMAC_RESET_BIT     (1UL << 0)
+
+#define P4_DMAC_CH1             (P4_DMAC_BASE + 0x100)
+#define P4_DMAC_CH_SAR          0x000
+#define P4_DMAC_CH_DAR          0x008
+#define P4_DMAC_CH_BLOCK_TS     0x010
+#define P4_DMAC_CH_CTL0         0x018
+#define P4_DMAC_CH_CTL1         0x01C
+#define P4_DMAC_CH_CFG0         0x020
+#define P4_DMAC_CH_CFG1         0x024
+#define P4_DMAC_CH_LLP          0x028
+
+/* CFG0: how each side walks its blocks.  3 is link-list. */
+#define   P4_DMAC_SRC_MULTBLK_SHIFT   0
+#define   P4_DMAC_DST_MULTBLK_SHIFT   2
+#define   P4_DMAC_MULTBLK_LIST        3UL
+
+/* CFG1: direction, who controls flow, which peripheral, how deep to queue */
+#define   P4_DMAC_TT_FC_SHIFT         0
+#define   P4_DMAC_TT_FC_M2P_DMAC      1UL   /* memory to peripheral, DMA controls */
+#define   P4_DMAC_HS_SEL_SRC          (1UL << 3)   /* set = software handshake */
+#define   P4_DMAC_HS_SEL_DST          (1UL << 4)
+#define   P4_DMAC_SRC_PER_SHIFT       7
+#define   P4_DMAC_DST_PER_SHIFT       12
+#define   P4_DMAC_PER_DSI             0UL
+#define   P4_DMAC_CH_PRIOR_SHIFT      17
+#define   P4_DMAC_SRC_OSR_SHIFT       23
+#define   P4_DMAC_DST_OSR_SHIFT       27
+
+/*
+ * A link-list item: sixty-four bytes, sixty-four-byte aligned, and the field
+ * order is the channel's own register order.
+ */
+#define P4_DMAC_LLI_SAR_LO      0x00
+#define P4_DMAC_LLI_SAR_HI      0x04
+#define P4_DMAC_LLI_DAR_LO      0x08
+#define P4_DMAC_LLI_DAR_HI      0x0C
+#define P4_DMAC_LLI_BLOCK_TS    0x10
+#define P4_DMAC_LLI_LLP_LO      0x18
+#define P4_DMAC_LLI_LLP_HI      0x1C
+#define P4_DMAC_LLI_CTL_LO      0x20
+#define P4_DMAC_LLI_CTL_HI      0x24
+#define P4_DMAC_LLI_SIZE        0x40
+
+/* CTL_LO: master ports, address stepping, transfer widths, burst sizes */
+#define   P4_DMAC_SMS           (1UL << 0)
+#define   P4_DMAC_DMS           (1UL << 2)
+#define   P4_DMAC_SINC_FIXED    (1UL << 4)   /* clear = increment */
+#define   P4_DMAC_DINC_FIXED    (1UL << 6)
+#define   P4_DMAC_SRC_WIDTH_SHIFT 8
+#define   P4_DMAC_DST_WIDTH_SHIFT 11
+#define   P4_DMAC_WIDTH_64      3UL
+#define   P4_DMAC_SRC_MSIZE_SHIFT 14
+#define   P4_DMAC_DST_MSIZE_SHIFT 18
+#define   P4_DMAC_MSIZE_256     7UL
+#define   P4_DMAC_MSIZE_512     8UL
+
+/* CTL_HI: AXI burst lengths, and the two bits that make an item live */
+#define   P4_DMAC_ARLEN_EN      (1UL << 6)
+#define   P4_DMAC_ARLEN_SHIFT   7
+#define   P4_DMAC_AWLEN_EN      (1UL << 15)
+#define   P4_DMAC_AWLEN_SHIFT   16
+#define   P4_DMAC_IOC_BLKTFR    (1UL << 26)
+#define   P4_DMAC_LLI_LAST      (1UL << 30)
+#define   P4_DMAC_LLI_VALID     (1UL << 31)
+#define   P4_DMAC_AXI_BURST_LEN 16UL
+
+/* The frame this port scans out: the panel's native size in RGB565. */
+#define P4_FB_BYTES_PER_PIXEL   2
+#define P4_FB_BYTES             ((unsigned long)P4_PANEL_H_RES * P4_PANEL_V_RES \
+                                 * P4_FB_BYTES_PER_PIXEL)
+#define P4_FB_WORDS64           (P4_FB_BYTES / 8)
 #define   P4_DSI_BRG_UNDERRUN   (1UL << 0)
 #define P4_DSI_BRG_DMA_FLOW_CTL 0x088
 #define   P4_DSI_BRG_FLOW_BRIDGE (1UL << 0)
