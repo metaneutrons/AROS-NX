@@ -264,11 +264,21 @@ UWORD krnP4PanelStrayBits(void)
  * Every wait is bounded by construction because krnTimerWait counts a timer
  * that is already running; none of them can become a spin.
  */
-int krnP4PanelPowerUp(struct P4PanelState *out)
+/*
+ * The supply, and only the supply.
+ *
+ * Split from the reset pulse because the order between them and the DSI PHY
+ * turned out to matter.  The working reference brings the PHY up first, with
+ * its lanes in stop state, and releases the panel's reset only afterwards; the
+ * D-PHY specification wants the lanes in LP-11 before a peripheral leaves
+ * reset, and a panel whose reset is released against unpowered floating lanes
+ * can latch a state it never leaves.  B4 spent a session on a dark panel
+ * because this file did it the other way round.
+ */
+int krnP4PanelSupplyOn(struct P4PanelState *out)
 {
-    int r;
+    int r = panel_modify(P4_EXP_LCD_PWR_EN, 0);
 
-    r = panel_modify(P4_EXP_LCD_PWR_EN, 0);
     if (r != P4_I2C_OK)
         return r;
     if (out)
@@ -276,7 +286,19 @@ int krnP4PanelPowerUp(struct P4PanelState *out)
         out->powered = 1;
         out->output = panel_latch;
     }
-    krnTimerWait(P4_TICK_HZ / 20);              /* 50 ms */
+    krnTimerWait(P4_TICK_HZ / 20);              /* 50 ms to settle */
+    return P4_I2C_OK;
+}
+
+/*
+ * The reset pulse, to be called once the PHY is locked and its lanes are in
+ * stop state.  High 5 ms, low 10 ms, high 120 ms, which is the reference's
+ * sequence; the last interval is the panel's own initialisation and a command
+ * sent inside it goes to a controller that is not listening yet.
+ */
+int krnP4PanelResetPulse(struct P4PanelState *out)
+{
+    int r;
 
     r = panel_modify(P4_EXP_LCD_RST, 0);        /* released */
     if (r != P4_I2C_OK)
@@ -299,6 +321,17 @@ int krnP4PanelPowerUp(struct P4PanelState *out)
         out->output = panel_latch;
     }
     return P4_I2C_OK;
+}
+
+/* The old combined form, kept for the B2 probe, which tests the power
+   sequence on its own and has no PHY to order itself against. */
+int krnP4PanelPowerUp(struct P4PanelState *out)
+{
+    int r = krnP4PanelSupplyOn(out);
+
+    if (r != P4_I2C_OK)
+        return r;
+    return krnP4PanelResetPulse(out);
 }
 
 /*
