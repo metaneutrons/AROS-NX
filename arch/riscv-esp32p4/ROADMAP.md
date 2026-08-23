@@ -671,7 +671,7 @@ Acceptance gate:
 | Undocumented DSI PHY constants | IDF's DSI bring-up writes `mipi_dsi_phy_ll_set_switch_time(50, 104, 46, 128)` and `set_max_read_time(6000)` with no derivation in any locally available source, and no ESP32-P4 technical reference manual is present on this machine.  They are carried over as opaque constants.  The failure mode is a PHY that locks but produces marginal signalling, which would look like a panel or timing problem rather than a PHY one, so a B4 pattern fault has to consider them before the timing set is blamed. |
 | CPU clock inherited, not configured | This port set no CPU clock and ran at 90 MHz until 2026-08-23 because the second-stage bootloader's divider was never touched.  Nothing failed, everything was four times slower than the silicon allows, and no diagnostic said so; it was found only by measuring `mcycle` against the system timer while chasing a bandwidth figure.  Anything else this port inherits from that bootloader is unexamined in the same way, the flash clock and the cache configuration in particular. |
 | CPU-loop bandwidth is a latency measurement | A scalar read loop costs 13.6 cycles per word from internal SRAM at both 90 and 360 MHz, which is one cache-line fill per sixteen words with a single fill outstanding.  It therefore measures fill latency and not the memory system's throughput, and no threshold about scanout can be argued from it.  A DMA engine is the only way to measure what the display will actually get, and until B5 exists any bandwidth claim about scanout is unfounded. |
-| PSRAM stopped answering and stayed that way | An unchanged binary identified 32 MB one boot and read a floating bus the next, with a USB unplug between them.  The MPLL is measurably correct - divider byte 0x99 is exactly what the port writes, calibration ended, bus at the 20 MHz that always worked - and the chip is silent through three identify attempts.  No software cold start exists on this board, so the state cannot be cleared from here.  Everything that needs a framebuffer is blocked while this holds. |
+| PSRAM stopped answering and stayed that way | An unchanged binary identified 32 MB one boot and read a floating bus the next, with a USB unplug between them.  Since then: a real power cycle with the battery off does not restore it; the whole bring-up has been compared value by value against `esp_psram_impl_enable` and deviates in nothing; the handover state from the bootloader is the reset default; and the CPU clock is not the cause.  A word written to address zero does not come back, so nothing crosses the bus in either direction.  No software hypothesis remains that I can name.  Everything that needs a framebuffer is blocked while this holds. |
 | The port expander survives a CPU reset | The PCA9535 has no reset pin and keeps its direction and output registers across every reboot, so its state at boot is whatever the last firmware left, not the datasheet default.  Any code that writes a whole register drives pins it never considered; B2's first version pulled the battery-charge enable low that way.  Read-modify-write is the only safe form here, and a check that assumes cold defaults passes vacuously on a warm board. |  And it cannot be cold-started from software at all: the board has a battery, so removing USB changes nothing, and releasing PWR_HOLD with the board on battery was tried cleanly and did not switch it off - the next boot still read the direction register as all-outputs where a cold device reads all-inputs.  Any test that wants the datasheet defaults has to say so out loud.
 | The display has produced no panel-side evidence | Not one DCS reply and not one pixel.  The host reports a locked PHY, lanes in stop state, a clean command path, a running pattern generator with no underrun, and a measured PWM on the backlight pin, and the panel is dark and unlit.  Every register compared matches the vendor BSP and the working reference.  Until something comes back from the panel, every statement about the display path is a statement about the SoC. |
 | DSI reads get no reply | Five DCS reads, the vendor identity register and four standard ones, all return nothing with no protocol error flagged and the host left waiting.  Espressif's driver reads the same register with an unbounded wait and works on this board, so the panel answers there and this port's read path is wrong.  A software reset and the divider encoding have been eliminated.  Nothing in the port depends on reads yet, but a panel that cannot be interrogated cannot be diagnosed either, and B6's orientation work would rather have the scanline register than a photograph. |
@@ -4359,6 +4359,108 @@ deciding to reach; it now says it cannot be reached from software at all.
   remaining possibilities is a physical power interruption - the battery
   disconnected, or whatever button or connector the board provides - and that
   is not something this port can do to itself.
+
+### 2026-08-23 - PSRAM bring-up compared against ESP-IDF value by value: no deviation
+
+- State change: the bring-up now follows `esp_psram_impl_enable`'s order step
+  for step, and the connected check runs where the reference runs it.  Neither
+  changed the outcome.  PSRAM remains silent.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3, battery attached.
+- Test defines: none, then `P4_CPU_MHZ=360`, both with
+  `P4_LDSCRIPT=ldscript-xip.lds`.  Core 163,904 bytes, written to `ota_0` at
+  `0x20000`, esptool-hash verified on each write.
+
+**The comparison, and it found nothing.**  Every value this port writes was read
+against ESP-IDF's own source and matches it:
+
+| what | reference | this port |
+| :--- | :--- | :--- |
+| MPLL target | `AP_HEX_PSRAM_MPLL_DEFAULT_FREQ_MHZ` 400 | `P4_PSRAM_MPLL_HZ` 400000000 |
+| MPLL divider byte | `(400/20-1)<<3 \| 1` = `0x99` | measured `0x99` |
+| latencies, slow set | rd 2, wr 2 | 2, 2 |
+| latencies, fast set | rd 4, wr 1 | 4, 1 |
+| dummy bit lengths | `2*(5-1)`, `2*(10-1)`, `2*(5-1)` | identical |
+| CS setup / hold / hold delay | 4 / 4 / 3 | 4 / 4 / 3 |
+| `SMEM_AC` field positions | `[6:2]`, `[11:7]`, `[30:25]`, bit 31 | identical |
+| DLL bit | bit 5, in both timing registers | bit 5, both |
+| DQS strobe | `XPD` bit 0, both DQS pins | identical |
+| pin drive | 2, all twenty pins | 2, table of twenty |
+| mode register commands | `0x4040` read, `0xC0C0` write | identical |
+| vendor id expected | `0xD` | `0x0D` |
+| ROM transaction entry points | `0x4fc00108/010c/0110` | identical |
+| ROM operating mode | `OPI_DTR` = 7 | 7 |
+| chip-select mask | `1 << 1` | `1 << 1` |
+| controller used for mode registers | MSPI id 3 | 3 |
+
+Three real deviations existed and two are now gone.  The order: the reference
+sets the pin drive and the strobe, then the analogue timing, and only then the
+divider; this file set the divider first.  `krnPSRAMClockUp` is split into
+`krnPSRAMControllerUp` plus the divider so the steps can run between them.  The
+connected check: the reference writes a word to address zero and reads it back
+*before* reading the identity, this port did it after and returned early on the
+identity, so it never ran.  The third stays: the mode registers are written
+absolutely rather than read-modify-write, because a read before the chip is
+configured returns a floating bus, and the reasoning for that is unchanged.
+
+**The chip does not carry data.**  This is new, and it is a stronger statement
+than every previous run made.  `krnPSRAMRoundTrip` now runs before the identity
+read, and it fails: a word written to address zero does not come back.  So the
+failure is not that the mode registers cannot be addressed while the array
+works.  Nothing crosses the bus in either direction.
+
+**The handover state, measured.**  `krnPSRAMEntryRead` reads what the
+second-stage bootloader leaves, and the first version of it hung the boot dead -
+which is itself the first measurement.  Reading `SPI_MEM_S_SRAM_CLK` before the
+MPLL is up does not fault, it waits: the bootloader leaves
+`psram_clk_src_sel = MPLL` while the MPLL is off, so those registers have no
+clock.  The reads were moved to where they answer, after the module clock and
+before the reset, and the state is:
+
+```text
+[psram]  entry 0xe6df97ef 0x0000d05d 0x00000100 0x00030103 0x00030103
+               0x00000001 0x00000001 0x8000b084 0x00000000
+```
+
+In order: `soc_clk_ctrl0`, `peri_clk_ctrl00`, `hp_rst_en0`, MSPI2 `sram_clk`,
+MSPI3 `clock`, `timing_cali`, `smem_timing_cali`, `smem_ac`, `psram_dqs_0`.
+Decoded, and this closes the bootloader hypothesis:
+
+  - `psram_sys_clk_en`, `psram_pll_clk_en`, `psram_core_clk_en` all set, source
+    MPLL, core divider 1.  Flash runs from SPLL with core divider 6.
+  - `hp_rst_en0` bit 8 is `RST_EN_CORE1_GLOBAL`, its reset default.  No MSPI
+    reset is held.
+  - `smem_ac` `0x8000b084` is the reset default bit for bit: setup time 1, hold
+    time 1, ECC hold 3, skip page corner set, split transactions set.
+  - `psram_dqs_0` is zero, so the strobe arrives disabled, as expected.
+
+So the bootloader configures the flash half and leaves the PSRAM half at its
+defaults.  It is not handing this port a controller in a state that explains
+anything.
+
+**The CPU clock is not the cause.**  360 MHz was the one variable that changed
+between the last working PSRAM and the first silent one, and raising the clock
+draws visibly more current, so it was worth one build.  With the clock left
+where the bootloader put it - `cpu /4`, 90 MHz, no `[clock] set to` line at all
+- PSRAM fails identically: same MPLL state, same `0x1f`/`0xff`, same lost
+round-trip.
+
+- Acceptance points passed: the comparison is complete and reproducible; the
+  connected check and the handover state are now measured rather than assumed.
+- Acceptance points failed: PSRAM is still not available, so B5 and the
+  reference display path remain blocked.
+- Remaining risk: the fault is now outside everything this port writes and
+  outside the state a power cycle clears.  Four hypotheses are eliminated -
+  wrong constant, wrong order, bootloader handover, CPU clock - and no software
+  hypothesis remains that I can name.
+- Next safe step: write the backed-up flash image at
+  `/Volumes/Dev/d1001-backup/d1001-e8f60ae0464c-flash-32MB.bin` back and see
+  whether the reference firmware still brings PSRAM up on this board *now*.
+  It did on 23 August, but that was before the battery was disconnected and
+  before the bootloader was rebuilt, so it is no longer a current measurement.
+  If the reference also fails, the fault is the board and not this port, and
+  that is the one question worth answering next.  It needs explicit
+  authorisation: it overwrites the bootloader, the partition table and both
+  app slots.
 
 ## Evidence-entry template
 
