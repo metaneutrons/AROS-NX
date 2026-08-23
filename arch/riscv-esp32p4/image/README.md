@@ -55,6 +55,24 @@ If a future run needs a literally equal hash, automount has to be suppressed
 for the device before it is inserted. That is a system-level change and was
 deliberately not made here.
 
+
+## The volume label
+
+FAT keeps the volume name in two places and they are not equivalent.
+`BS_VolLab` in the boot sector is a legacy copy; the name a filesystem
+actually reads is a directory entry in the root with the `ATTR_VOLUME_ID`
+attribute (0x08).  `mkfat32.py` originally wrote only the first, and the
+consequence showed up on the board during A4: AROS's FAT handler searched the
+root directory, found no such entry and named the volume from its serial
+number, so `00D1505A` appeared as `00D1-505A`.  The generator now writes the
+directory entry as well, as the first entry in the root, and the name is
+reserved in the 8.3 namespace so a file could not collide with it.  macOS
+reads the volume as `AROSP4TEST` and `fsck_msdos` is clean.
+
+Note that the card written before this change carries an image without the
+entry.  Rewriting it is a separate, deliberate act; nothing about booting
+depends on the name.
+
 ## Layout choices worth knowing
 
 The partition starts at LBA 2048 with type `0x0b`, the same shape as the D1001
