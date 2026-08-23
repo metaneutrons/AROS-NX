@@ -77,7 +77,7 @@ static inline void lli_wr(unsigned long off, unsigned long v)
  */
 void krnP4ScanoutFill(unsigned short rgb565)
 {
-    volatile unsigned long *p = (volatile unsigned long *)P4_PSRAM_WINDOW_BASE;
+    volatile unsigned long *p = (volatile unsigned long *)P4_FB_BASE;
     unsigned long pair = ((unsigned long)rgb565 << 16) | rgb565;
     unsigned long i;
 
@@ -194,7 +194,7 @@ void krnP4ScanoutDmaUp(void)
      * hardware repeats it.  Scanout has to be continuous either way.
      */
 
-    lli_wr(P4_DMAC_LLI_SAR_LO, P4_PSRAM_WINDOW_BASE);
+    lli_wr(P4_DMAC_LLI_SAR_LO, P4_FB_BASE);
     lli_wr(P4_DMAC_LLI_SAR_HI, 0);
     lli_wr(P4_DMAC_LLI_DAR_LO, P4_DSI_BRG_MEM_BASE);
     lli_wr(P4_DMAC_LLI_DAR_HI, 0);
@@ -251,4 +251,5 @@ void krnP4ScanoutState(struct P4ScanoutState *out)
     out->brg_misc     = brg_rd(P4_DSI_BRG_DPI_MISC_CFG);
     out->brg_int      = brg_rd(P4_DSI_BRG_INT_RAW);
     out->words64      = P4_FB_WORDS64;
+    out->fb_base      = P4_FB_BASE;
 }

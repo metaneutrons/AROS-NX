@@ -797,6 +797,16 @@
 #define P4_FB_BYTES             ((unsigned long)P4_PANEL_H_RES * P4_PANEL_V_RES \
                                  * P4_FB_BYTES_PER_PIXEL)
 #define P4_FB_WORDS64           (P4_FB_BYTES / 8)
+
+/*
+ * Where the frame lives: the top of the PSRAM window, not the base.
+ *
+ * The base is where the module package is loaded and where exec's external
+ * memory pool starts, so a frame written there is overwritten a few steps
+ * later and the DMA then scans out module code.  Reserving the top keeps the
+ * two apart until there is an allocator to ask.
+ */
+#define P4_FB_BASE              (P4_PSRAM_WINDOW_BASE + 0x02000000UL - P4_FB_BYTES)
 #define   P4_DSI_BRG_UNDERRUN   (1UL << 0)
 #define P4_DSI_BRG_DMA_FLOW_CTL 0x088
 #define   P4_DSI_BRG_FLOW_BRIDGE (1UL << 0)
@@ -866,6 +876,33 @@
 #define   P4_DSI_LP_HFP_EN      (1UL << 13)
 #define   P4_DSI_FRAME_BTA_ACK_EN (1UL << 14)
 #define   P4_DSI_LP_CMD_EN      (1UL << 15)
+/*
+ * VID_MODE_CFG's low-power and acknowledge bits.
+ *
+ * B4 and the first B5 attempt cleared all of these, on the reasoning that
+ * fewer moving parts is easier to diagnose.  The reference sets every one of
+ * them - its disable_lp flag is left false for this panel - so that reasoning
+ * traded a known-good configuration for a guess, and the host stalled with
+ * DPI_PLD_WR_ERR.  Low-power transitions are what give the host somewhere to
+ * go between lines; without them it has to carry high-speed continuously and a
+ * timing calculation that is even slightly short overflows its FIFO.
+ *
+ * Positions verified against the register header, because the first attempt
+ * put frame acknowledge at bit 11 - which is LP_VACT_EN, so it enabled a
+ * low-power transition while believing it enabled an acknowledge.
+ */
+#define   P4_DSI_LP_VSA_EN      (1UL << 8)
+#define   P4_DSI_LP_VBP_EN      (1UL << 9)
+#define   P4_DSI_LP_VFP_EN      (1UL << 10)
+#define   P4_DSI_LP_VACT_EN     (1UL << 11)
+#define   P4_DSI_LP_HBP_EN      (1UL << 12)
+#define   P4_DSI_LP_HFP_EN      (1UL << 13)
+#define   P4_DSI_VID_FRAME_ACK_EN (1UL << 14)
+#define   P4_DSI_LP_CMD_EN      (1UL << 15)
+#define   P4_DSI_VID_LP_ALL     (P4_DSI_LP_VSA_EN | P4_DSI_LP_VBP_EN \
+                                 | P4_DSI_LP_VFP_EN | P4_DSI_LP_VACT_EN \
+                                 | P4_DSI_LP_HBP_EN | P4_DSI_LP_HFP_EN \
+                                 | P4_DSI_LP_CMD_EN)
 #define   P4_DSI_VPG_EN         (1UL << 16)
 #define   P4_DSI_VPG_MODE       (1UL << 20)
 #define   P4_DSI_VPG_ORIENTATION (1UL << 24)

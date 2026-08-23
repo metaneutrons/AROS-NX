@@ -185,6 +185,7 @@ struct P4ScanoutState
     unsigned long brg_misc;
     unsigned long brg_int;
     unsigned long words64;
+    unsigned long fb_base;
 };
 
 void krnP4ScanoutFill(unsigned short rgb565);

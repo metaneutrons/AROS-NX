@@ -5016,6 +5016,64 @@ the remaining difference and it is cheap to try.
   read the host's own FIFO and timing registers back rather than assuming the
   write took - the same discipline that found the descriptor in cache.
 
+### 2026-08-23 - B5: the host will not take pixels, and the backlight follows the video stream
+
+- State change: two host-side deviations from the reference corrected, one of
+  them a real bug in this port.  The stall is unchanged.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+
+**The backlight tracks the video stream, which settles an old question.**
+Reported by the board's owner: dark, with no backlight, during the scanout run.
+The same call in the same place lit it during the B4 pattern run, and the
+electrical state is identical either way - `latch 0x0000f7ff`, and a measured
+18 per cent PWM, `duty 3681/20000`.  So the panel is not being lit by the
+backlight circuit alone; it lights when it receives a valid video stream and
+does not when the stream stalls.  That is the hypothesis raised during B4's
+isolation test, and it is now supported rather than speculative.  It also means
+the backlight is a symptom in this phase, not a subsystem to debug.
+
+**A real bug: frame acknowledge was written to the wrong bit.**
+`FRAME_BTA_ACK_EN` is bit 14 of `VID_MODE_CFG`.  The first attempt used bit 11,
+which is `LP_VACT_EN` - so it enabled a low-power transition while believing it
+enabled an acknowledge.  Found by checking the position against the register
+header instead of trusting the first reading of it.
+
+**A wrong decision: all low-power transitions were disabled.**  B4 cleared
+every one of them deliberately, to keep the number of moving parts down while
+diagnosing.  The reference sets all of them - its `disable_lp` flag is left
+false for this panel - so that traded a configuration known to work on this
+hardware for one that does not.  The transitions are what give the host
+somewhere to go between lines; without them it carries high-speed continuously.
+All eight bits now match the reference on the scanout path.
+
+**And it changes nothing that matters.**  `CMD_PKT_STATUS` moves from
+`0x00040055` to `0x00060054`, so the bits are reaching the host, but:
+
+```text
+[b5]     dma  llp 0x4ff02680 sar 0x49e0e200
+[b5]     brg  flow 0x00000010 rawnum 0x0003e800 misc 0x00003201 int 0x00000001
+[b5]     host pkt 0x00060054 int1 0x00000080  DPI_PLD_WR_ERR
+[b5]     sar 0x49e0e200 then 0x49e0e200  stalled
+```
+
+The transfer stops after exactly `0x2200` bytes every time - 1,088 sixty-four
+bit words, which is suspiciously close to a 1,024-entry FIFO plus one burst.
+So the DMA fills the bridge, the bridge cannot hand on, the host reports a
+payload write error, and everything stops.  The frame's own position is no
+longer a factor: it was moved to the top of the PSRAM window because the base
+is where the module package is loaded, and the stall is identical.
+
+- Acceptance points passed: none of B5's.
+- Acceptance points failed: no sustained scanout.
+- Remaining risk: the host's refusal is unexplained and now has no candidate
+  left from comparing configuration values - every one of them matches.
+- Next safe step: stop comparing what was written and read back what the host
+  actually holds.  `MODE_CFG` first: this port clears `CMD_VIDEO_MODE` to enter
+  video mode and has never verified that it took.  A host still in command mode
+  has no video path at all, which is exactly what a payload write error into a
+  full FIFO would look like.  That is the same discipline that found the
+  descriptor sitting in cache, and it is the only kind of step left.
+
 ## Evidence-entry template
 
 ```text
