@@ -47,6 +47,23 @@
 /* Power and clock gate for the PLL itself */
 #define P4_PMU_RF_PWC               (P4_PMU_BASE + 0x15C)
 #define   P4_PMU_MSPI_PHY_XPD       (1UL << 24)
+/*
+ * The analogue peripheral I2C block: its reset, and its power.
+ *
+ * PERIF_I2C_RSTB is reset-low by default, so a cold-booted chip holds this
+ * block in reset.  The regi2c register reads and writes work anyway - they
+ * returned correct values throughout - but the PLL calibration state machine
+ * runs over the same analogue path and never started.  Measured against the
+ * vendor firmware, which has PMU_RF_PWC = 0x0d000000 where this port had only
+ * bit 24: bits 26 and 27 are the difference, and the register survives a CPU
+ * reset, which is why the port worked after that firmware and not from cold.
+ *
+ * ESP-IDF releases these two in bootloader_soc.c for the C5 and C61 and does
+ * not do it anywhere for the P4, which is why reading IDF's P4 sources found
+ * nothing missing.
+ */
+#define   P4_PMU_PERIF_I2C_RSTB     (1UL << 26)
+#define   P4_PMU_XPD_PERIF_I2C      (1UL << 27)
 #define P4_LP_CLKRST_HP_CLK_CTRL    (P4_LP_CLKRST_BASE + 0x40)
 #define   P4_HP_MPLL_500M_CLK_EN    (1UL << 28)
 
