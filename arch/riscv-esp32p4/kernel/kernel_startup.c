@@ -123,7 +123,9 @@ static void report_misa(void)
  * whenever it likes and still learn the whole state.
  */
 /* Set by the PSRAM bring-up, printed by the report */
-static unsigned long __esp32p4_psram_size;
+/* Not static: the exec arch layer's CacheClearU() has no range of its own
+   and needs to know how much of the external window is real. */
+unsigned long __esp32p4_psram_size;
 static struct MemHeader *__esp32p4_mh_psram;
 static UWORD *__esp32p4_modules_low;
 static UWORD *__esp32p4_modules_high;
@@ -531,14 +533,32 @@ static void test_task_b(void)
  * from a COLDSTART resident ordered after timer.device (50) and before both
  * `SDCard boot wait` (-49) and dosboot (-50), the task finds timer.device
  * already there, opens it once, and from then on only ever blocks in DoIO().
- * It needs no retry loop, so it can safely sit at priority 5, above the
- * default, and report even while something spins at 0.
+ * It needs no retry loop.
+ *
+ * The priority took a third attempt.  At 5 it beat correctly until dosboot
+ * was added, after which it opened timer.device, issued one request and was
+ * never seen again.  What starves it is econsole: DOS starts a handler
+ * process at dn_Priority 10, and ECON:'s Raw_Read() has no way to block, so
+ * it spins on RawMayGetChar() and Reschedule() at that priority for as long
+ * as a shell waits for a keystroke.  KrnMayGetChar() has no implementation on
+ * this platform and always returns -1, so that is for ever, and nothing
+ * below priority 10 runs again once a shell reaches its prompt.  20 is above
+ * every handler DOS starts and below nothing that matters.
  */
 static void krnP4HeartbeatTask(void)
 {
-    struct MsgPort *mp = CreateMsgPort();
+    struct MsgPort *mp;
     struct timerequest *tr = NULL;
     unsigned long beat = 0;
+
+    /* Three statements before anything can go wrong, because the first
+       version of this printed nothing at all in a dosboot build and there
+       was no way to tell how far it had got. */
+    Forbid();
+    krnP4PutStr("[beat]   task running\n");
+    Permit();
+
+    mp = CreateMsgPort();
 
     if (mp)
         tr = (struct timerequest *)AllocMem(sizeof(struct timerequest),
@@ -568,6 +588,14 @@ static void krnP4HeartbeatTask(void)
     }
 
     tr->tr_node.io_Command = TR_ADDREQUEST;
+
+    Forbid();
+    krnP4PutStr("[beat]   timer.device open, port ");
+    krnP4PutHex32((uint32_t)(IPTR)mp);
+    krnP4PutStr(" sigbit ");
+    krnP4PutDec((uint32_t)mp->mp_SigBit);
+    krnP4PutStr("\n");
+    Permit();
 
     for (;;)
     {
@@ -616,7 +644,7 @@ AROS_UFH3(static APTR, krnP4HeartbeatInit,
 {
     AROS_USERFUNC_INIT
 
-    struct Task *t = krnP4SpawnTask("esp32p4 heartbeat", 5,
+    struct Task *t = krnP4SpawnTask("esp32p4 heartbeat", 20,
                                     krnP4HeartbeatTask, 8192);
 
     krnP4PutStr("[beat]   heartbeat task ");

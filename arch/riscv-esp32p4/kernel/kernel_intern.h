@@ -92,6 +92,8 @@ void krnP4SDMMCProbe(void);
 
 /* Cache maintenance and the cache-off window (kernel_cache.c) */
 void krnP4SyncCode(void *addr, unsigned long len);
+/* How much of the external window the PSRAM probe found, zero if none */
+extern unsigned long __esp32p4_psram_size;
 unsigned long krnP4CacheOff(void);
 void krnP4CacheOn(unsigned long token);
 

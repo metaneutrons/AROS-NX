@@ -62,8 +62,20 @@ static struct p4sd_dma_desc p4sd_dma_desc[P4SD_DMA_DESC_COUNT]
    CMD51 that card identification depends on.  Such a short destination is
    neither cache-line aligned nor a whole number of lines, so it lands here
    first and is copied afterwards, which is also how IDF handles a buffer its
-   DMA cannot use directly. */
-static UBYTE p4sd_bounce[512] __attribute__((aligned(64)));
+   DMA cannot use directly.
+
+   Sized for the largest transfer the backend accepts rather than for one
+   sector, because the caller that actually needs it is a filesystem.  FAT's
+   cache reads 32 sectors at a time into a buffer it allocated with AllocMem,
+   which is 32-byte aligned on this target and so unusable as a DMA
+   destination; with a 512-byte bounce that request was refused, and FAT
+   retried it 134,101 times in one boot.  Splitting the request would work
+   too, but it would mean issuing several commands where the card expects one,
+   and the memory this costs is not scarce: the buffer lives in the module's
+   .bss, which the loader places in the 32 MB external window, so it is 64 KiB
+   of PSRAM and nothing of the 230 KB internal heap.  It is also already the
+   proven DMA destination - every unaligned read since A1 has landed here. */
+static UBYTE p4sd_bounce[P4SD_MAX_DATA_LEN] __attribute__((aligned(64)));
 
 static inline ULONG p4sd_reg(ULONG offset);
 
@@ -988,6 +1000,11 @@ ULONG FNAME_P4SDBUS(SendCmd)(struct TagItem *tags, struct sdcard_Bus *bus)
         {
             if (data_len > sizeof(p4sd_bounce))
             {
+                /* Unreachable while the bounce is P4SD_MAX_DATA_LEN and the
+                   length check above enforces the same bound; kept because
+                   the two constants could drift apart, and because a silent
+                   overrun here would be a memory corruption rather than a
+                   refused read. */
                 bug("[P4SD%02u] refusing unaligned CMD%u receive of %u bytes "
                     "at %p\n", bus->sdcb_BusNum, command_index, data_len,
                     data);
