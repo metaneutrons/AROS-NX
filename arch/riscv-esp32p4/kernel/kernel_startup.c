@@ -27,6 +27,7 @@
 #include <exec/resident.h>
 #include <exec/memory.h>
 #include <aros/kernel.h>
+#include <aros/asmcall.h>
 #include <utility/tagitem.h>
 #include <proto/exec.h>
 #include <exec/io.h>
@@ -392,6 +393,35 @@ static void krnDumpResidents(UWORD *lo, UWORD *hi)
     }
 }
 
+#if defined(P4_TASK_TEST) || defined(P4_HEARTBEAT_TASK)
+static void krnP4TaskExit(void)
+{
+    /* SysBase->TaskExitCode may be unset in a kickstart this small, and
+       NewAddTask uses it when finalPC is NULL, so name one explicitly. */
+    for (;;)
+        ;
+}
+
+static struct Task *krnP4SpawnTask(const char *name, BYTE pri,
+                                   void (*entry)(void), ULONG stacksize)
+{
+    struct Task *t = AllocMem(sizeof(struct Task), MEMF_CLEAR | MEMF_PUBLIC);
+    APTR stack = AllocMem(stacksize, MEMF_CLEAR);
+
+    if (!t || !stack)
+        return NULL;
+
+    t->tc_Node.ln_Type = NT_TASK;
+    t->tc_Node.ln_Pri  = pri;
+    t->tc_Node.ln_Name = (char *)name;
+    t->tc_SPLower      = stack;
+    t->tc_SPUpper      = (APTR)((IPTR)stack + stacksize);
+
+    /* NewAddTask fills in tc_SPReg, the MemEntry list and the ETask */
+    return AddTask(t, (APTR)entry, (APTR)krnP4TaskExit) ? t : NULL;
+}
+#endif /* P4_TASK_TEST || P4_HEARTBEAT_TASK */
+
 #ifdef P4_TASK_TEST
 /*
  * Two tasks at the same priority as exec's bootstrap task, each doing
@@ -463,35 +493,169 @@ static void test_task_b(void)
     }
 }
 
-static void test_task_exit(void)
-{
-    /* SysBase->TaskExitCode may be unset in a kickstart this small, and
-       NewAddTask uses it when finalPC is NULL, so name one explicitly. */
-    for (;;)
-        ;
-}
-
-static struct Task *spawn_counter_task(const char *name, BYTE pri,
-                                      void (*entry)(void))
-{
-    const ULONG stacksize = 4096;
-    struct Task *t = AllocMem(sizeof(struct Task), MEMF_CLEAR | MEMF_PUBLIC);
-    APTR stack = AllocMem(stacksize, MEMF_CLEAR);
-
-    if (!t || !stack)
-        return NULL;
-
-    t->tc_Node.ln_Type = NT_TASK;
-    t->tc_Node.ln_Pri  = pri;
-    t->tc_Node.ln_Name = (char *)name;
-    t->tc_SPLower      = stack;
-    t->tc_SPUpper      = (APTR)((IPTR)stack + stacksize);
-
-    /* NewAddTask fills in tc_SPReg, the MemEntry list and the ETask */
-    return AddTask(t, (APTR)entry, (APTR)test_task_exit) ? t : NULL;
-}
-
 #endif /* P4_TASK_TEST */
+
+#ifdef P4_HEARTBEAT_TASK
+
+#ifndef P4_HEARTBEAT_SECS
+#define P4_HEARTBEAT_SECS 5
+#endif
+
+/*
+ * The heartbeat, as a task started from a resident rather than as a loop in
+ * kernel_cstart().
+ *
+ * That loop only runs because nothing before it takes the machine over.
+ * dosboot.resource does: its COLDSTART init either boots or retries for
+ * ever, so from the moment it joins the package the loop is unreachable and
+ * with it the only statement this port makes that the system is still alive.
+ * The A4 gate asks for exactly that statement, so it has to move somewhere a
+ * boot cannot take away.
+ *
+ * Two wrong attempts came before this one and are worth recording, because
+ * each looked reasonable and each failed for a different reason.
+ *
+ * Spawning the task before InitCode(RTF_COLDSTART) at priority -20: the task
+ * never ran at all.  The bootstrap task's own loop calls krnTimerWait(),
+ * which is a busy spin at priority 0, and Reschedule() only ever picks a
+ * ready task of equal or higher priority, so nothing below zero is scheduled
+ * while that loop runs.
+ *
+ * The same, at priority 5: the boot stopped dead after
+ * "InitCode(RTF_COLDSTART)".  timer.device initialises inside that pass, in
+ * the bootstrap task at priority 0, while the new task sat above it in a
+ * retry loop waiting for timer.device to appear.  It could not appear.  A
+ * plain priority inversion, and entirely self-inflicted.
+ *
+ * What both attempts got wrong is the moment, not the priority.  Started
+ * from a COLDSTART resident ordered after timer.device (50) and before both
+ * `SDCard boot wait` (-49) and dosboot (-50), the task finds timer.device
+ * already there, opens it once, and from then on only ever blocks in DoIO().
+ * It needs no retry loop, so it can safely sit at priority 5, above the
+ * default, and report even while something spins at 0.
+ */
+static void krnP4HeartbeatTask(void)
+{
+    struct MsgPort *mp = CreateMsgPort();
+    struct timerequest *tr = NULL;
+    unsigned long beat = 0;
+
+    if (mp)
+        tr = (struct timerequest *)AllocMem(sizeof(struct timerequest),
+                                            MEMF_CLEAR | MEMF_PUBLIC);
+    if (tr)
+    {
+        tr->tr_node.io_Message.mn_ReplyPort = mp;
+        if (OpenDevice("timer.device", UNIT_VBLANK,
+                       (struct IORequest *)tr, 0) != 0)
+        {
+            FreeMem(tr, sizeof(struct timerequest));
+            tr = NULL;
+        }
+    }
+
+    if (!tr)
+    {
+        /*
+         * Say so once and stop.  There is no way to wait without the timer
+         * that does not spin, and a heartbeat that starves the system it is
+         * reporting on is worse than one that admits it cannot report.
+         */
+        Forbid();
+        krnP4PutStr("[beat]   no timer.device, heartbeat not running\n");
+        Permit();
+        return;
+    }
+
+    tr->tr_node.io_Command = TR_ADDREQUEST;
+
+    for (;;)
+    {
+        tr->tr_time.tv_secs  = P4_HEARTBEAT_SECS;
+        tr->tr_time.tv_micro = 0;
+        DoIO((struct IORequest *)tr);
+
+        ++beat;
+
+        /*
+         * Forbid() here is not about the data - one task writes it - but
+         * about the console: krnP4PutC() waits per character, and a task
+         * switch in the middle of a line would interleave it with dos or
+         * econsole output on the same channel and make both unreadable.
+         */
+        Forbid();
+        krnP4PutStr("[beat]   ");
+        krnP4PutDec((uint32_t)beat);
+        krnP4PutStr("  ticks ");
+        krnP4PutDec((uint32_t)__esp32p4_ticks);
+        krnP4PutStr("  irqs ");
+        krnP4PutDec((uint32_t)__esp32p4_irq_count);
+        krnP4PutStr("  avail ");
+        krnP4PutDec((uint32_t)AvailMem(MEMF_ANY));
+        krnP4PutStr("  tasks ready ");
+        {
+            ULONG n;
+
+            ListLength(&SysBase->TaskReady, n);
+            krnP4PutDec((uint32_t)n);
+            ListLength(&SysBase->TaskWait, n);
+            krnP4PutStr(" waiting ");
+            krnP4PutDec((uint32_t)n);
+        }
+        krnP4PutStr("\n");
+        Permit();
+    }
+}
+
+extern const struct Resident krnP4HeartbeatResident;
+
+AROS_UFH3(static APTR, krnP4HeartbeatInit,
+          AROS_UFPA(void *, dummy, D0),
+          AROS_UFPA(BPTR, segList, A0),
+          AROS_UFPA(struct ExecBase *, SysBase, A6))
+{
+    AROS_USERFUNC_INIT
+
+    struct Task *t = krnP4SpawnTask("esp32p4 heartbeat", 5,
+                                    krnP4HeartbeatTask, 8192);
+
+    krnP4PutStr("[beat]   heartbeat task ");
+    krnP4PutHex32((uint32_t)(IPTR)t);
+    krnP4PutStr(t ? ", every " : " NOT STARTED, every ");
+    krnP4PutDec(P4_HEARTBEAT_SECS);
+    krnP4PutStr("s\n");
+
+    return NULL;
+
+    AROS_USERFUNC_EXIT
+}
+
+/*
+ * Priority -40 puts this in the one window that works: below timer.device at
+ * 50, so the device exists by the time the task opens it, and above `SDCard
+ * boot wait` at -49 and dosboot at -50, so the heartbeat is already
+ * reporting while those two run.  Nothing else in either the kickstart or
+ * the package sits at -40, so the order does not depend on link order.
+ *
+ * rt_EndSkip points just past this structure, which is what the romtag
+ * scanner continues from; pointing it anywhere further would skip whatever
+ * tag happened to follow.
+ */
+const struct Resident krnP4HeartbeatResident =
+{
+    RTC_MATCHWORD,
+    (struct Resident *)&krnP4HeartbeatResident,
+    (APTR)((const char *)&krnP4HeartbeatResident + sizeof(struct Resident)),
+    RTF_COLDSTART,
+    1,
+    NT_TASK,
+    -40,
+    "esp32p4 heartbeat",
+    "esp32p4 heartbeat 1.0",
+    &krnP4HeartbeatInit
+};
+
+#endif /* P4_HEARTBEAT_TASK */
 
 #ifdef P4_SDCARD_DEVICE_TEST
 /*
@@ -2418,10 +2582,10 @@ static void krnStartExec(void)
          * how long a CPU-bound task at equal priority holds on to its
          * quantum afterwards.
          */
-        struct Task *ta = spawn_counter_task("esp32p4 counter A", 0,
-                                             test_task_a);
-        struct Task *tb = spawn_counter_task("esp32p4 waiter B", 5,
-                                             test_task_b);
+        struct Task *ta = krnP4SpawnTask("esp32p4 counter A", 0,
+                                          test_task_a, 4096);
+        struct Task *tb = krnP4SpawnTask("esp32p4 waiter B", 5,
+                                          test_task_b, 4096);
 
         krnP4PutStr("[exec]   AddTask A ");
         krnP4PutHex32((uint32_t)(IPTR)ta);
