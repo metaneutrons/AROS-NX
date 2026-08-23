@@ -8,7 +8,15 @@
 #include <dos/stdio.h>
 #include <proto/dos.h>
 
+/*
+   Guarded so a build can raise it without editing this file; see
+   mmakefile.src for the AUTOINIT_DEBUG shorthand.  These functions run
+   between a loaded program's entry point and its main(), a stretch that is
+   otherwise silent, so a program that hangs in it produces no output at all.
+*/
+#ifndef DEBUG
 #define DEBUG 0
+#endif
 #include <aros/debug.h>
 
 /* programmers can define the __stdiowin for opening the win that will be used for

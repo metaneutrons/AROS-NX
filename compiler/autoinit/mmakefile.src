@@ -4,6 +4,23 @@
 
 include $(SRCDIR)/config/aros.cfg
 
+#
+# The D() macros in these files are compiled out, and the usual way to turn
+# them on is to edit the source.  That cannot be reproduced from a build
+# command, so they are also gated on a make variable:
+#
+#   gmake linklibs-autoinit AUTOINIT_DEBUG=1
+#
+# These functions are the PROGRAM_ENTRIES chain a loaded program walks between
+# its entry point and its main().  On a target where no program has run before
+# that stretch is silent, and a hang in it looks like the program never
+# started at all.
+#
+ifeq ($(AUTOINIT_DEBUG),1)
+USER_CPPFLAGS += -DDEBUG=1
+endif
+
+
 # list of automatically linked libs - included by the gcc spec file.
 AUTOFILE := \
 	auto

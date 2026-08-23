@@ -15,6 +15,7 @@ IMAGEDIR   := $(AROSDIR)/boot/esp32p4
 IMAGE      := $(IMAGEDIR)/aros-test.img
 STAGE      := $(GENDIR)/$(CURDIR)/stage
 MKFAT32    := $(SRCDIR)/$(CURDIR)/mkfat32.py
+PROOFDIR   := $(AROSARCHDIR)/proof
 
 #   Fixed on purpose: these are the only two fields a formatter would
 #   otherwise take from the clock, and taking them from the clock would make
@@ -23,7 +24,13 @@ IMAGE_SERIAL    ?= 0xa5051d00
 IMAGE_TIMESTAMP ?= 2026-01-01
 IMAGE_SIZE_MB   ?= 64
 
+#
+#   The A5 proof files are built separately and staged here.  They must not be
+#   in the kickstart or the flash package; the card is the only place they
+#   exist, which is what makes running them evidence of anything.
+#
 #MM- kernel-image-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
+#MM- kernel-image-esp32p4-riscv-stage : kernel-proof-esp32p4-riscv
 
 kernel-image-esp32p4-riscv-stage :
 	@$(RM) $(STAGE)
@@ -38,6 +45,18 @@ kernel-image-esp32p4-riscv-stage :
 	@$(ECHO) "AROS boot signature" > $(STAGE)/AROS.boot
 	@$(ECHO) "cpu $(AROS_TARGET_CPU)" >> $(STAGE)/AROS.boot
 	@$(ECHO) "arch $(AROS_TARGET_ARCH)" >> $(STAGE)/AROS.boot
+	@# The A5 proof command and library, if they have been built.  Copied
+	@# rather than required, so the image still builds for the A3 and A4
+	@# purposes without them.
+	@if $(TEST) -f $(PROOFDIR)/sdboot-test ; then \
+	    $(CP) $(PROOFDIR)/sdboot-test $(STAGE)/C/sdboot-test ; \
+	fi
+	@if $(TEST) -f $(PROOFDIR)/sdload-test ; then \
+	    $(CP) $(PROOFDIR)/sdload-test $(STAGE)/C/sdload-test ; \
+	fi
+	@if $(TEST) -f $(PROOFDIR)/sdproof.library ; then \
+	    $(CP) $(PROOFDIR)/sdproof.library $(STAGE)/Libs/sdproof.library ; \
+	fi
 
 #MM kernel-image-esp32p4-riscv
 kernel-image-esp32p4-riscv : kernel-image-esp32p4-riscv-stage

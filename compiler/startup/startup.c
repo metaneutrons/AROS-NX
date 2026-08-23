@@ -6,7 +6,16 @@
     Desc: Common startup code
     Lang: english
 */
+/*
+   Guarded so a build can raise it without editing this file; see
+   mmakefile.src for the STARTUP_DEBUG shorthand.  Worth having, because the
+   stretch between a loaded program's entry point and its main() is otherwise
+   silent, and on a target where no program has run before, a hang in it
+   produces no output at all.
+*/
+#ifndef DEBUG
 #define DEBUG 0
+#endif
 
 #include <aros/config.h>
 #include <dos/dos.h>
