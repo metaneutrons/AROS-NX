@@ -5728,7 +5728,36 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutHex32((uint32_t)psram.vendor);
             krnP4PutStr(" mr2 ");
             krnP4PutHex32((uint32_t)psram.density);
-            krnP4PutStr("\n");
+            krnP4PutStr(", data ");
+            krnP4PutStr(psram.connected ? "carried\n" : "lost\n");
+
+            /*
+             * The handover state: the registers this port inherits rather
+             * than sets, read before it writes any of them.
+             *
+             * Every constant and register the bring-up writes has now been
+             * read against ESP-IDF's own sequence and matches it, so a
+             * failure that survives a real power cycle is not a wrong value
+             * here.  What is left is what arrives set: MSPI2 serves flash
+             * and PSRAM from one block, and the second-stage bootloader
+             * configures the flash half of it.
+             *
+             * In order: soc_clk_ctrl0, peri_clk_ctrl00, hp_rst_en0,
+             * mspi2 sram_clk, mspi3 clock, timing_cali, smem_timing_cali,
+             * smem_ac, psram_dqs_0.
+             */
+            {
+                const unsigned long *e = (const unsigned long *)&psram.entry;
+                unsigned int k;
+
+                krnP4PutStr("[psram]  entry");
+                for (k = 0; k < sizeof(psram.entry) / sizeof(*e); ++k)
+                {
+                    krnP4PutStr(" ");
+                    krnP4PutHex32((uint32_t)e[k]);
+                }
+                krnP4PutStr("\n");
+            }
         }
 
         __esp32p4_psram_size = psram.size;
