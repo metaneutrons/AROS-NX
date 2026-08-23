@@ -471,6 +471,82 @@
 
 
 /*
+ * MIPI-DSI: the PHY supply, the clocks, the host and the bridge.
+ *
+ * Revision matters here and the display contract says why.  Three fields the
+ * reference implementation writes do not exist on ESP32-P4 revision 1.x and
+ * are hw_ver3 additions: the PHY PLL reference source select, its divider, and
+ * the bridge's own soft reset.  So on this board the PHY reference is fixed by
+ * hardware rather than chosen, and the bridge is reset only through the system
+ * reset register.  Writing the absent fields would be writing reserved bits.
+ */
+#define P4_PMU_EXT_LDO_VO3      (P4_PMU_BASE + 0x1C0)
+#define P4_PMU_EXT_LDO_VO3_ANA  (P4_PMU_BASE + 0x1C4)
+#define   P4_LDO_FORCE_TIEH_SEL (1UL << 7)
+#define   P4_LDO_XPD            (1UL << 8)
+#define   P4_LDO_TIEH_SEL_SHIFT 9
+#define   P4_LDO_TIEH_SEL_MASK  (0x3UL << P4_LDO_TIEH_SEL_SHIFT)
+#define   P4_LDO_TIEH           (1UL << 14)
+#define   P4_LDO_MUL_SHIFT      23
+#define   P4_LDO_MUL_MASK       (0x7UL << P4_LDO_MUL_SHIFT)
+#define   P4_LDO_DREF_SHIFT     28
+#define   P4_LDO_DREF_MASK      (0xFUL << P4_LDO_DREF_SHIFT)
+/* The exact uncalibrated solution for 2500 mV; see the display contract. */
+#define   P4_LDO_DREF_2V5       9
+#define   P4_LDO_MUL_2V5        6
+
+#define P4_CLKRST_SOC_CLK_CTRL1 (P4_HP_SYS_CLKRST_BASE + 0x18)
+#define   P4_DSI_SYS_CLK_EN     (1UL << 12)
+#define P4_CLKRST_HP_RST_EN0    (P4_HP_SYS_CLKRST_BASE + 0xC0)
+#define   P4_RST_EN_DSI_BRG     (1UL << 26)
+#define P4_CLKRST_PERI_CLK_CTRL02 (P4_HP_SYS_CLKRST_BASE + 0x38)
+#define   P4_DSI_DPHY_CLK_SRC_SHIFT 30
+#define   P4_DSI_DPHY_CLK_SRC_MASK  (0x3UL << P4_DSI_DPHY_CLK_SRC_SHIFT)
+#define P4_CLKRST_PERI_CLK_CTRL03 (P4_HP_SYS_CLKRST_BASE + 0x3C)
+#define   P4_DSI_DPHY_CFG_CLK_EN    (1UL << 0)
+#define   P4_DSI_DPHY_PLL_REFCLK_EN (1UL << 1)
+#define   P4_DSI_DPICLK_SRC_SHIFT   5
+#define   P4_DSI_DPICLK_SRC_MASK    (0x3UL << P4_DSI_DPICLK_SRC_SHIFT)
+#define   P4_DSI_DPICLK_EN          (1UL << 7)
+#define   P4_DSI_DPICLK_DIV_SHIFT   8
+#define   P4_DSI_DPICLK_DIV_MASK    (0xFFUL << P4_DSI_DPICLK_DIV_SHIFT)
+
+#define P4_DSI_HOST_BASE        (P4_HPPERIPH0_BASE + 0xA0000)
+#define P4_DSI_BRG_BASE         (P4_HPPERIPH0_BASE + 0xA0800)
+#define P4_DSI_PWR_UP           0x004
+#define   P4_DSI_SHUTDOWNZ      (1UL << 0)
+#define P4_DSI_MODE_CFG         0x034
+#define   P4_DSI_CMD_VIDEO_MODE (1UL << 0)
+#define P4_DSI_LPCLK_CTRL       0x094
+#define   P4_DSI_TXREQUESTCLKHS (1UL << 0)
+#define P4_DSI_PHY_RSTZ         0x0A0
+#define   P4_DSI_PHY_SHUTDOWNZ  (1UL << 0)
+#define   P4_DSI_PHY_RSTZ_BIT   (1UL << 1)
+#define   P4_DSI_PHY_ENABLECLK  (1UL << 2)
+#define   P4_DSI_PHY_FORCEPLL   (1UL << 3)
+#define P4_DSI_PHY_IF_CFG       0x0A4
+#define   P4_DSI_N_LANES_MASK   0x3UL
+#define   P4_DSI_STOP_WAIT_SHIFT 8
+#define   P4_DSI_STOP_WAIT_MASK (0xFFUL << P4_DSI_STOP_WAIT_SHIFT)
+#define P4_DSI_PHY_STATUS       0x0B0
+#define   P4_DSI_PHY_LOCK       (1UL << 0)
+#define   P4_DSI_STOPSTATE_CLK  (1UL << 2)
+#define   P4_DSI_STOPSTATE_L0   (1UL << 4)
+#define   P4_DSI_STOPSTATE_L1   (1UL << 7)
+#define P4_DSI_PHY_TST_CTRL0    0x0B4
+#define   P4_DSI_TESTCLR        (1UL << 0)
+#define   P4_DSI_TESTCLK        (1UL << 1)
+#define P4_DSI_PHY_TST_CTRL1    0x0B8
+#define   P4_DSI_TESTDIN_MASK   0xFFUL
+#define   P4_DSI_TESTEN         (1UL << 16)
+#define P4_DSI_BRG_EN           0x004
+#define   P4_DSI_BRG_DSI_EN     (1UL << 0)
+
+/* This board: two lanes at 1000 Mbit/s from a 40 MHz reference. */
+#define P4_DSI_LANES            2
+#define P4_DSI_LANE_MBPS        1000
+
+/*
  * The crystal.  A SoC fact rather than a PSRAM one, which is where it lived
  * until I2C needed it: it is the one clock on this chip that no divider this
  * port sets can move, which is why the I2C bus is timed from it.

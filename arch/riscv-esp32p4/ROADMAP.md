@@ -121,7 +121,7 @@ tests.
 | B0 | Canonical D1001 display contract and provenance | `documented` | [display/DISPLAY-CONTRACT.md](display/DISPLAY-CONTRACT.md) is the one place display facts live, each value carrying an evidence class and a source file and line.  Three findings changed the plan: the running reference ignores the timing fields it is given and uses a different set, the rotation direction is no longer a hypothesis, and the DSI bridge registers differ by chip revision.  Nothing is `verified` yet, which is the honest state; the measured frame rate is B4's and is recorded as deferred |
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `hardware partial` | The calibration works and 200 MHz holds over all 32 MB with four bus patterns, identically across six warm resets, and the whole storage stack passes on both media at 360 MHz.  The phase premise was wrong in an instructive way: the PSRAM bus was never the limit.  The CPU ran at 90 MHz because nothing configured it, and is now 360; sequential reads went 20 to 60 MB/s and internal SRAM 25 to 101.  The 100 MB/s gate is not assessable by a CPU loop and is reassigned to B5, with the reason recorded |
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
-| B3 | LDO3, DSI PHY/host and JD9365 command path | `not started` | Requires B0 and B2 |
+| B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware partial` | Stage one done: the PHY supply, the clocks and the PLL, with the PLL locking and all three lanes reaching stop state on the first hardware run.  That result also confirms the fixed PHY reference is the 40 MHz crystal, which no register on this revision states.  Three writes the reference driver makes were deliberately omitted because the registers do not exist on revision 1.x.  Stage two, command mode and the JD9365 sequence, is next |
 | B4 | Stable internal DSI test pattern | `not started` | Requires B3; isolates panel from DMA/PSRAM |
 | B5 | Native `800 x 1280` RGB565 PSRAM scanout | `not started` | Requires B1 and B4 |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
@@ -4050,6 +4050,79 @@ have been indistinguishable from an accident.
   responsibility and it should be claimed explicitly rather than inherited.
 - Next safe step: B3, the LDO and DSI PHY with the JD9365 command sequence,
   which is the first step that touches the data path.
+
+### 2026-08-23 - B3 stage one: the PHY locks
+
+- State change: B3 `not started` to `hardware partial`.  The supply, clocks and
+  PLL are verified; command mode and the panel's own sequence are not started.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3, CPU at
+  360 MHz.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `30224ba0d6`.
+- Artifact: core 178,384 bytes,
+  `c8d9e22f206d051dbb2f829a708e987c1a29c6b3d019d42f4aa9693058d424a1`, written to
+  `ota_0` at `0x20000` and verified by esptool hash.
+- New build option: `P4_DSI_PROBE=1`, off by default, and it needs
+  `P4_PANEL_PROBE=1` because the panel has to be powered and out of reset first.
+- The backlight was never enabled, so nothing was displayed and nothing could
+  be.
+
+Passed on the first hardware run, which is worth saying plainly because it is
+unusual in this port and it is the consequence of deriving the whole sequence
+and writing it down before writing any code:
+
+```text
+[dsi]    ldo 0x40200180 ana 0x93000000, dref 9, mul 6, enabled
+[dsi]    pll n 2 m 50, range 0x2a, 1000 Mbit/s per lane if the reference is 40 MHz
+[dsi]    phy status 0x000015bd  locked, lanes in stop state
+[dsi]    B3 stage one passed
+```
+
+`0x15bd` has bit 0, the PLL lock, and bits 2, 4 and 7, the stop states of the
+clock lane and both data lanes.  The LDO reads back `dref 9, mul 6` with the
+enable set, which is the exact uncalibrated solution for 2500 mV.
+
+**The lock is evidence for something no register states.**  On revision 1.x the
+PHY PLL reference source select and its divider do not exist, so the reference
+is fixed by hardware and nothing reports what it is.  N=2 and M=50 are the
+exact solution for 1000 Mbit/s from 40 MHz, the range selector 0x2A is the one
+for [1000, 1050) Mbit/s, and a PLL given a reference of any other frequency
+with those factors would either fail to lock or land outside that range.  It
+locked, so the reference is the crystal.  That was the one assumption this
+stage existed to test.
+
+**Three writes the reference driver makes were left out.**  `hw_ver1` has no
+`MIPI_DSI_DPHY_PLL_REFCLK_SRC_SEL`, no `_DIV_NUM` and no
+`DSI_BRG_DSI_BRIG_RST`; all three are `hw_ver3` additions, and ESP-IDF reaches
+them through configuration guarded on the chip revision.  Writing them here
+would have been writing reserved bits.  This is the second time B0's
+register-set finding has changed code rather than merely being recorded, and it
+is the reason that finding was worth making before any of this was written.
+
+Two smaller things this stage does differently from the reference.  It clears
+the PHY test interface before the first PLL write, because a stale address left
+in it would send that write somewhere else.  And both waits are bounded by the
+system timer with distinct failure names, where the reference loops on each
+condition with no bound at all; a bring-up step that can hang is worse than one
+that reports which of the two conditions it was.
+
+- Acceptance passed, for the half this stage covers: every clock and PHY wait
+  is bounded and each failure names which condition it was; the sequence is
+  recoverable, with `krnP4DsiPhyDown()` reversing it in the opposite order and
+  removing the supply last; and a failure returns to UART with the panel back
+  in reset and the backlight dark, which the panel-claim failure path exercises.
+- Acceptance not yet met: the command path.  Entering command mode, sending the
+  JD9365 sequence over DBI and attempting the DCS `0x04` identity read are
+  stage two.
+- Safety impact: no medium was written.  The panel supply was raised and
+  lowered, the backlight was never enabled, and the panel was returned to reset
+  before the probe finished.
+- Remaining risk: the LDO's eFuse trim is still not read, so the rail is at its
+  nominal 2.5 V rather than a per-part corrected one.  The PLL locking says the
+  rail is close enough for the PHY to work at room temperature on this part; it
+  says nothing about margin.
+- Next safe step: stage two.  Command mode, the JD9365 sequence over DBI with
+  the backlight still dark, and the identity read attempted without an expected
+  value because no source states one.
 
 ## Evidence-entry template
 
