@@ -412,6 +412,31 @@ static void panel_backlight_pwm(unsigned int percent)
            1UL << P4_D1001_BACKLIGHT_GPIO);
 }
 
+/*
+ * Drop PWR_HOLD, which powers the board off.
+ *
+ * The only way to cold-start anything on this board.  The port expander, and
+ * as it turns out the PSRAM chip's mode registers too, survive a CPU reset and
+ * keep whatever the last firmware left; removing USB changes nothing because
+ * the battery carries on.  Releasing this pin is the board's own power-off, and
+ * it is the reference driver's shutdown path.
+ *
+ * Only meaningful with USB removed.  With VBUS present the rails are fed from
+ * it and this is very likely a no-op, which is why the caller announces itself
+ * and waits rather than doing it silently.
+ */
+int krnP4PanelPowerOff(void)
+{
+    if (!panel_have_latch)
+        return P4_I2C_NOTREADY;
+
+    /* Panel dark and in reset first, so the last thing the board does is not a
+       flash. */
+    (void)panel_modify(0, (UWORD)(P4_EXP_LCD_BL_EN | P4_EXP_LCD_PWR_EN
+                                  | P4_EXP_LCD_RST));
+    return panel_modify(0, P4_EXP_PWR_HOLD);
+}
+
 int krnP4PanelBacklightOn(void)
 {
     int r = panel_modify(P4_EXP_LCD_BL_EN, 0);

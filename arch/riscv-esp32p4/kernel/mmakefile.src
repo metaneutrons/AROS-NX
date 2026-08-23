@@ -242,6 +242,14 @@ ifdef P4_BACKLIGHT_ONLY
 P4_DEBUG_CPPFLAGS += -DP4_BACKLIGHT_ONLY
 endif
 
+# P4_POWER_OFF=1 replaces the panel probe with a countdown and then releases
+# PWR_HOLD, which powers the board off once USB is unplugged.  It is the only
+# way to cold-start this board, and the expander and the PSRAM chip both need
+# that because they keep their configuration across a CPU reset.
+ifdef P4_POWER_OFF
+P4_DEBUG_CPPFLAGS += -DP4_POWER_OFF
+endif
+
 ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
