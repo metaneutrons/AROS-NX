@@ -176,14 +176,35 @@ P4_SRAMCODE int krnPSRAMMPLLUp(void)
      * cold and why it looked like the chip rather than the clock.
      */
     /*
-     * Take the analogue peripheral I2C block out of reset and power it.
+     * Reset the analogue peripheral I2C block, then release it and power it.
      *
      * This is the bit that was missing, and nothing in ESP-IDF's P4 sources
      * points at it: PERIF_I2C_RSTB defaults to reset-asserted, IDF releases it
      * only in the C5 and C61 bootloader ports, and the register reads and
      * writes over this bus work regardless - which is why every measurement
      * said the bus was fine while the calibration never began.
+     *
+     * A pulse rather than a plain release, and that is deliberate.  The
+     * register survives a CPU reset, so a boot following firmware that already
+     * released it would inherit a working block and prove nothing: the failure
+     * this fixes only appears when the block arrives held down.  Asserting the
+     * reset first puts it back into the state a cold boot leaves it in, so
+     * every boot exercises the path that was broken instead of one that was
+     * already working - and takes the proof out of needing a battery
+     * disconnected behind a screwed-down panel.
      */
+    p4_w32(P4_PMU_RF_PWC,
+           p4_r32(P4_PMU_RF_PWC) & ~P4_PMU_PERIF_I2C_RSTB);
+
+    {
+        unsigned long start, now;
+
+        asm volatile("csrr %0, mcycle" : "=r"(start));
+        do
+            asm volatile("csrr %0, mcycle" : "=r"(now));
+        while ((unsigned long)(now - start) < 36000UL);
+    }
+
     p4_w32(P4_PMU_RF_PWC,
            p4_r32(P4_PMU_RF_PWC) | P4_PMU_PERIF_I2C_RSTB
                                  | P4_PMU_XPD_PERIF_I2C);
