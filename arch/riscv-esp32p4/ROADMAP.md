@@ -120,7 +120,7 @@ tests.
 | A5 | Command and library loaded from MicroSD | `hardware verified` | Evidence entries 2026-08-23: a command and a library loaded from FAT and run from both a kickstart resident and the Shell, every address outside the resident ranges, a marker neither side can fake, and four refusal cases each failing with its reason named and nothing leaked.  Closes M6.  One point met differently and documented |
 | B0 | Canonical D1001 display contract and provenance | `documented` | [display/DISPLAY-CONTRACT.md](display/DISPLAY-CONTRACT.md) is the one place display facts live, each value carrying an evidence class and a source file and line.  Three findings changed the plan: the running reference ignores the timing fields it is given and uses a different set, the rotation direction is no longer a hypothesis, and the DSI bridge registers differ by chip revision.  Nothing is `verified` yet, which is the honest state; the measured frame rate is B4's and is recorded as deferred |
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `hardware partial` | The calibration works and 200 MHz holds over all 32 MB with four bus patterns, identically across six warm resets, and the whole storage stack passes on both media at 360 MHz.  The phase premise was wrong in an instructive way: the PSRAM bus was never the limit.  The CPU ran at 90 MHz because nothing configured it, and is now 360; sequential reads went 20 to 60 MB/s and internal SRAM 25 to 101.  The 100 MB/s gate is not assessable by a CPU loop and is reassigned to B5, with the reason recorded |
-| B2 | Safe I2C1/PCA9535 panel-power sequence | `not started` | Requires B0; backlight remains dark |
+| B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware partial` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Two defects of mine were found by hardware, not by reading.  Untested: the same sequence against the expander's cold defaults, which needs the board power-cycled |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `not started` | Requires B0 and B2 |
 | B4 | Stable internal DSI test pattern | `not started` | Requires B3; isolates panel from DMA/PSRAM |
 | B5 | Native `800 x 1280` RGB565 PSRAM scanout | `not started` | Requires B1 and B4 |
@@ -671,6 +671,7 @@ Acceptance gate:
 | Undocumented DSI PHY constants | IDF's DSI bring-up writes `mipi_dsi_phy_ll_set_switch_time(50, 104, 46, 128)` and `set_max_read_time(6000)` with no derivation in any locally available source, and no ESP32-P4 technical reference manual is present on this machine.  They are carried over as opaque constants.  The failure mode is a PHY that locks but produces marginal signalling, which would look like a panel or timing problem rather than a PHY one, so a B4 pattern fault has to consider them before the timing set is blamed. |
 | CPU clock inherited, not configured | This port set no CPU clock and ran at 90 MHz until 2026-08-23 because the second-stage bootloader's divider was never touched.  Nothing failed, everything was four times slower than the silicon allows, and no diagnostic said so; it was found only by measuring `mcycle` against the system timer while chasing a bandwidth figure.  Anything else this port inherits from that bootloader is unexamined in the same way, the flash clock and the cache configuration in particular. |
 | CPU-loop bandwidth is a latency measurement | A scalar read loop costs 13.6 cycles per word from internal SRAM at both 90 and 360 MHz, which is one cache-line fill per sixteen words with a single fill outstanding.  It therefore measures fill latency and not the memory system's throughput, and no threshold about scanout can be argued from it.  A DMA engine is the only way to measure what the display will actually get, and until B5 exists any bandwidth claim about scanout is unfounded. |
+| The port expander survives a CPU reset | The PCA9535 has no reset pin and keeps its direction and output registers across every reboot, so its state at boot is whatever the last firmware left, not the datasheet default.  Any code that writes a whole register drives pins it never considered; B2's first version pulled the battery-charge enable low that way.  Read-modify-write is the only safe form here, and a check that assumes cold defaults passes vacuously on a warm board. |
 | Flash reads past 16 MB | `krnP4FlashMap()` refuses anything at or past the cache-mapping limit, so the `storage` partition at 0x1020000 is unreachable by that route.  Anything that needs it would have to use raw SPI commands with the cache suspended and a destination in internal SRAM, which is why the development volume was put inside `arosbsp` instead. |
 | Panel timing | Start from measured Vellum behavior, not the contradictory 60 Hz comment. |
 | PSRAM | 20 MHz remains the safe fallback; display scanout requires a calibrated, measured faster path. |
@@ -3914,6 +3915,121 @@ data timeout and no `refusing unaligned` retry appears anywhere in the capture;
 the only nine matches for those patterns are the FAT handler's own write
 refusals, which is what the A4 probe asked for.  No trap, and the heartbeat
 counts 500 ticks per five seconds throughout.
+
+### 2026-08-23 - B2: panel power, and two defects hardware found
+
+- State change: B2 `not started` to `hardware partial`.  The sequence is
+  verified on a warm board; against a cold expander it is not.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3, CPU at
+  360 MHz.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `a67331f4b2`.
+- Artifact: core 175,024 bytes,
+  `c49b3e8d21d138bf3679f7f1c551ddaea1e6709f3daa29999e020ed92edca1f4`, written
+  to `ota_0` at `0x20000` and verified by esptool hash.
+- New build option: `P4_PANEL_PROBE=1`, off by default.
+- Nothing on the data path was touched: no LDO, no DSI, no command to the
+  panel, and the backlight was never enabled.
+
+**AROS already has an I2C subsystem, and it decided the shape.**
+`workbench/hidds/i2c` provides `CLID_Hidd_I2C` under `CLID_Hidd_Bus` with
+`WriteRead` and `ProbeAddress` alongside byte-level methods, and
+`arch/riscv64-opensbi/hidd/dwi2c` is the precedent for a real controller under
+it: an OOP-free `dwi2c_hw.c` whose entry point is
+`DWI2C_HWTransfer(ctrl, address, ...)`, a thin class file above it, hardware
+implementations of `WriteRead` and `ProbeAddress`, and `Start`, `Address`,
+`PutByte` and `GetByte` refusing with a log line because a command-FIFO
+controller cannot hold the bus between calls.
+
+`kernel/i2c_hw.c` is written to that shape.  It takes a port, two GPIOs and a
+bus rate, so it covers both of the P4's controllers, and its one data-moving
+entry point is `krnP4I2CTransfer(address, wbuf, wlen, rbuf, rlen)`, which is
+the `WriteRead` method's signature with the object removed.  A later
+`i2c-esp32p4.hidd` should compile this file rather than reimplement it.  It is
+in `kernel/` for now because the panel sequence has to be provable before
+there is a graphics stack to hang a HIDD from; it belongs in
+`arch/riscv-esp32p4/i2c/` once one exists.
+
+**The first defect: push-pull instead of open drain.**  The first bus scan
+found exactly one device at 0x6a where four are documented, and it found the
+same one at 10 kHz, so a rise-time problem it was not.  The raw status words
+said the hardware was behaving: a genuine NACK at 0x20 and a genuine
+completion at 0x6a.
+
+The cause was two bits I set that ESP-IDF never touches.  `I2C_SDA_FORCE_OUT`
+and `I2C_SCL_FORCE_OUT` are documented as "1: Direct output, 0: Open drain
+output" with a default of zero, and I set both, reasoning about them as
+"force the peripheral to own the pin".  With the master driving SDA high
+through the acknowledge slot, a slave pulling it low is fighting a push-pull
+driver, and only whichever device wins that contest is ever seen.  One device
+answering out of five is the signature of exactly that.  Cleared, the bus is
+populated:
+
+```text
+[panel]  i2c1 sda 20 scl 21 at 100 kHz: 0x18 0x20 0x40 0x51 0x6a
+```
+
+0x18 is the codec, 0x20 the port expander, 0x51 the real-time clock and 0x6a
+the inertial sensor; 0x40 is unidentified and recorded as such rather than
+guessed at.  `i2c0` on GPIO37/38 answers nothing, which is consistent with the
+touch controller sharing the panel rail that this phase deliberately leaves
+off, and is not evidence of a fault.
+
+**The second defect: the expander is not reset by a CPU reset.**  This is the
+finding worth keeping.  The PCA9535 has no reset pin and keeps its direction
+and output registers across every reboot, so on this board it is found with all
+sixteen pins already outputs, left that way by whatever firmware ran last.  The
+phase's own rule - preload a safe latch, preserve unrelated bits - was written
+for a cold device, and a whole-register write to a warm one drives eleven pins
+nobody asked about.  My first version did that and pulled the battery-charge
+enable low, which the run reported.  Every write is now read-modify-write
+against the device's own register, and the four owned bits are the only ones
+any value in this file can change.
+
+The check had to change too.  "Every other bit is an input" is only true on a
+cold board and would have passed vacuously here; what is verifiable is that the
+four owned bits are outputs, that no other direction changed, and that no level
+outside those four moved:
+
+```text
+[panel]  as found: config 0x00000000, output 0x00000100
+[panel]  our four are outputs, every other direction unchanged
+[panel]  no level outside our four moved
+[panel]  after the reset pulse: output 0x00000105, powered, reset released
+[panel]  returned to safe, reset asserted and dark
+[panel]  B2 passed, twice
+```
+
+**A third, smaller one.**  The transport's wait was bounded by a loop count,
+and on a bus with nothing on it - where neither a NACK nor the controller's own
+timeout arrives - scanning 112 addresses took long enough to look like a hang.
+It is bounded by the system timer now, 50 ms against a longest allowed transfer
+of about 30 ms.  A loop count is also a bound whose meaning changes with the
+CPU clock, which B1 has just shown can be somewhere nobody expected.
+
+- Acceptance passed: configuration and output read back matching each intended
+  state; the sequence run twice with no unrelated bit moved and PWR_HOLD held
+  throughout; every rail, reset and backlight transition bounded and logged;
+  and every failure path returning to reset asserted with the backlight dark,
+  which the two aborts in the first runs exercised for real.
+- Acceptance not yet met: the same sequence against the expander's cold
+  defaults.  The board has not been power-cycled since my whole-register write,
+  so what the run now reports as "found" is a state I left, and the
+  preservation check is therefore weaker than it looks: the unrelated bits are
+  already zero and preserving zero proves little.  A power cycle restores all
+  pins to inputs with the latch all ones, which is the case the rule was
+  written for and the one that has to be shown.
+- Safety impact: no medium was written and no data path touched.  The backlight
+  was never enabled and the panel supply was returned to off.  One unintended
+  change was made and is recorded above: the battery-charge enable was pulled
+  low by the first version, which per the reference means charging enabled,
+  the harmless direction.
+- Remaining risk: the audio amplifier enable is one of the bits this port now
+  preserves rather than controls, and its safe value depends on what ran
+  before.  If a future phase needs the codec, that bit becomes someone's
+  responsibility and it should be claimed explicitly rather than inherited.
+- Next safe step: the same probe after a power cycle, then B3, the LDO and DSI
+  PHY with the JD9365 command sequence, which is the first step that touches
+  the data path.
 
 ## Evidence-entry template
 
