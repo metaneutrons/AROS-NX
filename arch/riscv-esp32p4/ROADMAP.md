@@ -671,7 +671,7 @@ Acceptance gate:
 | Undocumented DSI PHY constants | IDF's DSI bring-up writes `mipi_dsi_phy_ll_set_switch_time(50, 104, 46, 128)` and `set_max_read_time(6000)` with no derivation in any locally available source, and no ESP32-P4 technical reference manual is present on this machine.  They are carried over as opaque constants.  The failure mode is a PHY that locks but produces marginal signalling, which would look like a panel or timing problem rather than a PHY one, so a B4 pattern fault has to consider them before the timing set is blamed. |
 | CPU clock inherited, not configured | This port set no CPU clock and ran at 90 MHz until 2026-08-23 because the second-stage bootloader's divider was never touched.  Nothing failed, everything was four times slower than the silicon allows, and no diagnostic said so; it was found only by measuring `mcycle` against the system timer while chasing a bandwidth figure.  Anything else this port inherits from that bootloader is unexamined in the same way, the flash clock and the cache configuration in particular. |
 | CPU-loop bandwidth is a latency measurement | A scalar read loop costs 13.6 cycles per word from internal SRAM at both 90 and 360 MHz, which is one cache-line fill per sixteen words with a single fill outstanding.  It therefore measures fill latency and not the memory system's throughput, and no threshold about scanout can be argued from it.  A DMA engine is the only way to measure what the display will actually get, and until B5 exists any bandwidth claim about scanout is unfounded. |
-| PSRAM stopped answering and stayed that way | An unchanged binary identified 32 MB one boot and read a floating bus the next, with a USB unplug between them.  Since then: a real power cycle with the battery off does not restore it; the whole bring-up has been compared value by value against `esp_psram_impl_enable` and deviates in nothing; the handover state from the bootloader is the reset default; and the CPU clock is not the cause.  A word written to address zero does not come back, so nothing crosses the bus in either direction.  No software hypothesis remains that I can name.  Everything that needs a framebuffer is blocked while this holds. |
+| The PSRAM bring-up is not self-starting | An unchanged binary identified 32 MB one boot and read a floating bus the next.  Writing the reference firmware back brought the chip up immediately - vendor `0x0d`, 32 MB, memory test OK - and this port has worked on every boot since, so the board was never at fault.  What the port cannot do is start from a chip state it did not leave behind: the mode registers survive a CPU reset, reading them needs the read latency to be right already, and the retry loop uses one dummy-length set for all three attempts.  Sweep the latency sets in the identity read before concluding the chip is absent. |
 | The port expander survives a CPU reset | The PCA9535 has no reset pin and keeps its direction and output registers across every reboot, so its state at boot is whatever the last firmware left, not the datasheet default.  Any code that writes a whole register drives pins it never considered; B2's first version pulled the battery-charge enable low that way.  Read-modify-write is the only safe form here, and a check that assumes cold defaults passes vacuously on a warm board. |  And it cannot be cold-started from software at all: the board has a battery, so removing USB changes nothing, and releasing PWR_HOLD with the board on battery was tried cleanly and did not switch it off - the next boot still read the direction register as all-outputs where a cold device reads all-inputs.  Any test that wants the datasheet defaults has to say so out loud.
 | The display has produced no panel-side evidence | Not one DCS reply and not one pixel.  The host reports a locked PHY, lanes in stop state, a clean command path, a running pattern generator with no underrun, and a measured PWM on the backlight pin, and the panel is dark and unlit.  Every register compared matches the vendor BSP and the working reference.  Until something comes back from the panel, every statement about the display path is a statement about the SoC. |
 | DSI reads get no reply | Five DCS reads, the vendor identity register and four standard ones, all return nothing with no protocol error flagged and the host left waiting.  Espressif's driver reads the same register with an unbounded wait and works on this board, so the panel answers there and this port's read path is wrong.  A software reset and the divider encoding have been eliminated.  Nothing in the port depends on reads yet, but a panel that cannot be interrogated cannot be diagnosed either, and B6's orientation work would rather have the scanline register than a photograph. |
@@ -4461,6 +4461,67 @@ round-trip.
   that is the one question worth answering next.  It needs explicit
   authorisation: it overwrites the bootloader, the partition table and both
   app slots.
+
+### 2026-08-23 - PSRAM restored: the reference firmware brings the chip back, and it stays back
+
+- State change: PSRAM works again.  32 MB mapped at `0x48000000`, verified, in
+  exec's memory list, `AvailMem` 34,080,304 bytes, the BSP package loading all
+  fourteen modules into it and the boot reaching the shell.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3, battery attached.
+- Procedure: the full 32 MB backup at
+  `/Volumes/Dev/d1001-backup/d1001-e8f60ae0464c-flash-32MB.bin`, sha256
+  `8923f1e0...92e44` confirmed before writing, written to `0x0` and
+  esptool-hash verified.  Booted the reference firmware once.  Then AROS
+  restored: bootloader to `0x2000`, partition table to `0x8000`, `otadata`
+  erased at `0x10000`, core to `0x20000`, BSP package to `0x820000`, flash
+  volume to `0xc00000`, each esptool-hash verified.
+
+**The reference firmware works on this board, now.**  That was the question, and
+it settles the one that mattered:
+
+```text
+I (401) hex_psram: vendor id    : 0x0d (AP)
+I (402) hex_psram: density      : 0x07 (256 Mbit)
+I (403) hex_psram: BitMode      : 0x01 (X16 Mode)
+I (403) hex_psram: Readlatency  : 0x04 (14 cycles@Fixed)
+I esp_psram: Found 32MB PSRAM device
+I esp_psram: Speed: 200MHz
+I (1112) esp_psram: SPI SRAM memory test OK
+```
+
+`0x0d` is the vendor byte this port asks for and had been reading as `0x1f` for
+the whole investigation.  So the silicon is sound, the solder is sound, and the
+fault was never the board.
+
+**And after that, this port works too.**  AROS restored on top, three resets in
+a row, PSRAM up every time, and then a fourth boot with the full package
+reaching the shell.  Nothing in the port changed between the failing runs and
+these: same core, same sequence, same constants.
+
+The conclusion this forces is narrow and worth stating plainly.  **This port's
+PSRAM bring-up is not self-starting.**  It works from the state the reference
+firmware leaves and it could not work from the state it was in before.  The mode
+registers survive a CPU reset - this file has said so since the retry loop was
+written - and the reference leaves them at read latency 4, write latency 1, X16,
+2048-byte bursts, which is its 200 MHz set.  What the chip held before is not
+known, because the only way to read it is a transaction that needs the timing to
+be right already.  That is the shape of the fault: a chip state this port cannot
+address, and cannot leave, because leaving it needs the state it cannot reach.
+
+- Acceptance points passed: PSRAM up, mapped, verified, carrying the module
+  package; the boot completes; three consecutive resets hold.
+- Acceptance points failed: the bring-up's robustness.  It depends on the chip
+  arriving in a compatible state, and it has no way to recover from one it is
+  not.
+- Remaining risk: this can happen again after any firmware that configures the
+  chip differently, and the retry loop does not help because all three attempts
+  use the same dummy lengths.  The fix is to sweep the latency sets rather than
+  assume one: try the identity read with the slow pair and the fast pair before
+  concluding the chip is absent.  That is a bounded change and it does not need
+  the cause to be proven first.
+- Next safe step: the reorder from the panel bring-up commit has still never run
+  against DSI hardware.  With PSRAM back, B3 stage two and B4 can be re-run, and
+  the reference display path over a real framebuffer becomes buildable.
 
 ## Evidence-entry template
 
