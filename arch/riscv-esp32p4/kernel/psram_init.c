@@ -202,12 +202,30 @@ P4_SRAMCODE int krnPSRAMMPLLUp(void)
         asm volatile("csrr %0, mcycle" : "=r"(start));
         do
             asm volatile("csrr %0, mcycle" : "=r"(now));
-        while ((unsigned long)(now - start) < 36000UL);
+        while ((unsigned long)(now - start) < 360000UL);
     }
 
     p4_w32(P4_PMU_RF_PWC,
            p4_r32(P4_PMU_RF_PWC) | P4_PMU_PERIF_I2C_RSTB
                                  | P4_PMU_XPD_PERIF_I2C);
+
+    /*
+     * And let the block come up before anything asks it to calibrate.
+     *
+     * Without this the calibration succeeded on most boots and not on all -
+     * one run in four reported "the mpll did not calibrate" with the same
+     * binary.  A marginal analogue block is worse than a broken one, because
+     * it passes the test that was used to declare it fixed.  A millisecond
+     * costs nothing here and the failure it removes costs the whole boot.
+     */
+    {
+        unsigned long start, now;
+
+        asm volatile("csrr %0, mcycle" : "=r"(start));
+        do
+            asm volatile("csrr %0, mcycle" : "=r"(now));
+        while ((unsigned long)(now - start) < 360000UL);
+    }
 
     p4_w32(P4_PMU_RF_PWC,
            p4_r32(P4_PMU_RF_PWC) & ~P4_PMU_MSPI_PHY_XPD);

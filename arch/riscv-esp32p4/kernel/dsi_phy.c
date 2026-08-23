@@ -648,7 +648,27 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * `dpi_en` clear, which stops the feed.  With a framebuffer in B5 it will
      * be the other way round and the generator will be off.
      */
+    /*
+     * The bridge's pixel feed, under a switch, to settle an architecture
+     * question this phase cannot answer otherwise.
+     *
+     * Left clear, the bridge brings the link up but produces no pixels, and the
+     * host's own pattern generator is supposed to supply them.  The panel is
+     * lit and stays dark, and there is no counter anywhere that says whether
+     * the generator emits anything at all - it is a DesignWare feature the
+     * vendor reference never uses on this SoC.
+     *
+     * Set, the bridge asks for pixels it has no DMA to fetch, so it must
+     * underrun.  That underrun is the measurement: it proves the pixel path
+     * runs through the bridge and that the generator is not feeding it, which
+     * is what decides whether B4 can be finished at all or whether the
+     * framebuffer of B5 is the only way to put an image on this panel.
+     */
+#ifdef P4_PATTERN_BRIDGE_FEED
+    brg_wr(P4_DSI_BRG_DPI_MISC_CFG, P4_DSI_BRG_DPI_EN);
+#else
     brg_wr(P4_DSI_BRG_DPI_MISC_CFG, 0);
+#endif
     brg_wr(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE);
     brg_wr(P4_DSI_BRG_EN, P4_DSI_BRG_DSI_EN);
 
@@ -688,7 +708,19 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
     dsi_set(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS);
 
     /* Vertical colour bars: pattern mode 0, orientation 0. */
+    /*
+     * The generator and the bridge's pixel feed are alternatives, not layers.
+     *
+     * Measured: with the feed on and the generator on, the host reports a
+     * payload write error and the bridge reports no underrun - so the bridge
+     * is delivering pixels and the host cannot take them while generating its
+     * own.  With the feed on and the generator off, the bridge's pixels are
+     * the only ones on the link, which is the path the vendor reference uses
+     * and the one B5's framebuffer has to feed.
+     */
+#ifndef P4_PATTERN_BRIDGE_FEED
     dsi_set(P4_DSI_VID_MODE_CFG, P4_DSI_VPG_EN);
+#endif
 
     if (out)
         out->brg_en = brg_rd(P4_DSI_BRG_EN);

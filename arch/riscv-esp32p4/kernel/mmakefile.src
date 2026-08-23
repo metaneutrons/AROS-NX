@@ -195,6 +195,15 @@ ifdef P4_PSRAM_MHZ
 P4_DEBUG_CPPFLAGS += -DP4_PSRAM_MHZ=$(P4_PSRAM_MHZ)
 endif
 
+# P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
+# pattern test.  The bridge then asks for pixels it has no DMA to fetch and
+# must underrun; that underrun is the evidence that the pixel path runs through
+# the bridge rather than through the host's own pattern generator.  A
+# measurement, not a working configuration.
+ifdef P4_PATTERN_BRIDGE_FEED
+P4_DEBUG_CPPFLAGS += -DP4_PATTERN_BRIDGE_FEED
+endif
+
 # P4_PSRAM_STRESS=1 tests every word of the window and measures sequential
 # read bandwidth, while the window is still nobody's.  This is B1's acceptance
 # evidence and it costs a few seconds of boot, so it is not a default.

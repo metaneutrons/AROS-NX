@@ -122,7 +122,7 @@ tests.
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `hardware partial` | The calibration works and 200 MHz holds over all 32 MB with four bus patterns, identically across six warm resets, and the whole storage stack passes on both media at 360 MHz.  The phase premise was wrong in an instructive way: the PSRAM bus was never the limit.  The CPU ran at 90 MHz because nothing configured it, and is now 360; sequential reads went 20 to 60 MB/s and internal SRAM 25 to 101.  The 100 MB/s gate is not assessable by a CPU loop and is reassigned to B5, with the reason recorded |
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware partial` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
-| B4 | Stable internal DSI test pattern | `blocked` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
+| B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
 | B5 | Native `800 x 1280` RGB565 PSRAM scanout | `not started` | Requires B1 and B4 |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
@@ -4815,6 +4815,78 @@ thing that should have existed on day one.
   reorder from the 23 August restore commit - supply, PHY lock, command mode,
   then the panel's reset pulse - has never run, because PSRAM blocked it, and
   the reference display path over a real framebuffer is now buildable.
+
+### 2026-08-23 - B3/B4 with the reorder: the backlight lights, and the pixel path is located
+
+- State change: the panel's backlight comes on, which it never did before, and
+  the question of where pixels come from is settled by measurement.  The image
+  is still dark.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+- Test defines: `P4_HEADLESS_BOOT=1 P4_PSRAM_MHZ=200 P4_CPU_MHZ=360
+  P4_PANEL_PROBE=1 P4_DSI_PROBE=1 P4_PATTERN_TEST=1`, and
+  `P4_PATTERN_BRIDGE_FEED=1` for the two measurements below.  Core 174,128
+  bytes.
+
+**The reorder ran, for the first time.**  PSRAM had blocked it since it was
+written.
+
+```text
+[dsi]    phy status 0x000015bd  locked, lanes in stop state
+[dsi]    panel out of reset, with the lanes already in stop state
+[dsi]    the jd9365 sequence completed, display on, backlight still dark
+```
+
+The panel now leaves reset with the lanes already in LP-11, which is what the
+D-PHY specification asks for and what the previous order got backwards.
+
+**The backlight works.**  Reported by the board's owner: lit, where every
+earlier B4 run left it dark and unlit.  Three real defects were fixed to get
+there over the previous sessions - the IOMUX input enable, DC instead of PWM,
+and the LEDC timer's own commit bit - and this is the run where that path
+finally shows.
+
+**The DCS read path is still silent.**  So the reorder was not its cause.  It
+stays as B3's open defect, now with one more hypothesis eliminated.
+
+**The pixel path runs through the bridge, not through the host's generator.**
+This was the open architecture question and it is now measured.  With the
+bridge's pixel feed enabled:
+
+| configuration | host int1 | bridge |
+| :--- | :--- | :--- |
+| feed off, generator on | `0x00000000` | no underrun |
+| feed on, generator on | `0x00000080` | no underrun |
+| feed on, generator off | `0x00000080` | no underrun |
+
+`int1` bit 7 is `DPI_PLD_WR_ERR`.  The bridge delivers pixels the host cannot
+take, and it does so whether or not the generator is running - so the error is
+not a collision between the two.  And the bridge never underruns, which means
+it is not starved either.  What that leaves is a bridge configured too thinly:
+this port writes its timing, pixel type and flow control and none of the pixel
+count, underrun-discard count, burst length, empty threshold or multi-block
+settings the reference sets.
+
+That also settles B4's premise.  The host's own pattern generator is a
+DesignWare feature the vendor reference never uses on this SoC, there is no
+counter that says whether it emits anything, and the panel stays dark with it
+running.  An internal test pattern is not the cheap first image it was planned
+as; the framebuffer of B5 is the shorter path.
+
+**Verified identical to the reference, so not causes:** two data lanes, 1000
+Mbit/s per lane, the Set A timings (hsync 20, hbp 20, hfp 40, vsync 4, vbp 30,
+vfp 30, 40 MHz), RGB565 on both sides of the bridge, and 16-bit colour coding
+configuration 1.
+
+- Acceptance points passed: the reorder holds, the PHY locks, the panel is lit,
+  and the pixel path is identified.
+- Acceptance points failed: no image.  B4's own gate - a stable internal test
+  pattern - is not reachable the way the phase assumed.
+- Remaining risk: the DCS read path remains unexplained, and without it there
+  is still no panel-side acknowledgement of anything sent.
+- Next safe step: B5, and it is now the shorter route to a first image rather
+  than the next phase after one.  A framebuffer in PSRAM, DW-GDMA feeding the
+  bridge, and the bridge configured as the reference configures it.  PSRAM is
+  available and calibrated, which is what blocked this until today.
 
 ## Evidence-entry template
 
