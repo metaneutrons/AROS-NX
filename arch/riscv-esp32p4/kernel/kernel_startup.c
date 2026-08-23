@@ -4190,6 +4190,300 @@ static void krnP4PSRAMStress(unsigned long size)
 }
 #endif /* P4_PSRAM_STRESS */
 
+#ifdef P4_PANEL_PROBE
+/*
+ * B2: the panel's power, reset and backlight, and nothing else.
+ *
+ * The data path is not touched here - no LDO, no DSI, no command to the panel -
+ * so the worst this can do is leave a rail off.  It is run twice on purpose:
+ * the gate asks that a repeated sequence neither powers the board off nor
+ * enables unrelated hardware, and the only way to show that is to repeat it
+ * and compare the expander's registers to what they were.
+ */
+static const char *krnP4I2CName(int r)
+{
+    return r == P4_I2C_OK       ? "ok"
+         : r == P4_I2C_NACK     ? "no answer at the address"
+         : r == P4_I2C_TIMEOUT  ? "the bus timed out"
+         : r == P4_I2C_ARBLOST  ? "arbitration lost"
+         : r == P4_I2C_STUCK    ? "the controller never finished"
+         : r == P4_I2C_BUSY     ? "the bus stayed busy"
+         : r == P4_I2C_TOOLONG  ? "the transfer is longer than the fifo"
+         : r == P4_I2C_NOTREADY ? "the controller was not initialised"
+         : r == P4_I2C_MISMATCH ? "the device kept something else"
+                                : "unknown";
+}
+
+static void krnP4ReportPanel(const char *what, const struct P4PanelState *st)
+{
+    krnP4PutStr("[panel]  ");
+    krnP4PutStr(what);
+    krnP4PutStr(": config ");
+    krnP4PutHex32(st->config);
+    krnP4PutStr(", output ");
+    krnP4PutHex32(st->output);
+    krnP4PutStr(st->claimed ? ", claimed" : ", NOT claimed");
+    krnP4PutStr(st->powered ? ", powered" : ", supply off");
+    krnP4PutStr(st->reset_released ? ", reset released\n" : ", in reset\n");
+}
+
+static int krnP4PanelPass(int pass)
+{
+    struct P4PanelState st;
+    int r;
+
+    krnP4PutStr("[panel]  pass ");
+    krnP4PutDec((uint32_t)pass);
+    krnP4PutStr("\n");
+
+    r = krnP4PanelClaim(&st);
+    if (r != P4_I2C_OK)
+    {
+        krnP4PutStr("[panel]  claim failed: ");
+        krnP4PutStr(krnP4I2CName(r));
+        krnP4PutStr("\n");
+        (void)krnP4PanelSafe();
+        return 0;
+    }
+    krnP4PutStr("[panel]  as found: pins ");
+    krnP4PutHex32(st.input);
+    krnP4PutStr("\n");
+    krnP4ReportPanel("claimed", &st);
+
+    /*
+     * The check that "preserve unrelated bits" was obeyed rather than merely
+     * intended.  Not "every other bit is an input": this board's expander
+     * keeps its registers across a CPU reset and is found with all sixteen
+     * pins already outputs, so the only meaningful statement is that our four
+     * are outputs and that nothing outside them moved.
+     */
+    {
+        UWORD ours = (UWORD)(P4_EXP_LCD_PWR_EN | P4_EXP_LCD_RST
+                             | P4_EXP_LCD_BL_EN | P4_EXP_PWR_HOLD);
+        UWORD stray;
+
+        krnP4PutStr("[panel]  as found: config ");
+        krnP4PutHex32(st.found_config);
+        krnP4PutStr(", output ");
+        krnP4PutHex32(st.found_output);
+        krnP4PutStr("\n");
+
+        if ((st.config & ours) != 0)
+            krnP4PutStr("[panel]  OUR PINS ARE NOT OUTPUTS\n");
+        else if ((UWORD)(st.config & ~ours) != (UWORD)(st.found_config & ~ours))
+            krnP4PutStr("[panel]  A DIRECTION OUTSIDE OUR FOUR CHANGED\n");
+        else
+            krnP4PutStr("[panel]  our four are outputs, every other"
+                        " direction unchanged\n");
+
+        stray = krnP4PanelStrayBits();
+        if (stray)
+        {
+            krnP4PutStr("[panel]  LEVELS CHANGED OUTSIDE OUR FOUR: ");
+            krnP4PutHex32(stray);
+            krnP4PutStr("\n");
+            (void)krnP4PanelSafe();
+            return 0;
+        }
+        krnP4PutStr("[panel]  no level outside our four moved\n");
+
+        if (st.output & P4_EXP_LCD_BL_EN)
+        {
+            krnP4PutStr("[panel]  THE BACKLIGHT ENABLE IS SET, aborting\n");
+            (void)krnP4PanelSafe();
+            return 0;
+        }
+        if (st.output & P4_EXP_LCD_RST)
+        {
+            krnP4PutStr("[panel]  RESET IS NOT ASSERTED, aborting\n");
+            (void)krnP4PanelSafe();
+            return 0;
+        }
+    }
+
+    r = krnP4PanelPowerUp(&st);
+    if (r != P4_I2C_OK)
+    {
+        krnP4PutStr("[panel]  power-up failed: ");
+        krnP4PutStr(krnP4I2CName(r));
+        krnP4PutStr("\n");
+        (void)krnP4PanelSafe();
+        return 0;
+    }
+    krnP4ReportPanel("after the reset pulse", &st);
+
+    if (st.output & P4_EXP_LCD_BL_EN)
+    {
+        krnP4PutStr("[panel]  THE BACKLIGHT CAME ON, aborting\n");
+        (void)krnP4PanelSafe();
+        return 0;
+    }
+    if (!(st.output & P4_EXP_PWR_HOLD))
+    {
+        krnP4PutStr("[panel]  PWR_HOLD WAS LOST, aborting\n");
+        (void)krnP4PanelSafe();
+        return 0;
+    }
+
+    /* Back to safe, so the next pass starts where this one did. */
+    r = krnP4PanelSafe();
+    if (r != P4_I2C_OK)
+    {
+        krnP4PutStr("[panel]  could not return to safe: ");
+        krnP4PutStr(krnP4I2CName(r));
+        krnP4PutStr("\n");
+        return 0;
+    }
+    krnP4PutStr("[panel]  returned to safe, reset asserted and dark\n");
+    return 1;
+}
+
+static void krnP4PanelProbe(void)
+{
+    int r, passes = 0;
+
+    krnP4PutStr("[panel]  B2: expander, panel supply and reset."
+                " No data path.\n");
+
+    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO, P4_D1001_I2C1_SCL_GPIO,
+                      100000UL))
+    {
+        krnP4PutStr("[panel]  I2C1 did not configure\n");
+        return;
+    }
+
+    /*
+     * Who is on which bus.
+     *
+     * The first run scanned only I2C1 at 100 kHz and found exactly one device
+     * where four are documented, so the question became whether the expander
+     * is on the bus this port thinks it is.  Both controllers are scanned at
+     * two speeds; 400 kHz was tried and dropped, because at that rate nearly
+     * every odd address answered, which is a timing fault in this driver and
+     * not fifty devices.
+     */
+    {
+        static const struct { unsigned int port, sda, scl; const char *name; }
+        buses[2] =
+        {
+            { 0, P4_D1001_I2C0_SDA_GPIO, P4_D1001_I2C0_SCL_GPIO, "i2c0" },
+            { 1, P4_D1001_I2C1_SDA_GPIO, P4_D1001_I2C1_SCL_GPIO, "i2c1" },
+        };
+        static const unsigned long speeds[2] = { 10000UL, 100000UL };
+        unsigned int b, i, a, found;
+
+        for (b = 0; b < 2; ++b)
+            for (i = 0; i < 2; ++i)
+            {
+                if (!krnP4I2CInit(buses[b].port, buses[b].sda, buses[b].scl,
+                                  speeds[i]))
+                {
+                    krnP4PutStr("[panel]  could not configure ");
+                    krnP4PutStr(buses[b].name);
+                    krnP4PutStr("\n");
+                    continue;
+                }
+
+                found = 0;
+                krnP4PutStr("[panel]  ");
+                krnP4PutStr(buses[b].name);
+                krnP4PutStr(" sda ");
+                krnP4PutDec(buses[b].sda);
+                krnP4PutStr(" scl ");
+                krnP4PutDec(buses[b].scl);
+                krnP4PutStr(" at ");
+                krnP4PutDec((uint32_t)(speeds[i] / 1000));
+                krnP4PutStr(" kHz:");
+                for (a = 0x08; a < 0x78; ++a)
+                    if (krnP4I2CProbe(a) == P4_I2C_OK)
+                    {
+                        krnP4PutStr(" ");
+                        krnP4PutHex32(a);
+                        ++found;
+                    }
+                if (!found)
+                    krnP4PutStr(" nothing");
+                krnP4PutStr("\n");
+            }
+
+        /* Back to the bus and rate the sequence runs at. */
+        if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO, P4_D1001_I2C1_SCL_GPIO,
+                          100000UL))
+        {
+            krnP4PutStr("[panel]  I2C1 did not reconfigure\n");
+            return;
+        }
+    }
+
+    /*
+     * The expander, asked three ways.
+     *
+     * An address-only probe, a one-byte register write, and a real register
+     * read.  If the device answers a read but not the probe, the probe is
+     * wrong and the bus is fine; if it answers none of them while another
+     * device on the same bus answers all of them, the device is not there.
+     * The raw interrupt and status words separate a clean NACK from anything
+     * else.
+     */
+    {
+        static const unsigned char reg0 = P4_PCA9535_INPUT;
+        unsigned char in[2] = { 0, 0 };
+        unsigned long raw = 0, sr = 0;
+        int rp, rw, rr;
+
+        rp = krnP4I2CProbe(P4_PCA9535_ADDR);
+        krnP4I2CLastStatus(&raw, &sr);
+        krnP4PutStr("[panel]  0x20 address probe: ");
+        krnP4PutStr(krnP4I2CName(rp));
+        krnP4PutStr(", raw ");
+        krnP4PutHex32((uint32_t)raw);
+        krnP4PutStr(", sr ");
+        krnP4PutHex32((uint32_t)sr);
+        krnP4PutStr("\n");
+
+        rw = krnP4I2CTransfer(P4_PCA9535_ADDR, &reg0, 1, NULL, 0);
+        krnP4PutStr("[panel]  0x20 write one byte: ");
+        krnP4PutStr(krnP4I2CName(rw));
+        krnP4PutStr("\n");
+
+        rr = krnP4I2CTransfer(P4_PCA9535_ADDR, &reg0, 1, in, 2);
+        krnP4PutStr("[panel]  0x20 read input port: ");
+        krnP4PutStr(krnP4I2CName(rr));
+        if (rr == P4_I2C_OK)
+        {
+            krnP4PutStr(", pins ");
+            krnP4PutHex32((uint32_t)(in[0] | ((uint32_t)in[1] << 8)));
+        }
+        krnP4PutStr("\n");
+
+        /* The same three against the device that does answer, so the
+           comparison is against a known-good target on the same bus. */
+        rp = krnP4I2CProbe(0x6A);
+        krnP4I2CLastStatus(&raw, &sr);
+        krnP4PutStr("[panel]  0x6a address probe: ");
+        krnP4PutStr(krnP4I2CName(rp));
+        krnP4PutStr(", raw ");
+        krnP4PutHex32((uint32_t)raw);
+        krnP4PutStr(", sr ");
+        krnP4PutHex32((uint32_t)sr);
+        krnP4PutStr("\n");
+
+        if (rr != P4_I2C_OK)
+        {
+            krnP4PutStr("[panel]  the expander is not answering; stopping"
+                        " before anything is changed\n");
+            return;
+        }
+    }
+
+    passes += krnP4PanelPass(1);
+    passes += krnP4PanelPass(2);
+
+    krnP4PutStr("[panel]  B2 ");
+    krnP4PutStr(passes == 2 ? "passed, twice\n" : "FAILED\n");
+}
+#endif /* P4_PANEL_PROBE */
+
 #ifdef P4_PSRAM_PROBE
 /*
  * Does anything answer in the PSRAM window before we have configured a
@@ -4892,6 +5186,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     }
 #ifdef P4_PSRAM_PROBE
     psram_probe();
+#endif
+#ifdef P4_PANEL_PROBE
+    krnP4PanelProbe();
 #endif
 
 #ifdef P4_SDMMC_PROBE

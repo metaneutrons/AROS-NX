@@ -65,6 +65,48 @@ extern struct MemHeader *__esp32p4_mh_low;
 extern struct MemHeader *__esp32p4_mh_high;
 
 /* The periodic tick and the only clock there is (kernel_timer.c) */
+/*
+ * I2C transport results.  A NACK and a timeout are different answers and a
+ * caller has to be able to tell them apart: nothing at the address, against
+ * something holding the line.
+ */
+#define P4_I2C_OK           0
+#define P4_I2C_NACK         (-1)
+#define P4_I2C_TIMEOUT      (-2)
+#define P4_I2C_ARBLOST      (-3)
+#define P4_I2C_STUCK        (-4)
+#define P4_I2C_BUSY         (-5)
+#define P4_I2C_TOOLONG      (-6)
+#define P4_I2C_NOTREADY     (-7)
+
+int krnP4I2CInit(unsigned int port, unsigned int sda_gpio,
+                 unsigned int scl_gpio, unsigned long bus_hz);
+int krnP4I2CTransfer(unsigned int address,
+                     const unsigned char *wbuf, unsigned int wlen,
+                     unsigned char *rbuf, unsigned int rlen);
+int krnP4I2CProbe(unsigned int address);
+void krnP4I2CLastStatus(unsigned long *raw, unsigned long *sr);
+#define P4_I2C_MISMATCH     (-8)    /* the device kept something else */
+
+/* What the panel bring-up claimed and where it got to. */
+struct P4PanelState
+{
+    unsigned char claimed;          /* the four pins are ours */
+    unsigned char powered;          /* LCD_PWR_EN asserted */
+    unsigned char reset_released;   /* the pulse completed */
+    UWORD config;                   /* the direction register, read back */
+    UWORD output;                   /* the output latch, read back */
+    UWORD input;                    /* the pins as found, before anything */
+    UWORD found_output;             /* the output latch as found */
+    UWORD found_config;             /* the direction register as found */
+};
+
+int krnP4PanelClaim(struct P4PanelState *out);
+int krnP4PanelPowerUp(struct P4PanelState *out);
+int krnP4PanelSafe(void);
+UWORD krnP4PanelStrayBits(void);
+const char *krnP4I2CResultName(int result);
+
 /* The SoC clock-tree root dividers, as read back from the registers. */
 struct P4CPUClock
 {

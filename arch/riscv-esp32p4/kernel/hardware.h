@@ -252,6 +252,13 @@
 #define P4_SDMMC_BASE           (P4_HPPERIPH0_BASE + 0x83000)
 
 #define P4_GPIO_BASE            (P4_HPPERIPH1_BASE + 0x20000)
+/* The low bank, pins 0..31.  The SD host needed only the high bank, so these
+   arrived with the first pin below 32 this port had to drive. */
+#define P4_GPIO_OUT_W1TS        0x0008
+#define P4_GPIO_OUT_W1TC       0x000C
+#define P4_GPIO_ENABLE_W1TS     0x0024
+#define P4_GPIO_ENABLE_W1TC     0x0028
+#define P4_GPIO_IN              0x003C
 #define P4_GPIO_OUT1_W1TS       0x0014
 #define P4_GPIO_OUT1_W1TC       0x0018
 #define P4_GPIO_ENABLE1_W1TS    0x0030
@@ -276,6 +283,157 @@
 #define  P4_IOMUX_MCU_SEL_M     (7U << P4_IOMUX_MCU_SEL_S)
 #define  P4_IOMUX_FUNC_SDMMC    0
 #define  P4_IOMUX_FUNC_GPIO     1
+
+/*
+ * Any pin's IOMUX register, and the GPIO matrix.
+ *
+ * The eight offsets above were written out one by one when the SD host was
+ * the only thing that needed them, and its pins happen to have a dedicated
+ * IOMUX function.  I2C does not on this board: SCL and SDA sit on GPIO21 and
+ * GPIO20, which reach the peripheral only through the matrix, so a general
+ * form is needed.  The pattern the eight follow is 0x4 + n*4, which
+ * P4_IOMUX_GPIO39 at 0xA0 confirms.
+ *
+ * The matrix is two arrays.  One entry per pin says which peripheral signal
+ * drives it, one entry per signal says which pin it is read from, and a
+ * bidirectional line like SDA needs both pointing at each other.
+ */
+#define P4_IOMUX_PIN(n)         (0x4 + (n) * 4)
+#define P4_GPIO_FUNC_OUT_SEL(pin) (0x558 + (pin) * 4)
+#define  P4_GPIO_OUT_SEL_MASK   0x1FFUL
+#define  P4_GPIO_OEN_SEL        (1UL << 10)
+/*
+ * The out-select value that means "the GPIO output register drives this pin"
+ * rather than a peripheral signal.  256 is outside the signal map on purpose,
+ * and the field is nine bits wide precisely so it can hold it.
+ */
+#define  P4_GPIO_OUT_SEL_GPIO   256UL
+#define P4_GPIO_FUNC_IN_SEL(sig)  (0x158 + (sig) * 4)
+#define  P4_GPIO_IN_SEL_MASK    0x3FUL
+
+/*
+ * I2C1, the bus the D1001 puts its port expander, codec, IMU and clock on.
+ *
+ * Espressif's I2C is not a shift register with a status bit: it takes a list
+ * of up to eight commands - start, write, read, stop - in COMD0..COMD7, with
+ * the payload in a 32-byte FIFO, and runs the whole list on one trigger.  So
+ * a transfer is built, started once and waited for once, which is why the
+ * byte-level methods of AROS's i2c HIDD class cannot be implemented on it and
+ * WriteRead can.
+ */
+#define P4_I2C1_BASE            (P4_HPPERIPH1_BASE + 0x5000)
+#define P4_I2C_SCL_LOW_PERIOD   0x00
+#define P4_I2C_CTR              0x04
+#define   P4_I2C_SDA_FORCE_OUT  (1UL << 0)
+#define   P4_I2C_SCL_FORCE_OUT  (1UL << 1)
+#define   P4_I2C_MS_MODE        (1UL << 4)
+#define   P4_I2C_TRANS_START    (1UL << 5)
+#define   P4_I2C_TX_LSB_FIRST   (1UL << 6)
+#define   P4_I2C_RX_LSB_FIRST   (1UL << 7)
+#define   P4_I2C_CLK_EN         (1UL << 8)
+#define   P4_I2C_ARBITRATION_EN (1UL << 9)
+#define   P4_I2C_FSM_RST        (1UL << 10)
+#define   P4_I2C_CONF_UPGATE    (1UL << 11)
+#define P4_I2C_SR               0x08
+#define   P4_I2C_RESP_REC       (1UL << 0)
+#define   P4_I2C_ARB_LOST       (1UL << 3)
+#define   P4_I2C_BUS_BUSY       (1UL << 4)
+#define   P4_I2C_RXFIFO_CNT_S   8
+#define   P4_I2C_RXFIFO_CNT_M   0x3FUL
+#define P4_I2C_TO               0x0C
+#define   P4_I2C_TIME_OUT_EN    (1UL << 5)
+#define P4_I2C_FIFO_ST          0x14
+#define P4_I2C_FIFO_CONF        0x18
+#define   P4_I2C_NONFIFO_EN     (1UL << 10)
+#define   P4_I2C_FIFO_ADDR_CFG_EN (1UL << 11)
+#define   P4_I2C_RX_FIFO_RST    (1UL << 12)
+#define   P4_I2C_TX_FIFO_RST    (1UL << 13)
+#define   P4_I2C_FIFO_PRT_EN    (1UL << 14)
+#define P4_I2C_DATA             0x1C
+#define P4_I2C_INT_RAW          0x20
+#define P4_I2C_INT_CLR          0x24
+#define   P4_I2C_END_DETECT_INT (1UL << 3)
+#define   P4_I2C_ARB_LOST_INT   (1UL << 5)
+#define   P4_I2C_TRANS_COMPLETE_INT (1UL << 7)
+#define   P4_I2C_TIME_OUT_INT   (1UL << 8)
+#define   P4_I2C_NACK_INT       (1UL << 10)
+#define P4_I2C_INT_ENA          0x28
+#define P4_I2C_SDA_HOLD         0x30
+#define P4_I2C_SDA_SAMPLE       0x34
+#define P4_I2C_SCL_HIGH_PERIOD  0x38
+#define   P4_I2C_SCL_WAIT_HIGH_S 9
+#define P4_I2C_SCL_START_HOLD   0x40
+#define P4_I2C_SCL_RSTART_SETUP 0x44
+#define P4_I2C_SCL_STOP_HOLD    0x48
+#define P4_I2C_SCL_STOP_SETUP   0x4C
+#define P4_I2C_FILTER_CFG       0x50
+#define P4_I2C_COMD(n)          (0x58 + (n) * 4)
+
+/* The command opcodes, in bits 13:11 of a COMD entry. */
+#define P4_I2C_CMD_RSTART       6
+#define P4_I2C_CMD_WRITE        1
+#define P4_I2C_CMD_READ         3
+#define P4_I2C_CMD_STOP         2
+#define P4_I2C_CMD_END          4
+#define P4_I2C_CMD_OP_S         11
+#define P4_I2C_CMD_ACK_VALUE    (1UL << 10)
+#define P4_I2C_CMD_ACK_EXP      (1UL << 9)
+#define P4_I2C_CMD_ACK_CHECK_EN (1UL << 8)
+
+/*
+ * Both controllers' gates, source selects, dividers and resets.
+ *
+ * The two are not laid out symmetrically: I2C0's enable and source select sit
+ * in PERI_CLK_CTRL10 with its divider, while I2C1's enable and source select
+ * are in the same register but its divider is in CTRL11.  So the tables below
+ * carry a register per field rather than assuming an offset.
+ */
+#define P4_I2C0_BASE            (P4_HPPERIPH1_BASE + 0x4000)
+#define P4_CLKRST_SOC_CLK_CTRL2 (P4_HP_SYS_CLKRST_BASE + 0x1C)
+#define   P4_I2C0_APB_CLK_EN    (1UL << 12)
+#define   P4_I2C1_APB_CLK_EN    (1UL << 13)
+#define P4_CLKRST_PERI_CLK_CTRL10 (P4_HP_SYS_CLKRST_BASE + 0x40)
+#define   P4_I2C0_CLK_SRC_SEL   (1UL << 0)    /* 0 XTAL, 1 fast RC */
+#define   P4_I2C0_CLK_EN        (1UL << 1)
+#define   P4_I2C1_CLK_SRC_SEL   (1UL << 26)
+#define   P4_I2C1_CLK_EN        (1UL << 27)
+#define P4_CLKRST_PERI_CLK_CTRL11 (P4_HP_SYS_CLKRST_BASE + 0x44)
+#define   P4_I2C_CLK_DIV_NUM_S  0
+#define   P4_I2C_CLK_DIV_NUM_M  0xFFUL
+#define P4_CLKRST_HP_RST_EN1    (P4_HP_SYS_CLKRST_BASE + 0xC4)
+#define   P4_RST_EN_I2C1        (1UL << 21)
+#define   P4_RST_EN_I2C0        (1UL << 22)
+
+/* The matrix signal indices, from the SoC's signal map. */
+#define P4_SIG_I2C0_SCL         68
+#define P4_SIG_I2C0_SDA         69
+#define P4_SIG_I2C1_SCL         70
+#define P4_SIG_I2C1_SDA         71
+
+/*
+ * The D1001's I2C1 pins and its port expander.
+ *
+ * Bit assignments and polarities are in display/DISPLAY-CONTRACT.md, which is
+ * authoritative; they are repeated here only as the names the code uses.
+ */
+#define P4_D1001_I2C0_SDA_GPIO  37
+#define P4_D1001_I2C0_SCL_GPIO  38
+#define P4_D1001_I2C1_SDA_GPIO  20
+#define P4_D1001_I2C1_SCL_GPIO  21
+#define P4_D1001_BACKLIGHT_GPIO 14
+#define P4_PCA9535_ADDR         0x20
+#define P4_PCA9535_INPUT        0x00
+#define P4_PCA9535_OUTPUT       0x02
+#define P4_PCA9535_POLARITY     0x04
+#define P4_PCA9535_CONFIG       0x06
+
+#define P4_EXP_LCD_PWR_EN       (1U << 0)
+#define P4_EXP_LCD_RST          (1U << 2)   /* active low */
+#define P4_EXP_BAT_READ_EN      (1U << 6)
+#define P4_EXP_LCD_BL_EN        (1U << 7)
+#define P4_EXP_PWR_HOLD         (1U << 8)
+#define P4_EXP_BAT_CHARGE_EN    (1U << 10)
+#define P4_EXP_AMP_EN           (1U << 11)
 
 #define P4_SD_D0_GPIO           39
 #define P4_SD_D1_GPIO           40
@@ -311,6 +469,13 @@
 
 #define P4_LP_CLKRST_BASE       (P4_LPAON_BASE + 0x1000)
 
+
+/*
+ * The crystal.  A SoC fact rather than a PSRAM one, which is where it lived
+ * until I2C needed it: it is the one clock on this chip that no divider this
+ * port sets can move, which is why the I2C bus is timed from it.
+ */
+#define P4_XTAL_HZ              40000000UL
 
 /*
  * The two register accessors every file here uses.
