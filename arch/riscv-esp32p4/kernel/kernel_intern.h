@@ -139,6 +139,13 @@ void krnP4CacheOn(unsigned long token);
 #define P4_FLASHDISK_SIZE           0x00400000UL
 #define P4_FLASHDISK_PKG_LIMIT      P4_FLASHDISK_PART_OFFSET
 
+/*
+ * The absolute flash offset of the volume, filled in once the partition has
+ * been located, and zero if it never was.  flashdisk.device reads it; a
+ * device that guessed would serve whatever happens to sit at offset zero.
+ */
+extern unsigned long __esp32p4_flashdisk_base;
+
 /* Reading flash from code that executes out of it (kernel_flash.c) */
 void krnP4FlashSurvey(void);
 void *krnP4FlashMap(unsigned long paddr, unsigned long len);
