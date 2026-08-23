@@ -277,7 +277,19 @@ P4_SRAMCODE unsigned long krnPSRAMClockSet(unsigned long target_hz)
     return P4_PSRAM_MPLL_HZ / div;
 }
 
-P4_SRAMCODE unsigned long krnPSRAMClockUp(unsigned long target_hz)
+/*
+ * The controller itself: module clocks, reset, clock source.  No divider.
+ *
+ * Split out from krnPSRAMClockUp because ESP-IDF's order is not the one this
+ * file used to have.  esp_psram_impl_enable() brings the module up, then sets
+ * the pin drive and the strobe, then the analogue timing, and only then the
+ * divider - so the pins are configured before any clock counts down against
+ * them.  Whether that matters at 20 MHz is not established; following the
+ * sequence that is known to work costs nothing and removes the question.
+ *
+ * Returns 1 if the controller kept a write, 0 if it did not.
+ */
+P4_SRAMCODE static int krnPSRAMControllerUp(struct P4PSRAMEntry *entry)
 {
     /* Module clocks first: the registers below do not answer without them */
     p4_w32(P4_CLKRST_SOC_CLK_CTRL0,
@@ -285,6 +297,19 @@ P4_SRAMCODE unsigned long krnPSRAMClockUp(unsigned long target_hz)
     p4_w32(P4_CLKRST_PERI_CLK_CTRL00,
            p4_r32(P4_CLKRST_PERI_CLK_CTRL00) | P4_PSRAM_PLL_CLK_EN
                                              | P4_PSRAM_CORE_CLK_EN);
+
+    /*
+     * Readable from here and cleared by the reset below, so this is the only
+     * window in which the handover state of the controller itself exists.
+     */
+    if (entry)
+    {
+        entry->mspi2_sram_clk   = p4_r32(P4_MSPI2_SRAM_CLK);
+        entry->mspi3_clock      = p4_r32(P4_MSPI3_CLOCK);
+        entry->timing_cali      = p4_r32(P4_MSPI_TIMING_CALI);
+        entry->smem_timing_cali = p4_r32(P4_MSPI_SMEM_TIMING_CALI);
+        entry->smem_ac          = p4_r32(P4_MSPI_SMEM_AC);
+    }
 
     /* Reset both halves, AXI outermost, and release in the reverse order */
     p4_w32(P4_CLKRST_HP_RST_EN0,
@@ -300,11 +325,25 @@ P4_SRAMCODE unsigned long krnPSRAMClockUp(unsigned long target_hz)
            | ((unsigned long)P4_PSRAM_CLK_SRC_MPLL << P4_PSRAM_CLK_SRC_SHIFT));
 
     /*
-     * The divider, and its read-back is the test for everything above.  An
+     * A write and its read-back is the test for everything above.  An
      * unclocked or still-reset controller does not keep what was written to
      * it, so a value that comes back unchanged says the reset was released
      * and the module clocks are on, which is the whole claim this stage makes.
+     * The divider itself is set later, in the reference's order.
      */
+    return krnPSRAMClockSet(20000000UL) != 0;
+}
+
+/*
+ * The old combined form, kept for the tuning and for any caller that wants
+ * the controller and a clock in one step.  The bring-up no longer uses it,
+ * because the steps between the two now have to run in between.
+ */
+P4_SRAMCODE unsigned long krnPSRAMClockUp(unsigned long target_hz)
+{
+    if (!krnPSRAMControllerUp(NULL))
+        return 0;
+
     return krnPSRAMClockSet(target_hz);
 }
 
@@ -345,19 +384,30 @@ P4_SRAMCODE static void p4_psram_pin_drive(unsigned long drv)
     }
 }
 
-P4_SRAMCODE void krnPSRAMConfigure(void)
+/*
+ * Drive strength and the strobe.
+ *
+ * Without the strobe a DTR read never completes, and the controller waits
+ * rather than complaining.  ESP-IDF does both of these immediately after the
+ * module reset and before the divider, which is why they are their own step.
+ */
+P4_SRAMCODE static void krnPSRAMPinsUp(void)
 {
-    unsigned long ac;
-
-    /* Drive strength before anything is sent, then the strobe: without the
-       strobe a DTR read never completes, and the controller waits rather
-       than complaining */
     p4_psram_pin_drive(P4_PSRAM_PIN_DRV);
 
     p4_w32(P4_IOMUX_PSRAM_DQS_0,
            p4_r32(P4_IOMUX_PSRAM_DQS_0) | P4_IOMUX_DQS_XPD);
     p4_w32(P4_IOMUX_PSRAM_DQS_1,
            p4_r32(P4_IOMUX_PSRAM_DQS_1) | P4_IOMUX_DQS_XPD);
+}
+
+/*
+ * Chip-select timing, split transactions and the page size.  None of these
+ * depend on the bus clock, which is why this stage says nothing about speed.
+ */
+P4_SRAMCODE static void krnPSRAMAnalogUp(void)
+{
+    unsigned long ac;
 
     ac = p4_r32(P4_MSPI_SMEM_AC);
     ac &= ~(P4_SMEM_CS_SETUP_TIME_M | P4_SMEM_CS_HOLD_TIME_M
@@ -372,11 +422,60 @@ P4_SRAMCODE void krnPSRAMConfigure(void)
     p4_w32(P4_MSPI_SMEM_ECC_CTRL,
            (p4_r32(P4_MSPI_SMEM_ECC_CTRL) & ~P4_SMEM_PAGE_SIZE_MASK)
            | ((unsigned long)P4_PSRAM_PAGE_SIZE_2048 << P4_SMEM_PAGE_SIZE_SHIFT));
+}
 
+/*
+ * The delay line, for both halves of the block.
+ *
+ * Both bits are bit 5, one in the flash half's timing register and one in the
+ * PSRAM half's, and ESP-IDF sets both at every clock it supports including
+ * the slowest.  It sets them after the divider, which is the order used here.
+ */
+P4_SRAMCODE static void krnPSRAMDllUp(void)
+{
     p4_w32(P4_MSPI_SMEM_TIMING_CALI,
            p4_r32(P4_MSPI_SMEM_TIMING_CALI) | P4_DLL_TIMING_CALI);
     p4_w32(P4_MSPI_TIMING_CALI,
            p4_r32(P4_MSPI_TIMING_CALI) | P4_DLL_TIMING_CALI);
+}
+
+/*
+ * The three above in one call, for the retry path, where the clock already
+ * stands and the order between them no longer means anything.
+ */
+P4_SRAMCODE static void krnPSRAMConfigure(void)
+{
+    krnPSRAMPinsUp();
+    krnPSRAMAnalogUp();
+    krnPSRAMDllUp();
+}
+
+/*
+ * What the second-stage bootloader left behind, read before anything here
+ * writes.  See the comment on struct P4PSRAMEntry for why this is worth
+ * printing: it is the one input to the bring-up this port does not set.
+ */
+P4_SRAMCODE void krnPSRAMEntryRead(struct P4PSRAMEntry *out)
+{
+    out->soc_clk_ctrl0    = p4_r32(P4_CLKRST_SOC_CLK_CTRL0);
+    out->peri_clk_ctrl00  = p4_r32(P4_CLKRST_PERI_CLK_CTRL00);
+    out->hp_rst_en0       = p4_r32(P4_CLKRST_HP_RST_EN0);
+    out->dqs_0            = p4_r32(P4_IOMUX_PSRAM_DQS_0);
+
+    /*
+     * The controller's own registers are not readable here.  The first
+     * version of this function read them too and the boot stopped dead on
+     * the first of them: without the module clock an MSPI register does not
+     * answer, and the bus waits rather than faulting.  That is a measurement
+     * in itself - the bootloader hands this port a PSRAM controller with its
+     * clock off - so the four are read where they become readable instead,
+     * in krnPSRAMControllerUp, after the clock and before the reset.
+     */
+    out->mspi2_sram_clk   = 0;
+    out->mspi3_clock      = 0;
+    out->timing_cali      = 0;
+    out->smem_timing_cali = 0;
+    out->smem_ac          = 0;
 }
 
 /*
@@ -616,8 +715,13 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     info->fell_back = 0;
     info->tuning.tuned = 0;
 
+    info->connected = 0;
+
     fast = target_hz > 80000000UL;
     info->fast_requested = (unsigned char)fast;
+
+    /* Before anything here writes, so the print is the handover state */
+    krnPSRAMEntryRead(&info->entry);
 
     info->mpll_reason = (signed char)krnPSRAMMPLLUp();
     info->mpll_up = (info->mpll_reason == P4_MPLL_OK) ? 1 : 0;
@@ -640,9 +744,22 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     p4_psram_select_params(target_hz);
     krnPSRAMTuningClear();
 
-    info->clock_hz = krnPSRAMClockUp(20000000UL);
+    /*
+     * ESP-IDF's order, step for step: module up, pins, analogue timing,
+     * divider, delay line.  This file used to set the divider immediately
+     * after the module reset and everything else afterwards.
+     */
+    if (!krnPSRAMControllerUp(&info->entry))
+        return 0;
+
+    krnPSRAMPinsUp();
+    krnPSRAMAnalogUp();
+
+    info->clock_hz = krnPSRAMClockSet(20000000UL);
     if (!info->clock_hz)
         return 0;
+
+    krnPSRAMDllUp();
 
     /*
      * Configure, then identify, and retry the pair if the chip does not answer.
@@ -666,6 +783,22 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
         {
             krnPSRAMConfigure();
             krnPSRAMModeInit();
+
+            /*
+             * The connected check comes before the identity read, which is
+             * ESP-IDF's order and not the one this file had.
+             *
+             * It answers a different and stronger question: a word written
+             * and read back at address zero says the controller, the pins,
+             * the clock and the chip carry data.  The identity read only
+             * says the mode registers can be addressed.  Running the
+             * identity read first and returning on its failure meant this
+             * port never learned whether the chip carries data at all -
+             * every failure so far has been reported as "no answer" when
+             * the stronger test had not been tried.
+             */
+            info->connected = krnPSRAMRoundTrip(&back) ? 1 : 0;
+
             if (krnPSRAMIdentify(&vendor, &density))
                 break;
         }
@@ -675,6 +808,7 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
         {
             info->vendor = vendor;
             info->density = density;
+            info->round_trip = info->connected;
             return 0;
         }
     }

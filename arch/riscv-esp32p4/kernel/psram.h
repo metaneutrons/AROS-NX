@@ -400,7 +400,6 @@ int krnPSRAMMPLLUp(void);
 unsigned long krnPSRAMMPLLState(void);
 unsigned long krnPSRAMClockUp(unsigned long target_hz);
 unsigned long krnPSRAMClockSet(unsigned long target_hz);
-void krnPSRAMConfigure(void);
 void krnPSRAMModeInit(void);
 int krnPSRAMIdentify(unsigned char *vendor, unsigned char *density);
 int krnPSRAMRoundTrip(uint32_t *back);
@@ -481,6 +480,32 @@ struct P4PSRAMTuning
     unsigned long delay_pass;       /* bit n set: candidate n passed every try */
 };
 
+/*
+ * The state this port inherits rather than sets.
+ *
+ * Every value the bring-up writes has now been compared against ESP-IDF's
+ * own sequence and matches it, so a failure that persists across a real
+ * power cycle cannot be a wrong constant.  What is left is the state the
+ * second-stage bootloader hands over, which this port has never looked at:
+ * MSPI2 serves flash and PSRAM from one block, so the bootloader's flash
+ * configuration is a shared input to the PSRAM bring-up.
+ *
+ * Read before anything is written, and printed, so the next failure is a
+ * comparison rather than a guess.
+ */
+struct P4PSRAMEntry
+{
+    unsigned long soc_clk_ctrl0;
+    unsigned long peri_clk_ctrl00;
+    unsigned long hp_rst_en0;
+    unsigned long mspi2_sram_clk;
+    unsigned long mspi3_clock;
+    unsigned long timing_cali;
+    unsigned long smem_timing_cali;
+    unsigned long smem_ac;
+    unsigned long dqs_0;
+};
+
 struct P4PSRAMInfo
 {
     unsigned long clock_hz;
@@ -495,9 +520,12 @@ struct P4PSRAMInfo
     unsigned char round_trip;
     unsigned char fast_requested;   /* the caller asked for the tuned clock */
     unsigned char fell_back;        /* it was asked for and did not hold */
+    unsigned char connected;        /* the reference's write/read-back check */
+    struct P4PSRAMEntry entry;      /* what the bootloader left behind */
     struct P4PSRAMTuning tuning;
 };
 
+void krnPSRAMEntryRead(struct P4PSRAMEntry *out);
 int krnPSRAMBringUp(struct P4PSRAMInfo *info, unsigned long target_hz);
 void krnPSRAMAxiConfigure(void);
 void krnPSRAMMap(unsigned long size);
