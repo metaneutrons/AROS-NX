@@ -117,7 +117,7 @@ tests.
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
 | A3 | Reproducible, host-built read-only FAT32 `SYS:` image | `hardware verified` | Evidence entry 2026-08-23: byte-reproducible image, checked by the host parser, `fsck_msdos` and its manifest, and read correctly on the board at the values predicted from the image.  Every changed sector after the run is attributed to the host's mount |
 | A4 | Minimal resident DOS/FAT bootstrap from flash PKG | `hardware verified` | Evidence entries 2026-08-23: all eight gate points.  `SYS:` assigned from the A3 image after `AROS.boot` was accepted, `Info()` reports `ID_WRITE_PROTECTED`, eight DOS mutations refused with error 214 and the file bit-identical afterwards, and a medium without `AROS.boot` falls back to a Shell prompt.  Five defects in shared code fixed on the way |
-| A5 | Command and library loaded from MicroSD | `hardware partial` | Evidence entry 2026-08-23: a command and a library, neither in the kickstart or the package, loaded from FAT by DOS/LoadSeg and lddemon, run from both a kickstart resident and the Shell, with every address outside the resident ranges and a marker that neither side can fake.  Owed: the four negative fixtures.  One point met differently and documented |
+| A5 | Command and library loaded from MicroSD | `hardware verified` | Evidence entries 2026-08-23: a command and a library loaded from FAT and run from both a kickstart resident and the Shell, every address outside the resident ranges, a marker neither side can fake, and four refusal cases each failing with its reason named and nothing leaked.  Closes M6.  One point met differently and documented |
 | B0 | Canonical D1001 display contract and provenance | `not started` | Resolve timing contradictions first |
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `not started` | Requires B0; required before scanout |
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `not started` | Requires B0; backlight remains dark |
@@ -639,6 +639,7 @@ Acceptance gate:
 | DMA destination alignment | `AllocMem` does not return cache-line-aligned memory on this target, and the IDMAC needs 64 bytes because cache maintenance works on whole lines.  FAT's 32-sector cache reads arrive 32-byte aligned and go through the SD backend's bounce buffer for exactly that reason.  Only the SD backend knows this today; every further DMA driver has to bounce or align, and Track B's framebuffer is the next one. |
 | Storage diagnostics after dosboot | The A1, A2 and A3 diagnostics run after `krnStartExec()`, and `dosboot.resource` does not return from it.  A boot-capable build therefore cannot exercise them at all.  Regression-testing the storage stack needs a second build with `dosboot` out of the package, which is the same diagnostic-ordering boundary Track A was structured around, now permanent. |
 | Trampoline cache maintenance | Anything built with `__AROS_SET_FULLJMP` is real instructions written through the data path and needs a `CacheClearE()` that is not conditional on `__AROS_USE_FULLJMP`; that macro means the library jump table holds instructions, which is a different question and false on 32-bit RISC-V.  Four sites exist and all four are correct as of 2026-08-23: `rom/dos/internalloadseg_elf.c`, `arch/ppc-chrp/dos/internalloadseg_elf.c`, `compiler/arossupport/createseglist.c` and `workbench/c/shellcommands/shellcommands_init.c`, the last only after being fixed.  The failure mode is an illegal-instruction trap on a valid instruction, which reads as a compiler or linker fault and is neither. |
+| COLDSTART residents below -50 | `dosboot.resource` initialises at -50 and does not return, so any COLDSTART resident with a lower priority never runs while it is in the package.  `ram-handler` at -125 is the case that surfaced this: it cannot provide `RAM:` here, which is why A5's refusal fixtures are served from memory through `InternalLoadSeg()`'s own function array instead.  Anything added to the package has to be checked against -50, and `RTF_AFTERDOS` is the pass to use for work that needs a running DOS. |
 | Shell ready while blocked | Unexplained: at an idle prompt the heartbeat's ready-list dump shows the Shell permanently ready at priority 0 while it is blocked waiting for a packet reply from the console handler.  Being ready rather than waiting is not what `WaitPkt()` should produce.  It may be harmless bookkeeping and it may be a scheduler or `WaitPkt` defect; either way it matters more for Track C's real console than for `econsole`. |
 
 ## Evidence log
@@ -3116,6 +3117,119 @@ Two smaller corrections made during the run, both mine:
   written with `esptool` instead of by hand.  Note that FAT32 cannot be used
   there: it needs 65,525 clusters minimum, that is 33.5 MB at 512-byte
   clusters, and the whole flash is 32 MB with `storage` at 15.875 MB.
+
+### 2026-08-23 - A5 complete: the four refusals, served from memory
+
+- State change: A5 `hardware partial` to `hardware verified`.  With this, M6
+  is closed and Track A is complete through A5.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3, A3 test
+  card in the board, unchanged from the previous entry.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `43bd5afe37`.
+- Artifacts: core 176,528 bytes,
+  `d08df586ea1ca79f50e0072337f69a1f4cfbc6e6f18cdad9b3e1791ba8e8f85c`;
+  package and image unchanged from the previous entry, so nothing was written
+  to any medium for this.
+- Configuration: as the previous entry.
+
+The gate names four inputs that must fail cleanly: a missing file, a
+malformed one, one for the wrong machine, and one carrying a relocation the
+loader does not implement.  Only the first is about the medium.  The other
+three are about what `rom/dos/internalloadseg_elf.c` does with the bytes it
+is handed, so they are handed to it directly.
+
+`InternalLoadSeg()` takes its read, seek, allocate and free functions as an
+argument array - `LoadSeg()` itself only supplies four wrappers around
+`Read()`, `Seek()`, `AllocMem()` and `FreeMem()` - so a caller may serve the
+file from anywhere.  Serving it from memory is what made this possible at all
+without more hardware handling: there is no writable filesystem in this
+package, and `ram-handler` cannot be added to it, because its `residentpri` of
+-125 puts it behind `dosboot.resource` at -50 in the COLDSTART pass, which
+never returns.  Fixtures on the card would have meant a card handoff each.
+The loader sees the same code path either way, which is the point of using its
+own documented interface rather than a shortcut.
+
+Each fixture is the known-good `sdload-test` mutated in one field, not a blob
+invented for the purpose.  That is the difference between proving a rejection
+and merely observing one: a hand-made file that fails proves only that
+something about it was wrong, while a file differing from a proven-loadable
+one in a single field pins the refusal to that field.  The unmodified bytes
+are loaded first through the same memory path, so nothing below can be blamed
+on the path.
+
+```text
+[a5rej]  missing file: LoadSeg = 0x00000000, IoErr 205  refused as not found
+[a5rej]  reference image 5872 bytes, machine 243
+[a5rej]  unmodified through memory: seglist 0x482ba4e4  loaded, the memory path is sound
+[a5rej]  truncated to 40 bytes: seglist 0x00000000, IoErr 305  refused as not executable
+[a5rej]  e_machine 243 changed to 3: seglist 0x00000000, IoErr 305  refused as not executable
+[a5rej]  relocation type 23 at file offset 0x00000c34 changed to 200: seglist 0x00000000, IoErr 305  refused as not executable
+[a5rej]  good load after the refusals: seglist 0x482bebe4  still works
+[a5rej]  rejection cases passed
+```
+
+And, from the same run with `DOS_DEBUG=1`, the loader naming its own reason in
+each case:
+
+```text
+[ELF Loader] elf_read_block (offset=0, size=52)          <- the 40-byte image
+[ELF Loader] machine    is 3 - should be 243
+[ELF Loader] Unknown relocation #0 type 200
+```
+
+That is what makes each refusal attributable rather than merely present: the
+truncated image failed reading a 52-byte header out of 40 bytes, the wrong
+machine was named by the field that was changed, and the unknown relocation
+was named by number, at entry 0 of the first RELA section, which is exactly
+where it was patched.  Type 23 is `R_RISCV_PCREL_HI20`; 200 is unassigned in
+the psABI.  Each failure was followed by `freemem` lines for everything the
+loader had allocated, so a refusal leaks nothing, and a real `LoadSeg()`
+afterwards still works.
+
+One correction to the test, and it made the check stricter rather than
+weaker.  It expected `ERROR_BAD_HUNK` for the relocation case, which the ELF
+loader does set - and which `InternalLoadSeg()` then overwrites, because the
+last thing it does on any failure is `SetIoErr(ERROR_NOT_EXECUTABLE)`; its own
+comment acknowledges that ELF "has a mess of SetIoErr() calls in it".  So 305
+is the contract of the interface and the specific reason lives on the console,
+not in `IoErr()`.  All three mutation cases now assert 305 through one shared
+judgement, where before two of them asserted only "not zero".
+
+A second correction, mine, caught by reading rather than by running: the
+reference image's length was computed with three `Seek()` calls where two are
+needed.  `Seek()` reports the position it had, not the one it moved to, so
+going to the end and back to the beginning returns the length; the third call
+returned zero and would have made the whole test report that it could not read
+the reference command.
+
+- Acceptance points passed, completing the phase: DOS/LoadSeg executes the
+  command from FAT and lddemon opens the library (previous entry); command,
+  library and UART identities match `proof/proof_id.h` and the file hashes on
+  the card match the image manifest; missing, malformed, wrong-machine and
+  unsupported-relocation inputs all fail cleanly, with the reason named and
+  nothing leaked; the system remains alive - 21 heartbeats, no trap - and the
+  medium is unchanged, `SYS:AROS.boot` hashing `0xf949eb96` before and after
+  the same run's eight refused mutations.
+- One point met differently and documented, as in A4: "through the normal boot
+  path as well as the recovery path".  The normal path needs
+  `S:Startup-Sequence` and therefore `Open("CON:")`, which needs a `con`
+  handler and console device belonging to Track C, and `econsole` excludes it
+  by design since `BF_EMERGENCY_CONSOLE` sets `BF_NO_STARTUP_SEQUENCE`.  What
+  is shown instead is the load working from two genuinely different callers, a
+  kickstart resident and a Shell.
+- Safety impact: nothing was written to any medium in this step, on the host
+  or on the board.  The mutations were made to a copy in RAM of a file read
+  from a write-protected volume.
+- Remaining risk: `ram-handler` cannot be used in this package while dosboot
+  is present, which is a specific instance of a general trap worth
+  remembering: any COLDSTART resident with a priority below -50 never
+  initialises here.  Added to the risk table.
+- Next safe step: the flash `storage` partition as a read-only block device
+  with a FAT16 volume, to end the card handoffs for Track B and C.  FAT32
+  cannot be used there: it needs 65,525 clusters, that is 33.5 MB at 512-byte
+  clusters, and the whole flash is 32 MB with `storage` at 15.875 MB.  An
+  Amiga filesystem was considered and rejected for now: it would need RDB,
+  whose handler exists but which A2's hardening does not cover, and a second
+  filesystem in the package where `fat` is already verified.
 
 ## Evidence-entry template
 

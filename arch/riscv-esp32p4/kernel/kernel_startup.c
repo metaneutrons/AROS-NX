@@ -1092,6 +1092,395 @@ static void krnP4ReportAddress(const char *what, IPTR address)
                 : "  INSIDE A RESIDENT RANGE, not a fresh load\n");
 }
 
+/*
+ * A5's rejection half: four inputs that must fail, and fail cleanly.
+ *
+ * The gate names a missing file, a malformed one, one for the wrong machine
+ * and one carrying a relocation the loader does not implement.  Only the
+ * first of those is really about the medium; the other three are about what
+ * rom/dos/internalloadseg_elf.c does with the bytes it is handed.  So they
+ * are handed to it directly.
+ *
+ * InternalLoadSeg() takes the read, seek, allocate and free functions as an
+ * argument array - LoadSeg() itself only supplies four wrappers around
+ * Read(), Seek(), AllocMem() and FreeMem() - so a caller may serve the file
+ * from anywhere.  Serving it from memory is what makes this test possible at
+ * all here: there is no writable filesystem in this package, and putting
+ * fixtures on the card would mean a card handoff per fixture.  The loader
+ * sees exactly the same code path either way, which is the point.
+ *
+ * Each fixture is the *known-good* command mutated in one documented field,
+ * not a blob invented for the purpose.  That matters: a hand-made file that
+ * fails proves only that something about it was wrong, while a file that
+ * differs from a proven-loadable one in a single field pins the rejection to
+ * that field.  The unmodified bytes are loaded first through the same memory
+ * path, so a failure below cannot be blamed on the path.
+ */
+
+struct p4MemFile
+{
+    const UBYTE *data;
+    LONG         len;
+    LONG         pos;
+};
+
+static AROS_UFH4(LONG, p4MemRead,
+        AROS_UFHA(BPTR, handle, D1),
+        AROS_UFHA(APTR, buffer, D2),
+        AROS_UFHA(LONG, length, D3),
+        AROS_UFHA(struct DosLibrary *, DOSBase, A6))
+{
+    AROS_USERFUNC_INIT
+
+    struct p4MemFile *f = (struct p4MemFile *)handle;
+    LONG left = f->len - f->pos;
+
+    if (length > left)
+        length = left;
+    if (length > 0)
+    {
+        CopyMem((APTR)(f->data + f->pos), buffer, length);
+        f->pos += length;
+    }
+    return length;
+
+    AROS_USERFUNC_EXIT
+}
+
+static AROS_UFH4(LONG, p4MemSeek,
+        AROS_UFHA(BPTR, handle, D1),
+        AROS_UFHA(LONG, pos,    D2),
+        AROS_UFHA(LONG, mode,   D3),
+        AROS_UFHA(struct DosLibrary *, DOSBase, A6))
+{
+    AROS_USERFUNC_INIT
+
+    struct p4MemFile *f = (struct p4MemFile *)handle;
+    LONG old = f->pos;
+    LONG want;
+
+    /* Seek() returns the position it had, or -1, and leaves the position
+       alone on a bad request.  Both matter: the ELF loader seeks back and
+       forth through the section table and checks the return. */
+    switch (mode)
+    {
+    case OFFSET_BEGINNING: want = pos;          break;
+    case OFFSET_CURRENT:   want = f->pos + pos; break;
+    case OFFSET_END:       want = f->len + pos; break;
+    default:               return -1;
+    }
+
+    if (want < 0 || want > f->len)
+        return -1;
+
+    f->pos = want;
+    return old;
+
+    AROS_USERFUNC_EXIT
+}
+
+static AROS_UFH3(APTR, p4MemAlloc,
+        AROS_UFHA(ULONG, length, D0),
+        AROS_UFHA(ULONG, flags,  D1),
+        AROS_UFHA(struct ExecBase *, SysBase, A6))
+{
+    AROS_USERFUNC_INIT
+
+    return AllocMem(length, flags);
+
+    AROS_USERFUNC_EXIT
+}
+
+static AROS_UFH3(void, p4MemFree,
+        AROS_UFHA(APTR,  buffer, A1),
+        AROS_UFHA(ULONG, length, D0),
+        AROS_UFHA(struct ExecBase *, SysBase, A6))
+{
+    AROS_USERFUNC_INIT
+
+    FreeMem(buffer, length);
+
+    AROS_USERFUNC_EXIT
+}
+
+/* Load a memory image through the DOS ELF loader.  Returns the seglist. */
+static BPTR krnP4LoadFromMemory(const UBYTE *data, LONG len)
+{
+    static LONG_FUNC funcarray[4];
+    struct p4MemFile f;
+
+    funcarray[0] = (LONG_FUNC)p4MemRead;
+    funcarray[1] = (LONG_FUNC)p4MemAlloc;
+    funcarray[2] = (LONG_FUNC)p4MemFree;
+    funcarray[3] = (LONG_FUNC)p4MemSeek;
+
+    f.data = data;
+    f.len  = len;
+    f.pos  = 0;
+
+    return InternalLoadSeg((BPTR)&f, BNULL, funcarray, NULL);
+}
+
+/* ELF32 header and section header offsets, from <aros/kernel.h>'s layout and
+   the psABI; spelled out so the mutation sites are visible here. */
+#define P4ELF_E_MACHINE     18      /* UWORD */
+#define P4ELF_E_SHOFF       32      /* ULONG */
+#define P4ELF_E_SHENTSIZE   46      /* UWORD */
+#define P4ELF_E_SHNUM       48      /* UWORD */
+#define P4ELF_SH_TYPE        4      /* ULONG */
+#define P4ELF_SH_OFFSET     16      /* ULONG */
+#define P4ELF_SH_SIZE       20      /* ULONG */
+#define P4ELF_SH_ENTSIZE    36      /* ULONG */
+#define P4ELF_SHT_RELA       4
+#define P4ELF_EM_386         3
+
+static ULONG p4rd32(const UBYTE *p)
+{
+    return (ULONG)p[0] | ((ULONG)p[1] << 8) | ((ULONG)p[2] << 16)
+                       | ((ULONG)p[3] << 24);
+}
+
+static UWORD p4rd16(const UBYTE *p)
+{
+    return (UWORD)(p[0] | (p[1] << 8));
+}
+
+/*
+ * Find the first RELA entry in the image and return its offset, so its type
+ * byte can be changed.  Returns 0 if there is none, which would make the
+ * relocation fixture meaningless rather than passing by accident.
+ */
+static ULONG krnP4FirstRelaTypeOffset(const UBYTE *data, LONG len)
+{
+    ULONG shoff = p4rd32(data + P4ELF_E_SHOFF);
+    UWORD shent = p4rd16(data + P4ELF_E_SHENTSIZE);
+    UWORD shnum = p4rd16(data + P4ELF_E_SHNUM);
+    UWORD i;
+
+    if (!shoff || !shent || !shnum)
+        return 0;
+    if (shoff + (ULONG)shent * shnum > (ULONG)len)
+        return 0;
+
+    for (i = 0; i < shnum; ++i)
+    {
+        const UBYTE *sh = data + shoff + (ULONG)shent * i;
+
+        if (p4rd32(sh + P4ELF_SH_TYPE) != P4ELF_SHT_RELA)
+            continue;
+        if (p4rd32(sh + P4ELF_SH_SIZE) < p4rd32(sh + P4ELF_SH_ENTSIZE))
+            continue;
+
+        /* ELF32 Rela is offset, info, addend; the type is the low byte of
+           info, so four bytes past the entry start on a little endian
+           target. */
+        return p4rd32(sh + P4ELF_SH_OFFSET) + 4;
+    }
+    return 0;
+}
+
+/*
+ * A mutated image must be refused, and refused with ERROR_NOT_EXECUTABLE.
+ *
+ * Not with the more specific error the ELF loader itself determined: the last
+ * thing InternalLoadSeg() does on any failure is SetIoErr(
+ * ERROR_NOT_EXECUTABLE), overwriting it, and its own comment acknowledges
+ * that ELF "has a mess of SetIoErr() calls in it".  So 305 is the contract,
+ * and an earlier version of this test expecting ERROR_BAD_HUNK was checking
+ * for something the interface does not promise.
+ *
+ * The specific reason is not lost, it is just not in IoErr(): with dos built
+ * with DOS_DEBUG=1 the loader names it on the console, and that is where the
+ * evidence for *why* each case was refused comes from.
+ */
+static int krnP4JudgeRefusal(BPTR seg)
+{
+    LONG err = IoErr();
+
+    krnP4PutStr("seglist ");
+    krnP4PutHex32((uint32_t)(IPTR)seg);
+    krnP4PutStr(", IoErr ");
+    krnP4PutDecS((int32_t)err);
+
+    if (seg)
+    {
+        krnP4PutStr("  ACCEPTED, MUST NOT BE\n");
+        UnLoadSeg(seg);
+        return 0;
+    }
+    if (err != ERROR_NOT_EXECUTABLE)
+    {
+        krnP4PutStr("  refused, but not as ERROR_NOT_EXECUTABLE\n");
+        return 0;
+    }
+    krnP4PutStr("  refused as not executable\n");
+    return 1;
+}
+
+static int krnP4A5RejectTest(void)
+{
+    static const char good[] = "SYS:C/sdload-test";
+    static const char absent[] = "SYS:C/p4-no-such-command";
+    UBYTE *image = NULL;
+    LONG len = 0;
+    int passed = 1;
+    BPTR seg;
+
+    krnP4PutStr("[a5rej]  rejection cases starting\n");
+
+    /* 1. A path with nothing behind it.  The only case that is about the
+          filesystem rather than about the bytes. */
+    seg = LoadSeg((CONST_STRPTR)absent);
+    krnP4PutStr("[a5rej]  missing file: LoadSeg = ");
+    krnP4PutHex32((uint32_t)(IPTR)seg);
+    krnP4PutStr(", IoErr ");
+    krnP4PutDecS((int32_t)IoErr());
+    if (!seg && IoErr() == ERROR_OBJECT_NOT_FOUND)
+        krnP4PutStr("  refused as not found\n");
+    else
+    {
+        krnP4PutStr("  NOT REFUSED AS EXPECTED\n");
+        passed = 0;
+        if (seg)
+            UnLoadSeg(seg);
+    }
+
+    /* Read the known-good command, which the load proof has already run. */
+    {
+        BPTR fh = Open((CONST_STRPTR)good, MODE_OLDFILE);
+
+        if (fh)
+        {
+            /*
+             * Seek() reports the position it had, not the one it moved to.
+             * So going to the end and then back to the beginning returns the
+             * end, which is the length.  Two calls, in that order; a third
+             * one would report zero and that is what an earlier version of
+             * this did.
+             */
+            Seek(fh, 0, OFFSET_END);
+            len = Seek(fh, 0, OFFSET_BEGINNING);
+
+            if (len > 0 && (image = AllocMem(len, MEMF_ANY)) != NULL)
+            {
+                if (Read(fh, image, len) != len)
+                {
+                    FreeMem(image, len);
+                    image = NULL;
+                }
+            }
+            Close(fh);
+        }
+    }
+
+    if (!image)
+    {
+        krnP4PutStr("[a5rej]  could not read the reference command;"
+                    " the mutation cases cannot be judged\n");
+        return 0;
+    }
+
+    krnP4PutStr("[a5rej]  reference image ");
+    krnP4PutDec((uint32_t)len);
+    krnP4PutStr(" bytes, machine ");
+    krnP4PutDec((uint32_t)p4rd16(image + P4ELF_E_MACHINE));
+    krnP4PutStr("\n");
+
+    /* 2. The control: the same bytes through the memory path.  If this fails
+          the path is at fault and nothing below means anything. */
+    seg = krnP4LoadFromMemory(image, len);
+    krnP4PutStr("[a5rej]  unmodified through memory: seglist ");
+    krnP4PutHex32((uint32_t)(IPTR)seg);
+    if (seg)
+    {
+        krnP4PutStr("  loaded, the memory path is sound\n");
+        UnLoadSeg(seg);
+    }
+    else
+    {
+        krnP4PutStr("  DID NOT LOAD, IoErr ");
+        krnP4PutDecS((int32_t)IoErr());
+        krnP4PutStr("\n");
+        passed = 0;
+    }
+
+    /* 3. Truncated to less than an ELF header. */
+    seg = krnP4LoadFromMemory(image, 40);
+    krnP4PutStr("[a5rej]  truncated to 40 bytes: ");
+    if (!krnP4JudgeRefusal(seg))
+        passed = 0;
+
+    /* 4. The wrong machine, one field changed. */
+    {
+        UWORD was = p4rd16(image + P4ELF_E_MACHINE);
+
+        image[P4ELF_E_MACHINE]     = P4ELF_EM_386;
+        image[P4ELF_E_MACHINE + 1] = 0;
+
+        seg = krnP4LoadFromMemory(image, len);
+        krnP4PutStr("[a5rej]  e_machine ");
+        krnP4PutDec((uint32_t)was);
+        krnP4PutStr(" changed to ");
+        krnP4PutDec((uint32_t)P4ELF_EM_386);
+        krnP4PutStr(": ");
+        if (!krnP4JudgeRefusal(seg))
+            passed = 0;
+
+        image[P4ELF_E_MACHINE]     = (UBYTE)(was & 0xFF);
+        image[P4ELF_E_MACHINE + 1] = (UBYTE)(was >> 8);
+    }
+
+    /* 5. A relocation type the loader does not implement.  200 is
+          unassigned in the RISC-V psABI, and the loader's default case
+          prints the number it did not recognise. */
+    {
+        ULONG off = krnP4FirstRelaTypeOffset(image, len);
+
+        if (!off || off >= (ULONG)len)
+        {
+            krnP4PutStr("[a5rej]  no RELA entry found;"
+                        " the relocation case cannot be judged\n");
+            passed = 0;
+        }
+        else
+        {
+            UBYTE was = image[off];
+
+            image[off] = 200;
+            seg = krnP4LoadFromMemory(image, len);
+            krnP4PutStr("[a5rej]  relocation type ");
+            krnP4PutDec((uint32_t)was);
+            krnP4PutStr(" at file offset ");
+            krnP4PutHex32(off);
+            krnP4PutStr(" changed to 200: ");
+            if (!krnP4JudgeRefusal(seg))
+                passed = 0;
+            image[off] = was;
+        }
+    }
+
+    FreeMem(image, len);
+
+    /* 6. And the system is still usable: the real thing still loads. */
+    seg = LoadSeg((CONST_STRPTR)good);
+    krnP4PutStr("[a5rej]  good load after the refusals: seglist ");
+    krnP4PutHex32((uint32_t)(IPTR)seg);
+    if (seg)
+    {
+        krnP4PutStr("  still works\n");
+        UnLoadSeg(seg);
+    }
+    else
+    {
+        krnP4PutStr("  BROKEN\n");
+        passed = 0;
+    }
+
+    krnP4PutStr("[a5rej]  rejection cases ");
+    krnP4PutStr(passed ? "passed\n" : "FAILED\n");
+    return passed;
+}
+
 static int krnP4A5Probe(void)
 {
     struct Library *SDProofBase;
@@ -1225,7 +1614,7 @@ static int krnP4A5Probe(void)
 
                 /* The empty argument string still needs its terminating
                    newline; ReadArgs() would otherwise run off the end. */
-                rc = RunCommand(seg, AROS_STACKSIZE, (CONST_STRPTR)"\n", 1);
+                rc = RunCommand(seg, AROS_STACKSIZE, (STRPTR)"\n", 1);
 
                 SelectInput(oldin);
                 SelectOutput(oldout);
@@ -1251,6 +1640,10 @@ static int krnP4A5Probe(void)
 
     krnP4PutStr("[a5]     load proof ");
     krnP4PutStr(passed ? "passed\n" : "FAILED\n");
+
+    if (!krnP4A5RejectTest())
+        passed = 0;
+
     return passed;
 }
 #endif /* P4_A5_PROBE */

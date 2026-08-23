@@ -55,6 +55,7 @@ its evidence entry in the same change.
 | SD/MMC block device | A1 hardware verified | read-only native DesignWare-MMC/IDMAC path.  Every read goes through the IDMAC, as in ESP-IDF.  One run passes 59 card-referenced cells, 1,000 repetitions and the invalid-request rejection cases; separate runs pass the three injected fault modes with CMD12/CMD13 recovery and the heartbeat.  Two gate points are met differently and documented in the roadmap |
 | Partition discovery | A2 hardware verified | bounded MBR/GPT/EBR reading: range and overflow guards in the common funnel, GPT header and entry-array bounds, an EBR visited set and depth limit.  The card reports exactly its one partition; eleven malformed tables from `ramtest.device` are all refused within 4 to 36 sector reads |
 | Test image | A3 hardware verified | reproducible FAT32 image built on the host without root or external tools, one MBR partition at LBA 2048.  Checked by the host's own parser, by `fsck_msdos` and against its manifest, byte-identical on rebuild, and read correctly on the board at the values predicted from the image.  One known gap: no volume-label entry in the root directory, so FAT names the volume from its serial.  See [image/README.md](image/README.md) |
+| Code loaded from SD | A5 hardware verified | a command and a library, in neither the kickstart nor the flash package, loaded from FAT by DOS/LoadSeg and lddemon and run from two different callers, with every address outside the resident ranges.  Four refusal cases fail with the reason named and nothing leaked.  See [proof/](proof/) |
 | DOS/FAT boot | A4 hardware verified | boots from the card to a Shell prompt on the emergency console, which accepts typed input.  dosboot replaces the whole-disk node with the partition node, `AROS.boot` is accepted, `SYS:` is assigned from the volume, `Info()` reports `ID_WRITE_PROTECTED` and eight DOS mutations are refused with error 214 leaving the medium bit-identical.  A card without `AROS.boot` unmounts cleanly and reaches the same prompt |
 | MIPI-DSI framebuffer HIDD | not started | |
 | touch HIDD | not started | |
@@ -712,7 +713,17 @@ exercises. The SD backend's 512-byte bounce buffer could not take FAT's
 and, because econsole polls it at DOS's handler priority 10, starved
 everything below that priority.
 
-Done when: modules outside the kickstart also start from MicroSD.
+A5 closes it. A command and a library, neither in the kickstart nor in the
+flash package, are loaded off the card by `dos.library`'s own ELF loader and
+run: the command from a kickstart resident and again typed at the Shell
+prompt, the library through lddemon. Every code and rodata address lies
+outside the kickstart and the package, judged by the kickstart itself since
+only it knows where those are, and the library answers a call that mixes a
+value the caller passes in with one its own initialisation wrote, which
+neither side can fake. Four refusal cases - missing, truncated, wrong machine
+and an unimplemented relocation - each fail with the loader naming its own
+reason and freeing everything it had allocated.
+Done when: modules outside the kickstart also start from MicroSD. Done.
 The complete order, hardening work and test matrix are in
 [ROADMAP.md, Track A](ROADMAP.md#track-a-storage-and-normal-boot).
 
