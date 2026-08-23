@@ -1,0 +1,27 @@
+#
+#   The read-only block device over the flash development volume.
+#
+#   It is linked into the kickstart rather than shipped in the package, and
+#   that is not a preference.  Package members are relocated by
+#   kernel_elf.c, whose symbol resolution fails on any undefined symbol, so a
+#   package module cannot reference krnP4FlashMap() at all.  A device that
+#   reads flash therefore has to live where that function lives.
+#
+#   Keep it out of the package for the same reason the volume exists: it is a
+#   development convenience, not part of a shipped system.
+#
+
+include $(SRCDIR)/config/aros.cfg
+
+USER_INCLUDES := -I$(SRCDIR)/$(CURDIR) -I$(SRCDIR)/arch/riscv-esp32p4/kernel \
+                 -I$(SRCDIR)/rom/kernel
+USER_LDFLAGS := -static
+
+FLASHDISKFILES = \
+    flashdisk_device
+
+%build_module mmake=kernel-flashdisk \
+  modname=flashdisk modtype=device version=$(AROS_TARGET_PLATFORM) \
+  files="$(FLASHDISKFILES)"
+
+%common

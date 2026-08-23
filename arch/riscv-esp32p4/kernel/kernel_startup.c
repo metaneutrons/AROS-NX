@@ -51,6 +51,7 @@
 #include <dos/filehandler.h>
 #include <proto/dos.h>
 #endif
+
 #ifdef P4_A5_PROBE
 #include <aros/libcall.h>
 #include "../proof/proof_id.h"
@@ -145,6 +146,12 @@ static void report_misa(void)
 /* Not static: the exec arch layer's CacheClearU() has no range of its own
    and needs to know how much of the external window is real. */
 unsigned long __esp32p4_psram_size;
+
+/* Where the flash development volume starts, for flashdisk.device.  Zero
+   until the arosbsp partition has been found, and left at zero if it never
+   is, which is what makes the device refuse to open rather than serve
+   whatever is at offset zero. */
+unsigned long __esp32p4_flashdisk_base;
 static struct MemHeader *__esp32p4_mh_psram;
 /* Not static: the A5 probe judges loaded addresses against this range. */
 UWORD *__esp32p4_modules_low;
@@ -1028,6 +1035,238 @@ static int krnP4AfterDosProbe(void)
 }
 
 #ifdef P4_A5_PROBE
+#ifdef P4_FLASHDISK_TEST
+/*
+ * The flash volume through the whole stack, rather than through a map.
+ *
+ * The earlier probe reads the volume's structures with krnP4FlashMap() and
+ * says the bytes are there.  This asks the harder question: does
+ * flashdisk.device serve them as a block device, and does partition.library
+ * find the FAT16 partition inside?  Same discovery code A2 hardened and
+ * verified against the card and against eleven malformed tables, so if it
+ * reports one partition of the expected size at the expected place, the
+ * device underneath behaves like a disk.
+ *
+ * Deliberately not a mount and not a boot node yet.  A boot node would put
+ * this volume in dosboot's MountList next to the card's, and which of them
+ * wins is a decision with consequences; it gets its own step.
+ */
+static int krnP4FlashDiskDeviceTest(void)
+{
+    struct MsgPort *port = NULL;
+    struct IOStdReq *io = NULL;
+    struct PartitionHandle *root = NULL;
+    int passed = 1;
+
+    krnP4PutStr("[fddev]  flash block device test starting\n");
+
+    if (__esp32p4_flashdisk_base == 0)
+    {
+        krnP4PutStr("[fddev]  no volume base was published\n");
+        return 0;
+    }
+
+    port = CreateMsgPort();
+    if (port)
+        io = (struct IOStdReq *)CreateIORequest(port,
+                                               sizeof(struct IOStdReq));
+    if (!io)
+    {
+        krnP4PutStr("[fddev]  could not create an IO request\n");
+        goto out;
+    }
+
+    if (OpenDevice((CONST_STRPTR)"flashdisk.device", 0,
+                   (struct IORequest *)io, 0) != 0)
+    {
+        krnP4PutStr("[fddev]  flashdisk.device did not open, error ");
+        krnP4PutDecS((int32_t)(signed char)io->io_Error);
+        krnP4PutStr("\n");
+        passed = 0;
+        goto out;
+    }
+    krnP4PutStr("[fddev]  flashdisk.device open\n");
+
+    /* Geometry, and whether it agrees with the constant the volume was
+       written against. */
+    {
+        struct DriveGeometry dg;
+
+        io->io_Command = TD_GETGEOMETRY;
+        io->io_Data = &dg;
+        io->io_Length = sizeof(dg);
+        io->io_Actual = 0;
+        io->io_Offset = 0;
+        DoIO((struct IORequest *)io);
+
+        krnP4PutStr("[fddev]  geometry: error ");
+        krnP4PutDecS((int32_t)(signed char)io->io_Error);
+        krnP4PutStr(", sector size ");
+        krnP4PutDec(dg.dg_SectorSize);
+        krnP4PutStr(", sectors ");
+        krnP4PutDec(dg.dg_TotalSectors);
+        krnP4PutStr("\n");
+        if (io->io_Error != 0 || dg.dg_SectorSize != 512
+            || dg.dg_TotalSectors != P4_FLASHDISK_SIZE / 512)
+            passed = 0;
+    }
+
+    /* Write protection, which a filesystem above will read. */
+    {
+        io->io_Command = TD_PROTSTATUS;
+        io->io_Data = NULL;
+        io->io_Length = 0;
+        io->io_Actual = 0;
+        DoIO((struct IORequest *)io);
+        krnP4PutStr("[fddev]  TD_PROTSTATUS actual ");
+        krnP4PutHex32(io->io_Actual);
+        krnP4PutStr(io->io_Actual ? ", protected\n" : ", NOT PROTECTED\n");
+        if (!io->io_Actual)
+            passed = 0;
+    }
+
+    /* A write must be refused, and the command list must not offer one. */
+    {
+        static uint32_t pattern[128] P4_SRAMDATA;
+        unsigned int k;
+
+        for (k = 0; k < 128; ++k)
+            pattern[k] = 0x5a5a5a5aU;
+
+        io->io_Command = CMD_WRITE;
+        io->io_Data = pattern;
+        io->io_Length = 512;
+        io->io_Actual = 0xdeadbeefU;
+        io->io_Offset = 0;
+        DoIO((struct IORequest *)io);
+        krnP4PutStr("[fddev]  CMD_WRITE: error ");
+        krnP4PutDecS((int32_t)(signed char)io->io_Error);
+        krnP4PutStr(" (");
+        krnP4PutStr((signed char)io->io_Error == (signed char)TDERR_WriteProt
+                    ? "TDERR_WriteProt" : "NOT TDERR_WriteProt");
+        krnP4PutStr("), actual ");
+        krnP4PutHex32(io->io_Actual);
+        if (io->io_Error == 0)
+        {
+            krnP4PutStr(", ACCEPTED, MUST NOT BE\n");
+            passed = 0;
+        }
+        else if ((signed char)io->io_Error != (signed char)TDERR_WriteProt
+                 || io->io_Actual != 0)
+        {
+            /* Refused, but not in a form a filesystem can act on.  The same
+               two properties A4 required of sdcard.device. */
+            krnP4PutStr(", refused, but not as write protection with a zero"
+                        " count\n");
+            passed = 0;
+        }
+        else
+            krnP4PutStr(", refused as write protection\n");
+    }
+
+    CloseDevice((struct IORequest *)io);
+
+    /* And the same discovery code A2 hardened, over this device. */
+    PartitionBase = (struct PartitionBase *)
+        OpenLibrary("partition.library", 3);
+    if (!PartitionBase)
+    {
+        krnP4PutStr("[fddev]  partition.library unavailable\n");
+        passed = 0;
+        goto out;
+    }
+
+    root = OpenRootPartition((CONST_STRPTR)"flashdisk.device", 0);
+    krnP4PutStr("[fddev]  OpenRootPartition = ");
+    krnP4PutHex32((uint32_t)(IPTR)root);
+    krnP4PutStr("\n");
+    if (!root)
+        passed = 0;
+    else
+    {
+        if (OpenPartitionTable(root) != 0)
+        {
+            krnP4PutStr("[fddev]  no partition table accepted\n");
+            passed = 0;
+        }
+        else
+        {
+            struct PartitionHandle *ph;
+            ULONG found = 0;
+
+            krnP4PutStr("[fddev]  table type ");
+            krnP4PutDec(root->table->type);
+            krnP4PutStr("\n");
+
+            ForeachNode(&root->table->list, ph)
+            {
+                ++found;
+                krnP4PutStr("[fddev]    partition: start ");
+                krnP4PutDec(ph->de.de_LowCyl * ph->de.de_Surfaces
+                            * ph->de.de_BlocksPerTrack);
+                krnP4PutStr(", sectors ");
+                krnP4PutDec((ph->de.de_HighCyl - ph->de.de_LowCyl + 1)
+                            * ph->de.de_Surfaces * ph->de.de_BlocksPerTrack);
+                krnP4PutStr(", dostype ");
+                krnP4PutHex32((uint32_t)ph->de.de_DosType);
+                /* 0x46415401 is FAT\1, which the FAT handler registers for
+                   FAT16 and which type byte 0x0e maps to. */
+                krnP4PutStr(ph->de.de_DosType == 0x46415401UL
+                            ? "  FAT16\n" : "  NOT FAT16\n");
+                if (ph->de.de_DosType != 0x46415401UL)
+                    passed = 0;
+            }
+            krnP4PutStr("[fddev]  partitions found ");
+            krnP4PutDec(found);
+            krnP4PutStr(found == 1 ? ", as expected\n" : ", EXPECTED ONE\n");
+            if (found != 1)
+                passed = 0;
+            ClosePartitionTable(root);
+        }
+
+        /* A read through the public API, after discovery, like A2's. */
+        {
+            static uint32_t probe[128] P4_SRAMDATA;
+            LONG r;
+            unsigned int k;
+
+            for (k = 0; k < 128; ++k)
+                probe[k] = 0xa5a5a5a5U;
+            r = ReadPartitionDataQ(root, probe, 512, 0);
+            krnP4PutStr("[fddev]  read after discovery: result ");
+            krnP4PutDecS((int32_t)r);
+            if (r == 0)
+            {
+                krnP4PutStr(", hash ");
+                krnP4PutHex32(krnP4HashBytes((const unsigned char *)probe,
+                                             512));
+                krnP4PutStr("\n");
+            }
+            else
+            {
+                krnP4PutStr(", UNUSABLE\n");
+                passed = 0;
+            }
+        }
+
+        CloseRootPartition(root);
+    }
+
+    CloseLibrary((struct Library *)PartitionBase);
+    PartitionBase = NULL;
+
+out:
+    if (io)
+        DeleteIORequest((struct IORequest *)io);
+    if (port)
+        DeleteMsgPort(port);
+
+    krnP4PutStr("[fddev]  flash block device test ");
+    krnP4PutStr(passed ? "passed\n" : "FAILED\n");
+    return passed;
+}
+#endif /* P4_FLASHDISK_TEST */
+
 /*
  * A5's non-interactive half: prove that code came off the card, and judge the
  * addresses it came to.
@@ -1663,6 +1902,9 @@ AROS_UFH3(static APTR, krnP4AfterDosInit,
     else
     {
         (void)krnP4AfterDosProbe();
+#ifdef P4_FLASHDISK_TEST
+        (void)krnP4FlashDiskDeviceTest();
+#endif
 #ifdef P4_A5_PROBE
         (void)krnP4A5Probe();
 #endif
@@ -3947,6 +4189,15 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutStr(", ");
             krnP4PutDec((uint32_t)(pkg_size / 1024));
             krnP4PutStr(" KB\n");
+
+            /*
+             * Publish where the volume is, so flashdisk.device can serve it.
+             * Only if it fits: a partition too small for the split would
+             * otherwise have the device read package bytes as sectors.
+             */
+            if (P4_FLASHDISK_PART_OFFSET + P4_FLASHDISK_SIZE <= pkg_size)
+                __esp32p4_flashdisk_base =
+                    pkg_off + P4_FLASHDISK_PART_OFFSET;
 
 #ifdef P4_FLASHDISK_PROBE
             /*

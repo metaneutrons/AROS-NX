@@ -167,6 +167,14 @@ ifdef P4_FLASHDISK_PROBE
 P4_DEBUG_CPPFLAGS += -DP4_FLASHDISK_PROBE
 endif
 
+# P4_FLASHDISK_TEST=1 opens flashdisk.device, checks its geometry and write
+# refusal, and runs the A2-hardened discovery code over it to find the FAT16
+# partition inside the volume.  It needs P4_AFTERDOS_PROBE=1, which is where
+# it runs from, because partition.library lives in the package.
+ifdef P4_FLASHDISK_TEST
+P4_DEBUG_CPPFLAGS += -DP4_FLASHDISK_TEST
+endif
+
 ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
@@ -221,7 +229,12 @@ AFILES := \
 #
 BSP_RES  := kernel task
 BSP_LIBS := exec debug
-BSP_DEVS := timer
+#
+#   flashdisk.device is a development convenience and is in the kickstart
+#   because it has to be: it calls krnP4FlashMap(), and a package member
+#   cannot reference a kickstart symbol at all.
+#
+BSP_DEVS := timer flashdisk
 
 BSP_KOBJS := \
     $(addprefix $(KOBJSDIR)/, $(addsuffix _resource.o, $(BSP_RES))) \
@@ -247,7 +260,8 @@ ELF2IMAGE = $(ESPTOOL) --chip esp32p4 elf2image --flash-mode dio \
 	    --flash-freq 80m --flash-size 32MB \
 	    --min-rev-full $(ESP32P4_REV_MIN) --max-rev-full $(ESP32P4_REV_MAX)
 
-#MM kernel-esp32p4-riscv : kernel-kernel-kobj kernel-exec-kobj kernel-task-kobj kernel-debug-kobj
+#MM kernel-esp32p4-riscv : kernel-kernel-kobj kernel-exec-kobj kernel-task-kobj kernel-debug-kobj \
+#MM     kernel-flashdisk-kobj
 #MM
 kernel-esp32p4-riscv: $(OSGENDIR)/boot/aros-esp32p4.bin
 	$(Q)$(NOP)
