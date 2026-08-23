@@ -120,7 +120,7 @@ tests.
 | A5 | Command and library loaded from MicroSD | `hardware verified` | Evidence entries 2026-08-23: a command and a library loaded from FAT and run from both a kickstart resident and the Shell, every address outside the resident ranges, a marker neither side can fake, and four refusal cases each failing with its reason named and nothing leaked.  Closes M6.  One point met differently and documented |
 | B0 | Canonical D1001 display contract and provenance | `documented` | [display/DISPLAY-CONTRACT.md](display/DISPLAY-CONTRACT.md) is the one place display facts live, each value carrying an evidence class and a source file and line.  Three findings changed the plan: the running reference ignores the timing fields it is given and uses a different set, the rotation direction is no longer a hypothesis, and the DSI bridge registers differ by chip revision.  Nothing is `verified` yet, which is the honest state; the measured frame rate is B4's and is recorded as deferred |
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `hardware partial` | The calibration works and 200 MHz holds over all 32 MB with four bus patterns, identically across six warm resets, and the whole storage stack passes on both media at 360 MHz.  The phase premise was wrong in an instructive way: the PSRAM bus was never the limit.  The CPU ran at 90 MHz because nothing configured it, and is now 360; sequential reads went 20 to 60 MB/s and internal SRAM 25 to 101.  The 100 MB/s gate is not assessable by a CPU loop and is reassigned to B5, with the reason recorded |
-| B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware partial` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Two defects of mine were found by hardware, not by reading.  Untested: the same sequence against the expander's cold defaults, which needs the board power-cycled |
+| B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `not started` | Requires B0 and B2 |
 | B4 | Stable internal DSI test pattern | `not started` | Requires B3; isolates panel from DMA/PSRAM |
 | B5 | Native `800 x 1280` RGB565 PSRAM scanout | `not started` | Requires B1 and B4 |
@@ -671,7 +671,7 @@ Acceptance gate:
 | Undocumented DSI PHY constants | IDF's DSI bring-up writes `mipi_dsi_phy_ll_set_switch_time(50, 104, 46, 128)` and `set_max_read_time(6000)` with no derivation in any locally available source, and no ESP32-P4 technical reference manual is present on this machine.  They are carried over as opaque constants.  The failure mode is a PHY that locks but produces marginal signalling, which would look like a panel or timing problem rather than a PHY one, so a B4 pattern fault has to consider them before the timing set is blamed. |
 | CPU clock inherited, not configured | This port set no CPU clock and ran at 90 MHz until 2026-08-23 because the second-stage bootloader's divider was never touched.  Nothing failed, everything was four times slower than the silicon allows, and no diagnostic said so; it was found only by measuring `mcycle` against the system timer while chasing a bandwidth figure.  Anything else this port inherits from that bootloader is unexamined in the same way, the flash clock and the cache configuration in particular. |
 | CPU-loop bandwidth is a latency measurement | A scalar read loop costs 13.6 cycles per word from internal SRAM at both 90 and 360 MHz, which is one cache-line fill per sixteen words with a single fill outstanding.  It therefore measures fill latency and not the memory system's throughput, and no threshold about scanout can be argued from it.  A DMA engine is the only way to measure what the display will actually get, and until B5 exists any bandwidth claim about scanout is unfounded. |
-| The port expander survives a CPU reset | The PCA9535 has no reset pin and keeps its direction and output registers across every reboot, so its state at boot is whatever the last firmware left, not the datasheet default.  Any code that writes a whole register drives pins it never considered; B2's first version pulled the battery-charge enable low that way.  Read-modify-write is the only safe form here, and a check that assumes cold defaults passes vacuously on a warm board. |
+| The port expander survives a CPU reset | The PCA9535 has no reset pin and keeps its direction and output registers across every reboot, so its state at boot is whatever the last firmware left, not the datasheet default.  Any code that writes a whole register drives pins it never considered; B2's first version pulled the battery-charge enable low that way.  Read-modify-write is the only safe form here, and a check that assumes cold defaults passes vacuously on a warm board. |  And it cannot be cold-started without deciding to: the board has a battery, so removing USB changes nothing, and the only way to drop the rails is to release PWR_HOLD and power the board off.  Any test that wants the datasheet defaults has to say so out loud.
 | Flash reads past 16 MB | `krnP4FlashMap()` refuses anything at or past the cache-mapping limit, so the `storage` partition at 0x1020000 is unreachable by that route.  Anything that needs it would have to use raw SPI commands with the cache suspended and a destination in internal SRAM, which is why the development volume was put inside `arosbsp` instead. |
 | Panel timing | Start from measured Vellum behavior, not the contradictory 60 Hz comment. |
 | PSRAM | 20 MHz remains the safe fallback; display scanout requires a calibrated, measured faster path. |
@@ -4011,13 +4011,34 @@ CPU clock, which B1 has just shown can be somewhere nobody expected.
   throughout; every rail, reset and backlight transition bounded and logged;
   and every failure path returning to reset asserted with the backlight dark,
   which the two aborts in the first runs exercised for real.
-- Acceptance not yet met: the same sequence against the expander's cold
-  defaults.  The board has not been power-cycled since my whole-register write,
-  so what the run now reports as "found" is a state I left, and the
-  preservation check is therefore weaker than it looks: the unrelated bits are
-  already zero and preserving zero proves little.  A power cycle restores all
-  pins to inputs with the latch all ones, which is the case the rule was
-  written for and the one that has to be shown.
+**The board has a battery, so there is no cold expander to test against.**
+Removing USB does not power the board down: the battery keeps it alive, and the
+run after unplugging and replugging read exactly the same registers as the one
+before it.  The only way to drop the rails is to release PWR_HOLD while on
+battery, which powers the whole board off deliberately, so the expander's
+datasheet defaults are not reachable by any accident and not reachable at all
+without that decision.
+
+Which made the preservation check weak in a way worth fixing rather than
+excusing: every unrelated bit was already zero, and preserving zero proves
+nothing about read-modify-write.  So the probe now seeds one first.
+BAT_READ_EN is set high before the passes, chosen because the reference driver
+holds it high in normal operation, and written directly rather than through the
+panel driver because refusing to touch bits outside its four is the property
+under test:
+
+```text
+[panel]  seeded bit 6 high, output now 0x00000140
+[panel]  claimed: output 0x00000140, supply off, in reset
+[panel]  after the reset pulse: output 0x00000145, powered, reset released
+[panel]  after both passes, output 0x00000140, the seeded one survived
+[panel]  B2 passed, twice
+```
+
+`0x145` is the four owned bits in their powered state plus the seeded one, and
+nothing else.  That is a stronger statement than a cold start would have made,
+because the pattern was chosen to contain a one where the cold default would
+have been indistinguishable from an accident.
 - Safety impact: no medium was written and no data path touched.  The backlight
   was never enabled and the panel supply was returned to off.  One unintended
   change was made and is recorded above: the battery-charge enable was pulled
@@ -4027,9 +4048,8 @@ CPU clock, which B1 has just shown can be somewhere nobody expected.
   preserves rather than controls, and its safe value depends on what ran
   before.  If a future phase needs the codec, that bit becomes someone's
   responsibility and it should be claimed explicitly rather than inherited.
-- Next safe step: the same probe after a power cycle, then B3, the LDO and DSI
-  PHY with the JD9365 command sequence, which is the first step that touches
-  the data path.
+- Next safe step: B3, the LDO and DSI PHY with the JD9365 command sequence,
+  which is the first step that touches the data path.
 
 ## Evidence-entry template
 

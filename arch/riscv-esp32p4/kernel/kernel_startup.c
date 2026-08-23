@@ -4476,8 +4476,68 @@ static void krnP4PanelProbe(void)
         }
     }
 
-    passes += krnP4PanelPass(1);
-    passes += krnP4PanelPass(2);
+    /*
+     * Seed an unrelated bit with a one, so preserving it means something.
+     *
+     * The expander survives a CPU reset, and on this board it cannot be
+     * cold-started without powering the whole thing down: the battery keeps it
+     * alive when USB is removed, and the only way to drop the rails is to
+     * release PWR_HOLD, which is a deliberate power-off.  So the first runs
+     * found every unrelated bit already at zero, and a read-modify-write that
+     * preserves zero proves nothing about read-modify-write.
+     *
+     * BAT_READ_EN is chosen because the reference driver sets it high in normal
+     * operation, so a one there is a value the board is meant to hold rather
+     * than an experiment.  It is written directly rather than through the panel
+     * driver on purpose: the driver refuses to touch bits outside its four,
+     * which is the property being tested.
+     */
+    {
+        static const unsigned char reg = P4_PCA9535_OUTPUT;
+        unsigned char rd = P4_PCA9535_OUTPUT, wr[3];
+        unsigned char in[2] = { 0, 0 };
+        UWORD before, after;
+
+        (void)reg;
+        if (krnP4I2CTransfer(P4_PCA9535_ADDR, &rd, 1, in, 2) != P4_I2C_OK)
+        {
+            krnP4PutStr("[panel]  could not read the output register\n");
+            return;
+        }
+        before = (UWORD)(in[0] | ((UWORD)in[1] << 8));
+        before |= P4_EXP_BAT_READ_EN;
+
+        wr[0] = P4_PCA9535_OUTPUT;
+        wr[1] = (unsigned char)(before & 0xFF);
+        wr[2] = (unsigned char)(before >> 8);
+        if (krnP4I2CTransfer(P4_PCA9535_ADDR, wr, 3, NULL, 0) != P4_I2C_OK)
+        {
+            krnP4PutStr("[panel]  could not seed the test bit\n");
+            return;
+        }
+        krnP4PutStr("[panel]  seeded bit 6 high, output now ");
+        krnP4PutHex32(before);
+        krnP4PutStr("\n");
+
+        passes += krnP4PanelPass(1);
+        passes += krnP4PanelPass(2);
+
+        if (krnP4I2CTransfer(P4_PCA9535_ADDR, &rd, 1, in, 2) != P4_I2C_OK)
+        {
+            krnP4PutStr("[panel]  could not re-read the output register\n");
+            return;
+        }
+        after = (UWORD)(in[0] | ((UWORD)in[1] << 8));
+        krnP4PutStr("[panel]  after both passes, output ");
+        krnP4PutHex32(after);
+        if (after & P4_EXP_BAT_READ_EN)
+            krnP4PutStr(", the seeded one survived\n");
+        else
+        {
+            krnP4PutStr(", THE SEEDED ONE WAS LOST\n");
+            passes = 0;
+        }
+    }
 
     krnP4PutStr("[panel]  B2 ");
     krnP4PutStr(passes == 2 ? "passed, twice\n" : "FAILED\n");
