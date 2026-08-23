@@ -175,7 +175,29 @@ class Fat32Image:
         """Lay out one directory and recurse.  Returns its raw bytes."""
         used = set()
         raw = b""
-        if not is_root:
+        if is_root:
+            # The volume label, as a directory entry with the volume-id
+            # attribute.  BS_VolLab in the VBR is not enough: it is a legacy
+            # copy, and a filesystem that wants the name reads this entry
+            # instead.  AROS's FAT handler does exactly that, and without it
+            # it named the volume from its serial number (0x00D1505A appeared
+            # as `00D1-505A` on the board on 2026-08-23).  Written first, and
+            # before any file, because that is where every tool that writes
+            # one puts it.
+            date, time = self.timestamp
+            e = bytearray(32)
+            e[0:11] = self.label.ljust(11)[:11].encode("ascii").upper()
+            e[11] = 0x08                        # ATTR_VOLUME_ID
+            struct.pack_into("<H", e, 14, time)
+            struct.pack_into("<H", e, 16, date)
+            struct.pack_into("<H", e, 18, date)
+            struct.pack_into("<H", e, 22, time)
+            struct.pack_into("<H", e, 24, date)
+            raw += bytes(e)
+            # Reserve the name so a file called AROSP4TEST cannot collide
+            # with it in the 8.3 namespace.
+            used.add(bytes(e[0:11]))
+        else:
             date, time = self.timestamp
             # The specification requires `..` to be zero when the parent is
             # the root directory, not the root's own cluster number.  fsck
