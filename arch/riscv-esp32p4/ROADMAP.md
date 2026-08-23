@@ -4602,6 +4602,67 @@ than a search.
   makes the next experiment a small addition to a file already in the tree
   rather than new scaffolding.
 
+### 2026-08-23 - pmu_init tested in the bootloader: not the precondition, and the bootloader is the wrong place
+
+- State change: none to the port.  Two candidates eliminated and one place
+  ruled out.  The bootloader component written for the experiment has been
+  removed again; the bootloader is byte-identical to the one before it.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+
+**rtc_init does not exist for this chip.**  There is no `rtc_init.c` in
+`esp_hw_support/port/esp32p4`.  What the P4 has is `rtc_clk_init.c`, and the
+bootloader already calls into it before any hook of ours runs, so there was
+nothing to add there.
+
+**pmu_init changes nothing.**  It was the strongest remaining candidate: it
+writes the full high-power and low-power parameter sets and forces the
+power-domain defaults, which is the kind of analogue groundwork a PLL
+calibration might wait on, and IDF's P4 port compiles `pmu_init.c` for
+bootloader builds so it could be called for real rather than approximated.
+Called from `bootloader_after_init` immediately before IDF's own calibration
+sequence, `MSPI_CAL_END` still never appeared.
+
+Two mechanical obstacles were cleared on the way and both are worth recording,
+because each cost a diagnosis:
+
+  - `pmu_init.c` carries a `.spm.text` section the bootloader link script has
+    no place for, and the bootloader links `--orphan-handling=error`.
+  - Its PVT branch calls into `pmu_pvt.c`, which IDF excludes from bootloader
+    builds.  Compiling that source into our own component needs IDF-internal
+    include paths, so the test ran with `CONFIG_ESP_ENABLE_PVT=n`.  PVT is
+    therefore *not* eliminated - it is the one part of `pmu_init` that did not
+    run.
+
+**The bootloader is the wrong place for this.**  Two separate failures, neither
+about the calibration itself:
+
+  - A 2,000,000-poll bounded wait ran long enough for the bootloader watchdog
+    to reset the board.  A completing calibration takes microseconds; the bound
+    has to be small.
+  - Even with a short bound and `pmu_init` removed, touching the MSPI PLL from
+    a bootloader hook produced repeated `SW_SYS_RESET`.  The bootloader executes
+    from flash through the same MSPI block, so disturbing that clock tree is
+    disturbing the code that is running.
+
+That is a real constraint on where this can be fixed, and it points back at the
+kernel: the kernel runs its PSRAM bring-up from SRAM precisely so it may reset
+and reconfigure MSPI, and it is the only context on this board that can.
+
+**Also found and fixed:** the partition table at `0x8000` had been corrupted
+during the session's flashing (`partition 0 invalid magic number 0xb7c5`),
+which showed as a `SW_SYS_RESET` loop indistinguishable from the hook's.
+Rewritten and verified.
+
+- Remaining risk: unchanged.  PSRAM is unavailable from a cold boot and that
+  is a release blocker.
+- Next safe step: two things are now known to be untried rather than merely
+  unknown.  PVT, which is the part of `pmu_init` that did not run and which
+  adaptively sets the digital supply - it can be called from the kernel, where
+  there is no bootloader link script to fight.  And a bootloader built with
+  `CONFIG_SPIRAM=y`, which is how the vendor's bootloader is configured: it
+  contains no MPLL code, but it may change cache or clock configuration in ways
+  that matter, and that has not been tested rather than ruled out.
+
 ## Evidence-entry template
 
 ```text
