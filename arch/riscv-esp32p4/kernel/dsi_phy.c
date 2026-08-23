@@ -231,6 +231,303 @@ int krnP4DsiPhyUp(struct P4DsiState *out)
 }
 
 /*
+ * Command mode.
+ *
+ * Everything from here on is the host controller rather than the PHY, and it
+ * has to be in place before a single command goes out: the escape clock is
+ * what low-power commands are actually clocked by, and a host with the wrong
+ * divider sends them at the wrong rate and gets no acknowledgement.
+ *
+ * The byte clock is the lane rate over eight, 125 MHz here.  The two dividers
+ * bring it to the escape clock's 18 MHz and the timeout clock's 10 MHz, and
+ * both are the reference's targets rather than anything derived.
+ *
+ * The timeout counters are set to zero, which disables the timeout mechanism.
+ * That is the reference's choice and it is worth naming rather than copying
+ * silently: it means a command that never completes waits forever in the
+ * hardware, so the bound has to be in this file instead, which is what the
+ * loops below are.
+ */
+int krnP4DsiCmdModeUp(void)
+{
+    unsigned long byte_clk_mhz = P4_DSI_LANE_MBPS / 8;
+
+    /* Command mode, and the clock lane stays in low power until a pixel
+       stream needs it. */
+    dsi_set(P4_DSI_MODE_CFG, P4_DSI_CMD_VIDEO_MODE);
+    dsi_clr(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS);
+
+    /* The four lane-transition times, undocumented and carried over as they
+       are; see the display contract's unresolved list. */
+    dsi_wr(P4_DSI_PHY_TMR_CFG,
+           (104UL << P4_DSI_LP2HS_SHIFT) | (50UL << P4_DSI_HS2LP_SHIFT));
+    dsi_wr(P4_DSI_PHY_TMR_LPCLK_CFG,
+           (128UL << P4_DSI_CLKLP2HS_SHIFT) | (46UL << P4_DSI_CLKHS2LP_SHIFT));
+
+    /* Receive checking on, and an end-of-transmission packet after each
+       high-speed burst. */
+    dsi_wr(P4_DSI_PCKHDL_CFG, P4_DSI_CRC_RX_EN | P4_DSI_ECC_RX_EN
+                            | P4_DSI_EOTP_TX_EN);
+
+    /* Escape and timeout clocks, rounded the same way the reference rounds
+       them: 125/18 is 7 and 125/10 is 13. */
+    dsi_wr(P4_DSI_CLKMGR_CFG,
+           ((byte_clk_mhz * 2 / 18 + 1) / 2)
+           | (((byte_clk_mhz * 2 / 10 + 1) / 2) << P4_DSI_TO_CLK_DIV_SHIFT));
+
+    /* Timeouts disabled, as above. */
+    dsi_wr(P4_DSI_TO_CNT_CFG, 0);
+    dsi_wr(P4_DSI_HS_RD_TO_CNT, 0);
+    dsi_wr(P4_DSI_LP_RD_TO_CNT, 0);
+    dsi_wr(P4_DSI_HS_WR_TO_CNT, 0);
+    dsi_wr(P4_DSI_LP_WR_TO_CNT, 0);
+    dsi_wr(P4_DSI_BTA_TO_CNT, 0);
+
+    dsi_wr(P4_DSI_PHY_TMR_RD_CFG, 6000);
+
+    {
+        unsigned long v = dsi_rd(P4_DSI_PHY_IF_CFG);
+
+        v &= ~P4_DSI_STOP_WAIT_MASK;
+        v |= 0x3FUL << P4_DSI_STOP_WAIT_SHIFT;
+        dsi_wr(P4_DSI_PHY_IF_CFG, v);
+    }
+
+    /*
+     * Every command type goes out in low power.
+     *
+     * High speed would be faster and is wrong here: the panel is being
+     * configured, not fed pixels, and its controller accepts configuration in
+     * low-power mode.  Sending configuration at high speed also requires the
+     * clock lane in high speed, which is the state this function has just
+     * deliberately left.
+     */
+    dsi_wr(P4_DSI_CMD_MODE_CFG,
+           P4_DSI_GEN_SW_0P_TX | P4_DSI_GEN_SW_1P_TX | P4_DSI_GEN_SW_2P_TX
+         | P4_DSI_GEN_SR_0P_TX | P4_DSI_GEN_SR_1P_TX | P4_DSI_GEN_SR_2P_TX
+         | P4_DSI_GEN_LW_TX | P4_DSI_MAX_RD_PKT_SIZE);
+
+    return P4_DSI_OK;
+}
+
+/* Wait, bounded, for a bit in the packet-status register to clear. */
+static int dsi_wait_clear(unsigned long bits)
+{
+    uint64_t deadline = krnTimerCount() + P4_SYSTIMER_HZ / 50;   /* 20 ms */
+
+    while (dsi_rd(P4_DSI_CMD_PKT_STATUS) & bits)
+        if (krnTimerCount() > deadline)
+            return P4_DSI_CMD_BUSY;
+    return P4_DSI_OK;
+}
+
+/* The packet header, which is what actually starts a transmission. */
+static int dsi_send_header(unsigned char dt, unsigned char lsb,
+                           unsigned char msb)
+{
+    int r = dsi_wait_clear(P4_DSI_GEN_CMD_FULL);
+
+    if (r != P4_DSI_OK)
+        return r;
+
+    dsi_wr(P4_DSI_GEN_HDR,
+           ((unsigned long)dt & P4_DSI_GEN_DT_MASK)
+           | (0UL << P4_DSI_GEN_VC_SHIFT)               /* virtual channel 0 */
+           | ((unsigned long)lsb << P4_DSI_GEN_WC_LSB_SHIFT)
+           | ((unsigned long)msb << P4_DSI_GEN_WC_MSB_SHIFT));
+    return P4_DSI_OK;
+}
+
+/*
+ * One DCS write.
+ *
+ * Three packet shapes, chosen by how much there is to send, and the choice is
+ * the protocol's rather than an optimisation: a command with no parameter is a
+ * short write with none, one parameter is a short write with one, and anything
+ * more is a long write whose payload goes through the FIFO first and whose
+ * header carries the byte count.
+ */
+int krnP4DsiDcsWrite(unsigned char cmd, const unsigned char *param,
+                     unsigned int param_bytes)
+{
+    unsigned int total = 1 + param_bytes;
+    int r;
+
+    if (total > 2)
+    {
+        unsigned long word = cmd;
+        unsigned int i, in_word = 1;
+
+        for (i = 0; i < param_bytes; ++i)
+        {
+            word |= (unsigned long)param[i] << (8 * in_word);
+            if (++in_word == 4)
+            {
+                r = dsi_wait_clear(P4_DSI_GEN_PLD_W_FULL);
+                if (r != P4_DSI_OK)
+                    return r;
+                dsi_wr(P4_DSI_GEN_PLD_DATA, word);
+                word = 0;
+                in_word = 0;
+            }
+        }
+        if (in_word)
+        {
+            r = dsi_wait_clear(P4_DSI_GEN_PLD_W_FULL);
+            if (r != P4_DSI_OK)
+                return r;
+            dsi_wr(P4_DSI_GEN_PLD_DATA, word);
+        }
+
+        return dsi_send_header(P4_DSI_DT_DCS_LW,
+                               (unsigned char)(total & 0xFF),
+                               (unsigned char)(total >> 8));
+    }
+
+    if (total == 2)
+        return dsi_send_header(P4_DSI_DT_DCS_SW_1P, cmd, param[0]);
+
+    return dsi_send_header(P4_DSI_DT_DCS_SW_0P, cmd, 0);
+}
+
+/*
+ * One DCS read.
+ *
+ * The panel is told how many bytes it may return, the host is told to expect a
+ * bus turnaround, and only then does the read command go out.  Without the
+ * maximum-return-size packet the controller may return more than the host has
+ * room for; without the turnaround enable the host never listens.
+ *
+ * Returns P4_DSI_CMD_NO_REPLY if nothing arrives, which for this panel is a
+ * possible and documented outcome rather than a failure: no source states that
+ * the JD9365 answers a 0x04 identity read, so the caller is told what happened
+ * and decides.
+ */
+int krnP4DsiDcsRead(unsigned char cmd, unsigned char *out, unsigned int want)
+{
+    unsigned int got = 0;
+    int r;
+
+    r = dsi_send_header(P4_DSI_DT_SET_MAX_RET, (unsigned char)(want & 0xFF),
+                        (unsigned char)(want >> 8));
+    if (r != P4_DSI_OK)
+        return r;
+
+    dsi_set(P4_DSI_MODE_CFG, P4_DSI_CMD_VIDEO_MODE);
+    dsi_set(P4_DSI_PCKHDL_CFG, P4_DSI_BTA_EN);
+    dsi_wr(P4_DSI_GEN_VCID, dsi_rd(P4_DSI_GEN_VCID) & ~P4_DSI_GEN_VCID_RX_MASK);
+
+    r = dsi_send_header(P4_DSI_DT_DCS_READ_0, cmd, 0);
+    if (r != P4_DSI_OK)
+        return r;
+
+    r = dsi_wait_clear(P4_DSI_GEN_RD_CMD_BUSY);
+    if (r != P4_DSI_OK)
+        return r;
+
+    /* The read FIFO going non-empty is the reply arriving. */
+    {
+        uint64_t deadline = krnTimerCount() + P4_SYSTIMER_HZ / 50;
+
+        while (dsi_rd(P4_DSI_CMD_PKT_STATUS) & P4_DSI_GEN_PLD_R_EMPTY)
+            if (krnTimerCount() > deadline)
+                return P4_DSI_CMD_NO_REPLY;
+    }
+
+    while (!(dsi_rd(P4_DSI_CMD_PKT_STATUS) & P4_DSI_GEN_PLD_R_EMPTY)
+           && got < want)
+    {
+        unsigned long word = dsi_rd(P4_DSI_GEN_PLD_DATA);
+        unsigned int i;
+
+        for (i = 0; i < 4 && got < want; ++i)
+            out[got++] = (unsigned char)((word >> (8 * i)) & 0xFF);
+    }
+
+    return got ? (int)got : P4_DSI_CMD_NO_REPLY;
+}
+
+/*
+ * What the host thinks happened, for when a read produces nothing.
+ *
+ * The packet-status register says whether the command was accepted and whether
+ * the host is still waiting for a reply; the two interrupt-status registers
+ * carry the protocol errors, and a bus turnaround that was not acknowledged
+ * shows up there rather than as a timeout.  Reading them is the difference
+ * between knowing which of the two ends is wrong and guessing.
+ */
+void krnP4DsiCmdStatus(unsigned long *pkt, unsigned long *int0,
+                       unsigned long *int1)
+{
+    if (pkt)
+        *pkt = dsi_rd(P4_DSI_CMD_PKT_STATUS);
+    if (int0)
+        *int0 = dsi_rd(P4_DSI_INT_ST0);
+    if (int1)
+        *int1 = dsi_rd(P4_DSI_INT_ST1);
+}
+
+/*
+ * The panel's own initialisation, in the working reference's order.
+ *
+ * No software reset, and that is a correction rather than an omission.  The
+ * first version sent one, on the reasoning that the Espressif panel driver's
+ * reset function does so and that a register reset is not the same thing as a
+ * pin reset.  But that function is never called on this board: the board layer
+ * pulses the reset line through the port expander itself and then goes
+ * straight to the panel's init, so the working path contains no software reset
+ * at all.  Sending one put the controller back into reset a few milliseconds
+ * before it was asked to identify itself, and it did not answer.  B2's
+ * hardware pulse, with its 120 ms tail, is the reset this sequence follows.
+ *
+ * The identity read comes first, before anything is configured, because that
+ * is where the reference puts it and because a value read after the page
+ * unlock would be answering a different question.  Its result is returned
+ * separately from the initialisation's: no source states what this panel
+ * replies, so a value is a board fact and a silence is not a failure of the
+ * sequence.
+ */
+int krnP4DsiPanelInit(unsigned char *id, int *id_result)
+{
+    unsigned int i;
+    int r;
+
+    if (id && id_result)
+        *id_result = krnP4DsiDcsRead(0x04, id, 3);
+
+    {
+        static const unsigned char page_user = 0x00;
+        static const unsigned char madctl = 0x00;   /* RGB order, no mirror */
+        static const unsigned char colmod = 0x55;   /* RGB565 */
+        static const unsigned char lanes = 0x01;    /* two data lanes */
+
+        r = krnP4DsiDcsWrite(0xE0, &page_user, 1);
+        if (r == P4_DSI_OK)
+            r = krnP4DsiDcsWrite(0x36, &madctl, 1);
+        if (r == P4_DSI_OK)
+            r = krnP4DsiDcsWrite(0x3A, &colmod, 1);
+        if (r == P4_DSI_OK)
+            r = krnP4DsiDcsWrite(0x80, &lanes, 1);
+        if (r != P4_DSI_OK)
+            return r;
+    }
+
+    for (i = 0; i < krnP4JD9365InitCount; ++i)
+    {
+        const struct P4JD9365Cmd *c = &krnP4JD9365Init[i];
+
+        r = krnP4DsiDcsWrite(c->cmd, &c->param, c->param_bytes);
+        if (r != P4_DSI_OK)
+            return r;
+
+        if (c->delay_ms)
+            krnTimerWait((c->delay_ms * P4_TICK_HZ + 999) / 1000);
+    }
+
+    return P4_DSI_OK;
+}
+
+/*
  * Everything off again, in the reverse order.
  *
  * Called on failure and safe at any point.  The LDO goes last because the PHY

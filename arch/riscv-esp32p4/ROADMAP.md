@@ -121,7 +121,7 @@ tests.
 | B0 | Canonical D1001 display contract and provenance | `documented` | [display/DISPLAY-CONTRACT.md](display/DISPLAY-CONTRACT.md) is the one place display facts live, each value carrying an evidence class and a source file and line.  Three findings changed the plan: the running reference ignores the timing fields it is given and uses a different set, the rotation direction is no longer a hypothesis, and the DSI bridge registers differ by chip revision.  Nothing is `verified` yet, which is the honest state; the measured frame rate is B4's and is recorded as deferred |
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `hardware partial` | The calibration works and 200 MHz holds over all 32 MB with four bus patterns, identically across six warm resets, and the whole storage stack passes on both media at 360 MHz.  The phase premise was wrong in an instructive way: the PSRAM bus was never the limit.  The CPU ran at 90 MHz because nothing configured it, and is now 360; sequential reads went 20 to 60 MB/s and internal SRAM 25 to 101.  The 100 MB/s gate is not assessable by a CPU loop and is reassigned to B5, with the reason recorded |
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
-| B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware partial` | Stage one done: the PHY supply, the clocks and the PLL, with the PLL locking and all three lanes reaching stop state on the first hardware run.  That result also confirms the fixed PHY reference is the 40 MHz crystal, which no register on this revision states.  Three writes the reference driver makes were deliberately omitted because the registers do not exist on revision 1.x.  Stage two, command mode and the JD9365 sequence, is next |
+| B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware partial` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `not started` | Requires B3; isolates panel from DMA/PSRAM |
 | B5 | Native `800 x 1280` RGB565 PSRAM scanout | `not started` | Requires B1 and B4 |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
@@ -672,6 +672,7 @@ Acceptance gate:
 | CPU clock inherited, not configured | This port set no CPU clock and ran at 90 MHz until 2026-08-23 because the second-stage bootloader's divider was never touched.  Nothing failed, everything was four times slower than the silicon allows, and no diagnostic said so; it was found only by measuring `mcycle` against the system timer while chasing a bandwidth figure.  Anything else this port inherits from that bootloader is unexamined in the same way, the flash clock and the cache configuration in particular. |
 | CPU-loop bandwidth is a latency measurement | A scalar read loop costs 13.6 cycles per word from internal SRAM at both 90 and 360 MHz, which is one cache-line fill per sixteen words with a single fill outstanding.  It therefore measures fill latency and not the memory system's throughput, and no threshold about scanout can be argued from it.  A DMA engine is the only way to measure what the display will actually get, and until B5 exists any bandwidth claim about scanout is unfounded. |
 | The port expander survives a CPU reset | The PCA9535 has no reset pin and keeps its direction and output registers across every reboot, so its state at boot is whatever the last firmware left, not the datasheet default.  Any code that writes a whole register drives pins it never considered; B2's first version pulled the battery-charge enable low that way.  Read-modify-write is the only safe form here, and a check that assumes cold defaults passes vacuously on a warm board. |  And it cannot be cold-started without deciding to: the board has a battery, so removing USB changes nothing, and the only way to drop the rails is to release PWR_HOLD and power the board off.  Any test that wants the datasheet defaults has to say so out loud.
+| DSI reads get no reply | Five DCS reads, the vendor identity register and four standard ones, all return nothing with no protocol error flagged and the host left waiting.  Espressif's driver reads the same register with an unbounded wait and works on this board, so the panel answers there and this port's read path is wrong.  A software reset and the divider encoding have been eliminated.  Nothing in the port depends on reads yet, but a panel that cannot be interrogated cannot be diagnosed either, and B6's orientation work would rather have the scanline register than a photograph. |
 | Flash reads past 16 MB | `krnP4FlashMap()` refuses anything at or past the cache-mapping limit, so the `storage` partition at 0x1020000 is unreachable by that route.  Anything that needs it would have to use raw SPI commands with the cache suspended and a destination in internal SRAM, which is why the development volume was put inside `arosbsp` instead. |
 | Panel timing | Start from measured Vellum behavior, not the contradictory 60 Hz comment. |
 | PSRAM | 20 MHz remains the safe fallback; display scanout requires a calibrated, measured faster path. |
@@ -4123,6 +4124,92 @@ that reports which of the two conditions it was.
 - Next safe step: stage two.  Command mode, the JD9365 sequence over DBI with
   the backlight still dark, and the identity read attempted without an expected
   value because no source states one.
+
+### 2026-08-23 - B3 stage two: the host transmits, the panel says nothing
+
+- State change: none.  B3 stays `hardware partial`.  Command mode and the
+  panel sequence are implemented and the transmit side is clean; the read path
+  does not work and is recorded as an open defect rather than worked around.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3, CPU at
+  360 MHz.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `d3621e8941`.
+- Artifact: core 181,600 bytes, written to `ota_0` at `0x20000` and verified by
+  esptool hash.
+- The backlight was never enabled.  `0x29`, display on, was sent, so the panel
+  is driven and nothing is lit.
+
+**What works.**  The host enters command mode with the clock lane in low power
+and every command type configured for low-power transmission, and then the
+whole sequence goes out: page unlock, `MADCTL` 0x00, `COLMOD` 0x55, two data
+lanes, and the eight-command vendor table ending in display on.  No command
+FIFO ever failed to drain and no protocol error was ever flagged.
+
+**What that is worth, which is less than it sounds.**  A DSI write is not
+acknowledged.  The host transmits and moves on, so a sequence that completes
+says the host sent it and nothing whatever about whether the panel listened.
+The identity read was the one chance of panel-side evidence in this stage, and
+it produced none.
+
+**Five reads, all silent, and the registers say why not.**  0x04 is
+vendor-defined and a panel may simply not implement it, so four standard DCS
+reads were tried as well: power mode, address mode, pixel format and scanline.
+All silent.  The host's own registers were then read after a failure:
+
+```text
+[dsi]    dcs 0x0a power mode: no reply, pkt 0x00060054 int0 0x00000000 int1 0x00000000
+```
+
+`0x54` is read-command-busy set, both payload FIFOs empty, the command FIFO not
+full.  So the read went out, the host is still waiting for a reply, and neither
+interrupt-status register flags anything.  That is not a protocol error; it is
+silence.  A failed read also leaves the host waiting, so every later read
+stacks on a busy controller and means nothing - the probe now stops at the
+first silence, which is why only one status line appears.
+
+**The reference answers this read, so the defect is here.**  Espressif's panel
+driver reads register 0x04 during init with `while
+(mipi_dsi_host_ll_gen_is_read_fifo_empty(...))` and no bound at all.  If this
+panel did not answer, the reference would hang rather than continue, and the
+reference runs on this board.  So the panel answers there and this port's read
+path is wrong.  That is a deduction from the reference's structure rather than a
+measurement, but it is a sound one and it is what makes this a defect rather
+than a board fact.
+
+Two hypotheses were tested and eliminated:
+
+- **The software reset.**  The first version sent `SWRESET` before the read,
+  reasoning that the Espressif panel driver's reset function does so.  It turns
+  out that function is never called on this board: the board layer pulses the
+  reset line through the port expander itself and goes straight to the panel's
+  init, so the working path contains no software reset at all.  Removing it is
+  a correction worth keeping either way, and it changed nothing.
+- **The divider encoding.**  Espressif dividers are often written as the value
+  less one; `set_escape_clock_division` and `set_timeout_clock_division` are
+  not, so the 7 and 13 this port writes are what the reference writes.
+
+What has not been eliminated: some host register the reference sets that this
+port does not, the semantics of the maximum-read-time value, and whether the
+escape clock is actually running at the rate the divider implies.
+
+**This does not block B4.**  The internal test pattern generator needs the
+initialisation sequence to have been accepted; it does not need the read path.
+So B4 is both the next step and the first thing that can tell whether these
+writes landed, which is the same question the read path was supposed to answer.
+If a pattern appears, the writes are landing and the read path is a separate
+bug in a separate direction.  If nothing appears, both are suspect together.
+
+- Acceptance passed: command mode is entered, every wait in the command path
+  is bounded and names which condition failed, the sequence completes without
+  host error, and a failure leaves the panel in reset with the backlight dark.
+- Acceptance not met: the identity read.  B3's own text says not to invent an
+  expected value, and this port does not; but it also expected a stable
+  response to become a documented board fact, and there is no response.
+- Safety impact: no medium was written, the backlight was never enabled, and
+  the panel was returned to reset before the probe finished.
+- Remaining risk: no panel-side confirmation of anything exists yet.  Every
+  claim in this entry is about what the host did.
+- Next safe step: B4, the internal test pattern, which produces the first
+  panel-side evidence and does not depend on the read path.
 
 ## Evidence-entry template
 

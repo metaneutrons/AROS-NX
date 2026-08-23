@@ -244,6 +244,7 @@ CFILES := \
         appdesc \
         cpuclock \
         dsi_phy \
+        jd9365_init \
         i2c_hw \
         panel_power \
         psram_init \
