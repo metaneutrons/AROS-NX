@@ -3,6 +3,21 @@ include $(SRCDIR)/config/aros.cfg
 
 USER_CPPFLAGS := -D__NOLIBBASE__
 
+#
+# The per-area DEBUG_* switches in fat_fs.h default to 0 and are guarded with
+# #ifndef, so a build can raise any of them.  FAT_DEBUG=1 raises the two that
+# describe mounting and packet handling, which is what is wanted when the
+# question is why a volume did not mount or why a packet was refused:
+#
+#   gmake kernel-fs-fat FAT_DEBUG=1
+#
+# The remaining areas - directory entries, names, locks, the cache - are
+# per-operation traces and are left off; name them individually if needed.
+#
+ifeq ($(FAT_DEBUG),1)
+USER_CPPFLAGS += -DDEBUG_MISC=1 -DDEBUG_PACKETS=1
+endif
+
 USER_LDFLAGS := -static
 
 FILES := cache direntry date disk fat file lock main names notify ops packet\

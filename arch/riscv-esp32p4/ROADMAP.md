@@ -2367,6 +2367,114 @@ Every priority quoted above is from the corrected build.
   needing no board; then `econsole` and `dosboot` together as the last step,
   after which this console goes quiet.
 
+### 2026-08-23 - A4 second measured step: read-only propagated above the block device
+
+- State change: none.  `build verified` only.  The board cannot judge any of
+  this yet, because FAT is only started by `dosboot.resource` and that is
+  still deliberately out of the package.  The one part that is testable
+  without dosboot, the block device's own refusal, is built into the
+  diagnostic and is waiting for a card.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `0410f8ddc2`.
+- Artifacts, built and flashed but not yet exercised on a medium:
+  - package 1,005,264 bytes,
+    `4094f3c027f13adb3753598f6f30edbd801ffa39cb0dee66da22b5bd50faef24`,
+    12.2 % of the partition.  Larger than the previous one because the
+    `fat` handler is now built with `FAT_DEBUG=1`, 165,272 bytes against
+    136,024;
+  - core 163,728 bytes,
+    `4c481e81ba62f022b54d628d331c49fb80f3b6bc50c21998c8bb80f78b58cd0b`.
+  - Audited with `boot/audit-package.py`: twelve members, no relocation type
+    outside what the loader implements.
+
+The phase requires that read-only safety propagate above the block-device
+denylist, and names the reason: `sdcard.device` already reports
+`TD_PROTSTATUS` as protected and refuses writes, but FAT reported
+`ID_VALIDATED` and a failed write could enter an interactive `Retry|Cancel`
+loop.  Reading the code confirmed both, and found that the requester loop
+is presently harmless only by accident: `ErrorMessageArgs()` opens
+intuition.library, which does not exist on this platform, so
+`EasyRequestArgs()` is never called and the zero it leaves behind reads as
+Cancel.  That is a dependency on a library's absence, and it stops being
+true at C2.
+
+Four changes, arranged so that no single one of them is load-bearing.
+
+1. `rom/filesys/fat/disk.c` gains `ProbeWriteProtection()`, which asks
+   `TD_PROTSTATUS` and records the answer in `glob->disk_writeprotected`.
+   It runs once when the device is opened and again on every disk change,
+   before the super block is read; a medium already in the drive at mount
+   time never produces a change event, which is why both call sites are
+   needed.  A device that does not implement the command answers
+   `IOERR_NOCMD`, and that is read as "not protected", because a device that
+   cannot be asked has to be treated as writable or nothing would mount.
+2. `rom/filesys/fat/packet.c` refuses every mutating packet before the
+   dispatch switch can reach it, returning `ERROR_DISK_WRITE_PROTECTED`.
+   Deciding this from `dp_Type` alone is what makes the refusal complete:
+   nothing has been allocated, no directory handle taken and no cache block
+   touched, so there is nothing dirty and nothing to undo.  The list is
+   `WRITE`, `SET_FILE_SIZE`, `DELETE_OBJECT`, `RENAME_OBJECT`, `CREATE_DIR`,
+   `SET_PROTECT`, `SET_DATE`, `SET_COMMENT`, `RENAME_DISK`, `FORMAT`,
+   `MAKE_LINK`, `FINDOUTPUT` and `FINDUPDATE`.  `FINDINPUT` is deliberately
+   not on it, since reading files is the entire point of mounting the volume.
+3. `AccessDisk()` refuses a write before issuing any I/O, returning
+   `TDERR_WriteProt` with `io_Actual` zeroed.  This is defence in depth and
+   not redundant: the cache flush that runs off the timer does not arrive as
+   a packet, so the packet guard alone would not cover it.  Because the
+   refusal happens before the `while (retry)` loop, no requester can be
+   opened for it either.
+4. `FillDiskInfo()` reports `ID_WRITE_PROTECTED` instead of `ID_VALIDATED`.
+   A second, redundant `id_DiskState = ID_VALIDATED` in the no-super-block
+   branch was removed; it overwrote the value set a few lines above and would
+   have quietly undone this for an unmounted volume.
+
+`sdcard.device` was changed too, in both write handlers: a denied write now
+reports `TDERR_WriteProt` rather than `IOERR_ABORTED`, and sets `io_Actual`
+to zero explicitly.  The error code matters because a filesystem can act on
+`TDERR_WriteProt` and can only guess at `IOERR_ABORTED`, and because
+`TD_PROTSTATUS` on this unit already says protected, so the two now agree.
+`io_Actual` is set rather than assumed, because "nothing was written" has to
+be readable from the reply without knowing what the caller left in it.
+
+New diagnostic, `krnP4SDCardWriteDenialTest()`, run from the existing
+`P4_SDCARD_DEVICE_TEST` after the rejection test.  It asks `TD_PROTSTATUS`,
+then issues a real `CMD_WRITE` at LBA 2048 with a `0x5a5a5a5a` pattern the
+sector demonstrably does not contain, and requires all four of: an error,
+that error being `TDERR_WriteProt`, `io_Actual` back to zero from a
+deliberately poisoned `0xdeadbeef`, and the sector unchanged and still
+matching the card reference afterwards.  The last is the one that matters:
+an error code says the request was refused, and only the unchanged content
+says nothing reached the card.
+
+Observability, which is the reason for the whole measured-step structure.
+The `D()` macros in `dos.library`, `dosboot.resource` and the FAT handler are
+compiled out by default, and the tree's way of turning them on is to
+uncomment a line in a mmakefile.  That cannot be reproduced from a build
+command.  Three mmakefiles now also gate them on a make variable,
+`DOS_DEBUG=1`, `DOSBOOT_DEBUG=1` and `FAT_DEBUG=1`, and the ten per-area
+`DEBUG_*` defaults in `fat_fs.h` are wrapped in `#ifndef` so any of them can
+be raised from a command line without a redefinition warning.  Without this,
+the dosboot step would have been silent: that module's initialisation never
+returns, so its own narration is the only account of a boot that failed.
+The shipped `fat` handler is built with `FAT_DEBUG=1` for the bring-up.
+
+One statement is made unconditionally rather than under `D()`: when a volume
+is mounted from a protected medium, FAT says so once.  A volume that will
+refuse every write is worth one line, and without it the first evidence is a
+failure somewhere later with no statement anywhere of why it was inevitable.
+The per-packet and per-write refusals stay under `D()`.
+
+- Acceptance points addressed but not yet observed: FAT recognising the device
+  protection state; mutations rejected before dirty cache state; a bounded
+  error with no requester; `io_Actual == 0` on a denied block write.
+- Safety impact: strictly increased.  Every path that could have reached a
+  write now refuses earlier, and no path was opened.
+- Remaining risk: the whole of point 1 to 4 above is source reasoning.  Until
+  dosboot starts FAT on a real medium, the only part with hardware standing
+  will be the device-level denial, and that needs a card in the slot.
+- Next safe step: run the flashed core with the reference card in, which
+  closes the device-level denial and re-checks the A1 matrix against the
+  enlarged package; then `econsole` and `dosboot`.
+
 ## Evidence-entry template
 
 ```text

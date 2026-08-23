@@ -17,6 +17,7 @@
 void ProcessDiskChange (struct Globals *glob);
 void UpdateDisk(struct Globals *glob);
 void Probe64BitSupport(struct Globals *glob);
+void ProbeWriteProtection(struct Globals *glob);
 
 /* packet.c */
 void ProcessPackets(struct Globals *glob);

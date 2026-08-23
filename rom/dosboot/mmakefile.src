@@ -27,6 +27,21 @@ USER_CPPFLAGS := \
                -D__OOP_NOLIBBASE__ \
                -D__OOP_NOATTRBASES__ \
                -D__OOP_NOMETHODBASES__
+
+#
+# As for dos.library, the D() macros are gated on a make variable as well as on
+# an edit to this file, so a cross build can ask for them:
+#
+#   gmake kernel-dosboot DOSBOOT_DEBUG=1
+#
+# This module's initialisation is the one that does not return: it either boots
+# or retries for ever.  Its own narration - which boot nodes it found, which it
+# chose, what the bootblock said - is therefore the only account of a boot that
+# failed, and on a headless platform there is nothing else to read.
+#
+ifeq ($(DOSBOOT_DEBUG),1)
+USER_CPPFLAGS += -DDEBUG=1
+endif
 USER_INCLUDES := -I$(SRCDIR)/rom/devs -I$(GENDIR)/$(CURDIR)/dosboot
 USER_LDFLAGS := -static
 
