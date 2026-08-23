@@ -168,6 +168,31 @@ int  krnP4DsiDcsRead(unsigned char cmd, unsigned char *out,
                      unsigned int want);
 int  krnP4DsiPanelInit(unsigned char *id, int *id_result);
 /* What the pattern setup programmed, so the arithmetic can be checked. */
+/*
+ * What the scanout path is doing, for the report.  Every value read back from
+ * hardware rather than remembered, because a configuration that did not take
+ * is the failure this phase is most likely to hit.
+ */
+struct P4ScanoutState
+{
+    unsigned long lli;          /* where the descriptor lives */
+    unsigned long chen;         /* channel enable, as the DMA reports it */
+    unsigned long ch_cfg1;
+    unsigned long ch_llp;
+    unsigned long ch_sar;       /* moves while a transfer runs */
+    unsigned long brg_flow;
+    unsigned long brg_raw_num;
+    unsigned long brg_misc;
+    unsigned long brg_int;
+    unsigned long words64;
+};
+
+void krnP4ScanoutFill(unsigned short rgb565);
+void krnP4ScanoutBridgeUp(void);
+void krnP4ScanoutDmaUp(void);
+void krnP4ScanoutFeedOn(void);
+void krnP4ScanoutState(struct P4ScanoutState *out);
+
 struct P4DsiPattern
 {
     unsigned long hsa, hbp, hfp, hact, hline;
@@ -233,6 +258,7 @@ void krnP4SDMMCProbe(void);
 void krnP4SyncCode(void *addr, unsigned long len);
 /* How much of the external window the PSRAM probe found, zero if none */
 extern unsigned long __esp32p4_psram_size;
+void krnP4CacheWriteback(void);
 unsigned long krnP4CacheOff(void);
 void krnP4CacheOn(unsigned long token);
 

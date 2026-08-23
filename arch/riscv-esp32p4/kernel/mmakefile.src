@@ -195,6 +195,15 @@ ifdef P4_PSRAM_MHZ
 P4_DEBUG_CPPFLAGS += -DP4_PSRAM_MHZ=$(P4_PSRAM_MHZ)
 endif
 
+# P4_SCANOUT_TEST=1 is B5: a frame in PSRAM, the DSI bridge asking for pixels
+# and the DesignWare AXI DMA feeding it.  Needs P4_PANEL_PROBE and P4_DSI_PROBE,
+# because the panel has to be powered and initialised first, and it replaces
+# P4_PATTERN_TEST rather than adding to it - the host's pattern generator and
+# the bridge's pixel feed are alternatives.
+ifdef P4_SCANOUT_TEST
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_TEST
+endif
+
 # P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
 # pattern test.  The bridge then asks for pixels it has no DMA to fetch and
 # must underrun; that underrun is the evidence that the pixel path runs through
@@ -276,6 +285,7 @@ CFILES := \
         appdesc \
         cpuclock \
         dsi_phy \
+        dsi_scanout \
         jd9365_init \
         i2c_hw \
         panel_power \
