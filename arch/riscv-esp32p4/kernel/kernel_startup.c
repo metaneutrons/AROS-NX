@@ -45,6 +45,12 @@
 #include <resources/filesysres.h>
 #include <proto/bootloader.h>
 #endif
+#ifdef P4_AFTERDOS_PROBE
+#include <dos/dos.h>
+#include <dos/dosextens.h>
+#include <dos/filehandler.h>
+#include <proto/dos.h>
+#endif
 
 #include <kernel_base.h>
 #include <kernel_globals.h>
@@ -684,6 +690,344 @@ const struct Resident krnP4HeartbeatResident =
 };
 
 #endif /* P4_HEARTBEAT_TASK */
+
+#ifdef P4_AFTERDOS_PROBE
+
+/*
+ * The DOS device name dosboot gives the first MBR partition of unit 0:
+ * bootscan.c builds it from the device name, the unit number, 'P' and the
+ * partition position, so "sdcard.device" unit 0 partition 0 is SDCARD0P0.
+ */
+#ifndef P4_PROBE_DEVICE
+#define P4_PROBE_DEVICE "SDCARD0P0:"
+#endif
+
+/*
+ * The half of the A4 gate that only a running DOS can answer.
+ *
+ * Everything about write protection above the block device - Info() reporting
+ * it, packets being refused, nothing left dirty - needs SYS: to exist, and
+ * SYS: exists only after dos.library has mounted a bootable medium.  There is
+ * no resident Info command in the shellcommands set and no C: directory to
+ * load one from, so this runs as an RTF_AFTERDOS resident instead:
+ * rom/dos/cliinit.c calls InitCode(RTF_AFTERDOS) once SYS: and the boot
+ * assigns are in place and before the Shell starts.
+ *
+ * It is deliberately read-only in intent and bounded in every call.  The
+ * mutations it attempts are the ones a filesystem has to refuse, and each is
+ * judged on three things: that it failed, that it failed with
+ * ERROR_DISK_WRITE_PROTECTED rather than something incidental, and that the
+ * medium is bit-identical afterwards.  The third is the one that matters,
+ * because an error code says the request was refused while only the unchanged
+ * content says nothing was written.
+ */
+struct DosLibrary *DOSBase;
+
+/* FNV-1a-32, the same primitive the SD and partition tests compare with */
+static uint32_t krnP4HashBytes(const unsigned char *data, ULONG length)
+{
+    uint32_t hash = 2166136261UL;
+
+    while (length--)
+    {
+        hash ^= *data++;
+        hash *= 16777619UL;
+    }
+    return hash;
+}
+
+/* Read a whole file into the shared probe buffer and hash it.  Returns the
+   byte count, or -1 if it could not be read at all. */
+static LONG krnP4ProbeReadFile(const char *name, uint32_t *hash)
+{
+    static UBYTE buffer[1024] __attribute__((aligned(64)));
+    BPTR fh = Open((CONST_STRPTR)name, MODE_OLDFILE);
+    LONG total = 0;
+
+    if (!fh)
+        return -1;
+
+    for (;;)
+    {
+        LONG got = Read(fh, buffer + total, sizeof(buffer) - total);
+
+        if (got <= 0)
+            break;
+        total += got;
+        if ((ULONG)total >= sizeof(buffer))
+            break;
+    }
+    Close(fh);
+
+    *hash = krnP4HashBytes(buffer, (ULONG)total);
+    return total;
+}
+
+static void krnP4ReportState(const char *what, LONG state)
+{
+    krnP4PutStr(what);
+    krnP4PutDecS((int32_t)state);
+    krnP4PutStr(state == ID_WRITE_PROTECTED ? " (ID_WRITE_PROTECTED)"
+              : state == ID_VALIDATED       ? " (ID_VALIDATED)"
+              : state == ID_VALIDATING      ? " (ID_VALIDATING)"
+                                            : " (unexpected)");
+    krnP4PutStr("\n");
+}
+
+static int krnP4AfterDosProbe(void)
+{
+    /* Info() writes through a caller-supplied InfoData and AmigaOS requires
+       it longword aligned; there is no AllocDosObject type for it. */
+    static struct InfoData info __attribute__((aligned(8)));
+    struct InfoData *id = &info;
+    BPTR lock;
+    LONG state_before, state_after;
+    uint32_t hash_before = 0, hash_after = 0;
+    LONG size_before, size_after;
+    int passed = 1;
+    int mutations_run = 0;
+
+    krnP4PutStr("[sysfs]  AFTERDOS probe starting\n");
+
+    lock = Lock((CONST_STRPTR)"SYS:", SHARED_LOCK);
+    krnP4PutStr("[sysfs]  Lock(\"SYS:\") = ");
+    krnP4PutHex32((uint32_t)(IPTR)lock);
+    krnP4PutStr("\n");
+    if (!lock)
+    {
+        krnP4PutStr("[sysfs]  no SYS: to examine\n");
+        return 0;
+    }
+
+    if (!Info(lock, id))
+    {
+        krnP4PutStr("[sysfs]  Info() failed, IoErr ");
+        krnP4PutDecS((int32_t)IoErr());
+        krnP4PutStr("\n");
+        UnLock(lock);
+        return 0;
+    }
+
+    state_before = id->id_DiskState;
+    krnP4ReportState("[sysfs]  Info() id_DiskState ", state_before);
+    krnP4PutStr("[sysfs]    blocks ");
+    krnP4PutDec((uint32_t)id->id_NumBlocks);
+    krnP4PutStr(", used ");
+    krnP4PutDec((uint32_t)id->id_NumBlocksUsed);
+    krnP4PutStr(", block size ");
+    krnP4PutDec((uint32_t)id->id_BytesPerBlock);
+    krnP4PutStr(", disk type ");
+    krnP4PutHex32((uint32_t)id->id_DiskType);
+    krnP4PutStr("\n");
+
+    /* Reading has to keep working; that is the whole point of mounting it. */
+    size_before = krnP4ProbeReadFile("SYS:AROS.boot", &hash_before);
+    krnP4PutStr("[sysfs]  read SYS:AROS.boot = ");
+    krnP4PutDecS((int32_t)size_before);
+    if (size_before >= 0)
+    {
+        krnP4PutStr(" bytes, hash ");
+        krnP4PutHex32(hash_before);
+    }
+    else
+    {
+        krnP4PutStr(" (IoErr ");
+        krnP4PutDecS((int32_t)IoErr());
+        krnP4PutStr(")");
+    }
+    krnP4PutStr("\n");
+
+    if (state_before != ID_WRITE_PROTECTED)
+    {
+        krnP4PutStr("[sysfs]  SYS: is not a write protected volume;"
+                    " the mutation cases do not apply to it\n");
+        UnLock(lock);
+        return 0;
+    }
+
+    /*
+     * Every mutation DOS can express against a file that exists and one that
+     * does not.  Each must fail, and fail as write protection.
+     */
+    {
+        static const char probe_new[] = "SYS:p4probe.tmp";
+        static const char probe_dir[] = "SYS:p4probedir";
+        static const char victim[]    = "SYS:AROS.boot";
+        static const char renamed[]   = "SYS:AROS.renamed";
+        struct
+        {
+            const char *name;
+            LONG result;
+            LONG error;
+        } cases[8];
+        unsigned int n = 0, i;
+        BPTR fh, dir;
+
+        fh = Open((CONST_STRPTR)probe_new, MODE_NEWFILE);
+        cases[n].name = "Open(MODE_NEWFILE)";
+        cases[n].result = (LONG)(IPTR)fh;
+        cases[n].error = IoErr();
+        if (fh)
+            Close(fh);
+        ++n;
+
+        fh = Open((CONST_STRPTR)victim, MODE_READWRITE);
+        cases[n].name = "Open(MODE_READWRITE)";
+        cases[n].result = (LONG)(IPTR)fh;
+        cases[n].error = IoErr();
+        if (fh)
+            Close(fh);
+        ++n;
+
+        dir = CreateDir((CONST_STRPTR)probe_dir);
+        cases[n].name = "CreateDir";
+        cases[n].result = (LONG)(IPTR)dir;
+        cases[n].error = IoErr();
+        if (dir)
+            UnLock(dir);
+        ++n;
+
+        cases[n].name = "DeleteFile";
+        cases[n].result = DeleteFile((CONST_STRPTR)victim);
+        cases[n].error = IoErr();
+        ++n;
+
+        cases[n].name = "Rename";
+        cases[n].result = Rename((CONST_STRPTR)victim, (CONST_STRPTR)renamed);
+        cases[n].error = IoErr();
+        ++n;
+
+        cases[n].name = "SetProtection";
+        cases[n].result = SetProtection((CONST_STRPTR)victim, 0);
+        cases[n].error = IoErr();
+        ++n;
+
+        cases[n].name = "SetComment";
+        cases[n].result = SetComment((CONST_STRPTR)victim,
+                                     (CONST_STRPTR)"esp32p4 probe");
+        cases[n].error = IoErr();
+        ++n;
+
+        /*
+         * Relabel wants a device, not an assign.  Aimed at "SYS:" it returned
+         * ERROR_DEVICE_NOT_MOUNTED without the packet ever reaching the
+         * handler, which said nothing about write protection; that was a
+         * defect in this test, not in the filesystem.  The device node
+         * dosboot created for the partition is what ACTION_RENAME_DISK has to
+         * be sent to.
+         */
+        cases[n].name = "Relabel(device)";
+        cases[n].result = Relabel((CONST_STRPTR)P4_PROBE_DEVICE,
+                                  (CONST_STRPTR)"P4Probe");
+        cases[n].error = IoErr();
+        ++n;
+
+        mutations_run = (int)n;
+
+        for (i = 0; i < n; ++i)
+        {
+            krnP4PutStr("[sysfs]    ");
+            krnP4PutStr(cases[i].name);
+            krnP4PutStr(": result ");
+            krnP4PutHex32((uint32_t)cases[i].result);
+            krnP4PutStr(", IoErr ");
+            krnP4PutDecS((int32_t)cases[i].error);
+            if (cases[i].result != 0)
+            {
+                krnP4PutStr("  SUCCEEDED, MUST NOT\n");
+                passed = 0;
+            }
+            else if (cases[i].error != ERROR_DISK_WRITE_PROTECTED)
+            {
+                krnP4PutStr("  refused, but not as write protection\n");
+                passed = 0;
+            }
+            else
+                krnP4PutStr("  refused as write protection\n");
+        }
+    }
+
+    /* The medium as it was, and the volume still usable */
+    size_after = krnP4ProbeReadFile("SYS:AROS.boot", &hash_after);
+    krnP4PutStr("[sysfs]  re-read SYS:AROS.boot = ");
+    krnP4PutDecS((int32_t)size_after);
+    krnP4PutStr(" bytes, hash ");
+    krnP4PutHex32(hash_after);
+    if (size_after != size_before || hash_after != hash_before)
+    {
+        krnP4PutStr("  CHANGED\n");
+        passed = 0;
+    }
+    else
+        krnP4PutStr("  unchanged\n");
+
+    if (Info(lock, id))
+    {
+        state_after = id->id_DiskState;
+        krnP4ReportState("[sysfs]  Info() id_DiskState after ", state_after);
+        if (state_after != state_before)
+            passed = 0;
+    }
+    else
+    {
+        krnP4PutStr("[sysfs]  Info() failed after the mutations\n");
+        passed = 0;
+    }
+
+    UnLock(lock);
+
+    krnP4PutStr("[sysfs]  AFTERDOS probe ");
+    krnP4PutStr(passed ? "passed, " : "FAILED, ");
+    krnP4PutDec((uint32_t)mutations_run);
+    krnP4PutStr(" mutation cases\n");
+    return passed;
+}
+
+extern const struct Resident krnP4AfterDosResident;
+
+AROS_UFH3(static APTR, krnP4AfterDosInit,
+          AROS_UFPA(void *, dummy, D0),
+          AROS_UFPA(BPTR, segList, A0),
+          AROS_UFPA(struct ExecBase *, SysBase, A6))
+{
+    AROS_USERFUNC_INIT
+
+    DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 0);
+    if (!DOSBase)
+        krnP4PutStr("[sysfs]  dos.library unavailable in AFTERDOS\n");
+    else
+    {
+        (void)krnP4AfterDosProbe();
+        CloseLibrary((struct Library *)DOSBase);
+        DOSBase = NULL;
+    }
+
+    return NULL;
+
+    AROS_USERFUNC_EXIT
+}
+
+/*
+ * RTF_AFTERDOS, so cliinit.c starts it once SYS: and the boot assigns exist.
+ * Priority 0 within that pass: nothing else in this package is AFTERDOS
+ * except lddemon, shell and shellcommands at -123, and this wants to run
+ * before the Shell reaches a prompt and starts competing for the console.
+ */
+const struct Resident krnP4AfterDosResident =
+{
+    RTC_MATCHWORD,
+    (struct Resident *)&krnP4AfterDosResident,
+    (APTR)((const char *)&krnP4AfterDosResident + sizeof(struct Resident)),
+    RTF_AFTERDOS,
+    1,
+    NT_TASK,
+    0,
+    "esp32p4 sysfs probe",
+    "esp32p4 sysfs probe 1.0",
+    &krnP4AfterDosInit
+};
+
+#endif /* P4_AFTERDOS_PROBE */
 
 #ifdef P4_SDCARD_DEVICE_TEST
 /*

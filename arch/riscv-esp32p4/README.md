@@ -50,11 +50,12 @@ its evidence entry in the same change.
 | serial debug console | not started | UART0 |
 | code from flash | done | .text and .rodata mapped from the app partition, 117744 bytes of SRAM returned |
 | PSRAM bring-up | done | 32 MB at 20 MHz, mapped at `0x48000000` and in exec's memory list; `AvailMem` reports 34,177,392 bytes |
-| BSP package from flash | done | `sdcard.device`, `utility.library`, `partition.library` and `expansion.library` copied from `arosbsp`, relocated into PSRAM and found as residents; utility opens as version 50 and partition as version 3 |
+| BSP package from flash | done | fourteen members copied from `arosbsp`, relocated into PSRAM and found as residents in the order their `.conf` files declare; utility opens as version 50 and partition as version 3.  `boot/audit-package.py` checks every member against the loader's own relocation set |
 | timer.device | done | a 500 ms timerequest on the VBLANK unit returns after exactly 50 ticks |
 | SD/MMC block device | A1 hardware verified | read-only native DesignWare-MMC/IDMAC path.  Every read goes through the IDMAC, as in ESP-IDF.  One run passes 59 card-referenced cells, 1,000 repetitions and the invalid-request rejection cases; separate runs pass the three injected fault modes with CMD12/CMD13 recovery and the heartbeat.  Two gate points are met differently and documented in the roadmap |
 | Partition discovery | A2 hardware verified | bounded MBR/GPT/EBR reading: range and overflow guards in the common funnel, GPT header and entry-array bounds, an EBR visited set and depth limit.  The card reports exactly its one partition; eleven malformed tables from `ramtest.device` are all refused within 4 to 36 sector reads |
-| Test image | A3 hardware verified | reproducible FAT32 image built on the host without root or external tools, one MBR partition at LBA 2048.  Checked by the host's own parser, by `fsck_msdos` and against its manifest, byte-identical on rebuild, and read correctly on the board at the values predicted from the image.  See [image/README.md](image/README.md) |
+| Test image | A3 hardware verified | reproducible FAT32 image built on the host without root or external tools, one MBR partition at LBA 2048.  Checked by the host's own parser, by `fsck_msdos` and against its manifest, byte-identical on rebuild, and read correctly on the board at the values predicted from the image.  One known gap: no volume-label entry in the root directory, so FAT names the volume from its serial.  See [image/README.md](image/README.md) |
+| DOS/FAT boot | A4 hardware verified | boots from the card to a Shell prompt on the emergency console, which accepts typed input.  dosboot replaces the whole-disk node with the partition node, `AROS.boot` is accepted, `SYS:` is assigned from the volume, `Info()` reports `ID_WRITE_PROTECTED` and eight DOS mutations are refused with error 214 leaving the medium bit-identical.  A card without `AROS.boot` unmounts cleanly and reaches the same prompt |
 | MIPI-DSI framebuffer HIDD | not started | |
 | touch HIDD | not started | |
 | second core | not started | single hart until the rest works |
@@ -70,7 +71,7 @@ Read off the hardware with esptool 5.3, not taken from a datasheet.
 | Console | USB-Serial/JTAG, Espressif 303a:1001, enumerates without a bridge chip |
 | Flash | 32 MB, Winbond (manufacturer 0xef, device 0x4019) |
 | Flash layout | ESP-IDF table at 0x8000, nvs 0x9000, nvs_key 0xf000, otadata 0x10000, phy_init 0x12000, ota_0 0x20000 (8 MB), `arosbsp` 0x820000 (8064 KB), FAT storage 0x1020000 (15.9 MB) |
-| Currently flashed | patched ESP-IDF v6.0.1 second stage, AROS XIP diagnostic image in ota_0 and the twelve-member A4 BSP package in `arosbsp`; `storage` remains untouched |
+| Currently flashed | patched ESP-IDF v6.0.1 second stage, AROS XIP diagnostic image in ota_0 and the fourteen-member A4 BSP package in `arosbsp`; `storage` remains untouched |
 
 Revision v1.3 means the pre-v3 memory layout applies. The hardware facts above
 were read before the first write. The bring-up now deliberately replaces only
@@ -300,17 +301,22 @@ than booting an unobserved new layout. It is not a dependency of the
 bootloader, kernel image or any default build.
 
 The package itself uses AROS's existing PKG container rather than a new disk
-format. The current package contains twelve members: `sdcard.device`,
+format. The current package contains fourteen members: `sdcard.device`,
 `utility.library`, `partition.library`, `expansion.library`, the A2 corpus
 fixture `ramtest.device`, and, added for A4, `dos.library`,
 `bootloader.resource`, `FileSystem.resource`, `lddemon.resource`,
-`shell.resource`, `shellcommands.resource` and the `fat` handler. Together
-that is 976,008 bytes, 11.8 % of the 0x7e0000-byte partition.
-`dosboot.resource` is deliberately still absent: its COLDSTART init never
-returns, which would make every diagnostic printed after `krnStartExec()`
-unreachable.
+`shell.resource`, `shellcommands.resource`, `dosboot.resource`, the `fat`
+handler and the `econsole` handler. Together that is 1,163,992 bytes, 14.1 %
+of the 0x7e0000-byte partition.
 
-    gmake kernel-package-esp32p4-riscv
+    gmake kernel-package-esp32p4-riscv FAT_DEBUG=1 DOS_DEBUG=1 DOSBOOT_DEBUG=1
+
+The three debug flags are what make a boot readable. `dosboot.resource`'s
+COLDSTART init never returns, so nothing printed after `krnStartExec()` in
+`kernel_startup.c` is reachable once it is present, and the modules' own
+narration is the only account of what the boot did. Note that mmake does not
+invalidate objects when a mmakefile changes, so switching one of these flags
+on needs the affected objects deleted by hand.
 
 `boot/audit-package.py` checks the built container. It reads the set of
 accepted relocation types out of `kernel/kernel_elf.c` itself, so it cannot
@@ -681,7 +687,31 @@ resource's `BootMsg`, so `KrnGetBootInfo()` returned nothing and no boot
 argument could reach `bootloader.resource`. With that last one fixed, a
 `P4_CMDLINE`/`P4_HEADLESS_BOOT` build option supplies the
 `econsole nomonitors nocomposition` command line the headless route needs.
-`dosboot.resource` and `econsole` remain out of the package.
+A4 is done. The board boots from the MicroSD card: dosboot replaces the
+whole-disk node with the partition node, `dos.library` starts the FAT handler,
+FAT mounts the volume and reports it write protected, `AROS.boot` is accepted
+on its `cpu riscv` line, `SYS:` is assigned from that volume, and the Shell
+reaches a prompt on the emergency console that can be typed into. `Info()`
+reports `ID_WRITE_PROTECTED` and eight representative DOS mutations are
+refused with `ERROR_DISK_WRITE_PROTECTED`, with the file bit-identical
+afterwards. A medium without `AROS.boot` unmounts cleanly and falls back to
+the same prompt.
+
+Five defects in shared code had to be fixed to get there, and none of them
+was specific to this port beyond being first to hit it. `CacheClearE()` on
+32-bit RISC-V clears nothing and each platform is expected to replace it;
+this one had not, so `CreateSegList()`'s trampoline was jumped to before the
+instruction side had re-fetched it. `shellcommands_init.c` guarded the same
+flush for resident commands behind `__AROS_USE_FULLJMP`, which means
+something else - that the library jump table holds instructions - so every
+resident shell command was unreachable here. `sdcard.device` never
+initialised its disc-change interrupt list, which only a filesystem
+exercises. The SD backend's 512-byte bounce buffer could not take FAT's
+32-sector reads into an `AllocMem` buffer that is only 32-byte aligned. And
+`KrnMayGetChar()` had no implementation, which made the console output-only
+and, because econsole polls it at DOS's handler priority 10, starved
+everything below that priority.
+
 Done when: modules outside the kickstart also start from MicroSD.
 The complete order, hardening work and test matrix are in
 [ROADMAP.md, Track A](ROADMAP.md#track-a-storage-and-normal-boot).

@@ -134,6 +134,8 @@ void krnP4PutC(char c);
 void krnP4PutStr(const char *s);
 void krnP4PutHex32(uint32_t val);
 void krnP4PutDec(uint32_t val);
+/* One character from the console, or -1 if none is waiting.  Never blocks. */
+int krnP4GetC(void);
 void krnP4PutDecS(int32_t val);
 
 /*
