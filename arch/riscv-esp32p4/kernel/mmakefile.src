@@ -153,6 +153,13 @@ ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
 
+# P4_HEARTBEAT_PRI=<n> overrides the heartbeat task's priority, default 20.
+# Building it at 5 is the test for whether anything polls at DOS's handler
+# priority 10 and starves the rest of the machine; econsole used to.
+ifdef P4_HEARTBEAT_PRI
+P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_PRI=$(P4_HEARTBEAT_PRI)
+endif
+
 USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__ $(P4_DEBUG_CPPFLAGS)
 
 CFILES := \

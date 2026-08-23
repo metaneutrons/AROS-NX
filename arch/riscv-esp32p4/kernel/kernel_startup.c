@@ -510,6 +510,15 @@ static void test_task_b(void)
 #endif
 
 /*
+ * Overridable so the fairness of everything below it can be tested rather
+ * than assumed: a build at 5 is what shows whether a handler polling at DOS's
+ * priority 10 still starves the rest of the machine.
+ */
+#ifndef P4_HEARTBEAT_PRI
+#define P4_HEARTBEAT_PRI 20
+#endif
+
+/*
  * The heartbeat, as a task started from a resident rather than as a loop in
  * kernel_cstart().
  *
@@ -549,7 +558,11 @@ static void test_task_b(void)
  * as a shell waits for a keystroke.  KrnMayGetChar() has no implementation on
  * this platform and always returns -1, so that is for ever, and nothing
  * below priority 10 runs again once a shell reaches its prompt.  20 is above
- * every handler DOS starts and below nothing that matters.
+ * every handler DOS starts and below nothing that matters, and it is kept
+ * there even now that econsole waits instead of spinning: a heartbeat should
+ * be able to report while something else is spinning, whoever that turns out
+ * to be next.  P4_HEARTBEAT_PRI overrides it, which is how the econsole fix
+ * was tested.
  */
 static void krnP4HeartbeatTask(void)
 {
@@ -629,12 +642,29 @@ static void krnP4HeartbeatTask(void)
         krnP4PutStr("  tasks ready ");
         {
             ULONG n;
+            struct Task *t;
 
             ListLength(&SysBase->TaskReady, n);
             krnP4PutDec((uint32_t)n);
             ListLength(&SysBase->TaskWait, n);
             krnP4PutStr(" waiting ");
             krnP4PutDec((uint32_t)n);
+
+            /*
+             * Naming them, not just counting them.  A count says something is
+             * ready and says nothing about what, which is exactly the question
+             * when a lower-priority task stops being scheduled.  Reasoning
+             * from priorities alone got this wrong once already.
+             */
+            krnP4PutStr("  ready:");
+            ForeachNode(&SysBase->TaskReady, t)
+            {
+                krnP4PutStr(" '");
+                krnP4PutStr(t->tc_Node.ln_Name ? t->tc_Node.ln_Name
+                                               : "(unnamed)");
+                krnP4PutStr("'@");
+                krnP4PutDecS((int32_t)(signed char)t->tc_Node.ln_Pri);
+            }
         }
         krnP4PutStr("\n");
         Permit();
@@ -650,7 +680,7 @@ AROS_UFH3(static APTR, krnP4HeartbeatInit,
 {
     AROS_USERFUNC_INIT
 
-    struct Task *t = krnP4SpawnTask("esp32p4 heartbeat", 20,
+    struct Task *t = krnP4SpawnTask("esp32p4 heartbeat", P4_HEARTBEAT_PRI,
                                     krnP4HeartbeatTask, 8192);
 
     krnP4PutStr("[beat]   heartbeat task ");

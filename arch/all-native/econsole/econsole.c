@@ -60,6 +60,32 @@ SIPTR Raw_Read(APTR buff, SIPTR len, SIPTR *err)
     while (actual < len) {
         LONG c = RawMayGetChar();
         if (c < 0) {
+            /*
+             * A spin, and a costly one: Reschedule() hands the CPU to the
+             * highest priority *ready* task, and this handler is one of them
+             * for as long as a shell waits for a line.  DOS starts it at
+             * dn_Priority 10, so nothing below that runs while a prompt is
+             * open, and on a platform whose KrnMayGetChar() is unimplemented
+             * that is for ever.  Measured on esp32p4-riscv at an idle prompt:
+             * two tasks permanently ready, this one at 10 and the Shell at 0.
+             *
+             * Replacing this with a short timed wait on timer.device is the
+             * obvious fix and it does not work.  Tried on 2026-08-23 at 10 ms
+             * and 50 ms, on UNIT_VBLANK and on UNIT_MICROHZ: the first DoIO()
+             * from here never returns, and the machine stops entirely - no
+             * further console output from any task, including a heartbeat
+             * whose own timer request was already pending and had been
+             * completing on schedule until then.  A wedge, not a starvation.
+             * Something about waiting on timer.device from inside this
+             * handler's packet dispatch is wrong, and it was not worth
+             * shipping a guess; see the ESP32-P4 roadmap entry of that date
+             * for the full evidence.
+             *
+             * The real answer is interrupt-driven console input, which is
+             * what a con-handler plus keyboard.device does anyway.  Until
+             * then this spins, and anything that has to run alongside a
+             * prompt must sit above priority 10.
+             */
             Reschedule();
             continue;
         }
