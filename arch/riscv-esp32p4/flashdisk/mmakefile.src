@@ -17,6 +17,27 @@ USER_INCLUDES := -I$(SRCDIR)/$(CURDIR) -I$(SRCDIR)/arch/riscv-esp32p4/kernel \
                  -I$(SRCDIR)/rom/kernel
 USER_LDFLAGS := -static
 
+#
+#   The boot node is registered by default, at a priority below the SD card's
+#   so a present card still wins and the flash volume is the fallback.  The
+#   gates live here rather than in kernel/mmakefile.src because this is where
+#   the module is compiled; P4_DEBUG_CPPFLAGS does not reach across
+#   directories.
+#
+#     P4_NO_FLASHDISK_BOOTNODE=1  register nothing, for comparing a boot
+#                                 against one from before this existed
+#     P4_FLASHDISK_BOOTPRI=n      move it, default -10
+#
+#   Neither is needed to force the flash volume: dosboot's own
+#   bootdevice=FLASHDISK0P0 on the kernel command line does that.
+#
+ifdef P4_NO_FLASHDISK_BOOTNODE
+USER_CPPFLAGS += -DP4_NO_FLASHDISK_BOOTNODE
+endif
+ifdef P4_FLASHDISK_BOOTPRI
+USER_CPPFLAGS += -DP4_FLASHDISK_BOOTPRI=$(P4_FLASHDISK_BOOTPRI)
+endif
+
 FLASHDISKFILES = \
     flashdisk_device
 

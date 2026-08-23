@@ -80,3 +80,13 @@ Before each write, still identify the serial device, verify the artifact
 hashes and report the exact offsets in the roadmap evidence.  This standing
 authorization does not include bootloader, partition table, `otadata`, NVS or
 `storage`; those remain explicit-write targets.
+
+The development volume is mounted as `FLASHDISK0P0:` by default, from a boot
+node `flashdisk.device` registers at priority -10.  That is below the SD
+card's, so a present card still wins the boot and the flash volume is only
+the fallback; `bootdevice=FLASHDISK0P0` on the kernel command line forces it,
+and `P4_NO_FLASHDISK_BOOTNODE=1` leaves it unregistered.  Writing test
+content to it is a flash write to `0xc00000` and therefore covered above, but
+it does not replace a card run: a change that touches the storage stack has
+to be shown on the card too, because the two go through different devices and
+different FAT widths.

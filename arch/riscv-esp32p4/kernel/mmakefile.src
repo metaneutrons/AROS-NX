@@ -127,8 +127,15 @@ endif
 # gives it a console when no display driver has been brought up.  Note that
 # econsole also sets the no-Startup-Sequence boot flag, so a test that has
 # to run must be an AFTERDOS resident or an interactive command.
+#
+# The two combine, and `override` is what makes them: a variable set on the
+# make command line beats a plain assignment in a makefile, so without it
+# P4_HEADLESS_BOOT=1 P4_CMDLINE="bootdevice=..." silently lost all three
+# headless words.  Anything the caller passes is appended, so it can add to
+# the headless set or contradict a word in it, which dosboot resolves by
+# reading the arguments in order.
 ifeq ($(P4_HEADLESS_BOOT),1)
-P4_CMDLINE := econsole nomonitors nocomposition
+override P4_CMDLINE := econsole nomonitors nocomposition $(P4_CMDLINE)
 endif
 
 ifdef P4_CMDLINE
