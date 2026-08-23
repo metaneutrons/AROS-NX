@@ -542,6 +542,64 @@
 #define P4_DSI_BRG_EN           0x004
 #define   P4_DSI_BRG_DSI_EN     (1UL << 0)
 
+#define P4_DSI_CLKMGR_CFG       0x008
+#define   P4_DSI_TX_ESC_DIV_MASK  0xFFUL
+#define   P4_DSI_TO_CLK_DIV_SHIFT 8
+#define   P4_DSI_TO_CLK_DIV_MASK  (0xFFUL << P4_DSI_TO_CLK_DIV_SHIFT)
+#define P4_DSI_PCKHDL_CFG       0x02C
+#define   P4_DSI_EOTP_TX_EN     (1UL << 0)
+#define   P4_DSI_BTA_EN         (1UL << 2)
+#define   P4_DSI_ECC_RX_EN      (1UL << 3)
+#define   P4_DSI_CRC_RX_EN      (1UL << 4)
+#define   P4_DSI_EOTP_TX_LP_EN  (1UL << 5)
+#define P4_DSI_GEN_VCID         0x030
+#define   P4_DSI_GEN_VCID_RX_MASK 0x3UL
+#define P4_DSI_CMD_MODE_CFG     0x068
+#define   P4_DSI_ACK_RQST_EN    (1UL << 1)
+#define   P4_DSI_GEN_SW_0P_TX   (1UL << 8)
+#define   P4_DSI_GEN_SW_1P_TX   (1UL << 9)
+#define   P4_DSI_GEN_SW_2P_TX   (1UL << 10)
+#define   P4_DSI_GEN_SR_0P_TX   (1UL << 11)
+#define   P4_DSI_GEN_SR_1P_TX   (1UL << 12)
+#define   P4_DSI_GEN_SR_2P_TX   (1UL << 13)
+#define   P4_DSI_GEN_LW_TX      (1UL << 14)
+#define   P4_DSI_MAX_RD_PKT_SIZE (1UL << 24)
+#define P4_DSI_GEN_HDR          0x06C
+#define   P4_DSI_GEN_DT_MASK    0x3FUL
+#define   P4_DSI_GEN_VC_SHIFT   6
+#define   P4_DSI_GEN_WC_LSB_SHIFT 8
+#define   P4_DSI_GEN_WC_MSB_SHIFT 16
+#define P4_DSI_GEN_PLD_DATA     0x070
+#define P4_DSI_CMD_PKT_STATUS   0x074
+#define   P4_DSI_GEN_CMD_EMPTY  (1UL << 0)
+#define   P4_DSI_GEN_CMD_FULL   (1UL << 1)
+#define   P4_DSI_GEN_PLD_W_EMPTY (1UL << 2)
+#define   P4_DSI_GEN_PLD_W_FULL (1UL << 3)
+#define   P4_DSI_GEN_PLD_R_EMPTY (1UL << 4)
+#define   P4_DSI_GEN_RD_CMD_BUSY (1UL << 6)
+#define P4_DSI_TO_CNT_CFG       0x078
+#define P4_DSI_HS_RD_TO_CNT     0x07C
+#define P4_DSI_LP_RD_TO_CNT     0x080
+#define P4_DSI_HS_WR_TO_CNT     0x084
+#define P4_DSI_LP_WR_TO_CNT     0x088
+#define P4_DSI_BTA_TO_CNT       0x08C
+#define P4_DSI_PHY_TMR_LPCLK_CFG 0x098
+#define   P4_DSI_CLKLP2HS_SHIFT 0
+#define   P4_DSI_CLKHS2LP_SHIFT 16
+#define P4_DSI_PHY_TMR_CFG      0x09C
+#define   P4_DSI_LP2HS_SHIFT    0
+#define   P4_DSI_HS2LP_SHIFT    16
+#define P4_DSI_PHY_TMR_RD_CFG   0x0F4
+#define P4_DSI_INT_ST0          0x0BC
+#define P4_DSI_INT_ST1          0x0C0
+
+/* The DSI data types this port sends. */
+#define P4_DSI_DT_DCS_SW_0P     0x05
+#define P4_DSI_DT_DCS_SW_1P     0x15
+#define P4_DSI_DT_DCS_READ_0    0x06
+#define P4_DSI_DT_DCS_LW        0x39
+#define P4_DSI_DT_SET_MAX_RET   0x37
+
 /* This board: two lanes at 1000 Mbit/s from a 40 MHz reference. */
 #define P4_DSI_LANES            2
 #define P4_DSI_LANE_MBPS        1000
