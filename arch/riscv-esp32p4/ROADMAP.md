@@ -626,6 +626,7 @@ Acceptance gate:
 | Partition input | Treat all table bytes as untrusted and budget every traversal. |
 | Boot package | Boot-critical residents remain in internal flash; ordinary system files load from SD. |
 | Package capacity | `arosbsp` is 0x7e0000 bytes and is now shared: the package has everything below `P4_FLASHDISK_PART_OFFSET` and the flash development volume the four megabytes above.  `kernel-package-esp32p4-riscv-checksize` fails the build if the package crosses the split, because past it the loader would read filesystem bytes as members.  Size and every member hash are checked on each expansion. |
+| `krnP4FlashMap()` is not re-entrant | It owns a single scratch window, so two callers interleaving would each see the other's mapping.  `flashdisk.device` serves every request inside `Forbid()` and in 64 KB pieces, which is sufficient only because the map and the `CopyMem()` out of it are a few hundred cycles and no request waits on anything.  A writing path would have to erase and program, so it cannot reuse this pattern, and a second consumer of the map added anywhere has to be checked against this. |
 | Flash reads past 16 MB | `krnP4FlashMap()` refuses anything at or past the cache-mapping limit, so the `storage` partition at 0x1020000 is unreachable by that route.  Anything that needs it would have to use raw SPI commands with the cache suspended and a destination in internal SRAM, which is why the development volume was put inside `arosbsp` instead. |
 | Panel timing | Start from measured Vellum behavior, not the contradictory 60 Hz comment. |
 | PSRAM | 20 MHz remains the safe fallback; display scanout requires a calibrated, measured faster path. |
@@ -3336,6 +3337,93 @@ independently confirms `arosbsp unknown 40 00 00820000 007e0000`.
 - Next safe step: the block device over this volume, then a boot node with a
   lower priority than the SD partition so a present card still wins, and a
   `bootdevice=` option to force the flash.
+
+### 2026-08-23 - flashdisk.device, and partition.library over it
+
+- State change: none to any roadmap phase.  Third and last measured step of
+  the flash-volume infrastructure: the volume is now a block device, and the
+  same discovery code A2 hardened finds the FAT16 partition through it.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3.  The A3
+  card stayed in the board and was not touched.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `a7e5a6a42c`.
+- Artifacts: core 183,808 bytes,
+  `090124a25639f7cf9070db9b82d317f4c025ffbb3711f448e220a347042147be`;
+  `flashdisk_device.o` 13,088 bytes as a kickstart object.  The volume in
+  flash was not rewritten, so its hash from the previous entry still stands.
+- Test defines: `P4_A1_DIAGNOSTIC=1 P4_PARTITION_TEST=1 P4_DOS_PROBE=1
+  P4_AFTERDOS_PROBE=1 P4_A5_PROBE=1 P4_FLASHDISK_PROBE=1 P4_FLASHDISK_TEST=1
+  P4_HEADLESS_BOOT=1 P4_HEARTBEAT_TASK=1 P4_LDSCRIPT=ldscript-xip.lds`.
+- Written to `ota_0` at `0x20000`, verified by esptool hash.
+
+**Why it is a kickstart object and not a package member.**  This was settled
+before any code was written, by reading `kernel_elf.c`: its `symbol_value()`
+fails on `SHN_UNDEF`, so a package member cannot call `krnP4FlashMap()` at
+all; it can only reach outside itself through library vectors.  A device that
+reads flash therefore belongs where that function is linked, which is the
+kickstart, the same place `timer.device` sits.  `BSP_DEVS := timer flashdisk`
+is the whole mechanism, and `ramtest.device` from A2 was the template.
+
+**What the test asks.**  The earlier probe read the volume through a map and
+said the bytes are there.  This asks whether the stack above them behaves:
+
+```text
+[fddev]  flashdisk.device open
+[fddev]  geometry: error 0, sector size 512, sectors 8192
+[fddev]  TD_PROTSTATUS actual 0xffffffff, protected
+[fddev]  CMD_WRITE: error 28 (TDERR_WriteProt), actual 0x00000000, refused as write protection
+[fddev]  OpenRootPartition = 0x482b7ad0
+[fddev]  table type 2
+[fddev]    partition: start 2048, sectors 6144, dostype 0x46415401  FAT16
+[fddev]  partitions found 1, as expected
+[fddev]  read after discovery: result 0, hash 0xb239b878
+[fddev]  flash block device test passed
+```
+
+The decisive line is the last read.  `ReadPartitionDataQ()` at offset 0 of the
+root hands back `0xb239b878`, which is the MBR hash computed on the host from
+the image file and reproduced in the previous entry from a raw flash map.  The
+same bytes therefore arrive through three independent paths: the host's own
+generator, `krnP4FlashMap()` before exec exists, and now a device request
+served to `partition.library` after DOS is up.  Table type 2 is MBR, one
+partition at sector 2048 of 6144 sectors, DosType `0x46415401` which is
+`FAT\1`; every value matches what the generator wrote.
+
+**A defect the test found in its own subject.**  The first run refused
+`CMD_WRITE` with `IOERR_NOCMD` and left `io_Actual` at the caller's
+`0xdeadbeef`, because writes fell through to the `default` case.  Both halves
+are wrong for the same reason A4 established for `sdcard.device`: a filesystem
+can act on `TDERR_WriteProt` and can only guess at `NOCMD`, and "nothing was
+written" has to be readable from the reply without knowing what the caller
+left in the field.  Writes are now named cases returning `TDERR_WriteProt`
+with `io_Actual = 0`, which also makes them agree with what `TD_PROTSTATUS`
+says one command earlier.  The test was tightened to require both properties
+rather than merely a non-zero error, which is what caught it.
+
+**Serialising the map.**  `krnP4FlashMap()` owns one scratch window and is not
+re-entrant, the risk the previous entry recorded.  Every use in the device is
+inside `Forbid()`, and requests are served in 64 KB pieces because that is one
+MMU page and mapping costs a cache invalidate over what it covers.  `Forbid()`
+is sufficient here only because no request waits on anything: the map and the
+`CopyMem()` out of it are a few hundred cycles.  A future writing path, which
+would have to erase and program, cannot use this pattern.
+
+- Acceptance: the device opens; geometry agrees with the constant the volume
+  was generated against; write protection is reported and every write refused
+  as write protection with a zero count; `partition.library` finds exactly one
+  FAT16 partition at the expected place; a read through the public API after
+  discovery reproduces the host's MBR hash; and the A4 and A5 probes in the
+  same run still pass, with no trap.
+- Safety impact: the SD card was untouched and the volume in flash was not
+  rewritten.  The only write was the core to `ota_0`.
+- Remaining risk: the device is not mounted and has no boot node, so nothing
+  reaches it through a path name yet.  Adding one puts it in dosboot's
+  MountList next to the card's partition, and which of them wins is a
+  decision with consequences, so it is the next step rather than part of this
+  one.
+- Next safe step: a boot node for the flash volume at a lower priority than
+  the SD partition, so a present card still wins, plus a `bootdevice=` option
+  to force the flash.  Then read `SYS:` content off the flash volume, which is
+  the point of the whole exercise.
 
 ## Evidence-entry template
 
