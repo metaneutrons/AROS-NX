@@ -58,7 +58,7 @@ its evidence entry in the same change.
 | Code loaded from SD | A5 hardware verified | a command and a library, in neither the kickstart nor the flash package, loaded from FAT by DOS/LoadSeg and lddemon and run from two different callers, with every address outside the resident ranges.  Four refusal cases fail with the reason named and nothing leaked.  See [proof/](proof/) |
 | DOS/FAT boot | A4 hardware verified | boots from the card to a Shell prompt on the emergency console, which accepts typed input.  dosboot replaces the whole-disk node with the partition node, `AROS.boot` is accepted, `SYS:` is assigned from the volume, `Info()` reports `ID_WRITE_PROTECTED` and eight DOS mutations are refused with error 214 leaving the medium bit-identical.  A card without `AROS.boot` unmounts cleanly and reaches the same prompt |
 | Flash development volume | hardware verified | a FAT16 volume in the last 4 MB of `arosbsp` at flash `0xc00000`, written with `esptool` instead of by a card handoff.  `flashdisk.device` serves it read-only from the kickstart and registers a boot node at priority -10, so it mounts as `FLASHDISK0P0:` on every boot while a present card still wins.  A file read off it is byte-identical to the same file on the card, and with `bootdevice=FLASHDISK0P0` the system boots out of flash and loads the A5 proof library and command from it.  With no card in the board the flash volume is booted automatically, because `sdcard.device` then registers no boot node at all |
-| MIPI-DSI framebuffer HIDD | not started | |
+| MIPI-DSI framebuffer HIDD | not started | the display contract is frozen in [display/DISPLAY-CONTRACT.md](display/DISPLAY-CONTRACT.md), which is authoritative for panel, DSI, timing, power, rotation and register-set facts and supersedes anything about the display elsewhere in this file |
 | touch HIDD | not started | |
 | second core | not started | single hart until the rest works |
 
@@ -193,7 +193,7 @@ earlier attempt assumed are wrong:
 
 | | earlier attempt | the working firmware |
 | :--- | :--- | :--- |
-| Panel | "8 inch 1280x800 MIPI-DSI" | JD9365, natively 800x1280 portrait, 2 lanes at 1000 Mbps, DPI clock 40 MHz, HSYNC 40 / HBP 140 / HFP 40, VSYNC 4 / VBP 16 / VFP 16 |
+| Panel | "8 inch 1280x800 MIPI-DSI" | JD9365, natively 800x1280 portrait, 2 lanes at 1000 Mbps, DPI clock 40 MHz.  The porches are not listed here on purpose: two sources give different sets and only one of them ever drove this panel.  See [display/DISPLAY-CONTRACT.md](display/DISPLAY-CONTRACT.md) |
 | DSI PHY | not addressed | needs the internal LDO on channel 3 at 2500 mV |
 | Backlight | GPIO 26 | GPIO 14, with LCD_PWR_EN and LCD_BL_EN on an I2C port expander |
 | Panel reset | not addressed | port expander bit, not a GPIO |
