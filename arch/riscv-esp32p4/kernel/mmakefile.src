@@ -65,6 +65,12 @@ USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 #                       boot tag.  bootloader.resource splits it on
 #                       whitespace into the argument list dosboot reads;
 #                       there is no firmware source for one on this board
+#   -DP4_HEARTBEAT_TASK a heartbeat as an exec task instead of the loop at the
+#                       end of kernel_cstart().  That loop only runs because
+#                       nothing before it takes the machine over, and
+#                       dosboot.resource does, so from A4 onwards a heartbeat
+#                       has to live somewhere a boot cannot take away.
+#                       P4_HEARTBEAT_SECS sets the interval, default 5
 #   -DP4_DOS_PROBE      the half of the A4 gate that can be asked before
 #                       dosboot.resource joins the package: bootloader
 #                       arguments, the FAT entries in FileSystem.resource,
@@ -121,6 +127,17 @@ endif
 
 ifdef P4_CMDLINE
 P4_DEBUG_CPPFLAGS += -DP4_CMDLINE='"$(P4_CMDLINE)"'
+endif
+
+# P4_HEARTBEAT_TASK=1 moves the heartbeat into a task at priority -20, so it
+# survives a COLDSTART resident that never returns.  P4_HEARTBEAT_SECS=<n>
+# sets the interval.
+ifdef P4_HEARTBEAT_TASK
+P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_TASK
+endif
+
+ifdef P4_HEARTBEAT_SECS
+P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
 
 USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__ $(P4_DEBUG_CPPFLAGS)
