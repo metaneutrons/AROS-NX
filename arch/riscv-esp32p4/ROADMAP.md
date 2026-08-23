@@ -633,6 +633,8 @@ Acceptance gate:
 | Cache/DMA | Every presented CPU-written region needs an explicit clean operation. |
 | Source provenance | External Vellum/Waveshare/IDF sources are references; licence compatibility is checked before code reuse. |
 | Touch | Not a GB0 dependency and not claimed as GSL3670 until probed. |
+| Console input fairness | `econsole` polls `RawMayGetChar()` and yields, so its handler process is permanently ready at DOS's `dn_Priority` 10 while a prompt waits for a line; measured at an idle prompt, two tasks are ready, ECON at 10 and the Shell at 0.  Nothing below 10 runs, and any latency or throughput figure taken with a prompt open is distorted.  A short timed wait on `timer.device` was tried and wedges the machine (evidence entry 2026-08-23), so the standing rule is that anything which must run alongside a prompt sits above priority 10.  The real fix is interrupt-driven console input, which belongs with Track C's `con` handler and `keyboard.device` rather than in `econsole`. |
+| `DoIO` from a handler's packet dispatch | Unexplained: `econsole`'s first `DoIO` on `timer.device` from inside `Raw_Read()` never returns, on either unit, and stops an unrelated pending timer request as well.  Anything in Track B or C that waits on a device from inside a handler's dispatch has to be treated as suspect until this is understood. |
 
 ## Evidence log
 
@@ -2855,6 +2857,93 @@ was unreachable until this.
   and run a command and a library from the card.  A5's interactive route is
   open now that the console can be typed into, and its AFTERDOS route is the
   resident added here.
+
+### 2026-08-23 - econsole's idle poll: the starvation measured, the fix rejected
+
+- State change: none.  A4 stays `hardware verified`.  This records an attempt
+  that failed and the measurement that replaced a wrong explanation, and adds
+  two rows to the risk table.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3, A3 test
+  card in the slot.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `96d38d619d`.
+
+The starting point was the limitation noted in the A4 entry: `econsole`'s
+`Raw_Read()` has no way to block, so it polls `RawMayGetChar()` and yields
+with `Reschedule()`.  That call hands the CPU to the highest priority *ready*
+task, and the ECON handler is one of them for as long as a shell waits for a
+line, so nothing below DOS's `dn_Priority` 10 runs.  The heartbeat had to be
+moved to 20 because of it.
+
+**The measurement first, because it corrected the explanation.**  The
+heartbeat now names the ready tasks instead of counting them, and at an idle
+prompt it reports:
+
+```text
+[beat]   1  ticks 631  irqs 632  avail 30656528  tasks ready 2 waiting 6  ready: 'ECON'@10 'Shell'@0
+```
+
+Two tasks permanently ready, not one: ECON at 10 and the **Shell at 0**.  The
+Shell being ready while blocked on a packet reply was not expected and is not
+yet explained.  Counting had hidden it; the count was 2 in every earlier run
+and I had read that as "the heartbeat plus ECON", which was wrong.
+
+Reasoning from priorities alone had already produced one wrong conclusion
+earlier in the day, recorded in the comment at `krnP4HeartbeatTask()`.  This
+is why the dump names them now.
+
+**The fix that was tried and rejected.**  Replace `Reschedule()` with a short
+timed wait on `timer.device`, so the handler waits rather than stays ready.
+That removes the starvation by construction, costs no CPU at an idle prompt,
+and adds a keystroke latency below what a person notices.  It does not work.
+
+- 10 ms on `UNIT_VBLANK`: the first `DoIO()` from `Raw_Read()` never returns.
+- 50 ms on `UNIT_VBLANK`: same.
+- 50 ms on `UNIT_MICROHZ`, a different request list and a different processing
+  path in `rom/timer/lowlevel.c`: same.
+
+In every case the console's last line is the instrumented entry to the wait,
+and after it there is no output from any task at all - including the heartbeat,
+whose own `timer.device` request was already pending and had been completing
+on schedule at exactly 500-tick intervals until that moment.  So this is a
+wedge of the whole machine, not a scheduling problem.
+
+Ruled out by reading the source rather than by assumption: the generic
+`addToWaitList()` keeps each list sorted ascending and `TimerProcessVBlank()`
+walks it and breaks at the first request not yet due, which is consistent;
+`common_BeginIO()` makes `tr_time` absolute against `tb_Elapsed` for both
+units; and the `addedhead` return value that might have re-based elapsed time
+is ignored by the generic `BeginIO()`.  Concurrency is not the trigger either,
+since `fat-handler` and the heartbeat both hold `UNIT_VBLANK` requests
+throughout a normal boot and both are served.
+
+What is left, and unexplained, is the context: a `DoIO()` issued from inside a
+DOS handler's packet dispatch, before the current packet is replied.  That is
+the one thing econsole does differently from `fat-handler` and from the
+heartbeat task.
+
+- Decision: the change is reverted.  A working spin is better than a fix that
+  stops the machine, and shipping a guess here would have traded a bounded
+  fairness defect for a total one.  What stays is the measurement, a comment
+  in `econsole.c` recording exactly what was tried and what happened, and two
+  rows in the risk table: one for the fairness rule that anything running
+  alongside a prompt must sit above priority 10, and one for the unexplained
+  wedge, because anything in Track B or C that waits on a device from inside a
+  handler's dispatch is suspect until it is understood.
+- Kept from the attempt: `P4_HEARTBEAT_PRI`, so the fairness of everything
+  below the heartbeat can be tested rather than assumed, and the ready-task
+  name dump.
+- Safety impact: none.  No media access changed.
+- Remaining risk: as the two new risk rows state.  The proper fix is
+  interrupt-driven console input.  Both halves exist on this SoC and were
+  checked while investigating: `serial_out_recv_pkt_int_ena` in bit 2 of the
+  USB Serial/JTAG interrupt registers, and `ETS_USB_SERIAL_JTAG_INTR_SOURCE`
+  and `ETS_UART0_INTR_SOURCE` as CLIC sources.  What is missing is a handler
+  table in the port's interrupt dispatch, which today is a single
+  `if (line == P4_TIMER_LINE)` in `kernel_traps.c`, and a blocking read path
+  for econsole to use; `RawMayGetChar()` is non-blocking by contract and
+  `KrnObtainInput()` is a setup call despite its name.  That work belongs with
+  Track C's `con` handler and `keyboard.device`, not duplicated in econsole.
+- Next safe step: A5, unaffected by any of this.
 
 ## Evidence-entry template
 
