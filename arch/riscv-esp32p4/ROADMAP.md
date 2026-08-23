@@ -671,7 +671,8 @@ Acceptance gate:
 | Undocumented DSI PHY constants | IDF's DSI bring-up writes `mipi_dsi_phy_ll_set_switch_time(50, 104, 46, 128)` and `set_max_read_time(6000)` with no derivation in any locally available source, and no ESP32-P4 technical reference manual is present on this machine.  They are carried over as opaque constants.  The failure mode is a PHY that locks but produces marginal signalling, which would look like a panel or timing problem rather than a PHY one, so a B4 pattern fault has to consider them before the timing set is blamed. |
 | CPU clock inherited, not configured | This port set no CPU clock and ran at 90 MHz until 2026-08-23 because the second-stage bootloader's divider was never touched.  Nothing failed, everything was four times slower than the silicon allows, and no diagnostic said so; it was found only by measuring `mcycle` against the system timer while chasing a bandwidth figure.  Anything else this port inherits from that bootloader is unexamined in the same way, the flash clock and the cache configuration in particular. |
 | CPU-loop bandwidth is a latency measurement | A scalar read loop costs 13.6 cycles per word from internal SRAM at both 90 and 360 MHz, which is one cache-line fill per sixteen words with a single fill outstanding.  It therefore measures fill latency and not the memory system's throughput, and no threshold about scanout can be argued from it.  A DMA engine is the only way to measure what the display will actually get, and until B5 exists any bandwidth claim about scanout is unfounded. |
-| The port expander survives a CPU reset | The PCA9535 has no reset pin and keeps its direction and output registers across every reboot, so its state at boot is whatever the last firmware left, not the datasheet default.  Any code that writes a whole register drives pins it never considered; B2's first version pulled the battery-charge enable low that way.  Read-modify-write is the only safe form here, and a check that assumes cold defaults passes vacuously on a warm board. |  And it cannot be cold-started without deciding to: the board has a battery, so removing USB changes nothing, and the only way to drop the rails is to release PWR_HOLD and power the board off.  Any test that wants the datasheet defaults has to say so out loud.
+| PSRAM stopped answering and stayed that way | An unchanged binary identified 32 MB one boot and read a floating bus the next, with a USB unplug between them.  The MPLL is measurably correct - divider byte 0x99 is exactly what the port writes, calibration ended, bus at the 20 MHz that always worked - and the chip is silent through three identify attempts.  No software cold start exists on this board, so the state cannot be cleared from here.  Everything that needs a framebuffer is blocked while this holds. |
+| The port expander survives a CPU reset | The PCA9535 has no reset pin and keeps its direction and output registers across every reboot, so its state at boot is whatever the last firmware left, not the datasheet default.  Any code that writes a whole register drives pins it never considered; B2's first version pulled the battery-charge enable low that way.  Read-modify-write is the only safe form here, and a check that assumes cold defaults passes vacuously on a warm board. |  And it cannot be cold-started from software at all: the board has a battery, so removing USB changes nothing, and releasing PWR_HOLD with the board on battery was tried cleanly and did not switch it off - the next boot still read the direction register as all-outputs where a cold device reads all-inputs.  Any test that wants the datasheet defaults has to say so out loud.
 | The display has produced no panel-side evidence | Not one DCS reply and not one pixel.  The host reports a locked PHY, lanes in stop state, a clean command path, a running pattern generator with no underrun, and a measured PWM on the backlight pin, and the panel is dark and unlit.  Every register compared matches the vendor BSP and the working reference.  Until something comes back from the panel, every statement about the display path is a statement about the SoC. |
 | DSI reads get no reply | Five DCS reads, the vendor identity register and four standard ones, all return nothing with no protocol error flagged and the host left waiting.  Espressif's driver reads the same register with an unbounded wait and works on this board, so the panel answers there and this port's read path is wrong.  A software reset and the divider encoding have been eliminated.  Nothing in the port depends on reads yet, but a panel that cannot be interrogated cannot be diagnosed either, and B6's orientation work would rather have the scanline register than a photograph. |
 | Flash reads past 16 MB | `krnP4FlashMap()` refuses anything at or past the cache-mapping limit, so the `storage` partition at 0x1020000 is unreachable by that route.  Anything that needs it would have to use raw SPI commands with the cache suspended and a destination in internal SRAM, which is why the development volume was put inside `arosbsp` instead. |
@@ -4298,6 +4299,66 @@ suggest.
   that is the user's call because it overwrites AROS.  Failing that, the next
   software step is to compare against the reference at the level of a full
   register dump after its own initialisation rather than function by function.
+
+### 2026-08-23 - PSRAM stopped answering, and the board cannot be cold-started
+
+- State change: none to a phase.  This records a regression that blocks the
+  display work and a failed attempt to clear it.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3.
+
+**What happened.**  PSRAM identified normally all session and then stopped,
+with the binary unchanged: `panel7.log` reports 32 MB at 20 MHz and
+`panelcold.log`, the very next run of core
+`c49b3e8d21d138bf3679f7f1c551ddaea1e6709f3daa29999e020ed92edca1f4`, reports a
+floating bus.  Between them the user unplugged and replugged USB.  Since then
+every boot reads vendor 0x1f and mode register 2 as 0xff, which is no chip
+answering at all.
+
+That it was the same binary is the important part: this is not a change I made.
+
+**What has been measured since, rather than assumed.**  The MPLL bring-up
+returned one value for two different faults, so it now names which and reports
+the PLL's own registers, read back over the configuration bus:
+
+```text
+[psram]  mpll   state 0x00709931, ana_pll_ctrl0 0x0000034c, bus 20 MHz, identify tried 4
+[psram]  chip   no answer - vendor 0x0000001f mr2 0x000000ff
+```
+
+`0x99` in the divider byte is exactly what this port writes: a divider field of
+19 and a reference divider of 1, which is 400 MHz.  `0x34c` has both the
+calibration-end and calibration-stop bits set.  The bus is at the 20 MHz that
+has always worked.  So the PLL is configured as intended, the calibration
+completed, and the chip is silent regardless.
+
+The identify is now retried three times, on the reasoning that the chip's mode
+registers survive a CPU reset exactly as the port expander's do, so a boot
+after other firmware finds the part in a bus width and latency it did not
+choose - and mode register 8 selects the width, so a write sent at the wrong
+width may not be received at all.  Three attempts change nothing here.  The
+retry is kept because the reasoning holds independently of this fault.
+
+**The board cannot be cold-started from software.**  Two attempts, and the
+second was clean: the image was written with `--after no-reset` so the countdown
+started when this port chose, the user unplugged USB with fifty-odd seconds to
+spare, and PWR_HOLD was released with the board on battery.  The next boot read
+the expander's direction register as `0x0000`, all outputs, where a cold PCA9535
+reads `0xffff`.  So the board did not lose power and releasing PWR_HOLD does not
+switch it off, which means the assumption about that pin was wrong.
+
+This has a consequence beyond PSRAM: B2's preservation check can never be run
+against the expander's datasheet defaults, and the seeded-one test remains the
+strongest form available.  The risk table already said the cold state needs
+deciding to reach; it now says it cannot be reached from software at all.
+
+- Remaining risk: the display work needs PSRAM, because following the working
+  reference means a real framebuffer over DW-GDMA rather than the host's
+  pattern generator.  While PSRAM is silent that path cannot be built against
+  hardware.
+- Next safe step: none in software that I can see.  What would separate the
+  remaining possibilities is a physical power interruption - the battery
+  disconnected, or whatever button or connector the board provides - and that
+  is not something this port can do to itself.
 
 ## Evidence-entry template
 

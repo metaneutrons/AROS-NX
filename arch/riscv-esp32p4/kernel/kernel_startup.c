@@ -4405,9 +4405,71 @@ static void krnP4BacklightOnly(void)
 }
 #endif
 
+#ifdef P4_POWER_OFF
+/*
+ * Power the board off, so the next boot is genuinely cold.
+ *
+ * There is no other way on this board.  The port expander and the PSRAM chip
+ * both keep their configuration across a CPU reset, and the battery means
+ * removing USB is not a power cycle.  Releasing PWR_HOLD is the board's own
+ * shutdown, and it only takes effect once VBUS is gone - so this announces
+ * itself, waits long enough to unplug, and then releases the pin.
+ */
+static void krnP4PowerOff(void)
+{
+    struct P4PanelState st;
+    unsigned int left;
+
+    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO, P4_D1001_I2C1_SCL_GPIO,
+                      100000UL)
+        || krnP4PanelClaim(&st) != P4_I2C_OK)
+    {
+        krnP4PutStr("[off]    the expander would not be claimed;"
+                    " nothing done\n");
+        return;
+    }
+
+    /*
+     * Sixty seconds, and counted down out loud.
+     *
+     * The first attempt used twenty and lost the race: esptool resets the board
+     * itself after writing, so the countdown had already run to the end before
+     * anyone could unplug, and releasing PWR_HOLD with VBUS present does
+     * nothing.  The expander's direction register still read all-outputs
+     * afterwards, which is how that was established rather than assumed - a
+     * cold one reads all-inputs.
+     */
+    krnP4PutStr("[off]    UNPLUG USB NOW.  PWR_HOLD is released in 60"
+                " seconds, which powers the board off once VBUS is gone.\n"
+                "[off]    Plug USB back in afterwards and the next boot is"
+                " cold.\n");
+
+    for (left = 60; left > 0; --left)
+    {
+        if (left % 5 == 0 || left <= 5)
+        {
+            krnP4PutStr("[off]    ");
+            krnP4PutDec(left);
+            krnP4PutStr("\n");
+        }
+        krnTimerWait(P4_TICK_HZ);
+    }
+
+    krnP4PutStr("[off]    releasing PWR_HOLD\n");
+    (void)krnP4PanelPowerOff();
+    krnP4PutStr("[off]    released.  If this line is still followed by a"
+                " heartbeat, USB was still attached.\n");
+}
+#endif
+
 static void krnP4PanelProbe(void)
 {
     int r, passes = 0;
+
+#ifdef P4_POWER_OFF
+    krnP4PowerOff();
+    return;
+#endif
 
 #ifdef P4_BACKLIGHT_ONLY
     krnP4BacklightOnly();
@@ -5643,6 +5705,25 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutStr("[psram]  chip   the controller kept no clock\n");
         else
         {
+            /*
+             * The PLL's own registers, read back off the configuration bus.
+             *
+             * A write there reports nothing, so a bring-up that returns success
+             * has only shown that the bus answered and the calibration ended -
+             * not that the divider took.  This is the one measurement that was
+             * missing while PSRAM went from working to silent with the binary
+             * unchanged.
+             */
+            krnP4PutStr("[psram]  mpll   state ");
+            krnP4PutHex32((uint32_t)psram.mpll_state);
+            krnP4PutStr(", ana_pll_ctrl0 ");
+            krnP4PutHex32((uint32_t)psram.ana_pll_ctrl0);
+            krnP4PutStr(", bus ");
+            krnP4PutDec((uint32_t)(psram.clock_hz / 1000000));
+            krnP4PutStr(" MHz, identify tried ");
+            krnP4PutDec((uint32_t)psram.identify_attempts);
+            krnP4PutStr("\n");
+
             krnP4PutStr("[psram]  chip   no answer - vendor ");
             krnP4PutHex32((uint32_t)psram.vendor);
             krnP4PutStr(" mr2 ");
