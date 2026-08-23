@@ -82,7 +82,7 @@ static AROS_UFP3 (APTR, Cia_Init,
 
 extern void Cia_End(void);
 
-/* In .text.romtag so the m68k ROM link places this tag at the module head,
+/* In .text.romtag so the kickstart link places this tag at the module head,
  * letting the romtag scanner find it on the first read and leap via rt_EndSkip. */
 __attribute__((section(".text.romtag"))) struct Resident const Cia_ROMTag =
 {
