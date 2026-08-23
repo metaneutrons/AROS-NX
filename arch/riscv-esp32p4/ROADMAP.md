@@ -3547,6 +3547,81 @@ appends what the caller passed, so the two combine.
   now be written with `esptool` and read from `FLASHDISK0P0:`, which is what
   this infrastructure was for.
 
+### 2026-08-23 - the fallback, with no card in the board
+
+- State change: none.  This closes the one point the previous entry recorded
+  as untested.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 revision 1.3.  The A3
+  card was removed from the board by the user for this run.
+- Source: dirty worktree on `feat/riscv32-esp32p4-v2` at `1a889c72ac`.
+- Artifacts: core 188,240 bytes,
+  `8a65559c092fba8159420e95f26f6ebf6e176dec7200f1fb52061e07e60c0034`, written
+  to `ota_0` at `0x20000` and verified by esptool hash.  Test defines as in
+  the previous entry, without `bootdevice=`.
+
+With no card the chain is exactly what the design predicted, and nothing had
+to be added for it:
+
+```text
+[P4SD00] GPIO45 high: no card present
+[DOSBoot:bootscan] CheckPartitions('fd0')
+[DOSBoot:bootscan] CheckPartitions('ECON')
+[DOSBoot] 2 devices in mountlist
+[DOSBoot:bootstrap] dosboot_BootStrap: Attempting FLASHDISK0P0 with DOS
+```
+
+`sdcard.device` reads the card-detect line, finds nothing and registers no
+unit and therefore no boot node, so `fd0` is the only disk bootscan has to
+scan and `FLASHDISK0P0` is the only candidate left.  `AvailMem` reports
+30,636,976 bytes against 29,297,648 with a card present, the difference being
+the SD stack's buffers never allocated.  The A4 probe, the block-device test,
+the DOS-level test, the A5 load proof and the A5 rejections all pass, and the
+run reaches the Shell prompt with a stable heartbeat.
+
+**A defect in the A4 probe, found by this run.**  The first attempt reported
+`AFTERDOS probe FAILED, 8 mutation cases`, with seven refusals at error 214
+and the eighth, `Relabel`, at 218, `ERROR_DEVICE_NOT_MOUNTED`.  The target was
+the compile-time constant `SDCARD0P0:`, which does not exist when no card is
+in the board.  That is worth stating precisely because the constant was not
+careless: `getdevpacketinfo()` in `rom/dos/packethelper.c` refuses anything
+whose `dol_Type` is not `DLT_DEVICE`, so an assign or a volume name returns
+218 without the packet ever reaching the handler, and an earlier version of
+this probe had already been corrected from `SYS:` to a device name for that
+reason.  What was wrong was pinning *which* device, since dosboot names that
+node from the device, the unit and the partition position and it is
+`FLASHDISK0P0` when the flash volume booted.
+
+`krnP4SysDeviceName()` now finds it at runtime by resolving `SYS:` to a
+handler port and matching that port against the device list, which is exact
+and assumes nothing about what booted.  `-DP4_PROBE_DEVICE="..."` still pins
+it if a build wants to.  A case that cannot be set up at all is now left out
+of the count instead of being scored, so a missing device would read as seven
+cases rather than as a failure.  With the fix:
+
+```text
+[sysfs]    SYS: is served by FLASHDISK0P0:
+[sysfs]    Relabel(device): result 0x00000000, IoErr 214  refused as write protection
+[sysfs]  AFTERDOS probe passed, 8 mutation cases
+```
+
+**A second, smaller one in the makefile.**  Making `P4_CMDLINE` an `override`
+in the previous step left a trailing space in the string literal when the
+caller passed nothing, which changed the core's hash for no reason and handed
+the argument parser an empty word.  `$(strip)` fixes it, and the proof is that
+the plain headless build now hashes to `9532c0aba507...` again, the same value
+it had before `override` existed.
+
+- Acceptance: with no card present the flash volume is booted automatically,
+  `SYS:` is the 6144-block flash volume, all eight DOS mutations are refused
+  with error 214, and the block-device, DOS-level, A5 load and A5 rejection
+  tests pass.
+- Safety impact: no card was in the board, so no medium could be touched.  The
+  volume in flash was not rewritten.  The only write was the core to `ota_0`.
+- Remaining risk: the runtime device lookup has only been exercised on the
+  flash volume.  It has to report `SDCARD0P0:` with the card back in the
+  board, which is a regression run still to do.
+- Next safe step: that regression run, then Track B.
+
 ## Evidence-entry template
 
 ```text
