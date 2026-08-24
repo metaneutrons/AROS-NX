@@ -44,6 +44,15 @@
 
 const struct P4JD9365Cmd krnP4JD9365Init[] =
 {
+    /*
+     * 0xE0 0x00 twice, which is the vendor table's own doing and not a
+     * transcription error here.  It was deduplicated when this table was
+     * converted by hand, on the reasoning that selecting the same page twice
+     * cannot matter.  That reasoning is not available: the controller is not
+     * documented, and the only evidence about what it needs is the sequence
+     * that works.
+     */
+    { 0xE0, 0x00, 1, 0 },
     { 0xE0, 0x00, 1, 0 },
     { 0xE1, 0x93, 1, 0 },
     { 0xE2, 0x65, 1, 0 },
@@ -77,6 +86,9 @@ const struct P4JD9365Cmd krnP4JD9365Init[] =
     { 0x44, 0x0F, 1, 0 },
     { 0x45, 0x28, 1, 0 },
     { 0x4B, 0x04, 1, 0 },
+    /* Dropped when this table was converted; present in the vendor table
+       in exactly this position, after 0x4B and before 0x55 */
+    { 0x4A, 0x35, 1, 0 },
     { 0x55, 0x02, 1, 0 },
     { 0x56, 0x01, 1, 0 },
     { 0x57, 0xA9, 1, 0 },
