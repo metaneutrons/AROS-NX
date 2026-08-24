@@ -5340,6 +5340,61 @@ wrong and reading the reference to check it was what found the real defect.
   believed.  A panel that reports itself powered and in RGB565 is a much
   stronger starting point for the scanout than one that has never spoken.
 
+### 2026-08-23 - two read-path defects fixed, and the panel goes quiet after its own init sequence
+
+- State change: the read FIFO is drained completely and the bus turnaround is
+  switched off again after every read, both of which were real defects.  The
+  panel still answers only its identity.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+
+**Two defects, both found by reading the reference's own read path.**
+
+  - *The FIFO was left partly full.*  The drain loop stopped as soon as the
+    caller's buffer was satisfied, and the FIFO hands out whole thirty-two bit
+    words - so a three-byte identity read left one byte behind, and the next
+    read found a non-empty FIFO and would have returned that leftover instead
+    of waiting for its own reply.  The reference drains unconditionally and
+    discards the excess.
+  - *The bus turnaround was never switched off.*  `BTA_EN` is what lets the
+    peripheral answer, and this port set it for a read and left it set.
+    `PHY_STATUS` then reads `0x15ab` with `PHY_DIRECTION` set - the host sitting
+    in receive - and a host in receive does not transmit.  That is one missing
+    clear tying the silent read path and the stalled video scanout together, so
+    it is now cleared on every exit path including the failures.
+
+**What is still wrong, and the shape of it has changed.**  The identity read
+answers; every read after it does not:
+
+```text
+dcs 0x04 identity read: 3 bytes, 0x93 0x65 0x04
+dcs 0x0a power mode: no reply, pkt 0x00060054
+```
+
+`0x60054` is `GEN_RD_CMD_BUSY` set with `GEN_PLD_R_EMPTY` set: the host has sent
+the read and is waiting for a reply that does not arrive.
+
+And the ordering rules out the obvious explanation.  The identity read is the
+first thing `krnP4DsiPanelInit` does, before any write; `0x0A` is asked after
+the whole sequence has gone out.  So it is not that an uninitialised panel
+answers less - it is that the panel answers before its initialisation sequence
+and not after it.  Something in that sequence stops it responding.
+
+That sequence has never actually reached the panel before today, since it went
+out in the wrong speed mode, so its contents have never been tested against
+hardware.  It is a page-unlock, `MADCTL`, `COLMOD`, a lane-count command and
+Espressif's eight-entry table - and any one of them landing wrong on a panel
+that is now listening would do this.
+
+- Acceptance points passed: the read path works, which was B3's open defect.
+- Acceptance points failed: B5 has no image, and `PHY_DIRECTION` is still set
+  after the reads, so the host is still in receive when the scanout starts.
+- Remaining risk: the initialisation sequence is now suspect in a way it could
+  not be before.  It was written against a panel that could not hear it.
+- Next safe step: send the sequence one command at a time and read `0x0A` after
+  each, which localises the command that silences the panel.  The read path is
+  reliable enough for that now, and it is the first time this port can ask the
+  panel what a command did to it.
+
 ## Evidence-entry template
 
 ```text

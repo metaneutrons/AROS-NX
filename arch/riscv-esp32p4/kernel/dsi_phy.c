@@ -463,11 +463,17 @@ int krnP4DsiDcsRead(unsigned char cmd, unsigned char *out, unsigned int want)
 
     r = dsi_send_header(P4_DSI_DT_DCS_READ_0, cmd, 0);
     if (r != P4_DSI_OK)
+    {
+        dsi_clr(P4_DSI_PCKHDL_CFG, P4_DSI_BTA_EN);
         return r;
+    }
 
     r = dsi_wait_clear(P4_DSI_GEN_RD_CMD_BUSY);
     if (r != P4_DSI_OK)
+    {
+        dsi_clr(P4_DSI_PCKHDL_CFG, P4_DSI_BTA_EN);
         return r;
+    }
 
     /* The read FIFO going non-empty is the reply arriving. */
     {
@@ -475,18 +481,47 @@ int krnP4DsiDcsRead(unsigned char cmd, unsigned char *out, unsigned int want)
 
         while (dsi_rd(P4_DSI_CMD_PKT_STATUS) & P4_DSI_GEN_PLD_R_EMPTY)
             if (krnTimerCount() > deadline)
+            {
+                dsi_clr(P4_DSI_PCKHDL_CFG, P4_DSI_BTA_EN);
                 return P4_DSI_CMD_NO_REPLY;
+            }
     }
 
-    while (!(dsi_rd(P4_DSI_CMD_PKT_STATUS) & P4_DSI_GEN_PLD_R_EMPTY)
-           && got < want)
+    /*
+     * Drain the FIFO completely, keeping only what was asked for.
+     *
+     * The condition here used to include got < want, which stops as soon as
+     * the caller's buffer is full and leaves the rest in the FIFO.  The FIFO
+     * hands out whole thirty-two bit words, so a three-byte identity read
+     * leaves one byte behind - and the next read then finds a FIFO that is
+     * already non-empty and returns that leftover instead of waiting for its
+     * own reply.  That is why the identity read answered and every read after
+     * it did not.
+     *
+     * The reference drains unconditionally and discards the excess, which is
+     * what this now does.
+     */
+    while (!(dsi_rd(P4_DSI_CMD_PKT_STATUS) & P4_DSI_GEN_PLD_R_EMPTY))
     {
         unsigned long word = dsi_rd(P4_DSI_GEN_PLD_DATA);
         unsigned int i;
 
-        for (i = 0; i < 4 && got < want; ++i)
-            out[got++] = (unsigned char)((word >> (8 * i)) & 0xFF);
+        for (i = 0; i < 4; ++i)
+            if (got < want)
+                out[got++] = (unsigned char)((word >> (8 * i)) & 0xFF);
     }
+
+    /*
+     * Turn receiving off again, and this is not tidiness.
+     *
+     * BTA is what turns the link around so the peripheral may answer, and it
+     * was switched on here and never off.  PHY_STATUS then reads with
+     * PHY_DIRECTION set - the host sitting in receive - and a host in receive
+     * does not transmit, which is why the video scanout stalled with a full
+     * payload FIFO after any read had been attempted.  One missing clear tied
+     * the two open defects together.
+     */
+    dsi_clr(P4_DSI_PCKHDL_CFG, P4_DSI_BTA_EN);
 
     return got ? (int)got : P4_DSI_CMD_NO_REPLY;
 }
