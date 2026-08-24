@@ -204,6 +204,17 @@ ifdef P4_SCANOUT_TEST
 P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_TEST
 endif
 
+# P4_DSI_ACK_REQUEST=1 sets ACK_RQST_EN, so the panel is asked to acknowledge
+# every command.  The vendor reference sets it and reports the answers; this
+# port has no handler for them, and with the bit set the bus turnaround after
+# the initialisation sequence does not always complete - PHY_STATUS keeps
+# phy_direction set through the handover to video mode, so the host is
+# receiving when it should be sending pixels.  Off by default for that reason;
+# on to reproduce the measurement.
+ifdef P4_DSI_ACK_REQUEST
+P4_DEBUG_CPPFLAGS += -DP4_DSI_ACK_REQUEST
+endif
+
 # P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
 # pattern test.  The bridge then asks for pixels it has no DMA to fetch and
 # must underrun; that underrun is the evidence that the pixel path runs through
