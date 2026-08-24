@@ -232,6 +232,23 @@ ifdef P4_DSI_NONBURST
 P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
 endif
 
+# P4_DSI_PANEL_QUERY=1 asks the panel what state it is in - power mode, address
+# mode, pixel format, scanline - after its initialisation sequence and before
+# the video handover.  These reads were compiled out of the scanout path
+# because an unanswered read leaves the host in receive and stalls the video;
+# they are safe to re-enable now that ACK_RQST_EN is off and the read path
+# drains and balances properly, and the PHY trace proves it per run.
+ifdef P4_DSI_PANEL_QUERY
+P4_DEBUG_CPPFLAGS += -DP4_DSI_PANEL_QUERY
+endif
+
+# P4_BL_PERCENT overrides the backlight duty cycle, which defaults to a
+# deliberately dim 20 per cent while the display path is under development.
+# Raise it for a run that is looking for a first image.
+ifdef P4_BL_PERCENT
+P4_DEBUG_CPPFLAGS += -DP4_LEDC_BL_PERCENT=$(P4_BL_PERCENT)
+endif
+
 # P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
 # pattern test.  The bridge then asks for pixels it has no DMA to fetch and
 # must underrun; that underrun is the evidence that the pixel path runs through

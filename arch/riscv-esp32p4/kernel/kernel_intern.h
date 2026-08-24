@@ -242,7 +242,7 @@ struct P4HostState
 };
 
 void krnP4HostState(struct P4HostState *out);
-void krnP4ScanoutFill(unsigned short rgb565);
+void krnP4ScanoutFill(unsigned long rgb888);
 void krnP4ScanoutBridgeUp(void);
 void krnP4ScanoutDmaUp(void);
 void krnP4ScanoutFeedOn(void);

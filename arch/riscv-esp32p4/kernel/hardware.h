@@ -475,7 +475,16 @@
 #define P4_SIG_LEDC_CH0_OUT     126
 #define P4_LEDC_BL_DUTY_RES     10
 #define P4_LEDC_BL_CLK_DIV      2000
+/*
+ * Twenty per cent, deliberately low while the display path is under
+ * development: a panel that is being driven wrongly should not also be
+ * bright.  Overridable from the build so that a run looking for a first image
+ * can raise it, because a faint image on an unlit panel and no image at all
+ * look the same from across a desk.
+ */
+#ifndef P4_LEDC_BL_PERCENT
 #define P4_LEDC_BL_PERCENT      20
+#endif
 
 #define P4_PCA9535_ADDR         0x20
 #define P4_PCA9535_INPUT        0x00
@@ -879,7 +888,7 @@
 #define   P4_DMAC_AXI_BURST_LEN 16UL
 
 /* The frame this port scans out: the panel's native size in RGB565. */
-#define P4_FB_BYTES_PER_PIXEL   2
+#define P4_FB_BYTES_PER_PIXEL   (P4_PANEL_BPP / 8)
 #define P4_FB_BYTES             ((unsigned long)P4_PANEL_H_RES * P4_PANEL_V_RES \
                                  * P4_FB_BYTES_PER_PIXEL)
 #define P4_FB_WORDS64           (P4_FB_BYTES / 8)
@@ -964,6 +973,7 @@
 #define P4_DSI_DPI_VCID         0x00C
 #define P4_DSI_DPI_COLOR_CODING 0x010
 #define   P4_DSI_COLOR_16BIT_C1 0
+#define   P4_DSI_COLOR_24BIT    5
 #define P4_DSI_DPI_CFG_POL      0x014
 #define P4_DSI_DPI_LP_CMD_TIM   0x018
 #define P4_DSI_VID_MODE_CFG     0x038
@@ -1039,16 +1049,40 @@
 #define P4_PANEL_HBP            20
 #define P4_PANEL_HFP            40
 #define P4_PANEL_VSYNC          4
-#define P4_PANEL_VBP            30
+/*
+ * 12, not 30.  Read out of the vendor driver's own panel configuration
+ * (JD9365_8_800_1280_PANEL_60HZ_DPI_CONFIG) rather than assumed from the
+ * symmetry with the front porch.
+ */
+#define P4_PANEL_VBP            12
 #define P4_PANEL_VFP            30
-#define P4_PANEL_DPI_MHZ        40
+/*
+ * 80 MHz, which is the vendor configuration's dpi_clock_freq_mhz for this
+ * panel.  This port ran 40 for its first attempts, which halves the line rate
+ * and is the most likely reason burst mode would not start: burst asks the
+ * host to buffer a whole line before transmitting, and a line at half the
+ * pixel clock is twice as long in host byte clocks.
+ */
+#define P4_PANEL_DPI_MHZ        80
+/*
+ * Twenty-four bits per pixel, because that is what the panel is.
+ *
+ * Asked over DCS 0x0C after its initialisation sequence, the panel answers
+ * 0x70: bits 6:4 are 7, which is 24 bits on the RGB interface.  The vendor
+ * driver's own test configuration says the same - bits_per_pixel 24 - and this
+ * port had been sending RGB565.  A panel sent packed-pixel-stream packets of a
+ * data type it does not accept displays nothing at all, which is exactly what
+ * was observed with a host that demonstrably transmits.
+ */
+#define P4_PANEL_BPP            24
 
 /*
  * The DPI clock: PLL_F240M divided by six is exactly 40 MHz, and the source
  * selector for PLL_F240M is 1.
  */
 #define P4_DSI_DPICLK_SRC_PLL240 1
-#define P4_DSI_DPICLK_DIV       6
+/* 240 MHz over 3 is the 80 MHz the vendor configuration asks for */
+#define P4_DSI_DPICLK_DIV       3
 
 #define P4_DSI_INT_ST0          0x0BC
 #define P4_DSI_INT_ST1          0x0C0
@@ -1095,9 +1129,20 @@
 
 /* This board: two lanes.  The rate is the one thing to change. */
 #define P4_DSI_LANES            2
-#define P4_DSI_LANE_MBPS        1000
+#define P4_DSI_LANE_MBPS        1500
 
-#if P4_DSI_LANE_MBPS == 1000
+#if P4_DSI_LANE_MBPS == 1500
+/*
+ * The vendor bus configuration for this panel is 1500 Mbit/s over two lanes.
+ * N and M follow from ESP-IDF's own search - the first even M whose
+ * ref * M / N lands on the target, walking N from 1 - which for a 40 MHz
+ * reference gives N 4 and M 150 exactly.  The range code is the table entry
+ * [1450,1500] in soc_mipi_dsi_phy_pll_ranges.
+ */
+#define P4_DSI_PLL_N            4
+#define P4_DSI_PLL_M            150
+#define P4_DSI_HS_FREQ_SEL      0x3C
+#elif P4_DSI_LANE_MBPS == 1000
 #define P4_DSI_PLL_N            2       /* 40 * 50 / 2 */
 #define P4_DSI_PLL_M            50
 #define P4_DSI_HS_FREQ_SEL      0x2A    /* the [1000,1050) row */

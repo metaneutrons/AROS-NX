@@ -612,7 +612,9 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
     {
         static const unsigned char page_user = 0x00;
         static const unsigned char madctl = 0x00;   /* RGB order, no mirror */
-        static const unsigned char colmod = 0x55;   /* RGB565 */
+        /* 0x77 is 24 bits per pixel; the vendor driver derives it the same
+           way from bits_per_pixel, and 0x55 would be RGB565 */
+        static const unsigned char colmod = 0x77;
         static const unsigned char lanes = 0x01;    /* two data lanes */
 
         r = krnP4DsiDcsWrite(0xE0, &page_user, 1);
@@ -821,7 +823,7 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
 
     /* Virtual channel 0, RGB565, every sync signal active high. */
     dsi_wr(P4_DSI_DPI_VCID, 0);
-    dsi_wr(P4_DSI_DPI_COLOR_CODING, P4_DSI_COLOR_16BIT_C1);
+    dsi_wr(P4_DSI_DPI_COLOR_CODING, P4_DSI_COLOR_24BIT);
     dsi_wr(P4_DSI_DPI_CFG_POL, 0);
 
     /*

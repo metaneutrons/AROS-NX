@@ -4852,7 +4852,7 @@ static void krnP4PanelProbe(void)
              * read inside krnP4DsiPanelInit is unaffected: it answers, so it
              * completes and the link turns back.
              */
-#ifndef P4_SCANOUT_TEST
+#if !defined(P4_SCANOUT_TEST) || defined(P4_DSI_PANEL_QUERY)
             {
                 static const struct { unsigned char cmd; const char *what; }
                 probes[4] =
@@ -4890,6 +4890,26 @@ static void krnP4PanelProbe(void)
                     if (got > 0)
                     {
                         krnP4PutHex32(v[0]);
+                        /*
+                         * 0x0A is the one answer that says whether the panel
+                         * is in a state to show anything at all: bit 4 is
+                         * sleep-out, bit 2 display-on, bit 3 normal mode.  A
+                         * panel reporting sleep or display-off is dark no
+                         * matter what the host transmits, and no register on
+                         * the transmitting side can distinguish that from a
+                         * panel that is awake and being sent the wrong pixels.
+                         */
+                        if (probes[n].cmd == 0x0A)
+                        {
+                            krnP4PutStr((v[0] & (1U << 4)) ? "  awake"
+                                                           : "  SLEEPING");
+                            krnP4PutStr((v[0] & (1U << 2)) ? ", display on"
+                                                           : ", DISPLAY OFF");
+                            krnP4PutStr((v[0] & (1U << 3)) ? ", normal mode"
+                                                           : ", partial/idle");
+                            krnP4PutStr((v[0] & (1U << 7)) ? ", booster on"
+                                                           : ", BOOSTER OFF");
+                        }
                         krnP4PutStr("\n");
                         any = 1;
                     }
@@ -4953,9 +4973,11 @@ static void krnP4PanelProbe(void)
                 struct P4DsiPattern pat;
                 struct P4ScanoutState sc;
 
-                /* 0x001f is blue: all of one channel, none of the others,
-                   which is also the pattern a byte-swap would ruin visibly */
-                krnP4ScanoutFill(0x001F);
+                /* One channel at full, the other two at zero.  A byte swap
+                   or a wrong channel order changes which colour appears and
+                   is therefore visible rather than silent; a wrong stride or
+                   pixel format cannot produce a flat field at all. */
+                krnP4ScanoutFill(0x0000FF);
                 krnP4CacheWriteback();
 
                 /*

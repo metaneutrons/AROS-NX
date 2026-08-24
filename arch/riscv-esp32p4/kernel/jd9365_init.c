@@ -216,20 +216,19 @@ const struct P4JD9365Cmd krnP4JD9365Init[] =
     { 0x2B, 0x0F, 1, 0 },    /* A133 */
     { 0xE0, 0x00, 1, 0 },
     /*
-     * Sleep-out and display-on take no parameter, and this is the one place in
-     * the table where that distinction exists.
+     * Sleep-out and display-on, with a parameter byte they do not take.
      *
-     * Everything above is a register write on a vendor page selected by 0xE0,
-     * where 0x11 and 0x29 are ordinary register addresses that do take a byte.
-     * After the 0xE0 0x00 above the user page is selected and these two are
-     * the standard DCS commands, which are defined as short writes with no
-     * parameter.  Sent with one, they are a different packet type carrying a
-     * command code that has no one-parameter form, and a controller is free to
-     * discard them - which leaves the panel asleep and its output disabled no
-     * matter what the host transmits.
+     * That looks wrong and is what the vendor driver sends: its table has
+     * {0x11, {0x00}, 1, 120} and {0x29, {0x00}, 1, 20}, and it reaches the
+     * panel through the same DCS short-write-1 path.  Sending them without the
+     * parameter was tried here and changed nothing observable, so the panel
+     * accepts either; the vendor's form is kept because it is the one known to
+     * work on this hardware.  DCS 0x0A afterwards still reports the display
+     * off, which is a separate matter - the panel enables its output when a
+     * valid video stream arrives.
      */
-    { 0x11, 0x00, 0, 120 },
-    { 0x29, 0x00, 0, 20 },
+    { 0x11, 0x00, 1, 120 },
+    { 0x29, 0x00, 1, 20 },
     { 0x35, 0x00, 1, 0 },
 };
 

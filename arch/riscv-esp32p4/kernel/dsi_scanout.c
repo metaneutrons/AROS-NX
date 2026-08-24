@@ -58,15 +58,28 @@ static inline unsigned long ch_rd(unsigned long off)
  * Fill the frame with one colour, so that a picture on the panel is
  * unambiguous: a wrong pixel format or a wrong stride cannot produce a flat
  * field of the colour that was asked for.
+ *
+ * Three bytes per pixel do not divide into a 32-bit word, but four pixels are
+ * twelve bytes, which is three words.  Writing that repeating triple is what
+ * keeps this a word-wide loop over two megabytes rather than a byte one.
  */
-void krnP4ScanoutFill(unsigned short rgb565)
+void krnP4ScanoutFill(unsigned long rgb888)
 {
     volatile unsigned long *p = (volatile unsigned long *)P4_FB_BASE;
-    unsigned long pair = ((unsigned long)rgb565 << 16) | rgb565;
+    unsigned long b0 = rgb888 & 0xFF;
+    unsigned long b1 = (rgb888 >> 8) & 0xFF;
+    unsigned long b2 = (rgb888 >> 16) & 0xFF;
+    unsigned long w0 = b0 | (b1 << 8) | (b2 << 16) | (b0 << 24);
+    unsigned long w1 = b1 | (b2 << 8) | (b0 << 16) | (b1 << 24);
+    unsigned long w2 = b2 | (b0 << 8) | (b1 << 16) | (b2 << 24);
     unsigned long i;
 
-    for (i = 0; i < P4_FB_BYTES / 4; i++)
-        p[i] = pair;
+    for (i = 0; i + 2 < P4_FB_BYTES / 4; i += 3)
+    {
+        p[i]     = w0;
+        p[i + 1] = w1;
+        p[i + 2] = w2;
+    }
 }
 
 /*
@@ -92,7 +105,7 @@ void krnP4ScanoutBridgeUp(void)
     v = brg_rd(P4_DSI_BRG_PIXEL_TYPE);
     v &= ~(P4_DSI_BRG_RAW_TYPE_MASK | P4_DSI_BRG_DPI_TYPE_MASK
            | P4_DSI_BRG_DATA_IN_TYPE);
-    v |= P4_DSI_BRG_RAW_RGB565;           /* input and output are both RGB565 */
+    v |= P4_DSI_BRG_RAW_RGB888;           /* input and output are both RGB888 */
     brg_wr(P4_DSI_BRG_PIXEL_TYPE, v);
 
     /* How much data one frame is, in sixty-four-bit words, and a reload of
