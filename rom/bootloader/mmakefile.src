@@ -8,7 +8,21 @@ include $(SRCDIR)/config/aros.cfg
 USER_CPPFLAGS := \
                -DUSE_EXEC_DEBUG \
                -D__UTILITY_NOLIBBASE__
-USER_LDFLAGS := -static
+# -nostdc, so the link takes libstdc.static.a rather than the stdc.library
+# client stubs. bootloader_init.c calls strlen() and stpblk(); each of those
+# resolves to a stub carrying an undefined StdCBase, which drags in
+# stdc_autoinit.o, which carries __aros_set_LIBS___aros_libset_StdCBase. That
+# set is walked at module init and opens stdc.library -- and this resource
+# initialises at residentpri 100, long before any filesystem exists, so the
+# open cannot succeed:
+#
+#   Exec Bootstrap Task: Could not open version 0 or higher of library
+#   "stdc.library".
+#
+# One C-library call in a module is enough to create that dependency; where the
+# call sits does not matter. A resource that runs this early has to take the
+# static C runtime.
+USER_LDFLAGS := -static -nostdc
 
 %build_module mmake=kernel-bootloader \
     modname=bootloader modtype=resource \
