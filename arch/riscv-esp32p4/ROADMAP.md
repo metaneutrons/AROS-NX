@@ -5552,10 +5552,53 @@ the host's `pwr_up` is set once and never cycled for configuration.
   never clears it, so it may date from the command phase rather than from the
   scanout.  Until it is read before the handover and after a clear, no argument
   should rest on it.
-- Next safe step: clear `INT_ST1` before the handover and read it at the same
-  points the PHY trace uses.  That decides whether the host is refusing pixels
-  now or refused them once, and the DMA not starting at all is a different
-  question from the DMA starting and stopping.
+- Next safe step: measured in the same session, see below.
+
+### 2026-08-24 - the payload error is continuous, and the DMA never starts
+
+- State change: none.  A measurement that removes an ambiguity.
+- Test defines: as above.  Core 177,552 bytes, sha256
+  `9d1084aec039dce1a6cb675313539804767ea6464165ab415069e512a2c9e909`.
+
+`INT_ST0` and `INT_ST1` are cleared by reading them, so every previous reading
+said only that something had happened since this probe last looked - and it
+looks in B3 as well.  Read three times, the second immediately and the third
+after 50 ms:
+
+```text
+[b5]     host pkt 0x00050015 int0 0x00000000 int1 0x00000080 then 0x00000000
+         then 0x00000080  still failing
+```
+
+The second reading is zero, which confirms clear-on-read; the third is set
+again, so the host is producing payload write errors continuously rather than
+having latched one during the handover.  It is receiving pixels it cannot send.
+
+At the same time `sar` does not move at all, so the DMA delivers nothing, and
+the bridge reports no underrun.  Before the pixel-format fix the DMA moved
+8,704 bytes; after it, nothing.  Those two facts do not yet compose into one
+account, and that is the open question rather than a conclusion.
+
+**The comparison against the reference is now exhaustive** for the bus, the DPI
+configuration, the channel configuration and the link-list item, including
+`LLI_VALID` at bit 31 of `CTL1`, source burst 512 against destination burst
+256, `burst_len` 16 on both sides and a transfer size of 256,000 64-bit items.
+Every value matches.  What has not been instrumented is the bridge's own
+progress: there is no reading in this port that says whether the bridge ever
+starts a frame, and both remaining symptoms are consistent with it never
+starting one.
+
+- Acceptance points passed: none.
+- Remaining risk: the DMA moving 8,704 bytes with the wrong pixel format and
+  nothing with the right one is unexplained.  It may mean the bridge's frame
+  start depends on something the format changed, or that the earlier movement
+  was not the bridge requesting data at all.
+- Next safe step: instrument the bridge rather than the host.  Read whatever
+  the bridge exposes about its own progress - its interrupt status repeatedly
+  rather than once, and any counter that advances - because a bridge that never
+  starts a frame explains a DMA that never starts and a host that receives
+  nothing it can send, and no host-side register can distinguish that from the
+  alternatives.
 
 ## Evidence-entry template
 
