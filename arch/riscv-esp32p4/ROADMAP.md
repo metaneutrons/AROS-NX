@@ -5395,6 +5395,65 @@ that is now listening would do this.
   reliable enough for that now, and it is the first time this port can ask the
   panel what a command did to it.
 
+### 2026-08-24 - the initialisation sequence was eight commands out of 174
+
+- State change: the JD9365 initialisation table is complete.  The panel
+  identifies itself and the whole sequence goes out without error.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+- Artifact: core 177,792 bytes.
+
+**The finding.**  `krnP4JD9365Init[]` had eight entries.  The vendor table in
+the reference has **174**.
+
+The eight this port had are the page-unlock magic - `0xE1 0x93`, `0xE2 0x65`,
+`0xE3 0xF8`, `0x80 0x01` - plus sleep-out and display-on.  Everything between
+them is the actual configuration: gamma curves, power settings, panel timing,
+register pages one through four.  A JD9365 given the unlock and the display-on
+and nothing else has been told to show a picture without being told how.
+
+They came from an abbreviated example in a driver rather than from that
+driver's actual initialisation path, and the mistake was invisible for four
+sessions because the sequence was going out in the wrong speed mode anyway and
+reaching nothing.  Fixing the speed mode is what made the sequence's contents
+matter.
+
+**The order around it was already right.**  Checked against the reference
+command for command: identity read, `0xE0` page-user, `0x36` MADCTL, `0x3A`
+COLMOD `0x55`, `0x80` with the two-lane code `0x01`, then the vendor table.
+All five match, including the constants.
+
+**What the run shows now.**
+
+```text
+dcs 0x04 identity read: 3 bytes, 0x93 0x65 0x04
+jd9365 sequence completed, display on, backlight still dark
+[b5]     sar 0x49e0e200 then 0x49e0e200  stalled
+phy 0x000015ab   int1 0x00000080  DPI_PLD_WR_ERR
+```
+
+**And one more self-inflicted problem removed.**  The four diagnostic reads
+after the sequence were stalling the scanout they exist to observe: a read
+turns the link around, an unanswered read leaves the host in receive with
+`PHY_DIRECTION` set, and a host in receive does not transmit video.  They are
+now compiled out of the scanout path.  The identity read inside the init is
+unaffected because it answers, so it completes.
+
+`PHY_DIRECTION` is still set afterwards, so something still leaves the link
+turned around, and the payload write error persists.
+
+- Acceptance points passed: the panel is identified and fully initialised for
+  the first time, which is B3's remaining substance.
+- Acceptance points failed: B5 has no image.
+- Remaining risk: the eight-command table is the second case this session of a
+  value taken from an example rather than from the working path - the first was
+  the DCS speed bits.  Anything else in this port copied from a snippet rather
+  than from the reference's own code deserves the same suspicion.
+- Next safe step: find what leaves `PHY_DIRECTION` set.  It is the last thing
+  standing between a fully initialised panel and a scanout that transmits, and
+  the identity read is now the only read on the path - so either it does not
+  complete as cleanly as its answer suggests, or the bit means something other
+  than a read in progress.
+
 ## Evidence-entry template
 
 ```text
