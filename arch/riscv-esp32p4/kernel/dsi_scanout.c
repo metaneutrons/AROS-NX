@@ -239,6 +239,35 @@ void krnP4ScanoutDmaUp(void)
     p4_w32(P4_DMAC_CHEN, P4_DMAC_CH1_EN | P4_DMAC_CH1_EN_WE);
 }
 
+/*
+ * What the host actually holds, read back rather than remembered.
+ *
+ * Comparing written values against the reference has run out: every one of
+ * them matches and the host still refuses payload.  What has never been
+ * checked is whether the writes took.  MODE_CFG is the one that decides
+ * everything else - this port clears CMD_VIDEO_MODE to enter video mode, and a
+ * host still in command mode has no video path at all, which would present as
+ * exactly the payload write error into a full FIFO that is being seen.
+ *
+ * The same reasoning found the DMA descriptor sitting in a dirty cache line:
+ * every register said configured, and the one thing not read back was the one
+ * thing wrong.
+ */
+void krnP4HostState(struct P4HostState *out)
+{
+    out->pwr_up     = p4_r32(P4_DSI_HOST_BASE + P4_DSI_PWR_UP);
+    out->mode_cfg   = p4_r32(P4_DSI_HOST_BASE + P4_DSI_MODE_CFG);
+    out->vid_mode   = p4_r32(P4_DSI_HOST_BASE + P4_DSI_VID_MODE_CFG);
+    out->lpclk      = p4_r32(P4_DSI_HOST_BASE + P4_DSI_LPCLK_CTRL);
+    out->phy_status = p4_r32(P4_DSI_HOST_BASE + P4_DSI_PHY_STATUS);
+    out->pkt_size   = p4_r32(P4_DSI_HOST_BASE + P4_DSI_VID_PKT_SIZE);
+    out->hsa        = p4_r32(P4_DSI_HOST_BASE + P4_DSI_VID_HSA_TIME);
+    out->hbp        = p4_r32(P4_DSI_HOST_BASE + P4_DSI_VID_HBP_TIME);
+    out->hline      = p4_r32(P4_DSI_HOST_BASE + P4_DSI_VID_HLINE_TIME);
+    out->vactive    = p4_r32(P4_DSI_HOST_BASE + P4_DSI_VID_VACTIVE_LINES);
+    out->colour     = p4_r32(P4_DSI_HOST_BASE + P4_DSI_DPI_COLOR_CODING);
+}
+
 void krnP4ScanoutState(struct P4ScanoutState *out)
 {
     out->lli          = (unsigned long)scanout_lli;

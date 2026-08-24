@@ -5019,6 +5019,48 @@ static void krnP4PanelProbe(void)
                     krnP4PutStr(a != b ? "  moving\n" : "  stalled\n");
                 }
 
+                /*
+                 * What the host holds, before the backlight is touched.  The
+                 * one register that decides whether any of the rest can work
+                 * is MODE_CFG: bit 0 set means still command mode, and a host
+                 * in command mode has no video path for the bridge to feed.
+                 */
+                {
+                    struct P4HostState h;
+
+                    krnP4HostState(&h);
+                    krnP4PutStr("[b5]     host mode ");
+                    krnP4PutHex32((uint32_t)h.mode_cfg);
+                    krnP4PutStr((h.mode_cfg & P4_DSI_CMD_VIDEO_MODE)
+                                ? "  COMMAND MODE" : "  video mode");
+                    krnP4PutStr(", pwr_up ");
+                    krnP4PutHex32((uint32_t)h.pwr_up);
+                    krnP4PutStr(", lpclk ");
+                    krnP4PutHex32((uint32_t)h.lpclk);
+                    krnP4PutStr((h.lpclk & P4_DSI_TXREQUESTCLKHS)
+                                ? " hs\n" : " NOT hs\n");
+
+                    krnP4PutStr("[b5]     host vid_mode ");
+                    krnP4PutHex32((uint32_t)h.vid_mode);
+                    krnP4PutStr(" phy ");
+                    krnP4PutHex32((uint32_t)h.phy_status);
+                    krnP4PutStr(" colour ");
+                    krnP4PutHex32((uint32_t)h.colour);
+                    krnP4PutStr("\n");
+
+                    krnP4PutStr("[b5]     host pkt ");
+                    krnP4PutDec((uint32_t)h.pkt_size);
+                    krnP4PutStr(" hsa ");
+                    krnP4PutDec((uint32_t)h.hsa);
+                    krnP4PutStr(" hbp ");
+                    krnP4PutDec((uint32_t)h.hbp);
+                    krnP4PutStr(" hline ");
+                    krnP4PutDec((uint32_t)h.hline);
+                    krnP4PutStr(" vact ");
+                    krnP4PutDec((uint32_t)h.vactive);
+                    krnP4PutStr("\n");
+                }
+
                 krnP4PanelBacklightOn();
 
                 /*
