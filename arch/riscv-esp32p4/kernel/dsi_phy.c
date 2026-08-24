@@ -22,11 +22,12 @@
  * the reference driver writes them is a property of the revision it was
  * written against.
  *
- * Which leaves one assumption this stage exists to test: that the fixed
- * reference is the 40 MHz crystal.  N=2 and M=50 give exactly 1000 Mbit/s per
- * lane from 40 MHz, and nothing else in reach gives an exact answer, so a PLL
- * that locks is evidence for the assumption and a PLL that does not is the
- * first place to look.
+ * The fixed reference is 40 MHz, and it is now measured rather than assumed -
+ * see the derivation in hardware.h.  B3 assumed it and treated a locking PLL
+ * as evidence, which it is not: a loop that closes says nothing about the
+ * frequency it closed on.  What settled it was configuring the whole link for
+ * 20 MHz instead, watching the clock lane stop leaving stop state, and putting
+ * it back.
  *
  * Every wait here is bounded by the system timer and every failure returns a
  * named reason, because a bring-up step that can hang is worse than one that
@@ -150,31 +151,14 @@ int krnP4DsiPhyUp(struct P4DsiState *out)
     out->locked = 0;
     out->lanes_stopped = 0;
     /*
-     * The PLL reference is 20 MHz, not the 40 MHz crystal.
-     *
-     * This was wrong from B3 onwards and a locking PLL hid it.  On ESP32-P4
-     * before revision 3.0 the PHY PLL reference has no source select; it is
-     * fixed, and ESP-IDF's own name for what it is fixed to says which:
-     * MIPI_DSI_PHY_PLLREF_CLK_SRC_DEFAULT_LEGACY is PLL_F20M.  Selecting the
-     * crystal only became possible on revision 3.0.
-     *
-     * B3 assumed 40 MHz, chose N=2 and M=50 for it, saw the PLL lock and
-     * recorded the lock as evidence for the assumption.  It is not: 20 MHz
-     * with N=2 and M=50 is 500 Mbit/s per lane, which locks perfectly well.
-     * So the lanes have been running at half the intended rate while the PHY
-     * was told its range was 1000 to 1049 Mbit/s and the host's horizontal
-     * timing was scaled for a 125 MHz byte clock that was really 62.5.
-     *
-     * That accounts for both open defects at once - lanes that will not enter
-     * high speed, and reads that never answer - which no single register value
-     * did.
-     *
-     * For 1000 Mbit/s from 20 MHz the reference's own search gives N=1, M=50:
-     * 20 * 50 / 1.  M must be even, which 50 is.
+     * The PLL dividers and the range selector all come from the lane rate,
+     * which is stated once in hardware.h.  See the derivation there: the
+     * reference is 20 MHz and not a choice on this silicon, and this file used
+     * to carry values for three different rates at once.
      */
-    out->pll_n = 1;
-    out->pll_m = 50;
-    out->hs_freq_sel = 0x2A;
+    out->pll_n = P4_DSI_PLL_N;
+    out->pll_m = P4_DSI_PLL_M;
+    out->hs_freq_sel = P4_DSI_HS_FREQ_SEL;
 
     krnP4DsiLdoUp();
     out->ldo_reg = p4_r32(P4_PMU_EXT_LDO_VO3);
@@ -593,8 +577,8 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
  */
 int krnP4DsiPatternOn(struct P4DsiPattern *out)
 {
-    /* Scale a pixel count to host byte-clocks: round(x * 25 / 8). */
-#define SCALE(x)    (((x) * 25 + 4) / 8)
+    /* Pixels to host byte clocks, from the lane rate rather than a literal */
+#define SCALE(x)    P4_DSI_PX_TO_BYTECLK(x)
     unsigned long hsa = SCALE(P4_PANEL_HSYNC);
     unsigned long hbp = SCALE(P4_PANEL_HBP);
     unsigned long hfp = SCALE(P4_PANEL_HFP);
