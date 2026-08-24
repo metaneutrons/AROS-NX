@@ -5181,6 +5181,57 @@ framing that accounts for both.
   cannot justify, and a wrong one would present as a lane that stays in stop
   state and a read that never answers - which is both symptoms at once.
 
+### 2026-08-23 - the PHY PLL reference is 20 MHz, not the crystal, and B3's evidence was not evidence
+
+- State change: a wrong assumption carried since B3 is identified and corrected.
+  It does not fix the stall, and it changes the PHY status, so it is recorded
+  with both halves.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+
+**The finding.**  On ESP32-P4 before revision 3.0 the PHY PLL reference has no
+source select - it is fixed - and ESP-IDF's own name says what it is fixed to:
+`MIPI_DSI_PHY_PLLREF_CLK_SRC_DEFAULT_LEGACY` is `PLL_F20M`.  Selecting the
+crystal became possible only on revision 3.0.  So the reference is **20 MHz**,
+not the 40 MHz crystal.
+
+**And B3's reasoning was circular.**  B3 assumed 40 MHz, derived N=2 and M=50
+for 1000 Mbit/s from it, saw the PLL lock, and recorded the lock as evidence
+that the assumption held.  It is not evidence: 20 MHz with N=2 and M=50 is 500
+Mbit/s, which locks just as well.  A PLL that locks says the loop closed, not
+that it closed on the intended frequency.  The roadmap entry for B3 stage one
+should be read with that in mind.
+
+**What was therefore wrong since B3.**  The lanes ran at half the intended
+rate, while the PHY was told its range was 1000 to 1049 Mbit/s
+(`hs_freq_sel 0x2A`) and the host's horizontal timing was scaled for a 125 MHz
+byte clock that was really 62.5.  That is one mistake accounting for both open
+defects - lanes that will not enter high speed and reads that never answer -
+where no single register value did.
+
+**The correction, and what it changed.**  For 1000 Mbit/s from 20 MHz the
+reference's own search gives N=1, M=50.  With that:
+
+  - `PHY_STATUS` after the video-mode setup moves from `0x15b9` to `0x15bd`, so
+    the change reaches the hardware.
+  - But bit 2 is now set, which is the **clock** lane in stop state, where it
+    was out of stop state before.  That is worse in one respect and the reason
+    this is not being called a fix.
+  - The DCS read still does not answer, and the DMA still stalls at the same
+    `0x2200`.
+
+- Acceptance points passed: none.  One wrong assumption removed.
+- Remaining risk: the corrected divider leaves the clock lane in stop state,
+  which suggests something else in the PHY sequence assumed the old rate.  The
+  four lane-transition times are the obvious candidate - they came from
+  ESP-IDF, where they accompany a correctly configured PLL, and they are in
+  byte-clock units, so a rate that doubled changes what they mean.
+- Next safe step: work the rate through consistently rather than one register
+  at a time.  Everything derived from the lane rate needs re-deriving: the
+  escape and timeout clock dividers, the horizontal timing scale factor, and
+  whether `hs_freq_sel` and the transition times still match.  This port has
+  been mixing values from two different rates, and correcting one of them in
+  isolation is what produced the new symptom.
+
 ## Evidence-entry template
 
 ```text
