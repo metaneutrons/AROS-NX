@@ -843,6 +843,21 @@
 #define   P4_DSI_GEN_SR_1P_TX   (1UL << 12)
 #define   P4_DSI_GEN_SR_2P_TX   (1UL << 13)
 #define   P4_DSI_GEN_LW_TX      (1UL << 14)
+/*
+ * The DCS command types, which this port never set.
+ *
+ * Each of these bits chooses low-power escape mode for one packet type; clear
+ * means high speed.  The GEN_ group above was set and the DCS_ group was not,
+ * so every generic packet went out in low power as intended while every DCS
+ * packet - which is what a panel's commands and its identity read actually are
+ * - was asked for in high speed, on data lanes that never leave stop state.
+ *
+ * The reference sets all of them, GEN and DCS alike, to low power.
+ */
+#define   P4_DSI_DCS_SW_0P_TX   (1UL << 16)
+#define   P4_DSI_DCS_SW_1P_TX   (1UL << 17)
+#define   P4_DSI_DCS_SR_0P_TX   (1UL << 18)
+#define   P4_DSI_DCS_LW_TX      (1UL << 19)
 #define   P4_DSI_MAX_RD_PKT_SIZE (1UL << 24)
 #define P4_DSI_GEN_HDR          0x06C
 #define   P4_DSI_GEN_DT_MASK    0x3FUL
