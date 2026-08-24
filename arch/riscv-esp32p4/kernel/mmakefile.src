@@ -215,6 +215,23 @@ ifdef P4_DSI_ACK_REQUEST
 P4_DEBUG_CPPFLAGS += -DP4_DSI_ACK_REQUEST
 endif
 
+# P4_DSI_VPG=1 turns on the DSI host's own video pattern generator alongside
+# whatever else is feeding it.  A diagnostic: it asks whether the host will
+# begin a transmission at all, independently of its DPI input.  Not a working
+# configuration - the generator and the bridge's pixels are alternatives.
+ifdef P4_DSI_VPG
+P4_DEBUG_CPPFLAGS += -DP4_DSI_VPG
+endif
+
+# P4_DSI_NONBURST=1 selects non-burst video mode with sync pulses instead of
+# the reference's burst mode.  Burst asks the host to buffer a whole video
+# packet - one line, 800 pixels - before it transmits; non-burst transmits
+# synchronously with the pixel stream.  A test of whether the host is waiting
+# on a buffer rather than on data.
+ifdef P4_DSI_NONBURST
+P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
+endif
+
 # P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
 # pattern test.  The bridge then asks for pixels it has no DMA to fetch and
 # must underrun; that underrun is the evidence that the pixel path runs through

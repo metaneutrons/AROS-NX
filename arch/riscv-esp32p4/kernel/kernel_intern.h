@@ -238,6 +238,7 @@ struct P4HostState
     unsigned long hline;
     unsigned long vactive;
     unsigned long colour;
+    unsigned long dpi_clk;      /* PERI_CLK_CTRL03: source, divider and gate */
 };
 
 void krnP4HostState(struct P4HostState *out);
