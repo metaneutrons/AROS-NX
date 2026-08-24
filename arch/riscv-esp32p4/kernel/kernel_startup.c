@@ -4842,6 +4842,17 @@ static void krnP4PanelProbe(void)
              * once; all four silent leaves the read path itself under
              * suspicion, and that is worth knowing before B4 depends on it.
              */
+            /*
+             * Not while the scanout runs.
+             *
+             * A read turns the link around so the panel may answer, and a read
+             * that gets no answer leaves the host in receive - PHY_DIRECTION
+             * set - where it will not transmit video.  So these probes were
+             * stalling the very scanout they exist to observe.  The identity
+             * read inside krnP4DsiPanelInit is unaffected: it answers, so it
+             * completes and the link turns back.
+             */
+#ifndef P4_SCANOUT_TEST
             {
                 static const struct { unsigned char cmd; const char *what; }
                 probes[4] =
@@ -4904,6 +4915,7 @@ static void krnP4PanelProbe(void)
                       " design or the read path may be wrong, and B4's"
                       " pattern is the first thing that can tell them apart\n");
             }
+#endif
 
             if (init == P4_DSI_OK)
                 krnP4PutStr("[dsi]    the jd9365 sequence completed,"
