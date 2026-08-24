@@ -71,6 +71,24 @@ static unsigned long brg_rd(unsigned long off)
 }
 
 /*
+ * PHY_STATUS at each point where the link's direction can change.
+ *
+ * This file prints nothing by design and returns state to its callers
+ * instead, so the readings accumulate here and the probe reports them.  The
+ * question they answer is which step leaves phy_direction set: one reading
+ * taken after the fact is consistent with any of the read, the command
+ * sequence or the video handover having done it.
+ */
+unsigned long krnP4DsiPhyTrace[P4_DSI_TRACE_MAX];
+unsigned int  krnP4DsiPhyTraceCount;
+
+static void dsi_trace(void)
+{
+    if (krnP4DsiPhyTraceCount < P4_DSI_TRACE_MAX)
+        krnP4DsiPhyTrace[krnP4DsiPhyTraceCount++] = dsi_rd(P4_DSI_PHY_STATUS);
+}
+
+/*
  * The PHY supply.
  *
  * Channel 3 in the board's terms is LDO unit 2, which is the register pair at
@@ -339,9 +357,18 @@ int krnP4DsiCmdModeUp(void)
      * reading of five reads that never answered and a sequence that produced
      * no panel-side evidence of any kind.
      *
-     * ACK_RQST_EN is the reference's too - it asks the peripheral to
-     * acknowledge each command, which is what makes a lost command visible
-     * rather than silent.
+     * ACK_RQST_EN asks the peripheral to acknowledge every command, which is
+     * a bus turnaround per command.  The reference sets it, and this port did
+     * too on that basis, but the two are not in the same position: the
+     * reference reads and reports the acknowledgements, and this port has no
+     * handler for them at all, so the bit buys the risk of a turnaround that
+     * never completes without buying the diagnosis it exists for.
+     *
+     * Measured under P4_DSI_ACK_REQUEST: with it set, PHY_STATUS after the
+     * jd9365 sequence reads 0x15af in some runs and 0x15bd in others - a
+     * turnaround still in progress, non-deterministically - and 0x15af then
+     * survives the whole handover to video mode unchanged, so the host is
+     * still receiving when it should be sending pixels.
      */
     dsi_wr(P4_DSI_CMD_MODE_CFG,
            P4_DSI_GEN_SW_0P_TX | P4_DSI_GEN_SW_1P_TX | P4_DSI_GEN_SW_2P_TX
@@ -349,7 +376,13 @@ int krnP4DsiCmdModeUp(void)
          | P4_DSI_GEN_LW_TX
          | P4_DSI_DCS_SW_0P_TX | P4_DSI_DCS_SW_1P_TX
          | P4_DSI_DCS_SR_0P_TX | P4_DSI_DCS_LW_TX
-         | P4_DSI_MAX_RD_PKT_SIZE | P4_DSI_ACK_RQST_EN);
+         | P4_DSI_MAX_RD_PKT_SIZE
+#ifdef P4_DSI_ACK_REQUEST
+         | P4_DSI_ACK_RQST_EN
+#endif
+           );
+
+    dsi_trace();                /* 0: configured, nothing sent yet */
 
     return P4_DSI_OK;
 }
@@ -574,6 +607,8 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
     if (id && id_result)
         *id_result = krnP4DsiDcsRead(0x04, id, 3);
 
+    dsi_trace();                /* 1: after the only read on this path */
+
     {
         static const unsigned char page_user = 0x00;
         static const unsigned char madctl = 0x00;   /* RGB order, no mirror */
@@ -591,6 +626,8 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
             return r;
     }
 
+    dsi_trace();                /* 2: after the four framing commands */
+
     for (i = 0; i < krnP4JD9365InitCount; ++i)
     {
         const struct P4JD9365Cmd *c = &krnP4JD9365Init[i];
@@ -603,7 +640,46 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
             krnTimerWait((c->delay_ms * P4_TICK_HZ + 999) / 1000);
     }
 
+    dsi_trace();                /* 3: after the whole jd9365 sequence */
+
     return P4_DSI_OK;
+}
+
+/*
+ * The handover to video mode, separated from staging the timing for it.
+ *
+ * The order against the pixel source is the whole reason this is its own
+ * function.  The reference enables the host's video mode after the DMA channel
+ * is armed and only then turns on the bridge's DPI output; this port did all
+ * three inside the staging call, so the host entered video mode against a DPI
+ * input that had nothing behind it, latched a payload error and never
+ * recovered - measured as PHY_STATUS 0x15b9 with both data lanes in stop state
+ * and DPI_PLD_WR_ERR set.
+ */
+void krnP4DsiVideoOn(void)
+{
+    /*
+     * Video mode, and the clock lane to high speed with it.  A pixel stream
+     * needs the clock lane running; leaving it in low power is what made the
+     * command phase safe and is exactly wrong here.
+     */
+    dsi_clr(P4_DSI_MODE_CFG, P4_DSI_CMD_VIDEO_MODE);
+
+    dsi_trace();                /* 5: video mode, clock lane not yet requested */
+
+    /*
+     * Clock lane to the host's own control, and that is two bits.
+     *
+     * The reference sets auto_clklane_ctrl alongside txrequestclkhs; this port
+     * set only the second, which pins the lane in high speed permanently
+     * rather than letting the host manage it.  Measured with one bit only: the
+     * PLL locks, the clock lane leaves stop state, and both data lanes stay in
+     * it - PHY_STATUS 0x15b9, a host that never transmits while its FIFO
+     * overflows.
+     */
+    dsi_set(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS | P4_DSI_AUTO_CLKLANE);
+
+    dsi_trace();                /* 6: clock lane in high speed */
 }
 
 /*
@@ -803,24 +879,11 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
     dsi_wr(P4_DSI_VID_VFP_LINES, P4_PANEL_VFP);
     dsi_wr(P4_DSI_VID_VACTIVE_LINES, P4_PANEL_V_RES);
 
-    /*
-     * Video mode, and the clock lane to high speed with it.  A pixel stream
-     * needs the clock lane running; leaving it in low power is what made the
-     * command phase safe and is exactly wrong here.
-     */
-    dsi_clr(P4_DSI_MODE_CFG, P4_DSI_CMD_VIDEO_MODE);
+    dsi_trace();                /* 4: video registers staged, still command mode */
 
-    /*
-     * Clock lane to the host's own control, and that is two bits.
-     *
-     * The reference sets auto_clklane_ctrl alongside txrequestclkhs; this port
-     * set only the second, which pins the lane in high speed permanently
-     * rather than letting the host manage it.  Measured with one bit only: the
-     * PLL locks, the clock lane leaves stop state, and both data lanes stay in
-     * it - PHY_STATUS 0x15b9, a host that never transmits while its FIFO
-     * overflows.
-     */
-    dsi_set(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS | P4_DSI_AUTO_CLKLANE);
+#ifndef P4_SCANOUT_TEST
+    krnP4DsiVideoOn();
+#endif
 
     /* Vertical colour bars: pattern mode 0, orientation 0. */
     /*
@@ -836,6 +899,8 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
 #if !defined(P4_PATTERN_BRIDGE_FEED) && !defined(P4_SCANOUT_TEST)
     dsi_set(P4_DSI_VID_MODE_CFG, P4_DSI_VPG_EN);
 #endif
+
+    dsi_trace();                /* 7: end of the handover */
 
     if (out)
         out->brg_en = brg_rd(P4_DSI_BRG_EN);

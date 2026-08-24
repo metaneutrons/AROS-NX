@@ -225,11 +225,27 @@ struct P4DsiPattern
 };
 
 int  krnP4DsiPatternOn(struct P4DsiPattern *out);
+void krnP4DsiVideoOn(void);
 void krnP4DsiPatternOff(void);
 
 void krnP4DsiCmdStatus(unsigned long *pkt, unsigned long *int0,
                        unsigned long *int1);
 int  krnP4DsiPhyUp(struct P4DsiState *out);
+
+/*
+ * PHY_STATUS wherever the link's direction can change.
+ *
+ * Bit 1 is phy_direction and it has been read set where a scanout was meant
+ * to be transmitting, which stalls the video path: the host cannot send while
+ * it is receiving, so the payload fifo overflows and DPI_PLD_WR_ERR stands.
+ * One reading taken at the end cannot say which step turned the link around,
+ * so each candidate step records one and the caller prints them together.
+ */
+#define P4_DSI_TRACE_MAX    8
+
+extern unsigned long krnP4DsiPhyTrace[P4_DSI_TRACE_MAX];
+extern unsigned int  krnP4DsiPhyTraceCount;
+
 void krnP4DsiPhyDown(void);
 UWORD krnP4PanelStrayBits(void);
 const char *krnP4I2CResultName(int result);
