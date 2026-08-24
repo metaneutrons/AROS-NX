@@ -95,6 +95,22 @@ void krnP4ScanoutBridgeUp(void)
 {
     unsigned long v;
 
+    /*
+     * The pixel format first, because zero means RGB888.
+     *
+     * This register was read out as a diagnostic and never written, so the
+     * bridge fetched three bytes per pixel from a two-byte-per-pixel frame and
+     * fed the host twenty-four bits per pixel where DPI_COLOR_CODING says
+     * sixteen.  A host receiving half again as much data as it is configured
+     * for overruns its payload fifo, which is the DPI_PLD_WR_ERR this phase
+     * reported from its first run.
+     */
+    v = brg_rd(P4_DSI_BRG_PIXEL_TYPE);
+    v &= ~(P4_DSI_BRG_RAW_TYPE_MASK | P4_DSI_BRG_DPI_TYPE_MASK
+           | P4_DSI_BRG_DATA_IN_TYPE);
+    v |= P4_DSI_BRG_RAW_RGB565;           /* input and output are both RGB565 */
+    brg_wr(P4_DSI_BRG_PIXEL_TYPE, v);
+
     /* How much data one frame is, in sixty-four-bit words, and a reload of
        the internal counter from it */
     v = (P4_FB_WORDS64 & P4_DSI_BRG_RAW_NUM_MASK) | P4_DSI_BRG_RAW_NUM_SET;

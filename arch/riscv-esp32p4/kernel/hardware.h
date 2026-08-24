@@ -652,6 +652,24 @@
 #define   P4_DSI_BRG_DPI_TYPE_SHIFT 4
 #define   P4_DSI_BRG_DPI_TYPE_MASK  (0x3UL << P4_DSI_BRG_DPI_TYPE_SHIFT)
 #define   P4_DSI_BRG_DATA_IN_TYPE   (1UL << 6)
+/*
+ * The bridge's pixel format, and zero is not the neutral value it looks like.
+ *
+ * raw_type 0 is RGB888.  A bridge left at its reset value therefore reads
+ * three bytes per pixel out of a two-byte-per-pixel frame and hands the host
+ * twenty-four bits where it is configured for sixteen, which overruns the
+ * host's payload fifo - DPI_PLD_WR_ERR - while every register reads back
+ * exactly as written.  The value was read out as a diagnostic for three
+ * sessions before anyone asked what zero meant.
+ *
+ * On this revision, hw_ver1, the reference sets raw_type for both the input
+ * and the output format and leaves dpi_config at the sub-configuration it is
+ * given, which is zero.  hw_ver3 splits the two into raw_type and dpi_type;
+ * do not carry that split back here.
+ */
+#define   P4_DSI_BRG_RAW_RGB888     0UL
+#define   P4_DSI_BRG_RAW_RGB666     1UL
+#define   P4_DSI_BRG_RAW_RGB565     2UL
 #define P4_DSI_BRG_DPI_V_CFG0   0x030
 #define P4_DSI_BRG_DPI_V_CFG1   0x034
 #define P4_DSI_BRG_DPI_H_CFG0   0x038

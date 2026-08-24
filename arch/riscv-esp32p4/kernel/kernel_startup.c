@@ -4958,11 +4958,19 @@ static void krnP4PanelProbe(void)
                 krnP4ScanoutFill(0x001F);
                 krnP4CacheWriteback();
 
-                /* Host-side video timing, without the pattern generator */
+                /*
+                 * The reference's order, which is not the obvious one: stage
+                 * the host's video timing but stay in command mode, configure
+                 * the bridge, arm the DMA, and only then hand the host over to
+                 * video mode and let the bridge pull.  A host in video mode
+                 * with nothing behind its DPI input latches a payload error it
+                 * does not recover from.
+                 */
                 (void)krnP4DsiPatternOn(&pat);
 
                 krnP4ScanoutBridgeUp();
                 krnP4ScanoutDmaUp();
+                krnP4DsiVideoOn();
                 krnP4ScanoutFeedOn();
 
                 krnTimerWait(10);               /* 100 ms of frames */
@@ -5087,13 +5095,45 @@ static void krnP4PanelProbe(void)
                     krnP4PutStr("\n");
                 }
 
+                /*
+                 * Where the link turned around.
+                 *
+                 * phy_direction reads set at the end of this phase, which
+                 * stops the host transmitting and overflows the payload fifo.
+                 * These five readings say which step did it: command mode with
+                 * nothing sent, the identity read, the four framing commands,
+                 * the jd9365 sequence, the handover to video.  Bit 1 is the
+                 * direction, bit 2 the clock lane's stop state, bits 4 and 7
+                 * the two data lanes'.
+                 */
+                {
+                    unsigned int t;
+
+                    krnP4PutStr("[b5]     phy trace");
+                    for (t = 0; t < krnP4DsiPhyTraceCount; ++t)
+                    {
+                        krnP4PutStr(" ");
+                        krnP4PutHex32((uint32_t)krnP4DsiPhyTrace[t]);
+                    }
+                    krnP4PutStr("\n");
+
+                    krnP4PutStr("[b5]     turned around after step ");
+                    for (t = 0; t < krnP4DsiPhyTraceCount; ++t)
+                        if (krnP4DsiPhyTrace[t] & 2UL)
+                            break;
+                    if (t < krnP4DsiPhyTraceCount)
+                        krnP4PutDec((uint32_t)t);
+                    else
+                        krnP4PutStr("none, it is not turned around");
+                    krnP4PutStr("\n");
+                }
+
                 krnP4PanelBacklightOn();
 
                 /*
-                 * The backlight state, because it went out again.  It lit
-                 * during the B4 pattern run and does not here, with the same
-                 * call in the same place - so something this phase added is
-                 * reaching it, and a report is cheaper than a guess.
+                 * The backlight state, read back rather than assumed, because
+                 * the enable is a latch in an I2C expander and a write to it
+                 * can fail silently.
                  */
                 {
                     struct P4BacklightState bl;
@@ -5110,7 +5150,17 @@ static void krnP4PanelProbe(void)
                     krnP4PutStr("\n");
                 }
 
-                krnP4PutStr("[b5]     left running\n");
+                /*
+                 * Left running deliberately, and the return is what makes that
+                 * true.  Without it this falls through to krnP4PanelSafe()
+                 * below, which darkens the backlight again within a few
+                 * hundred microseconds of switching it on: the panel lit for
+                 * well under a second and went out, and the same run then
+                 * reported "backlight never on".  B4 carries the same return
+                 * for the same reason.
+                 */
+                krnP4PutStr("[b5]     left running; reset to end it\n");
+                return;
             }
             else if (init == P4_DSI_OK)
                 krnP4PutStr("[b5]     no PSRAM, so no frame to scan out\n");

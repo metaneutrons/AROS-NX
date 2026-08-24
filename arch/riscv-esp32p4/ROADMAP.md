@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` RGB565 PSRAM scanout | `hardware partial` | The path is built and moves data: bridge configured as the reference configures it, a DesignWare AXI DMA channel, one link-list item carrying the whole frame, and a cache writeback without which the engine reads a descriptor of zeroes.  8,704 bytes crossed before the transfer stalled with the host refusing payload and the bridge underrunning.  Three defects found by measurement, one host-side deviation left |
+| B5 | Native `800 x 1280` RGB565 PSRAM scanout | `hardware partial` | The path is built and has moved data: bridge configured as the reference configures it, a DesignWare AXI DMA channel, one link-list item carrying the whole frame, and a cache writeback without which the engine reads a descriptor of zeroes.  Seven defects found by measurement so far, four of them on 2026-08-24: B5 fell through to the safe path and darkened its own backlight, `ACK_RQST_EN` left the link turned around, the bridge read RGB888 out of an RGB565 frame, and the host entered video mode before the DMA was armed.  The link is now clean and the bridge no longer underruns; the DMA does not start and there is no image |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -5453,6 +5453,109 @@ turned around, and the payload write error persists.
   the identity read is now the only read on the path - so either it does not
   complete as cleanly as its answer suggests, or the bit means something other
   than a read in progress.
+
+### 2026-08-24 - four defects in the video path, and PHY_DIRECTION explained
+
+- State change: the link is no longer turned around, the bridge no longer
+  underruns, and the bridge reads the frame in the format it is written in.
+  B5 still produces no image.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+- Test defines: `P4_HEADLESS_BOOT=1 P4_PSRAM_MHZ=200 P4_CPU_MHZ=360
+  P4_PANEL_PROBE=1 P4_DSI_PROBE=1 P4_SCANOUT_TEST=1
+  P4_LDSCRIPT=ldscript-xip.lds`.  Core 177,472 bytes, sha256
+  `410dbc529fd90aec071b2b1a6bb98d0694daacb5ef81eea099ab6159dfa4b08f`,
+  written to `ota_0` at `0x20000`.
+- New: `krnP4DsiVideoOn`, a `PHY_STATUS` trace at eight points, and
+  `P4_DSI_ACK_REQUEST` as a switch rather than a fixed choice.
+
+**The measurement that made the difference.**  `PHY_STATUS` was being read once,
+after the fact, and one reading is consistent with any step having set
+`phy_direction`.  Recording it at each point where the link's direction can
+change turned a four-session question into two runs.
+
+**1. B5 never returned, so the backlight went out again.**  The B5 block ended
+with a message saying it was left running and then fell through to
+`krnP4PanelSafe()`, which darkens the backlight and re-asserts panel reset.
+B4 carries a `return` for exactly this reason; B5 did not.  Reported from the
+board as a flash of under half a second, and the same run printed "panel
+returned to safe, backlight never on" - a message that was false about the run
+it appeared in.  The backlight path was never broken.
+
+**2. ACK_RQST_EN turned the link around, non-deterministically.**  With the bit
+set, `PHY_STATUS` after the initialisation sequence read `0x15af` in one run
+and `0x15bd` in another, and where it read `0x15af` that value survived the
+whole handover to video mode unchanged.  `0x15af` is `phy_direction` set, lane
+0 out of stop state and lane 1 in it, which is a bus turnaround in progress and
+not a dead second lane - all three bits have one cause.  With the bit clear,
+eight readings in one run and `phy_direction` set in none of them.
+
+The reference does set `ack_rqst_en`, which is why this port did.  The two are
+not in the same position: the reference reads and reports the acknowledgements,
+this port has no handler for them, and the timeout counters are disabled on
+both sides, so an acknowledgement that never arrives is a wait that never ends.
+The bit is now `P4_DSI_ACK_REQUEST`, off by default.
+
+**3. The bridge was reading RGB888 out of an RGB565 frame.**
+`DSI_BRG_PIXEL_TYPE` read `0x00000000`, and `raw_type` 0 is RGB888.  The
+register had been printed as a diagnostic since B5's first run without anyone
+asking what zero meant.  The bridge therefore fetched three bytes per pixel
+from a two-byte-per-pixel frame and offered the host twenty-four bits per pixel
+where `DPI_COLOR_CODING` says sixteen.  Set to `raw_type` 2 for this revision,
+which is what hw_ver1's reference path sets for both the input and the output
+format; the bridge underrun disappeared with it.
+
+Note for future comparisons: hw_ver3 splits this into `raw_type` and
+`dpi_type`, and the two branches are `#if CHIP_SUPPORT_MIN_REV >= 300` in
+`mipi_dsi_brg_ll.h`.  Reading the wrong branch gives `0x22` instead of `0x02`.
+
+**4. The host entered video mode before anything could feed it.**  The
+reference arms the DMA channel first, then enables the host's video mode, then
+the bridge's DPI output.  This port did all of it inside the staging call, so
+the host was in video mode against an empty DPI input.  Split into
+`krnP4DsiVideoOn`, called between `krnP4ScanoutDmaUp` and
+`krnP4ScanoutFeedOn`.
+
+**Where it stands.**
+
+```text
+[b5]     brg  en 0x00000001 pix 0x00000002
+[b5]     brg  flow 0x00000010 rawnum 0x0003e800 misc 0x00003201 int 0x00000000
+[b5]     host pkt 0x00050015 int0 0x00000000 int1 0x00000080  DPI_PLD_WR_ERR
+[b5]     sar 0x49e0c000 then 0x49e0c000  stalled
+[b5]     phy trace 15bd 15bd 15ad 15bd 15bd 15bd 15bd 15b9
+[b5]     turned around after step none, it is not turned around
+```
+
+`int 0x00000000` is the bridge reporting no underrun, which is new.  The DMA
+now does not move at all, where before the pixel-format fix it moved 8,704
+bytes: the bridge is not requesting data.  `0x15b9` is a host with the clock
+lane in high speed, the direction outbound and both data lanes in stop state,
+so it is not transmitting.
+
+**What was checked and found correct.**  The whole of the reference's bus and
+DPI configuration, value by value: escape and timeout clock divisions (7 from
+/18 and 13 from /10), all six timeout counters at zero, `PHY_TMR_CFG` and
+`PHY_TMR_LPCLK_CFG`, `stop_wait_time` 0x3F, `PHY_TMR_RD_CFG` 6000, EOTP
+transmit, receive CRC and ECC, lane count as `n_lanes = lanes - 1`,
+`enableclk` and `forcepll`, burst type 2, `raw_num_total` 256,000, discard
+count 800, empty threshold 768, multi-block 1, burst length 256, DPI clock
+source 1 with divider `div - 1`, the bridge configuration-update trigger, and
+the whole of `CH_CFG1` including `src_osr_lmt`/`dst_osr_lmt` as `limit - 1`.
+Two candidates were raised and eliminated from the reference itself:
+`DSI_CFG_REF_CLK_EN` defaults to 1 and nothing in ESP-IDF ever writes it, and
+the host's `pwr_up` is set once and never cycled for configuration.
+
+- Acceptance points passed: none of B5's; this is diagnosis, not function.
+- Acceptance points failed: B5 has no image.
+- Remaining risk: `DPI_PLD_WR_ERR` has carried a lot of interpretation without
+  its origin being established.  It is a latched interrupt status and this port
+  never clears it, so it may date from the command phase rather than from the
+  scanout.  Until it is read before the handover and after a clear, no argument
+  should rest on it.
+- Next safe step: clear `INT_ST1` before the handover and read it at the same
+  points the PHY trace uses.  That decides whether the host is refusing pixels
+  now or refused them once, and the DMA not starting at all is a different
+  question from the DMA starting and stopping.
 
 ## Evidence-entry template
 
