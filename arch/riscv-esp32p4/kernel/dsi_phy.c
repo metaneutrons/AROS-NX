@@ -702,9 +702,21 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * this panel has ever answered.
      */
 #ifdef P4_SCANOUT_TEST
+    /*
+     * Low-power transitions yes, frame acknowledge no.
+     *
+     * Measured: with the acknowledge on, PHY_STATUS reads 0x15b9 - the clock
+     * lane in high speed, the PLL locked, and both data lanes sitting in stop
+     * state.  The host is not transmitting at all.  Frame acknowledge makes it
+     * wait for the panel to answer every frame, and nothing this port has ever
+     * read from this panel has answered, so the wait cannot end.
+     *
+     * The reference can afford it because its reads work.  Until the silent
+     * read path is understood, asking for an acknowledgement is asking the
+     * host to stop.
+     */
     dsi_wr(P4_DSI_VID_MODE_CFG,
-           P4_DSI_VID_BURST_SYNC_PULSES | P4_DSI_VID_LP_ALL
-           | P4_DSI_VID_FRAME_ACK_EN);
+           P4_DSI_VID_BURST_SYNC_PULSES | P4_DSI_VID_LP_ALL);
 #else
     dsi_wr(P4_DSI_VID_MODE_CFG, P4_DSI_VID_BURST_SYNC_PULSES);
 #endif
@@ -728,7 +740,18 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * command phase safe and is exactly wrong here.
      */
     dsi_clr(P4_DSI_MODE_CFG, P4_DSI_CMD_VIDEO_MODE);
-    dsi_set(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS);
+
+    /*
+     * Clock lane to the host's own control, and that is two bits.
+     *
+     * The reference sets auto_clklane_ctrl alongside txrequestclkhs; this port
+     * set only the second, which pins the lane in high speed permanently
+     * rather than letting the host manage it.  Measured with one bit only: the
+     * PLL locks, the clock lane leaves stop state, and both data lanes stay in
+     * it - PHY_STATUS 0x15b9, a host that never transmits while its FIFO
+     * overflows.
+     */
+    dsi_set(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS | P4_DSI_AUTO_CLKLANE);
 
     /* Vertical colour bars: pattern mode 0, orientation 0. */
     /*
@@ -756,7 +779,7 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
 void krnP4DsiPatternOff(void)
 {
     dsi_clr(P4_DSI_VID_MODE_CFG, P4_DSI_VPG_EN);
-    dsi_clr(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS);
+    dsi_clr(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS | P4_DSI_AUTO_CLKLANE);
     dsi_set(P4_DSI_MODE_CFG, P4_DSI_CMD_VIDEO_MODE);
 }
 

@@ -188,6 +188,22 @@ struct P4ScanoutState
     unsigned long fb_base;
 };
 
+struct P4HostState
+{
+    unsigned long pwr_up;
+    unsigned long mode_cfg;     /* bit 0 set means still command mode */
+    unsigned long vid_mode;
+    unsigned long lpclk;        /* bit 0 is TXREQUESTCLKHS */
+    unsigned long phy_status;
+    unsigned long pkt_size;
+    unsigned long hsa;
+    unsigned long hbp;
+    unsigned long hline;
+    unsigned long vactive;
+    unsigned long colour;
+};
+
+void krnP4HostState(struct P4HostState *out);
 void krnP4ScanoutFill(unsigned short rgb565);
 void krnP4ScanoutBridgeUp(void);
 void krnP4ScanoutDmaUp(void);

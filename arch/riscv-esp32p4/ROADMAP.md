@@ -5074,6 +5074,63 @@ is where the module package is loaded, and the stall is identical.
   full FIFO would look like.  That is the same discipline that found the
   descriptor sitting in cache, and it is the only kind of step left.
 
+### 2026-08-23 - B5: the host is configured correctly and its data lanes never leave stop state
+
+- State change: three more deviations from the reference corrected, one of them
+  a real bug.  The host's refusal is now precisely characterised and no longer
+  a matter of comparing written values.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+
+**Read back rather than assumed, which is what this step was for.**
+
+```text
+[b5]     host mode 0x00000000  video mode, pwr_up 0x00000001, lpclk 0x00000003 hs
+[b5]     host vid_mode 0x0000bf02 phy 0x000015b9 colour 0x00000000
+[b5]     host pkt 800 hsa 63 hbp 63 hline 2750 vact 1280
+```
+
+Every write took.  The host is in video mode, powered, the clock lane under
+automatic control, packet size 800 pixels, the scaled horizontal timing
+consistent - 63 + 63 + 2499 + 125 = 2750 - vertical active 1280, colour coding
+RGB565 configuration 1.  `MODE_CFG` was the suspicion and it is clean.
+
+**And `PHY_STATUS` says why nothing arrives.**  `0x15b9` decodes to: PLL
+locked, direction transmit, clock lane *out* of stop state, and
+`STOPSTATE0LANE` and `STOPSTATE1LANE` both set - **both data lanes are in stop
+state**.  The host is not transmitting at all, while its payload FIFO overflows
+from the bridge.  That is a much sharper statement than "the panel is dark",
+and it is where the next step starts.
+
+**Three corrections on the way.**
+
+  - *A real bug.*  `FRAME_BTA_ACK_EN` is bit 14 of `VID_MODE_CFG`; the first
+    attempt wrote bit 11, which is `LP_VACT_EN`.  So it enabled a low-power
+    transition while believing it enabled an acknowledge.
+  - *A wrong decision reversed.*  B4 had cleared every low-power transition to
+    reduce moving parts while diagnosing.  The reference enables all of them
+    for this panel, so that traded a working configuration for a guess.
+  - *Half a register.*  The reference's "automatic" clock-lane state is two
+    bits, `auto_clklane_ctrl` as well as `phy_txrequestclkhs`.  This port set
+    only the second, pinning the lane in high speed permanently instead of
+    letting the host manage it.  `lpclk` now reads `0x3`.
+
+None of the three frees the host, and frame acknowledge was tried and then
+switched back off: with it set the host waits for the panel to answer every
+frame, and nothing this port has read from this panel has ever answered.
+
+- Acceptance points passed: none of B5's.
+- Acceptance points failed: no scanout.  The panel's backlight follows the
+  video stream, so it stays dark as well.
+- Remaining risk: the two open defects are now visibly the same shape - the
+  panel never answers a read, and the host never drives the data lanes.  Both
+  are the link failing to go high-speed in the direction it is asked to.
+- Next safe step: read back the bridge's own DPI timing registers.  The host
+  waits for VSYNC from the bridge before it transmits, the bridge generates it
+  from `DPI_V_CFG0/1` and `DPI_H_CFG0/1`, and those are written by
+  `krnP4DsiPatternOn` in pixel units and have never been verified.  A bridge
+  that emits no sync is a host that never starts, which fits everything
+  measured.
+
 ## Evidence-entry template
 
 ```text
