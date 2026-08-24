@@ -281,4 +281,17 @@ void krnP4ScanoutState(struct P4ScanoutState *out)
     out->brg_int      = brg_rd(P4_DSI_BRG_INT_RAW);
     out->words64      = P4_FB_WORDS64;
     out->fb_base      = P4_FB_BASE;
+
+    /*
+     * The bridge's own DPI timing, read back.  Its calculation and its field
+     * positions have both been checked against the reference and match; what
+     * has not been checked is whether the writes landed, and that is the only
+     * remaining thing this port has ever got wrong twice.
+     */
+    out->brg_v_cfg0   = brg_rd(P4_DSI_BRG_DPI_V_CFG0);
+    out->brg_v_cfg1   = brg_rd(P4_DSI_BRG_DPI_V_CFG1);
+    out->brg_h_cfg0   = brg_rd(P4_DSI_BRG_DPI_H_CFG0);
+    out->brg_h_cfg1   = brg_rd(P4_DSI_BRG_DPI_H_CFG1);
+    out->brg_en       = brg_rd(P4_DSI_BRG_EN);
+    out->brg_pixel    = brg_rd(P4_DSI_BRG_PIXEL_TYPE);
 }

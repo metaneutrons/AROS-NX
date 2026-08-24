@@ -186,6 +186,12 @@ struct P4ScanoutState
     unsigned long brg_int;
     unsigned long words64;
     unsigned long fb_base;
+    unsigned long brg_v_cfg0;
+    unsigned long brg_v_cfg1;
+    unsigned long brg_h_cfg0;
+    unsigned long brg_h_cfg1;
+    unsigned long brg_en;
+    unsigned long brg_pixel;
 };
 
 struct P4HostState
