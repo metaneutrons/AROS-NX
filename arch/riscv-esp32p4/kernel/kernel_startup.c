@@ -5018,18 +5018,39 @@ static void krnP4PanelProbe(void)
                 krnP4PutHex32((uint32_t)sc.brg_int);
                 krnP4PutStr("\n");
 
+                /*
+                 * The host's error status, read three times.
+                 *
+                 * INT_ST0 and INT_ST1 are cleared by reading them, so a single
+                 * reading says only that something happened since whatever read
+                 * them last - and this probe reads them in B3 as well.  Read,
+                 * read again, wait, read once more: the second says whether the
+                 * first cleared it, and the third whether the fault is still
+                 * being produced or was produced once during the handover.
+                 */
                 {
                     unsigned long pkt = 0, i0 = 0, i1 = 0;
+                    unsigned long i1b = 0, i1c = 0, d = 0;
 
                     krnP4DsiCmdStatus(&pkt, &i0, &i1);
+                    krnP4DsiCmdStatus(&d, &d, &i1b);
+                    krnTimerWait(5);                    /* 50 ms of frames */
+                    krnP4DsiCmdStatus(&d, &d, &i1c);
+
                     krnP4PutStr("[b5]     host pkt ");
                     krnP4PutHex32((uint32_t)pkt);
                     krnP4PutStr(" int0 ");
                     krnP4PutHex32((uint32_t)i0);
                     krnP4PutStr(" int1 ");
                     krnP4PutHex32((uint32_t)i1);
-                    krnP4PutStr((i1 & (1UL << 7)) ? "  DPI_PLD_WR_ERR\n"
-                                                  : "  no payload error\n");
+                    krnP4PutStr(" then ");
+                    krnP4PutHex32((uint32_t)i1b);
+                    krnP4PutStr(" then ");
+                    krnP4PutHex32((uint32_t)i1c);
+                    krnP4PutStr((i1c & (1UL << 7))
+                                ? "  still failing\n"
+                                : ((i1 & (1UL << 7)) ? "  failed once\n"
+                                                     : "  no payload error\n"));
                 }
 
                 /*
