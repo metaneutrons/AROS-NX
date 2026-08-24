@@ -370,3 +370,60 @@ void krnP4ScanoutSample(unsigned long *depth, unsigned long *int_raw)
     if (int_raw)
         *int_raw = brg_rd(P4_DSI_BRG_INT_RAW);
 }
+
+/*
+ * A frame that reports on its own transmission.
+ *
+ * A flat colour proves only that something arrived.  It cannot distinguish a
+ * frame that is intact from one that is short by a few lines, offset by half a
+ * line, or has had lines replaced by the bridge's underflow substitute - all
+ * of which are live possibilities here, and all of which look like "banding"
+ * from across a desk.
+ *
+ * So: eight horizontal bars in known colours, a two-pixel white border, and a
+ * one-pixel white tick every 100 pixels along the top.  The bars say which
+ * lines arrived and in what order; the border says whether the geometry and
+ * the stride are right, because a stride error turns a rectangle into a
+ * diagonal; the ticks give a horizontal scale to read an offset against.  The
+ * bar colours are the three primaries and their pairs, so the channel order
+ * can be read off directly rather than inferred.
+ */
+void krnP4ScanoutTestCard(void)
+{
+    static const unsigned long bars[8] =
+    {
+        0xFF0000,   /* as written to memory: byte 0 is the low one */
+        0x00FF00,
+        0x0000FF,
+        0xFFFF00,
+        0x00FFFF,
+        0xFF00FF,
+        0xFFFFFF,
+        0x404040,
+    };
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long y, x;
+
+    for (y = 0; y < P4_PANEL_V_RES; y++)
+    {
+        unsigned long c = bars[(y * 8 / P4_PANEL_V_RES) & 7];
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES * 3;
+
+        for (x = 0; x < P4_PANEL_H_RES; x++)
+        {
+            unsigned long v = c;
+
+            /* two-pixel border all the way round */
+            if (y < 2 || y >= P4_PANEL_V_RES - 2
+                || x < 2 || x >= P4_PANEL_H_RES - 2)
+                v = 0xFFFFFF;
+            /* a tick every hundred pixels, eight lines tall, under the border */
+            else if (y < 10 && (x % 100) == 0)
+                v = 0xFFFFFF;
+
+            row[x * 3]     = (unsigned char)(v & 0xFF);
+            row[x * 3 + 1] = (unsigned char)((v >> 8) & 0xFF);
+            row[x * 3 + 2] = (unsigned char)((v >> 16) & 0xFF);
+        }
+    }
+}

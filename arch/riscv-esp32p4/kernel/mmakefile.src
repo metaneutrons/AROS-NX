@@ -249,6 +249,37 @@ ifdef P4_BL_PERCENT
 P4_DEBUG_CPPFLAGS += -DP4_LEDC_BL_PERCENT=$(P4_BL_PERCENT)
 endif
 
+# P4_DSI_LP_VERT_ONLY=1 leaves the two horizontal low-power transitions off.
+# A return to low power costs 154 lane byte clocks with the reference's switch
+# times, and this panel's back and front porches are 47 and 94, so neither is
+# long enough to leave high speed and come back.
+ifdef P4_DSI_LP_VERT_ONLY
+P4_DEBUG_CPPFLAGS += -DP4_DSI_LP_VERT_ONLY
+endif
+
+# P4_DPI_MHZ overrides the panel's pixel clock, which defaults to the vendor
+# configuration's 80.  The divider comes off the 240 MHz tap, so only exact
+# divisors are usable: 80, 60, 48, 40.  Lowering it lowers the data rate the
+# host has to sustain, which is the way to test whether a payload overflow is
+# a bandwidth problem or a configuration one.
+ifdef P4_DPI_MHZ
+P4_DEBUG_CPPFLAGS += -DP4_PANEL_DPI_MHZ=$(P4_DPI_MHZ)
+endif
+
+# P4_DSI_CHUNKS=n splits each video line into n packets instead of one, so the
+# host's payload fifo has to hold h_res/n pixels rather than all of them.  Must
+# divide the active width exactly.
+ifdef P4_DSI_CHUNKS
+P4_DEBUG_CPPFLAGS += -DP4_DSI_CHUNKS=$(P4_DSI_CHUNKS)
+endif
+
+# P4_SCANOUT_TESTCARD=1 fills the frame with colour bars, a border and a ruler
+# instead of a flat colour, so that the picture says whether lines are missing,
+# offset or substituted rather than merely that something arrived.
+ifdef P4_SCANOUT_TESTCARD
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_TESTCARD
+endif
+
 # P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
 # pattern test.  The bridge then asks for pixels it has no DMA to fetch and
 # must underrun; that underrun is the evidence that the pixel path runs through
