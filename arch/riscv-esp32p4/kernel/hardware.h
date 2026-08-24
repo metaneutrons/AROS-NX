@@ -958,9 +958,65 @@
 #define P4_DSI_DT_DCS_LW        0x39
 #define P4_DSI_DT_SET_MAX_RET   0x37
 
-/* This board: two lanes at 1000 Mbit/s from a 40 MHz reference. */
+/*
+ * The DSI link, derived from one number.
+ *
+ * Everything here used to be written out separately and they disagreed: the
+ * PLL dividers assumed a 40 MHz reference, the range selector said 1000
+ * Mbit/s, and the horizontal scale factor said a 125 MHz byte clock, while the
+ * hardware was running at half of that.  Correcting one of them in isolation
+ * changed which symptom appeared.  So the rate is stated once and the rest is
+ * computed, and changing it changes all of them together.
+ *
+ * The reference is 40 MHz, and that is now measured rather than assumed.
+ *
+ * ESP-IDF's name for the source it selects on pre-3.0 silicon,
+ * MIPI_DSI_PHY_PLLREF_CLK_SRC_DEFAULT_LEGACY, is PLL_F20M, so 20 MHz was
+ * tried: N=2 and M=50 would then be 500 Mbit/s, and the whole link was
+ * re-derived for that - dividers, range selector 0x07, horizontal scale 25/16.
+ * The result was the clock lane refusing to leave stop state, where with the
+ * range selector for 1000 Mbit/s it leaves it.  The selector has to match the
+ * rate the lanes actually run at, so the lanes run at 1000, so the reference
+ * is 40 MHz.
+ *
+ * B3's values were therefore right and B3's reasoning was still wrong: it
+ * took a locking PLL as evidence for the reference frequency, and a loop that
+ * closes says nothing about the frequency it closed on.  What settled it was
+ * changing the rate and watching a lane state change, which is a measurement.
+ *
+ * The dividers follow ESP-IDF's own search: f_vco = M/N * f_ref with M even
+ * and f_ref/N between 5 and 40 MHz, taking the smallest N that makes M even.
+ * The range selector is a lookup in the PHY's table rather than a formula, so
+ * it is written per rate and the build fails for a rate with no entry.
+ */
+#define P4_DSI_PLLREF_MHZ       40
+
+/* This board: two lanes.  The rate is the one thing to change. */
 #define P4_DSI_LANES            2
 #define P4_DSI_LANE_MBPS        1000
+
+#if P4_DSI_LANE_MBPS == 1000
+#define P4_DSI_PLL_N            2       /* 40 * 50 / 2 */
+#define P4_DSI_PLL_M            50
+#define P4_DSI_HS_FREQ_SEL      0x2A    /* the [1000,1050) row */
+#elif P4_DSI_LANE_MBPS == 500
+#define P4_DSI_PLL_N            4       /* 40 * 50 / 4 */
+#define P4_DSI_PLL_M            50
+#define P4_DSI_HS_FREQ_SEL      0x07    /* the [500,550) row */
+#else
+#error "no PHY frequency range recorded for this lane rate"
+#endif
+
+/*
+ * Pixels to lane byte clocks.  The host counts horizontal time in byte clocks
+ * and the panel's timing is in pixels, so every horizontal value crosses this:
+ * x * lane_rate / (8 * dpi_clock), rounded.  At 500 Mbit/s that is 25/16, at
+ * 1000 it is 25/8, and getting it from the rate is what keeps the two from
+ * drifting apart again.
+ */
+#define P4_DSI_PX_TO_BYTECLK(x) \
+    (((unsigned long)(x) * P4_DSI_LANE_MBPS + 4UL * P4_PANEL_DPI_MHZ) \
+     / (8UL * P4_PANEL_DPI_MHZ))
 
 /*
  * The crystal.  A SoC fact rather than a PSRAM one, which is where it lived

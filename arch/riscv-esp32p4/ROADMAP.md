@@ -5232,6 +5232,58 @@ reference's own search gives N=1, M=50.  With that:
   been mixing values from two different rates, and correcting one of them in
   isolation is what produced the new symptom.
 
+### 2026-08-23 - the lane rate is derived from one number, and 40 MHz is now measured
+
+- State change: the whole DSI link is computed from the lane rate instead of
+  being written out value by value, and the reference frequency is settled by
+  measurement rather than by assumption.  The stall is unchanged.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+
+**The reference is 40 MHz, and this is how it was established.**  ESP-IDF's
+name for the source it selects on pre-3.0 silicon is `PLL_F20M`, so 20 MHz was
+taken seriously: with N=2 and M=50 that is 500 Mbit/s, and the whole link was
+re-derived for it - dividers, range selector `0x07`, horizontal scale 25/16,
+escape and timeout dividers.  Measured consistently at 500:
+
+```text
+pll n 2 m 50, range 0x00000007
+host pkt 800 hsa 31 hbp 31 hline 1375
+vid_mode 0x0000bf02 phy 0x000015bd
+```
+
+Everything agrees with itself, and the clock lane stops leaving stop state -
+`phy` bit 2 set, where at 1000 it is clear.  The range selector has to match
+the rate the lanes physically run at, so the lanes run at 1000, so the
+reference is 40 MHz.  Put back, the clock lane leaves stop state again.
+
+That is a measurement: a configuration change produced a lane-state change.
+B3's values were right all along and B3's reasoning was still wrong - it read a
+locking PLL as evidence for the reference frequency, and a loop that closes
+says nothing about the frequency it closed on.  Both halves are worth recording
+because the wrong reasoning survived four phases.
+
+**And the link is now derived rather than transcribed.**  `P4_DSI_LANE_MBPS` is
+the one number; the PLL dividers, the range selector, the pixel-to-byte-clock
+scale factor and the escape and timeout dividers all follow from it, and a rate
+with no range-table entry fails the build instead of silently keeping an old
+selector.  This port had been carrying values for three different rates at
+once - dividers for one, a selector for another, a scale factor for a third -
+which is why correcting any single one of them changed which symptom appeared.
+
+**What has not changed.**  `phy 0x15b9` after the video-mode setup: both data
+lanes in stop state, the read path silent, the DMA stalled at `0x2200`.
+
+- Acceptance points passed: none of B5's.  One assumption converted into a
+  measurement and one class of inconsistency removed.
+- Remaining risk: unchanged.
+- Next safe step: the four lane-transition times are now the only values in the
+  data path still unjustified, and they are in byte-clock units so they at
+  least belong to the rate that is now confirmed.  Beyond them, what has never
+  been tried is sending anything in command mode with the clock lane in high
+  speed - every DCS write so far went out in low-power escape mode, and if the
+  panel's controller expects high-speed commands, a silent read and lanes that
+  never carry data are the same fact seen twice.
+
 ## Evidence-entry template
 
 ```text
