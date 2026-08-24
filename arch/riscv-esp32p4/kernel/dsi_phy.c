@@ -860,8 +860,13 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * read path is understood, asking for an acknowledgement is asking the
      * host to stop.
      */
+#ifdef P4_DSI_NONBURST
+    dsi_wr(P4_DSI_VID_MODE_CFG,
+           P4_DSI_VID_NONBURST_PULSES | P4_DSI_VID_LP_ALL);
+#else
     dsi_wr(P4_DSI_VID_MODE_CFG,
            P4_DSI_VID_BURST_SYNC_PULSES | P4_DSI_VID_LP_ALL);
+#endif
 #else
     dsi_wr(P4_DSI_VID_MODE_CFG, P4_DSI_VID_BURST_SYNC_PULSES);
 #endif
@@ -897,6 +902,18 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * and the one B5's framebuffer has to feed.
      */
 #if !defined(P4_PATTERN_BRIDGE_FEED) && !defined(P4_SCANOUT_TEST)
+    dsi_set(P4_DSI_VID_MODE_CFG, P4_DSI_VPG_EN);
+#endif
+#ifdef P4_DSI_VPG
+    /*
+     * The host's own generator, as a diagnostic rather than a configuration.
+     *
+     * The question it answers is whether the host will begin a transmission at
+     * all.  If the data lanes leave stop state with the generator on and stay
+     * in it with only the bridge feeding, the host is capable and its DPI input
+     * is the problem; if they stay in stop state either way, the fault is in
+     * the host and the pixel source is irrelevant to it.
+     */
     dsi_set(P4_DSI_VID_MODE_CFG, P4_DSI_VPG_EN);
 #endif
 

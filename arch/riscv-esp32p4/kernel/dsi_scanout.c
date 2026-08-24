@@ -279,6 +279,15 @@ void krnP4HostState(struct P4HostState *out)
     out->hline      = p4_r32(P4_DSI_HOST_BASE + P4_DSI_VID_HLINE_TIME);
     out->vactive    = p4_r32(P4_DSI_HOST_BASE + P4_DSI_VID_VACTIVE_LINES);
     out->colour     = p4_r32(P4_DSI_HOST_BASE + P4_DSI_DPI_COLOR_CODING);
+
+    /*
+     * The bridge's own pixel clock, read back rather than assumed.
+     *
+     * The bridge generates the DPI timing the host synchronises to, and needs
+     * this clock to do it.  A gate left closed presents as a host that takes
+     * pixels and never begins a frame, which no other register distinguishes.
+     */
+    out->dpi_clk    = p4_r32(P4_CLKRST_PERI_CLK_CTRL03);
 }
 
 void krnP4ScanoutState(struct P4ScanoutState *out)

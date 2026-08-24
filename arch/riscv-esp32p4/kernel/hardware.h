@@ -968,6 +968,17 @@
 #define P4_DSI_DPI_LP_CMD_TIM   0x018
 #define P4_DSI_VID_MODE_CFG     0x038
 #define   P4_DSI_VID_MODE_TYPE_MASK 0x3UL
+/*
+ * VID_MODE_CFG's video mode type, bits 1:0.
+ *
+ * 0 is non-burst with sync pulses, 1 non-burst with sync events, 2 burst.  The
+ * reference uses burst, and burst asks the host to buffer a whole video packet
+ * before it starts transmitting it - VID_PKT_SIZE pixels, which is one line
+ * here.  Non-burst transmits synchronously with the pixel stream and needs far
+ * less, which makes the two a test of whether the host is waiting for a buffer
+ * it will never fill.
+ */
+#define   P4_DSI_VID_NONBURST_PULSES 0
 #define   P4_DSI_VID_BURST_SYNC_PULSES 2
 #define   P4_DSI_LP_VSA_EN      (1UL << 8)
 #define   P4_DSI_LP_VBP_EN      (1UL << 9)

@@ -5223,6 +5223,8 @@ static void krnP4PanelProbe(void)
                     krnP4PutHex32((uint32_t)h.phy_status);
                     krnP4PutStr(" colour ");
                     krnP4PutHex32((uint32_t)h.colour);
+                    krnP4PutStr(" dpiclk ");
+                    krnP4PutHex32((uint32_t)h.dpi_clk);
                     krnP4PutStr("\n");
 
                     krnP4PutStr("[b5]     host pkt ");
