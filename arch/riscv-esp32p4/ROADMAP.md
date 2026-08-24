@@ -121,7 +121,7 @@ tests.
 | B0 | Canonical D1001 display contract and provenance | `documented` | [display/DISPLAY-CONTRACT.md](display/DISPLAY-CONTRACT.md) is the one place display facts live, each value carrying an evidence class and a source file and line.  Three findings changed the plan: the running reference ignores the timing fields it is given and uses a different set, the rotation direction is no longer a hypothesis, and the DSI bridge registers differ by chip revision.  Nothing is `verified` yet, which is the honest state; the measured frame rate is B4's and is recorded as deferred |
 | B1 | Calibrated 200 MHz PSRAM with measured headroom | `hardware partial` | The calibration works and 200 MHz holds over all 32 MB with four bus patterns, identically across six warm resets, and the whole storage stack passes on both media at 360 MHz.  The phase premise was wrong in an instructive way: the PSRAM bus was never the limit.  The CPU ran at 90 MHz because nothing configured it, and is now 360; sequential reads went 20 to 60 MB/s and internal SRAM 25 to 101.  The 100 MB/s gate is not assessable by a CPU loop and is reassigned to B5, with the reason recorded |
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
-| B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware partial` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
+| B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
 | B5 | Native `800 x 1280` RGB565 PSRAM scanout | `hardware partial` | The path is built and moves data: bridge configured as the reference configures it, a DesignWare AXI DMA channel, one link-list item carrying the whole frame, and a cache writeback without which the engine reads a descriptor of zeroes.  8,704 bytes crossed before the transfer stalled with the host refusing payload and the bridge underrunning.  Three defects found by measurement, one host-side deviation left |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
@@ -5283,6 +5283,62 @@ lanes in stop state, the read path silent, the DMA stalled at `0x2200`.
   speed - every DCS write so far went out in low-power escape mode, and if the
   panel's controller expects high-speed commands, a silent read and lanes that
   never carry data are the same fact seen twice.
+
+### 2026-08-23 - the panel answers: JD9365 identifies itself, and the read path is solved
+
+- State change: the silent read path, open since B3 stage two, is fixed.  The
+  panel returns its identity.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+
+**The measurement.**
+
+```text
+[dsi]    dcs 0x04 identity read: 3 bytes, 0x00000093 0x00000065 0x00000004
+```
+
+`0x93 0x65` is JD9365 - the controller this panel carries, reading back its own
+part number.  Five reads across four sessions had returned nothing at all
+before this.
+
+**The cause: the DCS command types were never set to low power.**
+`CMD_MODE_CFG` has two groups of speed bits, GEN_ for generic packets and DCS_
+for display-command-set packets, and each bit clear means "send this type in
+high speed".  This port set the seven GEN_ bits and left bits 16 to 19, the
+DCS_ group, at zero.
+
+Everything a panel is actually spoken to in is DCS: the JD9365 initialisation
+sequence, sleep-out, display-on, and the identity read.  So every one of those
+packets was being asked for in high speed, on data lanes that never left stop
+state - which is why the sequence produced no panel-side evidence of any kind
+and every read was silent.  `ACK_RQST_EN` was missing as well, and it is what
+makes a lost command visible rather than silent; the reference sets both.
+
+`PHY_STATUS` after the read confirms it from the other side: `0x15ab`, where it
+had been `0x15b9`.  Bit 4, `STOPSTATE0LANE`, is now clear - data lane 0 has left
+stop state - and bit 1, `PHY_DIRECTION`, is set, so the host is in receive.  The
+link carries traffic in both directions for the first time.
+
+**How it was found, which is worth recording.**  The next thing to try was
+high-speed commands, on the theory that the panel might require them.  Reading
+the reference's command path first showed it sets every type to *low* power,
+which refuted that theory before a build - and the same twenty lines showed the
+DCS group being set at all, which this port did not do.  The hypothesis was
+wrong and reading the reference to check it was what found the real defect.
+
+- Acceptance points passed: B3's read path answers, which was its open defect.
+- Acceptance points failed: B5 still has no image.  The second read, DCS 0x0A,
+  does not answer and the host stays busy on the first, so the read path works
+  once rather than repeatedly.  The DMA still stalls at `0x2200`.
+- Remaining risk: the panel is now known to be initialised, or at least
+  addressable, which changes the reading of everything downstream.  The
+  JD9365 sequence was going out in the wrong speed mode too, so it has never
+  actually reached the panel - the display may need it re-run now that it can
+  be delivered.
+- Next safe step: re-run the initialisation sequence with the corrected command
+  mode and check the panel's own registers - the identity read proves reads
+  work, so `0x0A` power mode and `0x0C` pixel format can now be asked and
+  believed.  A panel that reports itself powered and in RGB565 is a much
+  stronger starting point for the scanout than one that has never spoken.
 
 ## Evidence-entry template
 

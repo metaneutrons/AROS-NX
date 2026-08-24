@@ -329,10 +329,27 @@ int krnP4DsiCmdModeUp(void)
      * clock lane in high speed, which is the state this function has just
      * deliberately left.
      */
+    /*
+     * Every command type in low power, and an acknowledge request.
+     *
+     * The DCS group was missing here, and DCS is what a panel is actually
+     * spoken to in: the JD9365 initialisation sequence, the display-on, the
+     * identity read.  With bits 16 to 19 clear those packets were asked for in
+     * high speed while the data lanes sat in stop state, which is a plausible
+     * reading of five reads that never answered and a sequence that produced
+     * no panel-side evidence of any kind.
+     *
+     * ACK_RQST_EN is the reference's too - it asks the peripheral to
+     * acknowledge each command, which is what makes a lost command visible
+     * rather than silent.
+     */
     dsi_wr(P4_DSI_CMD_MODE_CFG,
            P4_DSI_GEN_SW_0P_TX | P4_DSI_GEN_SW_1P_TX | P4_DSI_GEN_SW_2P_TX
          | P4_DSI_GEN_SR_0P_TX | P4_DSI_GEN_SR_1P_TX | P4_DSI_GEN_SR_2P_TX
-         | P4_DSI_GEN_LW_TX | P4_DSI_MAX_RD_PKT_SIZE);
+         | P4_DSI_GEN_LW_TX
+         | P4_DSI_DCS_SW_0P_TX | P4_DSI_DCS_SW_1P_TX
+         | P4_DSI_DCS_SR_0P_TX | P4_DSI_DCS_LW_TX
+         | P4_DSI_MAX_RD_PKT_SIZE | P4_DSI_ACK_RQST_EN);
 
     return P4_DSI_OK;
 }
