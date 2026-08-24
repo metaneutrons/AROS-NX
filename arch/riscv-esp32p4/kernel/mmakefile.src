@@ -280,6 +280,20 @@ ifdef P4_SCANOUT_TESTCARD
 P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_TESTCARD
 endif
 
+# P4_BRG_RAW_DIV=n divides the bridge's frame data counter by n.  A scale test
+# for where the bridge decides to restart reading the framebuffer.
+ifdef P4_BRG_RAW_DIV
+P4_DEBUG_CPPFLAGS += -DP4_BRG_RAW_DIV=$(P4_BRG_RAW_DIV)
+endif
+
+# P4_SCANOUT_CROSS=1 draws one vertical and one horizontal line and nothing
+# else.  A vertical line is what makes shear visible: if each transmitted line
+# carries fewer pixels than the panel expects, every row is displaced from the
+# one above and the line arrives as a diagonal.
+ifdef P4_SCANOUT_CROSS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_CROSS
+endif
+
 # P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
 # pattern test.  The bridge then asks for pixels it has no DMA to fetch and
 # must underrun; that underrun is the evidence that the pixel path runs through
