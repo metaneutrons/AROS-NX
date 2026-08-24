@@ -55,22 +55,6 @@ static inline unsigned long ch_rd(unsigned long off)
 }
 
 /*
- * The link-list item lives in internal SRAM, not in the frame it describes.
- *
- * The DMA fetches it over AXI, so it has to be somewhere the DMA can read
- * coherently.  Internal SRAM needs no cache maintenance; PSRAM would, and a
- * descriptor read through a stale cache line is a fault that looks like
- * anything else.  Sixty-four byte alignment is the hardware's requirement.
- */
-static unsigned char scanout_lli[P4_DMAC_LLI_SIZE]
-    __attribute__((aligned(64)));
-
-static inline void lli_wr(unsigned long off, unsigned long v)
-{
-    *(volatile unsigned long *)((unsigned long)scanout_lli + off) = v;
-}
-
-/*
  * Fill the frame with one colour, so that a picture on the panel is
  * unambiguous: a wrong pixel format or a wrong stride cannot produce a flat
  * field of the colour that was asked for.
@@ -201,38 +185,50 @@ void krnP4ScanoutDmaUp(void)
     ctl_hi = P4_DMAC_ARLEN_EN
            | (P4_DMAC_AXI_BURST_LEN << P4_DMAC_ARLEN_SHIFT)
            | P4_DMAC_AWLEN_EN
-           | (P4_DMAC_AXI_BURST_LEN << P4_DMAC_AWLEN_SHIFT)
-           | P4_DMAC_LLI_VALID;
+           | (P4_DMAC_AXI_BURST_LEN << P4_DMAC_AWLEN_SHIFT);
+
     /*
-     * Deliberately not P4_DMAC_LLI_LAST.  The reference marks its single item
-     * last and restarts the channel from a transfer-done interrupt; this port
-     * has no such handler, so the item points at itself instead and the
-     * hardware repeats it.  Scanout has to be continuous either way.
+     * Automatic reload rather than a link list, and the engine's own report is
+     * why.
+     *
+     * The list version put one item in SRAM whose next-pointer addressed
+     * itself, so that the transfer would repeat without an interrupt to restart
+     * it.  It ran once.  The channel then raised
+     * SHADOWREG_OR_LLI_INVALID_ERR - bit 13 of CH_INTSTATUS0 - and the item
+     * read back with its control word at 0x000f87c0: source address,
+     * destination, block size and self-pointer all intact, and bit 31, the
+     * valid bit this code had written, cleared.  The engine clears that bit
+     * when it consumes an item, so an item pointing at itself is valid exactly
+     * once and invalid every time after.  That is also why the reference marks
+     * its single item last and re-arms the channel from a transfer-done
+     * callback: with a list there is no other way.
+     *
+     * Reload needs neither.  The channel keeps its transfer parameters in its
+     * own registers, restores them at the end of every block and starts the
+     * next one, indefinitely, until the channel is disabled.  For a scanout
+     * that is exactly the required behaviour, and it removes the descriptor,
+     * its cache maintenance and the interrupt handler this port does not have.
      */
-
-    lli_wr(P4_DMAC_LLI_SAR_LO, P4_FB_BASE);
-    lli_wr(P4_DMAC_LLI_SAR_HI, 0);
-    lli_wr(P4_DMAC_LLI_DAR_LO, P4_DSI_BRG_MEM_BASE);
-    lli_wr(P4_DMAC_LLI_DAR_HI, 0);
-    lli_wr(P4_DMAC_LLI_BLOCK_TS, P4_FB_WORDS64 - 1);
-    lli_wr(P4_DMAC_LLI_LLP_LO, (unsigned long)scanout_lli);
-    lli_wr(P4_DMAC_LLI_LLP_HI, 0);
-    lli_wr(P4_DMAC_LLI_CTL_LO, ctl_lo);
-    lli_wr(P4_DMAC_LLI_CTL_HI, ctl_hi);
+    ch_wr(P4_DMAC_CH_SAR, P4_FB_BASE);
+    ch_wr(P4_DMAC_CH_SAR + 4, 0);
+    ch_wr(P4_DMAC_CH_DAR, P4_DSI_BRG_MEM_BASE);
+    ch_wr(P4_DMAC_CH_DAR + 4, 0);
+    ch_wr(P4_DMAC_CH_BLOCK_TS, P4_FB_WORDS64 - 1);
+    ch_wr(P4_DMAC_CH_CTL0, ctl_lo);
+    ch_wr(P4_DMAC_CH_CTL1, ctl_hi);
 
     /*
-     * Push the descriptor out of the cache before the channel is told where it
-     * is.  The DMA reads it over AXI and does not see the CPU's caches, so a
-     * descriptor still sitting in a dirty line is a descriptor of zeroes as far
-     * as the engine is concerned - which reads back as a channel that is
-     * enabled and never starts.
+     * The frame itself still needs the cache written back: the DMA reads it
+     * over AXI and does not see the CPU's caches, so a frame in dirty lines is
+     * a frame of whatever memory held before.  The descriptor no longer does,
+     * because there is no descriptor.
      */
     krnP4CacheWriteback();
 
-    /* Both sides walk a link list */
+    /* Both sides reload their own configuration at the end of each block */
     ch_wr(P4_DMAC_CH_CFG0,
-          (P4_DMAC_MULTBLK_LIST << P4_DMAC_SRC_MULTBLK_SHIFT)
-        | (P4_DMAC_MULTBLK_LIST << P4_DMAC_DST_MULTBLK_SHIFT));
+          (P4_DMAC_MULTBLK_RELOAD << P4_DMAC_SRC_MULTBLK_SHIFT)
+        | (P4_DMAC_MULTBLK_RELOAD << P4_DMAC_DST_MULTBLK_SHIFT));
 
     /*
      * Memory to peripheral with the DMA in charge, hardware handshake on both
@@ -248,8 +244,9 @@ void krnP4ScanoutDmaUp(void)
          | (1UL << P4_DMAC_DST_OSR_SHIFT);
     ch_wr(P4_DMAC_CH_CFG1, cfg1);
 
-    /* Where the list starts */
-    ch_wr(P4_DMAC_CH_LLP, (unsigned long)scanout_lli);
+    /* No list to walk */
+    ch_wr(P4_DMAC_CH_LLP, 0);
+    ch_wr(P4_DMAC_CH_LLP + 4, 0);
 
     /* And run */
     p4_w32(P4_DMAC_CHEN, P4_DMAC_CH1_EN | P4_DMAC_CH1_EN_WE);
@@ -286,7 +283,6 @@ void krnP4HostState(struct P4HostState *out)
 
 void krnP4ScanoutState(struct P4ScanoutState *out)
 {
-    out->lli          = (unsigned long)scanout_lli;
     out->chen         = p4_r32(P4_DMAC_CHEN);
     out->ch_cfg1      = ch_rd(P4_DMAC_CH_CFG1);
     out->ch_llp       = ch_rd(P4_DMAC_CH_LLP);
@@ -310,4 +306,45 @@ void krnP4ScanoutState(struct P4ScanoutState *out)
     out->brg_h_cfg1   = brg_rd(P4_DSI_BRG_DPI_H_CFG1);
     out->brg_en       = brg_rd(P4_DSI_BRG_EN);
     out->brg_pixel    = brg_rd(P4_DSI_BRG_PIXEL_TYPE);
+    out->ch_int0      = ch_rd(P4_DMAC_CH_INTSTATUS0);
+    out->ch_int1      = ch_rd(P4_DMAC_CH_INTSTATUS1);
+    out->brg_depth    = brg_rd(P4_DSI_BRG_FIFO_STATUS)
+                        & P4_DSI_BRG_BUF_DEPTH_MASK;
+}
+
+/*
+ * The bridge registers this port configures nothing in, read back once.
+ *
+ * Not a diagnostic for its own sake.  The pixel format sat in exactly this
+ * category - never written, printed as a curiosity, and wrong - so the rest of
+ * the block is worth one look before anything else is guessed at.
+ */
+void krnP4ScanoutBridgeRest(struct P4BridgeRest *out)
+{
+    out->credit_ctl   = brg_rd(P4_DSI_BRG_CREDIT_CTL);
+    out->block_intvl  = brg_rd(P4_DSI_BRG_BLOCK_INTVL);
+    out->req_intvl    = brg_rd(P4_DSI_BRG_REQ_INTVL);
+    out->lcd_ctl      = brg_rd(P4_DSI_BRG_DPI_LCD_CTL);
+    out->rsv_dpi_data = brg_rd(P4_DSI_BRG_RSV_DPI_DATA);
+    out->int_ena      = brg_rd(P4_DSI_BRG_INT_ENA);
+    out->blk_raw_num  = brg_rd(P4_DSI_BRG_BLK_RAW_NUM);
+    out->host_ctrl    = brg_rd(P4_DSI_BRG_HOST_CTRL);
+    out->mem_clk_ctrl = brg_rd(P4_DSI_BRG_MEM_CLK_CTRL);
+    out->dma_req_cfg  = brg_rd(P4_DSI_BRG_DMA_REQ_CFG);
+}
+
+/*
+ * One sample of the bridge's occupancy and its raw interrupt.
+ *
+ * Cheap enough to call in a tight loop, which is the point: a fifo that fills
+ * and drains is a bridge doing its job, a fifo pinned at one value is a bridge
+ * that has stopped, and a fifo at zero with no underrun raised is a bridge
+ * that never started a frame.  One reading cannot separate those.
+ */
+void krnP4ScanoutSample(unsigned long *depth, unsigned long *int_raw)
+{
+    if (depth)
+        *depth = brg_rd(P4_DSI_BRG_FIFO_STATUS) & P4_DSI_BRG_BUF_DEPTH_MASK;
+    if (int_raw)
+        *int_raw = brg_rd(P4_DSI_BRG_INT_RAW);
 }

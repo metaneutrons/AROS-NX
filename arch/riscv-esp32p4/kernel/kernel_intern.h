@@ -175,7 +175,6 @@ int  krnP4DsiPanelInit(unsigned char *id, int *id_result);
  */
 struct P4ScanoutState
 {
-    unsigned long lli;          /* where the descriptor lives */
     unsigned long chen;         /* channel enable, as the DMA reports it */
     unsigned long ch_cfg1;
     unsigned long ch_llp;
@@ -192,7 +191,39 @@ struct P4ScanoutState
     unsigned long brg_h_cfg1;
     unsigned long brg_en;
     unsigned long brg_pixel;
+    unsigned long ch_int0;      /* why the channel stopped, in its own words */
+    unsigned long ch_int1;
+    unsigned long brg_depth;    /* the bridge's fifo occupancy */
 };
+
+/*
+ * The bridge's configuration this port has never written, read back once.
+ *
+ * Every one of these has a reset value that is not obviously right, and the
+ * pixel format was exactly such a register: printed as a diagnostic for three
+ * sessions while its zero meant RGB888.
+ */
+struct P4BridgeRest
+{
+    unsigned long credit_ctl;
+    unsigned long block_intvl;
+    unsigned long req_intvl;
+    unsigned long lcd_ctl;
+    unsigned long rsv_dpi_data;
+    unsigned long int_ena;
+    unsigned long blk_raw_num;
+    unsigned long host_ctrl;
+    unsigned long mem_clk_ctrl;
+    unsigned long dma_req_cfg;
+};
+void krnP4ScanoutBridgeRest(struct P4BridgeRest *out);
+
+/*
+ * The bridge's fifo occupancy and raw interrupt, sampled rather than read
+ * once.  A depth that changes says the bridge is working; a depth that stays
+ * at zero with no underrun says it never started a frame.
+ */
+void krnP4ScanoutSample(unsigned long *depth, unsigned long *int_raw);
 
 struct P4HostState
 {
