@@ -1025,6 +1025,19 @@
                                  | P4_DSI_LP_VFP_EN | P4_DSI_LP_VACT_EN \
                                  | P4_DSI_LP_HBP_EN | P4_DSI_LP_HFP_EN \
                                  | P4_DSI_LP_CMD_EN)
+/*
+ * The same without the two horizontal transitions.
+ *
+ * A return to low power costs phy_hs2lp_time plus phy_lp2hs_time, which is
+ * 50 + 104 = 154 lane byte clocks with the reference's switch times.  At this
+ * panel's timing the back porch is 47 of them and the front porch 94, so
+ * neither period is long enough to leave high speed and come back.  The host
+ * is documented to make that check itself, so this is a hypothesis to test and
+ * not a defect established on paper.
+ */
+#define   P4_DSI_VID_LP_VERT    (P4_DSI_LP_VSA_EN | P4_DSI_LP_VBP_EN \
+                                 | P4_DSI_LP_VFP_EN | P4_DSI_LP_VACT_EN \
+                                 | P4_DSI_LP_CMD_EN)
 #define   P4_DSI_VPG_EN         (1UL << 16)
 #define   P4_DSI_VPG_MODE       (1UL << 20)
 #define   P4_DSI_VPG_ORIENTATION (1UL << 24)
@@ -1063,7 +1076,9 @@
  * host to buffer a whole line before transmitting, and a line at half the
  * pixel clock is twice as long in host byte clocks.
  */
+#ifndef P4_PANEL_DPI_MHZ
 #define P4_PANEL_DPI_MHZ        80
+#endif
 /*
  * Twenty-four bits per pixel, because that is what the panel is.
  *
@@ -1081,8 +1096,13 @@
  * selector for PLL_F240M is 1.
  */
 #define P4_DSI_DPICLK_SRC_PLL240 1
-/* 240 MHz over 3 is the 80 MHz the vendor configuration asks for */
-#define P4_DSI_DPICLK_DIV       3
+/*
+ * Derived rather than written twice.  The source is the 240 MHz PLL tap, and
+ * the divider and the pixel clock have to agree: two constants that can drift
+ * apart is how a timing calculation ends up describing a clock the hardware is
+ * not running.  240 divides exactly by 80, 60, 48 and 40.
+ */
+#define P4_DSI_DPICLK_DIV       (240 / P4_PANEL_DPI_MHZ)
 
 #define P4_DSI_INT_ST0          0x0BC
 #define P4_DSI_INT_ST1          0x0C0

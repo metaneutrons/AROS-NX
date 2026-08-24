@@ -862,20 +862,41 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * read path is understood, asking for an acknowledgement is asking the
      * host to stop.
      */
+#ifdef P4_DSI_LP_VERT_ONLY
+#define P4_DSI_LP_SET   P4_DSI_VID_LP_VERT
+#else
+#define P4_DSI_LP_SET   P4_DSI_VID_LP_ALL
+#endif
 #ifdef P4_DSI_NONBURST
     dsi_wr(P4_DSI_VID_MODE_CFG,
-           P4_DSI_VID_NONBURST_PULSES | P4_DSI_VID_LP_ALL);
+           P4_DSI_VID_NONBURST_PULSES | P4_DSI_LP_SET);
 #else
     dsi_wr(P4_DSI_VID_MODE_CFG,
-           P4_DSI_VID_BURST_SYNC_PULSES | P4_DSI_VID_LP_ALL);
+           P4_DSI_VID_BURST_SYNC_PULSES | P4_DSI_LP_SET);
 #endif
 #else
     dsi_wr(P4_DSI_VID_MODE_CFG, P4_DSI_VID_BURST_SYNC_PULSES);
 #endif
     dsi_wr(P4_DSI_DPI_LP_CMD_TIM, 0);
 
+    /*
+     * One packet per line, or several.
+     *
+     * The reference sends one - trunks_num 0 - which asks the host's payload
+     * fifo to hold a whole line: 800 pixels, and at twenty-four bits that is
+     * 2,400 bytes.  DPI_PLD_WR_ERR is that fifo overflowing, and it is
+     * permanent at 80 MHz and intermittent at 60, which is the signature of a
+     * buffer that is too small rather than a configuration that is wrong.
+     * Splitting the line into chunks reduces what has to be held at once;
+     * VID_PKT_SIZE times VID_NUM_CHUNKS has to equal the active width.
+     */
+#ifdef P4_DSI_CHUNKS
+    dsi_wr(P4_DSI_VID_PKT_SIZE, P4_PANEL_H_RES / P4_DSI_CHUNKS);
+    dsi_wr(P4_DSI_VID_NUM_CHUNKS, P4_DSI_CHUNKS);
+#else
     dsi_wr(P4_DSI_VID_PKT_SIZE, P4_PANEL_H_RES);
     dsi_wr(P4_DSI_VID_NUM_CHUNKS, 0);
+#endif
     dsi_wr(P4_DSI_VID_NULL_SIZE, 0);
 
     dsi_wr(P4_DSI_VID_HSA_TIME, hsa);
