@@ -110,7 +110,22 @@ void krnP4ScanoutBridgeUp(void)
 
     /* How much data one frame is, in sixty-four-bit words, and a reload of
        the internal counter from it */
+    /*
+     * A scale test, not a configuration.
+     *
+     * The panel shows the framebuffer twice down its height while the DMA has
+     * been measured reading it once per panel frame - 218 MB/s against the
+     * 210 the timing calls for, where reading it twice would be 420.  So the
+     * bridge reads one frame and emits two.  If this counter is what makes it
+     * restart, halving it gives four copies and doubling it gives one; if the
+     * count of copies does not follow it, the restart is somewhere else.
+     */
+#ifdef P4_BRG_RAW_DIV
+    v = ((P4_FB_WORDS64 / P4_BRG_RAW_DIV) & P4_DSI_BRG_RAW_NUM_MASK)
+        | P4_DSI_BRG_RAW_NUM_SET;
+#else
     v = (P4_FB_WORDS64 & P4_DSI_BRG_RAW_NUM_MASK) | P4_DSI_BRG_RAW_NUM_SET;
+#endif
     brg_wr(P4_DSI_BRG_RAW_NUM_CFG, v);
 
     /* AXI burst length towards memory */
@@ -404,9 +419,21 @@ void krnP4ScanoutTestCard(void)
     volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
     unsigned long y, x;
 
+    /*
+     * The bars occupy the top half only, and the bottom half is left black.
+     *
+     * The panel shows the frame twice down its height and the DMA has been
+     * measured reading the framebuffer once per panel frame, so those two
+     * facts do not compose.  A frame whose halves differ separates them: two
+     * banded regions means the buffer is being read twice after all, one
+     * banded region above a black one means it is read once and the panel is
+     * addressing its lines at half the expected pitch.
+     */
     for (y = 0; y < P4_PANEL_V_RES; y++)
     {
-        unsigned long c = bars[(y * 8 / P4_PANEL_V_RES) & 7];
+        unsigned long c = (y < P4_PANEL_V_RES / 2)
+                          ? bars[(y * 16 / P4_PANEL_V_RES) & 7]
+                          : 0x000000;
         volatile unsigned char *row = fb + y * P4_PANEL_H_RES * 3;
 
         for (x = 0; x < P4_PANEL_H_RES; x++)
@@ -424,6 +451,47 @@ void krnP4ScanoutTestCard(void)
             row[x * 3]     = (unsigned char)(v & 0xFF);
             row[x * 3 + 1] = (unsigned char)((v >> 8) & 0xFF);
             row[x * 3 + 2] = (unsigned char)((v >> 16) & 0xFF);
+        }
+    }
+}
+
+/*
+ * A cross, which answers one question and nothing else.
+ *
+ * Two facts have to be reconciled: the panel shows the framebuffer twice down
+ * its height, and the DMA reads it exactly once per panel frame.  Together
+ * those force each transmitted line to carry half the pixels it should, which
+ * would shear the image - every line displaced from the one above by half a
+ * width - and shear is what a single vertical line makes visible and a field
+ * of colour cannot.
+ *
+ * So: one vertical line at the middle column, one horizontal line at the
+ * middle row, black everywhere else.  A vertical line that arrives vertical
+ * rules shear out and leaves genuine line doubling; one that arrives as a
+ * diagonal confirms it and gives the displacement from its slope.  The
+ * horizontal line counts the copies at the same time.
+ */
+void krnP4ScanoutCross(void)
+{
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long y, x;
+
+    for (y = 0; y < P4_PANEL_V_RES; y++)
+    {
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES * 3;
+
+        for (x = 0; x < P4_PANEL_H_RES; x++)
+        {
+            unsigned char v = 0;
+
+            if (x >= P4_PANEL_H_RES / 2 && x < P4_PANEL_H_RES / 2 + 4)
+                v = 0xFF;                       /* the vertical line */
+            else if (y >= P4_PANEL_V_RES / 2 && y < P4_PANEL_V_RES / 2 + 4)
+                v = 0xFF;                       /* the horizontal one */
+
+            row[x * 3] = v;
+            row[x * 3 + 1] = v;
+            row[x * 3 + 2] = v;
         }
     }
 }
