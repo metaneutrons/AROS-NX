@@ -294,6 +294,13 @@ ifdef P4_SCANOUT_CROSS
 P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_CROSS
 endif
 
+# P4_SCANOUT_GRID=1 draws a 100-pixel grid, red for columns and green for rows.
+# 800 columns give eight vertical lines and 1280 rows thirteen horizontal ones,
+# so the counts on the panel are a direct ratio rather than a description.
+ifdef P4_SCANOUT_GRID
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_GRID
+endif
+
 # P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
 # pattern test.  The bridge then asks for pixels it has no DMA to fetch and
 # must underrun; that underrun is the evidence that the pixel path runs through
