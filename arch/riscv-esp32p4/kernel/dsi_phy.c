@@ -149,7 +149,30 @@ int krnP4DsiPhyUp(struct P4DsiState *out)
     out->status = 0;
     out->locked = 0;
     out->lanes_stopped = 0;
-    out->pll_n = 2;
+    /*
+     * The PLL reference is 20 MHz, not the 40 MHz crystal.
+     *
+     * This was wrong from B3 onwards and a locking PLL hid it.  On ESP32-P4
+     * before revision 3.0 the PHY PLL reference has no source select; it is
+     * fixed, and ESP-IDF's own name for what it is fixed to says which:
+     * MIPI_DSI_PHY_PLLREF_CLK_SRC_DEFAULT_LEGACY is PLL_F20M.  Selecting the
+     * crystal only became possible on revision 3.0.
+     *
+     * B3 assumed 40 MHz, chose N=2 and M=50 for it, saw the PLL lock and
+     * recorded the lock as evidence for the assumption.  It is not: 20 MHz
+     * with N=2 and M=50 is 500 Mbit/s per lane, which locks perfectly well.
+     * So the lanes have been running at half the intended rate while the PHY
+     * was told its range was 1000 to 1049 Mbit/s and the host's horizontal
+     * timing was scaled for a 125 MHz byte clock that was really 62.5.
+     *
+     * That accounts for both open defects at once - lanes that will not enter
+     * high speed, and reads that never answer - which no single register value
+     * did.
+     *
+     * For 1000 Mbit/s from 20 MHz the reference's own search gives N=1, M=50:
+     * 20 * 50 / 1.  M must be even, which 50 is.
+     */
+    out->pll_n = 1;
     out->pll_m = 50;
     out->hs_freq_sel = 0x2A;
 
@@ -179,10 +202,20 @@ int krnP4DsiPhyUp(struct P4DsiState *out)
            p4_r32(P4_CLKRST_PERI_CLK_CTRL03) | P4_DSI_DPHY_CFG_CLK_EN
                                              | P4_DSI_DPHY_PLL_REFCLK_EN);
 
-    /* Lane count, then host and PHY out of shutdown. */
+    /*
+     * Lane count and the stop-wait time, then host and PHY out of shutdown.
+     *
+     * The stop-wait time is how long the host holds the lanes in stop state
+     * after one transmission before it may begin the next.  This port left it
+     * at its reset value of zero, which the reference never does - it sets
+     * 0x3F - and a host that is allowed no settling time between transmissions
+     * is a plausible reading of a host whose data lanes never leave stop
+     * state at all.  It is the last value in this sequence that differed.
+     */
     v = dsi_rd(P4_DSI_PHY_IF_CFG);
-    v &= ~P4_DSI_N_LANES_MASK;
+    v &= ~(P4_DSI_N_LANES_MASK | P4_DSI_STOP_WAIT_MASK);
     v |= (unsigned long)(P4_DSI_LANES - 1);
+    v |= (0x3FUL << P4_DSI_STOP_WAIT_SHIFT) & P4_DSI_STOP_WAIT_MASK;
     dsi_wr(P4_DSI_PHY_IF_CFG, v);
 
     dsi_set(P4_DSI_PWR_UP, P4_DSI_SHUTDOWNZ);
