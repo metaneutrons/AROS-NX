@@ -683,6 +683,32 @@
 #define P4_DSI_BRG_DPI_CFG_UPD  0x044
 #define   P4_DSI_BRG_CFG_UPDATE (1UL << 0)
 #define P4_DSI_BRG_INT_RAW      0x058
+/*
+ * What the bridge says about itself, which this port never asked.
+ *
+ * RAW_BUF_DEPTH is the bridge's own fifo occupancy and is the only reading
+ * that distinguishes a bridge that never starts a frame from one that starts
+ * and starves - both of which present as a DMA that does not move.
+ *
+ * RSV_DPI_DATA is why the host can report a continuous payload error while
+ * the DMA delivers nothing: on underflow the bridge does not stop, it sends
+ * this reserved pixel value to the host instead.  Default 16383.
+ */
+#define P4_DSI_BRG_FIFO_STATUS  0x014
+#define   P4_DSI_BRG_BUF_DEPTH_MASK 0x3FFFUL
+#define P4_DSI_BRG_CREDIT_CTL   0x010
+#define P4_DSI_BRG_BLOCK_INTVL  0x01C
+#define P4_DSI_BRG_REQ_INTVL    0x020
+#define P4_DSI_BRG_DPI_LCD_CTL  0x024
+#define   P4_DSI_BRG_DPISHUTDN  (1UL << 0)
+#define   P4_DSI_BRG_DPICOLORM  (1UL << 1)
+#define   P4_DSI_BRG_DPIUPDATE  (1UL << 2)
+#define P4_DSI_BRG_RSV_DPI_DATA 0x028
+#define P4_DSI_BRG_INT_ENA      0x050
+#define P4_DSI_BRG_INT_CLR      0x054
+#define P4_DSI_BRG_BLK_RAW_NUM  0x068
+#define P4_DSI_BRG_HOST_CTRL    0x080
+#define P4_DSI_BRG_MEM_CLK_CTRL 0x084
 
 /*
  * The bridge settings B4 never wrote, and the reason its host reported
@@ -768,6 +794,7 @@
 /* CFG0: how each side walks its blocks.  3 is link-list. */
 #define   P4_DMAC_SRC_MULTBLK_SHIFT   0
 #define   P4_DMAC_DST_MULTBLK_SHIFT   2
+#define   P4_DMAC_MULTBLK_RELOAD      1UL
 #define   P4_DMAC_MULTBLK_LIST        3UL
 
 /* CFG1: direction, who controls flow, which peripheral, how deep to queue */
@@ -781,6 +808,37 @@
 #define   P4_DMAC_CH_PRIOR_SHIFT      17
 #define   P4_DMAC_SRC_OSR_SHIFT       23
 #define   P4_DMAC_DST_OSR_SHIFT       27
+/*
+ * The channel's own account of why it stopped.
+ *
+ * INTSTATUS_ENABLE0 resets with these bits set, so the status is readable
+ * without enabling anything, and it names the failure directly: a descriptor
+ * that would not read, a descriptor the engine considered invalid, a decode
+ * error on either side, or a channel that simply disabled or aborted itself.
+ * None of that is visible in the source address, which is all this port had
+ * been reading.
+ */
+#define   P4_DMAC_CH_INTSTATUS0       0x088
+#define   P4_DMAC_CH_INTSTATUS1       0x08C
+#define   P4_DMAC_CH_INTCLEAR0        0x098
+#define   P4_DMAC_CH_INTCLEAR1        0x09C
+#define   P4_DMAC_IS_BLOCK_DONE       (1UL << 0)
+#define   P4_DMAC_IS_DMA_DONE         (1UL << 1)
+#define   P4_DMAC_IS_SRC_DEC_ERR      (1UL << 5)
+#define   P4_DMAC_IS_DST_DEC_ERR      (1UL << 6)
+#define   P4_DMAC_IS_SRC_SLV_ERR      (1UL << 7)
+#define   P4_DMAC_IS_DST_SLV_ERR      (1UL << 8)
+#define   P4_DMAC_IS_LLI_RD_DEC_ERR   (1UL << 9)
+#define   P4_DMAC_IS_LLI_WR_DEC_ERR   (1UL << 10)
+#define   P4_DMAC_IS_LLI_RD_SLV_ERR   (1UL << 11)
+#define   P4_DMAC_IS_LLI_WR_SLV_ERR   (1UL << 12)
+#define   P4_DMAC_IS_LLI_INVALID      (1UL << 13)
+#define   P4_DMAC_IS_MULTIBLK_ERR     (1UL << 14)
+#define   P4_DMAC_IS_SLVIF_DEC_ERR    (1UL << 16)
+#define   P4_DMAC_IS_WRONCHEN_ERR     (1UL << 19)
+#define   P4_DMAC_IS_SUSPENDED        (1UL << 29)
+#define   P4_DMAC_IS_DISABLED         (1UL << 30)
+#define   P4_DMAC_IS_ABORTED          (1UL << 31)
 
 /*
  * A link-list item: sixty-four bytes, sixty-four-byte aligned, and the field

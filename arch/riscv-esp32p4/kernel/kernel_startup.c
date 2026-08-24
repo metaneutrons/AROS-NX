@@ -4980,9 +4980,7 @@ static void krnP4PanelProbe(void)
                 krnP4PutHex32((uint32_t)sc.fb_base);
                 krnP4PutStr(", ");
                 krnP4PutDec((uint32_t)sc.words64);
-                krnP4PutStr(" x 64-bit, lli ");
-                krnP4PutHex32((uint32_t)sc.lli);
-                krnP4PutStr(", chen ");
+                krnP4PutStr(" x 64-bit, chen ");
                 krnP4PutHex32((uint32_t)sc.chen);
                 krnP4PutStr("\n");
 
@@ -5051,6 +5049,130 @@ static void krnP4PanelProbe(void)
                                 ? "  still failing\n"
                                 : ((i1 & (1UL << 7)) ? "  failed once\n"
                                                      : "  no payload error\n"));
+                }
+
+                /*
+                 * Why the channel stopped, in its own words.
+                 *
+                 * The source address says only that nothing moved.  The
+                 * channel's interrupt status names the cause: a descriptor
+                 * that would not read, one the engine rejected as invalid, a
+                 * decode error on either side, or a channel that disabled or
+                 * aborted itself.  This port had never read it.
+                 */
+                {
+                    static const struct { unsigned long bit; const char *name; }
+                    dma_faults[] = {
+                        { P4_DMAC_IS_SRC_DEC_ERR,    " src_dec"    },
+                        { P4_DMAC_IS_DST_DEC_ERR,    " dst_dec"    },
+                        { P4_DMAC_IS_SRC_SLV_ERR,    " src_slv"    },
+                        { P4_DMAC_IS_DST_SLV_ERR,    " dst_slv"    },
+                        { P4_DMAC_IS_LLI_RD_DEC_ERR, " lli_rd_dec" },
+                        { P4_DMAC_IS_LLI_WR_DEC_ERR, " lli_wr_dec" },
+                        { P4_DMAC_IS_LLI_RD_SLV_ERR, " lli_rd_slv" },
+                        { P4_DMAC_IS_LLI_WR_SLV_ERR, " lli_wr_slv" },
+                        { P4_DMAC_IS_LLI_INVALID,    " lli_invalid"},
+                        { P4_DMAC_IS_MULTIBLK_ERR,   " multiblk"   },
+                        { P4_DMAC_IS_SLVIF_DEC_ERR,  " slvif_dec"  },
+                        { P4_DMAC_IS_WRONCHEN_ERR,   " wr_on_chen" },
+                        { P4_DMAC_IS_SUSPENDED,      " suspended"  },
+                        { P4_DMAC_IS_DISABLED,       " disabled"   },
+                        { P4_DMAC_IS_ABORTED,        " aborted"    },
+                    };
+                    unsigned int k;
+                    int named = 0;
+
+                    krnP4ScanoutState(&sc);
+                    krnP4PutStr("[b5]     dma  int0 ");
+                    krnP4PutHex32((uint32_t)sc.ch_int0);
+                    krnP4PutStr(" int1 ");
+                    krnP4PutHex32((uint32_t)sc.ch_int1);
+                    krnP4PutStr("  ");
+                    if (sc.ch_int0 & P4_DMAC_IS_BLOCK_DONE)
+                    {
+                        krnP4PutStr("block_done");
+                        named = 1;
+                    }
+                    if (sc.ch_int0 & P4_DMAC_IS_DMA_DONE)
+                    {
+                        krnP4PutStr(named ? " dma_done" : "dma_done");
+                        named = 1;
+                    }
+                    for (k = 0; k < sizeof(dma_faults) / sizeof(dma_faults[0]);
+                         ++k)
+                        if (sc.ch_int0 & dma_faults[k].bit)
+                        {
+                            krnP4PutStr(named ? dma_faults[k].name
+                                              : dma_faults[k].name + 1);
+                            named = 1;
+                        }
+                    krnP4PutStr(named ? "\n" : "nothing reported\n");
+                }
+
+                /*
+                 * The bridge sampled rather than read once.
+                 *
+                 * A fifo that fills and drains is a bridge doing its job; one
+                 * pinned at a value is a bridge that stopped; one at zero with
+                 * no underrun raised is a bridge that never started a frame.
+                 * The last of those explains a DMA that never moves and a host
+                 * that receives pixels anyway, because on underflow the bridge
+                 * substitutes RSV_DPI_DATA rather than stopping.
+                 */
+                {
+                    unsigned long d[6], ir[6];
+                    unsigned int k;
+
+                    for (k = 0; k < 6; ++k)
+                    {
+                        krnP4ScanoutSample(&d[k], &ir[k]);
+                        if (k < 5)
+                            krnTimerWait(1);        /* 10 ms apart */
+                    }
+
+                    krnP4PutStr("[b5]     brg  depth");
+                    for (k = 0; k < 6; ++k)
+                    {
+                        krnP4PutStr(" ");
+                        krnP4PutDec((uint32_t)d[k]);
+                    }
+                    krnP4PutStr("\n[b5]     brg  raw  ");
+                    for (k = 0; k < 6; ++k)
+                    {
+                        krnP4PutStr(" ");
+                        krnP4PutHex32((uint32_t)ir[k]);
+                    }
+                    krnP4PutStr("\n");
+                }
+
+                /* The bridge registers this port never writes */
+                {
+                    struct P4BridgeRest br;
+
+                    krnP4ScanoutBridgeRest(&br);
+                    krnP4PutStr("[b5]     brg  credit ");
+                    krnP4PutHex32((uint32_t)br.credit_ctl);
+                    krnP4PutStr(" blkint ");
+                    krnP4PutHex32((uint32_t)br.block_intvl);
+                    krnP4PutStr(" reqint ");
+                    krnP4PutHex32((uint32_t)br.req_intvl);
+                    krnP4PutStr(" lcdctl ");
+                    krnP4PutHex32((uint32_t)br.lcd_ctl);
+                    krnP4PutStr("\n");
+
+                    krnP4PutStr("[b5]     brg  rsvdata ");
+                    krnP4PutHex32((uint32_t)br.rsv_dpi_data);
+                    krnP4PutStr(" intena ");
+                    krnP4PutHex32((uint32_t)br.int_ena);
+                    krnP4PutStr(" blkraw ");
+                    krnP4PutHex32((uint32_t)br.blk_raw_num);
+                    krnP4PutStr(" hostctl ");
+                    krnP4PutHex32((uint32_t)br.host_ctrl);
+                    krnP4PutStr(" memclk ");
+                    krnP4PutHex32((uint32_t)br.mem_clk_ctrl);
+                    krnP4PutStr(" dmareq ");
+                    krnP4PutHex32((uint32_t)br.dma_req_cfg);
+                    krnP4PutStr("\n");
                 }
 
                 /*

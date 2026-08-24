@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` RGB565 PSRAM scanout | `hardware partial` | The path is built and has moved data: bridge configured as the reference configures it, a DesignWare AXI DMA channel, one link-list item carrying the whole frame, and a cache writeback without which the engine reads a descriptor of zeroes.  Seven defects found by measurement so far, four of them on 2026-08-24: B5 fell through to the safe path and darkened its own backlight, `ACK_RQST_EN` left the link turned around, the bridge read RGB888 out of an RGB565 frame, and the host entered video mode before the DMA was armed.  The link is now clean and the bridge no longer underruns; the DMA does not start and there is no image |
+| B5 | Native `800 x 1280` RGB565 PSRAM scanout | `hardware partial` | Pixels move continuously from PSRAM through the DMA into the DSI bridge; the host does not transmit them.  The path is built and running: bridge configured as the reference configures it, a DesignWare AXI DMA channel, one link-list item carrying the whole frame, and a cache writeback without which the engine reads a descriptor of zeroes.  Seven defects found by measurement so far, four of them on 2026-08-24: B5 fell through to the safe path and darkened its own backlight, `ACK_RQST_EN` left the link turned around, the bridge read RGB888 out of an RGB565 frame, and the host entered video mode before the DMA was armed.  The link is now clean and the bridge no longer underruns; the DMA does not start and there is no image |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -5599,6 +5599,100 @@ starting one.
   starts a frame explains a DMA that never starts and a host that receives
   nothing it can send, and no host-side register can distinguish that from the
   alternatives.
+
+### 2026-08-24 - the bridge instrumented, and the DMA runs continuously
+
+- State change: pixels move from PSRAM through the DMA into the DSI bridge,
+  continuously and without software intervention.  The host still does not
+  transmit them.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+- Test defines: `P4_HEADLESS_BOOT=1 P4_PSRAM_MHZ=200 P4_CPU_MHZ=360
+  P4_PANEL_PROBE=1 P4_DSI_PROBE=1 P4_SCANOUT_TEST=1
+  P4_LDSCRIPT=ldscript-xip.lds`.  Core 179,136 bytes, sha256
+  `2ace318756139fba11a57f9635afe3c67b3707780ae52392b20cfb4c7f8de16d`,
+  written to `ota_0` at `0x20000`.
+- New: `CH_INTSTATUS0/1`, `DSI_BRG_FIFO_STATUS` sampled six times, and the ten
+  bridge registers this port never writes.  The link-list descriptor is gone.
+
+**The instrumentation answered immediately.**  Two readings this port had never
+taken:
+
+```text
+[b5]     dma  int0 0x00002010 int1 0x00000000  lli_invalid
+[b5]     brg  depth 0 0 0 0 0 0
+[b5]     brg  raw   0x0 0x0 0x0 0x0 0x0 0x0
+```
+
+Bit 13 of `CH_INTSTATUS0` is `SHADOWREG_OR_LLI_INVALID_ERR`: the channel
+fetched the descriptor and rejected it.  The bridge fifo sat at zero across
+six samples 10 ms apart and never raised an underrun, so it had never started a
+frame.  Neither fact is visible in the source address, which is all this port
+had been reading.
+
+**And a third register explained the contradiction.**  `RSV_DPI_DATA` reads
+`0x3fff`: on fifo underflow the bridge does not stop, it substitutes this
+reserved pixel value and keeps feeding the host.  That is how the host could
+report a continuous payload error while nothing at all came out of memory, and
+it retires the reasoning that treated `DPI_PLD_WR_ERR` as evidence about the
+DMA.
+
+**Why the descriptor was rejected, measured rather than assumed.**  Read back
+with the cache invalidated first:
+
+```text
+[b5]     lli  sar 0x49e0c000 dar 0x50105000 ts 0x0003e7ff llp 0x4ff02680
+[b5]     lli  ctl 0x001e1b40/0x000f87c0  VALID CLEARED by the engine
+```
+
+Source, destination, block size and the self-pointer are all intact.  Bit 31 of
+the control word - `LLI_VALID`, which this code writes before arming the
+channel - is clear.  The engine clears it when it consumes an item, so an item
+whose next-pointer addresses itself is valid exactly once and invalid every
+time after.  That is also why the reference marks its single item last and
+re-arms from a transfer-done callback: with a link list there is no other way,
+and this port has no interrupt handler to do it from.
+
+**Automatic reload instead.**  `CFG0.SRC_MULTBLK_TYPE` and `DST_MULTBLK_TYPE`
+set to 1 rather than 3, the transfer parameters written into the channel's own
+registers, `LLP` zeroed.  The channel restores its configuration at the end of
+every block and starts the next one indefinitely.  No descriptor, no cache
+maintenance for one, no interrupt handler.
+
+```text
+[b5]     dma  int0 0x00000010 int1 0x00000000  nothing reported
+[b5]     brg  depth 911 905 908 868 848 808
+[b5]     sar 0x49ef8200 then 0x49e44e80  moving
+```
+
+The fifo holds around nine hundred of its 1024 entries and drains slowly, the
+source address walks the frame and wraps to the start on its own.  This is the
+first continuous pixel path in the port.
+
+**What is left.**  The host takes the pixels and does not send them:
+`PHY_STATUS` `0x15b9` is the PLL locked, the direction outbound, the clock lane
+in high speed and both data lanes in stop state, with `DPI_PLD_WR_ERR` standing
+on every read.  A host with a full payload fifo whose data lanes never leave
+stop state is not a starved host; it is one that will not begin a transmission.
+
+Checked and correct in the same pass: the switch times against
+`mipi_dsi_phy_ll_set_switch_time(50, 104, 46, 128)` including the parameter
+order, `phy_lp2hs_time` at bits 9:0 and `phy_hs2lp_time` at 25:16 and the same
+split for the clock lane, and every channel register offset.  `DPISHUTDN`,
+`DPICOLORM` and `DPIUPDATECFG` all read zero and ESP-IDF never writes any of
+them, so their reset values are the working ones.
+
+- Acceptance points passed: none of B5's formally; the data path is the phase's
+  substance and it now runs.
+- Acceptance points failed: B5 has no image.
+- Remaining risk: `int0` bit 4, `DST_TRANSCOMP`, is set in both the failing and
+  the working configuration, so it is not diagnostic of anything and should not
+  be read as progress.
+- Next safe step: the host, and specifically why a video-mode transmission
+  never begins.  The bridge is no longer a candidate: it holds pixels and hands
+  them over.  Worth reading before changing anything are `VID_MODE_CFG`'s burst
+  type against the packet size the host is asked to buffer, and whether the
+  host's own DPI input sees the bridge's vertical and horizontal sync at all -
+  there is no reading yet that says a frame ever starts on the DPI interface.
 
 ## Evidence-entry template
 
