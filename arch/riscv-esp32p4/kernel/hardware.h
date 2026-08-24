@@ -1063,33 +1063,33 @@
 #define P4_PANEL_HFP            40
 #define P4_PANEL_VSYNC          4
 /*
- * 12, not 30.  Read out of the vendor driver's own panel configuration
- * (JD9365_8_800_1280_PANEL_60HZ_DPI_CONFIG) rather than assumed from the
- * symmetry with the front porch.
+ * 30.  The component's own header macro says 12, and this port followed it for
+ * one round; the firmware that actually drives this board says 30, and that is
+ * the one with evidence behind it.  See P4_PANEL_BPP for the general point.
  */
-#define P4_PANEL_VBP            12
+#define P4_PANEL_VBP            30
 #define P4_PANEL_VFP            30
-/*
- * 80 MHz, which is the vendor configuration's dpi_clock_freq_mhz for this
- * panel.  This port ran 40 for its first attempts, which halves the line rate
- * and is the most likely reason burst mode would not start: burst asks the
- * host to buffer a whole line before transmitting, and a line at half the
- * pixel clock is twice as long in host byte clocks.
- */
+/* 40 MHz, from the working firmware's D1001_LCD_DPI_CLOCK_MHZ. */
 #ifndef P4_PANEL_DPI_MHZ
-#define P4_PANEL_DPI_MHZ        80
+#define P4_PANEL_DPI_MHZ        40
 #endif
 /*
- * Twenty-four bits per pixel, because that is what the panel is.
+ * Sixteen bits per pixel, RGB565.
  *
- * Asked over DCS 0x0C after its initialisation sequence, the panel answers
- * 0x70: bits 6:4 are 7, which is 24 bits on the RGB interface.  The vendor
- * driver's own test configuration says the same - bits_per_pixel 24 - and this
- * port had been sending RGB565.  A panel sent packed-pixel-stream packets of a
- * data type it does not accept displays nothing at all, which is exactly what
- * was observed with a host that demonstrably transmits.
+ * This was changed to 24 for one round and changed back.  The evidence for 24
+ * was the panel's own answer to DCS 0x0C - 0x70, bits 6:4 of seven, which is
+ * 24 bits on the RGB interface - together with the vendor component's test
+ * application, which configures 24.  Neither establishes what the panel has to
+ * be driven with: the firmware that actually runs this board configures
+ * LCD_COLOR_FMT_RGB565 and bits_per_pixel 16, at 40 MHz over 1000 Mbit/s
+ * lanes, and it works.
+ *
+ * The measurement that appeared to confirm 24 was confounded: the backlight
+ * was raised from 20 per cent to 100 in the same change, so a picture that
+ * appeared could as well have been one that was always there and too dim to
+ * see.  A component's test application is not the configuration a board ships.
  */
-#define P4_PANEL_BPP            24
+#define P4_PANEL_BPP            16
 
 /*
  * The DPI clock: PLL_F240M divided by six is exactly 40 MHz, and the source
@@ -1149,7 +1149,7 @@
 
 /* This board: two lanes.  The rate is the one thing to change. */
 #define P4_DSI_LANES            2
-#define P4_DSI_LANE_MBPS        1500
+#define P4_DSI_LANE_MBPS        1000
 
 #if P4_DSI_LANE_MBPS == 1500
 /*

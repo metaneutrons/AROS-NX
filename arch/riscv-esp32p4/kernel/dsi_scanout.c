@@ -63,23 +63,37 @@ static inline unsigned long ch_rd(unsigned long off)
  * twelve bytes, which is three words.  Writing that repeating triple is what
  * keeps this a word-wide loop over two megabytes rather than a byte one.
  */
-void krnP4ScanoutFill(unsigned long rgb888)
+/*
+ * One pixel, written in whatever format the panel is being driven with.
+ *
+ * The patterns below are written once against this rather than three times
+ * against two formats: the port has already changed pixel depth twice, and
+ * each pattern that carries its own packing is another place for the two to
+ * disagree.  The argument is 0xRRGGBB regardless; RGB565 quantises it.
+ */
+static inline void px(volatile unsigned char *at, unsigned long rgb)
 {
-    volatile unsigned long *p = (volatile unsigned long *)P4_FB_BASE;
-    unsigned long b0 = rgb888 & 0xFF;
-    unsigned long b1 = (rgb888 >> 8) & 0xFF;
-    unsigned long b2 = (rgb888 >> 16) & 0xFF;
-    unsigned long w0 = b0 | (b1 << 8) | (b2 << 16) | (b0 << 24);
-    unsigned long w1 = b1 | (b2 << 8) | (b0 << 16) | (b1 << 24);
-    unsigned long w2 = b2 | (b0 << 8) | (b1 << 16) | (b2 << 24);
+#if P4_PANEL_BPP == 24
+    at[0] = (unsigned char)(rgb & 0xFF);
+    at[1] = (unsigned char)((rgb >> 8) & 0xFF);
+    at[2] = (unsigned char)((rgb >> 16) & 0xFF);
+#else
+    unsigned int v = (unsigned int)(((rgb >> 19) & 0x1F) << 11)
+                   | (unsigned int)(((rgb >> 10) & 0x3F) << 5)
+                   | (unsigned int)((rgb >> 3) & 0x1F);
+
+    at[0] = (unsigned char)(v & 0xFF);
+    at[1] = (unsigned char)(v >> 8);
+#endif
+}
+
+void krnP4ScanoutFill(unsigned long rgb)
+{
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
     unsigned long i;
 
-    for (i = 0; i + 2 < P4_FB_BYTES / 4; i += 3)
-    {
-        p[i]     = w0;
-        p[i + 1] = w1;
-        p[i + 2] = w2;
-    }
+    for (i = 0; i < (unsigned long)P4_PANEL_H_RES * P4_PANEL_V_RES; i++)
+        px(fb + i * P4_FB_BYTES_PER_PIXEL, rgb);
 }
 
 /*
@@ -105,7 +119,11 @@ void krnP4ScanoutBridgeUp(void)
     v = brg_rd(P4_DSI_BRG_PIXEL_TYPE);
     v &= ~(P4_DSI_BRG_RAW_TYPE_MASK | P4_DSI_BRG_DPI_TYPE_MASK
            | P4_DSI_BRG_DATA_IN_TYPE);
-    v |= P4_DSI_BRG_RAW_RGB888;           /* input and output are both RGB888 */
+#if P4_PANEL_BPP == 24
+    v |= P4_DSI_BRG_RAW_RGB888;
+#else
+    v |= P4_DSI_BRG_RAW_RGB565;
+#endif
     brg_wr(P4_DSI_BRG_PIXEL_TYPE, v);
 
     /* How much data one frame is, in sixty-four-bit words, and a reload of
@@ -434,7 +452,8 @@ void krnP4ScanoutTestCard(void)
         unsigned long c = (y < P4_PANEL_V_RES / 2)
                           ? bars[(y * 16 / P4_PANEL_V_RES) & 7]
                           : 0x000000;
-        volatile unsigned char *row = fb + y * P4_PANEL_H_RES * 3;
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES
+                                          * P4_FB_BYTES_PER_PIXEL;
 
         for (x = 0; x < P4_PANEL_H_RES; x++)
         {
@@ -448,9 +467,7 @@ void krnP4ScanoutTestCard(void)
             else if (y < 10 && (x % 100) == 0)
                 v = 0xFFFFFF;
 
-            row[x * 3]     = (unsigned char)(v & 0xFF);
-            row[x * 3 + 1] = (unsigned char)((v >> 8) & 0xFF);
-            row[x * 3 + 2] = (unsigned char)((v >> 16) & 0xFF);
+            px(row + x * P4_FB_BYTES_PER_PIXEL, v);
         }
     }
 }
@@ -478,7 +495,8 @@ void krnP4ScanoutCross(void)
 
     for (y = 0; y < P4_PANEL_V_RES; y++)
     {
-        volatile unsigned char *row = fb + y * P4_PANEL_H_RES * 3;
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES
+                                          * P4_FB_BYTES_PER_PIXEL;
 
         for (x = 0; x < P4_PANEL_H_RES; x++)
         {
@@ -489,9 +507,51 @@ void krnP4ScanoutCross(void)
             else if (y >= P4_PANEL_V_RES / 2 && y < P4_PANEL_V_RES / 2 + 4)
                 v = 0xFF;                       /* the horizontal one */
 
-            row[x * 3] = v;
-            row[x * 3 + 1] = v;
-            row[x * 3 + 2] = v;
+            px(row + x * P4_FB_BYTES_PER_PIXEL,
+               v ? 0xFFFFFFUL : 0UL);
+        }
+    }
+}
+
+/*
+ * A grid at a known pitch, so the panel can be counted rather than described.
+ *
+ * Every earlier pattern has been read qualitatively - "twice", "banded",
+ * "offset" - and every reading of it has been an interpretation.  A grid is
+ * arithmetic: 800 columns at a pitch of 100 is eight vertical lines and 1280
+ * rows is thirteen horizontal ones, and any other count is a ratio that says
+ * directly what is happening.  Sixteen verticals means each transmitted line
+ * carries half the pixels the panel expects; twenty-six horizontals means
+ * twice as many lines arrive as there should be.
+ *
+ * Every fifth line is drawn double width so a long count can be checked
+ * against a short one.
+ */
+void krnP4ScanoutGrid(void)
+{
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long y, x;
+
+    for (y = 0; y < P4_PANEL_V_RES; y++)
+    {
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES
+                                          * P4_FB_BYTES_PER_PIXEL;
+        unsigned long ry = y % 100;
+        int y_line = (ry < 2) || (((y / 100) % 5) == 0 && ry < 4);
+
+        for (x = 0; x < P4_PANEL_H_RES; x++)
+        {
+            unsigned long rx = x % 100;
+            int x_line = (rx < 2) || (((x / 100) % 5) == 0 && rx < 4);
+            unsigned char r = 0, g = 0, b = 0;
+
+            if (y_line)
+                g = 0xFF;               /* rows in one channel */
+            if (x_line)
+                r = 0xFF;               /* columns in another */
+
+            px(row + x * P4_FB_BYTES_PER_PIXEL,
+               ((unsigned long)r << 16) | ((unsigned long)g << 8) | b);
         }
     }
 }
