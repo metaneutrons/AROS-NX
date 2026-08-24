@@ -4974,6 +4974,20 @@ static void krnP4PanelProbe(void)
                 krnP4PutHex32((uint32_t)sc.ch_sar);
                 krnP4PutStr("\n");
 
+                krnP4PutStr("[b5]     brg  v ");
+                krnP4PutHex32((uint32_t)sc.brg_v_cfg0);
+                krnP4PutStr("/");
+                krnP4PutHex32((uint32_t)sc.brg_v_cfg1);
+                krnP4PutStr(" h ");
+                krnP4PutHex32((uint32_t)sc.brg_h_cfg0);
+                krnP4PutStr("/");
+                krnP4PutHex32((uint32_t)sc.brg_h_cfg1);
+                krnP4PutStr(" en ");
+                krnP4PutHex32((uint32_t)sc.brg_en);
+                krnP4PutStr(" pix ");
+                krnP4PutHex32((uint32_t)sc.brg_pixel);
+                krnP4PutStr("\n");
+
                 krnP4PutStr("[b5]     brg  flow ");
                 krnP4PutHex32((uint32_t)sc.brg_flow);
                 krnP4PutStr(" rawnum ");
