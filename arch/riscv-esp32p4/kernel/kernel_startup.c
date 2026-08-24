@@ -4977,7 +4977,9 @@ static void krnP4PanelProbe(void)
                    or a wrong channel order changes which colour appears and
                    is therefore visible rather than silent; a wrong stride or
                    pixel format cannot produce a flat field at all. */
-#ifdef P4_SCANOUT_TESTCARD
+#if defined(P4_SCANOUT_CROSS)
+                krnP4ScanoutCross();
+#elif defined(P4_SCANOUT_TESTCARD)
                 krnP4ScanoutTestCard();
 #else
                 krnP4ScanoutFill(0x0000FF);
@@ -4997,7 +4999,9 @@ static void krnP4PanelProbe(void)
                 krnP4ScanoutBridgeUp();
                 krnP4ScanoutDmaUp();
                 krnP4DsiVideoOn();
+#ifndef P4_DSI_VPG
                 krnP4ScanoutFeedOn();
+#endif
 
                 krnTimerWait(10);               /* 100 ms of frames */
 
@@ -5199,6 +5203,64 @@ static void krnP4PanelProbe(void)
                     krnP4PutStr(" dmareq ");
                     krnP4PutHex32((uint32_t)br.dma_req_cfg);
                     krnP4PutStr("\n");
+                }
+
+                /*
+                 * How many frames per second the DMA is actually delivering.
+                 *
+                 * The panel shows the picture twice down its height, which is
+                 * a factor of exactly two, and the cleanest thing a factor of
+                 * two can be is a rate.  The bridge's timing gives one frame
+                 * every htotal * vtotal pixel clocks; if the DMA walks the
+                 * framebuffer twice in that time, the panel receives each
+                 * frame twice and the arithmetic says so directly.
+                 *
+                 * Measured over a short window so the source address wraps at
+                 * most once, and the wrap is handled by taking the difference
+                 * modulo the frame size.
+                 */
+                {
+                    unsigned long a, b, delta;
+                    uint64_t t0, t1, ticks;
+
+                    krnP4ScanoutState(&sc);
+                    a = sc.ch_sar;
+                    t0 = krnTimerCount();
+                    while (krnTimerCount() - t0 < P4_SYSTIMER_HZ / 200)
+                        ;                       /* 5 ms, spun not slept */
+                    krnP4ScanoutState(&sc);
+                    b = sc.ch_sar;
+                    t1 = krnTimerCount();
+
+                    delta = (b - a) % P4_FB_BYTES;
+                    ticks = t1 - t0;
+
+                    krnP4PutStr("[b5]     rate ");
+                    krnP4PutDec((uint32_t)delta);
+                    krnP4PutStr(" bytes in ");
+                    krnP4PutDec((uint32_t)ticks);
+                    krnP4PutStr(" ticks = ");
+                    /* bytes/s = delta * SYSTIMER_HZ / ticks; report frames per
+                       second times ten so a fraction is visible */
+                    if (ticks)
+                    {
+                        uint64_t bps = (uint64_t)delta * P4_SYSTIMER_HZ / ticks;
+                        uint32_t fps10 = (uint32_t)(bps * 10 / P4_FB_BYTES);
+
+                        krnP4PutDec(fps10 / 10);
+                        krnP4PutStr(".");
+                        krnP4PutDec(fps10 % 10);
+                        krnP4PutStr(" frames/s from memory, against ");
+                        krnP4PutDec((uint32_t)((unsigned long)P4_PANEL_DPI_MHZ
+                                    * 1000000UL
+                                    / ((P4_PANEL_H_RES + P4_PANEL_HSYNC
+                                        + P4_PANEL_HBP + P4_PANEL_HFP)
+                                       * (P4_PANEL_V_RES + P4_PANEL_VSYNC
+                                          + P4_PANEL_VBP + P4_PANEL_VFP))));
+                        krnP4PutStr(" the timing asks for\n");
+                    }
+                    else
+                        krnP4PutStr("no elapsed time\n");
                 }
 
                 /*

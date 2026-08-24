@@ -931,13 +931,16 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
     /*
      * The host's own generator, as a diagnostic rather than a configuration.
      *
-     * The question it answers is whether the host will begin a transmission at
-     * all.  If the data lanes leave stop state with the generator on and stay
-     * in it with only the bridge feeding, the host is capable and its DPI input
-     * is the problem; if they stay in stop state either way, the fault is in
-     * the host and the pixel source is irrelevant to it.
+     * It produces its pattern from the same video timing the panel is being
+     * driven with, but without the bridge and without the DMA.  That splits
+     * the chain in half: if the panel shows the generator's bars twice down
+     * its height, the doubling is in the host's timing or in the panel, and if
+     * it shows them once, the doubling is in what feeds the host.
+     *
+     * Horizontal bars, because the doubling is along the line axis and
+     * vertical bars would be invariant under it.
      */
-    dsi_set(P4_DSI_VID_MODE_CFG, P4_DSI_VPG_EN);
+    dsi_set(P4_DSI_VID_MODE_CFG, P4_DSI_VPG_EN | P4_DSI_VPG_ORIENTATION);
 #endif
 
     dsi_trace();                /* 7: end of the handover */
