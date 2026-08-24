@@ -614,6 +614,16 @@
 #define   P4_DSI_CMD_VIDEO_MODE (1UL << 0)
 #define P4_DSI_LPCLK_CTRL       0x094
 #define   P4_DSI_TXREQUESTCLKHS (1UL << 0)
+/*
+ * The other half of what the reference calls the clock lane's automatic state.
+ *
+ * It sets auto_clklane_ctrl together with txrequestclkhs; this port set only
+ * txrequestclkhs, which pins the clock lane in high speed permanently instead
+ * of letting the host manage it.  Measured with only the one bit: the PLL
+ * locks, the clock lane leaves stop state, and both data lanes stay in it -
+ * the host never transmits.
+ */
+#define   P4_DSI_AUTO_CLKLANE   (1UL << 1)
 #define P4_DSI_PHY_RSTZ         0x0A0
 #define   P4_DSI_PHY_SHUTDOWNZ  (1UL << 0)
 #define   P4_DSI_PHY_RSTZ_BIT   (1UL << 1)
