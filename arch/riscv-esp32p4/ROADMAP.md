@@ -5131,6 +5131,56 @@ frame, and nothing this port has read from this panel has ever answered.
   that emits no sync is a host that never starts, which fits everything
   measured.
 
+### 2026-08-23 - B5: every register verified, and the data lanes still will not go high-speed
+
+- State change: none functionally.  The configuration is now verified end to
+  end by read-back rather than by comparison, and it is correct.  That is worth
+  recording because it removes a whole class of cause.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+
+**The bridge's DPI timing, read back and decoded:**
+
+```text
+[b5]     brg  v 0x05000540/0x0004001e h 0x03200370/0x00140014 en 0x00000001 pix 0x00000000
+```
+
+`VDISP` 1280, `VTOTAL` 1344, `VSYNC` 4, `VBANK` 30, `HDISP` 800, `HTOTAL` 880,
+`HSYNC` 20, `HBANK` 20, `dsi_en` set, pixel type RGB565.  Every value is what
+the reference computes from the same panel parameters, in the right field.
+
+**What has now been verified rather than assumed, all of it correct:** the
+host's mode, power, clock-lane control, video-mode flags, packet size,
+horizontal and vertical timing and colour coding; the bridge's DPI timing,
+enable, pixel type, flow controller, raw count, discard count, burst length and
+empty threshold; the DMA's channel configuration, descriptor and running source
+address; two data lanes at 1000 Mbit/s, `PHY_ENABLECLK`, `PHY_FORCEPLL`,
+`auto_clklane_ctrl` with `txrequestclkhs`.  The PLL locks and the clock lane
+leaves stop state.
+
+**And `PHY_STATUS` still reads `0x15b9`:** both data lanes in stop state, a
+host that never transmits, a payload FIFO that overflows.
+
+So the fault is not a register value.  Comparing this port's configuration
+against the reference has been exhausted twice now - once for PSRAM, where the
+answer turned out to be one bit outside the sequence being compared, and now
+here.
+
+**The two open defects have the same shape.**  No read from this panel has ever
+answered, and the host will not drive the data lanes.  Both are the link
+refusing to enter high-speed in the direction asked for.  Treating them as one
+problem rather than two is a change of view, not a finding, but it is the first
+framing that accounts for both.
+
+- Acceptance points passed: none of B5's.
+- Remaining risk: unchanged, and now without a configuration candidate.
+- Next safe step: the four PHY lane-transition times in `PHY_TMR_CFG` and
+  `PHY_TMR_LPCLK_CFG` - 50, 104, 46 and 128.  They were carried over from
+  ESP-IDF with no derivation available and are recorded as unresolved in the
+  display contract.  They are exactly what decides whether a lane can leave
+  low-power for high-speed, they are the last values in the data path this port
+  cannot justify, and a wrong one would present as a lane that stays in stop
+  state and a read that never answers - which is both symptoms at once.
+
 ## Evidence-entry template
 
 ```text
