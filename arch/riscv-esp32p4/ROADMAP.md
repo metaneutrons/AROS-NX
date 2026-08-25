@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct frame from PSRAM reaches the panel.**  Grid pitch measures 98 panel rows against the 100 drawn.  The panel consumes two transmitted lines per row - framebuffer row y lands on panel row y/2 - found with three isolated rows after four rounds of misreading a grid whose pitch aliased with the defect; `P4_PANEL_VMUL=2` corrects it, with a measurement behind it and no explanation.  Twelve defects fixed and four findings withdrawn as measurement artefacts.  Remaining: a byte offset that walks from row to row, visible as row lines in changing colours and dotted column lines.  Runs on a 24-bit profile the vendor firmware does not use |
+| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - grid regular, every line one continuous colour, no payload error over thirty seconds.  Runs RGB565 at 40 MHz over 1500 Mbit/s lanes; the lane rate is what the panel judges, and that the vendor firmware needs only 1000 is unexplained.  The last defect was a byte swap in px() which had been misread as a walking byte offset for four rounds.  Open: whether P4_PANEL_VMUL=2 is still needed (it was measured under the swap), the channel mapping in px(), and the 100 MB/s gate.  A scanout running across a reset still ruins the PSRAM state; the hang it caused is located and contained but not fixed |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -5847,6 +5847,83 @@ and is recorded as such.
   it accumulates or resets per frame both follow from a pattern that puts a
   known byte value at a known column, and it is the last defect between this
   and a clean frame.
+
+### 2026-08-25 - B5 transmits a clean frame; the byte order was the last defect
+
+- State change: the panel shows a dimensionally correct grid with every line in
+  one continuous colour.  The transmit side reports no payload error across
+  thirty seconds.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+- Working configuration, now the default in `hardware.h`: RGB565, 40 MHz pixel
+  clock, 1500 Mbit/s lanes, `P4_PANEL_VMUL=2`, non-burst, `P4_PANEL_VBP` 30.
+  `P4_PANEL_24BIT` selects the superseded 24-bit profile.
+
+**The last defect was a byte swap, and it faked a different one.**  Three bands
+with `0xFF` in one pixel byte each: byte 0 arrived yellow, byte 1 blue.  In
+RGB565 the high byte carries red and the top green bits - yellow - so the panel
+reads the first byte written as the high one, and `px()` was writing the low
+byte first.  Every pixel was swapped, identically.
+
+What was recorded across four rounds as "a byte offset that walks from row to
+row" was that uniform swap seen through one-pixel grid lines: on a thin line a
+uniform swap changes which colour survives recognisably, and reading a run of
+those as a period was the error.  A flat single-channel field shows it at once
+and was reached for late.
+
+**The lane rate is what the panel judges.**  Crossed one at a time against DCS
+`0x0A` read *after* the video handover:
+
+```text
+RGB565  40 MHz  1000 Mbit/s   rejects    transmit side clean
+RGB565  80 MHz  1500 Mbit/s   accepts    DPI_PLD_WR_ERR every second
+RGB565  40 MHz  1500 Mbit/s   accepts    clean
+```
+
+The move to 24 bits per pixel was a wrong turn: it changed colour depth, pixel
+clock, lane rate and back porch together, and the result was credited to the
+depth, the one thing that did not matter.  Note that the vendor firmware runs
+1000 with 40 and works; why this port cannot get the panel to accept that
+pairing is **unexplained**.
+
+**The boot hang is located and contained, not fixed.**  With SRAM-resident stage
+markers a hung boot prints `123456789ab789ab789ab` and stops.  Marker `b` sits
+immediately before `p4_psram_probe_latency`; the first two calls into the sweep
+return, the third does not.  Each ask inside it is an unbounded read through the
+ROM SPI helpers, and the file's own comment - written before this was measured -
+says a read at the wrong width does not fail, it does not return.
+
+The sweep is now off by default, so the same board prints its diagnosis and
+carries on headless instead of stopping.  A bound would be better and needs the
+MSPI transaction started and polled by `psram_init.c` rather than by
+`rom_cmd_start`; the P4 headers do not carry the register names the earlier
+chips use and this port has not verified them.
+
+**What puts the chip in that state.**  A scanout running across a reset.  The
+GDMA survives a CPU reset, and between the reset and this port's code sit the
+ROM and ESP-IDF bootloaders - a few hundred milliseconds in which the channel
+keeps reading PSRAM while nothing has yet reconfigured it.  `krnP4ScanoutQuiesce`
+therefore arrives too late to prevent it and only helps when the reset falls
+after the scanout has stopped.  `P4_SCANOUT_SECS` bounds the scanout to 60 s by
+default for that reason, and the run prints `scanout stopped, panel safe` when a
+reset becomes safe.
+
+Recovery, used three times: flash `~/Source/Vellum/firmware/build/vellum-d1001.bin`
+to `0x20000`, boot it once - it reports `vendor id 0x0d`, X16 mode - then flash
+the AROS core back.  Two and a half minutes.  The vendor bring-up leaves the
+chip in the width this port assumes; it never addressed the hang.
+
+- Acceptance points passed: a dimensionally correct, cleanly transmitted
+  `800 x 1280` frame from PSRAM on the panel.
+- Acceptance points failed: the 100 MB/s bandwidth gate reassigned here from B1
+  is still unmeasured.
+- Remaining risk: two settings carry measurement without explanation -
+  `P4_PANEL_VMUL=2`, and a lane rate the vendor firmware does not need.  The
+  first was measured while every pixel was byte-swapped, so it deserves a
+  retest now that the swap is gone; that test was built and the board went into
+  the ROM download stub before it could be read.
+- Next safe step: run the grid with `P4_PANEL_VMUL=1` and look.  A full correct
+  grid means the doubling can be deleted.  Then the channel mapping in `px()`:
+  rows are drawn in this code's green and arrive blue while red arrives red.
 
 ## Evidence-entry template
 
