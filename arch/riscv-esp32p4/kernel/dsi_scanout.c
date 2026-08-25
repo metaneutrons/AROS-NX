@@ -92,7 +92,7 @@ void krnP4ScanoutFill(unsigned long rgb)
     volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
     unsigned long i;
 
-    for (i = 0; i < (unsigned long)P4_PANEL_H_RES * P4_PANEL_V_RES; i++)
+    for (i = 0; i < (unsigned long)P4_PANEL_H_RES * P4_TX_V_RES; i++)
         px(fb + i * P4_FB_BYTES_PER_PIXEL, rgb);
 }
 
@@ -447,7 +447,7 @@ void krnP4ScanoutTestCard(void)
      * banded region above a black one means it is read once and the panel is
      * addressing its lines at half the expected pitch.
      */
-    for (y = 0; y < P4_PANEL_V_RES; y++)
+    for (y = 0; y < P4_TX_V_RES; y++)
     {
         unsigned long c = (y < P4_PANEL_V_RES / 2)
                           ? bars[(y * 16 / P4_PANEL_V_RES) & 7]
@@ -493,7 +493,7 @@ void krnP4ScanoutCross(void)
     volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
     unsigned long y, x;
 
-    for (y = 0; y < P4_PANEL_V_RES; y++)
+    for (y = 0; y < P4_TX_V_RES; y++)
     {
         volatile unsigned char *row = fb + y * P4_PANEL_H_RES
                                           * P4_FB_BYTES_PER_PIXEL;
@@ -532,12 +532,16 @@ void krnP4ScanoutGrid(void)
     volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
     unsigned long y, x;
 
-    for (y = 0; y < P4_PANEL_V_RES; y++)
+    for (y = 0; y < P4_TX_V_RES; y++)
     {
         volatile unsigned char *row = fb + y * P4_PANEL_H_RES
                                           * P4_FB_BYTES_PER_PIXEL;
-        unsigned long ry = y % 100;
-        int y_line = (ry < 2) || (((y / 100) % 5) == 0 && ry < 4);
+        /* the row pitch is in panel rows, so it scales with the multiplier;
+           the column pitch does not, because columns are not doubled */
+        unsigned long ry = y % (100 * P4_PANEL_VMUL);
+        int y_line = (ry < 2 * P4_PANEL_VMUL)
+                  || (((y / (100 * P4_PANEL_VMUL)) % 5) == 0
+                      && ry < 4 * P4_PANEL_VMUL);
 
         for (x = 0; x < P4_PANEL_H_RES; x++)
         {
@@ -575,13 +579,13 @@ void krnP4ScanoutThreeLines(void)
     volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
     unsigned long y, x;
 
-    for (y = 0; y < P4_PANEL_V_RES; y++)
+    for (y = 0; y < P4_TX_V_RES; y++)
     {
         volatile unsigned char *row = fb + y * P4_PANEL_H_RES
                                           * P4_FB_BYTES_PER_PIXEL;
-        int on = (y >= 100 && y < 104)
-              || (y >= 500 && y < 504)
-              || (y >= 900 && y < 904);
+        int on = (y >= 100 * P4_PANEL_VMUL && y < 100 * P4_PANEL_VMUL + 4 * P4_PANEL_VMUL)
+              || (y >= 500 * P4_PANEL_VMUL && y < 500 * P4_PANEL_VMUL + 4 * P4_PANEL_VMUL)
+              || (y >= 900 * P4_PANEL_VMUL && y < 900 * P4_PANEL_VMUL + 4 * P4_PANEL_VMUL);
 
         for (x = 0; x < P4_PANEL_H_RES; x++)
             px(row + x * P4_FB_BYTES_PER_PIXEL, on ? 0xFFFFFFUL : 0UL);
@@ -613,7 +617,7 @@ void krnP4ScanoutHalves(void)
     volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
     unsigned long y, x;
 
-    for (y = 0; y < P4_PANEL_V_RES; y++)
+    for (y = 0; y < P4_TX_V_RES; y++)
     {
         volatile unsigned char *row = fb + y * P4_PANEL_H_RES
                                           * P4_FB_BYTES_PER_PIXEL;

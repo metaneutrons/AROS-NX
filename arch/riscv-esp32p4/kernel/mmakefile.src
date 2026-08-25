@@ -317,6 +317,14 @@ ifdef P4_SCANOUT_HALVES
 P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_HALVES
 endif
 
+# P4_PANEL_VMUL=n transmits n times the panel's line count.  Measured: two sent
+# rows make one panel row, so n=2 should fill the panel once and undistorted.
+# Everything on the transmit side derives from it - framebuffer, bridge line
+# counts, VID_VACTIVE_LINES, raw_num_total - so they cannot disagree.
+ifdef P4_PANEL_VMUL
+P4_DEBUG_CPPFLAGS += -DP4_PANEL_VMUL=$(P4_PANEL_VMUL)
+endif
+
 # P4_DSI_FRAME_ACK=1 sets VID_MODE_CFG's frame_bta_ack_en, so the host requests
 # a bus turnaround after each frame and waits for the panel.  The reference
 # enables this; without it the host and the panel keep their own frame
