@@ -1072,7 +1072,19 @@
 #else
 #define P4_PANEL_VBP            12
 #endif
+/*
+ * Overridable, because the ghost lines measure at 34 panel lines and
+ * vsync 4 plus this 30 is exactly 34.
+ *
+ * Every grid line arrives with a second, fainter copy 34 lines below it,
+ * measured off the panel by locating the peaks in a photograph rather than by
+ * counting them by eye.  If that offset is the vertical blanking at the end of
+ * the frame, changing this value moves it; if it does not move, the match is a
+ * coincidence and the offset means something else.
+ */
+#ifndef P4_PANEL_VFP
 #define P4_PANEL_VFP            30
+#endif
 /* 40 MHz, from the working firmware's D1001_LCD_DPI_CLOCK_MHZ. */
 #ifndef P4_PANEL_DPI_MHZ
 #ifdef P4_PANEL_565
