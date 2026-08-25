@@ -786,8 +786,24 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      */
     brg_wr(P4_DSI_BRG_CLK_EN, P4_DSI_BRG_CLK_EN_BIT);
 
+    /*
+     * P4_BRG_VDIV is a test of whether the bridge honours its active-line
+     * count at all.
+     *
+     * The read rate measures 218 MB/s, which is 80 MHz times 800/880 times
+     * three bytes - the active pixel rate with horizontal blanking and no
+     * vertical blanking - and it does not change when the vertical front porch
+     * is tripled.  Either the bridge emits pixels through the vertical
+     * blanking, in which case halving this count halves the rate, or the rate
+     * is set by something else entirely and it will not move.
+     */
     brg_wr(P4_DSI_BRG_DPI_V_CFG0,
+#ifdef P4_BRG_VDIV
+           ((unsigned long)(P4_PANEL_V_RES / P4_BRG_VDIV)
+            << P4_DSI_BRG_DISP_SHIFT)
+#else
            ((unsigned long)P4_PANEL_V_RES << P4_DSI_BRG_DISP_SHIFT)
+#endif
            | ((unsigned long)(P4_PANEL_V_RES + P4_PANEL_VSYNC + P4_PANEL_VBP
                               + P4_PANEL_VFP) << P4_DSI_BRG_TOTAL_SHIFT));
     brg_wr(P4_DSI_BRG_DPI_V_CFG1,

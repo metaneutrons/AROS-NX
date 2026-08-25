@@ -327,6 +327,13 @@ ifdef P4_VFP
 P4_DEBUG_CPPFLAGS += -DP4_PANEL_VFP=$(P4_VFP)
 endif
 
+# P4_BRG_VDIV=n divides only the bridge's active-line count, leaving the host's
+# at the panel's.  A test of whether the bridge honours that count: if it does,
+# the measured read rate divides by n.
+ifdef P4_BRG_VDIV
+P4_DEBUG_CPPFLAGS += -DP4_BRG_VDIV=$(P4_BRG_VDIV)
+endif
+
 # P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
 # pattern test.  The bridge then asks for pixels it has no DMA to fetch and
 # must underrun; that underrun is the evidence that the pixel path runs through

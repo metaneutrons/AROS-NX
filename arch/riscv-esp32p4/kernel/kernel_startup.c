@@ -5266,13 +5266,71 @@ static void krnP4PanelProbe(void)
                     krnP4ScanoutState(&sc);
                     a = sc.ch_sar;
                     t0 = krnTimerCount();
-                    while (krnTimerCount() - t0 < P4_SYSTIMER_HZ / 200)
-                        ;                       /* 5 ms, spun not slept */
+                    /*
+                     * Long enough to average over several frames.
+                     *
+                     * This was 5 ms, which is shorter than a frame: such a
+                     * window falls almost entirely inside the active lines and
+                     * therefore measures the active data rate, not the mean
+                     * over the frame.  It read 218 MB/s where the active rate
+                     * is 218.2 and the mean with vertical blanking is 210.6,
+                     * and that was taken as evidence the bridge does not pause
+                     * for blanking.  It is not evidence of anything except the
+                     * window being too short.  100 ms covers about seven
+                     * frames at this timing.
+                     */
+                    while (krnTimerCount() - t0 < P4_SYSTIMER_HZ / 10)
+                        ;                       /* 100 ms, spun not slept */
                     krnP4ScanoutState(&sc);
                     b = sc.ch_sar;
                     t1 = krnTimerCount();
 
-                    delta = (b - a) % P4_FB_BYTES;
+                    /*
+                     * Over 100 ms the source address wraps several times, so
+                     * the difference modulo the frame size is not the distance
+                     * travelled.  Count the wraps from the elapsed time and
+                     * the expected rate instead: the residue pins down the
+                     * fractional part and the whole part comes from the frame
+                     * count, which is what makes a long window usable at all.
+                     */
+                    {
+                        uint64_t expect = (uint64_t)P4_PANEL_DPI_MHZ * 1000000UL
+                                        * P4_PANEL_H_RES * P4_PANEL_V_RES
+                                        * P4_FB_BYTES_PER_PIXEL
+                                        / ((unsigned long)(P4_PANEL_H_RES
+                                             + P4_PANEL_HSYNC + P4_PANEL_HBP
+                                             + P4_PANEL_HFP)
+                                           * (P4_PANEL_V_RES + P4_PANEL_VSYNC
+                                              + P4_PANEL_VBP + P4_PANEL_VFP));
+                        uint64_t rough = expect * (t1 - t0) / P4_SYSTIMER_HZ;
+                        unsigned long resid = (b - a) % P4_FB_BYTES;
+                        uint64_t wraps = (rough > resid)
+                                       ? (rough - resid + P4_FB_BYTES / 2)
+                                         / P4_FB_BYTES
+                                       : 0;
+
+                        delta = 0;
+                        krnP4PutStr("[b5]     expect ");
+                        krnP4PutDec((uint32_t)(expect / 1000000UL));
+                        krnP4PutStr(" MB/s, residue ");
+                        krnP4PutDec((uint32_t)resid);
+                        krnP4PutStr(", wraps ");
+                        krnP4PutDec((uint32_t)wraps);
+                        krnP4PutStr("\n");
+                        /* bytes actually moved = wraps * frame + residue */
+                        {
+                            uint64_t moved = wraps * (uint64_t)P4_FB_BYTES
+                                           + resid;
+                            uint64_t bps = moved * P4_SYSTIMER_HZ / (t1 - t0);
+
+                            krnP4PutStr("[b5]     measured ");
+                            krnP4PutDec((uint32_t)(bps / 1000000UL));
+                            krnP4PutStr(" MB/s over ");
+                            krnP4PutDec((uint32_t)((t1 - t0) * 1000
+                                                   / P4_SYSTIMER_HZ));
+                            krnP4PutStr(" ms\n");
+                        }
+                    }
                     ticks = t1 - t0;
 
                     krnP4PutStr("[b5]     rate ");
