@@ -664,38 +664,42 @@ void krnP4ScanoutHalves(void)
  */
 void krnP4ScanoutQuiesce(void)
 {
-    /* The DMA's registers do not answer without its module clocks, and after a
-       cold boot they are off - in which case there is nothing to stop either,
-       but the writes below have to land somewhere harmless. */
+    /*
+     * The DMA and nothing else.
+     *
+     * The first version also stopped the bridge, which meant reaching
+     * registers inside a block that may still be held in reset - and a
+     * register access to a block in reset, or without its system clock, hangs
+     * the bus rather than reading zero.  Both were true here in turn and both
+     * hung the boot at exactly the point this function exists to protect.
+     *
+     * The bridge does not need stopping.  It pulls data through the DMA, so a
+     * disabled channel leaves it requesting into nothing, which costs nothing
+     * and touches no memory.  What has to stop is the engine that drives AXI
+     * reads against the PSRAM while the bring-up reconfigures the controller
+     * underneath it.
+     *
+     * The GDMA's reset is released before its registers are written, because
+     * after a cold boot the block may be held in reset and this function has
+     * to be safe on the first boot as well as on a reset with a scanout still
+     * running.
+     */
     p4_w32(P4_CLKRST_SOC_CLK_CTRL0,
            p4_r32(P4_CLKRST_SOC_CLK_CTRL0) | P4_GDMA_CPU_CLK_EN);
     p4_w32(P4_CLKRST_SOC_CLK_CTRL1,
            p4_r32(P4_CLKRST_SOC_CLK_CTRL1) | P4_GDMA_SYS_CLK_EN);
 
+    /* Out of reset first, so the writes below reach a block that answers */
+    p4_w32(P4_CLKRST_HP_RST_EN0,
+           p4_r32(P4_CLKRST_HP_RST_EN0) & ~P4_RST_EN_GDMA);
+
     /* Channel off, with the write-enable the register demands */
     p4_w32(P4_DMAC_CHEN, P4_DMAC_CH1_EN_WE);
 
-    /* And the whole controller through its system reset, which is the only way
-       to be sure of a channel that was mid-burst */
+    /* Then the whole controller through its reset, which is the only way to be
+       sure of a channel that was in the middle of a burst */
     p4_w32(P4_CLKRST_HP_RST_EN0,
            p4_r32(P4_CLKRST_HP_RST_EN0) | P4_RST_EN_GDMA);
     p4_w32(P4_CLKRST_HP_RST_EN0,
            p4_r32(P4_CLKRST_HP_RST_EN0) & ~P4_RST_EN_GDMA);
-
-    /*
-     * The bridge asks for the data, so stop it asking.
-     *
-     * Its own clock-enable register is inside the bridge, so reaching it needs
-     * the DSI unit's system clock first - and touching a block whose system
-     * clock is off hangs the bus rather than reading zero.  This function hung
-     * the boot at exactly the point it exists to protect until that was added,
-     * which is a fault introduced by the fix for a fault.
-     */
-    p4_w32(P4_CLKRST_SOC_CLK_CTRL1,
-           p4_r32(P4_CLKRST_SOC_CLK_CTRL1) | P4_DSI_SYS_CLK_EN);
-    brg_wr(P4_DSI_BRG_CLK_EN, P4_DSI_BRG_CLK_EN_BIT);
-    brg_wr(P4_DSI_BRG_DPI_MISC_CFG,
-           brg_rd(P4_DSI_BRG_DPI_MISC_CFG) & ~P4_DSI_BRG_DPI_EN);
-    brg_wr(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE);
-    brg_wr(P4_DSI_BRG_EN, 0);
 }

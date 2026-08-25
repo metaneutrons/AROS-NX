@@ -921,6 +921,25 @@ P4_SRAMCODE int krnPSRAMRoundTrip(uint32_t *back)
  * print, so that the sequence is not interleaved with a console that lives
  * in flash.
  */
+/*
+ * A marker per bring-up stage, so a hang says which one.
+ *
+ * This code runs with interrupts off and out of SRAM, and a hang inside it
+ * produces no output at all: the boot simply stops after the clock report.
+ * That has now happened twice, the second time on a core with no display code
+ * whatsoever, so bisecting builds costs a flash per guess.
+ *
+ * Markers are placed only where output is safe.  krnP4PutStr lives in flash on
+ * an XIP build and the sequence below resets the MSPI block, so a marker after
+ * that reset would hang on its own account - which is the trap this comment
+ * exists to stop the next reader falling into.
+ */
+#ifdef P4_PSRAM_TRACE
+#define psram_mark(str)     krnP4PutStr(str)
+#else
+#define psram_mark(str)     do { } while (0)
+#endif
+
 P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
                                 unsigned long target_hz)
 {
@@ -946,6 +965,7 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     info->fast_requested = (unsigned char)fast;
 
     /* Before anything here writes, so the print is the handover state */
+    psram_mark("[psram]  1 entry read\n");
     krnPSRAMEntryRead(&info->entry);
 
     /*
@@ -954,11 +974,13 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
      * krnP4SupplyUp and the comment on it.  What this records is what that
      * step left, so a failure can be read against it.
      */
+    psram_mark("[psram]  2 bias\n");
     info->bias_found = (unsigned char)((p4_r32(P4_PMU_HP_ACTIVE_BIAS)
                                         & P4_PMU_DCM_VSET_MASK)
                                        >> P4_PMU_DCM_VSET_SHIFT);
     info->bias_set   = info->bias_found;
 
+    psram_mark("[psram]  3 mpll up\n");
     info->mpll_reason = (signed char)krnPSRAMMPLLUp();
     info->mpll_up = (info->mpll_reason == P4_MPLL_OK) ? 1 : 0;
     /*
@@ -968,6 +990,7 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
      * the PLL does not run uncalibrated - so stopping here is what keeps a
      * failure diagnosable instead of silent.
      */
+    psram_mark("[psram]  4 mpll state\n");
     info->mpll_state = krnPSRAMMPLLState();
     info->ana_pll_ctrl0 = p4_r32(P4_CLKRST_ANA_PLL_CTRL0);
     info->ana_trace[0] = p4_mpll_trace[0];
@@ -990,6 +1013,8 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
      * identity read fails, it fails at a clock where the answer means the
      * chip, and not the sampling.
      */
+    psram_mark("[psram]  5 mpll ok, controller next"
+                 " - no more output until it returns\n");
     p4_psram_select_params(target_hz);
     krnPSRAMTuningClear();
 

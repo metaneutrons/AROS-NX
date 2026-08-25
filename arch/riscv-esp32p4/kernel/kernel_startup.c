@@ -6284,7 +6284,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
      * Measured: three resets in a row hung at exactly this point, and only a
      * power cycle recovered the board.
      */
+#ifndef P4_NO_QUIESCE
     krnP4ScanoutQuiesce();
+#endif
 
     {
         struct P4PSRAMInfo psram;
