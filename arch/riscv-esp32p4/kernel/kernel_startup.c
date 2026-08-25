@@ -5007,6 +5007,44 @@ static void krnP4PanelProbe(void)
 
                 krnTimerWait(10);               /* 100 ms of frames */
 
+                /*
+                 * What the panel says once it has been sent video.
+                 *
+                 * Every earlier reading of DCS 0x0A was taken before the
+                 * handover, where a panel that has seen no pixels reports its
+                 * output disabled for the obvious reason.  That made "display
+                 * off" look like a finding through several rounds when it was
+                 * an artefact of when it was asked.
+                 *
+                 * Asking afterwards costs the stream: the read needs command
+                 * mode, so video stops, the answer is taken, and video is
+                 * started again.  Bit 2 set means the panel has enabled its
+                 * output, which is the difference between a panel refusing the
+                 * stream and a panel showing something invisible.
+                 */
+                {
+                    unsigned char pm = 0;
+                    int got;
+
+                    krnP4DsiPatternOff();
+                    got = krnP4DsiDcsRead(0x0A, &pm, 1);
+
+                    krnP4PutStr("[b5]     after video, power mode ");
+                    if (got > 0)
+                    {
+                        krnP4PutHex32(pm);
+                        krnP4PutStr((pm & (1U << 2)) ? "  DISPLAY ON"
+                                                     : "  display off");
+                        krnP4PutStr((pm & (1U << 4)) ? ", awake\n"
+                                                     : ", sleeping\n");
+                    }
+                    else
+                        krnP4PutStr("no reply\n");
+
+                    krnP4DsiVideoOn();
+                    krnTimerWait(10);
+                }
+
                 krnP4ScanoutState(&sc);
                 krnP4PutStr("[b5]     frame at ");
                 krnP4PutHex32((uint32_t)sc.fb_base);
