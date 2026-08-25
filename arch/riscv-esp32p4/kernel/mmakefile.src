@@ -317,6 +317,32 @@ ifdef P4_SCANOUT_HALVES
 P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_HALVES
 endif
 
+# P4_SCANOUT_BANDS=1 puts 0xFF in byte 0, then byte 1, then byte 2 across three
+# horizontal bands.  A flat field written into byte 0 came back yellow, which
+# needs two channels, so the byte-to-channel mapping has to be read off the
+# panel rather than assumed.  Written byte-wise rather than through px(),
+# because px() is what is under test.
+ifdef P4_SCANOUT_BANDS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_BANDS
+endif
+
+# P4_DSI_565_CFG=1|2|3 picks which of the host's three 16-bit colour codings is
+# used.  They carry the same pixel with its bits in different places on the DPI
+# bus, so a mismatch against what the bridge lays down gives the panel a pixel
+# with displaced fields - which it may reject, and rejecting it is what "clean
+# transmit side, output still disabled" looks like from this end.
+ifdef P4_DSI_565_CFG
+P4_DEBUG_CPPFLAGS += -DP4_DSI_565_CFG=$(P4_DSI_565_CFG)
+endif
+
+# P4_LANE_MBPS overrides the lane rate independently of the panel profile, so
+# colour depth, pixel clock, lane rate and back porch can be varied one at a
+# time instead of as a bundle.  Only rates with PLL factors in hardware.h work:
+# 500, 1000, 1500.
+ifdef P4_LANE_MBPS
+P4_DEBUG_CPPFLAGS += -DP4_DSI_LANE_MBPS=$(P4_LANE_MBPS)
+endif
+
 # P4_PANEL_VMUL=n transmits n times the panel's line count.  Measured: two sent
 # rows make one panel row, so n=2 should fill the panel once and undistorted.
 # Everything on the transmit side derives from it - framebuffer, bridge line

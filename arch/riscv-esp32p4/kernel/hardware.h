@@ -996,7 +996,26 @@
 #define P4_DSI_PHY_TMR_RD_CFG   0x0F4
 #define P4_DSI_DPI_VCID         0x00C
 #define P4_DSI_DPI_COLOR_CODING 0x010
+/*
+ * The host's three 16-bit colour codings.
+ *
+ * They carry the same pixel and differ in how its bits sit on the DPI bus, so
+ * a mismatch between this and what the bridge lays down is a pixel with its
+ * fields displaced - which a panel is free to reject outright.  The reference
+ * uses configuration 1 and this port followed it, but the reference also drives
+ * a bridge configured by the same code, and one of the two is what this port
+ * has been guessing at.
+ *
+ * Worth trying against a measured symptom: with RGB565 the transmit side is
+ * clean - no payload error over 25 seconds - and the panel still reports its
+ * output disabled.  That is what a rejected pixel format looks like from here.
+ */
 #define   P4_DSI_COLOR_16BIT_C1 0
+#define   P4_DSI_COLOR_16BIT_C2 1
+#define   P4_DSI_COLOR_16BIT_C3 2
+#ifndef P4_DSI_565_CFG
+#define P4_DSI_565_CFG          1
+#endif
 #define   P4_DSI_COLOR_24BIT    5
 #define P4_DSI_DPI_CFG_POL      0x014
 #define P4_DSI_DPI_LP_CMD_TIM   0x018
@@ -1223,10 +1242,22 @@
 
 /* This board: two lanes.  The rate is the one thing to change. */
 #define P4_DSI_LANES            2
+/*
+ * Overridable, so the profiles can be crossed.
+ *
+ * The two panel profiles differ in four things at once - colour depth, pixel
+ * clock, lane rate and vertical back porch - and every test so far moved all
+ * four together.  The 24-bit profile is accepted by the panel and overruns the
+ * host's payload fifo; the 16-bit one is clean and the panel rejects it.  Which
+ * of the four decides acceptance cannot be read off that, only from crossing
+ * them one at a time.
+ */
+#ifndef P4_DSI_LANE_MBPS
 #ifdef P4_PANEL_565
 #define P4_DSI_LANE_MBPS        1000
 #else
 #define P4_DSI_LANE_MBPS        1500
+#endif
 #endif
 
 #if P4_DSI_LANE_MBPS == 1500

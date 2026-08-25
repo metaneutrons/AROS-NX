@@ -4977,7 +4977,9 @@ static void krnP4PanelProbe(void)
                    or a wrong channel order changes which colour appears and
                    is therefore visible rather than silent; a wrong stride or
                    pixel format cannot produce a flat field at all. */
-#if defined(P4_SCANOUT_HALVES)
+#if defined(P4_SCANOUT_BANDS)
+                krnP4ScanoutBands();
+#elif defined(P4_SCANOUT_HALVES)
                 krnP4ScanoutHalves();
 #elif defined(P4_SCANOUT_LINES)
                 krnP4ScanoutThreeLines();
@@ -5530,7 +5532,52 @@ static void krnP4PanelProbe(void)
                 krnP4PutDec(P4_SCANOUT_SECS);
                 krnP4PutStr(" s, then stopping so a reset is safe\n");
 
-                krnTimerWait((unsigned long)P4_SCANOUT_SECS * P4_TICK_HZ);
+                /*
+                 * Sampled while it runs, because the panel goes dark on its
+                 * own after about ten seconds and nothing in the log said
+                 * anything about it.  The wait used to be silent, so the one
+                 * event worth observing happened inside it.
+                 *
+                 * One line per second: the DMA's source address, the bridge's
+                 * fifo depth and raw interrupt, and the host's error status and
+                 * PHY state.  Whatever changes at the moment the picture goes
+                 * is the thing to chase; if nothing changes, the panel is
+                 * deciding on its own and the transmit side is innocent.
+                 */
+                {
+                    unsigned long secs;
+
+                    for (secs = 0; secs < (unsigned long)P4_SCANOUT_SECS;
+                         secs++)
+                    {
+                        unsigned long depth = 0, raw = 0;
+                        unsigned long pkt = 0, i0 = 0, i1 = 0;
+                        struct P4HostState h;
+
+                        krnP4ScanoutState(&sc);
+                        krnP4ScanoutSample(&depth, &raw);
+                        krnP4DsiCmdStatus(&pkt, &i0, &i1);
+                        krnP4HostState(&h);
+
+                        krnP4PutStr("[b5]     t");
+                        krnP4PutDec((uint32_t)secs);
+                        krnP4PutStr(" sar ");
+                        krnP4PutHex32((uint32_t)sc.ch_sar);
+                        krnP4PutStr(" depth ");
+                        krnP4PutDec((uint32_t)depth);
+                        krnP4PutStr(" braw ");
+                        krnP4PutHex32((uint32_t)raw);
+                        krnP4PutStr(" int1 ");
+                        krnP4PutHex32((uint32_t)i1);
+                        krnP4PutStr(" phy ");
+                        krnP4PutHex32((uint32_t)h.phy_status);
+                        krnP4PutStr(" chen ");
+                        krnP4PutHex32((uint32_t)sc.chen);
+                        krnP4PutStr("\n");
+
+                        krnTimerWait(P4_TICK_HZ);
+                    }
+                }
 
                 krnP4ScanoutQuiesce();
                 krnP4DsiPatternOff();
