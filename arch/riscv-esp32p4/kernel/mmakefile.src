@@ -301,6 +301,22 @@ ifdef P4_SCANOUT_GRID
 P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_GRID
 endif
 
+# P4_SCANOUT_LINES=1 draws single lines at rows 100, 500 and 900 and nothing
+# else, so the echo that accompanies every line can be counted.  A grid cannot
+# do that: at a pitch of 100 one line's third echo lands on the next line's
+# second.
+ifdef P4_SCANOUT_LINES
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_LINES
+endif
+
+# P4_SCANOUT_HALVES=1 puts a bar in the left half of even framebuffer rows and
+# the right half of odd ones.  If the panel joins two sent rows into one, each
+# pair reassembles into a continuous line; if not, the bars stay short and
+# alternate sides.
+ifdef P4_SCANOUT_HALVES
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_HALVES
+endif
+
 # P4_DSI_FRAME_ACK=1 sets VID_MODE_CFG's frame_bta_ack_en, so the host requests
 # a bus turnaround after each frame and waits for the panel.  The reference
 # enables this; without it the host and the panel keep their own frame
