@@ -1073,14 +1073,15 @@
 #define P4_PANEL_VBP            12
 #endif
 /*
- * Overridable, because the ghost lines measure at 34 panel lines and
- * vsync 4 plus this 30 is exactly 34.
+ * Overridable so the blanking can be varied as a test.
  *
- * Every grid line arrives with a second, fainter copy 34 lines below it,
- * measured off the panel by locating the peaks in a photograph rather than by
- * counting them by eye.  If that offset is the vertical blanking at the end of
- * the frame, changing this value moves it; if it does not move, the match is a
- * coincidence and the offset means something else.
+ * The ghost lines measure at 34 panel lines and vsync 4 plus this 30 is 34,
+ * which looked like a match.  It is not established: tripling this value did
+ * not move the read rate, and the reason turned out to be that the rate
+ * measurement was taken over 5 ms - shorter than a frame - so it measured the
+ * active rate and could not see blanking at all.  Measured over 100 ms the
+ * bridge draws 213 MB/s against the 210 the timing calls for, so it does pause
+ * for vertical blanking and that whole line of reasoning was an artefact.
  */
 #ifndef P4_PANEL_VFP
 #define P4_PANEL_VFP            30
