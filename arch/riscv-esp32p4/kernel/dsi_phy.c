@@ -866,7 +866,9 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
 #if P4_PANEL_BPP == 24
     dsi_wr(P4_DSI_DPI_COLOR_CODING, P4_DSI_COLOR_24BIT);
 #else
-    dsi_wr(P4_DSI_DPI_COLOR_CODING, P4_DSI_COLOR_16BIT_C1);
+    /* P4_DSI_565_CFG selects which of the three 16-bit codings; 1, 2 or 3 */
+    dsi_wr(P4_DSI_DPI_COLOR_CODING,
+           (unsigned long)(P4_DSI_565_CFG - 1));
 #endif
     dsi_wr(P4_DSI_DPI_CFG_POL, 0);
 

@@ -703,3 +703,42 @@ void krnP4ScanoutQuiesce(void)
     p4_w32(P4_CLKRST_HP_RST_EN0,
            p4_r32(P4_CLKRST_HP_RST_EN0) & ~P4_RST_EN_GDMA);
 }
+
+/*
+ * Three bands, each with 0xFF in a different byte of the pixel.
+ *
+ * A flat field written with 0xFF in byte 0 came back yellow, and yellow needs
+ * two channels at full - so the panel is not reading the bytes the way this
+ * code lays them down.  Which byte reaches which channel cannot be inferred
+ * from one colour; it can be read off three.
+ *
+ * Top third: byte 0 only.  Middle: byte 1 only.  Bottom: byte 2 only.  The
+ * three colours that appear, in order, are the channel order in memory.  If a
+ * band shows two channels rather than one, the pixel stride itself is wrong and
+ * the bands will also be striped, which distinguishes a channel-order question
+ * from a stride question in the same look.
+ *
+ * Written byte-wise on purpose rather than through px(), because px() is the
+ * thing under test.
+ */
+void krnP4ScanoutBands(void)
+{
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long y, x;
+
+    for (y = 0; y < P4_TX_V_RES; y++)
+    {
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES
+                                          * P4_FB_BYTES_PER_PIXEL;
+        unsigned int which = (unsigned int)(y * 3 / P4_TX_V_RES);   /* 0,1,2 */
+
+        for (x = 0; x < P4_PANEL_H_RES; x++)
+        {
+            volatile unsigned char *at = row + x * P4_FB_BYTES_PER_PIXEL;
+            unsigned int b;
+
+            for (b = 0; b < P4_FB_BYTES_PER_PIXEL; b++)
+                at[b] = (b == which) ? 0xFF : 0x00;
+        }
+    }
+}
