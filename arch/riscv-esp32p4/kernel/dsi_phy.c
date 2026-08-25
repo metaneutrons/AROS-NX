@@ -868,9 +868,29 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * host to stop.
      */
 #ifdef P4_DSI_LP_VERT_ONLY
-#define P4_DSI_LP_SET   P4_DSI_VID_LP_VERT
+#define P4_DSI_LP_BITS  P4_DSI_VID_LP_VERT
 #else
-#define P4_DSI_LP_SET   P4_DSI_VID_LP_ALL
+#define P4_DSI_LP_BITS  P4_DSI_VID_LP_ALL
+#endif
+/*
+ * Frame acknowledge, which the reference enables and this port does not.
+ *
+ * It makes the host request a bus turnaround after every frame and wait for
+ * the panel to answer, which couples the two: without it the host and the
+ * panel each run on their own clock and nothing keeps their frame boundaries
+ * together.  The panel showing the framebuffer more than once while the DMA
+ * reads it exactly once per panel frame is what an uncoupled pair looks like.
+ *
+ * The two earlier attempts at this bit are not evidence.  The first wrote bit
+ * 11, which is LP_VACT_EN, so it enabled a low-power transition while being
+ * recorded as a frame acknowledge.  The second ran with ACK_RQST_EN still set,
+ * so the link was already turned around before the frame acknowledge could be
+ * judged.  This is the first test of it on a link that is otherwise correct.
+ */
+#ifdef P4_DSI_FRAME_ACK
+#define P4_DSI_LP_SET   (P4_DSI_LP_BITS | P4_DSI_VID_FRAME_ACK_EN)
+#else
+#define P4_DSI_LP_SET   P4_DSI_LP_BITS
 #endif
 #ifdef P4_DSI_NONBURST
     dsi_wr(P4_DSI_VID_MODE_CFG,
