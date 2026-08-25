@@ -555,3 +555,87 @@ void krnP4ScanoutGrid(void)
         }
     }
 }
+
+/*
+ * Three single lines, and nothing else.
+ *
+ * Every grid line arrives with a second, fainter copy 34 panel lines away, and
+ * it is on the panel rather than in the camera exposure.  A grid cannot say
+ * whether that is one echo or a train of them, because at a pitch of 100 the
+ * third echo of one line lands where the next line's second echo does.
+ *
+ * So: one line at row 100, one at 500, one at 900, four rows tall, white.
+ * Three lines on the panel means one echo each; more than three means a train,
+ * and the count gives its decay.  Even spacing between the echoes says the
+ * offset is fixed; growing spacing says it accumulates.  All three at the same
+ * offset says it is a property of the transfer, not of position in the frame.
+ */
+void krnP4ScanoutThreeLines(void)
+{
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long y, x;
+
+    for (y = 0; y < P4_PANEL_V_RES; y++)
+    {
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES
+                                          * P4_FB_BYTES_PER_PIXEL;
+        int on = (y >= 100 && y < 104)
+              || (y >= 500 && y < 504)
+              || (y >= 900 && y < 904);
+
+        for (x = 0; x < P4_PANEL_H_RES; x++)
+            px(row + x * P4_FB_BYTES_PER_PIXEL, on ? 0xFFFFFFUL : 0UL);
+    }
+}
+
+/*
+ * A pattern that tests one hypothesis and nothing else.
+ *
+ * Measured: framebuffer row y arrives on panel row y/2, and the whole frame
+ * arrives a second time 640 panel rows lower.  Two sent rows therefore make one
+ * panel row, which is what a panel expecting 1600 pixels per line and being
+ * given 800 would do - the first sent row fills the left half, the next fills
+ * the right.  Full-width white rows cannot distinguish that from any other
+ * halving, because both halves look the same.
+ *
+ * So: even framebuffer rows get a bar in their left half only, odd rows get one
+ * in their right half only, at three widely separated places.  If two sent rows
+ * are being joined, each pair reassembles into one continuous panel row and the
+ * panel shows three unbroken lines.  If they are not, the halves stay separate
+ * and the panel shows short bars alternating left and right.
+ *
+ * The three groups are at different rows so a position-dependent effect can be
+ * told from a uniform one, and the left and right bars differ in length so the
+ * two halves cannot be confused with each other.
+ */
+void krnP4ScanoutHalves(void)
+{
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long y, x;
+
+    for (y = 0; y < P4_PANEL_V_RES; y++)
+    {
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES
+                                          * P4_FB_BYTES_PER_PIXEL;
+        int band = (y >= 100 && y < 108)
+                || (y >= 500 && y < 508)
+                || (y >= 900 && y < 908);
+        int right = (y & 1);
+
+        for (x = 0; x < P4_PANEL_H_RES; x++)
+        {
+            unsigned long v = 0;
+
+            if (band)
+            {
+                /* left half gets x 0..299, right half x 500..799: a gap in the
+                   middle of each so a join is visible as a gap, not a guess */
+                if (!right && x < 300)
+                    v = 0xFFFFFFUL;
+                else if (right && x >= 500)
+                    v = 0xFFFFFFUL;
+            }
+            px(row + x * P4_FB_BYTES_PER_PIXEL, v);
+        }
+    }
+}

@@ -4977,7 +4977,11 @@ static void krnP4PanelProbe(void)
                    or a wrong channel order changes which colour appears and
                    is therefore visible rather than silent; a wrong stride or
                    pixel format cannot produce a flat field at all. */
-#if defined(P4_SCANOUT_GRID)
+#if defined(P4_SCANOUT_HALVES)
+                krnP4ScanoutHalves();
+#elif defined(P4_SCANOUT_LINES)
+                krnP4ScanoutThreeLines();
+#elif defined(P4_SCANOUT_GRID)
                 krnP4ScanoutGrid();
 #elif defined(P4_SCANOUT_CROSS)
                 krnP4ScanoutCross();
