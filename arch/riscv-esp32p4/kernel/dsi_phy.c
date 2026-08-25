@@ -790,12 +790,12 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * P4_BRG_VDIV is a test of whether the bridge honours its active-line
      * count at all.
      *
-     * The read rate measures 218 MB/s, which is 80 MHz times 800/880 times
-     * three bytes - the active pixel rate with horizontal blanking and no
-     * vertical blanking - and it does not change when the vertical front porch
-     * is tripled.  Either the bridge emits pixels through the vertical
-     * blanking, in which case halving this count halves the rate, or the rate
-     * is set by something else entirely and it will not move.
+     * Halving it stops the transfer dead - 0 bytes moved - rather than halving
+     * the rate, so the bridge does read this count and will not run with an
+     * active-line count that disagrees with raw_num_total.  That is what the
+     * test established.  The suspicion that prompted it, that the bridge emits
+     * pixels through vertical blanking, came from a 5 ms rate window inside a
+     * 14.6 ms frame and did not survive a 100 ms one.
      */
     brg_wr(P4_DSI_BRG_DPI_V_CFG0,
 #ifdef P4_BRG_VDIV
