@@ -779,6 +779,14 @@
 #define P4_GDMA_CPU_CLK_EN      (1UL << 13)  /* in SOC_CLK_CTRL0 */
 #define P4_GDMA_SYS_CLK_EN      (1UL << 5)   /* in SOC_CLK_CTRL1 */
 #define P4_RST_EN_GDMA          (1UL << 21)  /* in HP_RST_EN0 */
+/*
+ * The MSPI block's own reset is P4_RST_EN_DUAL_MSPI_AXI/_APB in psram.h, and
+ * the bring-up already pulses both in the reference's order.  ESP-IDF has no
+ * chip-level reset for this part - no 0x66/0x99, nothing - because after a
+ * reset its bootloader runs the bring-up before any DMA exists.  This port
+ * leaves a scanout running across a reset, which is a situation the reference
+ * never has.
+ */
 
 #define P4_DMAC_BASE            0x50081000UL
 #define P4_DMAC_CFG             (P4_DMAC_BASE + 0x010)

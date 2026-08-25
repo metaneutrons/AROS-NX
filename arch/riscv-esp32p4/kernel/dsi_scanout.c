@@ -682,8 +682,17 @@ void krnP4ScanoutQuiesce(void)
     p4_w32(P4_CLKRST_HP_RST_EN0,
            p4_r32(P4_CLKRST_HP_RST_EN0) & ~P4_RST_EN_GDMA);
 
-    /* The bridge asks for the data, so stop it asking.  Its clock has the same
-       problem as the DMA's, so enable it before writing. */
+    /*
+     * The bridge asks for the data, so stop it asking.
+     *
+     * Its own clock-enable register is inside the bridge, so reaching it needs
+     * the DSI unit's system clock first - and touching a block whose system
+     * clock is off hangs the bus rather than reading zero.  This function hung
+     * the boot at exactly the point it exists to protect until that was added,
+     * which is a fault introduced by the fix for a fault.
+     */
+    p4_w32(P4_CLKRST_SOC_CLK_CTRL1,
+           p4_r32(P4_CLKRST_SOC_CLK_CTRL1) | P4_DSI_SYS_CLK_EN);
     brg_wr(P4_DSI_BRG_CLK_EN, P4_DSI_BRG_CLK_EN_BIT);
     brg_wr(P4_DSI_BRG_DPI_MISC_CFG,
            brg_rd(P4_DSI_BRG_DPI_MISC_CFG) & ~P4_DSI_BRG_DPI_EN);
