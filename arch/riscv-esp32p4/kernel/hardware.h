@@ -889,7 +889,7 @@
 
 /* The frame this port scans out: the panel's native size in RGB565. */
 #define P4_FB_BYTES_PER_PIXEL   (P4_PANEL_BPP / 8)
-#define P4_FB_BYTES             ((unsigned long)P4_PANEL_H_RES * P4_PANEL_V_RES \
+#define P4_FB_BYTES             ((unsigned long)P4_PANEL_H_RES * P4_TX_V_RES \
                                  * P4_FB_BYTES_PER_PIXEL)
 #define P4_FB_WORDS64           (P4_FB_BYTES / 8)
 
@@ -1058,6 +1058,28 @@
  */
 #define P4_PANEL_H_RES          800
 #define P4_PANEL_V_RES          1280
+/*
+ * How many lines are transmitted for the panel's 1280, which is not
+ * necessarily 1280.
+ *
+ * Measured with three isolated white rows: framebuffer row y arrives on panel
+ * row y/2, and the frame arrives again 640 panel rows lower.  Two sent rows
+ * make one panel row, so filling the panel takes twice as many.  The obvious
+ * reading - that two sent rows are joined side by side, as a panel expecting
+ * 1600 pixels per line would - is ruled out: a pattern with a deliberate gap
+ * between the halves arrives with no gap.
+ *
+ * P4_PANEL_VMUL is therefore a test rather than an explanation.  If the panel
+ * simply consumes two lines per row, transmitting 2560 fills it once and
+ * undistorted; if it does not, the distortion changes shape and says something
+ * else.  Everything on the transmit side derives from P4_TX_V_RES so the two
+ * cannot drift apart: the framebuffer, the bridge's active and total line
+ * counts, the host's VID_VACTIVE_LINES and raw_num_total.
+ */
+#ifndef P4_PANEL_VMUL
+#define P4_PANEL_VMUL           1
+#endif
+#define P4_TX_V_RES             (P4_PANEL_V_RES * P4_PANEL_VMUL)
 #define P4_PANEL_HSYNC          20
 #define P4_PANEL_HBP            20
 #define P4_PANEL_HFP            40
