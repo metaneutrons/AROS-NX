@@ -885,7 +885,15 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
  * 11, which is LP_VACT_EN, so it enabled a low-power transition while being
  * recorded as a frame acknowledge.  The second ran with ACK_RQST_EN still set,
  * so the link was already turned around before the frame acknowledge could be
- * judged.  This is the first test of it on a link that is otherwise correct.
+ * judged - and that is why it was recorded as stopping the host.
+ *
+ * Measured properly, on a link that is otherwise correct: the panel goes
+ * black.  The registers still report a transmitting host, which they would for
+ * the first frame; the panel does not answer the turnaround, so no second
+ * frame follows.  The reference can enable this bit because its reads are part
+ * of a driver that services them, and this port's panel evidently does not
+ * acknowledge frames unasked.  Off by default, and the switch stays so the
+ * measurement can be repeated rather than remembered.
  */
 #ifdef P4_DSI_FRAME_ACK
 #define P4_DSI_LP_SET   (P4_DSI_LP_BITS | P4_DSI_VID_FRAME_ACK_EN)
