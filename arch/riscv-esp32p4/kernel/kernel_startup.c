@@ -6275,6 +6275,17 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 #endif
     }
 
+    /*
+     * Whatever the last boot left running, before the PSRAM is touched.
+     *
+     * B5 leaves the scanout running on purpose and a CPU reset does not reset
+     * the GDMA, so the channel is still reading the framebuffer over AXI while
+     * the bring-up below reconfigures the MSPI controller it reads through.
+     * Measured: three resets in a row hung at exactly this point, and only a
+     * power cycle recovered the board.
+     */
+    krnP4ScanoutQuiesce();
+
     {
         struct P4PSRAMInfo psram;
         int up;
