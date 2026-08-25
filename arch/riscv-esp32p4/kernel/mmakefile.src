@@ -319,6 +319,14 @@ ifdef P4_PANEL_565
 P4_DEBUG_CPPFLAGS += -DP4_PANEL_565
 endif
 
+# P4_VFP overrides the vertical front porch.  A scale test: the ghost line that
+# accompanies every grid line sits 34 panel lines below it, and vsync 4 plus the
+# default front porch of 30 is 34.  If the offset follows this value it is the
+# end-of-frame blanking; if it does not, the match is coincidence.
+ifdef P4_VFP
+P4_DEBUG_CPPFLAGS += -DP4_PANEL_VFP=$(P4_VFP)
+endif
+
 # P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
 # pattern test.  The bridge then asks for pixels it has no DMA to fetch and
 # must underrun; that underrun is the evidence that the pixel path runs through
