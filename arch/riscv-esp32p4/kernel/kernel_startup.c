@@ -5506,7 +5506,38 @@ static void krnP4PanelProbe(void)
                  * reported "backlight never on".  B4 carries the same return
                  * for the same reason.
                  */
-                krnP4PutStr("[b5]     left running; reset to end it\n");
+                /*
+                 * Left running, but not forever.
+                 *
+                 * A scanout that outlives the boot that started it is what
+                 * made this board unbootable twice: the GDMA survives a CPU
+                 * reset and keeps reading PSRAM over AXI while the next boot's
+                 * bring-up reconfigures the controller, and recovering from
+                 * that took flashing the vendor firmware - a power cycle was
+                 * not enough, plausibly because the LP domain holding the PMU
+                 * registers is battery-backed here.
+                 *
+                 * So it runs long enough to look at and photograph, then stops
+                 * itself.  P4_SCANOUT_SECS=0 restores the old behaviour for a
+                 * session where that is wanted, with the consequence stated.
+                 */
+#if P4_SCANOUT_SECS == 0
+                krnP4PutStr("[b5]     left running indefinitely;"
+                            " a reset from here needs the vendor firmware"
+                            " to recover\n");
+#else
+                krnP4PutStr("[b5]     running for ");
+                krnP4PutDec(P4_SCANOUT_SECS);
+                krnP4PutStr(" s, then stopping so a reset is safe\n");
+
+                krnTimerWait((unsigned long)P4_SCANOUT_SECS * P4_TICK_HZ);
+
+                krnP4ScanoutQuiesce();
+                krnP4DsiPatternOff();
+                (void)krnP4PanelSafe();
+                krnP4PutStr("[b5]     scanout stopped, panel safe;"
+                            " reset to run it again\n");
+#endif
                 return;
             }
             else if (init == P4_DSI_OK)
