@@ -643,3 +643,50 @@ void krnP4ScanoutHalves(void)
         }
     }
 }
+
+/*
+ * Stop anything the previous boot left reading memory.
+ *
+ * A CPU reset does not reset the GDMA, exactly as it does not reset the PMU or
+ * the clock dividers - which this port already knew and had recorded about
+ * those two.  B5 leaves the scanout running deliberately, so after a reset the
+ * channel is still walking the framebuffer over AXI while the PSRAM bring-up
+ * reconfigures the MSPI controller underneath it.  That hangs, reproducibly:
+ * three resets in a row stopped at the same point, immediately after the clock
+ * report and before any PSRAM output.
+ *
+ * Only a power cycle recovers it otherwise, which makes this a defect that
+ * bricks a development board until someone unplugs it, not a cosmetic one.
+ *
+ * Called before the PSRAM is touched, and written to be safe when nothing was
+ * running: the module clocks are enabled first so the registers answer at all,
+ * and every write is idempotent.
+ */
+void krnP4ScanoutQuiesce(void)
+{
+    /* The DMA's registers do not answer without its module clocks, and after a
+       cold boot they are off - in which case there is nothing to stop either,
+       but the writes below have to land somewhere harmless. */
+    p4_w32(P4_CLKRST_SOC_CLK_CTRL0,
+           p4_r32(P4_CLKRST_SOC_CLK_CTRL0) | P4_GDMA_CPU_CLK_EN);
+    p4_w32(P4_CLKRST_SOC_CLK_CTRL1,
+           p4_r32(P4_CLKRST_SOC_CLK_CTRL1) | P4_GDMA_SYS_CLK_EN);
+
+    /* Channel off, with the write-enable the register demands */
+    p4_w32(P4_DMAC_CHEN, P4_DMAC_CH1_EN_WE);
+
+    /* And the whole controller through its system reset, which is the only way
+       to be sure of a channel that was mid-burst */
+    p4_w32(P4_CLKRST_HP_RST_EN0,
+           p4_r32(P4_CLKRST_HP_RST_EN0) | P4_RST_EN_GDMA);
+    p4_w32(P4_CLKRST_HP_RST_EN0,
+           p4_r32(P4_CLKRST_HP_RST_EN0) & ~P4_RST_EN_GDMA);
+
+    /* The bridge asks for the data, so stop it asking.  Its clock has the same
+       problem as the DMA's, so enable it before writing. */
+    brg_wr(P4_DSI_BRG_CLK_EN, P4_DSI_BRG_CLK_EN_BIT);
+    brg_wr(P4_DSI_BRG_DPI_MISC_CFG,
+           brg_rd(P4_DSI_BRG_DPI_MISC_CFG) & ~P4_DSI_BRG_DPI_EN);
+    brg_wr(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE);
+    brg_wr(P4_DSI_BRG_EN, 0);
+}
