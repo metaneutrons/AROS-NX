@@ -482,6 +482,22 @@
  * can raise it, because a faint image on an unlit panel and no image at all
  * look the same from across a desk.
  */
+/*
+ * How long B5 leaves the scanout running before it stops it, in seconds.
+ *
+ * Zero means indefinitely, which is what this phase did and what cost a
+ * working board twice.  A CPU reset does not reset the GDMA, so a scanout left
+ * running is still reading PSRAM over AXI when the next boot's bring-up
+ * reconfigures the controller, and the board then needs the vendor firmware
+ * flashed to recover - a power cycle does not do it.
+ *
+ * Long enough to look at the panel and photograph it, short enough that a
+ * reset a minute later is safe.
+ */
+#ifndef P4_SCANOUT_SECS
+#define P4_SCANOUT_SECS         60
+#endif
+
 #ifndef P4_LEDC_BL_PERCENT
 #define P4_LEDC_BL_PERCENT      20
 #endif

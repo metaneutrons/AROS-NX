@@ -343,6 +343,15 @@ ifdef P4_NO_QUIESCE
 P4_DEBUG_CPPFLAGS += -DP4_NO_QUIESCE
 endif
 
+# P4_SCANOUT_SECS=n bounds how long B5 leaves the scanout running; 0 is
+# indefinite.  A scanout that outlives its boot has made this board unbootable
+# twice, because the GDMA survives a CPU reset and keeps reading PSRAM while the
+# next bring-up reconfigures the controller.  Recovering needed the vendor
+# firmware flashed; a power cycle did not do it.
+ifdef P4_SCANOUT_SECS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=$(P4_SCANOUT_SECS)
+endif
+
 # P4_DSI_FRAME_ACK=1 sets VID_MODE_CFG's frame_bta_ack_en, so the host requests
 # a bus turnaround after each frame and waits for the panel.  The reference
 # enables this; without it the host and the panel keep their own frame
