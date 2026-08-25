@@ -799,12 +799,12 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      */
     brg_wr(P4_DSI_BRG_DPI_V_CFG0,
 #ifdef P4_BRG_VDIV
-           ((unsigned long)(P4_PANEL_V_RES / P4_BRG_VDIV)
+           ((unsigned long)(P4_TX_V_RES / P4_BRG_VDIV)
             << P4_DSI_BRG_DISP_SHIFT)
 #else
-           ((unsigned long)P4_PANEL_V_RES << P4_DSI_BRG_DISP_SHIFT)
+           ((unsigned long)P4_TX_V_RES << P4_DSI_BRG_DISP_SHIFT)
 #endif
-           | ((unsigned long)(P4_PANEL_V_RES + P4_PANEL_VSYNC + P4_PANEL_VBP
+           | ((unsigned long)(P4_TX_V_RES + P4_PANEL_VSYNC + P4_PANEL_VBP
                               + P4_PANEL_VFP) << P4_DSI_BRG_TOTAL_SHIFT));
     brg_wr(P4_DSI_BRG_DPI_V_CFG1,
            ((unsigned long)P4_PANEL_VSYNC << P4_DSI_BRG_SYNC_SHIFT)
@@ -977,7 +977,7 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
     dsi_wr(P4_DSI_VID_VSA_LINES, P4_PANEL_VSYNC);
     dsi_wr(P4_DSI_VID_VBP_LINES, P4_PANEL_VBP);
     dsi_wr(P4_DSI_VID_VFP_LINES, P4_PANEL_VFP);
-    dsi_wr(P4_DSI_VID_VACTIVE_LINES, P4_PANEL_V_RES);
+    dsi_wr(P4_DSI_VID_VACTIVE_LINES, P4_TX_V_RES);
 
     dsi_trace();                /* 4: video registers staged, still command mode */
 
