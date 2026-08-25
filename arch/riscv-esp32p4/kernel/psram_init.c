@@ -1124,9 +1124,37 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
              * confirm.  This is the path that recovers a part left configured
              * by other firmware.
              */
+            /*
+             * The sweep is off by default, because it is the one operation in
+             * this file that can fail to return.
+             *
+             * Measured: a hung boot prints 123456789ab789ab789ab and stops.
+             * Marker 'b' is here, markers past it never appear, and the first
+             * two calls into the sweep did return - so the third did not.  Each
+             * ask inside it is an unbounded read through the ROM SPI helpers,
+             * and the comment above says what that means: a read at the wrong
+             * width does not fail, it does not return.
+             *
+             * A bound would be better than a skip and is not available yet: it
+             * needs the MSPI transaction started and polled by this file rather
+             * than by rom_cmd_start, and the register layout for that is not
+             * something this port has verified.  Guessing at it is how several
+             * findings in this work turned out to be worthless.
+             *
+             * So the default is to give up and say so.  A boot that reports an
+             * absent PSRAM is diagnosable and leaves the board usable headless;
+             * a boot that hangs needs the vendor firmware flashed, which has
+             * been the procedure three times.  P4_PSRAM_SWEEP=1 restores the
+             * recovery attempt for a session willing to pay that price.
+             */
+#ifdef P4_PSRAM_SWEEP
             psram_mark('b');
             lat = p4_psram_probe_latency(&vendor, &density);
             p4_psram_select_params(target_hz);
+#else
+            psram_mark('B');
+            lat = -1;
+#endif
 
             if (lat >= 0)
             {
