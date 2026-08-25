@@ -90,6 +90,53 @@ this port's code against ESP-IDF's found nothing, twice, because the fault was
 a register outside the sequence being compared.  Reading the reference's source
 tells you what it writes; reading the reference's *state* tells you what it has.
 
+## One disturbance at a time, and one variable at a time
+
+Four findings were recorded and later withdrawn in a single session, and every
+one of them was a measurement taken while something known to be wrong was still
+in the path, or a measurement whose window could not have shown what it was
+asked about:
+
+  - frame acknowledge was recorded as stopping the host, measured while
+    `ACK_RQST_EN` had the link turned around;
+  - the pixel depth was recorded as 24-bit from an image that appeared in a
+    change that also raised the backlight from 20 per cent to 100;
+  - the DPI clock was recorded as the reason burst mode would not start,
+    without burst having been tried at the other clock;
+  - the bridge was recorded as reading through vertical blanking, from a 5 ms
+    rate window inside a 14.6 ms frame - which measures the active rate by
+    construction and cannot see blanking at all.
+
+Each cost a build, a flash, a run and a round of reasoning built on top of it,
+and each had to be unpicked from the documentation afterwards.  So:
+
+  - **Fix the known fault before measuring past it.**  A run with a defect
+    still in the path measures the defect.
+  - **One variable per run.**  Two changes and one observation yield no
+    attribution, however obvious the answer looks.
+  - **Check the window against the thing being measured.**  A rate window
+    shorter than a frame measures the active rate; a status register read
+    before the event reports the state before the event.
+  - **Prefer an instrument over a photograph.**  DCS `0x0A` read *after* the
+    video handover distinguishes a panel that accepts the stream from one that
+    does not, and needs no camera and no interpretation.  Two rounds of this
+    phase were spent reading camera artefacts as panel behaviour.
+
+## Read the firmware that ships, not the component's test application
+
+The vendor component for this panel carries a test application configuring 24
+bits per pixel at 80 MHz over 1500 Mbit/s lanes, and a header macro giving a
+vertical back porch of 12.  The firmware that actually drives this board -
+`~/Source/Vellum`, `firmware/components-lcd/lcd_jd9365/lcd_jd9365.c` and
+`components-lcd/d1001_board/include/d1001_board.h` - configures RGB565 at 40
+MHz over 1000 Mbit/s with a back porch of 30.  Four values were changed to the
+test application's and all four were wrong.
+
+A component's test application demonstrates the component.  A board's firmware
+is the configuration that hardware is known to run.  When both are available,
+the second is the reference; when they disagree, that disagreement is itself
+worth recording rather than resolving by preference.
+
 ## Safety boundaries
 
 - Keep SD media read-only through the first graphical boot.  Preserve both
