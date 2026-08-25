@@ -1067,29 +1067,44 @@
  * one round; the firmware that actually drives this board says 30, and that is
  * the one with evidence behind it.  See P4_PANEL_BPP for the general point.
  */
+#ifdef P4_PANEL_565
 #define P4_PANEL_VBP            30
+#else
+#define P4_PANEL_VBP            12
+#endif
 #define P4_PANEL_VFP            30
 /* 40 MHz, from the working firmware's D1001_LCD_DPI_CLOCK_MHZ. */
 #ifndef P4_PANEL_DPI_MHZ
+#ifdef P4_PANEL_565
 #define P4_PANEL_DPI_MHZ        40
+#else
+#define P4_PANEL_DPI_MHZ        80
+#endif
 #endif
 /*
- * Sixteen bits per pixel, RGB565.
+ * Two panel profiles, because the evidence for them is split.
  *
- * This was changed to 24 for one round and changed back.  The evidence for 24
- * was the panel's own answer to DCS 0x0C - 0x70, bits 6:4 of seven, which is
- * 24 bits on the RGB interface - together with the vendor component's test
- * application, which configures 24.  Neither establishes what the panel has to
- * be driven with: the firmware that actually runs this board configures
- * LCD_COLOR_FMT_RGB565 and bits_per_pixel 16, at 40 MHz over 1000 Mbit/s
- * lanes, and it works.
+ * P4_PANEL_565 selects what the firmware that drives this board uses:
+ * LCD_COLOR_FMT_RGB565, bits_per_pixel 16, 40 MHz, 1000 Mbit/s, vertical back
+ * porch 30.  That configuration demonstrably works in that firmware.  In this
+ * port it transmits - lanes out of stop state, no payload error - and the
+ * panel stays black.
  *
- * The measurement that appeared to confirm 24 was confounded: the backlight
- * was raised from 20 per cent to 100 in the same change, so a picture that
- * appeared could as well have been one that was always there and too dim to
- * see.  A component's test application is not the configuration a board ships.
+ * The default is the 24-bit profile, which is the only configuration that has
+ * ever put an image on this panel from this port: 80 MHz, 1500 Mbit/s, and the
+ * vertical back porch of 12 that the component's header macro specifies.  The
+ * image is doubled down the panel's height and banded, so the profile is not
+ * right either; it is the one with something to work on.
+ *
+ * Neither is adopted as correct.  Recording both, with what each produces, is
+ * the honest state: an unexplained difference between this port and a working
+ * firmware on identical hardware is a finding, not a detail to smooth over.
  */
+#ifdef P4_PANEL_565
 #define P4_PANEL_BPP            16
+#else
+#define P4_PANEL_BPP            24
+#endif
 
 /*
  * The DPI clock: PLL_F240M divided by six is exactly 40 MHz, and the source
@@ -1149,7 +1164,11 @@
 
 /* This board: two lanes.  The rate is the one thing to change. */
 #define P4_DSI_LANES            2
+#ifdef P4_PANEL_565
 #define P4_DSI_LANE_MBPS        1000
+#else
+#define P4_DSI_LANE_MBPS        1500
+#endif
 
 #if P4_DSI_LANE_MBPS == 1500
 /*

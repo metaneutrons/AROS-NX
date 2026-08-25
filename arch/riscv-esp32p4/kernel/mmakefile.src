@@ -309,6 +309,16 @@ ifdef P4_DSI_FRAME_ACK
 P4_DEBUG_CPPFLAGS += -DP4_DSI_FRAME_ACK
 endif
 
+# P4_PANEL_565=1 selects the panel profile the working vendor firmware uses:
+# RGB565 at 40 MHz over 1000 Mbit/s lanes with a vertical back porch of 30.
+# In that firmware it works; in this port it transmits and the panel stays
+# black.  The default profile is 24-bit at 80 MHz over 1500 Mbit/s, which is
+# the only one that has put an image on this panel from this port - doubled and
+# banded, but present.  Neither is established as correct.
+ifdef P4_PANEL_565
+P4_DEBUG_CPPFLAGS += -DP4_PANEL_565
+endif
+
 # P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
 # pattern test.  The bridge then asks for pixels it has no DMA to fetch and
 # must underrun; that underrun is the evidence that the pixel path runs through

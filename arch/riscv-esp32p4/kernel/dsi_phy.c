@@ -643,6 +643,29 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
             krnTimerWait((c->delay_ms * P4_TICK_HZ + 999) / 1000);
     }
 
+    /*
+     * Display on, with no parameter, after the table.
+     *
+     * The vendor table's last commands include {0x29, {0x00}, 1, 20} - display
+     * on with a parameter byte - and this port sent only that.  The driver
+     * sends 0x29 a second time from its disp_on_off entry point, as
+     * tx_param(io, LCD_CMD_DISPON, NULL, 0): no parameter, a DCS short write
+     * with zero arguments, and the firmware that drives this board calls it
+     * explicitly after panel_init.  0x29 has no one-parameter form, so the
+     * table's version is a packet the controller is free to discard, and this
+     * one is the one that takes effect.
+     *
+     * Measured before this was added: DCS 0x0A reported 0x18 in every
+     * configuration tried - awake, normal mode, display off - while the host
+     * demonstrably transmitted.  A panel with its output disabled is black no
+     * matter what arrives.
+     */
+    r = krnP4DsiDcsWrite(0x29, 0, 0);
+    if (r != P4_DSI_OK)
+        return r;
+
+    krnTimerWait((20 * P4_TICK_HZ + 999) / 1000);
+
     dsi_trace();                /* 3: after the whole jd9365 sequence */
 
     return P4_DSI_OK;
