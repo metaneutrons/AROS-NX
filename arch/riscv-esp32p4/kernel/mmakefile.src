@@ -301,6 +301,14 @@ ifdef P4_SCANOUT_GRID
 P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_GRID
 endif
 
+# P4_DSI_FRAME_ACK=1 sets VID_MODE_CFG's frame_bta_ack_en, so the host requests
+# a bus turnaround after each frame and waits for the panel.  The reference
+# enables this; without it the host and the panel keep their own frame
+# boundaries and nothing holds the two together.
+ifdef P4_DSI_FRAME_ACK
+P4_DEBUG_CPPFLAGS += -DP4_DSI_FRAME_ACK
+endif
+
 # P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
 # pattern test.  The bridge then asks for pixels it has no DMA to fetch and
 # must underrun; that underrun is the evidence that the pixel path runs through
