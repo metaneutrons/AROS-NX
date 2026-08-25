@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` RGB565 PSRAM scanout | `hardware partial` | Pixels move continuously from PSRAM through the DMA into the DSI bridge; the host does not transmit them.  The path is built and running: bridge configured as the reference configures it, a DesignWare AXI DMA channel, one link-list item carrying the whole frame, and a cache writeback without which the engine reads a descriptor of zeroes.  Seven defects found by measurement so far, four of them on 2026-08-24: B5 fell through to the safe path and darkened its own backlight, `ACK_RQST_EN` left the link turned around, the bridge read RGB888 out of an RGB565 frame, and the host entered video mode before the DMA was armed.  The link is now clean and the bridge no longer underruns; the DMA does not start and there is no image |
+| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **The panel displays the framebuffer.**  The grid measures correct in both axes - 13 row lines at 87 px spacing where 86 is expected, and 8 column lines, peaks located in a photograph rather than counted by eye - so the geometry is right.  Every line carries a displaced second copy 34 panel lines away, and whether that is on the panel or in the camera exposure is the open question.  Eleven defects found by measurement, and four earlier findings withdrawn as artefacts of measuring with a known disturbance still in the path.  Runs on a 24-bit profile at 80 MHz over 1500 Mbit/s, which is *not* what the vendor firmware uses; RGB565 at 40 MHz transmits without error and the panel refuses to enable its output, which is unexplained |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -5693,6 +5693,108 @@ them, so their reset values are the working ones.
   type against the packet size the host is asked to buffer, and whether the
   host's own DPI input sees the bridge's vertical and horizontal sync at all -
   there is no reading yet that says a frame ever starts on the DPI interface.
+
+### 2026-08-25 - B5 puts an image on the panel, and four of this session's findings were withdrawn
+
+- State change: the panel displays the framebuffer.  The grid measures correct
+  in both axes; a displaced second copy of every line remains, and its cause is
+  open.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+- Test defines: `P4_HEADLESS_BOOT=1 P4_PSRAM_MHZ=200 P4_CPU_MHZ=360
+  P4_PANEL_PROBE=1 P4_DSI_PROBE=1 P4_SCANOUT_TEST=1 P4_DSI_NONBURST=1
+  P4_SCANOUT_GRID=1 P4_BL_PERCENT=100 P4_LDSCRIPT=ldscript-xip.lds`.
+- New switches: `P4_PANEL_565`, `P4_DSI_NONBURST`, `P4_DSI_CHUNKS`,
+  `P4_DSI_FRAME_ACK`, `P4_DSI_PANEL_QUERY`, `P4_SCANOUT_TESTCARD`,
+  `P4_SCANOUT_CROSS`, `P4_SCANOUT_GRID`, `P4_BRG_RAW_DIV`, `P4_BRG_VDIV`,
+  `P4_DPI_MHZ`, `P4_VFP`, `P4_BL_PERCENT`.
+
+**What was fixed, in order of how much it mattered.**
+
+  - *The backlight defaulted to 20 per cent.*  A faint image on a dim panel and
+    no image at all look identical from across a desk, and this masked
+    everything else for two rounds.  Now overridable.
+  - *B5 fell through to `krnP4PanelSafe()`.*  It printed "left running" and
+    then darkened the backlight and re-asserted panel reset, so the panel lit
+    for well under a second.  B4 carries a `return` for exactly this reason.
+  - *`ACK_RQST_EN` turned the link around.*  A bus turnaround per command,
+    unanswered, leaving `phy_direction` set through the handover to video.
+    Measured at eight points: with the bit set the link is turned around after
+    the command sequence in some runs and not others; clear, in none.
+  - *The bridge pixel format was RGB888 on an RGB565 frame.*  `PIXEL_TYPE` read
+    zero and `raw_type` zero is RGB888.  The register had been printed as a
+    diagnostic since B5's first run without anyone asking what zero meant.
+  - *The host entered video mode before the DMA was armed.*  The reference arms
+    the channel first.  Split out as `krnP4DsiVideoOn`.
+  - *Two entries were missing from the initialisation table.*  Found by
+    extracting both tables mechanically and diffing them: `0xE0 0x00`, which
+    the vendor sends twice and this port had deduplicated on the reasoning that
+    selecting the same page twice cannot matter, and `0x4A 0x35`, dropped
+    entirely.  176 entries now, identical to the vendor's.
+  - *Display-on was only sent from the table.*  The vendor driver sends `0x29`
+    a second time as `tx_param(io, LCD_CMD_DISPON, NULL, 0)` - no parameter -
+    and the firmware that drives this board calls it explicitly after panel
+    init.  `0x29` has no one-parameter form, so the table's version is a packet
+    the controller may discard.
+
+**The measurement that made the pixel format decidable.**  DCS `0x0A` asked
+*after* the video handover instead of before it:
+
+```text
+24-bit, 80 MHz, 1500 Mbit/s    0x1C   display on, normal mode, awake
+RGB565, 40 MHz, 1000 Mbit/s    0x18   display off, normal mode, awake
+```
+
+Every earlier reading was taken before the handover, where a panel that has
+seen no pixels reports its output disabled for the obvious reason.  That made
+the answer look constant and uninformative for several rounds.  It is the only
+instrument in this phase that reports on the panel without a photograph, and it
+is worth reaching for first next time.
+
+**Four findings withdrawn.**  Each was a measurement taken with a known
+disturbance still in the path.
+
+  - *"The panel is 24-bit because it says so and the vendor test app agrees."*
+    The firmware that runs this board configures RGB565 at 40 MHz over 1000
+    Mbit/s.  A component's test application is not a board configuration.  The
+    24-bit profile is nonetheless the only one that produces an image here, so
+    both are kept as switchable profiles and neither is called correct.
+  - *"The 40 MHz DPI clock is why burst mode will not start."*  Burst does not
+    start at the vendor's clocks either.
+  - *"Frame acknowledge stops the host transmitting."*  Measured while
+    `ACK_RQST_EN` had the link turned around.  Measured properly, the host
+    transmits and the panel goes black, because it does not answer the
+    turnaround.
+  - *"The bridge reads through vertical blanking."*  From a 5 ms rate window
+    inside a 14.6 ms frame, which measures the active rate by construction.
+    Over 100 ms the bridge draws 213 MB/s against the 210 the timing calls for.
+
+**What the panel measures.**  Peaks located per row and per column in a
+photograph rather than counted by eye: 13 row lines at 87 px spacing where 86
+is expected, and 8 column lines.  The geometry is correct and the earlier
+reading of "twice the image" does not hold for this configuration.  Every line
+carries a second, fainter copy 34 panel lines away.
+
+**Also established.**  Burst mode is unusable on this path: with the line split
+into four packets the bridge draws 58.2 frames per second against the 33 the
+timing calls for and the host does not transmit at all; non-burst draws 35.5
+and transmits.  Halving only the bridge's active-line count stops the transfer
+entirely rather than halving its rate, so the bridge honours that count and
+refuses to run when it disagrees with `raw_num_total`.
+
+- Acceptance points passed: pixels cross from PSRAM to the panel and are
+  displayed.
+- Acceptance points failed: a clean single frame, and the 100 MB/s bandwidth
+  gate reassigned here from B1.
+- Remaining risk: the 24-bit profile is not the vendor's, and the reason RGB565
+  transmits without error while the panel refuses to enable its output is not
+  understood.  Building on the 24-bit profile means building on a configuration
+  whose only justification is that it works here.
+- Next safe step: look at the panel directly rather than at a photograph, and
+  establish whether the second copy of each line is on the panel or in the
+  exposure.  A 1.4 per cent rate difference across an exposure spanning several
+  frames is enough to place a displaced copy in an image, and that is the
+  cheaper explanation.  If it is on the panel, the next measurement is
+  frame-phase coupling between the DMA and the bridge.
 
 ## Evidence-entry template
 
