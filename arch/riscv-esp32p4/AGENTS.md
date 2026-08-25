@@ -137,6 +137,58 @@ is the configuration that hardware is known to run.  When both are available,
 the second is the reference; when they disagree, that disagreement is itself
 worth recording rather than resolving by preference.
 
+## Check that the build succeeded, not that a pattern is absent
+
+The build invocations in this work filtered with `grep -icE " error"`.  The
+SRAM-residency check reports
+
+    error: .sramtext refers to the XIP flash window
+
+which has no leading space, so a failed link reported zero errors.  The image
+was not regenerated, a stale core was flashed, and its behaviour was recorded as
+a measurement of the code that had just been changed.  That happened several
+times in one session and produced a finding - "no marker appears, so the hang
+precedes them" - that meant nothing at all.
+
+Filter on `error:`, and confirm the artifact: the line
+`Creating .../aros-esp32p4.bin` has to appear, and its size and hash have to
+differ from the previous build when the change was not cosmetic.  A build whose
+output binary is byte-identical after a real change did not rebuild it.
+
+## Instrumenting SRAM-resident code
+
+The PSRAM bring-up runs from `.sramtext` with interrupts off, and a hang inside
+it produces no output at all.  Two obvious ways to mark its progress do not
+work, and both cost a build here:
+
+  - calling `krnP4PutStr`, which lives in flash on an XIP build;
+  - passing it a string, because the literal lands in flash `.rodata`.
+
+`check-sramtext.sh` rejects both.  What works is a single character: it is an
+immediate in the instruction stream and needs no storage.  `psram_mark` in
+`psram_init.c` duplicates `krnP4PutC`'s mechanism - poll the endpoint's
+data-free bit, write the byte, mark the transfer done - which takes no
+interrupts and touches two registers.  It is deliberately a copy: making the
+console SRAM-resident would move it into a 40 KB budget for a diagnostic.
+
+Validate an instrument on hardware that works before trusting it on hardware
+that does not.  `P4_PSRAM_TRACE=1` prints `123456` on a good boot; a truncated
+run names the stage that hung.
+
+## Do not leave a scanout running across a reset
+
+The GDMA survives a CPU reset, exactly as the PMU and the clock dividers do.  A
+scanout left running is still reading PSRAM over AXI while the next boot's
+bring-up reconfigures the controller, and that has made this board unbootable
+twice.  Recovery took flashing the vendor firmware to `ota_0`; a power cycle did
+not substitute for it, plausibly because the LP domain holding the PMU registers
+is battery-backed on this board.
+
+`P4_SCANOUT_SECS` bounds it, and `krnP4ScanoutQuiesce` stops whatever the last
+boot left running before the PSRAM is touched.  Neither alone was enough when
+tested; the combination has survived three resets taken during a running
+scanout, which is encouraging and not proof.
+
 ## Safety boundaries
 
 - Keep SD media read-only through the first graphical boot.  Preserve both
