@@ -1090,6 +1090,7 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
         {
             int lat;
 
+            psram_mark('7');
             krnPSRAMConfigure();
 
             /*
@@ -1102,10 +1103,13 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
              * dummy cycles and is therefore the one transaction that is safe
              * to send into an unknown state.
              */
+            psram_mark('8');
             krnPSRAMModeInit();
 
+            psram_mark('9');
             info->connected = krnPSRAMRoundTrip(&back) ? 1 : 0;
 
+            psram_mark('a');
             if (krnPSRAMIdentify(&vendor, &density))
             {
                 if (info->probe_latency < 0)
@@ -1120,6 +1124,7 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
              * confirm.  This is the path that recovers a part left configured
              * by other firmware.
              */
+            psram_mark('b');
             lat = p4_psram_probe_latency(&vendor, &density);
             p4_psram_select_params(target_hz);
 
@@ -1128,13 +1133,17 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
                 if (info->probe_latency < 0)
                     info->probe_latency = (signed char)lat;
 
+                psram_mark('c');
                 krnPSRAMModeInit();
+                psram_mark('d');
                 info->connected = krnPSRAMRoundTrip(&back) ? 1 : 0;
 
+                psram_mark('e');
                 if (krnPSRAMIdentify(&vendor, &density))
                     break;
             }
         }
+        psram_mark('f');
         info->identify_attempts = (unsigned char)(attempt + 1);
 
         if (attempt == 3)
@@ -1146,9 +1155,11 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
         }
     }
 
+    psram_mark('g');
     info->vendor = vendor;
     info->density = density;
     info->round_trip = krnPSRAMRoundTrip(&back) ? 1 : 0;
+    psram_mark('h');
 
     if (fast && info->round_trip)
     {
