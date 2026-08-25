@@ -82,8 +82,23 @@ static inline void px(volatile unsigned char *at, unsigned long rgb)
                    | (unsigned int)(((rgb >> 10) & 0x3F) << 5)
                    | (unsigned int)((rgb >> 3) & 0x1F);
 
-    at[0] = (unsigned char)(v & 0xFF);
-    at[1] = (unsigned char)(v >> 8);
+    /*
+     * High byte first.  Measured, not assumed.
+     *
+     * Three bands with 0xFF in one byte each came back with byte 0 yellow and
+     * byte 1 blue.  In RGB565 the high byte carries red and the top three green
+     * bits - yellow - and the low byte the bottom three green bits and blue.
+     * So the panel reads the byte this code writes first as the high one, and
+     * writing the low byte first put every pixel's halves the wrong way round.
+     *
+     * That is also the whole of the "byte offset that walks from row to row":
+     * there was no walk.  Every pixel was swapped identically, and on the thin
+     * lines of a grid a uniform swap reads as lines in changing colours,
+     * because what changes is which line's colour survives the swap
+     * recognisably.
+     */
+    at[0] = (unsigned char)(v >> 8);
+    at[1] = (unsigned char)(v & 0xFF);
 #endif
 }
 

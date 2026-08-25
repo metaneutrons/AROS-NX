@@ -397,14 +397,13 @@ ifdef P4_DSI_FRAME_ACK
 P4_DEBUG_CPPFLAGS += -DP4_DSI_FRAME_ACK
 endif
 
-# P4_PANEL_565=1 selects the panel profile the working vendor firmware uses:
-# RGB565 at 40 MHz over 1000 Mbit/s lanes with a vertical back porch of 30.
-# In that firmware it works; in this port it transmits and the panel stays
-# black.  The default profile is 24-bit at 80 MHz over 1500 Mbit/s, which is
-# the only one that has put an image on this panel from this port - doubled and
-# banded, but present.  Neither is established as correct.
-ifdef P4_PANEL_565
-P4_DEBUG_CPPFLAGS += -DP4_PANEL_565
+# P4_PANEL_24BIT=1 selects the 24-bit profile, which was the default for one
+# session and is not any more: the panel's acceptance turns out to depend on the
+# lane rate, not the colour depth.  The default is RGB565 at 40 MHz over 1500
+# Mbit/s with the line count doubled, which is the only combination measured to
+# give both an accepting panel and a host with no payload error.
+ifdef P4_PANEL_24BIT
+P4_DEBUG_CPPFLAGS += -DP4_PANEL_24BIT
 endif
 
 # P4_VFP overrides the vertical front porch.  A scale test: the ghost line that
