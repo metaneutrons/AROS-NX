@@ -4988,6 +4988,18 @@ static void krnP4PanelProbe(void)
 #elif defined(P4_SCANOUT_TESTCARD)
                 krnP4ScanoutTestCard();
 #else
+                /*
+                 * A flat field in one channel, which is the instrument for the
+                 * byte offset and not just a first-light test.
+                 *
+                 * At three bytes per pixel a one-byte displacement rotates the
+                 * channel assignment, so a single-channel field arrives striped
+                 * when the offset walks from row to row: red, green, blue, red
+                 * is one byte per row, and another period is another
+                 * displacement.  A flat field is also the only pattern whose
+                 * stripes cannot be mistaken for its own content, which is
+                 * exactly what made the grid unreadable for four rounds.
+                 */
                 krnP4ScanoutFill(0x0000FF);
 #endif
                 krnP4CacheWriteback();
