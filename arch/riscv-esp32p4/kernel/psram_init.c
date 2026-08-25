@@ -922,20 +922,46 @@ P4_SRAMCODE int krnPSRAMRoundTrip(uint32_t *back)
  * in flash.
  */
 /*
- * Why there are no progress markers in this function.
+ * Progress markers for a function that cannot call the console.
  *
- * A hang in here produces no output at all - the boot stops after the clock
- * report - and that has now happened twice, so markers were tried.  They
- * cannot work in this form: this code is SRAM-resident and krnP4PutStr lives
- * in flash on an XIP build, which check-sramtext.sh correctly refuses.  Worse,
- * the failing build was mistaken for a passing one because the error line does
- * not match a grep for " error", so several runs flashed a stale image and
- * their results were recorded as measurements.
+ * A hang in the bring-up produces no output at all - the boot stops after the
+ * clock report - and that has now happened twice.  Two obvious forms of this
+ * instrument do not work here, and both were tried:
  *
- * Instrumenting this function needs an output path that is SRAM-resident
- * itself.  krnP4PutC already polls the USB-serial registers and takes no
- * interrupts, so it is a candidate to duplicate here rather than call.
+ *   - calling krnP4PutStr, because this code is SRAM-resident and the console
+ *     lives in flash on an XIP build;
+ *   - passing a string, because the literal itself lands in flash .rodata and
+ *     an SRAM-resident function may not reach it.
+ *
+ * check-sramtext.sh rejects both, correctly.  It was also read as a passing
+ * build several times, because the error line does not match a grep for
+ * " error", so stale images were flashed and their behaviour recorded as
+ * measurement.  Filter on "error:".
+ *
+ * What is left is a single character, which needs no storage at all: it is an
+ * immediate in the instruction stream.  The output mechanism is the same one
+ * krnP4PutC uses - poll the endpoint's data-free bit, write the byte, mark the
+ * transfer done - duplicated rather than shared, because making the console
+ * SRAM-resident would move it into a 40 KB budget for the sake of a diagnostic.
+ *
+ * A hang therefore shows as a truncated run of digits, and the last one printed
+ * is the last stage entered.  Silent unless P4_PSRAM_TRACE is defined.
  */
+#ifdef P4_PSRAM_TRACE
+P4_SRAMCODE static void psram_mark(char c)
+{
+    unsigned int spins = 400000;
+
+    while (spins-- &&
+           !(p4_r32(P4_USJ_BASE + P4_USJ_EP1_CONF) & P4_USJ_IN_EP_DATA_FREE))
+        ;
+    p4_w32(P4_USJ_BASE + P4_USJ_EP1, (unsigned long)(unsigned char)c);
+    p4_w32(P4_USJ_BASE + P4_USJ_EP1_CONF, P4_USJ_WR_DONE);
+}
+#else
+#define psram_mark(c)   do { } while (0)
+#endif
+
 P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
                                 unsigned long target_hz)
 {
@@ -961,6 +987,7 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     info->fast_requested = (unsigned char)fast;
 
     /* Before anything here writes, so the print is the handover state */
+    psram_mark('1');
     krnPSRAMEntryRead(&info->entry);
 
     /*
@@ -974,6 +1001,7 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
                                        >> P4_PMU_DCM_VSET_SHIFT);
     info->bias_set   = info->bias_found;
 
+    psram_mark('2');
     info->mpll_reason = (signed char)krnPSRAMMPLLUp();
     info->mpll_up = (info->mpll_reason == P4_MPLL_OK) ? 1 : 0;
     /*
@@ -1005,6 +1033,7 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
      * identity read fails, it fails at a clock where the answer means the
      * chip, and not the sampling.
      */
+    psram_mark('3');
     p4_psram_select_params(target_hz);
     krnPSRAMTuningClear();
 
@@ -1013,9 +1042,11 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
      * divider, delay line.  This file used to set the divider immediately
      * after the module reset and everything else afterwards.
      */
+    psram_mark('4');
     if (!krnPSRAMControllerUp(&info->entry))
         return 0;
 
+    psram_mark('5');
     krnPSRAMPinsUp();
     krnPSRAMAnalogUp();
 
@@ -1023,6 +1054,7 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     if (!info->clock_hz)
         return 0;
 
+    psram_mark('6');
     krnPSRAMDllUp();
 
     /*
