@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **The panel displays the framebuffer.**  The grid measures correct in both axes - 13 row lines at 87 px spacing where 86 is expected, and 8 column lines, peaks located in a photograph rather than counted by eye - so the geometry is right.  Every line carries a displaced second copy 34 panel lines away, and whether that is on the panel or in the camera exposure is the open question.  Eleven defects found by measurement, and four earlier findings withdrawn as artefacts of measuring with a known disturbance still in the path.  Runs on a 24-bit profile at 80 MHz over 1500 Mbit/s, which is *not* what the vendor firmware uses; RGB565 at 40 MHz transmits without error and the panel refuses to enable its output, which is unexplained |
+| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct frame from PSRAM reaches the panel.**  Grid pitch measures 98 panel rows against the 100 drawn.  The panel consumes two transmitted lines per row - framebuffer row y lands on panel row y/2 - found with three isolated rows after four rounds of misreading a grid whose pitch aliased with the defect; `P4_PANEL_VMUL=2` corrects it, with a measurement behind it and no explanation.  Twelve defects fixed and four findings withdrawn as measurement artefacts.  Remaining: a byte offset that walks from row to row, visible as row lines in changing colours and dotted column lines.  Runs on a 24-bit profile the vendor firmware does not use |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -5795,6 +5795,58 @@ refuses to run when it disagrees with `raw_num_total`.
   frames is enough to place a displaced copy in an image, and that is the
   cheaper explanation.  If it is on the panel, the next measurement is
   frame-phase coupling between the DMA and the bridge.
+
+### 2026-08-25 - B5 geometry solved: the panel takes two transmitted lines per row
+
+- State change: the scanout puts a dimensionally correct image on the panel.
+  Grid pitch measures 98 panel rows against the 100 drawn, within the error of
+  reading the active area's edges off a photograph.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+- Test defines: as the previous entry plus `P4_PANEL_VMUL=2`.
+- Artifact: core 183,648 bytes, sha256
+  `2fa1cd4e2c3ee0b157f4cbdfb97dfe518dac39a16f092856b8a8ad36590cc1c5`.
+
+**The measurement.**  Three isolated white rows, not a grid.  Framebuffer rows
+100, 500 and 900 arrived on panel rows 50, 256 and 462, and again 640 rows
+lower.  So framebuffer row `y` lands on panel row `y/2` and the frame repeats.
+
+A grid could not have shown this.  At a pitch of 100 one line's second copy
+lands where the next line's first copy goes, so the halving and the repeat alias
+into a single plausible count - which is what four rounds of this phase were
+spent interpreting.  Isolated features separated by more than the defect are
+what made it readable.
+
+**The correction.**  `P4_PANEL_VMUL` transmits twice the panel's line count.
+Confirmed on hardware: three rows at even spacing, the first 1.5 cm from the
+edge, which is where row 100 of 1280 falls on a 173 mm panel axis, and two equal
+gaps of 400 rows.  Grid then measures 13 row lines at 92 px where 1200 px covers
+1280 rows.
+
+Everything on the transmit side derives from `P4_TX_V_RES`: framebuffer size,
+the bridge's active and total line counts, `VID_VACTIVE_LINES` and
+`raw_num_total`.  Five values that have to agree, from one definition.
+
+**The mechanism is not explained.**  The obvious reading - the panel expects
+1600 pixels per line and joins two transmitted rows side by side - is ruled out.
+A pattern with a bar in the left half of even rows, the right half of odd rows,
+and a deliberate gap between them arrives as one continuous line with no gap.
+So `P4_PANEL_VMUL=2` is a correction with a measurement behind it and no theory,
+and is recorded as such.
+
+- Acceptance points passed: a dimensionally correct `800 x 1280` frame from
+  PSRAM on the panel.
+- Acceptance points failed: the frame is not clean.  Row lines arrive in
+  changing colours although they are drawn in one channel, and column lines
+  arrive dotted - a byte offset that walks from row to row, which at three
+  bytes per pixel rotates the channel assignment.  The 100 MB/s bandwidth gate
+  reassigned here from B1 is also unmeasured.
+- Remaining risk: two configuration choices now rest on measurement without
+  explanation - `P4_PANEL_VMUL=2`, and the 24-bit profile that the vendor
+  firmware does not use.  Neither is understood, both are needed for an image.
+- Next safe step: characterise the byte offset.  Its period in rows and whether
+  it accumulates or resets per frame both follow from a pattern that puts a
+  known byte value at a known column, and it is the last defect between this
+  and a clean frame.
 
 ## Evidence-entry template
 
