@@ -325,6 +325,24 @@ ifdef P4_PANEL_VMUL
 P4_DEBUG_CPPFLAGS += -DP4_PANEL_VMUL=$(P4_PANEL_VMUL)
 endif
 
+# P4_PSRAM_TRACE=1 prints a marker per bring-up stage.  The bring-up runs with
+# interrupts off out of SRAM and a hang inside it produces no output at all, so
+# without this a hang can only be located by bisecting builds.  Markers placed
+# only before the MSPI reset: output goes through flash on an XIP build, and
+# after that reset a flash access would hang too.
+ifdef P4_PSRAM_TRACE
+P4_DEBUG_CPPFLAGS += -DP4_PSRAM_TRACE
+endif
+
+# P4_NO_QUIESCE=1 compiles out krnP4ScanoutQuiesce, which stops whatever the
+# previous boot left reading memory before the PSRAM is brought up.  A switch
+# that exists to make the thing it guards falsifiable - and it was added to the
+# source without being wired up here, so three runs that were recorded as
+# "still hangs without the quiesce" had the quiesce compiled in.
+ifdef P4_NO_QUIESCE
+P4_DEBUG_CPPFLAGS += -DP4_NO_QUIESCE
+endif
+
 # P4_DSI_FRAME_ACK=1 sets VID_MODE_CFG's frame_bta_ack_en, so the host requests
 # a bus turnaround after each frame and waits for the panel.  The reference
 # enables this; without it the host and the panel keep their own frame
