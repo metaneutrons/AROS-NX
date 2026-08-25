@@ -1120,7 +1120,7 @@
  * counts, the host's VID_VACTIVE_LINES and raw_num_total.
  */
 #ifndef P4_PANEL_VMUL
-#define P4_PANEL_VMUL           1
+#define P4_PANEL_VMUL           2
 #endif
 #define P4_TX_V_RES             (P4_PANEL_V_RES * P4_PANEL_VMUL)
 #define P4_PANEL_HSYNC          20
@@ -1132,10 +1132,10 @@
  * one round; the firmware that actually drives this board says 30, and that is
  * the one with evidence behind it.  See P4_PANEL_BPP for the general point.
  */
-#ifdef P4_PANEL_565
-#define P4_PANEL_VBP            30
-#else
+#ifdef P4_PANEL_24BIT
 #define P4_PANEL_VBP            12
+#else
+#define P4_PANEL_VBP            30
 #endif
 /*
  * Overridable so the blanking can be varied as a test.
@@ -1153,11 +1153,7 @@
 #endif
 /* 40 MHz, from the working firmware's D1001_LCD_DPI_CLOCK_MHZ. */
 #ifndef P4_PANEL_DPI_MHZ
-#ifdef P4_PANEL_565
 #define P4_PANEL_DPI_MHZ        40
-#else
-#define P4_PANEL_DPI_MHZ        80
-#endif
 #endif
 /*
  * Two panel profiles, because the evidence for them is split.
@@ -1178,10 +1174,10 @@
  * the honest state: an unexplained difference between this port and a working
  * firmware on identical hardware is a finding, not a detail to smooth over.
  */
-#ifdef P4_PANEL_565
-#define P4_PANEL_BPP            16
-#else
+#ifdef P4_PANEL_24BIT
 #define P4_PANEL_BPP            24
+#else
+#define P4_PANEL_BPP            16
 #endif
 
 /*
@@ -1252,12 +1248,24 @@
  * of the four decides acceptance cannot be read off that, only from crossing
  * them one at a time.
  */
+/*
+ * 1500, and the lane rate is what the panel judges.
+ *
+ * Crossed one at a time against the panel's own answer to DCS 0x0A, taken
+ * after the video handover:
+ *
+ *   RGB565  40 MHz  1000 Mbit/s   rejects        transmit side clean
+ *   RGB565  80 MHz  1500 Mbit/s   accepts        DPI_PLD_WR_ERR
+ *   RGB565  40 MHz  1500 Mbit/s   accepts        clean
+ *
+ * So the lane rate decides acceptance and the pixel clock decides whether the
+ * host can keep up.  1500 with 40 gets both, and it is the only combination
+ * tried that does.  Note that this is not the vendor firmware's pairing - that
+ * runs 1000 with 40, which this port cannot get the panel to accept, and why
+ * remains unexplained.
+ */
 #ifndef P4_DSI_LANE_MBPS
-#ifdef P4_PANEL_565
-#define P4_DSI_LANE_MBPS        1000
-#else
 #define P4_DSI_LANE_MBPS        1500
-#endif
 #endif
 
 #if P4_DSI_LANE_MBPS == 1500
