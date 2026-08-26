@@ -461,6 +461,25 @@ int krnP4DsiCmdModeUp(void)
      * survives the whole handover to video mode unchanged, so the host is
      * still receiving when it should be sending pixels.
      */
+    #ifdef P4_B5_EXACT_DBI_CREATE
+    /* Match the linked v6.0 DBI object's volatile bitfield stores.  Equal
+       final bits do not prove equal command-FSM history, so preserve every
+       intermediate state and the source/object order for this discriminator. */
+    dsi_clr(P4_DSI_CMD_MODE_CFG, 1UL); /* TEAR_FX_EN */
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_ACK_RQST_EN);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_GEN_SW_0P_TX);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_GEN_SW_1P_TX);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_GEN_SW_2P_TX);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_GEN_LW_TX);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_GEN_SR_0P_TX);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_GEN_SR_1P_TX);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_GEN_SR_2P_TX);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_DCS_SW_0P_TX);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_DCS_SW_1P_TX);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_DCS_LW_TX);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_DCS_SR_0P_TX);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_MAX_RD_PKT_SIZE);
+    #else
     dsi_wr(P4_DSI_CMD_MODE_CFG,
            P4_DSI_GEN_SW_0P_TX | P4_DSI_GEN_SW_1P_TX | P4_DSI_GEN_SW_2P_TX
          | P4_DSI_GEN_SR_0P_TX | P4_DSI_GEN_SR_1P_TX | P4_DSI_GEN_SR_2P_TX
@@ -472,6 +491,7 @@ int krnP4DsiCmdModeUp(void)
          | P4_DSI_ACK_RQST_EN
 #endif
            );
+    #endif
 
     dsi_trace();                /* 0: configured, nothing sent yet */
 
@@ -646,7 +666,7 @@ int krnP4DsiDcsRead(unsigned char cmd, unsigned char *out, unsigned int want)
      * payload FIFO after any read had been attempted.  One missing clear tied
      * the two open defects together.
      */
-#ifndef P4_B5_IDF_CMD_STATE
+#if !defined(P4_B5_IDF_CMD_STATE) && !defined(P4_B5_EXACT_DBI_CREATE)
     dsi_clr(P4_DSI_PCKHDL_CFG, P4_DSI_BTA_EN);
 #endif
 

@@ -7834,6 +7834,49 @@ chip in the width this port assumes; it never addressed the hang.
   The next exact-object audit is DBI/command creation order, whose individual
   bitfield writes still precede every panel command and can leave host state
   invisible to the final register snapshot.
+- The DBI audit closes packet construction but leaves one bounded lifecycle
+  discriminator.  `mipi_dsi_hal_host_gen_write_dcs_command()` and AROS both
+  fill the long-packet payload FIFO before the header, select DCS short-write
+  zero/one-parameter or long-write from the same total byte count, and wait
+  only while the corresponding FIFO is full.  IDF contains no hidden write
+  acknowledgement wait.  Earlier `P4_B5_IDF_CMD_STATE` runs already enabled
+  ACK before the first command, retained BTA after the identity read and
+  rejected extra FIFO/direction waits and 1-ms scheduling gaps.  The linked
+  DBI object does, however, prove fourteen volatile `CMD_MODE_CFG` RMW writes:
+  TE clear, ACK set, then each generic/DCS/MRPS LP selector separately.  AROS
+  has so far written that same pre-command state in one operation.
+- `P4_B5_EXACT_DBI_CREATE` is the last DBI discriminator.  It emits those
+  object-ordered RMWs and retains BTA after the identity read, while leaving
+  packet bytes, panel delays, video/bridge/GDMA configuration and the already
+  exact PHY lifecycle unchanged.  Run it additively with early DPI/GDMA
+  creation and split AUTO at the 1,000-Mbit/s, 200-MHz-PSRAM, 360-MHz-CPU
+  baseline.  UART must prove the exact pre-command registers, identity, first
+  host result, bridge RAW state, DMA health, bounded panel-safe stop and
+  read-only SD.  The familiar frame-zero `0x80/0x00020009` rejects the whole
+  DBI creation branch; no visual claim is possible while the operator is
+  remote.
+- Exact v6.0 DBI creation is hardware-negative.  The fresh build exited zero,
+  contained no exact `error:`, passed SRAM residency and emitted a successful
+  ESP32-P4 image.  Its 189,952-byte XIP core had SHA-256
+  `9ecae2f4a00463e20edfc12122622f23dbb01e44607e0bbbb79f68c083a05e59`.
+  Vellum object disassembly showed the TE/ACK and twelve LP-selector stores;
+  AROS disassembly showed the corresponding fourteen ordered `dsi_clr`/
+  `dsi_set` calls rather than the former combined write.  D1001 was identified
+  as v1.3, MAC `e8:f6:0a:e0:46:4c`; only `ota_0` at `0x20000..0x4efff` was
+  erased/written, and write-time plus independent digest verification passed.
+  UART proved pre-command `PCKHDL_CFG/CMD_MODE_CFG=0x00000019/0x010f7f02`,
+  exact-PHY `PHY_IF_CFG=0x00000001`, panel identity `93 65 04` and a completed
+  vendor table.  First-frame traffic still asserted
+  `INT_ST1=0x80 / VID_PKT_STATUS=0x00020009` after `0xd2e` ticks at
+  `SAR=FB+0x3200`, with FIFO depth `0x302`.  Bridge RAW stayed zero, measured
+  throughput was 69 MB/s and DMA faults stayed zero through 44 completed
+  frames and the bounded two-second panel-safe stop.  The SD card was then
+  mounted through its read-only path and reported write protected.  Thus DBI
+  construction, packet construction and command-state scheduling are closed;
+  no remote visual claim is made.  The next exact-object audit is the earlier
+  post-PHY bus setup: IDF writes CRC, ECC, HS/LP EoTP and both clock-divider
+  fields through separate volatile RMWs, where AROS still combines each
+  register's final value.
 
 ## Evidence-entry template
 

@@ -235,6 +235,15 @@ ifdef P4_B5_IDF_CMD_STATE
 P4_DEBUG_CPPFLAGS += -DP4_B5_IDF_CMD_STATE
 endif
 
+# P4_B5_EXACT_DBI_CREATE=1 reproduces the linked v6.0 DBI object's volatile
+# command-mode bitfield writes in their observed order: TE clear, ACK set,
+# then every generic, DCS and MRPS low-power selector separately.  It also
+# retains BTA after the identity read, as the IDF read path does.  Diagnostic
+# only; the normal bare-metal command path intentionally returns to transmit.
+ifdef P4_B5_EXACT_DBI_CREATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_EXACT_DBI_CREATE
+endif
+
 # P4_DSI_VPG=1 turns on the DSI host's own video pattern generator alongside
 # whatever else is feeding it.  A diagnostic: it asks whether the host will
 # begin a transmission at all, independently of its DPI input.  Not a working
