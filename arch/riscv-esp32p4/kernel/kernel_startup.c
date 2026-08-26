@@ -5268,6 +5268,14 @@ static void krnP4PanelProbe(void)
                    rather than observing each intermediate state. */
                 krnP4ScanoutBridgeUp();
                 krnP4ScanoutDmaUp();
+#ifdef P4_B5_CLOCK_GATED_START
+                /* Freeze the bridge timing generator while both ends of the
+                   DPI path enter their live state.  Releasing this one gate
+                   below gives host and bridge the same first pixel edge. */
+                p4_w32(P4_CLKRST_PERI_CLK_CTRL03,
+                       p4_r32(P4_CLKRST_PERI_CLK_CTRL03)
+                       & ~P4_DSI_DPICLK_EN);
+#endif
 #ifdef P4_B5_FEED_FIRST
 #ifndef P4_DSI_VPG
                 krnP4ScanoutFeedOn();
@@ -5278,6 +5286,11 @@ static void krnP4PanelProbe(void)
 #ifndef P4_DSI_VPG
                 krnP4ScanoutFeedOn();
 #endif
+#endif
+#ifdef P4_B5_CLOCK_GATED_START
+                p4_w32(P4_CLKRST_PERI_CLK_CTRL03,
+                       p4_r32(P4_CLKRST_PERI_CLK_CTRL03)
+                       | P4_DSI_DPICLK_EN);
 #endif
                 krnP4ScanoutState(&sc);
                 sar_dma = sar_video = sar_feed = sc.ch_sar;

@@ -7644,6 +7644,50 @@ chip in the width this port assumes; it never addressed the hang.
   reference host-video-before-feed order and treat any attempt that loses its
   first synchronization edge as invalid even if it defers an error for one
   frame.
+- The next bounded host-before-feed discriminator pre-stages `DPI_EN` in the
+  bridge shadow state without committing it.  DMA is then armed and the host
+  enters video mode in the reference order; one final `DPI_CFG_UPD` write
+  starts the producer instead of a post-host bridge read/write/update trio.
+  A clean 100-ms host oracle with zero bridge RAW status accepts a lost-first-
+  sync-edge race.  An immediate underrun means revision-one does not shadow
+  this field; an unchanged frame-zero `0x20009` rejects the shorter commit
+  window.  Every outcome remains bounded by the two-second panel-safe stop.
+- Pre-staging `DPI_EN` is hardware-negative.  The 189,472-byte XIP core had
+  SHA-256
+  `8a283309f5363237b52a0b97ff51115958136b0e0699f93c9cde53c877aec462`;
+  it passed the build, image and SRAM-residency gates, and disassembly proved
+  that the post-host feed function contained only one `DPI_CFG_UPD` write.
+  Only `ota_0` was written and independently verified.  At 200-MHz PSRAM,
+  360-MHz CPU and 1,000-Mbit/s lanes, the host still asserted
+  `0x80/0x00020009` after only `0x922` ticks in DMA frame zero.  Bridge RAW
+  remained zero, throughput was 69 MB/s and DMA faults remained zero through
+  the bounded safe stop and read-only SD discovery.  The post-host bridge
+  read/write/update latency is therefore rejected.  The next start primitive
+  gates the shared DPI pixel clock, enables host video and bridge feed while
+  no DPI edge can occur, then releases that clock with one write.  A clean
+  first 100 ms accepts an edge-level synchronization fix; another immediate
+  payload error rejects it.
+- Pixel-clock-gated start is prepared as an additive discriminator on the
+  rejected pre-staged path.  After DMA is armed, software clears only
+  `DPICLK_EN`, enables host video, commits the already staged bridge feed, and
+  sets `DPICLK_EN` again.  Command/PHY clocks, bridge memory traffic and the
+  panel remain otherwise untouched.  The full-atomic trace samples only after
+  clock release, so zero host error and zero bridge RAW status are the entire
+  acceptance gate; the normal path remains unchanged unless the switch is
+  explicitly selected.
+- Pixel-clock-gated start is hardware-negative.  The 189,600-byte XIP core
+  had SHA-256
+  `48dc778a449a1fb82a965dffc2bc8f545d9bc78a6b14dc388bd7a35b6d1cf70c`;
+  it passed the build/image/residency gates, and disassembly confirmed both
+  the `DPICLK_EN` clear and later set around the pre-staged host/feed writes.
+  Only `ota_0` was written and independently verified.  The host nevertheless
+  asserted `0x80/0x00020009` after `0xcc3` ticks in frame zero.  Bridge RAW
+  stayed zero, measured throughput was 69 MB/s and DMA faults stayed zero
+  through panel-safe stop and read-only SD discovery.  A shared first pixel-
+  clock edge is therefore insufficient, and the explicit clock gate is
+  rejected.  The next audit returns to the Waveshare JD9365 wrapper's actual
+  lifecycle order--DPI panel init versus vendor command table--because that
+  can leave host FSM state different despite identical final registers.
 
 ## Evidence-entry template
 

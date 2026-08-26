@@ -562,6 +562,20 @@ ifdef P4_B5_FEED_FIRST
 P4_DEBUG_CPPFLAGS += -DP4_B5_FEED_FIRST
 endif
 
+# P4_B5_PRESTAGE_FEED=1 writes DPI_EN into the bridge's shadow state before
+# DMA and host start, then commits it with one DPI_CFG_UPD write after host
+# video is live.  It is a bounded first-sync-edge diagnostic, not a default.
+ifdef P4_B5_PRESTAGE_FEED
+P4_DEBUG_CPPFLAGS += -DP4_B5_PRESTAGE_FEED
+endif
+
+# P4_B5_CLOCK_GATED_START=1 freezes the shared DPI pixel clock after DMA is
+# armed, enables host video and bridge feed, then releases the clock with one
+# register write.  Use with the full-atomic bounded UART oracle only.
+ifdef P4_B5_CLOCK_GATED_START
+P4_DEBUG_CPPFLAGS += -DP4_B5_CLOCK_GATED_START
+endif
+
 # P4_B5_DMA_RELOAD=1 removes the GDMA full-transfer stop/rearm boundary for a
 # UART localization test.  It is known to lose visual frame phase and is never
 # a geometry acceptance mode; use it only to test whether the host survives

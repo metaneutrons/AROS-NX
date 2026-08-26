@@ -213,6 +213,20 @@ void krnP4ScanoutBridgeUp(void)
        the channel and host video path are running. */
     brg_wr(P4_DSI_BRG_EN, P4_DSI_BRG_DSI_EN);
     brg_wr(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE);
+
+#ifdef P4_B5_PRESTAGE_FEED
+    /*
+     * Stage DPI_EN without committing it.  The ordinary path has to perform
+     * a bridge read, a bridge write and then the update after host video is
+     * already live.  If the host loses the first DPI synchronization edge in
+     * that interval, preparing the shadow value here lets the later start be
+     * one update write.  A revision-one bridge that does not shadow DPI_EN
+     * will expose that immediately as an early underrun; the bounded B5
+     * oracle treats that as a rejection, not as a usable mode.
+     */
+    brg_wr(P4_DSI_BRG_DPI_MISC_CFG,
+           brg_rd(P4_DSI_BRG_DPI_MISC_CFG) | P4_DSI_BRG_DPI_EN);
+#endif
 }
 
 /*
@@ -222,8 +236,10 @@ void krnP4ScanoutBridgeUp(void)
  */
 void krnP4ScanoutFeedOn(void)
 {
+#ifndef P4_B5_PRESTAGE_FEED
     brg_wr(P4_DSI_BRG_DPI_MISC_CFG,
            brg_rd(P4_DSI_BRG_DPI_MISC_CFG) | P4_DSI_BRG_DPI_EN);
+#endif
     brg_wr(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE);
 #ifdef P4_B5_REF_BRG_IRQ
     /* esp_lcd_panel_dpi.c performs this immediately after the feed commit.
