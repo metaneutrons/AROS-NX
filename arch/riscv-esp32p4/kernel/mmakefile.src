@@ -576,6 +576,36 @@ ifdef P4_B5_CLOCK_GATED_START
 P4_DEBUG_CPPFLAGS += -DP4_B5_CLOCK_GATED_START
 endif
 
+# P4_B5_EARLY_DPI_CREATE=1 matches the working wrapper's lifecycle rather
+# than only its final registers: enable the DPI clock, stage host/bridge timing
+# and globally enable/commit the bridge before the panel reset and vendor table.
+# DMA, video mode and the bridge pixel feed still start afterwards.
+ifdef P4_B5_EARLY_DPI_CREATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_EARLY_DPI_CREATE
+endif
+
+# P4_B5_EARLY_GDMA_CREATE=1 completes the early IDF object lifecycle: reset
+# and configure the idle GDMA controller/channel before the panel reset and
+# vendor table.  The descriptor and channel enable remain at DPI init time.
+# Use only with P4_B5_EARLY_DPI_CREATE and without P4_B5_DMA_RELOAD.
+ifdef P4_B5_EARLY_GDMA_CREATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_EARLY_GDMA_CREATE
+endif
+
+# P4_B5_IDF_AUTO_CMD_CLOCK=1 compares the later local IDF v6.0.1 behaviour:
+# AUTO throughout DBI creation and the command table.  Vellum is built against
+# IDF v6.0, which selects LP here; this switch is rejected, not reference mode.
+ifdef P4_B5_IDF_AUTO_CMD_CLOCK
+P4_DEBUG_CPPFLAGS += -DP4_B5_IDF_AUTO_CMD_CLOCK
+endif
+
+# P4_B5_SPLIT_AUTO_START=1 matches the two separate volatile writes emitted by
+# Vellum's IDF v6.0 DPI init: set AUTO_CLKLANE first, TXREQUESTCLKHS second.
+# The normal combined write has the same final register but different FSM input.
+ifdef P4_B5_SPLIT_AUTO_START
+P4_DEBUG_CPPFLAGS += -DP4_B5_SPLIT_AUTO_START
+endif
+
 # P4_B5_DMA_RELOAD=1 removes the GDMA full-transfer stop/rearm boundary for a
 # UART localization test.  It is known to lose visual frame phase and is never
 # a geometry acceptance mode; use it only to test whether the host survives
