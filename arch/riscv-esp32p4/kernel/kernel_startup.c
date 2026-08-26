@@ -5205,13 +5205,21 @@ static void krnP4PanelProbe(void)
             if (init == P4_DSI_OK && __esp32p4_psram_size)
             {
                 struct P4DsiPattern pat;
+                struct P4HostState hs;
                 struct P4ScanoutState sc;
+                unsigned long sar_dma, sar_video, sar_feed;
+                unsigned long stage_pkt[5], stage_i0[5], stage_i1[5];
+                unsigned long stage_phy[5];
 
                 /* One channel at full, the other two at zero.  A byte swap
                    or a wrong channel order changes which colour appears and
                    is therefore visible rather than silent; a wrong stride or
                    pixel format cannot produce a flat field at all. */
-#if defined(P4_SCANOUT_COHERENCY)
+#if defined(P4_B5_STATIC_PRELOAD)
+                /* Write the complete asymmetric image before the pixel path
+                   starts, then leave it unchanged for the whole run. */
+                krnP4ScanoutCoordinatePattern();
+#elif defined(P4_SCANOUT_COHERENCY)
                 krnP4ScanoutFill(0x000000);
 #elif defined(P4_SCANOUT_BANDS)
                 krnP4ScanoutBands();
@@ -5251,12 +5259,206 @@ static void krnP4PanelProbe(void)
                  * does not recover from.
                  */
                 (void)krnP4DsiPatternOn(&pat);
-
+#ifdef P4_B5_FULL_ATOMIC_START
+                /* Stronger than P4_B5_ATOMIC_START: from the end of the
+                   vendor command table through this complete producer and
+                   consumer start sequence, perform writes only.  Even the
+                   otherwise harmless staged/bridge/DMA snapshots are delayed
+                   until after feed commit, matching the reference call path
+                   rather than observing each intermediate state. */
                 krnP4ScanoutBridgeUp();
                 krnP4ScanoutDmaUp();
+#ifdef P4_B5_FEED_FIRST
+#ifndef P4_DSI_VPG
+                krnP4ScanoutFeedOn();
+#endif
+                krnP4DsiVideoOn();
+#else
                 krnP4DsiVideoOn();
 #ifndef P4_DSI_VPG
                 krnP4ScanoutFeedOn();
+#endif
+#endif
+                krnP4ScanoutState(&sc);
+                sar_dma = sar_video = sar_feed = sc.ch_sar;
+                krnP4DsiCmdStatus(&stage_pkt[4], &stage_i0[4], &stage_i1[4]);
+                krnP4HostState(&hs);
+                stage_phy[4] = hs.phy_status;
+                {
+                    unsigned int n;
+                    for (n = 0; n < 4; n++)
+                    {
+                        stage_pkt[n] = stage_pkt[4];
+                        stage_i0[n] = stage_i0[4];
+                        stage_i1[n] = stage_i1[4];
+                        stage_phy[n] = stage_phy[4];
+                    }
+                }
+#else
+                krnP4DsiCmdStatus(&stage_pkt[0], &stage_i0[0], &stage_i1[0]);
+                krnP4HostState(&hs);
+                stage_phy[0] = hs.phy_status;
+
+                krnP4ScanoutBridgeUp();
+                krnP4DsiCmdStatus(&stage_pkt[1], &stage_i0[1], &stage_i1[1]);
+                krnP4HostState(&hs);
+                stage_phy[1] = hs.phy_status;
+                krnP4ScanoutDmaUp();
+                krnP4ScanoutState(&sc);
+                sar_dma = sc.ch_sar;
+                krnP4DsiCmdStatus(&stage_pkt[2], &stage_i0[2], &stage_i1[2]);
+                krnP4HostState(&hs);
+                stage_phy[2] = hs.phy_status;
+#ifdef P4_B5_ATOMIC_START
+                /* These three writes are one start transaction in ESP-IDF:
+                   video mode, automatic HS clock, bridge DPI output.  Reading
+                   status between them lets a 40-MHz host run without input
+                   timing and can itself create the payload overflow being
+                   diagnosed.  Observe only after the feed commit. */
+                krnP4DsiVideoOn();
+#ifndef P4_DSI_VPG
+                krnP4ScanoutFeedOn();
+#endif
+                krnP4ScanoutState(&sc);
+                sar_video = sar_feed = sc.ch_sar;
+                krnP4DsiCmdStatus(&stage_pkt[4], &stage_i0[4], &stage_i1[4]);
+                krnP4HostState(&hs);
+                stage_phy[4] = hs.phy_status;
+                stage_pkt[3] = stage_pkt[4];
+                stage_i0[3] = stage_i0[4];
+                stage_i1[3] = stage_i1[4];
+                stage_phy[3] = stage_phy[4];
+#else
+                krnP4DsiVideoOn();
+                krnP4ScanoutState(&sc);
+                sar_video = sc.ch_sar;
+                krnP4DsiCmdStatus(&stage_pkt[3], &stage_i0[3], &stage_i1[3]);
+                krnP4HostState(&hs);
+                stage_phy[3] = hs.phy_status;
+#ifndef P4_DSI_VPG
+                krnP4ScanoutFeedOn();
+#endif
+                krnP4ScanoutState(&sc);
+                sar_feed = sc.ch_sar;
+                krnP4DsiCmdStatus(&stage_pkt[4], &stage_i0[4], &stage_i1[4]);
+                krnP4HostState(&hs);
+                stage_phy[4] = hs.phy_status;
+#endif
+#endif
+
+                {
+                    static const char *const names[5] = {
+                        "staged", "bridge", "dma",
+#if defined(P4_B5_ATOMIC_START) || defined(P4_B5_FULL_ATOMIC_START)
+                        "started", "started"
+#else
+                        "video", "feed"
+#endif
+                    };
+                    unsigned int n;
+
+                    for (n = 0; n < 5; n++)
+                    {
+                        krnP4PutStr("[b5]     edge ");
+                        krnP4PutStr(names[n]);
+                        krnP4PutStr(" pkt/i0/i1/phy ");
+                        krnP4PutHex32((uint32_t)stage_pkt[n]);
+                        krnP4PutStr("/");
+                        krnP4PutHex32((uint32_t)stage_i0[n]);
+                        krnP4PutStr("/");
+                        krnP4PutHex32((uint32_t)stage_i1[n]);
+                        krnP4PutStr("/");
+                        krnP4PutHex32((uint32_t)stage_phy[n]);
+                        krnP4PutStr("\n");
+                    }
+                }
+
+#ifdef P4_B5_SKIP_FINAL_PANEL_ON
+                /* With the live 0x29 removed, catch the first ordinary video
+                   transaction that raises the host payload-write condition.
+                   DMA completion interrupts remain enabled while this tight
+                   foreground poll runs, so dma_frames distinguishes the
+                   first frame from a rearm boundary. */
+                {
+                    uint64_t first_start = krnTimerCount();
+                    unsigned long first_pkt, first_i0, first_i1, first_vid;
+                    unsigned long first_phy, phy_and = ~0UL, phy_or = 0;
+                    unsigned long vid_and = ~0UL, vid_or = 0;
+                    unsigned long phy_prev = ~0UL, phy_changes = 0;
+                    unsigned long lane_active = 0, rx_direction = 0;
+
+                    do
+                    {
+                        krnP4DsiCmdStatus(&first_pkt, &first_i0, &first_i1);
+                        first_vid = krnP4DsiVideoStatus();
+                        first_phy = p4_r32(P4_DSI_HOST_BASE
+                                           + P4_DSI_PHY_STATUS);
+                        phy_and &= first_phy;
+                        phy_or |= first_phy;
+                        vid_and &= first_vid;
+                        vid_or |= first_vid;
+                        if (first_phy != phy_prev)
+                        {
+                            phy_prev = first_phy;
+                            phy_changes++;
+                        }
+                        if ((first_phy & (P4_DSI_STOPSTATE_L0
+                                         | P4_DSI_STOPSTATE_L1))
+                            != (P4_DSI_STOPSTATE_L0
+                                | P4_DSI_STOPSTATE_L1))
+                            lane_active++;
+                        if (first_phy & P4_DSI_PHY_DIRECTION)
+                            rx_direction++;
+                        krnP4ScanoutState(&sc);
+                    } while (!first_i1
+                             && krnTimerCount() - first_start
+                                < P4_SYSTIMER_HZ / 10);
+
+                    krnP4PutStr("[b5]     first int1 after ticks/frames/sar/depth ");
+                    krnP4PutHex32((uint32_t)(krnTimerCount() - first_start));
+                    krnP4PutStr("/");
+                    krnP4PutHex32((uint32_t)sc.dma_frames);
+                    krnP4PutStr("/");
+                    krnP4PutHex32((uint32_t)sc.ch_sar);
+                    krnP4PutStr("/");
+                    krnP4PutHex32((uint32_t)sc.brg_depth);
+                    krnP4PutStr(" = ");
+                    krnP4PutHex32((uint32_t)first_i1);
+                    krnP4PutStr(" vid ");
+                    krnP4PutHex32((uint32_t)first_vid);
+                    krnP4PutStr("\n");
+                    krnP4PutStr("[b5]     first phy and/or/changes/active/rx ");
+                    krnP4PutHex32((uint32_t)phy_and);
+                    krnP4PutStr("/");
+                    krnP4PutHex32((uint32_t)phy_or);
+                    krnP4PutStr("/");
+                    krnP4PutHex32((uint32_t)phy_changes);
+                    krnP4PutStr("/");
+                    krnP4PutHex32((uint32_t)lane_active);
+                    krnP4PutStr("/");
+                    krnP4PutHex32((uint32_t)rx_direction);
+                    krnP4PutStr(" vid and/or ");
+                    krnP4PutHex32((uint32_t)vid_and);
+                    krnP4PutStr("/");
+                    krnP4PutHex32((uint32_t)vid_or);
+                    krnP4PutStr("\n");
+                }
+#endif
+
+                /* Match the working JD9365 wrapper: its DPI-panel init starts
+                   DMA, host video and bridge output before disp_on_off sends
+                   the valid parameterless DCS 0x29. */
+#ifdef P4_B5_SKIP_FINAL_PANEL_ON
+                krnP4PutStr("[dsi]    final display-on skipped for live-command isolation\n");
+#else
+                if (krnP4DsiPanelOn() != P4_DSI_OK)
+                {
+                    krnP4PutStr("[dsi]    display-on after video failed\n");
+                    krnP4ScanoutQuiesce();
+                    (void)krnP4PanelSafe();
+                    return;
+                }
+                krnP4PutStr("[dsi]    display on after video start\n");
 #endif
 
                 krnTimerWait(10);               /* 100 ms of frames */
@@ -5310,12 +5512,12 @@ static void krnP4PanelProbe(void)
                 krnP4PutHex32((uint32_t)sc.chen);
                 krnP4PutStr("\n");
 
-                krnP4PutStr("[b5]     dma  cfg1 ");
-                krnP4PutHex32((uint32_t)sc.ch_cfg1);
-                krnP4PutStr(" llp ");
-                krnP4PutHex32((uint32_t)sc.ch_llp);
-                krnP4PutStr(" sar ");
-                krnP4PutHex32((uint32_t)sc.ch_sar);
+                krnP4PutStr("[b5]     start sar dma/video/feed ");
+                krnP4PutHex32((uint32_t)sar_dma);
+                krnP4PutStr("/");
+                krnP4PutHex32((uint32_t)sar_video);
+                krnP4PutStr("/");
+                krnP4PutHex32((uint32_t)sar_feed);
                 krnP4PutStr("\n");
 
                 krnP4PutStr("[b5]     brg  v ");
@@ -5413,6 +5615,10 @@ static void krnP4PanelProbe(void)
                     krnP4PutHex32((uint32_t)sc.ch_int0);
                     krnP4PutStr(" int1 ");
                     krnP4PutHex32((uint32_t)sc.ch_int1);
+                    krnP4PutStr(" frames ");
+                    krnP4PutDec((uint32_t)sc.dma_frames);
+                    krnP4PutStr(" faults ");
+                    krnP4PutHex32((uint32_t)sc.dma_faults);
                     krnP4PutStr("  ");
                     if (sc.ch_int0 & P4_DMAC_IS_BLOCK_DONE)
                     {
@@ -5471,7 +5677,10 @@ static void krnP4PanelProbe(void)
                     krnP4PutStr("\n");
                 }
 
-                /* The bridge registers this port never writes */
+                /* The bridge registers this port never writes.  Their stable
+                   values are already recorded; the ceiling-bound start-trace
+                   build uses this report's space for the three edge SARs. */
+#ifndef P4_B5_START_TRACE
                 {
                     struct P4BridgeRest br;
 
@@ -5500,6 +5709,7 @@ static void krnP4PanelProbe(void)
                     krnP4PutHex32((uint32_t)br.dma_req_cfg);
                     krnP4PutStr("\n");
                 }
+#endif
 
                 /*
                  * How many frames per second the DMA is actually delivering.
@@ -5842,6 +6052,10 @@ static void krnP4PanelProbe(void)
                         krnP4PutHex32((uint32_t)h.phy_status);
                         krnP4PutStr(" chen ");
                         krnP4PutHex32((uint32_t)sc.chen);
+                        krnP4PutStr(" frames ");
+                        krnP4PutDec((uint32_t)sc.dma_frames);
+                        krnP4PutStr(" faults ");
+                        krnP4PutHex32((uint32_t)sc.dma_faults);
                         krnP4PutStr("\n");
 
                         krnTimerWait(P4_TICK_HZ);

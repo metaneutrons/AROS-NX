@@ -135,6 +135,7 @@
 #define P4_INTMTX_CORE0_BASE    (P4_HPPERIPH1_BASE + 0x16000)
 #define P4_INTMTX_MAP(source)   (P4_INTMTX_CORE0_BASE + (source) * 4)
 #define P4_SOURCE_SYSTIMER_T0   53
+#define P4_SOURCE_DW_GDMA       24
 
 /*
  * Which line the tick is routed to. The number written into the matrix
@@ -144,6 +145,7 @@
  * Anything from P4_CLIC_EXT_OFFSET up is available.
  */
 #define P4_TIMER_LINE           20
+#define P4_DSI_DMA_LINE         21
 
 /*
  * The core local interrupt controller. Not a PLIC: this is a CLIC, and on
@@ -609,11 +611,27 @@
 #define   P4_LDO_TIEH           (1UL << 14)
 #define   P4_LDO_MUL_SHIFT      23
 #define   P4_LDO_MUL_MASK       (0x7UL << P4_LDO_MUL_SHIFT)
+#define   P4_LDO_EN_VDET        (1UL << 26)
 #define   P4_LDO_DREF_SHIFT     28
 #define   P4_LDO_DREF_MASK      (0xFUL << P4_LDO_DREF_SHIFT)
-/* The exact uncalibrated solution for 2500 mV; see the display contract. */
+/* The exact uncalibrated fallback for 2500 mV; see the display contract. */
 #define   P4_LDO_DREF_2V5       9
 #define   P4_LDO_MUL_2V5        6
+
+/* Read-only eFuse fields used by ESP-IDF to calibrate LDO channel 3. */
+#define P4_EFUSE_BASE            0x5012D000UL
+#define P4_EFUSE_RD_MAC_SYS_2    (P4_EFUSE_BASE + 0x4C)
+#define   P4_EFUSE_BLK_MINOR_SHIFT 8
+#define   P4_EFUSE_BLK_MINOR_MASK  (0x7UL << P4_EFUSE_BLK_MINOR_SHIFT)
+#define   P4_EFUSE_BLK_MAJOR_SHIFT 11
+#define   P4_EFUSE_BLK_MAJOR_MASK  (0x3UL << P4_EFUSE_BLK_MAJOR_SHIFT)
+#define P4_EFUSE_RD_MAC_SYS_3    (P4_EFUSE_BASE + 0x50)
+#define   P4_EFUSE_LDO3_K_SHIFT  6
+#define   P4_EFUSE_LDO3_K_MASK   (0xFFUL << P4_EFUSE_LDO3_K_SHIFT)
+#define   P4_EFUSE_LDO3_VOS_SHIFT 14
+#define   P4_EFUSE_LDO3_VOS_MASK (0x3FUL << P4_EFUSE_LDO3_VOS_SHIFT)
+#define   P4_EFUSE_LDO3_C_SHIFT  20
+#define   P4_EFUSE_LDO3_C_MASK   (0x3FUL << P4_EFUSE_LDO3_C_SHIFT)
 
 #define P4_CLKRST_SOC_CLK_CTRL1 (P4_HP_SYS_CLKRST_BASE + 0x18)
 #define   P4_DSI_SYS_CLK_EN     (1UL << 12)
@@ -660,9 +678,20 @@
 #define   P4_DSI_STOP_WAIT_MASK (0xFFUL << P4_DSI_STOP_WAIT_SHIFT)
 #define P4_DSI_PHY_STATUS       0x0B0
 #define   P4_DSI_PHY_LOCK       (1UL << 0)
+#define   P4_DSI_PHY_DIRECTION  (1UL << 1)
 #define   P4_DSI_STOPSTATE_CLK  (1UL << 2)
 #define   P4_DSI_STOPSTATE_L0   (1UL << 4)
 #define   P4_DSI_STOPSTATE_L1   (1UL << 7)
+/* Live state of the host's DPI input and internal payload buffer.  The working
+ * Vellum reference holds 0x00020001 after startup: command input empty and the
+ * internal payload buffer full, without either DPI input-full indication. */
+#define P4_DSI_VID_PKT_STATUS   0x168
+#define   P4_DSI_DPI_CMD_EMPTY  (1UL << 0)
+#define   P4_DSI_DPI_CMD_FULL   (1UL << 1)
+#define   P4_DSI_DPI_PLD_EMPTY  (1UL << 2)
+#define   P4_DSI_DPI_PLD_FULL   (1UL << 3)
+#define   P4_DSI_BUF_PLD_EMPTY  (1UL << 16)
+#define   P4_DSI_BUF_PLD_FULL   (1UL << 17)
 #define P4_DSI_PHY_TST_CTRL0    0x0B4
 #define   P4_DSI_TESTCLR        (1UL << 0)
 #define   P4_DSI_TESTCLK        (1UL << 1)
@@ -732,6 +761,8 @@
 #define P4_DSI_BRG_INT_ENA      0x050
 #define P4_DSI_BRG_INT_CLR      0x054
 #define P4_DSI_BRG_BLK_RAW_NUM  0x068
+#define   P4_DSI_BRG_BLK_RAW_MASK      0x003FFFFFUL
+#define   P4_DSI_BRG_BLK_RAW_SET       (1UL << 31)
 #define P4_DSI_BRG_HOST_CTRL    0x080
 #define P4_DSI_BRG_MEM_CLK_CTRL 0x084
 
@@ -805,6 +836,9 @@
  */
 
 #define P4_DMAC_BASE            0x50081000UL
+/* ESP-IDF's CACHE_LL_L2MEM_NON_CACHE_ADDR(): internal SRAM is cached at its
+   normal address and directly visible to DMA through this CPU alias. */
+#define P4_L2MEM_NONCACHE_OFFSET 0x40000000UL
 #define P4_DMAC_CFG             (P4_DMAC_BASE + 0x010)
 #define   P4_DMAC_CFG_EN        (1UL << 0)
 #define   P4_DMAC_INT_EN        (1UL << 1)
@@ -823,6 +857,7 @@
 #define P4_DMAC_CH_CFG0         0x020
 #define P4_DMAC_CH_CFG1         0x024
 #define P4_DMAC_CH_LLP          0x028
+#define   P4_DMAC_LLP_LMS_MEMORY (1UL << 0)
 
 /* CFG0: how each side walks its blocks.  3 is link-list. */
 #define   P4_DMAC_SRC_MULTBLK_SHIFT   0
@@ -853,10 +888,14 @@
  */
 #define   P4_DMAC_CH_INTSTATUS0       0x088
 #define   P4_DMAC_CH_INTSTATUS1       0x08C
+#define   P4_DMAC_CH_INTSTATUS_ENABLE0 0x080
+#define   P4_DMAC_CH_INTSIGNAL_ENABLE0 0x090
 #define   P4_DMAC_CH_INTCLEAR0        0x098
 #define   P4_DMAC_CH_INTCLEAR1        0x09C
 #define   P4_DMAC_IS_BLOCK_DONE       (1UL << 0)
 #define   P4_DMAC_IS_DMA_DONE         (1UL << 1)
+#define   P4_DMAC_IS_SRC_TRANSCOMP    (1UL << 3)
+#define   P4_DMAC_IS_DST_TRANSCOMP    (1UL << 4)
 #define   P4_DMAC_IS_SRC_DEC_ERR      (1UL << 5)
 #define   P4_DMAC_IS_DST_DEC_ERR      (1UL << 6)
 #define   P4_DMAC_IS_SRC_SLV_ERR      (1UL << 7)
@@ -889,8 +928,8 @@
 #define P4_DMAC_LLI_SIZE        0x40
 
 /* CTL_LO: master ports, address stepping, transfer widths, burst sizes */
-#define   P4_DMAC_SMS           (1UL << 0)
-#define   P4_DMAC_DMS           (1UL << 2)
+#define   P4_DMAC_SMS           (1UL << 0) /* 1 = memory master */
+#define   P4_DMAC_DMS           (1UL << 2) /* 0 = MIPI DSI master */
 #define   P4_DMAC_SINC_FIXED    (1UL << 4)   /* clear = increment */
 #define   P4_DMAC_DINC_FIXED    (1UL << 6)
 #define   P4_DMAC_SRC_WIDTH_SHIFT 8

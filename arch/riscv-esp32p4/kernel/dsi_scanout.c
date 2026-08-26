@@ -21,10 +21,12 @@
  * esp_lcd_panel_dpi.c and recorded in DISPLAY-CONTRACT.md.
  *
  * One link-list item carries the whole frame.  That is not a simplification of
- * the reference; its own comment says it assumes exactly that.  The item's
- * next-pointer is made to point at itself so the transfer repeats without an
- * interrupt to restart it, because scanout has to be continuous and this port
- * has no DMA interrupt handler yet.
+ * the reference; its own comment says it assumes exactly that.  The item is
+ * marked last, and the DMA-complete interrupt restores the VALID bit and
+ * re-arms it exactly as Espressif's dpi driver does.  Automatic register reload
+ * removed the frame boundary and let the linear framebuffer start part-way
+ * through a panel line, which folded the four framebuffer corners into pairs
+ * at the middle of the panel's short edges.
  */
 
 #include <inttypes.h>
@@ -52,6 +54,21 @@ static inline void ch_wr(unsigned long off, unsigned long v)
 static inline unsigned long ch_rd(unsigned long off)
 {
     return p4_r32(P4_DMAC_CH1 + off);
+}
+
+/* The DesignWare engine reads this over AXI and clears VALID when it consumes
+ * the item.  The CPU discards its cached view once during setup and thereafter
+ * rewrites VALID only through the P4's non-cacheable internal-SRAM alias. */
+static unsigned char scanout_lli[P4_DMAC_LLI_SIZE]
+    __attribute__((aligned(64)));
+static unsigned long scanout_lli_ctl_hi;
+static volatile unsigned long scanout_dma_frames;
+static volatile unsigned long scanout_dma_faults;
+
+static inline void lli_wr(unsigned long off, unsigned long v)
+{
+    *(volatile unsigned long *)((unsigned long)scanout_lli
+                                + P4_L2MEM_NONCACHE_OFFSET + off) = v;
 }
 
 /*
@@ -156,6 +173,15 @@ void krnP4ScanoutBridgeUp(void)
 #endif
     brg_wr(P4_DSI_BRG_RAW_NUM_CFG, v);
 
+#ifdef P4_B5_BLK_RAW_FRAME
+    /* Revision-one resets this nominally multi-block-only count to a complete
+       720x1280 RGB565 frame.  Test whether it still clips a one-block transfer
+       by explicitly giving it this panel's complete 800x1280 frame. */
+    brg_wr(P4_DSI_BRG_BLK_RAW_NUM,
+           (P4_FB_WORDS64 & P4_DSI_BRG_BLK_RAW_MASK)
+           | P4_DSI_BRG_BLK_RAW_SET);
+#endif
+
     /* AXI burst length towards memory */
     v = brg_rd(P4_DSI_BRG_DMA_REQ_CFG) & ~P4_DSI_BRG_BURST_LEN_MASK;
     brg_wr(P4_DSI_BRG_DMA_REQ_CFG, v | 256UL);
@@ -182,6 +208,10 @@ void krnP4ScanoutBridgeUp(void)
     v = brg_rd(P4_DSI_BRG_EMPTY_THRD) & ~P4_DSI_BRG_EMPTY_MASK;
     brg_wr(P4_DSI_BRG_EMPTY_THRD, v | (1024UL - 256UL));
 
+    /* This is B5's first bridge enable and commit.  All DMA-facing fields are
+       now complete, matching esp_lcd_new_panel_dpi(); feed remains off until
+       the channel and host video path are running. */
+    brg_wr(P4_DSI_BRG_EN, P4_DSI_BRG_DSI_EN);
     brg_wr(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE);
 }
 
@@ -195,10 +225,18 @@ void krnP4ScanoutFeedOn(void)
     brg_wr(P4_DSI_BRG_DPI_MISC_CFG,
            brg_rd(P4_DSI_BRG_DPI_MISC_CFG) | P4_DSI_BRG_DPI_EN);
     brg_wr(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE);
+#ifdef P4_B5_REF_BRG_IRQ
+    /* esp_lcd_panel_dpi.c performs this immediately after the feed commit.
+       It should affect only interrupt delivery, not the bridge/host
+       handshake, but it is the last measured static bridge-register
+       difference from the working Vellum state.  The peripheral route is not
+       enabled in AROS; RAW status remains our polling oracle. */
+    brg_wr(P4_DSI_BRG_INT_ENA, brg_rd(P4_DSI_BRG_INT_ENA) | 1UL);
+#endif
 }
 
 /*
- * The DMA channel and its one item.
+ * The DMA channel and its one-frame item.
  *
  * Source is the frame in PSRAM, incrementing.  Destination is the bridge's
  * single memory port, fixed - it is a FIFO, not a buffer.  Both sides move
@@ -229,10 +267,15 @@ void krnP4ScanoutDmaUp(void)
     while (p4_r32(P4_DMAC_RESET) & P4_DMAC_RESET_BIT)
         ;
 
-    p4_w32(P4_DMAC_CFG, P4_DMAC_CFG_EN);
+    p4_w32(P4_DMAC_CFG, P4_DMAC_CFG_EN | P4_DMAC_INT_EN);
     p4_w32(P4_DMAC_CHEN, P4_DMAC_CH1_EN_WE);
 
-    ctl_lo = (P4_DMAC_WIDTH_64 << P4_DMAC_SRC_WIDTH_SHIFT)
+    /* ESP-IDF routes a PSRAM source through GDMA master 1 (memory) and the
+       bridge destination through master 0 (MIPI DSI).  Leaving SMS at its
+       reset value silently puts both sides on master 0: bytes still move, but
+       not over the topology used and validated by the reference driver. */
+    ctl_lo = P4_DMAC_SMS
+           | (P4_DMAC_WIDTH_64 << P4_DMAC_SRC_WIDTH_SHIFT)
            | (P4_DMAC_WIDTH_64 << P4_DMAC_DST_WIDTH_SHIFT)
            | (P4_DMAC_MSIZE_512 << P4_DMAC_SRC_MSIZE_SHIFT)
            | (P4_DMAC_MSIZE_256 << P4_DMAC_DST_MSIZE_SHIFT)
@@ -242,29 +285,43 @@ void krnP4ScanoutDmaUp(void)
            | (P4_DMAC_AXI_BURST_LEN << P4_DMAC_ARLEN_SHIFT)
            | P4_DMAC_AWLEN_EN
            | (P4_DMAC_AXI_BURST_LEN << P4_DMAC_AWLEN_SHIFT);
+#ifndef P4_B5_DMA_RELOAD
+    ctl_hi |= P4_DMAC_LLI_LAST | P4_DMAC_LLI_VALID;
+    scanout_lli_ctl_hi = ctl_hi;
+
+    /* Match dw_gdma_new_link_list(): discard any cached view once, then touch
+       the item only through the non-cacheable alias.  The LLP itself keeps the
+       normal address because that is the address the DMA master consumes. */
+    krnP4CacheSyncData(scanout_lli, sizeof(scanout_lli));
+    lli_wr(P4_DMAC_LLI_SAR_LO, P4_FB_BASE);
+    lli_wr(P4_DMAC_LLI_SAR_HI, 0);
+    lli_wr(P4_DMAC_LLI_DAR_LO, P4_DSI_BRG_MEM_BASE);
+    lli_wr(P4_DMAC_LLI_DAR_HI, 0);
+    lli_wr(P4_DMAC_LLI_BLOCK_TS, P4_FB_WORDS64 - 1);
+    /* Even a last item with a null next pointer carries the link-list master
+       selector.  IDF selects master 1 because the descriptor lives in L2MEM. */
+    lli_wr(P4_DMAC_LLI_LLP_LO, P4_DMAC_LLP_LMS_MEMORY);
+    lli_wr(P4_DMAC_LLI_LLP_HI, 0);
+    lli_wr(P4_DMAC_LLI_CTL_LO, ctl_lo);
+    lli_wr(P4_DMAC_LLI_CTL_HI, ctl_hi);
 
     /*
-     * Automatic reload rather than a link list, and the engine's own report is
-     * why.
-     *
-     * The list version put one item in SRAM whose next-pointer addressed
-     * itself, so that the transfer would repeat without an interrupt to restart
-     * it.  It ran once.  The channel then raised
-     * SHADOWREG_OR_LLI_INVALID_ERR - bit 13 of CH_INTSTATUS0 - and the item
-     * read back with its control word at 0x000f87c0: source address,
-     * destination, block size and self-pointer all intact, and bit 31, the
-     * valid bit this code had written, cleared.  The engine clears that bit
-     * when it consumes an item, so an item pointing at itself is valid exactly
-     * once and invalid every time after.  That is also why the reference marks
-     * its single item last and re-arms the channel from a transfer-done
-     * callback: with a list there is no other way.
-     *
-     * Reload needs neither.  The channel keeps its transfer parameters in its
-     * own registers, restores them at the end of every block and starts the
-     * next one, indefinitely, until the channel is disabled.  For a scanout
-     * that is exactly the required behaviour, and it removes the descriptor,
-     * its cache maintenance and the interrupt handler this port does not have.
+     * The frame itself still needs the cache written back: the DMA reads it
+     * over AXI and does not see the CPU's caches, so a frame in dirty lines is
+     * a frame of whatever memory held before.  The descriptor instead remains
+     * reachable through the non-cacheable internal-SRAM alias above.
      */
+    krnP4CacheWriteback();
+
+    /* Both sides take their next block from the one-item list. */
+    ch_wr(P4_DMAC_CH_CFG0,
+          (P4_DMAC_MULTBLK_LIST << P4_DMAC_SRC_MULTBLK_SHIFT)
+        | (P4_DMAC_MULTBLK_LIST << P4_DMAC_DST_MULTBLK_SHIFT));
+#else
+    /* Diagnostic only: keep the producer continuous across a framebuffer
+       boundary.  This exact register-reload form previously proved capable
+       of sustained transport but lost the bridge/panel frame phase, so it may
+       localize the present host stop and must not be accepted as geometry. */
     ch_wr(P4_DMAC_CH_SAR, P4_FB_BASE);
     ch_wr(P4_DMAC_CH_SAR + 4, 0);
     ch_wr(P4_DMAC_CH_DAR, P4_DSI_BRG_MEM_BASE);
@@ -272,19 +329,11 @@ void krnP4ScanoutDmaUp(void)
     ch_wr(P4_DMAC_CH_BLOCK_TS, P4_FB_WORDS64 - 1);
     ch_wr(P4_DMAC_CH_CTL0, ctl_lo);
     ch_wr(P4_DMAC_CH_CTL1, ctl_hi);
-
-    /*
-     * The frame itself still needs the cache written back: the DMA reads it
-     * over AXI and does not see the CPU's caches, so a frame in dirty lines is
-     * a frame of whatever memory held before.  The descriptor no longer does,
-     * because there is no descriptor.
-     */
     krnP4CacheWriteback();
-
-    /* Both sides reload their own configuration at the end of each block */
     ch_wr(P4_DMAC_CH_CFG0,
           (P4_DMAC_MULTBLK_RELOAD << P4_DMAC_SRC_MULTBLK_SHIFT)
         | (P4_DMAC_MULTBLK_RELOAD << P4_DMAC_DST_MULTBLK_SHIFT));
+#endif
 
     /*
      * Memory to peripheral with the DMA in charge, hardware handshake on both
@@ -300,12 +349,56 @@ void krnP4ScanoutDmaUp(void)
          | (1UL << P4_DMAC_DST_OSR_SHIFT);
     ch_wr(P4_DMAC_CH_CFG1, cfg1);
 
-    /* No list to walk */
+#ifndef P4_B5_DMA_RELOAD
+    ch_wr(P4_DMAC_CH_LLP,
+          (unsigned long)scanout_lli | P4_DMAC_LLP_LMS_MEMORY);
+    ch_wr(P4_DMAC_CH_LLP + 4, 0);
+#else
     ch_wr(P4_DMAC_CH_LLP, 0);
     ch_wr(P4_DMAC_CH_LLP + 4, 0);
+#endif
+
+    scanout_dma_frames = 0;
+    scanout_dma_faults = 0;
+    ch_wr(P4_DMAC_CH_INTCLEAR0, 0xFFFFFFFFUL);
+#ifndef P4_B5_DMA_RELOAD
+    ch_wr(P4_DMAC_CH_INTSTATUS_ENABLE0, 0xFFFFFFFFUL);
+    ch_wr(P4_DMAC_CH_INTSIGNAL_ENABLE0,
+          P4_DMAC_IS_DMA_DONE | P4_DMAC_IS_LLI_INVALID);
+    p4_w32(P4_INTMTX_MAP(P4_SOURCE_DW_GDMA), P4_DSI_DMA_LINE);
+    krnCLICEnable(P4_DSI_DMA_LINE, 0);
+#else
+    ch_wr(P4_DMAC_CH_INTSTATUS_ENABLE0, 0);
+    ch_wr(P4_DMAC_CH_INTSIGNAL_ENABLE0, 0);
+#endif
 
     /* And run */
     p4_w32(P4_DMAC_CHEN, P4_DMAC_CH1_EN | P4_DMAC_CH1_EN_WE);
+}
+
+/* Espressif's mipi_dsi_dma_trans_done_cb(), reduced to the one fixed frame and
+ * one fixed item this port owns.  Clear the level source before re-arming, and
+ * do not restart a transfer that ended with a real DMA fault. */
+void krnP4ScanoutDmaInterrupt(void)
+{
+    unsigned long status = ch_rd(P4_DMAC_CH_INTSTATUS0);
+    unsigned long faults = status
+        & ~(P4_DMAC_IS_BLOCK_DONE | P4_DMAC_IS_DMA_DONE
+            | P4_DMAC_IS_SRC_TRANSCOMP | P4_DMAC_IS_DST_TRANSCOMP
+            | P4_DMAC_IS_DISABLED);
+
+    ch_wr(P4_DMAC_CH_INTCLEAR0, status);
+    scanout_dma_faults |= faults;
+
+    if ((status & P4_DMAC_IS_DMA_DONE) && !faults)
+    {
+        scanout_dma_frames++;
+        lli_wr(P4_DMAC_LLI_CTL_HI, scanout_lli_ctl_hi);
+        ch_wr(P4_DMAC_CH_LLP,
+              (unsigned long)scanout_lli | P4_DMAC_LLP_LMS_MEMORY);
+        ch_wr(P4_DMAC_CH_LLP + 4, 0);
+        p4_w32(P4_DMAC_CHEN, P4_DMAC_CH1_EN | P4_DMAC_CH1_EN_WE);
+    }
 }
 
 /*
@@ -375,6 +468,8 @@ void krnP4ScanoutState(struct P4ScanoutState *out)
     out->ch_int1      = ch_rd(P4_DMAC_CH_INTSTATUS1);
     out->brg_depth    = brg_rd(P4_DSI_BRG_FIFO_STATUS)
                         & P4_DSI_BRG_BUF_DEPTH_MASK;
+    out->dma_frames   = scanout_dma_frames;
+    out->dma_faults   = scanout_dma_faults;
 }
 
 /*
@@ -519,25 +614,24 @@ static void scanout_checker(void)
     }
 }
 
-/*
- * Four asymmetric corners and four true one-pixel lines.
- *
- * Each corner has a different colour and extent, so rotation, clipping and a
- * repeated edge are distinguishable.  The line positions are deliberately
- * neither centred nor aligned to a cache line; widening, doubling or a stale
- * neighbour is visible against black.
- */
-static void scanout_corners_and_lines(void)
+/* Four asymmetric corner blocks, isolated from the line test so an observer
+ * cannot confuse line intersections with the intended physical corners. */
+static void scanout_corner_blocks(void)
 {
-    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
-    unsigned long y, x;
-
     krnP4ScanoutFill(0x000000UL);
     scanout_rect(0, 0, 37, 53, 0xFF0000UL);
     scanout_rect(P4_PANEL_H_RES - 61, 0, 61, 43, 0x00FF00UL);
     scanout_rect(0, P4_TX_V_RES - 67, 47, 67, 0x0000FFUL);
     scanout_rect(P4_PANEL_H_RES - 73, P4_TX_V_RES - 31,
                  73, 31, 0xFFFF00UL);
+}
+
+static void scanout_one_pixel_lines(void)
+{
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long y, x;
+
+    krnP4ScanoutFill(0x000000UL);
 
     for (y = 0; y < P4_TX_V_RES; y++)
     {
@@ -553,6 +647,61 @@ static void scanout_corners_and_lines(void)
            0xFFFFFFUL);
         px(fb + (997 * P4_PANEL_H_RES + x) * P4_FB_BYTES_PER_PIXEL,
            0x00FFFFUL);
+    }
+}
+
+static void scanout_corners_and_lines(void)
+{
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long y, x;
+
+    scanout_corner_blocks();
+    for (y = 0; y < P4_TX_V_RES; y++)
+    {
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES
+                                          * P4_FB_BYTES_PER_PIXEL;
+
+        px(row + 173 * P4_FB_BYTES_PER_PIXEL, 0xFFFFFFUL);
+        px(row + 599 * P4_FB_BYTES_PER_PIXEL, 0xFF00FFUL);
+    }
+    for (x = 0; x < P4_PANEL_H_RES; x++)
+    {
+        px(fb + (311 * P4_PANEL_H_RES + x) * P4_FB_BYTES_PER_PIXEL,
+           0xFFFFFFUL);
+        px(fb + (997 * P4_PANEL_H_RES + x) * P4_FB_BYTES_PER_PIXEL,
+           0x00FFFFUL);
+    }
+}
+
+/* Large asymmetric quadrants expose coordinate folding or an unexpected
+ * origin that a periodic checker cannot.  A four-pixel black cross keeps the
+ * quadrant boundaries unambiguous without relying on the panel bezel. */
+void krnP4ScanoutCoordinatePattern(void)
+{
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long y, x;
+
+    for (y = 0; y < P4_TX_V_RES; y++)
+    {
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES
+                                          * P4_FB_BYTES_PER_PIXEL;
+
+        for (x = 0; x < P4_PANEL_H_RES; x++)
+        {
+            unsigned long rgb;
+
+            if (x >= P4_PANEL_H_RES / 2 - 2
+                && x < P4_PANEL_H_RES / 2 + 2)
+                rgb = 0x000000UL;
+            else if (y >= P4_TX_V_RES / 2 - 2
+                     && y < P4_TX_V_RES / 2 + 2)
+                rgb = 0x000000UL;
+            else if (y < P4_TX_V_RES / 2)
+                rgb = x < P4_PANEL_H_RES / 2 ? 0xFF0000UL : 0x00FF00UL;
+            else
+                rgb = x < P4_PANEL_H_RES / 2 ? 0x0000FFUL : 0xFFFF00UL;
+            px(row + x * P4_FB_BYTES_PER_PIXEL, rgb);
+        }
     }
 }
 
@@ -572,6 +721,27 @@ unsigned long krnP4ScanoutCoherencyStep(unsigned long second)
 {
     unsigned long phase = 0;
 
+#ifdef P4_B5_STATIC_PRELOAD
+    /* Keep every framebuffer byte unchanged after DMA starts. */
+    (void)second;
+    return 0;
+#else
+#ifdef P4_B5_VISUAL_GATE
+    switch (second)
+    {
+        case 0:  krnP4ScanoutFill(0xFF0000UL); phase = 1; break;
+        case 3:  krnP4ScanoutFill(0x00FF00UL); phase = 2; break;
+        case 6:  krnP4ScanoutFill(0x0000FFUL); phase = 3; break;
+        case 9:  krnP4ScanoutFill(0xFFFFFFUL); phase = 4; break;
+        case 12: krnP4ScanoutFill(0x000000UL); phase = 5; break;
+        case 15: scanout_checker(); phase = 6; break;
+        case 20: krnP4ScanoutCoordinatePattern(); phase = 7; break;
+        case 30: scanout_corner_blocks(); phase = 8; break;
+        case 40: scanout_one_pixel_lines(); phase = 9; break;
+        case 50: scanout_corners_and_lines(); phase = 10; break;
+        default: break;
+    }
+#else
     switch (second)
     {
         case 0:  krnP4ScanoutFill(0xFF0000UL); phase = 1; break;
@@ -616,10 +786,12 @@ unsigned long krnP4ScanoutCoherencyStep(unsigned long second)
             }
             break;
     }
+#endif
 
     if (phase)
         krnP4CacheWriteback();
     return phase;
+#endif
 }
 
 /*
@@ -832,6 +1004,12 @@ void krnP4ScanoutQuiesce(void)
     /* Out of reset first, so the writes below reach a block that answers */
     p4_w32(P4_CLKRST_HP_RST_EN0,
            p4_r32(P4_CLKRST_HP_RST_EN0) & ~P4_RST_EN_GDMA);
+
+    /* Stop completion delivery before stopping the channel, otherwise a frame
+       ending in this window can re-arm the reader we are trying to quiesce. */
+    krnCLICDisable(P4_DSI_DMA_LINE);
+    ch_wr(P4_DMAC_CH_INTSIGNAL_ENABLE0, 0);
+    p4_w32(P4_DMAC_CFG, p4_r32(P4_DMAC_CFG) & ~P4_DMAC_INT_EN);
 
     /* Channel off, with the write-enable the register demands */
     p4_w32(P4_DMAC_CHEN, P4_DMAC_CH1_EN_WE);

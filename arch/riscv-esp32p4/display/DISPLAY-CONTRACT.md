@@ -230,12 +230,15 @@ and K, Vos and C are per-part trim constants in eFuse.  Uncalibrated, K=1,
 Vos=0, C=1, the exact solution for 2500 mV is **dref 9, mul 6**, and it is
 exact rather than nearest: 1.0 V reference times 2.5.
 
-This port will use those values without reading the eFuse trim, and that is a
-decision rather than an oversight.  It gives the nominal design point instead
-of a per-part corrected one, so a part whose trim constants are far from unity
-will sit a few percent off 2.5 V.  If the PHY behaves marginally, this is on
-the short list of causes, above the timing set and below the undocumented
-switch-time constants.
+The port now performs the same integer exhaustive search as ESP-IDF when an
+eFuse block version is present, and uses 9/6 only as the old-silicon fallback.
+On D1001 MAC `e8:f6:0a:e0:46:4c`, block version 0.3 carries K=4, Vos=32 and
+C=39 in their signed encodings; those decode to K=0.979, Vos=-0.003 and
+C=0.983 and select **dref 12, mul 4** (about 2.518 V under IDF's model).
+`EN_VDET` bit 26 is also set to match `ldo_ll_enable_ripple_suppression()`.
+USB-JTAG measured Vellum's live analogue register as `0xc6000000`, and the
+AROS implementation now reaches the identical readback without inheriting
+PMU state from another firmware.
 
 ### Clocks and resets
 
@@ -305,9 +308,6 @@ is the 120 ms of the reset pulse from B2 actually needed to have elapsed.
    this machine.  They will be carried over as opaque constants with this note
    attached.  So will the PHY register 0x19 value 0x30, whose only
    documentation is a comment saying it makes the PLL use 0x17 and 0x18.
-6. Whether the LDO's eFuse trim matters on this part.  The uncalibrated
-   solution is nominally exact; a part far from unity trim would sit a few
-   percent off.
 4. Whether the JD9365 answers a DCS `0x04` ID read, and with what.  No source
    states an expected value; inventing one is forbidden.  A stable
    non-degenerate response across resets becomes a board fact.
