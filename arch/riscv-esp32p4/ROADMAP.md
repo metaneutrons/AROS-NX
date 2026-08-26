@@ -7796,6 +7796,44 @@ chip in the width this port assumes; it never addressed the hang.
   visual claim is made for this remote run.  The next audit must compare an
   earlier stateful operation in the exact v6.0 DSI bus/PHY creation path, not
   another final public-register value or GDMA start delay.
+- The exact linked Vellum objects reveal that the earlier retained PHY reset
+  correction still matched final values, not the complete creation sequence.
+  `mipi_dsi_hal_init()` writes `PHY_SHUTDOWNZ`, pulses `PHY_RSTZ`, then emits
+  separate volatile RMW writes for `ENABLECLK` and `FORCEPLL`.  Its first
+  internal-register transaction writes zero directly to `PHY_TST_CTRL0`; it
+  never pulses `TESTCLR`.  The bus object also leaves `STOP_WAIT=0` throughout
+  PHY creation, PLL programming and lock/stop-state waits, then writes `0x3f`
+  only at the end of bus timing setup.  AROS combined ENABLECLK/FORCEPLL,
+  added a TESTCLR pulse and set STOP_WAIT before bringing the PHY up, despite
+  reaching the same final public registers.
+- `P4_B5_EXACT_PHY_CREATE` reproduces those three ordered differences while
+  retaining every PLL register/value pair, clock, lane count and timeout.
+  The existing late STOP_WAIT write in command-mode setup becomes its only
+  write.  It is additive to the exact early DPI/GDMA and split-AUTO lifecycle
+  image, so the immediately preceding hardware run remains the one-variable
+  control.  UART must still prove PLL lock, lanes stopped, identity, first
+  host assertion, bridge RAW, DMA health, safe stop and read-only SD; no
+  visual conclusion is available remotely.
+- Exact v6.0 PHY creation is hardware-negative.  The 189,664-byte XIP image
+  had SHA-256
+  `cfbe0285552631d6a8f9542cec3f7cdc5a093f4b7dce3adbe6472fd02cc57695`;
+  its fresh build exited zero, contained no exact `error:`, passed SRAM
+  residency and emitted the successful ESP32-P4 image marker.  Side-by-side
+  object disassembly proved Vellum's separate shutdown/reset/ENABLECLK/
+  FORCEPLL writes and absence of a TESTCLR pulse; AROS disassembly reproduced
+  those writes and contained no early STOP_WAIT constant.  Only `ota_0` was
+  written and independent digest verification passed on the identified v1.3
+  board.  UART then read `PHY_IF_CFG=0x00000001` immediately after PLL lock,
+  proving two lanes with STOP_WAIT still zero, and panel identity remained
+  `93 65 04`.  Ordinary first-frame traffic nevertheless asserted
+  `INT_ST1=0x80 / VID_PKT_STATUS=0x00020009` after `0x851` ticks in frame zero
+  at `SAR=FB+0x3400`.  Bridge RAW stayed zero, measured throughput was 69 MB/s
+  and DMA faults stayed zero through the two-second panel-safe stop; boot then
+  discovered the SD card through its read-only path.  These residual PHY
+  lifecycle differences are rejected, and no remote visual claim is made.
+  The next exact-object audit is DBI/command creation order, whose individual
+  bitfield writes still precede every panel command and can leave host state
+  invisible to the final register snapshot.
 
 ## Evidence-entry template
 
