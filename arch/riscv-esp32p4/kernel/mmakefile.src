@@ -606,6 +606,13 @@ ifdef P4_B5_SPLIT_AUTO_START
 P4_DEBUG_CPPFLAGS += -DP4_B5_SPLIT_AUTO_START
 endif
 
+# P4_B5_EXACT_PHY_CREATE=1 matches the linked v6.0 PHY object lifecycle, not
+# just its final values: STOP_WAIT remains zero through PLL creation, ENABLECLK
+# and FORCEPLL are separate writes, and no extra TESTCLR pulse is injected.
+ifdef P4_B5_EXACT_PHY_CREATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_EXACT_PHY_CREATE
+endif
+
 # P4_B5_DMA_RELOAD=1 removes the GDMA full-transfer stop/rearm boundary for a
 # UART localization test.  It is known to lose visual frame phase and is never
 # a geometry acceptance mode; use it only to test whether the host survives

@@ -275,19 +275,22 @@ int krnP4DsiPhyUp(struct P4DsiState *out)
                                              | P4_DSI_DPHY_PLL_REFCLK_EN);
 
     /*
-     * Lane count and the stop-wait time, then host and PHY out of shutdown.
+     * Lane count, then host and PHY out of shutdown.
      *
      * The stop-wait time is how long the host holds the lanes in stop state
      * after one transmission before it may begin the next.  This port left it
      * at its reset value of zero, which the reference never does - it sets
-     * 0x3F - and a host that is allowed no settling time between transmissions
-     * is a plausible reading of a host whose data lanes never leave stop
-     * state at all.  It is the last value in this sequence that differed.
+     * 0x3F - but the exact v6.0 object does so only after PLL lock and all bus
+     * timings.  P4_B5_EXACT_PHY_CREATE preserves zero through PHY creation;
+     * krnP4DsiCmdModeUp() already performs the later reference write.
      */
     v = dsi_rd(P4_DSI_PHY_IF_CFG);
-    v &= ~(P4_DSI_N_LANES_MASK | P4_DSI_STOP_WAIT_MASK);
+    v &= ~P4_DSI_N_LANES_MASK;
     v |= (unsigned long)(P4_DSI_LANES - 1);
+#ifndef P4_B5_EXACT_PHY_CREATE
+    v &= ~P4_DSI_STOP_WAIT_MASK;
     v |= (0x3FUL << P4_DSI_STOP_WAIT_SHIFT) & P4_DSI_STOP_WAIT_MASK;
+#endif
     dsi_wr(P4_DSI_PHY_IF_CFG, v);
 
     dsi_set(P4_DSI_PWR_UP, P4_DSI_SHUTDOWNZ);
@@ -301,10 +304,17 @@ int krnP4DsiPhyUp(struct P4DsiState *out)
      */
     dsi_clr(P4_DSI_PHY_RSTZ, P4_DSI_PHY_RSTZ_BIT);
     dsi_set(P4_DSI_PHY_RSTZ, P4_DSI_PHY_RSTZ_BIT);
+#ifdef P4_B5_EXACT_PHY_CREATE
+    /* The linked v6.0 object emits one volatile RMW for each field.  The PHY
+       therefore observes ENABLECLK=1/FORCEPLL=0 before FORCEPLL is asserted. */
+    dsi_set(P4_DSI_PHY_RSTZ, P4_DSI_PHY_ENABLECLK);
+    dsi_set(P4_DSI_PHY_RSTZ, P4_DSI_PHY_FORCEPLL);
+#else
     dsi_set(P4_DSI_PHY_RSTZ, P4_DSI_PHY_ENABLECLK | P4_DSI_PHY_FORCEPLL);
 
     dsi_wr(P4_DSI_PHY_TST_CTRL0, P4_DSI_TESTCLR);
     dsi_wr(P4_DSI_PHY_TST_CTRL0, 0);
+#endif
 
     dsi_phy_write(0x44, (unsigned char)(out->hs_freq_sel << 1));
     dsi_phy_write(0x19, 0x30);
