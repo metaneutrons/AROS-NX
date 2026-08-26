@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  A full primary/pair-colour card is also correct after adopting the D1001 BSP's native little-endian RGB565 convention.  Runs at 40 MHz over 1500 Mbit/s lanes.  Reset continuity is closed for the measured failure: commands are bounded, forced PSRAM timeout recovery works, and an active 69 MB/s scanout now survives a USB reset with all 32 MB at 200 MHz, DSI identity/power-mode replies and a second 69 MB/s scanout.  Also open: the 100 MB/s gate, sustained stress and the full ten-warm/ten-cold boot gate |
+| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  A full primary/pair-colour card is also correct after adopting the D1001 BSP's native little-endian RGB565 convention.  Runs at 40 MHz over 1500 Mbit/s lanes.  Reset continuity is closed for the measured failure: commands are bounded, forced PSRAM timeout recovery works, and an active 69 MB/s scanout now survives a USB reset with all 32 MB at 200 MHz, DSI identity/power-mode replies and a second 69 MB/s scanout.  A deterministic solids/checker/corners/one-pixel/dirty-rectangle instrument has completed its full UART/transport gate; panel-side confirmation of the animated dirty rectangles remains.  Also open: the 100 MB/s gate, sustained stress and the full ten-warm/ten-cold boot gate |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -6181,6 +6181,58 @@ chip in the width this port assumes; it never addressed the hang.
 - Next safe step: run the remaining deterministic framebuffer-pattern and
   coherency cases before expanding this diagnostic path into the B6 buffered
   VSYNC handoff.
+
+### 2026-08-26 - B5 deterministic framebuffer/coherency instrument transport passed
+
+- State change: B5 remains `hardware partial`.  The missing deterministic
+  solids/checker/corners/one-pixel/dirty-rectangle instrument now exists and
+  completed one D1001 run without a transport fault.  The UART cannot establish
+  that the panel showed no stale pixels, so the visual half of the
+  dirty-rectangle gate remains explicitly open.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3, MAC
+  `e8:f6:0a:e0:46:4c`.
+- Implementation: `P4_SCANOUT_COHERENCY=1` keeps the proven single native
+  RGB565 framebuffer and video configuration, but changes its contents on a
+  fixed schedule: full red, green, blue, white and black fields; a 17-by-19
+  checkerboard; four differently coloured and sized corner marks with four
+  true one-pixel lines; then 23 moving 127-by-73 rectangles at changing odd
+  positions, followed by the corner/line card again.  Checker cells, line
+  positions and rectangle extents deliberately do not share cache-line or
+  scanline boundaries.  Every changed phase completes the existing L1/L2
+  writeback plus memory fence before its presentation marker is printed.
+- Source identity and build: dirty tree based on `b98d673428`; all generated
+  kernel objects were deleted before building with
+  `P4_HEADLESS_BOOT=1 P4_PSRAM_MHZ=200 P4_CPU_MHZ=360 P4_PANEL_PROBE=1
+  P4_DSI_PROBE=1 P4_SCANOUT_TEST=1 P4_DSI_NONBURST=1
+  P4_SCANOUT_COHERENCY=1 P4_BL_PERCENT=100
+  P4_LDSCRIPT=ldscript-xip.lds`.  The build passed the SRAM-residency check,
+  contains both image-creation success markers and contains no `error:`.
+- Artifact and flash safety: core 187,600 bytes, SHA-256
+  `effe8c0884cf7e9608f19d802e4dce4637529dde1b3e467c99e38f9401b65e7c`.
+  Only `ota_0` at `0x20000..0x4dfff` was erased and written.  Write-time hash
+  verification and an independent `verify-flash` passed; bootloader, partition
+  table, OTA metadata, BSP, flash storage and SD media were not written.
+- Observed UART: first-byte normal SPI boot; 32 MB PSRAM at 200 MHz in one
+  attempt; zero command timeouts/FSM recoveries; complete mapped-window check;
+  DSI identity `93 65 04`; power mode `0x1c`; moving DMA and measured 69 MB/s.
+  Phases 1 through 7 were presented at their scheduled seconds, phase 8 was
+  presented once for the black reset plus 23 successive dirty rectangles, and
+  phase 9 restored the corner/line card.  Across all 60 one-second samples the
+  SAR moved, bridge FIFO occupancy varied, bridge raw status stayed zero and
+  host `int1` stayed zero.  The run ended with `scanout stopped, panel safe`.
+- Acceptance passed here: the instrument and its cache-writeback path execute
+  on hardware; all requested framebuffer shapes are generated from PSRAM; no
+  DMA stall, bridge underrun or DSI payload fault accompanies any update.
+- Acceptance still open here: UART register evidence cannot see the panel and
+  therefore cannot prove that the five solids were uniform, checker/corners
+  were pixel-correct, one-pixel lines stayed one pixel wide, or old dirty
+  rectangles disappeared completely.  Those points require a direct panel
+  observation of this exact artifact.
+- Remaining B5 gates after that observation: 30-minute concurrent SD/PSRAM/
+  graphics stress, the 100 MB/s gate and ten cold plus ten warm boots.
+- Next safe step: repeat this exact artifact for an observer, changing no
+  variable, and record the panel result.  If clean, keep the final corner card
+  as the static handoff image and move to the concurrent stress gate.
 
 ## Evidence-entry template
 

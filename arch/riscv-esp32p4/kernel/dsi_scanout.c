@@ -478,6 +478,143 @@ void krnP4ScanoutTestCard(void)
     }
 }
 
+static void scanout_rect(unsigned long x, unsigned long y,
+                         unsigned long w, unsigned long h,
+                         unsigned long rgb)
+{
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long yy, xx;
+
+    for (yy = y; yy < y + h; yy++)
+    {
+        volatile unsigned char *row = fb + yy * P4_PANEL_H_RES
+                                          * P4_FB_BYTES_PER_PIXEL;
+
+        for (xx = x; xx < x + w; xx++)
+            px(row + xx * P4_FB_BYTES_PER_PIXEL, rgb);
+    }
+}
+
+/*
+ * Coverage whose dimensions are hostile to accidental alignment.
+ *
+ * Seventeen by nineteen pixel checker cells cross cache lines and physical
+ * scanlines at different offsets.  A stale cache line therefore appears as a
+ * local tear in the pattern rather than being hidden by a tile boundary.
+ */
+static void scanout_checker(void)
+{
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long y, x;
+
+    for (y = 0; y < P4_TX_V_RES; y++)
+    {
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES
+                                          * P4_FB_BYTES_PER_PIXEL;
+
+        for (x = 0; x < P4_PANEL_H_RES; x++)
+            px(row + x * P4_FB_BYTES_PER_PIXEL,
+               (((x / 17) ^ (y / 19)) & 1) ? 0xFFFFFFUL : 0x000000UL);
+    }
+}
+
+/*
+ * Four asymmetric corners and four true one-pixel lines.
+ *
+ * Each corner has a different colour and extent, so rotation, clipping and a
+ * repeated edge are distinguishable.  The line positions are deliberately
+ * neither centred nor aligned to a cache line; widening, doubling or a stale
+ * neighbour is visible against black.
+ */
+static void scanout_corners_and_lines(void)
+{
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long y, x;
+
+    krnP4ScanoutFill(0x000000UL);
+    scanout_rect(0, 0, 37, 53, 0xFF0000UL);
+    scanout_rect(P4_PANEL_H_RES - 61, 0, 61, 43, 0x00FF00UL);
+    scanout_rect(0, P4_TX_V_RES - 67, 47, 67, 0x0000FFUL);
+    scanout_rect(P4_PANEL_H_RES - 73, P4_TX_V_RES - 31,
+                 73, 31, 0xFFFF00UL);
+
+    for (y = 0; y < P4_TX_V_RES; y++)
+    {
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES
+                                          * P4_FB_BYTES_PER_PIXEL;
+
+        px(row + 173 * P4_FB_BYTES_PER_PIXEL, 0xFFFFFFUL);
+        px(row + 599 * P4_FB_BYTES_PER_PIXEL, 0xFF00FFUL);
+    }
+    for (x = 0; x < P4_PANEL_H_RES; x++)
+    {
+        px(fb + (311 * P4_PANEL_H_RES + x) * P4_FB_BYTES_PER_PIXEL,
+           0xFFFFFFUL);
+        px(fb + (997 * P4_PANEL_H_RES + x) * P4_FB_BYTES_PER_PIXEL,
+           0x00FFFFUL);
+    }
+}
+
+/*
+ * One deterministic second of the B5 coherency instrument.
+ *
+ * Returns a phase number only when the framebuffer changed.  The caller logs
+ * it alongside the DMA/bridge/host sample, so the UART proves that each image
+ * was presented rather than merely compiled in.  The dirty rectangles are
+ * 127 by 73 pixels at odd, changing offsets; neither their ends nor their row
+ * strides share a cache-line boundary.  Each step erases the old rectangle
+ * and writes a differently coloured new one before a complete cache
+ * writeback.  A later range operation may replace that conservative flush,
+ * but it cannot weaken this gate silently.
+ */
+unsigned long krnP4ScanoutCoherencyStep(unsigned long second)
+{
+    unsigned long phase = 0;
+
+    switch (second)
+    {
+        case 0:  krnP4ScanoutFill(0xFF0000UL); phase = 1; break;
+        case 2:  krnP4ScanoutFill(0x00FF00UL); phase = 2; break;
+        case 4:  krnP4ScanoutFill(0x0000FFUL); phase = 3; break;
+        case 6:  krnP4ScanoutFill(0xFFFFFFUL); phase = 4; break;
+        case 8:  krnP4ScanoutFill(0x000000UL); phase = 5; break;
+        case 10: scanout_checker(); phase = 6; break;
+        case 14: scanout_corners_and_lines(); phase = 7; break;
+        case 18: krnP4ScanoutFill(0x000000UL); phase = 8; break;
+        case 42: scanout_corners_and_lines(); phase = 9; break;
+        default:
+            if (second >= 19 && second < 42)
+            {
+                unsigned long n = second - 19;
+                unsigned long x = (n * 97 + 3) % (P4_PANEL_H_RES - 127 + 1);
+                unsigned long y = (n * 173 + 5) % (P4_TX_V_RES - 73 + 1);
+                static const unsigned long colours[6] =
+                {
+                    0xFF0000UL, 0x00FF00UL, 0x0000FFUL,
+                    0xFFFF00UL, 0x00FFFFUL, 0xFF00FFUL,
+                };
+
+                if (n)
+                {
+                    unsigned long old = n - 1;
+                    unsigned long ox = (old * 97 + 3)
+                                     % (P4_PANEL_H_RES - 127 + 1);
+                    unsigned long oy = (old * 173 + 5)
+                                     % (P4_TX_V_RES - 73 + 1);
+
+                    scanout_rect(ox, oy, 127, 73, 0x000000UL);
+                }
+                scanout_rect(x, y, 127, 73, colours[n % 6]);
+                phase = 8;
+            }
+            break;
+    }
+
+    if (phase)
+        krnP4CacheWriteback();
+    return phase;
+}
+
 /*
  * A cross, which answers one question and nothing else.
  *

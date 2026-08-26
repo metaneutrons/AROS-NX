@@ -280,6 +280,15 @@ ifdef P4_SCANOUT_TESTCARD
 P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_TESTCARD
 endif
 
+# P4_SCANOUT_COHERENCY=1 runs the remaining deterministic B5 framebuffer gate
+# on one native buffer: full-screen RGB/white/black fields, a deliberately
+# non-power-of-two checkerboard, four asymmetric corner marks and one-pixel
+# lines, followed by repeated non-cacheline-aligned dirty rectangles.  Every
+# transition is explicitly written back before the DMA is sampled.
+ifdef P4_SCANOUT_COHERENCY
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_COHERENCY
+endif
+
 # P4_BRG_RAW_DIV=n divides the bridge's frame data counter by n.  A scale test
 # for where the bridge decides to restart reading the framebuffer.
 ifdef P4_BRG_RAW_DIV
