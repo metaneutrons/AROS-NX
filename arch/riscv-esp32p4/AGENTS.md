@@ -175,7 +175,7 @@ Validate an instrument on hardware that works before trusting it on hardware
 that does not.  `P4_PSRAM_TRACE=1` prints `123456` on a good boot; a truncated
 run names the stage that hung.
 
-## Do not leave a scanout running across a reset
+## Active-scanout reset continuity
 
 The GDMA survives a CPU reset, exactly as the PMU and the clock dividers do.  A
 scanout left running is still reading PSRAM over AXI while the next boot's
@@ -186,13 +186,17 @@ is battery-backed on this board.
 
 `P4_SCANOUT_SECS` bounds it, and `krnP4ScanoutQuiesce` stops whatever the last
 boot left running before the PSRAM is touched.  PSRAM mode-register commands
-are now bounded and reset both PSRAM FSMs after a timeout; the deterministic
+are bounded and reset both PSRAM FSMs after a timeout; the deterministic
 `P4_PSRAM_TIMEOUT_TEST=1` run proved that a timed-out command can be followed by
-a complete 200 MHz bring-up.  One reset taken during a measured 69 MB/s scanout
-also recovered all 32 MB, but the restarted DSI scanout then stalled.  Therefore
-the rule still stands for ordinary work: do not reset a running scanout.  A
-deliberate reset-continuity test must say that it is testing this failure mode,
-first prove the timeout path, and record PSRAM and DSI results separately.
+a complete 200 MHz bring-up.  The quiesce also disables the DSI pixel clock and
+bridge in Espressif's teardown order before pulsing the chip-level DSI reset.
+
+One USB reset taken during a measured 69 MB/s scanout now recovered all 32 MB,
+the DSI identity and power-mode replies, and a second measured 69 MB/s scanout
+without vendor firmware or a power cycle.  Routine USB reset is therefore no
+longer prohibited merely because B5 may still be active.  Keep scanout bounded
+until the full ten-warm/ten-cold B5 gate passes, and continue to record PSRAM
+and DSI results separately in any reset-continuity evidence.
 
 ## Safety boundaries
 
