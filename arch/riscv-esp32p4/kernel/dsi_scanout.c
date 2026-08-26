@@ -83,22 +83,17 @@ static inline void px(volatile unsigned char *at, unsigned long rgb)
                    | (unsigned int)((rgb >> 3) & 0x1F);
 
     /*
-     * High byte first.  Measured, not assumed.
+     * Native little-endian RGB565, as used by Espressif's D1001 BSP.
      *
-     * Three bands with 0xFF in one byte each came back with byte 0 yellow and
-     * byte 1 blue.  In RGB565 the high byte carries red and the top three green
-     * bits - yellow - and the low byte the bottom three green bits and blue.
-     * So the panel reads the byte this code writes first as the high one, and
-     * writing the low byte first put every pixel's halves the wrong way round.
-     *
-     * That is also the whole of the "byte offset that walks from row to row":
-     * there was no walk.  Every pixel was swapped identically, and on the thin
-     * lines of a grid a uniform swap reads as lines in changing colours,
-     * because what changes is which line's colour survives the swap
-     * recognisably.
+     * The complete primary/pair-colour card makes this bit-exact rather than
+     * an inference from thin grid lines.  High-byte-first changed requested
+     * R/G/B into the values 0x00f8/0xe007/0x1f00 as read by the bridge, which
+     * arrived as blue/red/green; yellow/cyan/magenta changed to
+     * magenta/yellow/cyan in the same way.  White remained white, which is why
+     * geometry could be clean while the byte order was still wrong.
      */
-    at[0] = (unsigned char)(v >> 8);
-    at[1] = (unsigned char)(v & 0xFF);
+    at[0] = (unsigned char)(v & 0xFF);
+    at[1] = (unsigned char)(v >> 8);
 #endif
 }
 
@@ -454,13 +449,9 @@ void krnP4ScanoutTestCard(void)
 
     /*
      * The bars occupy the top half only, and the bottom half is left black.
-     *
-     * The panel shows the frame twice down its height and the DMA has been
-     * measured reading the framebuffer once per panel frame, so those two
-     * facts do not compose.  A frame whose halves differ separates them: two
-     * banded regions means the buffer is being read twice after all, one
-     * banded region above a black one means it is read once and the panel is
-     * addressing its lines at half the expected pitch.
+     * Distinct halves prove that the native-height frame arrives once and in
+     * the expected order; the earlier apparent repetition was observed while
+     * RGB565 byte order made the diagnostic patterns misleading.
      */
     for (y = 0; y < P4_TX_V_RES; y++)
     {
