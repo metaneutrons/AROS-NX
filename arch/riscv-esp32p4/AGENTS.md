@@ -191,12 +191,20 @@ are bounded and reset both PSRAM FSMs after a timeout; the deterministic
 a complete 200 MHz bring-up.  The quiesce also disables the DSI pixel clock and
 bridge in Espressif's teardown order before pulsing the chip-level DSI reset.
 
-One USB reset taken during a measured 69 MB/s scanout now recovered all 32 MB,
-the DSI identity and power-mode replies, and a second measured 69 MB/s scanout
-without vendor firmware or a power cycle.  Routine USB reset is therefore no
-longer prohibited merely because B5 may still be active.  Keep scanout bounded
-until the full ten-warm/ten-cold B5 gate passes, and continue to record PSRAM
-and DSI results separately in any reset-continuity evidence.
+One USB reset taken during a measured 69 MB/s scanout recovered all 32 MB, the
+DSI identity reply and a second measured scanout without vendor firmware or a
+power cycle.  A later exact-artifact repeat exposed an independent diagnostic
+hazard: stopping video for a post-video DCS 0x0A read can leave
+`GEN_RD_CMD_BUSY` set when the panel does not reply.  Clearing BTA does not
+abort it, and restarted video then consumes no pixels.  That read is therefore
+off by default and may only be enabled deliberately with
+`P4_DSI_POST_VIDEO_QUERY=1`; do not use it in reset or scanout acceptance runs.
+Two immediate default-off repeats, including recovery from an already-retained
+busy state, then completed with moving DMA.  Routine USB reset is no longer
+prohibited merely because bounded B5 scanout may still be active, but the full
+ten-warm/ten-cold gate remains open.  Continue to record PSRAM, command-path and
+live DMA evidence separately rather than treating a DCS reply as proof of
+scanout continuity.
 
 ## Safety boundaries
 
