@@ -64,6 +64,8 @@ USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 #                       the framebuffer from exec and run at least 30 minutes
 #                       of display DMA, moving dirty rectangles, referenced
 #                       128-sector READ64 requests and 1-MB PSRAM verify passes
+#   -DP4_B5_VISUAL_GATE  60-second observer gate with long, separate solids,
+#                       checker, quadrant, corner-only and one-pixel-line phases
 #   -DP4_PARTITION_TEST  open the package-loaded partition.library and read
 #                       one sector through its public root-partition API
 #   -DP4_AFTERDOS_PROBE an RTF_AFTERDOS resident that asks the half of the A4
@@ -210,14 +212,27 @@ P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_TEST
 endif
 
 # P4_DSI_ACK_REQUEST=1 sets ACK_RQST_EN, so the panel is asked to acknowledge
-# every command.  The vendor reference sets it and reports the answers; this
-# port has no handler for them, and with the bit set the bus turnaround after
+# every command.  The vendor reference sets it and leaves BTA enabled after its
+# first read; this port normally returns to transmit-only state, and with the
+# bit set the bus turnaround after
 # the initialisation sequence does not always complete - PHY_STATUS keeps
 # phy_direction set through the handover to video mode, so the host is
 # receiving when it should be sending pixels.  Off by default for that reason;
 # on to reproduce the measurement.
 ifdef P4_DSI_ACK_REQUEST
 P4_DEBUG_CPPFLAGS += -DP4_DSI_ACK_REQUEST
+endif
+
+# P4_B5_IDF_CMD_STATE=1 reproduces the reference's ordered command state, not
+# merely its final register values: ACK_RQST_EN is active before the identity
+# read and BTA_EN remains active after that read throughout the vendor table
+# and video handover.  It is diagnostic because earlier ACK-only runs could
+# leave a turnaround in progress; the bounded UART edge samples decide it.
+# It deliberately does not emulate FreeRTOS scheduling: two bounded attempts
+# proved that FIFO/direction waits and artificial 1-ms gaps do not reproduce
+# the working driver's command state.
+ifdef P4_B5_IDF_CMD_STATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_IDF_CMD_STATE
 endif
 
 # P4_DSI_VPG=1 turns on the DSI host's own video pattern generator alongside
@@ -272,6 +287,36 @@ ifdef P4_DSI_LP_VERT_ONLY
 P4_DEBUG_CPPFLAGS += -DP4_DSI_LP_VERT_ONLY
 endif
 
+# P4_DSI_NO_LP=1 keeps every video interval in high speed.  Used with the
+# feed-first UART oracle, it isolates the first frame's LP exit/re-entry from
+# packetization, frame ACK and the producer's framebuffer boundary.
+ifdef P4_DSI_NO_LP
+P4_DEBUG_CPPFLAGS += -DP4_DSI_NO_LP
+endif
+
+# P4_DSI_HLINE_DELTA=n changes only the DSI host's line time, in lane byte
+# clocks, while leaving the DPI bridge timing untouched.  This is a bounded
+# UART diagnostic for a producer/consumer rate mismatch at the first video
+# frame boundary.  It is not a geometry-acceptance mode.
+ifdef P4_DSI_HLINE_DELTA
+P4_DEBUG_CPPFLAGS += -DP4_DSI_HLINE_DELTA=$(P4_DSI_HLINE_DELTA)
+endif
+
+# P4_DSI_BRG_HLINE_DELTA=n changes only the bridge's horizontal total, in
+# pixels, while leaving the host timing fixed.  It distinguishes a first
+# assertion tied to the incoming DPI frame from one tied to the host's own
+# programmed frame period.  Diagnostic only; never a geometry mode.
+ifdef P4_DSI_BRG_HLINE_DELTA
+P4_DEBUG_CPPFLAGS += -DP4_DSI_BRG_HLINE_DELTA=$(P4_DSI_BRG_HLINE_DELTA)
+endif
+
+# P4_DSI_BRG_VBP_DELTA=n changes only the bridge VBP while preserving V total,
+# active height and host timing.  VFP changes by -n implicitly.  This is a
+# diagnostic bridge/host vertical-phase discriminator, not a panel setting.
+ifdef P4_DSI_BRG_VBP_DELTA
+P4_DEBUG_CPPFLAGS += -DP4_DSI_BRG_VBP_DELTA=$(P4_DSI_BRG_VBP_DELTA)
+endif
+
 # P4_DPI_MHZ overrides the panel's pixel clock, which defaults to the vendor
 # configuration's 80.  The divider comes off the 240 MHz tap, so only exact
 # divisors are usable: 80, 60, 48, 40.  Lowering it lowers the data rate the
@@ -324,6 +369,35 @@ endif
 # for B5's 30-minute gate; never record it as sustained-stress evidence.
 ifdef P4_B5_STRESS_SMOKE
 P4_DEBUG_CPPFLAGS += -DP4_B5_STRESS_SMOKE
+endif
+
+# Keep the visual acceptance instrument separate from the sustained stress
+# schedule.  In particular, corner blocks and line intersections must never
+# share the only observation window: the first direct observation showed that
+# they can be confused even though the transport itself is clean.
+ifeq ($(P4_B5_VISUAL_GATE),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_VISUAL_GATE -DP4_PANEL_PROBE -DP4_DSI_PROBE \
+                     -DP4_SCANOUT_TEST -DP4_SCANOUT_COHERENCY
+ifneq ($(P4_DSI_BURST),1)
+P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
+endif
+
+# P4_B5_STATIC_PRELOAD=1 turns the visual gate into one immutable image.  The
+# asymmetric coordinate pattern is fully written back before DMA, host video
+# and bridge feed start; no scheduled step touches the live buffer afterwards.
+ifdef P4_B5_STATIC_PRELOAD
+P4_DEBUG_CPPFLAGS += -DP4_B5_STATIC_PRELOAD -DP4_B5_START_TRACE
+endif
+# P4_B5_BLK_RAW_FRAME=1 replaces the bridge's 720x1280 reset count with the
+# actual one-block framebuffer size.  It is an isolated revision-one state
+# diagnostic; leave it off until a visual gate proves whether the field is
+# active with multi-block mode disabled.
+ifdef P4_B5_BLK_RAW_FRAME
+P4_DEBUG_CPPFLAGS += -DP4_B5_BLK_RAW_FRAME
+endif
+ifndef P4_SCANOUT_SECS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=60
+endif
 endif
 
 # P4_BRG_RAW_DIV=n divides the bridge's frame data counter by n.  A scale test
@@ -439,6 +513,69 @@ endif
 # boundaries and nothing holds the two together.
 ifdef P4_DSI_FRAME_ACK
 P4_DEBUG_CPPFLAGS += -DP4_DSI_FRAME_ACK
+endif
+
+# P4_B5_REF_READ_STATE=1 reproduces the two final command-read state bits
+# measured under Vellum: PCKHDL_CFG.BTA_EN and CMD_MODE_CFG.ACK_RQST_EN.  They
+# are set only after the final command so the test does not create unhandled
+# acknowledgements while the JD9365 table is sent.
+ifdef P4_B5_REF_READ_STATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_REF_READ_STATE
+endif
+
+# P4_B5_SKIP_FINAL_PANEL_ON=1 omits only the parameterless DCS 0x29 normally
+# sent immediately after video/feed start.  The vendor table has already sent
+# its own 0x29 transaction, so this diagnostic separates command injection
+# into a live video stream from the first frame's ordinary payload traffic.
+ifdef P4_B5_SKIP_FINAL_PANEL_ON
+P4_DEBUG_CPPFLAGS += -DP4_B5_SKIP_FINAL_PANEL_ON
+endif
+
+# P4_B5_ATOMIC_START=1 removes every diagnostic read between the three
+# reference start actions: host video mode, automatic HS clock and bridge DPI
+# feed commit.  Status is sampled immediately afterward.  This is not a timing
+# delay; it restores the unbroken write sequence used by esp_lcd_panel_init().
+ifdef P4_B5_ATOMIC_START
+P4_DEBUG_CPPFLAGS += -DP4_B5_ATOMIC_START
+endif
+
+# P4_B5_FULL_ATOMIC_START=1 extends the same isolation boundary back to the
+# end of the vendor command table.  No PHY, command, host, bridge or DMA status
+# is read while video timing is staged and the producer/consumer path starts;
+# all five UART edge records are populated from the first post-feed snapshot.
+ifdef P4_B5_FULL_ATOMIC_START
+P4_DEBUG_CPPFLAGS += -DP4_B5_FULL_ATOMIC_START -DP4_B5_ATOMIC_START
+endif
+
+# P4_B5_REF_BRG_IRQ=1 matches the final register write in the reference DPI
+# init path: enable bridge underrun status after committing the live feed.
+# AROS does not route that peripheral interrupt to a CPU; B5 polls RAW status.
+ifdef P4_B5_REF_BRG_IRQ
+P4_DEBUG_CPPFLAGS += -DP4_B5_REF_BRG_IRQ
+endif
+
+# P4_B5_FEED_FIRST=1 is a bounded start-order diagnostic used with the full
+# atomic path.  The bridge and DMA are already live, then valid DPI input is
+# committed immediately before host video mode instead of immediately after.
+# It cannot underrun intentionally because the producer is armed first.
+ifdef P4_B5_FEED_FIRST
+P4_DEBUG_CPPFLAGS += -DP4_B5_FEED_FIRST
+endif
+
+# P4_B5_DMA_RELOAD=1 removes the GDMA full-transfer stop/rearm boundary for a
+# UART localization test.  It is known to lose visual frame phase and is never
+# a geometry acceptance mode; use it only to test whether the host survives
+# continuous producer traffic across the first framebuffer boundary.
+ifdef P4_B5_DMA_RELOAD
+P4_DEBUG_CPPFLAGS += -DP4_B5_DMA_RELOAD
+endif
+
+# P4_B5_HOST_RESTART=1 pulses only the DSI host core's SHUTDOWNZ after the
+# complete vendor command table has drained and before video timing is staged.
+# The PHY, panel, bridge and DMA remain untouched.  This distinguishes hidden
+# command-engine/FSM state from the already matched public register state.
+ifdef P4_B5_HOST_RESTART
+P4_DEBUG_CPPFLAGS += -DP4_B5_HOST_RESTART
 endif
 
 # P4_PANEL_24BIT=1 selects the 24-bit profile, which was the default for one

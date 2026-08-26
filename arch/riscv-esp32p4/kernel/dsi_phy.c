@@ -88,6 +88,69 @@ static void dsi_trace(void)
         krnP4DsiPhyTrace[krnP4DsiPhyTraceCount++] = dsi_rd(P4_DSI_PHY_STATUS);
 }
 
+/* Match ESP-IDF ldo_ll_voltage_to_dref_mul() exactly for LDO unit 2.  The
+ * calibration constants are signed eFuse fields; using the nominal 9/6 pair
+ * on every die changes the real PHY rail even though both settings are called
+ * "2.5 V" at the API boundary. */
+static void dsi_ldo_2v5_params(unsigned char *dref, unsigned char *mul)
+{
+    unsigned long sys2 = p4_r32(P4_EFUSE_RD_MAC_SYS_2);
+    unsigned long sys3 = p4_r32(P4_EFUSE_RD_MAC_SYS_3);
+    unsigned int blk_version;
+    unsigned int efuse_k = 0;
+    unsigned int efuse_vos = 0;
+    unsigned int efuse_c = 0;
+    int k_1000 = 1000;
+    int vos_1000 = 0;
+    int c_1000 = 1000;
+    int min_diff = 400000000;
+    unsigned int d;
+    unsigned int m;
+
+    blk_version = ((sys2 & P4_EFUSE_BLK_MAJOR_MASK)
+                   >> P4_EFUSE_BLK_MAJOR_SHIFT) * 100;
+    blk_version += (sys2 & P4_EFUSE_BLK_MINOR_MASK)
+                   >> P4_EFUSE_BLK_MINOR_SHIFT;
+
+    *dref = P4_LDO_DREF_2V5;
+    *mul = P4_LDO_MUL_2V5;
+    if (blk_version < 1)
+        return;
+
+    efuse_k = (sys3 & P4_EFUSE_LDO3_K_MASK) >> P4_EFUSE_LDO3_K_SHIFT;
+    efuse_vos = (sys3 & P4_EFUSE_LDO3_VOS_MASK)
+                >> P4_EFUSE_LDO3_VOS_SHIFT;
+    efuse_c = (sys3 & P4_EFUSE_LDO3_C_MASK) >> P4_EFUSE_LDO3_C_SHIFT;
+
+    if (efuse_k)
+        k_1000 = (efuse_k & 0x80) ? 975 - (int)(efuse_k & 0x7f)
+                                  : 975 + (int)efuse_k;
+    if (efuse_vos)
+        vos_1000 = (efuse_vos & 0x20) ? -3 - (int)(efuse_vos & 0x1f)
+                                      : (int)efuse_vos - 3;
+    if (efuse_c)
+        c_1000 = (efuse_c & 0x20) ? 990 - (int)(efuse_c & 0x1f)
+                                  : 990 + (int)efuse_c;
+
+    for (d = 0; d < 16; d++) {
+        int vref_20 = d < 9 ? 10 + (int)d : 20 + ((int)d - 9) * 2;
+
+        for (m = 0; m < 8; m++) {
+            int vout = (vref_20 * k_1000 + 20 * vos_1000)
+                       * (4000 + (int)m * c_1000);
+            int diff = 2500 * 80000 - vout;
+
+            if (diff < 0)
+                diff = -diff;
+            if (diff < min_diff) {
+                min_diff = diff;
+                *dref = d;
+                *mul = m;
+            }
+        }
+    }
+}
+
 /*
  * The PHY supply.
  *
@@ -106,6 +169,10 @@ static void dsi_trace(void)
 void krnP4DsiLdoUp(void)
 {
     unsigned long v;
+    unsigned char dref;
+    unsigned char mul;
+
+    dsi_ldo_2v5_params(&dref, &mul);
 
     v = p4_r32(P4_PMU_EXT_LDO_VO3);
     v |= P4_LDO_FORCE_TIEH_SEL;             /* software owns it, not eFuse */
@@ -115,8 +182,9 @@ void krnP4DsiLdoUp(void)
 
     v = p4_r32(P4_PMU_EXT_LDO_VO3_ANA);
     v &= ~(P4_LDO_DREF_MASK | P4_LDO_MUL_MASK);
-    v |= (unsigned long)P4_LDO_DREF_2V5 << P4_LDO_DREF_SHIFT;
-    v |= (unsigned long)P4_LDO_MUL_2V5 << P4_LDO_MUL_SHIFT;
+    v |= (unsigned long)dref << P4_LDO_DREF_SHIFT;
+    v |= (unsigned long)mul << P4_LDO_MUL_SHIFT;
+    v |= P4_LDO_EN_VDET;                    /* IDF ripple suppression */
     p4_w32(P4_PMU_EXT_LDO_VO3_ANA, v);
 
     p4_w32(P4_PMU_EXT_LDO_VO3, p4_r32(P4_PMU_EXT_LDO_VO3) | P4_LDO_XPD);
@@ -154,9 +222,11 @@ static void dsi_phy_write(unsigned char reg, unsigned char val)
  * Clocks, host, PHY and PLL, in the order the reference uses.
  *
  * The order is not decorative.  The PHY has to be out of shutdown before its
- * reset means anything, the clock lane has to be enabled before the PLL is
- * forced on, and the PLL registers have to be written while the PHY is held
- * in reset - releasing reset is what makes it act on them.
+ * reset means anything.  ESP-IDF then pulses the digital reset, enables the
+ * clock lane, forces the PLL on and only then writes the internal PLL
+ * registers through the test interface.  Keeping reset asserted during those
+ * writes is observably a different programming sequence even if the PLL later
+ * reports lock.
  */
 int krnP4DsiPhyUp(struct P4DsiState *out)
 {
@@ -224,11 +294,15 @@ int krnP4DsiPhyUp(struct P4DsiState *out)
     dsi_set(P4_DSI_PHY_RSTZ, P4_DSI_PHY_SHUTDOWNZ);
 
     /*
-     * Held in reset while the PLL is programmed, then released.  The test
-     * interface is cleared first, because a stale address left in it would
-     * make the first write land somewhere else.
+     * Match mipi_dsi_hal_init() before configure_phy_pll(): pulse the digital
+     * reset, then enable the clock lane and force the PLL before using the
+     * test interface.  The interface is cleared first because a stale address
+     * would make the first write land somewhere else.
      */
     dsi_clr(P4_DSI_PHY_RSTZ, P4_DSI_PHY_RSTZ_BIT);
+    dsi_set(P4_DSI_PHY_RSTZ, P4_DSI_PHY_RSTZ_BIT);
+    dsi_set(P4_DSI_PHY_RSTZ, P4_DSI_PHY_ENABLECLK | P4_DSI_PHY_FORCEPLL);
+
     dsi_wr(P4_DSI_PHY_TST_CTRL0, P4_DSI_TESTCLR);
     dsi_wr(P4_DSI_PHY_TST_CTRL0, 0);
 
@@ -237,9 +311,6 @@ int krnP4DsiPhyUp(struct P4DsiState *out)
     dsi_phy_write(0x17, (unsigned char)(out->pll_n - 1));
     dsi_phy_write(0x18, (unsigned char)((out->pll_m - 1) & 0x1F));
     dsi_phy_write(0x18, (unsigned char)(0x80 | (((out->pll_m - 1) >> 5) & 0x0F)));
-
-    dsi_set(P4_DSI_PHY_RSTZ, P4_DSI_PHY_RSTZ_BIT);
-    dsi_set(P4_DSI_PHY_RSTZ, P4_DSI_PHY_ENABLECLK | P4_DSI_PHY_FORCEPLL);
 
     /*
      * Lock, then stop state, each with its own bound so a failure says which
@@ -297,10 +368,17 @@ int krnP4DsiCmdModeUp(void)
 {
     unsigned long byte_clk_mhz = P4_DSI_LANE_MBPS / 8;
 
-    /* Command mode, and the clock lane stays in low power until a pixel
-       stream needs it. */
+    /* Command mode, with the clock lane held in low power.
+
+       esp_lcd_new_dsi_bus() explicitly selects LP before the panel command
+       sequence.  Its low-level helper encodes that state with both
+       AUTO_CLKLANE and TXREQUESTCLKHS clear; the DPI start path selects AUTO
+       only after DMA has been armed and video mode enabled.  Final register
+       parity is not enough here because AUTO entered before the command
+       sequence leaves internal PHY/host state that is not readable back. */
     dsi_set(P4_DSI_MODE_CFG, P4_DSI_CMD_VIDEO_MODE);
-    dsi_clr(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS);
+    dsi_clr(P4_DSI_LPCLK_CTRL,
+            P4_DSI_TXREQUESTCLKHS | P4_DSI_AUTO_CLKLANE);
 
     /* The four lane-transition times, undocumented and carried over as they
        are; see the display contract's unresolved list. */
@@ -377,7 +455,7 @@ int krnP4DsiCmdModeUp(void)
          | P4_DSI_DCS_SW_0P_TX | P4_DSI_DCS_SW_1P_TX
          | P4_DSI_DCS_SR_0P_TX | P4_DSI_DCS_LW_TX
          | P4_DSI_MAX_RD_PKT_SIZE
-#ifdef P4_DSI_ACK_REQUEST
+#if defined(P4_DSI_ACK_REQUEST) || defined(P4_B5_IDF_CMD_STATE)
          | P4_DSI_ACK_RQST_EN
 #endif
            );
@@ -456,15 +534,16 @@ int krnP4DsiDcsWrite(unsigned char cmd, const unsigned char *param,
             dsi_wr(P4_DSI_GEN_PLD_DATA, word);
         }
 
-        return dsi_send_header(P4_DSI_DT_DCS_LW,
-                               (unsigned char)(total & 0xFF),
-                               (unsigned char)(total >> 8));
+        r = dsi_send_header(P4_DSI_DT_DCS_LW,
+                            (unsigned char)(total & 0xFF),
+                            (unsigned char)(total >> 8));
     }
+    else if (total == 2)
+        r = dsi_send_header(P4_DSI_DT_DCS_SW_1P, cmd, param[0]);
+    else
+        r = dsi_send_header(P4_DSI_DT_DCS_SW_0P, cmd, 0);
 
-    if (total == 2)
-        return dsi_send_header(P4_DSI_DT_DCS_SW_1P, cmd, param[0]);
-
-    return dsi_send_header(P4_DSI_DT_DCS_SW_0P, cmd, 0);
+    return r;
 }
 
 /*
@@ -554,7 +633,9 @@ int krnP4DsiDcsRead(unsigned char cmd, unsigned char *out, unsigned int want)
      * payload FIFO after any read had been attempted.  One missing clear tied
      * the two open defects together.
      */
+#ifndef P4_B5_IDF_CMD_STATE
     dsi_clr(P4_DSI_PCKHDL_CFG, P4_DSI_BTA_EN);
+#endif
 
     return got ? (int)got : P4_DSI_CMD_NO_REPLY;
 }
@@ -577,6 +658,11 @@ void krnP4DsiCmdStatus(unsigned long *pkt, unsigned long *int0,
         *int0 = dsi_rd(P4_DSI_INT_ST0);
     if (int1)
         *int1 = dsi_rd(P4_DSI_INT_ST1);
+}
+
+unsigned long krnP4DsiVideoStatus(void)
+{
+    return dsi_rd(P4_DSI_VID_PKT_STATUS);
 }
 
 /*
@@ -643,30 +729,47 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
             krnTimerWait((c->delay_ms * P4_TICK_HZ + 999) / 1000);
     }
 
+#ifndef P4_B5_FULL_ATOMIC_START
+    dsi_trace();                /* 3: after the whole vendor sequence */
+#endif
+
+#ifdef P4_B5_HOST_RESTART
     /*
-     * Display on, with no parameter, after the table.
-     *
-     * The vendor table's last commands include {0x29, {0x00}, 1, 20} - display
-     * on with a parameter byte - and this port sent only that.  The driver
-     * sends 0x29 a second time from its disp_on_off entry point, as
-     * tx_param(io, LCD_CMD_DISPON, NULL, 0): no parameter, a DCS short write
-     * with zero arguments, and the firmware that drives this board calls it
-     * explicitly after panel_init.  0x29 has no one-parameter form, so the
-     * table's version is a packet the controller is free to discard, and this
-     * one is the one that takes effect.
-     *
-     * Measured before this was added: DCS 0x0A reported 0x18 in every
-     * configuration tried - awake, normal mode, display off - while the host
-     * demonstrably transmitted.  A panel with its output disabled is black no
-     * matter what arrives.
+     * Diagnostic boundary between the completed command stream and video.
+     * CMD_PKT_STATUS is 0x50015 here: both external and buffered command and
+     * payload paths are empty.  SHUTDOWNZ resets only the DSI host core; the
+     * separately powered PHY remains locked and the already configured panel
+     * remains awake.  Video timing is staged again by krnP4DsiPatternOn()
+     * below, so a clean first frame after this pulse identifies otherwise
+     * invisible command-engine state as the poisoned handover state.
      */
-    r = krnP4DsiDcsWrite(0x29, 0, 0);
+    dsi_clr(P4_DSI_PWR_UP, P4_DSI_SHUTDOWNZ);
+    dsi_set(P4_DSI_PWR_UP, P4_DSI_SHUTDOWNZ);
+#endif
+
+#ifndef P4_SCANOUT_TEST
+    return krnP4DsiPanelOn();
+#else
+    /* The working wrapper calls the underlying DPI panel's init here, which
+       starts DMA, video mode and the bridge feed, and only then calls its
+       disp_on_off entry point.  B5 therefore defers the valid parameterless
+       0x29 until the same three producers are running. */
+    return P4_DSI_OK;
+#endif
+}
+
+/* The valid display-on transaction is deliberately separate from the vendor
+ * table.  That table contains 0x29 with one parameter, but DCS defines only a
+ * parameterless form; Vellum sends this second transaction after DPI init. */
+int krnP4DsiPanelOn(void)
+{
+    int r = krnP4DsiDcsWrite(0x29, 0, 0);
+
     if (r != P4_DSI_OK)
         return r;
 
     krnTimerWait((20 * P4_TICK_HZ + 999) / 1000);
-
-    dsi_trace();                /* 3: after the whole jd9365 sequence */
+    dsi_trace();                /* after an already-running video stream */
 
     return P4_DSI_OK;
 }
@@ -691,7 +794,9 @@ void krnP4DsiVideoOn(void)
      */
     dsi_clr(P4_DSI_MODE_CFG, P4_DSI_CMD_VIDEO_MODE);
 
+#ifndef P4_B5_ATOMIC_START
     dsi_trace();                /* 5: video mode, clock lane not yet requested */
+#endif
 
     /*
      * Clock lane to the host's own control, and that is two bits.
@@ -705,7 +810,9 @@ void krnP4DsiVideoOn(void)
      */
     dsi_set(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS | P4_DSI_AUTO_CLKLANE);
 
+#ifndef P4_B5_ATOMIC_START
     dsi_trace();                /* 6: clock lane in high speed */
+#endif
 }
 
 /*
@@ -784,7 +891,14 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * These timings are in pixels, unscaled, unlike the host's below.  The
      * bridge counts pixels because it is on the pixel side of the link.
      */
-    brg_wr(P4_DSI_BRG_CLK_EN, P4_DSI_BRG_CLK_EN_BIT);
+    /*
+     * Leave the bridge register-clock force-on bit at its reset value.
+     * ESP-IDF exposes this bit only as a diagnostic/bring-up override and its
+     * DPI path never sets it.  The working Vellum scanout consequently reads
+     * CLK_EN=0, whereas keeping it forced in AROS was the last measured static
+     * bridge difference.  The reset-continuity teardown still forces the
+     * register clock before touching a possibly gated bridge.
+     */
 
     /*
      * P4_BRG_VDIV is a test of whether the bridge honours its active-line
@@ -808,11 +922,19 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
                               + P4_PANEL_VFP) << P4_DSI_BRG_TOTAL_SHIFT));
     brg_wr(P4_DSI_BRG_DPI_V_CFG1,
            ((unsigned long)P4_PANEL_VSYNC << P4_DSI_BRG_SYNC_SHIFT)
-           | ((unsigned long)P4_PANEL_VBP << P4_DSI_BRG_BANK_SHIFT));
+           | ((unsigned long)(P4_PANEL_VBP
+#ifdef P4_DSI_BRG_VBP_DELTA
+                              + P4_DSI_BRG_VBP_DELTA
+#endif
+                              ) << P4_DSI_BRG_BANK_SHIFT));
     brg_wr(P4_DSI_BRG_DPI_H_CFG0,
            ((unsigned long)P4_PANEL_H_RES << P4_DSI_BRG_DISP_SHIFT)
            | ((unsigned long)(P4_PANEL_H_RES + P4_PANEL_HSYNC + P4_PANEL_HBP
-                              + P4_PANEL_HFP) << P4_DSI_BRG_TOTAL_SHIFT));
+                              + P4_PANEL_HFP
+#ifdef P4_DSI_BRG_HLINE_DELTA
+                              + P4_DSI_BRG_HLINE_DELTA
+#endif
+                             ) << P4_DSI_BRG_TOTAL_SHIFT));
     brg_wr(P4_DSI_BRG_DPI_H_CFG1,
            ((unsigned long)P4_PANEL_HSYNC << P4_DSI_BRG_SYNC_SHIFT)
            | ((unsigned long)P4_PANEL_HBP << P4_DSI_BRG_BANK_SHIFT));
@@ -858,8 +980,15 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
 #else
     brg_wr(P4_DSI_BRG_DPI_MISC_CFG, 0);
 #endif
-    brg_wr(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE);
+    /* B4 owns the bridge immediately.  B5 instead defers the first enable and
+       commit until its DMA flow, raw count and thresholds are all staged, as
+       esp_lcd_new_panel_dpi() does.  Enabling this partial bridge-flow state
+       here and changing it live later leaves identical final registers but a
+       different internal counter/FIFO start state. */
+#ifndef P4_SCANOUT_TEST
     brg_wr(P4_DSI_BRG_EN, P4_DSI_BRG_DSI_EN);
+    brg_wr(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE);
+#endif
 
     /* Virtual channel 0, RGB565, every sync signal active high. */
     dsi_wr(P4_DSI_DPI_VCID, 0);
@@ -908,11 +1037,27 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * read path is understood, asking for an acknowledgement is asking the
      * host to stop.
      */
-#ifdef P4_DSI_LP_VERT_ONLY
+#ifdef P4_DSI_NO_LP
+#define P4_DSI_LP_BITS  0UL
+#elif defined(P4_DSI_LP_VERT_ONLY)
 #define P4_DSI_LP_BITS  P4_DSI_VID_LP_VERT
 #else
 #define P4_DSI_LP_BITS  P4_DSI_VID_LP_ALL
 #endif
+
+/*
+ * Exact final command-read state seen in the working Vellum image.
+ *
+ * These two bits only permit/request turnaround for command transactions;
+ * setting them after the last command cannot create an unhandled command
+ * acknowledgement.  They are kept behind one diagnostic switch because the
+ * normal AROS read path deliberately returns the host to transmit-only state.
+ */
+#ifdef P4_B5_REF_READ_STATE
+    dsi_set(P4_DSI_PCKHDL_CFG, P4_DSI_BTA_EN);
+    dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_ACK_RQST_EN);
+#endif
+
 /*
  * Frame acknowledge, which the reference enables and this port does not.
  *
@@ -975,13 +1120,27 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
 
     dsi_wr(P4_DSI_VID_HSA_TIME, hsa);
     dsi_wr(P4_DSI_VID_HBP_TIME, hbp);
+#ifdef P4_DSI_HLINE_DELTA
+    /*
+     * UART-only rate-mismatch diagnostic.  Keep the bridge timing fixed and
+     * move only the host's line period so the first-frame DPI FIFO overflow
+     * can be tested for sensitivity to producer/consumer phase.  Never use a
+     * delta as a display mode without a subsequent visual geometry gate.
+     */
+    dsi_wr(P4_DSI_VID_HLINE_TIME,
+           (unsigned long)((long)(act + hsa + hbp + hfp)
+                           + (long)P4_DSI_HLINE_DELTA));
+#else
     dsi_wr(P4_DSI_VID_HLINE_TIME, act + hsa + hbp + hfp);
+#endif
     dsi_wr(P4_DSI_VID_VSA_LINES, P4_PANEL_VSYNC);
     dsi_wr(P4_DSI_VID_VBP_LINES, P4_PANEL_VBP);
     dsi_wr(P4_DSI_VID_VFP_LINES, P4_PANEL_VFP);
     dsi_wr(P4_DSI_VID_VACTIVE_LINES, P4_TX_V_RES);
 
+#ifndef P4_B5_FULL_ATOMIC_START
     dsi_trace();                /* 4: video registers staged, still command mode */
+#endif
 
 #ifndef P4_SCANOUT_TEST
     krnP4DsiVideoOn();
