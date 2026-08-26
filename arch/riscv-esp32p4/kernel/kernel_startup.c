@@ -5019,14 +5019,49 @@ static void krnP4PanelProbe(void)
         {
             unsigned char id[3] = { 0, 0, 0 };
             int id_result = 0, init;
+#ifdef P4_SCANOUT_TEST
+            struct P4DsiPattern pat;
+#endif
 
             krnP4PutStr("[dsi]    B3 stage one passed\n");
 
             /* Stage two: command mode, then the panel out of reset, then
                its own sequence.  The reset comes here and not earlier. */
             (void)krnP4DsiCmdModeUp();
-            krnP4PutStr("[dsi]    command mode, clock lane low power,"
+            krnP4PutStr("[dsi]    command mode, clock lane "
+#ifdef P4_B5_IDF_AUTO_CMD_CLOCK
+                        "auto (v6.0.1 comparison),"
+#else
+                        "low power,"
+#endif
                         " commands in low power\n");
+
+#ifdef P4_B5_EARLY_DPI_CREATE
+            /*
+             * Match esp_lcd_new_panel_dpi(), which the Waveshare wrapper
+             * calls before the board pulses the JD9365 reset line.  Creation
+             * enables the DPI pixel clock, stages host/bridge timings and
+             * globally enables the bridge, but deliberately leaves DMA,
+             * host video mode and DPI_EN off until the wrapper's underlying
+             * DPI init runs after the complete vendor command table.
+             *
+             * The ordinary AROS path did all of this after that table.  Equal
+             * final registers therefore did not prove equal bridge/host FSM
+             * history.  Keep the early state live without rewriting it later
+             * so this is a lifecycle discriminator rather than another start
+             * delay.
+             */
+            (void)krnP4DsiPatternOn(&pat);
+#ifdef P4_B5_EARLY_GDMA_CREATE
+            krnP4ScanoutDmaCreate();
+#endif
+            krnP4ScanoutBridgeUp();
+            krnP4PutStr("[b5]     DPI path created before panel reset"
+#ifdef P4_B5_EARLY_GDMA_CREATE
+                        ", including idle GDMA channel"
+#endif
+                        "\n");
+#endif
 
             if (krnP4PanelResetPulse(&st) != P4_I2C_OK)
             {
@@ -5204,7 +5239,6 @@ static void krnP4PanelProbe(void)
              */
             if (init == P4_DSI_OK && __esp32p4_psram_size)
             {
-                struct P4DsiPattern pat;
                 struct P4HostState hs;
                 struct P4ScanoutState sc;
                 unsigned long sar_dma, sar_video, sar_feed;
@@ -5258,7 +5292,9 @@ static void krnP4PanelProbe(void)
                  * with nothing behind its DPI input latches a payload error it
                  * does not recover from.
                  */
+#ifndef P4_B5_EARLY_DPI_CREATE
                 (void)krnP4DsiPatternOn(&pat);
+#endif
 #ifdef P4_B5_FULL_ATOMIC_START
                 /* Stronger than P4_B5_ATOMIC_START: from the end of the
                    vendor command table through this complete producer and
@@ -5266,7 +5302,9 @@ static void krnP4PanelProbe(void)
                    otherwise harmless staged/bridge/DMA snapshots are delayed
                    until after feed commit, matching the reference call path
                    rather than observing each intermediate state. */
+#ifndef P4_B5_EARLY_DPI_CREATE
                 krnP4ScanoutBridgeUp();
+#endif
                 krnP4ScanoutDmaUp();
 #ifdef P4_B5_CLOCK_GATED_START
                 /* Freeze the bridge timing generator while both ends of the
@@ -5312,7 +5350,9 @@ static void krnP4PanelProbe(void)
                 krnP4HostState(&hs);
                 stage_phy[0] = hs.phy_status;
 
+#ifndef P4_B5_EARLY_DPI_CREATE
                 krnP4ScanoutBridgeUp();
+#endif
                 krnP4DsiCmdStatus(&stage_pkt[1], &stage_i0[1], &stage_i1[1]);
                 krnP4HostState(&hs);
                 stage_phy[1] = hs.phy_status;
