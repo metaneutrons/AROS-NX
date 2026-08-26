@@ -250,6 +250,7 @@ void krnP4ScanoutThreeLines(void);
 void krnP4ScanoutHalves(void);
 void krnP4ScanoutQuiesce(void);
 void krnP4ScanoutBands(void);
+unsigned long krnP4ScanoutCoherencyStep(unsigned long second);
 void krnP4ScanoutBridgeUp(void);
 void krnP4ScanoutDmaUp(void);
 void krnP4ScanoutFeedOn(void);
