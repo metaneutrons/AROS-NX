@@ -6433,6 +6433,10 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutDec((uint32_t)(psram.clock_hz > 80000000UL
                                    ? P4_PSRAM_RD_LATENCY_FAST
                                    : P4_PSRAM_RD_LATENCY_SLOW));
+            krnP4PutStr("\n[psram]  command timeouts ");
+            krnP4PutDec((uint32_t)psram.cmd_timeouts);
+            krnP4PutStr(", FSM recoveries ");
+            krnP4PutDec((uint32_t)psram.fsm_recoveries);
             krnP4PutStr("\n");
 
             if (psram.fast_requested)
@@ -6536,6 +6540,10 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutDec((uint32_t)psram.bias_found);
             krnP4PutStr(", set ");
             krnP4PutDec((uint32_t)psram.bias_set);
+            krnP4PutStr("\n[psram]  command timeouts ");
+            krnP4PutDec((uint32_t)psram.cmd_timeouts);
+            krnP4PutStr(", FSM recoveries ");
+            krnP4PutDec((uint32_t)psram.fsm_recoveries);
             krnP4PutStr("\n");
 
             /*

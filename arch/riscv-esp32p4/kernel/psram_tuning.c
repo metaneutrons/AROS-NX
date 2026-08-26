@@ -186,7 +186,9 @@ P4_SRAMCODE static int p4_candidate_holds(const uint32_t *reference,
         for (i = 0; i < P4_PSRAM_TUNE_WORDS; ++i)
             scratch[i] = 0;
 
-        krnPSRAMBlockRead(P4_PSRAM_TUNE_ADDR, scratch, P4_PSRAM_TUNE_WORDS);
+        if (!krnPSRAMBlockRead(P4_PSRAM_TUNE_ADDR, scratch,
+                               P4_PSRAM_TUNE_WORDS))
+            return 0;
 
         for (i = 0; i < P4_PSRAM_TUNE_WORDS; ++i)
             if (scratch[i] != reference[i])
@@ -259,7 +261,9 @@ P4_SRAMCODE int krnPSRAMTune(struct P4PSRAMTuning *out, unsigned long fast_hz)
     if (!krnPSRAMClockSet(20000000UL))
         return 0;
     krnPSRAMTuneReference(reference, P4_PSRAM_TUNE_WORDS);
-    krnPSRAMBlockWrite(P4_PSRAM_TUNE_ADDR, reference, P4_PSRAM_TUNE_WORDS);
+    if (!krnPSRAMBlockWrite(P4_PSRAM_TUNE_ADDR, reference,
+                            P4_PSRAM_TUNE_WORDS))
+        return 0;
 
     /* Confirm it went in.  A reference that was never stored would make every
        candidate below fail identically and look like a hardware limit. */

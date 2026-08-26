@@ -45,6 +45,11 @@ P4_SRAMDATA static uint32_t p4_wr_latency  = P4_PSRAM_WR_LATENCY_SLOW;
 P4_SRAMDATA static uint32_t p4_rd_reg_dummy = P4_PSRAM_RD_REG_DUMMY_SLOW;
 P4_SRAMDATA static uint32_t p4_rd_dummy    = P4_PSRAM_RD_DUMMY_SLOW;
 P4_SRAMDATA static uint32_t p4_wr_dummy    = P4_PSRAM_WR_DUMMY_SLOW;
+P4_SRAMDATA static unsigned int p4_cmd_timeouts;
+P4_SRAMDATA static unsigned int p4_fsm_recoveries;
+#ifdef P4_PSRAM_TIMEOUT_TEST
+P4_SRAMDATA static unsigned char p4_timeout_test_pending;
+#endif
 
 /*
  * Above 80 MHz the chip needs the longer latencies.  The threshold is the
@@ -656,27 +661,91 @@ P4_SRAMCODE void krnPSRAMEntryRead(struct P4PSRAMEntry *out)
 /*
  * Talking to the chip, as opposed to the controller in front of it.
  *
- * The transaction is done by three functions in the part's own mask ROM, at
- * fixed published addresses. Writing an MSPI transaction engine to send
- * sixteen bits of command and move two bytes would be work for its own
- * sake, and the ROM is always mapped, so calling it needs no cache.
+ * The mask ROM still configures each transaction.  Its start function is not
+ * used: disassembly of esp_rom_spi_cmd_start shows that it waits forever for
+ * CMD to become zero.  A read at the wrong surviving chip latency can leave
+ * that wait stuck, which used to make the recovery sweep hang the whole boot.
  *
  * The operating mode is set before every transaction rather than once.
  * ESP-IDF does the same, and it is the difference between the second
  * transaction in a row answering and not answering.
  */
-P4_SRAMCODE static void p4_psram_cmd(uint32_t cmd, uint32_t reg_addr,
-                                     uint32_t dummy,
-                                     uint32_t *tx, uint32_t tx_bits,
-                                     uint32_t *rx, uint32_t rx_bits)
+P4_SRAMCODE static void p4_psram_fsm_reset(void)
+{
+    unsigned long c2 = p4_r32(P4_MSPI_CTRL2(P4_MSPI2_BASE));
+    unsigned long c3 = p4_r32(P4_MSPI_CTRL2(P4_MSPI3_BASE));
+
+    /* Espressif's sync-reset order: clear both, assert both, clear both. */
+    p4_w32(P4_MSPI_CTRL2(P4_MSPI3_BASE), c3 & ~P4_MSPI_SYNC_RESET);
+    p4_w32(P4_MSPI_CTRL2(P4_MSPI2_BASE), c2 & ~P4_MSPI_SYNC_RESET);
+    p4_w32(P4_MSPI_CTRL2(P4_MSPI3_BASE), c3 | P4_MSPI_SYNC_RESET);
+    p4_w32(P4_MSPI_CTRL2(P4_MSPI2_BASE), c2 | P4_MSPI_SYNC_RESET);
+    p4_w32(P4_MSPI_CTRL2(P4_MSPI3_BASE), c3 & ~P4_MSPI_SYNC_RESET);
+    p4_w32(P4_MSPI_CTRL2(P4_MSPI2_BASE), c2 & ~P4_MSPI_SYNC_RESET);
+    ++p4_fsm_recoveries;
+}
+
+P4_SRAMCODE static int p4_psram_cmd_start(unsigned char *rx,
+                                           uint32_t rx_bytes,
+                                           uint32_t cs_mask)
+{
+    unsigned long base = P4_MSPI3_BASE;
+    unsigned long misc, start, now, start_bit = P4_MSPI_CMD_USR;
+    uint32_t i, word = 0;
+
+    /* This is the normal (not write/erase) path in the mask-ROM function.
+       Its `lui 0x40` is 0x00040000 on RV32: command bit 18, as both ESP-IDF
+       hardware-revision headers specify. */
+    misc = p4_r32(P4_MSPI_MISC(base));
+    p4_w32(P4_MSPI_MISC(base), (misc & ~3UL) | ((~cs_mask) & 3UL));
+#ifdef P4_PSRAM_TIMEOUT_TEST
+    if (p4_timeout_test_pending)
+    {
+        p4_timeout_test_pending = 0;
+        start_bit = P4_MSPI_CMD_STUCK_TEST;
+    }
+#endif
+    p4_w32(P4_MSPI_CMD(base), p4_r32(P4_MSPI_CMD(base)) | start_bit);
+
+    asm volatile("csrr %0, mcycle" : "=r"(start));
+    while (p4_r32(P4_MSPI_CMD(base)) != 0)
+    {
+        asm volatile("csrr %0, mcycle" : "=r"(now));
+        if ((unsigned long)(now - start) >= P4_MSPI_CMD_TIMEOUT_CYCLES)
+        {
+            /* Match the ROM's post-command CS state before resetting the FSM. */
+            misc = p4_r32(P4_MSPI_MISC(base));
+            p4_w32(P4_MSPI_MISC(base), (misc | P4_MISC_CS1_DIS)
+                                             & ~P4_MISC_CS0_DIS);
+            ++p4_cmd_timeouts;
+            p4_psram_fsm_reset();
+            return 0;
+        }
+    }
+
+    misc = p4_r32(P4_MSPI_MISC(base));
+    p4_w32(P4_MSPI_MISC(base), (misc | P4_MISC_CS1_DIS)
+                                     & ~P4_MISC_CS0_DIS);
+
+    for (i = 0; i < rx_bytes; ++i)
+    {
+        if ((i & 3U) == 0)
+            word = p4_r32(P4_MSPI_W0(base) + (i & ~3U));
+        rx[i] = (unsigned char)(word >> ((i & 3U) * 8U));
+    }
+
+    return 1;
+}
+
+P4_SRAMCODE static int p4_psram_cmd(uint32_t cmd, uint32_t reg_addr,
+                                    uint32_t dummy,
+                                    uint32_t *tx, uint32_t tx_bits,
+                                    uint32_t *rx, uint32_t rx_bits)
 {
     void (*rom_set_op_mode)(int, int) =
         (void (*)(int, int))P4_ROM_SPI_SET_OP_MODE;
     void (*rom_cmd_config)(int, const struct p4_rom_spi_cmd *) =
         (void (*)(int, const struct p4_rom_spi_cmd *))P4_ROM_SPI_CMD_CONFIG;
-    void (*rom_cmd_start)(int, unsigned char *, uint32_t, uint32_t, int) =
-        (void (*)(int, unsigned char *, uint32_t, uint32_t, int))P4_ROM_SPI_CMD_START;
-
     struct p4_rom_spi_cmd c;
     uint32_t addr = reg_addr;
 
@@ -692,8 +761,8 @@ P4_SRAMCODE static void p4_psram_cmd(uint32_t cmd, uint32_t reg_addr,
 
     rom_set_op_mode(P4_MSPI_ID_REG, P4_ROM_OPI_DTR_MODE);
     rom_cmd_config(P4_MSPI_ID_REG, &c);
-    rom_cmd_start(P4_MSPI_ID_REG, (unsigned char *)rx, rx_bits / 8,
-                  P4_PSRAM_CS_INDEX, 0);
+    return p4_psram_cmd_start((unsigned char *)rx, rx_bits / 8,
+                              P4_PSRAM_CS_INDEX);
 }
 
 /*
@@ -703,18 +772,18 @@ P4_SRAMCODE static void p4_psram_cmd(uint32_t cmd, uint32_t reg_addr,
  * address 4 carries 4 and 5, address 8 carries 8. A read at an odd address
  * is not a way to reach the odd-numbered register.
  */
-P4_SRAMCODE static void p4_psram_reg_read(uint32_t addr, uint32_t *pair)
+P4_SRAMCODE static int p4_psram_reg_read(uint32_t addr, uint32_t *pair)
 {
     *pair = 0;
-    p4_psram_cmd(P4_PSRAM_REG_READ, addr, p4_rd_reg_dummy,
-                 NULL, 0, pair, 16);
+    return p4_psram_cmd(P4_PSRAM_REG_READ, addr, p4_rd_reg_dummy,
+                        NULL, 0, pair, 16);
 }
 
-P4_SRAMCODE static void p4_psram_reg_write(uint32_t addr, uint32_t pair)
+P4_SRAMCODE static int p4_psram_reg_write(uint32_t addr, uint32_t pair)
 {
     uint32_t v = pair;
 
-    p4_psram_cmd(P4_PSRAM_REG_WRITE, addr, 0, &v, 16, NULL, 0);
+    return p4_psram_cmd(P4_PSRAM_REG_WRITE, addr, 0, &v, 16, NULL, 0);
 }
 
 /*
@@ -732,7 +801,7 @@ P4_SRAMCODE static void p4_psram_reg_write(uint32_t addr, uint32_t pair)
  * here that depend on the clock, which is why raising the clock later means
  * revisiting this function and not just the divider.
  */
-P4_SRAMCODE void krnPSRAMModeInit(void)
+P4_SRAMCODE int krnPSRAMModeInit(void)
 {
     /*
      * Absolute values, not read-modify-write.
@@ -752,9 +821,10 @@ P4_SRAMCODE void krnPSRAMModeInit(void)
      * The two latencies are the pair for 80 MHz and below and are the only
      * values here that depend on the clock.
      */
-    p4_psram_reg_write(0, (p4_rd_latency << 2) | (1UL << 5));
-    p4_psram_reg_write(4, p4_wr_latency << 5);
-    p4_psram_reg_write(8, 3UL | (1UL << 3) | (1UL << 6));
+    if (!p4_psram_reg_write(0, (p4_rd_latency << 2) | (1UL << 5)) ||
+        !p4_psram_reg_write(4, p4_wr_latency << 5) ||
+        !p4_psram_reg_write(8, 3UL | (1UL << 3) | (1UL << 6)))
+        return 0;
 
     /*
      * Mode register 8 selects the bus width, and the part needs a moment to
@@ -771,6 +841,8 @@ P4_SRAMCODE void krnPSRAMModeInit(void)
             asm volatile("csrr %0, mcycle" : "=r"(now));
         while ((unsigned long)(now - start) < 36000UL);
     }
+
+    return 1;
 }
 
 /*
@@ -786,10 +858,12 @@ P4_SRAMCODE int krnPSRAMIdentify(unsigned char *vendor, unsigned char *density)
     uint32_t pair;
     unsigned char mr1, mr2;
 
-    p4_psram_reg_read(0, &pair);
+    if (!p4_psram_reg_read(0, &pair))
+        return 0;
     mr1 = (unsigned char)((pair >> 8) & P4_PSRAM_MR1_VENDOR_MASK);
 
-    p4_psram_reg_read(2, &pair);
+    if (!p4_psram_reg_read(2, &pair))
+        return 0;
     mr2 = (unsigned char)(pair & 0xFF);
 
     if (vendor)
@@ -838,34 +912,38 @@ P4_SRAMCODE static int p4_psram_probe_latency(unsigned char *vendor,
  * transactions.  These exist for the tuning, which needs to write a known
  * block at a clock it trusts and read it back at one it does not.
  */
-P4_SRAMCODE void krnPSRAMBlockWrite(uint32_t addr, const uint32_t *words,
-                                    uint32_t count)
-{
-    while (count)
-    {
-        uint32_t n = count > P4_PSRAM_FIFO_WORDS ? P4_PSRAM_FIFO_WORDS : count;
-
-        p4_psram_cmd(P4_PSRAM_SYNC_WRITE, addr, p4_wr_dummy,
-                     (uint32_t *)words, n * 32, NULL, 0);
-        words += n;
-        addr += n * 4;
-        count -= n;
-    }
-}
-
-P4_SRAMCODE void krnPSRAMBlockRead(uint32_t addr, uint32_t *words,
+P4_SRAMCODE int krnPSRAMBlockWrite(uint32_t addr, const uint32_t *words,
                                    uint32_t count)
 {
     while (count)
     {
         uint32_t n = count > P4_PSRAM_FIFO_WORDS ? P4_PSRAM_FIFO_WORDS : count;
 
-        p4_psram_cmd(P4_PSRAM_SYNC_READ, addr, p4_rd_dummy,
-                     NULL, 0, words, n * 32);
+        if (!p4_psram_cmd(P4_PSRAM_SYNC_WRITE, addr, p4_wr_dummy,
+                          (uint32_t *)words, n * 32, NULL, 0))
+            return 0;
         words += n;
         addr += n * 4;
         count -= n;
     }
+    return 1;
+}
+
+P4_SRAMCODE int krnPSRAMBlockRead(uint32_t addr, uint32_t *words,
+                                  uint32_t count)
+{
+    while (count)
+    {
+        uint32_t n = count > P4_PSRAM_FIFO_WORDS ? P4_PSRAM_FIFO_WORDS : count;
+
+        if (!p4_psram_cmd(P4_PSRAM_SYNC_READ, addr, p4_rd_dummy,
+                          NULL, 0, words, n * 32))
+            return 0;
+        words += n;
+        addr += n * 4;
+        count -= n;
+    }
+    return 1;
 }
 
 /*
@@ -882,10 +960,11 @@ P4_SRAMCODE int krnPSRAMRoundTrip(uint32_t *back)
     uint32_t out = P4_PSRAM_TEST_PATTERN;
     uint32_t in = 0;
 
-    p4_psram_cmd(P4_PSRAM_SYNC_WRITE, 0, p4_wr_dummy,
-                 &out, 32, NULL, 0);
-    p4_psram_cmd(P4_PSRAM_SYNC_READ, 0, p4_rd_dummy,
-                 NULL, 0, &in, 32);
+    if (!p4_psram_cmd(P4_PSRAM_SYNC_WRITE, 0, p4_wr_dummy,
+                      &out, 32, NULL, 0) ||
+        !p4_psram_cmd(P4_PSRAM_SYNC_READ, 0, p4_rd_dummy,
+                      NULL, 0, &in, 32))
+        return 0;
 
     if (back)
         *back = in;
@@ -893,21 +972,6 @@ P4_SRAMCODE int krnPSRAMRoundTrip(uint32_t *back)
     return in == P4_PSRAM_TEST_PATTERN;
 }
 
-/*
- * The same read, with the transaction started by hand.
- *
- * Everything the mask ROM programs has been measured to match a working
- * ESP-IDF run register for register, and the data still arrives as ones.
- * That leaves the possibility that the ROM's start call is not doing what
- * its name says on this part, so this does the last step directly: set the
- * user transaction bit, wait for the controller to clear it, and read the
- * data out of the controller's own buffer rather than out of a pointer the
- * ROM copied into.
- *
- * Returns the data word. The state machine's two status fields, sampled
- * before and after, go into *state; a controller that never left its idle
- * state would say so there.
- */
 /*
  * The whole bring-up, in the order it has to happen.
  *
@@ -982,6 +1046,13 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     info->probe_latency = -1;
     info->bias_found = 0;
     info->bias_set = 0;
+    info->cmd_timeouts = 0;
+    info->fsm_recoveries = 0;
+    p4_cmd_timeouts = 0;
+    p4_fsm_recoveries = 0;
+#ifdef P4_PSRAM_TIMEOUT_TEST
+    p4_timeout_test_pending = 0;
+#endif
 
     fast = target_hz > 80000000UL;
     info->fast_requested = (unsigned char)fast;
@@ -1071,10 +1142,10 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
      * own firmware back brought the same chip up immediately, and this port
      * then worked on every boot after it.
      *
-     * So the sweep comes first.  It asks in all eight latencies, and the one
-     * that answers is both the way in and the measurement of what the chip
-     * arrived in.  The mode-register write then lands, and the confirmation
-     * runs in this port's own timing.
+     * A blind write comes first because it has no read latency and fixes the
+     * normal case.  If its confirmation fails, the now-bounded sweep asks in
+     * all eight latencies; a wrong candidate times out, resets the two PSRAM
+     * FSMs and lets the next candidate run.
      *
      * The retry is kept for the case where the sweep finds nothing: a first
      * transaction after the reset may be lost in either direction, and three
@@ -1088,7 +1159,7 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
 
         for (attempt = 0; attempt < 3; ++attempt)
         {
-            int lat;
+            int lat, mode_ok;
 
             psram_mark('7');
             krnPSRAMConfigure();
@@ -1102,15 +1173,26 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
              * output at all where a diagnosis used to be.  The write needs no
              * dummy cycles and is therefore the one transaction that is safe
              * to send into an unknown state.
-             */
+            */
             psram_mark('8');
-            krnPSRAMModeInit();
+            mode_ok = krnPSRAMModeInit();
+
+#ifdef P4_PSRAM_TIMEOUT_TEST
+            /* Make exactly one command use a bit hardware never self-clears.
+               Its bounded failure must reset the FSM; the ordinary round-trip
+               and identify immediately below prove the next command works. */
+            if (attempt == 0 && mode_ok)
+            {
+                p4_timeout_test_pending = 1;
+                (void)krnPSRAMIdentify(&vendor, &density);
+            }
+#endif
 
             psram_mark('9');
-            info->connected = krnPSRAMRoundTrip(&back) ? 1 : 0;
+            info->connected = mode_ok && krnPSRAMRoundTrip(&back) ? 1 : 0;
 
             psram_mark('a');
-            if (krnPSRAMIdentify(&vendor, &density))
+            if (mode_ok && krnPSRAMIdentify(&vendor, &density))
             {
                 if (info->probe_latency < 0)
                     info->probe_latency = (signed char)p4_rd_latency;
@@ -1124,37 +1206,11 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
              * confirm.  This is the path that recovers a part left configured
              * by other firmware.
              */
-            /*
-             * The sweep is off by default, because it is the one operation in
-             * this file that can fail to return.
-             *
-             * Measured: a hung boot prints 123456789ab789ab789ab and stops.
-             * Marker 'b' is here, markers past it never appear, and the first
-             * two calls into the sweep did return - so the third did not.  Each
-             * ask inside it is an unbounded read through the ROM SPI helpers,
-             * and the comment above says what that means: a read at the wrong
-             * width does not fail, it does not return.
-             *
-             * A bound would be better than a skip and is not available yet: it
-             * needs the MSPI transaction started and polled by this file rather
-             * than by rom_cmd_start, and the register layout for that is not
-             * something this port has verified.  Guessing at it is how several
-             * findings in this work turned out to be worthless.
-             *
-             * So the default is to give up and say so.  A boot that reports an
-             * absent PSRAM is diagnosable and leaves the board usable headless;
-             * a boot that hangs needs the vendor firmware flashed, which has
-             * been the procedure three times.  P4_PSRAM_SWEEP=1 restores the
-             * recovery attempt for a session willing to pay that price.
-             */
-#ifdef P4_PSRAM_SWEEP
+            /* The sweep is safe by default now: p4_psram_cmd_start bounds
+               every read and resets both PSRAM FSMs after a timeout. */
             psram_mark('b');
             lat = p4_psram_probe_latency(&vendor, &density);
             p4_psram_select_params(target_hz);
-#else
-            psram_mark('B');
-            lat = -1;
-#endif
 
             if (lat >= 0)
             {
@@ -1179,6 +1235,10 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
             info->vendor = vendor;
             info->density = density;
             info->round_trip = info->connected;
+            info->cmd_timeouts = (unsigned char)(p4_cmd_timeouts > 255
+                                                  ? 255 : p4_cmd_timeouts);
+            info->fsm_recoveries = (unsigned char)(p4_fsm_recoveries > 255
+                                                    ? 255 : p4_fsm_recoveries);
             return 0;
         }
     }
@@ -1217,6 +1277,10 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     krnPSRAMAxiConfigure();
     info->size = (unsigned long)sizes[density & P4_PSRAM_MR2_DENSITY_MASK]
                  * 1024UL * 1024UL;
+    info->cmd_timeouts = (unsigned char)(p4_cmd_timeouts > 255
+                                          ? 255 : p4_cmd_timeouts);
+    info->fsm_recoveries = (unsigned char)(p4_fsm_recoveries > 255
+                                            ? 255 : p4_fsm_recoveries);
 
     return info->size != 0 && info->round_trip;
 }
