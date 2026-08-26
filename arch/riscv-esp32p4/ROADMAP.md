@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  Runs RGB565 at 40 MHz over 1500 Mbit/s lanes; the lane rate is what the panel judges, and that the vendor firmware needs only 1000 is unexplained.  The former VMUL=2 result and apparent walking offset were both measurements made through the now-fixed byte swap.  Open: green currently reaches the panel as blue, the 100 MB/s gate, sustained stress and the reset-surviving PSRAM state |
+| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  A full primary/pair-colour card is also correct after adopting the D1001 BSP's native little-endian RGB565 convention.  Runs at 40 MHz over 1500 Mbit/s lanes; the lane rate is what the panel judges, and that the vendor firmware needs only 1000 is unexplained.  Open: the 100 MB/s gate, sustained stress and the reset-surviving PSRAM state |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -5967,10 +5967,78 @@ chip in the width this port assumes; it never addressed the hang.
   but the rows appear blue; full solids/bars/checkerboards, dirty-rectangle
   coherency, 30-minute concurrent stress, the 100 MB/s bandwidth gate and ten
   cold plus ten warm boots have not passed.
-- Safety impact: no flash or media write occurred.  Reset used the USB control
-  lines, scanout is time-bounded, and panel-safe shutdown remains enabled.
+- Safety impact: the rebuilt core was written only to the authorized `ota_0`
+  range beginning at `0x20000`; no BSP, partition metadata or media was
+  written.  Reset used the USB control lines, scanout is time-bounded, and
+  panel-safe shutdown remains enabled.
 - Next safe step: isolate the green/blue mapping with the existing primary
   colour test card or flat fields, changing only the channel-format variable.
+
+### 2026-08-26 - B5 RGB565 colour mapping hardware verified
+
+- State change: B5 remains `hardware partial`, but its RGB565 byte and channel
+  mapping is now hardware verified.  The first run changed only the diagnostic
+  framebuffer pattern from the proven grid to the existing primary/pair-colour
+  card; the correction run changed only the central RGB565 packer's byte order.
+  Geometry, clocks, lane rate and video mode stayed unchanged.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+- Artifact and build: all generated kernel objects were deleted before the
+  rebuild.  The build log contains `Creating .../aros-esp32p4.bin` and
+  `Successfully created ESP32-P4 image`, contains no `error:`, and produced a
+  184,656-byte core, SHA-256
+  `138d9a25357a59bf99e263dff9d8d79f14e9c30a29a0bf54f83b0424f9192035`.
+- Flash verification: only `ota_0` at `0x20000..0x4dfff` was erased and
+  written.  The write-time digest matched and a separate `verify-flash`
+  invocation reported `Verification successful (digest matched)`.
+- UART observation from a first-byte USB reset: normal SPI boot; PSRAM
+  calibrated at 200 MHz in one attempt; framebuffer exactly 2,048,000 bytes;
+  bridge and host each report 1280 active lines; no DSI payload error; DMA SAR
+  moves; scanout measured 69 MB/s against the calculated 69 MB/s requirement;
+  scanout is bounded to 60 seconds.
+- Panel observation: `IMG_0922.HEIC` shows a clean, dimensionally regular card.
+  Accounting for the D1001's physical landscape rotation, the requested
+  top-to-bottom red, green, blue, yellow, cyan, magenta, white and gray bars
+  arrive as blue, red, green, magenta, yellow, cyan, white and gray.  This
+  initially looks like a cyclic primary mapping, but the actual 16-bit values
+  identify the cause exactly: high-byte-first makes requested red/green/blue
+  `0x00f8`, `0xe007` and `0x1f00` when consumed as native little-endian
+  RGB565, producing those three observed colours.  The pair colours undergo
+  the corresponding swaps, while white remains white.  This is a byte-order
+  fault, not a stride or DSI channel-routing fault.
+- Safety impact: only the authorized core range was written.  No BSP,
+  partition metadata or media was changed, and panel-safe shutdown remains
+  enabled.
+- Local reference audit: ESP-IDF v6.0.1 configures the revision-one bridge as
+  raw RGB565 and host 16-bit configuration 1, with no cyclic RGB routing
+  control; the D1001 BSP declares `BSP_LCD_BIGENDIAN=0`.  Its native
+  little-endian framebuffer convention agrees with the bit-level panel result.
+- Next gate: write RGB565 low byte first in the central packer and repeat the
+  same card unchanged.  Correct red, green, blue, yellow, cyan and magenta in
+  the requested order will close the colour mapping.
+- Correction re-test armed: `px()` now writes the low byte first and no other
+  scanout variable changed.  After deleting all generated kernel objects, the
+  clean build contains both image-creation success markers and no `error:`;
+  the 184,656-byte core has SHA-256
+  `688d3c9843cf743d76efc6599ed7e1732fa670dffff0c7e9913c53820228f3f7`.
+  Only `ota_0` at `0x20000..0x4dfff` was written, with both write-time digest
+  verification and a separate successful `verify-flash`.
+- Correction re-test UART: normal SPI boot from the first byte; PSRAM at
+  200 MHz calibrated in one attempt; framebuffer exactly 2,048,000 bytes;
+  bridge and host each report 1280 active lines; no DSI payload error; DMA SAR
+  moves; scanout measured the required 69 MB/s and remains bounded to 60
+  seconds.
+- Correction re-test panel observation: confirmed correct.  Accounting for the
+  D1001's physical landscape rotation, the visible bars are red, green, blue,
+  yellow, cyan, magenta, white and gray in the requested order, with the other
+  half black.  The border and ruler remain straight and continuous.  This
+  closes RGB565 byte order and primary-channel mapping on D1001 hardware.
+- Acceptance points passed here: all three primary colours, all three pair
+  colours, white, gray and black; distinct top/bottom halves; continuous
+  border/ruler; unchanged native geometry and error-free transport.
+- Remaining B5 gates: full solid/checkerboard/corner coverage, dirty-rectangle
+  coherency, 30-minute concurrent stress, the 100 MB/s bandwidth gate and ten
+  cold plus ten warm boots.  Reset-surviving PSRAM recovery also remains an
+  implementation defect despite its bounded-scanout containment.
 
 ## Evidence-entry template
 
