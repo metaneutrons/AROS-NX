@@ -185,9 +185,14 @@ not substitute for it, plausibly because the LP domain holding the PMU registers
 is battery-backed on this board.
 
 `P4_SCANOUT_SECS` bounds it, and `krnP4ScanoutQuiesce` stops whatever the last
-boot left running before the PSRAM is touched.  Neither alone was enough when
-tested; the combination has survived three resets taken during a running
-scanout, which is encouraging and not proof.
+boot left running before the PSRAM is touched.  PSRAM mode-register commands
+are now bounded and reset both PSRAM FSMs after a timeout; the deterministic
+`P4_PSRAM_TIMEOUT_TEST=1` run proved that a timed-out command can be followed by
+a complete 200 MHz bring-up.  One reset taken during a measured 69 MB/s scanout
+also recovered all 32 MB, but the restarted DSI scanout then stalled.  Therefore
+the rule still stands for ordinary work: do not reset a running scanout.  A
+deliberate reset-continuity test must say that it is testing this failure mode,
+first prove the timeout path, and record PSRAM and DSI results separately.
 
 ## Safety boundaries
 

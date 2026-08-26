@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  A full primary/pair-colour card is also correct after adopting the D1001 BSP's native little-endian RGB565 convention.  Runs at 40 MHz over 1500 Mbit/s lanes; the lane rate is what the panel judges, and that the vendor firmware needs only 1000 is unexplained.  Open: the 100 MB/s gate, sustained stress and the reset-surviving PSRAM state |
+| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  A full primary/pair-colour card is also correct after adopting the D1001 BSP's native little-endian RGB565 convention.  Runs at 40 MHz over 1500 Mbit/s lanes.  The reset-surviving PSRAM blocker is closed: commands are bounded, forced timeout recovery and one reset during measured 69 MB/s scanout both returned all 32 MB at 200 MHz.  The latter exposed a separate open defect: DSI/DMA scanout does not restart after that reset.  Also open: the 100 MB/s gate, sustained stress and the full boot-count gate |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -6037,8 +6037,87 @@ chip in the width this port assumes; it never addressed the hang.
   border/ruler; unchanged native geometry and error-free transport.
 - Remaining B5 gates: full solid/checkerboard/corner coverage, dirty-rectangle
   coherency, 30-minute concurrent stress, the 100 MB/s bandwidth gate and ten
-  cold plus ten warm boots.  Reset-surviving PSRAM recovery also remains an
-  implementation defect despite its bounded-scanout containment.
+  cold plus ten warm boots.  At the time of this run, reset-surviving PSRAM
+  recovery also remained an implementation defect; the next entry supersedes
+  that last point with hardware evidence.
+
+### 2026-08-26 - B5 bounded MSPI command recovery hardware verified
+
+- State change: B5 remains `hardware partial`.  The reset-surviving **PSRAM**
+  blocker is closed; a distinct DSI/DMA restart defect remains.  This entry
+  supersedes the previous entry's statement that PSRAM recovery was still an
+  implementation defect and the older containment-only handoff at the end of
+  the 25 August investigation.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3, MAC
+  `e8:f6:0a:e0:46:4c`.
+- Implementation: `esp_rom_spi_set_op_mode` and `esp_rom_spi_cmd_config` still
+  program each transaction.  `rom_cmd_start` is replaced by an SRAM-resident
+  local start/poll/copy operation with a 3,600,000-cycle bound.  On expiry it
+  restores the ROM's chip-select state and pulses `SYNC_RESET` on both PSRAM
+  MSPI FSMs in Espressif's clear/assert/clear order.  Every command returns a
+  status; mode-register access, identification, round trips and tuning stop
+  consuming receive buffers after a timeout.  Boot output reports separate
+  timeout and FSM-recovery counters.  The previously disabled eight-latency
+  recovery sweep is therefore enabled by default.
+- Local-source evidence: disassembly of `esp32p4_rev0_rom.elf` at
+  `esp_rom_spi_cmd_start` gives MISC offset `0x34`, buffer offset `0x58`, the
+  CS restore and the unbounded `CMD != 0` loop.  Both ESP-IDF v6.0.1 P4
+  `spi1_mem_s_reg.h` hardware-version headers give `USR` at bit 18 and
+  `SYNC_RESET` at `CTRL2 + 0x10`, bit 31.  Espressif's low-level reset helper
+  supplies the clear/assert/clear ordering.
+- Correction made during hardware work: the ROM instruction `lui 0x40` was
+  first misread as `0x00400000`; on RV32 it produces `0x00040000`, bit 18.
+  The resulting 185,520-byte diagnostic image did not talk to PSRAM, but the
+  new bound caught all 33 commands, performed 33 FSM resets and let AROS stay
+  alive headless.  That is valid negative evidence for the bound, not a valid
+  PSRAM transaction.  The IDF headers and hardware correction agree on bit 18.
+- Normal-path proof: the 185,856-byte corrected image brought up 32 MB at
+  200 MHz, found read latency 4, chose a 23-of-31 tuning window, verified one
+  word per MiB across the mapped window and reported `command timeouts 0, FSM
+  recoveries 0`; B5 then measured the required 69 MB/s with no payload error.
+- Deterministic recovery proof: `P4_PSRAM_TIMEOUT_TEST=1` makes exactly one
+  command use the already measured non-self-clearing bit 22, then resumes with
+  bit 18.  The 185,952-byte image, SHA-256
+  `c8ff471a33e7a8ce1b24cc3eba51bb41e599e7a800f2c7316fead474c34f0d9f`,
+  reported exactly `command timeouts 1, FSM recoveries 1`, then completed the
+  same 32 MB / 200 MHz identification, tuning and full-window check and fed B5
+  at 69 MB/s.  This proves a transaction after the FSM reset, not merely that
+  the timeout returns.
+- Non-injected artifact used for the active-reset test: clean rebuild with all
+  generated kernel objects deleted and the last proven display configuration:
+  `P4_HEADLESS_BOOT=1 P4_PSRAM_MHZ=200 P4_CPU_MHZ=360 P4_PANEL_PROBE=1
+  P4_DSI_PROBE=1 P4_SCANOUT_TEST=1 P4_DSI_NONBURST=1
+  P4_SCANOUT_TESTCARD=1 P4_BL_PERCENT=100
+  P4_LDSCRIPT=ldscript-xip.lds`.  Both image-creation success markers are
+  present and no `error:` occurs.  The 185,872-byte core has SHA-256
+  `a61d165b11e5f3c859499a5380720cf70ac81f822d4b48b478a208ba1d63469a`.
+- Active-reset proof: immediately before reset that image reported a
+  moving GDMA source address and measured 69 MB/s from PSRAM with no payload
+  error.  A USB reset was then deliberately issued while that scanout was
+  active.  The next boot again identified 32 MB at 200 MHz in one attempt,
+  found latency 4, chose a 23-of-31 tuning window, verified the full mapped
+  window and reported zero command timeouts/recoveries.  No Vellum/vendor
+  firmware and no power cycle was needed.
+- Post-review delivery artifact: the mode-initialisation return was then made
+  authoritative, so failed mode writes cannot be masked by a later data
+  transaction.  A final rebuild with the same flags contains both image
+  success markers and no `error:`.  The 185,872-byte core has SHA-256
+  `5d6676c2fa28d428085922066e5eb5e35bdf9a27ee57052f2f2f25bcc7d141bc`.
+  Only `ota_0` at `0x20000..0x4dfff` was written; write-time hashing and an
+  independent `verify-flash` passed.  Its D1001 boot again brought up 32 MB at
+  200 MHz in one attempt, selected a 24-of-31 window, verified the mapped
+  window and reported zero timeouts/recoveries.  The already-created DSI
+  retained-state fault remained visible as a stalled new DMA, independently
+  confirming that PSRAM is available while scanout restart is not.
+- Newly separated defect: after that active reset the panel power-mode read got
+  no reply and the newly configured GDMA source address did not move; the B5
+  sampler called it `stalled`.  PSRAM was already fully verified at that point,
+  so this is DSI/bridge/GDMA reset continuity, not PSRAM recovery.  Ordinary
+  work must still avoid resetting a running scanout until this is fixed.
+- Remaining acceptance: this is one deliberately evidenced active warm reset,
+  not the B5 requirement of ten warm plus ten cold boots.  Full solids,
+  checkerboard/corners, dirty-rectangle coherency, 30-minute concurrent stress,
+  the 100 MB/s gate and the full boot-count gate remain open.
 
 ## Evidence-entry template
 

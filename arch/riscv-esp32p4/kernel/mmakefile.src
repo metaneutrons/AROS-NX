@@ -343,15 +343,12 @@ ifdef P4_LANE_MBPS
 P4_DEBUG_CPPFLAGS += -DP4_DSI_LANE_MBPS=$(P4_LANE_MBPS)
 endif
 
-# P4_PSRAM_SWEEP=1 restores the latency sweep in the PSRAM identify retry.  It
-# is off by default because it is the one operation in the bring-up that can
-# fail to return: each ask is an unbounded read through the ROM SPI helpers, and
-# a read at a width the chip is not in never answers.  A hung boot was traced to
-# exactly this call.  Off, the boot reports an absent PSRAM and stays usable
-# headless; on, it may recover a chip left configured by other firmware and may
-# also hang, which then needs the vendor firmware flashed.
-ifdef P4_PSRAM_SWEEP
-P4_DEBUG_CPPFLAGS += -DP4_PSRAM_SWEEP
+# P4_PSRAM_TIMEOUT_TEST=1 deliberately starts one command with a bit that the
+# D1001 hardware does not self-clear.  It must time out and reset the PSRAM
+# FSMs; the ordinary round-trip immediately afterwards must then answer.  The
+# normal recovery sweep is always enabled because its command waits are bounded.
+ifdef P4_PSRAM_TIMEOUT_TEST
+P4_DEBUG_CPPFLAGS += -DP4_PSRAM_TIMEOUT_TEST
 endif
 
 # P4_PANEL_VMUL=n is a diagnostic override of the transmitted line count.

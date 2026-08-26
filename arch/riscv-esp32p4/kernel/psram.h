@@ -26,6 +26,22 @@
 #define P4_MSPI2_BASE               0x5008E000UL
 #define P4_MSPI3_BASE               0x5008F000UL
 
+/* Registers shared by the two PSRAM MSPI user-command engines.  The mask
+   ROM uses MSPI3 for mode-register commands; MSPI2 is reset with it because
+   the two FSMs share the PSRAM bus. */
+#define P4_MSPI_CMD(base)            ((base) + 0x00)
+#define   P4_MSPI_CMD_USR            (1UL << 18)
+#define   P4_MSPI_CMD_STUCK_TEST     (1UL << 22)
+#define P4_MSPI_CTRL2(base)          ((base) + 0x10)
+#define   P4_MSPI_SYNC_RESET         (1UL << 31)
+#define P4_MSPI_MISC(base)           ((base) + 0x34)
+#define P4_MSPI_W0(base)             ((base) + 0x58)
+
+/* 10 ms at the normal 360 MHz CPU clock, and proportionally longer if a
+   diagnostic lowers it.  A mode-register transaction normally takes only a
+   few microseconds. */
+#define P4_MSPI_CMD_TIMEOUT_CYCLES   3600000UL
+
 /*
  * The MPLL, which is the bus clock's only usable source.
  *
@@ -245,13 +261,11 @@
 
 /*
  * Talking to the chip itself, as opposed to the controller in front of it,
- * goes through three functions in the part's own mask ROM. Their addresses
- * are fixed and published; calling them saves writing an MSPI transaction
- * engine, and code in the ROM is the chip's own firmware rather than
- * anybody's source.
+ * uses two functions in the part's own mask ROM. Their addresses are fixed
+ * and published.  The start function is deliberately local and bounded; the
+ * ROM version waits forever when a transaction does not finish.
  */
 #define P4_ROM_SPI_CMD_CONFIG       0x4FC00108UL
-#define P4_ROM_SPI_CMD_START        0x4FC0010CUL
 #define P4_ROM_SPI_SET_OP_MODE      0x4FC00110UL
 
 #define P4_MSPI_ID_DATA             2   /* the data path */
@@ -447,7 +461,7 @@ int krnPSRAMMPLLUp(void);
 unsigned long krnPSRAMMPLLState(void);
 unsigned long krnPSRAMClockUp(unsigned long target_hz);
 unsigned long krnPSRAMClockSet(unsigned long target_hz);
-void krnPSRAMModeInit(void);
+int krnPSRAMModeInit(void);
 int krnPSRAMIdentify(unsigned char *vendor, unsigned char *density);
 int krnPSRAMRoundTrip(uint32_t *back);
 
@@ -574,6 +588,8 @@ struct P4PSRAMInfo
     signed char   probe_latency;    /* the read latency the chip arrived in, -1 none */
     unsigned char bias_found;       /* PMU_HP_ACTIVE_DCM_VSET as inherited */
     unsigned char bias_set;         /* and as this port left it */
+    unsigned char cmd_timeouts;     /* bounded user commands that did not finish */
+    unsigned char fsm_recoveries;   /* MSPI FSM resets issued after a timeout */
     struct P4PSRAMEntry entry;      /* what the bootloader left behind */
     struct P4PSRAMTuning tuning;
 };
@@ -586,8 +602,8 @@ int krnPSRAMVerify(unsigned long size, unsigned long *failed_at);
 
 /* Used by the tuning, which lives in psram_tuning.c */
 unsigned long krnPSRAMClockUp(unsigned long target_hz);
-void krnPSRAMBlockWrite(uint32_t addr, const uint32_t *words, uint32_t count);
-void krnPSRAMBlockRead(uint32_t addr, uint32_t *words, uint32_t count);
+int krnPSRAMBlockWrite(uint32_t addr, const uint32_t *words, uint32_t count);
+int krnPSRAMBlockRead(uint32_t addr, uint32_t *words, uint32_t count);
 void krnPSRAMTuneReference(uint32_t *words, uint32_t count);
 int krnPSRAMTune(struct P4PSRAMTuning *out, unsigned long fast_hz);
 void krnPSRAMTuningClear(void);
