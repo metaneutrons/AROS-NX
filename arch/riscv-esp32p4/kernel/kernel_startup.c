@@ -5042,6 +5042,7 @@ static void krnP4PanelProbe(void)
                  * output, which is the difference between a panel refusing the
                  * stream and a panel showing something invisible.
                  */
+#ifdef P4_DSI_POST_VIDEO_QUERY
                 {
                     unsigned char pm = 0;
                     int got;
@@ -5064,6 +5065,7 @@ static void krnP4PanelProbe(void)
                     krnP4DsiVideoOn();
                     krnTimerWait(10);
                 }
+#endif
 
                 krnP4ScanoutState(&sc);
                 krnP4PutStr("[b5]     frame at ");
@@ -5565,7 +5567,7 @@ static void krnP4PanelProbe(void)
                             {
                                 krnP4PutStr("[b5]     coherency phase ");
                                 krnP4PutDec((uint32_t)phase);
-                                krnP4PutStr(" presented\n");
+                                krnP4PutStr(" written back\n");
                             }
                         }
 #endif

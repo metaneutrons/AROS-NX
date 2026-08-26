@@ -498,9 +498,10 @@ static void scanout_rect(unsigned long x, unsigned long y,
 /*
  * Coverage whose dimensions are hostile to accidental alignment.
  *
- * Seventeen by nineteen pixel checker cells cross cache lines and physical
- * scanlines at different offsets.  A stale cache line therefore appears as a
- * local tear in the pattern rather than being hidden by a tile boundary.
+ * Twenty-five by twenty pixel checker cells tile the 800x1280 framebuffer
+ * exactly.  A 25-pixel RGB565 run is 50 bytes, so the pattern still crosses
+ * 64-byte cache-line boundaries without leaving a partial edge cell that can
+ * masquerade as a coherency defect.
  */
 static void scanout_checker(void)
 {
@@ -514,7 +515,7 @@ static void scanout_checker(void)
 
         for (x = 0; x < P4_PANEL_H_RES; x++)
             px(row + x * P4_FB_BYTES_PER_PIXEL,
-               (((x / 17) ^ (y / 19)) & 1) ? 0xFFFFFFUL : 0x000000UL);
+               (((x / 25) ^ (y / 20)) & 1) ? 0xFFFFFFUL : 0x000000UL);
     }
 }
 

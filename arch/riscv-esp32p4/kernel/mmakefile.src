@@ -242,6 +242,16 @@ ifdef P4_DSI_PANEL_QUERY
 P4_DEBUG_CPPFLAGS += -DP4_DSI_PANEL_QUERY
 endif
 
+# P4_DSI_POST_VIDEO_QUERY=1 interrupts a running B5 stream, returns the host to
+# command mode and asks for DCS power mode 0x0A before starting video again.
+# This is destructive when the panel does not answer: clearing BTA_EN does not
+# clear GEN_RD_CMD_BUSY, so the restarted host consumes no pixels and the
+# bridge FIFO remains full.  Off by default; the panel itself and the live DMA
+# are the B5 acceptance instruments, not an optional read that can stop them.
+ifdef P4_DSI_POST_VIDEO_QUERY
+P4_DEBUG_CPPFLAGS += -DP4_DSI_POST_VIDEO_QUERY
+endif
+
 # P4_BL_PERCENT overrides the backlight duty cycle, which defaults to a
 # deliberately dim 20 per cent while the display path is under development.
 # Raise it for a run that is looking for a first image.
