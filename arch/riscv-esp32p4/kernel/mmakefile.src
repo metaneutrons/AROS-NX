@@ -354,10 +354,11 @@ ifdef P4_PSRAM_SWEEP
 P4_DEBUG_CPPFLAGS += -DP4_PSRAM_SWEEP
 endif
 
-# P4_PANEL_VMUL=n transmits n times the panel's line count.  Measured: two sent
-# rows make one panel row, so n=2 should fill the panel once and undistorted.
-# Everything on the transmit side derives from it - framebuffer, bridge line
-# counts, VID_VACTIVE_LINES, raw_num_total - so they cannot disagree.
+# P4_PANEL_VMUL=n is a diagnostic override of the transmitted line count.
+# Hardware after the RGB565 byte-order fix proves n=1: the complete clean
+# 800 x 1280 grid is visible.  Everything on the transmit side derives from
+# it - framebuffer, bridge line counts, VID_VACTIVE_LINES, raw_num_total - so
+# they cannot disagree.
 ifdef P4_PANEL_VMUL
 P4_DEBUG_CPPFLAGS += -DP4_PANEL_VMUL=$(P4_PANEL_VMUL)
 endif

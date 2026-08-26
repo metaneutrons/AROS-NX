@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - grid regular, every line one continuous colour, no payload error over thirty seconds.  Runs RGB565 at 40 MHz over 1500 Mbit/s lanes; the lane rate is what the panel judges, and that the vendor firmware needs only 1000 is unexplained.  The last defect was a byte swap in px() which had been misread as a walking byte offset for four rounds.  Open: whether P4_PANEL_VMUL=2 is still needed (it was measured under the swap), the channel mapping in px(), and the 100 MB/s gate.  A scanout running across a reset still ruins the PSRAM state; the hang it caused is located and contained but not fixed |
+| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  Runs RGB565 at 40 MHz over 1500 Mbit/s lanes; the lane rate is what the panel judges, and that the vendor firmware needs only 1000 is unexplained.  The former VMUL=2 result and apparent walking offset were both measurements made through the now-fixed byte swap.  Open: green currently reaches the panel as blue, the 100 MB/s gate, sustained stress and the reset-surviving PSRAM state |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -5924,6 +5924,53 @@ chip in the width this port assumes; it never addressed the hang.
 - Next safe step: run the grid with `P4_PANEL_VMUL=1` and look.  A full correct
   grid means the doubling can be deleted.  Then the channel mapping in `px()`:
   rows are drawn in this code's green and arrive blue while red arrives red.
+
+### 2026-08-26 - B5 line doubling withdrawn after clean VMUL=1 hardware run
+
+- State change: B5 remains `hardware partial`, but its geometry is now the
+  native `800 x 1280`; `P4_PANEL_VMUL=2` is deleted as the default and retained
+  only as a diagnostic override.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3, restarted through
+  USB-Serial/JTAG rather than a battery disconnect.
+- Artifact and configuration: core 184,656 bytes, SHA-256
+  `3a42a5d8dd0c340837456947097272f4702c402de5b844d77d03b9c2d6bc1aea`;
+  RGB565, 40 MHz pixel clock, 1500 Mbit/s lanes, non-burst,
+  `P4_PANEL_VMUL=1`, grid pattern, 200 MHz calibrated PSRAM and 360 MHz CPU.
+- Default-source rebuild: after changing `hardware.h`, all generated kernel
+  objects were deleted and the same diagnostic configuration was rebuilt
+  without any `P4_PANEL_VMUL` command-line override.  The first invocation was
+  correctly rejected because `esptool` was absent from `PATH` and left the old
+  image untouched.  With the local Espressif environment in `PATH`, the log
+  contains both `Creating .../aros-esp32p4.bin` and `Successfully created
+  ESP32-P4 image`, no `error:`, and produced a new 184,656-byte core, SHA-256
+  `234831639428cd55c920f4fab7bcc43fb6cce0a0ed059efc7b698aaa7aa70fe0`.
+  It was written only to `ota_0` at `0x20000` and passed both write-time hash
+  verification and a separate `esptool verify-flash`.
+- Procedure and observed UART: `tools/reset-and-log.py` reset the board out of
+  the ROM download stub and captured the boot from its first byte.  PSRAM
+  calibrated in one attempt, the bridge and host both reported 1280 active
+  lines, the framebuffer was exactly 2,048,000 bytes, DSI reported no payload
+  error and scanout measured 71 MB/s.  The scanout remained bounded to 30
+  seconds and then stops before another reset.
+- Panel observation: the complete red/blue grid was clean and regular.  There
+  was no half-height image, repeated lower half, displaced copy or line
+  corruption.  This directly falsifies the earlier VMUL=2 conclusion, which
+  had been measured while every pixel byte pair was swapped.
+- Default-source boot: a subsequent USB reset entered normal SPI boot, PSRAM
+  calibrated at 200 MHz in one attempt, framebuffer size was again exactly
+  2,048,000 bytes, bridge and host each reported 1280 active lines, DSI stayed
+  free of payload errors and scanout measured 71 MB/s.  This build uses the
+  60-second default scanout bound before panel-safe shutdown.
+- Acceptance points passed: native geometry, one-pixel/grid-line continuity,
+  PSRAM-backed scanout and a clean transport-side observation for this run.
+- Acceptance points still open: the grid requests red columns and green rows,
+  but the rows appear blue; full solids/bars/checkerboards, dirty-rectangle
+  coherency, 30-minute concurrent stress, the 100 MB/s bandwidth gate and ten
+  cold plus ten warm boots have not passed.
+- Safety impact: no flash or media write occurred.  Reset used the USB control
+  lines, scanout is time-bounded, and panel-safe shutdown remains enabled.
+- Next safe step: isolate the green/blue mapping with the existing primary
+  colour test card or flat fields, changing only the channel-format variable.
 
 ## Evidence-entry template
 
