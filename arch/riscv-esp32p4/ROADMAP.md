@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  A hardware-observed colour card verifies native little-endian RGB565 and all primary/pair colours; the corrected exactly tiled checker is perfect and moving dirty rectangles leave no visible artefacts.  Runs at 40 MHz over 1500 Mbit/s lanes.  Bounded commands and ordered teardown recover an active reset with all 32 MB at 200 MHz and moving scanout; an exact repeat showed that the optional post-video DCS read, not teardown, could separately pin `GEN_RD_CMD_BUSY`, so it is off by default and excluded from acceptance.  Still open: explicit solid/corner/one-pixel observation, the 100 MB/s gate, 30-minute concurrent stress and the full ten-warm/ten-cold boot gate |
+| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  A hardware-observed colour card verifies native little-endian RGB565 and all primary/pair colours; the corrected exactly tiled checker is perfect and moving dirty rectangles leave no visible artefacts.  Runs at 40 MHz over 1500 Mbit/s lanes.  The sustained gate passes 1,800 seconds of concurrent 71 MB/s scanout, read-only SD reads and cache-forced PSRAM passes: all 1,800 samples clean, 112 MB SD verified, 1,800 MB PSRAM verified and zero failures.  Bounded commands and ordered teardown recover an active reset in the verified case, but a separately retained PSRAM failure still needed one vendor-firmware boot and remains part of the open boot-cycle risk.  The optional post-video DCS read can separately pin `GEN_RD_CMD_BUSY`, so it is off by default and excluded from acceptance.  Still open: explicit solid/corner/one-pixel observation, the 100 MB/s gate and the full ten-warm/ten-cold boot gate |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -527,6 +527,10 @@ Acceptance gate:
 - VSYNC and underrun counters remain clean for at least 30 minutes while SD
   reads and PSRAM stress run concurrently;
 - ten cold and ten warm boots pass with UART diagnostics intact.
+
+The concurrent-stress point passed on the D1001 on 2026-08-26.  The remaining
+B5 points are the explicit solid/corner/one-pixel panel observation, the
+DMA-based 100 MB/s bandwidth decision and the complete boot-cycle matrix.
 
 ### B6 - VSYNC handoff, buffering and landscape
 
@@ -6301,6 +6305,74 @@ chip in the width this port assumes; it never addressed the hang.
   stress, 100 MB/s gate and ten cold plus ten warm boots.
 - Next safe step: commit this validation correction, then run the concurrent
   stress gate without enabling `P4_DSI_POST_VIDEO_QUERY`.
+
+### 2026-08-26 - B5 30-minute concurrent SD/PSRAM/scanout stress passed
+
+- State change: B5 remains `hardware partial`, but its sustained concurrent
+  stress acceptance point is closed on D1001 hardware.  The remaining B5 gates
+  are explicit direct observation of the five solids, four corner marks and
+  one-pixel lines, the DMA-based 100 MB/s decision and ten warm plus ten cold
+  boots.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3, MAC
+  `e8:f6:0a:e0:46:4c`; 121,942 MB SD card present and used read-only.
+- Implementation: `P4_B5_CONCURRENT_STRESS=1` runs as an AFTERDOS resident so
+  it reuses the hardware-verified `sdcard.device` after boot.  It excludes the
+  fixed framebuffer at `0x49e0c000` from both the BSP package loader and Exec's
+  PSRAM memory header, allocates separate PSRAM buffers, and each second reads
+  128 sectors through `NSCMD_TD_READ64`, alternating LBA 8,388,608 and
+  10,000,000 and checking their card-referenced FNV hashes.  It also writes and
+  verifies every word of a changing 1 MB PSRAM pattern after L1D/L2 writeback
+  and invalidation, while GDMA scans the framebuffer and moving odd-sized dirty
+  rectangles continue for the entire run.  Any SD, hash or PSRAM mismatch
+  aborts; a non-smoke build shorter than 1,800 seconds is rejected.
+- Source/build identity: dirty tree based on `24f88bf523`; all generated kernel
+  objects were deleted before building with
+  `P4_HEADLESS_BOOT=1 P4_PSRAM_MHZ=200 P4_CPU_MHZ=360
+  P4_B5_CONCURRENT_STRESS=1 P4_BL_PERCENT=100
+  P4_LDSCRIPT=ldscript-xip.lds`.  The flag supplied the proven panel, DSI,
+  non-burst scanout and coherency defines and defaulted `P4_SCANOUT_SECS` to
+  1,800.  The complete build contained no `error:`, passed the SRAM-residency
+  check and printed both ESP32-P4 image-creation success markers.
+- Artifact/flash safety: core 199,536 bytes, SHA-256
+  `162609fcb86ed105653a02e22edd9b3036cf931bd2688b0480379a81664e3884`.
+  Only `ota_0` at `0x20000..0x50fff` was erased and written; the write-time hash
+  and an independent `verify-flash` passed.  Bootloader, partition table, OTA
+  metadata, BSP, flash storage and SD media were not written.
+- Harness validation: a separately built 60-second smoke image passed 60
+  referenced SD reads, 60 cache-forced 1 MB PSRAM passes and 60 moving-scanout
+  samples with zero failure.  Its `SMOKE PASSED` wording deliberately did not
+  count toward the 30-minute gate.
+- Recovery and discarded runs: one otherwise clean capture reached `t1786`
+  before its 2,200-second host capture window expired; attempting to reopen the
+  USB serial endpoint reset the board, so that run was rejected.  An identical
+  repeat reached `t1511` before the host lost power and was also rejected.  A
+  later boot exposed the known retained-state PSRAM failure (`no answer`, 30
+  bounded timeouts/recoveries).  That boot is boot-cycle failure evidence, not
+  a stress result.  One verified Vellum 1.12.0 boot restored vendor `0x0d`, X16
+  32 MB PSRAM at 200 MHz and passed its memory test; the exact AROS core was
+  then rewritten and independently verified.  The vendor recovery does not
+  count as AROS recovery or toward any B5 acceptance point.
+- Accepted D1001 run: normal first-byte SPI boot after recovery; 32 MB PSRAM at
+  200 MHz in one attempt, zero command timeouts/FSM recoveries; SD boot from
+  `SDCARD0P0`; framebuffer excluded from Exec at `0x49e0c000`; measured
+  scanout 71 MB/s.  The log contains exactly sequential `t0..t1799`.  All
+  1,800 samples have moving/wrapping SAR, `braw 0`, host `int1 0` and channel
+  enable set; phase 8 was written back 1,782 times through the moving-update
+  interval.  The final counters are `SD reads 1800 x 128 sectors` (112.5 MiB),
+  `PSRAM 1 MB passes 1800`, `failures 0`, followed by `scanout stopped, panel
+  safe` and a return to the Shell.
+- Acceptance passed here: at least 30 minutes of simultaneous display DMA,
+  real read-only SD traffic, forced external-PSRAM writes/reads and moving
+  framebuffer updates with no detected underrun, payload, storage or memory
+  error, followed by bounded safe teardown.
+- Remaining risk: reset retention can still leave PSRAM unreachable and is not
+  repaired merely by this stress pass.  The ten-warm/ten-cold boot matrix must
+  include and resolve that failure rather than hiding it behind vendor
+  recovery.  The explicit visual solids/corners/one-pixel and 100 MB/s gates
+  are also still open.
+- Next safe step: commit this functional stress increment, then close the
+  explicit visual pattern observations or begin the controlled boot matrix;
+  keep the SD read-only through graphical boot.
 
 ## Evidence-entry template
 

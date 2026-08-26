@@ -32,7 +32,7 @@
 #include <proto/exec.h>
 #include <exec/io.h>
 #include <devices/timer.h>
-#ifdef P4_SDCARD_DEVICE_TEST
+#if defined(P4_SDCARD_DEVICE_TEST) || defined(P4_B5_CONCURRENT_STRESS)
 #include <devices/trackdisk.h>
 #include <devices/newstyle.h>
 #endif
@@ -45,7 +45,7 @@
 #include <resources/filesysres.h>
 #include <proto/bootloader.h>
 #endif
-#ifdef P4_AFTERDOS_PROBE
+#if defined(P4_AFTERDOS_PROBE) || defined(P4_B5_CONCURRENT_STRESS)
 #include <dos/dos.h>
 #include <dos/dosextens.h>
 #include <dos/filehandler.h>
@@ -781,7 +781,11 @@ const struct Resident krnP4HeartbeatResident =
 
 #endif /* P4_HEARTBEAT_TASK */
 
-#ifdef P4_AFTERDOS_PROBE
+#if defined(P4_AFTERDOS_PROBE) || defined(P4_B5_CONCURRENT_STRESS)
+
+#ifdef P4_B5_CONCURRENT_STRESS
+static void krnP4PanelProbe(void);
+#endif
 
 /*
  * The Relabel case needs the name of the *device* node serving SYS:, because
@@ -2203,13 +2207,18 @@ AROS_UFH3(static APTR, krnP4AfterDosInit,
         krnP4PutStr("[sysfs]  dos.library unavailable in AFTERDOS\n");
     else
     {
+#ifdef P4_AFTERDOS_PROBE
         (void)krnP4AfterDosProbe();
+#endif
 #ifdef P4_FLASHDISK_TEST
         (void)krnP4FlashDiskDeviceTest();
         (void)krnP4FlashVolumeDosTest();
 #endif
 #ifdef P4_A5_PROBE
         (void)krnP4A5Probe();
+#endif
+#ifdef P4_B5_CONCURRENT_STRESS
+        krnP4PanelProbe();
 #endif
         CloseLibrary((struct Library *)DOSBase);
         DOSBase = NULL;
@@ -2241,14 +2250,19 @@ const struct Resident krnP4AfterDosResident =
     1,
     NT_TASK,
     -126,
+#ifdef P4_B5_CONCURRENT_STRESS
+    "esp32p4 B5 stress",
+    "esp32p4 B5 stress 1.0",
+#else
     "esp32p4 sysfs probe",
     "esp32p4 sysfs probe 1.0",
+#endif
     &krnP4AfterDosInit
 };
 
-#endif /* P4_AFTERDOS_PROBE */
+#endif /* P4_AFTERDOS_PROBE || P4_B5_CONCURRENT_STRESS */
 
-#ifdef P4_SDCARD_DEVICE_TEST
+#if defined(P4_SDCARD_DEVICE_TEST) || defined(P4_B5_CONCURRENT_STRESS)
 /*
  * Exercise the complete external-module path, rather than only the early
  * controller probe: open the dynamically loaded device, ask its public
@@ -2328,6 +2342,226 @@ static uint32_t krnP4SDCardHash(const unsigned char *data, ULONG length)
     }
     return hash;
 }
+
+#ifdef P4_B5_CONCURRENT_STRESS
+
+/*
+ * B5's sustained gate uses the already hardware-verified sdcard.device, not
+ * another controller implementation.  Each iteration asks that device for a
+ * 128-sector CMD18 range into PSRAM while the display GDMA continuously reads
+ * its separately reserved framebuffer.  A second PSRAM allocation is then
+ * filled, written through the cache and verified from memory.
+ *
+ * Both SD ranges are card-referenced file data beyond the 32-bit byte-offset
+ * boundary.  They therefore exercise READ64 and detect repeated/misdirected
+ * sectors instead of merely proving that some zero-filled area was read.
+ */
+#define P4B5_SD_SECTORS        128UL
+#define P4B5_SD_BYTES          (P4B5_SD_SECTORS * 512UL)
+#define P4B5_SD_ALLOC_BYTES    (1024UL * 1024UL)
+#define P4B5_PSRAM_BYTES       (1024UL * 1024UL)
+
+struct p4b5_sd_range
+{
+    uint32_t lba;
+    uint32_t hash;
+};
+
+static const struct p4b5_sd_range p4b5_sd_ranges[] =
+{
+    {  8388608UL, 0x894be777UL },
+    { 10000000UL, 0xa3d171beUL }
+};
+
+struct p4b5_stress_state
+{
+    struct MsgPort *port;
+    struct IOStdReq *io;
+    unsigned char *sd_raw;
+    unsigned char *sd_data;
+    unsigned char *psram_raw;
+    volatile uint32_t *psram_data;
+    unsigned long sd_reads;
+    unsigned long psram_passes;
+    unsigned long failures;
+};
+
+static struct p4b5_stress_state p4b5_stress;
+
+static int krnP4B5StressPSRAMAddress(const void *address,
+                                     unsigned long bytes)
+{
+    IPTR first = (IPTR)address;
+    IPTR last;
+
+    if (first > ~(IPTR)0 - bytes)
+        return 0;
+    last = first + bytes;
+    return first >= P4_PSRAM_WINDOW_BASE && last <= P4_FB_BASE;
+}
+
+static int krnP4B5StressBegin(void)
+{
+    struct p4b5_stress_state *s = &p4b5_stress;
+    LONG open_error;
+
+    s->port = CreateMsgPort();
+    if (s->port)
+        s->io = (struct IOStdReq *)CreateIORequest(s->port, sizeof(*s->io));
+    if (!s->port || !s->io)
+    {
+        krnP4PutStr("[b5stress] IO request unavailable\n");
+        return 0;
+    }
+
+    open_error = OpenDevice("sdcard.device", 0,
+                            (struct IORequest *)s->io, 0);
+    if (open_error != 0)
+    {
+        krnP4PutStr("[b5stress] sdcard.device unavailable, error ");
+        krnP4PutDec((uint32_t)open_error);
+        krnP4PutStr("\n");
+        return 0;
+    }
+
+    /* One megabyte cannot fit in either internal heap, which makes this a
+       PSRAM allocation without inventing a nonstandard memory attribute. */
+    s->sd_raw = AllocMem(P4B5_SD_ALLOC_BYTES + 64,
+                         MEMF_PUBLIC | MEMF_CLEAR);
+    s->psram_raw = AllocMem(P4B5_PSRAM_BYTES + 64,
+                            MEMF_PUBLIC | MEMF_CLEAR);
+    if (!s->sd_raw || !s->psram_raw)
+    {
+        krnP4PutStr("[b5stress] PSRAM buffers unavailable\n");
+        return 0;
+    }
+
+    s->sd_data = (unsigned char *)(((IPTR)s->sd_raw + 63) & ~(IPTR)63);
+    s->psram_data = (volatile uint32_t *)
+        (((IPTR)s->psram_raw + 63) & ~(IPTR)63);
+    if (!krnP4B5StressPSRAMAddress(s->sd_data, P4B5_SD_BYTES) ||
+        !krnP4B5StressPSRAMAddress((const void *)s->psram_data,
+                                   P4B5_PSRAM_BYTES))
+    {
+        krnP4PutStr("[b5stress] buffers are not in reserved-safe PSRAM\n");
+        return 0;
+    }
+
+    krnP4PutStr("[b5stress] started: framebuffer reserved at ");
+    krnP4PutHex32(P4_FB_BASE);
+    krnP4PutStr(", SD 128-sector READ64 plus 1 MB PSRAM pass per second\n");
+    return 1;
+}
+
+static int krnP4B5StressStep(unsigned long second)
+{
+    struct p4b5_stress_state *s = &p4b5_stress;
+    const struct p4b5_sd_range *range =
+        &p4b5_sd_ranges[second %
+                        (sizeof(p4b5_sd_ranges) / sizeof(p4b5_sd_ranges[0]))];
+    unsigned long words = P4B5_PSRAM_BYTES / sizeof(uint32_t);
+    uint32_t seed = (uint32_t)second * 0x7F4A7C15UL ^ 0xA55A3CC3UL;
+    uint32_t hash;
+    unsigned long i;
+
+    if (!krnP4SDCardRead(s->io, range->lba, P4B5_SD_SECTORS, 1,
+                         s->sd_data))
+    {
+        krnP4PutStr("[b5stress] SD read FAILED at second ");
+        krnP4PutDec((uint32_t)second);
+        krnP4PutStr(", error ");
+        krnP4PutDec((uint32_t)(unsigned char)s->io->io_Error);
+        krnP4PutStr(", actual ");
+        krnP4PutDec(s->io->io_Actual);
+        krnP4PutStr("\n");
+        s->failures++;
+        return 0;
+    }
+    hash = krnP4SDCardHash(s->sd_data, P4B5_SD_BYTES);
+    if (hash != range->hash)
+    {
+        krnP4PutStr("[b5stress] SD hash FAILED at LBA ");
+        krnP4PutDec(range->lba);
+        krnP4PutStr(", expected ");
+        krnP4PutHex32(range->hash);
+        krnP4PutStr(", got ");
+        krnP4PutHex32(hash);
+        krnP4PutStr("\n");
+        s->failures++;
+        return 0;
+    }
+    s->sd_reads++;
+
+    for (i = 0; i < words; ++i)
+        s->psram_data[i] = ((uint32_t)i * 0x9E3779B9UL) ^ seed;
+    krnP4CacheSyncData((void *)s->psram_data, P4B5_PSRAM_BYTES);
+    for (i = 0; i < words; ++i)
+    {
+        uint32_t expected = ((uint32_t)i * 0x9E3779B9UL) ^ seed;
+        uint32_t got = s->psram_data[i];
+
+        if (got != expected)
+        {
+            krnP4PutStr("[b5stress] PSRAM FAILED at second ");
+            krnP4PutDec((uint32_t)second);
+            krnP4PutStr(", offset ");
+            krnP4PutHex32((uint32_t)(i * sizeof(uint32_t)));
+            krnP4PutStr(", expected ");
+            krnP4PutHex32(expected);
+            krnP4PutStr(", got ");
+            krnP4PutHex32(got);
+            krnP4PutStr("\n");
+            s->failures++;
+            return 0;
+        }
+    }
+    s->psram_passes++;
+
+    if ((second % 60) == 59)
+    {
+        krnP4PutStr("[b5stress] progress ");
+        krnP4PutDec((uint32_t)(second + 1));
+        krnP4PutStr(" s, SD ");
+        krnP4PutDec((uint32_t)(s->sd_reads * P4B5_SD_BYTES /
+                               (1024UL * 1024UL)));
+        krnP4PutStr(" MB verified, PSRAM passes ");
+        krnP4PutDec((uint32_t)s->psram_passes);
+        krnP4PutStr("\n");
+    }
+    return 1;
+}
+
+static void krnP4B5StressEnd(unsigned long completed, int passed)
+{
+    struct p4b5_stress_state *s = &p4b5_stress;
+
+    krnP4PutStr("[b5stress] ");
+#ifdef P4_B5_STRESS_SMOKE
+    krnP4PutStr("SMOKE ");
+#endif
+    krnP4PutStr(passed && !s->failures ? "PASSED " : "FAILED ");
+    krnP4PutDec((uint32_t)completed);
+    krnP4PutStr(" s, SD reads ");
+    krnP4PutDec((uint32_t)s->sd_reads);
+    krnP4PutStr(" x 128 sectors, PSRAM 1 MB passes ");
+    krnP4PutDec((uint32_t)s->psram_passes);
+    krnP4PutStr(", failures ");
+    krnP4PutDec((uint32_t)s->failures);
+    krnP4PutStr("\n");
+
+    if (s->io && s->io->io_Device)
+        CloseDevice((struct IORequest *)s->io);
+    if (s->sd_raw)
+        FreeMem(s->sd_raw, P4B5_SD_ALLOC_BYTES + 64);
+    if (s->psram_raw)
+        FreeMem(s->psram_raw, P4B5_PSRAM_BYTES + 64);
+    if (s->io)
+        DeleteIORequest((struct IORequest *)s->io);
+    if (s->port)
+        DeleteMsgPort(s->port);
+}
+
+#endif /* P4_B5_CONCURRENT_STRESS */
 
 /* TRUE when the card content of one sector is known.  Anything below the
    captured limit that is not listed is zero. */
@@ -3293,7 +3527,7 @@ out:
     if (port)
         DeleteMsgPort(port);
 }
-#endif /* P4_SDCARD_DEVICE_TEST */
+#endif /* P4_SDCARD_DEVICE_TEST || P4_B5_CONCURRENT_STRESS */
 
 #ifdef P4_PARTITION_TEST
 static uint32_t partition_test_sector[128] P4_SRAMDATA
@@ -5527,6 +5761,10 @@ static void krnP4PanelProbe(void)
                  * itself.  P4_SCANOUT_SECS=0 restores the old behaviour for a
                  * session where that is wanted, with the consequence stated.
                  */
+#if defined(P4_B5_CONCURRENT_STRESS) && \
+    !defined(P4_B5_STRESS_SMOKE) && P4_SCANOUT_SECS < 1800
+#error P4_B5_CONCURRENT_STRESS requires P4_SCANOUT_SECS of at least 1800
+#endif
 #if P4_SCANOUT_SECS == 0
                 krnP4PutStr("[b5]     left running indefinitely;"
                             " a reset from here needs the vendor firmware"
@@ -5550,6 +5788,10 @@ static void krnP4PanelProbe(void)
                  */
                 {
                     unsigned long secs;
+#ifdef P4_B5_CONCURRENT_STRESS
+                    unsigned long stress_completed = 0;
+                    int stress_ready = krnP4B5StressBegin();
+#endif
 
                     for (secs = 0; secs < (unsigned long)P4_SCANOUT_SECS;
                          secs++)
@@ -5570,6 +5812,15 @@ static void krnP4PanelProbe(void)
                                 krnP4PutStr(" written back\n");
                             }
                         }
+#endif
+
+#ifdef P4_B5_CONCURRENT_STRESS
+                        if (!stress_ready || !krnP4B5StressStep(secs))
+                        {
+                            stress_ready = 0;
+                            break;
+                        }
+                        stress_completed = secs + 1;
 #endif
 
                         krnP4ScanoutState(&sc);
@@ -5595,6 +5846,11 @@ static void krnP4PanelProbe(void)
 
                         krnTimerWait(P4_TICK_HZ);
                     }
+#ifdef P4_B5_CONCURRENT_STRESS
+                    krnP4B5StressEnd(stress_completed,
+                        stress_ready &&
+                        stress_completed == (unsigned long)P4_SCANOUT_SECS);
+#endif
                 }
 
                 krnP4ScanoutQuiesce();
@@ -5805,6 +6061,13 @@ static int krnP4PublishPSRAM(IPTR first_free)
 {
     IPTR end = P4_PSRAM_WINDOW_BASE + __esp32p4_psram_size;
 
+#ifdef P4_B5_CONCURRENT_STRESS
+    /* The diagnostic starts scanout after exec owns the memory list.  Keep
+       its fixed framebuffer outside every allocation for the whole run. */
+    if (end > P4_FB_BASE)
+        end = P4_FB_BASE;
+#endif
+
     if (first_free > ~(IPTR)0 - 15)
         return 0;
     first_free = (first_free + 15) & ~(IPTR)15;
@@ -5839,6 +6102,11 @@ static int krnP4LoadBSPPackage(unsigned long part_off,
     IPTR pkg_size, memlow, lo = 0, hi = 0, used = 0;
     IPTR i;
     int modules;
+
+#ifdef P4_B5_CONCURRENT_STRESS
+    if (psram_end > P4_FB_BASE)
+        psram_end = P4_FB_BASE;
+#endif
 
     flash = krnP4FlashMap(part_off, 8);
     if (!flash || flash[0] != 'P' || flash[1] != 'K' ||
@@ -6599,7 +6867,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     psram_probe();
 #endif
 #ifdef P4_PANEL_PROBE
+#ifndef P4_B5_CONCURRENT_STRESS
     krnP4PanelProbe();
+#endif
 #endif
 
 #ifdef P4_SDMMC_PROBE

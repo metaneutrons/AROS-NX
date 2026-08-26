@@ -147,6 +147,30 @@ void krnP4CacheWriteback(void)
     asm volatile("fence" ::: "memory");
 }
 
+/*
+ * Force a data range through external memory before reading it again.
+ *
+ * The B5 concurrent stress writes a PSRAM scratch range while the display
+ * DMA is consuming a different PSRAM range.  A CPU read immediately after a
+ * write can otherwise be satisfied entirely from cache and prove nothing
+ * about the shared memory path.  Write back first, then invalidate only the
+ * data hierarchy for this range so the verification load must reach memory.
+ */
+P4_SRAMCODE void krnP4CacheSyncData(void *addr, unsigned long len)
+{
+    rom_cache_range_t wb = (rom_cache_range_t)P4_ROM_CACHE_WRITEBACK_ADDR;
+    rom_cache_range_t inv = (rom_cache_range_t)P4_ROM_CACHE_INVALIDATE_ADDR;
+
+    if (!len)
+        return;
+
+    wb(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
+       (uint32_t)(unsigned long)addr, (uint32_t)len);
+    inv(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
+        (uint32_t)(unsigned long)addr, (uint32_t)len);
+    asm volatile("fence rw, rw" ::: "memory");
+}
+
 P4_SRAMCODE unsigned long krnP4CacheOff(void)
 {
     rom_cache_all_t wb_all = (rom_cache_all_t)P4_ROM_CACHE_WRITEBACK_ALL;

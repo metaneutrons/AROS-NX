@@ -206,6 +206,17 @@ ten-warm/ten-cold gate remains open.  Continue to record PSRAM, command-path and
 live DMA evidence separately rather than treating a DCS reply as proof of
 scanout continuity.
 
+The sustained B5 gate is `P4_B5_CONCURRENT_STRESS=1`.  It must use the existing
+read-only `sdcard.device`, keep the fixed framebuffer outside Exec's allocatable
+PSRAM, force CPU verification reads through external memory, and run at least
+1,800 seconds.  A smoke build is harness validation only.  Accept a sustained
+run only when the log contains every `t0..t1799` sample, zero bridge/host error
+status, 1,800 referenced SD reads, 1,800 complete 1 MB PSRAM passes, the final
+zero-failure `PASSED` line and the bounded panel-safe stop.  If a retained
+scanout state makes PSRAM identify fail, record that boot as a boot-cycle
+failure; a Vellum recovery boot may restore the development board but cannot be
+counted as AROS recovery or as part of the stress gate.
+
 ## Safety boundaries
 
 - Keep SD media read-only through the first graphical boot.  Preserve both

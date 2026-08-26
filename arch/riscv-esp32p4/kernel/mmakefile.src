@@ -59,6 +59,11 @@ USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 #   -DP4_SDCARD_EXPECT_FAULT
 #                       allow one injected CMD18 failure and require the
 #                       immediately following CMD17 recovery read to pass
+#   -DP4_B5_CONCURRENT_STRESS
+#                       after DOS has booted from the read-only card, reserve
+#                       the framebuffer from exec and run at least 30 minutes
+#                       of display DMA, moving dirty rectangles, referenced
+#                       128-sector READ64 requests and 1-MB PSRAM verify passes
 #   -DP4_PARTITION_TEST  open the package-loaded partition.library and read
 #                       one sector through its public root-partition API
 #   -DP4_AFTERDOS_PROBE an RTF_AFTERDOS resident that asks the half of the A4
@@ -297,6 +302,28 @@ endif
 # transition is explicitly written back before the DMA is sampled.
 ifdef P4_SCANOUT_COHERENCY
 P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_COHERENCY
+endif
+
+# P4_B5_CONCURRENT_STRESS=1 is the reproducible sustained B5 gate.  It starts
+# the display from an AFTERDOS resident so the already verified sdcard.device
+# is available, and keeps moving dirty rectangles while referenced READ64
+# requests and cache-forced PSRAM passes run.  There is no card write command
+# in the harness.  Default to the gate's 30 minutes; a source assertion rejects
+# a shorter override.
+ifeq ($(P4_B5_CONCURRENT_STRESS),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_CONCURRENT_STRESS -DP4_PANEL_PROBE \
+                     -DP4_DSI_PROBE -DP4_SCANOUT_TEST \
+                     -DP4_DSI_NONBURST -DP4_SCANOUT_COHERENCY
+ifndef P4_SCANOUT_SECS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=1800
+endif
+endif
+
+# P4_B5_STRESS_SMOKE=1 permits a deliberately shorter concurrent-stress run
+# while validating the harness.  Its final line says PASSED for mechanics, not
+# for B5's 30-minute gate; never record it as sustained-stress evidence.
+ifdef P4_B5_STRESS_SMOKE
+P4_DEBUG_CPPFLAGS += -DP4_B5_STRESS_SMOKE
 endif
 
 # P4_BRG_RAW_DIV=n divides the bridge's frame data counter by n.  A scale test
