@@ -36,6 +36,12 @@
 #include "kernel_intern.h"
 #include "psram.h"
 
+#if defined(P4_B5_EARLY_GDMA_CREATE) && !defined(P4_B5_EARLY_DPI_CREATE)
+#error P4_B5_EARLY_GDMA_CREATE requires P4_B5_EARLY_DPI_CREATE
+#elif defined(P4_B5_EARLY_GDMA_CREATE) && defined(P4_B5_DMA_RELOAD)
+#error P4_B5_EARLY_GDMA_CREATE requires the reference link-list path
+#endif
+
 static inline void brg_wr(unsigned long off, unsigned long v)
 {
     p4_w32(P4_DSI_BRG_BASE + off, v);
@@ -69,6 +75,60 @@ static inline void lli_wr(unsigned long off, unsigned long v)
 {
     *(volatile unsigned long *)((unsigned long)scanout_lli
                                 + P4_L2MEM_NONCACHE_OFFSET + off) = v;
+}
+
+/*
+ * Create the controller/channel object without starting a transfer.
+ *
+ * Vellum's exact IDF v6.0 path does this from esp_lcd_new_panel_dpi(), before
+ * the JD9365 reset pulse and command table.  The descriptor is filled and the
+ * channel is enabled only later from dpi_panel_init().  Ordinary AROS keeps
+ * its historical all-at-start order; P4_B5_EARLY_GDMA_CREATE calls this early
+ * and makes krnP4ScanoutDmaUp() retain the live controller state instead of
+ * resetting it again.
+ */
+void krnP4ScanoutDmaCreate(void)
+{
+    unsigned long cfg1;
+
+    p4_w32(P4_CLKRST_SOC_CLK_CTRL0,
+           p4_r32(P4_CLKRST_SOC_CLK_CTRL0) | P4_GDMA_CPU_CLK_EN);
+    p4_w32(P4_CLKRST_SOC_CLK_CTRL1,
+           p4_r32(P4_CLKRST_SOC_CLK_CTRL1) | P4_GDMA_SYS_CLK_EN);
+
+    p4_w32(P4_CLKRST_HP_RST_EN0,
+           p4_r32(P4_CLKRST_HP_RST_EN0) | P4_RST_EN_GDMA);
+    p4_w32(P4_CLKRST_HP_RST_EN0,
+           p4_r32(P4_CLKRST_HP_RST_EN0) & ~P4_RST_EN_GDMA);
+
+    p4_w32(P4_DMAC_RESET, P4_DMAC_RESET_BIT);
+    while (p4_r32(P4_DMAC_RESET) & P4_DMAC_RESET_BIT)
+        ;
+
+    p4_w32(P4_DMAC_CFG, P4_DMAC_CFG_EN | P4_DMAC_INT_EN);
+    p4_w32(P4_DMAC_CHEN, P4_DMAC_CH1_EN_WE);
+
+    ch_wr(P4_DMAC_CH_CFG0,
+          (P4_DMAC_MULTBLK_LIST << P4_DMAC_SRC_MULTBLK_SHIFT)
+        | (P4_DMAC_MULTBLK_LIST << P4_DMAC_DST_MULTBLK_SHIFT));
+
+    cfg1 = (P4_DMAC_TT_FC_M2P_DMAC << P4_DMAC_TT_FC_SHIFT)
+         | (P4_DMAC_PER_DSI << P4_DMAC_SRC_PER_SHIFT)
+         | (P4_DMAC_PER_DSI << P4_DMAC_DST_PER_SHIFT)
+         | (1UL << P4_DMAC_CH_PRIOR_SHIFT)
+         | (4UL << P4_DMAC_SRC_OSR_SHIFT)
+         | (1UL << P4_DMAC_DST_OSR_SHIFT);
+    ch_wr(P4_DMAC_CH_CFG1, cfg1);
+
+    /* Match the already proven AROS final interrupt state while moving only
+       its creation time.  This avoids conflating lifecycle with IRQ policy. */
+    ch_wr(P4_DMAC_CH_INTSIGNAL_ENABLE0, 0);
+    ch_wr(P4_DMAC_CH_INTCLEAR0, 0xFFFFFFFFUL);
+    ch_wr(P4_DMAC_CH_INTSTATUS_ENABLE0, 0xFFFFFFFFUL);
+    ch_wr(P4_DMAC_CH_INTSIGNAL_ENABLE0,
+          P4_DMAC_IS_DMA_DONE | P4_DMAC_IS_LLI_INVALID);
+    p4_w32(P4_INTMTX_MAP(P4_SOURCE_DW_GDMA), P4_DSI_DMA_LINE);
+    krnCLICEnable(P4_DSI_DMA_LINE, 0);
 }
 
 /*
@@ -261,8 +321,9 @@ void krnP4ScanoutFeedOn(void)
  */
 void krnP4ScanoutDmaUp(void)
 {
-    unsigned long ctl_lo, ctl_hi, cfg1;
+    unsigned long ctl_lo, ctl_hi;
 
+#ifndef P4_B5_EARLY_GDMA_CREATE
     /*
      * The module's clocks and system reset first.  They are not in the DMA's
      * own register block, and without them the block still answers reads and
@@ -285,6 +346,7 @@ void krnP4ScanoutDmaUp(void)
 
     p4_w32(P4_DMAC_CFG, P4_DMAC_CFG_EN | P4_DMAC_INT_EN);
     p4_w32(P4_DMAC_CHEN, P4_DMAC_CH1_EN_WE);
+#endif
 
     /* ESP-IDF routes a PSRAM source through GDMA master 1 (memory) and the
        bridge destination through master 0 (MIPI DSI).  Leaving SMS at its
@@ -330,9 +392,11 @@ void krnP4ScanoutDmaUp(void)
     krnP4CacheWriteback();
 
     /* Both sides take their next block from the one-item list. */
+#ifndef P4_B5_EARLY_GDMA_CREATE
     ch_wr(P4_DMAC_CH_CFG0,
           (P4_DMAC_MULTBLK_LIST << P4_DMAC_SRC_MULTBLK_SHIFT)
         | (P4_DMAC_MULTBLK_LIST << P4_DMAC_DST_MULTBLK_SHIFT));
+#endif
 #else
     /* Diagnostic only: keep the producer continuous across a framebuffer
        boundary.  This exact register-reload form previously proved capable
@@ -357,13 +421,15 @@ void krnP4ScanoutDmaUp(void)
      * reference uses - five reads against two writes, because PSRAM latency is
      * the thing that has to be hidden.
      */
-    cfg1 = (P4_DMAC_TT_FC_M2P_DMAC << P4_DMAC_TT_FC_SHIFT)
-         | (P4_DMAC_PER_DSI << P4_DMAC_SRC_PER_SHIFT)
-         | (P4_DMAC_PER_DSI << P4_DMAC_DST_PER_SHIFT)
-         | (1UL << P4_DMAC_CH_PRIOR_SHIFT)
-         | (4UL << P4_DMAC_SRC_OSR_SHIFT)
-         | (1UL << P4_DMAC_DST_OSR_SHIFT);
-    ch_wr(P4_DMAC_CH_CFG1, cfg1);
+#ifndef P4_B5_EARLY_GDMA_CREATE
+    ch_wr(P4_DMAC_CH_CFG1,
+          (P4_DMAC_TT_FC_M2P_DMAC << P4_DMAC_TT_FC_SHIFT)
+        | (P4_DMAC_PER_DSI << P4_DMAC_SRC_PER_SHIFT)
+        | (P4_DMAC_PER_DSI << P4_DMAC_DST_PER_SHIFT)
+        | (1UL << P4_DMAC_CH_PRIOR_SHIFT)
+        | (4UL << P4_DMAC_SRC_OSR_SHIFT)
+        | (1UL << P4_DMAC_DST_OSR_SHIFT));
+#endif
 
 #ifndef P4_B5_DMA_RELOAD
     ch_wr(P4_DMAC_CH_LLP,
@@ -376,6 +442,7 @@ void krnP4ScanoutDmaUp(void)
 
     scanout_dma_frames = 0;
     scanout_dma_faults = 0;
+#ifndef P4_B5_EARLY_GDMA_CREATE
     ch_wr(P4_DMAC_CH_INTCLEAR0, 0xFFFFFFFFUL);
 #ifndef P4_B5_DMA_RELOAD
     ch_wr(P4_DMAC_CH_INTSTATUS_ENABLE0, 0xFFFFFFFFUL);
@@ -386,6 +453,7 @@ void krnP4ScanoutDmaUp(void)
 #else
     ch_wr(P4_DMAC_CH_INTSTATUS_ENABLE0, 0);
     ch_wr(P4_DMAC_CH_INTSIGNAL_ENABLE0, 0);
+#endif
 #endif
 
     /* And run */

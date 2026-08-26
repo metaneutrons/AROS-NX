@@ -7688,6 +7688,114 @@ chip in the width this port assumes; it never addressed the hang.
   rejected.  The next audit returns to the Waveshare JD9365 wrapper's actual
   lifecycle order--DPI panel init versus vendor command table--because that
   can leave host FSM state different despite identical final registers.
+- The wrapper audit rejects a DPI-init-versus-vendor-table reversal but finds
+  an earlier lifecycle difference.  `esp_lcd_new_panel_jd9365_8()` calls
+  `esp_lcd_new_panel_dpi()` while the panel is still held in reset; that IDF
+  creation path enables the DPI pixel clock, stages every host and bridge
+  timing register, globally enables the bridge and commits its configuration.
+  Only afterwards does the board pulse hardware reset and call the wrapper
+  init, which sends the complete JD9365 table before the underlying DPI init
+  arms DMA, enters host video mode and commits the pixel feed.  AROS previously
+  delayed DPI clock, timing and global bridge creation until after the vendor
+  table.  Final-register parity cannot see that FSM history.
+- `P4_B5_EARLY_DPI_CREATE` is the bounded discriminator for that difference.
+  It performs the clock/timing/global-bridge portion immediately after command
+  IO setup and before the hardware reset pulse, leaves DMA/video/feed off
+  through the vendor table, and does not rewrite the early configuration at
+  the later start.  The existing 100-ms host oracle, zero bridge RAW status,
+  two-second safe stop and read-only SD gate apply unchanged.  A clean host
+  accepts lifecycle history as the cause; the familiar immediate
+  `0x80/0x00020009` rejects it without requiring a visual observation.
+- Early DPI creation is hardware-negative.  The 189,520-byte XIP core had
+  SHA-256
+  `5cf0965e9b49a4a92eae76ac4a42875c36070665d60fe5e0057ff7906798bc11`;
+  the build contained no exact `error:`, passed the SRAM-residency and image
+  creation gates, and only `ota_0` at `0x20000` was written and independently
+  verified on D1001 revision 1.3.  UART confirmed that DPI creation occurred
+  before the panel reset and that the JD9365 identity still answered
+  `93 65 04`.  The host then asserted `0x80/0x00020009` after `0xcb0` ticks in
+  DMA frame zero, at `SAR=FB+0x3200`.  Bridge RAW status remained zero,
+  throughput was the expected 69 MB/s and DMA faults remained zero through the
+  two-second safe stop; the SD card was subsequently discovered through its
+  read-only path.  The earlier clock/timing/global-bridge lifecycle is not the
+  missing state and is rejected.  Because the operator is remote, no visual
+  claim is made for this run.  The next audit compares the complete ESP-IDF
+  host reset and register-write sequence rather than another final snapshot.
+- An initial continuation audit inspected the wrong installed IDF tree and is
+  corrected before commit.  `~/.espressif/v6.0.1` does select AUTO before DBI,
+  but Vellum's `project_description.json`, compile database and object paths
+  all name `/Volumes/Dev/esp-idf/v6.0/esp-idf`, clean tag `v6.0`, commit
+  `662a3be354759d9487bf4b1a629fadb766cb1800`.  That exact source explicitly
+  selects LP until DPI init.  Thus the older evidence entry above was right.
+  The additive AUTO comparison was nevertheless completed safely: its
+  189,520-byte image had SHA-256
+  `5506b02ae0892d5bf28685e366f523235edc24bc1420fa9493b0d327e129529a`,
+  passed build/image/verification gates, answered identity `93 65 04`, then
+  asserted the unchanged `0x80/0x00020009` after `0xcf2` ticks in frame zero.
+  Bridge RAW, 69-MB/s transfer, DMA faults, safe stop and read-only SD remained
+  healthy.  AUTO command history is rejected and is not reference parity; no
+  remote visual claim is made.
+- The exact v6.0 object disassembly exposes the next still-unmatched start
+  primitive.  After enabling video mode it performs two volatile RMW writes to
+  `LPCLK_CTRL`: `AUTO_CLKLANE` first at object offset `0xd2`, then
+  `TXREQUESTCLKHS` at `0xde`.  AROS set both bits in one write.  The public end
+  state is `3` in either case, but the clock-lane FSM observes an intermediate
+  AUTO-without-HS-request state only under Vellum.  `P4_B5_SPLIT_AUTO_START`
+  reproduces those two writes additively to the now-tested early DPI creation.
+  The same first-100-ms host oracle and two-second safe stop decide it without
+  a display observer.
+- Split AUTO start is hardware-negative.  The 189,520-byte image had SHA-256
+  `023dce9469c9a4e8df1c9dd1279004f945298bb98407408b1102a6fcc3a7b9b5`;
+  it passed the exact-error, SRAM-residency, image, write and independent
+  `ota_0` verification gates.  AROS disassembly showed the intended video-mode
+  write followed by separate `dsi_set(0x94,2)` and `dsi_set(0x94,1)` calls.
+  D1001 again answered identity `93 65 04`, then asserted
+  `0x80/0x00020009` after `0x995` ticks in DMA frame zero.  Bridge RAW stayed
+  zero, DMA faults stayed zero and transfer measured 72 MB/s before the safe
+  stop and read-only SD discovery.  The intermediate clock-lane FSM state is
+  rejected; no remote visual claim is made.  The next source/assembly audit is
+  the exact GDMA channel-enable primitive before host start.
+- The exact v6.0 GDMA audit closes the enable primitive without another
+  hardware variable.  `dw_gdma_channel_enable_ctrl()` is only one write of
+  channel enable plus its write-enable bit; it has no read-back, poll, delay or
+  hidden resume.  This is the same final write AROS already emits.  The audit
+  instead found a register-invisible lifecycle difference: DPI object creation
+  calls `dw_gdma_new_channel()` before the JD9365 reset and vendor table.  That
+  path enables clocks, pulses both resets, enables the controller, configures
+  the idle channel and installs its interrupt.  `dpi_panel_init()` much later
+  fills/selects the link item and performs the single channel-enable write.
+  AROS previously did both halves together after the command table.
+- `P4_B5_EARLY_GDMA_CREATE` moves only the controller reset, idle channel
+  configuration and existing AROS interrupt state into the already tested
+  early-DPI creation window.  Descriptor contents, cache write-back and the
+  channel-enable write remain at the normal host-before-feed start.  The
+  later path explicitly retains the early controller instead of resetting it.
+  Run it additively with `P4_B5_EARLY_DPI_CREATE` and the already measured
+  split-AUTO baseline, at 1,000-Mbit/s lanes, 200-MHz PSRAM and 360-MHz CPU.
+  A clean 100-ms UART host oracle with zero bridge RAW status accepts GDMA
+  lifecycle history; the familiar frame-zero `0x80/0x00020009` rejects it.
+  The two-second safe stop and read-only SD gate remain mandatory, and no
+  visual acceptance is possible while the operator is remote.
+- Early GDMA creation is hardware-negative.  The 189,616-byte XIP image had
+  SHA-256
+  `c4ea6bafc927271fc1f5247f74f51d284c1703c794d70adeb380dc2de9cf442b`;
+  the build exited zero, contained no exact `error:`, passed SRAM residency
+  and emitted a fresh successful ESP32-P4 image marker.  Disassembly proved
+  the intended early `krnP4ScanoutDmaCreate()` call before bridge creation and
+  panel reset, while the later `krnP4ScanoutDmaUp()` contained descriptor
+  writes followed directly by the single `CHEN=0x101` start and no second
+  controller reset.  Only `ota_0` was written and an independent flash digest
+  matched on D1001 v1.3, MAC `e8:f6:0a:e0:46:4c`.  UART reported the early
+  idle-channel marker, identity `93 65 04`, then the familiar first
+  `INT_ST1=0x80 / VID_PKT_STATUS=0x00020009` after `0xd87` ticks in DMA frame
+  zero at `SAR=FB+0x3200`.  Bridge RAW remained zero, measured transfer was
+  71 MB/s, DMA faults remained zero, and the moving producer completed the
+  bounded two-second panel-safe stop.  Boot then discovered the SD card through
+  the read-only path and reached the already known missing-console alert.
+  Therefore GDMA object lifetime before the command table is rejected; no
+  visual claim is made for this remote run.  The next audit must compare an
+  earlier stateful operation in the exact v6.0 DSI bus/PHY creation path, not
+  another final public-register value or GDMA start delay.
 
 ## Evidence-entry template
 

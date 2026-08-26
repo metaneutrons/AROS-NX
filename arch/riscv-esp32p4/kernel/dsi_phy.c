@@ -370,15 +370,18 @@ int krnP4DsiCmdModeUp(void)
 
     /* Command mode, with the clock lane held in low power.
 
-       esp_lcd_new_dsi_bus() explicitly selects LP before the panel command
-       sequence.  Its low-level helper encodes that state with both
-       AUTO_CLKLANE and TXREQUESTCLKHS clear; the DPI start path selects AUTO
-       only after DMA has been armed and video mode enabled.  Final register
-       parity is not enough here because AUTO entered before the command
-       sequence leaves internal PHY/host state that is not readable back. */
+       This is the exact v6.0 tree Vellum's project_description.json names.
+       A later local v6.0.1 tree changed esp_lcd_new_dsi_bus() to select AUTO
+       here; P4_B5_IDF_AUTO_CMD_CLOCK reproduced that version difference and
+       was hardware-negative, but it is not a Vellum parity setting. */
     dsi_set(P4_DSI_MODE_CFG, P4_DSI_CMD_VIDEO_MODE);
+#ifdef P4_B5_IDF_AUTO_CMD_CLOCK
+    dsi_set(P4_DSI_LPCLK_CTRL,
+            P4_DSI_TXREQUESTCLKHS | P4_DSI_AUTO_CLKLANE);
+#else
     dsi_clr(P4_DSI_LPCLK_CTRL,
             P4_DSI_TXREQUESTCLKHS | P4_DSI_AUTO_CLKLANE);
+#endif
 
     /* The four lane-transition times, undocumented and carried over as they
        are; see the display contract's unresolved list. */
@@ -808,7 +811,17 @@ void krnP4DsiVideoOn(void)
      * it - PHY_STATUS 0x15b9, a host that never transmits while its FIFO
      * overflows.
      */
-    dsi_set(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS | P4_DSI_AUTO_CLKLANE);
+#ifdef P4_B5_SPLIT_AUTO_START
+    /* Match the two distinct volatile bitfield writes emitted by Vellum's
+       v6.0 esp_lcd_panel_dpi.c object: AUTO first, then HS request.  AROS's
+       ordinary combined RMW has the same final value but skips the observable
+       intermediate clock-lane FSM state. */
+    dsi_set(P4_DSI_LPCLK_CTRL, P4_DSI_AUTO_CLKLANE);
+    dsi_set(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS);
+#else
+    dsi_set(P4_DSI_LPCLK_CTRL,
+            P4_DSI_TXREQUESTCLKHS | P4_DSI_AUTO_CLKLANE);
+#endif
 
 #ifndef P4_B5_ATOMIC_START
     dsi_trace();                /* 6: clock lane in high speed */
