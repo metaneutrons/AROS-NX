@@ -4977,7 +4977,9 @@ static void krnP4PanelProbe(void)
                    or a wrong channel order changes which colour appears and
                    is therefore visible rather than silent; a wrong stride or
                    pixel format cannot produce a flat field at all. */
-#if defined(P4_SCANOUT_BANDS)
+#if defined(P4_SCANOUT_COHERENCY)
+                krnP4ScanoutFill(0x000000);
+#elif defined(P4_SCANOUT_BANDS)
                 krnP4ScanoutBands();
 #elif defined(P4_SCANOUT_HALVES)
                 krnP4ScanoutHalves();
@@ -5553,6 +5555,20 @@ static void krnP4PanelProbe(void)
                         unsigned long depth = 0, raw = 0;
                         unsigned long pkt = 0, i0 = 0, i1 = 0;
                         struct P4HostState h;
+
+#ifdef P4_SCANOUT_COHERENCY
+                        {
+                            unsigned long phase =
+                                krnP4ScanoutCoherencyStep(secs);
+
+                            if (phase)
+                            {
+                                krnP4PutStr("[b5]     coherency phase ");
+                                krnP4PutDec((uint32_t)phase);
+                                krnP4PutStr(" presented\n");
+                            }
+                        }
+#endif
 
                         krnP4ScanoutState(&sc);
                         krnP4ScanoutSample(&depth, &raw);
