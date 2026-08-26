@@ -561,7 +561,7 @@ static void scanout_corners_and_lines(void)
  *
  * Returns a phase number only when the framebuffer changed.  The caller logs
  * it alongside the DMA/bridge/host sample, so the UART proves that each image
- * was presented rather than merely compiled in.  The dirty rectangles are
+ * was written back rather than merely compiled in.  The dirty rectangles are
  * 127 by 73 pixels at odd, changing offsets; neither their ends nor their row
  * strides share a cache-line boundary.  Each step erases the old rectangle
  * and writes a differently coloured new one before a complete cache
@@ -582,9 +582,15 @@ unsigned long krnP4ScanoutCoherencyStep(unsigned long second)
         case 10: scanout_checker(); phase = 6; break;
         case 14: scanout_corners_and_lines(); phase = 7; break;
         case 18: krnP4ScanoutFill(0x000000UL); phase = 8; break;
+#ifndef P4_B5_CONCURRENT_STRESS
         case 42: scanout_corners_and_lines(); phase = 9; break;
+#endif
         default:
-            if (second >= 19 && second < 42)
+            if (second >= 19
+#ifndef P4_B5_CONCURRENT_STRESS
+                && second < 42
+#endif
+               )
             {
                 unsigned long n = second - 19;
                 unsigned long x = (n * 97 + 3) % (P4_PANEL_H_RES - 127 + 1);
