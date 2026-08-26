@@ -5024,6 +5024,11 @@ static void krnP4PanelProbe(void)
 #endif
 
             krnP4PutStr("[dsi]    B3 stage one passed\n");
+#ifdef P4_B5_EXACT_PHY_CREATE
+            krnP4PutStr("[b5]     exact v6.0 PHY creation, pre-bus phy_if ");
+            krnP4PutHex32(p4_r32(P4_DSI_HOST_BASE + P4_DSI_PHY_IF_CFG));
+            krnP4PutStr("\n");
+#endif
 
             /* Stage two: command mode, then the panel out of reset, then
                its own sequence.  The reset comes here and not earlier. */
