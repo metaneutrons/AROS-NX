@@ -661,8 +661,10 @@ void krnP4ScanoutHalves(void)
  * three resets in a row stopped at the same point, immediately after the clock
  * report and before any PSRAM output.
  *
- * Only a power cycle recovers it otherwise, which makes this a defect that
- * bricks a development board until someone unplugs it, not a cosmetic one.
+ * Before the bounded MSPI and ordered DSI recovery existed, restoring that
+ * state required the vendor firmware and sometimes a power cycle.  This path
+ * now has to recover both consumers of the old framebuffer, not merely keep a
+ * normal shutdown tidy.
  *
  * Called before the PSRAM is touched, and written to be safe when nothing was
  * running: the module clocks are enabled first so the registers answer at all,
@@ -671,24 +673,12 @@ void krnP4ScanoutHalves(void)
 void krnP4ScanoutQuiesce(void)
 {
     /*
-     * The DMA and nothing else.
-     *
-     * The first version also stopped the bridge, which meant reaching
-     * registers inside a block that may still be held in reset - and a
-     * register access to a block in reset, or without its system clock, hangs
-     * the bus rather than reading zero.  Both were true here in turn and both
-     * hung the boot at exactly the point this function exists to protect.
-     *
-     * The bridge does not need stopping.  It pulls data through the DMA, so a
-     * disabled channel leaves it requesting into nothing, which costs nothing
-     * and touches no memory.  What has to stop is the engine that drives AXI
-     * reads against the PSRAM while the bring-up reconfigures the controller
-     * underneath it.
-     *
-     * The GDMA's reset is released before its registers are written, because
-     * after a cold boot the block may be held in reset and this function has
-     * to be safe on the first boot as well as on a reset with a scanout still
-     * running.
+     * DMA first: it is the part still driving AXI reads against PSRAM.  The
+     * GDMA's reset is released before its registers are written, because after
+     * a cold boot the block may be held in reset and this function has to be
+     * safe on the first boot as well as on a reset with scanout still running.
+     * The bridge is stopped separately below, after the memory reader can no
+     * longer race its teardown.
      */
     p4_w32(P4_CLKRST_SOC_CLK_CTRL0,
            p4_r32(P4_CLKRST_SOC_CLK_CTRL0) | P4_GDMA_CPU_CLK_EN);
@@ -708,6 +698,41 @@ void krnP4ScanoutQuiesce(void)
            p4_r32(P4_CLKRST_HP_RST_EN0) | P4_RST_EN_GDMA);
     p4_w32(P4_CLKRST_HP_RST_EN0,
            p4_r32(P4_CLKRST_HP_RST_EN0) & ~P4_RST_EN_GDMA);
+
+    /*
+     * Stop the producer on the other side of that channel as well.
+     *
+     * On revision one the bridge has no usable internal soft reset; the local
+     * ESP-IDF says so explicitly.  Its panel teardown instead disables the
+     * DPI clock and bridge before the chip-level DSI reset is pulsed by the
+     * next bus initialisation.  A reset caught in active scanout used to skip
+     * that teardown here: the DMA was reset while the bridge and host remained
+     * in video mode, and the next boot could fill the bridge FIFO without the
+     * host ever consuming it.
+     *
+     * The two conditions that made an earlier bridge access hang are made
+     * explicit first: enable the DSI system clock and release the block reset.
+     * Force the bridge register clock on, stop its pixel clock, disable the
+     * bridge, and only then reset the complete host/bridge block.  Release the
+     * reset again because this function is also used by the bounded B5
+     * shutdown, whose next operation still accesses the host registers.
+     */
+    p4_w32(P4_CLKRST_SOC_CLK_CTRL1,
+           p4_r32(P4_CLKRST_SOC_CLK_CTRL1) | P4_DSI_SYS_CLK_EN);
+    p4_w32(P4_CLKRST_HP_RST_EN0,
+           p4_r32(P4_CLKRST_HP_RST_EN0) & ~P4_RST_EN_DSI_BRG);
+
+    brg_wr(P4_DSI_BRG_CLK_EN, P4_DSI_BRG_CLK_EN_BIT);
+    p4_w32(P4_CLKRST_PERI_CLK_CTRL03,
+           p4_r32(P4_CLKRST_PERI_CLK_CTRL03) & ~P4_DSI_DPICLK_EN);
+    brg_wr(P4_DSI_BRG_EN,
+           brg_rd(P4_DSI_BRG_EN) & ~P4_DSI_BRG_DSI_EN);
+
+    p4_w32(P4_CLKRST_HP_RST_EN0,
+           p4_r32(P4_CLKRST_HP_RST_EN0) | P4_RST_EN_DSI_BRG);
+    (void)p4_r32(P4_CLKRST_HP_RST_EN0);
+    p4_w32(P4_CLKRST_HP_RST_EN0,
+           p4_r32(P4_CLKRST_HP_RST_EN0) & ~P4_RST_EN_DSI_BRG);
 }
 
 /*
