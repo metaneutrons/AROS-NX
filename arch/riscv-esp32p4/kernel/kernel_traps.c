@@ -305,6 +305,13 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
             if (SysBase && (IDNESTCOUNT_GET < 0))
                 core_Cause(INTB_VERTB, 1L << INTB_VERTB);
         }
+        else if (line == P4_DSI_DMA_LINE)
+        {
+            /* One complete framebuffer per interrupt.  The DesignWare item
+               clears its VALID bit when consumed, so the reference driver
+               restores it and re-arms the channel here. */
+            krnP4ScanoutDmaInterrupt();
+        }
 
         krnCLICClear(line);
         __esp32p4_irq_last = line;

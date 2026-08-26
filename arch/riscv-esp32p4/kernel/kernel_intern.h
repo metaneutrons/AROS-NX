@@ -167,6 +167,7 @@ int  krnP4DsiDcsWrite(unsigned char cmd, const unsigned char *param,
 int  krnP4DsiDcsRead(unsigned char cmd, unsigned char *out,
                      unsigned int want);
 int  krnP4DsiPanelInit(unsigned char *id, int *id_result);
+int  krnP4DsiPanelOn(void);
 /* What the pattern setup programmed, so the arithmetic can be checked. */
 /*
  * What the scanout path is doing, for the report.  Every value read back from
@@ -194,6 +195,8 @@ struct P4ScanoutState
     unsigned long ch_int0;      /* why the channel stopped, in its own words */
     unsigned long ch_int1;
     unsigned long brg_depth;    /* the bridge's fifo occupancy */
+    unsigned long dma_frames;   /* complete frames re-armed by the ISR */
+    unsigned long dma_faults;   /* non-completion status latched by the ISR */
 };
 
 /*
@@ -243,6 +246,7 @@ struct P4HostState
 
 void krnP4HostState(struct P4HostState *out);
 void krnP4ScanoutFill(unsigned long rgb);
+void krnP4ScanoutCoordinatePattern(void);
 void krnP4ScanoutTestCard(void);
 void krnP4ScanoutCross(void);
 void krnP4ScanoutGrid(void);
@@ -255,6 +259,7 @@ void krnP4ScanoutBridgeUp(void);
 void krnP4ScanoutDmaUp(void);
 void krnP4ScanoutFeedOn(void);
 void krnP4ScanoutState(struct P4ScanoutState *out);
+void krnP4ScanoutDmaInterrupt(void);
 
 struct P4DsiPattern
 {
@@ -270,6 +275,7 @@ void krnP4DsiPatternOff(void);
 
 void krnP4DsiCmdStatus(unsigned long *pkt, unsigned long *int0,
                        unsigned long *int1);
+unsigned long krnP4DsiVideoStatus(void);
 int  krnP4DsiPhyUp(struct P4DsiState *out);
 
 /*

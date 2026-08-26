@@ -5729,11 +5729,12 @@ them, so their reset values are the working ones.
     diagnostic since B5's first run without anyone asking what zero meant.
   - *The host entered video mode before the DMA was armed.*  The reference arms
     the channel first.  Split out as `krnP4DsiVideoOn`.
-  - *Two entries were missing from the initialisation table.*  Found by
-    extracting both tables mechanically and diffing them: `0xE0 0x00`, which
-    the vendor sends twice and this port had deduplicated on the reasoning that
-    selecting the same page twice cannot matter, and `0x4A 0x35`, dropped
-    entirely.  176 entries now, identical to the vendor's.
+  - *Two entries were believed missing from the initialisation table.*  This
+    finding is withdrawn by the 2026-08-26 effective-source audit below.  The
+    earlier extraction counted a commented-out `0x4A 0x35` BIST write as live
+    and overlooked that the wrapper already sends the first of the two
+    effective `0xE0 0x00` page selections.  Adding both made AROS's table 176
+    entries against the reference's active 174.
   - *Display-on was only sent from the table.*  The vendor driver sends `0x29`
     a second time as `tx_param(io, LCD_CMD_DISPON, NULL, 0)` - no parameter -
     and the firmware that drives this board calls it explicitly after panel
@@ -6373,6 +6374,1276 @@ chip in the width this port assumes; it never addressed the hang.
 - Next safe step: commit this functional stress increment, then close the
   explicit visual pattern observations or begin the controlled boot matrix;
   keep the SD read-only through graphical boot.
+
+### 2026-08-26 - B5 first explicit corner observation failed; visual gate separated
+
+- State change: B5 remains `hardware partial`.  The five solid and checker
+  phases transported cleanly, but the first explicit corner observation is a
+  failed gate: the observer reported that the supposed corner marks appeared
+  paired together at the middle of the display's short edges rather than in
+  the four physical corners.  This result is not accepted as correct geometry.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3, MAC
+  `e8:f6:0a:e0:46:4c`; SD present and untouched by the visual harness.
+- Source/artifact: clean commit `b32b2dbd0e`; core 187,456 bytes, SHA-256
+  `393fcb66b91f13f8331a4660555ff66992ca6f4918775f64423a56fb983269a0`,
+  built with `P4_HEADLESS_BOOT=1 P4_PSRAM_MHZ=200 P4_CPU_MHZ=360
+  P4_PANEL_PROBE=1 P4_DSI_PROBE=1 P4_SCANOUT_TEST=1
+  P4_DSI_NONBURST=1 P4_SCANOUT_COHERENCY=1 P4_SCANOUT_SECS=60
+  P4_BL_PERCENT=100 P4_LDSCRIPT=ldscript-xip.lds`.  The targeted port build
+  exited zero, contained no `error:`, passed the SRAM-residency check and
+  printed both ESP32-P4 image success markers.  Only `ota_0` at
+  `0x20000..0x4dfff` was written and independently verified.
+- UART: normal first-byte boot; 32 MB PSRAM at 200 MHz in one attempt with zero
+  command timeouts/recoveries; DSI identity `93 65 04`; measured 71 MB/s;
+  moving SAR/FIFO and zero bridge raw/host `int1` through all `t0..t59`; bounded
+  panel-safe stop and Shell return.  Transport therefore does not explain the
+  visual placement.
+- Code audit: `scanout_corners_and_lines()` really writes its four coloured
+  rectangles at framebuffer coordinates `(0,0)`, `(799,0)`, `(0,1279)` and
+  `(799,1279)` with asymmetric extents.  `P4_PANEL_VMUL` is 1.  The observation
+  therefore either exposes a physical-coordinate mapping not visible in the
+  periodic checker or confusion between corner blocks and the four full-screen
+  line intersections; it does not justify silently moving the coordinates.
+- Instrument correction: `P4_B5_VISUAL_GATE=1` now provides one reproducible
+  60-second observer schedule: long separate RGB/white/black solids, exact
+  checker, four large asymmetric coloured quadrants, corner blocks alone for
+  ten seconds, one-pixel lines alone for ten seconds, then both together.  The
+  existing sustained-stress schedule is unchanged.
+- Acceptance passed/failed: transport and safe teardown passed; physical
+  corner placement failed; the solids, corner geometry and one-pixel width are
+  not closed until the separated exact artifact is directly observed.
+- Next safe step: build and run only `P4_B5_VISUAL_GATE=1`, record the physical
+  quadrant order, then assess corner-only and line-only phases independently.
+
+- Separated-run artifact and direct evidence: core 187,632 bytes, SHA-256
+  `0b47ded30527e5fc6551e15dcd6495bf5b8a2fa1ff857e79de665cd2e630b51a`,
+  built with `P4_B5_VISUAL_GATE=1` plus the 200-MHz PSRAM and 360-MHz CPU
+  settings above.  The targeted build exited zero with no `error:`, passed the
+  SRAM check and printed both image success markers; only `ota_0` at
+  `0x20000..0x4dfff` was written and independently verified.  UART again
+  covered every `t0..t59`, all with zero bridge/host error, followed by the
+  bounded safe stop.
+- Photographic observation: `IMG_0925.JPG` shows the requested framebuffer
+  quadrants not as four physical quadrants but as top `green/red/green` and
+  bottom `yellow/blue/yellow`.  `IMG_0926.JPG` shows the upper green/right
+  framebuffer corner directly left of the upper red/left corner, and the lower
+  yellow/right corner directly left of the lower blue/left corner, all near
+  the middle of the physical short edges.  `IMG_0927.JPG` shows the isolated
+  x=599 and x=173 vertical lines at the corresponding wrapped physical
+  positions; `IMG_0928.JPG` confirms the same mapping when lines and corners
+  are combined.  This is a failed coordinate gate, not an observer mix-up.
+- Mapping: all four photographs agree with one linear cyclic displacement of
+  approximately 550 pixels in an 800-pixel row.  If physical pixel zero reads
+  framebuffer x=550, framebuffer x=739..799 (green) appears at physical
+  x=189..249 and x=0..36 (red) immediately follows at x=250..286; the x=599
+  and x=173 lines then appear at physical x=49 and x=423.  That predicts every
+  photographed feature without scaling, reflection or a changed stride.
+- Reference comparison and correction under test: the automatic channel-register
+  reload used by AROS has no frame boundary.  Espressif's
+  `esp_lcd_panel_dpi.c` instead marks its one full-frame list item last; the DMA
+  clears VALID after consuming it, and the full-transfer ISR restores VALID,
+  selects the item and re-enables the channel.  AROS now follows that exact
+  mechanism through the existing CLIC path, reports completed ISR-rearmed
+  frames and latched DMA faults, and disables the source before safe teardown.
+  A fixed 550-pixel source bias was deliberately rejected because it would
+  hide rather than repair a start phase that can differ on another boot.
+- Next safe step: build and run the same separated visual artifact.  First
+  require a steadily increasing ISR frame count with zero latched faults and
+  clean bridge/host status; then directly observe the quadrant, corner-only and
+  line-only phases again before accepting the coordinate gate.
+- First re-arm artifact attempt: core 188,224 bytes, SHA-256
+  `deec3ddfc8258e499c26fe70949ae3c709bf6b7e19123703db2bcc179dfe3f1b`.
+  Its clean first-byte boot reached video with no bridge or host error, but the
+  new diagnostic reported `frames 0 faults 0x00000010`, a stopped channel and
+  zero subsequent scanout rate.  Bit 4 is `DST_TRANSCOMP`, a normal companion
+  to full-transfer completion rather than a DMA fault; the deliberately
+  fail-closed ISR therefore suppressed its first re-arm.  Source and destination
+  transfer-complete bits are now classified with block/dma-done and disabled as
+  normal terminal status.  This run proves the interrupt and fail-closed path,
+  not coordinate correctness, and is excluded from visual acceptance.
+- Second re-arm artifact attempt: core 188,224 bytes, SHA-256
+  `619e8059ff92c651fe2b0a9507d648fc52b0a8cc5fac50a9cbdcdcc6c47c62d4`.
+  The first frame completed and reached the ISR (`frames 1 faults 0`), which
+  restored VALID and re-enabled the channel, but the DMA then reported
+  `LLI_INVALID` and stopped before a second frame.  Espressif does not write its
+  internal-SRAM list item through the normal pointer: on P4 it first writes
+  back and invalidates the cached address, then accesses the item only through
+  `CACHE_LL_L2MEM_NON_CACHE_ADDR`, the normal address plus `0x40000000`; the
+  normal address is retained only in the DMA's LLP.  AROS had incorrectly
+  described internal SRAM as coherent and rewrote VALID through its cached
+  address.  The item now follows IDF's alias rule exactly, and LLI_INVALID is
+  propagated to the handler as well as retained in the diagnostic.  This run
+  is excluded from visual acceptance.
+- Third re-arm artifact and UART acceptance: dirty tree based on clean commit
+  `b32b2dbd0e`; core 188,288 bytes, SHA-256
+  `7e1484a08dbed07366495e535ce64ab80a5db1b21c6d904480a7f4c91d5272ad`,
+  built with `P4_HEADLESS_BOOT=1 P4_PSRAM_MHZ=200 P4_CPU_MHZ=360
+  P4_B5_VISUAL_GATE=1 P4_BL_PERCENT=100 P4_LDSCRIPT=ldscript-xip.lds`.
+  The targeted build exited zero, contained no `error:`, passed the SRAM
+  residency check and printed both ESP32-P4 image success markers.  Only
+  `ota_0` at `0x20000..0x4dfff` was erased and written; write-time hashing and
+  independent `verify-flash` passed.
+- Accepted transport evidence for that artifact: normal first-byte SPI boot;
+  32 MB PSRAM at 200 MHz in one attempt with zero command timeouts/recoveries;
+  DSI identity `93 65 04`; 71 MB/s measured scanout.  The completion interrupt
+  had already re-armed five frames at the initial report.  Every `t0..t59`
+  sample kept the channel enabled, SAR and bridge depth moving, bridge raw and
+  host `int1` zero, and DMA faults zero while the completed-frame count rose
+  monotonically from 18 to 2,078.  The run ended `scanout stopped, panel safe`,
+  then found the 121,942 MB SD card read-only and reached the Shell.
+- Acceptance passed/open: explicit frame-boundary re-arm through the
+  non-cacheable descriptor alias and the complete UART transport/safe-teardown
+  gate pass.  Direct observation of the quadrants, separated corner marks and
+  one-pixel lines for this exact artifact remains open; the earlier photos do
+  not transfer to a changed artifact.  Because this replaces the transport
+  mechanism, the earlier 30-minute stress result must also be repeated before
+  it can validate the final implementation.
+- Next safe step: record the observer's result for the exact third artifact.
+  If its geometry passes, rebuild and repeat the 30-minute concurrent
+  SD/PSRAM/scanout stress with the ISR-rearmed transport before changing B5's
+  overall state.
+- Third-artifact direct observation failed: the exact artifact above was reset
+  and run again without a build or flash write.  It independently completed
+  `t0..t59`, rose from 18 to 2,078 completed frames with zero DMA faults,
+  retained zero bridge raw/host `int1` and stopped safe.  Nevertheless,
+  `IMG_0929.JPG` again shows the requested quadrants physically as top
+  `green/red/green` and bottom `yellow/blue/yellow`; `IMG_0930.JPG` again shows
+  the two upper and two lower corner marks paired near the middle of the short
+  edges; `IMG_0931.JPG` and `IMG_0932 2.JPG` show the same wrapped line mapping
+  alone and combined.  The explicit coordinate gate therefore remains failed.
+- Refined cause under test: a full-transfer interrupt establishes DMA frame
+  boundaries but does not by itself prove the correct GDMA route into the
+  bridge.  Comparing every descriptor field against `dw_gdma_lli_config_transfer()`
+  found one real mismatch: ESP-IDF selects GDMA master 1 for a PSRAM source and
+  master 0 for the MIPI-DSI destination.  AROS left both SMS and DMS at reset
+  zero.  SMS now selects the memory master while DMS remains the MIPI master;
+  this is an exact reference correction, not a compensating 550-pixel bias.
+- Next safe step: rebuild and rerun the same visual artifact.  Require the
+  existing rising-frame/zero-fault transport evidence again, then compare the
+  isolated quadrant, corner and line phases before accepting or rejecting the
+  master-port correction.
+- Memory-master artifact and transport evidence: core 188,288 bytes, SHA-256
+  `8d46e744921cdb5fdb2ef785e9942aac5c1f490fea6cd2fd9207ef0df3ae74fc`,
+  built under the same visual-gate flags.  The build exited zero, contained no
+  `error:`, passed the SRAM-residency check and printed both image-creation
+  success markers.  Only `ota_0` at `0x20000..0x4dfff` was erased and written;
+  write-time hashing and independent `verify-flash` passed.  Normal first-byte
+  boot found PSRAM at 200 MHz in one attempt with zero timeouts/recoveries.
+  All `t0..t59` samples again kept the channel enabled, DMA faults and
+  bridge/host error status zero, with completed frames increasing from 18 to
+  2,078; safe stop, read-only SD discovery and Shell return followed.  Direct
+  observation of this exact artifact is pending and remains the deciding
+  result for the master-port hypothesis.
+- Memory-master direct observation failed: `IMG_0933.JPG` through
+  `IMG_0936.JPG` show no geometric change.  The quadrants remain physically
+  `green/red/green` over `yellow/blue/yellow`; the corner marks remain paired
+  near the short-edge centres, and the isolated/combined lines retain the same
+  wrapped positions.  The corrected master selection remains because it is
+  required by the reference, but it did not cause the coordinate fault.
+- Working-firmware register control: verified Vellum 1.12.0, core SHA-256
+  `dd37407b98204fd6d236031d841275424a8b353d90db6d290aff77dcc43945fa`,
+  was written and independently verified only in `ota_0`.  It identified the
+  same panel as `93 65 04`, initialized 800x1280 RGB565 at 40 MHz and displayed
+  normally.  A read-only USB-JTAG snapshot briefly halted and then resumed both
+  cores.  Every configured bridge register relevant to scanout matches AROS:
+  timing `05000540/0004001e` and `03200370/00140014`, frame words `0003e800`,
+  pixel type 2, flow `10`, frame interval `20002409`, threshold `300`, and the
+  same credit, request, auxiliary and control values.  The remaining measured
+  host difference is Vellum's 1000-Mbit/s lanes and `VID_MODE_CFG 0000ff02`
+  versus AROS's 1500-Mbit/s lanes and `0000bf00`: Vellum uses burst video with
+  sync pulses and frame acknowledge while the current visual gate forces
+  non-burst without acknowledge.  The GDMA registers could not be read by
+  OpenOCD on this revision, so no unsupported equality is claimed there.
+- Exact-reference host test under construction: stop forcing non-burst in the
+  separated visual gate, build it at 1000 Mbit/s with frame acknowledge, and
+  rerun the same patterns on the corrected descriptor path.  This specifically
+  tests whether the host's per-line video packet boundary, not the bridge's
+  framebuffer counter, is carrying the 550-pixel phase error.
+- Exact-reference host artifact and technical run: dirty tree based on clean
+  commit `b32b2dbd0e`; core 188,288 bytes, SHA-256
+  `43f8bad4e28dabaab060964935b4cdb49afa60d444865ccf7fa7a551bec003df`,
+  built with `P4_HEADLESS_BOOT=1 P4_PSRAM_MHZ=200 P4_CPU_MHZ=360
+  P4_B5_VISUAL_GATE=1 P4_BL_PERCENT=100 P4_LANE_MBPS=1000
+  P4_DSI_FRAME_ACK=1 P4_LDSCRIPT=ldscript-xip.lds`.  The valid targeted build
+  exited zero, contained no `error:`, passed the SRAM-residency check and
+  printed both ESP32-P4 image success markers.  An earlier invocation without
+  Espressif's Python environment reached the link but failed image creation
+  because `esptool` was absent; it is explicitly excluded.  Only `ota_0` at
+  `0x20000..0x4dfff` was erased and written, restoring AROS after the read-only
+  Vellum register comparison; write-time hashing and independent
+  `verify-flash` both passed.
+- D1001 evidence for that artifact: normal first-byte boot on ESP32-P4 v1.3,
+  32 MB PSRAM at 200 MHz in one attempt with zero command timeouts/recoveries,
+  panel identity `93 65 04`, and the requested exact host state was read back:
+  1000 Mbit/s per lane, `VID_MODE_CFG 0x0000ff02`, packet 800, HSA/HBP 63 and
+  HLINE 2750.  The bridge timing remained the reference-matching 40-MHz
+  800x1280 state.  Through every `t0..t59` sample the channel stayed enabled,
+  SAR and FIFO depth moved, bridge raw status and DMA faults remained zero,
+  and ISR-rearmed frames rose monotonically from 18 to 2,078 before the bounded
+  `scanout stopped, panel safe` teardown.  The read-only 121,942 MB SD card was
+  subsequently discovered and the system reached the Shell.
+- Host-status qualification: `INT_ST1` bit 7 (`DPI_PLD_WR_ERR`) remained
+  `0x00000080` and continued to reassert after clear.  Therefore this is a
+  successful exact-configuration and bounded-transport run, but not a
+  zero-host-error acceptance.  It must not be described as a completely clean
+  B5 transport result merely because Vellum configures the same video mode.
+- Acceptance/open: the exact Vellum host configuration is now proven active on
+  AROS; DMA frame continuity, bridge status, PSRAM, safe teardown and read-only
+  SD discovery passed.  The direct coordinate observation of this exact
+  artifact is pending.  It decides whether host video packet mode affects the
+  550-pixel horizontal phase; no coordinate correction or B5 state change is
+  accepted before that observer result is recorded.
+- Direct observation failed: the exact-reference artifact was reset and shown
+  again with the timed solids/checker, quadrant, corner-only, line-only and
+  combined schedule.  The observer reported that the display remained black
+  throughout.  Frame counts and moving DMA state therefore do not establish
+  visible panel acceptance in this mode.  The exact Vellum host register value
+  is not a usable AROS result as a unit, and the persistent
+  `DPI_PLD_WR_ERR` remains relevant to the failure.
+- Next safe step: remove only frame acknowledge while retaining 1000-Mbit/s
+  burst video; this
+  separates the ACK/BTA failure from line-packet mode.  If visible output
+  returns but the displacement persists, reject burst/line timing as the
+  coordinate cause and compare the working firmware's DMA start/restart
+  sequence or panel-side horizontal addressing without introducing a fixed
+  source bias.  Any passing mode still requires the 30-minute final stress.
+- Burst-without-ACK isolation artifact: core 188,288 bytes, SHA-256
+  `a397c5994cad90aca38d8d7624816ec7019a8e9c2a2a251338f41907537fa7b5`,
+  built from the same dirty tree with the exact-reference flags except
+  `P4_DSI_FRAME_ACK` omitted.  All 198 generated kernel `.o`/`.d` files were
+  removed before the flag change.  The targeted build exited zero, contained
+  no `error:`, passed SRAM residency and printed both image-success markers.
+  Only `ota_0` at `0x20000..0x4dfff` was written; write-time hashing and the
+  subsequent independent verification passed.
+- D1001 technical result: the requested isolated mode read back as 1000
+  Mbit/s, `VID_MODE_CFG 0x0000bf02`, packet 800, HSA/HBP 63, HLINE 2750 and no
+  frame acknowledge.  Every `t0..t59` sample retained moving SAR/FIFO, zero
+  bridge raw status and zero DMA faults while ISR frames increased from 18 to
+  2,078.  `DPI_PLD_WR_ERR` still reasserted as `INT_ST1 0x00000080`, proving
+  that frame acknowledge alone did not create that host error.  The run ended
+  with the bounded panel-safe stop and reached the Shell through the read-only
+  SD discovery path.
+- Acceptance/open: build, exact-mode readback, DMA continuity, safe teardown
+  and read-only SD discovery passed.  Direct observation of whether visible
+  output returned, and if so whether its coordinate phase changed, remains
+  pending; no visual or B5 acceptance is inferred from the counters.
+- Direct observation failed: the unchanged burst-without-ACK artifact was reset
+  and shown again; the observer reported that every phase remained completely
+  black.  Removing frame acknowledge therefore did not restore visible output,
+  and ACK/BTA is not the discriminator between Vellum and AROS.  The next
+  single-variable split retains 1000 Mbit/s but restores the previously visible
+  non-burst mode; this distinguishes lane rate from burst packetization.
+- 1000-Mbit/s non-burst isolation artifact: core 188,288 bytes, SHA-256
+  `93e114fa2acba49e9569fec4e2b744692ce385368d067787fa14c0af117adcee`,
+  built from the same dirty tree with `P4_DSI_NONBURST=1`, 1000-Mbit/s lanes
+  and no frame acknowledge after all 198 generated kernel `.o`/`.d` files were
+  removed.  The targeted build exited zero, contained no `error:`, passed SRAM
+  residency and printed both image-success markers.  Only `ota_0` at
+  `0x20000..0x4dfff` was written, and both write-time hashing and independent
+  verification passed.
+- D1001 mode evidence: the visual rerun read back 1000 Mbit/s and
+  `VID_MODE_CFG 0x0000bf00` with packet 800, HSA/HBP 63 and HLINE 2750.  In
+  contrast to both burst artifacts, host `INT_ST1`, bridge raw status and DMA
+  faults remained zero through the captured visual interval while frame count,
+  SAR and FIFO depth advanced.  Direct visibility and coordinate placement are
+  pending the observer result; the counters alone do not close that gate.
+- Direct observation failed: the observer saw no image in any phase of the
+  1000-Mbit/s non-burst rerun.  Together with the two black 1000-Mbit/s burst
+  artifacts, this isolates lane-rate-dependent AROS initialization or runtime
+  state as sufficient to suppress visible output; frame acknowledge and burst
+  mode are not required for the black result.  Vellum still proves that the
+  panel and board can operate at 1000 Mbit/s, so this is an AROS sequencing or
+  unmeasured-state difference rather than a panel capability limit.
+- Next safe step: run the orthogonal 1500-Mbit/s burst/no-ACK control.  A
+  visible result isolates 1000-Mbit/s state as the black-screen cause; a black
+  result shows burst packetization is independently unsupported by the current
+  AROS sequence.  Neither result by itself repairs the still-open 550-pixel
+  coordinate phase in the known-visible 1500-Mbit/s non-burst mode.
+- 1500-Mbit/s burst control artifact: core 188,288 bytes, SHA-256
+  `e3b3f0af3797f3fbaa895fc63c2f28e855eb34804443ee6d453e89b76f6eea6e`,
+  built from the same dirty tree at 1500 Mbit/s with burst video and no frame
+  acknowledge after all 198 generated kernel `.o`/`.d` files were removed.
+  The targeted build exited zero, contained no `error:`, passed SRAM residency
+  and printed both image-success markers.  Only `ota_0` at
+  `0x20000..0x4dfff` was written; write-time hashing and independent
+  verification passed.
+- D1001 mode evidence: the visual rerun read back 1500 Mbit/s and
+  `VID_MODE_CFG 0x0000bf02`, packet 800, HSA/HBP 94 and HLINE 4125.  Frame
+  count, SAR and FIFO depth advanced with zero bridge raw status and zero DMA
+  faults through the captured interval, while burst mode again continuously
+  reasserted `DPI_PLD_WR_ERR`.  Direct visibility remains pending the observer
+  result and is the purpose of this control.
+- Direct observation failed: the unchanged 1500-Mbit/s burst artifact was run
+  again and the observer reported that every phase remained completely black.
+  The controlled matrix is therefore conclusive for current AROS: both tested
+  burst modes are black at 1000 and 1500 Mbit/s; 1000-Mbit/s non-burst is also
+  black; only 1500-Mbit/s non-burst without frame acknowledge has produced
+  visible output.  Static equivalence to Vellum's host registers is insufficient
+  because an unmeasured or sequential driver state differs.
+- Consequence: restore 1500-Mbit/s non-burst/no-ACK as the visual baseline and
+  do not use the black exact-reference modes to assess coordinate geometry.
+  The Vellum comparison remains useful evidence that 1000-Mbit/s burst is
+  physically supported, but the 550-pixel phase must now be pursued in the
+  known-visible AROS path, especially DMA/bridge start ordering and state that
+  was not readable through OpenOCD.
+- Visible baseline restored and reconfirmed: the visual gate now selects
+  non-burst by default unless an explicit `P4_DSI_BURST=1` test override is
+  supplied.  After removing all 198 generated kernel `.o`/`.d` files, the
+  rebuilt 1500-Mbit/s non-burst/no-ACK image was byte-for-byte the already
+  documented visible artifact, 188,288 bytes with SHA-256
+  `8d46e744921cdb5fdb2ef785e9942aac5c1f490fea6cd2fd9207ef0df3ae74fc`.
+  The build exited zero with no `error:`, passed SRAM residency and printed both
+  image-success markers; only `ota_0` was written and independently verified.
+  Direct observation confirmed visible colour phases again, but also confirmed
+  the same horizontal coordinate displacement.  The host-mode/lane matrix did
+  not change the phase.
+- Refined blocker: lane rate controls current AROS visibility and burst mode is
+  independently black, but neither is the coordinate cause.  Static bridge
+  equality, host-mode substitutions, GDMA PSRAM-master selection, and explicit
+  full-frame LLI rearm have all failed to move the approximately 550-pixel
+  displacement.  The next comparison must cover temporal enable/reset order
+  and DMA state not readable through OpenOCD, not another static timing value.
+- Exact GDMA audit found one further reference mismatch now isolated for test:
+  `dw_gdma_new_link_list()` writes LMS=memory into every descriptor LLP even
+  when the one last item has a null next address, and
+  `dw_gdma_channel_use_link_list()` also writes LMS=memory into the channel LLP.
+  AROS supplied the correct aligned L2MEM address but left LLP bit 0 clear,
+  selecting the MIPI master for link-list fetches.  Both LLP locations now set
+  LMS=memory exactly as ESP-IDF does; the framebuffer source and bridge
+  destination routing are otherwise unchanged.  This is a single exact-driver
+  correction under test on the known-visible 1500-Mbit/s non-burst/no-ACK
+  configuration, not a fixed coordinate offset.
+- Next safe step: build, write and independently verify only `ota_0`, then
+  require rising ISR frame counts and zero DMA/bridge/host errors before the
+  observer compares the same quadrant, corner and line phases.  If the phase
+  is unchanged, retain the reference-correct LMS setting and next isolate the
+  earlier ESP-IDF LPCLK-auto initialization before panel commands.
+- LLP-memory-master artifact and technical evidence: dirty tree based on clean
+  commit `b32b2dbd0e`; core 188,288 bytes, SHA-256
+  `86f6607c605f44a04740d6729fbc853464db9aec057774913c590206631a0648`,
+  built with the known-visible 200-MHz PSRAM, 360-MHz CPU, 1500-Mbit/s lane and
+  visual-gate settings.  The targeted build exited zero, contained no
+  `error:`, passed the SRAM-residency check and printed both ESP32-P4 image
+  success markers.  Only `ota_0` at `0x20000..0x4dfff` was erased and written;
+  write-time hashing and the independent `verify-flash` digest both passed.
+- D1001 transport result: normal first-byte boot on ESP32-P4 v1.3, 32 MB PSRAM
+  at 200 MHz in one attempt with zero command timeouts/recoveries, and panel
+  identity `93 65 04`.  The consumed one-item list reported LLP `0x00000001`,
+  directly confirming LMS=memory while its null next address remained zero.
+  All `t0..t59` samples kept the channel enabled, SAR and bridge FIFO moving,
+  bridge raw status, host `int1` and DMA faults zero; ISR-rearmed frames rose
+  monotonically from 18 to 2,078.  The bounded panel-safe stop, read-only
+  121,942 MB SD discovery and Shell return followed.  Direct coordinate
+  observation of this exact artifact remains pending; transport counters alone
+  do not close the visual gate.
+- LLP-memory-master visual result: the unchanged artifact was reset for a
+  second observer run.  It repeated the complete `t0..t59` sequence, again
+  reached 2,078 ISR-rearmed frames with zero DMA/bridge/host errors, stopped
+  the panel safely and discovered the SD read-only.  The observer reported the
+  same horizontal displacement.  Correct LLP master selection is retained as
+  an exact reference requirement but is rejected as the coordinate cause.
+- Historical test, later source-audit correction: this test was made after an
+  incorrect reading of ESP-IDF's clock-lane helper.  The artifact placed the
+  clock lane in AUTO state before any panel command (`LPCLK_CTRL=3`), whereas
+  `esp_lcd_new_dsi_bus()` actually requests LP (`LPCLK_CTRL=0`) and the DPI
+  start path requests AUTO only after DMA is armed and video mode is enabled.
+  The run remains valid evidence that *early AUTO* did not alter the visible
+  displacement, but it is not an exact-reference correction.
+- Early-LPCLK artifact and D1001 transport evidence: core 188,288 bytes,
+  SHA-256
+  `69c94efe633bad3da4cb2f9b9f6cee91a43ebc61d201a42bece4d406bf41fe71`.
+  The targeted build exited zero, contained no `error:`, passed the SRAM
+  residency check and printed both ESP32-P4 image success markers.  Only
+  `ota_0` at `0x20000..0x4dfff` was erased and written; write-time hashing and
+  independent `verify-flash` passed.  Normal first-byte boot found 32 MB PSRAM
+  at 200 MHz in one attempt with zero timeouts/recoveries and panel identity
+  `93 65 04`.  The final host readback remained the requested
+  `LPCLK_CTRL=3`, 1500-Mbit/s non-burst/no-ACK state.  All `t0..t59` samples
+  retained a moving DMA/bridge pipeline with zero bridge raw status, host
+  `int1` and DMA faults while ISR-rearmed frames increased from 18 to 2,078.
+  Bounded panel-safe stop, read-only SD discovery and Shell return passed.
+  Direct observation remains the deciding evidence; no coordinate result is
+  inferred from the technically clean run.
+- Early-AUTO direct observation failed: the unchanged artifact was reset for
+  a second observer run and again completed `t0..t59`, 2,078 frames, zero
+  DMA/bridge/host errors, safe teardown and read-only SD discovery.  The
+  observer reported that the horizontal displacement was unchanged.  Early
+  AUTO clock-lane control was therefore not the coordinate cause.  A later
+  source audit established that it does not match ESP-IDF and it is removed by
+  the first-frame host-acceptance test below.  The next audit at that point was
+  restricted to the exact bridge/DMA enable, configuration-update and
+  FIFO-reset sequence.
+- Reference call-order audit found a more specific difference now isolated for
+  test.  The working JD9365 wrapper first sends its vendor command table, then
+  calls the underlying DPI panel's `init`, which arms GDMA, enables host video
+  and enables bridge DPI output; only after those three steps return does its
+  separate `disp_on_off(true)` send the valid parameterless DCS `0x29`.  AROS
+  sent that valid display-on command before it configured or started any pixel
+  producer.  The vendor table still contains its earlier one-parameter `0x29`,
+  but DCS defines no such form and both implementations later send the valid
+  parameterless transaction.
+- Correction under test: for B5 only, panel initialization now defers the
+  parameterless `0x29` until immediately after GDMA, video mode and bridge feed
+  are active, exactly matching the working wrapper's call order.  A failure
+  stops scanout and returns the panel safe before the backlight is enabled.
+  No timing, host-mode, bridge or DMA register value changes in this test.  A
+  changed physical phase would identify panel enable relative to the existing
+  video frame as the missing synchronisation event.
+- Display-on-after-video artifact and result: core 188,432 bytes, SHA-256
+  `d655c2d41255191cc35814af36957e12ead14ee6a236f0d90903d00238ba19b7`.
+  The targeted build exited zero, contained no `error:`, passed SRAM residency
+  and printed both image-success markers.  Only `ota_0` at
+  `0x20000..0x4efff` was erased and written; write-time hashing and independent
+  verification passed.  D1001 boot confirmed `display on after video start`,
+  then completed `t0..t59` with moving SAR/FIFO, zero bridge raw/host `int1` and
+  DMA faults, and 2,079 ISR-rearmed frames before safe stop and read-only SD
+  discovery.  The observer reported the same displacement.  The corrected
+  order remains because it exactly matches the working wrapper, but it is not
+  sufficient to repair the 1500-Mbit/s non-burst phase.
+- Next controlled retry: the earlier 1000-Mbit/s burst/frame-ACK artifact was
+  black before three exact-reference corrections landed: LLP LMS=memory,
+  AUTO clock-lane state before panel commands, and parameterless display-on
+  after the running DPI stream.  Rebuild the exact Vellum host configuration
+  with all three corrections.  Visible output would move B5 back onto the
+  known-good host mode and make its geometry decisive; another black result
+  keeps the non-burst coordinate blocker open without weakening the new
+  reference-correct state.
+- Corrected exact-Vellum artifact and technical result: after deleting all 198
+  generated kernel `.o`/`.d` files for the flag change, core 188,432 bytes,
+  SHA-256
+  `bde29610160a9935bcc0454011ebd63ab8a7f8357c576b2ec5cd49d3e3ef77ce`,
+  was built at 1000 Mbit/s with burst-with-sync-pulses and frame acknowledge.
+  The targeted build exited zero, contained no `error:`, passed SRAM residency
+  and printed both image-success markers.  Only `ota_0` at
+  `0x20000..0x4efff` was written; write-time hashing and independent
+  verification passed.
+- D1001 readback confirmed the requested exact host state:
+  `VID_MODE_CFG=0x0000ff02`, packet 800, HSA/HBP 63, HLINE 2750, early
+  `LPCLK_CTRL=3`, LLP LMS=memory and display-on after video start.  DMA frames
+  rose from 18 to 2,079 with zero DMA faults and bridge raw status, but host
+  `DPI_PLD_WR_ERR` continuously reasserted as `INT_ST1=0x00000080` and the
+  data lanes remained in stop state as PHY `0x15b9`.  Safe stop and read-only
+  SD discovery passed.  Direct observation confirmed that the display stayed
+  completely black.  The corrected exact-reference setup therefore still
+  reproduces the earlier 1000-Mbit/s burst/frame-ACK failure; it does not
+  provide a usable geometry baseline on AROS.
+- Next controlled test: restore the technically clean, visible 1500-Mbit/s
+  non-burst/no-ACK setup, but build the asymmetric quadrant image completely
+  before DMA, host video or bridge output starts and never modify the
+  framebuffer afterwards.  If that immutable image is displaced, the defect
+  is already present in initial DMA/bridge/panel framing; if it is correctly
+  placed, later writes or their visibility to the scanout path are moving the
+  apparent origin.  `P4_B5_STATIC_PRELOAD=1` makes this distinction
+  reproducible without adding a compensating source offset.
+- Immutable-preload artifact built: after deleting all 198 generated kernel
+  `.o`/`.d` files, the 1500-Mbit/s non-burst/no-ACK build produced a
+  188,112-byte core with SHA-256
+  `0e9773ebcea0dcd276683cda922a9cfca5d51cfa04b488970be365d69f70bb0e`.
+  The targeted kernel build exited zero, contained no `error:`, passed SRAM
+  residency and printed both ESP32-P4 image-success markers.  Flashing has not
+  occurred: every esptool connection attempt failed before erase or write.
+  A subsequent host-side reset of the unresponsive USB-JTAG/serial device
+  timed out and detached it from macOS, so the test is blocked only until the
+  USB cable is re-enumerated; neither flash nor SD media was changed.
+- Immutable-preload D1001 result: after USB re-enumeration, only `ota_0` at
+  `0x20000..0x4dfff` was written and both the write-time hash and independent
+  `verify-flash` passed.  The 60-second run retained moving SAR and bridge FIFO
+  depth, zero host payload errors, zero bridge raw status and zero DMA faults;
+  ISR-rearmed frames rose from 11 to 2,006 before panel-safe stop.  Read-only
+  SD discovery and Shell return passed.  Direct photo `IMG_0937.JPG` shows the
+  immutable quadrant image still cyclically wrapped within every physical
+  row: each expected half-width colour appears as a central span plus the
+  opposite colour at both short edges.  The horizontal midpoint remains
+  coherent, so this is the same constant horizontal frame phase, not tearing.
+  Cache writeback and any modification of a live framebuffer are therefore
+  excluded as causes.
+- Exact start-order mismatch isolated: Espressif configures the bridge, writes
+  global `DSI_EN`, and only then commits `DPI_CFG_UPD`.  AROS committed the
+  staged DPI values before enabling the bridge.  Its later live update can
+  change values without necessarily restarting the internal line phase.  The
+  order is now corrected to enable-then-update; the same immutable pattern is
+  the acceptance instrument, with no source-coordinate compensation.
+- Enable-before-update artifact and technical result: after deleting all 198
+  generated kernel `.o`/`.d` files, the 1500-Mbit/s non-burst/no-ACK static
+  build produced a 188,112-byte core with SHA-256
+  `41be66573c8bd3004b07d61b38448ae3e6207965a2fd6567a840aca8d0c5b294`.
+  The build exited zero, contained no `error:`, passed SRAM residency and
+  printed both image-success markers.  Only `ota_0` at
+  `0x20000..0x4dfff` was written; write-time and independent verification
+  passed.  D1001 then completed `t0..t59` with zero host payload errors,
+  bridge raw status and DMA faults, while frames rose from 11 to 2,006 before
+  panel-safe stop.  Read-only SD discovery and Shell return passed.  Direct
+  geometry observation is pending and remains the deciding evidence.
+- Enable-before-update direct observation failed: the unchanged artifact was
+  reset for a second observer run and again completed `t0..t59`, reached 2,006
+  ISR-rearmed frames with zero host payload errors, bridge raw status and DMA
+  faults, then stopped safely and discovered the SD card read-only.  The
+  observer reported the same horizontal displacement (`wie gehabt`).  The
+  corrected enable-before-update order is retained because it matches
+  ESP-IDF, but it is rejected as the coordinate cause.  The immutable-source
+  result now restricts the blocker to producer/consumer start phase or another
+  unmeasured GDMA/bridge state; the next diagnostic must measure those state
+  transitions rather than alter a static timing or add a coordinate offset.
+- Start-transition diagnostic prepared.  Three attempted builds produced no
+  image and were not flashed because the invocation accidentally omitted the
+  mandatory XIP linker-script selection and therefore hit the smaller
+  all-SRAM ceiling; they do not measure the trace's actual size.  The retained
+  form nonetheless reuses an existing three-value report line for
+  the live GDMA source address immediately after DMA enable, host video enable
+  and DPI feed enable.  This changes no pixel data, timing, transfer parameters
+  or start order; its purpose is to identify the exact edge that first consumes
+  framebuffer data without increasing the already ceiling-bound report.  The
+  immutable-preload build now defines `P4_B5_START_TRACE` and omits only the
+  initial dump of stable, previously recorded bridge registers to make room;
+  the sustained per-second host, bridge and DMA fault checks remain enabled.
+- Start-trace artifact built: core 187,696 bytes, SHA-256
+  `450de64ca46539f4d68e8a495c2c930f42fa9ab0496ea791371fb7e1566c6926`.
+  The final reproducible build used `P4_B5_VISUAL_GATE=1`,
+  `P4_B5_STATIC_PRELOAD=1`, 200-MHz PSRAM, 360-MHz CPU and
+  `P4_LDSCRIPT=ldscript-xip.lds`; it exited zero, contained no `error:`, passed
+  the SRAM-residency check and printed both ESP32-P4 image-success markers.
+  The connected target identified as ESP32-P4 v1.3 with MAC
+  `e8:f6:0a:e0:46:4c`.  Flashing and hardware evidence remain pending.
+- Start-trace D1001 result: only `ota_0` at `0x20000..0x4dfff` was written;
+  write-time hashing and independent `verify-flash` both passed.  The source
+  address was already `FB+0x0f00` immediately after DMA enable and
+  `FB+0x2200` immediately after host-video enable; enabling DPI output did not
+  move it again in the immediate sample.  Thus GDMA fills almost exactly the
+  8-KiB bridge FIFO before DPI output starts.  The 60-second run remained
+  technically clean: frames rose from 11 to 2,006, source and FIFO depth kept
+  moving, and host payload, bridge raw and DMA fault status stayed zero before
+  panel-safe stop and read-only SD discovery.  Pre-video consumption is real,
+  although by itself it does not prove a wrong FIFO head because ESP-IDF uses
+  the same high-level enable order.
+- Next isolated bridge-state test: revision-one `BLK_RAW_NUM_CFG` resets to
+  230,400 64-bit words, exactly a 720x1280 RGB565 frame, while this framebuffer
+  is 256,000 words for 800x1280.  ESP-IDF does not rewrite the field when its
+  one-item link keeps multi-block mode disabled, so it may be ignored; AROS
+  must measure rather than assume that.  `P4_B5_BLK_RAW_FRAME=1` reloads it to
+  the same full-frame count as `RAW_NUM_CFG`, without changing source address,
+  timing or any panel coordinate.  A changed wrap phase would prove that the
+  nominally inactive block counter still delimits data on revision one.
+- Block-counter artifact built: core 187,760 bytes, SHA-256
+  `2ac7392d5aa2b797b5ee0eec526f5dcac4a19ea61a386b1ac11d0991393eceed`.
+  The reproducible build adds `P4_B5_BLK_RAW_FRAME=1` to the start-trace
+  configuration, exited zero, contained no `error:`, passed SRAM-residency
+  checking and printed both ESP32-P4 image-success markers.  Target identity,
+  restricted `ota_0` write, independent flash verification and direct D1001
+  geometry observation remain pending.
+- Block-counter D1001 technical result: the connected ESP32-P4 v1.3 identified
+  as MAC `e8:f6:0a:e0:46:4c`; only `ota_0` at `0x20000..0x4dfff` was written,
+  and both write-time hashing and independent `verify-flash` passed.  The
+  60-second run completed `t0..t59`, frames rose from 11 to 2,006, source and
+  FIFO depth kept moving, and host payload, bridge raw and DMA fault status
+  remained zero before panel-safe stop.  The programmed block-raw register
+  read back as zero throughout, consistent with the field being inactive while
+  multi-block mode is disabled.  Read-only SD discovery still passed.  Direct
+  geometry observation is pending; if unchanged, this test rejects the reset
+  default as the horizontal phase cause.
+- Block-counter direct observation failed: the same verified image was reset
+  for a second observer run, again reached 2,006 frames with zero host payload,
+  bridge-raw or DMA faults, and stopped the panel safely.  The observer reported
+  `immer noch verschoben`; correcting the reset-default 720x1280 block count to
+  the actual 800x1280 framebuffer therefore has no visible effect.  Together
+  with its zero readback while multi-block mode is disabled, this rejects
+  `BLK_RAW_NUM_CFG` as the horizontal phase cause; the diagnostic switch must
+  remain off by default.  The next test should target non-burst packetization or
+  the GDMA-to-bridge FIFO burst boundary, not another source-coordinate offset.
+- Effective JD9365 sequence audit found two extra AROS transactions.  A
+  mechanical extraction that ignores commented source lines gives 174 active
+  entries in Vellum's exact managed component and 176 in AROS.  The diff is
+  limited to an extra initial `E0 00` and `4A 35`; the latter is explicitly a
+  commented-out BIST command in the reference.  Vellum's wrapper sends one
+  page-zero command before the table and the table sends one more, while AROS's
+  equivalent wrapper plus duplicated table entry sent three.  The AROS table
+  now contains exactly the reference's 174 active command/value pairs.  This
+  corrects the contrary 2026-08-25 claim rather than silently replacing it.
+  Hardware verification is pending; the first remote-decidable check is the
+  exact 1000-Mbit/s burst/frame-ACK host mode, where disappearance of persistent
+  `DPI_PLD_WR_ERR` and data-lane stop state would prove a functional change even
+  without a display observer.
+- Corrected-sequence exact-reference artifact built: core 187,680 bytes,
+  SHA-256
+  `eb6e64f6366a2b9362f4923f10737c9dd452abf19a3ae3541d239b42e09adebc`.
+  It was rebuilt from all 198 fresh kernel `.o`/`.d` files with
+  `P4_B5_VISUAL_GATE=1`, immutable preload, 200-MHz PSRAM, 360-MHz CPU,
+  1000-Mbit/s lanes, burst-with-sync-pulses, frame acknowledge and the XIP
+  linker script.  The build exited zero, contained no `error:`, passed SRAM
+  residency and printed both ESP32-P4 image-success markers.  Target identity,
+  restricted `ota_0` write, flash verification and D1001 counters remain
+  pending.
+- Exact-reference run did not improve host state.  The D1001 identified as
+  ESP32-P4 v1.3, MAC `e8:f6:0a:e0:46:4c`; only `ota_0` was written and both
+  write-time and independent verification passed.  The corrected 174-command
+  sequence retained stable panel identity `93 65 04`, but the requested
+  1000-Mbit/s burst/frame-ACK mode still held `INT_ST1=0x80`
+  (`DPI_PLD_WR_ERR`) and `PHY_STATUS=0x15b9` with both data lanes stopped.
+  Frames nevertheless rose from 11 to 2,006 with moving SAR/FIFO, zero bridge
+  raw status and zero DMA faults before panel-safe stop and read-only SD
+  discovery.  The table correction is retained as exact-reference hygiene,
+  but it is rejected as sufficient cause of the 1000-Mbit/s failure.
+- Next remote-decidable control: temporarily run the already verified Vellum
+  image and read the live LDO3 control/analogue registers through USB-JTAG.
+  Vellum uses Espressif's eFuse-calibrated regulator path while AROS currently
+  writes the nominal untrimmed `dref=9, mul=6` solution.  A difference would
+  provide a concrete PHY-supply experiment; equality rejects regulator trim
+  without depending on display observation.  Restore the verified AROS image
+  to `ota_0` immediately after the read-only snapshot.
+- LDO3 reference snapshot found a real mismatch.  The clean Vellum 1.12.0
+  image (2,381,664 bytes, SHA-256
+  `25666ec02dae7ef1af66a03700b95ed5b019da0fb5ab54cdd88352a505928e73`)
+  was temporarily written only to `ota_0`; write-time and independent
+  verification passed.  During its active display interval USB-JTAG read
+  `PMU+0x1c0/+0x1c4` as `0x40200180 / 0xc6000000`, while AROS had reported
+  `0x40200180 / 0x97000000`.  Read-only eFuse words were
+  `MAC_SYS_2=0x9b054313` and `MAC_SYS_3=0x26780122` (block v0.3).  Applying
+  ESP-IDF's local `ldo_ll_voltage_to_dref_mul()` arithmetic decodes K=0.979,
+  Vos=-0.003 and C=0.983 and selects `dref=12,mul=4`; the remaining analogue
+  bit is `EN_VDET`, which IDF sets for ripple suppression.  This is a measured
+  per-die difference, not an assumed voltage tweak.
+- AROS now implements the same bounded 16-by-8 integer search from the
+  read-only eFuse fields, retains nominal 9/6 only when no calibrated block is
+  present, and explicitly enables ripple suppression.  The exact 1000-Mbit/s
+  burst/frame-ACK artifact was rebuilt from all 198 fresh kernel `.o`/`.d`
+  files: 188,320 bytes, SHA-256
+  `a00f2b2f07079f773a7451cd093f1739659ae6e80a5a40e731d76e0d0b387c4d`.
+  The build exited zero, passed SRAM residency and printed both ESP32-P4
+  image-success markers.  D1001 v1.3 MAC `e8:f6:0a:e0:46:4c` was identified;
+  only `ota_0` at `0x20000..0x4dfff` was written, and write-time plus
+  independent verification passed.
+- Calibrated-LDO D1001 result: AROS now reads back the exact Vellum LDO pair
+  `0x40200180 / 0xc6000000` and reports `dref 12, mul 4`; panel identity remains
+  stable at `93 65 04`.  The exact-reference link nevertheless still holds
+  `INT_ST1=0x80` (`DPI_PLD_WR_ERR`) and `PHY_STATUS=0x15b9` with both data
+  lanes stopped.  The 60-second run reached 2,006 ISR-rearmed frames with
+  moving SAR/FIFO, zero bridge raw status and zero DMA faults, then stopped
+  safely and discovered the SD card read-only.  The calibration fix is retained
+  because it is an exact IDF parity correction and removes cold-boot dependence,
+  but it is rejected as sufficient cause of the 1000-Mbit/s failure.  The next
+  remote-decidable comparison is a live GDMA register snapshot under Vellum
+  versus this exact AROS mode; display geometry observation is deferred until
+  the user is physically present.
+- USB-JTAG cannot read the DesignWare GDMA window on a halted P4 v1.3 core:
+  both program-buffer and system-bus access failed at `0x50081010`.  The core
+  was explicitly resumed after the failed read.  A temporary Vellum UART
+  instrument was therefore built from the otherwise clean repository and
+  flashed only to `ota_0` (2,382,176 bytes, SHA-256
+  `50d851de1590377295c063f06259b054819d8b74d1975cfad838ca4abc47fd14`;
+  write-time and independent verification passed).  While its known-good
+  scanout was active it measured global CFG/CHEN/reset as
+  `00000003/00000001/00000000`, and channel SAR/DAR/BLOCK_TS as
+  `48314480/50105000/0003e7ff`.
+- The decisive Vellum GDMA configuration is bit-identical to AROS:
+  `CTL0=001e1b41`, `CTL1=400f87c0`, `CFG0=0000000f`,
+  `CFG1=0a020001`, running `LLP=00000001` and `INT0/INT1=10/0`.
+  Those are exactly the AROS descriptor/control values, including memory
+  master 1, MIPI master 0, 64-bit widths, 512/256-beat source/destination
+  bursts, 256,000-word block, list/list multiblock selection, M2P DMA flow
+  control, DSI handshake and 5/2 outstanding request depths.  The framebuffer
+  addresses differ only because each allocator chose a different PSRAM span;
+  both target the same bridge FIFO `0x50105000`.  This closes the previously
+  unmeasured GDMA-configuration branch.  The temporary Vellum source changes
+  were removed and its repository is clean again.
+- The calibrated AROS artifact hash was rechecked as
+  `a00f2b2f07079f773a7451cd093f1739659ae6e80a5a40e731d76e0d0b387c4d`,
+  the D1001 identity was rechecked, and only `ota_0` was restored; write-time
+  and independent verification passed.  With panel table, LDO, bridge and
+  GDMA values now matched, the next remote test must compare a dynamic host or
+  bridge condition (interrupt/packet state or producer start phase), not alter
+  another static GDMA field.
+- A second read-only Vellum snapshot closes the host/bridge comparison before
+  changing another producer parameter.  During known-good scanout the host
+  read `VID_MODE_CFG=0x0000ff02`, packet size 800 and `LPCLK_CTRL=3`, while
+  `INT_ST0/INT_ST1=0/0` and `PHY_STATUS=0x15bd`; the sampled blank therefore
+  had clock and both data lanes in stop state.  Its 36-word bridge snapshot
+  matched the staged AROS timing, raw count, pixel type and flow values, but
+  exposed two final-state differences: Vellum had register-clock force-on
+  `CLK_EN=0` and underrun interrupt enable `INT_ENA=1`; AROS had `CLK_EN=1`
+  and `INT_ENA=0`.  The latter only reports bridge underflow and cannot remove
+  the host's payload-write error, so the first isolated remote-decidable test
+  is to leave `CLK_EN` at zero exactly as ESP-IDF's DPI path does.  Teardown
+  retains force-on while accessing a potentially gated block.  Acceptance is
+  disappearance of persistent `INT_ST1=0x80` with a corresponding lane-state
+  change; visual geometry is deliberately deferred while the user is remote.
+- Register-clock parity artifact and D1001 result: after deleting all generated
+  kernel `.o`/`.d` files, the exact 1000-Mbit/s burst/frame-ACK build produced
+  a 188,320-byte core with SHA-256
+  `5a4620da14a4bdcc970cccfb303da6560a95b2f942d933bfa15f3cb02a3d5fd6`.
+  It exited zero, contained no `error:`, passed SRAM residency and printed both
+  ESP32-P4 image-success markers.  D1001 v1.3 MAC `e8:f6:0a:e0:46:4c` was
+  identified; only `ota_0` at `0x20000..0x4dfff` was written, and write-time
+  plus independent verification passed.  AROS now leaves bridge `CLK_EN=0`
+  like Vellum and ESP-IDF, but `INT_ST1=0x80` still reasserted and the sampled
+  video state remained `PHY_STATUS=0x15b9`.  GDMA SAR/FIFO moved, the run
+  reached 2,006 rearmed frames with zero DMA faults and bridge raw status,
+  then stopped safely and discovered the SD card read-only.  The parity fix is
+  retained because force-on is unnecessary in the normal path, but rejected
+  as sufficient cause.  With no local observer, the next step is an identical
+  complete live host/bridge register snapshot under AROS and Vellum rather
+  than another guessed configuration change.
+- Complete live register parity was captured through USB-JTAG while each image
+  was actively scanning.  AROS and Vellum are bit-identical across all staged
+  bridge configuration words from `0x500a0800..0x500a088c` except dynamic FIFO
+  depth and Vellum's underrun interrupt enable.  Their host video mode, packet
+  size, HSA/HBP/HLINE, VACT, LP-clock control and PHY timing registers also
+  match.  The AROS-only `0x80` at host offset `0xc0` is the already reported
+  payload-write error, not a configuration bit.  Apart from dynamic status and
+  stale last-command/test-interface data, the only final host-state difference
+  is the completed command-read state: AROS reads
+  `PCKHDL_CFG/CMD_MODE_CFG=0x19/0x010f7f00`; Vellum reads
+  `0x1d/0x010f7f02`, meaning `BTA_EN` and `ACK_RQST_EN` remain set.  This
+  corrects the initial interpretation of bit 2 as EoT; EoT transmit was already
+  enabled in both images.  The instrumented Vellum image remained the same
+  2,382,176-byte artifact with SHA-256
+  `50d851de1590377295c063f06259b054819d8b74d1975cfad838ca4abc47fd14`;
+  only `ota_0` was temporarily written and independently verified, its sources
+  remained clean, and the verified AROS artifact was restored immediately.
+- Next isolated remote test: `P4_B5_REF_READ_STATE=1` sets those two reference
+  bits only after the last panel command, so it reproduces Vellum's live final
+  state without asking AROS to service acknowledgements while transmitting the
+  initialization table.  It changes no video, bridge, GDMA, PHY or framebuffer
+  parameter.  Persistent `INT_ST1=0x80` rejects the state as causal; clearing
+  it with a non-stopped PHY is the acceptance condition.  The switch remains
+  diagnostic-only until hardware decides it.
+- Final command-read-state parity was rejected on hardware.  After deleting
+  all generated kernel objects, the exact 1000-Mbit/s build with
+  `P4_B5_REF_READ_STATE=1` produced a 188,384-byte core with SHA-256
+  `22ee773bac0cff6a7eeeaf79ed7129f8a3258caec043ac60d1d503f8df277c93`.
+  The build exited zero, had no `error:`, passed SRAM residency and printed
+  both image-success markers; only `ota_0` was written and write-time plus
+  independent verification passed.  Despite matching Vellum's live
+  `BTA_EN/ACK_RQST_EN` end state, AROS again reasserted `INT_ST1=0x80` and held
+  `PHY_STATUS=0x15b9`.  SAR/FIFO remained active, 2,006 frames completed with
+  zero DMA faults and bridge raw status, then panel-safe stop and read-only SD
+  discovery passed.  The diagnostic switch stays off by default and is
+  rejected as causal.  Static host, bridge and GDMA configuration parity is
+  now closed; the next reference measurement is the three producer-start
+  transitions, not another retained register value.
+- The producer-start reference measurement is complete and rejects FIFO
+  prefill/start ordering as the cause.  A first temporary Vellum instrument
+  used the GDMA global window instead of channel 1 for SAR and is explicitly
+  invalid for that field (artifact 2,381,920 bytes, SHA-256
+  `257bc2a36dcf60cc6c6b2eba1c7e9542bbe4a624848aa9a3632efd9ff92a77b6`);
+  it was corrected before drawing a hardware conclusion.  The corrected,
+  otherwise clean Vellum artifact was 2,381,920 bytes with SHA-256
+  `543082f772434bb224dd026a8b84be568955cb325f462c4320242e2d51a4edc9`.
+  Only `ota_0` was written, and write-time plus independent verification
+  passed.  Its three UART samples decoded to `FB=0x48230a80, SAR=0,
+  FIFO=0` immediately after the DMA-start call, then `SAR=FB+0x2200,
+  FIFO=0x3fd` immediately after video enable, unchanged immediately after
+  bridge feed enable.  AROS's existing samples reach the identical
+  `SAR=FB+0x2200, FIFO=0x3fd` state by video enable and likewise do not move
+  at feed enable; its earlier `FB+0xa80` sample after the DMA call is only a
+  few instructions later.  Both producers therefore enter feed with the same
+  8,704-byte source advance and 1,021-word FIFO fill.  The temporary ESP-IDF
+  instrumentation was removed and both the local ESP-IDF and Vellum source
+  repositories were clean after the measurement.  With public host, bridge,
+  GDMA configuration and first-frame producer phase now matched, the next
+  remote-decidable comparison is the ordered internal D-PHY test-interface
+  programming, followed by frame-to-frame DMA rearm latency if that sequence
+  is also equal.  Visual geometry remains deferred until a local observer is
+  present.
+- Source-level D-PHY comparison found that AROS writes the same five internal
+  PLL register/value pairs as ESP-IDF and uses the same test-interface edges,
+  but not in the same reset state.  ESP-IDF's `mipi_dsi_hal_init()` pulses
+  digital PHY reset, enables the clock lane and forces the PLL before
+  `mipi_dsi_hal_configure_phy_pll()` performs the internal writes.  AROS kept
+  digital reset asserted for all five writes and released it afterward.  The
+  next exact-reference artifact moves only that reset/enable sequence to the
+  ESP-IDF order; PLL divisors, range selector, clocks, LDO, host, bridge and
+  GDMA settings remain unchanged.  Remote acceptance is disappearance of
+  persistent `INT_ST1=0x80` together with a non-stopped data-lane state;
+  otherwise the corrected reference order is retained but rejected as the
+  sufficient cause.
+- The ESP-IDF D-PHY reset-order artifact was rebuilt from all 198 fresh kernel
+  `.o`/`.d` files.  It is 188,320 bytes with SHA-256
+  `d621a86b55db920f25654790cdc7de741e56053448edca9ebe5082591cbd2ce4`;
+  the build exited zero, passed SRAM residency and printed both ESP32-P4 image
+  success markers.  D1001 v1.3 MAC `e8:f6:0a:e0:46:4c` was identified; only
+  `ota_0` at `0x20000..0x4dfff` was written, and write-time plus independent
+  verification passed.  The PHY locked with all lanes stopped before panel
+  setup and stable identity `93 65 04`, but video again reasserted
+  `INT_ST1=0x80` and settled at `PHY_STATUS=0x15b9`.  SAR and bridge FIFO moved
+  through 2,006 ISR-rearmed frames with zero DMA faults and bridge raw status,
+  followed by panel-safe stop and read-only SD discovery.  The reset-order
+  correction is retained as exact ESP-IDF parity but rejected as sufficient
+  cause.  The next remote-decidable branch is frame-to-frame DMA rearm timing,
+  specifically whether AROS leaves the bridge without a producer between DMA
+  completion and channel restart while ESP-IDF uses a different continuous or
+  callback path.
+- The frame-rearm source audit found AROS equivalent to ESP-IDF at the DMA
+  completion boundary: both clear the level interrupt, restore the one LLI's
+  valid/last markers, reload the list head and enable the channel.  A more
+  fundamental ordered-state difference precedes the first frame.  AROS's B5
+  path enabled and committed the bridge once with the earlier pattern-stage
+  bridge-flow configuration, then changed flow controller, raw count and FIFO
+  thresholds live and committed again.  ESP-IDF stages the complete DMA-facing
+  bridge configuration before its first enable/commit, and only commits a
+  second time when enabling pixel feed.  Because the bridge has internal
+  counters and FIFO state not represented by the final register snapshot, the
+  next exact-reference artifact defers B5's first bridge enable/commit until
+  all DMA-facing fields are staged.  B4 keeps its existing ownership sequence.
+  Remote acceptance remains disappearance of `INT_ST1=0x80` and transition of
+  the data lanes out of their persistent stopped state.
+- The single initial bridge-commit artifact was rebuilt from all 198 fresh
+  kernel objects: 188,320 bytes, SHA-256
+  `fb54ef529de3cb42349107dbd881a5b6883fca77130c965a96d2842dc368087b`.
+  The build exited zero, passed SRAM residency and printed both ESP32-P4 image
+  success markers.  D1001 v1.3 MAC `e8:f6:0a:e0:46:4c` was identified; only
+  `ota_0` at `0x20000..0x4dfff` was written, and write-time plus independent
+  verification passed.  Deferring B5's first bridge enable/commit did not
+  change the failure: stable panel identity remained `93 65 04`, video held
+  `INT_ST1=0x80` and `PHY_STATUS=0x15b9`, and SAR/FIFO moved for 2,006 frames
+  with zero DMA faults and bridge raw status before panel-safe stop and
+  read-only SD discovery.  The ordered-state correction is retained because
+  it removes an unnecessary live flow-controller transition, but rejected as
+  sufficient cause.  Before changing rearm timing, the next remote UART
+  instrument must identify the first transition at which `INT_ST1=0x80`
+  appears: staged host/bridge, DMA enable, video enable or pixel-feed enable.
+- The transition-local UART instrument now samples command packet status,
+  both host interrupt-status words and PHY status after five boundaries:
+  staged host timing, complete bridge commit, DMA enable, video enable and
+  pixel-feed enable.  It does not delay or change those transitions.  The
+  first sample containing `INT_ST1=0x80` will identify which subsystem action
+  creates the condition; if it predates feed, frame rearm and bridge
+  underflow cannot be causal.
+- The five transition samples remained clean through pixel-feed enable:
+  staged/bridge/DMA all read `INT_ST1=0, PHY=0x15bd`, and video/feed both read
+  `INT_ST1=0, PHY=0x15b9`.  The familiar `INT_ST1=0x80` appeared only in the
+  later 100-ms sample.  Thus the condition is created either by the
+  parameterless DCS `0x29` injected immediately after feed or by ordinary
+  first-frame traffic during its following 20-ms wait; it is not created by
+  any configuration/start write itself.  `P4_B5_SKIP_FINAL_PANEL_ON=1` omits
+  only that final live-stream command for the next exact-reference run.  The
+  vendor table has already issued its own 0x29 transaction, and the remote
+  acceptance signal is host status rather than visible panel state.  If
+  `0x80` still appears, command injection is closed and first-frame/rearm
+  timing becomes the remaining branch.
+- Omitting the live parameterless `0x29` did not suppress the failure.  The
+  diagnostic artifact was 188,768 bytes with SHA-256
+  `2e08d652e707fa57b7cc042aba5e6cbbda3a98eee1a76ff12d10e34e4c0444f1`;
+  only `ota_0` was written and both write-time and independent verification
+  passed.  All five immediate edge samples were again clean, then ordinary
+  video traffic reached `INT_ST1=0x80` by the 100-ms sample with four completed
+  DMA frames, moving SAR/FIFO and no DMA or bridge fault.  Live-command
+  injection is therefore closed.  The same no-command diagnostic now polls
+  for the first assertion and records elapsed timer ticks, completed-frame
+  count, SAR and FIFO depth.  Zero completed frames proves a first-frame host
+  acceptance fault; one or more isolates the frame-rearm boundary.
+- First-assertion tracing closes frame rearm completely.  The 189,088-byte
+  diagnostic artifact had SHA-256
+  `e17c2940f978105a77f283d43b8a0b688932610e007527d8a6c5f5e4e8e90284`;
+  only `ota_0` was written and write-time plus independent verification
+  passed.  `INT_ST1=0x80` first appeared after `0x1129` system-timer ticks with
+  `dma_frames=0`, `SAR=FB+0x3200` and bridge FIFO depth `0x302` (770 words).
+  The channel had consumed only 12,800 bytes of the first 2,048,000-byte frame
+  and had not crossed a completion/restart boundary.  This is a first-frame
+  host-acceptance failure: ordinary DPI data starts filling the path while the
+  host data lanes remain stopped.  DMA rearm latency, ISR priority and every
+  post-frame action are now outside the causal tree.  The next comparison must
+  cover host reset/start and clock handshakes that are not represented by the
+  matched final register image.
+- Exact source re-audit found that the earlier early-AUTO experiment was based
+  on a reversed reading of ESP-IDF.  `esp_lcd_new_dsi_bus()` calls
+  `mipi_dsi_host_ll_set_clock_lane_state(...LP)` before every panel command;
+  the helper clears both `auto_clklane_ctrl` and `phy_txrequestclkhs`.
+  `esp_lcd_panel_dpi.c` selects AUTO (`LPCLK_CTRL=3`) only after enabling DMA
+  and video mode.  AROS currently selects AUTO before the first panel command
+  and repeats it at video start.  The next exact-reference artifact therefore
+  clears both bits for command mode and retains the existing AUTO write in
+  `krnP4DsiVideoOn()`.  It restores the valid final parameterless DCS `0x29`;
+  the no-command first-assertion switch is not part of this build.  Because the
+  observer is remote, acceptance is entirely UART-decidable: the five edge
+  samples must remain clean and ordinary first-frame traffic must no longer
+  assert `INT_ST1=0x80`; otherwise the corrected sequencing is retained as
+  reference parity but rejected as the sufficient cause.
+- Command-phase LP parity is hardware-negative.  A fresh 198-object exact
+  1000-Mbit/s burst/frame-ACK build, with the valid final parameterless DCS
+  `0x29` restored, produced a 188,848-byte core with SHA-256
+  `13dec0c2fca6374924c1d0182fda90a157ca38d5006f31a1e1bc627fc79681d8`.
+  The build exited zero, passed SRAM residency and printed both image-success
+  markers.  D1001 v1.3 MAC `e8:f6:0a:e0:46:4c` was identified; only `ota_0`
+  at `0x20000..0x4efff` was erased and written, and write-time plus independent
+  verification passed.  UART confirmed command mode with the clock lane in LP,
+  stable panel identity `93 65 04`, and clean staged/bridge/DMA/video/feed edge
+  samples.  Ordinary first-frame traffic nevertheless asserted
+  `INT_ST1=0x80` and held `PHY_STATUS=0x15b9`; the 60-second run completed
+  2,006 ISR-rearmed frames with moving SAR/FIFO, zero DMA faults and zero
+  bridge raw status.  Panel-safe stop, 121,942-MB SD discovery and two explicit
+  write-protected-medium reports passed.  The corrected LP-to-AUTO ordering is
+  retained as source parity but rejected as sufficient cause.  With the host
+  bus-clock enable and global DSI reset already bit-for-bit identical to
+  `mipi_dsi_ll_enable_bus_clock()` / `mipi_dsi_ll_reset_register()`, the next
+  remote-decidable audit is the remaining host/bridge reset and start sequence,
+  including revision-conditional bridge reset behaviour and any status that a
+  final register snapshot cannot expose.
+- The reset continuation closes that branch without another flash.  Vellum's
+  `CONFIG_ESP32P4_REV_MIN_FULL=100` selects the legacy bridge helper, whose
+  `mipi_dsi_brg_ll_reset()` is a documented no-op; AROS likewise performs no
+  local bridge reset.  The APB clock enable, global `reg_rst_en_dsi_brg` pulse,
+  lane-count write, host/PHY power-on, PHY digital-reset pulse, clock-lane
+  enable and force-PLL order are now source-identical.  The remaining ordered
+  mismatch is the command transaction state, which the previous final-state
+  test did not reproduce.  Vellum enables `ACK_RQST_EN` before the first read;
+  IDF's read path then sets `BTA_EN` and never clears it, so both remain active
+  through the complete JD9365 table and video handover.  AROS normally clears
+  BTA after the identity and previously set both bits only after all commands.
+  `P4_B5_IDF_CMD_STATE=1` now isolates the exact ordered reference state while
+  retaining AROS's bounded waits and UART edges.  Clean video/feed edges with
+  no subsequent `INT_ST1=0x80` accept it; a receive-direction edge or the same
+  first-frame assertion rejects it without requiring a display observer.
+- The first ordered ACK/BTA artifact is negative and identifies the missing
+  temporal part precisely.  A fresh 198-object build produced a 188,848-byte
+  core with SHA-256
+  `577ebc61f184db7aa1120cbf608f80826c3388f2d43e2b2f7beaeb5bbc8ab06a`;
+  only `ota_0` was written and write-time plus independent verification passed.
+  Identity still read `93 65 04`, but the staged/bridge/DMA edges already read
+  `PHY_STATUS=0x15af`, video/feed read `0x15ab`, and UART localized the first
+  persistent turnaround to trace step 3, the end of the vendor table.  The
+  host also asserted `INT_ST1=0x80`; 2,006 DMA frames completed with moving
+  SAR/FIFO and no DMA or bridge fault before panel-safe stop and read-only SD
+  discovery.  IDF calls `vTaskDelay(pdMS_TO_TICKS(delay_ms))` after *every*
+  vendor-table entry, including zero-delay entries; AROS queued the next header
+  as soon as the command FIFO was merely not full.  Under ordered ACK/BTA this
+  removes the scheduling point in which an acknowledgement turnaround can
+  finish.  The next refinement keeps the same state but, after every DCS write,
+  waits boundedly for command and payload FIFOs empty plus transmit direction.
+  It is the direct bare-metal equivalent of the reference yield and remains
+  UART-decidable before any frame is launched.
+- That first settle condition was deliberately bounded and failed safely on
+  hardware: the 189,040-byte core (SHA-256
+  `d9a08ba6f97f9abb143e2d894eddbb680b636d8accf2374314b5e4f58048c992`)
+  was written and independently verified only in `ota_0`; identity succeeded,
+  then the first acknowledged framing write did not return PHY_DIRECTION to
+  transmit within 20 ms.  B3 reported `a command fifo never drained`, returned
+  the panel safe with the backlight never enabled, and the later SD path again
+  reported the medium write protected.  This proves that waiting for transmit
+  direction is *not* equivalent to IDF's `vTaskDelay(0)`: IDF imposes no such
+  predicate.  Vellum is configured at `CONFIG_FREERTOS_HZ=1000`.  The refined
+  diagnostic therefore waits boundedly only for the two TX FIFOs to empty,
+  then supplies one 1-ms scheduling window before the next header.  Whether
+  the aggregate command sequence returns to transmit state is still judged at
+  the existing step-3 UART edge.
+- The refined 1-ms scheduling-window artifact was 189,104 bytes with SHA-256
+  `2ed47bfe28a8232e4176b292d165e8c0016f75f1d4e4d18c6ef861f09a3c59f8`;
+  only `ota_0` was written and write-time plus independent verification
+  passed.  It completed identity and the full vendor table, but did not alter
+  any decisive edge: staged/bridge/DMA remained `PHY_STATUS=0x15af`,
+  video/feed `0x15ab`, and first traffic asserted `INT_ST1=0x80`.  The
+  60-second run completed 2,006 frames with moving SAR/FIFO, zero DMA faults
+  and zero bridge raw status before panel-safe stop.  The SD was discovered as
+  121,942 MB and reported write protected twice.  Artificial per-command
+  scheduling is rejected and removed from the diagnostic; ordered ACK/BTA is
+  retained as a separately reproducible negative state.
+- A temporary UART oracle was then built into the known-good Vellum reference,
+  flashed only to `ota_0`, and its source tree restored clean immediately
+  afterward.  The build metadata proves that Vellum uses the pinned local IDF
+  at `/Volumes/Dev/esp-idf/v6.0/esp-idf` commit
+  `662a3be354759d9487bf4b1a629fadb766cb1800`, not the newer v6.0.1 tree.  Five
+  samples at 20-ms intervals after panel-on all read `INT_ST1=0`,
+  `PHY_STATUS=0x15bd`, bridge raw status zero and moving FIFO depths
+  `0x301,0x3bc,0x380,0x344,0x308`.  Its live video-packet status remained
+  `0x00020001` while command status moved `0x40015 -> 0x50015`.  Therefore
+  AROS's `DPI_PLD_WR_ERR` is not a harmless startup sticky bit: the working
+  driver does not set it under the same 1000-Mbit/s burst/frame-ACK profile.
+  AROS had never sampled `VID_PKT_STATUS`; the next normal-state artifact adds
+  that read to first-assertion evidence so the overflowing DPI input can be
+  distinguished from the host's internal payload buffer without a display
+  observer.
+- The normal transmit-state first-assertion artifact was 189,152 bytes,
+  SHA-256
+  `7d845e25252e24bb94c4e31cc33633ce485b99ff252421212ce85b56a408d0ad`.
+  Only `ota_0` was written and independently verified.  Without the final live
+  `0x29`, the first pure-video assertion occurred before any complete DMA frame
+  after `0xf3d` timer ticks, at `SAR=FB+0x3380` and bridge depth `0x372`.
+  Crucially, `VID_PKT_STATUS=0x00020009`: both the host's internal payload
+  buffer and its DPI input payload FIFO were full.  Vellum's corresponding
+  `0x00020001` has the internal buffer full but the DPI input not full.  This
+  localizes the divergent behavior to host consumption of bridge DPI input,
+  not PSRAM, GDMA delivery or bridge starvation.
+- Two 400-pixel chunks per 800-pixel line did not relieve that pressure.  The
+  189,152-byte artifact had SHA-256
+  `b96aa01b957ea57b2d4be526237df095b139711fd252b7773930a265e1b5a994`;
+  only `ota_0` was written and independently verified.  It asserted the same
+  `INT_ST1=0x80` with `VID_PKT_STATUS=0x00020009` before frame zero completed,
+  after `0x1271` ticks at `SAR=FB+0x4a00`, and sustained the same 69 MB/s with
+  no DMA or bridge fault.  Packet capacity is rejected; chunking is not a fix.
+- A second temporary Vellum oracle found every video `*_ACT` mirror and
+  `VID_SHADOW_CTRL` at zero while the reference displayed correctly.  The
+  pinned driver does not enable shadow-register latching, so those read-only
+  mirrors do not expose a hidden timing difference.  Vellum source was again
+  restored clean.  Source inspection then found a measurement-induced timing
+  violation in AROS itself: after enabling video mode it performs two PHY
+  trace reads, then reads DMA state, command status and the complete host state
+  before enabling bridge DPI output.  The IDF reference performs video-mode,
+  clock-AUTO and bridge-feed writes consecutively.  `P4_B5_ATOMIC_START=1`
+  removes all reads from that critical window and samples only after feed; a
+  clean first 100 ms accepts the ordering fix entirely by UART.
+- Atomic host/feed start is hardware-negative.  The 189,152-byte artifact had
+  SHA-256
+  `d64b65e064735b424733e554bed1d4e517c52b4a35498e3586b7ea00070ccf87`;
+  only `ota_0` was written and independently verified.  Removing every status
+  read between video-mode/clock-AUTO and bridge-feed commit did not change the
+  first-frame failure: `INT_ST1=0x80` first asserted after `0xb76` timer ticks
+  with zero completed frames, `SAR=FB+0x3200`, bridge depth `0x360` and
+  `VID_PKT_STATUS=0x00020009`.  A repeat reset of the exact artifact measured
+  the same class of failure after `0xdec` ticks at `SAR=FB+0x3200`, depth
+  `0x307`; all five pre-start command states were already `0x00050015`, the
+  same external and buffered FIFO-empty state observed under Vellum.  Atomic
+  start and undrained command buffers are therefore both rejected.
+- The public host, bridge and producer state is now exhausted, but a host FSM
+  can retain command-phase state that no register snapshot exposes.  The next
+  bounded diagnostic pulses only host-core `SHUTDOWNZ` after the complete
+  vendor table reports `CMD_PKT_STATUS=0x50015` and before video timing is
+  staged.  The PHY remains powered and locked, the panel remains awake, and
+  bridge/DMA are still off.  Disappearance of `INT_ST1=0x80`, together with
+  first-frame data-lane activity, accepts hidden command-to-video state as the
+  cause; otherwise the pulse is removed and that branch is closed.
+- The isolated host-core restart is hardware-negative.  The 189,152-byte core
+  had SHA-256
+  `b1910b16387a4a30106b9f4e8089847ee86472fb97abd70bddad3fe79f898867`;
+  only `ota_0` was written, and write-time plus independent verification
+  passed.  The panel ID remained `93 65 04` and every pre-start command state
+  was the reference-empty `0x00050015`, but the first assertion still occurred
+  in frame zero after `0xb1c` timer ticks at `SAR=FB+0x3200`, bridge depth
+  `0x31d`, `INT_ST1=0x80` and `VID_PKT_STATUS=0x00020009`.  Throughput then
+  remained about 69 MB/s with moving producer state and no DMA or bridge
+  fault.  A stale command-phase host FSM which a `SHUTDOWNZ` pulse can clear is
+  rejected.  The next UART-only isolation removes *all* diagnostic reads from
+  the end of the vendor command table through host staging, bridge setup, DMA
+  arming, video-mode entry and feed commit.  Status is captured only after the
+  complete reference write sequence, so a clean first 100 ms accepts observer
+  perturbation and another frame-zero `0x20009` rejects it.
+- The full command-table-to-feed atomic start is hardware-negative.  Its
+  189,088-byte core had SHA-256
+  `c76d82ebaa156ae9c7fc7043a5d9329f0a7ce1aacdf595e74ecb7b4e8db95ea9`;
+  only `ota_0` was written and both write-time and independent digest
+  verification passed.  The first post-feed snapshot still showed the
+  reference-empty command state `0x00050015` and PHY stop state `0x15bd`, but
+  traffic asserted `INT_ST1=0x80` in frame zero after `0xd86` timer ticks at
+  `SAR=FB+0x3200`, bridge depth `0x307` and
+  `VID_PKT_STATUS=0x00020009`.  The clock lane then entered HS (`0x15b9`),
+  producer SAR and FIFO depth continued moving at 69 MB/s, and DMA/bridge
+  faults remained zero.  Diagnostic reads anywhere in the handover are
+  rejected as the cause.  The remaining known static bridge-register
+  difference from the live Vellum oracle is its enabled bridge-underrun
+  interrupt; AROS leaves all bridge interrupts masked.  Although an interrupt
+  mask should not change flow control, matching it is the next bounded parity
+  test before deliberately changing producer/consumer start order.
+- Reference bridge-underrun interrupt enable is hardware-negative.  The
+  189,088-byte core had SHA-256
+  `d419c6813e75a685ab0f6ee6f77ee8045ded1aeae7ba25a44114bffbdda119b5`;
+  only `ota_0` was written and both digest verifications passed.  Enabling
+  `INT_ENA.bit0` at the exact post-feed point used by IDF left bridge RAW zero,
+  yet the host again asserted `INT_ST1=0x80` and
+  `VID_PKT_STATUS=0x00020009` in frame zero, this time after `0x846` ticks at
+  `SAR=FB+0x3200` and bridge depth `0x346`.  The last measured static bridge
+  difference is rejected.  The next bounded test retains bridge-before-DMA
+  and an already-running producer, but commits the bridge DPI feed immediately
+  before enabling host video mode.  A clean first 100 ms accepts a host
+  start-order race; another frame-zero `0x20009` rejects prefeeding as a fix.
+- Feed-before-video changes the failure edge materially but does not clear it.
+  The 189,088-byte core had SHA-256
+  `5a3c0a1f7692b7793bbdd93fd12b2b89253142f11e9a78724490e8e6059b696e`;
+  only `ota_0` was written and independently verified.  Instead of asserting
+  within roughly `0x800..0xd00` ticks before the first producer wrap, the host
+  first asserted `INT_ST1=0x80` after `0x74178` ticks with one DMA frame
+  complete, `SAR=FB+0x3200`, bridge depth `0x30d` and the same
+  `VID_PKT_STATUS=0x00020009`.  This does not prove that a complete DSI frame
+  reached the panel--the frame counter belongs to DMA--but it is the first
+  ordering change to postpone the failure to the producer's frame boundary.
+  The next UART artifact records PHY stop-state/direction and video-FIFO state
+  across that tight first-assertion poll.  Data-lane activity before the error
+  accepts real host transmission and focuses the next test on frame-ACK/BTA;
+  no sampled data-lane activity keeps the issue at the initial host start.
+- The tight PHY/FIFO trace proves that feed-first starts real host traffic.
+  Its 189,472-byte core had SHA-256
+  `26bdb4696e4a1902893af14c7b500227014436664f01ea55eaf91dbad15c4ff0`;
+  only `ota_0` was written and independently verified.  The result reproduced
+  after `0x74281` ticks with one DMA frame complete, `SAR=FB+0x3380`, bridge
+  depth `0x36b` and final `VID_PKT_STATUS=0x00020009`.  Across the poll,
+  `PHY_STATUS` ranged from AND/OR `0x1529/0x15bd` with four state changes and
+  at least one sample in which the two data-lane stop bits were clear.  Video
+  FIFO status ranged through AND/OR `0x00000000/0x0003000d`; receive direction
+  was never sampled.  Therefore the host did transmit before stalling, rather
+  than merely accepting bridge input forever in stop state.  The conjunction
+  of first producer-boundary failure and frame-ACK enabled now warrants the
+  same feed-first run with only frame-ACK removed.  Zero `INT_ST1` through the
+  first 100 ms accepts ACK/BTA as the post-first-frame blocker; an unchanged
+  boundary failure rejects it.
+- Feed-first without frame-ACK is hardware-identical at the failure edge.  The
+  189,472-byte core had SHA-256
+  `6a030fe33bbe2baecfd12af273724051c9312c0b7e0f22e754c1c8cad69bfa5c`;
+  only `ota_0` was written and independently verified.  With read-back
+  `VID_MODE_CFG=0x0000bf02`, the error again appeared after `0x741fe` ticks
+  and one DMA frame at `SAR=FB+0x3400`, bridge depth `0x378` and
+  `VID_PKT_STATUS=0x00020009`.  PHY/FIFO ranges were unchanged:
+  `0x1529/0x15bd`, four transitions, one sampled data-lane-active state, no
+  sampled receive direction, and video-status OR `0x0003000d`.  Frame ACK/BTA
+  is rejected as the first-boundary blocker.  The next diagnostic temporarily
+  uses the already-characterized GDMA register-reload producer, which has no
+  channel stop/rearm boundary.  It is not a geometry fix--that producer caused
+  the earlier cyclic coordinate phase--but zero host error with reload would
+  isolate the newly exposed failure to the list-item completion/rearm edge.
+- Continuous GDMA reload is hardware-negative and rules out the producer
+  boundary.  The 189,344-byte core had SHA-256
+  `170beaf1185645fa15f0b0f1127460ffd33b83a414649a4b85f05851183ba9b3`;
+  only `ota_0` was written and independently verified.  With DMA interrupts
+  disabled and channel registers automatically reloading, SAR crossed the
+  framebuffer boundary continuously, but the host asserted after `0x741ac`
+  ticks--the same first-video-frame interval--at `SAR=FB+0x3200`, bridge depth
+  `0x346` and `VID_PKT_STATUS=0x00020009`.  PHY/FIFO ranges again matched the
+  feed-first list run.  Descriptor completion, interrupt latency and rearm are
+  rejected; the exposed boundary belongs to host video timing.  The next
+  single-variable test keeps feed-first, burst and no frame ACK but disables
+  all video low-power transitions.  Surviving the 100-ms oracle accepts the
+  first frame's HS-to-LP-to-HS transition as the blocker; another `0x741xx`
+  failure rejects it.
+- Disabling every video low-power transition is hardware-negative.  The
+  189,472-byte core had SHA-256
+  `ca0dbf187222d9abcb683ce9247d378f119eb1319bdc2fab55f2ee6447a99f25`;
+  only `ota_0` was written and independently verified.  With read-back
+  `VID_MODE_CFG=0x00000002`, the same `INT_ST1=0x80` and
+  `VID_PKT_STATUS=0x00020009` appeared after `0x7400f` ticks and one DMA frame
+  at `SAR=FB+0x3400`, bridge depth `0x379`.  The tighter PHY trace changed as
+  expected: AND/OR was `0x1529/0x15b9`, only two transitions occurred, and
+  the data lanes were sampled active `0xc3` times with no receive direction.
+  Subsequent one-second samples remained at `PHY_STATUS=0x1529` while the DMA
+  completed roughly 34 frames/s with moving SAR and bridge FIFO, zero bridge
+  raw status and zero DMA faults.  Thus the host remains in high speed after
+  the sticky overflow; neither a first-frame LP exit/re-entry nor a host stop
+  is its cause.  The first failure remains locked to one host video-frame
+  interval despite removing frame ACK, LP transitions and the GDMA completion
+  boundary.  The next bounded UART test changes only `VID_HLINE_TIME` by a
+  small negative delta while bridge timing stays fixed.  A shifted or absent
+  first-error edge establishes a producer/consumer rate mismatch; an unchanged
+  `0x740xx` edge rejects line-period sensitivity before any visual gate.
+- A 16-lane-byte-clock shorter host line is hardware-negative.  The 189,472-
+  byte core had SHA-256
+  `87a6f3d5c73f1b28c84fc474e245436ed6bb3823fbde9cba223495ccb59fcc29`;
+  only `ota_0` was written and independently verified.  Source, disassembly
+  and UART read-back independently agreed on `VID_HLINE_TIME=2734`, while the
+  bridge retained its reference 880-pixel timing.  Nevertheless the first
+  `INT_ST1=0x80` occurred after `0x741ad` ticks and one DMA frame at
+  `SAR=FB+0x3200`, bridge depth `0x339`, with the unchanged
+  `VID_PKT_STATUS=0x00020009`.  PHY AND/OR, active-lane count and video-status
+  range also matched the no-LP baseline.  The run then completed its bounded
+  two seconds at moving SAR, zero bridge status and zero DMA faults before
+  quiescing safely; the SD card was only mounted through the enforced
+  read-only path.  This small change is below run-to-run edge variation and
+  neither fixes nor measurably moves the boundary.  One larger `-64` run is
+  the bounded discriminator: it changes the nominal host frame by about
+  0.58 ms while retaining positive line blanking.  An unchanged edge rejects
+  host `VID_HLINE_TIME` as the rate-control cause; a proportional edge shift
+  justifies narrowing the timing rather than guessing visually.
+- A 64-lane-byte-clock shorter host line also leaves the failure edge
+  unchanged.  The 189,472-byte core had SHA-256
+  `2af316a0b96db8ae0b9dee2ca20bda0057f8bc7484ed55a156ca4e8541bb579f`;
+  only `ota_0` was written and independently verified.  Disassembly and UART
+  agreed on `VID_HLINE_TIME=2686`, a 2.3-percent change, but the first
+  assertion remained at `0x740e7` ticks with one DMA frame,
+  `SAR=FB+0x3200`, bridge depth `0x309`, and the same `0x80/0x00020009`
+  host status.  PHY/FIFO ranges were identical to the no-LP baseline and the
+  bounded run quiesced safely with zero DMA or bridge fault.  Host HLINE is
+  therefore rejected as the clock controlling this failure edge.  The next
+  discriminator restores the exact host timing and shortens only the bridge
+  horizontal total from 880 to 860 pixels.  At 40 MHz over 1,344 lines that
+  moves an incoming DPI-frame boundary earlier by about 0.672 ms, or roughly
+  `0x2a00` system-timer ticks.  A corresponding move proves the assertion is
+  keyed by the bridge frame; an unchanged `0x740xx` edge instead assigns it to
+  an internal host period.  The altered bridge timing is diagnostic-only and
+  cannot pass a geometry gate.
+- Shortening only the bridge horizontal total by 20 pixels moves the failure
+  by the predicted incoming-frame interval.  The 189,472-byte core had
+  SHA-256
+  `c353b72f629bdd2bc56a77474ce2cddb606ed060cbcc0d3a0dcb633d47e2361a`;
+  only `ota_0` was written and independently verified.  Disassembly and UART
+  read-back agreed on bridge `H_CFG0=0x0320035c` (860 total pixels) while the
+  host was restored to `VID_HLINE_TIME=2750`.  The first
+  `INT_ST1=0x80` moved from the 880-pixel baseline at `0x740e7` to
+  `0x71737`, a difference of `0x29b0` timer ticks versus the calculated
+  `0x2a00`.  It still occurred after one DMA frame at `SAR=FB+0x3200`, bridge
+  depth `0x33a`, and the same `VID_PKT_STATUS=0x00020009`; PHY activity,
+  active sampling and the bounded safe stop also remained healthy, with zero
+  DMA or bridge faults.  Therefore the first assertion is locked to the
+  incoming bridge DPI-frame boundary, not GDMA completion or the DSI host's
+  programmed line period.  The next UART-only discriminator keeps the bridge
+  frame total and rate unchanged but moves 20 vertical blanking lines from
+  VFP to VBP.  A moved or eliminated assertion isolates the bridge/host
+  active-window phase; an unchanged edge assigns the remaining defect to the
+  frame-boundary transition itself.  Both timing changes are diagnostic-only
+  and cannot pass a geometry gate.
+- The first attempt to move 20 blanking lines from bridge VFP to VBP is not a
+  single-variable result.  The XIP core was 189,248 bytes with
+  SHA-256
+  `436c356d6d2317495cd776e0982175e594f5b230b93c003f3d773453f4adcc5c`;
+  the build exited zero, contained no `error:`, passed the SRAM-residency
+  check and emitted the successful ESP32-P4 image marker.  Disassembly and
+  UART read-back agreed on bridge `V_CFG1=0x00040032` (VSYNC 4, VBP 50),
+  while `V_CFG0=0x05000540` retained 1,280 active of 1,344 total lines.  Only
+  `ota_0` was written; write-time and
+  independent verification passed on D1001 revision v1.3, MAC
+  `e8:f6:0a:e0:46:4c`.  The first assertion remained at `0x744c1` ticks with
+  `INT_ST1=0x80` and `VID_PKT_STATUS=0x00020009`.  The deliberate vertical
+  partition mismatch additionally raised bridge raw status `0x1`, and the
+  tight sample caught DMA just before its first wrap (`frames=0`,
+  `SAR=0x49f6d900`, depth `9`), but it neither prevented nor shifted the host
+  boundary failure.  The bounded two-second run stopped the scanout safely,
+  then completed read-only SD discovery and continued to the already known
+  missing graphical-console alert.  UART review then found that this build
+  had omitted `P4_LANE_MBPS=1000`: it used the 1,500-Mbit/s default and read
+  back host `VID_HLINE_TIME=4125`, not the comparison run's 2,750.  It is
+  therefore retained as a safely executed two-variable diagnostic, not as
+  evidence rejecting active-window phase.  The exact VBP test must be rebuilt
+  at 1,000 Mbit/s before the ESP-IDF source audit can choose the next change.
+- A same-source 1,000-Mbit/s VBP A/B pair shows active-window sensitivity but
+  is not the healthy producer result.  Both XIP
+  cores were 189,248 bytes, passed the no-`error:` build and SRAM-residency
+  gates, and read back host `VID_HLINE_TIME=2750`.  The VBP-50 image had
+  SHA-256
+  `fa8c72c5314ee692de043382a93521940c80b52642925766124ad69200d2187b`;
+  its first `0x80/0x00020009` assertion occurred at `0x748fa` ticks.  The
+  immediately rebuilt VBP-30 control had SHA-256
+  `0ad2435f17edf0010de4ac7806418a5f0abc06c550089429686e302b39dc2dfe`;
+  its assertion occurred at `0x72d14`.  The measured delta is `0x1be6`
+  ticks; moving 20 880-pixel lines at 40 MHz predicts `0x1b80`, only 102
+  ticks less.  Both tight samples caught DMA just before its first wrap, with
+  near-empty bridge FIFO, identical sticky host status, and bridge raw
+  underrun `0x1`; both bounded runs then maintained moving SAR, zero DMA
+  faults, stopped safely after two seconds, and completed read-only SD
+  discovery.  Each image was written only to `ota_0` and independently
+  verified.  This refines the earlier horizontal-total result: that test moved
+  the same next active-start boundary by changing every line's duration.
+  UART review also showed that both builds omitted the established
+  `P4_PSRAM_MHZ=200 P4_CPU_MHZ=360` settings: PSRAM remained at 20 MHz,
+  feed commit caught only `SAR=FB+0x400` rather than the reference-like
+  `FB+0x2200`, and bridge underrun was already asserted.  The proportional
+  edge movement is real for that low-bandwidth underrun path, but it cannot
+  localize the healthy producer's host failure.  A VBP-50 run with the
+  established 200/360-MHz producer is required; only zero bridge RAW status
+  makes its edge comparable to the earlier `0x740xx` feed-first evidence.
+- The healthy 200-MHz-PSRAM/360-MHz-CPU VBP-50 run confirms that the same
+  active-window relationship is not an underrun artefact.  Its 189,472-byte
+  XIP core had SHA-256
+  `ec762d95d8a4ef4af247a94660c29cae104be35a8fa96dd2c2c2ed922fe9e99b`;
+  the build exited zero, contained no `error:`, passed SRAM residency, and
+  disassembly showed host HLINE 2,750 plus bridge
+  `V_CFG1=0x00040032`.  Only `ota_0` was written and independently verified.
+  With PSRAM read back at 200 MHz and CPU requested at 360 MHz, the first
+  `0x80/0x00020009` assertion occurred at `0x76088` ticks, one DMA frame and
+  exactly `SAR=FB+0x3200`.  The corresponding healthy VBP-30/no-LP baseline
+  was `0x7400f`; adding the calculated 20-line interval predicts `0x75b8f`.
+  The remaining `0x4f9` ticks are 80 microseconds against a deliberate
+  440-microsecond displacement.  More importantly, bridge RAW stayed zero,
+  throughput was 69 MB/s, FIFO depth remained live, and DMA faults stayed
+  zero through the bounded safe stop and read-only SD discovery.  Together
+  with the near-exact low-bandwidth A/B delta, this establishes that
+  feed-before-video fails when the next active DPI window begins: the host was
+  enabled after the bridge cycle's initial synchronization edge.  Feed-first
+  is closed as a working-order candidate.  Geometry work must use the
+  reference host-video-before-feed order and treat any attempt that loses its
+  first synchronization edge as invalid even if it defers an error for one
+  frame.
 
 ## Evidence-entry template
 
