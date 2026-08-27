@@ -7914,6 +7914,40 @@ chip in the width this port assumes; it never addressed the hang.
   exact-object audit starts at `esp_lcd_new_panel_dpi()`, concentrating on
   still-combined host-video and bridge field writes before the already tested
   early object lifetime and producer start.
+- Local observation closes the visual part of that exact-object experiment.
+  After the operator returned to D1001, the identical 190,320-byte image with
+  SHA-256
+  `9d6039728f5610b5d83c6f3d2a2cd58d574d76835d7d8afb62b159313f4f4d0b`
+  was reset and observed twice.  The display remained completely black on
+  both runs.  UART continued to report the same frame-zero
+  `INT_ST1=0x80 / VID_PKT_STATUS=0x00020009`; there was therefore no visible
+  geometry or colour result to accept.  Exact v6.0 bus/PHY/DBI construction
+  neither repairs nor improves the 1,000-Mbit/s burst mode.  The next bounded
+  hardware control restores the last accepted visual transport configuration:
+  1,500-Mbit/s lanes, non-burst video, no frame ACK, VMUL=1 and one immutable
+  60-second coordinate image.
+- The 1,500-Mbit/s visual control restored output but reproduced the geometry
+  failure.  All generated kernel objects were deleted before the flag change;
+  the fresh XIP build used `P4_B5_VISUAL_GATE=1`, immutable preload,
+  `P4_SCANOUT_SECS=60`, non-burst/no-ACK, VMUL=1, 200-MHz PSRAM, 360-MHz CPU
+  and `ldscript-xip.lds`.  It exited zero, contained no exact `error:`, passed
+  SRAM residency and emitted the successful ESP32-P4 image marker.  The
+  189,360-byte core had SHA-256
+  `9a2f6ae3b8a1649e56639c69cf4062d53b59c085dfd1b80dc561554570a57713`.
+  D1001 identified as v1.3, MAC `e8:f6:0a:e0:46:4c`; only `ota_0` at
+  `0x20000..0x4efff` was erased/written, and write-time plus independent
+  digest verification passed.  UART proved panel identity `93 65 04`, no
+  host payload error, zero bridge RAW status and zero DMA faults while frames
+  rose from 11 to 2,006.  The start trace again reached `SAR=FB+0x2200` at
+  host-video enable and did not move at feed enable.  The local observer saw
+  the colourful asymmetric rectangles, but still cyclically displaced within
+  each row.  The run then reached `scanout stopped, panel safe` and mounted the
+  121,942-MB SD card through the read-only path.  This control excludes a dead
+  panel or lost power state and reconfirms the constant horizontal phase
+  defect.  Because the working Vellum driver was already measured at the same
+  `FB+0x2200/FIFO=0x3fd` feed-entry state, the common prefill itself is not a
+  sufficient cause; the next change must continue the exact DPI/host lifecycle
+  audit or isolate non-burst line packetisation, not add a framebuffer offset.
 
 ## Evidence-entry template
 
