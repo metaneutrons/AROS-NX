@@ -8047,6 +8047,59 @@ chip in the width this port assumes; it never addressed the hang.
   1,000-Mbit/s burst/ACK bus, PHY and DBI lifecycles.  That full combination
   has not yet been run; the exact-DPI hardware-negative result above used only
   the visible non-burst control and therefore cannot reject it.
+- Full exact-reference combination is the next bounded test.  It restores the
+  working 1,000-Mbit/s burst-with-sync-pulses and frame-ACK host mode and adds,
+  in one artifact, the individually audited exact PHY, post-PLL bus, DBI and
+  DPI creation histories; early DPI and idle-GDMA object lifetimes; separate
+  AUTO-clock-lane then HS-request writes; the uninterrupted full-atomic start;
+  and the reference bridge-underrun enable.  The framebuffer remains the same
+  immutable native coordinate card and no source bias is permitted.  Earlier
+  exact-burst runs predated `P4_B5_EXACT_DPI_CREATE`, while its only hardware
+  run forced the non-burst control, so neither is evidence for or against this
+  combined state.  A clean image would directly join Vellum's accepted x=0
+  mapping; the familiar frame-zero `INT_ST1=0x80 / VID_PKT_STATUS=0x00020009`
+  would prove that exact DPI creation still leaves an AROS-only startup-state
+  delta and reject the combination without interpreting a black panel.
+- Full exact-reference artifact built.  Every generated kernel `.o` and `.d`
+  was deleted before each invocation.  The first fresh compile and link passed
+  SRAM residency but did not create an image because `esptool` was absent from
+  that shell's `PATH`; it was not flashed and is not hardware evidence.  A
+  second fully fresh build supplied the pinned Espressif v6.0.1 `esptool`
+  executable explicitly, exited zero, contained no exact `error:`, passed the
+  same SRAM-residency check and emitted `Successfully created ESP32-P4 image`.
+  Its 190,016-byte core has SHA-256
+  `63014cd8fae64e85d898b1f1303b54a63571da81754251f0891667afde360e0b`.
+  ELF strings independently contain the exact PHY, bus and DBI reports plus
+  `DPI path created before panel reset, including idle GDMA channel`; the
+  immutable 60-second coordinate path and start trace are present.  Target
+  identity, restricted `ota_0` write, UART oracle and direct geometry remain
+  pending.
+- Full exact-reference combination passes the native coordinate observation
+  on D1001.  The target identified as ESP32-P4 v1.3, MAC
+  `e8:f6:0a:e0:46:4c`; only `ota_0` at `0x20000..0x4efff` was erased and
+  written with the 190,016-byte image whose SHA-256 is
+  `63014cd8fae64e85d898b1f1303b54a63571da81754251f0891667afde360e0b`,
+  and write-time plus independent digest verification passed.  UART proved
+  the exact PHY, bus, DBI and DPI creation paths, panel identity `93 65 04`,
+  the intended `FB+0x1500` atomic start, zero bridge RAW status, zero DMA
+  faults and sustained 69 MB/s scanout while completed frames advanced from
+  11 to 2,006.  The PHY remained in the frame-ACK turnaround state
+  `0x15bb`, and host `INT_ST1=0x80` asserted from the first frame even though
+  the panel was visibly correct; that bit is therefore a diagnostic delta
+  from Vellum, not a valid black-frame oracle in this configuration.  Direct
+  observation reported `rechtecke passen jetzt`: the immutable asymmetric
+  native card has the intended two-column geometry without the former cyclic
+  horizontal displacement.  The run reached `scanout stopped, panel safe`,
+  then mounted the 121,942-MB SD card through the read-only path and reported
+  it write protected; the later missing-console alert remains outside this
+  bounded scanout gate.  This is the first AROS configuration to preserve
+  native x=0 like Vellum and closes the horizontal coordinate blocker.  It
+  does not yet close all of B5: the same accepted transport must run the
+  explicit solid/corner/one-pixel phases, the ten-cold/ten-warm boot matrix
+  and the DMA-bandwidth decision before B6 begins.  The next implementation
+  step is to make this proven reference combination the maintained profile,
+  remove obsolete non-burst defaults and rerun the remaining B5 visual gate
+  without a framebuffer offset or geometry compensation.
 
 ## Evidence-entry template
 
