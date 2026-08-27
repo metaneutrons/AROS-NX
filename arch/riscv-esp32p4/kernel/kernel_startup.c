@@ -5273,7 +5273,11 @@ static void krnP4PanelProbe(void)
 #if defined(P4_B5_STATIC_PRELOAD)
                 /* Write the complete asymmetric image before the pixel path
                    starts, then leave it unchanged for the whole run. */
+#ifdef P4_B5_PHASE_CALIBRATION
+                krnP4ScanoutPhaseCalibration();
+#else
                 krnP4ScanoutCoordinatePattern();
+#endif
 #elif defined(P4_B5_LIVE_UPDATE_GATE)
                 /* Begin from the already observed static coordinate frame.
                    The scheduled live writes then distinguish a dirty-region

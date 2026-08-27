@@ -247,6 +247,7 @@ struct P4HostState
 void krnP4HostState(struct P4HostState *out);
 void krnP4ScanoutFill(unsigned long rgb);
 void krnP4ScanoutCoordinatePattern(void);
+void krnP4ScanoutPhaseCalibration(void);
 void krnP4ScanoutTestCard(void);
 void krnP4ScanoutCross(void);
 void krnP4ScanoutGrid(void);
