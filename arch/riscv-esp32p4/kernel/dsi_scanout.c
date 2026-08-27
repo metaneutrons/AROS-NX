@@ -37,8 +37,25 @@
 #include "psram.h"
 
 #if defined(P4_B5_ROW_PHASE_COMPENSATION) \
-    && P4_B5_ROW_PHASE_COMPENSATION >= P4_PANEL_H_RES
-#error P4_B5_ROW_PHASE_COMPENSATION must be smaller than the panel width
+    && defined(P4_B6_ROW_PHASE_WORKAROUND)
+#error select either the B5 diagnostic compensation or the B6 workaround
+#elif defined(P4_B6_ROW_PHASE_WORKAROUND)
+#define P4_SCANOUT_ROW_PHASE_WORKAROUND P4_B6_ROW_PHASE_WORKAROUND
+#elif defined(P4_B5_ROW_PHASE_COMPENSATION)
+#define P4_SCANOUT_ROW_PHASE_WORKAROUND P4_B5_ROW_PHASE_COMPENSATION
+#endif
+
+#if defined(P4_SCANOUT_ROW_PHASE_WORKAROUND) \
+    && P4_SCANOUT_ROW_PHASE_WORKAROUND >= P4_PANEL_H_RES
+#error scanout row-phase workaround must be smaller than the panel width
+#endif
+
+#ifndef P4_B6_SWAP_FRAMES
+#define P4_B6_SWAP_FRAMES 101
+#endif
+
+#if defined(P4_B6_DOUBLE_BUFFER) && P4_B6_SWAP_FRAMES < 1
+#error P4_B6_SWAP_FRAMES must be at least one frame
 #endif
 
 #ifndef P4_B5_PHASE_CALIBRATION_BASE
@@ -110,6 +127,8 @@ static unsigned char scanout_lli[P4_DMAC_LLI_SIZE]
 static unsigned long scanout_lli_ctl_hi;
 static volatile unsigned long scanout_dma_frames;
 static volatile unsigned long scanout_dma_faults;
+static volatile unsigned long scanout_active_fb;
+static volatile unsigned long scanout_dma_swaps;
 
 static inline void lli_wr(unsigned long off, unsigned long v)
 {
@@ -216,20 +235,20 @@ static inline void px_raw(volatile unsigned char *at, unsigned long rgb)
 
 static inline void px(volatile unsigned char *at, unsigned long rgb)
 {
-#ifdef P4_B5_ROW_PHASE_COMPENSATION
+#ifdef P4_SCANOUT_ROW_PHASE_WORKAROUND
     /*
-     * Diagnostic mapping proof only.  Direct observation says physical X
-     * currently consumes framebuffer (X + phase) modulo 800.  Store each
-     * requested test pixel at that source coordinate without touching DMA,
-     * bridge or DSI state; correctly placed asymmetric patterns accept a
-     * per-row phase, while any remaining fold/offset rejects it.
+     * Explicit compatibility workaround.  Direct observation says physical X
+     * currently consumes framebuffer (X + phase) modulo 800.  B5 uses this as
+     * a diagnostic proof; B6 may use the separately named build switch while
+     * B5R owns the uncompensated root fix.  Keeping the mapping here makes it
+     * independently removable without changing the logical rotation API.
      */
     unsigned long row_bytes = P4_PANEL_H_RES * P4_FB_BYTES_PER_PIXEL;
     unsigned long offset = (unsigned long)at - P4_FB_BASE;
     unsigned long row_offset = offset - offset % row_bytes;
     unsigned long x = (offset % row_bytes) / P4_FB_BYTES_PER_PIXEL;
 
-    x = (x + P4_B5_ROW_PHASE_COMPENSATION) % P4_PANEL_H_RES;
+    x = (x + P4_SCANOUT_ROW_PHASE_WORKAROUND) % P4_PANEL_H_RES;
     at = (volatile unsigned char *)(P4_FB_BASE + row_offset
                                    + x * P4_FB_BYTES_PER_PIXEL);
 #endif
@@ -576,6 +595,8 @@ void krnP4ScanoutDmaUp(void)
 
     scanout_dma_frames = 0;
     scanout_dma_faults = 0;
+    scanout_active_fb = P4_FB_BASE;
+    scanout_dma_swaps = 0;
 #ifndef P4_B5_EARLY_GDMA_CREATE
     ch_wr(P4_DMAC_CH_INTCLEAR0, 0xFFFFFFFFUL);
 #ifndef P4_B5_DMA_RELOAD
@@ -611,6 +632,15 @@ void krnP4ScanoutDmaInterrupt(void)
     if ((status & P4_DMAC_IS_DMA_DONE) && !faults)
     {
         scanout_dma_frames++;
+#ifdef P4_B6_DOUBLE_BUFFER
+        if (scanout_dma_frames % P4_B6_SWAP_FRAMES == 0)
+        {
+            scanout_active_fb = scanout_active_fb == P4_FB_BASE
+                              ? P4_FB_BACK_BASE : P4_FB_BASE;
+            scanout_dma_swaps++;
+        }
+        lli_wr(P4_DMAC_LLI_SAR_LO, scanout_active_fb);
+#endif
         lli_wr(P4_DMAC_LLI_CTL_HI, scanout_lli_ctl_hi);
         ch_wr(P4_DMAC_CH_LLP,
               (unsigned long)scanout_lli | P4_DMAC_LLP_LMS_MEMORY);
@@ -688,6 +718,8 @@ void krnP4ScanoutState(struct P4ScanoutState *out)
                         & P4_DSI_BRG_BUF_DEPTH_MASK;
     out->dma_frames   = scanout_dma_frames;
     out->dma_faults   = scanout_dma_faults;
+    out->active_fb    = scanout_active_fb;
+    out->dma_swaps    = scanout_dma_swaps;
 }
 
 /*
@@ -922,6 +954,103 @@ void krnP4ScanoutCoordinatePattern(void)
         }
     }
 }
+
+#ifdef P4_B6_DOUBLE_BUFFER
+/*
+ * B6's public surface is 1280x800 landscape; the DMA surface remains the
+ * panel-native 800x1280 portrait buffer.  This is the same independently
+ * derived transform used by the working product firmware:
+ *
+ *     physical_index = (logical_width - 1 - x) * 800 + y
+ *
+ * It is a 90-degree clockwise rotation from logical to physical.  The row
+ * workaround, when selected, is applied only after that rotation by px().
+ */
+static inline void b6_logical_px(unsigned long fb, unsigned long x,
+                                 unsigned long y, unsigned long rgb)
+{
+    unsigned long physical_index =
+        (P4_PANEL_V_RES - 1 - x) * P4_PANEL_H_RES + y;
+
+    px((volatile unsigned char *)(fb
+       + physical_index * P4_FB_BYTES_PER_PIXEL), rgb);
+}
+
+static void b6_logical_fill(unsigned long fb, unsigned long rgb)
+{
+    unsigned long y, x;
+
+    for (y = 0; y < P4_PANEL_H_RES; y++)
+        for (x = 0; x < P4_PANEL_V_RES; x++)
+            b6_logical_px(fb, x, y, rgb);
+}
+
+static void b6_logical_rect(unsigned long fb, unsigned long x,
+                            unsigned long y, unsigned long w,
+                            unsigned long h, unsigned long rgb)
+{
+    unsigned long yy, xx;
+
+    if (x >= P4_PANEL_V_RES || y >= P4_PANEL_H_RES)
+        return;
+    if (w > P4_PANEL_V_RES - x)
+        w = P4_PANEL_V_RES - x;
+    if (h > P4_PANEL_H_RES - y)
+        h = P4_PANEL_H_RES - y;
+
+    for (yy = y; yy < y + h; yy++)
+        for (xx = x; xx < x + w; xx++)
+            b6_logical_px(fb, xx, yy, rgb);
+}
+
+/*
+ * Two immutable frames for the first B6 hardware gate.
+ *
+ * Front: four large logical landscape quadrants and a four-pixel black cross.
+ * Back: a dark field with differently sized coloured blocks in all four
+ * logical corners plus an asymmetric white/cyan centre marker.  The ISR swaps
+ * their descriptor source every P4_B6_SWAP_FRAMES completions.  Since neither
+ * live surface is modified, any split image is a handoff defect rather than a
+ * cache/coherency ambiguity.
+ */
+void krnP4ScanoutB6Frames(void)
+{
+    unsigned long y, x;
+
+    for (y = 0; y < P4_PANEL_H_RES; y++)
+    {
+        for (x = 0; x < P4_PANEL_V_RES; x++)
+        {
+            unsigned long rgb;
+
+            if (x >= P4_PANEL_V_RES / 2 - 2
+                && x < P4_PANEL_V_RES / 2 + 2)
+                rgb = 0x000000UL;
+            else if (y >= P4_PANEL_H_RES / 2 - 2
+                     && y < P4_PANEL_H_RES / 2 + 2)
+                rgb = 0x000000UL;
+            else if (y < P4_PANEL_H_RES / 2)
+                rgb = x < P4_PANEL_V_RES / 2
+                    ? 0xFF0000UL : 0x00FF00UL;
+            else
+                rgb = x < P4_PANEL_V_RES / 2
+                    ? 0x0000FFUL : 0xFFFF00UL;
+            b6_logical_px(P4_FB_BASE, x, y, rgb);
+        }
+    }
+
+    b6_logical_fill(P4_FB_BACK_BASE, 0x080808UL);
+    b6_logical_rect(P4_FB_BACK_BASE, 0, 0, 149, 73, 0xFF0000UL);
+    b6_logical_rect(P4_FB_BACK_BASE, P4_PANEL_V_RES - 91, 0,
+                    91, 127, 0x00FF00UL);
+    b6_logical_rect(P4_FB_BACK_BASE, 0, P4_PANEL_H_RES - 113,
+                    67, 113, 0x0000FFUL);
+    b6_logical_rect(P4_FB_BACK_BASE, P4_PANEL_V_RES - 181,
+                    P4_PANEL_H_RES - 47, 181, 47, 0xFFFF00UL);
+    b6_logical_rect(P4_FB_BACK_BASE, 449, 383, 383, 31, 0xFFFFFFUL);
+    b6_logical_rect(P4_FB_BACK_BASE, 623, 277, 29, 247, 0x00FFFFUL);
+}
+#endif
 
 /*
  * Immutable raw-source phase ruler.

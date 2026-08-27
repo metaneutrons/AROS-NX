@@ -200,6 +200,7 @@ are `derived` from a diff of the two header sets and are cheap to re-check.
 | Reference buffer count | 3 | `reference` | `V-lvgl:224`, triple partial for tear avoidance |
 | Reference total | 6,144,000 bytes plus a 2 MB decode buffer | `derived` | `V-lvgl:242` |
 | AROS start | exactly one buffer | `verified` | B5; buffer count is still a B6 decision with a measured reason |
+| B6 handoff gate | two complete buffers, 4,096,000 bytes | `hardware verified` | both are reserved above Exec's PSRAM ceiling; 2,006 frames and 19 ISR source switches completed without a transport fault, and direct observation confirmed correctly placed complete alternating images with no visible tearing |
 
 Descriptors, ISR data and controller state stay in internal SRAM.  CPU writes
 are not coherent with display DMA, so each dirty region is cleaned
@@ -231,6 +232,25 @@ must reach the correct coordinates across the reset matrix before the +525
 write mapping can be removed.  Candidate causes include bridge/FIFO line-start
 state, GDMA descriptor or re-arm phase, and host/video enable ordering; none is
 yet established as the cause, so 525 must not be promoted to a board fact.
+
+### B6 ownership boundary and buffer count
+
+Revision-one of the ESP32-P4 DSI bridge has no VSYNC interrupt.  The B5
+one-item GDMA path does have a stronger event for framebuffer ownership: its
+DMA-done interrupt fires after the bridge has requested one complete native
+frame, clears the item's VALID bit and is the point where the reference driver
+re-arms the next item.  B6 therefore uses that completion as its frame handoff,
+not a timer estimate or a write into the surface currently being scanned.
+
+The initial AROS policy is two complete buffers.  One is the immutable active
+source and one is the prepared next source; the ISR changes only the
+descriptor's source address before re-arming.  Triple buffering would reserve
+another 2,048,000 bytes without solving a problem this gate has observed, so
+it is not the default.  The first D1001 run completed 2,006 frames and 19 exact
+source switches with zero DMA, bridge or host faults.  A direct repeat on
+2026-08-28 confirmed correctly placed complete alternating images with no
+visible tearing.  This verifies the immutable-source handoff instrument; it
+does not yet verify bounded cache-clean dirty updates from a graphics producer.
 
 The bandwidth decision is also now measured rather than assumed.  One native
 frame is 2,048,000 bytes and Set A is 33.82 Hz, so the handshake-paced display

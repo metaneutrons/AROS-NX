@@ -197,6 +197,8 @@ struct P4ScanoutState
     unsigned long brg_depth;    /* the bridge's fifo occupancy */
     unsigned long dma_frames;   /* complete frames re-armed by the ISR */
     unsigned long dma_faults;   /* non-completion status latched by the ISR */
+    unsigned long active_fb;    /* descriptor source selected for next frame */
+    unsigned long dma_swaps;    /* frame-boundary source changes */
 };
 
 /*
@@ -247,6 +249,9 @@ struct P4HostState
 void krnP4HostState(struct P4HostState *out);
 void krnP4ScanoutFill(unsigned long rgb);
 void krnP4ScanoutCoordinatePattern(void);
+#ifdef P4_B6_DOUBLE_BUFFER
+void krnP4ScanoutB6Frames(void);
+#endif
 void krnP4ScanoutPhaseCalibration(void);
 void krnP4ScanoutTestCard(void);
 void krnP4ScanoutCross(void);

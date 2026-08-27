@@ -129,7 +129,7 @@ gate: compensated output is not the native display contract.
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
 | B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel through a documented workaround.**  `P4_PANEL_VMUL=1` shows the complete regular grid with no payload error.  Colour, checker, dirty rectangles, sustained concurrent stress and ten EN warm resets pass.  A raw-source ruler measures a constant cyclic displacement of exactly 525 pixels; the explicitly named +525 write-mapping workaround makes quadrants, corner marks and isolated one-pixel lines correct, but neither fixes nor explains the native mapping.  The measured 71 MB/s matches the 69.3 MB/s imposed by timing and selects dirty-region writes over a full-frame CPU pass.  A forced-peripheral-reset gate may substitute for the inaccessible ten physical cold cycles only to unblock development; it is not cold-boot evidence.  The optional post-video DCS read remains excluded from acceptance |
-| B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5; may carry the explicitly named +525 compatibility mapping temporarily |
+| B6 | VSYNC handoff, buffering decision and landscape rotation | `hardware partial` | Two complete native buffers are reserved outside Exec and contain immutable logical `1280 x 800` test frames rotated 90 degrees clockwise.  The GDMA one-frame completion is the ownership boundary because this bridge revision has no VSYNC interrupt.  The D1001 completed 2,006 frames with 19 exact source switches and zero DMA, bridge or host faults before safe stop; direct observation confirmed correctly placed complete alternating images with no visible tearing.  The +525 compatibility mapping stays explicitly named.  Actual bounded dirty-region updates and cache cleaning remain open |
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -565,6 +565,14 @@ named +525 compatibility mapping.  Keep it independently switchable and do not
 make it part of the public bitmap contract; B5R must be able to remove it
 without changing logical graphics clients.
 
+The first implementation uses two full native buffers.  Revision-one of the
+bridge exposes no VSYNC interrupt, but the proven one-item GDMA completion
+means that the bridge has consumed exactly one active frame.  Its ISR is the
+ownership boundary: it selects the already prepared next source in the
+descriptor and only then restores VALID and re-arms the channel.  Both buffers
+are reserved above Exec's PSRAM ceiling.  A third buffer is not justified until
+the HIDD presents a measured producer backlog that two cannot absorb.
+
 Acceptance gate:
 
 - native single-buffer behavior still passes B5;
@@ -572,6 +580,14 @@ Acceptance gate:
 - all four logical corners and asymmetric test labels land in the correct
   physical positions;
 - no tearing, underrun or out-of-bounds write occurs under sustained updates.
+
+The first hardware run on 2026-08-27 passes the objective handoff half: 2,006
+frames, 19 front/back source changes, zero DMA faults, zero bridge raw status
+and zero host `int1`, followed by bounded safe stop.  Direct observation of the
+unchanged artifact on 2026-08-28 confirmed correctly placed complete
+alternating images with no visible tearing.  The remaining B6 gate is actual
+dirty-region production, bounded cache cleaning and sustained updates rather
+than immutable prepared surfaces.
 
 ### B5R - root-fix native scanout row phase
 
@@ -8626,6 +8642,68 @@ chip in the width this port assumes; it never addressed the hang.
   +525 path is removed from diagnostics and B6/HIDD.  The port-local working
   rules now require every future workaround and test-gate substitution to be
   named, bounded and paired with an uncompensated roadmap gate.
+
+### 2026-08-28 - B6 frame-boundary double buffering and landscape transform visually accepted
+
+- B6 started with a two-buffer frame-boundary handoff gate on the identified
+  D1001 v1.3, MAC `e8:f6:0a:e0:46:4c`.  Source was a dirty tree based on
+  `38d4582638`.  All generated kernel objects and dependencies were removed
+  before building with `P4_HEADLESS_BOOT=1`, `P4_PSRAM_MHZ=200`,
+  `P4_CPU_MHZ=360`, `P4_B6_HANDOFF_GATE=1` and
+  `P4_LDSCRIPT=ldscript-xip.lds`; that gate selects 40-MHz RGB565 non-burst
+  scanout, two complete native buffers, the explicitly named
+  `P4_B6_ROW_PHASE_WORKAROUND=525` and a source swap every 101 completed
+  frames.  The first link deliberately attempted without the XIP linker
+  script failed the documented internal-SRAM ceiling and generated no image.
+  The XIP link passed SRAM residency; its first image step then found no
+  `esptool` in PATH, so the Espressif v6.0.1 virtual-environment path was added
+  and the unchanged core was packaged successfully.
+- The first packaged B6 image was 192,528 bytes with SHA-256
+  `9ca6ed1df3077550b2c65f5b6b1dcbfb1dbaf5e188ae9abc996932291141c5c1`.
+  Its complete zero-fault transport run exposed a contract defect after safe
+  stop: Exec published external memory through `0x4a000000`, so the two
+  currently idle test surfaces were not permanently excluded from future
+  allocations.  That run is rejected as B6 ownership evidence rather than
+  accepted because no allocation happened to reach them.  The common package
+  ceiling and PSRAM publisher now cap memory at the first reserved surface
+  whenever B6 double buffering is selected.
+- A second complete clean-object build produced the accepted 192,592-byte
+  image with SHA-256
+  `c94ed3cb46c0c9109a792980438744a2be1fdae8a86f84391a5b41a1a72372f2`.
+  Object strings contain the three `[b6]` gate markers, and the linked ELF
+  contains `krnP4ScanoutB6Frames`, `scanout_active_fb` and
+  `scanout_dma_swaps`.  Only `ota_0` at `0x20000` was written; esptool's
+  write-time hash and an independent `verify-flash` digest both matched.  No
+  BSP, flash volume or SD sector was written.
+- Both 2,048,000-byte surfaces were kept outside Exec at `0x49c18000` and
+  `0x49e0c000`.  They were filled before scanout: one with four large logical
+  landscape quadrants, the other with four differently sized logical corner
+  marks and an asymmetric centre mark.  The reference transform
+  `(1279 - logical_x) * 800 + logical_y` rotates each logical `1280 x 800`
+  coordinate 90 degrees clockwise before the explicit +525 compatibility
+  mapping is applied.  Neither live buffer is modified afterwards.
+- The accepted artifact's captured 60-second D1001 run contains sequential
+  `t0..t59`, reaches
+  exactly 2,006 frames and records 19 changes of `active` between
+  `0x49c18000` and `0x49e0c000`, at the expected 101-frame cadence.  Every
+  sample has a moving SAR, bridge raw status zero, host `int1` zero and DMA
+  faults zero.  The run ends with `handoff gate stopped, panel safe`; the SD
+  card is subsequently discovered through the existing read-only path.  This
+  hardware-verifies the GDMA-completion ownership mechanism and objective
+  double-buffer transport.  After scanout, Exec reports `External Memory`
+  ending exactly at `0x49c18000`,
+  proving that neither reserved surface can be allocated; SD discovery and
+  boot remain on the existing read-only path.
+- The unchanged artifact was reset again on 2026-08-28 for the direct observer
+  gate.  Its independent technical capture again reached exactly 2,006 frames
+  and 19 source changes, with every bridge raw status, host `int1` and DMA
+  fault sample zero before bounded safe stop.  The D1001 observer reported
+  that everything looked correct: the two landscape-transformed images
+  alternated as complete frames with correct placement and no visible tearing.
+  This accepts the rotation and frame-boundary handoff instrument.  B6 remains
+  `hardware partial` because both sources were prepared once and immutable;
+  the next gate must produce bounded dirty regions, clean exactly those cache
+  ranges and sustain updates without tearing, underrun or out-of-bounds writes.
 
 ## Evidence-entry template
 

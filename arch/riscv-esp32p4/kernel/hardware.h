@@ -990,6 +990,16 @@
                                  * P4_FB_BYTES_PER_PIXEL)
 #define P4_FB_WORDS64           (P4_FB_BYTES / 8)
 
+/* B5 owns one immutable DMA surface.  B6's handoff gate owns two complete
+ * surfaces so the ISR can select the next source only at DMA frame-done;
+ * neither surface is ever part of Exec's allocatable PSRAM. */
+#ifdef P4_B6_DOUBLE_BUFFER
+#define P4_FB_BUFFER_COUNT      2UL
+#else
+#define P4_FB_BUFFER_COUNT      1UL
+#endif
+#define P4_FB_RESERVE_BYTES     (P4_FB_BYTES * P4_FB_BUFFER_COUNT)
+
 /*
  * Where the frame lives: the top of the PSRAM window, not the base.
  *
@@ -998,7 +1008,11 @@
  * later and the DMA then scans out module code.  Reserving the top keeps the
  * two apart until there is an allocator to ask.
  */
-#define P4_FB_BASE              (P4_PSRAM_WINDOW_BASE + 0x02000000UL - P4_FB_BYTES)
+#define P4_FB_BASE              (P4_PSRAM_WINDOW_BASE + 0x02000000UL \
+                                 - P4_FB_RESERVE_BYTES)
+#ifdef P4_B6_DOUBLE_BUFFER
+#define P4_FB_BACK_BASE         (P4_FB_BASE + P4_FB_BYTES)
+#endif
 #define   P4_DSI_BRG_UNDERRUN   (1UL << 0)
 #define P4_DSI_BRG_DMA_FLOW_CTL 0x088
 #define   P4_DSI_BRG_FLOW_BRIDGE (1UL << 0)
