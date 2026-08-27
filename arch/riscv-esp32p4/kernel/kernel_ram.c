@@ -84,8 +84,22 @@ void krnRAMInit(void)
          * which is nothing yet, and is the module loader's problem when
          * it arrives.
          */
-        krnCreateMemHeader("Data Memory", -10, (APTR)high_base, high_size,
-                           MEMF_FAST | MEMF_PUBLIC | MEMF_KICK | MEMF_LOCAL);
+        /*
+         * There is no separate Amiga-style chip bus on the P4, but classic
+         * graphics.library APIs still request MEMF_CHIP for CPU-built
+         * bitplane templates.  In particular Text() uses AllocRaster(),
+         * which otherwise fails silently before it reaches a chunky HIDD.
+         *
+         * The data-only internal SRAM bank is the conservative compatibility
+         * pool: it is directly reachable by the CPU and on-chip DMA and
+         * cannot accidentally consume the smaller code-capable bank.  Its
+         * priority stays below the external-memory pool (-20), preserving it
+         * for explicit MEMF_CHIP requests while ordinary allocations use
+         * PSRAM first and can still fall back here if PSRAM is exhausted.
+         */
+        krnCreateMemHeader("Data Memory", -30, (APTR)high_base, high_size,
+                           MEMF_CHIP | MEMF_FAST | MEMF_PUBLIC |
+                           MEMF_KICK | MEMF_LOCAL);
     }
 }
 
