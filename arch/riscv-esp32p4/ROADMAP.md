@@ -8021,6 +8021,19 @@ chip in the width this port assumes; it never addressed the hang.
   Vellum quadrant card would assign the defect to AROS's exact-burst startup;
   the same 550-pixel wrap under Vellum would instead invalidate that premise
   and redirect the audit to panel/vendor coordinate setup.
+- Vellum coordinate control completed its technical D1001 gate.  USB returned
+  as `/dev/cu.usbmodem101`; the target again identified as ESP32-P4 v1.3, MAC
+  `e8:f6:0a:e0:46:4c`, and the artifact hash was rechecked before writing.
+  Only `ota_0` from `0x20000` was written; sector-rounded erase ended at
+  `0x265fff`, the 2,382,432-byte image ended at `0x265a5f`, and both esptool's
+  write-time hash plus a separate `verify-flash` digest matched.  Boot found
+  the 32-MB AP PSRAM at 200 MHz, restored the normal 360-MHz CPU setting, read
+  JD9365 identity `93 65 04` and initialized the working 800x1280 RGB565,
+  40-MHz triple-framebuffer path.  The unique control marker appeared at
+  3.85 seconds; the frame remained undisturbed until the programmed hold ended
+  at 63.95 seconds, after which ordinary Vellum startup continued.  There was
+  no reboot or panel error in that interval.  Direct visual classification of
+  the quadrants is the sole pending result; the source trees remain clean.
 
 ## Evidence-entry template
 
