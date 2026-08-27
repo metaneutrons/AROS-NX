@@ -5274,6 +5274,11 @@ static void krnP4PanelProbe(void)
                 /* Write the complete asymmetric image before the pixel path
                    starts, then leave it unchanged for the whole run. */
                 krnP4ScanoutCoordinatePattern();
+#elif defined(P4_B5_LIVE_UPDATE_GATE)
+                /* Begin from the already observed static coordinate frame.
+                   The scheduled live writes then distinguish a dirty-region
+                   handoff from a full-frame bandwidth interruption. */
+                krnP4ScanoutCoordinatePattern();
 #elif defined(P4_SCANOUT_COHERENCY)
                 krnP4ScanoutFill(0x000000);
 #elif defined(P4_SCANOUT_BANDS)

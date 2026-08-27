@@ -8074,8 +8074,8 @@ chip in the width this port assumes; it never addressed the hang.
   immutable 60-second coordinate path and start trace are present.  Target
   identity, restricted `ota_0` write, UART oracle and direct geometry remain
   pending.
-- Full exact-reference combination passes the native coordinate observation
-  on D1001.  The target identified as ESP32-P4 v1.3, MAC
+- Correction: the full exact-reference AROS combination did not pass a native
+  coordinate observation.  The target identified as ESP32-P4 v1.3, MAC
   `e8:f6:0a:e0:46:4c`; only `ota_0` at `0x20000..0x4efff` was erased and
   written with the 190,016-byte image whose SHA-256 is
   `63014cd8fae64e85d898b1f1303b54a63571da81754251f0891667afde360e0b`,
@@ -8084,22 +8084,115 @@ chip in the width this port assumes; it never addressed the hang.
   the intended `FB+0x1500` atomic start, zero bridge RAW status, zero DMA
   faults and sustained 69 MB/s scanout while completed frames advanced from
   11 to 2,006.  The PHY remained in the frame-ACK turnaround state
-  `0x15bb`, and host `INT_ST1=0x80` asserted from the first frame even though
-  the panel was visibly correct; that bit is therefore a diagnostic delta
-  from Vellum, not a valid black-frame oracle in this configuration.  Direct
-  observation reported `rechtecke passen jetzt`: the immutable asymmetric
-  native card has the intended two-column geometry without the former cyclic
-  horizontal displacement.  The run reached `scanout stopped, panel safe`,
+  `0x15bb`, and host `INT_ST1=0x80` asserted from the first frame.  The direct
+  quote `rechtecke passen jetzt` was copied here from the immediately
+  preceding Vellum control and was not a separate AROS observation.  That was
+  an evidence-attribution error: the operator's later repeated AROS runs were
+  completely black, including an artifact that preloaded the same coordinate
+  card before DMA start.  The run reached `scanout stopped, panel safe`,
   then mounted the 121,942-MB SD card through the read-only path and reported
   it write protected; the later missing-console alert remains outside this
-  bounded scanout gate.  This is the first AROS configuration to preserve
-  native x=0 like Vellum and closes the horizontal coordinate blocker.  It
-  does not yet close all of B5: the same accepted transport must run the
-  explicit solid/corner/one-pixel phases, the ten-cold/ten-warm boot matrix
-  and the DMA-bandwidth decision before B6 begins.  The next implementation
-  step is to make this proven reference combination the maintained profile,
-  remove obsolete non-burst defaults and rerun the remaining B5 visual gate
-  without a framebuffer offset or geometry compensation.
+  bounded scanout gate.  The exact combination is therefore hardware-negative
+  and does not close the horizontal coordinate blocker.  The correction is
+  intentionally additive after the erroneous committed claim so the audit
+  trail shows both the mistake and its withdrawal.
+- The rejected combination is reproducible as
+  `P4_B5_FULL_EXACT_TRIAL=1`.  The trial expands in the central hardware
+  header to 1,000-Mbit/s lanes, burst video, frame ACK, exact PHY/bus/DBI/DPI
+  creation, early DPI and idle-GDMA lifetimes, split AUTO/HS clock writes,
+  full-atomic start and reference bridge-underrun enable.  It explicitly
+  removes the visual harness's historical non-burst define and rejects a
+  conflicting lane-rate override.  The individual switches remain available
+  for diagnosis until B5 closes; this grouping records a failed trial and is
+  neither an accepted transport nor a claim that every grouped mechanism is
+  independently necessary.
+- The full-exact visual-gate artifact is built and target-identified.
+  Every generated kernel object/dependency file was deleted before invoking
+  the then-named `P4_B5_REFERENCE_PROFILE=1` (now corrected to
+  `P4_B5_FULL_EXACT_TRIAL=1`) with `P4_B5_VISUAL_GATE=1` and
+  `P4_SCANOUT_SECS=60`
+  with 200-MHz PSRAM, 360-MHz CPU, `ldscript-xip.lds` and the pinned Espressif
+  v6.0.1 `esptool`.  The fresh build exited zero, its complete captured output
+  contained no exact `error:`, SRAM residency passed and image generation
+  ended with `Successfully created ESP32-P4 image`.  The 190,800-byte core has
+  SHA-256
+  `7ec35c0d1807904ab82508cf7d9b4e9cdbafd1f5b2742b4e86a5e4aaf2bac7ee`;
+  ELF strings contain all three exact PHY/bus/DBI reports, the early DPI plus
+  idle-GDMA marker and the bounded panel-safe stop.  D1001 enumerates as
+  `/dev/cu.usbmodem101` and independently identifies as ESP32-P4 v1.3, MAC
+  `e8:f6:0a:e0:46:4c`.  No flash write has yet occurred; restricted `ota_0`
+  write, digest verification, UART gate and direct phase observation remain.
+- The grouped full-exact trial completed its technical visual-gate run.  Only
+  `ota_0` at `0x20000..0x4efff` was erased and written; esptool's write-time
+  hash and an independent `verify-flash` digest both matched the 190,800-byte
+  artifact.  The 60-second run identified panel `93 65 04`, selected
+  1,000-Mbit/s lanes, logged every grouped exact-lifecycle marker and started
+  DMA/video/feed at the same `FB+0x1480`.  The scheduled phases advanced from
+  1 through 10 at their documented seconds.  Through the final sample,
+  bridge RAW remained zero, DMA faults remained zero, the source and FIFO
+  moved, measured scanout was 69 MB/s and completed frames advanced from 5 to
+  2,079.  Host `INT_ST1=0x80` and PHY turnaround `0x15bb` again coexisted with
+  active internal counters but a black panel; they remain part of the failure
+  signature rather than being reclassified as non-fatal.
+  Teardown reached `scanout stopped, panel safe`; SD then enumerated as
+  121,942 MB and FAT propagated `TD_PROTSTATUS=-1` as write protection.  The
+  later missing-console alert is the known post-gate state.  Direct
+  classification of solids, checker, coordinate card, isolated corners,
+  isolated one-pixel lines and the combined image is still required before
+  the visual result was recorded.
+- Direct observation rejects that dynamic visual-gate run.  Three identical
+  resets were observed locally; the display stayed completely black through
+  all ten scheduled phases even though each phase was logged as written back,
+  frame completion reached 2,079, scanout stayed at 69 MB/s and bridge/DMA
+  fault status remained zero.  At that point the apparent difference from an
+  immutable AROS pass still looked like the first live full-frame fill at
+  `t0`; the next discriminator below invalidated that premise.  The general
+  B5 visual gate remains open.
+- `P4_B5_LIVE_UPDATE_GATE=1` is the next bounded discriminator.  It preloads
+  the accepted asymmetric coordinate card before scanout, holds it unchanged
+  for 15 seconds, then writes one unaligned 127x73 magenta rectangle and
+  cleans the cache.  Only after another 15 seconds does it replace the whole
+  frame with green, followed by blue at 45 seconds.  If the coordinate card
+  appears and survives the small rectangle but vanishes at the full-frame
+  fill, live bulk-write contention/frame handoff is isolated; disappearance
+  at the small rectangle instead assigns the blocker to any unsynchronised
+  write of the active burst buffer.  A black initial card would invalidate the
+  presumed immutable AROS pass and return the audit to startup reproducibility.
+- The live-update discriminator built cleanly after deleting every generated
+  kernel object/dependency file.  The fresh 200/360-MHz XIP build used only
+  the then-named `P4_B5_REFERENCE_PROFILE=1` (now
+  `P4_B5_FULL_EXACT_TRIAL=1`), `P4_B5_LIVE_UPDATE_GATE=1` and the bounded
+  60-second run, exited zero, contained no exact `error:`, passed SRAM
+  residency and emitted the successful ESP32-P4 image marker.  Its
+  190,544-byte core has SHA-256
+  `9234e13191f49c7f1a4f3a1c280015001cee98bdf497c57973b7f9f3fff46a77`;
+  ELF strings retain the exact PHY/bus/DBI, early DPI/GDMA and safe-stop
+  markers.  Restricted flash write, independent digest verification, UART
+  run and the three direct observations remain pending.
+- The live-update discriminator also remained completely black, which
+  invalidates the presumed immutable AROS pass rather than isolating cache or
+  handoff.  Only `ota_0` at `0x20000..0x4efff` was written, and both write-time
+  and independent verification matched the 190,544-byte artifact.  The run
+  preloaded and cleaned the coordinate card before any DMA/host/bridge start,
+  logged the magenta dirty rectangle at `t15`, the green full-frame fill at
+  `t30` and the blue fill at `t45`, yet none was visible.  Internally the
+  exact-lifecycle markers and identity `93 65 04` passed; scanout measured
+  69 MB/s, frame completion reached 2,020, bridge RAW and DMA faults stayed
+  zero, and teardown reached `scanout stopped, panel safe` before read-only SD
+  startup.  The operator's direct classification was `alles schwarz` from the
+  preloaded frame through all three updates.  Therefore neither active-buffer
+  writes nor cache maintenance explain the black exact-burst path.  Vellum
+  remains the only accepted 1,000-Mbit/s burst/ACK coordinate result, and the
+  next AROS discriminator must return to startup/turnaround state before the
+  first frame rather than proceed to B6.
+- The misleading source name was corrected together with the evidence:
+  `P4_B5_REFERENCE_PROFILE` is now `P4_B5_FULL_EXACT_TRIAL`.  A fully fresh
+  rebuild under the corrected name exited zero, contained no exact `error:`,
+  passed SRAM residency and produced the identical 190,544-byte image with
+  SHA-256
+  `9234e13191f49c7f1a4f3a1c280015001cee98bdf497c57973b7f9f3fff46a77`.
+  The rename therefore changes no tested machine code; it prevents a rejected
+  black configuration from being mistaken for the port's maintained profile.
 
 ## Evidence-entry template
 
