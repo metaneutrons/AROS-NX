@@ -131,8 +131,8 @@ gate: compensated output is not the native display contract.
 | B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel through a documented workaround.**  `P4_PANEL_VMUL=1` shows the complete regular grid with no payload error.  Colour, checker, dirty rectangles, sustained concurrent stress and ten EN warm resets pass.  A raw-source ruler measures a constant cyclic displacement of exactly 525 pixels; the explicitly named +525 write-mapping workaround makes quadrants, corner marks and isolated one-pixel lines correct, but neither fixes nor explains the native mapping.  The measured 71 MB/s matches the 69.3 MB/s imposed by timing and selects dirty-region writes over a full-frame CPU pass.  A forced-peripheral-reset gate may substitute for the inaccessible ten physical cold cycles only to unblock development; it is not cold-boot evidence.  The optional post-video DCS read remains excluded from acceptance |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `hardware verified` | Two complete native buffers are reserved outside Exec and contain logical `1280 x 800` surfaces rotated 90 degrees clockwise.  The GDMA one-frame completion is the ownership boundary because this bridge revision has no VSYNC interrupt.  The immutable gate completed 2,006 frames and 19 source switches without faults and was visually tear-free.  The producer gate then completed 60 bounded inactive-surface updates, exact rotated row-range writebacks and 60 requested frame-boundary swaps with zero rejects or faults; direct observation confirmed exactly one clean moving rectangle without stale pixels, split frames or tearing.  The +525 compatibility mapping stays explicitly named and B5R remains its removal gate |
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
-| C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware partial` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound displayable bitmap allocations and the Show/fill/line/text/full-update harness completed with seven frame-boundary swaps, zero DMA faults, zero rejected updates and no pending surface before the normal read-only SD boot reached the Shell.  Direct observation of orientation, colours and geometry is the remaining gate |
-| C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
+| C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
+| C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | C1 is complete; add and gate the documented resident set and ordering |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `not started` | Requires A5, B6 and C2 |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
@@ -642,6 +642,15 @@ Both physical surfaces therefore stay coherent without a CPU write to the
 active one.  `P4_C1_FRAMEBUFFER_HIDD=1` retains scanout through Exec startup
 and keeps the explicitly named +525 compatibility mapping below this public
 logical contract.  B5R still owns its diagnosis and removal.
+
+Classic graphics raster templates are a platform dependency of this HIDD even
+though the framebuffer itself is chunky.  `Text()` builds its glyph mask with
+`AllocRaster()`, which requests `MEMF_CHIP`.  The ESP32-P4 has no separate
+Amiga-style chip bus, so its data-only 393216-byte internal SRAM bank is the
+compatibility pool.  It carries `MEMF_CHIP` and priority -30: explicit raster
+requests reach internal SRAM, while ordinary allocations prefer the larger
+PSRAM pool at priority -20 and do not exhaust the compatibility bank before
+the HIDD starts.
 
 Give the platform HIDD resident priority 9, matching the Pi/EFI references.
 That becomes a normal-boot invariant in C2: Intuition priority 15 installs its
@@ -8803,6 +8812,74 @@ chip in the width this port assumes; it never addressed the hang.
   right-side up near the centre.  Only that observation can promote C1 to
   `hardware verified`; C2 must not start before it.  The +525 mapping remains
   a bounded workaround whose removal is independently required by B5R.
+
+### 2026-08-28 - C1 observer gate exposes and closes the Text raster blocker
+
+- State change: C1 advances from `hardware partial` to `hardware verified`.
+  The direct observer confirmed correct landscape orientation, colours and
+  centred geometry.  The four deliberately 32-pixel-inset blocks and both
+  cyan diagonals were complete, but the original small white label was absent;
+  C1 therefore remained partial until the real `Text()` path was fixed and
+  observed rather than being credited from a returning API call.
+- The strengthened first package was 2,008,812 bytes with SHA-256
+  `b864072c14c4cc44c675131c8d3f99cbc141bf4d9e8ee3705efb3f8e9fe90e30`.
+  It drew a black centre plate, submitted six `Text()` calls and counted the
+  resulting RGB565 pixels in the logical bitmap.  The D1001 reported exactly
+  zero white pixels and the harness failed.  This converted an ambiguous
+  camera observation into a reproducible software failure.
+- A one-variable isolation package, 2,009,852 bytes with SHA-256
+  `a8e6616af58ddb652a187a4c3a5acbe90ca6bd761772d43d0fccf99b3e3e16f8`,
+  proved the HIDD template path independently: a static 32-by-16 one-bit
+  `BltTemplate` produced exactly 256 white pixels, while the default Topaz
+  font had valid 8-by-8 metrics and pointers.  At the same point
+  `AvailMem(MEMF_CHIP)` was zero and `AllocRaster(128,8)` returned null.
+  Reading `graphics.library` then supplied the causal chain: `Text()` builds
+  a temporary mask through `AllocRaster()`, and `AllocRaster()` requests
+  `MEMF_CHIP`; when that allocation fails, `Text()` silently advances the
+  cursor without calling `BltTemplate`.
+- The first port correction added `MEMF_CHIP` to the data-only internal SRAM
+  header but retained priority -10.  Hardware showed the changed header
+  attributes and still reported zero chip memory at HIDD startup: ordinary
+  allocations had consumed the whole bank before the lower-priority PSRAM
+  pool.  This failed correction is retained because it established that the
+  problem was availability at the time of use, not merely the header flag.
+  The final correction gives that bank priority -30, below external memory's
+  -20.  Ordinary allocations therefore use PSRAM first, while explicit
+  `MEMF_CHIP` requests retain a 393216-byte internal compatibility pool.
+- The corrected 194,352-byte XIP core has SHA-256
+  `9f8e1835d8099390857ad815d320b05955c005eb8a0bfc15d93ccaf4fb1ab10d`.
+  The clean final BSP package is 2,009,324 bytes with SHA-256
+  `832688afe98f85eb43047bc6a4e46d5ed30a7646a3a9d5f98dca8e7927ba19b2`;
+  `fbgfx.hidd` is 48,784 bytes and `boot/audit-package.py` accepted all twenty
+  complete RISC-V members and every relocation type.  The documented build
+  used `P4_C1_FRAMEBUFFER_HIDD=1`, 200-MHz PSRAM, 360-MHz CPU,
+  `ldscript-xip.lds`, RGB565 non-burst scanout and the still-explicit
+  `P4_B6_ROW_PHASE_WORKAROUND=525`.
+- The connected D1001 was reidentified as ESP32-P4 v1.3, MAC
+  `e8:f6:0a:e0:46:4c`.  Only the corrected core at `ota_0` `0x20000` and the
+  corresponding BSP at `arosbsp` `0x820000` were written.  Each write-time
+  hash and a separate `verify-flash` digest matched; the partition table,
+  bootloader, flash development volume and SD card were not written.
+- In the final clean run the data header was still completely free before
+  residents started (`393168` bytes) and the C1 gate later reported
+  `MEMF_CHIP available=392960 largest=392960; AllocRaster(128,8)=4ff40080`.
+  Six ordinary `Text()` calls produced 1,686 white RGB565 pixels.  The gate
+  finished with `frames=113 swaps=14 faults=0 rejects=0`, active surface
+  `0x49c18000` and no pending surface.  The boot then mounted the MicroSD FAT
+  volume read-only, repeatedly logged that every mutating packet would be
+  refused and reached the interactive Shell.
+- Direct observation of the fixed path showed six readable white
+  `AROS ESP32-P4 C1` rows inside the black centre plate, with the previously
+  accepted blocks and diagonals still correctly oriented and centred.  The
+  temporary static-template isolation mark was removed from the final gate;
+  the final package retains an allocation check and direct text-pixel count,
+  so future regressions fail without relying only on a photograph.
+- Safety and remaining risk: this fixes the generic raster-memory prerequisite
+  rather than drawing substitute glyphs or bypassing `Text()`.  SD remains
+  read-only.  C1's public logical geometry is now hardware-verified, but the
+  lower-level +525 native-row compatibility mapping is unchanged and B5R
+  remains the separate release blocker.  Next safe step: C2's documented
+  Layers/Intuition/input resident set and ordering gate.
 
 ## Evidence-entry template
 
