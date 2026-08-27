@@ -205,22 +205,32 @@ Descriptors, ISR data and controller state stay in internal SRAM.  CPU writes
 are not coherent with display DMA, so each dirty region is cleaned
 CPU-to-memory before presentation.
 
-### Verified native scanout mapping and B6 consequence
+### Verified +525 compatibility workaround and B5R obligation
 
-B5 hardware on 2026-08-27 fixes the native scanout's constant cyclic X phase
-at exactly **525 pixels**.  A raw-source ruler first measured it; the repeated
-compensated visual gate then placed full quadrants, four asymmetric corners and
-two horizontal plus two vertical one-pixel lines correctly.  This does not make
-the test-pattern remapper a framebuffer API.  Moving the DMA base would cross
-linear row boundaries, so the correction belongs in B6's logical-to-physical
-write transform.
+B5 hardware on 2026-08-27 measures the uncompensated native scanout's constant
+cyclic X displacement at exactly **525 pixels**.  A raw-source ruler first
+measured it; the repeated compensated visual gate then placed full quadrants,
+four asymmetric corners and two horizontal plus two vertical one-pixel lines
+correctly.  That is hardware acceptance of a compatibility workaround, not a
+correct native mapping and not an explanation of the defect.  Moving the DMA
+base would cross linear row boundaries, so the temporary correction has to be
+made while writing the DMA-facing surface.
 
-That transform is deliberately fused: for each changed logical pixel, rotate
-90 degrees clockwise into the physical portrait coordinates and add the
-525-pixel cyclic physical-row phase before storing RGB565.  It therefore costs
-no separate phase-correction pass.  AROS must expose a conventional linear
-`1280 x 800` logical bitmap; the fixed `800 x 1280` PSRAM buffer remains the
-DMA-facing surface.
+B6 may deliberately fuse that workaround with its dirty-region transform: for
+each changed logical pixel, rotate 90 degrees clockwise into physical portrait
+coordinates and add the 525-pixel cyclic physical-row displacement before
+storing RGB565.  It therefore costs no separate phase-correction pass.  The
+code and diagnostics must retain an explicit switch that removes the +525
+mapping.  AROS must expose a conventional linear `1280 x 800` logical bitmap;
+the fixed `800 x 1280` PSRAM buffer remains the DMA-facing surface.
+
+B5R owns the root fix.  Its acceptance image is an unmodified linear
+`800 x 1280` RGB565 buffer containing asymmetric quadrants, corner marks and
+one-pixel lines, with `P4_B5_ROW_PHASE_COMPENSATION` absent or zero.  That image
+must reach the correct coordinates across the reset matrix before the +525
+write mapping can be removed.  Candidate causes include bridge/FIFO line-start
+state, GDMA descriptor or re-arm phase, and host/video enable ordering; none is
+yet established as the cause, so 525 must not be promoted to a board fact.
 
 The bandwidth decision is also now measured rather than assumed.  One native
 frame is 2,048,000 bytes and Set A is 33.82 Hz, so the handshake-paced display

@@ -101,12 +101,17 @@ evidence entry below pins the exact flashed artifacts.
  B0 contract -> B1 PSRAM ---------\                                 /
                                     +-> B5 -> B6 -> C1 -> C2 -------/
  B0 contract -> B2 -> B3 -> B4 ---/
+                                           `-> B5R root fix -> release
 ```
 
 Storage and display work may proceed in parallel, but the arrows are hard
 gates within each track.  In particular, a filesystem scan does not bypass A1
 or A2, and a graphics HIDD does not bypass the raw DSI and cache-coherency
 tests.
+
+The explicit +525 compatibility path may advance B6 through graphical-boot
+development while B5R runs in parallel.  B5R is nevertheless a hard release
+gate: compensated output is not the native display contract.
 
 ## Master progress
 
@@ -123,8 +128,9 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  A hardware-observed colour card verifies native little-endian RGB565 and all primary/pair colours; the corrected exactly tiled checker is perfect and moving dirty rectangles leave no visible artefacts.  A raw-source ruler fixes the constant cyclic row phase at exactly 525 pixels; the compensated D1001 gate places asymmetric quadrants at the active-area edges, four differently sized marks in their correct corners and two horizontal plus two vertical one-pixel lines straight and continuous.  Runs at 40 MHz over 1500 Mbit/s lanes.  The sustained gate passes 1,800 seconds of concurrent 71 MB/s scanout, read-only SD reads and cache-forced PSRAM passes: all 1,800 samples clean, 112 MB SD verified, 1,800 MB PSRAM verified and zero failures.  The measured 71 MB/s matches the 69.3 MB/s imposed by frame size and timing; the old 100 MB/s floor cannot be reported by a handshake-paced display DMA, and the resulting negative architecture decision selects one fused dirty-rectangle rotation/phase transform for B6 instead of a full-frame CPU pass.  Ten consecutive controlled EN warm resets of the unchanged +525 artifact each brought PSRAM up in one attempt, completed 2,146 zero-fault frames and stopped safely.  A real cold boot cannot be initiated in software on this battery-backed board, so the ten-cold half remains open rather than being relabelled.  The optional post-video DCS read can separately pin `GEN_RD_CMD_BUSY`, so it is off by default and excluded from acceptance |
-| B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
+| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel through a documented workaround.**  `P4_PANEL_VMUL=1` shows the complete regular grid with no payload error.  Colour, checker, dirty rectangles, sustained concurrent stress and ten EN warm resets pass.  A raw-source ruler measures a constant cyclic displacement of exactly 525 pixels; the explicitly named +525 write-mapping workaround makes quadrants, corner marks and isolated one-pixel lines correct, but neither fixes nor explains the native mapping.  The measured 71 MB/s matches the 69.3 MB/s imposed by timing and selects dirty-region writes over a full-frame CPU pass.  A forced-peripheral-reset gate may substitute for the inaccessible ten physical cold cycles only to unblock development; it is not cold-boot evidence.  The optional post-video DCS read remains excluded from acceptance |
+| B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5; may carry the explicitly named +525 compatibility mapping temporarily |
+| B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `not started` | Requires A5, B6 and C2 |
@@ -526,16 +532,24 @@ Acceptance gate:
 - moving/repeated dirty rectangles never show stale cache lines;
 - VSYNC and underrun counters remain clean for at least 30 minutes while SD
   reads and PSRAM stress run concurrently;
-- ten cold and ten warm boots pass with UART diagnostics intact.
+- ten warm boots pass with UART diagnostics intact;
+- ten forced-peripheral-cold-state starts may replace the inaccessible physical
+  cold cycles for **development progression only**.  They must reset and verify
+  PSRAM command state, GDMA, DSI bridge/host/PHY and the panel power/reset
+  sequence before normal bring-up.  They do not test rail ramp or brown-in and
+  must not be counted toward the physical cold-boot release gate.
 
 The concurrent-stress point passed on the D1001 on 2026-08-26.  The explicit
 solid/corner/one-pixel panel point passed on 2026-08-27 after a raw-source ruler
-fixed the row phase at exactly 525 pixels.  The same measured 71 MB/s scanout
+measured a row displacement of exactly 525 pixels and the write path compensated
+it.  This verifies the workaround only.  The same measured 71 MB/s scanout
 closes the bandwidth decision negatively: a 33.82-Hz native frame consumes only
 69.3 MB/s, so the display DMA cannot demonstrate the old 100 MB/s floor and B6
-must fuse rotation plus phase into dirty-region writes rather than perform a
-full-frame CPU transform.  Ten controlled warm resets passed on 2026-08-27;
-the ten true cold boots are the one remaining B5 point.
+may temporarily fuse rotation plus the named compatibility mapping into
+dirty-region writes rather than perform a full-frame CPU transform.  Ten
+controlled warm resets passed on 2026-08-27.  The forced-peripheral-start half
+of the development gate remains to be implemented and exercised; physical
+cold-boot evidence remains a separate release/GB0 obligation.
 
 ### B6 - VSYNC handoff, buffering and landscape
 
@@ -546,6 +560,11 @@ logical `1280 x 800` to physical `800 x 1280`, with explicit bounds and
 cache-clean regions.  Treat the reference driver's 270-degree mapping as the
 first candidate, not as a board fact.
 
+For GB0 development, this dirty-region transform may also carry the explicitly
+named +525 compatibility mapping.  Keep it independently switchable and do not
+make it part of the public bitmap contract; B5R must be able to remove it
+without changing logical graphics clients.
+
 Acceptance gate:
 
 - native single-buffer behavior still passes B5;
@@ -553,6 +572,29 @@ Acceptance gate:
 - all four logical corners and asymmetric test labels land in the correct
   physical positions;
 - no tearing, underrun or out-of-bounds write occurs under sustained updates.
+
+### B5R - root-fix native scanout row phase
+
+The compensated B5 image proves that pixel data, cache maintenance and panel
+geometry can be correct, but the uncompensated DMA surface is still displaced
+by 525 pixels per physical row.  Establish the cause in the DSI bridge/FIFO,
+GDMA descriptor and re-arm state, or host/video enable ordering.  Do not assume
+one of those candidates without a discriminating measurement.
+
+Acceptance gate:
+
+- `P4_B5_ROW_PHASE_COMPENSATION` is absent or zero;
+- an unmodified linear `800 x 1280` RGB565 buffer places asymmetric quadrants,
+  four differently sized corner marks and two horizontal plus two vertical
+  one-pixel lines at the correct physical coordinates;
+- the uncompensated result repeats across the warm and forced-peripheral reset
+  matrices, with physical cold cycles retained for the final release gate;
+- the +525 mapping is removed from diagnostics and the B6/HIDD write path, and
+  this contract no longer describes it as required behavior.
+
+B5R does not block implementation of B6 through C3 while the compatibility
+mapping is explicit and bounded, but it blocks treating that mapping as the
+native hardware contract and blocks a production release.
 
 ## Track C: AROS graphics and Workbench
 
@@ -8506,7 +8548,8 @@ chip in the width this port assumes; it never addressed the hang.
   exactly 525 pixels.  The next gate applies diagnostic compensation +525 to
   the normal 60-second visual schedule; solids, checker, asymmetric quadrants,
   four corner blocks and isolated one-pixel lines must all land correctly
-  before the value can enter the production framebuffer contract.
+  before the value can be accepted as a compatibility workaround.  It cannot
+  enter the native framebuffer contract without B5R.
 - The first complete +525 visual-gate image is 191,136 bytes with SHA-256
   `1d7a5fe571e3289cfe7c2ef7278ffea3bffb7b3e0d4882e59326be4683942c31`.
   It came from a clean kernel-object rebuild with 200-MHz PSRAM, 360-MHz CPU,
@@ -8532,9 +8575,10 @@ chip in the width this port assumes; it never addressed the hang.
   visible, straight and continuous.  Together with `IMG_0946.JPG` and
   `IMG_0947.JPG`, this closes the explicit solids/corners/one-pixel geometry
   acceptance point and hardware-accepts diagnostic row compensation +525.
-  This is not yet a production framebuffer mapping: the next implementation
-  step must place the proven phase correction at the scanout/HIDD contract
-  boundary rather than silently retaining a test-pattern-only remapper.
+  This is not a production framebuffer mapping: B6 may place the proven
+  compatibility workaround at the scanout/HIDD boundary only if it stays
+  explicitly named and independently removable.  B5R separately owns
+  diagnosis and removal.
 - The deferred 100 MB/s decision is now closed without mislabelling 71 MB/s as
   a threshold pass.  The one-frame descriptor transfers 2,048,000 bytes and
   Set A runs at 33.82 Hz, so its hardware handshake limits this particular DMA
@@ -8544,10 +8588,11 @@ chip in the width this port assumes; it never addressed the hang.
   a 100 MB/s memory ceiling.  The result rejects a full-frame CPU rotation at
   every refresh: its read plus write traffic alone would be about 138.5 MB/s.
   B6 will instead expose a conventional linear `1280 x 800` logical bitmap and
-  fuse the hardware-proven 90-degree rotation with the +525 physical-row phase
-  while copying only dirty rectangles into the fixed portrait scanout buffer.
-  This resolves the bandwidth gate as a documented negative design decision;
-  only the ten-warm/ten-cold boot matrix remains before B5 can close.
+  may temporarily fuse the hardware-proven 90-degree rotation with the named
+  +525 compatibility mapping while copying only dirty rectangles into the
+  fixed portrait scanout buffer.  This resolves the bandwidth gate as a
+  documented negative design decision; it does not resolve the scanout phase,
+  which remains B5R work.
 - The warm half of that matrix is now complete on the unchanged 191,136-byte
   +525 artifact with SHA-256
   `1d7a5fe571e3289cfe7c2ef7278ffea3bffb7b3e0d4882e59326be4683942c31`.
@@ -8565,10 +8610,22 @@ chip in the width this port assumes; it never addressed the hang.
   USB-JTAG RTS control line; it does not remove power.  The board's battery
   keeps the rails alive when USB is removed, and the earlier hardware test in
   this roadmap showed that releasing PCA9535 PWR_HOLD on battery did not power
-  it down.  No software action can therefore manufacture the remaining ten
-  cold boots.  They remain open until either the battery is physically
-  disconnected for controlled cycles or the project explicitly replaces the
-  power-cycle gate with a separately named forced-peripheral-reset gate.
+  it down.  No software action can therefore manufacture physical cold boots.
+  The project now substitutes a separately named forced-peripheral-cold-state
+  gate for B5 development progression only.  That gate still has to be
+  implemented and exercised; it must reset PSRAM command state, GDMA, DSI
+  bridge/host/PHY and the panel power/reset path before normal bring-up.  It is
+  not rail-off evidence, and C3's physical cold-boot requirement remains open.
+- Documentation correction: +525 is now consistently classified as a
+  **workaround**, not the native display contract or a root fix.  The observed
+  defect is a 525-pixel cyclic displacement of each uncompensated physical row;
+  the workaround pre-displaces writes so the panel output lands correctly.
+  The responsible bridge/FIFO, GDMA or enable-ordering state is still unknown.
+  B5R is the separate removal gate: the same asymmetric raw linear framebuffer
+  must pass with `P4_B5_ROW_PHASE_COMPENSATION` absent or zero, after which the
+  +525 path is removed from diagnostics and B6/HIDD.  The port-local working
+  rules now require every future workaround and test-gate substitution to be
+  named, bounded and paired with an uncompensated roadmap gate.
 
 ## Evidence-entry template
 

@@ -23,6 +23,20 @@ them.  If a change has not reached hardware, use at most `build verified`.
 This rule also applies when the implementation change is in shared AROS code
 outside this directory but advances an ESP32-P4 roadmap phase.
 
+## Workarounds are not fixes
+
+An accepted workaround must remain named as a workaround in code, the master
+progress table, the affected acceptance gate and the evidence log.  Record the
+observed defect, what the workaround compensates, which root cause remains
+unknown and a separate roadmap item with an uncompensated removal test.
+Hardware acceptance of compensated output verifies only the workaround.  It
+must never close the root-fix item or silently become a permanent hardware
+contract.
+
+The same rule applies to test-gate substitutions.  A forced peripheral reset
+may unblock development on this battery-backed board, but it is not evidence
+of rail-off behavior and must not be counted as a physical cold boot.
+
 ## Builds whose result gets documented
 
 mmake does not invalidate objects when a `-D` flag or a mmakefile changes.  A
@@ -201,10 +215,11 @@ off by default and may only be enabled deliberately with
 `P4_DSI_POST_VIDEO_QUERY=1`; do not use it in reset or scanout acceptance runs.
 Two immediate default-off repeats, including recovery from an already-retained
 busy state, then completed with moving DMA.  Routine USB reset is no longer
-prohibited merely because bounded B5 scanout may still be active, but the full
-ten-warm/ten-cold gate remains open.  Continue to record PSRAM, command-path and
-live DMA evidence separately rather than treating a DCS reply as proof of
-scanout continuity.
+prohibited merely because bounded B5 scanout may still be active.  Ten warm
+starts have passed; the separately named forced-peripheral-cold-state
+development gate remains open, and physical cold cycles remain a distinct C3
+obligation.  Continue to record PSRAM, command-path and live DMA evidence
+separately rather than treating a DCS reply as proof of scanout continuity.
 
 The sustained B5 gate is `P4_B5_CONCURRENT_STRESS=1`.  It must use the existing
 read-only `sdcard.device`, keep the fixed framebuffer outside Exec's allocatable
