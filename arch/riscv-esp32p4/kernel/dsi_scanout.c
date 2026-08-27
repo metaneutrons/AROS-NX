@@ -34,6 +34,7 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
+#include <aros/framebuffer.h>
 #include "psram.h"
 
 #if defined(P4_B5_ROW_PHASE_COMPENSATION) \
@@ -639,7 +640,7 @@ void krnP4ScanoutDmaInterrupt(void)
     {
         scanout_dma_frames++;
 #ifdef P4_B6_DOUBLE_BUFFER
-#ifdef P4_B6_DIRTY_GATE
+#if defined(P4_B6_DIRTY_GATE) || defined(P4_C1_FRAMEBUFFER_HIDD)
         if (scanout_pending_fb != 0
             && scanout_pending_fb != scanout_active_fb)
         {
@@ -1022,6 +1023,14 @@ static void b6_logical_rect(unsigned long fb, unsigned long x,
             b6_logical_px(fb, xx, yy, rgb);
 }
 
+#ifdef P4_C1_FRAMEBUFFER_HIDD
+void krnP4ScanoutC1Clear(void)
+{
+    b6_logical_fill(P4_FB_BASE, 0x000000UL);
+    b6_logical_fill(P4_FB_BACK_BASE, 0x000000UL);
+}
+#endif
+
 /*
  * Two immutable frames for the first B6 hardware gate.
  *
@@ -1093,7 +1102,6 @@ void krnP4ScanoutB6Frames(void)
     b6_logical_rect(P4_FB_BACK_BASE, 623, 277, 29, 247, 0x00FFFFUL);
 }
 
-#ifdef P4_B6_DIRTY_GATE
 /*
  * Publish exactly the physical cache ranges touched by one logical rectangle.
  * Rotation turns each logical X into one physical row and logical Y into a
@@ -1136,6 +1144,193 @@ static int b6_dirty_writeback(unsigned long fb, unsigned long x,
     return 1;
 }
 
+#ifdef P4_C1_FRAMEBUFFER_HIDD
+/*
+ * Copy one logical RGB565 rectangle into a physical portrait surface.
+ * The logical bitmap remains ordinary, contiguous 1280x800 memory owned by
+ * the HIDD.  Rotation and the temporary row-phase compatibility mapping are
+ * below that interface, beside the DMA that consumes the result.
+ */
+static void c1_copy_rect(unsigned long fb, const unsigned char *logical,
+                         unsigned long logical_pitch, unsigned long x,
+                         unsigned long y, unsigned long w, unsigned long h)
+{
+    unsigned long yy, xx;
+
+    for (yy = y; yy < y + h; yy++)
+    {
+        const unsigned char *src = logical + yy * logical_pitch + x * 2;
+
+        for (xx = x; xx < x + w; xx++, src += 2)
+        {
+            unsigned long physical_index =
+                (P4_PANEL_V_RES - 1 - xx) * P4_PANEL_H_RES + yy;
+            volatile unsigned char *dst = (volatile unsigned char *)(fb
+                + physical_index * P4_FB_BYTES_PER_PIXEL);
+            unsigned int value = (unsigned int)src[0]
+                               | ((unsigned int)src[1] << 8);
+
+#ifdef P4_SCANOUT_ROW_PHASE_WORKAROUND
+            unsigned long row_bytes =
+                P4_PANEL_H_RES * P4_FB_BYTES_PER_PIXEL;
+            unsigned long offset = (unsigned long)dst - P4_FB_BASE;
+            unsigned long row_offset = offset - offset % row_bytes;
+            unsigned long mapped =
+                ((offset % row_bytes) / P4_FB_BYTES_PER_PIXEL
+                 + P4_SCANOUT_ROW_PHASE_WORKAROUND) % P4_PANEL_H_RES;
+
+            dst = (volatile unsigned char *)(P4_FB_BASE + row_offset
+                + mapped * P4_FB_BYTES_PER_PIXEL);
+#endif
+            dst[0] = (unsigned char)value;
+            dst[1] = (unsigned char)(value >> 8);
+        }
+    }
+}
+
+static int c1_wait_no_pending(unsigned long expected_active)
+{
+    unsigned long spins;
+
+    /* More than ten nominal frame periods at the slowest supported CPU.
+       Machine interrupts remain enabled while this task-context wait runs. */
+    for (spins = 0; spins < 50000000UL; spins++)
+    {
+        if (scanout_pending_fb == 0
+            && (!expected_active || scanout_active_fb == expected_active))
+            return 1;
+        asm volatile("nop");
+    }
+    scanout_dirty_rejects++;
+    return 0;
+}
+
+static BOOL c1_update_rect(CONST_APTR logical_ptr, ULONG logical_pitch,
+                           LONG x, LONG y, LONG width, LONG height)
+{
+    const unsigned char *logical = (const unsigned char *)logical_ptr;
+    unsigned long active, target;
+
+    if (!logical || logical_pitch < P4_PANEL_V_RES * 2
+        || x < 0 || y < 0 || width <= 0 || height <= 0
+        || (unsigned long)x + (unsigned long)width > P4_PANEL_V_RES
+        || (unsigned long)y + (unsigned long)height > P4_PANEL_H_RES)
+    {
+        scanout_dirty_rejects++;
+        return FALSE;
+    }
+
+    if (!c1_wait_no_pending(0))
+        return FALSE;
+
+    active = scanout_active_fb;
+    if (active == P4_FB_BASE)
+        target = P4_FB_BACK_BASE;
+    else if (active == P4_FB_BACK_BASE)
+        target = P4_FB_BASE;
+    else
+    {
+        scanout_dirty_rejects++;
+        return FALSE;
+    }
+
+    c1_copy_rect(target, logical, logical_pitch, x, y, width, height);
+    if (!b6_dirty_writeback(target, x, y, width, height))
+    {
+        scanout_dirty_rejects++;
+        return FALSE;
+    }
+
+    scanout_dirty_submits++;
+    asm volatile("fence rw, rw" ::: "memory");
+    scanout_pending_fb = target;
+
+    /* Once the prepared image is visible, apply the same bounded update to
+       the now-inactive mirror.  Both surfaces therefore begin every later
+       update in the same state without ever modifying the active one. */
+    if (!c1_wait_no_pending(target))
+        return FALSE;
+    c1_copy_rect(active, logical, logical_pitch, x, y, width, height);
+    if (!b6_dirty_writeback(active, x, y, width, height))
+    {
+        scanout_dirty_rejects++;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL c1_clear(ULONG pixel)
+{
+    unsigned long active, target, y, x;
+
+    if (!c1_wait_no_pending(0))
+        return FALSE;
+    active = scanout_active_fb;
+    target = active == P4_FB_BASE ? P4_FB_BACK_BASE : P4_FB_BASE;
+    if ((active != P4_FB_BASE && active != P4_FB_BACK_BASE))
+        return FALSE;
+
+    for (y = 0; y < P4_PANEL_H_RES; y++)
+        for (x = 0; x < P4_PANEL_V_RES; x++)
+        {
+            unsigned long physical_index =
+                (P4_PANEL_V_RES - 1 - x) * P4_PANEL_H_RES + y;
+            volatile unsigned char *dst = (volatile unsigned char *)(target
+                + physical_index * P4_FB_BYTES_PER_PIXEL);
+            dst[0] = (unsigned char)pixel;
+            dst[1] = (unsigned char)(pixel >> 8);
+        }
+    krnP4CacheWritebackData((void *)target, P4_FB_BYTES);
+    scanout_dirty_submits++;
+    asm volatile("fence rw, rw" ::: "memory");
+    scanout_pending_fb = target;
+    if (!c1_wait_no_pending(target))
+        return FALSE;
+    for (y = 0; y < P4_FB_BYTES; y += 2)
+    {
+        *(volatile unsigned char *)(active + y) = (unsigned char)pixel;
+        *(volatile unsigned char *)(active + y + 1) =
+            (unsigned char)(pixel >> 8);
+    }
+    krnP4CacheWritebackData((void *)active, P4_FB_BYTES);
+    return TRUE;
+}
+
+static VOID c1_get_stats(struct KrnFrameBufferStats *stats)
+{
+    if (!stats)
+        return;
+    stats->frames = scanout_dma_frames;
+    stats->swaps = scanout_dma_swaps;
+    stats->faults = scanout_dma_faults;
+    stats->rejects = scanout_dirty_rejects;
+    stats->active = scanout_active_fb;
+    stats->pending = scanout_pending_fb;
+}
+
+static struct KrnFrameBufferOps c1_framebuffer_ops =
+{
+    KRN_FRAMEBUFFER_OPS_VERSION,
+    P4_PANEL_V_RES,
+    P4_PANEL_H_RES,
+    16,
+    2,
+    P4_PANEL_V_RES * 2,
+    P4_FB_BASE,
+    P4_FB_BACK_BASE,
+    P4_FB_BYTES,
+    c1_update_rect,
+    c1_clear,
+    c1_get_stats
+};
+
+struct KrnFrameBufferOps *krnP4FrameBufferOps(void)
+{
+    return &c1_framebuffer_ops;
+}
+#endif /* P4_C1_FRAMEBUFFER_HIDD */
+
+#ifdef P4_B6_DIRTY_GATE
 /*
  * Produce one bounded logical dirty update into the source that is neither
  * active nor pending, clean only its rotated row ranges, then publish it.

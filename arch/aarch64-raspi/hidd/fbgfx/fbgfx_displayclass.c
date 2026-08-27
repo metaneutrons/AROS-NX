@@ -201,10 +201,25 @@ OOP_Object *FBGfxDisplay__Hidd_Display__Show(OOP_Class *cl, OOP_Object *o, struc
 
     if (msg->bitMap)
     {
+#ifdef P4_C1_FRAMEBUFFER_HIDD
+        struct FBGfxBitMapData *bmdata;
+#endif
+
         /* If we have a bitmap to show, set it as visible */
         D(bug("[FBGfx:Display] Showing new bitmap\n"));
         tags[0].ti_Data = TRUE;
         OOP_SetAttrs(msg->bitMap, tags);
+
+#ifdef P4_C1_FRAMEBUFFER_HIDD
+        /* Show is itself a presentation operation.  Do not depend on a later
+           graphics.library redraw to make the first contents visible. */
+        if (OOP_OCLASS(msg->bitMap) == data->bmclass)
+        {
+            bmdata = OOP_INST_DATA(data->bmclass, msg->bitMap);
+            fbDoRefreshArea(&data->data, bmdata, 0, 0,
+                            bmdata->width, bmdata->height);
+        }
+#endif
     }
     else
     {
