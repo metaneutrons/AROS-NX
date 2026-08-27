@@ -8001,6 +8001,26 @@ chip in the width this port assumes; it never addressed the hang.
   non-burst line packetisation versus the still-black 1,000-Mbit/s burst
   startup, using a packet-width/blanking oracle rather than more register
   write-order replicas.
+- A working-driver coordinate control is built and waiting for USB recovery.
+  A temporary, now fully reverted Vellum change filled all three native
+  800x1280 RGB565 DPI framebuffers with the same asymmetric AROS coordinate
+  card: red/green above blue/yellow with a four-pixel black centre cross.  It
+  writes back every complete framebuffer, raises the backlight and holds the
+  image for 60 seconds before normal Vellum/LVGL startup.  This is the direct
+  control missing from the earlier statement that Vellum displayed normally:
+  it will decide whether Espressif's known-working burst path maps native x=0
+  correctly under the exact same diagnostic geometry.  The Vellum source tree
+  and this AROS tree are both clean after the temporary build.  The resulting
+  2,382,432-byte `vellum-d1001.bin` has SHA-256
+  `c7f3096f477d34bd6f95d225075d9c7b34f6b627492316c3eece629823005bfb`;
+  the ELF contains the unique `AROS coordinate control visible for 60 seconds`
+  marker and ESP-IDF reported successful ESP32-P4 image creation.  No flash
+  write occurred: after the AROS safe stop and later missing-console alert,
+  D1001 disappeared from both `/dev` and the macOS USB registry.  Flashing
+  remains restricted to `ota_0` once USB enumeration is restored.  A correct
+  Vellum quadrant card would assign the defect to AROS's exact-burst startup;
+  the same 550-pixel wrap under Vellum would instead invalidate that premise
+  and redirect the audit to panel/vendor coordinate setup.
 
 ## Evidence-entry template
 
