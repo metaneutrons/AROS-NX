@@ -891,7 +891,28 @@ unsigned long krnP4ScanoutCoherencyStep(unsigned long second)
     (void)second;
     return 0;
 #else
-#ifdef P4_B5_VISUAL_GATE
+#ifdef P4_B5_LIVE_UPDATE_GATE
+    switch (second)
+    {
+        /* The preloaded coordinate card remains untouched for fifteen
+           seconds.  Then change less than one percent of it, at deliberately
+           unaligned coordinates, before attempting any full-frame write. */
+        case 15:
+            scanout_rect(337, 603, 127, 73, 0xFF00FFUL);
+            phase = 11;
+            break;
+        case 30:
+            krnP4ScanoutFill(0x00FF00UL);
+            phase = 12;
+            break;
+        case 45:
+            krnP4ScanoutFill(0x0000FFUL);
+            phase = 13;
+            break;
+        default:
+            break;
+    }
+#elif defined(P4_B5_VISUAL_GATE)
     switch (second)
     {
         case 0:  krnP4ScanoutFill(0xFF0000UL); phase = 1; break;

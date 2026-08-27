@@ -66,6 +66,15 @@ USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 #                       128-sector READ64 requests and 1-MB PSRAM verify passes
 #   -DP4_B5_VISUAL_GATE  60-second observer gate with long, separate solids,
 #                       checker, quadrant, corner-only and one-pixel-line phases
+#   -DP4_B5_FULL_EXACT_TRIAL
+#                       the complete 1,000-Mbit/s burst/ACK and exact-object
+#                       lifecycle combination; retained as one reproducible
+#                       switch because it is technically active but visually
+#                       black on D1001
+#   -DP4_B5_LIVE_UPDATE_GATE
+#                       preload the accepted coordinate frame, then apply one
+#                       small dirty rectangle before two live full-frame fills;
+#                       isolates handoff/traffic from startup geometry
 #   -DP4_PARTITION_TEST  open the package-loaded partition.library and read
 #                       one sector through its public root-partition API
 #   -DP4_AFTERDOS_PROBE an RTF_AFTERDOS resident that asks the half of the A4
@@ -92,6 +101,19 @@ USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
 #                       unreachable once dosboot is present, so this runs
 #                       in the step before it
 #
+ifeq ($(P4_B5_FULL_EXACT_TRIAL),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_FULL_EXACT_TRIAL
+endif
+
+ifeq ($(P4_B5_LIVE_UPDATE_GATE),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_LIVE_UPDATE_GATE -DP4_PANEL_PROBE \
+                     -DP4_DSI_PROBE -DP4_SCANOUT_TEST \
+                     -DP4_SCANOUT_COHERENCY
+ifndef P4_SCANOUT_SECS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=60
+endif
+endif
+
 ifeq ($(P4_A1_DIAGNOSTIC),1)
 P4_DEBUG_CPPFLAGS += -DP4_SDCARD_DEVICE_TEST -DP4_SDCARD_MULTIBLOCK_TEST \
                      -DP4_SDCARD_TRACE=1

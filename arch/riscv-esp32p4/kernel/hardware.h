@@ -13,6 +13,40 @@
 #ifndef ESP32P4_HARDWARE_H
 #define ESP32P4_HARDWARE_H
 
+/*
+ * The complete exact-reference AROS trial.  It reproduces the combined state
+ * in one name so a later diagnostic cannot accidentally omit one part of the
+ * measured lifecycle.  It is not a working profile: repeated D1001 runs are
+ * technically active but visually black.
+ *
+ * P4_B5_FULL_EXACT_TRIAL deliberately overrides the visual-gate helper's
+ * historical non-burst selection.  It otherwise refuses a conflicting lane
+ * rate instead of silently changing an experiment.
+ */
+#ifdef P4_B5_FULL_EXACT_TRIAL
+# ifdef P4_DSI_LANE_MBPS
+#  if P4_DSI_LANE_MBPS != 1000
+#   error P4_B5_FULL_EXACT_TRIAL requires 1000-Mbit/s DSI lanes
+#  endif
+# else
+#  define P4_DSI_LANE_MBPS       1000
+# endif
+# ifdef P4_DSI_NONBURST
+#  undef P4_DSI_NONBURST
+# endif
+# define P4_DSI_FRAME_ACK
+# define P4_B5_EXACT_PHY_CREATE
+# define P4_B5_EXACT_BUS_CREATE
+# define P4_B5_EXACT_DBI_CREATE
+# define P4_B5_EARLY_DPI_CREATE
+# define P4_B5_EARLY_GDMA_CREATE
+# define P4_B5_EXACT_DPI_CREATE
+# define P4_B5_SPLIT_AUTO_START
+# define P4_B5_FULL_ATOMIC_START
+# define P4_B5_ATOMIC_START
+# define P4_B5_REF_BRG_IRQ
+#endif
+
 /* High-power peripheral group 1 */
 #define P4_HPPERIPH1_BASE       0x500C0000UL
 
