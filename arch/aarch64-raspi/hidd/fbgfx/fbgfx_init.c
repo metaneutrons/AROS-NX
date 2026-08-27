@@ -85,7 +85,12 @@ static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
     struct RastPort rp;
     struct KrnFrameBufferStats stats;
     struct TagItem bmtags[2];
+    UBYTE *pixels = NULL;
+    PLANEPTR probe_raster;
+    IPTR pitch = 0;
     ULONG mode;
+    ULONG white_pixels = 0;
+    ULONG line, x, y;
     unsigned int attempt;
 
     mode = BestModeID(BIDTAG_NominalWidth, 1280,
@@ -145,10 +150,56 @@ static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
     Draw(&rp, 1247, 767);
     Move(&rp, 1247, 32);
     Draw(&rp, 32, 767);
-    SetRPAttrs(&rp, RPTAG_FgColor, 0xFFFFFFFF,
-               RPTAG_BgColor, 0xFF000000, TAG_DONE);
-    Move(&rp, 544, 400);
-    Text(&rp, "AROS ESP32-P4 C1", sizeof("AROS ESP32-P4 C1") - 1);
+    /* The built-in font is only eight pixels high.  Give Text() a large,
+       high-contrast centre plate instead of asking the observer to find one
+       tiny line under the cyan diagonals. */
+    SetRPAttrs(&rp, RPTAG_FgColor, 0xFF000000, TAG_DONE);
+    RectFill(&rp, 448, 304, 831, 495);
+    SetRPAttrs(&rp, RPTAG_DrMd, JAM1,
+               RPTAG_FgColor, 0xFFFFFFFF, TAG_DONE);
+
+    probe_raster = AllocRaster(128, 8);
+    bug("[FBGfx/C1] MEMF_CHIP available=%lu largest=%lu; "
+        "AllocRaster(128,8)=%p\n",
+        (unsigned long)AvailMem(MEMF_CHIP),
+        (unsigned long)AvailMem(MEMF_CHIP | MEMF_LARGEST),
+        probe_raster);
+    if (!probe_raster)
+    {
+        bug("[FBGfx/C1] AllocRaster failed; Text cannot render\n");
+        return FALSE;
+    }
+    FreeRaster(probe_raster, 128, 8);
+
+    for (line = 0; line < 6; line++)
+    {
+        Move(&rp, 512, 336 + line * 24);
+        Text(&rp, "AROS ESP32-P4 C1", sizeof("AROS ESP32-P4 C1") - 1);
+    }
+
+    OOP_GetAttr(HIDD_BM_OBJ(bitmap),
+                xsd->attrBases[0] + aoHidd_ChunkyBM_Buffer,
+                (IPTR *)&pixels);
+    OOP_GetAttr(HIDD_BM_OBJ(bitmap),
+                xsd->attrBases[1] + aoHidd_BitMap_BytesPerRow, &pitch);
+    if (pixels && pitch >= 2560)
+    {
+        for (y = 304; y <= 495; y++)
+            for (x = 448; x <= 831; x++)
+            {
+                UBYTE *pixel = pixels + y * pitch + x * 2;
+                if (pixel[0] == 0xff && pixel[1] == 0xff)
+                    white_pixels++;
+            }
+    }
+    bug("[FBGfx/C1] Text produced %lu white RGB565 pixels\n",
+        (unsigned long)white_pixels);
+    if (white_pixels < 128)
+    {
+        bug("[FBGfx/C1] Text did not render into the logical bitmap\n");
+        return FALSE;
+    }
+
     UpdateBitMap(bitmap, 0, 0, 1280, 800);
     bug("[FBGfx/C1] Show, RectFill, Draw, Text and full update submitted\n");
 
