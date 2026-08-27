@@ -7948,6 +7948,59 @@ chip in the width this port assumes; it never addressed the hang.
   `FB+0x2200/FIFO=0x3fd` feed-entry state, the common prefill itself is not a
   sufficient cause; the next change must continue the exact DPI/host lifecycle
   audit or isolate non-burst line packetisation, not add a framebuffer offset.
+- The exact linked DPI object exposes the remaining creation-write mismatch.
+  Vellum's IDF-v6.0 object writes DPI clock source, divider and enable as
+  three operations; assigns VCID, colour code and each polarity separately;
+  assigns every LP, frame-ACK and video-mode field separately; and writes each
+  host and bridge timing field through its own volatile RMW.  Its bridge setup
+  is especially stateful: `RAW_NUM_CFG.raw_num_total`, alignment and the
+  write-triggered internal-counter reload are three distinct writes.  It then
+  writes input type, RGB/YUV selection, output type and sub-configuration
+  separately, followed by flow-controller, multi-block count, frame-interval,
+  burst, threshold, bridge-enable and update fields.  AROS previously combined
+  all same-register groups and wrote the count plus reload trigger together.
+  Equal final snapshots cannot show this history.
+- `P4_B5_EXACT_DPI_CREATE` now reproduces that linked-object order at the
+  already tested early DPI creation point.  It deliberately changes no final
+  register value, framebuffer byte, source address, panel command or timing.
+  The first bounded test keeps the visible 1,500-Mbit/s non-burst/no-ACK
+  transport and immutable coordinate pattern, additively with early DPI/GDMA
+  creation.  Zero host/bridge/DMA error, safe stop and read-only SD remain the
+  technical gate; only direct observation can accept or reject horizontal
+  phase.  An unchanged cyclic displacement closes DPI field-write history and
+  returns the audit to the unsupported 1,000-Mbit/s burst start state.
+- Exact-DPI visual artifact built.  After deleting every generated kernel
+  object/dependency file, the 1,500-Mbit/s non-burst/no-ACK build added early
+  DPI creation, early idle-GDMA creation and `P4_B5_EXACT_DPI_CREATE` to the
+  immutable 60-second 200/360-MHz visual control.  It exited zero, contained
+  no exact `error:`, passed SRAM residency and emitted a successful ESP32-P4
+  image.  The 189,568-byte core has SHA-256
+  `5765e5b06a0089e25fcdec908dd0d03b20ebebded56d7d6ea978ab3326d83a63`.
+  Object disassembly contains 34 ordered `dsi_field`/bridge-timing calls in
+  `krnP4DsiPatternOn()` and 17 bridge-field calls across creation/feed, rather
+  than the former combined same-register stores.  D1001 identity, restricted
+  flash write, technical run and direct geometry observation remain pending.
+- Exact DPI creation order is hardware-negative for the horizontal phase
+  defect.  D1001 identified as v1.3, MAC `e8:f6:0a:e0:46:4c`; only `ota_0`
+  at `0x20000..0x4efff` was erased/written with the 189,568-byte image whose
+  SHA-256 is
+  `5765e5b06a0089e25fcdec908dd0d03b20ebebded56d7d6ea978ab3326d83a63`,
+  and write-time plus independent digest verification passed.  The bounded
+  60-second run read panel identity `93 65 04`, reported no host payload
+  error, kept bridge RAW status and DMA faults at zero, and advanced completed
+  frames from 11 to 2,006.  Host-video and feed enable again both saw
+  `SAR=FB+0x2200`; exact bridge construction ended at
+  `RAW_NUM_CFG=0x0003e800`, flow `0x10` and enable `1`.  Direct observation
+  showed the colourful asymmetric rectangles but with the same cyclic
+  horizontal displacement as the non-exact control.  The run reached
+  `scanout stopped, panel safe`, then mounted the 121,942-MB SD card through
+  the read-only path; the later missing-console alert is outside the bounded
+  scanout gate.  Separate volatile field-write history throughout the linked
+  IDF DPI object is therefore closed as causal.  The remaining live delta is
+  not a constant framebuffer pointer phase and should be isolated in
+  non-burst line packetisation versus the still-black 1,000-Mbit/s burst
+  startup, using a packet-width/blanking oracle rather than more register
+  write-order replicas.
 
 ## Evidence-entry template
 
