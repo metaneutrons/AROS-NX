@@ -148,6 +148,27 @@ void krnP4CacheWriteback(void)
 }
 
 /*
+ * Publish only one data range to an external DMA reader.
+ *
+ * Unlike krnP4CacheSyncData(), this deliberately leaves the CPU's data lines
+ * valid: a graphics producer has just written them and the display DMA only
+ * needs the bytes pushed to PSRAM.  The ROM routine accepts unaligned ranges
+ * and expands them to cache-line boundaries.  B6 calls this once or twice per
+ * affected physical row after rotating a bounded logical dirty rectangle.
+ */
+P4_SRAMCODE void krnP4CacheWritebackData(void *addr, unsigned long len)
+{
+    rom_cache_range_t wb = (rom_cache_range_t)P4_ROM_CACHE_WRITEBACK_ADDR;
+
+    if (!len)
+        return;
+
+    wb(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
+       (uint32_t)(unsigned long)addr, (uint32_t)len);
+    asm volatile("fence rw, rw" ::: "memory");
+}
+
+/*
  * Force a data range through external memory before reading it again.
  *
  * The B5 concurrent stress writes a PSRAM scratch range while the display
