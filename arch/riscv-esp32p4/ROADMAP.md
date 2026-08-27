@@ -129,7 +129,7 @@ gate: compensated output is not the native display contract.
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
 | B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel through a documented workaround.**  `P4_PANEL_VMUL=1` shows the complete regular grid with no payload error.  Colour, checker, dirty rectangles, sustained concurrent stress and ten EN warm resets pass.  A raw-source ruler measures a constant cyclic displacement of exactly 525 pixels; the explicitly named +525 write-mapping workaround makes quadrants, corner marks and isolated one-pixel lines correct, but neither fixes nor explains the native mapping.  The measured 71 MB/s matches the 69.3 MB/s imposed by timing and selects dirty-region writes over a full-frame CPU pass.  A forced-peripheral-reset gate may substitute for the inaccessible ten physical cold cycles only to unblock development; it is not cold-boot evidence.  The optional post-video DCS read remains excluded from acceptance |
-| B6 | VSYNC handoff, buffering decision and landscape rotation | `hardware partial` | Two complete native buffers are reserved outside Exec and contain immutable logical `1280 x 800` test frames rotated 90 degrees clockwise.  The GDMA one-frame completion is the ownership boundary because this bridge revision has no VSYNC interrupt.  The D1001 completed 2,006 frames with 19 exact source switches and zero DMA, bridge or host faults before safe stop; direct observation confirmed correctly placed complete alternating images with no visible tearing.  The +525 compatibility mapping stays explicitly named.  Actual bounded dirty-region updates and cache cleaning remain open |
+| B6 | VSYNC handoff, buffering decision and landscape rotation | `hardware verified` | Two complete native buffers are reserved outside Exec and contain logical `1280 x 800` surfaces rotated 90 degrees clockwise.  The GDMA one-frame completion is the ownership boundary because this bridge revision has no VSYNC interrupt.  The immutable gate completed 2,006 frames and 19 source switches without faults and was visually tear-free.  The producer gate then completed 60 bounded inactive-surface updates, exact rotated row-range writebacks and 60 requested frame-boundary swaps with zero rejects or faults; direct observation confirmed exactly one clean moving rectangle without stale pixels, split frames or tearing.  The +525 compatibility mapping stays explicitly named and B5R remains its removal gate |
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -588,6 +588,17 @@ unchanged artifact on 2026-08-28 confirmed correctly placed complete
 alternating images with no visible tearing.  The remaining B6 gate is actual
 dirty-region production, bounded cache cleaning and sustained updates rather
 than immutable prepared surfaces.
+
+The producer gate now implements that remaining mechanism.  With no source
+pending, the ISR cannot change ownership, so the CPU modifies only the inactive
+surface.  Rotation maps a bounded logical rectangle to one contiguous run per
+physical row; the temporary row-phase workaround can wrap that run, producing
+at most two range writebacks per row.  Only after those ranges reach PSRAM is
+the prepared source published, and the ISR consumes it at the next complete
+frame.  A 60-second D1001 run completed all 60 submissions and 60 swaps with
+zero rejects, pending work or transport faults.  Direct observation confirmed
+exactly one clean moving rectangle with no stale pixels, split frame or
+tearing.  This closes B6; B5R still owns removal of the named +525 workaround.
 
 ### B5R - root-fix native scanout row phase
 
@@ -8704,6 +8715,34 @@ chip in the width this port assumes; it never addressed the hang.
   `hardware partial` because both sources were prepared once and immutable;
   the next gate must produce bounded dirty regions, clean exactly those cache
   ranges and sustain updates without tearing, underrun or out-of-bounds writes.
+- The next gate was built from clean kernel objects on source
+  `fcde0082dd` with `P4_B6_DIRTY_GATE=1`, which implies the accepted two-buffer
+  B6 transport.  The 194,208-byte image has SHA-256
+  `cc31598eb14601da139193b51a782bee4a1d95225ef834119939de1b4c5cf7e1`.
+  The linked ELF contains `krnP4ScanoutB6DirtyStep`,
+  `krnP4CacheWritebackData`, `scanout_pending_fb`, the submit count and the
+  reject count.  The D1001 was reidentified as v1.3, MAC
+  `e8:f6:0a:e0:46:4c`; only `ota_0` at `0x20000` was written, and both the
+  write-time hash and independent `verify-flash` digest matched.  BSP, flash
+  volume and SD were not written.
+- Each source starts with the same four asymmetric logical corner marks.  Once
+  per second the CPU erases one old `127 x 73` rectangle and draws one new
+  rectangle inside a bounded central arena of the inactive source.  It writes
+  back only the physical row runs produced by the 90-degree transform and the
+  explicitly named +525 compatibility mapping, then submits that source.  A
+  source already active or pending and every invalid rectangle bound are
+  rejected before publication.
+- The first D1001 producer run reached 2,008 frames and ended with
+  `submitted 60 swapped 60 pending 0x00000000 rejects 0 status failures 0
+  PASSED`.  Every per-second sample had bridge raw status zero, host `int1`
+  zero and DMA faults zero; safe stop was followed by the existing read-only
+  SD discovery and Exec again ended external memory at `0x49c18000`.  This
+  hardware-verifies producer ownership, bounded submission and range-clean
+  transport.  Direct observation confirmed exactly one clean moving rectangle
+  at a time, with no old rectangle, partial image or visible tearing.  This
+  closes the sustained-update half and hardware-verifies B6.  The independently
+  named +525 compatibility mapping remains technical debt owned by B5R rather
+  than part of the public logical bitmap contract.
 
 ## Evidence-entry template
 

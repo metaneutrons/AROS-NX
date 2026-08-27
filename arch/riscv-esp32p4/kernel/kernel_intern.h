@@ -199,6 +199,9 @@ struct P4ScanoutState
     unsigned long dma_faults;   /* non-completion status latched by the ISR */
     unsigned long active_fb;    /* descriptor source selected for next frame */
     unsigned long dma_swaps;    /* frame-boundary source changes */
+    unsigned long pending_fb;   /* prepared source waiting for frame-done */
+    unsigned long dirty_submits;/* bounded producer submissions */
+    unsigned long dirty_rejects;/* producer ownership/bounds failures */
 };
 
 /*
@@ -251,6 +254,9 @@ void krnP4ScanoutFill(unsigned long rgb);
 void krnP4ScanoutCoordinatePattern(void);
 #ifdef P4_B6_DOUBLE_BUFFER
 void krnP4ScanoutB6Frames(void);
+#ifdef P4_B6_DIRTY_GATE
+unsigned long krnP4ScanoutB6DirtyStep(unsigned long second);
+#endif
 #endif
 void krnP4ScanoutPhaseCalibration(void);
 void krnP4ScanoutTestCard(void);
@@ -352,6 +358,7 @@ void krnP4SyncCode(void *addr, unsigned long len);
 /* How much of the external window the PSRAM probe found, zero if none */
 extern unsigned long __esp32p4_psram_size;
 void krnP4CacheWriteback(void);
+void krnP4CacheWritebackData(void *addr, unsigned long len);
 void krnP4CacheSyncData(void *addr, unsigned long len);
 unsigned long krnP4CacheOff(void);
 void krnP4CacheOn(unsigned long token);

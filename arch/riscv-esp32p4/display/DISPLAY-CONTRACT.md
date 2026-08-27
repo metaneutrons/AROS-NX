@@ -201,6 +201,7 @@ are `derived` from a diff of the two header sets and are cheap to re-check.
 | Reference total | 6,144,000 bytes plus a 2 MB decode buffer | `derived` | `V-lvgl:242` |
 | AROS start | exactly one buffer | `verified` | B5; buffer count is still a B6 decision with a measured reason |
 | B6 handoff gate | two complete buffers, 4,096,000 bytes | `hardware verified` | both are reserved above Exec's PSRAM ceiling; 2,006 frames and 19 ISR source switches completed without a transport fault, and direct observation confirmed correctly placed complete alternating images with no visible tearing |
+| B6 dirty producer | same two complete buffers | `hardware verified` | 60 bounded inactive-surface changes, exact rotated row-range writebacks and 60 requested frame-boundary swaps completed with zero rejects or transport faults; direct observation confirmed exactly one clean moving rectangle with no stale pixels, split frame or tearing |
 
 Descriptors, ISR data and controller state stay in internal SRAM.  CPU writes
 are not coherent with display DMA, so each dirty region is cleaned
@@ -251,6 +252,17 @@ source switches with zero DMA, bridge or host faults.  A direct repeat on
 2026-08-28 confirmed correctly placed complete alternating images with no
 visible tearing.  This verifies the immutable-source handoff instrument; it
 does not yet verify bounded cache-clean dirty updates from a graphics producer.
+
+The next producer gate removes the timer-based source alternation.  The CPU may
+write only when there is no pending source, which prevents the ISR from changing
+ownership during a draw.  It selects the inactive surface, bounds the logical
+dirty rectangle, rotates it, writes back only the affected physical row runs
+and then publishes that source.  The ISR consumes a published source only at
+DMA frame-done.  The D1001 completed 60 such submissions and 60 swaps with no
+pending request, reject, DMA fault, bridge raw status or host error at safe
+stop.  Direct observation confirmed exactly one clean moving rectangle with no
+stale pixels, split frame or tearing.  Together with the accepted immutable
+orientation gate, this hardware-verifies B6's buffering and rotation contract.
 
 The bandwidth decision is also now measured rather than assumed.  One native
 frame is 2,048,000 bytes and Set A is 33.82 Hz, so the handshake-paced display

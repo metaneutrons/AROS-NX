@@ -5272,8 +5272,13 @@ static void krnP4PanelProbe(void)
                    pixel format cannot produce a flat field at all. */
 #if defined(P4_B6_HANDOFF_GATE)
                 krnP4ScanoutB6Frames();
+#ifdef P4_B6_DIRTY_GATE
+                krnP4PutStr("[b6dirty] two rotated landscape sources;"
+                            " bounded inactive updates submit at frame-done\n");
+#else
                 krnP4PutStr("[b6]     two immutable rotated landscape frames;"
                             " GDMA swaps only at frame-done\n");
+#endif
 #elif defined(P4_B5_STATIC_PRELOAD)
                 /* Write the complete asymmetric image before the pixel path
                    starts, then leave it unchanged for the whole run. */
@@ -6091,6 +6096,9 @@ static void krnP4PanelProbe(void)
                  */
                 {
                     unsigned long secs;
+#ifdef P4_B6_DIRTY_GATE
+                    unsigned long dirty_status_failures = 0;
+#endif
 #ifdef P4_B5_CONCURRENT_STRESS
                     unsigned long stress_completed = 0;
                     int stress_ready = krnP4B5StressBegin();
@@ -6126,6 +6134,24 @@ static void krnP4PanelProbe(void)
                         stress_completed = secs + 1;
 #endif
 
+#ifdef P4_B6_DIRTY_GATE
+                        {
+                            unsigned long target =
+                                krnP4ScanoutB6DirtyStep(secs);
+
+                            krnP4PutStr("[b6dirty] t");
+                            krnP4PutDec((uint32_t)secs);
+                            if (target)
+                            {
+                                krnP4PutStr(" queued ");
+                                krnP4PutHex32((uint32_t)target);
+                            }
+                            else
+                                krnP4PutStr(" REJECTED");
+                            krnP4PutStr("\n");
+                        }
+#endif
+
                         krnP4ScanoutState(&sc);
                         krnP4ScanoutSample(&depth, &raw);
                         krnP4DsiCmdStatus(&pkt, &i0, &i1);
@@ -6158,11 +6184,41 @@ static void krnP4PanelProbe(void)
                         krnP4PutHex32((uint32_t)sc.active_fb);
                         krnP4PutStr(" swaps ");
                         krnP4PutDec((uint32_t)sc.dma_swaps);
+#ifdef P4_B6_DIRTY_GATE
+                        krnP4PutStr(" pending ");
+                        krnP4PutHex32((uint32_t)sc.pending_fb);
+                        krnP4PutStr(" submits ");
+                        krnP4PutDec((uint32_t)sc.dirty_submits);
+                        krnP4PutStr(" rejects ");
+                        krnP4PutDec((uint32_t)sc.dirty_rejects);
+                        if (raw || i1 || sc.dma_faults)
+                            dirty_status_failures++;
+#endif
 #endif
                         krnP4PutStr("\n");
 
                         krnTimerWait(P4_TICK_HZ);
                     }
+#ifdef P4_B6_DIRTY_GATE
+                    krnP4ScanoutState(&sc);
+                    krnP4PutStr("[b6dirty] submitted ");
+                    krnP4PutDec((uint32_t)sc.dirty_submits);
+                    krnP4PutStr(" swapped ");
+                    krnP4PutDec((uint32_t)sc.dma_swaps);
+                    krnP4PutStr(" pending ");
+                    krnP4PutHex32((uint32_t)sc.pending_fb);
+                    krnP4PutStr(" rejects ");
+                    krnP4PutDec((uint32_t)sc.dirty_rejects);
+                    krnP4PutStr(" status failures ");
+                    krnP4PutDec((uint32_t)dirty_status_failures);
+                    if (sc.dirty_submits == (unsigned long)P4_SCANOUT_SECS
+                        && sc.dma_swaps == sc.dirty_submits
+                        && sc.pending_fb == 0 && sc.dirty_rejects == 0
+                        && dirty_status_failures == 0 && sc.dma_faults == 0)
+                        krnP4PutStr(" PASSED\n");
+                    else
+                        krnP4PutStr(" FAILED\n");
+#endif
 #ifdef P4_B5_CONCURRENT_STRESS
                     krnP4B5StressEnd(stress_completed,
                         stress_ready &&

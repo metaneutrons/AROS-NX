@@ -129,6 +129,9 @@ static volatile unsigned long scanout_dma_frames;
 static volatile unsigned long scanout_dma_faults;
 static volatile unsigned long scanout_active_fb;
 static volatile unsigned long scanout_dma_swaps;
+static volatile unsigned long scanout_pending_fb;
+static volatile unsigned long scanout_dirty_submits;
+static volatile unsigned long scanout_dirty_rejects;
 
 static inline void lli_wr(unsigned long off, unsigned long v)
 {
@@ -597,6 +600,9 @@ void krnP4ScanoutDmaUp(void)
     scanout_dma_faults = 0;
     scanout_active_fb = P4_FB_BASE;
     scanout_dma_swaps = 0;
+    scanout_pending_fb = 0;
+    scanout_dirty_submits = 0;
+    scanout_dirty_rejects = 0;
 #ifndef P4_B5_EARLY_GDMA_CREATE
     ch_wr(P4_DMAC_CH_INTCLEAR0, 0xFFFFFFFFUL);
 #ifndef P4_B5_DMA_RELOAD
@@ -633,12 +639,22 @@ void krnP4ScanoutDmaInterrupt(void)
     {
         scanout_dma_frames++;
 #ifdef P4_B6_DOUBLE_BUFFER
+#ifdef P4_B6_DIRTY_GATE
+        if (scanout_pending_fb != 0
+            && scanout_pending_fb != scanout_active_fb)
+        {
+            scanout_active_fb = scanout_pending_fb;
+            scanout_pending_fb = 0;
+            scanout_dma_swaps++;
+        }
+#else
         if (scanout_dma_frames % P4_B6_SWAP_FRAMES == 0)
         {
             scanout_active_fb = scanout_active_fb == P4_FB_BASE
                               ? P4_FB_BACK_BASE : P4_FB_BASE;
             scanout_dma_swaps++;
         }
+#endif
         lli_wr(P4_DMAC_LLI_SAR_LO, scanout_active_fb);
 #endif
         lli_wr(P4_DMAC_LLI_CTL_HI, scanout_lli_ctl_hi);
@@ -720,6 +736,9 @@ void krnP4ScanoutState(struct P4ScanoutState *out)
     out->dma_faults   = scanout_dma_faults;
     out->active_fb    = scanout_active_fb;
     out->dma_swaps    = scanout_dma_swaps;
+    out->pending_fb   = scanout_pending_fb;
+    out->dirty_submits = scanout_dirty_submits;
+    out->dirty_rejects = scanout_dirty_rejects;
 }
 
 /*
@@ -1017,6 +1036,29 @@ void krnP4ScanoutB6Frames(void)
 {
     unsigned long y, x;
 
+#ifdef P4_B6_DIRTY_GATE
+    /* Both sources begin with the same orientation witness.  The producer
+       gate below changes only its central arena, so a moving rectangle cannot
+       erase or fake any of the four logical-corner checks. */
+    b6_logical_fill(P4_FB_BASE, 0x080808UL);
+    b6_logical_fill(P4_FB_BACK_BASE, 0x080808UL);
+    b6_logical_rect(P4_FB_BASE, 0, 0, 149, 73, 0xFF0000UL);
+    b6_logical_rect(P4_FB_BASE, P4_PANEL_V_RES - 91, 0,
+                    91, 127, 0x00FF00UL);
+    b6_logical_rect(P4_FB_BASE, 0, P4_PANEL_H_RES - 113,
+                    67, 113, 0x0000FFUL);
+    b6_logical_rect(P4_FB_BASE, P4_PANEL_V_RES - 181,
+                    P4_PANEL_H_RES - 47, 181, 47, 0xFFFF00UL);
+    b6_logical_rect(P4_FB_BACK_BASE, 0, 0, 149, 73, 0xFF0000UL);
+    b6_logical_rect(P4_FB_BACK_BASE, P4_PANEL_V_RES - 91, 0,
+                    91, 127, 0x00FF00UL);
+    b6_logical_rect(P4_FB_BACK_BASE, 0, P4_PANEL_H_RES - 113,
+                    67, 113, 0x0000FFUL);
+    b6_logical_rect(P4_FB_BACK_BASE, P4_PANEL_V_RES - 181,
+                    P4_PANEL_H_RES - 47, 181, 47, 0xFFFF00UL);
+    return;
+#endif
+
     for (y = 0; y < P4_PANEL_H_RES; y++)
     {
         for (x = 0; x < P4_PANEL_V_RES; x++)
@@ -1050,6 +1092,138 @@ void krnP4ScanoutB6Frames(void)
     b6_logical_rect(P4_FB_BACK_BASE, 449, 383, 383, 31, 0xFFFFFFUL);
     b6_logical_rect(P4_FB_BACK_BASE, 623, 277, 29, 247, 0x00FFFFUL);
 }
+
+#ifdef P4_B6_DIRTY_GATE
+/*
+ * Publish exactly the physical cache ranges touched by one logical rectangle.
+ * Rotation turns each logical X into one physical row and logical Y into a
+ * contiguous run within that row.  The temporary +525 compatibility mapping
+ * can wrap that run at the physical row edge, hence at most two writebacks per
+ * affected row.  No byte outside the rectangle's cache lines is requested.
+ */
+static int b6_dirty_writeback(unsigned long fb, unsigned long x,
+                              unsigned long y, unsigned long w,
+                              unsigned long h)
+{
+    unsigned long xx;
+    unsigned long mapped_y = y;
+
+    if (!w || !h || x >= P4_PANEL_V_RES || y >= P4_PANEL_H_RES
+        || w > P4_PANEL_V_RES - x || h > P4_PANEL_H_RES - y)
+        return 0;
+
+#ifdef P4_SCANOUT_ROW_PHASE_WORKAROUND
+    mapped_y = (mapped_y + P4_SCANOUT_ROW_PHASE_WORKAROUND)
+             % P4_PANEL_H_RES;
+#endif
+
+    for (xx = x; xx < x + w; xx++)
+    {
+        unsigned long physical_row = P4_PANEL_V_RES - 1 - xx;
+        unsigned long first = h;
+        unsigned long row = fb + physical_row * P4_PANEL_H_RES
+                                  * P4_FB_BYTES_PER_PIXEL;
+
+        if (first > P4_PANEL_H_RES - mapped_y)
+            first = P4_PANEL_H_RES - mapped_y;
+        krnP4CacheWritebackData(
+            (void *)(row + mapped_y * P4_FB_BYTES_PER_PIXEL),
+            first * P4_FB_BYTES_PER_PIXEL);
+        if (first < h)
+            krnP4CacheWritebackData((void *)row,
+                (h - first) * P4_FB_BYTES_PER_PIXEL);
+    }
+    return 1;
+}
+
+/*
+ * Produce one bounded logical dirty update into the source that is neither
+ * active nor pending, clean only its rotated row ranges, then publish it.
+ * With no pending source the ISR cannot change ownership while the CPU draws;
+ * after publication the CPU never touches that surface until a later swap has
+ * made it inactive again.
+ */
+unsigned long krnP4ScanoutB6DirtyStep(unsigned long second)
+{
+    static unsigned long old_x[2], old_y[2];
+    static unsigned char old_valid[2];
+    static const unsigned long colours[] =
+    {
+        0xFF0000UL, 0x00FF00UL, 0x0000FFUL,
+        0xFFFF00UL, 0x00FFFFUL, 0xFF00FFUL, 0xFFFFFFUL,
+    };
+    const unsigned long arena_x = 192;
+    const unsigned long arena_y = 144;
+    const unsigned long arena_w = 896;
+    const unsigned long arena_h = 512;
+    const unsigned long rect_w = 127;
+    const unsigned long rect_h = 73;
+    unsigned long active, target, slot, x, y;
+
+    if (scanout_pending_fb != 0)
+    {
+        scanout_dirty_rejects++;
+        return 0;
+    }
+
+    active = scanout_active_fb;
+    if (active == P4_FB_BASE)
+    {
+        target = P4_FB_BACK_BASE;
+        slot = 1;
+    }
+    else if (active == P4_FB_BACK_BASE)
+    {
+        target = P4_FB_BASE;
+        slot = 0;
+    }
+    else
+    {
+        scanout_dirty_rejects++;
+        return 0;
+    }
+
+    x = arena_x + (second * 97 + 3) % (arena_w - rect_w + 1);
+    y = arena_y + (second * 53 + 5) % (arena_h - rect_h + 1);
+
+    if (old_valid[slot])
+    {
+        b6_logical_rect(target, old_x[slot], old_y[slot],
+                        rect_w, rect_h, 0x080808UL);
+        if (!b6_dirty_writeback(target, old_x[slot], old_y[slot],
+                                rect_w, rect_h))
+        {
+            scanout_dirty_rejects++;
+            return 0;
+        }
+    }
+
+    b6_logical_rect(target, x, y, rect_w, rect_h,
+                    colours[second % (sizeof(colours) / sizeof(colours[0]))]);
+    if (!b6_dirty_writeback(target, x, y, rect_w, rect_h))
+    {
+        scanout_dirty_rejects++;
+        return 0;
+    }
+
+    old_x[slot] = x;
+    old_y[slot] = y;
+    old_valid[slot] = 1;
+
+    /* No pending request means frame-done cannot have changed active while
+       the CPU was drawing.  Recheck before making the prepared surface owned
+       by the ISR, then publish it with a release fence. */
+    if (scanout_pending_fb != 0 || scanout_active_fb != active)
+    {
+        scanout_dirty_rejects++;
+        return 0;
+    }
+    scanout_dirty_submits++;
+    asm volatile("fence rw, rw" ::: "memory");
+    scanout_pending_fb = target;
+    return target;
+}
+#endif
 #endif
 
 /*
