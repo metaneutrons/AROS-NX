@@ -105,6 +105,22 @@ ifeq ($(P4_B5_FULL_EXACT_TRIAL),1)
 P4_DEBUG_CPPFLAGS += -DP4_B5_FULL_EXACT_TRIAL
 endif
 
+# P4_B5_REFERENCE_TRANSITION_TRACE=1 prints the six live DSI host words at
+# the same four lifecycle boundaries measured in the known-good Vellum image:
+# after the ID read, after the vendor table, after video/AUTO and after feed.
+# It is a bounded state discriminator, not a maintained transport setting.
+ifeq ($(P4_B5_REFERENCE_TRANSITION_TRACE),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_REFERENCE_TRANSITION_TRACE
+endif
+
+# P4_B5_BUFFERED_CMD_DRAIN=1 waits after the final vendor command for the
+# host's internal buffered command and payload FIFOs, not merely the public
+# generic write FIFOs, to report empty.  The working Vellum handover is
+# 0x50015; the black AROS handover was first measured at 0x60015.
+ifeq ($(P4_B5_BUFFERED_CMD_DRAIN),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_BUFFERED_CMD_DRAIN
+endif
+
 ifeq ($(P4_B5_LIVE_UPDATE_GATE),1)
 P4_DEBUG_CPPFLAGS += -DP4_B5_LIVE_UPDATE_GATE -DP4_PANEL_PROBE \
                      -DP4_DSI_PROBE -DP4_SCANOUT_TEST \

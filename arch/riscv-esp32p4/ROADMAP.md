@@ -8193,6 +8193,56 @@ chip in the width this port assumes; it never addressed the hang.
   `9234e13191f49c7f1a4f3a1c280015001cee98bdf497c57973b7f9f3fff46a77`.
   The rename therefore changes no tested machine code; it prevents a rejected
   black configuration from being mistaken for the port's maintained profile.
+- A temporary, fully reverted Vellum/IDF instrument captured the working
+  command-to-video transition rather than another late register snapshot.
+  The 2,382,048-byte reference image had SHA-256
+  `3a0e867b355895a60e5bd053ca7fc82acd1616d01c5068c82f61accd8a2fcb46`;
+  only `ota_0` was written on the identified v1.3 board and both write-time
+  and independent digest verification passed.  After the ID read and after
+  the vendor table it read
+  `PCKHDL/CMD/PKT/PHY/INT1/VID = 0x1d/0x010f7f02/0x00050015/0x15bd/0/0x00010005`.
+  Immediately after video mode plus AUTO the only change was PHY `0x15b9`;
+  immediately after feed, video status changed from `0x00010005` to
+  `0x00010004`, still with zero host error.  Thus retained BTA/ACK does not
+  leave the working driver in receive direction.  Both the Vellum and pinned
+  IDF source trees were restored clean after the capture.
+- `P4_B5_REFERENCE_TRANSITION_TRACE=1` now records the identical six words at
+  those four boundaries in AROS.  The first unequal boundary, not the later
+  black frame alone, will select the next fix.  Run it additively with the
+  rejected full-exact trial and immutable preloaded coordinate card; retain
+  the 200/360-MHz baseline, bounded safe stop and read-only SD gate.
+- The symmetric AROS run located the first unequal boundary.  Its fresh
+  190,432-byte image had SHA-256
+  `a3b77b1a1933ffb2bf832771a71d402d4e7bdf4805238454e0b1e69aa639f714`;
+  only `ota_0` was written and independently verified.  After ID, AROS was
+  identical to Vellum at `0x1d/0x010f7f02/0x50015/0x15bd/0/0x10005`.
+  After the vendor table AROS alone changed command status to `0x60015` and
+  PHY to receive-direction `0x15af`; video/AUTO and feed inherited
+  `0x60015/0x15ab`, and feed failed to make Vellum's `VID_PKT_STATUS`
+  transition from `0x10005` to `0x10004`.  The later result was the known
+  persistent `INT_ST1=0x80`, `PHY=0x15bb` and black panel with moving
+  69-MB/s DMA, zero bridge RAW and zero DMA faults.
+- `0x60015` is not merely an ACK/BTA state: bit 17 says the host's internal
+  buffered command FIFO is full, whereas Vellum's `0x50015` has bit 16 set,
+  buffered-command empty.  Every previous settle attempt polled only the
+  external generic command/payload FIFO bits 0..3, so those negative runs did
+  not test this newly observed difference.  `P4_B5_BUFFERED_CMD_DRAIN=1`
+  now waits at the sole handover boundary for buffered command and payload
+  empty, bounded to 20 ms.  Reaching `0x50015/0x15bd` before video is the
+  acceptance condition; timeout must abort B3 and return the panel safe.
+- The bounded drain discriminator timed out exactly as designed.  Its fresh
+  190,496-byte image had SHA-256
+  `3b2f9064d14ad5312b0563591ed5c856c64098c32e7d37510ee5d63725d78720`;
+  only `ota_0` was written on D1001 v1.3 and independently verified.  The
+  25-second run matched Vellum through the post-ID boundary at
+  `0x1d/0x010f7f02/0x50015/0x15bd/0/0x10005`, then timed out after the vendor
+  table with `B3 stage two FAILED: a command fifo never drained`.  The panel
+  was returned safe with the backlight never enabled, and the observer
+  confirmed an entirely black display.  The machine continued through the
+  read-only SD boot path, so this is a bounded DSI failure rather than a board
+  hang.  A post-table wait cannot cure the state; the next discriminator must
+  serialize or trace individual vendor writes to find the first command that
+  fills the internal buffer.
 
 ## Evidence-entry template
 

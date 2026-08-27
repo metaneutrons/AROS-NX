@@ -104,6 +104,25 @@ static void dsi_trace(void)
         krnP4DsiPhyTrace[krnP4DsiPhyTraceCount++] = dsi_rd(P4_DSI_PHY_STATUS);
 }
 
+void krnP4DsiReferenceTransitionTrace(const char *stage)
+{
+    krnP4PutStr("[b5ref]  ");
+    krnP4PutStr(stage);
+    krnP4PutStr(" pck/cmd/pkt/phy/int1/vid ");
+    krnP4PutHex32((uint32_t)dsi_rd(P4_DSI_PCKHDL_CFG));
+    krnP4PutStr("/");
+    krnP4PutHex32((uint32_t)dsi_rd(P4_DSI_CMD_MODE_CFG));
+    krnP4PutStr("/");
+    krnP4PutHex32((uint32_t)dsi_rd(P4_DSI_CMD_PKT_STATUS));
+    krnP4PutStr("/");
+    krnP4PutHex32((uint32_t)dsi_rd(P4_DSI_PHY_STATUS));
+    krnP4PutStr("/");
+    krnP4PutHex32((uint32_t)dsi_rd(P4_DSI_INT_ST1));
+    krnP4PutStr("/");
+    krnP4PutHex32((uint32_t)dsi_rd(P4_DSI_VID_PKT_STATUS));
+    krnP4PutStr("\n");
+}
+
 /* Match ESP-IDF ldo_ll_voltage_to_dref_mul() exactly for LDO unit 2.  The
  * calibration constants are signed eFuse fields; using the nominal 9/6 pair
  * on every die changes the real PHY rail even though both settings are called
@@ -783,6 +802,9 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
         *id_result = krnP4DsiDcsRead(0x04, id, 3);
 
     dsi_trace();                /* 1: after the only read on this path */
+#ifdef P4_B5_REFERENCE_TRANSITION_TRACE
+    krnP4DsiReferenceTransitionTrace("after-id");
+#endif
 
     {
         static const unsigned char page_user = 0x00;
@@ -818,8 +840,23 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
             krnTimerWait((c->delay_ms * P4_TICK_HZ + 999) / 1000);
     }
 
+#ifdef P4_B5_BUFFERED_CMD_DRAIN
+    {
+        const unsigned long empty = P4_DSI_GEN_BUFF_CMD_EMPTY
+                                  | P4_DSI_GEN_BUFF_PLD_EMPTY;
+        uint64_t deadline = krnTimerCount() + P4_SYSTIMER_HZ / 50;
+
+        while ((dsi_rd(P4_DSI_CMD_PKT_STATUS) & empty) != empty)
+            if (krnTimerCount() > deadline)
+                return P4_DSI_CMD_BUSY;
+    }
+#endif
+
 #ifndef P4_B5_FULL_ATOMIC_START
     dsi_trace();                /* 3: after the whole vendor sequence */
+#endif
+#ifdef P4_B5_REFERENCE_TRANSITION_TRACE
+    krnP4DsiReferenceTransitionTrace("after-table");
 #endif
 
 #ifdef P4_B5_HOST_RESTART

@@ -5347,8 +5347,14 @@ static void krnP4PanelProbe(void)
                 krnP4DsiVideoOn();
 #else
                 krnP4DsiVideoOn();
+#ifdef P4_B5_REFERENCE_TRANSITION_TRACE
+                krnP4DsiReferenceTransitionTrace("after-video-auto");
+#endif
 #ifndef P4_DSI_VPG
                 krnP4ScanoutFeedOn();
+#endif
+#ifdef P4_B5_REFERENCE_TRANSITION_TRACE
+                krnP4DsiReferenceTransitionTrace("after-feed");
 #endif
 #endif
 #ifdef P4_B5_CLOCK_GATED_START
