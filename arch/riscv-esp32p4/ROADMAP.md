@@ -8267,9 +8267,116 @@ chip in the width this port assumes; it never addressed the hang.
   clean `0x15ad -> 0x15bd` excursion.  Therefore AROS's timeout is not a short
   wait and `0x60015` was only the queued `0x35` hiding the still-active
   `0x29`.  The Vellum instrumentation was removed and both external source
-  trees were verified clean.  The next test must change the `0x29` turnaround
-  itself while restoring the reference ACK/BTA register state before video;
-  repeating generic FIFO waits or per-command yields is excluded.
+  trees were verified clean.
+- The first `P4_B5_TAIL_NO_ACK_WINDOW=1` trial produced a fresh 190,624-byte
+  image with SHA-256
+  `f306cbf2c42a5fedc513a94343c012ef576885cb2157c47c8c45eb1851ac1c60`.
+  Only `ota_0` was written and independently verified.  It still timed out in
+  B3 before the post-table trace and kept the panel black and safe.  The
+  combined tail-window plus serializer trial produced a fresh 190,992-byte
+  image with SHA-256
+  `7989b7f20dbe6ca97128e3cb9c1d23d783f48c6186e341762f07ba034b601983`;
+  it too was written and independently verified only in `ota_0`, and still
+  reported `command 0x29 stalled` at `0x40015/0x15af/0`.  The operator
+  confirmed the expected all-black safe failure.  The serializer was then
+  extended to report table index, active vendor page, parameter and byte count.
+  Its fresh 190,976-byte image had SHA-256
+  `b060d786423348016ee24feefd3bc868efbf316ea50991cd07b0d5e9d84a6d96`;
+  only `ota_0` was written and independently verified.  It located the stall
+  unambiguously at index `0xAC`, page `0`, command/parameter/size
+  `0x29/0/1`: the final display-on transaction, not the earlier page-two
+  register `0x29/0x35`.  B3 again failed safe, the operator confirmed black,
+  and read-only SD startup continued.  Thus the tail window did target the
+  correct command but clearing the global ACK/BTA bits was insufficient; the
+  rejected switch has been removed.
+- The next bounded discriminator corrects a timing mismatch immediately before
+  that transaction.  AROS converted the vendor's 120-ms sleep-out delay to
+  twelve 100-Hz tick transitions; depending on entry phase that can return
+  almost 10 ms early.  The working Vellum oracle measured about 121 ms between
+  sleep-out and display-on.  Panel-table delays now use the 16-MHz SYSTIMER and
+  cannot return before the stated minimum.  The serializer and exact reference
+  transition trace remain active for the first hardware run: a drained index
+  `0xAC` and Vellum's post-table boundary accept the timing cause; the same
+  stall rejects it while keeping B3 dark and safe.
+- The minimum-delay run rejected that timing cause.  Its fresh 191,232-byte
+  image had SHA-256
+  `a3baca6eed08baf47df54c7dbd54f769dd412f4096f37bf9c486900ce0928dfb`;
+  only `ota_0` was written and independently verified.  Even with a full
+  SYSTIMER-measured 120 ms after sleep-out, index `0xAC` again stopped at
+  `PKT/PHY/INT1 = 0x40015/0x15af/0`; B3 returned the panel dark and safe and
+  read-only SD startup continued.  The SYSTIMER delay is retained because it
+  enforces the vendor table's minimum rather than sometimes undershooting it,
+  but it does not explain the AROS/Vellum split.  The next discriminator is a
+  side-by-side, read-only host-register snapshot immediately before index
+  `0xAC`; only a state that differs before the identical packet is eligible
+  for the next single-variable change.
+- `P4_B5_PRE_DISPLAY_REGISTER_TRACE=1` implements that comparison at the exact
+  boundary.  It reads all host control, status and active-shadow words from
+  `0x004..0x190` immediately before index `0xAC`, excluding `GEN_HDR` and
+  `GEN_PLD_DATA` because FIFO-facing reads could perturb the observation.  The
+  identical temporary trace in the working Vellum reference is the oracle;
+  both external trees must be restored after capture.  A differing pre-tail
+  word selects the next test, while equality moves the investigation from
+  static host configuration to packet-edge timing or PHY-internal state.
+- The side-by-side snapshot found exactly one unequal word.  The temporary
+  working Vellum image was 2,382,048 bytes with SHA-256
+  `5bb22c57ce5cf62b3962a401d8f6b3ef188e025f797cd990f316ec81cfe7d7a3`;
+  its identified-board `ota_0` write and independent verification passed, ID
+  was `93 65 04`, and immediately before display-on all command buffers were
+  empty with `PHY_STATUS=0x15bd`.  The temporary source trace was then removed
+  and both the Vellum and linked v6.0 IDF trees were verified clean.  The
+  symmetric AROS image was 191,504 bytes with SHA-256
+  `8dac035cfb30e4e8665076d071acebdbaaf2ad986d1398835fe6a55de035f693`;
+  only `ota_0` was written and independently verified.  All 66 other readable
+  control/status/shadow words matched Vellum exactly, including
+  `PCKHDL/CMD/PKT=0x1d/0x010f7f02/0x50015`; only PHY status differed at
+  `0x15af`.  The later `0x29` timeout is therefore downstream: the preceding
+  sleep-out `0x11` leaves AROS in receive turnaround for well beyond its full
+  120-ms delay even though the internal command buffer is already empty.
+- `P4_B5_SLEEP_OUT_NO_ACK_WINDOW=1` is the resulting one-command discriminator.
+  It saves ACK/BTA, suppresses both only while index `0xAB` sleep-out is
+  submitted, and restores the exact live bits before the 120-ms delay and
+  index `0xAC`.  `PHY_STATUS=0x15bd` at the pre-display snapshot and a drained
+  `0x29` accept the causal boundary; the old `0x15af` rejects it.  All failure
+  paths remain bounded and B3-safe.
+- The sleep-out discriminator accepted that boundary but did not yet produce
+  video.  Its fresh 191,632-byte image had SHA-256
+  `652dcdb79a873acc349d2b619e6e92c421d1d7bee4d8786f61355ca488abb5a3`;
+  only the identified D1001's `ota_0` was written and independently verified.
+  Immediately before table display-on AROS now reported `PHY_STATUS=0x15bd`,
+  the complete post-table tuple matched Vellum at
+  `PCK/CMD/PKT/PHY/INT1/VID =
+  0x1d/0x010f7f02/0x50015/0x15bd/0/0x10005`, and B3 stage two passed.
+  The fix is therefore retained as the causal repair for the command-mode
+  handover.  Video AUTO then reached Vellum's `PHY_STATUS=0x15b9`, but enabling
+  the bridge feed left `VID_PKT_STATUS=0x10005` instead of Vellum's running
+  `0x10004`; `INT_ST1=0x80` followed and the later, valid parameterless panel-on
+  command timed out at `PKT/PHY/INT1=0x40015/0x15b9/0x80`.  The operator
+  confirmed an all-black display.  The remaining blocker is consequently
+  after the repaired panel table and at or before the first ordinary video
+  payload, not the table's display-on command.
+- The next bounded run keeps the accepted sleep-out repair but sets
+  `P4_B5_SKIP_FINAL_PANEL_ON=1`.  Its existing 100-ms first-error oracle polls
+  immediately after video/feed start and records interrupt, video, PHY, DMA
+  frame, source-address and bridge-depth state.  `INT_ST1=0x80` before any
+  second `0x29` proves that command is only a victim of the already-failed
+  video start; absence of the error instead makes live command injection the
+  remaining cause.  The run remains B3-safe and ends with scanout stopped.
+- That image was 192,320 bytes with SHA-256
+  `e245a5de88be571b6c0ddda2f368b6cdcce738c9a8e8951ce212259bd08540c2`;
+  only the identified v1.3 D1001 `ota_0` was written and independently
+  verified.  Its first reset exposed a second tail-table symptom: sleep-out
+  and display-on drained, but the following index `0xAD` TE-on `0x35` stalled
+  at `PKT/PHY/INT1=0x40015/0x15af/0`, so B3 failed black and safe.  An
+  unchanged repeat drained the table but still ended it in receive direction
+  (`PHY_STATUS=0x15af`), entered video at `0x15ab`, and raised
+  `INT_ST1=0x80` after only `0x313` SYSTIMER ticks.  At that first-error edge
+  no DMA frame had completed, source address was `0x49e10200`, bridge depth
+  was `0x3b0`, and `VID_PKT_STATUS` was `0x20009`; the final parameterless
+  panel-on was explicitly skipped.  This proves the later `0x29` is a victim,
+  not a cause.  It also narrows the remaining nondeterminism to ACK/BTA
+  turnaround across the complete tail sequence `0x11,0x29,0x35`, while the
+  ordinary video payload fault begins before the first completed frame.
 
 ## Evidence-entry template
 

@@ -123,6 +123,33 @@ void krnP4DsiReferenceTransitionTrace(const char *stage)
     krnP4PutStr("\n");
 }
 
+#ifdef P4_B5_PRE_DISPLAY_REGISTER_TRACE
+static void dsi_pre_display_register_trace(void)
+{
+    static const unsigned short offsets[] = {
+        0x004, 0x008, 0x00c, 0x010, 0x014, 0x018, 0x01c, 0x020,
+        0x024, 0x028, 0x02c, 0x030, 0x034, 0x038, 0x03c, 0x040,
+        0x044, 0x048, 0x04c, 0x050, 0x054, 0x058, 0x05c, 0x060,
+        0x064, 0x068, 0x074, 0x078, 0x07c, 0x080, 0x084, 0x088,
+        0x08c, 0x090, 0x094, 0x098, 0x09c, 0x0a0, 0x0a4, 0x0a8,
+        0x0ac, 0x0b0, 0x0bc, 0x0c0, 0x0c4, 0x0c8, 0x0cc, 0x0f0,
+        0x0f4, 0x100, 0x10c, 0x110, 0x118, 0x11c, 0x138, 0x13c,
+        0x140, 0x144, 0x148, 0x14c, 0x150, 0x154, 0x158, 0x15c,
+        0x160, 0x168, 0x190
+    };
+    unsigned int i;
+
+    for (i = 0; i < sizeof(offsets) / sizeof(offsets[0]); ++i)
+    {
+        krnP4PutStr("[b5pre]  ");
+        krnP4PutHex32(offsets[i]);
+        krnP4PutStr("=");
+        krnP4PutHex32((uint32_t)dsi_rd(offsets[i]));
+        krnP4PutStr("\n");
+    }
+}
+#endif
+
 /* Match ESP-IDF ldo_ll_voltage_to_dref_mul() exactly for LDO unit 2.  The
  * calibration constants are signed eFuse fields; using the nominal 9/6 pair
  * on every die changes the real PHY rail even though both settings are called
@@ -584,6 +611,25 @@ static int dsi_wait_clear(unsigned long bits)
     return P4_DSI_OK;
 }
 
+/*
+ * Vendor delays are minimum protocol times, not scheduler delays.  Waiting
+ * for N periodic 10-ms tick transitions can return almost one tick early when
+ * entered just before the next transition; the JD9365's 120-ms sleep-out
+ * interval is followed immediately by display-on and must not be shortened.
+ */
+static int dsi_wait_ms(unsigned int ms)
+{
+    uint64_t start = krnTimerCount();
+    uint64_t duration = ((uint64_t)ms * P4_SYSTIMER_HZ + 999) / 1000;
+    unsigned long guard = 0;
+
+    while (krnTimerCount() - start < duration)
+        if (++guard > 200000000UL)
+            return P4_DSI_CMD_BUSY;
+
+    return P4_DSI_OK;
+}
+
 /* The packet header, which is what actually starts a transmission. */
 static int dsi_send_header(unsigned char dt, unsigned char lsb,
                            unsigned char msb)
@@ -834,6 +880,13 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
 {
     unsigned int i;
     int r;
+#ifdef P4_B5_SERIAL_COMMAND_DRAIN
+    unsigned char vendor_page = 0;
+#endif
+#ifdef P4_B5_SLEEP_OUT_NO_ACK_WINDOW
+    unsigned long sleep_pckhdl = 0;
+    unsigned long sleep_cmdmode = 0;
+#endif
 
     if (id && id_result)
         *id_result = krnP4DsiDcsRead(0x04, id, 3);
@@ -869,12 +922,62 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
     {
         const struct P4JD9365Cmd *c = &krnP4JD9365Init[i];
 
+#ifdef P4_B5_SLEEP_OUT_NO_ACK_WINDOW
+        if (i + 3 == krnP4JD9365InitCount)
+        {
+            sleep_pckhdl = dsi_rd(P4_DSI_PCKHDL_CFG);
+            sleep_cmdmode = dsi_rd(P4_DSI_CMD_MODE_CFG);
+            dsi_clr(P4_DSI_CMD_MODE_CFG, P4_DSI_ACK_RQST_EN);
+            dsi_clr(P4_DSI_PCKHDL_CFG, P4_DSI_BTA_EN);
+        }
+#endif
+
+#ifdef P4_B5_PRE_DISPLAY_REGISTER_TRACE
+        if (i + 2 == krnP4JD9365InitCount)
+            dsi_pre_display_register_trace();
+#endif
+
         r = krnP4DsiDcsWrite(c->cmd, &c->param, c->param_bytes);
+
+#ifdef P4_B5_SLEEP_OUT_NO_ACK_WINDOW
+        if (i + 3 == krnP4JD9365InitCount)
+        {
+            if (sleep_cmdmode & P4_DSI_ACK_RQST_EN)
+                dsi_set(P4_DSI_CMD_MODE_CFG, P4_DSI_ACK_RQST_EN);
+            if (sleep_pckhdl & P4_DSI_BTA_EN)
+                dsi_set(P4_DSI_PCKHDL_CFG, P4_DSI_BTA_EN);
+        }
+#endif
+
         if (r != P4_DSI_OK)
+        {
+#ifdef P4_B5_SERIAL_COMMAND_DRAIN
+            krnP4PutStr("[b5ser]  table index/page/cmd/param/bytes ");
+            krnP4PutHex32(i);
+            krnP4PutStr("/");
+            krnP4PutHex32(vendor_page);
+            krnP4PutStr("/");
+            krnP4PutHex32(c->cmd);
+            krnP4PutStr("/");
+            krnP4PutHex32(c->param);
+            krnP4PutStr("/");
+            krnP4PutHex32(c->param_bytes);
+            krnP4PutStr("\n");
+#endif
             return r;
+        }
+
+#ifdef P4_B5_SERIAL_COMMAND_DRAIN
+        if (c->cmd == 0xE0 && c->param_bytes == 1)
+            vendor_page = c->param;
+#endif
 
         if (c->delay_ms)
-            krnTimerWait((c->delay_ms * P4_TICK_HZ + 999) / 1000);
+        {
+            r = dsi_wait_ms(c->delay_ms);
+            if (r != P4_DSI_OK)
+                return r;
+        }
     }
 
 #ifdef P4_B5_BUFFERED_CMD_DRAIN
