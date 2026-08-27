@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  A hardware-observed colour card verifies native little-endian RGB565 and all primary/pair colours; the corrected exactly tiled checker is perfect and moving dirty rectangles leave no visible artefacts.  A raw-source ruler fixes the constant cyclic row phase at exactly 525 pixels; the compensated D1001 gate places asymmetric quadrants at the active-area edges, four differently sized marks in their correct corners and two horizontal plus two vertical one-pixel lines straight and continuous.  Runs at 40 MHz over 1500 Mbit/s lanes.  The sustained gate passes 1,800 seconds of concurrent 71 MB/s scanout, read-only SD reads and cache-forced PSRAM passes: all 1,800 samples clean, 112 MB SD verified, 1,800 MB PSRAM verified and zero failures.  Bounded commands and ordered teardown recover an active reset in the verified case, but a separately retained PSRAM failure still needed one vendor-firmware boot and remains part of the open boot-cycle risk.  The optional post-video DCS read can separately pin `GEN_RD_CMD_BUSY`, so it is off by default and excluded from acceptance.  Still open: the DMA-based 100 MB/s decision and the full ten-warm/ten-cold boot gate |
+| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  A hardware-observed colour card verifies native little-endian RGB565 and all primary/pair colours; the corrected exactly tiled checker is perfect and moving dirty rectangles leave no visible artefacts.  A raw-source ruler fixes the constant cyclic row phase at exactly 525 pixels; the compensated D1001 gate places asymmetric quadrants at the active-area edges, four differently sized marks in their correct corners and two horizontal plus two vertical one-pixel lines straight and continuous.  Runs at 40 MHz over 1500 Mbit/s lanes.  The sustained gate passes 1,800 seconds of concurrent 71 MB/s scanout, read-only SD reads and cache-forced PSRAM passes: all 1,800 samples clean, 112 MB SD verified, 1,800 MB PSRAM verified and zero failures.  The measured 71 MB/s matches the 69.3 MB/s imposed by frame size and timing; the old 100 MB/s floor cannot be reported by a handshake-paced display DMA, and the resulting negative architecture decision selects one fused dirty-rectangle rotation/phase transform for B6 instead of a full-frame CPU pass.  Ten consecutive controlled EN warm resets of the unchanged +525 artifact each brought PSRAM up in one attempt, completed 2,146 zero-fault frames and stopped safely.  A real cold boot cannot be initiated in software on this battery-backed board, so the ten-cold half remains open rather than being relabelled.  The optional post-video DCS read can separately pin `GEN_RD_CMD_BUSY`, so it is off by default and excluded from acceptance |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -530,8 +530,12 @@ Acceptance gate:
 
 The concurrent-stress point passed on the D1001 on 2026-08-26.  The explicit
 solid/corner/one-pixel panel point passed on 2026-08-27 after a raw-source ruler
-fixed the row phase at exactly 525 pixels.  The remaining B5 points are the
-DMA-based 100 MB/s bandwidth decision and the complete boot-cycle matrix.
+fixed the row phase at exactly 525 pixels.  The same measured 71 MB/s scanout
+closes the bandwidth decision negatively: a 33.82-Hz native frame consumes only
+69.3 MB/s, so the display DMA cannot demonstrate the old 100 MB/s floor and B6
+must fuse rotation plus phase into dirty-region writes rather than perform a
+full-frame CPU transform.  Ten controlled warm resets passed on 2026-08-27;
+the ten true cold boots are the one remaining B5 point.
 
 ### B6 - VSYNC handoff, buffering and landscape
 
@@ -8531,6 +8535,40 @@ chip in the width this port assumes; it never addressed the hang.
   This is not yet a production framebuffer mapping: the next implementation
   step must place the proven phase correction at the scanout/HIDD contract
   boundary rather than silently retaining a test-pattern-only remapper.
+- The deferred 100 MB/s decision is now closed without mislabelling 71 MB/s as
+  a threshold pass.  The one-frame descriptor transfers 2,048,000 bytes and
+  Set A runs at 33.82 Hz, so its hardware handshake limits this particular DMA
+  to about 69.3 MB/s regardless of the PSRAM's maximum throughput.  The repeated
+  71 MB/s D1001 measurements, including the 1,800-second concurrent run, match
+  that expected demand and show adequate native scanout, but cannot establish
+  a 100 MB/s memory ceiling.  The result rejects a full-frame CPU rotation at
+  every refresh: its read plus write traffic alone would be about 138.5 MB/s.
+  B6 will instead expose a conventional linear `1280 x 800` logical bitmap and
+  fuse the hardware-proven 90-degree rotation with the +525 physical-row phase
+  while copying only dirty rectangles into the fixed portrait scanout buffer.
+  This resolves the bandwidth gate as a documented negative design decision;
+  only the ten-warm/ten-cold boot matrix remains before B5 can close.
+- The warm half of that matrix is now complete on the unchanged 191,136-byte
+  +525 artifact with SHA-256
+  `1d7a5fe571e3289cfe7c2ef7278ffea3bffb7b3e0d4882e59326be4683942c31`.
+  Ten deliberately counted EN/RTS resets were captured from the ROM's first
+  byte; an accidentally interrupted extra reset was discarded and did not
+  count.  Every accepted run identified 32 MB PSRAM at 200 MHz on its first
+  attempt with zero command timeouts and zero FSM recoveries, drained the
+  panel/DSI start without payload error, reached `t59` and exactly 2,146 frames
+  with zero DMA faults, bridge raw status and host `int1`, then printed
+  `scanout stopped, panel safe`.  The inserted SD card was discovered through
+  the existing read-only path after each stop.  Its current volume has no
+  accepted `AROS.boot`, so the later generic DOS display initialization fails
+  as expected before C1; that is not a B5 scanout failure.
+- This is exactly a **warm** result.  `reset-and-log.py` pulses EN through the
+  USB-JTAG RTS control line; it does not remove power.  The board's battery
+  keeps the rails alive when USB is removed, and the earlier hardware test in
+  this roadmap showed that releasing PCA9535 PWR_HOLD on battery did not power
+  it down.  No software action can therefore manufacture the remaining ten
+  cold boots.  They remain open until either the battery is physically
+  disconnected for controlled cycles or the project explicitly replaces the
+  power-cycle gate with a separately named forced-peripheral-reset gate.
 
 ## Evidence-entry template
 
