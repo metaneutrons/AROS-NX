@@ -8243,6 +8243,33 @@ chip in the width this port assumes; it never addressed the hang.
   hang.  A post-table wait cannot cure the state; the next discriminator must
   serialize or trace individual vendor writes to find the first command that
   fills the internal buffer.
+- `P4_B5_SERIAL_COMMAND_DRAIN=1` is that next bounded discriminator.  It waits
+  after every DCS write for both internal buffers to become empty, and on a
+  20-ms timeout prints the triggering command plus packet, PHY and host-error
+  state before B3 fails safe.  If all writes drain, the existing four-boundary
+  trace must match Vellum at the post-table boundary before video is allowed.
+- The serialized run found the first non-draining transaction: the tail-table
+  one-parameter DCS `0x29`, not an arbitrary table overflow.  Its fresh
+  190,864-byte image had SHA-256
+  `3c46b0c31c51077556b7da5262ac11458052df7c6545bce29369a2941c0b6916`;
+  only `ota_0` was written and independently verified.  All earlier writes
+  drained, then `0x29` remained `PKT/PHY/INT1 = 0x40015/0x15af/0` after the
+  bounded 20-ms wait.  Bit 1 distinguishes that PHY value from Vellum's live
+  transmit edge: AROS is waiting in receive direction, without a reported
+  host error.  B3 failed safe and the read-only SD boot path continued.
+- A second temporary Vellum oracle measured that same command directly.  The
+  2,382,048-byte reference image had SHA-256
+  `6af767f33890875ae8f6ebf3bdaaee07967772f60b4cc84069d3d5664b1c37c2`;
+  only `ota_0` was written and independently verified.  Immediately before
+  the tail `0x29`, Vellum read `0x50015/0x15bd/0`; immediately after the MMIO
+  write it already read `0x50015/0x15ad/0`, and after the specified 20-ms
+  delay it was back at `0x50015/0x15bd/0`.  Its following `0x35` made the same
+  clean `0x15ad -> 0x15bd` excursion.  Therefore AROS's timeout is not a short
+  wait and `0x60015` was only the queued `0x35` hiding the still-active
+  `0x29`.  The Vellum instrumentation was removed and both external source
+  trees were verified clean.  The next test must change the `0x29` turnaround
+  itself while restoring the reference ACK/BTA register state before video;
+  repeating generic FIFO waits or per-command yields is excluded.
 
 ## Evidence-entry template
 

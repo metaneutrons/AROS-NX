@@ -601,6 +601,38 @@ static int dsi_send_header(unsigned char dt, unsigned char lsb,
     return P4_DSI_OK;
 }
 
+#ifdef P4_B5_SERIAL_COMMAND_DRAIN
+/*
+ * Diagnostic equivalent of giving the command engine time between panel
+ * writes: do not submit the next header until the host's internal command and
+ * payload buffers, rather than only its public generic FIFOs, are empty.
+ */
+static int dsi_wait_buffered_empty(unsigned char cmd)
+{
+    const unsigned long empty = P4_DSI_GEN_BUFF_CMD_EMPTY
+                              | P4_DSI_GEN_BUFF_PLD_EMPTY;
+    uint64_t deadline = krnTimerCount() + P4_SYSTIMER_HZ / 50;
+
+    while ((dsi_rd(P4_DSI_CMD_PKT_STATUS) & empty) != empty)
+    {
+        if (krnTimerCount() > deadline)
+        {
+            krnP4PutStr("[b5ser]  command ");
+            krnP4PutHex32(cmd);
+            krnP4PutStr(" stalled pkt/phy/int1 ");
+            krnP4PutHex32((uint32_t)dsi_rd(P4_DSI_CMD_PKT_STATUS));
+            krnP4PutStr("/");
+            krnP4PutHex32((uint32_t)dsi_rd(P4_DSI_PHY_STATUS));
+            krnP4PutStr("/");
+            krnP4PutHex32((uint32_t)dsi_rd(P4_DSI_INT_ST1));
+            krnP4PutStr("\n");
+            return P4_DSI_CMD_BUSY;
+        }
+    }
+    return P4_DSI_OK;
+}
+#endif
+
 /*
  * One DCS write.
  *
@@ -650,6 +682,11 @@ int krnP4DsiDcsWrite(unsigned char cmd, const unsigned char *param,
         r = dsi_send_header(P4_DSI_DT_DCS_SW_1P, cmd, param[0]);
     else
         r = dsi_send_header(P4_DSI_DT_DCS_SW_0P, cmd, 0);
+
+#ifdef P4_B5_SERIAL_COMMAND_DRAIN
+    if (r == P4_DSI_OK)
+        r = dsi_wait_buffered_empty(cmd);
+#endif
 
     return r;
 }

@@ -121,6 +121,13 @@ ifeq ($(P4_B5_BUFFERED_CMD_DRAIN),1)
 P4_DEBUG_CPPFLAGS += -DP4_B5_BUFFERED_CMD_DRAIN
 endif
 
+# P4_B5_SERIAL_COMMAND_DRAIN=1 serializes panel writes on the host's internal
+# buffered-command and buffered-payload empty indications.  On timeout it
+# prints the first command and live packet/PHY/error state, then fails B3 safe.
+ifeq ($(P4_B5_SERIAL_COMMAND_DRAIN),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_SERIAL_COMMAND_DRAIN
+endif
+
 ifeq ($(P4_B5_LIVE_UPDATE_GATE),1)
 P4_DEBUG_CPPFLAGS += -DP4_B5_LIVE_UPDATE_GATE -DP4_PANEL_PROBE \
                      -DP4_DSI_PROBE -DP4_SCANOUT_TEST \
