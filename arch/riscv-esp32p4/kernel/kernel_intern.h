@@ -254,6 +254,11 @@ void krnP4ScanoutFill(unsigned long rgb);
 void krnP4ScanoutCoordinatePattern(void);
 #ifdef P4_B6_DOUBLE_BUFFER
 void krnP4ScanoutB6Frames(void);
+#ifdef P4_C1_FRAMEBUFFER_HIDD
+struct KrnFrameBufferOps;
+struct KrnFrameBufferOps *krnP4FrameBufferOps(void);
+void krnP4ScanoutC1Clear(void);
+#endif
 #ifdef P4_B6_DIRTY_GATE
 unsigned long krnP4ScanoutB6DirtyStep(unsigned long second);
 #endif

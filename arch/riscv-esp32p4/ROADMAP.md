@@ -131,7 +131,7 @@ gate: compensated output is not the native display contract.
 | B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel through a documented workaround.**  `P4_PANEL_VMUL=1` shows the complete regular grid with no payload error.  Colour, checker, dirty rectangles, sustained concurrent stress and ten EN warm resets pass.  A raw-source ruler measures a constant cyclic displacement of exactly 525 pixels; the explicitly named +525 write-mapping workaround makes quadrants, corner marks and isolated one-pixel lines correct, but neither fixes nor explains the native mapping.  The measured 71 MB/s matches the 69.3 MB/s imposed by timing and selects dirty-region writes over a full-frame CPU pass.  A forced-peripheral-reset gate may substitute for the inaccessible ten physical cold cycles only to unblock development; it is not cold-boot evidence.  The optional post-video DCS read remains excluded from acceptance |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `hardware verified` | Two complete native buffers are reserved outside Exec and contain logical `1280 x 800` surfaces rotated 90 degrees clockwise.  The GDMA one-frame completion is the ownership boundary because this bridge revision has no VSYNC interrupt.  The immutable gate completed 2,006 frames and 19 source switches without faults and was visually tear-free.  The producer gate then completed 60 bounded inactive-surface updates, exact rotated row-range writebacks and 60 requested frame-boundary swaps with zero rejects or faults; direct observation confirmed exactly one clean moving rectangle without stale pixels, split frames or tearing.  The +525 compatibility mapping stays explicitly named and B5R remains its removal gate |
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
-| C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
+| C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware partial` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound displayable bitmap allocations and the Show/fill/line/text/full-update harness completed with seven frame-boundary swaps, zero DMA faults, zero rejected updates and no pending surface before the normal read-only SD boot reached the Shell.  Direct observation of orientation, colours and geometry is the remaining gate |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `not started` | Requires A5, B6 and C2 |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
@@ -632,6 +632,16 @@ graphics API.  Hardware power, DSI, DMA and scanout stay below the HIDD.  The
 module subclasses the generic graphics/bitmap/display classes, publishes one
 logical `1280 x 800` RGB565 mode over the B6 transform and registers it through
 `AddDisplayDriver(..., DDRV_BootMode, TRUE, ...)`.
+
+The current implementation publishes a versioned `KrnFrameBufferOps` table
+through `KrnGetSystemAttr()`.  Logical RGB565 bitmap storage remains owned by
+the HIDD; the kernel alone rotates bounded dirty rectangles into the inactive
+physical B6 surface, writes back the exact affected physical row runs, submits
+the frame-boundary handoff and mirrors the same rectangle only after the swap.
+Both physical surfaces therefore stay coherent without a CPU write to the
+active one.  `P4_C1_FRAMEBUFFER_HIDD=1` retains scanout through Exec startup
+and keeps the explicitly named +525 compatibility mapping below this public
+logical contract.  B5R still owns its diagnosis and removal.
 
 Give the platform HIDD resident priority 9, matching the Pi/EFI references.
 That becomes a normal-boot invariant in C2: Intuition priority 15 installs its
@@ -8743,6 +8753,56 @@ chip in the width this port assumes; it never addressed the hang.
   closes the sustained-update half and hardware-verifies B6.  The independently
   named +525 compatibility mapping remains technical debt owned by B5R rather
   than part of the public logical bitmap contract.
+
+### 2026-08-28 - C1 framebuffer HIDD reaches its technical hardware gate
+
+- State change: C1 advances from `not started` to `hardware partial`.  The
+  implementation and UART acceptance points are hardware-proven; the direct
+  observer gate for orientation, colours and geometry is still pending and is
+  not inferred from counters.
+- Source was a dirty tree based on `a2c8d0574d`.  The kernel publishes a
+  versioned `KrnFrameBufferOps` table through `KATTR_FrameBufferOps`; the
+  shared Raspberry Pi `fbgfx` family consumes it conditionally for ESP32-P4,
+  registers one logical `1280 x 800` RGB565 mode and keeps DSI, rotation,
+  cache publication and surface ownership in the kernel.
+- `P4_C1_FRAMEBUFFER_HIDD=1` selects the accepted B6 two-surface transport,
+  40-MHz RGB565 non-burst scanout, 1,500-Mbit/s lanes, 200-MHz PSRAM,
+  360-MHz CPU, zero-duration diagnostic scanout and the explicitly named
+  `P4_B6_ROW_PHASE_WORKAROUND=525`.  The HIDD writes only bounded logical
+  rectangles.  The kernel rotates them 90 degrees clockwise, writes back the
+  exact physical row runs, publishes the inactive surface at the next GDMA
+  frame completion and mirrors the rectangle only after that handoff.
+- The BSP grew from fourteen to twenty modules by adding `aros.library`,
+  `oop.library`, `graphics.library`, `hiddclass.hidd`, `gfx.hidd` and
+  `fbgfx.hidd`.  A clean rebuild of the changed HIDD produced a 2,007,880-byte
+  package, below the 4,063,232-byte ceiling, with SHA-256
+  `27b03897ef7e6b2e1416586c92f6edf0349f9d09493152f8972bee699a452434`.
+  `boot/audit-package.py` accepted all twenty complete RISC-V relocatable
+  members and every relocation type.  The unchanged 194,352-byte XIP core has
+  SHA-256
+  `7f23983a62fd842f5448a0e865e9c8bfb293b7f32628424770d0faa8e0862d46`.
+- The connected ESP32-P4 v1.3 D1001 with MAC `e8:f6:0a:e0:46:4c` was
+  reidentified.  Only `arosbsp` at `0x820000` was written; esptool v5.3.0's
+  write-time hash and an independent `verify-flash` digest both matched.  The
+  kernel, bootloader, partition table, flash development volume and SD card
+  were not written.
+- The first C1 run loaded and found all twenty residents, registered mode
+  `0x00100000`, allocated and freed two explicitly mode-bound displayable
+  bitmaps, retained the third, and logged `three 1280x800 RGB565 bitmap
+  allocations passed`.  `Show`, four direct-colour `RectFill` calls, two
+  diagonal `Draw` calls, `Text` and a final full `UpdateBitMap` all returned.
+  The immediate kernel counters were `frames=107 swaps=7 faults=0 rejects=0`,
+  with active surface `0x49e0c000` and no pending surface.
+- The same boot continued through DOS/FAT to the interactive AROS Shell.  The
+  inserted SD card was discovered through IDMAC and the FAT handler again
+  logged `the medium is write protected; every mutating packet will be
+  refused`.  No SD write was performed.
+- Remaining gate: directly observe the asymmetric C1 image.  Red and green
+  blocks must occupy the two logical top corners, blue and yellow the bottom
+  corners, both cyan diagonals must be complete, and the white label must be
+  right-side up near the centre.  Only that observation can promote C1 to
+  `hardware verified`; C2 must not start before it.  The +525 mapping remains
+  a bounded workaround whose removal is independently required by B5R.
 
 ## Evidence-entry template
 

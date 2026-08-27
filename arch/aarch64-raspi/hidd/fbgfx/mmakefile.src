@@ -15,6 +15,10 @@ USER_LDFLAGS := -static
 USER_CPPFLAGS := \
                -D__OOP_NOATTRBASES__
 
+ifeq ($(P4_C1_FRAMEBUFFER_HIDD),1)
+USER_CPPFLAGS += -DP4_C1_FRAMEBUFFER_HIDD
+endif
+
 %build_module mmake=hidd-fbgfx \
   modname=fbgfx modtype=hidd \
   files=$(FILES)

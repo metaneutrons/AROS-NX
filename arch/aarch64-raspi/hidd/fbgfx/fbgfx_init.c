@@ -11,10 +11,15 @@
 #include <exec/types.h>
 #include <exec/lists.h>
 #include <graphics/driver.h>
+#include <graphics/gfx.h>
 #include <graphics/gfxbase.h>
+#include <graphics/modeid.h>
+#include <graphics/rastport.h>
+#include <graphics/rpattr.h>
 #include <hidd/gfx.h>
 #include <oop/oop.h>
 #include <utility/utility.h>
+#include <aros/framebuffer.h>
 #include <aros/symbolsets.h>
 
 #include "fbgfx_support.h"
@@ -70,6 +75,101 @@ static const STRPTR interfaces[ATTRBASES_NUM] =
     IID_Hidd_DMEnum
 };
 
+#ifdef P4_C1_FRAMEBUFFER_HIDD
+static struct DisplayRange c1_ranges[2];
+
+static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
+                         struct GfxBase *GfxBase)
+{
+    struct BitMap *bitmap = NULL;
+    struct RastPort rp;
+    struct KrnFrameBufferStats stats;
+    struct TagItem bmtags[2];
+    ULONG mode;
+    unsigned int attempt;
+
+    mode = BestModeID(BIDTAG_NominalWidth, 1280,
+                      BIDTAG_NominalHeight, 800,
+                      BIDTAG_Depth, 16,
+                      TAG_DONE);
+    if (mode == INVALID_ID)
+    {
+        bug("[FBGfx/C1] queued driver replay did not expose a mode\n");
+        return FALSE;
+    }
+    bug("[FBGfx/C1] AddDisplayDriver replay selected mode %08lx\n",
+        (unsigned long)mode);
+
+    bmtags[0].ti_Tag = BMATags_DisplayID;
+    bmtags[0].ti_Data = mode;
+    bmtags[1].ti_Tag = TAG_DONE;
+    bmtags[1].ti_Data = 0;
+
+    for (attempt = 0; attempt < 3; attempt++)
+    {
+        bitmap = AllocBitMap(1280, 800, 16,
+                             BMF_DISPLAYABLE | BMF_CLEAR | BMF_CHECKVALUE,
+                             (struct BitMap *)bmtags);
+        if (!bitmap || !IS_HIDD_BM(bitmap))
+        {
+            bug("[FBGfx/C1] displayable bitmap allocation %u failed\n",
+                attempt + 1);
+            if (bitmap)
+                FreeBitMap(bitmap);
+            return FALSE;
+        }
+        if (attempt != 2)
+        {
+            FreeBitMap(bitmap);
+            bitmap = NULL;
+        }
+    }
+    bug("[FBGfx/C1] three 1280x800 RGB565 bitmap allocations passed\n");
+
+    InitRastPort(&rp);
+    rp.BitMap = bitmap;
+    HIDD_Display_Show(xsd->vcfbdisplay, HIDD_BM_OBJ(bitmap), 0);
+
+    SetRPAttrs(&rp, RPTAG_PenMode, FALSE,
+               RPTAG_FgColor, 0xFFFF0000, TAG_DONE);
+    RectFill(&rp, 32, 32, 191, 159);
+    SetRPAttrs(&rp, RPTAG_FgColor, 0xFF00FF00, TAG_DONE);
+    RectFill(&rp, 1088, 32, 1247, 159);
+    SetRPAttrs(&rp, RPTAG_FgColor, 0xFF0000FF, TAG_DONE);
+    RectFill(&rp, 32, 640, 191, 767);
+    SetRPAttrs(&rp, RPTAG_FgColor, 0xFFFFFF00, TAG_DONE);
+    RectFill(&rp, 1088, 640, 1247, 767);
+
+    SetRPAttrs(&rp, RPTAG_FgColor, 0xFF00FFFF, TAG_DONE);
+    Move(&rp, 32, 32);
+    Draw(&rp, 1247, 767);
+    Move(&rp, 1247, 32);
+    Draw(&rp, 32, 767);
+    SetRPAttrs(&rp, RPTAG_FgColor, 0xFFFFFFFF,
+               RPTAG_BgColor, 0xFF000000, TAG_DONE);
+    Move(&rp, 544, 400);
+    Text(&rp, "AROS ESP32-P4 C1", sizeof("AROS ESP32-P4 C1") - 1);
+    UpdateBitMap(bitmap, 0, 0, 1280, 800);
+    bug("[FBGfx/C1] Show, RectFill, Draw, Text and full update submitted\n");
+
+    xsd->data.ops->get_stats(&stats);
+    bug("[FBGfx/C1] frames=%lu swaps=%lu faults=%lu rejects=%lu "
+        "active=%p pending=%p\n",
+        (unsigned long)stats.frames, (unsigned long)stats.swaps,
+        (unsigned long)stats.faults, (unsigned long)stats.rejects,
+        (APTR)stats.active, (APTR)stats.pending);
+    if (stats.faults || stats.rejects || stats.pending)
+    {
+        bug("[FBGfx/C1] scanout counters rejected the acceptance gate\n");
+        return FALSE;
+    }
+
+    /* The gate bitmap intentionally remains visible and allocated.  C1 has
+       no Intuition owner yet; C2 will replace this forced boot-mode path. */
+    return TRUE;
+}
+#endif
+
 static int FBGfx_Init(LIBBASETYPEPTR LIBBASE)
 {
     struct FBGfx_staticdata *xsd = &LIBBASE->vsd;
@@ -105,11 +205,31 @@ static int FBGfx_Init(LIBBASETYPEPTR LIBBASE)
                  * is installed.
                  * This is done by graphics.library if DDRV_BootMode is set to TRUE.
                  */
-                err = AddDisplayDriver(xsd->fbgfxclass, NULL, DDRV_BootMode, TRUE, TAG_DONE);
+#ifdef P4_C1_FRAMEBUFFER_HIDD
+                c1_ranges[0].dr_Base = xsd->data.framebuffer;
+                c1_ranges[0].dr_Size = xsd->data.fbsize;
+                c1_ranges[1].dr_Base = NULL;
+                c1_ranges[1].dr_Size = 0;
+                err = AddDisplayDriver(xsd->fbgfxclass, NULL,
+                                       DDRV_BootMode, TRUE,
+                                       DDRV_HWRanges, (IPTR)c1_ranges,
+                                       TAG_DONE);
+#else
+                err = AddDisplayDriver(xsd->fbgfxclass, NULL,
+                                       DDRV_BootMode, TRUE, TAG_DONE);
+#endif
 
                 D(bug("[FBGfx] AddDisplayDriver() result: %u\n", err));
                 if (!err)
                 {
+#ifdef P4_C1_FRAMEBUFFER_HIDD
+                    if (!FBGfx_C1Gate(xsd, GfxBase))
+                    {
+                        bug("[FBGfx/C1] acceptance harness failed\n");
+                        CloseLibrary(&GfxBase->LibNode);
+                        return FALSE;
+                    }
+#endif
                     /* expunge protection */
                     LIBBASE->library.lib_OpenCnt = 1;
                     res = TRUE;

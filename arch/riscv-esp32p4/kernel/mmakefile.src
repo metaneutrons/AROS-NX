@@ -469,10 +469,22 @@ P4_DEBUG_CPPFLAGS += -DP4_B6_HANDOFF_GATE -DP4_B6_DOUBLE_BUFFER \
 ifneq ($(P4_DSI_BURST),1)
 P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
 endif
+
 P4_B6_ROW_PHASE_WORKAROUND ?= 525
 ifndef P4_SCANOUT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=60
 endif
+endif
+
+# P4_C1_FRAMEBUFFER_HIDD=1 keeps B6's managed double-buffered scanout alive
+# across Exec startup and publishes only the logical update operation table to
+# fbgfx.hidd.  Panel/DSI/GDMA ownership remains in kernel.resource.
+ifeq ($(P4_C1_FRAMEBUFFER_HIDD),1)
+P4_DEBUG_CPPFLAGS += -DP4_C1_FRAMEBUFFER_HIDD -DP4_B6_DOUBLE_BUFFER \
+                     -DP4_PANEL_PROBE -DP4_DSI_PROBE -DP4_SCANOUT_TEST \
+                     -DP4_DSI_NONBURST
+override P4_SCANOUT_SECS := 0
+P4_B6_ROW_PHASE_WORKAROUND ?= 525
 endif
 
 # Explicit compatibility debt, not a hardware contract.  Set this to the
@@ -894,6 +906,7 @@ CFILES := \
         cpuclock \
         dsi_phy \
         dsi_scanout \
+        getsystemattr \
         jd9365_init \
         i2c_hw \
         panel_power \

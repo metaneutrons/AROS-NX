@@ -5270,7 +5270,11 @@ static void krnP4PanelProbe(void)
                    or a wrong channel order changes which colour appears and
                    is therefore visible rather than silent; a wrong stride or
                    pixel format cannot produce a flat field at all. */
-#if defined(P4_B6_HANDOFF_GATE)
+#if defined(P4_C1_FRAMEBUFFER_HIDD)
+                krnP4ScanoutC1Clear();
+                krnP4PutStr("[c1]     two black B6 surfaces prepared;"
+                            " fbgfx owns logical 1280x800 updates\n");
+#elif defined(P4_B6_HANDOFF_GATE)
                 krnP4ScanoutB6Frames();
 #ifdef P4_B6_DIRTY_GATE
                 krnP4PutStr("[b6dirty] two rotated landscape sources;"
@@ -6074,9 +6078,14 @@ static void krnP4PanelProbe(void)
 #error P4_B5_CONCURRENT_STRESS requires P4_SCANOUT_SECS of at least 1800
 #endif
 #if P4_SCANOUT_SECS == 0
+#ifdef P4_C1_FRAMEBUFFER_HIDD
+                krnP4PutStr("[c1]     managed scanout retained for the"
+                            " graphics HIDD; early reset quiesces GDMA\n");
+#else
                 krnP4PutStr("[b5]     left running indefinitely;"
                             " a reset from here needs the vendor firmware"
                             " to recover\n");
+#endif
 #else
                 krnP4PutStr("[b5]     running for ");
                 krnP4PutDec(P4_SCANOUT_SECS);

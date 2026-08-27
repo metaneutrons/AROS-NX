@@ -26,7 +26,13 @@
 include $(SRCDIR)/config/aros.cfg
 
 #MM kernel-package-esp32p4-riscv : \
+#MM     kernel-aros \
+#MM     kernel-oop \
 #MM     kernel-utility \
+#MM     kernel-graphics \
+#MM     kernel-hidd \
+#MM     kernel-hidd-gfx \
+#MM     hidd-fbgfx \
 #MM     kernel-expansion \
 #MM     kernel-partition \
 #MM     kernel-sdcard \
@@ -42,7 +48,13 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-dosboot
 
 #MM kernel-package-esp32p4-riscv-quick : \
+#MM     kernel-aros-quick \
+#MM     kernel-oop-quick \
 #MM     kernel-utility-quick \
+#MM     kernel-graphics-quick \
+#MM     kernel-hidd-quick \
+#MM     kernel-hidd-gfx-quick \
+#MM     hidd-fbgfx-quick \
 #MM     kernel-expansion-quick \
 #MM     kernel-partition-quick \
 #MM     kernel-sdcard-quick \
@@ -62,8 +74,9 @@ include $(SRCDIR)/config/aros.cfg
 #   has no write path, so including it costs a few kilobytes and no risk to
 #   the medium.  Drop it from the package once A2 is verified.
 #
-PKG_LIBS      := utility partition dos
+PKG_LIBS      := aros utility oop graphics partition dos
 PKG_LIBS_ARCH := expansion
+PKG_HIDDS     := hiddclass gfx fbgfx
 PKG_RES       := bootloader FileSystem lddemon shell shellcommands \
                  dosboot
 PKG_DEVS      := sdcard ramtest
@@ -81,7 +94,8 @@ PKG_LIMIT := 4063232
 %make_package mmake=kernel-package-esp32p4-riscv \
     file=$(AROSARCHDIR)/aros-bsp.pkg \
     libs="$(PKG_LIBS)" arch_libs="$(PKG_LIBS_ARCH)" \
-    res="$(PKG_RES)" devs="$(PKG_DEVS)" handlers="$(PKG_HANDLERS)"
+    res="$(PKG_RES)" devs="$(PKG_DEVS)" handlers="$(PKG_HANDLERS)" \
+    hidds="$(PKG_HIDDS)"
 
 #MM
 kernel-package-esp32p4-riscv-checksize : kernel-package-esp32p4-riscv
