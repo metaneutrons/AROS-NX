@@ -40,6 +40,8 @@
 #error P4_B5_EARLY_GDMA_CREATE requires P4_B5_EARLY_DPI_CREATE
 #elif defined(P4_B5_EARLY_GDMA_CREATE) && defined(P4_B5_DMA_RELOAD)
 #error P4_B5_EARLY_GDMA_CREATE requires the reference link-list path
+#elif defined(P4_B5_EXACT_DPI_CREATE) && !defined(P4_B5_EARLY_DPI_CREATE)
+#error P4_B5_EXACT_DPI_CREATE requires P4_B5_EARLY_DPI_CREATE
 #endif
 
 static inline void brg_wr(unsigned long off, unsigned long v)
@@ -51,6 +53,14 @@ static inline unsigned long brg_rd(unsigned long off)
 {
     return p4_r32(P4_DSI_BRG_BASE + off);
 }
+
+#ifdef P4_B5_EXACT_DPI_CREATE
+static void brg_field(unsigned long off, unsigned long mask,
+                      unsigned long value)
+{
+    brg_wr(off, (brg_rd(off) & ~mask) | (value & mask));
+}
+#endif
 
 static inline void ch_wr(unsigned long off, unsigned long v)
 {
@@ -191,7 +201,67 @@ void krnP4ScanoutFill(unsigned long rgb)
  */
 void krnP4ScanoutBridgeUp(void)
 {
+#ifndef P4_B5_EXACT_DPI_CREATE
     unsigned long v;
+#endif
+
+#ifdef P4_B5_EXACT_DPI_CREATE
+    /* Exact volatile-field order emitted by Vellum's linked IDF-v6.0
+       esp_lcd_new_panel_dpi() object.  RAW_NUM_SET is a write trigger, so the
+       count and alignment must exist before that third write reloads the
+       bridge's internal frame counter. */
+#ifdef P4_BRG_RAW_DIV
+    brg_field(P4_DSI_BRG_RAW_NUM_CFG, P4_DSI_BRG_RAW_NUM_MASK,
+              P4_FB_WORDS64 / P4_BRG_RAW_DIV);
+#else
+    brg_field(P4_DSI_BRG_RAW_NUM_CFG, P4_DSI_BRG_RAW_NUM_MASK,
+              P4_FB_WORDS64);
+#endif
+    brg_field(P4_DSI_BRG_RAW_NUM_CFG, P4_DSI_BRG_UNALIGN_64BIT, 0);
+    brg_field(P4_DSI_BRG_RAW_NUM_CFG, P4_DSI_BRG_RAW_NUM_SET,
+              P4_DSI_BRG_RAW_NUM_SET);
+
+    brg_field(P4_DSI_BRG_DPI_MISC_CFG, P4_DSI_BRG_DISCARD_MASK,
+              (unsigned long)P4_PANEL_H_RES << P4_DSI_BRG_DISCARD_SHIFT);
+
+    /* hw_ver1 uses RAW_TYPE for both input and output.  IDF nevertheless
+       writes input type, RGB/YUV selection, output type and DPI sub-config
+       separately, in that order. */
+#if P4_PANEL_BPP == 24
+    brg_field(P4_DSI_BRG_PIXEL_TYPE, P4_DSI_BRG_RAW_TYPE_MASK,
+              P4_DSI_BRG_RAW_RGB888);
+#else
+    brg_field(P4_DSI_BRG_PIXEL_TYPE, P4_DSI_BRG_RAW_TYPE_MASK,
+              P4_DSI_BRG_RAW_RGB565);
+#endif
+    brg_field(P4_DSI_BRG_PIXEL_TYPE, P4_DSI_BRG_DATA_IN_TYPE, 0);
+#if P4_PANEL_BPP == 24
+    brg_field(P4_DSI_BRG_PIXEL_TYPE, P4_DSI_BRG_RAW_TYPE_MASK,
+              P4_DSI_BRG_RAW_RGB888);
+#else
+    brg_field(P4_DSI_BRG_PIXEL_TYPE, P4_DSI_BRG_RAW_TYPE_MASK,
+              P4_DSI_BRG_RAW_RGB565);
+#endif
+    brg_field(P4_DSI_BRG_PIXEL_TYPE, P4_DSI_BRG_DPI_TYPE_MASK, 0);
+
+    brg_field(P4_DSI_BRG_DMA_FLOW_CTRL, 1UL, P4_DSI_BRG_FLOW_DMA);
+    brg_field(P4_DSI_BRG_DMA_FLOW_CTRL, P4_DSI_BRG_MULTIBLK_MASK,
+              1UL << P4_DSI_BRG_MULTIBLK_SHIFT);
+    brg_field(P4_DSI_BRG_DMA_FRAME_INT, P4_DSI_BRG_MULTIBLK_EN, 0);
+    brg_field(P4_DSI_BRG_DMA_REQ_CFG, P4_DSI_BRG_BURST_LEN_MASK, 256UL);
+    brg_field(P4_DSI_BRG_EMPTY_THRD, P4_DSI_BRG_EMPTY_MASK,
+              1024UL - 256UL);
+
+#ifdef P4_B5_BLK_RAW_FRAME
+    brg_wr(P4_DSI_BRG_BLK_RAW_NUM,
+           (P4_FB_WORDS64 & P4_DSI_BRG_BLK_RAW_MASK)
+           | P4_DSI_BRG_BLK_RAW_SET);
+#endif
+
+    brg_field(P4_DSI_BRG_EN, P4_DSI_BRG_DSI_EN, P4_DSI_BRG_DSI_EN);
+    brg_field(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE,
+              P4_DSI_BRG_CFG_UPDATE);
+#else
 
     /*
      * The pixel format first, because zero means RGB888.
@@ -273,6 +343,7 @@ void krnP4ScanoutBridgeUp(void)
        the channel and host video path are running. */
     brg_wr(P4_DSI_BRG_EN, P4_DSI_BRG_DSI_EN);
     brg_wr(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE);
+#endif
 
 #ifdef P4_B5_PRESTAGE_FEED
     /*
@@ -297,10 +368,20 @@ void krnP4ScanoutBridgeUp(void)
 void krnP4ScanoutFeedOn(void)
 {
 #ifndef P4_B5_PRESTAGE_FEED
+#ifdef P4_B5_EXACT_DPI_CREATE
+    brg_field(P4_DSI_BRG_DPI_MISC_CFG, P4_DSI_BRG_DPI_EN,
+              P4_DSI_BRG_DPI_EN);
+#else
     brg_wr(P4_DSI_BRG_DPI_MISC_CFG,
            brg_rd(P4_DSI_BRG_DPI_MISC_CFG) | P4_DSI_BRG_DPI_EN);
 #endif
+#endif
+#ifdef P4_B5_EXACT_DPI_CREATE
+    brg_field(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE,
+              P4_DSI_BRG_CFG_UPDATE);
+#else
     brg_wr(P4_DSI_BRG_DPI_CFG_UPD, P4_DSI_BRG_CFG_UPDATE);
+#endif
 #ifdef P4_B5_REF_BRG_IRQ
     /* esp_lcd_panel_dpi.c performs this immediately after the feed commit.
        It should affect only interrupt delivery, not the bridge/host

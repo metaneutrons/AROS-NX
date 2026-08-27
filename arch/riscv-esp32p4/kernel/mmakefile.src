@@ -601,6 +601,16 @@ ifdef P4_B5_EARLY_DPI_CREATE
 P4_DEBUG_CPPFLAGS += -DP4_B5_EARLY_DPI_CREATE
 endif
 
+# P4_B5_EXACT_DPI_CREATE=1 reproduces the volatile field-write order emitted
+# by Vellum's linked IDF-v6.0 esp_lcd_new_panel_dpi() object.  This includes
+# separate DPI clock source/divider/enable writes, host and bridge timing
+# fields, LP/mode fields, and the bridge count/alignment/reload sequence.  It
+# requires the already tested early DPI lifecycle so the writes also occur at
+# the reference creation point.
+ifdef P4_B5_EXACT_DPI_CREATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_EXACT_DPI_CREATE
+endif
+
 # P4_B5_EARLY_GDMA_CREATE=1 completes the early IDF object lifecycle: reset
 # and configure the idle GDMA controller/channel before the panel reset and
 # vendor table.  The descriptor and channel enable remain at DPI init time.

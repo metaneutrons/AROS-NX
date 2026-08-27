@@ -60,7 +60,7 @@ static void dsi_clr(unsigned long off, unsigned long bits)
     dsi_wr(off, dsi_rd(off) & ~bits);
 }
 
-#ifdef P4_B5_EXACT_BUS_CREATE
+#if defined(P4_B5_EXACT_BUS_CREATE) || defined(P4_B5_EXACT_DPI_CREATE)
 static void dsi_field(unsigned long off, unsigned long mask,
                       unsigned long value)
 {
@@ -77,6 +77,14 @@ static unsigned long brg_rd(unsigned long off)
 {
     return p4_r32(P4_DSI_BRG_BASE + off);
 }
+
+#ifdef P4_B5_EXACT_DPI_CREATE
+static void brg_field(unsigned long off, unsigned long mask,
+                      unsigned long value)
+{
+    brg_wr(off, (brg_rd(off) & ~mask) | (value & mask));
+}
+#endif
 
 /*
  * PHY_STATUS at each point where the link's direction can change.
@@ -957,12 +965,33 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
     }
 
     /* The DPI clock: 240 MHz over six is exactly the 40 MHz the panel wants. */
+#ifdef P4_B5_EXACT_DPI_CREATE
+    /* esp_lcd_new_panel_dpi() exposes each of these volatile bitfield writes
+       separately to the clock block: source first, divider second, enable
+       last.  The combined final value is not proof that the clock divider's
+       state machine saw the same creation sequence. */
+    v = p4_r32(P4_CLKRST_PERI_CLK_CTRL03);
+    v &= ~P4_DSI_DPICLK_SRC_MASK;
+    v |= (unsigned long)P4_DSI_DPICLK_SRC_PLL240
+         << P4_DSI_DPICLK_SRC_SHIFT;
+    p4_w32(P4_CLKRST_PERI_CLK_CTRL03, v);
+
+    v = p4_r32(P4_CLKRST_PERI_CLK_CTRL03);
+    v &= ~P4_DSI_DPICLK_DIV_MASK;
+    v |= (unsigned long)(P4_DSI_DPICLK_DIV - 1)
+         << P4_DSI_DPICLK_DIV_SHIFT;
+    p4_w32(P4_CLKRST_PERI_CLK_CTRL03, v);
+
+    p4_w32(P4_CLKRST_PERI_CLK_CTRL03,
+           p4_r32(P4_CLKRST_PERI_CLK_CTRL03) | P4_DSI_DPICLK_EN);
+#else
     v = p4_r32(P4_CLKRST_PERI_CLK_CTRL03);
     v &= ~(P4_DSI_DPICLK_SRC_MASK | P4_DSI_DPICLK_DIV_MASK);
     v |= (unsigned long)P4_DSI_DPICLK_SRC_PLL240 << P4_DSI_DPICLK_SRC_SHIFT;
     v |= (unsigned long)(P4_DSI_DPICLK_DIV - 1) << P4_DSI_DPICLK_DIV_SHIFT;
     v |= P4_DSI_DPICLK_EN;
     p4_w32(P4_CLKRST_PERI_CLK_CTRL03, v);
+#endif
 
     /*
      * The bridge, which the first version of this function left alone
@@ -1002,6 +1031,7 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * pixels through vertical blanking, came from a 5 ms rate window inside a
      * 14.6 ms frame and did not survive a 100 ms one.
      */
+#ifndef P4_B5_EXACT_DPI_CREATE
     brg_wr(P4_DSI_BRG_DPI_V_CFG0,
 #ifdef P4_BRG_VDIV
            ((unsigned long)(P4_TX_V_RES / P4_BRG_VDIV)
@@ -1035,6 +1065,7 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
     brg_wr(P4_DSI_BRG_PIXEL_TYPE, 0);
 
     brg_wr(P4_DSI_BRG_DMA_FLOW_CTL, P4_DSI_BRG_FLOW_BRIDGE);
+#endif
 
     /*
      * The bridge is enabled and its pixel feed is not, and the two are
@@ -1082,6 +1113,22 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
 #endif
 
     /* Virtual channel 0, RGB565, every sync signal active high. */
+#ifdef P4_B5_EXACT_DPI_CREATE
+    dsi_field(P4_DSI_DPI_VCID, 0x3UL, 0);
+#if P4_PANEL_BPP == 24
+    dsi_field(P4_DSI_DPI_COLOR_CODING, 0xFUL, P4_DSI_COLOR_24BIT);
+#else
+    dsi_field(P4_DSI_DPI_COLOR_CODING, 0xFUL,
+              (unsigned long)(P4_DSI_565_CFG - 1));
+#endif
+    /* The linked v6.0 object emits these five polarity writes in API argument
+       order, even though all five requested values are zero. */
+    dsi_field(P4_DSI_DPI_CFG_POL, 1UL << 2, 0); /* hsync */
+    dsi_field(P4_DSI_DPI_CFG_POL, 1UL << 1, 0); /* vsync */
+    dsi_field(P4_DSI_DPI_CFG_POL, 1UL << 0, 0); /* data enable */
+    dsi_field(P4_DSI_DPI_CFG_POL, 1UL << 3, 0); /* shutdown */
+    dsi_field(P4_DSI_DPI_CFG_POL, 1UL << 4, 0); /* colour mode */
+#else
     dsi_wr(P4_DSI_DPI_VCID, 0);
 #if P4_PANEL_BPP == 24
     dsi_wr(P4_DSI_DPI_COLOR_CODING, P4_DSI_COLOR_24BIT);
@@ -1091,6 +1138,7 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
            (unsigned long)(P4_DSI_565_CFG - 1));
 #endif
     dsi_wr(P4_DSI_DPI_CFG_POL, 0);
+#endif
 
     /*
      * Burst mode with sync pulses, and no low-power transitions anywhere in
@@ -1177,6 +1225,34 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
 #else
 #define P4_DSI_LP_SET   P4_DSI_LP_BITS
 #endif
+#ifdef P4_B5_EXACT_DPI_CREATE
+    /* Preserve the exact esp_lcd_new_panel_dpi() write order.  Each Boolean
+       is a volatile bitfield assignment in the linked object, so false values
+       are writes too rather than omissions. */
+    dsi_field(P4_DSI_VID_MODE_CFG, P4_DSI_LP_HBP_EN,
+              P4_DSI_LP_SET & P4_DSI_LP_HBP_EN);
+    dsi_field(P4_DSI_VID_MODE_CFG, P4_DSI_LP_HFP_EN,
+              P4_DSI_LP_SET & P4_DSI_LP_HFP_EN);
+    dsi_field(P4_DSI_VID_MODE_CFG, P4_DSI_LP_VSA_EN,
+              P4_DSI_LP_SET & P4_DSI_LP_VSA_EN);
+    dsi_field(P4_DSI_VID_MODE_CFG, P4_DSI_LP_VBP_EN,
+              P4_DSI_LP_SET & P4_DSI_LP_VBP_EN);
+    dsi_field(P4_DSI_VID_MODE_CFG, P4_DSI_LP_VFP_EN,
+              P4_DSI_LP_SET & P4_DSI_LP_VFP_EN);
+    dsi_field(P4_DSI_VID_MODE_CFG, P4_DSI_LP_VACT_EN,
+              P4_DSI_LP_SET & P4_DSI_LP_VACT_EN);
+    dsi_field(P4_DSI_VID_MODE_CFG, P4_DSI_LP_CMD_EN,
+              P4_DSI_LP_SET & P4_DSI_LP_CMD_EN);
+    dsi_field(P4_DSI_VID_MODE_CFG, P4_DSI_FRAME_BTA_ACK_EN,
+              P4_DSI_LP_SET & P4_DSI_FRAME_BTA_ACK_EN);
+#ifdef P4_DSI_NONBURST
+    dsi_field(P4_DSI_VID_MODE_CFG, P4_DSI_VID_MODE_TYPE_MASK,
+              P4_DSI_VID_NONBURST_PULSES);
+#else
+    dsi_field(P4_DSI_VID_MODE_CFG, P4_DSI_VID_MODE_TYPE_MASK,
+              P4_DSI_VID_BURST_SYNC_PULSES);
+#endif
+#else
 #ifdef P4_DSI_NONBURST
     dsi_wr(P4_DSI_VID_MODE_CFG,
            P4_DSI_VID_NONBURST_PULSES | P4_DSI_LP_SET);
@@ -1184,10 +1260,13 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
     dsi_wr(P4_DSI_VID_MODE_CFG,
            P4_DSI_VID_BURST_SYNC_PULSES | P4_DSI_LP_SET);
 #endif
+#endif
 #else
     dsi_wr(P4_DSI_VID_MODE_CFG, P4_DSI_VID_BURST_SYNC_PULSES);
 #endif
+#ifndef P4_B5_EXACT_DPI_CREATE
     dsi_wr(P4_DSI_DPI_LP_CMD_TIM, 0);
+#endif
 
     /*
      * One packet per line, or several.
@@ -1201,14 +1280,80 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
      * VID_PKT_SIZE times VID_NUM_CHUNKS has to equal the active width.
      */
 #ifdef P4_DSI_CHUNKS
+#ifdef P4_B5_EXACT_DPI_CREATE
+    dsi_field(P4_DSI_VID_PKT_SIZE, 0x3FFFUL,
+              P4_PANEL_H_RES / P4_DSI_CHUNKS);
+    dsi_field(P4_DSI_VID_NUM_CHUNKS, 0x1FFFUL, P4_DSI_CHUNKS);
+#else
     dsi_wr(P4_DSI_VID_PKT_SIZE, P4_PANEL_H_RES / P4_DSI_CHUNKS);
     dsi_wr(P4_DSI_VID_NUM_CHUNKS, P4_DSI_CHUNKS);
+#endif
+#else
+#ifdef P4_B5_EXACT_DPI_CREATE
+    dsi_field(P4_DSI_VID_PKT_SIZE, 0x3FFFUL, P4_PANEL_H_RES);
+    dsi_field(P4_DSI_VID_NUM_CHUNKS, 0x1FFFUL, 0);
 #else
     dsi_wr(P4_DSI_VID_PKT_SIZE, P4_PANEL_H_RES);
     dsi_wr(P4_DSI_VID_NUM_CHUNKS, 0);
 #endif
+#endif
+#ifdef P4_B5_EXACT_DPI_CREATE
+    dsi_field(P4_DSI_VID_NULL_SIZE, 0x1FFFUL, 0);
+#else
     dsi_wr(P4_DSI_VID_NULL_SIZE, 0);
+#endif
 
+#ifdef P4_B5_EXACT_DPI_CREATE
+    /* mipi_dsi_hal_host_dpi_set_horizontal_timing(): host first, then the
+       bridge, with each bitfield assignment visible separately. */
+    dsi_field(P4_DSI_VID_HSA_TIME, 0xFFFUL, hsa);
+    dsi_field(P4_DSI_VID_HBP_TIME, 0xFFFUL, hbp);
+#ifdef P4_DSI_HLINE_DELTA
+    dsi_field(P4_DSI_VID_HLINE_TIME, 0x7FFFUL,
+              (unsigned long)((long)(act + hsa + hbp + hfp)
+                              + (long)P4_DSI_HLINE_DELTA));
+#else
+    dsi_field(P4_DSI_VID_HLINE_TIME, 0x7FFFUL,
+              act + hsa + hbp + hfp);
+#endif
+    brg_field(P4_DSI_BRG_DPI_H_CFG0, 0x0FFFUL << P4_DSI_BRG_DISP_SHIFT,
+              (unsigned long)P4_PANEL_H_RES << P4_DSI_BRG_DISP_SHIFT);
+    brg_field(P4_DSI_BRG_DPI_H_CFG0, 0x0FFFUL << P4_DSI_BRG_TOTAL_SHIFT,
+              (unsigned long)(P4_PANEL_H_RES + P4_PANEL_HSYNC
+                              + P4_PANEL_HBP + P4_PANEL_HFP
+#ifdef P4_DSI_BRG_HLINE_DELTA
+                              + P4_DSI_BRG_HLINE_DELTA
+#endif
+                             ) << P4_DSI_BRG_TOTAL_SHIFT);
+    brg_field(P4_DSI_BRG_DPI_H_CFG1, 0x0FFFUL << P4_DSI_BRG_SYNC_SHIFT,
+              (unsigned long)P4_PANEL_HSYNC << P4_DSI_BRG_SYNC_SHIFT);
+    brg_field(P4_DSI_BRG_DPI_H_CFG1, 0x0FFFUL << P4_DSI_BRG_BANK_SHIFT,
+              (unsigned long)P4_PANEL_HBP << P4_DSI_BRG_BANK_SHIFT);
+
+    dsi_field(P4_DSI_VID_VSA_LINES, 0x3FFUL, P4_PANEL_VSYNC);
+    dsi_field(P4_DSI_VID_VBP_LINES, 0x3FFUL, P4_PANEL_VBP);
+    dsi_field(P4_DSI_VID_VACTIVE_LINES, 0x3FFFUL, P4_TX_V_RES);
+    dsi_field(P4_DSI_VID_VFP_LINES, 0x3FFUL, P4_PANEL_VFP);
+    brg_field(P4_DSI_BRG_DPI_V_CFG0, 0x0FFFUL << P4_DSI_BRG_DISP_SHIFT,
+#ifdef P4_BRG_VDIV
+              (unsigned long)(P4_TX_V_RES / P4_BRG_VDIV)
+                  << P4_DSI_BRG_DISP_SHIFT);
+#else
+              (unsigned long)P4_TX_V_RES << P4_DSI_BRG_DISP_SHIFT);
+#endif
+    brg_field(P4_DSI_BRG_DPI_V_CFG0, 0x0FFFUL << P4_DSI_BRG_TOTAL_SHIFT,
+              (unsigned long)(P4_TX_V_RES + P4_PANEL_VSYNC
+                              + P4_PANEL_VBP + P4_PANEL_VFP)
+                  << P4_DSI_BRG_TOTAL_SHIFT);
+    brg_field(P4_DSI_BRG_DPI_V_CFG1, 0x0FFFUL << P4_DSI_BRG_SYNC_SHIFT,
+              (unsigned long)P4_PANEL_VSYNC << P4_DSI_BRG_SYNC_SHIFT);
+    brg_field(P4_DSI_BRG_DPI_V_CFG1, 0x0FFFUL << P4_DSI_BRG_BANK_SHIFT,
+              (unsigned long)(P4_PANEL_VBP
+#ifdef P4_DSI_BRG_VBP_DELTA
+                              + P4_DSI_BRG_VBP_DELTA
+#endif
+                             ) << P4_DSI_BRG_BANK_SHIFT);
+#else
     dsi_wr(P4_DSI_VID_HSA_TIME, hsa);
     dsi_wr(P4_DSI_VID_HBP_TIME, hbp);
 #ifdef P4_DSI_HLINE_DELTA
@@ -1228,6 +1373,7 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
     dsi_wr(P4_DSI_VID_VBP_LINES, P4_PANEL_VBP);
     dsi_wr(P4_DSI_VID_VFP_LINES, P4_PANEL_VFP);
     dsi_wr(P4_DSI_VID_VACTIVE_LINES, P4_TX_V_RES);
+#endif
 
 #ifndef P4_B5_FULL_ATOMIC_START
     dsi_trace();                /* 4: video registers staged, still command mode */
