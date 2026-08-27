@@ -123,7 +123,7 @@ tests.
 | B2 | Safe I2C1/PCA9535 panel-power sequence | `hardware verified` | An I2C master for both P4 controllers, OOP-free and shaped for the `WriteRead` method of AROS's existing `hidd.i2c` class so a later HIDD wraps rather than reimplements it.  The panel supply and reset pulse run twice and return to safe, with every unrelated expander bit provably unmoved.  Preservation is proved against a deliberately seeded one, not against a zero, because the board's battery means the expander has no reachable cold state.  Two defects of mine were found by hardware, not by reading |
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
-| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  A hardware-observed colour card verifies native little-endian RGB565 and all primary/pair colours; the corrected exactly tiled checker is perfect and moving dirty rectangles leave no visible artefacts.  Runs at 40 MHz over 1500 Mbit/s lanes.  The sustained gate passes 1,800 seconds of concurrent 71 MB/s scanout, read-only SD reads and cache-forced PSRAM passes: all 1,800 samples clean, 112 MB SD verified, 1,800 MB PSRAM verified and zero failures.  Bounded commands and ordered teardown recover an active reset in the verified case, but a separately retained PSRAM failure still needed one vendor-firmware boot and remains part of the open boot-cycle risk.  The optional post-video DCS read can separately pin `GEN_RD_CMD_BUSY`, so it is off by default and excluded from acceptance.  Still open: explicit solid/corner/one-pixel observation, the 100 MB/s gate and the full ten-warm/ten-cold boot gate |
+| B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel** - `P4_PANEL_VMUL=1` shows the complete regular grid, every line one continuous colour, with no payload error.  A hardware-observed colour card verifies native little-endian RGB565 and all primary/pair colours; the corrected exactly tiled checker is perfect and moving dirty rectangles leave no visible artefacts.  A raw-source ruler fixes the constant cyclic row phase at exactly 525 pixels; the compensated D1001 gate places asymmetric quadrants at the active-area edges, four differently sized marks in their correct corners and two horizontal plus two vertical one-pixel lines straight and continuous.  Runs at 40 MHz over 1500 Mbit/s lanes.  The sustained gate passes 1,800 seconds of concurrent 71 MB/s scanout, read-only SD reads and cache-forced PSRAM passes: all 1,800 samples clean, 112 MB SD verified, 1,800 MB PSRAM verified and zero failures.  Bounded commands and ordered teardown recover an active reset in the verified case, but a separately retained PSRAM failure still needed one vendor-firmware boot and remains part of the open boot-cycle risk.  The optional post-video DCS read can separately pin `GEN_RD_CMD_BUSY`, so it is off by default and excluded from acceptance.  Still open: the DMA-based 100 MB/s decision and the full ten-warm/ten-cold boot gate |
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `not started` | Requires stable B5 |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `not started` | Requires B6; follows `fbgfx` pattern |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | Requires C1 |
@@ -528,8 +528,9 @@ Acceptance gate:
   reads and PSRAM stress run concurrently;
 - ten cold and ten warm boots pass with UART diagnostics intact.
 
-The concurrent-stress point passed on the D1001 on 2026-08-26.  The remaining
-B5 points are the explicit solid/corner/one-pixel panel observation, the
+The concurrent-stress point passed on the D1001 on 2026-08-26.  The explicit
+solid/corner/one-pixel panel point passed on 2026-08-27 after a raw-source ruler
+fixed the row phase at exactly 525 pixels.  The remaining B5 points are the
 DMA-based 100 MB/s bandwidth decision and the complete boot-cycle matrix.
 
 ### B6 - VSYNC handoff, buffering and landscape
@@ -8377,6 +8378,159 @@ chip in the width this port assumes; it never addressed the hang.
   not a cause.  It also narrows the remaining nondeterminism to ACK/BTA
   turnaround across the complete tail sequence `0x11,0x29,0x35`, while the
   ordinary video payload fault begins before the first completed frame.
+- The known-visible 1,500-Mbit/s non-burst/no-frame-ACK control was restored
+  after that exact-reference investigation.  Its fresh 189,968-byte image had
+  SHA-256
+  `dd9bebf25bba82f938799538b34e2fcc8f1d20b80defd5e600fcd85b606ef34b`;
+  only the identified D1001 v1.3 `ota_0` was written and independently
+  verified.  B3 passed, panel ID was `93 65 04`, DMA frames advanced with zero
+  faults, bridge RAW stayed zero and the host payload-error bit stayed clear.
+  Direct observation confirmed a stable colour card with no transport
+  artefact, but with the previously measured constant horizontal displacement.
+  This re-establishes a working transport/control point after the black exact-
+  reference trials; it does not accept visual geometry.
+- The next bounded visual discriminator is
+  `P4_B5_ROW_PHASE_COMPENSATION=550`.  It rotates only pixels written through
+  the shared observer-pattern helper by +550 framebuffer pixels per row,
+  matching the photo-derived mapping in which physical X=0 consumes
+  framebuffer X approximately 550.  It does not alter the DSI host, bridge,
+  GDMA descriptor, clocks or timing and is diagnostic rather than a production
+  framebuffer contract.  True half-width quadrants, four physical corner
+  marks and vertical lines at X=173 and X=599 accept the per-row phase model;
+  any remaining displacement or fold rejects it and identifies that the
+  correction belongs at a different stream boundary.  No B5 status changes
+  until the identified D1001 observer gate records that result.
+- The +550 row-phase discriminator accepted the model but not yet the exact
+  constant.  After a clean kernel-object rebuild, its 190,816-byte image had
+  SHA-256
+  `3aab3b7fec2544fb71be3e1de6376f24b463e73b089f251440815c1c43f7225c`;
+  only the identified D1001 v1.3 `ota_0` was written and independently
+  verified.  B3 and panel identity `93 65 04` passed, every visual phase was
+  written back, DMA frames reached 2,129 with zero faults, and host payload
+  plus bridge RAW status stayed clear through `scanout stopped, panel safe`.
+  Direct observation reported `jetzt nur noch leicht verschoben - vielleicht
+  20-30 px`: the former approximately 550-pixel cyclic displacement collapsed
+  to a small constant residual.  This is hardware evidence that the defect is
+  an X phase within each row rather than scaling, reflection, tearing or a
+  changing DMA start, while also rejecting 550 as the exact correction.  The
+  next run must adjust only that diagnostic constant in the observed direction
+  and repeat the asymmetric quadrant/corner/line gate before any production
+  scanout mapping is chosen.
+- A clean +576 repeat used a fresh 190,816-byte image with SHA-256
+  `711c3872395364b6a63832f16bae23e775b5070191f9aade56ed6c9df9db91e2`.
+  Only identified `ota_0` was written and independently verified.  Two
+  observer runs each passed B3, all ten writeback phases, 2,129 DMA frames,
+  zero DMA/bridge/host faults and panel-safe stop.  The observer still judged
+  the residual as approximately 30 pixels.  Because changing the estimate by
+  26 pixels did not yield an unambiguous edge result, further single-value
+  guesses are rejected.
+- `P4_B5_PHASE_CALIBRATION=1` is the replacement instrument.  It preloads nine
+  immutable horizontal bands whose raw-source markers test X phases 544, 552,
+  560, 568, 576, 584, 592, 600 and 608.  A candidate marker maps to physical
+  X=`candidate-actual phase` modulo 800; the coloured marker split across the
+  two physical short edges therefore brackets the exact phase to eight pixels
+  in one run.  The pattern bypasses only the diagnostic coordinate remapper;
+  transport, DMA, bridge, clocks, read-only SD policy and safe stop stay at the
+  known-visible control.  A second one-pixel ruler inside the accepted interval
+  is required before a production mapping is proposed.
+- The first phase-ruler artifact was 190,320 bytes with SHA-256
+  `88b33e586a0a0040ece8f0873e1fce3da3837bde50c2a80eb40a238607f71627`;
+  only identified `ota_0` was written and independently verified.  Two
+  unchanged observer runs each maintained the immutable card through 2,006
+  zero-fault frames and panel-safe stop.  Direct observation described a
+  monotonic staircase with the red 544 marker closest to the left edge and no
+  marker crossing either edge.  The actual phase is therefore below the
+  544..608 interval, rather than near the earlier photo estimate.  The ruler
+  now accepts `P4_B5_PHASE_CALIBRATION_BASE`; the next immutable run moves the
+  same nine colours to 480..544.  A wrap/split brackets the phase; another
+  all-left staircase moves the interval lower without changing transport.
+- The parameterized 480..544 ruler was again 190,320 bytes, now with SHA-256
+  `eb09482ebd344cc814db39f211b1d09cd07853183c7cf18444c071282e0230fa`;
+  only identified `ota_0` was written and independently verified.  Its static
+  run reached 2,006 frames with no DMA, bridge or host fault before safe stop.
+  The initial verbal observation described an unsplit staircase and was
+  incorrectly interpreted as red 480 being closest to framebuffer X zero.
+  The subsequent photographed ruler proves that the verbal references mixed
+  the bands' vertical order with their horizontal displacement; that inference
+  is withdrawn rather than used as a phase bound.  The next identical ruler
+  interval was nevertheless moved to 416..480 as the already-planned bounded
+  discriminator.  No production compensation value was inferred from the
+  ambiguous description.
+- The 416..480 ruler used a fresh 190,320-byte image with SHA-256
+  `dbfe75ed45f8d9e7e17de8d5f39b0e04253460175e6fdaed0dacb9ddcd2c4035`;
+  only identified `ota_0` was written and independently verified.  Two
+  unchanged runs each reached the immutable card with moving DMA and zero
+  bridge, host or DMA faults; the first reached 2,006 frames and panel-safe
+  stop, and the second was photographed as `IMG_0944.JPG` while its bounded
+  run continued to the same stop path.  The photograph resolves the physical
+  orientation unambiguously: red through violet form a monotonic staircase
+  toward the right edge of the luminous area, violet 480 is closest, and none
+  wraps.  Perspective-correcting the marker positions against the full-width
+  grey band separators places the row phase near 522 pixels.  This independently
+  explains the approximately 28-pixel residual observed with +550.  The ruler
+  now also parameterizes marker step and width; the next run tests 516..524 in
+  one-pixel steps with two-pixel markers.  Its right-to-left edge transition,
+  not a verbal top/bottom reference, selects the exact integer compensation.
+- The 516..524 fine ruler was built from a complete clean kernel-object
+  rebuild with `P4_B5_PHASE_CALIBRATION_STEP=1` and marker width two.  The
+  resulting image is 190,224 bytes with SHA-256
+  `44aba10569ef98cec52c902ff0504e37f65225cc940b6bf2da220e7b8f2533f1`.
+  The build exited zero, passed the SRAM-residency check and emitted the image
+  success markers.  The connected v1.3 D1001 with MAC
+  `e8:f6:0a:e0:46:4c` was re-identified; only `ota_0` at `0x20000` was written,
+  and write-time plus independent digest verification passed.  Two unchanged
+  runs reached `t59` and 2,006 frames with moving DMA and zero DMA, bridge or
+  host faults; the second captured `scanout stopped, panel safe` and then
+  discovered the inserted SD card through the existing read-only path.  The
+  direct edge-transition photograph is still pending, so the estimated 522
+  value is not yet promoted to an exact compensation or a visual pass.
+- Direct observation of the two-pixel fine ruler reported an all-black screen
+  on an unchanged repeat even though UART showed all 2,006 frames and the safe
+  stop with zero transport faults.  The thin markers and dark background were
+  therefore rejected as an observer instrument at the current backlight duty;
+  that observation is not treated as a transport-black result.  Only marker
+  width was changed to 64 pixels, leaving candidates 516..524, clocks, DMA,
+  DSI and bridge state unchanged.  The replacement image remained 190,224
+  bytes and had SHA-256
+  `704dbb2d92f976eb5d92089daa2bb337377653e0d0f061d3817706adfb4feced`;
+  only identified `ota_0` was written and independently verified.  Its run
+  again reached 2,006 zero-fault frames and panel-safe stop.  The photograph
+  `IMG_0945.JPG` shows all nine 64-pixel markers split across both X edges:
+  the right fragment decreases by one pixel from red candidate 516 through
+  violet candidate 524, where exactly one pixel remains.  Since a candidate
+  marker maps to `candidate-phase` modulo 800, this fixes the row phase at
+  exactly 525 pixels.  The next gate applies diagnostic compensation +525 to
+  the normal 60-second visual schedule; solids, checker, asymmetric quadrants,
+  four corner blocks and isolated one-pixel lines must all land correctly
+  before the value can enter the production framebuffer contract.
+- The first complete +525 visual-gate image is 191,136 bytes with SHA-256
+  `1d7a5fe571e3289cfe7c2ef7278ffea3bffb7b3e0d4882e59326be4683942c31`.
+  It came from a clean kernel-object rebuild with 200-MHz PSRAM, 360-MHz CPU,
+  1,500-Mbit/s non-burst DSI and no phase-ruler switch.  The build exited zero,
+  passed SRAM residency and emitted the image-success markers.  Only the
+  identified v1.3 D1001's `ota_0` was written; both write-time and independent
+  verification passed.  The scheduled solids, checker, quadrant, corner-only,
+  line-only and combined phases were all written back; frames reached 2,146
+  with zero DMA faults, bridge raw status or host payload errors before
+  `scanout stopped, panel safe`.  Direct observation of each asymmetric phase
+  was then recorded in `IMG_0946.JPG` and `IMG_0947.JPG`: the former shows the
+  four large red/green/blue/yellow quadrants meeting at the exact horizontal
+  and vertical midlines and reaching the expected active-area edges; the latter
+  shows the four differently sized red, green, blue and yellow markers isolated
+  in the four corresponding physical corners.  No marker wraps or retains a
+  horizontal residual.  Compensation +525 is therefore hardware-accepted for
+  areas and corner coordinates.
+- The unchanged +525 artifact was then run a second time specifically for the
+  line-only phase.  It again completed all ten writeback phases, reached 2,146
+  frames with zero DMA faults, bridge raw status or host payload errors and
+  ended at `scanout stopped, panel safe`.  During the announced phase 9 the
+  D1001 observer confirmed the two vertical and two horizontal one-pixel lines
+  visible, straight and continuous.  Together with `IMG_0946.JPG` and
+  `IMG_0947.JPG`, this closes the explicit solids/corners/one-pixel geometry
+  acceptance point and hardware-accepts diagnostic row compensation +525.
+  This is not yet a production framebuffer mapping: the next implementation
+  step must place the proven phase correction at the scanout/HIDD contract
+  boundary rather than silently retaining a test-pattern-only remapper.
 
 ## Evidence-entry template
 

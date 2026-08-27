@@ -36,6 +36,36 @@
 #include "kernel_intern.h"
 #include "psram.h"
 
+#if defined(P4_B5_ROW_PHASE_COMPENSATION) \
+    && P4_B5_ROW_PHASE_COMPENSATION >= P4_PANEL_H_RES
+#error P4_B5_ROW_PHASE_COMPENSATION must be smaller than the panel width
+#endif
+
+#ifndef P4_B5_PHASE_CALIBRATION_BASE
+#define P4_B5_PHASE_CALIBRATION_BASE 544
+#endif
+
+#ifndef P4_B5_PHASE_CALIBRATION_STEP
+#define P4_B5_PHASE_CALIBRATION_STEP 8
+#endif
+
+#ifndef P4_B5_PHASE_CALIBRATION_WIDTH
+#define P4_B5_PHASE_CALIBRATION_WIDTH 16
+#endif
+
+#if P4_B5_PHASE_CALIBRATION_STEP < 1
+#error P4_B5_PHASE_CALIBRATION_STEP must be at least one pixel
+#endif
+
+#if P4_B5_PHASE_CALIBRATION_WIDTH < 1
+#error P4_B5_PHASE_CALIBRATION_WIDTH must be at least one pixel
+#endif
+
+#if P4_B5_PHASE_CALIBRATION_BASE + 8 * P4_B5_PHASE_CALIBRATION_STEP \
+        + P4_B5_PHASE_CALIBRATION_WIDTH > P4_PANEL_H_RES
+#error phase calibration markers must fit inside one raw framebuffer row
+#endif
+
 #if defined(P4_B5_EARLY_GDMA_CREATE) && !defined(P4_B5_EARLY_DPI_CREATE)
 #error P4_B5_EARLY_GDMA_CREATE requires P4_B5_EARLY_DPI_CREATE
 #elif defined(P4_B5_EARLY_GDMA_CREATE) && defined(P4_B5_DMA_RELOAD)
@@ -158,7 +188,7 @@ void krnP4ScanoutDmaCreate(void)
  * each pattern that carries its own packing is another place for the two to
  * disagree.  The argument is 0xRRGGBB regardless; RGB565 quantises it.
  */
-static inline void px(volatile unsigned char *at, unsigned long rgb)
+static inline void px_raw(volatile unsigned char *at, unsigned long rgb)
 {
 #if P4_PANEL_BPP == 24
     at[0] = (unsigned char)(rgb & 0xFF);
@@ -182,6 +212,29 @@ static inline void px(volatile unsigned char *at, unsigned long rgb)
     at[0] = (unsigned char)(v & 0xFF);
     at[1] = (unsigned char)(v >> 8);
 #endif
+}
+
+static inline void px(volatile unsigned char *at, unsigned long rgb)
+{
+#ifdef P4_B5_ROW_PHASE_COMPENSATION
+    /*
+     * Diagnostic mapping proof only.  Direct observation says physical X
+     * currently consumes framebuffer (X + phase) modulo 800.  Store each
+     * requested test pixel at that source coordinate without touching DMA,
+     * bridge or DSI state; correctly placed asymmetric patterns accept a
+     * per-row phase, while any remaining fold/offset rejects it.
+     */
+    unsigned long row_bytes = P4_PANEL_H_RES * P4_FB_BYTES_PER_PIXEL;
+    unsigned long offset = (unsigned long)at - P4_FB_BASE;
+    unsigned long row_offset = offset - offset % row_bytes;
+    unsigned long x = (offset % row_bytes) / P4_FB_BYTES_PER_PIXEL;
+
+    x = (x + P4_B5_ROW_PHASE_COMPENSATION) % P4_PANEL_H_RES;
+    at = (volatile unsigned char *)(P4_FB_BASE + row_offset
+                                   + x * P4_FB_BYTES_PER_PIXEL);
+#endif
+
+    px_raw(at, rgb);
 }
 
 void krnP4ScanoutFill(unsigned long rgb)
@@ -866,6 +919,56 @@ void krnP4ScanoutCoordinatePattern(void)
             else
                 rgb = x < P4_PANEL_H_RES / 2 ? 0x0000FFUL : 0xFFFF00UL;
             px(row + x * P4_FB_BYTES_PER_PIXEL, rgb);
+        }
+    }
+}
+
+/*
+ * Immutable raw-source phase ruler.
+ *
+ * The nine horizontal bands test source phases BASE..BASE+8*STEP.  A band
+ * writes a WIDTH-pixel coloured marker at its candidate source X without
+ * applying the diagnostic compensation above.  The physical scanout maps
+ * that marker to candidate-minus-actual-phase modulo 800: the band whose
+ * marker splits across the left and right edges brackets the exact phase to
+ * one STEP interval.  Full-width grey separators are invariant under a cyclic
+ * row phase and make the bands countable.
+ */
+void krnP4ScanoutPhaseCalibration(void)
+{
+    static const unsigned long colours[9] = {
+        0xFF0000UL,
+        0x00FF00UL,
+        0x0000FFUL,
+        0xFFFF00UL,
+        0x00FFFFUL,
+        0xFF00FFUL,
+        0xFFFFFFUL,
+        0xFF8000UL,
+        0x8000FFUL,
+    };
+    volatile unsigned char *fb = (volatile unsigned char *)P4_FB_BASE;
+    unsigned long y, x;
+
+    for (y = 0; y < P4_TX_V_RES; y++)
+    {
+        unsigned long band = y * 9 / P4_TX_V_RES;
+        unsigned long candidate = P4_B5_PHASE_CALIBRATION_BASE
+                                  + band * P4_B5_PHASE_CALIBRATION_STEP;
+        unsigned long band_y = y * 9 % P4_TX_V_RES;
+        volatile unsigned char *row = fb + y * P4_PANEL_H_RES
+                                          * P4_FB_BYTES_PER_PIXEL;
+
+        for (x = 0; x < P4_PANEL_H_RES; x++)
+        {
+            unsigned long rgb = 0x080808UL;
+
+            if (band_y < 4 * 9)
+                rgb = 0x404040UL;
+            else if (x >= candidate
+                     && x < candidate + P4_B5_PHASE_CALIBRATION_WIDTH)
+                rgb = colours[band];
+            px_raw(row + x * P4_FB_BYTES_PER_PIXEL, rgb);
         }
     }
 }

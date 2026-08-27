@@ -465,6 +465,38 @@ endif
 ifdef P4_B5_STATIC_PRELOAD
 P4_DEBUG_CPPFLAGS += -DP4_B5_STATIC_PRELOAD -DP4_B5_START_TRACE
 endif
+
+# P4_B5_ROW_PHASE_COMPENSATION=<pixels> is a diagnostic-only rotation of every
+# row written through the common test-pattern pixel helper.  It tests whether
+# a stable physical-to-framebuffer X phase explains the visual displacement;
+# it deliberately changes neither DSI timing nor the DMA/bridge contract.
+ifdef P4_B5_ROW_PHASE_COMPENSATION
+P4_DEBUG_CPPFLAGS += \
+    -DP4_B5_ROW_PHASE_COMPENSATION=$(P4_B5_ROW_PHASE_COMPENSATION)
+endif
+
+# P4_B5_PHASE_CALIBRATION=1 preloads an immutable nine-band phase ruler and
+# keeps it on screen for the full visual-gate interval.  Each band places its
+# coloured marker at a different raw framebuffer X, so the marker that crosses
+# the physical left/right edge brackets the transport phase without guessing.
+ifdef P4_B5_PHASE_CALIBRATION
+P4_DEBUG_CPPFLAGS += -DP4_B5_PHASE_CALIBRATION -DP4_B5_STATIC_PRELOAD \
+                     -DP4_B5_START_TRACE
+endif
+ifdef P4_B5_PHASE_CALIBRATION_BASE
+P4_DEBUG_CPPFLAGS += \
+    -DP4_B5_PHASE_CALIBRATION_BASE=$(P4_B5_PHASE_CALIBRATION_BASE)
+endif
+
+ifdef P4_B5_PHASE_CALIBRATION_STEP
+P4_DEBUG_CPPFLAGS += \
+    -DP4_B5_PHASE_CALIBRATION_STEP=$(P4_B5_PHASE_CALIBRATION_STEP)
+endif
+
+ifdef P4_B5_PHASE_CALIBRATION_WIDTH
+P4_DEBUG_CPPFLAGS += \
+    -DP4_B5_PHASE_CALIBRATION_WIDTH=$(P4_B5_PHASE_CALIBRATION_WIDTH)
+endif
 # P4_B5_BLK_RAW_FRAME=1 replaces the bridge's 720x1280 reset count with the
 # actual one-block framebuffer size.  It is an isolated revision-one state
 # diagnostic; leave it off until a visual gate proves whether the field is
