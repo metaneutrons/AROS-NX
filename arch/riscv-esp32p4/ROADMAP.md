@@ -7877,6 +7877,43 @@ chip in the width this port assumes; it never addressed the hang.
   post-PHY bus setup: IDF writes CRC, ECC, HS/LP EoTP and both clock-divider
   fields through separate volatile RMWs, where AROS still combines each
   register's final value.
+- Exact bus-object disassembly expands that mismatch beyond the packet handler.
+  After PLL lock and lane stop, v6.0 writes command mode, clears AUTO and the
+  HS clock request separately, writes the four PHY transition fields one by
+  one, then performs CRC, ECC, HS-EoTP-set and LP-EoTP-clear as four PCKHDL
+  RMWs.  It writes timeout-clock division before escape-clock division, clears
+  the two halves of `TO_CNT_CFG` separately, clears each remaining 16-bit
+  timeout field and updates the 15-bit maximum-read field.  AROS previously
+  collapsed every same-register group into its final word.  The final live
+  snapshot cannot reveal any intermediate host/clock-lane FSM input.
+- `P4_B5_EXACT_BUS_CREATE` reproduces that post-lock sequence field by field,
+  additively to the exact PHY and DBI lifecycles.  It changes no final public
+  value.  The same 1,000/200/360 baseline, first-frame host oracle, bridge/DMA
+  health checks, two-second safe stop and read-only SD gate decide it remotely.
+  An unchanged frame-zero payload error closes the complete DSI bus creation
+  path and moves the source audit forward to DPI object creation writes.
+- Exact post-PHY bus creation is hardware-negative.  The 190,320-byte XIP
+  image had SHA-256
+  `9d6039728f5610b5d83c6f3d2a2cd58d574d76835d7d8afb62b159313f4f4d0b`;
+  its fresh build exited zero, contained no exact `error:`, passed SRAM
+  residency and emitted the successful ESP32-P4 image marker.  AROS
+  disassembly proved separate LP-clock clears, all four transition fields,
+  CRC/ECC/HS+LP-EoTP writes, timeout-before-escape dividers, timeout fields
+  and maximum-read RMW in the v6.0 object order.  Only `ota_0` was erased and
+  written on D1001 v1.3, MAC `e8:f6:0a:e0:46:4c`; write-time and independent
+  digest verification passed.  UART read exact bus values
+  `PHY_TMR_CFG/PHY_TMR_LPCLK_CFG/CLKMGR_CFG=0x00320068/0x002e0080/0x00000d07`,
+  exact DBI `0x00000019/0x010f7f02` and identity `93 65 04`.  Ordinary
+  first-frame traffic still asserted `INT_ST1=0x80 / VID_PKT_STATUS=0x20009`
+  after `0xdee` ticks in frame zero at `SAR=FB+0x3200`, with depth `0x336`.
+  Bridge RAW stayed zero, measured throughput was 69 MB/s and DMA faults
+  stayed zero through 44 frames.  A repeated long capture reached the
+  two-second panel-safe stop, mounted the 121,942-MB SD card and repeatedly
+  reported it write protected.  The complete bus/PHY/DBI creation history is
+  therefore closed as causal, and no visual claim is made remotely.  The next
+  exact-object audit starts at `esp_lcd_new_panel_dpi()`, concentrating on
+  still-combined host-video and bridge field writes before the already tested
+  early object lifetime and producer start.
 
 ## Evidence-entry template
 

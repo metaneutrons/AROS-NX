@@ -60,6 +60,14 @@ static void dsi_clr(unsigned long off, unsigned long bits)
     dsi_wr(off, dsi_rd(off) & ~bits);
 }
 
+#ifdef P4_B5_EXACT_BUS_CREATE
+static void dsi_field(unsigned long off, unsigned long mask,
+                      unsigned long value)
+{
+    dsi_wr(off, (dsi_rd(off) & ~mask) | (value & mask));
+}
+#endif
+
 static void brg_wr(unsigned long off, unsigned long v)
 {
     p4_w32(P4_DSI_BRG_BASE + off, v);
@@ -385,7 +393,10 @@ int krnP4DsiCmdModeUp(void)
        here; P4_B5_IDF_AUTO_CMD_CLOCK reproduced that version difference and
        was hardware-negative, but it is not a Vellum parity setting. */
     dsi_set(P4_DSI_MODE_CFG, P4_DSI_CMD_VIDEO_MODE);
-#ifdef P4_B5_IDF_AUTO_CMD_CLOCK
+#ifdef P4_B5_EXACT_BUS_CREATE
+    dsi_clr(P4_DSI_LPCLK_CTRL, P4_DSI_AUTO_CLKLANE);
+    dsi_clr(P4_DSI_LPCLK_CTRL, P4_DSI_TXREQUESTCLKHS);
+#elif defined(P4_B5_IDF_AUTO_CMD_CLOCK)
     dsi_set(P4_DSI_LPCLK_CTRL,
             P4_DSI_TXREQUESTCLKHS | P4_DSI_AUTO_CLKLANE);
 #else
@@ -395,23 +406,59 @@ int krnP4DsiCmdModeUp(void)
 
     /* The four lane-transition times, undocumented and carried over as they
        are; see the display contract's unresolved list. */
+#ifdef P4_B5_EXACT_BUS_CREATE
+    dsi_field(P4_DSI_PHY_TMR_CFG, 0x3ffUL << P4_DSI_HS2LP_SHIFT,
+              50UL << P4_DSI_HS2LP_SHIFT);
+    dsi_field(P4_DSI_PHY_TMR_CFG, 0x3ffUL << P4_DSI_LP2HS_SHIFT,
+              104UL << P4_DSI_LP2HS_SHIFT);
+    dsi_field(P4_DSI_PHY_TMR_LPCLK_CFG, 0x3ffUL << P4_DSI_CLKHS2LP_SHIFT,
+              46UL << P4_DSI_CLKHS2LP_SHIFT);
+    dsi_field(P4_DSI_PHY_TMR_LPCLK_CFG, 0x3ffUL << P4_DSI_CLKLP2HS_SHIFT,
+              128UL << P4_DSI_CLKLP2HS_SHIFT);
+#else
     dsi_wr(P4_DSI_PHY_TMR_CFG,
            (104UL << P4_DSI_LP2HS_SHIFT) | (50UL << P4_DSI_HS2LP_SHIFT));
     dsi_wr(P4_DSI_PHY_TMR_LPCLK_CFG,
            (128UL << P4_DSI_CLKLP2HS_SHIFT) | (46UL << P4_DSI_CLKHS2LP_SHIFT));
+#endif
 
     /* Receive checking on, and an end-of-transmission packet after each
        high-speed burst. */
+#ifdef P4_B5_EXACT_BUS_CREATE
+    dsi_set(P4_DSI_PCKHDL_CFG, P4_DSI_CRC_RX_EN);
+    dsi_set(P4_DSI_PCKHDL_CFG, P4_DSI_ECC_RX_EN);
+    dsi_set(P4_DSI_PCKHDL_CFG, P4_DSI_EOTP_TX_EN);
+    dsi_clr(P4_DSI_PCKHDL_CFG, P4_DSI_EOTP_TX_LP_EN);
+#else
     dsi_wr(P4_DSI_PCKHDL_CFG, P4_DSI_CRC_RX_EN | P4_DSI_ECC_RX_EN
                             | P4_DSI_EOTP_TX_EN);
+#endif
 
     /* Escape and timeout clocks, rounded the same way the reference rounds
        them: 125/18 is 7 and 125/10 is 13. */
+#ifdef P4_B5_EXACT_BUS_CREATE
+    dsi_field(P4_DSI_CLKMGR_CFG, P4_DSI_TO_CLK_DIV_MASK,
+              ((byte_clk_mhz * 2 / 10 + 1) / 2)
+              << P4_DSI_TO_CLK_DIV_SHIFT);
+    dsi_field(P4_DSI_CLKMGR_CFG, P4_DSI_TX_ESC_DIV_MASK,
+              (byte_clk_mhz * 2 / 18 + 1) / 2);
+#else
     dsi_wr(P4_DSI_CLKMGR_CFG,
            ((byte_clk_mhz * 2 / 18 + 1) / 2)
            | (((byte_clk_mhz * 2 / 10 + 1) / 2) << P4_DSI_TO_CLK_DIV_SHIFT));
+#endif
 
     /* Timeouts disabled, as above. */
+#ifdef P4_B5_EXACT_BUS_CREATE
+    dsi_clr(P4_DSI_TO_CNT_CFG, 0x0000ffffUL);
+    dsi_clr(P4_DSI_TO_CNT_CFG, 0xffff0000UL);
+    dsi_clr(P4_DSI_HS_RD_TO_CNT, 0x0000ffffUL);
+    dsi_clr(P4_DSI_LP_RD_TO_CNT, 0x0000ffffUL);
+    dsi_clr(P4_DSI_HS_WR_TO_CNT, 0x0000ffffUL);
+    dsi_clr(P4_DSI_LP_WR_TO_CNT, 0x0000ffffUL);
+    dsi_clr(P4_DSI_BTA_TO_CNT, 0x0000ffffUL);
+    dsi_field(P4_DSI_PHY_TMR_RD_CFG, 0x00007fffUL, 6000);
+#else
     dsi_wr(P4_DSI_TO_CNT_CFG, 0);
     dsi_wr(P4_DSI_HS_RD_TO_CNT, 0);
     dsi_wr(P4_DSI_LP_RD_TO_CNT, 0);
@@ -420,6 +467,7 @@ int krnP4DsiCmdModeUp(void)
     dsi_wr(P4_DSI_BTA_TO_CNT, 0);
 
     dsi_wr(P4_DSI_PHY_TMR_RD_CFG, 6000);
+#endif
 
     {
         unsigned long v = dsi_rd(P4_DSI_PHY_IF_CFG);

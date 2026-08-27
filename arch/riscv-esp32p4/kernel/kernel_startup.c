@@ -5033,6 +5033,15 @@ static void krnP4PanelProbe(void)
             /* Stage two: command mode, then the panel out of reset, then
                its own sequence.  The reset comes here and not earlier. */
             (void)krnP4DsiCmdModeUp();
+#ifdef P4_B5_EXACT_BUS_CREATE
+            krnP4PutStr("[b5]     exact v6.0 bus create tmr/clk ");
+            krnP4PutHex32(p4_r32(P4_DSI_HOST_BASE + P4_DSI_PHY_TMR_CFG));
+            krnP4PutStr("/");
+            krnP4PutHex32(p4_r32(P4_DSI_HOST_BASE + P4_DSI_PHY_TMR_LPCLK_CFG));
+            krnP4PutStr("/");
+            krnP4PutHex32(p4_r32(P4_DSI_HOST_BASE + P4_DSI_CLKMGR_CFG));
+            krnP4PutStr("\n");
+#endif
 #ifdef P4_B5_EXACT_DBI_CREATE
             krnP4PutStr("[b5]     exact v6.0 DBI create pck/cmd ");
             krnP4PutHex32(p4_r32(P4_DSI_HOST_BASE + P4_DSI_PCKHDL_CFG));
