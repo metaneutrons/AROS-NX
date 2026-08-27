@@ -448,6 +448,15 @@ ifdef P4_B5_STRESS_SMOKE
 P4_DEBUG_CPPFLAGS += -DP4_B5_STRESS_SMOKE
 endif
 
+# P4_B6_DIRTY_GATE=1 advances the accepted immutable handoff into a producer
+# gate.  It implies the base B6 harness, modifies only the inactive surface,
+# writes back only the rotated dirty-row ranges, and submits that source to the
+# ISR for the next frame boundary.
+ifeq ($(P4_B6_DIRTY_GATE),1)
+override P4_B6_HANDOFF_GATE := 1
+P4_DEBUG_CPPFLAGS += -DP4_B6_DIRTY_GATE
+endif
+
 # P4_B6_HANDOFF_GATE=1 reserves two complete native buffers, renders two
 # immutable logical 1280x800 test frames through the 90-degree clockwise CPU
 # transform, and changes the descriptor source only in the DMA frame-done ISR.
