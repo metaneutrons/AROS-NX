@@ -8034,6 +8034,19 @@ chip in the width this port assumes; it never addressed the hang.
   at 63.95 seconds, after which ordinary Vellum startup continued.  There was
   no reboot or panel error in that interval.  Direct visual classification of
   the quadrants is the sole pending result; the source trees remain clean.
+- Vellum coordinate control passed direct observation.  The observer reported
+  `rechtecke passen jetzt`: the same native red/green-over-blue/yellow card
+  occupied the expected two equal horizontal halves under Espressif's
+  1,000-Mbit/s burst/ACK scanout, with no cyclic third colour region.  This
+  closes panel geometry, vendor coordinate setup and the diagnostic pattern
+  itself as causes of AROS's approximately 550-pixel horizontal wrap.  It also
+  makes the live transport mode decisive rather than merely correlative:
+  Vellum's burst path preserves x=0 while AROS's otherwise clean 1,500-Mbit/s
+  non-burst path does not.  The next bounded AROS artifact must combine the
+  newly exact DPI-creation history with the already audited exact Vellum
+  1,000-Mbit/s burst/ACK bus, PHY and DBI lifecycles.  That full combination
+  has not yet been run; the exact-DPI hardware-negative result above used only
+  the visible non-burst control and therefore cannot reject it.
 
 ## Evidence-entry template
 
