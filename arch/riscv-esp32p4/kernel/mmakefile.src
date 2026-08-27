@@ -448,6 +448,37 @@ ifdef P4_B5_STRESS_SMOKE
 P4_DEBUG_CPPFLAGS += -DP4_B5_STRESS_SMOKE
 endif
 
+# P4_B6_HANDOFF_GATE=1 reserves two complete native buffers, renders two
+# immutable logical 1280x800 test frames through the 90-degree clockwise CPU
+# transform, and changes the descriptor source only in the DMA frame-done ISR.
+# The frames alternate about every three seconds by default.  This is the B6
+# ownership/rotation instrument; it deliberately does not mutate either live
+# surface or enable B5's coherency schedule.
+ifeq ($(P4_B6_HANDOFF_GATE),1)
+P4_DEBUG_CPPFLAGS += -DP4_B6_HANDOFF_GATE -DP4_B6_DOUBLE_BUFFER \
+                     -DP4_PANEL_PROBE -DP4_DSI_PROBE -DP4_SCANOUT_TEST
+ifneq ($(P4_DSI_BURST),1)
+P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
+endif
+P4_B6_ROW_PHASE_WORKAROUND ?= 525
+ifndef P4_SCANOUT_SECS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=60
+endif
+endif
+
+# Explicit compatibility debt, not a hardware contract.  Set this to the
+# hardware-observed 525 while B5R remains open; omit it for the B5R root-fix
+# gate.  Keeping a B6-specific name prevents the accepted B5 diagnostic from
+# becoming an invisible production assumption.
+ifdef P4_B6_ROW_PHASE_WORKAROUND
+P4_DEBUG_CPPFLAGS += \
+    -DP4_B6_ROW_PHASE_WORKAROUND=$(P4_B6_ROW_PHASE_WORKAROUND)
+endif
+
+ifdef P4_B6_SWAP_FRAMES
+P4_DEBUG_CPPFLAGS += -DP4_B6_SWAP_FRAMES=$(P4_B6_SWAP_FRAMES)
+endif
+
 # Keep the visual acceptance instrument separate from the sustained stress
 # schedule.  In particular, corner blocks and line intersections must never
 # share the only observation window: the first direct observation showed that

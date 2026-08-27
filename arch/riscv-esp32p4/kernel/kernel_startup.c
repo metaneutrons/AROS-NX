@@ -5270,7 +5270,11 @@ static void krnP4PanelProbe(void)
                    or a wrong channel order changes which colour appears and
                    is therefore visible rather than silent; a wrong stride or
                    pixel format cannot produce a flat field at all. */
-#if defined(P4_B5_STATIC_PRELOAD)
+#if defined(P4_B6_HANDOFF_GATE)
+                krnP4ScanoutB6Frames();
+                krnP4PutStr("[b6]     two immutable rotated landscape frames;"
+                            " GDMA swaps only at frame-done\n");
+#elif defined(P4_B5_STATIC_PRELOAD)
                 /* Write the complete asymmetric image before the pixel path
                    starts, then leave it unchanged for the whole run. */
 #ifdef P4_B5_PHASE_CALIBRATION
@@ -6127,7 +6131,11 @@ static void krnP4PanelProbe(void)
                         krnP4DsiCmdStatus(&pkt, &i0, &i1);
                         krnP4HostState(&h);
 
+#ifdef P4_B6_HANDOFF_GATE
+                        krnP4PutStr("[b6]     t");
+#else
                         krnP4PutStr("[b5]     t");
+#endif
                         krnP4PutDec((uint32_t)secs);
                         krnP4PutStr(" sar ");
                         krnP4PutHex32((uint32_t)sc.ch_sar);
@@ -6145,6 +6153,12 @@ static void krnP4PanelProbe(void)
                         krnP4PutDec((uint32_t)sc.dma_frames);
                         krnP4PutStr(" faults ");
                         krnP4PutHex32((uint32_t)sc.dma_faults);
+#ifdef P4_B6_HANDOFF_GATE
+                        krnP4PutStr(" active ");
+                        krnP4PutHex32((uint32_t)sc.active_fb);
+                        krnP4PutStr(" swaps ");
+                        krnP4PutDec((uint32_t)sc.dma_swaps);
+#endif
                         krnP4PutStr("\n");
 
                         krnTimerWait(P4_TICK_HZ);
@@ -6159,8 +6173,13 @@ static void krnP4PanelProbe(void)
                 krnP4ScanoutQuiesce();
                 krnP4DsiPatternOff();
                 (void)krnP4PanelSafe();
+#ifdef P4_B6_HANDOFF_GATE
+                krnP4PutStr("[b6]     handoff gate stopped, panel safe;"
+                            " reset to run it again\n");
+#else
                 krnP4PutStr("[b5]     scanout stopped, panel safe;"
                             " reset to run it again\n");
+#endif
 #endif
                 return;
             }
@@ -6364,9 +6383,10 @@ static int krnP4PublishPSRAM(IPTR first_free)
 {
     IPTR end = P4_PSRAM_WINDOW_BASE + __esp32p4_psram_size;
 
-#ifdef P4_B5_CONCURRENT_STRESS
-    /* The diagnostic starts scanout after exec owns the memory list.  Keep
-       its fixed framebuffer outside every allocation for the whole run. */
+#if defined(P4_B5_CONCURRENT_STRESS) || defined(P4_B6_DOUBLE_BUFFER)
+    /* B5 stress keeps scanning after Exec starts; B6 establishes the same
+       permanent ownership contract for both handoff surfaces.  Keep every
+       reserved framebuffer outside every allocation and package placement. */
     if (end > P4_FB_BASE)
         end = P4_FB_BASE;
 #endif
@@ -6406,7 +6426,7 @@ static int krnP4LoadBSPPackage(unsigned long part_off,
     IPTR i;
     int modules;
 
-#ifdef P4_B5_CONCURRENT_STRESS
+#if defined(P4_B5_CONCURRENT_STRESS) || defined(P4_B6_DOUBLE_BUFFER)
     if (psram_end > P4_FB_BASE)
         psram_end = P4_FB_BASE;
 #endif
