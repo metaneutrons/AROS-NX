@@ -1,10 +1,10 @@
 # D1001 display contract
 
 The single place this port keeps display facts.  Everything here was read out
-of a named source and carries an evidence class; where sources disagree, both
-values are recorded and the disagreement is the finding.  Nothing in this file
-is `verified`, because nothing in it has been measured on this port's own
-hardware yet.  B4 is the first phase that can promote an entry.
+of a named source or measured on the D1001 and carries an evidence class; where
+sources disagree, both values are recorded and the disagreement is the
+finding.  Entries promoted to `verified` cite the matching dated roadmap
+evidence.
 
 Anything about the display in `ROADMAP.md` or `README.md` that contradicts
 this file is stale and this file wins.
@@ -196,14 +196,42 @@ are `derived` from a diff of the two header sets and are cheap to re-check.
 
 | Item | Value | Class | Note |
 |---|---|---|---|
-| Native buffer | 2,048,000 bytes | `derived` | one 800 x 1280 RGB565 frame |
+| Native buffer | 2,048,000 bytes | `verified` | one 800 x 1280 RGB565 frame; B5 D1001 evidence 2026-08-25 through 2026-08-27 |
 | Reference buffer count | 3 | `reference` | `V-lvgl:224`, triple partial for tear avoidance |
 | Reference total | 6,144,000 bytes plus a 2 MB decode buffer | `derived` | `V-lvgl:242` |
-| AROS start | exactly one buffer | plan | B5; buffer count is a B6 decision with a measured reason |
+| AROS start | exactly one buffer | `verified` | B5; buffer count is still a B6 decision with a measured reason |
 
 Descriptors, ISR data and controller state stay in internal SRAM.  CPU writes
 are not coherent with display DMA, so each dirty region is cleaned
 CPU-to-memory before presentation.
+
+### Verified native scanout mapping and B6 consequence
+
+B5 hardware on 2026-08-27 fixes the native scanout's constant cyclic X phase
+at exactly **525 pixels**.  A raw-source ruler first measured it; the repeated
+compensated visual gate then placed full quadrants, four asymmetric corners and
+two horizontal plus two vertical one-pixel lines correctly.  This does not make
+the test-pattern remapper a framebuffer API.  Moving the DMA base would cross
+linear row boundaries, so the correction belongs in B6's logical-to-physical
+write transform.
+
+That transform is deliberately fused: for each changed logical pixel, rotate
+90 degrees clockwise into the physical portrait coordinates and add the
+525-pixel cyclic physical-row phase before storing RGB565.  It therefore costs
+no separate phase-correction pass.  AROS must expose a conventional linear
+`1280 x 800` logical bitmap; the fixed `800 x 1280` PSRAM buffer remains the
+DMA-facing surface.
+
+The bandwidth decision is also now measured rather than assumed.  One native
+frame is 2,048,000 bytes and Set A is 33.82 Hz, so the handshake-paced display
+DMA can request about 69.3 MB/s; the D1001 repeatedly measured 71 MB/s and held
+that rate through the 30-minute concurrent gate.  Such a DMA cannot report the
+old 100 MB/s floor because the panel clock itself prevents it from requesting
+that much.  The useful negative result is architectural: rotating every pixel
+every refresh would itself create about 138.5 MB/s of CPU read-plus-write
+traffic before the display's own DMA traffic.  B6 therefore follows the
+working reference's dirty-rectangle CPU approach and must not depend on a
+full-frame CPU transform at each VSYNC.  Buffer count remains a B6 measurement.
 
 ## B3's register sequence, derived
 
