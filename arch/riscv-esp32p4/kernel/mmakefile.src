@@ -244,6 +244,14 @@ ifdef P4_B5_EXACT_DBI_CREATE
 P4_DEBUG_CPPFLAGS += -DP4_B5_EXACT_DBI_CREATE
 endif
 
+# P4_B5_EXACT_BUS_CREATE=1 reproduces the linked v6.0 bus object's post-PLL
+# volatile RMW order: separate LP-clock clears, four PHY transition fields,
+# CRC/ECC/HS+LP EoTP, timeout then escape dividers, timeout fields and maximum
+# read time.  Final values are unchanged; this is an FSM-history discriminator.
+ifdef P4_B5_EXACT_BUS_CREATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_EXACT_BUS_CREATE
+endif
+
 # P4_DSI_VPG=1 turns on the DSI host's own video pattern generator alongside
 # whatever else is feeding it.  A diagnostic: it asks whether the host will
 # begin a transmission at all, independently of its DPI input.  Not a working
