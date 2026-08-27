@@ -292,6 +292,7 @@ int  krnP4DsiPhyUp(struct P4DsiState *out);
 
 extern unsigned long krnP4DsiPhyTrace[P4_DSI_TRACE_MAX];
 extern unsigned int  krnP4DsiPhyTraceCount;
+void krnP4DsiReferenceTransitionTrace(const char *stage);
 
 void krnP4DsiPhyDown(void);
 UWORD krnP4PanelStrayBits(void);

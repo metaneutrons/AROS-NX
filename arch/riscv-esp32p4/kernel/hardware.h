@@ -1054,6 +1054,10 @@
 #define   P4_DSI_GEN_PLD_W_FULL (1UL << 3)
 #define   P4_DSI_GEN_PLD_R_EMPTY (1UL << 4)
 #define   P4_DSI_GEN_RD_CMD_BUSY (1UL << 6)
+#define   P4_DSI_GEN_BUFF_CMD_EMPTY (1UL << 16)
+#define   P4_DSI_GEN_BUFF_CMD_FULL  (1UL << 17)
+#define   P4_DSI_GEN_BUFF_PLD_EMPTY (1UL << 18)
+#define   P4_DSI_GEN_BUFF_PLD_FULL  (1UL << 19)
 #define P4_DSI_TO_CNT_CFG       0x078
 #define P4_DSI_HS_RD_TO_CNT     0x07C
 #define P4_DSI_LP_RD_TO_CNT     0x080
