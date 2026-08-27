@@ -128,6 +128,21 @@ ifeq ($(P4_B5_SERIAL_COMMAND_DRAIN),1)
 P4_DEBUG_CPPFLAGS += -DP4_B5_SERIAL_COMMAND_DRAIN
 endif
 
+# P4_B5_PRE_DISPLAY_REGISTER_TRACE=1 prints every readable DSI host control,
+# status and active-shadow register immediately before tail display-on.  GEN_HDR
+# and GEN_PLD_DATA are intentionally excluded because reading a FIFO-facing
+# register can disturb the command stream being measured.
+ifeq ($(P4_B5_PRE_DISPLAY_REGISTER_TRACE),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_PRE_DISPLAY_REGISTER_TRACE
+endif
+
+# P4_B5_SLEEP_OUT_NO_ACK_WINDOW=1 suppresses ACK/BTA only while the tail-table
+# sleep-out 0x11 is submitted, then restores both live reference bits before
+# its 120-ms minimum delay and the following display-on command.
+ifeq ($(P4_B5_SLEEP_OUT_NO_ACK_WINDOW),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_SLEEP_OUT_NO_ACK_WINDOW
+endif
+
 ifeq ($(P4_B5_LIVE_UPDATE_GATE),1)
 P4_DEBUG_CPPFLAGS += -DP4_B5_LIVE_UPDATE_GATE -DP4_PANEL_PROBE \
                      -DP4_DSI_PROBE -DP4_SCANOUT_TEST \
