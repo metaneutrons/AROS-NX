@@ -476,6 +476,16 @@ P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=60
 endif
 endif
 
+# P4_C3_GRAPHICAL_BOOT=1 is the normal GB0 path.  It selects the same proven
+# managed transport as C1, but tells the framebuffer HIDD not to paint C1's
+# acceptance card over the desktop that Startup-Sequence is about to launch.
+# Keeping this separate from P4_C2_INTUITION_GATE also means a GB0 build has
+# no diagnostic resident or diagnostic screen in its boot path.
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+override P4_C1_FRAMEBUFFER_HIDD := 1
+P4_DEBUG_CPPFLAGS += -DP4_C3_GRAPHICAL_BOOT
+endif
+
 # P4_C1_FRAMEBUFFER_HIDD=1 keeps B6's managed double-buffered scanout alive
 # across Exec startup and publishes only the logical update operation table to
 # fbgfx.hidd.  Panel/DSI/GDMA ownership remains in kernel.resource.

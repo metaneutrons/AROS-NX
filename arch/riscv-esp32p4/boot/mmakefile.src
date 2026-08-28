@@ -42,8 +42,10 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-input \
 #MM     kernel-keyboard \
 #MM     kernel-gameport \
+#MM     kernel-console \
 #MM     kernel-c2screen-esp32p4-riscv \
 #MM     kernel-expansion \
+#MM     kernel-misc \
 #MM     kernel-partition \
 #MM     kernel-sdcard \
 #MM     kernel-ramtest \
@@ -53,7 +55,10 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-lddemon \
 #MM     kernel-shell \
 #MM     kernel-shellcommands \
+#MM     workbench-libs-gadtools \
+#MM     kernel-fs-con \
 #MM     kernel-fs-fat \
+#MM     kernel-fs-ram \
 #MM     kernel-econsole \
 #MM     kernel-dosboot
 
@@ -74,8 +79,10 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-input-quick \
 #MM     kernel-keyboard-quick \
 #MM     kernel-gameport-quick \
+#MM     kernel-console-quick \
 #MM     kernel-c2screen-esp32p4-riscv-quick \
 #MM     kernel-expansion-quick \
+#MM     kernel-misc-quick \
 #MM     kernel-partition-quick \
 #MM     kernel-sdcard-quick \
 #MM     kernel-ramtest-quick \
@@ -85,7 +92,10 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-lddemon-quick \
 #MM     kernel-shell-quick \
 #MM     kernel-shellcommands-quick \
+#MM     workbench-libs-gadtools-quick \
+#MM     kernel-fs-con-quick \
 #MM     kernel-fs-fat-quick \
+#MM     kernel-fs-ram-quick \
 #MM     kernel-econsole-quick \
 #MM     kernel-dosboot-quick
 
@@ -94,13 +104,31 @@ include $(SRCDIR)/config/aros.cfg
 #   has no write path, so including it costs a few kilobytes and no risk to
 #   the medium.  Drop it from the package once A2 is verified.
 #
-PKG_LIBS      := aros utility oop graphics layers keymap intuition partition dos
+PKG_LIBS      := aros utility oop graphics layers keymap intuition \
+                 partition dos
 PKG_LIBS_ARCH := expansion
 PKG_HIDDS     := hiddclass gfx inputclass keyboard mouse fbgfx
-PKG_RES       := bootloader FileSystem lddemon shell shellcommands \
-                 c2screen dosboot
+PKG_RES       := bootloader FileSystem lddemon shell shellcommands dosboot
 PKG_DEVS      := input keyboard gameport sdcard ramtest
 PKG_HANDLERS  := fat econsole
+
+# C3 adds the normal desktop's console, RAM: and utility support.  Keep these
+# members behind the C3 selector so the accepted C2 package remains exactly
+# reproducible rather than silently growing when its diagnostic is rebuilt.
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+PKG_LIBS      += gadtools
+PKG_RES       += misc
+PKG_DEVS      += console
+PKG_HANDLERS  += con ram
+endif
+
+# C2's one-shot screen owner is an acceptance instrument, not a normal boot
+# component.  Preserve it for exact C2 reproduction, but never put it in a C3
+# (or unqualified) package where it would compete with Wanderer for the boot
+# display.
+ifeq ($(P4_C2_INTUITION_GATE),1)
+PKG_RES       += c2screen
+endif
 
 #
 #   The package shares its partition with the flash development volume, which

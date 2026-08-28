@@ -7,6 +7,15 @@ without root privileges and without external tools.
 
     gmake kernel-image-esp32p4-riscv
 
+For the normal C3 Wanderer image, select the explicit graphical-boot profile:
+
+    gmake kernel-image-esp32p4-riscv P4_C3_GRAPHICAL_BOOT=1
+
+That profile replaces the minimal proof Startup-Sequence with the read-only
+Wanderer sequence and stages its runtime libraries, preferences and Zune
+classes.  The unqualified target retains the smaller A3-A5 proof content, as
+does the 4-MB flash development-volume workflow.
+
 The target writes four files next to each other in
 `bin/esp32p4-riscv/AROS/boot/esp32p4`:
 
@@ -83,6 +92,12 @@ clusters; a 64 MiB image cannot reach that with larger clusters, and a host
 will refuse to mount a volume that calls itself FAT32 with fewer, correctly,
 because the specification says such a volume is FAT16. The generator refuses
 to emit one rather than producing something a host would reject.
+
+Directories are ordinary FAT cluster chains, not restricted to one cluster.
+This matters for the C3 `Classes/Zune` directory: its long-name entries exceed
+512 bytes even though the complete volume is still small enough for one-sector
+clusters.  The generator allocates the first directory cluster from its parent
+and extends that chain after the complete directory-entry size is known.
 
 `AROS.boot` carries the CPU marker that `__dos_IsBootable()` looks for with
 `strstr`. The build target passes `$(AROS_TARGET_CPU)` so the marker cannot
