@@ -133,7 +133,7 @@ gate: compensated output is not the native display contract.
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
-| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Complete the 20-boot, 30-minute desktop/SD/graphics soak and unchanged-card gates on the persistent, visually accepted desktop artifact; missing-media recovery is D1001-verified |
+| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Complete the 30-minute desktop/SD/graphics soak and unchanged-card gates on the persistent, visually accepted desktop artifact; missing-media recovery and 20/20 controlled EN-reset reproducibility are D1001-verified |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
 ## Track A: storage and normal boot
@@ -752,18 +752,25 @@ the initial Shell.  Missing-media recovery is also D1001-verified: with GPIO45
 reporting no inserted card, `sdcard.device` registers no boot node, dosboot
 selects the read-only flash development volume, and its Startup-Sequence
 reaches a visible graphical recovery Shell without a fatal marker.  Until the
-remaining D1001 gate points below pass, C3 is not hardware verified.
+remaining D1001 gate points below pass, C3 is not hardware verified.  The
+unchanged normal artifact also passes 20/20 controlled EN resets with the
+same complete storage/Wanderer/EndCLI marker tuple.  This proves reset
+reproducibility but, as with the earlier display gates, does not claim a
+physical battery-cold start.
 
 `GB0` acceptance gate:
 
-- cold reset uses the normal, non-diagnostic path and mounts SD as `SYS:`;
+- controlled EN reset enters the normal ROM/non-diagnostic path and mounts SD
+  as `SYS:`; this software-boot point does not replace B5's separately tracked
+  physical battery/rail-off evidence;
 - DOS assigns are correct and Startup-Sequence launches Wanderer from SD;
 - the desktop, title and icons are visible at logical `1280 x 800`, right-side
   up, with correct colors and no clipped edge;
 - missing SD or failed display produces a bounded UART diagnostic/recovery
   path instead of a silent hang;
 - UART remains usable, SD reads continue and the card hash is unchanged;
-- at least 20/20 cold boots and a 30-minute desktop/SD/graphics soak pass;
+- at least 20/20 controlled normal-path EN-reset boots and a 30-minute
+  desktop/SD/graphics soak pass;
 - roadmap, README and evidence log are updated before claiming graphical boot.
 
 ### C4 - touch and M7 completion
@@ -9324,6 +9331,49 @@ chip in the width this port assumes; it never addressed the hang.
 - Next safe step: reinsert and latch the exact prepared MicroSD, confirm one
   normal persistent Wanderer boot, then run the unchanged-artifact 20-reset
   series before the soak and final host-side card comparison.
+
+### 2026-08-28 - C3 persistent Wanderer path passes 20/20 controlled resets
+
+- State change: C3 remains `hardware partial`; the unchanged normal-path
+  candidate now passes its 20-boot reproducibility point.  The 30-minute soak
+  and exact post-run card comparison remain open.
+- Hardware and immutable inputs: ESP32-P4 v1.3 D1001, MAC
+  `e8:f6:0a:e0:46:4c`, at source commit `7b3f04c2d6`.  Core, BSP and SD image
+  were unchanged: 193,984-byte core SHA-256
+  `49d060c3d2de4f7856fe34776971ad44227b5e05802bfe07d5fcb79052d33080`,
+  3,275,492-byte 34-member BSP SHA-256
+  `7fd83f5c64d38928f7928f24b351461e6d28e3dad98909e052080edd7de0e8b7`,
+  and 67,108,864-byte 89-entry SD image baseline SHA-256
+  `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.
+- Procedure: after one successful 45-second control capture, run 20 sequential
+  30-second first-byte captures with
+  `arch/riscv-esp32p4/tools/reset-and-log.py` on
+  `/dev/cu.usbmodem101`.  Each invocation performs a controlled EN reset and
+  rejects ROM-download entries before accepting a run boot.  No build, flash
+  or media write occurred between repetitions.
+- Evidence: `/tmp/aros-c3-20boot.dvoHUQ` contains 20 logs totalling
+  16,496,291 bytes.  The SHA-256 over the ordered list of individual raw-log
+  hashes is
+  `0152ef1b8af47868ef611da9901aaa34994cfe8d9f6b8f798c9612de71dac26e`.
+  Nineteen logs are 824,814 bytes and the first is 824,825 bytes; raw hashes
+  differ because runtime addresses and capture bytes differ, so acceptance
+  uses semantic markers rather than raw-log identity.
+- Normalized result: every one of the 20 logs has exactly
+  `sd=1 ro=4 sys=1 wanderer=1 exited=1 nocard=0 fatal=0`: one 121,942-MB
+  card-capacity marker, four FAT write-protection confirmations, one normal
+  `SDCARD0P0` DOS boot, one Wanderer access to `SDCARD0P0:.backdrop`, one
+  `Dos/CliInit: Boot sequence exited`, no missing-card marker and no trap,
+  Alert, panic, Guru, fatal marker or unhandled exception.  The 20-line
+  normalized series has SHA-256
+  `a7a38ce0eed613f69b65099ec1371f0c5b66216663a821396bfcf460edde43ba`.
+- Acceptance and qualification: 20/20 controlled normal-path reset boots pass
+  on the persistent, already visually accepted Wanderer artifact.  These are
+  controlled EN resets, not physical power removals or battery-cold starts;
+  no such stronger claim is made.  The target path remained read-only and no
+  flash or SD write was invoked.
+- Next safe step: keep the final desktop running for the 30-minute
+  desktop/SD/graphics soak while capturing UART, then remove the card for the
+  exact host-side comparison against the pre-test image baseline.
 
 ## Evidence-entry template
 
