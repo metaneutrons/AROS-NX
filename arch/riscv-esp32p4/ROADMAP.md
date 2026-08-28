@@ -9111,6 +9111,14 @@ chip in the width this port assumes; it never addressed the hang.
   non-C3 regression build also reproduced the separate 4,194,304-byte,
   15-entry flash development volume, proving the C3 tree is not accidentally
   staged into that established small-volume path.
+- First hardware-preparation attempt: the USB-JTAG/serial device still
+  enumerated as Espressif `303a:1001`, but esptool v5.3.0 received no ROM
+  serial reply after both its USB reset and the port's previously used control
+  sequence.  A read-only OpenOCD identification attempt then reported DTM
+  version `-1` for both HP cores.  No erase, write or verify command was issued;
+  this is a host-to-board access failure, not a C3 boot result.  Restore it by
+  a USB power cycle while moving the MicroSD to the host, then identify the
+  chip before the first flash write.
 - Remaining gate and next safe step: write the exact C3 image to the MicroSD,
   hash it, identify the D1001 and flash only the unchanged core at `0x20000`
   if verification requires it and the C3 package at `0x820000`.  Capture UART
