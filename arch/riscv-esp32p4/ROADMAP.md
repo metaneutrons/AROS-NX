@@ -133,7 +133,7 @@ gate: compensated output is not the native display contract.
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
-| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Complete missing-media recovery, 20-boot, 30-minute desktop/SD/graphics soak and unchanged-card gates on the persistent, visually accepted desktop artifact |
+| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Complete the 20-boot, 30-minute desktop/SD/graphics soak and unchanged-card gates on the persistent, visually accepted desktop artifact; missing-media recovery is D1001-verified |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
 ## Track A: storage and normal boot
@@ -748,8 +748,11 @@ required loadable libraries and Zune classes, preferences and that minimal
 read-only sequence; no command writes SYS:.  The corrected image is host
 verified, installed on and read back from the identified card.  A normal D1001
 boot now reaches and retains the Wanderer desktop after `EndCLI` closes only
-the initial Shell.  Until the remaining D1001 gate points below pass, C3 is
-not hardware verified.
+the initial Shell.  Missing-media recovery is also D1001-verified: with GPIO45
+reporting no inserted card, `sdcard.device` registers no boot node, dosboot
+selects the read-only flash development volume, and its Startup-Sequence
+reaches a visible graphical recovery Shell without a fatal marker.  Until the
+remaining D1001 gate points below pass, C3 is not hardware verified.
 
 `GB0` acceptance gate:
 
@@ -9278,6 +9281,49 @@ chip in the width this port assumes; it never addressed the hang.
 - Next safe step: exercise bounded missing-media recovery before the
   repetition and soak gates.  Remove the card to the host only when performing
   the required exact post-run hash comparison; do not add a target write path.
+
+### 2026-08-28 - C3 missing-media recovery reaches a visible fallback Shell
+
+- State change: C3 remains `hardware partial`, but its missing-media recovery
+  acceptance point is now complete.  With the MicroSD physically removed, the
+  D1001 twice detected absence, skipped the SD boot node, selected the existing
+  read-only flash development volume and reached a visible graphical Shell.
+- Hardware and immutable inputs: ESP32-P4 v1.3 D1001, MAC
+  `e8:f6:0a:e0:46:4c`, at source commit `8a1b2bc85118`.  The unchanged
+  193,984-byte core has SHA-256
+  `49d060c3d2de4f7856fe34776971ad44227b5e05802bfe07d5fcb79052d33080`;
+  the unchanged 3,275,492-byte, 34-member BSP has SHA-256
+  `7fd83f5c64d38928f7928f24b351461e6d28e3dad98909e052080edd7de0e8b7`.
+  No flash partition was written for this test.
+- Reproducible procedure: remove and latch out the MicroSD, identify the
+  re-enumerated USB-Serial/JTAG device, then use
+  `arch/riscv-esp32p4/tools/reset-and-log.py` from the first byte for 45
+  seconds.  The USB device moved from the earlier
+  `/dev/cu.usbmodem1101` name to `/dev/cu.usbmodem101`; the failed attempt on
+  the vanished host path is not a hardware result.
+- UART evidence: `/tmp/aros-c3-nosd-01.log` is 158,184 bytes with SHA-256
+  `17525f6f30b253c41682c6a206a3429b86cac81672effca69d9bb011417f59e2`;
+  `/tmp/aros-c3-nosd-02.log` is 158,123 bytes with SHA-256
+  `6a26163b13154cf0a5c16202b4ce9bbeb0c3db3d4c007681ff60a3f550565fd6`.
+  Both contain `[P4SD00] GPIO45 high: no card present`, then
+  `Attempting FLASHDISK0P0`, `Initiated device: FLASHDISK0P0`, confirmation
+  that the volume appears usable and execution of its read-only
+  Startup-Sequence.  Both end with the Shell waiting for input after the two
+  recovery `Echo` commands.  Neither contains a trap, Alert, panic, Guru,
+  fatal marker or unhandled exception.
+- Visual evidence: direct D1001 observation and attached photo `Foto 1.jpg`
+  show the graphical console and its text on the panel rather than a black
+  screen or silent hang.  This is intentionally a recovery Shell from the
+  small flash volume, not a substitute Wanderer desktop and not an SD boot.
+- Acceptance and safety: the GB0 requirement that missing SD produce a
+  bounded UART diagnostic/recovery path passes.  The SD was absent and could
+  not be written; the flash FAT handler reports the development volume write
+  protected, and no flash or SD write path was invoked.  The normal-path
+  20/20 reset series, 30-minute desktop/SD/graphics soak and exact post-run
+  card comparison remain open.
+- Next safe step: reinsert and latch the exact prepared MicroSD, confirm one
+  normal persistent Wanderer boot, then run the unchanged-artifact 20-reset
+  series before the soak and final host-side card comparison.
 
 ## Evidence-entry template
 
