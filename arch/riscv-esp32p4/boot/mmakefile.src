@@ -30,9 +30,19 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-oop \
 #MM     kernel-utility \
 #MM     kernel-graphics \
+#MM     kernel-layers \
+#MM     kernel-keymap \
+#MM     kernel-intuition \
 #MM     kernel-hidd \
 #MM     kernel-hidd-gfx \
+#MM     kernel-hidd-input \
+#MM     kernel-hidd-kbd \
+#MM     kernel-hidd-mouse \
 #MM     hidd-fbgfx \
+#MM     kernel-input \
+#MM     kernel-keyboard \
+#MM     kernel-gameport \
+#MM     kernel-c2screen-esp32p4-riscv \
 #MM     kernel-expansion \
 #MM     kernel-partition \
 #MM     kernel-sdcard \
@@ -52,9 +62,19 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-oop-quick \
 #MM     kernel-utility-quick \
 #MM     kernel-graphics-quick \
+#MM     kernel-layers-quick \
+#MM     kernel-keymap-quick \
+#MM     kernel-intuition-quick \
 #MM     kernel-hidd-quick \
 #MM     kernel-hidd-gfx-quick \
+#MM     kernel-hidd-input-quick \
+#MM     kernel-hidd-kbd-quick \
+#MM     kernel-hidd-mouse-quick \
 #MM     hidd-fbgfx-quick \
+#MM     kernel-input-quick \
+#MM     kernel-keyboard-quick \
+#MM     kernel-gameport-quick \
+#MM     kernel-c2screen-esp32p4-riscv-quick \
 #MM     kernel-expansion-quick \
 #MM     kernel-partition-quick \
 #MM     kernel-sdcard-quick \
@@ -74,12 +94,12 @@ include $(SRCDIR)/config/aros.cfg
 #   has no write path, so including it costs a few kilobytes and no risk to
 #   the medium.  Drop it from the package once A2 is verified.
 #
-PKG_LIBS      := aros utility oop graphics partition dos
+PKG_LIBS      := aros utility oop graphics layers keymap intuition partition dos
 PKG_LIBS_ARCH := expansion
-PKG_HIDDS     := hiddclass gfx fbgfx
+PKG_HIDDS     := hiddclass gfx inputclass keyboard mouse fbgfx
 PKG_RES       := bootloader FileSystem lddemon shell shellcommands \
-                 dosboot
-PKG_DEVS      := sdcard ramtest
+                 c2screen dosboot
+PKG_DEVS      := input keyboard gameport sdcard ramtest
 PKG_HANDLERS  := fat econsole
 
 #
@@ -96,6 +116,12 @@ PKG_LIMIT := 4063232
     libs="$(PKG_LIBS)" arch_libs="$(PKG_LIBS_ARCH)" \
     res="$(PKG_RES)" devs="$(PKG_DEVS)" handlers="$(PKG_HANDLERS)" \
     hidds="$(PKG_HIDDS)"
+
+USER_LDFLAGS := -static
+
+%build_module mmake=kernel-c2screen-esp32p4-riscv \
+    modname=c2screen modtype=resource version=$(AROS_TARGET_PLATFORM) \
+    files="c2screen"
 
 #MM
 kernel-package-esp32p4-riscv-checksize : kernel-package-esp32p4-riscv

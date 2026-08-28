@@ -75,7 +75,7 @@ static const STRPTR interfaces[ATTRBASES_NUM] =
     IID_Hidd_DMEnum
 };
 
-#ifdef P4_C1_FRAMEBUFFER_HIDD
+#if defined(P4_C1_FRAMEBUFFER_HIDD) && !defined(P4_C2_INTUITION_GATE)
 static struct DisplayRange c1_ranges[2];
 
 static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
@@ -221,6 +221,10 @@ static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
 }
 #endif
 
+#if defined(P4_C1_FRAMEBUFFER_HIDD) && defined(P4_C2_INTUITION_GATE)
+static struct DisplayRange c2_ranges[2];
+#endif
+
 static int FBGfx_Init(LIBBASETYPEPTR LIBBASE)
 {
     struct FBGfx_staticdata *xsd = &LIBBASE->vsd;
@@ -257,6 +261,20 @@ static int FBGfx_Init(LIBBASETYPEPTR LIBBASE)
                  * This is done by graphics.library if DDRV_BootMode is set to TRUE.
                  */
 #ifdef P4_C1_FRAMEBUFFER_HIDD
+#ifdef P4_C2_INTUITION_GATE
+                c2_ranges[0].dr_Base = xsd->data.framebuffer;
+                c2_ranges[0].dr_Size = xsd->data.fbsize;
+                c2_ranges[1].dr_Base = NULL;
+                c2_ranges[1].dr_Size = 0;
+                bug("[ESP32P4/C2] priority 9: AddDisplayDriver begin; "
+                    "Intuition priority 15 must already own the callback\n");
+                err = AddDisplayDriver(xsd->fbgfxclass, NULL,
+                                       DDRV_BootMode, TRUE,
+                                       DDRV_HWRanges, (IPTR)c2_ranges,
+                                       TAG_DONE);
+                bug("[ESP32P4/C2] AddDisplayDriver result=%lu\n",
+                    (unsigned long)err);
+#else
                 c1_ranges[0].dr_Base = xsd->data.framebuffer;
                 c1_ranges[0].dr_Size = xsd->data.fbsize;
                 c1_ranges[1].dr_Base = NULL;
@@ -265,6 +283,7 @@ static int FBGfx_Init(LIBBASETYPEPTR LIBBASE)
                                        DDRV_BootMode, TRUE,
                                        DDRV_HWRanges, (IPTR)c1_ranges,
                                        TAG_DONE);
+#endif
 #else
                 err = AddDisplayDriver(xsd->fbgfxclass, NULL,
                                        DDRV_BootMode, TRUE, TAG_DONE);
@@ -273,7 +292,7 @@ static int FBGfx_Init(LIBBASETYPEPTR LIBBASE)
                 D(bug("[FBGfx] AddDisplayDriver() result: %u\n", err));
                 if (!err)
                 {
-#ifdef P4_C1_FRAMEBUFFER_HIDD
+#if defined(P4_C1_FRAMEBUFFER_HIDD) && !defined(P4_C2_INTUITION_GATE)
                     if (!FBGfx_C1Gate(xsd, GfxBase))
                     {
                         bug("[FBGfx/C1] acceptance harness failed\n");
