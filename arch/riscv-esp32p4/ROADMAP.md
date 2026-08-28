@@ -9126,6 +9126,39 @@ chip in the width this port assumes; it never addressed the hang.
   and bounded failure without SD, then run the visual, 20-boot, 30-minute soak
   and before/after card-hash points of GB0.
 
+### 2026-08-28 - C3 exact SD and BSP artifacts prepared for the D1001
+
+- State change: C3 remains `build verified`; its exact media are now prepared,
+  but no C3 boot has been observed and no acceptance point is credited yet.
+- Hardware: ESP32-P4 revision v1.3, 40-MHz crystal, USB-Serial/JTAG, MAC
+  `e8:f6:0a:e0:46:4c`.  Reconnecting USB restored the ROM link after the
+  preceding access failure.  The card was independently identified as a
+  removable 127,865,454,592-byte SanDisk SDSN128, serial `0x8a6890be`, on the
+  Mac's built-in SDXC reader as `/dev/disk21`.
+- SD procedure and identity: macOS unmounted the whole card before access.
+  The previous first 67,108,864 bytes had SHA-256
+  `cdcc310be5db5368019263f934867c115ff2f0d6ab96af6fbd4e385e2e8647e2`.
+  The final 67,108,864-byte C3 image, SHA-256
+  `3577449543a7738d0556422162bc5be5f42be9953db7ee54465b60a88865a811`,
+  was written to the raw whole-card device.  Reading those same 16 four-MiB
+  blocks back produced the identical image digest, after which macOS safely
+  ejected the card without mounting its FAT volume.
+- Flash procedure and identity: esptool v5.3.0 identified the board before the
+  write, erased only `0x820000` through `0xb3ffff`, wrote the 3,275,500-byte
+  C3 BSP with SHA-256
+  `e934d47fc4345e2807320eda4235bd17a4766b4ed0635fcb24036f846a625424`
+  and passed both write-time hashing and a separate `verify-flash` digest.
+  The byte-identical C2/C3 core at `0x20000`, bootloader, partition table,
+  flash development volume and `storage` partition were not written.
+- Safety: the target implementation is still read-only.  The card write was
+  the explicit host-side image installation needed for GB0; no target-side
+  write path was introduced or exercised.
+- Next safe step: reinsert and latch the prepared MicroSD, capture the first
+  boot byte with `tools/reset-and-log.py`, and evaluate only the normal
+  SYS:/Startup-Sequence/Wanderer path.  A successful picture alone will not
+  close C3; the missing-media recovery, 20-boot series, 30-minute soak and
+  unchanged post-run card sectors remain required.
+
 ## Evidence-entry template
 
 ```text
