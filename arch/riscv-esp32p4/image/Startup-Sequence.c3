@@ -10,4 +10,7 @@ Assign "WANDERER:" "SYS:System/Wanderer" DEFER
 
 Echo "Launching Wanderer from read-only SYS:"
 WANDERER:Wanderer
-Echo "Wanderer exited; initial CLI remains available"
+
+If NOT ERROR
+    EndCLI
+EndIf

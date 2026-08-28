@@ -203,7 +203,16 @@ endif
 # reading the arguments in order.  $(strip) because without it the empty
 # caller case leaves a trailing space in the string literal, which changes the
 # core's hash for no reason and hands the argument parser an empty word.
-ifeq ($(P4_HEADLESS_BOOT),1)
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+# C3 is the normal boot path, even when an older invocation still supplies
+# P4_HEADLESS_BOOT=1.  Keep the two flags that suppress disk-based monitor
+# loading, but never pass `econsole`: dosboot deliberately translates it into
+# BF_NO_STARTUP_SEQUENCE, which would stop at a prompt instead of launching
+# the Startup-Sequence from the read-only SD card.  filter-out also makes the
+# C3 selector robust against a stale explicit P4_CMDLINE containing it.
+override P4_CMDLINE := \
+    $(strip nomonitors nocomposition $(filter-out econsole,$(P4_CMDLINE)))
+else ifeq ($(P4_HEADLESS_BOOT),1)
 override P4_CMDLINE := \
     $(strip econsole nomonitors nocomposition $(P4_CMDLINE))
 endif
