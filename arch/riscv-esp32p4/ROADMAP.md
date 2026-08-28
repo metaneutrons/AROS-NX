@@ -133,7 +133,7 @@ gate: compensated output is not the native display contract.
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
-| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `not started` | Requires A5, B6 and C2 |
+| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `build verified` | Write the reproducible 64-MB C3 image to MicroSD, flash the audited 34-member package, then run the complete D1001 GB0 gate; no hardware claim exists yet |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
 ## Track A: storage and normal boot
@@ -728,6 +728,18 @@ libraries, fonts, themes and ordinary commands stay in the normal SD `SYS:`
 tree.  Start with a minimal read-only Startup-Sequence, then audit and approach
 the standard [Startup-Sequence](../../workbench/s/Startup-Sequence) without
 allowing writes to the test card.
+
+Current implementation state (2026-08-28): `P4_C3_GRAPHICAL_BOOT=1` selects
+the accepted framebuffer transport without either the C1 drawing harness or
+the C2 screen resource.  Its flash package has the normal console, RAM and CON
+handlers plus `misc.resource` and `gadtools.library`, while retaining the
+read-only SD/FAT path and emergency console.  The 64-MB SD image contains only
+`Assign`, the ordinary Wanderer executable and tools, the required loadable
+libraries and Zune classes, preferences and a minimal Startup-Sequence.  That
+sequence assigns transient `T:` and `ENV:` to `RAM:`, treats `ENVARC:` as a
+read-only SYS: source and launches `WANDERER:Wanderer`; it contains no command
+which writes SYS:.  This is host build and filesystem evidence only.  Until
+the D1001 gate below is complete, C3 is not hardware verified.
 
 `GB0` acceptance gate:
 
@@ -9050,6 +9062,61 @@ chip in the width this port assumes; it never addressed the hang.
   lower-level +525 scanout mapping is still the explicitly named B5R release
   blocker.  The next graphical milestone is C3/GB0: normal read-only boot to a
   correctly oriented Wanderer screen.
+
+### 2026-08-28 - C3 normal Wanderer path reaches build-verified state
+
+- State change: C3 advances from `not started` to `build verified`.  This is
+  deliberately not a hardware claim: neither the candidate package nor its SD
+  image has reached the D1001 yet.
+- Source state: dirty working tree after C2 commit `915934774a`, pending the
+  hardware result and one functionally grouped C3 commit.  The explicit build
+  selector is `P4_C3_GRAPHICAL_BOOT=1`; it reuses the accepted B6/C1 transport
+  but suppresses both graphical acceptance harnesses.
+- Package: the normal C3 set contains 34 complete RISC-V relocatable members,
+  is 3,275,500 bytes, has SHA-256
+  `e934d47fc4345e2807320eda4235bd17a4766b4ed0635fcb24036f846a625424`
+  and remains below the 4,063,232-byte flash-volume split.
+  `boot/audit-package.py` accepted all 34 members and every relocation type.
+  The added normal-boot members are conditional on C3 so the accepted
+  30-member C2 package remains exactly reproducible.
+- Core: 194,352 bytes, SHA-256
+  `9f8e1835d8099390857ad815d320b05955c005eb8a0bfc15d93ccaf4fb1ab10d`,
+  byte-identical to C2 as expected because the normal desktop components live
+  in the package and on SYS:, not in the core.
+- SD image: 67,108,864 bytes, 89 manifest entries, SHA-256
+  `3577449543a7738d0556422162bc5be5f42be9953db7ee54465b60a88865a811`.
+  Two complete builds produced that same digest.  macOS recognized the MBR
+  and FAT32 partition, `fsck_msdos` completed all three phases without an
+  error, the independent mounted-tree comparison matched all 89 entries and
+  the image hash was unchanged after verification.
+- The image carries the ordinary RISC-V Wanderer, its tools, 14 loadable
+  libraries and all built Zune classes.  Its Startup-Sequence puts `T:` and
+  `ENV:` on `RAM:`, reads persistent defaults through `ENVARC:` on SYS:, adds
+  `SYS:Classes` to `LIBS:` and launches Wanderer.  Stale A5 proof programs are
+  explicitly excluded from C3, and no command in the sequence writes SYS:.
+- Failed/corrected builds remain part of the record.  First, narrowing the C1
+  acceptance preprocessor guard accidentally hid the display-range array and
+  failed compilation with `c1_ranges` undeclared; the shared range declaration
+  now remains present for C3 while only the harness is excluded.  Second, a
+  broad `workbench-c` dependency reached the unrelated uninitialised
+  `LoadResource/catalogs` submodule; C3 now depends only on the required
+  `workbench-c-sh` target.  Third, the original deterministic FAT generator
+  rejected the 35-entry Zune directory because it only emitted one cluster
+  per directory.  It now extends directory FAT chains after the final LFN
+  size is known; the independent filesystem and manifest checks validate that
+  correction.
+- Safety: no flash or SD write occurred in this step.  The board still carries
+  the accepted C2 core/package and the card still carries its previous test
+  volume.  The target-side storage implementation remains read-only.  A
+  non-C3 regression build also reproduced the separate 4,194,304-byte,
+  15-entry flash development volume, proving the C3 tree is not accidentally
+  staged into that established small-volume path.
+- Remaining gate and next safe step: write the exact C3 image to the MicroSD,
+  hash it, identify the D1001 and flash only the unchanged core at `0x20000`
+  if verification requires it and the C3 package at `0x820000`.  Capture UART
+  from the first byte, confirm normal SYS:/Startup-Sequence/Wanderer operation
+  and bounded failure without SD, then run the visual, 20-boot, 30-minute soak
+  and before/after card-hash points of GB0.
 
 ## Evidence-entry template
 
