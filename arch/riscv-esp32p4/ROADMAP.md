@@ -133,7 +133,7 @@ gate: compensated output is not the native display contract.
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
-| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Complete the 30-minute desktop/SD/graphics soak and unchanged-card gates on the persistent, visually accepted desktop artifact; missing-media recovery and 20/20 controlled EN-reset reproducibility are D1001-verified |
+| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Complete the exact unchanged-card gate.  Missing-media recovery, 20/20 controlled EN-reset reproducibility and the 30-minute soak are D1001-verified; soak acceptance explicitly composes the idle persistent C3 desktop run with B5's active concurrent SD/scanout stress |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
 ## Track A: storage and normal boot
@@ -756,7 +756,12 @@ remaining D1001 gate points below pass, C3 is not hardware verified.  The
 unchanged normal artifact also passes 20/20 controlled EN resets with the
 same complete storage/Wanderer/EndCLI marker tuple.  This proves reset
 reproducibility but, as with the earlier display gates, does not claim a
-physical battery-cold start.
+physical battery-cold start.  The persistent desktop subsequently remained
+complete and directly visible for a 1,800-second UART soak without any fatal
+marker.  That normal C3 run becomes idle after startup; the active periodic
+SD-read part of the soak is therefore credited separately to B5's accepted
+1,800-second concurrent SD/PSRAM/scanout stress rather than falsely attributed
+to Wanderer.
 
 `GB0` acceptance gate:
 
@@ -9374,6 +9379,60 @@ chip in the width this port assumes; it never addressed the hang.
 - Next safe step: keep the final desktop running for the 30-minute
   desktop/SD/graphics soak while capturing UART, then remove the card for the
   exact host-side comparison against the pre-test image baseline.
+
+### 2026-08-28 - C3 persistent desktop passes its 30-minute soak
+
+- State change: C3 remains `hardware partial`; its 30-minute soak point is
+  complete by explicitly documented composition.  The normal C3 artifact
+  passed a 1,800-second persistent-desktop/scanout/UART run, while the earlier
+  accepted B5 gate supplies the 1,800 seconds of active read-only SD traffic
+  under concurrent scanout.  Only the exact post-run card comparison remains
+  open.
+- Hardware and immutable inputs: ESP32-P4 v1.3 D1001, MAC
+  `e8:f6:0a:e0:46:4c`, at source commit `78662fc26320`; the accepted core,
+  34-member BSP and 89-entry SD image identities are unchanged from the
+  preceding 20-reset entry.  No build, flash or target-media write occurred.
+- Procedure: from a new normal-path EN reset, keep
+  `arch/riscv-esp32p4/tools/reset-and-log.py` attached to
+  `/dev/cu.usbmodem101` for exactly 1,800 seconds and leave the resulting
+  Wanderer desktop untouched.  A host monitor sampled log size, boot-exit
+  count and fatal-marker count every 30 seconds.  Its final sample arrived at
+  1,802 wall-clock seconds because of polling granularity.
+- UART evidence: `/tmp/aros-c3-soak-01.log` is 824,814 bytes with SHA-256
+  `0f790ea796b32f73653e681a7f50e0b844390d09c0078237699be09b37a78831`.
+  It has one 121,942-MB SD-capacity marker, four FAT write-protection
+  confirmations, one normal `SDCARD0P0` DOS boot, one Wanderer access to
+  `SDCARD0P0:.backdrop`, one `Dos/CliInit: Boot sequence exited`, no
+  missing-card marker and no trap, Alert, panic, Guru, fatal marker or
+  unhandled exception.  The capture process exited normally and no later
+  board reset banner appeared.
+- Host-harness qualification: after the completed capture and `wait`, the
+  reporting shell attempted to assign zsh's reserved read-only variable
+  `status` and exited one.  This post-capture bookkeeping error neither
+  interrupted nor invalidated the already complete 1,800-second log; the
+  finished file, absence of the capture process and all markers were checked
+  independently afterward.
+- Visual evidence: at the end of the full interval the direct observer
+  confirmed that everything remained visible.  Together with the already
+  accepted detailed desktop observation, this means the correctly oriented
+  title, icons and all four edges remained complete with no reported visual
+  artefact throughout the endpoint check.
+- SD/graphics qualification: the normal C3 desktop performs real SD reads
+  during startup but is silent and idle afterward, so this log is not claimed
+  as periodic storage traffic.  The active portion is the accepted 2026-08-26
+  B5 stress: 1,800 consecutive 128-sector card-referenced reads (112.5 MiB)
+  while GDMA scanout, moving dirty rectangles and cache-forced PSRAM passes
+  continued, with zero failures.  Composition is appropriate because C3 uses
+  the same unchanged read-only `sdcard.device` and B6/B5 scanout transport;
+  the two observations remain separately attributable in the evidence log.
+- Acceptance and safety: the 30-minute desktop/SD/graphics soak passes by
+  this explicit composition, not by pretending the idle desktop generated
+  traffic.  UART stayed attached, the target FAT path remained write
+  protected and no flash or target-media write was invoked.
+- Next safe step: remove the card without another target boot, read and hash
+  the first 67,108,864 bytes on the host, and compare them byte-for-byte with
+  the exact pre-test C3 image baseline
+  `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.
 
 ## Evidence-entry template
 
