@@ -133,7 +133,7 @@ gate: compensated output is not the native display contract.
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
-| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `build verified` | Write the reproducible 64-MB C3 image to MicroSD, flash the audited 34-member package, then run the complete D1001 GB0 gate; no hardware claim exists yet |
+| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Complete missing-media recovery, detailed title/icon/edge observation, 20-boot, 30-minute desktop/SD/graphics soak and unchanged-card gates on the persistent desktop artifact |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
 ## Track A: storage and normal boot
@@ -733,13 +733,23 @@ Current implementation state (2026-08-28): `P4_C3_GRAPHICAL_BOOT=1` selects
 the accepted framebuffer transport without either the C1 drawing harness or
 the C2 screen resource.  Its flash package has the normal console, RAM and CON
 handlers plus `misc.resource` and `gadtools.library`, while retaining the
-read-only SD/FAT path and emergency console.  The 64-MB SD image contains only
-`Assign`, the ordinary Wanderer executable and tools, the required loadable
-libraries and Zune classes, preferences and a minimal Startup-Sequence.  That
-sequence assigns transient `T:` and `ENV:` to `RAM:`, treats `ENVARC:` as a
-read-only SYS: source and launches `WANDERER:Wanderer`; it contains no command
-which writes SYS:.  This is host build and filesystem evidence only.  Until
-the D1001 gate below is complete, C3 is not hardware verified.
+read-only SD/FAT path and emergency console.  Hardware now proves normal
+Startup-Sequence execution, fbgfx installation and Wanderer loading from the
+read-only card through creation of its light-blue Screen and enumeration of
+RAM, flash and SD volumes.  C3 therefore is `hardware partial`, not merely a
+build result.  A generic multi-directory-assign bug exposed by `ENV:` was
+fixed in DOS: every handler attempt now starts with a clean FileHandle and a
+default port is retained only after success.  Wanderer then remained alive as
+designed after `Detach()`, but the deliberately minimal sequence left the
+initial CLI visible over it.  The next image follows the standard AROS
+Startup-Sequence and runs resident `EndCLI` after successful Wanderer launch.
+It contains only `Assign`, the ordinary Wanderer executable and tools, the
+required loadable libraries and Zune classes, preferences and that minimal
+read-only sequence; no command writes SYS:.  The corrected image is host
+verified, installed on and read back from the identified card.  A normal D1001
+boot now reaches and retains the Wanderer desktop after `EndCLI` closes only
+the initial Shell.  Until the remaining D1001 gate points below pass, C3 is
+not hardware verified.
 
 `GB0` acceptance gate:
 
@@ -9158,6 +9168,115 @@ chip in the width this port assumes; it never addressed the hang.
   SYS:/Startup-Sequence/Wanderer path.  A successful picture alone will not
   close C3; the missing-media recovery, 20-boot series, 30-minute soak and
   unchanged post-run card sectors remain required.
+
+### 2026-08-28 - C3 executes Startup-Sequence and reaches Wanderer; initial CLI overlay isolated
+
+- State change: C3 advances from `build verified` to `hardware partial`.
+  Normal SD boot, Startup-Sequence, the graphical driver and a real Wanderer
+  Screen are now D1001 results, and the corrected initial-CLI handoff leaves a
+  persistent desktop.  This does not close GB0: the detailed visual, recovery,
+  repetition, soak and media-integrity gates remain open.
+- Hardware and source state: ESP32-P4 v1.3 D1001, MAC
+  `e8:f6:0a:e0:46:4c`, starting at commit `5a64d1f349e0` with the SanDisk
+  `SN128` card latched in the board.  The graphical build selector is
+  `P4_C3_GRAPHICAL_BOOT=1`; SD and FAT remain target-side read-only.
+- The first C3 capture, `/tmp/aros-c3-boot-01.log`, is 83,053 bytes with
+  SHA-256
+  `80a77ede82f2fe210c670edd0af17302c9be3d779576c3d95d23b22d40510679`.
+  It loaded all 34 package members, mounted the card and installed fbgfx, but
+  reported BootFlags `0x0000000e` and stopped at `1>` without executing
+  Startup-Sequence.  Source tracing established that the inherited
+  `econsole` argument deliberately becomes `BF_EMERGENCY_CONSOLE`, which DOS
+  maps to `BF_NO_STARTUP_SEQUENCE`.  C3 now removes `econsole` even when an
+  older invocation also passes `P4_HEADLESS_BOOT=1`, while retaining
+  `nomonitors nocomposition`.
+- A broad rebuild attempt failed at an unrelated stale C3 tree being staged
+  into the established 4-MB flash development image (`image too small for its
+  contents`).  This was not treated as a successful build or hardware result.
+  The focused kernel build and image generation succeeded.  The resulting
+  core is 193,984 bytes with SHA-256
+  `49d060c3d2de4f7856fe34776971ad44227b5e05802bfe07d5fcb79052d33080`;
+  its embedded command line is exactly `nomonitors nocomposition`.  The board
+  was identified before writing only `0x20000` through `0x4ffff`; write-time
+  hashing and a separate esptool verify both passed.
+- The second capture, `/tmp/aros-c3-boot-02.log`, is 644,224 bytes with
+  SHA-256
+  `c45ff6136962082364a2b4e3e9c53c6ce1c1fe5194ef845a9c39e448c655030e`.
+  Startup-Sequence ran, assigned transient state to RAM, opened the ordinary
+  Wanderer path and produced a directly observed light-blue Screen.  The first
+  read of `ENV:SYS/Wanderer/global.prefs` then trapped in the RAM handler at
+  `CmdRead+0x6`, `mepc=0x4835d1ae`, `mtval=0x0000003a`.
+- That failure exposed a generic DOS multi-directory-assign defect rather than
+  a Wanderer or ESP32 workaround.  `Open()` reuses one newly allocated
+  FileHandle while trying each assign target.  A failed RAM attempt left its
+  port in `fh_Type`; the successful FAT attempt installed a FAT `fh_Arg1` but
+  subsequent reads were sent to RAM.  `fs_Open()` now clears `fh_Type` and
+  `fh_Arg1` before every handler attempt and installs the default request port
+  only after success.  The rebuilt 324,540-byte `dos.library` has SHA-256
+  `4eb4c86b876ac235da6a34cc9af245da71a0ec501b66fb265f32e03f755796c2`.
+- The corrected 34-member BSP is 3,275,492 bytes with SHA-256
+  `7fd83f5c64d38928f7928f24b351461e6d28e3dad98909e052080edd7de0e8b`.
+  An initial audit invocation failed solely because the RISC-V `readelf` was
+  absent from that shell's PATH; rerunning with the configured cross-tool path
+  accepted 34/34 members and all relocations.  After identifying the D1001,
+  only `arosbsp` at `0x820000` was written; write-time and independent verify
+  digests passed.
+- The third capture, `/tmp/aros-c3-boot-03.log`, is 813,842 bytes with SHA-256
+  `1daccce0ab4ff7786d6839c6dd9e37b36a08445453551a48a3ceb6bfc6bec8b2`.
+  It proves the multi-assign correction: the RAM candidate for
+  `ENV:SYS/Wanderer/global.prefs` fails normally, FAT opens the second
+  candidate and every following read remains on the FAT port.  No trap,
+  Alert, panic or Guru follows.  Wanderer loads its preferences, icons and
+  Zune classes, creates its Screen, enumerates RAM, flash and SD volumes and
+  remains active after its intentional `Detach()`; direct observation again
+  confirmed the light-blue display.
+- The remaining visible CLI was a Startup-Sequence error, not a Wanderer
+  exit.  `Detach()` correctly releases the boot Shell while the Wanderer task
+  continues; DOS traffic from that task after the Shell resumed proves the
+  distinction.  The minimal sequence's message `Wanderer exited` was false
+  and left the initial CLI in front of the desktop.  It now uses the standard
+  AROS pattern: after a successful Wanderer return, resident `EndCLI` closes
+  the initial Shell.
+- The corrected SD image is 67,108,864 bytes with 89 manifest entries and
+  SHA-256
+  `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.
+  macOS recognized its MBR/FAT32 layout, `fsck_msdos` passed all phases, the
+  mounted tree matched all 89 manifest entries and the image hash was
+  unchanged after verification.  The card was then identified through the
+  built-in SDXC reader as removable 127,865,454,592-byte SanDisk `SDSN128`,
+  serial `0x8a6890be`, at `/dev/disk21`.  macOS had automatically mounted its
+  FAT volume writable; after unmounting, the first 67,108,864 card bytes had
+  SHA-256
+  `8fbebf9a39552d8f4ed6537f85c7e3875eb57e017a90774426ed39f66074eb38`
+  rather than the originally installed image hash.  Because the writable host
+  mount can update FAT metadata, that difference is recorded but cannot be
+  attributed to the read-only target.  The corrected image was written to the
+  raw whole-card device, all 16 four-MiB blocks were read back, the readback
+  hash matched exactly, byte comparison returned equal and macOS ejected the
+  card.  This remains media-preparation evidence until the D1001 boots it.
+- Safety: the target boots used the read-only SD/FAT path;
+  no target-side storage write was added or attempted.  The pre-test exact
+  card hash for the corrected-image test was
+  `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`;
+  the required post-run whole-image/card-integrity comparison remains open.
+- That confirmation passed with `/tmp/aros-c3-boot-04.log`: 824,814 bytes,
+  SHA-256
+  `94655dbf6e45d0368946982163e2c18947d100a1f55d148ad21c68a7016cb792`.
+  The 60-second first-byte capture executes the corrected Startup-Sequence,
+  loads Wanderer and its preferences/classes/icons, enumerates RAM, flash and
+  SD volumes, resolves resident `EndCLI`, closes the initial Shell and reports
+  `Dos/CliInit: Boot sequence exited`.  Wanderer DOS activity continues across
+  the handoff, while no trap, Alert, panic, Guru, C3 failure marker or fallback
+  prompt appears.  Direct D1001 observation confirms that the result is the
+  persistent Wanderer desktop, not the former light-blue transition followed
+  by a CLI overlay.  This closes the initial normal-boot/Startup-Sequence and
+  persistent-desktop points only; detailed title/icon/edge inspection,
+  missing-media recovery, 20-boot reproducibility, the 30-minute soak and the
+  post-run card hash remain open.
+- Next safe step: inspect title, icons and all four logical edges on this
+  unchanged desktop, then exercise bounded missing-media recovery before the
+  repetition and soak gates.  Remove the card to the host only when performing
+  the required exact post-run hash comparison; do not add a target write path.
 
 ## Evidence-entry template
 

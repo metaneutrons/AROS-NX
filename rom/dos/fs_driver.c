@@ -54,6 +54,20 @@ LONG fs_Open(struct FileHandle *handle, struct MsgPort *port, BPTR lock, LONG mo
     if (!bstrname)
         return ERROR_NO_FREE_STORE;
 
+    /*
+     * Open() reuses the new FileHandle while walking a multi-directory
+     * assign.  A failed handler must not leave its default port or private
+     * argument behind for the next candidate: otherwise that candidate can
+     * open the file successfully but subsequent I/O is sent to the first
+     * handler with the second handler's fh_Arg1.
+     *
+     * Clear both fields before every attempt.  A successful handler may set
+     * fh_Type to a private service port; otherwise it keeps the port through
+     * which this request was made.
+     */
+    handle->fh_Type = NULL;
+    handle->fh_Arg1 = 0;
+
     status = dopacket3(DOSBase, &error, port, action, MKBADDR(handle), lock, bstrname);
     FREEC2BSTR(bstrname);
 
@@ -61,7 +75,7 @@ LONG fs_Open(struct FileHandle *handle, struct MsgPort *port, BPTR lock, LONG mo
      * found it on says so by filling in fh_Type itself. Handlers that do
      * not care leave it alone and keep talking on the port we used here.
      */
-    if (!handle->fh_Type)
+    if (status && !handle->fh_Type)
         handle->fh_Type = port;
     return status ? 0 : error;
 }
