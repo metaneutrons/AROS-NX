@@ -19,6 +19,10 @@ ifeq ($(P4_C1_FRAMEBUFFER_HIDD),1)
 USER_CPPFLAGS += -DP4_C1_FRAMEBUFFER_HIDD
 endif
 
+ifeq ($(P4_C2_INTUITION_GATE),1)
+USER_CPPFLAGS += -DP4_C2_INTUITION_GATE
+endif
+
 %build_module mmake=hidd-fbgfx \
   modname=fbgfx modtype=hidd \
   files=$(FILES)
