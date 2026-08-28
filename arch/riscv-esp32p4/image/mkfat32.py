@@ -314,9 +314,17 @@ class FatImage:
             else:
                 size = self.spc * SECTOR
                 if len(raw) > size:
-                    raise SystemExit("directory larger than one cluster: "
-                                     "raise --cluster-sectors")
-                self.cluster_data[self_cl] = raw.ljust(size, b"\0")
+                    # Every directory receives one cluster when its parent
+                    # is built.  Extend that existing chain here once the
+                    # complete set of short and long-name entries tells us
+                    # its real size.  Directory clusters need not be
+                    # contiguous; write_chain() follows the FAT just like a
+                    # reader does.
+                    extra, _ = self.alloc_chain(len(raw) - size)
+                    if self.fat[self_cl] != self.eoc:
+                        raise SystemExit("directory chain already extended")
+                    self.fat[self_cl] = extra
+                self.write_chain(self_cl, raw)
 
             for ent in entries:
                 if ent.is_dir:

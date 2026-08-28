@@ -16,6 +16,7 @@ IMAGE      := $(IMAGEDIR)/aros-test.img
 STAGE      := $(GENDIR)/$(CURDIR)/stage
 MKFAT32    := $(SRCDIR)/$(CURDIR)/mkfat32.py
 PROOFDIR   := $(AROSARCHDIR)/proof
+C3_STARTUP := $(SRCDIR)/$(CURDIR)/Startup-Sequence.c3
 
 #   Fixed on purpose: these are the only two fields a formatter would
 #   otherwise take from the clock, and taking them from the clock would make
@@ -40,7 +41,30 @@ FLASHDISK_LABEL    ?= AROSP4DEV
 #   exist, which is what makes running them evidence of anything.
 #
 #MM- kernel-image-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
-#MM- kernel-image-esp32p4-riscv-stage : kernel-proof-esp32p4-riscv
+#MM- kernel-image-esp32p4-riscv-stage : \
+#MM-     kernel-proof-esp32p4-riscv \
+#MM-     workbench-c-sh \
+#MM-     workbench-system-wanderer \
+#MM-     workbench-libs-asl \
+#MM-     workbench-libs-cgfx \
+#MM-     workbench-libs-commodities \
+#MM-     workbench-libs-coolimages \
+#MM-     workbench-libs-datatypes \
+#MM-     workbench-libs-diskfont \
+#MM-     workbench-libs-icon \
+#MM-     workbench-libs-iffparse \
+#MM-     workbench-libs-locale \
+#MM-     workbench-libs-muimaster \
+#MM-     workbench-libs-muiscreen \
+#MM-     workbench-libs-rexxsyslib \
+#MM-     compiler-stdc \
+#MM-     workbench-libs-workbench
+
+C3_SD_LIBS := asl.library commodities.library coolimages.library \
+              cybergraphics.library datatypes.library diskfont.library \
+              icon.library iffparse.library locale.library \
+              muimaster.library muiscreen.library rexxsyslib.library \
+              stdc.library workbench.library
 
 kernel-image-esp32p4-riscv-stage :
 	@$(RM) $(STAGE)
@@ -49,15 +73,34 @@ kernel-image-esp32p4-riscv-stage :
 	@# The directory skeleton the assigns expect.  Empty directories cannot
 	@# be tracked in git, so they are created here rather than committed.
 	%mkdirs_q $(STAGE)/C $(STAGE)/L $(STAGE)/Libs $(STAGE)/Devs \
-	          $(STAGE)/Devs/DOSDrivers $(STAGE)/Prefs $(STAGE)/T
+	          $(STAGE)/Devs/DOSDrivers $(STAGE)/Prefs $(STAGE)/T \
+	          $(STAGE)/Classes $(STAGE)/System
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+	@# C3 keeps the boot-critical residents in flash, but the ordinary desktop,
+	@# its loadable libraries/classes and its preferences belong to SYS:.
+	@$(CP) $(C3_STARTUP) $(STAGE)/S/Startup-Sequence
+	@$(CP) $(AROSDIR)/C/Assign $(STAGE)/C/Assign
+	@for f in $(C3_SD_LIBS) ; do \
+	    $(CP) $(AROSDIR)/Libs/$$f $(STAGE)/Libs/$$f || exit 1 ; \
+	done
+	@$(CP) -r $(AROSDIR)/Classes/. $(STAGE)/Classes/
+	@$(CP) -r $(AROSDIR)/System/Wanderer $(STAGE)/System/
+	@if $(TEST) -d $(AROSDIR)/Prefs/Env-Archive ; then \
+	    $(MKDIR) -p $(STAGE)/Prefs/Env-Archive ; \
+	    $(CP) -r $(AROSDIR)/Prefs/Env-Archive/. \
+	        $(STAGE)/Prefs/Env-Archive/ ; \
+	fi
+endif
 	@# The marker __dos_IsBootable() searches for with strstr().  Taken from
 	@# the build's own CPU name so it cannot drift from the target.
 	@$(ECHO) "AROS boot signature" > $(STAGE)/AROS.boot
 	@$(ECHO) "cpu $(AROS_TARGET_CPU)" >> $(STAGE)/AROS.boot
 	@$(ECHO) "arch $(AROS_TARGET_ARCH)" >> $(STAGE)/AROS.boot
-	@# The A5 proof command and library, if they have been built.  Copied
-	@# rather than required, so the image still builds for the A3 and A4
-	@# purposes without them.
+	@# The A5 proof command and library, if they have been built.  They are
+	@# deliberately absent from C3: GB0 must prove the ordinary Wanderer path,
+	@# not retain acceptance instruments merely because stale build artefacts
+	@# happen to exist.
+ifneq ($(P4_C3_GRAPHICAL_BOOT),1)
 	@if $(TEST) -f $(PROOFDIR)/sdboot-test ; then \
 	    $(CP) $(PROOFDIR)/sdboot-test $(STAGE)/C/sdboot-test ; \
 	fi
@@ -67,6 +110,7 @@ kernel-image-esp32p4-riscv-stage :
 	@if $(TEST) -f $(PROOFDIR)/sdproof.library ; then \
 	    $(CP) $(PROOFDIR)/sdproof.library $(STAGE)/Libs/sdproof.library ; \
 	fi
+endif
 
 #
 #   The development volume that lives in flash rather than on a card.
