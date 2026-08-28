@@ -132,7 +132,7 @@ gate: compensated output is not the native display contract.
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `hardware verified` | Two complete native buffers are reserved outside Exec and contain logical `1280 x 800` surfaces rotated 90 degrees clockwise.  The GDMA one-frame completion is the ownership boundary because this bridge revision has no VSYNC interrupt.  The immutable gate completed 2,006 frames and 19 source switches without faults and was visually tear-free.  The producer gate then completed 60 bounded inactive-surface updates, exact rotated row-range writebacks and 60 requested frame-boundary swaps with zero rejects or faults; direct observation confirmed exactly one clean moving rectangle without stale pixels, split frames or tearing.  The +525 compatibility mapping stays explicitly named and B5R remains its removal gate |
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
-| C2 | Graphics, input skeleton, Layers and Intuition screen | `not started` | C1 is complete; add and gate the documented resident set and ordering |
+| C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `not started` | Requires A5, B6 and C2 |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
@@ -677,6 +677,13 @@ References: [Raspberry Pi fbgfx](../aarch64-raspi/hidd/fbgfx) and
 [EFI fbgfx](../../rom/hidds/efifbgfx).
 
 ### C2 - first Layers/Intuition screen
+
+State: **hardware verified**.  Build, loader, ordering, real simple-refresh
+damage handling and 20/20 EN-reset reproducibility are proven on the D1001.
+Direct observation confirms readable text, clipping/overlap/scroll, the four
+corner marks and stable pointer rendering.  The earlier grey damage-area
+failure and the harness corrections that exposed it remain in the evidence
+log rather than being collapsed into the final result.
 
 Add `layers`, `intuition` and `keymap`; also add the generic input skeleton
 even before touch: `input.device` opens `keyboard.device` and `gameport.device`
@@ -8880,6 +8887,169 @@ chip in the width this port assumes; it never addressed the hang.
   lower-level +525 native-row compatibility mapping is unchanged and B5R
   remains the separate release blocker.  Next safe step: C2's documented
   Layers/Intuition/input resident set and ordering gate.
+
+### 2026-08-28 - C2 resident set and ordered Intuition gate enter development
+
+- State change: C2 advances from `not started` to `in development`.  This is a
+  source implementation record, not build or hardware evidence.
+- The flash BSP manifest now adds `layers.library`, `keymap.library`,
+  `intuition.library`, `input.device`, `keyboard.device`, `gameport.device`,
+  `inputclass.hidd`, `keyboard.hidd`, `mouse.hidd` and a port-local
+  `c2screen.resource` to the C1 package.  No physical keyboard, mouse or touch
+  driver and no fabricated input event is added.
+- Resident priorities provide the dependency order rather than package link
+  order: Layers 64; input HIDD classes 45; keyboard/gameport devices 44;
+  Keymap 40; input.device 30; Intuition 15; fbgfx 9; the one-shot C2 resident
+  8; dosboot -50.
+- `P4_C2_INTUITION_GATE=1` suppresses the old C1 direct-bitmap observer while
+  preserving the same managed framebuffer transport.  It logs Intuition's
+  callback installation, callback invocation and monitor creation around
+  fbgfx's `AddDisplayDriver()` call.  This directly tests the known API
+  boundary: `SetDisplayDriverCallback()` stores a callback but does not replay
+  a driver that was inserted earlier.
+- The priority-8 resident opens graphics, Layers and Intuition, selects the
+  single logical 1280-by-800 RGB565 mode, opens one custom Screen and two
+  overlapping titled Windows, then submits real text, clipped fills, a window
+  scroll, refresh calls and front/back layer changes.  The objects remain
+  alive for observer inspection while normal read-only DOS boot continues.
+- Safety: this change adds no media-write path and does not alter the
+  documented read-only SD policy.  No D1001 flash has occurred in this entry.
+- Remaining gate: cleanly rebuild the affected modules and package, audit all
+  members and relocations, then flash the identified core/package, capture the
+  full UART order from first byte, directly observe text/refresh/overlap and
+  stable pointer rendering, and repeat the unchanged artifacts for 20 boots.
+
+### 2026-08-28 - C2 loader blocker fixed; ordered screen path passes 20/20 resets
+
+- State change: C2 advances from `in development` to `hardware partial`.
+  Build, loader, resident order and reset reproducibility are hardware-proven;
+  the direct observer gate for readable text, overlap/scroll and stable pointer
+  rendering is still pending and is not inferred from successful API returns.
+- The first clean 30-member candidate was 2,855,700 bytes, SHA-256
+  `822daaf580c9bc3b8673153957816f2f26126e7b73bef8c33ac1eadc8743c7b6`.
+  Although the package audit accepted 30/30 complete RISC-V relocatable
+  members, the D1001 loader correctly rejected `c2screen.resource` with
+  `invalid/unplaced symbol in __eh_frame_start`.  The module had accidentally
+  pulled `libautoinit.a:initexitsets.o`, its `PROGRAM_ENTRIES` startup hook and
+  a global symbol into an unplaced `.eh_frame` section.  Exec therefore never
+  saw the package residents and this run is retained as negative evidence,
+  not credited as a C2 graphics failure.
+- The correction changes the early resource from `resautoinit` to the
+  `selfinit` pattern already used by `dosboot.resource`, stores `SysBase` in
+  its generated base and supplies its opened `GfxBase` locally.  The resulting
+  `c2screen.o` has no undefined symbols; the final 14,948-byte resource has
+  neither `__eh_frame_start` nor `__startup_initexit`.  A normal local
+  `.eh_frame` section remains, as it does in accepted package members, but no
+  loader-visible symbol targets it.
+- The corrected package is 2,842,224 bytes, 1,221,008 bytes below the
+  4,063,232-byte ceiling, with SHA-256
+  `c27b6fb56da9e539d389796c312efdbe20f5760161a2ac55484a49a68ef57aec`.
+  `boot/audit-package.py` accepted all 30 members and all relocation types.
+  The unchanged 194,352-byte XIP core has SHA-256
+  `9f8e1835d8099390857ad815d320b05955c005eb8a0bfc15d93ccaf4fb1ab10d`.
+- The connected ESP32-P4 v1.3 D1001 with MAC `e8:f6:0a:e0:46:4c` was
+  reidentified.  Only the corrected BSP was written to `arosbsp` at
+  `0x820000`; esptool v5.3.0's write-time digest and a separate
+  `verify-flash` digest both matched.  The kernel, partition table, flash
+  development volume and SD card were not written.
+- `tools/reset-and-log.py` captured the corrected boot from the first ROM byte.
+  It loaded all 30 package members and reserved 3,688,692 bytes of PSRAM, then
+  logged Intuition callback installation at priority 15, fbgfx
+  `AddDisplayDriver result=0` at 9, callback invocation and monitor creation,
+  and entry into `c2screen.resource` at 8 before dosboot at -50.  The gate
+  selected mode `0x00100000`, returned non-NULL from `OpenScreen` and both
+  `OpenWindow` calls, submitted text, refresh, overlap and scroll, then reached
+  the read-only SD path and interactive Shell.
+- Reproducibility used the same unchanged core and package for 20 individually
+  logged EN/USB hard resets.  Every counted run contained all 30 loaded
+  modules, callback installation before driver insertion, monitor creation,
+  the complete C2 PASS marker and the real SD capacity report: 20/20 passed.
+  A preceding three-run 10-second capture attempt ended after `OpenScreen` and
+  is explicitly invalid measurement-window calibration, not a failed boot.
+  These are controlled reset results, not battery-disconnect cold boots.
+- Safety and remaining gate: no media write was added or observed; SD remained
+  on the documented read-only path.  Directly observe and report the custom
+  Screen's readable text, overlapping/scrolled Windows and stable pointer.
+  Only that D1001 observation may advance C2 to `hardware verified`.
+
+### 2026-08-28 - C2 real simple-refresh gate closes on the D1001
+
+- State change: C2 advances from `hardware partial` to `hardware verified`.
+  The previous 20/20 result established loader/order/reset reproducibility but
+  did not establish that a simple-refresh window had repainted exposed
+  damage.  This entry records the missing visual failure, the rejected fixes
+  and the final real damage/IDCMP path rather than retroactively crediting the
+  earlier API-call sequence.
+- `IMG_0948.JPG` provided the first observer evidence.  It confirmed the
+  custom Screen, four corner marks, two titled overlapping Windows, readable
+  back-window text, clipping and the small red Intuition pointer.  It also
+  showed a large light-grey exposed area in the front window instead of its
+  contents, so the refresh acceptance point failed even though the UART
+  harness had returned from its refresh-related calls.
+- The first repair redrew immediately after `WindowToBack()` and
+  `WindowToFront()`.  Its 2,843,252-byte package had SHA-256
+  `412dbb7f8e472d6044c192912781ff0b23246557a1141f6b10c001c3d93680dc`.
+  `IMG_0949.JPG` showed the same grey damage area.  Source inspection then
+  established the ordering error: both depth functions use `DoASyncAction()`,
+  so the redraw ran before Intuition had changed layer depth and produced the
+  exposed damage.
+- A 2,844,656-byte candidate, SHA-256
+  `e4b71c8ff3d8f8097ffa834b1728b3704e4957c6a772c5cbfafcaaf64f45fca2`,
+  waited for `IDCMP_REFRESHWINDOW` inside the priority-8 COLDSTART resident.
+  It loaded all 30 modules and opened the Screen and both Windows, then stopped
+  before a refresh marker because multitasking and the input handler could not
+  run while the COLDSTART initializer was waiting.  This was a self-deadlocked
+  test harness, not a board crash, and was not accepted.
+- Moving the sequence into a priority-5 Exec task allowed multitasking first.
+  The initial task-based 2,846,024-byte candidate, SHA-256
+  `ac4939cda813769a77f8d18625205e040ce70b832193f59424fe35fa6c8cc235`,
+  still used an unbounded message wait and did not reach either redraw marker.
+  The final gate instead bounds the asynchronous settle to 60 display frames,
+  waits for the real `LAYERREFRESH` flag, records and consumes the associated
+  `IDCMP_REFRESHWINDOW`, and redraws through `BeginRefresh()`/`EndRefresh()`.
+  It fails explicitly if a depth change creates no damage.  The observed path
+  settles the exposed back window after ten frames and the restored front
+  window after two, with layer flags `0x0081` and `idcmp=1` in both cases.
+- The final `c2screen.resource` is 19,436 bytes.  The final 30-member BSP is
+  2,846,712 bytes with SHA-256
+  `5b5c49d0f65619db9b81433dd27ce874ad7ad5538c2a0c8967d1a3cbb79cc49d`;
+  `boot/audit-package.py` accepts 30/30 complete RISC-V relocatable members,
+  `c2screen.o` has no undefined symbols and the linked resource contains
+  neither `__eh_frame_start` nor `__startup_initexit`.  The unchanged
+  194,352-byte core remains SHA-256
+  `9f8e1835d8099390857ad815d320b05955c005eb8a0bfc15d93ccaf4fb1ab10d`.
+- The connected board was identified as ESP32-P4 v1.3, MAC
+  `e8:f6:0a:e0:46:4c`.  Only the final BSP was written at `arosbsp` offset
+  `0x820000`; the write-time digest and a separate esptool v5.3.0
+  `verify-flash` both matched.  The core, partition table, bootloader, flash
+  development volume and SD card were not written.
+- A first-byte UART capture loaded all 30 modules, installed Intuition's
+  callback at priority 15 before fbgfx's successful driver insertion at 9,
+  created the monitor, entered the screen resident at 8, opened mode
+  `0x00100000`, the Screen and both Windows, then logged both real damage/IDCMP
+  redraws and `IDCMP refresh+overlap+scroll completed`.  The same boot reported
+  the 121,942-MB SD capacity on the read-only path and reached the interactive
+  Shell without C2 failure, Alert, panic or Guru output.
+- Direct observation of that final artifact confirmed that the large grey
+  damage rectangle was gone and that the front-window text, including
+  `REFRESH PASS - DAMAGE REDRAWN`, was readable.  Combined with the unchanged
+  corner, back-window/clipping and red-pointer path observed in
+  `IMG_0948.JPG`, this closes the text, refresh, overlap/scroll and pointer
+  acceptance point without fabricating input.
+- Reproducibility used that exact final package for 20 individually captured
+  20-second EN/USB-reset boots.  Every run contained the 30-module load, the
+  15 -> 9 -> 8 ordering, monitor and Screen/window creation, both
+  `layer-flags=0081 idcmp=1` redraws, final C2 PASS, SD capacity and Shell;
+  all 20 rejected C2 FAIL, Alert, panic and Guru markers.  After hexadecimal
+  addresses were normalized in the C locale, all runs produced the same
+  marker SHA-256
+  `97839dffe0cfc613ea44301ea46d6c5c991e837f144f132abc5984c0c0d8619b`.
+  This is controlled-reset evidence, not a battery-disconnect cold-boot claim.
+- Safety and remaining risk: the SD device and FAT volume remained read-only
+  throughout and no storage-write path was added.  C2 is closed, but the
+  lower-level +525 scanout mapping is still the explicitly named B5R release
+  blocker.  The next graphical milestone is C3/GB0: normal read-only boot to a
+  correctly oriented Wanderer screen.
 
 ## Evidence-entry template
 
