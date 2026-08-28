@@ -133,7 +133,7 @@ gate: compensated output is not the native display contract.
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
-| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Complete missing-media recovery, detailed title/icon/edge observation, 20-boot, 30-minute desktop/SD/graphics soak and unchanged-card gates on the persistent desktop artifact |
+| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Complete missing-media recovery, 20-boot, 30-minute desktop/SD/graphics soak and unchanged-card gates on the persistent, visually accepted desktop artifact |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
 ## Track A: storage and normal boot
@@ -9269,12 +9269,13 @@ chip in the width this port assumes; it never addressed the hang.
   the handoff, while no trap, Alert, panic, Guru, C3 failure marker or fallback
   prompt appears.  Direct D1001 observation confirms that the result is the
   persistent Wanderer desktop, not the former light-blue transition followed
-  by a CLI overlay.  This closes the initial normal-boot/Startup-Sequence and
-  persistent-desktop points only; detailed title/icon/edge inspection,
+  by a CLI overlay.  Follow-up direct observation of that unchanged screen
+  confirms correct orientation, a readable desktop title, visible drive icons
+  and all four logical edges complete without clipping.  This closes the
+  normal-boot/Startup-Sequence, persistent-desktop and detailed visual points;
   missing-media recovery, 20-boot reproducibility, the 30-minute soak and the
   post-run card hash remain open.
-- Next safe step: inspect title, icons and all four logical edges on this
-  unchanged desktop, then exercise bounded missing-media recovery before the
+- Next safe step: exercise bounded missing-media recovery before the
   repetition and soak gates.  Remove the card to the host only when performing
   the required exact post-run hash comparison; do not add a target write path.
 
