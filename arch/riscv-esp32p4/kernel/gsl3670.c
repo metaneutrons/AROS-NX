@@ -259,4 +259,123 @@ out:
     return r;
 }
 
+#ifdef P4_C4_TOUCH_SAMPLE
+/*
+ * Read only contact zero.  Eight bytes cover the count at byte zero and the
+ * first four-byte contact at bytes four through seven, so this stays within
+ * the transport FIFO without pretending that its current 30-byte ceiling can
+ * satisfy the controller's full 44-byte multi-contact report.
+ */
+int krnP4GSLSampleDiagnostic(unsigned int seconds)
+{
+    unsigned char reg = 0x80;
+    unsigned char data[8];
+    unsigned int polls = 0, touches = 0, releases = 0, changes = 0;
+    unsigned int printed = 0, last_count = ~0U, last_x = ~0U, last_y = ~0U;
+    unsigned int last_id = ~0U, saw_touch = 0;
+    unsigned int min_x = ~0U, min_y = ~0U, max_x = 0, max_y = 0;
+    unsigned int limit = seconds * 20U;
+    int r = P4_I2C_OK;
+
+    if (limit / 20U != seconds)
+        return P4_I2C_TOOLONG;
+    if ((r = gsl_select_bus()) != P4_I2C_OK)
+        goto out;
+
+    krnP4PutStr("[touch]  raw contact-zero sampling for ");
+    krnP4PutDec(seconds);
+    krnP4PutStr(" seconds; touch and move now\n");
+
+    while (polls < limit)
+    {
+        unsigned int count, x = 0, y = 0, id = 0;
+
+        r = krnP4I2CTransfer(P4_D1001_TOUCH_ADDR, &reg, 1, data, 8);
+        if (r != P4_I2C_OK)
+            break;
+        ++polls;
+
+        count = data[0];
+        if (count)
+        {
+            y = (unsigned int)data[4] | ((unsigned int)data[5] << 8);
+            x = (unsigned int)data[6]
+              | (((unsigned int)data[7] & 0x0FU) << 8);
+            id = (unsigned int)data[7] >> 4;
+            ++touches;
+            saw_touch = 1;
+            if (x < min_x) min_x = x;
+            if (x > max_x) max_x = x;
+            if (y < min_y) min_y = y;
+            if (y > max_y) max_y = y;
+        }
+        else if (last_count != ~0U && last_count != 0)
+            ++releases;
+
+        if (count != last_count || (count &&
+            (x != last_x || y != last_y || id != last_id)))
+        {
+            ++changes;
+            if (printed < 80U)
+            {
+                krnP4PutStr("[touch]  raw count ");
+                krnP4PutDec(count);
+                if (count)
+                {
+                    krnP4PutStr(" id ");
+                    krnP4PutDec(id);
+                    krnP4PutStr(" x ");
+                    krnP4PutDec(x);
+                    krnP4PutStr(" y ");
+                    krnP4PutDec(y);
+                }
+                krnP4PutStr(" irq ");
+                krnP4PutDec((p4_r32(P4_GPIO_BASE + P4_GPIO_IN)
+                             >> P4_D1001_TOUCH_IRQ_GPIO) & 1U);
+                krnP4PutStr("\n");
+                ++printed;
+            }
+        }
+        last_count = count;
+        last_x = x;
+        last_y = y;
+        last_id = id;
+        krnTimerWait(P4_TICK_HZ / 20U);
+    }
+
+    krnP4PutStr("[touch]  raw summary polls ");
+    krnP4PutDec(polls);
+    krnP4PutStr(" touches ");
+    krnP4PutDec(touches);
+    krnP4PutStr(" releases ");
+    krnP4PutDec(releases);
+    krnP4PutStr(" changes ");
+    krnP4PutDec(changes);
+    if (saw_touch)
+    {
+        krnP4PutStr(" x ");
+        krnP4PutDec(min_x);
+        krnP4PutStr("..");
+        krnP4PutDec(max_x);
+        krnP4PutStr(" y ");
+        krnP4PutDec(min_y);
+        krnP4PutStr("..");
+        krnP4PutDec(max_y);
+    }
+    if (changes > printed)
+    {
+        krnP4PutStr(" printed-first ");
+        krnP4PutDec(printed);
+    }
+    krnP4PutStr("\n");
+
+out:
+    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO,
+                      P4_D1001_I2C1_SCL_GPIO, 100000UL)
+        && r == P4_I2C_OK)
+        r = P4_I2C_NOTREADY;
+    return r;
+}
+#endif /* P4_C4_TOUCH_SAMPLE */
+
 #endif /* P4_C4_TOUCH_LOAD */
