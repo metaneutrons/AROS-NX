@@ -133,7 +133,7 @@ gate: compensated output is not the native display contract.
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
-| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Repeat the failed exact unchanged-card gate from a trustworthy baseline: use the build-verified macOS raw-write/eject helper so the device stays exclusively open until `DKIOCEJECT`, lock the adapter before the baseline readback, perform one normal D1001 boot, then use a locked first post-run host insertion and require a byte-equal raw readback.  Both failed comparisons were contaminated only by macOS `.fseventsd`; all 89 intended entries match.  Missing-media recovery, 20/20 controlled EN-reset reproducibility and the 30-minute soak are D1001-verified; soak acceptance explicitly composes the idle persistent C3 desktop run with B5's active concurrent SD/scanout stress |
+| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | The macOS raw-write/eject helper has completed its first exact-card invocation, keeping the device exclusively open through `DKIOCEJECT`; verify that write through a locked first baseline readback, perform one normal D1001 boot, then use a locked first post-run host insertion and require a byte-equal raw readback.  Both earlier failed comparisons were contaminated only by macOS `.fseventsd`; all 89 intended entries match.  Missing-media recovery, 20/20 controlled EN-reset reproducibility and the 30-minute soak are D1001-verified; soak acceptance explicitly composes the idle persistent C3 desktop run with B5's active concurrent SD/scanout stress |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
 ## Track A: storage and normal boot
@@ -9503,6 +9503,14 @@ chip in the width this port assumes; it never addressed the hang.
   close-to-eject automount window without a persistent `/etc/fstab` or global
   Disk Arbitration change.  The helper compiles warning-free with the host C
   compiler; media verification remains pending.
+- First helper media invocation: the exact card was re-identified as writable
+  SanDisk `SDSN128`, serial `0x8a6890be`, capacity 127,865,454,592 bytes.  The
+  helper accepted that exact ioctl capacity, wrote all 67,108,864 image bytes,
+  synchronized the cache and returned only after `DKIOCEJECT` succeeded while
+  the exclusive raw descriptor was still open.  The device was absent from
+  the following external-disk listing.  This closes the observed automount
+  window operationally; a first-insertion hardware-locked readback is still
+  required before calling the resulting bytes a trustworthy baseline.
 - Target-side evidence: both `/tmp/aros-c3-boot-04.log` and
   `/tmp/aros-c3-soak-01.log` print four instances of `[fat] the medium is write
   protected; every mutating packet will be refused`.  The normal package adds
