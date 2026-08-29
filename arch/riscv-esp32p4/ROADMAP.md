@@ -134,7 +134,7 @@ gate: compensated output is not the native display contract.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
-| C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification is complete: I2C0 `0x40`, Silead ID `0x50910000`, GPIO16 input measured (IRQ assignment source-backed) and volatile RAM firmware confirmed.  Firmware provenance/import, reset/init, worker and absolute `mouse.hidd` subclass remain; closes M7 |
+| C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification, bounded reset/load/status and raw contact-zero transport are hardware verified.  Directly observed motion is smooth and releases are visible, but raw X uses an approximately 1600-unit sensor domain, GPIO16 remains low and one finger can report count 2.  Independent normalization/filtering, runtime external firmware/recovery, task-context polling and the absolute `mouse.hidd` subclass remain; closes M7 |
 
 ## Track A: storage and normal boot
 
@@ -817,6 +817,19 @@ development mechanism, not the eventual production interface: normal builds
 contain no firmware, and the maintained driver still needs an externally
 supplied binary plus runtime absence/recovery handling.
 
+Raw contact-zero transport is now hardware verified independently of any
+input event path.  The diagnostic reads only the eight bytes needed for report
+count and contact zero from register `0x80`, polls for a bounded 20 seconds and
+always restores I2C1.  A directly synchronized D1001 run records smooth motion,
+nine clean releases and a raw range of X `155..1489`, Y `98..739`; a second
+run independently records motion and a release.  GPIO16 stayed low throughout,
+so polling remains the only proven acquisition mode.  The raw controller count
+also sometimes reported 2 during a one-finger trace.  The unlicensed vendor
+algorithm is not imported: its configuration identifies a `1280 x 800` output
+domain and performs substantial filtering and scaling from the sensor domain.
+AROS therefore still needs its own documented contact-zero filter,
+normalization and orientation policy before it publishes absolute events.
+
 The Seeed reference repository at commit
 `5074d3b2f45626b261298e305aaf792036febc5a` names GSL3670, address `0x40`,
 GPIO16, PCA9535 output 12 and an embedded RAM firmware table.  Its repository
@@ -836,7 +849,9 @@ Implement the device as a hardware subclass of `mouse.hidd`, not a private
 route into `input.device`.  Report absolute motion before press, final motion
 before release, handle only contact zero initially and perform I2C work in a
 task/worker rather than interrupt context.  Apply the same orientation transform
-as B6 and make calibration explicit.
+as B6 and make calibration explicit.  Treat raw count greater than zero as the
+initial contact-zero presence signal only after a bounded stability policy;
+do not expose the controller's unfiltered count as AROS multi-touch state.
 
 Acceptance gate:
 
@@ -9793,6 +9808,77 @@ chip in the width this port assumes; it never addressed the hang.
   compile-time embedding with an externally supplied runtime firmware path
   before the absolute `mouse.hidd` subclass can be accepted.  The separate
   I2C0 100-kHz timing defect remains transport debt.
+
+### 2026-08-29 - C4 raw contact-zero transport is hardware verified
+
+- State change: C4 remains `hardware partial`, but bounded raw contact-zero
+  acquisition, motion and release are now D1001-verified.  This still creates
+  no input object or event and therefore is not the absolute-mouse or M7 gate.
+- Implementation: `P4_C4_TOUCH_SAMPLE=1` implies the private load diagnostic
+  and, only after the live `0x5a5a5a5a` status, polls register `0x80` at 20 Hz
+  for 20 seconds.  It reads eight bytes, the exact prefix needed for report
+  count plus contact zero, instead of overrunning the current transport's
+  30-byte ceiling with the vendor's 44-byte multi-contact read.  All work is
+  bounded, only the first 80 changes print, no event is published and I2C1 is
+  restored on every exit.
+- Build: all generated kernel objects and the previous core were deleted.
+  The aggregate `P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_SAMPLE=1
+  P4_GSL_FW_HEADER=/tmp/d1001-gsl3670-private.h P4_PSRAM_MHZ=200
+  P4_CPU_MHZ=360 P4_LDSCRIPT=ldscript-xip.lds` build compiled every kernel
+  source without `error:` and then failed honestly at the independent four-MiB
+  development-flashdisk capacity check.  The focused kernel target with the
+  same switches printed both image-creation markers.
+- Artifact: the newly created core is 233,232 bytes, SHA-256
+  `4bc0b3f33dcdacd2d239da79d24237d2e73f410cd0494c4e5d7dbbb832009a80`.
+  `esptool image-info` reports entry `0x40000120`, two segments, valid checksum
+  `0x13` and valid image hash
+  `2b344c2829c3fb678a3fa7811cb6a6c4c008d95f5712453ddbe6eb297e5b7dff`.
+  The external standard firmware binary remains 34,848 bytes with SHA-256
+  `125728ad83424e533198f804cb6d8b393c59d3818903760cbda282138e782636`;
+  neither it nor its private C include is in Git.
+- Flash and hardware: esptool identified the same ESP32-P4 v1.3 D1001, MAC
+  `e8:f6:0a:e0:46:4c`.  Only the authorized core at `0x20000` was written;
+  the last image byte is `0x58f0f` and the sector-rounded erase ended at
+  `0x58fff`.  Write-time verification and a separate `verify-flash` both
+  passed.  BSP, bootloader, partition table and development volume were not
+  written; no SD card was present.
+- Primary hardware evidence: `/tmp/aros-c4-touch-raw-02.log` is 162,519 bytes,
+  SHA-256
+  `5dc07442a9045c64f212037bd38f7e14e7ad714fbee346dd305275d01b41a046`.
+  The operator traced one finger only during the live-synchronized sampling
+  marker.  The unchanged artifact reports 400 polls, 84 contact polls, nine
+  releases, 94 changes and raw ranges X `155..1489`, Y `98..739`; contact zero
+  remains ID 0 and changes smoothly across the panel.  The run then restores
+  I2C1, reports no input events, sees no SD, completes the normal graphical
+  flash fallback and contains no word-delimited trap, Alert, panic, Guru,
+  fatal or unhandled exception.
+- Repetition and rejected observations: the same unchanged image was reset
+  again without rebuilding or reflashing.  `/tmp/aros-c4-touch-raw-05.log` is
+  8,844 bytes, SHA-256
+  `2c3c490cd8b312c100402fe3c269563d98f7c4d97afbeceb72b3ce045d820794`;
+  live synchronization produced a second smooth trace from X 522 to 1387 and
+  Y 778 to 561 followed by count 0.  Its 45-second host capture ended after
+  that release but before the sampler summary, so it is corroboration rather
+  than the primary complete gate.  Earlier zero-contact captures, including
+  `/tmp/aros-c4-touch-raw-01.log` and the later `raw-03`/`raw-04` retries, were
+  explicitly confirmed as missed operator windows and are retained as such,
+  not misreported as device failures or acceptance evidence.
+- Unresolved raw semantics: GPIO16 printed 0 for every idle, contact and
+  release sample, so IRQ-driven acquisition is not yet supported by evidence.
+  During the single-finger primary trace the unfiltered controller report
+  sometimes claimed count 2, although contact zero stayed smooth.  Raw X also
+  reaches roughly 1600 sensor units, not logical 1280.  Seeed's separate
+  unlicensed `gsl_point_id.c` algorithm consumes a `1280 x 800` configuration
+  and performs scaling, filtering and ID tracking; it is provenance evidence,
+  not code AROS can import.  The first maintained implementation will instead
+  define its own bounded contact-zero stability and normalization policy and
+  must prove corners, center, release and no stuck press on hardware.
+- Safety and next step: every run is read-only apart from the previously
+  authorized core flash; no storage medium was written.  Next move the proven
+  contact-zero read into task context, normalize and orient it through an
+  independently implemented policy, then publish absolute motion/press/release
+  through a hardware subclass of `mouse.hidd`.  Runtime external firmware,
+  reload recovery and the separate 100-kHz I2C0 timing debt remain open.
 
 ## Evidence-entry template
 

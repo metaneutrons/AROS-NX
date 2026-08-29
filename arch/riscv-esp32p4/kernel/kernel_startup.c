@@ -6474,6 +6474,15 @@ static void krnP4C4TouchLoad(void)
     krnP4PutStr(r == P4_I2C_OK
                 ? " -- volatile controller program alive\n"
                 : " -- no touch device published; normal boot continues\n");
+#ifdef P4_C4_TOUCH_SAMPLE
+    if (r == P4_I2C_OK)
+    {
+        r = krnP4GSLSampleDiagnostic(20);
+        krnP4PutStr("[touch]  raw sampling result: ");
+        krnP4PutStr(krnP4I2CName(r));
+        krnP4PutStr("; no input events were generated\n");
+    }
+#endif
 }
 #endif
 #endif
