@@ -133,7 +133,7 @@ gate: compensated output is not the native display contract.
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
-| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Repeat the failed exact unchanged-card gate from a trustworthy baseline: rewrite the 64-MiB image, lock the adapter before the baseline readback, perform one normal D1001 boot, then use a locked first post-run host insertion and require a byte-equal raw readback.  The first final comparison was contaminated only by macOS `.fseventsd`; all 89 intended entries match.  Missing-media recovery, 20/20 controlled EN-reset reproducibility and the 30-minute soak are D1001-verified; soak acceptance explicitly composes the idle persistent C3 desktop run with B5's active concurrent SD/scanout stress |
+| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Repeat the failed exact unchanged-card gate from a trustworthy baseline: use the build-verified macOS raw-write/eject helper so the device stays exclusively open until `DKIOCEJECT`, lock the adapter before the baseline readback, perform one normal D1001 boot, then use a locked first post-run host insertion and require a byte-equal raw readback.  Both failed comparisons were contaminated only by macOS `.fseventsd`; all 89 intended entries match.  Missing-media recovery, 20/20 controlled EN-reset reproducibility and the 30-minute soak are D1001-verified; soak acceptance explicitly composes the idle persistent C3 desktop run with B5's active concurrent SD/scanout stress |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
 ## Track A: storage and normal boot
@@ -769,6 +769,11 @@ host-contaminated and cannot pass the exact hash gate.  It also does not show a
 target write: both normal logs repeatedly report a write-protected medium and
 the added files have macOS names and metadata.  A fresh, locked baseline and a
 locked first post-run host insertion remain required.
+An attempted clean rewrite followed by immediate `diskutil eject` was still
+too slow: its first hardware-locked readback reproduced the same nine-sector
+`.fseventsd` footprint.  The host helper now keeps the raw device exclusively
+open across writing, cache synchronization and `DKIOCEJECT`; it is build
+verified and awaits its first media run.
 
 `GB0` acceptance gate:
 
@@ -9478,6 +9483,26 @@ chip in the width this port assumes; it never addressed the hang.
   `fsck_msdos -n`, and all 89 expected path/size/SHA-256 entries exactly.  The
   verifier ignores only its documented host-noise names; no AROS file differs
   and there is no other unexpected path.
+- Failed clean-baseline retry, before any further board run: the exact image
+  was rewritten while the adapter was unlocked, followed immediately by
+  `sync` and `diskutil eject`.  On the first reinsertion with the physical
+  lock already engaged, macOS reported both the card and volume read-only.
+  Nevertheless, the 67,108,864-byte locked readback at
+  `/tmp/aros-c3-locked-baseline.img` had SHA-256
+  `b9115054cd9b17e74ca0fa3e56b27adfeef94cfc54964b8f03a08878c44184d6`.
+  It again differed by exactly 451 bytes in the same nine sectors and carried
+  the same `.fseventsd` shape.  This proves that the interval after `dd` closed
+  and before `diskutil eject` is already enough for Disk Arbitration to mount
+  and mutate the volume; a later hardware lock cannot repair that baseline.
+  No D1001 run occurred between this rewrite and comparison.
+- Host-side correction: `tools/write-image-eject.c` opens an explicitly named
+  `/dev/rdiskN` exclusively, checks its ioctl-reported capacity against a
+  required caller value, refuses a write-protected or non-character target,
+  writes only the image length, synchronizes the device and issues
+  `DKIOCEJECT` before closing the descriptor.  This removes the observed
+  close-to-eject automount window without a persistent `/etc/fstab` or global
+  Disk Arbitration change.  The helper compiles warning-free with the host C
+  compiler; media verification remains pending.
 - Target-side evidence: both `/tmp/aros-c3-boot-04.log` and
   `/tmp/aros-c3-soak-01.log` print four instances of `[fat] the medium is write
   protected; every mutating packet will be refused`.  The normal package adds
@@ -9489,12 +9514,12 @@ chip in the width this port assumes; it never addressed the hang.
   did not provide one.  The physical lock prevented any further host mutation
   during the retained readback; the card was not rewritten.
 - Next safe step: retain the failed hashes and sector attribution, unlock and
-  rewrite the exact image deliberately, eject, engage the adapter lock and
-  obtain an equal raw baseline on the **first** reinsertion.  Eject and boot
-  that MicroSD once on the unchanged D1001 artifact, then return it through an
-  already locked adapter on the first host insertion and require byte-for-byte
-  equality.  A mismatch keeps C3 partial; equality closes the sole remaining
-  GB0 point.
+  rewrite the exact image with `write-image-eject`, engage the adapter lock
+  and obtain an equal raw baseline on the **first** reinsertion.  Eject and
+  boot that MicroSD once on the unchanged D1001 artifact, then return it
+  through an already locked adapter on the first host insertion and require
+  byte-for-byte equality.  A mismatch keeps C3 partial; equality closes the
+  sole remaining GB0 point.
 
 ## Evidence-entry template
 
