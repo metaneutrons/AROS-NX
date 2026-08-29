@@ -133,7 +133,7 @@ gate: compensated output is not the native display contract.
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
-| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | A hardware-locked first-insertion readback proves the exact pre-run baseline, and one subsequent normal D1001 boot reaches persistent Wanderer with the complete accepted marker tuple; use a locked first post-run host insertion and require its 64-MiB raw readback to remain byte-equal to SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Both earlier failed comparisons were contaminated only by macOS `.fseventsd`; all 89 intended entries matched.  Missing-media recovery, 20/20 controlled EN-reset reproducibility and the 30-minute soak are D1001-verified; soak acceptance explicitly composes the idle persistent C3 desktop run with B5's active concurrent SD/scanout stress |
+| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
 ## Track A: storage and normal boot
@@ -736,10 +736,13 @@ handlers plus `misc.resource` and `gadtools.library`, while retaining the
 read-only SD/FAT path and emergency console.  Hardware now proves normal
 Startup-Sequence execution, fbgfx installation and Wanderer loading from the
 read-only card through creation of its light-blue Screen and enumeration of
-RAM, flash and SD volumes.  C3 therefore is `hardware partial`, not merely a
-build result.  A generic multi-directory-assign bug exposed by `ENV:` was
-fixed in DOS: every handler attempt now starts with a clean FileHandle and a
-default port is retained only after success.  Wanderer then remained alive as
+RAM, flash and SD volumes.  At that point C3 became `hardware partial`, not
+merely a build result.  The complete GB0 gate described below is now
+`hardware verified`; this earlier partial state is retained here only as the
+development sequence.  A generic multi-directory-assign bug exposed by
+`ENV:` was fixed in DOS: every handler attempt now starts with a clean
+FileHandle and a default port is retained only after success.  Wanderer then
+remained alive as
 designed after `Detach()`, but the deliberately minimal sequence left the
 initial CLI visible over it.  The next image follows the standard AROS
 Startup-Sequence and runs resident `EndCLI` after successful Wanderer launch.
@@ -752,8 +755,9 @@ the initial Shell.  Missing-media recovery is also D1001-verified: with GPIO45
 reporting no inserted card, `sdcard.device` registers no boot node, dosboot
 selects the read-only flash development volume, and its Startup-Sequence
 reaches a visible graphical recovery Shell without a fatal marker.  Until the
-remaining D1001 gate points below pass, C3 is not hardware verified.  The
-unchanged normal artifact also passes 20/20 controlled EN resets with the
+final exact-card run, these were partial results; all D1001 gate points below
+now pass.  The unchanged normal artifact also passes 20/20 controlled EN
+resets with the
 same complete storage/Wanderer/EndCLI marker tuple.  This proves reset
 reproducibility but, as with the earlier display gates, does not claim a
 physical battery-cold start.  The persistent desktop subsequently remained
@@ -768,12 +772,13 @@ adapter was not write protected on its first host insertion, so that result is
 host-contaminated and cannot pass the exact hash gate.  It also does not show a
 target write: both normal logs repeatedly report a write-protected medium and
 the added files have macOS names and metadata.  A fresh, locked baseline and a
-locked first post-run host insertion remain required.
+locked first post-run host insertion subsequently produced identical raw
+hashes around one normal D1001 boot.
 An attempted clean rewrite followed by immediate `diskutil eject` was still
 too slow: its first hardware-locked readback reproduced the same nine-sector
 `.fseventsd` footprint.  The host helper now keeps the raw device exclusively
-open across writing, cache synchronization and `DKIOCEJECT`; it is build
-verified and awaits its first media run.
+open across writing, cache synchronization and `DKIOCEJECT`; its clean
+baseline and unchanged post-run readback are hardware verified.
 
 `GB0` acceptance gate:
 
@@ -9553,6 +9558,60 @@ chip in the width this port assumes; it never addressed the hang.
   through an already locked adapter on the first host insertion and require
   byte-for-byte equality.  A mismatch keeps C3 partial; equality closes the
   sole remaining GB0 point.
+
+### 2026-08-29 - C3 GB0 exact card gate passes and closes graphical boot
+
+- State change: C3 moves from `hardware partial` to `hardware verified`.
+  Every GB0 acceptance point is now D1001-observed; this is not inferred from
+  a build and does not erase the two failed host-contaminated comparisons
+  above.
+- Hardware and immutable artifacts: ESP32-P4 v1.3 D1001, MAC
+  `e8:f6:0a:e0:46:4c`; 193,984-byte core SHA-256
+  `49d060c3d2de4f7856fe34776971ad44227b5e05802bfe07d5fcb79052d33080`;
+  3,275,492-byte, 34-member BSP SHA-256
+  `7fd83f5c64d38928f7928f24b351461e6d28e3dad98909e052080edd7de0e8b7`;
+  and 67,108,864-byte, 89-entry SD image SHA-256
+  `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.
+  The exact-gate boot followed source/documentation commit `b2d8a69b6c` and
+  changed none of those three artifacts.
+- Trustworthy pre-run baseline: `write-image-eject` wrote only the 64-MiB
+  image prefix to the independently identified 127,865,454,592-byte SanDisk
+  `SDSN128`, serial `0x8a6890be`, synchronized it and ejected it before closing
+  the exclusive descriptor.  On the first reinsertion with the adapter
+  already physically locked, macOS reported the card and FAT volume read-only.
+  `/tmp/aros-c3-locked-baseline-02.img` is 67,108,864 bytes and has the exact
+  image digest above; `cmp` returned equal.
+- Target procedure and UART: move that MicroSD directly to the D1001, perform
+  exactly one controlled EN reset, and capture 60 seconds from the first byte.
+  `/tmp/aros-c3-exact-gate-boot.log` is 824,814 bytes with SHA-256
+  `39dfdc7165f04cd5398481662f017a1e5a307b8674b67192a86618668416328c`.
+  It reports the 121,942-MB card, four FAT write-protection confirmations, one
+  normal `SDCARD0P0` boot, Wanderer opening `SDCARD0P0:.backdrop` and
+  `Dos/CliInit: Boot sequence exited`, with no missing-card or word-delimited
+  trap, Alert, panic, Guru, fatal or unhandled-exception marker.  No second
+  target reset occurred before the card was removed.
+- Exact post-run result: the MicroSD was returned through an adapter whose
+  LOCK switch was already engaged before the first host insertion.  macOS
+  again reported serial `0x8a6890be`, the exact capacity, a non-writable volume
+  and `Media Read-Only: Yes`.  After unmounting, the first 67,108,864 bytes
+  were saved as `/tmp/aros-c3-locked-postrun-final.img`; its SHA-256 is
+  `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.
+  Byte comparisons against both the prepared image and locked pre-run
+  baseline returned equal.  The card was then ejected while still protected.
+- Complete GB0 acceptance: the earlier entries provide direct observation of
+  the correctly oriented persistent `1280 x 800` Wanderer desktop, readable
+  title, drive icons and all four unclipped edges; two bounded graphical
+  missing-media recovery boots; 20/20 controlled normal-path EN resets; and
+  the explicitly qualified 1,800-second desktop/SD/graphics soak.  This entry
+  adds the previously missing exact unchanged-card result.  README, master
+  table and evidence log now agree on `hardware verified`.
+- Safety and remaining scope: target FAT remained write protected throughout,
+  the final raw equality proves that the accepted boot changed no compared
+  card byte, and no flash partition was written.  C3 is complete.  B5R still
+  tracks removal of the +525 native-row workaround, and C4 separately tracks
+  touch; neither is silently folded into GB0.
+- Next safe step: C4 touch-controller identification and absolute mouse HIDD,
+  while retaining B5R as the independent release-quality scanout root fix.
 
 ## Evidence-entry template
 
