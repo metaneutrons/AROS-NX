@@ -6369,6 +6369,90 @@ static void krnP4PanelProbe(void)
     }
 #endif
 }
+
+#ifdef P4_C4_TOUCH_PROBE
+/*
+ * C4's first hardware question, deliberately short of controller init.
+ *
+ * The D1001 manufacturer tree names a GSL3670 at 0x40, with an interrupt on
+ * GPIO16 and reset on PCA9535 output 12.  That is source evidence, not a
+ * measurement of this board.  This probe establishes the hardware half with
+ * address-only ACKs and the Silead-family ID/status registers.  It does not
+ * touch the expander reset bit and does not copy or execute the vendor's RAM
+ * firmware.  GPIO16 is observed exactly as inherited: no mux, direction,
+ * pull or interrupt register is changed.
+ *
+ * I2C0 currently answers reliably only with the existing driver's 10-kHz
+ * timing.  The 100-kHz failure is retained as a separate transport defect;
+ * pretending the target is a 10-kHz device would turn that defect into a
+ * hardware contract.
+ */
+static void krnP4C4TouchProbe(void)
+{
+    static const unsigned char id_reg = 0xFC;
+    static const unsigned char status_reg = 0xB0;
+    unsigned char id[4] = { 0, 0, 0, 0 };
+    unsigned char status[4] = { 0, 0, 0, 0 };
+    unsigned long iomux, gpio;
+    int camera, touch, rid, rstatus;
+
+    iomux = p4_r32(P4_IOMUX_BASE + P4_IOMUX_PIN(P4_D1001_TOUCH_IRQ_GPIO));
+    gpio = (p4_r32(P4_GPIO_BASE + P4_GPIO_IN)
+            >> P4_D1001_TOUCH_IRQ_GPIO) & 1UL;
+
+    krnP4PutStr("[touch]  C4 passive identification; no reset, no firmware\n");
+    krnP4PutStr("[touch]  GPIO16 inherited level ");
+    krnP4PutDec((uint32_t)gpio);
+    krnP4PutStr(", iomux ");
+    krnP4PutHex32((uint32_t)iomux);
+    krnP4PutStr("\n");
+
+    if (!krnP4I2CInit(0, P4_D1001_I2C0_SDA_GPIO,
+                      P4_D1001_I2C0_SCL_GPIO, 10000UL))
+    {
+        krnP4PutStr("[touch]  I2C0 did not configure\n");
+        goto restore_i2c1;
+    }
+
+    /* 0x36 is the independent control target observed on this same bus. */
+    camera = krnP4I2CProbe(0x36);
+    touch = krnP4I2CProbe(P4_D1001_TOUCH_ADDR);
+    rid = krnP4I2CTransfer(P4_D1001_TOUCH_ADDR, &id_reg, 1, id, 4);
+    rstatus = krnP4I2CTransfer(P4_D1001_TOUCH_ADDR, &status_reg, 1,
+                              status, 4);
+
+    krnP4PutStr("[touch]  0x36 control ACK: ");
+    krnP4PutStr(krnP4I2CName(camera));
+    krnP4PutStr("\n[touch]  0x40 address ACK: ");
+    krnP4PutStr(krnP4I2CName(touch));
+    krnP4PutStr("\n[touch]  0xfc ID read: ");
+    krnP4PutStr(krnP4I2CName(rid));
+    if (rid == P4_I2C_OK)
+    {
+        krnP4PutStr(", little-endian ");
+        krnP4PutHex32((uint32_t)id[0] | ((uint32_t)id[1] << 8)
+                      | ((uint32_t)id[2] << 16) | ((uint32_t)id[3] << 24));
+    }
+    krnP4PutStr("\n[touch]  0xb0 RAM/status read: ");
+    krnP4PutStr(krnP4I2CName(rstatus));
+    if (rstatus == P4_I2C_OK)
+    {
+        krnP4PutStr(", little-endian ");
+        krnP4PutHex32((uint32_t)status[0] | ((uint32_t)status[1] << 8)
+                      | ((uint32_t)status[2] << 16)
+                      | ((uint32_t)status[3] << 24));
+    }
+    krnP4PutStr("\n");
+
+restore_i2c1:
+    /* Panel/DSI startup below owns I2C1.  Leave the shared transport there. */
+    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO,
+                      P4_D1001_I2C1_SCL_GPIO, 100000UL))
+        krnP4PutStr("[touch]  WARNING: I2C1 restore failed\n");
+    else
+        krnP4PutStr("[touch]  I2C1 restored for the normal C3 display path\n");
+}
+#endif
 #endif /* P4_PANEL_PROBE */
 
 #ifdef P4_PSRAM_PROBE
@@ -7258,6 +7342,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 #ifndef P4_B5_CONCURRENT_STRESS
     krnP4PanelProbe();
 #endif
+#endif
+#ifdef P4_C4_TOUCH_PROBE
+    krnP4C4TouchProbe();
 #endif
 
 #ifdef P4_SDMMC_PROBE
