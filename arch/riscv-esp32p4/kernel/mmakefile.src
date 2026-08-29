@@ -495,6 +495,14 @@ override P4_C1_FRAMEBUFFER_HIDD := 1
 P4_DEBUG_CPPFLAGS += -DP4_C3_GRAPHICAL_BOOT
 endif
 
+# P4_C4_TOUCH_PROBE=1 adds only C4's read-only controller-identification
+# report to the normal C3 boot.  It sends address probes and register reads on
+# I2C0, samples GPIO16 without changing its pad configuration, restores I2C1
+# afterwards and never pulses the touch reset or loads controller firmware.
+ifeq ($(P4_C4_TOUCH_PROBE),1)
+P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_PROBE -DP4_PANEL_PROBE
+endif
+
 # P4_C1_FRAMEBUFFER_HIDD=1 keeps B6's managed double-buffered scanout alive
 # across Exec startup and publishes only the logical update operation table to
 # fbgfx.hidd.  Panel/DSI/GDMA ownership remains in kernel.resource.
