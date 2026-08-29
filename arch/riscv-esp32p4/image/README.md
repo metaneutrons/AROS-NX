@@ -61,14 +61,28 @@ than an equal hash would have been, because it says where any difference came
 from.
 
 If a future run needs a literally equal hash, automount has to be suppressed
-before the host can write.  On the current full-size adapter the practical
-procedure is physical: after deliberately writing and ejecting the unlocked
+before the host can write.  Merely issuing `diskutil eject` immediately after
+`dd` is not sufficient: the 2026-08-29 C3 retry reproduced `.fseventsd` in the
+interval after `dd` closed the raw device and before the eject completed.
+
+The macOS-only helper keeps the raw descriptor exclusively open through the
+write, cache synchronization and `DKIOCEJECT`, so Disk Arbitration never sees
+an online rewritten FAT volume:
+
+    cc -std=c11 -Wall -Wextra -Werror -O2 \
+        arch/riscv-esp32p4/tools/write-image-eject.c \
+        -o /tmp/aros-write-image-eject
+    diskutil unmountDisk /dev/diskN
+    sudo /tmp/aros-write-image-eject \
+        <path>/aros-test.img /dev/rdiskN EXPECTED_DEVICE_BYTES
+
+Identify the exact removable medium independently before this destructive
+command.  The required capacity is checked through the raw-device ioctls so a
+stale `/dev/rdiskN` name fails closed.  After the helper ejects the unlocked
 card, engage the adapter's LOCK switch before the baseline reinsertion and
 verify that macOS reports `Media Read-Only: Yes` before reading it.  Eject that
 locked baseline, use the MicroSD in the board, then return it in an already
-locked adapter for the first post-run host insertion.  Merely unmounting after
-a writable insertion is too late: the 2026-08-29 C3 attempt already contained
-`.fseventsd` by then and its raw-hash gate correctly failed.
+locked adapter for the first post-run host insertion.
 
 
 ## The volume label
