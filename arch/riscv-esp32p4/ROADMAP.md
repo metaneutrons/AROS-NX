@@ -133,7 +133,7 @@ gate: compensated output is not the native display contract.
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
-| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Complete the exact unchanged-card gate.  Missing-media recovery, 20/20 controlled EN-reset reproducibility and the 30-minute soak are D1001-verified; soak acceptance explicitly composes the idle persistent C3 desktop run with B5's active concurrent SD/scanout stress |
+| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | Repeat the failed exact unchanged-card gate from a trustworthy baseline: rewrite the 64-MiB image, lock the adapter before the baseline readback, perform one normal D1001 boot, then use a locked first post-run host insertion and require a byte-equal raw readback.  The first final comparison was contaminated only by macOS `.fseventsd`; all 89 intended entries match.  Missing-media recovery, 20/20 controlled EN-reset reproducibility and the 30-minute soak are D1001-verified; soak acceptance explicitly composes the idle persistent C3 desktop run with B5's active concurrent SD/scanout stress |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
 ## Track A: storage and normal boot
@@ -729,7 +729,7 @@ tree.  Start with a minimal read-only Startup-Sequence, then audit and approach
 the standard [Startup-Sequence](../../workbench/s/Startup-Sequence) without
 allowing writes to the test card.
 
-Current implementation state (2026-08-28): `P4_C3_GRAPHICAL_BOOT=1` selects
+Current implementation state (2026-08-29): `P4_C3_GRAPHICAL_BOOT=1` selects
 the accepted framebuffer transport without either the C1 drawing harness or
 the C2 screen resource.  Its flash package has the normal console, RAM and CON
 handlers plus `misc.resource` and `gadtools.library`, while retaining the
@@ -761,7 +761,14 @@ complete and directly visible for a 1,800-second UART soak without any fatal
 marker.  That normal C3 run becomes idle after startup; the active periodic
 SD-read part of the soak is therefore credited separately to B5's accepted
 1,800-second concurrent SD/PSRAM/scanout stress rather than falsely attributed
-to Wanderer.
+to Wanderer.  The first final raw card comparison did not equal the prepared
+image: 451 bytes in nine FAT metadata/data sectors describe only a macOS
+`.fseventsd` tree, while all 89 intended entries still match exactly.  The
+adapter was not write protected on its first host insertion, so that result is
+host-contaminated and cannot pass the exact hash gate.  It also does not show a
+target write: both normal logs repeatedly report a write-protected medium and
+the added files have macOS names and metadata.  A fresh, locked baseline and a
+locked first post-run host insertion remain required.
 
 `GB0` acceptance gate:
 
@@ -9433,6 +9440,61 @@ chip in the width this port assumes; it never addressed the hang.
   the first 67,108,864 bytes on the host, and compare them byte-for-byte with
   the exact pre-test C3 image baseline
   `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.
+
+### 2026-08-29 - C3 exact card-integrity comparison fails on host metadata
+
+- State change: C3 remains `hardware partial`; the exact unchanged-card point
+  does **not** pass.  The intended AROS tree is intact and there is no evidence
+  of a target write, but a raw mismatch cannot be promoted to an equal-hash
+  result.
+- Medium and baseline: the same 127,865,454,592-byte SanDisk `SDSN128`, serial
+  `0x8a6890be`, carrying the 67,108,864-byte, 89-entry image whose prepared
+  SHA-256 is
+  `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.
+- Host procedure and contamination boundary: on the first post-run insertion,
+  I/O Registry reported the adapter not write protected and already ejected,
+  without a usable BSD device.  The complete adapter was removed, its physical
+  lock engaged and it was reinserted.  macOS then reported `Media Read-Only:
+  Yes`; the automatically mounted FAT volume was unmounted, and exactly the
+  first 67,108,864 bytes of `/dev/disk21` were copied to
+  `/tmp/aros-c3-postrun-readback.img`.  The latter is temporary evidence, not
+  a repository artifact.
+- Failed raw result: the post-run SHA-256 is
+  `1b3a070277b36db873cb237a988edb4147252fc9cde61f55b29f053f4a5c1eb5`;
+  `cmp` reports 451 changed bytes in nine sectors.  They are sector 2049
+  (FSInfo), sectors 2187 and 3195 (the two FAT copies), sector 4096 (root
+  directory), sector 4107 (the added directory) and sectors 17833 through
+  17836 (its file data).  The MBR, VBR and every other sector in the compared
+  64 MiB are equal.
+- Content attribution: a read-only inspection finds only the added
+  `.fseventsd` tree, containing `fseventsd-uuid` plus two small event-log
+  files.  Their FAT timestamp is 2026-08-28 14:34, before the accepted
+  persistent-desktop work later that day.  This strongly assigns the change
+  to a host automount after the earlier exact preparation readback, but the
+  absence of an immediate hardware-locked baseline readback means the raw
+  pre-run state cannot now be reconstructed and no equal-hash claim is made.
+- Independent integrity check: running `verify-image.sh` against the readback
+  with the original manifest passes the host parser, a clean
+  `fsck_msdos -n`, and all 89 expected path/size/SHA-256 entries exactly.  The
+  verifier ignores only its documented host-noise names; no AROS file differs
+  and there is no other unexpected path.
+- Target-side evidence: both `/tmp/aros-c3-boot-04.log` and
+  `/tmp/aros-c3-soak-01.log` print four instances of `[fat] the medium is write
+  protected; every mutating packet will be refused`.  The normal package adds
+  no write path or code that creates Apple's `.fseventsd` format.
+- Acceptance, safety and honesty: the 20/20 resets, recovery behavior,
+  persistent desktop and 30-minute soak remain valid functional evidence.
+  The read-only design and exact intended-file comparison make a target write
+  implausible, but GB0 explicitly asks for an unchanged card hash and this run
+  did not provide one.  The physical lock prevented any further host mutation
+  during the retained readback; the card was not rewritten.
+- Next safe step: retain the failed hashes and sector attribution, unlock and
+  rewrite the exact image deliberately, eject, engage the adapter lock and
+  obtain an equal raw baseline on the **first** reinsertion.  Eject and boot
+  that MicroSD once on the unchanged D1001 artifact, then return it through an
+  already locked adapter on the first host insertion and require byte-for-byte
+  equality.  A mismatch keeps C3 partial; equality closes the sole remaining
+  GB0 point.
 
 ## Evidence-entry template
 

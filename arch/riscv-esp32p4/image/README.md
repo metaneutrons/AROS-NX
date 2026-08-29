@@ -61,8 +61,14 @@ than an equal hash would have been, because it says where any difference came
 from.
 
 If a future run needs a literally equal hash, automount has to be suppressed
-for the device before it is inserted. That is a system-level change and was
-deliberately not made here.
+before the host can write.  On the current full-size adapter the practical
+procedure is physical: after deliberately writing and ejecting the unlocked
+card, engage the adapter's LOCK switch before the baseline reinsertion and
+verify that macOS reports `Media Read-Only: Yes` before reading it.  Eject that
+locked baseline, use the MicroSD in the board, then return it in an already
+locked adapter for the first post-run host insertion.  Merely unmounting after
+a writable insertion is too late: the 2026-08-29 C3 attempt already contained
+`.fseventsd` by then and its raw-hash gate correctly failed.
 
 
 ## The volume label
