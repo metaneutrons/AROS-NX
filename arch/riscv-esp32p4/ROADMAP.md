@@ -812,9 +812,15 @@ The Seeed reference repository at commit
 GPIO16, PCA9535 output 12 and an embedded RAM firmware table.  Its repository
 has a top-level Apache-2.0 licence, but the two GSL driver sources and embedded
 firmware table carry no per-file SPDX, copyright or separate firmware notice.
-That is adequate provenance for comparison but remains unresolved for a
-verbatim firmware import; do not copy the table into AROS until its
-redistribution status is recorded unambiguously.
+That is adequate provenance for comparison but not for a verbatim firmware
+import.  The current upstream
+[Linux Silead driver](https://github.com/torvalds/linux/blob/master/drivers/input/touchscreen/silead.c)
+also records that permission to redistribute Silead firmware was not obtained;
+the [linux-firmware submission rules](https://gitlab.com/kernel-firmware/linux-firmware)
+require vendor-authorized redistribution provenance.  Therefore AROS does not
+carry the blob.  `tools/convert-gsl-firmware.py` instead validates and converts
+a user-supplied vendor header outside the repository into standard
+little-endian Silead records and an optional private diagnostic C include.
 
 Implement the device as a hardware subclass of `mouse.hidd`, not a private
 route into `input.device`.  Report absolute motion before press, final motion
@@ -9678,6 +9684,41 @@ chip in the width this port assumes; it never addressed the hang.
   raw contact reads in task context, then wrap that transport as the required
   absolute `mouse.hidd` subclass.  The separate 100-kHz I2C0 timing failure
   also remains visible and must not be encoded as a device limit.
+
+### 2026-08-29 - C4 external-firmware conversion path is build verified
+
+- State change: C4 remains `hardware partial`; this step resolves how
+  development can continue without committing a firmware blob whose
+  redistribution authority is not established.  It makes no new hardware or
+  HIDD claim.
+- Licence decision: the current GPL-2.0-or-later Linux Silead driver explicitly
+  says that permission to distribute the required Silead firmware was not
+  obtained from Silead or device OEMs.  The upstream linux-firmware project in
+  turn accepts only firmware with royalty-free redistribution authority and a
+  vendor-authorized Signed-off-by plus `WHENCE` licence record.  Seeed's
+  top-level Apache-2.0 file and unannotated embedded table do not independently
+  prove that authority.  No vendor firmware byte is added to AROS.
+- Implementation: `tools/convert-gsl-firmware.py` contains only a parser,
+  structural validation and encoders.  It requires an explicitly supplied C
+  header, isolates exactly `GSLX670_FW`, rejects residue, invalid offsets,
+  values over 32 bits and tables without page records, then atomically writes
+  the standard little-endian `(u32 offset, u32 value)` Silead record stream.
+  An optional generated C include is prominently marked private and
+  not-for-commit.
+- Verification: the script parses with the host Python interpreter and its
+  command-line help exits successfully.  Against the
+  local, unmodified Seeed header it parses 4,356 records including 132 page
+  selections and emits a 34,848-byte private `/tmp/d1001-gsl3670.fw` with
+  SHA-256 `125728ad83424e533198f804cb6d8b393c59d3818903760cbda282138e782636`.
+  An independent binary round trip confirms every offset is one byte, the
+  first record is page select `0xf0`, the final data offset is `0x7c`, and the
+  byte count is exactly 4,356 eight-byte records.  The optional private header
+  is 126,588 bytes and remains outside the working tree.
+- Safety and next step: no target reset, flash or storage write occurred, and
+  the generated proprietary-input derivative remains only under `/tmp`.
+  Next implement the bounded reset/load/start/status transport around this
+  private include for a diagnostic D1001 run.  Production architecture must
+  keep firmware externally supplied and make absence non-fatal to C3.
 
 ## Evidence-entry template
 
