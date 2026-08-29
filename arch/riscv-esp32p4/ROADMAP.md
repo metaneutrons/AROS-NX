@@ -134,7 +134,7 @@ gate: compensated output is not the native display contract.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
-| C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
+| C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification is complete: I2C0 `0x40`, Silead ID `0x50910000`, GPIO16 input measured (IRQ assignment source-backed) and volatile RAM firmware confirmed.  Firmware provenance/import, reset/init, worker and absolute `mouse.hidd` subclass remain; closes M7 |
 
 ## Track A: storage and normal boot
 
@@ -797,10 +797,24 @@ baseline and unchanged post-run readback are hardware verified.
 
 ### C4 - touch and M7 completion
 
-The controller identity and firmware requirements are not yet verified on this
-board; `GSL3670` is historical information, not a current hardware result.
-First probe I2C0 (GPIO37/38) and GPIO16 interrupt safely and document address,
-identity, reset/firmware needs and licence provenance.
+Current implementation state (2026-08-29): the passive D1001 probe identifies
+the controller at I2C0 address `0x40` and reads Silead-family chip ID
+`0x50910000` from register `0xfc`.  Register `0xb0` reads `0x00000000` after
+the panel supply cycle, confirming that the controller's volatile RAM firmware
+is absent; GPIO16 is the inherited low interrupt input and the reset is
+PCA9535 output 12.  The same run retains `0x36` as an independent I2C0 control
+ACK, restores I2C1 and completes the no-SD C3 graphical fallback.  The current
+P4 I2C timing answers on this bus at 10 kHz but not 100 kHz, which is transport
+debt rather than a 10-kHz touch-controller contract.
+
+The Seeed reference repository at commit
+`5074d3b2f45626b261298e305aaf792036febc5a` names GSL3670, address `0x40`,
+GPIO16, PCA9535 output 12 and an embedded RAM firmware table.  Its repository
+has a top-level Apache-2.0 licence, but the two GSL driver sources and embedded
+firmware table carry no per-file SPDX, copyright or separate firmware notice.
+That is adequate provenance for comparison but remains unresolved for a
+verbatim firmware import; do not copy the table into AROS until its
+redistribution status is recorded unambiguously.
 
 Implement the device as a hardware subclass of `mouse.hidd`, not a private
 route into `input.device`.  Report absolute motion before press, final motion
@@ -9612,6 +9626,58 @@ chip in the width this port assumes; it never addressed the hang.
   touch; neither is silently folded into GB0.
 - Next safe step: C4 touch-controller identification and absolute mouse HIDD,
   while retaining B5R as the independent release-quality scanout root fix.
+
+### 2026-08-29 - C4 passive controller identification is hardware verified
+
+- State change: C4 advances from `not started` to `hardware partial`.  This
+  closes only controller identification and firmware-requirement discovery;
+  it is not a touch HIDD or M7 acceptance claim.
+- Hardware and source: ESP32-P4 v1.3 D1001, MAC
+  `e8:f6:0a:e0:46:4c`, starting from clean commit `da938c17a1` and then the
+  documented dirty C4 worktree.  The local Seeed reference is commit
+  `5074d3b2f45626b261298e305aaf792036febc5a`; its GSL header, driver and
+  top-level licence have SHA-256 `f1eb0f1e64f2bf681d239795056f922b16aa7edd34955bac789e2da497f0f169`,
+  `c9e278bcec2cc59533092354b05020adcb723e9bad10e4b9a36d01c52acf2254`
+  and `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`.
+- Build: all generated kernel objects were deleted before compiling
+  `P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_PROBE=1 P4_PSRAM_MHZ=200
+  P4_CPU_MHZ=360 P4_LDSCRIPT=ldscript-xip.lds`.  The first aggregate target
+  compiled the kernel without an `error:` but failed honestly when the normal
+  C3 tree exceeded the unrelated 4-MiB development flashdisk image; no core
+  was regenerated and that attempt is not evidence.  The focused kernel
+  target then printed both `Creating .../aros-esp32p4.bin` and `Successfully
+  created ESP32-P4 image`.  The valid core is 194,944 bytes, SHA-256
+  `b2e75021ad98ffb63e6395187682f73691b2afbe1740f9981c018708a0ff9f91`,
+  with valid image checksum/hash and command line `nomonitors nocomposition`.
+- Flash and procedure: after esptool identified the exact revision and MAC,
+  only the authorized core range starting at `0x20000` was written.  The
+  194,944-byte image ends at `0x4f97f`; write-time hash verification and a
+  separate `verify-flash` both matched.  BSP, bootloader, partition table and
+  development volume were not written.  A subsequent controlled 20-second
+  first-byte capture used `tools/reset-and-log.py`.
+- Hardware result: `/tmp/aros-c4-touch-probe-01.log` is 158,497 bytes with
+  SHA-256 `645727d038dd6460d7afc4c7b4219eec0879a43ea83e90a0f04f92a87211f34a`.
+  I2C0 at 10 kHz ACKs both independent control address `0x36` and target
+  `0x40`; the target's read-only `0xfc` register returns little-endian
+  `0x50910000`.  Read-only RAM/status register `0xb0` returns `0x00000000`,
+  consistent with the reference's mandatory reset/firmware-load/start path
+  and proving that address ACK alone is not a ready touch controller.  GPIO16
+  was sampled without changing its mux, direction, pulls or interrupt state:
+  inherited level 0, IOMUX `0x00000800`.
+- Regression and safety: the diagnostic never toggles PCA9535 touch-reset
+  output 12 and never writes a controller register or firmware byte.  It
+  restores I2C1 before normal display startup.  With SD absent the same run
+  reports GPIO45 high, boots the read-only `FLASHDISK0P0` path to the graphical
+  Shell and contains no word-delimited trap, Alert, panic, Guru, fatal or
+  unhandled exception.  No storage medium was written.
+- Licence and remaining risk: the Seeed tree is distributed under its
+  top-level Apache-2.0 file, while the GSL driver and embedded firmware table
+  themselves have no per-file attribution or separate firmware licence.
+  Therefore no vendor code/blob has been imported.  Next resolve firmware
+  redistribution provenance, implement bounded reset/load/status recovery and
+  raw contact reads in task context, then wrap that transport as the required
+  absolute `mouse.hidd` subclass.  The separate 100-kHz I2C0 timing failure
+  also remains visible and must not be encoded as a device limit.
 
 ## Evidence-entry template
 
