@@ -133,7 +133,7 @@ gate: compensated output is not the native display contract.
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
-| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | A hardware-locked first-insertion readback now proves an exact clean pre-run baseline, SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`; perform one normal D1001 boot, then use a locked first post-run host insertion and require a byte-equal raw readback.  Both earlier failed comparisons were contaminated only by macOS `.fseventsd`; all 89 intended entries matched.  Missing-media recovery, 20/20 controlled EN-reset reproducibility and the 30-minute soak are D1001-verified; soak acceptance explicitly composes the idle persistent C3 desktop run with B5's active concurrent SD/scanout stress |
+| C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware partial` | A hardware-locked first-insertion readback proves the exact pre-run baseline, and one subsequent normal D1001 boot reaches persistent Wanderer with the complete accepted marker tuple; use a locked first post-run host insertion and require its 64-MiB raw readback to remain byte-equal to SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Both earlier failed comparisons were contaminated only by macOS `.fseventsd`; all 89 intended entries matched.  Missing-media recovery, 20/20 controlled EN-reset reproducibility and the 30-minute soak are D1001-verified; soak acceptance explicitly composes the idle persistent C3 desktop run with B5's active concurrent SD/scanout stress |
 | C4 | Touch as an absolute mouse HIDD | `not started` | Post-GB0; closes M7 |
 
 ## Track A: storage and normal boot
@@ -9521,6 +9521,21 @@ chip in the width this port assumes; it never addressed the hang.
   The helper therefore closes the host automount race on real media.  The card
   was ejected still hardware protected and no D1001 run has yet followed this
   clean baseline.
+- Exact-gate normal boot passes its target half: the MicroSD was moved directly
+  from that ejected baseline into the D1001 and exactly one controlled EN reset
+  was captured for 60 seconds with `tools/reset-and-log.py` on
+  `/dev/cu.usbmodem101`.  An initial invocation with an unsupported output-file
+  argument printed only the tool usage and exited before opening the serial
+  device or resetting the board; the actual capture used shell redirection.
+  `/tmp/aros-c3-exact-gate-boot.log` is 824,814 bytes with SHA-256
+  `39dfdc7165f04cd5398481662f017a1e5a307b8674b67192a86618668416328c`.
+  It contains one `[121942MB Capacity]`, four FAT write-protection
+  confirmations, one normal `Attempting SDCARD0P0`, one Wanderer open of
+  `SDCARD0P0:.backdrop` and one `Dos/CliInit: Boot sequence exited`; it has no
+  missing-card marker and no word-delimited trap, Alert, panic, Guru, fatal or
+  unhandled-exception marker.  A naive substring search for `trap` is invalid
+  here because the expected identifier `BootStrap` contains those four letters.
+  No second target reset may occur before the final card readback.
 - Target-side evidence: both `/tmp/aros-c3-boot-04.log` and
   `/tmp/aros-c3-soak-01.log` print four instances of `[fat] the medium is write
   protected; every mutating packet will be refused`.  The normal package adds
