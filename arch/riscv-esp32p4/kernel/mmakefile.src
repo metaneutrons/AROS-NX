@@ -503,6 +503,14 @@ ifeq ($(P4_C4_TOUCH_PROBE),1)
 P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_PROBE -DP4_PANEL_PROBE
 endif
 
+# P4_C4_TOUCH_SAMPLE=1 adds one 20-second, read-only contact-zero observation
+# after a successful private firmware load.  It creates no input object or
+# event, prints only the first 80 changes and always restores I2C1 afterwards.
+ifeq ($(P4_C4_TOUCH_SAMPLE),1)
+override P4_C4_TOUCH_LOAD := 1
+P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_SAMPLE
+endif
+
 # P4_C4_TOUCH_LOAD=1 is a development-only volatile-firmware transport gate.
 # It requires a private generated header outside the repository; no firmware
 # byte is part of AROS.  Each I2C transaction is bounded and checked, firmware

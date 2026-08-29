@@ -90,6 +90,9 @@ void krnP4I2CLastStatus(unsigned long *raw, unsigned long *sr);
 
 #ifdef P4_C4_TOUCH_LOAD
 int krnP4GSLLoadDiagnostic(uint32_t *status, unsigned int *failed_record);
+#ifdef P4_C4_TOUCH_SAMPLE
+int krnP4GSLSampleDiagnostic(unsigned int seconds);
+#endif
 #endif
 
 /* What the panel bring-up claimed and where it got to. */
