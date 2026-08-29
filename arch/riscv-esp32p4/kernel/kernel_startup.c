@@ -6452,6 +6452,30 @@ restore_i2c1:
     else
         krnP4PutStr("[touch]  I2C1 restored for the normal C3 display path\n");
 }
+
+#ifdef P4_C4_TOUCH_LOAD
+static void krnP4C4TouchLoad(void)
+{
+    uint32_t status = 0;
+    unsigned int failed_record = 0;
+    int r;
+
+    krnP4PutStr("[touch]  C4 bounded reset/load/start/status diagnostic\n");
+    r = krnP4GSLLoadDiagnostic(&status, &failed_record);
+    krnP4PutStr("[touch]  firmware load result: ");
+    krnP4PutStr(krnP4I2CName(r));
+    if (r != P4_I2C_OK)
+    {
+        krnP4PutStr(", record/stage ");
+        krnP4PutDec(failed_record);
+    }
+    krnP4PutStr(", 0xb0 ");
+    krnP4PutHex32(status);
+    krnP4PutStr(r == P4_I2C_OK
+                ? " -- volatile controller program alive\n"
+                : " -- no touch device published; normal boot continues\n");
+}
+#endif
 #endif
 #endif /* P4_PANEL_PROBE */
 
@@ -7345,6 +7369,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 #endif
 #ifdef P4_C4_TOUCH_PROBE
     krnP4C4TouchProbe();
+#endif
+#ifdef P4_C4_TOUCH_LOAD
+    krnP4C4TouchLoad();
 #endif
 
 #ifdef P4_SDMMC_PROBE

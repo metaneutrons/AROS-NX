@@ -553,6 +553,7 @@
 #define P4_EXP_PWR_HOLD         (1U << 8)
 #define P4_EXP_BAT_CHARGE_EN    (1U << 10)
 #define P4_EXP_AMP_EN           (1U << 11)
+#define P4_EXP_TOUCH_RST        (1U << 12)  /* active low */
 
 #define P4_SD_D0_GPIO           39
 #define P4_SD_D1_GPIO           40

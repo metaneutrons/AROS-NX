@@ -503,6 +503,19 @@ ifeq ($(P4_C4_TOUCH_PROBE),1)
 P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_PROBE -DP4_PANEL_PROBE
 endif
 
+# P4_C4_TOUCH_LOAD=1 is a development-only volatile-firmware transport gate.
+# It requires a private generated header outside the repository; no firmware
+# byte is part of AROS.  Each I2C transaction is bounded and checked, firmware
+# failure is non-fatal to the normal C3 graphical boot, and I2C1 is restored.
+ifeq ($(P4_C4_TOUCH_LOAD),1)
+ifndef P4_GSL_FW_HEADER
+$(error P4_C4_TOUCH_LOAD requires P4_GSL_FW_HEADER=/absolute/private/header.h)
+endif
+P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_LOAD -DP4_C4_TOUCH_PROBE \
+                     -DP4_PANEL_PROBE \
+                     -DP4_GSL_FW_HEADER='"$(P4_GSL_FW_HEADER)"'
+endif
+
 # P4_C1_FRAMEBUFFER_HIDD=1 keeps B6's managed double-buffered scanout alive
 # across Exec startup and publishes only the logical update operation table to
 # fbgfx.hidd.  Panel/DSI/GDMA ownership remains in kernel.resource.
@@ -936,6 +949,7 @@ CFILES := \
         getsystemattr \
         jd9365_init \
         i2c_hw \
+        gsl3670 \
         panel_power \
         psram_init \
         psram_tuning \
