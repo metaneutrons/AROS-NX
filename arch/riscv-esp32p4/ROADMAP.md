@@ -5,7 +5,7 @@ companion [README](README.md) records architecture, board facts and the
 narrative of results already observed.  This file records what comes next,
 in which order, and what evidence is required before a step changes state.
 
-Last plan review: 2026-08-22.  Current hardware is a Seeed reTerminal D1001
+Last plan review: 2026-08-29.  Current hardware is a Seeed reTerminal D1001
 with an ESP32-P4 revision 1.3 and a SanDisk `SN128` SDXC card.
 
 ## Documentation is part of the result
@@ -806,6 +806,16 @@ PCA9535 output 12.  The same run retains `0x36` as an independent I2C0 control
 ACK, restores I2C1 and completes the no-SD C3 graphical fallback.  The current
 P4 I2C timing answers on this bus at 10 kHz but not 100 kHz, which is transport
 debt rather than a 10-kHz touch-controller contract.
+
+The next hardware step also passes: a diagnostic-only private include drives
+an independently implemented, fully bounded reset/load/start/status sequence.
+It changes only PCA9535 bit 12, verifies every expander write, checks every one
+of the 4,356 firmware transfers and reads the expected live signature
+`0x5a5a5a5a` from `0xb0`.  Firmware failure is non-fatal and I2C1 is restored
+before C3 continues.  This compile-time private embedding is a named
+development mechanism, not the eventual production interface: normal builds
+contain no firmware, and the maintained driver still needs an externally
+supplied binary plus runtime absence/recovery handling.
 
 The Seeed reference repository at commit
 `5074d3b2f45626b261298e305aaf792036febc5a` names GSL3670, address `0x40`,
@@ -9719,6 +9729,70 @@ chip in the width this port assumes; it never addressed the hang.
   Next implement the bounded reset/load/start/status transport around this
   private include for a diagnostic D1001 run.  Production architecture must
   keep firmware externally supplied and make absence non-fatal to C3.
+
+### 2026-08-29 - C4 volatile GSL3670 program load is hardware verified
+
+- State change: C4 remains `hardware partial`, but reset ownership, bounded
+  volatile program transfer and the controller-live status gate now pass on
+  the D1001.  This does not claim a contact sample, input event or HIDD.
+- Implementation and firmware boundary: new `kernel/gsl3670.c` contains an
+  independent reset/load/start/status transport but no firmware bytes.  It is
+  compiled only with `P4_C4_TOUCH_LOAD=1` and an explicit private
+  `P4_GSL_FW_HEADER` generated outside the repository.  The diagnostic build
+  embeds that private table temporarily; this is a named development-only
+  mechanism, not the production firmware-loading architecture.  Normal builds
+  have neither the table nor this execution path.
+- Reset and failure safety: PCA9535 output 12 is asserted only after its low
+  latch value is installed, then released high.  Every output and direction
+  write is read back, every unrelated expander bit is preserved, and no
+  transfer is retried without a bound.  Each I2C operation has the transport's
+  50-ms deadline; the first failed record stops the load, publishes no input
+  device and still restores I2C1 so normal C3 startup can continue.
+- Build: all generated kernel objects and the old core were deleted.  The
+  aggregate `P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_LOAD=1
+  P4_GSL_FW_HEADER=/tmp/d1001-gsl3670-private.h P4_PSRAM_MHZ=200
+  P4_CPU_MHZ=360 P4_LDSCRIPT=ldscript-xip.lds` build regenerated its MetaMake
+  file and compiled every kernel source without `error:`, then failed honestly
+  at the independent four-MiB development-flashdisk capacity check before it
+  linked a core.  The focused kernel target with identical switches printed
+  both `Creating .../aros-esp32p4.bin` and `Successfully created ESP32-P4
+  image`.
+- Artifact: the newly created core is 232,000 bytes, SHA-256
+  `db41e5781056207c2e30ac8f556df4b0f68c0843320ceeb5f75470562b8858e8`.
+  `esptool image-info` reports two segments, DIO/80 MHz/32 MB, valid checksum
+  `0x97` and valid image hash
+  `9bd4a536bb169aa8080d96e1a903e7a9443b05acf646361a3f649278816ab4d7`.
+  The private input is the previously recorded 4,356-record firmware whose
+  standard binary SHA-256 is
+  `125728ad83424e533198f804cb6d8b393c59d3818903760cbda282138e782636`;
+  it and its generated C include remain under `/tmp`, outside Git.
+- Flash and hardware: esptool re-identified ESP32-P4 v1.3 D1001 MAC
+  `e8:f6:0a:e0:46:4c`.  Only the authorized core at `0x20000` was written;
+  its last image byte is `0x58a3f` and the sector-rounded erase ended at
+  `0x58fff`.  Write-time hash verification and a separate `verify-flash`
+  both matched.  BSP, bootloader, partition table and development volume were
+  not written.
+- Observed result: `tools/reset-and-log.py` captured 75 seconds from the first
+  ROM byte in `/tmp/aros-c4-gsl-load-01.log`, 158,923 bytes, SHA-256
+  `5adf712de749d493cfd6faa9e2cf5a8345d471d2bc4f9b2dd03b85509bdab18d`.
+  The passive precheck first read ID `0x50910000` and empty status
+  `0x00000000`.  The active gate then reported progress at 1,024-record
+  intervals, completed all 4,356 records and read `0xb0 = 0x5a5a5a5a`, proving
+  that the volatile controller program is alive.  The serial capture omitted
+  the eight-byte `[touch]` prefix from the final result line while retaining
+  the complete result, status and following log; the source emits that prefix,
+  so this is recorded as a capture-byte loss rather than silently normalized.
+- Regression and safety: with SD absent, the same run reported GPIO45 high,
+  registered no SD boot node, booted the read-only `FLASHDISK0P0` fallback and
+  reached the graphical recovery Shell.  A word-delimited search found no
+  trap, Alert, panic, Guru, fatal or unhandled exception.  No storage medium
+  was written.
+- Remaining scope and next step: read one bounded contact-zero record from
+  `0x80`, first idle and then with direct finger observation, without yet
+  creating input events.  Then add loss/reload recovery and replace private
+  compile-time embedding with an externally supplied runtime firmware path
+  before the absolute `mouse.hidd` subclass can be accepted.  The separate
+  I2C0 100-kHz timing defect remains transport debt.
 
 ## Evidence-entry template
 

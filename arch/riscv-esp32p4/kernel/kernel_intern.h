@@ -88,6 +88,10 @@ int krnP4I2CProbe(unsigned int address);
 void krnP4I2CLastStatus(unsigned long *raw, unsigned long *sr);
 #define P4_I2C_MISMATCH     (-8)    /* the device kept something else */
 
+#ifdef P4_C4_TOUCH_LOAD
+int krnP4GSLLoadDiagnostic(uint32_t *status, unsigned int *failed_record);
+#endif
+
 /* What the panel bring-up claimed and where it got to. */
 struct P4PanelState
 {
