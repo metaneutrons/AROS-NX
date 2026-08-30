@@ -183,6 +183,16 @@ crosstools-toolchain: tools $(CROSSTOOLS_BUILDFLAG)
 crosstools : crosstools-toolchain features
 	@$(MAKE) $(MKARGS) toolchain-linklibs
 
+# The producer-only target keeps normal upstream `make crosstools` semantics
+# intact and requires the configure-time release closure switch explicitly.
+crosstools-release : crosstools-toolchain features
+	@$(IF) $(TEST) "$(AROS_TOOLCHAIN_RELEASE)" = "1"; then \
+	    $(MAKE) $(MKARGS) toolchain-linklibs-release; \
+	else \
+	    $(ECHO) "crosstools-release requires configure --enable-toolchain-release" >&2; \
+	    exit 1; \
+	fi
+
 $(TOP)/config/features.status: $(SRCDIR)/config/features $(CROSSTOOLS_BUILDFLAG)
 	@$(IF) ! $(TEST) -f $@ ; then \
 	    $(ECHO) "Querying target compiler features..." ; \
@@ -338,7 +348,7 @@ $(TOP)/bin/$(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU)$(AROS_TARGET_SUFFIX)/gen/confi
 	@$(NOP)
 
 # targets which do not generate files or for which a file/directory exists
-.PHONY: default all makedirs gdbinit tools crosstools features docs clean arch-clean dist-clean install \
+.PHONY: default all makedirs gdbinit tools crosstools crosstools-release features docs clean arch-clean dist-clean install \
 	$(TOP)/bin/$(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU)$(AROS_TARGET_SUFFIX)/gen/config/make.opts \
 	test kernel boot workbench compiler contrib ports sdk mmake query
 

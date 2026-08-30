@@ -141,10 +141,14 @@ fi
 # Due to a bug in autoconf check for c++ compiler first.
 # For mor info see, http://osdir.com/ml/bug-autoconf-gnu/2010-05/msg00001.html.
 AC_PROG_CXX([${host_cxx_compilers}])
-CXX_BASE=$CXX
+# Autoconf 2.72 may append its accepted C/C++ dialect flag while probing the
+# compiler.  Tool-name derivation below needs the executable only: otherwise
+# Darwin's `gcc -std=gnu23` is misread as an LLVM `clang` suffix and produces
+# impossible names such as `llvm-argcc`.
+CXX_BASE=${CXX%% *}
 AC_PATH_PROG(CXX,$CXX)
 AC_PROG_CC([${host_c_compilers}])
-CC_BASE=$CC
+CC_BASE=${CC%% *}
 AC_PROG_CPP
 CPP_BASE=$CPP
 AC_PATH_PROG(CC,$CC)
@@ -174,11 +178,12 @@ if test "$IS_SUN_COMPILER" -ne "0"; then
 fi
 IS_LLVM_COMPILER=`echo $HOST_COMPILER_VERSION | grep -i -c -E 'LLVM|clang'`
 if test "$IS_LLVM_COMPILER" -ne "0"; then
-    if test "$CC_BASE" != "gcc"; then
+    HOST_TOOLCHAIN_CC_BASE=`basename "$CC_BASE"`
+    if test "$HOST_TOOLCHAIN_CC_BASE" != "gcc"; then
         HOST_TOOLCHAIN_CC=clang
         HOST_TOOLCHAIN_CXX=clang++
         HOST_TOOLCHAIN_PREFIX=llvm-
-        HOST_TOOLCHAIN_SUFFIX="`echo $CC_BASE | sed -e \"s|clang||g\"`"
+        HOST_TOOLCHAIN_SUFFIX="`echo $HOST_TOOLCHAIN_CC_BASE | sed -e \"s|clang||g\"`"
         HOST_TOOLCHAIN_FAMILY=llvm
     else
         IS_GNU_COMPILER=1
@@ -2561,10 +2566,35 @@ AC_MSG_CHECKING([whether to build crosstools])
 AC_ARG_ENABLE(crosstools,AS_HELP_STRING([--disable-crosstools],[Do not build cross-compiler toolchain]),crosstools="$enableval",crosstools="$crosstools_guess")
 AC_MSG_RESULT($crosstools)
 
+dnl The release producer needs compiler runtimes, but must not pull the
+dnl unrelated Ports include/linklib closure into its temporary SDK. Keep this
+dnl opt-in so the historical `make crosstools` graph remains unchanged.
+AC_MSG_CHECKING([whether to build the minimal crosstools release closure])
+AC_ARG_ENABLE([toolchain-release],
+    AS_HELP_STRING([--enable-toolchain-release],[Build the opt-in minimal SDK closure used by the relocatable toolchain producer]),
+    [enable_toolchain_release="$enableval"],
+    [enable_toolchain_release=no])
+case "$enable_toolchain_release" in
+    yes) aros_toolchain_release=1 ;;
+    no)  aros_toolchain_release=0 ;;
+    *)   AC_MSG_ERROR([--enable-toolchain-release accepts only yes or no]) ;;
+esac
+AC_MSG_RESULT($aros_toolchain_release)
+
 if test "${crosstools}" = "yes"; then
     if test "${crosstools_guess}" = "no"; then
         AC_MSG_ERROR([Cannot build external toolchain if an external ELF or AROS toolchain is specified])
     fi
+fi
+
+if test "$aros_toolchain_release" = "1" && test "${crosstools}" != "yes"; then
+    AC_MSG_ERROR([--enable-toolchain-release requires building AROS crosstools])
+fi
+
+if test "$aros_toolchain_release" = "1"; then
+    crosstools_ports_includes=""
+else
+    crosstools_ports_includes="ports-includes"
 fi
 
 if test "${crosstools}" = "yes" || test "${crosstools_guess}" = "no"; then
@@ -4437,6 +4467,8 @@ AC_SUBST(aros_target_nostartup_objects)
 
 AC_SUBST(crosstools_target)
 AC_SUBST(crosstools_cxx_target)
+AC_SUBST(aros_toolchain_release)
+AC_SUBST(crosstools_ports_includes)
 
 AC_SUBST(use_libatomic)
 

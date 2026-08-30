@@ -683,6 +683,8 @@ aros_nominal_height
 aros_nominal_width
 pci_hidd_target
 use_libatomic
+crosstools_ports_includes
+aros_toolchain_release
 crosstools_cxx_target
 crosstools_target
 aros_target_nostartup_objects
@@ -1017,6 +1019,7 @@ with_grub2_version
 with_grub2_splash
 enable_lzma
 enable_crosstools
+enable_toolchain_release
 with_aros_toolchain_install
 with_binutils_version
 with_gcc_version
@@ -1729,6 +1732,9 @@ Optional Features:
                           KickStart version (default=none).
   --disable-lzma          Disable optional liblzma support
   --disable-crosstools    Do not build cross-compiler toolchain
+  --enable-toolchain-release
+                          Build the opt-in minimal SDK closure used by the
+                          relocatable toolchain producer
   --enable-objc           Enable Objectve-C support (default=no)
   --enable-java           Enable Java support (default=no)
   --enable-rust           Enable Rust support (default=no)
@@ -4169,7 +4175,11 @@ ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
-CXX_BASE=$CXX
+# Autoconf 2.72 may append its accepted C/C++ dialect flag while probing the
+# compiler.  Tool-name derivation below needs the executable only: otherwise
+# Darwin's `gcc -std=gnu23` is misread as an LLVM `clang` suffix and produces
+# impossible names such as `llvm-argcc`.
+CXX_BASE=${CXX%% *}
 # Extract the first word of "$CXX", so it can be a program name with args.
 set dummy $CXX; ac_word=$2
 { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
@@ -4708,7 +4718,7 @@ ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
-CC_BASE=$CC
+CC_BASE=${CC%% *}
 ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
@@ -5189,11 +5199,12 @@ if test "$IS_SUN_COMPILER" -ne "0"; then
 fi
 IS_LLVM_COMPILER=`echo $HOST_COMPILER_VERSION | grep -i -c -E 'LLVM|clang'`
 if test "$IS_LLVM_COMPILER" -ne "0"; then
-    if test "$CC_BASE" != "gcc"; then
+    HOST_TOOLCHAIN_CC_BASE=`basename "$CC_BASE"`
+    if test "$HOST_TOOLCHAIN_CC_BASE" != "gcc"; then
         HOST_TOOLCHAIN_CC=clang
         HOST_TOOLCHAIN_CXX=clang++
         HOST_TOOLCHAIN_PREFIX=llvm-
-        HOST_TOOLCHAIN_SUFFIX="`echo $CC_BASE | sed -e \"s|clang||g\"`"
+        HOST_TOOLCHAIN_SUFFIX="`echo $HOST_TOOLCHAIN_CC_BASE | sed -e \"s|clang||g\"`"
         HOST_TOOLCHAIN_FAMILY=llvm
     else
         IS_GNU_COMPILER=1
@@ -7886,7 +7897,7 @@ printf %s "checking if Python's mako templates are installed... " >&6; }
 for ac_prog in python \
      python3 \
      python2 \
-                         python4.0                    python3.9                    python3.8                    python3.7                    python3.6                    python3.5                    python3.4                    python3.3                    python3.2                    python3.1                    python3.0                                                            python2.7                    python2.6                    python2.5                    python2.4                    python2.3                    python2.2                    python2.1                    python2.0
+                         python4.0                    python3.9                    python3.8                    python3.7                    python3.6                    python3.5                    python3.4                    python3.3                    python3.2                    python3.1                    python3.0                                                            python2.7                    python2.6                    python2.5                    python2.4                    python2.3                    python2.2                    python2.1                    python2.0                    python
 do
   # Extract the first word of "$ac_prog", so it can be a program name with args.
 set dummy $ac_prog; ac_word=$2
@@ -12110,10 +12121,39 @@ fi
 { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $crosstools" >&5
 printf '%s\n' "$crosstools" >&6; }
 
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking whether to build the minimal crosstools release closure" >&5
+printf %s "checking whether to build the minimal crosstools release closure... " >&6; }
+# Check whether --enable-toolchain-release was given.
+if test ${enable_toolchain_release+y}
+then :
+  enableval=$enable_toolchain_release; enable_toolchain_release="$enableval"
+else case e in #(
+  e) enable_toolchain_release=no ;;
+esac
+fi
+
+case "$enable_toolchain_release" in
+    yes) aros_toolchain_release=1 ;;
+    no)  aros_toolchain_release=0 ;;
+    *)   as_fn_error $? "--enable-toolchain-release accepts only yes or no" "$LINENO" 5 ;;
+esac
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $aros_toolchain_release" >&5
+printf '%s\n' "$aros_toolchain_release" >&6; }
+
 if test "${crosstools}" = "yes"; then
     if test "${crosstools_guess}" = "no"; then
         as_fn_error $? "Cannot build external toolchain if an external ELF or AROS toolchain is specified" "$LINENO" 5
     fi
+fi
+
+if test "$aros_toolchain_release" = "1" && test "${crosstools}" != "yes"; then
+    as_fn_error $? "--enable-toolchain-release requires building AROS crosstools" "$LINENO" 5
+fi
+
+if test "$aros_toolchain_release" = "1"; then
+    crosstools_ports_includes=""
+else
+    crosstools_ports_includes="ports-includes"
 fi
 
 if test "${crosstools}" = "yes" || test "${crosstools_guess}" = "no"; then
@@ -21674,4 +21714,3 @@ if test -n "$aros_shared_cflags" ; then
     echo "SHARED_CFLAGS := $aros_shared_cflags" >> ${aros_hostcfg_dir}/host.cfg
     echo "SHARED_AR := $aros_shared_ar" >> ${aros_hostcfg_dir}/host.cfg
 fi
-

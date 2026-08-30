@@ -41,6 +41,11 @@ TARGET_UNITTESTS              := @aros_config_unittests@
 
 PCI_HIDD_TARGET               := @pci_hidd_target@
 CROSSTOOLS_TARGET             := @crosstools_target@
+# `--enable-toolchain-release` is intentionally producer-only. Its empty
+# Ports edge leaves the core/generated architecture headers in place while
+# allowing the temporary runtime SDK to avoid unrelated fetched Ports.
+AROS_TOOLCHAIN_RELEASE         := @aros_toolchain_release@
+CROSSTOOLS_PORTS_INCLUDES      := @crosstools_ports_includes@
 OBJC_TARGET                   := @objc_target@
 JAVA_TARGET                   := @java_target@
 RUST_TARGET                   := @rust_target@

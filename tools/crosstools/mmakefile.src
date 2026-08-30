@@ -15,6 +15,32 @@ include $(SRCDIR)/config/aros.cfg
 #MM    toolchain-linklibs-$(AROS_TOOLCHAIN)                     \
 #MM    toolchain-linklibs-$(AROS_TARGET_CPU)
 
+# Producer-only linklib closure. Unlike toolchain-linklibs it deliberately
+# does not include the generic CPU linklib aggregate, which can pull optional
+# Ports through core-linklibs. The LLVM release variants below build their
+# compiler runtime and C++ SDK against only these explicitly required core
+# linklibs; linklibs-atomic remains part of the public LLVM toolchain ABI.
+#MM- toolchain-linklibs-release :                               \
+#MM    linklibs-atomic                                          \
+#MM    toolchain-linklibs-$(AROS_TOOLCHAIN)-release-$(AROS_TARGET_CPU) \
+#MM    toolchain-linklibs-$(AROS_TOOLCHAIN)-release
+
+# Minimal temporary SDK required to link compiler-rt, libc++, libc++abi, and
+# libunwind. Header generation remains transitive through each linklib.
+#MM- tools-crosstools-runtime-linklibs :                        \
+#MM    linklibs-startup                                         \
+#MM    linklibs-exec                                            \
+#MM    linklibs-arossupport                                     \
+#MM    linklibs-amiga                                           \
+#MM    linklibs-autoinit
+
+# Keep the existing upstream x86_64 compiler-rt32 closure verbatim.
+#MM- tools-crosstools-runtime-linklibs32 :                      \
+#MM    linklibs-startup                                         \
+#MM    linklibs-autoinit32                                      \
+#MM    linklibs-arossupport32                                   \
+#MM    linklibs-amiga32
+
 #MM- tools-crosstools-autolibs :                                \
 #MM    linklibs-startup                                         \
 #MM    linklibs-mui                                             \
