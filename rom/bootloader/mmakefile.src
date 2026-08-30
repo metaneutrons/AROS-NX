@@ -24,6 +24,10 @@ USER_CPPFLAGS := \
 # static C runtime.
 USER_LDFLAGS := -static -nostdc
 
+ifneq ($(ROM_OPTIMIZATION_CFLAGS),)
+OPTIMIZATION_CFLAGS := $(ROM_OPTIMIZATION_CFLAGS)
+endif
+
 %build_module mmake=kernel-bootloader \
     modname=bootloader modtype=resource \
     files="bootloader_init getbootinfo"
