@@ -69,6 +69,7 @@ BOOL InterpretTagList(struct SecurityBase *secBase, struct TagItem *taglist, str
         case secT_DefProtection: tags->DefProtection = tag->ti_Data;            break;
         case secT_All:           tags->All = tag->ti_Data ? TRUE : FALSE;       break;
         case secT_NoLog:         tags->NoLog = tag->ti_Data ? TRUE : FALSE;     break;
+        case secT_System:        tags->System = tag->ti_Data ? TRUE : FALSE;    break;
         }
     }
 
@@ -231,7 +232,7 @@ static struct secPrivUserInfo *LoginRequest(struct SecurityBase *secBase, struct
                     /* the login window asks for user id and password at once */
                     FormatString(GetLocS(secBase, li, MSG_LOGINPROMPT_GUI), args, text, sizeof(text));
                     memset(pwdbuf, 0, sizeof(pwdbuf));
-                    LONG g = LoginGUI(secBase, tags->PubScrName, text, failallowed,
+                    LONG g = LoginGUI(secBase, tags->PubScrName, text, failallowed, tags->System,
                                       uidbuf, sizeof(uidbuf), pwdbuf, sizeof(pwdbuf));
                     if (g == LOGINGUI_UNAVAILABLE)
                     {
@@ -280,7 +281,7 @@ static struct secPrivUserInfo *LoginRequest(struct SecurityBase *secBase, struct
                     FormatString(GetLocS(secBase, li, MSG_LOGINPROMPT_GUI), args, text, sizeof(text));
                     CopyMem(userid, uidbuf, strlen(userid) + 1 > sizeof(uidbuf) ? sizeof(uidbuf) : strlen(userid) + 1);
                     uidbuf[sizeof(uidbuf) - 1] = '\0';
-                    LONG g = LoginGUI(secBase, tags->PubScrName, text, failallowed,
+                    LONG g = LoginGUI(secBase, tags->PubScrName, text, failallowed, tags->System,
                                       uidbuf, sizeof(uidbuf), pwdbuf, sizeof(pwdbuf));
                     if (g == LOGINGUI_UNAVAILABLE)
                     {
@@ -407,7 +408,7 @@ static void SetProcessVar(struct SecurityBase *secBase, struct Task *task, CONST
     Permit();
 }
 
-/* "Home" = the user's home directory, for the task that just logged in */
+/* "$Home"/"$User" = home directory and user id of the user that just logged in */
 static void SetHomeVar(struct SecurityBase *secBase, struct Task *task, UWORD uid)
 {
     struct secUserInfo *ui = secAllocUserInfo();
@@ -415,7 +416,16 @@ static void SetHomeVar(struct SecurityBase *secBase, struct Task *task, UWORD ui
     if (ui)
     {
         ui->uid = uid;
-        SetProcessVar(secBase, task, "Home", secGetUserInfo(ui, secKeyType_uid) ? ui->HomeDir : "");
+        if (secGetUserInfo(ui, secKeyType_uid))
+        {
+            SetProcessVar(secBase, task, "Home", ui->HomeDir);
+            SetProcessVar(secBase, task, "User", ui->UserID);
+        }
+        else
+        {
+            SetProcessVar(secBase, task, "Home", "");
+            SetProcessVar(secBase, task, "User", "");
+        }
         secFreeUserInfo(ui);
     }
 }
