@@ -11067,6 +11067,80 @@ chip in the width this port assumes; it never addressed the hang.
   Resume the C4 direct pointer/two-finger and recovery gates only after the
   normal graphical image is visually restored.
 
+### 2026-08-30 - the PSRAM boot hang is located: the latency sweep does not return
+
+- State change: none to any phase.  This records a cause for a failure mode
+  that has been recovered from three times by flashing the vendor firmware and
+  never diagnosed.
+- Hardware / revision: Seeed reTerminal D1001, ESP32-P4 v1.3.
+
+**The instrument.**  `krnPSRAMBringUp` runs from `.sramtext` with interrupts
+off, and a hang inside it produces no output at all - the boot stops after the
+clock report.  Two obvious ways to mark its progress are rejected by
+`check-sramtext.sh`, correctly: calling `krnP4PutStr`, which lives in flash on
+an XIP build, and passing a string, whose literal lands in flash `.rodata`.
+A single character needs no storage - it is an immediate in the instruction
+stream - and `psram_mark` in `psram_init.c` duplicates `krnP4PutC`'s mechanism
+rather than sharing it, because making the console SRAM-resident would move it
+into a 40 KB budget for a diagnostic.  Behind `P4_PSRAM_TRACE`.
+
+Validated on a booting board first, which is what made the result readable:
+a good boot prints `123456789afgh` between the clock report and the first PSRAM
+line.
+
+**The measurement.**  A hung boot prints
+
+```text
+123456789ab789ab789ab
+```
+
+and stops.  Markers 1-6 are the bring-up to the DLL, then the identify retry
+runs three times.  Marker `b` sits immediately before `p4_psram_probe_latency`
+and markers past it never appear, so the third call into the sweep does not
+return while the first two do.
+
+Each ask inside the sweep is an unbounded read through the ROM SPI helpers, and
+the file's own comment - written long before this was measured - says what that
+means: a read at the wrong width does not fail, it does not return.
+
+**The containment.**  The sweep is now off unless `P4_PSRAM_SWEEP=1`.  The same
+board then prints its diagnosis and carries on headless:
+
+```text
+123456789aB789aB789aBf
+[psram]  chip   no answer - vendor 0x1b mr2 0xfb, data lost
+[psram]  found  no answer in any of eight read latencies
+```
+
+A boot that reports an absent PSRAM is diagnosable and leaves the board usable;
+a boot that hangs needs the vendor firmware flashed.  The handover registers
+also become readable, which they never were while the boot stopped before
+printing them.
+
+**What is not fixed.**  A bound would be better than a skip.  It needs the MSPI
+transaction started and polled by `psram_init.c` instead of by `rom_cmd_start`,
+and the P4 register headers do not carry the names the earlier chips use; this
+port has not verified them and guessing at them is not acceptable here.
+
+Nor is the cause of the chip state addressed.  A scanout running across a reset
+puts it there, and `krnP4ScanoutQuiesce` arrives too late to prevent it: between
+the reset and this port's code sit the ROM and ESP-IDF bootloaders, a few
+hundred milliseconds in which the GDMA keeps reading PSRAM.  The quiesce only
+helps when the reset falls after the scanout has already stopped, which is why
+`P4_SCANOUT_SECS` and the `scanout stopped, panel safe` line matter.
+
+- Acceptance points passed: none claimed.
+- Remaining risk: unchanged.  The recovery procedure is still to flash the
+  vendor app to `0x20000`, boot it once, and flash the core back.
+- Next safe step: the bounded MSPI transaction, if the register layout can be
+  established from the technical reference rather than inferred.
+
+**Session note.**  The work that produced this also re-derived several facts
+already in this log - the 1,500 Mbit/s lane rate, the `+525` row mapping, the
+bounded scanout - because it read B5's `hardware partial` row as an open
+front rather than checking the newest dated entries first.  Read the end of
+this file before the master table.
+
 ## Evidence-entry template
 
 ```text
