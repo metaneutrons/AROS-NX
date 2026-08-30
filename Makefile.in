@@ -185,7 +185,7 @@ crosstools : crosstools-toolchain features
 
 # The producer-only target keeps normal upstream `make crosstools` semantics
 # intact and requires the configure-time release closure switch explicitly.
-crosstools-release : crosstools-toolchain features
+crosstools-release : crosstools-toolchain
 	@$(IF) $(TEST) "$(AROS_TOOLCHAIN_RELEASE)" = "1"; then \
 	    $(MAKE) $(MKARGS) toolchain-linklibs-release; \
 	else \
