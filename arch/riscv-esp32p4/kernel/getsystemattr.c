@@ -2,6 +2,7 @@
 
 #include <aros/framebuffer.h>
 #include <aros/kernel.h>
+#include <aros/touchscreen.h>
 #include <exec/execbase.h>
 
 #include <kernel_base.h>
@@ -40,6 +41,11 @@ AROS_LH1(intptr_t, KrnGetSystemAttr,
         return (intptr_t)(P4_PANEL_H_RES * P4_FB_BYTES_PER_PIXEL);
     case KATTR_FrameBufferOps:
         return (intptr_t)krnP4FrameBufferOps();
+#endif
+
+#ifdef P4_C4_TOUCH_HIDD
+    case KATTR_TouchScreenOps:
+        return (intptr_t)krnP4GSLTouchScreenOps();
 #endif
 
     default:

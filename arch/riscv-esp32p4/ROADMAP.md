@@ -134,7 +134,7 @@ gate: compensated output is not the native display contract.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
-| C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification, bounded reset/load/status and raw contact-zero transport are hardware verified.  Directly observed motion is smooth and releases are visible, but raw X uses an approximately 1600-unit sensor domain, GPIO16 remains low and one finger can report count 2.  Independent normalization/filtering, runtime external firmware/recovery, task-context polling and the absolute `mouse.hidd` subclass remain; closes M7 |
+| C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification, bounded reset/load/status and raw contact-zero transport are hardware verified.  The absolute `mouse.hidd` subclass, task-context 20-Hz poller, normalization and press/release policy pass the direct-X interaction sub-gate after the scheduler idle fix.  Its version-3 contact-frame path independently decodes the complete 44-byte report, exposes up to ten contacts and keeps the visible pointer on the nearest continuing contact.  The FIFO-segmented long read and real one-/two-contact parsing pass synchronized D1001 traces with zero errors; both contacts report hardware ID zero, validating positions rather than IDs as the identity source.  Gesture synthesis and runtime external firmware/recovery remain; closes M7 |
 
 ## Track A: storage and normal boot
 
@@ -830,6 +830,62 @@ domain and performs substantial filtering and scaling from the sensor domain.
 AROS therefore still needs its own documented contact-zero filter,
 normalization and orientation policy before it publishes absolute events.
 
+That first maintained input path now exists and has passed its first live-event
+sub-gate.  A versioned kernel touch-operation table exposes one bounded report;
+`p4touch.hidd` is a real absolute `mouse.hidd` subclass with a priority-20
+task, 20-Hz `timer.device` waits, independent X/Y normalization from
+`1664 x 896` to `1280 x 800`, mirrored axes, motion-before-press ordering and
+a two-zero-poll release policy.  The D1001 loads and registers the module
+without a fatal marker.  Direct observation of the first candidate found no
+visible pointer response.  Tracing proved that the worker and its timer
+continued after boot and that at least 100 bounded I2C reads succeeded, but
+all returned contact count zero.  The difference from the hardware-verified
+raw sampler was transport lifetime: the HIDD reset the singleton I2C host and
+restored I2C1 for every report, while the sampler selected I2C0 once.  Version
+2 of the operation table therefore adds explicit acquire/release callbacks and
+the worker owns one bounded I2C0 session, returning the controller to I2C1 on
+exit.  A synchronized run then recorded real coordinates, six absolute-motion
+events and one press with zero read errors and live firmware.  Later traces
+record motion, press and release, and correlate the apparent pointer freeze
+with the no-SD recovery Shell's permanent `ECON:` input read rather than with
+the touch event callback or its 100-event ring.  The normal Wanderer path still
+needs an explicitly synchronized sustained-motion, tap and edge/centre gate.
+
+The subsequent normal-Wanderer freeze is now isolated below the touch HIDD.
+The raw SYSTIMER interrupt continues for the full capture with machine
+interrupts enabled, but the last runnable Wanderer task enters the
+empty-ready-list dispatcher with its saved `IDNest` value of zero.  The ESP32-P4
+idle loop inherits that logical disable state, so the raw interrupt handler
+suppresses every later VBlank and timer replies can never make a task runnable.
+The outgoing task's nesting state is already stored by `core_Switch()`, and
+`core_Dispatch()` restores the selected task's state; the fix therefore sets
+only the otherwise ownerless idle interval to logical `IDNest=-1`.  Its first
+120-second D1001 run reaches 1,820 touch polls and 97 seconds of generic VBlank
+processing without reproducing the deadlock.  The subsequent interactive run
+remains live for 2,790 polls and publishes eight presses with clean returns to
+idle, but direct observation rejects its horizontal orientation: left and
+right are reversed while top and bottom are correct.  The next one-variable
+candidate therefore keeps the verified Y mirror and removes only the X mirror
+from the normalization policy.  That direct-X package passes its size and
+35-member ELF audit and is flashed.  Its synchronized trace contains three
+press/release pairs and remains live; direct observation confirms continuous
+following and correct centre/four-edge mapping.  The interaction sub-gate
+passes.
+C4 therefore remains hardware partial.
+
+Multi-contact work started on 2026-08-30 without changing that state.  The
+version-3 kernel contract carries a coherent frame of up to ten contacts
+instead of exposing only contact zero.  The controller parser owns the 44-byte
+wire format, bounds the reported count, omits auxiliary records and retains
+the four-bit hardware ID only as diagnostic data.  The absolute mouse HIDD
+keeps its already verified one-pointer behavior by selecting the contact
+nearest the last visible position; it does not assume those hardware IDs are
+stable and does not yet synthesize a gesture.  The P4 I2C transport candidate
+uses the controller's `END` command to drain each bounded RX-FIFO segment
+without a STOP, then resumes the same bus transaction.  This is source/build
+work only until one-finger regression and two independently moving contacts
+are observed on D1001.
+
 The Seeed reference repository at commit
 `5074d3b2f45626b261298e305aaf792036febc5a` names GSL3670, address `0x40`,
 GPIO16, PCA9535 output 12 and an embedded RAM firmware table.  Its repository
@@ -847,11 +903,11 @@ little-endian Silead records and an optional private diagnostic C include.
 
 Implement the device as a hardware subclass of `mouse.hidd`, not a private
 route into `input.device`.  Report absolute motion before press, final motion
-before release, handle only contact zero initially and perform I2C work in a
-task/worker rather than interrupt context.  Apply the same orientation transform
-as B6 and make calibration explicit.  Treat raw count greater than zero as the
-initial contact-zero presence signal only after a bounded stability policy;
-do not expose the controller's unfiltered count as AROS multi-touch state.
+before release and perform I2C work in a task/worker rather than interrupt
+context.  Apply the same orientation transform as B6 and make calibration
+explicit.  Bound and parse the raw count before it becomes contact-frame state;
+gesture recognition belongs above that frame contract and must not infer a
+second finger from the count byte alone.
 
 Acceptance gate:
 
@@ -9879,6 +9935,662 @@ chip in the width this port assumes; it never addressed the hang.
   independently implemented policy, then publish absolute motion/press/release
   through a hardware subclass of `mouse.hidd`.  Runtime external firmware,
   reload recovery and the separate 100-kHz I2C0 timing debt remain open.
+
+### 2026-08-29 - C4 absolute HIDD boots, first pointer gate fails at live reports
+
+- State change: C4 remains `hardware partial`.  The absolute mouse HIDD and
+  kernel-to-driver contract are implemented and boot on the D1001, but the
+  acceptance gate failed because no visible pointer response was observed.
+  This entry records the failure and narrows it to live controller reports;
+  it does not claim pointer motion, press, release or edge mapping.
+- Source: dirty worktree based on `4be1f4acc05e`.  It adds the versioned
+  `KATTR_TouchScreenOps` contract, bounded contact-zero publication, a true
+  `CLID_Hidd_Mouse` subclass and a priority-20 worker using 50-ms
+  `timer.device` waits.  The independent policy maps raw `1664 x 896` to
+  logical `1280 x 800`, mirrors both axes, publishes motion before press and
+  releases after two zero reports or any read error.  The private firmware
+  header remains outside Git.
+- Build and package: affected HIDD and kernel objects were removed before
+  their documented rebuilds.  The focused kernel build printed both core
+  creation markers after `kernel-kernel-kobj` was rebuilt; package capacity
+  passed at 3,306,436 of 4,063,232 bytes.  The current diagnostic artifacts
+  are: core 232,656 bytes, SHA-256
+  `9426b00e0b9dccafa286c81571b0ddbbd68f788e4b825af7bb5d750a0e3fee9f`;
+  35-member BSP 3,306,436 bytes, SHA-256
+  `cc210b40b0f2096d506a1d020e1dceee04a0cbcd2c394169661702284088a506`;
+  `p4touch.hidd` 30,920 bytes, SHA-256
+  `dad4074ee39214312150e1dba848880cf9fc00c0efa7660b5618347929fc5f0d`.
+- Flash and safety: esptool identified ESP32-P4 revision 1.3, MAC
+  `e8:f6:0a:e0:46:4c`.  Only the authorized BSP at `0x820000` and later the
+  authorized core at `0x20000` were written.  Both write-time verification
+  and separate `verify-flash` passed.  Bootloader, partition table,
+  development volume and `storage` were not touched; all device access stays
+  read-only.
+- Initial result: `/tmp/aros-c4-hidd-01.log` is 159,285 bytes, SHA-256
+  `a274b33214e516e49ed07c4b26662cd9a6c596ab7f88f5c63bd24dbeb2b00af4`.
+  It shows 35 modules, a started and registered touch worker, the normal
+  graphical fallback and no fatal marker.  The operator directly observed no
+  visible pointer effect, so the C4 HIDD gate failed.
+- Narrowing traces: `/tmp/aros-c4-hidd-trace-04.log` is 163,670 bytes,
+  SHA-256
+  `e34a585284ac95ea8767764e5061638592486a647002ecdb9a3489ca04ec968d`.
+  It rules out driver disposal and the initially suspected timer wedge: the
+  worker returns from both contact reads and timer waits, then reaches at
+  least 100 successful polls with zero errors, zero contacts and zero events.
+  `/tmp/aros-c4-hidd-trace-05.log` is 163,929 bytes, SHA-256
+  `75f5aa2a9200b7ea6a9e01a5faf7fd095cdd8f70172cf2d4c2d63a0f32f5acb4`;
+  every 20 reads it additionally reports `0xb0=0x5a5a5a5a`, `0xbc=0` and
+  GPIO16 level 0.  That run was stopped when the operator reported missing
+  the interaction window; it is firmware-liveness evidence only, not a
+  touched-state test.
+- Process correction: port `AGENTS.md` now requires explicit operator-ready
+  confirmation before any observation, touch, card, button or cable-dependent
+  run.  A missed window can only be non-interactive evidence and cannot pass
+  or fail an interactive gate.
+- Remaining blocker and next step: once the operator explicitly confirms
+  readiness at the panel, capture report count, `0xb0`, `0xbc` and IRQ while
+  a touch is held.  If count stays zero with a live signature, compare the
+  runtime report-state setup against the already verified raw sampler; if a
+  count appears and an event is logged, continue at the generic input path.
+  Runtime external firmware and reload recovery remain separate production
+  work after pointer acceptance.
+
+### 2026-08-29 - C4 persistent I2C session produces live absolute events
+
+- State change: C4 remains `hardware partial`, but the live-report blocker is
+  resolved and the maintained HIDD has passed its motion/press/release
+  sub-gate.  Repeated taps, visible pointer behavior and edge/centre mapping
+  remain open.
+- Root cause and implementation: synchronized trace 06 still returned count
+  zero during the instructed touch while `0xb0=0x5a5a5a5a`, `0xbc=0` and the
+  worker remained live.  The verified raw sampler selected I2C0 once for its
+  bounded loop, whereas the HIDD reset the singleton host and restored I2C1
+  on every report.  Version 2 of `KrnTouchScreenOps` adds acquire/release
+  callbacks; the worker now owns one bounded persistent I2C0 polling session
+  and restores I2C1 on every exit.  No other runtime I2C consumer exists yet.
+- Build and package: every affected HIDD object plus `gsl3670.o` was removed
+  before rebuilding.  The focused link printed both core creation markers.
+  The core is 232,608 bytes, SHA-256
+  `81c191d528ade87e752f055f215a1f66e6f5495cff3d49a6a7b96895dbe75030`;
+  the BSP is 3,306,832 bytes, SHA-256
+  `a0ffb3b7e37399bb47655874027027d6041e3e00c05f7eb1d9db19833aa5727b`;
+  `p4touch.hidd` is 31,316 bytes, SHA-256
+  `274dec69a41d90a89f8c09231c9fe6364d89d1ac5685b080bb091ee4a0eed632`.
+  The package is within its 4,063,232-byte limit and `audit-package.py`
+  accepts all 35 members with zero failures.
+- Flash and safety: only the standing-authorized core at `0x20000` and BSP at
+  `0x820000` were written.  Write-time verification and separate
+  `verify-flash` passed for both.  Bootloader, partition table, development
+  volume and `storage` were not touched; the system and card remain read-only.
+- Evidence: `/tmp/aros-c4-hidd-trace-06.log` is 163,929 bytes, SHA-256
+  `a1e68ca580aec7681437b440fc10a6ceaa28d2a9b245d50c189e7fe4b5050fc5`;
+  it is the explicitly synchronized, still-zero control.  With the one-variable
+  transport change, `/tmp/aros-c4-hidd-trace-07.log` is 164,775 bytes,
+  SHA-256
+  `bccf5dc8db988c6224d0eee8ace71b1f9c9e76f126537a2604936b6c81aee5d4`.
+  It boots and registers the 35-module package, reports live firmware, reaches
+  at least 100 successful polls with zero read errors, then records eight
+  contact samples around raw `650..663,485..490`, mapped to logical
+  `779..769,366..362`, six motion events and one press event.
+- Interaction timing: the operator correctly noted that this artifact shows
+  the Amiga Shell rather than Wanderer; the instruction to wait for a
+  "desktop" was imprecise.  Contact began near the end of the capture, so the
+  log ends before a release or the requested taps.  Those absent records are
+  not treated as a driver failure or a pass.
+- Follow-up evidence: after fresh explicit ready confirmation,
+  `/tmp/aros-c4-hidd-trace-08.log` is 171,112 bytes, SHA-256
+  `3a9b30f5d45a5a7e0adbd7430a97b7dfb566cd77c901c1b62885398fdfe964df`.
+  It records 96 contact samples and 99 published events with zero read errors.
+  The retained diagnostic lines include 61 early motion events, two presses
+  and one explicit release; the later idle heartbeats after the second contact
+  sequence prove that its press was also released and did not stick.  Only two
+  distinct contact sequences occurred, so this does not pass the requested
+  three-tap gate.
+- Direct observation: the Shell pointer initially followed the touch and then
+  froze.  The worker continued through poll 160 and returned to idle before the
+  Shell's final `ECON:` input read.  Trace 10 below now resolves the previously
+  unknown boundary: polling stops at that read, not inside a contact read or
+  event callback.
+- Diagnostic follow-up prepared: the affected worker object was removed and
+  rebuilt with contact detail plus callback-entry/return tracing around events
+  90 through 140, the suspicious boundary around the 100-event
+  `gameport.device` ring.  `p4touch.hidd` is 31,644 bytes, SHA-256
+  `0e46bd6a09a1e095373ab65603a4350e068b39624a0b8011bb8632868d94220d`;
+  the 35-member BSP is 3,307,160 bytes, SHA-256
+  `661d7a9a2d1234c72972240c1792c4616ccd9d0f1327d0758065b83692940627`.
+  Package capacity and all 35 ELF audits pass.  Only the authorized BSP at
+  `0x820000` was written, with write-time and separate flash verification;
+  no other partition or medium was touched.  This is instrumentation, not a
+  behavioral fix, and no interactive result is claimed before a fresh ready
+  confirmation.
+- First instrumented attempt: `/tmp/aros-c4-hidd-trace-09.log` is 163,980
+  bytes, SHA-256
+  `a817434188e79c8e9f8cc0f145c3c8cca7589372cc0a96875f02e876b354f26e`.
+  It ends immediately after poll 100 with live firmware, successful reads,
+  zero contacts, zero events and zero errors.  The operator's instructed
+  continuous touch occurred after the captured UART interval and the pointer
+  was observed frozen at the upper left from the outset.  The observation is
+  retained, but this file cannot correlate it with controller samples or
+  callback dispatch and therefore does not decide the suspected event-100
+  boundary.  The next capture must leave a substantially longer post-Shell
+  interval; this missed timing is not a hardware pass or failure.
+- Recovery-Shell correlation: the fresh explicitly synchronized 180-second
+  capture `/tmp/aros-c4-hidd-trace-10.log` is 163,980 bytes, SHA-256
+  `fed5247124e107be82f80ae09784eb94d451cd3cc489de301cfbed75c020e5d3`.
+  GPIO45 is high, so this is the no-card `FLASHDISK0P0` recovery path.  The
+  worker reaches poll 100 with `b0=0x5a5a5a5a`, `bc=0`, IRQ low, zero read
+  errors, zero contacts and zero events; it then produces no further heartbeat
+  exactly when the Shell issues its permanent 208-byte read from `ECON:`.
+  The operator began the instructed continuous motion after that prompt and
+  directly observed that the pointer never followed.  Trace 08 has the same
+  ordering in the successful case: its 96 contact samples and 99 events all
+  occur before the final `ECON:` read, and polling ends after that read.  The
+  freeze is therefore correlated with the already documented recovery-console
+  scheduling debt, not with event 99 or the `gameport.device` ring.  This run
+  is a synchronized failure of touch in the recovery Shell, but it does not
+  test the normal SD/Wanderer path.
+- Normal-Wanderer control: after the verified read-only SD card was inserted
+  and fresh ready plus desktop-visible confirmations were obtained,
+  `/tmp/aros-c4-hidd-trace-11.log` captured 832,169 bytes, SHA-256
+  `e3666334ff48d6df294d65924d2f870854050a1fef90882ee7c305cac114c83f`.
+  The normal card boot reaches Wanderer, ends the initial CLI correctly and
+  keeps the firmware live with zero read errors through poll 230.  Polling then
+  stops immediately around the two FAT-handler `Stopping drive motor` messages.
+  The operator began the instructed continuous motion on the fully visible
+  desktop and reported the pointer frozen from the outset; the trace contains
+  zero contacts and zero events.  This proves that removing the recovery
+  `ECON:` read is insufficient and that the failure still precedes the generic
+  input callback.  It is a synchronized normal-desktop failure, not acceptance.
+- Exact blocking-call evidence: the affected worker object was deleted before
+  rebuilding.  The successful package build printed its creation marker;
+  `p4touch.hidd` is 31,732 bytes, SHA-256
+  `5353f02d8fb77b801f1e2b5d4fb8691caf78dac5bd5e74a6b9254e67b3166247`,
+  and the 35-member BSP is 3,307,248 bytes, SHA-256
+  `4a4bd7c92a6440dafae53a3dbefe832f8b425f51aaffcd11cfaf31a6e0578e9b`.
+  Package capacity passes at 3,307,248 of 4,063,232 bytes and all 35 ELF
+  audits pass.  Only the standing-authorized BSP at `0x820000` was written;
+  write-time verification and an independent flash verification passed.
+  The unchanged core, bootloader, partition table, development volume,
+  `storage` and read-only SD were not written.
+- Non-interactive result: `/tmp/aros-c4-hidd-trace-12.log` is 838,212 bytes,
+  SHA-256
+  `23e1f640bc3ce8bf044058f3824ec0b97ab65596ca807c5bfefa9116397bcae9`.
+  It confirms actual worker priority 20.  Contact reads and timer waits return
+  through poll 231; poll 232's contact read also returns successfully with
+  count zero, then the worker enters its 50-ms timer wait.  The second FAT
+  handler `Stopping drive motor` message follows immediately and that timer
+  wait never returns during the rest of the 120-second capture.  The first
+  motor-stop message at poll 229 does not block.  Thus the failure is outside
+  I2C, contact decoding and the generic input callback: the shared timer path
+  stops while FAT synchronously waits for its second block device's
+  `TD_MOTOR`.
+- Source diagnosis and next step: `flashdisk.device` completes `TD_MOTOR`
+  immediately.  `sdcard.device` implements the same command as `cmd_Reset`, a
+  pure no-op, but its disabled immediate-command classifier currently routes
+  every request through the asynchronous SD bus task.  Change only
+  `TD_MOTOR` to the immediate path and repeat the same non-interactive trace;
+  this is a root-cause test, not C4 acceptance.  Only if polling survives the
+  boot boundary should a newly synchronized observation-dependent tracking,
+  three-tap and centre-plus-four-edges run begin.  Recovery-Shell scheduling,
+  runtime external firmware/recovery and eventual shared-I2C arbitration
+  remain separate gates.
+
+### 2026-08-29 - C4 SD-motor candidate is rejected; shared timer path is isolated
+
+- State change: C4 remains `hardware partial`.  The earlier attribution to
+  asynchronous SD `TD_MOTOR` dispatch is withdrawn by direct evidence; the
+  no-op command is not the blocker.  The active blocker is narrowed to the
+  shared `timer.device`/VBlank scheduling path after a FAT timer callback.
+- Candidate and artifacts: one test build routed only SD `TD_MOTOR` through
+  the immediate path.  Its `sdcard.device` was 127,804 bytes and
+  `p4touch.hidd` was 31,732 bytes, SHA-256
+  `5353f02d8fb77b801f1e2b5d4fb8691caf78dac5bd5e74a6b9254e67b3166247`;
+  the 35-member BSP was 3,306,396 bytes.  The full hashes of the transient
+  `sdcard.device` and package were not retained before the rejected candidate
+  was overwritten; this evidence-record defect is stated rather than filling
+  it with hash prefixes.  Only `arosbsp` at `0x820000` was written and
+  verified.  The same freeze reproduced after the second motor marker, so the
+  source change was reverted.
+- Build correction: `/tmp/aros-c4-hidd-trace-14.log` is 837,527 bytes,
+  SHA-256
+  `626e8e694ddae7f252db968ab2379cc7d9b4a0918d0d66f34fe37c73947adf38`.
+  It reproduces the timer wait freeze, but the intended FAT diagnostics were
+  absent because `FAT_DEBUG=1` had not rebuilt the affected objects.  It is
+  retained as a stale-configuration correction and is not cause evidence.
+- Corrected diagnostic build: the affected FAT objects were rebuilt with
+  `FAT_DEBUG=1`.  `fat-handler` is 165,772 bytes, SHA-256
+  `df079a3fcaa619f1112d57118ef73db7a12e52e7207af99cab44756b128968e2`;
+  `p4touch.hidd` is 31,748 bytes, SHA-256
+  `3e409450743e6d10ed9d9b1b374e38fe99151ea42cb6feb881949fd1972744ec`;
+  the 35-member BSP is 3,306,632 bytes, SHA-256
+  `bd41d24a78be6ffa0e02bb9770f77dda4ee7879c6b0266418b4445b5a7b3f8ce`.
+  Capacity and all 35 ELF audits pass.  Only the authorized BSP partition was
+  written, with write-time and independent flash verification; core, boot
+  data, development volume, storage and read-only SD were untouched.
+- Cause evidence: `/tmp/aros-c4-hidd-trace-15.log` is 838,276 bytes,
+  SHA-256
+  `3df47fded8d9589a49c62872b89bc15050ef5d90527575d3c919a8822f59ac3d`.
+  It identifies the touch timer request as `0x48530de0`.  At startup both the
+  flashdisk and sdcard motor calls log before and after and return success.
+  Later the SD call again returns and the touch wait resumes.  At poll 231 the
+  worker enters its wait; the flashdisk motor call logs before and after and
+  returns success, but the touch timer request never returns during the rest
+  of the 120-second capture.  Thus the motor marker is correlation only.
+- Safety: all tests are read-only at the filesystem and SD layers.  No SD
+  content or non-authorized flash range was written.
+- Remaining risk and next step: instrument the generic VBlank timer dispatcher
+  with a low-rate heartbeat and before/after completed-request replies.  If
+  VBlank continues after the touch wait stalls, inspect list/reply ownership;
+  if it stops, inspect interrupt dispatch and nesting state.  This remains a
+  non-interactive diagnostic; no C4 acceptance observation is claimed.
+
+### 2026-08-29 - C4 freeze is before timer.device VBlank processing
+
+- State change: C4 remains `hardware partial`.  The blocker is narrowed from
+  the shared timer request/reply machinery to the path before
+  `TimerProcessVBlank()`: either raw SYSTIMER interrupt delivery stops or
+  Exec's interrupt-nesting gate stops causing `INTB_VERTB`.
+- Build procedure: stale `rom/timer/lowlevel.o`, `timer_device.o`, FAT
+  `timer.o`, core outputs, `fat-handler` and package outputs were removed.
+  `kernel-timer`, `kernel-timer-kobj` and `kernel-fs-fat FAT_DEBUG=1` were
+  rebuilt.  The ordinary top-level core target then failed honestly because
+  the separately generated four-MiB flashdisk image had outgrown its contents;
+  no stale core was accepted.  The already complete kernel objects were linked
+  directly through the generated port makefile with
+  `P4_LDSCRIPT=ldscript-xip.lds`, and the required
+  `Creating .../aros-esp32p4.bin` marker appeared.  The flashdisk image and
+  its partition were not written.
+- Artifacts: core 232,816 bytes, SHA-256
+  `324cf085bf75f1a0c42b1879863dd5b1f755bd8263996c165935e1e761dc7724`;
+  `fat-handler` 165,772 bytes, SHA-256
+  `df079a3fcaa619f1112d57118ef73db7a12e52e7207af99cab44756b128968e2`;
+  `p4touch.hidd` 31,748 bytes, SHA-256
+  `3e409450743e6d10ed9d9b1b374e38fe99151ea42cb6feb881949fd1972744ec`;
+  BSP 3,306,632 bytes, SHA-256
+  `bd41d24a78be6ffa0e02bb9770f77dda4ee7879c6b0266418b4445b5a7b3f8ce`.
+  All 35 package members pass the ELF audit and capacity remains below the
+  4,063,232-byte split.
+- Flash procedure: only core at `0x20000` and BSP at `0x820000` were written.
+  Both passed write-time hash verification and a separate `verify-flash`;
+  bootloader, partition table, flash development volume, storage and read-only
+  SD were untouched.
+- Non-interactive evidence: `/tmp/aros-c4-hidd-trace-16.log` is 856,073 bytes,
+  SHA-256
+  `af7f673a2b9c7de024dccef618a2f21ee6e00e27602e0e4b56cfe71d2ff8c68f`.
+  It contains 308 matched before/after completed-request replies and 16
+  one-Hz VBlank markers.  Both the SD and flashdisk motor calls return success.
+  Touch request `0x48530de0` is replied and its wait returns through poll 232.
+  Poll 233 completes its contact read and enters the next wait; after that
+  there is no further completed reply, VBlank marker or UART output during
+  the remainder of the 120-second capture.  Thus no isolated timer request
+  is lost: `TimerProcessVBlank()` itself is no longer reached.
+- Safety: this is non-interactive diagnostic evidence only.  Filesystem and
+  SD paths stayed read-only and only the two standing-authorized flash ranges
+  were changed.
+- Next safe step: a prepared kernel-trap diagnostic logs the raw SYSTIMER IRQ
+  once per second before `INTB_VERTB` gating, the saved interrupt-enable bit,
+  `IDNest`, current task and accumulated skipped VBlanks, plus the transition
+  into and out of a skipped state.  If raw IRQ logs continue, fix nesting
+  ownership; if they stop too, inspect physical interrupt enable and restored
+  task context.  It is not yet built or flashed in this entry.
+
+### 2026-08-29 - C4 first raw-IRQ instrument faults before SysBase
+
+- State change: C4 remains `hardware partial`; this run provides no evidence
+  about the touch freeze because the diagnostic failed during early boot.
+- Artifact and flash: the first raw-IRQ core was 233,344 bytes, SHA-256
+  `992047495e7f94116f3660d2a7e5300104f77302bab672a8af3b151f1bfbd54e`.
+  Its required creation marker and SRAM-residency check passed.  Only core at
+  `0x20000` was written, with write-time and independent verification; the
+  unchanged BSP and every other flash range were untouched.
+- Observed result: `/tmp/aros-c4-hidd-trace-17.log` is 2,783 bytes, SHA-256
+  `cc5ea2a528f8ae47042d69b2c88178f626474301208015502ad1d8bb6ee3e613`.
+  It stops during clock bring-up with a load-access fault at `0x4000ed2c`,
+  address `0x000002ac`, before Exec or touch exists.
+- Cause and correction: SYSTIMER already interrupts before `SysBase` is
+  initialized.  The diagnostic classified that normal early state as a
+  skipped VBlank and called the ordinary `bug()` path, which is not valid
+  before Exec exists.  The measurement itself caused the fault.  All new
+  formatting and skip-transition output is now conditional on non-null
+  `SysBase`; early ticks are only acknowledged and counted as before.
+- Safety and next step: no filesystem or medium access had begun.  Rebuild the
+  corrected core from a deleted affected object, replace the bad core and
+  repeat the same non-interactive raw-IRQ discriminator.  No acceptance claim
+  is made from this run.
+
+### 2026-08-29 - C4 raw IRQs expose an idle-dispatch nesting deadlock
+
+- State change: C4 remains `hardware partial`, but the normal-Wanderer freeze
+  is localized to the ESP32-P4 empty-ready-list dispatch path.  It is not an
+  SD, I2C, touch callback, timer-request, physical interrupt or SYSTIMER
+  failure.
+- Build and artifact: the early-boot-unsafe formatting path was made
+  conditional on a non-null `SysBase`; the affected trap and resource objects
+  and core outputs were removed and rebuilt.  The required
+  `Creating .../aros-esp32p4.bin` marker appeared.  The corrected private
+  C3+C4 raw-IRQ core is 233,408 bytes, SHA-256
+  `8ef1476997ad00066eef5ee2af3ab625ed3f0355c58cf20721df869c9131cfec`.
+  The unchanged 35-member BSP remains 3,306,632 bytes, SHA-256
+  `bd41d24a78be6ffa0e02bb9770f77dda4ee7879c6b0266418b4445b5a7b3f8ce`.
+- Flash procedure: only core at `0x20000` was written.  It passed write-time
+  hash verification and an independent `verify-flash`; BSP, bootloader,
+  partition table, development volume, storage and SD were untouched.
+- Non-interactive evidence: `/tmp/aros-c4-hidd-trace-18.log` is 865,138 bytes,
+  SHA-256
+  `f0dc635b1e8692203e5905e76b8af46e54cfd60daf089624c2d3367d50aff1b4`.
+  Raw SYSTIMER ticks continue through tick 12,000 and report saved machine
+  interrupt enable `mpie=1`.  Touch polling returns through poll 232; poll 233
+  completes its contact read and enters the next timer wait.  At tick 4,025
+  the VBlank skip begins with `IDNest=0` and current task `0x48ab6c90`.
+  That pointer maps exactly to the process created as `WANDERER:Wanderer`.
+  Every later sampled IRQ enters and leaves normally with the same task and
+  `IDNest=0`; by tick 12,000, 7,978 VBlanks have been suppressed.
+- Root cause: `core_Switch()` saves the outgoing task's `tc_IDNestCnt=0`, but
+  when `core_Dispatch()` finds no runnable task the ESP32-P4 `cpu_Dispatch()`
+  idle loop leaves the global logical nesting count at that task-owned value.
+  The platform raw IRQ gate only causes `INTB_VERTB` while `IDNest < 0`, so no
+  timer reply can make a waiting task runnable.  This is a self-sustaining
+  scheduler deadlock; physical IRQ delivery remains healthy.
+- Implementation prepared: only the ESP32-P4 no-runnable-task idle interval
+  now sets global `IDNest=-1` before opening machine interrupts and executing
+  `wfi`.  The outgoing value is already saved, and `core_Dispatch()` restores
+  the chosen task's own value before returning it.  Generic scheduler code is
+  unchanged.
+- Safety and next step: this was a read-only, non-interactive capture.  Rebuild
+  and flash only the corrected core, then require raw and generic VBlank
+  heartbeats plus touch polling to continue through a 120-second unattended
+  run.  Only after that passes may a freshly consented interactive sustained
+  pointer/tap/edge gate begin.
+
+### 2026-08-29 - C4 idle-dispatch deadlock fix is hardware verified
+
+- State change: C4 remains `hardware partial`, but the scheduler/timer blocker
+  is resolved on D1001.  The normal Wanderer path now remains live well beyond
+  the former poll-233 boundary.  This is a non-interactive prerequisite pass,
+  not the still-open pointer/tap/edge acceptance gate.
+- Implementation: in only the ESP32-P4 `cpu_Dispatch()` no-runnable-task
+  loop, global `IDNest` is set to `-1` before machine interrupts are opened
+  and `wfi` is executed.  `core_Switch()` has already saved the outgoing
+  task's nesting value, and a successful `core_Dispatch()` restores the next
+  task's own value.  Generic scheduler code and task-owned state are unchanged.
+- Build procedure: stale `kernel_cpu.o`, `kernel_resource.o`, `core.elf`,
+  `core.map` and `aros-esp32p4.bin` were deleted.  `kernel-kernel-kobj` rebuilt
+  the affected CPU object and linked resource object.  The generated port
+  makefile then linked with `P4_LDSCRIPT=ldscript-xip.lds` and the private
+  C3+C4 development defines; both the core and image `Creating` markers and
+  the SRAM-residency check completed successfully.
+- Artifact: core 233,408 bytes, SHA-256
+  `daaf927e5d0f108dc8a37e0f7320d454f28ad9700d7e6cd08d8dff78e2b9d4aa`.
+  The unchanged 35-member BSP remains 3,306,632 bytes, SHA-256
+  `bd41d24a78be6ffa0e02bb9770f77dda4ee7879c6b0266418b4445b5a7b3f8ce`.
+- Flash procedure: D1001 revision 1.3, MAC `e8:f6:0a:e0:46:4c`; only the core
+  at `0x20000` was written.  The write-time hash check and a separate
+  `verify-flash` digest both passed.  BSP, bootloader, partition table,
+  development volume, storage and SD were untouched.
+- Non-interactive evidence: `/tmp/aros-c4-hidd-trace-19.log` is 1,026,943
+  bytes, SHA-256
+  `825f196d54d34e97e0cd2ad2cc99fbd3b133219ffd25615b0e5c77716c82f5e6`.
+  The 120-second first-byte capture contains 97 sampled raw IRQ entries, 97
+  generic VBlank heartbeats, 182 touch heartbeats and 2,788 matched
+  before/after timer replies.  Touch polling reaches 1,820 with live firmware,
+  zero read errors and no contact because this run intentionally required no
+  operator interaction.  At the old boundary, ticks 4,000 and 4,100 now show
+  `IDNest=-1`, `mpie=1` and the same Wanderer task; processing continues
+  through tick 12,000 and VBlank second 97.
+- Nesting detail: three VBlanks are skipped during early single-task
+  initialization at tick 2,370, before a current task exists; the skip state
+  ends at tick 2,373 and never recurs.  This bounded boot transition is unlike
+  Trace 18's permanent 7,978 skips beginning in normal Wanderer operation.
+- Acceptance and safety: no trap, panic, Guru, Alert or access fault appears.
+  The test is read-only at filesystem and SD layers and changed no additional
+  flash range.  It hardware-verifies the idle-dispatch fix and the C4 timer
+  prerequisite only.
+- Next safe step: after a fresh explicit operator-ready confirmation, perform
+  one synchronized normal-Wanderer run with sustained pointer tracking, three
+  separated taps and centre plus four-edge mapping.  No interactive run may
+  start merely because this unattended prerequisite passed.
+
+### 2026-08-29 - C4 post-fix pointer gate rejects horizontal mirroring
+
+- State change: C4 remains `hardware partial`.  The idle-dispatch fix passes
+  under real touch traffic and the worker no longer freezes, but the first
+  post-fix interactive acceptance attempt fails because left and right are
+  directly observed reversed.
+- Procedure: after a fresh explicit operator-ready confirmation, a 180-second
+  first-byte normal-Wanderer capture requested sustained motion, three
+  separated taps and centre plus four-edge touches.  The operator reported
+  during the live window that left and right were interchanged.  That direct
+  observation fails horizontal edge mapping regardless of the otherwise live
+  event stream.
+- Evidence: `/tmp/aros-c4-hidd-trace-20.log` is 1,153,740 bytes, SHA-256
+  `b7754ef024c1cf8fef0cb827233308f58459903f8e0782ce44644fd57e6e844b`.
+  It reaches 2,790 polls, 405 contact samples and 494 published events with
+  zero read errors and ends idle.  Event diagnostics contain eight press
+  events and five directly printed release events; intervening heartbeats
+  repeatedly return `down` to zero, so no stuck press or renewed scheduler
+  freeze is present.  The trace is transport/liveness and event evidence, not
+  a substitute for the failed visual orientation observation.
+- Follow-up observation: on 2026-08-30 the operator confirmed that top and
+  bottom were correct in the same run.  Only horizontal orientation failed.
+- Implementation prepared: normalization is split into direct and mirrored
+  scale.  X now uses direct `1664 -> 1280` scaling; Y retains the directly
+  verified mirrored `896 -> 800` policy.  No raw transport, filtering,
+  press/release, scheduler or timer behavior changes.
+- Safety and next step: all filesystem and SD access remained read-only and no
+  flash write occurred during this capture.  Rebuild only the affected HIDD
+  package, flash only the standing-authorized BSP range, then request a new
+  explicit ready confirmation before repeating the interactive gate.  This
+  failed gate is retained and cannot be counted toward C4 acceptance.
+
+### 2026-08-30 - C4 direct-X orientation candidate is flashed for verification
+
+- State change: C4 remains `hardware partial`.  The directly observed vertical
+  pass and horizontal failure are implemented as a one-variable orientation
+  correction and are build, package-audit and flash verified.  No behavioral
+  or interactive acceptance is claimed before a new synchronized run.
+- Implementation: contact X is clamped and scaled directly from `1664` raw
+  units to `1280` logical pixels.  Contact Y retains the directly verified
+  mirrored `896 -> 800` transform.  Transport, 20-Hz polling, filtering,
+  motion/press/release ordering and the scheduler fix are unchanged.  The
+  registration line now states `direct X and mirrored Y`.
+- Build procedure: all generated `p4touch` objects, the old module and the old
+  package were deleted first.  The initial command omitted the private
+  firmware-header argument and stopped before producing an artifact; no stale
+  output was accepted.  The repeated build used
+  `P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_HIDD=1 P4_C4_TOUCH_LOAD=1` and explicit
+  `/tmp/d1001-gsl3670-private.h`.  The private header remains outside Git.
+- Artifacts: `p4touch.hidd` 31,764 bytes, SHA-256
+  `c4f4f4ec1e6bc267c5d2e9cdc01672b68bbf948c1ba9ea2b1cc62143dc220e7f`;
+  35-member BSP 3,306,648 bytes, SHA-256
+  `be945ff84d1efd440a44369f6322f951cba9a305adb6d8a6b434e8bb558c01da`.
+  Capacity passes against the 4,063,232-byte package/volume split.  The audit
+  accepts all 35 RISC-V ELF members with zero failures.
+- Flash procedure: esptool identified D1001 ESP32-P4 revision 1.3, MAC
+  `e8:f6:0a:e0:46:4c`.  Only the standing-authorized BSP at `0x820000` was
+  written; the range ended at `0x00b47fff`.  Write-time hash verification and
+  a separate `verify-flash` digest both passed.  Core, bootloader, partition
+  table, development volume, storage and read-only SD were untouched.
+- Next safe step: describe the same sustained-motion, three-separated-tap and
+  centre-plus-four-edge procedure, then wait for a fresh explicit operator
+  `ready` before resetting.  The required direct observations are continuous
+  pointer following, three distinct click responses, correct left/right and
+  top/bottom orientation, and reachability of all five requested positions.
+
+### 2026-08-30 - C4 direct-X synchronized trace passes transport and three taps
+
+- State change: C4 remains `hardware partial`, but its absolute-pointer
+  interaction sub-gate is hardware verified.  The synchronized UART evidence
+  and direct observation both pass without a scheduler regression.
+- Procedure: after a fresh explicit `ready`, a 180-second first-byte capture
+  reset into normal Wanderer.  The operator was instructed to perform ten
+  seconds of continuous motion, three separated taps, then centre, upper-left,
+  upper-right, lower-right and lower-left touches.
+- Evidence: `/tmp/aros-c4-hidd-trace-21.log` is 1,160,908 bytes, SHA-256
+  `55d190035143087e643d081a9c80849964c0a2a804213b4a16a39b5881629f5d`.
+  The loaded module identifies `direct X and mirrored Y`.  The trace reaches
+  2,960 polls, 199 contact samples and 226 published events with zero read
+  errors and finishes with `down=0`.  It contains exactly three printed press
+  and three printed release events plus 109 printed motion events.  All 157
+  sampled raw IRQ heartbeats and all 157 generic VBlank heartbeats continue;
+  no trap, panic, Guru, Alert or access fault appears.
+- Direct observation: the operator reports that everything appears correct:
+  the pointer follows continuously, all three separated taps respond and the
+  centre plus four requested edges are correctly oriented and reachable.  In
+  combination with the exact three UART press/release pairs, this passes the
+  current interaction gate.
+- Safety and next step: no flash or writable filesystem action occurred during
+  this read-only capture.  Remove temporary C4/FAT/timer/raw-IRQ tracing,
+  rebuild and repeat a bounded regression before the functional C4 commit.
+  Runtime external firmware supply and recovery remain separate production
+  work and prevent C4 as a whole from being marked complete.
+
+### 2026-08-30 - C4 coherent multi-contact implementation started
+
+- State change: C4 remains `hardware partial`.  The already verified absolute
+  pointer is not reclassified.  A version-3 multi-contact source candidate is
+  implemented and build verified but has no D1001 claim yet.
+- Reference boundary: the public Silead report behavior in Linux was inspected
+  before this work, so this cannot honestly be described as a strict clean-room
+  implementation.  No Linux source, control flow or data structures are copied.
+  The AROS implementation is independently structured around its existing
+  kernel-operation contract and absolute `mouse.hidd` subclass.  The local
+  ESP-IDF 6.0 P4 I2C driver was used as the hardware reference for preserving
+  one transaction across an RX-FIFO `END` boundary.
+- Implementation: `KrnTouchScreenOps` version 3 returns a bounded coherent
+  frame with up to ten contacts.  The GSL parser reads all 44 bytes, bounds the
+  count, parses 12-bit coordinates and four-bit diagnostic IDs, and omits
+  auxiliary records.  `krnP4I2CTransfer()` can now segment reads up to 255 bytes
+  into 30-byte FIFO portions without STOP between portions, with a fresh
+  50-ms deadline for each portion and the normal final-byte NACK before STOP.
+  `p4touch.hidd` keeps the visible one-pointer contract by nearest-position
+  continuation instead of trusting controller IDs; it records bounded
+  multi-frame coordinates but synthesizes no gesture yet.
+- Safety: this source change performs no flash write and no interactive test.
+  Firmware remains external and the SD path remains read-only.  The existing
+  eight-byte raw contact-zero diagnostic remains available as an independent
+  fallback measurement.
+- Build evidence: every affected generated I2C, GSL and `p4touch` object plus
+  the previous core, HIDD and package artifacts was removed before the build.
+  A broad parallel kernel target compiled the changed sources but then failed
+  honestly at the unrelated generated flashdisk with `image too small for its
+  contents`; it is not treated as a successful core build.  One direct link
+  attempt also selected the small default linker script and correctly failed
+  its kickstart ceiling, and the first corrected XIP link reached image
+  creation but lacked `esptool` in `PATH`.  The accepted focused retry used
+  `ldscript-xip.lds` and `uv run --with esptool esptool`; it passed SRAM
+  residency and printed the required `Creating .../aros-esp32p4.bin` marker.
+  The resulting core is 233,984 bytes, SHA-256
+  `3dd8bdd44cf6612d5201579831b9c449eb4486c4aa61f8695a1d20f813002e86`.
+  The rebuilt `p4touch.hidd` is 31,668 bytes, SHA-256
+  `f7d836450cef10cd16cfddabb854d37f081baaef55c496b05ddd5077e920669d`.
+  The 35-member BSP is 3,306,552 bytes, SHA-256
+  `a159a9a935e1d4e3a167a7522a10aec7267643d49ae750c0ed0cd7b044a49852`;
+  `audit-package.py` passes all 35 members as ELF32 RISC-V with zero failures.
+  The first audit invocation lacked the cross-tool directory in `PATH`; the
+  identical package passed after adding the configured cross-tool directory,
+  so no failed audit is hidden as a pass.
+- Final rebuild detail: after the last formatting/comment-only source check,
+  stale affected objects and artifacts were removed again.  The known 4-MiB
+  development-flashdisk dependency again failed honestly as overfull.  A
+  retry with `FLASHDISK_SIZE_MB=8` only for that disposable host artifact let
+  the complete core target continue; the 8-MiB image was not flashed.  Core,
+  HIDD and BSP reproduced the hashes and sizes above exactly, and the package
+  again passed 35/35.  One intervening audit command named the script's parent
+  directory instead of `boot/audit-package.py` and failed before inspecting
+  the package; the corrected command produced the recorded pass.
+- Flash evidence: D1001 revision 1.3, MAC `e8:f6:0a:e0:46:4c`, appeared as
+  `/dev/cu.usbmodem101`.  Only the 233,984-byte core at `0x20000` and the
+  3,306,552-byte BSP at `0x820000` were written.  Both write-time hash checks
+  and a separate two-range `verify-flash` passed.  Bootloader, partition table,
+  development flash volume, `storage` and SD were untouched.
+- Non-interactive hardware sanity: a 35-second first-byte reset capture at
+  `/tmp/aros-c4-multicontact-sanity-01.log` is 565,466 bytes, SHA-256
+  `f8870854e2cc78a55daaca124fc7f9ccc7148af2594797705716924d31a360d4`.
+  The private 4,356-record firmware loads with status `0x5a5a5a5a`, the
+  version-3 HIDD registers for ten contacts, and its full 44-byte segmented
+  reads reach the 100-poll heartbeat with zero errors while Wanderer launches.
+  There is no trap, panic, Guru, Alert or access fault.  This verifies bounded
+  idle-frame transport across the FIFO boundary, not contact decoding.
+- Remaining risk: active full-report parsing and real independent two-contact
+  motion are not hardware verified.  A prior one-finger run sometimes reported
+  count 2, so count alone cannot pass the multi-contact gate.
+- Next safe step: describe a one-finger regression plus separated two-finger
+  motion test and wait for a fresh explicit operator-ready confirmation.
+
+### 2026-08-30 - C4 coherent two-contact reports are hardware verified
+
+- State change: C4 remains `hardware partial`, but the complete 44-byte report,
+  FIFO continuation, one-contact regression and two independently moving
+  contacts are hardware verified.  No right-click gesture is claimed yet.
+- Procedure: after the required fresh operator `bereit`, a 100-second
+  first-byte reset capture instructed one-finger motion and one tap, followed
+  by two separated fingers moving independently for about ten seconds and
+  lifting separately.
+- Evidence: `/tmp/aros-c4-multicontact-interactive-01.log` is 935,889 bytes,
+  SHA-256
+  `f03d70cfa87075716490fa45db44c7d5c701d92ff7a8f0b1450388d38ee4fe37`.
+  It reaches 1,000 polls, 204 active contact frames, 143 parsed two-contact
+  frames, a maximum of exactly 2 reported and 2 parsed contacts, 203 published
+  mouse events and zero read errors.  The one-finger phase produces two
+  complete press/release cycles including the requested tap; the two-finger
+  phase produces one further complete cycle and ends released.  Both contacts
+  report hardware ID zero throughout while their coordinate pairs move
+  independently, directly confirming that controller IDs cannot identify
+  contacts on this D1001 firmware and that nearest-position continuation is
+  the correct current pointer policy.  No trap, panic, Guru, Alert or access
+  fault appears.
+- Cleanup started in the same source state: the temporary raw timer-IRQ,
+  generic timer reply and FAT motor/timer traces used to isolate the scheduler
+  deadlock have been removed.  The hardware-verified ESP32-P4 idle-dispatch
+  correction itself remains.
+- Cleanup build evidence: the first core rebuild stopped honestly because the
+  explicitly removed generated `timer_device.o` has no direct rule in the core
+  target.  Rebuilding `kernel-timer-kobj` first restored that generated
+  dependency; no stale core was accepted.  The known overfull four-MiB
+  development-flashdisk dependency was again replaced only for the disposable
+  host build by `FLASHDISK_SIZE_MB=8`; that image is not a flash candidate.
+  The clean core target then passed SRAM residency and printed the required
+  `Creating .../aros-esp32p4.bin` marker.  The resulting core is 233,120 bytes,
+  SHA-256
+  `921d9c57580af39ea827c3bffd65b3e5394349444fa736f1e1904ae3b89302e7`.
+  The unchanged rebuilt `p4touch.hidd` is 31,668 bytes, SHA-256
+  `f7d836450cef10cd16cfddabb854d37f081baaef55c496b05ddd5077e920669d`.
+  The clean BSP is 3,304,608 bytes, SHA-256
+  `8296d2efafa1e57eba946bfa42d515257d98258c569d27980e76cc3b83799728`;
+  `audit-package.py` passes all 35 members as ELF32 RISC-V with zero failures.
+  `git diff --check` also passes.  These are build and static-audit claims only;
+  the cleanup has no interactive D1001 regression claim yet.
+- Cleanup flash evidence: D1001 revision 1.3, MAC `e8:f6:0a:e0:46:4c`, appeared
+  as `/dev/cu.usbmodem101`.  Only the 233,120-byte core at `0x20000` and the
+  3,304,608-byte BSP at `0x820000` were written.  Both write-time hash checks
+  and a separate two-range `verify-flash` passed.  Bootloader, partition table,
+  development flash volume, `storage` and SD were untouched.
+- Cleanup non-interactive sanity: the 35-second first-byte reset capture
+  `/tmp/aros-c4-clean-sanity-01.log` is 534,863 bytes, SHA-256
+  `66f93f9aa9288e218ee26b75c6515bad1000b7b2249f8eadd23f46a00c6d8244`.
+  The contact-frame HIDD registers for ten contacts, reaches the 100-poll
+  heartbeat with zero active frames, events and errors, and Wanderer loads.
+  No trap, panic, Guru, Alert or access fault appears.  This verifies ordinary
+  idle boot after trace removal, not active touch behavior.
+- Cleanup interactive regression: after a fresh explicit operator `bereit`, a
+  60-second first-byte capture instructed one-finger motion and a tap followed
+  by two separated moving fingers and sequential release.  The capture
+  `/tmp/aros-c4-clean-interactive-01.log` is 830,294 bytes, SHA-256
+  `8bf5692bee646690dd54472351dbd7c6e996c53415d2b49e1b22e9c46ea1e25f`.
+  It reaches 400 polls, 116 active contact frames, 58 independently moving
+  two-contact frames, maximum 2 reported/2 parsed contacts, 111 published
+  events, three complete press/release cycles and zero read errors.  No trap,
+  panic, Guru, Alert or access fault appears.  Direct observation confirms
+  that the pointer follows the touch, the desktop remains live and Wanderer
+  draws the expected icon-selection rectangles while the current one-contact
+  policy holds the left button during motion.
+- State after cleanup: the trace-free C4 coherent-contact foundation passes
+  build, package audit, flash verification, idle boot and synchronized active
+  one-/two-finger regression.  This verifies the current left-button pointer
+  mapping; no right-click gesture is claimed.
+- Next safe step: commit this foundation as one functional change, then add
+  two-finger right-button synthesis as a separate implementation and hardware
+  gate.
 
 ## Evidence-entry template
 

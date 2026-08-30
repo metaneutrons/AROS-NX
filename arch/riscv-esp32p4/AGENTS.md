@@ -77,6 +77,18 @@ was moved into a later report only so it could be read, and a `SW_SYS_RESET`
 loop was misattributed for the same reason.  A measurement you cannot reliably
 read is not a measurement.
 
+## Confirm availability before interactive hardware tests
+
+The user often works remotely and cannot necessarily see or touch the D1001.
+Before starting any run whose acceptance or diagnosis depends on a live user
+observation, touching the panel, inserting or removing the SD card, pressing a
+button or reconnecting a cable, first describe the exact interaction and wait
+for the user's explicit confirmation that they are ready.  Standing flash
+authorization does not waive this synchronization step.  A run started before
+that confirmation is non-interactive evidence only and must not be counted as
+an interactive acceptance test, even if the user later reports that they
+missed it.
+
 ## Comparing against the working reference
 
 When a hardware question survives several rounds of elimination, stop adding
