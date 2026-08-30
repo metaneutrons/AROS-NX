@@ -1145,6 +1145,146 @@ static int b6_dirty_writeback(unsigned long fb, unsigned long x,
 }
 
 #ifdef P4_C1_FRAMEBUFFER_HIDD
+struct C1PixelSummary
+{
+    unsigned long nonzero;
+    unsigned long sum;
+    unsigned long xor_value;
+};
+
+static unsigned int c1_full_diagnostics;
+
+/* An order-independent census makes the rotated destination directly
+ * comparable with its logical source.  It is deliberately bounded to the
+ * first two full-screen submissions and is diagnostic evidence, not a data
+ * integrity primitive. */
+static void c1_logical_summary(const unsigned char *logical,
+                               unsigned long pitch,
+                               struct C1PixelSummary *out)
+{
+    unsigned long y, x;
+
+    out->nonzero = 0;
+    out->sum = 0;
+    out->xor_value = 0;
+    for (y = 0; y < P4_PANEL_H_RES; y++)
+    {
+        const unsigned char *src = logical + y * pitch;
+
+        for (x = 0; x < P4_PANEL_V_RES; x++, src += 2)
+        {
+            unsigned long value = (unsigned long)src[0]
+                                | ((unsigned long)src[1] << 8);
+
+            if (value)
+                out->nonzero++;
+            out->sum += value;
+            out->xor_value ^= value;
+        }
+    }
+}
+
+static void c1_physical_summary(unsigned long fb,
+                                struct C1PixelSummary *out)
+{
+    const volatile unsigned char *src =
+        (const volatile unsigned char *)fb;
+    unsigned long i;
+
+    out->nonzero = 0;
+    out->sum = 0;
+    out->xor_value = 0;
+    for (i = 0; i < P4_FB_BYTES; i += 2)
+    {
+        unsigned long value = (unsigned long)src[i]
+                            | ((unsigned long)src[i + 1] << 8);
+
+        if (value)
+            out->nonzero++;
+        out->sum += value;
+        out->xor_value ^= value;
+    }
+}
+
+static unsigned int c1_logical_sample(const unsigned char *logical,
+                                      unsigned long pitch,
+                                      unsigned long x, unsigned long y)
+{
+    const unsigned char *src = logical + y * pitch + x * 2;
+
+    return (unsigned int)src[0] | ((unsigned int)src[1] << 8);
+}
+
+static unsigned int c1_physical_sample(unsigned long fb,
+                                       unsigned long x, unsigned long y)
+{
+    unsigned long physical_index =
+        (P4_PANEL_V_RES - 1 - x) * P4_PANEL_H_RES + y;
+    unsigned long physical_x = y;
+    const volatile unsigned char *src;
+
+#ifdef P4_SCANOUT_ROW_PHASE_WORKAROUND
+    physical_x = (physical_x + P4_SCANOUT_ROW_PHASE_WORKAROUND)
+               % P4_PANEL_H_RES;
+#endif
+    src = (const volatile unsigned char *)(fb
+        + (physical_index - y + physical_x) * P4_FB_BYTES_PER_PIXEL);
+    return (unsigned int)src[0] | ((unsigned int)src[1] << 8);
+}
+
+static void c1_put_summary(const char *name,
+                           const struct C1PixelSummary *summary)
+{
+    krnP4PutStr(name);
+    krnP4PutStr(" nz ");
+    krnP4PutDec((uint32_t)summary->nonzero);
+    krnP4PutStr(" sum ");
+    krnP4PutHex32((uint32_t)summary->sum);
+    krnP4PutStr(" xor ");
+    krnP4PutHex32((uint32_t)summary->xor_value);
+}
+
+static void c1_report_full_update(const unsigned char *logical,
+                                  unsigned long pitch,
+                                  unsigned long front,
+                                  unsigned long back)
+{
+    static const unsigned short points[][2] =
+    {
+        { 0, 0 }, { 1279, 0 }, { 0, 799 }, { 1279, 799 }, { 640, 400 }
+    };
+    struct C1PixelSummary source, front_summary, back_summary;
+    unsigned int i;
+
+    c1_logical_summary(logical, pitch, &source);
+    c1_physical_summary(front, &front_summary);
+    c1_physical_summary(back, &back_summary);
+    krnP4PutStr("[c1diag] full ");
+    krnP4PutDec(c1_full_diagnostics);
+    krnP4PutStr(" source ");
+    krnP4PutHex32((uint32_t)(unsigned long)logical);
+    krnP4PutStr(" pitch ");
+    krnP4PutDec((uint32_t)pitch);
+    c1_put_summary(" src", &source);
+    c1_put_summary(" front", &front_summary);
+    c1_put_summary(" back", &back_summary);
+    krnP4PutC('\n');
+    krnP4PutStr("[c1diag] samples src/front/back");
+    for (i = 0; i < sizeof(points) / sizeof(points[0]); i++)
+    {
+        unsigned long x = points[i][0];
+        unsigned long y = points[i][1];
+
+        krnP4PutStr(" ");
+        krnP4PutHex32(c1_logical_sample(logical, pitch, x, y));
+        krnP4PutStr("/");
+        krnP4PutHex32(c1_physical_sample(front, x, y));
+        krnP4PutStr("/");
+        krnP4PutHex32(c1_physical_sample(back, x, y));
+    }
+    krnP4PutC('\n');
+}
+
 /*
  * Copy one logical RGB565 rectangle into a physical portrait surface.
  * The logical bitmap remains ordinary, contiguous 1280x800 memory owned by
@@ -1255,6 +1395,15 @@ static BOOL c1_update_rect(CONST_APTR logical_ptr, ULONG logical_pitch,
     {
         scanout_dirty_rejects++;
         return FALSE;
+    }
+    if ((unsigned long)x == 0 && (unsigned long)y == 0
+        && (unsigned long)width == P4_PANEL_V_RES
+        && (unsigned long)height == P4_PANEL_H_RES
+        && c1_full_diagnostics < 2)
+    {
+        c1_full_diagnostics++;
+        c1_report_full_update(logical, logical_pitch,
+                              P4_FB_BASE, P4_FB_BACK_BASE);
     }
     return TRUE;
 }
