@@ -152,10 +152,16 @@ void cpu_Dispatch(regs_t *regs)
     while (!(task = core_Dispatch()))
     {
         /*
-         * Nothing runnable at all. The idle task normally prevents this,
-         * so this is the window before it exists. Wait with interrupts
-         * open for one to arrive.
+         * The outgoing task's nesting state was saved by core_Switch().
+         * Nothing is executing on its behalf while the dispatcher idles,
+         * so do not inherit its Disable() level here.  In particular the
+         * SYSTIMER IRQ only causes INTB_VERTB while IDNest is negative;
+         * retaining zero here suppresses the timer reply that would make
+         * a waiting task runnable and deadlocks the empty-ready-list path.
+         * core_Dispatch() restores the selected task's saved nesting state
+         * before returning it.
          */
+        IDNESTCOUNT_SET(-1);
         csr_set(mstatus, MSTATUS_MIE);
         asm volatile("wfi");
         csr_clear(mstatus, MSTATUS_MIE);

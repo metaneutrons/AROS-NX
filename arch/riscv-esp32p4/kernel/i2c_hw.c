@@ -36,7 +36,9 @@
 #include "hardware.h"
 #include "kernel_intern.h"
 
-#define I2C_MAX_XFER    30      /* the FIFO is 32 bytes; leave the address room */
+#define I2C_MAX_WRITE   30      /* the TX FIFO also carries both address bytes */
+#define I2C_FIFO_CHUNK  30      /* bounded room for one RX command segment */
+#define I2C_MAX_READ    255     /* one hardware command byte-count domain */
 
 static unsigned long i2c_base;
 static unsigned long i2c_div_reg;
@@ -269,8 +271,9 @@ static void i2c_recover(void)
  * a bound that changes meaning whenever the CPU clock does, which B1 has just
  * shown can happen without anyone noticing.
  *
- * 50 ms is generous: the longest transfer this file allows is 30 bytes, which
- * at the slowest rate it is used at takes about 30 ms.
+ * 50 ms is generous for one command segment: every segment is at most 30
+ * bytes, which at the slowest rate used here takes about 30 ms.  A longer read
+ * is split at END commands and receives a fresh bounded wait per segment.
  *
  * Returns the transport result, distinguishing a slave that said no from a bus
  * that stopped answering, because the two need different responses from a
@@ -279,7 +282,7 @@ static void i2c_recover(void)
  */
 #define I2C_WAIT_TICKS  (P4_SYSTIMER_HZ / 20)   /* 50 ms */
 
-static int i2c_wait(void)
+static int i2c_wait_for(unsigned long complete_mask)
 {
     uint64_t deadline = krnTimerCount() + I2C_WAIT_TICKS;
     unsigned long raw;
@@ -305,7 +308,7 @@ static int i2c_wait(void)
             i2c_recover();
             return P4_I2C_TIMEOUT;
         }
-        if (raw & P4_I2C_TRANS_COMPLETE_INT)
+        if (raw & complete_mask)
             return P4_I2C_OK;
 
         if (krnTimerCount() > deadline)
@@ -314,6 +317,11 @@ static int i2c_wait(void)
             return P4_I2C_STUCK;
         }
     }
+}
+
+static int i2c_wait(void)
+{
+    return i2c_wait_for(P4_I2C_TRANS_COMPLETE_INT);
 }
 
 /*
@@ -329,12 +337,17 @@ int krnP4I2CTransfer(unsigned int address,
                      const unsigned char *wbuf, unsigned int wlen,
                      unsigned char *rbuf, unsigned int rlen)
 {
-    unsigned int cmd = 0, i;
+    unsigned int cmd = 0, i, remaining = rlen, copied = 0;
+    unsigned int chunk = remaining > I2C_FIFO_CHUNK
+                       ? I2C_FIFO_CHUNK : remaining;
+    unsigned long complete_mask = remaining > chunk
+                                ? P4_I2C_END_DETECT_INT
+                                : P4_I2C_TRANS_COMPLETE_INT;
     int result;
 
     if (!i2c_ready)
         return P4_I2C_NOTREADY;
-    if (wlen > I2C_MAX_XFER || rlen > I2C_MAX_XFER)
+    if (wlen > I2C_MAX_WRITE || rlen > I2C_MAX_READ)
         return P4_I2C_TOOLONG;
     if (wlen == 0 && rlen == 0)
         return P4_I2C_OK;
@@ -368,7 +381,7 @@ int krnP4I2CTransfer(unsigned int address,
            ((unsigned long)P4_I2C_CMD_WRITE << P4_I2C_CMD_OP_S)
            | P4_I2C_CMD_ACK_CHECK_EN | (wlen + 1));
 
-    if (rlen)
+    if (remaining)
     {
         i2c_wr(P4_I2C_COMD(cmd++),
                ((unsigned long)P4_I2C_CMD_RSTART << P4_I2C_CMD_OP_S));
@@ -383,27 +396,94 @@ int krnP4I2CTransfer(unsigned int address,
          * last byte too leaves the device expecting to send another and the
          * following start condition then arrives mid-transfer.
          */
-        if (rlen > 1)
+        if (remaining > chunk)
+        {
             i2c_wr(P4_I2C_COMD(cmd++),
                    ((unsigned long)P4_I2C_CMD_READ << P4_I2C_CMD_OP_S)
-                   | (rlen - 1));
-        i2c_wr(P4_I2C_COMD(cmd++),
-               ((unsigned long)P4_I2C_CMD_READ << P4_I2C_CMD_OP_S)
-               | P4_I2C_CMD_ACK_VALUE | 1);
+                   | chunk);
+            i2c_wr(P4_I2C_COMD(cmd++),
+                   ((unsigned long)P4_I2C_CMD_END << P4_I2C_CMD_OP_S));
+        }
+        else
+        {
+            if (chunk > 1)
+                i2c_wr(P4_I2C_COMD(cmd++),
+                       ((unsigned long)P4_I2C_CMD_READ << P4_I2C_CMD_OP_S)
+                       | (chunk - 1));
+            i2c_wr(P4_I2C_COMD(cmd++),
+                   ((unsigned long)P4_I2C_CMD_READ << P4_I2C_CMD_OP_S)
+                   | P4_I2C_CMD_ACK_VALUE | 1);
+            i2c_wr(P4_I2C_COMD(cmd++),
+                   ((unsigned long)P4_I2C_CMD_STOP << P4_I2C_CMD_OP_S));
+        }
     }
-
-    i2c_wr(P4_I2C_COMD(cmd++),
-           ((unsigned long)P4_I2C_CMD_STOP << P4_I2C_CMD_OP_S));
+    else
+        i2c_wr(P4_I2C_COMD(cmd++),
+               ((unsigned long)P4_I2C_CMD_STOP << P4_I2C_CMD_OP_S));
 
     i2c_commit();
     i2c_wr(P4_I2C_CTR, i2c_rd(P4_I2C_CTR) | P4_I2C_TRANS_START);
 
-    result = i2c_wait();
+    result = i2c_wait_for(complete_mask);
     if (result != P4_I2C_OK)
         return result;
 
-    for (i = 0; i < rlen; ++i)
-        rbuf[i] = (unsigned char)(i2c_rd(P4_I2C_DATA) & 0xFF);
+    for (i = 0; i < chunk; ++i)
+        rbuf[copied + i] = (unsigned char)(i2c_rd(P4_I2C_DATA) & 0xFF);
+    copied += chunk;
+    remaining -= chunk;
+
+    /*
+     * END pauses the command engine without putting a STOP on the wire.  This
+     * is the P4 controller's native way to drain a full RX FIFO while keeping
+     * one slave read transaction coherent.  Continue with READ commands only:
+     * the repeated-start and read address were already sent by the first
+     * segment.  The final byte is NACKed before STOP, exactly as in a short
+     * read.  No FIFO reset is permitted between segments because that would
+     * discard unread data and reset the transaction state being preserved.
+     */
+    while (remaining)
+    {
+        cmd = 0;
+        chunk = remaining > I2C_FIFO_CHUNK
+              ? I2C_FIFO_CHUNK : remaining;
+        complete_mask = remaining > chunk
+                      ? P4_I2C_END_DETECT_INT
+                      : P4_I2C_TRANS_COMPLETE_INT;
+        i2c_wr(P4_I2C_INT_CLR, 0xFFFFFFFFUL);
+
+        if (remaining > chunk)
+        {
+            i2c_wr(P4_I2C_COMD(cmd++),
+                   ((unsigned long)P4_I2C_CMD_READ << P4_I2C_CMD_OP_S)
+                   | chunk);
+            i2c_wr(P4_I2C_COMD(cmd++),
+                   ((unsigned long)P4_I2C_CMD_END << P4_I2C_CMD_OP_S));
+        }
+        else
+        {
+            if (chunk > 1)
+                i2c_wr(P4_I2C_COMD(cmd++),
+                       ((unsigned long)P4_I2C_CMD_READ << P4_I2C_CMD_OP_S)
+                       | (chunk - 1));
+            i2c_wr(P4_I2C_COMD(cmd++),
+                   ((unsigned long)P4_I2C_CMD_READ << P4_I2C_CMD_OP_S)
+                   | P4_I2C_CMD_ACK_VALUE | 1);
+            i2c_wr(P4_I2C_COMD(cmd++),
+                   ((unsigned long)P4_I2C_CMD_STOP << P4_I2C_CMD_OP_S));
+        }
+
+        i2c_commit();
+        i2c_wr(P4_I2C_CTR, i2c_rd(P4_I2C_CTR) | P4_I2C_TRANS_START);
+        result = i2c_wait_for(complete_mask);
+        if (result != P4_I2C_OK)
+            return result;
+        for (i = 0; i < chunk; ++i)
+            rbuf[copied + i] =
+                (unsigned char)(i2c_rd(P4_I2C_DATA) & 0xFF);
+        copied += chunk;
+        remaining -= chunk;
+    }
 
     i2c_wr(P4_I2C_INT_CLR, 0xFFFFFFFFUL);
     return P4_I2C_OK;

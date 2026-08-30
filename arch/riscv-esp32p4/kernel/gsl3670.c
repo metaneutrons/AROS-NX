@@ -17,6 +17,7 @@
  */
 
 #include <inttypes.h>
+#include <aros/touchscreen.h>
 #include <exec/types.h>
 
 #include "hardware.h"
@@ -259,12 +260,112 @@ out:
     return r;
 }
 
+#ifdef P4_C4_TOUCH_HIDD
+#define GSL_REPORT_REGISTER  0x80U
+#define GSL_REPORT_BYTES     44U
+#define GSL_CONTACT_OFFSET   4U
+#define GSL_CONTACT_BYTES    4U
+
+/*
+ * Reserve the singleton transport for the worker's bounded polling session.
+ * The hardware-verified raw sampler selects I2C0 once and keeps it selected;
+ * resetting the host controller and changing buses for every report is not
+ * equivalent and suppresses live reports on the D1001.  No other runtime
+ * consumer exists yet.  The worker returns ownership to I2C1 on every exit.
+ */
+static BOOL gsl_touch_acquire(void)
+{
+    return gsl_select_bus() == P4_I2C_OK;
+}
+
+static VOID gsl_touch_release(void)
+{
+    krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO,
+                 P4_D1001_I2C1_SCL_GPIO, 100000UL);
+}
+
+/*
+ * Read and decode one coherent task-context report for the public platform
+ * contract.  The wire format is kept here rather than leaking into the HIDD:
+ * byte zero is the controller count and each four-byte record contains 12-bit
+ * Y, 12-bit X and a four-bit hardware ID.  A non-zero high nibble alongside Y
+ * marks controller auxiliary data, not a screen contact, and is omitted.
+ *
+ * The 44-byte transaction is deliberately one I2C transaction.  The P4
+ * transport drains its 30-byte FIFO at an END boundary without issuing STOP,
+ * so the second part cannot come from a later touch frame.
+ */
+static BOOL gsl_read_contacts(struct KrnTouchScreenFrame *frame)
+{
+    unsigned char reg = GSL_REPORT_REGISTER;
+    unsigned char data[GSL_REPORT_BYTES];
+    ULONG reported, bounded, i;
+    int r;
+
+    if (!frame)
+        return FALSE;
+    frame->reported_count = 0;
+    frame->count = 0;
+    for (i = 0; i < KRN_TOUCHSCREEN_MAX_CONTACTS; ++i)
+    {
+        frame->contact[i].id = 0;
+        frame->contact[i].x = 0;
+        frame->contact[i].y = 0;
+    }
+
+    r = krnP4I2CTransfer(P4_D1001_TOUCH_ADDR, &reg, 1,
+                         data, GSL_REPORT_BYTES);
+    if (r != P4_I2C_OK)
+        return FALSE;
+
+    reported = data[0];
+    bounded = reported > KRN_TOUCHSCREEN_MAX_CONTACTS
+            ? KRN_TOUCHSCREEN_MAX_CONTACTS : reported;
+    frame->reported_count = reported;
+    for (i = 0; i < bounded; ++i)
+    {
+        ULONG offset = GSL_CONTACT_OFFSET + i * GSL_CONTACT_BYTES;
+        ULONG auxiliary = (ULONG)data[offset + 1] >> 4;
+        struct KrnTouchScreenContact *contact;
+
+        if (auxiliary)
+            continue;
+        contact = &frame->contact[frame->count++];
+        contact->y = (ULONG)data[offset]
+                   | (((ULONG)data[offset + 1] & 0x0FU) << 8);
+        contact->x = (ULONG)data[offset + 2]
+                   | (((ULONG)data[offset + 3] & 0x0FU) << 8);
+        contact->id = (ULONG)data[offset + 3] >> 4;
+    }
+    return TRUE;
+}
+
+/* The vendor configuration names 26 driver and 14 sensor lines at 64 raw
+   units each, and a 1280x800 output domain. */
+static struct KrnTouchScreenOps gsl_touchscreen_ops =
+{
+    KRN_TOUCHSCREEN_OPS_VERSION,
+    26U * 64U,
+    14U * 64U,
+    1280,
+    800,
+    gsl_touch_acquire,
+    gsl_touch_release,
+    gsl_read_contacts
+};
+
+struct KrnTouchScreenOps *krnP4GSLTouchScreenOps(void)
+{
+    return &gsl_touchscreen_ops;
+}
+#endif /* P4_C4_TOUCH_HIDD */
+
 #ifdef P4_C4_TOUCH_SAMPLE
 /*
  * Read only contact zero.  Eight bytes cover the count at byte zero and the
- * first four-byte contact at bytes four through seven, so this stays within
- * the transport FIFO without pretending that its current 30-byte ceiling can
- * satisfy the controller's full 44-byte multi-contact report.
+ * first four-byte contact at bytes four through seven.  This older bounded
+ * diagnostic remains intentionally distinct from the maintained HIDD's full
+ * coherent-frame path.
  */
 int krnP4GSLSampleDiagnostic(unsigned int seconds)
 {
