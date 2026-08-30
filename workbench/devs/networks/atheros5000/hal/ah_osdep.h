@@ -24,6 +24,8 @@
  */
 
 #include <exec/types.h>
+#include <stddef.h>
+#include <stdarg.h>
 
 #define	__ahdecl
 #ifndef __packed
@@ -40,13 +42,7 @@ typedef UWORD uint16_t;
 typedef ULONG uint32_t;
 typedef unsigned long long uint64_t;
 
-#ifndef __size_t
-typedef unsigned int size_t;
-#endif
 typedef unsigned int u_int;
-#ifndef _VA_LIST_
-typedef	void *va_list;
-#endif
 
 /*
  * Bus i/o type definitions.

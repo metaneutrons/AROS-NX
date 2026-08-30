@@ -102,14 +102,14 @@
 #define	ENOSYS		78		/* Function not implemented */
 #define	ENOTCONN	57		/* Socket is not connected */
 #define	ENOTEMPTY	66		/* Directory not empty */
-/* NOTIMPL ENORECOVERABLE */
+#define ENOTRECOVERABLE 98		/* State not recoverable */
 #define	ENOTSOCK	38		/* Socket operation on non-socket */
 #define ENOTSUP		86		/* Not supported */
 #define	ENOTTY		25		/* Inappropriate ioctl for device */
 #define	ENXIO		6		/* Device not configured */
 #define	EOPNOTSUPP	45		/* Operation not supported on socket */
 #define	EOVERFLOW	84		/* Value too large to be stored in data type */
-/* NOTIMPL EOWNERDEAD */
+#define EOWNERDEAD	97		/* Previous owner died */
 #define	EPERM		1		/* Operation not permitted */
 #define	EPIPE		32		/* Broken pipe */
 #define EPROTO		96		/* Protocol error */
@@ -134,6 +134,6 @@
 #define	ESHUTDOWN	58		/* Can't send after socket shutdown */
 #endif
 
-#define __POSIXC_ELAST	EPROTO		/* Points to highest used errno in this include */
+#define __POSIXC_ELAST	ENOTRECOVERABLE	/* Points to highest used errno in this include */
 
 #endif /* _POSIXC_ERRNO_H_ */
