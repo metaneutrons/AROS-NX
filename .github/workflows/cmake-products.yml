@@ -1,0 +1,73 @@
+name: AROS-NX CMake products
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cmake-products-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AROS_TOOLS_REPOSITORY: metaneutrons/aros-tools
+  AROS_TOOLS_COMMIT: 8fc0eb2f3646f27db53a1552d2b0e10265dd4fc2
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: '1'
+
+jobs:
+  product:
+    name: ${{ matrix.preset }} on ${{ matrix.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { host: linux-x86_64, runner: ubuntu-24.04, preset: pc-x86_64 }
+          - { host: linux-x86_64, runner: ubuntu-24.04, preset: arm-raspi }
+          - { host: linux-x86_64, runner: ubuntu-24.04, preset: rpi-aarch64 }
+          - { host: linux-aarch64, runner: ubuntu-24.04-arm, preset: pc-x86_64 }
+          - { host: linux-aarch64, runner: ubuntu-24.04-arm, preset: arm-raspi }
+          - { host: linux-aarch64, runner: ubuntu-24.04-arm, preset: rpi-aarch64 }
+          - { host: macos-x86_64, runner: macos-15-intel, preset: pc-x86_64 }
+          - { host: macos-x86_64, runner: macos-15-intel, preset: arm-raspi }
+          - { host: macos-x86_64, runner: macos-15-intel, preset: rpi-aarch64 }
+          - { host: macos-aarch64, runner: macos-15, preset: pc-x86_64 }
+          - { host: macos-aarch64, runner: macos-15, preset: arm-raspi }
+          - { host: macos-aarch64, runner: macos-15, preset: rpi-aarch64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    steps:
+      - name: Checkout AROS-NX
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Checkout exact aros-tools input
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ env.AROS_TOOLS_REPOSITORY }}
+          ref: ${{ env.AROS_TOOLS_COMMIT }}
+          path: dependencies/aros-tools
+
+      - name: Install audited build prerequisites
+        run: bash scripts/ci/install-build-prerequisites.sh
+
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build the complete external tool suite
+        working-directory: dependencies/aros-tools
+        run: cargo build --locked --release --workspace --all-features
+
+      - name: Build through the public aros frontend and published lock
+        run: |
+          dependencies/aros-tools/target/release/aros build \
+            --preset '${{ matrix.preset }}' \
+            --clean
