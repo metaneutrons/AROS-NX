@@ -2,14 +2,94 @@
 
 #include <aros/debug.h>
 #include <devices/timer.h>
+#include <dos/dos.h>
+#include <dos/dosextens.h>
 #include <exec/io.h>
+#include <exec/memory.h>
 #include <exec/tasks.h>
+#include <proto/dos.h>
 #include <proto/exec.h>
 
 #include "p4touch_intern.h"
 
 #define P4_TOUCH_POLL_US       50000UL
 #define P4_TOUCH_RELEASE_POLLS 2U
+#define P4_TOUCH_FW_RETRY_US   1000000UL
+#define P4_TOUCH_RECOVERY_ERRORS 3U
+#define P4_TOUCH_MAX_RECOVERIES  3U
+
+#define P4_TOUCH_FW_PATH "DEVS:Firmware/silead/gsl3670-d1001.fw"
+#define P4_TOUCH_FW_FALLBACK \
+    "FLASHDISK0P0:Firmware/silead/gsl3670-d1001.fw"
+
+static BOOL p4touch_wait(struct timerequest *timer, ULONG micros)
+{
+    timer->tr_node.io_Command = TR_ADDREQUEST;
+    timer->tr_time.tv_secs = micros / 1000000UL;
+    timer->tr_time.tv_micro = micros % 1000000UL;
+    return DoIO(&timer->tr_node) == 0;
+}
+
+static UBYTE *p4touch_read_firmware(struct DosLibrary *DOSBase,
+                                    const char **loaded_path)
+{
+    static const char *paths[] =
+    {
+        P4_TOUCH_FW_PATH,
+        P4_TOUCH_FW_FALLBACK,
+        NULL
+    };
+    ULONG i;
+
+    *loaded_path = NULL;
+    for (i = 0; paths[i]; ++i)
+    {
+        BPTR file = Open((CONST_STRPTR)paths[i], MODE_OLDFILE);
+        LONG size, got;
+        UBYTE *data;
+
+        if (!file)
+            continue;
+        /* A failed FAT ACTION_FINDINPUT currently leaves DOS with an
+           allocated NIL-style FileHandle instead of returning BPTR zero.
+           Never Seek/Read such a handle: fh_Type is the handler port and is
+           installed only by a successful open. */
+        if (!((struct FileHandle *)BADDR(file))->fh_Type)
+        {
+            Close(file);
+            continue;
+        }
+        Seek(file, 0, OFFSET_END);
+        size = Seek(file, 0, OFFSET_BEGINNING);
+        if (size != (LONG)KRN_TOUCHSCREEN_FW_BYTES)
+        {
+            bug("[P4Touch/C4] rejected firmware %s: %ld bytes, expected %lu\n",
+                paths[i], (long)size,
+                (unsigned long)KRN_TOUCHSCREEN_FW_BYTES);
+            Close(file);
+            continue;
+        }
+        data = AllocVec(KRN_TOUCHSCREEN_FW_BYTES, MEMF_PUBLIC);
+        if (!data)
+        {
+            Close(file);
+            return NULL;
+        }
+        got = Read(file, data, KRN_TOUCHSCREEN_FW_BYTES);
+        Close(file);
+        if (got != (LONG)KRN_TOUCHSCREEN_FW_BYTES)
+        {
+            bug("[P4Touch/C4] short firmware read from %s: %ld/%lu\n",
+                paths[i], (long)got,
+                (unsigned long)KRN_TOUCHSCREEN_FW_BYTES);
+            FreeVec(data);
+            continue;
+        }
+        *loaded_path = paths[i];
+        return data;
+    }
+    return NULL;
+}
 
 static WORD p4touch_scale(ULONG raw, ULONG raw_size, ULONG logical_size)
 {
@@ -87,12 +167,16 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
     struct Task *self = FindTask(NULL);
     struct MsgPort *port = NULL;
     struct timerequest *timer = NULL;
+    struct DosLibrary *DOSBase = NULL;
+    UBYTE *firmware = NULL;
+    const char *firmware_path = NULL;
     BOOL timer_open = FALSE, acquired = FALSE, down = FALSE;
     UWORD active_button = vHidd_Mouse_NoButton;
     WORD last_x = 0, last_y = 0;
     ULONG zero_polls = 0, reads = 0, errors = 0, contact_frames = 0;
     ULONG multi_frames = 0, right_gestures = 0;
     ULONG max_contacts = 0, max_reported = 0;
+    ULONG firmware_attempts = 0, recoveries = 0, consecutive_errors = 0;
 
     port = CreateMsgPort();
     if (port)
@@ -107,6 +191,51 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
         data->running = FALSE;
         goto out;
     }
+    DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 0);
+    while (data->running && !firmware)
+    {
+        ULONG failed_record = 0, status = 0;
+        LONG result;
+
+        ++firmware_attempts;
+        if (!DOSBase)
+            DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 0);
+        if (DOSBase)
+            firmware = p4touch_read_firmware(DOSBase, &firmware_path);
+        if (!firmware)
+        {
+            if (firmware_attempts == 1 || !(firmware_attempts % 30U))
+                bug("[P4Touch/C4] external firmware unavailable; attempt %lu; "
+                    "desktop remains unblocked\n",
+                    (unsigned long)firmware_attempts);
+            if (!p4touch_wait(timer, P4_TOUCH_FW_RETRY_US))
+                data->running = FALSE;
+            continue;
+        }
+        result = data->ops->load_firmware(firmware,
+                                          KRN_TOUCHSCREEN_FW_BYTES,
+                                          &failed_record, &status);
+        if (result)
+        {
+            bug("[P4Touch/C4] external firmware load failed from %s: "
+                "result %ld record %lu status 0x%08lx; retrying\n",
+                firmware_path, (long)result, (unsigned long)failed_record,
+                (unsigned long)status);
+            FreeVec(firmware);
+            firmware = NULL;
+            firmware_path = NULL;
+            if (!p4touch_wait(timer, P4_TOUCH_FW_RETRY_US))
+                data->running = FALSE;
+        }
+        else
+            bug("[P4Touch/C4] loaded external firmware %s: %lu records, "
+                "status 0x%08lx\n", firmware_path,
+                (unsigned long)KRN_TOUCHSCREEN_FW_RECORDS,
+                (unsigned long)status);
+    }
+    if (!data->running)
+        goto out;
+
     acquired = data->ops->acquire();
     if (!acquired)
     {
@@ -128,6 +257,7 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
         if (!read_ok)
         {
             ++errors;
+            ++consecutive_errors;
             zero_polls = 0;
             if (down)
             {
@@ -140,6 +270,37 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
                 bug("[P4Touch/C4] read error %lu after %lu polls; "
                     "press state released\n",
                     (unsigned long)errors, (unsigned long)reads);
+            if (consecutive_errors >= P4_TOUCH_RECOVERY_ERRORS)
+            {
+                ULONG failed_record = 0, status = 0;
+                LONG result;
+
+                data->ops->release();
+                acquired = FALSE;
+                if (++recoveries > P4_TOUCH_MAX_RECOVERIES)
+                {
+                    bug("[P4Touch/C4] recovery limit exhausted; touch stopped, "
+                        "desktop remains live\n");
+                    data->running = FALSE;
+                    continue;
+                }
+                result = data->ops->load_firmware(
+                    firmware, KRN_TOUCHSCREEN_FW_BYTES,
+                    &failed_record, &status);
+                if (result || !(acquired = data->ops->acquire()))
+                {
+                    bug("[P4Touch/C4] recovery %lu failed: result %ld "
+                        "record %lu status 0x%08lx\n",
+                        (unsigned long)recoveries, (long)result,
+                        (unsigned long)failed_record,
+                        (unsigned long)status);
+                    data->running = FALSE;
+                    continue;
+                }
+                consecutive_errors = 0;
+                bug("[P4Touch/C4] recovery %lu passed; status 0x%08lx\n",
+                    (unsigned long)recoveries, (unsigned long)status);
+            }
         }
         else if (frame.count)
         {
@@ -147,6 +308,8 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
             UWORD desired_button;
             const struct KrnTouchScreenContact *contact;
             WORD x, y;
+
+            consecutive_errors = 0;
 
             ++contact_frames;
             if (frame.count > max_contacts)
@@ -220,6 +383,8 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
             active_button = vHidd_Mouse_NoButton;
             zero_polls = 0;
         }
+        else
+            consecutive_errors = 0;
         if (!(reads % 100))
             bug("[P4Touch/C4] heartbeat after %lu polls; down %u button %u, "
                 "frames %lu, multi %lu, right %lu, max %lu/%lu, events %lu, "
@@ -232,10 +397,7 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
                 (unsigned long)data->published_events,
                 (unsigned long)errors);
 
-        timer->tr_node.io_Command = TR_ADDREQUEST;
-        timer->tr_time.tv_secs = 0;
-        timer->tr_time.tv_micro = P4_TOUCH_POLL_US;
-        if (DoIO(&timer->tr_node))
+        if (!p4touch_wait(timer, P4_TOUCH_POLL_US))
         {
             bug("[P4Touch/C4] timer request failed; stopped\n");
             data->running = FALSE;
@@ -254,6 +416,10 @@ out:
         (unsigned long)errors);
     if (acquired)
         data->ops->release();
+    if (firmware)
+        FreeVec(firmware);
+    if (DOSBase)
+        CloseLibrary((struct Library *)DOSBase);
     if (timer_open)
         CloseDevice(&timer->tr_node);
     if (timer)

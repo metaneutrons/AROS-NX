@@ -40,6 +40,7 @@ static int P4Touch_Init(LIBBASETYPEPTR LIBBASE)
         : NULL;
     if (!ptd->ops || ptd->ops == (APTR)-1
         || ptd->ops->version != KRN_TOUCHSCREEN_OPS_VERSION
+        || !ptd->ops->load_firmware
         || !ptd->ops->acquire
         || !ptd->ops->release
         || !ptd->ops->read_contacts
