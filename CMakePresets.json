@@ -1,0 +1,171 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "pc-x86_64",
+      "displayName": "AROS PC x86_64 (Native/Standalone)",
+      "description": "64-bit x86 target with SMP and modern hardware support",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/pc-x86_64",
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "Generic",
+        "CMAKE_SYSTEM_PROCESSOR": "x86_64",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_ASM_COMPILER": "clang",
+        "AROS_TARGET_CPU": "x86_64",
+        "AROS_TARGET_PLATFORM": "pc",
+        "AROS_TOOLCHAIN": "llvm",
+        "AROS_TARGET_BOOTLOADER": "grub2gfx",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "rpi-aarch64",
+      "displayName": "AROS Raspberry Pi (AArch64 64-bit)",
+      "description": "64-bit ARM target for Raspberry Pi 4 and 5",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/rpi-aarch64",
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "Generic",
+        "CMAKE_SYSTEM_PROCESSOR": "aarch64",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_ASM_COMPILER": "clang",
+        "AROS_TARGET_CPU": "aarch64",
+        "AROS_TARGET_PLATFORM": "raspi",
+        "AROS_TOOLCHAIN": "llvm",
+        "AROS_TARGET_BOOTLOADER": "",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "rpi4-aarch64-debug",
+      "displayName": "AROS Raspberry Pi 4 (AArch64 debug payload)",
+      "description": "Pi 4 AArch64 debug build with reproducible boot/raspi payload artifacts",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/rpi4-aarch64-debug",
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "Generic",
+        "CMAKE_SYSTEM_PROCESSOR": "aarch64",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_ASM_COMPILER": "clang",
+        "AROS_TARGET_CPU": "aarch64",
+        "AROS_TARGET_PLATFORM": "raspi",
+        "AROS_RPI_MODEL": "rpi4",
+        "AROS_TOOLCHAIN": "llvm",
+        "AROS_TARGET_BOOTLOADER": "",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "rpi5-aarch64-debug",
+      "displayName": "AROS Raspberry Pi 5 (AArch64 debug payload)",
+      "description": "Pi 5 BCM2712 AArch64 debug build with a model-specific boot payload",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/rpi5-aarch64-debug",
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "Generic",
+        "CMAKE_SYSTEM_PROCESSOR": "aarch64",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_ASM_COMPILER": "clang",
+        "AROS_TARGET_CPU": "aarch64",
+        "AROS_TARGET_PLATFORM": "raspi",
+        "AROS_RPI_MODEL": "rpi5",
+        "AROS_TOOLCHAIN": "llvm",
+        "AROS_TARGET_BOOTLOADER": "",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "rpi3-arm-debug",
+      "displayName": "AROS Raspberry Pi 3 B+ (ARM32 debug payload)",
+      "description": "Pi 3 B+ ARM32 debug build with a model-specific boot payload",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/rpi3-arm-debug",
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "Generic",
+        "CMAKE_SYSTEM_PROCESSOR": "arm",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_ASM_COMPILER": "clang",
+        "AROS_TARGET_CPU": "arm",
+        "AROS_TARGET_PLATFORM": "raspi",
+        "AROS_RPI_MODEL": "rpi3",
+        "AROS_TOOLCHAIN": "llvm",
+        "AROS_TARGET_BOOTLOADER": "",
+        "GCC_CONFIG_FLOAT_ABI": "hard",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "arm-raspi",
+      "displayName": "AROS Raspberry Pi (ARM 32-bit)",
+      "description": "32-bit ARM target for Raspberry Pi 1, 2, 3",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/arm-raspi",
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "Generic",
+        "CMAKE_SYSTEM_PROCESSOR": "arm",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_ASM_COMPILER": "clang",
+        "AROS_TARGET_CPU": "arm",
+        "AROS_TARGET_PLATFORM": "raspi",
+        "AROS_TOOLCHAIN": "llvm",
+        "AROS_TARGET_BOOTLOADER": "",
+        "GCC_CONFIG_FLOAT_ABI": "hard",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "opensbi-riscv64",
+      "displayName": "AROS OpenSBI (RISC-V 64)",
+      "description": "Generic RISC-V 64 OpenSBI/UEFI target without a physical-board claim",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/opensbi-riscv64",
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "Generic",
+        "CMAKE_SYSTEM_PROCESSOR": "riscv64",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_ASM_COMPILER": "clang",
+        "AROS_TARGET_CPU": "riscv64",
+        "AROS_TARGET_PLATFORM": "opensbi",
+        "AROS_TOOLCHAIN": "llvm",
+        "AROS_TARGET_BOOTLOADER": "",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "milk-v-titan-riscv64-debug",
+      "displayName": "AROS Milk-V Titan (RISC-V 64 UEFI debug payload)",
+      "description": "Milk-V Titan RISC-V 64 build with an OpenSBI/UEFI removable-media bundle",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/milk-v-titan-riscv64-debug",
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "Generic",
+        "CMAKE_SYSTEM_PROCESSOR": "riscv64",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_ASM_COMPILER": "clang",
+        "AROS_TARGET_CPU": "riscv64",
+        "AROS_TARGET_PLATFORM": "opensbi",
+        "AROS_OPENSBI_MODEL": "milk-v-titan",
+        "AROS_TOOLCHAIN": "llvm",
+        "AROS_TARGET_BOOTLOADER": "",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    }
+  ]
+}

@@ -8,6 +8,12 @@ include $(SRCDIR)/config/aros.cfg
 CUR_MESADIR := src/gallium/auxiliary
 include $(SRCDIR)/$(CURDIR)/../mesa.cfg
 include $(top_srcdir)/$(CUR_MESADIR)/Makefile.sources
+ifeq ($(MESAGLVERSION),20.0.8)
+# A clean configure has not fetched Mesa yet. Keep the exact upstream source
+# inventory beside the declaration so both cold and warm graphs select the
+# same translation units.
+include $(SRCDIR)/$(CURDIR)/galliumaux-20.0.8.sources
+endif
 
 #MM- mesa3dgl-linklibs : mesa3d-linklib-galliumauxiliary
 #MM mesa3d-linklib-galliumauxiliary : workbench-libs-dxtn-includes mesa3d-linklib-compiler mesa3d-linklib-galliumauxiliary-genobs

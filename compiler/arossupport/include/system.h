@@ -347,4 +347,7 @@
          asm("\n.weak " __AROS_STR(asym) "\n")
 #endif
 
+#include <aros/asmcall.h>
+#include <aros/libcall.h>
+
 #endif /* AROS_SYSTEM_H */

@@ -2,20 +2,6 @@ SECTIONS
 {
     . = 0x00100000;
 
-    .tables :
-    {
-	*(.aros.tables)
-    }
-    
-    _prot_lo = . ;
-    
-    .bsstables :
-    {
-	*(.bss.aros.tables)
-    }
-    
-    _prot_hi = . ;
-    
     .text ALIGN(4096) :
     {
         *(.aros.startup)
@@ -25,6 +11,20 @@ SECTIONS
         *(.gnu.warning)
         *(.gnu.linkonce.t.*)
     } = 0x90909090
+
+    .tables ALIGN(4096) :
+    {
+	*(.aros.tables)
+    }
+    
+    _prot_lo = . ;
+    
+    .bsstables ALIGN(4096) :
+    {
+	*(.bss.aros.tables)
+    }
+    
+    _prot_hi = . ;
 
     .rodata ALIGN(0x10) :
     {

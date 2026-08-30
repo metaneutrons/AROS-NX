@@ -79,12 +79,40 @@ INCL_DIRS     := $(foreach dir,$(INCSUBDIRS) $(INCEMPTYDIRS),$(AROS_INCLUDES)/$(
                  $(foreach dir,$(INCSUBDIRS) $(INCEMPTYDIRS),$(GENINCDIR)/$(dir))
 
 #MM- includes : includes-generate
+
+# Two spellings of "the SDK headers this target needs", selected by name.
+#
+# `includes` pulls `includes-generate`, and that has 67 children including
+# every port library's header step: expat, glu, jpeg, png, tiff, utf8proc, z,
+# zstd, lzma. Each of those depends on its own -fetch, so a target that only
+# wanted a populated SDK ended up demanding nine third-party downloads. In a
+# producer run the offline source guard stops it, correctly, at
+# workbench-libs-expat-fetch.
+#
+# The selection has to be by name. MetaMake ignores GNU Make conditionals when
+# it collects #MM lines (dirnode.c:126 is a plain strncmp over the file), which
+# workbench/devs/mmakefile.src:44 documents at length. It does substitute
+# variables into #MM names (cache.c:600) from host.cfg and target.cfg, the two
+# files mmake.config lists as globalvarfile, and AROS_TOOLCHAIN_RELEASE is in
+# config/target.cfg.in:43. That is the same idiom as
+# linklibs-libatomic-$(TARGET_LIBATOMIC) in tools/crosstools/mmakefile.src:8.
+#
+# The release form stops at includes-generate-deps, which is what a
+# %build_linklib target requires anyway (config/make.tmpl:3000), so it keeps
+# includes-copy and the generated architecture headers and drops only the
+# per-library header steps.
+#MM- sdk-includes-0 : includes includes-copy
+#MM- sdk-includes-1 : includes-generate-deps kernel-exec-includes compiler-boost-sdk-subset kernel-acpica-sdk-subset
 #MM- includes-generate : includes-generate-deps
-#MM- includes-generate-deps : includes-copy ports-includes includes-$(ARCH)-$(CPU) includes-$(FAMILY)-$(CPU)
+#MM- includes-generate-deps : includes-copy $(CROSSTOOLS_PORTS_INCLUDES) includes-$(ARCH)-$(CPU) includes-$(FAMILY)-$(CPU)
 # ports-includes aggregates headers/pkgconfig files installed from fetched
 # external port archives. It is deliberately kept out of includes-copy, so
 # targets that only need the core includes (e.g. the crosstools toolchain)
 # do not force every port archive to be downloaded and unpacked.
+# CROSSTOOLS_PORTS_INCLUDES is normally ports-includes. It is empty only for
+# --enable-toolchain-release and is attached to this direct node because
+# %build_linklib targets depend on includes-generate-deps without using the
+# includes alias.
 #MM- includes-copy : compiler-includes includes-copy-$(ARCH)-$(CPU) includes-copy-$(FAMILY)-$(CPU) \
 #MM                  includes-copy-$(CPU)
 

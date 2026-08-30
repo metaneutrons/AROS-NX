@@ -1,5 +1,6 @@
 #   AROS metamakefile for zstd
 include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/$(CURDIR)/zstd-1.5.7.files
 
 ZSTDVERSION=1.5.7
 ZSTDREPOSITORIES =  \
@@ -19,15 +20,9 @@ ZSTDARCHSRCDIR := $(PORTSDIR)/zstd/$(ZSTDARCHBASE)
     destination=$(PORTSDIR)/zstd \
     srcdir="$(ZSTDARCHBASE)"
 
-CSOURCES := \
-    $(sort $(wildcard $(ZSTDARCHSRCDIR)/lib/common/*.c)) \
-    $(sort $(wildcard $(ZSTDARCHSRCDIR)/lib/compress/*.c)) \
-    $(sort $(wildcard $(ZSTDARCHSRCDIR)/lib/decompress/*.c)) \
-    $(sort $(wildcard $(ZSTDARCHSRCDIR)/lib/dictBuilder/*.c))
+FILES := $(addprefix $(ZSTDARCHSRCDIR)/,$(ZSTD_FILES))
 
-FILES := $(CSOURCES:.c=)
-
-USER_INCLUDES = -I. -idirafter $(ZSTDARCHSRCDIR)/include
+USER_INCLUDES = -I.
 USER_CPPFLAGS := -DZSTD_NO_TRACE
 USER_LDFLAGS := -static
 
@@ -37,6 +32,7 @@ USER_LDFLAGS := -static
 
 %build_module mmake=workbench-libs-zstd-library \
     modname=zstd modtype=library \
+    linklibname=zstd \
     files="$(FILES)"
 
 %build_linklib mmake=linklibs-zstd \

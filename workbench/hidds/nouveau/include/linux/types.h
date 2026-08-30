@@ -58,7 +58,7 @@ typedef u32                     __wsum;
 typedef u64                     dma_addr_t;
 typedef u64                     phys_addr_t;
 typedef phys_addr_t             resource_size_t;
-typedef IPTR                    __kernel_size_t;
+typedef size_t                  __kernel_size_t;
 typedef LONG                    __kernel_ssize_t;
 typedef s64                     loff_t;
 typedef IPTR                    pgoff_t;
@@ -71,7 +71,7 @@ typedef s64                     time64_t;
 
 typedef struct { LONG counter; } atomic_t;
 typedef struct { QUAD counter; } atomic64_t;
-typedef atomic64_t              atomic_long_t;
+typedef struct { long counter; } atomic_long_t;
 
 typedef struct { unsigned long pgprot; } pgprot_t;
 

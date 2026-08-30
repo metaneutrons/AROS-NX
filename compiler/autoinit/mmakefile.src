@@ -33,7 +33,12 @@ FILES := $(LIBBASEFILES) $(LIBHANDLINGFILES) $(STARTUPFILES) $(MISCFILES)
 
 #MM- core-linklibs : linklibs-autoinit
 #MM- linklibs: linklibs-autoinit
-#MM linklibs-autoinit : includes includes-copy kernel-expansion-includes linklibs-autoinit-autofile
+#MM- linklibs-autoinit-includes : sdk-includes-$(AROS_TOOLCHAIN_RELEASE) \
+#MM     compiler-stdc-includes kernel-aros-includes kernel-dos-includes \
+#MM     kernel-exec-includes kernel-expansion-includes \
+#MM     kernel-intuition-includes workbench-libs-workbench-includes
+#MM linklibs-autoinit : linklibs-autoinit-includes linklibs-autoinit-autofile
+#MM linklibs-autoinit32 : linklibs-autoinit-includes linklibs-autoinit-autofile
 
 %copy_includes includes="autoinit.h detach.h" path=aros
 

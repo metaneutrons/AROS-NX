@@ -17,7 +17,135 @@ error()
 
 usage()
 {
-    error "Usage: $1 -a archive [-s suffixes] [-ao archive_origins...] [-l location to download to] [-d dir to unpack to] [-po patches_origins...] [-p patch[:subdir][:patch options]...]"
+    error "Usage: $1 -a archive [-s suffixes] [-ao archive_origins...] [-cs filename=sha256:digest...] [-l location to download to] [-d dir to unpack to] [-po patches_origins...] [-p patch[:subdir][:patch options]...]"
+}
+
+is_enabled()
+{
+    case "$1" in
+        1|yes|true|on|YES|TRUE|ON) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+is_remote_origin()
+{
+    case "$1" in
+        http://*|https://*|ftp://*|archives://*|gnu://*|sf://*|sourceforge://*|github://*|cache://*)
+            return 0 ;;
+        *)
+            return 1 ;;
+    esac
+}
+
+checksum_for()
+{
+    local wanted="$1" entry name value found=""
+    for entry in $checksums; do
+        name=${entry%%=*}
+        value=${entry#*=}
+        if test "$name" = "$wanted"; then
+            if test -n "$found"; then
+                echo "fetch: duplicate checksum declaration for '$wanted'." >&2
+                return 2
+            fi
+            found="$value"
+        fi
+    done
+    test -n "$found" || return 1
+    printf '%s\n' "$found"
+}
+
+validate_checksum_contract()
+{
+    local entry name value candidate candidate_known
+
+    for entry in $checksums; do
+        case "$entry" in
+            *=sha256:*) ;;
+            *)
+                echo "fetch: invalid checksum '$entry'; expected filename=sha256:<64 hex digits>." >&2
+                return 1 ;;
+        esac
+        name=${entry%%=*}
+        value=${entry#*=sha256:}
+        case "$name" in
+            ""|*/*|*\\*|*[!A-Za-z0-9._+~-]*)
+                echo "fetch: invalid checksum filename '$name'; use an exact archive basename." >&2
+                return 1 ;;
+        esac
+        if test ${#value} -ne 64 || test -n "$(printf '%s' "$value" | tr -d '0123456789abcdefABCDEF')"; then
+            echo "fetch: invalid SHA-256 for '$name'; expected exactly 64 hexadecimal digits." >&2
+            return 1
+        fi
+        candidate_known=no
+        if test -n "$suffixes"; then
+            for candidate in $suffixes; do
+                test "$name" = "$archive.$candidate" && candidate_known=yes
+            done
+        elif test "$name" = "$archive"; then
+            candidate_known=yes
+        fi
+        if test "$candidate_known" != yes; then
+            echo "fetch: checksum filename '$name' is not a declared candidate for archive '$archive'." >&2
+            return 1
+        fi
+        checksum_for "$name" >/dev/null || return 1
+    done
+
+    if is_enabled "${AROS_FETCH_REQUIRE_CHECKSUMS:-0}" && test -z "$checksums"; then
+        echo "fetch: strict checksum mode requires an explicit checksum for archive '$archive'." >&2
+        echo "fetch: add checksums=\"<filename>=sha256:<digest>\" to its %fetch declaration." >&2
+        return 1
+    fi
+    test -z "$checksums" && return 0
+
+    if test -n "$suffixes"; then
+        for candidate in $suffixes; do
+            if ! checksum_for "$archive.$candidate" >/dev/null; then
+                echo "fetch: checksum contract for '$archive' does not cover candidate '$archive.$candidate'." >&2
+                echo "fetch: every suffix candidate must be explicit; no unverified fallback is allowed." >&2
+                return 1
+            fi
+        done
+    elif ! checksum_for "$archive" >/dev/null; then
+        echo "fetch: checksum contract for '$archive' does not contain '$archive'." >&2
+        return 1
+    fi
+}
+
+sha256_file()
+{
+    local path="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$path" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$path" | awk '{print $1}'
+    elif command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 "$path" | awk '{print $NF}'
+    else
+        echo "fetch: cannot verify SHA-256; install sha256sum, shasum, or openssl." >&2
+        return 1
+    fi
+}
+
+verify_checksum()
+{
+    local file="$1" expected_entry expected actual
+    expected_entry=$(checksum_for "$file") || return $?
+    expected=${expected_entry#sha256:}
+    actual=$(sha256_file "$LOCATION/$file") || return 1
+    expected=$(printf '%s' "$expected" | tr 'A-F' 'a-f')
+    actual=$(printf '%s' "$actual" | tr 'A-F' 'a-f')
+    if test "$actual" != "$expected"; then
+        echo "fetch: SHA-256 mismatch for '$file'." >&2
+        echo "fetch: expected: $expected" >&2
+        echo "fetch: actual:   $actual" >&2
+        echo "fetch: cached file: $LOCATION/$file" >&2
+        echo "fetch: remove or replace the file only after verifying the declared upstream payload." >&2
+        return 1
+    fi
+    echo "Verified   $file (SHA-256)"
 }
 
 fetch_mirrored()
@@ -294,6 +422,10 @@ fetch_multiple()
 {
     local origins="$1" file="$2" destination="$3"
     for origin in $origins; do
+        if is_enabled "${AROS_FETCH_OFFLINE:-0}" && is_remote_origin "$origin"; then
+            echo "Offline     skipping network origin $origin/$file"
+            continue
+        fi
         echo "Trying     $origin/$file..."
         fetch "$origin" "$file" "$destination" && return  0
     done
@@ -490,7 +622,7 @@ fetchunlock()
 
 while test "x$1" != "x"; do
     case "$1" in
-        -ao|-a|-s|-d|-po|-p|-b|-l|-rn)
+        -ao|-a|-s|-d|-po|-p|-b|-l|-rn|-cs)
             # Ensure there *is* a $2 (even if it's an empty string)
             if test $# -lt 2; then
                 echo "Option $1 requires an argument."
@@ -511,6 +643,7 @@ while test "x$1" != "x"; do
                 -b)  newbase="$2";;
                 -l)  newlocation="$2";;
                 -rn) renamedir="$2";;
+                -cs) checksums="$2";;
             esac
             shift 2;;
         -f)
@@ -529,6 +662,8 @@ LOCATION=${newlocation:-.}
 BASE=${newbase:-${destination}}
 patches_origins=${patches_origins:-.}
 
+validate_checksum_contract || exit 1
+
 # Ensure LOCATION, destination, and BASE are absolute paths.
 [[ "$LOCATION" != /* ]] && LOCATION="$PWD/$LOCATION"
 [[ "$destination" != /* ]] && destination="$PWD/$destination"
@@ -539,8 +674,22 @@ fetchlock "$LOCATION" "$fetchlockfile"
 
 fetch_cached "$archive_origins" "$archive" "$suffixes" "$LOCATION" archive2
 
-test -z "$archive2" && fetchunlock "$LOCATION" "$fetchlockfile" && error "fetch: Error while fetching the archive \`$archive'."
+if test -z "$archive2"; then
+    fetchunlock "$LOCATION" "$fetchlockfile"
+    if is_enabled "${AROS_FETCH_OFFLINE:-0}"; then
+        echo "fetch: offline cache/local-origin miss for archive '$archive' in '$LOCATION'." >&2
+        echo "fetch: seed this cache with the declared archive, or rerun without offline mode." >&2
+    fi
+    error "fetch: Error while fetching the archive \`$archive'."
+fi
 archive="$archive2"
+
+if test -n "$checksums" || is_enabled "${AROS_FETCH_REQUIRE_CHECKSUMS:-0}"; then
+    if ! verify_checksum "$archive"; then
+        fetchunlock "$LOCATION" "$fetchlockfile"
+        error "fetch: refusing to unpack unverified archive \`$archive'."
+    fi
+fi
 
 for patch in $patches; do
     patch=$(echo "$patch" | cut -d: -f1)

@@ -127,7 +127,17 @@ FILES	:= \
 
 #MM- core-linklibs : linklibs-amiga
 #MM- linklibs: linklibs-amiga 
-#MM linklibs-amiga : includes includes-copy kernel-aros-includes
+#MM- linklibs-amiga-includes : sdk-includes-$(AROS_TOOLCHAIN_RELEASE) \
+#MM     compiler-stdc-includes kernel-aros-includes kernel-dos-includes \
+#MM     kernel-exec-includes kernel-graphics-includes kernel-intuition-includes \
+#MM     kernel-utility-includes workbench-libs-amigaguide-includes \
+#MM     workbench-libs-asl-includes workbench-libs-bullet-includes \
+#MM     workbench-libs-cgfx-includes workbench-libs-commodities-includes \
+#MM     workbench-libs-datatypes-includes workbench-libs-gadtools-includes \
+#MM     workbench-libs-icon-includes workbench-libs-locale-includes \
+#MM     workbench-libs-rexxsyslib-includes workbench-libs-workbench-includes
+#MM linklibs-amiga : linklibs-amiga-includes
+#MM linklibs-amiga32 : linklibs-amiga-includes
 
 USER_CFLAGS := -noposixc
 

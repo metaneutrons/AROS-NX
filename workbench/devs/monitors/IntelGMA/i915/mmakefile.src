@@ -1,12 +1,14 @@
 
 include $(SRCDIR)/config/aros.cfg
-include $(SRCDIR)/workbench/libs/mesa/mesa.cfg
+include $(SRCDIR)/$(CURDIR)/../../../../libs/mesa/mesa.cfg
 
 CUR_MESADIR = src/gallium
 CUR_GALLIUMDIR = drivers/i915
 GALLIUM_PATH = $(top_srcdir)/$(CUR_MESADIR)
 
-include $(GALLIUM_PATH)/$(CUR_GALLIUMDIR)/Makefile.sources
+# Mesa 20.0.8's i915 inventory is pinned in-tree so clean builds can model the
+# declaration before mesa3d-fetch has unpacked the upstream Makefile.sources.
+include $(SRCDIR)/$(CURDIR)/i915-20.0.8.sources
 
 I915_C_SOURCES := $(filter %.c, $(C_SOURCES))
 
@@ -24,5 +26,7 @@ NOWARN_FLAGS := -Wno-unused-value -Wno-unused-variable -Wno-strict-aliasing
 USER_CFLAGS += $(NOWARN_FLAGS)
 
 %build_linklib mmake=intelgma-linklibs-gallium_i915 libname=gallium_i915 libdir=$(top_libdir) objdir=$(top_builddir)/$(CUR_MESADIR)/$(CUR_GALLIUMDIR) files="$(I915_SOURCES)"
+
+#MM intelgma-linklibs-gallium_i915 : mesa3d-fetch
 
 %common

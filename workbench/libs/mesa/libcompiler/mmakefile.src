@@ -9,6 +9,12 @@ CUR_MESADIR := src/compiler
 include $(SRCDIR)/$(CURDIR)/../mesa.cfg
 -include $(GENDIR)/$(CURDIR)/../mesa3dgl/mesa3dgllibrary.entrypoints
 include $(top_srcdir)/$(CUR_MESADIR)/Makefile.sources
+ifeq ($(MESAGLVERSION),20.0.8)
+# A clean configure has not fetched Mesa yet. Keep the exact upstream source
+# inventory beside the declaration so both cold and warm graphs select the
+# same translation units.
+include $(SRCDIR)/$(CURDIR)/compiler-20.0.8.sources
+endif
 
 #MM- mesa3dgl-linklibs : mesa3d-linklib-compiler
 
@@ -207,10 +213,13 @@ MESA3DGL_GLSL_GENERATED_HEADERS :=  $(filter %.h,$(MESA3DGL_GLSL_GENERATED_FILES
 MESA3DGL_SPIRV_GENERATED_FILES := $(addprefix $(top_builddir)/$(CUR_MESADIR)/,$(SPIRV_GENERATED_FILES))
 MESA3DGL_NIR_GENERATED_FILES := $(addprefix $(top_builddir)/$(CUR_MESADIR)/,$(NIR_GENERATED_FILES))
 MESA3DGL_GLSL_GENERATED_C_SOURCES := $(filter %.c,$(MESA3DGL_NIR_GENERATED_FILES) $(MESA3DGL_GLSL_GENERATED_FILES) $(MESA3DGL_SPIRV_GENERATED_FILES))
-MESA3DGL_GLSL_C_SOURCES := $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/,$(filter %.c,$(LIBGLSL_FILES) $(NIR_FILES) $(SPIRV_FILES))))
+# The version-pinned inventory is authoritative. Do not make the selected
+# archive members depend on whether the fetched tree already exists while the
+# build graph is configured.
+MESA3DGL_GLSL_C_SOURCES := $(addprefix $(top_srcdir)/$(CUR_MESADIR)/,$(filter %.c,$(LIBGLSL_FILES) $(NIR_FILES) $(SPIRV_FILES)))
 
 MESA3DGL_GLSL_GENERATED_CXX_SOURCES := $(filter %.cpp,$(MESA3DGL_GLSL_GENERATED_FILES))
-MESA3DGL_GLSL_CXX_SOURCES := $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/,$(filter %.cpp,$(LIBGLSL_FILES) $(NIR_FILES))))
+MESA3DGL_GLSL_CXX_SOURCES := $(addprefix $(top_srcdir)/$(CUR_MESADIR)/,$(filter %.cpp,$(LIBGLSL_FILES) $(NIR_FILES)))
 
 MESA3DGL_GLSL_SOURCES_C := \
             $(MESA3DGL_GLSL_GENERATED_C_SOURCES:.c=) \

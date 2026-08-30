@@ -1,40 +1,12 @@
-#   $Id: mmakefile.src 48628 2013-12-25 15:14:46Z deadwood $
+# Gallivm is intentionally retired from the AROS target build.
 #
-#   Generate libgalliumvm.a
+# The declaration introduced in 2019 never had an active consumer: its only
+# aggregate edge and LLVM feature define were disabled from the start, while
+# mesa3dgl.library links the ordinary Gallium archive instead. Mesa 20.0.8's
+# Gallivm sources require target-side LLVM headers plus the LLVM Core,
+# ExecutionEngine and MCJIT runtimes; the current x86, ARM and AArch64 SDKs
+# provide none of those. The repository's LLVM toolchain is host-only.
 #
-
-include $(SRCDIR)/config/aros.cfg
-
-CUR_MESADIR := src/gallium/auxiliary
-include $(SRCDIR)/$(CURDIR)/../mesa.cfg
-include $(top_srcdir)/$(CUR_MESADIR)/Makefile.sources
-
-##MM- mesa3dgl-linklibs : mesa3d-linklib-galliumvm
-
-GALLIVM_C_SOURCES := $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/,  $(filter %.c, $(GALLIVM_SOURCES))))
-GALLIVM_CXX_SOURCES := $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/,  $(filter %.cpp, $(GALLIVM_SOURCES))))
-
-GALLIVM_SOURCES_C := \
-            $(GALLIVM_C_SOURCES:.c=)
-
-GALLIVM_SOURCES_CXX := \
-            $(GALLIVM_CXX_SOURCES:.cpp=)
-
-USER_INCLUDES := \
-            $(USER_INCLUDES) \
-            -iquote $(top_srcdir)/src/gallium/include \
-            -iquote $(top_srcdir)/src/gallium/auxiliary \
-            -iquote $(top_srcdir)/src/gallium/auxiliary/util \
-            -iquote $(top_srcdir)/src/gallium/auxiliary/indices \
-
-
-USER_CFLAGS += $(MESA_NOWARNFLAGS)
-USER_CXXFLAGS += $(MESA_NOWARNFLAGS)
-
-##USER_CPPFLAGS += -DHAVE_LLVM=0x0209 -D__STDC_CONSTANT_MACROS
-
-%build_linklib mmake=mesa3d-linklib-galliumvm libname=galliumvm \
-   libdir=$(top_libdir) objdir=$(top_builddir)/$(CUR_MESADIR) \
-   files="$(GALLIVM_SOURCES_C)" cxxfiles="$(GALLIVM_SOURCES_CXX)"
-
-%common
+# Reintroducing Gallivm is therefore a new porting feature, not restoration of
+# a working legacy target. It must arrive with a target LLVM runtime, an active
+# consumer and architecture runtime tests rather than an empty archive.

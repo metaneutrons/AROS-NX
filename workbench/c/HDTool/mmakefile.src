@@ -12,9 +12,9 @@ FILES := \
 
 EXEDIR := $(AROS_C)
 
-#MM workbench-c : includes linklibs
+#MM workbench-c : includes linklibs workbench-c-hdtool
 
-%build_prog mmake=workbench-c \
+%build_prog mmake=workbench-c-hdtool \
     progname=HDTool targetdir=$(EXEDIR) \
     files=$(FILES)
 
