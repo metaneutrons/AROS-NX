@@ -353,9 +353,9 @@ diff -ruN clang-11.0.0.src/lib/Driver/ToolChains/AROS.cpp clang-11.0.0.src.aros/
 +    if (llvm::sys::path::filename(Exec) == "lld") {
 +        CmdArgs.push_back("-flavor");
 +        CmdArgs.push_back("gnu");
-+        if (!D.SysRoot.empty())
-+            CmdArgs.push_back(Args.MakeArgString("--sysroot=" + SysRoot));
 +    }
++    if (!D.SysRoot.empty())
++        CmdArgs.push_back(Args.MakeArgString("--sysroot=" + SysRoot));
 +
 +    if (!Args.hasArg(options::OPT_static)) {
 +        CmdArgs.push_back("--eh-frame-hdr");
@@ -800,3 +800,15 @@ diff -ruN clang-11.0.0.src/lib/Frontend/InitHeaderSearch.cpp clang-11.0.0.src.ar
      llvm_unreachable("Include management is handled in the driver.");
    }
  
+diff -ruN clang-11.0.0.src/utils/TableGen/ClangAttrEmitter.cpp clang-11.0.0.src.aros/utils/TableGen/ClangAttrEmitter.cpp
+--- clang-11.0.0.src/utils/TableGen/ClangAttrEmitter.cpp	2020-10-07 10:10:48.000000000 +0000
++++ clang-11.0.0.src.aros/utils/TableGen/ClangAttrEmitter.cpp	2026-08-26 21:32:00.000000000 +0000
+@@ -2044 +2044,7 @@
+-  std::map<const Record *, std::vector<AttributeSubjectMatchRule>>
++  struct CompareRecordsByName {
++    bool operator()(const Record *Left, const Record *Right) const {
++      return Left->getName() < Right->getName();
++    }
++  };
++  std::map<const Record *, std::vector<AttributeSubjectMatchRule>,
++           CompareRecordsByName>
