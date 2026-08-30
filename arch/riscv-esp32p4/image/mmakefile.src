@@ -35,6 +35,12 @@ FLASHDISK_OFFSET   ?= 0xc00000
 FLASHDISK_SERIAL   ?= 0xa5051d10
 FLASHDISK_LABEL    ?= AROSP4DEV
 
+# Optional private runtime firmware.  Supplying this absolute path stages the
+# blob only into a disposable host image; the source tree and package remain
+# firmware-free.  The HIDD first uses DEVS:Firmware and then the separately
+# mounted FLASHDISK0P0 development fallback.
+P4_GSL_FW_BINARY ?=
+
 #
 #   The A5 proof files are built separately and staged here.  They must not be
 #   in the kickstart or the flash package; the card is the only place they
@@ -96,6 +102,12 @@ endif
 	@$(ECHO) "AROS boot signature" > $(STAGE)/AROS.boot
 	@$(ECHO) "cpu $(AROS_TARGET_CPU)" >> $(STAGE)/AROS.boot
 	@$(ECHO) "arch $(AROS_TARGET_ARCH)" >> $(STAGE)/AROS.boot
+	@if $(TEST) -n "$(P4_GSL_FW_BINARY)" ; then \
+	    $(TEST) -f "$(P4_GSL_FW_BINARY)" || exit 1 ; \
+	    $(MKDIR) -p $(STAGE)/Firmware/silead ; \
+	    $(CP) "$(P4_GSL_FW_BINARY)" \
+	        $(STAGE)/Firmware/silead/gsl3670-d1001.fw ; \
+	fi
 	@# The A5 proof command and library, if they have been built.  They are
 	@# deliberately absent from C3: GB0 must prove the ordinary Wanderer path,
 	@# not retain acceptance instruments merely because stale build artefacts

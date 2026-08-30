@@ -23,8 +23,9 @@
 #include "hardware.h"
 #include "kernel_intern.h"
 
-#ifdef P4_C4_TOUCH_LOAD
+#if defined(P4_C4_TOUCH_LOAD) || defined(P4_C4_TOUCH_HIDD)
 
+#ifdef P4_C4_TOUCH_LOAD
 #ifndef P4_GSL_FW_HEADER
 #error P4_C4_TOUCH_LOAD requires a private P4_GSL_FW_HEADER
 #endif
@@ -36,6 +37,7 @@ struct P4GSLFirmwareRecord
 };
 
 #include P4_GSL_FW_HEADER
+#endif
 
 #define GSL_RESET_WAIT_TICKS   2U  /* 20 ms with the 100-Hz kernel timer */
 #define GSL_SHORT_WAIT_TICKS   1U  /* bounded 10 ms; timer granularity */
@@ -182,7 +184,8 @@ static int gsl_reset_registers(void)
     return P4_I2C_OK;
 }
 
-static int gsl_load_firmware(unsigned int *failed_record)
+#ifdef P4_C4_TOUCH_LOAD
+static int gsl_load_embedded_firmware(unsigned int *failed_record)
 {
     unsigned int i;
 
@@ -208,6 +211,7 @@ static int gsl_load_firmware(unsigned int *failed_record)
     }
     return P4_I2C_OK;
 }
+#endif
 
 static int gsl_start(void)
 {
@@ -223,6 +227,7 @@ static int gsl_start(void)
  * program is alive and that one bounded status read matches; input reporting
  * and HIDD integration are deliberately later gates.
  */
+#ifdef P4_C4_TOUCH_LOAD
 int krnP4GSLLoadDiagnostic(uint32_t *status, unsigned int *failed_record)
 {
     int r;
@@ -238,7 +243,7 @@ int krnP4GSLLoadDiagnostic(uint32_t *status, unsigned int *failed_record)
         goto out;
     if ((r = gsl_reset_registers()) != P4_I2C_OK)
         goto out;
-    if ((r = gsl_load_firmware(failed_record)) != P4_I2C_OK)
+    if ((r = gsl_load_embedded_firmware(failed_record)) != P4_I2C_OK)
         goto out;
     if ((r = gsl_start()) != P4_I2C_OK)
         goto out;
@@ -259,12 +264,100 @@ out:
         r = P4_I2C_NOTREADY;
     return r;
 }
+#endif
 
 #ifdef P4_C4_TOUCH_HIDD
 #define GSL_REPORT_REGISTER  0x80U
 #define GSL_REPORT_BYTES     44U
 #define GSL_CONTACT_OFFSET   4U
 #define GSL_CONTACT_BYTES    4U
+
+static ULONG gsl_get_le32(const UBYTE *p)
+{
+    return (ULONG)p[0] | ((ULONG)p[1] << 8) | ((ULONG)p[2] << 16)
+         | ((ULONG)p[3] << 24);
+}
+
+/*
+ * Runtime firmware transport.  The HIDD owns filesystem access; the kernel
+ * owns all controller-specific validation and I2C/reset sequencing.  Every
+ * record is checked before the first transaction, so a malformed external
+ * file cannot partially reprogram the controller.  The exact record count is
+ * deliberately D1001-specific and rejects similarly named Silead images.
+ */
+static LONG gsl_touch_load_firmware(const UBYTE *data, ULONG bytes,
+                                    ULONG *failed_record, ULONG *status)
+{
+    ULONG i, pages = 0;
+    int r = P4_I2C_OK;
+
+    if (failed_record)
+        *failed_record = 0;
+    if (status)
+        *status = 0;
+    if (!data || !failed_record || !status
+        || bytes != KRN_TOUCHSCREEN_FW_BYTES)
+        return P4_I2C_TOOLONG;
+
+    for (i = 0; i < KRN_TOUCHSCREEN_FW_RECORDS; ++i)
+    {
+        ULONG offset = gsl_get_le32(data + i * 8U);
+        ULONG value = gsl_get_le32(data + i * 8U + 4U);
+
+        if (offset == 0xF0U)
+        {
+            if (value > 0xFFU)
+            {
+                *failed_record = i;
+                return P4_I2C_MISMATCH;
+            }
+            ++pages;
+        }
+        else if (offset > 0x7CU || (offset & 3U))
+        {
+            *failed_record = i;
+            return P4_I2C_MISMATCH;
+        }
+    }
+    if (!pages)
+        return P4_I2C_MISMATCH;
+
+    if ((r = gsl_clear_registers()) != P4_I2C_OK)
+        goto out;
+    if ((r = gsl_reset_registers()) != P4_I2C_OK)
+        goto out;
+    for (i = 0; i < KRN_TOUCHSCREEN_FW_RECORDS; ++i)
+    {
+        ULONG offset = gsl_get_le32(data + i * 8U);
+        ULONG value = gsl_get_le32(data + i * 8U + 4U);
+
+        r = gsl_write((UBYTE)offset, value, offset == 0xF0U ? 1U : 4U);
+        if (r != P4_I2C_OK)
+        {
+            *failed_record = i;
+            goto out;
+        }
+    }
+    if ((r = gsl_start()) != P4_I2C_OK)
+        goto out;
+    if ((r = gsl_reset_registers()) != P4_I2C_OK)
+        goto out;
+    if ((r = gsl_start()) != P4_I2C_OK)
+        goto out;
+    krnTimerWait(GSL_STATUS_WAIT_TICKS);
+    r = gsl_read32(0xB0, status);
+    if (r == P4_I2C_OK && *status != 0x5A5A5A5AUL)
+        r = P4_I2C_MISMATCH;
+
+out:
+    /* Leave the shared controller on the board-management bus.  acquire()
+       selects I2C0 only after a complete successful load. */
+    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO,
+                      P4_D1001_I2C1_SCL_GPIO, 100000UL)
+        && r == P4_I2C_OK)
+        r = P4_I2C_NOTREADY;
+    return r;
+}
 
 /*
  * Reserve the singleton transport for the worker's bounded polling session.
@@ -349,6 +442,7 @@ static struct KrnTouchScreenOps gsl_touchscreen_ops =
     14U * 64U,
     1280,
     800,
+    gsl_touch_load_firmware,
     gsl_touch_acquire,
     gsl_touch_release,
     gsl_read_contacts
@@ -479,4 +573,4 @@ out:
 }
 #endif /* P4_C4_TOUCH_SAMPLE */
 
-#endif /* P4_C4_TOUCH_LOAD */
+#endif /* P4_C4_TOUCH_LOAD || P4_C4_TOUCH_HIDD */

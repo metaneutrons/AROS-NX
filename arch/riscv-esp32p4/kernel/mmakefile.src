@@ -503,13 +503,14 @@ ifeq ($(P4_C4_TOUCH_PROBE),1)
 P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_PROBE -DP4_PANEL_PROBE
 endif
 
-# P4_C4_TOUCH_HIDD=1 keeps the proven touch transport behind a
-# versioned kernel operation table and adds the private firmware load needed
-# by the development HIDD.  The BSP package selector separately decides
-# whether the HIDD module itself is present.
+# P4_C4_TOUCH_HIDD=1 keeps the proven touch transport behind a versioned
+# kernel operation table.  Firmware is supplied externally by the HIDD at
+# runtime; this flag neither embeds a private image nor executes a boot-time
+# load.  The BSP package selector separately decides whether the HIDD module
+# itself is present.
 ifeq ($(P4_C4_TOUCH_HIDD),1)
-override P4_C4_TOUCH_LOAD := 1
-P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_HIDD
+P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_HIDD -DP4_C4_TOUCH_PROBE \
+                     -DP4_PANEL_PROBE
 endif
 
 # P4_C4_TOUCH_SAMPLE=1 adds one 20-second, read-only contact-zero observation

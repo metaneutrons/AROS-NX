@@ -24,6 +24,10 @@
 #include "fbgfx_intern.h"
 #include "fbgfx_hidd.h"
 
+#ifdef P4_C1_FRAMEBUFFER_HIDD
+static ULONG c1_refresh_count;
+#endif
+
 BOOL initFBGfxHW(struct HWData *data)
 {
     struct KernelBase *KernelBase = OpenResource("kernel.resource");
@@ -34,7 +38,8 @@ BOOL initFBGfxHW(struct HWData *data)
 
     if (!ops || ops == (APTR)-1
         || ops->version != KRN_FRAMEBUFFER_OPS_VERSION
-        || !ops->update_rect || ops->width != 1280 || ops->height != 800
+        || !ops->update_rect || !ops->get_stats
+        || ops->width != 1280 || ops->height != 800
         || ops->depth != 16 || ops->bytes_per_pixel != 2)
     {
         bug("[FBGfx/C1] framebuffer operation table missing or invalid\n");
@@ -118,6 +123,9 @@ void fbDoRefreshArea(struct HWData *hwdata, struct FBGfxBitMapData *data,
 {
 #ifdef P4_C1_FRAMEBUFFER_HIDD
     LONG sx, sy;
+    BOOL accepted;
+    ULONG sample;
+    struct KrnFrameBufferStats stats;
 
     x1 += data->xoffset; y1 += data->yoffset;
     x2 += data->xoffset; y2 += data->yoffset;
@@ -130,11 +138,34 @@ void fbDoRefreshArea(struct HWData *hwdata, struct FBGfxBitMapData *data,
     if (y2 > data->disp_height) y2 = data->disp_height;
     sx = x1 - data->xoffset;
     sy = y1 - data->yoffset;
-    if (x2 > x1 && y2 > y1
-        && !hwdata->ops->update_rect(data->VideoData, data->bytesperline,
-                                     sx, sy, x2 - x1, y2 - y1))
+    if (x2 <= x1 || y2 <= y1)
+        return;
+
+    accepted = hwdata->ops->update_rect(data->VideoData,
+                                        data->bytesperline,
+                                        sx, sy, x2 - x1, y2 - y1);
+    sample = c1_refresh_count++;
+    if (!accepted)
         bug("[FBGfx/C1] dirty update rejected: %ld,%ld %ldx%ld\n",
             sx, sy, x2 - x1, y2 - y1);
+    if (sample < 16 || (sample & 127) == 127)
+    {
+        memset(&stats, 0, sizeof(stats));
+        hwdata->ops->get_stats(&stats);
+        bug("[FBGfx/C1] update %lu %ld,%ld %ldx%ld %s; "
+            "src=%p pitch=%lu bpp=%lu bm=%lux%lu offs=%ld,%ld; "
+            "frames=%lu swaps=%lu faults=%lu rejects=%lu "
+            "active=%p pending=%p\n",
+            (unsigned long)sample + 1, sx, sy, x2 - x1, y2 - y1,
+            accepted ? "accepted" : "REJECTED",
+            data->VideoData, (unsigned long)data->bytesperline,
+            (unsigned long)data->bytesperpix,
+            (unsigned long)data->width, (unsigned long)data->height,
+            (long)data->xoffset, (long)data->yoffset,
+            (unsigned long)stats.frames, (unsigned long)stats.swaps,
+            (unsigned long)stats.faults, (unsigned long)stats.rejects,
+            (APTR)stats.active, (APTR)stats.pending);
+    }
 #else
     UBYTE *src, *dst;
     ULONG srcmod, dstmod;

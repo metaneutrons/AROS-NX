@@ -13,8 +13,17 @@
 
 #include <exec/types.h>
 
-#define KRN_TOUCHSCREEN_OPS_VERSION 3
+#define KRN_TOUCHSCREEN_OPS_VERSION 4
 #define KRN_TOUCHSCREEN_MAX_CONTACTS 10
+
+/* The D1001 GSL3670 image is an array of little-endian <offset,value>
+   records.  Keeping the expected board-specific record count in the public
+   contract lets the file-owning HIDD reject a wrong image before any byte is
+   sent to the controller. */
+#define KRN_TOUCHSCREEN_FW_RECORD_BYTES 8U
+#define KRN_TOUCHSCREEN_FW_RECORDS      4356U
+#define KRN_TOUCHSCREEN_FW_BYTES \
+    (KRN_TOUCHSCREEN_FW_RECORDS * KRN_TOUCHSCREEN_FW_RECORD_BYTES)
 
 struct KrnTouchScreenContact
 {
@@ -39,6 +48,13 @@ struct KrnTouchScreenOps
     ULONG raw_height;
     ULONG logical_width;
     ULONG logical_height;
+
+    /* Load and start one already validated, external little-endian record
+       image.  Zero is success.  failed_record and status are always filled;
+       the platform owns reset, transport and final 0x5a5a5a5a status
+       validation.  This call is task-context only and never retains data. */
+    LONG (*load_firmware)(const UBYTE *data, ULONG bytes,
+                          ULONG *failed_record, ULONG *status);
 
     /* The platform transport is singleton-backed.  A worker acquires one
        bounded polling session and releases it on every exit. */

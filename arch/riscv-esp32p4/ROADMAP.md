@@ -10667,6 +10667,406 @@ chip in the width this port assumes; it never addressed the hang.
   production work is runtime external firmware loading and bounded recovery,
   not further gesture inference from the controller's unusable zero IDs.
 
+### 2026-08-30 - C4 external runtime firmware candidate built
+
+- State change: C4 remains `hardware partial`.  The external firmware and
+  bounded recovery implementation is build verified only; no D1001 behavior
+  is claimed in this entry.
+- Architecture: `KrnTouchScreenOps` version 4 lets the filesystem-owning HIDD
+  hand an external record image to the controller-specific kernel transport.
+  The HIDD performs file size and complete-read checks in its ordinary worker
+  task, after DOS and volumes can exist.  The kernel independently validates
+  all 4,356 little-endian `<offset,value>` records before the first I2C write,
+  owns reset/load/start/status sequencing, and requires final status
+  `0x5a5a5a5a`.  The canonical path is
+  `DEVS:Firmware/silead/gsl3670-d1001.fw`; a separately mounted read-only
+  development volume is tried as `FLASHDISK0P0:Firmware/silead/...` only after
+  that.  Neither source, core nor BSP contains firmware bytes.
+- Failure behavior: unavailable firmware is retried once per second in the
+  independent input worker, logging only the first and every thirtieth miss;
+  it cannot delay dosboot or Wanderer.  Three consecutive report failures
+  release any button and invoke a complete reload from the retained external
+  image.  At most three reload attempts are made; exhaustion stops touch while
+  leaving the desktop live.  Every underlying I2C transaction retains its
+  existing 50-ms deadline.
+- Build correction retained: the first core attempt failed honestly because
+  the `krnP4GSLTouchScreenOps()` declaration was still nested inside the old
+  embedded-firmware preprocessor guard.  Moving that declaration under the
+  HIDD guard fixed the compile.  No image from the failed attempt was used.
+- Build evidence: all 70 generated ESP32-P4 kernel-arch files and the core
+  artifacts were removed before the accepted build, so the former implicit
+  `P4_C4_TOUCH_LOAD=1` object state could not survive.  The accepted build used
+  `P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_HIDD=1`, no private header, the XIP
+  linker script and an explicit esptool invocation.  SRAM residency passed and
+  the required `Creating .../aros-esp32p4.bin` marker appeared.  The resulting
+  firmware-free core is 197,696 bytes, SHA-256
+  `f3ad642072fa4eae7f1315359ac7734d014ed0706795113b68c4b34ac35f793c`.
+  After the NIL-handle hardening described below, the final rebuilt
+  `p4touch.hidd` is 35,464 bytes, SHA-256
+  `7f46b3360d587e2d01cf8ceb646b49a345eedd758567ff6364cc7f5cbba4e7e8`.
+  The final 35-member BSP is 3,308,404 of the permitted 4,063,232 bytes,
+  SHA-256
+  `c06d1aa720fc5f0db57d0361c3fe1d3be22dfddf422933d48de4273ab9c4853c`;
+  `audit-package.py` accepts all 35 members with zero failures.  Its saved
+  final output is `/tmp/aros-c4-runtime-audit-final.txt`, SHA-256
+  `69b84afcc14200bc76db0f34a3b1b1d7b6dc6ad8377ac2b6aede7c458e6ef7b2`.
+- Private development medium: an optional `P4_GSL_FW_BINARY` image-stage
+  input copies the user-supplied binary without adding it to the repository.
+  The known private input is 34,848 bytes, SHA-256
+  `125728ad83424e533198f804cb6d8b393c59d3818903760cbda282138e782636`.
+  A minimal 4-MiB FAT16 development image was reproducibly built with 18
+  entries and the manifest records that exact file at
+  `/Firmware/silead/gsl3670-d1001.fw`; the image SHA-256 is
+  `ed5dca8356362e6065d56922220a2108442dd19db718db7b905833c20818e138`.
+  An attempted independent `mdir`/`mtype` inspection could not run because
+  mtools is not installed; no false independent verification claim is made.
+- Safety: this source/build step wrote no board flash and did not touch SD.
+  The private header and binary remain outside the repository.  The generated
+  eight-MiB graphical flashdisk used only to satisfy a known core-build
+  dependency was not and cannot be a candidate for the four-MiB flash range;
+  the final named medium is the minimal four-MiB image above.
+- Next safe step: flash only core and BSP first while retaining the old
+  firmware-less development volume.  A non-interactive boot must prove missing
+  firmware does not block Wanderer.  Then write the verified four-MiB
+  development volume, prove external load/status/polling, and request a fresh
+  explicit `bereit` before any direct touch interaction.
+
+- First missing-firmware hardware result: only the candidate core and BSP were
+  written, at `0x20000` and `0x820000`; write-time hashes and a separate
+  two-range `verify-flash` passed.  The previous development volume, SD,
+  bootloader, partition table and `storage` were untouched.  The 45-second
+  first-byte capture `/tmp/aros-c4-runtime-missing-01.log` is 760,151 bytes,
+  SHA-256
+  `8049bad1648c0d2246d1ec974642ccb379138eb45da741661e2bc29f379febf8`.
+  It logs firmware unavailable before dosboot, then boots `SDCARD0P0`, executes
+  Startup-Sequence and runs Wanderer without trap, panic, Guru, Alert, access
+  fault or timer failure.  This passes the non-blocking property.
+- Negative-test correction: the same capture exposed a DOS/FAT edge case, not
+  a controller result.  Failed `ACTION_FINDINPUT` left `Open()` returning an
+  allocated NIL-style FileHandle with a null `fh_Type`; `Seek()` on it reports
+  the sentinel value 1.  The candidate loader now rejects any returned handle
+  without a handler port before Seek/Read.  The first capture remains valid as
+  non-blocking evidence but is not accepted as the clean missing-file log.
+  HIDD/BSP rebuild and a repeated negative boot are required before writing
+  the firmware development volume.
+
+- Clean missing-firmware gate: only the hardened final BSP was rewritten at
+  `0x820000`; its write-time hash and separate verify passed.  The repeated
+  45-second first-byte capture `/tmp/aros-c4-runtime-missing-02.log` is
+  755,204 bytes, SHA-256
+  `04fed87a766512a4fdbefceeab054090df3f1021ebbc4d3ee3de4f9acc1751d8`.
+  It prints exactly the controlled first unavailable message, boots
+  `SDCARD0P0`, executes Startup-Sequence and loads Wanderer.  There is no
+  malformed-file rejection, trap, kernel panic, Guru Meditation, Alert,
+  access fault or timer-request failure.  This is the accepted negative gate.
+- External-load flash evidence: the 4,194,304-byte minimal development image
+  was written to its standing-authorized exact range `0xc00000..0xffffff`.
+  Its write-time digest and a separate full-range `verify-flash` both passed.
+  Core, BSP, bootloader, partition table, `storage` and SD were untouched by
+  this write.
+- External-load hardware gate: the 70-second first-byte capture
+  `/tmp/aros-c4-runtime-load-01.log` is 716,611 bytes, SHA-256
+  `7fb725020568411c54bafc252d370066a9c351ac4f3619a07359ef05b5ebb584`.
+  Before dosboot the worker finds the image only through the documented
+  `FLASHDISK0P0:` fallback, validates and sends all 4,356 records, reports
+  status `0x5a5a5a5a`, acquires the persistent I2C0 session and then reaches
+  four consecutive 100-poll heartbeats through poll 400 with zero frames,
+  events or errors.  Concurrently the higher-priority SD boot wins, mounts
+  both volumes, executes Startup-Sequence and loads Wanderer.  No trap, kernel
+  panic, Guru Meditation, Alert, access fault, timer-request failure, load
+  failure or recovery failure appears.
+- Acceptance and remaining risk: external runtime firmware supply and the
+  firmware-absent non-blocking behavior are now D1001 hardware verified.  C4
+  remains `hardware partial`: this exact external-load artifact still needs a
+  direct pointer/one-/two-finger regression, and recovery needs deliberate
+  I2C fault injection plus the roadmap's 1,000-cycle soak.  Wait for a fresh
+  explicit operator `bereit` before the direct interaction.
+
+- Failed direct-interaction gate: after a fresh explicit `bereit`, the
+  100-second capture `/tmp/aros-c4-runtime-interactive-01.log` is 830,298
+  bytes, SHA-256
+  `c9106c74d109d4df7814d9a2ad442a993bee5bfba2c8b653b416133c1e7e6b53`.
+  The external image again validates and loads all 4,356 records, reports
+  status `0x5a5a5a5a`, and the worker reaches poll 800 with zero frames and
+  zero read errors; SD boot, Startup-Sequence and Wanderer continue on UART.
+  Direct observation nevertheless reports no usable image and only a
+  flickering strip about 10--15 pixels wide at the display's right edge, so
+  the operator stopped touching and no pointer/gesture claim is possible.
+  This is a failed hardware gate, not a successful external-firmware
+  interaction test.
+- Display evidence gap: the early B5 diagnostics in the failed run still
+  report no DSI payload error, three GDMA start frames, zero DMA faults and a
+  moving source-address pointer.  They are materially the same as the earlier
+  `/tmp/aros-c4-runtime-load-01.log`; that earlier run had no direct display
+  observer and therefore proves external controller load and continued OS
+  execution, not a visually correct scanout.  Current telemetry cannot detect
+  this visible failure.
+- Next isolation step: boot the same core/BSP with an otherwise equivalent
+  development volume that omits the external firmware.  A visually good
+  firmware-absent boot would isolate the late GSL reset/load sequence; the
+  same strip would instead point back to the known intermittent B5 scanout
+  path.  Prepare the image and UART capture first, then obtain a new explicit
+  `bereit` immediately before the visual boot.
+- A/B medium preparation: the first host attempt requested the full graphical
+  SYS stage in four MiB and failed honestly with `image too small for its
+  contents`; no resulting image was used.  The accepted comparison instead
+  uses the same minimal stage as the 18-entry firmware medium.  It contains
+  15 entries, omitting only the two firmware directories and their one file,
+  is 4,194,304 bytes and has SHA-256
+  `bb9a75ca99d0bbe2811acac25d166717f32718ef1f6d87403262539b815fa7c5`.
+  The prior private medium is preserved as
+  `/tmp/aros-c4-runtime-with-fw.img`, whose SHA-256 remains
+  `ed5dca8356362e6065d56922220a2108442dd19db718db7b905833c20818e138`.
+- A/B flash state: on the same D1001 revision 1.3, MAC
+  `e8:f6:0a:e0:46:4c`, only the exact standing-authorized
+  `0xc00000..0xffffff` development range was replaced with the firmware-absent
+  image.  Write-time verification and a separate full-range `verify-flash`
+  both passed.  Core, BSP, bootloader, partition table, `storage` and SD were
+  untouched.  This is flash evidence only; obtain a new explicit `bereit`
+  before the controlled visual boot and UART capture.
+- Firmware-absent visual A/B result: after that fresh explicit `bereit`, the
+  controlled 75-second first-byte run
+  `/tmp/aros-c4-runtime-ab-no-fw-01.log` is 946,959 bytes, SHA-256
+  `389241bc552b65d005c3b4b6a319a8fbf31a0d9ae1f2850a48c41cd8c55e638a`.
+  It reports the expected single `external firmware unavailable` message,
+  never resets or programs the GSL3670, boots SD, executes Startup-Sequence
+  and runs Wanderer without a fatal signature.  Direct observation still
+  shows the same narrow flickering strip at the display edge, described as
+  resembling an AROS scrollbar, instead of a usable desktop.  Therefore the
+  late external touch-firmware load is not the cause of this display failure.
+- Isolation conclusion: both the with-firmware and firmware-absent failures
+  report no DSI payload error, three GDMA start frames, no DMA fault and a
+  moving source address.  The blocker belongs to the B5/C1 scanout or its
+  handoff to `fbgfx.hidd`; current diagnostics falsely look healthy.  Do not
+  count either run as the C4 direct-interaction gate.  Diagnose and restore a
+  visually complete graphical boot before resuming touch/recovery testing.
+- C1 diagnostic candidate: the shared `fbgfx.hidd` support now samples only
+  its first 16 refreshes and every 128th refresh thereafter.  Each line records
+  the logical dirty rectangle, acceptance result, DMA frame/swap/fault/reject
+  counters and active/pending physical surface.  It also makes the already
+  required stats callback explicit in the operation-table validation.  This
+  is bounded temporary telemetry intended to distinguish a missing initial
+  full refresh from a dead frame-boundary handoff; it makes no hardware claim
+  until rebuilt, flashed and observed.
+- Diagnostic build evidence: the affected generated support object,
+  `fbgfx.hidd` and BSP were explicitly removed before the accepted C3+C4
+  package build.  The instrumented HIDD is 43,500 bytes, SHA-256
+  `2e6bf44f10aae170d76ffdc22be70592fd86a48d55b27362e5026b7f4ee4ab73`;
+  the 35-member BSP is 3,309,412 of 4,063,232 bytes, SHA-256
+  `7827341d2e1301a2b1fbe7f4c411c3329654f053f24d964ac7ab96ffc480dabe`.
+  The package audit accepts all 35 ELF32 RISC-V members with zero failures;
+  `/tmp/aros-c1-scanout-telemetry-audit.txt` has SHA-256
+  `5ffbc675c908aac33d26a92a797b08a3a175c191c7b80eb4ac66ec618d2d1f5c`.
+  The first audit invocation failed before member inspection because the host
+  PATH lacked `riscv-aros-readelf`; a piped retry completed the audit but its
+  zsh-only exit-status wrapper was malformed.  The accepted unpiped repeat
+  returned exit status zero and is the saved evidence above.  No board flash
+  had yet been changed at the end of that build step.
+- Diagnostic flash evidence: only the 3,309,412-byte BSP was written at
+  `0x820000..0xb47f63` on D1001 revision 1.3.  Write-time verification and a
+  separate `verify-flash` both matched.  Core, the firmware-absent A/B volume,
+  bootloader, partition table, `storage` and SD were untouched.  A fresh
+  explicit `bereit` is still required before the instrumented visual reset.
+- C1 refresh/handoff isolation result: after a fresh explicit `bereit`, the
+  instrumented 100-second first-byte capture
+  `/tmp/aros-c1-scanout-telemetry-01.log` is 997,240 bytes, SHA-256
+  `94f51b9c640f6eaefc1461920f9334213fb1ca76ab131d7abdaa79ed6938ce9d`.
+  The first accepted update is a 16x16 rectangle, the second and fifth are
+  complete 1280x800 updates, and every sampled update through number 256 is
+  accepted.  DMA frames advance from 108 to 607, swaps advance from 1 to 256,
+  the active surface alternates between `0x49c18000` and `0x49e0c000`, and
+  faults, rejects and pending state remain zero.  UART continues through OS
+  startup and Wanderer without a fatal signature.  Direct observation still
+  reports only the narrow flickering edge instead of a desktop.  Therefore a
+  missing logical full refresh, rejected dirty rectangle and dead
+  frame-boundary handoff are all excluded; the remaining blocker is below the
+  fbgfx producer boundary, in framebuffer-to-DPI/DSI/panel consumption or
+  persistent display state.
+- Next isolation step: temporarily replace the graphical core with the known
+  bounded B5 immutable-preload coordinate instrument while preserving the
+  current C4 core artifact.  A correct static image would localise the failure
+  to the C1 transformed/double-buffered path; the same edge-only output would
+  reproduce the fault without Intuition, fbgfx or live buffer swaps and move
+  the investigation to DSI/bridge/panel initialisation.  Build and verify the
+  diagnostic first, then obtain a new explicit `bereit` immediately before
+  the visible reset.  Restore the preserved C4 core after the observation.
+- Static raw-scanout candidate: the current 197,696-byte C4 core was preserved
+  as `/tmp/aros-c4-runtime-core.bin`, SHA-256
+  `f3ad642072fa4eae7f1315359ac7734d014ed0706795113b68c4b34ac35f793c`.
+  All 201 generated kernel object/dependency files were then deleted before a
+  fresh XIP build with `P4_B5_VISUAL_GATE=1`, immutable preload, the already
+  hardware-accepted diagnostic `P4_B5_ROW_PHASE_COMPENSATION=525`, a bounded
+  60-second run, 200-MHz PSRAM and 360-MHz CPU.  The resulting core is 190,976
+  bytes, SHA-256
+  `32744a7e81536cb0aed79430fc66b5feafed6705759babbd1603c12eaad115bf`,
+  preserved as `/tmp/aros-c1-raw-static.bin`.
+- Build-evidence correction: the first invocation compiled and linked the
+  complete core, passed the SRAM-residency check and reached the image step,
+  but failed honestly because `esptool` was absent from that shell's PATH;
+  `/tmp/aros-c1-raw-static-build.log` has SHA-256
+  `9c9d7ff560e7cecc4dbb0f12094211f0539be86e1eee295aa4d449611185bcce`.
+  The accepted retry used the installed IDF-v6.0.1 Python environment, exited
+  zero, contains no `error:` and emitted both `Creating ...aros-esp32p4.bin`
+  and `Successfully created ESP32-P4 image`; its log SHA-256 is
+  `6757d17e839c188c94b2588fac153aba32c996d26988e80171f28ecb832f156c`.
+  No flash or SD medium has changed yet.  `/dev/cu.usbmodem101` is present;
+  wait for a new explicit operator `bereit` before the write-triggered reset
+  and visual observation.
+- Static-candidate flash evidence: after the requested fresh `bereit`, only
+  ota_0 `0x20000..0x4e9ff` was erased and written on D1001 revision 1.3, MAC
+  `e8:f6:0a:e0:46:4c`.  Write-time hashing and a separate full-range
+  `verify-flash` both matched the 190,976-byte candidate.  The flash and
+  verification logs have SHA-256
+  `53777f8c27d3419411b54562639dfe1451e6c93f63869a0fa84682e3dec50165`
+  and
+  `b51d2a8a48ec4f85f1ec0cb82b0edcdaad59167135d0c2185f82ff1cab0a3629`.
+  BSP, development volume, bootloader, partition table, `storage` and SD were
+  untouched.
+- Invalid first run, not hardware evidence: both flash operations deliberately
+  ended with `Staying in bootloader`.  The subsequent serial reset produced
+  exactly zero bytes in `/tmp/aros-c1-raw-static-01.log` (empty-file SHA-256
+  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`),
+  and direct observation was completely black.  This combination is
+  consistent with the target remaining in ROM download mode because that
+  reset did not explicitly release the download strap; it does not test the
+  static core or the display path.  Use the bootloader's explicit `run`
+  command for the repeat, then open UART after reset.  Obtain another fresh
+  `bereit` because the valid visual interval has not yet occurred.
+- Valid static raw-scanout result: after a second fresh `bereit`, `esptool
+  run` explicitly left the ROM bootloader and the UART was opened only after
+  reset without further DTR/RTS transitions.  The 72-second capture
+  `/tmp/aros-c1-raw-static-02.log` is 722,676 bytes, SHA-256
+  `2cf4f806267b47b61d93b4d72ba25a48f8151fa51864fff06f415495ec7353e1`;
+  the run-command log has SHA-256
+  `73957c55ba17c10767821239afc2e7c889aff69bd0764ad9d2a7add18658a8ee`.
+  Panel identity is `93 65 04`, host payload and bridge RAW status remain
+  zero, measured throughput is 69 MB/s, GDMA frames advance from 11 through
+  2,006 with zero faults, and the bounded run ends in `scanout stopped, panel
+  safe`.  Direct observation reports the complete colour card and
+  `geometrisch perfekt` for the full interval.
+- Isolation conclusion: the same physical surface at `0x49e0c000`, the same
+  1,500-Mbit/s non-burst transport and the same explicit +525 compatibility
+  mapping are visually correct without C1.  Persistent panel state, a dead
+  DSI/bridge path and failure of the second physical surface are therefore
+  excluded.  Together with the prior C1 telemetry's accepted full-screen
+  updates and clean swaps, the remaining defect lies at the C1 content
+  boundary: logical source stride/pixel interpretation, rotated copy, cache
+  publication, or later corruption of the two reserved surfaces.  Inspect
+  and instrument actual source/destination sample values before another
+  interactive test; do not change DSI timing or panel initialisation.
+- C1 content diagnostic prepared: bounded temporary telemetry now records the
+  HIDD bitmap pointer, pitch, bytes-per-pixel, dimensions and offsets for the
+  existing sampled refreshes.  For only the first two complete 1280x800
+  submissions, kernel.resource additionally compares order-independent
+  nonzero-count/sum/XOR censuses of the complete logical source and both
+  rotated physical surfaces, plus exact source/front/back RGB565 values at
+  four corners and the centre.  Equal censuses and samples would exonerate
+  source interpretation, rotation, mirroring and cache publication and move
+  the blocker to the frequency/timing of live source handoffs; a mismatch
+  identifies the exact boundary without changing any displayed pixel or DSI
+  register.  This telemetry is not yet hardware evidence.
+- C1 content-diagnostic core build: 200 generated kernel object/dependency
+  files were deleted when changing back from the immutable B5 build to the C3
+  graphical configuration.  The first build then failed honestly in an
+  unrelated host dependency because the complete graphical FAT image no
+  longer fits the four-MiB development-volume default; the terminal message is
+  `image too small for its contents`.  Its log is
+  `/tmp/aros-c1-content-diag-core-build.log`, SHA-256
+  `3506a7dea0ac6a7420023c3fafb2307d8ac42a6040bbe83def5b4127cbabfdf9`.
+  A retry with `FLASHDISK_SIZE_MB=8` solely for that disposable host artifact
+  completed the requested core, passed SRAM residency, emitted both
+  `Creating .../aros-esp32p4.bin` and `Successfully created ESP32-P4 image`,
+  and contains no `error:`.  Its log is
+  `/tmp/aros-c1-content-diag-core-build-retry.log`, SHA-256
+  `0bc3a83928783255c614cd70b5c33c38f2ec6216cee87fdad588758e05fc095d`.
+  The resulting 199,344-byte core is preserved as
+  `/tmp/aros-c1-content-diag-core.bin`, SHA-256
+  `9d7c04c03f927166f329466bda19e971a6d11b9bdbd6ebc38bdf7b48ec1f68d9`.
+  It has not been flashed or run; the content diagnostic still needs a freshly
+  rebuilt/audited BSP before any D1001 test.
+
+### 2026-08-30 - session handoff after geometrically correct raw scanout
+
+- Repository state: branch `feat/riscv32-esp32p4-v2`, HEAD
+  `5def61508f07015b2d80ea3295e173165fb749ca`.  The worktree intentionally has
+  eleven modified tracked files.  Nine implement the uncommitted C4 external
+  runtime-firmware/recovery path and its documentation; the shared
+  `arch/aarch64-raspi/hidd/fbgfx/fbgfx_support.c` and port-local
+  `kernel/dsi_scanout.c` additionally contain bounded temporary C1 content
+  telemetry.  Do not discard or commit this mixed state before the display
+  regression is isolated and the temporary telemetry is removed or explicitly
+  retained with evidence.
+- Last accepted visual fact: the immutable B5 raw candidate used the same
+  second physical surface `0x49e0c000`, RGB565 rotation, explicit +525 row
+  compatibility mapping, 1,500-Mbit/s non-burst DSI and the live panel.  Its
+  72-second capture is `/tmp/aros-c1-raw-static-02.log`, SHA-256
+  `2cf4f806267b47b61d93b4d72ba25a48f8151fa51864fff06f415495ec7353e1`.
+  UART reports panel ID `93 65 04`, zero host-payload/bridge-RAW errors, frames
+  11 through 2,006 and zero DMA faults; direct observation reports the full
+  colour card as `geometrisch perfekt`.  This excludes panel geometry, DSI
+  timing, the +525 transform and either reserved scanout surface as the
+  standing defect.  It does not validate the live C1 content path.
+- Current board flash: D1001 revision 1.3, MAC `e8:f6:0a:e0:46:4c`, serial
+  `/dev/cu.usbmodem101`.  `ota_0` at `0x20000` contains the temporary
+  190,976-byte static B5 core, SHA-256
+  `32744a7e81536cb0aed79430fc66b5feafed6705759babbd1603c12eaad115bf`.
+  `arosbsp` at `0x820000` still contains the 3,309,412-byte refresh-telemetry
+  BSP, SHA-256
+  `7827341d2e1301a2b1fbe7f4c411c3329654f053f24d964ac7ab96ffc480dabe`.
+  The four-MiB firmware-absent development volume at `0xc00000` has SHA-256
+  `bb9a75ca99d0bbe2811acac25d166717f32718ef1f6d87403262539b815fa7c5`.
+  Bootloader, partition table, `storage` and read-only SD were not changed by
+  this isolation series.
+- Preserved rollback inputs: the displaced graphical C3+C4 core is
+  `/tmp/aros-c4-runtime-core.bin`, 197,696 bytes, SHA-256
+  `f3ad642072fa4eae7f1315359ac7734d014ed0706795113b68c4b34ac35f793c`.
+  The private-firmware development image is
+  `/tmp/aros-c4-runtime-with-fw.img`, SHA-256
+  `ed5dca8356362e6065d56922220a2108442dd19db718db7b905833c20818e138`.
+  The private controller inputs remain outside the repository at
+  `/tmp/d1001-gsl3670-private.h` and `/tmp/d1001-gsl3670.fw`; never commit
+  either.
+- Flash-layout clarification: the board has 32 MiB.  `ota_0` already reserves
+  8 MiB for the core and `arosbsp` reserves 8,064 KiB for the package.  The
+  four-MiB `FLASHDISK_SIZE_MB` default is not the Kickstart allowance: it is
+  the fallback FAT development volume currently occupying the upper half of
+  `arosbsp`, leaving the package a 4,063,232-byte enforced limit.  An
+  eight-MiB host image may satisfy a build dependency but must not be flashed
+  at `0xc00000`, where it would cross the `arosbsp` boundary.  The clean future
+  layout gives the full `arosbsp` partition to the package and moves the
+  development volume into the 15.9-MiB `storage` partition at `0x1020000`;
+  that requires a bounded non-XIP/MSPI flash transaction path because the
+  current cache mapper stops at 16 MiB.  Treat this as roadmap work, not as a
+  prerequisite for the C1 diagnosis.
+- Immediate next build step: delete only the generated
+  `fbgfx_support.o/.d`, `AROS/Devs/Drivers/fbgfx.hidd` and
+  `AROS/boot/esp32p4/aros-bsp.pkg`, then build
+  `kernel-package-esp32p4-riscv-checksize` with
+  `P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_HIDD=1 FAT_DEBUG=1 DOS_DEBUG=1
+  DOSBOOT_DEBUG=1`.  Ensure the IDF v6.0.1 Python environment and the AROS
+  RISC-V tools are on PATH.  Require a zero exit, exact `error:` audit, the
+  package-size marker and a successful `audit-package.py` run.  Record HIDD,
+  package and audit hashes here before writing flash.
+- Immediate flash/test step: once that package is accepted, write only the
+  preserved content-diagnostic core to `0x20000` and the new package to
+  `0x820000`, using `--after no-reset`, and perform separate exact-range
+  verification.  These two writes are covered by the standing development
+  authorization; do not touch the volume, SD, partition table or `storage`.
+  Update the README `Currently flashed` row and this evidence log in the same
+  change.  The board will remain in ROM download mode after verification.
+- Interactive-test rule: do not start the visible run automatically.  Obtain
+  a fresh explicit `bereit` immediately before every visual interval.  Then
+  use `esptool run` to leave ROM download mode and open UART only after the
+  device re-enumerates; toggling DTR/RTS afterward can silently return it to
+  the ROM loader and yield a misleading black-screen result.
+- Diagnostic decision: compare the first two `[c1diag] full` and
+  `[c1diag] samples` lines.  Equal logical-source/front/back censuses and exact
+  samples exonerate stride, RGB565 interpretation, rotation, mirror copy and
+  cache publication; the next target is live swap frequency/pacing relative
+  to the bridge.  Any mismatch names the failing source-to-surface boundary.
+  Resume the C4 direct pointer/two-finger and recovery gates only after the
+  normal graphical image is visually restored.
+
 ## Evidence-entry template
 
 ```text

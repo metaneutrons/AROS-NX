@@ -93,10 +93,10 @@ int krnP4GSLLoadDiagnostic(uint32_t *status, unsigned int *failed_record);
 #ifdef P4_C4_TOUCH_SAMPLE
 int krnP4GSLSampleDiagnostic(unsigned int seconds);
 #endif
+#endif
 #ifdef P4_C4_TOUCH_HIDD
 struct KrnTouchScreenOps;
 struct KrnTouchScreenOps *krnP4GSLTouchScreenOps(void);
-#endif
 #endif
 
 /* What the panel bring-up claimed and where it got to. */
