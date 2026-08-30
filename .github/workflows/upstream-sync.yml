@@ -1,0 +1,130 @@
+name: Propose upstream sync
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  propose:
+    if: github.repository == 'metaneutrons/AROS-NX'
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ secrets.AROS_SYNC_TOKEN }}
+    steps:
+      - name: Require the dedicated sync credential
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo '::error::AROS_SYNC_TOKEN is not configured.'
+            echo 'A dedicated fine-grained credential is required so the created pull request triggers normal CI.'
+            exit 64
+          fi
+
+      - name: Checkout AROS-NX main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch and validate upstream
+        id: sync
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          git remote add upstream https://github.com/aros-development-team/AROS.git
+          git fetch --no-tags origin main master
+          git fetch --no-tags upstream master
+
+          old_master=$(git rev-parse origin/master)
+          new_master=$(git rev-parse upstream/master)
+          printf 'Current mirror: %s\nUpstream head: %s\n' "$old_master" "$new_master"
+
+          if [ "$old_master" = "$new_master" ]; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! git merge-base --is-ancestor "$old_master" "$new_master"; then
+            echo '::error::Upstream master is not a fast-forward of the AROS-NX mirror.'
+            echo 'Refusing to rewrite master or guess how upstream history changed.'
+            exit 65
+          fi
+
+          if ! git merge-base --is-ancestor "$old_master" origin/main; then
+            echo '::error::AROS-NX main does not contain the currently mirrored upstream head.'
+            echo 'Repair the permanent branch invariant before syncing more upstream commits.'
+            exit 66
+          fi
+
+          short=${new_master:0:12}
+          branch="sync/upstream-${short}"
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git"
+
+          if git ls-remote --exit-code origin "refs/heads/${branch}" >/dev/null 2>&1; then
+            echo "::error::Sync branch ${branch} already exists but master has not advanced."
+            echo 'Resolve or close the existing proposal; this workflow will never overwrite it.'
+            exit 67
+          fi
+
+          git config user.name 'aros-nx-upstream-sync[bot]'
+          git config user.email 'aros-nx-upstream-sync[bot]@users.noreply.github.com'
+
+          # The protected mirror accepts this push only as a fast-forward from
+          # the dedicated sync identity. No force option is ever used.
+          git push "$remote" "${new_master}:refs/heads/master"
+
+          git switch --create "$branch" origin/main
+          if ! git merge --no-ff --no-edit "$new_master"; then
+            git merge --abort || true
+            echo '::error::Upstream does not merge cleanly into AROS-NX main.'
+            echo 'The mirror is updated, but no integration branch was published. Resolve the merge manually.'
+            exit 68
+          fi
+          git push "$remote" "HEAD:refs/heads/${branch}"
+
+          {
+            echo 'changed=true'
+            echo "branch=${branch}"
+            echo "upstream_sha=${new_master}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open the integration pull request
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          BRANCH: ${{ steps.sync.outputs.branch }}
+          UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$BRANCH" \
+            --title "sync: integrate upstream ${UPSTREAM_SHA:0:12}" \
+            --body "Automated fail-closed merge of upstream AROS master at \`${UPSTREAM_SHA}\`.\n\nDo not merge until all required AROS-NX qualification checks pass. The permanent \`master\` branch is the exact fast-forward mirror; this PR changes only \`main\`."
+
+      - name: Record outcome
+        env:
+          CHANGED: ${{ steps.sync.outputs.changed }}
+          BRANCH: ${{ steps.sync.outputs.branch }}
+          UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
+        run: |
+          {
+            echo '## Upstream sync'
+            if [ "$CHANGED" = 'true' ]; then
+              echo "- Mirrored upstream commit: \`$UPSTREAM_SHA\`"
+              echo "- Integration branch: \`$BRANCH\`"
+              echo '- Merge remains gated by branch protection and required qualification jobs.'
+            else
+              echo '- AROS-NX master already equals upstream master; nothing changed.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
