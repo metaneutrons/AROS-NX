@@ -31,10 +31,16 @@ Rulesets should enforce all of the following:
 1. `master` rejects deletion, force-pushes and direct writes except
    fast-forwards from the dedicated sync identity.
 2. `main` rejects deletion and force-pushes and requires pull requests,
-   approvals and the complete product qualification checks.
+   resolved review conversations and the complete product qualification
+   checks. Add mandatory independent approvals when a second maintainer can
+   supply them without making the repository permanently unmergeable.
 3. `pr/*` and `sync/*` reject force-pushes after review begins.
 4. Administrators do not bypass failed required checks for routine syncs.
 
 The sync workflow deliberately does not enable automatic merge. A clean Git
 merge proves only that histories combine; it does not prove that AROS-NX still
 builds or behaves correctly on every supported target.
+
+AROS-NX permits only merge commits for pull requests. Squash and rebase merges
+would discard the original upstream commit as an ancestor of `main`, breaking
+the invariant that the next sync verifies before it changes anything.
