@@ -200,6 +200,9 @@ LLVM_CONFIG_OPT         :=-DLLVM_CONFIG_PATH=$(LLVM_BUILD_BINDIR)/llvm-config
 endif
 LLVM_CONFIG_OPT         += -Wno-dev
 
+# LLVM 11's sancov no longer compiles with current libc++ because its nested
+# initializer-list relies on an implicit basic_string conversion. sancov and
+# sanstats are host-side post-processing tools, not AROS compiler components.
 LLVM_CMAKEOPTIONS       := -Wno-dev                                                                                                     \
     -DDEFAULT_SYSROOT="$(AROS_DEVELOPER)"                                                                                               \
     -DCMAKE_INSTALL_BINDIR="$(LLVM_BIN_DIR)"                                                                                           \
@@ -208,6 +211,8 @@ LLVM_CMAKEOPTIONS       := -Wno-dev                                             
     -DLLVM_ENABLE_PROJECTS=""                                                                                                           \
     -DLLVM_EXTERNAL_PROJECTS="clang;lld"                                                                                                \
     -DLLVM_BUILD_TOOLS=ON                                                                                                               \
+    -DLLVM_TOOL_SANCOV_BUILD=OFF                                                                                                        \
+    -DLLVM_TOOL_SANSTATS_BUILD=OFF                                                                                                      \
     -DLLVM_ENABLE_RUNTIMES=""                                                                                                           \
     -DLLVM_ENABLE_DOXYGEN=OFF                                                                                                           \
     -DLLVM_ENABLE_ASSERTIONS=OFF                                                                                                        \
@@ -248,8 +253,15 @@ LLVM_CMAKEOPTIONS +=                                                            
 else
 LLVM_CMAKEOPTIONS +=                                                                                                                    \
     -DLLVM_BUILD_LLVM_DYLIB=ON                                                                                                          \
-    -DBUILD_SHARED_LIBS=ON                                                                                                              \
-    -DLLVM_ENABLE_LTO=ON
+    -DBUILD_SHARED_LIBS=ON
+# LLVM 11's shared-library LTO path is not reliable on current Darwin hosts:
+# the arm64 link can lose required LLVMCore symbols from component dylibs.
+# The target compiler and generated AROS code are unaffected by host LTO.
+ifeq (darwin,$(AROS_HOST_ARCH))
+LLVM_CMAKEOPTIONS += -DLLVM_ENABLE_LTO=OFF
+else
+LLVM_CMAKEOPTIONS += -DLLVM_ENABLE_LTO=ON
+endif
 endif
 endif
 
