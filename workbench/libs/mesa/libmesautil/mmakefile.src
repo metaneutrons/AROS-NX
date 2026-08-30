@@ -7,7 +7,13 @@ include $(SRCDIR)/config/aros.cfg
 CUR_MESADIR := src/util
 include $(SRCDIR)/$(CURDIR)/../mesa.cfg
 -include $(GENDIR)/$(CURDIR)/../mesa3dgl/mesa3dgllibrary.entrypoints
+ifeq ($(MESAGLVERSION),20.0.8)
+# Mesa 20.0.8's utility inventory is pinned in-tree so clean builds can model
+# both private util archives before mesa3d-fetch unpacks the upstream tree.
+include $(SRCDIR)/$(CURDIR)/mesautil-20.0.8.sources
+else
 include $(top_srcdir)/$(CUR_MESADIR)/Makefile.sources
+endif
 
 #MM- mesa3dgl-linklibs : mesa3d-linklib-mesautil mesa3d-linklib-mesadevutil
 
@@ -19,7 +25,8 @@ USER_INCLUDES += \
             -iquote $(top_srcdir)/src/gallium/include \
             -iquote $(top_srcdir)/src/gallium/auxiliary \
             -iquote $(top_srcdir)/$(CUR_MESADIR)/format \
-            -iquote $(top_builddir)/$(CUR_MESADIR)/format
+            -iquote $(top_builddir)/$(CUR_MESADIR)/format \
+            -I$(PORTSDIR)/zlib/chromium-da752eb2a3660cf1bf8dac620f6380b89dd953a7
 
 ifneq ($(mesa3dgl_ENTRYPOINTS),)
 MESA_COMPILEOPTIONS += $(CFLAGS_FUNCTION_SECTIONS)
@@ -38,6 +45,10 @@ $(top_builddir)/$(CUR_MESADIR)/%.c: $(top_srcdir)/$(CUR_MESADIR)/%.py $(top_srcd
 	$(Q)$(ECHO) "Generating $(if $(filter /%,$@),$(if $(filter $(SRCDIR)/%,$(abspath $@)),$(patsubst $(SRCDIR)/%,%,$(abspath $@)),$(patsubst $(TOP)/%,%,$(abspath $@))),$(patsubst $(SRCDIR)/%,%,$(abspath $(SRCDIR)/$(CURDIR)/$@)))"
 	$(Q)$(PYTHON)  $^ > $@
 
+MESA_UTIL_GENERATED_FILES := \
+	format_srgb.c \
+	format/u_format_table.c
+
 MESA_UTIL_C_FILES := $(filter %.c, $(MESA_UTIL_FILES))
 MESA_UTIL_CXX_FILES := $(filter %.cpp, $(MESA_UTIL_FILES))
 
@@ -45,7 +56,7 @@ MESA_UTIL_GENERATED_C_SOURCES := \
             $(addprefix $(top_builddir)/$(CUR_MESADIR)/, $(filter %.c, $(MESA_UTIL_GENERATED_FILES)))
 
 MESA3DGL_MESAUTIL_C_SOURCES := \
-            $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA_UTIL_C_FILES))) \
+            $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA_UTIL_C_FILES)) \
             $(MESA_UTIL_GENERATED_C_SOURCES)
 
 MESA3DGL_MESAUTIL_CXX_SOURCES := $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA_UTIL_CXX_FILES))
@@ -59,7 +70,17 @@ MESA3DGL_MESAUTIL_GENERATED_HEADERS = $(addprefix $(top_builddir)/$(CUR_MESADIR)
 #MM
 mesa3d-linklib-mesautil-generated : $(MESA3DGL_MESAUTIL_GENERATED_C_SOURCES) $(MESA3DGL_MESAUTIL_GENERATED_HEADERS)
 
-#MM mesa3d-linklib-mesautil : mesa3d-linklib-mesautil-generated
+# Mesa's crc32 utility includes zlib's fetched API directly. Keep both
+# archives ordered after that fetch and the transformed zconf.h, including
+# when either private archive is requested as a standalone target.
+#MM mesa3d-linklib-mesautil : \
+#MM     mesa3d-linklib-mesautil-generated \
+#MM     zlib-fetch \
+#MM     workbench-libs-z-geninc
+
+#MM mesa3d-linklib-mesadevutil : \
+#MM     zlib-fetch \
+#MM     workbench-libs-z-geninc
 
 USER_CPPFLAGS := $(MESA_COMPILEFLAGS) $(MESA_DEBUG)
 

@@ -18,6 +18,19 @@ include $(SRCDIR)/$(CURDIR)/mesa.cfg
     location=$(PORTSSOURCEDIR) archive_origins=$(REPOSITORIES) suffixes="tar.xz tar.gz" \
     patches_specs=$(PATCHSPEC)
 
+# Mesa 20.0.8's NIR and format generators require Mako. Keep its pure-Python
+# runtime private to the generator process rather than depending on host site
+# packages; both source distributions are content-pinned by the transpiler.
+%fetch mmake=mesa3d-mako-fetch archive=mako-1.3.10 \
+    destination=$(PORTSDIR)/mesa-python location=$(PORTSSOURCEDIR) \
+    archive_origins=https://files.pythonhosted.org/packages/9e/38/bd5b78a920a64d708fe6bc8e0a2c075e1389d53bef8413725c63ba041535 \
+    suffixes="tar.gz"
+
+%fetch mmake=mesa3d-markupsafe-fetch archive=markupsafe-3.0.2 \
+    destination=$(PORTSDIR)/mesa-python location=$(PORTSSOURCEDIR) \
+    archive_origins=https://files.pythonhosted.org/packages/b2/97/5d42485e71dfc078108a86d6de8fa46db44a1a9295e89c5d6d4a06e23a62 \
+    suffixes="tar.gz"
+
 %create_patch mmake=mesa3d-create-patch \
     archive=$(ARCHBASE) suffixes="tar.xz tar.gz" \
     destination=$(PORTSDIR)/mesa

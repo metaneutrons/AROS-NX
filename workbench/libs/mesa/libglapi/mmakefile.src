@@ -7,7 +7,13 @@ include $(SRCDIR)/config/aros.cfg
 CUR_MESADIR := src/mapi
 include $(SRCDIR)/$(CURDIR)/../mesa.cfg
 -include $(GENDIR)/$(CURDIR)/../mesa3dgl/mesa3dgllibrary.entrypoints
+ifeq ($(MESAGLVERSION),20.0.8)
+# Mesa 20.0.8's MAPI utility inventory is pinned in-tree so clean builds can
+# model libglapi before mesa3d-fetch has unpacked the upstream source tree.
+include $(SRCDIR)/$(CURDIR)/glapi-20.0.8.sources
+else
 include $(top_srcdir)/$(CUR_MESADIR)/Makefile.sources
+endif
 
 #MM- mesa3dgl-linklibs : mesa3d-linklib-glapi
 
@@ -37,6 +43,7 @@ MESA3DGL_GLAPI_SOURCES := \
 	$(MAPI_GLAPI_C_FILES:.c=)
 
 MESA3DGL_GLAPI_SOURCES_C := $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3DGL_GLAPI_SOURCES))
+MESA3DGL_GLAPI_SOURCES_ASM :=
 
 $(top_builddir)/$(CUR_MESADIR)/glapi/glapitemp.h: $(top_srcdir)/$(CUR_MESADIR)/glapi/gen/gl_apitemp.py
 	%mkdir_q dir="$(dir $@)"
@@ -76,7 +83,7 @@ $(top_builddir)/$(CUR_MESADIR)/glapi/glapi_x86-64.s: $(top_srcdir)/$(CUR_MESADIR
 	$(Q)$(ECHO) "Generating $(if $(filter /%,$@),$(if $(filter $(SRCDIR)/%,$(abspath $@)),$(patsubst $(SRCDIR)/%,%,$(abspath $@)),$(patsubst $(TOP)/%,%,$(abspath $@))),$(patsubst $(SRCDIR)/%,%,$(abspath $(SRCDIR)/$(CURDIR)/$@)))"
 	$(Q)$(PYTHON) $(PYTHON_FLAGS) $< -f $(top_srcdir)/$(CUR_MESADIR)/glapi/gen/gl_and_es_API.xml > $@
 
-ifeq ($(MESA_USE_X86_64),TRUE)
+ifeq ($(AROS_TARGET_CPU),x86_64)
 GLAPI_GEN_FILES += $(top_builddir)/$(CUR_MESADIR)/glapi/glapi_x86-64.s
 MESA3DGL_GLAPI_SOURCES_ASM += $(top_builddir)/$(CUR_MESADIR)/glapi/glapi_x86-64
 USER_INCLUDES += \
