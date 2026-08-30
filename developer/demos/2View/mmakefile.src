@@ -10,9 +10,9 @@ FILES := \
 
 EXEDIR := $(AROSDIR)/Demos
 
-#MM demos : includes linklibs
+#MM demos : includes linklibs demos-2view
 
-%build_prog mmake=demos \
+%build_prog mmake=demos-2view \
     progname=2View targetdir=$(EXEDIR) \
     files=$(FILES)
 

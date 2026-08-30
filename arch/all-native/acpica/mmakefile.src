@@ -98,4 +98,21 @@ INCLUDE_FILES = $(call WILDCARD, $(ACPICA_INCLUDES)/*.h)
 
 %copy_includes mmake=acpica-includes-copy path=acpica dir=$(ACPICA_INCLUDES)
 
+
+# The vendored headers, for builds that cannot fetch the Port.
+#
+# Four arch/all-pc/kernel sources include libraries/acpica.h, which needs eight
+# headers from source/include. acpica-includes-copy above supplies them from the
+# fetched Port and hangs on ports-includes, which the toolchain producer keeps
+# out of its closure on purpose, so kernel-kernel could not compile there. See
+# include/acpica/README for provenance.
+#
+# Headers only. kernel-acpica-sharedlib still builds from the Port.
+#MM- kernel-acpica-sdk-subset : acpica-subset-includes-copy
+
+ACPICA_SUBSETDIR := $(SRCDIR)/$(CURDIR)/include/acpica
+
+%copy_dir_recursive mmake=acpica-subset-includes-copy \
+    src=$(ACPICA_SUBSETDIR)/. dst="$(AROS_INCLUDES)/acpica"
+
 %common

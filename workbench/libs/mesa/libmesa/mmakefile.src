@@ -8,7 +8,15 @@ include $(SRCDIR)/config/aros.cfg
 CUR_MESADIR := src/mesa
 include $(SRCDIR)/$(CURDIR)/../mesa.cfg
 -include $(GENDIR)/$(CURDIR)/../mesa3dgl/mesa3dgllibrary.entrypoints
+ifeq ($(MESAGLVERSION),20.0.8)
+# A clean configure has not fetched Mesa yet. Keep the exact upstream source
+# inventory beside the declaration so both cold and warm graphs select the
+# same translation units, plus the separately audited SSE4.1 subset.
+include $(SRCDIR)/$(CURDIR)/mesa-20.0.8.sources
+include $(SRCDIR)/$(CURDIR)/mesa-sse41-20.0.8.sources
+else
 include $(top_srcdir)/$(CUR_MESADIR)/Makefile.sources
+endif
 
 #MM- mesa3dgl-linklibs : mesa3d-linklib-mesa mesa3d-linklib-mesa-sse41
 
@@ -69,6 +77,16 @@ MESA_GENERATED_C_SOURCES += \
             main/marshal_generated7.c
 endif
 
+ifeq ($(MESAGLVERSION),20.0.8)
+MESA3D_GALLIUM_C_SOURCES := $(MESA20_CORE_C_SOURCES)
+MESA3D_GALLIUM_CXX_SOURCES := $(MESA20_CORE_CXX_SOURCES)
+MESA3D_GALLIUM_ASM_SOURCES :=
+ifeq ($(AROS_TARGET_CPU),x86_64)
+OPTIMIZATION_CFLAGS := -O3
+MESA3D_GALLIUM_ASM_SOURCES := $(MESA20_CORE_X86_64_ASM_SOURCES)
+MESA3D_GALLIUM_C_SOURCES += $(MESA20_CORE_X86_64_C_SOURCES)
+endif
+else
 MESA3D_SOURCES := $(filter-out $(MESA_GENERATED_C_SOURCES),$(PROGRAM_FILES) $(PROGRAM_NIR_FILES) $(MESA_GALLIUM_FILES))
 MESA3D_GALLIUM_CXX_SOURCES := $(filter %.cpp, $(MESA3D_SOURCES))
 MESA3D_GALLIUM_C_SOURCES := $(filter %.c, $(MESA3D_SOURCES))
@@ -81,6 +99,7 @@ ifeq ($(MESA_USE_X86_64),TRUE)
 OPTIMIZATION_CFLAGS := -O3
 MESA3D_GALLIUM_ASM_SOURCES := $(filter %.S, $(X86_64_FILES))
 MESA3D_GALLIUM_C_SOURCES += $(filter x86-64/%.c, $(ASM_C_FILES))
+endif
 endif
 
 define es-gen
@@ -267,18 +286,18 @@ MESA3DGL_MESA_GENERATED_C_HEADERS := \
             $(top_builddir)/$(CUR_MESADIR)/main/format_info.h
 
 MESA3DGL_MESA_C_SOURCES := \
-            $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_C_SOURCES))) \
+            $(addprefix $(PORTSDIR)/mesa/mesa-20.0.8/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_C_SOURCES)) \
             $(MESA3DGL_MESA_GENERATED_C_SOURCES)
 
 MESA3DGL_MESA_SOURCES_C := $(MESA3DGL_MESA_C_SOURCES:.c=)
 
 MESA3DGL_MESA_CXX_SOURCES := \
-            $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_CXX_SOURCES)))
+            $(addprefix $(PORTSDIR)/mesa/mesa-20.0.8/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_CXX_SOURCES))
 
 MESA3DGL_MESA_SOURCES_CXX := $(MESA3DGL_MESA_CXX_SOURCES:.cpp=)
 
 MESA3DGL_MESA_ASM_SOURCES := \
-            $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_ASM_SOURCES)))
+            $(addprefix $(PORTSDIR)/mesa/mesa-20.0.8/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_ASM_SOURCES))
 MESA3DGL_MESA_SOURCES_ASM := $(MESA3DGL_MESA_ASM_SOURCES:.S=)
 
 #MM
@@ -297,8 +316,10 @@ TARGET_ISA_CXXFLAGS += -msse4.1
 endif
 
 MESA3DGL_MESA_SSE41_SOURCES := \
-            $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_SSE41_SOURCES)))
+            $(addprefix $(PORTSDIR)/mesa/mesa-20.0.8/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_SSE41_SOURCES))
 MESA3DGL_MESA_SOURCES_SSE41 := $(MESA3DGL_MESA_SSE41_SOURCES:.c=)
+
+#MM mesa3d-linklib-mesa-sse41 : mesa3d-fetch
 
 %build_linklib mmake=mesa3d-linklib-mesa-sse41 libname=mesa-sse41 libdir="$(top_libdir)" objdir="$(top_builddir)/$(CUR_MESADIR)" files="$(MESA3DGL_MESA_SOURCES_SSE41)"
 

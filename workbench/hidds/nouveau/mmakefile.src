@@ -18,7 +18,14 @@ include $(SRCDIR)/$(CURDIR)/sources.drm.mak
 #MM hidd-nouveau : hidd-nouveau-libdrm hidd-nouveau-drm hidd-nouveau-gallium hidd-i2c hidd-agp-$(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU) hidd-gallium mesa3dgl-linklibs linklibs-libatomic
 #MM hidd-nouveau-gallium : mesa3dgl-linklibs
 
+# Mesa 20.0.8's Nouveau inventory is pinned in-tree so clean builds can model
+# the declaration before mesa3d-fetch has unpacked Makefile.sources.  Later
+# Mesa versions retain the original upstream source-list fallback.
+ifeq ($(MESAGLVERSION),20.0.8)
+include $(SRCDIR)/$(CURDIR)/nouveau-gallium-20.0.8.sources
+else
 include $(GALLIUM_PATH)/drivers/nouveau/Makefile.sources
+endif
 
 USER_INCLUDES := \
             -iquote $(GALLIUM_PATH)/include \
@@ -35,6 +42,13 @@ USER_INCLUDES := \
             -I$(SRCDIR)/$(CURDIR)/include \
             -I$(top_srcdir)/src \
 
+ifeq ($(MESAGLVERSION),20.0.8)
+GALLIUM_NOUVEAU_C_SOURCES := \
+                $(addprefix $(GALLIUM_PATH)/, $(NOUVEAU20_GALLIUM_C_SOURCES))
+
+GALLIUM_NOUVEAU_CXX_SOURCES := \
+                $(addprefix $(GALLIUM_PATH)/, $(NOUVEAU20_GALLIUM_CXX_SOURCES))
+else
 GALLIUM_NOUVEAU_SOURCES := \
                 $(C_SOURCES) \
                 $(NV30_C_SOURCES) \
@@ -55,6 +69,7 @@ TMP_GALLIUM_NOUVEAU_CXX_SOURCES := \
 
 GALLIUM_NOUVEAU_CXX_SOURCES := \
                 $(addprefix $(GALLIUM_PATH)/drivers/nouveau/, $(TMP_GALLIUM_NOUVEAU_CXX_SOURCES:.cpp=))
+endif
 
 %build_linklib mmake=hidd-nouveau-gallium libname=gallium_nouveau objdir=$(GENDIR)/$(CURDIR)/gallium \
     files="$(GALLIUM_NOUVEAU_C_SOURCES)" cxxfiles="$(GALLIUM_NOUVEAU_CXX_SOURCES)"
@@ -64,6 +79,8 @@ GALLIUM_NOUVEAU_CXX_SOURCES := \
 ###############################################
 
 USER_INCLUDES := \
+            -I$(AROS_INCLUDES)/aros/posixc \
+            -I$(AROS_INCLUDES)/aros/stdc \
             -I$(SRCDIR)/$(CURDIR)/include \
             -I$(SRCDIR)/$(CURDIR)/include/uapi \
             -I$(SRCDIR)/$(CURDIR)/drm/nouveau/include \
@@ -71,9 +88,9 @@ USER_INCLUDES := \
             -iquote $(SRCDIR)/$(CURDIR)/include/libdrm/nouveau \
             -iquote $(SRCDIR)/$(CURDIR)/libdrm
 
-LIBDRM_C_SOURCES := \
-            $(AROS_LIBDRM_CORE_SOURCES) \
-            $(AROS_LIBDRM_NVIDIA_SOURCES)
+# Keep the small userspace libdrm inventory independently modelable even while
+# the much larger DRM and Gallium source fragments remain legacy-only.
+include $(SRCDIR)/$(CURDIR)/nouveau-libdrm.sources
 
 %build_linklib mmake=hidd-nouveau-libdrm libname=libdrm_nouveau \
     files="$(LIBDRM_C_SOURCES)" srcdir="$(SRCDIR)/$(CURDIR)" usetree=yes

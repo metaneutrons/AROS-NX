@@ -4,8 +4,6 @@
 
 #include <aros/debug.h>
 
-#include <string.h>
-
 #include <exec/types.h>
 
 #include <proto/exec.h>
@@ -27,8 +25,9 @@
 #define HWBase (LIBBASE->hsi_csd.hwMethodBase)
 
 #define SMBIOS_SCAN_START 0x000F0000
-#define SMBIOS_SCAN_END   0x000FFFFF
+#define SMBIOS_SCAN_END   0x00100000
 #define SMBIOS_SCAN_STEP  16
+#define SMBIOS_IPMI_MIN_LENGTH 0x12
 
 struct SMBIOSIPMIDeviceInfo
 {
@@ -42,11 +41,22 @@ struct SMBIOSIPMIDeviceInfo
     UBYTE interrupt_number;
 };
 
-static const struct SMBIOSHeader *SMBIOS_GetNextTable(const struct SMBIOSHeader *table)
+static const struct SMBIOSHeader *SMBIOS_GetNextTable(
+    const struct SMBIOSHeader *table, const UBYTE *end)
 {
-    const UBYTE *ptr = (const UBYTE *)((IPTR)table + table->sm_Length);
+    const UBYTE *ptr;
+    IPTR remaining;
 
-    while (1)
+    if ((IPTR)table >= (IPTR)end)
+        return NULL;
+
+    remaining = (IPTR)end - (IPTR)table;
+    if (remaining < sizeof(*table) || table->sm_Length < sizeof(*table) ||
+        remaining < table->sm_Length)
+        return NULL;
+
+    ptr = (const UBYTE *)table + table->sm_Length;
+    while ((IPTR)end - (IPTR)ptr >= 2)
     {
         if (ptr[0] == 0 && ptr[1] == 0)
             return (const struct SMBIOSHeader *)(ptr + 2);
@@ -60,32 +70,49 @@ static const struct SMBIOSHeader *SMBIOS_FindTable(UBYTE type)
 {
     const struct SMBIOSHeader *table = NULL;
     const UBYTE *ptr = (const UBYTE *)SMBIOS_SCAN_START;
+    const UBYTE *scanEnd = (const UBYTE *)SMBIOS_SCAN_END;
+    const UBYTE *tableEnd;
+    IPTR tableLength = 0;
 
-    while (ptr <= (const UBYTE *)SMBIOS_SCAN_END)
+    while ((IPTR)scanEnd - (IPTR)ptr >= 7)
     {
-        if (!memcmp(ptr, "_SM_", 4))
+        if (SMBIOS_EntryPointValid(ptr, 3, scanEnd))
         {
-            const struct SMBIOSEntryPoint2 *eps = (const struct SMBIOSEntryPoint2 *)ptr;
+            const struct SMBIOSEntryPoint3 *eps =
+                (const struct SMBIOSEntryPoint3 *)ptr;
             table = (const struct SMBIOSHeader *)(IPTR)eps->table_address;
+            tableLength = eps->table_length;
             break;
         }
-        if (!memcmp(ptr, "_SM3_", 5))
+        if (SMBIOS_EntryPointValid(ptr, 2, scanEnd))
         {
-            const struct SMBIOSEntryPoint3 *eps = (const struct SMBIOSEntryPoint3 *)ptr;
+            const struct SMBIOSEntryPoint2 *eps =
+                (const struct SMBIOSEntryPoint2 *)ptr;
             table = (const struct SMBIOSHeader *)(IPTR)eps->table_address;
+            tableLength = eps->table_length;
             break;
         }
         ptr += SMBIOS_SCAN_STEP;
     }
 
-    if (!table)
+    if (!table || tableLength < sizeof(*table) ||
+        (IPTR)table + tableLength < (IPTR)table)
         return NULL;
 
-    while (table->sm_Type != 127)
+    tableEnd = (const UBYTE *)((IPTR)table + tableLength);
+    while (table && (IPTR)table < (IPTR)tableEnd &&
+        (IPTR)tableEnd - (IPTR)table >= sizeof(*table))
     {
+        IPTR remaining = (IPTR)tableEnd - (IPTR)table;
+
+        if (table->sm_Length < sizeof(*table) ||
+            remaining < table->sm_Length)
+            break;
         if (table->sm_Type == type)
             return table;
-        table = SMBIOS_GetNextTable(table);
+        if (table->sm_Type == 127)
+            break;
+        table = SMBIOS_GetNextTable(table, tableEnd);
     }
 
     return NULL;
@@ -158,7 +185,7 @@ static int HWIPMI_Init(LIBBASETYPEPTR LIBBASE)
     if (!info)
         return FALSE;
 
-    if (info->header.sm_Length < sizeof(struct SMBIOSIPMIDeviceInfo))
+    if (info->header.sm_Length < SMBIOS_IPMI_MIN_LENGTH)
         return FALSE;
 
     {

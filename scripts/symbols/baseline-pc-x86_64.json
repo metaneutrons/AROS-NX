@@ -1,0 +1,15 @@
+{
+  "artefacts": 1033,
+  "library_bases_known": 355,
+  "load_set_resolved": 5,
+  "load_sets": 7,
+  "modules_with_undefined": 50,
+  "modules_with_undefined_permille": 48,
+  "orphan_artefacts": 77,
+  "references_total": 765,
+  "symbols_distinct": 559,
+  "symbols_no_artefact_defines": 421,
+  "symbols_some_artefact_defines": 138,
+  "sysbase_in_kickstart": 0,
+  "weak_references": 3689
+}

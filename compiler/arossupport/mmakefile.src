@@ -44,7 +44,11 @@ FILES	:= \
 
 #MM- core-linklibs : linklibs-arossupport
 #MM- linklibs: linklibs-arossupport
-#MM linklibs-arossupport : includes
+#MM- linklibs-arossupport-includes : sdk-includes-$(AROS_TOOLCHAIN_RELEASE) \
+#MM     compiler-stdc-includes kernel-kernel-includes kernel-dos-includes \
+#MM     kernel-graphics-includes
+#MM linklibs-arossupport : linklibs-arossupport-includes
+#MM linklibs-arossupport32 : linklibs-arossupport-includes
 
 FMTPRINTFDIR := $(SRCDIR)/compiler/fmtprintf
 USER_INCLUDES := -I$(SRCDIR)/rom/exec -iquote $(FMTPRINTFDIR)

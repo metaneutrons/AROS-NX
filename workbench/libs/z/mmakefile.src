@@ -5,19 +5,20 @@
 include $(SRCDIR)/config/aros.cfg
 include $(SRCDIR)/$(CURDIR)/make.opt
 
-REPOSITORIES :=  \
-    cache:// \
-    https://chromium.googlesource.com/chromium/src/+archive/lkgr/third_party
+REPOSITORIES := https://chromium.googlesource.com/chromium/src/+archive/$(ZLIB_CHROMIUM_REVISION)/third_party
+ZLIB_ARCHIVE_CACHE := $(PORTSSOURCEDIR)/chromium-$(ZLIB_CHROMIUM_REVISION)
+# Gitiles tar metadata is not byte-stable; the immutable commit above, the
+# patch and the exact source manifest define the fetched input instead.
 ARCHSUFFIX := "tar.gz"
-PATCHSPEC := $(ARCHBASE)-aros.diff:$(ARCHBASE):-f,-p1
+PATCHSPEC := $(ARCHBASE)-aros.diff::-f,-p1
 
-%fetch mmake=zlib-fetch archive=$(ARCHBASE) destination=$(PORTSDIR)/zlib \
-    location=$(PORTSSOURCEDIR) base=$(PORTSDIR)/zlib destination=$(PORTSDIR)/zlib/zlib archive_origins=$(REPOSITORIES) suffixes=$(ARCHSUFFIX) \
+%fetch mmake=zlib-fetch archive=$(ARCHBASE) \
+    location=$(ZLIB_ARCHIVE_CACHE) base=$(ZLIB_PORT_ROOT) destination=$(ZLIB_PORT_ROOT) archive_origins=$(REPOSITORIES) suffixes=$(ARCHSUFFIX) \
     patches_specs=$(PATCHSPEC)
 
 %create_patch mmake=zlib-create-patch \
     archive=$(ARCHBASE) suffixes=$(ARCHSUFFIX) \
-    srcdir=zlib base=$(PORTSDIR)/zlib destination=$(PORTSDIR)/zlib/zlib 
+    srcdir=. base=$(ZLIB_PORT_ROOT) destination=$(ZLIB_PORT_ROOT)
 
 #MM- ports-includes : \
 #MM     workbench-libs-z-includes-copy \

@@ -73,7 +73,7 @@ struct DiskObject *__alib_dObject = NULL;       /* Used for reading tooltypes */
     if(startup->sm_NumArgs >= 1) /* Paranoia? */
     {
         olddir = CurrentDir(startup->sm_ArgList[0].wa_Lock);
-        __alib_dObject = GetDiskObject(startup->sm_ArgList[0].wa_Name);
+        __alib_dObject = GetDiskObject((CONST_STRPTR)startup->sm_ArgList[0].wa_Name);
         CurrentDir(olddir);
     }
     else

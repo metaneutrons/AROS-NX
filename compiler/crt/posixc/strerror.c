@@ -153,6 +153,8 @@ static const char * _errstrings[__POSIXC_ELAST+2] =
     /* EMULTIHOP       */       "Multihop attempted",
     /* ENOLINK         */       "Link has been severed",
     /* EPROTO          */       "Protocol error",
+    /* EOWNERDEAD      */       "Previous owner died",
+    /* ENOTRECOVERABLE */       "State not recoverable",
     /* Too high        */       NULL
 };
 

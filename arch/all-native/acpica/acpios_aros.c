@@ -20,6 +20,7 @@
 #include "acpica_intern.h"
 
 #include <hardware/efi/config.h>
+#include <hardware/smbios.h>
 
 #include <proto/exec.h>
 #include <proto/timer.h>
@@ -936,20 +937,46 @@ ExecuteOSI (
     return (AE_OK);
 }
 
-struct SMBIOSHeader
+static UWORD SMBIOS_Read16(const UBYTE *ptr)
 {
-    UBYTE sm_Type;
-    UBYTE sm_Length;
-    UWORD sm_Handle;
-};
+    UWORD value;
+    memcpy(&value, ptr, sizeof(value));
+    return value;
+}
 
-static struct SMBIOSHeader * SMBIOS_GetNextTable(struct SMBIOSHeader *table)
+static ULONG SMBIOS_Read32(const UBYTE *ptr)
 {
-    UBYTE *ptr = (UBYTE *)((IPTR)table + table->sm_Length);
+    ULONG value;
+    memcpy(&value, ptr, sizeof(value));
+    return value;
+}
 
-    while (1)
+static UQUAD SMBIOS_Read64(const UBYTE *ptr)
+{
+    UQUAD value;
+    memcpy(&value, ptr, sizeof(value));
+    return value;
+}
+
+static struct SMBIOSHeader * SMBIOS_GetNextTable(struct SMBIOSHeader *table,
+    const UBYTE *end)
+{
+    UBYTE *ptr;
+    IPTR remaining;
+
+    if ((IPTR)table >= (IPTR)end)
+        return NULL;
+
+    remaining = (IPTR)end - (IPTR)table;
+    if (remaining < sizeof(*table) || table->sm_Length < sizeof(*table) ||
+        remaining < table->sm_Length)
+        return NULL;
+
+    ptr = (UBYTE *)table + table->sm_Length;
+
+    while ((IPTR)ptr < (IPTR)end)
     {
-        if (ptr[0] == 0 && ptr[1] == 0)
+        if ((IPTR)end - (IPTR)ptr >= 2 && ptr[0] == 0 && ptr[1] == 0)
             return (struct SMBIOSHeader *) (ptr + 2);
         ptr++;
     }
@@ -969,12 +996,23 @@ static char * SMBIOS_GetProductName()
     {
         const uuid_t smbios3_guid = SMBIOS3_TABLE_GUID;
         const uuid_t smbios_guid = SMBIOS_TABLE_GUID;
+        UBYTE *entry;
 
-        eps = (IPTR)EFI_FindConfigTable(&smbios3_guid);
-        if (eps)
+        entry = EFI_FindConfigTable(&smbios3_guid);
+        if (entry && SMBIOS_EntryPointValid(entry, 3, NULL))
+        {
+            eps = (IPTR)entry;
             smbiosver = 3;
-        else if ((eps = (IPTR)EFI_FindConfigTable(&smbios_guid)) != 0)
-            smbiosver = 2;
+        }
+        else
+        {
+            entry = EFI_FindConfigTable(&smbios_guid);
+            if (entry && SMBIOS_EntryPointValid(entry, 2, NULL))
+            {
+                eps = (IPTR)entry;
+                smbiosver = 2;
+            }
+        }
     }
 
     /*
@@ -985,19 +1023,22 @@ static char * SMBIOS_GetProductName()
 #if defined(__i386__) || defined(__x86_64__)
     if (!eps)
     {
-        char *ptr = (char *)0x000F0000;
+        UBYTE *ptr = (UBYTE *)0x000F0000;
+        UBYTE *end = (UBYTE *)0x00100000;
 
-        while (ptr <= (char *)0x000FFFFF)
+        while ((IPTR)end - (IPTR)ptr >= 7)
         {
-            if (ptr[0] == '_' && ptr[1] == 'S' && ptr[2] == 'M')
+            if (SMBIOS_EntryPointValid(ptr, 3, end))
             {
-                if (ptr[3] == '_') smbiosver = 2;
-                if (ptr[3] == '3' && ptr[4] == '_') smbiosver = 3;
-                if (smbiosver != 0)
-                {
-                    eps = (IPTR)ptr;
-                    break;
-                }
+                smbiosver = 3;
+                eps = (IPTR)ptr;
+                break;
+            }
+            if (SMBIOS_EntryPointValid(ptr, 2, end))
+            {
+                smbiosver = 2;
+                eps = (IPTR)ptr;
+                break;
             }
             ptr += 16;
         }
@@ -1007,38 +1048,65 @@ static char * SMBIOS_GetProductName()
     if (eps != 0)
     {
         IPTR firsttb = 0;
-        if (smbiosver == 2) firsttb = *((ULONG *)(eps + 0x18));
-        if (smbiosver == 3) firsttb = *((UQUAD *)(eps + 0x10));
+        IPTR tablelen = 0;
+        const UBYTE *entry = (const UBYTE *)eps;
+
+        if (smbiosver == 2)
+        {
+            firsttb = SMBIOS_Read32(entry + 0x18);
+            tablelen = SMBIOS_Read16(entry + 0x16);
+        }
+        if (smbiosver == 3)
+        {
+            firsttb = SMBIOS_Read64(entry + 0x10);
+            tablelen = SMBIOS_Read32(entry + 0x0c);
+        }
+
+        if (!firsttb || tablelen < sizeof(struct SMBIOSHeader) ||
+            firsttb + tablelen < firsttb)
+            return NULL;
 
         D(bug("[SMBIOS] EPS found @ %p, first table %p\n", (APTR)eps, (APTR)(firsttb)));
         struct SMBIOSHeader *table = (struct SMBIOSHeader *)firsttb;
-        while (table->sm_Type != 0x1) /* System information table */
-            table = SMBIOS_GetNextTable(table);
+        const UBYTE *tableend = (const UBYTE *)(firsttb + tablelen);
+        while (table &&
+            (IPTR)table < (IPTR)tableend &&
+            (IPTR)tableend - (IPTR)table >= sizeof(*table) &&
+            table->sm_Type != 0x1 && table->sm_Type != 0x7f)
+            table = SMBIOS_GetNextTable(table, tableend);
+
+        if (!table || (IPTR)table >= (IPTR)tableend ||
+            (IPTR)tableend - (IPTR)table < sizeof(*table) ||
+            table->sm_Type != 0x1 || table->sm_Length <= 0x5 ||
+            (IPTR)tableend - (IPTR)table < table->sm_Length)
+            return NULL;
 
         UBYTE productidx = *(UBYTE *)((IPTR)table + 0x5);
         D(bug("[SMBIOS] System information table @ %p, product idx %d\n",(APTR)table, productidx));
         char *string = (char *)((IPTR)table + table->sm_Length);
         char *ptr = (char *)string;
         UBYTE stridx = 1;
-        while(1)
+        while ((IPTR)ptr < (IPTR)tableend)
         {
-            if (ptr[0] == 0 && ptr[1] == 0) break;
+            char *end;
 
-            if (ptr[0] == 0)
-            {
-                stridx++;
-                ptr++;
-                string = ptr;
-                continue;
-            }
+            if ((IPTR)tableend - (IPTR)ptr >= 2 &&
+                ptr[0] == 0 && ptr[1] == 0)
+                break;
 
-            if (stridx == productidx)
+            end = memchr(ptr, 0, (IPTR)tableend - (IPTR)ptr);
+            if (!end)
+                break;
+
+            if (stridx == productidx && end != ptr)
             {
                 D(bug("[SMBIOS] Product '%s'\n", string));
                 return string;
             }
 
-            ptr++;
+            stridx++;
+            ptr = end + 1;
+            string = ptr;
         }
     }
 

@@ -1,0 +1,8 @@
+# Exact userspace libdrm inventory from sources.drm.mak
+LIBDRM_C_SOURCES := \
+        libdrm/arosdrm \
+        libdrm/arosdrmmode \
+        libdrm/nouveau/nouveau \
+        libdrm/nouveau/pushbuf \
+        libdrm/nouveau/bufctx \
+        libdrm/nouveau/abi16

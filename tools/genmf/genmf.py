@@ -380,7 +380,11 @@ if not listfile:
     if len(sys.argv) == argin:
         lines = sys.stdin.readlines()
     else:
-        infile = open(sys.argv[argin], "r")
+        # AROS sources are historically ISO-8859-15.  List-file mode already
+        # uses that encoding; single-file mode must do the same or verification
+        # silently loses every declaration in a file containing bytes such as
+        # the copyright symbol.
+        infile = open(sys.argv[argin], "r", encoding = "iso-8859-15")
         lines = infile.readlines()
         infile.close()
     
@@ -389,9 +393,9 @@ if not listfile:
         closeout = 0
     else:
         if usetemp:
-            outfile = open(sys.argv[argin + 1]+"tmp", "w")
+            outfile = open(sys.argv[argin + 1]+"tmp", "w", encoding = "iso-8859-15")
         else:
-            outfile = open(sys.argv[argin + 1], "w")
+            outfile = open(sys.argv[argin + 1], "w", encoding = "iso-8859-15")
         closeout = 1
     
     try:

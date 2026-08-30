@@ -20,8 +20,13 @@ GALLIUM_PATH = $(top_srcdir)/$(CUR_MESADIR)
 # VC4 Gallium driver sources from Mesa
 #
 
+ifeq ($(MESAGLVERSION),20.0.8)
+# A clean configure has not fetched Mesa yet. Keep the exact upstream source
+# inventory beside the declaration so both cold and warm graphs select the
+# same driver translation units.
+include $(SRCDIR)/$(CURDIR)/vc4-20.0.8.sources
+else
 include $(GALLIUM_PATH)/$(CUR_GALLIUMDIR)/Makefile.sources
-
 # Mesa VC4 driver C sources (filter .c files, exclude .h files)
 MESA3D_VC4_C_SOURCES := $(filter %.c, $(C_SOURCES))
 
@@ -33,10 +38,11 @@ MESA3D_VC4_C_SOURCES := $(filter-out kernel/%, $(MESA3D_VC4_C_SOURCES))
 # -mfpu=neon-vfpv4 so __ARM_NEON is already defined and the runtime
 # has_neon check passes)
 MESA3D_VC4_C_SOURCES += vc4_tiling_lt_neon.c
+endif
 
 # Full paths for linklib build
 VC4_DRIVER_SOURCES := \
-    $(addprefix $(GALLIUM_PATH)/drivers/vc4/, $(MESA3D_VC4_C_SOURCES:.c=))
+    $(addprefix $(PORTSDIR)/mesa/mesa-20.0.8/src/gallium/drivers/vc4/, $(MESA3D_VC4_C_SOURCES:.c=))
 
 #
 # AROS-specific HIDD sources. Since the runtime-binding rework the hidd

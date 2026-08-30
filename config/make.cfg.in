@@ -357,3 +357,10 @@ WILDCARD                      = $(shell cd $(SRCDIR)/$(CURDIR); for file in $(1)
 
 # Defined to quieten output..
 Q                             ?= @
+
+# Only the top-level build owns the complete host-tool barrier. Generated
+# per-directory makefiles include this configuration too, so keep the rule in
+# a separately scoped fragment to avoid recursive duplicate recipes.
+ifeq ($(realpath $(firstword $(MAKEFILE_LIST))),$(realpath $(TOP)/Makefile))
+include $(SRCDIR)/config/make-root-tools.mk
+endif
