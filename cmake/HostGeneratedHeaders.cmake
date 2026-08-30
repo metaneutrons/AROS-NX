@@ -7,9 +7,10 @@
 #
 # Only i386 and m68k need one, because only their `aros/cpu.h` sets
 # `__AROS_LIBCALL_H_FILE` (arch/i386-all/include/aros/cpu.h:148). An x86_64
-# build never asks for it, which is why its absence stayed invisible until the
-# 32-bit PC bootstrap was compiled and every one of its sources failed on
-# `'aros/i386/libcall.h' file not found`.
+# target does not ask for it, but an x86_64 product also builds companion-i386
+# archives before linking its 32-bit bootstrap. Every such archive therefore
+# has to wait for the generated i386 header; depending only from the final
+# standalone link leaves a parallel-build race.
 #
 # The tool runs on the host, so it is compiled with the host compiler, not the
 # cross one. The header is staged into the same two roots the reference uses:
@@ -98,6 +99,24 @@ function(aros_host_generated_header)
     if(TARGET "includes-generate")
         add_dependencies("includes-generate" "aros-host-header-${_stamp_id}")
     endif()
+endfunction()
+
+# Attach every companion-CPU archive to the host-generated headers it may
+# include. Both sets are accumulated while generated_targets.cmake is read, so
+# this finalizer is deliberately called only after that complete graph exists.
+function(aros_attach_host_header_dependencies)
+    get_property(_headers GLOBAL PROPERTY AROS_HOST_HEADER_TARGETS)
+    get_property(_consumers GLOBAL PROPERTY AROS_32BIT_TARGETS)
+    if(NOT _headers OR NOT _consumers)
+        return()
+    endif()
+    list(REMOVE_DUPLICATES _headers)
+    list(REMOVE_DUPLICATES _consumers)
+    foreach(_consumer IN LISTS _consumers)
+        if(TARGET "${_consumer}")
+            add_dependencies("${_consumer}" ${_headers})
+        endif()
+    endforeach()
 endfunction()
 
 # aros_report_host_header_gaps()

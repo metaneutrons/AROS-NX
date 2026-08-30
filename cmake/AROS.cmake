@@ -3870,6 +3870,7 @@ function(aros_apply_32bit_isa target)
     target_compile_options("${target}" PRIVATE
         "--target=${_companion_triple}")
     set_property(TARGET "${target}" PROPERTY AROS_VARIANT_32BIT TRUE)
+    set_property(GLOBAL APPEND PROPERTY AROS_32BIT_TARGETS "${target}")
 endfunction()
 
 # aros_module_is_kickstart_member(<out-var> <arch-list>)

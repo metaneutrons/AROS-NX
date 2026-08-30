@@ -329,6 +329,11 @@ aros_report_kickstart_gaps()
 # Programs that are standalone executables rather than AROS modules.
 aros_finalize_standalone_links()
 
+# Companion-CPU archives can include headers written by host tools. Their
+# declarations are discovered in either order, so bind them after the complete
+# generated graph has been included.
+aros_attach_host_header_dependencies()
+
 # Host-tool headers that could not be generated.
 aros_report_host_header_gaps()
 
