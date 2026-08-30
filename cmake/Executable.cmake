@@ -1,6 +1,6 @@
 include_guard(GLOBAL)
 
-# CMake learned the IS_EXECUTABLE path predicate in 3.29, while AROS-NG's
+# CMake learned the IS_EXECUTABLE path predicate in 3.29, while AROS-NX's
 # supported configure baseline is 3.22.  Keep every host-tool boundary on one
 # compatibility contract: all supported CMake versions reject missing paths
 # and directories; 3.29+ additionally rejects a file without execute

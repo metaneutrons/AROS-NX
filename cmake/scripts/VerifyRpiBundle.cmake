@@ -90,7 +90,7 @@ foreach(_line IN LISTS _config_lines)
     endif()
 endforeach()
 
-set(_manifest "# AROS-NG Raspberry Pi ${MODEL} debug payload SHA-256\n")
+set(_manifest "# AROS-NX Raspberry Pi ${MODEL} debug payload SHA-256\n")
 foreach(_name IN LISTS _required_files)
     file(SHA256 "${BUNDLE_DIR}/${_name}" _sha256)
     string(APPEND _manifest "${_sha256}  ${_name}\n")

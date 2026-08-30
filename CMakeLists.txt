@@ -9,7 +9,7 @@ if(NOT DEFINED CMAKE_SYSTEM_NAME)
     set(CMAKE_SYSTEM_NAME Generic)
 endif()
 
-project(AROS-NG
+project(AROS-NX
     VERSION 0.1.0
     LANGUAGES C CXX ASM
 )
@@ -54,33 +54,15 @@ if(AROS_CROSS_TOOLCHAIN_ROOT)
     cmake_language(DEFER CALL _aros_finalize_cxx_wrapper_order)
 endif()
 
-# The build graph and closed host-side build boundaries use checkout-local Rust
-# tools. Keep their location configurable for aros-cli managed releases, but
-# never silently substitute an ambient or legacy implementation.
-set(AROS_RUST_TOOLS_DIR
-    "${CMAKE_SOURCE_DIR}/tools/aros-tools/target/release"
-    CACHE PATH "Directory containing the required AROS Rust host tools")
-set(AROS_GENMODULE_BIN "${AROS_RUST_TOOLS_DIR}/aros-genmodule"
-    CACHE FILEPATH "Rust aros-genmodule executable used to bootstrap the SDK")
-set(AROS_TRANSPILER_BIN "${AROS_RUST_TOOLS_DIR}/aros-transpiler"
-    CACHE FILEPATH "Rust aros-transpiler executable used to generate the build graph")
-# Every AROS link goes through this. It is the part of collect-aros this build
-# needs: the second linker pass that turns the .aros.set.* sections into the
-# symbol-set arrays the code reads. See cmake/AROS.cmake's linker rules.
-set(AROS_COLLECT_BIN "${AROS_RUST_TOOLS_DIR}/aros-collect"
-    CACHE FILEPATH "Rust aros-collect executable used to link and collect symbol sets")
-set(AROS_AHI_RUNNER_BIN "${AROS_RUST_TOOLS_DIR}/aros-ahi-runner"
-    CACHE FILEPATH "Typed Rust runner for the closed AHI build contract")
-set(AROS_FETCH_BIN "${AROS_RUST_TOOLS_DIR}/aros-fetch"
-    CACHE FILEPATH "Validated Rust source fetcher used by AROS-NG fetch targets")
-
 include("${CMAKE_SOURCE_DIR}/cmake/ToolchainIdentity.cmake")
 include("${CMAKE_SOURCE_DIR}/cmake/Executable.cmake")
+include("${CMAKE_SOURCE_DIR}/cmake/ArosTools.cmake")
+aros_configure_rust_tools()
 aros_lock_build_tree_toolchain()
 
 include("${CMAKE_SOURCE_DIR}/cmake/EnableLLVMObjectiveC.cmake")
 
-message(STATUS "🚀 Initializing AROS-NG (v0.1.0) Build Engine...")
+message(STATUS "🚀 Initializing AROS-NX (v0.1.0) Build Engine...")
 message(STATUS "Target: ${AROS_TARGET_CPU}-${AROS_TARGET_PLATFORM}")
 
 # A target is described by two variables. AROS_TARGET_CPU is the instruction
@@ -204,13 +186,12 @@ set(GENERATED_TARGETS_CMAKE "${CMAKE_BINARY_DIR}/generated_targets.cmake")
 aros_path_is_executable("${TRANSPILER_BIN}" _aros_transpiler_executable)
 if(NOT _aros_transpiler_executable)
     message(FATAL_ERROR
-        "AROS-NG requires the executable Rust transpiler at ${TRANSPILER_BIN}. "
-        "Build it with `cargo build --release -p aros-transpiler -p aros-genmodule "
-        "-p aros-collect -p aros-ahi-runner -p aros-fetch` "
-        "in tools/aros-tools, or set AROS_RUST_TOOLS_DIR / AROS_TRANSPILER_BIN.")
+        "AROS-NX requires the executable aros-transpiler at ${TRANSPILER_BIN}. "
+        "Install a complete aros-tools release, or set AROS_RUST_TOOLS_DIR / "
+        "AROS_TRANSPILER_BIN explicitly.")
 endif()
 
-message(STATUS "⚡ AROS-NG: Running Rust aros-transpiler on mmakefile tree...")
+message(STATUS "⚡ AROS-NX: Running Rust aros-transpiler on mmakefile tree...")
 if(AROS_ENABLE_MMU)
     set(_aros_transpiler_use_mmu "1")
 else()
@@ -234,7 +215,7 @@ execute_process(
 )
 if(NOT TRANSPILER_RES EQUAL 0 OR NOT EXISTS "${GENERATED_TARGETS_CMAKE}")
     message(FATAL_ERROR
-        "AROS-NG transpiler failed (${TRANSPILER_RES}) and did not produce "
+        "AROS-NX transpiler failed (${TRANSPILER_RES}) and did not produce "
         "${GENERATED_TARGETS_CMAKE}.\n${_aros_transpiler_error}")
 endif()
 
@@ -280,7 +261,7 @@ if(AROS_SOURCE_INVENTORY_FETCH_COUNT GREATER 0)
         ERROR_VARIABLE _aros_transpiler_error)
     if(NOT TRANSPILER_RES EQUAL 0)
         message(FATAL_ERROR
-            "AROS-NG transpiler failed after fetching source inventories "
+            "AROS-NX transpiler failed after fetching source inventories "
             "(${TRANSPILER_RES}).\n${_aros_transpiler_error}")
     endif()
     include("${_aros_source_inventory_manifest}")
@@ -570,7 +551,7 @@ else()
 endif()
 if(_n_icon_targets OR _n_icon_outputs)
     message(STATUS
-        "🖼️  AROS-NG: ${_n_icon_targets} icon target(s), "
+        "🖼️  AROS-NX: ${_n_icon_targets} icon target(s), "
         "${_n_icon_outputs} unique .info output rule(s)")
 endif()
 
@@ -618,7 +599,7 @@ if(_foreign)
     string(REPLACE ";" "\n" _foreign_body "${_foreign}")
     file(WRITE "${_foreign_report}" "${_foreign_body}\n")
     message(STATUS
-        "🚫 AROS-NG: ${_n_foreign} target(s) kept out of `all` (other architecture) -> "
+        "🚫 AROS-NX: ${_n_foreign} target(s) kept out of `all` (other architecture) -> "
         "${_foreign_report}")
 else()
     # Removed when empty. A report left behind outlives its cause and the next
@@ -630,7 +611,7 @@ endif()
 #    generated_targets.cmake above).
 get_property(_staged GLOBAL PROPERTY AROS_STAGED_HEADERS)
 get_property(_empty GLOBAL PROPERTY AROS_STAGED_RULES_EMPTY)
-message(STATUS "📥 AROS-NG: staged ${_staged} SDK header(s); ${_empty} staging rule(s) matched nothing")
+message(STATUS "📥 AROS-NX: staged ${_staged} SDK header(s); ${_empty} staging rule(s) matched nothing")
 
 # Hand-written header staging rules nobody has accounted for. Treated as a
 # warning rather than a note: an unhandled rule means a header silently never
@@ -694,15 +675,13 @@ get_property(_foreign_staging GLOBAL PROPERTY AROS_STAGING_FOREIGN_ARCH)
 if(_foreign_staging)
     list(LENGTH _foreign_staging _n_fs)
     message(STATUS
-        "🚫 AROS-NG: ${_n_fs} header staging rule(s) skipped (other architecture)")
+        "🚫 AROS-NX: ${_n_fs} header staging rule(s) skipped (other architecture)")
 endif()
 
 # 5c. `ninja verify` compares what we emitted against the historic build's own
 #     macro expansion. Not part of `all`: it shells out to genmf for every
 #     mmakefile, which takes about half a minute on a cold cache.
 find_program(AROS_PYTHON3 NAMES python3)
-set(AROS_VERIFY_BIN
-    "${CMAKE_SOURCE_DIR}/tools/aros-tools/target/release/aros-verify")
 if(AROS_PYTHON3 AND EXISTS "${AROS_VERIFY_BIN}")
     add_custom_target(verify
         COMMAND "${AROS_VERIFY_BIN}"
@@ -739,7 +718,7 @@ get_property(_fetch_targets GLOBAL PROPERTY AROS_FETCH_TARGETS)
 if(_fetch_targets)
     add_custom_target(fetch-ports DEPENDS ${_fetch_targets})
     list(LENGTH _fetch_targets _n_fetch)
-    message(STATUS "🌐 AROS-NG: ${_n_fetch} third-party fetch target(s); run 'ninja fetch-ports' to download")
+    message(STATUS "🌐 AROS-NX: ${_n_fetch} third-party fetch target(s); run 'ninja fetch-ports' to download")
 endif()
 
 # 7. Kickstart packages. Must come after generated_targets.cmake, because the
@@ -784,7 +763,7 @@ if(_outside_default_root)
     file(WRITE "${_outside_default_root_report}"
         "${_outside_default_root_body}\n")
     message(STATUS
-        "🚧 AROS-NG: ${_outside_default_root_count} explicit/manual target(s) "
+        "🚧 AROS-NX: ${_outside_default_root_count} explicit/manual target(s) "
         "kept out of MetaMake's default AROS closure -> "
         "${_outside_default_root_report}")
 else()
@@ -792,4 +771,4 @@ else()
         "${CMAKE_BINARY_DIR}/generated_targets.outside-default-root.txt")
 endif()
 
-message(STATUS "✅ AROS-NG (v0.1.0) Configuration Complete.")
+message(STATUS "✅ AROS-NX (v0.1.0) Configuration Complete.")

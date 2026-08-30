@@ -1,4 +1,4 @@
-# AROS-NG Core CMake Module (v0.1.0)
+# AROS-NX Core CMake Module (v0.1.0)
 # Modern Multi-Platform Build System for AROS
 
 include(CMakeParseArguments)
@@ -218,7 +218,7 @@ if(NOT AROS_CROSS_TOOLCHAIN_ROOT AND
             endif()
         endforeach()
         message(STATUS
-            "AROS-NG direct build uses LLVM target utilities from "
+            "AROS-NX direct build uses LLVM target utilities from "
             "${_aros_development_llvm_bin}")
     endif()
 endif()
@@ -272,24 +272,17 @@ if(AROS_LLD_BIN)
     # (collect-aros.c:184), so every symbol set in this build was the empty weak
     # `{0, 0}` of DEFINESET and no INITLIB, OPENLIB, LIBS or CTORS function had
     # ever run. OPEN-POINTS point 32 has the measurements.
-    # Whoever includes this module needs the same default the top-level
-    # CMakeLists has. Six fixtures include AROS.cmake directly and went red the
-    # day this rule started requiring aros-collect, because nothing gave them a
-    # value (OPEN-POINTS 45). Derived from this module's own location: in a
-    # fixture, CMAKE_SOURCE_DIR is the fixture, not the repository.
+    # Direct module consumers may provide an exact binary. Otherwise use the
+    # installed suite, independent of the source checkout's location.
     if(NOT AROS_COLLECT_BIN)
-        get_filename_component(_aros_module_repo "${CMAKE_CURRENT_LIST_DIR}/.."
-            ABSOLUTE)
-        set(AROS_COLLECT_BIN
-            "${_aros_module_repo}/tools/aros-tools/target/release/aros-collect")
+        find_program(AROS_COLLECT_BIN NAMES aros-collect)
     endif()
     aros_path_is_executable("${AROS_COLLECT_BIN}" _aros_collect_executable)
     if(NOT _aros_collect_executable)
         message(FATAL_ERROR
-            "AROS-NG requires the executable Rust aros-collect at "
-            "${AROS_COLLECT_BIN}. Build it with `cargo build --release "
-            "-p aros-collect` in tools/aros-tools, or set AROS_RUST_TOOLS_DIR / "
-            "AROS_COLLECT_BIN. Without it every symbol set links empty.")
+            "AROS-NX requires executable aros-collect at ${AROS_COLLECT_BIN}. "
+            "Install aros-tools, or set AROS_COLLECT_BIN explicitly. Without "
+            "it every symbol set links empty.")
     endif()
     set(_aros_link "\"${AROS_COLLECT_BIN}\" --ld \"${AROS_LLD_BIN}\" --")
 
@@ -2251,7 +2244,7 @@ endfunction()
 #
 # Downloading is delegated to the validated Rust aros-fetch tool. The upstream
 # scripts/fetch.sh remains available to the unmodified GNU Make build, but the
-# AROS-NG CMake path never silently falls back to the shell implementation.
+# AROS-NX CMake path never silently falls back to the shell implementation.
 # These targets are deliberately NOT part of `all`: fetching
 # reaches out to the network, so it stays an explicit step.
 #
@@ -2267,12 +2260,8 @@ set(AROS_FETCH_OFFLINE OFF CACHE BOOL
 set(AROS_FETCH_REQUIRE_CHECKSUMS OFF CACHE BOOL
     "Require every third-party archive to declare an explicit SHA-256")
 
-if(NOT DEFINED AROS_FETCH_BIN)
-    get_filename_component(_aros_fetch_repository_root
-        "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
-    set(AROS_FETCH_BIN
-        "${_aros_fetch_repository_root}/tools/aros-tools/target/release/aros-fetch"
-        CACHE FILEPATH "Validated Rust source fetcher used by AROS-NG fetch targets")
+if(NOT AROS_FETCH_BIN)
+    find_program(AROS_FETCH_BIN NAMES aros-fetch)
 endif()
 
 set_property(GLOBAL PROPERTY AROS_FETCH_TARGETS "")
@@ -5599,7 +5588,7 @@ if(MKISOFS_BIN)
                 -iso-level 4 -l -J -r
                 "${CMAKE_BINARY_DIR}/SYS"
         DEPENDS workbench-c
-        COMMENT "💿 Packaging AROS-NG Bootable ISO Disk Image -> ${AROS_BOOT_ISO}"
+        COMMENT "💿 Packaging AROS-NX Bootable ISO Disk Image -> ${AROS_BOOT_ISO}"
     )
 elseif(HDIUTIL_BIN)
     add_custom_target(boot-iso
@@ -5607,7 +5596,7 @@ elseif(HDIUTIL_BIN)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/workbench/s/Startup-Sequence" "${CMAKE_BINARY_DIR}/SYS/S/Startup-Sequence"
         COMMAND ${HDIUTIL_BIN} makehybrid -iso -joliet -o "${AROS_BOOT_ISO}" "${CMAKE_BINARY_DIR}/SYS"
         DEPENDS workbench-c
-        COMMENT "💿 Packaging AROS-NG Bootable ISO Disk Image via hdiutil -> ${AROS_BOOT_ISO}"
+        COMMENT "💿 Packaging AROS-NX Bootable ISO Disk Image via hdiutil -> ${AROS_BOOT_ISO}"
     )
 endif()
 
@@ -5629,11 +5618,9 @@ endif()
 # are PKG containers. Load order therefore matters: the kernel ELF must come
 # first, packages after it.
 
-find_program(AROS_ROMTOOL_BIN aros-romtool
-    HINTS "${CMAKE_SOURCE_DIR}/tools/aros-tools/target/release"
-          "${CMAKE_SOURCE_DIR}/tools/aros-tools/target/debug"
-    NO_DEFAULT_PATH
-)
+if(NOT AROS_ROMTOOL_BIN)
+    find_program(AROS_ROMTOOL_BIN NAMES aros-romtool)
+endif()
 
 # aros_make_package(NAME <target> OUTPUT <file>
 #                   MODULES <targets...> MEMBER_NAMES <runtime names...>)

@@ -1,4 +1,4 @@
-# AROS-NG release-toolchain contract.
+# AROS-NX release-toolchain contract.
 #
 # This file is loaded by CMake before project(), so the selected compiler can
 # never drift to a host installation after a build tree has been configured.

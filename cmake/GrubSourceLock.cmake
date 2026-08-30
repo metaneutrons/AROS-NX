@@ -1,5 +1,5 @@
 # Explicit supply-chain lock for the one archive downloaded directly by the
-# AROS-NG CMake build instead of an upstream MetaMake %fetch declaration.
+# AROS-NX CMake build instead of an upstream MetaMake %fetch declaration.
 # Builder and runner both include this file so the mandatory integrity value
 # has exactly one maintenance location.
 set(_AROS_GRUB2_VERSION "2.12")

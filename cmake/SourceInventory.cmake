@@ -33,7 +33,7 @@ function(aros_fetch_source_inventory)
     endif()
     file(MAKE_DIRECTORY "${_location}" "${_base}" "${SI_DESTINATION}")
     message(STATUS
-        "🌐 AROS-NG: fetching ${SI_NAME} to determine its source/header inventory")
+        "🌐 AROS-NX: fetching ${SI_NAME} to determine its source/header inventory")
     set(_fetch_policy_args "")
     if(AROS_FETCH_OFFLINE)
         list(APPEND _fetch_policy_args --offline)

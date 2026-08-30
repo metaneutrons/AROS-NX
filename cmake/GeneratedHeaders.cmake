@@ -120,7 +120,7 @@ endif()
 if(EXISTS "${_mui_header}")
     file(STRINGS "${_mui_header}" _mui_lines)
     list(LENGTH _mui_lines _n_mui)
-    message(STATUS "🧵 AROS-NG: generated libraries/mui.h (${_n_mui} lines)")
+    message(STATUS "🧵 AROS-NX: generated libraries/mui.h (${_n_mui} lines)")
 endif()
 
 # -----------------------------------------------------------------------------
@@ -173,7 +173,7 @@ if(IS_DIRECTORY "${_boost_subset}")
     endforeach()
     file(GLOB_RECURSE _boost_staged "${AROS_SDK_INCLUDE_DIR}/boost/*")
     list(LENGTH _boost_staged _n_boost)
-    message(STATUS "🧵 AROS-NG: staged ${_n_boost} vendored Boost header(s)")
+    message(STATUS "🧵 AROS-NX: staged ${_n_boost} vendored Boost header(s)")
 else()
     message(WARNING
         "compiler/boost/include/boost is missing; every source reaching "
@@ -206,7 +206,7 @@ if(IS_DIRECTORY "${_acpica_subset}")
     endforeach()
     file(GLOB_RECURSE _acpica_staged "${AROS_SDK_INCLUDE_DIR}/acpica/*")
     list(LENGTH _acpica_staged _n_acpica)
-    message(STATUS "🧵 AROS-NG: staged ${_n_acpica} vendored ACPICA header(s)")
+    message(STATUS "🧵 AROS-NX: staged ${_n_acpica} vendored ACPICA header(s)")
 else()
     message(WARNING
         "arch/all-native/acpica/include/acpica is missing; kernel-kernel will "

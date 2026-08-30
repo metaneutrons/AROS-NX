@@ -1,4 +1,4 @@
-# AROS-NG SDK Header Bootstrap
+# AROS-NX SDK Header Bootstrap
 
 include("${CMAKE_CURRENT_LIST_DIR}/Executable.cmake")
 
@@ -51,7 +51,7 @@ function(aros_generate_asm_header sdk_inc geninc)
     )
     if(NOT _res EQUAL 0 OR NOT EXISTS "${_asm}")
         message(FATAL_ERROR
-            "AROS-NG could not generate required aros/${AROS_TARGET_CPU}/asm.h "
+            "AROS-NX could not generate required aros/${AROS_TARGET_CPU}/asm.h "
             "with ${CMAKE_C_COMPILER} (exit ${_res}).\n${_err}")
     endif()
 
@@ -69,7 +69,7 @@ function(aros_generate_asm_header sdk_inc geninc)
 
     if(_out STREQUAL "")
         message(FATAL_ERROR
-            "AROS-NG generated no definitions for required "
+            "AROS-NX generated no definitions for required "
             "aros/${AROS_TARGET_CPU}/asm.h from ${_asm}")
     endif()
 
@@ -78,7 +78,7 @@ function(aros_generate_asm_header sdk_inc geninc)
     endforeach()
     string(REGEX MATCHALL "\n" _nl "${_out}")
     list(LENGTH _nl _n)
-    message(STATUS "🔧 AROS-NG: generated aros/${AROS_TARGET_CPU}/asm.h (${_n} lines)")
+    message(STATUS "🔧 AROS-NX: generated aros/${AROS_TARGET_CPU}/asm.h (${_n} lines)")
 endfunction()
 
 function(aros_bootstrap_sdk_includes)
@@ -229,7 +229,7 @@ function(aros_bootstrap_sdk_includes)
     # config.h from an earlier configure.  The contents contain no generator
     # expressions, so publish them immediately and deterministically.
     file(WRITE "${CONFIG_H}"
-"/* AROS-NG v0.1.0: Auto-generated aros/config.h */
+"/* AROS-NX v0.1.0: Auto-generated aros/config.h */
 #ifndef AROS_CONFIG_H
 #define AROS_CONFIG_H
 
@@ -269,7 +269,7 @@ function(aros_bootstrap_sdk_includes)
     file(GLOB _stale_libdefs "${SDK_INC}/*_libdefs.h")
     if(_stale_libdefs)
         list(LENGTH _stale_libdefs _n_stale)
-        message(STATUS "🧹 AROS-NG: removing ${_n_stale} stale <mod>_libdefs.h from the shared SDK")
+        message(STATUS "🧹 AROS-NX: removing ${_n_stale} stale <mod>_libdefs.h from the shared SDK")
         file(REMOVE ${_stale_libdefs})
     endif()
     # genmodule takes the list space-separated, CMake stores it with semicolons.
@@ -281,10 +281,9 @@ function(aros_bootstrap_sdk_includes)
     endif()
     if(NOT _aros_genmodule_executable)
         message(FATAL_ERROR
-            "AROS-NG requires the executable Rust SDK generator at "
-            "${AROS_GENMODULE_BIN}. Build it with `cargo build --release "
-            "-p aros-genmodule -p aros-transpiler` in tools/aros-tools, or "
-            "set AROS_RUST_TOOLS_DIR / AROS_GENMODULE_BIN.")
+            "AROS-NX requires executable aros-genmodule at "
+            "${AROS_GENMODULE_BIN}. Install a complete aros-tools release, or "
+            "set AROS_RUST_TOOLS_DIR / AROS_GENMODULE_BIN explicitly.")
     endif()
     execute_process(
         COMMAND "${AROS_GENMODULE_BIN}"
@@ -301,7 +300,7 @@ function(aros_bootstrap_sdk_includes)
     )
     if(NOT GENMODULE_RES EQUAL 0)
         message(FATAL_ERROR
-            "AROS-NG SDK generator failed (${GENMODULE_RES}).\n"
+            "AROS-NX SDK generator failed (${GENMODULE_RES}).\n"
             "${_aros_genmodule_error}")
     endif()
 
@@ -314,5 +313,5 @@ function(aros_bootstrap_sdk_includes)
     # architecture-specific source overrides consist of.
     aros_generate_asm_header("${SDK_INC}" "${CMAKE_BINARY_DIR}/GENINCDIR")
 
-    message(STATUS "✅ AROS-NG SDK include tree populated at: ${SDK_INC}")
+    message(STATUS "✅ AROS-NX SDK include tree populated at: ${SDK_INC}")
 endfunction()

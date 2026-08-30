@@ -116,7 +116,7 @@ if(NOT _flexcat_iconv_without_library_result EQUAL 0)
         OUTPUT_QUIET)
     if(NOT _flexcat_iconv_with_library_result EQUAL 0)
         message(FATAL_ERROR
-            "AROS-NG: host FlexCat requires iconv, but ${AROS_HOST_CC} could "
+            "AROS-NX: host FlexCat requires iconv, but ${AROS_HOST_CC} could "
             "not link it either from the default host runtime or with -liconv.\n"
             "Without -liconv:\n${_flexcat_iconv_without_library_error}\n"
             "With -liconv:\n${_flexcat_iconv_with_library_error}")
@@ -480,7 +480,7 @@ if(_host_png_ready)
 else()
     set(AROS_HOST_HAVE_ILBMTOICON FALSE)
     message(STATUS
-        "⏭️  AROS-NG: libpng and/or zlib not found on the build machine; "
+        "⏭️  AROS-NX: libpng and/or zlib not found on the build machine; "
         "unavailable icon rules will be reported after target transpilation")
 endif()
 

@@ -1,4 +1,4 @@
-# AROS-NG Declarative Target Profiles & Toolchain Configuration
+# AROS-NX Declarative Target Profiles & Toolchain Configuration
 # Modify versions, hardware targets, or download sources here without editing Rust code.
 
 [host_compiler]
