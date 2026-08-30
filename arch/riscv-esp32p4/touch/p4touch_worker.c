@@ -88,9 +88,11 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
     struct MsgPort *port = NULL;
     struct timerequest *timer = NULL;
     BOOL timer_open = FALSE, acquired = FALSE, down = FALSE;
+    UWORD active_button = vHidd_Mouse_NoButton;
     WORD last_x = 0, last_y = 0;
     ULONG zero_polls = 0, reads = 0, errors = 0, contact_frames = 0;
-    ULONG multi_frames = 0, max_contacts = 0, max_reported = 0;
+    ULONG multi_frames = 0, right_gestures = 0;
+    ULONG max_contacts = 0, max_reported = 0;
 
     port = CreateMsgPort();
     if (port)
@@ -130,8 +132,9 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
             if (down)
             {
                 p4touch_event(data, vHidd_Mouse_Release,
-                              vHidd_Mouse_Button1, last_x, last_y);
+                              active_button, last_x, last_y);
                 down = FALSE;
+                active_button = vHidd_Mouse_NoButton;
             }
             if (errors == 1 || !(errors & 0x3f))
                 bug("[P4Touch/C4] read error %lu after %lu polls; "
@@ -141,6 +144,7 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
         else if (frame.count)
         {
             ULONG primary, i;
+            UWORD desired_button;
             const struct KrnTouchScreenContact *contact;
             WORD x, y;
 
@@ -181,25 +185,49 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
                               vHidd_Mouse_NoButton, x, y);
             last_x = x;
             last_y = y;
+
+            /* A second contact promotes the active press to Button2.  Once
+               promoted, keep Button2 latched while either contact remains;
+               sequential finger release must not synthesize a new left
+               press.  This also permits the Amiga menu button to be dragged. */
+            desired_button = frame.count > 1
+                           || active_button == vHidd_Mouse_Button2
+                           ? vHidd_Mouse_Button2 : vHidd_Mouse_Button1;
             if (!down)
             {
                 p4touch_event(data, vHidd_Mouse_Press,
-                              vHidd_Mouse_Button1, x, y);
+                              desired_button, x, y);
+                active_button = desired_button;
                 down = TRUE;
+                if (desired_button == vHidd_Mouse_Button2)
+                    ++right_gestures;
+            }
+            else if (active_button != desired_button)
+            {
+                p4touch_event(data, vHidd_Mouse_Release,
+                              active_button, x, y);
+                p4touch_event(data, vHidd_Mouse_Press,
+                              desired_button, x, y);
+                active_button = desired_button;
+                ++right_gestures;
             }
         }
         else if (down && ++zero_polls >= P4_TOUCH_RELEASE_POLLS)
         {
             p4touch_event(data, vHidd_Mouse_Release,
-                          vHidd_Mouse_Button1, last_x, last_y);
+                          active_button, last_x, last_y);
             down = FALSE;
+            active_button = vHidd_Mouse_NoButton;
             zero_polls = 0;
         }
         if (!(reads % 100))
-            bug("[P4Touch/C4] heartbeat after %lu polls; down %u, frames "
-                "%lu, multi %lu, max %lu/%lu, events %lu, errors %lu\n",
+            bug("[P4Touch/C4] heartbeat after %lu polls; down %u button %u, "
+                "frames %lu, multi %lu, right %lu, max %lu/%lu, events %lu, "
+                "errors %lu\n",
                 (unsigned long)reads, (unsigned int)down,
+                (unsigned int)active_button,
                 (unsigned long)contact_frames, (unsigned long)multi_frames,
+                (unsigned long)right_gestures,
                 (unsigned long)max_contacts, (unsigned long)max_reported,
                 (unsigned long)data->published_events,
                 (unsigned long)errors);
@@ -216,9 +244,11 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
 
 out:
     bug("[P4Touch/C4] worker exiting after %lu polls; running %u, "
-        "frames %lu, multi %lu, max %lu/%lu, events %lu, errors %lu\n",
+        "frames %lu, multi %lu, right %lu, max %lu/%lu, events %lu, "
+        "errors %lu\n",
         (unsigned long)reads, (unsigned int)data->running,
         (unsigned long)contact_frames, (unsigned long)multi_frames,
+        (unsigned long)right_gestures,
         (unsigned long)max_contacts, (unsigned long)max_reported,
         (unsigned long)data->published_events,
         (unsigned long)errors);
