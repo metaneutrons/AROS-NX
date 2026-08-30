@@ -134,7 +134,7 @@ gate: compensated output is not the native display contract.
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
-| C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification, bounded reset/load/status and raw contact-zero transport are hardware verified.  The absolute `mouse.hidd` subclass, task-context 20-Hz poller, normalization and press/release policy pass the direct-X interaction sub-gate after the scheduler idle fix.  Its version-3 contact-frame path independently decodes the complete 44-byte report, exposes up to ten contacts and keeps the visible pointer on the nearest continuing contact.  The FIFO-segmented long read and real one-/two-contact parsing pass synchronized D1001 traces with zero errors; both contacts report hardware ID zero, validating positions rather than IDs as the identity source.  Gesture synthesis and runtime external firmware/recovery remain; closes M7 |
+| C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification, bounded reset/load/status and raw contact-zero transport are hardware verified.  The absolute `mouse.hidd` subclass, task-context 20-Hz poller, normalization and press/release policy pass the direct-X interaction sub-gate after the scheduler idle fix.  Its version-3 contact-frame path independently decodes the complete 44-byte report, exposes up to ten contacts and keeps the visible pointer on the nearest continuing contact.  The FIFO-segmented long read and real one-/two-contact parsing pass synchronized D1001 traces with zero errors; both contacts report hardware ID zero, validating positions rather than IDs as the identity source.  Two contacts promote Button1 to a Button2 press latched until complete release; UART and direct Intuition observation verify menu activation, sequential release without a new left press and the final Button2 release.  Runtime external firmware/recovery remain; closes M7's interaction criterion |
 
 ## Track A: storage and normal boot
 
@@ -10591,6 +10591,81 @@ chip in the width this port assumes; it never addressed the hang.
 - Next safe step: commit this foundation as one functional change, then add
   two-finger right-button synthesis as a separate implementation and hardware
   gate.
+
+### 2026-08-30 - C4 two-contact right-button synthesis started
+
+- State change: C4 remains `hardware partial`, but its two-contact right-button
+  synthesis is now hardware verified through both event-level UART evidence
+  and direct Intuition observation.  Runtime external firmware supply and
+  recovery remain outside this gate.
+- Policy: one contact retains the hardware-verified Button1 press/move/release
+  mapping.  Appearance of a second parsed contact releases Button1 and presses
+  Button2 at the continuing primary position.  Button2 remains latched until
+  all contacts are released, including when the two fingers are lifted
+  sequentially; this prevents a new left press during release and permits
+  classic Amiga menu-button dragging.  A report that begins with two contacts
+  presses Button2 directly.
+- Safety: the change is confined to the `p4touch.hidd` event adapter.  It does
+  not change controller firmware, I2C transport, the read-only SD path or any
+  flash range.  No hardware action occurred in this source step.
+- Build procedure and corrections: the changed worker object, module and BSP
+  were named for removal before rebuilding.  The first combined shell command
+  was rejected by the local tool policy before any file operation or build;
+  it produced no artifact.  The three explicit generated artifacts were then
+  unlinked individually.  Requesting HIDD and package targets together exposed
+  a target dependency race: the package target failed while the HIDD target
+  was still building, then that HIDD completed successfully.  The package was
+  accepted only after a separate subsequent target completed its size check.
+- Build evidence: `p4touch.hidd` is 32,180 bytes, SHA-256
+  `621ea12716597765dc5de429eeefb65b1655e86ab6dcc712c6836d7a984185ee`.
+  The 35-member BSP is 3,305,120 of the permitted 4,063,232 bytes, SHA-256
+  `7ad5f252a6f82346e904c46e93d2fe4d80a4536461f5e1f4e98fb08e068df0d6`.
+  `audit-package.py` accepts all 35 members as ELF32 RISC-V with zero failures,
+  and `git diff --check` passes.  This is build/static-audit evidence only.
+- Flash evidence: D1001 revision 1.3, MAC `e8:f6:0a:e0:46:4c`, appeared as
+  `/dev/cu.usbmodem101`.  Only the 3,305,120-byte BSP at `0x820000` was
+  written, ending at `0x00b46fff`; its write-time digest and a separate
+  `verify-flash` both passed.  Core, bootloader, partition table, development
+  flash volume, `storage` and read-only SD were untouched.
+- Non-interactive sanity: `/tmp/aros-c4-right-sanity-01.log` is 543,050 bytes,
+  SHA-256
+  `624d4f5bfe7d14022eb562d2cbff656245ff69691a695ce0c593bf89a9676639`.
+  Wanderer loads and the HIDD reaches 100 idle polls with `down 0 button 0`,
+  zero frames, zero right gestures and zero errors.  No trap, panic, Guru,
+  Alert, access fault or timer-request failure appears.  This is an idle-boot
+  claim only, not evidence that Button2 reaches Intuition.
+- First synchronized interaction: `/tmp/aros-c4-right-interactive-01.log` is
+  830,355 bytes, SHA-256
+  `1e3fedc21c7fa3ca1de1afd874ecae966eca618f44d636bfd8256320ba31c3f5`.
+  It verifies a complete normal Button1 cycle followed by 60 two-contact
+  frames and exactly one Button2 press with zero errors.  The capture ended
+  while Button2 was still down, so it is not final-release evidence.  Direct
+  observation nevertheless confirmed that the menu appeared, stayed active
+  when one finger was lifted and no new selection rectangle was drawn.
+- Incomplete release capture retained: `/tmp/aros-c4-right-release-01.log` is
+  827,643 bytes, SHA-256
+  `1238f7d923f8a03928f74aa70720b865ff94d87d89d2714377beef6084fdc654`.
+  It verifies a direct two-contact Button2 press and 27 multi-contact frames,
+  but again ends before either contact disappears and is not counted as the
+  release gate.
+- Complete release gate: after another fresh explicit `bereit`, the extended
+  90-second `/tmp/aros-c4-right-release-02.log` is 828,215 bytes, SHA-256
+  `e9b7b2ebcc305fdcd4eb8d2c0e671a818e68241f7d3d61ec26a87d4dceaf3bf0`.
+  A report beginning with two contacts emits Button2 press directly, records
+  25 two-contact frames, then 16 one-contact frames while Button2 remains
+  latched, and finally emits Button2 release.  No Button1 event occurs anywhere
+  in that sequence.  Five further 100-poll heartbeats remain at `down 0 button
+  0`; the run reaches 800 polls with one right gesture and zero read errors.
+  No trap, panic, Guru, Alert, access fault, timer-request failure or fatal
+  signature appears.  Direct observation confirms the menu response, its
+  persistence after the first lift, clean final release and no selection
+  rectangle after either lift.
+- Acceptance: the existing one-finger Button1 mapping still passes; Button2
+  reaches Intuition; direct two-finger start, promotion from Button1, movement,
+  sequential lift and final release all pass without a spurious left re-press.
+- Next safe step: commit this gesture as its own functional change.  C4's next
+  production work is runtime external firmware loading and bounded recovery,
+  not further gesture inference from the controller's unusable zero IDs.
 
 ## Evidence-entry template
 
