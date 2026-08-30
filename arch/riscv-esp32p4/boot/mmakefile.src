@@ -38,6 +38,7 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-hidd-input \
 #MM     kernel-hidd-kbd \
 #MM     kernel-hidd-mouse \
+#MM     kernel-hidd-p4touch \
 #MM     hidd-fbgfx \
 #MM     kernel-input \
 #MM     kernel-keyboard \
@@ -75,6 +76,7 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-hidd-input-quick \
 #MM     kernel-hidd-kbd-quick \
 #MM     kernel-hidd-mouse-quick \
+#MM     kernel-hidd-p4touch-quick \
 #MM     hidd-fbgfx-quick \
 #MM     kernel-input-quick \
 #MM     kernel-keyboard-quick \
@@ -120,6 +122,14 @@ PKG_LIBS      += gadtools
 PKG_RES       += misc
 PKG_DEVS      += console
 PKG_HANDLERS  += con ram
+endif
+
+# C4's development touch driver is deliberately opt-in because it depends on
+# the external, privately supplied GSL3670 firmware header at kernel build
+# time.  The package member itself contains only independent contact-frame
+# selection, normalization and the generic absolute mouse HIDD.
+ifeq ($(P4_C4_TOUCH_HIDD),1)
+PKG_HIDDS     += p4touch
 endif
 
 # C2's one-shot screen owner is an acceptance instrument, not a normal boot
