@@ -10987,15 +10987,13 @@ chip in the width this port assumes; it never addressed the hang.
 
 ### 2026-08-30 - session handoff after geometrically correct raw scanout
 
-- Repository state: branch `feat/riscv32-esp32p4-v2`, HEAD
-  `5def61508f07015b2d80ea3295e173165fb749ca`.  The worktree intentionally has
-  eleven modified tracked files.  Nine implement the uncommitted C4 external
-  runtime-firmware/recovery path and its documentation; the shared
-  `arch/aarch64-raspi/hidd/fbgfx/fbgfx_support.c` and port-local
-  `kernel/dsi_scanout.c` additionally contain bounded temporary C1 content
-  telemetry.  Do not discard or commit this mixed state before the display
-  regression is isolated and the temporary telemetry is removed or explicitly
-  retained with evidence.
+- Repository state: branch `feat/riscv32-esp32p4-v2`, base HEAD
+  `67286b1d8f`.  Commit `4ee4f02a8b` contains the C4 external runtime-firmware
+  path and bounded temporary C1 content telemetry; the later base commit adds
+  only PSRAM evidence.  The implementation is therefore no longer an
+  uncommitted mixed state.  Do not remove the temporary telemetry before the
+  display regression is isolated, and do not mistake its committed presence
+  for hardware acceptance.
 - Last accepted visual fact: the immutable B5 raw candidate used the same
   second physical surface `0x49e0c000`, RGB565 rotation, explicit +525 row
   compatibility mapping, 1,500-Mbit/s non-burst DSI and the live panel.  Its
@@ -11140,6 +11138,68 @@ already in this log - the 1,500 Mbit/s lane rate, the `+525` row mapping, the
 bounded scanout - because it read B5's `hardware partial` row as an open
 front rather than checking the newest dated entries first.  Read the end of
 this file before the master table.
+
+### 2026-08-31 - C1 source/front/back diagnostic package accepted
+
+- State change: none.  This is build and package-audit evidence for the next
+  C1 diagnostic; no new D1001 behavior is claimed.
+- Source: branch `feat/riscv32-esp32p4-v2`, base commit `67286b1d8f`; its only
+  change after the C1 implementation commit `4ee4f02a8b` is documentation.
+  The preserved core therefore still corresponds to the current executable
+  sources.
+- Clean rebuild boundary: generated `fbgfx_support.o/.d`, the installed
+  `fbgfx.hidd` and `aros-bsp.pkg` were deleted before the build.  The first
+  direct package target failed honestly because mmake knew the deleted HIDD as
+  a file prerequisite but did not reconstruct it as an intermediate target.
+  It produced no package.  The log
+  `/tmp/aros-c1-content-diag-bsp-build.log` is 1,005 bytes, SHA-256
+  `b50de94190f082fe9ea893f8affbc9d85efb48562deb1aa7ef6b826f07fa761b`.
+- Correction and accepted build: the explicit `hidd-fbgfx` target was built
+  first with `P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_HIDD=1 FAT_DEBUG=1
+  DOS_DEBUG=1 DOSBOOT_DEBUG=1`; its successful log has SHA-256
+  `350e5b0386ef20ea8a1be9f5c5470e90ec88733782fd35c2408798a773929dd9`.
+  The resulting `fbgfx.hidd` is 43,604 bytes, SHA-256
+  `f905bf258a310fca0a08afca21e19fbefb28935e96a4dc25516f9be36d237337`.
+  Repeating `kernel-package-esp32p4-riscv-checksize` with the same flags
+  completed successfully.  The 35-member package is
+  3,309,516 of the permitted 4,063,232 bytes, SHA-256
+  `6f900932238440d4d0a2a17c38f0b2d7309153e77d135b02609425dc5402c5d3`.
+  Its log `/tmp/aros-c1-content-diag-bsp-build-retry.log` has SHA-256
+  `b7aedf30ef8cb3eb49197ef6240ef862b3f4d71da17abe1a7612da53340b9aee`.
+- Audit: an attempted `audit-package.py --help` failed locally because the
+  intentionally small script treats its sole argument as a package path; it
+  changed no artifact.  The correct invocation on the package returned zero,
+  accepted all 35 ELF32 RISC-V members and reported zero failures.  Saved
+  output `/tmp/aros-c1-content-diag-bsp-audit.txt` is 9,518 bytes, SHA-256
+  `dbd01d501343f60ae3c73e0c8f2da7c60accca919e4afaf94e17c828a9a3cbce`.
+- Paired core: `/tmp/aros-c1-content-diag-core.bin` is 199,344 bytes,
+  SHA-256
+  `9d7c04c03f927166f329466bda19e971a6d11b9bdbd6ebc38bdf7b48ec1f68d9`.
+  Neither accepted artifact has yet been written in this entry.
+- Next safe step: write only this core to `0x20000` and this package to
+  `0x820000`, end in ROM download mode, and verify both exact ranges
+  separately.  Update the README flash row and this log afterward.  Obtain a
+  fresh explicit `bereit` before issuing `esptool run` for the visual/UART
+  diagnostic.
+- Flash preparation completed: only the accepted core and package were
+  written to the standing-authorized offsets `0x20000` and `0x820000` on
+  D1001 revision 1.3, MAC `e8:f6:0a:e0:46:4c`.  Both write-time hashes passed;
+  `/tmp/aros-c1-content-diag-flash.log` is 8,600 bytes, SHA-256
+  `60cfb1a1cff71559b7d02060b3b0a2cd7f04276701e83b2fe079593c49c7cd04`.
+  Separate exact-range `verify-flash` invocations then matched all 199,344
+  core bytes and all 3,309,516 package bytes.  Their logs are respectively
+  612 bytes, SHA-256
+  `b804b3085296f61bbf24f2c8cb30b87526177e9614f034c5681a9138febbf429`,
+  and 613 bytes, SHA-256
+  `b9121591fc480ab6ba715be08fef750f8adcefcc73a344c13ddedb7aa48dbb5c`.
+  Every operation used `--after no-reset`; the board remains in ROM download
+  mode and no visual result exists yet.  The development volume, SD,
+  bootloader, partition table and `storage` were untouched.
+- Next safe step: after a fresh explicit operator `bereit`, issue only
+  `esptool run`, wait for USB re-enumeration, and capture UART without a
+  further DTR/RTS transition.  Observe whether the full desktop or the narrow
+  edge appears and preserve the first two `[c1diag] full` and `[c1diag]
+  samples` records for the source/front/back decision.
 
 ## Evidence-entry template
 
