@@ -978,6 +978,11 @@ tools-crosstools-libunwind-cleanup :
 # LLVM CMake build and install step with the normal upstream target.
 #MM tools-crosstools-llvm-toolchain-release : sdk-includes-1
 #MM tools-crosstools-llvm-toolchain-release : crosstools-llvm-toolchain-cmake
+# MetaMake dispatches this release-only meta-target to this directory after
+# its SDK prerequisites have completed.  Keep the actual make rule aligned
+# with the normal toolchain target so that dispatch builds the shared LLVM
+# install flag instead of failing on an aggregate-only target.
+tools-crosstools-llvm-toolchain-release: $(llvm-installflag)
 #MM crosstools-llvm-toolchain-cmake : tools-crosstools-llvm-setup tools-crosstools-llvm-lld-setup tools-crosstools-clang-setup
 #MM tools-crosstools-llvm-libcxx : tools-crosstools-llvm-setup tools-crosstools-llvm-libcxx-setup tools-crosstools-llvm-libcxxabi-setup \
 #MM           crosstools-compiler-rt-fixup
