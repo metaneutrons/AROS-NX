@@ -36,10 +36,10 @@ include $(SRCDIR)/config/aros.cfg
 # The release producer uses separate runtime targets so normal crosstools
 # retains its historical broad Ports/core-linklibs closure. These targets use
 # only the explicitly declared temporary SDK linklibs from the parent file.
-#MM crosstools-compiler-rt-release : crosstools-compiler-rt-setup tools-crosstools-llvm-toolchain tools-crosstools-runtime-linklibs
-#MM crosstools-compiler-rt-release-cmake : crosstools-compiler-rt-setup tools-crosstools-llvm-toolchain tools-crosstools-runtime-linklibs
-#MM crosstools-compiler-rt32-release : crosstools-compiler-rt-setup tools-crosstools-llvm-toolchain tools-crosstools-runtime-linklibs32
-#MM crosstools-compiler-rt32-release-cmake : crosstools-compiler-rt-setup tools-crosstools-llvm-toolchain tools-crosstools-runtime-linklibs32
+#MM crosstools-compiler-rt-release : crosstools-compiler-rt-setup tools-crosstools-llvm-toolchain-release tools-crosstools-runtime-linklibs
+#MM crosstools-compiler-rt-release-cmake : crosstools-compiler-rt-setup tools-crosstools-llvm-toolchain-release tools-crosstools-runtime-linklibs
+#MM crosstools-compiler-rt32-release : crosstools-compiler-rt-setup tools-crosstools-llvm-toolchain-release tools-crosstools-runtime-linklibs32
+#MM crosstools-compiler-rt32-release-cmake : crosstools-compiler-rt-setup tools-crosstools-llvm-toolchain-release tools-crosstools-runtime-linklibs32
 
 #MM- crosstools-llvm-libcxx-setup : tools-crosstools-llvm-libcxx-setup tools-crosstools-llvm-libcxxabi-setup
 #MM crosstools-llvm-libcxx : crosstools-llvm-libcxx-setup tools-crosstools-llvm-toolchain
@@ -53,8 +53,8 @@ include $(SRCDIR)/config/aros.cfg
 
 #MM tools-crosstools-llvm-libcxx-release : tools-crosstools-llvm-setup tools-crosstools-llvm-libcxx-setup tools-crosstools-llvm-libcxxabi-setup crosstools-compiler-rt-release-fixup
 #MM tools-crosstools-llvm-libcxxabi-release : tools-crosstools-llvm-setup crosstools-compiler-rt-release-fixup tools-crosstools-llvm-libcxx-release
-#MM crosstools-libunwind-release : crosstools-libunwind-setup tools-crosstools-llvm-toolchain tools-crosstools-llvm-libcxx-release tools-crosstools-llvm-libcxxabi-release
-#MM crosstools-libunwind-release-cmake : crosstools-libunwind-setup tools-crosstools-llvm-toolchain tools-crosstools-llvm-libcxx-release tools-crosstools-llvm-libcxxabi-release
+#MM crosstools-libunwind-release : crosstools-libunwind-setup tools-crosstools-llvm-toolchain-release tools-crosstools-llvm-libcxx-release tools-crosstools-llvm-libcxxabi-release
+#MM crosstools-libunwind-release-cmake : crosstools-libunwind-setup tools-crosstools-llvm-toolchain-release tools-crosstools-llvm-libcxx-release tools-crosstools-llvm-libcxxabi-release
 
 #MM- crosstools-llvm : \
 #MM           tools-crosstools-llvm-toolchain crosstools-compiler-rt-fixup \
@@ -80,7 +80,7 @@ include $(SRCDIR)/config/aros.cfg
 # The producer-only release graph follows the same version-dependent runtime
 # split while retaining its minimal, source-locked temporary SDK closure.
 #MM- crosstools-llvm-release : \
-#MM           tools-crosstools-llvm-toolchain crosstools-compiler-rt-release-fixup \
+#MM           tools-crosstools-llvm-toolchain-release crosstools-compiler-rt-release-fixup \
 #MM           crosstools-llvm-runtimes-release-$(TARGET_LLVM_RUNTIMES_STYLE)
 #MM- crosstools-llvm-runtimes-release-separate : \
 #MM           crosstools-libunwind-release tools-crosstools-llvm-libcxx-release tools-crosstools-llvm-libcxxabi-release
@@ -973,6 +973,11 @@ tools-crosstools-libunwind-cleanup :
 
 #MM tools-crosstools-llvm-toolchain : includes-copy
 #MM tools-crosstools-llvm-toolchain : crosstools-llvm-toolchain-cmake
+# The release variant avoids MetaMake's global includes-copy aggregate, which
+# would otherwise schedule optional Ports such as GLU.  It shares the exact
+# LLVM CMake build and install step with the normal upstream target.
+#MM tools-crosstools-llvm-toolchain-release : sdk-includes-1
+#MM tools-crosstools-llvm-toolchain-release : crosstools-llvm-toolchain-cmake
 #MM crosstools-llvm-toolchain-cmake : tools-crosstools-llvm-setup tools-crosstools-llvm-lld-setup tools-crosstools-clang-setup
 #MM tools-crosstools-llvm-libcxx : tools-crosstools-llvm-setup tools-crosstools-llvm-libcxx-setup tools-crosstools-llvm-libcxxabi-setup \
 #MM           crosstools-compiler-rt-fixup

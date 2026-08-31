@@ -1778,7 +1778,7 @@ endif
 #MM
 %(mmake)-quick : %(mmake)
 
-#MM %(mmake) : includes-generate-deps core-linklibs
+#MM %(mmake) : sdk-includes-$(AROS_TOOLCHAIN_RELEASE) core-linklibs
 %(mmake) : $(%(mmake)_TARGETDIR)/$(%(mmake)_PROGNAME)
 
 ifeq (%(alwayscxxlink),yes)
@@ -1934,7 +1934,7 @@ endif
 #MM
 %(mmake)-quick : %(mmake)
 
-#MM %(mmake) : includes-generate-deps core-linklibs
+#MM %(mmake) : sdk-includes-$(AROS_TOOLCHAIN_RELEASE) core-linklibs
 %(mmake) : $(%(mmake)_EXES)
 
 ifneq ($(filter $(TARGET),%(mmake) %(mmake)-quick),)
@@ -1982,8 +1982,8 @@ endif
     uselibs= usehostlibs= compiler=target funcinstr="$(TARGET_FUNCINSTR)" lto="$(TARGET_LTO)"
 
 # Define metamake targets and their dependencies
-#MM %(mmake) : core-linklibs includes-generate-deps
-#MM %(mmake)-kobj : core-linklibs includes-generate-deps
+#MM %(mmake) : core-linklibs sdk-includes-$(AROS_TOOLCHAIN_RELEASE)
+#MM %(mmake)-kobj : core-linklibs sdk-includes-$(AROS_TOOLCHAIN_RELEASE)
 #MM %(mmake)-kobj-quick
 #MM %(mmake)-quick
 #MM %(mmake)-clean
@@ -2237,7 +2237,7 @@ $(%(mmake)_KOBJ) : $(%(mmake)_OBJS) $(%(mmake)_ENDOBJS)
 #M%(build_abi) %(mmake)-linklib : %(mmake)-includes includes-%(uselibs)
 #M%(build_abi)- %(mmake)-quick : %(mmake)-includes-quick
 #M%(build_abi) %(mmake)-includes : %(mmake)-makefile %(mmake)-includes-dirs %(mmake)-set-archincludes \
-#M%(build_abi)     includes-generate-deps %(mmake)-fd
+#M%(build_abi)     sdk-includes-$(AROS_TOOLCHAIN_RELEASE) %(mmake)-fd
 #M%(build_abi) %(mmake)-includes-quick
 #M%(build_abi) %(mmake)-includes-dirs
 #M%(build_abi) %(mmake)-fd
@@ -2997,7 +2997,11 @@ endif
 #MM
 %(mmake)-quick : %(mmake)
 
-#MM %(mmake) : includes-generate-deps
+# Select the full upstream SDK closure normally and the explicit, Ports-free
+# closure for the opt-in toolchain release.  `includes-generate-deps` cannot
+# be used directly here because its aggregate `includes-copy` target spans
+# every component in MetaMake, including optional Ports.
+#MM %(mmake) : sdk-includes-$(AROS_TOOLCHAIN_RELEASE)
 %(mmake) : $(%(mmake)_LINKLIB)
 
 ifneq ($(filter $(TARGET),%(mmake) %(mmake)-quick),)

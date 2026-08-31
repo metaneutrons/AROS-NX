@@ -97,12 +97,16 @@ INCL_DIRS     := $(foreach dir,$(INCSUBDIRS) $(INCEMPTYDIRS),$(AROS_INCLUDES)/$(
 # config/target.cfg.in:43. That is the same idiom as
 # linklibs-libatomic-$(TARGET_LIBATOMIC) in tools/crosstools/mmakefile.src:8.
 #
-# The release form stops at includes-generate-deps, which is what a
-# %build_linklib target requires anyway (config/make.tmpl:3000), so it keeps
-# includes-copy and the generated architecture headers and drops only the
-# per-library header steps.
+# The release form must not use the aggregate `includes-copy` target: MetaMake
+# aggregates that name across every component, including Ports whose headers
+# need unverified source archives.  Spell out its core-only ingredients
+# instead, then add the architecture-generated headers required by linklibs.
+# The normal form deliberately retains the complete upstream SDK closure.
 #MM- sdk-includes-0 : includes includes-copy
-#MM- sdk-includes-1 : includes-generate-deps kernel-exec-includes compiler-boost-sdk-subset kernel-acpica-sdk-subset
+#MM- sdk-includes-1 : compiler-includes \
+#MM     includes-copy-$(ARCH)-$(CPU) includes-copy-$(FAMILY)-$(CPU) includes-copy-$(CPU) \
+#MM     includes-$(ARCH)-$(CPU) includes-$(FAMILY)-$(CPU) \
+#MM     compiler-boost-sdk-subset kernel-acpica-sdk-subset
 #MM- includes-generate : includes-generate-deps
 #MM- includes-generate-deps : includes-copy $(CROSSTOOLS_PORTS_INCLUDES) includes-$(ARCH)-$(CPU) includes-$(FAMILY)-$(CPU)
 # ports-includes aggregates headers/pkgconfig files installed from fetched
@@ -111,8 +115,8 @@ INCL_DIRS     := $(foreach dir,$(INCSUBDIRS) $(INCEMPTYDIRS),$(AROS_INCLUDES)/$(
 # do not force every port archive to be downloaded and unpacked.
 # CROSSTOOLS_PORTS_INCLUDES is normally ports-includes. It is empty only for
 # --enable-toolchain-release and is attached to this direct node because
-# %build_linklib targets depend on includes-generate-deps without using the
-# includes alias.
+# %build_* targets select sdk-includes-$(AROS_TOOLCHAIN_RELEASE), so every
+# release build shares this Ports-free base without a global aggregate edge.
 #MM- includes-copy : compiler-includes includes-copy-$(ARCH)-$(CPU) includes-copy-$(FAMILY)-$(CPU) \
 #MM                  includes-copy-$(CPU)
 
