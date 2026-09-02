@@ -31,20 +31,7 @@ USER_CPPFLAGS := \
                -D__UTILITY_NOLIBBASE__
 USER_CPPFLAGS += \
                -DINTUITION_INLINE_NEWOBJECT
-# -nostdc, so the link takes libstdc.static.a rather than the stdc.library
-# client stubs. oop.library uses strcmp(), strcpy() and strlen(); each resolves
-# to a stub with an undefined StdCBase, which drags in stdc_autoinit.o and its
-# __aros_set_LIBS___aros_libset_StdCBase entry. That set is walked at module
-# init and opens stdc.library, and oop.library initialises at residentpri 94 --
-# before any filesystem, so the open fails:
-#
-#   Exec Bootstrap Task: Could not open version 0 or higher of library
-#   "stdc.library".
-#
-# oop.library failing takes every OOP-based module with it, which on x86_64 is
-# gfx.hidd, keyboard.hidd, mouse.hidd, inputclass.hidd, graphics.library,
-# intuition.library, gameport.device and keyboard.device.
-USER_LDFLAGS := -static -nostdc
+USER_LDFLAGS := -static
 
 #MM kernel-oop-includes : \
 #MM     kernel-exec-includes \
