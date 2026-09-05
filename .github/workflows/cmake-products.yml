@@ -16,7 +16,7 @@ concurrency:
 
 env:
   AROS_TOOLS_REPOSITORY: metaneutrons/aros-tools
-  AROS_TOOLS_COMMIT: 8fc0eb2f3646f27db53a1552d2b0e10265dd4fc2
+  AROS_TOOLS_COMMIT: e1cee6cbadfa0038bd9db761c7fc8ed1c6f3d6df
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: '1'
 
@@ -46,6 +46,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Checkout exact aros-tools input
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -53,21 +54,29 @@ jobs:
           repository: ${{ env.AROS_TOOLS_REPOSITORY }}
           ref: ${{ env.AROS_TOOLS_COMMIT }}
           path: dependencies/aros-tools
+          persist-credentials: false
 
       - name: Install audited build prerequisites
         run: bash scripts/ci/install-build-prerequisites.sh
 
-      - name: Verify companion generated-header ordering
-        run: cmake -P cmake/tests/HostGeneratedHeaderDependencyTest.cmake
-
-      - name: Install Rust stable
+      - name: Install the tools-owned Rust toolchain
+        working-directory: dependencies/aros-tools
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          toolchain=$(scripts/release/read-rust-toolchain.sh)
+          rustup toolchain install "$toolchain" --profile minimal
+          rustup show active-toolchain
 
       - name: Build the complete external tool suite
         working-directory: dependencies/aros-tools
         run: cargo build --locked --release --workspace --all-features
+
+      - name: Verify companion generated-header ordering in the selected engine
+        env:
+          AROS_TEST_SOURCE_ROOT: ${{ github.workspace }}
+          AROS_TEST_TOOLS_DIR: ${{ github.workspace }}/dependencies/aros-tools/target/release
+        run: >-
+          cmake -P
+          dependencies/aros-tools/crates/aros-cmake-engine/engine/tests/HostGeneratedHeaderDependencyTest.cmake
 
       - name: Build through the public aros frontend and published lock
         run: |
