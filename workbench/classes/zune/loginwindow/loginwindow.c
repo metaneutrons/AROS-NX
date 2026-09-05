@@ -7,6 +7,7 @@
 
 #include <utility/tagitem.h>
 #include <libraries/mui.h>
+#include <libraries/security.h>
 #include <dos/dos.h>
 #include <zune/iconimage.h>
 #include <exec/memory.h>
@@ -139,7 +140,8 @@ Object *LoginWindow__OM_NEW
     if (pool == NULL) return NULL;
 
     /* Initialize locale ---------------------------------------------------*/
-    catalog = OpenCatalogA(NULL, "System/security.catalog", NULL);
+    catalog = OpenCatalog(NULL, SECURITYCATALOGNAME,
+        OC_Version, SECURITYCATALOGVERSION, TAG_DONE);
 
     tag = FindTagItem(WindowContents, message->ops_AttrList);
 
@@ -370,8 +372,8 @@ Object *LoginWindow__OM_NEW
             Child, (IPTR) HGroup,
                 MUIA_Group_SameWidth, TRUE,
                 MUIA_Weight, 0,
-                Child, (IPTR) (shutdownButton = LWButton(_(MSG_SHUTDOWN), "Shutdown")),
-                Child, (IPTR) (rebootButton   = LWButton(_(MSG_REBOOT), "Reboot")),
+                Child, (IPTR) (shutdownButton = LWButton(_(MSG_SHUTDOWN), "Cancel")),
+                Child, (IPTR) (rebootButton   = LWButton(_(MSG_REBOOT), "Revert")),
             End,
             Child, (IPTR) HVSpace,
             Child, (IPTR) HGroup,
@@ -422,13 +424,13 @@ Object *LoginWindow__OM_NEW
                         MUIA_Weight, 50,
                     End,
 
-                    Child, (IPTR) (imageGroup = HGroup,
-                        MUIA_Weight,  0,
+                    Child, (IPTR) ColGroup(2),
+                        MUIA_Group_SameWidth, FALSE,
                         Child, (IPTR) img_user,
                         Child, (IPTR) nameUser,
-                    End),
-
-                    Child, (IPTR) passUser,
+                        Child, (IPTR) HVSpace,
+                        Child, (IPTR) passUser,
+                    End,
 
                     Child, (IPTR) logonMethod,
 

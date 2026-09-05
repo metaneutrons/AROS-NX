@@ -65,7 +65,7 @@
 #include <libraries/security.h>
 #include <string.h>
 
-const TEXT version[] = "$VER: AMUInit 45.1 (29.08.2026)";
+const TEXT version[] = "$VER: AMUInit 45.2 (31.08.2026)";
 
 #define TEMPLATE "ENABLE/S,DISABLE/S,VOLUME/A,FORCE/S"
 enum { ARG_ENABLE, ARG_DISABLE, ARG_VOLUME, ARG_FORCE, ARG_COUNT };
@@ -75,7 +75,7 @@ enum { ARG_ENABLE, ARG_DISABLE, ARG_VOLUME, ARG_FORCE, ARG_COUNT };
 #define STARTUP_OFF     "S/Security-Startup.disabled"
 
 static const char StartupScript[] =
-    "; $VER: Security-Startup 45.5 (30.08.2026)\n"
+    "; $VER: Security-Startup 45.7 (31.08.2026)\n"
     ";\n"
     "; Installed by AMUInit ENABLE. dos.library runs this script before\n"
     "; S:Startup-Sequence when security.library is part of the ROM: it shows\n"
@@ -88,6 +88,9 @@ static const char StartupScript[] =
     "; (Zune) needs LIBS: for muimaster.library and the classes. It is removed\n"
     "; again below so that the Startup-Sequence starts as usual.\n"
     "\n"
+    "; Tolerate command failures (SetOwner/Protect on a filesystem without\n"
+    "; ownership support return ERROR); the login loop tests WARN itself.\n"
+    "FailAt 21\n"
     "Assign LIBS: SYS:Libs\n"
     "Assign LIBS: SYS:Classes ADD\n"
     "If NOT EXISTS \"RAM:T\"\n"
@@ -96,8 +99,9 @@ static const char StartupScript[] =
     "Assign T:       \"RAM:T\"\n"
     "Assign IMAGES:  \"SYS:System/Images\" DEFER\n"
     "Assign THEMES: \"SYS:Prefs/Presets/Themes\" >NIL:\n"
-    "If EXISTS \"ENVARC:SYS/theme.var\"\n"
-    "    Assign THEME: `TYPE ENVARC:SYS/theme.var`\n"
+    "Assign ENV: \"ENVARC:\"\n"
+    "If EXISTS \"ENV:SYS/theme.var\"\n"
+    "    Assign THEME: \"${SYS/theme.var}\"\n"
     "Else\n"
     "    Assign THEME: \"THEMES:AROSDefault\"\n"
     "EndIf\n"
@@ -117,10 +121,39 @@ static const char StartupScript[] =
     "    SYS:C/BTStackLoader >NIL:\n"
     "EndIf\n"
     "\n"
+    "If EXISTS \"SYS:C/Decoration\"\n"
+    "    If EXISTS \"ENV:SYS/theme.var\"\n"
+    "        SYS:C/Decoration <NIL: >NIL:\n"
+    "    EndIf\n"
+    "EndIf\n"
+    "IPrefs\n"
+    "\n"
     "Resident SYS:C/Wait\n"
     "Resident SYS:C/Skip\n"
     "Resident SYS:C/Login\n"
     "\n"
+    ";\n"
+    "; First run on this volume: secure the database files and create the\n"
+    "; profiles area, while the boot context still has root's rights.\n"
+    "If NOT EXISTS \"SYS:Security/Profiles\"\n"
+    "    SetOwner \"SYS:Security\" UID=65535 GID=65535 >NIL:\n"
+    "    Protect \"SYS:Security\" rwed GROUP=re OTHER=re QUIET\n"
+    "    SetOwner \"SYS:Security/passwd\" UID=65535 GID=65535 >NIL:\n"
+    "    Protect \"SYS:Security/passwd\" rwd GROUP=r OTHER=r QUIET\n"
+    "    SetOwner \"SYS:Security/group\" UID=65535 GID=65535 >NIL:\n"
+    "    Protect \"SYS:Security/group\" rwd GROUP=r OTHER=r QUIET\n"
+    "    If EXISTS \"SYS:Security/Security.config\"\n"
+    "        SetOwner \"SYS:Security/Security.config\" UID=65535 GID=65535 >NIL:\n"
+    "        Protect \"SYS:Security/Security.config\" rwd QUIET\n"
+    "    EndIf\n"
+    "    If EXISTS \"SYS:Security/Security.log\"\n"
+    "        SetOwner \"SYS:Security/Security.log\" UID=65535 GID=65535 >NIL:\n"
+    "        Protect \"SYS:Security/Security.log\" rwd QUIET\n"
+    "    EndIf\n"
+    "    MakeDir \"SYS:Security/Profiles\" >NIL:\n"
+    "    SetOwner \"SYS:Security/Profiles\" UID=65535 GID=65535 >NIL:\n"
+    "    Protect \"SYS:Security/Profiles\" rwed GROUP=re OTHER=re QUIET\n"
+    "EndIf\n"
     ";\n"
     "; Keep asking until somebody logs in (Login returns WARN when the login\n"
     "; failed or was cancelled); the Startup-Sequence never runs as nobody.\n"
@@ -144,6 +177,7 @@ static const char StartupScript[] =
     "Assign IMAGES: REMOVE\n"
     "Assign THEME: REMOVE\n"
     "Assign THEMES: REMOVE\n"
+    "Assign ENV: REMOVE\n"
     "Assign T: REMOVE\n"
     "If EXISTS \"RAM:T\"\n"
     "    Delete \"RAM:T\" FORCE QUIET ALL\n"
@@ -156,15 +190,18 @@ static const char StartupScript[] =
     "    Assign HOME: \"$Home\"\n"
     "EndIf\n"
     ";\n"
-    "; A user profile in SYS:Security/Profiles/<user>/ provides its own ENVARC\n"
-    "; and S directories; without them the system ones stay in use.\n"
     "If \"$User\" NOT EQ \"\"\n"
-    "    If EXISTS \"SYS:Security/Profiles/$User/ENVARC\"\n"
-    "        Assign ENVARC: \"SYS:Security/Profiles/$User/ENVARC\"\n"
-    "    EndIf\n"
-    "    If EXISTS \"SYS:Security/Profiles/$User/S\"\n"
-    "        Assign S: \"SYS:Security/Profiles/$User/S\"\n"
-    "        Assign S: SYS:S ADD\n"
+    "    If EXISTS \"SYS:Security/Profiles/$User\"\n"
+    "        Assign PROFILE: \"SYS:Security/Profiles/$User\"\n"
+    "        If NOT EXISTS \"PROFILE:Env-Archive\"\n"
+    "            MakeDir \"PROFILE:Env-Archive\" >NIL:\n"
+    "            Copy \"SYS:Prefs/Env-Archive\" \"PROFILE:Env-Archive\" ALL CLONE QUIET\n"
+    "        EndIf\n"
+    "        Assign ENVARC: \"PROFILE:Env-Archive\"\n"
+    "        If EXISTS \"PROFILE:S\"\n"
+    "            Assign S: \"PROFILE:S\"\n"
+    "            Assign S: SYS:S ADD\n"
+    "        EndIf\n"
     "    EndIf\n"
     "EndIf\n"
     "EndCLI >NIL:\n";
@@ -253,9 +290,38 @@ static BOOL EnsureDir(CONST_STRPTR path)
     return FALSE;
 }
 
+/*
+ * Multi-user needs a filesystem that stores file ownership: probe the volume
+ * with a scratch file before touching anything. Fails on filesystems without
+ * ACTION_SET_OWNER (e.g. FAT) and when security.library is not resident (the
+ * handlers only accept owners with it - multi-user could not work anyway).
+ */
+static BOOL VolumeSupportsOwners(CONST_STRPTR vol)
+{
+    char p[256];
+    BPTR fh;
+    BOOL ok = FALSE;
+
+    if (!MakePath(p, sizeof(p), vol, ".AMUInit-probe"))
+        return FALSE;
+    if ((fh = Open(p, MODE_NEWFILE)))
+    {
+        Close(fh);
+        ok = SetOwner(p, ((ULONG)secROOT_UID << 16) | secROOT_GID) ? TRUE : FALSE;
+        DeleteFile(p);
+    }
+    return ok;
+}
+
 static int MUEnable(CONST_STRPTR vol, BOOL force)
 {
     char p[256], p2[256];
+
+    if (!VolumeSupportsOwners(vol))
+    {
+        Printf("AMUInit: %s does not support file ownership (SetOwner) - multi-user cannot be enabled on it\n", vol);
+        return RETURN_FAIL;
+    }
 
     /* the database directory and its files */
     if (!MakePath(p, sizeof(p), vol, SEC_DIR) || !EnsureDir(p))
