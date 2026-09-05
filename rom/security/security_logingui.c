@@ -15,6 +15,7 @@
 #include <proto/utility.h>
 #include <proto/muimaster.h>
 #include <proto/alib.h>
+#include <intuition/screens.h>
 #include <libraries/mui.h>
 #include <zune/loginwindow.h>
 #include <string.h>
@@ -41,6 +42,24 @@ static struct Library *OpenMUIMaster(struct SecurityBase *secBase)
             mb = OpenLibrary("SYS:Libs/" MUIMASTER_NAME, MUIMASTER_VMIN);
     }
     return mb;
+}
+
+#define SYSTEM_SCREEN_NAME "SYSTEM"
+
+/*
+ * The boot login runs on the black "SYSTEM" public screen that dos/boot.c
+ * opens around S:Security-Startup (it is the default public screen then, so
+ * requesters land on it too). Outside the boot there is a normal Workbench;
+ * the window just opens wherever MUI puts it.
+ */
+static BOOL SystemScreenPresent(struct SecurityBase *secBase)
+{
+    struct Screen *scr = LockPubScreen(SYSTEM_SCREEN_NAME);
+
+    if (scr == NULL)
+        return FALSE;
+    UnlockPubScreen(NULL, scr);
+    return TRUE;
 }
 
 static void CopyStr(STRPTR dst, ULONG size, CONST_STRPTR src)
@@ -89,6 +108,11 @@ LONG LoginGUI(struct SecurityBase *secBase, CONST_STRPTR pubscreen, CONST_STRPTR
     if (!(MUIMasterBase = OpenMUIMaster(secBase)))
         return LOGINGUI_UNAVAILABLE;
 
+    if (systemmode && pubscreen == NULL && SystemScreenPresent(secBase))
+        pubscreen = SYSTEM_SCREEN_NAME;
+    wintags[5].ti_Tag  = pubscreen ? MUIA_Window_PublicScreen : TAG_IGNORE;
+    wintags[5].ti_Data = (IPTR)pubscreen;
+
     if ((win = MUI_NewObjectA(MUIC_LoginWindow, wintags)))
     {
         apptags[3].ti_Data = (IPTR)win;
@@ -136,6 +160,8 @@ LONG LoginGUI(struct SecurityBase *secBase, CONST_STRPTR pubscreen, CONST_STRPTR
                 }
                 set(win, MUIA_Window_Open, FALSE);
             }
+            else
+                ok = LOGINGUI_UNAVAILABLE;  /* no screen to open on: console */
             MUI_DisposeObject(app);         /* disposes the window too */
         }
         else
