@@ -33,9 +33,7 @@ jobs:
           - { host: linux-aarch64, runner: ubuntu-24.04-arm, preset: pc-x86_64 }
           - { host: linux-aarch64, runner: ubuntu-24.04-arm, preset: arm-raspi }
           - { host: linux-aarch64, runner: ubuntu-24.04-arm, preset: rpi-aarch64 }
-          - { host: macos-x86_64, runner: macos-15-intel, preset: pc-x86_64 }
-          - { host: macos-x86_64, runner: macos-15-intel, preset: arm-raspi }
-          - { host: macos-x86_64, runner: macos-15-intel, preset: rpi-aarch64 }
+          # Intel macOS is deliberately suspended pending aros-toolchains#27.
           - { host: macos-aarch64, runner: macos-15, preset: pc-x86_64 }
           - { host: macos-aarch64, runner: macos-15, preset: arm-raspi }
           - { host: macos-aarch64, runner: macos-15, preset: rpi-aarch64 }

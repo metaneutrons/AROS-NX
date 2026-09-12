@@ -1,22 +1,23 @@
 # Immutable AROS cross-toolchain selection for aros-cli.
 #
-# The twelve published LLVM 11 host/profile artifacts below are copied from
-# the strictly verified release index. RISC-V remains explicitly disabled
-# until its independent four-host release matrix has been qualified.
+# The nine published LLVM 11 host/profile artifacts below are copied from the
+# strictly verified RC8 release index. Intel macOS is deliberately suspended
+# pending aros-toolchains#27. RISC-V remains explicitly disabled until its
+# independent four-host release matrix has been qualified.
 
 schema = 1
-release_id = "toolchain-v1-20260831-rc3"
-base_url = "https://github.com/metaneutrons/aros-toolchains/releases/download/toolchain-v1-20260831-rc3"
+release_id = "toolchain-v1-20260912-rc8"
+base_url = "https://github.com/metaneutrons/aros-toolchains/releases/download/toolchain-v1-20260912-rc8"
 
 [[artifacts]]
 host = "macos-aarch64"
 target_profile = "pc-x86_64"
 target_triple = "x86_64-unknown-aros"
 asset = "aros-toolchain-v1-llvm11.0.0-macos-aarch64-pc-x86_64.tar.xz"
-sha256 = "f67ca4fc35140ead0b2faec55408fc008e498411814d9c14d5d7974a89bde544"
-tree_sha256 = "c0c231766e152728b4551caed84097af7d5dce8ee5c5984ebf7793076808ab38"
+sha256 = "e320ee28725fde431fa8d3d52519457d309e22a59b816e0fb19293ac26f14bc5"
+tree_sha256 = "b36193067d7a45f6ba7c2bedceb79b4e4f9cc7ab6d0d529d415f513c36937096"
 llvm_version = "11.0.0"
-size = 26390620
+size = 26413876
 enabled = true
 strip_components = 1
 required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "bin/collect-aros32", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-x86_64.a", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-i386.a"]
@@ -26,10 +27,10 @@ host = "macos-aarch64"
 target_profile = "arm-raspi"
 target_triple = "arm-unknown-aros"
 asset = "aros-toolchain-v1-llvm11.0.0-macos-aarch64-arm-raspi.tar.xz"
-sha256 = "57cebd8310126706156f08b8aac8a7d57f878459a7f91fc0156935bcce1bfe56"
-tree_sha256 = "53ab9914b9de7ade7316b59179148afcb1c0b91964c6443be55e97e633611886"
+sha256 = "b81c91772768757aaca667c1d9c2caf5d3013eff02b386b5dd7de5f6546b5320"
+tree_sha256 = "25006c7b8048b9d1e319d4598c3dc08210b480c99eeb658ec50301deb8b6b338"
 llvm_version = "11.0.0"
-size = 25972648
+size = 25992932
 enabled = true
 strip_components = 1
 required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-armhf.a"]
@@ -39,10 +40,10 @@ host = "macos-aarch64"
 target_profile = "rpi-aarch64"
 target_triple = "aarch64-unknown-aros"
 asset = "aros-toolchain-v1-llvm11.0.0-macos-aarch64-rpi-aarch64.tar.xz"
-sha256 = "74b972a5de5ce42179a0706538e7dc4cca8fdcfc0ca589d99da08ff10bd6ca9d"
-tree_sha256 = "b7cf0c1ff7e6cc5debde7669185fde46b28348b534e1a48454b75ef302f90a50"
+sha256 = "76ef5e28096880df7f645bd9f1dda4548c56942d3c072f505a8ee99ea1220a74"
+tree_sha256 = "6c9ca7203d5bc47241b8dc5dc03ffa103809ec5047e58b54975d4ef9991d0c15"
 llvm_version = "11.0.0"
-size = 25964956
+size = 25980360
 enabled = true
 strip_components = 1
 required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-aarch64.a"]
@@ -56,8 +57,9 @@ sha256 = "c36d85c834090df32ff7f63afdcc740337beeb1803bd1fb26f801e891bce6ddc"
 tree_sha256 = "ebeaf5c14f11096d3ee57be97870f833a717f96cb61fdea07957427a5a6d302d"
 llvm_version = "11.0.0"
 size = 29325056
-enabled = true
+enabled = false
 strip_components = 1
+disabled_reason = "Intel macOS qualification is suspended pending aros-toolchains#27"
 required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "bin/collect-aros32", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-x86_64.a", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-i386.a"]
 
 [[artifacts]]
@@ -69,8 +71,9 @@ sha256 = "9ad9bc050837a27614943446c590a8f8a9cceee6c1f4880d1389478358005905"
 tree_sha256 = "5897057d1e0754cca32584ae75d7c9190d1dea6bca5b983296e9c042b279bfcf"
 llvm_version = "11.0.0"
 size = 28889912
-enabled = true
+enabled = false
 strip_components = 1
+disabled_reason = "Intel macOS qualification is suspended pending aros-toolchains#27"
 required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-armhf.a"]
 
 [[artifacts]]
@@ -82,8 +85,9 @@ sha256 = "c0ab3de233ddcc67ee1550cecfdeea5ec20f4138e5fca2c36ed88c10967158de"
 tree_sha256 = "b9bb49748fb8b4dd9a495887bb57721ca74d3ff39edbe518c2f5f55e7fbc7ed2"
 llvm_version = "11.0.0"
 size = 28855480
-enabled = true
+enabled = false
 strip_components = 1
+disabled_reason = "Intel macOS qualification is suspended pending aros-toolchains#27"
 required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-aarch64.a"]
 
 [[artifacts]]
@@ -91,10 +95,10 @@ host = "linux-x86_64"
 target_profile = "pc-x86_64"
 target_triple = "x86_64-unknown-aros"
 asset = "aros-toolchain-v1-llvm11.0.0-linux-x86_64-pc-x86_64.tar.xz"
-sha256 = "5c86dcfa284e788d3eb5f156e55e148e238fb120ccb53636b2485e4b9ea5ac51"
-tree_sha256 = "622b7fbb6189be3a3bf267216d08b2bd6bb0c3577898717c74f43cadcdb1fe7c"
+sha256 = "80843de2f60125d1b9987c1d21fe54ba8d96b315364399e0b4f72a631af82f3e"
+tree_sha256 = "a49d4b674e79b26e13ac442e56d40d31ffb1a5060f22109b8e1fe6dabea64b40"
 llvm_version = "11.0.0"
-size = 38618464
+size = 38625732
 enabled = true
 strip_components = 1
 required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "bin/collect-aros32", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-x86_64.a", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-i386.a"]
@@ -104,10 +108,10 @@ host = "linux-x86_64"
 target_profile = "arm-raspi"
 target_triple = "arm-unknown-aros"
 asset = "aros-toolchain-v1-llvm11.0.0-linux-x86_64-arm-raspi.tar.xz"
-sha256 = "676c736f5eeb0109df75e883b7eca6080b67e8963f353316c231598956441bd3"
-tree_sha256 = "c7cb973ec143e99d07cbc2e3fad66846ae1dd747c83688bdde458bd04edc00ab"
+sha256 = "558755814de0271b90f80f6b58605d35e253b6f016733ac20e6d4106c2caa20d"
+tree_sha256 = "5b73d0f91a62343d826b71f989a62c246856e3c42c26b3747ca8cd30310755fd"
 llvm_version = "11.0.0"
-size = 38083428
+size = 38090252
 enabled = true
 strip_components = 1
 required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-armhf.a"]
@@ -117,10 +121,10 @@ host = "linux-x86_64"
 target_profile = "rpi-aarch64"
 target_triple = "aarch64-unknown-aros"
 asset = "aros-toolchain-v1-llvm11.0.0-linux-x86_64-rpi-aarch64.tar.xz"
-sha256 = "7539ca2d263911e8380b50635504b4a764820d6aed4e4c64fd1cb7a9bcdea218"
-tree_sha256 = "50df734aec1802da91294a534582cff497794dd2a80abadf1503ffd79c985d63"
+sha256 = "ec8e96ec4ef2cf5b15b0511bccd7a3f55aedc5cd775d49dceea84263e1b0fe7a"
+tree_sha256 = "853743c24c6548871b7e3c777169333691de4ee69554c49a1f46accc54695d3a"
 llvm_version = "11.0.0"
-size = 38049516
+size = 38071020
 enabled = true
 strip_components = 1
 required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-aarch64.a"]
@@ -130,10 +134,10 @@ host = "linux-aarch64"
 target_profile = "pc-x86_64"
 target_triple = "x86_64-unknown-aros"
 asset = "aros-toolchain-v1-llvm11.0.0-linux-aarch64-pc-x86_64.tar.xz"
-sha256 = "f3ecd3f813da79f37e327080d73f6822b3f634a7658e5ea56afe042503854f47"
-tree_sha256 = "a9a6bed8113cb654d910fe5be19e411e8511756c817d9e67d54b37cba3459b74"
+sha256 = "6dfc7f8efe3c3f9d741fa91dcb92eb2cfeab2af58b5fddcd006da4a621ee5ce3"
+tree_sha256 = "6db7ee71bf53324f3ec2cb36cf2683a22a1234a82de7d0b3456ce8d0ca0cdfa6"
 llvm_version = "11.0.0"
-size = 35079880
+size = 35113056
 enabled = true
 strip_components = 1
 required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "bin/collect-aros32", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-x86_64.a", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-i386.a"]
@@ -143,10 +147,10 @@ host = "linux-aarch64"
 target_profile = "arm-raspi"
 target_triple = "arm-unknown-aros"
 asset = "aros-toolchain-v1-llvm11.0.0-linux-aarch64-arm-raspi.tar.xz"
-sha256 = "730aaf6763dbf0afce679d0f5223bc077f72bd756f78225cf16695ef1b82e05d"
-tree_sha256 = "21e87971f6fca814c762685aeb9d95b56f7a28a91d1217bbed4faec4f4a7ae25"
+sha256 = "8d1a1c39b5c92ab988f1fa2f4c6a4c72324dfcfcc08d3b3b4e5ac06b22e7bc31"
+tree_sha256 = "b4e2b1262d9fff91f27beba89e015d5295418baf537c020d625db25a3d601fc0"
 llvm_version = "11.0.0"
-size = 34581360
+size = 34625852
 enabled = true
 strip_components = 1
 required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-armhf.a"]
@@ -156,10 +160,10 @@ host = "linux-aarch64"
 target_profile = "rpi-aarch64"
 target_triple = "aarch64-unknown-aros"
 asset = "aros-toolchain-v1-llvm11.0.0-linux-aarch64-rpi-aarch64.tar.xz"
-sha256 = "a2df4862071383d615aca9ccb81f8740b217e248707106fd5a2ea9f5d3640497"
-tree_sha256 = "884ae42208dcb624158e0157f2d7f0c92254fe1a5174821ce8d8c4f0623c6c18"
+sha256 = "cf1ee5abb2f7a229ea3eef81a43de7f3f36fc188b4059a3a268f16cdd6a0904d"
+tree_sha256 = "06c08d6175f2a83df03f1ceebfbd2c7824e80f26dd3c262e3d42ee612893ef92"
 llvm_version = "11.0.0"
-size = 34568832
+size = 34588632
 enabled = true
 strip_components = 1
 required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-aarch64.a"]
