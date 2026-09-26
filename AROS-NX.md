@@ -44,3 +44,17 @@ builds or behaves correctly on every supported target.
 AROS-NX permits only merge commits for pull requests. Squash and rebase merges
 would discard the original upstream commit as an ancestor of `main`, breaking
 the invariant that the next sync verifies before it changes anything.
+
+## Cross-toolchain release baseline
+
+`aros-toolchains.lock.toml` pins the stable
+[`toolchain-v1-20260924` release](https://github.com/metaneutrons/aros-toolchains/releases/tag/toolchain-v1-20260924).
+It enables the nine LLVM 11 artifacts for Linux x86-64, Linux AArch64, and
+macOS ARM64 across `pc-x86_64`, `arm-raspi`, and `rpi-aarch64`. Intel macOS is
+not a release target; RISC-V remains disabled until separately qualified.
+
+Release qualification completed 18 native builds, nine byte-identical
+comparisons, and nine compatibility/relocation lanes. A macOS ARM64 consumer
+smoke test installed and verified the published `pc-x86_64` artifact and
+compiled freestanding C and C++ objects for `x86_64-unknown-aros`. This is not
+evidence of a complete AROS distribution build or a hardware boot test.
