@@ -6,7 +6,7 @@
 
 schema = 1
 release_id = "toolchain-v1-20260924"
-base_url = "https://github.com/metaneutrons/aros-toolchains/releases/download/toolchain-v1-20260924"
+base_url = "https://github.com/metaneutrons/aros-toolchains-legacy/releases/download/toolchain-v1-20260924"
 
 [[artifacts]]
 host = "macos-aarch64"
