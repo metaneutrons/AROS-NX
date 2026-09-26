@@ -5,7 +5,9 @@
 include $(SRCDIR)/config/aros.cfg
 include $(SRCDIR)/$(CURDIR)/make.opt
 
-REPOSITORIES := https://chromium.googlesource.com/chromium/src/+archive/$(ZLIB_CHROMIUM_REVISION)/third_party
+# The .git spelling is a separate Gitiles archive route for the same pinned
+# commit. Its extracted file contents were checked against the primary route.
+REPOSITORIES := https://chromium.googlesource.com/chromium/src/+archive/$(ZLIB_CHROMIUM_REVISION)/third_party https://chromium.googlesource.com/chromium/src.git/+archive/$(ZLIB_CHROMIUM_REVISION)/third_party
 ZLIB_ARCHIVE_CACHE := $(PORTSSOURCEDIR)/chromium-$(ZLIB_CHROMIUM_REVISION)
 # Gitiles tar metadata is not byte-stable; the immutable commit above, the
 # patch and the exact source manifest define the fetched input instead.
