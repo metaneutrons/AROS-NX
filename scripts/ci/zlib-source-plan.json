@@ -1,0 +1,24 @@
+{
+  "schema": "aros-cache-source-fetch-plan-v1",
+  "entries": [
+    {
+      "role": "product:chromium-zlib@da752eb2a3660cf1bf8dac620f6380b89dd953a7",
+      "filename": "zlib.tar.gz",
+      "candidates": [
+        {
+          "url": "https://chromium.googlesource.com/chromium/src/+archive/da752eb2a3660cf1bf8dac620f6380b89dd953a7/third_party/zlib.tar.gz"
+        },
+        {
+          "url": "https://chromium.googlesource.com/chromium/src.git/+archive/da752eb2a3660cf1bf8dac620f6380b89dd953a7/third_party/zlib.tar.gz"
+        }
+      ],
+      "representation": "archive",
+      "normalization": "canonical-tar-gzip-v1",
+      "integrity": {
+        "kind": "locked",
+        "sha256": "883d22e0b9aefc31a383c462adacdbd7941e6862559c5b27e59599db8114e783",
+        "size": 2337668
+      }
+    }
+  ]
+}

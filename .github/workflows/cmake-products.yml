@@ -21,8 +21,56 @@ env:
   RUST_BACKTRACE: '1'
 
 jobs:
+  zlib-source:
+    name: Verify shared Chromium zlib source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout AROS-NX
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install the verified aros-tools release
+        run: |
+          curl --fail --location --silent --show-error --retry 3 \
+            'https://github.com/metaneutrons/aros-tools/releases/download/v0.3.9/aros-tools-v0.3.9-x86_64-unknown-linux-gnu.tar.gz' \
+            --output "$RUNNER_TEMP/aros-tools.tar.gz"
+          printf '%s  %s\n' \
+            'eb700e423db98bbe762383fc7eaf5604c04657e0f14c25220f1943a4cbf406a8' \
+            "$RUNNER_TEMP/aros-tools.tar.gz" | sha256sum --check --status
+          tar -xzf "$RUNNER_TEMP/aros-tools.tar.gz" -C "$RUNNER_TEMP"
+
+      - name: Fetch and verify the locked source once
+        run: |
+          grep -Fxq \
+            'ZLIB_CHROMIUM_REVISION := da752eb2a3660cf1bf8dac620f6380b89dd953a7' \
+            workbench/libs/z/make.opt
+          source_cache="$RUNNER_TEMP/aros-source-cache"
+          mkdir -p "$source_cache"
+          source_cache=$(realpath "$source_cache")
+          aros="$RUNNER_TEMP/aros-tools-v0.3.9-x86_64-unknown-linux-gnu/bin/aros"
+          "$aros" cache sources fetch \
+            --source-fetch-plan scripts/ci/zlib-source-plan.json \
+            --dir "$source_cache"
+          "$aros" cache sources verify \
+            --source-fetch-plan scripts/ci/zlib-source-plan.json \
+            --dir "$source_cache"
+          printf '%s  %s\n' \
+            '883d22e0b9aefc31a383c462adacdbd7941e6862559c5b27e59599db8114e783' \
+            "$source_cache/zlib.tar.gz" | sha256sum --check --status
+
+      - name: Pass the verified source to product lanes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: chromium-zlib-source
+          path: ${{ runner.temp }}/aros-source-cache/zlib.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
   product:
     name: ${{ matrix.preset }} on ${{ matrix.host }}
+    needs: zlib-source
     strategy:
       fail-fast: false
       matrix:
@@ -76,8 +124,21 @@ jobs:
           cmake -P
           dependencies/aros-tools/crates/aros-cmake-engine/engine/tests/HostGeneratedHeaderDependencyTest.cmake
 
+      - name: Stage the verified zlib source in the fresh build tree
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v7.0.1
+        with:
+          name: chromium-zlib-source
+          path: build/${{ matrix.preset }}/portssources/chromium-da752eb2a3660cf1bf8dac620f6380b89dd953a7
+
+      - name: Verify staged zlib source
+        run: |
+          test ! -e "build/${{ matrix.preset }}/CMakeCache.txt"
+          source_archive="build/${{ matrix.preset }}/portssources/chromium-da752eb2a3660cf1bf8dac620f6380b89dd953a7/zlib.tar.gz"
+          printf '%s  %s\n' \
+            '883d22e0b9aefc31a383c462adacdbd7941e6862559c5b27e59599db8114e783' \
+            "$source_archive" | shasum -a 256 -c
+
       - name: Build through the public aros frontend and published lock
         run: |
           dependencies/aros-tools/target/release/aros build \
-            --preset '${{ matrix.preset }}' \
-            --clean
+            --preset '${{ matrix.preset }}'
