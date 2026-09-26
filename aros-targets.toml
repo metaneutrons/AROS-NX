@@ -1,5 +1,6 @@
 # AROS-NX Declarative Target Profiles & Toolchain Configuration
 # Modify versions, hardware targets, or download sources here without editing Rust code.
+# Each target owns its MetaMake selectors; no removed CMake preset is inferred.
 
 [host_compiler]
 llvm_version = "18.1.8"
@@ -24,12 +25,26 @@ platform = "pc"
 bsp = "generic"
 features = ["smp", "acpi", "hdaudio", "ahci"]
 
+[targets.transpiler]
+family = ""
+variant = ""
+toolchain = "llvm"
+cpu32 = "i386"
+use_mmu = true
+
 [[targets]]
 name = "rpi-aarch64"
 arch = "aarch64"
 platform = "raspi"
 bsp = "bcm2711-bcm2712"
 features = ["smp", "genet", "rp1", "i2s", "hdmi-audio"]
+
+[targets.transpiler]
+family = ""
+variant = ""
+toolchain = "llvm"
+cpu32 = ""
+use_mmu = true
 
 [[targets]]
 name = "arm-raspi"
@@ -39,9 +54,23 @@ bsp = "bcm2835"
 features = ["pwm-audio", "sdhost"]
 float_abi = "hard"
 
+[targets.transpiler]
+family = ""
+variant = ""
+toolchain = "llvm"
+cpu32 = ""
+use_mmu = true
+
 [[targets]]
 name = "opensbi-riscv64"
 arch = "riscv64"
 platform = "opensbi"
 bsp = "uefi-opensbi"
 features = ["smp", "uefi", "acpi", "pci", "nvme", "xhci"]
+
+[targets.transpiler]
+family = ""
+variant = ""
+toolchain = "llvm"
+cpu32 = ""
+use_mmu = true
