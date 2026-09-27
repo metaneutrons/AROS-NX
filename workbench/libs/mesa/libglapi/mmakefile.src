@@ -10,6 +10,11 @@ include $(SRCDIR)/$(CURDIR)/../mesa.cfg
 CUR_MESADIR_OLD := src/mapi
 CUR_MESADIR_NEW := src/mesa/glapi
 
+# Select the locked Mesa 26 layout before the archive is fetched.
+ifeq ($(OPT_MESAGL),26.0.0)
+CUR_MESADIR := $(CUR_MESADIR_NEW)
+MESA_GLAPI_LAYOUT := new
+else
 ifneq ($(wildcard $(top_srcdir)/$(CUR_MESADIR_OLD)/Makefile.sources),)
 CUR_MESADIR := $(CUR_MESADIR_OLD)
 MESA_GLAPI_LAYOUT := old
@@ -17,6 +22,7 @@ include $(top_srcdir)/$(CUR_MESADIR)/Makefile.sources
 else
 CUR_MESADIR := $(CUR_MESADIR_NEW)
 MESA_GLAPI_LAYOUT := new
+endif
 endif
 
 #MM- mesa3dgl-linklibs : mesa3d-linklib-glapi
