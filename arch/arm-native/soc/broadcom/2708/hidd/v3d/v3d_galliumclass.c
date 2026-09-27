@@ -41,7 +41,7 @@
 #include "v3d_screen.h"
 #include "v3d_bufmgr.h"
 #include "v3d_resource.h"
-#include "v3d_tiling.h"
+#include "broadcom/common/v3d_tiling.h"
 
 /* Compiled outside the driver archive, so objcopy does not rename the plain
  * names the v3d_bo_unreference inline reaches for. Forward each to its

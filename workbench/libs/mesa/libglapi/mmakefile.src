@@ -122,6 +122,7 @@ MESA3DGL_GLAPI_SOURCES := \
 
 MESA3DGL_GLAPI_SOURCES_C := $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3DGL_GLAPI_SOURCES)) \
 	$(top_builddir)/$(CUR_MESADIR)/shared-glapi/public_glapi_wrappers
+MESA3DGL_GLAPI_SOURCES_ASM :=
 USER_CPPFLAGS += -DMAPI_MODE_SHARED_GLAPI
 
 $(top_builddir)/$(CUR_MESADIR)/shared-glapi/shared_glapi_mapi_tmp.h: \
