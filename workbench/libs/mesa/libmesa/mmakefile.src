@@ -425,19 +425,19 @@ MESA3DGL_MESA_GENERATED_C_HEADERS := \
 endif
 
 MESA3DGL_MESA_C_SOURCES := \
-            $(addprefix $(PORTSDIR)/mesa/mesa-20.0.8/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_C_SOURCES)) \
+            $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_C_SOURCES)) \
             $(MESA3DGL_MESA_GENERATED_C_SOURCES)
 MESA3DGL_MESA_C_SOURCES += $(SRCDIR)/$(CURDIR)/mesa_sse_minmax_fallback.c
 
 MESA3DGL_MESA_SOURCES_C := $(MESA3DGL_MESA_C_SOURCES:.c=)
 
 MESA3DGL_MESA_CXX_SOURCES := \
-            $(addprefix $(PORTSDIR)/mesa/mesa-20.0.8/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_CXX_SOURCES))
+            $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_CXX_SOURCES))
 
 MESA3DGL_MESA_SOURCES_CXX := $(MESA3DGL_MESA_CXX_SOURCES:.cpp=)
 
 MESA3DGL_MESA_ASM_SOURCES := \
-            $(addprefix $(PORTSDIR)/mesa/mesa-20.0.8/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_ASM_SOURCES))
+            $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_ASM_SOURCES))
 MESA3DGL_MESA_SOURCES_ASM := $(MESA3DGL_MESA_ASM_SOURCES:.S=)
 
 #MM
@@ -456,7 +456,7 @@ TARGET_ISA_CXXFLAGS += -msse4.1
 endif
 
 MESA3DGL_MESA_SSE41_SOURCES := \
-            $(addprefix $(PORTSDIR)/mesa/mesa-20.0.8/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_SSE41_SOURCES))
+            $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_SSE41_SOURCES))
 MESA3DGL_MESA_SOURCES_SSE41 := $(MESA3DGL_MESA_SSE41_SOURCES:.c=)
 
 #MM mesa3d-linklib-mesa-sse41 : mesa3d-fetch
