@@ -415,6 +415,8 @@ void xhciDisconnectDevice(struct PCIController *hc, struct pciusbXHCIDevice *dev
                     DEBUGFUNCCOLOR_SET "%s(0x%p, 0x%p)" DEBUGCOLOR_RESET" \n",
                     __func__, hc, devCtx);
 
+    ObtainSemaphore(&xhciGetHCPrivate(hc)->xhc_DevLock);
+
     xhciAbortDeviceQueue(hc, unit, &hc->hc_CtrlXFerQueue, devCtx, FALSE);
     xhciAbortDeviceQueue(hc, unit, &hc->hc_BulkXFerQueue, devCtx, FALSE);
     xhciAbortDeviceQueue(hc, unit, &hc->hc_IntXFerQueue, devCtx, TRUE);
@@ -432,6 +434,8 @@ void xhciDisconnectDevice(struct PCIController *hc, struct pciusbXHCIDevice *dev
     }
 
     xhciFreeDeviceCtx(hc, devCtx, TRUE, timerreq);
+
+    ReleaseSemaphore(&xhciGetHCPrivate(hc)->xhc_DevLock);
 }
 
 static int xhciRingEntriesFree(volatile struct pcisusbXHCIRing *ring)
@@ -2323,6 +2327,13 @@ void xhciDestroyEndpoint(struct IOUsbHWReq *ioreq)
 
     epid = xhciEndpointID(ioreq->iouh_Endpoint, (ioreq->iouh_Dir == UHDIR_IN) ? 1 : 0);
 
+    /*
+     * Held across the whole teardown: the port task can be taking the same
+     * device down from the other side, and it frees both the device context
+     * this walks and the timer the commands below are issued with.
+     */
+    ObtainSemaphore(&xhciGetHCPrivate(hc)->xhc_DevLock);
+
     if(epctx) {
         BOOL lastref;
 
@@ -2335,8 +2346,10 @@ void xhciDestroyEndpoint(struct IOUsbHWReq *ioreq)
         devCtx = epctx->ectx_Device;
         Enable();
 
-        if(!lastref)
+        if(!lastref) {
+            ReleaseSemaphore(&xhciGetHCPrivate(hc)->xhc_DevLock);
             return;                     /* still held by another prepared endpoint */
+        }
 
         if(!devCtx) {
             /*
@@ -2344,20 +2357,30 @@ void xhciDestroyEndpoint(struct IOUsbHWReq *ioreq)
              * context was still held; nothing is left to release on the
              * controller, only the context itself.
              */
+            pciusbWarn("xHCI", "Device gone while endpoint %lu was still held - releasing context only\n",
+                       (ULONG)epid);
             xhciCloseTaskTimer(&epctx->ectx_TimerPort, &epctx->ectx_TimerReq);
             FreeMem(epctx, sizeof(*epctx));
+            ReleaseSemaphore(&xhciGetHCPrivate(hc)->xhc_DevLock);
             return;
         }
 
         epid = epctx->ectx_EPID;
+        /*
+         * Read the timer here and not before: it belongs to the endpoint
+         * context, and closing it frees the request while leaving any copy
+         * taken earlier pointing at freed memory.
+         */
         timerreq = epctx->ectx_TimerReq;
     } else {
         devCtx = xhciFindDeviceCtx(hc, ioreq->iouh_DevAddr);
         timerreq = unit->hu_TimerReq;
     }
 
-    if(!devCtx || (epid >= MAX_DEVENDPOINTS))
+    if(!devCtx || (epid >= MAX_DEVENDPOINTS)) {
+        ReleaseSemaphore(&xhciGetHCPrivate(hc)->xhc_DevLock);
         return;
+    }
 
     xhciFreeEndpointContext(hc, devCtx, epid, TRUE, timerreq);
     epctx_free = devCtx->dc_EPContexts[epid];
@@ -2390,6 +2413,8 @@ void xhciDestroyEndpoint(struct IOUsbHWReq *ioreq)
         }
         FreeMem(epctx_free, sizeof(*epctx_free));
     }
+
+    ReleaseSemaphore(&xhciGetHCPrivate(hc)->xhc_DevLock);
 }
 
 /* Shutdown and Interrupt handlers */
@@ -4240,11 +4265,32 @@ init_fail:
     return FALSE;
 }
 
+/* Must run before the private is freed - it holds the MemEntries. */
+void xhciFreeHCMem(struct PCIController *hc, struct XhciHCPrivate *xhcic)
+{
+    struct MemEntry *dmamem[] = {
+        &xhcic->xhc_DCBAA, &xhcic->xhc_SPBA, &xhcic->xhc_SPBuffers,
+        &xhcic->xhc_ERST,  &xhcic->xhc_OPR,  &xhcic->xhc_ERS
+    };
+    ULONG i;
+
+    for(i = 0; i < (sizeof(dmamem) / sizeof(dmamem[0])); i++)
+        pciFreeAligned(hc, dmamem[i]);
+
+    xhcic->xhc_DCBAAp = NULL;
+    xhcic->xhc_SPBAp = NULL;
+    xhcic->xhc_SPBuffersp = NULL;
+    xhcic->xhc_ERSTp = NULL;
+    xhcic->xhc_OPRp = NULL;
+    xhcic->xhc_ERSp = NULL;
+}
+
 void xhciFree(struct PCIController *hc, struct PCIUnit *hu)
 {
     struct XhciHCPrivate *xhcic = xhciGetHCPrivate(hc);
 
     if(xhcic) {
+        xhciFreeHCMem(hc, xhcic);
         FreeMem(xhcic, sizeof(*xhcic));
         hc->hc_CPrivate = NULL;
     }
@@ -4338,8 +4384,7 @@ static void xhciFreeEndpointContext(struct PCIController *hc,
             }
         }
 
-        FREEPCIMEM(hc, hc->hc_PCIDriverObject, devCtx->dc_EPAllocs[epid].dmaa_Entry.me_Un.meu_Addr);
-        devCtx->dc_EPAllocs[epid].dmaa_Entry.me_Un.meu_Addr = NULL;
+        pciFreeAligned(hc, &devCtx->dc_EPAllocs[epid].dmaa_Entry);
         devCtx->dc_EPAllocs[epid].dmaa_Ptr = NULL;
         devCtx->dc_EPAllocs[epid].dmaa_DMA = NULL;
     }
@@ -4397,15 +4442,13 @@ void xhciFreeDeviceCtx(struct PCIController *hc,
     }
 
     if(devCtx->dc_IN.dmaa_Entry.me_Un.meu_Addr) {
-        FREEPCIMEM(hc, hc->hc_PCIDriverObject, devCtx->dc_IN.dmaa_Entry.me_Un.meu_Addr);
-        devCtx->dc_IN.dmaa_Entry.me_Un.meu_Addr = NULL;
+        pciFreeAligned(hc, &devCtx->dc_IN.dmaa_Entry);
         devCtx->dc_IN.dmaa_Ptr = NULL;
         devCtx->dc_IN.dmaa_DMA = NULL;
     }
 
     if(devCtx->dc_SlotCtx.dmaa_Entry.me_Un.meu_Addr) {
-        FREEPCIMEM(hc, hc->hc_PCIDriverObject, devCtx->dc_SlotCtx.dmaa_Entry.me_Un.meu_Addr);
-        devCtx->dc_SlotCtx.dmaa_Entry.me_Un.meu_Addr = NULL;
+        pciFreeAligned(hc, &devCtx->dc_SlotCtx.dmaa_Entry);
         devCtx->dc_SlotCtx.dmaa_Ptr = NULL;
         devCtx->dc_SlotCtx.dmaa_DMA = NULL;
     }

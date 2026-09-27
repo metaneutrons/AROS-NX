@@ -17,10 +17,10 @@
 <table>
   <tr>
     <td style="text-align:center">BUILD Arch</td>
-    <td colspan=9 style="text-align:center">Status</td>
+    <td colspan=9 style="text-align:center"><em>Status</em></td>
   </tr>
   <tr>
-    <td rowspan=2 style="text-align:center">Toolchain</td>
+    <td rowspan=2 style="text-align:center"><code>Toolchain</code></td>
     <td colspan=6 style="text-align:center">GNU</td>
     <td colspan=3 style="text-align:center">LLVM</td>
   </tr>
@@ -28,7 +28,7 @@
     <td style="text-align:center">6.5.0</td>
     <td style="text-align:center">9.5.0</td>
     <td style="text-align:center">10.5.0</td>
-    <td style="text-align:center">13.4.0</td>
+    <td style="text-align:center">13.5.0</td>
     <td style="text-align:center">15.2.0</td>
     <td style="text-align:center">16.2.0</td>
     <td style="text-align:center">11.0.0</td>

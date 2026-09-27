@@ -17,11 +17,13 @@
 #include <proto/oop.h>
 #include <proto/exec.h>
 #include <proto/graphics.h>
+#include <proto/utility.h>
 #include <proto/layers.h>
 #include <proto/cybergraphics.h>
 #include <cybergraphx/cybergraphics.h>
 #include <graphics/rastport.h>
 #include <graphics/clip.h>
+#include <clib/alib_protos.h>
 #include <hidd/gallium.h>
 #include <hidd/gfx.h>
 
@@ -35,24 +37,34 @@
 #define NDEBUG 1
 
 #include "pipe/p_state.h"
+#include "pipe/p_screen.h"
 #include "util/u_inlines.h"
 #include "broadcom/common/v3d_limits.h"
 #include "v3d_screen.h"
 #include "v3d_bufmgr.h"
 #include "v3d_resource.h"
-#include "v3d_tiling.h"
+#include "broadcom/common/v3d_tiling.h"
 
-/* The v3d_bo_unreference inline this file instantiates calls
- * util_hash_table_remove by its plain name; the driver archive reaches
- * that function through the GalliumCoreAPI trampolines (objcopy renames
- * its refs to __gca_*), but this object is compiled outside the archive,
- * so forward the plain name to the same trampoline. */
-struct util_hash_table;
-extern void __gca_util_hash_table_remove(struct util_hash_table *ht,
-                                         void *key);
-void util_hash_table_remove(struct util_hash_table *ht, void *key)
+/* Compiled outside the driver archive, so objcopy does not rename the plain
+ * names the v3d_bo_unreference inline reaches for. Forward each to its
+ * trampoline; a drifted callee list shows up as an undefined plain name. */
+extern void __gca__mesa_hash_table_remove_key(struct hash_table *ht,
+                                              const void *key);
+void _mesa_hash_table_remove_key(struct hash_table *ht, const void *key)
 {
-    __gca_util_hash_table_remove(ht, key);
+    __gca__mesa_hash_table_remove_key(ht, key);
+}
+
+extern int __gca_mtx_lock(mtx_t *mtx);
+int mtx_lock(mtx_t *mtx)
+{
+    return __gca_mtx_lock(mtx);
+}
+
+extern int __gca_mtx_unlock(mtx_t *mtx);
+int mtx_unlock(mtx_t *mtx)
+{
+    return __gca_mtx_unlock(mtx);
 }
 
 #undef HiddGalliumAttrBase
@@ -69,7 +81,6 @@ void util_hash_table_remove(struct util_hash_table *ht, void *key)
 #endif
 
 struct pipe_screen;
-struct pipe_screen_config;
 struct renderonly;
 extern struct pipe_screen *v3d_screen_create(int fd,
     const struct pipe_screen_config *config, struct renderonly *ro);
@@ -432,9 +443,13 @@ APTR HiddV3D__Hidd_Gallium__CreatePipeScreen(OOP_Class *cl, OOP_Object *o,
     }
     ReleaseSemaphore(&sd->bo_lock);
 
-    /* fd is a dummy: the ioctl override never looks at it. No driconf and
-     * no renderonly - we present through the display driver ourselves. */
-    screen = v3d_screen_create(0, NULL, NULL);
+    /* fd is a dummy and there is no renderonly - we present ourselves. The
+     * config must be a real object: v3d_screen_create derefs it for driconf. */
+    {
+        static const struct pipe_screen_config v3d_no_config = { 0 };
+
+        screen = v3d_screen_create(0, &v3d_no_config, NULL);
+    }
     if (!screen)
     {
         bug("[V3D] v3d_screen_create failed\n");
@@ -555,7 +570,7 @@ VOID HiddV3D__Hidd_Gallium__DisplayResource(OOP_Class *cl, OOP_Object *o,
         return;
     }
 
-    if (slice->tiling == VC5_TILING_RASTER)
+    if (slice->tiling == V3D_TILING_RASTER)
     {
         src = base + slice->offset
             + msg->srcy * slice->stride + msg->srcx * rsc->cpp;
@@ -655,7 +670,7 @@ IPTR HiddV3D__Hidd_Gallium__DisplayResourceRP(OOP_Class *cl, OOP_Object *o,
     if (!sd->powered || !rsc || !rsc->bo || !rp)
         return FALSE;
     /* Tiled or exotic sources go through the detiling DisplayResource. */
-    if (rsc->slices[0].tiling != VC5_TILING_RASTER || rsc->cpp != 4
+    if (rsc->slices[0].tiling != V3D_TILING_RASTER || rsc->cpp != 4
         || rsc->slices[0].offset != 0)
         return FALSE;
     if (!(L = rp->Layer))

@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 2012-2017, The AROS Development Team. All rights reserved.
+    Copyright (C) 2012-2026, The AROS Development Team. All rights reserved.
 
     Desc: Display an alert passed from supervisor mode.
 */
@@ -63,15 +63,14 @@ void SupervisorAlertTask(struct ExecBase *SysBase)
             }
 
             Alert_DisplayKrnAlert(t, alertNum | AT_DeadEnd, iet->iet_AlertLocation, iet->iet_AlertStack,
-                    iet->iet_AlertType, (APTR)&iet->iet_AlertData, SysBase);
+                    iet->iet_AlertType, (APTR)ETaskAlertData(iet), SysBase);
 
             if (alertNum & AT_DeadEnd)
             {
                 /* Um, we have to do something here in order to prevent the
                    computer from continuing... */
                 PrivExecBase(SysBase)->SupervisorDeadEndCnt++;
-                ColdReboot();
-                ShutdownA(SD_ACTION_COLDREBOOT);
+                ShutdownA(SD_ACTION_REBOOT);
             }
 
             Enable();
@@ -88,9 +87,7 @@ void SupervisorAlertTask(struct ExecBase *SysBase)
             break;
 
         case 3:
-            ColdReboot();
-            /* In case if ColdReboot() doesn't work */
-            ShutdownA(SD_ACTION_COLDREBOOT);
+            ShutdownA(SD_ACTION_REBOOT);
             break;
         }
 

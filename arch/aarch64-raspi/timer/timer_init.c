@@ -19,6 +19,7 @@
 #include <exec/execbase.h>
 #include <exec/interrupts.h>
 #include <hardware/intbits.h>
+#include <hardware/bcm2708.h>
 #include <proto/arossupport.h>
 #include <proto/bootloader.h>
 #include <proto/exec.h>
@@ -68,8 +69,7 @@ static void Timer1Tick(struct TimerBase *TimerBase, struct ExecBase *SysBase)
 
     D(bug("[Timer] Timer1Tick: Reconfiguring interrupt..\n"));
 
-    TimerBase->tb_Platform.tbp_CLO = *((volatile unsigned int *)(SYSTIMER_CLO));
-    *((volatile unsigned int *)(SYSTIMER_C0 + (TICK_TIMER * 4))) = (TimerBase->tb_Platform.tbp_CLO + (1000000 / TimerBase->tb_eclock_rate));
+    Timer_Reprogram(TimerBase);
 
     D(bug("[Timer] Timer1Tick: Done..\n"));
 }
@@ -105,10 +105,16 @@ static int Timer_Init(struct TimerBase *TimerBase)
 
     TimerBase->tb_Platform.tbp_periiobase = KrnGetSystemAttr(KATTR_PeripheralBase);
 
+    /* BCM2711 and BCM2712 both present the legacy GPU interrupts through
+     * the GIC at +96, and both want the VBlank-driven MicroHZ fallback:
+     * the systimer compare SPI is not guaranteed to be delivered. */
+    int isGIC = (TimerBase->tb_Platform.tbp_periiobase == BCM2711_PERIIOBASE ||
+                 TimerBase->tb_Platform.tbp_periiobase == BCM2712_PERIIOBASE);
+
     /* Install timer IRQ handler */
     timerIRQ = IRQ_TIMER0 + TICK_TIMER;
-    if (TimerBase->tb_Platform.tbp_periiobase == BCM2711_PERIIOBASE)
-        timerIRQ += BCM2711_GPUIRQ_OFFSET;
+    if (isGIC)
+        timerIRQ += BCM271X_GPUIRQ_OFFSET;
 
     TimerBase->tb_TimerIRQHandle = KrnAddIRQHandler(timerIRQ, Timer1Tick, TimerBase, SysBase);
     if (!TimerBase->tb_TimerIRQHandle)
@@ -155,12 +161,15 @@ static int Timer_Init(struct TimerBase *TimerBase)
     Forbid();
     TimerBase->tb_Platform.tbp_CHI = *((volatile unsigned int *)(SYSTIMER_CHI));
     TimerBase->tb_Platform.tbp_CLO = *((volatile unsigned int *)(SYSTIMER_CLO));
+    /* At 0 the first EClockUpdate would book the whole uptime. */
+    TimerBase->tb_Platform.tbp_EClockLast =
+        ((UQUAD)TimerBase->tb_Platform.tbp_CHI << 32) | TimerBase->tb_Platform.tbp_CLO;
     *((volatile unsigned int *)(SYSTIMER_C0 + (TICK_TIMER * 4))) = (TimerBase->tb_Platform.tbp_CLO + TimerBase->tb_Platform.tbp_TickRate.tv_micro);
     Permit();
 
     vblank_Init(TimerBase);
 
-    if (TimerBase->tb_Platform.tbp_periiobase == BCM2711_PERIIOBASE)
+    if (isGIC)
     {
         TimerBase->tb_Platform.tbp_MicroHZInt.is_Node.ln_Pri  = 0;
         TimerBase->tb_Platform.tbp_MicroHZInt.is_Node.ln_Type = NT_INTERRUPT;
@@ -170,7 +179,7 @@ static int Timer_Init(struct TimerBase *TimerBase)
 
         AddIntServer(INTB_VERTB, &TimerBase->tb_Platform.tbp_MicroHZInt);
 
-        D(bug("[Timer] Timer_Init: microhz driven from VBlank (BCM2711)\n"));
+        D(bug("[Timer] Timer_Init: microhz driven from VBlank (BCM2711/BCM2712)\n"));
     }
 
     D(bug("[Timer] Timer_Init: configured GPU timer %d\n", TICK_TIMER));

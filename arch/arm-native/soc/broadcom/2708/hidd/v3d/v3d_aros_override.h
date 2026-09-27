@@ -13,6 +13,16 @@
 #ifndef V3D_AROS_OVERRIDE_H
 #define V3D_AROS_OVERRIDE_H
 
+/* Mesa 26 includes its Linux DRM core header as well as the AROS shim.
+ * Select the shim before either include path can introduce duplicate types.
+ * The opt-in is limited to the Mesa 26 V3D compile contract. */
+#ifdef AROS_MESA26_V3D
+#include "drm-stubs/drm.h"
+#ifndef _DRM_H_
+#define _DRM_H_
+#endif
+#endif
+
 /* Forward declaration of our shim */
 struct V3DData;
 extern struct V3DData *g_v3d_data;

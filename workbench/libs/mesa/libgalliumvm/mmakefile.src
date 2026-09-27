@@ -7,6 +7,5 @@
 # ExecutionEngine and MCJIT runtimes; the current x86, ARM and AArch64 SDKs
 # provide none of those. The repository's LLVM toolchain is host-only.
 #
-# Reintroducing Gallivm is therefore a new porting feature, not restoration of
-# a working legacy target. It must arrive with a target LLVM runtime, an active
-# consumer and architecture runtime tests rather than an empty archive.
+# Mesa 26 does not change this boundary. Reintroducing Gallivm requires a
+# target LLVM runtime, an active consumer and architecture runtime tests.
