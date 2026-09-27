@@ -14,7 +14,10 @@ include $(SRCDIR)/$(CURDIR)/mesa.cfg
 #MM- ports-includes : mesa3d-includes-copy
 #MM mesa3d-includes-copy : mesa3d-fetch
 
-%fetch mmake=mesa3d-fetch archive=$(ARCHBASE) destination=$(PORTSDIR)/mesa location=$(PORTSSOURCEDIR) archive_origins=$(REPOSITORIES) suffixes="tar.xz tar.gz" patches_specs=$(PATCHSPEC)
+%fetch mmake=mesa3d-fetch archive=$(ARCHBASE) destination=$(PORTSDIR)/mesa \
+    location=$(PORTSSOURCEDIR) archive_origins=$(REPOSITORIES) \
+    suffixes="$(MESA_ARCHIVE_SUFFIXES)" checksums="$(MESA_ARCHIVE_CHECKSUMS)" \
+    patches_specs=$(PATCHSPEC)
 
 # Mesa 20.0.8's NIR and format generators require Mako. Keep its pure-Python
 # runtime private to the generator process rather than depending on host site
