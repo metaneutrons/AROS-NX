@@ -6,6 +6,9 @@
       "filename": "zlib.tar.gz",
       "candidates": [
         {
+          "url": "https://raw.githubusercontent.com/metaneutrons/aros-toolchains/f35ecea2918c8c8314bf6878b4401af6ae45132d/toolchains/source-seeds/chromium-zlib-da752eb2.tar.gz"
+        },
+        {
           "url": "https://chromium.googlesource.com/chromium/src/+archive/da752eb2a3660cf1bf8dac620f6380b89dd953a7/third_party/zlib.tar.gz"
         },
         {
