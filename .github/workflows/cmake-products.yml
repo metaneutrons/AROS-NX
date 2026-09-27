@@ -16,7 +16,7 @@ concurrency:
 
 env:
   AROS_TOOLS_REPOSITORY: metaneutrons/aros-tools
-  AROS_TOOLS_COMMIT: d5d8efa17ebe642eb62016c8f44fbbff8cea006e
+  AROS_TOOLS_COMMIT: 02b10d415c520a2c3bf84bcf0e4023b77d9e0aeb
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: '1'
 
