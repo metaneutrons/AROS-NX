@@ -20,46 +20,10 @@ MESA3DGL_GALLIUM_AUXILIARY_C_SOURCES := $(filter %.c, $(C_SOURCES) $(NIR_SOURCES
 GALLIUM_AUXILIARY_GENERATED_SOURCES := $(filter %.c, $(GENERATED_SOURCES))
 GALLIUM_AUXILIARY_GENERATED_HEADERS := $(filter %.h, $(GENERATED_SOURCES))
 else
-MESA3DGL_GALLIUM_AUXILIARY_C_SOURCES := $(patsubst $(top_srcdir)/$(CUR_MESADIR)/%,%,$(wildcard \
-            $(top_srcdir)/$(CUR_MESADIR)/cso_cache/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/draw/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/driver_ddebug/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/driver_noop/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/driver_trace/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/hud/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/indices/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/nir/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/pipebuffer/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/postprocess/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/rtasm/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/tgsi/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/translate/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/util/*.c))
-MESA3DGL_GALLIUM_AUXILIARY_C_SOURCES := $(filter-out \
-            indices/u_indices.c \
-            indices/u_unfilled_indices.c, \
-            $(MESA3DGL_GALLIUM_AUXILIARY_C_SOURCES))
-# Video buffer helpers the nouveau driver's decoder paths link against.
-MESA3DGL_GALLIUM_AUXILIARY_C_SOURCES += \
-            vl/vl_video_buffer.c \
-            vl/vl_mpeg12_bitstream.c
-# Every gallium consumer links this archive, so the gallivm draw paths stay out
-# of it and are built again as libgalliumdrawllvm below. nir_to_tgsi_info.c
-# joins them: its header inlines a no-op when DRAW_LLVM_AVAILABLE is unset.
-MESA3DGL_GALLIUM_AUXILIARY_C_SOURCES := $(filter-out \
-            draw/draw_llvm.c \
-            draw/draw_pt_fetch_shade_pipeline_llvm.c \
-            draw/draw_vs_llvm.c \
-            nir/nir_to_tgsi_info.c, \
-            $(MESA3DGL_GALLIUM_AUXILIARY_C_SOURCES))
-GALLIUM_AUXILIARY_GENERATED_SOURCES := \
-            driver_trace/tr_util.c \
-            util/u_tracepoints.c \
-            indices/u_indices_gen.c \
-            indices/u_unfilled_gen.c
-GALLIUM_AUXILIARY_GENERATED_HEADERS := \
-            driver_trace/tr_util.h \
-            util/u_tracepoints.h
+include $(SRCDIR)/$(CURDIR)/galliumaux-26.0.0.sources
+MESA3DGL_GALLIUM_AUXILIARY_C_SOURCES := $(MESA26_GALLIUMAUX_STATIC_C_SOURCES)
+GALLIUM_AUXILIARY_GENERATED_SOURCES := $(MESA26_GALLIUMAUX_GENERATED_C_SOURCES)
+GALLIUM_AUXILIARY_GENERATED_HEADERS := $(MESA26_GALLIUMAUX_GENERATED_HEADERS)
 endif
 
 #MM- mesa3dgl-linklibs : mesa3d-linklib-galliumauxiliary
@@ -187,10 +151,14 @@ mesa3d-linklib-galliumauxiliary_C_FILES := $(MESA3DGL_GALLIUM_AUXILIARY_SOURCES_
 # draw_vertex_shader and the gs/tess shader layouts, so it cannot be applied to
 # a subset. llvmpipe links this ahead of libgalliumauxiliary.
 ifeq ($(AROS_TOOLCHAIN),llvm)
+ifeq ($(MESA_GALLIUM_AUX_LAYOUT),new)
+GALLIUM_DRAW_LLVM_C := $(MESA26_GALLIUMAUX_DRAW_LLVM_C_SOURCES)
+else
 GALLIUM_DRAW_LLVM_C := \
             $(patsubst $(top_srcdir)/$(CUR_MESADIR)/%,%, \
                 $(wildcard $(top_srcdir)/$(CUR_MESADIR)/draw/*.c)) \
             nir/nir_to_tgsi_info.c
+endif
 
 GALLDRAWLLVMOFILES := $(addprefix $(top_builddir)/$(CUR_MESADIR)/draw-llvm/,$(GALLIUM_DRAW_LLVM_C:.c=.o))
 GALLDRAWLLVMDFILES := $(patsubst %.o,%.d,$(GALLDRAWLLVMOFILES))
@@ -216,7 +184,11 @@ endif
 # linklib because %build_linklib resolves cxxfiles against $(SRCDIR)/$(CURDIR),
 # ignoring its own srcdir= - only the C side honours that.
 ifeq ($(AROS_TOOLCHAIN),llvm)
+ifeq ($(MESA_GALLIUM_AUX_LAYOUT),new)
+GALLIUM_TESS_CXX := $(addprefix $(top_srcdir)/$(CUR_MESADIR)/,$(MESA26_GALLIUMAUX_TESS_CXX_SOURCES))
+else
 GALLIUM_TESS_CXX := $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/tessellator/,p_tessellator.cpp tessellator.cpp))
+endif
 
 #MM- mesa3dgl-linklibs : mesa3d-linklib-galliumtess-$(AROS_TOOLCHAIN)
 #MM- mesa3d-linklib-galliumtess-llvm : mesa3d-linklib-galliumtess

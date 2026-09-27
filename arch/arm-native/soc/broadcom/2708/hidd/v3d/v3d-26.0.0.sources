@@ -1,0 +1,76 @@
+# Closed Mesa 26.0.0 V3D source inventory. Paths are relative to each group's
+# owning source root; the generated group is relative to the V3D build root.
+MESA26_V3D_DRIVER_C_SOURCES := \
+    v3d_blit.c \
+    v3d_bufmgr.c \
+    v3d_cl.c \
+    v3d_context.c \
+    v3d_disk_cache.c \
+    v3d_fence.c \
+    v3d_formats.c \
+    v3d_job.c \
+    v3d_program.c \
+    v3d_query.c \
+    v3d_query_perfcnt.c \
+    v3d_query_pipe.c \
+    v3d_resource.c \
+    v3d_screen.c \
+    v3d_uniforms.c
+
+MESA26_V3D_COMPILER_C_SOURCES := \
+    nir_to_vir.c \
+    vir.c \
+    vir_dump.c \
+    vir_live_variables.c \
+    vir_opt_constant_alu.c \
+    vir_opt_copy_propagate.c \
+    vir_opt_dead_code.c \
+    vir_opt_redundant_flags.c \
+    vir_opt_small_immediates.c \
+    vir_register_allocate.c \
+    vir_to_qpu.c \
+    qpu_schedule.c \
+    qpu_validate.c \
+    v3d_tex.c \
+    v3d_packing.c \
+    v3d_nir_lower_blend.c \
+    v3d_nir_lower_io.c \
+    v3d_nir_lower_image_load_store.c \
+    v3d_nir_lower_line_smooth.c \
+    v3d_nir_lower_load_output.c \
+    v3d_nir_lower_load_store_bitsize.c \
+    v3d_nir_lower_logic_ops.c \
+    v3d_nir_lower_scratch.c \
+    v3d_nir_lower_txf_ms.c
+
+MESA26_V3D_BROADCOM_C_SOURCES := \
+    common/v3d_debug.c \
+    common/v3d_device_info.c \
+    common/v3d_tiling.c \
+    common/v3d_util.c \
+    clif/clif_dump.c \
+    qpu/qpu_instr.c \
+    qpu/qpu_pack.c \
+    qpu/qpu_disasm.c \
+    perfcntrs/v3d_perfcntrs.c
+
+MESA26_V3D_GENERATED_C_SOURCES := \
+    nir-gen/v3d_nir_lower_algebraic.c \
+    v3dx-gen/v3d42_draw.c \
+    v3dx-gen/v3d42_emit.c \
+    v3dx-gen/v3d42_format_table.c \
+    v3dx-gen/v3d42_job.c \
+    v3dx-gen/v3d42_rcl.c \
+    v3dx-gen/v3d42_state.c \
+    v3dx-gen/v3d42_tfu.c \
+    v3dx-gen/v3d42_dump.c \
+    v3dx-gen/v3d42_counter.c \
+    v3dx-gen/v3d71_draw.c \
+    v3dx-gen/v3d71_emit.c \
+    v3dx-gen/v3d71_format_table.c \
+    v3dx-gen/v3d71_job.c \
+    v3dx-gen/v3d71_rcl.c \
+    v3dx-gen/v3d71_state.c \
+    v3dx-gen/v3d71_tfu.c \
+    v3dx-gen/v3d71_dump.c \
+    v3dx-gen/v3d71_counter.c

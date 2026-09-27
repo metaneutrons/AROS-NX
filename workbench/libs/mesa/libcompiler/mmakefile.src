@@ -14,38 +14,13 @@ MESA_COMPILER_LAYOUT := old
 include $(top_srcdir)/$(CUR_MESADIR)/Makefile.sources
 else
 MESA_COMPILER_LAYOUT := new
+include $(SRCDIR)/$(CURDIR)/compiler-26.0.0.sources
 
-LIBGLSL_FILES := $(patsubst $(top_srcdir)/$(CUR_MESADIR)/%,%,$(wildcard \
-	$(top_srcdir)/$(CUR_MESADIR)/glsl/*.c \
-	$(top_srcdir)/$(CUR_MESADIR)/glsl/*.cpp))
-LIBGLSL_FILES := $(filter-out \
-	glsl/main.cpp \
-	glsl/standalone.cpp \
-	glsl/standalone_scaffolding.cpp, \
-	$(LIBGLSL_FILES))
-
-NIR_FILES := $(patsubst $(top_srcdir)/$(CUR_MESADIR)/%,%,$(wildcard \
-	$(top_srcdir)/$(CUR_MESADIR)/nir/*.c))
-
-SPIRV_FILES := $(patsubst $(top_srcdir)/$(CUR_MESADIR)/%,%,$(wildcard \
-	$(top_srcdir)/$(CUR_MESADIR)/spirv/*.c))
-SPIRV_FILES := $(filter-out \
-	spirv/spirv2nir.c \
-	spirv/vtn_bindgen2.c, \
-	$(SPIRV_FILES))
-
-LIBGLCPP_FILES := $(patsubst $(top_srcdir)/$(CUR_MESADIR)/%,%,$(wildcard \
-	$(top_srcdir)/$(CUR_MESADIR)/glsl/glcpp/*.c))
-# glcpp.c is the standalone preprocessor's main, and the scaffolding stubs
-# clash with the real ones in libmesa.a.
-LIBGLCPP_FILES := $(filter-out \
-	glsl/glcpp/glcpp.c \
-	glsl/glcpp/pp_standalone_scaffolding.c, \
-	$(LIBGLCPP_FILES))
-
-LIBCOMPILER_FILES := \
-	glsl_types.c \
-	shader_enums.c
+LIBGLSL_FILES := $(MESA26_COMPILER_GLSL_C_SOURCES) $(MESA26_COMPILER_GLSL_CXX_SOURCES)
+NIR_FILES := $(MESA26_COMPILER_NIR_C_SOURCES)
+SPIRV_FILES := $(MESA26_COMPILER_SPIRV_C_SOURCES)
+LIBGLCPP_FILES := $(MESA26_COMPILER_GLCPP_C_SOURCES)
+LIBCOMPILER_FILES := $(MESA26_COMPILER_CORE_C_SOURCES)
 
 LIBGLSL_GENERATED_FILES := \
 	builtin_types_data.c \

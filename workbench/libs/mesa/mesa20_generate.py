@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -116,6 +117,29 @@ def main() -> None:
                 fail(f"Python generator did not create {staged.name}")
             data = staged.read_bytes()
 
+        elif mode == "python-dual-output":
+            if len(arguments) < 2:
+                fail("python-dual-output requires C and H output names")
+            c_name = safe_basename(arguments[0], "generated C name")
+            h_name = safe_basename(arguments[1], "generated header name")
+            if c_name == h_name or output.name not in {c_name, h_name}:
+                fail("python-dual-output target does not match its paired products")
+            command_arguments = arguments[2:]
+            if sum(arg.count("@OUT_C@") for arg in command_arguments) != 1 or sum(
+                arg.count("@OUT_H@") for arg in command_arguments
+            ) != 1:
+                fail("python-dual-output requires one marker for each product")
+            staged_c = work / c_name
+            staged_h = work / h_name
+            command_arguments = [
+                arg.replace("@OUT_C@", str(staged_c)).replace("@OUT_H@", str(staged_h))
+                for arg in command_arguments
+            ]
+            run([sys.executable, "-B", str(generator), *command_arguments], source_root)
+            if not staged_c.is_file() or not staged_h.is_file():
+                fail("Python generator did not create both paired products")
+            data = (work / output.name).read_bytes()
+
         elif mode == "flex":
             executable = os.environ.get("AROS_FLEX_EXECUTABLE", "")
             if not executable or not Path(executable).is_file():
@@ -170,15 +194,30 @@ def main() -> None:
             if not staged.is_file():
                 fail(f"Bison did not create {staged.name}")
             data = staged.read_bytes()
+            if output.name == header_name:
+                # Bison derives the header guard from the absolute --defines
+                # path. A temporary build-tree path would make two otherwise
+                # identical Mesa builds differ byte-for-byte.
+                match = re.search(
+                    rb"(?m)^#ifndef (YY_[A-Z0-9_]+_INCLUDED)$", data
+                )
+                if match is None or data.count(match.group(1)) != 3:
+                    fail("Bison header guard did not match the reviewed form")
+                stable_name = re.sub(
+                    r"[^A-Z0-9]", "_", f"{prefix}_{header_name}".upper()
+                )
+                stable_guard = f"AROS_MESA_{stable_name}_INCLUDED".encode("ascii")
+                data = data.replace(match.group(1), stable_guard)
 
         elif mode == "mesa-git-sha1":
             if arguments:
                 fail("mesa-git-sha1 mode accepts no arguments")
             data = b'#define MESA_GIT_SHA1 ""\n'
 
-        elif mode == "v3dx-wrapper":
-            if len(arguments) != 1 or arguments[0] not in {"33", "41"}:
-                fail("v3dx-wrapper mode requires exactly version 33 or 41")
+        elif mode in {"v3dx-wrapper", "v3dx-wrapper26"}:
+            versions = {"33", "41"} if mode == "v3dx-wrapper" else {"42", "71"}
+            if len(arguments) != 1 or arguments[0] not in versions:
+                fail(f"{mode} mode requires exactly one of {sorted(versions)}")
             if not generator.name.startswith("v3dx_") or generator.suffix != ".c":
                 fail(f"v3dx-wrapper input is not a v3dx C source: {generator.name}")
             version = arguments[0]

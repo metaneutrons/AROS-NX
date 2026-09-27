@@ -27,6 +27,7 @@
 #include <proto/oop.h>
 #include <proto/layers.h>
 #include <proto/alib.h>
+#include <clib/alib_protos.h>
 #include <proto/graphics.h>
 #include <proto/icon.h>
 #include <workbench/workbench.h>

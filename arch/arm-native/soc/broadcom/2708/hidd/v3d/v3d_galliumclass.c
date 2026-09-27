@@ -17,11 +17,13 @@
 #include <proto/oop.h>
 #include <proto/exec.h>
 #include <proto/graphics.h>
+#include <proto/utility.h>
 #include <proto/layers.h>
 #include <proto/cybergraphics.h>
 #include <cybergraphx/cybergraphics.h>
 #include <graphics/rastport.h>
 #include <graphics/clip.h>
+#include <clib/alib_protos.h>
 #include <hidd/gallium.h>
 #include <hidd/gfx.h>
 
@@ -41,7 +43,7 @@
 #include "v3d_screen.h"
 #include "v3d_bufmgr.h"
 #include "v3d_resource.h"
-#include "v3d_tiling.h"
+#include "broadcom/common/v3d_tiling.h"
 
 /* Compiled outside the driver archive, so objcopy does not rename the plain
  * names the v3d_bo_unreference inline reaches for. Forward each to its

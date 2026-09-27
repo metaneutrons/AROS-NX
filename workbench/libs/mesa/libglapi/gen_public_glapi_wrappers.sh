@@ -33,8 +33,8 @@ tmp_c="${out_c}.tmp"
             for (i = 1; i <= n; i++) {
                 part[i] = trim(part[i])
                 gsub(/\[[^]]*\]/, "", part[i])
-                if (match(part[i], /([A-Za-z_][A-Za-z0-9_]*)[ \t]*$/, m))
-                    name = m[1]
+                if (match(part[i], /[A-Za-z_][A-Za-z0-9_]*[ \t]*$/))
+                    name = trim(substr(part[i], RSTART, RLENGTH))
                 else
                     name = "arg" i
                 res = res ((i > 1) ? ", " : "") name

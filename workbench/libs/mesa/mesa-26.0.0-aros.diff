@@ -807,8 +807,6 @@ diff -ruN mesa-26.0.0/src/mesa/glapi/shared-glapi/core.c mesa-26.0.0.aros/src/me
     return _mesa_glapi_tls_Dispatch;
 +#endif
  }
-Binary files mesa-26.0.0/src/mesa/main/__pycache__/format_parser.cpython-314.pyc and mesa-26.0.0.aros/src/mesa/main/__pycache__/format_parser.cpython-314.pyc differ
-Binary files mesa-26.0.0/src/mesa/main/__pycache__/get_hash_params.cpython-314.pyc and mesa-26.0.0.aros/src/mesa/main/__pycache__/get_hash_params.cpython-314.pyc differ
 diff -ruN mesa-26.0.0/src/gallium/auxiliary/gallivm/lp_bld_passmgr.c mesa-26.0.0.aros/src/gallium/auxiliary/gallivm/lp_bld_passmgr.c
 --- mesa-26.0.0/src/gallium/auxiliary/gallivm/lp_bld_passmgr.c	2026-02-11 18:07:29.000000000 +0000
 +++ mesa-26.0.0.aros/src/gallium/auxiliary/gallivm/lp_bld_passmgr.c	2026-09-09 14:49:14.941915650 +0100

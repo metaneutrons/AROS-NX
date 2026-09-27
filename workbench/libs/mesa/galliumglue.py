@@ -90,6 +90,12 @@ def fnv1a32(data):
 def atomic_write(path, content):
     d = os.path.dirname(path) or "."
     data = content.encode("utf-8")
+    try:
+        with open(path, "rb") as existing:
+            if existing.read() == data:
+                return
+    except FileNotFoundError:
+        pass
     fd, tmp = tempfile.mkstemp(dir=d)
     try:
         os.write(fd, data)
@@ -137,9 +143,11 @@ def main():
                      % sym)
         libtag = os.path.splitext(os.path.basename(arch))[0]
         dst = os.path.join(privdir, "%s__%s" % (libtag, member))
-        if not os.path.exists(dst):
-            run([args.ar, "x", os.path.abspath(arch), member], cwd=privdir)
-            os.replace(os.path.join(privdir, member), dst)
+        # A rebuilt provider archive may keep the same member name while its
+        # contents change. Always refresh the extracted object; reusing an old
+        # file would make the generated consumer archive depend on build history.
+        run([args.ar, "x", os.path.abspath(arch), member], cwd=privdir)
+        os.replace(os.path.join(privdir, member), dst)
         if dst not in private_objs:
             private_objs.append(dst)
 

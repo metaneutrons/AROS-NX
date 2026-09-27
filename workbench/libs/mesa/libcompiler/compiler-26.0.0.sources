@@ -1,0 +1,416 @@
+# Mesa 26.0.0 compiler inventory for the AROS new-layout recipe.
+# Paths are relative to src/compiler. Lists preserve the wildcard group order
+# in workbench/libs/mesa/libcompiler/mmakefile.src.
+#
+# Standalone GLSL/glcpp entry points and scaffolding are deliberately absent:
+# glsl/main.cpp, glsl/standalone.cpp, glsl/standalone_scaffolding.cpp,
+# glsl/glcpp/glcpp.c and glsl/glcpp/pp_standalone_scaffolding.c.
+
+MESA26_COMPILER_GLSL_C_SOURCES := \
+	glsl/gl_nir_detect_function_recursion.c \
+	glsl/gl_nir_link_atomics.c \
+	glsl/gl_nir_link_functions.c \
+	glsl/gl_nir_link_interface_blocks.c \
+	glsl/gl_nir_link_uniform_blocks.c \
+	glsl/gl_nir_link_uniform_initializers.c \
+	glsl/gl_nir_link_uniforms.c \
+	glsl/gl_nir_link_varyings.c \
+	glsl/gl_nir_link_xfb.c \
+	glsl/gl_nir_linker.c \
+	glsl/gl_nir_lower_atomics.c \
+	glsl/gl_nir_lower_blend_equation_advanced.c \
+	glsl/gl_nir_lower_buffers.c \
+	glsl/gl_nir_lower_discard_flow.c \
+	glsl/gl_nir_lower_images.c \
+	glsl/gl_nir_lower_named_interface_blocks.c \
+	glsl/gl_nir_lower_packed_varyings.c \
+	glsl/gl_nir_lower_samplers.c \
+	glsl/gl_nir_lower_samplers_as_deref.c \
+	glsl/gl_nir_lower_xfb_varying.c
+
+MESA26_COMPILER_GLSL_CXX_SOURCES := \
+	glsl/ast_array_index.cpp \
+	glsl/ast_expr.cpp \
+	glsl/ast_function.cpp \
+	glsl/ast_to_hir.cpp \
+	glsl/ast_type.cpp \
+	glsl/builtin_functions.cpp \
+	glsl/builtin_types.cpp \
+	glsl/builtin_variables.cpp \
+	glsl/glsl_parser_extras.cpp \
+	glsl/glsl_symbol_table.cpp \
+	glsl/glsl_to_nir.cpp \
+	glsl/hir_field_selection.cpp \
+	glsl/ir.cpp \
+	glsl/ir_basic_block.cpp \
+	glsl/ir_builder.cpp \
+	glsl/ir_clone.cpp \
+	glsl/ir_constant_expression.cpp \
+	glsl/ir_expression_flattening.cpp \
+	glsl/ir_function.cpp \
+	glsl/ir_function_detect_recursion.cpp \
+	glsl/ir_hierarchical_visitor.cpp \
+	glsl/ir_hv_accept.cpp \
+	glsl/ir_print_visitor.cpp \
+	glsl/ir_rvalue_visitor.cpp \
+	glsl/ir_validate.cpp \
+	glsl/ir_variable_refcount.cpp \
+	glsl/linker_util.cpp \
+	glsl/lower_builtins.cpp \
+	glsl/lower_instructions.cpp \
+	glsl/lower_jumps.cpp \
+	glsl/lower_mat_op_to_vec.cpp \
+	glsl/lower_packing_builtins.cpp \
+	glsl/lower_precision.cpp \
+	glsl/lower_subroutine.cpp \
+	glsl/lower_vec_index_to_cond_assign.cpp \
+	glsl/lower_vector_derefs.cpp \
+	glsl/opt_algebraic.cpp \
+	glsl/opt_dead_builtin_variables.cpp \
+	glsl/opt_dead_code.cpp \
+	glsl/opt_flatten_nested_if_blocks.cpp \
+	glsl/opt_function_inlining.cpp \
+	glsl/opt_if_simplification.cpp \
+	glsl/opt_minmax.cpp \
+	glsl/opt_rebalance_tree.cpp \
+	glsl/opt_tree_grafting.cpp \
+	glsl/propagate_invariance.cpp \
+	glsl/serialize.cpp \
+	glsl/shader_cache.cpp \
+	glsl/string_to_uint_map.cpp
+
+MESA26_COMPILER_NIR_C_SOURCES := \
+	nir/nir.c \
+	nir/nir_builder.c \
+	nir/nir_builtin_builder.c \
+	nir/nir_clip_cull_distance_io_utils.c \
+	nir/nir_clone.c \
+	nir/nir_control_flow.c \
+	nir/nir_deref.c \
+	nir/nir_divergence_analysis.c \
+	nir/nir_dominance.c \
+	nir/nir_dominance_lca.c \
+	nir/nir_downgrade_pls_vars.c \
+	nir/nir_fixup_is_exported.c \
+	nir/nir_format_convert.c \
+	nir/nir_from_ssa.c \
+	nir/nir_functions.c \
+	nir/nir_gather_info.c \
+	nir/nir_gather_output_deps.c \
+	nir/nir_gather_tcs_info.c \
+	nir/nir_gather_types.c \
+	nir/nir_gather_xfb_info.c \
+	nir/nir_gs_count_vertices.c \
+	nir/nir_inline_sysval.c \
+	nir/nir_inline_uniforms.c \
+	nir/nir_instr_set.c \
+	nir/nir_io_add_xfb_info.c \
+	nir/nir_legacy.c \
+	nir/nir_linking_helpers.c \
+	nir/nir_liveness.c \
+	nir/nir_loop_analyze.c \
+	nir/nir_lower_alpha.c \
+	nir/nir_lower_alu.c \
+	nir/nir_lower_alu_width.c \
+	nir/nir_lower_amul.c \
+	nir/nir_lower_array_deref_of_vec.c \
+	nir/nir_lower_atomics.c \
+	nir/nir_lower_atomics_to_ssbo.c \
+	nir/nir_lower_bit_size.c \
+	nir/nir_lower_bitmap.c \
+	nir/nir_lower_blend.c \
+	nir/nir_lower_bool_to_bitsize.c \
+	nir/nir_lower_bool_to_float.c \
+	nir/nir_lower_bool_to_int32.c \
+	nir/nir_lower_calls_to_builtins.c \
+	nir/nir_lower_cl_images.c \
+	nir/nir_lower_clamp_color_outputs.c \
+	nir/nir_lower_clip.c \
+	nir/nir_lower_clip_disable.c \
+	nir/nir_lower_clip_halfz.c \
+	nir/nir_lower_const_arrays_to_uniforms.c \
+	nir/nir_lower_continue_constructs.c \
+	nir/nir_lower_convert_alu_types.c \
+	nir/nir_lower_cooperative_matrix.c \
+	nir/nir_lower_discard_if.c \
+	nir/nir_lower_double_ops.c \
+	nir/nir_lower_explicit_io.c \
+	nir/nir_lower_fb_read.c \
+	nir/nir_lower_flatshade.c \
+	nir/nir_lower_floats.c \
+	nir/nir_lower_flrp.c \
+	nir/nir_lower_fp16_conv.c \
+	nir/nir_lower_frag_coord_to_pixel_coord.c \
+	nir/nir_lower_fragcolor.c \
+	nir/nir_lower_fragcoord_wtrans.c \
+	nir/nir_lower_frexp.c \
+	nir/nir_lower_global_vars_to_local.c \
+	nir/nir_lower_goto_ifs.c \
+	nir/nir_lower_gs_intrinsics.c \
+	nir/nir_lower_halt_to_return.c \
+	nir/nir_lower_helper_writes.c \
+	nir/nir_lower_idiv.c \
+	nir/nir_lower_image.c \
+	nir/nir_lower_image_atomics_to_global.c \
+	nir/nir_lower_indirect_derefs_to_if_else_trees.c \
+	nir/nir_lower_input_attachments.c \
+	nir/nir_lower_int64.c \
+	nir/nir_lower_int_to_float.c \
+	nir/nir_lower_interpolation.c \
+	nir/nir_lower_io.c \
+	nir/nir_lower_io_array_vars_to_elements.c \
+	nir/nir_lower_io_indirect_loads.c \
+	nir/nir_lower_io_to_scalar.c \
+	nir/nir_lower_io_vars_to_scalar.c \
+	nir/nir_lower_io_vars_to_temporaries.c \
+	nir/nir_lower_is_helper_invocation.c \
+	nir/nir_lower_load_const_to_scalar.c \
+	nir/nir_lower_locals_to_regs.c \
+	nir/nir_lower_mediump.c \
+	nir/nir_lower_mem_access_bit_sizes.c \
+	nir/nir_lower_memcpy.c \
+	nir/nir_lower_memory_model.c \
+	nir/nir_lower_multiview.c \
+	nir/nir_lower_non_uniform_access.c \
+	nir/nir_lower_packing.c \
+	nir/nir_lower_passthrough_edgeflags.c \
+	nir/nir_lower_patch_vertices.c \
+	nir/nir_lower_phis_to_scalar.c \
+	nir/nir_lower_pntc_ytransform.c \
+	nir/nir_lower_point_size.c \
+	nir/nir_lower_point_smooth.c \
+	nir/nir_lower_poly_line_smooth.c \
+	nir/nir_lower_printf.c \
+	nir/nir_lower_readonly_images_to_tex.c \
+	nir/nir_lower_reg_intrinsics_to_ssa.c \
+	nir/nir_lower_returns.c \
+	nir/nir_lower_robust_access.c \
+	nir/nir_lower_sample_shading.c \
+	nir/nir_lower_samplers.c \
+	nir/nir_lower_scratch.c \
+	nir/nir_lower_scratch_to_var.c \
+	nir/nir_lower_shader_calls.c \
+	nir/nir_lower_single_sampled.c \
+	nir/nir_lower_ssbo.c \
+	nir/nir_lower_subgroups.c \
+	nir/nir_lower_system_values.c \
+	nir/nir_lower_sysvals_to_varyings.c \
+	nir/nir_lower_task_shader.c \
+	nir/nir_lower_terminate_to_demote.c \
+	nir/nir_lower_tess_coord_z.c \
+	nir/nir_lower_tex.c \
+	nir/nir_lower_tex_shadow.c \
+	nir/nir_lower_texcoord_replace.c \
+	nir/nir_lower_texcoord_replace_late.c \
+	nir/nir_lower_two_sided_color.c \
+	nir/nir_lower_ubo_vec4.c \
+	nir/nir_lower_undef_to_zero.c \
+	nir/nir_lower_uniforms_to_ubo.c \
+	nir/nir_lower_var_copies.c \
+	nir/nir_lower_variable_initializers.c \
+	nir/nir_lower_vars_to_ssa.c \
+	nir/nir_lower_vec3_to_vec4.c \
+	nir/nir_lower_vec_to_regs.c \
+	nir/nir_lower_view_index_to_device_index.c \
+	nir/nir_lower_viewport_transform.c \
+	nir/nir_lower_workgroup_size.c \
+	nir/nir_lower_wpos_center.c \
+	nir/nir_lower_wpos_ytransform.c \
+	nir/nir_lower_wrmasks.c \
+	nir/nir_metadata.c \
+	nir/nir_mod_analysis.c \
+	nir/nir_move_output_stores_to_end.c \
+	nir/nir_move_vec_src_uses_to_dest.c \
+	nir/nir_normalize_cubemap_coords.c \
+	nir/nir_opt_access.c \
+	nir/nir_opt_barriers.c \
+	nir/nir_opt_barycentric.c \
+	nir/nir_opt_call.c \
+	nir/nir_opt_clip_cull_const.c \
+	nir/nir_opt_combine_stores.c \
+	nir/nir_opt_comparison_pre.c \
+	nir/nir_opt_constant_folding.c \
+	nir/nir_opt_copy_prop_vars.c \
+	nir/nir_opt_copy_propagate.c \
+	nir/nir_opt_cse.c \
+	nir/nir_opt_dce.c \
+	nir/nir_opt_dead_cf.c \
+	nir/nir_opt_dead_write_vars.c \
+	nir/nir_opt_find_array_copies.c \
+	nir/nir_opt_frag_coord_to_pixel_coord.c \
+	nir/nir_opt_fragdepth.c \
+	nir/nir_opt_gcm.c \
+	nir/nir_opt_generate_bfi.c \
+	nir/nir_opt_group_loads.c \
+	nir/nir_opt_idiv_const.c \
+	nir/nir_opt_if.c \
+	nir/nir_opt_intrinsics.c \
+	nir/nir_opt_large_constants.c \
+	nir/nir_opt_licm.c \
+	nir/nir_opt_load_skip_helpers.c \
+	nir/nir_opt_load_store_vectorize.c \
+	nir/nir_opt_loop.c \
+	nir/nir_opt_loop_unroll.c \
+	nir/nir_opt_memcpy.c \
+	nir/nir_opt_move.c \
+	nir/nir_opt_move_discards_to_top.c \
+	nir/nir_opt_move_to_top.c \
+	nir/nir_opt_mqsad.c \
+	nir/nir_opt_non_uniform_access.c \
+	nir/nir_opt_offsets.c \
+	nir/nir_opt_peephole_select.c \
+	nir/nir_opt_phi_precision.c \
+	nir/nir_opt_phi_to_bool.c \
+	nir/nir_opt_preamble.c \
+	nir/nir_opt_ray_queries.c \
+	nir/nir_opt_reassociate.c \
+	nir/nir_opt_reassociate_bfi.c \
+	nir/nir_opt_rematerialize_compares.c \
+	nir/nir_opt_remove_phis.c \
+	nir/nir_opt_shrink_stores.c \
+	nir/nir_opt_shrink_vectors.c \
+	nir/nir_opt_sink.c \
+	nir/nir_opt_undef.c \
+	nir/nir_opt_uniform_atomics.c \
+	nir/nir_opt_uniform_subgroup.c \
+	nir/nir_opt_uub.c \
+	nir/nir_opt_varyings.c \
+	nir/nir_opt_vectorize.c \
+	nir/nir_opt_vectorize_io.c \
+	nir/nir_opt_vectorize_io_vars.c \
+	nir/nir_passthrough_gs.c \
+	nir/nir_passthrough_tcs.c \
+	nir/nir_phi_builder.c \
+	nir/nir_print.c \
+	nir/nir_propagate_invariant.c \
+	nir/nir_range_analysis.c \
+	nir/nir_recompute_io_bases.c \
+	nir/nir_remove_dead_variables.c \
+	nir/nir_remove_outputs.c \
+	nir/nir_remove_tex_shadow.c \
+	nir/nir_repair_ssa.c \
+	nir/nir_scale_fdiv.c \
+	nir/nir_schedule.c \
+	nir/nir_search.c \
+	nir/nir_separate_merged_clip_cull_io.c \
+	nir/nir_serialize.c \
+	nir/nir_shader_bisect.c \
+	nir/nir_split_64bit_vec3_and_vec4.c \
+	nir/nir_split_conversions.c \
+	nir/nir_split_per_member_structs.c \
+	nir/nir_split_var_copies.c \
+	nir/nir_split_vars.c \
+	nir/nir_stub.c \
+	nir/nir_sweep.c \
+	nir/nir_to_lcssa.c \
+	nir/nir_trivialize_registers.c \
+	nir/nir_unlower_io_to_vars.c \
+	nir/nir_use_dominance.c \
+	nir/nir_validate.c \
+	nir/nir_worklist.c
+
+MESA26_COMPILER_SPIRV_C_SOURCES := \
+	spirv/gl_spirv.c \
+	spirv/spirv_to_nir.c \
+	spirv/vtn_alu.c \
+	spirv/vtn_amd.c \
+	spirv/vtn_cfg.c \
+	spirv/vtn_cmat.c \
+	spirv/vtn_debug.c \
+	spirv/vtn_glsl450.c \
+	spirv/vtn_opencl.c \
+	spirv/vtn_structured_cfg.c \
+	spirv/vtn_subgroup.c \
+	spirv/vtn_variables.c
+
+MESA26_COMPILER_GLCPP_C_SOURCES := \
+	glsl/glcpp/pp.c
+
+MESA26_COMPILER_CORE_C_SOURCES := \
+	glsl_types.c \
+	shader_enums.c
+
+MESA26_COMPILER_STATIC_C_SOURCES := \
+	$(MESA26_COMPILER_GLSL_C_SOURCES) \
+	$(MESA26_COMPILER_NIR_C_SOURCES) \
+	$(MESA26_COMPILER_SPIRV_C_SOURCES) \
+	$(MESA26_COMPILER_GLCPP_C_SOURCES) \
+	$(MESA26_COMPILER_CORE_C_SOURCES)
+
+MESA26_COMPILER_STATIC_CXX_SOURCES := \
+	$(MESA26_COMPILER_GLSL_CXX_SOURCES)
+
+# Generated outputs follow the separate generator groups in the recipe.
+MESA26_COMPILER_GLSL_GENERATED_C_SOURCES := \
+	builtin_types_data.c
+
+MESA26_COMPILER_GLSL_GENERATED_CXX_SOURCES := \
+	glsl/glsl_lexer.cpp \
+	glsl/glsl_parser.cpp
+
+MESA26_COMPILER_GLSL_GENERATED_ALWAYS_HEADERS := \
+	builtin_types.h \
+	glsl/glsl_parser.h \
+	glsl/ir_expression_operation.h \
+	glsl/ir_expression_operation_constant.h \
+	glsl/ir_expression_operation_strings.h \
+	glsl/float64_glsl.h
+
+# The current recipe adds these five only when the corresponding Mesa 26 GLSL
+# input exists. All five inputs exist in the pinned Mesa 26.0.0 source tree.
+MESA26_COMPILER_GLSL_GENERATED_OPTIONAL_HEADERS := \
+	glsl/cross_platform_settings_piece_all.h \
+	glsl/bc1_glsl.h \
+	glsl/bc4_glsl.h \
+	glsl/etc2_rgba_stitch_glsl.h \
+	glsl/astc_glsl.h
+
+MESA26_COMPILER_GLSL_GENERATED_HEADERS := \
+	$(MESA26_COMPILER_GLSL_GENERATED_ALWAYS_HEADERS) \
+	$(MESA26_COMPILER_GLSL_GENERATED_OPTIONAL_HEADERS)
+
+MESA26_COMPILER_NIR_GENERATED_C_SOURCES := \
+	nir/nir_constant_expressions.c \
+	nir/nir_intrinsics.c \
+	nir/nir_opcodes.c \
+	nir/nir_opt_algebraic.c
+
+MESA26_COMPILER_NIR_GENERATED_HEADERS := \
+	nir/nir_builder_opcodes.h \
+	nir/nir_intrinsics.h \
+	nir/nir_intrinsics_indices.h \
+	nir/nir_opcodes.h
+
+MESA26_COMPILER_SPIRV_GENERATED_C_SOURCES := \
+	spirv/spirv_info.c \
+	spirv/vtn_gather_types.c
+
+MESA26_COMPILER_SPIRV_GENERATED_HEADERS := \
+	spirv/spirv_info.h \
+	spirv/vtn_generator_ids.h
+
+MESA26_COMPILER_GLCPP_GENERATED_C_SOURCES := \
+	glsl/glcpp/glcpp-lex.c \
+	glsl/glcpp/glcpp-parse.c
+
+MESA26_COMPILER_GLCPP_GENERATED_HEADERS := \
+	glsl/glcpp/glcpp-parse.h
+
+MESA26_COMPILER_GENERATED_C_SOURCES := \
+	$(MESA26_COMPILER_GLSL_GENERATED_C_SOURCES) \
+	$(MESA26_COMPILER_NIR_GENERATED_C_SOURCES) \
+	$(MESA26_COMPILER_SPIRV_GENERATED_C_SOURCES) \
+	$(MESA26_COMPILER_GLCPP_GENERATED_C_SOURCES)
+
+MESA26_COMPILER_GENERATED_CXX_SOURCES := \
+	$(MESA26_COMPILER_GLSL_GENERATED_CXX_SOURCES)
+
+MESA26_COMPILER_GENERATED_HEADERS := \
+	$(MESA26_COMPILER_GLSL_GENERATED_HEADERS) \
+	$(MESA26_COMPILER_NIR_GENERATED_HEADERS) \
+	$(MESA26_COMPILER_SPIRV_GENERATED_HEADERS) \
+	$(MESA26_COMPILER_GLCPP_GENERATED_HEADERS)
+
+# The current AROS recipe emits builtin_types_data.c from builtin_types_c.py.
+# Upstream Mesa 26 names the equivalent Meson output builtin_types.c; keep this
+# explicit delta visible before replacing the recipe.
