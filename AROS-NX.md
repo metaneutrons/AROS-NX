@@ -48,13 +48,14 @@ the invariant that the next sync verifies before it changes anything.
 ## Cross-toolchain release baseline
 
 `aros-toolchains.lock.toml` pins the stable
-[`toolchain-v1-20260924` release](https://github.com/metaneutrons/aros-toolchains/releases/tag/toolchain-v1-20260924).
+[`v0.1.4` release](https://github.com/metaneutrons/aros-toolchains/releases/tag/v0.1.4).
 It enables the nine LLVM 11 artifacts for Linux x86-64, Linux AArch64, and
 macOS ARM64 across `pc-x86_64`, `arm-raspi`, and `rpi-aarch64`. Intel macOS is
 not a release target; RISC-V remains disabled until separately qualified.
 
 Release qualification completed 18 native builds, nine byte-identical
-comparisons, and nine compatibility/relocation lanes. A macOS ARM64 consumer
-smoke test installed and verified the published `pc-x86_64` artifact and
-compiled freestanding C and C++ objects for `x86_64-unknown-aros`. This is not
-evidence of a complete AROS distribution build or a hardware boot test.
+comparisons, and nine compatibility/relocation lanes. Its 44 immutable assets
+passed independent checksum, package-tree, SBOM, provenance, and public-URL
+verification. A macOS ARM64 consumer smoke test installed and verified all
+three released profiles from their public URLs. This is not evidence of a
+complete AROS distribution build or a hardware boot test.
