@@ -17,11 +17,13 @@
 #include <proto/oop.h>
 #include <proto/exec.h>
 #include <proto/graphics.h>
+#include <proto/utility.h>
 #include <proto/layers.h>
 #include <proto/cybergraphics.h>
 #include <cybergraphx/cybergraphics.h>
 #include <graphics/rastport.h>
 #include <graphics/clip.h>
+#include <clib/alib_protos.h>
 #include <hidd/gallium.h>
 #include <hidd/gfx.h>
 
