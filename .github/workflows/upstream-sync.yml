@@ -70,6 +70,15 @@ jobs:
           branch="sync/upstream-${short}"
           remote="https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git"
 
+          # A manually qualified integration may reach main before the mirror
+          # advances. In that case only fast-forward the mirror; proposing an
+          # empty PR would turn a healthy state into a scheduled failure.
+          if git merge-base --is-ancestor "$new_master" origin/main; then
+            git push "$remote" "${new_master}:refs/heads/master"
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if git ls-remote --exit-code origin "refs/heads/${branch}" >/dev/null 2>&1; then
             echo "::error::Sync branch ${branch} already exists but master has not advanced."
             echo 'Resolve or close the existing proposal; this workflow will never overwrite it.'
@@ -125,6 +134,6 @@ jobs:
               echo "- Integration branch: \`$BRANCH\`"
               echo '- Merge remains gated by branch protection and required qualification jobs.'
             else
-              echo '- AROS-NX master already equals upstream master; nothing changed.'
+              echo '- Upstream is integrated into main and the mirror equals upstream master.'
             fi
           } >> "$GITHUB_STEP_SUMMARY"

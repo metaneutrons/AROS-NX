@@ -49,12 +49,12 @@ VOID HIDDNouveauShowCursor(OOP_Object * gfx, BOOL visible)
 
     if (visible)
     {
-        drmModeSetCursor(nvdev->fd, gfxdata->selectedcrtcid, 
+        drmModeSetCursor(NOUVEAU_DEV_FD(nvdev), gfxdata->selectedcrtcid, 
             gfxdata->cursor->handle, 64, 64);
     }
     else
     {
-        drmModeSetCursor(nvdev->fd, gfxdata->selectedcrtcid, 
+        drmModeSetCursor(NOUVEAU_DEV_FD(nvdev), gfxdata->selectedcrtcid, 
             0, 64, 64);
     }
 
@@ -93,7 +93,7 @@ static BOOL HIDDNouveauShowBitmapForSelectedMode(OOP_Object * bm)
     output_ids[0] = ((drmModeConnectorPtr)gfxdata->selectedconnector)->connector_id;
     
 
-    ret = drmModeSetCrtc(nvdev->fd, gfxdata->selectedcrtcid,
+    ret = drmModeSetCrtc(NOUVEAU_DEV_FD(nvdev), gfxdata->selectedcrtcid,
             bmdata->fbid, -bmdata->xoffset, -bmdata->yoffset, output_ids,
             output_count, gfxdata->selectedmode);
     nvlog("[Nouveau] setcrtc crtc %lu fb %lu conn %lu mode %s (%dx%d@%d) offset %ld,%ld pitch %ld bpp %ld: %ld\n",
@@ -111,6 +111,10 @@ static BOOL HIDDNouveauShowBitmapForSelectedMode(OOP_Object * bm)
 BOOL HIDDNouveauSwitchToVideoMode(OOP_Object * bm)
 {
     OOP_Class * cl = OOP_OCLASS(bm);
+
+    /* Shutting down for a reboot: the mode that is up stays up. */
+    if (nouveau_shutting_down)
+        return TRUE;
     struct HIDDNouveauBitMapData * bmdata = OOP_INST_DATA(cl, bm);
     OOP_Object * gfx = NULL;
     struct HIDDNouveauData * gfxdata = NULL; 
@@ -194,7 +198,7 @@ BOOL HIDDNouveauSwitchToVideoMode(OOP_Object * bm)
     /* Add as frame buffer */
     if (bmdata->fbid == 0)
     {
-	    ret = drmModeAddFB(nvdev->fd, bmdata->drawable.width, bmdata->drawable.height,
+	    ret = drmModeAddFB(NOUVEAU_DEV_FD(nvdev), bmdata->drawable.width, bmdata->drawable.height,
 	                bmdata->drawable.depth, bmdata->bytesperpixel * 8,
 	                bmdata->pitch, bmdata->bo->handle, &bmdata->fbid);
         if (ret)
@@ -246,7 +250,7 @@ static CONST_STRPTR HIDDNouveauDisplayName(OOP_Class * cl, OOP_Object * o)
             if (connector)
             {
                 LOCK_ENGINE
-                drmGetMonitorName(carddata->dev->fd, connector->connector_id,
+                drmGetMonitorName(NOUVEAU_DEV_FD(carddata->dev), connector->connector_id,
                     data->name, sizeof(data->name));
                 UNLOCK_ENGINE
 
@@ -359,6 +363,10 @@ ULONG METHOD(NouveauDisplay, Hidd_Display, ShowViewPorts)
 
     nvlog("[Nouveau] ShowViewPorts, top bitmap %p\n", (msg->Data ? (msg->Data->Bitmap) : NULL));
 
+    /* Shutting down for a reboot: no rearranging on the way out. */
+    if (nouveau_shutting_down)
+        return TRUE;
+
     OOP_DoMethod(SD(cl)->compositor, (OOP_Msg)&bscmsg);
 
     return TRUE; /* Indicate driver supports this method */
@@ -461,7 +469,7 @@ BOOL METHOD(NouveauDisplay, Hidd_Display, SetCursorPos)
     gfxdata = OOP_INST_DATA(SD(cl)->gfxclass, gfx);
 
     LOCK_ENGINE
-    drmModeMoveCursor(nvdev->fd, gfxdata->selectedcrtcid, msg->x, msg->y);
+    drmModeMoveCursor(NOUVEAU_DEV_FD(nvdev), gfxdata->selectedcrtcid, msg->x, msg->y);
     UNLOCK_ENGINE
 
     return TRUE;
