@@ -3,10 +3,14 @@ name: Propose upstream sync
 on:
   schedule:
     - cron: '17 4 * * *'
-  workflow_dispatch:
+  # Unlike workflow_dispatch, repository_dispatch always runs the workflow
+  # from the default branch, not from an operator-selected ref.
+  repository_dispatch:
+    types: [propose-upstream-sync]
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: upstream-sync
@@ -14,14 +18,14 @@ concurrency:
 
 jobs:
   propose:
-    if: github.repository == 'metaneutrons/AROS-NX'
+    if: github.repository == 'metaneutrons/AROS-NX' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    env:
-      GH_TOKEN: ${{ secrets.AROS_SYNC_TOKEN }}
     steps:
       - name: Require the dedicated sync credential
+        env:
+          SYNC_TOKEN: ${{ secrets.AROS_SYNC_TOKEN }}
         run: |
-          if [ -z "${GH_TOKEN:-}" ]; then
+          if [ -z "${SYNC_TOKEN:-}" ]; then
             echo '::error::AROS_SYNC_TOKEN is not configured.'
             echo 'A dedicated fine-grained credential is required so the created pull request triggers normal CI.'
             exit 64
@@ -38,6 +42,8 @@ jobs:
         id: sync
         env:
           REPOSITORY: ${{ github.repository }}
+          SYNC_TOKEN: ${{ secrets.AROS_SYNC_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -49,18 +55,14 @@ jobs:
           new_master=$(git rev-parse upstream/master)
           printf 'Current mirror: %s\nUpstream head: %s\n' "$old_master" "$new_master"
 
-          if [ "$old_master" = "$new_master" ]; then
-            echo 'changed=false' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           if ! git merge-base --is-ancestor "$old_master" "$new_master"; then
             echo '::error::Upstream master is not a fast-forward of the AROS-NX mirror.'
             echo 'Refusing to rewrite master or guess how upstream history changed.'
             exit 65
           fi
 
-          if ! git merge-base --is-ancestor "$old_master" origin/main; then
+          if [ "$old_master" != "$new_master" ] &&
+             ! git merge-base --is-ancestor "$old_master" origin/main; then
             echo '::error::AROS-NX main does not contain the currently mirrored upstream head.'
             echo 'Repair the permanent branch invariant before syncing more upstream commits.'
             exit 66
@@ -68,7 +70,38 @@ jobs:
 
           short=${new_master:0:12}
           branch="sync/upstream-${short}"
-          remote="https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git"
+
+          if [ "$old_master" = "$new_master" ]; then
+            if git merge-base --is-ancestor "$new_master" origin/main; then
+              echo 'changed=false' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            # The mirror may already have advanced while the integration PR
+            # remains open. Do not claim the source is integrated into main.
+            if ! git ls-remote --exit-code origin "refs/heads/${branch}" >/dev/null 2>&1; then
+              echo '::error::The mirror is ahead of main, but its integration branch is missing.'
+              exit 69
+            fi
+            git fetch --no-tags origin "refs/heads/${branch}:refs/remotes/origin/${branch}"
+            if ! git merge-base --is-ancestor "$new_master" "origin/${branch}"; then
+              echo '::error::The existing integration branch does not contain the mirrored upstream commit.'
+              exit 70
+            fi
+            open_prs=$(gh pr list --repo "$REPOSITORY" --head "$branch" --state open --json number --jq 'length')
+            if [ "$open_prs" != 1 ]; then
+              echo '::error::The mirror is ahead of main without exactly one open integration PR.'
+              exit 71
+            fi
+            {
+              echo 'changed=pending'
+              echo "branch=${branch}"
+              echo "upstream_sha=${new_master}"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          remote="https://x-access-token:${SYNC_TOKEN}@github.com/${REPOSITORY}.git"
 
           # A manually qualified integration may reach main before the mirror
           # advances. In that case only fast-forward the mirror; proposing an
@@ -110,6 +143,7 @@ jobs:
       - name: Open the integration pull request
         if: steps.sync.outputs.changed == 'true'
         env:
+          GH_TOKEN: ${{ secrets.AROS_SYNC_TOKEN }}
           BRANCH: ${{ steps.sync.outputs.branch }}
           UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
         run: |
@@ -133,6 +167,10 @@ jobs:
               echo "- Mirrored upstream commit: \`$UPSTREAM_SHA\`"
               echo "- Integration branch: \`$BRANCH\`"
               echo '- Merge remains gated by branch protection and required qualification jobs.'
+            elif [ "$CHANGED" = 'pending' ]; then
+              echo "- Mirrored upstream commit: \`$UPSTREAM_SHA\`"
+              echo "- Integration branch: \`$BRANCH\`"
+              echo '- Its existing pull request remains open; main does not yet contain this upstream commit.'
             else
               echo '- Upstream is integrated into main and the mirror equals upstream master.'
             fi

@@ -13,11 +13,22 @@ branches have deliberately different jobs:
 
 The daily and manual `Propose upstream sync` workflow never force-pushes or
 rebases a permanent branch. It stops if upstream rewrote history, if `main`
-does not contain the previous mirrored commit, if a proposal for the same
-upstream commit already exists, or if the merge conflicts. A successful run
+does not contain the previous mirrored commit before a new proposal, or if the
+merge conflicts. A successful run
 fast-forwards `master`, merges that immutable commit into a new sync branch and
 opens a pull request. Branch protection—not the sync job—decides whether the
 proposal may enter `main`.
+
+An existing integration PR is reported as pending when `master` already mirrors
+its upstream commit but `main` does not contain it. The workflow does not claim
+that a pending proposal was integrated. Manual runs use a repository dispatch
+so the credential-bearing workflow always executes from the protected default
+branch, never from an operator-selected branch:
+
+```sh
+gh api -X POST repos/metaneutrons/AROS-NX/dispatches \
+  -f event_type=propose-upstream-sync
+```
 
 ## Required repository configuration
 
