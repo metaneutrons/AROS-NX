@@ -88,7 +88,12 @@ jobs:
               echo '::error::The existing integration branch does not contain the mirrored upstream commit.'
               exit 70
             fi
-            open_prs=$(gh pr list --repo "$REPOSITORY" --head "$branch" --state open --json number --jq 'length')
+            branch_head=$(git rev-parse "origin/${branch}")
+            open_prs=$(
+              gh api "repos/${REPOSITORY}/pulls?state=open&head=metaneutrons:${branch}&base=main" |
+                jq --arg sha "$branch_head" \
+                  '[.[] | select(.head.sha == $sha and .head.repo.full_name == "metaneutrons/AROS-NX")] | length'
+            )
             if [ "$open_prs" != 1 ]; then
               echo '::error::The mirror is ahead of main without exactly one open integration PR.'
               exit 71
