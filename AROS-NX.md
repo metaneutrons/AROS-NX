@@ -45,6 +45,24 @@ AROS-NX permits only merge commits for pull requests. Squash and rebase merges
 would discard the original upstream commit as an ancestor of `main`, breaking
 the invariant that the next sync verifies before it changes anything.
 
+## Product CI
+
+`AROS-NX CI` owns filename and line-ending hygiene, locked source preparation,
+and the nine Linux/macOS product lanes. Pull requests with only Markdown file
+changes run the lightweight gates; all other pull requests run the full product
+matrix. A protected merge to `main` does not repeat the already qualified
+matrix. Manual dispatch always runs it. The required `CI Success` check verifies
+the selected gates, including the source-preparation job, so a failed or
+skipped prerequisite cannot be mistaken for a successful product build.
+
+The matrix uses hash-pinned native archives from the published `aros-tools`
+release. `scripts/ci/product-sources.plan.json` records each locked source and
+`scripts/ci/product-sources.staging.json` maps it into a fresh build tree.
+The Linux source job exports only measured files from the fetch cache; every
+product lane verifies them again before CMake configuration. Add new product
+sources to these contracts rather than adding another source-specific workflow
+job. Intel macOS remains outside the qualified host matrix.
+
 ## Cross-toolchain release baseline
 
 `aros-toolchains.lock.toml` pins the stable

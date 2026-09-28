@@ -1,5 +1,6 @@
 
 # /
+/scripts/ci/__pycache__/
 /config.log
 /local
 /mmake.cache
