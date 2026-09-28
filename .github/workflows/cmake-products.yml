@@ -41,6 +41,8 @@ jobs:
             "$RUNNER_TEMP/aros-tools.tar.gz" | sha256sum --check --status
           tar -xzf "$RUNNER_TEMP/aros-tools.tar.gz" -C "$RUNNER_TEMP"
 
+      # The plan prefers the commit-pinned, lock-verified source seed; Gitiles is
+      # a fallback because both of its archive URLs use the same service.
       - name: Fetch and verify the locked source once
         run: |
           grep -Fxq \
