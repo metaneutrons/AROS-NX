@@ -10,6 +10,7 @@
 #include <hidd/hidd.h>
 #include <hidd/input.h>
 #include <hidd/controller.h>
+#include <libraries/lowlevel.h>
 #include <oop/oop.h>
 #include <utility/hooks.h>
 #include <utility/tagitem.h>
@@ -69,10 +70,10 @@
         context. Output is implemented by overriding the IID_Hidd_Controller
         output methods and calling the superclass afterwards.
 
-        Devices of family vHidd_Controller_Family_XInput must expose their raw
-        controls in XINPUT_GAMEPAD order (buttons A B X Y LB RB Back Start LS RS
-        Guide DpadUp DpadDown DpadLeft DpadRight; axes LX LY RX RY LT RT) to get
-        the built-in layout.
+        Knowledge about particular devices (layouts, quirks) belongs to the driver
+        class: a driver that knows its device passes aHidd_Controller_BindingTable;
+        without it the subsystem synthesises a layout from the HID usages in the
+        control table.
 
 *****************************************************************************************/
 
@@ -256,6 +257,7 @@ BOOL ControllerHW__HW__SetUpDriver(OOP_Class *cl, OOP_Object *o, struct pHW_SetU
     struct ControllerHWData *hw = OOP_INST_DATA(cl, o);
     struct ControllerDevice *dev = ctrl_Device(cl, msg->driverObject);
 
+    ctrl_LowLevelInstall((struct controllerbase *)cl->UserData);
     if (!dev)
     {
         D(bug("[Controller:HW] %s: 0x%p is not a controller device\n", __func__, msg->driverObject));
@@ -421,6 +423,8 @@ BOOL ControllerHW__HW_Controller__Configure(OOP_Class *cl, OOP_Object *o, struct
     struct ControllerHWData *hw = OOP_INST_DATA(cl, o);
     struct TagItem *tag, *tstate = msg->tags;
 
+    ctrl_LowLevelInstall((struct controllerbase *)cl->UserData);
+
     while ((tag = NextTagItem(&tstate)))
     {
         ULONG idx;
@@ -461,4 +465,21 @@ UWORD ControllerHW__HW_Controller__GetSlotDevice(OOP_Class *cl, OOP_Object *o, s
     if (msg->slot >= HIDD_CONTROLLER_LEGACY_PORTS)
         return 0;
     return hw->slot[msg->slot];
+}
+
+/* The joyport encoding without lowlevel.library in the way (for tools and tests) */
+ULONG ControllerHW__HW_Controller__ReadJoyPort(OOP_Class *cl, OOP_Object *o, struct pHW_Controller_ReadJoyPort *msg)
+{
+    struct ControllerHWData *hw = OOP_INST_DATA(cl, o);
+
+    return ctrl_LowLevelRead(hw, msg->port, JP_TYPE_NOTAVAIL);
+}
+
+BOOL ControllerHW__HW_Controller__SetJoyPortAttrs(OOP_Class *cl, OOP_Object *o, struct pHW_Controller_SetJoyPortAttrs *msg)
+{
+    struct ControllerHWData *hw = OOP_INST_DATA(cl, o);
+
+    if (!msg->tags)
+        return FALSE;
+    return ctrl_LowLevelSetAttrs(cl, hw, msg->port, msg->tags, FALSE);
 }
