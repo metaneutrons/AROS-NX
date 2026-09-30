@@ -31,7 +31,6 @@ static int HiddLlvmpipe_InitLib(LIBBASETYPEPTR LIBBASE)
         {
             if ((LIBBASE->sd.hiddGalliumAB = OOP_ObtainAttrBase((STRPTR)IID_Hidd_Gallium)))
             {
-                Llvmpipe_ForceLLVMPipeRTTI();
                 return TRUE;
             }
             CloseLibrary(LIBBASE->sd.CyberGfxBase);
