@@ -30,7 +30,6 @@ USER_LDFLAGS += -Wl,--end-group
 LLVMPIPE_HIDD_FILES := \
             llvmpipe_init \
             llvmpipe_galliumclass \
-            llvmpipe_llvm_rtti \
             $(SRCDIR)/workbench/libs/mesa/emul_arosc
 
 # llvmpipe needs the target-side LLVM libraries, which are only built with the

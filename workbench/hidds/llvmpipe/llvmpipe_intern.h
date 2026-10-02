@@ -53,12 +53,4 @@ LIBBASETYPE
 
 #define SD(cl) (&BASE(cl->UserData)->sd)
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-void Llvmpipe_ForceLLVMPipeRTTI(void);
-#ifdef __cplusplus
-}
-#endif
-
 #endif
