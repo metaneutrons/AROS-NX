@@ -179,19 +179,23 @@ int krnP4GetC(void)
 #endif
 
 /*
- * With P4_GIANT both harts print; the lock keeps one hart's bytes from
- * landing in the middle of the other's endpoint transaction. It is
- * recursive per hart and bounded, so an interrupt that prints on the
- * same hart, or a stuck peer, never hangs the caller.
+ * With P4_GIANT both harts print; the lock keeps one hart's byte from
+ * landing in the middle of the other's endpoint transaction. It is held
+ * for one character with interrupts masked: a task must not be preempted
+ * while holding it, or it could migrate and leave the lock owned by the
+ * hart it left. Bounded, so a stuck peer never hangs the caller.
  */
 void krnP4PutC(char c)
 {
 #if defined(P4_GIANT)
+    uint32_t s = p4_giant_mask();
+
     p4_giant_console_lock();
 #endif
     console_putc(c);
 #if defined(P4_GIANT)
     p4_giant_console_unlock();
+    p4_giant_unmask(s);
 #endif
 }
 
@@ -384,14 +388,8 @@ int krnP4DiagnosticLine(const char *line)
 
 void krnP4PutStr(const char *s)
 {
-#if defined(P4_GIANT)
-    p4_giant_console_lock();
-#endif
     while (*s)
         krnP4PutC(*s++);
-#if defined(P4_GIANT)
-    p4_giant_console_unlock();
-#endif
 }
 
 void krnP4PutHex32(uint32_t val)

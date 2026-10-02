@@ -47,6 +47,7 @@ struct p4_giant_lock
 } __attribute__((aligned(64)));
 
 static struct p4_giant_lock giant_f, giant_d, giant_console, giant_cache;
+static uint32_t giant_console_timeouts;
 
 P4_SRAMDATA volatile uint32_t p4_giant_park_request;
 P4_SRAMDATA volatile uint32_t p4_giant_parked;
@@ -120,9 +121,18 @@ P4_SRAMCODE int p4_giant_park_others(void)
 
     if (!p4_giant_cpus[1].online)
         return 1;
-    __asm__ volatile("fence rw, rw" : : : "memory");
-    p4_giant_park_request = other + 1;
-    __asm__ volatile("fence rw, rw" : : : "memory");
+    /* If the other hart is asking at the same moment, park for it first;
+       exactly one request is outstanding at any time. */
+    for (;;)
+    {
+        uint32_t expected = 0;
+
+        if (__atomic_compare_exchange_n(&p4_giant_park_request, &expected,
+                                        other + 1, 0, __ATOMIC_SEQ_CST,
+                                        __ATOMIC_SEQ_CST))
+            break;
+        giant_service_park();
+    }
     *(volatile uint32_t *)P4_GIANT_IPI_FROM(other) = 1;
     __asm__ volatile("fence iorw, iorw" : : : "memory");
     start = cycles();
@@ -448,20 +458,118 @@ void p4_giant_idle_leave(void)
     cpu->idle = 0;
 }
 
+#if defined(P4_GIANT_TEST)
+/* Distinct tasks hart 1 has run, for the diagnostics (D held). */
+#define GIANT_SEEN 48
+static struct Task *giant_seen[GIANT_SEEN];
+static uint32_t giant_seen_count[GIANT_SEEN];
+static unsigned int giant_seen_n;
+
+static void giant_note_hart1(struct Task *t)
+{
+    unsigned int i;
+
+    for (i = 0; i < giant_seen_n; i++)
+        if (giant_seen[i] == t)
+        {
+            giant_seen_count[i]++;
+            return;
+        }
+    if (giant_seen_n < GIANT_SEEN)
+    {
+        giant_seen[giant_seen_n] = t;
+        giant_seen_count[giant_seen_n++] = 1;
+    }
+}
+
+/* Names may belong to tasks that have ended; print only live-looking ones. */
+static void giant_seen_report(void)
+{
+    unsigned int i;
+
+    krnP4PutStr("[giant] hart1 ran ");
+    krnP4PutDec(giant_seen_n);
+    krnP4PutStr(" tasks:");
+    for (i = 0; i < giant_seen_n; i++)
+    {
+        struct Task *t = giant_seen[i];
+
+        krnP4PutStr(" ");
+        if (t->tc_State == TS_RUN || t->tc_State == TS_READY ||
+            t->tc_State == TS_WAIT)
+            krnP4PutStr(t->tc_Node.ln_Name ? t->tc_Node.ln_Name : "?");
+        else
+            krnP4PutStr("(gone)");
+        krnP4PutStr("x");
+        krnP4PutDec(giant_seen_count[i]);
+    }
+    krnP4PutStr("\n");
+}
+#endif
+
 void p4_giant_dispatched(void)
 {
-    struct p4_giant_cpu *cpu = &p4_giant_cpus[p4_giant_hart()];
+    uint32_t me = p4_giant_hart();
+    struct p4_giant_cpu *cpu = &p4_giant_cpus[me];
 
     cpu->idle = 0;
     cpu->dispatched = 1;
     cpu->n_dispatch++;
+#if defined(P4_GIANT_TEST)
+    if (me == 1)
+        giant_note_hart1(cpu->current);
+#endif
 }
+
+#if defined(P4_GIANT_TEST)
+/* Every ten seconds, from hart 0's tick: what each hart has been doing. */
+static void giant_stats_line(void)
+{
+    static uint32_t ticks;
+    unsigned int h;
+
+    if (++ticks % (10 * P4_TICK_HZ))
+        return;
+    /* Diagnostics only: lossless while the host logger reads. */
+    krnP4ConsoleBlocking();
+    krnP4PutStr("\n[giant] t=");
+    krnP4PutDec(ticks / P4_TICK_HZ);
+    for (h = 0; h < P4_GIANT_HARTS; h++)
+    {
+        struct p4_giant_cpu *c = &p4_giant_cpus[h];
+        struct Task *t = c->idle ? NULL : c->current;
+
+        krnP4PutStr(h ? " | h1 " : " | h0 ");
+        krnP4PutStr("disp=");
+        krnP4PutDec(c->n_dispatch);
+        krnP4PutStr(" idle=");
+        krnP4PutDec(c->n_idle);
+        krnP4PutStr(" park=");
+        krnP4PutDec(c->n_park);
+        krnP4PutStr(" fref=");
+        krnP4PutDec(c->n_frefuse);
+        krnP4PutStr(" fspin=");
+        krnP4PutDec(c->n_fspin);
+        krnP4PutStr(" now=");
+        krnP4PutStr(t && t->tc_Node.ln_Name ? t->tc_Node.ln_Name : "-");
+    }
+    krnP4PutStr(" | contimeout=");
+    krnP4PutDec(giant_console_timeouts);
+    krnP4PutStr("\n");
+    if (ticks % (60 * P4_TICK_HZ) == 0)
+        giant_seen_report();
+    krnP4ConsoleRuntime();
+}
+#endif
 
 /* Hart 0 timer interrupt: hart 1 has no tick of its own. */
 void p4_giant_tick(void)
 {
     if (p4_giant_cpus[1].online)
         p4_giant_ipi(1, P4_GIANT_WORK_TICK);
+#if defined(P4_GIANT_TEST)
+    giant_stats_line();
+#endif
 }
 
 int p4_giant_task_allowed(struct Task *task, uint32_t hart)
@@ -552,12 +660,16 @@ void p4_giant_console_lock(void)
     if (lock_own(&giant_console, me))
         giant_console.depth[me]++;
     else
+    {
         for (i = 0; i < 200000; i++)
             if (lock_try(&giant_console, me))
             {
                 giant_console.depth[me] = 1;
                 break;
             }
+        if (i == 200000)
+            giant_console_timeouts++;
+    }
     p4_giant_unmask(s);
 }
 

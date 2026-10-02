@@ -59,7 +59,11 @@ Known limits of this stage: code that writes SysBase->TDNestCnt directly
 directly sees hart0's task; Forbid() does not stop a task that is already
 running on the other hart and needs neither lock; priority is not a mutual
 exclusion between harts. RemTask() of a task running on the other hart evicts
-it through an IPI. Tasks do not yet migrate by default.
+it through an IPI. With `P4_GIANT_MIGRATE=1` every task created by
+NewAddTask() may run on either hart; Exec's boot task and anything older
+stay on hart0. A hardware driver must not hold a short-term lock across a
+point where its task can be preempted, or it may migrate holding it (found
+and fixed in the console lock, 2026-10-02).
 
 Removal test, kept as its own item: each narrowing of the Giant (a subsystem
 moved to its own lock) must show, on hardware, unchanged results of the

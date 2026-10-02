@@ -137,8 +137,9 @@ static struct Task *spawn(struct worker *w, const char *name, BYTE pri,
     w->started = w->done = w->count = w->errors = w->harts = w->stop = 0;
     if (!AddTask(t, (APTR)entry, NULL))
         return NULL;
+    /* Replace, not add: P4_GIANT_MIGRATE gives new tasks hart 1 already. */
     Disable();
-    t->tc_Flags |= harts;
+    t->tc_Flags = (t->tc_Flags & ~(P4_TF_HART1_OK | P4_TF_HART0_NO)) | harts;
     Enable();
     SetTaskPri(t, pri);
     return t;
