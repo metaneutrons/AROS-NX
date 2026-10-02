@@ -55,6 +55,9 @@ SECTIONS
          */
         KEEP(*(.flash.appdesc))
         *(SORT_NONE(.aros.init*))
+        __p4_secondary_worker_start = .;
+        *(.sramtext.secondary_mailbox)
+        __p4_secondary_worker_end = .;
         *(.sramtext*)               /* see P4_SRAMCODE - already SRAM here */
         *(.text*)                   /* wildcard for "gcc -ffunction-sections" */
         *(.gnu.linkonce.t.*)

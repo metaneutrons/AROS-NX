@@ -79,6 +79,9 @@ SECTIONS
      */
     .sramtext : {
         __sramtext_start = .;
+        __p4_secondary_worker_start = .;
+        *(.sramtext.secondary_mailbox)
+        __p4_secondary_worker_end = .;
         *(.sramtext*)
         . = ALIGN(4);
         __sramtext_end = .;

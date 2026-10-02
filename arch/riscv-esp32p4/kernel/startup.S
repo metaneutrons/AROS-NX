@@ -22,10 +22,41 @@
 	.globl	_start
 	.type	_start,%function
 
+#include "secondary_hw.h"
+
 _start:
 	/* Mask machine interrupts until there is a dispatcher for them */
 	csrw	mie, zero
 	csrci	mstatus, 8		/* MSTATUS_MIE               */
+
+#if defined(P4_SECONDARY_PROBE) || defined(__AROSEXEC_SMP__)
+	/* A retained diagnostic hart must stop BEFORE shared BSS is cleared.
+	   Preserve core 0 and every unrelated clock/reset bit. No stack/C call. */
+	li t0, P4_SECONDARY_RESET_REG
+	lw t1, 0(t0)
+	mv s0, t1                 /* inherited control state, before BSS */
+	ori t1, t1, P4_SECONDARY_RESET_BIT
+	sw t1, 0(t0)
+	fence iorw, iorw
+	li t0, P4_SECONDARY_CLOCK_REG
+	lw t1, 0(t0)
+	mv s1, t1
+	andi t1, t1, -17
+	sw t1, 0(t0)
+	li t0, P4_SECONDARY_BOOT_REG
+	sw zero, 0(t0)
+	fence iorw, iorw
+	lw s4, 0(t0)
+	bnez s4, __startup_hang
+	li t0, P4_SECONDARY_RESET_REG
+	lw s2, 0(t0)
+	andi t1, s2, P4_SECONDARY_RESET_BIT
+	beqz t1, __startup_hang
+	li t0, P4_SECONDARY_CLOCK_REG
+	lw s3, 0(t0)
+	andi t1, s3, P4_SECONDARY_CLOCK_BIT
+	bnez t1, __startup_hang
+#endif
 
 	/* Global pointer. Linker relaxation has to be off while gp itself
 	   is being loaded, or the load relaxes against the gp it is
@@ -96,3 +127,10 @@ __boot_hartid:
 __boot_stack:
 	.space	16384
 __boot_stack_end:
+
+#ifdef P4_SECONDARY_PROBE
+	.balign 16
+	.globl __p4_secondary_boot_snapshot
+__p4_secondary_boot_snapshot:
+	.space 32
+#endif

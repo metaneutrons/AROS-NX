@@ -7480,6 +7480,35 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             (void)krnP4PublishPSRAM(P4_PSRAM_WINDOW_BASE);
     }
 
+#ifdef P4_SECONDARY_PROBE
+    {
+        extern int krnP4SecondaryProbe(void);
+        int secondary = krnP4SecondaryProbe();
+        /* Fail closed if reset/clock isolation cannot be confirmed. */
+        if (!secondary)
+        {
+            krnP4PutStr("[smp] unsafe secondary isolation; withholding Exec\n");
+            for (;;)
+                asm volatile("wfi");
+        }
+        if (secondary == 3)
+        {
+            asm volatile("csrw mie, zero\ncsrci mstatus, 8" ::: "memory");
+            krnP4PutStr("[smp-e2] READY; primary parked before Exec\n");
+            for (;;)
+                asm volatile("wfi");
+        }
+        if (secondary == 2)
+        {
+            /* Diagnostic retention: both harts in private park, no Exec.
+               The host resets only after seeing the READY marker. */
+            asm volatile("csrw mie, zero\ncsrci mstatus, 8" ::: "memory");
+            krnP4PutStr("[smp] retained READY; primary parked before Exec\n");
+            for (;;)
+                asm volatile("wfi");
+        }
+    }
+#endif
     krnP4PutStr("[console] runtime output nonblocking; saturated bytes dropped\n");
     krnP4ConsoleRuntime();
     krnStartExec();
