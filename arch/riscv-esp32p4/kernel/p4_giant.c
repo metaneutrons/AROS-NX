@@ -44,7 +44,11 @@ struct p4_giant_lock
     volatile uint32_t word;
     volatile uint32_t owner;        /* hart + 1, written by the owner */
     uint32_t depth[P4_GIANT_HARTS]; /* recursive locks only */
+    volatile uint32_t waiting[P4_GIANT_HARTS]; /* spinning for F or D */
 } __attribute__((aligned(64)));
+
+/* How long a hart lets a waiting peer go first: about 55 us at CPU360. */
+#define GIANT_COURTESY_CYCLES 20000u
 
 static struct p4_giant_lock giant_f, giant_d, giant_console, giant_cache;
 static uint32_t giant_console_timeouts;
@@ -54,8 +58,31 @@ P4_SRAMDATA volatile uint32_t p4_giant_parked;
 
 /* Hart 1 boot data, read by p4_giant_entry.S before it has a C runtime */
 P4_SRAMDATA uint32_t p4_giant_boot[4];
-static uint8_t giant_isr1[8192] __attribute__((aligned(16)));
-static uint8_t giant_isr0[8192] __attribute__((aligned(16)));
+#define GIANT_ISR_BYTES 8192
+#define GIANT_ISR_PAINT 0x5aa5c33cu
+static uint8_t giant_isr1[GIANT_ISR_BYTES] __attribute__((aligned(16)));
+static uint8_t giant_isr0[GIANT_ISR_BYTES] __attribute__((aligned(16)));
+
+/* Fill an ISR stack with a pattern; the deepest overwritten word shows the
+   high-water mark (the stacks sit next to each other in SRAM). */
+static void giant_paint(uint8_t *stack)
+{
+    uint32_t *w = (uint32_t *)stack;
+    unsigned int i;
+
+    for (i = 0; i < GIANT_ISR_BYTES / 4; i++)
+        w[i] = GIANT_ISR_PAINT;
+}
+
+uint32_t p4_giant_isr_used(unsigned int hart)
+{
+    const uint32_t *w = (const uint32_t *)(hart ? giant_isr1 : giant_isr0);
+    unsigned int i;
+
+    for (i = 0; i < GIANT_ISR_BYTES / 4 && w[i] == GIANT_ISR_PAINT; i++)
+        ;
+    return GIANT_ISR_BYTES - i * 4;
+}
 uint8_t p4_giant_boot_stack1[2048] __attribute__((aligned(16)));
 
 extern void __p4_giant_entry(void);
@@ -182,28 +209,50 @@ static inline void lock_release(struct p4_giant_lock *l)
     __atomic_store_n(&l->word, 0u, __ATOMIC_RELEASE);
 }
 
+/*
+ * Plain test-and-set is unfair: a hart that releases F and takes it again a
+ * few instructions later, as every Exec call does, can starve the other
+ * hart indefinitely (observed: hart 1 stuck for 30 minutes under load). So
+ * a waiter announces itself, and a hart about to take the lock first lets
+ * an announced peer go, for a bounded time so a stale flag costs only that.
+ */
+static void giant_acquire(struct p4_giant_lock *l, uint32_t me,
+                          uint32_t *spins)
+{
+    volatile uint32_t *peer = &l->waiting[me ^ 1];
+
+    if (*peer)
+    {
+        uint32_t start = cycles();
+
+        while (*peer && (uint32_t)(cycles() - start) < GIANT_COURTESY_CYCLES)
+            giant_service_park();
+    }
+    if (lock_try(l, me))
+        return;
+    l->waiting[me] = 1;
+    __asm__ volatile("fence rw, rw" : : : "memory");
+    while (!lock_try(l, me))
+    {
+        (*spins)++;
+        while (l->word)
+            giant_service_park();
+    }
+    l->waiting[me] = 0;
+}
+
 /* Interrupts as the caller has them; normally on, so this hart keeps
    taking IPIs and its own device interrupts while it waits. */
 static void giant_spin_f(struct p4_giant_cpu *cpu, uint32_t me)
 {
-    while (!lock_try(&giant_f, me))
-    {
-        cpu->n_fspin++;
-        while (giant_f.word)
-            giant_service_park();
-    }
+    giant_acquire(&giant_f, me, &cpu->n_fspin);
 }
 
 /* Interrupts off. The holder of D is a trap handler or a Disable()
    section; both are short and neither waits for this hart. */
 static void giant_spin_d(struct p4_giant_cpu *cpu, uint32_t me)
 {
-    while (!lock_try(&giant_d, me))
-    {
-        cpu->n_dspin++;
-        while (giant_d.word)
-            giant_service_park();
-    }
+    giant_acquire(&giant_d, me, &cpu->n_dspin);
 }
 
 int p4_giant_own_f(void)
@@ -211,11 +260,16 @@ int p4_giant_own_f(void)
     return lock_own(&giant_f, p4_giant_hart());
 }
 
+/* The dispatcher's try-lock yields to a peer that is already waiting. */
 int p4_giant_try_f(void)
 {
     uint32_t me = p4_giant_hart();
 
-    return lock_own(&giant_f, me) || lock_try(&giant_f, me);
+    if (lock_own(&giant_f, me))
+        return 1;
+    if (giant_f.waiting[me ^ 1])
+        return 0;
+    return lock_try(&giant_f, me);
 }
 
 void p4_giant_release_f(void)
@@ -226,6 +280,8 @@ void p4_giant_release_f(void)
     if (!lock_own(&giant_f, me))
         return;
     lock_release(&giant_f);
+    /* Store-to-load order: the peer sets want_f, fences, then tries. */
+    __asm__ volatile("fence rw, rw" : : : "memory");
     if (p4_giant_cpus[other].want_f && p4_giant_cpus[1].online)
     {
         p4_giant_cpus[other].want_f = 0;
@@ -515,6 +571,8 @@ void p4_giant_dispatched(void)
     cpu->idle = 0;
     cpu->dispatched = 1;
     cpu->n_dispatch++;
+    /* An evicted task may have been waiting for F; nobody waits now. */
+    giant_f.waiting[me] = 0;
 #if defined(P4_GIANT_TEST)
     if (me == 1)
         giant_note_hart1(cpu->current);
@@ -559,6 +617,10 @@ static void giant_stats_line(void)
     }
     krnP4PutStr(" | contimeout=");
     krnP4PutDec(giant_console_timeouts);
+    krnP4PutStr(" isr0=");
+    krnP4PutDec(p4_giant_isr_used(0));
+    krnP4PutStr(" isr1=");
+    krnP4PutDec(p4_giant_isr_used(1));
     krnP4PutStr("\n");
     if (ticks % (60 * P4_TICK_HZ) == 0)
         giant_seen_report();
@@ -802,6 +864,8 @@ void p4_giant_init_primary(void)
 {
     uint32_t top = (uint32_t)(uintptr_t)(giant_isr0 + sizeof(giant_isr0));
 
+    giant_paint(giant_isr0);
+    giant_paint(giant_isr1);
     p4_giant_cpus[0].online = 1;
     __asm__ volatile("csrw mscratch, %0" : : "r"(top) : "memory");
 }

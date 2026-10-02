@@ -173,5 +173,6 @@ void p4_giant_cache_unlock(uint32_t state);
 
 int  p4_giant_start_secondary(void);
 void p4_giant_report(const char *why);
+uint32_t p4_giant_isr_used(unsigned int hart);
 
 #endif /* P4_GIANT_H */

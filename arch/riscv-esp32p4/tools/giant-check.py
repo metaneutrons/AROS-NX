@@ -12,6 +12,11 @@
 #       rounds never decrease, errors stay 0, and both the Forbid() and the
 #       semaphore total equal the sum of the workers' own counts within the
 #       four workers that may be inside the section at sampling time;
+#     - both harts keep dispatching: in every 60 s window of statistics
+#       lines each hart's dispatch count grows (a frozen hart is a stall,
+#       even if everything else looks clean);
+#     - with --stress, both harts' share of stress rounds grows in every
+#       60 s window as well;
 #     - none of the failure markers appears.
 #
 #   The runtime console is lossy outside these lines, so the absence of an
@@ -25,6 +30,23 @@ FAILURES = [
     "[trap]", "fatal", "Alert", "[MM]", "did not park", "park refused",
     "lacks F", "eviction still pending", "spawn failed",
 ]
+
+
+def progress(what, series, window=60):
+    """Both values must grow within every window; returns problem strings."""
+    out = []
+    times = sorted(series)
+    for hart in (0, 1):
+        for i, t in enumerate(times):
+            later = [u for u in times[i + 1:] if u - t >= window]
+            if not later:
+                break
+            u = later[0]
+            if series[u][hart] <= series[t][hart]:
+                out.append("%s of hart %d did not grow from t=%d to t=%d (%d)"
+                           % (what, hart, t, u, series[t][hart]))
+                break
+    return out
 
 
 def main():
@@ -60,6 +82,10 @@ def main():
         missing = [t for t in range(10, seconds + 1, 10) if t not in stats]
         if missing:
             problems.append("missing statistics lines t=%s" % missing[:10])
+    disp = {}
+    for m in re.finditer(r"\[giant\] t=(\d+) \| h0 disp=(\d+) .*? \| h1 disp=(\d+) ", text):
+        disp[int(m.group(1))] = (int(m.group(2)), int(m.group(3)))
+    problems += progress("dispatch", disp)
     bad_console = re.findall(r"contimeout=([1-9]\d*)", text)
     if bad_console:
         problems.append("console lock timeouts %s" % bad_console[:5])
@@ -84,6 +110,14 @@ def main():
                 problems.append("forbid %d/%d at line %d" % (ft, fo, n))
             if not (0 <= st - so <= 4) and not (0 <= so - st <= 4):
                 problems.append("semaphore %d/%d at line %d" % (st, so, n))
+        # Stress lines follow the statistics line of the same tick.
+        share = {}
+        for m in re.finditer(r"\[giant\] t=(\d+) \|[^\n]*\n(?:[^\n]*\n){0,2}?"
+                             r"\[giant-stress\] rounds=\d+ on_h0=(\d+) on_h1=(\d+)",
+                             text):
+            share[int(m.group(1))] = (int(m.group(2)), int(m.group(3)))
+        # The first minute is the boot; workers start after the self-test.
+        problems += progress("stress share", {t: v for t, v in share.items() if t >= 60})
         if lines:
             rounds, h0, h1 = (int(x) for x in lines[-1][:3])
             print("stress: %d lines, %d rounds, hart0 %d, hart1 %d"

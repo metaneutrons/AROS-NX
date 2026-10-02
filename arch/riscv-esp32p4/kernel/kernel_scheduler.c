@@ -141,13 +141,19 @@ struct Task *core_Dispatch(void)
     {
         if (!p4_giant_task_allowed(task, hart))
             continue;
-        /* A task that blocked in Wait() resumes inside its Disable(). */
+        /* A task that blocked in Wait() resumes inside its Disable().
+           Announce the interest before trying, so an F holder releasing
+           right now still wakes this hart. */
         need_f = task->tc_IDNestCnt >= 0;
-        if (need_f && !p4_giant_try_f())
+        if (need_f)
         {
             cpu->want_f = 1;
-            cpu->n_frefuse++;
-            continue;
+            __asm__ volatile("fence rw, rw" : : : "memory");
+            if (!p4_giant_try_f())
+            {
+                cpu->n_frefuse++;
+                continue;
+            }
         }
         found = task;
         break;

@@ -35,6 +35,11 @@ Amiga meaning system wide:
 
 Lock order is F before D. Disable() takes F first; a trap holds D and may only
 try-lock F (the dispatcher, for a task that resumes inside Disable()).
+Both locks must be fair. Plain test-and-set starved hart1 for 30 minutes
+under load (2026-10-02): every Exec call on hart0 releases and retakes F
+within a few instructions. A waiting hart therefore announces itself, and
+a hart about to take F or D, including the dispatcher's try-lock, first
+lets an announced peer go, bounded at about 55 us.
 Interrupt code takes only D, so interrupts still run while some task holds
 Forbid(). Both lock words live in canonical internal SRAM (E2 qualified AMO).
 ThisTask, ID/TD nesting, scheduler flags and quantum are per hart, selected by
