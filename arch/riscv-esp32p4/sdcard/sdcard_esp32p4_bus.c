@@ -258,9 +258,9 @@ static void p4sd_gpio_output(unsigned int gpio, BOOL high)
 
 static BOOL p4sd_card_present(void)
 {
-    ULONG bit = 1UL << (P4_SD_DETECT_GPIO - 32);
+    ULONG bit = 1UL << (P4_BOARD_SD_DETECT_GPIO - 32);
 
-    p4sd_iomux(P4_SD_DETECT_GPIO, P4_IOMUX_FUNC_GPIO, TRUE, 0);
+    p4sd_iomux(P4_BOARD_SD_DETECT_GPIO, P4_IOMUX_FUNC_GPIO, TRUE, 0);
     p4sd_write(P4_GPIO_BASE + P4_GPIO_ENABLE1_W1TC, bit);
     return (p4sd_read(P4_GPIO_BASE + P4_GPIO_IN1) & bit) == 0;
 }
@@ -508,7 +508,7 @@ void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
 
     /* D1001 board sequence: external switch low, LDO4 at the 3.3-V
        bypass, 100-ms settling delay, then external switch high. */
-    p4sd_gpio_output(P4_SD_POWER_GPIO, FALSE);
+    p4sd_gpio_output(P4_BOARD_SD_POWER_GPIO, FALSE);
 
     control = p4sd_read(P4_PMU_BASE + P4_PMU_LDO4_CTRL);
     control &= ~(P4_PMU_LDO_XPD | P4_PMU_LDO_TIEH_SEL_M);
@@ -521,7 +521,7 @@ void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
                control | P4_PMU_LDO_XPD);
 
     sdcard_Udelay(P4SD_POWER_DELAY_US);
-    p4sd_gpio_output(P4_SD_POWER_GPIO, TRUE);
+    p4sd_gpio_output(P4_BOARD_SD_POWER_GPIO, TRUE);
     sdcard_Udelay(P4SD_POWER_DELAY_US);
     priv->powered = TRUE;
 }

@@ -247,6 +247,7 @@ static void clic_selftest(void)
 static void report(unsigned long hartid)
 {
     krnP4PutStr("\nAROS/esp32p4-riscv\n");
+    krnP4PutStr("[kernel] board  " P4_BOARD_NAME "\n");
 
     krnP4PutStr("[kernel] wdt    ");
     krnP4PutStr(platform_wdt_quiet() ? "timer groups and low power watchdogs off, "
@@ -4634,7 +4635,7 @@ static void krnP4BacklightOnly(void)
 
     krnP4PutStr("[blonly] the backlight alone, no dsi at all\n");
 
-    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO, P4_D1001_I2C1_SCL_GPIO,
+    if (!krnP4I2CInit(1, P4_BOARD_I2C1_SDA_GPIO, P4_BOARD_I2C1_SCL_GPIO,
                       100000UL))
     {
         krnP4PutStr("[blonly] I2C1 did not configure\n");
@@ -4693,7 +4694,7 @@ static void krnP4PowerOff(void)
     struct P4PanelState st;
     unsigned int left;
 
-    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO, P4_D1001_I2C1_SCL_GPIO,
+    if (!krnP4I2CInit(1, P4_BOARD_I2C1_SDA_GPIO, P4_BOARD_I2C1_SCL_GPIO,
                       100000UL)
         || krnP4PanelClaim(&st) != P4_I2C_OK)
     {
@@ -4752,7 +4753,7 @@ static void krnP4PanelProbe(void)
     krnP4PutStr("[panel]  B2: expander, panel supply and reset."
                 " No data path.\n");
 
-    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO, P4_D1001_I2C1_SCL_GPIO,
+    if (!krnP4I2CInit(1, P4_BOARD_I2C1_SDA_GPIO, P4_BOARD_I2C1_SCL_GPIO,
                       100000UL))
     {
         krnP4PutStr("[panel]  I2C1 did not configure\n");
@@ -4773,8 +4774,8 @@ static void krnP4PanelProbe(void)
         static const struct { unsigned int port, sda, scl; const char *name; }
         buses[2] =
         {
-            { 0, P4_D1001_I2C0_SDA_GPIO, P4_D1001_I2C0_SCL_GPIO, "i2c0" },
-            { 1, P4_D1001_I2C1_SDA_GPIO, P4_D1001_I2C1_SCL_GPIO, "i2c1" },
+            { 0, P4_BOARD_I2C0_SDA_GPIO, P4_BOARD_I2C0_SCL_GPIO, "i2c0" },
+            { 1, P4_BOARD_I2C1_SDA_GPIO, P4_BOARD_I2C1_SCL_GPIO, "i2c1" },
         };
         static const unsigned long speeds[2] = { 10000UL, 100000UL };
         unsigned int b, i, a, found;
@@ -4814,7 +4815,7 @@ static void krnP4PanelProbe(void)
             }
 
         /* Back to the bus and rate the sequence runs at. */
-        if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO, P4_D1001_I2C1_SCL_GPIO,
+        if (!krnP4I2CInit(1, P4_BOARD_I2C1_SDA_GPIO, P4_BOARD_I2C1_SCL_GPIO,
                           100000UL))
         {
             krnP4PutStr("[panel]  I2C1 did not reconfigure\n");
@@ -6396,9 +6397,9 @@ static void krnP4C4TouchProbe(void)
     unsigned long iomux, gpio;
     int camera, touch, rid, rstatus;
 
-    iomux = p4_r32(P4_IOMUX_BASE + P4_IOMUX_PIN(P4_D1001_TOUCH_IRQ_GPIO));
+    iomux = p4_r32(P4_IOMUX_BASE + P4_IOMUX_PIN(P4_BOARD_TOUCH_IRQ_GPIO));
     gpio = (p4_r32(P4_GPIO_BASE + P4_GPIO_IN)
-            >> P4_D1001_TOUCH_IRQ_GPIO) & 1UL;
+            >> P4_BOARD_TOUCH_IRQ_GPIO) & 1UL;
 
     krnP4PutStr("[touch]  C4 passive identification; no reset, no firmware\n");
     krnP4PutStr("[touch]  GPIO16 inherited level ");
@@ -6407,8 +6408,8 @@ static void krnP4C4TouchProbe(void)
     krnP4PutHex32((uint32_t)iomux);
     krnP4PutStr("\n");
 
-    if (!krnP4I2CInit(0, P4_D1001_I2C0_SDA_GPIO,
-                      P4_D1001_I2C0_SCL_GPIO, 10000UL))
+    if (!krnP4I2CInit(0, P4_BOARD_I2C0_SDA_GPIO,
+                      P4_BOARD_I2C0_SCL_GPIO, 10000UL))
     {
         krnP4PutStr("[touch]  I2C0 did not configure\n");
         goto restore_i2c1;
@@ -6416,9 +6417,9 @@ static void krnP4C4TouchProbe(void)
 
     /* 0x36 is the independent control target observed on this same bus. */
     camera = krnP4I2CProbe(0x36);
-    touch = krnP4I2CProbe(P4_D1001_TOUCH_ADDR);
-    rid = krnP4I2CTransfer(P4_D1001_TOUCH_ADDR, &id_reg, 1, id, 4);
-    rstatus = krnP4I2CTransfer(P4_D1001_TOUCH_ADDR, &status_reg, 1,
+    touch = krnP4I2CProbe(P4_BOARD_TOUCH_ADDR);
+    rid = krnP4I2CTransfer(P4_BOARD_TOUCH_ADDR, &id_reg, 1, id, 4);
+    rstatus = krnP4I2CTransfer(P4_BOARD_TOUCH_ADDR, &status_reg, 1,
                               status, 4);
 
     krnP4PutStr("[touch]  0x36 control ACK: ");
@@ -6446,8 +6447,8 @@ static void krnP4C4TouchProbe(void)
 
 restore_i2c1:
     /* Panel/DSI startup below owns I2C1.  Leave the shared transport there. */
-    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO,
-                      P4_D1001_I2C1_SCL_GPIO, 100000UL))
+    if (!krnP4I2CInit(1, P4_BOARD_I2C1_SDA_GPIO,
+                      P4_BOARD_I2C1_SCL_GPIO, 100000UL))
         krnP4PutStr("[touch]  WARNING: I2C1 restore failed\n");
     else
         krnP4PutStr("[touch]  I2C1 restored for the normal C3 display path\n");
