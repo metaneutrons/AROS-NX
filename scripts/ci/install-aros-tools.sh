@@ -7,22 +7,22 @@ if [[ $# -ne 1 ]]; then
 fi
 
 destination=$1
-version=v0.3.18
+version=v0.3.19
 case "$(uname -s)/$(uname -m)" in
     Linux/x86_64)
         target=x86_64-unknown-linux-gnu
-        expected_sha256=45988f08f4e0a446500aee316954522ab1886ce61a13d0a0c9b69bc6a9f84119
-        expected_size=17610103
+        expected_sha256=96b0219d6cf29460fee07fd415978f52bc91d2d8ac3f484195cb63f7e11d984a
+        expected_size=17612628
         ;;
     Linux/aarch64)
         target=aarch64-unknown-linux-gnu
-        expected_sha256=bd5e1cf3a7659c839dbb455b7af4b91e6cb856ddf745837d14a906cb347799dc
-        expected_size=16947340
+        expected_sha256=d3cdfb860c4bb381a2bb1540959f9d895ab2101cdda64dd21450c8878c72bef3
+        expected_size=16951197
         ;;
     Darwin/arm64)
         target=aarch64-apple-darwin
-        expected_sha256=9b34f9f64e6cd79182dfd0bd1e4681508bed3f7927b2bb0bf334824b49ce7440
-        expected_size=15695457
+        expected_sha256=8eb7c8e1ea40dae35943295c01b208a07b4264cf6c41e9b498f3fb0493e44625
+        expected_size=15697348
         ;;
     *)
         echo "Unsupported aros-tools CI host: $(uname -s)/$(uname -m)" >&2
