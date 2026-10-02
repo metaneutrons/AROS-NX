@@ -117,7 +117,27 @@
              * Remove() here, before freeing the MemEntry list. Because
              * the MemEntry list might contain the task struct itself!
             */
-#if !defined(EXEC_REMTASK_NEEDSSWITCH)
+#if defined(EXEC_PLATFORM_REMOVE_RUNNING)
+            /*
+             * Another CPU may be running the task, and a running task is in
+             * no list. Decide under Disable(), which also protects the task
+             * lists; Forbid() alone does not on this platform. If it runs
+             * elsewhere the platform evicts it; wait for that outside
+             * Disable(), as the other CPU needs to take its interrupt.
+             */
+            Disable();
+            if (EXEC_PLATFORM_REMOVE_RUNNING(task))
+            {
+                Enable();
+                EXEC_PLATFORM_REMOVE_WAIT(task);
+            }
+            else
+            {
+                task->tc_State = TS_REMOVED;
+                Remove(&task->tc_Node);
+                Enable();
+            }
+#elif !defined(EXEC_REMTASK_NEEDSSWITCH)
             task->tc_State = TS_REMOVED;
             Remove(&task->tc_Node);
 #else

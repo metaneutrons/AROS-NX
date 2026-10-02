@@ -15,9 +15,22 @@ CFILES += platform_init p4_signal_protocol p4_signal_adapter settaskpri \
           p4_remove_bank p4_remove_completion p4_remove_wait p4_remove_external
 endif
 
+ifeq ($(P4_GIANT),1)
+# Forbid()/Permit()/Disable()/Enable() take the Giant locks.
+CFILES += forbid permit disable enable
+endif
+
+# P4_GIANT=1 selects the transitional Giant Exec SMP (kernel/p4_giant.h).
+# The define must reach the generic rom/kernel, rom/exec and rom/task
+# objects too, because their Exec macros come from exec_platform.h; the
+# arch include-flag file is how arch settings reach those builds. mmake
+# does not track it: rebuild kernel/exec/task cleanly when P4_GIANT changes.
+P4_GIANT_ARCHFLAG := $(if $(filter 1,$(P4_GIANT)),-DP4_GIANT=1,) \
+                     $(if $(filter 1,$(P4_GIANT_MIGRATE)),-DP4_GIANT_MIGRATE=1,)
+
 %set_archincludes mainmmake=kernel-exec maindir=rom/exec \
   modname=exec pri=2 arch=esp32p4-riscv \
-  includes="-I$(SRCDIR)/$(CURDIR)"
+  includes="-I$(SRCDIR)/$(CURDIR) $(P4_GIANT_ARCHFLAG)"
 
 %get_archincludes modname=kernel \
     includeflag=TARGET_KERNEL_INCLUDES maindir=rom/kernel

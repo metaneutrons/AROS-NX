@@ -237,6 +237,9 @@ void Exec_SignalSlow(struct Task *task, ULONG signalSet, struct ExecBase *SysBas
                 Remove(&task->tc_Node);
                 task->tc_State = TS_READY;
                 Enqueue(&SysBase->TaskReady, &task->tc_Node);
+#if defined(EXEC_PLATFORM_TASK_READY)
+                EXEC_PLATFORM_TASK_READY(task);
+#endif
 #endif
             }
 

@@ -27,6 +27,11 @@
     P4_E3_FPU every entry captures FPU state before entering C; fpuContext
     points to this per-entry image until dispatch chooses a saved task image.
 
+    With __AROSEXEC_SMP__ or P4_GIANT, mscratch holds this hart's private
+    ISR stack top while a task runs and zero inside a trap, so every trap
+    from task context leaves the task's stack at once. Two harts must not
+    share one task stack, and the dispatcher idles inside the trap.
+
     Nothing here touches the trap depth counter KrnIsSuper() reports from;
     krnTrapHandler owns it, so that it covers exactly the C handler.
 */
@@ -55,7 +60,7 @@
 	.globl	__trap_entry
 	.type	__trap_entry,%function
 __trap_entry:
-#if defined(__AROSEXEC_SMP__)
+#if defined(__AROSEXEC_SMP__) || defined(P4_GIANT)
 	/* Outside traps mscratch holds this hart's private ISR top. Inside
 	 * kernel C it is zero, so nested traps retain the existing ISR stack.
 	 * No general register is clobbered before its frame slot is saved. */
@@ -94,7 +99,7 @@ __trap_entry:
 	sw	t5, 108(sp)
 	sw	t6, 112(sp)
 	/* interrupted sp, pc and mstatus */
-#if defined(__AROSEXEC_SMP__)
+#if defined(__AROSEXEC_SMP__) || defined(P4_GIANT)
 	csrr	t0, mscratch
 	beqz	t0, .Lp4_isr_nested_frame
 	sw	t0, 4(sp)
@@ -293,7 +298,7 @@ __trap_entry:
 .Lp4_trap_fpu_exit_done:
 #endif
 	/* restore (the handler may have modified the context) */
-#if defined(__AROSEXEC_SMP__)
+#if defined(__AROSEXEC_SMP__) || defined(P4_GIANT)
 	/* Marker is not part of copyContext: dispatch cannot overwrite it.
 	 * Restore before register/SP handoff, while MIE is still clear. */
 	lw	t0, P4_TRAP_ISR_TOP_OFFSET(sp)
@@ -302,7 +307,7 @@ __trap_entry:
 	lw	t0, 116(sp)
 	csrw	mepc, t0
 	lw	t0, 120(sp)
-#if defined(__AROSEXEC_SMP__)
+#if defined(__AROSEXEC_SMP__) || defined(P4_GIANT)
 	/* mret, not a premature CSR write, restores interrupt delivery. */
 	andi	t0, t0, -9
 #endif

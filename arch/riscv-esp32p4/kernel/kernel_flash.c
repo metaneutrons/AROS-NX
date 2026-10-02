@@ -46,6 +46,9 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
+#if defined(P4_GIANT)
+#include "p4_giant.h"
+#endif
 
 /*
  * components/soc/esp32p4/register/hw_ver1/soc/reg_base.h:52 and
@@ -127,7 +130,7 @@ __attribute__((always_inline)) static inline unsigned long mmu_entry_of(unsigned
  * (esp_mm/esp_mmu_map.c:820) reads them under nothing but a mutex, because
  * selecting an entry with the index register does not change any mapping.
  */
-P4_SRAMCODE static void flash_map_entries(unsigned long entry,
+P4_SRAMCODE static int flash_map_entries(unsigned long entry,
                                           unsigned long page,
                                           unsigned long pages,
                                           unsigned long release,
@@ -145,6 +148,19 @@ P4_SRAMCODE static void flash_map_entries(unsigned long entry,
      * will later also be used after exec is running.
      */
     csr_clear(mstatus, MSTATUS_MIE);
+#if defined(P4_GIANT)
+    /*
+     * Hart 1 fetches through the same cache. Park it in SRAM first; if it
+     * does not answer, leave the mapping alone rather than pull the cache
+     * from under it.
+     */
+    if (!p4_giant_park_others())
+    {
+        if (status & MSTATUS_MIE)
+            csr_set(mstatus, MSTATUS_MIE);
+        return 0;
+    }
+#endif
     token = krnP4CacheOff();
 
     /* Whatever the scratch window held before, in the same window, so the
@@ -157,9 +173,13 @@ P4_SRAMCODE static void flash_map_entries(unsigned long entry,
                                      flags));
 
     krnP4CacheOn(token);
+#if defined(P4_GIANT)
+    p4_giant_unpark_others();
+#endif
 
     if (status & MSTATUS_MIE)
         csr_set(mstatus, MSTATUS_MIE);
+    return 1;
 }
 
 /*
@@ -279,8 +299,15 @@ void *krnP4FlashMap(unsigned long paddr, unsigned long len)
         }
     }
 
-    flash_map_entries(entry, page, pages, flash_scratch_pages,
-                      flash_mapping_flags());
+    if (!flash_map_entries(entry, page, pages, flash_scratch_pages,
+                           flash_mapping_flags()))
+    {
+        krnP4PutStr("[flash] hart 1 did not park; mapping refused\n");
+#if defined(P4_GIANT)
+        p4_giant_park_report();
+#endif
+        return NULL;
+    }
     flash_scratch_pages = pages;
 
     /*

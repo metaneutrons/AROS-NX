@@ -137,6 +137,15 @@ static volatile unsigned long scanout_dirty_rejects;
  * while task-context preparation owns the inactive/pending surface. */
 static volatile unsigned long scanout_copy_busy;
 
+#if defined(P4_GIANT)
+#include "p4_giant.h"
+#define SCANOUT_EXCLUDE_ISR()   p4_giant_disable()
+#define SCANOUT_ALLOW_ISR()     ((void)p4_giant_enable())
+#else
+#define SCANOUT_EXCLUDE_ISR()   do { } while (0)
+#define SCANOUT_ALLOW_ISR()     do { } while (0)
+#endif
+
 static inline void lli_wr(unsigned long off, unsigned long v)
 {
     *(volatile unsigned long *)((unsigned long)scanout_lli
@@ -1390,14 +1399,21 @@ static BOOL c1_update_rect(CONST_APTR logical_ptr, ULONG logical_pitch,
     }
 
 #ifdef P4_C1_COALESCE
+    /* With P4_GIANT the DMA interrupt (hart 0) and this producer can run at
+       the same time. Taking D makes "mark busy, then read active" atomic
+       with respect to the interrupt's "check busy, then swap", as one hart
+       always was; the copy itself runs without it. */
+    SCANOUT_EXCLUDE_ISR();
     scanout_copy_busy = 1;
     asm volatile("fence rw, rw" ::: "memory");
 #else
     if (!c1_wait_no_pending(0))
         return FALSE;
+    SCANOUT_EXCLUDE_ISR();
 #endif
 
     active = scanout_active_fb;
+    SCANOUT_ALLOW_ISR();
     if (active == P4_FB_BASE)
         target = P4_FB_BACK_BASE;
     else if (active == P4_FB_BACK_BASE)

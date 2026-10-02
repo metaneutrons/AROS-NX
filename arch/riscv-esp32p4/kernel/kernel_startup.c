@@ -74,6 +74,11 @@
 #include "hardware.h"
 #include "psram.h"
 #include "kernel_intern.h"
+#if defined(P4_GIANT)
+#include "p4_giant.h"
+void p4_giant_init_primary(void);
+void p4_giant_selftest(void);
+#endif
 
 #if defined(__AROSEXEC_SMP__)
 #include "secondary_hw.h"
@@ -7326,6 +7331,11 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     krnCLICInit();
     clic_selftest();
 
+#if defined(P4_GIANT)
+    /* Before the first interrupt: every trap from here on leaves the
+       interrupted stack for hart 0's private ISR stack. */
+    p4_giant_init_primary();
+#endif
     krnTimerInit();
     csr_set(mstatus, MSTATUS_MIE);
 

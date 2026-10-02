@@ -25,6 +25,9 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
+#if defined(P4_GIANT)
+#include "p4_giant.h"
+#endif
 
 #define SPIN_LIMIT      100000
 
@@ -34,6 +37,12 @@
  * unchanged. This is a single-hart transition, not a console lock. */
 static volatile unsigned int console_runtime;
 static volatile unsigned long console_dropped;
+
+/* A fatal report must not be lost to the lossy runtime policy. */
+void krnP4ConsoleBlocking(void)
+{
+    console_runtime = 0;
+}
 
 void krnP4ConsoleRuntime(void)
 {
@@ -94,7 +103,7 @@ static void usj_flush(void)
  */
 #define ATTACH_SPINS    2000000
 
-void krnP4PutC(char c)
+static void console_putc(char c)
 {
     unsigned int spins;
     unsigned int limit = console_runtime ? 1 : ATTACH_SPINS;
@@ -140,7 +149,7 @@ int krnP4GetC(void)
 
 #else /* UART0 */
 
-void krnP4PutC(char c)
+static void console_putc(char c)
 {
     unsigned int spins = console_runtime ? 1 : SPIN_LIMIT;
 
@@ -168,6 +177,23 @@ int krnP4GetC(void)
 }
 
 #endif
+
+/*
+ * With P4_GIANT both harts print; the lock keeps one hart's bytes from
+ * landing in the middle of the other's endpoint transaction. It is
+ * recursive per hart and bounded, so an interrupt that prints on the
+ * same hart, or a stuck peer, never hangs the caller.
+ */
+void krnP4PutC(char c)
+{
+#if defined(P4_GIANT)
+    p4_giant_console_lock();
+#endif
+    console_putc(c);
+#if defined(P4_GIANT)
+    p4_giant_console_unlock();
+#endif
+}
 
 #if defined(P4_E3_FPU_TEST) && (P4_E3_FPU_TEST == 1) \
     || (defined(P4_E3_RUNTIME_PREPARE) && (P4_E3_RUNTIME_PREPARE == 1))
@@ -358,8 +384,14 @@ int krnP4DiagnosticLine(const char *line)
 
 void krnP4PutStr(const char *s)
 {
+#if defined(P4_GIANT)
+    p4_giant_console_lock();
+#endif
     while (*s)
         krnP4PutC(*s++);
+#if defined(P4_GIANT)
+    p4_giant_console_unlock();
+#endif
 }
 
 void krnP4PutHex32(uint32_t val)

@@ -87,6 +87,15 @@ SECTIONS
         __sramtext_end = .;
     }
 
+    /*
+     * Hart 1's one-shot P4_GIANT entry. Internal SRAM, but deliberately
+     * outside .sramtext: it hands over to flash code by design and runs
+     * only before any cache-off window can open (kernel/p4_giant_entry.S).
+     */
+    .sramentry : {
+        *(.sramentry)               /* .balign 64 in the source */
+    }
+
     .data : {
         __data_start = .;
         *(.sramdata*)

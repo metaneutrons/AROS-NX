@@ -104,6 +104,9 @@
         {
             Remove(&task->tc_Node);
             Enqueue(&SysBase->TaskReady, &task->tc_Node);
+#if defined(EXEC_PLATFORM_TASK_READY)
+            EXEC_PLATFORM_TASK_READY(task);
+#endif
         }
 
 #if defined(__AROSEXEC_SMP__)

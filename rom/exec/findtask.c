@@ -111,6 +111,11 @@
                     ret = thisTask;
                     break;
                 }
+#if defined(EXEC_PLATFORM_FIND_RUNNING)
+            /* The task another CPU is running is in neither list. */
+            if (ret == NULL)
+                ret = EXEC_PLATFORM_FIND_RUNNING(name);
+#endif
 #endif
         }
     }

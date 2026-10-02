@@ -15,6 +15,9 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
+#if defined(P4_GIANT)
+#include "p4_giant.h"
+#endif
 #if defined(__AROSEXEC_SMP__)
 #include <proto/exec.h>
 #include "p4_soft_atomic.h"
@@ -47,6 +50,13 @@ uint64_t krnTimerCount(void)
 #else
     unsigned int spins = 1000;
     uint32_t hi, lo;
+#if defined(P4_GIANT)
+    /* One snapshot latch for both harts: a second UPDATE between the two
+       reads would mix halves of different instants. */
+    uint32_t lock;
+
+    p4_giant_cache_lock(&lock);
+#endif
 
     st_wr(P4_ST_UNIT0_OP, P4_ST_UNIT0_UPDATE);
     while (spins-- && !(st_rd(P4_ST_UNIT0_OP) & P4_ST_UNIT0_VALID))
@@ -54,6 +64,9 @@ uint64_t krnTimerCount(void)
 
     hi = st_rd(P4_ST_UNIT0_VALUE_HI);
     lo = st_rd(P4_ST_UNIT0_VALUE_LO);
+#if defined(P4_GIANT)
+    p4_giant_cache_unlock(lock);
+#endif
 
     return ((uint64_t)hi << 32) | lo;
 #endif

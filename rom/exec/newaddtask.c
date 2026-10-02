@@ -88,6 +88,9 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
 #if !defined(__AROSEXEC_SMP__)
     task->tc_State = TS_READY;
     Enqueue(&SysBase->TaskReady, &task->tc_Node);
+#if defined(EXEC_PLATFORM_TASK_READY)
+    EXEC_PLATFORM_TASK_READY(task);
+#endif
 #else
     task->tc_State = TS_INVALID;
     krnSysCallReschedTask(task, TS_READY);
@@ -289,6 +292,10 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
 
     task->tc_State = TS_ADDED;
     task->tc_Flags = 0;
+#if defined(EXEC_PLATFORM_TASK_FLAGS_INIT)
+    /* Platform defaults, e.g. which CPUs a new task may run on. */
+    EXEC_PLATFORM_TASK_FLAGS_INIT(task);
+#endif
 
     task->tc_SigWait = 0;
     task->tc_SigRecvd = 0;

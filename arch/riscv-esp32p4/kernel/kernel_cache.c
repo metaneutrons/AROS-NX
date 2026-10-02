@@ -37,6 +37,15 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
+#if defined(P4_GIANT)
+#include "p4_giant.h"
+/* One cache controller for both harts: serialize its ROM commands. */
+#define CACHE_LOCK()    uint32_t cache_lock_state; p4_giant_cache_lock(&cache_lock_state)
+#define CACHE_UNLOCK()  p4_giant_cache_unlock(cache_lock_state)
+#else
+#define CACHE_LOCK()    do { } while (0)
+#define CACHE_UNLOCK()  do { } while (0)
+#endif
 
 /*
  * components/esp_rom/esp32p4/ld/esp32p4.rom.ld, and the same addresses in
@@ -99,10 +108,12 @@ P4_SRAMCODE void krnP4SyncCode(void *addr, unsigned long len)
     if (!len)
         return;
 
+    CACHE_LOCK();
     wb(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2, (uint32_t)(unsigned long)addr,
        (uint32_t)len);
     inv(P4_CACHE_MAP_ALL, (uint32_t)(unsigned long)addr, (uint32_t)len);
 
+    CACHE_UNLOCK();
     asm volatile("fence.i" ::: "memory");
 }
 
@@ -143,7 +154,9 @@ void krnP4CacheWriteback(void)
 {
     rom_cache_all_t wb_all = (rom_cache_all_t)P4_ROM_CACHE_WRITEBACK_ALL;
 
+    CACHE_LOCK();
     (void)wb_all(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2);
+    CACHE_UNLOCK();
     asm volatile("fence" ::: "memory");
 }
 
@@ -163,8 +176,10 @@ P4_SRAMCODE void krnP4CacheWritebackData(void *addr, unsigned long len)
     if (!len)
         return;
 
+    CACHE_LOCK();
     wb(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
        (uint32_t)(unsigned long)addr, (uint32_t)len);
+    CACHE_UNLOCK();
     asm volatile("fence rw, rw" ::: "memory");
 }
 
@@ -185,10 +200,12 @@ P4_SRAMCODE void krnP4CacheSyncData(void *addr, unsigned long len)
     if (!len)
         return;
 
+    CACHE_LOCK();
     wb(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
        (uint32_t)(unsigned long)addr, (uint32_t)len);
     inv(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
         (uint32_t)(unsigned long)addr, (uint32_t)len);
+    CACHE_UNLOCK();
     asm volatile("fence rw, rw" ::: "memory");
 }
 

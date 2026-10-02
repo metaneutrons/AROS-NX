@@ -59,6 +59,7 @@ SECTIONS
         *(.sramtext.secondary_mailbox)
         __p4_secondary_worker_end = .;
         *(.sramtext*)               /* see P4_SRAMCODE - already SRAM here */
+        *(.sramentry)               /* P4_GIANT hart 1 entry, p4_giant_entry.S */
         *(.text*)                   /* wildcard for "gcc -ffunction-sections" */
         *(.gnu.linkonce.t.*)
         . = ALIGN(4);

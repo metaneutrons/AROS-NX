@@ -28,6 +28,9 @@
 #include "p4_public_spinlock.h"
 #include <exec_platform.h>
 #include "../exec/p4_cleanup_worker.h"
+#elif defined(P4_GIANT)
+#include <exec_platform.h>
+#include "p4_giant.h"
 #endif
 
 #include <kernel_globals.h>
@@ -313,6 +316,10 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
                 p4_cpu_local_current()->ticks++;
                 krnP4IpiPostTick(1, SysBase);
             }
+#elif defined(P4_GIANT)
+            /* Only hart 0 takes the tick; hart 1 gets its share by IPI. */
+            __esp32p4_ticks++;
+            p4_giant_tick();
 #else
             __esp32p4_ticks++;
 #endif
@@ -334,6 +341,9 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
             struct p4_ipi_batch batch = krnP4IpiDrain(SysBase);
             krnP4IpiApplyBatch(&batch, SysBase);
         }
+#elif defined(P4_GIANT)
+        else if (line == P4_GIANT_IPI_LINE)
+            (void)p4_giant_ipi_take();
 #endif
         else if (line == P4_DSI_DMA_LINE)
         {
@@ -407,8 +417,18 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
         return TRAP_DONE;
     }
 
+#if defined(P4_GIANT)
+    krnP4ConsoleBlocking();
+#endif
     krnReportException(ctx, mcause, mtval);
 
+#if defined(P4_GIANT)
+    /* Let the other hart keep going, and say which hart stopped. */
+    krnP4ConsoleBlocking();
+    p4_giant_report("fatal trap");
+    p4_giant_release_d();
+    p4_giant_release_f();
+#endif
     krnP4PutStr("[trap] fatal - halting hart.\n");
     for (;;)
         asm volatile("wfi");
@@ -456,6 +476,12 @@ void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
         for (;;)
             asm volatile("wfi");
     }
+#elif defined(P4_GIANT)
+    struct p4_giant_trap giant;
+    struct p4_giant_cpu *cpu = &p4_giant_cpus[p4_giant_hart()];
+
+    cpu->trap_depth++;
+    p4_giant_trap_enter(&giant);
 #else
     __esp32p4_trap_depth++;
 #endif
@@ -474,11 +500,28 @@ void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
     if (SysBase && (
 #if defined(__AROSEXEC_SMP__)
         local->trap_depth == 1
+#elif defined(P4_GIANT)
+        cpu->trap_depth == 1
 #else
         __esp32p4_trap_depth == 1
 #endif
         ))
     {
+#if defined(P4_GIANT)
+        /*
+         * RemTask() on the other hart has marked our current task removed
+         * and waits for it to leave this hart. Discard it without saving
+         * its context, exactly as RemTask(NULL) does with KrnDispatch().
+         */
+        if (cpu->evict && cpu->evict == cpu->current)
+        {
+            cpu->evict = NULL;
+            cpu->n_evict++;
+            TDNESTCOUNT_SET(-1);
+            cpu_Dispatch(ctx);
+        }
+        else
+#endif
 #if defined(__AROSEXEC_SMP__)
         /* Nested traps and disabled continuations may own outer Task locks.
          * Either hart may deliver at its unmasked outer-exit boundary. The
@@ -508,6 +551,9 @@ void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
         for (;;)
             asm volatile("wfi");
     }
+#elif defined(P4_GIANT)
+    p4_giant_trap_leave(&giant);
+    cpu->trap_depth--;
 #else
     __esp32p4_trap_depth--;
 #endif

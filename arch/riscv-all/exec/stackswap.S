@@ -30,7 +30,7 @@ AROS_SLIB_ENTRY(StackSwap,Exec,122):
 	// that spans the swap (it would move with the stack).
 
 	mv	t0, a0			// t0 = newStack
-#if defined(__AROSEXEC_SMP__)
+#if defined(__AROSEXEC_SMP__) || defined(P4_GIANT)
 	addi	sp, sp, -16
 	sw	a1, 0(sp)
 	sw	t0, 4(sp)

@@ -119,6 +119,9 @@ void ServiceTask(struct ExecBase *SysBase)
 #if !defined(EXEC_REMTASK_NEEDSSWITCH)
                     task->tc_State = TS_READY;
                     Enqueue(&SysBase->TaskReady, &task->tc_Node);
+#if defined(EXEC_PLATFORM_TASK_READY)
+                    EXEC_PLATFORM_TASK_READY(task);
+#endif
 #else
                     krnSysCallReschedTask(task, TS_READY);
 #endif

@@ -34,6 +34,9 @@
 #include "p4_switch.h"
 #include "p4_discard.h"
 #include "p4_dispatch_callbacks.h"
+#elif defined(P4_GIANT)
+#include <exec_platform.h>
+#include "p4_giant.h"
 #endif
 
 #if defined(P4_E3_FPU) && (P4_E3_FPU == 1)
@@ -136,7 +139,7 @@ void cpu_Switch(regs_t *regs)
     krnP4Switch(regs, SysBase);
 #else
     struct Task *task =
-#if defined(__AROSEXEC_SMP__)
+#if defined(P4_GIANT)
         GET_THIS_TASK;
 #else
         SysBase->ThisTask;
@@ -230,9 +233,17 @@ dispatch_again:
          * before returning it.
          */
         IDNESTCOUNT_SET(-1);
+#if defined(P4_GIANT)
+        /* Give up F and D while asleep: the other hart must be able to
+           Disable(), and its interrupts, while this one waits for work. */
+        p4_giant_idle_enter();
+#endif
         csr_set(mstatus, MSTATUS_MIE);
         asm volatile("wfi");
         csr_clear(mstatus, MSTATUS_MIE);
+#if defined(P4_GIANT)
+        p4_giant_idle_leave();
+#endif
 
 #if defined(__AROSEXEC_SMP__)
         Exec_P4DeliverCleanupWake(SysBase);
@@ -244,12 +255,19 @@ dispatch_again:
             core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
             csr_clear(mstatus, MSTATUS_MIE);
         }
+#elif defined(P4_GIANT)
+        /* Soft interrupts run on hart 0 only. */
+        if (EXEC_PLATFORM_SOFTINT_PENDING())
+            core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
 #else
         if (SysBase->SysFlags & SFF_SoftInt)
             core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
 #endif
     }
 
+#if defined(P4_GIANT)
+    p4_giant_dispatched();
+#endif
     ctx = task->tc_UnionETask.tc_ETask->et_RegFrame;
     copyContext(regs, ctx);
 

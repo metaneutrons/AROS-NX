@@ -142,6 +142,7 @@ gate: compensated output is not the native display contract.
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
 | E2 | Two-hart atomics, coherence and IPI primitives | `hardware verified; complete` | Exact219,776-byte core08 passes five ordinary headless captures/ten reset-separated epochs:650 SRAM+660 PSRAM exchanges,120 refusals,163,840 updates per AMO/CAS/lock counter with measured contention, bidirectional software IPI, remote code37/53, missing-park refusal and ten cache suspend/resume windows. Secondary reset/clock stop confirmed every exit; full221,184-byte normal range restored/verified and headless baseline boots. Atomics qualify internal SRAM only; Exec SMP/default changes wait for E3. |
 | E3 | Experimental RV32/P4 Exec SMP | `Private foundations verified; full Exec runtime integration in progress` | Private SRAM/PSRAM contention gates pass; normal Exec remains single-hart. Runtime155, lifetime56, registry80, queue53, admission528, adapter37, Task-pin80,985 and dispatcher1,614 sanitizer assertions pass. SMP ISR entry QEMU and independent review pass in their bounded scope. Creation/bootstrap hooks source-integrated; helper332, publication-queue766 and four extracted variants42/42/42/58 pass. Service-reference370/review, owner-proof38, detached-list62, cleanup-ready531, queued claim/live-owner48 and queue retirement647/review pass; caller integration open. Combined live/retired Switch-discard2,027/review and separate discard64 pass. Forced outer-trap retirement routing compiles and passes679 host checks/local review; durable cleanup queue binding675 checks/root repeat and strict RV32 compilation/local review pass. Source-selected locked decision446 checks/root review and matching priority writer RV32 compile pass; writer2,359 actual-source checks/root repeat and refreshed local review pass. IRQ-safe IPI backend source-selected with primary startup/trap/timer binding; strict isolated SMP/normal objects and local backend review pass; mailbox602 and Signal/SetExcept67 checks/root repeats pass; runtime81/route2,720 checks/root repeats and independent integration review pass in their bounded scope; shared timer snapshot gate source-selected/isolated-RV32 compiled, fixture pending; review found SD time bypass; corrected versioned shared SD callback compiles, cross-consumer qualification/full rebuild pending. Shared softint gate/Cause/owner0 dispatcher and Enable/trap/idle hooks source-selected/isolated-RV32 compiled, tests/review pending. Removal/completion/semaphore cancellation, scheduler override selection/link review and other Task-list writers, timer/IPI, real concurrent Exec tasks and matched full ABI/link remain open behind configure refusal. No secondary Exec entry/default change. |
+| E3-GT | Transitional Giant Exec SMP (`P4_GIANT=1`), a named workaround | `hardware partial (headless)` | 2026-10-02 evidence: hart1 enters Exec from a COLDSTART resident (pri 104), executes XIP flash code and runs opt-in Exec tasks. Self-test core 222,864 B (`8765aebd…`) passes 10/10 in two headless D1001 boots, its predecessor 222,752 B (`986cfd08…`) 10/10 in four: concurrency, Forbid/Disable exclusion 40,000/40,000, cross-hart Signal, semaphore, messages, AllocMem, FPU under time slicing, RemTask eviction, 200/200 cache-off parks. The normal boot then reaches Wanderer/touch with hart1 online. No default migration (`P4_GIANT_MIGRATE` untested), no visual/touch acceptance, no sustained stress. Normal core 202,032 B (`37dba09d…`) flashed afterwards. See SMP.md "Transitional Giant". |
 | E3-RT | Production secondary Exec entry within E3-A1 | `primary tp invariant isolated compiled; secondary entry candidate residency blocked and unselected` | Current selected path holds hart1 reset and finalizes/arms only hart0. Primary SMP entry initializes kernel-owned tp=0 before C; emitted TLS uses emutls/pthreads, not qualified native TLS. New private secondary stack, generation-bound READY/GO and genuine dispatch-ecall candidate compile separately, but SRAM entry references ordinary XIP Bootstrap/Dispatch/trap text: owner1 cache-on transition and residency remain unqualified. Candidate build selection was withdrawn; no release/controller/validated online publication exists. Local IDF confirms owner-relative CLIC base. CPU count remains1; public lifecycle, matched build and simultaneous runtime gates remain open. |
 | E3-BT | TaskResource conservative same-gate cutover | `isolated build/host verified; debt handoff incomplete` | Final count, four-list assembly and release-publication now share the actual lifetime gate, preserving every conservative refusal. Six fresh SMP objects compile; binding82941 and extracted full-bootstrap461 sanitizer checks each O1/O2 pass, with intended negative control; service293+18 passes. Independent source review accepts bounded boot-time ordering only. Debt inventory/clear, observer selection, constructor/reader lifetime, matched full link and actual concurrent-hart qualification remain open; no activation/default change. Codex work stopped by Fabian on 2026-10-02; new-session paths/status in [HANDOFF-CLAUDE.md](HANDOFF-CLAUDE.md). |
 | E3-QA | Current bounded E3 integration evidence | `host verified; runtime incomplete` | Final shared timer snapshot60,351 and SD consumer133 sanitizer checks pass with root repeats; earlier80,353 snapshot count is superseded. Softint queue170 checks pass with root repeat. Corrected actual-exit106 and gate89 checks pass root repeats; first exit fixture94 modeled nested delivery incorrectly and remains invalid historical evidence. Unselected removal-completion ticket255 checks, refreshed independent review and isolated RV32 compilation pass after alias-refusal correction. Public RemTask/worker binding remains absent. Static scheduler selection review passes, not a configured full link. |
@@ -258,6 +259,15 @@ startup metadata binding passes three normal boots. The normal core is freshly
 rebuilt byte-identical and its full saved range restored/verified again.
 E3-A1 runtime integration, A2 task/FPU/
 contention and A3 matched ABI remain open. Normal Exec remains single-hart.
+E3-GT (2026-10-02): at Fabian's direction a transitional Giant, a named
+workaround and not the E3 design, now runs ordinary Exec tasks on hart1 in
+the opt-in `P4_GIANT=1` build. Forbid() and Disable() are made system wide by
+two internal-SRAM locks; the normal Exec ABI and BSP are unchanged. Acceptance
+for this stage: the headless self-test (`P4_GIANT_TEST=1`) passes every stage
+in repeated boots and the following normal boot reaches Wanderer/touch with
+hart1 online. Still open before it may count as E3-A2/E4 evidence: default
+task migration, a sustained concurrent workload, and visual/touch regression
+with fresh readiness. The removal test of the workaround is in SMP.md.
 Current source integration adds gated SMP-only private ISR stacks and a
 lifetime-backed Ready-to-Running admission helper. Storage/trap fixtures pass
 28 checks each, Task-pin binding 80,985 assertions, publication queues766 and prior
@@ -23572,6 +23582,101 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - E3 remains incomplete. Codex goal is paused at user request; Claude Code
   may continue from the handoff/current worktree. Master/phase/evidence updated;
   no externally visible feature milestone changed.
+
+### 2026-10-02 - Claude: Giant strategy, WIP commit split, normal-build repair, G0 baseline
+
+- State change: Fabian chose a transitional Giant over the fine-grained E3
+  path (SMP.md "Transitional Giant"). Codex's uncommitted work was committed
+  in 14 functional commits (`5820526f3d`..`ef112f0b0f`), the pre-split tree
+  is kept as `refs/backup/pre-wip-split-20261002`. No E3 source was removed.
+- Defect found and fixed: the WIP `kernel/kernel_arch.h` (IRQ_COUNT 72,
+  extern `ictl_*`) shadowed rom/kernel's in every P4 build. The normal core
+  no longer linked (`ictl_enable_irq` undefined) and KernelBase would have
+  changed size. It now applies only to `__AROSEXEC_SMP__`; every other build
+  gets the generic IRQ_COUNT 1 again.
+- Build tree: `configure` changed on 2026-10-01 (smp refusal), so the top
+  makefile refused to build until configure ran again. Re-run with the
+  recorded arguments; every generated config file compared byte-identical
+  to a pre-run copy. New `tools/build-core.sh` builds kernel/exec/task/debug
+  kobjs with one explicit flag set (optional `--clean`), links the image
+  directly from the generated kernel mmakefile and fails unless
+  `Creating .../aros-esp32p4.bin` appears. `tools/flash-core-and-log.sh`
+  checks the D1001 MAC, writes only `0x20000`, requires esptool's hash
+  verification and captures the boot with reset-and-log.py.
+- Hardware: D1001, ESP32-P4 rev1.3, MAC `e8:f6:0a:e0:46:4c`,
+  `/dev/cu.usbmodem101`. Before any write: core range `0x20000`+256 KiB and
+  BSP range `0x820000`+0x3e0000 read back; prefixes matched the documented
+  core `1d77ae92…` and BSP `eadb8723…`. Baseline boot of that state: 421,170 B
+  log `efa0b127…`.
+- G0 normal core from HEAD (exec fixes included), flags `P4_BOARD=d1001
+  P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_HIDD=1 P4_PSRAM_MHZ=200
+  P4_LDSCRIPT=ldscript-xip.lds P4_C1_PROFILE=1 FAT_DEBUG=1 DOS_DEBUG=1
+  DOSBOOT_DEBUG=1`, clean kernel/exec/task/debug objects: 201,920 B,
+  `3a8117dd56b42825bf1552ee2c1e7a4dced2db9fa2db0aa934a435b08bedf12a`. Written
+  to `0x20000` only, verified. Headless 55 s boot (log `52d7576f…`) shows the
+  same markers as the baseline: PSRAM 32 MB, runtime console switch, Wanderer
+  launch path, touch heartbeat 400, no trap/Alert/allocator error.
+- Evidence directory: build `evidence/giant-2026-10-02/` with
+  `SHA256SUMS.txt`, identity, backups, logs.
+- Next: Giant implementation (next entry).
+
+### 2026-10-02 - E3-GT transitional Giant: hart1 runs Exec tasks, self-test 10/10
+
+- State change: E3-GT `hardware partial (headless)`. This is a workaround
+  stage; it does not close E3-A1/A2/A3 and gives no visual acceptance.
+- Implementation (`P4_GIANT=1`, normal ABI): `kernel/p4_giant.[ch]` per-hart
+  slots, F/D locks (amoswap on internal SRAM), IPI (FROM_CPU_n, line 22),
+  tick IPI, task readiness wake-up, RemTask eviction, cache-off park,
+  console/cache/SYSTIMER serialization and hart1 start; `p4_giant_entry.S`
+  one-shot SRAM entry in its own `.sramentry` section (not `.sramtext`);
+  P4 `kernel_scheduler.c` Giant branch (affinity, try-lock F, wake-up);
+  exec overrides of Forbid/Permit/Disable/Enable; exec_platform.h Giant
+  macros; hooks in rom/exec newaddtask/signal/settaskpri/service/remtask/
+  findtask; traps.S/startup.S per-hart ISR stack via mscratch (Codex's SMP
+  path); scanout busy/active read under D. The define reaches generic
+  rom/kernel, rom/exec, rom/task through the arch include-flag files.
+- Failed runs, kept: (1) core `2b4d1f85…` started hart1 from krnStartExec
+  before COLDSTART; hart1 came online and ran flash code, then the boot task
+  faulted in AllocSignal with ThisTask NULL: on this port Exec_init and the
+  boot task only exist inside InitCode(RTF_COLDSTART). Start moved to a
+  COLDSTART resident at pri 104. (2) core `0d7eca22…`: concurrency passed,
+  then the Exec housekeeper faulted in tlsf_freevec: the test's spawn()
+  left tc_MemEntry uninitialized (test bug). (3) core `94198b0f…`: 9/9
+  stages passed, but all flashdisk MMU mappings were refused ("hart 1 did
+  not park"): a park request carries no work bit, so ipi_take's deassert of
+  a coinciding tick IPI swallowed it. Fixed by checking the request after
+  the deassert and before wfi; a 200-round park stage was added.
+- Passing artifacts, same flags as G0 plus `P4_GIANT=1 P4_GIANT_TEST=1`:
+  core 222,752 B `986cfd08c062709120d219f98e0fea380bd79ad616320fba02f005ad601bfae6`,
+  four 70 s boots (logs `1bf4d7c7…`, `b0f296a8…`, `9396129e…`, `f87d603a…`);
+  then, after park generalization (either hart may park the other) and the
+  scanout change, core 222,864 B
+  `8765aebd10b2fefd1a63832a7fe35464a1cddcacf341ea2be2ef8313ffc6a9b5`, two
+  boots (logs `76c01e84…`, `02b0011a…`). Each boot: `SUMMARY pass=10 fail=0`.
+- Measured (core `986cfd08…`, first boot): hart0 10.9 M loop iterations while
+  hart1's counter rose in 10,818 of 10,818 samples, wrong_hart 0;
+  Forbid and Disable 40,000/40,000, overlaps 0; 2,000 Signal round trips in
+  6 ticks; semaphore 10,000/10,000; 1,000 messages in order; 6,000 AllocMem
+  rounds without pattern error; FPU results bit-identical with two tasks per
+  hart time-sliced; RemTask of a running hart1 task: one eviction, counter
+  stopped; park 200/200, worst 1,701-2,605 cycles across boots.
+- After the self-test the normal cold start continues with hart1 online and
+  idle: flashdisk touch firmware is loaded through the park rendezvous, touch
+  heartbeat reaches 400 and the Wanderer launch path appears. No trap,
+  Alert, allocator error, refused park or "lacks F" report in any passing
+  boot. These are lossy headless logs, not visual acceptance.
+- Normal regression: core without P4_GIANT, clean build, 202,032 B
+  `37dba09d4de56e35d267aefc62e8520bd3590b0a298bb21f4773659cea19fd5d`, no
+  giant symbol, empty arch include flags; boot log `7f257b4c…` shows
+  firmware load, touch heartbeat 400, no trap. This core is now flashed.
+  BSP `eadb8723…` and everything else unchanged; only `0x20000` written.
+- Remaining risk: hart1 runs opt-in tasks only. `P4_GIANT_MIGRATE=1`
+  (default affinity both harts) is built but untested. Known limits in
+  SMP.md. The generated target configuration sets no -O flag and the
+  disassembly shows unoptimized frames, so throughput says little yet. Two harts
+  calling the park at once would deadlock (only flashdisk maps today).
+- Next: default migration with the full graphical boot headless, then a
+  sustained workload, then a visual/touch regression with fresh readiness.
 
 ## Evidence-entry template
 

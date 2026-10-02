@@ -17,6 +17,55 @@ without a requester and shows a toolbar symbol; drawing is reported normal
 so far. Delayed slowdown/hang qualification remains open. Retain the exact
 core/BSP/SD identities recorded on 2026-10-01 and rollback copies.
 
+## Transitional Giant Exec SMP (`P4_GIANT=1`, decided 2026-10-02)
+
+Fabian changed the delivery strategy on 2026-10-02: instead of finishing the
+fine-grained E3 lifecycle/semaphore protocols before hart1 ever runs Exec,
+deliver a hardware-tested transitional "Giant" first. This is a **named
+workaround**, not the E3 design and not a fix for the races E3 documents.
+
+What it compensates: the absence of fine-grained, SMP-safe Exec
+synchronization. Exec on a single CPU already protects every task list and
+task state with Forbid() or Disable(); upstream AROS SMP makes both per-CPU
+and then has to add a lock to every structure. The Giant instead keeps their
+Amiga meaning system wide:
+
+- F, held by a hart while its current task is inside Forbid() or Disable();
+- D, held by a hart while its task is inside Disable(), and by every trap.
+
+Lock order is F before D. Disable() takes F first; a trap holds D and may only
+try-lock F (the dispatcher, for a task that resumes inside Disable()).
+Interrupt code takes only D, so interrupts still run while some task holds
+Forbid(). Both lock words live in canonical internal SRAM (E2 qualified AMO).
+ThisTask, ID/TD nesting, scheduler flags and quantum are per hart, selected by
+mhartid with MIE masked. Every trap from task context moves to a per-hart ISR
+stack through mscratch, because two harts must never share a task stack and
+the dispatcher idles inside the trap. Hart1 has no tick of its own: hart0's
+timer interrupt posts a tick IPI. Soft interrupts run on hart0 only. Before
+hart0 suspends the cache to rewrite the flash MMU it parks hart1 in SRAM and
+refuses the mapping if hart1 does not answer within a second. The shared
+console, the cache controller's ROM commands and the SYSTIMER snapshot are
+serialized across harts.
+
+It needs no Exec ABI change: only the core image changes, and the unchanged
+normal BSP package runs with it. `P4_GIANT` is a make switch of the normal
+target, not the refused `smp` variant; configure's smp refusal is unchanged
+and Codex's E3 sources stay unselected. Hart1 runs only tasks that opt in
+through the private tc_Flags bits 1 (may run on hart1) and 2 (must not run on
+hart0), which exec/tasks.h leaves unused.
+
+Known limits of this stage: code that writes SysBase->TDNestCnt directly
+(AROSTCP's fast Forbid) bypasses F; code that reads SysBase->ThisTask
+directly sees hart0's task; Forbid() does not stop a task that is already
+running on the other hart and needs neither lock; priority is not a mutual
+exclusion between harts. RemTask() of a task running on the other hart evicts
+it through an IPI. Tasks do not yet migrate by default.
+
+Removal test, kept as its own item: each narrowing of the Giant (a subsystem
+moved to its own lock) must show, on hardware, unchanged results of the
+Giant self-test plus a contention measurement that motivated it. The Giant is
+removed only when no Exec path depends on F/D for cross-hart exclusion.
+
 ## Design boundaries
 
 - SoC core release/cache/IPI support belongs in the P4 kernel, not D1001 GPIO

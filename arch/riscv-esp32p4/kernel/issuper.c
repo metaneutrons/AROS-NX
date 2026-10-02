@@ -12,6 +12,8 @@
 #include <proto/kernel.h>
 #if defined(__AROSEXEC_SMP__)
 #include "cpu_local.h"
+#elif defined(P4_GIANT)
+#include "p4_giant.h"
 #endif
 
 /*
@@ -35,6 +37,8 @@ AROS_LH0I(int, KrnIsSuper,
     /* Refuse sleeping if the caller cannot identify a valid local context. */
     return local == NULL || local->hart_id != P4_CPU_LOCAL_READ_MHARTID() ||
            local->trap_depth > 0;
+#elif defined(P4_GIANT)
+    return p4_giant_is_super();
 #else
     return __esp32p4_trap_depth > 0;
 #endif

@@ -2,9 +2,17 @@
 include $(SRCDIR)/config/aros.cfg
 include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 
+# P4_GIANT=1 selects the transitional Giant Exec SMP (kernel/p4_giant.h).
+# The define must reach the generic rom/kernel, rom/exec and rom/task
+# objects too, because their Exec macros come from exec_platform.h; the
+# arch include-flag file is how arch settings reach those builds. mmake
+# does not track it: rebuild kernel/exec/task cleanly when P4_GIANT changes.
+P4_GIANT_ARCHFLAG := $(if $(filter 1,$(P4_GIANT)),-DP4_GIANT=1,) \
+                     $(if $(filter 1,$(P4_GIANT_MIGRATE)),-DP4_GIANT_MIGRATE=1,)
+
 %set_archincludes mainmmake=kernel-kernel maindir=rom/kernel \
   modname=kernel pri=10 arch=esp32p4-riscv \
-  includes="-I$(SRCDIR)/$(CURDIR)"
+  includes="-I$(SRCDIR)/$(CURDIR) $(P4_GIANT_ARCHFLAG)"
 
 %get_archincludes modname=kernel \
     includeflag=TARGET_KERNEL_INCLUDES maindir=rom/kernel
@@ -1041,6 +1049,24 @@ CFILES += cpu_local cpu_local_runtime p4_soft_atomic p4_spinlock \
 # The trap-entry spill is required for the ILP32F runtime, not a test switch
 # to omit from one object in a matched SMP kernel.
 USER_CPPFLAGS += -DP4_E3_FPU=1 -DP4_E3_PUBLIC_SPINLOCK=1 -DP4_ATOMIC_CORE=1
+endif
+ifeq ($(P4_GIANT),1)
+ifeq ($(AROS_TARGET_VARIANT),smp)
+$(error P4_GIANT=1 is an alternative to the smp variant, not an addition)
+endif
+ifneq ($(filter 1,$(P4_E3_RUNTIME_PREPARE) $(P4_SECONDARY_PROBE) $(P4_SECONDARY_ENTRY) $(P4_E3_CPU_LOCAL) $(P4_E2_PRIMITIVES)),)
+$(error P4_GIANT=1 cannot share the diagnostic secondary/E2/E3 startup)
+endif
+USER_CPPFLAGS += -DP4_GIANT=1
+CFILES += p4_giant kernel_scheduler
+AFILES += p4_giant_entry
+ifeq ($(P4_GIANT_MIGRATE),1)
+USER_CPPFLAGS += -DP4_GIANT_MIGRATE=1
+endif
+ifeq ($(P4_GIANT_TEST),1)
+USER_CPPFLAGS += -DP4_GIANT_TEST=1
+CFILES += p4_giant_test
+endif
 endif
 ifeq ($(P4_E3_RUNTIME_PREPARE),1)
 ifneq ($(filter 1,$(P4_SECONDARY_PROBE) $(P4_SECONDARY_ENTRY) $(P4_E3_CPU_LOCAL) $(P4_E2_PRIMITIVES)),)

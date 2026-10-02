@@ -80,7 +80,7 @@ _start:
 	/* Trap vector, in direct mode: every trap lands on one entry
 	   point. The CLIC's vectored table in mtvt is set up later, once
 	   there is an interrupt controller to point it at. */
-#if defined(__AROSEXEC_SMP__)
+#if defined(__AROSEXEC_SMP__) || defined(P4_GIANT)
 	csrw	mscratch, zero
 #endif
 	la	t0, __trap_entry
