@@ -285,6 +285,7 @@
    are the values for 80 MHz and below. */
 #define P4_PSRAM_REG_READ           0x4040
 #define P4_PSRAM_REG_WRITE          0xC0C0
+#define P4_PSRAM_GLOBAL_RESET       0xFFFF
 #define P4_PSRAM_SYNC_READ          0x0000
 #define P4_PSRAM_SYNC_WRITE         0x8080
 #define P4_PSRAM_RD_REG_DUMMY_SLOW  (2 * (5 - 1))
@@ -588,8 +589,17 @@ struct P4PSRAMInfo
     signed char   probe_latency;    /* the read latency the chip arrived in, -1 none */
     unsigned char bias_found;       /* PMU_HP_ACTIVE_DCM_VSET as inherited */
     unsigned char bias_set;         /* and as this port left it */
+    unsigned char ldo2_configured;  /* register readback, not a voltage measurement */
+    unsigned char ldo2_efuse_trim;  /* calibrated 1.8-V pair was present */
+    unsigned char ldo2_dref;
+    unsigned char ldo2_mul;
+    unsigned long ldo2_ctrl_before;
+    unsigned long ldo2_ana_before;
+    unsigned long ldo2_ctrl_after;
+    unsigned long ldo2_ana_after;
     unsigned char cmd_timeouts;     /* bounded user commands that did not finish */
     unsigned char fsm_recoveries;   /* MSPI FSM resets issued after a timeout */
+    unsigned char global_reset_cmd; /* 0 not issued, 1 completed, 2 timed out */
     struct P4PSRAMEntry entry;      /* what the bootloader left behind */
     struct P4PSRAMTuning tuning;
 };
