@@ -71,6 +71,9 @@
     if (!CheckSemaphore(sigSem, &tp, SysBase))
         return;
 
+#if defined(EXEC_PLATFORM_RELEASE_SEMAPHORE)
+    EXEC_PLATFORM_RELEASE_SEMAPHORE(sigSem);
+#else
     /* Protect the semaphore structure from multiple access. */
     Forbid();
 
@@ -200,6 +203,7 @@
 
     /* All done. */
     Permit();
+#endif
 
     AROS_LIBFUNC_EXIT
 } /* ReleaseSemaphore */
