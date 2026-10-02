@@ -617,12 +617,14 @@
 #define   P4_PMU_DCM_VSET_RESET 20
 #define   P4_PMU_DCM_VSET_PSRAM 26
 
+#define P4_PMU_EXT_LDO_VO2      (P4_PMU_BASE + 0x1D0)
+#define P4_PMU_EXT_LDO_VO2_ANA  (P4_PMU_BASE + 0x1D4)
 #define P4_PMU_EXT_LDO_VO3      (P4_PMU_BASE + 0x1C0)
 #define P4_PMU_EXT_LDO_VO3_ANA  (P4_PMU_BASE + 0x1C4)
 #define   P4_LDO_FORCE_TIEH_SEL (1UL << 7)
 #define   P4_LDO_XPD            (1UL << 8)
 #define   P4_LDO_TIEH_SEL_SHIFT 9
-#define   P4_LDO_TIEH_SEL_MASK  (0x3UL << P4_LDO_TIEH_SEL_SHIFT)
+#define   P4_LDO_TIEH_SEL_MASK  (0x7UL << P4_LDO_TIEH_SEL_SHIFT)
 #define   P4_LDO_TIEH           (1UL << 14)
 #define   P4_LDO_MUL_SHIFT      23
 #define   P4_LDO_MUL_MASK       (0x7UL << P4_LDO_MUL_SHIFT)
@@ -633,14 +635,18 @@
 #define   P4_LDO_DREF_2V5       9
 #define   P4_LDO_MUL_2V5        6
 
-/* Read-only eFuse fields used by ESP-IDF to calibrate LDO channel 3. */
+/* Read-only eFuse fields used by ESP-IDF to calibrate LDO channels 2 and 3. */
 #define P4_EFUSE_BASE            0x5012D000UL
 #define P4_EFUSE_RD_MAC_SYS_2    (P4_EFUSE_BASE + 0x4C)
 #define   P4_EFUSE_BLK_MINOR_SHIFT 8
 #define   P4_EFUSE_BLK_MINOR_MASK  (0x7UL << P4_EFUSE_BLK_MINOR_SHIFT)
 #define   P4_EFUSE_BLK_MAJOR_SHIFT 11
 #define   P4_EFUSE_BLK_MAJOR_MASK  (0x3UL << P4_EFUSE_BLK_MAJOR_SHIFT)
+#define   P4_EFUSE_LDO2_DREF_SHIFT 28
+#define   P4_EFUSE_LDO2_DREF_MASK (0xFUL << P4_EFUSE_LDO2_DREF_SHIFT)
 #define P4_EFUSE_RD_MAC_SYS_3    (P4_EFUSE_BASE + 0x50)
+#define   P4_EFUSE_LDO2_MUL_SHIFT 3
+#define   P4_EFUSE_LDO2_MUL_MASK  (0x7UL << P4_EFUSE_LDO2_MUL_SHIFT)
 #define   P4_EFUSE_LDO3_K_SHIFT  6
 #define   P4_EFUSE_LDO3_K_MASK   (0xFFUL << P4_EFUSE_LDO3_K_SHIFT)
 #define   P4_EFUSE_LDO3_VOS_SHIFT 14

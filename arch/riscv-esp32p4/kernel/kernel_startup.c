@@ -7176,6 +7176,22 @@ void kernel_cstart(unsigned long hartid, void *fdt)
         p4_psram_calib_entry = psram.ana_trace[0];
         p4_psram_bias_seen = psram.bias_set;
 
+        krnP4PutStr("[psram]  ldo2   ctrl ");
+        krnP4PutHex32((uint32_t)psram.ldo2_ctrl_before);
+        krnP4PutStr(" -> ");
+        krnP4PutHex32((uint32_t)psram.ldo2_ctrl_after);
+        krnP4PutStr(", ana ");
+        krnP4PutHex32((uint32_t)psram.ldo2_ana_before);
+        krnP4PutStr(" -> ");
+        krnP4PutHex32((uint32_t)psram.ldo2_ana_after);
+        krnP4PutStr(", dref/mul ");
+        krnP4PutDec((uint32_t)psram.ldo2_dref);
+        krnP4PutStr("/");
+        krnP4PutDec((uint32_t)psram.ldo2_mul);
+        krnP4PutStr(psram.ldo2_efuse_trim ? " eFuse" : " nominal");
+        krnP4PutStr(psram.ldo2_configured ? " readback OK\n"
+                                         : " readback failed\n");
+
         if (up)
         {
             krnP4PutStr("[psram]  chip   ");
@@ -7212,10 +7228,12 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutDec((uint32_t)psram.mpll_attempts);
             krnP4PutStr(psram.mpll_attempts == 1 ? " attempt\n" : " attempts\n");
 
-            krnP4PutStr("[psram]  supply inherited ");
+            krnP4PutStr("[psram]  HP bias inherited ");
             krnP4PutDec((uint32_t)psram.bias_found);
             krnP4PutStr(", set ");
             krnP4PutDec((uint32_t)psram.bias_set);
+            krnP4PutStr("\n[psram]  global reset command ");
+            krnP4PutStr(psram.global_reset_cmd == 1 ? "completed" : "timed out");
             krnP4PutStr("\n[psram]  found  read latency ");
             if (psram.probe_latency >= 0)
                 krnP4PutDec((uint32_t)psram.probe_latency);
@@ -7273,6 +7291,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
                 }
             }
         }
+        else if (!psram.ldo2_configured)
+            krnP4PutStr("[psram]  chip   LDO2 register readback failed;"
+                        " MPLL and MSPI not started\n");
         else if (!psram.mpll_up)
         {
             krnP4PutStr(psram.mpll_reason == P4_MPLL_NO_BUS
@@ -7327,8 +7348,12 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             krnP4PutStr(", data ");
             krnP4PutStr(psram.connected ? "carried\n" : "lost\n");
 
+            krnP4PutStr("[psram]  global reset command ");
+            krnP4PutStr(psram.global_reset_cmd == 1 ? "completed\n"
+                                                     : "timed out\n");
+
             krnP4PutStr("[psram]  found  no answer in any of eight read"
-                        " latencies, supply inherited ");
+                        " latencies, HP bias inherited ");
             krnP4PutDec((uint32_t)psram.bias_found);
             krnP4PutStr(", set ");
             krnP4PutDec((uint32_t)psram.bias_set);
