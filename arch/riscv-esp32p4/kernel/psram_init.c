@@ -11,6 +11,13 @@
 #include "kernel_intern.h"
 #include "psram.h"
 
+#if P4_BOARD_PSRAM_LDO_CHANNEL != 2
+#error The PSRAM supply implementation currently supports only LDO channel 2
+#endif
+#if P4_BOARD_PSRAM_LDO_MV < 1650 || P4_BOARD_PSRAM_LDO_MV > 1950
+#error The PSRAM supply voltage must stay within the ESP32-P4 PSRAM IO range
+#endif
+
 /*
  * Why this is P4_SRAMCODE: with ldscript-xip.lds the image's code is
  * fetched through the cache that MSPI serves, and reconfiguring MSPI while
@@ -50,6 +57,106 @@ P4_SRAMDATA static unsigned int p4_fsm_recoveries;
 #ifdef P4_PSRAM_TIMEOUT_TEST
 P4_SRAMDATA static unsigned char p4_timeout_test_pending;
 #endif
+
+/*
+ * VDDO_PSRAM is a separate on-chip supply, not the HP CPU bias adjusted by
+ * krnP4SupplyUp().  ESP-IDF acquires channel 2 at 1.8 V before bringing up
+ * the MPLL and MSPI.  AROS's bootloader can leave this LDO disabled, so a
+ * controller command completing does not prove that the PSRAM die saw it.
+ *
+ * Channel 2 is LDO unit 1, whose PMU register index is 3.  The nominal
+ * search and the optional eFuse override reproduce ESP-IDF's unit-1 path.
+ * Keep this in SRAM: PSRAM setup can reconfigure the flash-serving MSPI.
+ */
+P4_SRAMCODE static int p4_psram_ldo2_up(struct P4PSRAMInfo *info)
+{
+    unsigned long sys2 = p4_r32(P4_EFUSE_RD_MAC_SYS_2);
+    unsigned long sys3 = p4_r32(P4_EFUSE_RD_MAC_SYS_3);
+    unsigned int version;
+    unsigned int d, m;
+    int best_diff = 400000000;
+    unsigned long ctrl, ana;
+
+    info->ldo2_ctrl_before = p4_r32(P4_PMU_EXT_LDO_VO2);
+    info->ldo2_ana_before = p4_r32(P4_PMU_EXT_LDO_VO2_ANA);
+    info->ldo2_dref = 0;
+    info->ldo2_mul = 0;
+    info->ldo2_efuse_trim = 0;
+
+    for (d = 0; d < 16; ++d)
+    {
+        int vref_20 = d < 9 ? 10 + (int)d : 20 + ((int)d - 9) * 2;
+
+        for (m = 0; m < 8; ++m)
+        {
+            int vout = vref_20 * 1000 * (4000 + (int)m * 1000);
+            int diff = P4_BOARD_PSRAM_LDO_MV * 80000 - vout;
+
+            if (diff < 0)
+                diff = -diff;
+            if (diff < best_diff)
+            {
+                best_diff = diff;
+                info->ldo2_dref = (unsigned char)d;
+                info->ldo2_mul = (unsigned char)m;
+            }
+        }
+    }
+
+    version = ((sys2 & P4_EFUSE_BLK_MAJOR_MASK)
+               >> P4_EFUSE_BLK_MAJOR_SHIFT) * 100;
+    version += (sys2 & P4_EFUSE_BLK_MINOR_MASK)
+               >> P4_EFUSE_BLK_MINOR_SHIFT;
+    if (version >= 1 && P4_BOARD_PSRAM_LDO_MV == 1800)
+    {
+        unsigned int trim_dref = (sys2 & P4_EFUSE_LDO2_DREF_MASK)
+                                 >> P4_EFUSE_LDO2_DREF_SHIFT;
+        unsigned int trim_mul = (sys3 & P4_EFUSE_LDO2_MUL_MASK)
+                                >> P4_EFUSE_LDO2_MUL_SHIFT;
+
+        if (trim_dref && trim_mul)
+        {
+            info->ldo2_dref = (unsigned char)trim_dref;
+            info->ldo2_mul = (unsigned char)trim_mul;
+            info->ldo2_efuse_trim = 1;
+        }
+    }
+
+    /* Voltage first, ownership and ripple suppression next, enable last. */
+    ctrl = info->ldo2_ctrl_before & ~P4_LDO_TIEH;
+    p4_w32(P4_PMU_EXT_LDO_VO2, ctrl);
+
+    ana = info->ldo2_ana_before & ~(P4_LDO_DREF_MASK | P4_LDO_MUL_MASK);
+    ana |= (unsigned long)info->ldo2_dref << P4_LDO_DREF_SHIFT;
+    ana |= (unsigned long)info->ldo2_mul << P4_LDO_MUL_SHIFT;
+    p4_w32(P4_PMU_EXT_LDO_VO2_ANA, ana);
+
+    ctrl = (ctrl | P4_LDO_FORCE_TIEH_SEL) & ~P4_LDO_TIEH_SEL_MASK;
+    p4_w32(P4_PMU_EXT_LDO_VO2, ctrl);
+    p4_w32(P4_PMU_EXT_LDO_VO2_ANA, ana | P4_LDO_EN_VDET);
+    p4_w32(P4_PMU_EXT_LDO_VO2, ctrl | P4_LDO_XPD);
+
+    /* At most 360 MHz here: 360,000 mcycles give the rail at least 1 ms. */
+    {
+        unsigned long start, now;
+
+        asm volatile("csrr %0, mcycle" : "=r"(start));
+        do
+            asm volatile("csrr %0, mcycle" : "=r"(now));
+        while ((unsigned long)(now - start) < 360000UL);
+    }
+
+    info->ldo2_ctrl_after = p4_r32(P4_PMU_EXT_LDO_VO2);
+    info->ldo2_ana_after = p4_r32(P4_PMU_EXT_LDO_VO2_ANA);
+    return (info->ldo2_ctrl_after & (P4_LDO_FORCE_TIEH_SEL | P4_LDO_XPD))
+               == (P4_LDO_FORCE_TIEH_SEL | P4_LDO_XPD)
+           && !(info->ldo2_ctrl_after & (P4_LDO_TIEH_SEL_MASK | P4_LDO_TIEH))
+           && (info->ldo2_ana_after & P4_LDO_EN_VDET)
+           && ((info->ldo2_ana_after & P4_LDO_DREF_MASK)
+               >> P4_LDO_DREF_SHIFT) == info->ldo2_dref
+           && ((info->ldo2_ana_after & P4_LDO_MUL_MASK)
+               >> P4_LDO_MUL_SHIFT) == info->ldo2_mul;
+}
 
 /*
  * Above 80 MHz the chip needs the longer latencies.  The threshold is the
@@ -766,6 +873,39 @@ P4_SRAMCODE static int p4_psram_cmd(uint32_t cmd, uint32_t reg_addr,
 }
 
 /*
+ * Reset the AP chip, not merely the two MSPI controller state machines.
+ *
+ * APS256XXN-OBx9 section 6.2 defines Global Reset as instruction FF on the
+ * first rising edge with CE# held low for four clock cycles.  An OPI-DTR
+ * 16-bit command, 32-bit don't-care address and 16-bit don't-care payload
+ * make exactly four cycles.  There is deliberately no receive phase: unlike
+ * a mode-register read, this transaction cannot wait for a chip response.
+ * The command's completion only proves that the controller released CE#;
+ * identification after mode initialization proves whether the chip reset.
+ *
+ * PSRAM contents are already discarded on every AROS boot.  Thus a chip
+ * reset before mode setup is safe even when the previous boot left scanout
+ * active or the chip in another latency/width configuration.
+ */
+P4_SRAMCODE static int p4_psram_global_reset(void)
+{
+    uint32_t padding = 0xFFFFFFFFUL;
+    unsigned long start, now;
+    int completed;
+
+    completed = p4_psram_cmd(P4_PSRAM_GLOBAL_RESET, 0, 0,
+                             &padding, 16, NULL, 0);
+
+    /* CE# is high now. The part requires tRST >= 2 us after that edge. */
+    asm volatile("csrr %0, mcycle" : "=r"(start));
+    do
+        asm volatile("csrr %0, mcycle" : "=r"(now));
+    while ((unsigned long)(now - start) < 36000UL);
+
+    return completed;
+}
+
+/*
  * Mode registers come in pairs at even addresses, because the bus is
  * sixteen bits wide and a transfer moves both halves. Address 0 carries
  * mode register 0 in its low byte and mode register 1 in its high byte,
@@ -1046,8 +1186,24 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     info->probe_latency = -1;
     info->bias_found = 0;
     info->bias_set = 0;
+    info->ldo2_configured = 0;
+    info->ldo2_ctrl_before = 0;
+    info->ldo2_ana_before = 0;
+    info->ldo2_ctrl_after = 0;
+    info->ldo2_ana_after = 0;
+    info->mpll_up = 0;
+    info->mpll_reason = 0;
+    info->mpll_state = 0;
+    info->ana_pll_ctrl0 = 0;
+    info->ana_trace[0] = 0;
+    info->ana_trace[1] = 0;
+    info->ana_trace[2] = 0;
+    info->ana_trace[3] = 0;
+    info->ana_spins = 0;
+    info->mpll_attempts = 0;
     info->cmd_timeouts = 0;
     info->fsm_recoveries = 0;
+    info->global_reset_cmd = 0;
     p4_cmd_timeouts = 0;
     p4_fsm_recoveries = 0;
 #ifdef P4_PSRAM_TIMEOUT_TEST
@@ -1061,16 +1217,15 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
     psram_mark('1');
     krnPSRAMEntryRead(&info->entry);
 
-    /*
-     * The supply is not raised here.  It is a machine-wide setting and it has
-     * to be up before the CPU clock, which is set earlier than this - see
-     * krnP4SupplyUp and the comment on it.  What this records is what that
-     * step left, so a failure can be read against it.
-     */
+    /* Record the already configured HP CPU bias, a different supply. */
     info->bias_found = (unsigned char)((p4_r32(P4_PMU_HP_ACTIVE_BIAS)
                                         & P4_PMU_DCM_VSET_MASK)
                                        >> P4_PMU_DCM_VSET_SHIFT);
     info->bias_set   = info->bias_found;
+
+    info->ldo2_configured = (unsigned char)p4_psram_ldo2_up(info);
+    if (!info->ldo2_configured)
+        return 0;
 
     psram_mark('2');
     info->mpll_reason = (signed char)krnPSRAMMPLLUp();
@@ -1127,6 +1282,10 @@ P4_SRAMCODE int krnPSRAMBringUp(struct P4PSRAMInfo *info,
 
     psram_mark('6');
     krnPSRAMDllUp();
+
+    /* A warm reset can retain the chip's mode while the CPU and controller
+       are reset. Reset the chip itself before assuming any latency or width. */
+    info->global_reset_cmd = p4_psram_global_reset() ? 1 : 2;
 
     /*
      * Find the chip, tell it what this port wants, then confirm.
