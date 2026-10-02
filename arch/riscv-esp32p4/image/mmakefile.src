@@ -18,6 +18,9 @@ STAGE      := $(GENDIR)/$(CURDIR)/stage
 MKFAT32    := $(SRCDIR)/$(CURDIR)/mkfat32.py
 PROOFDIR   := $(AROSARCHDIR)/proof
 C3_STARTUP := $(SRCDIR)/$(CURDIR)/Startup-Sequence.c3
+C3_THEME   := $(if $(strip $(AROS_GUI_THEME)),$(AROS_GUI_THEME),AROSDefault)
+C3_THEME_SRC := $(SRCDIR)/images/Themes/$(C3_THEME)
+C3_THEME_DST := $(STAGE)/Prefs/Presets/Themes/$(C3_THEME)
 
 #   Fixed on purpose: these are the only two fields a formatter would
 #   otherwise take from the clock, and taking them from the clock would make
@@ -64,6 +67,14 @@ P4_GSL_FW_BINARY ?=
 #MM-     workbench-libs-muimaster \
 #MM-     workbench-libs-muiscreen \
 #MM-     workbench-libs-rexxsyslib \
+#MM-     workbench-libs-png \
+#MM-     workbench-libs-z \
+#MM-     compiler-posixc \
+#MM-     compiler-stdcio \
+#MM-     workbench-datatypes-picture \
+#MM-     workbench-datatypes-png \
+#MM-     workbench-devs-datatypes \
+#MM-     workbench-c-adddatatypes \
 #MM-     compiler-stdc \
 #MM-     workbench-libs-workbench
 
@@ -71,7 +82,8 @@ C3_SD_LIBS := asl.library commodities.library coolimages.library \
               cybergraphics.library datatypes.library diskfont.library \
               icon.library iffparse.library locale.library \
               muimaster.library muiscreen.library rexxsyslib.library \
-              stdc.library workbench.library
+              stdc.library workbench.library png.library z1.library \
+              posixc.library stdcio.library
 
 kernel-image-esp32p4-riscv-stage :
 	@$(RM) $(STAGE)
@@ -85,13 +97,28 @@ kernel-image-esp32p4-riscv-stage :
 ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
 	@# C3 keeps the boot-critical residents in flash, but the ordinary desktop,
 	@# its loadable libraries/classes and its preferences belong to SYS:.
-	@$(CP) $(C3_STARTUP) $(STAGE)/S/Startup-Sequence
+	@# Wanderer's toolbar and other Zune ImageButtons open THEME: paths.  Stage
+	@# the configured theme with the image so those paths resolve on the board.
+	@$(TEST) -d $(C3_THEME_SRC) || { $(ECHO) "Missing C3 theme: $(C3_THEME_SRC)"; exit 1; }
+	@$(TEST) -f $(C3_THEME_SRC)/images/Gadgets/Search || exit 1
+	@$(TEST) -f $(C3_THEME_SRC)/images/Gadgets/DirUp || exit 1
+	@$(MKDIR) -p $(C3_THEME_DST)
+	@$(CP) -r $(C3_THEME_SRC)/. $(C3_THEME_DST)/
+	@$(SED) -e 's|@C3_THEME@|$(C3_THEME)|g' \
+	    $(C3_STARTUP) > $(STAGE)/S/Startup-Sequence
 	@$(CP) $(AROSDIR)/C/Assign $(STAGE)/C/Assign
 	@for f in $(C3_SD_LIBS) ; do \
 	    $(CP) $(AROSDIR)/Libs/$$f $(STAGE)/Libs/$$f || exit 1 ; \
 	done
 	@$(CP) -r $(AROSDIR)/Classes/. $(STAGE)/Classes/
 	@$(CP) -r $(AROSDIR)/System/Wanderer $(STAGE)/System/
+	@$(MKDIR) -p $(STAGE)/Classes/DataTypes $(STAGE)/Devs/DataTypes
+	@$(CP) $(AROSDIR)/Classes/DataTypes/picture.datatype \
+	    $(STAGE)/Classes/DataTypes/picture.datatype
+	@$(CP) $(AROSDIR)/Classes/DataTypes/png.datatype \
+	    $(STAGE)/Classes/DataTypes/png.datatype
+	@$(CP) $(AROSDIR)/Devs/DataTypes/PNG $(STAGE)/Devs/DataTypes/PNG
+	@$(CP) $(AROSDIR)/C/AddDataTypes $(STAGE)/C/AddDataTypes
 	@if $(TEST) -d $(AROSDIR)/Prefs/Env-Archive ; then \
 	    $(MKDIR) -p $(STAGE)/Prefs/Env-Archive ; \
 	    $(CP) -r $(AROSDIR)/Prefs/Env-Archive/. \

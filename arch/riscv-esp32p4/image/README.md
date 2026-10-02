@@ -69,6 +69,12 @@ The macOS-only helper keeps the raw descriptor exclusively open through the
 write, cache synchronization and `DKIOCEJECT`, so Disk Arbitration never sees
 an online rewritten FAT volume:
 
+The helper also reads back and compares the complete image prefix after cache
+synchronization, while still holding that exclusive descriptor. It fails on a
+short read or byte mismatch before reporting successful verification/eject.
+Back up the complete write range before invoking it; bytes beyond the image
+prefix are not written. A prefix backup is not a whole-medium backup.
+
     cc -std=c11 -Wall -Wextra -Werror -O2 \
         arch/riscv-esp32p4/tools/write-image-eject.c \
         -o /tmp/aros-write-image-eject
