@@ -1,312 +1,87 @@
-[![AROS Logo](http://aros.org/images/toplogo.png?v=1.0)](http://developers.aros.org)
-# AROS Git Repository [![Codacy Badge](https://app.codacy.com/project/badge/Grade/8dd5a86f87064c14ba75f291c045e788)](https://app.codacy.com/gh/aros-development-team/AROS/dashboard)
+[![AROS — source, tools and toolchains](https://aros.metaneutrons.cc/social-card.png)](https://aros.metaneutrons.cc/)
 
-> This is the main repository for active development of the AROS Operating System.
-> The repository contains the main Operating System components, SDK and Build System.
+# <img src="https://metaneutrons.cc/brand/aros.svg" alt="" width="40" height="40"> AROS-NX
 
+**An upstream-tracking AROS fork, built with [aros-tools](https://github.com/metaneutrons/aros-tools).**
 
-## Nightly Test Builds
+[Documentation](https://aros.metaneutrons.cc/aros-tools/) ·
+[Build CI](https://github.com/metaneutrons/AROS-NX/actions/workflows/ci.yml) ·
+[Upstream AROS](https://github.com/aros-development-team/AROS) ·
+[Issues](https://github.com/metaneutrons/AROS-NX/issues)
 
+## Purpose
 
-* Builds are scheduled to run starting at 00:00 UTC. LLVM builds generally start 2hrs later.
-* The builds are made using the scripts/azure-pipelines.yml file. Further details can be found in that file.
-* GCC 6.5.0 builds are configured using default toolchain settings. Newer GCC builds may also use newer versions of binutils.
-* The main AROS target and distfiles are built for each arch.
-* The builds are downloadable via http://www.aros.org/nightly1.html [![Download AROS Research Operating System](https://img.shields.io/sourceforge/dt/aros.svg)](http://www.aros.org/nightly1.html).
+AROS-NX integrates the [AROS operating system](https://aros.sourceforge.io/)
+with a native Rust toolsuite and a translated CMake/Ninja build. It is an
+independent integration fork, not the official upstream repository.
 
-<table>
-  <tr>
-    <td style="text-align:center">BUILD Arch</td>
-    <td colspan=9 style="text-align:center"><em>Status</em></td>
-  </tr>
-  <tr>
-    <td rowspan=2 style="text-align:center"><code>Toolchain</code></td>
-    <td colspan=6 style="text-align:center">GNU</td>
-    <td colspan=3 style="text-align:center">LLVM</td>
-  </tr>
-  <tr>
-    <td style="text-align:center">6.5.0</td>
-    <td style="text-align:center">9.5.0</td>
-    <td style="text-align:center">10.5.0</td>
-    <td style="text-align:center">13.5.0</td>
-    <td style="text-align:center">15.2.0</td>
-    <td style="text-align:center">16.2.0</td>
-    <td style="text-align:center">11.0.0</td>
-    <td style="text-align:center">20.1.0</td>
-    <td style="text-align:center">23.1.0</td>
-  </tr>
-  <tr>
-    <td>amiga-m68k</td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=14&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-amiga-m68k?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>pc-i386</td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=16&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-pc-i386?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>pc-x86_64</td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=17&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-pc-x86_64?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=40&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-pc-x86_64-llvm?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>pc-x86_64-smp</td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=15&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-pc-x86_64-smp?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=42&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-pc-x86_64-smp-llvm?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>raspi-armhf</td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=19&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-raspi-armhf?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=43&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-raspi-armhf-llvm?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>raspi-aarch64</td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=44&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-raspi-aarch64-llvm?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>sam440-ppc</td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=20&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-sam440-ppc?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>opensbi-riscv64</td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=45&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-opensbi-riscv64?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=46&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-opensbi-riscv64-llvm?branchName=master"></a>
-    </td>
-  </tr>
-  <tr>
-    <td>linux-i386</td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=21&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-linux-i386?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=41&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-linux-i386-llvm?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>linux-x86_64</td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=18&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-linux-x86_64-gnu?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=26&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-linux-x86_64-llvm?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>linux-arm</td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=29&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-linux-arm?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>linux-armhf</td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=28&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-linux-armhf?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>darwin-i386</td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=24&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-darwin-i386?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>darwin-x86_64</td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=22&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-darwin-x86_64?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>darwin-ppc</td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=25&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-darwin-ppc?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>mingw32-i386</td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=23&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-mingw32-i386?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-  <tr>
-    <td>mingw32-x86_64</td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center">
-      <a href="https://dev.azure.com/aros-development-team/AROS/_build/latest?definitionId=30&branchName=master"><img alt="Build Status" src="https://dev.azure.com/aros-development-team/AROS/_apis/build/status/aros-development-team.AROS-mingw32-x86_64?branchName=master"></a>
-    </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-    <td style="text-align:center"> --- </td>
-  </tr>
-</table>
+The goal is to **keep AROS-NX buildable with aros-tools while staying close to
+upstream**. New upstream changes must pass the tools-based product checks before
+entering `main`. Source fixes that also apply to classic AROS should be prepared
+as focused patches and submitted upstream; integration-specific build metadata
+stays here. The aim is a smaller patch delta, not a separate operating system.
 
-## Incorporated components
+## Three repositories, separate responsibilities
 
-AROS contains a number of projects that have been donated to the codebase, you can find links to them here.
+| Repository | Responsibility |
+| --- | --- |
+| **[AROS-NX](https://github.com/metaneutrons/AROS-NX)** — this repository | Operating-system sources, reviewed source patches, target/media profiles and the consumer toolchain lock. |
+| **[aros-tools](https://github.com/metaneutrons/aros-tools)** | The `aros` CLI, MetaMake transpiler, embedded CMake engine, source fetching, build orchestration, verification and boot/media workflows. Start here for installation and usage. |
+| **[aros-toolchains](https://github.com/metaneutrons/aros-toolchains)** | Locked compiler inputs, reproducible qualification and published cross-toolchain releases, produced with aros-tools. |
 
+AROS-NX does not carry a second copy of the host tools or the CMake engine.
+`aros-tools` reads the checkout's profiles and
+[`aros-toolchains.lock.toml`](aros-toolchains.lock.toml), installs the selected
+compiler and builds this source tree. Tools and compilers have independent
+release versions; CI pins the tools runtime and the lock pins compiler artifacts.
 
-* [![AHI](https://github.com/aros-development-team/AROS/blob/master/images/Logos/AHI.png?raw=true)](../master/workbench/devs/AHI/README.md) - The de-facto standard retargetable audio system for AROS, AmigaOS, and MorphOS.
+## Build with aros-tools
 
-* [Poseidon](../master/rom/usb/README.md) - Modular USB host stack for Amiga-like systems.
+Install the **complete [aros-tools release suite](https://aros.metaneutrons.cc/aros-tools/getting-started/installation/)**
+and the [host prerequisites](https://aros.metaneutrons.cc/aros-tools/getting-started/prerequisites/).
+Then follow the [AROS-NX quick start](https://aros.metaneutrons.cc/aros-tools/getting-started/quick-start/)
+to create a recursive source checkout, install its locked toolchain and build a
+selected preset. You do not need to build the cross-compiler yourself.
 
+The product matrix covers `pc-x86_64`, `arm-raspi` and `rpi-aarch64` on Linux
+x86-64, Linux ARM64 and macOS Apple silicon. macOS Intel is not a release target.
+Passing product CI is **not** a hardware-boot or complete-distribution claim.
+See the [current release status](https://aros.metaneutrons.cc/aros-tools/reference/release-status/)
+and [image commands](https://aros.metaneutrons.cc/aros-tools/reference/cli/#composed-image-artifacts-experimental)
+for the separately qualified capabilities.
 
+## Upstream synchronization and patches
 
-## Contributing
+- **`master`** is the fast-forward-only mirror of upstream `master`.
+- **`main`** combines upstream history with reviewed AROS-NX integration changes.
+- **`sync/upstream-<12sha>`** branches propose upstream updates as pull requests.
+- **`pr/<subsystem>-<topic>`** branches start from `master` for focused,
+  upstream-compatible patch series.
 
-Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for details on joining the GitHub organization, and guidelines on contributing to the AROS project.
+The synchronization workflow runs daily and can also be requested manually.
+It opens a proposal; it does not merge unchecked changes. A clean Git merge is
+not enough: source changes and upstream syncs require the tools-based product
+matrix. If upstream exposes a missing build capability, fix the generic tools
+implementation or the relevant source defect before accepting the update.
 
-## License
+Pull requests use merge commits to preserve upstream ancestry. Keep source
+fixes separate from AROS-NX-specific integration work so they can be reviewed
+and submitted upstream without importing the fork's build configuration.
+See [the integration model](AROS-NX.md) for the complete branch and sync contract.
 
-This project is licensed under the APL License - see the [LICENSE](LICENSE) file for details
+## Contribute
 
-## Acknowledgments
+Report source/build problems in [AROS-NX issues](https://github.com/metaneutrons/AROS-NX/issues),
+host-tool problems in [aros-tools issues](https://github.com/metaneutrons/aros-tools/issues),
+and compiler-release problems in [aros-toolchains issues](https://github.com/metaneutrons/aros-toolchains/issues).
+Include the source commit, tools version, preset, host and retained failure logs.
 
-AROS contains parts built upon external components - see the [ACKNOWLEDGEMENTS](ACKNOWLEDGEMENTS) file for details
+For contributions to classic AROS, consult the
+[upstream contribution guide](https://github.com/aros-development-team/AROS/blob/master/CONTRIBUTING.md).
 
+## License and acknowledgements
+
+AROS is licensed under the [AROS Public License](LICENSE). Third-party components
+retain their respective licenses. See [ACKNOWLEDGEMENTS](ACKNOWLEDGEMENTS) and
+the notices in the source tree. This fork builds on the work of the AROS
+Development Team and its contributors.
