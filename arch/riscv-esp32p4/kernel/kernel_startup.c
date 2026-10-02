@@ -7480,6 +7480,8 @@ void kernel_cstart(unsigned long hartid, void *fdt)
             (void)krnP4PublishPSRAM(P4_PSRAM_WINDOW_BASE);
     }
 
+    krnP4PutStr("[console] runtime output nonblocking; saturated bytes dropped\n");
+    krnP4ConsoleRuntime();
     krnStartExec();
 
 #ifdef P4_SDCARD_DEVICE_TEST
