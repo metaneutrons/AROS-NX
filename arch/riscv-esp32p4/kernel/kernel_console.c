@@ -28,6 +28,18 @@
 
 #define SPIN_LIMIT      100000
 
+/* Set once before Exec can schedule callers. Runtime debug must never wait
+ * for a USB reader: callers include input publication and locked redraws.
+ * Saturated output is deliberately lossy; the early boot capture policy is
+ * unchanged. This is a single-hart transition, not a console lock. */
+static volatile unsigned int console_runtime;
+static volatile unsigned long console_dropped;
+
+void krnP4ConsoleRuntime(void)
+{
+    console_runtime = 1;
+}
+
 static inline uint32_t mmio_rd(uint32_t base, uint32_t off)
 {
     return *(volatile uint32_t *)(base + off);
@@ -57,6 +69,9 @@ static void usj_flush(void)
     mmio_wr(P4_USJ_BASE, P4_USJ_EP1_CONF, P4_USJ_WR_DONE);
     usj_pending = 0;
 
+    if (console_runtime)
+        return;
+
     /* Wait for the host to collect it, so the next byte has somewhere to
        go. If no host ever does, give up and keep going. */
     while (spins--)
@@ -82,14 +97,18 @@ static void usj_flush(void)
 void krnP4PutC(char c)
 {
     unsigned int spins;
+    unsigned int limit = console_runtime ? 1 : ATTACH_SPINS;
 
-    for (spins = 0; spins < ATTACH_SPINS; spins++)
+    for (spins = 0; spins < limit; spins++)
     {
         if (mmio_rd(P4_USJ_BASE, P4_USJ_EP1_CONF) & P4_USJ_IN_EP_DATA_FREE)
             break;
     }
-    if (spins == ATTACH_SPINS)
+    if (spins == limit)
+    {
+        console_dropped++;
         return;
+    }
 
     mmio_wr(P4_USJ_BASE, P4_USJ_EP1, (uint32_t)(unsigned char)c);
 
@@ -123,7 +142,7 @@ int krnP4GetC(void)
 
 void krnP4PutC(char c)
 {
-    unsigned int spins = SPIN_LIMIT;
+    unsigned int spins = console_runtime ? 1 : SPIN_LIMIT;
 
     while (spins--)
     {
@@ -136,6 +155,7 @@ void krnP4PutC(char c)
             return;
         }
     }
+    console_dropped++;
 }
 
 int krnP4GetC(void)
