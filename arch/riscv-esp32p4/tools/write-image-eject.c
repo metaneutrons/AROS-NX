@@ -63,6 +63,24 @@ static void write_full(int fd, const void *buffer, size_t length,
     }
 }
 
+static void read_full_at(int fd, void *buffer, size_t length, uint64_t offset)
+{
+    unsigned char *cursor = buffer;
+
+    while (length != 0) {
+        ssize_t got = pread(fd, cursor, length, (off_t)offset);
+        if (got < 0)
+            fail("read verification data");
+        if (got == 0) {
+            errno = EIO;
+            fail("short verification read");
+        }
+        cursor += (size_t)got;
+        length -= (size_t)got;
+        offset += (uint64_t)got;
+    }
+}
+
 int main(int argc, char **argv)
 {
     struct stat image_stat;
@@ -74,6 +92,7 @@ int main(int argc, char **argv)
     uint32_t block_size;
     uint32_t writable;
     unsigned char *buffer;
+    unsigned char *readback;
     int image_fd;
     int target_fd;
 
@@ -99,7 +118,7 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    target_fd = open(argv[2], O_WRONLY | O_EXCL);
+    target_fd = open(argv[2], O_RDWR | O_EXCL);
     if (target_fd < 0)
         fail("open raw device exclusively");
     if (fstat(target_fd, &target_stat) != 0)
@@ -144,7 +163,8 @@ int main(int argc, char **argv)
         fail("disable device caching");
 #endif
     buffer = malloc(COPY_CHUNK);
-    if (buffer == NULL)
+    readback = malloc(COPY_CHUNK);
+    if (buffer == NULL || readback == NULL)
         fail("allocate copy buffer");
 
     while (offset < (uint64_t)image_stat.st_size) {
@@ -168,12 +188,32 @@ int main(int argc, char **argv)
         fail("fsync raw device");
     if (ioctl(target_fd, DKIOCSYNCHRONIZECACHE) != 0)
         fail("synchronize device cache");
+    /* Keep the exclusive raw descriptor throughout physical readback too:
+     * closing it would allow automount to modify the new FAT volume. */
+    for (offset = 0; offset < (uint64_t)image_stat.st_size; ) {
+        size_t wanted = COPY_CHUNK;
+        size_t i;
+
+        if (wanted > (uint64_t)image_stat.st_size - offset)
+            wanted = (size_t)((uint64_t)image_stat.st_size - offset);
+        read_full_at(image_fd, buffer, wanted, offset);
+        read_full_at(target_fd, readback, wanted, offset);
+        if (memcmp(buffer, readback, wanted) != 0) {
+            for (i = 0; i < wanted && buffer[i] == readback[i]; ++i)
+                ;
+            fprintf(stderr, "verification mismatch at byte %" PRIu64 "\n",
+                offset + (uint64_t)i);
+            return 1;
+        }
+        offset += (uint64_t)wanted;
+    }
     if (ioctl(target_fd, DKIOCEJECT) != 0)
         fail("eject raw device");
 
-    printf("wrote and ejected %" PRIu64 " bytes on %" PRIu64
+    printf("wrote, verified and ejected %" PRIu64 " bytes on %" PRIu64
         "-byte device\n", offset, device_capacity);
     free(buffer);
+    free(readback);
     close(target_fd);
     close(image_fd);
     return 0;

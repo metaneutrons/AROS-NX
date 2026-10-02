@@ -6,7 +6,12 @@ Assign "ENV:" "RAM:"
 Assign "ENVARC:" "SYS:Prefs/Env-Archive"
 Assign "ENV:" "ENVARC:" ADD
 Assign "LIBS:" "SYS:Classes" ADD
+Assign "THEMES:" "SYS:Prefs/Presets/Themes"
+Assign "THEME:" "THEMES:@C3_THEME@"
 Assign "WANDERER:" "SYS:System/Wanderer" DEFER
+
+Echo "Registering the PNG datatype used by theme images"
+C:AddDataTypes DEVS:DataTypes/PNG QUIET
 
 Echo "Launching Wanderer from read-only SYS:"
 WANDERER:Wanderer
