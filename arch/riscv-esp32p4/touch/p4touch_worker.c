@@ -9,18 +9,23 @@
 #include <exec/tasks.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#include <proto/timer.h>
 
 #include "p4touch_intern.h"
+#include "p4touch_policy.h"
+#include "p4touch_coords.h"
+#include "../board/board.h"
 
+/* A coherent 44-byte report on the proven 10-kHz bus is CPU-polled at
+ * priority 20. Keep the idle gap until the transport can yield efficiently;
+ * short taps are separated by the first-empty policy, not a faster loop. */
 #define P4_TOUCH_POLL_US       50000UL
-#define P4_TOUCH_RELEASE_POLLS 2U
 #define P4_TOUCH_FW_RETRY_US   1000000UL
 #define P4_TOUCH_RECOVERY_ERRORS 3U
 #define P4_TOUCH_MAX_RECOVERIES  3U
 
-#define P4_TOUCH_FW_PATH "DEVS:Firmware/silead/gsl3670-d1001.fw"
-#define P4_TOUCH_FW_FALLBACK \
-    "FLASHDISK0P0:Firmware/silead/gsl3670-d1001.fw"
+#define P4_TOUCH_FW_PATH P4_BOARD_TOUCH_FW_PATH
+#define P4_TOUCH_FW_FALLBACK P4_BOARD_TOUCH_FW_FALLBACK
 
 static BOOL p4touch_wait(struct timerequest *timer, ULONG micros)
 {
@@ -91,22 +96,16 @@ static UBYTE *p4touch_read_firmware(struct DosLibrary *DOSBase,
     return NULL;
 }
 
-static WORD p4touch_scale(ULONG raw, ULONG raw_size, ULONG logical_size)
+static WORD p4touch_x(ULONG raw, const struct KrnTouchScreenOps *ops)
 {
-    ULONG scaled;
-
-    if (raw >= raw_size)
-        raw = raw_size - 1;
-    scaled = (raw * (logical_size - 1) + (raw_size - 1) / 2)
-           / (raw_size - 1);
-    return (WORD)scaled;
+    return p4touch_coordinate(raw, P4_BOARD_TOUCH_X_MIN,
+                             P4_BOARD_TOUCH_X_MAX, ops->logical_width, 0);
 }
 
-static WORD p4touch_scale_mirror(ULONG raw, ULONG raw_size,
-                                 ULONG logical_size)
+static WORD p4touch_y(ULONG raw, const struct KrnTouchScreenOps *ops)
 {
-    return (WORD)(logical_size - 1
-        - p4touch_scale(raw, raw_size, logical_size));
+    return p4touch_coordinate(raw, P4_BOARD_TOUCH_Y_MIN,
+                             P4_BOARD_TOUCH_Y_MAX, ops->logical_height, 1);
 }
 
 static ULONG p4touch_distance(WORD ax, WORD ay, WORD bx, WORD by)
@@ -129,10 +128,8 @@ static ULONG p4touch_primary(const struct KrnTouchScreenFrame *frame,
         return 0;
     for (i = 0; i < frame->count; ++i)
     {
-        WORD x = p4touch_scale(frame->contact[i].x, ops->raw_width,
-                               ops->logical_width);
-        WORD y = p4touch_scale_mirror(frame->contact[i].y, ops->raw_height,
-                                      ops->logical_height);
+        WORD x = p4touch_x(frame->contact[i].x, ops);
+        WORD y = p4touch_y(frame->contact[i].y, ops);
         ULONG distance = p4touch_distance(x, y, last_x, last_y);
 
         if (distance < best_distance)
@@ -161,6 +158,75 @@ static VOID p4touch_event(struct P4TouchMouseData *data, UWORD type,
     data->callback(data->callbackdata, &event);
 }
 
+struct P4TouchEmitter
+{
+    struct P4TouchMouseData *data;
+    ULONG right_gestures;
+};
+
+static void p4touch_emit(void *context, unsigned int action,
+                         unsigned int button, int16_t x, int16_t y)
+{
+    struct P4TouchEmitter *e = context;
+    UWORD type = action == P4_TOUCH_MOTION ? vHidd_Mouse_Motion
+               : action == P4_TOUCH_PRESS ? vHidd_Mouse_Press
+               : vHidd_Mouse_Release;
+    UWORD mapped = button == P4_TOUCH_LEFT ? vHidd_Mouse_Button1
+                 : button == P4_TOUCH_RIGHT ? vHidd_Mouse_Button2
+                 : vHidd_Mouse_NoButton;
+
+    if (action == P4_TOUCH_PRESS && button == P4_TOUCH_RIGHT)
+        ++e->right_gestures;
+    p4touch_event(e->data, type, mapped, x, y);
+}
+
+static uint32_t p4touch_now(struct timerequest *timer)
+{
+    struct Device *TimerBase = timer->tr_node.io_Device;
+    struct timeval now;
+
+    GetUpTime(&now);
+    return (uint32_t)now.tv_secs * 1000U + now.tv_micro / 1000U;
+}
+
+/* Read a startup-only preference beside the successfully loaded firmware.
+   That volume is already mounted; ENV/ENVARC assigns may not exist yet.
+   Missing/invalid preferences always select the safe tap mode. */
+static unsigned int p4touch_mode(struct DosLibrary *DOSBase, const char *fw)
+{
+    char path[256], value[8];
+    ULONG i = 0, directory = 0;
+    BPTR file;
+    LONG count;
+    const char name[] = "p4touch.mode";
+
+    while (fw[i] && i < sizeof(path) - sizeof(name))
+    {
+        path[i] = fw[i];
+        if (fw[i] == '/' || fw[i] == ':')
+            directory = i + 1;
+        ++i;
+    }
+    if (fw[i] || !directory)
+        return P4_TOUCH_TAP;
+    for (i = 0; i < sizeof(name); ++i)
+        path[directory + i] = name[i];
+    file = Open(path, MODE_OLDFILE);
+    if (!file)
+        return P4_TOUCH_TAP;
+    if (!((struct FileHandle *)BADDR(file))->fh_Type)
+    {
+        Close(file);
+        return P4_TOUCH_TAP;
+    }
+    count = Read(file, value, sizeof(value));
+    Close(file);
+    return (count == 6 || (count == 7 && value[6] == '\n'))
+        && value[0] == 'd' && value[1] == 'i' && value[2] == 'r'
+        && value[3] == 'e' && value[4] == 'c' && value[5] == 't'
+        ? P4_TOUCH_DIRECT : P4_TOUCH_TAP;
+}
+
 static VOID P4TouchWorker(struct P4TouchMouseData *data)
 {
     struct ExecBase *SysBase = data->ptd->cs_SysBase;
@@ -170,14 +236,19 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
     struct DosLibrary *DOSBase = NULL;
     UBYTE *firmware = NULL;
     const char *firmware_path = NULL;
-    BOOL timer_open = FALSE, acquired = FALSE, down = FALSE;
-    UWORD active_button = vHidd_Mouse_NoButton;
-    WORD last_x = 0, last_y = 0;
-    ULONG zero_polls = 0, reads = 0, errors = 0, contact_frames = 0;
-    ULONG multi_frames = 0, right_gestures = 0;
+    BOOL timer_open = FALSE, acquired = FALSE;
+    struct P4TouchPolicy policy;
+    struct P4TouchEmitter emitter = {data, 0};
+    ULONG reads = 0, errors = 0, contact_frames = 0;
+    ULONG multi_frames = 0;
     ULONG max_contacts = 0, max_reported = 0;
     ULONG firmware_attempts = 0, recoveries = 0, consecutive_errors = 0;
+#if P4_TOUCH_EDGE_TRACE
+    ULONG edge_frames = 0, raw_min_x = ~0UL, raw_min_y = ~0UL;
+    ULONG raw_max_x = 0, raw_max_y = 0;
+#endif
 
+    p4touch_policy_init(&policy, P4_TOUCH_TAP);
     port = CreateMsgPort();
     if (port)
         timer = (struct timerequest *)CreateIORequest(
@@ -236,6 +307,14 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
     if (!data->running)
         goto out;
 
+    p4touch_policy_init(&policy, p4touch_mode(DOSBase, firmware_path));
+    bug("[P4Touch/C4] gesture mode %s; hold %u ms, slop %u px\n",
+        policy.mode == P4_TOUCH_DIRECT ? "direct" : "tap",
+        P4_TOUCH_HOLD_MS, P4_TOUCH_SLOP_PX);
+    bug("[P4Touch/C4] calibration X=%u..%u Y=%u..%u; mirrored Y\n",
+        P4_BOARD_TOUCH_X_MIN, P4_BOARD_TOUCH_X_MAX,
+        P4_BOARD_TOUCH_Y_MIN, P4_BOARD_TOUCH_Y_MAX);
+
     acquired = data->ops->acquire();
     if (!acquired)
     {
@@ -244,7 +323,7 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
         goto out;
     }
 
-    bug("[P4Touch/C4] polling worker started at 20 Hz with persistent I2C0; "
+    bug("[P4Touch/C4] polling worker started with 50-ms delay after I2C0 read; "
         "task priority %d, timer request %p\n", (int)self->tc_Node.ln_Pri,
         timer);
     while (data->running)
@@ -258,14 +337,7 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
         {
             ++errors;
             ++consecutive_errors;
-            zero_polls = 0;
-            if (down)
-            {
-                p4touch_event(data, vHidd_Mouse_Release,
-                              active_button, last_x, last_y);
-                down = FALSE;
-                active_button = vHidd_Mouse_NoButton;
-            }
+            p4touch_policy_cancel(&policy, p4touch_emit, &emitter);
             if (errors == 1 || !(errors & 0x3f))
                 bug("[P4Touch/C4] read error %lu after %lu polls; "
                     "press state released\n",
@@ -305,7 +377,6 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
         else if (frame.count)
         {
             ULONG primary, i;
-            UWORD desired_button;
             const struct KrnTouchScreenContact *contact;
             WORD x, y;
 
@@ -334,65 +405,50 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
                 }
             }
 
-            primary = p4touch_primary(&frame, data->ops, down,
-                                      last_x, last_y);
+            primary = p4touch_primary(&frame, data->ops, policy.active,
+                                      policy.x, policy.y);
             contact = &frame.contact[primary];
-            x = p4touch_scale(contact->x, data->ops->raw_width,
-                              data->ops->logical_width);
-            y = p4touch_scale_mirror(contact->y, data->ops->raw_height,
-                                     data->ops->logical_height);
+            x = p4touch_x(contact->x, data->ops);
+            y = p4touch_y(contact->y, data->ops);
 
-            zero_polls = 0;
-            if (!down || x != last_x || y != last_y)
-                p4touch_event(data, vHidd_Mouse_Motion,
-                              vHidd_Mouse_NoButton, x, y);
-            last_x = x;
-            last_y = y;
+#if P4_TOUCH_EDGE_TRACE
+            /* Diagnostic only: never learn calibration from arbitrary use.
+               Single-contact extrema exclude ambiguous multi-touch frames. */
+            if (frame.count == 1)
+            {
+                ++edge_frames;
+                if (contact->x < raw_min_x) raw_min_x = contact->x;
+                if (contact->y < raw_min_y) raw_min_y = contact->y;
+                if (contact->x > raw_max_x) raw_max_x = contact->x;
+                if (contact->y > raw_max_y) raw_max_y = contact->y;
+                if (edge_frames == 1 || !(edge_frames % 8))
+                    bug("[P4Touch/C4] edge sample %lu raw %lu,%lu logical %d,%d "
+                        "range X=%lu..%lu Y=%lu..%lu\n",
+                        (unsigned long)edge_frames,
+                        (unsigned long)contact->x, (unsigned long)contact->y,
+                        (int)x, (int)y,
+                        (unsigned long)raw_min_x, (unsigned long)raw_max_x,
+                        (unsigned long)raw_min_y, (unsigned long)raw_max_y);
+            }
+#endif
 
-            /* A second contact promotes the active press to Button2.  Once
-               promoted, keep Button2 latched while either contact remains;
-               sequential finger release must not synthesize a new left
-               press.  This also permits the Amiga menu button to be dragged. */
-            desired_button = frame.count > 1
-                           || active_button == vHidd_Mouse_Button2
-                           ? vHidd_Mouse_Button2 : vHidd_Mouse_Button1;
-            if (!down)
-            {
-                p4touch_event(data, vHidd_Mouse_Press,
-                              desired_button, x, y);
-                active_button = desired_button;
-                down = TRUE;
-                if (desired_button == vHidd_Mouse_Button2)
-                    ++right_gestures;
-            }
-            else if (active_button != desired_button)
-            {
-                p4touch_event(data, vHidd_Mouse_Release,
-                              active_button, x, y);
-                p4touch_event(data, vHidd_Mouse_Press,
-                              desired_button, x, y);
-                active_button = desired_button;
-                ++right_gestures;
-            }
-        }
-        else if (down && ++zero_polls >= P4_TOUCH_RELEASE_POLLS)
-        {
-            p4touch_event(data, vHidd_Mouse_Release,
-                          active_button, last_x, last_y);
-            down = FALSE;
-            active_button = vHidd_Mouse_NoButton;
-            zero_polls = 0;
+            p4touch_policy_step(&policy, frame.count, x, y,
+                                p4touch_now(timer), p4touch_emit, &emitter);
         }
         else
+        {
             consecutive_errors = 0;
+            p4touch_policy_step(&policy, 0, policy.x, policy.y,
+                                p4touch_now(timer), p4touch_emit, &emitter);
+        }
         if (!(reads % 100))
             bug("[P4Touch/C4] heartbeat after %lu polls; down %u button %u, "
                 "frames %lu, multi %lu, right %lu, max %lu/%lu, events %lu, "
                 "errors %lu\n",
-                (unsigned long)reads, (unsigned int)down,
-                (unsigned int)active_button,
+                (unsigned long)reads, (unsigned int)(policy.button != 0),
+                (unsigned int)policy.button,
                 (unsigned long)contact_frames, (unsigned long)multi_frames,
-                (unsigned long)right_gestures,
+                (unsigned long)emitter.right_gestures,
                 (unsigned long)max_contacts, (unsigned long)max_reported,
                 (unsigned long)data->published_events,
                 (unsigned long)errors);
@@ -405,12 +461,13 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
     }
 
 out:
+    p4touch_policy_cancel(&policy, p4touch_emit, &emitter);
     bug("[P4Touch/C4] worker exiting after %lu polls; running %u, "
         "frames %lu, multi %lu, right %lu, max %lu/%lu, events %lu, "
         "errors %lu\n",
         (unsigned long)reads, (unsigned int)data->running,
         (unsigned long)contact_frames, (unsigned long)multi_frames,
-        (unsigned long)right_gestures,
+        (unsigned long)emitter.right_gestures,
         (unsigned long)max_contacts, (unsigned long)max_reported,
         (unsigned long)data->published_events,
         (unsigned long)errors);
