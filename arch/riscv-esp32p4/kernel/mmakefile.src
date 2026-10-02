@@ -1019,6 +1019,102 @@ AFILES := \
         startup \
         traps
 
+# Private entry / bounded probe are opt-in; neither enables Exec SMP.
+# Bind hart0 runtime metadata at the real Exec startup boundary only.
+ifeq ($(AROS_TARGET_VARIANT),smp)
+ifneq ($(filter 1,$(P4_E3_RUNTIME_PREPARE) $(P4_SECONDARY_PROBE) $(P4_SECONDARY_ENTRY) $(P4_E3_CPU_LOCAL) $(P4_E2_PRIMITIVES)),)
+$(error Exec SMP cannot share private metadata/secondary diagnostic startup)
+endif
+CFILES += cpu_local cpu_local_runtime p4_soft_atomic p4_spinlock \
+          p4_cpu_masks getcpucount alloccpumask freecpumask clearcpumask \
+          getcpumask cpuinmask p4_public_spinlock spininit spinislocked \
+          spintrylock spinlock spinunlock p4_atomic_ops \
+          p4_task_lifetime p4_task_registry p4_task_pins p4_isr_stack \
+          p4_boot_reserve p4_semaphore_ledger p4_semaphore_boot p4_remove_boot p4_semaphore_nodes \
+          p4_semaphore_cancel p4_semaphore_cancel_retry \
+          p4_scheduler_queue p4_dispatch p4_dispatch_callbacks p4_callback_escape p4_task_publish p4_switch p4_discard p4_retired_trap \
+          p4_ipi p4_ipi_runtime p4_timer_snapshot p4_schedule kernel_scheduler \
+          p4_taskresource_bootstrap
+# p4_secondary_exec{,_entry} remain isolated candidates, not selected here:
+# the SRAM entry currently refers to ordinary XIP text. Qualify the owner1
+# cache-on handoff and SRAM residency before adding either build member.
+# The trap-entry spill is required for the ILP32F runtime, not a test switch
+# to omit from one object in a matched SMP kernel.
+USER_CPPFLAGS += -DP4_E3_FPU=1 -DP4_E3_PUBLIC_SPINLOCK=1 -DP4_ATOMIC_CORE=1
+endif
+ifeq ($(P4_E3_RUNTIME_PREPARE),1)
+ifneq ($(filter 1,$(P4_SECONDARY_PROBE) $(P4_SECONDARY_ENTRY) $(P4_E3_CPU_LOCAL) $(P4_E2_PRIMITIVES)),)
+$(error P4_E3_RUNTIME_PREPARE=1 cannot share the diagnostic secondary/CPU-local startup)
+endif
+USER_CPPFLAGS += -DP4_E3_RUNTIME_PREPARE=1
+CFILES += cpu_local cpu_local_runtime
+endif
+# Experimental trap-entry FPU isolation; normal frame/behavior stays unchanged.
+ifeq ($(P4_E3_FPU),1)
+USER_CPPFLAGS += -DP4_E3_FPU=1
+endif
+ifeq ($(P4_E3_FPU_TEST),1)
+ifneq ($(P4_E3_FPU),1)
+$(error P4_E3_FPU_TEST=1 requires P4_E3_FPU=1)
+endif
+USER_CPPFLAGS += -DP4_E3_FPU_TEST=1
+CFILES += p4_fpu_probe
+AFILES += p4_fpu_probe_tasks
+endif
+
+ifeq ($(P4_E3_SOFT_ATOMIC),1)
+ifneq ($(P4_E3_SPINLOCK),1)
+$(error P4_E3_SOFT_ATOMIC=1 requires P4_E3_SPINLOCK=1)
+endif
+USER_CPPFLAGS += -DP4_E3_SOFT_ATOMIC=1
+CFILES += p4_soft_atomic p4_soft_atomic_probe
+endif
+ifeq ($(P4_E3_SPINLOCK),1)
+ifneq ($(P4_E3_CPU_LOCAL),1)
+$(error P4_E3_SPINLOCK=1 requires P4_E3_CPU_LOCAL=1)
+endif
+USER_CPPFLAGS += -DP4_E3_SPINLOCK=1
+CFILES += p4_spinlock p4_spinlock_probe
+endif
+ifeq ($(P4_E3_CPU_LOCAL),1)
+ifneq ($(P4_E2_PRIMITIVES),1)
+$(error P4_E3_CPU_LOCAL=1 requires P4_E2_PRIMITIVES=1)
+endif
+USER_CPPFLAGS += -DP4_E3_CPU_LOCAL=1
+CFILES += cpu_local cpu_local_probe
+endif
+ifeq ($(P4_E2_PRIMITIVES),1)
+ifneq ($(P4_E2_MAILBOX),1)
+$(error P4_E2_PRIMITIVES=1 requires P4_E2_MAILBOX=1)
+endif
+USER_CPPFLAGS += -DP4_E2_PRIMITIVES=1
+CFILES += secondary_primitives
+AFILES += secondary_irq
+endif
+ifeq ($(P4_E2_MAILBOX),1)
+ifneq ($(P4_SECONDARY_PROBE),1)
+$(error P4_E2_MAILBOX=1 requires P4_SECONDARY_PROBE=1)
+endif
+ifeq ($(P4_SECONDARY_RETAIN),1)
+$(error P4_E2_MAILBOX=1 cannot retain the secondary)
+endif
+USER_CPPFLAGS += -DP4_E2_MAILBOX=1
+CFILES += secondary_mailbox
+endif
+ifeq ($(P4_SECONDARY_RETAIN),1)
+ifneq ($(P4_SECONDARY_PROBE),1)
+$(error P4_SECONDARY_RETAIN=1 requires P4_SECONDARY_PROBE=1)
+endif
+USER_CPPFLAGS += -DP4_SECONDARY_RETAIN=1
+endif
+ifeq ($(P4_SECONDARY_PROBE),1)
+USER_CPPFLAGS += -DP4_SECONDARY_PROBE=1
+CFILES += secondary_probe
+AFILES += secondary_entry
+else ifeq ($(P4_SECONDARY_ENTRY),1)
+AFILES += secondary_entry
+endif
+
 %build_archspecific \
   mainmmake=kernel-kernel modname=kernel maindir=rom/kernel arch=esp32p4-riscv \
   files="$(CFILES) $(PLATFILES)" asmfiles="$(AFILES)" compiler=kernel

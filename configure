@@ -3577,6 +3577,14 @@ printf %s "checking for target cpu (debug output)... " >&6; }
 { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $target_cpu" >&5
 printf '%s\n' "$target_cpu" >&6; }
 
+if test "$target_os" = "esp32p4"; then
+    case "$ac_configure_args" in
+        *"'--enable-target-variant=smp'"*)
+            as_fn_error $? "ESP32-P4 Exec SMP is blocked: reviewed SMP runtime prerequisites, including locks and context-switch integration, are not ready. Hart 1 must remain outside Exec. Remove this guard only after the runtime-ready criteria in arch/riscv-esp32p4/SMP.md are met; perform matched-ABI qualification afterward in an isolated build." "$LINENO" 5
+            ;;
+    esac
+fi
+
 
 HOST_WANTS_X11=
 HOST_WANTS_GLX=
@@ -21705,4 +21713,3 @@ if test -n "$aros_shared_cflags" ; then
     echo "SHARED_CFLAGS := $aros_shared_cflags" >> ${aros_hostcfg_dir}/host.cfg
     echo "SHARED_AR := $aros_shared_ar" >> ${aros_hostcfg_dir}/host.cfg
 fi
-

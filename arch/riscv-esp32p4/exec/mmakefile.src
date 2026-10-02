@@ -5,6 +5,16 @@ include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 CFILES          := \
         superstate cpu_init
 
+ifeq ($(AROS_TARGET_VARIANT),smp)
+CFILES += platform_init p4_signal_protocol p4_signal_adapter settaskpri \
+          p4_softint_queue p4_softint cause exception setsignal setexcept \
+          allocsignal freesignal p4_etask_gate p4_etask_identity \
+          p4_etask_identity_binding p4_etask_lifetime \
+          p4_cleanup_worker p4_task_cleanup wait p4_self_remove signal \
+          p4_semaphore_gate p4_semaphore_cancel_worker p4_semaphore_public \
+          p4_remove_bank p4_remove_completion p4_remove_wait p4_remove_external
+endif
+
 %set_archincludes mainmmake=kernel-exec maindir=rom/exec \
   modname=exec pri=2 arch=esp32p4-riscv \
   includes="-I$(SRCDIR)/$(CURDIR)"
@@ -23,6 +33,10 @@ PRIV_EXEC_INCLUDES = \
 
 USER_INCLUDES   := $(PRIV_EXEC_INCLUDES)
 USER_AFLAGS     := $(PRIV_EXEC_INCLUDES) -I$(GENINCDIR)
+USER_CPPFLAGS   := $(P4_BOARD_CPPFLAGS)
+ifeq ($(AROS_TARGET_VARIANT),smp)
+USER_CPPFLAGS += -DP4_ATOMIC_CORE=1 -DP4_SIGNAL_TASK_PIN_BOUND=1
+endif
 
 %build_archspecific \
   mainmmake=kernel-exec maindir=rom/exec arch=esp32p4-riscv \
