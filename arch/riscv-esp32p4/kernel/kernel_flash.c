@@ -86,7 +86,7 @@
  */
 #define P4_FLASH_SCRATCH_VADDR  0x41000000UL
 
-#define P4_PARTTABLE_OFFSET     0x8000UL
+#define P4_PARTTABLE_OFFSET     P4_BOARD_PARTITION_OFFSET
 #define P4_PARTTABLE_SIZE       0xC00UL
 #define P4_PARTTABLE_ENTRIES    (P4_PARTTABLE_SIZE / 32)
 
@@ -94,7 +94,7 @@
 #define P4_PART_MD5_MAGIC       0xEBEB
 #define P4_PART_TERMINATOR      0xFFFF
 
-#define P4_FLASH_SIZE           0x2000000UL     /* 32 MB, read off the chip */
+#define P4_FLASH_SIZE           P4_BOARD_FLASH_BYTES /* board profile */
 
 static unsigned long flash_scratch_paddr = ~0UL;
 static unsigned long flash_scratch_pages;

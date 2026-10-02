@@ -1,5 +1,6 @@
 
 include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 
 USER_INCLUDES := -I$(SRCDIR)/$(CURDIR) -I$(SRCDIR)/rom/devs/sdcard
 
@@ -20,7 +21,7 @@ ifdef P4_SDCARD_FAULT_INJECT
 P4_SDCARD_DEBUG_CPPFLAGS += -DP4_SDCARD_FAULT_INJECT=$(P4_SDCARD_FAULT_INJECT)
 endif
 
-USER_CPPFLAGS := $(P4_SDCARD_DEBUG_CPPFLAGS)
+USER_CPPFLAGS := $(P4_BOARD_CPPFLAGS) $(P4_SDCARD_DEBUG_CPPFLAGS)
 
 ESP32P4SDCARDFILES := \
     sdcard_esp32p4_init \

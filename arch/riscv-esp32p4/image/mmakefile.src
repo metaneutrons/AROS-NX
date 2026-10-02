@@ -10,6 +10,7 @@
 #
 
 include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 
 IMAGEDIR   := $(AROSDIR)/boot/esp32p4
 IMAGE      := $(IMAGEDIR)/aros-test.img
@@ -26,12 +27,12 @@ IMAGE_TIMESTAMP ?= 2026-01-01
 IMAGE_SIZE_MB   ?= 64
 
 #   The flash development volume.  Its offset and size are also in
-#   kernel/hardware.h, where the board-side code reads them; the two have to
+#   board/d1001.h, where the board-side code reads them; the two have to
 #   agree and the probe prints both so a mismatch is visible rather than
 #   mysterious.
 FLASHDISK          := $(IMAGEDIR)/aros-flashdisk.img
-FLASHDISK_SIZE_MB  ?= 4
-FLASHDISK_OFFSET   ?= 0xc00000
+FLASHDISK_SIZE_MB  := $(P4_BOARD_FLASHDISK_SIZE_MB)
+FLASHDISK_OFFSET   := $(P4_BOARD_FLASHDISK_OFFSET)
 FLASHDISK_SERIAL   ?= 0xa5051d10
 FLASHDISK_LABEL    ?= AROSP4DEV
 
@@ -106,7 +107,7 @@ endif
 	    $(TEST) -f "$(P4_GSL_FW_BINARY)" || exit 1 ; \
 	    $(MKDIR) -p $(STAGE)/Firmware/silead ; \
 	    $(CP) "$(P4_GSL_FW_BINARY)" \
-	        $(STAGE)/Firmware/silead/gsl3670-d1001.fw ; \
+	        $(STAGE)/Firmware/silead/$(P4_BOARD_TOUCH_FW_FILENAME) ; \
 	fi
 	@# The A5 proof command and library, if they have been built.  They are
 	@# deliberately absent from C3: GB0 must prove the ordinary Wanderer path,
