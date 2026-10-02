@@ -16,7 +16,7 @@ with a native Rust toolsuite and a translated CMake/Ninja build. It is an
 independent integration fork, not the official upstream repository.
 
 The goal is to **keep AROS-NX buildable with aros-tools while staying close to
-upstream**. New upstream changes must pass the tools-based product checks before
+upstream**. Upstream source and build changes must pass the tools-based product checks before
 entering `main`. Source fixes that also apply to classic AROS should be prepared
 as focused patches and submitted upstream; integration-specific build metadata
 stays here. The aim is a smaller patch delta, not a separate operating system.
@@ -61,7 +61,8 @@ for the separately qualified capabilities.
 The synchronization workflow runs daily and can also be requested manually.
 It opens a proposal; it does not merge unchecked changes. A clean Git merge is
 not enough: source changes and upstream syncs require the tools-based product
-matrix. If upstream exposes a missing build capability, fix the generic tools
+matrix; Markdown-only changes receive lightweight checks. If upstream exposes
+a missing build capability, fix the generic tools
 implementation or the relevant source defect before accepting the update.
 
 Pull requests use merge commits to preserve upstream ancestry. Keep source
@@ -81,7 +82,8 @@ For contributions to classic AROS, consult the
 
 ## License and acknowledgements
 
-AROS is licensed under the [AROS Public License](LICENSE). Third-party components
-retain their respective licenses. See [ACKNOWLEDGEMENTS](ACKNOWLEDGEMENTS) and
-the notices in the source tree. This fork builds on the work of the AROS
+Most AROS components use the [AROS Public License](LICENSE); others use GPL,
+LGPL or their own licenses. See [LEGAL](LEGAL),
+[ACKNOWLEDGEMENTS](ACKNOWLEDGEMENTS) and the notices in the source tree.
+This fork builds on the work of the AROS
 Development Team and its contributors.
