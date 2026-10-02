@@ -522,16 +522,20 @@ void p4_giant_dispatched(void)
 }
 
 #if defined(P4_GIANT_TEST)
+#if defined(P4_GIANT_STRESS)
+void p4_giant_stress_report(void);
+#endif
 /* Every ten seconds, from hart 0's tick: what each hart has been doing. */
 static void giant_stats_line(void)
 {
     static uint32_t ticks;
     unsigned int h;
+    int mode;
 
     if (++ticks % (10 * P4_TICK_HZ))
         return;
     /* Diagnostics only: lossless while the host logger reads. */
-    krnP4ConsoleBlocking();
+    mode = krnP4ConsoleSetRuntime(0);
     krnP4PutStr("\n[giant] t=");
     krnP4PutDec(ticks / P4_TICK_HZ);
     for (h = 0; h < P4_GIANT_HARTS; h++)
@@ -558,7 +562,10 @@ static void giant_stats_line(void)
     krnP4PutStr("\n");
     if (ticks % (60 * P4_TICK_HZ) == 0)
         giant_seen_report();
-    krnP4ConsoleRuntime();
+#if defined(P4_GIANT_STRESS)
+    p4_giant_stress_report();
+#endif
+    (void)krnP4ConsoleSetRuntime(mode);
 }
 #endif
 

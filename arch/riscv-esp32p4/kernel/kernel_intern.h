@@ -452,6 +452,7 @@ int  platform_wdt_quiet(void);
 /* Switch to nonblocking, lossy output before runtime tasks can print. */
 void krnP4ConsoleRuntime(void);
 void krnP4ConsoleBlocking(void);
+int krnP4ConsoleSetRuntime(int runtime);
 void krnP4PutC(char c);
 void krnP4PutStr(const char *s);
 void krnP4PutHex32(uint32_t val);

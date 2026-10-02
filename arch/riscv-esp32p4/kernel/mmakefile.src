@@ -1066,6 +1066,9 @@ endif
 ifeq ($(P4_GIANT_TEST),1)
 USER_CPPFLAGS += -DP4_GIANT_TEST=1
 CFILES += p4_giant_test
+ifeq ($(P4_GIANT_STRESS),1)
+USER_CPPFLAGS += -DP4_GIANT_STRESS=1
+endif
 endif
 endif
 ifeq ($(P4_E3_RUNTIME_PREPARE),1)

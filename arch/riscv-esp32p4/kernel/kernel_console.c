@@ -44,6 +44,15 @@ void krnP4ConsoleBlocking(void)
     console_runtime = 0;
 }
 
+/* Set the policy and return the previous one, so callers can nest. */
+int krnP4ConsoleSetRuntime(int runtime)
+{
+    int old = console_runtime ? 1 : 0;
+
+    console_runtime = runtime ? 1 : 0;
+    return old;
+}
+
 void krnP4ConsoleRuntime(void)
 {
     console_runtime = 1;

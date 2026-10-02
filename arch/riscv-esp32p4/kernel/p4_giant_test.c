@@ -47,6 +47,7 @@ struct worker
     float fresult;
     struct MsgPort *port;
     BYTE sig;
+    void *userdata;                     /* tc_UserData instead of the worker */
 };
 
 static struct worker workers[4];
@@ -132,7 +133,7 @@ static struct Task *spawn(struct worker *w, const char *name, BYTE pri,
     t->tc_Node.ln_Name = (char *)name;
     t->tc_SPLower      = stack;
     t->tc_SPUpper      = (APTR)((IPTR)stack + STACK);
-    t->tc_UserData     = w;
+    t->tc_UserData     = w->userdata ? w->userdata : w;
     w->task = t;
     w->started = w->done = w->count = w->errors = w->harts = w->stop = 0;
     if (!AddTask(t, (APTR)entry, NULL))
@@ -721,6 +722,200 @@ static void t_park(void)
     report("park", ok == 200, "rendezvous", ok, "worst_cycles", worst);
 }
 
+/* ----------------------------------------------------------- stress */
+
+#if defined(P4_GIANT_STRESS)
+/*
+ * Four workers at priority -120, allowed on both harts, run until reset next
+ * to the normal desktop and migrate freely. Every round: a Forbid() counter
+ * with overlap detection, a semaphore counter, an AllocMem pattern check, a
+ * small deterministic FPU loop, and every 16 rounds a message round trip
+ * with the partner worker (0<->1, 2<->3). Hart 0's tick prints the totals.
+ */
+#define STRESS_WORKERS 4
+
+struct stress
+{
+    struct Task *task;
+    struct MsgPort *port;
+    volatile uint32_t rounds;
+    volatile uint32_t forbid_own;
+    volatile uint32_t sem_own;
+    volatile uint32_t on_hart[P4_GIANT_HARTS];
+    volatile uint32_t errors;
+    volatile uint32_t ready;
+    uint32_t id;
+};
+
+static struct stress stress[STRESS_WORKERS];
+static struct SignalSemaphore stress_sem;
+static volatile uint32_t stress_forbid_total, stress_sem_total;
+static volatile uint32_t stress_forbid_inside, stress_sem_inside;
+static union fbits stress_expect;
+static volatile uint32_t stress_started;
+
+static void w_stress(void)
+{
+    struct stress *w = (struct stress *)FindTask(NULL)->tc_UserData;
+    struct stress *partner = &stress[w->id ^ 1];
+    struct MsgPort *reply = CreateMsgPort();
+    struct test_msg msg;
+    uint32_t seed = 0x51ed2701u + w->id;
+
+    w->port = CreateMsgPort();
+    if (!w->port || !reply)
+    {
+        w->errors++;
+        for (;;)
+            Wait(0);
+    }
+    w->ready = 1;
+    while (!partner->ready)
+        ;
+    msg.msg.mn_ReplyPort = reply;
+    msg.msg.mn_Length = sizeof(msg);
+    for (;;)
+    {
+        union fbits f;
+        uint32_t v, size, j;
+        UBYTE *mem, tag;
+        struct test_msg *in;
+
+        Forbid();
+        if (__atomic_exchange_n(&stress_forbid_inside, 1u, __ATOMIC_SEQ_CST))
+            w->errors++;
+        v = stress_forbid_total;
+        spin_cycles(10);
+        stress_forbid_total = v + 1;
+        w->forbid_own++;
+        __atomic_store_n(&stress_forbid_inside, 0u, __ATOMIC_SEQ_CST);
+        Permit();
+
+        ObtainSemaphore(&stress_sem);
+        if (__atomic_exchange_n(&stress_sem_inside, 1u, __ATOMIC_SEQ_CST))
+            w->errors++;
+        v = stress_sem_total;
+        spin_cycles(50);
+        stress_sem_total = v + 1;
+        w->sem_own++;
+        __atomic_store_n(&stress_sem_inside, 0u, __ATOMIC_SEQ_CST);
+        ReleaseSemaphore(&stress_sem);
+
+        size = 16 + lcg(&seed) % 2032;
+        tag = (UBYTE)(lcg(&seed) | 1);
+        mem = AllocMem(size, MEMF_ANY);
+        if (mem)
+        {
+            for (j = 0; j < size; j++)
+                mem[j] = tag;
+            for (j = 0; j < size; j++)
+                if (mem[j] != tag)
+                {
+                    w->errors++;
+                    break;
+                }
+            FreeMem(mem, size);
+        }
+        else
+            w->errors++;
+
+        f.f = fpu_work(7, 1000);
+        if (f.u != stress_expect.u)
+            w->errors++;
+
+        /* Serve whatever the partner sent, then every 16 rounds ask. */
+        while ((in = (struct test_msg *)GetMsg(w->port)) != NULL)
+        {
+            in->seq++;
+            ReplyMsg(&in->msg);
+        }
+        if ((w->rounds & 15) == 0)
+        {
+            msg.seq = w->rounds;
+            PutMsg(partner->port, &msg.msg);
+            for (;;)
+            {
+                ULONG sigs = Wait((1UL << reply->mp_SigBit) |
+                                  (1UL << w->port->mp_SigBit));
+                while ((in = (struct test_msg *)GetMsg(w->port)) != NULL)
+                {
+                    in->seq++;
+                    ReplyMsg(&in->msg);
+                }
+                if ((sigs & (1UL << reply->mp_SigBit)) && GetMsg(reply))
+                    break;
+            }
+            if (msg.seq != w->rounds + 1)
+                w->errors++;
+        }
+
+        w->on_hart[p4_giant_hart()]++;
+        w->rounds++;
+    }
+}
+
+static void stress_start(void)
+{
+    static const char *const names[STRESS_WORKERS] = {
+        "giant stress 0", "giant stress 1", "giant stress 2", "giant stress 3"
+    };
+    unsigned int i;
+
+    InitSemaphore(&stress_sem);
+    stress_expect.f = fpu_work(7, 1000);
+    for (i = 0; i < STRESS_WORKERS; i++)
+    {
+        stress[i].id = i;
+        workers[i].arg = i;
+        workers[i].userdata = &stress[i];
+        if (!spawn(&workers[i], names[i], -120, T_ANY, w_stress))
+        {
+            krnP4PutStr("[giant-stress] spawn failed\n");
+            return;
+        }
+        stress[i].task = workers[i].task;
+    }
+    stress_started = 1;
+    krnP4PutStr("[giant-stress] 4 workers started, priority -120, both harts\n");
+}
+
+/* Called from hart 0's tick, every 10 s, console already lossless. */
+void p4_giant_stress_report(void)
+{
+    uint32_t rounds = 0, fown = 0, sown = 0, errors = 0, h0 = 0, h1 = 0;
+    unsigned int i;
+
+    if (!stress_started)
+        return;
+    for (i = 0; i < STRESS_WORKERS; i++)
+    {
+        rounds += stress[i].rounds;
+        fown += stress[i].forbid_own;
+        sown += stress[i].sem_own;
+        errors += stress[i].errors;
+        h0 += stress[i].on_hart[0];
+        h1 += stress[i].on_hart[1];
+    }
+    krnP4PutStr("[giant-stress] rounds=");
+    krnP4PutDec(rounds);
+    krnP4PutStr(" on_h0=");
+    krnP4PutDec(h0);
+    krnP4PutStr(" on_h1=");
+    krnP4PutDec(h1);
+    krnP4PutStr(" forbid=");
+    krnP4PutDec(stress_forbid_total);
+    krnP4PutStr("/");
+    krnP4PutDec(fown);
+    krnP4PutStr(" sem=");
+    krnP4PutDec(stress_sem_total);
+    krnP4PutStr("/");
+    krnP4PutDec(sown);
+    krnP4PutStr(" errors=");
+    krnP4PutDec(errors);
+    krnP4PutStr("\n");
+}
+#endif
+
 /* ----------------------------------------------------------- driver */
 
 static void stats(void)
@@ -775,4 +970,7 @@ void p4_giant_selftest(void)
     krnP4PutStr("\n");
     stats();
     FreeSignal(boot_sig);
+#if defined(P4_GIANT_STRESS)
+    stress_start();
+#endif
 }
