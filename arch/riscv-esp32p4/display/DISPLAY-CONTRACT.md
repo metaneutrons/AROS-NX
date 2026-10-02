@@ -368,6 +368,14 @@ is the 120 ms of the reset pulse from B2 actually needed to have elapsed.
 
 ## Unresolved, carried forward
 
+The 2026-09-30 C1P candidate changes only the software presentation contract:
+`KrnFrameBufferOps` version 2 adds a bounded task-context `flush()`. A successful
+`update_rect()` has copied the logical pixels and queued them, but need not
+have displayed them yet. Kernels and fbgfx modules must be upgraded together;
+the HIDD rejects a different table version. DMA ownership, physical frame
+layout, panel timing and the explicitly named +525 workaround are unchanged.
+The original synchronous C1 gate is not visual acceptance of C1P.
+
 1. Which timing set is correct.  Set A runs; whether Set B would also run, or
    run better, is unmeasured.  B4.
 2. The 60 Hz label in two sources that no timing set produces.

@@ -13,7 +13,7 @@
 
 #include <exec/types.h>
 
-#define KRN_FRAMEBUFFER_OPS_VERSION 1
+#define KRN_FRAMEBUFFER_OPS_VERSION 2
 
 struct KrnFrameBufferStats
 {
@@ -37,10 +37,15 @@ struct KrnFrameBufferOps
     IPTR  physical_back;
     ULONG physical_size;
 
+    /* TRUE means the pixels have been copied and queued. The caller may
+     * immediately change/free logical storage. Presentation may be deferred. */
     BOOL (*update_rect)(CONST_APTR logical, ULONG logical_pitch,
                         LONG x, LONG y, LONG width, LONG height);
     BOOL (*clear)(ULONG pixel);
     VOID (*get_stats)(struct KrnFrameBufferStats *stats);
+    /* Bounded task-context wait for previously queued pixels to be displayed.
+     * Never required after each ordinary drawing operation. */
+    BOOL (*flush)(VOID);
 };
 
 #endif /* AROS_FRAMEBUFFER_H */
