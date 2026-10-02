@@ -63,6 +63,29 @@
     if (task == NULL)
         task = suicide;
 
+#if defined(EXEC_PLATFORM_TASK_REMOVE_ALLOWED)
+    /* Compare/validate registry identity before any Task field or logging.
+     * Refusing the permanent worker is not the missing general RUN-drained
+     * removal protocol; ordinary removal still needs that integration. */
+    if (!EXEC_PLATFORM_TASK_REMOVE_ALLOWED(task))
+        return;
+#endif
+
+#if defined(EXEC_PLATFORM_REMOVE_SELF)
+    /* P4 RUN/registry ownership must drain before context/ETask cleanup.
+     * External removal still requires its separate completion binding. */
+    if (task == suicide)
+        EXEC_PLATFORM_REMOVE_SELF(task);
+#endif
+
+#if defined(EXEC_PLATFORM_REMOVE_EXTERNAL)
+    /* The platform owns retirement, final cleanup and exact completion.
+     * Intercept before debug/Forbid/Task reads; never fall through to a
+     * second generic context/ETask/target free after service completion. */
+    EXEC_PLATFORM_REMOVE_EXTERNAL(task, suicide);
+    return;
+#endif
+
     DREMTASK("RemTask (0x%p (\"%s\"))", task, task->tc_Node.ln_Name);
 
     /* Don't let any other task interfere with us at the moment */

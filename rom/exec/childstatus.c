@@ -4,6 +4,7 @@
     Find out the status of a child task.
 */
 #include "exec_intern.h"
+#include "etask.h"
 #include <proto/exec.h>
 
 /*****************************************************************************
@@ -62,6 +63,12 @@
         Forbid();
 
         /* Search through the running tasks list */
+#if defined(__AROSEXEC_SMP__)
+        /* The current RUN/metadata owner keeps et alive. This lock protects
+         * active list traversal against publish/orphan/cleanup mutations;
+         * it does not make the two-list status query an atomic snapshot. */
+        EXEC_SPINLOCK_LOCK(&IntETask(et)->iet_TaskLock, NULL, SPINLOCK_MODE_READ);
+#endif
         ForeachNode(&et->et_Children, child)
         {
         if (child->et_UniqueID == tid)
@@ -72,6 +79,9 @@
         }
 
 #if defined(__AROSEXEC_SMP__)
+        EXEC_SPINLOCK_UNLOCK(&IntETask(et)->iet_TaskLock);
+        /* The message port is also used by interrupt-time PutMsg. */
+        Disable();
         EXEC_SPINLOCK_LOCK(&et->et_TaskMsgPort.mp_SpinLock, NULL, SPINLOCK_MODE_READ);
 #endif
         ForeachNode(&et->et_TaskMsgPort.mp_MsgList, child)
@@ -84,6 +94,7 @@
         }
 #if defined(__AROSEXEC_SMP__)
         EXEC_SPINLOCK_UNLOCK(&et->et_TaskMsgPort.mp_SpinLock);
+        Enable();
 #endif
         Permit();
     }

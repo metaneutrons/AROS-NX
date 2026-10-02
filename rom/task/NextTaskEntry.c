@@ -57,12 +57,10 @@
 
     struct TaskListPrivate *taskList = (struct TaskListPrivate *)tlist;
     struct Task *retVal = NULL;
+    (void)TaskResBase;
 #ifdef TASKRES_ENABLE
-    ULONG matchFlags = taskList->tlp_Flags & ~LTF_WRITE;
+    ULONG matchFlags = 0;
     ULONG matchState = 0;
-
-    if (flags)
-        matchFlags &= flags;
 #endif /* TASKRES_ENABLE */
 
     D(bug("[TaskRes] NextTaskEntry: tlist @ 0x%p, flags = $%lx\n", tlist, flags));
@@ -70,6 +68,17 @@
 #ifdef TASKRES_ENABLE
     if (taskList)
     {
+#if !defined(__AROSEXEC_SMP__)
+        Forbid();
+#else
+        Disable();
+        EXEC_SPINLOCK_LOCK(&TaskResBase->TaskListSpinLock, NULL, SPINLOCK_MODE_WRITE);
+#endif
+        /* Protect iterator/node observations against marker/list mutation.
+         * This gate does not pin the Task returned to the caller. */
+        matchFlags = taskList->tlp_Flags & ~LTF_WRITE;
+        if (flags)
+            matchFlags &= flags;
         if (matchFlags & LTF_RUNNING)
             matchState |= TS_RUN;
 
@@ -91,6 +100,12 @@
             retVal = taskList->tlp_Next->tle_Task;
             taskList->tlp_Next = (struct TaskListEntry *)GetSucc(taskList->tlp_Next);
         }
+#if !defined(__AROSEXEC_SMP__)
+        Permit();
+#else
+        EXEC_SPINLOCK_UNLOCK(&TaskResBase->TaskListSpinLock);
+        Enable();
+#endif
     }
 #else
     if (taskList)

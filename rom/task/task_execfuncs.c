@@ -10,6 +10,8 @@
 #include <aros/debug.h>
 #include <aros/symbolsets.h>
 
+#include <exec/memory.h>
+
 #include <proto/exec.h>
 #include <proto/task.h>
 
@@ -26,6 +28,7 @@ AROS_UFH3(void, TaskRes_PreLaunch,
 
     struct TaskListEntry *newEntry;
     struct TaskResBase *TaskResBase = (struct TaskResBase *)h->h_Data;
+    (void)unused;
 
     D(
       bug("[TaskRes] %s(0x%p)\n", __func__, task);
@@ -36,14 +39,60 @@ AROS_UFH3(void, TaskRes_PreLaunch,
         D(bug("[TaskRes] %s: taskentry @ 0x%p for '%s'\n", __func__, newEntry, task->tc_Node.ln_Name));
         newEntry->tle_Task = task;
         NEWLIST(&newEntry->tle_HookTypes);
+#if !defined(__AROSEXEC_SMP__)
+        Forbid();
+#else
+        Disable();
+        EXEC_SPINLOCK_LOCK(&TaskResBase->TaskListSpinLock, NULL, SPINLOCK_MODE_WRITE);
+#endif
         if (IsListEmpty(&TaskResBase->trb_LockedLists))
             AddTail(&TaskResBase->trb_TaskList, &newEntry->tle_Node);
         else
             AddTail(&TaskResBase->trb_NewTasks, &newEntry->tle_Node);
+#if !defined(__AROSEXEC_SMP__)
+        Permit();
+#else
+        EXEC_SPINLOCK_UNLOCK(&TaskResBase->TaskListSpinLock);
+        Enable();
+#endif
     }
 
     AROS_USERFUNC_EXIT
 }
+
+#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
+/* Direct core binding: no global Exec vector is replaced on selected P4.
+ * Unlike the legacy Hook adapter above, this reports allocation failure so
+ * TaskLaunch can refuse publication unless the metadata entry exists. */
+BOOL task_RegisterNewTask(struct Task *task, APTR resource)
+{
+    struct TaskResBase *TaskResBase = (struct TaskResBase *)resource;
+    struct TaskListEntry *newEntry;
+
+    if (!task || !TaskResBase)
+        return FALSE;
+
+    /* Allocator activity stays outside both the IRQ mask and topology gate. */
+    newEntry = AllocMem(sizeof(*newEntry),
+        MEMF_PUBLIC | MEMF_CLEAR | MEMF_NO_EXPUNGE);
+    if (newEntry == NULL)
+        return FALSE;
+
+    newEntry->tle_Task = task;
+    NEWLIST(&newEntry->tle_HookTypes);
+
+    Disable();
+    EXEC_SPINLOCK_LOCK(&TaskResBase->TaskListSpinLock, NULL, SPINLOCK_MODE_WRITE);
+    if (IsListEmpty(&TaskResBase->trb_LockedLists))
+        AddTail(&TaskResBase->trb_TaskList, &newEntry->tle_Node);
+    else
+        AddTail(&TaskResBase->trb_NewTasks, &newEntry->tle_Node);
+    EXEC_SPINLOCK_UNLOCK(&TaskResBase->TaskListSpinLock);
+    Enable();
+
+    return TRUE;
+}
+#endif
 
 AROS_LH4(APTR, NewAddTask,
         AROS_LHA(struct Task *,     task,      A1),
@@ -61,7 +110,7 @@ AROS_LH4(APTR, NewAddTask,
         { TAG_DONE,                     0               },
         { TAG_DONE,                     0               }
     };
-    TaskResBase = (struct TaskResBase *)SysBase->lb_TaskResBase;
+    TaskResBase = TASKRES_BASE_FROM_EXEC(SysBase);
 
     D(bug("[TaskRes] %s(0x%p)\n", __func__, task));
 
@@ -92,14 +141,26 @@ AROS_LH1(void, RemTask,
     AROS_LIBFUNC_INIT
 
     struct Task *findTask = task;
-    struct TaskListEntry *taskEntry, *tmpEntry;
     struct TaskResBase *TaskResBase;
-    BOOL removed = FALSE;
 
-    TaskResBase = (struct TaskResBase *)SysBase->lb_TaskResBase;
+    TaskResBase = TASKRES_BASE_FROM_EXEC(SysBase);
 
     if (!findTask)
         findTask = FindTask(NULL);
+
+#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
+    /* Identity only: core admission precedes every target/storage access.
+     * Self removal never resumes here; external removal returns after the
+     * service callback has detached metadata and released reserved storage. */
+    if (!TaskResBase || !TaskResBase->trb_RemTask)
+    {
+        EXEC_PLATFORM_TASK_FATAL();
+        return;
+    }
+    AROS_CALL1(void, TaskResBase->trb_RemTask,
+        AROS_LCA(struct Task *, findTask, A1), struct ExecBase *, SysBase);
+    return;
+#else
 
     D(
         bug("[TaskRes] %s(0x%p)\n", __func__, task);
@@ -107,52 +168,7 @@ AROS_LH1(void, RemTask,
             bug("[TaskRes] %s: Real task @ 0x%p\n", __func__, findTask);
     )
 
-    ForeachNodeSafe(&TaskResBase->trb_NewTasks, taskEntry, tmpEntry)
-    {
-        if (taskEntry->tle_Task == findTask)
-        {
-            D(bug("[TaskRes] %s: destroying new entry @ 0x%p\n", __func__, taskEntry));
-            Remove(&taskEntry->tle_Node);
-            FreeMem(taskEntry, sizeof(struct TaskListEntry));
-            removed = TRUE;
-            break;
-        }
-    }
-
-    if (!removed)
-    {
-#if !defined(__AROSEXEC_SMP__)
-        /* Don't let any other task interfere with us at the moment */
-        Forbid();
-#else
-        EXEC_SPINLOCK_LOCK(&TaskResBase->TaskListSpinLock, NULL, SPINLOCK_MODE_WRITE);
-#endif
-        ForeachNodeSafe(&TaskResBase->trb_TaskList, taskEntry, tmpEntry)
-        {
-            if (taskEntry->tle_Task == findTask)
-            {
-                D(bug("[TaskRes] %s: taskentry @ 0x%p for '%s'\n", __func__, taskEntry, task->tc_Node.ln_Name));
-                if (IsListEmpty(&TaskResBase->trb_LockedLists))
-                {
-                    D(bug("[TaskRes] %s: destroying entry\n", __func__));
-                    Remove(&taskEntry->tle_Node);
-                    FreeMem(taskEntry, sizeof(struct TaskListEntry));
-                }
-                else
-                {
-                    D(bug("[TaskRes] %s: flag entry for removal\n", __func__));
-                    taskEntry->tle_Task = NULL;
-                }
-                break;
-            }
-        }
-#if !defined(__AROSEXEC_SMP__)
-        Permit();
-#else
-        EXEC_SPINLOCK_UNLOCK(&TaskResBase->TaskListSpinLock);
-#endif
-    }
-
+    task_DetachEntry(findTask, TaskResBase);
     struct ETask *et = (struct ETask *)findTask->tc_UnionETask.tc_ETask;
     IPTR *tsstorage = NULL;
 
@@ -178,6 +194,7 @@ AROS_LH1(void, RemTask,
 
     return;
 
+#endif
     AROS_LIBFUNC_EXIT
 }
 
@@ -191,7 +208,7 @@ AROS_LH3(IPTR, NewStackSwap,
     AROS_LIBFUNC_INIT
 
     struct TaskResBase *TaskResBase;
-    TaskResBase = (struct TaskResBase *)SysBase->lb_TaskResBase;
+    TaskResBase = TASKRES_BASE_FROM_EXEC(SysBase);
 
     APTR tsid = SaveTaskStorage();
     DTS(bug("[TaskRes] %s: Pre-StackSwap() <TSID=$%p, TaskStorage @ 0x%p>\n",

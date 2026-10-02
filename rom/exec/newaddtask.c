@@ -16,6 +16,9 @@
 #include "etask.h"
 #include "exec_util.h"
 #include "exec_debug.h"
+#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
+#include "taskresource_cleanup.h"
+#endif
 
 #if defined(__AROSEXEC_SMP__)
 #define __KERNEL_NOLIBBASE__
@@ -24,8 +27,59 @@
 
 static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHook)
 {
+#if defined(EXEC_PLATFORM_NEW_TASK_READY)
+    (void)parent;
+#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
+    {
+        struct taskresource_cleanup_binding *resource =
+            (struct taskresource_cleanup_binding *)__atomic_load_n(
+                &SysBase->lb_TaskResBase, __ATOMIC_ACQUIRE);
+        if (resource != NULL)
+        {
+            if (resource->contract != TASKRESOURCE_CLEANUP_CONTRACT ||
+                resource->prelaunch == NULL)
+            {
+                EXEC_PLATFORM_TASK_FATAL();
+                return;
+            }
+            if (!resource->prelaunch(task, resource))
+            {
+                /* Do not run hooks or publish a task lacking TaskRes metadata. */
+                EXEC_PLATFORM_TASK_FATAL();
+                return;
+            }
+        }
+    }
+#endif
+    /* Publish only after the pre-launch observer has registered the task.
+     * Local interrupt masking cannot stop another CPU dispatching a newly
+     * ready task. The hook must run exactly once, before queue publication,
+     * and without a task/queue lock held. */
+    if (plHook)
+    {
+        DADDTASK("TaskLaunch: Calling pre-launch hook before publication\n");
+        CALLHOOKPKT(plHook, task, 0);
+    }
+    /* The P4 helper owns Ready-list publication and its asynchronous poke.
+     * A successful publication may let another hart run or retire the task
+     * immediately, so do not inspect Task or parent state after this call. */
+    if (EXEC_PLATFORM_NEW_TASK_READY(task) < 1)
+    {
+        EXEC_PLATFORM_TASK_FATAL();
+        return;
+    }
+    return;
+#else
 #if defined(__AROSEXEC_SMP__)
     int cpunum = KrnGetCPUNumber();
+
+    /* Local interrupt masking cannot stop another CPU dispatching a newly
+     * ready task. Run the pre-launch observer before queue publication. */
+    if (plHook)
+    {
+        DADDTASK("TaskLaunch: Calling pre-launch hook before publication\n");
+        CALLHOOKPKT(plHook, task, 0);
+    }
 #else
     Disable();
 #endif
@@ -50,22 +104,6 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
         (!(PrivExecBase(SysBase)->IntFlags & EXECF_CPUAffinity) || (IntETask(task->tc_UnionETask.tc_ETask) && KrnCPUInMask(cpunum, IntETask(task->tc_UnionETask.tc_ETask)->iet_CpuAffinity))))
     {
         parent = GET_THIS_TASK;
-        /*
-         * The task is launchable on this CPU, so run the pre-launch hook
-         * now - before the Reschedule() below can let it run. It must be
-         * called on this path and not only when we reschedule:
-         * task.resource registers the task with itself from this hook, and
-         * a task that does not preempt its creator (same CPU, priority not
-         * higher) took neither branch that called it. Such tasks were
-         * therefore never registered, leaving them absent from
-         * LockTaskList() - and so from SysMon and TaskList - for their
-         * whole lifetime.
-         */
-        if (plHook)
-        {
-            DADDTASK("TaskLaunch: Calling pre-launch hook\n");
-            CALLHOOKPKT(plHook, task, 0);
-        }
         if (
 #endif
         parent && task->tc_Node.ln_Pri > parent->tc_Node.ln_Pri &&
@@ -90,11 +128,6 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
         DADDTASK("TaskLaunch: CPU #%d not in mask\n", cpunum);
         if (IntETask(task->tc_UnionETask.tc_ETask))
         {
-            if (plHook)
-            {
-                DADDTASK("TaskLaunch: Calling pre-launch hook\n");
-                CALLHOOKPKT(plHook, task, 0);
-            }
             KrnScheduleCPU(IntETask(task->tc_UnionETask.tc_ETask)->iet_CpuAffinity);
         }
         
@@ -116,6 +149,7 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
     }
     Enable();
 #endif
+#endif /* EXEC_PLATFORM_NEW_TASK_READY */
 }
 
 /*****************************************************************************
@@ -151,8 +185,8 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
                     A NULL pointer installs the default finalizer.
 
     RESULT
-        The address of the new task or NULL if the operation failed (can only
-        happen with TF_ETASK set - currenty not implemented).
+        The address of the new task or NULL if task initialization or context
+        preparation failed.
 
     NOTES
         This function is private. Use MorphOS-compatible NewCreateTaskA()
@@ -176,12 +210,34 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
     struct Task *parent;
     struct MemList *mlExtra = NULL;
     struct Hook *plHook = NULL;
+    char *taskName;
+#if defined(EXEC_PLATFORM_CREATION_OWNERSHIP_TAG)
+    ULONG *creationOwnership = NULL;
+#if defined(EXEC_PLATFORM_CREATION_OWNERSHIP_RESOLVE)
+    /* Unknown TAG_USER values are not writable-pointer authority. Only a
+     * current-Task-bound registered channel may authorize this output. */
+    creationOwnership = EXEC_PLATFORM_CREATION_OWNERSHIP_RESOLVE(
+        LibGetTagData(EXEC_PLATFORM_CREATION_OWNERSHIP_TAG, 0, tagList),
+        LibGetTagData(EXEC_PLATFORM_CREATION_GENERATION_TAG, 0, tagList),
+        task);
+#endif
+    if (creationOwnership)
+        *creationOwnership = EXEC_PLATFORM_CREATION_CALLER_OWNED;
+#endif
     if (tagList)
         plHook = (struct Hook *)LibGetTagData(TASKTAG_PRELAUNCHHOOK, 0, tagList);
 
     ASSERT_VALID_PTR(task);
 
+    taskName = task->tc_Node.ln_Name;
     parent = GET_THIS_TASK;
+
+#if defined(__AROSEXEC_SMP__) && defined(__AROSPLATFORM_SMP__)
+    /* AddTask accepts caller-owned Task storage, not necessarily cleared.
+     * Initialize the canonical state lock before ETask/pre-launch publication.
+     * The caller must not add an already published task a second time. */
+    EXEC_SPINLOCK_INIT(&task->tc_SpinLock);
+#endif
 
     /* Sigh - you should provide a name for your task. */
     if ((task->tc_Node.ln_Name == NULL) && (parent) && (parent->tc_Node.ln_Name))
@@ -198,7 +254,8 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
             if ((mlExtra->ml_ME[0].me_Addr = AllocMem(mlExtra->ml_ME[0].me_Length, MEMF_PUBLIC|MEMF_CLEAR)) != NULL)
             {
                 task->tc_Node.ln_Name = mlExtra->ml_ME[0].me_Addr;
-                RawDoFmt("%s.subtask", (RAWARG)&fmtname, RAWFMTFUNC_STRING, task->tc_Node.ln_Name);
+                RawDoFmt((CONST_STRPTR)"%s.subtask", (RAWARG)&fmtname,
+                         RAWFMTFUNC_STRING, task->tc_Node.ln_Name);
             }
             else
             {
@@ -256,11 +313,25 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
     if (PrivExecBase(SysBase)->IntFlags & EXECF_StackSnoop)
         task->tc_Flags |= TF_STACKCHK;
 
-	DADDTASK("Calling InitETask(0x%p, 0x%p)", task, parent);
+    DADDTASK("Calling InitETask(0x%p, 0x%p)", task, parent);
 
     /* Initialize ETask */
+#if defined(EXEC_PLATFORM_ETASK_STAGED)
+    /* Creator owns unpublished storage; no parent link or death message may
+     * exist on the fallible context/record setup paths below. */
+    if (!InitETask(task, NULL))
+#else
     if (!InitETask(task, parent))
+#endif
+    {
+        if (mlExtra)
+        {
+            Remove(&mlExtra->ml_Node);
+            task->tc_Node.ln_Name = taskName;
+            FreeEntry(mlExtra);
+        }
         return NULL;
+    }
 
     /* Get new stackpointer. */
     if (task->tc_SPReg == NULL)
@@ -297,8 +368,57 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
     if (!PrepareContext(task, initialPC, finalPC, tagList, SysBase))
     {
         CleanupETask(task);
+        /* Cleanup owns the separate ETask allocation, not caller-owned Task
+         * storage. Do not return a dangling metadata pointer on failure. */
+        task->tc_UnionETask.tc_ETask = NULL;
+        task->tc_Flags &= ~TF_ETASK;
+        if (mlExtra)
+        {
+            Remove(&mlExtra->ml_Node);
+            task->tc_Node.ln_Name = taskName;
+            FreeEntry(mlExtra);
+        }
         return NULL;
     }
+
+#if defined(EXEC_PLATFORM_TASK_RECORD_CREATE)
+    /* A created record owns one temporary caller pin. Keep it across the
+     * pre-launch hook and Ready publication until NewAddTask's final Task
+     * access, so a remote child cannot retire this storage underneath us. */
+    if (!EXEC_PLATFORM_TASK_RECORD_CREATE(task))
+    {
+        struct ETask *et = GetETask(task);
+
+        if (et && et->et_RegFrame)
+        {
+            KrnDeleteContext(et->et_RegFrame);
+            et->et_RegFrame = NULL;
+        }
+        CleanupETask(task);
+        task->tc_UnionETask.tc_ETask = NULL;
+        task->tc_Flags &= ~TF_ETASK;
+        if (mlExtra)
+        {
+            Remove(&mlExtra->ml_Node);
+            task->tc_Node.ln_Name = taskName;
+            FreeEntry(mlExtra);
+        }
+        return NULL;
+    }
+#endif
+
+#if defined(EXEC_PLATFORM_ETASK_STAGED)
+    /* Context and record creation succeeded. Publish before the pre-launch
+     * observer/Ready queue, with the creator pin and caller RUN still owned. */
+    Exec_PublishConstructedETask(task, parent, SysBase);
+#endif
+
+#if defined(EXEC_PLATFORM_CREATION_OWNERSHIP_TAG)
+    /* Published lifetime storage is no longer an ordinary allocation-failure
+     * cleanup. Any later NULL result needs an explicit service handoff. */
+    if (creationOwnership)
+        *creationOwnership = EXEC_PLATFORM_CREATION_REGISTERED;
+#endif
 
     /* Set the task flags for switch and launch. */
     if(task->tc_Switch)
@@ -318,6 +438,11 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
     TaskLaunch(parent, task, plHook);
 
     DADDTASK("NewAddTask: task 0x%p launched", task);
+
+#if defined(EXEC_PLATFORM_TASK_RECORD_RELEASE)
+    /* Last Task access: the creation pin protects it through the log above. */
+    EXEC_PLATFORM_TASK_RECORD_RELEASE(task);
+#endif
 
     return task;
 

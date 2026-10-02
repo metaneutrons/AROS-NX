@@ -28,6 +28,20 @@ void ServiceTask(struct ExecBase *SysBase)
 #if defined(__AROSEXEC_SMP__)
     serviceTask = FindTask(NULL);
     DINIT("ServiceTask: task @ 0x%p", serviceTask);
+#if defined(EXEC_PLATFORM_SERVICE_PROTECT)
+    /* The current RUN continuation owns storage while installing the
+     * permanent housekeeper reference. Never make a queued cleanup claim
+     * from a worker whose own continuation can be remotely retired. */
+    if (!EXEC_PLATFORM_SERVICE_PROTECT(serviceTask))
+    {
+        EXEC_PLATFORM_TASK_FATAL();
+        return;
+    }
+#endif
+#if defined(EXEC_PLATFORM_SERVICE_WORKER_RUN)
+    EXEC_PLATFORM_SERVICE_WORKER_RUN();
+    return;
+#endif
 #endif
 
     do
@@ -55,6 +69,7 @@ void ServiceTask(struct ExecBase *SysBase)
                     taskRequeue = FALSE;
                 }
 #endif
+                /* fall through */
             case TS_REMOVED:
                 if (taskRequeue)
                 {
@@ -63,6 +78,7 @@ void ServiceTask(struct ExecBase *SysBase)
                         (struct Message *)task, SysBase);
                     break;
                 }
+                /* fall through */
             case TS_INVALID:
                 DREMTASK("ServiceTask: Removal request for Task 0x%p <%s> (State:%08x)", task, task->tc_Node.ln_Name, task->tc_State);
 

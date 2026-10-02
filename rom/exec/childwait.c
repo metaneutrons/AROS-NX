@@ -3,8 +3,10 @@
 
     ChildWait() - Wait for a task to finish it processing.
 */
+#if !defined(P4_CHILD_WAIT_BODY_TEST)
 #include "exec_intern.h"
 #include <proto/exec.h>
+#endif
 
 /*****************************************************************************
 

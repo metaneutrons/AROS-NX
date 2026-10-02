@@ -51,6 +51,52 @@
 
     struct ETask *et;
 
+#if defined(__AROSEXEC_SMP__)
+    struct Task *ThisTask;
+    struct ETask *thisET;
+    struct ETask *candidate;
+
+    Forbid();
+    ThisTask = GET_THIS_TASK;
+    if (ThisTask == NULL)
+    {
+        Permit();
+        return;
+    }
+
+    /* GetETask() checks TF_ETASK, but its argument must not be NULL. */
+    thisET = GetETask(ThisTask);
+    if (thisET == NULL)
+    {
+        Permit();
+        return;
+    }
+
+    /* In SMP mode only the durable dead-result list owns a child eligible
+     * for ChildFree.  An active child is deliberately not found or freed. */
+    et = NULL;
+    /* Forbid does not exclude interrupt-time PutMsg on this port. */
+    Disable();
+    EXEC_SPINLOCK_LOCK(&thisET->et_TaskMsgPort.mp_SpinLock, NULL,
+                       SPINLOCK_MODE_WRITE);
+    ForeachNode(&thisET->et_TaskMsgPort.mp_MsgList, candidate)
+    {
+        if (candidate->et_UniqueID == tid)
+        {
+            Remove((struct Node *)candidate);
+            et = candidate;
+            break;
+        }
+    }
+    EXEC_SPINLOCK_UNLOCK(&thisET->et_TaskMsgPort.mp_SpinLock);
+    Enable();
+    Permit();
+
+    /* Removal transfers exclusive result-list ownership.  Expunging can
+     * free et, so do not dereference it after this call. */
+    if (et != NULL)
+        ExpungeETask(et);
+#else
     Forbid();
     et = FindChild(tid);
     if(et != NULL)
@@ -60,6 +106,7 @@
         ExpungeETask(et);
     }
     Permit();
+#endif
     
     AROS_LIBFUNC_EXIT
 } /* ChildFree */

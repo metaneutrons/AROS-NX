@@ -23,8 +23,10 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
 {
 #ifdef TASKRES_ENABLE
     struct TaskStorageFreeSlot *freeTaskStorageSlot;
+#if !defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
     struct TaskListEntry *taskEntry = NULL;
     struct Task *curTask = NULL;
+#endif
 
 #if defined(__AROSEXEC_SMP__)
     void *ExecLockBase = NULL;
@@ -33,7 +35,7 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
 
 #endif /* TASKRES_ENABLE */
 
-    KernelBase = OpenResource("kernel.resource");
+    KernelBase = OpenResource((CONST_STRPTR)"kernel.resource");
     if (!KernelBase)
     {
         /* we should probably halt the system ..*/
@@ -41,7 +43,7 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
     }
 
 #if defined(__AROSEXEC_SMP__)
-    TaskResBase->trb_ExecLock = OpenResource("execlock.resource");
+    TaskResBase->trb_ExecLock = OpenResource((CONST_STRPTR)"execlock.resource");
     ExecLockBase = TaskResBase->trb_ExecLock;
     if (!ExecLockBase)
     {
@@ -56,8 +58,9 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
     NEWLIST(&TaskResBase->trb_TaskList);
     NEWLIST(&TaskResBase->trb_NewTasks);
     NEWLIST(&TaskResBase->trb_LockedLists);
-
-    SysBase->lb_TaskResBase = (struct Library *)TaskResBase;
+#if defined(__AROSEXEC_SMP__)
+    EXEC_SPINLOCK_INIT(&TaskResBase->TaskListSpinLock);
+#endif
 
     InitSemaphore(&TaskResBase->trb_Sem);
 
@@ -72,15 +75,35 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
     freeTaskStorageSlot->FreeSlot = __TS_FIRSTSLOT + 1;
     AddHead((struct List *)&TaskResBase->trb_TaskStorageSlots, (struct Node *)freeTaskStorageSlot);
 
+    /* Fallible base setup and semaphore initialization precede exposure. */
+#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
+    TaskResBase->trb_CleanupBinding.contract = TASKRESOURCE_CLEANUP_CONTRACT;
+    TaskResBase->trb_CleanupBinding.cleanup = task_CleanupRemovedTask;
+    TaskResBase->trb_CleanupBinding.prelaunch = task_RegisterNewTask;
+#else
+    SysBase->lb_TaskResBase = (struct Library *)TaskResBase;
+#endif
+
+#if !defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
     TaskResBase->trb_RemTask = SetFunction((struct Library *)SysBase, -48*LIB_VECTSIZE, AROS_SLIB_ENTRY(RemTask, Task, 48));
     TaskResBase->trb_NewAddTask = SetFunction((struct Library *)SysBase, -176*LIB_VECTSIZE, AROS_SLIB_ENTRY(NewAddTask, Task, 176));
 #if (0)
     TaskResBase->trb_NewStackSwap = SetFunction((struct Library *)SysBase, -134*LIB_VECTSIZE, AROS_SLIB_ENTRY(NewStackSwap, Task, 134));
 #endif
+#endif /* Legacy vector interposition; selected P4 uses direct core callbacks. */
 
-    /*
-       Add existing tasks to our internal list ..
-    */
+#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
+    if (!task_BootstrapInventory(TaskResBase))
+    {
+        /* No binding was published and the helper freed its empty-node pool.
+         * This slot is the only remaining allocation owned by failed init. */
+        Remove((struct Node *)freeTaskStorageSlot);
+        FreeMem(freeTaskStorageSlot, sizeof(*freeTaskStorageSlot));
+        return FALSE;
+    }
+    return TRUE;
+#else
+    /* Add existing tasks using the legacy platform path. */
 #if defined(__AROSEXEC_SMP__)
     ObtainSystemLock(&PrivExecBase(SysBase)->TaskRunning, SPINLOCK_MODE_READ, LOCKF_DISABLE);
     ForeachNode(&PrivExecBase(SysBase)->TaskRunning, curTask)
@@ -114,6 +137,7 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
             if ((taskEntry = AllocMem(sizeof(struct TaskListEntry), MEMF_CLEAR)) != NULL)
             {
                 D(bug("[TaskRes] 0x%p [  S] %02d %s\n", curTask, GetIntETask(curTask)->iet_CpuNumber, curTask->tc_Node.ln_Name));
+                NEWLIST(&taskEntry->tle_HookTypes);
                 taskEntry->tle_Task = curTask;
                 AddTail(&TaskResBase->trb_TaskList, &taskEntry->tle_Node);
             }
@@ -140,6 +164,7 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
             if ((taskEntry = AllocMem(sizeof(struct TaskListEntry), MEMF_CLEAR)) != NULL)
             {
                 D(bug("[TaskRes] 0x%p [R--] 00 %s\n", SysBase->ThisTask, SysBase->ThisTask->tc_Node.ln_Name));
+                NEWLIST(&taskEntry->tle_HookTypes);
                 taskEntry->tle_Task = SysBase->ThisTask;
                 AddTail(&TaskResBase->trb_TaskList, &taskEntry->tle_Node);
             }
@@ -161,6 +186,7 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
             if ((taskEntry = AllocMem(sizeof(struct TaskListEntry), MEMF_CLEAR)) != NULL)
             {
                 D(bug("[TaskRes] 0x%p [-R-] -- %s\n", curTask, curTask->tc_Node.ln_Name));
+                NEWLIST(&taskEntry->tle_HookTypes);
                 taskEntry->tle_Task = curTask;
                 AddTail(&TaskResBase->trb_TaskList, &taskEntry->tle_Node);
             }
@@ -186,6 +212,7 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
             if ((taskEntry = AllocMem(sizeof(struct TaskListEntry), MEMF_CLEAR)) != NULL)
             {
                 D(bug("[TaskRes] 0x%p [--W] -- %s\n", curTask, curTask->tc_Node.ln_Name));
+                NEWLIST(&taskEntry->tle_HookTypes);
                 taskEntry->tle_Task = curTask;
                 AddTail(&TaskResBase->trb_TaskList, &taskEntry->tle_Node);
             }
@@ -205,6 +232,9 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
     Enable();
 #endif
 
+#endif /* Selected P4 transaction or legacy enumeration. */
+#else
+    SysBase->lb_TaskResBase = (struct Library *)TaskResBase;
 #endif /* TASKRES_ENABLE */
 
     return TRUE;
@@ -212,6 +242,13 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
 
 static LONG taskres_Exit(struct TaskResBase *TaskResBase)
 {
+#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
+    /* Published callback and interposers are boot-lifetime resident. Failed
+     * initialization still follows the ordinary rollback below. */
+    if (__atomic_load_n(&SysBase->lb_TaskResBase, __ATOMIC_ACQUIRE) ==
+        (struct Library *)TaskResBase)
+        return FALSE;
+#endif
 #ifdef TASKRES_ENABLE
     /*
      * Only put back what was actually taken. The expunge set also runs
@@ -225,6 +262,9 @@ static LONG taskres_Exit(struct TaskResBase *TaskResBase)
     if (TaskResBase->trb_RemTask)
         SetFunction((struct Library *)SysBase, -48*LIB_VECTSIZE, TaskResBase->trb_RemTask);
 #endif /* TASKRES_ENABLE */
+
+    if (SysBase->lb_TaskResBase == (struct Library *)TaskResBase)
+        SysBase->lb_TaskResBase = NULL;
 
     CloseLibrary(TaskResBase->trb_UtilityBase);
 
