@@ -726,7 +726,10 @@ static void writeresident(FILE *out, struct config *cfg)
         if (cfg->options & OPTION_RESAUTOINIT)
         {
             fprintf(out,
-                    "    (APTR)&GM_UNIQUENAME(InitTable)\n"
+                    "    (APTR)&GM_UNIQUENAME(InitTable),\n"
+                    "#if !defined(STRUCT_RESIDENT_PLAIN)\n"
+                    "    0, NULL /* Unused unless RTF_EXTENDED is set. */\n"
+                    "#endif\n"
                     "};\n"
                     "\n"
                     "__section(\".text.romtag\") static struct InitTable const GM_UNIQUENAME(InitTable) =\n"
@@ -739,7 +742,12 @@ static void writeresident(FILE *out, struct config *cfg)
             );
         }
         else
-            fprintf(out, "    (APTR)GM_UNIQUENAME(InitLib)\n};\n");
+            fprintf(out,
+                    "    (APTR)GM_UNIQUENAME(InitLib),\n"
+                    "#if !defined(STRUCT_RESIDENT_PLAIN)\n"
+                    "    0, NULL /* Unused unless RTF_EXTENDED is set. */\n"
+                    "#endif\n"
+                    "};\n");
     }
 
     fprintf(out,
@@ -1826,4 +1834,3 @@ static void writesets(FILE *out, struct config *cfg)
         );
     fprintf(out, "\n");
 }
-
