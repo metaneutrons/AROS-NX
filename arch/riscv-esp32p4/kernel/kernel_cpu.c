@@ -28,6 +28,26 @@
 #include "hardware.h"
 #include "kernel_intern.h"
 #include "kernel_cpu.h"
+#if defined(__AROSEXEC_SMP__)
+#include <exec_platform.h>
+#include "p4_dispatch.h"
+#include "p4_switch.h"
+#include "p4_discard.h"
+#include "p4_dispatch_callbacks.h"
+#endif
+
+#if defined(P4_E3_FPU) && (P4_E3_FPU == 1)
+#include "p4_trap_frame.h"
+
+_Static_assert(sizeof(struct ExceptionContext) == P4_TRAP_CONTEXT_BYTES,
+               "the public RISC-V context must keep its existing size");
+_Static_assert(offsetof(struct ExceptionContext, fpuContext) == 128,
+               "traps.S requires fpuContext at byte 128");
+_Static_assert(sizeof(struct FpuContext) == P4_TRAP_FPU_SPILL_BYTES,
+               "P4 trap spill and FLEN=32 task image must have the same size");
+_Static_assert(offsetof(struct FpuContext, fcsr) == 128,
+               "P4 FLEN=32 fcsr must follow the 32 single-width registers");
+#endif
 
 /*
  * The volatile part of a context: the x registers, pc and sr. Flags and
@@ -45,6 +65,7 @@ static void copyContext(struct ExceptionContext *dst,
     dst->sr = src->sr;
 }
 
+#if !defined(P4_E3_FPU) || (P4_E3_FPU != 1)
 /* FLEN is 32, so these are fsw/flw at four byte spacing, not fsd/fld */
 static void krnSaveFPU(struct FpuContext *fpu)
 {
@@ -107,15 +128,39 @@ static void krnInitFPU(void)
         "fmv.w.x f30, zero \n fmv.w.x f31, zero \n"
         );
 }
+#endif
 
 void cpu_Switch(regs_t *regs)
 {
-    struct Task *task = SysBase->ThisTask;
+#if defined(__AROSEXEC_SMP__)
+    krnP4Switch(regs, SysBase);
+#else
+    struct Task *task =
+#if defined(__AROSEXEC_SMP__)
+        GET_THIS_TASK;
+#else
+        SysBase->ThisTask;
+#endif
     struct ExceptionContext *ctx = task->tc_UnionETask.tc_ETask->et_RegFrame;
 
     copyContext(ctx, regs);
     task->tc_SPReg = (APTR)regs->sp;
 
+#if defined(P4_E3_FPU) && (P4_E3_FPU == 1)
+    /*
+     * The trap entry has already captured every F register and fcsr before
+     * calling C. Copy that immutable per-entry image, not the live hardware
+     * state, which the handler and scheduler may have used. FS=INITIAL/CLEAN
+     * deliberately leaves the saved task image untouched; this also handles
+     * a never-used FPU context whose allocated block is not yet valid.
+     */
+    if (p4_trap_fpu_state_is_dirty(ctx->sr))
+    {
+        p4_trap_fpu_copy_entry_spill(ctx->fpuContext, regs->fpuContext);
+        ctx->Flags |= ECF_FPU;
+        ctx->sr = (ctx->sr & ~MSTATUS_FS) | MSTATUS_FS_CLEAN;
+    }
+#else
     /*
      * Lazy FPU: the task's FS state arrived in sr at trap entry. Only a
      * dirty FPU is worth saving, and it resumes Clean so the next write
@@ -132,6 +177,7 @@ void cpu_Switch(regs_t *regs)
         ctx->Flags |= ECF_FPU;
         ctx->sr = (ctx->sr & ~MSTATUS_FS) | MSTATUS_FS_CLEAN;
     }
+#endif
 
     /*
      * No CPU time accounting yet. The 64bit port charges the run segment
@@ -142,6 +188,7 @@ void cpu_Switch(regs_t *regs)
      */
 
     core_Switch();
+#endif
 }
 
 void cpu_Dispatch(regs_t *regs)
@@ -149,7 +196,28 @@ void cpu_Dispatch(regs_t *regs)
     struct Task *task;
     struct ExceptionContext *ctx;
 
-    while (!(task = core_Dispatch()))
+#if defined(__AROSEXEC_SMP__)
+    /* SC_DISPATCH bypasses cpu_Switch; only an already removed/detached Task
+     * may be discarded. Ordinary switches already cleared current_task. */
+    if (GET_THIS_TASK != NULL)
+        krnP4DiscardCurrent(SysBase);
+#endif
+
+#if defined(__AROSEXEC_SMP__)
+dispatch_again:
+    /* No current Task/queue lock remains after switch/discard. A producer's
+     * nested IPI can be consumed here before choosing a ready Task. */
+    IDNESTCOUNT_SET(-1);
+    Exec_P4DeliverCleanupWake(SysBase);
+    csr_clear(mstatus, MSTATUS_MIE);
+#endif
+    while (!(task =
+#if defined(__AROSEXEC_SMP__)
+             krnP4Dispatch(SysBase)
+#else
+             core_Dispatch()
+#endif
+            ))
     {
         /*
          * The outgoing task's nesting state was saved by core_Switch().
@@ -166,19 +234,42 @@ void cpu_Dispatch(regs_t *regs)
         asm volatile("wfi");
         csr_clear(mstatus, MSTATUS_MIE);
 
+#if defined(__AROSEXEC_SMP__)
+        Exec_P4DeliverCleanupWake(SysBase);
+        csr_clear(mstatus, MSTATUS_MIE);
+        /* Dispatcher callbacks return with MIE enabled. Re-mask before
+         * admission, and repoll work whose doorbell ran as a nested IPI. */
+        while (EXEC_PLATFORM_SOFTINT_PENDING())
+        {
+            core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
+            csr_clear(mstatus, MSTATUS_MIE);
+        }
+#else
         if (SysBase->SysFlags & SFF_SoftInt)
             core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
+#endif
     }
 
     ctx = task->tc_UnionETask.tc_ETask->et_RegFrame;
     copyContext(regs, ctx);
 
+#if !defined(P4_E3_FPU) || (P4_E3_FPU != 1)
     /* Bring in the task's FPU state, or the clean state if it has none */
     if (ctx->Flags & ECF_FPU)
         krnRestoreFPU(ctx->fpuContext);
     else
         krnInitFPU();
+#endif
 
+#if defined(__AROSEXEC_SMP__)
+    if (!krnP4DispatchCallbacks(task, SysBase))
+    {
+        /* RUN kept the old context alive through callbacks. After discard,
+         * neither task nor ctx may be touched; replace the whole return frame. */
+        krnP4DiscardCurrent(SysBase);
+        goto dispatch_again;
+    }
+#else
     if (task->tc_Flags & TF_EXCEPT)
         Exception();
 
@@ -187,5 +278,14 @@ void cpu_Dispatch(regs_t *regs)
         AROS_UFC1(void, task->tc_Launch,
                   AROS_UFCA(struct ExecBase *, SysBase, A6));
     }
+#endif
+#if defined(P4_E3_FPU) && (P4_E3_FPU == 1)
+    /*
+     * Leave the entry spill installed throughout every C call above. A
+     * nested trap gets its own stack-local image; only now select the task
+     * image that traps.S restores after this final C return.
+     */
+    regs->fpuContext = (ctx->Flags & ECF_FPU) ? ctx->fpuContext : (APTR)0;
+#endif
     /* Leave the trap and resume the new task */
 }

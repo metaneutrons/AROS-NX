@@ -169,6 +169,193 @@ int krnP4GetC(void)
 
 #endif
 
+#if defined(P4_E3_FPU_TEST) && (P4_E3_FPU_TEST == 1) \
+    || (defined(P4_E3_RUNTIME_PREPARE) && (P4_E3_RUNTIME_PREPARE == 1))
+/*
+ * Probe diagnostics are stricter than the ordinary console: the caller
+ * holds Forbid(), and a success result means the complete line was handed
+ * off. The 36-million-mcycle threshold is the configured cycle budget;
+ * converting it to wall time assumes a 360 MHz core clock, which is not
+ * calibrated by this code. Unsigned subtraction handles 32-bit wraparound.
+ * The poll limit is a fallback if mcycle is stopped or not advancing.
+ */
+#define P4_DIAGNOSTIC_LINE_MAX       512U
+#define P4_DIAGNOSTIC_TIMEOUT_CYCLES 36000000U
+#define P4_DIAGNOSTIC_POLL_LIMIT     65536U
+
+static inline uint32_t p4_diagnostic_mcycle(void)
+{
+    uint32_t cycles;
+
+    __asm__ volatile("csrr %0, mcycle" : "=r"(cycles));
+    return cycles;
+}
+
+static int p4_diagnostic_before_deadline(uint32_t start,
+                                        unsigned int *polls_left)
+{
+    if (!*polls_left)
+        return 0;
+    (*polls_left)--;
+    return (uint32_t)(p4_diagnostic_mcycle() - start) <
+           P4_DIAGNOSTIC_TIMEOUT_CYCLES;
+}
+
+#if P4_CONSOLE_USB
+static int p4_diagnostic_wait_usb_free(uint32_t start,
+                                       unsigned int *polls_left)
+{
+    for (;;)
+    {
+        if (mmio_rd(P4_USJ_BASE, P4_USJ_EP1_CONF) &
+            P4_USJ_IN_EP_DATA_FREE)
+            return p4_diagnostic_before_deadline(start, polls_left);
+
+        if (!p4_diagnostic_before_deadline(start, polls_left))
+            return 0;
+    }
+}
+#else
+/* ESP-IDF P4 UART_FSM_STATUS_REG offset and ST_UTX_OUT bits [7:4]. */
+#define P4_DIAGNOSTIC_UART_FSM_STATUS 0x0070U
+#define P4_DIAGNOSTIC_UART_ST_UTX_OUT_M (0x0fU << 4)
+
+static int p4_diagnostic_wait_uart_space(uint32_t start,
+                                         unsigned int *polls_left)
+{
+    for (;;)
+    {
+        uint32_t used = (mmio_rd(P4_UART0_BASE, P4_UART_STATUS)
+                            >> P4_UART_TXFIFO_CNT_S) & P4_UART_TXFIFO_CNT_M;
+
+        if (used < P4_UART_FIFO_DEPTH)
+            return p4_diagnostic_before_deadline(start, polls_left);
+
+        if (!p4_diagnostic_before_deadline(start, polls_left))
+            return 0;
+    }
+}
+
+static int p4_diagnostic_wait_uart_empty(uint32_t start,
+                                         unsigned int *polls_left)
+{
+    for (;;)
+    {
+        uint32_t used = (mmio_rd(P4_UART0_BASE, P4_UART_STATUS)
+                            >> P4_UART_TXFIFO_CNT_S) & P4_UART_TXFIFO_CNT_M;
+
+        if (used == 0)
+        {
+            uint32_t fsm = mmio_rd(P4_UART0_BASE,
+                                   P4_DIAGNOSTIC_UART_FSM_STATUS);
+
+            if ((fsm & P4_DIAGNOSTIC_UART_ST_UTX_OUT_M) == 0)
+                return p4_diagnostic_before_deadline(start, polls_left);
+        }
+        if (!p4_diagnostic_before_deadline(start, polls_left))
+            return 0;
+    }
+}
+#endif
+
+/*
+ * Write one bounded diagnostic line. A missing trailing newline is added;
+ * embedded newlines and overlong input are rejected before touching MMIO.
+ * USB flushes each 64-byte packet and the final newline, then waits until
+ * DATA_FREE confirms the host has collected it. UART waits for both an empty
+ * TX FIFO and an idle transmit FSM. A timeout may have transmitted a prefix,
+ * but never qualifies a complete diagnostic line.
+ */
+int krnP4DiagnosticLine(const char *line)
+{
+    uint32_t start;
+    unsigned int polls_left = P4_DIAGNOSTIC_POLL_LIMIT;
+    unsigned int length;
+    unsigned int total;
+    unsigned int i;
+    int append_newline;
+
+    if (!line)
+        return 0;
+
+    for (length = 0;
+         length <= P4_DIAGNOSTIC_LINE_MAX && line[length] != '\0';
+         length++)
+        ;
+    if (length > P4_DIAGNOSTIC_LINE_MAX)
+        return 0;
+
+    for (i = 0; i < length; i++)
+    {
+        if (line[i] == '\n' && i + 1U != length)
+            return 0;
+    }
+
+    append_newline = !length || line[length - 1U] != '\n';
+    if (append_newline && length == P4_DIAGNOSTIC_LINE_MAX)
+        return 0;
+    total = length + (unsigned int)append_newline;
+
+    start = p4_diagnostic_mcycle();
+
+#if P4_CONSOLE_USB
+    /* Delimit even a previously committed partial packet before this line. */
+    if (!p4_diagnostic_wait_usb_free(start, &polls_left))
+        return 0;
+    mmio_wr(P4_USJ_BASE, P4_USJ_EP1, (uint32_t)'\n');
+    usj_pending++;
+    mmio_wr(P4_USJ_BASE, P4_USJ_EP1_CONF, P4_USJ_WR_DONE);
+    usj_pending = 0;
+    if (!p4_diagnostic_wait_usb_free(start, &polls_left))
+        return 0;
+
+    for (i = 0; i < total; i++)
+    {
+        char c = (i < length) ? line[i] : '\n';
+
+        if (!p4_diagnostic_wait_usb_free(start, &polls_left))
+            return 0;
+        mmio_wr(P4_USJ_BASE, P4_USJ_EP1, (uint32_t)(unsigned char)c);
+        usj_pending++;
+
+        if (usj_pending >= P4_USJ_EP1_DEPTH || c == '\n')
+        {
+            mmio_wr(P4_USJ_BASE, P4_USJ_EP1_CONF, P4_USJ_WR_DONE);
+            usj_pending = 0;
+            if (!p4_diagnostic_wait_usb_free(start, &polls_left))
+                return 0;
+        }
+        else if (!p4_diagnostic_before_deadline(start, &polls_left))
+            return 0;
+    }
+#else
+    /* A prior UART fragment may already be in the hardware FIFO. */
+    if (!p4_diagnostic_wait_uart_space(start, &polls_left))
+        return 0;
+    mmio_wr(P4_UART0_BASE, P4_UART_FIFO, (uint32_t)'\n');
+    if (!p4_diagnostic_before_deadline(start, &polls_left) ||
+        !p4_diagnostic_wait_uart_empty(start, &polls_left))
+        return 0;
+
+    for (i = 0; i < total; i++)
+    {
+        char c = (i < length) ? line[i] : '\n';
+
+        if (!p4_diagnostic_wait_uart_space(start, &polls_left))
+            return 0;
+        mmio_wr(P4_UART0_BASE, P4_UART_FIFO, (uint32_t)(unsigned char)c);
+        if (!p4_diagnostic_before_deadline(start, &polls_left))
+            return 0;
+    }
+
+    /* The UART has no packet commit bit; wait until queued bytes are sent. */
+    return p4_diagnostic_wait_uart_empty(start, &polls_left);
+#endif
+
+    return 1;
+}
+#endif /* P4 E3 diagnostic-line users */
+
 void krnP4PutStr(const char *s)
 {
     while (*s)

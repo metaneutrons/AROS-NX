@@ -10,6 +10,9 @@
 #include <kernel_base.h>
 
 #include <proto/kernel.h>
+#if defined(__AROSEXEC_SMP__)
+#include "cpu_local.h"
+#endif
 
 /*
  * See rom/kernel/issuper.c for documentation.
@@ -26,7 +29,15 @@ AROS_LH0I(int, KrnIsSuper,
 {
     AROS_LIBFUNC_INIT
 
+#if defined(__AROSEXEC_SMP__)
+    struct p4_cpu_local *local = p4_cpu_local_current();
+
+    /* Refuse sleeping if the caller cannot identify a valid local context. */
+    return local == NULL || local->hart_id != P4_CPU_LOCAL_READ_MHARTID() ||
+           local->trap_depth > 0;
+#else
     return __esp32p4_trap_depth > 0;
+#endif
 
     AROS_LIBFUNC_EXIT
 }

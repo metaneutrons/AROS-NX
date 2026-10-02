@@ -165,8 +165,10 @@ struct Task *core_Dispatch(void)
         D(bug("[KRN] New task = %p (%s)\n", task, task->tc_Node.ln_Name));
 
         SysBase->DispCount++;
+#if !defined(EXEC_DISPATCH_LAUNCH_IN_CPU)
         if (task->tc_Flags & TF_LAUNCH)
             AROS_UFC1NR(void, task->tc_Launch, AROS_UFCA(struct ExecBase *, SysBase, A6));
+#endif
     }
 
     /* Leave interrupt and jump to the new task */

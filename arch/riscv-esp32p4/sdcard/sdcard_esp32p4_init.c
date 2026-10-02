@@ -11,6 +11,9 @@
 #include <exec/memory.h>
 #include <hardware/mmc.h>
 #include <proto/exec.h>
+#if defined(__AROSEXEC_SMP__)
+#include <proto/kernel.h>
+#endif
 
 #include "sdcard_esp32p4_intern.h"
 
@@ -19,6 +22,14 @@ static int FNAME_P4SD(Init)(struct SDCardBase *SDCardBase)
     struct sdcard_Bus *bus;
     struct sdcard_BusUnits *units;
     struct p4sd_private *priv;
+
+#if defined(__AROSEXEC_SMP__)
+    if (!p4sd_TimePrepare(SDCardBase))
+    {
+        bug("[P4SD--] missing or incompatible shared timer service\n");
+        return FALSE;
+    }
+#endif
 
     bus = AllocPooled(SDCardBase->sdcard_MemPool, sizeof(*bus));
     units = AllocPooled(SDCardBase->sdcard_MemPool, sizeof(*units));

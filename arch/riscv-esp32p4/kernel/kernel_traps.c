@@ -19,6 +19,16 @@
 #include "hardware.h"
 #include "kernel_intern.h"
 #include "kernel_cpu.h"
+#if defined(__AROSEXEC_SMP__)
+#include "cpu_local.h"
+#include "p4_isr_stack.h"
+#include "p4_trap_frame.h"
+#include "p4_retired_trap.h"
+#include "p4_ipi.h"
+#include "p4_public_spinlock.h"
+#include <exec_platform.h>
+#include "../exec/p4_cleanup_worker.h"
+#endif
 
 #include <kernel_globals.h>
 #include <kernel_intr.h>
@@ -188,7 +198,7 @@ static void krnDumpBacktrace(struct ExceptionContext *ctx)
 
     n += KrnBacktraceFromFrame((APTR)ctx->sp, &pcs[n], 32 - n);
 
-    KrnPrintBacktrace("[trap] ", pcs, n);
+    KrnPrintBacktrace((STRPTR)"[trap] ", pcs, n);
 }
 
 static void krnReportException(struct ExceptionContext *ctx,
@@ -291,8 +301,21 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
          */
         if (line == P4_TIMER_LINE)
         {
+#if defined(__AROSEXEC_SMP__)
+            if (P4_CPU_LOCAL_READ_MHARTID() != 0)
+                krnP4PublicSpinFatal(P4_PUBLIC_SPIN_BAD_STATE);
+#endif
             krnTimerAck();
+#if defined(__AROSEXEC_SMP__)
+            krnTimerAdvance();
+            if (SysBase)
+            {
+                p4_cpu_local_current()->ticks++;
+                krnP4IpiPostTick(1, SysBase);
+            }
+#else
             __esp32p4_ticks++;
+#endif
 
             /*
              * The tick alone preempts nothing. What counts the quantum
@@ -305,17 +328,40 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
             if (SysBase && (IDNESTCOUNT_GET < 0))
                 core_Cause(INTB_VERTB, 1L << INTB_VERTB);
         }
+#if defined(__AROSEXEC_SMP__)
+        else if (line == P4_IPI_LINE)
+        {
+            struct p4_ipi_batch batch = krnP4IpiDrain(SysBase);
+            krnP4IpiApplyBatch(&batch, SysBase);
+        }
+#endif
         else if (line == P4_DSI_DMA_LINE)
         {
+#if defined(__AROSEXEC_SMP__)
+            if (P4_CPU_LOCAL_READ_MHARTID() != 0)
+                krnP4PublicSpinFatal(P4_PUBLIC_SPIN_BAD_STATE);
+#endif
             /* One complete framebuffer per interrupt.  The DesignWare item
                clears its VALID bit when consumed, so the reference driver
                restores it and re-arms the channel here. */
             krnP4ScanoutDmaInterrupt();
         }
 
+#if defined(__AROSEXEC_SMP__)
+        /* Drain already acknowledged line22 under the producer gate. A
+         * second clear here would cross a possible producer relatch. */
+        if (line != P4_IPI_LINE)
+            krnCLICClear(line);
+        if (P4_CPU_LOCAL_READ_MHARTID() == 0)
+        {
+#else
         krnCLICClear(line);
+#endif
         __esp32p4_irq_last = line;
         __esp32p4_irq_count++;
+#if defined(__AROSEXEC_SMP__)
+        }
+#endif
 
         /* Something may have become runnable; let the scheduler look on
            the way out */
@@ -370,12 +416,52 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
     return TRAP_DONE;
 }
 
+#ifdef P4_E3_FPU_TEST
+/* Deliberately exercise the ILP32F kernel contract. Only volatile FP
+ * registers are clobbered, with an honest compiler clobber list. The
+ * interrupted task must be recovered from the pre-C assembly spill. */
+static __attribute__((noinline)) void krnP4FpuTrapClobber(void)
+{
+    asm volatile(
+        "fmv.w.x f0,%0\n fmv.w.x f1,%0\n fmv.w.x f2,%0\n"
+        "fmv.w.x f3,%0\n fmv.w.x f4,%0\n fmv.w.x f5,%0\n"
+        "fmv.w.x f6,%0\n fmv.w.x f7,%0\n fmv.w.x f10,%0\n"
+        "fmv.w.x f11,%0\n fmv.w.x f12,%0\n fmv.w.x f13,%0\n"
+        "fmv.w.x f14,%0\n fmv.w.x f15,%0\n fmv.w.x f16,%0\n"
+        "fmv.w.x f17,%0\n fmv.w.x f28,%0\n fmv.w.x f29,%0\n"
+        "fmv.w.x f30,%0\n fmv.w.x f31,%0\n csrw fcsr,zero\n"
+        : : "r"(0xdeadbeefu)
+        : "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7",
+          "f10", "f11", "f12", "f13", "f14", "f15", "f16", "f17",
+          "f28", "f29", "f30", "f31", "memory");
+}
+#endif
+
 void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
                     unsigned long mtval)
 {
     int action;
 
+#if defined(__AROSEXEC_SMP__)
+    struct p4_cpu_local *local = p4_cpu_local_current();
+    uint32_t hart_id = P4_CPU_LOCAL_READ_MHARTID();
+
+    /* CPU-local preparation precedes any SMP interrupt delivery. An invalid
+     * owner/depth must not alias hart0 or enter Exec with corrupt nesting. */
+    if (local == NULL || local->trap_depth >= P4_ISR_STACK_MAX_DEPTH ||
+        !krnP4ISRStackFrameValid(ctx, P4_TRAP_FPU_FRAME_BYTES) ||
+        !p4_cpu_local_trap_enter(local, hart_id))
+    {
+        asm volatile("csrci mstatus,8" : : : "memory");
+        for (;;)
+            asm volatile("wfi");
+    }
+#else
     __esp32p4_trap_depth++;
+#endif
+#ifdef P4_E3_FPU_TEST
+    krnP4FpuTrapClobber();
+#endif
     action = krnTrapDispatch(ctx, mcause, mtval);
 
     /*
@@ -385,13 +471,44 @@ void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
      * re-enters the dispatcher from inside itself. The depth is held
      * across the call so nesting stays visible to it, and released after.
      */
-    if (SysBase && (__esp32p4_trap_depth == 1))
+    if (SysBase && (
+#if defined(__AROSEXEC_SMP__)
+        local->trap_depth == 1
+#else
+        __esp32p4_trap_depth == 1
+#endif
+        ))
     {
+#if defined(__AROSEXEC_SMP__)
+        /* Nested traps and disabled continuations may own outer Task locks.
+         * Either hart may deliver at its unmasked outer-exit boundary. The
+         * registry gate grants the durable wake to exactly one consumer. */
+        if (IDNESTCOUNT_GET < 0)
+        {
+            Exec_P4DeliverCleanupWake(SysBase);
+            csr_clear(mstatus, MSTATUS_MIE);
+        }
+        if (krnP4RetiredTrap(ctx, SysBase))
+        {
+            /* A retired task must never return through its old frame, even
+             * when its per-hart Forbid count suppresses ordinary preemption. */
+        }
+        else
+#endif
         if (action == TRAP_RESCHEDULE)
             core_ExitInterrupt(ctx);
         else if (action == TRAP_SYSCALL)
             core_SysCall((int)ctx->x[CTX_REG_A7], ctx);
     }
 
+#if defined(__AROSEXEC_SMP__)
+    if (!p4_cpu_local_trap_leave(local, hart_id))
+    {
+        asm volatile("csrci mstatus,8" : : : "memory");
+        for (;;)
+            asm volatile("wfi");
+    }
+#else
     __esp32p4_trap_depth--;
+#endif
 }

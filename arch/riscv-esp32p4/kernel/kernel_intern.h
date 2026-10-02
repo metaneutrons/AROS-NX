@@ -346,6 +346,9 @@ int krnP4CPUClockSet(unsigned int mhz);
 
 void krnTimerInit(void);
 void krnTimerAck(void);
+#if defined(__AROSEXEC_SMP__)
+void krnTimerAdvance(void);
+#endif
 uint64_t krnTimerCount(void);
 unsigned long krnTimerTicks(void);
 int  krnTimerWait(unsigned long ticks);

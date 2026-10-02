@@ -4,8 +4,50 @@
     Polled microsecond timebase for sdcard.device on ESP32-P4.
 */
 
+#if !defined(P4_SD_TIME_TEST)
 #include "sdcard_esp32p4_intern.h"
 #include "timer.h"
+#endif
+
+#if defined(__AROSEXEC_SMP__)
+#if !defined(P4_SD_TIME_TEST)
+#include <aros/kernel.h>
+#include <aros/p4timer.h>
+#include <proto/kernel.h>
+#endif
+/* Initialized once before RegisterBus starts consumers; immutable thereafter. */
+static const struct KrnP4TimerOps *p4time_ops;
+
+BOOL p4sd_TimePrepare(struct SDCardBase *SDCardBase)
+{
+    IPTR value = (IPTR)KrnGetSystemAttr(KATTR_PlatformTimer);
+    const struct KrnP4TimerOps *ops;
+    if (value == 0 || value == (IPTR)-1)
+        return FALSE;
+    ops = (const struct KrnP4TimerOps *)value;
+    if (ops->version != KRN_P4_TIMER_OPS_VERSION ||
+        ops->size < sizeof(*ops) || ops->frequency != P4_SYSTIMER_HZ ||
+        ops->read == NULL)
+        return FALSE;
+    p4time_ops = ops;
+    return TRUE;
+}
+
+static UQUAD p4time_count(void)
+{
+    if (p4time_ops == NULL)
+    {
+        /* A mismatched module/kernel must never revert to ungated MMIO. */
+#if defined(P4_SD_TIME_TEST)
+        P4_SD_TIME_FATAL();
+#else
+        __asm__ volatile("csrci mstatus,8" ::: "memory");
+        for (;;) __asm__ volatile("wfi" ::: "memory");
+#endif
+    }
+    return p4time_ops->read();
+}
+#else
 
 static inline ULONG p4time_read(IPTR address)
 {
@@ -33,6 +75,7 @@ static UQUAD p4time_count(void)
     low = p4time_read(P4_SYSTIMER_BASE + P4_ST_UNIT0_VALUE_LO);
     return ((UQUAD)high << 32) | low;
 }
+#endif
 
 ULONG sdcard_CurrentTime(void)
 {

@@ -8,9 +8,11 @@
     symbolic offsets from <aros/riscv/asm.h> (Disable, Enable,
     tc_SPLower, tc_SPUpper, stk_Lower, stk_Upper, stk_Pointer, ThisTask)
     - no magic numbers. On a non-SMP build FindTask(NULL) simply returns
-    SysBase->ThisTask, so ThisTask is read directly.
+    SysBase->ThisTask, so ThisTask is read directly. SMP must instead resolve
+    the task through FindTask(NULL), preserving the caller's arguments.
 */
 
+	#include <aros/config.h>
 	#include <aros/riscv/asm.h>
 
 	.text
@@ -28,7 +30,22 @@ AROS_SLIB_ENTRY(StackSwap,Exec,122):
 	// that spans the swap (it would move with the stack).
 
 	mv	t0, a0			// t0 = newStack
+#if defined(__AROSEXEC_SMP__)
+	addi	sp, sp, -16
+	sw	a1, 0(sp)
+	sw	t0, 4(sp)
+	sw	ra, 12(sp)
+	li	a0, 0			// FindTask(NULL, SysBase)
+	lw	t2, FindTask(a1)
+	jalr	t2
+	mv	t1, a0			// t1 = CPU-local current task
+	lw	a1, 0(sp)
+	lw	t0, 4(sp)
+	lw	ra, 12(sp)
+	addi	sp, sp, 16
+#else
 	lw	t1, ThisTask(a1)	// t1 = current task
+#endif
 
 	// Disable() - arg0 = SysBase. t0/t1 are caller-saved, so preserve
 	// a1, t0, t1 and ra across the call.
