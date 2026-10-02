@@ -206,6 +206,11 @@ static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
     UpdateBitMap(bitmap, 0, 0, 1280, 800);
     bug("[FBGfx/C1] Show, RectFill, Draw, Text and full update submitted\n");
 
+    if (!xsd->data.ops->flush || !xsd->data.ops->flush())
+    {
+        bug("[FBGfx/C1] final presentation timed out\n");
+        return FALSE;
+    }
     xsd->data.ops->get_stats(&stats);
     bug("[FBGfx/C1] frames=%lu swaps=%lu faults=%lu rejects=%lu "
         "active=%p pending=%p\n",

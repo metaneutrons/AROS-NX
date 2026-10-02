@@ -133,6 +133,9 @@ static volatile unsigned long scanout_dma_swaps;
 static volatile unsigned long scanout_pending_fb;
 static volatile unsigned long scanout_dirty_submits;
 static volatile unsigned long scanout_dirty_rejects;
+/* Single-hart producer/IRQ ownership guard. The IRQ keeps scanning active
+ * while task-context preparation owns the inactive/pending surface. */
+static volatile unsigned long scanout_copy_busy;
 
 static inline void lli_wr(unsigned long off, unsigned long v)
 {
@@ -641,7 +644,7 @@ void krnP4ScanoutDmaInterrupt(void)
         scanout_dma_frames++;
 #ifdef P4_B6_DOUBLE_BUFFER
 #if defined(P4_B6_DIRTY_GATE) || defined(P4_C1_FRAMEBUFFER_HIDD)
-        if (scanout_pending_fb != 0
+        if (!scanout_copy_busy && scanout_pending_fb != 0
             && scanout_pending_fb != scanout_active_fb)
         {
             scanout_active_fb = scanout_pending_fb;
@@ -1145,6 +1148,51 @@ static int b6_dirty_writeback(unsigned long fb, unsigned long x,
 }
 
 #ifdef P4_C1_FRAMEBUFFER_HIDD
+#include "framebuffer_rotate.h"
+#ifdef P4_C1_COALESCE
+static unsigned long c1_dirty_surface;
+static unsigned long c1_dirty_x, c1_dirty_y, c1_dirty_right, c1_dirty_bottom;
+
+static void c1_dirty_add(unsigned long surface, unsigned long x,
+    unsigned long y, unsigned long w, unsigned long h)
+{
+    if (!c1_dirty_surface)
+    {
+        c1_dirty_x = x; c1_dirty_y = y;
+        c1_dirty_right = x + w; c1_dirty_bottom = y + h;
+        c1_dirty_surface = surface;
+    }
+    else
+    {
+        if (x < c1_dirty_x) c1_dirty_x = x;
+        if (y < c1_dirty_y) c1_dirty_y = y;
+        if (x + w > c1_dirty_right) c1_dirty_right = x + w;
+        if (y + h > c1_dirty_bottom) c1_dirty_bottom = y + h;
+    }
+}
+
+/* The last displayed dirty box is the only stale area of the old front.
+ * Synchronize it once per subsequent frame, not once per UpdateRect. */
+static int c1_sync_stale(unsigned long active, unsigned long target)
+{
+    unsigned long phase = 0;
+    if (!c1_dirty_surface) return 1;
+    if (c1_dirty_surface == target) return 1; /* pending: preserve earlier updates */
+    if (c1_dirty_surface != active) return 0;
+#ifdef P4_SCANOUT_ROW_PHASE_WORKAROUND
+    phase = P4_SCANOUT_ROW_PHASE_WORKAROUND;
+#endif
+    p4_mirror_rect((volatile uint16_t *)target,
+        (const volatile uint16_t *)active, P4_PANEL_V_RES, P4_PANEL_H_RES,
+        phase, c1_dirty_x, c1_dirty_y,
+        c1_dirty_right - c1_dirty_x, c1_dirty_bottom - c1_dirty_y);
+    if (!b6_dirty_writeback(target, c1_dirty_x, c1_dirty_y,
+        c1_dirty_right - c1_dirty_x, c1_dirty_bottom - c1_dirty_y)) return 0;
+    c1_dirty_surface = 0;
+    return 1;
+}
+#endif
+#ifdef P4_C1_FULL_DIAGNOSTICS
 struct C1PixelSummary
 {
     unsigned long nonzero;
@@ -1285,6 +1333,8 @@ static void c1_report_full_update(const unsigned char *logical,
     krnP4PutC('\n');
 }
 
+#endif /* P4_C1_FULL_DIAGNOSTICS */
+
 /*
  * Copy one logical RGB565 rectangle into a physical portrait surface.
  * The logical bitmap remains ordinary, contiguous 1280x800 memory owned by
@@ -1295,37 +1345,12 @@ static void c1_copy_rect(unsigned long fb, const unsigned char *logical,
                          unsigned long logical_pitch, unsigned long x,
                          unsigned long y, unsigned long w, unsigned long h)
 {
-    unsigned long yy, xx;
-
-    for (yy = y; yy < y + h; yy++)
-    {
-        const unsigned char *src = logical + yy * logical_pitch + x * 2;
-
-        for (xx = x; xx < x + w; xx++, src += 2)
-        {
-            unsigned long physical_index =
-                (P4_PANEL_V_RES - 1 - xx) * P4_PANEL_H_RES + yy;
-            volatile unsigned char *dst = (volatile unsigned char *)(fb
-                + physical_index * P4_FB_BYTES_PER_PIXEL);
-            unsigned int value = (unsigned int)src[0]
-                               | ((unsigned int)src[1] << 8);
-
+    unsigned long phase = 0;
 #ifdef P4_SCANOUT_ROW_PHASE_WORKAROUND
-            unsigned long row_bytes =
-                P4_PANEL_H_RES * P4_FB_BYTES_PER_PIXEL;
-            unsigned long offset = (unsigned long)dst - P4_FB_BASE;
-            unsigned long row_offset = offset - offset % row_bytes;
-            unsigned long mapped =
-                ((offset % row_bytes) / P4_FB_BYTES_PER_PIXEL
-                 + P4_SCANOUT_ROW_PHASE_WORKAROUND) % P4_PANEL_H_RES;
-
-            dst = (volatile unsigned char *)(P4_FB_BASE + row_offset
-                + mapped * P4_FB_BYTES_PER_PIXEL);
+    phase = P4_SCANOUT_ROW_PHASE_WORKAROUND;
 #endif
-            dst[0] = (unsigned char)value;
-            dst[1] = (unsigned char)(value >> 8);
-        }
-    }
+    p4_rotate_rect((volatile uint16_t *)fb, logical, logical_pitch,
+        P4_PANEL_V_RES, P4_PANEL_H_RES, phase, x, y, w, h);
 }
 
 static int c1_wait_no_pending(unsigned long expected_active)
@@ -1336,7 +1361,7 @@ static int c1_wait_no_pending(unsigned long expected_active)
        Machine interrupts remain enabled while this task-context wait runs. */
     for (spins = 0; spins < 50000000UL; spins++)
     {
-        if (scanout_pending_fb == 0
+        if (!scanout_copy_busy && scanout_pending_fb == 0
             && (!expected_active || scanout_active_fb == expected_active))
             return 1;
         asm volatile("nop");
@@ -1350,6 +1375,10 @@ static BOOL c1_update_rect(CONST_APTR logical_ptr, ULONG logical_pitch,
 {
     const unsigned char *logical = (const unsigned char *)logical_ptr;
     unsigned long active, target;
+#ifdef P4_C1_PROFILE
+    static unsigned long profile_count;
+    uint64_t start = krnTimerCount(), copied, cleaned, swapped, mirrored, finished;
+#endif
 
     if (!logical || logical_pitch < P4_PANEL_V_RES * 2
         || x < 0 || y < 0 || width <= 0 || height <= 0
@@ -1360,8 +1389,13 @@ static BOOL c1_update_rect(CONST_APTR logical_ptr, ULONG logical_pitch,
         return FALSE;
     }
 
+#ifdef P4_C1_COALESCE
+    scanout_copy_busy = 1;
+    asm volatile("fence rw, rw" ::: "memory");
+#else
     if (!c1_wait_no_pending(0))
         return FALSE;
+#endif
 
     active = scanout_active_fb;
     if (active == P4_FB_BASE)
@@ -1371,46 +1405,118 @@ static BOOL c1_update_rect(CONST_APTR logical_ptr, ULONG logical_pitch,
     else
     {
         scanout_dirty_rejects++;
+        scanout_copy_busy = 0;
         return FALSE;
     }
 
+#ifdef P4_C1_COALESCE
+    /* A replacement covering the entire stale box needs no mirror copy. */
+    if (c1_dirty_surface == active
+        && (unsigned long)x <= c1_dirty_x && (unsigned long)y <= c1_dirty_y
+        && (unsigned long)x + width >= c1_dirty_right
+        && (unsigned long)y + height >= c1_dirty_bottom)
+        c1_dirty_surface = 0;
+    if ((scanout_pending_fb && scanout_pending_fb != target)
+        || !c1_sync_stale(active, target))
+    {
+        scanout_dirty_rejects++;
+        asm volatile("fence rw, rw" ::: "memory");
+        scanout_copy_busy = 0;
+        return FALSE;
+    }
+#endif
+
     c1_copy_rect(target, logical, logical_pitch, x, y, width, height);
+#ifdef P4_C1_PROFILE
+    copied = krnTimerCount();
+#endif
     if (!b6_dirty_writeback(target, x, y, width, height))
     {
         scanout_dirty_rejects++;
+        asm volatile("fence rw, rw" ::: "memory");
+        scanout_copy_busy = 0;
         return FALSE;
     }
 
     scanout_dirty_submits++;
+#ifdef P4_C1_COALESCE
+    c1_dirty_add(target, x, y, width, height);
+#endif
     asm volatile("fence rw, rw" ::: "memory");
     scanout_pending_fb = target;
+#ifdef P4_C1_PROFILE
+    cleaned = krnTimerCount();
+#endif
 
+#ifdef P4_C1_COALESCE
+    asm volatile("fence rw, rw" ::: "memory");
+    scanout_copy_busy = 0;
+#ifdef P4_C1_PROFILE
+    swapped = mirrored = cleaned;
+    finished = krnTimerCount();
+#endif
+#else
     /* Once the prepared image is visible, apply the same bounded update to
        the now-inactive mirror.  Both surfaces therefore begin every later
        update in the same state without ever modifying the active one. */
     if (!c1_wait_no_pending(target))
         return FALSE;
+#ifdef P4_C1_PROFILE
+    swapped = krnTimerCount();
+#endif
     c1_copy_rect(active, logical, logical_pitch, x, y, width, height);
+#ifdef P4_C1_PROFILE
+    mirrored = krnTimerCount();
+#endif
     if (!b6_dirty_writeback(active, x, y, width, height))
     {
         scanout_dirty_rejects++;
         return FALSE;
     }
+#endif /* P4_C1_COALESCE */
+#ifdef P4_C1_PROFILE
+    finished = krnTimerCount();
+    profile_count++;
+    if (profile_count <= 16 || (profile_count % 128) == 0
+        || (width == P4_PANEL_V_RES && height == P4_PANEL_H_RES))
+    {
+        krnP4PutStr("[c1perf] n "); krnP4PutDec(profile_count);
+        krnP4PutStr(" w "); krnP4PutDec(width);
+        krnP4PutStr(" h "); krnP4PutDec(height);
+#ifdef P4_C1_COALESCE
+        krnP4PutStr(" us prepare(includes-stale-sync)/publish/queued-total ");
+        krnP4PutDec((copied - start) / 16); krnP4PutC('/');
+        krnP4PutDec((cleaned - copied) / 16); krnP4PutC('/');
+        krnP4PutDec((finished - start) / 16); krnP4PutC('\n');
+#else
+        krnP4PutStr(" us copy/clean/wait/mirror/clean/total ");
+        krnP4PutDec((copied - start) / 16); krnP4PutC('/');
+        krnP4PutDec((cleaned - copied) / 16); krnP4PutC('/');
+        krnP4PutDec((swapped - cleaned) / 16); krnP4PutC('/');
+        krnP4PutDec((mirrored - swapped) / 16); krnP4PutC('/');
+        krnP4PutDec((finished - mirrored) / 16); krnP4PutC('/');
+        krnP4PutDec((finished - start) / 16); krnP4PutC('\n');
+#endif
+    }
+#endif
+#ifdef P4_C1_FULL_DIAGNOSTICS
     if ((unsigned long)x == 0 && (unsigned long)y == 0
         && (unsigned long)width == P4_PANEL_V_RES
         && (unsigned long)height == P4_PANEL_H_RES
         && c1_full_diagnostics < 2)
     {
         c1_full_diagnostics++;
+        c1_wait_no_pending(target);
         c1_report_full_update(logical, logical_pitch,
                               P4_FB_BASE, P4_FB_BACK_BASE);
     }
+#endif
     return TRUE;
 }
 
 static BOOL c1_clear(ULONG pixel)
 {
-    unsigned long active, target, y, x;
+    unsigned long active, target, y;
 
     if (!c1_wait_no_pending(0))
         return FALSE;
@@ -1419,30 +1525,26 @@ static BOOL c1_clear(ULONG pixel)
     if ((active != P4_FB_BASE && active != P4_FB_BACK_BASE))
         return FALSE;
 
-    for (y = 0; y < P4_PANEL_H_RES; y++)
-        for (x = 0; x < P4_PANEL_V_RES; x++)
-        {
-            unsigned long physical_index =
-                (P4_PANEL_V_RES - 1 - x) * P4_PANEL_H_RES + y;
-            volatile unsigned char *dst = (volatile unsigned char *)(target
-                + physical_index * P4_FB_BYTES_PER_PIXEL);
-            dst[0] = (unsigned char)pixel;
-            dst[1] = (unsigned char)(pixel >> 8);
-        }
+    for (y = 0; y < P4_FB_BYTES / 2; y++)
+        ((volatile uint16_t *)target)[y] = (uint16_t)pixel;
     krnP4CacheWritebackData((void *)target, P4_FB_BYTES);
     scanout_dirty_submits++;
     asm volatile("fence rw, rw" ::: "memory");
     scanout_pending_fb = target;
     if (!c1_wait_no_pending(target))
         return FALSE;
-    for (y = 0; y < P4_FB_BYTES; y += 2)
-    {
-        *(volatile unsigned char *)(active + y) = (unsigned char)pixel;
-        *(volatile unsigned char *)(active + y + 1) =
-            (unsigned char)(pixel >> 8);
-    }
+    for (y = 0; y < P4_FB_BYTES / 2; y++)
+        ((volatile uint16_t *)active)[y] = (uint16_t)pixel;
     krnP4CacheWritebackData((void *)active, P4_FB_BYTES);
+#ifdef P4_C1_COALESCE
+    c1_dirty_surface = 0;
+#endif
     return TRUE;
+}
+
+static BOOL c1_flush(VOID)
+{
+    return c1_wait_no_pending(0) ? TRUE : FALSE;
 }
 
 static VOID c1_get_stats(struct KrnFrameBufferStats *stats)
@@ -1470,7 +1572,8 @@ static struct KrnFrameBufferOps c1_framebuffer_ops =
     P4_FB_BYTES,
     c1_update_rect,
     c1_clear,
-    c1_get_stats
+    c1_get_stats,
+    c1_flush
 };
 
 struct KrnFrameBufferOps *krnP4FrameBufferOps(void)

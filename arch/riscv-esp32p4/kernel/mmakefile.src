@@ -905,8 +905,29 @@ endif
 # the MEM<=200 and APB<=100 constraints.  Not a default until it has been
 # shown to hold across cold and warm boots with storage and display work
 # running.
+# The graphical boot must not inherit the ROM's 90-MHz CPU divider.
+# Explicit overrides remain available for bring-up/comparison builds.
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+P4_CPU_MHZ ?= 360
+endif
 ifdef P4_CPU_MHZ
 P4_DEBUG_CPPFLAGS += -DP4_CPU_MHZ=$(P4_CPU_MHZ)
+endif
+
+# Expensive full-frame pixel censuses are opt-in diagnostics, not boot work.
+ifeq ($(P4_C1_FULL_DIAGNOSTICS),1)
+P4_DEBUG_CPPFLAGS += -DP4_C1_FULL_DIAGNOSTICS
+# The source/front/back equality census requires synchronous mirroring.
+override P4_C1_COALESCE = 0
+endif
+ifeq ($(P4_C1_PROFILE),1)
+P4_DEBUG_CPPFLAGS += -DP4_C1_PROFILE
+endif
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+P4_C1_COALESCE ?= 1
+endif
+ifeq ($(P4_C1_COALESCE),1)
+P4_DEBUG_CPPFLAGS += -DP4_C1_COALESCE
 endif
 
 # P4_PANEL_PROBE=1 is B2: I2C1, the port expander, the panel supply and the
