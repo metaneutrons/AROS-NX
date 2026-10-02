@@ -24,6 +24,7 @@
 #
 
 include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 
 #MM kernel-package-esp32p4-riscv : \
 #MM     kernel-aros \
@@ -147,7 +148,7 @@ endif
 #   read filesystem bytes as package members, so it is a build error here
 #   instead.
 #
-PKG_LIMIT := 4063232
+PKG_LIMIT := $(P4_BOARD_PKG_LIMIT)
 
 %make_package mmake=kernel-package-esp32p4-riscv \
     file=$(AROSARCHDIR)/aros-bsp.pkg \

@@ -14,8 +14,12 @@
 
 #include "sdcard_base.h"
 #include "sdcard_bus.h"
+#include "../board/board.h"
 
 #define FNAME_P4SD(x)       ESP32P4SD__Device__ ## x
+#if defined(__AROSEXEC_SMP__)
+BOOL p4sd_TimePrepare(struct SDCardBase *SDCardBase);
+#endif
 #define FNAME_P4SDBUS(x)    ESP32P4SD__SDBus__ ## x
 
 struct p4sd_private
@@ -155,8 +159,6 @@ struct p4sd_private
 #define P4_SD_D0_GPIO                  39
 #define P4_SD_D3_GPIO                  42
 #define P4_SD_CMD_GPIO                 44
-#define P4_SD_DETECT_GPIO              45
-#define P4_SD_POWER_GPIO               46
 
 /* SDMMC module gate, PLL160M divider and reset. */
 #define P4_HP_SYS_CLKRST_BASE          (P4_HPPERIPH1_BASE + 0x26000)

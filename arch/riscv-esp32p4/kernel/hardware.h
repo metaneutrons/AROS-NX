@@ -13,6 +13,8 @@
 #ifndef ESP32P4_HARDWARE_H
 #define ESP32P4_HARDWARE_H
 
+#include "../board/board.h"
+
 /*
  * The complete exact-reference AROS trial.  It reproduces the combined state
  * in one name so a later diagnostic cannot accidentally omit one part of the
@@ -447,19 +449,7 @@
 #define P4_SIG_I2C1_SCL         70
 #define P4_SIG_I2C1_SDA         71
 
-/*
- * The D1001's I2C1 pins and its port expander.
- *
- * Bit assignments and polarities are in display/DISPLAY-CONTRACT.md, which is
- * authoritative; they are repeated here only as the names the code uses.
- */
-#define P4_D1001_I2C0_SDA_GPIO  37
-#define P4_D1001_I2C0_SCL_GPIO  38
-#define P4_D1001_TOUCH_IRQ_GPIO  16
-#define P4_D1001_TOUCH_ADDR      0x40
-#define P4_D1001_I2C1_SDA_GPIO  20
-#define P4_D1001_I2C1_SCL_GPIO  21
-#define P4_D1001_BACKLIGHT_GPIO 14
+/* Board wiring and port-expander signals live in board/<name>.h. */
 /*
  * LEDC, for the backlight, because a static level does not light it.
  *
@@ -540,20 +530,10 @@
 #define P4_LEDC_BL_PERCENT      20
 #endif
 
-#define P4_PCA9535_ADDR         0x20
 #define P4_PCA9535_INPUT        0x00
 #define P4_PCA9535_OUTPUT       0x02
 #define P4_PCA9535_POLARITY     0x04
 #define P4_PCA9535_CONFIG       0x06
-
-#define P4_EXP_LCD_PWR_EN       (1U << 0)
-#define P4_EXP_LCD_RST          (1U << 2)   /* active low */
-#define P4_EXP_BAT_READ_EN      (1U << 6)
-#define P4_EXP_LCD_BL_EN        (1U << 7)
-#define P4_EXP_PWR_HOLD         (1U << 8)
-#define P4_EXP_BAT_CHARGE_EN    (1U << 10)
-#define P4_EXP_AMP_EN           (1U << 11)
-#define P4_EXP_TOUCH_RST        (1U << 12)  /* active low */
 
 #define P4_SD_D0_GPIO           39
 #define P4_SD_D1_GPIO           40
@@ -561,8 +541,6 @@
 #define P4_SD_D3_GPIO           42
 #define P4_SD_CLK_GPIO          43
 #define P4_SD_CMD_GPIO          44
-#define P4_SD_DETECT_GPIO       45
-#define P4_SD_POWER_GPIO        46
 
 /* SDMMC module gate and its low-speed PLL160M divider. */
 #define P4_HP_SYS_CLKRST_BASE   (P4_HPPERIPH1_BASE + 0x26000)

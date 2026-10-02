@@ -12,10 +12,12 @@
 #
 
 include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 
 USER_INCLUDES := -I$(SRCDIR)/$(CURDIR) -I$(SRCDIR)/arch/riscv-esp32p4/kernel \
                  -I$(SRCDIR)/rom/kernel
 USER_LDFLAGS := -static
+USER_CPPFLAGS := $(P4_BOARD_CPPFLAGS)
 
 #
 #   The boot node is registered by default, at a priority below the SD card's

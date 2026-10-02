@@ -392,8 +392,9 @@ void krnP4CacheOn(unsigned long token);
  * runs 0x820000 to 0x1000000. It stops exactly at the 16 MB line rather
  * than inheriting ota_1's 8 MB, because cache mapped flash ends there.
  */
-#define P4_BSP_PART_TYPE    0x40
-#define P4_BSP_PART_LABEL   "arosbsp"
+#include "../board/board.h"
+#define P4_BSP_PART_TYPE    P4_BOARD_BSP_PART_TYPE
+#define P4_BSP_PART_LABEL   P4_BOARD_BSP_PART_LABEL
 
 /*
  * The development volume, at the end of that same partition.
@@ -417,8 +418,8 @@ void krnP4CacheOn(unsigned long token);
  * prints both sides so a disagreement shows up as a wrong signature rather
  * than as a mystery.
  */
-#define P4_FLASHDISK_PART_OFFSET    0x003E0000UL
-#define P4_FLASHDISK_SIZE           0x00400000UL
+#define P4_FLASHDISK_PART_OFFSET    P4_BOARD_FLASHDISK_PART_OFFSET
+#define P4_FLASHDISK_SIZE           P4_BOARD_FLASHDISK_SIZE
 #define P4_FLASHDISK_PKG_LIMIT      P4_FLASHDISK_PART_OFFSET
 
 /*

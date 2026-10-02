@@ -88,8 +88,8 @@ static int gsl_hardware_reset(void)
     UWORD output = 0, config = 0;
     int r;
 
-    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO,
-                      P4_D1001_I2C1_SCL_GPIO, 100000UL))
+    if (!krnP4I2CInit(1, P4_BOARD_I2C1_SDA_GPIO,
+                      P4_BOARD_I2C1_SCL_GPIO, 100000UL))
         return P4_I2C_NOTREADY;
 
     r = gsl_expander_read16(P4_PCA9535_OUTPUT, &output);
@@ -119,8 +119,8 @@ static int gsl_hardware_reset(void)
 
 static int gsl_select_bus(void)
 {
-    return krnP4I2CInit(0, P4_D1001_I2C0_SDA_GPIO,
-                        P4_D1001_I2C0_SCL_GPIO, 10000UL)
+    return krnP4I2CInit(0, P4_BOARD_I2C0_SDA_GPIO,
+                        P4_BOARD_I2C0_SCL_GPIO, 10000UL)
          ? P4_I2C_OK : P4_I2C_NOTREADY;
 }
 
@@ -133,13 +133,13 @@ static int gsl_write(unsigned char reg, unsigned long value,
     data[0] = reg;
     for (i = 0; i < bytes; ++i)
         data[i + 1] = (unsigned char)(value >> (i * 8));
-    return krnP4I2CTransfer(P4_D1001_TOUCH_ADDR, data, bytes + 1, NULL, 0);
+    return krnP4I2CTransfer(P4_BOARD_TOUCH_ADDR, data, bytes + 1, NULL, 0);
 }
 
 static int gsl_read32(unsigned char reg, uint32_t *value)
 {
     unsigned char data[4] = { 0, 0, 0, 0 };
-    int r = krnP4I2CTransfer(P4_D1001_TOUCH_ADDR, &reg, 1, data, 4);
+    int r = krnP4I2CTransfer(P4_BOARD_TOUCH_ADDR, &reg, 1, data, 4);
 
     if (r == P4_I2C_OK)
         *value = (uint32_t)data[0] | ((uint32_t)data[1] << 8)
@@ -258,8 +258,8 @@ int krnP4GSLLoadDiagnostic(uint32_t *status, unsigned int *failed_record)
 
 out:
     /* The normal C3 display path owns the singleton transport after C4. */
-    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO,
-                      P4_D1001_I2C1_SCL_GPIO, 100000UL)
+    if (!krnP4I2CInit(1, P4_BOARD_I2C1_SDA_GPIO,
+                      P4_BOARD_I2C1_SCL_GPIO, 100000UL)
         && r == P4_I2C_OK)
         r = P4_I2C_NOTREADY;
     return r;
@@ -352,8 +352,8 @@ static LONG gsl_touch_load_firmware(const UBYTE *data, ULONG bytes,
 out:
     /* Leave the shared controller on the board-management bus.  acquire()
        selects I2C0 only after a complete successful load. */
-    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO,
-                      P4_D1001_I2C1_SCL_GPIO, 100000UL)
+    if (!krnP4I2CInit(1, P4_BOARD_I2C1_SDA_GPIO,
+                      P4_BOARD_I2C1_SCL_GPIO, 100000UL)
         && r == P4_I2C_OK)
         r = P4_I2C_NOTREADY;
     return r;
@@ -373,8 +373,8 @@ static BOOL gsl_touch_acquire(void)
 
 static VOID gsl_touch_release(void)
 {
-    krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO,
-                 P4_D1001_I2C1_SCL_GPIO, 100000UL);
+    krnP4I2CInit(1, P4_BOARD_I2C1_SDA_GPIO,
+                 P4_BOARD_I2C1_SCL_GPIO, 100000UL);
 }
 
 /*
@@ -406,7 +406,7 @@ static BOOL gsl_read_contacts(struct KrnTouchScreenFrame *frame)
         frame->contact[i].y = 0;
     }
 
-    r = krnP4I2CTransfer(P4_D1001_TOUCH_ADDR, &reg, 1,
+    r = krnP4I2CTransfer(P4_BOARD_TOUCH_ADDR, &reg, 1,
                          data, GSL_REPORT_BYTES);
     if (r != P4_I2C_OK)
         return FALSE;
@@ -485,7 +485,7 @@ int krnP4GSLSampleDiagnostic(unsigned int seconds)
     {
         unsigned int count, x = 0, y = 0, id = 0;
 
-        r = krnP4I2CTransfer(P4_D1001_TOUCH_ADDR, &reg, 1, data, 8);
+        r = krnP4I2CTransfer(P4_BOARD_TOUCH_ADDR, &reg, 1, data, 8);
         if (r != P4_I2C_OK)
             break;
         ++polls;
@@ -526,7 +526,7 @@ int krnP4GSLSampleDiagnostic(unsigned int seconds)
                 }
                 krnP4PutStr(" irq ");
                 krnP4PutDec((p4_r32(P4_GPIO_BASE + P4_GPIO_IN)
-                             >> P4_D1001_TOUCH_IRQ_GPIO) & 1U);
+                             >> P4_BOARD_TOUCH_IRQ_GPIO) & 1U);
                 krnP4PutStr("\n");
                 ++printed;
             }
@@ -565,8 +565,8 @@ int krnP4GSLSampleDiagnostic(unsigned int seconds)
     krnP4PutStr("\n");
 
 out:
-    if (!krnP4I2CInit(1, P4_D1001_I2C1_SDA_GPIO,
-                      P4_D1001_I2C1_SCL_GPIO, 100000UL)
+    if (!krnP4I2CInit(1, P4_BOARD_I2C1_SDA_GPIO,
+                      P4_BOARD_I2C1_SCL_GPIO, 100000UL)
         && r == P4_I2C_OK)
         r = P4_I2C_NOTREADY;
     return r;

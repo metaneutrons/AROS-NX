@@ -145,9 +145,9 @@ static void sd_iomux(unsigned int gpio, unsigned int function,
 
 static int sd_card_present(void)
 {
-    uint32_t bit = 1U << (P4_SD_DETECT_GPIO - 32);
+    uint32_t bit = 1U << (P4_BOARD_SD_DETECT_GPIO - 32);
 
-    sd_iomux(P4_SD_DETECT_GPIO, P4_IOMUX_FUNC_GPIO, 1, 0);
+    sd_iomux(P4_BOARD_SD_DETECT_GPIO, P4_IOMUX_FUNC_GPIO, 1, 0);
     sd_write(P4_GPIO_BASE + P4_GPIO_ENABLE1_W1TC, bit);
     return (sd_read(P4_GPIO_BASE + P4_GPIO_IN1) & bit) == 0;
 }
@@ -168,7 +168,7 @@ static void sd_power_on(void)
     uint32_t ctrl;
 
     /* Hold the external switch off while its upstream 3.3-V rail starts. */
-    sd_gpio_output(P4_SD_POWER_GPIO, 0);
+    sd_gpio_output(P4_BOARD_SD_POWER_GPIO, 0);
 
     ctrl = sd_read(P4_PMU_BASE + P4_PMU_LDO4_CTRL);
     ctrl &= ~(P4_PMU_LDO_XPD | P4_PMU_LDO_TIEH_SEL_M);
@@ -182,7 +182,7 @@ static void sd_power_on(void)
     /* Seeed's own board init gives the external switch a full 100-ms
        low pulse before applying card power. */
     sd_delay(SD_POWER_DELAY_US);
-    sd_gpio_output(P4_SD_POWER_GPIO, 1);
+    sd_gpio_output(P4_BOARD_SD_POWER_GPIO, 1);
     sd_delay(SD_POWER_DELAY_US);
 }
 

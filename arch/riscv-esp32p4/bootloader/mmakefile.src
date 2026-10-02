@@ -20,6 +20,7 @@
 #
 
 include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 include $(SRCDIR)/$(CURDIR)/make.opt
 
 %fetch mmake=esp32p4-bootloader-fetch archive=$(IDFARCHBASE) \
@@ -32,7 +33,7 @@ include $(SRCDIR)/$(CURDIR)/make.opt
     location=$(PORTSSOURCEDIR)/esp-idf destination=$(PORTSDIR)/esp-idf \
     srcdir="$(IDFBASEDIR)"
 
-IDFPROJECTDIR := $(PORTSDIR)/esp-idf/project
+IDFPROJECTDIR := $(PORTSDIR)/esp-idf/project-$(P4_BOARD)
 IDFBOOTLOADER := $(IDFPROJECTDIR)/build/bootloader/bootloader.bin
 
 # The board's partition layout is an input kept in this tree. Generate its
@@ -41,8 +42,8 @@ IDFBOOTLOADER := $(IDFPROJECTDIR)/build/bootloader/bootloader.bin
 # record consumed by the second-stage bootloader. Decoding the result through
 # the same tool is a second build artifact and validates that MD5 record.
 IDFPARTTOOL    := $(IDFARCHSRCDIR)/components/partition_table/gen_esp32part.py
-P4PARTCSV      := $(SRCDIR)/$(CURDIR)/partition-table.csv
-P4PARTDIR      := $(OSGENDIR)/boot
+P4PARTCSV      := $(P4_BOARD_PARTITION_CSV)
+P4PARTDIR      := $(OSGENDIR)/boot/boards/$(P4_BOARD)
 P4PARTBIN      := $(P4PARTDIR)/esp32p4-partition-table.bin
 P4PARTREPORT   := $(P4PARTDIR)/esp32p4-partition-table.decoded.csv
 
@@ -55,11 +56,12 @@ ESP32P4_PARTITION_CONFIRM ?=
 esp32p4-bootloader : $(IDFBOOTLOADER)
 	@$(ECHO) "Bootloader is $(IDFBOOTLOADER)"
 
-$(IDFBOOTLOADER) : $(SRCDIR)/$(CURDIR)/project/sdkconfig.defaults \
+$(IDFBOOTLOADER) : $(P4_BOARD_SDKCONFIG) \
                    $(SRCDIR)/$(CURDIR)/$(IDFPATCHFILE)
 	@$(ECHO) "Building   esp32p4 bootloader from $(IDFBASEDIR)"
 	%mkdirs_q $(IDFPROJECTDIR)
 	@$(CP) -r $(SRCDIR)/$(CURDIR)/project/* $(IDFPROJECTDIR)/
+	@$(CP) $(P4_BOARD_SDKCONFIG) $(IDFPROJECTDIR)/sdkconfig.defaults
 	@cd $(IDFPROJECTDIR) && \
 	    IDF_PATH=$(IDFARCHSRCDIR) \
 	    cmake -G Ninja -B build -DIDF_TARGET=esp32p4 \
@@ -76,12 +78,12 @@ $(P4PARTBIN): $(P4PARTCSV) $(IDFPARTTOOL) \
               $(SRCDIR)/$(CURDIR)/make.opt
 	@$(ECHO) "Creating   $@"
 	%mkdirs_q $(P4PARTDIR)
-	@$(PYTHON) $(IDFPARTTOOL) --quiet --offset 0x8000 --flash-size 32MB \
+	@$(PYTHON) $(IDFPARTTOOL) --quiet --offset $(P4_BOARD_PARTITION_OFFSET) --flash-size $(P4_BOARD_FLASH_SIZE) \
 	    $< $@
 
 $(P4PARTREPORT): $(P4PARTBIN)
 	@$(ECHO) "Validating $<"
-	@$(PYTHON) $(IDFPARTTOOL) --quiet --offset 0x8000 --flash-size 32MB \
+	@$(PYTHON) $(IDFPARTTOOL) --quiet --offset $(P4_BOARD_PARTITION_OFFSET) --flash-size $(P4_BOARD_FLASH_SIZE) \
 	    $< $@
 
 # Writing a partition table changes how every subsequent boot interprets
@@ -103,10 +105,10 @@ esp32p4-flash-partition-table:
 	    $(ECHO) "  ESP32P4_PARTITION_CONFIRM=replace-ota_1-with-arosbsp"; \
 	    exit 2; \
 	fi
-	@$(PYTHON) $(IDFPARTTOOL) --quiet --offset 0x8000 --flash-size 32MB \
+	@$(PYTHON) $(IDFPARTTOOL) --quiet --offset $(P4_BOARD_PARTITION_OFFSET) --flash-size $(P4_BOARD_FLASH_SIZE) \
 	    $(P4PARTBIN) >/dev/null
 	@$(ESPTOOL) --chip esp32p4 --port "$(ESP32P4_PORT)" \
 	    --before usb-reset --after no-reset --baud $(ESP32P4_FLASH_BAUD) \
-	    write-flash 0x8000 $(P4PARTBIN)
+	    write-flash $(P4_BOARD_PARTITION_OFFSET) $(P4PARTBIN)
 
 %common

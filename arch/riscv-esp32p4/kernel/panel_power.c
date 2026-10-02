@@ -137,13 +137,13 @@ static int panel_modify(UWORD set, UWORD clear)
  */
 static void panel_backlight_dark(void)
 {
-    unsigned long iomux = P4_IOMUX_BASE + P4_IOMUX_PIN(P4_D1001_BACKLIGHT_GPIO);
+    unsigned long iomux = P4_IOMUX_BASE + P4_IOMUX_PIN(P4_BOARD_BACKLIGHT_GPIO);
     unsigned long v;
 
     /* Drive low before enabling the output, for the same reason the expander's
        latch is written before its direction. */
     p4_w32(P4_GPIO_BASE + P4_GPIO_OUT_W1TC,
-           1UL << P4_D1001_BACKLIGHT_GPIO);
+           1UL << P4_BOARD_BACKLIGHT_GPIO);
 
     /*
      * The input path is enabled as well as the output, which is not how a
@@ -159,13 +159,13 @@ static void panel_backlight_dark(void)
     p4_w32(iomux, v);
 
     /* The GPIO register owns the pin, not a peripheral. */
-    v = p4_r32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_D1001_BACKLIGHT_GPIO));
+    v = p4_r32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_BOARD_BACKLIGHT_GPIO));
     v &= ~P4_GPIO_OUT_SEL_MASK;
     v |= P4_GPIO_OUT_SEL_GPIO | P4_GPIO_OEN_SEL;
-    p4_w32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_D1001_BACKLIGHT_GPIO), v);
+    p4_w32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_BOARD_BACKLIGHT_GPIO), v);
 
     p4_w32(P4_GPIO_BASE + P4_GPIO_ENABLE_W1TS,
-           1UL << P4_D1001_BACKLIGHT_GPIO);
+           1UL << P4_BOARD_BACKLIGHT_GPIO);
 }
 
 /*
@@ -404,12 +404,12 @@ static void panel_backlight_pwm(unsigned int percent)
     p4_w32(P4_LEDC_BASE + P4_LEDC_CH0_CONF1, P4_LEDC_DUTY_START);
 
     /* And the pin follows LEDC rather than the GPIO register. */
-    v = p4_r32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_D1001_BACKLIGHT_GPIO));
+    v = p4_r32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_BOARD_BACKLIGHT_GPIO));
     v &= ~(P4_GPIO_OUT_SEL_MASK | P4_GPIO_OEN_SEL);
     v |= (unsigned long)P4_SIG_LEDC_CH0_OUT;
-    p4_w32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_D1001_BACKLIGHT_GPIO), v);
+    p4_w32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_BOARD_BACKLIGHT_GPIO), v);
     p4_w32(P4_GPIO_BASE + P4_GPIO_ENABLE_W1TS,
-           1UL << P4_D1001_BACKLIGHT_GPIO);
+           1UL << P4_BOARD_BACKLIGHT_GPIO);
 }
 
 /*
@@ -461,13 +461,13 @@ void krnP4PanelBacklightState(struct P4BacklightState *out)
 {
     out->latch = panel_latch;
     out->pin_level = (p4_r32(P4_GPIO_BASE + P4_GPIO_IN)
-                      >> P4_D1001_BACKLIGHT_GPIO) & 1;
+                      >> P4_BOARD_BACKLIGHT_GPIO) & 1;
     out->out_level = (p4_r32(P4_GPIO_BASE + P4_GPIO_OUT)
-                      >> P4_D1001_BACKLIGHT_GPIO) & 1;
+                      >> P4_BOARD_BACKLIGHT_GPIO) & 1;
     out->out_sel = p4_r32(P4_GPIO_BASE
-                          + P4_GPIO_FUNC_OUT_SEL(P4_D1001_BACKLIGHT_GPIO));
+                          + P4_GPIO_FUNC_OUT_SEL(P4_BOARD_BACKLIGHT_GPIO));
     out->iomux = p4_r32(P4_IOMUX_BASE
-                        + P4_IOMUX_PIN(P4_D1001_BACKLIGHT_GPIO));
+                        + P4_IOMUX_PIN(P4_BOARD_BACKLIGHT_GPIO));
     (void)panel_read16(P4_PCA9535_INPUT, &out->expander_pins);
 
     /*
@@ -484,7 +484,7 @@ void krnP4PanelBacklightState(struct P4BacklightState *out)
 
         for (i = 0; i < 20000; ++i)
             if (p4_r32(P4_GPIO_BASE + P4_GPIO_IN)
-                & (1UL << P4_D1001_BACKLIGHT_GPIO))
+                & (1UL << P4_BOARD_BACKLIGHT_GPIO))
                 ++high;
         out->samples = 20000;
         out->samples_high = high;

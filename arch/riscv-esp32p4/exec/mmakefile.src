@@ -1,5 +1,6 @@
 
 include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 
 CFILES          := \
         superstate cpu_init
