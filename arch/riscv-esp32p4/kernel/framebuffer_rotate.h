@@ -60,4 +60,34 @@ static inline void p4_rotate_rect(volatile uint16_t *physical,
             }
         }
 }
+
+/* The unrotated counterparts, for a panel used as it scans: logical and
+ * physical rows coincide, so both are plain row copies. */
+static inline void p4_flat_mirror_rect(volatile uint16_t *dst,
+    const volatile uint16_t *src, unsigned long screen_width,
+    unsigned long x, unsigned long y, unsigned long w, unsigned long h)
+{
+    unsigned long xx, yy;
+    for (yy = y; yy < y + h; yy++)
+    {
+        unsigned long row = yy * screen_width;
+        for (xx = x; xx < x + w; xx++)
+            dst[row + xx] = src[row + xx];
+    }
+}
+
+static inline void p4_flat_copy_rect(volatile uint16_t *physical,
+    const unsigned char *logical, unsigned long pitch,
+    unsigned long screen_width, unsigned long x, unsigned long y,
+    unsigned long w, unsigned long h)
+{
+    unsigned long xx, yy;
+    for (yy = y; yy < y + h; yy++)
+    {
+        const unsigned char *src = logical + yy * pitch + x * 2;
+        volatile uint16_t *row = physical + yy * screen_width;
+        for (xx = x; xx < x + w; xx++, src += 2)
+            row[xx] = (uint16_t)src[0] | ((uint16_t)src[1] << 8);
+    }
+}
 #endif

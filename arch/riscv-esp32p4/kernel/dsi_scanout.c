@@ -50,6 +50,11 @@
     && P4_SCANOUT_ROW_PHASE_WORKAROUND >= P4_PANEL_H_RES
 #error scanout row-phase workaround must be smaller than the panel width
 #endif
+/* The workaround was measured on the rotated D1001 path and is only
+   implemented there; a new board starts without it. */
+#if defined(P4_SCANOUT_ROW_PHASE_WORKAROUND) && P4_BOARD_PANEL_ROTATE != 90
+#error scanout row-phase workaround exists only for the rotated D1001 path
+#endif
 
 #ifndef P4_B6_SWAP_FRAMES
 #define P4_B6_SWAP_FRAMES 101
@@ -980,20 +985,29 @@ void krnP4ScanoutCoordinatePattern(void)
 
 #ifdef P4_B6_DOUBLE_BUFFER
 /*
- * B6's public surface is 1280x800 landscape; the DMA surface remains the
- * panel-native 800x1280 portrait buffer.  This is the same independently
- * derived transform used by the working product firmware:
+ * B6's public surface is P4_LOGICAL_W x P4_LOGICAL_H.  On the D1001 that is
+ * 1280x800 landscape while the DMA surface remains the panel-native 800x1280
+ * portrait buffer.  This is the same independently derived transform used
+ * by the working product firmware:
  *
  *     physical_index = (logical_width - 1 - x) * 800 + y
  *
  * It is a 90-degree clockwise rotation from logical to physical.  The row
  * workaround, when selected, is applied only after that rotation by px().
+ * A board with P4_BOARD_PANEL_ROTATE 0 (JC1060P470C) draws in panel order.
  */
+/* A macro, not a helper: this kernel is built without optimisation, and a
+   function here would add a call per pixel and change the D1001 image. */
+#if P4_BOARD_PANEL_ROTATE == 90
+#define B6_PHYSICAL_INDEX(x, y) ((P4_PANEL_V_RES - 1 - (x)) * P4_PANEL_H_RES + (y))
+#else
+#define B6_PHYSICAL_INDEX(x, y) ((y) * P4_PANEL_H_RES + (x))
+#endif
+
 static inline void b6_logical_px(unsigned long fb, unsigned long x,
                                  unsigned long y, unsigned long rgb)
 {
-    unsigned long physical_index =
-        (P4_PANEL_V_RES - 1 - x) * P4_PANEL_H_RES + y;
+    unsigned long physical_index = B6_PHYSICAL_INDEX(x, y);
 
     px((volatile unsigned char *)(fb
        + physical_index * P4_FB_BYTES_PER_PIXEL), rgb);
@@ -1003,8 +1017,8 @@ static void b6_logical_fill(unsigned long fb, unsigned long rgb)
 {
     unsigned long y, x;
 
-    for (y = 0; y < P4_PANEL_H_RES; y++)
-        for (x = 0; x < P4_PANEL_V_RES; x++)
+    for (y = 0; y < P4_LOGICAL_H; y++)
+        for (x = 0; x < P4_LOGICAL_W; x++)
             b6_logical_px(fb, x, y, rgb);
 }
 
@@ -1014,12 +1028,12 @@ static void b6_logical_rect(unsigned long fb, unsigned long x,
 {
     unsigned long yy, xx;
 
-    if (x >= P4_PANEL_V_RES || y >= P4_PANEL_H_RES)
+    if (x >= P4_LOGICAL_W || y >= P4_LOGICAL_H)
         return;
-    if (w > P4_PANEL_V_RES - x)
-        w = P4_PANEL_V_RES - x;
-    if (h > P4_PANEL_H_RES - y)
-        h = P4_PANEL_H_RES - y;
+    if (w > P4_LOGICAL_W - x)
+        w = P4_LOGICAL_W - x;
+    if (h > P4_LOGICAL_H - y)
+        h = P4_LOGICAL_H - y;
 
     for (yy = y; yy < y + h; yy++)
         for (xx = x; xx < x + w; xx++)
@@ -1055,39 +1069,39 @@ void krnP4ScanoutB6Frames(void)
     b6_logical_fill(P4_FB_BASE, 0x080808UL);
     b6_logical_fill(P4_FB_BACK_BASE, 0x080808UL);
     b6_logical_rect(P4_FB_BASE, 0, 0, 149, 73, 0xFF0000UL);
-    b6_logical_rect(P4_FB_BASE, P4_PANEL_V_RES - 91, 0,
+    b6_logical_rect(P4_FB_BASE, P4_LOGICAL_W - 91, 0,
                     91, 127, 0x00FF00UL);
-    b6_logical_rect(P4_FB_BASE, 0, P4_PANEL_H_RES - 113,
+    b6_logical_rect(P4_FB_BASE, 0, P4_LOGICAL_H - 113,
                     67, 113, 0x0000FFUL);
-    b6_logical_rect(P4_FB_BASE, P4_PANEL_V_RES - 181,
-                    P4_PANEL_H_RES - 47, 181, 47, 0xFFFF00UL);
+    b6_logical_rect(P4_FB_BASE, P4_LOGICAL_W - 181,
+                    P4_LOGICAL_H - 47, 181, 47, 0xFFFF00UL);
     b6_logical_rect(P4_FB_BACK_BASE, 0, 0, 149, 73, 0xFF0000UL);
-    b6_logical_rect(P4_FB_BACK_BASE, P4_PANEL_V_RES - 91, 0,
+    b6_logical_rect(P4_FB_BACK_BASE, P4_LOGICAL_W - 91, 0,
                     91, 127, 0x00FF00UL);
-    b6_logical_rect(P4_FB_BACK_BASE, 0, P4_PANEL_H_RES - 113,
+    b6_logical_rect(P4_FB_BACK_BASE, 0, P4_LOGICAL_H - 113,
                     67, 113, 0x0000FFUL);
-    b6_logical_rect(P4_FB_BACK_BASE, P4_PANEL_V_RES - 181,
-                    P4_PANEL_H_RES - 47, 181, 47, 0xFFFF00UL);
+    b6_logical_rect(P4_FB_BACK_BASE, P4_LOGICAL_W - 181,
+                    P4_LOGICAL_H - 47, 181, 47, 0xFFFF00UL);
     return;
 #endif
 
-    for (y = 0; y < P4_PANEL_H_RES; y++)
+    for (y = 0; y < P4_LOGICAL_H; y++)
     {
-        for (x = 0; x < P4_PANEL_V_RES; x++)
+        for (x = 0; x < P4_LOGICAL_W; x++)
         {
             unsigned long rgb;
 
-            if (x >= P4_PANEL_V_RES / 2 - 2
-                && x < P4_PANEL_V_RES / 2 + 2)
+            if (x >= P4_LOGICAL_W / 2 - 2
+                && x < P4_LOGICAL_W / 2 + 2)
                 rgb = 0x000000UL;
-            else if (y >= P4_PANEL_H_RES / 2 - 2
-                     && y < P4_PANEL_H_RES / 2 + 2)
+            else if (y >= P4_LOGICAL_H / 2 - 2
+                     && y < P4_LOGICAL_H / 2 + 2)
                 rgb = 0x000000UL;
-            else if (y < P4_PANEL_H_RES / 2)
-                rgb = x < P4_PANEL_V_RES / 2
+            else if (y < P4_LOGICAL_H / 2)
+                rgb = x < P4_LOGICAL_W / 2
                     ? 0xFF0000UL : 0x00FF00UL;
             else
-                rgb = x < P4_PANEL_V_RES / 2
+                rgb = x < P4_LOGICAL_W / 2
                     ? 0x0000FFUL : 0xFFFF00UL;
             b6_logical_px(P4_FB_BASE, x, y, rgb);
         }
@@ -1095,12 +1109,12 @@ void krnP4ScanoutB6Frames(void)
 
     b6_logical_fill(P4_FB_BACK_BASE, 0x080808UL);
     b6_logical_rect(P4_FB_BACK_BASE, 0, 0, 149, 73, 0xFF0000UL);
-    b6_logical_rect(P4_FB_BACK_BASE, P4_PANEL_V_RES - 91, 0,
+    b6_logical_rect(P4_FB_BACK_BASE, P4_LOGICAL_W - 91, 0,
                     91, 127, 0x00FF00UL);
-    b6_logical_rect(P4_FB_BACK_BASE, 0, P4_PANEL_H_RES - 113,
+    b6_logical_rect(P4_FB_BACK_BASE, 0, P4_LOGICAL_H - 113,
                     67, 113, 0x0000FFUL);
-    b6_logical_rect(P4_FB_BACK_BASE, P4_PANEL_V_RES - 181,
-                    P4_PANEL_H_RES - 47, 181, 47, 0xFFFF00UL);
+    b6_logical_rect(P4_FB_BACK_BASE, P4_LOGICAL_W - 181,
+                    P4_LOGICAL_H - 47, 181, 47, 0xFFFF00UL);
     b6_logical_rect(P4_FB_BACK_BASE, 449, 383, 383, 31, 0xFFFFFFUL);
     b6_logical_rect(P4_FB_BACK_BASE, 623, 277, 29, 247, 0x00FFFFUL);
 }
@@ -1116,12 +1130,25 @@ static int b6_dirty_writeback(unsigned long fb, unsigned long x,
                               unsigned long y, unsigned long w,
                               unsigned long h)
 {
+#if P4_BOARD_PANEL_ROTATE == 90
     unsigned long xx;
     unsigned long mapped_y = y;
+#else
+    unsigned long yy;
+#endif
 
-    if (!w || !h || x >= P4_PANEL_V_RES || y >= P4_PANEL_H_RES
-        || w > P4_PANEL_V_RES - x || h > P4_PANEL_H_RES - y)
+    if (!w || !h || x >= P4_LOGICAL_W || y >= P4_LOGICAL_H
+        || w > P4_LOGICAL_W - x || h > P4_LOGICAL_H - y)
         return 0;
+
+#if P4_BOARD_PANEL_ROTATE == 0
+    /* Unrotated: each logical row is one contiguous physical run. */
+    for (yy = y; yy < y + h; yy++)
+        krnP4CacheWritebackData(
+            (void *)(fb + (yy * P4_PANEL_H_RES + x) * P4_FB_BYTES_PER_PIXEL),
+            w * P4_FB_BYTES_PER_PIXEL);
+    return 1;
+#else
 
 #ifdef P4_SCANOUT_ROW_PHASE_WORKAROUND
     mapped_y = (mapped_y + P4_SCANOUT_ROW_PHASE_WORKAROUND)
@@ -1145,6 +1172,7 @@ static int b6_dirty_writeback(unsigned long fb, unsigned long x,
                 (h - first) * P4_FB_BYTES_PER_PIXEL);
     }
     return 1;
+#endif
 }
 
 #ifdef P4_C1_FRAMEBUFFER_HIDD
@@ -1182,10 +1210,18 @@ static int c1_sync_stale(unsigned long active, unsigned long target)
 #ifdef P4_SCANOUT_ROW_PHASE_WORKAROUND
     phase = P4_SCANOUT_ROW_PHASE_WORKAROUND;
 #endif
+#if P4_BOARD_PANEL_ROTATE == 90
     p4_mirror_rect((volatile uint16_t *)target,
         (const volatile uint16_t *)active, P4_PANEL_V_RES, P4_PANEL_H_RES,
         phase, c1_dirty_x, c1_dirty_y,
         c1_dirty_right - c1_dirty_x, c1_dirty_bottom - c1_dirty_y);
+#else
+    (void)phase;
+    p4_flat_mirror_rect((volatile uint16_t *)target,
+        (const volatile uint16_t *)active, P4_PANEL_H_RES,
+        c1_dirty_x, c1_dirty_y,
+        c1_dirty_right - c1_dirty_x, c1_dirty_bottom - c1_dirty_y);
+#endif
     if (!b6_dirty_writeback(target, c1_dirty_x, c1_dirty_y,
         c1_dirty_right - c1_dirty_x, c1_dirty_bottom - c1_dirty_y)) return 0;
     c1_dirty_surface = 0;
@@ -1215,11 +1251,11 @@ static void c1_logical_summary(const unsigned char *logical,
     out->nonzero = 0;
     out->sum = 0;
     out->xor_value = 0;
-    for (y = 0; y < P4_PANEL_H_RES; y++)
+    for (y = 0; y < P4_LOGICAL_H; y++)
     {
         const unsigned char *src = logical + y * pitch;
 
-        for (x = 0; x < P4_PANEL_V_RES; x++, src += 2)
+        for (x = 0; x < P4_LOGICAL_W; x++, src += 2)
         {
             unsigned long value = (unsigned long)src[0]
                                 | ((unsigned long)src[1] << 8);
@@ -1266,6 +1302,12 @@ static unsigned int c1_logical_sample(const unsigned char *logical,
 static unsigned int c1_physical_sample(unsigned long fb,
                                        unsigned long x, unsigned long y)
 {
+#if P4_BOARD_PANEL_ROTATE == 0
+    const volatile unsigned char *src = (const volatile unsigned char *)(fb
+        + (y * P4_PANEL_H_RES + x) * P4_FB_BYTES_PER_PIXEL);
+
+    return (unsigned int)src[0] | ((unsigned int)src[1] << 8);
+#else
     unsigned long physical_index =
         (P4_PANEL_V_RES - 1 - x) * P4_PANEL_H_RES + y;
     unsigned long physical_x = y;
@@ -1278,6 +1320,7 @@ static unsigned int c1_physical_sample(unsigned long fb,
     src = (const volatile unsigned char *)(fb
         + (physical_index - y + physical_x) * P4_FB_BYTES_PER_PIXEL);
     return (unsigned int)src[0] | ((unsigned int)src[1] << 8);
+#endif
 }
 
 static void c1_put_summary(const char *name,
@@ -1299,7 +1342,9 @@ static void c1_report_full_update(const unsigned char *logical,
 {
     static const unsigned short points[][2] =
     {
-        { 0, 0 }, { 1279, 0 }, { 0, 799 }, { 1279, 799 }, { 640, 400 }
+        { 0, 0 }, { P4_LOGICAL_W - 1, 0 }, { 0, P4_LOGICAL_H - 1 },
+        { P4_LOGICAL_W - 1, P4_LOGICAL_H - 1 },
+        { P4_LOGICAL_W / 2, P4_LOGICAL_H / 2 }
     };
     struct C1PixelSummary source, front_summary, back_summary;
     unsigned int i;
@@ -1336,10 +1381,10 @@ static void c1_report_full_update(const unsigned char *logical,
 #endif /* P4_C1_FULL_DIAGNOSTICS */
 
 /*
- * Copy one logical RGB565 rectangle into a physical portrait surface.
- * The logical bitmap remains ordinary, contiguous 1280x800 memory owned by
- * the HIDD.  Rotation and the temporary row-phase compatibility mapping are
- * below that interface, beside the DMA that consumes the result.
+ * Copy one logical RGB565 rectangle into a physical surface (portrait on
+ * the D1001).  The logical bitmap remains ordinary, contiguous memory owned
+ * by the HIDD.  Rotation and the temporary row-phase compatibility mapping
+ * are below that interface, beside the DMA that consumes the result.
  */
 static void c1_copy_rect(unsigned long fb, const unsigned char *logical,
                          unsigned long logical_pitch, unsigned long x,
@@ -1349,8 +1394,14 @@ static void c1_copy_rect(unsigned long fb, const unsigned char *logical,
 #ifdef P4_SCANOUT_ROW_PHASE_WORKAROUND
     phase = P4_SCANOUT_ROW_PHASE_WORKAROUND;
 #endif
+#if P4_BOARD_PANEL_ROTATE == 90
     p4_rotate_rect((volatile uint16_t *)fb, logical, logical_pitch,
         P4_PANEL_V_RES, P4_PANEL_H_RES, phase, x, y, w, h);
+#else
+    (void)phase;
+    p4_flat_copy_rect((volatile uint16_t *)fb, logical, logical_pitch,
+        P4_PANEL_H_RES, x, y, w, h);
+#endif
 }
 
 static int c1_wait_no_pending(unsigned long expected_active)
@@ -1380,10 +1431,10 @@ static BOOL c1_update_rect(CONST_APTR logical_ptr, ULONG logical_pitch,
     uint64_t start = krnTimerCount(), copied, cleaned, swapped, mirrored, finished;
 #endif
 
-    if (!logical || logical_pitch < P4_PANEL_V_RES * 2
+    if (!logical || logical_pitch < P4_LOGICAL_W * 2
         || x < 0 || y < 0 || width <= 0 || height <= 0
-        || (unsigned long)x + (unsigned long)width > P4_PANEL_V_RES
-        || (unsigned long)y + (unsigned long)height > P4_PANEL_H_RES)
+        || (unsigned long)x + (unsigned long)width > P4_LOGICAL_W
+        || (unsigned long)y + (unsigned long)height > P4_LOGICAL_H)
     {
         scanout_dirty_rejects++;
         return FALSE;
@@ -1478,7 +1529,7 @@ static BOOL c1_update_rect(CONST_APTR logical_ptr, ULONG logical_pitch,
     finished = krnTimerCount();
     profile_count++;
     if (profile_count <= 16 || (profile_count % 128) == 0
-        || (width == P4_PANEL_V_RES && height == P4_PANEL_H_RES))
+        || (width == P4_LOGICAL_W && height == P4_LOGICAL_H))
     {
         krnP4PutStr("[c1perf] n "); krnP4PutDec(profile_count);
         krnP4PutStr(" w "); krnP4PutDec(width);
@@ -1501,8 +1552,8 @@ static BOOL c1_update_rect(CONST_APTR logical_ptr, ULONG logical_pitch,
 #endif
 #ifdef P4_C1_FULL_DIAGNOSTICS
     if ((unsigned long)x == 0 && (unsigned long)y == 0
-        && (unsigned long)width == P4_PANEL_V_RES
-        && (unsigned long)height == P4_PANEL_H_RES
+        && (unsigned long)width == P4_LOGICAL_W
+        && (unsigned long)height == P4_LOGICAL_H
         && c1_full_diagnostics < 2)
     {
         c1_full_diagnostics++;
@@ -1562,11 +1613,11 @@ static VOID c1_get_stats(struct KrnFrameBufferStats *stats)
 static struct KrnFrameBufferOps c1_framebuffer_ops =
 {
     KRN_FRAMEBUFFER_OPS_VERSION,
-    P4_PANEL_V_RES,
-    P4_PANEL_H_RES,
+    P4_LOGICAL_W,
+    P4_LOGICAL_H,
     16,
     2,
-    P4_PANEL_V_RES * 2,
+    P4_LOGICAL_W * 2,
     P4_FB_BASE,
     P4_FB_BACK_BASE,
     P4_FB_BYTES,

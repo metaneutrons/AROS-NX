@@ -8,6 +8,7 @@
 #include <proto/oop.h>
 
 #include "p4touch_intern.h"
+#include "../board/board.h"
 #include LC_LIBDEFS_FILE
 
 #define SysBase ((struct ExecBase *)LIBBASE->ptd.cs_SysBase)
@@ -40,12 +41,14 @@ static int P4Touch_Init(LIBBASETYPEPTR LIBBASE)
         : NULL;
     if (!ptd->ops || ptd->ops == (APTR)-1
         || ptd->ops->version != KRN_TOUCHSCREEN_OPS_VERSION
+#ifdef P4_BOARD_TOUCH_FW_PATH
         || !ptd->ops->load_firmware
+#endif
         || !ptd->ops->acquire
         || !ptd->ops->release
         || !ptd->ops->read_contacts
-        || ptd->ops->logical_width != 1280
-        || ptd->ops->logical_height != 800
+        || !ptd->ops->logical_width
+        || !ptd->ops->logical_height
         || ptd->ops->raw_width < ptd->ops->logical_width
         || ptd->ops->raw_height < ptd->ops->logical_height)
     {
@@ -77,11 +80,14 @@ static int P4Touch_Init(LIBBASETYPEPTR LIBBASE)
     }
 
     LIBBASE->library.lib_OpenCnt = 1;
-    bug("[P4Touch/C4] absolute 1280x800 contact-frame driver registered; "
-        "up to %u contacts, raw %lux%lu, direct X and mirrored Y\n",
+    bug("[P4Touch/C4] absolute %lux%lu contact-frame driver registered; "
+        "up to %u contacts, raw %lux%lu, direct X and %s Y\n",
+        (unsigned long)ptd->ops->logical_width,
+        (unsigned long)ptd->ops->logical_height,
         KRN_TOUCHSCREEN_MAX_CONTACTS,
         (unsigned long)ptd->ops->raw_width,
-        (unsigned long)ptd->ops->raw_height);
+        (unsigned long)ptd->ops->raw_height,
+        P4_BOARD_TOUCH_MIRROR_Y ? "mirrored" : "direct");
     return TRUE;
 }
 

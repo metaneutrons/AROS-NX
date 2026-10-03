@@ -245,6 +245,7 @@ static void p4sd_iomux(unsigned int gpio, unsigned int function,
     p4sd_write(address, value);
 }
 
+#if P4_BOARD_SD_HAS_POWER_GPIO
 static void p4sd_gpio_output(unsigned int gpio, BOOL high)
 {
     ULONG bit = 1UL << (gpio - 32);
@@ -255,21 +256,30 @@ static void p4sd_gpio_output(unsigned int gpio, BOOL high)
     p4sd_iomux(gpio, P4_IOMUX_FUNC_GPIO, FALSE, 1);
     p4sd_write(P4_GPIO_BASE + P4_GPIO_ENABLE1_W1TS, bit);
 }
+#endif
 
+/*
+ * A board without a card-detect contact reports a card; identification then
+ * finds out whether one answers.
+ */
 static BOOL p4sd_card_present(void)
 {
+#if P4_BOARD_SD_HAS_DETECT
     ULONG bit = 1UL << (P4_BOARD_SD_DETECT_GPIO - 32);
 
     p4sd_iomux(P4_BOARD_SD_DETECT_GPIO, P4_IOMUX_FUNC_GPIO, TRUE, 0);
     p4sd_write(P4_GPIO_BASE + P4_GPIO_ENABLE1_W1TC, bit);
     return (p4sd_read(P4_GPIO_BASE + P4_GPIO_IN1) & bit) == 0;
+#else
+    return TRUE;
+#endif
 }
 
 static void p4sd_configure_pins(unsigned int drive)
 {
     unsigned int gpio;
 
-    /* Native slot 0 is GPIO39..44.  GPIO45/46 must remain CD/power. */
+    /* Native slot 0 is GPIO39..44.  On the D1001 GPIO45/46 stay CD/power. */
     for (gpio = P4_SD_D0_GPIO; gpio <= P4_SD_CMD_GPIO; ++gpio)
         p4sd_iomux(gpio, P4_IOMUX_FUNC_SDMMC, TRUE, drive);
 }
@@ -507,8 +517,11 @@ void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
         return;
 
     /* D1001 board sequence: external switch low, LDO4 at the 3.3-V
-       bypass, 100-ms settling delay, then external switch high. */
+       bypass, 100-ms settling delay, then external switch high. A board
+       whose switch is hard-wired on only gets LDO4 and the settling time. */
+#if P4_BOARD_SD_HAS_POWER_GPIO
     p4sd_gpio_output(P4_BOARD_SD_POWER_GPIO, FALSE);
+#endif
 
     control = p4sd_read(P4_PMU_BASE + P4_PMU_LDO4_CTRL);
     control &= ~(P4_PMU_LDO_XPD | P4_PMU_LDO_TIEH_SEL_M);
@@ -521,8 +534,10 @@ void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
                control | P4_PMU_LDO_XPD);
 
     sdcard_Udelay(P4SD_POWER_DELAY_US);
+#if P4_BOARD_SD_HAS_POWER_GPIO
     p4sd_gpio_output(P4_BOARD_SD_POWER_GPIO, TRUE);
     sdcard_Udelay(P4SD_POWER_DELAY_US);
+#endif
     priv->powered = TRUE;
 }
 
@@ -530,7 +545,8 @@ void FNAME_P4SDBUS(SetBusWidth)(UBYTE width, struct sdcard_Bus *bus)
 {
     ULONG ctype = p4sd_reg(P4SD_CTYPE);
 
-    /* GPIO45/46 occupy the native D4/D5 pins: eight-bit mode is forbidden. */
+    /* MicroSD has four data lines, and on the D1001 GPIO45/46 occupy the
+       native D4/D5 pins: eight-bit mode is forbidden. */
     ctype &= ~(P4SD_CTYPE_4BIT_SLOT0 | P4SD_CTYPE_8BIT_SLOT0);
     if (width == 4)
         ctype |= P4SD_CTYPE_4BIT_SLOT0;
@@ -1263,7 +1279,7 @@ void FNAME_P4SD(BusPostIRQInit)(struct sdcard_Bus *bus)
         return;
     if (!p4sd_card_present())
     {
-        bug("[P4SD%02u] GPIO45 high: no card present\n",
+        bug("[P4SD%02u] card-detect high: no card present\n",
             bus->sdcb_BusNum);
         return;
     }

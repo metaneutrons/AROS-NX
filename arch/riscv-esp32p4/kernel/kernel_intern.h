@@ -97,6 +97,8 @@ int krnP4GSLSampleDiagnostic(unsigned int seconds);
 #ifdef P4_C4_TOUCH_HIDD
 struct KrnTouchScreenOps;
 struct KrnTouchScreenOps *krnP4GSLTouchScreenOps(void);
+struct KrnTouchScreenOps *krnP4GT911TouchScreenOps(void);
+void krnP4GT911Probe(void);
 #endif
 
 /* What the panel bring-up claimed and where it got to. */
@@ -166,6 +168,34 @@ struct P4JD9365Cmd
 
 extern const struct P4JD9365Cmd krnP4JD9365Init[];
 extern const unsigned int krnP4JD9365InitCount;
+
+/*
+ * The JD9165 sequences (jd9165_init.c) send up to 14 parameter bytes in one
+ * command, so their entry carries an array; otherwise the same encoding.
+ */
+#define P4_JD9165_MAX_PARAM     14
+
+struct P4JD9165Cmd
+{
+    unsigned char cmd;
+    unsigned char param[P4_JD9165_MAX_PARAM];
+    unsigned char param_bytes;
+    unsigned short delay_ms;
+};
+
+extern const struct P4JD9165Cmd krnP4JD9165InitOld[];
+extern const unsigned int krnP4JD9165InitOldCount;
+extern const struct P4JD9165Cmd krnP4JD9165InitNew[];
+extern const unsigned int krnP4JD9165InitNewCount;
+
+/* The JC1060P470C ships two panel batches; board.mk picks the table. */
+#ifdef P4_JC1060_PANEL_OLD
+#define P4_JD9165_INIT          krnP4JD9165InitOld
+#define P4_JD9165_INIT_COUNT    krnP4JD9165InitOldCount
+#else
+#define P4_JD9165_INIT          krnP4JD9165InitNew
+#define P4_JD9165_INIT_COUNT    krnP4JD9165InitNewCount
+#endif
 
 /* DSI command-path results. */
 #define P4_DSI_CMD_BUSY         (-3)

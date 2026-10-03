@@ -143,15 +143,21 @@ static void sd_iomux(unsigned int gpio, unsigned int function,
     sd_write(addr, value);
 }
 
+/* Without a card-detect contact, identification decides. */
 static int sd_card_present(void)
 {
+#if P4_BOARD_SD_HAS_DETECT
     uint32_t bit = 1U << (P4_BOARD_SD_DETECT_GPIO - 32);
 
     sd_iomux(P4_BOARD_SD_DETECT_GPIO, P4_IOMUX_FUNC_GPIO, 1, 0);
     sd_write(P4_GPIO_BASE + P4_GPIO_ENABLE1_W1TC, bit);
     return (sd_read(P4_GPIO_BASE + P4_GPIO_IN1) & bit) == 0;
+#else
+    return 1;
+#endif
 }
 
+#if P4_BOARD_SD_HAS_POWER_GPIO
 static void sd_gpio_output(unsigned int gpio, int high)
 {
     uint32_t bit = 1U << (gpio - 32);
@@ -162,13 +168,16 @@ static void sd_gpio_output(unsigned int gpio, int high)
     sd_iomux(gpio, P4_IOMUX_FUNC_GPIO, 0, 1);
     sd_write(P4_GPIO_BASE + P4_GPIO_ENABLE1_W1TS, bit);
 }
+#endif
 
 static void sd_power_on(void)
 {
     uint32_t ctrl;
 
+#if P4_BOARD_SD_HAS_POWER_GPIO
     /* Hold the external switch off while its upstream 3.3-V rail starts. */
     sd_gpio_output(P4_BOARD_SD_POWER_GPIO, 0);
+#endif
 
     ctrl = sd_read(P4_PMU_BASE + P4_PMU_LDO4_CTRL);
     ctrl &= ~(P4_PMU_LDO_XPD | P4_PMU_LDO_TIEH_SEL_M);
@@ -182,8 +191,10 @@ static void sd_power_on(void)
     /* Seeed's own board init gives the external switch a full 100-ms
        low pulse before applying card power. */
     sd_delay(SD_POWER_DELAY_US);
+#if P4_BOARD_SD_HAS_POWER_GPIO
     sd_gpio_output(P4_BOARD_SD_POWER_GPIO, 1);
     sd_delay(SD_POWER_DELAY_US);
+#endif
 }
 
 static void sd_configure_pins(void)
@@ -459,10 +470,18 @@ void krnP4SDMMCProbe(void)
     uint64_t acmd_deadline;
     int cmd8;
 
+#if P4_BOARD_SD_HAS_POWER_GPIO
     krnP4PutStr("[sdmmc]  read-only probe: power LDO4/GPIO46\n");
+#else
+    krnP4PutStr("[sdmmc]  read-only probe: power LDO4\n");
+#endif
     sd_power_on();
 
+#if P4_BOARD_SD_HAS_DETECT
     krnP4PutStr("[sdmmc]  detect GPIO45 is ");
+#else
+    krnP4PutStr("[sdmmc]  card detect is ");
+#endif
     if (!sd_card_present())
     {
         krnP4PutStr("high (no card)\n");
@@ -478,7 +497,11 @@ void krnP4SDMMCProbe(void)
 #endif
     }
     else
+#if P4_BOARD_SD_HAS_DETECT
         krnP4PutStr("low (card inserted)\n");
+#else
+        krnP4PutStr("not wired; trying the card\n");
+#endif
 
     sd_configure_pins();
     if (!sd_host_init())

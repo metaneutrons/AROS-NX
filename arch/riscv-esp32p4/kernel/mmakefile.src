@@ -480,7 +480,9 @@ ifneq ($(P4_DSI_BURST),1)
 P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
 endif
 
+ifeq ($(P4_BOARD),d1001)
 P4_B6_ROW_PHASE_WORKAROUND ?= 525
+endif
 ifndef P4_SCANOUT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=60
 endif
@@ -543,7 +545,9 @@ P4_DEBUG_CPPFLAGS += -DP4_C1_FRAMEBUFFER_HIDD -DP4_B6_DOUBLE_BUFFER \
                      -DP4_PANEL_PROBE -DP4_DSI_PROBE -DP4_SCANOUT_TEST \
                      -DP4_DSI_NONBURST
 override P4_SCANOUT_SECS := 0
+ifeq ($(P4_BOARD),d1001)
 P4_B6_ROW_PHASE_WORKAROUND ?= 525
+endif
 endif
 
 # Explicit compatibility debt, not a hardware contract.  Set this to the
@@ -987,9 +991,9 @@ CFILES := \
         dsi_phy \
         dsi_scanout \
         getsystemattr \
-        jd9365_init \
+        $(P4_BOARD_PANEL_TABLE) \
         i2c_hw \
-        gsl3670 \
+        $(P4_BOARD_TOUCH_DRIVER) \
         panel_power \
         psram_init \
         psram_tuning \

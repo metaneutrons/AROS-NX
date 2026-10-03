@@ -1,0 +1,16 @@
+# ESP-IDF Partition Table
+# Name, Type, SubType, Offset, Size, Flags
+#
+# Guition JC1060P470C, 16 MB flash.  The AROS offsets are the D1001's
+# (core 0x20000, package 0x820000, flash disk 0xc00000), so the tools and
+# the package layout stay board independent.  The package partition ends
+# exactly at the end of the chip, which is also the 16 MB cache-mapping
+# limit; the D1001's FAT partition beyond it has no room here.  The vendor
+# image keeps nvs at 0x9000 and phy_init at 0xf000; those offsets stay
+# free of AROS data either way.
+nvs,      data, nvs,      0x9000,    0x6000,
+nvs_key,  data, nvs_keys, 0xf000,    0x1000,
+otadata,  data, ota,      0x10000,   0x2000,
+phy_init, data, phy,      0x12000,   0x1000,
+ota_0,    app,  ota_0,    0x20000,   0x800000,
+arosbsp,  0x40, 0x00,     0x820000,  0x7e0000,
