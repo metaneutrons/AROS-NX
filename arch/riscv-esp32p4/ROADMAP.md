@@ -132,9 +132,1011 @@ gate: compensated output is not the native display contract.
 | B6 | VSYNC handoff, buffering decision and landscape rotation | `hardware verified` | Two complete native buffers are reserved outside Exec and contain logical `1280 x 800` surfaces rotated 90 degrees clockwise.  The GDMA one-frame completion is the ownership boundary because this bridge revision has no VSYNC interrupt.  The immutable gate completed 2,006 frames and 19 source switches without faults and was visually tear-free.  The producer gate then completed 60 bounded inactive-surface updates, exact rotated row-range writebacks and 60 requested frame-boundary swaps with zero rejects or faults; direct observation confirmed exactly one clean moving rectangle without stale pixels, split frames or tearing.  The +525 compatibility mapping stays explicitly named and B5R remains its removal gate |
 | B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
+| C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
-| C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification, bounded reset/load/status and raw contact-zero transport are hardware verified.  The absolute `mouse.hidd` subclass, task-context 20-Hz poller, normalization and press/release policy pass the direct-X interaction sub-gate after the scheduler idle fix.  Its version-3 contact-frame path independently decodes the complete 44-byte report, exposes up to ten contacts and keeps the visible pointer on the nearest continuing contact.  The FIFO-segmented long read and real one-/two-contact parsing pass synchronized D1001 traces with zero errors; both contacts report hardware ID zero, validating positions rather than IDs as the identity source.  Two contacts promote Button1 to a Button2 press latched until complete release; UART and direct Intuition observation verify menu activation, sequential release without a new left press and the final Button2 release.  Runtime external firmware/recovery remain; closes M7's interaction criterion |
+| C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
+| D0 | Compile-time board profile, with D1001 as the first implementation | `hardware partial` | LDO2 now recovers and verifies all 32 MB without Vellum. The 20-MHz-PSRAM/90-MHz-CPU artifact showed only blue and an edge strip; changing only PSRAM to 200 MHz produced clean calibration and a spontaneously reported desktop. After the battery was reported empty, the initial non-desktop state could not be classified: opening UART coincided with a USB reset, and a subsequent controlled USB reset booted Wanderer with the restored touch firmware and zero reported faults. Fabian then saw the desktop. Neither run proves the original rail-off start completed by itself or passes the unsynchronized visual/touch gate. Isolated full core/Exec/SD/BSP and physical rail-off gates remain open; do not generalize this clock result to the earlier 360/200-MHz C1 strip. Prohibit stale cross-board objects before a second profile. |
+| D1 | Board-driver boundary and second-board onboarding | `not started` | Select or replace panel, touch, SD-power and PSRAM-chip paths per profile; add an independent board build and hardware gate when a second board and its wiring are known. Do not infer compatibility from D1001 constants. |
+| E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
+| E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
+| E2 | Two-hart atomics, coherence and IPI primitives | `hardware verified; complete` | Exact219,776-byte core08 passes five ordinary headless captures/ten reset-separated epochs:650 SRAM+660 PSRAM exchanges,120 refusals,163,840 updates per AMO/CAS/lock counter with measured contention, bidirectional software IPI, remote code37/53, missing-park refusal and ten cache suspend/resume windows. Secondary reset/clock stop confirmed every exit; full221,184-byte normal range restored/verified and headless baseline boots. Atomics qualify internal SRAM only; Exec SMP/default changes wait for E3. |
+| E3 | Experimental RV32/P4 Exec SMP | `Private foundations verified; full Exec runtime integration in progress` | Private SRAM/PSRAM contention gates pass; normal Exec remains single-hart. Runtime155, lifetime56, registry80, queue53, admission528, adapter37, Task-pin80,985 and dispatcher1,614 sanitizer assertions pass. SMP ISR entry QEMU and independent review pass in their bounded scope. Creation/bootstrap hooks source-integrated; helper332, publication-queue766 and four extracted variants42/42/42/58 pass. Service-reference370/review, owner-proof38, detached-list62, cleanup-ready531, queued claim/live-owner48 and queue retirement647/review pass; caller integration open. Combined live/retired Switch-discard2,027/review and separate discard64 pass. Forced outer-trap retirement routing compiles and passes679 host checks/local review; durable cleanup queue binding675 checks/root repeat and strict RV32 compilation/local review pass. Source-selected locked decision446 checks/root review and matching priority writer RV32 compile pass; writer2,359 actual-source checks/root repeat and refreshed local review pass. IRQ-safe IPI backend source-selected with primary startup/trap/timer binding; strict isolated SMP/normal objects and local backend review pass; mailbox602 and Signal/SetExcept67 checks/root repeats pass; runtime81/route2,720 checks/root repeats and independent integration review pass in their bounded scope; shared timer snapshot gate source-selected/isolated-RV32 compiled, fixture pending; review found SD time bypass; corrected versioned shared SD callback compiles, cross-consumer qualification/full rebuild pending. Shared softint gate/Cause/owner0 dispatcher and Enable/trap/idle hooks source-selected/isolated-RV32 compiled, tests/review pending. Removal/completion/semaphore cancellation, scheduler override selection/link review and other Task-list writers, timer/IPI, real concurrent Exec tasks and matched full ABI/link remain open behind configure refusal. No secondary Exec entry/default change. |
+| E3-GT | Transitional Giant Exec SMP (`P4_GIANT=1`), a named workaround | `hardware partial (headless stress and visual/touch passed with the test define)` | 2026-10-02/03 evidence: hart1 enters Exec from a COLDSTART resident and runs Exec tasks; with `P4_GIANT_MIGRATE=1` every new task may run on either hart. Self-test 10/10 in every headless boot since the fixes. 30-minute stress (core 226,880 B `f0318aae…`, four migrating workers next to the desktop) passes `tools/giant-check.py`: 15.4 M rounds, 6.6 M on hart0 and 8.8 M on hart1, Forbid/semaphore totals exact, 0 errors, both harts dispatching in every minute, touch heartbeat to 25,600; ISR stack high water 852/664 of 8,192 B. A first 30-minute run starved hart1 (unfair test-and-set) and is kept as failed. Visual/touch regression on the flashed core 224,640 B (`31899537…`, `P4_GIANT_TEST=1`) after Fabian's readiness: desktop clean, pointer follows, tap, double tap, two-finger menu, window drag and close all reported working; the log shows hart1 running the Intuition menu handler, Wanderer, input.device and the touch poller. Not closed: rule 6 requires the final gate again without `P4_GIANT_TEST`. Not E3-A1/A2/A3 or E4 evidence. See SMP.md "Transitional Giant". |
+| E3-RT | Production secondary Exec entry within E3-A1 | `primary tp invariant isolated compiled; secondary entry candidate residency blocked and unselected` | Current selected path holds hart1 reset and finalizes/arms only hart0. Primary SMP entry initializes kernel-owned tp=0 before C; emitted TLS uses emutls/pthreads, not qualified native TLS. New private secondary stack, generation-bound READY/GO and genuine dispatch-ecall candidate compile separately, but SRAM entry references ordinary XIP Bootstrap/Dispatch/trap text: owner1 cache-on transition and residency remain unqualified. Candidate build selection was withdrawn; no release/controller/validated online publication exists. Local IDF confirms owner-relative CLIC base. CPU count remains1; public lifecycle, matched build and simultaneous runtime gates remain open. |
+| E3-BT | TaskResource conservative same-gate cutover | `isolated build/host verified; debt handoff incomplete` | Final count, four-list assembly and release-publication now share the actual lifetime gate, preserving every conservative refusal. Six fresh SMP objects compile; binding82941 and extracted full-bootstrap461 sanitizer checks each O1/O2 pass, with intended negative control; service293+18 passes. Independent source review accepts bounded boot-time ordering only. Debt inventory/clear, observer selection, constructor/reader lifetime, matched full link and actual concurrent-hart qualification remain open; no activation/default change. Codex work stopped by Fabian on 2026-10-02; new-session paths/status in [HANDOFF-CLAUDE.md](HANDOFF-CLAUDE.md). |
+| E3-QA | Current bounded E3 integration evidence | `host verified; runtime incomplete` | Final shared timer snapshot60,351 and SD consumer133 sanitizer checks pass with root repeats; earlier80,353 snapshot count is superseded. Softint queue170 checks pass with root repeat. Corrected actual-exit106 and gate89 checks pass root repeats; first exit fixture94 modeled nested delivery incorrectly and remains invalid historical evidence. Unselected removal-completion ticket255 checks, refreshed independent review and isolated RV32 compilation pass after alias-refusal correction. Public RemTask/worker binding remains absent. Static scheduler selection review passes, not a configured full link. |
+| E3-CB | Selected dispatch callback retirement guard | `isolated build verified` | Callback225 and actual Exception-body327 sanitizer checks pass root repeats. Independent paired review accepts local ordering only under honored RUN ownership. Generic removal still violates that assumption; other signal writers and self-removal nested unwind remain open. SMP idle remasks/repolls softints; corrected exit106 and gate89 sanitizer checks pass root repeats. No whole-runtime or hardware qualification. |
+| E3-ET | ETask cleanup topology | `partial source correction; isolated builds verified; not concurrent-safe` | Metadata leaf282 and ChildWait root repeats remain local evidence. Staged NewAddTask/TaskLaunch/helper212 and ordinary-path22 sanitizer checks pass fresh root repeat; independent order/rollback review passes. SRAM metadata gate and retained-dead PID reservation are source-selected in actual InitETask/affinity rollback/final expunge; strict isolated SMP/normal objects, PID-leaf181 and actual-binding262 sanitizer root repeats pass. Cleanup now detaches all dead results under the port lock, then expunges outside it; isolated build and corrected actual-source76 sanitizer root repeat pass. Five interrupt-visible FindChild/ChildStatus/ChildFree/ChildWait/cleanup port gates now bracketed with SMP Disable/Enable; fresh normal/SMP RV32 objects pass with project-supported no-strict-aliasing semantics. Frozen root O1 sanitizer replays pass ChildFree195, ChildStatus487 SMP/247 normal, Cleanup110, FindChild98 SMP/46 normal and ChildWait356; all five stripped-gate controls detected. Root read final independent five-site report; local IRQ ordering accepted only. Parent lifetime, RUN-drained cleanup and active/dead snapshots remain unresolved; no concurrent worker qualification. |
+| E3-SW | Public signal writer closure | `partial source selection` | P4 SetSignal/SetExcept/AllocSignal/FreeSignal selected; strict isolated RV32 compilation passes. SetExcept failed-effect retirement correction95 and SetSignal110 pass author/root O1/O2 and strict RV32; their query/transfer are mocked and both narrow source reviews are accepted. Successful SetExcept WAIT-to-READY remains a fixture gap, not a demonstrated defect. Allocation/free612 and actual constructor SMP260/normal232 sanitizer checks pass root repeats. Constructor test exposed and now covers the corrected unnamed/no-port MemList overread. Local wrapper/constructor ownership reviews pass; Alloc/FreeSignal terminal mutation semantics, real signal/Wait retirement composition and cleanup remain incomplete. |
+| E3-ID | Retained ETask PID identity | `source-selected; local host/build verified` | PID leaf194 (including direct lookup null/absent/opaque borrowed-record contract) and raw-MIE gate45 sanitizer checks pass root repeats. E3-MO records refreshed deferred-reclamation qualification, not runtime acceptance. Strict isolated SMP/normal objects pass. Independent startup/MIE review accepts documented preconditions; cleanup frees results outside the port lock. Real topology/final-expunge ownership, full linked Exec and two-hart runtime remain unqualified. |
+| E3-MO | Private ETask metadata ownership binding | `source-selected; local host/build verified` | Release defers ETask/Result2/PID while readers remain; last reader uniquely detaches and frees outside gate. Fresh strict isolated SMP/normal objects pass; binding2622, actual Cleanup owner196, Init/Expunge126 and actual reader/reclaim227 sanitizer checks pass root repeats. Independent source review accepts local reclaim/strong-owner admission ordering. Protected reader discovery, parent edges, real RUN-drained removal, full build and concurrent runtime remain absent. |
+| E3-CF | Atomic dead-result ChildFree | `source-selected; local host/build verified` | SMP searches only the durable result queue and unlinks under its port write lock, then expunges after unlock/Permit. Active children cannot be freed by this path. Actual-source135 sanitizer checks pass root repeat; fresh isolated SMP/normal RV32 objects pass. Current-RUN metadata ownership and full topology remain unqualified; no hardware acceptance. |
+| E3-CO | Active-only ChildOrphan | `source-selected; local host/build verified` | SMP searches/removes active children under iet_TaskLock WRITE and preserves retained dead results. Root actual-source321 strict sanitizer checks and isolated SMP/normal RV32 builds pass. An intermediate fixture cleared accumulated failures; corrected repeat supersedes that pass. Independent review accepts local detach order and flags dead-only ID returning CHILD_NOTFOUND; current-RUN/metadata ownership and full topology remain unqualified. |
+| E3-CS | Locked active ChildStatus traversal | `source-selected; local host/build verified` | SMP reads active children under iet_TaskLock READ, releasing it before result-port READ lock. Root actual-source352 SMP/205 normal sanitizer checks, strict isolated RV32 builds and independent local source review pass. Does not close active-to-result publication gaps or establish RUN/parent ownership; no hardware acceptance. |
+| E3-RC | Drained Task cleanup consumer | `SMP-source-selected; retained claim local host/build/review verified` | Retained registry478, actual gate binding82,107 and composed actual registry/consumer171 pass root strict sanitizer repeats; queue711/creation332 regressions pass. Opaque target identity remains indexed through all cleanup/free accesses; isolated RV32 registry/pins/creator/consumer builds pass. Independent narrow lifecycle review accepted. External requester ACK, semaphore waiter cancellation/topology and actual configured concurrent cleanup remain open; normal image unchanged. |
+| E3-WO | Protected cleanup-worker ownership | `source-selected; both-hart local host/build/review verified` | Prior worker494/delivery314 and Wait407 remain local evidence. Both-mailbox publisher/either-hart safe delivery compile strictly; independent ordering review passes locally. Root boundary49/composed622 repeats pass. Copied retired RUN-owner endpoint1,249 and binding82,107 pass root strict sanitizer runs and isolated RV32 builds; owner ordering review accepted locally, prior unexplained interrupted V2 run retained. Narrow retained lifecycle review accepted locally. Completion escrow, callback reentrancy, deferred frees, retire/claim closure and startup/concurrent drain remain open. |
+| E3-SR | Actual self-removal handoff | `source-selected; local review/host/build and RV32 emulator verified` | Scoped unwind fixes the nested callback dispatch defect under RUN ownership. Root host95/175/258/2,049 and RV32 QEMU O0/O2 pass; independent production/host/emulator reviews accept only local scope. Composed actual switch/self/unwind622 passes root O1/O2 sanitizer repeats with final RUN-release poison; queue/registry boundaries mocked, hardware unqualified. External RemTask still bypasses registry retirement; full lifecycle/topology open. |
+| E3-SG | Public locked Signal selection | `source-selected; local review/fixture/isolated build verified` | P4 Signal replaces generic unlocked writer, with registry pin and canonical signal/queue locks; actual Signal/SetExcept67 sanitizer repeat and fresh RV32 object pass. Independent selection/order review accepts local scope; external RemTask still bypasses drain, startup/whole-system/concurrency gates remain open. |
+| E3-SM | Public semaphore arbitration and waiter cancellation | `private/Attempt and wait binding host/build verified; full routing open` | Existing embedded semaphore lock selected without public ABI extension; private binding root132 passes. Attempt root/independent116/149 host checks and narrow review pass; strict RV32 SMP/normal objects confirm gate references only in SMP. Wait registry root171 sanitizer checks and strict RV32 compile pass after retired-readiness correction; independent leaf171/80/370/478 review accepted. Scope wrappers and early cancellation wake pass root82554 actual binding checks. Subsequent generic-retire and claim-release lost-wake corrections pass root/independent82772 host checks, strict RV32 compilation and narrow independent review. Core mutation surface inventoried; current package omits AHI and current P4 preprocessing excludes pthread direct-queue branch. Intuition/POSIXC correctness readers require binding. Actual Wait guard437 root/independent checks and isolated RV32 compile pass. Private boot-reserved operation ledger under implementation; reservation root857 and composed boot72 host checks plus strict RV32 boot/startup objects pass, actual gated bootstrap bound (217088B default payload); root withdrawal/reclaim corrections applied, independent arena/ledger review pending. Runtime atomic-policy36 regression passes. Public routing, queued/granted ownership cancellation, partial LIST publication and external removal remain open. Activation stays refused; no full semaphore/concurrent acceptance. |
+| E3-SM-OP | Atomic arena/scope lifecycle within E3-SM | `private host/build and narrow source review verified; public routing open` | Registry-gated reserve publishes entries/generation/pin together. Boot review857/72 and original ledger280 review accepted narrowly. Generic wait-kind mismatch corrected after independent review. Fused set/close, complete/reclaim/pin discharge and retirement/ledger cancellation are source-bound; root completion208 O1/O2, author/root admission221 O1/O2 and RV32 registry/pins/ledger objects pass. Final private lifecycle source review accepted with explicit caller obligations: snapshot must also exclude the separate request pool; fused Complete must not follow raw Commit. Real node/count routing, notifications, external removal, matched whole-image and concurrent hardware acceptance remain open; this substep cannot close E3-SM. |
+| E3-SM-N | Real reserved semaphore request-node transactions | `checked resolver local host/build/review verified` | Tri-state resolution distinguishes malformed storage/topology/association (-1), absent/stale/ineligible scope (0), success (1), without output mutation on refusal. All eight production consumers migrated. Independent actual-source cross-link fixture and root strict O1/O2 sanitizer repeats pass379+144; narrow review accepts storage/association contracts. Existing root O1 regressions pass malformed379+250, consumer379+214, completion208, nodes417 and snapshot418+254. Full validation repeats per selected node; bounded cost, public lifecycle and simultaneous execution remain open. |
+| E3-SM-G | Actual Task-only cohort grant | `private host/build and narrow source review verified; public routing unbound` | A NestCount0 handoff reserves the complete shared-head cohort, skipping exclusive entries, before any callout. Absolute arena/index classification precedes waiter-tag inspection; unknown legacy/Procure nodes refuse before mutation. Storage validation order and empty-queue/index mismatch were corrected. Root O1/O2 cohort444 plus included baseline418 checks pass. Cohort capacity, aliasing, whole-queue ledger membership and aggregated same-Task notification pins are preflighted. Durable trusted notification dispatch, public Release and Procure/Vacate remain unimplemented; no latency, concurrent or hardware acceptance. |
+| E3-SM-R | Actual unit release with atomic last-unit cohort | `private host/build and narrow source review verified; public routing unbound` | Anonymous release consumes completed units before marking pending OWNED units RELEASED. Actual NestCount/QueueCount decrement follows ledger admission. Review found and corrected an empty-queue/non-last count-validation gap: all indexed OWNED units, including committed entries, must fit actual NestCount before mutation. Root O1/O2 release369 plus included baseline418 pass, including cancelled RELEASED cleanup after RUN0 and malformed count refusal without mutation. Last-unit cohort capacity, aliases, identities and aggregated pins are preflighted before releasing the old unit, then the complete handoff commits without callout or fallible helper. Cross-Task release is permitted. Last-unit Procure queues remain unsupported; durable notification/public Release and all runtime/concurrent gates remain open. |
+| E3-SM-ND | Durable Task notification ownership and delivery | `private host/build and narrow source review verified; public routing unbound` | Task-only grants gain per-record pending/inflight reservations and a globally unique batch serial independent of releaser continuation/request reuse. Counter/serial capacity is reserved for the full cohort before mutation. Root actual-node/registry514 plus baseline418 and composed binding379 pass O1/O2 on frozen snapshot1c9d6bfc; worker450/delivery241 pass separately with mocked adapters. Independent source review accepts local gated contracts only. Real AMO/IRQ contention, public callers/post-gate poke, cancellation, async messages and concurrency remain open. |
+| E3-SM-CH | Cancelled last-owner atomic handoff | `leaf and protected mutation bindings private host/build verified; consumer unbound` | New rollback_durable retains the cancelled OWNED unit until complete live-queue cohort/pin/serial admission succeeds, then publishes RELEASED/count decrement and durable grants under the same gates. RUN0/exclusive cancellation claim/uncommitted state are required. Root independently passes baseline418/cancellation355 and composed baseline379/cancellation215 O1/O2 on actual sources. Protected armed RUN worker bindings latch progress under the registry gate without poke under the caller's semaphore gate. Narrow independent binding review accepts those contracts, not current-task authentication or worker routing. Actual fair cancellation worker/retry remain open. |
+| E3-SM-CF | Fair cancellation claim selection | `private host/build verified; consumer unbound` | Address-cursor claims select the smallest eligible raw identity strictly above the cursor without dereferencing Task storage or wrapping. Root O1/O2 sanitizer runs now pass baseline172/selection46; prior composed handoff418/355 is independently verified. Protected consumer selection is OPERATION-only and cross-validates the selected registry/ledger association before mutation. Independent review found both omissions in preceding snapshots; fixes and historical identities remain documented. Legacy generic claims remain unchanged. No runtime fairness claim. |
+| E3-SM-CS | Cancellation entry metadata snapshot | `leaf and protected bindings private host/build verified; consumer unbound` | Exact claimed target/generation/ordinal snapshots copy semaphore identity and scalar state only; root O1/O2 pass baseline418/snapshot254 and composed protected baseline379/snapshot213. Includes legacy-kind skip, cross-domain preclaim refusal and observed RUN-drain quiet release. Corrected selector independently reviewed. No real IRQ/hart concurrency proof; caller-owned semaphore lifetime remains separate. |
+| E3-SM-CR | Cancellation worker and capacity retry | `private actual consumer/bindings composition host verified; concurrent gate open` | Protected Begin/End and four positive resource-drop hooks independently pass baseline379/new371 at O1/O2; local review accepts ordering under caller contracts. Gated SMP ServiceLoop runs notification, bounded operation cancellation, then retired cleanup; only actual progress repeats the drain. Both consumer objects compile separately for RV32. Actual loop root repeats598 with mocked boundaries; actual consumer body regression791 passes separately. New real consumer plus real Configure/Acquire/registry/nodes/retry composition passes baseline379/new214 at O1/O2, including capacity refusal/retry and durable handoff. Semaphore/IRQ/AMO boundaries remain mocked; no real concurrent Exec gate, matched link or public API/hardware acceptance. |
+| E3-SM-P | Public single Obtain/Shared and Release | `SMP source routed; local retirement tests pass; full integration open` | Root/author O1/O2 actual public/registry retirement379+143 pass for Acquire refusal and incomplete Complete, no gates/MIEoff/RUN held. That fixture mocks SetSignal/Wait/transfer. Actual SetSignal now diverts registry-proven retirement after Task unlock; root/author actual-body110 O1/O2 and isolated RV32 pass, with query/transfer mocked. Independent narrow review accepts failed-effect ordering only; successful-effect/unlock retirement remains outside that proof. Other refusal sites untested. Live regression379+474/RV32 and Wait455/narrow review pass. Generic TS_REMOVED guards, external removal, capacity waiting, signal-bit semantics, LIST/async, topology and simultaneous lifecycle remain open. No matched build, activation or hardware acceptance. |
+| E3-RM | External RemTask completion binding | `host verified candidate; construction/channel registry/gate build verified, unbound` | Root O1/O2 admission706+baseline379, actual pins254+379, wait-body223, capacity361+379 and public adapter-body363 pass; queue284+647 prior passes (admission mocked), negative assertion control exits134. Capacity covers duplicate pending/ACKed interests, full20k orphan-slot reuse, independent target service ownership and unchanged refusal snapshots. Public adapter uses mocked primitive boundaries; actual signals/Wait and concurrency remain unqualified. RV32 SMP intercept precedes generic free; normal object keeps generic selection. Callback-visible TS_ADDED needs cancellation/Ready handoff. Raw caller audit identifies NULL-after-service double-free rollback; whether raw non-NULL created-then-removed preserves existing success semantics is under root counter-review, not settled by stored-pointer callers. Independent review rejected unrestricted private TAG_USER output decoding; current decoder defaults to no writes. A private current-Task/hart/stack channel now compiles RV32, with exact target/generation, single-use resolution and generation-checked LIFO End; root focused leaf tests165 O1/O2 and corrected extracted actual-channel wrapper94 O1/O2 pass (runtime/gate mocked); local source reviews accept gated contracts only, conditional shared constructor transport now compiles normal/SMP/forced-scope RV32, with independent generation tags and exact End/refusal routing; complete binding is mandatory and unselected tags pass unchanged. Current transport local source review accepts conditional ordering; root baseline117 and adapted transport O1/O2 default-deny191+120, resolver-only200+120, mock-scope516+126 pass; platform selection absent. Earlier ownership fixture269+120/275+120 is superseded by the generation transport fixture; SERVICE transfer remains mocked. New designated constructor/creator pin APIs compile RV32 and pass existing capacity regression, but are unbound and leaf review accepts local scope; root O1/O2 active-construction leaf tests284 pass; gate-wrapper review accepts local ordering; normal-wrapper tests80 O1/O2 pass. Unbound orphan final-release leaf passes root44 checks O1/O2; orphan boundary148 O1/O2 pass; actual orphan gate wrapper101 O1/O2 passes, including root regression on new metadata. TaskResource mutation/marker/detach repair now includes gated iterator/node observations and null-handle refusal; six normal+SMP RV32 modules compile; all seven SMP topology gates now Disable/Enable-bracketed with fresh strict r3 builds, earlier unmasked r2 artifacts historical; root extracted TaskResource host tests1158 SMP/693 normal O1/O2 pass; corrected independent source review accepts local gate ordering only, hook-node allocation/linkage and all five startup hook-list initializers are now repaired; 11 modules pass strict normal/SMP builds and six retain explicit legacy warnings; independent hook regression plus root O1/O2 repeats pass normal84/SMP114 and17 source assertions; concurrency/lifetime remain open. Iterator Task lifetime and startup publication remain open. TaskResource selected P4 RemTask now forwards before target access; retained service invokes resident resource callback for detach/storage clear/free before context/ETask/MemList reclamation; four SMP/three normal strict RV32 objects pass (normal bytes unchanged). New actual-binding tests/review pending. Worker/topology recovery not fully installed. Abort/recovery, all states, sole fused producer, memory fit, topology, hart1/cache and full concurrent runtime remain open. Normal core unchanged; no SMP activation/full matched build/hardware qualification. |
+| E4 | SMP graphical qualification/default decision | `not started` | Depends on E3 and separate delayed-hang qualification; no speedup or release-default claim before exact-artifact regression and sustained stress. |
+
+Resource-lifetime qualification for E3-RM remains open: the generated resource
+loader ignores an EXPUNGELIB refusal on initialization failure. The selected
+Exit guard alone does not establish callback/base residency; the final linked
+initialization set must establish that publication cannot precede failure.
+Current E3-RM candidate supersedes vector interposition with a private direct
+prelaunch observer and retained-service cleanup. Four strict RV32 objects pass;
+root O1/O2 selected completion293 and direct observer29 checks now pass with
+mocked primitive boundaries. Independent source review accepts local order,
+not cutover or reader leases. Fresh generated start/end plus 17 selected
+TaskResource objects now pass an isolated relocatable partial link. A source
+generator fix explicitly initializes optional Resident fields; fresh normal/SMP
+default/plain starts now pass strict compilation and preserve SMP object bytes.
+TaskResource belongs in the static core, not the package loader; unresolved
+core imports in this partial object await the matched full core link.
+Selected initial-list cutover now has a build-verified candidate: allocate empty
+entries outside Disable, then revalidate and assemble all four lists and publish
+under one interrupt-masked transaction, only with hart1 reset/clock-held and
+prepared but unbound. Review found a paused NULL-observer/TS_ADDED constructor
+gap; the revised guard now checks the validated lifetime registry under its
+gate and refuses ordinary pins, construction/channel scopes or retired/claimed
+records before publication, without dereferencing Task identities.
+Fresh strict objects/partial links pass; independent source review accepts the
+conditional missed-task closure. Root independently repeats the focused actual-
+body host fixture:352 checks each at O1/O2 with ASan/UBSan; removing quiescence
+fails the intended captured-NULL/Ready assertion. Platform primitives and
+registry validation are mocked; no actual concurrent-hart/runtime claim.
+Transient refusal currently fails this coldstart init, so
+bootstrap availability is still open. A registry-owned missed-observer/debt
+handoff has a conditional independent design review as the next liveness
+candidate; not implemented. Observation, debt inventory/clearing and binding
+publication must share the lifetime gate. Post-publication observer allocation
+now reports allocation refusal through a Boolean private callback, contract
+0x50345233; TaskLaunch stops before user Hook/Ready on refusal. This is terminal
+failure, not recoverable constructor rollback. The marker/admission leaf and
+direct gated observer binding are implemented as unselected private foundations:
+root O1/O2 sanitizer tests pass 228 and 82,876 checks respectively; registration
+and ordering tests pass 64 and 32. Nine isolated SMP and three normal RV32
+objects compile strictly. Independent review requires same-gate debt inventory,
+clearing and binding publication before observer selection. Neither a replacement
+bootstrap transaction nor runtime liveness/activation is verified.
+The conservative final bootstrap cutover now uses a trusted callback held
+under that lifetime gate, preserving existing refusals. Six isolated SMP and
+one excluded normal RV32 objects compile; actual binding host tests pass82,941
+each O1/O2. Root full-cutover fixture passes461 each with intended negative
+control; service293+18 checks pass; independent source review accepts this
+bounded transaction. Debt inventory/clear and runtime availability remain absent.
+Constructor-channel source audit confirms
+that TS_ADDED hook cancellation must not synchronously wait on its creator's
+own held pin; transport-only macro activation remains prohibited. Reader,
+initializer-retirement and full lifecycle gaps stay open; no SMP activation.
+E3-RT also has an isolated, inspected 32-byte XIP signature leaf; it is not
+selected in a build or executed on hart1, and cache/XIP qualification stays open.
+
+## Track E: ESP32-P4 / RV32 SMP
+
+[SMP.md](SMP.md) owns the staged requirements and acceptance IDs; this roadmap
+retains execution state and evidence as required by the existing repository
+rules. Work begins on 2026-10-01 at Fabian's request. E0 is an opt-in assembly
+foundation (`P4_SECONDARY_ENTRY=1`); `P4_SECONDARY_PROBE=1` now adds an
+isolated bounded release controller, not a second scheduler. Separate core
+link/residency and initial headless hart1 reports pass. The retained variant
+and strict no-retry harness pass seed+18 consecutive warm transitions with
+core1 reset clear/clock on at primary entry. Campaign01's user-interrupted
+capture19 remains separate. After reconnection, fresh campaign02 passes all20
+consecutive warm transitions without retries, including active-at-entry
+control snapshots. The complete baseline core range is restored/verified
+after an intermediate diagnostic confirms secondary quiescence. Normal
+headless Wanderer/touch boot passes. Following explicit readiness, Fabian
+confirms the requested desktop/pointer/menu regression on the restored normal
+core. E1's bounded diagnostic acceptance is complete. E2-A1/A2/A3 now pass
+on exact core08 under P4_E2_PRIMITIVES: five ordinary captures, ten
+reset-separated epochs, SRAM/PSRAM publication/refusal, measured AMO/LRSC/
+lock contention, per-hart software IPI, remote instruction replacement and
+cache park/suspend/resume. Every secondary exit is reset-held/clock-off.
+The full221,184-byte normal flash range is restored/verified; PSRAM,35 BSP
+members, Wanderer and touch heartbeat boot headless. No new visual/touch
+qualification is claimed. Atomics qualify only canonical internal SRAM;
+E3 must audit all lock locations and integrate tested primitives into the
+CPU-local runtime. E3's three Luna source audits are complete; the first
+CPU-local diagnostic delivery passes five headless captures/ten reset-separated
+epochs with all E2 stages and confirmed secondary stop. The full262,144-byte
+baseline range is restored/verified. Private cached-PSRAM atomics subsequently
+pass five captures/ten epochs and81,920 adds with all E2 gates; guarded hart0
+startup metadata binding passes three normal boots. The normal core is freshly
+rebuilt byte-identical and its full saved range restored/verified again.
+E3-A1 runtime integration, A2 task/FPU/
+contention and A3 matched ABI remain open. Normal Exec remains single-hart.
+E3-GT (2026-10-02): at Fabian's direction a transitional Giant, a named
+workaround and not the E3 design, now runs ordinary Exec tasks on hart1 in
+the opt-in `P4_GIANT=1` build. Forbid() and Disable() are made system wide by
+two internal-SRAM locks; the normal Exec ABI and BSP are unchanged. Acceptance
+for this stage: the headless self-test (`P4_GIANT_TEST=1`) passes every stage
+in repeated boots and the following normal boot reaches Wanderer/touch with
+hart1 online. Default task migration, a 30-minute concurrent stress and a
+visual/touch regression with fresh readiness (2026-10-03) have passed, all
+with the diagnostic define `P4_GIANT_TEST=1`; the final gate without it is
+still open. The removal test of the workaround is in SMP.md.
+Current source integration adds gated SMP-only private ISR stacks and a
+lifetime-backed Ready-to-Running admission helper. Storage/trap fixtures pass
+28 checks each, Task-pin binding 80,985 assertions, publication queues766 and prior
+queue transitions53; these are bounded host checks, not second-hart Exec acceptance.
+SMP-only dispatcher selection now calls lifetime-backed admission; its 1,614
+actual-source host assertions and independent local review pass. Creation and
+bootstrap hooks are source-integrated with extracted-source tests. Full
+integration remains open. Designated service-reference/drain primitives pass
+370 host assertions; RemTask/ServiceTask caller integration remains open.
+Outgoing context handoff, task removal, semaphores,
+timer/IPI and matched full link remain open.
+Outgoing handoff and separate no-save discard candidates are source-selected
+and compile in isolation; combined live/retired Switch-discard2,027 and
+separate discard64 host checks pass, with independent local review. Forced
+outer-trap retirement routing compiles and passes679 host checks/local review.
+Lifecycle caller integration still prevents a runnable SMP image.
+Selected dispatch callback guard now uses the current RUN lease and locked
+live/flag/launch snapshots. Retired callback recipients are discarded and fully
+redispatched before final FPU-frame use. Isolated helper/CPU RV32 compile and
+callback225 sanitizer checks pass root repeat. Paired P4 Exception is now
+source-selected with locked consume/merge and retirement exits; isolated RV32
+compile and actual-body327 sanitizer checks pass root repeat.
+Independent paired review accepts the local RUN-based ordering
+but flags generic removal and other signal writers as activation blockers.
+P4 SetSignal/SetExcept now selected and isolated-RV32 compiled; SetExcept67
+actual-body wake checks and SetSignal100 sanitizer checks pass root repeats;
+Independent SetSignal/SetExcept review accepts local wrapper ordering under
+current RUN ownership, not real adapter/lifetime integration or full writer
+closure. Later failed-effect retirement corrections in actual SetSignal110 and
+SetExcept95 pass author/root O1/O2 sanitizer repeats and strict isolated RV32.
+Both probe current retirement after Task unlock while MIE remains masked and
+transfer without normal return only on registry proof. Query/transfer are
+mocked; both narrow source reviews accepted. Successful SetExcept WAIT-to-READY
+is not covered by its current fixture; Signal covers a mocked queue transition.
+Successful
+effect followed by retirement after unlock remains dependent on trap/discard.
+P4 AllocSignal/FreeSignal now selected,
+with all signal-mask mutations inside the canonical Task lock and no Task
+access after outer Enable. NewCreateTaskA initializes its fresh unpublished
+Task lock before port-signal allocation; SMP and normal constructors compile
+in isolation. Allocation/free612 sanitizer checks pass root repeat; independent
+constructor review accepts exclusive unpublished ownership. Constructor
+lock-initialization fixture exposed a minimal unnamed/no-port third-MemEntry
+out-of-bounds read. The constructor now checks the actual allocation count;
+SMP/normal isolated compilation and actual constructor SMP260/normal232 sanitizer
+root repeats pass, including the bare unnamed/no-port two-entry case.
+Signal/Wait and self-removal nested unwind
+remain open.
+Actual list absence62, drained cleanup reservation531, queued claim/live-owner48
+and retirement647 with independent review pass bounded host fixtures. External
+completion and full lifecycle remain next; the experimental P4 ServiceTask
+loop source-selects durable cleanup wake/claim instead of raw Task messages.
+The cleanup consumer claims
+the drained service record before Task access, deletes context/metadata and
+detaches every memory-entry node before any entry can free Task storage or
+its embedded sentinel. Strict isolated RV32 compilation and independent local
+review and actual-source115 sanitizer checks with root repeat pass. Trusted worker continuation must remain
+non-retirable while it owns the detached record. Completion acknowledgement,
+metadata topology and actual configured ServiceTask qualification remain missing.
+ETask inventory confirms Task pins alone do not protect independently expunged
+ETask metadata. SMP-only cleanup list unlink corrections now compile: detach
+messages before expunge, children before reparent and orphan nodes before old
+sentinel destruction. Extracted actual-cleanup61 sanitizer checks pass root
+repeat for the preceding source; revised cleanup now transfers ALL dead
+results to a local list under the port lock, then expunges after unlock.
+Strict isolated SMP/normal builds and updated actual-source76 sanitizer checks
+with root repeat pass. The older61 count is superseded for this ordering.
+The actual FindChild fallback, ChildStatus, ChildFree, ChildWait and cleanup message-port
+gates now Disable locally before spinlock acquisition and Enable after unlock:
+Forbid alone cannot exclude interrupt-time PutMsg. Eight fresh normal/SMP RV32
+objects compile using the project's supported no-strict-aliasing semantics;
+frozen root O1 sanitizer repeats pass ChildFree195, ChildStatus487 SMP/247 normal,
+Cleanup110, FindChild98 SMP/46 normal and ChildWait356. All five stripped-gate
+negative controls are detected. Root read the final independent report and
+accepts this local IRQ ordering only; real Wait and Task lifetimes remain open.
+This addresses only
+local interrupt lock re-entry, not parent-edge or returned ETask lifetime.
+No concurrent cleanup claim. ChildWait now clears SIGF_CHILD before
+scanning the durable message list, not after an empty scan. SMP/normal isolated
+RV32 builds and actual-body193 sanitizer root repeat pass; independent review
+accepts the tested no-lost-wake ordering, not real Wait/topology integration.
+Parent-edge/metadata ownership, topology gate and Child* lost-wake/snapshot
+integration remain required before the worker can consume generic cleanup.
+The actual P4 ServiceTask now requests permanent protected-worker ownership
+from its RUN continuation. RemTask checks the registry before target fields or
+debug access and refuses the worker (and malformed/missing identities).
+The private registry protection is implemented; strict isolated objects and
+root actual leaf494/pins-binding81,346 sanitizer repeats pass. Independent
+local source review accepts the protected ownership/refusal contract only.
+This is a
+worker-lifetime prerequisite, not a general
+removal claim. Wake notification must occur outside Task/registry locks and
+the consumer is now selected in the gated SMP source branch, but configure
+refusal must remain until topology and completion are integrated and qualified.
+SMP ChildFree now searches/unlinks only the durable result queue under its
+port write lock and expunges after unlock/Permit. Active children are ignored.
+Actual-source135 sanitizer checks pass root repeat and isolated SMP/normal
+RV32 objects compile. This public-API correction does not replace
+the required metadata reader/parent/RUN ownership integration.
+ChildOrphan's specific-ID path also borrows FindChild's active-or-dead result:
+removing a dead result without expunge strands its metadata/PID owner.
+The active-only SMP correction passes actual-source321 strict sanitizer
+checks in the root repeat and isolated SMP/normal RV32 builds. The corrected
+fixture preserves accumulated failure state. Independent local source review
+accepts detach order, with the dead-only CHILD_NOTFOUND behavior explicit.
+The parent ETask lock is local list protection, not protected
+parent discovery or Task lifetime ownership; full topology integration remains
+required.
+ChildStatus now takes the existing parent ETask READ lock while traversing
+active children, before the separately locked result queue. Actual-body352
+SMP/205 normal strict sanitizer root repeats, isolated RV32 objects and
+independent local source review pass. The two searches remain separate and can miss an in-flight
+active-to-result transition; neither Forbid nor list locks establish lifetime
+or a single topology snapshot.
+The metadata lifetime leaf separates Task-owner, dead-result
+queue, child-edge and temporary-reader references. Strict isolated RV32 build
+and independent transition review pass;282 sanitizer checks pass root repeat.
+All-zero initialization is explicit. It is now selected inside private PID
+owner records: InitETask initializes Task ownership, actual CleanupETask begins
+closing, retained results transfer ownership before PutMsg, and final expunge
+drops Task/result ownership before PID detach/free. Strict isolated builds
+pass; actual owner-hook195 and Init/Expunge91 pass root repeats. Independent
+review accepts local initialization/publication order but found prefix lookup
+could mutate before full registry validation. Lookup now validates the full
+bounded shape and unique requested identity before lifecycle mutation; leaf181
+and refreshed strict objects pass; direct-leaf194 sanitizer checks now include
+null/absent/successful PROT_NONE opaque lookup with no mutation. Binding1605
+sanitizer checks including21
+corruption refusals pass root repeat, and independent correction review accepts
+the lookup order. Those counts predate the next deferred-release API change.
+Release now returns a unique reclaim claim or logical expunge deferred by
+readers; actual ExpungeETask frees no ETask/Result2 on deferral. Last ReadUnpin
+detaches PID/sidecar under the gate and invokes a private storage-free helper
+outside it, without a second ownership drop. Strict isolated builds pass;
+binding2622 and actual Cleanup owner196 sanitizer checks pass root repeats;
+independent source review accepts local reclaim order. Actual Init/Expunge126
+and actual binding-through-Expunge/storage-free227 sanitizer checks also pass
+root repeats, using modeled gate/allocator/Task associations. This is
+not full topology/runtime binding: reader helpers have no protected production
+discovery callers and no parent-edge API is selected yet,
+and actual cleanup still must follow RUN/pin drain. Parent accessors and deferred
+reader reclamation remain prerequisites before concurrent activation.
+The raw-MIE SRAM metadata gate is now prepared from Exec_PreparePlatform and
+source-selected; strict isolated RV32 objects pass after correcting its missing
+P4_SRAMDATA defining include. PID reservation now uses it from actual InitETask,
+before flags/affinity publication, with release on affinity allocation rollback
+and final ExpungeETask. Record allocation/free occurs outside the gate; shared
+counter and ETask PID publication are one transaction. Strict isolated SMP and
+normal objects pass; normal ExecUtil remains byte-identical. Corrected PID-leaf
+fixture181 and actual-binding262 sanitizer checks pass root repeats, but the
+external gate is modeled. Actual InitETask/ExpungeETask hooks91 and gate45
+sanitizer checks also pass fresh root repeats; CSR/runtime/allocator interfaces
+are mocked. Metadata/parent lifetime binding and full runtime remain required.
+P4 SMP NewAddTask now initializes ETask with no parent and attaches it only
+after PrepareContext and Task-record creation succeed, before prelaunch/Ready.
+Setup rollback therefore cannot remove an unlinked child from a parent list
+or publish a failed construction as a dead child. This uses the existing
+parent lock temporarily, not the required final metadata gate. Isolated
+SMP/normal compilation passes; independent staging review accepts local order
+under the stated ownership preconditions. Review found stale metadata pointer
+and TF_ETASK after failed construction; both rollback paths now clear them,
+with refreshed SMP/normal builds passing. Independent follow-up review accepts
+the correction; actual NewAddTask/TaskLaunch/helper212 and ordinary-path22
+sanitizer checks pass a fresh root repeat, with registry/cleanup/Ready mocks.
+The unselected locked scheduling-decision candidate passes446 host assertions
+and root local review plus strict RV32 compilation. This decision and the
+matching pinned priority writer are now in the SMP source list, with a P4
+core_Schedule front door; build-selection review/full link remain pending.
+A matching pinned priority
+writer/queue transaction compiles; local review passes after wake-target/order
+corrections; outer pin masking now also covers the entire reference interval.
+Updated priority fixture passes2,359 checks (author/root); refreshed local
+wake-order review passes. IRQ-safe IPI backend is source-selected with primary
+prepare/arm, trap drain and owner-only tick application. Strict isolated SMP
+and normal compilation and backend local review pass; revised mailbox602 and
+Signal/SetExcept67 sanitizer checks pass (author/root). Owner-runtime81 and
+route2,720 sanitizer checks pass (author/root); independent integration review
+finds no lost-doorbell or duplicate-ack defect in this slice. Shared timer
+snapshot gate is now source-selected and isolated-RV32 compiled; its actual-
+source fixture is pending. Independent review found the separately selected
+SD time helper bypasses this gate. The subsequent SMP SD binding now uses the
+same exported versioned callback; isolated objects compile. Final snapshot60,351
+and SD consumer133 checks pass with root sanitizer repeats; independent source
+re-review confirms the corrected binding. Matched header/module rebuild remains
+pending; the earlier80,353 snapshot count is superseded by the corrected mock.
+The gated softint queue, P4 Cause/owner0 dispatcher and pending hooks in Enable,
+trap return and idle are now SMP-source-selected and isolated-RV32 compiled;
+actual-source queue170 checks pass with root repeat. Independent integration
+review identifies an empty-release/nested-IPI delivery gap; remasked exit repoll
+now compiles and corrected source review passes; deterministic return-path test
+remains open. Gate test boundaries compile byte-identically to the previous
+isolated object; actual gate fixture pending. An unselected external removal completion
+ticket passes255 sanitizer checks after alias-refusal correction and isolated RV32 compilation; public RemTask,
+requester cancellation and cleanup-worker attachment are still missing.
+Static scheduler selection review passes; actual configured selection/full link
+and second-hart launch remain open.
+Durable service queue binding passes675
+sanitizer assertions (author/root) and strict RV32 compilation; independent
+local review/repeats pass. Deferred worker wake/ready binding passes81,792
+root sanitizer checks; the primary doorbell does not deliver Task signals inline.
+P4 ServiceTask source-selects the durable claim consumer and clear/drain/Wait
+loop; either hart's safe outer trap/dispatcher boundaries now deliver worker wakes outside
+registry locks. Actual caller314 root sanitizer checks pass with boundaries
+mocked for the previous transport. Both-hart publisher and trap/CPU callers
+compile as fresh strict isolated RV32 objects; independent ordering review
+passes locally, new executable host boundary/transport qualification is pending.
+Updated actual mailbox fixture1,004 and route2,720 pass root strict ASan/UBSan;
+executable boundary fixture remains pending. The old mailbox763 predates mask3.
+This experimental selection
+cannot run safely with generic RemTask's raw message producer, incomplete
+parent topology and missing completion ACK. Retained cleanup claim/finish is
+being implemented; exclusive in-flight opaque identity stays indexed until all
+target/context/entry frees end, then detach before out-of-gate record FreeMem.
+Root actual registry478/binding82,107/composed consumer171 sanitizer repeats
+and isolated RV32 registry/pins/creator/consumer builds pass. Independent
+narrow lifecycle review accepted; requester ACK and semaphore cancellation
+still absent.
+Secondary IPI arm now requires
+worker-ready ACK and retained outer Disable nesting before its leaf gate;
+revised mailbox763 and route2,720 sanitizer checks and isolated RV32 builds pass.
+Actual secondary Exec entry/public CPU-count admission remain unqualified.
+Independent launch-gap audit confirms the selected startup holds hart1 reset;
+only hart0 installs/finalizes/arms its runtime. No production launch controller,
+generation-bound secondary ACK, online-mask caller or first-task trap entry
+exists. The diagnostic release/park entry is explicitly excluded from SMP
+selection. Owner-local runtime helpers are prerequisites, not that launch
+chain. Primary SMP startup now sets kernel-owned tp=0 before C; CPU-local
+lookup remains mhartid-based, and the future secondary must match this policy.
+The isolated compiler probe uses emutls/pthreads, not tp-relative TLS, but
+ordinary Exec-Task TLS, foreign modules and matched-link ABI remain unqualified.
+Resolve private-stack/ISR, local CLIC, shared visibility and real
+trap ownership before publishing CPU2 or qualifying concurrent Exec work.
+Actual P4 self-RemTask now intercepts the generic body before debug/context
+access: pin, locked retirement, unlock/unpin then no-save KrnDispatch. It no
+longer sends a raw self Task message or frees its still-running context.
+Isolated compilation and actual helper71 sanitizer checks pass with pin/lock/
+retirement/ecall boundaries mocked. Independent review found self-removal in
+outer-trap callbacks would retire then halt on a depth2 dispatch ecall. Private
+scoped owner-hart unwind now wraps dispatch Exception/launch and switch hooks;
+context is checked before retirement. Remote-retire winners are recognized by
+service/RUN proof rather than fatal pin refusal. Strict isolated compilation
+passes; actual RV32 escape passes generic QEMU at O0/O2 with s1/s11/fs0/fs11
+sentinels. Runtime/ownership boundaries are mocked, not P4 trap or concurrent
+hart proof. Root strict host repeats95/175/258/2,049 pass; independent emulator
+review accepts that limited proof. Root read production and host correction
+reviews: local ordering accepted under valid RUN ownership; actual composed
+TF_SWITCH/self/unwind fixture requested to replace cross-fixture inference.
+Real handoff unqualified. External
+RemTask retains the unqualified legacy path until completion/cancellation binds.
+P4 locked Wait/token implementation is now SMP-source-selected instead of
+generic unlocked Wait for the worker; isolated compilation passes. Corrected
+actual-body fixture407 passes root ASan/UBSan with separate IDNest/TDNest mocks;
+the prior217 nesting proof remains withdrawn. Integration review pending.
+Root read the external completion callsite audit: caller cancellation and ACK
+after all target cleanup must be integrated before external RemTask activation.
+A task-independent ticket table keyed by private record identity, without a
+waiter Task pin held across yielding, has concrete feasibility blockers: setup
+resource escrow, cancellation garbage reclamation outside outer locks, all
+retire/claim routes, explicit remote-owner poke and primary-only cleanup wake.
+Poll/yield cannot make a masked other hart progress. `SMP.md` records the next
+unselected construction to audit: prepublished per-record completion/setup
+escrow with record retention beyond requester Task cleanup, cancellation
+discharged at final RUN release and deferred record garbage. Reentrancy and
+every retire/claim/ACK path need closure before selection. The table is not selected
+or proof of synchronous completion.
+The real reserved-node engine now implements Configure, immediate acquire or
+queue, cancellation withdrawal and owned-unit rollback against actual intrusive
+links and semaphore counts under semaphore then registry gates. Independent
+source review found premature rollback while the retired continuation still
+held RUN; the corrected transaction requires RUN0 before releasing ownership.
+Queued withdrawal can precede RUN drain, but terminal cancellation cannot.
+The protected Configure/Acquire production wrappers are now added: permanent
+boot pool resolution stays under the registry leaf gate while the caller owns
+one semaphore gate. Configure precedes Close and Acquire follows Close;
+immediate1/queued2/refusal0 is preserved. The node selector now preflights
+storage separation and full ledger validity before the pointer-only resolver,
+preserving malformed -1 for this path. Other pointer-only registry consumers
+still need diagnostic qualification. This closes
+the missing gate-bound front door to the engine, not the public Obtain/List
+algorithm. Fresh isolated RV32 compilation and unchanged regressions pass;
+direct wrapper/actual consumer composition passes baseline379/new214 at O1/O2,
+including real retry producers and durable handoff with mocked IRQ/gates.
+Root actual-binding O1/O2 sanitizer tests pass baseline379/new250, including
+fatal malformed-input children and non-mutating clean refusals. Fork snapshots
+only inspect parent memory; concurrent public execution remains unqualified.
+Independent review of the preceding preflight found malformed association
+links still collapsed to0. The pointer-only resolver is now removed from
+production: checked tri-state resolution validates storage, graph and matching
+owner/generation/construction/cancellation links, publishing two local outputs
+only on success. All eight production resolution callers propagate negative
+results before mutation. Targeted actual-source cross-link tests independently
+pass379+144 and root strict O1/O2 sanitizer repeats agree. Narrow independent
+review accepts the resolver contracts. Repeated full ledger scans still
+require a bounded-cost design before public routing.
+Public acquisition must still handle RELEASED entries/retry and all
+retirement/cancellation states without stack-node or arena-pointer escape.
+The valid32768-node count boundary is explicit. Isolated real-header RV32
+compilation and root O1/O2 sanitizer417-check repeats pass, including withdrawal
+of the32768th queued node. These single-threaded host shims do not qualify
+target ABI or concurrent public callers. Grant must reserve
+the complete shared cohort before any callback. Procure/Vacate require durable,
+exactly-once reply metadata at actual port publication, not the earlier message
+type store. No public binding, handoff or notification protocol is installed;
+the remaining lifecycle, launch, matched-build and concurrent gates stay open.
+The subsequent private Task-only cohort candidate now grants all selected
+shared waiters before leaving the gates. It classifies actual queue nodes via
+absolute arena/ledger identity before reading their waiter tag, and refuses
+unknown/Procure overlays rather than misinterpreting them. Independent review
+accepts the corrected local transaction under its caller preconditions;
+root O1/O2 actual-source cohort444 plus included baseline418 checks pass.
+Isolated real-header RV32
+compilation passes after correcting a translation-unit visibility error and
+review-found storage-validation ordering: registry/header/array separation
+now precedes typed ledger-array reads. Empty actual queues also reject indexed
+lost waiters. Cohort tests simulate the last release; no public Release runs.
+Copied target identities each own an ordinary notification pin, but no durable
+non-retirable dispatch consumer/public Release path is installed. Existing
+417-node checks predate this grant body and cannot qualify it.
+The next candidate separates complete queue recognition from ordinary-pin
+aggregation. It no longer resolves every peer through the full ledger and
+registry for each selected node. Root repeats still pass418/444 and isolated
+RV32 compilation passes; independent follow-up review/repeats are pending.
+This removes a nested validation multiplier, not all full-ledger cost and
+not the requirement to measure gate latency before public activation.
+The subsequent real-node release candidate reuses the separated preflight
+and commit. Non-last releases change anonymous ownership and actual counts;
+last releases preflight the complete next cohort before consuming the old unit.
+Failure leaves that old acquisition unchanged. Strict isolated RV32 compile
+and prior cohort regression418/444 pass; dedicated release fixture and review
+are pending. No public Release or durable notification dispatch is selected.
+Review then found that empty queues and non-last releases bypassed the global
+indexed-OWNED versus actual NestCount invariant. A shared preflight now checks
+all OWNED entries, including committed ones, in selection, cohort admission
+and Release before mutation; its fresh isolated RV32 compile passes. Dedicated
+malformed-count and cancelled-RELEASED cleanup tests now pass: root O1/O2
+actual-source release369 plus included baseline418, with narrow independent
+source review. These are serialized host tests, not installed public callers
+or concurrent runtime. Durable notification ownership remains the next binding.
+Durable notification integration is now in progress: pending/inflight work
+belongs to permanent registry records, not a retirable releasing caller's
+stack. Cohort admission reserves recipient counters and unique batch serials
+before mutation. The protected worker must consume a raw identity/count/serial
+snapshot using the already-reserved pin, with no extra Signal pin. Registry
+floors, wake producer and fair notification/cleanup drain must all be verified
+before public binding; no runtime or hardware acceptance is implied.
+The registry and root-owned modules now compile as isolated RV32 objects;
+ordinary copied-target Release regressions418/369 pass O1/O2 against the new
+registry. Dedicated durable publication/claim/finish and actual worker-delivery
+fixtures were pending at that snapshot. Root now independently passes worker450
+and notification-delivery241 at O1/O2 with fatal sanitizers, using actual worker
+source but mocked registry claim/finish and signal adapters. Independent source
+review accepts the frozen local contracts; dedicated actual durable-node/registry
+and composed producer-binding tests remain pending. All four isolated RV32 objects
+were freshly rebuilt against the final frozen registry header. No public caller
+or matched system image has been qualified. Actual durable leaf514 plus baseline418
+and composed binding379 now independently pass O1/O2 on snapshot1c9d6bfc; copied
+request-slot/poke assertions were corrected against the real allocator/readiness
+logic, with initial failure preserved. The new cancelled last-owner handoff leaf
+(E3-SM-CH) is isolated RV32 compiled; existing O2 regressions pass after its
+legacy rollback refactor. Root has now read the complete cancellation-handoff
+fixture and freshly verified actual-source baseline418 plus cancellation355
+under O1/O2 sanitizers on the new ordered-selector snapshot. This includes
+retired peer withdrawal, a non-wrapping cursor and a fresh-pass last-owner
+handoff. It is not an actual worker run. Protected armed RUN-worker bindings for cancelled
+withdrawal and atomic rollback now compile separately and latch positive progress
+without poking under the caller's semaphore gate; their dedicated composed
+fixture is pending. Cancelled queued peers must be drained before a last-owner
+handoff can succeed: retrying only the first eligible cancelled owner can prevent
+that withdrawal indefinitely. Private E3-SM-CF now supplies non-wrapping scalar
+address-cursor selection, root host/build verified (baseline172/selection46).
+No record pointer is retained by this selection contract across unlocks. A
+fair multi-scope consumer, protected entry snapshots, quiet blocked-claim
+release and race-safe retry wakes still need integration. Binding review
+accepts local gate/latch order but explicitly does not authenticate the
+caller-supplied worker against the current hart continuation.
+Private E3-SM-CS now supplies exact-claim, per-ordinal metadata snapshots
+without borrowing arena pointers across registry unlock. It is isolated RV32
+compiled and included only in the gated SMP kernel source list; root dedicated
+O1/O2 tests pass baseline418/snapshot254 and narrow leaf review accepts caller contracts. Protected
+fair claim/descriptor/quiet-release bindings now compile separately and root
+O1/O2 composed fixture379/213 passes: the claim
+strips all old borrowed index fields before registry unlock, Describe uses the
+canonical boot pool, and quiet release re-pokes only a RUN drain observed while
+claimed rather than an already-RUN0 blocked owner's persistent eligibility.
+The protected selector now excludes legacy SINGLE/LIST scopes and validates
+the selected operation/owner/generation/cancellation/closure/queue association
+before claim mutation. Independent review found and confirmed correction of
+both preceding omissions. Private E3-SM-CR adds an isolated-compiled bounded
+consumer and retry-interest leaf. Both are now gated SMP source-selected after
+independent actual retry-binding qualification. Retry-leaf O1/O2
+tests now pass69; the sticky external wake is modeled only. Protected retry
+Begin/End and ordinary Unpin, exact notification finish, operation finish and
+legacy wait finish resource-drop hooks are now source-integrated and isolated
+RV32 compiled. Interest and both wake transitions run under the registry gate;
+End never consumes the external latch and blocked work does not self-poke.
+Dedicated actual binding tests now independently pass baseline379/new371 at
+O1/O2 with real pins/registry/ledger/nodes and mocked gates/IRQs. Independent binding review
+accepts local same-gate Begin/Event/End and all four positive resource-drop
+hooks, but does not qualify caller-side outer-lock ordering or current-worker
+identity. The canonical ServiceLoop now supplies its current worker to one
+bounded operation cancellation pass between notification and retired cleanup;
+only progress repeats its drain. Blocked work alone retains interest without
+self-poking. Updated actual ServiceLoop fixture independently passes598 at
+O1/O2 with a mocked pass boundary; current consumer body regression791 passes
+separately. These fixtures do not compose both actual implementations.
+Actual consumer-body fixture now independently passes791 at O1/O2 with mocked
+bindings, not the real new retry producers or concurrent ServiceTask execution.
+Cleanup wake delivery does not itself take/drop an ordinary worker pin.
+New actual consumer/real pins-registry-ledger-nodes-retry composition independently
+passes baseline379/new214 at O1/O2, using the real Configure/Acquire wrappers.
+It covers RUN-held cancellation, queued withdrawal, non-mutating capacity
+refusal, actual pin-drop retry, later durable handoff and exact notification
+finish. This does not compose the full actual ServiceLoop and transport or
+qualify simultaneous Exec Tasks; IRQ/AMO/semaphore boundaries remain mocked.
+Concurrent tests remain open. Copying metadata alone is not runtime qualification.
+E3-SM-P now routes public single Obtain/Shared and Release only in the
+unfinished SMP variant. Uncontended/recursive acquisition stays gated without
+arena allocation; queued acquisition uses permanent operation nodes and exact
+generation completion, never stack nodes. Release uses durable notification
+ownership and post-unlock poke. These new callers compile in isolation; root
+and independent O1/O2 actual-body compositions pass379+466 with mocked gates,
+IRQ, signals, Wait and scheduling. Generic TS_REMOVED guards bypass the hooks;
+retirement during reserve/complete may currently fail fatally or enter Wait
+after retirement. Wait's rejected-arm boundary now probes registry-proven
+retired current RUN with MIE masked, after Task unlock, and uses the existing
+no-save self-removal transfer rather than fatal or normal return. Root actual
+Wait-body O1/O2 sanitizer455 and isolated RV32 compile pass; query/transfer and
+  scheduling are mocked in the fixture. Independent narrow review accepts the
+  failed-arm branch and repeats455 at O1/O2; this does not compose the full
+  retirement protocol. Public
+refusal paths now use the same current-retired boundary outside all gates,
+including incomplete completion before Wait; malformed negative completion
+stays fail-closed for live Tasks. Root unretired O1/O2 regressions pass379+474
+and isolated RV32 compilation passes; dedicated retirement injection/review
+has now passed author/root O1/O2 actual registry retirement379+143 for Acquire
+refusal and incomplete completion. The fixture mocks SetSignal, Wait and
+no-save transfer. The separate actual SetSignal failed-state handoff is now
+implemented after Task unlock while MIE remains masked. Root/author O1/O2
+actual-body sanitizer110 and isolated RV32 compile pass; retirement query and
+no-save transfer are mocked; independent narrow review accepts the failed-effect
+branch only, not successful-effect/unlock retirement or integrated transfer.
+Other refusal sites, generic guard/external-removal and
+bootstrap remain unresolved. Capacity
+refusal is fail-closed, not a qualified nonfatal waiting policy. Public LIST,
+Procure/Vacate, correctness readers and simultaneous lifecycle remain open;
+mixed legacy queues are unsupported. This candidate does not enable SMP.
+E3-RM external removal must replace the generic pre-debug/pre-free route with
+generation-bound multi-requester completion and cancellation ownership.
+The cleanup-ready predicate requires RUN0 and sole service pin, so keeping
+an ordinary target pin until ACK would deadlock the service claim. Completion
+storage cannot belong to a Task stack; requester retirement and target cleanup
+must discharge distinct references, with ACK after final target freeing and
+durable recipient ownership before notification. SMP.md records the integrated
+pin-floor/reclaim/retained-claim/reuse/topology constraints; implementation and
+public/worker binding remain open, not merely a missing signal call.
+Requester waiting ownership is planned as a task-independent ticket reference,
+not an ordinary Task pin. Its registry-owned handle must be cancelled under
+the registry gate before requester cleanup; only notification delivery reserves
+recipient lifetime ownership. Requester cancellation is now bound below;
+Public reservation remains unimplemented; the final-free ACK producer is now
+source-bound and locally verified below, not runtime-qualified.
+The portable fixed ticket bank and requester-wide cancellation now pass root
+O1/O2 sanitizer116 and isolated strict RV32 compilation; independent narrow
+review accepts their local contract. Permanent bootstrap storage passes
+author/root actual-source O1/O2 composition81982 (mostly byte-clear checks)
+and isolated RV32. SMP startup now prepares/attaches it before Exec vectors,
+with raw MIE masked and hart1 reset-held; only SMP mmake lists select it.
+Actual startup also passes strict isolated RV32 compilation in SMP and normal
+variants; nm shows removal references only in the SMP object. This is not a link
+or an executed bootstrap.
+Successful ordinary/service retirement cancels requester interest under the
+registry gate before cleanup wake/unlock. Dedicated binding tests/review are
+now passing author/root O1/O2 sanitizer151 plus baseline384; narrow production
+review accepts this local boundary with IRQ/locks/wakes mocked. Independent
+bootstrap/source-routing review also accepts one-shot publication and normal
+exclusion, not an executed startup. No public request reservation or final-free
+ACK was not implemented at that qualification point. The new actual cleanup
+Finish now fuses all target ACKs, generation-tagged durable SIGF_SINGLE recipient
+pins and target-record detach under one gate after final FreeEntry; isolated
+RV32 registry/pins compile passes. Root actual transaction726 plus baseline379
+and pins finish/notification binding87 plus baseline379 pass strict O1/O2
+ASan/UBSan. Independent review accepts corrected V2 local ordering/accounting;
+real IRQ/locks, actual signal delivery and concurrency remain unqualified.
+Root actual cleanup/registry/bank fusion195
+O1/O2 ASan/UBSan now passes; gates/claim/finish wrappers and allocator are mocks,
+but wrappers call actual registry transitions/fusion. Task/ETask are PROT_NONE
+after first FreeEntry/context cleanup; ACK remains false through all entries,
+and recipient ownership appears with ACK after final free. Normal cleanup171
+regressions pass. Full-bank plus recipient aggregate headroom
+preflight precedes mutation; no fallible helper occurs during commit. Legacy
+non-SMP registry80/pins82772 O1/O2 regressions pass. The old void Finish still
+fails closed on unavailable pin/count/serial headroom at that qualification
+point. Current selected cleanup instead uses the new postfree Try/Retry binding:
+a private service_postfree marker preserves each independent record after Task
+free, retries skip blocked records without rereading Task, and pin/count pressure
+retains interest under the registry gate. Ordinary resource drops and requester
+cancellation latch retry wakes. Generation exhaustion returns a distinct -2 and
+  still fails closed: pre-free public admission policy remains mandatory. Fresh
+isolated RV32 registry/pins/cleanup compile. Dedicated root O1/O2 sanitizer
+repeats now pass actual pins retry674+baseline379 and actual cleanup/registry
+composition597, with normal cleanup171 preserved. Cleanup pin wrappers remain
+shims; the separate pins fixture compiles actual wrappers. Real signals/Wait,
+IRQ/AMO concurrency and allocator/topology remain unqualified.
+An initial review finds the all-record retry scan can monopolize the IRQ-masked
+gate. Root now bounds it to eight attempts per invocation, with scalar
+address/blocked/restart state across slices and durable continuation wakes.
+Resource events for already-visited records and newly marked records below the
+cursor request a revisit after the slice chain; blocked-only passes become quiet.
+Single-fusion latency and high-priority service occupancy remain unqualified.
+Independent follow-up review accepts the current eight-attempt cursor/restart
+source ordering, not execution. The host fixtures verify bounded continuation,
+lower-address resource-event restart and blocked-record skipping; admission of
+a newly marked record below an already advanced cursor remains a test gap.
+Read-only generation audit supports reserving one globally issued token per
+service-retired target before freeing, then using identity-tagged snapshots for
+each recipient. Current source now does this in plain and ledger service
+retirement, checks serial capacity before ledger cancellation, retains the
+private token through cleanup and clears it on detach. Final ACK does not
+allocate after free; normal non-SMP behavior allocates no token. Fresh strict
+RV32 registry/pins/cleanup/publish compile and root O1/O2 regression tests pass;
+Independent implementation review accepts local reservation/lifecycle ordering,
+not execution. Updated transaction713+baseline379 and actual pins binding88+
+baseline379 pass root O1/O2 sanitizers with the pre-free policy. Dedicated
+generation324+baseline379 now passes root O1/O2 sanitizers, covering plain and
+ledger exhaustion before retirement, token preservation through cleanup and
+shared/older recipient generations. Late tickets are leaf-level gate composition,
+not public admission. Legacy
+detached service claim clears the token and must not be used by final-free ACK
+removal. Public admission and finite-capacity policy are still open. The frozen
+public binding-site audit identifies interception before generic RemTask logging
+and Forbid: bank preflight, last-fallible retirement/cancellation, then infallible
+ticket publication under one registry gate. Release the ordinary target pin and
+all locks before a normal-Task handle-based Wait; a wake bit is not completion.
+Final author generation source is independently repeated at O2 (324+379).
+The private admit_removal transaction is implemented and isolated RV32 compile
+verified: it preflights bank/ledger/registry/output domains, retires as the last
+fallible step, cancels the target's requester interests and publishes the ticket
+infallibly under one gate. It admits retained raw-identity joins without Task
+reads. Pins and scheduler bindings now compile in isolated RV32: queue admission
+occurs under Ready/Wait/Running locks, then detaches and publishes TS_REMOVED
+infallibly. The pins wrapper only latches work; callers must defer owner/cleanup
+pokes until outer locks are released. New admission/queue tests and review are
+pending. Scalar-handle Poll/Drop bindings now compile in isolated RV32: pending
+and exact ACK are separate from a retired requester, which must take no-save
+transfer. Drop reclaims only ACKed requester interest and wakes resource retry
+after gate release. Re-query current hart after each Wait/migration. These new
+functions are not yet directly tested or publicly called; Wait/capacity remain.
+Root independently repeats actual-source admission at O1/O2:706 focused checks
+plus379 inherited. Independent leaf and pins/queue source reviews find no local
+defect under the documented mapped-storage/output/lock/owner contracts, but no
+public caller exists. Queue fixture author passes647+284 with admission mocked;
+root O1/O2 independently repeat647+284 and an intentional failed assertion exits
+134 before success output. This checks the real queue body, list validator and
+RUN-owner lookup, not its mocked ticket admission. Direct pins tests continue.
+The private Exec_P4AwaitRemoval helper is now isolated RV32 and actual-body
+host verified (root O1/O2 223), not runtime verified or publicly bound. It accepts only a copied exact
+handle after target pin/outer-lock release, clears SIGF_SINGLE before probing,
+waits only on pending completion and re-queries current hart after each Wait.
+Retired requester outcomes from Poll or Drop transfer without returning. No
+target, bank-slot, registry-record or per-hart pointer crosses Wait. Admission
+capacity and public RemTask routing remain separate open requirements.
+Root O1/O2 independently repeats actual pins admission/Poll/Drop254+379 on
+the newer capacity candidate and actual admission706+379. New admission
+preflights duplicate pending/ACKed requester interests and selects inactive or
+canceled requester_ref0 slots; only after last-fallible retirement does it
+publish a fresh generation. Target registry service ownership remains separate;
+existing standalone cancellation semantics are unchanged. Production boot
+capacity now defaults to and statically must cover the20k registry limit
+(560000B RV32 slots). The count bound requires exclusively fused producers and
+requester retirement canceling interests. Root O1/O2 direct capacity tests now
+pass361+379 checks, including a full20k structurally valid orphan pool (19999
+slots seeded, not independent Task workloads), stale-handle refusal, preserved
+target registry ownership and unchanged snapshots at exhausted generation or
+malformed association. Host boot default-capacity reservation passes1600062
+checks, not a real memory-fit or full-runtime gate. The public candidate uses
+terminal pre-free fail-closed serial exhaustion, not a liveness guarantee.
+The SMP-only public external RemTask candidate now intercepts the generic body
+before debug/Forbid/target fields. It joins existing retained service by raw
+identity or pins/locks a live target and commits ticketed queue retirement;
+if a peer retires while pin/lock admission races, it retries the raw join.
+Only after Task unlock and ordinary pin release does it poke the copied RUN
+owner/cleanup and call exact-ticket Await. Refusal transfers a retired requester
+without saving, otherwise fails closed before any target free; it never reports
+finite-generation failure as a successful void removal. Source selection stays
+behind the refused SMP runtime gate. Root O1/O2 actual adapter-body tests pass363
+checks with primitive mocks and post-Unpin PROT_NONE poisoning, not real Wait,
+cleanup, registry or generic RemTask execution. Source audit confirms a
+callback-visible TS_ADDED target: prelaunch-hook removal needs a constructor
+cancellation handoff, not simply accepting an unqueued state. Its creator pin
+must be released before cleanup can finish, and canceled storage must never be
+Ready-published or read by the constructor afterward. Other valid states and
+construction/topology callers remain unqualified.
+The cancellation result must also reach NewCreateTaskA: its current NULL-return
+failure branch calls FreeEntry(ml), so returning NULL after service-owned Task
+cleanup would double-free that allocation. Creator ownership must be tracked
+explicitly (parent identity is not sufficient), including a creator retired
+before it can release the construction pin. No new restriction on prelaunch
+hooks or silent asynchronous-removal contract is accepted as the final fix.
+TaskResource now has a raw-identity detach helper used by its actual RemTask
+interposer. Prelaunch publication, both removal-list scans, lock-holder
+publication/removal and cleanup's empty check use one topology gate; detached
+entries are freed after unlock. LockTaskList allocation failure balances its
+semaphore; UnLockTaskList removes the exact marker before releasing ownership.
+NextTaskEntry now observes iterator/node metadata under that same gate, and
+does not dereference a null handle before checking it. Six changed modules
+compile RV32 in normal and SMP modes; focused topology host tests subsequently
+pass as recorded below (not a Task lifetime guarantee).
+All seven SMP TaskResource gate sites now bracket the spinlock with
+Disable/Enable: the P4 public spinlock alone does not prevent local task
+preemption. Fresh r3 normal/SMP objects compile; the earlier unmasked r2
+objects are historical only. IRQ-nesting host checks and independent review
+now pass (root1158 SMP/693 normal checks each at O1/O2); independent source
+review accepts local gate ordering only. Task lifetime, orphan iterator owners
+and startup publication remain unresolved.
+Hook-node representation/allocation/linkage and all five startup hook-list
+initializers are now repaired. Semaphore and fallible base setup precede base
+exposure, and exit conditionally unpublishes the base. Fresh normal/SMP builds
+pass for all 17 modules, but only 11 pass Werror: six unchanged modules retain
+explicit legacy warnings in separately named objects. Independent actual-hook
+regression and root O1/O2 repeats pass normal84/SMP114, with17 source-order
+assertions; warning flags explicitly suppress the existing hook type narrowing,
+and startup is not executed. Entry leases, hook disposal and startup synchronization
+are not established by these structural fixes.
+This is not full lifecycle protection: GetTaskEntry/NextTaskEntry
+still return unpinned pointers, startup enumeration precedes complete topology
+publication, and orphan-construction recovery is not wired to this cleanup path.
+The selected P4 SMP resource no longer installs Exec interposers: core
+TaskLaunch invokes its private observer before the user's hook and Ready;
+core removal admission remains in the existing direct path. This removes the
+SetFunction-before-saved-vector assignment race found by independent review.
+The retained RUN-drained service owner invokes a private
+resident resource callback to detach metadata and clear/free reserved storage
+before context/ETask/MemList reclamation. Callback initialization precedes
+release-base publication; service and core TaskLaunch acquire-load the base.
+Selected base publication now uses a bounded bootstrap transaction. Empty entries
+are allocated outside Disable; the guarded, interrupt-masked commit recounts and
+assembles RUN/SPIN/READY/WAIT lists without allocation or user hooks, then
+release-publishes the base. Four attempts bound inventory growth. Its guard
+requires finalized primary runtime, prepared/unbound secondary runtime, actual
+hart1 reset asserted/clock off/boot address zero, CPUCount1 and no published base.
+Review exposes a constructor paused after reading a NULL observer but before
+Ready: it is not in any of the four queues. The revised guard validates the
+lifetime registry under its actual gate and refuses ordinary pins and
+construction/channel scopes. NewAddTask owns an ordinary pin through observer
+lookup, Ready and the final log. Retired/claimed records also refuse; no Task
+identity is dereferenced by the final guard.
+Thus a captured-NULL constructor cannot silently cross the guarded commit.
+This is a safety precondition, not a liveness solution: a transient constructor
+still causes permanent INITLIB failure in this coldstart pass. The independent
+constructor audit also requires TS_ADDED cancellation and Ready arbitration
+as one terminal-state protocol: synchronous prelaunch removal cannot wait for
+cleanup while its own constructor pin is held. Channel macros alone remain
+uninstalled until SERVICE ownership and retired-creator/no-save recovery are
+implemented. A proposed replacement for ordinary-pin quiescence records each
+prelaunch NULL-binding observation under the same lifetime gate, inventories
+those already-observed live TS_ADDED tasks alongside the four queues, and
+serializes binding publication/debt clearing with observer acquisition. This
+would avoid rejecting unrelated pins and preserve one observer registration;
+its independent design review conditionally accepts that ordering, not an
+implementation. Selected failure
+now also removes/frees its initial storage-slot node, and malformed list-head/
+tail checks refuse before traversal. This is build verified only, with
+independent source review accepting only conditional missed-task closure.
+The focused actual-body host fixture now passes root352 checks at O1/O2 with
+ASan/UBSan, including a negative control that fails the captured-NULL/Ready
+assertion when quiescence is removed. Registry validation and platform
+primitives are mocked; this is not actual-hart concurrency or boot acceptance.
+Bootstrap availability and raw iterator/ETask
+and initializer-caller lifetime remain unresolved. Normal/other-platform
+interposition and enumeration are retained.
+Private marker/admission and acquire-load binding have focused host and isolated
+RV32 build evidence, plus independent bounded source review; the
+existing quiescence bootstrap and raw NULL-base lookup remain selected until
+the complete same-gate inventory/publication packet is integrated. The private
+registration callback now returns an explicit Boolean outcome with matched
+contract 0x50345233; legacy Hook behavior is preserved. Root tests verify that
+allocation refusal stops before user Hook/Ready. Terminal fatal is temporary
+fail-closed policy, not completed constructor cancellation or rollback.
+The final conservative cutover now uses a common-gate transaction candidate;
+count validation, four-list assembly and release-publication share the gate.
+Six fresh isolated SMP objects and an excluded normal body compile strictly;
+actual binding tests pass82,941 each O1/O2. Root extracted full-cutover fixture
+passes461 each, service regression293+18, and independent source review accepts
+only the conservative transaction. Observation stays unselected and full
+availability remains open.
+Fabian requested a Claude Code handoff and stopped Codex on 2026-10-02.
+See HANDOFF-CLAUDE.md for exact checkout/build/evidence paths, frozen source
+identities, verified scope and the unimplemented debt-handoff direction. This
+pause does not close E3 or authorize runtime activation.
+Published resource expunge is refused only in this selected P4 contract;
+failed initialization and normal/other-platform behavior remain unchanged.
+The generated resource loader ignores that refusal on init failure and frees
+the base; successful initialization has no generated runtime ExpungeLib entry.
+Current task sources have only taskres_Init in INITLIB and no FALSE return
+after publication, but the final linked init set remains unverified. A later
+fallible initializer would invalidate the residency assumption.
+Four directly changed SMP and three normal RV32 strict objects compile, with
+all three normal object hashes identical to the preceding build. Matched
+private-layout full core integration remains pending. An isolated 19-object
+relocatable link now passes with one INITLIB/EXPUNGELIB registration each;
+the initial generated task_start warning is now repaired in genmodule source,
+with strict fresh normal/SMP default/plain starts and byte-identical SMP link.
+Private core symbols remain unresolved until the full static core
+link; this resource is not a separately loadable package member.
+Updated composed actual
+service body tests select both SMP macros: root O1/O2 repeats293 runtime plus14
+source checks pass. Actual TaskLaunch extraction passes root29 checks at O1/O2,
+with a missing-observer negative control failing as expected. These fixtures
+mock registry/Ready/allocator/IRQ boundaries and do not prove concurrency or
+leases. Independent source review confirms direct ordering and identifies
+missed-creation and removed-during-scan cutover failures, storage-reader and
+returned-Task iterator lifetime gaps. This is not complete ETask/parent/Hook
+lifetime safety.
+The SMP-only private creation output constants distinguish CALLER_OWNED,
+REGISTERED and SERVICE_OWNED. The conditional scoped NewCreateTaskA transport
+prepends output, independent generation and TAG_MORE original tags while still
+calling NewAddTask's public vector, preserving task.resource interposition.
+Without the complete scope binding, original tags pass unchanged; no private
+stack output is exposed. Normal/SMP/forced-scope RV32 objects compile, and an
+incomplete binding without a resolver is rejected at compile time. Actual
+  platform selection remains absent. Independent transport source review accepts
+  only local ordering. Root repeated updated transport O1/O2 default-deny
+  191+120, resolver-only200+120 and mock-scope516+126 checks each; actual
+  registry/CPU runtime hooks remain modeled in that extracted-body suite.
+Earlier, now superseded transport fixtures established default-deny bodies:
+O1/O2 no-resolver269 plus120 inherited checks; test-only resolver275 plus120.
+The base fixture separately passes117. Service/invalid outcomes are mocked
+vector returns, not an actual cleanup-transfer producer. Independent review rejected treating the numeric
+TAG_USER value as permission to write a caller-supplied pointer. NewAddTask now
+defaults to no output writes: an authorized resolver is required and none is
+currently selected by the platform. A private current-Task/hart/stack-bound
+channel candidate now compiles for RV32, but is not installed in either
+constructor. Exact target and nonwrapping generation plus one-use resolution
+replace the rejected pointer-only draft. Nested frames restore prior authority;
+retired owners refuse before frame reads. Root O1/O2 focused leaf tests165 each
+pass; independent local reviews accept gated contracts. Root now repeats
+actual extracted channel wrappers with production registry/lifetime leaves:
+94 checks each at O1/O2 with ASan/UBSan. IRQ/gate/runtime and migration are
+modeled, not concurrent execution or constructor/runtime integration;
+constructor retirement/no-save and orphan recovery remain prerequisites to
+selection. Thus CALLER/REGISTERED writes are not current production
+behavior; no current path writes SERVICE either. NULL CALLER frees the
+caller MemList, NULL SERVICE would skip it, NULL REGISTERED/unknown is fatal.
+This prepares a future explicit cleanup transfer; it does not implement
+constructor cancellation or orphan recovery. New unbound registry APIs reserve
+separate pins for the constructing target and its explicit creator, with an
+exact generation for release. A retired creator cannot release them through
+this API; recovery remains required. Ordinary Unpin must not consume these
+designated references. The registry compiles RV32; the existing capacity
+regression passes but does not exercise active construction. New API tests and
+independent review remain pending. These metadata changes require rebuilding
+all consumers before any matched deployment. Independent leaf review accepts
+local commit ordering and reserved-pin floors, not orphan recovery or complete
+graph validation. New unbound actual-gate Publish/Finish wrappers compile RV32;
+Finish reserves both identities' resource wakes and pokes only after unlock.
+No constructor/Ready routing or cancellation is installed by these wrappers.
+Root repeats the focused active-construction leaf fixture O1/O2:284 checks
+each, including nested children, exact release, pin floors, target cleanup
+readiness and unchanged retired-creator refusal. Its test-owned mutex models
+serialization; the new production gate wrappers are not invoked by that suite.
+An unbound orphan final-release leaf now permits exact construction-reference
+release only when BOTH target and creator are service-retired and RUN-drained.
+It requires prior queue/Ready/TaskRes/topology cancellation and last access as
+caller preconditions; it does not perform them. Root O1/O2 leaf tests44 each
+pass. Orphan scanning, exclusive worker ownership, cancellation and wake binding
+remain open, so creator-death recovery is not yet implemented end to end.
+The unbound orphan final-release gate wrapper now validates the declared
+protected armed RUN worker, releases the exact references and reserves both
+resource wakes atomically under the lifetime gate, then pokes after unlock.
+The caller must supply its actual current worker identity; this helper does
+not inspect current hart/Task context independently. RV32 compile passes;
+source review and actual-wrapper tests remain pending. No orphan producer or
+worker scan is installed. Registry sources stay frozen for boundary tests
+before adding the planned current-Task output-channel metadata. That boundary
+freeze is now released. Root repeats actual normal gate-wrapper80 and orphan
+boundary148 checks at O1/O2, including expected malformed-publication fatal
+under the modeled gate. Orphan wrapper source review accepts local ordering
+under its prerequisites; separate invocation tests remain pending.
+Those invocation tests now pass101 checks at O1/O2, including root repeats
+on the enlarged channel-metadata registry. They still do not qualify the new
+actual current-Task channel wrappers (excluded from that host pin shim).
+Independent preceding consumer review finds no local ordering/accounting defect
+under its contracts and identified the then-missing producers. Consumer source
+selection was held until the new bindings passed independent actual-source tests;
+it is now installed only in the unfinished SMP variant, not the normal image.
+Before changing those bindings, root repeats the non-SMP Task-pin fixture:
+O1/O2 each82772 pass on the frozen registry/pins sources. This checks existing
+gate/lifetime behavior, not new SMP retry hooks or actual concurrent harts.
+Class alternation is not a CPU occupancy bound:
+ServiceTask priority127 needs sustained-workload latency/fairness qualification.
+Independent worker review accepts local cleanup lost-wake/lock order but finds
+generic public Signal still outside the canonical Task lock. Root now selects
+P4 Signal with explicit pin-binding compile gate; actual body67 sanitizer checks
+and isolated RV32 compile pass. Independent selection/order review accepts local
+scope; this does not close
+external removal, secondary startup or configured concurrency.
+The selected
+creation helper sends its copied wake before Enable;332 actual-source sanitizer
+checks and RV32 compilation pass. These do not
+close lifecycle, other Task writers, wake/IPI, full link or concurrent Exec gates.
+Full aggregate packaging and prior sustained stability remain open.
+Read-only device probes
+also reset the board; exact baseline restoration is required below. Earlier C1P
+delayed slowdown and the +525 B5 workaround remain separate open obligations.
+
+## Track D: ESP32-P4 board portability
+
+The `esp32p4-riscv` target denotes the SoC, not the D1001. `P4_BOARD` selects
+one board profile at build time; D1001 remains the sole supported profile and
+the default for historical build compatibility. This track is independent of
+the graphical-boot acceptance already measured on the old D1001 image. No
+prior hardware result qualifies a newly built image by inheritance.
+
+### D0 - one selected and internally consistent D1001 profile
+
+The board profile owns GPIO wiring, port-expander bits, flash size, partition
+table input, package/flashdisk split and external touch-firmware filename.
+SoC register offsets and the ESP32-P4 target stay outside it. The old D1001
+binary behaviour is the compatibility requirement. Unknown board names must
+fail at make/preprocessor time, and the profile checker must both accept the
+D1001 values and reject a deliberately corrupted flashdisk location.
+
+Acceptance still needed: a fresh, complete core/Exec/SD/BSP build in an
+isolated configured tree, with a new core hash and board identity in its UART
+report; exact-range flash and headless UART tests may proceed without fresh
+consent, while any visual D1001 observation requires Fabian's explicit
+readiness. The moved cross-compiler still embeds its former absolute
+prefix, bridged locally by two symlinks; this is not a portable build fix.
+A separate configured build tree per board is mandatory
+until the output paths or a build-configuration stamp enforce it mechanically.
+
+The Vellum preflash used to recover PSRAM is a workaround, not a board power
+contract. Read-only JTAG inspection on the failing D1001 found PMU LDO2 XPD
+clear (`0x501151d0 = 0x40200000`). ESP-IDF v6.0.1 enables channel 2 at
+1,800 mV before the PSRAM controller; the former AROS path adjusted only HP
+CPU bias. The D1001 profile now specifies that LDO voltage, and SRAM-resident
+bring-up programs the VO2 eFuse-calibrated pair where available, then enables
+and reads back the rail registers. The 2026-09-30 headless test passed the
+no-Vellum recovery portion: XPD was off at entry and on after configuration,
+the chip identified on the first attempt, and all 32 MB verified. A second
+USB-reset boot passed too. At 20 MHz PSRAM and inherited 90 MHz CPU, the
+subsequent visual observation failed: a solid light-blue field with a
+flickering 10--15-pixel strip at the edge, despite a 90-second UART run
+reaching Wanderer. An isolated 200-MHz-PSRAM rebuild with CPU still at 90 MHz
+then calibrated and booted Wanderer headlessly; Fabian spontaneously reported
+seeing the desktop. That is useful A/B evidence for this artifact, but the
+run had not been synchronized as an interactive gate. The firmware-free
+development volume explained the missing touch; restoring its exact previous
+firmware-bearing image produced a clean headless GSL3670 load and polling
+run, with visible touch still untested. After the battery was reported empty,
+Fabian initially saw no desktop; UART opening coincided with a USB reset,
+followed by a deliberate USB-reset capture that reached Wanderer and another
+spontaneously reported desktop. This does not establish whether the original
+power-on boot was merely slow or stuck. Neither UART nor an unsynchronized
+desktop report is a controlled visual/touch acceptance or a measured voltage.
+Keep the separate PSRAM global-reset experiment visible in the result: it was
+already in the failing prior core, but this combined image does not prove
+that it is unnecessary. A CPU reset on this battery-backed board does not
+establish physical rail-off, so that separate gate stays open.
+
+### D1 - independently replaceable board drivers
+
+The existing panel-power, JD9365, GSL3670, SD-socket-power and AP Memory
+PSRAM paths remain D1001-specific implementations. A second profile must
+select appropriate drivers and package members, provide a matching IDF
+configuration and partition contract, and prove its own cold/warm boot,
+read-only storage and display gates. Those paths must not be treated as
+generic merely because their pin numbers moved to `board/d1001.h`.
 
 ## Track A: storage and normal boot
 
@@ -627,19 +1629,56 @@ native hardware contract and blocks a production release.
 
 ### C1 - ESP32-P4 framebuffer graphics HIDD
 
+#### C1P - performance follow-up (2026-09-30)
+
+The original C1 acceptance remains historical evidence for the synchronous v1
+contract, not acceptance of this performance candidate. Graphical builds now
+request CPU 360 MHz by default; `P4_CPU_MHZ=90` remains an explicit comparison
+override. `P4_C1_FULL_DIAGNOSTICS=1` restores the expensive two-frame pixel
+census and forces synchronous mirroring; normal builds omit it.
+
+Version 2 adds `flush()` and defines UpdateRect success as copied/queued, not
+already displayed. No logical pointer is retained. The coalescing producer
+holds `scanout_copy_busy` across stale-mirror synchronization, rotation and
+cache publication. DMA completion continues scanning/rearming the active
+surface while this guard is set. A pending inactive surface accumulates dirty
+updates; after a swap its dirty bounding box describes the stale old front.
+That box is synchronized once before the next submission, or skipped when
+the new update overwrites all of it. Clear remains synchronous. Acceptance
+tests explicitly flush before testing `pending == 0`.
+
+`P4_C1_COALESCE=0` retains the synchronous fallback. Coalescing is the C3
+default and currently assumes one hart and the fbgfx producer lock. Starting
+a second producer/hart requires a new concurrency audit. Keep the +525
+physical-row mapping named as a workaround: these changes do not fix B5R.
+Paired core/HIDD headless boot and clean sampled DMA counters pass. Remaining
+The console-only follow-up switches debug output to a single status poll per
+byte before Exec starts and drops saturated output; early boot retains its
+bounded waits. USB and UART actual-source sanitizer tests pass. The core is
+flashed and independently verified, but the reported hang is not yet causally
+explained or interactively cleared. Runtime logs are intentionally lossy.
+On 2026-10-01 Fabian reports screen drawing is fine so far after requester-free
+RAM Disk opening on the corrected PNG image, with the reader already closed.
+No measured observation duration or sustained stress gate is implied.
+Remaining gates: diagnose the reported sudden runtime slowdown, then fresh user-consented
+visual/no-tearing and pointer/menu tests,
+then a sustained update/SD/touch stress run. Performance timings exclude
+printing their own report but include preemption and cache synchronization.
+
 Use the Raspberry Pi/EFI `fbgfx` family as the structural model, not a private
 graphics API.  Hardware power, DSI, DMA and scanout stay below the HIDD.  The
 module subclasses the generic graphics/bitmap/display classes, publishes one
 logical `1280 x 800` RGB565 mode over the B6 transform and registers it through
 `AddDisplayDriver(..., DDRV_BootMode, TRUE, ...)`.
 
-The current implementation publishes a versioned `KrnFrameBufferOps` table
+The original C1 implementation published a versioned `KrnFrameBufferOps` table
 through `KrnGetSystemAttr()`.  Logical RGB565 bitmap storage remains owned by
 the HIDD; the kernel alone rotates bounded dirty rectangles into the inactive
 physical B6 surface, writes back the exact affected physical row runs, submits
 the frame-boundary handoff and mirrors the same rectangle only after the swap.
 Both physical surfaces therefore stay coherent without a CPU write to the
-active one.  `P4_C1_FRAMEBUFFER_HIDD=1` retains scanout through Exec startup
+active one. C1P above replaces per-operation mirroring with guarded coalescing
+and stale-region synchronization. `P4_C1_FRAMEBUFFER_HIDD=1` retains scanout through Exec startup
 and keeps the explicitly named +525 compatibility mapping below this public
 logical contract.  B5R still owns its diagnosis and removal.
 
@@ -797,6 +1836,67 @@ baseline and unchanged post-run readback are hardware verified.
 
 ### C4 - touch and M7 completion
 
+Latest policy candidate (2026-09-30): tap-to-click is now the default;
+one-finger movement is button-free, stationary hold for 400 ms starts a left
+drag, and two fingers retain the right-button latch through sequential lift.
+An 8-pixel movement slop cancels tap/hold recognition, while two empty reports
+debounce release. Errors and shutdown cancel without an accidental click.
+The legacy direct policy remains selectable by a startup-only `p4touch.mode`
+file beside the loaded firmware. All 251 pure-policy host checks pass with
+ASan/UBSan; build and package audit pass. C4 stays `hardware partial`:
+Fabian now confirms movement, tap and hold-drag after explicit readiness.
+The menu bar appears but no dropdown opens, so menu selection remains an open
+sub-gate, separately from intermittent startup investigation and the full soak.
+Fabian confirms that the pointer remains below the strip. A consented raw
+perimeter measurement is being prepared with `P4_TOUCH_EDGE_TRACE=1`; the
+existing transform remains unchanged until that evidence is available.
+That trace now measures X=16..1638, Y=15..874 in 263 single-contact frames,
+without I2C errors. A new board-profile calibration candidate maps these
+inclusive bounds to the complete logical surface, with mirrored Y and
+saturation. All 3,863 host checks pass. After fresh readiness, Fabian confirms
+four-edge reachability and dropdown opening; the trace records Button2 release
+at Y=5 with zero I2C errors. Menu-item execution, full soak and intermittent
+startup reliability remain open. Diagnostics are disabled in the normal build.
+
+Theme follow-up (2026-09-30): the C3 image stages the configured Ice theme,
+assigns THEMES/THEME before Wanderer and registers the PNG descriptor using
+AddDataTypes. picture/png datatype classes are included. A 64-MiB, 167-entry
+image passes host filesystem/manifest verification. It is now deployed to the
+identified 127,865,454,592-byte removable SD, with full 64-MiB byte comparison
+before exclusive eject. The first visible gate fails: Fabian reports missing
+png.library>=52 before the drawer opens. The datatype's dynamic runtime libraries
+were not staged. A 171-entry correction now adds png.library53.4, z1.library,
+posixc.library and stdcio.library, with stdc already present. Host filesystem and
+exact manifest verification pass. On 2026-10-01 the correction is SD written,
+fully readback-verified and exclusively ejected after a fresh write-range backup.
+The synchronized 55-second boot reaches Wanderer and attempts PNG runtime
+libraries. Fabian confirms no error requester and one visible RAM Disk toolbar
+symbol. This passes the reported missing-library/requester regression, not a
+complete toolbar-functionality or sustained-performance gate.
+
+Double-tap follow-up (2026-09-30): short unpressed tap gestures now end on the
+first valid empty report, allowing a subsequent contact to start a separate tap.
+Held left/right buttons retain two-report release debounce; slop/hold and I2C
+error cancellation remain unchanged. The post-I2C delay is 10 ms rather than
+50 ms (not a claim of 100-Hz transport). All 3,892 sanitizer checks pass,
+including the formerly merged two-tap sequence with only one empty report.
+Fabian reports easier double-taps, but renewed slow graphics with a responsive
+pointer. The final candidate restores the 50-ms post-read idle gap while keeping
+first-empty tap completion. The high-priority worker CPU-polls a full report on
+the 10-kHz bus; increasing its duty cycle may penalize lower-priority drawing.
+This is a source-backed load hypothesis, not measured causality of all slowdown.
+A transient empty report can now split an unpressed gesture; this tradeoff
+requires a fresh visual double-tap/hold/right-latch regression test. No measured
+tap-rate or whole-system stability pass yet.
+
+New interactive report (2026-09-30): double-tapping drive icons is difficult.
+At 20-Hz polling, two empty reports are required between gestures; shorter gaps
+can merge taps. The 8-pixel slop may also reject finger jitter. These are source
+constraints, not measured attribution of the user's attempts. A requester for
+reported volume `TENEME` precedes successful RAM Disk opening. Wanderer toolbar
+images reference `THEME:`; exact requester text and deployed theme assignment
+remain unverified. No new hardware test or implementation change for this report.
+
 Current implementation state (2026-08-29): the passive D1001 probe identifies
 the controller at I2C0 address `0x40` and reads Silead-family chip ID
 `0x50910000` from register `0xfc`.  Register `0xb0` reads `0x00000000` after
@@ -908,6 +2008,18 @@ context.  Apply the same orientation transform as B6 and make calibration
 explicit.  Bound and parse the raw count before it becomes contact-frame state;
 gesture recognition belongs above that frame contract and must not infer a
 second finger from the count byte alone.
+
+Current D1001 state (2026-09-30): the previously used 4-MiB external-firmware
+development volume has been reproduced byte-for-byte and restored at
+`0xc00000`. With the 200-MHz-PSRAM D0 core, UART proves the 4,356-record load,
+ready status and error-free idle polling while Wanderer boots. An earlier
+dead-touch report applied to the deliberately firmware-free A/B volume. A
+later stationary-pointer report on the restored combination was followed by
+a synchronized USB-reset repeat: Fabian confirmed visible tracking and UART
+recorded 107 contact frames, 81 events, matching framebuffer updates and clean
+release with zero I2C errors. This verifies single-finger tracking for that
+start; the unrecorded pre-reset failure remains unresolved. The new combination
+still needs the two-contact gesture, recovery and full soak gates.
 
 Acceptance gate:
 
@@ -11201,7 +12313,11536 @@ this file before the master table.
   edge appears and preserve the first two `[c1diag] full` and `[c1diag]
   samples` records for the source/front/back decision.
 
+### 2026-09-29 - C1 visual attempt stopped before framebuffer diagnostics
+
+- State change: C1 remains blocked; no conclusion about its source, front or
+  back framebuffer is possible from this attempt.  The user was at the
+  display and explicitly ready, but reported no visible image during the
+  90-second observation.
+- The repository had moved to `/Volumes/Dev/Source/Amiga/AROS` without a
+  source change; HEAD remained `ad62d8257e`.  The first `esptool run` with
+  `--before no-reset --after no-reset` could not connect.  A default-reset
+  retry connected but ended `Staying in bootloader`; a subsequent no-reset
+  `run` reported `Hard resetting via RTS pin`.  The 90-second USB read started
+  only afterward and captured zero bytes.  That zero-byte file is
+  `/tmp/aros-c1-content-diag-01.log`, SHA-256
+  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+  The three run-command logs have respective SHA-256 digests
+  `d5ae4e0dd75b047e73faa1d6588488646c1e7fd0ebb297ab5fd671be73b14848`,
+  `dfd62fa20df5e647119f5d9e0105b4bdc16a468b4acf59ecc1b35805a46283a0`
+  and `b75050b93d9c1503dbdd470fc123682be5c313e02bf5806b8347a30f3ec17991`.
+- Measurement correction: the read-only USB capture above violated this
+  port's first-byte rule.  A subsequent noninteractive 35-second run with
+  `tools/reset-and-log.py` opened the serial port before pulsing EN.  Its
+  9,672-byte log `/tmp/aros-c1-content-diag-firstbyte-02.log`, SHA-256
+  `c7d4c59d0bc79410189960df41c6e3936ef2849ec211d475d41a14fae369b3ac`,
+  shows normal `SPI_FAST_FLASH_BOOT`, the app loaded from `0x20000`, and the
+  expected AROS core entered.  PSRAM identification then reports `no answer`,
+  30 command timeouts and 30 FSM recoveries.  The B5 path reports `no PSRAM,
+  so no frame to scan out`; the package loader reports `PSRAM unavailable;
+  cannot load`.  The panel is returned to safe with its backlight dark.
+  There are no `[c1diag]` records because execution never reaches C1.
+- Conclusion: the black image is fully explained by the previously documented
+  retained PSRAM state after reset during scanout.  This attempt neither
+  confirms nor refutes the earlier narrow-edge C1 content failure.  The
+  accepted 199,344-byte diagnostic core and 3,309,516-byte BSP remain
+  unchanged in flash; SD, the development volume, partition table and
+  `storage` were not written.
+- Next safe step: recover PSRAM with the documented one-boot Vellum app at
+  `0x20000`, then reflash and independently verify the same diagnostic AROS
+  core.  Use `reset-and-log.py` from the first byte for the next UART run and
+  obtain a fresh explicit `bereit` before asking for another live display
+  observation.
+
+### 2026-09-29 - D0 board-profile foundation builds in the kernel layer
+
+- State change: D0 started and is `build partial`, not `hardware verified`.
+  D1001 is now an explicitly selected compile-time profile rather than an
+  implicit synonym for the ESP32-P4 target. The older C3 hardware evidence
+  applies only to its exact old artifacts, not to this dirty worktree.
+- Source identity: HEAD `ad62d8257e` plus uncommitted board-profile changes;
+  `board/board.mk` SHA-256
+  `6e8b3c6bd4bf4b94d6fb0f0fa31f910e6087fb0f2e06bd8eab81e2629af9904e`,
+  `board/d1001.h` SHA-256
+  `c0f53f6074d5c788c1163cbd57b89d8460bee7d942964c2a22033f2b589b0939`.
+  The changed core and a matching BSP package were built and hashed, but
+  nothing was flashed.
+- Configuration and procedure: `P4_BOARD=d1001`; the selector is included by
+  kernel, Exec, SD, flashdisk, touch, image, package and bootloader mmake
+  inputs. `gmake kernel-kernel-esp32p4-riscv P4_BOARD=d1001
+  P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_HIDD=1 FAT_DEBUG=1 DOS_DEBUG=1
+  DOSBOOT_DEBUG=1` exited zero and recompiled the affected architecture
+  objects. Direct preprocessor and Make probes accept D1001 and reject an
+  absent or unsupported profile. `board/check-profile.py` passes all ten
+  cross-layer flash/partition/firmware checks; `--counter-probe` deliberately
+  changes the in-memory flashdisk offset and exits 1 on that exact check.
+- Build relocation correction: the first top-level Exec and SD architecture
+  attempts failed because the cross-compiler's embedded sysroot still named
+  `/Volumes/Dev/Source/AROS-ESP32-build`. The empty old build tree now has
+  explicit symlinks for its target sysroot and host crosstools to the moved
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build` tree. The repeated
+  `gmake kernel-exec-esp32p4-riscv P4_BOARD=d1001` and
+  `gmake kernel-sdcard-esp32p4-riscv P4_BOARD=d1001` both exit zero and
+  compile their changed architecture objects. `kernel-flashdisk-quick`
+  compiles its object but cannot link it as a standalone module because its
+  two kernel-only references, `__esp32p4_flashdisk_base` and
+  `krnP4FlashMap`, are unresolved. The full target initially stopped at a
+  proof-command link failure and, after the old crosstool-prefix link was
+  bridged, reached the same standalone flashdisk link failure. That full
+  target did generate a host-only
+  4,194,304-byte `aros-flashdisk.img`, SHA-256
+  `31f277622a1585f75620fc4a9b406239f185f88b74b5d7abb9ec520d7d209238`;
+  it was not written to the board. A direct generated-mmake invocation then
+  linked `gen/rom/boot/core.elf` and created the 199,552-byte
+  `gen/rom/boot/aros-esp32p4.bin`, SHA-256
+  `25d3cc26638ee26e6aa65541b2a70cff1fb3dfe9dcef17e813cb35d3e47d1663`.
+  The linked ELF contains `[kernel] board  d1001`. It also contains the
+  unverified PSRAM global-reset experiment already present in this dirty
+  tree, so this image is not an isolated board-profile acceptance artifact.
+  `gmake kernel-package-esp32p4-riscv-quick P4_BOARD=d1001
+  P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_HIDD=1 FAT_DEBUG=1 DOS_DEBUG=1
+  DOSBOOT_DEBUG=1` exited zero and created the 3,310,068-byte
+  `AROS/boot/esp32p4/aros-bsp.pkg`, SHA-256
+  `8c848f8122cd5afdfa414820e8fcc0b4bbb23e43fc3cfa97321613cea84b736d`.
+  `kernel-package-esp32p4-riscv-checksize` passed against the profile's
+  4,063,232-byte ceiling. The normal aggregate build remains unverified
+  after the flashdisk standalone-link failure; the direct core link and
+  quick-package build do not establish a clean full build.
+- Safety: no D1001 reset, display observation, flash write, SD write or
+  partition change occurred. The PSRAM recovery experiment already present
+  in the dirty tree is separate and remains unverified.
+- Remaining risk and next step: obtain a complete isolated build and clean
+  board-only core/package artifacts, then request the
+  user's explicit readiness before a live D1001 comparison. Before accepting
+  a second board, isolate generated artifacts per profile and replace the
+  remaining D1001-specific panel, touch, SD-power and PSRAM paths under the
+  D1 gate.
+
+### 2026-09-29 - D0 first D1001 boot: identity reached, PSRAM still absent
+
+- State change: D0 is `hardware partial`, not accepted. The compiled board
+  identity reached the real D1001 UART. The intended graphical comparison
+  cannot run while PSRAM is unavailable. The earlier C1 display diagnosis
+  remains blocked; this run does not add C1 evidence.
+- Hardware and source: D1001 ESP32-P4 revision 1.3, 40-MHz crystal, 32-MB
+  Winbond flash, MAC `e8:f6:0a:e0:46:4c`, serial `/dev/cu.usbmodem101`;
+  source HEAD `ad62d8257e` plus uncommitted board-profile changes and the
+  separate uncommitted PSRAM global-reset candidate. The flashed core is
+  199,552 bytes, SHA-256
+  `25d3cc26638ee26e6aa65541b2a70cff1fb3dfe9dcef17e813cb35d3e47d1663`.
+  The BSP on flash remains the prior 3,309,516-byte image, SHA-256
+  `6f900932238440d4d0a2a17c38f0b2d7309153e77d135b02609425dc5402c5d3`;
+  the newly built BSP was not flashed.
+- Baseline and procedure: `flash-id` confirmed the exact device. A first-byte
+  capture of the previous core repeated `chip no answer`, 30 PSRAM command
+  timeouts and 30 FSM recoveries. The previous core and BSP were then read
+  from their exact flash ranges into `/tmp/aros-d1001-d0.hSA0xb/`; their
+  hashes matched the prior documented images byte-for-byte. Only the new
+  core was written at `0x20000`, with `--after no-reset`; write-time hashing
+  and a separate exact 199,552-byte `verify-flash` both passed. A 35-second
+  `tools/reset-and-log.py` capture began at the first ROM byte and is
+  `/tmp/aros-d1001-d0.hSA0xb/new-core-old-bsp-boot.log`, 9,429 bytes,
+  SHA-256
+  `8a514d91ad7f30230ee35998f4fb478762fc86e472422fe8e923cc454721b284`.
+- Observed result: normal `SPI_FAST_FLASH_BOOT` loaded `ota_0`; the new
+  report printed `[kernel] board  d1001`. The candidate's PSRAM global-reset
+  command completed at the controller, but the chip still gave no answer;
+  identification again recorded 30 command timeouts and 30 FSM recoveries.
+  The display path reported `no PSRAM, so no frame to scan out`, kept the
+  backlight dark, and returned the panel to safe. The package loader reported
+  `PSRAM unavailable; cannot load`. Thus command completion is not chip
+  recovery. No graphical-boot or D1001-compatibility acceptance is claimed.
+- Safety and remaining risk: the BSP, flash development volume, SD, partition
+  table, bootloader and `storage` were not written. The new core is currently
+  on `ota_0`, while its separate PSRAM candidate is unverified as a recovery
+  fix. Restore that chip without a vendor-firmware detour, then rebuild an
+  isolated board-only core and matching BSP and repeat the full visual gate
+  after fresh operator readiness. A successful board-identity print alone
+  cannot close D0.
+
+### 2026-09-29 - D0 PSRAM LDO2 startup implemented, build verified only
+
+- State change: the PSRAM power prerequisite is implemented for the D1001,
+  but D0 remains `hardware partial`. The new path is `build verified` only.
+  No claim is made that it repairs the current no-answer state until a
+  no-Vellum hardware run succeeds.
+- Source and hardware: HEAD `ad62d8257e` plus the existing dirty
+  board-profile tree and the separately unverified PSRAM global-reset
+  candidate. D1001 ESP32-P4 revision 1.3, 32-MB embedded PSRAM. The new
+  `board/d1001.h` has SHA-256
+  `887eb7301a13d7a5012b9f27203d5d1878ffecf4d2ebf4312b2e37df6a5f6b5c`;
+  `kernel/psram_init.c` has SHA-256
+  `ca977ebc9bc0462b8dfb002fee7dbee572c53c753a4b58d5556fc883ffd441ae`.
+- Diagnostic basis: the preceding read-only JTAG check of the failing board
+  found LDO2 control `0x501151d0 = 0x40200000` (XPD clear) and analog
+  `0x501151d4 = 0xa0000000`; the separate DSI LDO3 had XPD set. Local
+  ESP-IDF v6.0.1 maps PSRAM channel 2 to LDO unit 1 and PMU index 3
+  (`+0x1d0/+0x1d4`) and requests 1,800 mV before MPLL/MSPI setup. Both
+  Vellum's `sdkconfig` and ESP-IDF select channel 2 at 1,800 mV. For that
+  voltage IDF uses VO2 eFuse DREF/MUL if both exist, otherwise its search
+  first selects 6/5. This differs from the separate DSI channel 3 at 2,500
+  mV. The existing `TIEH_SEL` mask was also corrected from two to all three
+  documented bits before using it for either LDO.
+- Implementation and configuration: `P4_BOARD=d1001`, PSRAM LDO channel 2
+  and 1,800 mV in the board profile; SRAM-resident code sets regulated
+  voltage, software ownership, ripple suppression and XPD in ESP-IDF order,
+  waits at least 1 ms, and checks the written registers. UART now prints
+  control/analog values before and after plus chosen trim and readback.
+  A register readback is not an analog voltage measurement. Target build
+  flags were `P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_HIDD=1 FAT_DEBUG=1
+  DOS_DEBUG=1 DOSBOOT_DEBUG=1 P4_LDSCRIPT=ldscript-xip.lds`.
+- Build and artifact: three affected stale architecture objects were removed;
+  `gmake kernel-kernel-esp32p4-riscv` recompiled the affected kernel objects,
+  and `gmake kernel-kernel-kobj-quick` relinked `kernel_resource.o`. The
+  direct generated-mmake link passed `check-sramtext.sh`. Its first image
+  conversion failed only because `esptool` was not on PATH; repeating with
+  the local v6.0.1 `esptool` created and validated the image. `image-info`
+  reports 32-MB DIO flash, revision 1.0-1.99, two load segments and a valid
+  checksum/hash. The new `gen/rom/boot/aros-esp32p4.bin` is 200,832 bytes,
+  SHA-256 `d1056d6fd6169a68505e7dfa366cff27c1daea0d377e0f4b49c0f5be5d797fc3`;
+  the previous core was 199,552 bytes, SHA-256
+  `25d3cc26638ee26e6aa65541b2a70cff1fb3dfe9dcef17e813cb35d3e47d1663`.
+  `board/check-profile.py` passed all ten checks and `git diff --check`
+  passed. This is a direct core link, not a clean aggregate BSP build; the
+  pre-existing standalone flashdisk link blocker remains.
+- Expected hardware result: a first-byte log from the known no-answer state
+  shows LDO2 XPD clear on entry, set after configuration, a successful 32-MB
+  PSRAM identification/window verification, then normal display and desktop.
+  The result must identify the exact flashed core and matching BSP. No
+  Vellum image may be flashed between the failing baseline and this test.
+- Observed and safety: no D1001 reset, flash write, display observation,
+  SD-card write or partition change occurred in this implementation run.
+  The previous core remains on the device; no on-device before/after hash
+  was collected because nothing was written. The PSRAM rail voltage and
+  startup outcome remain unmeasured.
+- Remaining risk and next step: the global-reset candidate in the same dirty
+  image could also affect recovery, so a successful combined run would not
+  isolate which change is necessary. Obtain the user's fresh readiness before
+  the live test; flash only the exact core range, capture UART from the first
+  byte, and compare it with the recorded failure. Then test without the
+  global-reset candidate if isolation is still required. Physical rail-off
+  remains a separate gate on this battery-backed board.
+
+### 2026-09-30 - D0 LDO2 no-Vellum recovery passes headless hardware test
+
+- State change: the D1001 core's PSRAM supply initialization passed a
+  headless hardware recovery from LDO2-XPD-off state without flashing Vellum.
+  A second USB-reset boot passed. D0 remains `hardware partial`: no visual
+  observation, clean aggregate build or matched new BSP acceptance occurred.
+- Hardware and source: `/dev/cu.usbmodem101`; `flash-id` confirmed D1001
+  ESP32-P4 revision 1.3, 40-MHz crystal, 32-MB flash and MAC
+  `e8:f6:0a:e0:46:4c`. Source HEAD `ad62d8257e` plus the documented dirty
+  board-profile, LDO2 and separate PSRAM global-reset changes. The local
+  image `gen/rom/boot/aros-esp32p4.bin` is 200,832 bytes, SHA-256
+  `d1056d6fd6169a68505e7dfa366cff27c1daea0d377e0f4b49c0f5be5d797fc3`.
+  The logs and rollback copy are retained outside Git under
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/psram-ldo2-2026-09-30/`;
+  the hashes below were rechecked after copying them there.
+  Build settings are recorded in the preceding 2026-09-29 LDO2 entry;
+  PSRAM ran at the default 20 MHz. No `P4_CPU_MHZ` override was passed in
+  this build; the run did not measure or claim a 360-MHz CPU clock.
+- Before/write/verification: two first-byte captures of the old 199,552-byte
+  core stopped after `[clock] as found` and before the PSRAM report (1,971
+  and 2,002 bytes, SHA-256
+  `504833cc3736c4dc8c4c5399ee8874718a581e93cf8537e4a476d485b28c4eb3`
+  and `4b2201cd5e6d44ebab5436c0e77970cb0d6f560a5c650b298bfb0c46b5204a17`).
+  Thus these immediate captures are not contemporaneous no-answer probes;
+  the previous day's complete no-answer log remains that baseline. The
+  exact 0x32000-byte erase span at flash `0x20000` was read to
+  `evidence/psram-ldo2-2026-09-30/core-before-0x32000.bin` in the build tree, SHA-256
+  `d4b2b39654c66df8fee3eb9ce54be49f76481c8f00f11825d1ffd1e56af5855f`.
+  Its first 199,552 bytes match the previously documented old-core SHA-256
+  `25d3cc26638ee26e6aa65541b2a70cff1fb3dfe9dcef17e813cb35d3e47d1663`.
+  Only the new core was written at `0x20000`, erasing through `0x51fff`, with
+  `--after no-reset`; write-time hash and separate 200,832-byte
+  `verify-flash` both passed. No BSP, flashdisk, bootloader, partition or SD
+  write occurred; their hashes were not remeasured in this run.
+- First boot: a 35-second `tools/reset-and-log.py` capture from the ROM's
+  first byte is `evidence/psram-ldo2-2026-09-30/ldo2-first-boot.log` in the build tree, 142,871
+  bytes, SHA-256
+  `196abd32963c8289433ed201913617a32ad166a794cdebfa6237a2dda3343749`.
+  Normal `SPI_FAST_FLASH_BOOT` loaded `ota_0`. LDO2 control changed
+  `0x40200000 -> 0x40200180` (XPD off -> on), analog changed
+  `0xa0000000 -> 0x96000000`, and the eFuse 1.8-V pair was DREF/MUL 9/4.
+  Register readback passed. PSRAM identified as vendor `0x0d`, 32 MB at 20
+  MHz on attempt 1; the global-reset command completed, read latency was 2,
+  command timeouts and FSM recoveries were both zero, and the 32-MB window
+  passed one-word-per-MB verification. MPLL calibration was inherited on
+  this boot (`entry 0x14c`). DSI initialization and video start reported no
+  payload error or DMA fault; the normal graphical driver registered and
+  accepted framebuffer updates. The external touch firmware was unavailable
+  in this run; that observation is separate from PSRAM recovery.
+- Repeat: an 18-second first-byte USB-reset capture is
+  `evidence/psram-ldo2-2026-09-30/ldo2-warm-reset.log` in the build tree, 135,278 bytes, SHA-256
+  `dea39675963b64ff465df84ab37d2bdc9cc609aa8dcd3a7fba524552e7be2bc7`.
+  LDO2 was already enabled (`0x40200180 -> 0x40200180`); PSRAM again
+  identified on attempt 1, verified 32 MB and recorded zero command
+  timeouts/FSM recoveries. This time the port calibrated MPLL itself
+  (`entry 0x24c done here`). DSI video and graphical-driver registration
+  appeared again in UART.
+- Acceptance and limits: this passes the headless no-Vellum PSRAM recovery
+  sub-gate and a warm-reset repeat. There was no screen witness, so C3 and
+  D0 visual acceptance do not follow from these logs. XPD readback is not a
+  voltage measurement. The separate global-reset candidate was present in
+  both the failing old core and the successful new core; this comparison
+  strongly implicates the missing LDO2 power-up but does not prove that the
+  global-reset command is unnecessary. A USB reset is not physical rail-off.
+- Next safe step: keep this core and rollback backup available. Complete an
+  isolated core/Exec/SD/BSP build, then request Fabian's explicit readiness
+  only for the visual D1001 comparison. Do not flash Vellum as routine
+  recovery. Test the global-reset candidate independently before deleting it;
+  keep the separate physical-cold-boot gate open.
+
+### 2026-09-30 - D0 visual compatibility fails at the known C1 scanout symptom
+
+- State change: D0 remains `hardware partial`. The LDO2 recovery result is
+  unchanged, but the current core/BSP combination fails visual compatibility.
+  C1's historically accepted artifact is not invalidated by this different
+  configuration.
+- Artifact and procedure: same 200,832-byte D0 core, SHA-256
+  `d1056d6fd6169a68505e7dfa366cff27c1daea0d377e0f4b49c0f5be5d797fc3`,
+  still at `ota_0` offset `0x20000`; no flash, BSP, SD or other media were
+  written for this observation. Fabian reported a completely light-blue
+  screen with a flickering strip about 10--15 pixels wide at the edge. A
+  separate headless 90-second first-byte USB-reset capture is retained at
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/psram-ldo2-2026-09-30/visual-triage-90s.log`,
+  979,370 bytes, SHA-256
+  `ba03c30b3d7d86c6166c3de894e7a75323c3c17935be8c4b1ba63a0df6b8b5de`.
+  This was a serial diagnostic, not a requested new live sight test.
+- Observed result: LDO2 stays enabled, PSRAM identifies as 32 MB at 20 MHz
+  on attempt one, and command timeouts/FSM recoveries remain zero. The first
+  two complete 1280x800 C1 submissions have identical logical-source and
+  front/back nonzero-count, sum, XOR and five mapped pixel samples. Accepted
+  refreshes reach at least update 256, with 256 swaps and zero DMA faults,
+  rejects or pending buffers. Unlike the earlier 35-second capture, the
+  longer log runs `Startup-Sequence`, creates `WANDERER:Wanderer` and reports
+  `Dos/CliInit: Boot sequence exited`. The initial console write was slow,
+  not stuck. UART progress and matching CPU-visible buffers do not establish
+  that the GDMA reads the same bytes or that the panel displays them.
+- Configuration and diagnosis limits: this D0 core inherits 90 MHz CPU and
+  uses 20 MHz PSRAM because `P4_CPU_MHZ` and `P4_PSRAM_MHZ` were omitted.
+  The previously accepted graphical runs used 360/200 MHz. Insufficient
+  scanout bandwidth at 20 MHz is plausible but unproved; the earlier C1/C4
+  strip also occurred in a 360/200-MHz build, so a clock change alone must
+  not be presented as the root fix. Touch firmware is absent and the prior
+  firmware/no-firmware A/B already excluded it as the strip's cause.
+- Next step: rebuild the same core with only `P4_PSRAM_MHZ=200` changed,
+  clearing affected stale objects and preserving the current image for
+  rollback. Headless boot may verify PSRAM and UART; obtain Fabian's fresh
+  readiness before using the display to classify the result. If the strip
+  persists, instrument DMA-visible memory/publication and live handoff below
+  the CPU-visible C1 source/front/back comparison, without changing panel
+  timing or calling this a desktop pass. A physical rail-off test remains
+  separate.
+
+### 2026-09-30 - D0 200-MHz PSRAM A/B restores a reported desktop
+
+- State change: D0 stays `hardware partial`. The 20-MHz visual failure above
+  remains recorded. This is an isolated clock comparison, not a B5R/C1 root
+  fix or a controlled visual acceptance.
+- Artifact and configuration: dirty worktree based on `ad62d8257ed3`,
+  `P4_BOARD=d1001 P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_HIDD=1 FAT_DEBUG=1
+  DOS_DEBUG=1 DOSBOOT_DEBUG=1 P4_LDSCRIPT=ldscript-xip.lds`, inherited 90-MHz
+  CPU. Only `P4_PSRAM_MHZ=200` changed from the previous 20-MHz core;
+  affected kernel objects and the linked `kernel.resource` were rebuilt.
+  The valid 200,832-byte core has SHA-256
+  `4f5a8bfecd391067f01adf08ff678e44c85ca681b1288bc26a32542256a443f1`.
+  Its 20-MHz predecessor, 200,832 bytes, has SHA-256
+  `d1056d6fd6169a68505e7dfa366cff27c1daea0d377e0f4b49c0f5be5d797fc3`.
+- Hardware and safety: D1001 P4 v1.3, MAC `e8:f6:0a:e0:46:4c`, 32-MB
+  flash. The exact `ota_0` pre-write backup is retained in the build-tree
+  `evidence/psram-ldo2-2026-09-30` directory. Only the core starting at
+  `0x20000` was written; the write-time hash and a separate `verify-flash`
+  passed. BSP, development volume, SD, bootloader, partition table and
+  `storage` were unchanged by this comparison.
+- Headless result: the 90-second first-byte capture
+  `evidence/psram-ldo2-2026-09-30/psram200-headless-90s.log` is 1,029,193
+  bytes, SHA-256
+  `f156398307510edbc955a0dc0155b42e8f6c4ac4715d21076dac9c2a86252b0f`.
+  It reports 32 MB calibrated at 200 MHz with latency 4, zero command
+  timeouts/FSM recoveries and one-word-per-MB verification. C1 source/front/
+  back samples match, 256 accepted refreshes swap with zero DMA faults or
+  rejects, and Startup-Sequence reaches Wanderer. The external touch firmware
+  is unavailable on the intentionally firmware-free development volume.
+- Observation and limit: after this headless run Fabian reported a visible
+  desktop but no working touch. The report was not preceded by an explicit
+  readiness confirmation, so it is useful operator evidence, not a formal
+  interactive gate. The earlier C1 strip also occurred with a different
+  360/200-MHz artifact; this A/B does not explain that case. The combined
+  global-reset candidate and physical rail-off gate remain unproven.
+- Next step: retain 200 MHz for the controlled graphical comparison; use a
+  fresh explicit `bereit` before the visible gate. Keep a matched full BSP
+  build and independent global-reset/physical-cold-boot tests on D0.
+
+### 2026-09-30 - C4 external touch firmware restored headlessly
+
+- State change: C4 remains `hardware partial`. The firmware-absent explanation
+  for the reported dead touch is verified, and the restored firmware loads
+  on hardware. Pointer response and gestures on this combination are still
+  unobserved.
+- Provenance and artifacts: the unmodified [Seeed D1001 reference header at
+  commit `5074d3b2`](https://github.com/Seeed-Studio/reTerminal-D1001/blob/5074d3b2f45626b261298e305aaf792036febc5a/components/esp_lcd_touch_gsl3670/include/esp_lcd_touch_gsl3670.h)
+  was retrieved outside the AROS tree. Its SHA-256
+  `f1eb0f1e64f2bf681d239795056f922b16aa7edd34955bac789e2da497f0f169`
+  matches the earlier local input. The existing converter reproduced exactly
+  4,356 records / 34,848 bytes, SHA-256
+  `125728ad83424e533198f804cb6d8b393c59d3818903760cbda282138e782636`.
+  Neither header nor binary is committed or placed in the core/BSP.
+- Exact medium reconstruction: a read-only `0xc00000..0xffffff` flash backup
+  is 4,194,304 bytes with the old firmware-free SHA-256
+  `bb9a75ca99d0bbe2811acac25d166717f32718ef1f6d87403262539b815fa7c5`.
+  macOS mounted that backup read-only and `fsck_msdos -n` checked its FAT16.
+  Restaging its 15 entries reproduced the backup byte-for-byte; adding only
+  `Firmware/silead/gsl3670-d1001.fw` produced the prior 18-entry development
+  image byte-for-byte, SHA-256
+  `ed5dca8356362e6065d56922220a2108442dd19db718db7b905833c20818e138`.
+  An independent read-only mount of the new image returned the expected
+  firmware-file digest and `fsck_msdos -n` accepted its FAT16.
+- Flash and safety: on the same identified P4 revision/MAC, only that 4-MiB
+  development range was written. Write-time hash verification and a separate
+  full-range `verify-flash` passed. Core, BSP, bootloader, partition table,
+  `storage` and SD were not written. Private inputs, candidate, backup and
+  flash/verify logs are retained outside the repository at
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/private/d1001-gsl3670/`.
+- Headless result: its 60-second first-byte capture there is 833,450 bytes,
+  SHA-256
+  `b73537c8932f19cfc071416379c52f95a335968af52cf2fc93215c3fceff22e7`.
+  At 200 MHz PSRAM and inherited 90 MHz CPU, the touch worker first reports
+  firmware unavailable before volume mount, then finds the flash fallback,
+  sends all 4,356 records, reads `0x5a5a5a5a`, and reaches 300 idle polls at
+  20 Hz with zero I2C errors. Startup-Sequence exits normally after Wanderer
+  starts. No touch was applied during this headless capture.
+- Next step: request Fabian's explicit readiness for a synchronized desktop,
+  single-touch pointer/drag/release and two-finger menu/right-button check.
+  Then run the separate fault-injection and 1,000-cycle C4 gates. Do not infer
+  a new visual desktop pass from the UART capture.
+
+### 2026-09-30 - D0 post-discharge desktop appears after USB resets; original start unresolved
+
+- State change: D0 remains `hardware partial`. This confirms a further boot
+  of the current 200-MHz core and firmware-bearing volume, not an autonomous
+  physical-cold-boot gate or a controlled interactive visual/touch test.
+- Setup and identity: Fabian reported that the battery had been empty and,
+  after reconnecting the display, no desktop was initially visible. The
+  D1001 was present as `/dev/cu.usbmodem101`. No core, BSP, SD, flash volume,
+  bootloader, partition-table or `storage` write was made. The prior verified
+  200,832-byte core at `0x20000` has SHA-256
+  `4f5a8bfecd391067f01adf08ff678e44c85ca681b1288bc26a32542256a443f1`;
+  the 4-MiB external-firmware volume at `0xc00000` has SHA-256
+  `ed5dca8356362e6065d56922220a2108442dd19db718db7b905833c20818e138`.
+  The source remains a dirty worktree based on `ad62d8257ed3`, with inherited
+  90-MHz CPU, `P4_PSRAM_MHZ=200`, C3/C4 and FAT/DOS/DOSBOOT diagnostics.
+- Passive-attempt limit: a 12-second serial-open capture is retained at
+  `evidence/power-loss-2026-09-30/passive-12s.log` in the build tree, 8,761
+  bytes, SHA-256
+  `939804e28e9018bfe2a84ce8b454409e748ddfd4028c88bb9e8db9696f460c2b`.
+  Its first ROM line reports `CHIP_USB_UART_RESET`, so merely opening the USB
+  console coincided with a reset and lost the undisturbed initial state. The
+  capture reaches the beginning of BSP load but is too short to classify its
+  completion. LDO2 XPD was off at entry and enabled by the port, PSRAM
+  identified as 32 MB at 200 MHz and calibrated without timeout; that is
+  consistent with lost retained power, but neither measures rail voltage nor
+  proves an unassisted battery-cold start.
+- Controlled headless procedure and result: `tools/reset-and-log.py` then
+  deliberately issued a USB reset and captured 90 seconds at
+  `evidence/power-loss-2026-09-30/controlled-90s.log`, 834,392 bytes,
+  SHA-256
+  `b4f47b7d05537f46149fa12d960c8524dd4d42660b1b5a754d401a79ad719c90`.
+  The ROM again reports `CHIP_USB_UART_RESET`; LDO2 was already enabled.
+  PSRAM identifies on the first attempt, calibrates at 200 MHz with read
+  latency 4 and zero command timeouts/FSM recoveries. The touch HIDD loads
+  all 4,356 external records, reads `0x5a5a5a5a`, and polls with zero I2C
+  errors. `SDCARD0P0` wins boot, Wanderer starts, Startup-Sequence exits,
+  and C1 reaches 256 accepted swaps with zero DMA faults or rejects. No
+  panic, Guru, fatal or access-fault marker occurs. The trace later counts
+  five contact frames and eleven input events; there was no synchronized
+  touch procedure, so these numbers are not C4 acceptance evidence.
+- Operator report and next gate: Fabian subsequently reported a visible
+  desktop. This distinguishes a persistent boot failure from a recoverable
+  post-reset state, but cannot distinguish a delayed original boot from one
+  rescued by USB reset. Arrange a first-byte, non-resetting capture before a
+  future controlled physical power-off/on if that D0 gate is to be claimed.
+  Obtain a fresh explicit `bereit` before asking Fabian to check pointer,
+  drag, release or the two-finger menu gesture on the current artifact.
+
+### 2026-09-30 - C4 stationary pointer recovers after synchronized USB reset
+
+- State change: C4 remains `hardware partial`. Fabian reported a visible
+  desktop with a stationary pointer and confirmed that a finger movement on
+  that current desktop did not move it. After explicit readiness, a controlled
+  USB-reset repeat restored visible single-finger tracking. The failed running
+  instance was not captured before reset, so this is recovery evidence and
+  does not establish the cause or a permanent fix.
+- Identity and configuration: dirty source based on `ad62d8257ed3`; the
+  unchanged 200,832-byte core at `0x20000` has SHA-256
+  `4f5a8bfecd391067f01adf08ff678e44c85ca681b1288bc26a32542256a443f1`.
+  CPU remains at inherited 90 MHz, PSRAM at 200 MHz. The restored 4-MiB
+  firmware development volume at `0xc00000` has SHA-256
+  `ed5dca8356362e6065d56922220a2108442dd19db718db7b905833c20818e138`.
+  No firmware, core, BSP, SD or flash write was made during this repeat.
+- Procedure and evidence: `tools/reset-and-log.py /dev/cu.usbmodem101 180`
+  captured from the first byte. After `Boot sequence exited`, Fabian was
+  signalled to move a finger for five seconds and release, then explicitly
+  answered that the pointer followed. The complete 836,713-byte capture is
+  `evidence/touch-2026-09-30/interactive-reset-180s.log` in the build tree,
+  SHA-256
+  `af8cd69befe0bd0ec3fc2a348abad0b4a51b32622789a577f0f0e89ff674db4e`.
+- Observed result: ROM reports `CHIP_USB_UART_RESET`. The worker loads all
+  4,356 records from the flash fallback and reads `0x5a5a5a5a`. It continues
+  through 2,000 polls with zero I2C errors, 107 contact frames and 81 published
+  mouse events. Framebuffer updates include the moving pointer at `990,365`
+  and selection damage at the contact coordinates, with zero DMA faults or
+  rejected updates. Final state is `down 0 button 0`. There is no captured
+  fatal marker or worker exit. This is a visible tracking/release sub-gate;
+  no two-finger gesture or 1,000-cycle gate was applied.
+- Interaction finding: Fabian observes that moving a finger also holds the
+  left button. This matches the existing policy: the first contact publishes
+  motion followed immediately by Button1 press, and lift publishes release.
+  A selectable move-only/tap-to-click policy with a stationary-hold drag
+  gesture was discussed; it has not been implemented or tested here.
+- Safety, remaining risk and next step: the test was synchronized with Fabian
+  and left the desktop running. Preserve the next failed instance long enough
+  to measure raw reports, controller health and worker state; account for USB
+  serial opening itself potentially resetting the chip. Investigate the
+  intermittent failure before claiming cold-start touch reliability. Keep
+  gesture/recovery/soak gates separate from this successful reset repeat.
+
+### 2026-09-30 - C4 button-free movement and tap/hold policy candidate
+
+- State change: default one-finger motion no longer presses Button1.
+  Stationary tap clicks on debounced lift; stationary 400-ms hold starts drag.
+  Slop is 8 logical pixels. Button2 promotion/latching remains unchanged.
+  C4 remains `hardware partial`; this candidate has no new visual acceptance.
+- Source/configuration: dirty worktree based on `ad62d8257ed3`, D1001,
+  `P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_HIDD=1 FAT_DEBUG=1 DOS_DEBUG=1
+  DOSBOOT_DEBUG=1`. The worker uses monotonic `timer.device/GetUpTime`, not
+  polling counts, for hold/tap timing. The first empty report timestamps lift.
+  Nearest-contact continuity now tracks contact activity independently of any
+  held button. I2C errors, timer failure and disposal release held buttons.
+- Verification: fresh touch objects; `gmake kernel-hidd-p4touch` builds the
+  39,660-byte module, SHA-256
+  `93d72511dfd3fcdd7f9ff44c5a7ea3233970946372f4fc5730a77f941cd44fbe`.
+  `cc -std=c99 -Wall -Wextra -Werror -fsanitize=address,undefined
+  arch/riscv-esp32p4/touch/p4touch_policy.c
+  arch/riscv-esp32p4/touch/tests/policy_test.c -o /tmp/p4touch-policy-test`
+  followed by the binary passes 251 checks: free motion, tap, jitter, hold,
+  direct mode, promotion, sequential lift, cancellation, timer wrap and
+  single-empty-report glitches. Full BSP relocation audit: zero failed members.
+- Artifact isolation and safety: verified ESP32-P4 rev 1.3, MAC
+  `e8:f6:0a:e0:46:4c`; read back `0x820000..0xc00000` before writing.
+  Its exact 3,309,516-byte package has SHA-256
+  `6f900932238440d4d0a2a17c38f0b2d7309153e77d135b02609425dc5402c5d3`.
+  `tools/replace-package-member.py` preserves all other member records
+  byte-for-byte, changes only `p4touch.hidd`, bounds the output below the
+  firmware volume and refuses to overwrite an existing output. Candidate:
+  35 members, 3,313,712 bytes, SHA-256
+  `ab878a1c34adbde174342ab7addaabfcce79ceaf8466f44020fe4368e61eb0f4`.
+  Written only at `0x820000`; esptool reports data hash verified. Core and
+  external firmware volume remain unchanged. Backup, candidate and build/
+  flash logs live in build-tree `evidence/touch-tap-2026-09-30/`.
+- Configuration: optional `p4touch.mode` beside the successfully loaded
+  external firmware selects `direct`; missing/invalid content selects tap.
+  Startup-only selection avoids changing policy during contact and early
+  ENV/ENVARC mount races. The read-only flash fallback needs an image-level
+  preference change. No vendor firmware is added to the repository.
+- Headless result: `reset-and-log.py /dev/cu.usbmodem101 50` captures the
+  new `gesture mode tap; hold 400 ms, slop 8 px` banner, all 4,356 firmware
+  records and ready status `0x5a5a5a5a`. Two hundred idle polls report zero
+  errors and no pressed button; Wanderer is launched. No touch interaction
+  was requested and no visual pass is inferred. The 378,005-byte
+  `headless-50s.log` has SHA-256
+  `e345da1463d651350aba08724396c59eb7dbe056dc508e4f7019879f5a6406af`.
+  A separate verify command issued while the flash writer still owned the
+  port failed with a port-busy error; no write resulted from that command.
+  Successful writer-side hash verification is the flash evidence.
+- Next step: obtain fresh readiness
+  for movement without selection, short tap, hold-drag/release and two-finger
+  menu regression. Do not count unattended boot as interactive acceptance;
+  recovery injection, intermittent start failure and full soak remain open.
+
+### 2026-09-30 - C4 tap/hold interaction passes, menu dropdown remains open
+
+- State change: after explicit `bereit`, Fabian confirms the new movement,
+  tap and hold-drag interactions work. Two-finger contact displays the menu
+  bar, but its dropdown does not open. C4 remains `hardware partial`; menu
+  selection is not accepted and the 1,000-cycle soak remains open.
+- Artifact/configuration: unchanged tap-mode BSP at `0x820000`, 3,313,712
+  bytes, SHA-256
+  `ab878a1c34adbde174342ab7addaabfcce79ceaf8466f44020fe4368e61eb0f4`;
+  same core, external firmware volume, 400-ms hold and 8-pixel slop as above.
+  No flash or media write during the test.
+- Procedure/evidence: synchronized first-byte USB-reset capture for 180 s;
+  instructions cover button-free movement, icon tap, stationary hold-drag
+  and sequential two-finger lift. Build-tree
+  `evidence/touch-tap-2026-09-30/interactive-180s.log`, 844,783 bytes,
+  SHA-256
+  `d5199a055aea2a0b959ec8bf5f4b40984cbb4ec0c8ab501c6b98a509b8e0caad`.
+- Observed UART: firmware ready and tap mode, 1,500 polls, 500 contact frames,
+  171 multi-contact frames, seven right-button gestures, 407 mouse events,
+  zero I2C errors. Final state `down 0 button 0`; sampled framebuffer updates
+  show zero DMA faults/rejected updates. Right-button releases near the top
+  include Y=20,21,23. These are event positions, not a complete motion trace.
+- Diagnosis boundary: `rom/intuition/menutask.c` requires the pointer inside
+  a menu title's X range and Y<=screen BarHeight before selecting a dropdown.
+  The release positions are consistent with not reaching the thin title strip,
+  but do not establish edge-calibration failure or a menu-state defect.
+- Next step: establish whether the pointer actually reached a menu title
+  while Button2 was held; get fresh readiness before any additional live
+  interaction. Inspect edge mapping if the title strip is unreachable. Do not
+  change Intuition or mark complete solely from successful Button2 events.
+
+### 2026-09-30 - C4 raw perimeter measurement prepared
+
+- State: Fabian confirms the pointer stays below the menu strip and explicitly
+  consents to a perimeter measurement. Menu selection remains open; edge
+  calibration is suspected, not yet measured or fixed.
+- Implementation/configuration: optional `P4_TOUCH_EDGE_TRACE=1` logs every
+  eighth single-contact sample with raw/logical positions and accumulated X/Y
+  extrema. Multi-contact frames are excluded from extrema. Normal builds
+  default to trace off; no automatic learning or transform change is made.
+  Same D1001 tap policy, core, firmware and diagnostic flags as above.
+- Build: freshly removed touch objects and
+  `gmake kernel-hidd-p4touch-quick P4_BOARD=d1001 P4_TOUCH_EDGE_TRACE=1
+  P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_HIDD=1 FAT_DEBUG=1 DOS_DEBUG=1
+  DOSBOOT_DEBUG=1`. Module 40,192 bytes, SHA-256
+  `e8bd876b10abbe81e094e1b519f9e76c406180cfb286316c9f03d0602b657eb0`;
+  package audit reports zero failed members.
+- Artifact isolation: D1001 rev 1.3/MAC `e8:f6:0a:e0:46:4c` confirmed;
+  backed up `0x820000..0xc00000` as `bsp-before-edge.bin`. Replaced only
+  `p4touch.hidd`; package 3,314,244 bytes, SHA-256
+  `8c30e087d7c1ccfa872693dd7dc7cd12445ad010f28805b9484af82710bb0234`.
+  Artifacts/logs in build `evidence/touch-tap-2026-09-30/`. Writes stay below
+  `0xc00000`; core, SD and firmware volume are not changed.
+- Next step: finish verified flashing, capture from first byte and ask Fabian
+  to trace the full visible perimeter slowly with one finger. Record evidence
+  before selecting board calibration bounds; no edge reachability is accepted
+  from this build alone.
+
+### 2026-09-30 - C4 measured D1001 edge-calibration candidate
+
+- State change: the consented perimeter trace contains 263 single-contact
+  frames, no multi-contact frames and zero I2C errors. Measured extrema:
+  X=16..1638, Y=15..874. The previous full-sensor-domain transform maps raw
+  Y=874 to logical Y=19, consistent with the reported gap below the menu.
+  A static board-specific correction is implemented; C4 remains
+  `hardware partial` until visible edge/menu acceptance.
+- Evidence: build `evidence/touch-tap-2026-09-30/edge-interactive-240s.log`,
+  840,942 bytes, SHA-256
+  `85a0634a69292426edeee148bc609a94b341d75eabc836eb3dd6dfa925d55a83`.
+  The capture ends with a partial heartbeat line; complete preceding samples
+  and heartbeats establish the counts, not a fabricated final line.
+- Implementation: inclusive X/Y min/max constants in `board/d1001.h`, pure
+  rounded/saturating mapping in `touch/p4touch_coords.h`, used consistently
+  for nearest-contact continuity and emitted coordinates. Logical endpoints
+  are X=0..1279, mirrored Y=799..0. No menu-specific offset, online learning,
+  gesture change or vendor filtering is introduced. One observed perimeter
+  defines a candidate, not population-level calibration accuracy.
+- Verification/configuration: sanitizer-backed C99 host test passes 3,863
+  checks, including all earlier gestures and coordinate endpoints, monotonic
+  sweeps, outliers and invalid bounds. Fresh touch objects, same D1001/C3/C4
+  and FAT/DOS/DOSBOOT flags; `P4_TOUCH_EDGE_TRACE=0` disables measurement logs.
+  `kernel-hidd-p4touch-quick` builds a 40,352-byte module, SHA-256
+  `8a40dff4d3fae50686abbc7dabdeeec99e9ed43783e8a458a12f4851b62b44ea`.
+  Package relocation audit: zero failed members.
+- Artifact/safety: D1001 rev 1.3/MAC `e8:f6:0a:e0:46:4c` reconfirmed;
+  readback `bsp-before-calibration.bin` preserves the prior BSP. Only
+  `p4touch.hidd` is replaced; all other package records remain byte-identical.
+  Candidate package 35 members, 3,314,404 bytes, SHA-256
+  `0e8d880348a123a13c110ee70f96c4cfe6f4213fb44a08fa56775fadf2ed8ee1`.
+  Target `0x820000` is below the firmware volume at `0xc00000`; unchanged core,
+  firmware volume and SD. Build, backup, audit and flash logs are under
+  build `evidence/touch-tap-2026-09-30/calibration-*`.
+- Flash/headless result: writer-side data hash verified. First-byte 55-s
+  USB-reset capture confirms external firmware ready, tap policy and
+  `calibration X=16..1638 Y=15..874; mirrored Y`. Two hundred idle polls
+  report zero I2C errors and no held button. Capture
+  `calibration-headless-55s.log`, 721,949 bytes, SHA-256
+  `89341a74ee54b436c4f60eba1487296168af4a61db0acaf13b40cf14ac0a5690`.
+  This is a firmware/worker boot check, not proof of visible menu selection.
+- Next step: obtain
+  fresh readiness for all four edges, centre, normal pointer tracking and
+  two-finger dropdown selection. Do not count headless polling as a visual
+  calibration pass. Full soak and intermittent startup cause remain open.
+
+### 2026-09-30 - C4 calibrated edges and menu dropdown visually verified
+
+- State: after fresh readiness, Fabian answers yes to four-edge reachability
+  and menu-dropdown opening. This closes those calibration sub-gates, not
+  menu-item execution or full C4. C4 remains `hardware partial`.
+- Artifact/configuration: unchanged 3,314,404-byte calibrated BSP at
+  `0x820000`, SHA-256
+  `0e8d880348a123a13c110ee70f96c4cfe6f4213fb44a08fa56775fadf2ed8ee1`;
+  D1001 inclusive X=16..1638/Y=15..874, mirrored Y, tap policy and trace off.
+  Core, external firmware volume and SD unchanged; no flash during test.
+- Procedure: first-byte USB-reset capture for 240 seconds, instructions to
+  trace all four edges, activate Button2 with two fingers, lift one and move
+  the remaining finger onto a menu title. The affirmative response verifies
+  the explicit questions on edge reachability and dropdown opening.
+- Evidence: stable snapshot of the still-running capture at confirmation:
+  build `evidence/touch-tap-2026-09-30/calibration-interactive-observed.log`,
+  838,871 bytes, SHA-256
+  `be71d925ae613198f08178747b394870c5166059b72f750d0c5dc73fd110bc12`.
+  The longer `calibration-interactive-240s.log` is not assigned this hash.
+  Correct firmware/calibration banners; snapshot includes 1,200 polls,
+  182 contact frames, 29 multi-contact frames, one right gesture, 174 events
+  and zero I2C errors. Current state `down 0 button 0`; right release at
+  logical `70,5` reaches the formerly unreachable upper strip. Sampled
+  framebuffer updates show zero faults/rejections.
+- Remaining risk/next step: no menu-item execution inferred from dropdown
+  opening. Get fresh readiness for explicit item selection if needed, then
+  bounded recovery and soak tests. Keep calibration board-specific; revisit
+  if another panel/unit or firmware changes the measured bounds.
+
+### 2026-09-30 - C1P performance candidate, paired v2 headless boot
+
+- State: C1P advances to hardware partial, not visual acceptance. Original
+  synchronous C1 gates remain historical. No fresh visual consent was supplied,
+  so all runs here are headless USB resets, not interactive or physical cold boots.
+- Hardware: D1001, ESP32-P4 rev 1.3, MAC `e8:f6:0a:e0:46:4c`, 32-MB flash,
+  `/dev/cu.usbmodem101`. Source is dirty worktree based on `ad62d8257ed3`;
+  pre-existing board, PSRAM, SD and touch changes were preserved.
+- Scope: opt-in full-frame census; 16x16 tiled RGB565 transpose; linear
+  halfword clear; graphical CPU default 360 MHz; inactive-surface coalescing,
+  dirty-box mirror synchronization and explicit v2 `flush()`. Cache publication,
+  DMA-done ownership, timing and +525 workaround remain intact. No source
+  logical pointer escapes UpdateRect. Single-hart/HIDD producer serialization
+  remains a required assumption.
+- Tests: `clang -std=c99 -O2 -Wall -Wextra -Werror
+  -fsanitize=address,undefined kernel/tests/framebuffer_rotate_test.c`
+  passes 140 full/partial, odd-pitch, wrapped-phase, untouched-pixel and guard
+  cases for rotation and physical mirror. `python3
+  kernel/tests/scanout_coalesce_test.py` compiles the actual extracted C1 producer
+  functions against a host IRQ fixture with ASan/UBSan: 400 submissions,
+  81 swaps including clear, 1,677 guarded IRQ injections, correct full images,
+  unchanged active buffers, invalid bounds rejected and both buffers coherent
+  after clear. This fixture is not a hardware-DMA timing proof.
+- Independent read-only review found no blocking ownership bug. Its two
+  caveats were fixed: flush waits for both copy-busy and pending to clear;
+  async profiles are labelled preparation/publication/queued-total, not
+  displayed-frame latency. Diagnostic full census forces synchronous mode.
+- Build correction: an early module-link target tried to link kernel.resource
+  as a standalone module and failed on core linker symbols; it was not flashed.
+  The aggregate core target triggered unrelated dependency fetches and was
+  stopped. Platform quick objects + `kernel-kernel-kobj-quick` + the generated
+  platform makefile's core target produced the image, with the SRAM residency
+  check and `Creating .../aros-esp32p4.bin` confirmed. Direct linking requires
+  `ESPTOOL='uvx esptool'` here. One preliminary image used esptool's default
+  image-header settings; it is excluded from the clock comparison. The actual
+  comparison and final images use DIO/80 MHz/32 MB/revision 100..199.
+- ABI correction: quick builds initially reused v1 copied headers. An excess
+  struct-initializer warning exposed that the appended flush pointer was absent;
+  the resulting async-v1 boot is diagnostic only, not v2 acceptance. Both header
+  copies were refreshed via compiler/include make rules, consumers invalidated
+  and rebuilt. GCC's compiled sysroot still names the pre-move Developer tree;
+  P4 fbgfx now explicitly selects this build's generated include directory.
+  The final compiled kernel ops table is 52 bytes (`0x34`), includes c1_flush,
+  and disassembly confirms fbgfx compares the version against 2. Revisit the
+  broader relocated toolchain sysroot separately rather than editing old trees.
+- Baseline artifacts, all under build `evidence/graphics-perf-2026-09-30/`:
+  - `core-rotation90-dio80.bin`: 200,560 bytes, SHA-256
+    `5d997dc995817f85e80a2ad6523e3e186891cd2df1da24b20d0c5f435a49dc00`.
+    First synchronous full update 2,775,698 us; log
+    `rotation90-dio80-boot.log` SHA-256
+    `daec8da22928fe9b41e74565cd1e460ced2dece0e9908c4a93dafbde41bb0af1`.
+  - `core-rotation360.bin`: 200,784 bytes, SHA-256
+    `a01d0680c4a47367c00403f68a1ec55a8b2544773679690b02ebd9f46de42574`.
+    Only CPU request changes to 360 MHz; first full update 617,388 us. Tiny
+    1x2 update still costs 29,557 us, mostly frame wait. Log
+    `rotation360-boot.log` SHA-256
+    `a91dec7a57518825e62c09470ccf6872156b435874443a900d383a77838693d2`.
+- Final flashed pair:
+  - `core-coalesce-v2.bin`: 201,376 bytes at `0x20000`, SHA-256
+    `35944fd6ef2e51ca5ce24b428f5bfa582c79a34f6b8c117b081e7e7cdf877e76`.
+  - `bsp-coalesce-v2.pkg`: 3,314,424 bytes at `0x820000`, 35 members, SHA-256
+    `32608a926decc5f1d09f25a530d482027107ab6be2830bf8855144b1331ca5c0`.
+    Only fbgfx.hidd was replaced in the actual pre-write flash package; all
+    other 34 records, including calibrated touch, remain byte-for-byte intact.
+    Package ELF/relocation audit reports zero failed members.
+- Configuration: `P4_BOARD=d1001 P4_C3_GRAPHICAL_BOOT=1
+  P4_C4_TOUCH_HIDD=1 P4_PSRAM_MHZ=200 P4_LDSCRIPT=ldscript-xip.lds
+  P4_C1_PROFILE=1 FAT_DEBUG=1 DOS_DEBUG=1 DOSBOOT_DEBUG=1`, defaults
+  `P4_CPU_MHZ=360`, `P4_C1_COALESCE=1`, full census off. Profiling/logging
+  overhead and task preemption are not removed from system behavior.
+- Procedure/safety: identify board; back up `0x20000..0x60000` and
+  `0x820000..0xc00000`; verify old core prefix against
+  `4f5a8bfecd391067f01adf08ff678e44c85ca681b1288bc26a32542256a443f1`
+  and old BSP prefix against
+  `0e8d880348a123a13c110ee70f96c4cfe6f4213fb44a08fa56775fadf2ed8ee1`;
+  flash only core/BSP; write-time hashes and independent `verify-flash` both
+  match. Logs and backups remain beside the candidates. No bootloader,
+  partition table, storage/firmware volume, private firmware blob or SD writes.
+  Firmware volume's last verified SHA remains
+  `ed5dca8356362e6065d56922220a2108442dd19db718db7b905833c20818e138`;
+  no fresh whole-media digest was taken in this scoped test.
+- Headless result: capture via reset-and-log.py from first byte for 55 seconds;
+  LDO2/PSRAM bring-up, CPU divider /1 with MEM/APB /2, fbgfx registration,
+  DOS and Wanderer pass. First full submission 296,355 us; later full
+  submission 398,603 us. 128th 1x739 submission 720 us; 256th 1x2 submission
+  7 us. All sampled DMA faults/rejects zero; pending is allowed in v2.
+  Touch heartbeat through 400 idle polls reports zero I2C errors. Log
+  `coalesce-v2-boot.log` SHA-256
+  `3d86d18ae54b48ed243103feb92a678cb251a897ce65f86927b031df08248468`.
+  A second 55-second USB-reset run after independent flash verification also
+  reaches Wanderer, reports sampled faults/rejects zero and 400 idle touch
+  polls with zero I2C errors. `coalesce-v2-repeat.log` SHA-256
+  `51bcc528a36f466f45e98b5081bc040acef0c6775508405fadd45304b547393f`.
+  These are submission-side timings, not measured presentation latency or a
+  guarantee that the whole desktop starts nine times faster.
+- Remaining cost: first small update after an already presented full image
+  pays one stale full-box mirror (~205 ms here). Dirty-box inflation, FAT/DOS
+  debug logging and sustained DMA/memory contention remain optimization/stress
+  topics. Do not promise microsecond latency for every small rectangle.
+- Next step: obtain fresh readiness for visible clean desktop, redraw/no-tearing,
+  pointer tracking, tap and two-finger menu regression. Then sustained
+  display/touch/SD stress; only complete observed gates allow hardware verified.
+
+### 2026-09-30 - C1P observed speedup followed by runtime slowdown
+
+- Artifact/configuration unchanged: v2 core 201,376 bytes SHA-256
+  `35944fd6ef2e51ca5ce24b428f5bfa582c79a34f6b8c117b081e7e7cdf877e76`,
+  BSP 3,314,424 bytes SHA-256
+  `32608a926decc5f1d09f25a530d482027107ab6be2830bf8855144b1331ca5c0`;
+  CPU360/PSRAM200, coalescing and bounded profiling on, FAT/DOS/DOSBoot
+  debug on. No flash or media writes in this diagnostic turn.
+- With fresh readiness, a 55-second reset-and-log.py capture accompanied the
+  requested visual/pointer/tap/menu test. Fabian reports noticeably faster
+  operation, followed by a sudden severe slowdown. This does not establish
+  complete visual/no-tearing or touch acceptance. The interactive console
+  output was returned through the tool rather than saved to a complete raw
+  log; truncated output must not be reconstructed as exhaustive evidence.
+- Last returned samples before the report include UpdateRect 1280 (16x16,
+  100 us queued, frames1566/swaps125) and 1408 (14x1, 43 us queued,
+  frames1602/swaps134); both report faults0/rejects0. They precede the reported
+  slow state and do not exclude a later graphics fault or mirror penalty.
+- Hypothesis: `kernel_console.c` waits up to 2,000,000 polls per character
+  when USB EP1 is not free; flush adds up to 100,000 polls. Extensive runtime
+  debug output can therefore severely slow tasks when the host stops draining.
+  Timing after a bounded capture is suggestive but no A/B comparison was obtained.
+- A supposedly passive reader preconfigured DTR/RTS false before opening the
+  port. It still produced `CHIP_USB_UART_RESET`, losing the original slow
+  state. Do not label this as passive recovery or causal confirmation. Its
+  subsequent 55-second boot capture is saved as
+  `evidence/graphics-perf-2026-09-30/slowdown-passive-resume.log` (834,919 bytes,
+  SHA-256 `f6ac3c8c6bb99bbddd259cd8b23ea555a4017e282bf8a70a315dc4cbf01c5974`).
+  That fresh boot reaches Wanderer with zero sampled faults/rejects and 400
+  idle touch polls/error0; it says nothing conclusive about the lost state.
+- Next: establish whether the pointer as well as drawing slows and whether
+  fresh startup restores speed. For a controlled host-drain comparison obtain
+  fresh readiness and keep a single serial handle open across both drain and
+  non-drain phases; reopening the port is a reset risk. Audit early-boot versus
+  runtime debug-console waiting, and require a no-listener regression gate
+  before C1P acceptance. No runtime fix has been flashed for this report yet.
+
+### 2026-09-30 - C1P runtime console blocking fix candidate
+
+- State: hardware partial; Fabian now reports a hang after the initial speedup.
+  The cause of that observed hang remains unconfirmed. The console-only fix
+  removes a proven blocking path, not an accepted whole-system hang fix.
+- Source: dirty worktree based on `ad62d8257ed3`. Changes are confined to
+  kernel_console.c, its private declaration and the pre-krnStartExec transition,
+  plus the host test and progress documentation. No clock, graphics, touch,
+  media or BSP policy change in this candidate.
+- USB previously waited up to 2,000,000 polls per character and another
+  100,000 after packet handoff. Runtime now polls once per character, dropping
+  unavailable output; packet flush does not wait. UART applies the same runtime
+  policy. Early boot and the transition banner retain bounded waiting. Runtime
+  output is deliberately lossy, without a buffering/allocation dependency.
+  Touch logs precede event publication; graphics logs can hold the producer
+  lock. These callers must not depend on a host console reader.
+- `python3 arch/riscv-esp32p4/kernel/tests/console_nonblocking_test.py` passes
+  clang ASan/UBSan for extracted production USB and UART code: early bounds,
+  runtime poll/drop, packet/prompt flush, GetC and recovery. Build/link logs
+  contain the image-creation marker and no build error.
+- Hardware identified as ESP32-P4 rev1.3, MAC `e8:f6:0a:e0:46:4c`, flash32MB.
+  Build evidence directory `evidence/console-runtime-2026-09-30/` contains
+  identity.log, backup.log, core-before.bin (0x20000, 0x40000 bytes), build.log,
+  link.log, flash.log and verify-repeat.log. Backup's first 201,376 bytes match
+  the former core hash `35944fd6ef2e51ca5ce24b428f5bfa582c79a34f6b8c117b081e7e7cdf877e76`.
+- New core-nonblocking.bin: 201,504 bytes, SHA-256
+  `1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`,
+  written only to `0x20000`. Write-time and independent exact-image digest
+  verification pass. BSP remains SHA-256
+  `32608a926decc5f1d09f25a530d482027107ab6be2830bf8855144b1331ca5c0`.
+  CPU360/PSRAM200, framebuffer v2/coalescing and profiling/debug flags unchanged.
+  Bootloader, partitions, firmware volume and SD were not written.
+- Initial boot.log is not clean acceptance evidence: an independently launched
+  verify.log attempt overlapped its serial ownership and failed. After that
+  reader exited, verify-repeat.log succeeded; boot-repeat.log is the separate
+  reset-and-log.py 55-second headless repetition. Opening a reader resets this
+  board; neither capture is passive inspection of the original hung state.
+  Clean boot-repeat.log: 332,564 bytes, SHA-256
+  `184181556efb2487305e627c953c79bd701e6d0c0df5f024656f22ec2fdce182`.
+  It reaches Wanderer file/volume activity, initial CLI cleanup and touch
+  heartbeats through at least 400 polls. The runtime transition is present.
+  Log fragments/dropped bytes prevent an exhaustive fault-counter claim;
+  this headless boot does not establish no-reader stability or visual acceptance.
+- Next gate: fresh user-consented visual/pointer/menu test, followed by sustained
+  no-reader operation. Host TTY buffering means merely pausing Python reads
+  does not prove device endpoint backpressure. Missing lossy log markers cannot
+  establish either successful Wanderer boot or a hang.
+
+### 2026-09-30 - C4 double-tap and drawer requester report
+
+- Same flashed core/BSP as the preceding console-fix entry; no flash, reset,
+  media write or console reopen in this diagnostic turn. Following explicit
+  readiness, Fabian reports difficult drive-icon double-taps and a requester
+  naming `TENEME`, followed by correct RAM Disk opening. No sustained no-reader
+  stability pass has been reported; C1P's hang gate remains open.
+- Source audit: p4touch_worker.c polls every 50 ms; p4touch_policy.c requires
+  two empty reports to end a gesture. A second tap before that debounce completes
+  resumes the first gesture rather than producing two clicks. Eight-pixel radial
+  slop cancels tap recognition. Wanderer uses Intuition DoubleClick (default
+  500 ms, potentially overridden by preferences), without touch-specific policy.
+- Separate requester hypothesis: Wanderer panel_toolbar.c loads Search/DirUp
+  images from `THEME:Images/Gadgets/...`; normal Startup-Sequence assigns THEME.
+  This could explain a requester followed by successful drawer opening if theme
+  assignment/assets are absent, but neither exact requester spelling nor the
+  deployed SD assignment was checked. Do not infer filesystem corruption or an
+  extra click from this observation.
+- Next: confirm requester text (photo if convenient), inspect prepared SD boot
+  recipe/theme assets read-only, and design/test faster sampling plus bounded
+  tap-release handling before another consented double-tap test. Keep gesture
+  and theme fixes separate. No implementation or acceptance claim yet.
+
+### 2026-09-30 - C4 fast double-tap candidate
+
+- User requests both gesture and theme fixes. Source based on dirty
+  `ad62d8257ed3`; only p4touch_policy.c, p4touch_worker.c and policy_test.c
+  changed for the gesture candidate. Short unpressed taps commit on first
+  valid empty frame; held buttons still debounce two empty reports. Post-read
+  delay is 10 ms instead of 50 ms; I2C stays at the proven 10 kHz. Controller
+  read duration limits the actual sample rate; no 100-Hz claim. A transient
+  empty frame can now split an unpressed gesture. Preserve this risk for
+  interactive jitter/hold/right-latch testing rather than hiding it.
+- clang C99 -Wall/-Wextra/-Werror with ASan/UBSan passes 3,892 checks, including
+  rapid two-tap recognition with one intervening empty report, held-button
+  debounce, cancellation, slop, multi-contact latch, timer wrap and coordinates.
+  `kernel-hidd-p4touch-quick` explicitly recompiles worker and policy (same
+  build flags, EDGE_TRACE=0). Module: 40,488 bytes, SHA-256
+  `1fb3bb0e1b7bad00a222668a16915044814d3c9acefd110833aebaa8470acb29`.
+- ESP32-P4 rev1.3 MAC `e8:f6:0a:e0:46:4c`, flash32MB identified before write.
+  Fresh readback `bsp-before.bin`, 0x820000 length0x3e0000, has the expected
+  former package hash `32608a926decc5f1d09f25a530d482027107ab6be2830bf8855144b1331ca5c0`.
+  replace-package-member.py preserves all other 34 records byte-for-byte.
+  Full relocation audit: zero failed members. Candidate bsp-fast-tap.pkg:
+  35 members, 3,314,560 bytes, SHA-256
+  `c515db40b2dd0aa74d959df7b7c28d6829536ce0bbd7ffa21f27d48b11e33f7d`.
+  Write only at `0x820000`; write-time and independent verify-flash pass.
+  Core remains console-nonblocking SHA-256
+  `1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`.
+  Firmware volume, bootloader, partitions and SD untouched. Evidence in build
+  `evidence/touch-doubletap-2026-09-30/` (build/audit/identity/backup/flash/verify).
+- Headless reset-and-log.py 55-second boot.log: 337,592 bytes, SHA-256
+  `3e72d1caa7f8c97344b1051aaae566fed9c2356763eabba8ed7e08f7c5d66d37`.
+  It reaches Wanderer, reports tap mode and the 10-ms post-read delay, and
+  touch heartbeats through at least 900 polls. Contacts/events appeared during
+  capture, but no new synchronized visible gate was arranged or accepted.
+  Runtime logs are lossy. An actual `[Lock] THEME:Images/Gadgets/DirUp:-2`
+  appears, corroborating the missing-theme diagnosis. The accepted 89-entry
+  C3 image has neither theme assets nor THEME/THEMES Startup-Sequence assigns.
+- Next: fresh readiness for rapid double-tap,
+  stationary hold, free movement and two-finger menu test. No interactive pass
+  yet. Theme image changes are separate and await SD host availability.
+
+### 2026-09-30 - C4 improved double-taps, renewed graphics slowdown
+
+- Fabian spontaneously confirms double-taps now work better, THEME remains
+  missing and graphics is slow again; pointer remains responsive. This verifies
+  the reported improvement, not the full synchronized C4/no-reader soak gate.
+- The 10-ms post-read pause raises the duty cycle of the priority-20 worker's
+  CPU-polled 44-byte transfer over the proven 10-kHz bus. Drawing runs at lower
+  priority. This is a plausible contributor, not measured attribution of the
+  earlier C1P hang. Restore only the former 50-ms idle gap; retain first-empty
+  unpressed tap completion. No change to touch calibration, slop/hold, bus clock,
+  button latch, firmware, graphics or core.
+- Fresh module: 40,488 bytes, SHA-256
+  `0bfb06306de3e4df420b18de07c99370c6a786becd8895aa790e999c82235fa9`.
+  Full 35-member package audit passes. bsp-tap-idlegap.pkg: 3,314,560 bytes,
+  SHA-256 `eadb8723feb7bf1af92debf48daca033f626ab22bb6308ef3125f3abf93a9714`.
+  Prior flashed candidate independently verified before replacement; exact
+  candidate and original padded readback remain recovery copies. Same board
+  reidentified before write. Flash only `0x820000`; evidence files build-idlegap,
+  audit-idlegap, identity-idlegap, before-idlegap-verify, flash-idlegap,
+  verify-idlegap under `evidence/touch-doubletap-2026-09-30/`.
+- Theme SD updates remain pending physical host availability, requested from
+  Fabian. No card write or flash-volume write. Do not interpret the still-missing
+  THEME on the unchanged SD as a failed deployment of the source image fix.
+
+### 2026-09-30 - C3 theme image fix, host verified, SD deployment pending
+
+- Source image-only change: Startup-Sequence.c3 adds THEMES/THEME assigns and
+  `C:AddDataTypes DEVS:DataTypes/PNG QUIET` before Wanderer. mmakefile.src stages
+  the configured Ice theme, verifies Search/DirUp exist, includes picture/png
+  datatypes, PNG descriptor and AddDataTypes, with matching build dependencies.
+  Existing dirty board-profile and private-firmware staging changes preserved.
+- Previous accepted 89-entry image lacks both theme assets and assigns, and
+  the runtime log attempts THEME:Images/Gadgets/DirUp. Those assets are PNGs;
+  datatypes.library alone does not register their decoder. This is a real
+  missing-content fix, not global suppression of volume requesters.
+- `kernel-image-esp32p4-riscv P4_C3_GRAPHICAL_BOOT=1` builds 64 MiB, 167 entries,
+  SHA-256 `40468e618ed5701c940581b13b635ec6b0d79e37d52b078370a87d2dd2977067`.
+  verify-image.sh passes host MBR/FAT32 inspection, fsck_msdos, exact manifest
+  and unchanged before/after image hash. Parent inspected all six required
+  command/decoder/descriptor/toolbar assets in the manifest. Artifact is build
+  `bin/esp32p4-riscv/AROS/boot/esp32p4/aros-test.img`. Former accepted image and
+  sidecars remain under `evidence/theme-requester-2026-09-30/pre-theme/`.
+- No SD/flash-volume write or visual acceptance. Deployment is blocked only on
+  physical host availability of the card, requested from Fabian; do not overwrite
+  an unidentified medium. Back up the actual card before writing, then obtain
+  fresh readiness for reinsertion/boot and requester-free RAM Disk opening.
+- Touch idle-gap follow-up flash verification passes. First smoke reader failed
+  with transient port-busy (no owner found); separate 40-second repeat reaches
+  Wanderer and touch through 200 polls. Log SHA-256
+  `07d90e892a4a731cef7f807a225798fb7e8b780661bb330cd64801ea016fe44c`.
+  This is headless smoke only, not proof that slow drawing is resolved.
+
+### 2026-09-30 - C3 theme SD deployed and verified
+
+- Fabian confirms card insertion at the Mac. Identified `/dev/disk20`, built-in
+  SDXC reader, Secure Digital protocol, removable/nonvirtual, 127,865,454,592
+  bytes, 512-byte blocks; sole FAT32 partition AROSP4TEST at LBA2048, 66,060,288
+  bytes. This device is classified internal by macOS despite removable media;
+  external-only disk listings do not find it. Evidence card-info/partition-info
+  saved under build `evidence/theme-deploy-2026-09-30/`.
+- Unmounted exact disk20 and backed up the entire write range: raw prefix
+  card-before-64MiB.img, 67,108,864 bytes, SHA-256
+  `0c62c4db5ba0e38d412ca29bece55f836630bb94c752c1d6d59c6a63e43afde6`.
+  Read-only attachment of that backup matches all 89 original manifest entries,
+  ignoring only recognized macOS metadata. No user-content differences found.
+  Backup attachment disk23 was detached before writing. The rest of the
+  127.9-GB card is unpartitioned and untouched; this is a write-range backup,
+  not a claimed whole-card 127.9-GB backup.
+- Source write-image-eject.c now opens the exclusive raw target read/write and
+  compares every written byte after fsync/DKIOCSYNCHRONIZECACHE, before eject.
+  Short reads or mismatches fail explicitly. This avoids closing the descriptor
+  and allowing FAT automount to modify the image during verification. Host
+  compile with C11 -Wall/-Wextra/-Werror -O2 passes; invalid nonraw target is
+  rejected. Successful hardware write/readback exercises the new loop.
+- Reidentified disk20 geometry before write; exact expected-capacity guard
+  supplied to helper. Wrote only bytes0..67,108,863 of image SHA-256
+  `40468e618ed5701c940581b13b635ec6b0d79e37d52b078370a87d2dd2977067`.
+  write-verify-eject.log reports `wrote, verified and ejected 67108864 bytes`
+  on the expected-capacity medium. Final disk listing shows card no longer
+  online. Backup and source-image hashes are unchanged after deployment.
+- Core/BSP/firmware/bootloader unchanged. Old SD boot content is replaced but
+  recoverable from the raw backup; no files outside the image prefix changed.
+  Theme requester fix is media-verified, not visually accepted. Next: ask fresh
+  readiness for insertion into board, first-byte capture, RAM Disk opening,
+  no THEME requester and performance observation. C1P slowdown remains open.
+
+### 2026-09-30 - C3 theme SD synchronized boot, observation pending
+
+- Fabian confirms board reinsertion, then explicitly authorizes the described
+  visual test with `go`: RAM Disk double-tap, theme requester/button images and
+  window redraw/movement. No artifact changes. SD image remains SHA-256
+  `40468e618ed5701c940581b13b635ec6b0d79e37d52b078370a87d2dd2977067`;
+  core console-runtime candidate and 50-ms-idle/first-empty-tap BSP unchanged.
+- reset-and-log.py first-byte 55-second capture saved as build
+  `evidence/theme-deploy-2026-09-30/interactive-boot.log`, 427,196 bytes,
+  SHA-256 `75aae5a6bf2c4bd2fc6716f85741bfde8a14e05666d0b7a8da7fc991988316bb`.
+  THEME/THEMES appear as assigns, AddDataTypes reads PNG, Wanderer attempts
+  THEME:Images/Gadgets/DirUp and its file resolves successfully. png.datatype
+  lookup initially fails ordinary paths, then succeeds through LIBS: with the
+  Classes multi-assign and ELF loading proceeds. Touch stays active through
+  400 sampled polls; runtime output is lossy, not exhaustive fault evidence.
+- User's visible result is pending. Do not claim theme rendering, absence of
+  requesters or resolved slowdown from the capture. Log reader is now closed;
+  next: collect visible feedback and assess sustained no-reader operation.
+
+### 2026-09-30 - C3 visible missing PNG runtime dependency, corrected image
+
+- Fabian reports `could not open version 52 or higher of png.library`, followed
+  by drawer opening. First Theme image is therefore not an accepted rendering
+  fix. Assets/assign resolution passed, but dynamic dependency closure was
+  omitted from the initial recipe; record this as a failed visible gate.
+- Generated configs/link tables prove png.datatype imports png,z1,posixc,stdc
+  through relative-library stubs. Actual datatype ELF requires PngBase>=52.
+  Newly built png.library53.4 imports z1>=1 and posixc/stdc; z1.library1.10 also
+  imports posixc/stdc. posixc uses stdcio/stdc; stdcio uses stdc. All five are
+  mandatory filesystem payload, not supplied by the 35-member BSP. Generated
+  remaining C-runtime version requirements are zero. Source __optionallibs.c,
+  __fdesc.c and __stdcio_dos64.c make fd/usergroup/dos64 lazy optional opens,
+  not required for basic PNG decoding; no mathtrans dependency found.
+  Parent inspected PngBase.52 ELF symbol and optional-library source evidence.
+- Recipe adds runtime build dependencies and stages png.library, z1.library,
+  posixc.library, stdcio.library (stdc was already present). PNG runtime and
+  normal C3 image builds pass with no error marker. Corrected image: 64 MiB,
+  171 entries, SHA-256
+  `3beafde302b7a5b12b698b5504f9f2826e5c026306933ae82df1dd59e006cf5f`.
+  verify-image.sh passes fsck, exact 171-entry manifest and unchanged source
+  image hash. Logs build-png-runtime, build-runtime-closure-image and
+  verify-runtime-closure-image under `evidence/theme-requester-2026-09-30/`.
+- png.library: 669,220 bytes, SHA-256
+  `d3fbb224d9e3a80b8ef13a8796b2489e77b05eb78a4a3895812ca1c5ee226fdf`;
+  z1.library 224,600; posixc.library 547,172; stdcio.library 103,728; stdc.library
+  1,614,708. Parent verifies these entries in the exact new manifest.
+- No card/flash writes in this correction turn. Card remains on first Theme
+  image until host reinsertion, requested from Fabian. Next: identify and back
+  up actual write range again, write/readback/eject corrected image, then fresh
+  readiness to verify requester-free decoded toolbar and drawing performance.
+
+### 2026-10-01 - C3 PNG runtime closure SD deployment
+
+- Fabian confirms insertion at the Mac. Reidentified removable physical Secure
+  Digital `/dev/disk20`, built-in SDXC reader, 127,865,454,592 bytes with
+  512-byte blocks and AROSP4TEST FAT32 partition; no other removable physical
+  disk appeared. Source remains dirty on `ad62d8257ed3`; no firmware rebuild.
+- Unmounted exact disk20 and backed up the complete write range, 67,108,864
+  bytes, to build `evidence/theme-runtime-deploy-2026-10-01/card-before-64MiB.img`.
+  SHA-256 `16fafad62a6c8d5b8cb032ab60adb5defcf08b873ed9178d801458e04387bc6d`.
+  Initial dd invocation rejected unsupported `conv=excl` before creating a
+  backup; retry guarded nonexistence and completed all 64 blocks. No raw write
+  occurred before the successful backup. This is not a whole-card backup.
+- Corrected image: 67,108,864 bytes, 171 manifest entries, SHA-256
+  `3beafde302b7a5b12b698b5504f9f2826e5c026306933ae82df1dd59e006cf5f`.
+  Recompiled write-image-eject.c with C11/Wall/Wextra/Werror/O2, then used its
+  exclusive descriptor and exact capacity guard on `/dev/rdisk20`. It wrote
+  only bytes 0..67,108,863, synchronized, compared every byte from physical
+  readback, and ejected before closing. write-verify-eject.log confirms
+  `wrote, verified and ejected 67108864 bytes`; disk20 is absent afterwards.
+  Backup and source-image hashes remain unchanged. Identity and partition
+  evidence are in the same evidence directory.
+- Prior SD boot content was replaced and is recoverable from the prefix backup;
+  the remaining card range, core, BSP, private firmware volume, bootloader and
+  partition table on ESP32 flash were untouched. No reset or visual test started.
+  This passes media deployment only, not PNG loading or rendering on AROS.
+- Next: board reinsertion and fresh readiness for a captured boot, RAM Disk
+  double-tap, absence of PNG/THEME requesters and visible toolbar decoding.
+  C1P slowdown/hang and the B5 row-phase workaround remain open.
+
+### 2026-10-01 - C3 corrected PNG image synchronized boot
+
+- Fabian confirms board reinsertion and presence at the display after the exact
+  requested RAM Disk/PNG-toolbar test. Unchanged corrected SD image SHA-256
+  `3beafde302b7a5b12b698b5504f9f2826e5c026306933ae82df1dd59e006cf5f`,
+  67,108,864 bytes; console-runtime core and 50-ms-idle/first-empty-tap BSP
+  remain unchanged. No flash or SD write in this test.
+- reset-and-log.py captures first-byte USB reset boot on `/dev/cu.usbmodem101`
+  for 55 seconds and exits successfully. Build evidence
+  `evidence/theme-runtime-deploy-2026-10-01/interactive-boot.log`: 420,284 bytes,
+  SHA-256 `de9c72926893670fa996697f148534cb04e844f71ae8adac568679284eb7c9dd`;
+  stderr empty. PSRAM identifies 32 MB on the first attempt and calibrates at
+  200 MHz; 35 BSP members load. SD/Wanderer boot proceeds, THEME assign is
+  present, and LoadSeg attempts png.library, z1.library and posixc.library from
+  the newly staged payload. Touch heartbeats reach 400 polls. Runtime output
+  remains deliberately lossy; lookup attempts alone do not prove PNG decoding.
+- Reader is closed. No visible result yet, no requester-free rendering or
+  sustained performance acceptance inferred. Next: collect Fabian's RAM Disk
+  opening, PNG/THEME requester and toolbar-symbol observations without another
+  reset; then assess no-reader runtime stability separately.
+
+### 2026-10-01 - C3 PNG requester regression visibly passes
+
+- Following the synchronized corrected-image boot, Fabian reports no error
+  message and one symbol in the RAM Disk toolbar. This is direct visible
+  evidence of requester-free drawer opening and a rendered toolbar symbol,
+  consistent with the missing PNG dependency correction. Do not claim that
+  every expected symbol is present or identify the observed symbol without
+  further evidence. The previous failed png.library>=52 run remains recorded.
+- Same 171-entry, 67,108,864-byte SD image SHA-256
+  `3beafde302b7a5b12b698b5504f9f2826e5c026306933ae82df1dd59e006cf5f`;
+  same core/BSP and synchronized log as the preceding entry. Documentation
+  only: no reset, new capture, build, flash or media write.
+- The missing-library/requester regression passes this observed opening.
+  Full toolbar behavior, repeated openings, touch regression and C1P
+  no-reader sustained drawing/hang acceptance remain open. Next: assess
+  continued window operation and drawing performance with fresh readiness
+  before any new interactive run; retain existing board state meanwhile.
+
+### 2026-10-01 - C1P current screen drawing reported normal
+
+- Fabian reports screen drawing is fine so far after the synchronized boot
+  and requester-free RAM Disk opening. No elapsed observation duration was
+  supplied. This is favorable short-run feedback, not sustained acceptance
+  and not causal proof of either the console fix or the touch idle-gap change.
+- Same SD image, core, BSP and boot-log identities as the preceding entries.
+  Documentation only; no reset, console reopen, build, flash or media write.
+  The first-byte capture has finished and its reader remains closed; preserve
+  the running state to avoid clearing a potential delayed failure.
+- C1P remains hardware partial with delayed slowdown/hang and sustained
+  update/SD/touch gates open. Next: longer no-reader user observation when
+  available; collect onset and affected operations if slowdown recurs before
+  disturbing the device. Full toolbar and C4 acceptance remain separate.
+
+### 2026-10-01 - E0 isolated secondary HP-hart entry foundation
+
+- Fabian requests beginning ESP32/RISC-V SMP. Existing port uses one hart;
+  normal `_start` clears shared BSS and uses one boot stack, so it cannot be
+  used for a second hart. P4 kernel uses SysBase->ThisTask and global trap
+  depth; merely enabling an SMP macro is not a valid integration.
+- Local IDF v6.0.1 cpu_start.c start_other_core/call_start_cpu1 and P4
+  cpu_utility_ll.h establish the reference release path; ROM linker variants
+  both place ets_set_appcpu_boot_addr at 0x4fc000a8. No release attempted.
+  Shared Exec SMP audit delegated read-only; no third-party tree changed.
+- Source dirty on `ad62d8257ed3`. New secondary_entry.S uses private 4096-byte
+  SRAM stack, a 64-byte report, masked interrupts, own fault/park vector and
+  no C calls/BSS reset/shared initialization. Make opt-in P4_SECONDARY_ENTRY=1
+  adds the assembly only; default kernel excludes it. No controller invokes it.
+- Cross assembler rv32imafc_zicsr_zifencei/ilp32f passes; isolated fixture link
+  asserts entry/trap/report 64-byte and stack 16-byte alignment and stack size.
+  Linked entry=0x4ff00000, trap=0x4ff00080, report=0x4ff000c0 and stack end
+  0x4ff01100; check-sramtext.sh succeeds. Deliberate P4_TEST_BASE=0x40000000
+  fixture fails that checker with exit1 and explicit XIP references. Initial
+  fixture could not resolve a local trap symbol; exporting that kernel symbol
+  corrected the test. Fixtures warn about a combined RWX LOAD segment; they
+  are not boot images and do not qualify production linking.
+- Build evidence `evidence/smp-foundation-2026-10-01/`: secondary_entry.o,
+  1808 bytes, SHA-256
+  `19601fdaa3dd508dd5fd78431924f084a6da7c6e47c7e1791572a9efd5aecc7d`;
+  secondary-entry.elf, 4984 bytes, SHA-256
+  `6a0a090706cc99545d3e68ea1f120be7e2176d11121307c0352cfaa173316d0c`.
+  Linked disassembly has no call/jal or primary-start/Exec references.
+  Checked-in secondary-entry-test.sh repeats the positive and negative tests
+  successfully; repeated object/ELF hashes match exactly. Command in SMP.md
+  was executed verbatim. No whole-kernel qualification is inferred.
+- Safety: no full-core build, flash, SD write, reset or console reopen.
+  Running single-hart baseline preserved; stage E0 standalone build only.
+  Next: independently review entry assumptions, full-core SRAM/size gate,
+  bounded revision-specific release and report visibility/timeout recovery.
+  Parent verifies generic Exec list/runqueue spinlocks, shared RV atomic
+  builtins and native TLS scaffolding. Native TLS macros reverse the tp read
+  (`mv x4,%0` with output constraint); they are not safe copy templates.
+  Documented P4 toolchain already includes zaamo/zalrsc, but no two-hart
+  atomic/contention verification is inferred from compiler flags.
+  E1 hardware, Exec SMP, graphics speedup and prior delayed-hang closure are
+  not claimed. Requirements and rollback boundaries are in SMP.md.
+
+### 2026-10-01 - E1 bounded release implementation and pre-flash evidence
+
+- User authorizes E1 continuation; flashing/headless captures remain permitted,
+  but no visual or touch test is requested without fresh readiness. Read-only
+  esptool identity/read-flash/dump-mem operations reset the board; these are
+  not passive observation and not physical rail-off tests.
+- Connected D1001: ESP32-P4 rev1.3, MAC e8:f6:0a:e0:46:4c, 32-MB flash.
+  Actual 201,504-byte core read from 0x20000 before any write matches baseline
+  SHA-256 `1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`.
+  Backup and probe evidence: build `evidence/smp-release-2026-10-01/`.
+  BSP, private firmware volume, partition table and bootloader are not written.
+- Actual ROM setter stub/body dumps, not inferred implementation: stub at
+  0x4fc000a8 jumps to 0x4fc058e2; body stores a0 at 0x50110164 then returns.
+  96-byte stub dump SHA-256
+  `f9ef2ea71242757e7b99bff97842575730b338f1405a36497ce007b664567fc8`;
+  128-byte body dump SHA-256
+  `1d591fe0917077e23bd8710e608e67f13529811251cad537411b0308217d9709`.
+  hw_ver1 core1 clock/reset/PMU definitions independently audited against
+  local IDF v6.0.1; WFI stall-status limitation excludes it as stop proof.
+- `P4_SECONDARY_PROBE=1` adds the isolated controller/private entry. It checks
+  reset asserted/CPU clock off before primary BSS clear and on every probe
+  exit, uses uncached generation/SP reporting and guarded private stack,
+  and has both cycle and iteration deadlines. Suppressed launch must time
+  out before the real launch; unsafe isolation withholds Exec. No scheduler,
+  SMP ABI, graphics producer, or driver concurrency is enabled.
+- Actual-controller host test compiled with clang C11, Wall/Wextra/Werror,
+  ASan/UBSan passes positive, suppressed launch, wrong hart/nonce/SP, fault,
+  guard corruption, cycle wrap, stopped counter and isolation failure cases.
+  RMW tests preserve unrelated/core0 bits. Evidence `host-test.log` and
+  `secondary-probe-test`; host mocks do not verify silicon memory behavior.
+  Updated isolated entry/link/SRAM checker and deliberately XIP-linked
+  rejection pass; ELF SHA-256
+  `af7dc1d4066a7edf43f8f695bbff7f8a0280c3102e93dc1aca73c2c1b91fe1f3`.
+- All kernel objects invalidated before diagnostic build. First aggregate
+  build fails because shared `arch/riscv-all/kernel` objects include P4 board
+  headers without the selected board macro. Fix forwards board.mk flags only
+  when AROS_TARGET_ARCH=esp32p4; other RISC-V builds are unchanged. Second
+  attempt recompiles the kernel but the aggregate dependency regenerates the
+  4-MB flashdisk from the expanded SD stage and fails `image too small for
+  its contents`. Logs `build.log` and `build-boardfix.log` preserve failures.
+  Do not enlarge or flash that volume as part of SMP. Relinking the fresh
+  kernel kobj through the existing direct image rule is the diagnostic path;
+  aggregate image packaging remains a separate open issue.
+- At this evidence point no diagnostic flash or second-hart hardware pass.
+  Next: link/size/residency audit, independent safety review, bounded headless
+  smoke, restore exact baseline. Twenty retained-hart warm resets and fresh
+  graphical/touch regression remain open even if the smoke succeeds.
+
+### 2026-10-01 - E1 initial on-silicon report, not full SMP acceptance
+
+- Separately linked fresh kernel kobj through the checked-in core image rule
+  with P4_BOARD=d1001, C3 graphical boot=1, C4 touch=1, CPU360/PSRAM200,
+  XIP linker, C1 profile=1, FAT/DOS/DOSBOOT debug=1, SECONDARY_PROBE=1.
+  Direct rule invocation additionally supplies AROS target esp32p4/riscv and
+  host darwin/aarch64; attempts missing those make variables failed and are
+  retained in `link.log`/`link-direct.log`. `link-final.log` confirms both
+  SRAM-residency check and Creating .../aros-esp32p4.bin. Diagnostic core
+  203,776 bytes, SHA-256
+  `9ba29e99931982cec77dbe9b2257676462c5e9714bd369a78f59add8c2b03890`;
+  retained as `core-probe.bin`, ELF/map and symbol/startup-disassembly evidence.
+  Core entry 0x4ff02b80, private trap 0x4ff02c00, report 0x4ff07700,
+  4-KB stack 0x4ff07780..0x4ff08780, 64-byte guard lines on both sides;
+  entry/trap/report aligned64, stack aligned16, BSS ends0x4ff087f4.
+- Independent source review found no confirmed controlled-flash blocker;
+  this is review, not silicon qualification. Only the core at0x20000 written,
+  then independently `verify-flash` matched all203,776 bytes. Other flash
+  partitions/BSP/SD are unchanged by this diagnostic deployment.
+- Two separate first-byte headless 35-second reset captures report exactly:
+  suppressed state0/hart0/echo0/result0, then release state1/hart1/
+  echo0xe1000002/result1, and `probe PASS; secondary stopped before Exec`.
+  Result1 includes matching private SP and both intact guard lines. Stop
+  confirmation is reset-bit asserted, CPU-clock bit clear and boot-vector0,
+  checked before logging; it does not rely on WFI stall status. Both logs
+  show PSRAM32MB/200MHz verified after1attempt, 35BSP modules, Wanderer
+  activity and the touch worker's100-poll heartbeat. No explicit [trap],
+  Guru Meditation, panic or unsafe-secondary marker observed. Runtime output
+  is lossy/nonblocking, so absence of a marker is not a completeness proof.
+  No visual or physical touch interaction requested or inferred.
+- `boot-probe-1.log`:419,564bytes, SHA-256
+  `da3d58899786a8058364bbb658643cb086cbf4d01b8af261f8012af45dd57899`;
+  `boot-probe-2.log`:423,967bytes, SHA-256
+  `2c69cdd394ba29935d3a273992aca6c52adc37be1eaa42409beb49d3760d2880`.
+  Both stderr files empty. Controller host executable SHA-256
+  `59a93d001e9fd31b12f134fef1ee874be6fd279c5652dea68fd5db03f36273d4`.
+- Restored the exact201,504-byte baseline `core-before.bin` at0x20000;
+  independent verify-flash digest matched SHA-256
+  `1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`.
+  Logs `restore.log`/`verify-restored.log`; first-byte restored-boot capture
+  is the final headless check. Build output still contains the opt-in probe
+  candidate, NOT the normal flashed core: use evidence/core-before.bin for
+  baseline recovery, never flash the generic output path on assumption.
+- Acceptance remains partial: these two boots reset an already-stopped
+  secondary, NOT a retained running hart. Next controlled variant must park
+  both harts with core1 still clocked, then execute20warm resets proving the
+  early primary quiescence before BSS and PSRAM recovery. Restore baseline
+  afterward; obtain fresh readiness for desktop/touch regression. E2 cache/
+  atomics/IPI and E3 Exec scheduling remain not started. No speedup or prior
+  delayed-hang closure claimed.
+- Final restored-baseline35-second first-byte capture completed: PSRAM32MB
+  at200MHz after1attempt, 35modules, Wanderer activity and100touch polls;
+  no SMP-probe marker and no explicit fatal marker. `boot-restored.log`
+  419,006bytes, SHA-256
+  `ae7635dadad35147174513390b543cdf2e13d7a12032fafa77e67bb60d93d89e`,
+  stderr empty. This verifies restoration/headless progress only, not a
+  visually accepted desktop, input regression or sustained stability.
+  `git diff --check` passes. Changes remain uncommitted amid unrelated
+  existing worktree edits; no broad staging or commit performed.
+
+### 2026-10-01 - E1 retained-hart reset variant and pre-test contract
+
+- Fabian authorizes continuation with the twenty-reset gate. Headless tests
+  and core writes are permitted; no display/touch interaction requested.
+  Normal Exec remains single-hart. New `P4_SECONDARY_RETAIN=1` requires
+  SECONDARY_PROBE=1 and retains only a validated private hart1 park; hart0
+  masks interrupts and parks before Exec after the retained READY marker.
+  Negative probe, invalid report/guards/control state and every failure
+  quiesce hart1; unconfirmed isolation withholds Exec. Retention is never a
+  production boot mode or a claim of SMP scheduling.
+- Primary assembly now preserves inherited reset/clock and post-isolation
+  reset/clock/boot-vector readbacks in registers through the BSS loop, stores
+  them afterward, and reports that snapshot. Reset held/clock gated/vector0
+  are checked before any BSS store or C/PSRAM initialization. The ROM may
+  normalize core1 before AROS entry: inherited state must be recorded, not
+  presumed retained. This test measures warm recovery from a previously
+  released parked hart, not physical rail-off behavior.
+- Existing reset-and-log.py can retry six pulses and discard failed/download
+  attempts. It is appropriate for ordinary first-byte boot captures but must
+  not silently substitute retries into this twenty-transition gate. A strict
+  one-connection harness captures the seed and twenty consecutive single-pulse
+  resets; any download/silence/duplicate/incomplete sequence or fault aborts
+  with raw failed evidence. Every previous boot must have READY before the
+  next pulse. Require recovered PSRAM32MB/200MHz, its one-word-per-MiB window
+  check, zero command timeouts/FSM recoveries, 35BSP modules, exact report/
+  negative/early-isolation markers and no Exec handoff. These window checks
+  are NOT a complete bytewise32MB integrity sweep or a graphical boot gate.
+- Normal and RETAIN actual-controller host tests pass clang C11,
+  Wall/Wextra/Werror, ASan/UBSan. Tests include successful retained controls,
+  retention refusal on suppressed/fault/wrong hart/nonce/SP/guards/timeout,
+  normal cleanup, isolation failure, dead/wrapped counter and invalid early
+  boot-vector snapshot. Isolated entry/link/residency/XIP rejection tests pass.
+- All kernel objects invalidated before `gmake -j8 kernel-kernel-kobj` with
+  D1001, C3/C4=1, CPU360(default)/PSRAM200, XIP/C1PROFILE=1, FAT/DOS/DOSBOOT
+  debug=1, SECONDARY_PROBE=1, SECONDARY_RETAIN=1. Core linked separately via
+  the existing rule with targetesp32p4/riscv and hostdarwin/aarch64, avoiding
+  the separately documented oversized flashdisk dependency. Core204,512bytes,
+  SHA-256 `a01219e9ec105e4ac080412e30f16151f442cd105581b89fe94718ad339ee28c`.
+  SRAM checker and Creating...aros-esp32p4.bin both pass. Evidence build
+  `evidence/smp-retained-2026-10-01/` retains binary/ELF/map/startup disassembly.
+- Connected board reidentified as rev1.3/MACe8:f6:0a:e0:46:4c/32MB flash.
+  Back up the entire204,800-byte sector-aligned write range at0x20000, not
+  merely the201,504-byte normal image. Require that its normal-core prefix
+  still matches `1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`
+  before writing. Only that core range will change; BSP/SD/bootloader/partition
+  table/private firmware volume untouched. Before final range restoration,
+  boot the previous verified non-retaining diagnostic core to confirm hart1
+  is stopped; then restore/verify the exact backed-up range and headless boot.
+- At this point: build/host verification only. Hardware series, independent
+  retention/harness review and final restoration not yet accepted. Failures
+  must stay documented, including seed/download errors; no twenty-pass claim
+  from successful replacements. Prior delayed-hang and graphical gates open.
+- Before-test deployment update: actual204,800-byte range backup SHA-256
+  `0f44f4a7f698e6fed052da9ec36fe38059cba41c5bc80ecf4c6bc2a72e5bdccb`;
+  normal201,504-byte prefix matches the required baseline hash. Retained
+  candidate written at0x20000 and independently verify-flash matched all
+  204,512bytes. Logs `backup.log`, `flash.log`, `verify.log` and identity/
+  artifact-manifest.json retained. Device intentionally left in ROM after
+  verification, pending strict harness review; no hardware series yet. Host
+  flag counter-probe confirms RETAIN=1 without PROBE=1 fails at make parsing.
+  ASan/UBSan executable hashes: normal
+  `e5ecc8ea30e1d181e9167da8595f7ff0bd9d1339b2b928348f53bf76de928329`,
+  retained `6ded189e991e6cf4ee013756ea23dd12a94a6e0ee6116db4e4ee95a17458c5e8`.
+- Parser calibration capture, not part of the twenty-transition gate:
+  `calibration-smoke.log`, 10,598 bytes, SHA-256
+  `cc0706117ffa3bd73b917f77ac241ef34100027a184ed4777a9aa5ea49571dc0`.
+  Ordinary retry-capable reset-and-log.py reaches retained PASS/READY, with
+  hart1/nonce/guards valid and both harts parked before Exec. Inherited
+  reset=0x00000100 and clock=0xe6dfb7ef show reset held and core1 clock off
+  at AROS entry. ROM/bootloader normalization prevents treating this capture
+  as proof that an active secondary survived to our early isolation code.
+- Strict harness host verification: 14 fake-serial/parser tests pass; actual
+  calibration fixture satisfies every parser criterion. Required report
+  markers are unique/ordered, release cause/PC are zero, retained PASS precedes
+  READY, incomplete pulses and interrupts fail closed with partial evidence.
+  Independent read-only review finds no blocker for exactly20 transitions.
+  Preserved harness source SHA-256
+  `4fef03a57fe308d21d190244b79b577877c0dee2ffa0e2300479f8c44f5c05f1`;
+  fixture-test source SHA-256
+  `03f423a80cf46b967478b4babb0981f055d9447c73206606b8b96998995f6274`.
+  `campaign-01` starts with one connection, cycles20/timeout10seconds,
+  0.35seconds post-READY observation, one pulse per attempt and zero retries.
+  Final result and restoration still pending at this entry point.
+
+### 2026-10-01 - E1 retained-state campaign paused for display disconnection
+
+- Fabian requests immediate test stop to disconnect the display. SIGINT
+  stops campaign-01 during warm19 capture; process exits1 and closes its one
+  serial connection. No further reset or flash is performed after this stop.
+  Harness marks the interrupted series failed/incomplete, not accepted;
+  this is a user interruption, not an observed firmware fault.
+- Seed+18 consecutive warm transitions pass all criteria, with exactly one
+  pulse each, no retry/substitution and0ambiguous pulses. All18 successors
+  report inherited reset0/clock0xe6dfb7ff: reset clear and core1 clock on at
+  AROS entry, unlike the initial post-esptool calibration capture. All report
+  verified pre-BSS isolation, suppressed-start counter-probe, hart1/nonce/
+  SP/guards/release/retained PASS/READY; PSRAM32MB/200MHz after1attempt,
+  zero command timeouts/FSM recoveries, one-word-per-MiB checks and35modules.
+  Control snapshots plus reports verify this bounded park/recovery path;
+  no continuous execution sampling, full-RAM stress or Exec SMP claim.
+- Warm19 pulse completes but capture interrupts before BSP/probe/READY.
+  Partial log2,923bytes SHA-256
+  `814fcc5ab861f70ad229577bc8b1a2bacd7e2b29150a1e1b2f346d4ce1f6bd84`.
+  No fatal/download marker appears in the captured prefix. Preserved summary
+  `evidence/smp-retained-2026-10-01/campaign-01/summary.json`, SHA-256
+  `eaeb0b134c7ee77fba6cf9bd52296805f50c55ca51bcd224c569a032c1be7ca7`,
+  records seed1/warm19 pulses issued,18warm passes, all gates false.
+- Current board core remains204,512-byte retained candidate SHA-256
+  `a01219e9ec105e4ac080412e30f16151f442cd105581b89fe94718ad339ee28c`
+  at0x20000, not the normal desktop core. Primary parks before Exec;
+  the interrupted capture does not establish final on-device park state.
+  BSP/SD/bootloader/partitions were not written. Full204,800-byte baseline
+  backup and previous non-retaining diagnostic core remain available.
+- Next safe step ONLY after Fabian authorizes resumption/reconnection:
+  establish a new seed and a fresh twenty-consecutive-reset series, never
+  splice these18 with later passes. Before restoring normal baseline, boot
+  the non-retaining diagnostic to confirm secondary quiescence; restore and
+  independently verify the complete saved range, then headless normal boot.
+  Fresh display/touch readiness remains required for graphical regression.
+
+### 2026-10-01 - E1 fresh campaign after reconnection
+
+- Fabian confirms the display is reconnected. Headless reset testing resumes;
+  no visual or touch interaction is requested. Campaign02 uses the unchanged
+  retained core and reviewed harness, same port/cycles20/timeout10seconds,
+  one serial connection and one pulse per boot, no retries. Campaign01's18
+  passes remain separate and cannot complete this new gate. Exact baseline
+  range and intermediate diagnostic hashes are rechecked before starting.
+- Final result and safe baseline restoration remain pending. No hardware
+  qualification is inferred from reconnection or from the first seed pass.
+
+### 2026-10-01 - E1 twenty retained-state transitions pass; baseline restored
+
+- Unchanged diagnostic candidate/configuration and frozen reviewed harness
+  used for campaign02 on D1001 rev1.3, MACe8:f6:0a:e0:46:4c. Fresh seed plus
+  exactly20consecutive warm transitions pass; one connection,21completed
+  pulses total, zero retries/substitutions/ambiguous pulses. Campaign01's
+  interrupted evidence remains preserved and is not combined with this run.
+  UTC interval07:10:49.220..07:14:05.030 (Europe/Berlin09:10..09:14).
+- All20successors report inherited reset0/clock0xe6dfb7ff, confirming core1
+  reset clear and clock on at AROS entry. Checked early isolation before BSS
+  and complete suppressed/positive/retained PASS/READY markers pass on every
+  boot. Hart1 identity/nonce/private SP/guards are valid, trap cause/PC zero.
+  PSRAM32MB/200MHz initializes after1attempt, command timeouts/FSM recoveries
+  zero, one-word-per-MiB map checks pass and35BSP modules load. Primary remains
+  parked before Exec. Minimum post-READY observation0.350609959seconds.
+  This qualifies the bounded retained-park reset path on this silicon, not
+  continuous execution sampling, full-RAM integrity/stress, physical cold
+  power, graphical acceptance or ordinary tasks scheduled on both cores.
+- Evidence build `evidence/smp-retained-2026-10-01/campaign-02/`:21raw logs,
+  total222,580bytes, individual hashes/criteria/pulses in summary.json SHA-256
+  `e17649ef8971730b50d48499824bd2efeb51c74287a81168c6dffe4088bad9b8`.
+  Parent independently reparses every raw log and validates its size/hash,
+  complete criteria and all20active-at-entry classifications. Independent
+  audit SHA-256
+  `ee169c4c253fbd3b87f0576a23bf59dec188d21646f820e215a0df929e36d182`.
+- Reidentified board before restoration. Only core0x20000 is written:
+  intermediate203,776-byte non-retaining core SHA-256
+  `9ba29e99931982cec77dbe9b2257676462c5e9714bd369a78f59add8c2b03890`
+  written/independently verified, then12-second first-byte boot confirms
+  `probe PASS; secondary stopped before Exec`. Quiescence boot60,694bytes,
+  SHA-256 `d62b14638ce61800a5c68331d015d39316421cff8c33ee644b5dc44321b77466`.
+- Restored complete204,800-byte sector-aligned backup, not just the normal
+  image prefix. Independent verify-flash confirms digest match across all
+  204,800bytes, backup SHA-256
+  `0f44f4a7f698e6fed052da9ec36fe38059cba41c5bc80ecf4c6bc2a72e5bdccb`.
+  Normal201,504-byte core prefix SHA-256 remains
+  `1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`.
+  No BSP/SD/bootloader/partition/private-firmware write. Their existing
+  identities are unchanged by the procedure; no fresh full readback claimed.
+- Restored baseline35-second first-byte capture419,829bytes, SHA-256
+  `3a5d4793c41b809456c721325b26f4e68c9536e263f439faf8e9582860a3a7ca`:
+  PSRAM32MB/200MHz after1attempt, zero timeout/recovery counters,35modules,
+  normal Wanderer activity, external firmware fallback load and touch
+  heartbeat after100polls. No captured trap/panic/Guru/Alert or SMP probe
+  marker. Runtime output is lossy; truncated lines do not establish every
+  touch counter or prove sustained liveness. No display observation requested.
+- E1-A2 retained reset gate passes; E1 remains hardware partial until fresh
+  user-consented desktop/touch regression closes E1-A3. Existing delayed-hang
+  soak, B5R uncompensated mapping, cold-power and aggregate-build gates stay
+  open. Generic build output still contains the retained diagnostic image:
+  do not flash it as the normal build. Rebuild affected objects when changing
+  defines. Next safe step: request visual/touch readiness, then E2 two-hart
+  publication/atomics/IPI primitives; do not enable Exec SMP yet.
+
+### 2026-10-01 - E1 synchronized baseline regression started
+
+- Fabian explicitly confirms readiness for desktop visibility, finger-pointer
+  tracking and two-finger menu opening. Restarted unchanged restored normal
+  core201,504bytes SHA-256
+  `1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`
+  through first-byte reset-and-log.py with60-second capture. No flash or
+  media write. Existing BSP/SD/firmware identities and CPU360/PSRAM200 remain
+  unchanged. User observation and final UART review are pending; no visual
+  pass or E1 completion is inferred from the readiness response.
+- Capture completed: `baseline-interactive-boot.log`,421,169bytes SHA-256
+  `7dfbbc39ead8646969d4bf146b371b847292ec3fe9c0229a013157baaf36fcac`.
+  PSRAM32MB/200MHz after1attempt, zero command timeout/FSM recovery counters,
+  35modules, normal Wanderer activity, external firmware fallback load,
+  tap-mode worker and heartbeat through500polls are captured. No captured
+  trap/panic/Guru/Alert/unsafe/SMP-probe marker. Runtime output is lossy and
+  heartbeat lines are truncated. Live user observation still pending;
+  absence of a contact report is not interpreted as a touch failure or pass.
+
+### 2026-10-01 - E1 restored baseline regression confirmed
+
+- After explicit readiness and the synchronized60-second normal-core boot,
+  Fabian replies "läuft" to the requested complete desktop/icons, finger
+  pointer tracking and two-finger menu-opening checks. This confirms that
+  bounded post-diagnostic visual/touch regression, not menu-item execution,
+  prolonged stress or resolution of the prior intermittent slowdown/hang.
+- Unchanged normal core201,504bytes at0x20000, SHA-256
+  `1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`;
+  BSP35members SHA-256
+  `eadb8723feb7bf1af92debf48daca033f626ab22bb6308ef3125f3abf93a9714`;
+  SD64MiB/171entries SHA-256
+  `3beafde302b7a5b12b698b5504f9f2826e5c026306933ae82df1dd59e006cf5f`.
+  CPU360/PSRAM200, framebuffer ABIv2/coalescing, +525 mapping workaround and
+  nonblocking runtime console unchanged. UART artifact/hash are in the
+  preceding synchronized-entry record; no new hardware or media mutation.
+- E1-A1 bounded identity/nonce/SP/guard release/park, E1-A2 counter-probes
+  and fresh20consecutive retained-state warm transitions, and E1-A3 exact
+  baseline restoration plus consented regression pass for D1001 rev1.3.
+  Master/TrackE/README now qualify E1's bounded diagnostic as hardware
+  verified. Production Exec still uses only hart0. No speedup, SMP scheduling,
+  other-revision, physical-cold-power or sustained-stability claim.
+- Next step is E2's explicit two-hart publication/ownership, generated atomic
+  instruction/contention and bounded IPI/cache synchronization contracts.
+  Earlier E0 baseline-soak limitation, full aggregate packaging and B5R remain
+  separate open obligations. Generic build output remains the retained
+  diagnostic candidate; normal board flash is the restored baseline.
+
+### 2026-10-01 - E2-A1 SRAM mailbox implementation started
+
+- State: E2 in progress, no E2 hardware acceptance yet. Dirty worktree based
+  on ad62d8257ed3; new private secondary_mailbox sources and controller/entry
+  integration. No shared Exec ABI changes and no second scheduler.
+- Configuration: P4_E2_MAILBOX=1 requires SECONDARY_PROBE=1 and rejects
+  SECONDARY_RETAIN=1. Normal builds retain their previous behavior. Hart1
+  executes only a bounded private SRAM worker, then parks. Hart0 asserts reset
+  and gates its clock before logging and parks before Exec on pass or failure.
+- Protocol: independent 64-byte request/response lanes, 1-KB input/output,
+  uncached internal SRAM only; payload/checksum precede ticket publication,
+  acquire/release fences, epoch and exact next sequence, fresh ack ticket.
+  Two releases with different epochs reset protocol state. Each attempts
+  65 exchanges, six refusal cases and a missing-ack timeout counter-probe.
+- Host evidence: clang C11 -Wall -Wextra -Werror with ASan/UBSan runs the
+  production protocol header: 1,000 exchanges and duplicate/stale/skipped
+  sequence, epoch, zero/oversized length, checksum, wrap and fresh-state cases
+  pass. Existing E1 controller sanitizer fixture also passes unchanged.
+- Artifacts: full core build started in build/evidence/smp-e2-2026-10-01;
+  no new core identity or hardware result claimed before link/inspection.
+- Safety: no board/storage writes in this implementation stage; normal
+  baseline remains on D1001. PSRAM is deliberately not addressed through an
+  assumed uncached alias. No cache-maintenance calls while hart1 is active.
+- Remaining: independent review, cross-build/SRAM residency, controller
+  timeout fixtures, headless exact-artifact SRAM test/restoration; then
+  independently evidenced PSRAM ownership/coherence, E2-A2 and E2-A3.
+- Local reference audit: IDF v6.0.1 cache_ll.h:23-33 documents internal
+  L2MEM 0x4ff00000 -> 0x8ff00000 only; hw_ver1 cache_struct.h:40-52 describes
+  both HP dbuses accessing one L1 D-cache. ext_mem_defs.h:40-44 maps PSRAM
+  at 0x48000000..0x4c000000; no supported uncached PSRAM alias was found.
+  Shared-cache CPU publication and physical-memory/DMA publication must
+  therefore remain distinct tests; hart1's inherited cache setup is not
+  established by those headers alone. Parent inspected these source ranges.
+- Pre-flash correction: first link failed residency on an objdump annotation
+  for folded alias arithmetic, not an actual XIP load. Explicit assembly add
+  restores a passing checker without relaxing it. The second206,384-byte
+  candidate SHA0744ec06e7a6e47c39332fa01ff1bf4e552730c7c6f8bc260850db85f4425f49
+  linked/residency-checked but was NOT flashed: parent found the entry-only
+  SyncCode range excluded the new C worker. Both linker scripts now expose
+  its complete range and synchronize it before release; final rebuild pending.
+- Read-only board preparation: rev1.3/MAC e8:f6:0a:e0:46:4c identified on
+  /dev/cu.usbmodem101; backed up208,896 bytes at0x20000, SHA
+  3c97d1e1cfe67adcd58db3c238093a23cace917d48a4a2b000c30a5ba1f3305f.
+  First201,504 bytes match baseline SHA
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6.
+  Identity/backup calls leave the board in download mode; restore/reboot is
+  required even if hardware testing is cancelled before a flash write.
+- Independent review found no reset/publication safety blocker but identified
+  older non-consecutive ticket replay as a protocol gap. Worker now ignores
+  every ticket <= its last consumed ticket (wrap unsupported); new production
+  header test proves replay with even the next logical sequence has no effect.
+  Actual controller fixture additionally seeds a stale nonzero ack and a dead
+  cycle counter: the independent iteration limit expires instead of accepting
+  it. ASan/UBSan passes after correcting the fixture to quiesce before mailbox
+  preparation. Final candidate rebuild follows these corrections.
+- Final candidate:206,560 bytes SHA
+  95bab40341099c6bc0abc0a2f562014ae16185b96b1d13ffee3eb17588f03f63,
+  kernel objects invalidated, build-04/link-04 exit0, Creating binary and
+  SRAM residency check pass. Worker4ff00000..4ff002ec has no nested call,
+  uses144 stack bytes and explicit fence rw,rw; its mailbox is4ff03580,
+  private stack4ff082c0..4ff092c0. E1 isolated entry/XIP refusal fixture passes.
+  Written only at0x20000 and independently verify-flash checked; touched
+  sector range208,896 bytes has the above fresh recoverable backup. BSP,
+  firmware, bootloader, partition table and SD remain untouched. First-byte
+  headless capture follows; restore the entire backup before ending work.
+- Hardware result: all three12-second first-byte captures contain PSRAM32MB
+  at200MHz, zero command timeouts/FSM recoveries and35 BSP modules; suppressed
+  launch remains silent, both positive releases report hart1/private nonce/
+  stack/guards and result1, reset=held/clock=off after each. Each exact candidate
+  run reports SRAM PASS epochs2/exchanges130/refusals12/missing-ack2, then
+  READY with primary parked before Exec. Total390 exchanges/36 refusals/6
+  expected ack timeouts across six reset-separated launches. This is the
+  bounded SRAM slice, not PSRAM exchange/coherence, atomics, IPI, a retained
+  warm-reset campaign or sustained stability. The ordinary reset-and-log.py
+  helper may retry download-mode starts; no no-retry/reset-rate claim is made.
+- Raw captures SHA-256 (build/evidence/smp-e2-2026-10-01): boot-01.log
+  0d59a04bc155ef353dccef00e887c982dcc17765d6c441183ad72885fb24e500;
+  boot-02.log
+  27dcbf116ea10bc218c4538e5da47a2079307077559562c0196756ad1c7e3e2c;
+  boot-03.log
+  cd9d66268a0422de09ba3d88782b162770826434e091e15d62def4ad30b1eef2.
+  Independent reviewer reran both sanitizer fixtures after replay/stale-ack
+  corrections and confirms both findings closed, no remaining scoped finding.
+- Restoration: after third run explicitly confirms secondary stopped, full
+  208,896-byte original range written at0x20000 and independently verified.
+  Normal35-second first-byte boot passes PSRAM32MB/200MHz after one attempt,
+  zero timeout/recovery counters,35 modules, Wanderer and touch100-poll
+  heartbeat. No SMP diagnostic markers occur; runtime output remains lossy.
+  Baseline capture419,705 bytes SHA
+  8c3e1bb31a436e3be0d4ab94e562a8f46fd0f66ebf32e6bff721578bc2a2c15e.
+  No fresh interactive/visual acceptance or stability soak claimed. D1001
+  is back on normal201,504-byte single-hart core; generic build output remains
+  the206,560-byte E2 diagnostic and must not be flashed as the baseline.
+- Next: reserve an explicit PSRAM scratch range outside package/framebuffer/
+  Exec pools; establish hart1's data-cache access configuration, then test
+  shared cached publication separately from forced physical-memory checks.
+  Do not invent a PSRAM uncached alias or run shared cache-off until E2-A3's
+  rendezvous gate exists. E2-A2/A3 and E3 remain open/default off.
+
+### 2026-10-01 - E2 full diagnostic implementation; acceptance pending
+
+- Dirty source based on ad62d8257ed3; no default SMP or Exec ABI change.
+- P4_E2_PRIMITIVES=1 requires E2_MAILBOX=1 and SECONDARY_PROBE=1.
+  Adds guarded 4-KiB PSRAM scratch, two-hart AMO/LRSC/lock counters,
+  private returning SRAM IRQ entries, generation-qualified bidirectional
+  software IPI and remote instruction replacement, SRAM park/cache/resume.
+- Local IDF v6.0.1 hw_ver1 reference: FROM_CPU0/1 registers500e5010/14,
+  sources79/80, core matrices500d6000/6800, raw CLIC line22.
+  CLIC MMIO is hart-local; other-hart view adds10000. ISA/toolchain
+  rv32imafc_zicsr_zifencei_zaamo_zalrsc; canonical internal SRAM atomics
+  only. PSRAM and uncached-alias atomics are not claimed supported.
+- Host protocol/controller ASan/UBSan passes after payload refactoring,
+  including1000 external and1000 alternating embedded/external transactions,
+  lane/guard/refusal preservation and invalid/missing-lane fail-closed tests.
+  Fourteen log-checker tests pass. Core08 cross-build and SRAM residency
+  pass, including actual AMO/LRSC instructions on both executed paths and
+  a deliberately XIP-placed fixture rejection. Independent source review
+  finds no remaining blocker after the reset-before-routing-restore fixes.
+- Full candidate219,776 bytes, SHA256
+  f26186e41d04469e7de4d0b6a35e94882a9bfc25e8630f22138abae2dd4512bc.
+  Headless five-capture campaign in progress; no final acceptance yet.
+  Both harts record MISA40901125. Atomic test requires real nonzero retries:
+  initial CAS snapshots use a two-way barrier before competing updates.
+- Earlier diagnostic captures are retained as failures: core04 lost
+  completion after CACHE PASS; removing post-gate remote CLIC accesses
+  restored teardown completion;
+  core05 refused second-epoch PSRAM, motivating ticket-before-mode acquire;
+  core07 rejects a zero-incidental-contention epoch. None qualifies E2.
+  Global secondary reset is the ISR completion barrier; never access the
+  remote hart-local CLIC aperture after its clock has been gated.
+- No hardware acceptance or baseline disturbance follows from source work.
+  Before flashing, verify MAC/revision and back up the full sector-aligned
+  candidate range. Require every E2 stage twice after hard secondary resets;
+  stop hart1 before restoring and verifying the normal core range.
+- No visual/touch gate without fresh readiness. E3 not started.
+
+### 2026-10-01 - E2-A1/A2/A3 exact-artifact campaign passes; baseline restored
+
+- State: E2 complete within SMP.md's two-hart primitive scope. No Exec SMP,
+  second graphics producer or default change. Dirty source based on
+  ad62d8257ed3; source snapshots/hashes retained beside the final ELF.
+- Hardware: D1001, ESP32-P4 rev1.3 (hw_ver1), MAC e8:f6:0a:e0:46:4c,
+  32-MB flash and PSRAM; USB-Serial/JTAG /dev/cu.usbmodem101.
+- Final immutable core08:219,776 bytes SHA256
+  f26186e41d04469e7de4d0b6a35e94882a9bfc25e8630f22138abae2dd4512bc.
+  Flags: P4_BOARD=d1001, C3_GRAPHICAL_BOOT=1, C4_TOUCH_HIDD=1,
+  P4_PSRAM_MHZ=200, CPU360, LDSCRIPT=ldscript-xip.lds, C1_PROFILE=1,
+  FAT_DEBUG=1, DOS_DEBUG=1, DOSBOOT_DEBUG=1, SECONDARY_PROBE=1,
+  E2_MAILBOX=1 and E2_PRIMITIVES=1. No SECONDARY_RETAIN or Exec SMP.
+- Build: initially invalidate every kernel .o on opt-in flag change;
+  kernel-kernel-kobj, then direct core link avoiding the separate oversized
+  flashdisk stage. Incremental source iterations compile the P4 arch target,
+  relink rom/kernel's kernel-kernel-kobj and only then core. Omitting that
+  intermediate relocatable-object relink leaves the core image stale.
+  Final logs p4-e2-build-08/kobj-08/link-08.log show successful compile/link,
+  SRAM audit and Creating aros-esp32p4.bin. core-08.dis contains actual
+  amoadd.w.aqrl, lr.w.aq and sc.w.rl on primary and worker paths.
+  Private IRQ/worker/cache window lie4ff00000..4ff01296; atomic words
+  4ff04f40, mutable instruction buffer4ff04f80, guarded private stack
+  4ff09980..4ff0a980. Deliberately XIP-linked entry fixture is rejected.
+- Before write: independently identify chip/revision; back up complete
+  sector-aligned0x20000+221,184 range, SHA256
+  b579308c434324b28db1c3adc4850090ad9cd19eee6bd873c3a759fc3e393c20.
+  First201,504 bytes match normal core SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6.
+  Write and independent verify-flash cover exact final candidate.
+- Procedure: reset-and-log.py /dev/cu.usbmodem101 18 repeated five times,
+  unchanged candidate; check each with tools/smp-e2-check.py. Campaign
+  checker accepts all five and rejects preserved failed earlier candidates.
+  This is ordinary headless reset evidence, not E1's no-retry retained-hart
+  campaign, a physical cold boot or a visual qualification.
+- Observed each capture: PSRAM32MB/200 after one initialization attempt,
+  zero command timeouts/FSM recoveries,35 loaded BSP members; suppressed
+  secondary result0, then epochs e1000002 and e2000003 each pass PSRAM,
+  ATOMICS, IPI/FENCE and CACHE, result1 reset-held/clock-off. Both MISA
+  40901125. Final PRIMITIVES PASS epochs=2 and READY before Exec.
+- E2-A1 totals:650 SRAM and660 PSRAM checked exchanges;60 SRAM+60 PSRAM
+  refusals (epoch, duplicate/stale/skipped seq, invalid length, checksum),
+  ten missing-ack timeouts and ten unpublished PSRAM request counter-probes.
+  PSRAM mixes shared-L1D handoff with forced physical writeback/invalidate
+  reload; guards and refusal output preservation pass, including reset
+  recovery. Scratch49c17000..49c18000 is outside BSP/Exec/framebuffers.
+- E2-A2: each hart contributes8192 updates per epoch; each AMO/CAS/locked
+  count equals16384,163840 per counter over campaign. First CAS has a
+  two-way snapshot barrier, forcing a real conflicting update, not merely
+  serial final totals. Measured retry sum is nonzero in every epoch (24
+  across campaign), plus ten separate initial held-lock counter-probes.
+  Only canonical cached internal SRAM is qualified, not PSRAM or an atomic
+  uncached alias. Generic PSRAM-allocated SMP locks remain an E3 design gate.
+- E2-A3: exclusive raw CLIC22 routes sources79/80 to the intended harts;
+  ISR snapshots generation/destination before publishing completion. Both
+  harts deliver/ack real source-latch IPIs; wrong destination, absent trigger
+  and stale ack are refused. Hart1 executes published code returning37,
+  then replaced code returning53 after acknowledged remote fence.i (twenty
+  executions). Missing-park calls the actual admission function and admits
+  zero cache suspensions; matching SRAM park admits exactly one per epoch,
+  checks both stacks/remote predictor restoration and a post-resume PSRAM reload.
+  Ten suspend/resume windows pass. Route restoration follows confirmed
+  hard secondary stop; never access its CLIC aperture after clock gating.
+- All five UART logs are11,716 bytes, under build/evidence/
+  smp-e2-full-2026-10-01, with SHA256:
+  - boot-08-01.log f52f54cd76ab15249a49abc2d9c314dbde62d534c89eba4004428c9e80c0e414
+  - boot-08-02.log e18470532477964826e2ff0a312b07253a09cd5fae7f32f249ac8dfb0be4b038
+  - boot-08-03.log 89dc2e974f5c498e56cd6ca2e61367a606ad1532e97b6fa9ffdcb0999938c379
+  - boot-08-04.log dea7fb14a56c39a563018f6d1ad47bdb4fb39137288de00accdb92e8d0bd55de
+  - boot-08-05.log d555e8cffebb78457a37eca6ccd5885564f4317d34a917a7a9fd8a16f7197f08
+- Restoration: only after final reset-held/clock-off report, write the whole
+  221,184-byte backup and independently verify it (restore-verify.log digest
+  match). No bootloader, partition, BSP, firmware volume or SD writes.
+  Normal core remains201,504 bytes with the SHA256 recorded above;
+  baseline-boot.log35-second
+  capture422,105 bytes SHA256
+  d804a4473c734ed590970cfada1b3b39220bee709e0920154cd50d5525379bd9
+  records clean PSRAM/35 modules, Wanderer and touch heartbeat100 polls,
+  no SMP diagnostic. Runtime console is deliberately lossy; this is not
+  a new visual/touch or long stability pass.
+- Host tests: protocol/controller ASan/UBSan -Wall -Wextra -Werror pass;
+  1000 external plus1000 alternating payload transactions, guards, missing
+  publication/replay/refusal/output preservation and invalid/null lane
+  fail-closed coverage. Fourteen parser tests pass. Independent read-only
+  reviews find no remaining source blocker; no hardware claim derives
+  solely from those reviews.
+- Handoff: generic build output is core08 DIAGNOSTIC, not the restored
+  normal image. Invalidate kernel objects before changing opt-in flags.
+  Next E3 step: review CPU-local/TLS/ThisTask/trap/FPU state and internal-SRAM
+  locking before integrating experimental Exec SMP. Prior delayed slowdown,
+  B5R/native row mapping and physical cold-boot obligations remain separate.
+
+### 2026-10-01 - E3 CPU-local, synchronization and ABI investigation started
+
+- Configuration: unchanged normal single-hart core201,504 bytes SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6
+  remains on D1001 after the E2 restoration. No new hardware run or write.
+- Procedure: three independent Luna work packets inspect CPU-local/context,
+  Exec locks/Forbid/Disable semantics and build/generated-header/module ABI.
+  Main agent owns architecture, integration and acceptance decisions.
+- State: source investigation only. E2's canonical internal-SRAM atomics do
+  not qualify generic PSRAM-allocated lock words. Hart1 must not enter ordinary
+  Exec or produce graphics before the CPU-local/locking/ABI gates pass.
+- Next: implement and test a bounded CPU-local foundation; retain separate
+  E3-A1/A2/A3 acceptance and the unchanged normal rollback artifact.
+
+### 2026-10-01 - E3 CPU-local diagnostic foundation verified; Exec integration remains open
+
+- State: first E3-A1 diagnostic delivery hardware verified, not full E3-A1,
+  A2 or A3. Three Luna/max work packets audited CPU state, Exec locks and
+  build/ABI; Luna implemented CPU-local slots and host/log tests. Main owned
+  integration, interrupt masking, binary residency review, hardware and gates.
+  No ordinary Exec task runs on hart1 and no release default changes.
+- Hardware: D1001 `/dev/cu.usbmodem101`, ESP32-P4 rev1.3/hw_ver1,
+  MAC e8:f6:0a:e0:46:4c, 32-MB flash/PSRAM; CPU360/PSRAM200 MHz.
+  Dirty worktree, no commit. Evidence directory in the configured build:
+  `evidence/smp-e3-cpu-local-2026-10-01/`; immutable source snapshots and
+  `source-core02-sha256.txt` identify the tested diagnostic sources.
+- Artifact: core-02.bin 222,144 bytes SHA256
+  719b2ec327795cebc92784b187f940fad0133471d37383633121e5b33312f2d9;
+  core-02.elf/dis and placement.txt retained. Worker/helper SRAM window
+  0x4ff00000..0x4ff0184a; two 64-byte CPU-local slots at0x4ff09ec0,
+  guarded secondary stack0x4ff09fc0..0x4ff0afc0. Primary peer-check stays in
+  Flash and runs only cache-on, after acquiring worker completion.
+- Configuration: P4_BOARD=d1001, P4_C3_GRAPHICAL_BOOT=1,
+  P4_C4_TOUCH_HIDD=1, P4_PSRAM_MHZ=200, P4_LDSCRIPT=ldscript-xip.lds,
+  P4_C1_PROFILE=1, FAT_DEBUG=1, DOS_DEBUG=1, DOSBOOT_DEBUG=1,
+  P4_SECONDARY_PROBE=1, P4_E2_MAILBOX=1, P4_E2_PRIMITIVES=1,
+  P4_E3_CPU_LOCAL=1; no retained mode or ExecSMP ABI macro.
+- Implementation: bounds-checked mhartid lookup (no tp mutation), owner-only
+  slots, explicit reset initialization, ID/TD/flags/counter/sentinel identities
+  and nested-depth rejection. Preparation requires hart0 with hart1 reset-held.
+  Both harts' MIE is masked during owner exercises; hart0 restores only its
+  original MIE bit. Sentinels are never dereferenced; synthetic helpers do not
+  count as actual trap, scheduler, timer, library or FPU switching.
+- Build history retained: build-01.log is the slow interrupted mmake scan;
+  kobj-01.log failed because shared RV32 override objects were not rebuilt
+  before generic objects. Rebuild order is P4 arch, shared kernel-kernel-riscv,
+  kernel-kernel-kobj, direct core binary target after full kernel invalidation.
+  link-01.log rejected an outlined mhartid getter in Flash; failed ELF SHA256
+  1ba7755f721cc45c3f15577939de78e6af70bd548c44929d60d7b30c113ac579
+  retained as core-01-failed-sram.elf and NEVER flashed. always_inline fixes
+  the actual GCC -Os residency; final arch-build-02/kobj-03/link-02 logs pass
+  including SRAM audit and Creating aros-esp32p4.bin. Independent review also
+  identified the initially missing hart0 MIE mask; corrected before any run.
+- Procedure: fresh identity and full0x20000+0x40000 backup; flash core02 only
+  at0x20000 with --after no-reset, then separate verify-flash (digest matched).
+  Five unchanged first-byte `reset-and-log.py /dev/cu.usbmodem101 18` captures
+  boot-02-01..05.log; smp-e3-check.py checks each and all five together in
+  campaign-check.json. These are ordinary retry-capable warm resets, not a
+  strict no-retry campaign, physical rail-off or visual/touch qualification.
+- Observed: all five captures pass exactly two reset-separated release epochs
+  e1000002/e2000003, one CPU-LOCAL PASS between ATOMICS and IPI per epoch,
+  8,192 iterations per hart per epoch (163,840 owner iterations total).
+  All E2 publication/PSRAM/atomic-contention/IPI/fence.i/cache regressions pass;
+  each teardown/release confirms reset-held/clock-off and final READY before
+  Exec. Capture sizes01..05:11866,11866,11877,11866,11866 bytes. SHA256:
+  01 8255ff0671e1e42b9ded49a22a8a36759d53eb4977e443d701471b5061272abb;
+  02 51d92a235ddf2b2b49d8176f91d6ae182416488b02cf0329e60418778c44e12c;
+  03 d2dd13ae6857c3a6d793da2a466eb5338f5629b3ee1ab39570214015c86d483a;
+  04 3c8abf28f626f689be4d9311ebdaf8aaeb7ab9ea9b196cf2bf75e80ce67f55cf;
+  05 f3f11a10a9e1f29c7a5705f76caf0dd03f1cfad9af8249dcc62b2ab547f5e002.
+- Host regression: production cpu_local.c with only the CSR read mocked
+  passes34,123 ASan/UBSan/-Wall/-Wextra/-Werror checks;25 E2/E3 parser tests
+  pass. Invalid IDs/owners/null/corrupt IDs/overflow/underflow preserve state.
+  E3 parser rejects an actual previously passing E2-only capture. Final repeat
+  logs cpu-local-test-final.log/checker-tests-final.log retained.
+- Safety/restoration: fresh262,144-byte core-range-before-262144.bin SHA256
+  5e08221d5a61af9648f7faacae8971cd08e883b6e0a5e17ccd44c927c2512bf2
+  covers all diagnostic-erased sectors. After final confirmed secondary stop,
+  full range restored at0x20000 and independently verify-flash matched
+  (restore.log/restore-verify.log). Normal201,504-byte core SHA256
+  1d77ae9251e702b00ac68163bdcf61944f5a1207a90afa8fc5a8ad1a645e6.
+  No BSP, SD, firmware, bootloader or partition write. Existing BSP3,314,560B/
+  35 members SHA256 eadb8723feb7bf1af92debf48daca033f626ab22bb6308ef3125f3abf93a9714,
+  SD64MiB/171 entries SHA256 3beafde302b7a5b12b698b5504f9f2826e5c026306933ae82df1dd59e006cf5f
+  and firmware-volume SHA256 ed5dca8356362e6065d56922220a2108442dd19db718db7b905833c20818e138
+  unchanged by this workflow (not freshly read back).
+- Baseline headless35s capture:420,484 bytes SHA256
+  7be48c5222fcb43f63c6e47fc6baa2508d5c0fb4b0293e8a5d89b8b6d138773d;
+  PSRAM32MB/200MHz, one-attempt calibration, zero command timeouts/FSM
+  recoveries,35 modules, Wanderer process activity, external touch firmware
+  loading and100-poll heartbeat observed. No SMP markers. Runtime UART is
+  lossy; no new visual/input or sustained stability claim.
+- Remaining/next: real internal-SRAM KrnSpin backend and placement/contention/
+  failure-hook/order tests, then runtime ThisTask/nesting/trap/scheduler/timer/
+  FPU integration. Generic spinlock routines are stubs, P4 selects the global
+  generic scheduler, task Signal/Wait atomics may address PSRAM and semaphore
+  owner/waiter changes rely on local Forbid. SRAM lock indirection alone is
+  insufficient. P4 configure does not yet enable the matched ExecSMP ABI;
+  later use a separate configured tree and refresh both generated/public
+  include copies plus all ABI consumers. E3 remains open; E4 not started.
+- Handoff: generic build output is core02 CPU-local DIAGNOSTIC, not the
+  restored normal image. Invalidate all affected kernel objects on flag
+  changes and rebuild shared RV32 overrides before the generic aggregate.
+  Prior delayed slowdown, native panel-row mapping/+525 workaround and
+  physical cold-boot obligations remain separate.
+
+### 2026-10-01 - E3 closure work resumed with Luna implementation packets
+
+- State: E3-A1/A2/A3 remain open. Fabian requests full E3 closure, with as
+  much bounded Luna delegation as possible. Three Luna/max packets own
+  disjoint SRAM spinlock primitives/tests, guarded CPU-local runtime/platform
+  mappings, and isolated matched-build configuration/dependency work.
+- Baseline: normal201,504-byte single-hart core remains the rollback artifact,
+  SHA256 1d77ae9251e702b00ac68163bdcf61944f5a1207a90afa8fc5a8ad1a645e6;
+  this initial continuation has not flashed or reset the D1001.
+- Architecture/acceptance: do not enable a second ordinary Exec scheduler
+  until runqueue, task-field atomics, semaphore/Forbid, context/FPU/timer,
+  remote IPI and matched module/header ABI prerequisites all pass. The
+  previous CPU-local diagnostic is not substituted for these gates.
+- Procedure/ownership: main retains consequential integration, independent
+  review, hardware safety and evidence; Luna owns supporting implementation
+  and tests. No shared output files between workers. SMP configure must fail
+  closed rather than silently selecting the current single-hart runtime.
+- Next: independently review and qualify the production SRAM lock state
+  machine, then integrate the actual CPU-local runtime and matched ABI.
+
+### 2026-10-01 - E3 production SRAM lock diagnostic reaches hardware
+
+- State: E3-A1/A2/A3 remain open. The private production read/write lock
+  backend is implemented; it is not yet the public KrnSpin ABI or an Exec
+  scheduler. Two real harts have now passed its first reset-separated pair
+  of diagnostic epochs; all five repeat captures subsequently passed.
+- Artifact: core06,224,912 bytes, SHA256
+  13e536307bc1cf0f92310e559255d41085bf540991a071973c52eb89bca3c8a9.
+  Opt-ins: P4_SECONDARY_PROBE, P4_E2_MAILBOX, P4_E2_PRIMITIVES,
+  P4_E3_CPU_LOCAL, P4_E3_SPINLOCK; CPU360/PSRAM200 and normal D1001 board
+  settings. Only ota_0 at0x20000 was written and independently verified.
+- Evidence: build evidence/smp-e3-lock-runtime-2026-10-01/core-06.bin,
+  core-06.elf, core-06-sram.dis, core06-source.sha256, flash-06.log,
+  verify-06.log and boot-06-01.log. Backup covers262,144 bytes, SHA256
+  5e08221d5a61af9648f7faacae8971cd08e883b6e0a5e17ccd44c927c2512bf2.
+  BSP, SD image, touch firmware, partitions and bootloader are untouched.
+- Observed: each epoch reports SPINLOCK PASS (8,192 protected writes,
+  shared readers, forced contention and placement refusal). Every E2
+  prerequisite passes; hart1 is confirmed reset-held/clock-off on exit.
+  The diagnostic parks before Exec; it does not boot a second Exec task.
+  campaign-06-check.log accepts all five captures, ten epochs and81,920
+  protected writes. Every final release remains reset-held/clock-off.
+- Verification:115 sanitized host lock checks,68 guarded CPU-local runtime
+  checks and29 E2/E3 parser tests pass. Independent review confirms the
+  successful reservation interval is exactly LR.aq/forward-compare/SC.rl,
+  without intermediate calls, memory accesses or backward branches.
+- Build correction: objdump emits stale XIP-valued comments associated with
+  absolute __aros_libreq_* library-version symbols. The SRAM checker ignores
+  only these trailing pseudo-symbol comments, retaining actual operands,
+  relocations and real XIP-symbol annotations. A linear register-provenance
+  guard also retains real LUI-derived XIP references across local labels;
+  this is not a complete control-flow/data-flow proof. Nine regression tests and
+  the real linked invalid-XIP counter-fixture pass. Failed candidates01..04
+  were not flashed; only a fresh successfully generated artifact was used.
+- Other progress: guarded runtime/platform mappings keep normal macros
+  unchanged; shared RV32 StackSwap uses FindTask(NULL) only under Exec SMP.
+  SMP configure now refuses missing runtime prerequisites explicitly. The
+  compiler built-in sysroot still points to the separate old build directory
+  /Volumes/Dev/Source/AROS-ESP32-build, not the active Amiga build; isolated
+  SMP compilation must override it and rebuild all header/ABI consumers.
+- Rollback: all five captures passed; the complete262,144-byte normal-core
+  backup was restored and independently verified. restored-baseline-35s.log
+  reaches PSRAM200, the35-member BSP, Wanderer and the touch heartbeat.
+  This is headless boot evidence, not a fresh visual/touch acceptance.
+- Remaining: qualify the
+  opt-in pre-C FPU spill/post-C restore fix with actual preempted Exec tasks.
+  Real per-hart trap/timer/runqueue and task-field signal/message/semaphore
+  synchronization, public lock adapters, affinity and matched ABI remain
+  mandatory before claiming E3 complete. No visual test is implied.
+
+### 2026-10-01 - E3 entry-time FPU isolation candidate builds
+
+- State: opt-in FPU repair build verified only; full E3 remains open.
+  Public ExceptionContext/FpuContext layouts are unchanged. P4_E3_FPU uses
+  a288-byte transient trap frame, captures all32 registers/fcsr before C,
+  and restores the selected task image after the final C callback.
+- Artifact: fpu-core01,205,344 bytes, SHA256
+  7b698553d0c879052018f429f027ce37ece9c3686f950e39fa2de6690439a700.
+  Configuration: normal D1001 graphical/touch/CPU360/PSRAM200 settings plus
+  P4_E3_FPU=1 and P4_E3_FPU_TEST=1; no E2/CPU-local/lock diagnostic park.
+- Verification: fresh kernel objects, shared RV32 overrides and successful
+  Creating aros-esp32p4.bin; actual linked trap entry allocates288 bytes and
+  spills all32 registers before C. Sanitized helper13 checks and real RV32
+  baseline/enabled assembly tests pass. Independent review is pending.
+- Procedure planned: two real hart0 Exec tasks preserve distinct all-register
+  FP images/fcsr under timer preemption; a test-only C handler deliberately
+  clobbers volatile FP state. Both tasks must observe peer progress before
+  completion. PASS requires ticks and dispatches, not just serial execution.
+- Safety: not enabled by default, no second-hart Exec release, no public ABI
+  or BSP/SD changes. Candidate fits the verified262,144-byte rollback range.
+  Hardware test waits for independent review; no sight/touch gate requested.
+- Review correction: candidate01 was not flashed. Independent review found
+  that a saved task's fcsr rounding mode remained active for C. The corrected
+  candidate must reset fcsr after capture and before the first C call, with
+  an ordering regression. The opt-in assembly test now checks exact register
+  identity and slots, not merely32 instructions.
+- First hardware attempt: corrected fpu-core02,205,472 bytes, SHA256
+  a9eb72aee60dbb3170943cda126af7a9050f818ffe3612e6c39090623e46e249,
+  was flashed at0x20000 and independently verified. fpu-boot-02-01.log
+  contains a PASS prefix but runtime USB deliberately drops saturated output:
+  the counters are truncated. This attempt is not an accepted FPU gate.
+  The next candidate uses a bounded, test-only diagnostic-line transport;
+  normal non-blocking console behavior must remain unchanged.
+- Transport candidate: fpu-core03,206,560 bytes, SHA256
+  893337b67145eebfd79e3a1d8d2374d920f97852f4df92771c71befc1adc221b.
+  The test-only writer bounds one complete line by512 bytes/36M mcycle counts,
+  keeps interrupts enabled and never changes normal console runtime policy.
+  A leading separator prevents a truncated debug fragment from contaminating
+  the result. Production USB/UART fixtures and normal-console regressions
+  pass; the saved-log checker passes13 tests and rejects candidate02 as an
+  incomplete record. Fresh objects and binary creation are verified.
+- Remaining: qualify the corrected candidate, restore the verified normal core, then
+  implement actual CPU-local scheduler/timer and public synchronization before
+  matched SMP core/BSP rebuild and two-hart E3 acceptance.
+
+### 2026-10-01 - E3 task-field synchronization boundary audited
+
+- State: full E3 remains open. A separate Luna audit confirms Signal uses
+  32-bit tc_SigRecvd OR and8-bit tc_Flags OR; Wait/semaphore waits use32-bit
+  AND. Plain accesses in Wait/SetSignal/Exception must share the same protocol.
+  Task/ETask MEMF_PUBLIC allocations can reside in PSRAM. Semaphore owner and
+  wait-queue transitions still rely on local Forbid and contain SMP TODOs.
+- Evidence: rom/exec/signal.c, wait.c, setsignal.c, exception.c, semaphores.c,
+  exec_util.c and newcreatetaska.c; shared RISC-V atomic.h uses SeqCst compiler
+  builtins. E2 cached PSRAM exchanges alternate shared-cache handoff and forced
+  physical reload. They qualify staged visibility, not competing atomic RMW.
+  No direct PSRAM AMO/LRSC is permitted from that evidence.
+- Next implementation: private8/16/32-bit software load/store/RMW service,
+  serialized by one canonical internal-SRAM lock, with local IRQ save/mask,
+  full fences and exact MIE restoration. One lock avoids silently weakening
+  global SeqCst ordering to independent striped ordering. Contention/timeout,
+  placement and return-value tests precede a real two-hart cached-PSRAM gate.
+- Safety: no generic atomic-header substitution, public lock promotion or
+  secondary Exec release. Mixed plain/atomic accesses and semaphore locking
+  remain explicit integration gates; private host tests cannot close E3.
+
+### 2026-10-01 - E3 FPU task isolation observed; timing assumption corrected
+
+- State: core03 passes three complete ordinary headless captures with two
+  real preempted hart0 Exec tasks. Each task checks all32 FPRs and fcsr,
+  observes peer progress and reports positive timer/dispatch counters.
+  This qualifies the opt-in hart0 context-switch diagnostic, not hart1 FPU
+  ownership, full E3 or visual/touch acceptance.
+- Artifact: core03,206,560 bytes, SHA256
+  893337b67145eebfd79e3a1d8d2374d920f97852f4df92771c71befc1adc221b;
+  source snapshot and first-byte captures fpu-boot-03-01..03.log are under
+  build/evidence/smp-e3-lock-runtime-2026-10-01. Each task reports more than
+  1.2M checks, at least1721 ticks and677 dispatches, peer_interleaved=1,
+  detail=0. The strict saved-log checker accepts all three records.
+- Correction: the earlier two-second/100ms conversions assumed360MHz mcycle.
+  The clock setup requests360MHz; its counter frequency has not been measured.
+  Capture02 timestamps place touch initialization at8.194s and the FPU report
+  at26.617s after capture start; the720M-count workload lasts approximately
+  18s. This does not identify whether mcycle or timer frequency differs.
+  Counter and independent iteration limits remain valid; physical timeout
+  durations and CPU frequency are not qualified. The assembly comment is fixed.
+- Follow-up build: core04,206,688 bytes, SHA256
+  48bb6b658682451112b274a0c4370d3431c31c51ddbc3ef53672cb008f70e90d,
+  adds a finite65,536-poll fallback to diagnostic output and checks UART
+  FIFO-empty plus transmitter FSM idle, following local ESP-IDF P4 uart_ll.
+  Independent Luna review and USB/UART diagnostic/default fixtures pass.
+  Fresh objects, linked288-byte trap frame, SRAM check and binary creation
+  pass. Initial misdirected Make invocations produced no image and were not
+  flashed. Core04 is flashed at0x20000 and independently digest-verified;
+  all five35s first-byte captures fpu-boot-04-01..05.log pass the strict
+  checker. Each task reports more than1.2M iterations, at least1721 ticks
+  and677 dispatches, peer_interleaved=1 and detail=0. This closes only the
+  opt-in hart0 FPU task-isolation diagnostic.
+- Safety: only the backed-up0x20000 core range changes; BSP, SD and firmware
+  volume remain untouched. No secondary Exec entry or default FPU flag change.
+  Restore and independently verify the complete262,144-byte baseline range
+  after this campaign. The complete range was restored and digest-verified;
+  fpu-restored-baseline-35s.log reaches Wanderer and touch heartbeat headless.
+  Next: private software-atomic service qualification,
+  CPU-local runtime/scheduler integration, public synchronization and matched
+  SMP ABI, then genuine two-hart task acceptance.
+
+### 2026-10-01 - E3 real runtime startup boundary implementation started
+
+- State: implementation build verified, not hardware verified. P4_E3_RUNTIME_PREPARE
+  is a separate default-off switch that builds cpu_local/runtime helpers and
+  cannot combine with the private secondary diagnostic path. It will bind
+  hart0 metadata after Singletask initialization, before Exec coldstart,
+  with IRQ save/mask and read-only secondary reset-held/clock-off checks.
+- Source audit: P4 still selects the generic unprotected ready/wait scheduler,
+  global timer/trap depth and fixed core0 CLIC. Its SET_THIS_TASK helper does
+  not maintain TaskRunning. The native RISC-V affinity-aware scheduler and
+  generic SMP list initialization are reusable references, but P4 public
+  spinlocks, CPU count/mask, remote wake/schedule IPI and idle-task startup
+  are missing. Fixed affinity alone does not eliminate these races.
+- Safety: startup binding is metadata preparation only; it must fail closed
+  if secondary quiescence or binding is invalid. No second-hart release,
+  public ABI/header substitution, normal default change or TaskRunning claim.
+  Root owns documentation/build integration; Luna owns startup hook/test,
+  a separate Luna reviewer checks it before hardware. Rejected runtime-core01,
+  203,904 bytes, SHA256
+  1016fcc14aaf7c4ffb157743dfab5e865b97b4377c8b27218f586fb2570cd78e,
+  uses P4_E3_FPU=1 plus P4_E3_RUNTIME_PREPARE=1, no FPU_TEST/secondary diagnostic.
+  Fresh objects, successful binary creation and SRAM residency pass; linked
+  runtime helpers are in SRAM and FPU-test symbols are absent. Source-extraction
+  fixture initially passed helper order, MIE restoration and refusal paths,
+  but independent review found its always-nonnull KernelBase mock hid a real
+  lifecycle failure. Kernel_Init sets KernelBase only during RTF_SINGLETASK;
+  the hook before that stage would always withhold Exec. Candidate01 was
+  NEVER flashed. Move this metadata-only hook after Singletask initialization
+  and test null bases plus actual lifecycle order before rebuilding. This
+  does not solve future SMP bootstrap: per-hart macro initialization before
+  Kernel_Init will require an explicit two-phase binding protocol.
+  The verified normal core remains restored after the FPU campaign.
+- Corrected candidate02:204,000 bytes, SHA256
+  fe5bc6b7b3407ccb6d5158ed572546fb29157ff9c21dbf4b9ea3108a270b9c1f,
+  freshly built, independent source review passed, flashed at0x20000 and
+  digest-verified. It boots through Coldstart/Wanderer, but the metadata PASS
+  line is truncated/concatenated by the already-active nonblocking USB
+  console. This is not an accepted metadata-binding gate. Extend only the
+  existing bounded diagnostic-line writer's compile gate to this opt-in
+  startup user; bracket that one report with Forbid/Permit and withhold
+  Coldstart on transport failure. Normal console runtime policy is unchanged.
+  A fresh reviewed candidate is required; no visual acceptance is inferred.
+- Next: qualify this boundary, then adapt the locked affinity-aware scheduler
+  together with public lock contracts and matched ABI; only then add normal
+  hart1 trap/timer/remote reschedule and real two-hart tasks.
+
+### 2026-10-01 - E3 private software-atomic service implemented
+
+- State: private implementation and host/RV32 object verification only;
+  not integrated into Exec or qualified on cached PSRAM hardware. New
+  p4_soft_atomic.c/.h serialize8/16/32-bit LOAD/STORE/ADD/AND/OR through one
+  canonical SRAM packed write lock. Ordinary typed operand loads/stores use
+  full fences, with local IRQ mask before lock and exact MIE restoration.
+- Evidence: Luna author reports2,532 ASan/UBSan host checks with real backend
+  injection and pthread contention. Root RV32 GCC compile with -Os,
+  -ffreestanding -fno-builtin -Wall -Wextra -Werror passes; isolated object
+  has988 bytes SRAM code and92 bytes SRAM data, only three private lock
+  backend dependencies and no libatomic/memcpy/XIP table references.
+  Independent Luna review confirms acquire/release, old-output overlap
+  rejection, quiescent one-shot preparation and fail-closed unlock errors.
+- Review follow-up: remove the host operand-admission mock, which duplicated
+  production span validation, and exercise the actual implementation instead.
+  The region fixture translation remains necessary off-target; numeric
+  canonical-boundary checks are separate. The corrected fixture passes2,532
+  checks independently under root ASan/UBSan and Luna -O2 builds. Independent
+  review finds no blocking defect in this private service contract. Root
+  saved source hashes/object/tests under the same E3 evidence directory.
+- Safety: initialization is hart0/MIE-off with secondary quiescence as an
+  explicit caller obligation. Policies admit only exact owned initialized
+  extents, never the full64MiB PSRAM aperture merely because it exists.
+  Cycle and retry bounds do not claim calibrated wall time. Failed release
+  parks permanently with MIE masked; it cannot return as an ordinary error.
+  All competing accesses must use the service; mixed plain accesses, task
+  lifecycle and semaphore queues remain unqualified.
+- Next: independent corrected-fixture validation, then a private two-hart
+  cached-PSRAM contention gate; do not replace generic atomic headers or
+  enable secondary Exec from host-only evidence.
+
+### 2026-10-01 - E3 cached-PSRAM software-atomic hardware gate started
+
+- State: implementation in progress, no linked or flashed candidate. A
+  separate default-off P4_E3_SOFT_ATOMIC switch requires the already qualified
+  CPU-local/SRAM-lock diagnostic chain. Controller command8 exercises the
+  private production service before interrupts are armed on the secondary.
+- Procedure: one exact owned64-byte extent in the existing pre-framebuffer
+  E2 scratch region, two harts performing4,096 ADD32 operations each, returned
+  old-value totals, width/wrap and refusal/guard checks. Publication/barriers
+  use private SRAM lanes and independent cycle/iteration limits. E2 validates
+  detected32MiB PSRAM before this scratch is admitted. Operand access is
+  exclusively through the software-atomic API while either hart is active.
+- Safety: one-shot service preparation with hart1 reset-held and primary
+  MIE masked; reuse across reset-separated epochs requires prior successful
+  check without reinitializing the live lock. No native PSRAM AMO/LRSC,
+  no allocator/driver/Exec calls on hart1, no public header substitution.
+  Root owns controller/mmake/docs; Luna owns the isolated probe and a different
+  reviewer checks it. The board remains on the verified normal baseline.
+- Next: compile, inspect actual SRAM placement and call graph, independent
+  review, then backed-up headless hardware qualification and full rollback.
+
+### 2026-10-01 - E3 independent review corrects diagnostic integration
+
+- State: full E3 remains open. Luna independently found two pre-hardware
+  blockers in the private cached-PSRAM test integration: suppressed release
+  consumed one-shot preparation without completion, and the counter replaced
+  the later E2 cache-reload canary. The suppressed path now skips primitive
+  preparation; after both workers complete and ProbeCheck passes, the primary
+  restores the canary through the same software-atomic API with MIE masked,
+  requiring the returned previous value8192. No concurrent raw store is added.
+- Build: startup-binding core03 is204,896 bytes, SHA256
+  b294ac086da1bbe7da856865c4ef79ff0ed75f4bc3d6a3c9cacd92fa929fbb87;
+  fresh objects and successful Creating/SRAM check in runtime-*-03.log,
+  immutable core/source copies in evidence/smp-e3-lock-runtime-2026-10-01.
+  P4_E3_FPU=1/P4_E3_RUNTIME_PREPARE=1, no secondary/FPU-test flags.
+  Bounded DiagnosticLine now serves runtime preparation as well as FPU tests.
+- Host: startup source fixture and USB/UART diagnostic transport fixtures
+  pass. Strict optional saved-log --soft-atomic gate has49 SMP checker tests;
+  previous five core06 logs still pass their original --spinlock gate and
+  correctly fail the additional absent software-atomic gate.
+- Hardware: no new qualification yet. Board carries runtime core02, not
+  the baseline; its truncated PASS is rejected. Backup262,144-byte core range
+  remains SHA2565e08221d5a61af9648f7faacae8971cd08e883b6e0a5e17ccd44c927c2512bf2.
+- Next: independent corrected-flow/transport review, exact-artifact headless
+  startup and private two-hart PSRAM qualification, then full backup rollback.
+  Public locks, task-field synchronization, secondary Exec and matched SMP
+  ABI remain open; these diagnostic corrections do not close E3.
+
+### 2026-10-01 - E3 hart0 startup binding qualified with bounded report
+
+- State: three35s headless runs pass exact-once complete metadata reports,
+  followed by Wanderer and touch heartbeat. This qualifies only guarded
+  hart0 metadata preparation/binding after SINGLETASK and before COLDSTART;
+  hart1 remains reset-held. No secondary scheduler/Exec acceptance follows.
+- Artifact: runtime-core-03.bin204,896 bytes, SHA256
+  b294ac086da1bbe7da856865c4ef79ff0ed75f4bc3d6a3c9cacd92fa929fbb87,
+  P4_E3_FPU=1/P4_E3_RUNTIME_PREPARE=1; independently reviewed source fixtures
+  pass. Identity e8:f6:0a:e0:46:4c/P4rev1.3 verified before flash0x20000;
+  runtime-flash-03.log/runtime-verify-03.log confirm exact image/digest.
+- Evidence: runtime-boot-03-01..03.log and runtime-campaign-03-check.log in
+  evidence/smp-e3-lock-runtime-2026-10-01; source/hash snapshots runtime03-source.
+- Separate blocker: soft-link-01.log rejects a stale XIP annotation on an
+  actual SRAM policy load reached through AUIPC/ADDI/MV. That candidate has
+  not been flashed. A bounded provenance-check extension and independent
+  review must precede linking/flashing; no blanket checker suppression.
+- Safety: board currently carries startup core03, normal baseline backup
+  unchanged. No package/SD/firmware write, no interactive acceptance inferred.
+- Next: private PSRAM contention gate, full baseline rollback, then public
+  synchronization/per-hart runtime and matched ABI integration. E3 remains open.
+
+### 2026-10-01 - E3 PSRAM first run rejected; guard handoff corrected
+
+- Failed artifact: soft-core-02.bin229,360 bytes, SHA256
+  fc6c9f73b34b909e7613d7bd16acf98feb663b8e8b3621317d2dfef049e9ec87;
+  exact flash/verify and soft-boot-02-01.log show E2 PSRAM FAIL before
+  software-atomic execution, followed by secondary reset-held/clock-off.
+  No PSRAM-atomic acceptance is claimed from this run.
+- Cause: ProbePrepare initializes the first64 bytes, while the preceding
+  E2 PSRAM exchange requires those sixteen words to remain0xcafef00d.
+  E2Prepare now restores all sixteen through the admitted service while
+  MIE is masked and hart1 reset-held. Exercise reinitializes/checks operands
+  while the secondary waits at GO. Post-exercise cache canary restoration
+  remains through the service, with old counter8192 required.
+- Fresh candidate: soft-core-03.bin229,424 bytes, SHA256
+  b4bbf04a3bfb986c7ee9982b40da62630d165513a02c62f62a6b3ff7882c3619;
+  soft-*-build-03.log/soft-link-03.log have Creating and SRAM check; immutable
+  source snapshots soft03-source and hashes preserve the measured configuration.
+- Checker: fifteen fixtures and actual linked image pass. Independent review
+  accepts the new real-symbol exception only for a memory dereference with
+  numeric AUIPC/ADDI/MV-derived SRAM base/effective address and no explicit
+  XIP operand. Caller-saved provenance is invalidated across calls. The
+  inherited __aros_libreq absolute-version exception is a separate limitation:
+  this is a named-reference linear lint, not full CFG/dataflow/address proof.
+- Safety: private service terminal unlock failure intentionally parks with
+  interrupts masked and requires external reset/watchdog; ordinary retry and
+  rendezvous loops have cycle plus iteration limits. No public Exec promotion.
+- Next: independent guard-handoff review, fresh candidate hardware campaign,
+  full baseline rollback. E3-A1/A2/A3 remain open.
+
+### 2026-10-01 - E3 private cached-PSRAM atomics qualified; baseline restored
+
+- State: the private service's gate passes five25s headless captures, ten
+  reset-separated epochs and81,920 ADD32 operations. Every epoch checks
+  final8192/returned-old sum33550336, widths/wrap/guards/refusals and all
+  prior E2 PSRAM, SRAM atomics, CPU-local, lock, IPI/fence and cache gates.
+  Each teardown confirms hart1 reset-held/clock-off; no secondary Exec runs.
+- Artifact: soft-core-03.bin229,424 bytes, SHA256
+  b4bbf04a3bfb986c7ee9982b40da62630d165513a02c62f62a6b3ff7882c3619;
+  P4_SECONDARY_PROBE/P4_E2_MAILBOX/P4_E2_PRIMITIVES/P4_E3_CPU_LOCAL/
+  P4_E3_SPINLOCK/P4_E3_SOFT_ATOMIC=1, D1001, PSRAM200MHz/XIP,
+  no runtime-prepare/FPU-test flags. Independent guard-transition review
+  passes; source snapshot/hash soft03-source preserves exact implementation.
+- Evidence under build evidence/smp-e3-lock-runtime-2026-10-01:
+  soft-flash-03.log/soft-verify-03.log, soft-boot-03-01..05.log,
+  soft-check-03-01..05.log and soft-campaign-03-check.log, all five strict
+  --spinlock --soft-atomic results passed. Fifteen residency fixtures and
+  thirty actual-controller E2 preparation checks pass with sanitizers.
+  Checker remains a named-reference lint with inherited ABS-symbol exception,
+  not a full CFG/address proof. Direct PSRAM AMO/LRSC is still prohibited.
+- Default-off proof: freshly rebuilt normal-core-final.bin201,504 bytes,
+  SHA2561d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6,
+  byte-identical to the saved baseline prefix (normal-byteidentity-final.log).
+  Generic build output is now this normal image, not a diagnostic candidate.
+- Rollback: full262,144-byte saved range [0x20000,0x60000) restored and
+  independently digest-verified; SHA256
+  5e08221d5a61af9648f7faacae8971cd08e883b6e0a5e17ccd44c927c2512bf2.
+  soft-restored-baseline-35s.log loads35 BSP modules, starts Wanderer and
+  reports touch heartbeat. No BSP/SD/firmware/partition/bootloader write;
+  no new visual or contact acceptance, no physical rail-off claim.
+- Full E3 is NOT closed: A1 actual per-hart Exec runtime/public synchronization,
+  A2 concurrent real Exec task/affinity/signal/message/semaphore/FPU contention,
+  and A3 matched core/BSP/ABI remain open. See SMP.md's explicit remaining
+  integration order. Private hardware qualification cannot substitute for
+  those gates or bypass the configure-time SMP refusal.
+
+### 2026-10-01 - Full Exec SMP completion goal: bootstrap and public-lock integration
+
+Portable signal protocol follow-up: new P4 `exec/p4_signal_protocol.{h,c}`
+implements locked bitfield/Wait-token/exception transitions, returning queue
+and post-unlock poke effects rather than performing them. Initial 119-check
+fixture passed, but root review found an untested SetSignal corner case:
+testing received&SigExcept at Wait commit could perpetually choose READY
+without TF_EXCEPT ever being raised. Corrected final predicate uses matching
+wait bits or the actual configured exception flag, preserving SetSignal
+semantics. Exception take/merge now leave nonlive views unchanged. Author and
+root sanitizer runs pass 146 checks; RV32 protocol object SHA-256
+`5c883bbae7b4bc75b2132043066aa27df71c4d4027c26b9b2d9452b1f2fd3fe1`.
+Source adapter/wrapper work is starting, but no queue implementation, make
+selection, whole-SMP build or running second Exec hart is inferred.
+The public lookup fixture `p4-atomic-public-lookup-test.py` extracts actual
+header code and mocks LVO83/29, substituting a bounded host escape only for
+fatal RISC-V instructions. Author and root reruns pass 12 isolated scenarios
+and 194 ASan/UBSan checks: cold/hot cache, malformed/unsupported tables,
+eight synchronized first callers, bounded one-shot reentry and macro single
+evaluation. This qualifies the mocked contract, not actual resource-lock IRQ
+safety, RV32 concurrent cache behavior or deployment. Board baseline untouched.
+
+Deferred wait-token storage follow-up: `cpu_local_runtime` now has an
+explicit wait_pending Task pointer, retaining 64-byte slot size/alignment on
+host and RV32. Fresh bootstrap rejects a nonempty token without mutation;
+Finalize preserves it. Expanded production-runtime fixture passes 155
+ASan/UBSan checks. Initial host compilations used production AROS headers
+with an incompatible host CPU/config combination and failed; checked-in
+`tests/runtime-stubs` now reproducibly supplies only unused spin/hook
+declarations. No public ABI validation is inferred from those stubs.
+Standalone RV32 runtime object: 9,460 bytes, SHA-256
+`59b26daf9344c07861f570c7d8b8184102df27e2e00340271eef5376ded3e1ea`.
+This adds storage only, not the actual Wait/scheduler handshake.
+Independent public atomic review passes the requested 77-check host fixture
+and three RV32 objects and finds no valid-width table/macro/fatal-path
+defect. Report: `atomic-bridge-independent/public-atomic-bridge-independent-review-2026-10-01.md`.
+It confirms configure currently both refuses SMP and lacks the P4 Exec SMP
+selection define; removing the refusal alone is insufficient. Cold public
+resource lookup under interrupt/reentry is still untested. No activation,
+flash, hardware proof or whole-system binary change is claimed here.
+
+Task publication follow-up at the same checkpoint: shared SMP TaskLaunch
+called its pre-launch hook after Ready-list publication, allowing a remote
+dispatcher to observe an unregistered task. The hook now runs exactly once
+before publication, outside task/queue locks. The extracted actual-function
+fixture `kernel/tests/p4-task-launch-order-test.py` simulates immediate remote
+observation, same/remote affinity, priority and absent hooks: 90 ASan/UBSan
+checks pass in SMP and another 90 in normal mode. The first fixture compile
+failed on a redundant host NULL definition; removing that fixture-only macro
+fixed it. Root reran the 117-check creation-failure fixture successfully.
+No new binary identity or hardware result exists for this source change;
+matched core/BSP rebuild remains required. Normal production behavior is
+unchanged by the SMP-only hook move. The Signal/Wait audit report is
+`evidence/smp-e3-lock-runtime-2026-10-01/signal-protocol-audit.md`: it confirms
+the deferred wait-token design needs coordinated scheduler, all signal-field
+writers, removal/lifetime and queue-lock changes, not a Signal-only patch.
+Task.tc_SpinLock is the documented state lock; iet_SpinLock is not one.
+No flash, serial or media writes for this follow-up; activation stays blocked.
+
+Independent TaskLaunch follow-up review reproduces 90 checks per variant,
+117 creation-failure checks and 13 affinity-failure checks; no source defect
+found in the hook move. The hook now observes TS_ADDED before publication,
+not an already-ready task; actual callback reentrancy/concurrent registration
+still needs qualification. Root also identified a separate notification
+lifetime gap: saving Task* before clearing a granted stack waiter's marker
+does not pin the Task allocation. A foreign SIGF_SINGLE can let that task
+observe its grant and exit before the delayed Signal(Task*) call. Semaphore
+notification completion therefore needs an explicit task-lifetime/removal
+protocol, not merely avoidance of post-Signal SemaphoreRequest accesses.
+This is a source/design finding, not an observed hardware failure. Candidate
+implementation and deterministic tests must preserve this open gate.
+The partial Semaphore Obtain/Attempt candidate was consequently reverted
+before extending Release/Procure/Vacate; those shared semaphore files remain
+unchanged. A separate private task-lifetime/pin state-machine candidate is
+being implemented, not selected into Exec. The safe normal Exec regression
+then invalidated every generated Exec object, regenerated the P4 architecture
+makefile and rebuilt P4/shared RISC-V/generic Exec stages using the relocated
+build's explicit sysroot and generated include tree. All stages exit zero,
+with no `error:` or `warning:` diagnostics and fresh aggregate linking.
+Logs: `task-normal-exec-{p4,riscv,aggregate}.log`. Normal `exec_library.o`:
+225,048 bytes, SHA-256
+`1735f4c2f3823e309d60042f1dd69bdf881b98427c7a0072a1c939063bbba6e9`.
+NewAddTask object: 5,628 bytes,
+`e5de8bbe441e8568ab29efbb27409c2404248b498ef3302719c0430d54ab8731`;
+NewCreateTaskA: 4,596 bytes,
+`1a2d073060c32ce91d0ac7e6ca1b36538a4836f742d96079100bdf4dff5cec0f`.
+This is only a fresh default-off Exec module/linklib build; no rebuilt BSP
+package, whole SMP core, deployment or changed on-board baseline is implied.
+
+- State change: Fabian explicitly requested completion of SMP. E3-A1/A2/A3
+  remain open; private diagnostic passes are not substituted for concurrent
+  Exec scheduling. Implementation is progressing toward an explicitly matched
+  experimental SMP core, BSP and public ABI, not activation in the normal build.
+- Work allocation: Luna owns bounded software-CAS and staged CPU-local bootstrap
+  changes; a separate Luna audit establishes the public lock contract. Root owns
+  integration, independent verification, documentation and hardware deployment.
+- Configuration/artifacts: source work only at this checkpoint; no new flashed
+  candidate or hardware acceptance. Normal core remains 201,504 bytes,
+  SHA-256 `1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`.
+- Design correction: startup metadata binding after SINGLETASK cannot serve
+  real SMP macros used inside PrepareExecBase. Bootstrap must initialize slots
+  before ExecBase preparation, explicitly bind SysBase before its first platform
+  access, then attach KernelBase without resetting established task/nesting state.
+- Source integration: the guarded SMP trap handler and KrnIsSuper now select
+  the owning CPU-local depth; cpu_Switch selects GET_THIS_TASK instead of the
+  global ThisTask. Normal branches are retained. The production trap-body host
+  fixture passes 14 ASan/UBSan checks, including nested-trap suppression,
+  independent hart depths and pre-Exec suppression. Initial fixture compilation
+  failed because `asm volatile` was not replaced by its transport mock; corrected
+  fixture passes. Evidence: `smp-trap-host.log` in the E3 evidence directory.
+  This is host-only verification, not real SMP trap/dispatch acceptance.
+- Bootstrap wiring uses the existing Exec_PreparePlatform hook in a P4-specific
+  source file, before vector/lock initialization; no shared PrepareExecBase
+  behavior changed. Primary slot preparation checks reset-held/clock-off with
+  MIE masked and restores its prior bit. KernelBase attachment follows
+  SINGLETASK. APIs are under independent implementation/test; this guarded SMP
+  path is not yet build/hardware qualified and the configure refusal remains.
+  The legacy metadata startup fixture still passes after retaining its separate
+  diagnostic include guard; a combined-guard trial first failed that fixture's
+  source-contract assertion and was corrected without weakening the assertion.
+- Normal-build regression: invalidated all generated kernel objects, rebuilt
+  P4/shared/kernel aggregate and linked with normal D1001 graphical/touch,
+  200-MHz PSRAM, XIP and existing diagnostic configuration. The fresh `Creating
+  .../aros-esp32p4.bin` result is 201,504 bytes with the exact normal SHA-256
+  above, byte-identical to the complete baseline prefix. Build/link logs:
+  `smp-integration-normal-{p4,shared,aggregate,link}.log`. No flash required:
+  the board already runs this verified baseline. This closes only default-off
+  build regression, not any experimental SMP runtime gate.
+- Staged CPU-local APIs now pass the independently rerun root sanitizer fixture:
+  149 checks (`smp-bootstrap-root-host.log`). The new private CAS passes the
+  author's 2,576 sanitized checks; independent CAS review is pending. Source
+  identities at this checkpoint are saved in
+  `smp-integration-source-checkpoint.sha256`. No CAS-on-hardware claim yet.
+- Independent CAS review passes: 2,576 Clang ASan/UBSan checks, including
+  four-thread CAS increments with observed retries; fresh GCC16.2 RV32 objects
+  confirm ordinary width-specific operand loads/stores, SRAM-only service lock,
+  MIE masking before acquisition and fences before unlock. Evidence:
+  `cas-review-*` logs/objects/disassembly/section/hash files. This qualifies
+  software/object behavior only, not P4 physical coherence or public atomics.
+- Next bounded integration: implement the actual one-word P4 CPU-mask ABI and
+  explicit online-CPU publication; remove generic no-op mask stubs only in the
+  matched SMP variant. Source comparison corrected two initial assumptions:
+  `core_APIC_CPUInMask(NULL)` denotes boot hart0, and `GetCPUMask` sets the
+  selected bitmask rather than accumulating bits. Preserve those contracts.
+- Expanded the production-body host fixture to include actual KrnIsSuper:
+  21 sanitizer checks now cover invalid hart/mismatched slot fail-closed answers
+  and hart0-supervisor versus hart1-task isolation. `smp-trap-host.log` is the
+  current expanded fixture result; the earlier 14-check count above records
+  its pre-expansion execution. No production changes or hardware claim here.
+- Independent bootstrap review found two integration races/selection defects:
+  the SMP makefile needed its own runtime objects and must reject the legacy
+  metadata flag (otherwise it resets the already bound slot); MIE could expose
+  half-published SysBase/KernelBase transitions. Corrected the source selection
+  and kept MIE masked through full ExecBase preparation and primary finalization.
+  Successful paths restore prior MIE; failed/partial preparation keeps it clear
+  and withholds further startup. CPU-local transition API documents that caller
+  requirement. Independent re-review now passes (149 runtime, 21 trap and legacy
+  startup host checks); the explicit runtime-ready build gate remains withheld.
+  These findings concern source integration,
+  not a failed board campaign; normal firmware remains untouched.
+- Public-memory admission now has a separate high-SRAM region kind, validated
+  against the live 128/256/512-KiB L2 reservation during service preparation.
+  Hot operations use the immutable copied bounds; changing L2 sizing afterwards
+  is forbidden. The extended soft-atomic sanitizer fixture first passed 2,585
+  checks. Reviewer noted that these exercised high-bank bounds directly but
+  not Prepare: added real-predicate Prepare failure/no-publication, successful
+  policy-copy and numeric AddressAllowed checks; 2,594 checks now pass.
+  Independent re-review passes, including fresh RV32 object validation
+  (`high-admission-review-v3.md` and associated hashes/disassembly). This does
+  not qualify physical coherence.
+- The guarded SMP startup prepares software atomics before PrepareExecBase's
+  first lock initialization, with MIE clear and hart1 reset-held. Its exact
+  policy includes static writable low SRAM plus low heap, the Data Memory
+  MemHeader extent, and placed BSP sections plus external heap. The copied
+  package, unpopulated PSRAM, framebuffer reservation and L2 carve-out remain
+  outside the admitted domain. A production-body capture fixture passes 36
+  sanitizer ownership/order checks; it mocks preparation and the external
+  header's physical address, so it is not a board test.
+- Review found the PSRAM loader/publisher clipped the framebuffer only when
+  B5/B6 reservation flags were selected. Both now reserve that extent also
+  for every SMP variant, including headless qualification. Independent source
+  re-review confirms both conditions; the fixture does not execute actual
+  hardware clipping. Standalone headless RV32 compilation of the guarded SMP
+  startup succeeds without diagnostics: 53,512-byte object, SHA-256
+  `035e3de3e479c6a4fd172f5c23d4652f20312b07dbf4c930e3205e0920030c66`.
+  Explicit SMP/ready/public-lock/FPU defines were used only for this isolated
+  syntax object (`runtime-policy-startup-smp-syntax.*`), not in a configured
+  whole-system build and never deployed. Configure's refusal stays intact.
+- SMP-only source selection now includes the atomic service, SRAM backend and
+  seven CPU-mask sources plus public spin adapter and five LVO wrappers with
+  its explicit feature flag. The P4 Exec header maps the actual 49/52/53 spin LVOs
+  with the current three-argument lock macro. Public wrappers and masks remain
+  candidates awaiting independent review and matched whole-system compilation;
+  no configured SMP build or flashed candidate exists yet.
+- Public-spin author verification passes 93 production-helper ASan/UBSan
+  checks and six RV32 object compilations; wrappers export LVO49..53 and the
+  adapter's disassembly contains no direct AMO/LRSC. Evidence is separate at
+  `evidence/smp-e3-public-spinlock-author-2026-10-01/`. An independent Luna
+  review is running. CPU-mask author/root host fixtures pass; all seven RV32
+  objects compile, with the online word in internal `.sramdata`. Independent
+  mask review corrected root's off-by-one LVO brief from the actual kernel.conf
+  (count40, alloc42, free43, clear44, get45, predicate46); candidate wrappers
+  already used the correct values and were not changed to fit the wrong brief.
+- Independent CPU-mask review passes; report/artifacts landed under the actual
+  `AROS-ESP32-build/build/evidence/smp-e3-lock-runtime-2026-10-01/` directory. Reviewer
+  found an adjacent shared Exec caller defect: an affinity-mask allocation
+  failure was silently treated as NULL/BOOT. Exec_InitETask now fails creation
+  and frees its still-unpublished ETask instead. Its actual construction prefix
+  passes 13 sanitized host checks for hart1 allocation failure/success and ETask
+  allocation failure (`p4-etask-affinity-failure-test.py`). Independent followup
+  review passes the local cleanup and the 13-check fixture. It found two
+  downstream caller gaps: NewCreateTaskA retained a freed MsgPort output and
+  NewAddTask's generated-name MemList leaked on failure. Both are now corrected:
+  failed creation clears the output before freeing it; NewAddTask detaches and
+  frees only its own generated-name entry and restores the original name on
+  ETask/context failure. The new extracted production-path fixture passes 117
+  ASan/UBSan checks; root independently reran it and inspected ownership/output
+  order. Successful immediate child launch still sees its port. No whole-system
+  SMP or failure hardware proof; this also repairs normal-build failure paths.
+- Rebuilt the default-off normal kernel again after explicit SMP framebuffer
+  reservation and public-wrapper source selection: invalidated all kernel
+  objects, rebuilt the four stages, confirmed fresh image creation and exact
+  baseline prefix. `runtime-public-normal-*` logs record the unchanged
+  201,504-byte baseline SHA-256 above. The shared Exec cleanup is SMP-only and
+  is covered by the prefix fixture, not selected in this single-hart build.
+- Default-off regression repeated after the runtime policy/source selection:
+  invalidated all generated kernel objects, rebuilt P4/shared/aggregate/link.
+  The first link invocation incorrectly named `AROS/boot/aros-esp32p4.bin` and
+  failed before linking; retained its log, corrected the target to the actual
+  `gen/rom/boot/aros-esp32p4.bin`, and confirmed the fresh Creating line.
+  Result remains 201,504 bytes, SHA-256
+  `1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`,
+  byte-identical to the recovered full baseline's prefix. Evidence:
+  `runtime-policy-normal-*` logs. No flashing or hardware regression claimed.
+- Safety: no media writes, flash/default changes or interactive test at this
+  checkpoint. Flash/headless tests are authorized; visual/touch acceptance still
+  requires fresh readiness. Preserve the complete verified normal core backup.
+- Independent public-spinlock review found no state-machine defect under the
+  adapter contract and confirmed source/object identities. The 93-check fixture
+  remains sequential/mocked, not concurrent silicon qualification. Report:
+  `public-lock-review-independent-20261001.md` in the main evidence directory.
+- Semaphore audit confirms per-hart Forbid is insufficient: the embedded lock
+  is initialized but unused. A bounded shared-code candidate is being developed
+  with no semaphore lock held across Wait, Signal or message replies, explicit
+  stack-waiter lifetime protection and shared-handoff accounting. This is not
+  yet tested or accepted. Audit: `semaphore-protocol-audit.md` (the review tool's
+  legacy path `/Volumes/Dev/Source/AROS-ESP32-build` resolves to this build).
+- Public atomic bridge source preparation: new optional `KATTR_AtomicOps`
+  returns an immutable version-1 `KrnAtomicOps` table on SMP P4 only. Checked
+  operate/CAS forward every operand to the existing bounded software service
+  and halt on errors rather than manufacture synchronization results. Other
+  platforms and normal P4 return unsupported; no kernel LVO renumbering.
+  The production bridge passes 77 ASan/UBSan contract checks (mocked service)
+  and a standalone warning-free RV32 compile: 2,268 bytes, SHA-256
+  `dc50ebf724c3b0769365bf13caef8d26db2726a7994d19ae0f5344630b823ee6`.
+  Logs: `atomic-ops-root-host.log`, `atomic-ops-root-rv32.log`. This is only an
+  API/backend candidate; no whole SMP link or flash.
+- Public macro routing is now a source candidate as well: the P4-only
+  `aros/platform_atomic.h` override selects the checked bridge for SMP;
+  generic and normal-P4 macro selection is unchanged. Core Exec uses a direct
+  call (needed before resource vectors); modules resolve the immutable table
+  through existing OpenResource/GetSystemAttr vectors and cache it with RV32
+  load/store fences, not operand AMOs. All 12 INC/DEC/AND/OR width combinations
+  compile warning-free in core and public modes. Objects: core 1,872 bytes,
+  SHA-256 `1fa6c18559e40cd43da3de6ddcc16e286e4a2d36d2e6d9cce24ae8b3f3b45114`;
+  public 5,244 bytes, SHA-256
+  `cfcb724a716dac645f84ff442d4dc15e079dcef7179aeeab3439ecc11a673708`.
+  Public object has only SysBase unresolved; disassembly contains no AMO/LRSC.
+  Both generated and Developer headers were refreshed through include-copy
+  rules and compared to source. Initial copy invocation omitted host variables
+  and failed; corrected invocation succeeded. Initial public compile caught a
+  string-pointer signedness warning; explicit CONST_STRPTR cast fixed it,
+  retained `atomic-macro-public.log` failure and `*-public-fixed.log` success.
+  Whole build/invalidation, API/header independent review and plain task-field
+  synchronization are still pending. No activation or hardware evidence.
+- Reproducible bridge verification is checked in as
+  `kernel/tests/p4-atomic-bridge-check.py`; it validates both copied header trees,
+  runs the production-bridge 77-check sanitizer fixture, compiles all three
+  RV32 objects and rejects direct AMO/LRSC and unexpected unresolved symbols.
+  It passes and retains complete commands/output/exit status in
+  `atomic-bridge-*.log` plus object identities. Independent review is running.
+- Remaining gates: public PSRAM-safe locks and task-field protocol; per-hart
+  traps/ticks and affinity-aware queues; actual concurrent tasks and FPU migration;
+  matched whole-system build and qualification. Next: independently verify CAS
+  and staged bootstrap before integrating the public runtime.
+
+### 2026-10-01 - E3 actual-list queue candidate and lifetime review
+
+- Source state: dirty worktree; new unselected `p4_scheduler_queue.c/.h`
+  binds signal effects to actual Exec Ready/Wait/Running lists. Caller holds
+  the Task lock with local interrupts masked and guarantees storage lifetime.
+  Ordered list locks protect validation and mutation; invalid state/affinity,
+  missing/duplicate membership, bad sentinel/backlinks and bounded scan failure
+  reject before mutation. Running-context references are not released here.
+- Configuration/procedure: standalone GCC16.2 RV32 ilp32f, -O2 -Wall -Wextra
+  -Werror with explicit matched SMP/platform/runtime defines and this build's
+  Developer sysroot. Object `scheduler-queue-root-rv32.o` in the main E3
+  evidence directory: 3,176 bytes, SHA-256
+  `112622644b2f1165a9a131f22ebf86d8cdd4731f6308667b9180c8b3556c27e5`.
+  Host actual-list fixture `kernel/tests/p4-scheduler-queue-test.c` passes
+  53 ASan/UBSan checks (author and root). It exercises all transitions,
+  priority/FIFO insertion, hart0/1 eligibility, ordered locks, unchanged-state
+  rejections, malformed backlinks/tails after the target, cycles and a
+  20,001-node bounded-scan rejection. Evidence directory
+  `smp-scheduler-queue-2026-10-01`: host binary 111,192 bytes, SHA-256
+  `88d5de9867308137e3f9fff662aa3ddc6d02815867705951f9fd2efc82995f41`.
+  Initial root attempt named a nonexistent .py fixture; corrected to actual
+  .c include-based fixture, strict sanitizer build/run passed. Mock locks do
+  not prove concurrent ordering on silicon. No source selection.
+- Independent queue review reproduces 53 checks and finds no defect in the
+  stated transition/rejection contract (`smp-scheduler-queue-2026-10-01/
+  independent-review.md`). The 20,000-node masked scan bound has not had its
+  worst-case hardware latency measured. Task lock-init and launch-order
+  fixtures also pass independent reruns. Caller locks/lifetime and all other
+  list writers still need real integration.
+- Lifetime model: root and independent reviewer repeat all 56 ASan/UBSan
+  checks; standalone RV32 object is 2,912 bytes, SHA-256
+  `5d80f05f7a502671e8d8be2263df41cd34977516d6838e78c46d7c879a71ea81`.
+  Evidence `smp-task-lifetime-model-2026-10-01`; first root invocation linked
+  production code twice because the fixture includes it, failed with duplicate
+  symbols, and was corrected to compile the fixture alone. No implementation
+  failure was inferred from that invocation error.
+- Independent `protocol-independent-review.md` reproduces lifetime 56,
+  runtime 155 and signal baseline 146 checks. Signal review identifies stale
+  tc_SigWait causing needless RUNNING reschedules without an armed token;
+  the correction and missing repeat-token fixtures are in progress.
+- Safety/result: host/object verification only. No board reset, flash, media
+  write, default change or visual acceptance. Configure still refuses SMP.
+  Full E3 remains open: task registry/retirement and semaphore cancellation,
+  actual scheduler handoff, asynchronous IPI/ticks, second Exec entry and
+  matched whole-system concurrent-task/FPU hardware qualification.
+- Next: qualify queue operations and corrected signal binding, then integrate
+  lifecycle and context handoff without exposing runnable tasks prematurely.
+
+### 2026-10-01 - E3 Task state-lock initialization prerequisite
+
+- Shared `NewAddTask` initializes canonical `tc_SpinLock` for caller-owned
+  potentially uncleared Task storage before ETask/pre-launch publication;
+  `exec_init` separately initializes the bootstrap Task before SET_THIS_TASK.
+  Both additions require Exec SMP and platform SMP, leaving normal paths and
+  platforms without that field unchanged. Re-adding a live task is invalid.
+- `kernel/tests/p4-task-state-lock-init-test.py` compiles the extracted actual
+  initialization blocks with ASan/UBSan in all four ABI-define combinations;
+  all pass. Actual TaskLaunch order still passes 90 checks in each variant.
+- Attempted strict standalone SMP NewAddTask RV32 compile fails: missing
+  `krnSysCallReschedTask` declaration/binding, existing RawDoFmt pointer
+  signedness and a misleading debug-macro indentation warning. No object
+  identity, matched SMP link or hardware success is claimed. Do not silence
+  the missing runtime binding with a mock declaration in a production build.
+- This advances the task-field phase prerequisite only. Registry publication,
+  Running-list bootstrap membership and lifecycle remain open. No board or
+  media writes; normal on-board baseline unchanged. Next integrate the real
+  scheduler syscall and retirement protocol before activating these paths.
+- Task-identity registry implementation started as the next bounded candidate:
+  independently allocated records remain registered through retirement until
+  notification pins and running owners drain. One caller-owned lifetime gate
+  must cover raw-pointer identity lookup and pin; lookup never dereferences the
+  supplied Task pointer. Detachment follows a one-shot reclamation claim.
+  No shared ABI extension, memory allocator, production pin binding or source
+  selection is introduced by this supporting helper alone.
+- Corrected signal protocol now passes 181 ASan/UBSan checks, repeated by root:
+  ordinary RUNNING signals require an actual owner wait token, exceptions do
+  not; stale-mask/no-token, armed match, repeated arm nonmutation and repeated
+  committed switch refusal are included. Adapter snapshots the destination
+  owner's token while holding its Task lock. Wait/Exception now fail closed
+  on invalid runtime/state, and queue binding prevalidates runtime before
+  mutation. Source wrappers remain unselected; RV32 compilation and the
+  independent post-correction review are still pending at this checkpoint.
+- Source/dependency review also confirms a separate dispatch-hook duplication:
+  selected generic core_Dispatch and P4 cpu_Dispatch both call tc_Launch when
+  TF_LAUNCH is set, on every such dispatch. Integration must assign exactly
+  one owner; prefer P4's post-context/FPU/Exception call and suppress generic
+  invocation only for the explicit P4 SMP path. No callback behavior was
+  changed merely by this finding; normal-build regression remains separate.
+
+### 2026-10-01 - E3 launch-hook ownership and actual pin gate binding
+
+- P4 SMP platform now selects `EXEC_DISPATCH_LAUNCH_IN_CPU`; generic
+  core_Dispatch skips its launch callback only for that selection. P4
+  cpu_Dispatch retains the callback after context/FPU restoration and Exception.
+  `p4-dispatch-launch-owner-test.py` extracts both real sites and passes
+  ASan/UBSan with/without selection, for three repeated dispatches and unset
+  TF_LAUNCH. Initial selected fixture failed for an unused parameter; explicit
+  fixture-only void cast fixed it. Normal P4 behavior is unchanged here;
+  its independently observed duplicate is not silently declared fixed.
+- New unselected `kernel/p4_task_pins.c/.h` binds Task identity registry to
+  one public-spin lifetime gate with local Disable/Enable balancing. Gate
+  acquisition is bounded at 20,000 attempts and halts on failures rather
+  than return fabricated lifetime state. No allocation, free, notification,
+  Task dereference or external lock acquisition occurs while the gate is held.
+  Signal pin/unpin and lifecycle APIs are real functions, not unresolved mock
+  declarations, but still require creation/scheduler/removal integration.
+- GCC16.2 standalone RV32 ilp32f compile with explicit SMP/platform/runtime
+  defines and active sysroot passes -O2 -Wall -Wextra -Werror. Object
+  `task-pins-root-rv32.o`, main E3 evidence directory: 7,140 bytes, SHA-256
+  `5e7e1e83d626dfddfe48e97a3a8bb8c192973c57507fba1a33fc229f47ec6ef3`.
+  Host actual-binding tests are in progress. Bounds are operation counts, not
+  measured microsecond deadlines; hardware masked-interrupt latency is open.
+- Independent adapter review confirms missing owner-hart publication in the
+  current P4 dispatcher. The new Ready-to-Running integration must assign
+  iet_CpuNumber under the same canonical Task lock before TS_RUN is visible;
+  assigning it after generic core_Dispatch returns would already be too late.
+- No makefile activation, matched link, second Exec hart, flash or media write.
+  Next: freeze/review registry and pin binding, then wire lifetime-backed
+  Ready/Running selection and retirement before enabling full SMP.
+
+### 2026-10-01 - E3 registry qualification and trap-stack handoff prerequisite
+
+- Task registry actual-source ASan/UBSan fixture passes 80 checks (author and
+  root), including pointer-only identity lookup, retirement with pins/owner,
+  rejection-before-mutation and one-shot detach. Standalone RV32 object in
+  `smp-task-registry-2026-10-01/p4_task_registry.rv32.o`: 5,692 bytes, SHA-256
+  `8be499208f6c6edb54382e0027e767c8be9bd241eadf2adcaabc309aea24574e`.
+  This does not integrate creation, removal or queued semaphore cancellation.
+- Followup adapter review found READY targets never poked and foreign non-null
+  owner wait tokens silently treated as unarmed. Adapter now refuses a foreign
+  token before mutation and asks the eligible destination to schedule READY
+  targets. Priority admission is left to that scheduler; extra conservative
+  READY pokes are permitted. Eligibility selection is shared with queue moves.
+  Queue fixture still passes 53 checks after refactoring. Adapter strict RV32
+  object: 9,140 bytes, SHA-256
+  `91a191614103df55561f5ca7901fb69009e7d400f78d9a6822a131443ba668d7`;
+  actual-binding fixture and post-correction review remain in progress.
+- Actual `traps.S` saves frames and runs C on the interrupted Task stack.
+  Publishing its saved Task Ready while the old hart still unwinds that same
+  stack is unsafe. A per-hart trap-stack switch must precede migration and
+  running-reference release. An independent entry-sequence audit is running.
+- New unselected `p4_isr_stack.c/.h` reserves two 16-KiB stacks plus guards in
+  linked kernel BSS, outside Exec allocation. Install requires the owner hart,
+  MIE clear, mscratch zero and a fresh slot. Range/guard checks reserve a fixed
+  2-KiB C margin; that is not measured worst-case stack use. Actual-source
+  sanitizer storage fixture passes 28 checks (invalid hart/state/ranges,
+  cross-hart stack refusal, alignment, guard damage and failed CSR install).
+  Standalone RV32 object `isr-stack-root-rv32.o`: 2,408 bytes, SHA-256
+  `772bc8ebca88381788b30bb304a2f312030bb5b7a2c9a9ef481c48239b812b23`.
+- No assembly switch, source activation, matched link, memory-budget link
+  acceptance or silicon stack/concurrency result is claimed. No hardware or
+  media write. Next: review nested entry/return, integrate actual stack switch
+  and fail-closed bounds before publishing migratable tasks.
+
+### 2026-10-01 - E3 private ISR entry and running-owner admission integration
+
+- State: E3-A1/A2/A3 remain open. SMP kernel source selection now includes
+  lifetime, registry, Task pins, ISR stacks and queue binding. Configure still
+  refuses full SMP; Exec Signal wrappers remain unselected. No default change.
+- Actual SMP traps.S switches stacks before frame stores, records original SP
+  and ISR-top marker, supports nested ISR entry and restores MIE only via mret.
+  SMP requires the 288-byte FPU frame. Primary startup holds hart1 and prepares
+  CPU-local/runtime/ISR storage before kernel C; later startup validates rather
+  than reinitializes those stages. Trap C refuses bad guard/range/depth (eight).
+  Pre-handler stores and entry/exit synchronous faults remain risks; fixed
+  2-KiB C margin/16-KiB stack sizes are not measured worst-case stack usage.
+- ASan/UBSan storage and actual-handler fixtures pass 28 checks each. The first
+  handler fixture failed after new dependencies; headers/mock range checks were
+  added and rerun. Isolated handler RV32 compile initially lacked board selection;
+  corrected compile succeeds with two pre-existing warnings (interrupt callback
+  cast and backtrace pointer signedness), not a warning-free full SMP build.
+  Object 13,560 bytes SHA-256
+  `3782c25cc6a8ac02ad6fa033c1db0ee3589b5796f5c6c56d6201ef0d003bcd7d`.
+  ISR trap/startup assembly objects are 2,084/2,160 bytes, SHA-256
+  `cf0e5631a371fc4ee808c5ce6f62550f82404e07f8b238f3847eb3bd9b264c28` /
+  `8deb31bd14cdbfeb989a3cdc5e1cc22e28a63b074ea1a49e6b92da2fcfebfad4`.
+  The subsequently added FPU compile guard changes no accepted instructions;
+  fresh instruction-model and independent review are pending.
+- Fresh isolated kernel_startup.c RV32 object is 65,452 bytes, SHA-256
+  `aceffde90b2edf1e08fa108ce9cfa7382eb143a6ca80ed6523857a2db63be354`.
+  This uses explicit SMP/platform/runtime/FPU/atomic-core defines and the D1001
+  profile with the current build sysroot. Compilation has existing signedness
+  warnings and EXCEPTIONS_COUNT redefinition from the isolated native-header
+  include fallback; it is not whole-build or hardware verification. Fresh trap
+  assembly after adding the FPU guard retains the documented 2,084-byte hash.
+- Adding the admission helper exposed an order-dependent extraction bug in the
+  adapter's host test (EligibleHart-to-next-function slice included the new
+  helper). Compilation failed rather than testing the old source. The test
+  author is correcting the function extraction; no passing rerun is claimed
+  at this checkpoint.
+- Extraction was subsequently corrected to a brace-balanced function body;
+  the author and root rerun now pass all 37 adapter sanitizer checks. This
+  repairs the fixture's dependency on source order, not an adapter runtime bug.
+- Initial emulator harness used the GCC driver to link and produced ET_REL at
+  VMA zero despite its script; instruction fetch at PC zero repeatedly faulted.
+  The debug run was stopped. Its task-owned 1,797,383,555-byte trace is being
+  compressed recoverably, not discarded. Direct elf32lriscv ld.bfd produces
+  ET_EXEC at 0x80000000; first corrected run exits zero. Bounded script rerun,
+  artifact identities and independent review are still pending. This tests
+  M-mode entry instructions on QEMU, not P4 CLIC/peripheral/silicon behavior.
+- Corrected bounded script and root rerun both pass actual preprocessed SMP/FPU
+  entry under generic RISC-V QEMU virt. Harness checks original SP, outer/nested
+  mscratch markers, integer preservation, Task0-to-Task1 stack change with both
+  Task stacks untouched, and pending CLINT software IRQ deferred until mret.
+  Executable ELF is 8,684 bytes SHA-256
+  `f0539bfc5e8db48749f93d006827a14f8068efe8d2ed361767bb93d4e71582e3`;
+  commands/source identities/model limits are in smp-isr-entry-2026-10-01.
+  The debug trace is retained as a 5.8-MiB gzip file. This does not qualify
+  FPU task values, CLIC/NMI/entry faults, stack sizing, P4 hardware startup or
+  cross-hart scheduler concurrency. Independent review remains pending.
+- Actual Task-pin fixture passes 80,376 sanitizer assertions (author and root);
+  repeated bounded-acquisition assertions account for much of this count. Agent
+  evidence was mistakenly saved beneath build/build/evidence. The two exact new
+  directories smp-task-pins-2026-10-01 and smp-signal-adapter-2026-10-01 were moved
+  without overwrite into build/evidence; historical scripts reference old paths
+  until corrected. No results or unrelated evidence were removed.
+- Ready-to-Running helper takes a pinned, canonical-Task-locked candidate,
+  validates both lists/affinity, reserves its unique running reference and sets
+  iet_CpuNumber before TS_RUN/Running insertion. It does not select candidates,
+  install context/ThisTask/runtime or release the outgoing running reference.
+  Prior 53 queue tests still pass; new admission tests are in progress. Strict
+  standalone RV32 object is 6,164 bytes, SHA-256
+  `61e69709024498660f18ee366dcdcbd743adcc87883d8b1307a77fd0be779250`.
+- Root subsequently added fail-closed CPU-count validation (zero or above two)
+  before admission/list locks, matching the signal eligibility helper. Fresh
+  strict RV32 queue object supersedes that initial artifact: 6,248 bytes,
+  SHA-256 `77893f1ac58af9e824ae071dbeae24b03c9cf9aba94a551dc4ef0dbd5f385057`.
+- No hardware, serial reset, flash or media write; normal baseline unchanged.
+  Complete SMP link/SRAM-budget acceptance, real secondary Exec entry, lifecycle
+  wiring, semaphore cancellation and silicon concurrency remain unverified.
+  Next: review actual entry and admission, then integrate scheduler/lifecycle.
+
+### 2026-10-01 - E3 lifetime-backed dispatcher source integration
+
+- Ready-to-Running actual-source fixture passes 528 strict ASan/UBSan checks,
+  including both owner harts, source/list/affinity/count refusals and owner
+  publication before TS_RUN. Evidence smp-running-queue-2026-10-01. Independent
+  review finds no defect in this helper or the tested ISR entry, reproducing
+  Task pins80,376/storage28/trap28 and actual-entry QEMU pass. The review
+  explicitly identifies missing production lifecycle/dispatch calls; it does
+  not qualify cross-hart runtime.
+- New p4_dispatch.c now supplies the selected SMP cpu_Dispatch path. It pins
+  Ready identities under the Ready lock, drops Ready before taking a Task
+  lock, revalidates through krnP4ReadyToRunningLocked, installs per-hart current
+  task/nesting/quantum/counters and unpins temporary identities. An admitted
+  task remains protected by its unique running reference during CPU restore;
+  no queue/Task lock is retained for Exception or launch callbacks.
+- Strict isolated RV32 dispatcher object is 4,072 bytes SHA-256
+  `07f5bae95bf40546ded53af57c5c87d7127907888b68be2f15bca9415f239620`.
+  Host actual-source tests and independent review are in progress. Runtime
+  requires local IRQs masked, private ISR stack/trap context, no old ThisTask
+  or wait token. Repeated full-list validation may have quadratic scan cost;
+  20,000 iterations are a count bound, not a measured latency guarantee.
+- E3-A1/A2/A3 remain open: generic outgoing core_Switch does not yet release
+  running ownership/clear ThisTask; creation/removal/queued semaphore users
+  remain unwired. Thus current selected SMP source is intentionally not a
+  runnable matched image. Configure refusal remains, secondary remains held,
+  and no partial SMP flash or normal default change is allowed by this result.
+  No hardware or media writes. Next: complete outgoing context/lifetime commit
+  and lifecycle publication, then real IPI/timer/secondary runtime qualification.
+
+### 2026-10-01 - E3 dispatcher guard correction and creation publication hooks
+
+- Independent dispatcher review caught bypass of generic core_Dispatch's
+  stack-range admission check. Before acquiring Running ownership the new
+  dispatcher now checks ETask/frame, saved SP against Task bounds/equality,
+  16-byte SP alignment, nonzero/even PC and non-null/four-byte-aligned FPU
+  context when ECF_FPU is set. Malformed context halts before admission; this
+  differs from generic WAIT quarantine and must remain explicit until a safe
+  quarantine/alert path is qualified. Arbitrary context/FPU pointer domains
+  and executable PC bounds are not certified by these local checks.
+  Current strict RV32 dispatcher object supersedes the initial 4,072-byte one:
+  4,620 bytes SHA-256
+  `9c46a115f1030be933452fc7e4c0d24618a2531ec5041a74fa92d228ad9bd156`.
+- Read-only lifecycle callsite audit confirms bootstrap precedes ETask setup,
+  NewAddTask publication can expose a child before creator return, RemTask
+  destroys context/ETask too early, and ServiceTask's blind FreeEntry loop
+  has no drain/claim. Evidence smp-task-lifecycle-audit-2026-10-01.md. Current
+  generic outgoing Switch still changes lists without the new locks; merely
+  selecting the dispatcher does not make these concurrent writers safe.
+- Root adds atomic registration plus creator pin in the actual lifetime-gate
+  binding, independent AllocMem record ownership, P4-only creation/bootstrap
+  platform hooks and queue-locked creation/Running transactions. New READY
+  publication copies destination for a poke outside locks; bootstrap reserves
+  hart0 ownership and installs runtime current_task before unmasking. Creator
+  pin release must be the final NewAddTask Task access. Shared lifecycle edits
+  and actual-source fixtures are in progress; record reclamation is not wired.
+  Raw returned Task pointers do not promise permanent lifetime; very short
+  lived tasks may already have exited when an API returns, as in local-priority
+  scheduling. Registry pin-before-dereference is required for later operations;
+  pointer-address reuse/ABA is not solved by this change.
+- Strict RV32 publication-helper object: 4,480 bytes SHA-256
+  `76e8784ab430ec133d7c54c85714fb5c4ccaf6709eaae960c65277b159858a5c`.
+  Standalone compilation is not a matched link. SignalPoke, outgoing handoff,
+  removal/service/semaphore cancellation and real hart1 startup remain open.
+  Configure refusal remains; no partial SMP image was flashed, and no normal
+  hardware/media state changed. Next: verify creation hooks and complete the
+  outgoing lifetime/context commit before secondary Exec release.
+
+### 2026-10-01 - E3 dispatcher verification and creator-pin publication checkpoint
+
+- Root independently repeats the actual-source dispatcher fixture: 1,614
+  assertions pass with clang C11, Wall/Wextra/Werror and ASan/UBSan. Independent
+  review validates the local lock/pin ordering after the saved-context guard
+  correction. Evidence: smp-dispatch-2026-10-01/REPORT.md and
+  independent-review.md in the Amiga build evidence directory. Current strict
+  RV32 dispatcher object: 4,624 bytes SHA-256
+  `e5d8ee93a45a1bcf0e12dbe1f85d955f634a9023580ac91ab3b126fa7236082a`.
+  Pointer-bound comparisons now use uintptr_t rather than unrelated-pointer
+  relational comparisons. The fixture mocks registry/admission, so this is
+  not integrated concurrency or target execution evidence.
+- P4-only NewAddTask now registers independent record storage after successful
+  context preparation and before pre-launch observation/Ready publication.
+  Registration failure deletes only the newly created context and performs
+  existing ETask/extra-name-entry cleanup. A creator pin spans every subsequent
+  Task access; its release is the last access before returning raw identity.
+  The dedicated P4 TaskLaunch branch excludes the generic reschedule body,
+  performs the hook once before publication, and does not dereference Task or
+  parent after publication. Bootstrap registers before TS_RUN/SET_THIS_TASK.
+- Author and root reproduce extracted production-block sanitizer tests:
+  42 assertions each for single, generic SMP and platform SMP; 58 for P4 hooks.
+  Immediate final-unpin retirement frees the Task without a subsequent
+  dereference. Previous pre-launch90+90 and failure-cleanup117 fixtures still
+  pass. This is not whole-function compilation or a matched Exec/kernel link.
+  Helper and publication-queue fixtures are still in progress. Evidence script:
+  kernel/tests/p4-task-record-publication-test.py; evidence directory
+  smp-task-record-publication-2026-10-01.
+- Publication-queue tests subsequently complete: 766 strict ASan/UBSan
+  assertions (author and root), checking Ready/Wait/Running membership,
+  affinity/count, corruption and admission refusal before mutation, plus
+  bootstrap without ETask reads. Creator-pin binding extension passes 80,503
+  assertions (author and root), including a reentrant Enable-time retirement
+  attempt that cannot claim storage before creator unpin. Evidence:
+  smp-task-publication-queue-2026-10-01/REPORT.md and
+  smp-task-pins-2026-10-01/publish-pinned-addendum.md. Boot's absence from
+  Ready/Wait remains its quiescent creation contract, not a general check.
+- Whole NewAddTask translation units also compile with the explicit relocated
+  Developer sysroot in P4 SMP and normal configurations. Initial Wall/Wextra/
+  Werror fails on pre-existing RawDoFmt pointer-sign and StackSnoop/debug-log
+  misleading-indentation warnings; retry retains those warnings with only
+  their two no-error exceptions. It is not a warning-clean build. SMP object
+  8,580 bytes SHA-256
+  `c952a3b970a589805d562ac6f24d6361c8ba4fb2ef815dc1806c903c6b5be445`;
+  normal object 9,000 bytes SHA-256
+  `5974534aa5c48f1857ce4f134864c29d56db7e01fd3f2fe792ff2fa6c91a7d36`.
+  These are fresh isolated objects, not packaged artifacts or on-board proof.
+- Bootstrap helper now refuses non-hart0, missing CPU-local storage, nonempty
+  current_task, negative boot nesting or CPU count other than one before any
+  allocation/publication. Fresh strict RV32 helper object: 4,640 bytes SHA-256
+  `61de56e6ca405a9cab021fe45748972271d5866809d94fa46ee17d65a16ff7e3`.
+  Current creation-inclusive queue object: 8,052 bytes SHA-256
+  `94928e9714064ff84872af4a74a13078278fa6b2bc26a16bc663ca399a5314ab`.
+- Integration blockers identified by independent review remain explicit:
+  selected rom/kernel/kernel_scheduler.c core_Switch does not remove TS_RUN
+  from TaskRunning before Ready insertion, allowing double membership; it also
+  lacks context/current-task/running-reference handoff. Direct SC_DISPATCH
+  bypasses outgoing save/commit. RemTask/ServiceTask still destroy storage
+  before registry drain, SignalPoke lacks production IPI, and other generic
+  Task/list writers have not adopted canonical locking. TF_SWITCH callbacks
+  need an unlocked, lifetime-protected handoff preserving their state contract.
+- A read-only ServiceTask audit identifies the same lifetime hazard for both
+  self and external removal: context/ETask are destroyed before owner drain,
+  ServiceTask can consume a Task message on another hart before old stack exit,
+  and the external path frees MemEntry immediately. Service-port ownership
+  needs a designated reference that is consumed atomically with detach/claim,
+  not a separate unpin then claim. Private service-pending registry primitives
+  are now in development. Parent ETask death notification remains a separate
+  allocation/ownership path. No RemTask/ServiceTask behavior change yet.
+- Configure's full-runtime refusal and secondary-reset hold remain. No full
+  SMP link, flash, reset, serial access or media writes in this checkpoint;
+  normal one-hart on-board baseline is unchanged. Next: finish creation tests
+  and outgoing context/discard/removal integration before enabling hart1.
+
+### 2026-10-01 - E3 designated service reference and atomic cleanup claim
+
+- Private registry records now track a designated service_pending reference.
+  Retire-for-service acquires that counted pin and retires under one leaf gate.
+  Generic unpin cannot consume its last reference; generic ClaimReclaim cannot
+  claim service-owned storage. Claim-service requires retired state, exactly
+  that one remaining pin and no Running owner, then consumes/detaches atomically.
+  Failed operations preserve all state. Corrupt service markers and impossible
+  dual-owner Running mask3 fail closed. No Task is dereferenced by these APIs.
+- Actual-source sanitizer fixture passes 370 checks (author and root); previous
+  registry80 and lifetime56 pass for the author. Independent review is in
+  progress. Root initially linked the production .c twice because the fixture
+  already includes it, yielding duplicate symbols; corrected single-translation
+  unit command passes. This failed invocation produced no usable test artifact.
+  Evidence: smp-task-service-registry-2026-10-01/commands.txt, output.log and
+  source.sha256. Counts describe assertions, not independent hardware scenarios.
+- Root adds gated krnP4TaskRecordRetireForService/ClaimService wrappers using
+  the existing bounded local-IRQ/lifetime gate. They do not allocate, free or
+  dereference Task. Binding-specific tests are in progress; existing 80,503 pin
+  assertions still pass. Successful claim returns the detached independent
+  record to the sole cleanup owner. Failed claim retains message ownership for
+  retry/requeue; no separate unpin-to-claim interval is allowed.
+- Fresh strict isolated RV32 objects (explicit relocated Developer sysroot):
+  registry8,536 bytes SHA-256
+  `7d9139f54b539fd2cd4e705b7d3e4701b2c997a565e16ad3fa3f357ea90640dd`;
+  pin binding8,760 bytes SHA-256
+  `ce373fdd230231fa1d1f2be9eb35d85d92106bb7b0009a958f6c78721525f1b7`;
+  publication helper4,640 bytes SHA-256
+  `c829947456c2a574281b6837ce7c25ab62b8fbf300cda59762bd3c94176962ef`.
+  The helper identity supersedes the earlier same-size object because record
+  allocation size changed with the private service marker; old and new objects
+  must not be mixed in a matched kernel. Public Task/ETask ABI is unchanged.
+- The publication-helper fixture also passes 331 assertions (author and root),
+  including actual registry/pins/queue code, boot nesting preserved at0/0,
+  creator registration/pin before publication, unpin before final Enable, and
+  Task poisoning after Enable without a later helper dereference. Shared-hook
+  independent review finds no ordering/cleanup defect in its bounded scope.
+  A returned Task/optional MsgPort remains a raw identity, not an API-owned
+  lifetime lease; no new post-return liveness guarantee is claimed.
+- These primitives do not yet change RemTask or ServiceTask. Context/ETask
+  destruction, task-message queue publication, service retries, semaphore
+  cancellation and external-removal deferral still need caller integration.
+  Outgoing context/discard handoff, IPI/timer and real hart1 Exec release remain
+  open. Configure refusal stays; no full link, hardware, flash or media write.
+  Next: independently review and qualify the service binding, then connect the
+  owner-drained task cleanup and outgoing scheduler paths together.
+
+### 2026-10-01 - E3 outgoing context and owner handoff candidate
+
+- Gated SMP cpu_Switch now calls krnP4Switch instead of the generic Switch
+  that could double-link a RUN task. Full integer context, SP, PC, dirty-entry
+  FPU image and ID nesting are saved under the canonical Task lock before
+  wait-token consumption or queue publication. Runtime/hart/outer trap/MIE,
+  RUN state, ETask owner, saved frame, SP bounds/alignment, PC, nesting range
+  and FPU-image prerequisites fail closed before publication.
+- RUN-to-Ready/Wait uses the existing adapter/list transaction. The unique
+  old Running lifetime reference remains held even while a Task is Ready,
+  preventing another dispatcher from admitting it prematurely. A READY-only
+  TF_SWITCH hook runs without Task/list/gate locks and sees coherent Ready
+  membership. After it, current_task/FPU owner are cleared under Task lock,
+  the final Task unlock completes while still protected, and only then does
+  the owner perform raw-identity LeaveRunning. No Task/context dereference
+  follows that release, and no unconditional re-enqueue can undo retirement.
+- Selected SMP Exec sources now include portable signal protocol/adapter,
+  but NOT the public Signal/Wait wrappers yet. Existing generic public writers
+  are incompatible with the candidate and remain an activation blocker.
+  Direct SC_DISPATCH needs its own no-save discard transaction; it is not
+  silently redirected through ordinary context-save. Callback-time removal
+  is safe only after RemTask/ServiceTask defer destruction until owner drain.
+- Initial strict isolated RV32 object4,564 bytes SHA-256
+  `20d5ca2a5008b9ce35da72eee59067f47f6ac61585f2be2cbd1564303df35da0`.
+  Root subsequently adds pre-mutation foreign-owner rejection and validates an
+  already-flagged FPU image even for a clean trap FS state. Current fresh object
+  4,828 bytes SHA-256
+  `ded374949bdd6101ea366edd8e251bff097ecdf7c5f0ae2368991165d767e9d6`.
+  Compile uses explicit relocated Developer sysroot and matched SMP/FPU/atomic
+  defines. Actual-source fixture and independent source review are in progress.
+- Service registry independent review reproduces370/80/56 and finds no leaf
+  invariant defect. Extended actual kernel binding fixture passes80,651 (author
+  and root), including gate/IRQ interposition, failed claim retention, Running
+  and extra-pin drain, final generic-unpin refusal, atomic service detach and
+  reentrant Enable probes against an invalid raw Task identity. Evidence:
+  smp-task-service-registry-2026-10-01/independent-review.md and
+  smp-task-pins-2026-10-01/service-pin-addendum.md. Neither qualifies receipt/
+  requeue or concurrent on-target cleanup callers.
+- Configure refusal remains and hart1 is reset-held. No full image link,
+  hardware/reset/flash/media action; normal on-board baseline unchanged.
+  Next: qualify this handoff, then integrate no-save discard and deferred
+  removal/service with all public Task/list writers before secondary release.
+
+### 2026-10-01 - E3 no-save discard and retired service-owner proof
+
+- SMP cpu_Dispatch now routes a non-null outgoing current_task through a
+  separate no-save discard transaction. It rejects non-outer trap/MIE-enabled
+  entry, a live Task state, foreign wait token, Scheduler-list membership or
+  missing retired service-owner proof before clearing local identity. A valid
+  removed task has no Ready/Wait/Running membership and retains the designated
+  service pin plus the executing hart's sole Running reference. No ETask,
+  register/FPU image, callback or Task stack is accessed by this transaction.
+  Task unlock precedes the final raw-identity Running release. Ordinary Switch
+  already clears current_task and does not take this path.
+- New bounded TaskDetachedLocked checks list shape/absence under Ready, Wait,
+  Running locks in established order. New leaf service-owner predicate checks
+  retired/service-pending state and exact owner hart without Task dereference;
+  its kernel binding uses the existing bounded IRQ/lifetime gate. Actual leaf
+  proof fixture passes38 strict ASan/UBSan assertions for both harts, foreign/
+  missing owners, corrupt metadata, retention through ordinary-pin drain,
+  Running release and service claim. Existing pin80,651 still passes. The new
+  binding's query-specific interposition and discard fixture remain pending.
+- Fresh strict isolated RV32 objects with matched SMP/FPU defines and relocated
+  sysroot: discard2,560 bytes SHA-256
+  `555aa80e39b760cbb065347c7a31a1c8691d203386544d46e32b937599c49d85`;
+  queue8,960 bytes SHA-256
+  `013427c42b73dd3d289114e37f516db931c222732561d6ba7ba4d941f36bde07`;
+  registry9,076 bytes SHA-256
+  `9b6db942c6797786fa1706d9c05ce7abc15063abe5dc203763e4264f394e828e`;
+  pin binding9,256 bytes SHA-256
+  `3622ef7a98e96057918c685328a31f87cf5caf007d6a86945fd4817207beeb27`.
+  No public Task/ETask ABI change, but consumers must be rebuilt together.
+- Read-only Task-writer audit identifies generic Signal/SetSignal/Wait/SetExcept/
+  Exception still selected despite existing P4 replacements; SetTaskPri lacks
+  canonical Task locking, FindTask/PID scans can miss migrating membership,
+  and RemTask/ServiceTask still destroy state too early. Generic core_Schedule
+  returns FALSE for TS_REMOVED, so an externally retired Running task would
+  continue rather than discard. This scheduler decision must be replaced,
+  with asynchronous owner-hart notification, before external removal is safe.
+  Evidence: smp-task-writers-2026-10-01.md in the Amiga build evidence directory.
+- This is a source candidate, not a runnable image: RemTask must perform
+  retirement/detachment/service-message ownership first; generic callers do
+  not satisfy it. Switch tests/review and discard tests are in progress.
+  Configure refusal and secondary reset hold remain; no full link, hardware,
+  serial reset, flash or media write. Next: integrate deferred removal/service,
+  custom scheduler decision and public writers, then IPI/secondary execution.
+
+### 2026-10-01 - E3 handoff/discard fixture qualification and removal contract
+
+- Root repeated the author's production p4_switch plus portable signal protocol
+  fixture with strict Clang, -Wconversion and ASan/UBSan: 1,277 assertions pass.
+  Both harts, save-before-publication, dirty FPU, callback signal/removal,
+  admission refusal until RUN drain, final Task unlock before raw owner release
+  and poisoned storage are covered. Queue/registry/locks/poke are mocks, not a
+  concurrency or ABI test. Leak detection is unsupported on this host and was
+  disabled; address/undefined-behavior checks stayed enabled. Source SHA-256
+  `fb7747c452c81bce65edbf045b97cea7e42ad04a46c51b159e91eaff0a0c3a3e`.
+- Independent handoff review is saved under build evidence
+  smp-switch-2026-10-01/independent-review.md, SHA-256
+  `e82128e258a03c7193e3042fec511e6bfd6fd73baeed43285d055f9a085785f5`.
+  No local ordering defect was found under the stated lifetime contracts;
+  missing poke/owner reschedule and generic task writers/removal remain blockers.
+- Root repeated the production no-save discard fixture: 64 strict ASan/UBSan
+  assertions pass with queue/registry mocked. The author's first run aborted
+  on a fixture-only event-counter assertion (exit134); lldb identified its
+  before/after increment mismatch and the fixture was corrected. This failure
+  and correction remain in smp-discard-2026-10-01/independent-review.md; that
+  file is the author's fixture report, not an independent production review.
+- Actual RemTask source documents that an external caller may free its own Task
+  structure immediately on return. Async retirement alone would violate this
+  contract; safe external removal requires separate completion ownership and
+  waiting until context/ETask cleanup and every RUN/pin reference have drained.
+  The service's Task message is distinct from parent ETask death notification.
+- Added queue-only krnP4TaskRetireLocked candidate: caller must own ordinary pin,
+  Task lock and IRQ mask; Ready/Wait/Running shape and exact state membership are
+  checked before the service retirement transition. Retirement is the last
+  fallible step, followed by one node detach and TS_REMOVED publication. It does
+  not cancel semaphore requests, release a running owner, enqueue cleanup or
+  provide return-time completion. Actual-source tests are next; public RemTask
+  still uses the unsafe generic path and must not be activated with SMP.
+- No full image/link, serial reset, flash, media or hardware action. Configure
+  refusal and secondary reset hold remain. Next: qualify retirement queues and
+  exactly-once drained cleanup reservation, then wire the reviewed completion
+  contract and owner-hart scheduling before permitting real concurrent Exec.
+
+### 2026-10-01 - E3 actual list-absence and service-owner gate tests
+
+- Author and root strict Clang ASan/UBSan runs of actual TaskDetachedLocked
+  pass62 assertions: all three lists' absence/membership, malformed sentinel,
+  backlinks/successor/cycle, valid20,001-node over-limit refusal, null input,
+  exact lock order and unchanged state. It compiles the production list scan;
+  Task/Exec declarations and locks are mocks. No hardware/IRQ-latency claim.
+  The first author compile lacked state constants used by other included
+  functions; fixture declarations were corrected, no production fix needed.
+  Evidence smp-detached-2026-10-01/independent-review.md is the author's fixture
+  report, not a separate independent concurrency review.
+- Root extends the real pin-binding fixture's gate/IRQ interposition to the
+  service-owner query, including both hart IDs, live/retired/foreign owner,
+  ordinary pin drain, Running release, detached identity and nested Disable.
+  Strict ASan/UBSan result: 80,879 assertions pass (previous80,651). No Task
+  identity is dereferenced by this query; leaf access is masked and gated,
+  unlock precedes Enable, and a nested caller's IRQ mask remains intact.
+- The new queue retirement source compiles strict isolated RV32 with matched
+  SMP/FPU flags and explicit relocated sysroot: object10,268 bytes SHA-256
+  `bbc0385b43d0baba593e2697a91e83001776b37a62048b1cda59635585957c27`.
+  Existing publication766, admission528 and signal-queue53 sanitizer fixtures
+  remain passing. Retirement's own integrated registry fixture is in progress.
+- Exactly-once drained-cleanup reservation work adds a private service_queued
+  flag and gate-only reservation primitive. It must retain the designated
+  service pin until cleanup claims it; no ServicePort call occurs under the
+  registry gate. Author test/review and production notification binding are
+  still in progress, with external RemTask completion contract under review.
+- No full image, secondary release, reset/serial, flash, media or hardware
+  action. Configure refusal remains. Next: finish actual retirement/drain
+  fixtures and reviewed return-time completion before wiring public removal.
+
+### 2026-10-01 - E3 drained cleanup reservation and queued-only claim
+
+- Private registry service_queued flag is now validated against pending service
+  ownership, retired state, exactly one service pin and zero Running owners.
+  take_service_ready_locked reserves one raw identity under the leaf gate,
+  with no Task dereference, allocation, enqueue or detach. Duplicate readiness
+  reservation fails without mutation. Trusted service claim clears both flags
+  atomically with detach; generic unpin/reclaim cannot consume service ownership.
+- Actual registry/lifetime fixture passes531 strict Clang ASan/UBSan assertions
+  (author and root), including poisoned Task storage, both hart drain paths,
+  unrelated identity and corrupt flags/list/count refusal. Author's recorded
+  neighboring results80/370/38/80,651/56 remain historical; root's later expanded
+  gate-query fixture is80,879. Evidence service-ready-host-tests.md under
+  smp-service-ready-2026-10-01 includes exact commands and source hashes.
+- Design review identifies that a delivered-message consumer must additionally
+  require queued reservation. Added separate queued-only leaf claim and kernel
+  gate binding; trusted owner claim is not silently changed into a GetMsg API.
+  Root actual leaf fixture passes38 strict ASan/UBSan assertions: full drain
+  still cannot claim before reservation, accepted claim consumes/detaches once,
+  missing/null identity refuses. Binding-specific queued interposition tests
+  and production ServiceTask caller remain open. Claim must precede any Task
+  log/state access; current generic ServiceTask still violates that requirement.
+- Fresh strict isolated RV32 with matched SMP/FPU defines, explicit relocated
+  sysroot and new private record layout: registry10,248 bytes SHA-256
+  `b6db5168a96b617ba394aeb3afa640004b060ad9ff5ddce045f75d8704032762`;
+  pins9,748 bytes SHA-256
+  `7e7dbf656847017746de1e9a780c4abd796d9dc746cb4228ac68709d0c731c75`;
+  creation consumer4,640 bytes SHA-256
+  `893afe8228d7f0b12982d6c5ebdb7c409258ea936e2f71bb854600c0e9456b40`.
+  Private record grows one word; no public Task/ETask ABI change. These are not
+  a matched full image, linked SRAM budget or hardware qualification.
+- External removal still needs synchronous separately owned completion before
+  return. Semaphore requests embedded in Task stacks require explicit unlink/
+  cancellation before those stacks can be freed. No half-integrated path is
+  activated: configure refusal, secondary reset hold and normal one-hart board
+  remain unchanged. No flash, reset, serial or media write. Next: retirement
+  transaction fixture/review, completion and cancellation caller integration.
+
+### 2026-10-01 - E3 retirement owner correction and remote Switch discard path
+
+- Initial retirement fixture passed357 checks, but independent source review
+  identified that TS_RUN/list membership did not prove a registered RUN owner.
+  Added a read-only bounded live-owner query under the existing leaf gate;
+  missing/corrupt/retired identity returns negative, unowned live returns0,
+  sole owner returns hart+1. Queue retirement now requires a nonzero owner for
+  TS_RUN before its last-fallible service retirement step. READY/WAIT may retain
+  an old draining owner. The actual RUN reference, not historical ETask CPU
+  metadata, must determine any later targeted poke or broadcast.
+- Corrected actual queue/registry/lifetime fixture passes647 strict Clang
+  ASan/UBSan checks (author and root), including RUN membership without owner
+  refusal, both harts, callback READY with old owner, missing/retired/corrupt
+  identity and unchanged failed transactions. Historical357 is explicitly not
+  qualification of the corrected source. Initial author fixture had an incorrect
+  pin-count expectation and a source-hash command omitted the .c suffix; both
+  were corrected and retained in independent-fixture.md. Independent source
+  review finds no remaining local partial-mutation/order defect under caller
+  pin, canonical Task lock and masked-IRQ preconditions. No ETask cleanup/read,
+  RUN release or notification occurs in this transaction.
+- Root gate-binding tests now interpose queued-only claim and live-owner query;
+  80,997 sanitizer assertions pass. Queued-claim/live-owner leaf fixture passes48.
+  Cleanup-ready531 and creation helper331 remain passing with current sources.
+- Fresh strict isolated matched RV32 objects: registry10,776 bytes SHA-256
+  `0f0e498948144d70ec31d330cab3c1e4de1576c4eb491125c1d0154f3d64ec9c`;
+  pins10,220 bytes SHA-256
+  `404112cc618c8bbd2f08460e6b51966523832862b146aad111f7f4bd61e4a8de`;
+  queue10,396 bytes SHA-256
+  `eb89379f9d144c6cfcba85c3a135639ac2717e4a54795eaf994d95cd96107ea3`;
+  creation4,640 bytes unchanged from the prior new-layout consumer.
+- Deferred-service design review is saved in build evidence
+  smp-deferred-service-design-2026-10-01.md, SHA-256
+  `fc4502034ce2f6d857b3caf97803391cd893d6f9e84c94f2227d52ca019cedcf`.
+  It confirms the registry reservation/queued claim but identifies absent IRQ-safe
+  durable delivery, Enable reserve-to-wake gap, synchronous external completion
+  and queued-stack semaphore cancellation. It also identifies TS_REMOVED from
+  retirement being rejected by normal Switch before the owner can drain.
+- Root now routes removed/invalid/tombstoned current Task at Switch entry to
+  the actual no-save discard, before any context/ETask/FPU-image read. Task
+  unlock retains RUN; discard revalidates list absence and executing service
+  owner, clears current/FPU/wait and releases RUN last. Switch returns without
+  hook/save/poke. Fresh strict RV32 Switch5,096 bytes SHA-256
+  `d3afde396b6f1e7cd099f76ae47e4dfb3cf5aef7942958f734e8123f0bc5ccde`.
+  Combined actual-source tests/review are in progress; old1,277 fixture result
+  does not qualify this changed source. Generic core_Schedule still returns
+  FALSE for removed Tasks and Forbid still suppresses the generic exit path;
+  forced retirement-aware outer-trap scheduling remains a separate next step.
+- Configure refusal and secondary hold remain. No full image/link, reset,
+  serial, flash, media or hardware action; normal one-hart board is unchanged.
+  Next: finish combined discard qualification, then implement durable deferred
+  cleanup, external completion and forced owner-hart dispatch/cancellation.
+
+### 2026-10-01 - E3 retired Switch qualification and forced outer-trap route
+
+- Combined production Switch/discard fixture passes2,027 strict Clang
+  ASan/UBSan checks, author and independent root repeat. Both harts and all
+  removed-like states prove no old context/ETask/FPU access, unlock before
+  RUN drop and no Task access after release. Queue and service-owner proofs
+  remain explicit mocks; this is not concurrent or trap-level acceptance.
+  Fixture SHA-256
+  `cc0eb92a2d783c61b4cc3174fe03a23bb4d1cb80def43f02026b0ef1f10608c0`.
+  Author addendum: build evidence smp-switch-2026-10-01/
+  retired-discard-addendum.md; independent local review SHA-256
+  `c76729d4d4ebd8edeb0372596f0685bef9398f4224ce4e44010a172e28b6e8b6`.
+- Root adds SMP-only p4_retired_trap before generic exit/syscall handling at
+  outer depth1. Task-state check is locked and RUN protects both unlock and
+  discard revalidation. A retired owner always invokes cpu_Dispatch after
+  discard, replacing its return frame despite Forbid or priority decline.
+  Live/empty owners fall through. Tests and independent review are pending.
+- Fresh strict isolated matched RV32/FPU objects, explicit relocated Developer
+  sysroot: helper2,268 bytes SHA-256
+  `8cd715f5ce86f9cacae7b15694d64b2d21cf3d313243c90b020b9a955685f908`;
+  whole trap15,920 bytes SHA-256
+  `f2b1b04b232c9b15dc52bda2dbd400d82109a1e8c24bf75971a198da447591cc`.
+  Initial helper compile rejected a missing cpu_Dispatch declaration; corrected
+  with kernel_intr.h. Whole trap initially rejected an existing pointer-sign
+  warning at KrnPrintBacktrace; corrected its explicit STRPTR argument.
+  No warning exemption was used. Separate object targets do not refresh or
+  qualify the complete ABI/core/BSP.
+- The normal non-SMP trap translation unit also compiles strictly:15,520
+  bytes SHA-256
+  `72bd70956c8ce8b69ad7b5a5cf32f177fbe9f0102d4942e24ea75116f1a1c83c`.
+  nm confirms only the SMP object references krnP4RetiredTrap; normal has no
+  new runtime/ISR-stack/retirement references. This is an isolated compilation,
+  not a normal full rebuild or hardware regression.
+- Safety/status: configure refusal and secondary hold remain. No serial,
+  reset, flash, media write or hardware test. Normal201,504-byte core remains
+  SHA-256 `1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`.
+  Durable cleanup/completion, queued semaphore cancellation, public
+  Wait/Exception retirement races, ordinary scheduler/list writers, timer/IPI,
+  secondary Exec entry and matched full link/hardware gates remain open.
+
+### 2026-10-01 - E3 outer-trap routing qualification; durable cleanup queue started
+
+- Root independently repeats679 strict Clang ASan/UBSan assertions compiling
+  actual p4_retired_trap and discard with the verbatim extracted outer routing
+  branch. Both harts/three retired states bypass generic exit/syscall and load
+  a distinct mocked return frame after RUN release; poisoned old ETask/context,
+  frame/FPU and post-release Task catch forbidden accesses. Nested route,
+  live/empty fallthrough and invalid preconditions/service proofs are covered.
+  Fixture SHA-256
+  `3b59ee1625e0c7acc3ec7bd64163cb698e8452cd89b722c9dbcfa079ce9b0b46`.
+  Procedure/snapshot: build evidence smp-retired-trap-2026-10-01/host-tests.md.
+- Independent source review passes within local scope, report SHA-256
+  `93f60741b3fb9837712494c391febf162b412b89f6f2d1efa9884f2e6002adb9`.
+  Retirement after a live-state check may let the current trap follow ordinary
+  control flow. Safety then requires latched/retriggered owner IPI and waiting
+  for RUN drain before completion/reclamation. The fixture models the first
+  fallthrough and a second mock IPI forcing discard; it does not prove actual
+  IPI delivery. Generic removal lacks service ownership, so it still fails
+  closed; production RemTask/poke must be integrated before activation.
+- Host limits: only the outer routing branch is extracted, not the full trap
+  handler. Queue/registry/runtime/locks, CPU dispatch and IPI delivery are
+  mocks. Whole translation-unit compilation is separate; no concurrent Exec,
+  real trap/hardware or full ABI/link acceptance follows from these checks.
+- Next bounded implementation started with Luna: reserve durable private
+  service_queued under the same leaf gate as the final Unpin/LeaveRunning,
+  before Enable; add bounded validated queued-record claim for a permanent
+  housekeeper. No callback/Task dereference under the gate. This addresses
+  durable work publication only; housekeeper wake, public removal/completion
+  and semaphore cancellation remain separate integration gates.
+- No hardware/serial/reset/flash/media changes; normal single-hart baseline
+  and configure refusal remain. E3-A1/A2/A3 are not complete.
+
+### 2026-10-01 - E3 remaining Task writers and next bounded implementation packets
+
+- Focused Luna source audit: build evidence smp-task-writers-2026-10-01.md,
+  SHA-256 `5f444c320d88379911c493ebc5d655a21e9a2879d85f5f87d18d559dbc163185`.
+  SetTaskPri chooses queue lock from state before canonical Task locking;
+  migration can leave priority mutation under the wrong lock. Post-unlock
+  Task/ETask accesses lack a pin. Generic core_Schedule reads priorities
+  without Task/Ready locking. Lookup snapshots can miss migrating tasks, read
+  PID/ETask without lifetime proof and include TaskSpinning outside the current
+  three-list contract. Legacy raw lookup returns have no post-return lease.
+  Existing architecture signal/exception wrappers are not yet source-selected.
+- Main-selected next packets: durable service-ready publication/claim-next in
+  private registry/pin binding, plus a separate P4 scheduling-decision candidate
+  under Task then Ready locks with bounded shape validation. The latter remains
+  unselected pending review and matching SetTaskPri synchronization. Both
+  author packets are in progress; no new passing fixture or full build is
+  claimed. Root owns architecture, selection and independent verification.
+- Acceptance remains unchanged: configure refusal, no secondary Exec entry,
+  normal core unchanged, no hardware or media operation. Next integrate
+  reviewed service queue/wake, completion and cancellation, matched priority
+  writers/lookup snapshot, actual timer/IPI and complete ABI rebuild before
+  the concurrent D1001 Exec gate. Full E3 remains open.
+
+### 2026-10-01 - E3 locked scheduling decision and matching priority writer candidates
+
+- Luna's unselected p4_schedule helper passes446 strict sanitizer assertions;
+  root repeats with -Wconversion and ASan/UBSan. Root local source review
+  confirms runtime/hart/depth/MIE checks, per-hart SWITCH consumption,
+  Task then Ready lock order, complete bounded list validation before head
+  priority read, exception/retirement handling and generic priority/quantum
+  policy. Runtime/locks are fixture mocks; not concurrent or hardware proof.
+  Source SHA-256
+  `58321d1df9ce4282e13b7d45e969496ed88935599345985619ed09fa21686c4a`;
+  fixture `b87edf7c9d07c4e3a4af7668a48e1392018e4477bd8e15528c6cc2b2aee1c353`.
+  Procedure: build evidence smp-schedule-2026-10-01/host-tests.md.
+- Root adds the matching unselected architecture SetTaskPri wrapper and
+  krnP4TaskPriorityLocked queue transaction. Raw identity is pinned first,
+  then Task/IRQ ownership protects the state snapshot. Ready/Wait/Running
+  locks are acquired in canonical order; exact membership and registry live
+  owner are validated before any mutation. READY priority/reordering is
+  serialized under Ready, WAIT changes priority only and RUN uses copied
+  actual owner. No ETask is read after unlock. Unpin ends Task identity use;
+  only copied old priority and scheduler effect remain after Enable.
+  Retirement between pin and Task lock returns old priority without mutation
+  or notification. A missing initial pin remains invalid-caller fail-closed.
+- Fresh strict matched RV32/FPU, relocated explicit sysroot: schedule3,596
+  bytes SHA-256
+  `0cc5b9cd2c6848513333cfc01a49693160e53096407d403564cfb683977357c2`;
+  priority queue12,056 bytes SHA-256
+  `cb54365019b83e0091179f62107f3bb9066ae92076119d1f8cfa10658b6ae544`;
+  public writer2,964 bytes SHA-256
+  `f6d530972744661be5d739e3a89121e9c88d70ba93cda8a752746592a8a2e1db`.
+  An includes-only explicit test guard was added afterwards for actual public
+  wrapper fixtures; production body is unchanged. Writer fixtures and
+  independent review are in progress; no full core/BSP/link or ABI acceptance.
+- Safety: candidates remain unselected, configure refusal and secondary hold
+  unchanged. No hardware/serial/reset/flash/media operation. Next qualify and
+  integrate paired decision/writer, complete lookup and lifecycle/service/wake
+  paths, timer/IPI and matched full build before D1001 concurrent Exec tests.
+
+### 2026-10-01 - E3 durable service queue binding; priority review corrections
+
+- Durable private service-ready reservation now occurs within the same leaf
+  gate as successful ordinary Unpin or LeaveRunning. Claim-next validates the
+  bounded record chain, selects queued work and consumes the sole service pin
+  atomically with detach. It performs no Task dereference, callback or cleanup.
+  Author and root pass675 service-queue and80,985 pin-binding checks under
+  Clang ASan/UBSan; root additionally uses -Wconversion and -Wshadow. Procedure:
+  build evidence smp-service-queue-2026-10-01/host-tests.md. State is durable,
+  but no production wake, ServiceTask consumer or RemTask caller is connected.
+- Fresh isolated strict RV32/FPU objects with the relocated explicit sysroot:
+  registry11,672 bytes SHA-256
+  `522e16ff515b33a69f0df352d01499abbd0e4a4b74f619d50aafbbd1d77a3a93`;
+  pins11,216 bytes SHA-256
+  `b2289e767c0c807bc70728fe4361f991b0f17041e1ac207bae9a05fd88153465`.
+  Independent service-queue review is pending; deterministic mocks do not
+  establish cross-hart delivery, contention or masked-IRQ latency.
+- Independent priority review found two faults in the preceding candidate:
+  READY notified only its first eligible hart, and outer Enable preceded the
+  wake request. Root corrected both: READY copies every online eligible hart
+  into a mask; RUN copies only its owner bit; WAIT copies zero. Pokes occur
+  after all locks and final Task Unpin, before outer Enable. No Task/ETask
+  access follows Unpin. The historical first-object identities remain above.
+  Corrected queue12,560 bytes SHA-256
+  `1fd54c87fbf54ca00c696a826b04352bbc48639363ef751a57eeb79ab842b17f`;
+  writer3,104 bytes SHA-256
+  `2e0fdbb9b666cbf1a1b7eda1f0328242bd6ba9965f2482ebde5c28213d5700c9`.
+  Corrected source local review passes; actual-source writer fixture pending.
+  Review SHA-256
+  `b43fcc765ffa556481811a8fc50035ba385f31ac747d10cdd294cf558fdf3140`.
+  Reviewer initially saved it in the abandoned old build directory; root
+  copied it without deletion into the actual Amiga build evidence directory
+  and verified the same hash. No abandoned sysroot was modified.
+- Safety: priority/decision candidates remain unselected; configure refusal,
+  secondary hold and normal core remain unchanged. No hardware/serial/reset/
+  flash/media operation. Next: writer fixture, independent service review,
+  productive asynchronous IPI/wake and safe removal/completion/cancellation,
+  then matched full link and concurrent D1001 Exec acceptance. E3 stays open.
+
+### 2026-10-01 - E3 creation wake-order correction
+
+- Root found the same deferred-wake gap in the SMP-selected NewTaskReady
+  helper: Enable could preempt or discard the creator before its copied
+  destination was notified. It now releases Task/list locks, publishes the
+  asynchronous poke while local interrupts remain masked, then Enables.
+  No Task/ETask access follows unlock. The production backend remains absent.
+- Actual production-source fixture asserts Task unlock before Poke before
+  final Enable and still poisons Task/ETask on Enable. Clang -std=c11 -Wall
+  -Wextra -Werror -Wconversion -fsanitize=address,undefined -O1 passes332 checks.
+  Initial extra -Wshadow compilation failed because the fixture global runtime
+  shadows the unchanged BootTaskRegister local; no test ran from that command.
+  Rerun without -Wshadow passes. Independent local review is pending.
+- Source SHA-256
+  `8d7d2d73185eb2ccb936b6fc95c06f7af9a65b72ef141ad0bfcbee2a4ee8ecf5`;
+  fixture `57580519587d2ace67d27d0e28d4b37753afc79eccbc29e5af2fada2031030f8`.
+  Build evidence smp-priority-2026-10-01/p4-publish-wake-order-test175,480 bytes
+  SHA-256 `e1eea44bb6a650d12e4f9ac979cee8bcb178867c5fdb6549c3add2506dea0ff4`;
+  fresh matched RV32/FPU p4-publish-wake-order-rv32.o4,640 bytes SHA-256
+  `606947d5d739883d9d96a2b9add885c01c4731491b7ffedbe0817a1f4ec9bafa`.
+- Safety: SMP-only change; normal core, configure refusal and secondary hold
+  unchanged. No hardware operation. Next implement bounded IRQ-safe IPI and
+  audit remaining public wake/unpin ordering before selection. E3 stays open.
+
+### 2026-10-01 - E3 pin-holder masking and independent service queue review
+
+- The initial Pin binding internally balances Disable/Enable. If the public
+  caller had not established an outer Disable, that Enable could discard the
+  caller after acquiring a foreign Task reference. Root moves outer Disable
+  before initial Pin in unselected SetTaskPri/Signal. Final Unpin and copied
+  poke precede outer Enable. Signal balances the failed-pin no-op path; its
+  normal path uses disabled lock helpers. Unselected SetExcept similarly
+  sends its copied poke before outer Enable. No Task access follows final Unpin.
+- Fresh isolated matched RV32 compilation passes: SetTaskPri3,104 bytes
+  SHA-256 `3fa56fe00b1b4704ee4b0bb312fef9623d3b2b8e95b127a0bbd5dae21b46a5a1`;
+  SetExcept2,664 bytes SHA-256
+  `8b4747156ec1ebbcd2b995a5be2165878e89f8de9e76abc95ad90e3834100915`.
+  Signal compilation intentionally refuses the unmet P4_SIGNAL_TASK_PIN_READY
+  guard; no object or public lifecycle readiness is claimed and no bypass was
+  applied. Priority fixture updates and local review refresh are pending.
+- Independent durable queue review finds no invariant defect in this bounded
+  snapshot and repeats675 queue,80,985 pin,370 service-registry,80 registry,
+  56 lifetime and48 queued-claim sanitizer checks. Actual build evidence
+  smp-service-queue-2026-10-01/independent-review.md SHA-256
+  `27c63952f94235eb719a9f722ef69fd3a5c85ba1388f7de9e1b2130789418d3f`.
+  It explicitly does not prove worker wake/liveness, FIFO fairness, caller-owned
+  Task storage safety or interrupt latency. Those remain public integration gates.
+- Safety: wrappers unselected, normal core and secondary hold unchanged; no
+  hardware operation. Next bounded IPI backend, public wake fixture/review,
+  lifecycle completion/cancellation and matched full concurrent Exec acceptance.
+
+### 2026-10-01 - E3 priority qualification and IRQ-safe IPI candidate
+
+- Luna's actual-source priority fixture now passes2,359 Clang ASan/UBSan checks;
+  root repeats successfully with -Wall -Wextra -Werror. It includes actual
+  priority wrapper, queue helper, scheduling decision and private registry/
+  lifetime code. It tests mask/reorder/retirement and Disable-before-Pin through
+  final Unpin/Poke/Enable; a pthread interleaving exercises writer/decision
+  serialization. Spin, IRQ, affinity and poke semantics are modeled, not P4
+  hardware proof. Fixture SHA-256
+  `103cb185262454c19f256b8d591fff9525af811948049fbcac16d86086bcdd67`;
+  procedure actual build evidence smp-priority-2026-10-01/host-tests.md.
+  Root's extra -Wconversion attempt fails an existing queue-helper unsigned
+  state to fixture uint8_t assignment; no executable ran from that attempt.
+  LeakSanitizer is unsupported on this host, not claimed. Refreshed independent
+  source review SHA-256
+  `ca7154a9b78eaa70490bc0e0a061ca467793ba38ed25c92026fc7d960d37b52c`
+  confirms masked reference/wake ordering; Signal/SetExcept fixture is next.
+- Root adds unselected p4_ipi.c/h. Private SRAM cache-line mailboxes carry
+  only coalesced schedule flags and counted ticks, serialized under a bounded
+  qualified leaf gate. Producers publish before latching FROM_CPU; owner drain
+  clears peripheral latch and CLIC before consuming pending work under that
+  same gate. Pre-arm schedule work remains durable and is relatched on arm.
+  Tick forwarding is primary-to-armed-secondary only, with overflow refusal;
+  no historic offline tick debt or remote CPU-local writes. IRQ masking spans
+  the gate interval, callbacks/task pointers are absent, and MMIO ordering uses
+  fence iorw,iorw before latch and before gate release. Arm reserves local line22
+  and removes retained conflicting matrix routes without touching remote CLIC.
+- Local ESP-IDF v6.0.1 independently settles current-hart CLIC alias versus
+  remote +0x10000 aperture, per-hart matrix +0x800, source79/80 and target
+  FROM_CPU latch0x500e5010/14. Evidence: actual build
+  smp-ipi-registers-2026-10-01.md. E2 proves private latch delivery only, not this
+  production mailbox's concurrency or Exec integration. Initial candidate
+  fence rw,rw was corrected to include IO and retained route conflicts were
+  handled before qualification; no hardware run used the initial candidate.
+- Current source SHA-256
+  `0eda9b4fe1cff5ef6490ff1789921b8960865887cccb7e0ccf6afe36cc858f32`;
+  header `120f54a6a79f8da5afecfbc60cba53500dace2a2472501a0c78cf211e3e05ab6`.
+  Fresh strict matched RV32/FPU candidate object8,280 bytes SHA-256
+  `dba3e46c63c2d435cc3a642d74617af0e8a2a7919c0940a6fac012d943866d99`
+  in smp-priority-2026-10-01/p4-ipi-candidate-rv32.o. Mailbox fixture and
+  independent source review are running; no passing result yet. No CFILES,
+  startup, trap or timer selection, no full matched link or second-hart entry.
+- Safety: normal image remains SHA-256
+  `1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`;
+  configure refusal/secondary hold unchanged. No hardware/reset/flash/media
+  operation. Display reconnection is not consent for interactive acceptance.
+  Next qualify/bind mailbox and owner-only quantum handling, finish public
+  lifecycle/completion/cancellation and matched ABI before concurrent D1001 Exec.
+
+### 2026-10-01 - E3 IPI masking correction and primary/trap/timer source binding
+
+- Independent backend review found Arm could balance Exec Disable/Enable from
+  negative IDNest and raw MIE-clear startup, unintentionally enabling interrupts
+  before arm acknowledgement. Root splits disabled gate operations from producer
+  D/E wrappers. Arm/Drain validate MIE clear and preserve raw MIE/IDNest without
+  Enable; producer wrappers keep their balanced outer mask. Re-review passes by
+  inspection; original finding remains in evidence
+  smp-ipi-2026-10-01/independent-review.md SHA-256
+  `b4fd015574feb13e8775cb07714c7587e3ac6377d6ee06497c9ed47875318dbd`.
+  Corrected backend SHA-256
+  `db6e1673dfda2553465f6bac46feecb6dd00be24bbc376ac7f31d041e176c035`;
+  RV32 object8,828 bytes SHA-256
+  `c1cbac13d52a9d33d4cb11309b3a50cb8da4ddf6e40504a7e49a47f9543b3527`.
+  Initial574-check fixture preceded this correction; revised fixture is running,
+  not claimed as a corrected-source pass. Tick eligibility means armed, not
+  public CPUCount2; the secondary launch must settle that publication interval.
+- SMP CFILES now select backend and owner-only ApplyBatch. Startup prepares the
+  gate after atomic/pin preparation while secondary reset-held; primary arms
+  after runtime finalization under raw MIE clear. Line22 drain/apply is bound
+  in the trap without a second ungated CLIC clear. Timer/DSI lines on hart1
+  fail closed; global IRQ diagnostics are written by hart0 only. Global tick
+  increments/reads use the prepared soft-atomic service once SysBase exists;
+  early primary-only boot retains plain accesses. Startup SMP tick reads use
+  the same API. Hart0 raises the sole global VBlank chain and forwards counted
+  ticks to armed hart1, which saturates its own elapsed quantum and flags.
+  This does not yet serialize global softint lists or bind secondary launch.
+- Strict standalone startup compilation first refused the native-RISC-V sample
+  kernel_arch.h importing its own EXCEPTIONS_COUNT1 before P4 count16. Root adds
+  a port kernel_arch.h selecting the P4 CPU header while preserving logical
+  IRQ capacity72; actual CLIC remains bounded48. Two existing unsigned-string
+  pointer warnings were corrected with explicit CONST_STRPTR casts. No public
+  layout enlargement or include-copy/full ABI qualification is claimed.
+- Fresh strict matched RV32/FPU objects in smp-priority-2026-10-01:
+  ApplyBatch1,972 bytes SHA-256
+  `61164070effff5729fe925c818845b918ab8d50ba3c4ec49c8eddccf3c49c69a`;
+  timer4,932 bytes `f2e3f4d14b0d95cb317bebd7d4b072800ea6c327d94cf2f9ae425cbb5b53a131`;
+  traps16,736 bytes `c51fd63a9e429228684aec682e363a43fdaf9ad03586a96d29ae776036777714`;
+  startup65,584 bytes `66466b50d564fac94e762b9faa6c8d64f9b0225c4a6af9a47dc096704bd09f87`.
+  Corresponding normal timer/trap/startup objects also compile strictly; nm
+  shows no IPI/SMP helper references. Full mmake, ABI/link, package and hardware
+  qualification remain open. ApplyBatch fixture and integration review next.
+- Safety: configure refusal/secondary hold remain, normal boot image untouched.
+  No board/reset/flash/media operation; display reconnection is not visual
+  consent. Next revised mailbox/runtime fixtures, locked scheduler/priority
+  selection, global softint ownership, lifecycle completion/cancellation, actual
+  secondary Exec entry and matched concurrent D1001 acceptance. E3 stays open.
+
+### 2026-10-01 - E3 corrected mailbox and public wake fixtures qualified
+
+- Revised actual-source mailbox fixture passes602 ASan/UBSan checks with strict
+  warnings/-Wconversion, repeated by root. It tests Arm/Drain keeping MIE clear
+  without D/E, pre-arm/coalesced requests, counted ticks and a producer injected
+  after drain unlock while receiver stays masked; subsequent drain recovers it.
+  Procedure smp-ipi-2026-10-01/host-tests.md, fixture SHA-256
+  `af8d0a728b2f718c65ab6fe2074a43516ec06c2e1ff08353e7b9511c68373a0b`.
+  Gate/MMIO/runtime/fence/route are mocks; neither actual concurrency nor the
+  production matrix sweep/selected trap binding is qualified by this fixture.
+  Root adds a test-only P4_IPI_ROUTE_TEST guard permitting actual static route
+  body inclusion; production code is unchanged and route fixture is running.
+  Backend source SHA-256 now
+  `6123042160910cebcf02962b94634aa63ada29d00337b237394aab9f7faf9ab3`;
+  header `44d3e078340f2014d9ee08863e3357b009db2c2a2ba46b68ab273703d6b44db0`.
+- Actual Signal/SetExcept public bodies plus portable protocol pass67 sanitizer
+  assertions, author/root strict -Wconversion/-Wshadow/-Wpedantic. Includes-only
+  P4_SIGNAL_WAKE_TEST guards retain unchanged bodies and production pin gate.
+  Checks cover masked Pin, pin-failure balance, post-pin retirement, queue apply,
+  copied local/remote wakes before Enable and protected/poisoned Task pages.
+  Adapter/pin/queue/poke are mocks. Fixture SHA-256
+  `af91e6d60e70a8ab5210863b05d903e62281809dd7bcdf102c938b2f1d7f8bda`;
+  procedure smp-signal-wake-2026-10-01/host-tests.md. Wrappers remain unselected
+  and Signal's production lifecycle gate remains unmet; no activation claim.
+- Normal-object identities from the prior strict compile: timer3,900 bytes
+  SHA-256 `9303e15604d8bee6ce9df8027ec3a7902f75e977d83c8eec1bae32b2e3291556`;
+  traps15,520 bytes `72bd70956c8ce8b69ad7b5a5cf32f177fbe9f0102d4942e24ea75116f1a1c83c`;
+  startup61,588 bytes `38a9492ab7c27c06b2101bbda81646b7238bcf1021a7645a9b9d8bf14b63dedc`.
+  Normal trap is byte-identical to the pre-IPI strict normal object. This is
+  not a freshly linked/flashed normal image or full ABI consumer rebuild.
+- The old hart0 FPU probe hands assembly raw shared tick/dispatch/progress
+  pointers. It is not an SMP harness and must not mix plain tick reads with
+  the new atomic tick writer. Root adds an explicit SMP compile refusal there;
+  normal diagnostic remains available. A real concurrent SMP/FPU harness is
+  still required, not replaced by the single-hart probe or host fixtures.
+- Safety: configure refusal/secondary hold and existing normal image remain;
+  no hardware operation. Next route/runtime fixtures and integration review,
+  scheduler/priority selection, serialized global softints and lifecycle, actual
+  secondary tasks/FPU/contention and complete matched ABI/link/D1001 acceptance.
+
+### 2026-10-01 - E3 owner-runtime and route fixtures qualified
+
+- State change: the selected IPI slice now has actual-source owner-runtime81
+  and route2,720 host checks, independently rebuilt and repeated by root.
+  This is helper qualification, not two-hart Exec acceptance.
+- Identity/configuration: dirty worktree, no image rebuild or board operation.
+  Apple Clang host builds use C11, O1, Wall/Wextra/Werror/Wconversion,
+  ASan/UBSan and frame pointers; route additionally uses Wsign-conversion.
+  Reproduction and mock boundaries are in the actual build's evidence reports:
+  `evidence/smp-ipi-runtime-2026-10-01/host-tests.md` and
+  `evidence/smp-ipi-route-2026-10-01/host-tests.md`.
+- Actual source snapshots: batch helper SHA-256
+  `ad4c0465cb29a55b87952f4526eade651bce70bedd2f1cae02c7f45e12de42f4`;
+  route/backend `6123042160910cebcf02962b94634aa63ada29d00337b237394aab9f7faf9ab3`.
+  Fixtures respectively `222f91894dee79bcc5f1aa4ca11fa496e3e9fa33a29979369889e03d55b3185a`
+  and `d056e721dd7e8b2b03fd32c2fcf3079952ad865f44a361e28fb0fb3b6b7d5c7b`.
+- Root executables: runtime56,936B SHA-256
+  `ecfa95cc8e4a1d4863444d8e318b40d55d547f984bb6953a0bda77a8bff402a9`;
+  route117,128B `fd701e4d64ba1e5aa0389ef19706b343dd04d4e3d3b996a06aa07dbe61d3877a`.
+  Observed81/2,720 checks with zero failures/sanitizer findings. Runtime checks
+  owner-only quantum saturation, flags and rejection before mutation; route
+  checks both bounded 128-word windows, unrelated/remote preservation and
+  idempotence. Mock CSR/runtime/MMIO are not silicon delivery evidence.
+- Independent integration review report
+  `evidence/smp-ipi-runtime-2026-10-01/integration-review.md`, SHA-256
+  `ae1bd1f08206fcd384ddac858a8fbaf2d1176489aeba6726e3dae2a36004b22e`,
+  finds no lost-doorbell/duplicate-ack defect in primary startup/trap binding.
+  It explicitly leaves shared `krnTimerCount()` snapshot serialization and
+  secondary Arm/online publication unresolved.
+- Safety: configure refusal, secondary reset hold and normal image unchanged;
+  no flash, serial, reset or media access. Display reconnection is reported by
+  Fabian but is not fresh consent for an interactive acceptance run.
+- Next: actual scheduler integration, shared clock/softint synchronization,
+  task removal/completion and semaphore cancellation, then matched full ABI/
+  image and real concurrent Task/FPU/contention hardware acceptance.
+
+### 2026-10-01 - E3 shared hardware timer snapshot gate
+
+- State: `krnTimerCount()` now selects `p4_timer_snapshot` for SMP. A private
+  SRAM gate serializes UNIT0 UPDATE, VALID polling and both value registers
+  across harts. Raw local MIE masking protects against same-hart reentry without
+  modifying Exec ID/TD nesting. The MMIO fence precedes gate release, which
+  precedes restoration of the original MIE bit. No callback/Task access occurs
+  under this leaf gate. Early pre-SysBase reads are primary-only and masked.
+- Preparation: after software atomics/pins/IPI preparation, while hart1 is
+  reset-held and MIE is clear, before SysBase publication. Subsequent reads
+  require a prepared gate and current runtime/local owner. Acquire is bounded
+  to20,000 attempts; latch polling to1,000. Failed latch releases the acquired
+  gate and fails closed with MIE still clear instead of returning stale time.
+- Identity: dirty worktree, source SHA-256
+  `cc19b106a004e2d02ea7b67549517c723ddd176d34604ea66932659f5fdeb5b1`.
+  Strict isolated RV32/ILP32F SMP compilation with explicit relocated sysroot:
+  snapshot4,528B `e5b534388b142d7816bec31d119178bd6d1e19d19269534f52bdcca84bfc8a33`;
+  timer4,660B `6230b9ba0b3ca047244acc00de12d80ec6bc0f863ffe04e889ced9d5d46508f5`;
+  startup65,676B `763f4edce5818ec092b95d35af70e78c24705a33da656bf340f98bec6f806ba0`.
+  Objects reside in actual build `evidence/smp-priority-2026-10-01/` with
+  fresh snapshot-specific names, not reused mmake outputs.
+- Normal timer object3,900B SHA-256
+  `9303e15604d8bee6ce9df8027ec3a7902f75e977d83c8eec1bae32b2e3291556`,
+  byte-identical to the prior isolated normal object; no normal-image rebuild.
+- Failure preserved: first leaf compile refused because SysBase was undeclared;
+  added the production proto/exec.h declaration and repeated successfully.
+- Qualification: actual-source host fixture and independent integration review
+  delegated to different Luna workers; results pending. No full link, real
+  simultaneous MMIO caller, silicon latch behavior or SMP acceptance claimed.
+- Safety: normal timer branch unchanged; no image/flash/serial/reset/media
+  action. Configure refusal and secondary hold remain. Next qualify the gate,
+  then scheduler/public Task writers, global softints and cleanup/completion,
+  real secondary launch and matched ABI/images/concurrent hardware acceptance.
+
+### 2026-10-01 - E3 scheduler/priority source selection
+
+- State: SMP source lists now select the qualified locked scheduling decision,
+  P4 `kernel_scheduler` override and pinned SetTaskPri writer together. The
+  override delegates core_Schedule to krnP4ShouldSchedule. P4 cpu_Switch and
+  cpu_Dispatch already select their lifetime-aware P4 transactions; legacy
+  generic core_Switch/core_Dispatch now fail closed if reached in this selected
+  override, preventing unsynchronized generic queue mutation. Normal source
+  lists are untouched and retain their native/generic scheduler.
+- Source identity: dirty worktree, override SHA-256
+  `1ca66421c44072e782ceb296d470c46adf4bbc3b1e60af55f466b0763545665c`.
+  Only selection/comments change the previously qualified decision/writer.
+- Procedure/result: fresh isolated RV32/ILP32F SMP compilation with actual
+  relocated sysroot and strict Wall/Wextra/Werror: override1,944B
+  `d7961a5e837628583a94a710f34bc0b9abfb9a39f8590d56aebe11bf7f80b751`;
+  decision3,596B `0cc5b9cd2c6848513333cfc01a49693160e53096407d403564cfb683977357c2`;
+  priority3,104B `3fa56fe00b1b4704ee4b0bb312fef9623d3b2b8e95b127a0bbd5dae21b46a5a1`.
+  Last two remain byte-identical to prior qualified objects.
+  Rebuilt actual-source priority/decision fixture with Clang O1/pthread strict
+  warnings and ASan/UBSan passes2,359 checks, zero failures. Root executable
+ 252,896B SHA-256
+  `50a20f911626355c183fc9147d2bb942e8720029eb31a759a3879a53666ea8e8`.
+- Limits: fixture does not execute the override or actual mmake selection.
+  Independent source-priority/call-site audit delegated; full matched link
+  still required to establish no duplicate native/generic definition. Generic
+  global softints, other Task writers, removal/completion and secondary entry
+  remain incomplete. Source selection must not bypass configure refusal.
+- Safety/next: no board/media/reset/flash action or normal-image rebuild.
+  Qualify selection and timer gate, then complete actual shared softint and
+  lifecycle/public synchronization before concurrent Exec/hardware acceptance.
+
+### 2026-10-01 - E3 softint queue candidate and timer coverage correction
+
+- State: portable `exec/p4_softint_queue` implements shared-gate enqueue,
+  duplicate suppression, bounded full five-list shape/type checks, owner0
+  dispatcher claim and highest-priority dequeue. The active marker prevents
+  nested dispatcher reentry. Empty observation clears pending and active in
+  one gate transaction; a subsequent enqueue must publish a copied wake.
+  Descriptor lifetime remains the caller's obligation through callback
+  completion. No callback, IRQ enable, allocation or Task access occurs here.
+- Configuration/artifact: unselected candidate in dirty worktree, strict
+  isolated RV32/ILP32F SMP compile using explicit actual sysroot. Source
+  SHA-256 `f094e8267d9550a0bf3e564dd0170310786e145e074fac982e67f3c8b24e30b3`;
+  object4,156B `a56f5736fdd11c69b2ec786bdbf5e35735ee50cfad6302429213b7fa19af37c8`
+  at actual build `evidence/smp-priority-2026-10-01/p4-softint-queue-rv32.o`.
+  No host test/whole-runtime proof yet. Shared gate, owner0 delivery/wake and
+  replacement of every plain SysFlags/SoftInts access are still required;
+  no generic Cause/Enable/SoftIntDispatch path has been enabled for SMP.
+- Review finding: new timer gate covers kernel krnTimerCount callers, but
+  selected `sdcard/sdcard_esp32p4_time.c` independently writes UNIT0 UPDATE and
+  reads HI/LO. It can replace a kernel snapshot between reads, across harts or
+  through local interruption. Therefore whole-system timer serialization is
+  NOT established. The earlier compile result qualifies the new leaf only.
+  Route both consumers through one exported/versioned shared callback/service;
+  do not call a private kernel symbol from a separately linked module or
+  exclude SD from the final acceptance gate as a workaround.
+- Safety: no board/media/reset/flash operation. Configure refusal and
+  secondary hold remain. Next qualify softint transactions, bind their gate/
+  owner0 wake and all consumers; correct SD/shared-clock access, then full
+  scheduler/lifecycle/ABI integration and concurrent hardware acceptance.
+
+### 2026-10-01 - E3 shared kernel/SD snapshot interface
+
+- Correction: selected SMP sdcard.device no longer directly latches UNIT0.
+  `KATTR_PlatformTimer` exports the P4-specific immutable KrnP4TimerOps table
+  (version1, size, frequency, read callback), whose read is the actual kernel
+  snapshot gate. SD TimePrepare validates the table before RegisterBus can
+  start consumers. Missing/mismatched service refuses device initialization;
+  an unprepared time call fails closed, with no ungated fallback. Normal SD
+  time code retains its existing direct-MMIO branch.
+- Identity: dirty tree; new target public header SHA-256
+  `5c4632f9e8970ac95d02f8edc7d7fa7b13a8ddb01fdfb2e57ab8f76deffd6f14`;
+  snapshot source `1278b81bbb5e1d20920dfe38be107718c4521855ec1ff52eb7263284821ae2ca`;
+  SD time source `aeea530e7e94a3dd05f4df7669359446bbc73a23fa1a02738d3aabf6af90286c`.
+  The test-only SD include/fatal boundary does not alter production behavior.
+- Strict isolated RV32/ILP32F SMP compile, explicit relocated sysroot and source
+  target includes: snapshot4,988B
+  `bfec403cc1cf0f8ff2533e169ea85c70b881faf032f821364e2f05a616fb8c26`;
+  getsystemattr2,084B `5c5cec6e0a4cc801af4e00f8f6c66716734bdf6d4bbb769e0eba9200c48f43f5`;
+  SD time3,452B `98b9271b8d0188f6433f5b1596dd4af3486e60a2d0523078218f48e3bbc436ad`;
+  SD init6,480B `3d889155ea00be5244a683ecf9bd8946160d6119bc2c4cb77785fe6e92870815`.
+  Artifacts are fresh `*-shared-timer-rv32.o` in actual build's priority evidence
+  directory, not a rebuilt module/package/core.
+- Failure: initial SD init strict SMP compile exposed missing KrnSpinInit
+  declaration in the old SMP branch; adding conditional proto/kernel.h fixed
+  it and the repeat compiled. SD time object uses resource LVO import, not a
+  private kernel snapshot symbol. Normal SD time isolated compilation passes.
+- Prior leaf-only actual-source snapshot fixture passed80,353 sanitizer checks
+  on the pre-table source, with mocked CSR/gate/MMIO. It does not establish
+  this new cross-consumer binding. New fixture and independent corrected
+  integration review are pending; preserve the original SD bypass finding.
+- Remaining: target public header requires official include-copy rules and
+  consumer invalidation in the full matched rebuild; direct source-include
+  isolated compilation is not that ABI gate. No two-hart silicon snapshot,
+  full module/link or hardware acceptance yet. Configure refusal/hart1 hold
+  remain. No flash, media, serial or reset action.
+- Next: qualify cross-consumer binding, integrate softints/lifecycle and real
+  secondary entry, then full matched ABI/core/BSP and concurrent D1001 gates.
+
+### 2026-10-01 - E3 shared softint gate and owner0 delivery binding
+
+- State: SMP Exec source selection now includes portable queue transactions,
+  the private SRAM softint gate and P4 Cause/SoftIntDispatch. Gate preparation
+  occurs before SysBase publication after atomics/pins/IPI/timer preparation,
+  while MIE is clear and hart1 remains reset-held. Gate acquisition masks raw
+  local MIE and has20,000 attempts; release restores only saved MIE, with no
+  Exec nesting/callback mutation in the leaf.
+- Producer: Disable, shared-gate enqueue, release, copied owner0 IPI wake,
+  then Enable; no descriptor access after publication. Dispatcher: owner0
+  active claim suppresses nested reentry; highest-priority/FIFO dequeue and
+  NT_INTERRUPT restoration happen under gate, callback with interrupts enabled
+  outside gate. Callback may requeue itself. Empty observation and active/
+  pending clear are one gate operation. Caller owns descriptor lifetime through
+  handler completion; no Task lifetime proof is implied by this queue.
+- Consumers: a P4-specific EXEC_PLATFORM_SOFTINT_PENDING hook replaces plain
+  shared SysFlags reads in Enable, core_ExitInterrupt and P4 CPU idle. Hart1
+  returns false and cannot execute the global softint chain. Normal builds
+  retain generic flag reads and Cause. Undefined-symbol inspection confirms
+  isolated Enable and core interrupt objects reference krnP4SoftIntPending.
+- Configuration/identity: dirty worktree; explicit actual relocated sysroot,
+  RV32/ILP32F dual-SMP defines, Wall/Wextra/Werror. Gate source SHA-256
+  `66c74ecfd6b7d8fd1b70b4af54585d07f036b9bee0a94ba81495fda3db94d148`;
+  Cause `617186eaa9cf939c870df5f046e8da3324aab9d513440eed31ac4f557bd7d6e1`.
+  Fresh actual-build priority evidence `*-softint-rv32.o`: gate6,080B
+  `93421c34701c69cb08ce047b68839a98518fad5851de30bb5030c31013ed7027`;
+  Cause3,100B `6d4895d399c00d5ca536d4d9a3d4f43b5089e5d756f871e02f7ec6598f9a5c1e`;
+  Enable2,708B `b2c3d41ff94975864fc99337f71e9b7f75a9b97c625e04f0a62453c44b3ff222`;
+  core interrupt3,248B `891863a0413fef977cb153cf6ea182f981a543754dec8d2dd7c1ff2e2ead761c`;
+  CPU4,056B `e2c8ebdbf45ca476a1715ca12305b750ba4d26675d3591ea69b61227478f3549`;
+  startup65,760B `d73a2ffda52bc2d4356ae404083b6409fbfb924be32fca67ffacc1391b0d89df`.
+- Failures preserved: first gate compile lacked P4_SRAMDATA definition; added
+  kernel_intern.h. First Cause strict compile rejected unused implicit INTH
+  parameters; explicitly consumed them. Both fresh repeats compile cleanly.
+- Limits/safety: portable transaction fixture delegated; whole binding review
+  still required. No full matched build, actual simultaneous Cause/ISR behavior
+  or descriptor/callback lifecycle hardware proof. Configure refusal and
+  secondary hold remain; no serial/reset/flash/media action. Next qualify this
+  binding and shared SD clock, finish cleanup/completion/cancellation/public
+  Task wrappers and secondary entry, then full ABI/concurrent hardware gates.
+
+### 2026-10-01 - E3 frozen timer/queue fixtures and removal completion candidate
+
+- State: root repeated frozen actual-source Clang ASan/UBSan fixtures: shared
+  snapshot60,351, SD callback133 and softint queue170 checks, all exit0. Commands
+  and coverage are in build evidence smp-timer-snapshot-2026-10-01/host-tests.md
+  and smp-softint-2026-10-01/host-tests.md. These mock CSR/MMIO/locks and do not
+  qualify concurrent silicon, public LVO/module ABI or a full matched build.
+- Count correction: prior80,353 timer result is superseded. BUSY lock retries
+  no longer add one redundant assertion each; exactly20,000 attempts and no
+  timeout MMIO remain checked, plus six immutable ops-table assertions.
+- Static scheduler selection review: source-selection-review.md SHA256
+  765ce891b37c1e4f605c5d210030e3ed32368149c96af7d6f90adf24bdfde2b4
+  confirms basename override semantics, not pri= selection. Current configured
+  tree remains normal/stale; both Exec/platform SMP configure variables must be
+  set together before a future full build. No full link claim.
+- Corrected clock integration review SHA256
+  4dbcf29fe9bb9eb63a3c77921b08c3207d5f73c67d8ca472c13f61c96ef6d370
+  confirms callback resolution before SD consumer publication. Generated public
+  header copies remain absent. make -n compiler-includes refused an older
+  config.status; no timestamp bypass, manual copy or reconfiguration performed.
+- Root implemented unselected p4_remove_completion.c,h: independently stored
+  requester/service references, acknowledgement only after final cleanup, and
+  cancellation that cannot consume the worker reference. Actual-source fixture
+  passes237 strict conversion-warning ASan/UBSan checks; isolated RV32 object
+  is3,348B SHA25697f3f8829a48de976a2d1b21790768a44674d9a7f8e7e6678fe8ddb00154210a.
+  Source SHA256139145fe61f590bff8d85eb8966eb8314fbc4b083c3ff09a39b172d935777b4d;
+  fixture SHA2560b17ed14fe340d51f16929a3cf06a164bddb4d47982d44f581fd0f3ae83859ab.
+  Root test executable52,016B SHA25609d25eebc6a2943250d693008d9b802479e63293bef53426671e294b01cfd39e.
+- Limits: no allocation/metadata attachment, public RemTask wait, cancellation
+  list, safe recipient notification, cleanup worker or once-only reclamation
+  binding yet. Independent ticket review pending. Softint review found a wake
+  drained in a nested trap after dispatcher empty-release can leave pending
+  work until a later unrelated interrupt; return-path correction is required.
+- Safety: Fabian reports display reconnected; not fresh interactive readiness.
+  No board/serial/reset/flash/media operations; configure refusal and secondary
+  hold retained. Next repair/qualify softint exit and complete public lifecycle.
+
+### 2026-10-01 - E3 software-interrupt exit repoll correction
+
+- Independent review confirmed that an IPI drained at nested depth after
+  dispatcher empty-release could leave pending work without same-exit delivery.
+  The P4 pending-hook path now drains core_Cause in a loop, clears raw MIE
+  immediately after each dispatch, then rechecks under masked interrupts.
+  Arrivals after the final false check retain a doorbell until outer return.
+  The generic non-hook path is unchanged. Test-only header guard permits an
+  actual-source return-path fixture; no body is copied for testing.
+- Strict isolated RV32 compilation passes: kernel-intr-repoll-rv32.o3,644B,
+  SHA256340273c4ac5be6f66df996178cb7f16abe3eee81306948b8d4e3e20a8091fb3b;
+  source SHA25659e16d712f3be4b4a38a3418ad60840d47dec68dd1e6047e14ae16925d1a3787.
+- Independent reviewer agrees this closes the identified interleaving under
+  outer MIE-clear entry. Deterministic fixture and final report remain pending.
+  Drain-until-quiescent matches dispatcher policy but continuous replenishment
+  can starve ordinary scheduling; no bounded fairness claim is made.
+- No configured full link or hardware qualification; no board operations.
+
+### 2026-10-01 - E3 completion alias refusal and softint integration review
+
+- Independent softint source review accepts the remasked exit loop for the
+  identified nested-wake race, under outer-entry MIE-clear. Report:
+  build evidence smp-softint-2026-10-01/independent-review.md. It retains the
+  original defect and drain-until-quiescent starvation/queue-scan latency limits.
+  Actual-source deterministic exit fixture is still running, not accepted yet.
+- Independent ticket review found ack/drop output pointers could overlap ticket
+  fields and overwrite state after transition. Added uintptr difference-based
+  overlap refusal before mutation, avoiding end-address arithmetic overflow.
+  Header documents valid aligned output storage. Fixture exercises all three
+  member offsets for both ack outputs and cancellation drop; strict Clang
+  ASan/UBSan/conversion-warning root run passes255 checks (prior237 retained).
+  Source SHA2567c60d678fcdb290023b2d58036c177c08aa5d3904d3334f834550cf0677058f7;
+  fixture SHA256235bdf166f8f1b7d28dbcc35dc0dcc696d45cceaa42ee2f0bba02909ac6d2efa.
+  Fresh isolated RV32 object3,884B SHA2568dec5dd08231fd13143de8d95627bede8b9f3e16897c658a75e1725d45260529.
+  Refreshed independent review pending; public integration remains absent.
+- Added include-only/CSR-fence boundaries for an actual-source softint gate
+  fixture. Production macros retain original instructions: fresh RV32 object
+ 6,080B SHA25693421c34701c69cb08ce047b68839a98518fad5851de30bb5030c31013ed7027
+  is byte-identical to the previous isolated object. Current source SHA256
+  822f92584f8ef9863f0e206267e9982ac16e5febe557d04be624ea0d628052d9.
+  Gate fixture delegated; no host concurrency or hardware claim yet.
+- Safety: no serial/reset/flash/media operation, full configure refusal and
+  secondary hold unchanged. Next complete fixture repeats and attach the
+  permanent cleanup worker, public removal/cancellation and secondary entry.
+
+### 2026-10-01 - E3 exit fixture coverage correction and ticket re-review
+
+- Root repeated the first actual-source exit fixture:94 sanitizer checks pass,
+  but source inspection rejects its race coverage. The mock delivered queued
+  work inside the nested IPI. Actual P4 nested IPI drains the doorbell only,
+  leaving the softint queue pending for the outer repoll. This mock therefore
+  did not test the defect it claimed. Historical fixture SHA256
+  624b0ecfcc8b498f7c5dfea0347fac454f831934d196eef22f132039c3e9ebef.
+  Author instructed to retain pending work and require second Cause delivery
+  after the remasked recheck; replacement qualification remains pending.
+- Independent completion re-review accepts alias refusal before mutation and
+  repeats255 strict sanitizer checks. Updated report preserves prior237 finding:
+  smp-priority-2026-10-01/remove-completion-review.md. Still only a portable
+  protocol, not public RemTask/worker/cancellation integration.
+- Safety: no hardware operations or SMP activation. Next qualify corrected
+  exit/gate fixtures and inventory ETask topology writers before worker binding;
+  a single cleanup worker alone does not protect live parent/child metadata.
+
+### 2026-10-01 - E3 exit/gate qualification and callback retirement guard
+
+- Root repeated frozen corrected exit106 and actual gate89 checks under strict
+  Clang ASan/UBSan. Nested IPI consumes only doorbell, leaving work for second
+  Cause after remask; prior94-check race claim invalid. Reproduction in
+  smp-softint-2026-10-01/exit-host-tests.md and gate-host-tests.md.
+  Exit fixture SHA256fc19dd6035245e79cfff0d1ab6cdedc96922c01edfc1699213670d000dd98050;
+  gate fixture SHA256bd3b1e27a9f3a787e5c70c97e47252ce7a45bd6b09ebb90a3bf692938d4a2189.
+- Selected p4_dispatch_callbacks now holds the current RUN lease through locked
+  Task live/flag/launch snapshots, calls Exception/launch outside locks, remasks
+  raw MIE and rechecks retirement afterward. Retired recipients cause discard
+  and full CPU redispatch before final context/FPU access. SMP idle likewise
+  remasks and repolls softints before Task admission; normal paths unchanged.
+- Fresh strict isolated RV32 helper3,368B SHA256
+  6d050a2a540d545c2257c19c742f94699926673c2be897f0107d3619ec414b1c;
+  CPU3,984B SHA2560db55d81e8b5fabe76c9b9a72e0d7e0dcbd8996b81ab0d1cf3c441342063d5e4.
+  Helper source SHA256fefbafa9527dfee0fca69163b9b4d8352ee534c176130be9929bc8d09063dd0e;
+  CPU SHA2561a0e00f40bfb686215224230d0c74b19e05b4d135ae033122b9a383a4693bc11.
+- Limits: callback fixture/review pending. Public Exception retirement inside
+  its own callback loop and self-RemTask nested-trap unwinding remain open;
+  after-return guard does not solve callbacks that never return. No full ABI/
+  configured build or concurrent hardware claim. No board operations; configure
+  refusal/hart1 hold preserved. Next complete ETask topology/cleanup integration
+  and callback qualification, public synchronization and secondary entry.
+
+### 2026-10-01 - E3 paired Exception source-selection correction
+
+- Callback review found generic Exception still selected, mutating signal fields
+  without Task lock; callback snapshots alone did not fix it. Paired P4 Exception
+  now replaces it in SMP source list, with disabled Task-lock consume/merge and
+  terminal retirement exits for CPU discard/redispatch. Explicit raw KrnSti
+  enables callbacks after supervisor Enable, which does not itself set MIE;
+  KrnCli precedes merge/Disable; saved ID nesting is restored.
+- Fresh strict isolated RV32 object4,276B SHA256
+  a2055f64fe863dae67ece5b96b8e0a69713f4fb74bf8cc9424bbab1193f719bb;
+  source SHA2567f9fcdd8670310d1785cf2526c3aa3c5aaab37b60f395e670b530dc359082089.
+- Actual-body fixture/paired review, other signal writers and self-RemTask nested
+  unwind remain pending. No matched full build/runtime or hardware claim;
+  no board operations, configure refusal/secondary hold unchanged. Next qualify
+  paired callback/Exception and finish ETask/cleanup lifecycle integration.
+
+### 2026-10-01 - E3 callback repeat and ETask structural cleanup correction
+
+- Root repeated actual dispatch-callback fixture225 strict Clang ASan/UBSan
+  checks. Fixture SHA256c9b81afebd621b8ac265b375242834e9aa06972bbcea5384279930a197ae310c;
+  report smp-priority-2026-10-01/callback-host-tests.md. RUN/Exception effects
+  mocked; not whole CPU, public self-removal, callback unwind or silicon proof.
+- Added includes-only P4_EXCEPTION_BODY_TEST boundary for real public Exception
+  fixture. Fresh source SHA256b0377dfae0fecc4e63645e5d80f6ae881dbe906167a9fa66412c81808ea5a13f;
+  isolated4,276B RV32 object remains byte-identical SHA256
+  a2055f64fe863dae67ece5b96b8e0a69713f4fb74bf8cc9424bbab1193f719bb.
+- Independent ETask inventory identifies unsafe parent lifetime, split active/
+  exited snapshots, raw Child* pointers, notification callback gap and ChildWait
+  lost wake. Task pins do not retain separately allocated ETask metadata. Report
+  smp-priority-2026-10-01/etask-topology-inventory.md; architecture requires
+  metadata ownership and coherent topology transaction, not merely one worker.
+- Root corrected three SMP structural defects in actual Exec_CleanupETask:
+  Remove message before expunge; Remove child before ADDTAIL into new parent;
+  remove every orphan node before freeing its former sentinel. Normal branch
+  unchanged. Fresh strict isolated RV32 object11,920B SHA256
+  8368b215f79800e593a79b2269b41ff1c0a795a647100060f2d802b545674b38;
+  source SHA256f345d029c5e27143bb56fbcd5592114dcb72485befc43bd95069ccde14893eb0.
+  Isolated normal RV32 object8,056B SHA256
+  f2eb7d45996f84e37b1633d24ad70498117cffeae14386f4ab183c1990359b4a
+  also compiles; this is not a normal full-link/regression claim.
+  Compile passes; extracted-body regression
+  fixture delegated. Existing lock order, parent lifetime and free-under-port-lock
+  still unsafe for general concurrency; no full cleanup qualification.
+- No board/serial/reset/flash/media operations or configure gate removal. Next
+  review paired callback/Exception and implement coherent metadata lifetime.
+
+### 2026-10-01 - E3 paired review and SetSignal/SetExcept source selection
+
+- Read full independent callback review: local masked snapshot/callback/recheck
+  sequence is coherent only if RUN ownership is honored. Generic RemTask still
+  deletes context/ETask/storage without P4 service drain; generic Signal/Wait/
+  AllocSignal remain unpaired writers. Report SHA256
+  a7415977a511d8908fb7b1d635b30bc6bfb082a59483e80a5b17964ad8fe8498,
+  smp-priority-2026-10-01/callback-independent-review.md. This is not activation
+  acceptance or a safe full runtime. Configure refusal remains essential.
+- Selected P4 SetSignal/SetExcept in SMP Exec list. SetSignal now uses outer
+  Disable plus disabled Task lock through effect snapshot; unlock/status check
+  precedes outer Enable and only a copied scalar follows it. Added includes-only
+  P4_SET_SIGNAL_BODY_TEST boundary. SetExcept already uses the matching lock and
+  copied owner wake before Enable. No normal source selection change.
+- Fresh strict RV32 SetSignal2,360B SHA256
+  6807c86ce919c6c46b0eb761751aa46064c95964f64d92dbf026845dcdb00f5f;
+  SetExcept2,664B SHA2568b4747156ec1ebbcd2b995a5be2165878e89f8de9e76abc95ad90e3834100915.
+  SetSignal source SHA256419f02b04e24099783897604408ec58879ea63887e5238468902ce6566a0f09f;
+  Exec selection SHA2568107083cc3ed0f21cb9d4b532d0560680dcb2eb0d6d189c6f7698845633df27f.
+- Root strict Clang ASan/UBSan repeat of real Signal/SetExcept bodies plus real
+  protocol leaf passes67 checks. Signal itself remains unselected; this does
+  not qualify all writers. SetSignal actual-body fixture/independent assessment
+  delegated. Public Exception fixture, ETask structural regression and full
+  lifetime/topology/worker/semaphore/secondary integration remain open.
+- No hardware/serial/reset/flash/media actions, no full ABI/link or runtime
+  claim. Next close current-writer qualification and implement missing cleanup
+  metadata ownership, then public retirement and actual second-hart entry.
+
+### 2026-10-01 - E3 Exception and structural ETask host qualification
+
+- Root repeated both frozen author fixtures with strict Clang ASan/UBSan:
+  actual Exception body plus actual signal protocol PASS327; extracted complete
+  SMP Exec_CleanupETask body PASS61. No sanitizer diagnostics, both exit0.
+- Exception fixture SHA256
+  9470cb54617e5106ff75361481ca18f0a59b92c51304d85825867e74a1b66296;
+  production Exception b0377dfae0fecc4e63645e5d80f6ae881dbe906167a9fa66412c81808ea5a13f.
+  Callback MIE/ID nesting, locked take/merge, restoration, signal refresh,
+  null callback and terminal-state exits are covered with modeled RUN/adapter.
+- Cleanup fixture SHA256
+  f3bbcef1fb794d0881a0533cea787ba2a4be1702f3a38e39c1d4013765d5dfc7;
+  extracted body15299464b4b7139649b92ce1f79a1fe2394926f7e2d842e7e04247bdf4c1357a,
+  3,702 bytes; exec_util.c f345d029c5e27143bb56fbcd5592114dcb72485befc43bd95069ccde14893eb0.
+  Multiple child/message nodes, old/new backlinks and detached orphan nodes
+  are checked using host list/lock mocks and poisoned freed storage.
+- Reproduction and exact boundaries: actual build evidence directory
+  smp-priority-2026-10-01/{exception-host-tests,etask-detach-host-tests}.md.
+  Commands: strict sanitizer compile/run of exec/tests/p4-exception-body-test.c;
+  python3 arch/riscv-esp32p4/exec/tests/p4-etask-detach-test.py.
+- Safety: no serial/reset/flash/media action; normal image unchanged. Fabian
+  reports the display reconnected, not readiness for an interactive test.
+  No full matched build, concurrency, self-RemTask unwind, metadata lifetime,
+  production adapter/list/lock or hardware acceptance is claimed.
+- Next: complete signal writer constructor ownership, metadata topology and
+  public retirement before enabling the second Exec hart. Configure refusal
+  remains in place.
+
+### 2026-10-01 - E3 SetSignal host repeat and allocation construction boundary
+
+- Root repeated the actual SetSignal body linked with the actual signal
+  protocol: strict Clang ASan/UBSan/Wconversion PASS100, no diagnostics.
+  Initial root invocation omitted the protocol translation unit and failed to
+  link; no executable from that invocation was counted. The exact report
+  reproduction with both translation units then passed.
+- Fixture SHA2562b2a833ca437daf88487758163eb3a199a6e38ca190f3de390908425d5614145;
+  source419f02b04e24099783897604408ec58879ea63887e5238468902ce6566a0f09f;
+  protocolf40759e480dd98e1432ff81b9c9c79f1f6db6de4031dd44d5cdf7dda39e576cd.
+  Evidence: actual build smp-priority-2026-10-01/setsignal-host-tests.md.
+- Actual-body order, masks, old return value and poison-at-Enable are tested;
+  adapter/RUN/interrupt semantics remain modeled. Independent review pending,
+  including whether current RUN ownership should be explicitly asserted.
+- Source check: NewCreateTaskA allocates its MsgPort signal before NewAddTask's
+  Task-lock initialization. Do not simply select the current P4 AllocSignal
+  candidate; first qualify constructor-owned unpublished Task initialization.
+  Generic FreeSignal is another unprotected writer and belongs in this packet.
+- No production code, serial/reset/flash/media or normal artifact change.
+  No full writer closure, matched build, concurrency or hardware acceptance.
+  Next close allocation construction and review before public removal/worker
+  integration. SMP configure refusal remains intact.
+
+### 2026-10-01 - E3 allocation/free writer selection and constructor initialization
+
+- Selected P4 AllocSignal/FreeSignal under SMP only. AllocTaskSignal now uses
+  one Disable/disabled-lock/update/unlock/Enable interval, including failure
+  exits; only its copied scalar follows Enable. All four signal masks are
+  updated under the same Task lock. Public signed-BYTE ABI conversion remains
+  as documented by generic AllocSignal; the internal helper rejects 32+.
+- FreeSignal clears only tc_SigAlloc under that lock; -1/null current remain
+  no-ops and invalid bit numbers are rejected before any shift. No Task access
+  follows Enable. Includes-only P4_SIGNAL_ALLOCATION_TEST supports actual-body
+  host tests, assigned to a different author.
+- NewCreateTaskA explicitly initializes tc_SpinLock in fresh creator-owned,
+  unpublished storage before its port-signal helper. NewAddTask's existing
+  initialization remains; neither initialization may race with a published
+  Task. The early output-slot/publication boundary is under independent review;
+  this packet does not qualify whole concurrent task construction.
+- Fresh strict RV32 objects in actual build smp-priority-2026-10-01:
+  allocsignal3,220B SHA2564d1bcab005735a6bf518e22716c7873647e9b2c03ed21d5dabfb1833c70e6fc0;
+  freesignal2,248B dd1a85db9cf448ee10079e05d17b6685e72e680b407f630e0b2b3cbd97f14e69;
+  SMP constructor5,812B77f37cb3907bc53bff8386b1e7b8f96a9692b4d17b982223028b2e4ab455f589;
+  normal constructor5,632B8e82135b979953ba83c5a3492ab01b4ef0435c62f9159b78b8d9d82fb4fec1cf.
+- Source identities: alloc32522b672d5cee04d3fed42f191e9f611e9edee4bc3d77ef85e1cf5027c278d7;
+  freec7a1c75a5fae846e6c1ad11a11515975302611d4e4c4f30f34ebc3308e3e8c34;
+  constructor5def9abc42ea22b3836bd89638e7b54c772c76cd7638272157424f4ce7938d61;
+  selectionacd84068093e8ebe9edd5b459fc546a6a0ec26d3e90aec875c8a3f7c3f0be3de.
+- No full configured build/ABI/link, normal image update, serial/reset/flash or
+  media action. No concurrency or hardware acceptance. Configure refusal
+  remains intact. Next repeat actual allocation/free fixtures, resolve review,
+  then close Wait/Signal and metadata/public-removal/worker integration.
+
+### 2026-10-01 - E3 independent SetSignal/SetExcept wrapper review
+
+- Root read the complete independent report
+  smp-priority-2026-10-01/setsignal-independent-review.md, SHA256
+  7178602ec2a180f1ff585e6e5fb9065b8863d33571dd7f9752a95809599f037c.
+  Local Disable/Task-lock/update/unlock/effect-only poke/Enable ordering is
+  accepted under current RUN ownership; no Task access follows Enable.
+- Reviewer reran existing SetSignal100 and Signal/SetExcept67 host executables,
+  without rebuilding. Root's separate fresh compile/repeats remain the source
+  qualification; review reruns are not new full-build evidence.
+- Qualification limits: real adapter/runtime/registry/spinlock composition
+  remains untested; SetExcept WAITING_TO_READY public-body branch lacks composed
+  coverage. Current-task RUN identity is a scheduler/lifetime precondition,
+  not proven by mocks. Signal/Wait remain generic and prevent writer closure.
+- No source/hardware/media change in this review. Next qualify constructor and
+  allocation fixtures, then actual lifetime/metadata/worker integration before
+  secondary activation. SMP remains gated and not hardware verified.
+
+### 2026-10-01 - E3 allocation repeat, constructor review and ChildWait wake repair
+
+- Root freshly compiled/repeated actual AllocSignal/AllocTaskSignal/FreeSignal
+  fixture: strict Clang ASan/UBSan/Wconversion PASS612, no diagnostics.
+  Fixture SHA2567edd3768765c2c30c045f8abdb6b433c380560172b1e379bce679676c84219b6;
+  evidence smp-priority-2026-10-01/signal-allocation-host-tests.md.
+  All32 bits, exhaustion/reuse, mask preservation, BYTE ABI, invalid/no-op
+  shifts, constructor-owned storage and poison-at-Enable are covered with
+  modeled spinlock/runtime/Task layout; no actual constructor body is included.
+- Root read complete independent constructor review, SHA256
+  2e04e97281130c4df49b467a33507ab898816d064fbce285b0d5d9dd32ecfc3d,
+  smp-priority-2026-10-01/signal-allocation-constructor-review.md.
+  Both initializations are before registration/Ready, and allocator unlocks
+  before reinitialization. Local packet accepted under exclusive unpublished
+  ownership. Review corrected its initial output-slot concern: NULL precedes
+  FreeEntry on failure, no supported pre-reinitialization callback was found.
+  Concurrent pre-return polling is not a proven API contract or acceptance.
+- ChildWait previously scanned, then cleared SIGF_CHILD, then waited: an exit
+  between scan and clear could be erased. It now clears before each durable
+  list query, retaining any notification published after an empty scan. No
+  port/topology lock spans SetSignal or Wait. Shared normal/SMP correction;
+  includes-only P4_CHILD_WAIT_BODY_TEST enables actual-body interleaving tests.
+- Fresh strict RV32 SMP ChildWait2,952B SHA256
+  06b06bff5078e8b3c0265bc0fb1f1f6de3b5e35d1e06eeffa8630ff78c23b426;
+  normal2,632B7a68e0f461fc83a6afab920a6b235b47957b6effaa0a79bd2e8cfd0e3509ac26.
+  Source4f57c32ad4cc5c531b26127bdfd37b057d5999ab1998dec897f343ef4441bbef.
+  Constructor and ChildWait actual-body fixtures assigned to separate agents.
+- No full configured link/ABI, serial/reset/flash/media action or normal image
+  change. Parent/ETask metadata ownership and whole topology remain unsafe;
+  this does not qualify concurrent cleanup, generic Wait/Signal or hardware.
+  Next complete fixtures and coherent metadata/retirement/worker integration.
+
+### 2026-10-01 - E3 constructor sanitizer exposed minimal MemList overread
+
+- Actual complete NewCreateTaskA fixture's first unnamed/no-port run reported
+  an ASan 8-byte read immediately after a 72-byte host allocation. The minimal
+  template requests two entries (Task and stack); NewAllocEntry allocates
+  sizeof(MemList)-sizeof(MemEntry)+count*sizeof(MemEntry). The constructor
+  unconditionally read ml_ME[2] even though no name was requested.
+- Root confirmed the actual allocator formula and changed the name lookup to
+  conditional access only when ml_NumEntries > 2, otherwise NULL. No fixture
+  over-allocation or named-path substitution qualifies this minimal regression.
+  Old failing constructor source5def9abc42ea22b3836bd89638e7b54c772c76cd7638272157424f4ce7938d61
+  is preserved in prior evidence; new source
+  ccfe3f1e5acebe3cfab16fd8e44652cf047da194bf09998b525eda0b735ee1cc.
+- Fresh strict isolated RV32 SMP constructor5,900B SHA256
+  16f96885c82b61a4537388c58630a6c80f2fc084fba97751dd8a06a173adb1d9;
+  normal5,716B9dda2caefd9a9ae66dfbb0105b08efdfdcdf08941b18ad42e53da3fe70b90a0d.
+  Separate minimal-v2 artifacts preserve previous objects; no full build/link.
+- Author is rerunning the complete actual-body fixture against fixed source,
+  including exact2 unnamed/no-port, named3 and port4 allocations. Previous
+  constructor source review remains local lock-order evidence, not a proof of
+  absence of this memory bug; current complete-body acceptance is pending.
+- No serial/reset/flash/media action or normal image update. This shared fix
+  advances reliable SMP construction but does not qualify lifecycle ownership,
+  metadata topology, full runtime or hardware. Next repeat frozen regression
+  and implement coherent metadata/retirement integration.
+
+### 2026-10-01 - E3 ChildWait actual-body interleaving qualification
+
+- Root read complete independent fixture/review note and freshly compiled and
+  ran the actual ChildWait-body fixture with strict Clang ASan/UBSan,
+  Wconversion/Wsign-conversion: PASS193, no diagnostics, exit0.
+- Fixture SHA256724d373c9cf711a3bee54d7528b4c4a21461d0b9dc91c691a767c1e84975fdb2;
+  source4f57c32ad4cc5c531b26127bdfd37b057d5999ab1998dec897f343ef4441bbef.
+  Evidence/reproduction: actual build
+  smp-priority-2026-10-01/childwait-host-tests.md.
+- Actual body includes clear-before-scan; mocks deterministically inject exit
+  before clear, between clear/query, after empty-scan unlock and during Wait.
+  Pending notification survives the formerly lossy scan-to-Wait interval;
+  existing/any/specific/unrelated children and invalid callers are covered.
+  SetSignal/Wait never hold the mocked port lock; wait fails rather than hangs
+  when no signal/scripted arrival can wake it.
+- Independent local ordering review passes. Generic Wait remains selected:
+  this fixture mocks its signal/scheduler behavior and does not qualify real
+  P4 Task state, queue membership, ETask ownership, ChildFree or concurrent
+  topology. Parent metadata management remains an activation prerequisite.
+- No source change beyond the previously recorded repair, no matched link,
+  serial/reset/flash/media or hardware claim. Next coherent topology/metadata
+  integration and complete constructor regression.
+
+### 2026-10-01 - E3 complete constructor body regression repeated
+
+- Root inspected the extracted actual-body fixture and complete evidence note,
+  then freshly ran p4-task-constructor-lock-test.py: SMP260 and normal232 checks
+  pass with ASan/UBSan, no sanitizer diagnostics. Fixture SHA256
+  5e20abdf2eb0ffd5be3e46ba8c5dc4d6da6cbfd0ebfae48bbfbdfe5ec8ec9759;
+  current constructorccfe3f1e5acebe3cfab16fd8e44652cf047da194bf09998b525eda0b735ee1cc.
+- The exact two-entry unnamed/no-port case is included, not padded or replaced
+  by a named path. Named3/port4 allocations, all construction failure paths,
+  slot clearing before free and poisoned successful NewAddTask return pass.
+  Task lock begins deliberately dirty: SMP initializes before the signal stub,
+  while normal control performs no additional initialization.
+- Clang gnu11/Werror/Wconversion/Wshadow and sanitizers are enabled. The
+  fixture explicitly suppresses sign-conversion, implicit-int-conversion and
+  shorten-64-to-32 for extracted AROS ABI narrowing and 64-bit host IPTR;
+  this is not a zero-warning full-target ABI qualification. Target objects
+  were separately compiled strict RV32 as recorded in the preceding entry.
+- Evidence/reproduction and original ASan failure:
+  smp-priority-2026-10-01/task-constructor-lock-host-tests.md. Actual body and
+  allocation template are extracted; allocator/spinlock/Signal/NewAddTask and
+  ownership are host stubs, not actual concurrent Task publication.
+- No full link, serial/reset/flash/media or runtime acceptance. The memory
+  regression is fixed and covered locally; public removal, metadata topology,
+  Signal/Wait, semaphores and second-hart Exec remain open. Next implement the
+  coherent metadata/topology packet rather than enable an incomplete runtime.
+
+### 2026-10-01 - E3 separate metadata lifetime primitive and design audit
+
+- Added unselected exec/p4_etask_lifetime.c and .h. The leaf tracks Task-owner,
+  retained dead-result, parent child-edge and temporary-reader ownership.
+  Closing refuses new active edges/readers; cleanup cannot finish with child
+  edges attached. Reclaim is claimed once after expunge and final reader drain.
+  These are metadata references, not Task-storage pins.
+- Root strict isolated RV32 compile used the actual Amiga build sysroot,
+  rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f, SMP/runtime/FPU/atomic-core
+  defines and -Wall -Wextra -Werror. Fresh object in build evidence directory
+  smp-priority-2026-10-01/etask-lifetime-root-20261001.o: 6,108B SHA256
+  1ea4b0742b25edf3099b27034b8eb2c51f86e30e00bf5cb1c48f8cee97d6f59d.
+  C SHA25657a446d5dc0f052032cdd6b64f8b690c71916a6d0f4140fa6950e78534fe0ccf.
+- Root read the complete independent leaf review. No transition defect found
+  under caller-held topology gate and externally proved Task ownership.
+  Reviewer identified an undocumented all-zero init precondition; root added
+  that header comment without changing executable logic. Review records the
+  preceding header878f050032f000dbb5e23977c90d55fc1e60223e942db78e8570cf1b50564444.
+  Current headeraa9957c93b5fbe99967407a7367aa5cd940c5caebe9f89f519861784282540f6;
+  fresh post-comment compilation produced a byte-identical object.
+  Separate sanitizer fixture is in progress, not yet a root-qualified result.
+- Root read complete etask-single-gate-design-audit.md, SHA256
+  c40c8d1d0b638f2eb6b16f6980ddf1cbc13b485bc65275875fe8b37b7bfa1240.
+  It confirms two required ordering changes: defer child-topology publication
+  until fallible setup succeeds, and defer context/ETask cleanup until remote
+  RUN ownership drains. A single gate alone does not fix either. Non-ETask
+  parents, raw parent consumers, retained-dead PID collisions and synchronous
+  external RemTask completion require explicit integration.
+- Safety/status: no source selection, full matched image, hardware, reset,
+  flash or media operation. Normal flashed core unchanged; secondary hart is
+  not admitted to Exec. No SMP completion claim. Next qualify the leaf fixture
+  and integrate one coherent metadata/topology and retirement transaction.
+
+### 2026-10-01 - E3 metadata lifetime fixture freshly repeated
+
+- Root read the complete frozen exec/tests/p4-etask-lifetime-test.c, SHA256
+  b33dff112638c5d23fe130371e55b90f41594f867f2b312dcc7d8b4b706e84c4,
+  then compiled it with the actual p4_etask_lifetime.c using Clang C11,
+  -Wall -Wextra -Werror -Wconversion -Wshadow -Wpedantic, ASan/UBSan and
+  frame pointers; no warning suppressions. Fresh root binary
+  smp-priority-2026-10-01/etask-lifetime-root-host-20261001 passes282 checks.
+  Root also read the completed etask-lifetime-host-tests.md, SHA256
+  b151bb9673aafcf46fc63969b653057ba7cd0db3692ff238e3dad414b685e289.
+  Author command additionally used -O1 -g; root repeat used default
+  optimization with the same strict warnings and sanitizers.
+- Coverage: nulls, zero-init refusal without mutation,64 boolean shapes,
+  invalid flags, counter bounds, close-before-edge/read admission, cleanup
+  refusal with remaining children, result lifetime after Task-owner removal,
+  reader-delayed reclaim, invalid retain arguments and repeated operations.
+  Caller poisons/releases mapped storage after reclaim and does not reuse it.
+- Limits: Task RUN/pin drain is an explicit fixture mock. Boolean-shape
+  enumeration has zero counters; this is not exhaustive arbitrary-state
+  exploration. No real gate, lists, PID registry, allocation, public Child*
+  or RemTask binding, concurrency or hardware is qualified. Independent
+  source review was by a different author; root fresh fixture repeat is
+  separate evidence. No firmware/media change; full-runtime activation still
+  refused. Next integrate staged publication and exclusive drained cleanup
+  with one metadata topology transaction.
+
+### 2026-10-01 - E3 staged parent publication in actual NewAddTask path
+
+- P4 SMP exec_platform.h selects EXEC_PLATFORM_ETASK_STAGED. Shared
+  NewAddTask calls InitETask(task,NULL) while context/registry setup can fail,
+  and calls Exec_PublishConstructedETask only after both succeed, before
+  prelaunch and Ready publication. Rollback thus has no parent link or death
+  notification to undo. Boot InitETask and other platforms keep their existing
+  calls. No public structure or generated header changed.
+- New shared helper, selected only by the P4 SMP macro, requires fresh
+  unlinked ETask and parent identity equal to the current caller. Caller RUN
+  and child creator pin are required external ownership proofs. It attaches
+  under Disable/existing parent iet_TaskLock, unlocks before Enable, and reads
+  no Task/ETask after Enable. It supports null/non-ETask parent identities.
+- First strict NewAddTask RV32 build failed on existing RawDoFmt pointer
+  signedness and tab-induced misleading indentation. No object was produced.
+  Root corrected the literal CONST_STRPTR cast and indentation; no warnings
+  suppressed. Strict -Wall -Wextra -Werror isolated builds now pass with actual
+  Amiga sysroot and RV32 ilp32f architecture flags. SMP additionally uses
+  runtime/FPU/atomic-core definitions. Evidence directory
+  smp-priority-2026-10-01: newaddtask-staged-v2-20261001.o8,664B SHA256
+  1b7f1019abf03e71328122d380bf5534f59488c8e1baa418265534217863455c;
+  newaddtask-staged-normal-20261001.o9,000B SHA256
+  5974534aa5c48f1857ce4f134864c29d56db7e01fd3f2fe792ff2fa6c91a7d36;
+  exec-util-staged-20261001.o13,112B SHA256
+  e058d399bf45c10fae82dcd1cb107edea5f482088fe532a9b6711a52055e8ca8.
+  Normal ExecUtil also freshly compiles:8,056B SHA256
+  f2eb7d45996f84e37b1633d24ad70498117cffeae14386f4ab183c1990359b4a,
+  byte-identical to the preceding normal object. Root inspected the actual
+  RISC-V PrepareContext source: it does not consume et_Parent before attachment.
+- Source SHA256: NewAddTaskb92f69f8ba5e7540f907f7c4686ddaa8827ed8e9e7fa6b18fc5c72ea47fec34e;
+  exec_util3be56ef38146b76cf26115956515978e6aed9ba06cb53820f341ab70fd1672ec;
+  platform195e0c96af5046efb878d9f8eb686b806c1d07ee3aa4390b3e7865b7d288271a.
+- Documentation reconciliation: corrected the stale E3-QA master row to the
+  already documented corrected actual-exit106/gate89 root repeat (dated entry
+  above). The original94 fixture remains invalid historical evidence; no new
+  softint runtime or hardware result is claimed by this table correction.
+- Safety/limits: local construction-order repair only. Generic remote RemTask
+  still violates RUN protection; no coherent metadata topology gate is bound,
+  and retained-dead PID uniqueness remains unresolved. Full runtime gate stays
+  closed. Separate actual-source fixture and independent review are in
+  progress. No matched full image, hardware, flash/reset or media operation.
+  Next qualify these paths and replace the temporary parent-lock transaction
+  with the lifetime/topology binding plus drained cleanup.
+
+### 2026-10-01 - E3 publication review and failed-construction metadata reset
+
+- Root read complete etask-staged-publication-review.md. Independent reviewer
+  accepts local staged ordering under current-RUN/metadata lifetime assumptions,
+  but does not qualify cross-hart topology or the shared PID allocator. Reviewed
+  NewAddTask baselineb92f69f8ba5e7540f907f7c4686ddaa8827ed8e9e7fa6b18fc5c72ea47fec34e.
+- Review identified an existing dangling ETask pointer/TF_ETASK on failed
+  caller-owned NewAddTask storage. Root now clears both immediately after
+  CleanupETask on PrepareContext and Task-record creation failure, before
+  returning or restoring/freeing extra name entries. No general CleanupETask
+  semantics changed. Source6dd8d961fecd865ccc48fbb3f3e1a05105bc5beb9ec66b5b9698da4969e010cd.
+- Fresh strict isolated target build, same actual sysroot/architecture and
+  -Wall -Wextra -Werror as preceding entry: SMP newaddtask-staged-rollback-20261001.o
+  8,724B SHA256844bbb95a54102085a6abdc08febaa1d84968aa6df439f1c53c449827a8bda79;
+  normal newaddtask-staged-rollback-normal-20261001.o9,028B SHA256
+  7ef4eda5dd921f89db8630a43495c1b83fd8fbf862454bf119d8ce28bd2f49f9.
+  Artifacts remain in smp-priority-2026-10-01. Fixture author was asked to
+  assert cleared metadata/flag on both failures; independent correction review
+  is in progress. No test pass inferred from compilation.
+- Root read complete removal-service-binding-inventory.md, SHA256
+  2f9d383313c95284380cb56f13c0c75336099aad4eaeab4060d0cd7a1405f53a.
+  Existing ServiceTask treats port nodes as Task storage before dispatch and
+  is not connected to P4's claim-next/drain state or wake path. External RemTask
+  must retain its synchronous storage-release contract; self-removal must stop
+  cleaning context/ETask before the no-save RUN handoff. These are concrete
+  binding requirements, not a validated worker implementation.
+- Safety/status: no full core/BSP build, runtime admission, firmware or media
+  change. Staging and rollback remain partial source changes with isolated
+  target builds; metadata gate, worker/completion and PID reservation remain
+  required. Next finish actual-body regression and implement drained cleanup
+  consumption without treating arbitrary completion records as Task messages.
+
+### 2026-10-01 - E3 rollback follow-up independently reviewed
+
+- Root read the full updated etask-staged-publication-review.md, SHA256
+  94bf5c6b8e9d06516b39ed970dd2513bba2057812dfbf7cf7132f9c024a297eb.
+  Different-author source review accepts the targeted rollback correction in
+  NewAddTask6dd8d961fecd865ccc48fbb3f3e1a05105bc5beb9ec66b5b9698da4969e010cd:
+  both failures clear freed metadata pointer/flag, and later uses are confined
+  to caller-owned Task and extra name allocation. Record failure nulls its
+  deleted context before cleanup; no freed ETask access follows.
+- Review does not rerun builds or tests and retains the metadata gate/parent
+  lifetime and shared PID-allocation blockers. Actual-source fixture remains
+  live, not yet root-qualified. No hardware, flash/reset or media operation;
+  runtime gate stays closed. Next repeat the frozen actual-body fixture, then
+  integrate the worker and completion paths under drained ownership.
+
+### 2026-10-01 - E3 drained cleanup consumer implementation candidate
+
+- Root added unselected exec/p4_task_cleanup.c/.h. Claim-next must detach a
+  retired, fully RUN/pin-drained service record before even logging/reading a
+  Task field. After terminal-state validation, the consumer deletes a nonnull
+  context, cleans metadata and clears Task's metadata pointer/flag. It moves
+  ALL memory-entry nodes to its local worker-owned list before any FreeEntry,
+  because the first entry may free the Task and embedded list sentinel.
+  Subsequent traversal accesses only the worker sentinel and surviving nodes.
+  Private registry record is freed after all Task/context/entry accesses.
+- Fresh strict isolated RV32 compile uses the same actual sysroot, architecture
+  and SMP/runtime/FPU/atomic-core flags as preceding entries, with
+  -Wall -Wextra -Werror. Artifact smp-priority-2026-10-01/p4-task-cleanup-20261001.o
+  3,540B SHA25628289cd68d5537b4090271460fab067274bab1d49d24cee911a6c418d468a430.
+  C SHA25633e09be3ad14cd453fb57a30dbf9c88f9ebb3cb0db48e58c2e4a8873e47ba7f0;
+  headerbca30d51e0f9fdeca74a78d7bd782187a9ef3fcd1987db757a5fbf3c9f629e56.
+- Mandatory limits: no mmake selection or production caller. The trusted
+  housekeeper continuation must not be retired while owning a detached
+  record. Generic CleanupETask is still not parent-metadata concurrent-safe;
+  final topology binding remains required. Task-independent completion must
+  acknowledge AFTER all target cleanup/free accesses, before external RemTask
+  can return. Wake, waiter cancellation and ServiceTask dispatch are absent.
+- Separate author fixture and independent source review are in progress,
+  including first-entry Task poisoning; no test pass inferred from compilation.
+  No full matched image, secondary Exec entry, hardware, reset/flash or media
+  write. Next qualify this real cleanup body and integrate it with metadata
+  ownership, durable worker wake and synchronous external completion.
+
+### 2026-10-01 - E3 staged construction actual-source regression repeated
+
+- Root inspected the extraction, ordering and rollback assertions in frozen
+  exec/tests/p4-etask-publication-test.py, SHA256
+  f5f24fb5306889c8616506918450e749220af0e4292ba11f400734db55493e45,
+  and freshly ran python3 arch/riscv-esp32p4/exec/tests/p4-etask-publication-test.py.
+  Actual NewAddTask body, TaskLaunch and staged publication helper compile with
+  strict Clang warnings and ASan/UBSan; staged212 and ordinary22 checks pass.
+  Current sources remain NewAddTask6dd8d961fecd865ccc48fbb3f3e1a05105bc5beb9ec66b5b9698da4969e010cd
+  and ExecUtil3be56ef38146b76cf26115956515978e6aed9ba06cb53820f341ab70fd1672ec.
+- Root read complete etask-staged-publication-host-tests.md, SHA256
+  c3b7a5fe3168c603d87c97af94b7393811b5af5af438bccfcd159fdb3dc88dd3.
+  Failed construction never attaches; prepared-context rollback clears metadata
+  pointer/flag. Success orders creator pin, attachment, prelaunch, Ready and
+  last unpin, with immediate retirement/Task poisoning modeled. Helper cases
+  include null/non-ETask parents, malformed child and poison-at-Enable.
+- Limits: InitETask/CleanupETask, context, registry pin/release/Ready and
+  notification are mocks. No real topology gate, scheduler/removal concurrency,
+  full ABI/image or hardware result. Separate local source review remains
+  conditional on RUN/metadata ownership, not full SMP acceptance.
+- Root also read complete task-cleanup-independent-review.md, SHA256
+  40452993e96b62b0677c9d970531d72450a1a219d334d1f28dc18239ba498496. It accepts
+  moving all MemList nodes to the worker sentinel before any FreeEntry and
+  finds no later Task access, under exclusive drained ownership. It does not
+  run tests/builds; cleanup consumer fixture remains live. Actual worker,
+  parent metadata and synchronous external completion remain missing.
+- Next: retained-dead PID identity reservation under the same future metadata
+  gate, not CPU-local Forbid/live-list-only scanning. An isolated implementation
+  packet is now delegated; no source selection or runtime claim yet. Keep
+  records until final metadata expunge so unpublished and exited Tasks cannot
+  collide on IDs. No firmware/reset/media changes; runtime gate stays closed.
+
+### 2026-10-01 - E3 metadata gate preparation and cleanup regression
+
+- Source-selected p4_etask_gate uses a private SRAM public spinlock, raw MIE
+  mask/restore and bounded acquisition. Exec_PreparePlatform prepares it once
+  after bootstrap binding, with hart1 held and before Exec vectors exist.
+  No Task/queue/registry lock, allocation/free or callback may run under it.
+  No actual metadata transaction uses this gate yet; independent review is pending.
+- First strict compile failed because P4_SRAMDATA was undefined; no object was
+  produced. Adding kernel_intern.h corrected the missing definition. Fresh
+  strict RV32 objects in smp-priority-2026-10-01: p4-etask-gate-v2-20261001.o
+  3,616B SHA2560e749ae546131c29178f3a301af244366a35492d7b86d61948029e744e1d4e44;
+  platform-etask-gate-20261001.o1,684B
+  SHA256bc389085e1d4754245b6045d9f1ebbc167edd5d988fea08ec2d2749a960d5662.
+  Procedure uses the actual RV32 compiler/sysroot and SMP/runtime/FPU/atomic
+  defines recorded above with -Wall -Wextra -Werror, not a full target link.
+  Gate C SHA256fab38f7772b65143dcfbcfe2a7d8e0e27ec3c076cba8c3fe5a6f3812a3770cb3;
+  header0e92cf01f277c6eeb02abef0cde940b7b974261320c7c8127ffece9381910b15;
+  platformc6a6aefff980b24e8979d3634cd6dfc3e892762f28a0cd883ef9ca131b504541;
+  mmake1557d64d403a2b0b1a8a4119b9232c40af180ae83c6380257bcba18dc5fc77c0.
+- Root read complete task-cleanup-host-tests.md and repeated its actual-source
+  fixture with Clang C11/O1, -Wall -Wextra -Wconversion -Werror and ASan/UBSan:
+  115 checks pass, including poisoning Task storage at the first FreeEntry
+  after all three entries have detached. Registry/Exec allocator/metadata APIs
+  are mocked; no worker/lifetime/runtime qualification follows from this pass.
+- New unselected p4_etask_identity.c/.h reserves sorted, bounded opaque PID
+  records across unpublished/live/retained-dead metadata. Author reports strict
+  RV32 compilation and smoke checks; independent tests/review are pending.
+  C SHA256b1c0d7b359e633a2a4e230a2a3bf8d0e23481b85cd5fd0eaef55af0b99516cbd;
+  header21ce9547745c8c2dbd4948c155b83f5c13544cd9bc6da4a808349fbbb271f071.
+- Display reconnection is recorded, not interactive readiness. No reset, flash,
+  firmware or media writes. Full matched image and actual secondary Exec remain
+  blocked by lifecycle integration. Next qualify/bind metadata gate and PID
+  reservation, then worker wake/completion and concurrent runtime.
+
+### 2026-10-01 - E3 actual ETask PID reservation binding
+
+- Selected p4_etask_identity and new p4_etask_identity_binding in P4 SMP mmake.
+  Actual InitETask reserves immediately after metadata allocation, before
+  TF_ETASK/affinity publication. Failed reservation rolls back the allocation;
+  affinity allocation failure releases its reservation. Actual ExpungeETask
+  releases only at final metadata destruction, retaining IDs for unpublished
+  and dead-result metadata even after Task storage disappears. Ordinary
+  non-P4/non-SMP ID allocation remains unchanged.
+- The wrapper allocates a zeroed private record outside the metadata gate,
+  reserves under it and publishes ex_TaskID plus et_UniqueID in the same
+  transaction. It detaches records under the gate and frees after unlock.
+  Exclusive final-expunge ownership remains a precondition: existing Child*
+  parent metadata/RUN safety is not established by this identity change.
+- Fresh actual compiler/sysroot isolated builds use the SMP/runtime/FPU/atomic
+  flags recorded above and -Wall -Wextra -Werror. Objects in
+  smp-priority-2026-10-01: etask-identity-binding-20261001.o3,200B
+  SHA256348ccabeea29c3eda29e2e1f41ba0f23f2f3e962d534a22c5cb373e7fbdd10ec;
+  etask-identity-selected-20261001.o6,172B
+  9490ee5a5c47ace6142614a066b3359c5076790081a5cf3eff1226d8ad24a19a;
+  exec-util-identity-20261001.o12,860B
+  b8391da5ba0fddff3ddb233ac68aa360694bab05f9d058fbf6e9e6ee78eb57c8.
+  Normal exec-util-identity-normal-20261001.o8,056B
+  f2eb7d45996f84e37b1633d24ad70498117cffeae14386f4ab183c1990359b4a,
+  byte-identical to the preceding normal object. No full configured link.
+- Source SHA256: binding C9c740bb3374b9c6f478a71b95faecc015c20fedc71b4f7bad5f62b6c771f3e9d,
+  headerf8c0c3a5f879be1b452b46273507c2f16f2b56e99bd2e924f4bc1a660f8c245f,
+  ExecUtilbae364b8cea998e2016ec06188718e86bc22ab34e0b7183c09b6a9a0f94c3b00,
+  platformheader2115abfade268eca61b0364336f9701d8e8dfd198b9be1ff4eb6613e31471402,
+  mmake6e2ec0a88f358783b8e988c991646f4b0b1d09f91a25349ac77421490213d4ac.
+- Independent leaf/binding fixtures and gate review are pending; previous
+  extracted constructor/staging counts do not qualify these new hooks.
+  Root freshly repeats constructor260/normal232 and staging212/normal22,
+  but those fixtures do not define/test the newly selected identity hooks.
+  A first root identity-leaf fixture build failed: expect_malformed_refusal
+  was called with three arguments where five were required. No test binary
+  existed; the author's earlier159 result is not a current root pass.
+  Correction/frozen-artifact confirmation is requested before repeating.
+  Correction received: frozen fixture SHA256
+  af07e9d0d376856aa11c35279bd453b0c6673dc888286e89066197d9f86328ea
+  now passes181 strict Clang ASan/UBSan checks in fresh root repeats. Full
+  report read (SHA256cd8747c0a839453c0b77d3888b7d6df89e1e5345ffb6996c13adf48bca12faa2);
+  external gate/counter remain fixture mocks. Root documented the zero-state
+  registry initialization precondition in the header only, new header SHA256
+  1b7a33a397bc6fd727a4f3ad630c98e9a34f7be4a7fb72e7a504e1e1dfbdabee;
+  post-comment root repeat also passes181. NewAddTask strict fresh object is
+  8,724B SHA256844bbb95a54102085a6abdc08febaa1d84968aa6df439f1c53c449827a8bda79,
+  byte-identical to preceding selected object. Binding tests remain pending.
+  No reset/flash/media write or hardware SMP claim. Next repeat new tests,
+  resolve lock-order/final-expunge ownership and bind full metadata lifecycle.
+
+### 2026-10-01 - E3 dead-result expunge outside the message-port lock
+
+- Actual shared Exec_CleanupETask SMP branch now initializes a worker-owned
+  result list, removes all dead-child results from the message port under its
+  spinlock, and transfers them to the local list. Only after unlocking does
+  it pop and ExpungeETask each result. PID gate acquisition, result allocation
+  frees and metadata freeing no longer occur inside that port critical section.
+  Ordinary non-SMP cleanup remains unchanged. This is not full parent metadata
+  synchronization or permission for concurrent ChildFree/RemTask activation.
+- Fresh strict isolated actual RV32/compiler/sysroot objects with preceding
+  SMP/runtime/FPU/atomic defines and -Wall -Wextra -Werror:
+  exec-util-detached-results-20261001.o13,472B
+  SHA25666f4764c7b3cebfc0cecc30fe7105c4f84bbb08c2518630ffbaf21d62d13e249;
+  exec-util-detached-results-normal-20261001.o8,056B
+  f2eb7d45996f84e37b1633d24ad70498117cffeae14386f4ab183c1990359b4a,
+  byte-identical to the preceding normal object. ExecUtil source SHA256
+  18914d76df62751a76dc22ace3f2a1955d12b68e23ce2cc7d586ef4b71fd81e4.
+- The older61 cleanup fixture predates this change and does not qualify it.
+  An updated actual-source fixture is delegated with explicit all-results
+  detached and lock-depth-zero assertions before first expunge. Pending.
+- Root read complete initial etask-gate-independent-review.md: preparation
+  order, raw MIE restoration and pre-vector use accepted under documented
+  startup/runtime assumptions. That snapshot predates PID lock consumers;
+  updated consumer review and gate fixture remain live, not runtime evidence.
+- Root read the complete frozen p4-etask-identity-binding-test.c and freshly
+  compiled/ran it with Clang C11/O1, -Wall -Wextra -Wconversion -Wpedantic
+  -Werror and ASan/UBSan:262 checks pass. Actual binding and leaf are included;
+  gate/allocator/ExecBase are mocks. Counter and ETask PID are checked before
+  mocked unlock; temporary-record allocation/free remains outside the gate.
+  Interleaving is at allocation before lock, not real simultaneous harts.
+  Actual InitETask/ExpungeETask hook-body fixture and full parent lifetime remain
+  pending; this pass is not hardware or concurrent runtime acceptance.
+  Fixture SHA2562bc2d35452d474c3467f1c31a1e822c697f399b2c1333672154856f121163735.
+- Root read complete etask-identity-binding-host-tests.md (SHA256
+  933ef555eac50f16bde367f5684ab77ebf90e350191d76d4928df87a3d950cf1)
+  and freshly ran python3 exec/tests/p4-etask-identity-hooks-test.py from the
+  port:91 strict Clang ASan/UBSan checks pass for actual InitETask/ExpungeETask
+  bodies. Fixture SHA256eb512c94fc29617129d8ec0dd916757b25e59a3c47d0521826f1eb814a0522e2.
+  Gate/allocator/affinity/identity hook APIs are modeled. No full-runtime claim.
+- Root read the complete actual gate fixture and updated independent review,
+  then freshly compiled/ran p4-etask-gate-test.c with Clang C11/O1 strict
+  warnings and ASan/UBSan:45 checks pass. Fixture SHA256
+  3225f63cfcc38035a9dafea0b856e4190c7d73d8fe5c29991781ad2504f416bf.
+  CSR/runtime/public-spin service are mocks; real service/startup behavior is
+  not proven by this test. The review's port-lock-to-gate observation predates
+  the corrected cleanup transfer; an updated callsite review is requested.
+- No reset/flash/media writes. Full secondary Exec, parent lifecycle and
+  actual worker wake/completion remain open. Next qualify the selected hook
+  and cleanup changes, then replace raw parent metadata ownership.
+- Updated cleanup fixture initially failed because NEWLIST/AddTail/RemHead
+  mocks were missing (four compile errors, no test run). The author corrected
+  only the fixture; root read the complete report and inspected list/expunge
+  assertions, then freshly repeated python3 exec/tests/p4-etask-detach-test.py
+  from the port:76 strict Clang ASan/UBSan checks pass. Every expunge asserts
+  lock-depth zero and port unlocked; both dead results must detach before the
+  first free. Existing reparent/orphan cases remain. Locks/Exec APIs are mocks.
+  Extracted actual body4,204B SHA256
+  afc72f2c73e55e473524ec74a45c94d2988fd6238208a74c69a0fab32551ce40;
+  fixturec2831da78864be51bcba33611f0fe178b7fb870609aa563b589532bf6a21b703.
+
+### 2026-10-01 - E3 selected metadata-owner state in actual ETask lifecycle
+
+- Root enlarged the private identity record, not public ETask/ExecBase layout,
+  with the existing checked p4_etask_lifetime state and selected that leaf in
+  SMP mmake. Reserve initializes a private Task metadata owner before PID
+  registration. Actual CleanupETask begins closing under the metadata gate;
+  retained dead-result ownership transfers before PutMsg publication. Final
+  ExpungeETask/affinity rollback drops Task/result ownership and requires an
+  exclusive RECLAIM before PID detach and allocator free after unlock.
+- Root caught an ordering defect during implementation: the first placement
+  transferred result ownership after PutMsg, allowing a woken parent's
+  ChildFree to overtake the transition. It was moved before PutMsg before
+  testing or flashing. The earlier local object is not final evidence.
+- No reader/parent-edge API is selected yet. A non-drained final release fails
+  closed rather than freeing outstanding ownership; deferred-reader reclaim
+  must be implemented before exposing reader leases. Generic remote RemTask
+  still does not prove RUN drain. Raw parent/Child* relations remain unsafe;
+  this is actual ownership-state binding, not full concurrent metadata safety.
+- Fresh strict isolated actual RV32/compiler/sysroot builds with recorded
+  SMP/runtime/FPU/atomic defines and -Wall -Wextra -Werror:
+  etask-owner-binding-20261001.o5,784B
+  SHA256a8157aad1fd5b72845afd5afcccb33f9be0650ac36972059da10d3a3460fc29c;
+  etask-owner-lifetime-20261001.o6,108B
+  1ea4b0742b25edf3099b27034b8eb2c51f86e30e00bf5cb1c48f8cee97d6f59d;
+  exec-util-owner-before-putmsg-20261001.o13,644B
+  e2916f63a90182a2a6213e14ce8e56333a6df7767cb3f5c6a31a281b393deb57;
+  normal exec-util-owner-normal-20261001.o8,056B
+  f2eb7d45996f84e37b1633d24ad70498117cffeae14386f4ab183c1990359b4a,
+  byte-identical to preceding normal object. No full target link.
+- Source SHA256 binding Cb92881b8343c9c5831a15bbb19f95263842aa4e0e3f0d5247cedcd3d00774ebf,
+  header23a4136a8668d198765063c3316624ce674d7aa5ac5a3d95cd31f60115fa7241,
+  platformheader06ea7b57d9ac08259d31b4056ec39cb3b0fd3aeef6246493ddd3075af83b91e6,
+  mmaked3fc092a3cbee5ebfba224337e4774cd79d18758cce9bcfd0b00060956b5ecf6,
+  ExecUtil36986d4f76419d3c4a7f33caef5eb19c8ad942157f8d84458a169bbb1efb9743.
+  Unchanged lifetime C57a446d5dc0f052032cdd6b64f8b690c71916a6d0f4140fa6950e78534fe0ccf,
+  headeraa9957c93b5fbe99967407a7367aa5cd940c5caebe9f89f519861784282540f6.
+- Revised actual binding/cleanup-hook fixtures and independent source review
+  are delegated. Older binding262/cleanup76 counts predate the new owner hooks
+  and are historical only. No reset, flash, media writes or hardware claim.
+  Next qualify this selection, then bind parent edges and metadata readers,
+  deferred reclaim and actual RUN-drained cleanup worker/removal.
+  Root repeated old Init/Expunge91 and cleanup76 fixtures on the current source;
+  they still pass, but their ownership-hook boundaries are absent/mocked and
+  these counts do NOT verify the newly selected owner transitions.
+
+### 2026-10-01 - E3 result-only ChildFree implementation dispatched
+
+- The selected generic ChildFree still uses FindChild's borrowed pointer,
+  which can come from the active-child list, then removes/frees it without a
+  matching result-port transaction. A bounded implementation packet now owns
+  only childfree.c plus its new actual-source fixture and evidence report.
+- Required SMP change: under current caller RUN/metadata ownership, search
+  only the durable dead-result queue, unlink under its port write lock, unlock,
+  then expunge. Active/missing IDs cannot free metadata. Ordinary non-SMP
+  behavior must remain unchanged. The fixture must check head/middle/tail,
+  no callback under lock and poisoned-child no-access after expunge.
+- Implementation/test result pending; no full-runtime, build or hardware
+  acceptance. No reset/flash/media writes. Owner binding tests/review remain
+  live; deferred-reader reclaim is the next root integration after freeze.
+
+### 2026-10-01 - E3 full-shape owner lookup and result-only ChildFree qualification
+
+- Independent owner review, SHA256
+  e242fc4607e9d87941c7e0f4637f2642d7848f80f3853d37096c044cf140c2ed,
+  accepts local owner construction and before-PutMsg ordering, not RUN/pin
+  drain or parent/reader integration. It found owner_find could mutate a
+  matching prefix before validating the entire identity registry. Root replaced
+  this with p4_etask_identity_lookup: complete bounded shape plus exactly-one
+  target validation precedes returning a borrowed record. The same held gate
+  covers lookup and lifetime mutation; Release reuses that lookup. Corruption
+  fixture and independent correction review are delegated, not yet accepted.
+- Source SHA256 identity C
+  a7cba206f630c387861f053a7d780036f638e28d8d1fb4f4fd106002cfe48f14,
+  header7ca42ad54d25476a6920abc11791ca4ff3f40f704a2715e69ce67cc54cf9b956,
+  binding1fed2ef431fee680303c940b615431db6f8a923fdd919cb390896b59c71fba05.
+  Fresh strict isolated RV32 objects in actual build evidence directory
+  smp-priority-2026-10-01: etask-identity-lookup-20261001.o6,472B
+  SHA256198bbd3c42cd97bb6b694cf52d65bc678470da77755a4f80eabb5676658f5c62;
+  etask-owner-lookup-20261001.o5,492B
+  147dc6039e0a296e9b6210107b35a5c48a1527c01f6d4686225741434941affc.
+  Actual compiler/sysroot and preceding SMP/runtime/FPU/atomic defines used
+  with -Wall -Wextra -Werror; these are not a configured/full Exec link.
+- Root read complete updated owner-test report
+  52e967839f24ef89e36bcda036f117854072de821dfdfca773fafd79ede80089.
+  Its binding422 author pass captures pre-lookup binding b92881... and remains
+  historical. Root freshly repeats actual CleanupETask owner fixture195,
+  actual Init/Expunge fixture91 and identity leaf181 after lookup correction
+  using strict Clang ASan/UBSan. Actual ownership leaves/binding participate
+  in195; PutMsg ASan-poisons ETask and verifies retained ownership already
+  published. Allocator/gate/Exec APIs remain modeled; no concurrent runtime.
+- ChildFree source SHA256
+  9f5e3f2ad1a672a6d48b383ef248e69f8596b09764797913c81a670ef7a6648d.
+  Root read the complete result-only report and fixture, reviewed active-ID
+  refusal, locked unlink and no access after expunge, then freshly repeated
+  python3 exec/tests/p4-child-free-test.py from the port:135 strict Clang
+  ASan/UBSan checks pass. Fixture73b3fd6a25919384c88d03bcebeccf5564628f559875ecc9585ed8b49cfc2aab;
+  extracted actual body1,410B088ae9c71c3327adbbc36086e2a5ce2d3601c77b23ca6019c90fd91022ec50c0.
+  Initial author harness compile failed unused-static-function warning; the
+  sentinel was corrected without suppressing warnings before final pass.
+- Fresh strict isolated ChildFree RV32 objects: SMP
+  childfree-result-only-20261001.o2,880B
+  76672b0050485b8851237f3a01143bfb219fcff583ded51ad3345883abc9b5ff;
+  normal childfree-result-only-normal-20261001.o2,228B
+  f40283e5f5a0a2c0d7a31e21aa85edc7bc06cb158cebe57de292015938d11bcc.
+  Non-SMP body is unchanged under #else. RUN/metadata-owner precondition,
+  real lock semantics and expunge internals are not proven by fixture135.
+- No board reset, flash or media writes; flashed single-core baseline unchanged.
+  Display reconnection does not authorize interactive acceptance. Next close
+  lookup corruption tests/review, then implement deferred reader reclamation
+  before leases, parent edges and RUN-drained removal; full secondary Exec and
+  actual concurrent hardware gates remain open.
+
+- Correction fixture frozen and root repeated: strict Clang C11/O1,
+  -Wall -Wextra -Werror -Wconversion -Wpedantic and ASan/UBSan pass1605
+  checks. Seven readable-registry corruptions times BeginCleanup/RetainResult/
+  Release produce21 fatal refusals with byte-identical registry and both
+  owner records, unchanged PID/counter and no frees. Root read full report
+  3dfccd0ac3c822a6ad2e270a004bec3966311c140659568b097a6b54904ae20d;
+  fixturebcde0dd7344214e054d1649b2b313ba452508c57533a1858b01b1d097cd742b6.
+  This cannot validate unreadable pointer provenance or actual concurrent
+  gate behavior. Correction review pending; no hardware acceptance.
+
+### 2026-10-01 - E3 deferred metadata-reader reclamation source selection
+
+- Root read the complete lookup correction review
+  b017702c4994fb692939d8e257a06b0cd521dafa19c0d65013e897adbe419450.
+  It accepts full-shape/exact-one-before-mutation ordering at source level;
+  null/absent direct-lookup coverage and worst-case MIE-off traversal duration
+  remain gaps. The1605/195/91 passes above qualify the prior API snapshot,
+  not the following deferred-release change.
+- Root changed private IdentityRelease from void to an int reclaim claim.
+  Existing readers retain ETask, Result2 and PID after logical expunge; no
+  caller may free storage on zero. Actual ExpungeETask delegates storage
+  freeing only on one. ReadPin admits active-open or retained-dead metadata
+  under the gate; its internally locking wrapper requires an existing strong
+  metadata owner until admission. Dropping a discovery gate before calling it
+  would lose that protection; future topology discovery must acquire a lease
+  in the same transaction. It never legitimizes an arbitrary stale pointer.
+  ReadUnpin consumes a lease; the unique last
+  reader detaches identity/sidecar before unlocking, frees the sidecar outside
+  the gate, then calls private Exec_FreeETaskStorage without recursive release.
+  Task storage is not retained or readable by an ETask metadata lease.
+- Affinity rollback now also honors a zero release claim rather than freeing
+  retained ETask storage. Normal non-SMP Expunge body remains unchanged after
+  preprocessing. No public ETask/ExecBase layout or vector change.
+- Fresh strict actual RV32/compiler/sysroot isolated objects with preceding
+  SMP/runtime/FPU/atomic defines: etask-reader-reclaim-20261001.o7,048B
+  SHA2561031e54b9c7bcf2e3d65cb08ecd06c1c0e54df793560635f4c6ca41d3dc3e8f2;
+  exec-util-reader-reclaim-20261001.o14,008B
+  ce8004b9c59a5512e086d54353beafac625416e442e4af72b8bbd9e28ad885bb;
+  normal exec-util-reader-reclaim-normal-20261001.o8,056B
+  f2eb7d45996f84e37b1633d24ad70498117cffeae14386f4ab183c1990359b4a,
+  byte-identical to preceding normal objects. No configured/full target link.
+- Source SHA256 binding1b64bc1cdb986ab930fbf2f30a8b7f36d2c8c179f10fc33abcf828c9f8376513,
+  headerfdc66cc904d0248ba978351b5da91bb8b1bedd4502382e43c5c37b58c507146b,
+  ExecUtilad1241e35126058d85ce81d0724b70f5c869bd49d49e2abbfebe5b1604f3233f.
+  Binding/owner fixtures, extracted Init/Expunge and actual end-to-end reader
+  reclamation fixtures are delegated in disjoint test scopes; independent
+  source review also pending. Old fixture counts do not qualify this API.
+- Safety: no reset/flash/media writes, no production reader callers or SMP
+  admission enabled. Generic remote removal still lacks RUN/pin drain and
+  parent/topology binding remains incomplete. Next qualify this release/free
+  contract before binding protected parent/reader discovery and cleanup worker.
+
+- Root closed the correction review's direct-lookup coverage gap with null
+  registry, null identity, absent/empty identity and successful borrowed-record
+  lookup using the existing PROT_NONE opaque identity. Registry/record bytes
+  and PID counter remain unchanged. Strict Clang C11/O1, -Wall -Wextra -Werror
+  -Wconversion -Wpedantic, ASan/UBSan root repeat passes194 (prior181 retained
+  in historical entries). Leaf fixture SHA256
+  00b684319e61dd90d0011b0fb922f42241978ffc9bc6001def387625e024adb4.
+  The gate is still modeled; worst-case interrupt-masked lookup duration is
+  unmeasured. Deferred-release binding tests remain pending.
+- Root clarified the private reader header before wiring any caller: because
+  ReadPin takes the gate internally, a pointer obtained before dropping a
+  discovery gate is not sufficient. The wrapper requires an existing strong
+  metadata owner until admission; a future topology discovery must acquire
+  its lease within the same transaction. Header-only correction SHA256
+  57a993e51e23dffad6993f00b601c7d3c736ec5b7d9d3610a38433f14e1ba51e;
+  C/ExecUtil unchanged and frozen for the delegated tests/review.
+
+- Root read complete independent deferred-reclaim review
+  95dc4f4ef80d0afa3768d5a731d244ba8f57abfcea64be1c3ae65048f2bfce4f.
+  It found no premature/duplicate free in reviewed paths and accepts the
+  clarified strong-owner admission contract. This is source review only;
+  generic RUN drain, protected discovery and parent topology remain open.
+- Root read complete frozen binding-test report
+  f5e1aef06d8fcd9cabd3c82aa56be992d067c4a0d757a4eec634bd79fd77640b,
+  inspected reader/defer/corruption assertions, and freshly compiled/ran
+  actual binding/leaves fixture with strict Clang ASan/UBSan:2622 pass.
+  Seven corruptions times five operations preserve records/registry on
+  refusal; ReadPin returns false, invalid release/unpin fails closed.
+  Multiple readers retain metadata/PID until the last unpin and invoke a
+  mocked storage-free helper once, after gate unlock and sidecar free.
+  Fixture8b370b4c3a91ecd1b9394431a3f3f28949583ade59cf958c0eed6f6a69c05b4e.
+  Root also freshly repeats actual Cleanup owner-hook fixture196 with actual
+  binding/leaves and ASan poison after PutMsg; its storage helper is a trap
+  mock, not the actual allocator integration. Fixture
+  23fec35eb70e3495e5280f8b535ec35299e308f089766809ae18c374ba3f83fc.
+  Actual Init/Expunge/storage-free and end-to-end reader fixtures remain
+  pending. No runtime/hardware claim or board/media writes.
+
+- Actual free-path fixtures are now frozen. Root read the complete report
+  48ce12f61bd23dcdd11538ae2c7eb0ca1e236a62b589e136f680fa09f9ef9429
+  and the complete reader fixture, inspected updated Init/Expunge deferral
+  assertions, and freshly ran both strict Clang ASan/UBSan Python fixtures:
+  Init/Expunge126 and actual reader/reclaim227 pass. The latter includes real
+  identity/lifetime/binding and extracted actual Expunge/storage helper;
+  immediate expunge and two-reader deferred expunge check unique sidecar,
+  Result2 and ETask free after gate unlock/PID detach. Retained PID cannot
+  be selected again until final unpin. Gate, allocator and association are
+  modeled; no real SMP interleaving or protected topology discovery.
+  Fixture hashes: hooks16a2579d7757fda4eeeebbd81567480899f7b4362792bd04c1ffec9a5eb24e3f;
+  reclaimad8fd9def28ab23d0ef75c2be5b65b5b62d2ca298f88d17be570b6f12264c8b3.
+  Extracted Expungeaa7165900e134ff2706f702f4844ad42bacbae435203d5db2ca7988116678d23;
+  storagef13f44954b3795c9c691794f47c04f6c45bf1f94710870b7d2edbe3cb50e7d54.
+  Intermediate harness compilation found an unused SysBase parameter after
+  its debug macro was omitted; the extracted fixture signature was marked
+  unused without changing production behavior or suppressing warnings.
+  No board reset/flash/media writes. Next bind protected parent/topology
+  readers, then real RUN-drained removal and secondary/full matched build.
+
+### 2026-10-01 - E3 active-only ChildOrphan implementation dispatched
+
+- Root read the complete read-only parent/child callsite map at build evidence
+  `smp-priority-2026-10-01/etask-parent-integration-callsite-map.md`, SHA256
+  b2ceb3fb548ec7a916e4a3cf39ee0e794e44bd233124f89d362d5b1b9bf4d37e. It identifies
+  FindChild's active/dead search and ChildOrphan's unlink without expunge;
+  dead-result ownership and PID can become unreachable. It also identifies
+  unprotected parent Task readers in POSIXC, task.resource and DOS and an
+  unlocked waitpid result-list count. This audit ran no tests or builds.
+- A bounded Luna packet owns only ChildOrphan and its new extracted-body
+  fixture/evidence report. Implement active-only SMP lookup/removal under
+  iet_TaskLock, remove every node before clearing its parent, preserve dead
+  results, and keep the non-SMP body unchanged. Root owns integration,
+  independent inspection, strict isolated SMP/normal RV32 builds and docs.
+- Configuration is source work only; no image/package was built or flashed.
+  No board reset or media write. Display reconnection is not consent to an
+  interactive observation. Current RUN/metadata ownership is an explicit
+  precondition, not established by Forbid or this list lock. Next qualify the
+  correction, then integrate parent topology and real RUN-drained removal;
+  neither this correction nor the audit closes E3 concurrent acceptance.
+
+### 2026-10-01 - E3 active ChildStatus traversal source selection
+
+- Root added the missing SMP iet_TaskLock READ guard around active-child
+  traversal in `rom/exec/childstatus.c`, SHA256
+  cdbeda69e4564e226477c4d818c32a195d14ec13133f1a846b1c51c0404df014.
+  The lock is dropped before taking the existing result-port READ lock;
+  non-SMP behavior and public LVO/signature are unchanged. Current RUN/metadata
+  ownership remains a caller precondition. The two-list query is not an
+  atomic topology snapshot and its transition gap remains open.
+- Luna owns an extracted actual-body sanitizer fixture and evidence report
+  only; root owns source, repeat, strict isolated SMP/normal RV32 builds and
+  integration. Qualification pending, no full core/package produced, no
+  hardware observation, reset, flash or media write. Next verify local lock
+  selection/balance and results, then replace the split query during coherent
+  topology integration rather than treating this guard as full SMP safety.
+
+- The first strict SMP compile failed because IntETask was undeclared:
+  ChildStatus did not include the private etask.h used by other Child APIs.
+  Root added that include; final source SHA256
+  9d3774321d882ea47802f431eefa7ea872922805b54d86cf35f4b07a7fd34edb.
+  Fresh RV32 GCC16.2 objects with actual relocated-build sysroot,
+  rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f/medany,
+  -Wall -Wextra -Werror, P4_BOARD_D1001 and Exec-library define compile:
+  SMP additionally sets both SMP defines, P4_E3_RUNTIME_READY=1,
+  P4_E3_FPU=1 and P4_ATOMIC_CORE=1. SMP object2684B SHA256
+  8899392a48b54a0a0b589ae4f6044aab828b4feb4b32988877606c18a28d17e4;
+  normal object2340B
+  bbcc1946a7204fe7c4c9c731a1761bbcee2227399f5c328fc8298c4384580686.
+  These are unique isolated objects in `smp-priority-2026-10-01`, not a
+  configured or linked core/BSP or ABI refresh. Fixture qualification pending.
+
+### 2026-10-01 - E3 active-only ChildOrphan local qualification
+
+- Root inspected the complete final source/diff, complete actual-body fixture
+  and report. SMP active-only removal leaves dead-result metadata/PID ownership
+  reachable for ChildFree; wildcard removal detaches each node before clearing
+  its parent. Non-SMP body is unchanged (author comparison1225B); no public
+  layout/signature change. Source SHA256
+  10e84b4f3343097173505a33c896b2649a1f9fed0d26db3738c13f59fa93620a.
+- Root freshly ran `python3 arch/riscv-esp32p4/exec/tests/p4-child-orphan-test.py`:
+  strict Clang C11/O1, -Wall -Wextra -Werror -Wconversion -Wsign-conversion
+  -Wpedantic, ASan/UBSan passes321 checks. Fixture SHA256
+  e49983ecd603e8985546f59fe68f9a4af84e91acf88118eca629d58669cca694;
+  actual extracted body2810B
+  a196cb514b7ff9d2f7e42014e647a1c128c20ff39dcbf020f607e35c9e03e0e1.
+  Frozen report `child-orphan-active-only-host-tests.md` SHA256
+  dd13c1f78e3f4e33b02882c76bb86ca462d7dc1658939dccfb9de5acdd7300a4.
+- Failure history: the author corrected a duplicated intermediate SMP branch
+  and void test wrapper. Root identified missing private etask.h and a fixture
+  failure flag reset that could erase earlier failed cases. The include and
+  accumulated-failure handling are corrected; only the integrity-corrected
+  321-check repeat qualifies this source. No warnings suppressed.
+- Fresh root strict isolated RV32 GCC16.2 builds use the same actual sysroot,
+  ISA/ABI and SMP/normal flags as the ChildStatus entry. SMP object3088B SHA256
+  ba7254cf0afc636cc5894dfce2721aeb0682ab9224cde2753d5e5aacabe9bdc1;
+  normal object2756B
+  ff73854da64d9ff1d9a5ac42f5667647023743fe84b4f0f841b6b2576ef5b11f.
+  Objects are in build evidence `smp-priority-2026-10-01`; not a linked
+  core/package or ABI refresh. Independent review pending.
+- Lists/locks/scheduler are mocked in the host fixture; no real concurrent
+  parent cleanup, RUN drain or reader discovery is qualified. No board reset,
+  flash, media write or interactive run. Next finish independent local review
+  and ChildStatus qualification, then integrate the full topology/removal group.
+
+### 2026-10-01 - E3 Child API local review and status qualification
+
+- Root read complete independent review `child-orphan-independent-review.md`
+  in build evidence `smp-priority-2026-10-01`, SHA256
+  f8a77835a2461f8ce01ed541f70ce477e491ec22210313a0093b69fe156ed385.
+  It accepts local ChildOrphan detach and ChildStatus separate-lock order,
+  not full lifecycle. The shared SMP ChildOrphan LVO now returns CHILD_NOTFOUND
+  for dead-only IDs, preserving their ownership for ChildWait/ChildFree.
+  This intentional semantic correction applies to the SMP branch; the
+  non-SMP body remains unchanged. No public layout/signature change.
+- Root read the complete ChildStatus fixture and freshly ran
+  `python3 arch/riscv-esp32p4/exec/tests/p4-child-status-test.py` with strict
+  Clang C11/O1, -Wall -Wextra -Werror -Wconversion -Wsign-conversion
+  -Wpedantic and ASan/UBSan. Actual extracted body passes352 SMP and205
+  normal checks: null/non-ETask cases, active head/middle/tail/miss/empty,
+  retained dead result, historical dead override, correct separate READ
+  locks, no nesting, balanced Forbid/Permit and untouched membership.
+  Failure state accumulates across cases. Fixture SHA256
+  89ab1bc68533e6e2470e935d6dbb098749727f112fed2143b8ba0168106d1909;
+  body1487B
+  b82b5f6136c4947434599c4d88ec147e7f85500c2c1fe59ef3cc994fe34a290d.
+  Root also read the complete frozen `child-status-host-tests.md`, SHA256
+  adab1ec32fe4fc40db3b00eb33c93210c9d5775ca941547748a4b6801371d15a.
+  Besides the missing production etask.h include recorded above, the first
+  harness compile lacked a ChildStatus prototype before test calls. That
+  fixture declaration was added and both strict variants rerun; no warning
+  suppression. Only the final fixture/hash/counts qualify this correction.
+  Source/strict RV32 object identities are recorded in the preceding
+  ChildStatus entry. These fixtures model lists/locks/scheduler, not
+  concurrent Exec execution. No reset/flash/media write or visual test.
+- Next integration is the coherent Exec topology group plus real Task
+  RUN/pin-drained removal; cross-module parent access requires a compatible
+  public operation. Do not enable the second Exec hart from these local
+  corrections. Full matched core/BSP/ABI rebuild and actual concurrent
+  Task/FPU/contention qualification remain mandatory and unperformed.
+
+### 2026-10-01 - E3 protected cleanup-worker integration started
+
+- Root inspected actual ServiceTask, RemTask and Task-pins/registry code.
+  The durable ready marker still has no production wake consumer; calling
+  Signal directly from an unpin/RUN-release callback can encounter outer
+  Task locks. Worker ownership must precede safe deferred wake integration.
+- Root selected P4-only ServiceTask protection and an early RemTask admission
+  hook before target fields/logging. The private pins binding requests a
+  singleton permanent registry owner and fail-closed removal query under
+  its existing gate. Source hashes: pins
+  ae3404e57f794450ae6d61c5fcde2b6b85298b19ea32a7b27f381466ca1c5b2e;
+  ServiceTask
+  0c859c054bb14c8f872b8f7dee22cd26e198e00e7d017e04a137e0e1e1888968;
+  RemTask
+  ba1630bb1b103f8c02b9a286988eca03351c15ad3d0ab431f44f28bffe6bd3b8.
+  Initial source selection had no build qualification.
+- A disjoint Luna packet implements the private record protection field and
+  leaves: full-shape validation, sole-RUN admission, permanent pin floor,
+  transient pins and both retirement refusals; actual-source sanitizer
+  fixture and existing registry regressions. Root owns caller integration,
+  independent review/repeats/builds and docs. The private record change
+  requires consumer invalidation in the later full matched build; no public
+  Task/ETask layout change. No board reset/flash/media write or interactive
+  test. Configure refusal stays intact; next qualify protection, then safe
+  deferred wake, topology/completion and actual RUN-drained removal.
+
+### 2026-10-01 - E3 protected worker frozen source and isolated builds
+
+- The private record now has worker_protected. Full bounded registry lookup
+  rejects malformed protected records; protection requires a live sole RUN
+  owner, installs one permanent pin atomically, forbids both retirement paths,
+  and ordinary unpin cannot drop below its pin floor. Transient pins and RUN
+  handoff remain allowed. No Task identity dereference occurs in the leaf.
+  Frozen registry C SHA256
+  3003fc5f1a1221148e080e859f82e9760a225f0f165c117d72c3901c59168e61;
+  H1d7499da207eed97ee4c6f0d7d58df66520b71dfba172cb79a506a35d33d4b11.
+  Pins H714f7bc4f5eaf749363cc9da24ebf9c05d8982497cce0281b1f8cb5af526fb5e;
+  platform Hc1c771850e3d9d373772dd3efd0fa868f4828caa27fa4ff47815a440e7a812b7.
+- Strict GCC16.2 ServiceTask compilation first failed on existing intentional
+  switch fallthroughs. Comments were added (no control-flow change); the first
+  SMP comment before #endif was not recognized, then moved immediately before
+  its case label. No warning was suppressed. Final service source SHA256
+  63ecb313304a5c6e6df0d7658979c95978fd6c6fd3449df0a97f07fcb260cb20.
+- Fresh isolated RV32 GCC16.2 objects use the relocated actual-build sysroot,
+  rv32imafc_zicsr_zifencei_zaamo_zalrsc, ilp32f/medany and strict warnings,
+  board/Exec defines; SMP adds both SMP defines, P4_E3_RUNTIME_READY=1,
+  P4_E3_FPU=1 and P4_ATOMIC_CORE=1. Build evidence names
+  `worker-<component>-<variant>-20261001.o` in `smp-priority-2026-10-01`:
+  pins SMP12408B
+  7acf3a547f314110d9ed7031c9815666662b7f1e59ec44ecc6586c8f3fde1ee0;
+  registry SMP12972B
+  31555b53584150cd42c4427aa19cf3a0c8e4505cb640fb4126eca490931c7d84;
+  service SMP5476B
+  9232036567925c08e47da392ac04123c601a7729157037209e6c6aaba24a2cf8;
+  service normal4444B
+  d6a3a76fc5bb235a4c8c6a185c0dad7571497350e20a58a49e9ef00f16d38c48;
+  remtask SMP5548B
+  e6be9b0c79980661e7388178c09bd7c9968bfee172180842af195b4def948789;
+  remtask normal5268B
+  a9c1910f65d67095b029c347d547601086cff3e4e4fd5f31f09149edd04b611d.
+- Root inspected new leaf transitions; test authors own disjoint fixtures,
+  independent reviewer owns no production source. Qualification pending.
+  These objects are not a full link/ABI copy or matched package. Consumer
+  wake, drained cleanup selection, completion, parent topology and general
+  RemTask remain incomplete. No board reset/flash/media writes; configure
+  refusal and normal on-board single-hart baseline unchanged.
+
+### 2026-10-01 - E3 protected worker local sanitizer qualification
+
+- Root read the complete leaf fixture/report, binding report and the added
+  interposer/protected-worker cases in the existing pins fixture. Fresh strict
+  Clang C11/O1, -Wall -Wextra -Werror -Wconversion -Wpedantic,
+  ASan/UBSan/-fno-omit-frame-pointer/-pthread compiles and runs pass:
+  actual leaf494 (opaque PROT_NONE Task identities, modeled pthread gate)
+  and actual pins/registry/lifetime81,346 (modeled Exec gate/nesting/fatal).
+  The binding fixture interposes both new leaf calls to verify held gate and
+  masked IRQ nesting. It uses permanent static worker storage and checks
+  singleton protection, floor/retirement refusal, read-only removal policy,
+  corrupt-state refusal and RUN handoff. It does not execute actual ServiceTask
+  or RemTask bodies; those have isolated compilation and source review only.
+- Root leaf reproduction: compile
+  `kernel/tests/p4-worker-owner-test.c` (port-relative) to build evidence
+  `worker-owner-leaf-root-20261001`, then run it. Binding uses
+  `kernel/tests/p4-task-pins-test.c`, output `worker-pins-binding-root-20261001`.
+  Fixture SHA256 leaf
+  178e066cd38582ffc1fa980867d953c5e8c2c89ea8421a42fcd805ff1d62e992;
+  binding6d4b529c2e4dde4f8cb419bf55fdf4db0c1eda5213e9ac300a6f4454ef30bd8e.
+  Complete reports in `smp-priority-2026-10-01`: leaf
+  04f72bcf34f00541227f84815c01412309b4e00d6b80f27e563b73ac5f89dee3;
+  binding2b17657bc14839d87683960daee4e4e562df0e1658e2bc7c86f9645691ad7c52.
+  Author reports eight related fixtures passed, including an earlier pins
+  snapshot80,985; that older count does not qualify the new binding fixture.
+- Worker protection begins at its first RUN entry. Exec_InitServices creates
+  the task at priority127, but priority is not a readiness proof. Future
+  secondary admission must keep hart1 reset-held until explicit worker-ready
+  acknowledgement; startup before protection and generic remote removal are
+  not made safe by these tests. No hardware test, board reset or flash/media
+  write. Next finish independent review, then integrate acknowledgement and
+  deferred wake outside outer Task/registry locks together with the topology,
+  drained-removal and completion prerequisites. No E3 completion claim.
+
+- Root additionally rebuilt private-record allocation/free consumers with the
+  same strict isolated SMP flags after the record-size change: publication
+  object4644B SHA256
+  738cb2839a621a92b73122d63c53b1c7d89dc31d6e789fb4339e74f17b3d2f2a;
+  still-unselected cleanup candidate3544B
+  fc49043aa4b646cad4bcc1bfce39e66af59b517a9210325bfb322e4c3f72fb01.
+  Names `worker-task-publish-smp-20261001.o` and
+  `worker-cleanup-candidate-smp-20261001.o` in the same evidence directory.
+  This confirms isolated consumer compilation, not whole-system private ABI
+  consistency or cleanup selection. No additional implementation/hardware
+  change.
+
+- Root read complete independent worker-owner review
+  `worker-owner-independent-review.md`, corrected final SHA256
+  3b382698a2938af42da3fc288aa4c317d0b1ccbbf708697207540e25145e147e.
+  Root corrected a review attribution: per-record reprotection refusal is a
+  leaf property, but second-worker singleton refusal belongs to the binding;
+  reviewer amended the report without production changes. It confirms local
+  permanent-pin/early-refusal ordering and keeps five concrete gaps explicit:
+  first-entry startup needs worker-ready acknowledgement before hart1,
+  ordinary RemTask's policy query grants no lifetime pin/retirement claim,
+  the current ServiceTask still reads raw queued Task fields before claim,
+  durable readiness has no wake delivery, and protector selection is trusted
+  internal caller policy. Leaf protection is per record; singleton worker
+  selection belongs to the pins binding, not the leaf. No full/runtime or
+  hardware acceptance follows from the review. Next bind the actual ready
+  handshake and deferred wake/claim path without permitting generic cleanup
+  until parent topology and target RUN/pins/completion are coherent.
+
+### 2026-10-01 - E3 deferred cleanup wake integration started
+
+- Root added a Task-free primary-hart cleanup doorbell to the selected IPI
+  backend, sharing existing schedule publication/relatch ordering. Luna owns
+  only the pins binding and its fixture: durable pending wake, explicit worker
+  mask/readiness, snapshot consumption and post-gate doorbell on all three
+  producer transitions. Arm must re-poke retained pre-arm work. These edits
+  are not qualified by the earlier protected-worker test counts.
+- Actual IPI fixture now covers pre-arm retention, hart1-to-primary publication,
+  coalescing, latch/drain and absence of historic tick debt. Source snapshot,
+  fresh test result and isolated object identity will follow qualification.
+  Planned safe delivery is outside outer Task/registry locks; direct Signal
+  from unpin/RUN-leave is prohibited. Consumer/Wait integration, parent topology,
+  public removal/drain/completion and the whole matching SMP image remain open.
+- Fabian reports the display reconnected. This is not interactive readiness.
+  No board reset, flash, media write or visual acceptance run was performed;
+  normal on-board baseline and configure refusal remain unchanged. Next verify
+  this binding and integrate the worker consumer at safe execution boundaries.
+
+- Root fresh strict Clang C11/O1, -Wall -Wextra -Werror -Wconversion
+  -Wpedantic, ASan/UBSan/-fno-omit-frame-pointer actual IPI fixture passes703
+  checks, executable `cleanup-ipi-root-20261001` in build evidence directory
+  `smp-priority-2026-10-01`. Current source hashes: p4_ipi.c
+  5428cbc24c809c03cbe25b7b67b9298f1e327280c177d30abc4863e39806a636;
+  header eb4bebfa51d71c32a995711bc0da360b458ebb807b91415a6eae7279d00ae617;
+  fixture924af076b0437a4e859ebfef9bf19acb96e4a9181c52a6062e9de8b9b8271a08.
+  Fresh isolated GCC16.2 RV32 imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f,
+  medany, matching local sysroot/generated includes and strict warnings,
+  D1001/Exec SMP/platform SMP/runtime-ready/FPU/atomic-core selection compiles:
+  `cleanup-ipi-smp-20261001.o`9348B SHA256
+  d0193a2d5930406eeafbf3f43d4ae3dadfb19ffd1376efce03e2ceb2a3e1ab8b.
+  Unique output avoids stale mmake object reuse. This is not a full core/BSP
+  link, concurrent-hart test, consumer qualification or hardware evidence.
+  Independent source review dispatched; no new hardware action.
+
+### 2026-10-01 - E3 protected worker wake consumer source selection
+
+- Root selected `p4_cleanup_worker` and `p4_task_cleanup` in the P4 SMP Exec
+  source list, with a platform-only ServiceTask loop override. The loop checks
+  canonical current worker/ServicePort/mask, arms readiness once, clears signal
+  before draining durable registry claims, then waits. It never reads a raw
+  queued Task. Permanent worker ownership permits delivery to its snapshot
+  through the locked signal adapter, with asynchronous scheduling after unlock.
+- Primary outer trap delivery skips disabled/nested continuations; dispatcher
+  and idle repoll deliver outside Task/queue locks and remask after Enable.
+  Root corrected an initial misplaced idle poll before compiling. Caller
+  fixture and independent review are dispatched to separate Luna workers.
+  Fresh isolated build/hashes and test results remain pending for this group.
+- Configure still refuses unfinished SMP. Generic RemTask's raw message path,
+  parent cleanup topology, target RUN/pin drain, completion and actual Wait
+  selection must agree before runtime use. No second hart, board reset, flash,
+  media change or interactive test; no whole-system/hardware acceptance claim.
+  Next qualify caller/binding and resolve review findings before admission.
+
+- Root fresh strict isolated GCC16.2 RV32 SMP builds pass for all caller files
+  using the preceding doorbell RV32 flags, with rom/kernel include added for
+  trap/CPU. Unique evidence outputs, sizes and SHA256:
+  `cleanup-worker-smp-20261001.o`4072B
+  4c021e070800afa88e1579775654a35bf747f911e2e692dda0a5ba2a335b91eb;
+  `cleanup-consumer-smp-20261001.o`3544B
+  fc49043aa4b646cad4bcc1bfce39e66af59b517a9210325bfb322e4c3f72fb01;
+  `cleanup-service-smp-20261001.o`2264B
+  b91aa62e55f3ef58c8f20aec864b0409f7483b692c1b11fca6b1bd0da615f6c6;
+  `cleanup-cpu-smp-20261001.o`4640B
+  9e8b51ae09b5917e139438bda1547840763e0499451c9f8a99906cc07d39a196;
+  `cleanup-traps-smp-20261001.o`17068B
+  9a20487906f8a6792444c78fea37fb2747eb709441418f83029782ed4bd58386.
+  Consumer object is unchanged because only its warning comment changed;
+  source selection is separately recorded, not inferred from object hash.
+- Current source SHA256 worker
+  d8b0d4501799393cd76007c82f30eea15d6396923f56f549a02f2a456d09b736,
+  header1e7dce497204d987528f1b31b5f34678ac207fb6c4f1fdc7c59209253ee05904,
+  servicea190f2ff5f4d7a6bfbabaa055e27822153cccf2c6c2771bf4a371b9573d12190,
+  CPUfed8020274730b2d8ae33e071acbd1cca0c0c3d4daed792de3a80eba0c9f046f,
+  traps58736f6fbbf853e20e5255da42ebeffa4337a15019618ac4f9b866096539ced1,
+  platforme447de14f0ba0ef62012649249fa44861b25895b8240e755231d88ba2a561197,
+  mmake420a0620a47a89b4eb7328fe120daa61141c8a236fd4dd5e3d1d52b908f54c83.
+  No matching full link, concurrent runtime or hardware test follows.
+
+- Normal ServiceTask recompilation (same strict RV32 flags without SMP/runtime/
+  FPU/atomic defines) passes and remains byte-identical to the preceding normal
+  object: `cleanup-service-normal-20261001.o`4444B SHA256
+  d6a3a76fc5bb235a4c8c6a185c0dad7571497350e20a58a49e9ef00f16d38c48.
+  Independent doorbell review read by root accepts mailbox ordering but finds
+  an undocumented caller masking condition: outer Task/queue locks must retain
+  outer Disable nesting through unlock, since the helper balances Enable.
+  Header now states it explicitly; current switch/discard/dispatch/priority
+  final drops release Task locks before posting. Hart0 is the wake-delivery
+  executor, not necessarily the worker's current RUN owner; adapter effect
+  routes scheduling to the latter. Review clarification requested. Caller
+  boundary tests/review and full lifecycle remain open; no hardware action.
+
+- Frozen wake-binding root repeat passes81,778 strict Clang C11/O1,
+  -Wall -Wextra -Werror -Wconversion -Wpedantic, ASan/UBSan,
+  -fno-omit-frame-pointer/-pthread checks. Actual pins/registry/lifetime are
+  included; gate, Disable/Enable and asynchronous poke are mocked. Root read
+  the new wake cases: all three producer paths, coalescing/late arrival,
+  unarmed retention/re-poke, malformed worker refusal without event loss,
+  singleton/sole-RUN/nonzero-mask admission and nested masking at post-gate poke.
+  This is not the actual ServiceTask/adapter/trap fixture or a hardware test.
+  Reproduction uses `kernel/tests/p4-task-pins-test.c` and unique evidence
+  executable `cleanup-wake-binding-root-20261001`.
+- Frozen source hashes: pins C
+  a9b551a7313755480a990a9751c11c65dd34ad2ded0671197493bc5a1eb26c1e;
+  H306e368381120706f99c4b0e0f1311fdd87cba1214a77bbff9fe73020b147a87;
+  fixture5844d70d03d1cb51d167d56542ad65be6dc52736859f6c9c2584fb42386df50f.
+  Fresh strict isolated RV32 SMP pins object
+  `cleanup-wake-pins-smp-20261001.o`16484B SHA256
+  d2e6a85a137d38f12bc5148739a2223f67917ae85f497277347b7d599b676342.
+  Documentation-only IPI header clarification hash now
+  826e5223570828b5a0368573731756a5174f3a4d13c7e27c9167d52129956420.
+  Caller tests/review pending; no second-hart admission or board action.
+
+- Correction after the first frozen-source repeat: author subsequently wrapped
+  fixture corruption/restoration in the modeled registry gate and clarified
+  private header comments. Production pins C is unchanged; fixture has14
+  additional checks and is no longer the81,778 snapshot. Root read the change
+  and repeated fresh strict sanitizer compilation/run:81,792 pass, output
+  `cleanup-wake-binding-root-final-20261001`. Final fixture SHA256
+  62e98709ec81dc84f892552cb0dbe54f26fa0225d496a19082b1c2203f237b3d,
+  private header1ba2eae98431ee116abcf0f138da6d4d169dbbd4772ee45d29060ddc5ea42d85.
+  Earlier81,778 result remains evidence for its recorded earlier fixture only.
+  Report was not yet present when root attempted to read it; that read failure
+  is not a failed test. Caller qualification and startup/lifecycle remain open.
+
+### 2026-10-01 - E3 secondary arm gated by protected-worker ACK
+
+- Root added a worker-ready check before the IPI leaf gate on secondary arm.
+  Secondary must also retain outer Disable nesting, so the registry query's
+  balanced Enable cannot reopen interrupts during setup. Primary arm remains
+  independent of the not-yet-created ServiceTask. Missing readiness or nesting
+  fails before routing, latch changes or arm publication; no nested registry/IPI
+  gate. This makes the future startup contract explicit, not a completed entry.
+- Actual IPI fixture extended with modeled worker-ready/CPU-local nesting:
+  fresh strict C11/O1 Clang ASan/UBSan and strict warnings passes763 checks.
+  Unique evidence output `cleanup-ipi-ready-root-20261001`. Scope is actual
+  mailbox plus modeled readiness, not real startup or concurrent hardware.
+  Fresh RV32 object/hash and route-fixture regression follow below.
+- Root read final wake binding report `cleanup-wake-binding-tests.md` SHA256
+  a11b4cdad22279c734ae678804f2d3899e27ce9a99570ee236c62be170c16407.
+  It records the initial three test-expectation failures from already-pending
+  pre-arm work, corrected retention expectations and final81,792 checks.
+  No board reset/flash/media/interactive action. Configure refusal and previous
+  normal image remain. Next review/test actual caller boundaries and integrate
+  startup/removal/topology/completion before any hart1 runtime admission.
+
+- Fresh strict RV32 SMP `cleanup-ipi-ready-smp-20261001.o`9776B SHA256
+  1c3e6c0261970569c4b36904ed5b10cc7ca3886226edfe2f0e2026d0a9a360db,
+  compiled with the earlier full RV32 isolated flags and generated includes.
+  Actual route fixture fresh strict ASan/UBSan regression passes2,720 checks
+  (10 cases), `cleanup-ipi-ready-route-root-20261001`; route behavior unchanged.
+  Current source SHA256 IPI C
+  eecdd30cd769e6f239fa9467b6ff1b0cdb838c7f0719f79b4e77854e8f389254,
+  H2ac484d127e079487f4163f2aa8e8f332fba33a6f2148bbeab6818fa4e52aea0,
+  mailbox fixture67538e9f5325051cd79a44d1b6bd2e6d83b64669760c3102e91517788c40673c.
+  Independent reviewer notified of the additional admission change; previous
+  doorbell-only review does not qualify it. No full firmware or hardware run.
+
+### 2026-10-01 - E3 worker matched to P4 locked Wait implementation
+
+- Source inspection found the new worker would still call generic Wait, not
+  the P4 locked wait-token protocol paired with the context-save hook. Root
+  added P4 `wait` to SMP Exec selection and a header-only test boundary; normal
+  build selection is unchanged. Fresh isolated strict RV32 SMP compile passes
+  (`cleanup-wait-smp-20261001.o`); hashes/size follow qualification.
+- Actual Wait body fixture dispatched separately to Luna; independent reviewer
+  notified to inspect Wait/resume/context-save interaction. Caller314-check
+  fixture was delivered but root read/repeat is still pending. Neither fixture
+  proves real trap/switch execution or full removal/cancellation safety.
+- No configured full image or hardware action; configure refusal remains.
+  Parent/removal/completion and startup-entry gates still open. Next qualify
+  these actual callers and fix review findings, not merely their mocks.
+
+- Root read the full actual cleanup-worker fixture/report and repeated fresh
+  strict Clang C11/O1, -Wall -Wextra -Werror -Wconversion -Wshadow -Wpedantic,
+  ASan/UBSan/-fno-omit-frame-pointer:314 checks pass, unique executable
+  `cleanup-worker-root-20261001`. Fixture SHA256
+  eea870fc5e5b54b169302c7de5c6d30fb8987fd1bec72e630e13aafb84803dd0;
+  report0831f540882c3fe6377c14307ba368b934814e6030bdfa397c67140ac52e5cc1.
+  Mocks cover adapter/pins/port/SetSignal/Wait/cleanup/locks; actual delivery/
+  service bodies are included. The reported initial8-vs10 fatal-count assertion
+  was a test expectation correction, not a production fix. The fixture cannot
+  prove actual trap boundary, Wait/token commit or concurrent delivery.
+- Fresh isolated strict RV32 SMP Wait object2968B SHA256
+  bcaadc798a75be0ca1388378e50c4d97b520d9eeaefd98ed74912ff8ec2196d7;
+  source2816f2809f4bae8562b56a396673a49957a5220ebdcf24d507fbf463a3f4ef85;
+  source-listc0000b3d1ab149883e5ef8798041b6ea95ae28218878a0185bb0987a333b1aa5.
+  Test header exclusion is absent in the production compile. Actual Wait body
+  fixture/review is still running; no full link or runtime/hardware acceptance.
+
+### 2026-10-01 - E3 actual self-RemTask routed through retirement
+
+- Root source-selected `p4_self_remove` and added the P4-only self-removal
+  interception after protected-worker refusal, before generic logging/Forbid/
+  context/ETask access. Its current RUN ownership is augmented by an ordinary
+  pin; canonical Task lock covers the existing queue/retirement transaction.
+  Task unlock precedes final ordinary Unpin. Retained RUN ownership then lasts
+  until the retired trap/discard clears current_task and performs no-save
+  dispatch. No self context/ETask/free or raw ServicePort message occurs here.
+- Fresh isolated strict RV32 SMP helper and actual shared RemTask compilation
+  passes; test/review qualification is pending. A failed or unexpected returning
+  dispatch halts instead of continuing on a potentially freed Task stack.
+  This does not implement external removal completion/requester cancellation,
+  semaphore cancellation or parent topology; configure refusal remains.
+- Read-only completion callsite/lifecycle audit dispatched to Luna. Actual Wait
+  fixture and independent caller review remain live. No board reset/flash/
+  media/interactive test; normal source selection unchanged. Next qualify the
+  actual self route and integrate the full external-removal contract, not claim
+  the self-only path completes SMP.
+
+- Current dirty source SHA256 helper
+  852ff8d3ea7484bf3fceeec9627433da5740644fdc122faea4b2127064ed6f4a,
+  header4806226b0af0c0df7e3838529a306375cc48344d994b7d5eea1fc716cc5c5c12,
+  sharedRemTask90e637e172e2395cec8cb8e6cfdd33806905ab37dc453ea17f16dc95b5688889,
+  platforma0f891f7b436264ae68f1600817db83ef69928735d533b2487536d604294f863,
+  mmake7d2522c400d4bb8d38de94ad8cd9741569119251a33959e62264c54b0b1e395d.
+  Fresh isolated strict RV32 SMP outputs in current evidence directory:
+  `self-remove-helper-smp-20261001.o`2600B SHA256
+  6aafa84eae8a120bbcd76a32fd2fc3d415f32b987eb018d825ed95ead714da7b;
+  `self-remove-remtask-smp-20261001.o`5664B
+  34920166354bb1296b51188b533d123abea70bb73b92f789b267118afb33c2af.
+  These are not a full link, actual trap handoff or hardware evidence.
+
+- Root added actual-source `exec/tests/p4-self-remove-test.c`; strict Clang
+  C11/O1, -Wall -Wextra -Werror -Wconversion -Wshadow -Wpedantic,
+  ASan/UBSan/-fno-omit-frame-pointer compiles and runs71 checks, zero failures.
+  Reproduction output `self-remove-helper-root-20261001` in current evidence
+  directory. Tests include ordered pin/lock/retire/unlock/unpin/no-save dispatch,
+  NULL/non-current identity, pin/retire refusal and unexpected dispatch return.
+  Pin/lock/retirement/CSR/ecall effects are mocks; no actual shared LVO body,
+  real registry/queues/trap-discard or parent cleanup is executed by this fixture.
+  No hardware evidence. Normal shared RemTask recompilation also passes.
+
+- Helper fixture SHA256
+  f68b1f1395eb062c9db92a7bae201518dba9c385cf212c190eb562ae1865d960.
+  Normal RV32 shared RemTask object `self-remove-remtask-normal-20261001.o`
+  5268B SHA256
+  a9c1910f65d67095b029c347d547601086cff3e4e4fd5f31f09149edd04b611d,
+  byte-identical to the earlier normal baseline object. Only the P4 SMP
+  platform selects the new self route. Independent source review still pending.
+
+### 2026-10-01 - E3 Wait fixture nesting proof rejected on root inspection
+
+- Root read the complete actual Wait fixture and `cleanup-wait-tests.md`
+  (delivered report67327891cc571d88b0f44b1a3f2ef0d75052d2f7101bb701be70830f67fc88a9;
+  fixture99f4fd105ac5f2875460bc954c23c344844e4623f6fab089b200b9ae2f3391b1).
+  Author reported217 sanitizer checks, but Disable/Enable increment/decrement
+  mock_td_nest, the same value used for TDNESTCOUNT_GET/SET. Production uses
+  independent IDNest (interrupt masking) and TDNest (Forbid); the mock creates
+  a false nesting coupling. Root does not accept217 as nesting preservation,
+  actual switch or complete Wait qualification and has not run this snapshot
+  as accepted evidence. Portable protocol choices remain separately modeled.
+- Author correction dispatched: independent ID/TD state, actual -1 unmasked
+  convention, distinct nested-ID/unnested-TD and inverse cases, masked lock/
+  switch checks and independent restoration after resume. Production Wait
+  unchanged. Existing isolated build proof is not invalidated by this test
+  defect, but runtime proof remains missing. No hardware or media action.
+- External completion callsite audit and independent worker/caller review still
+  live. Next repeat the corrected fixture and resolve concrete review findings
+  before integrating further lifecycle changes or enabling SMP.
+
+### 2026-10-01 - E3 public Signal moved to canonical pinned writer
+
+- Root read complete independent cleanup-worker report SHA256
+  6563f10aa2ae2bae5170a20ac1221f458a67f9b887798f0226cb5d1b75650d62.
+  It accepts the local cleanup/selected Wait predicate ordering and secondary
+  arm pre-gate check under their contracts, but identifies generic Signal
+  bypassing the Task lock, external RemTask immediate cleanup, and absent
+  secondary startup caller. The review excludes the later self-removal helper.
+- Root fixed Signal source selection: SMP Exec now selects P4 `signal`, with
+  `P4_SIGNAL_TASK_PIN_BOUND=1` in both architecture make opts and local mmake
+  flags. Renaming the old READY guard to BOUND states pin-hook binding, not
+  full lifecycle readiness. The actual body is unchanged: ordinary pin before
+  target lock/read, locked raise/queue transaction, unlock then final Unpin,
+  immutable asynchronous effect and balanced Enable. Normal selection unchanged.
+- First root fixture link failed because the separate portable protocol source
+  was omitted (undefined p4_signal_raise_locked/set_except_locked); corrected
+  command links `p4-signal-wake-test.c` plus `p4_signal_protocol.c`. Fresh strict
+  Clang C11/O1, -Wall -Wextra -Werror -Wconversion -Wpedantic,
+  ASan/UBSan/-fno-omit-frame-pointer passes67 actual Signal/SetExcept-body checks,
+  `selected-signal-root-20261001`. Adapter/pin/queue/IRQ are mocks; no real
+  lifetime removal or cross-hart execution is proved.
+- Fresh strict isolated RV32 SMP Signal with explicit pin-bound define outputs
+  `selected-signal-smp-20261001.o`2836B SHA256
+  16c078a8b5eaae0e1d9a78891ff9e65528e4b427259a3ca0fab47a331a9fdd8e.
+  Source hashes Signal
+  dbc4a544531bf1aaf8f1659eb339ae014af949128d2e71b722a72ccff1175054;
+  mmakeaf8a680b201d0b7c52b48efc5f565f901d2ea9f021e4d5c16731a058969c7d4a;
+  makeoptsdf18aaf9c9c3b8f51ac47d68bc667fe660ddcb4c5fa8ac503db0405ede27f2da.
+  Unique outputs avoid stale object reuse. Independent selection review and
+  separate self-route review dispatched. No full configured link or hardware
+  action; external removal/topology/semaphore cancellation/startup remain open.
+
+### 2026-10-01 - E3 corrected Wait repeat and completion integration audit
+
+- Corrected actual Wait fixture SHA256
+  fa426dc6554cb5af70068a21961fd4a593ac49c475053828f5f9e2a8d742e9a6;
+  report c7a300849afc3d46deaff5660433826a1a31fa228975be3d298df7174e8fe906.
+  Root inspected the corrected model and repeated the report's strict Clang
+  C11 warning/ASan/UBSan command with a unique evidence output
+  `wait-body-root-corrected-20261001`, SHA256
+  c6ef11d2d273aab849fac61cc31b389d66bd98b06e80a0ff17c8b847bffb7a12.
+  Result407 checks, zero failures. Disable/Enable mutate only IDNest, while
+  Wait saves/restores independent TDNest; crossed nesting states and race/
+  spurious/blocked cases are covered. Adapter/context/IRQ/queue effects remain
+  modeled; no actual scheduler or hardware qualification. Old217 proof remains
+  withdrawn, not overwritten.
+- Root read complete `remtask-completion-callsite-map.md`, SHA256
+  00f45407b262e2e08bbbfbb840e63dad9c1f38c7fc53a55afe07cf9e98db0f83.
+  Actual external RemTask still bypasses drain; ACK is unbound after final
+  target FreeEntry access. Retaining an ordinary requester pin across a wait
+  can strand cleanup if that requester is remotely retired. Ticket references
+  alone are not Task pins and do not protect asynchronous notification.
+- Read-only feasibility audit dispatched for an alternative: heap tickets
+  indexed by stable private requester/target record identities, cancellation
+  under the registry gate, service ACK after all target cleanup, and live
+  requester poll/yield without retained waiter pins or Task notification.
+  Scheduler starvation, record reuse, lookup-before-dereference and lock order
+  require review before architecture selection; no production binding yet.
+- Fabian reports the display reconnected. No reset, flash or media action;
+  reconnection is not interactive readiness. Configure refusal and normal
+  single-hart image remain unchanged. Next resolve lifecycle reviews and
+  completion ownership before full matched build/concurrent hardware tests.
+
+### 2026-10-01 - E3 callback self-removal finding and scoped unwind correction
+
+- Root read complete independent Signal report SHA256
+  3ed8db1f93df6b10138200d8e89f39ea240f4f9d8628b2b1486612d02c156d70
+  and self-removal report
+  24b021a543b8dbcea57ca2a4c942a1d2a53715ee744a8ec5bbe90ed828c34648.
+  Signal selection/lock-unpin-poke order accepted locally. Self report finds
+  callbacks run at trap depth1, so self RemTask retires then issues a depth2
+  ecall that cannot dispatch. Prior helper71 mocks did not exercise this edge.
+- Root selected private scoped per-hart callback escape, not context refusal
+  as the final callback solution. `p4_callback_escape.c/.h` registers a
+  kernel-stack jump frame only around current-RUN outer-trap callbacks. Both
+  dispatch Exception/launch and TF_SWITCH hooks use it. Self removal checks
+  depth0 or matching registered depth1 before pin/retirement; after final
+  unlock/unpin, normal continuation dispatches or callback directly unwinds.
+  Outer switch/discard owns final RUN release. No runtime/public struct size
+  change, allocator or Task/list lock across callback invocation.
+- Remote-retire winner before pin/Task lock is recognized by raw registry
+  service/current-RUN proof, not Task fields. Invalid/non-service refusal still
+  fails closed. Owner-hart callback slots clear under raw MIE masking on normal
+  and unwind returns. Unsupported nested contexts fail before retirement.
+- GCC contract checked against primary documentation
+  https://gcc.gnu.org/onlinedocs/gcc/Nonlocal-Gotos.html : five-word compiler
+  frame buffer, longjmp value1, descendant-only longjmp, not libc setjmp ABI.
+  Root inspected RV32 ILP32F disassembly: wrapper saves/restores integer and
+  fs0..fs11 callee-saved registers; transfer restores frame/sp/label. Trap entry
+  enables FS for C/spill. Actual target register/FPU/unwind proof remains missing.
+- Fresh strict isolated RV32 sources compile, unique outputs in current
+  evidence directory: callback-unwind-p4_callback_escape-smp-20261001.o5308B
+  fa1e9292f3ea6e60181fa6ea8563fe958a7e135ffa489f6c2e45bc303fa7701e;
+  callback-unwind-p4_dispatch_callbacks-smp-20261001.o3876B
+  845d2d609d85ff4f85b4a022f1b7eddbe20836a48f405cc3b7872b6f8104f6ae;
+  callback-unwind-p4_switch-smp-20261001.o5444B
+  f23a3b676f7632af54d0650a5f7d37d0a1e7faebd6c7f05dcc42cd91d1b2b0a2;
+  callback-unwind-p4_self_remove-smp-20261001.o2588B
+  e1229b81e3b238b39e08f52ec7884763ee58a1d64bfdf785160a40393160dcb6.
+  Escape also compiles at -O2,4416B
+  a759188d3781669bf685f9b54140c9f0719356126d612dcd895161cbbfb2a351.
+  Subsequent helper comment edits do not alter built semantics.
+- Updated actual-source escape/helper/callback/switch fixtures dispatched to
+  Luna; correction review and register/FPU unwind test still required. First
+  documentation patch failed exact-context matching and changed no file; this
+  corrected patch records progress. No full link, reset/flash or media action.
+  Normal single-hart selection unchanged. Next verify correction and bind
+  external completion; SMP configure refusal remains intact.
+
+### 2026-10-01 - E3 RV32 callback-unwind emulator and completion feasibility
+
+- Added `kernel/tests/p4-callback-escape-qemu-test.py` and C/assembly/linker
+  fixtures under `kernel/tests/fixtures`. The C fixture includes actual
+  `p4_callback_escape.c`; runtime, depth and service ownership are mocks.
+  Procedure: `python3 arch/riscv-esp32p4/kernel/tests/p4-callback-escape-qemu-test.py`.
+  Fresh standalone GCC16.2 RV32IMAF(C)/ILP32F objects, O0 and O2, direct BFD
+  ET_EXEC link at 0x80000000, generic QEMU virt/max with 15-second timeout.
+- Root observed both pass-finisher exits0. Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01/callback-escape-qemu`.
+  O0 ELF8288B SHA256
+  02c5b62b6ac28a7fd94d542ab1d1eef4c5d5d595c77923cc321808c2b337c2c4;
+  O2 ELF7592B
+  9e2e20af17c35ea767d1fef948b3fdec1c6b688d5896792528398925d6fb5767.
+  Linker RWX-segment warnings retained in results; this fixture is not firmware.
+  Script SHA256 a5f08e7712a7f8a9dcf4abe3e5fe498c86e1ea2a447e4b8611086468e0fb67ab;
+  C fixture 7a897b07dce8627392306d29c8b5dd251ba896f1a15f658bcdf71a4542c7145b;
+  assembly 09d3b0e762a99c677f374baa9c51a6266c49acf2c9cdafb3a6dd97e8bc29bdb7;
+  linker ce652af4daf94ac52dfddb196229e2c60c1b8ca1e010449d775eb33b890b4ede.
+- Tests normal slot clearing, sequential modeled hart slots, forbidden depth,
+  unwind and ordinary transfer, with s1/s11/fs0/fs11 boundary sentinels.
+  Does not execute P4 CLIC/traps, actual registry or RemTask helper, concurrent
+  harts, all-register task FPU context, matched ABI or hardware. Independent
+  fixture review dispatched; no emulator result closes the D1001 gate.
+- Read full ticket-table feasibility report SHA256
+  f342e6d88f0012842b1b8f12128f3f9d829544230a93701c2ec3756e425b9892
+  and requester-yield scheduler report
+  6de8f38b9344b897eb66ddbefb2757e821b5ed5666813c532973f545e9ea133c
+  in the parent evidence directory. Published record-keyed tickets can avoid
+  waiter Task pins, but unpublished allocations/target pins can be stranded by
+  requester discard. Need cancellation-visible setup escrow, deferred garbage
+  outside outer locks, closure of every retire/claim API and ACK before record
+  free. Remote RUN ownership needs an explicit copied owner-hart poke.
+  Primary-only cleanup delivery can stall a hart1 polling requester indefinitely
+  when hart0 is masked; priority127/FIFO is not cross-hart progress proof.
+- Safety: no board reset, flash or media action; normal single-hart firmware
+  unchanged. Configure refusal intact. Next root-repeat/review host fixtures
+  and emulator, then resolve cleanup transport and completion ownership before
+  any matched full SMP build or concurrent silicon qualification.
+
+### 2026-10-01 - E3 callback host repeats and independent emulator review
+
+- Root read complete author report `evidence/callback-escape-tests.md` SHA256
+  762f36f61402712801efaf33ca640cb297776d40a0143ca9a79eb15cc5be6bb0.
+  Recompiled all four actual-source fixtures with Clang C11/O1,
+  Wall/Wextra/Werror/Wconversion/Wshadow/Wpedantic, ASan/UBSan and frame pointers.
+  Repeated with ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 and
+  UBSAN_OPTIONS=halt_on_error=1. Observed escape95, self175, dispatch258,
+  switch2,049 checks, exit0 and no sanitizer findings. Source hashes/commands
+  in author report. Unique root binaries in current evidence directory:
+  root-p4-callback-escape-test SHA256
+  b94fa6ed790b7147560de10e45b62695bad18af73354392d773aabd48b0e184b;
+  root-p4-self-remove-test
+  ef14ac010a98d3360d2c4d3faa7a98a53ea29bcbb9a687d7a821df1b80afa664;
+  root-p4-dispatch-callbacks-test
+  d51caf15f4811efeb1cb0bc152b127df0c2b1ae39cc12a39d3b223e85b670afe;
+  root-p4-switch-test
+  f011dc260c8150bc61a20d696a67ef27b073ed0e18abb4cf18816427f82efc40.
+- Host Clang cannot execute its builtin jump on this host target; fixture
+  substitutes native setjmp/longjmp and widens the buffer. Dispatch/switch
+  wrapper boundary is mocked, not a single complete Exec executable. These
+  tests verify local order, callback continuation exclusion and modeled remote
+  retirement winners, not actual P4 trap/registry/FPU concurrency.
+- Root read independent QEMU review SHA256
+  2ad4833efd389fbf7f74eeb8470a6bd246f67996ad258662165f46620f4573f6.
+  Reviewer repeated O0/O2 in `callback-qemu-independent-review-20261001`,
+  same ELF identities as root. ET_EXEC/BSS zero-fill/stack/gp inspected;
+  distinct failure finisher, final guarded pass and timeout reject tested
+  failures. No false-pass found; accept only actual RV32 escape/ABI scope.
+- Host fixture independent review dispatched to a non-author; production
+  correction review remains pending. No hardware or media action, no normal
+  image change, no configure-refusal removal. Next finish these reviews and
+  address external completion/progress ownership before secondary admission.
+
+### 2026-10-01 - E3 both-hart cleanup transport correction started
+
+- Root implements one masked IPI-gate transaction publishing cleanup
+  SWITCH|DISPATCH flags to both private slots. Latch writes only for armed
+  destinations, pending flags survive secondary reset/unarmed state. Normal
+  SignalPoke remains destination-specific. No remote CPU-local writes or
+  remote CLIC access. Either hart can now deliver at IDNest-negative outer
+  trap boundaries or taskless dispatch/idle boundaries; nested or disabled
+  continuations still skip delivery. Gate-serialized TakeCleanupWake grants
+  one permanent-worker snapshot; no Task/registry lock spans callback delivery.
+- Changed source SHA256: p4_ipi.c
+  b8218276d19b1866477c8e1914286b20a8b9e84d478be515a935f5640b2f3f72;
+  p4_ipi.h ec5fa9578edf3e9f7c40bf6ed8021cef0fd58ec10f5f63572d2303b1a006abd8;
+  kernel_cpu.c 7cb51c688b18252d272f75b98f1476c478eae4b6b9be740a314e06713374df25;
+  kernel_traps.c e2f23968dc44915ec81515709473adcfbd125d537f5b1d4882b0680fcb5c8048;
+  p4_cleanup_worker.h da17e82519075f9f4c60284eb1627c61bec31e0f3145b05865edfa28de71fb3e.
+- Fresh isolated GCC16.2 compilation of all changed executable sources passes
+  Wall/Wextra/Werror, RV32IMAF(C)/ILP32F, explicit current Developer sysroot and
+  generated includes, matched SMP defines, P4_E3_RUNTIME_READY/FPU/ATOMIC_CORE=1.
+  Unique evidence objects: all-hart-p4_ipi-smp-20261001.o10332B SHA256
+  3ce7c7da6ac86cfb422cbb9f3ae3e14d0bf22331eb54d10a6529fe219c21af64;
+  all-hart-kernel_cpu-smp-20261001.o4384B
+  ccc535e4a14f7484fc681efd9b1f58b14d561054dbbba591a106693c09b4bab6;
+  all-hart-kernel_traps-smp-20261001.o17052B
+  c90f6266537d5093e8c9272d1ef3209a86c126d440a408ea7e6bacd52f2b8dfc.
+  Normal (no SMP/runtime/FPU/atomic defines) strict isolated CPU/trap builds
+  also pass: all-hart-kernel_cpu-normal-20261001.o4688B SHA256
+  d53cc0af644ae286a73e81a9620d34012f5389f4bfc079d089b65def5aa3538c;
+  all-hart-kernel_traps-normal-20261001.o15520B
+  72bd70956c8ce8b69ad7b5a5cf32f177fbe9f0102d4942e24ea75116f1a1c83c.
+  This checks guarded caller compilation, not a new normal full image.
+  New host fixtures/independent review pending; no configured full link.
+  Old mailbox763/route2,720 counts predate this change. First doc
+  patch failed context matching without changing files; corrected here.
+  No complete SMP build or actual concurrent wake/runtime proof. Removing
+  primary-only transport does not guarantee progress of an interrupt-masked
+  remote RUN owner or close synchronous external RemTask completion.
+- Safety: no board reset, flash/media change, public ABI change or secondary
+  admission; configure refusal/normal single-hart image unchanged. Next
+  qualify both armed/unarmed publishers, coalescing/consumer races and actual
+  safe-boundary callsites, then address completion escrow and RUN-owner poke.
+
+### 2026-10-01 - E3 callback correction reviews accepted locally
+
+- Root read full production review SHA256
+  d15cc476854e9519ccb8da110356196e1c544b83890c8afc7bea7b6dec1c8e1c
+  and host review cb59ef3fd9f1eae006317d0addddc15d3abaa6e5f2d35f78e8dd1d6cae2bfdf8
+  in current evidence directory. No local escape ordering defect found;
+  production review checks callback lock release, exception abandoned epilogue,
+  per-hart ISR frame, GCC contract and final RUN release. Accept only under
+  registered callback/current RUN and service-retirement preconditions.
+- Generic external RemTask still bypasses those preconditions and frees
+  remote context/ETask/storage immediately; this is a concrete full-runtime
+  blocker, not safe concurrent removal. Arbitrary callback-owned resources
+  are not unwound automatically by nonlocal transfer.
+- Host review notes self fixture's boolean access guard does not mechanically
+  poison Task storage, and switch wrapper/queue boundaries are mocked. Root
+  requested new composed actual switch/self/escape fixture, callback-tail
+  exclusion and exactly-once final Task unlock/RUN release. Its result remains
+  pending. No matched link or D1001 qualification, normal image unchanged.
+- Next validate transport correction and composed callback, then replace
+  external removal with cancellation-safe completion and owner drain; retain
+  configure refusal and all concurrent hardware gates.
+
+### 2026-10-01 - E3 external completion construction candidate
+
+- Root inspected current registry record allocation/publication, raw registry
+  retire/claim transitions and detached cleanup consumer. Records are already
+  allocated independently before Task publication, but currently freed
+  immediately after cleanup; no completion retention or escrow fields exist.
+  `SMP.md` now records an unselected alternative to the unsafe heap setup:
+  prepublished per-record completion slot and cancellation-visible target pin,
+  atomic acquisition/index publication, retention of requester record after
+  requester Task cleanup until target ACK, deferred record garbage outside
+  locks. Abandoned setup pins cannot drop until requester RUN frame drains.
+- This is not a production binding or accepted architecture. Multiple remover
+  indexes, reentrant callback semantics, cancellation/ACK cycles, every
+  retire/claim route, RUN-release discharge and bounded validation require
+  audit and executable interleaving tests. No requester Task pin across yield,
+  allocator under gate, notification to an unpinned requester or immediate
+  target destruction is permitted by the candidate.
+- Evidence remains source-only. No object/image/hardware/media changes from
+  this sketch; prior transport builds remain separate local evidence. Next
+  finish current transport/tests, then independently audit the construction
+  before replacing the generic external RemTask path. Full goal unchanged.
+
+### 2026-10-01 - E3 both-hart local review and synchronous removal constraints
+
+- Root read complete independent transport report SHA256
+  1c226e7399c7dda27001f7a21f30a5f7ad3ea365a5728c6225ef6b6a9259506b
+  in current evidence directory. No concrete publisher/drain/snapshot ordering
+  defect found under caller contracts. Permanent worker pin protects snapshot
+  across gate release; pending-bit take is serialized; clear/drain/Wait handles
+  new arrivals. Review accepts source scope only. Hart1 still has no selected
+  startup arm/CPU-count publication path and remains reset-held. No integrated
+  or hardware proof; existing exact transport object identities unchanged.
+- Initial new boundary fixture used regex/static guard assertions and a
+  Python matrix, not executable production C. Root rejected that as requested
+  callsite qualification and asked author to extract/compile actual delivery
+  blocks. Static assertions may remain explicitly static; new results pending.
+- Root inspected `rom/exec/remtask.c` contract/comment: external cleanup must
+  finish before return because the caller may free the Task afterward. Async
+  retirement alone is not a replacement. Normal calls inside Disable/Forbid
+  require nesting-preserving yield. Callback depth1 cannot issue a scheduling
+  ecall; a normal pending removal can be reentered by TF_SWITCH callbacks,
+  invalidating an unreviewed one-slot assumption. Prepublished escrow candidate
+  audit dispatched with these explicit compatibility/progress obligations.
+- Safety: no board/image/media mutation, no admission/configure change. Next
+  root-repeat new executable transport tests, qualify composed callback path,
+  resolve escrow/reentrancy before actual external removal implementation.
+
+### 2026-10-01 - E3 both-hart mailbox root repeat
+
+- Author froze updated actual `p4-ipi-test.c`, SHA256
+  7292f8fdf64339b08a14f5e1eb229d2a932b76eae20b5bd40e8fb6f74e6f79d8.
+  Root read fanout cases, compiled with Clang C11/O1/g,
+  Wall/Wextra/Werror/Wconversion/Wshadow/Wpedantic, ASan/UBSan/frame pointers.
+  Run with detect_leaks=0:halt_on_error=1 and UBSan halt_on_error=1.
+  Observed mailbox1,004 and route2,720 checks/10 route cases, exit0,
+  no sanitizer findings. New mailbox count supersedes763 for current mask3.
+- Checks both-unarmed sticky flags/no latch, independent owner arm/relatch,
+  one-armed fanout, both-armed coalescing, both latch publications before
+  gate unlock, balanced Disable/Enable and retained outer masking. Actual C
+  publisher/drain is included; gate/runtime/CLIC transport are mocked. Route
+  fixture includes the updated mailbox setup but its route cases remain
+  register-model only. No true concurrent producer/drain or silicon proof.
+- Unique root artifacts in current evidence directory:
+  all-hart-mailbox-root-20261001 126960B SHA256
+  ff21db0a82c4c468da763b22020dcc779fd21e5218d7cb2e59680718b58e4a99;
+  all-hart-route-root-20261001 164144B
+  8b7ff41b4c2167d3beff82b81aea0bec3e1a641c2cf7034aee6f1f8dc35935ba.
+  No flash/reset/media action, ABI/configure/admission change or full image.
+  Next finish executable delivery-boundary fixture and composed callback,
+  then audit/implement completion escrow and remote RUN-owner drain.
+
+### 2026-10-01 - E3 cleanup selection status reconciled with source
+
+- Root checked current Exec mmake list (`p4_cleanup_worker p4_task_cleanup`),
+  platform ServiceTask hook and actual service loop calling the claim consumer.
+  Master E3-RC and early phase prose still described this as unselected/no
+  production call. Corrected to experimental SMP source-selected, not runtime
+  qualified. Prior dated unselected evidence remains history, not current state.
+- No implementation, ABI, image or hardware change. Consumer ACK and metadata
+  topology remain unbound and external generic removal is unsafe; configure
+  refusal remains required. Next current executable transport/composed-callback
+  verification and cancellation-safe external completion, not admission based
+  on source selection alone.
+
+### 2026-10-01 - E3 retired RUN-owner notification started
+
+- Source-selected only: RetireForService captures the live RUN owner in the
+  same registry transaction as retirement, drops the gate, then sends an
+  asynchronous copied-destination poke. No retiring Task dereference follows.
+  Caller outer Disable and Task/list locks remain required; no forced progress
+  on a MIE-masked hart is claimed. Independent review and new endpoint/binding
+  tests are pending. Existing all-hart evidence does not qualify this endpoint.
+- Source SHA256: p4_task_pins.c
+  f5164b3cf082a9e5af2fb75e03f24b675b5ae5465e235e0fac8327a3da783153;
+  p4_ipi.c 57b0b60c99d1b783d8cc4739f4c25bb79d7a397849bdc175325753e9fab6d39d;
+  p4_ipi.h 8cf5ba4707cf0514ef4a64edfe140316729741d2a4f62492fd2f1fa7b42a3431.
+- No new full image, configure admission, flash/reset/media action. Display
+  reconnection is not visual readiness. Next strict isolated RV32 builds,
+  actual binding/publisher fixture repeats and independent owner-order review.
+
+### 2026-10-01 - E3 composed callback and delivery-boundary root repeats
+
+- Actual-source composed switch/self-removal/unwind fixture SHA256
+  84b7a80b6c36ef0c98df3cb264267b621e6501ff9a4d04db40ce2d7580493683
+  passes root strict Clang C11 O1/O2 ASan/UBSan, 622 checks each, exit0.
+  Task/ETask/frame storage is ASan-poisoned at final RUN release; no callback
+  tail executes after escape. Native host setjmp replaces RV32 builtins;
+  registry/queue/locking boundaries are deterministic mocks, not concurrency.
+  Extracted actual dispatcher/trap C script SHA256
+  e0db6ec4e24d425568608a3ecd9e1f5babe6dd2eb42b07d1a8642e7fc8f3fa74
+  passes root python3 -W error invocation,49 checks including both harts,
+  outer/nested and ID-masked cases, delivery-before-remask. It extracts snippets,
+  not a combined trap/scheduler/registry execution. Boundary harness temporary.
+- Unique evidence artifacts (current evidence directory): composed-callback-
+  root-O1-20261001 206176B SHA256
+  f8b083a4aabef1ef770f3c34a51fca3935efa467eb7c3078818ff11f0567803c;
+  root-O2-20261001 206112B
+  33d067779766df61b0c0b9e985e470afe8d55351df800f7acf081bd8a05ebbd0.
+  Strict Wall/Wextra/Werror/Wconversion/Wsign-conversion/Wpedantic,
+  frame pointers, ASAN detect_leaks=0:halt_on_error=1, UBSAN halt_on_error=1.
+- Retired-owner sources compile freshly with prior explicit Developer sysroot,
+  generated includes, RV32IMAF(C)/ILP32F, Wall/Wextra/Werror and matched
+  SMP/runtime/FPU/atomic defines. retired-owner-p4_ipi-smp-20261001.o10596B
+  SHA256 a3342fa78a54cfe62b9de7b997f75fc73155dc822e643ec4c59d59ea1344acd5;
+  retired-owner-p4_task_pins-smp-20261001.o16852B
+  f8f982e0d45ee65d5490c160511a062a8df7dcb6df0aae30e693181edcab3ddb.
+  Isolated objects only, no configured full link or public ABI qualification.
+- Owner-binding fixture V1 passes81,952 root strict sanitizer checks, with
+  PROT_NONE target identities on each hart and preserved outer masking.
+  Artifact retired-owner-pins-root-20261001 279856B SHA256
+  7eba48ec412624f1223fe10ee4ba831126b49d793148e30787b4dce1d58c0048.
+  V2 adding nonRUN/refusal cases compiles but stalls; root interrupts rather
+  than records a pass. Independent fixture diagnosis pending. New publisher
+  author reports1,249; root repeat and owner production review pending.
+- Safety: no flash/reset/SD/cable action or configure admission; connected
+  display does not authorize an interactive test. Next resolve V2 fixture,
+  repeat endpoint cases, review owner ordering, then completion/reentrancy.
+
+### 2026-10-01 - E3 retired-owner publisher root repeat
+
+- Root reads frozen endpoint cases and repeats actual p4_ipi.c fixture with
+  strict Clang C11/O1/g, Wall/Wextra/Werror/Wconversion/Wshadow/Wpedantic,
+  ASan/UBSan/frame pointers, detect_leaks=0:halt_on_error=1 and UBSan
+  halt_on_error=1. Result1,249 checks, exit0, no sanitizer findings. Both
+  copied destination endpoints, sticky unarmed/owner arm, armed destination
+  isolation, outer Disable retention and invalid2/UINT32_MAX refusal pass.
+  Spinlock/runtime/CLIC are mocks, not concurrent hardware delivery.
+- Fixture SHA256 0d4d5f452c0fc3a1b3568015d14363ac567afad336ba342f6ded372a3aa0af1b;
+  root artifact retired-owner-ipi-root-20261001 162560B SHA256
+  9605e556d4251c53353241f67c21850720936227b9532f2b01af6d863b20644b.
+  Source57b0b60c and header8cf5ba47 match prior full hashes. Extended pins
+  fixture stall remains unresolved, not a production or hardware failure claim.
+- No hardware/image/media/ABI/admission change. Next finish fixture diagnosis
+  and independent owner ordering review, then synchronous callback completion.
+
+### 2026-10-01 - E3 extended owner binding repeat; interruption unreproduced
+
+- Same unchanged V2 binary now passes82,010 under root Python subprocess
+  timeout10, exit0,0.014s, same ASan/UBSan environment as earlier run. Independent
+  non-author also reports strict sanitizer pass82,010 under timeout10. No edits
+  between initial interruption and successful repeat. Earlier no-output run
+  remains unexplained; no confirmed fixture or production defect, no invented
+  root cause. Completion of repeat does not erase the interrupted run.
+- Fixture dd8caa3c9894d69fb46bb861e04023e37676659af1288df4513b535db9347dc2;
+  retired-owner-pins-root-20261001-v2 281680B SHA256
+  23326904099c55c10d725db73b79866dc1e9454928578d9fd1d8430992580d00.
+  Extends V1 with copied owner publication while outer masking stays intact,
+  nonRUN/no-owner-poke and unknown/protected-worker refusal. Actual registry,
+  lifetime and binding included, spinlock/MIE/publisher mocked; target and
+  permanent-worker Task identities PROT_NONE, no physical concurrent proof.
+- No image/hardware/media/admission change. Next independent owner review,
+  synchronous external-removal/reentrancy construction, then full SMP gates.
+
+### 2026-10-01 - E3 retained cleanup claim/finish integration started
+
+- Root selects a distinct retained claim for the actual cleanup consumer:
+  keep claimed opaque identity linked through last target/context/entry frees;
+  then validate raw record membership, finish/detach, FreeMem outside the gate.
+  Legacy detached claim helpers remain separate. Bounded registry implementation
+  and actual-state fixture delegated; root owns gate bindings/consumer/tests.
+- Root source SHA256 p4_task_pins.c
+  57893ac764f2b63d9377ecd3738ade93a99c42a9da9954dd9285ee4e85137a1c;
+  p4_task_pins.h deed920d780b0923da7c44ad1fe52381d9fbdea8a025ac186677e0a063fcd59c;
+  p4_task_cleanup.c31db448ea4a9dce218ca304fcfe413b8e265358f733f98af27a4fb725cf0df8c.
+  Tests/builds/review pending; no whole image or runtime claim.
+- Root read prepublished escrow review SHA256
+  bd2c857b7f6913f26a59b1f90d9ecfeaa1a37ec80821420e5ac07999b1fd8e27:
+  candidate remains unselected. Callback reentrancy/nested scheduling,
+  pre-Task-access atomic admission, target fan-in/in-flight indexing,
+  requester cancellation/ACK/deferred frees and independent ID/TD preservation
+  require closure. New retained claim is one prerequisite, not requester ACK.
+- Safety: no hardware/media/reset/flash or configure admission change. Next
+  actual registry/gate/consumer tests and independent lifecycle review, then
+  callback-safe completion with source-backed pin progress dependencies.
+
+### 2026-10-01 - E3 owner review accepted locally; retained consumer fixture
+
+- Root reads retired-owner-independent-review.md SHA256
+  42ff91eb04a37602fd56283c7203ae516195d165d355e1654f35f005870b6e96:
+  local snapshot/Task-list-to-registry-to-IPI ordering accepted under outer
+  Disable and startup contracts. READY/WAIT can retain RUN during handoff;
+  owner destination is copied, stale scheduling poke harmless. Review precedes
+  new retained lifecycle bindings and does not qualify their registry changes.
+- Revised actual cleanup consumer fixture f883b10f64807ddb848885ca28b4b2ff80fea0ec090467be6d1c27c97883d864
+  passes root strict Clang C11/O1/g, sanitizer/conversion/shadow/pedantic
+  warnings,133 checks, exit0. Mock retained claim/finish ordering; existing
+  Task/ETask PROT_NONE after frees proves no late target access. Finish occurs
+  after every FreeEntry and before record FreeMem, outside mocked gate.
+  Artifact retained-cleanup-consumer-root-20261001 83688B SHA256
+  be1410bd11cc6a618877528818c3b02b6cb17c5c5deb17881cf6fe37013efac5.
+- This does not prove actual registry retention, requester ACK or concurrency;
+  registry author and independent lifecycle review remain live. No board,
+  image, media, configure-admission or public ABI change. Next registry freeze,
+  actual binding tests and independent review before completion integration.
+- Fresh isolated retained-cleanup-consumer-smp-20261001.o3648B SHA256
+  90b4b8fe7be2e33f2bb9b0a4080f69663bb7f5613112ec4f9371723d26cfebae
+  compiles under current explicit Developer sysroot/generated includes,
+  RV32IMAF(C)/ILP32F, Wall/Wextra/Werror and matched SMP/runtime/FPU/atomic
+  defines. No full link or independent registry qualification from this object.
+
+### 2026-10-01 - E3 retained lifecycle root host/build repeats
+
+- Frozen registry Cfd57a1118a1c88a086dbfdf0091f5e4036299e3044d169938e1309401e4b6b5c,
+  H8121ad3a0cc91c94dd8102fb96bd58768b2dc56f6d7effb3be4600eff4221fa1;
+  new actual-source fixture c0abfc9834affe0c67e8fa949e140aa2d339cd7d090c8dd752f00ad8e4188514.
+  Root reads transitions/alias defenses and repeats strict Clang C11/O1/g,
+  Wall/Wextra/Werror/Wconversion/Wshadow/Wpedantic ASan/UBSan/frame pointers,
+  detect_leaks=0:halt_on_error=1, UBSan halt_on_error=1, timeout10:
+  retained428, legacy registry80/service370, actual pins82,107, queue711,
+  creator332 pass exit0. Extra pins/RUN prevent claim; opaque PROT_NONE
+  identities remain indexed, duplicate registration/claims/refinish refused,
+  unknown raw record compared before dereference, output alias cannot corrupt
+  registry. Mock gate/transport, not actual concurrent harts.
+- Consumer fixture now includes actual registry/lifetime bodies alongside
+  actual consumer, SHA256 bb372ae3efd61456c62d5aa6eea284b1705dc06dce28d770a2958e57276fc943;
+  root repeat171 passes. Every FreeEntry probes retained state and refused
+  pin, even after Task/ETask become PROT_NONE; actual finish happens after all
+  frees, before record FreeMem. Admission and IRQ/gate adapters remain mocks.
+  This supersedes133 mock-registry fixture for current source.
+- New evidence artifacts: retained-p4-service-inflight-test-root-20261001
+  169920B SHA256 ae0a61357a3e91c3e1ed0e58f0f7c7ce715b30d302fb3dcb04d5b1453d0c6e69;
+  retained-p4-task-pins-test-root-20261001 301240B
+  eb5294e96cff42f859b0c294f4ed84ab4d9ee152edacc31bad28c1d92ae81f6a;
+  retained-cleanup-composed-root-20261001 155496B
+  5547cfcdf44e9a5710b9acde42f8c3da2ab787fad50c43b7ce2bee8587276be;
+  retained-p4-task-registry-test-root-20261001 149344B
+  882b78993094e3214080c46b83c0d82166187b4e91600de9e8c03cae681e85a6;
+  retained-p4-task-service-registry-test-root-20261001 148632B
+  7ed401435e01034c61ab295cd79c1eda878436b605aba847d7bacd23ae550087;
+  retained-p4-service-queue-test-root-20261001 180880B
+  0e34101bb3db54f65289785b36c5a34f429564940e7679bdc1ea60e8c3bec885;
+  retained-p4-task-publish-test-root-20261001 224408B
+  60ed8f13842c123f9574414ca7d1cc75f5a59533b5385628d00d39cd192563b7.
+- Initial creator fixture compile fails Wshadow on new mock parameters and
+  existing global runtime; renamed fixture-only variables, strict repeat then
+  passes332. No warning suppression. Transport mocks refreshed in queue and
+  creator fixtures, not a publisher/silicon qualification.
+- Fresh isolated strict RV32IMAF(C)/ILP32F, current Developer sysroot/gen
+  includes and matched SMP/runtime/FPU/atomic defines pass:
+  retained-p4_task_registry-smp-20261001.o16904B SHA256
+  48daec9ce9276fd8a135e0c28ec3fc30150b53e2d5a7f37be29f70d991b4fe48;
+  retained-p4_task_pins-smp-20261001.o18068B
+  2e1e66ff4288dcb8915a417ab698f27e43283b6b7cdd2012a7ea10c22a34dcaa;
+  retained-p4_task_publish-smp-20261001.o4644B
+  567b80fc1da3b1b11cca60a0d7a574e20320fc78c1cd98bcb0528f3312538230;
+  retained-cleanup-consumer-smp-20261001-v2.o3648B
+  90b4b8fe7be2e33f2bb9b0a4080f69663bb7f5613112ec4f9371723d26cfebae
+  (fresh post-freeze object matches earlier consumer hash).
+- Record layout is private but grows; every allocation/consumer must rebuild
+  together in the future full SMP image. These isolated objects do not satisfy
+  that matched-image gate. No flash/reset/media/normal baseline change,
+  configure refusal retained. Next independent lifecycle review and external
+  cancellation/fan-in completion, including callback progress dependencies.
+
+### 2026-10-01 - Final retained fixture repeat and independent lifecycle review
+
+- Root repeats the final two-record fixture with strict Clang C11/O1/g,
+  Wall/Wextra/Werror/Wconversion/Wshadow/Wpedantic, ASan/UBSan and frame
+  pointers. ASAN detect_leaks=0:halt_on_error=1, UBSAN halt_on_error=1;
+  Python subprocess timeout10:478 checks, exit0, no sanitizer finding.
+  Fixture SHA256415828e62c9739a343ad7c66115c10a28e3d1f0afcfe2a0247eef2d72a937f1e.
+  New unique evidence binary retained-p4-service-inflight-test-root-20261001-v2
+  171280B SHA256ac3c780b67d8d5d59e3b2d5ed7c3d4d27e274c0d7b9bb03f12ae1a8cb0182f09.
+  Prior428 fixture/artifact remain historical; registry production C/H unchanged.
+- Root reads independent service-inflight-integration-review.md in full,
+  SHA256db921bd8c3ddded821043c8cd4cbaad5ef97633f1c91ea24b46ee86a32015479.
+  Narrow retained claim/finish and final-access ordering accepted. Policy
+  krnP4TaskRemovalAllowed is NOT lifetime admission: successful pin required
+  before dereference. Parent ETask topology and requester completion remain
+  activation blockers. Reviewer performed source review, not test reproduction.
+- Root reads remtask-inline-progress-audit.md in full,
+  SHA25652a800ba8bf4f7c6704f2a717d33667438d255d6496d8b2e1983823f44ddcdb5.
+  Semaphore wait requests live on Task stacks and require unlink/cancellation
+  before reclamation; ordinary pins/RUN alone do not cover them. Creator pin
+  spans prelaunch hook, creating a same-stack cycle for synchronous pin-drain
+  removal there; supported API semantics at TS_ADDED are not established.
+  Allocator-hook reentrancy is conditional, not an observed board failure.
+- Display reconnection acknowledged, not treated as interactive readiness.
+  No board reset/flash/media action; normal baseline unchanged, no full SMP
+  image or silicon concurrency qualification. Configure refusal remains.
+  Next: complete semaphore mutation-surface inventory and select one unified
+  arbitration/cancellation protocol before implementing external completion.
+
+### 2026-10-01 - Semaphore arbitration binding construction
+
+- Root selects existing ss_MultipleLink.sr_SpinLock, initialized by the
+  current InitSemaphore SMP path, for per-semaphore arbitration. Private
+  bounded IRQ-safe binding implementation assigned; no shared public API
+  candidate selected yet and no public ABI change. Complete mutation-surface
+  and blocking callback-context audits run in separate read-only packets.
+- Source inspection confirms ReplyMsg -> InternalPutMsg -> PA_CALL invokes
+  application code (rom/exec/putmsg.c119 onward). No semaphore gate may span
+  this reply. Signal/Wait/Alert/allocation likewise remain outside arbitration.
+  A detached stack-node notification list is insufficient: Task pins prevent
+  reclamation but not local request reuse if a foreign SIGF_SINGLE returns
+  the waiter. An explicit operation completion predicate is required.
+- Safety: no hardware/build/image/flash/media action at this checkpoint;
+  normal baseline unchanged, configure refusal intact. Host gate verification
+  alone cannot qualify semaphore lifetime/cancellation or real SMP.
+- Next: integrate the private gate after source review/strict host+RV32
+  qualification, then bind Task-independent wait-operation state, complete
+  API routing and retirement cancellation before actual concurrent tests.
+
+### 2026-10-01 - Private semaphore gate isolated target build
+
+- Actual private binding Exec_P4SemaphoreLock/Unlock uses the initialized
+  embedded semaphore spinlock, one Disable/acquire and release/Enable pair,
+  bounded20,000 BUSY/TRY_TIMEOUT retries and fatal masked failures. Root reads
+  production C/H and compiles a fresh unique RV32 object with GCC16.2,
+  RV32IMAF(C)/ILP32F, Wall/Wextra/Werror, explicit relocated Developer sysroot
+  and gen includes, matched SMP/runtime/FPU/atomic defines:exit0, no diagnostics.
+  Source C SHA256f8fdf002719c673b5611d67592016c43c22983154b443b9cd1045808a212a328;
+  header at build6898e75f0af3b927a78521bc351e205b7b3ecf8972d8e7db13a4963db5c98136.
+  Evidence p4-semaphore-gate-smp-root-20261001.o2784B
+  SHA256c51ef9a766c71b4fc75d0ecf1a99403b6cfd2f09e898bc9cd839fbd44f457219.
+- SMP-only mmake source selection includes the binding; no public semaphore
+  callers routed yet, no regenerated aggregate/link/full image. Normal CFILES
+  unchanged. Host fixture in progress; this is isolated build evidence only.
+- Root reads complete semaphore-mutation-surface.md. Core interception set:
+  InitSemaphore, InternalObtain/InternalAttempt, ObtainSemaphoreList,
+  ReleaseSemaphore, Procure/Vacate; ReleaseList delegates. Report's first
+  wording 'leading shared waiters' corrected on request: actual Release scans
+  every matching shared node, not only a leading cohort. Additional AHI custom
+  routines omit the initialized lock; conditional pthread queue path and raw
+  owner-reader build/use selection require follow-up. No optional bypass
+  exclusion assumed from this source inventory.
+- No flash/reset/media or normal artifact change. Arbitration cannot establish
+  wait-node lifetime, foreign-signal completion or retirement cancellation.
+  Next freeze/repeat host fixture, then complete wait-operation binding and
+  coordinated API routing before configured/hardware SMP acceptance.
+
+### 2026-10-01 - Semaphore gate root repeat and supervisor Wait correction
+
+- Root reads complete frozen semaphore binding/fixture/report; production
+  C/H match prior isolated object source identities. Actual-source fixture
+  SHA2567d4aaa3bc28267f7f11d09a18f9037f13c5aba249ae8e074681e73450cd13d25.
+  Strict Clang C11/O1/g, Wall/Wextra/Werror/Wconversion/Wshadow/Wpedantic,
+  ASan/UBSan/frame pointers, detect_leaks=0:halt_on_error=1, UBSAN halt1,
+  subprocess timeout10:132 checks, exit0. Unique root binary
+  p4-semaphore-gate-host-root-2026100180088B
+  SHA2566a7b9159c2c52e452dfda6f29adfc812362891c674e49b7b0f3f0a2bcd2af47d.
+  Confirms retry bound/IRQ nesting/fatal no-Enable and embedded-address-only
+  mutation with mocked spin service, not actual multi-hart contention.
+- Context audit identifies a real selected Wait-entry gap: scheduler/trap
+  callbacks may arm the wait token before nested ecall cannot switch. Root
+  fixes actual P4 Wait to Disable, reject CPU-local trap_depth!=0 and null
+  Task before Task lock/token access. Even an already-present signal cannot
+  bypass the documented supervisor restriction. No resource lookup/callout;
+  fatal retains masking. Valid task-context wait behavior remains unchanged;
+  this does not yet guard ObtainSemaphoreList's earlier queue mutation.
+- Actual Wait C SHA256e5419c0c5696d4f835b77e3bb296202f5869e23a4fcf3db9ad343198b041b63d;
+  actual-source fixture360058dd8c2380f5bdeda7b8c64863988bade44de6bb2e5fb5c4ecdfc7bedd1c.
+  Same root strict sanitizer configuration:437 checks, exit0, no finding.
+  Depth1/depth2, immediate signal, existing wait token and outer IRQ mask cases
+  refuse before adapter/lock/ecall; task fields/token remain unchanged.
+  Evidence p4-wait-supervisor-root-20261001123808B
+  SHA256e640faa3ce7336eb058f724374b960eebad3d2ecf3398ac114920220281a105a.
+  Fresh strict isolated RV32IMAF(C)/ILP32F object, matched SMP/runtime/FPU/atomic
+  flags and relocated sysroot/gen includes, no diagnostics:
+  p4-wait-supervisor-smp-root-20261001.o3024B
+  SHA256da83159ad0e693853e660434518304f69b38edf3f15b1e9b7ee1f310489b9034.
+  Prior407 Wait result remains historical; independent new guard review pending.
+- No hardware/flash/media/full link action or normal baseline change. SMP
+  configure refusal intact. Next independent Wait guard review, prepublished
+  wait-operation ownership and full semaphore routing/cancellation.
+
+### 2026-10-01 - Wait-operation context audit and semaphore bypass follow-up
+
+- Root reads final semaphore-wait-slot-context-audit.md completely,
+  SHA256977ab56296ee1fb926bfbc12171eee6773ea0391881356d795106b8ee3493092.
+  One prepublished per-Task wait-operation slot is sufficient for the audited
+  valid blocking contexts under single RUN ownership, provided it covers an
+  entire ObtainSemaphoreList operation and remains owned through all reachable
+  requests. Prelaunch/normal PA_CALL/allocator hooks recurse synchronously;
+  scheduler callbacks remain invalid blocking contexts. This is source-only
+  supporting evidence, not a selected full cancellation/completion protocol.
+  The report's old Wait hash predates the437-check entry guard just recorded;
+  the remaining ObtainSemaphoreList entry restriction still needs binding.
+- Mutation inventory wording corrected: all shared-marked nodes in the whole
+  queue are granted when the head is shared, not only leading shared nodes.
+  Final semaphore-mutation-surface.md
+  SHA256ac4cab223dcbd3d49b0c144a214d1ad7fdc2d0b4be05ffab2cd4617daff68606.
+  Follow-up identifies Intuition ILOCKCHECK and POSIXC flock raw owner/count
+  reads as correctness/lifetime decisions, not merely diagnostics. Their
+  selected build path and coherent-snapshot handling belong to full E3-SM.
+  Optional AHI/pthread absence must be tied to matched artifacts, not assumed
+  from a repository search. Detailed selection report still pending.
+- No hardware or deployment. Next implement wait-operation storage and indexed
+  cancellation/notification lifetime, then route all selected semaphore APIs
+  and correctness readers together; actual concurrent acceptance remains open.
+
+### 2026-10-01 - Independent Wait guard review and configured bypass evidence
+
+- Root reads wait-supervisor-independent-review.md completely,
+  SHA256d0e0614d1b775f0334bec9aa04d29ddc1234933cd93ff5399c2bb76a65b6e003.
+  Independent strict actual-source437 sanitizer checks reproduced; narrow
+  valid-runtime guard ordering accepted. Runtime macros still assume a valid
+  initialized context and current-task load precedes Disable; this review
+  does not prove absent-runtime failure or concurrent removal/RUN lifetime.
+- Root reads semaphore-p4-bypass-selection.md completely,
+  SHA2568609c94292c450fc0ba2c2d1fb83ac70903e7baa0c7e71cc0cac11860d1cff0c.
+  Existing 35-member package contains no AHI; current manifests/generated
+  object tree omit it. Current P4 predefines/preprocessing select pthread's
+  Procure/WaitPort/Vacate path, not the __AMIGA__ direct waiter queue branch.
+  Pre-existing package3310068B SHA256
+  8c848f8122cd5afdfa414820e8fcc0b4bbb23e43fc3cfa97321613cea84b736d,
+  dated September29, differs from earlier backup: not a fresh matched SMP
+  package or proof of flashed bytes. Old pthread objects are not current
+  preprocessing evidence. Intuition ILOCKCHECK and flock teardown owner/count
+  decisions are behavior-bearing and remain in E3-SM routing obligations.
+- Failed audit-package.py invocation omitted READELF and stopped after
+  extracting to /tmp/_pkgmember.o; temporary file left untouched. Successful
+  membership follow-up parsed PKG bytes in memory. No repo/build overwrite,
+  hardware/reset/flash/media action or default change. Configure refusal stays.
+- Next: actual wait-operation/cancellation binding and coordinated public
+  semaphore/correctness-reader integration, then matched full image and
+  concurrent hardware qualification. Local review is not E3 completion.
+
+### 2026-10-01 - Nonblocking semaphore attempt platform mapping
+
+- Dirty-worktree construction only: SMP exec_platform.h maps paired semaphore
+  hooks with explicit SysBase; normal branch remains generic. Header SHA256
+  60cc7790aba75b56276c0ab8a582d9c078d5e9e3e736d08bdeecd92a0a4af784;
+  actual shared semaphores.c SHA256
+  c1908b21db130141d42c21bb209ad2e318d2f630640e0129af818531048172b9.
+- Fresh isolated strict GCC16.2 RV32 objects, never linked or deployed:
+  p4-semaphore-attempt-smp-root-20261001.o5428B SHA256
+  ae855c55ad3a5bf15eeb28f684aa2f943f8a6eb1964fa6fd1aa53f593bc6d96a;
+  p4-semaphore-attempt-normal-root-20261001.o5460B SHA256
+  6be1caebe806d886b7ae171b27d880ded1473ae4581c2c598eecfa35a88ef9c4.
+  Both live in AROS-ESP32-build/evidence/smp-priority-2026-10-01.
+- Procedure: compile actual rom/exec/semaphores.c with -Wall -Wextra -Werror,
+  -march=rv32imafc_zicsr_zifencei_zaamo_zalrsc -mabi=ilp32f -mcmodel=medany,
+  explicit relocated Developer sysroot and gen/include; D1001/Exec-library
+  defines. SMP additionally selects both SMP defines, P4_E3_RUNTIME_READY,
+  P4_E3_FPU and P4_ATOMIC_CORE. Both commands exit0, no diagnostics.
+  riscv-aros-nm -u finds Exec_P4SemaphoreLock/Unlock in SMP only; normal
+  object imports only Exec_ExtAlert. This verifies mapping, not full linkage.
+- Safety: no reset, flash, SD write or interactive test. Reconnected display
+  does not imply visual readiness. Configure refusal remains intact; isolated
+  Attempt locking must not be deployed with still-unbound Obtain/Release.
+- Root reads actual Attempt source, complete fixture and author report, then
+  repeats python3 exec/tests/p4-semaphore-attempt-body-test.py from the port
+  path: strict Clang ASan/UBSan passes116 normal/149 hook checks, including12
+  pthread contenders with one exclusive winner. The gate and surrounding
+  CheckSemaphore/Forbid/Permit are mocks; releases are outside this fixture.
+  Author report semaphore-attempt-binding-tests.md SHA256
+  977c9daeafa5c14abf4b8d4ac0970f6382b20c2fa6a81ee5bb2fb487cecbd941;
+  tested fixture SHA256
+  d6fd7e3aaee308c32ced298c4c1fc4319d4518ba75a402293ffef7ce52aae1f7.
+  Explicit sanitizer-fatal child options and subprocess timeouts requested
+  before final fixture selection. Independent narrow review underway.
+- Fixture hardening subsequently selected and root repeated116/149 with
+  compile30s/run10s bounds, ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 and
+  UBSAN_OPTIONS=halt_on_error=1; both exit0 without diagnostics. Final fixture
+  SHA25681b963ee14e7a395b7ef1c274a478b5c575fcc4915225babe039d797acd42ae7;
+  revised author report SHA256
+  820f2f45fc97d1fde71b04e1b159b2789bad8f6759953b7dafd6bcf25a9517d6.
+  Prior fixture/report hashes above identify the earlier run, not final files.
+- Next: finish/review actual Attempt contention fixture and generation-stamped
+  blocking-operation registry, then indexed cancellation, complete public API
+  routing and full matched concurrent qualification. Neither isolated object
+  establishes a working SMP image.
+
+### 2026-10-01 - Wait-operation binding and early cancellation wake construction
+
+- Root accepts only the narrow independently reviewed Attempt body/mapping:
+  semaphore-attempt-independent-review.md SHA256
+  bc178cf02d385908f39ecd24bb310bff2cd3bf8b29f5911d5dd6193c30f7164f,
+  read completely. Independent116/149 repeat passes; mutex and supervisor/
+  nesting mocks remain explicit, not actual cross-hart runtime evidence.
+- Added explicit SysBase scope wrappers in kernel/p4_task_pins.c/.h. Registry
+  gate masks IRQs through every transition; wrappers expose no record pointer.
+  Cancellation eligibility independently reserves the durable cleanup wake
+  before ordinary pin drain; existing final RUN release retries reservation.
+  Finishing cancelled scope can reserve the newly eligible service wake.
+  Production sources SHA256:
+  pins.c55777c7c1132a8d278d91a6dfb2dccfcb3d7be79d1fcfcf771fc3c260e4e37c8;
+  pins.h24e8e1b7abfd5bf300a17055ce5d1c899198a6b95230487c4b432ef82ae8070a.
+- Fresh isolated GCC16.2 strict RV32 compile exits0 without diagnostics, with
+  the same explicit relocated sysroot/gen/include and gated SMP/FPU/atomic
+  configuration as the preceding Attempt entry. Object
+  p4-semaphore-wait-pins-smp-root-20261001.o23812B SHA256
+  d0d3391db07d510a1e2b17cd1f59fbfbb9ecdfb33a4f35b401fd23d13c005b92,
+  in AROS-ESP32-build/evidence/smp-priority-2026-10-01. Registry author source
+  was still in construction at this compile; final integrated rebuild pending.
+- Root source inspection found wait_ready omitted live-state rejection:
+  retired, closed, empty scope could report ready before cancellation claim.
+  Correction and targeted regression requested before leaf acceptance.
+  Actual binding fixture expansion and independent registry review underway.
+- Safety: no hardware/reset/flash/media changes. Configure refusal stays;
+  these are construction bindings, not a cancellation consumer or working
+  public blocking API. Held/granted ownership and partial LIST construction
+  must be cancellation-indexed in addition to queued nodes. Async Procure and
+  external synchronous RemTask completion remain separate open obligations.
+- Next: final registry correction/strict repeat/review, actual binding wake
+  tests, then complete queue/ownership cancellation publication protocol and
+  coordinated public API routing. A leaf test cannot close E3-A1/A2/A3.
+
+### 2026-10-01 - Frozen wait-operation registry root verification
+
+- Root reads registry implementation and complete author report. Final source
+  SHA256 registry.c23079b3ba6398e1434bf3a582af1d9e36412632a79eb5b872cf250645f442180;
+  headerc41326f91a1897d1419841135b4d3e0f12fa7f35193225f0ad01acd90c77b3bc;
+  fixture20cd9165170cc66bdd5d57f6db74fc46d362c208ca1ff05a4429eb3720fc6ead;
+  semaphore-wait-registry-tests.md SHA256
+  0236f11d6f7defaf5748095f2dc573561ee6680a057ef662d8ae035008e0ba87.
+  Missing live-state readiness guard corrected, retired/closed/empty case
+  explicitly refuses success without mutating scope. Earlier150-check
+  snapshot superseded; initial duplicate _DEFAULT_SOURCE compile failure
+  remains documented by author, not erased.
+- Root fresh Clang C11/O1/g compile with -D_DEFAULT_SOURCE, strict warnings
+  including conversion/sign-conversion/shadow/prototypes/pedantic, ASan/UBSan,
+  pthread and frame pointers; actual production registry+lifetime included.
+  Python subprocess10s bound and fatal sanitizer options pass171 checks.
+  PROT_NONE Task/index identities are never dereferenced. Host artifact
+  p4-semaphore-wait-registry-host-root-20261001240848B SHA256
+  18a163a1b524dcd2e8975c4b4d53e71d32d1e7227d1c5c4630512f83ac02214c.
+- Final source strict isolated GCC16.2 RV32 objects also exit0:
+  p4-semaphore-wait-registry-smp-root-20261001.o27716B SHA256
+  be40485a8c367e01764d22b74a8c3c6ad4823558c4ba03175f93e959b7b88c69;
+  p4-semaphore-wait-pins-final-registry-smp-root-20261001.o23812B SHA256
+  d0d3391db07d510a1e2b17cd1f59fbfbb9ecdfb33a4f35b401fd23d13c005b92.
+  Same explicit relocated sysroot/generated includes and SMP/FPU/atomic
+  flags as preceding entries. Unique artifacts in the same evidence directory;
+  no configured build, linkage, deployed core/BSP/ABI or hardware claim.
+- Author reports existing80/370/478/82107 regressions passing; independent
+  leaf review/regression repeat and expanded actual binding wake fixture are
+  pending. The registry fixture is caller-serialized, not concurrent Exec.
+- Safety/defaults unchanged; no hardware action. Next resolve partial LIST
+  progress and already-granted ownership cancellation, then actual Obtain/
+  Release/Procure/Vacate and correctness-reader routing, matched build and
+  concurrent headless D1001 qualification. E3 remains incomplete.
+
+### 2026-10-01 - Independent wait-registry review and root wait-binding repeat
+
+- Root reads semaphore-wait-registry-independent-review.md completely,
+  SHA2565836925bd7c3a5fc5856e76e80e90fa60a0b79be44e9f8453022b3f02d1a9833.
+  Independent171/80/370/478 sanitizer runs pass; source hashes match final
+  registry. Narrow caller-serialized lifetime/state review accepted. Every
+  count grant/withdraw still requires exactly one real node transition under
+  its semaphore gate; the leaf cannot prove that pairing or ownership rollback.
+  Withdraw intentionally accepts retired scope without an exclusive cancel
+  claim, so outgoing-owner and service-canceller discipline must be explicit.
+- Root reads expanded actual binding fixture/interposers and complete author
+  report semaphore-wait-binding-tests.md SHA256
+  c0f2ad7f068e135550cad98e7905ddce40423d14cf9a60a7784eb877e0af1c91;
+  fixture SHA256a50fa8654718dc9fdb39f6cfe23f066d494f24c31ca80041a4a21b5693bbd7f2.
+  Fresh Clang C11/O1/g, -D_DEFAULT_SOURCE, Wall/Extra/Error/conversion/shadow/
+  pedantic, ASan/UBSan, pthread and frame-pointer build passes82,554 checks
+  under Python10s bound with fatal sanitizer settings. Prior82,107 retained,
+  447 checks added; all eleven wait registry helpers assert gate held/MIE0.
+  Scope pins and separate grant notification pins drain independently;
+  retirement wakes cancellation before pin drain, zero-queue RUN-held scope
+  stays quiet, final RUN release re-wakes, and FinishCancel then reserves the
+  normal service wake. No real semaphore nodes or queues are in this fixture.
+- Host artifact p4-semaphore-wait-pins-host-root-20261001396216B SHA256
+  8a9efa4010642fedbd73115d4c934c6e529c459297e190e19632c0ded2e2f094,
+  in AROS-ESP32-build/evidence/smp-priority-2026-10-01. Actual pins/registry/
+  lifetime C composed, public-spin/Disable/Enable/poke mocked. Independent
+  binding review remains pending; no configured build or hardware claim.
+- No hardware/media changes or defaults changed. Next complete index and
+  queue publication for partial construction, queued versus granted ownership
+  and exactly-once withdrawal/rollback, then actual public API integration
+  and matched concurrent qualification. Configure refusal remains intact.
+
+### 2026-10-01 - Cancellation wake retry corrections, isolated build verified
+
+- Independent binding review found two gaps beyond the earlier82,554-check
+  snapshot: generic Task-record retirement omitted eligible cancellation
+  wake, and final RUN release while cancellation was claimed could be quiet
+  without claim release republishing a wake. Both wrappers now reserve the
+  durable wake under the IRQ-masked registry gate and poke after unlocking.
+- Corrected p4_task_pins.c SHA256
+  84f77573f14fc0687e69ce0075ff6172b6521198f55ac71beca49463107a3f07;
+  header24e8e1b7abfd5bf300a17055ce5d1c899198a6b95230487c4b432ef82ae8070a.
+  Fresh isolated GCC16.2 compilation with explicit relocated sysroot,
+  generated includes, RV32imafc/ilp32f, SMP/runtime/FPU/atomic defines and
+  Wall/Extra/Error exits0 without diagnostics. Artifact in the dated evidence
+  directory: p4-semaphore-wait-wake-retry-smp-root-20261001.o24132B SHA256
+  0d240be6bac610e694227fd225bf323034c54257b78181090b4d20ebf58019f8.
+- Expanded actual-binding tests and independent corrected-source review are
+  pending. Earlier host results remain historical and do not verify these
+  new orderings. No configured build, linkage or concurrent hardware claim.
+- Read-only ownership publication audit ec75eadf8a1e6f875e735343f0b71b8c559229a4669c9d94f858cdcd7506d11c
+  confirms that queued count cannot account for acquired units or partial
+  LIST progress; stale sr_Waiter is not a generation marker. Report:
+  semaphore-partial-ownership-publication-audit.md in the same directory.
+- Safety: no reset/flash/media/device interaction; activation refusal and
+  flashed baseline unchanged. Fabian reports display reconnected, not visual
+  test readiness. Next repeat the expanded wake tests and independent review,
+  then resolve complete ownership/cancellation publication before public API
+  routing and matched concurrent D1001 qualification. E3 remains incomplete.
+
+### 2026-10-01 - Corrected wake binding root repeat and independent acceptance
+
+- Root reads the frozen added generic-retirement and held-claim/final-RUN/
+  release-claim sequences, the complete author report and independent review.
+  Fresh strict Clang C11/O1/g build with -D_DEFAULT_SOURCE, Wall/Extra/Error/
+  conversion/shadow/pedantic, ASan/UBSan, frame pointers and pthread exits0.
+  Python subprocess10s run with leak detection off and fatal sanitizer options
+  passes82,772 checks. Independent repeat matches. No warnings or failures.
+- Fixture10c190e1071304a03a6eabeb8572b601878605a35ad841def722d1f8fa467c64;
+  author report060f765094d9e585779d7969ef3b812829af940241c065112581afc09f7136bc;
+  independent report1555344b1bb5135dc7c9f51faab35ef905e733c4e7acb6d6f10235dc2300e1d6.
+  Production source remains84f7757 as in the preceding entry. Root host artifact
+  p4-semaphore-wait-wake-retry-host-root-20261001413536B SHA256
+  e3f8e1952e0fef4838c1c6f7c8cbb0256d3f6695476e1ff7238f8f2006b37e6d
+  in AROS-ESP32-build/evidence/smp-priority-2026-10-01.
+- Acceptance is narrow: actual pins/registry/lifetime compiled, public-spin,
+  interrupt masking and cleanup-poke mocked; no real semaphore node mutation.
+  Both original lost-wake findings are resolved and specifically exercised.
+  Malformed cancellation-readiness fatal path is source-reviewed, not injected.
+- Full routing still needs an ownership ledger, not only a queued counter.
+  A private per-operation entry candidate is under read-only adversarial audit.
+  Root finds AllocMem can call memory handlers and itself acquire semaphores;
+  allocating an unindexed context before publishing the scope leaves a removal
+  window. Per-entry stack allocation would instead add list-size stack demand
+  absent the existing embedded-node API. Neither fallback is selected or tested.
+- Safety/defaults: no device, reset, flash or media action; configured SMP
+  activation remains refused. Next resolve complete operation storage and
+  ownership publication, integrate all public paths, then build matched core/
+  BSP/ABI and qualify real concurrent Exec. E3-A1/A2/A3 remain incomplete.
+
+### 2026-10-01 - Private boot-reserved semaphore operation storage selected
+
+- Root selects caller-supplied, boot-reserved private operation/entry arrays
+  for ownership accounting. Runtime reservation uses the registry leaf gate,
+  not operation-time AllocMem or arbitrary list-sized stack storage. Capacity
+  is bounded and must be reported; failure before any semaphore mutation must
+  not masquerade as a successful void Obtain. No public ABI extension selected.
+- Each entry has explicit unvisited/queued/owned/released/withdrawn state.
+  Anonymous cross-Task Release consumes completed units before scoped owned
+  units; commit converts all remaining scoped units to completed atomically,
+  without counter mutations. Cancellation rolls back only uncommitted units
+  still owned, never previous recursive or already released acquisitions.
+- Bounded implementation and actual-source state tests are delegated to
+  separate workers with disjoint ownership. No artifacts, passing tests or
+  runtime integration are claimed for this new packet yet. The reviewed wake
+  binding and its82,772 checks remain unchanged.
+- Source constraints: AllocMem invokes memory handlers after a failed
+  allocation, those obtain LowMemSem and call user code synchronously; a
+  pre-scope heap allocation therefore cannot bootstrap this protocol safely.
+  A shared grant batch must retain/copy every destination before notifications
+  can complete operations and recycle entries. Async message reply batches
+  are still a separate durable-storage requirement.
+- Safety: no device/reset/flash/media change, activation refusal intact.
+  Next freeze/review actual ledger code, bind reservation and ownership to the
+  Task registry and boot-reserved memory, route complete public APIs and worker
+  cancellation, then matched core/BSP/ABI and actual concurrent qualification.
+
+### 2026-10-01 - Boot-reserved semaphore arena bootstrap binding
+
+- Root implements p4_boot_reserve.c/.h and p4_semaphore_boot.c/.h. The
+  gated SMP startup reserves permanent operation/entry/request arrays before
+  krnPrepareExecBase, with MIE clear and hart1 reset-held. No Exec allocator,
+  callback or runtime memset service is used. Build source selects these and
+  the new ledger only for the SMP variant; no generated mmake/full link yet.
+- Default1024 operations and4096 entries compile to217,088 payload bytes
+  (RV32 operation36B, entry24B, real SemaphoreRequest20B), plus prefix alignment
+  padding; the static ledger is40B SRAM. Compiled object disassembly confirms
+  the three extents0x9000/0x18000/0x14000. Bounds/failure withhold Exec.
+  Plain, single-chunk PSRAM ownership is checked before mutation; managed,
+  fragmented, malformed and output-overlapping pools refuse unchanged. Lower/
+  Upper are preserved and a valid remaining chunk supports TLSF conversion.
+- Root actual reservation-body fixture passes857 strict Clang C11/O1/g
+  Wall/Extra/Error/conversion/shadow/pedantic ASan/UBSan checks under Python10s
+  bound/fatal sanitizer settings. Host MemHeader layout is a shim; target
+  isolated GCC16.2 compile uses real generated SMP headers and explicit
+  relocated sysroot. Reservation, arena bootstrap and changed kernel_startup
+  compile independently without diagnostics; no linking/runtime claim.
+- Source SHA256: reserve.c7e3951690923092500516753b533f7874af38530ed06a77c028f55d9e5a0674d;
+  reserve.h3b181659358a2a4353b95bb31df1119936d1523d6daf068787618bd0f109405b;
+  fixture23371aa8f22aaad8c45a596e14df7e0fc772de216c8f52b254ae1a214d59ec73;
+  boot.cebec3f2a40b5a61b4189b8edc8f09fdef06982004a1030ee5480b401197ba58d;
+  boot.h5509fe0e6f0b3084536369ed4b037e09ccb55fee982cf0d336a4a624e4550286;
+  startupd9f3c0e9bc7babec45db9004e3016bde7f77313e4bd24d070309ecd370387be8;
+  mmake068ad9d464b6f39b72c328d9f43ff29ab72fe7cc9ca24b9f305ef6a4a487feb3.
+- Artifacts in the dated evidence directory: p4-boot-reserve-host-root-20261001
+  54912B/d1c92ad2e75f1d3e0728cc24d2fcbbfb2ead27ae4994b936ae3814b73c12011a;
+  p4-boot-reserve-smp-root-20261001.o2780B/
+  20e0f30ee3e2ef3a78cb3bee52410df16654a7c37a05d7260099a20690e1f982;
+  p4-semaphore-boot-smp-root-20261001.o4576B/
+  14d71c076a8caa9272289489262043b7bd0a0fedd5467b5e93aa8257bb6f092f;
+  p4-semaphore-bootstrap-startup-smp-root-20261001.o66900B/
+  0d9380bc03352564ae9228ae4d07b5c273c4d87052ebc079d7e2a91d3c598676.
+- No device/reset/flash/media action; normal flashed baseline unchanged and
+  SMP activation refusal intact. Next finish ledger tests/review, review boot
+  reservation and bind registry/public APIs/cleanup; whole matched build and
+  real concurrent hardware acceptance remain open.
+
+### 2026-10-01 - Composed semaphore arena root repeat and ledger corrections
+
+- State: boot arena binding progresses; public semaphore routing and full E3
+  remain open. Display reconnection reported by Fabian; this is not visual
+  readiness. No reset, flash, media or interactive action performed.
+- Root review found the original ledger withdrawal unreachable: a general
+  cancelled-operation refusal preceded the withdrawal requirement. Author
+  now permits WITHDRAW and ROLLBACK for cancelled operations only. Reclaim
+  cross-index validation is now before its first mutation; no failing return
+  follows request-list removal. Initial C44538b88830f13bf4ca64a9b552c2c73f72a31642009c8ea165790646eb162d8
+  is superseded by C f38ac38cd69909ad9f0888e8705f0d1b0f6fd817deb566d889d260fd5805e4ea;
+  clarified header b428f98dfbd145b22e843e04e98bcfee513c775f5a5d890308c52021ecfbba95.
+- First composed fixture compilation failed with one unused author helper
+  parameter and two uninitialized root dummy-identity warnings. Both sources
+  were corrected. An erroneous attempt to execute the absent initial binary
+  then raised FileNotFoundError; that attempt supplies no passing evidence.
+  Subsequent compiles were checked before execution, using fresh filenames.
+- Procedure: Clang C11/O1/g with Wall/Extra/Werror/conversion/shadow/pedantic,
+  ASan/UBSan and frame pointers; fatal sanitizer settings, leak detection off.
+  Actual reserve C, ledger C and boot C are included by the root fixture;
+  host MemHeader/SemaphoreRequest layout shims and test capacities3/7 are
+  explicit. Both corrected and final frozen-header runs pass72/0 checks.
+  Failure after prefix reservation withholds that storage and refuses retry;
+  no successful acquisition/public API/hardware inference follows.
+- Fixture SHA256273d8b2d72a5af85c30d0682d64480a1e0a4468f505a7fa741c6f1d3065252ae.
+  Evidence directory: AROS-ESP32-build/evidence/smp-priority-2026-10-01.
+  Final binary p4-semaphore-boot-host-root-frozen-20261001:
+  SHA2565f6324f63183ae85eac59a4c060f7c67abba464de63f84e329bd763f79d2b127.
+  Fresh isolated real-header RV32 GCC16.2 boot compilation succeeds:
+  p4-semaphore-boot-final-smp-root-20261001.o4576B,
+  SHA25614d71c076a8caa9272289489262043b7bd0a0fedd5467b5e93aa8257bb6f092f.
+  No make regeneration, matched image, link or boot performed.
+- Runtime atomic policy regression passes36 checks after bootstrap binding.
+  Read-only MemHeader audit8b5f3c1fa617c8e232717b8baff8e16e9ce1b572313d482a68f1552522711b0c
+  found mh_SpinLock has no current consumer; allocator uses global MemListSpinLock.
+  No speculative per-header lock initialization fix was applied.
+- Safety: unchanged normal flashed baseline and media; configure SMP refusal
+  remains intact. Next complete independent ledger/boot review, then publish
+  operation reservation and lifetime scope atomically under the registry gate
+  before the first semaphore mutation; integrate cancellation/public routing,
+  matched build and real concurrent headless qualification.
+
+### 2026-10-01 - Atomic semaphore arena/scope publication binding
+
+- Prior goal turn was progress: composed root boot72 and policy36 regression,
+  corrected ledger source and evidence documentation. This turn implements
+  the next missing publication transaction rather than activating unqualified
+  SMP. New private OPERATION scope stores the opaque arena identity in
+  list_index; it is never an Exec List. Cancellation consumers must classify
+  kind before interpreting that index.
+- p4_task_registry_wait_reserve_operation_locked validates live unique RUN,
+  generation/pin capacity and disjoint registry/record/arena/output storage,
+  reserves the complete entry set, then publishes its generation/scope pin
+  without an intervening unlock, allocation, Task dereference or callback.
+  Every refusal is before reservation; after successful reserve the registry
+  publication has no fallible step. krnP4SemaphoreOperationReserve consumes
+  the boot ledger getter under the canonical registry leaf gate. No public
+  Exec semaphore API calls it yet.
+- Legacy Finish and FinishCancel now refuse OPERATION scopes, preventing
+  pin discharge while arena ownership remains indexed. This is a temporary
+  safety guard, not lifecycle completion: fused reclaim/finish and retirement/
+  ledger cancellation are required before public selection. Generic Begin
+  does not admit OPERATION; only the fused reserve path can publish it.
+- Source SHA256: registry.c b0b2c1f69c2d4d35e522bcb12614bb91697b4b29a6ae7701dc499633aea686da;
+  registry.h6c0298f2c572909484d2a90534f35d462b087513e6b5d416c4bc02166962387c;
+  pins.c21ae0c84477a96efb391c4d81d982b04afa90a46c438a42f407c3deabe905a08;
+  pins.h23645693796364328e1124030017bb85aff7646e2c2db19c03b39789c035336b.
+- Root fresh isolated GCC16.2 RV32 objects use the explicit relocated sysroot,
+  both SMP ABI defines and existing runtime/atomic/FPU flags. Registry uses
+  C11; pins uses GNU11 because generated AROS inline headers use asm. First
+  pins C11 attempt failed on those headers and generated no artifact; GNU11
+  retry compiled cleanly. Its original command was followed by a hash command,
+  so combined shell exit0 was not compile success. Fresh final commands ran
+  separately and returned exit0, with independently inspected artifacts.
+- Evidence directory smp-priority-2026-10-01: registry frozen RV32 object
+  p4-ledger-admission-registry-frozen-smp-root-20261001.o29892B,
+  SHA256bf6670c6aff83f5555fc606f854ff7fb32a7d72881e3e5ec273a0b82e4d93848;
+  pins frozen RV32 object p4-ledger-admission-pins-frozen-smp-root-20261001.o24716B,
+  SHA256d05b96a4b5c6f046b411763f4da02ed1114e7eb2cd0009b3430d7a9aa7ce640b.
+  Strict Clang C11/O1/g warnings+ASan/UBSan legacy actual wait-registry fixture
+  passes171 checks: binary p4-wait-registry-after-admission-host-root-20261001,
+  SHA256b0dea484726dd1d4fb20ab6f6b75f6d841db0a96d1c8cf2083c55834ffe107f5.
+  That host fixture excludes the new SMP-only reserve and does not test it.
+  Dedicated actual-source admission tests and independent review are pending.
+- Author ledger report1d11134f5761727e4de56e964892c063b70536266173cad1379544f389fd4975
+  read by root; its boot72/leaf-object evidence is narrower than ledger-state
+  completeness. Independent arena review reports reserve857/boot72 repeats,
+  final report not yet accepted. No full-build, ABI refresh, link, image or
+  hardware action performed; normal flashed baseline/media unchanged.
+- Next safe step: test/review the fused admission, then add fused completion
+  and cancellation under the same gate, real nodes/public APIs/cleanup,
+  matched whole build and actual concurrent headless D1001 qualification.
+  Configure activation refusal remains intact; goal remains active.
+
+### 2026-10-01 - Admission alias ordering correction; boot review accepted narrowly
+
+- Root found an argument-check ordering defect in its initial fused admission:
+  ledger metadata was read before rejecting a ledger object overlapping a
+  registry/record. Such a typed alias could access the wrong-sized object.
+  Storage rejection now precedes the first ledger metadata read. Registry C
+  ed03838bbf5fef1f19cc14f39c56fa956f6d3f76d21f7c94b45b8664fd968922
+  supersedes the prior b0b2c1 snapshot; header/pins hashes are unchanged.
+  Dedicated fixture author and independent reviewer were informed and asked
+  to cover raw and partial ledger-object aliases without typed dereference.
+- Fresh strict RV32 GCC16.2/C11 compile succeeds on the corrected C:
+  evidence p4-ledger-admission-alias-order-smp-root-20261001.o30012B,
+  SHA256bab97cc40399aeaa7bcd6762a29c8b4cbc2f46df3bb536d100be88cef70d7a9f.
+  This is source-review correction plus isolated build evidence, not a passed
+  admission-state regression or concurrent execution result.
+- Root read the complete independent boot review and accepts its narrow
+  unpublished-storage/bootstrap-order conclusion: report
+  semaphore-boot-independent-review.md SHA256
+  1be8ea806649dff66d8123c8387eb43e44c09094299c2a64212343ff81b51d4c;
+  actual reserve857 and composed boot72 strict sanitizer repeats pass.
+  No matched link/boot/TLSF execution or runtime routing was tested. The prefix
+  helper preserves one chunk but does not guarantee TLSF metadata fits an
+  arbitrarily tiny remainder; production pool sufficiency remains a startup
+  precondition to verify in the matched build/boot.
+- No hardware/media action; baseline unchanged. Full E3-SM and activation
+  remain open. Next complete frozen ledger/admission tests and independent
+  admission review, then fused reclaim/finish and retirement cancellation,
+  actual public paths, matched full build and hardware qualification.
+
+### 2026-10-01 - Frozen ledger fixture and root repeat
+
+- Actual-source ledger test4a2e516c932ba942a2797d8b773a53576b21768a3cd0fab311240c10b64baada
+  freezes at C f38ac38c/Hb428f98d (full hashes above). Test-author report
+  semaphore-ledger-tests.md SHA256316442f9f60da57a91cc0f66c5bc99c470c67d96348441ed643e9a1abfb72769
+  read completely by root; O1 and O2 each pass280 strict Clang sanitizer
+  checks. Early four failed fixture assertions were incorrect oracle
+  expectations corrected to the API contract; no pre-fix production replay
+  was performed, so no regression-reproduction claim is made for that code.
+- Root fresh O2/g/C11 Wall/Extra/Werror/conversion/shadow/pedantic compile
+  and fatal ASan/UBSan repeat pass280 checks. Artifact in dated evidence:
+  p4-semaphore-ledger-o2-host-root-20261001 SHA256
+  b60bddceeec3d605a40420e1b6178c0e86cf0f0fda22488e3056491fbd73db4f.
+  Covers fixed-pool exhaustion/reuse, opaque PROT_NONE identities, unchanged
+  failures/aliases/corrupt counts/cycles, commit/cancel/withdraw/rollback,
+  released restart and completed-before-pending anonymous Release accounting.
+  Modeled serialized interleavings are not concurrent Exec semaphore queues.
+- Independent production-leaf review dispatched to the fixture author, who
+  is not the production author; root integration remains separate. No target
+  whole-build/runtime/hardware evidence follows. No hardware/media actions;
+  normal baseline unchanged and configure refusal intact. Next finish the
+  independent leaf/admission reviews and add actual fused completion and
+  retirement cancellation before public routing and matched hardware tests.
+
+### 2026-10-01 - Fused operation completion, retirement and cancellation binding
+
+- Previous goal turn was progress: fused admission, alias-order correction,
+  ledger280 repeat and boot review acceptance. Current progress extends the
+  same protocol rather than activating incomplete SMP. Root read original
+  ledger independent report30a9a3ff26a49c26fd59b0b8035f1025d063c53b09c93bc2c1883fccd9de4af6
+  and accepts only its frozen leaf scope. Admission source review
+  3cea0b5639b441d162970e8af82682602e498343977a02f33841b404c5bdee50
+  found generic WaitAdd/Close/Ready/Grant/Withdraw accepted OPERATION by
+  generation alone; root added explicit SINGLE/LIST checks. Correction review
+  confirms those guards, not full lifecycle completion.
+- Delegated terminal ledger primitive validates closed/uncommitted/live/
+  all-OWNED state, then removes bookkeeping without releasing acquired units.
+  Reclaim and Complete share preflight plus an infallible detach/clear pass;
+  no Commit-then-fallible-Reclaim escape window. Author report
+  d93b9cc7268c490be6b85e1ac25902b0ac271b9a9c2b1208abbf76d8865b7eff
+  read by root: previous280 O1/O2 regressions and transient35 completion smoke
+  are reported narrowly; the unretained smoke is not reproducible evidence.
+- Root fused registry functions resolve opaque operation identity through the
+  full ledger validator, verify owner/generation and disjoint storage, then
+  bind SetEntry/Close, successful terminal completion and cancelled terminal
+  reclaim to scope clearing/designated-pin discharge. Cancellation finish
+  requires retired+claimed state, RUN0, queued0 and no remaining ledger OWNED/
+  QUEUED units. Real node unlink, real semaphore-count rollback and absence
+  of retained entry pointers are caller preconditions, not proven by the leaf.
+- Both selected pin retirement paths now use fused ledger cancellation plus
+  Task retirement; service retirement publishes its additional pin in that
+  transaction. Legacy retirement refuses OPERATION to prevent a bypass.
+  Kind-aware cancellation claim checks aligned snapshot storage outside both
+  registry and ledger object/operation/entry arrays, with full read-only ledger
+  validation. The separate request pool is not among the leaf's checked spans;
+  its exclusion is a future consumer-storage contract. Source
+  review found snapshot alignment and arena-array/record overlap omissions;
+  corrected before final freeze. All new kernel operation bindings make
+  negative malformed-state results fatal under the gate instead of allowing
+  downstream truthy -1 handling. Public Exec callers are still unbound.
+- Final source SHA256: registry.c74b8ea8b76bbc99abcfb45697d9d9bcfd374609a6527ea5f3e3306c912245cd3;
+  registry.h5faa3113a83364f5d7b4f3736120f2f9e2e4c4cc2d4ea889df5475e5de1c134a;
+  pins.cd780f0a1ef53264c7b381850c5afda60519bf76e170fb50ab19e4baa5e420755;
+  pins.h00112f828e35d0d27bf2d5150ed87b473eb553ffd6017ed861af51e367138837;
+  ledger.ce26110ec15fa49183f09f2fc51c32147d11b68d708cd9cd4d7ec6d3a2a516e8d;
+  ledger.he90bf32ca63c15186db89e72cbc1f0061aa263a9e94389d9bf8ebe6a433f6349.
+- Root retained actual-C fixture3bfdf389a4604968d041fbc7537e4e4cd239565cca91fa174232385e6444fc0a
+  executes ledger/lifetime/registry with both SMP defines. Strict Clang C11,
+  O1/O2/g, Wall/Extra/Werror/conversion/shadow/pedantic, ASan/UBSan+frame
+  pointers; fatal sanitizer settings/leaks off. Initial pre-correction run196
+  passes; final fresh binaries each208 pass, including misaligned snapshots.
+  Tests cover both hart RUN values, complete all-OWNED/reuse/generation,
+  refusal unchanged before readiness, fused retirement/claim, owned rollback
+  before cancelled finish, partial-construction cancellation and preserving
+  ordinary/service pins. Real queue/count work is explicitly modeled.
+- Dated evidence binaries p4-operation-completion-final-o1-host-root-20261001
+  SHA2564b33fa488de8aa5a9cd8a528b993071c7c085adc152f768b54558043bc4ab2db;
+  O2 counterpart282de99f937b7d14e3c02f10b70a30fce08604cdec53dd35356d48d9f73c3233.
+  Fresh real-header GCC16.2 RV32 objects, explicit relocated sysroot/both SMP
+  defines/unchanged runtime atomic FPU flags; registry+ledger C11, pins GNU11,
+  default optimization. Final registry object36796B/
+  edecd4d878200dbcfc34e7507d375fb083ca6d75efba68bf46e2bf1a7de361eb;
+  pins27916B/951609ae22985fd1bd6d828e0f4a5b7548472d221a21124768ddf92dd587f4ba;
+  ledger28484B/217f3f1dfe9979b3cc9951c723fa2aff5afbdb34a86138caa492b06fc3efd6e6.
+- Test history retained: admission author193 and205 snapshots precede later
+  source changes. Generic retirement assertions failed after OPERATION guards
+  were added; fixture now uses actual fused retirement, not synthesized
+  lifetime state. Intermediate full-TU compilation failed while the new
+  Complete declaration was not yet landed; no stub or fake pass substituted.
+  Final dedicated admission repeat and independent lifecycle review pending.
+- No full build/link/ABI refresh/image/flash/device/media action. Normal
+  baseline unchanged; configure refusal remains intact. Next finish final
+  reviews/repeats, then bind real request nodes/counts and all public semaphore
+  APIs/cleanup, complete per-hart launch and synchronous external removal,
+  matched full build and actual concurrent headless hardware qualification.
+
+### 2026-10-01 - Final private operation review and unchanged-source repeats
+
+- Final six production source hashes remain those in the preceding entry;
+  no production source or flashed artifact changed in this repeat. Root read
+  the complete final independent lifecycle source review, SHA256
+  1cde2a7935f2c60ad4573f8e8f367ecf914a9e3007146cdb208514e1cc779dbe,
+  and accepts its private mutation-order/identity scope only. No public queue,
+  concurrency, scheduler, whole-image or hardware acceptance follows.
+- Two remaining API obligations are explicit: registry-owned operations use
+  fused Complete without raw ledger Commit first; cancellation snapshots must
+  be independent local storage outside the entire boot reservation, including
+  the separate SemaphoreRequest array absent from the leaf's checked spans.
+  No production ClaimCancel consumer is installed. Neither obligation is an
+  implemented real-node/notification protocol.
+- Admission fixture776740a6e93feef3f6bccb7568f640a4ec0166493ae3d4aa83e8b91ae8531395
+  now passes221 author checks at both O1/O2. Root separately rebuilt and ran
+  both against the unchanged final sources: C11/D_DEFAULT_SOURCE/g, strict
+  Wall/Extra/Werror/conversion/pedantic, ASan/UBSan/frame pointers, fatal
+  sanitizer settings/leaks off; both221 pass. Dated evidence artifacts:
+  p4-operation-admission-final-o1-host-root-20261001,375760B/SHA256
+  b17075bfd0f3b2cc8443e61f9b4fb52e8d0e613e774c65377045e7a80f285dc8;
+  O2 counterpart375040B/8ace5a6ca4538f0c14c43fe28c9a509948d89482f8957d7244314c0029c1793b.
+  Earlier193/205 and generic-retire assertion failures remain historical.
+  Author admission report SHA2566f6e879bce85fe1d2c9ac5896a14e13e89a8225ce855c99372edb5444b9ac5bf
+  corrects a duplicate obsolete pins-header hash; fixture/source unchanged.
+- Independent repeat of root's retained completion fixture also passes208 at
+  both O1/O2 under strict Clang/ASan/UBSan; report
+  semaphore-operation-completion-repeat.md SHA256
+  cc61bf96aa004b144070e06092b3e34d732c44867205d7a706eb0258440c700c
+  read completely by root. Retained independent O1 binary295088B/SHA256
+  313621699616c2adebec4450ae7c3ca9fcc803ddac4499e128f3948787606e5c;
+  O2 binary294688B/cb72f8360f6d72a5639805fa995b41cbce6a0f5d6224689c131d9728d901330d.
+  Actual private C transitions, serialized gate and modeled real node/count
+  work only; independent repetition is not concurrent Exec qualification.
+- Root legacy pin-binding fixture repeat passes82772 with strict O1/g C11
+  ASan/UBSan. Artifact p4-operation-legacy-pins-regression-host-root-20261001,
+  413672B/SHA256c8639f349b18668d8fe489e1d69f70859cc88400779f24e49cfe1cd79fd4052d.
+  This fixture excludes the new both-SMP-defined operation bindings and is
+  legacy gate/wake regression only. Runtime atomic-policy script passes36.
+- Fabian reports the display reconnected; this is device availability, not
+  visual readiness or a hardware pass. No reset/flash/media/interaction was
+  performed. Normal baseline and configure refusal remain unchanged. Next
+  independently repeat retained completion208, freeze the per-hart runtime
+  integration map, and implement actual queue/count/notification routing plus
+  per-hart launch before matched full-build/headless concurrent qualification.
+
+### 2026-10-01 - Per-hart production integration gap map
+
+- Root read the complete read-only source map
+  smp-per-hart-runtime-integration-gap-map.md SHA256
+  f5521d54e3042a22257f79c7c95936ce00192b23c1e62c884a87ce1923097c68,
+  and checked the primary Finalize/Arm, online publication and dispatch
+  entry preconditions. The report freezes inspected source hashes; changing
+  roadmap text afterward does not update that historical source snapshot.
+- Current production startup prepares both slots while hart1 stays held;
+  Finalize/ISR install/IPI arm call sites execute on hart0 only. No production
+  hart1 release, actual cleanup-worker-ready launch consumer or online-mask
+  publisher call exists. CPU count remains1. Diagnostic secondary entry's
+  private4KiB stack/trap/park path is not an Exec bootstrap and must not be
+  repurposed as proof of production runtime.
+- First hart1 task restoration must enter a real common trap/restore path:
+  calling cpu_Dispatch from ordinary startup C or fabricating trap_depth
+  fails its frame/ownership contract. Ordered implementation: actual worker
+  readiness; primary-owned launch generation; secondary gp/sp/FS/common
+  mtvec/mscratch and local controller+16KiB ISR installation; local runtime
+  finalization and IPI arm; validated ACK and online publication; nonreturning
+  first-context handoff. Define tp/TLS invariant before using ILP32F C/tasks.
+- This is an implementation map, not code/build/runtime evidence. Full public
+  synchronization, external removal and ETask closure remain prerequisites
+  to activation, alongside this missing startup chain. Configure refusal is
+  intact; no image/reset/flash/media action or hardware pass. Next implement
+  the coordinated real request/count/notification protocol, then the launch
+  chain with bounded headless phase/FPU/contention qualification on matched
+  artifacts. E3-A1/A2/A3 and the overall SMP goal remain open.
+
+### 2026-10-01 - Real request-node acquire and cancellation transactions
+
+- Previous goal turn was progress: final private admission/completion
+  repeats/review and production per-hart gap map changed authoritative
+  evidence. This turn starts actual reserved request-node transactions, not
+  activation of the incomplete public semaphore replacement.
+- New p4_semaphore_nodes.c/.h uses real Exec SemaphoreRequest/SignalSemaphore
+  types, caller-held semaphore then registry gate, no allocation/callout or
+  Task dereference. Private registry resolver is now available internally;
+  its validated operation/record pointers are borrowed only under that gate.
+  SMP-only mmake selection adds the engine; normal selection is unchanged.
+- Configure selects pool node by absolute validated ledger-entry slot (not
+  ordinal), checks pool/ledger/registry/records/semaphore storage separation
+  and publishes request identity plus shared tag before Close. Acquire
+  requires live RUN1/2 and closed construction, verifies actual reciprocal
+  queue links and NestCount/QueueCount relation, rejects signed-WORD overflow,
+  and atomically commits ledger ownership or real tail insertion plus scope
+  queued-count. Queue handoff at NestCount0 cannot be bypassed.
+- Cancellation withdrawal requires exclusive claim and cancelled scope,
+  removes the actual intrusive node, clears its links and decrements both
+  real QueueCount and scope queued-count. Rollback decrements actual nest/
+  queue counts only after ledger-owned rollback succeeds. Global ledger OWNED
+  units for the semaphore must fit NestCount before mutation. All refusal
+  points precede these infallible commit steps; no success means notification
+  or automatic grant of the next waiter. Valid mapped caller-owned intrusive
+  queue storage is a precondition, not arbitrary-pointer safety proof.
+- Source hashes: nodes.c9fc6ed2549e442f67f05a6010ae7ba7f08bfcc2202e9afe91d8160ef5ed09bc7;
+  nodes.h8d055d6cf48429df7df463aecb37a6935a080b910219f411aae3a3e3f188c4f6;
+  registry.c3cf550d03fe6121778c16c4ebdc92bda9796c59be6801df9dfea6024de772cd9;
+  registry.he1391561f8befcbe72a4f6f8e66861a6c2b03b747ec6000afb4f0cef0d3e5bb2;
+  mmakefile.src3de0db5ffbcd3d19074fbf1abbbc523f318a82d0dacd4aab1b7f26b38a730296.
+- Fresh isolated GCC16.2 real generated headers, explicit relocated sysroot,
+  RV32IMAF/ILP32F/both SMP defines and existing runtime/atomic/FPU flags;
+  nodes GNU11 and registry C11, default optimization, Wall/Extra/Werror:
+  nodes object10408B/SHA2561da6d417ba3ba886ae83f55cf94b7b75ab06e25cddc85d94b25faed133e9c0cc;
+  registry36796B/d9492e3bc7e76600ab4884d4c6ac72540e7ea73465ede38e02267cdc43a90133.
+  Initial candidate also compiled before added live-RUN/pending-owned guards;
+  only final isolated objects identify the current candidate. Root actual
+  completion fixture208 O2 sanitizer regression passes after resolver export.
+- Dedicated actual-node host fixture and independent production review are
+  delegated to separate workers. Shared-batch/PA_CALL/Procure/Vacate boundary
+  review is separate; granting and notifications cannot be selected from
+  these four helpers alone. Public queue routing and cancellation consumer
+  remain unbound; no matched build/ABI/link/image/device/flash/media action.
+  Configure refusal and normal baseline remain intact. Next verify the real
+  node transitions, implement coordinated grants/notifications and public
+  entrypoints, then complete startup/removal and concurrent hardware gates.
+
+### 2026-10-02 - Request-node queue bound and notification cohort constraints
+
+- Root corrected the candidate's queue traversal ceiling: signed QueueCount
+  describes NestCount plus queued nodes minus1, so NestCount0/QueueCount32767
+  can represent32768 queued nodes. The original32767 traversal ceiling could
+  accept insertion of the final node and then refuse its valid withdrawal.
+  Traversal now permits32768 and remains bounded; no pre-fix host replay is
+  claimed. Dedicated boundary regression is being added by the fixture author.
+- Current nodes.c SHA25682ac7876f4c496b3e74aa987b0378faf9fa1e2c5a9d63107156dabb112e32f10;
+  header/registry/mmake hashes unchanged from the preceding entry. Fresh
+  isolated real-header RV32 GCC16.2 GNU11 compilation with the same flags
+  passes: p4-semaphore-nodes-v3-smp-root-20261001.o,10404B/SHA256
+  48204e52507b11b8bdf4a88dad65ac130bbcc635cf98ee0d73f2d4acfacd5c93.
+  Symbol inspection imports only ledger/registry helpers, no allocator,
+  callback, lock or runtime memset. This remains an isolated object, not a
+  regenerated mmake/full image or hardware artifact.
+- Root fresh O2 strict Clang ASan/UBSan regressions pass admission221 and
+  completion208 after the resolver export. Dated evidence artifacts:
+  p4-semaphore-nodes-admission-regression-host-root-20261001,375064B/SHA256
+  010f593bedc4c0def37c3b8d0aefb651148dc2e910526e1666df57436b8c6e3f;
+  completion counterpart303096B/910ebbb9402a95fdb124101a0bbd8494ce4e13c72a46521210bd85718e45fdfd.
+  Those fixtures do not invoke the new real-node engine. Runtime atomic-policy
+  regression36 also passes. Dedicated node fixture/review remain pending.
+- Root read complete semaphore-real-node-notification-boundaries.md,
+  SHA256e730421a05a7dba12cc429389e07199ba1dfedfd2052740abeae24b24fe08405.
+  Source semantics require a shared-head release to reserve ALL current shared
+  waiters, skipping interspersed exclusive requests, before any callout. A
+  one-node grant/unlock/Signal/rescan permits an exclusive waiter to acquire
+  between shared cohort members, violating exclusion or changing ordering.
+  Reject that bare-rescan design; no such implementation was selected.
+- Procure/Vacate also need exactly-once reply publication/completion metadata:
+  detaching a message then delaying Reply makes queue absence ambiguous to
+  concurrent Vacate. PA_CALL may synchronously reenter, cancel a later batch
+  member or release earlier acquisitions. Notification staging must be
+  independent of reusable request nodes, and pins/capacity reserved before
+  cohort mutation. Public routing remains unchanged and SMP activation
+  refused. Next complete node checks, construct coherent cohort/reply
+  publication and cancellation before switching any public queue caller.
+  No device/reset/flash/media/visual action; normal image unchanged.
+
+### 2026-10-02 - RUN-drained rollback correction and reply publication audit
+
+- Independent source review found that cancelled owned-unit rollback could
+  decrement real semaphore ownership while the retired continuation still had
+  a RUN owner. The corrected helper refuses unchanged until RUN0. Withdrawal
+  can unlink a queued node while RUN remains held; final cancellation still
+  requires RUN0. This is a source correction, not a hardware observation.
+- Final candidate nodes.c SHA256
+  76557a2a6a82d9c31b75c6d060261543ecd66b48b4b656295aa0441c96ccdb33;
+  nodes.h c02a066b444ab84c8bf5590c3ef7fa71bd91783ac07c316776b190ae4798b8fb.
+  Registry/ledger hashes remain those recorded above. Fresh isolated GCC16.2
+  GNU11 actual-header RV32IMAF/ILP32F/both-SMP compilation with the relocated
+  sysroot and prior runtime/atomic/FPU flags passes, default optimization,
+  Wall/Extra/Werror: p4-semaphore-nodes-v4-smp-root-20261002.o,
+  10424B/SHA25674445c6415d2771e656b83a09471a35673d44e077b384449d5c3f3774c4cac79.
+- Root read complete semaphore-real-nodes-independent-review.md, SHA256
+  2ce2c6a6254f39558473834d6c4fd4e4b2989d23339a34cc164066ae8e402458.
+  Review accepts only local mutation ordering under valid stable mapped
+  semaphore/pool storage and both caller-held gates. It performs no tests.
+  Actual queue shape and selected membership do not establish whole-queue
+  ledger correspondence. Rollback does not grant the next waiter; future
+  coordinated handoff must close that interval. Repeated full-ledger/registry
+  walks are bounded but have no acceptable worst-case latency measurement.
+- Root read complete semaphore-reply-linearization-audit.md, SHA256
+  503e741bed9fdfd93bc966c63e9ae65b7996bc9e275f9c96c53c16759f3cf866,
+  and checked the ReplyMsg/InternalPutMsg bodies. A port reply publishes at
+  AddTail under the port spinlock, not the earlier NT_REPLYMSG store. A future
+  metadata acknowledgement must occur before unlock/receiver reuse; the
+  no-port NT_FREEMSG branch needs its own terminal point. No hook is installed.
+  PA_CALL may consume/free/reuse the message before ReplyMsg returns. No
+  notification may retain message/node pointers after that callback.
+  A publication hook would introduce port-to-registry ordering; future code
+  must never take a port lock or call ReplyMsg while holding the registry gate.
+- Dedicated fixture executes actual lifetime/ledger/registry/nodes C with
+  both SMP defines and host Exec structure shims. Root read the entire fixture
+  and repeated strict Clang C11 O1/O2, Wall/Extra/Werror/Conversion/Pedantic,
+  ASan/UBSan, frame pointers, fatal sanitizer errors and10-second timeout:
+  both417 checks pass. Task identities use PROT_NONE storage. Tests cover
+  fragmented absolute-slot reuse, shared/recursive ownership, real links and
+  counts, refusal snapshots, RUN-held rollback refusal, RUN0 rollback and
+  cancellation completion. The final boundary test appends node32768,
+  refuses count overflow unchanged, then retires/claims and withdraws that
+  actual tail node before draining RUN and finishing cancellation.
+  Fixture SHA256ee3d5230ce71ad5997f2cf35bd8a2b646aae047ebdb6256cd2deaa2a9aee04d8.
+  Root retained binaries in the existing smp-priority-2026-10-01 evidence
+  directory: p4-semaphore-nodes-o1-root-20261002,383616B/SHA256
+  e42b6cb1630da69dbc296948815b24930c9ab11a7db39161e44d6474e37041e8;
+  O2 counterpart383136B/6a722a5e2a8058ccb6b64ad3c04ee8fd8ad015b2cd4c5ef345cdb67946508e63.
+  Root read the final semaphore-real-nodes-tests.md, SHA256
+  435bbc4fe70d2a296f015924ab91879b13339be2882533413194e214a179a33c.
+  Reproduce with its command, selecting these root output names. Author's
+  retained O1/O2 runs also pass417. Leak detection is disabled: the host sanitizer runtime
+  reports it unsupported; ASan/UBSan pass is not leak qualification. Author's
+  earlier404-check snapshot lacked the final boundary withdrawal and is
+  superseded, not evidence of that case. No lock/concurrent/target ABI proof.
+- Safety: Fabian reported the display reconnected; this is not interactive
+  readiness. No hardware/reset/flash/media/visual operation occurred. Normal
+  image and SMP configuration refusal remain unchanged. Next finish actual-node
+  cohort/reply/cancellation routing, then complete
+  per-hart startup, removal and matched concurrent qualification. SMP remains
+  incomplete and the goal remains active.
+
+### 2026-10-02 - Actual Task-only cohort grant candidate
+
+- Previous goal turn was progress: final actual-node417 root/author repeats,
+  RUN0 rollback correction and authoritative evidence changed. This turn
+  adds actual grant/handoff mechanics required by public Release, without
+  selecting an incomplete public replacement or enabling SMP.
+- New p4_semaphore_nodes_grant_cohort_locked requires semaphore then registry
+  gates and NestCount0. Shared-head selects ALL shared nodes, including after
+  exclusive nodes; exclusive-head selects only itself. Every real queue node
+  is classified by the permanent pool's aligned absolute ledger slot and
+  matching indexed QUEUED identity before sr_Waiter is inspected. Unknown
+  legacy/Procure nodes, cancelled/dead identities and malformed queues refuse
+  before mutation. Whole-queue indexed count must equal actual queue count.
+- Separate durable caller-owned copied-target storage is checked for capacity,
+  alignment and overlap with semaphore/pool/registry/records/ledger/arrays.
+  WORD nesting capacity and notification-pin headroom aggregate duplicate
+  LIST entries for the same Task. After complete preflight, commit increments
+  each ordinary pin, changes ledger QUEUED to OWNED, decrements scope queued
+  count, unlinks/clears real nodes, increments NestCount and copies Task
+  identities. QueueCount stays unchanged. No callback or allocation occurs.
+  The caller must Signal/Unpin outside gates from durable trusted ownership;
+  that dispatch consumer and its cancellation recovery are not implemented.
+- First candidate C3ca360e8a0f9617fb7fea8cab6ba3b88827d68ae1468129d6dd1e4383a220fdf
+  compiled in the included-C host fixture and passed old417 checks, but failed
+  real GCC TU compilation: p4_task_registry_lookup_locked is private/static,
+  and the fixture accidentally made it visible. No RV32 object was produced;
+  this failed attempt is not build evidence. Final candidate instead uses the
+  exported validated operation resolver before traversal and a prevalidated
+  registry identity walk during infallible commit under the gate.
+- Candidate nodes.c SHA25690ccaf0a77e013c5198d98aaf2051d46809a4fae26f9a7c98b097bc6d700d04f;
+  nodes.h10b7ca310a2bb2340ca2b69629d223cdab6b8d310ba41bf00057a44455fd0528.
+  Fresh isolated GCC16.2 GNU11, explicit relocated sysroot, RV32IMAF/ILP32F,
+  both SMP/runtime/atomic/FPU flags, Wall/Extra/Werror and default optimization:
+  p4-semaphore-cohort-v2-smp-root-20261002.o,15680B/SHA256
+  97450d5c0412d28f2a4e3801ffa79a8f7c3935314d8003ccc9c90eeb3b3af4cb.
+  Root fresh strict O2 ASan/UBSan old-node regression passes417 against this
+  candidate: p4-semaphore-cohort-v2-regression-root-20261002,400096B/SHA256
+  6b52d357d42c40449e28873cadc066127e622d5b5e430abe84345e9307a27092.
+  Old417 host checks do not call the grant API. Dedicated cohort fixture and
+  source review are delegated to different workers; no grant test pass yet.
+- Safety: no hardware/reset/flash/media/visual action. No matched full build,
+  public API closure, notifier lifetime, acceptable gate latency or silicon
+  concurrency proof. Repeated nested validation may be expensive and needs
+  measurement/optimization before production acceptance. Normal flashed image
+  and configure refusal remain unchanged. Next verify actual cohort semantics,
+  integrate durable notifications and coherent Release/Procure/Vacate plus
+  cancellation, then finish runtime/removal/matched concurrent gates.
+
+### 2026-10-02 - Cohort storage preflight correction after review
+
+- The independent reviewer found a malformed-input ordering defect in the
+  preceding90cc candidate: full ledger validation and requests-head argument
+  dereferences occurred before registry/ledger separation. A later resolver
+  cannot protect expressions already evaluated. Do not accept that candidate
+  merely because private boot storage normally avoids overlap.
+- New read-only p4_task_registry_ledger_disjoint_locked validates the full
+  registry, then ledger header alignment/separation before reading its fields,
+  bounded capacities and backing-array separation from registry/records.
+  Cohort then checks pool/semaphore/target-storage separation before ledger
+  contents and actual queue traversal. The unnecessary requests-head anchor
+  was removed. Commit normalizes each detached node's shared tag to its copied
+  Task identity; later notifications still retain only copied identities.
+- Current nodes.c SHA2568906ecb14569557739822fce5bc8b15822ea42e6ce0a8eb27173f6b785f72dcc;
+  nodes.h10b7ca310a2bb2340ca2b69629d223cdab6b8d310ba41bf00057a44455fd0528;
+  registry.c2c393efa8cf107b9f3c733a08b42180b49af2e618f62e5f04c42dc069e5bb743;
+  registry.he4021a1238f0c85e380fc97b9b277d4cc89e97e2f8bb26e830693be52bce9aea.
+  Fresh isolated GCC16.2 with the preceding exact target flags passes nodes
+  GNU11 and registry C11: p4-semaphore-cohort-v3-smp-root-20261002.o,
+  15668B/SHA25619f78e7ce8e5bacfb34be2637d6471fed41abb732d7431893e6ffa236b1b0460;
+  registry counterpart37688B/87af585d3ac72726ab196932a0d74f4a18aef135089101e7e24534f75cd3c010.
+  Fresh strict O2 Clang ASan/UBSan old-node regression passes417:
+  p4-semaphore-cohort-v3-regression-root-20261002,400256B/SHA256
+  181b89718b453384265eef78aa09355408eb061a2670a369c3b2815d61677adc.
+  This fixture still does not call the cohort API; no grant pass inferred.
+- Dedicated cohort author and independent reviewer are checking this corrected
+  snapshot. Both have disjoint write ownership; root implements/integrates.
+  No source-review acceptance yet, no full build/public routing/hardware action.
+  All activation/lifecycle/notification/latency/concurrency obligations remain.
+
+### 2026-10-02 - Cohort empty-queue mismatch correction and final source review
+
+- Fixture author identified another source defect: the8906 snapshot returned
+  empty status before comparing indexed QUEUED entries when the actual list
+  was empty. Root moved the per-semaphore indexed count before that return;
+  an empty actual list with indexed waiters now returns malformed unchanged.
+  The nonempty bijection/count check remains. The reviewer explicitly records
+  that the preceding source review missed this case; do not inherit its
+  acceptance to this correction without the new review.
+- Current nodes.c SHA256c53db30c069ac3f23da335bd65a03a2b95710113ba4f3f3f38772cdd0e5e6e40;
+  nodes header/registry hashes unchanged from the preceding entry. Fresh
+  isolated same-flag GCC16.2 GNU11 target compilation passes:
+  p4-semaphore-cohort-v4-smp-root-20261002.o,15720B/SHA256
+  8838fb5a07f281b71d795c1b5f875e73c992b15ba81ce9374bbdd26abd4430a5.
+- Root read complete final canonical semaphore-cohort-design-review.md,
+  SHA2563e3d1b4891da1c453d70714be9eea4ee93d8ceeedcd53495abebd86a8c24eedc.
+  Source-only review accepts narrow locked-caller/mapped-storage selection and
+  commit ordering, not public lifecycle, notification delivery or concurrency.
+  The first report was saved under the old /Volumes/Dev/Source/AROS-ESP32-build
+  evidence path; it remains historical and superseded. Canonical evidence is
+  under /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01.
+- Worst-case repeated resolution is O(N^2(R+E)), potentially cubic when all
+  populations grow together. Finite bounds are not acceptable gate latency
+  evidence. Reduce repeated validation or establish a measured safe bound
+  before selecting any public caller. Dedicated cohort fixture/repeats remain
+  in progress, including empty and partially missing ledger nodes, all before
+  public routing/activation. No hardware/reset/flash/media/visual action.
+
+### 2026-10-02 - Root actual-source cohort fixture verification
+
+- Previous goal turn was progress: actual cohort grant, storage-order and
+  empty-list/index corrections, isolated target objects and source review
+  changed authoritative state. This turn verifies the dedicated actual-source
+  fixture before reducing unnecessary nested validation. Goal remains full
+  E3-A1/A2/A3, not this private helper.
+- Root read the entire p4-semaphore-cohort-test.c, SHA256
+  fe841af70dac05c0954696a24b78848abc6155f827632d25aca1e5e8f0929c15.
+  It includes the frozen nodes fixture/actual lifetime/registry/ledger/nodes C,
+  host Exec shims, both SMP defines. Strict Clang C11 O1/O2,
+  Wall/Extra/Werror/Conversion/Pedantic, ASan/UBSan, frame pointers, fatal
+  sanitizer errors, leaks disabled (host unsupported) and10-second timeouts
+  each pass included baseline418 and cohort444. The418 count includes the
+  wrapper assertion already incremented before invoking the417 baseline;
+  it is not another new baseline test. Test hash remained unchanged across runs.
+- Retained evidence: p4-semaphore-cohort-c53-o1-root-20261002,
+  481416B/SHA2561872f1b911390488f9935f2a6dbe55256eb964f36232f5725ceffbf93e8457e4;
+  O2 counterpart480920B/75efb29af1fc8e30cd7fdfba67dac79a8ab1e6f0fa92f7c8ee76f543a4c8fb33.
+  Source snapshot is precedingc53 nodes/10b7 header/2c393 registry/e402 header.
+  Reproduce with strict preceding fixture command, replace test source with
+  p4-semaphore-cohort-test.c and select these output filenames.
+- Tests directly exercise shared-head S1/exclusive/S2 full-cohort selection,
+  exclusive-head single grant, duplicate shared entries and aggregate pin
+  overflow, actual links/counts/scope states, insufficient capacity and output
+  alias/misalignment refusal snapshots, retired cancellation/withdrawal,
+  protected unknown waiter overlay, registry/ledger/header/array alias order,
+  empty and partially lost ledger queue nodes. Successful Complete then node
+  slot reuse occurs before copied target Unpin; no old node pointer is needed.
+  Last release is explicitly simulated by count mutation, not a public
+  ReleaseSemaphore call. No actual Signal callback or physical concurrency.
+- Independent source review remains narrow. Worker author artifacts/report
+  are being finalized; root retained repeats are independently observed.
+  No hardware/reset/flash/media/visual action. Next reduce nested validation
+  cost and implement durable dispatch/public routing/cancellation, then full
+  startup/removal/matched ABI/concurrent hardware qualification.
+
+### 2026-10-02 - Cohort preflight repeated-validation reduction
+
+- Root first read the final author cohort report, SHA256
+  57477c0581161e79aabaa0bd8a1d3570f0d4d4ba46572ed997cc9167bcecb9f6.
+  Its first coverage sentence incorrectly described consecutive shared nodes;
+  the actual fixture tests S1/exclusive/S2 and grants both shared nodes. The
+  author is correcting only that report wording; test/code results are not
+  withdrawn. Frozen c53 source/artifacts remain historical evidence.
+- Current grant preflight validates every queue node and tag once, then
+  verifies actual/indexed counts. With both gates retained and no mutation,
+  a separate registry-record/queue scan aggregates selected identities and
+  checks ordinary notification-pin headroom. Only after all refusal points
+  does the unchanged grant commit run. Peer aggregation no longer calls full
+  node selection inside each selected target's nested queue walk. Full
+  resolutions are N+1 instead of up to N*N+N+1; registry-record/queue identity
+  scans and validator internals still have independent costs. No target or
+  node is exposed before complete preflight; unknown overlays are read only
+  after all actual queue entries have been recognized as pool nodes.
+- Current nodes.c SHA256aabbb693e9347fa0ea4c7dec488c3e7d5225049e01f6c386c62ed047b9564666;
+  nodes header, registry and ledger hashes unchanged from c53 entry.
+  Fresh isolated same-flag GCC16.2 GNU11 RV32 object:
+  p4-semaphore-cohort-preflight-v1-smp-root-20261002.o,15708B/SHA256
+  7f9e90686203ded0fbb39286e40d2bca0dbd4dd476e4b9024989aef677ae0eeb.
+  Strict root O1/O2 Clang ASan/UBSan fresh fe841 fixture repeats each pass
+  included baseline418/cohort444. Retained binaries:
+  p4-semaphore-cohort-preflight-o1-root-20261002,481424B/SHA256
+  a534d6413b542b4bb83d80194beb735819fc1c25730ec2112eacda60137fc9ce;
+  O2 counterpart480928B/ed1143f9cd80500bcf20e4b1cb618672dbd07dba8743bfb801252fff9dc9f5aa.
+  Commands use the preceding strict cohort procedure and these output names.
+- Independent source reviewer and fixture author receive separate follow-up
+  packets for this optimization, with no shared writers. Their final reports
+  are pending. No production latency/concurrency/public API/hardware claim.
+  No device/reset/flash/media/visual action. Next finish this verification,
+  implement atomic real Release plus durable notification ownership and
+  Procure/Vacate/cancellation, then runtime/removal/matched concurrent gates.
+
+### 2026-10-02 - Optimized cohort review/repeats and actual Release candidate
+
+- Root read complete canonical semaphore-cohort-preflight-review.md, SHA256
+  719e4b3fd28282e35a28f20cf81f0a0de487034abb696e0dd0f5739d9144b815,
+  and semaphore-cohort-preflight-tests.md,
+  49ef1d52735d0039903bf72ffb9dda1525fb4de8be37b7c01b8400b3a3e65502.
+  Independent source review accepts the two-phase preflight narrowly; author
+  O1/O2 repeats each pass418/444 against aabbb source. Corrected original
+  report hash af1756125bfb4e57c2fc70a0fa0328141cd10c3f36e7d601345b0d6e609dad27
+  describes interspersed S1/E/S2 correctly. No measured latency/concurrency.
+- New p4_semaphore_nodes_release_locked holds the same two gates. It validates
+  registry/storage/ledger/actual queue before release. Anonymous ledger release
+  consumes completed units first; if none remain it marks one uncommitted
+  OWNED entry RELEASED, so the operation cannot Complete without reacquisition.
+  Actual NestCount and QueueCount decrement only after this admission succeeds.
+  Non-last release needs no target output. It does not require caller==owner,
+  preserving supported cross-Task release.
+- Last-unit release first performs all cohort preflight against NestCount1,
+  with no shared-state/output mutation. Capacity, aliases, lifecycle and pin
+  failure preserve the old unit. Then ledger admission and actual release
+  precede the infallible prevalidated cohort commit under both retained gates.
+  Positive return encodes1 + copied notification count; an empty valid queue
+  returns1 with no target writes. Even empty last release currently requires
+  valid distinct durable target storage/capacity. Unknown/Procure last-unit
+  queues refuse before release; public caller/dispatch/fallback is not bound.
+- Cohort now shares factored preflight (positive count+1 includes valid empty)
+  and commit with Release. Current nodes.c SHA256
+  812e3c5afad49d87ba5665bb1b56ccd8a781f0222a8040017c8f12326cab41e4;
+  nodes.h7a469ab7d49e829dde3a0db1ef60222cfc8e7c42a7923b917df7fe0a6b55430e.
+  Registry/ledger unchanged. Fresh isolated same-flag GCC16.2 GNU11 object
+  p4-semaphore-release-v1-smp-root-20261002.o,17772B/SHA256
+  17c21ff11d3b7e1c3e663aebf9a6d2ae4e53c1893577c9925f3f2f0ce47d559a.
+  Fresh strict root O1/O2 sanitizer old-cohort regressions each pass418/444:
+  p4-semaphore-release-cohort-o1-root-20261002,498384B/SHA256
+  68d5d6298b6ab5d070dd3c9c6dea7dc986ee736a02831f27eccf6c1fdb67f466;
+  O2 counterpart497888B/79fd0919aa26910e8323a2ee22854e3563b247d61b9e8c555a21e036b9ec2ad3.
+  Those tests do not invoke the new Release API; no release pass inferred.
+- Dedicated actual Release fixture and independent source review are delegated
+  separately. No hardware/reset/flash/media/visual action or matched full link.
+  Normal image and configure refusal unchanged. Durable notification ownership,
+  public queue callers, async messages, cleanup/removal, per-hart launch,
+  matched ABI and actual concurrent D1001 gates remain open. Next verify real
+  release, then bind the coherent full lifecycle rather than activating leaves.
+
+### 2026-10-02 - Review-found Release count gap corrected; dedicated verification pending
+
+- State: E3-SM-R remains private isolated build verified only. Review of nodes
+  812e3c identified empty-queue and non-last Release paths that omitted the
+  indexed OWNED <= actual NestCount check. Raw ledger release counts only
+  uncommitted entries; committed OWNED entries could therefore escape it.
+- Correction: factor p4_nodes_owned_consistent and call it after full ledger
+  validation and storage separation in selection, cohort preflight and Release.
+  Every indexed OWNED entry counts, irrespective of operation commit state.
+  Malformed totals refuse before ledger/count/pin/target mutation.
+- Source: nodes.c SHA256 cd0a7dd98aa1d51c5513d1c11afe0e6cb1797be65bc3330a7fb14bc14bc4146c;
+  nodes.h unchanged7a469; registry and ledger unchanged from previous entry.
+- Procedure/result: fresh GCC16.2 GNU11 isolated compile with explicit relocated
+  sysroot/generated headers, RV32IMAF C/Zicsr/Zifencei/Zaamo/Zalrsc, ilp32f,
+  both SMP defines, P4_E3_RUNTIME_READY/FPU/ATOMIC_CORE=1 and Wall/Extra/Werror.
+  Artifact p4-semaphore-release-v2-smp-root-20261002.o,18212B/SHA256
+  e3030efeffc1faf9a3d01f7cd9d265cb09e2de609704058f9c8b2b7b5b66fbdc
+  in the canonical Amiga build evidence directory. Compilation passed.
+- A preliminary cancellation concern was not confirmed: cancelled RELEASED
+  entries are reclaimable once RUN0 and no OWNED/QUEUED remain. FinishCancel
+  checks those conditions; future cleanup must skip already-RELEASED units,
+  not demand a second rollback/count decrement. Dedicated tests are pending.
+- Independent source review of cd0a7d found no remaining concrete local Release
+  transition defect under its gate/storage preconditions. Report
+  semaphore-release-independent-review.md SHA256
+  0552891e4ecedc7abcdcb06cf779ea19f2d5ccba415b2e669af221ed593ed15c
+  was read completely by root; it records the previous gap and distinguishes
+  reclaimable RELEASED entries from the still-unbound cleanup consumer.
+- Fresh root strict Clang C11 O1/O2, Wall/Extra/Werror/Conversion/pedantic,
+  ASan/UBSan fatal-on-error, detect_leaks=0 (macOS runtime), ten-second bound:
+  each existing actual-source cohort fixture passes included baseline418 and
+  cohort444. Retained p4-semaphore-release-v2-cohort-o1-root-20261002,
+  498480B/SHA256009b83629521c0c5246a9722f3bfac98002824fbcc0c68b84d25a9752115873d;
+  O2 counterpart497984B/SHA256
+  888593c5d01c5f2ee4d552d5e37bd67aec91bb90f9e8245104bc963e7cbeef49.
+  These regressions do not invoke actual Release; its dedicated fixture is
+  still delegated. No actual Release host pass claimed yet. No full
+  link, hardware/reset/flash/media or interactive action; normal image intact.
+  Durable notification ownership, public callers, async publication, cleanup,
+  per-hart launch, matched ABI and concurrent D1001 gates remain open. Next
+  verify actual Release and integrate the coherent lifecycle without activating
+  unbound private helpers.
+
+### 2026-10-02 - Actual Release fixture independently repeated; durable dispatch remains open
+
+- E3-SM-R advances to private host/build and narrow source-review verified,
+  not public routing, concurrency or hardware acceptance. Frozen nodes cd0a7d,
+  header7a469, registry2c393/e402 and ledger e261/e90 are unchanged from the
+  corrected candidate. Root read the complete dedicated fixture and report.
+- Fixture p4-semaphore-release-test.c SHA256
+  aeae89af6e9e8842aa6f67ff70c5060844c4eaec4a726c335938712079a5639a
+  executes actual release, not simulated NestCount changes. It checks completed
+  and recursive units, pending RELEASED/restart/reacquire, full interspersed
+  shared S1/E/S2 and exclusive-head handoff; failure preserves holder, queue,
+  ledger, registry and targets on capacity/alias/pin/retirement/unknown-overlay
+  refusal. PROT_NONE Task identities and unknown waiter overlay remain unread.
+  Cancelled RELEASED plus withdrawn queued entry finishes only after RUN0,
+  without double rollback. Committed OWNED>Nest refuses non-last/last Release
+  and empty grant without mutation, qualifying the review-found correction.
+- Author strict Clang C11 O1/O2 warnings/ASan/UBSan each pass418/369 with a
+  twenty-second bound. Root independently rebuilt fresh filenames and ran
+  both with ten-second bound, same fatal sanitizer settings/detect_leaks=0:
+  each passes418/369. Printed418 includes one wrapper CHECK plus the unchanged
+  original417 baseline; the counter resets before369 dedicated Release checks.
+- Root artifacts in canonical evidence directory:
+  p4-semaphore-release-v2-o1-root-20261002,481560B/SHA256
+  6182a4ed471fe35c4b5f3aac7e4ea9abf41879d3c7f4082f8d68fdb465db87a7;
+  O2 counterpart481080B/SHA256
+  b1db9fb40a36520e40816fd412c93a8d3df48ad9c31cc7abe7fed3a269818c7d.
+  Author artifacts p4-semaphore-release-o1,481544B/7072516dc2d2f57aaa337105747b3898074c8f75f90ec078be9fa3f79843c0b4;
+  O2,481064B/848b1b731f7687589f3892d4e3d30e372081b2d5460a0df25565d20095219c44.
+  Author report baseline-count wording corrected by root, now SHA256
+  5bc7fae4b45880484ee3c54cde4010d4d31894b25096eb0d30e476fa3fbf9730;
+  previous6df1bfb report hash recorded as provenance, not current report.
+  Independent source review0552891e remains narrow under stated preconditions.
+- No hardware/reset/flash/media/visual action, full link or ABI refresh. Normal
+  image unchanged. The connected display does not imply visual readiness.
+  Task-only notification storage still relies on caller durability; a retirable
+  releaser must not own the sole out-of-gate obligation. Next integrate a
+  trusted non-retirable consumer with durable pending ownership before public
+  routing. Async messages, cleanup/removal, per-hart launch and real concurrent
+  D1001 tests remain required for the active SMP goal.
+
+### 2026-10-02 - Durable semaphore notification integration started
+
+- E3-SM-ND begins implementation, not build/test/review verified. Read-only Luna
+  audit confirms per-record pending/inflight reservations avoid dependence on
+  the releasing caller. Root checked existing registry pin floors, operation
+  finish and direct cleanup-wake signal adapter. Public Signal adds a fresh pin
+  and silently returns if it cannot acquire one, so a saturated but durably
+  pinned recipient must be delivered through the adapter without an extra pin.
+- Root adds durable grant/release variants sharing the existing preflight and
+  commit. Per-recipient pending and total pin capacity, plus new batch count
+  versus global serial capacity, are checked before any grant/release change.
+  Commit publishes a pending reservation and pin together. Existing copied
+  target APIs remain available for their earlier fixtures, not public routing.
+- Separate Luna author owns only registry C/H: pending/inflight counts and
+  generations, global serial assigned at first pending publication, overflow-
+  safe designated pin floors, independent claim/finish snapshot validation.
+  Root owns node integration, binding/worker and this documentation. Snapshot
+  generation must survive request and Task-record reuse via the global serial;
+  no wrap is permitted. Claim/finish must retain no request or record pointer.
+- Procedure/results: source edits only at this point, dependent registry edits
+  still in progress. No compile/test pass claimed for this new candidate; prior
+  cd0a7d Release evidence is historical and must not qualify the changed source.
+  No hardware/reset/flash/media/visual action, matched full link or ABI refresh.
+  Normal single-hart selection remains unchanged. Next freeze both sources,
+  verify durable transactions, then integrate protected wake/direct delivery
+  before public callers. Async publication, removal, hart launch and real D1001
+  concurrent acceptance remain required.
+- Root also adds real boot-arena durable Release/Grant bindings under the
+  registry gate, latching work before unlock and leaving the outer semaphore
+  gate/poke obligation explicit to callers. A protected live service worker
+  claims raw identity/count/generation, directly raises SIGF_SINGLE with the
+  existing reservation (no fresh Signal pin), unlocks the Task before consuming
+  the batch, and allows NOT_LIVE retirement to consume its pins safely. The
+  worker alternates one notification batch and one retired cleanup per drain
+  iteration. No public semaphore caller is selected yet; source compile and
+  dedicated lifecycle/wake/delivery fixtures are pending for this candidate.
+  Node C/H identities 1c9d6bfced13728ec9df39fef4c7fcea97f6060e345029366444047b75e43994 /
+  25c63e53a04b05352b4901e53407b0d46cc49aa4bae7d3d9c95aa5b6179ea443.
+- Fresh isolated same-flag GCC16.2 GNU11/real generated-header objects compile
+  for root-owned nodes, pin binding and worker while registry implementation
+  is still being completed. These are compile-only interfaces, not a link or
+  registry/notification execution pass. Retained objects:
+  p4_semaphore_nodes-durable-v1-smp-root-20261002.o,19924B/SHA256
+  7d71dfe05655fb17fc242648e513ea215110a5484880823d2d46595b3a5376a6;
+  p4_task_pins-durable-v1-smp-root-20261002.o,31720B/SHA256
+  3a247fa18a8675bf895fba53eaa895fb09a99e7cfb0c13419f9340b26d96dcac;
+  p4_cleanup_worker-durable-v1-smp-root-20261002.o,5380B/SHA256
+  46b327b6ed851762ddd40e8830f9bc0527154286bc43cf9afbb9a98a51be87f9.
+  Pins C/H e53f173e0b99ccc8eb5c1e6355fb10340aa435ecbe5be3b4f899329c11e17d75 /
+  31b05a73910d62f31cfb15c8e2427682b0b77e53d6996abae0d58a2695520c0a;
+  worker C/H 6643e6ecb579e981f0d13a8f51f5b94c3c65dbfcc368adb171027447747d51ab /
+  47427be628ed4e2a69405af6e245ff4d9ee24e6117e4f18205bcdcc1fe8d4172.
+  Independent reviewer and separate worker-delivery test author are dispatched
+  with disjoint ownership. No whole-system acceptance claimed.
+
+### 2026-10-02 - Durable registry frozen; isolated objects and Release regressions verified
+
+- E3-SM-ND remains private build candidate with dedicated tests/review pending.
+  Registry C/H frozen by the separate author:
+  ee837ccf901f9133277898bc931eee1f7a655fd8a96bf132f641b36f2b803eb9 /
+  b96cdf637c2754ab2cd2e85d6304624ff9db38d691d65b889c758bba75b5a701.
+  Root read the new header, validation/floor and claim/finish bodies. Reserved
+  sums use uint64 arithmetic, every record protects pending/inflight pins,
+  and cleanup/service claims cannot consume them. Claim moves a batch without
+  changing pin count; finish accepts only exact raw identity/count/generation.
+  Registry serial persists across record reclaim/reuse and is assigned at
+  first pending publication, never wrapped.
+- Author reports isolated normal/SMP RV32 compiles and O1 strict sanitizer
+  regressions registry80, pins82772, retained-inflight478, wait-registry171 and
+  operation-completion208. Those are not durable publication/delivery proof.
+  The composed operation-admission fixture currently has unlinked new node/
+  boot-request symbols; no composed-admission pass is inferred from leaf tests.
+- Root fresh same-flag GCC16.2 GNU11 RV32 compile produces
+  p4_task_registry-durable-v1-smp-root-20261002.o,42276B/SHA256
+  edce23c7009a3770d033dc3adafb77895c27341f544e6a6557a3d9c0afb701f5.
+  Together with the previous three root object identities this proves isolated
+  compilation only, not a matched core/BSP link or public ABI qualification.
+- Root fresh strict Clang O1/O2, warnings/ASan/UBSan fatal detect_leaks=0,
+  ten-second runtime bound, existing actual-source Release fixture each passes
+  included baseline418 (=417 original plus wrapper) and Release369. Retained:
+  p4-semaphore-durable-release-regression-o1-root-20261002,498984B/SHA256
+  f6fd039050e474e78469c3d38e99723d9b30f9df79cc28a564d1cb2a8713bd9b;
+  O2 counterpart515016B/SHA256
+  83a286d12bfa71048fddcb13cc49d579412fb391867f3e29c4434cf959a8eb18.
+  Fixture aeae89af is unchanged. These runs exercise copied-target variants,
+  not new durable publication/claim/finish or actual worker delivery.
+- Separate durable-node/registry and worker-delivery fixture authors are now
+  dispatched with disjoint test ownership; independent reviewer has the exact
+  frozen sources. No hardware/reset/flash/media/visual action or full link.
+  ServiceTask priority127 means per-class alternation alone does not establish
+  bounded CPU occupancy under sustained producers; measure before activation.
+  Next verify durable transactions and worker delivery, fix the composed
+  binding fixture, then close public caller/poke and async/cancellation paths.
+  All remaining launch/removal/matched-build/concurrent D1001 gates stay open.
+
+### 2026-10-02 - Durable notification worker independently checked; transaction gates remain open
+
+- E3-SM-ND advances only its private worker host/source-review gate. Root read
+  complete fixtures p4-cleanup-worker-test.c (773 lines,SHA256
+  09f8f5d1f05c81811b04982711ce448d9ce7f8f04ef6cc75aa63d28264174221)
+  and p4-semaphore-notification-delivery-test.c (527 lines,SHA256
+  096cf1a1ef141548dbf2c61442274be6d405a9f1567ea6c5a4624ff0ee64e166).
+  Both include the actual worker source; claim/finish and signal adapters are
+  mocked. Tests check live and retired delivery ordering, exact copied batch,
+  retained target pins through the last access, newer pending pins surviving
+  old delivery, no extra public Signal, notification/cleanup alternation and
+  a wake injected at the empty-drain/Wait edge. They do not prove actual
+  registry/producer transitions, AMO gates or concurrent scheduling.
+- Root freshly compiled and ran each at O1/O2: Clang C11 -g -Wall -Wextra
+  -Werror -Wconversion -Wsign-conversion -Wshadow -Wstrict-prototypes
+  -Wmissing-prototypes -pedantic -fsanitize=address,undefined
+  -fno-omit-frame-pointer; ASAN_OPTIONS=detect_leaks=0:halt_on_error=1,
+  UBSAN_OPTIONS=halt_on_error=1; perl alarm15/exec bounds each run. Worker450
+  and delivery241 pass at both levels. Canonical retained evidence directory
+  is AROS-ESP32-build/evidence/smp-priority-2026-10-01. Artifacts:
+  p4-cleanup-worker-durable-o1-root-20261002,112120B/SHA256
+  35f91e704991370053e371ea3c35a4e8af85cc7a78cfb2a83ed1704d1f3b5e76;
+  O2 counterpart112120B/SHA256
+  84b73586566793d2582766f2a610d1247c6e82f0276f608a2ecfed78f7e23f58;
+  p4-semaphore-notification-delivery-durable-o1-root-20261002,85208B/SHA256
+  1daa1ef480da8a596e564891d09c69c03f2cf38c5e98937fd87b4aaa2c3b15bc;
+  O2 counterpart85208B/SHA256
+  0d04fa914a37aa2b14b1c0dc9d7f9b953010564875ee2c9eb9d1be08fc0287d2.
+- Independent source-only review semaphore-durable-notification-review.md,
+  SHA256 ec44400c351dba76151d46e618c3b7f6526b34e58ac1d386a9eb314a0d4c2afa,
+  accepts the frozen local gate/storage/pin/serial contracts, not public
+  routing. A contradictory first-draft lock sentence was corrected: direct
+  signal-state and queue updates deliberately hold the Task lock; no registry
+  or semaphore gate is held. Task lock is released before poke, Enable and
+  exact Finish. Root reread the complete corrected review.
+  Canonical semaphore-notification-delivery-tests.md now retains the separate
+  author's temporary artifact provenance and root repeat identities; SHA256
+  2a2db9640664163bfc0f221d27c293b8fee727814b78e76d13775e16412d3020.
+  The original misplaced repository report remains preserved, not canonical.
+- Root freshly rebuilt all four isolated GCC16.2 GNU11 RV32 objects against
+  final registry C/H ee837ccf/b96cdf63. Fresh filenames use
+  <unit>-durable-final-smp-root-20261002.o. Sizes/hashes remain exactly:
+  p4_semaphore_nodes19924B/7d71dfe05655fb17fc242648e513ea215110a5484880823d2d46595b3a5376a6;
+  p4_task_pins31720B/3a247fa18a8675bf895fba53eaa895fb09a99e7cfb0c13419f9340b26d96dcac;
+  p4_task_registry42276B/edce23c7009a3770d033dc3adafb77895c27341f544e6a6557a3d9c0afb701f5;
+  p4_cleanup_worker5380B/46b327b6ed851762ddd40e8830f9bc0527154286bc43cf9afbb9a98a51be87f9.
+  Same sysroot/generated includes and rv32imafc_zicsr_zifencei_zaamo_zalrsc,
+  ilp32f/medany, D1001, SMP, E3_RUNTIME_READY/E3_FPU/ATOMIC_CORE defines as
+  prior entry. Separate objects are not a core/BSP/ABI link.
+- No hardware/reset/flash/media action. Display reconnection is not visual
+  readiness. Normal flashed core201504B/SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6
+  and unfinished-SMP configure refusal remain unchanged. Dedicated actual
+  durable-node/registry and composed binding fixtures are still being authored.
+  The composed binding author's first O1 execution reached 379 checks and
+  reported failures in two reused request-slot expectations and one post-Finish
+  poke-count assertion. Corrections are not yet independently accepted; the
+  report must show exact failed assertions and source-backed expectations.
+  No composed-binding pass is claimed from that run.
+  Next verify them, then implement coherent cancellation/empty-owner handoff,
+  public caller/post-gate poke and asynchronous message lifecycle. Secondary
+  Exec launch, removal, matched full build and actual concurrent D1001/FPU/
+  contention acceptance remain open; no hardware or SMP completion claimed.
+
+### 2026-10-02 - Durable leaf/binding verified; cancelled last-owner handoff implemented privately
+
+- E3-SM-ND private host leaf/binding gate advances. Root read complete new
+  durable fixture722 lines/SHA256
+  b96deecebfed323cb319413909a3e0238a33f2cbcde7cfdf3321f4a68c67159f
+  and complete composed binding fixture1116 lines/SHA256
+  982fa5c50d71825a93c0912f7c8e5a7431530919a36b326e432a8c93422695c1.
+  Reports semaphore-durable-tests.md/SHA256
+  7848ab8732b9c6a0a5a5a60c9429f493dfaca3feabbdfc495c0fdd411f8f91d1
+  and semaphore-durable-binding-tests.md/SHA256
+  dd2350fef87839b842117a0dc794a737e63a918c1f5b603912a463b971129503
+  retain author binaries and procedures. Task identities use PROT_NONE;
+  actual node/ledger/registry/lifetime transactions exercise shared cohorts,
+  repeated recipients, serial exhaustion/coalescing, exact pending/inflight
+  generations, request/record reuse, retirement and reserved pin floors.
+  Composed binding adds actual pins.c with mocked gate/IRQ/poke/boot accessors;
+  it proves producer latch/post-gate-poke ordering and protected worker claim/
+  finish accounting, not actual IRQ/AMO or Signal execution.
+- Initial composed fixture compile failed on an unused local; first O1 run
+  failed three assertions. Root read the corrected whole fixture and verified
+  slot selection pool[entry-ledger.entries] against the actual allocator and
+  the first retired target's Finish readiness poke. Two fixed slot assumptions
+  now use actual entry request identities; later live-target Finish preserves
+  baseline+1 from the previous cleanup poke. No production change was required
+  for these corrections; the first failed attempt remains in the report.
+- Before the next production mutation, root freshly repeated Clang C11 O1/O2
+  -D_DEFAULT_SOURCE -g -Wall -Wextra -Werror -Wconversion -Wpedantic,
+  ASan/UBSan/frame pointers, fatal sanitizer settings/leaks0, perl alarm20.
+  Each durable run passes418 baseline plus514 new; each binding run379.
+  Canonical retained artifacts (nodes still1c9d6bfc/25c63e53):
+  p4-semaphore-durable-durable-frozen-o1-root-20261002,560312B/SHA256
+  a05bf424e895e38756cadc90b410238587f13ee7a551e3cc62246f0450d76140;
+  O2 counterpart559816B/SHA256
+  01ce58675d044ff4f3fe7c8c252411048b362c4f8fba7727d4d2e28e4d9b3516;
+  p4-semaphore-operation-admission-durable-frozen-o1-root-20261002,510016B/SHA256
+  3919977848f1511a9b87cf3dd0b2f50fbd22ac81975e72240b97759a5d67414c;
+  O2 counterpart525808B/SHA256
+  6a42d79a0cedaecff58e181f996b252dd37ceca4a1bdbe608087e40fa2d166b7.
+- E3-SM-CH begins privately. Source-only cancellation audit confirms old
+  rollback260..299 can reach NestCount0 with a nonempty queue; acquire202
+  deliberately cannot bypass it. Cohort preflight refuses any retired/cancelled
+  queued peer. First eligible claim is registry-order selected and a RUN0
+  blocked owner remains eligible after release; immediate re-claim can starve
+  the peer whose withdrawal would make the handoff admissible. A last-owner
+  atomic transaction is necessary but not a complete consumer liveness fix.
+- Root factored existing rollback into shared preflight/commit, preserving
+  its legacy bookkeeping-only contract. New rollback_durable checks the exact
+  cancellation claim, RUN0, uncommitted OWNED entry and actual queue/counts;
+  a last unit preflights all live peers, pins and batch serials before releasing
+  the old unit. After ledger RELEASED/count decrement, complete durable grants
+  publish under the same semaphore-then-registry gates, with no callout or
+  fallible post-mutation helper. A retired queued peer or resource refusal
+  leaves the old unit untouched; the consumer must progress other scopes.
+  Node C/H new SHA256
+  748b473c7e57659dcc6da6ffad06ac254aa888e6ea7b587294c256432332a3b3 /
+  d47698c8d7edc036ff3cb74495a405c661791619c8246f6cad0485948d0038da.
+  Registry/ledger/pins/worker stay at previous frozen identities.
+- Fresh same-flag isolated GNU11 GCC16.2 RV32 compile produces
+  p4_semaphore_nodes-cancel-handoff-smp-root-20261002.o,21536B/SHA256
+  017543aaa8c11e1554d9a9d761333ca38984031f57ff3aef35598e73c96eec61.
+  Root O2 strict sanitizer regressions after this refactor pass durable418/514,
+  composed binding379 and Release418/369. New-API coverage is NOT inferred.
+  Retained p4-semaphore-durable-cancel-handoff-regression-root-20261002,
+  560192B/SHA25620e482e37e9158f678a02493995d95b68cae5ea6f429f968226a8b05fbf561f0;
+  p4-semaphore-operation-admission-cancel-handoff-regression-root-20261002,
+  526184B/SHA256080f89cc72a12c13a99191f51e926634c9eddd980cae3b7bc27b5ad15689818e;
+  p4-semaphore-release-cancel-handoff-regression-root-20261002,
+  515392B/SHA256d64577b706752e8f88b8ae223895f79752e6cbf8ea4b77f981efa172ef8ccb86.
+- Dedicated new-API fixture author and independent reviewer now have disjoint
+  ownership and exact frozen node identities. No public consumer, hardware,
+  reset/flash/media, full link or ABI refresh. Normal core201504B/SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6
+  and configure refusal remain unchanged. Next verify the new transaction,
+  implement fair multi-scope cancellation/drain/retry with protected snapshots
+  and out-of-gate wake delivery, then public/async/lifecycle and actual per-hart
+  launch. Matched full build and concurrent D1001/FPU/contention remain open.
+  Independent node-only review is now frozen as
+  semaphore-cancel-handoff-review.md/SHA256
+  c689adb08eeaae3dec4545c4b9eaa9f19db85c3775a2bc62b7eb99992faab567.
+  Root read it completely: no local state-transition defect under continuous
+  two-gate/storage ownership; no build/test proof from that review. It confirms
+  the first-claim starvation hazard and excludes later cancellation bindings.
+
+### 2026-10-02 - Protected cancellation mutation bindings compile; worker scan still absent
+
+- E3-SM-CH adds private krnP4SemaphoreCancelWithdraw and
+  krnP4SemaphoreCancelRollbackDurable in pins.c/H. Caller retains the initialized
+  semaphore gate; binding takes only registry/lifetime gate. It validates the
+  canonical armed protected worker's RUN identity before leaf mutation. The
+  exact target generation/ordinal cancellation claim is checked by the node
+  leaf. Invalid metadata fails closed while masked; clean refusal0 leaves the
+  unit/queue/pins unchanged. Any positive mutation latches worker readiness
+  before registry unlock, including another owner unblocked by withdrawal.
+  It never pokes under the outer gate; caller must poke after semaphore unlock.
+  No worker scan or public caller is selected by these APIs.
+- Pins C/H SHA256
+  e3045f2c90e96e6451f2bf558f265f06d1b5da3b63fdc8f7b74c90d7d655d1cc /
+  54cf01025966b095b035fc766226d5af56e9f36f9ced0af0117e343de0b70d9b.
+  Nodes remain748b473c/d47698c8; registry/ledger/worker unchanged. Fresh same
+  GNU11/GCC16.2/D1001/SMP/runtime/FPU/atomic defines RV32 compile produces
+  p4_task_pins-cancel-handoff-smp-root-20261002.o,33460B/SHA256
+  ed478d363ef4e6e47de2a7f0c502e87b0b99c993904a1ba96bbcab608d243d66.
+- Existing actual-source composed admission/durable-binding fixture still
+  passes379 after root fresh strict O2/ASan/UBSan warnings-fatal rebuild,
+  fatal sanitizer settings/leaks0/perl alarm20. This is regression evidence,
+  not coverage of the new cancellation bindings. Artifact
+  p4-semaphore-operation-admission-cancel-bindings-regression-root-20261002,
+  526472B/SHA256
+  d3abee95098a8e51b0eff50b192fdb0479df3bfa43ce4927d07188b15ae4927e.
+- A separate actual composed cancellation-binding fixture author is dispatched
+  on frozen identities, disjoint from node fixture author and node reviewer.
+  The node reviewer is assigned a separate read-only binding review after
+  freezing the leaf report; test authors remain disjoint from the reviewer.
+  Next verify refusal/last-unit handoff/withdrawal retry wake and both gate
+  boundaries, then implement a fair multi-scope worker pass with safe claim
+  snapshots and no blocked-owner self-wake spin. No hardware/reset/flash/media,
+  ABI refresh/full link or public activation. Normal core and configure refusal
+  unchanged. Per-hart launch, lifecycle/public async and actual D1001 gates
+  remain necessary for the full goal; no SMP completion claimed.
+
+### 2026-10-02 - Fair cancellation selector verified privately; display reconnected
+
+- Fabian reports the display reconnected. This is connection information,
+  not fresh readiness for visual/touch acceptance; no interactive run started.
+- E3-SM-CF adds claim_wait_cancel_after_locked and its with_ledger variant.
+  Each call validates registry/output (and arena in the latter) before
+  publishing an exclusive claim. Ordered selection scans the bounded registry
+  for the smallest eligible raw Task address above a scalar cursor. No Task
+  storage is read, no record list is reordered, and no wrap occurs. Legacy
+  first-record APIs use the same internal helper with ordering disabled.
+  A blocked claim can be released without selecting it again in that pass.
+  Lower addresses becoming eligible require a later pass/wake; this helper
+  does not itself provide retry readiness or worker installation.
+- Dirty-worktree registry C/H SHA256
+  0126fd1e8335f70ff9fb18dd15288941bb5fc70dc59ccb94e184acdd9350f546 /
+  f92f133b506315d5c7f68d62005eed6a489d6c7cde43925ef3a7179af06581b1.
+  Nodes and pins remain at748b473c/d47698c8 and e3045f2c/54cf0102.
+  Dedicated authors were notified before the registry change to preserve
+  old-source run identities and rerun against this new frozen snapshot.
+- Fresh isolated GNU11 GCC16.2 RV32 real-header compile, explicit current
+  Developer sysroot, D1001/SMP/runtime/FPU/atomic defines, warnings fatal:
+  p4_task_registry-fair-cancel-smp-root-20261002.o,43868B/SHA256
+  ada4e1e866e1f14f91602438abb6757f508bb1cdb63802f7fe4d448b8899e4fa.
+- Root fixture kernel/tests/p4-semaphore-fair-cancel-test.c SHA256
+  44bde78ccc7a134ee59251822ddb697e0a25624abdf3789d5537c755f95eceb2
+  includes the actual legacy wait-registry fixture/source. Independently
+  authored selection cases use PROT_NONE identities in deliberately unordered
+  registry insertion, release every selected claim while it remains eligible,
+  verify ascending progress/no wrap/MAX cursor/new-pass reset, and reject
+  registry-record alias, malformed count and null output without mutation.
+  These are synchronous caller-gated tests, not actual task concurrency.
+- Procedure: clang -std=c11 -D_DEFAULT_SOURCE -O1/-O2 -g -Wall -Wextra
+  -Werror -Wconversion -Wpedantic -fsanitize=address,undefined
+  -fno-omit-frame-pointer -pthread; unique retained binaries in canonical
+  smp-priority-2026-10-01 evidence directory. ASAN_OPTIONS leaks0/halt_on_error1,
+  UBSAN_OPTIONS halt_on_error1; perl alarm20. Both first builds/runs pass
+  legacy172 and selection43, no failed experiment in this root fixture.
+  p4-semaphore-fair-cancel-o1-root-20261002,278824B/SHA256
+  9a3bcdeb345cb0962128bf2d06d961701b0202bcc7c3e144c9d0097f851283e1;
+  p4-semaphore-fair-cancel-o2-root-20261002,278824B/SHA256
+  261864347284fb6d369ed158f8f266a7186730675f75cdbe1c57e27f2fa7f25b.
+- Root read full independent semaphore-cancel-binding-review.md, SHA256
+  a532b83d207095f841b1dca8428addad13801cffe191ff5504011ca1806181f6.
+  No local order/latch defect under caller-owned semaphore gate/protected
+  worker convention. It does not prove caller is GET_THIS_TASK(), fairness,
+  runtime or public routing. Separate fair-selector review assigned.
+- Safety unchanged: no flash/reset/media/hardware action, no public activation,
+  ABI refresh or matched core/BSP link. Normal single-hart core201504B/SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6
+  and unfinished-SMP configure refusal remain intact. README visible status
+  unchanged. Next verify composed cancellation tests and independent selector
+  review, then implement protected metadata snapshots/actual fair consumer
+  and durable retry wakes; public async/lifecycle/per-hart/matched build and
+  actual concurrent D1001/FPU/contention gates remain open. SMP not complete.
+
+### 2026-10-02 - Cancellation-handoff fixture independently verified
+
+- E3-SM-CH leaf is now private host/build verified; protected binding fixture
+  remains pending root verification, actual worker/public routing unbound.
+  Root read all568 fixture lines and rebuilt from actual included sources:
+  kernel/tests/p4-semaphore-cancel-handoff-test.c/SHA256
+  aecf285d70460a7febbccc44acb4309d72a2db660ab54b9218d7c5ea2841e6b6.
+  Registry is0126fd1e/f92f133b; nodes748b473c/d47698c8. Strict clang C11
+  O1/O2 warnings fatal, ASan/UBSan/frame pointers, fatal sanitizers/leaks0,
+  perl alarm20, same procedure as selector entry, independently pass418
+  baseline and355 cancellation checks. Root run had no compilation/test failure.
+- New cases cover cancelled last-unit shared S1/E/S2 handoff with durable pins
+  surviving FinishCancel, RUN-held refusal, retired queued-peer unchanged
+  refusal then withdrawal/retry, recursive/shared non-last and empty last,
+  serial/pin overflow before unit mutation, unclaimed/committed wrong state,
+  malformed count/arena alias and unknown Procure overlay with inaccessible
+  tag bytes. The A/B case uses the arena-aware scalar selector, no wrap and
+  a fresh pass after B withdrawal before A grants C/D. These synchronous
+  transitions prove neither scheduler fairness nor a complete retry protocol.
+- Retained canonical p4-semaphore-cancel-handoff-o1-root-20261002,
+  518112B/SHA256
+  b9959c81177024f2fbf7f1b97dce8a9ca62329edd58e0c11ec7e29e42ce4890b;
+  p4-semaphore-cancel-handoff-o2-root-20261002,517616B/SHA256
+  c5e7e8e0ba764871857b4d46f951290bee6151d54938bdf9c98975be77e09ee1.
+- Root read complete independent fair-selector source review
+  semaphore-fair-cancel-selection-review.md/SHA256
+  8449d1eda3ca11ca7f30853ae4b8436f5090c314a97dac0584157e78b3be3ae0.
+  No selection defect found; plain API requires valid aligned output and does
+  not cover arena aliasing, so OPERATION consumers must use with_ledger.
+  No build/test evidence from the reviewer. Pending author report preserves
+  its earlier nested-main include compilation failure and old-source runs;
+  these must not be relabelled as runs against the new registry snapshot.
+- Safety/visible status unchanged: no hardware/flash/reset/media/ABI refresh
+  or matched link; single-hart image and configure refusal unchanged. Next
+  independently verify composed cancellation bindings, then protected entry
+  snapshots, actual fair worker and durable retry wake integration. Full
+  per-hart/public/lifecycle/concurrent hardware acceptance remains open.
+
+### 2026-10-02 - Cancellation metadata snapshot compiles; worker remains unbound
+
+- Previous goal turn is progress: fair claim selection changed authoritative
+  source and passed independently retained host/build evidence; no blocked
+  audit or completion claim is applicable. Full SMP scope remains unchanged.
+- Root adds private kernel/p4_semaphore_cancel.c/H plus only its SMP CFILES
+  entry. describe_locked checks mapped/aligned output and pool identities,
+  full registry/ledger storage separation and shape, then exact retired,
+  cancelled, exclusively claimed target/generation and ordinal. It snapshots
+  semaphore identity, entry_count/state, committed and running_harts only.
+  No Task/semaphore/request field read, allocation, callback or lock occurs.
+  Output overlap with registry/header/records/arena/pool/selected semaphore
+  is refused before publication. Stale/ineligible/out-of-range leaves output
+  unchanged; malformed metadata fails closed. Every use of borrowed record,
+  operation and entry ends under the same caller-owned registry gate.
+- Dirty C/H SHA256
+  47709097788e9ac2e86408410d1248d41afd5d2c617cf7f27dfbdc3e39f3b927 /
+  83972bb746a0817c4da3911e16f62070a712c5cb1a5031e1cc985ec7617897d4.
+  Registry0126fd1e/f92f133b, nodes748b473c/d47698c8, pins e3045f2c/54cf0102
+  remain frozen for the separate actual composed cancellation-binding test.
+  No source overlap with test authors; root owns architecture/production.
+- Fresh isolated GNU11/GCC16.2 real-header RV32 compile uses the prior
+  explicit current Developer sysroot and D1001/SMP/runtime/FPU/atomic defines,
+  warnings fatal. Retained p4_semaphore_cancel-snapshot-v2-smp-root-20261002.o,
+  3512B/SHA256
+  bec97e8b64cfd76d8f748e2fc4b9f22e3ea68828b6487dfdc1bbf31a6b2e4574.
+  First compile succeeded using GCC's expression _Alignof extension; before
+  the strict C11 host freeze root changed it to standard named-type _Alignof.
+  The first object remains historical, not relabelled as the final source.
+  Dedicated disjoint fixture author and independent source reviewer assigned;
+  no host result from this object or from an unexecuted test plan is claimed.
+- Root read the complete canonical cancellation-handoff author report
+  semaphore-cancel-handoff-tests.md/SHA256
+  233578ddd86cf64619e1765343b589a7a31fef8601f0d0444dd2a1f947ccfd3a.
+  It preserves the nested-main compilation failure (no binary), prior-registry
+  intermediate418/350, final new-registry418/355 O1/O2, and exact author
+  artifact identities. Root independently verified the final418/355 fixture
+  in the previous dated entry. No gate/IRQ or concurrent runtime proof is
+  inferred from those synchronous source tests.
+- Safety: no hardware/reset/flash/media action, matched full link or ABI
+  refresh; normal single-hart image and configure refusal remain unchanged.
+  README visible status unchanged. The copied semaphore pointer is only
+  usable while caller-owned semaphore storage outlives the operation; a Task
+  scope pin does not guarantee that separate lifetime. Committed entries
+  must only reclaim bookkeeping, never release completed ownership. Next
+  verify snapshot and composed binding packets, add protected metadata/claim
+  wrappers and quiet blocked-claim release with race-safe readiness, then
+  actual fair worker. Cross-target notification-pin drain retry, lock latency,
+  public async/lifecycle/per-hart and D1001 concurrency remain open.
+
+### 2026-10-02 - Protected metadata and quiet claim-release bindings compile
+
+- Root reads the final cancellation-binding fixture completely at SHA256
+  0210241009326add292ad5f94f1c77d78e3b81cb53257198eefd9d9a553420c0.
+  Final exact-source independent O1/O2 repeat passes baseline379/new215;
+  frozen pins e3045f2c/54cf0102 and registry0126fd1e/f92f133b. Fixtures use
+  actual ledger/nodes/registry/pins but mocked IRQ/gates/pokes. Fork-isolated
+  fatal worker rejection, RUN-held unchanged refusal, A/B/C durable handoff,
+  outer-gate no-poke and recipient pin retention are verified privately only.
+  O1 p4-semaphore-cancel-binding-final-o1-root-20261002,590176B/SHA256
+  35a2041c2db1ef93be8939ccc70d9c01f293cf43aa0c30e68fca1f99bad7d5e8;
+  O2 p4-semaphore-cancel-binding-o2-root-20261002,589456B/SHA256
+  b3783b4fe2d96ca66ea58a516c527bcf209667de52b88eb9477efacf0d174291.
+  Strict clang C11/O1/O2/g/Wall/Extra/Werror/conversion/pedantic/ASan/UBSan/
+  frame pointers; fatal sanitizers/leaks0/perl alarm20. Initial root O1 used
+  the superseded fixture417d433e and forked children repeated buffered stdout;
+  O1 was rebuilt after final02102410 freeze rather than relabelling it.
+- Author report semaphore-cancel-binding-tests.md records initial quiescent
+  reset and uncleared-ledger failures, then46/594 failed checks caused by
+  releasing RUN before configure/acquire. Root checked final helper: RUN now
+  spans reserve/configure/acquire; RUN-held-refusal setup separately retains
+  RUN. Stdout is flushed before fork. Author first failed artifact path and
+  root first repeat path collided; root clang overwrote the first failed
+  binary. Its failure history survives but original bytes are NOT retained.
+  Author has been asked to correct its retention claim; subsequent author
+  artifacts must use author-specific names. No lost binary is recreated or
+  represented as original failed evidence.
+- Root reads full source-only snapshot review
+  semaphore-cancel-snapshot-review.md/SHA256
+  e29e4db2a5c04b573be6789ecbe0a68207be1176a7c617e253c7ef00e8d128de.
+  No local defect under exact-claim/gate/output contracts. The leaf's pool
+  exclusion assumes the exact boot request pool and ledger entry capacity;
+  caller-owned semaphore lifetime remains independent of the Task scope pin.
+- After author released old-source freeze, root adds protected armed RUN
+  worker-only krnP4SemaphoreCancelClaimAfter/Describe/ReleaseClaim. Claim
+  checks boot-pool output exclusion before arena-aware ordered claim, then
+  clears every borrowed legacy index before unlock. Describe always passes
+  the exact boot arena/pool to the metadata leaf. ReleaseClaim observes fresh
+  claimed RUN state and clears the claim in one gate transaction. It is quiet
+  for already-RUN0 blocked work; an observed RUN-held-to-RUN0 transition
+  latches a wake before unlock and pokes after unlock, covering RUN-leave
+  while the exclusive claim prevented the ordinary readiness producer.
+  These APIs still rely on the caller being the worker's own continuation.
+- New pins C/H SHA256
+  bc702b2f3db9af0295bd5d11dab9acbfa5005de3e933eab216ae8714e87dce12 /
+  da42484e6651a92b5b264530d8da6ce511f6d3fcd378165a981310b792b902ea.
+  Fresh GNU11 GCC16.2 RV32 real-header/current-sysroot/D1001/SMP/runtime/FPU/
+  atomic warnings-fatal compile: p4_task_pins-cancel-snapshot-smp-root-20261002.o,
+  36732B/SHA256
+  c698f12b02ea2bc06917c152ce240dffa634bb168293afd9a2fd84aa2411a762.
+  Existing O-A fixture includes actual new cancellation unit to satisfy its
+  new link dependency, no assertion changes; new SHA256
+  0193754dd70450362c39c539765fa87d11d359fc8688196a501d160c06e9ae93.
+  New snapshot binding O2 regression379/215 passes; retained
+  p4-semaphore-cancel-binding-snapshot-regression-o2-root-20261002,
+  590032B/SHA256
+  727505483af94ff46d271332d363948123a1bba89b842289d696d854446a3fa0.
+  This is not direct coverage of the three new metadata/quiet-release APIs.
+  Disjoint actual-source test author and independent reviewer are assigned.
+- Safety and visible status unchanged: no hardware/flash/reset/media/full
+  link/ABI refresh; normal single-hart core and configure refusal intact.
+  Next finish these targeted tests then add durable cross-target retry
+  readiness BEFORE actual cancellation-worker installation: a quiet RUN0
+  owner blocked by another Task's notification-pin headroom otherwise has
+  no guaranteed wake after that recipient's pins drain. Fair scalar traversal
+  alone is insufficient. Actual worker, public async/lifecycle, real per-hart
+  launch, matched artifacts and concurrent D1001/FPU/contention remain open.
+
+### 2026-10-02 - Corrected operation-only claims; cancellation worker remains unbound
+
+- E3-SM-CF/CS correction: independent review found that the prior protected
+  claim (pins bc702b2f/da42484e, registry0126fd1e/f92f133b) could claim
+  SINGLE/LIST and then strand it in OPERATION-only Describe/ReleaseClaim.
+  Intermediate registry89cdb025/7c9b37bd excludes those kinds but still failed
+  to cross-validate the selected registry record against its ledger operation.
+  Final with-ledger selector resolves the exact minimum eligible candidate,
+  validates operation identity/owner/generation/cancelled/closure/queued count
+  before mutation, then claims under the same continuous gate. Generic legacy
+  APIs retain prior behavior. Plain internal selectors do not replace this
+  mandatory cross-domain preflight.
+- Final registry C/H SHA256
+  331137e3d33e019ce378cfc3b833a1aed377fb9c374f3671d71a59622f242b57 /
+  90ff31c547c1c4d31395e22cef3398ca0154ed9fab035952afdf35014ae9cbdb;
+  pins C/H4393cd9d/2aa3a0e3 (full identities in independent review).
+  Root fully reads semaphore-cancel-snapshot-binding-review.md/SHA256
+  cfa7951e944cd27d8ec03a5c5d220af3447cfe500645062435fbe33e98b6c876.
+  Both superseded findings remain recorded; final narrow source review finds
+  no remaining local defect under worker-context/output/lifetime contracts.
+- Root also reads the corrected historical semaphore-cancel-binding-tests.md:
+  it now explicitly reports the overwritten initial failed binary as lost,
+  while retaining the r2/r3/r4 outcomes and final old-source run identities.
+  This correction does not turn those old-source results into coverage of
+  the new protected snapshot bindings.
+- Root adds three legacy-kind refusal checks to fair-selector fixture SHA256
+  50a0a05e15e0808cf14ffb48eae3991b45d08b12ed6dc3ba9893154bd100f1cf.
+  Exact final-source independent O1/O2 repeat passes baseline172/selection46.
+  Artifacts under evidence/smp-priority-2026-10-01:
+  p4-semaphore-fair-cancel-final-o1-root-20261002,279520B/SHA256
+  3863950b6c1e4f4d478608ff052e0cc8ab4602beff7feed76efd86ac6362cd8c;
+  O2 corresponding name,279520B/SHA256
+  79891b987f8059826e0b76852a62bd81161adb3c6a58e0510e82d8395aac8c62.
+  Earlier operation-only runs used intermediate89cdb025, not final331137e3.
+- Root fully reads dedicated snapshot fixture d11dd52b678d77b698bc47c0396d7c8eb4994fbf2535606f7c21ba272a3d3e03
+  and author report, then independently rebuilds final-source O1/O2: each
+  baseline418/snapshot254 passes. Covers all entry states, committed units,
+  exact generation/claim, malformed/alias unchanged refusal, request reuse,
+  opaque PROT_NONE Task/semaphore identities without dereference. Artifacts
+  p4-semaphore-cancel-snapshot-final-o1-root-20261002,515344B/SHA256
+  daeb282dd40c4ce783e896d1857f2655223dce859b384f6d65768fdf76558767;
+  O2 corresponding name,514848B/SHA256
+  973bb3a1da07ab0870d917581b46e629c7f4978779a7e868d282a7d02f9f3ddc.
+  Procedure: clang C11/D_DEFAULT_SOURCE/O1 or O2/g/Wall/Extra/Werror/
+  conversion/pedantic/ASan/UBSan/frame pointers/pthread; fatal sanitizers,
+  leaks0, perl alarm20 execution. No real gate/hart timing is inferred.
+- E3-SM-CR new retry leaf C/H SHA256
+  85f88b96252b228fb12b8e0c5b6b23011040af58592cb5294cdedc417c7b81f8 /
+  36971b1eec618729ec3890947c519916ec05d4065d6138df2339a2ed43856754;
+  consumer C/H SHA256
+  0fe1001437b31775cab462c8799d6cdc966adb1e1e63b0f9a3f8af93f66ac7b3 /
+  eb13caea5e300acd79db175e55fe19848700a35de6ef76526e87ecaa7aba73e9.
+  Begin registers interest BEFORE attempting resources; End does not own or
+  consume the durable global wake. Producer Event must latch under the same
+  registry gate and poke after outer locks. Bindings are DECLARATIONS ONLY;
+  no resource-drain hooks, CFILES selection or ServiceLoop call exists yet.
+  Consumer bounds cursor traversal, uses scalar snapshots and one semaphore
+  gate at a time, skips committed unit rollback, quietly releases blocked
+  claims and returns progress only for mutation/finish, not claim churn.
+- Fresh isolated GNU11 GCC16.2 real-header RV32/current Developer sysroot,
+  D1001/SMP/runtime/FPU/atomic defines, warnings fatal, retained objects:
+  p4_task_registry-cancel-worker-unbound-smp-root-20261002.o,45440B/SHA256
+  d445bdc9f8b251220f05b9324ad9a163f518d65418001f663297803d84a7e748;
+  p4_semaphore_cancel_retry-cancel-worker-unbound-smp-root-20261002.o,
+  2788B/SHA2565dbb04afb43724ecbda03c28f26fb5b2551bab7eba3bdb1e04196888ec0f0129;
+  p4_semaphore_cancel_worker-cancel-worker-unbound-smp-root-20261002.o,
+  4312B/SHA256399680af9b1bf04afeed26d9a9db7dfb129c28c10ea24d39c99d458b16d0f84a.
+  Unresolved retry bindings intentionally prevent a complete linked consumer.
+  Independent new-worker review and actual retry-leaf fixture are delegated
+  with disjoint ownership; protected snapshot-binding packet still pending.
+- Safety: no hardware/reset/flash/media action, matched link or ABI refresh.
+  Fabian reports display reconnected, not fresh visual-test readiness. Normal
+  single-hart flashed core and unfinished-SMP configure refusal unchanged;
+  README visible state unchanged. Next verify new packets then implement
+  protected retry bindings plus complete resource-drain producers before
+  selecting consumer. Semaphore storage lifetime, sustained ServiceTask CPU
+  fairness/lock latency, public async/lifecycle routing, real per-hart launch,
+  matched artifacts and concurrent D1001/FPU/contention remain open.
+
+### 2026-10-02 - Retry-interest leaf independently passes; producers still absent
+
+- Root fully reads retry fixture
+  cd3ecad8f7cab208bfd06c159072efb94338ac751c2193540f53fc42a99141e1
+  and semaphore-cancel-retry-tests.md, then independently repeats strict
+  clang C11/O1/O2/g/Wall/Extra/Werror/conversion/pedantic/ASan/UBSan/frame
+  pointers, fatal sanitizers/leaks0/perl alarm20: each69 passes, exit0.
+  Actual leaf85f88b96/36971b1e unchanged. Cases cover begin-before-event,
+  blocked retained interest, nested/inactive refusal, malformed/null/alignment
+  unchanged refusal and End(false) preserving the MODELED external latch.
+  No production producer coverage or lock/IPI proof is inferred.
+- Retained p4-semaphore-cancel-retry-o1-root-20261002,56184B/SHA256
+  129ef0260910e86d4bfa662e9a8970fc5c9a7824dd1dfa6cd037cc1811b5b824;
+  O2 corresponding name,56104B/SHA256
+  cf132ca987a04f8fa1c98f7c02ec75f0be4731e32ca2cf72cb3b756304299581.
+  Fresh isolated final pins4393cd9d/2aa3a0e3 GNU11 GCC16.2 RV32/current
+  sysroot/D1001/SMP/runtime/FPU/atomic warnings-fatal object:
+  p4_task_pins-final-operation-cancel-smp-root-20261002.o,36740B/SHA256
+  dd47093bb6189608f215f4f359256f4284e84092cb3ffbc2eb00d1bbc955b846.
+- Independent consumer review and disjoint actual-consumer/mocked-binding
+  fixture are pending; common registry/pins remain frozen for separate
+  protected snapshot-binding tests. No hardware/reset/flash/media/full link
+  or ABI action. Normal core and configure refusal unchanged. Next implement
+  and test protected retry bindings and all resource-drain wake producers;
+  only then select worker. Full public/lifecycle/per-hart/matched/concurrent
+  D1001 acceptance remains open, not completed by these leaf results.
+
+### 2026-10-02 - Retry producer coverage audited against actual transport
+
+- Root inspects every registry pin decrement/zero assignment, its lifetime
+  helper and production bindings, then the cleanup mailbox/wake consumer.
+  Canonical semaphore-cancel-retry-producer-audit-root.md/SHA256
+  561dd9a39c6da75eb637f93079eec85a7edf87049d9d251f1902dbdb2119aef3
+  records exact unchanged source identities and the procedure. This is
+  source-only evidence, no executable artifact or runtime qualification.
+- Four successful resource-drop wrappers require cross-target interest
+  publication: ordinary Unpin, exact notification finish, operation complete/
+  cancellation finish, legacy wait finish. Target-specific cleanup readiness
+  alone cannot advertise another live recipient's freed pin headroom. Both
+  readiness transitions must run under the same gate without short circuit.
+  Operation finish also frees arena capacity. Failed/stale finishes stay quiet.
+- Actual cleanup transport posts asynchronous IPI flags and directly raises
+  the permanently protected worker signal; it does not call public Signal or
+  ordinary worker Unpin. The proposed Unpin hook therefore cannot recursively
+  produce itself through this transport. Ordinary RUN leave is not pin drain;
+  no unconditional cross-target wake is planned there. Service pin consumption
+  applies only to retired wait-free records, not live queued recipients.
+- No production edit while the protected snapshot-binding test author still
+  holds the common-source freeze. Author reports a first red fixture iteration:
+  malformed-case checks were placed after the expected record was claimed,
+  correctly selecting the next record instead; an alias child status is still
+  under investigation. This is not yet a production discrepancy or final
+  passing evidence. Live handles remain active; no duplicate run is started.
+- Safety unchanged: no hardware/reset/flash/media/ABI/full-link action. Next
+  finish the frozen composed packet, implement the four gated producer hooks
+  plus protected Begin/End and verify actual binding interleavings before
+  installing the consumer. Serial exhaustion, public outer-lock coverage,
+  CPU fairness, lifecycle/per-hart and matched D1001 concurrency remain open.
+
+### 2026-10-02 - Independent cancellation-consumer review confirms missing bindings
+
+- Root fully reads semaphore-cancel-worker-review.md/SHA256
+  db06940f4209d0933f25e0cb000e3713f4d057f305d38b2a83a164105faf8409.
+  Exact consumer0fe10014/eb13caea and retry85f88b96/36971b1e unchanged.
+  Source review accepts bounded monotonic selection, single outer semaphore
+  gate, committed ownership preservation, RUN0 uncommitted rollback and
+  observed RUN-drain quiet-release protocol under documented contracts.
+- It independently confirms absent protected Begin/End, absent production
+  Event caller and absent source/ServiceLoop selection. Same-record readiness
+  excludes claimed scopes and cannot replace cross-target resource retry.
+  No new tests/build/runtime/hardware result is claimed by this review.
+- Semaphore storage lifetime and actual-current-worker identity remain caller
+  obligations; merely adding CFILES is not a safe fix. Consumer fixture and
+  protected snapshot-binding fixture have confirmed live handles and remain
+  in progress. Production freeze is retained until final author binaries and
+  hashes are captured. No hardware/reset/flash/media/matched-link/ABI action.
+  Next implement and independently test producer bindings, then integrate
+  the worker. Full SMP objective remains active and unverified on D1001.
+
+### 2026-10-02 - Frozen Task-pin regression baseline before retry integration
+
+- Root fresh strict C11/D_DEFAULT_SOURCE/O1/O2/g/Wall/Extra/Werror/conversion/
+  pedantic/ASan/UBSan/frame-pointer builds of actual p4-task-pins-test.c
+  SHA25610c190e1071304a03a6eabeb8572b601878605a35ad841def722d1f8fa467c64.
+  Fatal sanitizer options/leaks0/perl alarm20 runs both pass82772, exit0.
+  Tested pins4393cd9d/2aa3a0e3, registry331137e3/90ff31c5 unchanged.
+  This fixture selects the non-SMP binding branches with mocked IRQ/gates and
+  actual registry/lifetime helpers. It does not cover new SMP retry hooks.
+- Retained p4-task-pins-pre-retry-o1-root-20261002,431000B/SHA256
+  ff0051380c445fe79b3ee338a8f548208e4713703f267ca4e227fe8a1b99d736;
+  O2 corresponding name,431000B/SHA256
+  41ca8ff69f10616ce365d14165bfef352d5ecfcbce686f8f1a6f90a5b757fec2.
+  Gate retry/timeout loops account for many checks; check count is not a
+  concurrency duration or evidence that two real harts ran.
+- Separate protected snapshot and consumer fixtures have confirmed live
+  agent handles; root re-polls those handles rather than restarting them on
+  timeout. No production source, hardware/flash/reset/media/full-link/ABI
+  change. Normal image and configure refusal remain unchanged. Next retain
+  final frozen composed artifacts, then implement guarded retry bindings and
+  resource-drop hooks while preserving this baseline and SMP branch tests.
+
+### 2026-10-02 - Protected cancellation snapshot bindings independently pass
+
+- Root fully reads final fixture54c2e94dfb87b25cfee63170d10ee4b0c3a464a05c8ea970c9f541f77594913a
+  then fresh strict clang C11/D_DEFAULT_SOURCE/O1/O2/g/Wall/Extra/Werror/
+  conversion/pedantic/ASan/UBSan/frame-pointer compiles and fatal/leaks0/
+  perl alarm20 runs each pass baseline379/protected213, exit0. Exact frozen
+  pins4393cd9d/2aa3a0e3, registry331137e3/90ff31c5, cancel47709097/83972bb7.
+  Test composes actual registry/ledger/nodes/pins with mocked IRQ/gates/pokes
+  and opaque PROT_NONE Task identities. Fork-isolated output-alias rejection
+  children require SIGABRT; no real IRQ/concurrent hart qualification.
+- Covers address-order/no wrap/legacy scope untouched, borrowed indices
+  cleared, exact ordinal/state/count, stale unchanged refusal, RUN0 blocked
+  quiet release, RUN2-to-zero while claimed relatch and later RUN drain after
+  quiet release. Cross-domain operation link/owner/generation/cancelled/
+  closure/queued-count mismatches refuse before claim/output mutation.
+- Retained p4-semaphore-cancel-snapshot-binding-o1-root-20261002,
+  595416B/SHA256e164c703defd4ac06077bc5f3db024a477bd013e226ff81bb3203d2e2b095abb;
+  O2 corresponding name,611208B/SHA256
+  741733765174689fd9a1fd9b3e351c1c21e8ed52fb5b59af6d4a84e1729cd38e.
+  First author red fixture put malformed cases after B was claimed, selecting
+  C legitimately; alias Describe likewise targeted an inactive claim. Final
+  fixture tests the selected/claimed operation. Author final evidence report
+  and explicit common-source freeze release are still pending, not inferred.
+- No hardware/reset/flash/media/full-link/ABI action; normal image/configure
+  refusal unchanged. Next add protected retry bindings and four resource-drop
+  hooks after final author artifacts are retained; independently qualify
+  actual hooks, then select consumer. Full SMP/runtime/D1001 gates stay open.
+
+### 2026-10-02 - Protected retry bindings and four capacity producers compile
+
+- Snapshot author releases production freeze after final379/213 O1/O2.
+  Root reads canonical snapshot-binding report (initialSHA2c73a534). Failed
+  compile lacked a renamed-main prototype; earlier fixture runs17/213 and
+  9/213 chose a different eligible record or an inactive alias target; another
+  failure compared undefined padding; later2/595 reflected duplicate ledger
+  init and old IRQ-depth expectation. Final fixture corrects those cases.
+  Failed binary paths were reused and original failed bytes are not retained.
+  Root notices one historical pins-hash transcription typo and requests an
+  exact-row correction; no historical result is relabelled as new-source.
+- Root implements singleton retry state, zeroed before prepared publication,
+  and protected armed RUN worker Begin/End under the registry gate. Nested/
+  inactive/malformed transitions fail closed. Success paths ordinary Unpin,
+  exact NotificationFinish, operation Complete/FinishCancel and legacy wait
+  Finish/FinishCancel use a resource helper that evaluates BOTH existing
+  target readiness and global retry interest without short-circuit. Each
+  latches the durable cleanup wake under the same gate and pokes afterward.
+  End(false) cannot clear a producer's already-pending wake; End(true) keeps
+  interest but produces no self-poke. RUN-leave is not a generic producer.
+- Current pins C SHA256
+  f82e87d7fe373e7a9c958f59310b086f907aa5872bbef1f2b4fc3a50fe75761b;
+  H2aa3a0e3 unchanged. Retry C85f88b96 unchanged, headerSHA256
+  948d064f09e727431e2fe357c2414a4ac3eae3045c641a980489078888a5cbbf.
+  Gated SMP kernel CFILES adds retry unit, mmakeSHA256
+  4bdbfc3f9c35e0d48599f100ef64f0ed960e545a54ede9e714a2d2047094e26f.
+  O-A fixture adds actual retry.c include only, unchanged baseline assertions,
+  newSHA256b50ee94a9bbb754d9b6ae4b2b7baa0d727488d0f04382126b454b8a4710308e7.
+  Registry331137e3/90ff31c5 and consumer0fe10014/eb13caea remain unchanged.
+- Fresh isolated GNU11 GCC16.2 RV32 real headers/current explicit Developer
+  sysroot, rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f/medany,
+  D1001/SMP/runtime/FPU/atomic defines, Wall/Extra/Werror: pins and retry
+  compile. Retained p4_task_pins-retry-binding-smp-root-20261002.o,
+  38796B/SHA25681c3c7ef7399525622bbd8682abfce222e53b75a6309da51d137d17ce9e29f92;
+  p4_semaphore_cancel_retry-retry-binding-smp-root-20261002.o,
+  2788B/SHA2565dbb04afb43724ecbda03c28f26fb5b2551bab7eba3bdb1e04196888ec0f0129.
+- Fresh root O1/O2 C11/D_DEFAULT_SOURCE/g/Wall/Extra/Werror/conversion/
+  pedantic/ASan/UBSan/frame pointers, fatal sanitizers/leaks0/perl alarm20:
+  non-SMP Task-pin82772, SMP operation admission379, composed snapshot379/213
+  all pass exit0. These unchanged tests leave retry interest inactive and
+  are regressions, NOT coverage of the newly active Begin/End/event protocol.
+  Dedicated actual-source binding fixture and independent review are assigned
+  disjointly; common production is frozen again for those new packets.
+- Retained regression binaries (all suffix -retry-regression-o1 or o2-root-20261002):
+  p4-task-pins-test O1/O2 each431008B, SHA256
+  f088bd5e55ca4b17f474ead2d3316ffe399cd2e7646448c9ff108ceb1e356d3f /
+  0335b3ac08d74e10076f15473b85f6d83df1e2d505cad8873c2dfbc3d11a52c5;
+  p4-semaphore-operation-admission-test O1529672B/O2545656B, SHA256
+  91aa060600a5f1f9044ff4e8f1c3307cbb55ea3fa6b9c94d4e6cc5f062afa7eb /
+  b16b0711d431b3a27f4d7acdb3b1f6363a505ee149229706026239ac6654abc5;
+  p4-semaphore-cancel-snapshot-binding-test O1596472B/O2612456B, SHA256
+  426cb8798db18d5c19ff70ae5770d9a2f025d60689aca0ebf8af58e001c7c940 /
+  0a55a2932bf385b48a37b3a405fb518d353ca8b3d0e56125c0720fe0f6986809.
+- No actual consumer/ServiceLoop selection, matched core/BSP/ABI rebuild or
+  hardware/reset/flash/media action. Normal single-hart image and unfinished
+  configure refusal intact; README visible state unchanged. Next verify new
+  bindings and independent review plus consumer fixture, then integrate fair
+  cancellation pass. Outer-lock contract, semaphore storage lifetime,
+  public async/lifecycle, real per-hart launch and D1001 concurrency remain
+  open; successful private regression is not completed SMP.
+
+### 2026-10-02 - Cancellation consumer body independently passes mocked boundaries
+
+- Root fully reads fixturee679b0367505885bdeaadfe7278a47b97385009392e2a8a5eabcfeb7bec03244
+  and canonical semaphore-cancel-worker-tests.md, then fresh strict C11/
+  D_DEFAULT_SOURCE/O1/O2/g/Wall/Extra/Werror/conversion/pedantic/ASan/UBSan/
+  frame pointers, fatal sanitizers/leaks0/perl alarm20 repeats both791 pass.
+  Actual consumer0fe10014/eb13caea unchanged. The included retry header is
+  now948d064f (comment-only binding-contract clarification), not old36971b1e.
+  Consumer fixture uses mocked claims/descriptions/node mutations/locks/
+  finish/release/retry/poke and deterministic fault injection. Its count
+  includes mock invariant assertions, not791 independent concurrent runs.
+- Retained p4-semaphore-cancel-worker-o1-root-20261002,118216B/SHA256
+  1729d070d3c48da0ca4d23a13e0267898c520430fbf0b3f756d5c6400ad3c631;
+  O2 corresponding name,118280B/SHA256
+  cc903f36b2e14699b07e867d04271c326ce8f344480f22309cb82482808e7352.
+  Tests cover finite monotonic scopes, skipped terminal/unvisited states,
+  committed ownership preservation, single-gate withdraw/rollback with poke
+  after unlock, RUN-held refusal, preserved initial RUN observation across
+  later drain, resource refusal with no self-progress/poke, and fail-closed
+  malformed results/identity/kind/order/indices/state/count. Mock scenarios
+  do not establish actual arena lifetime, production retry/gate/IRQ behavior.
+- Author failed iterations incorrectly forced mutation success despite a
+  configured refusal and filtered a malformed-kind injected scope before
+  returning it. Final mocks correct both; no failed binary bytes retained.
+  Dedicated actual retry-binding fixture/review remain live and production
+  frozen at pinsf82e87d7. No consumer selection, matched full link/ABI or
+  hardware/flash/reset/media action. Next qualify hooks then integrate worker;
+  real per-hart/public/lifecycle and concurrent D1001 gates remain open.
+
+### 2026-10-02 - Independent retry-binding and real secondary-launch gap reviews
+
+- Root reads the complete independent retry-binding review, SHA256
+  43cc29683c9cc7f935511601da2a04c39b4643202de14db71d81a49fa7ac50ba,
+  and checks protected Begin/End in current pinsf82e87d7. The review accepts
+  local interest/wake serialization and four successful resource-drop hooks,
+  not public caller lock ordering or actual-current-worker authentication.
+  Consumer selection and ServiceLoop invocation remain absent. Dedicated
+  actual binding fixture is still being qualified; no test result inferred.
+- Root reads complete real-hart1-launch-gap-audit.md, revised SHA256
+  fca11868be5222962f2af28877fafb3c95872a3b38370c3782f866dd9f72e05c.
+  Original report7a6b002a mixed independently observed per-file times; revised
+  report explicitly preserves historical kernel mmake88d87b59 and separately
+  rereads current4bdbfc3f. Adding retry.c does not add a secondary entry.
+  Root independently checks startup reset/clock/boot-register hold and the
+  online-mask helper: CPU count starts1; caller-supplied true alone is not a
+  validated hart1 ACK. No production online publication caller exists.
+- Required launch order remains worker-ready -> generation-bound production
+  release -> hart1 private stack/gp/explicit tp policy/FS/common mtvec and
+  local ISR/CLIC/runtime/IPI setup -> validated same-generation ACK -> online
+  publication -> genuine first trap/context restore. Prepared runtime slots
+  and the diagnostic entered/park report are not concurrent Exec execution.
+  Shared-memory visibility, tp/TLS policy, linker placement and first-trap
+  ownership need implementation and verification before activation.
+- Source audit only; no new binary, configure/full build, ABI refresh,
+  hardware/reset/flash/media action. Normal single-hart image and unfinished
+  SMP configure refusal unchanged. Fabian reports the display reconnected;
+  this is not readiness for an interactive test. Next qualify actual retry
+  bindings, integrate the cancellation consumer, then close public/lifecycle
+  and real-launch prerequisites. E3-A1/A2/A3 and the full SMP goal stay open.
+
+### 2026-10-02 - Actual retry bindings pass; cancellation enters gated ServiceLoop
+
+- Root reads complete dedicated fixture, finalSHA256
+  70f2493231f34f180e9c40c1ad895e0ec22f9cbff83a57b009ff568a41b078ed,
+  and canonical author report. Root identifies uninitialized between-member
+  snapshot padding before final freeze; author zeros the whole snapshot before
+  copying members. Exact frozen actual-source O1/O2 repeats pass baseline379
+  plus new371, exit0: C11/D_DEFAULT_SOURCE/g/Wall/Extra/Werror/conversion/
+  pedantic/ASan/UBSan/frame pointers, fatal options/leaks0/perl alarm20.
+  Pinsf82e87d7/2aa3a0e3, retry85f88b96/948d064f, registry331137e3/90ff31c5
+  unchanged. Opaque PROT_NONE Task identities, gate/IRQ/poke mocks; this is
+  not a concurrent-hart or actual interrupt-delivery test.
+- Coverage includes interest before refusal, cross-target ordinary unpin
+  while cancelled target remains claimed/unready, sticky wake surviving
+  End(false), retained interest/no self-poke at End(true), successful
+  operation/cancel/legacy-wait/exact-notification finish producers, stale
+  finish silence and fork-isolated malformed worker/state fatal paths.
+  Retained p4-semaphore-cancel-retry-binding-o1-root-20261002,611968B/SHA256
+  434c5bb593697c78ca0eb2a9d2f3ddd520c35d8d5ec7bd0c206da92fbc4f1ced;
+  O2 corresponding name,611440B/SHA256
+  071193406d106feea3ccfc48558358ea9db705e38969402af61a17d005e042f3.
+  Author report repeats a historical pins-hash transcription defect; root
+  requests literal correction in both reports, not a relabelled test result.
+- Root installs canonical ServiceLoop notification -> bounded cancellation
+  -> retired cleanup order, stopping when all three report no progress.
+  Current worker comes from GET_THIS_TASK after protected ServicePort/arm
+  validation. Cancellation only reports node/finish mutations, so a blocked
+  pass does not spin by claiming/releasing itself. Exec SMP CFILES now adds
+  cancellation worker. Normal variant and configure refusal remain intact.
+  Sources: cleanup C SHA256
+  3d1211d67b9d869badc5a991e86c15ebf23ef24d132d7f3deb131adc9dfbfe02;
+  cancel C(comment-only update)fbcdbd06b72e3a533914d88a1bd684683133d03444a1c9890a6f1d41173f12dd;
+  cancel H2ff010005adabf416460d980ea013b733c1033335b281031b8e090cc7e0c7fb5;
+  Exec mmakef96a5dde46f383ddb469783e283e3d3e4aea99e622ceaee33cf41d839d243fe0.
+- Fresh unique GNU11 GCC16.2 isolated objects with real current Developer
+  sysroot/generated headers, rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f/
+  medany/D1001/SMP/runtime/FPU/atomic and Wall/Extra/Werror compile exit0.
+  Retained p4_cleanup_worker-service-cancel-smp-root-20261002.o,
+  5492B/SHA256098fc7c94ec0eb54839134fba72eec4da9c2e0738d0f864b23901f35490d67af;
+  p4_semaphore_cancel_worker-service-cancel-smp-root-20261002.o,
+  4312B/SHA256399680af9b1bf04afeed26d9a9db7dfb129c28c10ea24d39c99d458b16d0f84a.
+  Updated actual ServiceLoop fixture is delegated on a disjoint file and
+  pending final frozen results. No full link, ABI refresh or hardware action.
+- Safety: no reset/flash/media change; saved normal image untouched. Priority127
+  sustained CPU occupancy and real semaphore-storage lifetime remain open.
+  Next qualify actual loop order/progress/sleep edge, then composed consumer,
+  public API/lifecycle, real hart1 launch and matched core/BSP/ABI/D1001 tests.
+  This private integration does not complete SMP or E3-A1/A2/A3.
+
+### 2026-10-02 - Integrated service loop independently passes its host boundary gate
+
+- Root reads complete final actual-ServiceLoop fixture and canonical report
+  SHA2560f59f19db6c06e37fe23b6ea765548436a3a02e3cd27432b666d7e1fc4388869.
+  FixtureSHA25617483d76e5b86008c31c4b8bae2b522b6a1f62c12b156e7bfa7b1808203824e6.
+  Fresh strict C11/D_DEFAULT_SOURCE/O1/O2/g/Wall/Extra/Werror/conversion/
+  pedantic/ASan/UBSan/frame-pointer builds, fatal/leaks0/perl alarm20 runs
+  both pass598, exit0. The production loop3d1211d6 is included directly;
+  cancellation, notification, cleanup, Signal/Wait and lock boundaries are
+  mocked. Three-way order, cancellation progress extending drain, zero-
+  progress sleep rather than spin, current worker identity and existing
+  clear-before-drain/wake-before-Wait assertions pass. No real concurrency.
+- Retained p4-cleanup-worker-service-cancel-o1-root-20261002,
+  116000B/SHA2566a980073863c4f3dcc04b38dd4f1b49c3d33484819a7306daf2988703afa9b48;
+  O2 corresponding name,116000B/SHA256
+  4f314cf89d9aa67d80a2f2f5176b1cb99792a112fb3b54d55b8460b57e6fbc97.
+  Author first requested LeakSanitizer unsupported on this macOS runtime;
+  it aborted before test execution. Final runs explicitly disable only leaks.
+  Root also catches an extra expected drain iteration before final freeze;
+  corrected fixture expects4 cancellation calls and12 class-order entries,
+  matching actual notification and cleanup totals. No production bug inferred.
+- Fresh current-source actual cancellation-body regression O1/O2 each791
+  passes, separately mocked bindings. Retained
+  p4-semaphore-cancel-worker-service-regression-o1-root-20261002,
+  118240B/SHA25606f3f45ef3be8a0688ad6e46e7a88486e2393269f8287a3f855e041680fb1db2;
+  O2 corresponding name,118304B/SHA256
+  9b6c952f578e38b46a4747c79c84f53899e91796f9d22c96dca293010fe38801.
+  Comment-only source hash change does not change the tested consumer body.
+- Literal correction resolves old snapshot-report pins hash (66-character
+  transcription) to64-character4393cd9ddccdcb40bc51a4f4dfd2f5ae8119506d15e90d608d68f8089045e5b5.
+  Root checks corrected row and report hashes: snapshot report now
+  77836eefb8a6a23e347750a8fc5c26cd2a9e39b48fbb2e7100c8f98f5e503ffe;
+  retry-binding report now
+  a8015d7b7997ca80cc63b0e978aac36e4837ba8e3cbce8fe6edb8343efbb58c5.
+  Preserve prior2c73a534/73d67e0e report identities as historical, not current.
+- No matched core/BSP/ABI or hardware/reset/flash/media action. Next compose
+  the actual cancellation consumer with real kernel bindings and review the
+  loop integration, then public synchronization/lifecycle and real hart1
+  entry. Bound priority127 occupancy, caller semaphore lifetime and actual
+  cross-hart wake behavior remain unqualified. Full SMP goal stays active.
+
+### 2026-10-02 - Protected real acquisition front doors compile; public routing still open
+
+- Root audits actual public InternalObtainSemaphore, ReleaseSemaphore,
+  ObtainSemaphoreList and Procure plus P4 exec_platform/nodes/pins. Only the
+  nonblocking Attempt arbitration is routed. Existing O-A fixture enters
+  Configure/Acquire through test helpers rather than production bindings.
+  Root adds krnP4SemaphoreOperationConfigure and Acquire to the matched-SMP
+  pins binding. Both take the registry leaf gate, resolve the permanent boot
+  request pool there and invoke the actual engine while caller retains its
+  initialized semaphore gate/current RUN. No pointer escape, allocation,
+  wake/poke or callback. Negative result fails closed; 0 refusal,1 immediate
+  and Acquire2 queued remain distinct. Public routing remains absent.
+- Sources pins C SHA256
+  4c48b36b9a21067a39d77b510e319a5f0938746d7cb697e6267dc860a5b0e0f5;
+  H SHA256a756a26f73d415c7c3d8069ef60b9def5f143370631de99e2e0fa396ec44cc0c.
+  Earlier f82e87d7/2aa3a0e3 evidence stays historical. The composed actual
+  consumer fixture author confirms no binaries yet, so additive changes
+  precede its new freeze; it will use these real bindings rather than test
+  setup shortcuts. Independent source review assigned separately.
+- Fresh unique GNU11 GCC16.2 RV32 object with current explicit Developer
+  sysroot/generated headers, rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f/
+  medany/D1001/SMP/runtime/FPU/atomic/Wall/Extra/Werror compiles exit0.
+  p4_task_pins-acquire-binding-smp-root-20261002.o,40116B/SHA256
+  7ad6bd0830eca58d5f960887506d7e1b710f6ea5a0326709291ab4c87562a76a.
+- Root fresh C11/D_DEFAULT_SOURCE/O1/O2/g/Wall/Extra/Werror/conversion/
+  pedantic/ASan/UBSan/frame pointers, fatal/leaks0/perl alarm20 regressions
+  each pass: non-SMP pins82772, SMP O-A379, actual retry379+371, exit0.
+  These do NOT call the new Configure/Acquire wrappers directly.
+  Retained binaries have suffix -acquire-regression-o1/o2-root-20261002:
+  p4-task-pins-test each431016B, SHA256
+  a9d3c3d87cb360e3e2d3f06ecf5ee5ae56f17e767175645e0f78caf965b4d131 /
+  3cb3b957e09a49659f4470f6b68c0480186f791aad15c873ace039da0caed744;
+  p4-semaphore-operation-admission-test O1529928B/O2545928B, SHA256
+  d9cd538d566aa5db931fc46ea882f9da6a01330530d58f154c0862378446b882 /
+  62bcc183663671cd37a7ee7e9b52441aca14092f3cd19495a8b1b4f6d04bbd07;
+  p4-semaphore-cancel-retry-binding-test O1612264B/O2611736B, SHA256
+  ca09caab980f862930d8b98c2213a6fc137f7543a65a55ab7f2277e0e345755f /
+  b8fe251e991d5e166eec4a1625a12cec1fe0839c5e83173fcdf8e941712eca1e.
+- No full-link/ABI refresh/hardware/reset/flash/media change. Normal core and
+  configure refusal intact. Next direct binding/composed cancellation tests;
+  then public acquisition retry/sleep, durable release, async Procure/Vacate,
+  removal/lifecycle, real hart1 entry and matched full runtime qualification.
+
+### 2026-10-02 - ServiceLoop review accepted locally; tp policy requires emitted-toolchain evidence
+
+- Root fully reads independent semaphore-service-cancel-loop-review.md,
+  SHA256a708e86c98e0ed31cb4ffc70c5c32061be429f3164726e05d9cc6c253a89055f.
+  Exact loop3d1211d6/consumerfbcdbd06/Exec mmakef96a5dde, historical pinsf82e87d7.
+  Local ordering/progress, current-worker callsite and sleep-edge contracts
+  accepted. Fixed capacity is not a time budget or priority127 CPU-fairness
+  proof. New acquisition wrappers are outside that review's frozen snapshot.
+- Root reads complete riscv-tp-tls-launch-audit.md, SHA256
+  393b9daaac61b796aef570b114a211203a9bd5dc1c8a504c8038e0a9fdb1ec53,
+  then checks actual P4 trap convention and native TLS assembly. Shared
+  context deliberately omits gp/tp; P4 runtime instead reads mhartid and
+  explicit SysBase. Native mv x4,%0 with output-only constraint writes tp
+  from an unspecified output register, not a valid pointer read. P4 does
+  not select that native TLS access path; this is not a reason to copy it.
+  Current primary startup does not establish tp; diagnostic zero assignment
+  is not production policy. Source scan/emulated TLS collector references
+  alone cannot prove emitted toolchain behavior or all external modules.
+- Bounded compiler/relocation/disassembly TLS probe is delegated to resolve
+  emitted behavior before root chooses the production launch tp policy.
+  No new hardware/link/runtime result. Generation-bound secondary entry,
+  public/lifecycle synchronization and E3-A1/A2/A3 remain unqualified.
+
+### 2026-10-02 - Acquisition review exposes diagnostic mismatch; local CLIC mapping confirmed
+
+- Root reads the complete independent semaphore-acquire-binding-review.md,
+  SHA256 d842c7616c81146a0798f515d4a4810561251ea58a6c7d128056310762ab28be,
+  and checks the actual resolver, node selector and private header. Frozen
+  pins C/H remain4c48b36b/a756a26f; registry331137e3 and nodes748b473c.
+  Local semaphore-before-registry ordering, permanent pool use and distinct
+  acquisition results are accepted. No public production callers exist.
+- Correction to the preceding entry's fatal-malformed implication:
+  p4_task_registry_operation_locked maps entry_at !=1, including malformed
+  -1, to NULL; nodes_select maps NULL to0. Wrappers only fatal on propagated
+  negatives. This is fail-closed/non-mutating refusal, not the promised
+  diagnostic distinction. No resolver/source change is made during the
+  composed fixture's frozen-source run. Next settle the negative/refusal
+  contract and test it explicitly before public API integration.
+- Root reads local ESP-IDF v6.0.1 soc/esp32p4/include/soc/clic_reg.h and
+  interrupt_reg.h. Their SHA256 values are
+  e8d4b4d2ed0db349dda42324ca5269ebf47a488ed4faac8b426864e851375f0b and
+  83a872fe6df25b46d2c354a2d31c9206dd3603e072311314cea25c9ab61c7299.
+  The documented register map is current-core-relative:0x20800000 is local,
+  +0x10000 accesses the other core regardless of caller. The existing E2
+  diagnostic uses the same rule. Owner-local krnCLICInit therefore must not
+  gain a hart-number offset. This resolves a source-level launch prerequisite,
+  not production hart1 initialization or a new hardware measurement.
+- Display reconnection is acknowledged, not treated as visual readiness.
+  No hardware/reset/flash/media action, full link, ABI refresh or new test
+  artifact in this audit. Normal flashed core and SMP configure refusal stay
+  unchanged. Actual binding composition, gp/tp policy, real launch/ACK/first
+  trap and public lifecycle/concurrency gates remain open; goal stays active.
+
+### 2026-10-02 - Explicit primary SMP thread-pointer invariant assembles
+
+- Root reads the complete final TLS-emission audit, SHA256
+  4d10b3b10d63c0e54f3105e28322c23f0edc7d11679a3a2065aa5659e1317ff0,
+  and independently inspects
+  relocations, attributes and disassembly of riscv-tls-probe-20261002.o:
+  1564B/SHA256 e4bb5947a0c1caa84fa1b3ba7b7bbc6645dc1cf03264e80800e2abe522dd5941.
+  This invocation emits a call to __emutls_get_address, no tp-relative TLS
+  relocation. The report identifies pthread/allocation dependencies and
+  untracked Exec Tasks sharing the pthread main-thread fallback; general
+  per-Task TLS and early kernel use remain unqualified.
+- Root independently confirms the driver's default -print-sysroot still
+  names /Volumes/Dev/Source/AROS-ESP32-build/.../AROS/Developer, not the current
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build tree. All isolated compiles here
+  explicitly select the latter. The initial audit's same-path claim is being
+  corrected in the final frozen report above; no abandoned headers are updated.
+- Root adds SMP-only li tp,0 after non-relaxed gp setup and before stack/C
+  entry. P4 CPU-local lookup already uses mhartid, trap frames omit gp/tp;
+  no ROM thread pointer is now inherited by the primary SMP entry. Future
+  production hart1 entry must establish the same invariant. No secondary
+  release/entry or native-TLS support is claimed. Normal build has no tp
+  assignment from this guarded change. startup.S SHA256
+  0c43d024f7f89689184f47246955b9cc858453af98e1e66ee1dbcf43bf56ec66.
+- Fresh isolated GCC16.2 assembler-with-cpp compiles, explicit current sysroot,
+  rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f/medany/Wall/Extra/Werror,
+  with and without __AROSEXEC_SMP__=1, both exit0. Root disassembly verifies
+  SMP tp=0 before first C call and no tp write in the normal object:
+  startup-tp-policy-smp-root-20261002.o,2160B/SHA256
+  b9ec980c8f717fdc5b2dfc7f81e0317af1dc56ae7ded6665e70f3fbbe08572a9;
+  startup-tp-policy-up-root-20261002.o,1748B/SHA256
+  0aec48e02315650c0c34ea0385c626421e97f62184821a2424b6da3ce18b89ca.
+  Requested march is recorded literally, not proof of effective ISA: the
+  audited GCC driver adds configured extensions; matched-link ISA audit open.
+- No full build/link/ABI refresh or hardware/reset/flash/media action. The
+  flashed normal artifact is unchanged and SMP configure refusal stays intact.
+  Next actual binding composition, resolver diagnostic contract, generation-
+  bound production launch/ACK/first trap, public synchronization/lifecycle and
+  real concurrent qualification. E3 and the full goal are not complete.
+
+### 2026-10-02 - Real cancellation consumer and acquisition bindings compose in host tests
+
+- Root fully reads final actual-source fixture
+  kernel/tests/p4-semaphore-cancel-consumer-binding-test.c, SHA256
+  2dee30eb078138bc08aad535b356efa5bd5a5bc7609e0b073b2da5a7b59c586d.
+  Unlike the prior body-only and ServiceLoop-only fixtures, it includes the
+  actual cancellation consumer, actual pins/registry/ledger/nodes/retry and
+  calls the new Configure/Acquire bindings directly for operation setup.
+  Frozen pins4c48b36b/a756a26f, nodes748b473c, registry331137e3.
+- Root independently builds strict C11/D_DEFAULT_SOURCE/O1/O2/g/Wall/Extra/
+  Werror/conversion/pedantic/ASan/UBSan/frame pointers, then runs with fatal
+  sanitizers/leaks0 and perl alarm20. Both exit0: included O-A379 plus new214.
+  Binaries p4-semaphore-cancel-consumer-binding-o1/o2-root-20261002:
+  O1613656B/SHA256
+  a92b5e993c4d16b8e418cef2d99b74f0a45ce5bc72d93e70118789ec04ecfd89;
+  O2613144B/SHA256
+  07c491aa0eaedc15f97456990fb21a6779ddf256578990670b3c6f80592ee750.
+- PROT_NONE Task identities prove the consumer/bindings do not inspect raw
+  Task storage. The actual path checks quiet empty pass, stale Configure and
+  repeated Acquire non-mutating refusal, cancelled multi-entry RUN-held owner,
+  queued peer withdrawal and terminal reclamation, deferred RUN drain, exact
+  notification-capacity refusal with whole snapshots unchanged, actual ordinary
+  pin-drop retry wake, later atomic owned-unit rollback/live-waiter grant,
+  exact durable notification claim/finish pins and balanced gate/IRQ state.
+  Retired-owner pokes are distinguished from cleanup-worker pokes. Mocked
+  semaphore gates, registry AMO/IRQ transport and test boot-pool adapters do not
+  establish actual simultaneous Exec execution or Task-owned semaphore lifetime.
+- Author reports the first retained O1 binary failed3 fixture expectations:
+  finished peer entry is reclaimed FREE, and semA QueueCount stays1 while a
+  live waiter is queued. These were test expectation errors, not production
+  corrections. Final fixture is independently passing; earlier artifacts are
+  retained and the author is finalizing their failure/hash report. The
+  malformed-ledger diagnostic discrepancy is NOT covered by these214 checks.
+- No hardware/reset/flash/media action or matched full build/ABI refresh.
+  Normal flashed core and SMP configure refusal remain unchanged. Next fix and
+  explicitly test malformed acquisition diagnostics, implement real secondary
+  entry/launch/ACK/first trap, then finish public synchronization/lifecycle and
+  actual concurrent runtime/FPU/contention qualification. Full goal stays open.
+
+### 2026-10-02 - Node diagnostic preflight verified; secondary entry remains residency blocked
+
+- State: E3-SM-N advances its private host gate; E3-RT adds an isolated entry
+  candidate but deliberately does not select it. Fabian reports display
+  reconnected; this is not visual-test readiness. No hardware/reset/flash/media
+  action, full matched build or ABI refresh. CPU count remains1; normal flashed
+  201504-byte core SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6 unchanged.
+- Node source SHA256
+  50f63a53238474ca262896ee11ba0ed1da83fcdeb80b55fd6c3aef5b0b0ffd6f:
+  registry/ledger and pool/semaphore storage checks precede full typed ledger
+  validation and pointer resolver. Valid missing identities still refuse0;
+  malformed node selection returns-1. Full validation is repeated downstream;
+  its latency is unmeasured and other pointer-resolver consumers remain open.
+- Fresh GNU11/O2 strict GCC16.2 RV32 ILP32F object, explicit relocated sysroot,
+  matching SMP/runtime/FPU/atomic defines, exits0:
+  p4-semaphore-nodes-diagnostic-root-20261002.o 17984B/SHA256
+  6ccbcd78fdc628a80c825b055e1868b70e8fbc4f1de0cb4d6e3173252dcb256d.
+- Root read the complete actual-source malformed fixture and report, then
+  compiled C11/O1 and O2 with Wall/Extra/Error/Wconversion/Wpedantic,
+  ASan/UBSan/frame pointers and ran under a20-second alarm: both exit0,
+  baseline379/new250. Fixture SHA256
+  5c73f1711ccc4ae8381dd1a6f1f27db8c51e38c458fb82e80d6dceab9cd90800;
+  report semaphore-acquire-malformed-tests.md SHA256
+  983613d2499b95aa29b87cb4fe97265b0b201d061a1b8bdcd873075f32fe6d8d.
+  Root O1 artifact569872B/SHA256
+  d50f0aeddfef7c4a412f34fac3b84a7ff2b7179a3ea2348312ed772695d47bf3;
+  O2585840B/SHA256
+  81bb978ef7af150c1330853458c6525727e0e620dea10207f02574a256808d11.
+  Immediate/queued acquisition and stale/ordinal refusal pass; malformed
+  topology/alias/range/queue/tag cases abort isolated children. PROT_NONE Task
+  identities and mock boundaries do not qualify actual gates or concurrency;
+  parent COW snapshots do not prove child-side pre-abort non-mutation.
+- Existing actual cancellation-consumer composition regresses successfully
+  after this fix: baseline379/new214 at strict O1/O2. Root artifacts
+  p4-semaphore-cancel-consumer-diagnostic-o1-root-20261002 613656B/SHA256
+  14124093fb696f3d7d460374ad79300bd98432b86a043496ecca1b9a78bb1b69;
+  O2613144B/SHA256
+  fae4f56a5fec62c622392bd0b78024fb18f56936ff277914836a7fdc8a5c7503.
+  No hardware claim follows from these host regressions.
+- Secondary candidates p4_secondary_exec.c/.h/_entry.S SHA256 respectively
+  8398c8d110c96bccdaf316f38da8698d98e172a3d67f24bcf4d5707834390eb7,
+  79d00cdd6bb246050fabd034dfe57f0f77cbf683a4c50cb7003403971efb6eb5,
+  7e51965b8cf83c8f14aaaca37d66ac90a49ca8e5d3d7a5918ebc8d370b6d37fe.
+  Private16KiB stack, gp/tp setup, separate uncached64-byte command/reply
+  lines, generation-bound READY/GO, owner runtime/ISR/CLIC/IPI setup and
+  genuine SC_DISPATCH ecall are candidates only. READY does not expire;
+  primary must bound pre-GO failure/reset and validate online publication.
+  No release controller/caller, stack guard or target acceptance exists.
+- Isolated strict RV32 objects exit0: C4832B/SHA256
+  d46664a90fc6723e9000a30ea46272c003c9a33837e1e71404c8421cba8a0f35;
+  ASM2476B/SHA256
+  8fe3eae7116d8ce8e04f51a95893bb0fc5e6bced45befa1147e893ca34fc253d.
+  Root disassembly confirms li a7,1/ecall, not actual Task dispatch.
+- Residency blocker: entry .sramtext calls Bootstrap/Dispatch and references
+  __trap_entry in ordinary .text, which ldscript-xip.lds places in flash.
+  check-sramtext.sh is expected to reject those references on a matched link;
+  no failing full-link run is claimed. Candidate C/ASM build membership was
+  withdrawn before activation; final mmakefile.src SHA256
+  aaf629810e0508c4d964ce2460824b68da7f1b77e8487ae10907527a02762d70.
+  Do not hide references or weaken the checker.
+  Qualify owner1 cache enable and a legitimate runtime handoff/SRAM budget.
+- Independent node review semaphore-nodes-diagnostic-review.md SHA256
+  c23067353dea7446bf17c24bb76d881fe4b26b12756d2252daf8638eff350744
+  accepts storage/ledger preflight and selection failure non-mutation. It
+  identifies residual scope/owner/generation link errors collapsed to0 even
+  in node selection, plus other direct resolver users. Do not interpret the
+  tested corruption cases as universal malformed-state diagnostics. Cohort
+  preflight repeats 2Q+3 full ledger scans; largest intended latency remains
+  unmeasured. Root read the entire review; no hardware evidence follows.
+- Next: independent entry review, checked resolver diagnostic contract and
+  bounded validation cost, real public synchronization/lifecycle,
+  qualified launch controller, then matched core/BSP/ABI and simultaneous
+  Exec/FPU/contention tests. Configure refusal and full goal remain active.
+
+### 2026-10-02 - Checked operation resolver replaces ambiguous pointer resolution
+
+- State: E3-SM-N private diagnostic implementation advances; no hardware,
+  reset/flash/media, public routing, ABI refresh or complete matched build.
+  Configure refusal and normal single-hart flashed artifact remain unchanged.
+- Root removes p4_task_registry_operation_locked entirely and introduces
+  p4_task_registry_operation_resolve_locked. -1 means malformed storage,
+  ledger or matching scope association;0 means absent/stale/ineligible;1
+  publishes independent local record/operation outputs. Header separation
+  precedes typed ledger reads; output ranges reject overlap with each other,
+  registry/records and arena. Matching scope requires live arena membership,
+  same owner/generation and same construction_closed/cancelled state. No
+  failed resolver call mutates shared state or caller outputs.
+- All eight production consumers migrate: node selector, retirement,
+  SetEntry, Close, Complete, FinishCancel, operation-only cancellation claim
+  and cancellation Describe. Root rg finds no remaining old API references.
+  Nodes check pool/semaphore separation before resolver typed reads. This is
+  not a universal corruption diagnosis for arbitrary caller-owned pointers;
+  accessible live gated storage remains a contract. Repeated full validations
+  remain a latency blocker, not solved by this diagnostic correction.
+- Frozen source SHA256: registry C
+  33d755f2cbfbbdd5a359c11488d31f62d4bb55898018f6aebefec787f2ed185f;
+  registry H c1ddb6803c20922c7527d072c1454ecf994b6a5925db33ab13235de41eb76ce4;
+  nodes C638fd64976c2061519182bbf8d4b0d635ed8394556373c7e4ef4354bfbc97388;
+  cancel C47f3e2a0d3bb3dc0958c2f40f027e14638d40600a667a3005a0b5ed30b5f3ce8.
+- Fresh GCC16.2 GNU11/O2 strict RV32/ILP32F isolated objects with explicit
+  relocated sysroot and matched SMP/runtime/FPU/atomic defines all exit0:
+  p4_task_registry-checked-root-20261002.o38092B/SHA256
+  1d2a8c8ba7726b6d54b1c9899220a33735ca53365b57551c10e6b7319eb81942;
+  p4_semaphore_nodes-checked-root-20261002.o17980B/SHA256
+  bcc360d44e968b99b7aa16d4fd64789b6925016d7e06992c52ced5b0b1290fd3;
+  p4_semaphore_cancel-checked-root-20261002.o3064B/SHA256
+  d176157dd95a331f09e5dc15e836a369b1c058fa9a8a11accef34b6344bae141.
+- Root compiles each existing actual-source fixture C11/O1, strict
+  Wall/Extra/Error/Wconversion/Wpedantic +ASan/UBSan/frame pointers, then
+  runs with leak detection off and halt-on-error under a20-second alarm.
+  All exit0: acquisition baseline379/new250; consumer379/new214;
+  completion208; cancel snapshot baseline418/new254; real nodes417.
+  Evidence-directory executables suffix checked-o1-root-20261002:
+  acquisition569896B/SHA256
+  840772bd29bd5ff69246fd261b26fbc31228d21badafcc29f429533350735cd4;
+  consumer613680B/SHA256
+  f75d68c7737c50de53fa441e29fd50db49394acb5c616e47888dd323d278cf13;
+  completion321592B/SHA256
+  0fbab4bf1e284f1b6a47918f4146cfcc7d43f63b1fd8ce00651feb2c23c58f76;
+  snapshot515368B/SHA256
+  b1c25d207e899228b573c0dc762ae9fa032583e4db83c299179f6d4c9ba9a2e9;
+  nodes452920B/SHA256
+  8c114a751e5d1cfceceeba71c8a93a1311f020daa6579db9bab21ecf37c4a209.
+- These regressions do not qualify the newly distinguished cross-link cases,
+  actual gates/concurrent harts or full public lifecycle. Independent Luna
+  review and new actual-source cross-link fixture are running against frozen
+  sources. Next qualify them, remove quadratic validation cost, implement
+  public synchronization/lifecycle and qualified cache-on secondary launch.
+
+### 2026-10-02 - Public single-semaphore adapters source routed behind SMP refusal
+
+- State: new E3-SM-P connects public single ObtainSemaphore/Shared and
+  ReleaseSemaphore to the permanent request/durable notification machinery,
+  selected only by the experimental P4 SMP mapping/mmake members. The generic
+  normal path remains selected without these hooks. No full SMP configure,
+  ABI refresh, matched image/link, hardware/reset/flash/media or acceptance.
+- Generic InternalObtain dispatches through an optional platform hook after
+  existing pre-init/removed-task/CheckSemaphore guards; Release similarly
+  selects the hook instead of the generic stack-node/message handoff. New
+  p4_semaphore_public.c uses the embedded semaphore gate for uncontended and
+  recursive counts without arena allocation. A NestCount0 pending queue must
+  not be bypassed. Blocking acquisition reserves one operation/pin, configures
+  under semaphore then registry gates, closes construction, clears SIGF_SINGLE
+  before Acquire publishes any queue node, then treats signals only as wake
+  hints and uses exact-generation Complete before Wait. Wait/SetSignal/poke
+  never run under semaphore gate; no reservation operation pointer is read.
+- Release calls ReleaseDurable under semaphore gate, then unlocks before a
+  notification-count-based cleanup poke. Worker owns independent durable
+  notification pins. Refused reserve/handoff fails closed rather than returning
+  as a successful void acquire/release. A nonfatal capacity-wait policy remains
+  open; LIST/Procure/Vacate queues cannot be mixed with this candidate. This
+  intermediate source routing is not permission to enable the second Exec hart.
+- Source SHA256: public C
+  2d509f7bda42cda1ad8b990452784e7188ff2e63d24c45c6f9f0ed523e76beba;
+  public H ee803a93d8aa81fb0980055fc215892399bcea1830ce09278b21e477d2bdc266;
+  exec_platform.h003c80b64cc77c2fe99db36671ac157364efb75b8c8d79e81797b1d93ee8405e;
+  exec mmake531f9ed19a23b2802232a9139d92bae4c25bf8c37243e2f6e276c0add91b42ef;
+  generic semaphores.c5b4b6495756837842c998e45fc900dacf4d82ae3b96215f402f1741a980d9fbc;
+  releasesemaphore.c3244766b7a32180442e6a0aaa405a0fa904d229daedf5b3776a282e82d4b1c2f.
+- Root strict GCC16.2 GNU11/O2 RV32/ILP32F isolated compile with explicit
+  relocated sysroot and matched SMP/runtime/FPU/atomic defines exits0 for
+  adapter and both generic consumers. Evidence suffix public-root-20261002.o:
+  adapter3872B/SHA25609e6d727418db8f95c2c67f03b09bbd970a30e55b468ec2d9cf5c179272b8315;
+  semaphores3556B/SHA2567ca6f6aa179169d6aff425ae7ffffa2cd3f2ddd0fd37a0d9fe8c243c80b9d03c;
+  release1976B/SHA256edcc6d31255a74e1d41eba2424edbf752f3cf61bdfa65463497110fc8d99df80.
+  nm confirms new Obtain/Release adapter imports in SMP consumers.
+- Normal semaphores object3644B/SHA256
+  2c8d9698af7770eef57a0579524f826532416fd5866c3d390826f510d9daa822;
+  normal Release initially fails strict aliasing in the existing ForeachNodeSafe
+  macro, not in the new hook. Recompile with -fno-strict-aliasing exits0,
+  object2436B/SHA256c411e56873aeb85f1eb3c7107633939d448d69e7f935824e5605bcfc972fa8fa.
+  nm shows neither normal consumer imports a P4 semaphore adapter. Compiler
+  failure is retained as a qualification limitation, not erased by a green
+  SMP result. No complete build or generated public ABI refresh is claimed.
+- Next actual-body host tests and independent review (including bootstrap,
+  resource refusal, stale wake/queued handoff and nested Forbid), then public
+  LIST/async routing, validation-cost bound, removal lifecycle and matched
+  concurrent qualification. Configure activation refusal remains intact.
+
+### 2026-10-02 - Checked resolver and public single-body qualification; cache review
+
+- State: E3-SM-N checked resolver has narrow independent review and actual-source
+  cross-link coverage. E3-SM-P has local actual-body qualification, not runtime
+  acceptance; concrete removed-task routing and concurrent-retirement defects
+  remain. Secondary Exec entry remains unselected and residency/cache blocked.
+  No full configure/build/link/ABI refresh, hardware/reset/flash/media action
+  or interactive test. Reconnected display is not a fresh visual readiness.
+- Frozen resolver C33d755f2cbfbbdd5a359c11488d31f62d4bb55898018f6aebefec787f2ed185f;
+  test02abb9ac2050abaca45e6bd41ce5c53c95e101e08bebebab17f2809a5dcb168c.
+  Independent report semaphore-operation-resolver-tests.md SHA256
+  4f630e4bb8ae52fb0b7e8c5987f0207496d7f3ed6c12cfc27089af852abf51af;
+  review semaphore-checked-resolver-review.md SHA256
+  83d934620a3d5d44aa90bbfddf743f41b2c8bc4a1bff5f49ddb82f5e168f6fa6.
+  Fixtures cover independently valid wrong owner/generation/inactive/closed/
+  cancelled cross-links, protected output aliases and production propagation.
+  Root O1/O2 actual-source strict C11 Wall/Extra/Error/Conversion/Pedantic,
+  ASan/UBSan/frame-pointer runs under20-second alarm exit0, baseline379/new144.
+  Root binaries p4-semaphore-operation-resolver-o1/o2-root-20261002:
+  O1 587296B/SHA25656920a876c22aae30d1526291c40dade95c22bf49e773963f2f16c86608675df;
+  O2 586768B/SHA256b479a6bdc8f6ea4da96be8c284984df30f0a21848eada393b91e540ad9800842.
+  Author's initial ASan failure was a wrong-size fixture copy, corrected only
+  in the test and retained in its report; no production fix is claimed for it.
+- Resolver review accepts local contracts, not concurrent execution. Resolve
+  performs two full validations; node selection three, cancellation description
+  three. A nonempty Q-node cohort performs3Q+4 full scans before outer mutation.
+  Each can scan the arena up to20000 entries; cost remains potentially quadratic,
+  not a measured latency bound. Next introduce an explicit same-gate validated
+  view, not an unguarded/global cached predicate.
+- Public adapter frozen C2d509f7bda42cda1ad8b990452784e7188ff2e63d24c45c6f9f0ed523e76beba;
+  fixture exec/tests/p4-semaphore-public-binding-test.c SHA256
+  d844dc99ba005072cc96edd8986041987021f182c14305aa098edb74f6e96e37.
+  Root initial compile failed from a nested main macro and nonexistent operation
+  state field in the new fixture; corrected fixture includes admission baseline
+  directly and checks active. Production sources were unchanged by this repair.
+  Root strict C11 O1/O2 sanitizer/alarm runs exit0, baseline379/new466 each:
+  p4-semaphore-public-binding-o1/o2-root-20261002:
+  O1 589984B/SHA2563572256671447d347809466cda8ae355490f59b7444994c2f16bb51dc0c2bc66;
+  O2 589472B/SHA2569f0957e97b7182302ba82f225ffd958726ace1983d24c5d1ea0878a77850b8de.
+  Independent strict repeats agree: review-O1 562488B/SHA256
+  e363947ad70437f989b02188c4145d2cbdc392a54d00037b946b6dd535b3cfc3;
+  review-O2 562120B/SHA256328f9a770280049c393c98c1014a6ae3495370de9744fde0421749255a7f354e.
+  Report semaphore-public-single-tests.md SHA256
+  47f8c315cff1a384a822d09c1a06bbb75f022788b8445ef644ef5216bab712dd.
+- Public fixture composes actual adapter, pins/registry/lifetime/ledger/nodes.
+  It covers exclusive/shared fast and queued paths, recursion, stale wake,
+  release between signal clear and queue publication, nested Forbid preservation
+  and independent notification pin surviving operation reclamation. Gates/IRQ/
+  AMO, Wait/signals/poke and scheduling remain mocked. No capacity-fatal policy,
+  real worker transport, generic entrypoint execution or hardware is qualified.
+  Audit identifies generic TS_REMOVED returns before Obtain/Release hooks;
+  a removed current Task can silently skip a release. Root also identifies
+  legitimate removal between reservation/completion stages: current fatal
+  handling and Complete-to-Wait behavior need owner-RUN retirement transfer.
+  Resolve outside all semaphore/registry gates, with MIE-masked current-task
+  authentication, and qualify no return to retired Task storage. Wait currently
+  rejects a removed owner's arm after dropping its Task lock while MIE remains
+  masked: this boundary also needs registry-proven owner-RUN no-save transfer,
+  otherwise a probe before Wait does not close the retirement race. This only
+  applies to registry-published removal; stock external RemTask lacks that
+  protocol and remains an activation blocker. Do not merely
+  move the generic guards without fixing this lifecycle boundary.
+- Independent secondary-first-dispatch-review.md SHA256
+  3ab70309707118188ba1b412d0e798e4afd5914fdb7bfa1e002fddeb1815f32c
+  confirms SRAM entry direct calls/materialized ordinary trap address violate
+  the XIP closure contract. This is predicted, not an observed whole-link error.
+  IDF internal-memory-via-L1 capability excludes its generic multicore cache
+  enable branch; IRAM secondary waits until shared external setup permits flash.
+  Cache_Enable_L1_CORE1_ICache is documented not for SDK calls, has no inspected
+  implementation/status/readback. CacheWriteback/L2 resume do not prove hart1
+  instruction access. Keep candidate unselected and checker intact; investigate
+  supported owner-hart cache/MMU/bus setup and genuine hardware readback next.
+  Primary must own bounded pre-GO reset recovery; monotonic online publication
+  needs explicit post-publication failure policy. No CPU2 runtime acceptance.
+- Safety: normal flashed201504B core SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6
+  unchanged; CPUCount1 and unfinished-SMP configure refusal remain. Preserve all
+  unrelated dirty work. Next fix/qualify public retirement, bind LIST/async and
+  bounded validation, legitimate secondary cache/launch, then matched complete
+  build and simultaneous Exec/FPU/contention before fresh interactive consent.
+
+### 2026-10-02 - Wait rejected-arm retirement handoff
+
+- State: gated SMP Wait now distinguishes a registry-proven retired current
+  RUN from an invalid live wait state, after failed arm and Task unlock while
+  local Disable remains active. It calls existing noreturn Exec_P4RemoveSelf
+  for the retired owner; otherwise existing fail-closed behavior is unchanged.
+  No Task/semaphore/registry lock is held across the transfer. This closes the
+  caller-probe-to-Wait rejection boundary only for registry-published removal;
+  public semaphore refusal branches and generic pre-hook TS_REMOVED guards are
+  not fixed by this change. External RemTask protocol still blocks activation.
+- Source exec/wait.c SHA256
+  d20dfa991d640a032355121062c198fe57ddb892d0d4c3531534526fb7d4f283;
+  exec/tests/p4-wait-body-test.c SHA256
+  3ee7012eb620590040c3cab163dc6e15288ef65fbcdbcff070059ffebe68d0e4.
+  New fixture case forces arm refusal plus retired-owner proof and verifies
+  no return, no Enable/switch, preserved Forbid depth, and transfer only after
+  Task unlock with Disable active. Prior live-failure/supervisor checks remain.
+- Root fresh strict Clang C11 DefaultSource Wall/Extra/Error/Conversion/Pedantic
+  O1/O2 +ASan/UBSan/g/frame pointers; leak detection off, halt-on-error and
+ 20-second Perl alarm: each exit0 PASS455 actual Wait-body/protocol checks.
+  Adapter, retirement proof, transfer, IRQ and scheduler are mocks; actual
+  registry/self-removal composition and simultaneous hardware are not proved.
+  Evidence p4-wait-retired-o1/o2-root-20261002 both126288B:
+  O1 SHA256a881a712139a154b831b7541c92b12e2bc1598b8bbd79b9b83bcd5a12b63d23e;
+  O2 SHA2560cbd64d5b4eccfab03fe87b5595d6281f5526d12e6cd165bfe3486ce292a5e65.
+- Fresh GCC16.2 GNU11/O2 strict RV32IMAF/ILP32F with explicit relocated sysroot
+  and matched SMP/runtime/FPU/atomic defines exits0. wait-retired-root-20261002.o
+ 2380B/SHA256393550bded457d908d655e8382c43d8d24787f802245216472716328cff8f621.
+  Isolated compilation is not complete ABI refresh/build/link or board evidence.
+- Independent Luna source/test review dispatched against frozen files.
+  The preceding frozen public route review semaphore-public-single-review.md,
+  SHA256ce088179c5dd4f588922554b08196aa572ae96ea70bc617bf04da6177d18067d,
+  independently identified this Wait boundary, public refusal/TS_REMOVED and
+  external-removal defects. It reviewed the previous Wait source, not this fix.
+  It finds no ordinary grant lost wake or nested reverse lock order under its
+  stated live-task/permanent-queue contracts; capacity exhaustion, bounded gate
+  retries and unbound LIST/Procure/Vacate remain explicit activation blockers.
+  A separate early SIGF_SINGLE clear followed by immediate Acquire may consume
+  an unrelated reserved wake bit; semantic compatibility needs investigation,
+  not a claim of observed lost grant or hardware failure. Next
+  qualify that review, integrate public refusal retirement, then generic route
+  and full external removal without unlocking the unfinished SMP configure.
+  No reset/flash/media/hardware test; normal201504B flashed core unchanged,
+  SHA2561d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6.
+  CPUCount1 remains. No new visual readiness was inferred from display attachment.
+
+### 2026-10-02 - Public Obtain retirement boundary source integration
+
+- State: the gated SMP single Obtain adapter now masks local interrupts and
+  probes registry-proven current retired RUN outside semaphore/registry gates.
+  A retired owner enters existing noreturn Exec_P4RemoveSelf; a live owner
+  restores Disable depth and retains existing capacity/integrity fail-closed
+  policy. Reserve, Configure/Close, Acquire refusal and negative Complete use
+  this boundary; incomplete Complete probes before Wait. Wait's failed-arm
+  handoff or retired outer trap must handle retirement after a false probe.
+  This does not fix generic pre-hook TS_REMOVED, Release bypass, external
+  RemTask, async/LIST, resource waiting, or completed anonymous-unit lifecycle.
+- Production public C SHA256
+  8ca6a6d5759448597e644aa9fe8ffc01e445e50bb1ba8d2e1d5031e1c2a9d575;
+  existing regression fixture SHA256
+  2038b198df17a01aa2e66c59fec0a1d3ba10bf7a153a631b19f05948c7a990f9.
+  Its added retirement query mock returns false, asserts masked interrupts/no
+  gates; transfer mock aborts if unexpectedly reached. It therefore qualifies
+  only unchanged live paths, not retirement success. Dedicated real-registry
+  retirement injection/source review dispatched to Luna on frozen production.
+- Root strict C11 DefaultSource Wall/Extra/Error/Conversion/Pedantic O1/O2,
+  g/ASan/UBSan/frame pointers, leak detection off/halt-on-error,20-second alarm:
+  both exit0 baseline379/public474. Evidence p4-semaphore-public-retired-
+  o1/o2-root-20261002: O1 590672B/SHA256
+  fd7db1cabac2129e019ae90087134a74ee0fde0d47c54d45c386216597dbdfda;
+  O2 590128B/SHA2562e8131a2f7eada07b09ae24d83e02613f9646298994be2be9a41475ea17a2eab.
+  Actual pins/registry/ledger/nodes and adapter run with mock IRQ/gates/Wait/
+  signals/scheduler/retirement proof. No real concurrent Exec qualification.
+- Fresh GCC16.2 GNU11/O2 strict RV32IMAF/ILP32F, explicit relocated sysroot,
+  matched SMP/runtime/FPU/atomic defines: exit0 isolated adapter object
+  p4-semaphore-public-retired-root-20261002.o4656B/SHA256
+  92dfcdc562ba0e7ebc69f8beca0bae78dcaee9851773029ccd209fade885e595.
+  Not a complete configure/build/link or generated public ABI refresh.
+- Pre-fix independent report semaphore-public-single-review.md final SHA256
+  cba8612306ddaca33f43f40e48a2c96a01b6bec9aefb19b1ca6ca9d31bc704a0
+  adds explicit previous-Wait snapshot cutoff and early SIGF_SINGLE clear risk.
+  The earlier ce088179 report identity remains historical. A contender can
+  become an immediate acquire after its signal clear; preserving unrelated
+  reserved wake semantics requires serialized clear/queue decision or a proven
+  exclusive signal-bit contract. It is not an observed missed grant wake.
+- Safety: no hardware/reset/flash/media action, normal201504B core unchanged
+  SHA2561d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6;
+  CPUCount1 and configure refusal intact. Next qualify retirement cases/reviews,
+  integrate all public/lifecycle writers and bounded validation, cache-safe
+  secondary launch, then matched whole-image and real simultaneous stress.
+
+### 2026-10-02 - Independent Wait retirement handoff review
+
+- State: narrow failed-arm branch accepted by independent actual-source audit
+  and fresh strict O1/O2 ASan/UBSan fixture repeats455. Report
+  wait-retirement-handoff-review.md SHA256
+  99e08ae0acd9b91f3400c2f97f750eefa4e2b92a5bc2dba8238b59af06077eee.
+  Reviewed Wait d20dfa991d640a032355121062c198fe57ddb892d0d4c3531534526fb7d4f283;
+  fixture3ee7012eb620590040c3cab163dc6e15288ef65fbcdbcff070059ffebe68d0e4.
+  Review-O1/O2 binaries each118064B, SHA256 respectively
+  f0257b87a76601b72f106987e730708283b1f1d8393765a57db1b95925c14bb3 and
+  09a671d4e667da9d610828520355e4e2da09195fa663a2afdea63f01ab8ef04f.
+- Source audit verifies MIE masked/Task lock dropped, raw registry ownership
+  requiring service retirement/notification pin/current-hart RUN, existing
+  noreturn self-removal and outer-trap discard contracts. Query and transfer
+  are mocked in the fixture; integrated protocol/assembly/hardware unproved.
+  A live rejection followed by retirement after a false query still fails
+  closed; no universal graceful-race handling is claimed. Next composed
+  retirement/public source tests and full external-removal protocol.
+- No hardware/reset/flash/media/complete build or ABI refresh. CPUCount1,
+  normal201504B core1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6
+  and unfinished-SMP refusal unchanged.
+
+### 2026-10-02 - External removal binding constraints and cache-probe surface
+
+- State: root inspects actual RemTask, scheduler retirement, retained service
+  cleanup and the existing independent completion leaf. New E3-RM records the
+  integration constraints in SMP.md; this is not implementation or acceptance.
+  Generic RemTask reads/debugs target before owning its lifetime, removes and
+  frees directly, and cannot be allowed on two Exec harts. Existing Task-locked
+  retirement publishes ledger cancellation/service reference before queue
+  detachment. Retained service claim needs sole service pin and RUN0; keeping
+  an ordinary target pin through an external ACK prevents cleanup progress.
+- Inspected source SHA256: generic RemTask
+  90e637e172e2395cec8cb8e6cfdd33806905ab37dc453ea17f16dc95b5688889;
+  cleanup31db448ea4a9dce218ca304fcfe413b8e265358f733f98af27a4fb725cf0df8c;
+  completion7c60d678fcdb290023b2d58036c177c08aa5d3904d3334f834550cf0677058f7;
+  schedulerbc939675939905c1bf14712dab325af1018bca571e2e7e55d81c41f40cd51a45.
+  Completion must publish independent requester/service references and
+  generation-bound target/requester indices atomically before target retirement.
+  Requester retirement must withdraw its interest without consuming service
+  ownership. ACK only after final target/context/ETask/free access, with a
+  durable recipient reservation before unlock. Caller-stack storage, one shared
+  ticket for multiple removers and unindexed borrowed storage across preemption
+  are rejected. Boot-reserved publication avoids allocation/preempt abandonment;
+  resource waiting, pin-floor/reclaim updates and exact-generation reuse remain
+  required. Independent bounded source-surface inventory dispatched to Luna.
+- Secondary cache investigation final report secondary-cache-enable-design.md
+  SHA2565cffdcc80376923cec62f0537f2b0146faa8b31fa8b6687b191380e39a8218c3.
+  Root reads full report. Official local IDF hw_ver1 identifies core1 SHUT_IBUS1
+  at0x3ff10000 bit1 and L1 bypass at0x3ff10008 bit1, L2 bypass0x3ff10274 bit5;
+  these path-control predicates are not active-cache/MMU readiness status.
+  L1 core1 counters: control0x3ff1017c bits1/17, hit/miss/next-level
+  0x3ff10190/194/19c. L2 core1 controls0x3ff102fc bits9/25, external-read
+  count0x3ff1031c. No registers read or written on D1001.
+- Source-qualified complete owner1 setup remains absent: HAL explicit enable
+  calls ROM Cache_Enable_L1_CORE1_ICache at0x4fc004e4 with unavailable body and
+  SDK-app warning; P4 startup selects external L2 and its L1 bus-enable helper
+  is no-op. A future bounded SRAM-to-known-XIP signature/IBus1-counter probe
+  must first establish legitimate setup/MMU/shared-L2 preconditions and SRAM
+  closure. Do not infer live fetch from control bits/software cache flags,
+  disguise XIP references or weaken residency checker. Candidate stays unselected.
+- Evidence is source/design inspection only; no full configure/build/link/ABI
+  refresh or hardware/reset/flash/media action. Normal201504B core SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6 unchanged;
+  CPUCount1 and configure refusal intact. Next integrate external completion
+  publication/cancellation/ACK alongside public semaphore qualification, then
+  genuine cache-safe secondary launch and matched concurrent runtime tests.
+
+### 2026-10-02 - Public retirement actual-registry tests and real SetSignal gap
+
+- State: two public Obtain retirement boundaries pass actual-registry host
+  qualification; this is not the complete public signal/wait/transfer path.
+  Frozen public C8ca6a6d5759448597e644aa9fe8ffc01e445e50bb1ba8d2e1d5031e1c2a9d575;
+  new exec/tests/p4-semaphore-public-retirement-test.c SHA256
+  f8a526753c7556ece8238df85fcf2269af1c6bebafea900bd72d4038f3cbfc56.
+  Report semaphore-public-retirement-tests.md SHA256
+  8bf985fbeeba50cb0f1e8ecc3c8b20810c57a243e16e84e43733272af83f1240.
+- Root reads entire fixture/report and independently builds strict C11
+  DefaultSource Wall/Extra/Error/Conversion/Pedantic O1/O2 g/ASan/UBSan/frame
+  pointers; leak detection off/halt-on-error and20-second alarm. Both exit0,
+  baseline379/new143. Actual RetireForService cancels the operation with hart1
+  RUN held; the probe shim calls actual pins/registry service-owner proof.
+  Protected PROT_NONE Task identities cannot be dereferenced by the metadata
+  code. Acquire refusal after mocked signal clear, and retirement after actual
+  incomplete Complete, transfer outside all gates with MIE masked and without
+  Wait/Permit/normal return. No real scheduler/no-save transfer is executed.
+  Evidence p4-semaphore-retirement-o1/o2-root-20261002:
+  O1 592472B/SHA256b619101f0686ea9e2dd7a866ce0c20b07b253999a322591f4056f314c17f35ab;
+  O2 591960B/SHA256a532de8240130d4cb19a0bc425c95c5ccdfae0ab5f6633840075121953eacff8.
+  Author O1 592488B/82b4abe29377147b69649c4549fe0c5129d985aba5cd15e23cac69acda6b7c44;
+  O2 591976B/e85a585b993a85a569806fbeca6b6143797f00b5fbb32b46fe5564748f679ed0.
+- Author report preserves failed stricter const-qualifier compile, wrong-hart
+  RUN expectation causing exit134, incorrect cancellation-finish expectation
+  causing exit1, and intermediate147-check result superseded by final143.
+  Only fixture expectations/prototypes changed; no production correction is
+  claimed for those failures. Reserve/Configure/Close/negative Complete sites,
+  actual Wait, signal transport, no-save transfer and concurrent harts untested.
+- Root inspects actual setsignal.c: after current Task lock/adapter rejection,
+  it unlocks with MIE masked but unconditionally fails closed. Retirement
+  before/during the real SetSignal can therefore halt before Acquire reaches
+  the tested public boundary. Mock SetSignal in this fixture does not close
+  that gap. Correction dispatched: registry-proven retired RUN transfers after
+  Task unlock; malformed live signal state retains fail-closed. Exact-source
+  tests/RV32/integration review required before accepting that correction.
+- External surface inventory report external-remove-binding-surface.md SHA256
+  5ff2c925c60d2b0b6aa9943363b9c7985980b3440991e2d92ce1d2050a55ce15
+  independently confirms pre-debug lifetime gap, absent public remote retirement,
+  final free-before-ACK boundary and atomic ACK-plus-final-detach requirement.
+  No Exec FreeTask API found; memory release is RemTask/FreeEntry. Completion
+  refs must not be ordinary target pins across Wait. Root starts bounded,
+  unselected task-independent ticket-bank implementation; runtime registry,
+  recipient pins, requester cancellation and public/worker integration remain
+  root-owned and open. Bank alone cannot close E3-RM.
+- No complete build/ABI refresh, hardware/reset/flash/media action. Normal
+  201504B core1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6,
+  CPUCount1 and configure refusal unchanged. Next signal correction qualification
+  and fused external completion ownership, then full public/cache-safe secondary
+  launch and matched simultaneous Exec/FPU/contention qualification.
+
+### 2026-10-02 - SetSignal retired-current correction and independent repeats
+
+- State: actual setsignal.c now queries registry-proven current retirement
+  after its failed signal effect and Task unlock, while Disable remains active.
+  Proven retirement enters existing no-return self-removal; live/malformed
+  refusal remains fail-closed. No Task dereference is added after unlock.
+- Source setsignal.c SHA256
+  fa362bc94ad9813c7f20dbbb086b108e503359f65052baca585f0f55a51a4479;
+  fixture p4-setsignal-body-test.c SHA256
+  bf89c5bf0e0680608b89b06983849a85fc5b5b403ec0ce23074f4aa82b7fcbf8.
+  Author report setsignal-retirement-tests.md SHA256
+  c99a550654aca68fd9352b11d57cdaa5d5fda9bf71384257a2b896d229786313.
+- Root reads entire source/fixture/report and production self-removal/query
+  implementations. Independently compiles actual body plus signal protocol
+  with Clang C11 DefaultSource Wall/Extra/Error/Conversion/Pedantic, O1/O2,
+  g/ASan/UBSan/frame pointers; leak detection off/halt-on-error,20-second
+  alarm. Both exit0,110 checks. PROT_NONE after Task unlock tests opaque
+  identity handoff with MIEoff, no Enable/fatal/normal return. Real registry
+  query and transfer remain mocked, not a composed lifecycle qualification.
+- Root p4-setsignal-retirement-root-o1/o2-20261002 each102552B:
+  O1 SHA256b25fc20b9c48b553c8403ffe1d4238e74ffaadeea1d4cd6ef8d1c67750126626;
+  O2 SHA2569efc06336c997fe4224be91bae1c60bad210f5736f75d4c0acfec2f6a9832686.
+  Fresh GCC GNU11/O2 RV32 ilp32f with explicit current Developer sysroot,
+  SMP/runtime/FPU/atomic defines and strict Wall/Extra/Error compiles
+  setsignal-retirement-root-20261002.o2048B SHA256
+  7930230304e33f374f9c755aa5b7275b6bed12069495b337aede0446ffdfdd62.
+  Author first compile stopped on missing fixture prototype; added prototype,
+  no runtime failure. Dedicated independent source review dispatched.
+- Independent review subsequently completed; root reads full report
+  setsignal-retirement-review.md SHA256
+  064819eeae1c471661e96158e73bab5b89008cd6188d5723c2996909fd6c8cc5.
+  No local defect found in failed-effect unlock/mask/proof/no-return ordering.
+  Reviewer did not rerun tests; root repeats above supply that evidence.
+  Successful effect followed by retirement after unlock still depends on
+  owner-poke/retired-trap handling and is not qualified by this fixture/review.
+- Safety: no complete build/ABI refresh, reset/flash/media operation. Normal
+  201504B core SHA2561d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6,
+  CPUCount1 and unfinished-SMP configure refusal unchanged. Fabian reports
+  display connected; this is not visual readiness or an acceptance result.
+- Remaining: full real SetSignal/public/Wait/no-save composition, external
+  removal bank binding, public synchronization coverage and cache-safe secondary
+  launch. Next independent correction review and generation-bound completion
+  ownership integration, before matched two-hart hardware qualification.
+- External binding design refinement: requester waiting ownership is a ticket
+  reference, not an ordinary Task pin held across Wait. A registry-owned handle
+  must be cancelled atomically before requester cleanup; ACK reserves transient
+  durable recipient lifetime ownership before releasing the gate. This avoids
+  adding a waiting pin floor but requires real cancellation/reuse/notification
+  composition; no corresponding runtime hook is implemented yet.
+
+### 2026-10-02 - Removal ticket bank, RV32 correction and requester cancellation
+
+- E3-RM progress: bounded task-independent ticket storage with slot/generation
+  handles and independent requester/service references is implemented but
+  unselected. Multiple requesters, target iteration, stale reuse, capacity and
+  nonwrapping serial, alignment/alias refusal and pre-mutation validation are
+  tested. Root adds requester-wide cancellation as a prerequisite for actual
+  retirement binding: cancel interest across targets, retain service ownership,
+  reclaim already-ACKed tickets; no target/requester Task dereference occurs.
+- Author original Cc9e87eb54e84798048e3615cac983c264560c801b22b5651103d29f79be9fbe1,
+  He6a5239bf26328f3d6bd05da2628e1af0a10c00d0cf00c23ed7db67bae3f2996,
+  fixturea39e0b0bbddbd8c8dd86b8b461319cfe2f7e03301485c8bc5fc0e52b42b8ff7c.
+  Report remove-bank-implementation.md SHA256
+  47ba787a590b45dc397b38453e99d305696ebb91bd27a2b5c3d087c68eee8eca;
+  author names its own binaries root in that report, not an independent run.
+  Author O1/O2 each94 pass; first leak-enabled Apple ASan run exited134 because
+  leak detection is unsupported. Final author and root runs disable leaks.
+- Root independently reads full C/header/fixture/report and repeats original
+  actual bank plus completion under strict Clang C11 O1/O2 ASan/UBSan,20-second
+  alarm. Each94 passes: p4-remove-bank-o1/o2-independent-20261002,
+  O1 88136B/3faeb09b93232db1a8fd43f3c2feef98cbabe21efa3917ee6c90c9faa17d949e;
+  O2 88120B/c47cd3eb98b3cf7695cd5420dc7a73b0aee769152d45523dd6a62c2e1796153d.
+- Strict GCC GNU11/O2 RV32 failed Werror maybe-uninitialized for the optional
+  output range spans; no object was produced. Root explicitly initializes
+  those two spans, preserving preflight/short-circuit behavior. Intermediate
+  C2ac76753fb47ceb89b0150e34f91f874e0fc752aeb1bb703d2dd56b44b634e25
+  passes strict RV32: p4-remove-bank-rv32-root-20261002.o8192B/
+  61f39998c1ff0da4560680281f00a5a5167cec2bd1e30e753ae8c6dddb46b521.
+  Intermediate host94 repeats pass: O1 88136B/
+  ff7030d495bbe5a2349038462afb36f2ae8f874ce95e8fadbde735e0bcf3af77;
+  O2 88120B/c0fa069b6b48bef2bb00067c43e1733550fa37cad8789aaf7f8efd73ed1d1f4b.
+- Final requester-cancellation C19764ce01aebc43a736e78d438f6748e65c19eecd099602dd4b845ae22d5b473,
+  H53c006c89cb1de2ab1e6f4e7b38a5b14a9e6bfef333edbeff3993426cb1f6238,
+  fixturea74791da2c1a67997a00bc39bd42d1a1441107d7ce9b3630a500f8d9e0aa4fe6.
+  Root strict Clang C11 Wall/Extra/Error/Conversion/Pedantic O1/O2 g/sanitizers/
+  frame pointers and20-second alarm both exit0,116 checks. Evidence
+  p4-remove-bank-cancel-o1/o2-root-20261002 each88264B:
+  O1 91dcc6870de6375fed75e4cb272dbdabccebaffc86648a14dfe65a588d54f20a;
+  O2 5eead157f6ecc93561c14ee370f054c5a2d120fa13aa3ec80cd9c309365f0414.
+  Final strict RV32 explicit current Developer sysroot and SMP/runtime/FPU/
+  atomic defines: p4-remove-bank-cancel-rv32-root-20261002.o8836B/
+  46a5782667795085d547c2c308281d081d8dcf17d6d20d893610158bdf3ad5c3.
+- Independent review of the final bank is pending. Permanent boot-prefix
+  storage implementation dispatched; actual startup/source selection and
+  registry/public/worker binding remain root-owned. Each operation validates
+  the pool; repeated target iteration/ACK can be quadratic under the gate,
+  requiring a validated same-gate batch before runtime latency qualification.
+- No full build/ABI refresh, reset/flash/media action. Normal core201504B SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6,
+  CPUCount1/configure refusal intact. Host integer identities and single-threaded
+  calls do not prove durable recipients, actual RUN draining, topology or
+  simultaneous Task removal. Next permanent storage and fused registry
+  cancellation/final-free ACK, then complete public/secondary runtime gates.
+
+### 2026-10-02 - Permanent removal bank bootstrap and actual cancellation hooks
+
+- Root accepts independent bank review remove-bank-review.md SHA256
+  1685a654e482d4f787adc092123289feedaf1c23f51bce969717e74b1278108b.
+  Root reads full report: local transitions accepted under common-gate/permanent
+  storage; same-bank epoch, allocator identity reuse, admission closure/rescan,
+  durable recipient ownership and quadratic fan-in cost remain caller duties.
+- Permanent boot wrapper source p4_remove_boot.c SHA256
+  5dd0c346fafa7e1b3f676a06f9e761ac1847a4911d47cee1d3643d61474d9b03;
+  Hcec2f3141cef8809e06df30a45ceb8713cb55338d1b65954bbe13619faba6ef6;
+  fixture9874b2846df302a0de05edb86cd6d32e994b2c7ee870ec572a3d893cd2af190f.
+  Report remove-boot-tests.md SHA256
+  7abc819927d15c38606b35f8388e80d3294d01b79d1b6e5f666dfe21f079f3dd.
+  Default1024 slots,16-byte-aligned plain-PSRAM prefix, volatile clear, static
+  bank header; initialization/failure are one-shot and failed bank init keeps
+  already-reserved bytes withheld. No runtime allocator or Exec vector call.
+- Root reads entire wrapper/header/fixture/report and independently repeats
+  actual boot-reserve/bank/completion/wrapper under strict Clang C11 O1/O2
+  ASan/UBSan/frame pointers/leaks0/halt-on-error,20-second alarm. Both exit0,
+ 81982 checks/zero failures. Count includes two byte-by-byte clearing scans,
+  not81982 independent concurrency cases. Six forked scenarios cover success,
+  repeat, NULL/managed/fragmented/invalid-region refusal and forced post-reserve
+  init failure. Host MemHeader shim and test-only init failure seam remain.
+  Evidence p4-remove-boot-o1/o2-independent-20261002 each97800B:
+  O1 a1bed4ba4f78de4f184b0bcd66f9e7ca9c58edabc4bf63996d78551fc0cfae59;
+  O2 6d584371293dad21bae479c3ebfafd513217936ea948c058816535b1a079ecdb.
+  Author report again labels its own artifacts root; its separate identities
+  are O1 97792B/a4a82e856d0ec16de6a1b5d01ec161e023b32824b4e7f9008bcdf1ff95a1ceff,
+  O2 97792B/cb142d3d6a0528c07c1869a8b28467f24cf434050dcc047a115582b098b5f75a.
+  Fresh strict GCC GNU11/O2 RV32 explicit current Developer sysroot/SMP/runtime/
+  FPU/atomic compiles p4-remove-boot-rv32-root-20261002.o3208B SHA256
+  49f0cb3df7620716b6fe95adbd9536aa5bec80662d38c10ed387673d9a888510.
+- Root source-integrates bootstrap attach and cancellation into actual pins.
+  Attach requires prepared pins, empty registry and full-bank-validated serial0;
+  no runtime Disable/Enable/gate operation before Exec vectors. Successful
+  Retire/RetireForService publishes retirement then cancels requester references
+  in the same registry gate before readiness wake/unlock. Failure to cancel
+  malformed bank fails closed before cleanup can run; service refs survive.
+  Pins Ccb26d772322ca1c123dadc43231c6bc9afec77ce0bdb3568fadc8d99c1f5c5fb;
+  H45e6e317135ffee2be346663bc97b43b7d46e53d3b7818a856318c780e648046.
+  Strict isolated RV32 p4-task-pins-remove-cancel-rv32-final-root-20261002.o
+ 49616B/68bb2709cabc0656ddc9b430abd4922ff220bf1d80ef9a873fabcdb25b30d34d.
+  Source inspection caught an initially overbroad patch matching a cancellation
+  claim-release site instead of ordinary Retire; corrected before any test or
+  deployed build. It also caught an initial runtime-lock attach unsuitable
+  before Exec vectors; final bootstrap hook makes no Exec calls.
+- Root selects bank/completion only in SMP Exec and boot wrapper only in SMP
+  kernel. Actual startup calls removal Prepare after semaphore arena, then pins
+  Prepare/Attach before ExecBase and allocator conversion, with raw MIE off and
+  hart1 reset/clock-held; any failure withholds Exec startup. Startup SHA256
+  38f18d924ef86f79ec42b0be081b73f360638b11dbcb837133c19a701da6911b;
+  kernel mmake0363aabc3f3f33ea0a5e87ef29290e0ac59c77b34b103c20c1f002a238ff8277;
+  Exec mmake1c2866645945b46a6369ee21dfa5f408f821cd185e7aa52374c2a5f14fcdf338.
+  This is source routing, not a regenerated matched core or startup execution.
+- Existing actual public-retirement regression, bank linked but not attached,
+  independently passes379+143 O1/O2 after pins edits. Evidence
+  p4-public-retirement-bank-regression-o1/o2-root-20261002:
+  O1 612408B/2510f6f95efa6909a494129993d3bcc693f60bf61dbf5bb0957fffd1033c7672;
+  O2 628312B/0b892abdefcbca3afc5e80c1868b229f6de630b52200584c947498e27af26941.
+  This tests legacy unattached behavior, not the new cancellation path.
+  Dedicated actual-pins/registry/bank cancellation fixture and review dispatched.
+- Signal surface audit signal-retirement-surface.md SHA256
+  1b154c0bffbb20b169ce9bbfcfb8a698c4ef8d68121e3a46a3be585372579ed2
+  identifies SetExcept's analogous failed-state fatal path; correction/test
+  dispatched. Alloc/FreeSignal terminal mutation semantics need caller-aware
+  review; unpublished AllocTaskSignal construction must remain permitted.
+  Exception terminal return depends on enclosing callback/discard composition.
+- Safety/status: no full configure/mmake/link/ABI refresh, reset/flash/media
+  operation. Normal core201504B SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6,
+  CPUCount1 and unfinished-SMP configure refusal unchanged. External public
+  reserve/join, capacity waiting, recipient reservation and final-free ACK+
+  atomic detach, topology, full synchronization and cache-safe hart1 launch
+  still block the real concurrent Exec/FPU/contention acceptance gate.
+
+### 2026-10-02 - SetExcept failed-effect retirement correction qualification
+
+- Source-selected P4 SetExcept now uses the same failed-effect current-retired
+  proof/no-return handoff as SetSignal after Task unlock, before poke/Enable,
+  while MIE remains masked. Query false preserves fail-closed. Source SHA256
+  d074e3cc5334603cbc247bf2b01611cd256e3e8989adc69a87c201f41d1bf691;
+  actual Signal/SetExcept fixture SHA256
+  e812c6be2b2acf999db4021a829c326497f5e005bf6776149d568f86a43073ea.
+  Report setexcept-retirement-tests.md SHA256
+  11c8cd0a88de6031293251f235492d877425b3469c4b5608f27090f56fb5aeed.
+- Root reads entire changed source, fixture and report, repeats strict Clang
+  C11 DefaultSource Wall/Extra/Error/Conversion/Pedantic O1/O2 g/ASan/UBSan/
+  frame pointers with leaks0/halt-on-error and20-second alarm. Both exit0,
+ 95 checks (old67 plus28). Actual public bodies and signal protocol run;
+  Task locks/queues/adapter/lifetime/query/no-save transfer remain mocked.
+  Query true/false NOT_LIVE cases assert unlocked/masked/no poke/Enable/return.
+  Task poison occurs inside the exit mock before longjmp, not at Task unlock:
+  this fixture does not prove absence of accesses between unlock and handoff.
+  No malformed-state matrix or successful-effect concurrent removal is claimed.
+- Root evidence p4-setexcept-retirement-o1/o2-root-20261002 each125400B:
+  O1 07532f1699aa87fe095372f531d90fab0e30c4cf50bc607309cfb7f70128b9d4;
+  O2 8c5560e2d481cd37e5d8e38567a24165935d04534c36f72a73440d030ed9f8f2.
+  Author each125408B: O1 b98b5c34ae5f2335b60d908651dd95f1fe620b4c141a52ed462ce885deaaced1;
+  O2 0cca7229c368ccdbf75013972895a889f4534871ca9fd8299fa781852178694b.
+  No failed compile/runtime attempt in this packet.
+- Fresh strict GCC GNU11/O2 RV32 explicit Developer sysroot/SMP/runtime/FPU/
+  atomic defines: setexcept-retirement-rv32-root-20261002.o2416B SHA256
+  7260801283cd6ee57b02faf376581df8123117da0d87eff97e0b3ddc23e9706f.
+  Independent non-author narrow source review dispatched.
+- No full rebuild/ABI refresh, reset/flash/media. Normal201504B core SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6,
+  CPUCount1/configure refusal unchanged. Full actual retirement/transfer,
+  external RemTask/public synchronization and secondary/cache/topology gates
+  remain open; next removal binding qualification and final-free ACK integration.
+
+### 2026-10-02 - Independent SetExcept retirement review accepted
+
+- Read-only non-author report setexcept-retirement-review.md SHA256
+  939381a49f61b4aec96e0c1bc875fbcc082b129174b0936d2255db14d229cc06
+  accepts the failed-effect unlock / MIE-masked query / no-return ordering on
+  source d074e3cc5334603cbc247bf2b01611cd256e3e8989adc69a87c201f41d1bf691.
+  Root reads the entire report and compares its conclusions with the actual
+  wrapper, query and transfer contracts. It is not a second runtime test.
+- Existing root O1/O2 ASan/UBSan95 and isolated RV32 object identities remain
+  those in the preceding entry. The fixture runs actual wrappers/protocol but
+  mocks adapters, queue changes, lifetime query and transfer. It tests running
+  SetExcept/reschedule, not successful SetExcept WAIT-to-READY. Poison begins
+  inside the exit mock. No real concurrent signal/removal or composed transfer
+  qualification is inferred from this review.
+- Fabian reports the display reconnected; this is availability information,
+  not consent for a visual/touch acceptance run or a passed boot observation.
+  No reset, flash or media operation was performed. Normal core201504B SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6,
+  CPUCount1 and unfinished-SMP configure refusal remain unchanged.
+- Next: qualify actual attached-bank cancellation and bootstrap source routing,
+  then bind public removal admission and final-free ACK/recipient ownership
+  under the same registry gate. Full matched rebuild and hart1 concurrency
+  acceptance remain open.
+
+### 2026-10-02 - Actual startup removal routing isolated RV32 compile
+
+- Root compiles actual kernel/kernel_startup.c SHA256
+  38f18d924ef86f79ec42b0be081b73f360638b11dbcb837133c19a701da6911b
+  to new evidence objects, without overwriting mmake objects or core images.
+  GCC GNU11/O2 Wall/Extra/Error, explicit current Developer sysroot and
+  rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f/medany; SMP variant adds both
+  SMP ABI defines, runtime-ready/FPU/atomic-core1. Normal omits those defines.
+  Both exit0 without diagnostics.
+- kernel-startup-removal-routing-rv32-root-20261002.o59804B SHA256
+  31dc8ae98ea182f8c44ca01b85eb0338ca7a2c8eae08a042765df8b730dfd36d;
+  kernel-startup-removal-routing-normal-root-20261002.o55380B SHA256
+  048a90ed99947b66302ccdc754c37d09e3b410e69ca11a958a4b469c1de2a1ee.
+  Target nm -u shows RemoveBootPrepare/Bank/Bytes/Capacity and
+  TaskPinsAttachRemovalBank only in the SMP object, none in the normal object.
+- These are isolated objects against existing generated headers, not a matched
+  whole-core/BSP/ABI rebuild, linker/SRAM-residency pass or bootstrap execution.
+  No flash/reset/media action; deployed normal core/CPUCount1 unchanged.
+  Next: finish actual cancellation fixture and source-routing review, then
+  public admission plus final-free ACK/notification ownership integration.
+
+### 2026-10-02 - Actual attached-bank retirement cancellation qualified locally
+
+- Dedicated kernel/tests/p4-remove-cancel-binding-test.c SHA256
+  3f382bf62524484c4f1950e17285e9e6327794b8ae40c9e7514bd918900b4639
+  includes actual pins, registry, ledger/nodes, completion and bank. An observer
+  checks gate/IRQ/Task-lock/publication/wake order then calls the real cancellation
+  leaf. Task identities lie in PROT_NONE mapped storage. Actual preparation,
+  attachment and ordinary/service retirement are not replaced by mocks.
+- Root reads the fixture and report, repeats strict Clang C11 DefaultSource
+  Wall/Extra/Error/Conversion/Pedantic O1/O2 g ASan/UBSan/frame-pointer builds,
+  leaks0/halt-on-error and20-second alarm. Both exit0:151 binding checks plus384
+  inherited actual admission checks. Root binaries:
+  p4-remove-cancel-binding-o1-root-20261002 635672B SHA256
+  c8fb99416d117403951c38e57c605410dd102962f2740591678705767d4a8d11;
+  p4-remove-cancel-binding-o2-root-20261002 651576B SHA256
+  61ffc6eaaaa72e9f59dafff92a690afa298a895caebe56a12e97716dfbe0063a.
+- Tests cover before-Prepare/nonempty-registry/used-bank/repeated-attach
+  refusal without bootstrap Exec calls, successful attachment, multi-target
+  requester cancellation including completed-ticket reclaim, unrelated-ticket
+  preservation, service-reference retention, actual OPERATION ledger cancellation
+  and unchanged bank/wake counters on refused retirement. IRQ/gates/Task-lock/
+  wakes are mocks; later ACK/drop is a modeled boundary, not actual final free.
+- During root draft inspection, a placeholder compile error and a wrong bank
+  equality assertion were found and corrected before the first compiled run;
+  report preserves the correction. First149-check builds passed; final151 adds
+  both refused-retirement wake checks. Report remove-cancel-binding-tests.md
+  SHA256 33f562479dd2ad2e2509015a45e483ef0cfc00f0e85dc8537ecd4a727b13e1d7
+  also records non-author narrow review of root production pins. No local
+  success-retire/cancel-before-wake ordering defect was found.
+- Independent read-only bootstrap/source-routing report
+  remove-boot-routing-review.md SHA256
+  475120b97a848d3cf788ab0664bc2b88fa6e3319c1f4c94335198ca6482fd62d
+  accepts one-shot pre-Exec reserve/clear/publication and SMP-only routing.
+  Root reads all of it. Failed initialization withholds its already-carved
+  prefix permanently for that boot; no rollback/retry is claimed. The older
+  author boot report's unselected note describes its pre-root-selection packet;
+  current routing supersedes that status, not its limited host evidence.
+- No full matched build/ABI refresh/link, reset/flash/media or visual test.
+  Normal core201504B SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6,
+  CPUCount1/configure refusal unchanged. Public reserve/join/exhaustion policy,
+  final-free ACK fused with target detach and durable recipient ownership,
+  topology and cache-safe hart1 runtime remain mandatory next steps.
+
+### 2026-10-02 - Actual final-free ACK and notification fusion started
+
+- Previous goal turn made concrete progress: attached-bank actual retirement
+  fixture, independent reviews, isolated startup variants and documentation.
+  No blocking external condition exists for the next code step.
+- Root reads complete final notification surface audit
+  remove-notification-binding-surface.md SHA256
+  3cedf5bfe89229d7f79080597ce506db9f6231e0957a20fba39341b4711c8ef4.
+  Selected design reuses existing counted/generation-tagged SIGF_SINGLE batches
+  and their protected-worker direct signal consumer, not public Signal's
+  extra pin. Requester retirement already cancels tickets in this same gate.
+- New actual p4_task_registry_finish_removal_locked validates registry and
+  retained target membership, bank/storage separation, every still-interested
+  live recipient, aggregate pin/pending headroom and nonwrapping batch serial
+  before mutation. Commit reserves notifications, ACKs every pending target
+  ticket, reclaims cancelled slots preserving generations and detaches the
+  target record without a fallible helper/callout/unlock. Positive result is
+  1+notification count;0 refuses unavailable headroom/nonfinishable target;
+  -1 rejects malformed/cross-object state, with no writes on refusal.
+- Actual pins Finish selects this transaction for an attached bank, latches
+  worker work under the gate and pokes only after unlock. Existing actual
+  cleanup calls it after every FreeEntry, before the separate record FreeMem.
+  Legacy unattached/non-SMP finish behavior remains; its match/commit extraction
+  is covered by existing non-SMP registry/pins regressions below.
+- Frozen current registry C SHA256
+  f4e6b7041e04e6fda1619c8b62f80ce357777c633be748c77be10955918854ee;
+  H690e9f7398c4e5222c5400e117d3719ab5d7ec6443c116174e3212613ae20194;
+  pins C2b903e8121aa22b38cd9177cf58d51606215a6d9db4d5ed514074861078cd660.
+  Strict fresh GNU11/O2 RV32 SMP/runtime/FPU/atomic defines and explicit current
+  Developer sysroot: p4_task_registry-remove-finish-rv32-root-20261002.o41312B
+  SHA25661dbdeff052a3f217cd660c3cd51b2499920cc7ac8be065734b526bc82da2fd4;
+  p4_task_pins-remove-finish-rv32-root-20261002.o50324B SHA256
+  8f49a2d3522e74387604dc69723fc4023240ce153f2630361f03e3a75b9fa376.
+- Root strict Clang C11 DefaultSource Wall/Extra/Error/Conversion/Pedantic,
+  pthread O1/O2 g ASan/UBSan/frame pointers leaks0/halt-on-error20-second alarm:
+  old non-SMP actual registry80 and pins82772 each pass. These regressions do
+  not execute the new SMP ACK transaction. Evidence *-finish-regression-*-root-20261002:
+  registry O1/O2 each235112B, hashes
+  ee6c0e9638f02dbe4c5d7cca782daa8874d149bae75c566f193a7bbf4f04dd68 /
+  a1c56336fe2dc6e167cbbf1fd8456cdcc586ece66b3105fd1fe2043f84de278c;
+  pins O1/O2 each431016B, hashes
+  1dda9d86bdee9c782b23129a1ab41aa44668e9bc333e1c7ff4c9e010295ce095 /
+  84e76ecddced3ced9276f6f3f1e7e7eb9e939cab666ac8d67ed17afbfec6219e.
+- New whole-bank transaction and actual pins finish/notification fixtures and
+  independent non-author review dispatched to disjoint Luna-owned test/report
+  files. No actual target-free/ACK runtime or concurrency result is inferred.
+- Known unfinished edge: the legacy void Finish calls fatal on0 headroom
+  refusal. A progress-capable owner must retain the post-free record without
+  rereading Task, retry with durable resource wakes, and handle serial exhaustion
+  explicitly before public removal/SMP activation. Full-pool validation is
+  no longer repeated per ACK, but recipient aggregation/search still has
+  pool-by-registry cost and needs a runtime latency bound.
+- No full matched build/ABI refresh/link, flash/reset/media or interactive test.
+  Normal201504B core SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6,
+  CPUCount1/configure refusal unchanged. Next: verify/correct actual fusion,
+  add post-free retry/public admission, then secondary/cache/topology gates and
+  full concurrent Exec/FPU/contention acceptance, not helper-only completion.
+
+### 2026-10-02 - ACK fusion preflight ordering corrected during review
+
+- Independent reviewer identifies a real local V1 ordering defect: the bank's
+  typed full-slot validation ran before registry/pool alias rejection. A corrupt
+  pool pointer could therefore consume registry metadata as ticket fields before
+  cross-object refusal. Earlier V1 compile/regression artifacts remain recorded;
+  they did not exercise this SMP preflight boundary and do not qualify it.
+- Root moves aligned/nonoverflow/disjoint header validation before header reads,
+  then validates capacity/product, pool pointer alignment/nonoverflow and
+  header/pool/registry separation before any typed pool scan. Current registry C
+  SHA256 f05cf76a7abdfd6a5f702f0d5f1cd61991ad49641b2f91571190456913856ab6.
+  Mapped bank header/pool and registry storage remain caller obligations; this
+  is structural validation, not an MMU probe for arbitrary unmapped storage.
+- Review and both new actual-source fixtures continue on corrected V2; all
+  workers received its hash. No tests on V1 are relabeled as corrected evidence.
+  No target build/flash/reset/media or hardware qualification. Capacity retry,
+  public admission, full runtime/topology and hart1 activation remain open.
+
+### 2026-10-02 - Actual cleanup and ACK fusion poisoned-storage composition
+
+- Root extends exec/tests/p4-task-cleanup-test.c with optional
+  P4_REMOVE_CLEANUP_FUSION_TEST1 (both SMP ABI defines). Actual cleanup,
+  registry/lifetime, semaphore ledger and bank/completion bodies execute;
+  claim/finish gate wrappers are shims calling actual registry transitions,
+  not the actual pins body (the separate binding fixture covers that boundary).
+  Allocator/context/topology callbacks are mocked. Fixture SHA256
+  7f6dea314be36f2dac2249d84c525e7dbf8d816058579446329842fdf7002c63.
+- One live requester ticket is reserved while retained target cleanup is
+  indexed. At every mocked FreeEntry the ticket is not ready and recipient
+  pins remain zero. First FreeEntry poisons the entire target Task page and
+  earlier CleanupETask poisons ETask; subsequent entry traversal, actual fused
+  ACK/notification reservation and target detach use no target storage.
+  Actual fusion after the third/final FreeEntry makes the ticket ready and
+  creates a counted generation1 recipient batch. Separate record FreeMem follows
+  that finish; actual notification Claim/Finish then drains pins and normal
+  ticket drop reclaims the slot. The normal fixture still uses old finish.
+- Root strict C11 DefaultSource Wall/Extra/Error/Conversion/Pedantic O1/O2 g
+  ASan/UBSan/frame pointers leaks0/halt-on-error20-second alarm: fusion195 and
+  normal171 each exit0. Evidence p4-cleanup-finish-{fusion,normal}-o{1,2}-root-20261002:
+  fusion O1 402440B SHA256b36fbde3ca93105eb6f59ad5d487225d6d9fc22f10140d888d0c05bbeef22407;
+  fusion O2 401960B SHA256aaa2831330bd3ab428e69692e75251c06c7d3b7c50f1329f56d40fd345b10364;
+  normal O1/O2 each241304B SHA256
+  7fa5402a3a3130c8f1ab48d01747877897b32cfb07e5759f4f1d5c09128cf183 /
+  0a230251d10bf3f9f012c863595ab94300d007bf71e8270b1f81160f347b0373.
+- Corrected registry V2 strict fresh isolated RV32 object
+  p4-task-registry-remove-finish-v2-rv32-root-20261002.o41444B SHA256
+  8f811c29cb2c31e26faca0a5aa3188e133879e1fa79836412d5680d6b8203b87.
+  No claim of physical freeing, callback topology correctness, real IRQ/locks,
+  actual signals/Wait, full public removal or hardware concurrency. Independent
+  non-author review also receives the optional fixture; broader fan-in and
+  actual pins/worker notification fixtures continue on V2.
+- No full matched build/ABI refresh, flash/reset/media. Capacity retries/public
+  admission and hart1/cache/topology remain open; configured SMP stays refused.
+
+### 2026-10-02 - Corrected final-free fusion passes transaction and pins binding tests
+
+- State: local source/host qualification only. Root fully reads both new
+  fixtures and the independent report, then builds distinct artifacts from
+  corrected registry V2 f05cf76a7abdfd6a5f702f0d5f1cd61991ad49641b2f91571190456913856ab6
+  and pins 2b903e8121aa22b38cd9177cf58d51606215a6d9db4d5ed514074861078cd660.
+  Fixture SHA256s: transaction213ff76f69adb8838f4f311bacc8be8e92f0036d2ccc66c0f6545c186f175372;
+  binding484ed7db37f4c6c0d19d65cf0886366fd7d0fed6344350d1a606fa4270a93c55.
+- Procedure: Clang C11 DefaultSource Wall/Extra/Error/Conversion/Pedantic
+  pthread O1/O2 g ASan/UBSan/frame pointers; binding additionally uses
+  -finstrument-functions to observe mock unlock before Enable/poke. Run with
+  leaks0/halt-on-error and a 20-second alarm. Every build/run exits0.
+  Transaction726+baseline379 and binding87+baseline379 pass at both levels.
+- Transaction covers multi-target/multi-requester fan-in, cancellation,
+  completed-ticket preservation, pending/inflight generation independence,
+  exact pin drain, opaque PROT_NONE Task identities, stale raw records,
+  malformed/duplicate/aliased state and unchanged-state capacity refusal.
+  Actual pins binding observes ACKs, target detach, recipient pins/generations
+  and durable wake together at mock unlock; poke follows unlock. Actual
+  NotificationClaim/Finish consumes exact reservations, but does not execute
+  Exec_P4DeliverOneSemaphoreNotification or actual SIGF_SINGLE/Wait.
+- Root artifacts under evidence/smp-priority-2026-10-01:
+  p4-remove-finish-test-o1-root-20261002 682792B SHA256
+  a9f11b857f5ec779ab7e3cf79eb7420d0c355290b6038e20b63ae0871a8b07aa;
+  O2 681992B SHA256f5651bdc1b7f809daba82432c7db40f7f6b1d16977a3fae9d96e0ed7b547fffa.
+  p4-remove-finish-binding-test-o1-root-20261002 631920B SHA256
+  f7003c5257c34861202c599cd24a546d7279f41485c38ba9434452853305f93b;
+  O2 631328B SHA256e5afb10b542ddc300a8af95b4a1933f49349484abf15bd20f5c3bc3593cf12db.
+- Independent non-author remove-finish-review.md SHA256
+  c1973d75ed0ceb3fde5a314641ceecef5f8eed5e126ce6a3c8a6fac681bd55a7
+  accepts V2 local mutation/accounting order, retaining the V1 preflight
+  alias-order defect. Reviewer independently executes root optional cleanup
+  fusion195 artifacts; modeled claim/finish gates do not prove actual pins.
+  Author transaction report remove-finish-tests.md SHA256
+  d09d30f610affff0f1a59dd92710e8f695e50461cc46c7e7d13dc1b22708f10a
+  retains test-development helper collision/wrong serial/double-drop corrections;
+  no production fix was inferred from those test-only red results.
+- Author binding report remove-finish-binding-tests.md SHA256
+  baf66bb182801999c3f345a77212c4fe78c74882dedac6b8547441b529fd9182
+  preserves the first O1 observer failure: it observed Disable before gate
+  acquisition. Requiring an advanced unlock counter corrects the fixture;
+  root repeats use that corrected observer. This was not a production defect.
+- Existing actual requester-retirement binding151+baseline384 also passes fresh
+  root V2 O1/O2 sanitizer repeats: p4-remove-cancel-finish-v2-regression-o1-root-20261002
+  669144B SHA25636de0005f1f21cae3bf65dbf727db49f93ac5f2f80b304f9428d0a5de093175e;
+  O2 685032B SHA256b1534f6054b84c481cad0268649d26faac4af5761350842d4cbc06c332664a41.
+  This is retirement/cancellation regression, not new final-free execution.
+- Safety/limits: no full matched build/ABI refresh/link, flash/reset, media
+  action or interactive test. Normal201504B core/CPUCount1/configure refusal
+  unchanged. Display reconnection is not visual readiness. Legacy void Finish
+  still halts on headroom refusal; post-free retry ownership/resource wakes and
+  permanent serial-exhaustion policy remain next, then public admission,
+  topology/hart1 cache and actual concurrent Exec/FPU/contention acceptance.
+
+### 2026-10-02 - Postfree retry ownership and resource wakes source-bound
+
+- Root replaces the selected SMP cleanup's legacy void Finish with new actual
+  TryFinishPostFree/RetryPostFree bindings. A private service_postfree record
+  bit is valid only with an exclusive retained service_inflight claim; Task,
+  context and all MemLists are already freed when it is set. Independent record
+  storage remains indexed through pressure, not reread through the Task.
+- Actual cleanup tries one completion-only record before claiming new cleanup;
+  address-ordered retry scanning skips blocked records and does not block new
+  cleanup if none can finish. Record FreeMem occurs only after a successful
+  fused ACK/batch/detach. The first call reports real freeing progress once;
+  subsequent blocked-only calls are quiet rather than a busy loop.
+- Pressure refusal and retry interest are published in one registry gate
+  transaction. Successful ordinary unpin, notification Finish and existing
+  scope/operation resource drops reserve the existing durable worker wake if
+  postfree interest exists. Requester retirement cancellation likewise wakes
+  retries when it drops ticket interest; poke remains after unlock. No self-poke
+  is synthesized simply because pressure persists; a scan never erases a
+  previously latched wake. Worker is protected/armed/RUN-live by contract/check.
+- Generation exhaustion now returns distinct leaf -2, not transient0, and
+  bindings fail closed. Existing pending batches may still coalesce at serialMAX.
+  This is not a complete liveness policy: pre-free generation admission or
+  reservation is required before public removal/SMP activation. Legacy void
+  Finish remains for compatibility, but selected SMP cleanup no longer uses it.
+- Current source SHA256s: registry C
+  1317a6117eaff00e723e5737edd6d7390f69a071b9278c61c696397d6d574cc3;
+  H5d811e7fdad585b22ffdddbb55edb4024e367e1aaea28d14abe8e00215aacaa8;
+  pins C97de0f467d667f7fcf656104106fc79ae49bd16511fdbaa5f8b40f5bae2c6379;
+  H8ecc205e78b8b9b9de441611ef818c5130734756046a15e15ca03a4fac797c3f;
+  cleanup C924acff844d21da0eb2152474655f57e3a084cb903de6c02e24f7907c9da4259.
+- Fresh strict isolated GNU11/O2 RV32 compile with explicit Developer sysroot,
+  both SMP ABI defines/runtime/FPU/atomic defines, Wall/Extra/Error:
+  kernel-p4_task_registry-postfree-retry-rv32-root-20261002.o42900B SHA256
+  547769ad22a9168494ff168263f9693beffcbbfa3e775f685314365f6a7c8a23;
+  kernel-p4_task_pins-postfree-retry-rv32-root-20261002.o52980B SHA256
+  5f7e09c8cea243f3d0e213b3b43b257ca13c0051c763f220b0377223a39d28cc;
+  exec-p4_task_cleanup-postfree-retry-rv32-root-20261002.o2728B SHA256
+  aacd47b4445d73cb258ea34f2eb7d59f524d912872bc375d3d0f6d3a7d173ce3.
+  These are new isolated objects, not mmake/core replacements or whole linkage.
+- Dedicated actual pins retry and poisoned actual cleanup tests plus independent
+  non-author review dispatched to disjoint Luna-owned files. Prior artifacts
+  remain historical; they do not qualify current retry bindings. Next: address
+  review/test failures, qualify wake/ownership edges, implement public generation
+  admission, then topology/cache/hart1 and full concurrent runtime acceptance.
+- No full matched build/ABI refresh/link, flash/reset/media or visual test.
+  Normal201504B core/CPUCount1 and configure refusal remain unchanged.
+
+### 2026-10-02 - Retry scan sliced after independent gate-latency finding
+
+- Independent read-only design/review of the first retry snapshot identifies
+  that a complete postfree scan can repeat full registry/bank validation for
+  up to20,000 records while local IRQs are masked. This is finite but not a
+  useful critical-section limit; the other hart's20,000 acquisition attempts
+  could expire. Historical V1 reports preserve that finding and source hashes:
+  remove-finish-retry-design.md SHA256
+  0acece98cea4ac0da58c9fdc3f67ebd90c8e02f837c74b62a70add577bc50921;
+  initial remove-finish-retry-review.md SHA256
+  837c944cf2b37bd615b61b68863f00c92fa0a69c262096bc2dc7fac9b1289902.
+  These are source reviews, not tests, hardware or current-budget acceptance.
+- Root limits each RetryPostFree invocation to8 completion attempts. A scalar
+  nonwrapping record-address cursor survives unlock, never a borrowed record
+  pointer. If more candidates remain, it reserves a durable continuation wake;
+  a complete pressure-only pass becomes quiet. Successful detach reports real
+  progress and lets the next service-loop iteration continue the scan.
+- Root also preserves a restart obligation for actual capacity events while
+  the cursor is advanced, and for a newly marked postfree record below that
+  cursor. At scan completion, a single continuation revisits these records.
+  This avoids losing an already-visited record's capacity event across the
+  worker's next SetSignal clear, without continually self-poking pressure.
+- Current pins C88928345d9f5a32e6446bacf9d4c0620658c9ebbd459443a82ba219af3318374;
+  H8a47e3387c3fed8ea8baa08bec389adc382c2230436b327f1e8432cffec047a9.
+  New fresh strict isolated RV32 object
+  kernel-p4_task_pins-postfree-budget-rv32-root-20261002.o54468B SHA256
+  120493fed0e3f8c73dc0af8896fed9e5eedf3a58f5997e8f238ff16d1a1b9453.
+- Root strict O1 ASan/UBSan regression before slicing: existing non-SMP
+  pins82772 passes, artifact p4-task-pins-postfree-regression-o1-root-20261002
+  431008B SHA25640e51517ad0d2ebb303304d04d1bc1c617fa4e059f49811639beaa683e569951;
+  requester cancellation151+baseline384 passes, artifact
+  p4-remove-cancel-postfree-regression-o1-root-20261002 669944B SHA256
+  8111e6e38cb7ed3775409412bcd069a35623d0d7eb982af0054961dbc7c91655.
+  Root strict O2 repeats on sliced source: non-SMP registry80 passes,
+  p4-task-registry-test-postfree-budget-o2-root-20261002 235112B SHA256
+  ce2df9f8bd953ba0e300a7077a33c643c857308934e75fdd240ed32fce087464;
+  original finish binding87+baseline379 passes,
+  p4-remove-finish-binding-test-postfree-budget-o2-root-20261002 632752B SHA256
+  017a5bb8b752172df97668c69090a645546b07c1ab7eb0846d62b3aa3110bfa2.
+  These regressions do not execute current postfree pressure/budget semantics.
+- Dedicated new retry/poisoned-cleanup tests and budget/cursor review continue
+  on frozen current sources. Single-fusion cost can still be large, and service
+  priority occupancy is not measured. Generation -2 remains fail-closed after
+  free until pre-free public admission/reservation is implemented; no assertion
+  of full removal liveness. No full build/link/ABI refresh or hardware/media
+  actions; normal image and configure gate unchanged.
+
+### 2026-10-02 - Bounded retry cursor independently reviewed
+
+- Root reads the complete updated non-author remove-finish-retry-review.md,
+  SHA2560c674355a3f14debf7a2f0e253339d722ce9766ffdaa4ce8b3053361409abe14.
+  Its follow-up preserves V1 and supersedes the all-record-per-invocation
+  finding for current pins88928345.../header8a47e338... . Reviewer finds no
+  local lost-wake or permanent blocked-record head-of-line defect in the
+  eight-attempt scalar cursor/restart logic. No tests were run by this review.
+- The review explicitly leaves individual fusion latency unmeasured and new
+  generation exhaustion fatal after freeing, requiring pre-free public
+  reservation/refusal. Root does not count source review as runtime liveness,
+  actual AMO/IRQ concurrency, full build or hardware acceptance. Dedicated
+  current retry/poisoned-cleanup fixtures are still being authored/verified.
+- No hardware, media or baseline image changes; SMP goal remains active.
+
+### 2026-10-02 - Postfree retry host fixtures independently repeated
+
+- State: E3-RM gains host qualification for the frozen retry bindings, not
+  external RemTask completion or concurrent runtime. Root reads both fixtures
+  completely and compiles fresh independent artifacts, without changing
+  production registry1317a611.../pins88928345.../cleanup924acff8... .
+- Fixtures: kernel/tests/p4-remove-finish-retry-test.c SHA256
+  1584551c0916c803c87c811cc758d3bbb8af38d7823ec909587696627198eb75;
+  exec/tests/p4-task-cleanup-test.c SHA256
+  980a0d031b189e272f623a3c19ec772f643f05b7f0493f8a21a11cca22a369b8.
+  Root reads the complete frozen author reports remove-finish-retry-tests.md
+  SHA256356d80f055a03577c0d2687c2c84848b4331926705d85d60df1dfcdf24bfd4bf
+  and remove-cleanup-retry-tests.md
+  SHA256399284249a17e7b43b01c56b9d8668b87fb30c8011c65d827e0c5bc4c54f1d96;
+  their fixture failures and mock/platform limits are preserved.
+  The actual pins fixture passes674 plus admission baseline379 at O1 and O2.
+  The actual cleanup body plus actual registry/bank leaves passes597 in SMP
+  mode and171 in normal mode. Early author status549 preceded added gate
+  assertions;597 is the frozen exact-source result, not a changed production
+  result. Root also repeats corrected finish transaction726+baseline379.
+- Procedure: Apple clang strict C11, -D_DEFAULT_SOURCE, -Wall -Wextra -Werror
+  -Wconversion -Wpedantic, -O1/-O2 -g -fsanitize=address,undefined
+  -fno-omit-frame-pointer; cleanup SMP mode adds
+  -DP4_REMOVE_CLEANUP_FUSION_TEST=1. Run each with
+  ASAN_OPTIONS=detect_leaks=0:halt_on_error=1,
+  UBSAN_OPTIONS=halt_on_error=1 and perl alarm20. Every root run exits0.
+  Apple ASan does not support detect_leaks=1; no leak-check claim is made.
+- Artifacts under build/evidence/smp-priority-2026-10-01 (SHA256):
+  p4-remove-finish-retry-o1-root-20261002 682680B
+  8dcd90a98689ec8ccdf9f10af3f14bb2bdbd33747d7386c12bc6d34a941691a6;
+  p4-remove-finish-retry-o2-root-20261002 681992B
+  5d26dce9a1ff3532820b056198c6afaa1f534a38187c7ee5f84ff265f04bc640;
+  p4-remove-cleanup-retry-o1-root-20261002 461752B
+  9263263236b49251e3f23391062c086d68e518a842ab203908f8c24821c4da94;
+  p4-remove-cleanup-retry-o2-root-20261002 461256B
+  e54ae9086da76327a60f68cf768f91e257793fc99acad2a7b411de4d97c2518c;
+  p4-cleanup-normal-retry-o1-root-20261002 241496B
+  9b49059845402394958c42a6560c53592a931e0506e4b469868de417966d967a;
+  p4-cleanup-normal-retry-o2-root-20261002 241496B
+  4889a1164d18965cf4d5ad7c6c70ee3fc601ad5e76a05d04e5761e49f03ecae4;
+  p4-remove-finish-postfree-retry-o1-root-20261002 684320B
+  599d03ef7eae23cc4ab9410763fcba8d6e3224bf6fc9045d9656380b77c20ab5;
+  p4-remove-finish-postfree-retry-o2-root-20261002 683536B
+  061a2168374ffdfdc8de5dc2dbd2f878bebc32cf07c0f582f44b95458714fab5.
+- Covered: ordinary unpin and notification finish release pressure and latch
+  retry wakes; requester cancellation completes without signaling the dead
+  requester; ten retained records cross the eight-attempt cursor bound and
+  skip blocked records; a lower-address capacity event requests a revisit;
+  empty scans preserve unrelated wake state. PROT_NONE Task/ETask mappings
+  detect late reads. Actual cleanup happens once, retains its independent
+  record until ACK/detach, permits fresh cleanup despite blocked earlier ACK,
+  and frees detached records outside the gate. Pin-wrapper/IRQ/spin/wake mocks
+  remain explicit; cleanup shims are not actual pins wrappers. Real
+  SIGF_SINGLE/Wait, hart contention, high-priority latency and topology are open.
+- Next: implement the independently audited pre-free generation reservation
+  and adversarial lifecycle tests, then public reserve/join and real hart1.
+  No full build/link/ABI refresh, reset, flash, hardware or media action here.
+  Fabian reports the display reconnected; this is not visual readiness or a
+  visual pass. Deployed normal core remains unchanged.
+
+### 2026-10-02 - Pre-free generation reservation design audited
+
+- Root reads complete non-author remove-prefree-generation-design.md SHA256
+  7be2d0be6292acd370d51e86ba992f0bf1283d9c50b18bdedae6b44db44f0bb6.
+  The actual notification consumer matches identity, count and generation,
+  not generation alone. A single globally issued token reserved per service
+  target can therefore initialize pending batches on distinct recipients.
+  Ordinary semaphore publication keeps its per-recipient allocation policy.
+- The successful service-retirement transaction must check serial capacity
+  before irreversible ledger cancellation/queue removal, store the private
+  token throughout pending/queued/inflight/postfree ownership, and clear it
+  only at detach. Final fusion then need not allocate a new generation after
+  Task freeing. Failed admission must leave all state unchanged. Late joins
+  must share the same gate; public admission is still unimplemented.
+- This is a design/source audit, not implementation or execution. Required
+  tests include a reserved token older than a recipient's later inflight
+  batch, serial exhaustion before plain and ledger retirement, failed ledger
+  cancellation without token consumption, and cross-recipient identity-safe
+  snapshot completion. No normal image or hardware change.
+
+### 2026-10-02 - Service generation reserved before irreversible retirement
+
+- Root implements the audited private service_generation lifecycle. Current
+  registry C SHA256b69f144a0c3d13e192f5fd3e86ed921d1187d35eb7e63397defe1d8849a82558
+  and H SHA2566091e4e2da80d2ea97691a1e38fe5a42957969f151971a3362ef4964e0429c54.
+  Successful SMP service retirement consumes one global nonwrapping serial;
+  MAX refuses before flags/pins or ledger cancellation. Cancellation failure
+  consumes no token. Validation requires a token exactly while service-owned,
+  bounded by the issued serial; queued/retained/postfree states preserve it.
+  Both detached claim and retained finish clear it. Normal non-SMP keeps zero.
+- Final removal fusion uses that target token for each empty recipient pending
+  batch; existing pending generations remain unchanged. A same-recipient
+  inflight collision is malformed (-1), not pressure. New serial allocation
+  and its former post-free -2 refusal are removed. Pin/count pressure retry
+  remains. Public reservation/late-join serialization remains unimplemented.
+- Root inspection caught an ambiguous initial patch context placing reservation
+  in protect_worker rather than service retirement. This was corrected before
+  compiling or executing any generation artifact; no hardware was involved.
+  Dedicated old allocation-policy assertions are being updated alongside new
+  adversarial tests; earlier passing hashes remain historical evidence.
+- Strict GNU11 O2 isolated RV32 uses current Developer sysroot, rv32imafc with
+  zaamo_zalrsc, ilp32f, medany,
+  -Wall -Wextra -Werror, both SMP defines and runtime/FPU/atomic compile gates.
+  Artifacts under build/evidence/smp-priority-2026-10-01 (SHA256):
+  kernel-p4_task_registry-prefree-generation-rv32-root-20261002.o 43132B
+  d0730898e4c8c188ef9ebe82435dd1d6bead6aba5dbd6a52cec2ef9c0c5a8fe8;
+  kernel-p4_task_pins-prefree-generation-rv32-root-20261002.o 54468B
+  120493fed0e3f8c73dc0af8896fed9e5eedf3a58f5997e8f238ff16d1a1b9453;
+  exec-p4_task_cleanup-prefree-generation-rv32-root-20261002.o 2728B
+  177597316ef67b6c25f4287a3329cf652bc88eb4261aae8d8e744b81ee3fa52a;
+  kernel-p4_task_publish-prefree-generation-rv32-root-20261002.o 3772B
+  3ec380f8b9200e81adc4ea7a0b9130f93fab01f62c472600dac755f41e6385d5.
+- Root strict O1 ASan/UBSan repeats (same flags/timeouts as preceding entry)
+  pass actual retry674+baseline379, cleanup597, normal cleanup171, registry80
+  and pins82772. Artifacts (SHA256):
+  p4-generation-retry-o1-root-20261002 682680B
+  525fc648aa4c0b5450794e5581484147a120c92f68598329d268bce7a290bf08;
+  p4-generation-cleanup-o1-root-20261002 461752B
+  bd54bd2e9eff700df48ceb1d339846428171aab1f5ce180ba122736b6c81a5c0;
+  p4-generation-normal-cleanup-o1-root-20261002 241504B
+  3c274797c639d7c0a6ed9edfd6e12ea65bff85aef135de77532aa841773a8e73;
+  p4-generation-normal-registry-o1-root-20261002 235104B
+  028aabe8204432dcb8e54ee8db9600fbb178036f492831f1b083ec23cd54e71d;
+  p4-generation-normal-pins-o1-root-20261002 447512B
+  524b273e1416c9cf58f11066785d784bd5ea2a167f9020491cbaddd329e53046.
+  Additional O1 cancellation151+baseline384 and publish332 pass. Initial
+  durable-notification fixture link failed because its standalone invocation
+  omitted bank/completion sources; corrected invocation explicitly links both
+  actual sources and passes real-node418 plus durable-notification514.
+  Extra artifacts (SHA256):
+  p4-remove-cancel-binding-test-prefree-generation-o1-root-20261002 687024B
+  c75d206c8175b990a09c11da089964a71b1f4b8a9bf0c65dc1e2dd9a01fd4cec;
+  p4-task-publish-test-prefree-generation-o1-root-20261002 311768B
+  b51941b99f6244c083737c09d9cfd6fd702d1a7f7a55711a76d8a24fb07d6aa1;
+  p4-semaphore-durable-prefree-generation-linked-o1-root-20261002 631408B
+  d24602ca7900afd978072ef4ce4b4ab4a897f943efbca0614bfcc8cfc16f657a.
+- Dedicated plain/ledger exhaustion, old-token/inflight, shared-token identity
+  and late-join tests/review are running against frozen current production.
+  This is source/object/host progress, not full matched build/ABI or runtime
+  qualification. No reset/flash/media actions. Normal core remains unchanged.
+
+### 2026-10-02 - Pre-free generation regression repeats at O2
+
+- Root repeats strict C11 ASan/UBSan O2 builds on frozen registry b69f144a...
+  /header6091e4e2... . Actual pins retry674+admission379, cleanup597,
+  normal cleanup171, normal registry80 and normal pins82772 all pass, exit0.
+  Procedure and modeled boundaries are identical to the preceding O1 entry.
+  These existing fixtures are regressions, not the dedicated generation
+  lifecycle/exhaustion/identity tests, which remain in progress.
+- Artifacts under build/evidence/smp-priority-2026-10-01 (SHA256):
+  p4-generation-retry-o2-root-20261002 681992B
+  5549d241b30e15746ec867d1e083e00c38fa99b8b476610a8428b5a6697e0372;
+  p4-generation-cleanup-o2-root-20261002 461256B
+  1a594cd5f7c6fffca59b92f7c33bf74aa70c26d60a4d6f2b4bc81e1f5e3aab92;
+  p4-generation-normal-cleanup-o2-root-20261002 241504B
+  5d9ddf276d7d5be98e4f92e82c410e9cc477177f466d7fe30969e9bc46937ff1;
+  p4-generation-normal-registry-o2-root-20261002 235104B
+  9a3e884ecd02abedd2fff0660d9c9c0b79f4b372a97c265b475e5244b2010296;
+  p4-generation-normal-pins-o2-root-20261002 447512B
+  e622a5eaa130b663910f2bba1c7c2ff8b070badd623bdec12160ce9f49438dbb.
+- No full matched build, activation, real signal/wait/IRQ contention or
+  hardware action. Normal core unchanged. Current live Luna jobs continue
+  dedicated tests, independent source review and public binding-site audit;
+  root does not count an observation timeout as their termination.
+
+### 2026-10-02 - Pre-free generation implementation independently reviewed
+
+- Root reads complete non-author remove-prefree-generation-review.md SHA256
+  e7ab3c4eb08ed0526e21a348188d6c75ad6148f16c2d876a981629f7e051966e.
+  Reviewed registry b69f144a.../header6091e4e2... matches current frozen source.
+  No local reservation/collision/lifecycle defect is found under the shared
+  gate and boot-only registry-init contracts. The review executes no tests.
+- Serial capacity is checked before service retirement and ledger cancellation;
+  failed cancellation cannot consume a token. Unique issuance and identity-
+  tagged snapshots permit shared fan-out and older-but-distinct pending tokens.
+  Quiescent validation and both detach APIs clear the private token. Normal
+  non-SMP keeps zero. Queue retirement refuses before unlink/state mutation.
+- Boundary: legacy detached service claim discards the token, so public final-
+  free removal must use retained claim/fused ACK. Generic external RemTask is
+  still unbound. Finite serial/capacity policy, topology, full matched build,
+  actual signal/wait delivery and simultaneous harts remain open. Dedicated
+  tests continue; no hardware/media/baseline image change.
+
+### 2026-10-02 - Finish fixtures adjusted to pre-free token policy and repeated
+
+- Root reads the policy changes and independently repeats strict O1/O2
+  ASan/UBSan on current registry b69f144a.../header6091e4e2... . Transaction
+  fixture SHA256754dde7bcd5535420c4a87ef7d3eac49752968ba4266b39bbb00d149c6a79643
+  now passes713+baseline379; binding fixture SHA256
+  c0ac3b37886e26ff060420f45453ee4386ca4e661208136fafbd949e597d53e3
+  passes88+baseline379. Fixture hashes match before and after root runs.
+- Mode0 tests serial-MAX refusal before retirement with registry/bank unchanged.
+  Mode2 now verifies successful final ACK at serial-MAX after pre-free issuance,
+  preserving an existing pending generation. It no longer runs the obsolete
+  post-free new-generation refusal, hence transaction713 rather than old726.
+  Binding replaces distinct-recipient generation allocation with equality to
+  the one reserved target token; all ACK/pin/detach/wake ordering checks remain.
+  Binding builds include -finstrument-functions to observe actual gate release.
+- Artifacts under build/evidence/smp-priority-2026-10-01 (SHA256):
+  p4-remove-finish-test-prefree-generation-o1-root-20261002 684328B
+  aee69e90435364cf825ad9c8013e29029318841cbe31a11b07fe80e521e2495d;
+  p4-remove-finish-test-prefree-generation-o2-root-20261002 683544B
+  e1690f96d5b036ecf45d1a70e281918f0bc32dbdc4b85a6d9faad01a1da150ae;
+  p4-remove-finish-binding-test-prefree-generation-o1-root-20261002 633776B
+  124a5b2a4e16e28d02582677143877871e6bbb9abd24121993d47ae21360614b;
+  p4-remove-finish-binding-test-prefree-generation-o2-root-20261002 633216B
+  b77a471a0520ee3b0fb518f45342208e9dde6e64599964e3fa0803ef01d99c9a.
+- Modeled IRQ/locks/wakes and metadata notification accounting remain host
+  evidence only. Dedicated direct registry/ledger generation suite is still
+  being authored. No full build, actual signals/Wait, concurrent hart or board
+  qualification; no reset/flash/media action. Goal remains active.
+
+### 2026-10-02 - Pre-free generation lifecycle independently tested
+
+- Root reads the complete new kernel/tests/p4-remove-generation-test.c,
+  SHA25688fff22fa34b7b1882f055313453254673af75881d1777440b32105a95b4a044;
+  source hash is unchanged before/after independent builds. It composes actual
+  lifetime/registry/ledger and removal bank/completion with the actual admission
+  baseline; Task identities are PROT_NONE addresses. IRQ/gate/wake adapters are
+  mocks, not concurrent hart execution. Registry C b69f144a.../H6091e4e2... frozen.
+- Strict C11 O1/O2 ASan/UBSan with the prior warning flags, leak detection off,
+  halt-on-error and perl alarm20 both exit0:324 new checks plus baseline379.
+  Artifact p4-remove-generation-o1-root-20261002 682360B SHA256
+  f9fb9f825243894cb9710b6ed621f51a865b4042275401343bd283324ddb0a72;
+  p4-remove-generation-o2-root-20261002 681784B SHA256
+  7af93e9b49cdef3c81696de2921598da9bbe02340c1fb9c3e2bcbdc76b07cc5d.
+- Plain and OPERATION service retirement refuse at serial-MAX without registry,
+  bank or ledger mutation. Already-cancelled cross-domain mismatch and wrong-
+  arena resolution consume no token. These are resolver refusal tests, not an
+  injected failure after a valid ledger_cancel starts: actual cancel validates
+  active membership/cancel state before its only successful write. Ordinary
+  retirement consumes no service token. Successful operation cancellation
+  preserves the service token through RUN drain, cancel finish, queued claim,
+  retained/postfree ownership and detach clearing.
+- Two recipients receive the same target token; snapshot completion resolves
+  the recipient identity, and an unrelated identity cannot consume it. At MAX,
+  final ACK succeeds using an earlier reservation. A delayed target's older
+  token coexists with a later inflight batch, remains pending until that batch
+  finishes, then is claimed/finished. A leaf-level ticket joining after target
+  retirement uses the original reservation; this is not public late-join
+  admission or proof of real concurrent exclusion.
+- Author reports four initial assertion failures caused by attempting a second
+  simultaneous notification snapshot for one recipient. Production correctly
+  keeps the second batch pending until its inflight slot drains; the fixture
+  sequence was corrected, not production. Frozen author report is being
+  finalized; root result above relies on inspected source and independent runs.
+- Next actual binding must make ticket admission and live target retirement one
+  registry transaction: a separate bank reserve followed by refused retirement
+  can orphan a service reference. Wait must occur after ordinary target-pin
+  release and all locks, only in normal Task continuation (P4 Wait rejects
+  nonzero trap_depth). Public producer, finite capacity and topology remain
+  open. No full build/activation/hardware/media action; normal core unchanged.
+
+### 2026-10-02 - Final generation packet and public binding audit reconciled
+
+- Read the complete frozen author reports remove-prefree-generation-tests.md
+  (SHA2562337e31a2b6cdc3f25912bb0adcd692f8289b976df23bf48b8f802fc158256f4)
+  and remove-public-binding-sites.md
+  (SHA2560511e0ffb152e8d0569bbea4852ed230e7d450775894774a5931bee36bf4e1e3).
+  Both are under build/evidence/smp-priority-2026-10-01. Earlier root source
+  identity 88fff22f remains historical; the final author source is now
+  5a8c9b112068a3174d4cae01418dbf2cfba9f533dfe46183dadd7c572e44e9b1.
+  Root reads that whole source and rebuilds it independently with strict C11
+  O2, -g, ASan/UBSan, the preceding warnings and pthread. Leak detection off;
+  halt-on-error and perl alarm20. Exit0:324 generation checks +379 baseline.
+- Fresh artifact p4-remove-generation-final-o2-root-20261002:681784B,
+  SHA25666a0aa56ddee40988c05eab98d9d3bde09fb75a033cfc0d89bdaa910e332388a.
+  The failed-cancel cases remain resolver/cross-domain refusals, not injected
+  failure after valid last-fallible cancellation. Author correction history
+  remains preserved in its report and the preceding evidence entries.
+- Source audit confirms separate bank reserve and service retirement can leave
+  orphaned ownership on refusal. Next implement bank/header/pool/output preflight
+  followed by last-fallible retirement/ledger cancellation and infallible ticket
+  publication under the same gate. Late join must resolve retained raw identity
+  without Task reads. Drop temporary target pin before handle-based Wait outside
+  all gates and only in normal Task context. Capacity policy still needs closure.
+- Fabian reports display reconnected. This is connectivity information, not
+  readiness or a visual pass. No reset, flash, media write, full matched build,
+  SMP activation or interactive run occurred. Normal deployed core unchanged;
+  fresh explicit readiness remains required before any sight/touch test.
+
+### 2026-10-02 - Atomic removal ticket admission implemented
+
+- New private p4_task_registry_admit_removal_locked validates complete registry,
+  separated bank/ledger headers, backing arrays and output spans before typed
+  scans. A live unprotected requester must own the indicated RUN hart. A live
+  target requires an extra ordinary pin; the outer caller remains responsible
+  for canonical Task/queue locks and IRQ masking. Missing/ineligible targets,
+  protected workers, finite bank/service serial and slot capacity refuse without
+  mutation. Retained service targets admit raw-identity late joins.
+- For new retirement, ledger cancellation/service retirement is last fallible;
+  infallible writes then cancel all target requester references (preserving slot
+  generations), publish both ticket references and the scalar handle. No separate
+  fallible reserve or service abort follows retirement. This is a private leaf,
+  not public RemTask closure. Pins/queue/Wait bindings and capacity policy remain.
+- Dirty source SHA256 registry C
+  914d17059918af9e1d94d2be631af74459bbd4eed3b5207ead87156d61fe569b,
+  header731f7d078a9fca2addf2b208ae1ee51a029f5d3893ffede4c4144848712948be,
+  bank headerfb41cccf9a0a86f11d022ca448b451c9d9a94bcdac0ab8a6caf95f1abf8fefee.
+  Fresh isolated RV32 GNU11 O2 registry compile with preceding SMP flags passes:
+  kernel-p4_task_registry-admission-rv32-root-20261002.o45876B SHA256
+  6977d51a35e91dad75047e02fdd152d54a4fa48cd40c1b8bbbe1dc5da13be095.
+- Strict host O2 generation regression (preceding command, distinct output)
+  passes324+379; artifact p4-remove-generation-admission-o2-root-20261002
+  681936B SHA256b8541db25d3b668b79d4f238d4c3a76cc0f9552638fad898cb32b496d4c9048d.
+  This existing suite does not exercise the new admission API. Dedicated tests
+  and independent source review are delegated on frozen source. No full build,
+  reset/flash/media action, signal/Wait execution or concurrent hart evidence.
+  Next bind the transaction through pins and scheduler before public removal.
+
+### 2026-10-02 - Ticket admission connected to pins and scheduler queues
+
+- New krnP4TaskRecordAdmitRemoval binds the permanent bank/boot ledger to the
+  actual registry gate, latches cleanup/resource-retry interest after success
+  and never pokes under caller Task/queue locks. It does not re-run independent
+  requester cancellation after atomic retirement. New
+  krnP4TaskRetireWithTicketLocked validates queue memberships/owner under
+  Ready -> Wait -> Running locks, admits ticket/retirement, then detaches and
+  sets TS_REMOVED without further fallible work. READY/WAIT require owner0;
+  RUN requires a positive owner. Actual public caller and waiting remain open.
+- Independent leaf review found no Task-allocation extent alias precondition
+  for handle storage; root added it rather than pretending raw Task IDs provide
+  sizes. Final contract forbids all target-owned allocations and requester Task
+  object/saved-context aliases, while explicitly allowing a private automatic
+  handle on the requester's live RUN-owned stack. Metadata aliases are checked
+  at runtime. New-live admission and retained join are now explicit separate
+  modes; live mode refuses a retired target unchanged. A first binding patch
+  was rejected because it named one file twice; no source/build was partially
+  applied. Corrected patch and strict compiles succeed.
+- Frozen registry C d40ea01490e6e5faef86bdb266e2cd3b6b63497ac86d52d0adb2be58c5a1546a;
+  pins C283cb8a927987cc8d6ee56fedf9017552de8cb4ef485d001f2211e5eeff0f6b4;
+  queue C19dbe5a39dede42e5437506a9d730e3c04977bccb00d006b4baf2b0c9ac8abdd.
+  Fresh isolated GNU11 O2 RV32 SMP objects under preceding evidence directory:
+  kernel-p4_task_registry-ticket-binding-rv32-root-20261002.o45892B SHA256
+  38e569c3b642b10bd8a8de409485a4a3bf93b3da9c047bd442a12dfef61ab92b;
+  kernel-p4_task_pins-ticket-binding-rv32-root-20261002.o55704B SHA256
+  ad5ef806315d5d1b402eb9950f71bb63a07bf7eef051219bc4354c9be2357916;
+  kernel-p4_scheduler_queue-ticket-binding-rv32-root-20261002.o12336B SHA256
+  82d13c8f871e3098f6c72cd68345a090e55930b39a324f80d1b19e522ebbcc0e.
+- Root strict host O2 ASan/UBSan existing generation fixture passes324+379:
+  p4-remove-generation-ticket-binding-o2-root-20261002 682072B SHA256
+  eb6f8f2634d8cab5832a92493cff2fdd895327b727434c0768f9a9a0aff3c3ae.
+  It does not call these new admission/queue bindings. New focused tests and
+  leaf review are delegated on frozen scopes. No full matched link/ABI refresh,
+  actual Wait/Signal execution, reset/flash/media action or two-hart evidence.
+  Next qualify new transactions, bind poll/drop and normal-Task public wait,
+  close finite admission policy, then matched runtime and hardware gates.
+
+### 2026-10-02 - Scalar completion poll/drop bindings compiled; linkage error fixed
+
+- New krnP4TaskRemovalPoll/Drop require the requester's current RUN ownership
+  under the actual registry gate, reject protected workers, and pass a copied
+  generation-bound handle to the bank leaf. Poll distinguishes pending0/ACK1/
+  service-retired requester2; retirement cancellation makes its old handle
+  irrelevant. Drop consumes only an ACKed live requester's reference, or returns
+  0 for a retired requester. Free capacity triggers durable resource retry under
+  the gate and a cleanup poke only after unlock. Caller must re-query hart on
+  every invocation because Wait may migrate; no signal clearing or Wait occurs.
+- First isolated RV32 compile failed error: implicit declaration of the private
+  static p4_task_registry_lookup_locked. Host include-based regression compiled
+  and passed324+379 because concatenating actual sources masked the linkage
+  defect. Root did not count that as RV32 success or emit a failed-build object.
+  Corrected binding uses existing public raw-identity worker/live-owner/
+  service-owner queries and never borrows a registry record pointer. Strict
+  isolated RV32 compile now succeeds. This failure demonstrates why source-
+  inclusion host fixtures do not prove linkage/full runtime selection.
+- Corrected pins C SHA256
+  d7d3abb44ddf0dc3e37ace5c009cb73d57d80ed59f11e615c402ee349926ff14,
+  H7d5f602ceed4f3916c66a36d7613216b8bc82383bf9886bd9e4c1f9c58af233e.
+  Registry remains d40ea014...; final output-lifetime header8b57a0c3...
+  Fresh kernel-p4_task_pins-ticket-poll-corrected-rv32-root-20261002.o58360B
+  SHA25676eacf9b8ba42980031b74929d1f3ee22c775b1d901c842027954c471fa64453.
+  Existing generation regression root strict O2 ASan/UBSan passes324+379:
+  p4-remove-generation-ticket-poll-corrected-o2-root-20261002 682440B SHA256
+  65411503d9a26dc09380c62029beecf1526c3b231b20d3f48c08be7c751dae5c.
+  Earlier masking host artifact p4-remove-generation-ticket-poll-o2-root-20261002
+  682432B SHA2561c9e4308a8f6ece8d7f5cce9b0d4752f6b9fa9cabcf62510061656d22917003c
+  is retained as failure history, not valid separate-link evidence.
+- Root reads complete independent remove-admission-review.md SHA256
+  2d268f6ba5e023d135de044ff0e0c1487b0622d94dc28bc5dd293a088b4a33a9;
+  no remaining local leaf defect under its stated output/mapping/lock contracts.
+  This read-only review included the preceding admission wrapper and queues,
+  not new Poll/Drop. Separate new-binding review is dispatched; dedicated new
+  tests are still running. No full build, actual Wait/Signal, reset/flash/media,
+  concurrent harts or visual acceptance. Public RemTask still follows generic
+  external cleanup until the safe waiting/capacity caller is implemented.
+
+### 2026-10-02 - Non-SMP pin regression repeated after ticket bindings
+
+- Existing p4-task-pins-test.c selects the normal test binding rather than
+  __AROSEXEC_SMP__/__AROSPLATFORM_SMP__ ticket code. Root strict C11 O2 -g
+  ASan/UBSan, preceding warning flags and pthread, leak detection off and
+  alarm20, passes82772. Fresh artifact
+  p4-task-pins-ticket-poll-normal-o2-root-20261002447520B SHA256
+  d1b19247f84804158d1854d7dd53624f1d938d7e9a2182a57dc8c56709e0071c.
+  This checks retained non-SMP lifetime/pin behavior on current source; it does
+  not exercise new SMP ticket APIs or prove source selection/full linkage.
+  No firmware/board/media change. Dedicated admission and queue tests continue.
+
+### 2026-10-02 - Atomic admission independently host-tested and bindings reviewed
+
+- Root reads complete kernel/tests/p4-remove-admission-test.c SHA256
+  3631229bd4beebdede2f91213f38c299ed20aff7b5b41436da43e0ddbd996744;
+  independently compiles/runs strict C11 O1/O2 ASan/UBSan, prior warning flags,
+  -g/pthread, leak detection off, halt-on-error and perl alarm20. Both exit0:
+  706 focused checks plus379 baseline (1085 total). Author initially described
+  706 as total/327 focused; actual main subtracts packet_start AFTER baseline,
+  so the report count is being corrected, not source/test behavior.
+- Actual registry/lifetime/ledger/bank/completion bodies run with PROT_NONE
+  Task identities and modeled IRQ/gate adapters. Coverage includes new live
+  ticket/service retirement, real operation cancellation, raw retained/postfree
+  joins, exact final ACK/readiness, target-as-requester cancellation of pending
+  and completed tickets preserving slot generations, bank/service serial and
+  slot capacity refusal snapshots, missing/retired/protected requester and
+  absent ordinary target pin, explicit live/join modes and representative
+  metadata header/pool/output aliases. No actual Task freeing, Signal/Wait,
+  allocator lifetime, public route or physical concurrent ownership is proved.
+- Fresh artifacts in preceding evidence directory:
+  p4-remove-admission-o1-root-20261002 699144B SHA256
+  56bf2c9892a156e50e12c47ce6ebc89685e924d4e177350c1317683389e9faeb;
+  p4-remove-admission-o2-root-20261002 698552B SHA256
+  5caab7189418ca9c0a37ba34196c6c2db2b82f3914697b0b35e2113818944524.
+  Frozen production registry d40ea014.../H8b57a0c3...;
+  current pins d7d3abb4.../H7d5f602c... unchanged during repeats.
+- Root reads complete independent remove-ticket-pins-review.md SHA256
+  544fecd3635d4dc33fdbd7e27a411b95b3a04f777be3444ab53d5b085d9b42ad.
+  No local defect under mapped/private output, RUN/current-hart, pin and lock
+  contracts. It explicitly leaves TS_ADDED/other generic states, actual
+  public caller, lost-wake-safe waiting and post-unlock pokes unqualified.
+  No full build/ABI refresh, reset/flash/media action or two-hart result.
+  Next independently repeat queue boundary tests and qualify actual pins
+  ticket lifecycle, then implement public waiting/capacity/context handling.
+
+### 2026-10-02 - Ticket queue boundary independently repeated with negative control
+
+- Root reads complete new queue fixture, changed final control branch, inherited
+  CHECK implementation and complete author report. Frozen test SHA256
+  39065e67e2c2f85f5c85900d9471baf6544c83d741c0db59a16ba40a898aa80e;
+  report remove-ticket-queue-tests.md SHA256
+  3cc11a05bdcfdf755f0c2ac626db3e7cba961ff065b0886532b29c217426e57e.
+  Root initially alleged unconditional main success could hide a failed new
+  check; reading the inherited CHECK corrected that allegation: it aborts,
+  so there was no false-pass path. Author added only an optional negative
+  control. Neither production nor assertion semantics needed repair; original
+  author results remain valid historical evidence.
+- Strict C11 O1/O2 -g ASan/UBSan and preceding warnings, leak detection off,
+  halt-on-error/perl alarm20, both exit0:647 baseline+284 new (931 total).
+  Real queue body/bounded membership/registry RUN-owner lookup, modeled locks
+  and admission returning a sentinel handle. READY/WAIT/RUN and both RUN harts,
+  canonical gate order, post-admission detach/state, refusal snapshots, absent
+  record, state/list/owner mismatch and malformed queue cases pass. No poke
+  occurs inside the queue function. Admission is mocked: this is not fused
+  registry/bank execution or end-to-end removal.
+- Retained root artifacts:
+  p4-remove-ticket-queue-o1-root-20261002 280856B SHA256
+  78707c4b792fb6192a5c491d7e0dfdd1c397974cba12206265bbe6ef7bb3248f;
+  p4-remove-ticket-queue-o2-root-20261002 280856B SHA256
+  7f3109ddabd09b40ac9333c098d0a42a829b06eb42ac6846f0644030b01c603a.
+  Negative O2 adds -DP4_REMOVE_TICKET_QUEUE_NEGATIVE_CONTROL, disables core
+  dumps with ulimit -c0:expected FAIL line then SIGABRT/exit134, no ticket
+  success line. Artifact p4-remove-ticket-queue-negative-o2-root-20261002
+  258288B SHA2569d2ddeed801f7b9d0a3203fa7af4621af256617bf25ebb8b1fa0bf3f4ee17b2c.
+- Root also reads frozen corrected admission author report SHA256
+  ce31cc426fd33311f415d50787eda81e6e0761853c6305bdfb8f7d1be640edae.
+  It preserves setup/absent-identity/unlinked-record alias fixture corrections;
+  no production defect was found in that packet. Author temporary binaries
+  were not retained; root independent artifacts above remain available.
+- Actual pins admission/Poll/Drop lifecycle fixture is being authored. Public
+  waiting, capacity/context/all-state handling, matched full firmware and
+  physical concurrent harts remain open. No reset/flash/media/hardware test;
+  normal deployed image and SMP activation refusal remain unchanged.
+
+### 2026-10-02 - Private exact-ticket normal-Task wait helper compiled
+
+- Root implements exec/p4_remove_wait.c SHA256
+  343ef81d1d61d0fbd1d9e8e2830740f72f3cc77c72fffba4ebf9e9916f6f5eb1
+  and header SHA256
+  99de4cb38885eec92361658152b0ad1684c4349f283d6f7fb6fa344bd98c0021;
+  selected only in the SMP Exec source list. No public RemTask interception yet.
+- Caller must own current normal-Task RUN, with target pin released and all
+  outer locks released. Every iteration masks local IRQ, checks current Task
+  identity and trap_depth0, snapshots the current hart, clears SIGF_SINGLE
+  BEFORE exact-ticket Poll, consumes an ACKed reference through Drop, or
+  unmasks its own Disable level before Wait. Wake bits are hints, not success;
+  Poll2/Drop0 takes no-save self-retirement. No borrowed per-hart or target
+  storage survives Wait/migration. Outer caller context/capacity policy remains
+  unimplemented; this is not a public API compatibility or lost-wake runtime gate.
+- Fresh isolated GNU11 O2 RV32IMAF/C+Zicsr+Zifencei+Zaamo+Zalrsc ILP32F
+  medany compile with matched generated/Developer include paths and explicit
+  SMP/runtime/FPU/atomic/board defines, -Wall -Wextra -Werror exits0. Object
+  exec-p4_remove_wait-rv32-root-20261002.o in the preceding evidence directory
+  is 2132B SHA256
+  c04d32f9f62d548e7f095f37421ce0e4551e9f261dd95b4892996d430ef52582.
+  New actual-body host
+  fixture is delegated, not yet received; no host pass is claimed here.
+- No full configure/mmake/link/ABI refresh, reset/flash/media action or hardware
+  result. Normal deployed image, CPUCount1 and SMP activation refusal unchanged.
+  Next independently repeat helper/pins host packets, settle capacity policy,
+  then bind external RemTask and qualify the full matched concurrent runtime.
+
+### 2026-10-02 - Actual pins/wait repeated and finite slot-pressure candidate implemented
+
+- Root reads complete frozen pins fixture/report and wait fixture/report;
+  pins test47712100... report625e5fe45ec2b4d6f213e018c441bbde6c6a92b28d295dc9fbffb84c84a8c433;
+  wait test77182688... final report40cb6bdb2cf70241b565b51a1829e6d2e3735200836eea7dee553ea836d3a0fa.
+  Pins author results bind pre-capacity registryd40...; root repeats current
+  registry03f23... at strict C11 O1/O2 -g ASan/UBSan, preceding warnings,
+  pthread for inherited pins/admission, leak detection off/halt-on-error,
+  perl alarm20. Each exit0:pins254+379, admission706+379, wait223.
+- Actual pins tests include live admission, ordinary pin/RUN drop before
+  retained claim/ACK, late joins, requester retirement with Poll2/Drop0,
+  migration and resource wake out-of-gate. PROT_NONE Task IDs and modeled
+  gate/IRQ/pokes; no real worker/Task free/Wait. Failure history retained:
+  include-main collision and late-join setup lacking queued readiness were
+  fixture errors, corrected before frozen author passes.
+- Wait-body tests mock signals/Wait/Poll/Drop/current runtime. Root requested
+  an explicit ACK after false Poll/before Wait case; it passes. Root corrected
+  author report claim that mock Wait consumes the bit: it only asserts a wake
+  exists and returns the hint; next SetSignal clears it. Actual Exec signal
+  consumption and concurrent transport remain unproved.
+- Root capacity implementation: registry C03f23a1bf51c42226fce5ebda24124260b19324b3f6c1b51d1a766ef8fe8c54b,
+  Hdf4abb0cbb18ab6a83e22864c9341b7c37b71ccd717bf425225a0b29dc97f79c;
+  bank H5cdadc5dd8c1b4768d2c7749e508813035ba8809b5e3c599600817b5952117bb.
+  Duplicate requester_ref1 ticket refuses unchanged, including ACKed interest.
+  Canceled requester_ref0 slots are reusable only after last-fallible retirement,
+  with fresh nonwrapping generation. This does not release the old target's
+  independent registry service pin or change standalone cancellation behavior.
+  Root fully reads independent capacity audit/follow-up SHA256
+  ccdb8c7343e28328605123a3333e84721ad3ef103cf218f5a950b00bbfb3e9ac:
+  no local ordering defect found; count proof conditional on sole fused producer
+  and all requester retirements canceling interests. Direct leaf reserve has
+  no production caller but must remain excluded from this invariant.
+- Boot C7d706b8f249683e7dd3ae7dfde9a867ffd0618b53d0bcda02b58e893908a445e
+  defaults20k and production static assertion refuses smaller overrides.
+  Initial reviewed boot a14988cf... preceded this assertion. Fresh strict RV32
+  registry object46040B SHA256b72316a30c2b7564a7f8054b2662354b28461fa95d7c33fc3655f2230234fb5b;
+  final boot object3264B SHA256de4ac931af28ed0189b5c1cfaaf2d1092a6889c04f746aad19e513d58051fa8c.
+  Compile negative -DP4_REMOVE_BOOT_CAPACITY=1024 exits1 at the expected
+  minimum-capacity assertion; no usable object emitted.
+- Existing boot fixture's131072B host region was too small by construction for
+  new20k default; root expands region to actual host-slot bytes plus131072B,
+  not a reduced bank. Test source2aeacf6572da7ddc476ddcd19948e3d5aea070b971c2717e0527b42942b20d0d.
+  Strict O2 ASan/UBSan exits0:1600062 byte/prefix and scenario checks; binary
+  p4-remove-boot-capacity-o2-root-20261002 97800B SHA256
+  d896cd810388988207c8ae3e75ee8e293d3d042e451b87336d10380e31ded3a4.
+  This is host reservation evidence, not actual contiguous PSRAM-budget proof.
+- Retained root binaries in the preceding evidence directory:
+  p4-remove-admission-capacity-o1-root-20261002 699152B SHA256f5a25a7795252ff458b8dfb7e55d0fad5547937100da253e8b7cfc185acdc67e;
+  O2 698560B SHA2564e066dc9f171f4babd8408068a1782bc1c7f7e6fae73c24b7b913c35f3e41c5a;
+  p4-remove-ticket-pins-capacity-o1-root-20261002 678608B SHA256475a28f8061abd47ffd81336eabc018217d467e63bc5a0cb4a872e5cf4b70081;
+  O2 677760B SHA256487c9b7ce8ff41c3f481e234a7ccd1fa78e6e2c6314156290440eca76ba19ed7;
+  p4-remove-wait-capacity-o1-root-20261002 83672B SHA256b4c2d84a8828ff9470be91ca53ec1898559049e916d17cab78c7f32e5c43ece3;
+  O2 83672B SHA2561e9edb055f170cdebfc88e4f86a340860c09e6986b35e7633e8aed286d3f014e.
+- New direct duplicate/orphan-reuse/refusal-generation capacity tests delegated,
+  not yet received. No full build/ABI refresh/reset/flash/media/hardware action;
+  normal deployed coreCPUCount1 and SMP activation refusal unchanged. Next
+  repeat direct capacity packet, bind public external removal with pre-free
+  terminal serial policy/all-state handling, then full matched runtime/hart1.
+
+### 2026-10-02 - SMP public external RemTask candidate intercepted before generic frees
+
+- Root implements exec/p4_remove_external.c SHA256
+  8070cb5b8b5d6f05cde999fea0315756cdf2bd2f8a5fbe1c11f39baeb1138082
+  and header5129507706e1eb59683c844df807a44000429b6b1e0fe785408244a0f56c2007;
+  SMP Exec source list includes it. Platform macro header SHA256
+  c550c177270318d3f0fff6e2196832bbe2a0f1d5de52438bf846fce86b2646ec;
+  generic remtask.c10759d6a888ff57be91bcacbce79129bce92d3c1e5189ffbedf776c065a73338.
+  Normal non-SMP header still maps generic behavior; activation refusal intact.
+- Public intercept occurs after existing protected-worker/self handling but
+  BEFORE DREMTASK, Forbid or target fields. The candidate validates current
+  normal-Task/trap_depth0, joins a raw retired identity or acquires an ordinary
+  target pin, canonical Task lock, copied owner and atomic ticketed queue
+  retirement. Peer retirement at pin/lock admission retries the raw join.
+  Target unlock and Unpin precede all copied-owner/cleanup pokes and Await;
+  no target access follows Unpin. Generic body returns after candidate, never
+  deletes context/ETask/entries a second time after worker completion.
+- A refused requester already retired by a peer takes the no-save boundary,
+  not a successful return or live fatal. Other finite serial/invalid/unsupported
+  refusal fails closed before any local free. This is the explicit terminal
+  pre-free candidate policy, not liveness under exhausted nonwrapping serials.
+  TS_ADDED and other valid caller states/construction topology are still being
+  audited; there is no public all-state/compatibility/runtime acceptance yet.
+- Fresh strict GNU11 O2 isolated RV32 with preceding explicit SMP/runtime/FPU
+  defines/includes exits0 for wrapper and actual rom/exec/remtask.c. Retained
+  wrapper object3676B SHA256b93e9f9b4f6733e9a95bcfb465934322c928058ff23724d44b4c5f71e33f734b;
+  RemTask object1908B SHA25619ae547d81ae480fff1ce53a8b1a9987fec66c2305e343194fce512971adb853.
+  nm -u of RemTask lists only Exec_P4RemoveExternal, Exec_P4RemoveSelf,
+  krnP4TaskRemovalAllowed and p4_exec_runtime_current: this proves compilation
+  selected the new intercept, not a stale generic object; it is not a link/run.
+  Root also compiles normal RemTask with SMP/runtime/FPU/atomic defines removed:
+  exec-remtask-external-normal-rv32-root-20261002.o3864B SHA256
+  e646f396357fdb98009d52aa95a529beeacbc75c9a43836d39ddee12bd07a341.
+  nm -u lists ExecLog, Exec_CleanupETask and InternalPutMsg, no P4 intercept
+  helpers. This checks source selection, not a full normal ABI/runtime repeat.
+  Initial wrapper before requester-retirement boundary compiled2960B SHA256
+  40c0f74e804c387a8ca84cc79b788e9ef471d6f60b0161f7cbe54fb369a4d665;
+  it is historical only, not the current boundary object.
+- First roadmap patch included an accidental unmatched hunk and was rejected
+  before writes; corrected patch records this change. Direct actual-body
+  adapter tests are delegated and not yet received; source caller-state audit
+  also running. No full configure/mmake/link/ABI refresh or reset/flash/media
+  action; normal deployed coreCPUCount1 unchanged. Next qualify those packets,
+  repair valid unsupported states, then full matched SMP/hart1 qualification.
+
+### 2026-10-02 - Independent capacity and external-adapter repeats; constructor gap identified
+
+- Root fully reads the final delegated fixtures/reports and independently
+  rebuilds and runs strict C11 O1/O2 with Wall/Wextra/Werror/Wconversion/Wpedantic,
+  ASan/UBSan, frame pointers, debug symbols and a20s perl alarm. Capacity also
+  uses pthread. All four compiles/runs exit0: capacity379 baseline+361 focused;
+  external adapter363. No old executable was used after a compile failure.
+- Capacity fixture SHA256
+  a14d76b8f43f9963461f0851b14274ea96262ce1e40b8ae2130542e4a0fd57e0;
+  report remove-capacity-tests.md SHA256
+  ae1d8902bec0288e2ab305c213a5dfe48a2795ab61704e4166ce4fd24fb26b7d.
+  Actual pins/registry/bank/completion paths cover pending and ACKed duplicate
+  refusal, orphan reuse at20k slots, preserved independent target service pin,
+  fresh generation and stale handle, mixed live/canceled slots, valid serialMAX
+  refusal0 and malformed cross-association leaf-1 with unchanged snapshots.
+  Full-pool fixture seeds19999 orphan entries; it is not20k concurrent Tasks.
+  IRQ/gates/pokes remain modeled, with PROT_NONE Task identities.
+- External fixture SHA256
+  7d9b77710444a754deddaf7be7b16923bf507c305b957212d1a3c8c351ff2fd1;
+  report remove-external-tests.md SHA256
+  dc7baf8bb69addfa398f3004014056dad471b0cf1a53f993bb09220060252cfb.
+  Actual wrapper body8070cb5b8b5d6f05cde999fea0315756cdf2bd2f8a5fbe1c11f39baeb1138082
+  checks raw join, live pin/lock/retire/unlock/unpin/poke/Await order, pin-race
+  join, locked peer-retirement join without duplicate poke, refusal and retired
+  requester no-save, invalid current/trap/owner paths. Primitive bindings,
+  Await and no-save are mocks; generic RemTask is not executed. The target page
+  becomes PROT_NONE at Unpin; this detects subsequent adapter dereferences but
+  does not prove concurrent lifetime safety or transport semantics.
+- Retained root artifacts under
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01:
+  p4-remove-capacity-o1-root-repeat-20261002 700664B SHA256
+  cbf169e92b2a07ce95ececf8180973060750b75eccd57cf7e6514a5f03388f24;
+  O2 699912B SHA2561e7d45ed55bed856f3e8fac82d995c7f410a734f7bd75440c716b2a1a18f274a;
+  p4-remove-external-o1-root-repeat-20261002 104104B SHA256
+  3be18025b6952e56071b4dad1314dd9c26cd07faee7c93e0f21e3531f1b49b6e;
+  O2 104104B SHA256cfca724f4972f654712d887b7fbdcb1baefb752b6e808c73fa28c1747b71cd68.
+- Source/caller audit remove-public-state-callers.md SHA256
+  e77231a9cbdfd3d9830b854c33e4609a5cd07805ea2c6e21df88384bcc408ac9
+  fully read by root. NewAddTask registers TS_ADDED and publishes ETask before
+  calling TASKTAG_PRELAUNCHHOOK while retaining the creator pin. A hook may
+  call RemTask; current candidate refuses this state. Merely accepting it
+  would leave unconditional Ready publication and creator post-hook accesses;
+  waiting in the creator hook for pin-drained cleanup would deadlock. No
+  restrictive hook contract is substituted for public compatibility. Next
+  establish explicit construction-owner/cancellation transfer, prevent Ready
+  publication after retirement, and release constructor ownership before
+  completion. TS_EXCEPT/SPIN have no demonstrated current P4 producer; that
+  does not establish all-state compatibility.
+- Root also reads NewCreateTaskA's post-NewAddTask failure branch: returning
+  NULL clears msgPortPtr but calls FreeEntry(ml). If cancellation cleanup
+  already owns and frees that MemList, a simple NULL constructor return is a
+  double-free. Cancellation must propagate allocation ownership to this caller,
+  not only suppress Ready publication. A creator dying inside its hook must
+  not strand the counted construction pin. These are requirements for the next
+  implementation, not fixed behavior. First attempt to add this clarification
+  had an accidental unmatched second hunk; apply_patch rejected it before
+  writes. Corrected patch below the accepted audit records the findings.
+- Failure history: delegated capacity's earlier312-check freeze was superseded
+  by361-check packet; its same-path old binaries were overwritten, identities
+  remain in report as history only. Fixture-only void-call/name errors and
+  external include-guard/event-expectation errors are preserved in author
+  reports; neither required a production fix. Root repeats encountered no
+  compile/sanitizer failure. Deployed normal CPUCount1 core, activation refusal,
+  core/BSP/ABI and hardware are unchanged. No reset/flash/media/visual test.
+  Display reconnect is not visual readiness. Full SMP/hart1/cache/public-sync
+  and concurrent runtime qualification remain required; goal stays active.
+
+### 2026-10-02 - Private creation ownership channel prepares cancellation handoff
+
+- Root fully reads constructor audit remove-constructor-ownership-audit.md
+  SHA256e9c414287a99dbc8451e879292bf81c6ffe1ff02f65bf38ece15d3f6cd6572c1.
+  Existing registry stores neither creator identity nor designated creation
+  pin; parent ETask is mutable topology, not an ownership token. This confirms
+  cancellation cannot be added by only accepting TS_ADDED or returning NULL.
+  TaskRes prelaunch registration is another side effect needing removal.
+- Root adds exec/p4_task_creation.h SHA256
+  ae5c1c035e0b46ea91a3d52a7ebb63dcecaada6170fab157f64e03851379018a,
+  SMP-only platform include a6d567c253188f79249431cc108507513775da409f5dce700d105ecb771e1be8;
+  shared NewAddTask e4c27523639a1ddb96b77b6a9252ea0e044b82cb1b49d16fe93b168bb628922d
+  and NewCreateTaskA ed7b38f4b96558c159f070e4231b7f9f9ab79204fcf728b831138ac278eab5c5.
+  Private tag0xd034434f carries caller RUN-stack ULONG output, not a public ABI
+  header or a retained pointer. CALLER1 means pre-publication caller storage;
+  REGISTERED2 forbids ordinary allocation-failure freeing; SERVICE3 requires
+  a future completed explicit cleanup-ownership transfer. Current source
+  never produces SERVICE. Thus the double-free avoidance branch is prepared,
+  not an exercised production cancellation fix.
+- NewCreateTaskA prepends private output and TAG_MORE original tags, calls
+  public NewAddTask (not an internal direct call), clears port output on NULL,
+  frees ml only for CALLER and fails closed for REGISTERED/unknown. Normal
+  builds do not select the private tag code. NewAddTask resets output before
+  fallible setup and marks REGISTERED after record/ETask publication.
+- Fresh strict GNU11 O2 isolated RV32 uses previously recorded explicit
+  sysroot/includes/rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f and SMP/runtime/
+  FPU/atomic defines. Normal objects omit those SMP/runtime/FPU/atomic defines.
+  All four compiles exit0; retained evidence directory remains the preceding
+  smp-priority-2026-10-01 path:
+  exec-newaddtask-ownership-rv32-root-20261002.o6260B SHA256
+  59671c8dbb09e323dbb17318ea92c554041ad131e8c21ba7687aef67da0a6ecf;
+  normal5644B SHA2567f51eaed36eb03f074785f8ca6dc6ea88ddc1e0e0e4e185addf74a3aa800770b;
+  exec-newcreatetaska-ownership-rv32-root-20261002.o5012B SHA256
+  f252335317cae550d78a2d88b554f137f179207e664c2273bbe20ba8ee5ecd4e;
+  normal4640B SHA2564dd41d66de7595261a45d172bb84e10929937336836d2b9c767fe8ae1919182b.
+- Root's first existing p4-task-create-failure-test.py run exits1 at compile:
+  extracted source uses CONST_STRPTR but its host model lacks that typedef.
+  No executable/runtime result from that attempt. Test-only correction and
+  new ownership/tag-chain matrix delegated; independent source review also
+  delegated, neither received yet. This compile failure does not establish a
+  product defect or a test pass. No public headers copied/full matched build,
+  core/BSP deployment, reset/flash/media/hardware/interactive action. Normal
+  CPUCount1 deployment and SMP activation refusal unchanged.
+- Next: verify output lifetime/interposition/failure branches, implement actual
+  creator ownership and abort/Ready handshake including creator death, explicit
+  allocation transfer and TaskRes/ETask detach; then complete matched SMP/
+  hart1-cache/public synchronization and actual concurrent D1001 acceptance.
+
+### 2026-10-02 - Default-deny creation output and unbound construction references
+
+- Independent ownership-channel review remove-creation-ownership-review.md
+  SHA256db607adfbac44c48eba243d73d77a42a08644f8715855839ec76154117124ef7
+  identifies a real defect in the preceding e4c275 NewAddTask snapshot:
+  an arbitrary TAG_USER data value was treated as a writable ULONG pointer.
+  The preceding evidence is historical, not acceptance of that decoder.
+- Root corrects NewAddTask to default NULL output and require optional
+  EXEC_PLATFORM_CREATION_OWNERSHIP_RESOLVE before decoding. No resolver is
+  defined, so current production ignores this output tag without dereferencing
+  it. A task-bound registered authorization channel is a next step, not an
+  implemented fix. Source NewAddTask SHA256
+  7e52e3bd0d8e2b1b5846be3ac500a7d90a1d038716da16f4e0921fa562d5a74c;
+  private header efc3a924ac49d1f7d40764cff8803e54a257fb261030579c44c44767886e68a5.
+  First correction patch was rejected for an invalid hunk before any write;
+  the corrected patch applied. SERVICE cancellation still has no producer.
+- Root adds designated construction references to p4_task_registry.c
+  SHA256e53a08c8bd7a1acd3765afaf5d221ff1207968e705f45396c239234b9477f530
+  and .h7fa3730d60ce946fd502315759e3e808eed1e0cafe6c5029d86e8d054defc114.
+  RegisterConstructing reserves one target pin and one creator pin/child count
+  after the last fallible registration. Finish requires exact target, creator,
+  generation and live sole-RUN creator; it may release a retired target's
+  reference but refuses retired creators. All identified ordinary-pin floors
+  include these reservations. APIs are not bound to the constructor yet.
+  Validation compares global active/child counts and requested-owner links in
+  O(N); it is not a complete all-owner graph proof. Orphan recovery is open.
+- Fresh strict GNU11 O2 isolated RV32 compilation with explicit SMP/runtime/
+  FPU/atomic flags exits0. In the existing build evidence directory
+  smp-priority-2026-10-01, kernel-registry-construction-rv32-root-20261002.o
+  is48708B SHA256df8f6488aaa55599ff7c45737f850ef6ab45ecd1621110845971875787cab9b1;
+  exec-newaddtask-authority-off-rv32-root-20261002.o6064B SHA256
+  42502643dc0698588757af95496227ef99ee1ce6a7a5779f865702ad3cb71a31.
+- Existing capacity fixture a14d76b8f43f9963461f0851b14274ea96262ce1e40b8ae2130542e4a0fd57e0
+  is rebuilt strict C11 O2 ASan/UBSan against the changed registry:379 baseline
+  plus361 focused checks pass. Fresh binary
+  p4-remove-capacity-construction-o2-root-20261002 is716864B SHA256
+  33477854a344986521cf096feeed5d1e83568eaea2c50623ccca531ee7d87c53.
+  Its zero-construction records establish regression only, not the new APIs.
+  Active-construction tests and independent review are delegated and pending.
+- User reports display reconnected. This is not interactive-test readiness;
+  no visual/touch test, reset, flash, media action or full matched build occurs.
+  Normal CPUCount1 core remains201504B SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6.
+  SMP activation refusal remains intact. Next verify new references and output
+  authority, then bind cancellation/topology/recovery before concurrent gates.
+
+### 2026-10-02 - Root repeats actual RemTask interception selection
+
+- Root fully reads remove-intercept-tests.md SHA256
+  0b92cdf5a99fa9eabfe115a75d78a40889da7fc4c403d58aa69bad8485b10876
+  and actual-body fixture008cbf20d35320815ac6ce9ef8f94bbe998b63375f8befb2af46dcba20005c39.
+  Fresh strict C11 O1/O2 debug ASan/UBSan builds use the explicit current
+  generated include path; each compile and20-second-bounded run exits0.
+  P4 hooks pass51 checks each; macro-unset variants pass8 checks each.
+- Evidence binaries under the preceding build evidence directory:
+  remtask-intercept-p4-o1-root-20261002 is62920B SHA256
+  e66fcb39ee9ca708a789603e51a1fd3727361d2a882fe4c95498b195506b859b;
+  normal-o1 is58488B SHA256
+  f2d4a5b9857b4cadd4bd1c9861781c6bd710710e1183cb6898567192340c2fee;
+  p4-o2 is62920B SHA256
+  9ca1e53c4a7356429cc5e4e81afd9f8a475ffda226dc047b491d1e47e8d26ed8;
+  normal-o2 is58328B SHA256
+  8623e0d36fe92f8a9b905a3917d723563ef078d6ec1b690fec302c90c5bcbc28.
+  All share the remtask-intercept- prefix and-root-20261002 suffix.
+- Actual generic RemTask body confirms protected target rejection, NULL
+  identity resolution and self-before-external hook ordering, with early
+  return before generic target logging/access. Hooks and Exec services are
+  mocks; fixture macros do not compile the actual platform header. Normal
+  path covers TS_REMOVED no-op only. No real registry/bank/transport, public
+  ABI/full matched build or concurrent hardware acceptance is established.
+  Master/phase remain host candidate; no board action. git diff --check exits0.
+  Next integrate constructor authority/lifetime after independent tests/review.
+
+### 2026-10-02 - Construction leaf review and actual-gate wrapper candidate
+
+- Root fully reads independent remove-construction-registry-review.md SHA256
+  7dabe152347db79276ecdabbbf355bf6509d04ee4b83a9612c5a4a77af39c80e.
+  Review accepts local failure-before-commit, exact generation release and pin
+  floors; confirms retired-creator orphan pins and aggregate/local-degree
+  validator limitations. No test/build performed by reviewer. These limits
+  remain blockers, not acceptance of actual construction cancellation.
+- Root adds krnP4TaskConstructionPublish/Finish in actual Task-pin gate binding
+  C SHA256d55a8797bde3c6f44eb635ebf0bef0439f4f844483d6eb22fff4dc98b1c53c72
+  and H2576538577531e2e11e87815a1196645e58723ea75ce8b188b44e10f65bc9ca2.
+  Publication invokes the checked leaf under Disable/lifetime gate. Finish
+  releases exact references, reserves BOTH identities' cleanup/resource wakes
+  without short-circuit, unlocks, then pokes. No Task reads or outer locks;
+  caller must own creator sole RUN. Negative malformed result fails closed;
+  zero refusal changes no references/wakes. Wrappers have no production caller.
+- Fresh strict GNU11 O2 SMP/runtime/FPU/atomic RV32 compile exits0:
+  kernel-pins-construction-rv32-root-20261002.o60060B SHA256
+  6427c852b84d230f9df3a860dba8ef3cf06d12cfe9e4b42cb1df014ded0fef12,
+  in the existing smp-priority-2026-10-01 evidence directory. Wrapper review
+  delegated; actual-gate tests and constructor binding remain pending.
+- Fresh current default-deny constructor RV32 compiles all exit0 there:
+  exec-newaddtask-authority-off-normal-rv32-root-20261002.o5644B SHA256
+  7f51eaed36eb03f074785f8ca6dc6ea88ddc1e0e0e4e185addf74a3aa800770b;
+  exec-newcreatetaska-authority-off-smp-rv32-root-20261002.o5012B SHA256
+  f252335317cae550d78a2d88b554f137f179207e664c2273bbe20ba8ee5ecd4e;
+  normal4640B SHA2564dd41d66de7595261a45d172bb84e10929937336836d2b9c767fe8ae1919182b.
+  No resolver exists; unchanged NewCreate object identity does not prove a
+  channel. Root rg mistakenly used a nonexistent repository evidence path for
+  secondary-cache-enable-design.md and exited2; no result inferred. First
+  roadmap status patch used a partial-line anchor and was rejected before
+  writing; corrected exact-line patch applied.
+- No full matched build/header-copy, deployment, reset, flash, media or live
+  visual/touch action. CPUCount1 deployed core and SMP refusal unchanged.
+  Next independently repeat active-construction and output-authority tests,
+  qualify actual wrappers, then implement cancellation/Ready and creator-death
+  recovery with TaskRes/ETask cleanup before the full concurrent SMP gates.
+
+### 2026-10-02 - Root repeats active-construction leaf tests
+
+- Root fully reads focused fixture p4-task-construction-registry-test.c SHA256
+  6e51f71890a3f46a08af2b45f80a462b4bb4d9f79655ee19965157026862177a
+  and report remove-construction-registry-tests.md SHA256
+  460491e0426207b1ef68f0b52598e29f9844daf61d8d8a0d9fd67f501b947122.
+  Fresh strict C11 O1/O2 debug ASan/UBSan with pthread builds/runs exit0;
+  each passes284 checks. Retained root binaries under the preceding evidence
+  directory:task-construction-o1-root-20261002 is699792B SHA256
+  25d89677b8018489beee03a90edaef724f207dbb7e80006bef6e0be100c76a51;
+  O2 is699200B SHA256
+  2ff7514368c10fdc35dbf69fe8cfcb3a6f0574aaec89b239037a4cb76b79b10e.
+- The actual registry/lifetime transitions operate on PROT_NONE Task IDs,
+  with test-owned mutex serialization. Nested/two-child generations, both
+  ordinary-unpin floors, exact and stale/wrong owner/hart finish, target
+  retirement blocking cleanup until Finish, malformed/alias/exhaustion unchanged
+  refusals pass. Retired creator retains both references and refuses Finish:
+  this reproduces the recovery gap, not successful cancellation. Prior baseline
+  main is renamed and not run. Production gate wrappers compile as included
+  dependencies but are NOT invoked by these focused tests.
+- Author's first missing pthread declarations compile and missing removal-bank
+  symbols link attempts failed before executables; final fixture includes real
+  bank/completion leaves. Neither earlier failure is a pass or product defect.
+  Root repeat uses current pins d55a binding with unchanged registry e53/7fa.
+  Separate actual-wrapper tests delegated. No full build/deployment/hardware.
+  Normal deployment and SMP refusal unchanged. Next qualify wrappers and
+  authorized output channel, then cancellation/Ready/creator-death recovery.
+
+### 2026-10-02 - Orphan construction final-release leaf candidate
+
+- Root adds finish_orphan_construction_locked; registry C SHA256
+  a2bc82bec42162fb74a60b9cee56554ae18708f5a0e6c702ea8e9c3618e68593,
+  H21ff8411306e8a24693b78caa6ad151043b28caf10e0b719434e5236c5399dec.
+  Register/normal-Finish bodies unchanged. Exact edge and generation, both
+  flags RETIRED, both service_pending1 and RUN0 precede any mutation. Commit
+  releases only target constructor pin and creator child pin/count. Service
+  and other pins remain. Stale/not-drained0 and malformed-1 are unchanged.
+  Trusted worker must suppress Ready and detach queue/TaskRes/topology effects
+  BEFORE final release. This caller obligation is not implemented by the leaf.
+- Fresh strict GNU11 O2 isolated RV32 compile exits0:
+  kernel-registry-orphan-rv32-root-20261002.o49668B SHA256
+  dc2f83f4c10e31f53758cb095074948cb361adfd89a5c93b203dad2ad937e6bb,
+  retained under the existing smp-priority-2026-10-01 evidence directory.
+- Root adds actual-source PROT_NONE identity fixture
+  p4-task-construction-orphan-test.c SHA256
+  fbc620e3a2873017a99135434e44d6abe1f2abef872dd28221aed84caf28c0eb.
+  Fresh strict C11 O1/O2 debug ASan/UBSan builds/runs exit0,44 checks each:
+  task-construction-orphan-o1-root-20261002 is655960B SHA256
+  aa117a78c793725db694f07f94114855785939ca6c4bb89a9e380fe80fbe003a;
+  O2 is671880B SHA256
+  ac6b7090681239926a80009894cc67b2df35dcc54e720d699615843ef2e29925.
+  Tests refuse live/not-drained/missing/wrong-generation/creator cases with
+  snapshots, preserve both service pins, release once and allow real queued
+  service claims afterward. Dependency admission main is renamed, not run.
+  Single-thread serialization models the leaf gate contract; no worker,
+  actual callbacks/queues/topology, IRQs or concurrency tested. Independent
+  source review and additional nested/pin boundary tests delegated.
+- Root fully reads wrapper review18acb4ba14e0626755493ffb967fe8a52ac27ecf71b9a62e52b22c5e4dcaae91:
+  local lock/IRQ ordering and both wake reservations accepted on d55/257
+  wrappers with historical e53/7fa dependency. It does not review the new
+  orphan leaf. Output-channel report c7231a3e5e8840b4fe069f1cde710ca44ba315c05d29d35122e39509c34742f4
+  received/read; root independent repeat remains pending. Its resolver is
+  test-only and SERVICE results mocked; no production authority/transfer.
+- No full matched build, flash/reset/media or interactive action. Normal core
+  CPUCount1 and SMP activation refusal unchanged. Next qualify these leaves,
+  implement actual orphan selection/cancellation/wakes and authorized output
+  channel, then bind NewAddTask/Ready without weakening public contracts.
+
+### 2026-10-02 - Root repeats default-deny constructor ownership fixtures
+
+- Root reads final author report c7231a3e5e8840b4fe069f1cde710ca44ba315c05d29d35122e39509c34742f4,
+  inspects extraction/composition and runner. The runner would overwrite frozen
+  author artifacts; root adds validated --artifact-label (letters/digits/hyphens)
+  for distinct repeats without changing fixture assertions/extracted bodies.
+  Current script SHA256178895af7a6456215ae6878e1d82c836b5f8267197fe9300b2ebfe96e0443212;
+  author snapshot8aa6ff1e15071617a4c09f1da56d39689024942ccd4ba8ce077e48891d123095 is historical.
+- Root commands: python3 kernel/tests/p4-task-create-failure-test.py and
+  python3 kernel/tests/p4-task-creation-ownership-test.py --artifact-label root-repeat
+  (paths relative to arch/riscv-esp32p4). Exit0: base117; O1/O2 no-resolver269
+  plus120 inherited; modeled resolver275 plus120 inherited. Strict GNU11
+  Wall/Wextra/Werror ASan/UBSan builds and20-second bounded executions.
+  Production source NewAddTask7e52, NewCreateed7b, privateheaderefc3 unchanged.
+- Four fresh retained root binaries in the preceding evidence directory,
+  prefix p4-task-creation-ownership-, suffix-root-repeat-20261002:
+  production-no-resolver-o1 is153464B SHA256
+  32c3217207e3116bdc9dcc3380cde962003377c5f095eb45a20816618d9a09a2;
+  resolver-o1 is171704B SHA256
+  d5364a6e6aee406c7a6edb48f01062f3bbcde614c290e91ca2d1df58b54bd256;
+  production-no-resolver-o2 is153464B SHA256
+  1a60c205f492c13be8ab674b2d152f040ccefe761dfd66eadd714af99ee24d16;
+  resolver-o2 is171592B SHA256
+  ce530f016fdc7e1efb6ac6a9061fd82a74aaacf6814c6e0b85ca92ad53544f5c.
+- PROT_NONE raw tag data is ignored without resolver. Test-only capability
+  exercises authorized writes; vector mocks exercise SERVICE/invalid result
+  cleanup branches, port clearing and private-first TAG_MORE interposition.
+  Task-record/launch/allocator/tag/list boundaries are modeled; no production
+  resolver, service transfer, actual TaskRes concurrent cleanup or public
+  runtime/full-build/hardware acceptance. Author's CONST_STRPTR compile failure
+  and ownership warning/unused-stub compile failures remain historical, not
+  product failures. Conversion flags were not enabled in this extracted-body
+  fixture; do not equate it with strict C11 Wconversion registry fixtures.
+- No deployment/reset/flash/media/live observation. Normal CPUCount1 core
+  unchanged; SMP stays refused. Next authorize the actual output channel and
+  complete cancellation/Ready/orphan-worker routing, then full matched gates.
+
+### 2026-10-02 - Orphan final release gains actual-gate wake binding
+
+- Root fully reads independent orphan-leaf review db5b75f9e396710cecdb078a81efd7b27bafe68fd28133feabd53c5dc8c3ca1a.
+  Local exact-release ordering accepted under caller gate/worker prerequisites;
+  no concurrent test, whole-graph validation, queue/Ready/TaskRes/topology or
+  wake binding accepted. Additional boundary tests are confirmed running on
+  a2bc registry/21ff header; root keeps that snapshot stable for the packet.
+- Root adds krnP4TaskConstructionOrphanFinish in pins C SHA256
+  721b2d3dd11786e9ed227d2b592882dc1c4e0de026fe9415e2487587e9feb783,
+  H d8341dca6746774fe2fcc800900de42e11f121bd4666b5e5c84082206348f788.
+  Under the actual lifetime gate it validates the declared canonical worker
+  is protected, armed and RUN-owned; invokes exact orphan final release;
+  independently reserves target and creator resource wakes before unlock;
+  only afterward pokes. Negative malformed state fails closed under gate;
+  zero refusal does not release references or reserve wakes. No Task reads.
+  As with existing worker adapters, caller's current-identity/hart validity
+  and all prior cancellation/last-access obligations remain preconditions.
+  The wrapper has no production caller and does not select/cancel an orphan.
+- Fresh strict GNU11 O2 isolated RV32 SMP/runtime/FPU/atomic compile exits0:
+  kernel-pins-orphan-rv32-root-20261002.o61100B SHA256
+  d8566cba954495157f2128a862d5cbc06165cd14f7e9d14b5ed313bebe9ddb89
+  under the existing smp-priority-2026-10-01 evidence directory. Independent
+  wrapper review delegated; tests pending. Normal wrapper bodies unchanged.
+- Root reads configure-smp-build.sh and source selection: full SMP configure
+  still refused; secondary Exec XIP/cache entry is not selected. These are
+  source facts, not a fresh configure/build execution or hardware qualification.
+  Output-channel metadata integration waits for the currently running registry
+  test freeze to finish. No full build/deployment/reset/flash/media or visual/
+  touch action. Normal CPUCount1 core and activation guard unchanged.
+- Next qualify final-release wrappers, then implement current-Task registered
+  output authority and actual constructor/Ready/cancellation/orphan selection,
+  including TaskRes/ETask effects. Keep all hart1-cache/public synchronization/
+  matched ABI/full concurrent hardware gates open.
+
+### 2026-10-02 - Root repeats normal gate and orphan boundary fixtures
+
+- Root fully reads normal binding fixture6f35fc35ea8b30560fe4df4a281a612f66b80f417bb6f855cf5c77b256d1ad17
+  and report75dce938637e7d020fc3c7b53f213062150d5e47fc2e38ea91cf60f2f20dff95,
+  orphan boundary fixture88c853404f1e598d0a6967c1d9ee4ef8ce567e61eba61ff3eeb0807ec14bd435
+  and report895451530fa8d5e2946be4b67bbfc2fb247aa2795b03b51cc4b611f6a871e9d1.
+  Fresh strict C11 O1/O2 debug ASan/UBSan builds and20-second runs exit0:
+  normal binding80, orphan boundary148 each. Function instrumentation and
+  no-inline apply only to normal binding, proving both actual resource helper
+  and retry calls execute before post-unlock poke. Gate/IRQ behavior is mocked.
+- Fresh evidence binaries under the preceding directory:
+  task-construction-binding-o1-root-20261002 is637000B SHA256
+  48864b6381d8144557ea469dae817a79e90fe3585910c16ec6fd258dd7f0c4ab;
+  O2 is636504B SHA256a50636d6a4ca1a95eaa9024b21eab0baeeb33942728435b62b6df067898eb4c6;
+  task-construction-orphan-boundary-o1-root-20261002 is699552B SHA256
+  c9dd04dac8fa55f6e5bdf03f2f7819bfcb788d48bebf41091726cc75349a752c;
+  O2 is698960B SHA25697ef0eb9110f3548969752e3f20792a5282303d8439bb194039f29f30a1db233.
+  Current production721b/d834 pins and a2bc/21ff registry. Renamed dependency
+  main not run. Normal fixture expected child fatal reports spin result9;
+  child handler verifies IRQ elevation/gate held/no unlock, parent passes.
+- Boundary exercises two-child independent references, nested retired chain,
+  ordinary/service/wait/protected-worker reservations and actual record detach/
+  raw-identity reuse with old generation refusal. It does not call orphan
+  wrapper or perform real queues/TaskRes/topology cancellation. Normal fixture
+  invokes actual Publish/Finish only, not orphan final release. Author's bad
+  relative include and initial incorrect outer-Task-lock fixture expectation
+  are preserved in its report; corrected final tests pass. Boundary author
+  initially omitted bank/completion link dependencies, corrected before runs.
+- Root's first combined runner exits1 before compilation: zsh passes the
+  scalar '-finstrument-functions -fno-inline' as one argument. No artifact from
+  that attempt. Root repeats with explicit separate command arguments above.
+  Orphan wrapper review9635c83ec60d8084735c724c3a6fb826aeb88a7db8f9cbcbd2da6cba590af209
+  fully read: local lock/wake ordering accepted, current Task/hart and external
+  cancellation remain caller obligations. Invocation tests delegated next.
+- Registry source freeze released by author. No full matched build/deployment,
+  reset/flash/media or interactive action. Normal CPUCount1 and SMP refusal
+  unchanged. Next implement registered current-Task output authority and real
+  constructor/Ready/TaskRes/orphan-worker flow, keeping full SMP gates open.
+
+### 2026-10-02 - Resident generator initializer repair and consumer inventory (build verified)
+
+- Previous turn: progress (partial core link, independent observer review and
+  authoritative documentation). This turn repairs tools/genmodule/writestart.c:
+  both InitTable and InitLib Resident initializers explicitly zero optional
+  rt_Revision/rt_Tags under !STRUCT_RESIDENT_PLAIN. No flags, public layout or
+  init behavior are changed. Source SHA256
+  `07d10dccd7117c271fa2fe0d7b21268f52bcbc9727390c2d755cb78445262ff4`.
+- Standalone host genmodule strict Wall/Wextra/Werror build fails on existing
+  unrelated warnings; warning-visible retry without Werror succeeds. No
+  installed host tool or active generated source is replaced. Fresh generator
+  158760B SHA256 `9f46706219f2b32c49342f466928985a5885c52b294bc3951f9de9fdd38e0e28`;
+  warning log SHA256 `412ba7266139487e99704f73c17dc5da9640a248c375d7c28a5673a5c9c02cb7`.
+  Evidence directory: build evidence/smp-priority-2026-10-01/resident-generator-root-20261002.
+- Actual task.conf regenerated there; task_start.c SHA256
+  `87b78b8c3b15c52954adb7a8c40ad190427bdeff083fdbdc5ef93220521f5106`.
+  Four GNU11 O2 RV32 ilp32f/medany Wall/Wextra/Werror compiles pass without
+  warning downgrades: normal/SMP each default and STRUCT_RESIDENT_PLAIN.
+  Objects: normal/default5344B `c8ce91de388a5509051166a1879399d715bbb634f18b59fa3a8d507af7d919b6`;
+  SMP/default5344B `7626798c6380452537d3b211751f198a1059ece16141b0d87b57e048798cd63e`;
+  normal/plain5336B `f050837419965dddb957cb6394fc0380a9fdbf530622548c585bee8ac250c408`;
+  SMP/plain5336B `d44401cfc5dd36514c578926f593807482c4fee79248655368234bd1252bcad1`.
+  SMP/default equals the prior warning-downgraded object. Root repeats the
+  19-object partial ld-r with the strict new start: 28624B SHA256
+  `0c2a265d198aadcc5d6ed13e1c9b4f46b00af973e8d4ccc5f0bad8d26b2ba9bc`,
+  byte-identical. Independent review of both generator branches is pending.
+- All-consumer compile report inventory was initially malformed; root rejected
+  it. Worker replaced the entire inventory using actual shasum results. Root
+  checks all37 entries against artifacts with shasum-c: all pass. Corrected
+  report remove-taskres-service-layout-build.md SHA256
+  `fa3ec8ac2ca90bd71e9f264f8b4a4c3ced50a238eea8d3723ab3d0f66adf2658`.
+  49 attempts produce37 successful isolated objects: all17 resource modules
+  in both modes (11 strict, six explicit legacy-warning fallbacks), both
+  NewAddTask modes and selected cleanup. This is private-consumer compilation,
+  not a matched full core/BSP/ABI build or full warning-clean build.
+- Safety and next gate: no configure/activation, flash/reset/live test or
+  public header refresh. Normal CPUCount1 core unchanged. Startup cutover,
+  storage/iterator leases and genuine concurrent lifecycle qualification stay
+  open; isolated hart1 cache/XIP audit has not established an enable contract.
+
+### 2026-10-02 - TaskResource partial core integration and independent observer review (build/host only)
+
+- Fresh task_start strict compilation fails on the existing omitted
+  Resident.rt_Revision initializer. Repeating with only
+  `-Wno-error=missing-field-initializers` succeeds with the warning visible;
+  task_end passes strict compilation. No generated source was changed.
+  GNU11 O2 RV32 ilp32f/medany dual-SMP flags and relocated Developer sysroot
+  match the direct-observer evidence.
+- Root links the 17 fresh selected resource objects plus those two generated
+  objects with `riscv-aros-ld -r`; exit0, 28624B, SHA256
+  `0c2a265d198aadcc5d6ed13e1c9b4f46b00af973e8d4ccc5f0bad8d26b2ba9bc`.
+  Exactly one taskres_Init INITLIB and taskres_Exit EXPUNGELIB registration
+  appears. task_start 5344B SHA256
+  `7626798c6380452537d3b211751f198a1059ece16141b0d87b57e048798cd63e`;
+  task_end 1116B SHA256
+  `0bbf5bbee9e05bf11f1a8b2af386fb091bd3c0327b41f856ef9deb5d84abf023`.
+  Artifacts are under build evidence/smp-priority-2026-10-01, named
+  taskres-service-private-smp-partial-root-20261002.o and
+  taskres-service-fresh-task_{start,end}-smp[-legacy-warning]-root-20261002.o.
+- Root verifies the actual link rule: kernel/mmakefile.src BSP_RES includes
+  task and links task_resource.o with kernel/exec in core. Its unresolved
+  Kernel spin vectors, p4_exec_runtime_current and fatal helper are therefore
+  expected partial-link dependencies, not evidence that package symbol
+  exports are missing. The package ELF loader rejects undefined symbols;
+  this partial artifact must not be packaged or called a loadable/full core.
+- Root reads the independent direct-prelaunch review completely: independent
+  O1/O2 repeats29 checks each and intended missing-observer negative failure.
+  Mock observer/hook/Ready boundaries and null-base startup gap remain explicit.
+  Report SHA256 6a9ab77f155e5a2be198f4485639d8ca5fe6b8360c5225f3221f1d0868222bfd.
+  Corrected size-only provenance: test driver5287B, generated C6728B; previously
+  recorded hashes are unchanged. See taskres-direct-prelaunch-root-20261002.md.
+- Safety: no configure, full core/BSP build, ABI refresh, flash, reset or live
+  test. Normal CPUCount1 firmware unchanged. Display reconnection is not live
+  test readiness. Next close snapshot/publication and reader lifetime gaps,
+  then perform matched full core/ABI linking before SMP activation.
+
+### 2026-10-02 - Selected service and direct observer tests; cutover review (host verified only)
+
+- Previous turn: progress (direct observer implemented and fresh RV32 objects).
+  Root reads independent service review completely; current direct routing
+  removes the historical vector race. The review proves neither startup
+  cutover nor reader leases: a creation may miss both the state scan and null
+  callback, or service may free a scanned Task before resource publication.
+  Independent scans can also duplicate moving Tasks. Resource storage readers
+  and iterator-returned Tasks lack shared lifetime leases. These remain real
+  SMP activation blockers, not external blockers or grounds to shrink E3.
+- Root repeats the corrected selected dual-SMP service fixture at O1/O2:
+  293 runtime checks and14 source checks pass under strict Clang ASan/UBSan,
+  leak detection off. Driver SHA256
+  `48c508823cc5356fe359426cc01bd4c5745850113213f82e31a533385e66fe85`;
+  generated C `f3e5dde143d55a780e377bda11fb66e540bdb35a199fc50525994218e48badb0`.
+  Root artifacts under `taskres-service-selected-host-root-20261002`:
+  O1 102736B `a7598148c2d2ca40fe0123a7b4bb3d3abe271a60cc9f614209ec636e04718a30`;
+  O2 102592B `369203c60d5ee9f0894d9f5bd9c0b18ca70be5fcb4259709e659f25fc52c94bf`.
+  These extract actual detach/callback/consumer bodies, but mock registry,
+  completion/pressure, allocator and IRQ boundaries. Earlier r3 selected the
+  legacy completion branch and remains historical, not current qualification.
+- New root actual TaskLaunch extraction fixture
+  `rom/task/tests/p4-taskres-direct-prelaunch-test.py`, SHA256
+  `32b31b26b9ba674dc21b8d42319ec4ceb03c9d4517c05619fb4b175682a9f628`,
+  passes29 checks each at O1/O2 under Clang GNU11 Wall/Wextra/Werror,
+  fno-strict-aliasing, ASan/UBSan. Missing-observer mutant exits1 as expected.
+  Generated C SHA256 `ae97d244e13cc276775aadcac71228298dfe228445c2e179bb36489b5fd811a6`;
+  O1/O2 each53344B, hashes respectively
+  `6cbb6ea9efbe3c550b63f01ee3fa2fd375b2cf7434469da0d36ca90842094867` /
+  `0d27f4dd51880c37462582563c33139138e578c67d5eba20834dd94b91e02029`,
+  under `taskres-direct-prelaunch-host-root-20261002`. Observer, user-hook and
+  Ready primitives are mocked; this proves call ordering/refusal only, not the
+  live constructor pin, resource observer body or concurrent cutover.
+- Next implementation must use a shared creation/removal cutover and retain
+  every initial Task until entry insertion; deduplicate constructor callbacks
+  arriving after that cutover. No full matched link, flash or hardware run.
+  Normal deployed core unchanged and SMP activation refusal intact.
+
+### 2026-10-02 - Direct P4 TaskResource observer replaces vector patching (build verified)
+
+- Previous goal turn: progress (resource-loader lifetime evidence narrowed).
+  Independent reviewer identifies saved-vector publication and initial-list
+  mutation races. Root replaces selected P4 SetFunction patches with a direct
+  private prelaunch callback in core TaskLaunch; existing observer, user hook,
+  then Ready ordering is explicit. Private contract advances to 0x50345232.
+  Retained service cleanup remains direct. Normal interposition is retained.
+- Selected resource base is published after private initial-list assembly.
+  This removes callbacks mutating that list during assembly, not the separate
+  moving-task duplicate, scan/publication creation/removal, iterator or ETask
+  lease defects. Full startup synchronization remains open.
+- Four fresh isolated RV32 GNU11/O2/Wall/Wextra/Werror/fno-strict-aliasing
+  objects pass. Exact source identities, artifact sizes/hashes and limits:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01/taskres-direct-prelaunch-root-20261002.md`.
+  Independent review and all-consumer rebuild are running, not accepted yet.
+- Root finds old composed service fixture r3 omits __AROSPLATFORM_SMP__ and
+  selects legacy completion; requested selected post-free pressure/retry
+  coverage. Its old results do not qualify the selected full consumer.
+  Direct-prelaunch runtime test remains pending. No configure, matched link,
+  flash, hardware or interactive run. Deployed normal CPUCount1 core unchanged.
+
+### 2026-10-02 - Resource loader residency assumption narrowed (source audit)
+
+- Root inspected generated task_start.c (SHA256
+  `b0516e03ee796ae565ed1d52d623b241df97e01f74fb5936dcab57c0a779ef07`)
+  and tools/genmodule/writestart.c. The resource init-failure path ignores
+  EXPUNGELIB's return and frees its base; successful initialization registers
+  the resource without a generated runtime ExpungeLib entry. An Exit FALSE
+  guard alone therefore does not prove residency. This narrows the earlier
+  service-binding evidence rather than qualifying resource lifetime.
+- Source search finds only taskres_Init registered in rom/task INITLIB; its
+  fallible returns precede base publication. Final linked symbol-set contents,
+  callback lifetime, startup concurrency and future initializer additions
+  remain qualification obligations. Independent reviewer notified. No loader
+  or production code changed, and no configure/link/flash/hardware test ran.
+- All-consumer fresh RV32 layout compilation delegated separately. Display
+  reconnection acknowledged; a future visual/touch run still requires fresh
+  readiness. Normal CPUCount1 core and SMP activation refusal unchanged.
+
+### 2026-10-02 - Actual TaskResource retained-service cleanup binding (build verified)
+
+- Previous goal turn: progress (caller-contract evidence and bounded service
+  ownership design). Root implemented selected P4 SMP forwarding-before-target
+  access and retained-service callback ownership. The service detaches resource
+  metadata and clears/frees reserved TaskStorage before its existing context,
+  ETask and MemList reclamation; generic allocation rollback does not call it.
+- Callback contract is private, nested at the resource-base prefix. Init sets
+  it before release-base exposure; three interposers and service acquire-load
+  the base. Published selected-P4 resource remains resident; failed init uses
+  ordinary rollback. Bad contract/callback/slot size fails closed. Normal and
+  other-platform paths remain selected as before.
+- Current source and seven fresh strict RV32 r2 object SHA256 identities are
+  preserved in `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01/taskres-service-binding-root-20261002.md`.
+  Four directly changed SMP modules and three normal resource modules compile
+  GNU11 O2 Wall/Wextra/Werror with explicit supported fno-strict-aliasing;
+  three normal hashes match the preceding Hook-node objects. Initial r1
+  artifacts predate acquire observation in all interposers and are historical.
+- Independent source review and composed callback/service tests are running.
+  Root also read the caller-audit addendum, current SHA256
+  `97fc29c5a53336ab2bf6d551f9478db70a0f3a18186d74c4f9fa63167b630be0`:
+  a successful raw creation result is not a live-Task guarantee; NULL after
+  service free still causes rollback double-free. Before-Ready cancellation
+  versus existing before-entry removal/startup side effects needs an explicit
+  contract, not an inferred requirement to change every pointer-storing caller.
+  All private-layout consumers/full matched link remain unrebuilt; old host
+  fixtures do not qualify this new binding. Parent/ETask and Hook lifetime,
+  startup concurrency, cancel/Ready transaction and orphan recovery remain
+  open. Normal CPUCount1 core unchanged; no flash or interactive test.
+
+### 2026-10-02 - Constructor caller contracts and service-cleanup integration boundary
+
+- Previous goal turn: progress (frozen Hook and five port-body root replays).
+  Root read the final independent five-port report completely, SHA256
+  `f754622d4145e2ada793c9c6a42f457ecbd5a24e755e3aff38377c6c64fd0b4b`,
+  and checked source identities against the root replay. Local IRQ ordering
+  is accepted; actual Signal/Wait, concurrency and lifetime are not qualified.
+- Raw NewAddTask caller audit was read completely and hash checked:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01/remove-raw-newadd-caller-contracts.md`,
+  SHA256 `4f8de2fe310c8a0f01ed5c190dba145635ed5237db3deaf1e659b5baa90a6bd9`.
+  NULL after service reclamation demonstrably enters duplicate-free rollback
+  in DOS/CreateNewProc, Bluetooth, Poseidon and DWMAC. Raw caller-owned Task
+  storage outside tc_MemEntry is a different ownership case. Root is checking
+  the audit's broader ABI inference: existing successful Ready publication
+  also permits removal before task entry/creator return, so retained-pointer
+  and startup-wait callers alone do not establish a general live-pointer
+  guarantee. No pointer sentinel or global caller migration is accepted yet.
+- Root selected the next actual integration boundary for review: P4's
+  task.resource RemTask interposer must forward to core before target access;
+  only the RUN-drained retained-service owner performs TaskResource detach,
+  reserved storage clear/free, context/ETask cleanup and final MemList free.
+  A private resource-owned callback, initialized before release-publication,
+  avoids linking Exec directly to resource implementation symbols. Acquire
+  observation, matched private layout and P4-only resident-resource lifetime
+  are required. Generic rollback must not invoke this service-only callback.
+  Callback layout, resource shutdown and exact slot/free ordering are under
+  independent review before implementation; no callback binding selected yet.
+- Full cancellation/Ready transaction, same-creator pin handoff and orphan
+  recovery remain required. No full configure/link, image change, flash or
+  interactive test. Goal remains full SMP integration and silicon qualification.
+
+### 2026-10-02 - Frozen Hook and all-five ETask port root regressions
+
+- Previous goal turn: progress. Frozen independent Hook fixture and root
+  O1/O2 repeats pass normal84/SMP114 each plus17 source assertions; author
+  report SHA256 `4137e997770d8d9ed1dc7d7a96aefb612321ccc15c0ca4729cefb1a357ecaebb`
+  was read completely. Generated C matches the author snapshot. Explicit
+  hook type narrowing warning suppression and disabled leak detection remain
+  recorded limits, not warning-clean or disposal-safety qualification.
+- Frozen root strict O1 ASan/UBSan port replays pass ChildFree195,
+  ChildStatus487 SMP/247 normal, Cleanup110, FindChild98 SMP/46 normal,
+  ChildWait356. All five deliberately stripped IRQ gate controls are detected;
+  ChildWait negative exits2 on its port-lock IRQ-depth assertion. This
+  supersedes the provisional four-path script snapshot, not its history.
+- Source/test/generated artifact identities and qualification limits are in
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01/root-hook-etask-frozen-replay-20261002.md`.
+  Mock gates and sequential execution do not qualify actual SMP concurrency,
+  Task/parent lifetimes, hook leases/disposal, startup execution, real signals
+  or hardware. Final independent ETask report review pending. Normal image
+  unchanged; no full matched build, flash or interactive test.
+
+### 2026-10-02 - ETask port IRQ root replay and construction integration audit
+
+- Previous goal turn: progress (hook-node/startup repair documented with source
+  and object identities). This turn independently repeated four actual-body
+  port fixtures: ChildFree195, ChildStatus485 SMP/245 normal, Cleanup110,
+  FindChild98 SMP/46 normal, strict Clang O1 ASan/UBSan, all exit zero.
+  All four stripped-gate negative controls are detected as expected.
+  Generated-artifact hashes are preserved in
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01/etask-portirq-root-replay-20261002.md`.
+  Worker execution-bound edits overlapped this replay; final frozen-script
+  replay remains required. ChildWait fifth site and final review pending.
+  Mock gates/IRQ/lists do not qualify actual concurrent Exec or Task lifetime.
+- Root read and checked the construction integration audit:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01/remove-construction-cancel-integration-audit.md`
+  SHA256 `828887678ea236764e2c233fd70781d6a19aaa41002d0a757462aa98b9bf84b3`.
+  It identifies concrete unbound integration: atomic cancel-vs-Ready commit,
+  same-creator pin handoff before synchronous waiting, safe post-hook outcome,
+  coupled TaskResource insertion/detach and pre-core lifetime protection,
+  reclaimed-versus-caller-owned constructor return semantics, and orphan scan.
+  Next raw NewAddTask caller audit resolves rollback/return ABI constraints
+  before selecting this actual binding. TS_ADDED still fails closed; no SMP
+  activation, full matched build, flash or interactive test.
+
+### 2026-10-02 - TaskResource hook-node and startup repair (build verified only)
+
+- Fixed the mismatch between the node linked by AddTaskHook and the wrapper
+  read by RunTaskHooks; allocate the full wrapper and refuse null/OOM inputs.
+  Caller-owned Hook linkage is no longer modified. All five startup entry
+  paths initialize hook lists; semaphore and fallible base setup now precede
+  exposure, with conditional unpublication on exit.
+- Root evidence: `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01/taskres-hooknode-build-root-20261002.md`
+  (SHA256 `50bf0718d78d5c2adb2983b7e4290ba6b9c1419a18251d375683204cca77b0b7`)
+  records frozen source hashes and all 34 fresh object hashes. Eleven modules
+  pass strict GNU11 O2 normal/SMP builds; six unchanged modules fail Werror and
+  then compile with visible legacy warnings into separately named objects.
+  This is not an all-module warning-clean build. Explicit fno-strict-aliasing
+  is a project-supported option, not a claim about every default build.
+- Actual-hook host regression and independent review are pending. Entry/Hook
+  lifetime, disposal, startup publication and orphan-owner recovery remain
+  open. Constructor cancellation must suppress Ready and transfer designated
+  pins before synchronous removal waits; simply binding helpers would deadlock
+  the same-creator prelaunch path. No full matched build or SMP activation.
+  Normal CPUCount1 deployment unchanged; no flash or interactive test.
+
+### 2026-10-02 - ETask message-port interrupt exclusion (build verified only)
+
+- Actual InternalPutMsg explicitly permits interrupt callers and takes the
+  port spinlock with Disable/Enable. FindChild fallback, ChildStatus, ChildFree
+  and Exec_CleanupETask used the same port lock without disabling interrupts;
+  Forbid does not prevent a local IRQ from spinning on its interrupted owner.
+  Subsequent inspection found the same gap in ChildWait, including its early
+  matching-child exit and empty-list Wait branch. These five SMP-only blocks
+  now Disable before locking and Enable after
+  unlocking, with result expunge outside the port/IRQ block. Normal behavior
+  is unchanged. Parent/child topology and returned metadata lifetime remain
+  separate unresolved obligations; this is not a broad SMP fix.
+- Final production SHA-256: rom/exec/exec_util.c
+  `fe2a6142ebd6a7b78716d3ad866edc1be31ddb451ea1075302edef125fe21092`;
+  childfree.c
+  `36df615f383f643f1c0eba4c9c6823afc9fca9074ebead2f55001394335a6904`;
+  childstatus.c
+  `b5ad33a7967e9144848c02f6afbf709d77b9ed5499cf2023f7b379273ab4aea2`;
+  childwait.c
+  `61db7a99014192667d3a997ea95a5a4782f87cd5b3703ac4fc3717e5f5167ece`.
+- First direct O2 strict compiles of exec_util and childstatus failed on
+  existing AROS intrusive-list type punning under strict aliasing, in both
+  normal and SMP branches. No objects were produced by those four failures;
+  initial childfree objects succeeded and remain historical. The configured
+  project supplies -fno-strict-aliasing
+  (config/features.in:284 and build config/config.log:3705). Fresh r2 compiles
+  use that supported option explicitly, not warning
+  suppression: GNU11 O2 Wall/Wextra/Werror, explicit current sysroot, normal
+  and SMP configuration. All eight r2 commands exit zero.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01`;
+  fresh names `etask-portirq-<module>-<mode>-r2-rv32-root-20261002.o`:
+
+  | Module | Mode | Bytes | SHA-256 |
+  |---|---|---:|---|
+  | exec_util | normal | 4692 | `f2a927da5cc5280ff78fe5352bacb7e0aa3530c84a497527f9908fb175c9856c` |
+  | exec_util | SMP | 8464 | `59ca3db962e7e0ab2d12ee3b4574a0bb1ae8158a600562ea731660e7a5c813b6` |
+  | childfree | normal | 1556 | `dd02f6c9b0954d966d002d94b2164e5633d7db060f5070495d1651f88fbf0c67` |
+  | childfree | SMP | 2204 | `6210a7363a553597cb4d7e7141ef22b5fee2e74dfe7247060f6960752a068cf8` |
+  | childstatus | normal | 1816 | `c85145703dba67b99e4bd783d950bbb13682683f32597b9a3bd7a77fd793debe` |
+  | childstatus | SMP | 2164 | `bbf4e8508268122c1d738102fad3e73ec4727366003270acfe6c11350e1b6831` |
+  | childwait | normal | 1728 | `24ee2df6467a7f18212e906bf3d6c4e67f811f7947aecca8cb100bc4a8a732cc` |
+  | childwait | SMP | 2064 | `d67b4a7fb8fb727713b25ce2c6355a0f87889b1ea2d3ae6f5651444943620ed6` |
+
+- Next: updated actual-body IRQ-nesting tests and independent review, then
+  constructor cancellation/cleanup integration. No full build, flash, reset,
+  concurrent hardware claim or activation; deployed CPUCount1 core unchanged.
+
+### 2026-10-02 - TaskResource topology host replay and corrected review
+
+- Root read the complete extracted-body fixture and report, then independently
+  ran four fresh strict Clang C11 O1/O2 ASan/UBSan variants. Actual detach,
+  cleanup, lookup, prelaunch, iterator lock/unlock and Next bodies are extracted;
+  list helpers, semaphore, allocator, spinlock and IRQ nesting are modeled.
+  SMP passes1158 checks each, normal693 each, all exit zero. Nested pre-disabled
+  entry is exercised by NextTaskEntry, not claimed for all seven functions.
+  Source-order assertions are not full RemTask/init execution.
+- Runner `rom/task/tests/p4-taskres-topology-test.py` SHA-256
+  `6eb366edf65658fae3f39c66af39636d7f9cbb2f230e52f3f11a28ddf4ae81a5`;
+  report `remove-taskres-topology-tests.md` SHA-256
+  `0b8318f182d131ccc6e3a01b556c423bd202a2d4f1be3e3390388e87d6ae4717`.
+  Root command: `python3 rom/task/tests/p4-taskres-topology-test.py` with
+  `--artifact-dir /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01/taskres-topology-root-20261002`.
+  Compilation bound30 seconds, runtime bound20; Wall/Wextra/Werror/Wconversion/
+  Wpedantic; unsupported leak detection off, allocator exit balance checked.
+
+  | Root artifact | Bytes | SHA-256 |
+  |---|---:|---|
+  | p4-taskres-topology-smp-O1 | 118088 | `706337e0e7b96842687d38cd6e1e7f206af75b069f71ed2a78048f5fa4803dbc` |
+  | p4-taskres-topology-normal-O1 | 100464 | `e06bba7112956b512e54f3aef4db370538bd0b012a937ec96af9aeb1979593a7` |
+  | p4-taskres-topology-smp-O2 | 118088 | `a3595df0c94f7c403e15213a0137f119707e72c0b48780b8e04d0f91d2f7c16d` |
+  | p4-taskres-topology-normal-O2 | 100464 | `cfb8927dab12ff0faa1629cffa920a3347ec40ad9a29d5039f87983ac33592e0` |
+
+- Corrected independent review `remove-taskres-topology-review.md` SHA-256
+  `d333fc1f6ca9d6d2f04f72cb57baf908086140a23c8fe87a888323056ae2982f`
+  accepts balanced Disable/Enable and semaphore-to-gate ordering only. Earlier
+  review missed local preemption exclusion and remains historical. Root read
+  the report and checked corrected source identities. Returned Task/entry
+  lifetime, hook access, state snapshots, startup and iterator-owner retirement
+  remain unresolved. Production source identities are the r3 snapshot below.
+- Initial harness marker-order/ownership and unsupported LeakSanitizer failures
+  are preserved in the report. No production correction was needed for final
+  tests. No matched build, flash, hardware run or SMP activation. Next: actual
+  constructor cancellation and orphan/lifetime integration.
+
+### 2026-10-02 - Actual creation-channel wrapper composition (host model only)
+
+- Root read the corrected fixture and its complete report, then independently
+  rebuilt and ran it in a distinct artifact directory. It extracts the actual
+  five channel helper/wrapper bodies and includes production registry,
+  lifetime, semaphore-ledger and removal leaves. Runtime, gate/IRQ state and
+  fatal boundaries are mocked. This is single-threaded host evidence only.
+- Final runner SHA-256:
+  `7dd708cc7b094c34204c80d6ea29b236b36683d4e0c88303dac51afd7a74c348`;
+  report `remove-creation-channel-actual-wrapper-tests.md` SHA-256:
+  `a003a73fd41854103351307be602d0c3745da6168c3164174d4f85438fbe5cba`.
+  Source pins remain `bc69ca1e1931058e89ba4ca0d4de3c64d239a8601f4c797c664076d771ca0f6d`.
+- The initial 79-check fixture remains historical: root rejected its exact
+  match cases placed only after token consumption and its incomplete extent
+  and retired-owner poisoning coverage. Corrected r2 adds pre-claim invalid
+  target/generation/address snapshots, valid exact-upper-bound and rejected
+  aligned partial frames, and retired Task plus frame pages both PROT_NONE.
+  Report preserves initial include/stub/fatal-balance fixture failures and an
+  r2 double-End sequencing error; none required production changes.
+- Root command: `python3 arch/riscv-esp32p4/kernel/tests/p4-creation-channel-binding-test.py
+  --artifact-dir /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01/remove-creation-channel-actual-wrapper-root-r2`.
+  Strict C11 O1/O2 Wall/Wextra/Werror/Wconversion/Wpedantic with ASan/UBSan,
+  leak detection off (unsupported here), 20-second runtime bounds. Both runs
+  exit zero with 94 checks. Generated harness SHA-256:
+  `baf1401dc0f339457fb19f3234a57eea8302b3a3d49b12cbc5ae28edeeb7a3a2`.
+  Root O1 binary 216312 bytes:
+  `50bdf909e50152395dc51f11d3f86cab20aa38d602012ff9ace1a26e296d4d3a`;
+  O2 215896 bytes:
+  `4a93f1aa8689b9fa76fd5cec923a1d9211f2fea9675812b0c08c17f1101ada27`.
+- No platform hook selection, full matched build, hardware or two-hart
+  qualification follows from these tests. Creator cancellation/no-save,
+  synchronous hook removal, orphan recovery and stack authority across actual
+  scheduling remain open. Deployed CPUCount1 core is unchanged.
+
+### 2026-10-02 - TaskResource local preemption exclusion (build verified only)
+
+- Root source audit found that the actual P4 public spinlock does not mask
+  interrupts or suppress local scheduling. A preempted gate owner could leave
+  another local task spinning on its lock. All seven TaskResource SMP gate
+  sites now call Disable before acquisition and Enable after release;
+  normal Forbid/Permit behavior is unchanged. Allocation, semaphore operations
+  and detached-entry freeing remain outside this gate.
+- The first mechanical edit duplicated Disable/Enable at one support site and
+  missed another. Root caught and corrected this by reading every site before
+  any compilation; no artifact or test qualified that intermediate edit.
+- Final source SHA-256: task_support.c
+  `086656b759e9d897ffacb42022961554e3cc241b09d9f4cf4f44b2e7a9082520`;
+  task_execfuncs.c
+  `1682a832d604a807a11e3b9dae80ba787af543a50b427f1b23ae938bde0e5a18`;
+  LockTaskList.c
+  `6c338ea7572dffbf5372c9785dad166730f71957573ffb4c37de0a95821f0dfd`;
+  UnLockTaskList.c
+  `1715b0ac119c8d78112df0348ea2dce8b7d91f47ee4dd84d7ae99157781d76ca`;
+  NextTaskEntry.c
+  `a94f2cd748cd865b1df986009f8c94c359eb4b99b68a35a06ddf7870570b2baf`.
+- Procedure: fresh direct RV32 GNU11 O2 Wall/Wextra/Werror compilation using
+  the explicit current build sysroot, normal and SMP configurations, with
+  distinct r3 object names. All ten commands exited zero. Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01`.
+  Objects use `taskres-<module>-<mode>-r3-rv32-root-20261002.o`:
+
+  | Module | Mode | Bytes | SHA-256 |
+  |---|---|---:|---|
+  | task_support | normal | 4708 | `3924547f00a2993243ffc12fe4aa25b799fb35c317296f30809bcae6382ac307` |
+  | task_support | SMP | 5076 | `837bbb422ea63967b812fea0cc6e2f99c919eafa19fa7e29d9b92ab23c3dd753` |
+  | task_execfuncs | normal | 3128 | `5baaa292f92ae4e94bc72ef19b1ba8f21a97d5b66f78ed3fd80f1bda0ebf0b6f` |
+  | task_execfuncs | SMP | 3288 | `d343c8204decfe546275aefce6e9b12d0f657e6db1de74838dc41bebdef848b8` |
+  | LockTaskList | normal | 1872 | `5230e0b95dfaa13ff5014dbd6b70204874a3a94d318e54daffd80c093ef14f6f` |
+  | LockTaskList | SMP | 2028 | `63844fab0f822fe8f54aba9430149bcd6c221e0d92ad10d944d5e0af3ee49d98` |
+  | UnLockTaskList | normal | 2120 | `35285363b612b18edd5313ce3ac3c0e88a23c0dcb51acb95c22da13a78e384c9` |
+  | UnLockTaskList | SMP | 2276 | `e3ff0c0801eb2464d834566530557e359f6953093c380eb1bd4e424161848292` |
+  | NextTaskEntry | normal | 2188 | `6db82e00612a57b7fc2cc0392bb92e7612d8188f398514d280efe418a3a6c336` |
+  | NextTaskEntry | SMP | 2380 | `3e4744c36bde736970c1d34c4b2e1b57edc434c7c6a89f750525f27d237aa470` |
+
+- Earlier unmasked r2 objects and their review remain historical, not evidence
+  for this correction. The normal byte-identical objects are expected because
+  this change is SMP-only. Init and the private header are unchanged.
+- Safety/status: no link, matched deployment, flash, reset or interactive
+  test. CPUCount1 production core is unchanged. Next: independent review and
+  extracted-body host checks of IRQ nesting and gate balance, followed by
+  actual constructor cancellation, iterator lifetime and orphan cleanup.
+
+### 2026-10-02 - TaskResource iterator metadata gate (lifetime still open)
+
+- Root inspected actual NextTaskEntry: matchFlags dereferenced a null iterator
+  before its existing null check, and node/marker observations bypassed the
+  newly shared topology gate. Moved flags inside the nonnull gated branch;
+  all tlp_Next, node and tle_Task observations now serialize against list
+  mutation. Added the normal Forbid/Permit counterpart without holding the
+  gate across allocation, semaphore operations or callbacks.
+- Frozen source NextTaskEntry.c SHA256
+  cf7fb8d471de96a5a4ed989cc703ee77c3c7a144de87bd2d5c6ff1efe00c4187.
+  Root strict GNU11/O2/Wall/Wextra/Werror RV32 normal/SMP builds pass with
+  explicit sysroot and current header paths. Retained evidence artifacts
+  taskres-NextTaskEntry-normal-r2-rv32-root-20261002.o:2188B,
+  6db82e00612a57b7fc2cc0392bb92e7612d8188f398514d280efe418a3a6c336;
+  taskres-NextTaskEntry-smp-r2-rv32-root-20261002.o:2172B,
+  d07c64497f025ae5ee65304ca1404064d8b485f3dd144775efc05d38249b3a0e.
+  Initial strict normal compile failed on its previously unused library-base
+  parameter; explicit void use corrected it without disabling warnings.
+- Focused extracted-body tests are pending. The topology lock does not pin a
+  Task, protect its tc_State against the Task-state lock's writers, or keep a
+  returned Task alive. Task lifetime, caller-held iterator validity, hook-entry
+  readers and constructor/orphan recovery remain open. This is not concurrent
+  TaskResource or SMP qualification. No hardware, flash/reset, full matched
+  build/ABI refresh or activation occurred; deployed normal core unchanged.
+
+### 2026-10-02 - TaskResource topology mutation repair (build verified only)
+
+- Luna's bounded source audit found unguarded PreLaunch/NewTasks and iterator
+  marker mutation, cleanup's lock-holder check before locking, allocator calls
+  under the topology gate, a LockTaskList allocation-failure semaphore leak,
+  and release-before-marker-removal in UnLockTaskList. Root inspected the
+  affected production paths and implemented a shared mutation protocol.
+- task_DetachEntry compares opaque Task identity only, scans both lists under
+  one gate, detaches new/unobserved nodes or marks observed nodes NULL, and
+  frees detached storage after unlocking. Actual TaskResource RemTask now uses
+  that helper before its separate ETask/storage/original-RemTask work. It does
+  not itself remove/free a Task, call RemTask or provide an orphan worker.
+- PreLaunch allocates before locking and publishes according to lock-holder
+  state under the same gate. LockTaskList publishes its iterator marker under
+  the gate and balances the semaphore on allocation failure. UnLockTaskList
+  removes only the exact caller-owned handle under the gate while still owning
+  its semaphore; frees/releases are outside. Invalid handles do not release
+  somebody else's semaphore count. CleanList checks holders and moves purge
+  nodes to a private garbage list under the gate, then frees after unlock.
+  Explicit TaskListSpinLock initialization precedes vector installation.
+- Frozen SHA256: task_execfuncs.c c13ba0886f133761a0cca1aa071986140c2293c53752c107231dbb2b24c63cb4;
+  task_support.c a4ca9ed498e92230d7937ce73100749d0be35576f19e021d782a357e304d6e3c;
+  task_intern.h 01021d88071794686eefc40dac0baf34bbe45e0a7adf6b618612c1cc0d420d93;
+  LockTaskList.c 959ba874a261248816e66867aa323117f49991466570cce7313d12e1c0391ae3;
+  UnLockTaskList.c 1faaa9c1736f130509adafde8c3bf09e2e7836fa4e99a5227c17dc055382fd1c;
+  task_init.c 480e2609b349acde6090149e34b00f50b1e3a9ec0c92c90b85b077953d388626.
+- Root GNU11/O2/Wall/Wextra/Werror RV32 compile-only procedure uses the existing
+  explicit sysroot, current source header paths and per-mode defines; all ten
+  fresh objects pass. Evidence directory is smp-priority-2026-10-01; names are
+  taskres-<module>-<mode>-r2-rv32-root-20261002.o:
+
+| Module/mode | Bytes | SHA256 |
+| --- | ---: | --- |
+| LockTaskList/normal | 1872 | 5230e0b95dfaa13ff5014dbd6b70204874a3a94d318e54daffd80c093ef14f6f |
+| LockTaskList/smp | 2012 | ae233b878e4389bd0c1e0892ae8a542efd6a9a974b24eb21976797fef7a964f4 |
+| UnLockTaskList/normal | 2120 | 35285363b612b18edd5313ce3ac3c0e88a23c0dcb51acb95c22da13a78e384c9 |
+| UnLockTaskList/smp | 2168 | 5096628d436594009f814db619d6f252c2a4850fc3a9a0dcc82e0575071b7024 |
+| task_execfuncs/normal | 3128 | 5baaa292f92ae4e94bc72ef19b1ba8f21a97d5b66f78ed3fd80f1bda0ebf0b6f |
+| task_execfuncs/smp | 3276 | c3e10f6352e0529a988af1afb0d92bc115b1359c32150bb436b81b3fe8636e2c |
+| task_init/normal | 4440 | 31e4a95d3ccfefe10d5e48daf10c8c7c1851e6694295b9adfb775bb587038ef7 |
+| task_init/smp | 6372 | 1d2c962fe769cecdf95ee704a88e213dc8b4cecaa7a83a0f3e8f733d0fb4af1e |
+| task_support/normal | 4708 | 3924547f00a2993243ffc12fe4aa25b799fb35c317296f30809bcae6382ac307 |
+| task_support/smp | 4964 | 6cfb7fd8dfadea62d3d323bc6a96c6ce674025815b8b7b0ad4872ccc771e33bd |
+
+- Initial strict builds failed on existing unused parameters in debug/no-op
+  routines and signed-string OpenResource arguments. Corrected with explicit
+  void uses and CONST_STRPTR casts, without disabling diagnostics; retained
+  intermediate successful objects are historical, not deployed.
+- Focused host tests are pending. Iterator access/returned Task lifetime,
+  GetTaskEntry's unlocked pointer, startup enumeration/publication, hook-list
+  consumers, creator cancellation and orphan cleanup remain open; this repair
+  cannot qualify concurrent TaskResource use or full SMP. No full matched link,
+  public ABI refresh, hardware run/reset/flash or interactive test occurred.
+  Normal deployed core and SMP activation guards remain unchanged.
+
+### 2026-10-02 - Conditional constructor generation transport (not selected)
+
+- Added separate generation tag 0xd0344347; NewAddTask receives raw output,
+  independently transported generation and target in its optional resolver.
+  It never reads a candidate output pointer to recover authority.
+- NewCreateTaskA conditionally begins a scope before its public NewAddTask
+  vector, captures the generation, and ends that exact scope before reading
+  ownership. Begin refusal rolls back private allocations before policy;
+  End refusal invokes terminal policy without post-refusal frame/Task/output
+  access or allocation rollback. Actual platform hooks remain unselected.
+- Review corrected two latent boundary flaws: selecting scopes without the
+  resolver could leave CALLER ownership after publication, and unselected
+  private tags exposed a stack output to vector interposers. Complete hooks,
+  resolver and both tags are now mandatory; otherwise original tags pass
+  unchanged. Public task.resource interposition is preserved.
+- Frozen sources: NewCreateTaskA a7fa5d362b5d151a0a710ee1099adbaac220b391b06cfda427f44790a1fb1924;
+  NewAddTask e4ac64bc955d9ac1385ef084cb977a58cdaba886eb57f6066b27491ceb290489;
+  private header 8fcae63dafe8f15900049d1b1649229019775571d5370ab160a672415d5dbf1f.
+- Root RV32 GNU11/O2/Wall/Wextra/Werror compile-only artifacts in
+  evidence/smp-priority-2026-10-01: newcreatetaska-transport-normal-r3-rv32-root-20261002.o
+  4640B SHA256 4dd41d66de7595261a45d172bb84e10929937336836d2b9c767fe8ae1919182b;
+  smp-r3 variant 4764B a6750dd30849ca11b0e4a91e0571f58c5d2aba86af0fc96d7447e30343eae743;
+  scope-r3 variant 5660B 42ccccae0bcc7abd31ee6af1a01f58d020d5794bffd9c73dd956bf5ab9f70b2c.
+  NewAddTask normal/smp/scope artifacts are 5644/6064/6388B, hashes
+  7f51eaed36eb03f074785f8ca6dc6ea88ddc1e0e0e4e185addf74a3aa800770b,
+  42502643dc0698588757af95496227ef99ee1ce6a7a5779f865702ad3cb71a31,
+  7d046f0dca539593b926dda05be4fe9de467566210c967d71200942dee121a85.
+- Forced scope declarations are compile-only, unresolved test hooks, not a
+  linked runtime: creation-scope-compile-hooks.h
+  f796a88428f988a15aef6c025a656890caab6f57002d5e5082b69ad37afa8109.
+  creation-scope-missing-resolver-control.h produces the intended #error,
+  exit1 at NewCreateTaskA line114; this is a negative control, not a runtime pass.
+- Initial normal compile failed because an unused-variable suppression escaped
+  its declaration guard; corrected before the final three builds. Historical
+  draft objects remain retained, not deployed. Root repeated extracted baseline
+  with clang GNU11/Wall/Wextra/Werror/ASan/UBSan:117 checks pass; temporary
+  executable was not retained (no retained binary identity claim). Fixture
+  p4-task-create-failure-test.py is
+  56d317ccc8afef43d67cfca729f997241f91ec954188b48f1148377846f29a97.
+  Root read the completed independent remove-creation-transport-review.md,
+  91f14cd86e31e26999bbd69dcd2261425284821e267fd43a7269f6948e0df59c:
+  local ordering accepted, selected TAG_USER/interposer preservation/non-retention
+  remains a trusted-code contract, not a security boundary. Synchronous
+  prelaunch removal can wait for its own retained target pin; channel transport
+  does not solve that deadlock or protect a returned target after pin release.
+  Adapted scoped host tests subsequently froze and passed all six author and
+  root repeats. Root fully read script ddcb6aaa9021ac6f63ccd98d171d0efe105f07fad73cca97c59434d73c94a294;
+  command python3 arch/riscv-esp32p4/kernel/tests/p4-task-creation-ownership-test.py
+  --artifact-label root-transport-20261002. Each O1/O2 strict GNU11/Wall/Wextra/
+  Werror/ASan/UBSan run exits0, bounded20s: added191 plus inherited120 for
+  default-deny, added200 plus120 for modeled resolver-only, added516 plus126
+  for modeled scopes (totals311/320/642, not inclusive191/200/516).
+  Tests exercise actual extracted NewCreateTaskA/NewAddTask bodies, independent
+  generation tags, unchanged default tags, ownership rollback, terminal End
+  refusal and nested LIFO/TAG_MORE. Scope/registration/launch/runtime boundaries
+  and SERVICE are mocked; actual registry wrappers/no-save/cancellation and
+  hardware are not qualified by this suite.
+  Root retained binary names are p4-task-creation-ownership-<variant>-<opt>-
+  root-transport-20261002-20261002:
+
+| Variant/opt | Bytes | SHA256 |
+| --- | ---: | --- |
+| default-deny/o1 | 133736 | 9b52be4ba26bcb7e80aeaa23cc5ab335365133605f943e30716f24e28f80a094 |
+| default-deny/o2 | 133736 | 4054b91ca2fb0d975153617a0a9a8f8b682ecd2d7fcb7a8cf84fbde6303dd387 |
+| mock-resolver/o1 | 135744 | 30ce2e68ff674436ce65f2c83c95d9637ec945fae607314fb3760f2acd5ed1bc |
+| mock-resolver/o2 | 135536 | 854ef3eb84c3846ce30d7f424cf7cd8d36f69ca3fea8bbcd515d77a5107c4abd |
+| mock-scope/o1 | 195928 | a55ec2e2423ed978b5d77b176610979b5581151efcb4746fe31efd17903864d4 |
+| mock-scope/o2 | 195928 | 3620be5b5482f988129c47600999dbe0d5d7167de10e6fedb73b3ea53d94a6e5 |
+
+  The first scoped O1 run aborted in the fixture adapter's unconditional read
+  of an absent optional collision tag, before scope-specific tests. Author
+  reproduced UBSan null ULONG load/exit134 at generated line1223, historical
+  r3 binary fa92856f51744a183d22ea8c10054432ca879b5bfe5ba1ab947685b4eefb1461.
+  Corrected only the optional lookup guard; the explicit collision case still
+  asserts presence. Root inspected that correction and all final repeats pass.
+  Root also read the frozen author report remove-creation-transport-tests.md,
+  6cde31450cf436a6853aa3c48fb1ca203324aaf2e731544c8b9a537327e61217;
+  its artifact table identifies author binaries, not root repeat binaries.
+  Construction references, Ready/cancellation,
+  creator no-save recovery and TaskRes/ETask cleanup remain open. No full matched
+  build, hardware run, flash/reset, interactive test or SMP activation occurred;
+  normal CPUCount1 deployed core remains unchanged.
+
+### 2026-10-02 - Registered constructor channel candidate and replay corrections
+
+- Root adds private p4_creation_channel.h and per-owner registry metadata.
+  Trusted normal RUN-stack frames push/pop under the lifetime gate; scalar
+  metadata migrates with the Task, not a per-hart pointer. Begin reserves a
+  nonwrapping global generation. End requires the captured exact generation
+  and top frame; it preserves ownership value while restoring the previous
+  frame/target/consumed state. Resolve checks live sole RUN, exact target,
+  generation and value address, consumes authority once, and never reads raw
+  tag pointers. Retired/no-RUN owners refuse before any frame read. No extra
+  lifetime pin is reserved solely for a channel; completed no-save policy is
+  required to prevent resuming a retired owner's old stack.
+- Actual gate wrappers re-read p4_exec_runtime_current with IRQs masked and
+  validate actual hart/current Task, trap_depth0 and matching live RUN owner
+  before reading Task stack bounds. Begin/End require the complete aligned
+  frame inside tc_SPLower..tc_SPUpper. Resolver rechecks that complete extent
+  before consuming authority (including a changed stack after StackSwap),
+  then returns only the current scoped address. Zero is terminal ineligibility,
+  never permission to fall back to ordinary publication. These wrappers are
+  excluded from P4_TASK_PINS_TEST host
+  shims; existing pin-fixture success is not their runtime qualification.
+  Platform macros/NewCreateTaskA/NewAddTask remain unbound/default-deny.
+- Two rejected drafts retained in evidence: pointer-only resolution could
+  authorize replay during stack-address reuse or interposer reentry (review
+  finding); End without a caller-supplied generation could pop a newer scope
+  at a reused address (test-design finding). Root adds target/generation plus
+  single-use Resolve, then exact-generation End. Neither draft was deployed.
+  Trusted interposer code is not an adversarial memory-protection boundary;
+  it must preserve the private tag/generation chain and not modify live frames.
+- Current sources: registry C024404e506a82538e76e8fc00aa08f4bd9a802b0fdf7dc23f2b7d19e3269df44,
+  H618fb1237f8bb42826bb9ccf2e84d67c9ba0cbcb4dd8804188cbea9b93712d6d;
+  frame H2aaaba315141b04c7bb3ee954cb2ea887963ec008dc7a4e4f5ceda201ac3924f;
+  pins Cbc69ca1e1931058e89ba4ca0d4de3c64d239a8601f4c797c664076d771ca0f6d,
+  Hdfcc002603554ab53b5836266106ff599d432247410f994a31daaf4dc494acfe.
+- Fresh strict GNU11 O2 isolated RV32 SMP/runtime/FPU/atomic compiles exit0,
+  explicit current Developer sysroot. Evidence directory remains
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01:
+  p4_task_registry-creation-channel-v3-rv32-root-20261002.o52860B SHA256
+  19643bb8b48952406e70a6bc9e4bd4e227f02aba871cd7066d9d16065e7fbd1a;
+  p4_task_pins-creation-channel-v4-rv32-root-20261002.o64340B SHA256
+  bbdb37a85316d72a4a31a3e946690b2b98ad3a7a5256c7c811bcae4dd86af1c7.
+  Earlier metadata-only/v2 and pre-range-check pins-v3 objects are historical,
+  not final candidate
+  evidence. No matched core/BSP/ABI link or hardware qualification.
+- Root fully reads orphan wrapper fixture338ab6bc56165442e1a1564898a4166940b8facb75487ea6e85861f498656d20
+  and report43fb7180a12aa13653604aa68430e0b313e742da727e86819c6ee1160da3eb29.
+  Author101 O1/O2 on previous frozen721b/a2bc snapshot; root strict C11 debug
+  ASan/UBSan function-instrumented/no-inline O1/O2 repeats101 on channel v2
+  metadata. Both actual resource wakes occur before unlock, poke after; wrong
+  worker/unarmed/nonRUN/malformed child cases fail closed under mocked gate.
+  Creator-retired-stillRUN and wrong-generation refusals unchanged; final
+  ordinary unpin independently wakes deferred cleanup. Missing fixture-owned
+  ledger arrays caused the author's first compile failure, then corrected.
+  Actual queue/TaskRes/topology cancellation/current worker identity/hart
+  remain prerequisites, not test results. Root binaries
+  task-construction-orphan-binding-o1-root-channel-v2-20261002 is655008B
+  SHA25647f6380006cf4ec04f8e00381a844c4564f0aabf0fd2ab6a0b6bd8f77886b3e1;
+  O2 is654512B SHA256a950036aed9f407531144da39dd16ee0981b1f450a1145f929d56ef3d242dcdc.
+- Root fully reads design review4d6eda407e40a9d4b266d9edfd6e15e3782b7ac4e588e01aaefc9a815719edc2
+  and binding reviewb861105fb105b1530890a8edafa065c5c41537bf7efd9bb6c1e463f3250a2426.
+  No local gate/runtime/soleRUN/stack-access ordering defect found under
+  private caller contracts. Target identity is opaque, not pinned by channel
+  Begin; constructor must separately preserve target lifetime. Post-hook/Wait
+  output dereference needs fresh gated qualification or a gated setter;
+  retaining an opaque same-creator-stack address alone is not that proof.
+  Running-owner lookup refusal/corruption collapses to wrapper zero, so zero
+  must be terminal, not legacy fallback. Generation-bearing tag transport,
+  actual constructor/no-save recovery and wrapper execution remain unverified.
+- Channel source frozen for focused tests. Their first O1 compile fails on an
+  unused fixture local (corrected); initial O1/O2 ASan executions also expose
+  the fixture's expect_end pre-copy of a PROT_NONE identity page before the
+  production refusal call. Root source inspection independently identifies
+  this fixture error. Author switches that case to a snapshot-only helper;
+  no production defect or permission to weaken protected-memory checks is
+  inferred. Those failed runs are not accepted results.
+- Root fully reads final fixture68a9d01d8b2b4f6f0bcc8219d07e8f489c1ac1d9412541378dc4c1d932c38db4
+  and report065c8e821484c73e68ad67d76823f74f838e90c70531f207a8fcb28164612b2d.
+  Fresh strict C11 O1/O2 debug ASan/UBSan builds and20-second runs each exit0,
+  165 checks. Root binaries creation-channel-o1-root-20261002 is713856B
+  SHA256bb11f2b8ae63115a215d67d140d16ce5c5a46f9343f4f884547d38c71d1acb00;
+  O2 is713264B SHA25670ee444646f25b215ee1e38479c45064a2686bc8d40888f230ac3b80c62373f8.
+  Author corrected r2 binaries683048B/21b4fab7062f9a013cc9d6f76cf4eb34a8aee708980388f2e8f442bde3b92f34
+  and682616B/9fcea0660325ba361aae85694286174b6f4bcc26ba32e21bb1e6427846936b19
+  also pass165 each. Actual leaves exercise nested consumed/unconsumed scopes,
+  exact owner/hart/target/tag/generation, one-use replay refusal, sequential
+  RUN-drain/migration model, alias/malformed/serial exhaustion unchanged state,
+  protected-memory retired refusal and same-address record/Task/frame reuse
+  rejecting old End/Resolve generations before frame access. Serialized host
+  access only; no real locks, scheduler, vector reentry, stack wrapper or
+  simultaneous harts. Leak detection disabled; inherited renamed main not run.
+  Source freeze released after author packet. No
+  allocation/Ready/removal/orphan producer installed by this change. The public
+  vector chain needs a separate private generation-bearing tag, plus the
+  invoked target identity; never recover generation by reading a raw pointer.
+  No full
+  configure/header refresh/build, reset/flash/media or interactive action;
+  normal CPUCount1 core201504B/1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6
+  and SMP activation refusal unchanged. Next qualify current channel, then
+  bind real constructors with cancellation/TaskRes/ETask/no-save recovery;
+  full per-hart/cache/public synchronization/matched concurrent D1001 gates
+  stay open. Display connection is not a fresh interactive readiness grant.
+
+### 2026-10-02 - Guarded TaskResource bootstrap and XIP signature foundation (build verified only)
+
+- Selected P4 TaskResource startup replaces independent allocating list scans
+  with task_BootstrapInventory: preallocate empty nodes outside Disable, recheck
+  inventory and isolation, commit four lists and publish in one masked section.
+  Limits are 20,000 entries and four growth attempts; failures leave binding NULL.
+  Guard reads hardware hold state and prepared/unbound secondary metadata; it
+  neither releases hart1 nor substitutes for runtime synchronization.
+- Fresh isolated GNU11 O2 RV32 ilp32f objects use Wall/Wextra/Werror and the
+  relocated Developer sysroot. Bootstrap SMP4584B/a7a4baa2c179cf38640793ec24f1f74f15924f93a720f192fe1bcc30769dac7c;
+  init SMP3712B/30004d56d74bd1aeeee081e5d977c84f1ccd4b116ba15be56f1d8e0f8bd36c97;
+  hardware guard2024B/b2826a28594f56890a01994e1e8c9c33b953d3df390f2fd4d107ee6fce45222f.
+  Normal init remains4580B/c5104d2c4f98716746e0c60933825295f08e7db458542ca816442c538319e9e3;
+  normal bootstrap is an empty820B/d4404642bea272089b6529a55c006bd0778477d1c2cf5604b501065b3d1b028c TU.
+- Root links 20 selected resource objects, replacing old init and adding bootstrap,
+  with the fresh strict generated start: taskres-bootstrap-private-smp-root-20261002.o
+  is29068B/6c57f09bb7c328d68bfd593aeaf2c46e1494c658a8f31a2d5d0da6e80fc79ef4.
+  This relocatable resource fragment is not a matched full core; core imports
+  remain expected. Artifacts are in build/evidence/smp-priority-2026-10-01.
+- Independent bootstrap fixture and source review are pending. Disabled IRQs
+  cover only pure list operations and publication, not allocations. Initializer
+  caller retirement/residency, failure cleanup, raw iterators/storage readers,
+  constructor cancellation and concurrent lifecycle acceptance remain open.
+- Root independently replays secondary-xip-signature-test.py in
+  secondary-xip-signature-root-20261002: 984B object SHA256
+  b373ed34257d80de380cfe421cd33b68f64e6f8cc377973d2c66470051f76cfe;
+  executable .text-only 32-byte leaf, eight instructions, no relocations,
+  known model vector c001d00d -> ab25ebcc. Assembly/model inspection is not RV32
+  execution. Leaf is deliberately unselected/unintegrated; cache-enable order,
+  SRAM trampoline, final XIP mapping and instruction-path counter gate remain.
+- Cache audit correction explicitly records the existing ROM-backed IDF HAL
+  core1 enable API; absence of qualified AROS invocation is not absence of that
+  API. Corrected audit SHA2563ac7b9d27e03e7004d9634e35b021c8f91bb1b82e5a6621b79805d7b991e8e80.
+  Independent Resident generator review accepts all four strict host layouts and
+  old/new byte identity: report SHA2565c005d5c6571ad4d191837e64ca2d4c84944eb0ddac0041595e00d481b329383.
+- No full configure/link, public-header refresh, flash/reset/media or interactive
+  test. Normal deployed CPUCount1 firmware201504B/1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6
+  and activation refusal are unchanged. Display reconnection is not readiness.
+  Next finish independent bootstrap qualification and close remaining ownership
+  obligations before matched integration and headless hardware qualification.
+
+### 2026-10-02 - Bootstrap review counterexample and registry-guard correction (build verified only)
+
+- Independent source review finds a real missed-Task schedule in the first
+  bootstrap candidate: NewAddTask publishes a pinned record, TaskLaunch reads
+  NULL resource, is paused while TS_ADDED, inventory commits without it, then
+  constructor resumes and queues READY without its observer. The prior
+  interrupt-masked four-list commit alone does not close this cutover.
+- Root adds p4_task_registry_validate_locked and an actual lifetime-gate binding
+  krnP4TaskResourceBootstrapQuiescent. Hardware isolation is proved first; the
+  binding validates the bounded registry and refuses retired/claimed records
+  before any Task read, and refuses live TS_ADDED. Every captured-NULL observer
+  constructor has already registered its pinned TS_ADDED identity. The outer
+  Disable remains held from this check through inventory publication; nested
+  gate unlock does not unmask it. This is conditional safety, not availability:
+  transient refusal still fails INITLIB for this pass; no retry/recovery proof.
+- Root corrects malformed list-head/tail traversal and frees the sole initial
+  storage-slot allocation when selected bootstrap fails; the helper frees its
+  empty-entry pool and has not published a binding on that path.
+- Frozen source SHA256: task_bootstrap124d5f771fdbec91dbc3be154f48eab37b5406a012c7f1b2b1adebbc7e54c9f0;
+  task_initfbafa32f6cba9fc35a4d723a1f5b53921018dd8d9fba5a3629a2baa24d957b82;
+  p4_task_pins720b72e3289ada7b9410c005ac8cbe28eef2af1ded71ec9dfcfabb3968ca21ab;
+  guardf81640183fbe477e67032ed3ad14dc0e93f69e41fce5c117c2c10db4d0cee9ba.
+- Five fresh GNU11 O2 RV32 ilp32f Wall/Wextra/Werror objects pass (explicit
+  relocated sysroot): r2-task_bootstrap4372B/4d73afc618dac04755b22e690c304659b0d2762cffbd13ce9d12d2dc0b468100;
+  r2-task_init3784B/bcde7846a113bfd212a466d09839e9741a851315a2be6d18db883e1b6d085650;
+  r2-guard2124B/17bc3be70c982333cd29150146bb4ebe6922a912d6e14c442bc677cd5f9726fc;
+  r2-pins65204B/bb53b042d4bcc738aa35dc03ef6d858c1816506813faf9c9931727266a49b891;
+  r2-registry53284B/53a420aed8586755c49211b3cb9aebe376fd0aa7e46d4e90591b4b46ad2a7796.
+  Fresh normal init is byte-identical c5104d2c4f98716746e0c60933825295f08e7db458542ca816442c538319e9e3.
+- Fresh 20-object resource ld-r28960B/e4c4586729acfb833078888a6200f0ba746d6379c3b7cd9ebb15882a83964c4c;
+  adding guard/pins/registry gives an isolated core fragment142852B/de244c473ad665e7dbdda2eb338272d7879faadbde685d188e5f6c8873226086.
+  These are not full matched core/BSP links or hardware execution. Artifacts
+  taskres-bootstrap-r2-* are in build/evidence/smp-priority-2026-10-01.
+- Independent current-source fixture/review requested, including the captured-
+  NULL counterexample and protected-memory retired-identity refusal. No full
+  configure/header refresh/flash/reset/media or interactive run. Existing
+  normal CPUCount1 firmware and activation refusal unchanged. Next verify this
+  conditional guard, then implement bootstrap availability and designated
+  constructor/cancellation ownership; full concurrent D1001 gates remain open.
+
+### 2026-10-02 - Storage-free bootstrap pin guard and binding regressions (build verified only)
+
+- The preceding state-reading guard is superseded by a storage-free predicate.
+  After bounded registry validation under the actual lifetime gate, it refuses
+  lifetime flags, designated construction ownership/children, active creation
+  channels, or any notification pin beyond the durable worker/wait-scope/
+  semaphore reservations. Current NewAddTask's temporary ordinary pin persists
+  across NULL observer lookup, Ready and final log, so that counterexample
+  refuses without reading tc_State or any Task identity. Other ordinary pins
+  may also refuse; coldstart retry/availability remains open, not solved.
+- Frozen p4_task_pins source SHA256a1bc28aa4c7db5f0b1d789a4e04d60b9b2582af18fc5f12336342640ffd27af9.
+  Fresh strict RV32 object r3-pins65292B/ccff9c750664498fabed48180524e7f9bf79e77f8325520b88618a5a3b1912c7;
+  resource+guard+pins+registry fragment142940B/841a56947041ab35eaceb9284ed85f48b994f6c3429c52c65a4a0242bd1543db.
+  Both commands exit0, still isolated objects/link, not matched core execution.
+- Root repeats unchanged actual p4-task-pins-test.c with strict C11 clang,
+  Wall/Wextra/Werror and ASan/UBSan at O1/O2: each82772 checks passes. Binaries
+ 464440B each: O1c8a58f7dbb80b6577d2f1f74680bc20f194148b0388df9dc0d8446e435e83174;
+  O2aedd73cf210b9ac734bd42a86c8a439db5b42f39e2bbc5d90533e852d69bb849.
+  This is regression coverage of existing binding operations; it does not
+  exercise the new bootstrap predicate or simultaneous real harts. The focused
+  independent bootstrap fixture/source review is still pending.
+- Artifacts taskres-bootstrap-r3-* and pins-regression-* remain in
+  build/evidence/smp-priority-2026-10-01. No fixture ABI exclusions or production
+  Task-read mocks were added. No full configure/link, flash/reset/media or live
+  test. Normal firmware/activation refusal unchanged. Next qualify the exact
+  new predicate and provide a real initialization liveness policy before
+  matched integration or SMP hardware acceptance.
+
+### 2026-10-02 - Constructor cancellation integration source audit (not runtime verified)
+
+- Root reads the independent bounded source map in
+  creation-cancellation-integration-audit-20261002.md, SHA256
+  5e934c553ba2ea6fe5edc99942e00e81034715951b2f0ad9beeed0070184fdab,
+  build/evidence/smp-priority-2026-10-01. Existing NewAddTask holds a temporary
+  child pin; designated creator/child construction APIs and generation-bound
+  channel are implemented but not installed in the constructor path.
+- The smallest coherent integration packet must bind transport together with
+  atomic TS_ADDED cancellation/Ready arbitration and SERVICE ownership. A
+  prelaunch hook must return without waiting on cleanup that requires its own
+  constructor pin to drain. Current TS_ADDED RemTask is refused/fatal, not a
+  successful cancellation. Macro-only channel activation would not fix this.
+- Retired-creator recovery must be non-returning before stack-channel End or
+  constructor continuation; the orphan leaf alone does not supply orphan
+  selection/retirement. Source audit only, no test/hardware acceptance. This
+  reinforces the open E3-RM constructor/ownership gate; no activation, flash
+  or interactive action. Next implement the complete terminal-state packet
+  after focused bootstrap review, retaining the normal single-hart firmware.
+
+### 2026-10-02 - Independent current bootstrap source review accepted (source only)
+
+- Root reads all of remove-taskres-bootstrap-source-review-20261002.md, SHA256
+  c8f53b0abcb902556d0d7aff7b384e71b3cfadd817553e0ea926c433d282a16e.
+  Current storage-free guard conditionally closes the captured-NULL observer
+  race because record publication and its temporary constructor pin use the
+  same lifetime gate. No Task dereference is required. Acceptance is limited
+  to this source invariant, not coldstart success, runtime concurrency or SMP.
+- Review retains permanent one-shot init refusal on a transient pin, bounded
+  IRQ-off latency and registry/list correspondence assumptions as open gates.
+  Current slot/pool failure cleanup is balanced and the present one-callback
+  init path has no fallible work after binding publication. Adding such work
+  would invalidate residency because the loader ignores EXPUNGELIB refusal.
+  Its inspected generated-start artifact is historical b0516e03; fresh strict
+  Resident-initializer repair/link evidence remains separately recorded above.
+- No new build/hardware/activation from this review. Next finish the focused
+  actual-body fixture and initialization liveness before matched integration.
+
+### 2026-10-02 - Bootstrap liveness handoff design started (not implemented)
+
+- The accepted storage-free quiescence predicate remains current and frozen
+  for the focused fixture. A repeated false guard without scheduling progress
+  is not a liveness fix; priority-preserving Reschedule may starve a lower-
+  priority constructor. A read-only boot/yield source audit is dispatched.
+- Root proposes a missed-observer handoff instead: selected TaskLaunch acquires
+  the direct resource binding under the lifetime gate after staged ETask
+  publication. A NULL observation marks that pinned record as unobserved.
+  Bootstrap inventory includes live marked TS_ADDED identities under the gate;
+  marked READY/WAIT/RUN identities are already in the ordinary queue inventory.
+  Final binding publication/debt clearing is serialized with observer lookup.
+  A later observer sees the new base; an earlier NULL observer is inventoried,
+  avoiding duplicate registration and the current unrelated-pin refusal.
+- This is a proposal, not production code or a verified protocol. Independent
+  review must check retirement/postfree records, pin authority for Task reads,
+  observer ordering, duplicates, private record layout and all registration/
+  failure cleanup paths before implementation. The existing selected observer
+  also allocates metadata with a void result; allocation failure currently
+  skips registration silently and requires an explicit selected failure policy.
+- No build/runtime/hardware acceptance in this planning entry. Existing source
+  a1bc28aa4c7db5f0b1d789a4e04d60b9b2582af18fc5f12336342640ffd27af9
+  and CPUCount1 firmware are unchanged. Next read the focused fixture and
+  independent protocol/yield audits, then implement the complete handoff.
+
+### 2026-10-02 - Bootstrap actual-body host fixture independently repeated
+
+- Root reads the complete test driver and independent report; fixture SHA256
+  8c4df095bf3e66cd06a14aeca7b40b17982035affbe3e8bd05154170bcdeefbf;
+  remove-taskres-bootstrap-review-20261002.md SHA256
+  00c52ba0bce1add2825d2e4bec522fe20d8933887ad4ef66eaa718eded232b9d.
+  Production bootstrap124d5f77, guardf8164018 and pinsa1bc28aa are unchanged
+  from the separately recorded strict RV32 snapshot.
+- Procedure: python3 rom/task/tests/p4-taskres-bootstrap-test.py --artifact-dir
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01/remove-taskres-bootstrap-root-20261002.
+  Fresh C11 clang Wall/Wextra/Werror, ASan/UBSan, no sanitizer recovery, O1/O2;
+  each binary completes352 checks. The unconditional-quiescence negative
+  control compiles and exits1 at bootstrap_during_ready_result == FALSE,
+  not an incidental compiler/sanitizer failure.
+- Root artifacts in that directory: generated C130698B SHA256
+  38cb2a4b8507fcfcbcd4fb1e92583392e9de93fbe725d4d2c81cb22d0e7c9022;
+  O1 binary96720B b4808349b8b91551f8213345860cb0c96913180ddaeacee891209560b0d86ab3;
+  O2 binary96736B 637b9ad78c8add7bcf73749e5203fb477df78628d45c1d2eee8a62eb5deb6494;
+  negative binary78208B 3c4ace043f064cc4d09f47b18f96436a8f4ca35aab3de0d91accae04cca6a26b.
+  Author r1-r4 harness failures remain recorded; final r5 and this root repeat
+  pass. Binary path-dependent identities are recorded separately.
+- Actual inventory, guard, quiescence, pinned-publication and TaskLaunch
+  bodies execute; registry validation, gate, scheduler Ready, IRQ, hardware,
+  runtime, list and allocator primitives are mocks. PROT_NONE identities
+  verify no Task read in the quiescence body. This proves the bounded host
+  interleaving refusal only, not coldstart liveness or concurrent Exec.
+- No full configure/core link, ABI refresh, flash/reset/media/interactive
+  run. Reconnected display does not authorize a sight test. Single-hart
+  deployed firmware and activation refusal remain unchanged. Next finish
+  independent debt-handoff/retry audits and implement initialization liveness;
+  constructor cancellation, reader leases and matched SMP qualification stay
+  open. README external milestone is unchanged.
+
+### 2026-10-02 - Observer-debt design review read (proposal only)
+
+- Root reads all of bootstrap-observer-debt-design-review-20261002.md in
+  build/evidence/smp-priority-2026-10-01, SHA256
+  efe386d36462029d08e98a2fcac79fee8ffd729d83b3fd1b61af6b01649c63c5.
+  Conditional ordering proof agrees with the proposal: selected observer must
+  execute even for NULL and serialize lookup/mark with final inventory,
+  clearing and base publication under the same lifetime gate. Allocation and
+  TaskResource callbacks must remain outside that gate.
+- Marker alone grants no Task lifetime authority. Live TS_ADDED debt requires
+  its constructor pin; ordinary-list states must not duplicate entries;
+  retirement/claim flags precede any identity dereference. Marker validation,
+  initialization, retirement and record reuse are part of the implementation,
+  not optional follow-ups.
+- Concrete separate coverage gap: the current void TaskRes_PreLaunch callback
+  silently skips registration on TaskListEntry allocation failure. A reportable
+  fail-closed registration outcome or reserved-entry mechanism is required
+  with the new handoff. Busy retry/yield is not accepted as a liveness proof.
+- Design/source audit only; no new production edits, objects, hardware,
+  activation or external milestone. Current guard remains selected in the
+  experimental candidate. Next implement the complete debt/registration
+  packet, then actual-body refusal/success/interleaving tests and an independent
+  implementation review before any matched rebuild or SMP acceptance.
+
+### 2026-10-02 - Observer debt and reportable registration foundations started
+
+- Prior goal turn independently completes the actual bootstrap host fixture;
+  current production still uses the conservative quiescence guard. Root now
+  adds an unselected private acquire-load observer binding to the actual
+  lifetime gate; it returns success/output separately so refusal cannot be
+  confused with a valid NULL observation. Registry marker/admission and
+  Boolean selected resource registration are bounded delegated implementations.
+  No marker observation is selected until the final same-gate bootstrap debt
+  scan/clearing/publication transaction exists and is independently verified.
+- Root reads bootstrap-retry-primitives-audit-20261002.md SHA256
+  ea4a588e74ff254fc533c4c10ed8f1ed81acb29c7dec716de823e98e8b319b34.
+  Priority-0 boot Task remaining Ready prevents priority-preserving Reschedule
+  from running lower-priority constructors. timer.device is later in COLDSTART;
+  kernel wait is polling, and no pin-release signal is installed. Temporary
+  priority-floor yield lacks an unconditional bounded-progress contract.
+  Root therefore continues the observer-debt handoff, not a busy-retry fix.
+- This entry records work started, not passing builds or implemented liveness.
+  Tests/private-layout consumer rebuild and independent implementation review
+  are pending; hashes/results will be added when frozen. Callback OOM refusal
+  uses the existing fatal-before-Ready policy temporarily, not recoverable
+  constructor cancellation. No firmware/media/hardware/activation change.
+
+### 2026-10-02 - Observer foundations frozen and independently checked
+
+- State: private registry debt admission and gated binding implemented but
+  unselected. Selected private registration now returns BOOL, contract
+  0x50345233. Allocation refusal reaches terminal fatal before user Hook/Ready;
+  this does not implement recoverable creation cancellation. Master status and
+  affected E3 phase updated; no externally visible milestone/README change.
+- Frozen source identities: registry C
+  3aa475d9acc33867b32e811c55c2d6095d79db87f3d2cdbe758a9a24ff838528,
+  header 273f7a763b10da4ab19b5e1bc717d0e85a47fa1efd3b735d928f7b8f447871de;
+  pins C b1270bc712c9d98828c679e1643e2e0d6d936c07234fb81a946efa91a4448652;
+  pins fixture 2ba49010526ae811824fffeddb3878d62399119201917b1e3c4b390dd7f85403.
+  Other changed registration identities are in registration-result-20261002.md.
+- Root reads all three final reports under the configured build's
+  evidence/smp-priority-2026-10-01: taskresource-debt-registry-20261002.md
+  SHA256 047791b70432e151d667def96134551825d3fe472bd4b6610d9d06e79064bdff;
+  registration-result-20261002.md
+  ca3a44ab784e47b8aeaa687bff33fed0e0a32aa7f4aec0d32c7811c12b8c26d0;
+  independent taskresource-observer-binding-review-20261002.md
+  5750d386f10f6750d24571f5f04ec2c473bd2ba2406598693d072e5c9526c181.
+  Review accepts the dormant fail-closed foundation, explicitly rejects
+  selection before same-gate inventory/clear/publication and does not close
+  cancellation/Ready serialization or reader leases.
+- Independent root host procedure: clang C11 O1/O2, Wall/Wextra/Werror,
+  Wconversion/pedantic, ASan/UBSan. Actual registry/lifetime leaf fixture passes
+  228 each using PROT_NONE identities and pthread gate; function/data sections
+  plus dead-strip omit unrelated unused functions, not a full core link.
+  taskresource-debt-root-O1:116952B SHA256
+  b664852d53b1fcf6d0279b8c2cc79868d156eb390f6e1ad32c0fecacae64d0ef;
+  O2:117096B 68f44175d7c9921d845118a588923c1fbb50e73a1c45d50aae088f720e1029cc.
+  Author binaries remain at their actual source-tree build/evidence path,
+  separately named in the report; they were not silently relocated.
+- Root actual pins/binding fixture passes 82876 each, including valid NULL
+  observation, output preservation on refusal, malformed-state fatal, nested
+  Disable balance and no Task reads. taskres-observer-pins-root-O1-r3:338912B
+  50f5f66b8c7be26d41fa576b7f7d0ffe998fd17e106e1b9f5194d919969f0e24;
+  O2-r3:338912B 775f8d7ca3d5c7f28888c07bbc6b3314b0c7407b6b61ffac85b3b88cea47ba7f.
+  This models platform primitives in normal branches, not real RV32 AMO/IRQ or
+  concurrent harts; no production TaskLaunch call selects this observer.
+- Final independent root scripts run with --artifact-dir beneath configured
+  evidence: p4-taskres-registration-result-test.py, directory
+  taskres-registration-result-root-final-20261002, passes 64 each. O1/O2:56056B
+  f427d837641a3b5f86608fd71ade0a7849f8c6f9a98d20afe826a57ea24a9b53 /
+  66d40f75d5177b84b1e88d6cde79892513c1b518c63385821d709c8b97d6a9e9.
+  p4-taskres-direct-prelaunch-test.py, directory
+  taskres-direct-registration-root-final-20261002, passes32 each; bypassed
+  observer negative control exits1 at the intended ordering assertion.
+  O1/O2:53616B 4929e6d87e7b945e06c88c44ef963d3a1bbdd5802386eef6944cf6fae4140ec6 /
+  9e0c32fb64e5999e30431b9bec70679d06153db49ac6ad55be00bccec6e6a879.
+  Allocator, callbacks, IRQ, lists and Ready are modeled, not runtime proof.
+- Broader root regression: bootstrap fixture adapted only to BOOL/contract33,
+  352 each and intended negative control pass. Service fixture's stale direct
+  task_init release-store assertion initially fails; root corrects it to the
+  actual delegated task_BootstrapInventory publication. Fresh root O1/O2 pass
+  293 runtime +16 source checks. Driver SHA256
+  1786c42286a24520da7c77c7449de6819b5e5eb31df08877842a4d89b908d4fb;
+  taskres-service-registration-root-20261002 binaries O1:102736B
+  f9f63dd7ef6856559f3674d4362e596f1340f95d0b9ab20999ed0d258bf098f8;
+  O2:102592B 624a431c84181bb0e16f9762164df06f696fb267379b257c607bfd2e10c89434.
+  The author report retains the earlier failure; this later replay supersedes
+  its pending-fixture status, not its failed historical observation.
+- Fresh isolated RV32 strict compile: configured riscv-aros-gcc, explicit
+  Developer sysroot/generated includes, rv32imafc_zicsr_zifencei_zaamo_zalrsc,
+  ilp32f/medany, O2/gnu11/no-strict-aliasing, Wall/Wextra/Werror,
+  D1001 + SMP/runtime-ready/FPU/atomic-core definitions. Nine objects pass:
+  newaddtask, task_execfuncs, task_init, p4_task_pins, p4_task_registry,
+  p4_task_cleanup, p4_task_publish, p4_semaphore_nodes, p4_semaphore_cancel.
+  Covers all six production record-layout consumers; private-layout matched
+  full core build remains mandatory. Three fresh normal objects also pass with
+  five SMP/runtime/FPU/atomic definitions omitted. Normal newaddtask:5644B
+  ba0d6c812172aa48ae70f57064192fb113de871e7c29c4d18092efabdade83ef;
+  task_execfuncs:3088B 945182d6eb48a2250234c6682d8024fca8903c97ebdf1c6c4969cc8bf0d0c611;
+  task_init:4580B c5104d2c4f98716746e0c60933825295f08e7db458542ca816442c538319e9e3.
+  These isolated taskres-observer-r1 objects are not a full link or a claim of
+  byte identity with earlier normal artifacts.
+- Safety: no configure/ABI refresh/full core link, flash/reset, UART, media or
+  interactive test. Fabian reports the display reconnected; that is not fresh
+  sight/touch readiness. Deployed CPUCount1 core remains unchanged:201504B,
+  SHA256 1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6.
+  Configure refusal and secondary activation prohibition remain intact.
+- Next: integrate and independently verify complete common-gate bootstrap
+  debt inventory/clearing/publication before selecting observation, then close
+  constructor cancellation/Ready and resource reader lifetime, matched core/BSP
+  linkage and actual concurrent-hart qualification. E3 and SMP goal remain open.
+
+### 2026-10-02 - Common-gate conservative bootstrap transaction started
+
+- Previous turn is progress: final private-foundation evidence and independent
+  reviews were read, tests repeated and master/phase/evidence synchronized.
+- Root replaces the final brief guard followed by ungated publication with a
+  trusted callback under the actual Task lifetime gate. Hardware isolation and
+  every conservative registry refusal remain required. Count/capacity refusal
+  precedes all mutations; pool allocation/free stays outside the transaction.
+- Scope: task_bootstrap.c, p4_task_pins.c/.h,
+  p4_taskresource_bootstrap.c/.h and exec_platform.h. No marker inventory/clear,
+  observer selection, cancellation relaxation, public ABI or runtime activation.
+- Fresh tests/builds/independent review pending; this started entry is not a
+  passing result. No board/reset/media/flash or interactive test occurred.
+- Next: validate actual gate scope and capacity retry, then implement the full
+  debt handoff without weakening live-storage and constructor-state authority.
+
+### 2026-10-02 - Common-gate bootstrap isolated builds and binding tests
+
+- Root integration report bootstrap-transaction-root-20261002.md is under
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01.
+  It records complete source/artifact SHA256, sizes, exact compiler flags and
+  procedure. Six fresh isolated SMP RV32 objects pass Wall/Wextra/Werror:
+  pins, hardware/bootstrap binding, inventory, NewAddTask, task_init and
+  task_execfuncs. Normal inventory compiles with selected body excluded; not
+  a normal runtime regression or full core linkage.
+- Root actual-binding fixture with clang C11 O1/O2 Wconversion/pedantic and
+  ASan/UBSan passes82941 each. Both final r2 binaries:340288B; O1 SHA256
+  6257bda0afbdc3cf8ef35dbce1a6505d0a46b10481b534a5aca69a626fd46891;
+  O2 d2b7b05eebfe64913dd708329afc2513c099e7696a96279ee989b77ccba23c88.
+  Actual Apply checks include callback under gate/IRQ-off, ordinary-pin and
+  malformed-registry refusal without callback, 0/1/2 outcomes, invalid-argument
+  rejection without lock and invalid-outcome fatal. Platform primitives are
+  mocked normal branches; callback is not the actual full inventory.
+- Header comment corrected: Isolated briefly locks the lifetime gate; it does
+  not restore the outer caller IRQ mask. Earlier no-lock comment was false.
+  Independent review reports no concrete gate-scope defect provisionally;
+  final hash-bound report and extracted full-bootstrap fixture still pending.
+- Safety/next: no hardware/full link/flash/reset/media or interactive run,
+  no default/runtime activation change. Keep observer unselected until full
+  debt storage authority/inventory/clear is integrated and verified. Full SMP
+  objective is not complete.
+
+### 2026-10-02 - Common-gate bootstrap fixture and independent review complete
+
+- Root independently inspects the revised fixtures and repeats both scripts
+  under configured evidence. Full actual-body bootstrap/commit/guard/Apply/
+  quiescence/TaskLaunch fixture passes461 each O1/O2; no-quiescence negative
+  control fails the captured-NULL/Ready assertion as intended. Service fixture
+  passes293 runtime +18 source checks each. Primitive boundaries are mocked;
+  these are not actual-hart/runtime gates.
+- Complete commands/source/artifact size/SHA256 and failure limits are in
+  bootstrap-transaction-root-20261002.md. Full-bootstrap root binaries:99760B,
+  O1 36aa514bb43084874f8585adc468d8d9e8008d5e705a7acae64006ee2dece78f;
+  O2 f64fd1e2fe055d8e71a3960f2a5d4ef4f76c192040eafaa60bfd88de69586496.
+  Negative:80624B a41f7f52671586c6b791156c3e089062a8a9a54d1e950d3beb8b99c14b88c290.
+- Extra Wconversion runs also pass461 each. Extra pedantic runs fail at compile
+  on five overlength source-string literals in the harness; no binaries
+  produced, attempted execution returns127. Those do not count as strict
+  pedantic passes; production RV32 and pins fixtures retain their stated flags.
+- Root reads independent source-only bootstrap-transaction-review-20261002.md
+  SHA256 0bf6698bbba5b404eb7aeb422c4b4bb87ceb54647374e6cce67739c59ce0d9d1.
+  No concrete transaction-order defect found; acceptance is confined to the
+  conservative boot-time snapshot/publication, with trusted callback and
+  primary-masked/secondary-reset assumptions. Earlier pending entries retained
+  as historical work-started states, superseded by this final result.
+- State: gate-scope prerequisite implemented/isolated-build/host verified, not
+  complete observer debt handoff. Master and phase updated. No full link,
+  flash/reset/UART/media or visual/touch run; deployed CPUCount1 image unchanged.
+  Next integrate safe debt inventory/clear and observer selection, then
+  constructor/reader lifetime, matched build and true concurrent Exec gates.
+
+### 2026-10-02 - Claude Code handoff and explicit stop
+
+- Fabian explicitly requests a handoff including working paths and that Codex
+  stop. Created arch/riscv-esp32p4/HANDOFF-CLAUDE.md; source checkout
+  /Volumes/Dev/Source/Amiga/AROS, normal build
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build, canonical evidence
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/smp-priority-2026-10-01.
+  Stale /Volumes/Dev/Source/AROS-ESP32 is explicitly not the working checkout.
+- Branch feat/riscv32-esp32p4-v2, HEAD ad62d8257ed34ce0832fbe9fb1bf98466d9a784f;
+  dirty/untracked changes preserved, no staging/commit. Frozen source hashes
+  independently rechecked in the handoff; no proposed DebtApply API, signature
+  change, scan or observer selection was implemented after the last verified
+  conservative transaction.
+- Read completed bootstrap-debt-storage-audit-20261002.md SHA256
+  5880cdf31e8aabd405198ea7a6716ff9c468e8c9d3de06bfe13915ba92103b51.
+  Marker/gate/isolation does not grant Task-field authority; future scan needs
+  a gate-held borrowed pin, and retired/post-free identities stay opaque.
+- Interrupted waiting fixture worker and read-only complete-core build-map
+  worker; storage audit completed. No full-core-build-map report existed at
+  stop. No new implementation/build/flash/reset/media or interactive test.
+- Independently checked local gen/rom/boot/aros-esp32p4.bin and archived
+  normal-core-final.bin:both201504B SHA256
+  1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6.
+  Local identity is not fresh device readback. CPUCount1/default/configure
+  refusal unchanged; sight/touch still requires fresh explicit readiness.
+- E3 remains incomplete. Codex goal is paused at user request; Claude Code
+  may continue from the handoff/current worktree. Master/phase/evidence updated;
+  no externally visible feature milestone changed.
+
+### 2026-10-02 - Claude: Giant strategy, WIP commit split, normal-build repair, G0 baseline
+
+- State change: Fabian chose a transitional Giant over the fine-grained E3
+  path (SMP.md "Transitional Giant"). Codex's uncommitted work was committed
+  in 14 functional commits (`5820526f3d`..`ef112f0b0f`), the pre-split tree
+  is kept as `refs/backup/pre-wip-split-20261002`. No E3 source was removed.
+- Defect found and fixed: the WIP `kernel/kernel_arch.h` (IRQ_COUNT 72,
+  extern `ictl_*`) shadowed rom/kernel's in every P4 build. The normal core
+  no longer linked (`ictl_enable_irq` undefined) and KernelBase would have
+  changed size. It now applies only to `__AROSEXEC_SMP__`; every other build
+  gets the generic IRQ_COUNT 1 again.
+- Build tree: `configure` changed on 2026-10-01 (smp refusal), so the top
+  makefile refused to build until configure ran again. Re-run with the
+  recorded arguments; every generated config file compared byte-identical
+  to a pre-run copy. New `tools/build-core.sh` builds kernel/exec/task/debug
+  kobjs with one explicit flag set (optional `--clean`), links the image
+  directly from the generated kernel mmakefile and fails unless
+  `Creating .../aros-esp32p4.bin` appears. `tools/flash-core-and-log.sh`
+  checks the D1001 MAC, writes only `0x20000`, requires esptool's hash
+  verification and captures the boot with reset-and-log.py.
+- Hardware: D1001, ESP32-P4 rev1.3, MAC `e8:f6:0a:e0:46:4c`,
+  `/dev/cu.usbmodem101`. Before any write: core range `0x20000`+256 KiB and
+  BSP range `0x820000`+0x3e0000 read back; prefixes matched the documented
+  core `1d77ae92…` and BSP `eadb8723…`. Baseline boot of that state: 421,170 B
+  log `efa0b127…`.
+- G0 normal core from HEAD (exec fixes included), flags `P4_BOARD=d1001
+  P4_C3_GRAPHICAL_BOOT=1 P4_C4_TOUCH_HIDD=1 P4_PSRAM_MHZ=200
+  P4_LDSCRIPT=ldscript-xip.lds P4_C1_PROFILE=1 FAT_DEBUG=1 DOS_DEBUG=1
+  DOSBOOT_DEBUG=1`, clean kernel/exec/task/debug objects: 201,920 B,
+  `3a8117dd56b42825bf1552ee2c1e7a4dced2db9fa2db0aa934a435b08bedf12a`. Written
+  to `0x20000` only, verified. Headless 55 s boot (log `52d7576f…`) shows the
+  same markers as the baseline: PSRAM 32 MB, runtime console switch, Wanderer
+  launch path, touch heartbeat 400, no trap/Alert/allocator error.
+- Evidence directory: build `evidence/giant-2026-10-02/` with
+  `SHA256SUMS.txt`, identity, backups, logs.
+- Next: Giant implementation (next entry).
+
+### 2026-10-02 - E3-GT transitional Giant: hart1 runs Exec tasks, self-test 10/10
+
+- State change: E3-GT `hardware partial (headless)`. This is a workaround
+  stage; it does not close E3-A1/A2/A3 and gives no visual acceptance.
+- Implementation (`P4_GIANT=1`, normal ABI): `kernel/p4_giant.[ch]` per-hart
+  slots, F/D locks (amoswap on internal SRAM), IPI (FROM_CPU_n, line 22),
+  tick IPI, task readiness wake-up, RemTask eviction, cache-off park,
+  console/cache/SYSTIMER serialization and hart1 start; `p4_giant_entry.S`
+  one-shot SRAM entry in its own `.sramentry` section (not `.sramtext`);
+  P4 `kernel_scheduler.c` Giant branch (affinity, try-lock F, wake-up);
+  exec overrides of Forbid/Permit/Disable/Enable; exec_platform.h Giant
+  macros; hooks in rom/exec newaddtask/signal/settaskpri/service/remtask/
+  findtask; traps.S/startup.S per-hart ISR stack via mscratch (Codex's SMP
+  path); scanout busy/active read under D. The define reaches generic
+  rom/kernel, rom/exec, rom/task through the arch include-flag files.
+- Failed runs, kept: (1) core `2b4d1f85…` started hart1 from krnStartExec
+  before COLDSTART; hart1 came online and ran flash code, then the boot task
+  faulted in AllocSignal with ThisTask NULL: on this port Exec_init and the
+  boot task only exist inside InitCode(RTF_COLDSTART). Start moved to a
+  COLDSTART resident at pri 104. (2) core `0d7eca22…`: concurrency passed,
+  then the Exec housekeeper faulted in tlsf_freevec: the test's spawn()
+  left tc_MemEntry uninitialized (test bug). (3) core `94198b0f…`: 9/9
+  stages passed, but all flashdisk MMU mappings were refused ("hart 1 did
+  not park"): a park request carries no work bit, so ipi_take's deassert of
+  a coinciding tick IPI swallowed it. Fixed by checking the request after
+  the deassert and before wfi; a 200-round park stage was added.
+- Passing artifacts, same flags as G0 plus `P4_GIANT=1 P4_GIANT_TEST=1`:
+  core 222,752 B `986cfd08c062709120d219f98e0fea380bd79ad616320fba02f005ad601bfae6`,
+  four 70 s boots (logs `1bf4d7c7…`, `b0f296a8…`, `9396129e…`, `f87d603a…`);
+  then, after park generalization (either hart may park the other) and the
+  scanout change, core 222,864 B
+  `8765aebd10b2fefd1a63832a7fe35464a1cddcacf341ea2be2ef8313ffc6a9b5`, two
+  boots (logs `76c01e84…`, `02b0011a…`). Each boot: `SUMMARY pass=10 fail=0`.
+- Measured (core `986cfd08…`, first boot): hart0 10.9 M loop iterations while
+  hart1's counter rose in 10,818 of 10,818 samples, wrong_hart 0;
+  Forbid and Disable 40,000/40,000, overlaps 0; 2,000 Signal round trips in
+  6 ticks; semaphore 10,000/10,000; 1,000 messages in order; 6,000 AllocMem
+  rounds without pattern error; FPU results bit-identical with two tasks per
+  hart time-sliced; RemTask of a running hart1 task: one eviction, counter
+  stopped; park 200/200, worst 1,701-2,605 cycles across boots.
+- After the self-test the normal cold start continues with hart1 online and
+  idle: flashdisk touch firmware is loaded through the park rendezvous, touch
+  heartbeat reaches 400 and the Wanderer launch path appears. No trap,
+  Alert, allocator error, refused park or "lacks F" report in any passing
+  boot. These are lossy headless logs, not visual acceptance.
+- Normal regression: core without P4_GIANT, clean build, 202,032 B
+  `37dba09d4de56e35d267aefc62e8520bd3590b0a298bb21f4773659cea19fd5d`, no
+  giant symbol, empty arch include flags; boot log `7f257b4c…` shows
+  firmware load, touch heartbeat 400, no trap. This core is now flashed.
+  BSP `eadb8723…` and everything else unchanged; only `0x20000` written.
+- Remaining risk: hart1 runs opt-in tasks only. `P4_GIANT_MIGRATE=1`
+  (default affinity both harts) is built but untested. Known limits in
+  SMP.md. The generated target configuration sets no -O flag and the
+  disassembly shows unoptimized frames, so throughput says little yet. Two harts
+  calling the park at once would deadlock (only flashdisk maps today).
+- Next: default migration with the full graphical boot headless, then a
+  sustained workload, then a visual/touch regression with fresh readiness.
+
+### 2026-10-02 - E3-GT default migration: ordinary tasks on both harts, headless
+
+- State change: `P4_GIANT_MIGRATE=1` tested; E3-GT stays `hardware partial
+  (headless)`. Every task created by NewAddTask() may now run on either
+  hart (tc_Flags bit 1 set by an exec_platform hook); Exec's boot task and
+  older tasks stay on hart0.
+- Additional changes, same commit series: the cache-off park takes its
+  request by CAS, so two harts asking at once cannot deadlock; the
+  self-test replaces the affinity bits instead of adding to them; with
+  `P4_GIANT_TEST` hart0's tick prints a lossless statistics line every 10 s
+  and the tasks hart1 ran every 60 s.
+- Failed run, kept: core 223,344 B `f7603eaf…` passed 10/10, then the boot
+  crawled (57 KB of log in 90 s, "Boot Mount" on hart1 printing about 40
+  characters a second). krnP4PutStr() held the console lock across a whole
+  string with interrupts on; a task preempted there migrated and left the
+  lock owned by the hart it left, so every character on the other hart
+  waited out the lock's bound. The lock is now held for one character with
+  MIE masked; a counter of bound exhaustions reads 0 since.
+- Passing artifacts, flags as G0 plus `P4_GIANT=1 P4_GIANT_MIGRATE=1
+  P4_GIANT_TEST=1`, built from clean objects: core 223,424 B `63379073…`
+  (one 90 s boot, log `69a03882…`); core 224,048 B
+  `63a6c55e76679cd4ec461a6823a9fece9f4d739fc1ca011f1214806a363d4c3a`,
+  three 90 s boots (logs `7e27e7f5…`, `61d05930…`, `9331fdd6…`); core
+  223,984 B `6eed3c951ad7cda066a075211d62586edfebbc87a1d539f0fc3436bb4cd63806`,
+  one 130 s boot (log `e44a651d…`). All: `SUMMARY pass=10 fail=0`, touch
+  firmware from FLASHDISK0P0, touch heartbeat past 400, no trap, Alert,
+  allocator error, refused park, console timeout or "lacks F".
+- Observed in the 130 s boot: hart1 ran 16 distinct tasks, among them
+  Exec housekeeper, input.device (268 dispatches by t=120), ESP32-P4 touch
+  poll (134), SDCard bus subsystem, console.device, SDCARD0P0, FLASHDISK0P0,
+  Lib & Dev Loader Daemon, Workbench Handler and WANDERER:Wanderer (729);
+  hart0 and hart1 each dispatched about 14,000/8,600 times by t=130, 209
+  cache-off parks served by hart1 during the boot.
+- Safety: only `0x20000` written, each write hash-verified; BSP, firmware
+  volume, SD and partitions untouched. Headless only; nothing here is a
+  visual or touch acceptance.
+- Remaining risk: known limits in SMP.md (direct SysBase->TDNestCnt
+  writers, direct SysBase->ThisTask readers, priority as exclusion, a task
+  already running elsewhere is not stopped by Forbid()). No sustained
+  workload yet; code is unoptimized.
+- Next: 10-minute headless soak, then a visual/touch regression with
+  Fabian's fresh readiness, then a defined concurrent stress workload.
+
+### 2026-10-02 - E3-GT soak and 30-minute stress; hart1 starvation found and fixed
+
+- State change: E3-GT `hardware partial (headless, stress passed)`. No
+  visual or touch acceptance; that needs Fabian's fresh readiness.
+- 10-minute soak, migrate core 223,984 B `6eed3c95…` (log 717,000 B
+  `822c69cf…`): 60 statistics lines, no console timeout, touch heartbeat to
+  8,000, hart1 ran 18 tasks (Wanderer 4,984 dispatches), no trap. The
+  self-test SUMMARY line is missing although all ten PASS lines are there:
+  the statistics line forced the lossy console policy back in the middle of
+  the blocking self-test. Fixed (the policy is now saved and restored); the
+  run is not counted as a clean self-test pass.
+- Stress workload (`P4_GIANT_STRESS=1`): four workers at priority -120,
+  either hart, looping until reset next to the normal boot: Forbid()
+  counter with overlap detection, semaphore counter, AllocMem pattern
+  check, deterministic FPU loop, message round trip with a partner every
+  16 rounds. `tools/giant-check.py` judges a capture: self-test summary,
+  every statistics line, console timeouts 0, stress errors 0, Forbid and
+  semaphore totals equal to the workers' counts within 4, and both harts'
+  dispatch counts and stress shares growing in every 60 s window.
+- Failed run, kept: core 226,352 B `084c2d14…`, 1,830 s (log `ab087373…`).
+  From t=25 hart1 froze with "ESP32-P4 touch poll" as its task: dispatch
+  9,975 and idle counts constant for 30 minutes, n_fspin constant, touch
+  heartbeat stopped. Hart0 ran all 10.06 M stress rounds without error. The
+  first checker version passed this log; the progress rule was added and it
+  now fails it. Cause: plain test-and-set F/D. Every Exec call on hart0
+  releases and retakes F within a few instructions, and hart1's polling
+  loop never observed it free while its task sat in Forbid(), so it could
+  not be switched either.
+- Fix: a hart spinning for F or D announces itself; a hart about to take
+  the lock, including the dispatcher's try-lock, first lets an announced
+  peer go (bounded, 20,000 cycles); want_f is set before the dispatcher's
+  try and a store-load fence follows the F release; a dispatch clears a
+  stale announcement. ISR stacks are now painted to measure their high-
+  water mark.
+- Passing run: core 226,880 B
+  `f0318aae5a057559eefa34f40a62c0c3636acf51b32f779ae15fa99d1faacefc`; 180 s
+  check (log `9154830a…`) and 1,830 s stress (log 797,859 B
+  `f5980acf0aa9ade4834d56c5337dd36e2c48a0238e7e8d3ea12c02f116698e02`), both
+  `giant-check.py --stress` PASS. At t=1800: 15,402,283 rounds, 6,612,422 on
+  hart0 and 8,789,861 on hart1, Forbid 15,402,287/15,402,287, semaphore
+  15,402,287/15,402,287, errors 0; dispatches 5,029,456 and 6,594,232; touch
+  heartbeat 25,600; hart1 ran 24 tasks (Wanderer 10,153, input.device 6,007,
+  touch poll 5,039, SDCARD0P0 1,740, LDDemon 807); ISR high water 852 and
+  664 of 8,192 bytes. No trap, Alert, allocator, park or "lacks F" report.
+- Visual-test core, same flags without the stress: 224,640 B
+  `318995370c5a6a5b69a2680620458021164a4c9e847e90bb2576f451e6c411f2`,
+  headless 120 s check PASS (log `340d0191…`, touch heartbeat 1,200, hart1
+  ran 17 tasks). It is the core now flashed at `0x20000`. The normal core
+  202,032 B `37dba09d…` is kept for restore.
+- Safety: only `0x20000` written, each write hash-verified, board MAC
+  checked before each write. BSP, firmware volume, SD, partitions untouched.
+- Next: visual/touch regression on the visual-test core after Fabian's
+  explicit readiness; then decide whether that core or the normal core
+  stays flashed.
+
+### 2026-10-03 - E3-GT visual/touch regression passes on the Giant core
+
+- State change: E3-GT stays `hardware partial`, now with the visual/touch
+  regression passed. All E3-GT gates so far ran with the diagnostic define
+  `P4_GIANT_TEST=1`; rule 6 requires the final gate again without it before
+  the stage may close.
+- Hardware: D1001, MAC `e8:f6:0a:e0:46:4c`. Source: commit `763a536f26`.
+- Core: 224,640 B
+  `318995370c5a6a5b69a2680620458021164a4c9e847e90bb2576f451e6c411f2`,
+  flags `P4_GIANT=1 P4_GIANT_MIGRATE=1 P4_GIANT_TEST=1` plus the normal set,
+  flashed at `0x20000` on 2026-10-02. BSP `eadb8723…` and firmware volume
+  unchanged.
+- Readiness: Fabian's explicit "bereit" for this test, with the instruction
+  not to restore the normal core.
+- Reset problem (not a Giant fault, still open): `tools/reset-and-log.py`
+  failed three times in a row, each time "board would not boot in six
+  attempts; it kept entering the ROM download stub" (18 resets). An
+  esptool hard reset could not connect ("No serial data received"). A
+  manual DTR-low/RTS pulse then gave a normal `SPI_FAST_FLASH_BOOT`, and a
+  passive 200 s capture followed. That capture therefore misses the first
+  bytes and begins in the panel I2C probe. The first-byte headless capture
+  of the same artifact is the earlier 120 s check (`340d0191…`).
+- Visual log: 773,839 B
+  `4654c46357fe91c9f14a979a49c78c8dbadf4a43efa916a98dc467b2e10fe2f1`.
+  `giant-check.py --seconds 190` PASS: SUMMARY pass=10 fail=0, statistics
+  t=10..200, contimeout=0, both harts dispatching throughout (t=200: hart0
+  15,900, hart1 10,332). Touch: 260 events, three two-finger presses with
+  right button down and up, heartbeat to 2,400 polls, errors 0. Hart1 ran
+  19 tasks, among them the Intuition menu handler (146 dispatches), Wanderer
+  (1,172), input.device (571) and the touch poller (232). No trap, Alert,
+  allocator, park or lock report; ISR high water 876/664 of 8,192 B.
+- Fabian's observation: desktop drawn cleanly, pointer follows the finger,
+  tap, double tap (drive window opens), two-finger menu, window drag and
+  close all worked, no hangs or dropouts.
+- Safety: nothing written in this step. Bootloader, partitions, BSP,
+  firmware volume and SD untouched.
+- Next: build the same core without `P4_GIANT_TEST` and repeat headless and
+  visual/touch; find the cause of the ROM-download latch on reset.
+
+### 2026-10-03 - E3-GT: one reboot without a host; 20-minute capture clean
+
+- Observation: Fabian reported that the board seemed to reboot after a
+  while. The Giant visual core's own uptime (`[giant] t=`, hart0 ticks)
+  dates the reboot to about 20:20:50, roughly 2.3 minutes after the 200 s
+  visual capture had closed the port; nothing on the host touched the port
+  then. The cause is not known. Candidates not yet separated: the D1001
+  battery and supply, and a host-side DTR/RTS change on the USB-Serial-JTAG
+  (whose lines drive chip reset and boot strap).
+- New tool `tools/passive-log.py`: reads without resetting, clears HUPCL so
+  closing leaves the lines asserted, stamps host time and flags every ROM
+  banner.
+- Passive 1,200 s capture right after (log 46,373 B
+  `1514e5ba48e9e5c3420964b62794fb0b45503f85a9077bd6ccbd82a71abfbd48`): no
+  ROM banner, uptime continuous to t=1440, both harts dispatching in every
+  minute, contimeout=0, no trap, Alert or lock report. The reboot did not
+  recur while a host was attached.
+- Open: reproduce with a capture running from before the event; if it
+  needs no host, check the reset cause the ROM prints.
+
 ## Evidence-entry template
+
+
+
+
+
+
 
 ```text
 ### YYYY-MM-DD - <phase and result>
