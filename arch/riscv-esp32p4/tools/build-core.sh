@@ -5,9 +5,11 @@
 #
 #   usage: build-core.sh <build-dir> <log-dir> [--clean] [--link-only] FLAG=VALUE ...
 #
-#   --clean deletes the kernel, exec, task and debug objects first. mmake
-#   does not track -D switches, so any change of the flag set needs it
-#   (see AGENTS.md, "Builds whose result gets documented").
+#   --clean deletes the kernel, exec, task, debug and flashdisk objects
+#   first. mmake does not track -D switches or P4_BOARD, so any change of
+#   the flag set needs it (see AGENTS.md, "Builds whose result gets
+#   documented"). timer.device and flashdisk.device are built as well, so
+#   a freshly configured tree links too.
 #
 #   The image is linked directly from the generated kernel mmakefile, which
 #   skips the oversized standalone flashdisk stage that the aggregate
@@ -42,14 +44,15 @@ printf '%s\n' "${flags[@]}" > "$logs/flags.txt"
 export PATH="$build/.venv/bin:$PATH"
 
 if [ $clean = 1 ]; then
-    for d in rom/kernel rom/exec rom/task rom/debug; do
+    for d in rom/kernel rom/exec rom/task rom/debug arch/riscv-esp32p4/flashdisk; do
         find "$gen/$d" -name '*.o' -delete 2>/dev/null || true
     done
-    echo "cleaned kernel/exec/task/debug objects" > "$logs/clean.txt"
+    rm -f "$gen/kobjs/flashdisk_device.o"
+    echo "cleaned kernel/exec/task/debug/flashdisk objects" > "$logs/clean.txt"
 fi
 
 cd "$build"
-[ $link_only = 1 ] || for t in kernel-kernel-kobj kernel-exec-kobj kernel-task-kobj kernel-debug-kobj; do
+[ $link_only = 1 ] || for t in kernel-kernel-kobj kernel-exec-kobj kernel-task-kobj kernel-debug-kobj kernel-timer-kobj kernel-flashdisk-kobj; do
     echo "=== $t" >> "$logs/build.log"
     if ! gmake "$t" "${flags[@]}" >> "$logs/build.log" 2>&1; then
         echo "build of $t failed; see $logs/build.log" >&2

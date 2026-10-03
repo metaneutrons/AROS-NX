@@ -5,10 +5,15 @@
 # build tree (README.md, "Board profiles").
 P4_BOARD ?= d1001
 
-# Shops list the Guition board as JC1060WP470C; its own documents say
-# JC1060P470C (_I_W_Y). Accept both, build one profile.
-ifeq ($(P4_BOARD),jc1060wp470c)
-override P4_BOARD := jc1060p470c
+# Guition JC1060P470C (shops: JC1060WP470C) comes with two JD9165 panel
+# batches that need different init tables, so the board ID names the batch:
+#   jc1060p470c-v1  the vendor's "Old_Panel" (its V2.x firmware images)
+#   jc1060p470c-v2  the vendor's "New_Panel" (its V3.x firmware images)
+# The vendor's "V2" sticker is not a reliable test: the first board here has
+# none and its factory firmware holds the new table. Read the batch from the
+# factory firmware. The bare name is refused so nobody gets a table by guess.
+ifneq ($(filter jc1060p470c jc1060wp470c,$(P4_BOARD)),)
+$(error P4_BOARD=$(P4_BOARD) is ambiguous: use jc1060p470c-v1 (old panel) or jc1060p470c-v2 (new panel))
 endif
 
 P4_BOARD_DIR := $(SRCDIR)/arch/riscv-esp32p4/bootloader/boards/$(P4_BOARD)
@@ -27,16 +32,13 @@ P4_BOARD_TOUCH_DRIVER := gsl3670
 P4_BOARD_PANEL_TABLE := jd9365_init
 P4_BOARD_PARTITION_CSV := $(P4_BOARD_DIR)/partition-table.csv
 P4_BOARD_SDKCONFIG := $(P4_BOARD_DIR)/sdkconfig.defaults
-else ifeq ($(P4_BOARD),jc1060p470c)
-# Two JD9165 panel batches with different init tables are fitted; a "V2"
-# label means the new one. P4_JC1060_PANEL=old selects the other table.
-P4_JC1060_PANEL ?= new
-ifeq ($(P4_JC1060_PANEL),new)
-P4_BOARD_CPPFLAGS := -DP4_BOARD_JC1060P470C=1
-else ifeq ($(P4_JC1060_PANEL),old)
-P4_BOARD_CPPFLAGS := -DP4_BOARD_JC1060P470C=1 -DP4_JC1060_PANEL_OLD=1
+else ifneq ($(filter jc1060p470c-v1 jc1060p470c-v2,$(P4_BOARD)),)
+# Both batches share the profile, the partition table and the sdkconfig.
+P4_BOARD_DIR := $(SRCDIR)/arch/riscv-esp32p4/bootloader/boards/jc1060p470c
+ifeq ($(P4_BOARD),jc1060p470c-v1)
+P4_BOARD_CPPFLAGS := -DP4_BOARD_JC1060P470C=1 -DP4_JC1060_PANEL_V1=1
 else
-$(error P4_JC1060_PANEL must be 'new' or 'old', not '$(P4_JC1060_PANEL)')
+P4_BOARD_CPPFLAGS := -DP4_BOARD_JC1060P470C=1 -DP4_JC1060_PANEL_V2=1
 endif
 P4_BOARD_FLASH_SIZE := 16MB
 P4_BOARD_REV_MIN := 100
@@ -52,5 +54,5 @@ P4_BOARD_PANEL_TABLE := jd9165_init
 P4_BOARD_PARTITION_CSV := $(P4_BOARD_DIR)/partition-table.csv
 P4_BOARD_SDKCONFIG := $(P4_BOARD_DIR)/sdkconfig.defaults
 else
-$(error Unsupported ESP32-P4 board '$(P4_BOARD)'; supported: d1001, jc1060p470c)
+$(error Unsupported ESP32-P4 board '$(P4_BOARD)'; supported: d1001, jc1060p470c-v1, jc1060p470c-v2)
 endif

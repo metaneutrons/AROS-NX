@@ -17,7 +17,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[3]
 BOARD = Path(__file__).resolve().parent
-BOARDS = ["d1001", "jc1060p470c"]
+BOARDS = ["d1001", "jc1060p470c-v1", "jc1060p470c-v2"]
 VARIABLES = [
     "P4_BOARD", "P4_BOARD_CPPFLAGS", "P4_BOARD_FLASH_SIZE",
     "P4_BOARD_REV_MIN", "P4_BOARD_REV_MAX", "P4_BOARD_PARTITION_OFFSET",
@@ -43,20 +43,20 @@ def make_values(board: str) -> dict[str, str]:
 
 
 def header_values(make: dict[str, str]) -> dict[str, str]:
-    name = make["P4_BOARD"]
-    text = (BOARD / (name + ".h")).read_text()
-    # Conditional values (panel variants) are not profile-layout facts; the
-    # first definition is enough for the checks below.
-    values: dict[str, str] = {}
-    for key, value in re.findall(r"^#define\s+([A-Z0-9_]+)\s+([^\s]+)",
-                                 text, re.MULTILINE):
-        values.setdefault(key, value)
-    return values
+    # The profile as the compiler sees it: board.h with this board's
+    # P4_BOARD_CPPFLAGS through the host preprocessor, so variant
+    # conditionals and board.h's own checks apply exactly as in a build.
+    out = subprocess.run(
+        ["cc", "-E", "-dM", "-x", "c", str(BOARD / "board.h")]
+        + make["P4_BOARD_CPPFLAGS"].split(),
+        capture_output=True, text=True, check=True).stdout
+    return dict(re.findall(r"^#define\s+(P4_[A-Z0-9_]+)\s+(.*)$",
+                           out, re.MULTILINE))
 
 
 def check(board: str, counter_probe: bool) -> bool:
     make = make_values(board)
-    board = make["P4_BOARD"]    # board.mk resolves the shop alias
+    board = make["P4_BOARD"]
     if counter_probe:
         # Deliberately corrupt only the in-memory candidate; no source changes.
         make["P4_BOARD_FLASHDISK_OFFSET"] = "0xc10000"
