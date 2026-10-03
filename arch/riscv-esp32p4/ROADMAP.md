@@ -23816,6 +23816,26 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: build the same core without `P4_GIANT_TEST` and repeat headless and
   visual/touch; find the cause of the ROM-download latch on reset.
 
+### 2026-10-03 - E3-GT: one reboot without a host; 20-minute capture clean
+
+- Observation: Fabian reported that the board seemed to reboot after a
+  while. The Giant visual core's own uptime (`[giant] t=`, hart0 ticks)
+  dates the reboot to about 20:20:50, roughly 2.3 minutes after the 200 s
+  visual capture had closed the port; nothing on the host touched the port
+  then. The cause is not known. Candidates not yet separated: the D1001
+  battery and supply, and a host-side DTR/RTS change on the USB-Serial-JTAG
+  (whose lines drive chip reset and boot strap).
+- New tool `tools/passive-log.py`: reads without resetting, clears HUPCL so
+  closing leaves the lines asserted, stamps host time and flags every ROM
+  banner.
+- Passive 1,200 s capture right after (log 46,373 B
+  `1514e5ba48e9e5c3420964b62794fb0b45503f85a9077bd6ccbd82a71abfbd48`): no
+  ROM banner, uptime continuous to t=1440, both harts dispatching in every
+  minute, contimeout=0, no trap, Alert or lock report. The reboot did not
+  recur while a host was attached.
+- Open: reproduce with a capture running from before the event; if it
+  needs no host, check the reset cause the ROM prints.
+
 ## Evidence-entry template
 
 
