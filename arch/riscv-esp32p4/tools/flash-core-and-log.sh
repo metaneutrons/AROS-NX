@@ -22,8 +22,9 @@ port=${5:-/dev/cu.usbmodem101}
 board=${P4_BOARD:-d1001}
 case "$board" in
     d1001)      mac="e8:f6:0a:e0:46:4c" ;;
-    # JC1060P470C: MAC to be recorded at the first identification.
-    jc1060p470c|jc1060wp470c) mac="" ;;
+    # The first JC1060P470C, identified 2026-10-03 (new panel batch).
+    jc1060p470c-v2) mac="80:f1:b2:d3:3b:a6" ;;
+    jc1060p470c-v1) mac="" ;;
     *)          echo "unknown board '$board'" >&2; exit 1 ;;
 esac
 [ -n "$mac" ] || {

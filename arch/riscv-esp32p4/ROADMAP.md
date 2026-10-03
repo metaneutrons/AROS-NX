@@ -138,7 +138,7 @@ gate: compensated output is not the native display contract.
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
 | D0 | Compile-time board profile, with D1001 as the first implementation | `hardware partial` | LDO2 now recovers and verifies all 32 MB without Vellum. The 20-MHz-PSRAM/90-MHz-CPU artifact showed only blue and an edge strip; changing only PSRAM to 200 MHz produced clean calibration and a spontaneously reported desktop. After the battery was reported empty, the initial non-desktop state could not be classified: opening UART coincided with a USB reset, and a subsequent controlled USB reset booted Wanderer with the restored touch firmware and zero reported faults. Fabian then saw the desktop. Neither run proves the original rail-off start completed by itself or passes the unsynchronized visual/touch gate. Isolated full core/Exec/SD/BSP and physical rail-off gates remain open; do not generalize this clock result to the earlier 360/200-MHz C1 strip. Prohibit stale cross-board objects before a second profile. |
 | D1 | Board-driver boundary and second-board onboarding | `build verified` | 2026-10-03: the profile now selects panel controller and table (JD9365/JD9165), rotation (90/0), panel power scheme (PCA9535 or plain GPIOs), touch driver (GSL3670/GT911, firmware optional), SD detect/power wiring, partition CSV and sdkconfig per board; `check-profile.py` evaluates `board.mk` per board through GNU make. The D1001 core built with these changes is byte-identical to HEAD (202,096 B `99a8f6f8…`, same flags, same tree), so the D1001 binary contract holds. Not hardware tested on either board. |
-| D2 | Guition JC1060P470C as the active development board (J0-J4) | `build verified` | Profile `jc1060p470c` (alias `jc1060wp470c`) from the vendor schematic, demos and dtsi: 16 MB flash, 32 MB PSRAM on VO2, JD9165 1024x600 unrotated at 750 Mbit/s x 2 lanes and 48 MHz DPI, reset GPIO0, backlight GPIO23, GT911 on GPIO7/8 (INT 21, RST 22), SD slot 0 without detect or power switch. First core links (197,584 B `b82aeb82…`). Fabian switched development to this board on 2026-10-03; no board-specific flash authorization yet, MAC not recorded, no gate run. |
+| D2 | Guition JC1060P470C as the active development board (J0-J4) | `hardware partial (J0 passed)` | Board IDs `jc1060p470c-v2` (new panel batch, the board in use) and `jc1060p470c-v1` (old batch); profile from the vendor schematic, demos and dtsi. 2026-10-03: board `80:f1:b2:d3:3b:a6` (ESP32-P4 v1.3, 16 MB) identified, factory flash backed up twice identical (`03222de1…`), provisioned with AROS bootloader, partition table and a headless core (181,184 B `0ed58805…`). J0 passes: bootloader loads ota_0, 32 MB PSRAM at 200 MHz calibrated, Exec starts, `board jc1060p470c-v2`, 60 s alive. J1 display, J2 touch, J3 SD, J4 package open. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
 | E2 | Two-hart atomics, coherence and IPI primitives | `hardware verified; complete` | Exact219,776-byte core08 passes five ordinary headless captures/ten reset-separated epochs:650 SRAM+660 PSRAM exchanges,120 refusals,163,840 updates per AMO/CAS/lock counter with measured contention, bidirectional software IPI, remote code37/53, missing-park refusal and ten cache suspend/resume windows. Secondary reset/clock stop confirmed every exit; full221,184-byte normal range restored/verified and headless baseline boots. Atomics qualify internal SRAM only; Exec SMP/default changes wait for E3. |
@@ -1174,8 +1174,11 @@ ESP32-P4NRW32 pre-v3 silicon as on the D1001 (every vendor image allows
 1.00-1.99), 16 MB flash, 32 MB PSRAM at 200 MHz on VO2 1.8 V, DSI PHY on VO3
 2.5 V, USB-C "USB2" to USB-Serial-JTAG, RESET and BOOT buttons. JD9165BA
 panel, native 1024x600 landscape, two lanes at 750 Mbit/s, RGB565; two panel
-batches with different init tables (`P4_JC1060_PANEL=new|old`, "V2" label =
-new). GT911 on I2C GPIO7/8, INT 21, RST 22. MicroSD on slot 0 pins 39-44
+batches with different init tables, selected by board ID: `jc1060p470c`
+for the new batch, `jc1060p470c-old` for the old one. The vendor's "V2"
+label is said to mark the new batch, but the first board has no label and
+its factory firmware carries the new table, so the batch is read from the
+factory firmware, not the label. GT911 on I2C GPIO7/8, INT 21, RST 22. MicroSD on slot 0 pins 39-44
 without card detect, supply hard-wired on. No port expander.
 
 The partition table keeps the D1001's AROS offsets (core 0x20000, package
@@ -23940,6 +23943,60 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: Fabian connects the JC1060P470C on USB2 and authorizes the J0 plan
   (identify, full backup, bootloader + partition table + core, erase
   otadata); then J0-J4 as in D2.
+
+### 2026-10-03 - D2/J0: JC1060P470C provisioned; first AROS boot reaches Exec
+
+- State change: D2 `hardware partial (J0 passed)`.
+- Authorization: Fabian connected the board, asked to back up the factory
+  image and then give all 16 MB to AROS, and granted the D1001-style
+  standing authorization for this board (AGENTS.md).
+- Board IDs: at Fabian's direction the panel batch is part of the board ID,
+  `jc1060p470c-v1` (vendor "Old_Panel") and `jc1060p470c-v2` ("New_Panel");
+  the bare name is refused. `check-profile.py` now reads the profile through
+  the host C preprocessor with each board's CPPFLAGS: 16/16 checks for each
+  of the three IDs, counter-probe fails all three. `build-core.sh` now also
+  builds and cleans timer.device and flashdisk.device, so a fresh tree links.
+- Identity: `/dev/cu.usbmodem101`, USB serial and MAC `80:f1:b2:d3:3b:a6`,
+  ESP32-P4 revision v1.3, crystal 40 MHz, flash manufacturer 0x68 device
+  0x4018, 16 MB.
+- Backup: `read-flash 0x0 0x1000000` twice, both 16,777,216 B
+  `03222de1887e5368a964c483c666ee71f66e4941a573974e95ae678587eed1df`;
+  copies in the build evidence and in `ESP32P4-board-backups/`. The factory
+  app is `esp_brookesia_demo` (ESP-IDF v5.5.4-dirty, built Jul 9 2026). It
+  holds the new-panel init arrays at the same offsets as vendor image
+  `V3.7_New_Panel`; the V2.x images hold neither. The board has no "V2"
+  label, so the label is not a reliable test; the board is the new batch.
+- Artifacts: bootloader 22,544 B
+  `27b99e03abb56eef0c2d3453a5800013f419e476ceec39a3bdb94c066c40e5f4`
+  (ESP-IDF v6.0.1 with the port patch, compile time embedded), partition
+  table 3,072 B
+  `b71dde30ab7dbd0bdc04f04b7fed92666ede9d932dc9cf23dfd361c55fb06345`,
+  headless core (`P4_BOARD=jc1060p470c-v2 P4_PSRAM_MHZ=200
+  P4_LDSCRIPT=ldscript-xip.lds FAT_DEBUG=1 DOS_DEBUG=1 DOSBOOT_DEBUG=1`,
+  dedicated tree `AROS-ESP32-JC1060-build`) 181,184 B
+  `0ed58805258d0b7764e633da91a704b2bc73f7460f45f8b17d1faac0d747fa76`.
+- Writes: MAC checked; `erase-region 0x10000 0x2000` (otadata, where the
+  vendor app began) and `0x820000 0x7e0000` (arosbsp, held vendor storage);
+  read-back of otadata, 0x820000, 0xc00000 and 0xfff000 all 0xFF;
+  `write-flash` 0x2000, 0x8000, 0x20000, three "Hash of data verified".
+  nvs, nvs_key and phy_init were not touched.
+- First boot, `tools/reset-and-log.py` 60 s from the first byte (log
+  10,969 B `ac770faf0435cc896b757213da470791b12d85e5214a78fa6de1ae6ad7bed2e2`):
+  ROM eco2, `rst:0x17 (CHIP_USB_UART_RESET)`, `SPI_FAST_FLASH_BOOT` on the
+  first attempt; bootloader shows the table, "No factory image, trying OTA
+  0", loads 0x20000 and sets ota_seq 1. Kernel: 625,232 B SRAM heap; LDO2
+  found enabled with eFuse calibration; PSRAM vendor 0x0d, 32 MB at 200 MHz,
+  calibration window 25 of 31, one word per MB verified; arosbsp found,
+  empty ("does not start with PKG v1", as erased). Exec with TLSF, residents
+  kernel, task, exec, debug, timer, flashdisk; 32 MB external memory added;
+  `board jc1060p470c-v2`; watchdogs off; 100 Hz timer; heartbeat alive 1 to
+  60 without a trap. utility.library is missing because there is no
+  package yet, as expected.
+- J0 acceptance points: all passed. CPU stays at the inherited clock in this
+  headless build (no `P4_CPU_MHZ`).
+- Safety: only the listed ranges written; factory image recoverable.
+- Next: J1 display. First headless (PHY lock, panel ID read, DCS 0x0A after
+  the video handover), then a visual check after Fabian's readiness.
 
 ## Evidence-entry template
 
