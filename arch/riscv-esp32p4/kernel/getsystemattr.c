@@ -45,7 +45,11 @@ AROS_LH1(intptr_t, KrnGetSystemAttr,
 
 #ifdef P4_C4_TOUCH_HIDD
     case KATTR_TouchScreenOps:
+#if defined(P4_BOARD_TOUCH_GT911)
+        return (intptr_t)krnP4GT911TouchScreenOps();
+#else
         return (intptr_t)krnP4GSLTouchScreenOps();
+#endif
 #endif
 
     default:

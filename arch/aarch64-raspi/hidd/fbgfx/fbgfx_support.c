@@ -39,7 +39,9 @@ BOOL initFBGfxHW(struct HWData *data)
     if (!ops || ops == (APTR)-1
         || ops->version != KRN_FRAMEBUFFER_OPS_VERSION
         || !ops->update_rect || !ops->get_stats
-        || ops->width != 1280 || ops->height != 800
+        || !ops->width || !ops->height
+        || ops->width > 4096 || ops->height > 4096
+        || ops->logical_pitch < ops->width * 2
         || ops->depth != 16 || ops->bytes_per_pixel != 2)
     {
         bug("[FBGfx/C1] framebuffer operation table missing or invalid\n");

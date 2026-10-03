@@ -24,8 +24,15 @@
 #define P4_TOUCH_RECOVERY_ERRORS 3U
 #define P4_TOUCH_MAX_RECOVERIES  3U
 
+/* Only a controller that runs from RAM (the D1001's GSL3670) has a firmware
+   file; the board profile names it. A GT911 runs from its own ROM. */
+#ifdef P4_BOARD_TOUCH_FW_PATH
+#define P4_TOUCH_HAS_FIRMWARE 1
 #define P4_TOUCH_FW_PATH P4_BOARD_TOUCH_FW_PATH
 #define P4_TOUCH_FW_FALLBACK P4_BOARD_TOUCH_FW_FALLBACK
+#else
+#define P4_TOUCH_HAS_FIRMWARE 0
+#endif
 
 static BOOL p4touch_wait(struct timerequest *timer, ULONG micros)
 {
@@ -35,6 +42,7 @@ static BOOL p4touch_wait(struct timerequest *timer, ULONG micros)
     return DoIO(&timer->tr_node) == 0;
 }
 
+#if P4_TOUCH_HAS_FIRMWARE
 static UBYTE *p4touch_read_firmware(struct DosLibrary *DOSBase,
                                     const char **loaded_path)
 {
@@ -95,6 +103,7 @@ static UBYTE *p4touch_read_firmware(struct DosLibrary *DOSBase,
     }
     return NULL;
 }
+#endif
 
 static WORD p4touch_x(ULONG raw, const struct KrnTouchScreenOps *ops)
 {
@@ -105,7 +114,8 @@ static WORD p4touch_x(ULONG raw, const struct KrnTouchScreenOps *ops)
 static WORD p4touch_y(ULONG raw, const struct KrnTouchScreenOps *ops)
 {
     return p4touch_coordinate(raw, P4_BOARD_TOUCH_Y_MIN,
-                             P4_BOARD_TOUCH_Y_MAX, ops->logical_height, 1);
+                             P4_BOARD_TOUCH_Y_MAX, ops->logical_height,
+                             P4_BOARD_TOUCH_MIRROR_Y);
 }
 
 static ULONG p4touch_distance(WORD ax, WORD ay, WORD bx, WORD by)
@@ -200,6 +210,9 @@ static unsigned int p4touch_mode(struct DosLibrary *DOSBase, const char *fw)
     LONG count;
     const char name[] = "p4touch.mode";
 
+    /* Without a firmware file there is no directory to look in. */
+    if (!fw)
+        return P4_TOUCH_TAP;
     while (fw[i] && i < sizeof(path) - sizeof(name))
     {
         path[i] = fw[i];
@@ -263,6 +276,7 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
         goto out;
     }
     DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 0);
+#if P4_TOUCH_HAS_FIRMWARE
     while (data->running && !firmware)
     {
         ULONG failed_record = 0, status = 0;
@@ -304,6 +318,7 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
                 (unsigned long)KRN_TOUCHSCREEN_FW_RECORDS,
                 (unsigned long)status);
     }
+#endif
     if (!data->running)
         goto out;
 
@@ -311,9 +326,10 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
     bug("[P4Touch/C4] gesture mode %s; hold %u ms, slop %u px\n",
         policy.mode == P4_TOUCH_DIRECT ? "direct" : "tap",
         P4_TOUCH_HOLD_MS, P4_TOUCH_SLOP_PX);
-    bug("[P4Touch/C4] calibration X=%u..%u Y=%u..%u; mirrored Y\n",
+    bug("[P4Touch/C4] calibration X=%u..%u Y=%u..%u%s\n",
         P4_BOARD_TOUCH_X_MIN, P4_BOARD_TOUCH_X_MAX,
-        P4_BOARD_TOUCH_Y_MIN, P4_BOARD_TOUCH_Y_MAX);
+        P4_BOARD_TOUCH_Y_MIN, P4_BOARD_TOUCH_Y_MAX,
+        P4_BOARD_TOUCH_MIRROR_Y ? "; mirrored Y" : "");
 
     acquired = data->ops->acquire();
     if (!acquired)
@@ -345,7 +361,7 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
             if (consecutive_errors >= P4_TOUCH_RECOVERY_ERRORS)
             {
                 ULONG failed_record = 0, status = 0;
-                LONG result;
+                LONG result = 0;
 
                 data->ops->release();
                 acquired = FALSE;
@@ -356,9 +372,11 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
                     data->running = FALSE;
                     continue;
                 }
+#if P4_TOUCH_HAS_FIRMWARE
                 result = data->ops->load_firmware(
                     firmware, KRN_TOUCHSCREEN_FW_BYTES,
                     &failed_record, &status);
+#endif
                 if (result || !(acquired = data->ops->acquire()))
                 {
                     bug("[P4Touch/C4] recovery %lu failed: result %ld "

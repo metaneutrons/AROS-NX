@@ -4501,6 +4501,11 @@ static void krnP4ReportPanel(const char *what, const struct P4PanelState *st)
     krnP4PutStr(st->reset_released ? ", reset released\n" : ", in reset\n");
 }
 
+/*
+ * B2 and its two diagnostics exercise the D1001's port expander. A board
+ * without one has nothing for them to test.
+ */
+#if P4_BOARD_PANEL_EXPANDER
 static int krnP4PanelPass(int pass)
 {
     struct P4PanelState st;
@@ -4735,6 +4740,11 @@ static void krnP4PowerOff(void)
                 " heartbeat, USB was still attached.\n");
 }
 #endif
+#else /* !P4_BOARD_PANEL_EXPANDER */
+#if defined(P4_BACKLIGHT_ONLY) || defined(P4_POWER_OFF)
+#error "P4_BACKLIGHT_ONLY and P4_POWER_OFF drive the D1001 port expander"
+#endif
+#endif /* P4_BOARD_PANEL_EXPANDER */
 
 static void krnP4PanelProbe(void)
 {
@@ -4750,6 +4760,17 @@ static void krnP4PanelProbe(void)
     return;
 #endif
 
+#if !P4_BOARD_PANEL_EXPANDER
+    /*
+     * No expander: reset is a GPIO and the supply is always on, so B2's
+     * register comparisons have no subject. The DSI stage below claims the
+     * reset line itself.
+     */
+    (void)r;
+    krnP4PutStr("[panel]  " P4_BOARD_NAME ": no expander, reset on GPIO,"
+                " supply always on\n");
+    passes = 2;
+#else
     krnP4PutStr("[panel]  B2: expander, panel supply and reset."
                 " No data path.\n");
 
@@ -4949,6 +4970,7 @@ static void krnP4PanelProbe(void)
 
     krnP4PutStr("[panel]  B2 ");
     krnP4PutStr(passes == 2 ? "passed, twice\n" : "FAILED\n");
+#endif /* P4_BOARD_PANEL_EXPANDER */
 
 #ifdef P4_DSI_PROBE
     /*
@@ -6372,6 +6394,13 @@ static void krnP4PanelProbe(void)
 }
 
 #ifdef P4_C4_TOUCH_PROBE
+#if defined(P4_BOARD_TOUCH_GT911)
+/* The GT911's identification lives with its driver (gt911.c). */
+static void krnP4C4TouchProbe(void)
+{
+    krnP4GT911Probe();
+}
+#else
 /*
  * C4's first hardware question, deliberately short of controller init.
  *
@@ -6453,8 +6482,12 @@ restore_i2c1:
     else
         krnP4PutStr("[touch]  I2C1 restored for the normal C3 display path\n");
 }
+#endif /* touch controller */
 
 #ifdef P4_C4_TOUCH_LOAD
+#if !defined(P4_BOARD_TOUCH_GSL3670)
+#error "P4_C4_TOUCH_LOAD is the GSL3670 firmware-load diagnostic"
+#endif
 static void krnP4C4TouchLoad(void)
 {
     uint32_t status = 0;

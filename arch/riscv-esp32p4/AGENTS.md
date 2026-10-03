@@ -260,6 +260,15 @@ counted as AROS recovery or as part of the stress gate.
 - Use explicit flash offsets and do not touch bootloader, partition table or
   `storage` unless the task specifically authorizes that exact write.
 
+## JC1060P470C: no standing authorization yet
+
+Fabian made the Guition JC1060P470C the active development board on
+2026-10-03. The standing authorization below covers the D1001 only. Until
+Fabian grants one for this board, every write to it needs his explicit
+approval of the exact plan (offsets, artifacts and hashes), and the first
+step is identification and a complete 16 MB read-back backup. Record its MAC
+in `tools/flash-core-and-log.sh`, which refuses the board until then.
+
 ## D1001 development-board flash authorization
 
 On 2026-08-22 the user granted standing authorization for routine bring-up

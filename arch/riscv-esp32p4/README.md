@@ -12,10 +12,57 @@ in `configure.in` as `$target_os-$target_cpu`, while the directory it selects
 is `<cpu>-<arch>`. Hence `--target=esp32p4-riscv` for `arch/riscv-esp32p4`,
 the same way `--target=opensbi-riscv64` selects `arch/riscv64-opensbi`.
 
+The SoC target has a compile-time board selector with two profiles under
+[board/](board/): `P4_BOARD=d1001` (Seeed reTerminal D1001, still the default)
+and `P4_BOARD=jc1060p470c` (Guition JC1060P470C, also accepted as
+`jc1060wp470c`), which is the active development board since 2026-10-03. A
+profile owns GPIOs, flash geometry, partition and sdkconfig input, and selects
+the panel controller and table, the rotation, the panel power scheme
+(PCA9535 or plain GPIOs), the touch driver (GSL3670 with firmware, GT911
+without) and the SD detect/power wiring. An unknown name fails the build.
+Keep a separate configured build directory for each board: mmake does not
+invalidate existing objects when only a make variable changes. The D1001 core
+is byte-identical to before this split; the JC1060P470C builds but has not
+booted yet (ROADMAP D1/D2, display facts in
+[display/JC1060-DISPLAY-CONTRACT.md](display/JC1060-DISPLAY-CONTRACT.md)).
+
+Current C1P caveat (2026-09-30): Fabian confirms noticeably faster initial
+drawing, then reports sudden severe slowdown and a hang. The runtime console
+now polls once per output byte and drops saturated debug output before Exec
+starts; USB/UART extracted-source sanitizer tests pass. This removes a
+source-proven blocking path, not a confirmed explanation of the hang.
+First-empty tap completion improves drive-icon double-taps according to Fabian;
+the 50-ms post-read idle gap has been restored after renewed graphics slowdown.
+The THEME/PNG image fix (64 MiB, 167 entries) is now written to SD and completely
+readback-verified before exclusive eject. Original write-range content is backed
+up. The visible gate exposes missing png.library>=52: the datatype's dynamic
+library dependencies were omitted. The corrected 171-entry image is now SD
+written/readback-verified/ejected (2026-10-01). Following the synchronized boot,
+Fabian confirms RAM Disk opening without an error message and one visible
+toolbar symbol. The missing-library/requester regression passes this opening;
+Fabian also reports screen drawing is fine so far on the same running device.
+This is short-run feedback with no measured duration; complete toolbar behavior
+and sustained performance remain unaccepted. The
+earlier volume requester (reported `TENEME`, possibly `THEME`) and subsequent
+missing png.library>=52 failure remain documented. Neither was evidence of
+filesystem corruption or a passed stability gate. An attempted passive
+console reopen reset the board and lost the slow state. No-listener runtime
+and interactive regression gates remain open; see the latest roadmap evidence.
+
 The ordered path from the current storage bring-up to a graphical Workbench,
 including mandatory hardware gates and the persistent evidence format, is in
 [ROADMAP.md](ROADMAP.md).  Work on this port must update that roadmap whenever
 a step starts, changes, becomes blocked or is verified.
+
+The currently flashed core was superseded by the console-only candidate:
+201,504 bytes at `0x20000`, SHA-256
+`1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6`.
+Write-time and independent core verification pass. The v2 BSP now carries the
+double-tap candidate (only p4touch.hidd replaced; see Currently flashed below).
+Artifacts and the pre-write core backup are in build
+`evidence/console-runtime-2026-09-30/`. Runtime logs are intentionally lossy;
+missing messages are not proof of missing execution. Interactive acceptance
+of the hang fix remains open.
 
 ## Status
 
@@ -28,7 +75,9 @@ its evidence entry in the same change.
 
 | Area | State | Notes |
 | :--- | :--- | :--- |
+| graphics performance | hardware partial | C1P tiled rotation, CPU360 and framebuffer v2 coalescing reduce the measured first full update from 2.776 s synchronous/CPU90 to 0.296 s queued/CPU360. Initial visual speedup confirmed, then slowdown/hang reported. Console-only nonblocking fix is sanitizer-tested, flashed and independently verified; causality and fresh visual/touch/no-reader acceptance remain open. See C1P and dated evidence. |
 | configure target | done | `--target=esp32p4-riscv`, configure completes |
+| board selection | hardware partial | `P4_BOARD=d1001` and `P4_BOARD=jc1060p470c` select wiring and drivers and reject unknown boards; the D1001 core reports `board d1001` on hardware and is byte-identical after the 2026-10-03 driver split. The JC1060P470C core builds; its J0-J4 gates are not run yet |
 | crosstools | done | binutils 2.47 and gcc 16.2.0 for riscv-aros, link libraries built |
 | rv32 CPU layer | done | M-mode CSR names, FLEN-aware FPU context, cache clears, backtrace, single-precision fenv, ABI-aware stub frames |
 | kernel arch layer | compiles | `gmake kernel-kernel-esp32p4-riscv` builds all platform objects |
@@ -49,7 +98,7 @@ its evidence entry in the same change.
 | exec.library | runs | SysBase, both InitCode passes, AvailMem and AllocMem answer |
 | serial debug console | not started | UART0 |
 | code from flash | done | .text and .rodata mapped from the app partition, 117744 bytes of SRAM returned |
-| PSRAM bring-up | done | 32 MB mapped at `0x48000000` and in exec's memory list; `AvailMem` reports 34,080,304 bytes.  20 MHz by default, `P4_PSRAM_MHZ=200` with per-boot read-sampling calibration.  The MSPI PLL is calibrated by this port itself, from an uncalibrated start on every boot - the analogue peripheral I2C block's reset is pulsed rather than merely released, so the path that used to fail is the one exercised.  Mode-register commands keep the ROM configurator but use a bounded local start/poll/copy path; a stuck transaction resets both PSRAM FSMs instead of hanging.  A forced stuck command recovered and the immediately following 200 MHz bring-up passed; a reset during measured 69 MB/s scanout also returned all 32 MB without vendor firmware.  `calib entry 0x24c done here` and the command timeout/recovery counters make those claims visible |
+| PSRAM bring-up | hardware partial | The D1001 LDO2/1,800-mV path recovers 32 MB without a Vellum preflash: XPD changed from off to on, chip identification succeeded on the first attempt and all 32 MB verified; a second USB reset passed. The old Vellum preflash was a workaround, not a power contract. With inherited 90-MHz CPU and 20-MHz PSRAM, the graphical artifact reached Wanderer in UART but showed Fabian only a light-blue field and flickering edge strip. Changing only PSRAM to 200 MHz restored clean calibration and a spontaneously reported visible desktop. That report was not a synchronized visual gate; an earlier 360/200-MHz C1 strip is not explained by this comparison. The global-reset candidate, matched full BSP build, controlled visual gate and physical-cold-boot gate remain open; see D0 in [ROADMAP.md](ROADMAP.md). |
 | CPU clock | B1 hardware verified | the port configured none and inherited 90 MHz from the bootloader until 2026-08-23.  `P4_CPU_MHZ=360` moves the four root dividers to CPU /1, MEM /2, APB /2, measured back as 360 MHz from `mcycle`.  Sequential PSRAM reads go 20 to 60 MB/s and internal SRAM 25 to 101 |
 | BSP package from flash | C2 and C3 hardware verified | the accepted C2 package has 30 members.  The accepted C3 package conditionally adds the normal console, RAM/CON handlers, `misc.resource` and `gadtools.library`: 34 members, 3,275,492 bytes, SHA-256 `7fd83f5c64d38928f7928f24b351461e6d28e3dad98909e052080edd7de0e8b`, all accepted by `boot/audit-package.py`, while preserving exact C2 reproduction |
 | timer.device | done | a 500 ms timerequest on the VBLANK unit returns after exactly 50 ticks |
@@ -68,7 +117,94 @@ its evidence entry in the same change.
 | Layers / Intuition screen | C2 hardware verified | a 30-member package contains Layers, Keymap, Intuition and the complete generic input skeleton required by `input.device`, with no fabricated input events.  The D1001 loads all members, installs Intuition's display callback at priority 15 before fbgfx insertion at 9, creates the monitor, then a priority-8 resident opens a custom `1280 x 800` Screen and two overlapping titled simple-refresh Windows before dosboot at -50.  A priority-5 worker runs after multitasking, waits for real `LAYERREFRESH` damage from asynchronous depth changes, consumes both `IDCMP_REFRESHWINDOW` messages, redraws through `BeginRefresh()`/`EndRefresh()` and finally scrolls the front window.  Direct observation confirms readable text, correct overlap and clipping, the intended scroll strip, four corner marks and a stable red pointer; the grey unrefreshed-area failure of the first candidate is absent.  The final unchanged package passes the complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash.  This reset series is not an unplugged battery cold-boot claim |
 | Normal read-only Wanderer boot | C3 hardware verified | Normal boot mounts the prepared SD as read-only `SYS:`, executes Startup-Sequence, installs fbgfx and loads Wanderer, its Zune classes, preferences and volume icons.  The first real `ENV:` multi-directory read exposed and led to a generic DOS FileHandle routing fix.  Wanderer correctly detaches and remains alive; the corrected sequence closes only the initial CLI with the standard `EndCLI` pattern.  The exact 64-MB, 89-entry image has SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  A first-byte 60-second D1001 capture has no trap, Alert, panic, Guru or fallback prompt.  Direct observation confirms a persistent, correctly oriented Wanderer desktop with readable title, visible drive icons and all four logical edges complete.  With the SD removed, two first-byte captures reproducibly report `GPIO45 high: no card present`, boot the read-only `FLASHDISK0P0` fallback and reach a visible graphical recovery Shell without a trap, Alert, panic or Guru.  The normal artifact passes 20/20 controlled EN-reset boots with one normalized gate tuple; this is not a physical battery-cold-start claim.  It also retained the complete, artefact-free desktop for a directly observed 1,800-second UART soak with no fatal marker.  That normal run is intentionally combined with B5's accepted 1,800 seconds of active read-only SD traffic under concurrent scanout; it does not misattribute periodic reads to the idle Wanderer desktop.  Two initial integrity attempts failed honestly because macOS inserted only `.fseventsd`; all 89 intended entries still matched and those failures remain in the evidence log.  The corrected host helper holds the raw card exclusively through write, synchronization and eject.  Hardware-locked first host insertions around exactly one normal D1001 boot then produced a prepared image, pre-run readback and post-run readback that are byte-identical at the image SHA above.  This closes the complete GB0 gate |
 | touch HIDD | C4 hardware partial | the D1001 answers at I2C0 address `0x40` with Silead ID `0x50910000`; GPIO16, reset on PCA9535 output 12 and the initially empty RAM-firmware state are measured.  No firmware blob is committed because redistribution authority is not established; a validated converter accepts a user-supplied vendor header or binary outside the repo.  The maintained absolute `mouse.hidd` path, persistent task-context I2C0 polling, direct-X/mirrored-Y normalization, scheduler idle correction and bounded press/release policy pass synchronized motion, three-tap and centre/four-edge observation.  The complete coherent 44-byte frame supports up to ten contacts while retaining the closest continuing contact as the visible pointer; its FIFO-segmented long read and actual independently moving two-contact frames are D1001-verified with zero errors.  Both contacts report ID zero, so positions rather than IDs deliberately drive continuity.  Two contacts promote the active press to Button2 and latch it through sequential finger release; synchronized UART and direct Intuition observation verify the menu/right-button response, absence of a spurious left re-press and clean final release.  Version 4 removes firmware from the normal core and loads the validated 34,848-byte D1001 record image in HIDD task context from `DEVS:Firmware/silead/gsl3670-d1001.fw`, with a development-only `FLASHDISK0P0:Firmware/...` fallback.  D1001 captures verify both properties: missing firmware leaves only touch disabled and does not block Wanderer, while the external fallback loads all 4,356 records, reaches status `0x5a5a5a5a` and polls without errors.  The bounded reload after repeated I2C errors is implemented but still lacks fault-injection hardware evidence, as does the full 1,000-cycle C4 soak |
-| second core | not started | single hart until the rest works |
+| second core / SMP | transitional Giant: ordinary tasks on both harts, 30-minute stress and visual/touch regression passed (with test define) | `P4_GIANT=1` makes Forbid()/Disable() system wide with two fair SRAM locks and brings hart1 into Exec from a COLDSTART resident; `P4_GIANT_MIGRATE=1` lets new tasks run on either hart. Headless D1001 evidence: self-test 10/10 (concurrency, exclusion, signals, semaphores, messages, AllocMem, FPU, RemTask eviction, cache-off park) and a 30-minute stress of four migrating workers next to the desktop with 15.4 M rounds, 0 errors and hart1 running Wanderer, input.device and the touch poller. On 2026-10-03 Fabian confirmed desktop, pointer, tap, double tap, two-finger menu, window drag and close on this core; hart1 ran the Intuition menu handler and Wanderer meanwhile. All of it ran with the diagnostic define `P4_GIANT_TEST=1`; the gate without it is still open. A named workaround, not the E3 design. See [SMP.md](SMP.md) and Track E. |
+
+E2 is hardware verified within its two-hart primitive scope. The exact
+219,776-byte P4_E2_PRIMITIVES candidate passes five ordinary headless captures
+with both reset-separated epochs, including SRAM/PSRAM publication/refusal,
+measured atomic contention, software IPI/remote fence.i and cache rendezvous.
+The complete normal core range is restored and independently verified;
+normal headless PSRAM/Wanderer/touch boot passes. No new visual/touch or
+long stability acceptance is claimed. Normal Exec remains single-hart.
+E3's parallel Luna CPU-local/runtime, synchronization and build/ABI audits
+are complete. The initial opt-in CPU-local foundation now passes five
+headless hardware runs and all E2 regressions; it is not Exec SMP. The
+private SRAM lock backend is now hardware qualified. Opt-in entry-time FPU
+isolation passes three complete headless runs with real preempted hart0 tasks,
+plus five core04 repeats with hardened diagnostic transport. The normal
+core was restored and independently verified before the startup campaign.
+Startup core03 now passes three headless metadata-binding reports followed by
+Wanderer/touch-heartbeat boot; this binds hart0 only, not the SMP scheduler.
+Next come CPU-local runtime and matched ABI integration. Direct task-field atomics and semaphore queues
+also require redesign. The private cached-PSRAM software-atomic service now
+passes five captures/ten epochs; direct PSRAM AMO/LRSC remains prohibited.
+Generic build output is the freshly rebuilt normal core (201,504 bytes, SHA256
+1d77ae9251e702b00ac68163bdcf61944f34f5a1207a90afa8fc5a8ad1a645e6),
+byte-identical to the saved baseline prefix with every E3 test flag off.
+Candidate01 was rejected before flashing; candidate02 boots but its truncated
+metadata report does not pass the gate. PSRAM candidate02 was rejected for an
+E2 guard failure; corrected PSRAM candidate03 passed its private gate. The
+full saved262,144-byte normal baseline range is restored and digest-verified;
+invalidate kernel objects before changing opt-in flags. See Track E evidence.
+
+Current D1001 flash state (2026-09-30): the 200-MHz-PSRAM core remains at
+`0x20000`. The exact prior 4-MiB GSL3670 firmware development volume was
+restored at `0xc00000`; a headless first-byte boot loaded its 4,356 records,
+read ready status `0x5a5a5a5a`, polled without errors and started Wanderer.
+An earlier dead-touch report was made while the deliberately firmware-free
+comparison volume was flashed. A later report on the restored combination
+also described a stationary pointer. A synchronized USB-reset repeat on
+2026-09-30 restored visible pointer tracking: UART recorded 107 contact frames,
+81 mouse events, matching framebuffer updates and clean final release, with
+zero I2C errors. The pre-reset failure was not captured and its cause remains
+open. Two-finger gestures and the full C4 soak still need their separate gates;
+the private firmware remains outside the repository.
+
+The 2026-09-30 tap-mode candidate changes the default mouse policy: one-finger
+movement moves only the pointer; a short stationary tap clicks on lift; a
+stationary 400-ms hold starts a left drag. Movement beyond 8 logical pixels
+cancels tap/hold recognition for that contact. Two fingers retain the latched
+right-button gesture. Two empty reports debounce release; I2C errors and
+worker shutdown release any held button without synthesizing a click.
+The pure policy passes 251 host checks under ASan/UBSan, and the D1001 BSP
+contains only the replacement `p4touch.hidd`. A first-byte headless boot
+confirms tap mode, firmware readiness and 200 error-free idle polls, with
+Wanderer launched. Fabian subsequently confirmed movement, tap and hold-drag
+in a synchronized test. The menu bar appears, but the dropdown does not open;
+menu selection and full C4 acceptance remain open.
+Fabian reports that the pointer stays below the menu strip. A diagnostic-only
+`P4_TOUCH_EDGE_TRACE=1` build now records single-contact raw extrema and sampled
+raw/logical positions for a consented perimeter measurement. It does not
+change or automatically learn calibration; normal builds leave tracing off.
+The completed trace contains 263 single-contact frames and zero I2C errors;
+its extrema are X=16..1638 and Y=15..874. The next candidate maps those
+inclusive D1001 board-profile bounds to 0..1279 and mirrored 799..0, saturating
+outliers. It changes both primary-contact selection and event coordinates
+consistently. All 3,863 host checks pass, including endpoints, monotonicity,
+invalid inputs and the gesture regression. These empirical bounds are not a
+controller-wide contract.
+The candidate is flashed with writer-side hash verification. A first-byte
+headless boot confirms those calibration bounds and 200 error-free idle polls.
+After fresh readiness, Fabian confirms four-edge reachability and menu
+dropdown opening. The synchronized trace records Button2 release at logical
+Y=5, 182 contact frames, 174 events and zero I2C errors, with clean button state
+at 1,200 polls. Menu-item execution, full soak and intermittent startup
+reliability remain separate open gates; C4 remains hardware partial.
+To select legacy immediate-left-press behavior, put `direct` (optionally
+followed by LF) in `p4touch.mode` beside the firmware file actually loaded,
+then reboot. Missing/invalid files select tap mode. This startup-only preference
+uses the already mounted firmware volume instead of racing early ENV assigns.
+The current read-only flash fallback requires preparing that preference in the
+development volume image; it cannot be saved by writing the running flash disk.
+
+After Fabian reported an empty battery and initially no desktop, opening the
+USB console coincided with `CHIP_USB_UART_RESET`. A later controlled USB-reset
+capture booted `SDCARD0P0` to Wanderer with clean 200-MHz PSRAM, 256 accepted
+graphics swaps and external touch firmware loaded; Fabian then saw the
+desktop. The undisturbed post-discharge start was not captured, so neither
+automatic cold-boot completion nor a physical touch response is established
+by this repeat. See the 2026-09-30 D0 evidence entry in
+[ROADMAP.md](ROADMAP.md).
 
 ## The board this is being brought up on
 
@@ -81,7 +217,7 @@ Read off the hardware with esptool 5.3, not taken from a datasheet.
 | Console | USB-Serial/JTAG, Espressif 303a:1001, enumerates without a bridge chip |
 | Flash | 32 MB, Winbond (manufacturer 0xef, device 0x4019) |
 | Flash layout | ESP-IDF table at 0x8000, nvs 0x9000, nvs_key 0xf000, otadata 0x10000, phy_init 0x12000, ota_0 0x20000 (8 MB), `arosbsp` 0x820000 (8064 KB), FAT storage 0x1020000 (15.9 MB) |
-| Currently flashed | patched ESP-IDF v6.0.1 second stage, the temporary 199,344-byte C1 source/front/back diagnostic core (SHA-256 `9d7c04c03f927166f329466bda19e971a6d11b9bdbd6ebc38bdf7b48ec1f68d9`) in ota_0, the matching 3,309,516-byte, 35-member diagnostic BSP (SHA-256 `6f900932238440d4d0a2a17c38f0b2d7309153e77d135b02609425dc5402c5d3`) below the `arosbsp` split, and the unchanged firmware-absent 4-MiB C4 A/B development volume (SHA-256 `bb9a75ca99d0bbe2811acac25d166717f32718ef1f6d87403262539b815fa7c5`) at `0xc00000`; core and BSP passed write-time hashing and separate exact-range flash verification and the board deliberately remains in the ROM loader pending a synchronized visual test.  Bootloader, partition table, `storage` and read-only SD remain untouched.  The displaced 197,696-byte C3+C4 core is preserved as `/tmp/aros-c4-runtime-core.bin`, SHA-256 `f3ad642072fa4eae7f1315359ac7734d014ed0706795113b68c4b34ac35f793c`; the prior private-firmware volume is preserved off-board as `/tmp/aros-c4-runtime-with-fw.img`, SHA-256 `ed5dca8356362e6065d56922220a2108442dd19db718db7b905833c20818e138` |
+| Currently flashed | Patched ESP-IDF v6.0.1 second stage unchanged. Experimental two-hart core, visual/touch regression passed 2026-10-03: transitional Giant with default migration and self-test (`P4_GIANT=1 P4_GIANT_MIGRATE=1 P4_GIANT_TEST=1`, otherwise the normal flags), 224,640 bytes at `0x20000`, SHA-256 `318995370c5a6a5b69a2680620458021164a4c9e847e90bb2576f451e6c411f2`, esptool write-verified. The normal single-hart core for restore is 202,032 bytes, SHA-256 `37dba09d4de56e35d267aefc62e8520bd3590b0a298bb21f4773659cea19fd5d`. Double-tap/50-ms-idle candidate 35-member BSP: 3,314,560 bytes at `0x820000`, SHA-256 `eadb8723feb7bf1af92debf48daca033f626ab22bb6308ef3125f3abf93a9714`, unchanged. Firmware volume at `0xc00000` last verified SHA-256 `ed5dca8356362e6065d56922220a2108442dd19db718db7b905833c20818e138`. Backups/logs: build `evidence/giant-2026-10-02/`. Do not pair a v2 core with a v1 BSP. Bootloader, partitions, firmware volume and SD unchanged. Visual/touch regression of the Giant core passed with its test define; the normal single-hart core was not visually re-tested in this round. |
 
 Revision v1.3 means the pre-v3 memory layout applies. The hardware facts above
 were read before the first write. The bring-up now deliberately replaces only
@@ -286,7 +422,7 @@ repurposing the second slot is one command:
                --partition-table-offset 0x8000 switch_ota_partition --slot 0
 
 M6 replaces the former second OTA/rollback slot in that table. The source is
-`bootloader/partition-table.csv`; `esp32p4-partition-table` runs ESP-IDF's
+`bootloader/boards/d1001/partition-table.csv` (each board has its own under `bootloader/boards/`); `esp32p4-partition-table` runs ESP-IDF's
 own `gen_esp32part.py` in both directions and leaves these checked artifacts
 under `bin/esp32p4-riscv/gen/rom/boot`:
 

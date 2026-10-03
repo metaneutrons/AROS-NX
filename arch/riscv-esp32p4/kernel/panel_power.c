@@ -1,7 +1,9 @@
 /*
     Copyright (C) 2026, The AROS Development Team. All rights reserved.
 
-    Desc: D1001 panel power, reset and backlight, through the port expander.
+    Desc: Panel power, reset and backlight. The D1001 drives them through a
+          PCA9535 port expander; a board without one (P4_BOARD_PANEL_EXPANDER
+          0) drives reset and backlight from plain GPIOs, at the end.
 */
 
 /*
@@ -40,6 +42,11 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
+
+static void panel_backlight_dark(void);
+static void panel_backlight_pwm(unsigned int percent);
+
+#if P4_BOARD_PANEL_EXPANDER
 
 /*
  * The pins this port drives, and the state they start in.
@@ -126,6 +133,8 @@ static int panel_modify(UWORD set, UWORD clear)
     return panel_set_outputs(v);
 }
 
+#endif /* P4_BOARD_PANEL_EXPANDER */
+
 /*
  * The backlight pin, held at zero without enabling its PWM path.
  *
@@ -168,6 +177,7 @@ static void panel_backlight_dark(void)
            1UL << P4_BOARD_BACKLIGHT_GPIO);
 }
 
+#if P4_BOARD_PANEL_EXPANDER
 /*
  * Claim the four pins, in the order that never drives an unasked-for level.
  *
@@ -333,6 +343,7 @@ int krnP4PanelPowerUp(struct P4PanelState *out)
         return r;
     return krnP4PanelResetPulse(out);
 }
+#endif /* P4_BOARD_PANEL_EXPANDER */
 
 /*
  * The backlight on, at full brightness, and only when asked.
@@ -412,6 +423,7 @@ static void panel_backlight_pwm(unsigned int percent)
            1UL << P4_BOARD_BACKLIGHT_GPIO);
 }
 
+#if P4_BOARD_PANEL_EXPANDER
 /*
  * Drop PWR_HOLD, which powers the board off.
  *
@@ -447,6 +459,7 @@ int krnP4PanelBacklightOn(void)
     panel_backlight_pwm(P4_LEDC_BL_PERCENT);
     return P4_I2C_OK;
 }
+#endif /* P4_BOARD_PANEL_EXPANDER */
 
 /*
  * What the backlight path actually looks like, read back rather than assumed.
@@ -459,7 +472,12 @@ int krnP4PanelBacklightOn(void)
  */
 void krnP4PanelBacklightState(struct P4BacklightState *out)
 {
+#if P4_BOARD_PANEL_EXPANDER
     out->latch = panel_latch;
+#else
+    out->latch = 0;
+    out->expander_pins = 0;
+#endif
     out->pin_level = (p4_r32(P4_GPIO_BASE + P4_GPIO_IN)
                       >> P4_BOARD_BACKLIGHT_GPIO) & 1;
     out->out_level = (p4_r32(P4_GPIO_BASE + P4_GPIO_OUT)
@@ -468,7 +486,9 @@ void krnP4PanelBacklightState(struct P4BacklightState *out)
                           + P4_GPIO_FUNC_OUT_SEL(P4_BOARD_BACKLIGHT_GPIO));
     out->iomux = p4_r32(P4_IOMUX_BASE
                         + P4_IOMUX_PIN(P4_BOARD_BACKLIGHT_GPIO));
+#if P4_BOARD_PANEL_EXPANDER
     (void)panel_read16(P4_PCA9535_INPUT, &out->expander_pins);
+#endif
 
     /*
      * Is a waveform actually there?
@@ -491,6 +511,7 @@ void krnP4PanelBacklightState(struct P4BacklightState *out)
     }
 }
 
+#if P4_BOARD_PANEL_EXPANDER
 /*
  * Back to the state a failure should leave behind: reset asserted, backlight
  * dark, panel supply off.  Called on any error and safe to call at any point,
@@ -507,3 +528,123 @@ int krnP4PanelSafe(void)
                         (UWORD)(P4_EXP_LCD_PWR_EN | P4_EXP_LCD_RST
                                 | P4_EXP_LCD_BL_EN));
 }
+
+#else /* !P4_BOARD_PANEL_EXPANDER */
+
+/*
+ * A board whose panel supply is always on and whose reset is a plain GPIO
+ * (JC1060P470C: GPIO0, active low). The API is the expander version's, so
+ * the bring-up sequence stays one sequence; there is no latch, no stray
+ * bits and no power hold. The same safety order holds: the output level is
+ * set before the pin is made an output, and every failure path leaves reset
+ * asserted and the backlight dark.
+ */
+static int panel_claimed;
+
+static void panel_reset_level(int high)
+{
+    unsigned long iomux = P4_IOMUX_BASE
+                          + P4_IOMUX_PIN(P4_BOARD_PANEL_RESET_GPIO);
+    unsigned long v;
+
+    p4_w32(P4_GPIO_BASE + (high ? P4_GPIO_OUT_W1TS : P4_GPIO_OUT_W1TC),
+           1UL << P4_BOARD_PANEL_RESET_GPIO);
+    if (panel_claimed)
+        return;
+
+    v = p4_r32(iomux);
+    v &= ~(P4_IOMUX_MCU_SEL_M | P4_IOMUX_FUN_PU | P4_IOMUX_FUN_PD);
+    v |= (unsigned long)P4_IOMUX_FUNC_GPIO << P4_IOMUX_MCU_SEL_S;
+    v |= P4_IOMUX_FUN_IE;
+    p4_w32(iomux, v);
+
+    v = p4_r32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_BOARD_PANEL_RESET_GPIO));
+    v &= ~P4_GPIO_OUT_SEL_MASK;
+    v |= P4_GPIO_OUT_SEL_GPIO | P4_GPIO_OEN_SEL;
+    p4_w32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_BOARD_PANEL_RESET_GPIO), v);
+    p4_w32(P4_GPIO_BASE + P4_GPIO_ENABLE_W1TS,
+           1UL << P4_BOARD_PANEL_RESET_GPIO);
+    panel_claimed = 1;
+}
+
+int krnP4PanelClaim(struct P4PanelState *out)
+{
+    panel_backlight_dark();
+    panel_reset_level(0);                       /* reset asserted */
+    if (out)
+    {
+        out->claimed = 1;
+        out->powered = 0;
+        out->reset_released = 0;
+        out->config = 0;
+        out->output = 0;
+        out->input = 0;
+        out->found_output = 0;
+        out->found_config = 0;
+    }
+    return P4_I2C_OK;
+}
+
+UWORD krnP4PanelStrayBits(void)
+{
+    return 0;
+}
+
+/* The supply is hard-wired on; nothing to switch and nothing to wait for. */
+int krnP4PanelSupplyOn(struct P4PanelState *out)
+{
+    if (!panel_claimed)
+        return P4_I2C_NOTREADY;
+    if (out)
+        out->powered = 1;
+    return P4_I2C_OK;
+}
+
+/* The expander version's 5/10/120 ms pattern, on the GPIO. */
+int krnP4PanelResetPulse(struct P4PanelState *out)
+{
+    if (!panel_claimed)
+        return P4_I2C_NOTREADY;
+    panel_reset_level(1);
+    krnTimerWait(1);                            /* 5 ms, one tick at 100 Hz */
+    panel_reset_level(0);
+    krnTimerWait(1);                            /* 10 ms */
+    panel_reset_level(1);
+    krnTimerWait(P4_TICK_HZ * 12 / 100);        /* 120 ms */
+    if (out)
+        out->reset_released = 1;
+    return P4_I2C_OK;
+}
+
+int krnP4PanelPowerUp(struct P4PanelState *out)
+{
+    int r = krnP4PanelSupplyOn(out);
+
+    if (r != P4_I2C_OK)
+        return r;
+    return krnP4PanelResetPulse(out);
+}
+
+/* No power-hold line on this board: the request is refused. */
+int krnP4PanelPowerOff(void)
+{
+    return P4_I2C_NOTREADY;
+}
+
+int krnP4PanelBacklightOn(void)
+{
+    if (!panel_claimed)
+        return P4_I2C_NOTREADY;
+    panel_backlight_pwm(P4_LEDC_BL_PERCENT);
+    return P4_I2C_OK;
+}
+
+int krnP4PanelSafe(void)
+{
+    panel_backlight_dark();
+    if (panel_claimed)
+        panel_reset_level(0);
+    return P4_I2C_OK;
+}
+
+#endif /* P4_BOARD_PANEL_EXPANDER */
