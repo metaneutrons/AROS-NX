@@ -16,7 +16,18 @@
  * (SW2) drives CHIP_PU and BOOT (SW1) GPIO35, so the board can always be
  * hard reset and forced into the ROM loader by hand.
  */
-#define P4_BOARD_NAME                   "jc1060p470c"
+/*
+ * Two panel batches, one board ID each (board.mk): v1 is the vendor's
+ * "Old_Panel", v2 its "New_Panel". Only the init table and the old batch's
+ * horizontal back porch differ.
+ */
+#if defined(P4_JC1060_PANEL_V1)
+#define P4_BOARD_NAME                   "jc1060p470c-v1"
+#elif defined(P4_JC1060_PANEL_V2)
+#define P4_BOARD_NAME                   "jc1060p470c-v2"
+#else
+#error "JC1060P470C needs P4_JC1060_PANEL_V1 or _V2 (board.mk)"
+#endif
 #define P4_BOARD_FLASH_BYTES            0x01000000UL
 #define P4_BOARD_PARTITION_OFFSET       0x00008000UL
 #define P4_BOARD_BSP_PART_TYPE          0x40
@@ -47,7 +58,7 @@
  */
 #define P4_BOARD_PANEL_DPI_MHZ          48
 #define P4_BOARD_PANEL_HSYNC            24
-#ifdef P4_JC1060_PANEL_OLD
+#ifdef P4_JC1060_PANEL_V1
 #define P4_BOARD_PANEL_HBP              160     /* IDF demo; Arduino differs */
 #else
 #define P4_BOARD_PANEL_HBP              136     /* dtsi and datasheet */

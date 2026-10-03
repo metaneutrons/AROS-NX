@@ -260,14 +260,28 @@ counted as AROS recovery or as part of the stress gate.
 - Use explicit flash offsets and do not touch bootloader, partition table or
   `storage` unless the task specifically authorizes that exact write.
 
-## JC1060P470C: no standing authorization yet
+## JC1060P470C development-board flash authorization
 
 Fabian made the Guition JC1060P470C the active development board on
-2026-10-03. The standing authorization below covers the D1001 only. Until
-Fabian grants one for this board, every write to it needs his explicit
-approval of the exact plan (offsets, artifacts and hashes), and the first
-step is identification and a complete 16 MB read-back backup. Record its MAC
-in `tools/flash-core-and-log.sh`, which refuses the board until then.
+2026-10-03 and granted the same standing authorization as for the D1001,
+for the board with MAC `80:f1:b2:d3:3b:a6` (ESP32-P4 v1.3, 16 MB flash):
+
+- a verified AROS core to `ota_0` at `0x20000`;
+- a verified BSP package to `arosbsp` at `0x820000`;
+- a verified development volume to `arosbsp` at `0xc00000`.
+
+The same rules apply as below: identify the device by MAC, verify artifact
+hashes, report exact offsets in the roadmap evidence. Bootloader, partition
+table, `otadata`, NVS and `phy_init` stay explicit-write targets.
+
+The same message authorized the one-time provisioning that gives the whole
+16 MB to AROS: AROS bootloader to `0x2000`, the board's partition table to
+`0x8000`, erasing `otadata` (`0x10000`-`0x11fff`, where the vendor app
+began), core, package and volume. The factory image is backed up first and
+kept: `ESP32P4-board-backups/jc1060p470c-80f1b2d33ba6-factory-16MB.bin`,
+SHA-256 `03222de1887e5368a964c483c666ee71f66e4941a573974e95ae678587eed1df`,
+read twice and identical. Restoring it is a full `write-flash 0x0` of that
+file; the board's BOOT and RESET buttons force the ROM loader if needed.
 
 ## D1001 development-board flash authorization
 

@@ -188,8 +188,8 @@ extern const unsigned int krnP4JD9165InitOldCount;
 extern const struct P4JD9165Cmd krnP4JD9165InitNew[];
 extern const unsigned int krnP4JD9165InitNewCount;
 
-/* The JC1060P470C ships two panel batches; board.mk picks the table. */
-#ifdef P4_JC1060_PANEL_OLD
+/* The JC1060P470C ships two panel batches; the board ID picks the table. */
+#ifdef P4_JC1060_PANEL_V1
 #define P4_JD9165_INIT          krnP4JD9165InitOld
 #define P4_JD9165_INIT_COUNT    krnP4JD9165InitOldCount
 #else

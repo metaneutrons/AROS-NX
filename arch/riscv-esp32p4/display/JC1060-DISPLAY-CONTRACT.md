@@ -37,7 +37,9 @@ All in the vendor package (`JC1060WP470C/`), as received 2026-10-03.
 | H sync / back / front | 24 / 136 / 160 (new panel) | `reference` | `G-dtsi` 3-8, `G-idf-new` 505-515, `G-ds` p.8 |
 | H back porch, old panel | 160 (IDF) versus 160 with HS 20 (Arduino) | `unresolved` | `G-idf-old` 629-634, `G-ard` old `.h` 110-115 |
 | V sync / back / front | 2 / 21 / 12 | `reference` | as H; Arduino old panel says 10 / 23 / 12 (`unresolved` for that batch) |
-| init tables | old 51, new 60 commands; "V2" label = new | `reference` | `G-idf-*`, burn notes |
+| init tables | old 51, new 60 commands; board IDs `jc1060p470c-old` and `jc1060p470c` | `reference` | `G-idf-*` |
+| fitted batch | new: the factory firmware on board `80:f1:b2:d3:3b:a6` holds the new table at the offsets of vendor image V3.7_New_Panel; V2.x images hold neither long array | `reference` | factory backup 2026-10-03 |
+| "V2" label | vendor note says it marks the new panel; that board has no label, so the label is not a reliable test | `unresolved` | burn notes; factory backup |
 | reset | GPIO0, active low | `unresolved` | `G-sch` FPC1 pin 4 and the BSP header say GPIO0; `G-ard` says GPIO5, two other demos GPIO27 |
 | backlight | GPIO23 to the MP3202 boost enable, 10 k pull-down, active high, PWM | `reference` | `G-sch` "Blacklighting"; LEDC 5-20 kHz in the demos |
 | LCD power | none to switch; bias boost enabled from VDDA | `reference` | `G-sch` "LCD_DC-DC" |
@@ -45,7 +47,7 @@ All in the vendor package (`JC1060WP470C/`), as received 2026-10-03.
 
 ## Open for J1
 
-The reset line, the fitted panel batch, and whether the panel accepts this
-port's non-burst video at 48 MHz are the three questions the first display
-run has to answer. A CPU reset does not stop the GDMA (D1001 B5 history), so
+The reset line and whether the panel accepts this port's non-burst video at
+48 MHz are the questions the first display run has to answer; the fitted
+batch on the first board is read from its factory firmware (new). A CPU reset does not stop the GDMA (D1001 B5 history), so
 display runs keep `P4_SCANOUT_SECS` bounded until the path is proven.
