@@ -896,6 +896,39 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
     krnP4DsiReferenceTransitionTrace("after-id");
 #endif
 
+#if defined(P4_BOARD_PANEL_JD9165)
+    /*
+     * The JC1060P470C's JD9165BA, in its vendor driver's order: identity
+     * read (above), MADCTL 0 for RGB order with no mirror, then the board's
+     * table, which already carries the pixel format, sleep-out and
+     * display-on. There is no page-unlock or lane command outside it; the
+     * 0x0B 0x11 entry in the table sets two lanes.
+     */
+    {
+        static const unsigned char madctl = 0x00;
+
+        r = krnP4DsiDcsWrite(0x36, &madctl, 1);
+        if (r != P4_DSI_OK)
+            return r;
+    }
+
+    dsi_trace();                /* 2: after MADCTL */
+
+    for (i = 0; i < P4_JD9165_INIT_COUNT; ++i)
+    {
+        const struct P4JD9165Cmd *c = &P4_JD9165_INIT[i];
+
+        r = krnP4DsiDcsWrite(c->cmd, c->param, c->param_bytes);
+        if (r != P4_DSI_OK)
+            return r;
+        if (c->delay_ms)
+        {
+            r = dsi_wait_ms(c->delay_ms);
+            if (r != P4_DSI_OK)
+                return r;
+        }
+    }
+#else
     {
         static const unsigned char page_user = 0x00;
         static const unsigned char madctl = 0x00;   /* RGB order, no mirror */
@@ -979,6 +1012,7 @@ int krnP4DsiPanelInit(unsigned char *id, int *id_result)
                 return r;
         }
     }
+#endif /* panel controller */
 
 #ifdef P4_B5_BUFFERED_CMD_DRAIN
     {

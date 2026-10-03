@@ -92,13 +92,13 @@
 #define P4_USJ_EP1_DEPTH        64
 
 /*
- * Which of the two the kernel debug output goes to. The USB peripheral
- * is the default because it is what the reTerminal D1001 brings out;
- * UART0 needs an adapter on the board's pins, and is selected by
+ * Which of the two the kernel debug output goes to. The board profile names
+ * the USB peripheral when its board brings it out (both supported boards
+ * do); UART0 needs an adapter on the board's pins, and is selected by
  * defining this to 0.
  */
 #ifndef P4_CONSOLE_USB
-#define P4_CONSOLE_USB          1
+#define P4_CONSOLE_USB          P4_BOARD_CONSOLE_USB
 #endif
 
 /*
@@ -1174,11 +1174,13 @@
 #define P4_DSI_VID_VACTIVE_LINES 0x060
 
 /*
- * The panel's timing, from display/DISPLAY-CONTRACT.md's Set A - the set the
+ * The panel's native scan geometry and timing come from the board profile
+ * (board/*.h). The notes below record how the D1001's values were found.
+ * For the D1001 they are display/DISPLAY-CONTRACT.md's Set A - the set the
  * working reference actually writes, not the one its header declares.
  */
-#define P4_PANEL_H_RES          800
-#define P4_PANEL_V_RES          1280
+#define P4_PANEL_H_RES          P4_BOARD_PANEL_H_RES
+#define P4_PANEL_V_RES          P4_BOARD_PANEL_V_RES
 /*
  * One transmitted line is one panel line.  The earlier VMUL=2 measurement was
  * made while every RGB565 pixel had its two bytes swapped; after correcting
@@ -1191,20 +1193,31 @@
 #define P4_PANEL_VMUL           1
 #endif
 #define P4_TX_V_RES             (P4_PANEL_V_RES * P4_PANEL_VMUL)
-#define P4_PANEL_HSYNC          20
-#define P4_PANEL_HBP            20
-#define P4_PANEL_HFP            40
-#define P4_PANEL_VSYNC          4
+
 /*
- * 30.  The component's own header macro says 12, and this port followed it for
- * one round; the firmware that actually drives this board says 30, and that is
- * the one with evidence behind it.  See P4_PANEL_BPP for the general point.
+ * What the software draws on. The D1001 panel is portrait and shown rotated
+ * 90 degrees clockwise, so its logical width is the native height; a panel
+ * with ROTATE 0 is used as it scans.
  */
-#ifdef P4_PANEL_24BIT
-#define P4_PANEL_VBP            12
+#if P4_BOARD_PANEL_ROTATE == 90
+#define P4_LOGICAL_W            P4_TX_V_RES
+#define P4_LOGICAL_H            P4_PANEL_H_RES
 #else
-#define P4_PANEL_VBP            30
+#define P4_LOGICAL_W            P4_PANEL_H_RES
+#define P4_LOGICAL_H            P4_TX_V_RES
 #endif
+
+#define P4_PANEL_HSYNC          P4_BOARD_PANEL_HSYNC
+#define P4_PANEL_HBP            P4_BOARD_PANEL_HBP
+#define P4_PANEL_HFP            P4_BOARD_PANEL_HFP
+#define P4_PANEL_VSYNC          P4_BOARD_PANEL_VSYNC
+/*
+ * D1001: 30.  The component's own header macro says 12, and this port followed
+ * it for one round; the firmware that actually drives this board says 30, and
+ * that is the one with evidence behind it.  See P4_PANEL_BPP for the general
+ * point.  The 24-bit experiment's 12 is chosen in board/d1001.h.
+ */
+#define P4_PANEL_VBP            P4_BOARD_PANEL_VBP
 /*
  * Overridable so the blanking can be varied as a test.
  *
@@ -1217,11 +1230,11 @@
  * for vertical blanking and that whole line of reasoning was an artefact.
  */
 #ifndef P4_PANEL_VFP
-#define P4_PANEL_VFP            30
+#define P4_PANEL_VFP            P4_BOARD_PANEL_VFP
 #endif
-/* 40 MHz, from the working firmware's D1001_LCD_DPI_CLOCK_MHZ. */
+/* D1001: 40 MHz, from the working firmware's D1001_LCD_DPI_CLOCK_MHZ. */
 #ifndef P4_PANEL_DPI_MHZ
-#define P4_PANEL_DPI_MHZ        40
+#define P4_PANEL_DPI_MHZ        P4_BOARD_PANEL_DPI_MHZ
 #endif
 /*
  * Two panel profiles, because the evidence for them is split.
@@ -1260,6 +1273,9 @@
  * not running.  240 divides exactly by 80, 60, 48 and 40.
  */
 #define P4_DSI_DPICLK_DIV       (240 / P4_PANEL_DPI_MHZ)
+#if (240 % P4_PANEL_DPI_MHZ) != 0
+#error "P4_PANEL_DPI_MHZ must divide the 240 MHz PLL tap exactly"
+#endif
 
 #define P4_DSI_INT_ST0          0x0BC
 #define P4_DSI_INT_ST1          0x0C0
@@ -1304,8 +1320,8 @@
  */
 #define P4_DSI_PLLREF_MHZ       40
 
-/* This board: two lanes.  The rate is the one thing to change. */
-#define P4_DSI_LANES            2
+/* From the board profile; the rate is the one thing to change. */
+#define P4_DSI_LANES            P4_BOARD_PANEL_LANES
 /*
  * Overridable, so the profiles can be crossed.
  *
@@ -1333,7 +1349,7 @@
  * remains unexplained.
  */
 #ifndef P4_DSI_LANE_MBPS
-#define P4_DSI_LANE_MBPS        1500
+#define P4_DSI_LANE_MBPS        P4_BOARD_PANEL_LANE_MBPS
 #endif
 
 #if P4_DSI_LANE_MBPS == 1500
@@ -1351,6 +1367,16 @@
 #define P4_DSI_PLL_N            2       /* 40 * 50 / 2 */
 #define P4_DSI_PLL_M            50
 #define P4_DSI_HS_FREQ_SEL      0x2A    /* the [1000,1050) row */
+#elif P4_DSI_LANE_MBPS == 750
+/*
+ * The JC1060P470C vendor rate.  ESP-IDF's search walks N from 1: N 1, 3 and
+ * 6 give even M but miss 750 by 30 or 3.3 MHz, N 8 gives M 150 exactly
+ * (f_ref/N = 5 MHz, the lowest the PHY allows).  Range code: the [750,800)
+ * row of soc_mipi_dsi_phy_pll_ranges.
+ */
+#define P4_DSI_PLL_N            8
+#define P4_DSI_PLL_M            150
+#define P4_DSI_HS_FREQ_SEL      0x19
 #elif P4_DSI_LANE_MBPS == 500
 #define P4_DSI_PLL_N            4       /* 40 * 50 / 4 */
 #define P4_DSI_PLL_M            50

@@ -19,7 +19,8 @@
 /* The D1001 GSL3670 image is an array of little-endian <offset,value>
    records.  Keeping the expected board-specific record count in the public
    contract lets the file-owning HIDD reject a wrong image before any byte is
-   sent to the controller. */
+   sent to the controller.  Controllers that run from their own ROM (GT911)
+   take no image at all. */
 #define KRN_TOUCHSCREEN_FW_RECORD_BYTES 8U
 #define KRN_TOUCHSCREEN_FW_RECORDS      4356U
 #define KRN_TOUCHSCREEN_FW_BYTES \
@@ -52,7 +53,9 @@ struct KrnTouchScreenOps
     /* Load and start one already validated, external little-endian record
        image.  Zero is success.  failed_record and status are always filled;
        the platform owns reset, transport and final 0x5a5a5a5a status
-       validation.  This call is task-context only and never retains data. */
+       validation.  This call is task-context only and never retains data.
+       NULL when the controller needs no firmware; acquire() then starts it.
+       raw_width/raw_height are the range read_contacts() reports in. */
     LONG (*load_firmware)(const UBYTE *data, ULONG bytes,
                           ULONG *failed_record, ULONG *status);
 

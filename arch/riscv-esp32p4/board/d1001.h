@@ -7,14 +7,18 @@
 #define P4_BOARD_PARTITION_OFFSET       0x00008000UL
 #define P4_BOARD_BSP_PART_TYPE          0x40
 #define P4_BOARD_BSP_PART_LABEL         "arosbsp"
+#define P4_BOARD_CONSOLE_USB            1
 #define P4_BOARD_I2C0_SDA_GPIO          37
 #define P4_BOARD_I2C0_SCL_GPIO          38
 #define P4_BOARD_TOUCH_IRQ_GPIO         16
+#define P4_BOARD_TOUCH_GSL3670          1
 #define P4_BOARD_TOUCH_ADDR             0x40
 #define P4_BOARD_I2C1_SDA_GPIO          20
 #define P4_BOARD_I2C1_SCL_GPIO          21
 #define P4_BOARD_BACKLIGHT_GPIO         14
+#define P4_BOARD_SD_HAS_DETECT          1
 #define P4_BOARD_SD_DETECT_GPIO         45
+#define P4_BOARD_SD_HAS_POWER_GPIO      1
 #define P4_BOARD_SD_POWER_GPIO          46
 #define P4_BOARD_PSRAM_LDO_CHANNEL       2
 #define P4_BOARD_PSRAM_LDO_MV            1800
@@ -27,6 +31,33 @@
 #define P4_BOARD_TOUCH_X_MAX            1638U
 #define P4_BOARD_TOUCH_Y_MIN            15U
 #define P4_BOARD_TOUCH_Y_MAX            874U
+#define P4_BOARD_TOUCH_MIRROR_Y         1
+
+/*
+ * Panel: JD9365, native 800 x 1280 portrait, shown rotated 90 degrees
+ * clockwise as 1280 x 800. Timing is display/DISPLAY-CONTRACT.md's Set A,
+ * the set the working reference writes; the history behind each value is
+ * at its use in kernel/hardware.h. Power, reset and backlight enable go
+ * through the PCA9535 below.
+ */
+#define P4_BOARD_PANEL_JD9365           1
+#define P4_BOARD_PANEL_EXPANDER         1
+#define P4_BOARD_PANEL_H_RES            800
+#define P4_BOARD_PANEL_V_RES            1280
+#define P4_BOARD_PANEL_ROTATE           90
+#define P4_BOARD_PANEL_LANES            2
+#define P4_BOARD_PANEL_LANE_MBPS        1500
+#define P4_BOARD_PANEL_DPI_MHZ          40
+#define P4_BOARD_PANEL_HSYNC            20
+#define P4_BOARD_PANEL_HBP              20
+#define P4_BOARD_PANEL_HFP              40
+#define P4_BOARD_PANEL_VSYNC            4
+#ifdef P4_PANEL_24BIT
+#define P4_BOARD_PANEL_VBP              12
+#else
+#define P4_BOARD_PANEL_VBP              30
+#endif
+#define P4_BOARD_PANEL_VFP              30
 
 #define P4_PCA9535_ADDR                0x20
 #define P4_EXP_LCD_PWR_EN               (1U << 0)

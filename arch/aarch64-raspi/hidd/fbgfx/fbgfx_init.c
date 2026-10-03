@@ -95,9 +95,12 @@ static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
     ULONG white_pixels = 0;
     ULONG line, x, y;
     unsigned int attempt;
+    /* The card scales with the panel: 1280x800 on the D1001, 1024x600 on
+       the JC1060P470C.  Corner blocks, plate and text keep their sizes. */
+    const ULONG W = xsd->data.width, H = xsd->data.height;
 
-    mode = BestModeID(BIDTAG_NominalWidth, 1280,
-                      BIDTAG_NominalHeight, 800,
+    mode = BestModeID(BIDTAG_NominalWidth, W,
+                      BIDTAG_NominalHeight, H,
                       BIDTAG_Depth, 16,
                       TAG_DONE);
     if (mode == INVALID_ID)
@@ -115,7 +118,7 @@ static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
 
     for (attempt = 0; attempt < 3; attempt++)
     {
-        bitmap = AllocBitMap(1280, 800, 16,
+        bitmap = AllocBitMap(W, H, 16,
                              BMF_DISPLAYABLE | BMF_CLEAR | BMF_CHECKVALUE,
                              (struct BitMap *)bmtags);
         if (!bitmap || !IS_HIDD_BM(bitmap))
@@ -132,7 +135,8 @@ static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
             bitmap = NULL;
         }
     }
-    bug("[FBGfx/C1] three 1280x800 RGB565 bitmap allocations passed\n");
+    bug("[FBGfx/C1] three %lux%lu RGB565 bitmap allocations passed\n",
+        (unsigned long)W, (unsigned long)H);
 
     InitRastPort(&rp);
     rp.BitMap = bitmap;
@@ -142,22 +146,22 @@ static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
                RPTAG_FgColor, 0xFFFF0000, TAG_DONE);
     RectFill(&rp, 32, 32, 191, 159);
     SetRPAttrs(&rp, RPTAG_FgColor, 0xFF00FF00, TAG_DONE);
-    RectFill(&rp, 1088, 32, 1247, 159);
+    RectFill(&rp, W - 192, 32, W - 33, 159);
     SetRPAttrs(&rp, RPTAG_FgColor, 0xFF0000FF, TAG_DONE);
-    RectFill(&rp, 32, 640, 191, 767);
+    RectFill(&rp, 32, H - 160, 191, H - 33);
     SetRPAttrs(&rp, RPTAG_FgColor, 0xFFFFFF00, TAG_DONE);
-    RectFill(&rp, 1088, 640, 1247, 767);
+    RectFill(&rp, W - 192, H - 160, W - 33, H - 33);
 
     SetRPAttrs(&rp, RPTAG_FgColor, 0xFF00FFFF, TAG_DONE);
     Move(&rp, 32, 32);
-    Draw(&rp, 1247, 767);
-    Move(&rp, 1247, 32);
-    Draw(&rp, 32, 767);
+    Draw(&rp, W - 33, H - 33);
+    Move(&rp, W - 33, 32);
+    Draw(&rp, 32, H - 33);
     /* The built-in font is only eight pixels high.  Give Text() a large,
        high-contrast centre plate instead of asking the observer to find one
        tiny line under the cyan diagonals. */
     SetRPAttrs(&rp, RPTAG_FgColor, 0xFF000000, TAG_DONE);
-    RectFill(&rp, 448, 304, 831, 495);
+    RectFill(&rp, W / 2 - 192, H / 2 - 96, W / 2 + 191, H / 2 + 95);
     SetRPAttrs(&rp, RPTAG_DrMd, JAM1,
                RPTAG_FgColor, 0xFFFFFFFF, TAG_DONE);
 
@@ -176,7 +180,7 @@ static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
 
     for (line = 0; line < 6; line++)
     {
-        Move(&rp, 512, 336 + line * 24);
+        Move(&rp, W / 2 - 128, H / 2 - 64 + line * 24);
         Text(&rp, "AROS ESP32-P4 C1", sizeof("AROS ESP32-P4 C1") - 1);
     }
 
@@ -185,10 +189,10 @@ static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
                 (IPTR *)&pixels);
     OOP_GetAttr(HIDD_BM_OBJ(bitmap),
                 xsd->attrBases[1] + aoHidd_BitMap_BytesPerRow, &pitch);
-    if (pixels && pitch >= 2560)
+    if (pixels && pitch >= W * 2)
     {
-        for (y = 304; y <= 495; y++)
-            for (x = 448; x <= 831; x++)
+        for (y = H / 2 - 96; y <= H / 2 + 95; y++)
+            for (x = W / 2 - 192; x <= W / 2 + 191; x++)
             {
                 UBYTE *pixel = pixels + y * pitch + x * 2;
                 if (pixel[0] == 0xff && pixel[1] == 0xff)
@@ -203,7 +207,7 @@ static BOOL FBGfx_C1Gate(struct FBGfx_staticdata *xsd,
         return FALSE;
     }
 
-    UpdateBitMap(bitmap, 0, 0, 1280, 800);
+    UpdateBitMap(bitmap, 0, 0, W, H);
     bug("[FBGfx/C1] Show, RectFill, Draw, Text and full update submitted\n");
 
     if (!xsd->data.ops->flush || !xsd->data.ops->flush())

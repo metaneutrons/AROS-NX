@@ -12,16 +12,19 @@ in `configure.in` as `$target_os-$target_cpu`, while the directory it selects
 is `<cpu>-<arch>`. Hence `--target=esp32p4-riscv` for `arch/riscv-esp32p4`,
 the same way `--target=opensbi-riscv64` selects `arch/riscv64-opensbi`.
 
-The SoC target now has a compile-time board selector. Use `P4_BOARD=d1001`
-for the only implemented profile; it is also the current default. The profile
-under [board/](board/) owns D1001 GPIOs, the port-expander signals, flash
-geometry, partition input and touch-firmware paths. An unknown name fails the
-build rather than silently producing a D1001 image. Keep a separate configured
-build directory for each board: mmake does not invalidate existing objects
-when only a make variable changes. This is a board-support foundation, not a
-claim that another ESP32-P4 board boots yet. D1001-specific panel, touch,
-PSRAM and SD-power sequences still need driver selection before a second board
-can be added safely; see the board-portability track in the roadmap.
+The SoC target has a compile-time board selector with two profiles under
+[board/](board/): `P4_BOARD=d1001` (Seeed reTerminal D1001, still the default)
+and `P4_BOARD=jc1060p470c` (Guition JC1060P470C, also accepted as
+`jc1060wp470c`), which is the active development board since 2026-10-03. A
+profile owns GPIOs, flash geometry, partition and sdkconfig input, and selects
+the panel controller and table, the rotation, the panel power scheme
+(PCA9535 or plain GPIOs), the touch driver (GSL3670 with firmware, GT911
+without) and the SD detect/power wiring. An unknown name fails the build.
+Keep a separate configured build directory for each board: mmake does not
+invalidate existing objects when only a make variable changes. The D1001 core
+is byte-identical to before this split; the JC1060P470C builds but has not
+booted yet (ROADMAP D1/D2, display facts in
+[display/JC1060-DISPLAY-CONTRACT.md](display/JC1060-DISPLAY-CONTRACT.md)).
 
 Current C1P caveat (2026-09-30): Fabian confirms noticeably faster initial
 drawing, then reports sudden severe slowdown and a hang. The runtime console
@@ -74,7 +77,7 @@ its evidence entry in the same change.
 | :--- | :--- | :--- |
 | graphics performance | hardware partial | C1P tiled rotation, CPU360 and framebuffer v2 coalescing reduce the measured first full update from 2.776 s synchronous/CPU90 to 0.296 s queued/CPU360. Initial visual speedup confirmed, then slowdown/hang reported. Console-only nonblocking fix is sanitizer-tested, flashed and independently verified; causality and fresh visual/touch/no-reader acceptance remain open. See C1P and dated evidence. |
 | configure target | done | `--target=esp32p4-riscv`, configure completes |
-| board selection | hardware partial | `P4_BOARD=d1001` selects shared C/Make wiring and rejects unknown boards; the new core reports `board d1001` on hardware, but the retained PSRAM no-answer state prevents the graphical/BSP compatibility gate, and the full aggregate build remains open |
+| board selection | hardware partial | `P4_BOARD=d1001` and `P4_BOARD=jc1060p470c` select wiring and drivers and reject unknown boards; the D1001 core reports `board d1001` on hardware and is byte-identical after the 2026-10-03 driver split. The JC1060P470C core builds; its J0-J4 gates are not run yet |
 | crosstools | done | binutils 2.47 and gcc 16.2.0 for riscv-aros, link libraries built |
 | rv32 CPU layer | done | M-mode CSR names, FLEN-aware FPU context, cache clears, backtrace, single-precision fenv, ABI-aware stub frames |
 | kernel arch layer | compiles | `gmake kernel-kernel-esp32p4-riscv` builds all platform objects |
@@ -419,7 +422,7 @@ repurposing the second slot is one command:
                --partition-table-offset 0x8000 switch_ota_partition --slot 0
 
 M6 replaces the former second OTA/rollback slot in that table. The source is
-`bootloader/partition-table.csv`; `esp32p4-partition-table` runs ESP-IDF's
+`bootloader/boards/d1001/partition-table.csv` (each board has its own under `bootloader/boards/`); `esp32p4-partition-table` runs ESP-IDF's
 own `gen_esp32part.py` in both directions and leaves these checked artifacts
 under `bin/esp32p4-riscv/gen/rom/boot`:
 
