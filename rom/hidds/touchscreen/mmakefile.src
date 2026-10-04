@@ -17,7 +17,7 @@ include $(SRCDIR)/config/aros.cfg
 
 #MM kernel-hidd-touchscreen : kernel-hidd-mouse kernel-hidd-input linklibs
 
-FILES := touchscreen_init touchscreen_class touch_worker touch_settings \
+FILES := touchscreen_init touchscreen_class touch_worker touch_files \
          touch_policy touch_prefs
 
 INCLUDE_FILES := include/touchscreen.h
