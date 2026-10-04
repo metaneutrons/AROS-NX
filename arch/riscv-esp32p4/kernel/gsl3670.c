@@ -445,7 +445,12 @@ static struct KrnTouchScreenOps gsl_touchscreen_ops =
     gsl_touch_load_firmware,
     gsl_touch_acquire,
     gsl_touch_release,
-    gsl_read_contacts
+    gsl_read_contacts,
+    {
+        P4_BOARD_TOUCH_X_MIN, P4_BOARD_TOUCH_X_MAX,
+        P4_BOARD_TOUCH_Y_MIN, P4_BOARD_TOUCH_Y_MAX,
+        P4_BOARD_TOUCH_MIRROR_Y ? KRN_TOUCHSCREEN_CAL_MIRROR_Y : 0
+    }
 };
 
 struct KrnTouchScreenOps *krnP4GSLTouchScreenOps(void)

@@ -41,6 +41,8 @@ AROS_LH1(intptr_t, KrnGetSystemAttr,
         return (intptr_t)(P4_PANEL_H_RES * P4_FB_BYTES_PER_PIXEL);
     case KATTR_FrameBufferOps:
         return (intptr_t)krnP4FrameBufferOps();
+    case KATTR_BacklightOps:
+        return (intptr_t)krnP4BacklightOps();
 #endif
 
 #ifdef P4_C4_TOUCH_HIDD

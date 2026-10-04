@@ -97,6 +97,8 @@ int krnP4GSLSampleDiagnostic(unsigned int seconds);
 #ifdef P4_C4_TOUCH_HIDD
 struct KrnTouchScreenOps;
 struct KrnTouchScreenOps *krnP4GSLTouchScreenOps(void);
+struct KrnBacklightOps;
+struct KrnBacklightOps *krnP4BacklightOps(void);
 struct KrnTouchScreenOps *krnP4GT911TouchScreenOps(void);
 void krnP4GT911Probe(void);
 #endif

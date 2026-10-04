@@ -13,7 +13,7 @@
 
 #include <exec/types.h>
 
-#define KRN_TOUCHSCREEN_OPS_VERSION 4
+#define KRN_TOUCHSCREEN_OPS_VERSION 5
 #define KRN_TOUCHSCREEN_MAX_CONTACTS 10
 
 /* The D1001 GSL3670 image is an array of little-endian <offset,value>
@@ -42,6 +42,21 @@ struct KrnTouchScreenFrame
     struct KrnTouchScreenContact contact[KRN_TOUCHSCREEN_MAX_CONTACTS];
 };
 
+/* The board's default mapping from raw contact coordinates to the logical
+   screen.  Inclusive raw bounds; flags apply after any swap.  A preferences
+   editor may replace it at runtime in the HIDD; the platform only supplies
+   the measured default. */
+#define KRN_TOUCHSCREEN_CAL_SWAP_XY  (1U << 0)
+#define KRN_TOUCHSCREEN_CAL_MIRROR_X (1U << 1)
+#define KRN_TOUCHSCREEN_CAL_MIRROR_Y (1U << 2)
+
+struct KrnTouchScreenCalibration
+{
+    ULONG x_min, x_max;
+    ULONG y_min, y_max;
+    ULONG flags;
+};
+
 struct KrnTouchScreenOps
 {
     ULONG version;
@@ -67,6 +82,9 @@ struct KrnTouchScreenOps
     /* TRUE means one coherent report was read successfully.  count == 0 is a
        successful release/idle frame, not an error. */
     BOOL (*read_contacts)(struct KrnTouchScreenFrame *frame);
+
+    /* Version 5: the board default calibration. */
+    struct KrnTouchScreenCalibration calibration;
 };
 
 #endif /* AROS_TOUCHSCREEN_H */

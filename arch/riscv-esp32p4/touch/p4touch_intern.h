@@ -10,11 +10,28 @@
 #include <hidd/mouse.h>
 #include <oop/oop.h>
 
+#include "p4touch_policy.h"
+
 #define CLID_Hidd_Mouse_P4Touch "hidd.mouse.esp32p4.touch"
+
+/*
+ * The settings a preferences editor will change (ROADMAP J5): calibration,
+ * starting from the platform's default, and the gesture parameters. Written
+ * under `lock` with `generation` bumped; the worker copies them under the
+ * shared lock when the generation moves, so a change applies at the next
+ * poll without stopping the worker.
+ */
+struct P4TouchSettings
+{
+    struct KrnTouchScreenCalibration calibration;
+    struct P4TouchParams params;
+};
 
 struct P4TouchStaticData
 {
     struct SignalSemaphore lock;
+    struct P4TouchSettings settings;
+    volatile ULONG generation;
     OOP_Class *mouseclass;
     OOP_Object *mousehidd;
     struct KrnTouchScreenOps *ops;

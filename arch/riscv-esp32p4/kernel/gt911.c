@@ -266,7 +266,12 @@ static struct KrnTouchScreenOps gt911_touchscreen_ops =
     NULL,
     gt911_touch_acquire,
     gt911_touch_release,
-    gt911_read_contacts
+    gt911_read_contacts,
+    {
+        P4_BOARD_TOUCH_X_MIN, P4_BOARD_TOUCH_X_MAX,
+        P4_BOARD_TOUCH_Y_MIN, P4_BOARD_TOUCH_Y_MAX,
+        P4_BOARD_TOUCH_MIRROR_Y ? KRN_TOUCHSCREEN_CAL_MIRROR_Y : 0
+    }
 };
 
 struct KrnTouchScreenOps *krnP4GT911TouchScreenOps(void)
