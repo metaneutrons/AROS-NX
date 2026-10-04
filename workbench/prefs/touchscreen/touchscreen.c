@@ -157,15 +157,10 @@ static void editor_load(struct Editor *ed)
     file = Open(TOUCH_PREFS_PATH, MODE_OLDFILE);
     if (file)
     {
-        /* A failed open on FAT can hand back a handle without a handler
-           (see the driver); such a handle must not be read. */
-        if (((struct FileHandle *)BADDR(file))->fh_Type)
-        {
-            LONG got = Read(file, ed->keep, sizeof(ed->keep) - 1);
+        LONG got = Read(file, ed->keep, sizeof(ed->keep) - 1);
 
-            if (got > 0)
-                ed->keep_length = got;
-        }
+        if (got > 0)
+            ed->keep_length = got;
         Close(file);
     }
     if (ed->keep_length)

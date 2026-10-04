@@ -85,7 +85,6 @@ OOP_Object *Touch__Root__New(OOP_Class *cl, OOP_Object *o,
         data->settings.mode = TOUCH_TAP;
         data->generation = 1;
         data->stopped_signal = -1;
-        data->prefs_signal = -1;
 
         state = msg->attrList;
         while ((tag = NextTagItem(&state)))

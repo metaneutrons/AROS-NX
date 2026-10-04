@@ -2,6 +2,7 @@
 #define TOUCHSCREEN_INTERN_H
 
 #include <dos/bptr.h>
+#include <dos/notify.h>
 #include <exec/libraries.h>
 #include <exec/semaphores.h>
 #include <exec/tasks.h>
@@ -14,11 +15,11 @@
 
 /*
  * What the preferences change: the calibration (starting from the measured
- * default), the gesture parameters and the mode. The prefs process
- * (touch_settings.c) and Set write them under `lock` with `generation`
+ * default), the gesture parameters and the mode. The worker's file part
+ * (touch_files.c) and Set write them under `lock` with `generation`
  * bumped; the worker copies them under the shared lock when the generation
  * moves, so a change applies at the next poll (the gesture part at the
- * next contact) without stopping the worker.
+ * next contact).
  */
 struct TouchSettings
 {
@@ -74,18 +75,27 @@ struct TouchData
     struct TouchSettings    settings;
     volatile ULONG          generation;
 
-    /* The polling worker (touch_worker.c). */
+    /* The worker (touch_worker.c): a Process, started by a short-lived
+       task once dos.library exists; `worker` is whichever of the two is
+       running, the last of them to go signals `owner`. */
     struct Task            *owner;
     struct Task * volatile  worker;
     volatile BOOL           running;
     BYTE                    stopped_signal;
     ULONG                   published_events;
+};
 
-    /* The prefs process (touch_settings.c), started by the worker. */
-    struct Task            *prefs;
-    struct Task            *prefs_owner;
-    volatile BOOL           prefs_alive;
-    BYTE                    prefs_signal;
+/* The worker's DOS side (touch_files.c). */
+struct TouchFiles
+{
+    struct DosLibrary      *DOSBase;
+    char                   *buf;
+    struct NotifyRequest    notify;
+    BYTE                    notify_signal;
+    BOOL                    notifying;
+    BOOL                    pending;        /* a change waits to settle */
+    UWORD                   state;
+    ULONG                   due;            /* poll at which to go on */
 };
 
 #define TSD(cl) (&((struct TouchBase *)(cl)->UserData)->tsd)
@@ -101,8 +111,12 @@ struct TouchData
 #define HiddTouchControllerAttrBase (TSD(cl)->hiddTouchControllerAB)
 
 BOOL Touch_StartWorker(struct TouchData *data);
-struct DosLibrary;
-BOOL Touch_StartPrefs(struct TouchData *data, struct DosLibrary *DOSBase);
-void Touch_StopPrefs(struct TouchData *data);
+
+BOOL touch_files_open(struct TouchData *data, struct TouchFiles *f);
+void touch_files_close(struct TouchData *data, struct TouchFiles *f);
+UBYTE *touch_files_firmware(struct TouchData *data, struct TouchFiles *f,
+                            ULONG bytes, CONST_STRPTR *loaded_path);
+void touch_files_poll(struct TouchData *data, struct TouchFiles *f,
+                      ULONG poll);
 
 #endif /* TOUCHSCREEN_INTERN_H */

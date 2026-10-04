@@ -1,9 +1,13 @@
-/* touchscreen.hidd: the polling worker. */
+/* touchscreen.hidd: the worker, a Process that polls the controller and
+   does the driver's file work (touch_files.c), and the task that starts
+   it once dos.library exists. */
 
+#include <aros/asmcall.h>
 #include <aros/debug.h>
 #include <devices/timer.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
+#include <dos/dostags.h>
 #include <exec/io.h>
 #include <exec/memory.h>
 #include <exec/tasks.h>
@@ -23,8 +27,8 @@
 #define TOUCH_START_ATTEMPTS   5U
 #define TOUCH_RECOVERY_ERRORS  3U
 #define TOUCH_MAX_RECOVERIES   3U
-/* Polls between looks for dos.library when the worker started without it. */
-#define TOUCH_DOS_RETRY_POLLS  20U
+/* How often the starter looks for dos.library during boot. */
+#define TOUCH_DOS_WAIT_US      200000UL
 
 #undef OOPBase
 #define OOPBase data->tsd->cs_OOPBase
@@ -76,69 +80,6 @@ static BOOL touch_read(struct TouchData *data, struct HIDD_TouchFrame *frame)
     msg.mID = data->tsd->midReadFrame;
     msg.frame = frame;
     return (BOOL)OOP_DoMethod(data->controller, (OOP_Msg)&msg);
-}
-
-/*
- * The controller's firmware image from the first path that holds one of
- * exactly the right size. Only controllers that run from RAM (the
- * D1001's GSL3670) need one; the board names where it lives.
- */
-static UBYTE *touch_read_firmware(struct TouchData *data,
-                                  struct DosLibrary *DOSBase, ULONG bytes,
-                                  CONST_STRPTR *loaded_path)
-{
-    struct ExecBase *SysBase = data->tsd->cs_SysBase;
-    ULONG i;
-
-    *loaded_path = NULL;
-    if (!data->firmware_paths)
-        return NULL;
-    for (i = 0; data->firmware_paths[i]; ++i)
-    {
-        CONST_STRPTR path = data->firmware_paths[i];
-        BPTR file = Open(path, MODE_OLDFILE);
-        LONG size, got;
-        UBYTE *image;
-
-        if (!file)
-            continue;
-        /* A failed FAT ACTION_FINDINPUT may leave DOS with an allocated
-           NIL-style FileHandle instead of returning BPTR zero. Never
-           Seek/Read such a handle: fh_Type is the handler port and is
-           installed only by a successful open. */
-        if (!((struct FileHandle *)BADDR(file))->fh_Type)
-        {
-            Close(file);
-            continue;
-        }
-        Seek(file, 0, OFFSET_END);
-        size = Seek(file, 0, OFFSET_BEGINNING);
-        if (size != (LONG)bytes)
-        {
-            bug("[Touch] %s: rejected firmware %s: %ld bytes, expected "
-                "%lu\n", data->name, path, (long)size, (unsigned long)bytes);
-            Close(file);
-            continue;
-        }
-        image = AllocVec(bytes, MEMF_PUBLIC);
-        if (!image)
-        {
-            Close(file);
-            return NULL;
-        }
-        got = Read(file, image, bytes);
-        Close(file);
-        if (got != (LONG)bytes)
-        {
-            bug("[Touch] %s: short firmware read from %s: %ld/%lu\n",
-                data->name, path, (long)got, (unsigned long)bytes);
-            FreeVec(image);
-            continue;
-        }
-        *loaded_path = path;
-        return image;
-    }
-    return NULL;
 }
 
 /* Raw contact to screen, through the current calibration (swap first,
@@ -276,47 +217,46 @@ static uint32_t touch_now(struct timerequest *timer)
 }
 
 /*
- * Start the controller, with its firmware if it needs one. Retries while
- * the firmware is not readable yet (the volume holding it mounts after
- * the driver starts) and a few times otherwise. FALSE stops the worker.
+ * Start the controller, with its firmware if it needs one. The image may
+ * be on a volume that mounts after the driver starts, so it is looked for
+ * every second; once the controller runs, the image is kept for restarts
+ * and this returns. A chip that needs none is tried a few times. FALSE
+ * stops the worker.
  */
 static BOOL touch_bring_up(struct TouchData *data, struct timerequest *timer,
-                           struct DosLibrary **DOSBase, UBYTE **firmware,
-                           ULONG bytes)
+                           struct TouchFiles *files, ULONG bytes,
+                           UBYTE **firmware)
 {
     struct ExecBase *SysBase = data->tsd->cs_SysBase;
-    ULONG attempts = 0;
+    ULONG attempts = 0, missing = 0;
 
     while (data->running)
     {
-        CONST_STRPTR path = NULL;
-
-        ++attempts;
         if (bytes && !*firmware)
         {
-            if (!*DOSBase)
-                *DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 0);
-            if (*DOSBase)
-                *firmware = touch_read_firmware(data, *DOSBase, bytes, &path);
+            CONST_STRPTR path;
+
+            *firmware = touch_files_firmware(data, files, bytes, &path);
             if (!*firmware)
             {
-                if (attempts == 1 || !(attempts % 30U))
+                if (++missing == 1 || !(missing % 30U))
                     bug("[Touch] %s: firmware unavailable; attempt %lu; "
                         "desktop remains unblocked\n", data->name,
-                        (unsigned long)attempts);
+                        (unsigned long)missing);
                 if (!touch_wait(timer, TOUCH_RETRY_US))
                     return FALSE;
                 continue;
             }
             bug("[Touch] %s: firmware from %s\n", data->name, path);
         }
+        ++attempts;
         if (touch_start(data, *firmware, bytes))
             return TRUE;
         bug("[Touch] %s: controller start failed, attempt %lu\n",
             data->name, (unsigned long)attempts);
         if (!bytes && attempts >= TOUCH_START_ATTEMPTS)
             return FALSE;
-        if (bytes)
+        if (*firmware)
         {
             /* A bad image would fail forever; read it again. */
             FreeVec(*firmware);
@@ -328,15 +268,20 @@ static BOOL touch_bring_up(struct TouchData *data, struct timerequest *timer,
     return FALSE;
 }
 
-static VOID Touch_Worker(struct TouchData *data)
+AROS_UFH3S(ULONG, Touch_Worker,
+           AROS_UFHA(STRPTR, argptr, A0),
+           AROS_UFHA(ULONG, argsize, D0),
+           AROS_UFHA(struct ExecBase *, SysBase, A6))
 {
-    struct ExecBase *SysBase = data->tsd->cs_SysBase;
+    AROS_USERFUNC_INIT
+
     struct Task *self = FindTask(NULL);
+    struct TouchData *data = self->tc_UserData;
     struct MsgPort *port = NULL;
     struct timerequest *timer = NULL;
-    struct DosLibrary *DOSBase = NULL;
+    struct TouchFiles files;
     UBYTE *firmware = NULL;
-    BOOL timer_open = FALSE, started = FALSE, prefs_tried = FALSE;
+    BOOL timer_open = FALSE, started = FALSE, files_open = FALSE;
     struct TouchPolicy policy;
     struct HIDD_TouchCalibration cal;
     ULONG generation = 0, bytes;
@@ -350,7 +295,13 @@ static VOID Touch_Worker(struct TouchData *data)
     ULONG raw_max_x = 0, raw_max_y = 0;
 #endif
 
+    (void)argptr;
+    (void)argsize;
     touch_policy_init(&policy, TOUCH_TAP);
+    files.notify_signal = -1;
+    files.DOSBase = NULL;
+    files.buf = NULL;
+    files.notifying = FALSE;
     port = CreateMsgPort();
     if (port)
         timer = (struct timerequest *)CreateIORequest(
@@ -363,10 +314,19 @@ static VOID Touch_Worker(struct TouchData *data)
         data->running = FALSE;
         goto out;
     }
-    DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 0);
+    files_open = touch_files_open(data, &files);
+    if (!files_open)
+        bug("[Touch] %s: no DOS for files; defaults stay\n", data->name);
 
     bytes = CONTROLLER_ATTR(data, aoHidd_TouchController_FirmwareBytes);
-    started = touch_bring_up(data, timer, &DOSBase, &firmware, bytes);
+    if (bytes && !files_open)
+    {
+        bug("[Touch] %s: firmware needed but no DOS; touch stopped\n",
+            data->name);
+        data->running = FALSE;
+        goto out;
+    }
+    started = touch_bring_up(data, timer, &files, bytes, &firmware);
     if (!started)
     {
         if (data->running)
@@ -383,12 +343,6 @@ static VOID Touch_Worker(struct TouchData *data)
         (int)self->tc_Node.ln_Pri);
 
     touch_refresh(data, &generation, &cal, &policy);
-    if (DOSBase)
-    {
-        prefs_tried = TRUE;
-        if (!Touch_StartPrefs(data, DOSBase))
-            bug("[Touch] %s: no prefs process; defaults stay\n", data->name);
-    }
 
     while (data->running)
     {
@@ -396,18 +350,8 @@ static VOID Touch_Worker(struct TouchData *data)
         BOOL read_ok;
 
         ++reads;
-        if (!prefs_tried && !(reads % TOUCH_DOS_RETRY_POLLS))
-        {
-            if (!DOSBase)
-                DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 0);
-            if (DOSBase)
-            {
-                prefs_tried = TRUE;
-                if (!Touch_StartPrefs(data, DOSBase))
-                    bug("[Touch] %s: no prefs process; defaults stay\n",
-                        data->name);
-            }
-        }
+        if (files_open)
+            touch_files_poll(data, &files, reads);
         touch_refresh(data, &generation, &cal, &policy);
         read_ok = touch_read(data, &frame);
         if (!read_ok)
@@ -538,19 +482,77 @@ out:
         (unsigned long)data->published_events, (unsigned long)errors);
     if (started)
         touch_stop(data);
-    Touch_StopPrefs(data);
+    if (files_open)
+        touch_files_close(data, &files);
     if (firmware)
         FreeVec(firmware);
-    if (DOSBase)
-        CloseLibrary((struct Library *)DOSBase);
     if (timer_open)
         CloseDevice(&timer->tr_node);
     if (timer)
         DeleteIORequest(&timer->tr_node);
     if (port)
         DeleteMsgPort(port);
+    /* Under Forbid() so the owner cannot free the code before this
+       returns; the process ends with it. */
+    Forbid();
     data->worker = NULL;
     Signal(data->owner, 1UL << data->stopped_signal);
+    return 0;
+
+    AROS_USERFUNC_EXIT
+}
+
+/*
+ * The driver is created during ROM initialisation, before dos.library
+ * exists, and the worker has to be a Process for its file work. This task
+ * waits for dos.library, starts the worker Process and ends. If the driver
+ * is disposed of first, it ends without starting anything.
+ */
+static VOID Touch_Starter(struct TouchData *data)
+{
+    struct ExecBase *SysBase = data->tsd->cs_SysBase;
+    struct MsgPort *port = CreateMsgPort();
+    struct timerequest *timer = port
+        ? (struct timerequest *)CreateIORequest(port, sizeof(*timer)) : NULL;
+    struct DosLibrary *DOSBase = NULL;
+    struct Process *proc = NULL;
+
+    if (timer && !OpenDevice(TIMERNAME, UNIT_VBLANK, &timer->tr_node, 0))
+    {
+        while (data->running
+               && !(DOSBase = (struct DosLibrary *)OpenLibrary("dos.library",
+                                                               36)))
+            touch_wait(timer, TOUCH_DOS_WAIT_US);
+        CloseDevice(&timer->tr_node);
+    }
+    if (DOSBase && data->running)
+    {
+        proc = CreateNewProcTags(NP_Entry, (IPTR)Touch_Worker,
+                                 NP_Name, (IPTR)"touchscreen",
+                                 NP_UserData, (IPTR)data,
+                                 NP_Priority, 20,
+                                 NP_StackSize, 32768,
+                                 NP_WindowPtr, (IPTR)-1,
+                                 TAG_DONE);
+        if (!proc)
+            bug("[Touch] %s: cannot start the worker; touch stopped\n",
+                data->name);
+    }
+    if (DOSBase)
+        CloseLibrary((struct Library *)DOSBase);
+    if (timer)
+        DeleteIORequest(&timer->tr_node);
+    if (port)
+        DeleteMsgPort(port);
+
+    /* Hand over to the worker, or tell the owner nothing runs. */
+    Forbid();
+    data->worker = (struct Task *)proc;
+    if (!proc)
+    {
+        data->running = FALSE;
+        Signal(data->owner, 1UL << data->stopped_signal);
+    }
 }
 
 BOOL Touch_StartWorker(struct TouchData *data)
@@ -558,11 +560,11 @@ BOOL Touch_StartWorker(struct TouchData *data)
     struct ExecBase *SysBase = data->tsd->cs_SysBase;
     struct TagItem tags[] =
     {
-        {TASKTAG_NAME, (IPTR)"touchscreen poll"},
-        {TASKTAG_PRI, 20},
-        {TASKTAG_PC, (IPTR)Touch_Worker},
+        {TASKTAG_NAME, (IPTR)"touchscreen start"},
+        {TASKTAG_PRI, 0},
+        {TASKTAG_PC, (IPTR)Touch_Starter},
         {TASKTAG_ARG1, (IPTR)data},
-        {TASKTAG_STACKSIZE, 32768},
+        {TASKTAG_STACKSIZE, 8192},
         {TAG_DONE, 0}
     };
 
@@ -571,7 +573,9 @@ BOOL Touch_StartWorker(struct TouchData *data)
     if (data->stopped_signal < 0)
         return FALSE;
     data->running = TRUE;
+    Forbid();
     data->worker = NewCreateTaskA(tags);
+    Permit();
     if (!data->worker)
     {
         data->running = FALSE;
