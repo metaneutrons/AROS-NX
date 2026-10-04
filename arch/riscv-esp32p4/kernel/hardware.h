@@ -526,8 +526,14 @@
 #define P4_SCANOUT_SECS         60
 #endif
 
+/* A board profile may set its own fixed level (P4_BOARD_BACKLIGHT_PERCENT)
+   until brightness becomes a runtime setting (ROADMAP D2, J5). */
 #ifndef P4_LEDC_BL_PERCENT
+#ifdef P4_BOARD_BACKLIGHT_PERCENT
+#define P4_LEDC_BL_PERCENT      P4_BOARD_BACKLIGHT_PERCENT
+#else
 #define P4_LEDC_BL_PERCENT      20
+#endif
 #endif
 
 #define P4_PCA9535_INPUT        0x00
