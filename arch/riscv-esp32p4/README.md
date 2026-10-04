@@ -78,7 +78,7 @@ its evidence entry in the same change.
 | :--- | :--- | :--- |
 | graphics performance | hardware partial | C1P tiled rotation, CPU360 and framebuffer v2 coalescing reduce the measured first full update from 2.776 s synchronous/CPU90 to 0.296 s queued/CPU360. Initial visual speedup confirmed, then slowdown/hang reported. Console-only nonblocking fix is sanitizer-tested, flashed and independently verified; causality and fresh visual/touch/no-reader acceptance remain open. See C1P and dated evidence. |
 | configure target | done | `--target=esp32p4-riscv`, configure completes |
-| board selection | hardware partial | `P4_BOARD=d1001`, `jc1060p470c-v1` and `jc1060p470c-v2` select wiring and drivers and reject unknown boards; the D1001 core is byte-identical after the 2026-10-03 driver split. The JC1060P470C-v2 boots a headless core to Exec with 32 MB PSRAM (J0) and shows the B6 test card correctly (J1, 2026-10-04); touch, SD, package and graphical boot are open |
+| board selection | hardware partial | `P4_BOARD=d1001`, `jc1060p470c-v1` and `jc1060p470c-v2` select wiring and drivers and reject unknown boards; the D1001 core is byte-identical after the 2026-10-03 driver split. The JC1060P470C-v2 boots from SD to Wanderer with correct picture and working GT911 touch (J0-J4, 2026-10-04); backlight control, cold boot and stress are open |
 | crosstools | done | binutils 2.47 and gcc 16.2.0 for riscv-aros, link libraries built |
 | rv32 CPU layer | done | M-mode CSR names, FLEN-aware FPU context, cache clears, backtrace, single-precision fenv, ABI-aware stub frames |
 | kernel arch layer | compiles | `gmake kernel-kernel-esp32p4-riscv` builds all platform objects |
