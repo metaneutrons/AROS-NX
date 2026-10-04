@@ -24610,6 +24610,52 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   because `riscv-all` builds a file of the same name into the same object
   directory; the five Giant hooks in `rom/exec`; the task.resource fix.
 
+### 2026-10-04 - Port kernel code built with -O2; it had always been unoptimized
+
+- State change: build only; no acceptance point changes. JC1060P470C boots
+  headless on the new core; the visual and touch check is still open.
+- Finding: `arch/riscv-esp32p4/kernel` is built with `%build_archspecific
+  ... compiler=kernel`, which compiles with `KERNEL_CFLAGS`, and those are
+  only `USER_CFLAGS` (plus `-fno-common`). So every port kernel file, from
+  traps, CPU, timer and Giant to scanout, panel, PSRAM and flash, has been
+  built at `-O0` since the port began. The port's exec files
+  (`compiler=target`) and the package modules already got `-O2`.
+- Change: the kernel makefile adds `$(KERNEL_OPTIMIZATION_CFLAGS)` (`-O2`)
+  and `-fno-tree-loop-distribute-patterns` to `USER_CFLAGS`; the line that
+  gave only `kernel_intr.o` the flags is gone. The second flag is needed:
+  the first `-O2` link failed the SRAM residency check because the zeroing
+  loop in `p4_candidate_holds()` (`psram_tuning.c`, `P4_SRAMCODE`) had
+  become a call to `memset`, which lives in XIP flash.
+- Review for code that only worked at `-O0`: the MMIO accessors are
+  volatile, no hardware access goes through a non-volatile pointer, every
+  inline `asm` is volatile, the delays are timer-based (SYSTIMER or the
+  tick; counted loops are only bounds or in the Giant self-test), and the
+  flags shared with interrupts or the other hart are volatile (`ticks`,
+  `irq_count`, `scanout_*`, the Giant lock words, park flags and
+  `work`/`idle`/`online`/`evict`). One defect found and fixed:
+  `p4_giant_evict_wait()` polled the peer's non-volatile `current`, which
+  an optimized loop may load once; it now loads it afresh on every pass.
+  The other reads of the peer's `current` happen with D held, which the
+  peer needs to switch tasks. A diagnostic build with `-O2 -Wall -Wextra`
+  (not committed) shows no uninitialized-use, aliasing or array-bounds
+  warnings, only nested comment markers in `hardware.h`, pointer
+  signedness and unused functions or variables.
+- Builds (flags as in the D3 entries), no warnings: JC1060 core 196,976 to
+  164,640 B
+  `e72c688c3d1cf181e695c08765a3a2962a64c3fd70be138f35c479119a409aac`;
+  D1001 Giant core 213,504 to 177,968 B
+  `b4438827c03eecf698f5c015468c22f12972007ee35647ad9f179b8614c46b86`.
+- JC1060P470C (`80:f1:b2:d3:3b:a6`, MAC checked): core written at
+  `0x20000`, verified; package `b7bd42cb…` unchanged. 60 s boot log
+  `e6a07dc3…`: panel bring-up ("B3 stage two passed", display on), SD card,
+  `C:Copy`, IPrefs, Wanderer, GT911 and 11 touch heartbeats; no alert or
+  exception. The `[c1perf]` lines are cut up by other console output in
+  this log and in the previous one, so they give no timing comparison. The
+  previous core `085a7655…` is kept for a rollback
+  (`evidence/boards-2026-10-04-e3drop/jc1060/core/core.bin`).
+- Open: the visual and touch check on the JC1060P470C (needs a fresh
+  "bereit"); the D1001 Giant core has not run.
+
 ## Evidence-entry template
 
 

@@ -691,7 +691,10 @@ void p4_giant_evict_wait(struct Task *task)
     struct p4_giant_cpu *oc = &p4_giant_cpus[p4_giant_hart() ^ 1];
     uint32_t start = cycles();
 
-    while (oc->current == task && !oc->idle)
+    /* current is the peer's own field, not volatile: load it afresh on
+       every pass, or an optimized loop never sees the switch. */
+    while (__atomic_load_n(&oc->current, __ATOMIC_RELAXED) == task &&
+           !oc->idle)
     {
         giant_service_park();
         if ((uint32_t)(cycles() - start) > P4_GIANT_SECOND_CYCLES)
