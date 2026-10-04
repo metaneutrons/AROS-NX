@@ -49,10 +49,6 @@
 
 Object *DisplayDriverNotify(APTR obj, BOOL add, struct IntuitionBase *IntuitionBase)
 {
-#ifdef P4_C2_INTUITION_GATE
-    bug("[ESP32P4/C2] display-driver callback invoked: add=%lu handle=%p\n",
-        (unsigned long)add, obj);
-#endif
     D(bug("[Monitor] %s()\n", __func__));
     if (add)
     {
@@ -70,11 +66,6 @@ Object *DisplayDriverNotify(APTR obj, BOOL add, struct IntuitionBase *IntuitionB
                 DoMethodA(mon, &pmsg);
             }
         }
-
-#ifdef P4_C2_INTUITION_GATE
-        bug("[ESP32P4/C2] display-driver callback produced monitor=%p\n",
-            mon);
-#endif
 
         return mon;
     }

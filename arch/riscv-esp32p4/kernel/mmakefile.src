@@ -2,9 +2,14 @@
 include $(SRCDIR)/config/aros.cfg
 include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 
+# The board profile reaches the shared RISC-V kernel objects through the
+# arch include flags: getcpunumber.c in arch/riscv-all includes this port's
+# kernel_intern.h, and that includes board/board.h, which refuses to build
+# without one. mmake does not track the flag file: rebuild the kernel
+# cleanly when the board changes.
 %set_archincludes mainmmake=kernel-kernel maindir=rom/kernel \
   modname=kernel pri=10 arch=esp32p4-riscv \
-  includes="-I$(SRCDIR)/$(CURDIR)"
+  includes="-I$(SRCDIR)/$(CURDIR) $(P4_BOARD_CPPFLAGS)"
 
 %get_archincludes modname=kernel \
     includeflag=TARGET_KERNEL_INCLUDES maindir=rom/kernel

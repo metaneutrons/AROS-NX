@@ -20,10 +20,6 @@ USER_CPPFLAGS := \
                -D__KEYMAP_NOLIBBASE__
 USER_LDFLAGS := -static
 
-ifeq ($(P4_C2_INTUITION_GATE),1)
-USER_CPPFLAGS += -DP4_C2_INTUITION_GATE
-endif
-
 FILES := boolgadgets boopsigadgets buttongclass frameiclass frbuttonclass \
          gadgetclass gadgets imageclass inputhandler propgadgets propgclass \
          requesters strgadgets strgclass  pointerclass windowclasses \
