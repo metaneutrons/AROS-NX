@@ -180,6 +180,47 @@ kernel-flashdisk-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
 	@$(ECHO) "Write it with: esptool --chip esp32p4 --port <port> \
 write-flash $(FLASHDISK_OFFSET) $(FLASHDISK)"
 
+#
+#   A development volume with only the port's own tools, for the same flash
+#   region.  The full stage no longer fits there (C3 needs 8.8 MB), and the
+#   SD card is read-only, so this is how a new tool reaches the board
+#   without moving the card.  There is no AROS.boot: the volume is a second
+#   drive, never a boot candidate, even without a card.  The tools sit in
+#   the root so Wanderer shows their icons without a drawer icon.
+#   On a board whose touch controller loads firmware from this volume (the
+#   D1001's GSL3670 falls back to FLASHDISK0P0:Firmware/silead), the target
+#   refuses to build without P4_GSL_FW_BINARY, so writing the volume cannot
+#   remove the firmware.
+#
+DEVSTAGE  := $(GENDIR)/$(CURDIR)/devstage
+DEVVOLUME := $(IMAGEDIR)/aros-devvolume.img
+
+#MM kernel-devvolume-esp32p4-riscv : workbench-prefs-touchscreen
+kernel-devvolume-esp32p4-riscv :
+	@if $(TEST) -n "$(P4_BOARD_TOUCH_FW_FILENAME)" \
+	        -a ! -f "$(P4_GSL_FW_BINARY)" ; then \
+	    $(ECHO) "$(P4_BOARD) loads touch firmware from this volume;" \
+	        "set P4_GSL_FW_BINARY" ; \
+	    exit 1 ; \
+	fi
+	@$(RM) -r $(DEVSTAGE)
+	@$(MKDIR) -p $(DEVSTAGE) $(IMAGEDIR)
+	@$(CP) $(AROSDIR)/Prefs/Touchscreen $(AROSDIR)/Prefs/Touchscreen.info \
+	    $(DEVSTAGE)/
+	@if $(TEST) -n "$(P4_BOARD_TOUCH_FW_FILENAME)" ; then \
+	    $(MKDIR) -p $(DEVSTAGE)/Firmware/silead ; \
+	    $(CP) "$(P4_GSL_FW_BINARY)" \
+	        $(DEVSTAGE)/Firmware/silead/$(P4_BOARD_TOUCH_FW_FILENAME) ; \
+	fi
+	@$(ECHO) "Creating   $(DEVVOLUME)"
+	@$(PYTHON) $(MKFAT32) --content $(DEVSTAGE) --out $(DEVVOLUME) \
+	    --size-mb $(FLASHDISK_SIZE_MB) --fat-bits 16 \
+	    --serial $(FLASHDISK_SERIAL) --timestamp $(IMAGE_TIMESTAMP) \
+	    --label $(FLASHDISK_LABEL)
+	@shasum -a 256 $(DEVVOLUME) > $(basename $(DEVVOLUME)).sha256
+	@$(ECHO) "Write it with: esptool --chip esp32p4 --port <port> \
+write-flash $(FLASHDISK_OFFSET) $(DEVVOLUME)"
+
 #MM kernel-image-esp32p4-riscv
 kernel-image-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
 	@$(ECHO) "Creating   $(IMAGE)"

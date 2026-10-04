@@ -39,7 +39,13 @@ include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 #MM     kernel-hidd-input \
 #MM     kernel-hidd-kbd \
 #MM     kernel-hidd-mouse \
-#MM     kernel-hidd-p4touch \
+#MM     kernel-hidd-bus \
+#MM     hidd-i2c \
+#MM     kernel-hidd-i2c-esp32p4 \
+#MM     kernel-hidd-touchscreen \
+#MM     hidd-gt911 \
+#MM     hidd-gsl3670 \
+#MM     kernel-esp32p4board \
 #MM     hidd-fbgfx \
 #MM     kernel-input \
 #MM     kernel-keyboard \
@@ -77,7 +83,13 @@ include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 #MM     kernel-hidd-input-quick \
 #MM     kernel-hidd-kbd-quick \
 #MM     kernel-hidd-mouse-quick \
-#MM     kernel-hidd-p4touch-quick \
+#MM     kernel-hidd-bus-quick \
+#MM     hidd-i2c-quick \
+#MM     kernel-hidd-i2c-esp32p4-quick \
+#MM     kernel-hidd-touchscreen-quick \
+#MM     hidd-gt911-quick \
+#MM     hidd-gsl3670-quick \
+#MM     kernel-esp32p4board-quick \
 #MM     hidd-fbgfx-quick \
 #MM     kernel-input-quick \
 #MM     kernel-keyboard-quick \
@@ -125,12 +137,13 @@ PKG_DEVS      += console
 PKG_HANDLERS  += con ram
 endif
 
-# C4's development touch driver is deliberately opt-in because it depends on
-# the external, privately supplied GSL3670 firmware header at kernel build
-# time.  The package member itself contains only independent contact-frame
-# selection, normalization and the generic absolute mouse HIDD.
+# The touch stack: the I2C bus classes and the ESP32-P4 bus driver, the
+# generic touchscreen driver, the board's controller driver and
+# esp32p4board.resource, which wires them together from the board profile.
+# Opt-in like the rest of C4.
 ifeq ($(P4_C4_TOUCH_HIDD),1)
-PKG_HIDDS     += p4touch
+PKG_HIDDS     += bus i2c i2c-esp32p4 touchscreen $(P4_BOARD_TOUCH_MODULE)
+PKG_RES       += esp32p4board
 endif
 
 # C2's one-shot screen owner is an acceptance instrument, not a normal boot

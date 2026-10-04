@@ -24,6 +24,15 @@
 #if !defined(P4_BOARD_TOUCH_GSL3670) && !defined(P4_BOARD_TOUCH_GT911)
 #error "board profile names no touch controller"
 #endif
+#if !defined(P4_BOARD_TOUCH_I2C_PORT) || !defined(P4_BOARD_TOUCH_SDA_GPIO) \
+    || !defined(P4_BOARD_TOUCH_SCL_GPIO) || !defined(P4_BOARD_TOUCH_I2C_HZ) \
+    || !defined(P4_BOARD_TOUCH_ADDR)
+#error "board profile must state the touch controller's bus and address"
+#endif
+#if defined(P4_BOARD_TOUCH_GSL3670) && (!defined(P4_BOARD_TOUCH_FW_BYTES) \
+    || !defined(P4_BOARD_TOUCH_RAW_W) || !defined(P4_BOARD_TOUCH_FW_PATH))
+#error "a GSL3670 board must state its firmware image and raw range"
+#endif
 #if !defined(P4_BOARD_SD_HAS_DETECT) || !defined(P4_BOARD_SD_HAS_POWER_GPIO)
 #error "board profile must state its SD detect and power wiring"
 #endif

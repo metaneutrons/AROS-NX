@@ -103,6 +103,9 @@
 #define P4_BOARD_TOUCH_I2C_PORT         1
 #define P4_BOARD_I2C0_SDA_GPIO          7
 #define P4_BOARD_I2C0_SCL_GPIO          8
+#define P4_BOARD_TOUCH_SDA_GPIO         P4_BOARD_I2C0_SDA_GPIO
+#define P4_BOARD_TOUCH_SCL_GPIO         P4_BOARD_I2C0_SCL_GPIO
+#define P4_BOARD_TOUCH_I2C_HZ           100000
 #define P4_BOARD_TOUCH_ADDR             0x5D
 #define P4_BOARD_TOUCH_ADDR_ALT         0x14
 #define P4_BOARD_TOUCH_IRQ_GPIO         21

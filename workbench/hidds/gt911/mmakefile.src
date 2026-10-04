@@ -1,0 +1,30 @@
+include $(SRCDIR)/config/aros.cfg
+
+#
+# Goodix GT911 touch controller, as an IID_Hidd_TouchController for
+# touchscreen.hidd.  It talks to the chip through a hidd.i2c bus object and
+# knows nothing about the machine: the board code passes the bus, the
+# address and a hook for the reset and interrupt lines.  See
+# <hidd/touchscreen.h>.
+#
+
+FILES := gt911_init gt911_class
+
+INCLUDE_FILES := include/gt911.h
+%copy_includes path=hidd dir=include
+
+USER_CPPFLAGS := \
+               -D__OOP_NOLIBBASE__ \
+               -D__OOP_NOATTRBASES__ \
+               -D__OOP_NOMETHODBASES__
+
+USER_LDFLAGS := -static
+
+#MM- workbench-hidds : hidd-gt911
+#MM hidd-gt911 : hidd-i2c kernel-hidd-touchscreen
+
+%build_module mmake=hidd-gt911 \
+    modname=gt911 modtype=hidd \
+    files=$(FILES)
+
+%common

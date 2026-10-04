@@ -2,7 +2,6 @@
 
 #include <aros/framebuffer.h>
 #include <aros/kernel.h>
-#include <aros/touchscreen.h>
 #if defined(__AROSEXEC_SMP__)
 #include <aros/atomic_ops.h>
 #include "p4_timer_snapshot.h"
@@ -56,14 +55,6 @@ AROS_LH1(intptr_t, KrnGetSystemAttr,
         return (intptr_t)krnP4BacklightOps();
 #endif
 
-#ifdef P4_C4_TOUCH_HIDD
-    case KATTR_TouchScreenOps:
-#if defined(P4_BOARD_TOUCH_GT911)
-        return (intptr_t)krnP4GT911TouchScreenOps();
-#else
-        return (intptr_t)krnP4GSLTouchScreenOps();
-#endif
-#endif
 
     default:
         return -1;

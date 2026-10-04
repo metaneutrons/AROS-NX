@@ -1,0 +1,33 @@
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
+
+#
+# hidd.i2c bus driver for the ESP32-P4's two I2C controllers.
+#
+# The controller runs whole transactions from a command list, so this
+# subclasses hidd.i2c at the transaction level, as dwi2c does.  The
+# transport, p4i2c_hw.c, is shared with the kernel, which needs I2C before
+# Exec; a package module may not call kernel symbols, so this links its own
+# copy and its own timebase (p4i2c_time.c).
+#
+
+FILES := p4i2c_init p4i2c_class p4i2c_hw p4i2c_time
+
+INCLUDE_FILES := include/i2c-esp32p4.h
+%copy_includes path=hidd dir=include
+
+USER_CPPFLAGS := \
+               $(P4_BOARD_CPPFLAGS) \
+               -D__OOP_NOLIBBASE__ \
+               -D__OOP_NOATTRBASES__ \
+               -D__OOP_NOMETHODBASES__
+
+USER_LDFLAGS := -static
+
+#MM kernel-hidd-i2c-esp32p4 : hidd-i2c kernel-hidd-bus
+
+%build_module mmake=kernel-hidd-i2c-esp32p4 \
+    modname=i2c-esp32p4 modtype=hidd \
+    files=$(FILES)
+
+%common

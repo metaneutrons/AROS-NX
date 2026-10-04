@@ -65,19 +65,9 @@ extern struct MemHeader *__esp32p4_mh_low;
 extern struct MemHeader *__esp32p4_mh_high;
 
 /* The periodic tick and the only clock there is (kernel_timer.c) */
-/*
- * I2C transport results.  A NACK and a timeout are different answers and a
- * caller has to be able to tell them apart: nothing at the address, against
- * something holding the line.
- */
-#define P4_I2C_OK           0
-#define P4_I2C_NACK         (-1)
-#define P4_I2C_TIMEOUT      (-2)
-#define P4_I2C_ARBLOST      (-3)
-#define P4_I2C_STUCK        (-4)
-#define P4_I2C_BUSY         (-5)
-#define P4_I2C_TOOLONG      (-6)
-#define P4_I2C_NOTREADY     (-7)
+/* The kernel's single I2C controller (i2c_hw.c over ../i2c/p4i2c_hw.c);
+   results are P4_I2C_*. */
+#include "../i2c/p4i2c_hw.h"
 
 int krnP4I2CInit(unsigned int port, unsigned int sda_gpio,
                  unsigned int scl_gpio, unsigned long bus_hz);
@@ -88,20 +78,8 @@ int krnP4I2CProbe(unsigned int address);
 void krnP4I2CLastStatus(unsigned long *raw, unsigned long *sr);
 #define P4_I2C_MISMATCH     (-8)    /* the device kept something else */
 
-#ifdef P4_C4_TOUCH_LOAD
-int krnP4GSLLoadDiagnostic(uint32_t *status, unsigned int *failed_record);
-#ifdef P4_C4_TOUCH_SAMPLE
-int krnP4GSLSampleDiagnostic(unsigned int seconds);
-#endif
-#endif
-#ifdef P4_C4_TOUCH_HIDD
-struct KrnTouchScreenOps;
-struct KrnTouchScreenOps *krnP4GSLTouchScreenOps(void);
 struct KrnBacklightOps;
 struct KrnBacklightOps *krnP4BacklightOps(void);
-struct KrnTouchScreenOps *krnP4GT911TouchScreenOps(void);
-void krnP4GT911Probe(void);
-#endif
 
 /* What the panel bring-up claimed and where it got to. */
 struct P4PanelState
