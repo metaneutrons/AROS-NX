@@ -1,0 +1,24 @@
+# Backlight: preferences editor for the panel's brightness. Writes
+# ENV:Sys/backlight.prefs (IFF, <prefs/backlight.h>); IPrefs applies it.
+
+include $(SRCDIR)/config/aros.cfg
+
+FILES := backlight
+
+EXEDIR := $(AROSDIR)/Prefs
+
+#MM- workbench-prefs : workbench-prefs-backlight
+#MM- workbench-prefs-backlight : workbench-prefs-backlight-prog \
+#MM     workbench-prefs-backlight-icon
+#MM workbench-prefs-backlight-prog : includes linklibs kernel-kernel-includes
+
+%build_prog mmake=workbench-prefs-backlight-prog \
+    progname=Backlight targetdir=$(EXEDIR) \
+    files=$(FILES)
+
+# The ScreenMode editor's icon until there is one of its own.
+%build_icons mmake=workbench-prefs-backlight-icon \
+    icons=Backlight dir=$(EXEDIR) \
+    image=../../../images/IconSets/Gorilla/Icons/Medium/AROS/Prefs/ScreenMode.png
+
+%common
