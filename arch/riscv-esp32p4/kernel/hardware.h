@@ -1318,7 +1318,26 @@
  * The range selector is a lookup in the PHY's table rather than a formula, so
  * it is written per rate and the build fails for a rate with no entry.
  */
+#ifndef P4_DSI_PLLREF_MHZ
+#ifdef P4_BOARD_DSI_PLLREF_MHZ
+#define P4_DSI_PLLREF_MHZ       P4_BOARD_DSI_PLLREF_MHZ
+#else
 #define P4_DSI_PLLREF_MHZ       40
+#endif
+#endif
+/*
+ * 2026-10-03, JC1060P470C: the 40 MHz conclusion above does not survive a
+ * register comparison.  JTAG snapshots of both the vendor firmware and this
+ * port show peri_clk_ctrl02.mipi_dsi_dphy_clk_src_sel = 0, which on pre-v3
+ * silicon is PLL_F20M, and ref_clk_ctrl1.ref_20m_clk_div_num = 23, i.e.
+ * 480 / 24 = 20 MHz; ESP-IDF computes N against 20 MHz there.  With N for
+ * 40 MHz every lane runs at half the stated rate.  The JC1060P470C profile
+ * therefore sets 20; the D1001 keeps 40 until its own display is re-measured
+ * (ROADMAP D2 evidence, open point).
+ */
+#if P4_DSI_PLLREF_MHZ != 40 && P4_DSI_PLLREF_MHZ != 20
+#error "P4_DSI_PLLREF_MHZ: PLL dividers are tabulated for 20 and 40 MHz only"
+#endif
 
 /* From the board profile; the rate is the one thing to change. */
 #define P4_DSI_LANES            P4_BOARD_PANEL_LANES
@@ -1360,11 +1379,11 @@
  * reference gives N 4 and M 150 exactly.  The range code is the table entry
  * [1450,1500] in soc_mipi_dsi_phy_pll_ranges.
  */
-#define P4_DSI_PLL_N            4
+#define P4_DSI_PLL_N            (P4_DSI_PLLREF_MHZ == 40 ? 4 : 2)
 #define P4_DSI_PLL_M            150
 #define P4_DSI_HS_FREQ_SEL      0x3C
 #elif P4_DSI_LANE_MBPS == 1000
-#define P4_DSI_PLL_N            2       /* 40 * 50 / 2 */
+#define P4_DSI_PLL_N            (P4_DSI_PLLREF_MHZ == 40 ? 2 : 1)  /* ref * 50 / N */
 #define P4_DSI_PLL_M            50
 #define P4_DSI_HS_FREQ_SEL      0x2A    /* the [1000,1050) row */
 #elif P4_DSI_LANE_MBPS == 750
@@ -1374,11 +1393,11 @@
  * (f_ref/N = 5 MHz, the lowest the PHY allows).  Range code: the [750,800)
  * row of soc_mipi_dsi_phy_pll_ranges.
  */
-#define P4_DSI_PLL_N            8
+#define P4_DSI_PLL_N            (P4_DSI_PLLREF_MHZ == 40 ? 8 : 4)  /* 20 MHz: N 4 */
 #define P4_DSI_PLL_M            150
 #define P4_DSI_HS_FREQ_SEL      0x19
 #elif P4_DSI_LANE_MBPS == 500
-#define P4_DSI_PLL_N            4       /* 40 * 50 / 4 */
+#define P4_DSI_PLL_N            (P4_DSI_PLLREF_MHZ == 40 ? 4 : 2)  /* ref * 50 / N */
 #define P4_DSI_PLL_M            50
 #define P4_DSI_HS_FREQ_SEL      0x07    /* the [500,550) row */
 #else
@@ -1393,8 +1412,30 @@
  * drifting apart again.
  */
 #define P4_DSI_PX_TO_BYTECLK(x) \
-    (((unsigned long)(x) * P4_DSI_LANE_MBPS + 4UL * P4_PANEL_DPI_MHZ) \
-     / (8UL * P4_PANEL_DPI_MHZ))
+    (((unsigned long)(x) * P4_DSI_LANE_MBPS + 4UL * P4_PANEL_DPI_NOMINAL_MHZ) \
+     / (8UL * P4_PANEL_DPI_NOMINAL_MHZ))
+
+/*
+ * ESP-IDF times the host against the pixel clock the board asks for, not the
+ * one the integer divider delivers, and shortens the bridge's line so both
+ * sides still take the same time per line (mipi_dsi_hal_host_dpi_set_
+ * horizontal_timing: bridge HFP += round(real/expected * htotal) - htotal).
+ * A board whose vendor clock does not divide 240 MHz names it as
+ * P4_BOARD_PANEL_DPI_NOMINAL_MHZ to get the same registers as the vendor
+ * firmware; otherwise nominal and real are the same and nothing changes.
+ */
+#ifndef P4_PANEL_DPI_NOMINAL_MHZ
+#ifdef P4_BOARD_PANEL_DPI_NOMINAL_MHZ
+#define P4_PANEL_DPI_NOMINAL_MHZ P4_BOARD_PANEL_DPI_NOMINAL_MHZ
+#else
+#define P4_PANEL_DPI_NOMINAL_MHZ P4_PANEL_DPI_MHZ
+#endif
+#endif
+#define P4_PANEL_HTOTAL         (P4_PANEL_H_RES + P4_PANEL_HSYNC \
+                                 + P4_PANEL_HBP + P4_PANEL_HFP)
+#define P4_BRG_HTOTAL           ((P4_PANEL_HTOTAL * P4_PANEL_DPI_MHZ \
+                                  + P4_PANEL_DPI_NOMINAL_MHZ / 2) \
+                                 / P4_PANEL_DPI_NOMINAL_MHZ)
 
 /*
  * The crystal.  A SoC fact rather than a PSRAM one, which is where it lived

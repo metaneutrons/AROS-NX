@@ -413,6 +413,13 @@ ifdef P4_DPI_MHZ
 P4_DEBUG_CPPFLAGS += -DP4_PANEL_DPI_MHZ=$(P4_DPI_MHZ)
 endif
 
+# P4_DPI_NOMINAL_MHZ overrides the clock the host timing is computed against
+# (hardware.h, P4_PANEL_DPI_NOMINAL_MHZ).  Setting it to the real pixel clock
+# drops ESP-IDF's requested-clock timing and the bridge line compensation.
+ifdef P4_DPI_NOMINAL_MHZ
+P4_DEBUG_CPPFLAGS += -DP4_PANEL_DPI_NOMINAL_MHZ=$(P4_DPI_NOMINAL_MHZ)
+endif
+
 # P4_DSI_CHUNKS=n splits each video line into n packets instead of one, so the
 # host's payload fifo has to hold h_res/n pixels rather than all of them.  Must
 # divide the active width exactly.
@@ -542,8 +549,12 @@ endif
 # fbgfx.hidd.  Panel/DSI/GDMA ownership remains in kernel.resource.
 ifeq ($(P4_C1_FRAMEBUFFER_HIDD),1)
 P4_DEBUG_CPPFLAGS += -DP4_C1_FRAMEBUFFER_HIDD -DP4_B6_DOUBLE_BUFFER \
-                     -DP4_PANEL_PROBE -DP4_DSI_PROBE -DP4_SCANOUT_TEST \
-                     -DP4_DSI_NONBURST
+                     -DP4_PANEL_PROBE -DP4_DSI_PROBE -DP4_SCANOUT_TEST
+# Non-burst is the D1001's proven mode; a board profile that sets
+# P4_DSI_BURST := 1 (JC1060P470C) gets ESP-IDF's burst video instead.
+ifneq ($(P4_DSI_BURST),1)
+P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
+endif
 override P4_SCANOUT_SECS := 0
 ifeq ($(P4_BOARD),d1001)
 P4_B6_ROW_PHASE_WORKAROUND ?= 525

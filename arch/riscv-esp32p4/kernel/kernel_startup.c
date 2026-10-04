@@ -5029,8 +5029,13 @@ static void krnP4PanelProbe(void)
         krnP4PutStr(", range ");
         krnP4PutHex32(dsi.hs_freq_sel);
         krnP4PutStr(", ");
+#if P4_DSI_PLLREF_MHZ == 20
+        krnP4PutDec((uint32_t)(20 * dsi.pll_m / dsi.pll_n));
+        krnP4PutStr(" Mbit/s per lane from a 20 MHz reference\n");
+#else
         krnP4PutDec((uint32_t)(40 * dsi.pll_m / dsi.pll_n));
         krnP4PutStr(" Mbit/s per lane from a 40 MHz reference\n");
+#endif
 
         krnP4PutStr("[dsi]    phy status ");
         krnP4PutHex32((uint32_t)dsi.status);
