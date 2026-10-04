@@ -24350,6 +24350,63 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   then 100 kHz); brightness through IPrefs (decisions: `kms.library`,
   IFF); persistent Save; an icon of its own for the editor.
 
+### 2026-10-04 - D3: the touch worker is a Process; the "FAT" handle was DOS from a task
+
+- State change: none for D3; a correction of an earlier record and an
+  upstream fix.
+- Correction: the C4 record above ("failed `ACTION_FINDINPUT` left `Open()`
+  returning an allocated NIL-style FileHandle with a null `fh_Type`") is
+  not a FAT or DOS defect. The former `p4touch` worker was a plain task
+  calling `Open()`. FAT answered the missing file with
+  `ERROR_OBJECT_NOT_FOUND`; `InternalOpen()` then asked `GetDeviceProc()`
+  for the next assign target, which returned NULL after
+  `SetIoErr(ERROR_NO_MORE_ENTRIES)`. For a task `SetIoErr()` does nothing
+  (`rom/dos/setioerr.c`) and `IoErr()` reads `pr_Result2` past the end of
+  `struct Task`; a 0 there made the failed open look like a success.
+  AmigaDOS calls belong to Processes.
+- Fix in our code: `touchscreen.hidd` read the GSL3670 image from its
+  worker task too. The worker is now a Process, so every DOS call of the
+  driver is made from one: the driver is created at resident priority 8,
+  before `dos.library` (`dosboot` -50, `dos.library` -120), so a short
+  task waits for `dos.library`, starts the worker with `CreateNewProc` and
+  ends. The worker reads the firmware (every second until the volume is
+  there; the image is kept for restarts and read again only if a start
+  fails with it), starts the controller and then polls; once per poll it
+  looks for `ENV:` during boot and checks the prefs notification, with
+  the settle times counted in polls (`touch_files.c`). The separate prefs
+  process is gone. Touch starts once DOS is up, which on the JC1060P470C
+  is still before Wanderer. The `fh_Type` guards in the driver and the
+  editor are gone with their comments.
+- Upstream fix found on the way: `GetDeviceProc()` read through a NULL
+  lock for a non-binding assign (`Assign PATH`) whose target is missing.
+  [metaneutrons/AROS-NX#53](https://github.com/metaneutrons/AROS-NX/pull/53),
+  [aros-development-team/AROS#1464](https://github.com/aros-development-team/AROS/pull/1464);
+  also on this branch. Our older `fs_Open()` multi-assign fix is already
+  covered upstream (it clears `fh_Type` before each attempt) and will
+  conflict on a rebase.
+- Other upstream PRs of the day: `hidd.i2c` WriteBytes/WriteVec through
+  WriteRead and WriteWord length
+  ([metaneutrons/AROS-NX#51](https://github.com/metaneutrons/AROS-NX/pull/51),
+  [aros-development-team/AROS#1462](https://github.com/aros-development-team/AROS/pull/1462)),
+  IPrefs without `kms.library`
+  ([metaneutrons/AROS-NX#52](https://github.com/metaneutrons/AROS-NX/pull/52),
+  [aros-development-team/AROS#1463](https://github.com/aros-development-team/AROS/pull/1463));
+  all three are on this branch.
+- JC1060P470C (`80:f1:b2:d3:3b:a6`, MAC checked): package 3,487,804 B
+  `ad84f3440daca75831a9dc64b3f795f3811852b47f19820200d4b470c584dde5` at
+  `0x820000`, development volume
+  `a8dda74846322d4975784ff1bb2e91084675d58aadbe0635a662130b2a3ec5a3` at
+  `0xc00000` (editor without the guard); core `085a7655…` unchanged;
+  writes verified, audit 0 failed. Boot log `4fdc8a86…`: GT911 at 0x5D
+  before Wanderer starts, prefs read (no file, defaults) and watched,
+  11 heartbeats in 60 s without read error. (An intermediate design with
+  the firmware read in the prefs process, package `d4988723…`, booted the
+  same way and is superseded.)
+- D1001: package 3,495,336 B
+  `357361a584f7aedbc0e9da2c03e694063fb077c12dc0f815940868ad43e8323e`
+  built, audit 0 failed, not written; the firmware path through the
+  worker Process is untested on hardware.
+
 ## Evidence-entry template
 
 
