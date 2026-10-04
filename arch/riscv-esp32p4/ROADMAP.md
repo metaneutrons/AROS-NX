@@ -1228,11 +1228,13 @@ of the exact writes (AGENTS.md has none for this board yet):
     instead (D3): calibration and gestures live in `touchscreen.hidd` and
     the editor `Prefs/Touchscreen`, brightness leaves the touch system.
     Save cannot persist yet: only RAM: is writable.
-  - Brightness (next): its own preferences file applied by IPrefs, a small
-    editor, and on the card IPrefs, `C:Copy` and a Startup-Sequence that
-    fills `ENV:` from `ENVARC:` as the standard one does (our multi-assign
-    `ENV:` cannot be watched; see the D3 evidence). Open decisions:
-    `kms.library` optional in IPrefs (upstream fix), IFF as the format.
+  - Brightness: its own preferences file applied by IPrefs, the editor
+    `Prefs/Backlight`, and on the card IPrefs, `C:Copy` and a
+    Startup-Sequence that fills `ENV:` from `ENVARC:` as the standard one
+    does (our multi-assign `ENV:` cannot be watched; see the D3 evidence).
+    `kms.library` is optional in IPrefs (upstream fix), the format is IFF.
+    Status 2026-10-04: implemented and booted (see evidence); the editor
+    test on the panel is open.
 
 ## Track A: storage and normal boot
 
@@ -24730,6 +24732,34 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   (`stash@{0}`) and goes onto this branch next.
 - Plan: SMP.md, "Current plan". Next safe step: S0, rebase onto current
   upstream, build and boot both boards on one hart.
+
+### 2026-10-04 - Brightness through IPrefs and Prefs/Backlight
+
+- State change: D2/J5 brightness implemented; the editor test on the panel
+  is open (needs a fresh "bereit").
+- Format: `compiler/include/prefs/backlight.h`, a `FORM PREF` with `PRHD` and
+  a `BKLT` chunk (`struct BacklightPrefs`: four reserved longs, `bp_Level` in
+  percent, minimum 5). Files `ENV:Sys/backlight.prefs` (Use) and
+  `ENVARC:Sys/backlight.prefs` (Save).
+- IPrefs: a `backlightprefs` handler in its preference table applies the
+  level through the kernel's backlight operations (`KATTR_BacklightOps`)
+  at start and whenever the file changes.
+- Editor `Prefs/Backlight`: a Zune slider from 5 to 100 % that sets the
+  level live, a Default button, and Save, Use and Cancel; Cancel and Ctrl-C
+  restore the level it found. A read-only `ENVARC:` is reported instead of
+  raising a DOS requester.
+- C3 card: the image adds `C:Copy`, `C:IPrefs`, `Prefs/Touchscreen` and
+  `Prefs/Backlight` with their icons and a `Prefs` drawer icon; the
+  Startup-Sequence assigns `ENV:` to `RAM:`, copies `ENVARC:` into it and
+  starts IPrefs.
+- Evidence so far (built and run from branch v2): card image `37208192...`,
+  178 entries, written and verified; the JC1060P470C boot log `58ec10cb...`
+  shows `C:Copy` filling `ENV:`, IPrefs asking for
+  `RAM Disk:Sys/backlight.prefs` and Wanderer starting.
+- On this branch `KATTR_BacklightOps` is slot +10 instead of +12. The IPrefs
+  and editor binaries on that card were built against +12 and will not
+  find the backlight control under a v3 kernel; the card needs a new image
+  together with the first v3 core.
 
 ## Evidence-entry template
 
