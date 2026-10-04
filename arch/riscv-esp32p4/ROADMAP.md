@@ -24489,6 +24489,29 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   touch prefs file is absent on the new card (defaults); the calibration
   saved earlier is on the old card. D1001 package built, not written.
 
+### 2026-10-04 - C1 coalescing host test runs again, now for both panel orientations
+
+- State change: none; a broken host check repaired. No production code
+  changed.
+- `kernel/tests/scanout_coalesce_test.py` (added with `0245bbb63c`) had
+  stopped compiling: the producer it extracts from `dsi_scanout.c` gained
+  the `SCANOUT_EXCLUDE_ISR`/`SCANOUT_ALLOW_ISR` guard with the Giant
+  (`d434979eeb`) and `P4_LOGICAL_W`/`P4_LOGICAL_H` and the
+  `P4_BOARD_PANEL_ROTATE` choice with the board profiles (`6dd638f9b3`),
+  none of which the fixture defined.
+- The fixture now takes the panel orientation from the command line and
+  derives the logical size as `kernel/hardware.h` does. It runs four
+  variants: rotated by 90 degrees (D1001) and unrotated (JC1060P470C), each
+  with the Giant guard modelled as a mask on the frame IRQ and without it.
+  The expected image comes from `p4_rotate_rect` or `p4_flat_copy_rect`, the
+  helpers production calls. The unrotated path had no host coverage before.
+- Result: all four pass, 400 producer submissions each, 81 swaps; 1,677
+  busy-guarded IRQs without the guard, 1,277 busy-guarded and 400 masked
+  with it; out-of-range rectangles and a short pitch are refused.
+- Mutation check (scratch copies, not committed): a wrong row width in the
+  unrotated copy fails only the unrotated variants; publishing the target
+  before copying fails at once.
+
 ## Evidence-entry template
 
 
