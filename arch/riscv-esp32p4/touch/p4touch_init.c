@@ -57,6 +57,11 @@ static int P4Touch_Init(LIBBASETYPEPTR LIBBASE)
         return FALSE;
     }
 
+    /* The runtime settings start from the platform's measured defaults. */
+    ptd->settings.calibration = ptd->ops->calibration;
+    p4touch_params_default(&ptd->settings.params);
+    ptd->generation = 1;
+
     if (!OOP_ObtainAttrBases(attrbases))
     {
         bug("[P4Touch/C4] cannot obtain input attribute bases\n");
@@ -87,7 +92,8 @@ static int P4Touch_Init(LIBBASETYPEPTR LIBBASE)
         KRN_TOUCHSCREEN_MAX_CONTACTS,
         (unsigned long)ptd->ops->raw_width,
         (unsigned long)ptd->ops->raw_height,
-        P4_BOARD_TOUCH_MIRROR_Y ? "mirrored" : "direct");
+        (ptd->settings.calibration.flags & KRN_TOUCHSCREEN_CAL_MIRROR_Y)
+        ? "mirrored" : "direct");
     return TRUE;
 }
 
