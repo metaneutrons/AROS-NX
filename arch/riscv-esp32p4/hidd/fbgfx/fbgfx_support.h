@@ -27,6 +27,7 @@ struct HWData
     BOOL	 owned;
     UBYTE	 palettewidth;
     UBYTE	 DAC[768];
+    struct KrnFrameBufferOps *ops;
     /* Used by PCI scanning routine */
     OOP_AttrBase pciDeviceAttrBase;
 };

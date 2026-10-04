@@ -46,7 +46,7 @@ include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 #MM     hidd-gt911 \
 #MM     hidd-gsl3670 \
 #MM     kernel-esp32p4board \
-#MM     hidd-fbgfx \
+#MM     hidd-esp32p4-fbgfx \
 #MM     kernel-input \
 #MM     kernel-keyboard \
 #MM     kernel-gameport \
@@ -90,7 +90,7 @@ include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 #MM     hidd-gt911-quick \
 #MM     hidd-gsl3670-quick \
 #MM     kernel-esp32p4board-quick \
-#MM     hidd-fbgfx-quick \
+#MM     hidd-esp32p4-fbgfx-quick \
 #MM     kernel-input-quick \
 #MM     kernel-keyboard-quick \
 #MM     kernel-gameport-quick \

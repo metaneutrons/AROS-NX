@@ -297,13 +297,7 @@ static int IntuitionInit(LIBBASETYPEPTR LIBBASE)
 
     NEWLIST(&GetPrivIBase(LIBBASE)->MonitorList);
     InitSemaphore(&GetPrivIBase(LIBBASE)->MonitorListSem);
-#ifdef P4_C2_INTUITION_GATE
-    bug("[ESP32P4/C2] priority 15: installing display-driver callback\n");
-#endif
     SetDisplayDriverCallback(DisplayDriverNotify, LIBBASE);
-#ifdef P4_C2_INTUITION_GATE
-    bug("[ESP32P4/C2] display-driver callback installed\n");
-#endif
 
     /* Install reset handler to display manual shutdown screen */
     GetPrivIBase(LIBBASE)->ShutdownHandler.is_Node.ln_Name =

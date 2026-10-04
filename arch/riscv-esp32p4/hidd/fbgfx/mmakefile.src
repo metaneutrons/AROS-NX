@@ -1,0 +1,41 @@
+include $(SRCDIR)/config/aros.cfg
+
+#
+# The ESP32-P4 framebuffer HIDD. It started as the Raspberry Pi driver in
+# arch/aarch64-raspi/hidd/fbgfx; the module keeps the name fbgfx.
+#
+#MM hidd-esp32p4-fbgfx : kernel-hidd-gfx-includes
+
+FILES	:=	\
+	fbgfx_init \
+	fbgfx_hiddclass \
+	fbgfx_displayclass \
+	fbgfx_support \
+	fbgfx_bitmapclass
+
+USER_LDFLAGS := -static
+
+USER_CPPFLAGS := \
+               -D__OOP_NOATTRBASES__ -I$(GENINCDIR)
+
+# The C1 acceptance harness draws its own test card; C2 and C3 hand the
+# display to Intuition instead.
+ifeq ($(P4_C1_FRAMEBUFFER_HIDD),1)
+ifneq ($(P4_C2_INTUITION_GATE),1)
+ifneq ($(P4_C3_GRAPHICAL_BOOT),1)
+USER_CPPFLAGS += -DP4_C1_GATE
+endif
+endif
+endif
+
+ifeq ($(P4_C2_INTUITION_GATE),1)
+USER_CPPFLAGS += -DP4_C2_INTUITION_GATE
+endif
+
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+USER_CPPFLAGS += -DP4_C3_GRAPHICAL_BOOT
+endif
+
+%build_module mmake=hidd-esp32p4-fbgfx \
+  modname=fbgfx modtype=hidd \
+  files=$(FILES)

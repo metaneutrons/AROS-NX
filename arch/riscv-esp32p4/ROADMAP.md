@@ -1808,7 +1808,9 @@ Acceptance gate:
 - raw B5 diagnostics remain available beneath the HIDD.
 
 References: [Raspberry Pi fbgfx](../aarch64-raspi/hidd/fbgfx) and
-[EFI fbgfx](../../rom/hidds/efifbgfx).
+[EFI fbgfx](../../rom/hidds/efifbgfx). The P4 driver started as conditional
+code inside the Raspberry Pi one; since 2026-10-04 it is the port's own copy
+in [hidd/fbgfx](hidd/fbgfx), still built as the module `fbgfx`.
 
 ### C2 - first Layers/Intuition screen
 
@@ -24655,6 +24657,40 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   (`evidence/boards-2026-10-04-e3drop/jc1060/core/core.bin`).
 - Open: the visual and touch check on the JC1060P470C (needs a fresh
   "bereit"); the D1001 Giant core has not run.
+
+### 2026-10-04 - Port code moved out of shared files
+
+- State change: none; source layout only. Generic components and fixes
+  stay where they are.
+- Moved into the port:
+  - `fbgfx`: the P4 framebuffer HIDD was conditional code
+    (`P4_C1_FRAMEBUFFER_HIDD`, C2, C3) inside the Raspberry Pi driver in
+    `arch/aarch64-raspi/hidd/fbgfx`. It is now `hidd/fbgfx`, a copy with
+    the P4 path fixed on, built by the target `hidd-esp32p4-fbgfx` as the
+    module `fbgfx`. The C1 harness keys on `P4_C1_GATE`, which the
+    makefile sets only for a C1 build. The Raspberry Pi driver is back at
+    base.
+  - The board profile for the shared RISC-V kernel object
+    `getcpunumber.c` (it includes this port's `kernel_intern.h`) now
+    arrives through the port's kernel arch include flags, as `P4_GIANT`
+    does; `arch/riscv-all/kernel/mmakefile.src` keeps only the generic
+    `backtracefromframe` addition.
+  - The task.resource host tests moved from `rom/task/tests` to
+    `task/tests`; both pass from there.
+- Removed, because they cannot move: the `P4_C2_INTUITION_GATE` prints in
+  `rom/intuition` (C2 acceptance instrument; `915934774a` has them), and
+  `P4_SDCARD_DEBUG_CPPFLAGS` in `rom/devs/sdcard/mmakefile.src`, which was
+  dead: the generic sdcard sources use none of those switches, and the
+  port's sdcard driver keeps them.
+- Builds (flags as in the D3 entries), all byte-identical: JC1060 core
+  `e72c688c…` and package `b7bd42cb…`; D1001 Giant core `b4438827…` and
+  package `abb7ea41…`; `fbgfx.hidd` identical to the one built from the
+  Raspberry Pi directory on both boards (the old outputs were deleted
+  before the build). The JC1060P470C already runs this core and package.
+- Still in shared code: the `P4_GIANT` (and E3 SMP) branch of
+  `arch/riscv-all/exec/stackswap.S`, the Giant hooks in `rom/exec`, the
+  `esp32p4` target in `configure`, and the root `AGENTS.md`, `CLAUDE.md`
+  and `LEGAL`.
 
 ## Evidence-entry template
 
