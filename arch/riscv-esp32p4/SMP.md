@@ -99,7 +99,9 @@ start, belongs in `arch/riscv-esp32p4`.
 - **S0 Base.** Rebase this branch onto current upstream (`origin/master`), so
   the work starts on Kopperud's SMP code. Single-hart builds of both boards
   boot; JC1060P470C visual and touch check with a fresh "bereit". Set up a
-  separate SMP build tree.
+  separate SMP build tree. Status 2026-10-04: rebased onto `5da9fd5072`;
+  the JC1060P470C boots headless to Wanderer (ROADMAP, S0 entry). Open:
+  new card, visual and touch check, D1001, SMP build tree.
 - **S1 Atomics on PSRAM.** Qualify native AMO and LR/SC on cached PSRAM across
   both harts on hardware, including the 8/16-bit sequences GCC generates, and
   check them against the LR/SC rule. If they hold, change 2 above suffices.

@@ -230,7 +230,9 @@ selected in a build or executed on hart1, and cache/XIP qualification stays open
 ## Track E: ESP32-P4 / RV32 SMP
 
 Status 2026-10-04: this branch (`feat/riscv32-esp32p4-v3`) runs on one hart.
-It was rebuilt from upstream `44336e404a` without E3 and without the Giant;
+It was rebuilt from upstream `44336e404a` without E3 and without the Giant
+and then rebased onto upstream `5da9fd5072`; S0 passed headless on the
+JC1060P470C (visual check, card and D1001 open);
 both are kept on local branches (`e3-smp`, `giant-smp`). E0-E2 stay. The next
 step is AROS's own SMP (the `smp` build variant) with as few changes outside
 the port as possible; see SMP.md, "Current plan", stages S0-S6. The history
@@ -24760,6 +24762,78 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   and editor binaries on that card were built against +12 and will not
   find the backlight control under a v3 kernel; the card needs a new image
   together with the first v3 core.
+
+### 2026-10-04 - S0: v3 on current upstream boots the JC1060P470C on one hart
+
+- State change: Track E S0, headless part passed. The card write and the
+  visual, touch and Backlight check are open (need a fresh "bereit").
+- Source: `feat/riscv32-esp32p4-v3` rebased onto `origin/master`
+  `5da9fd5072`; 222 commits, the upstream `fs_Open` cherry-pick dropped
+  itself as already applied. Four conflicts, resolved as follows:
+  - `rom/devs/sdcard/sdcard_ioops.c`: upstream's version
+    (`4f6e4f50b0` handles aborted chunks). Our CMD12 after a failed data
+    wait is gone, so the A1 fault-injection recovery test must be repeated.
+  - `config/make-autotools.tmpl`: upstream reworked the crosstools
+    CC/CXX/LDFLAGS lines; only our `CXXCPP` line is kept.
+  - `rom/filesys/fat/disk.c`: our write-protect probe and check merged onto
+    upstream's `io_muted` and MaxTransfer loop.
+  - `rom/dos/fs_driver.c`: upstream's version (`838e866d96`).
+- Build tree: a new out-of-tree build
+  (`AROS-ESP32-v3-build`), because upstream changed the gcc 16.2.0 patch
+  and collect-aros; `gmake crosstools` rebuilt binutils and gcc there.
+  Two host requirements are new and now in the README: GNU Make 4 has to
+  be first in `PATH` as `make`, because mmake runs sub-makes as plain `make`
+  and 3.81 ignores the `$(file >...)` response files upstream's
+  `config/make.tmpl` now writes (the first attempt failed at `libmui.a`);
+  and the worktree needs its 76 git submodules, without which the dos and
+  muimaster catalogs are missing and `dos.library` and the Zune classes do
+  not compile. They were initialised with the main checkout's module
+  stores as references.
+- Builds (`P4_BOARD=jc1060p470c-v2`, flags as in the `-O2` entry), no
+  compiler errors:
+  - core 165,440 B
+    `1e4c5ff98066882d22baea655311285bbd56653c6240f40bff70c816685fa1c6`
+    (v2 `-O2` core 164,640 B; the 800 B difference is not analysed);
+  - package 3,728,944 B
+    `b9926fb58a74f09163ac07a8bc4a8af4aae002d87bfeded2c97426c327f8f3e5`,
+    40 members, audit 0 failed, checksize 3,728,944 of 4,063,232;
+  - card image 67,108,864 B, 178 entries,
+    `6c4a42e34edc3835587656a4d7620a0cad50cad1e47c38927e5650b91570bdcf`,
+    `verify-image.sh`: manifest matches the mounted image exactly;
+  - development volume 4,194,304 B, 2 entries (`Prefs/Touchscreen`),
+    `dda34340624dfb7a86df7cf88281d7c37180623cd233ac8c5fcf86ff9d6fc5ee`.
+- Package growth: 241,124 B more than the last v2 JC1060 package
+  (3,487,820 B). Most modules grew by about 3.5 KB each. The cause is
+  upstream `7405611e23` ("Move the module init and expunge sequences out
+  of line"): every module now links its own copy of the generic
+  `_set_libinit`, `_set_open_libraries_list` and related functions from
+  libautoinit, which are larger than the inline code they replace. In
+  `utility.library`, `.text` grows by 652 B (`Utility_InitLib` -204 B, six
+  `_set_*` functions +856 B), with matching growth in relocations,
+  `.eh_frame` and the symbol table. Larger single increases (fat-handler
+  +24 KB, ram-handler +14 KB, con-handler and dos.library +12 KB each) are
+  not analysed. The package still has 334,288 B of headroom.
+- Flash (JC1060P470C `80:f1:b2:d3:3b:a6`, MAC checked before each write):
+  package at `0x820000`, core at `0x20000`, development volume at
+  `0xc00000`; esptool verified each hash. The volume was rewritten because
+  the v2 `Prefs/Touchscreen` on it predates the KATTR renumbering. The SD
+  card is still the v2 card (`37208192...`).
+- Boot logs:
+  - 90 s after the core write, `cef82b0088ee05d87da8bdce54077b68aa8e9cbafe6b593a735f2297f329e0af`:
+    package loaded and relocated, GT911 at 0x5D (product 911, firmware
+    0x1060, configured 1085x600), `S:Startup-Sequence` runs `C:Copy` and
+    IPrefs, `WANDERER:Wanderer` reads its prefs, 17 touch heartbeats to the
+    end of the capture, no alert.
+  - 60 s after the volume write, `5fb62fa08ef961cf4855a9ea33175155acaf5bc8a03c3fcc9b07d9c4e78cb160`:
+    `FLASHDISK0P0` comes online as in the first log, GT911 and Wanderer as
+    above, 11 heartbeats, no alert.
+- Not verified: the picture and touch (headless only), the backlight under
+  IPrefs (the card's IPrefs uses the old slot), the D1001.
+- Evidence: `evidence/boards-2026-10-04-s0-v3/jc1060` (artifacts, build,
+  flash and boot logs, `write-image-eject` built from source).
+- Next safe step: write the card with the new image, boot, then the visual,
+  touch and Backlight check with Fabian's readiness; the A1 recovery test;
+  the D1001 when connected.
 
 ## Evidence-entry template
 
