@@ -30,6 +30,8 @@ P4_BOARD_FLASHDISK_OFFSET := 0xc00000
 P4_BOARD_TOUCH_FW_FILENAME := gsl3670-d1001.fw
 P4_BOARD_TOUCH_DRIVER := gsl3670
 P4_BOARD_PANEL_TABLE := jd9365_init
+# Burst video, as the vendor firmware drives this panel (2026-10-04).
+P4_DSI_BURST ?= 1
 P4_BOARD_PARTITION_CSV := $(P4_BOARD_DIR)/partition-table.csv
 P4_BOARD_SDKCONFIG := $(P4_BOARD_DIR)/sdkconfig.defaults
 else ifneq ($(filter jc1060p470c-v1 jc1060p470c-v2,$(P4_BOARD)),)

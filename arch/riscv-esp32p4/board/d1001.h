@@ -49,7 +49,15 @@
 #define P4_BOARD_PANEL_V_RES            1280
 #define P4_BOARD_PANEL_ROTATE           90
 #define P4_BOARD_PANEL_LANES            2
-#define P4_BOARD_PANEL_LANE_MBPS        1500
+/*
+ * The vendor's 1000 Mbit/s with burst video, against the real 20 MHz D-PHY
+ * PLL reference. The former 1500 Mbit/s non-burst profile with its +525
+ * row-phase workaround compensated dividers computed for 40 MHz, which
+ * halved every rate; the corrected profile shows the picture in place
+ * without the workaround (Fabian, 2026-10-04, ROADMAP B5R).
+ */
+#define P4_BOARD_PANEL_LANE_MBPS        1000
+#define P4_BOARD_DSI_PLLREF_MHZ         20
 #define P4_BOARD_PANEL_DPI_MHZ          40
 #define P4_BOARD_PANEL_HSYNC            20
 #define P4_BOARD_PANEL_HBP              20

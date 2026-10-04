@@ -129,8 +129,8 @@ gate: compensated output is not the native display contract.
 | B3 | LDO3, DSI PHY/host and JD9365 command path | `hardware verified` | Stage one verified: the PLL locks and all three lanes reach stop state, which is also the evidence that the hardware-fixed PHY reference is the 40 MHz crystal.  Stage two transmits: command mode is entered and the whole JD9365 sequence goes out with no host error.  But there is no panel-side confirmation of anything, because DSI writes are unacknowledged and all five DCS reads are silent while the reference reads the same register successfully.  The read path is an open defect, recorded with what has been eliminated; it does not block B4 |
 | B4 | Stable internal DSI test pattern | `superseded` | The host side is built and clean: bridge enabled without its pixel feed, pattern generator on, timing programmed and matching the contract's 33.82 Hz, no protocol error and no underrun.  The panel stays dark and unlit.  The backlight path is verifiably asserted end to end, including a measured 18 per cent PWM on GPIO14, and the panel still does not light, which the isolation test cannot explain and which points at something before all of it |
 | B5 | Native `800 x 1280` PSRAM scanout | `hardware partial` | **A dimensionally correct, cleanly transmitted frame from PSRAM reaches the panel through a documented workaround.**  `P4_PANEL_VMUL=1` shows the complete regular grid with no payload error.  Colour, checker, dirty rectangles, sustained concurrent stress and ten EN warm resets pass.  A raw-source ruler measures a constant cyclic displacement of exactly 525 pixels; the explicitly named +525 write-mapping workaround makes quadrants, corner marks and isolated one-pixel lines correct, but neither fixes nor explains the native mapping.  The measured 71 MB/s matches the 69.3 MB/s imposed by timing and selects dirty-region writes over a full-frame CPU pass.  A forced-peripheral-reset gate may substitute for the inaccessible ten physical cold cycles only to unblock development; it is not cold-boot evidence.  The optional post-video DCS read remains excluded from acceptance |
-| B6 | VSYNC handoff, buffering decision and landscape rotation | `hardware verified` | Two complete native buffers are reserved outside Exec and contain logical `1280 x 800` surfaces rotated 90 degrees clockwise.  The GDMA one-frame completion is the ownership boundary because this bridge revision has no VSYNC interrupt.  The immutable gate completed 2,006 frames and 19 source switches without faults and was visually tear-free.  The producer gate then completed 60 bounded inactive-surface updates, exact rotated row-range writebacks and 60 requested frame-boundary swaps with zero rejects or faults; direct observation confirmed exactly one clean moving rectangle without stale pixels, split frames or tearing.  The +525 compatibility mapping stays explicitly named and B5R remains its removal gate |
-| B5R | Remove the native-scanout row-phase workaround | `not started` | Root-cause bridge/GDMA/enable ordering so an unmodified linear `800 x 1280` RGB565 buffer passes the asymmetric geometry gate with phase compensation absent or zero; remove the +525 mapping before release |
+| B6 | VSYNC handoff, buffering decision and landscape rotation | `hardware verified` | Two complete native buffers are reserved outside Exec and contain logical `1280 x 800` surfaces rotated 90 degrees clockwise.  The GDMA one-frame completion is the ownership boundary because this bridge revision has no VSYNC interrupt.  The immutable gate completed 2,006 frames and 19 source switches without faults and was visually tear-free.  The producer gate then completed 60 bounded inactive-surface updates, exact rotated row-range writebacks and 60 requested frame-boundary swaps with zero rejects or faults; direct observation confirmed exactly one clean moving rectangle without stale pixels, split frames or tearing.  The +525 compatibility mapping was removed from the D1001 profile on 2026-10-04 (B5R: wrong D-PHY PLL reference); it survives only as a diagnostic switch |
+| B5R | Remove the native-scanout row-phase workaround | `hardware partial (picture correct without the workaround)` | Root cause found 2026-10-04 on the JC1060P470C: the D-PHY PLL dividers were computed for a 40 MHz reference that is really PLL_F20M (20 MHz), so every lane ran at half its stated rate and the host line timing did not match the DPI line. The D1001 profile now uses the 20 MHz reference, its vendor's 1000 Mbit/s and burst video, and no board sets the +525 mapping; Fabian confirms the picture sits correctly (core `153405e7…`, Giant SMP). The asymmetric geometry gate itself has not been rerun on the new profile. |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
@@ -24151,6 +24151,36 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   its BSP is unchanged (no double-tap-and-drag there yet) and it runs
   without its SD card. The display still uses the +525 workaround and
   non-burst video: this image changes nothing but the backlight.
+
+### 2026-10-04 - B5R: D1001 picture correct without the +525 workaround; profile switched
+
+- State change: B5R `hardware partial (picture correct without the
+  workaround)`; the D1001 profile becomes 20 MHz D-PHY reference, 1000
+  Mbit/s, burst video, no row-phase mapping.
+- Request: Fabian wanted the D1001 tested with the Giant SMP core and
+  without the display workaround (an earlier step had flashed the normal
+  50 % core by misunderstanding; recorded above).
+- Test core in the D1001 tree: normal graphical flags plus `P4_GIANT=1
+  P4_GIANT_MIGRATE=1 P4_DSI_BURST=1 P4_LANE_MBPS=1000 P4_DSI_PLLREF_MHZ=20
+  P4_B6_ROW_PHASE_WORKAROUND=` (empty: no mapping), 213,600 B
+  `153405e7a3ffe4485e40f2e9fff2e60a37281fa688630f18277de39f27e5dbdc`,
+  written to `0x20000` (MAC checked, hash verified). Boot log
+  `46776a90…`: PLL N 1, M 50, range 0x2a, 1,000 Mbit/s from 20 MHz; burst
+  (`VID_MODE_CFG 0xbf02`), no payload error; backlight 9,547 of 20,000;
+  "[giant] hart 1 online"; no trap.
+- Observation without the SD card (it is in the JC1060P470C): Fabian: the
+  display runs and the picture sits correctly. The +525 mapping is
+  therefore no longer needed; its cause was the PLL reference.
+- Profile switch: `P4_BOARD_DSI_PLLREF_MHZ 20`, lane rate 1000, `P4_DSI_BURST
+  ?= 1` for the D1001; the kernel mmakefile no longer defaults the
+  workaround for any board. A rebuild with only the profile defaults and
+  the Giant flags is byte-identical to the tested core (`153405e7…`).
+- Giant: this is also the first visual run of a Giant core without
+  `P4_GIANT_TEST`; desktop, touch and a soak under it are not yet checked
+  on this core (no SD card in the board).
+- Open: rerun the asymmetric geometry gate on the new profile; desktop and
+  touch on the D1001 once its card is back; the non-Giant normal D1001 core
+  on the new profile.
 
 ## Evidence-entry template
 
