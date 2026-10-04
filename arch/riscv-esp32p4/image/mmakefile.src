@@ -76,7 +76,10 @@ P4_GSL_FW_BINARY ?=
 #MM-     workbench-devs-datatypes \
 #MM-     workbench-c-adddatatypes \
 #MM-     compiler-stdc \
-#MM-     workbench-libs-workbench
+#MM-     workbench-libs-workbench \
+#MM-     workbench-c-iprefs \
+#MM-     workbench-prefs-touchscreen \
+#MM-     workbench-prefs-backlight
 
 C3_SD_LIBS := asl.library commodities.library coolimages.library \
               cybergraphics.library datatypes.library diskfont.library \
@@ -119,6 +122,20 @@ ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
 	    $(STAGE)/Classes/DataTypes/png.datatype
 	@$(CP) $(AROSDIR)/Devs/DataTypes/PNG $(STAGE)/Devs/DataTypes/PNG
 	@$(CP) $(AROSDIR)/C/AddDataTypes $(STAGE)/C/AddDataTypes
+	@# IPrefs applies the preferences (brightness among them), and Copy
+	@# fills ENV: from ENVARC: as the standard Startup-Sequence does; both
+	@# write only RAM:.  C:Copy comes from the full workbench-c build,
+	@# which the stage does not run because of its catalog dependencies.
+	@$(TEST) -f $(AROSDIR)/C/Copy || { $(ECHO) "C:Copy missing; build workbench-c once"; exit 1; }
+	@$(CP) $(AROSDIR)/C/Copy $(STAGE)/C/Copy
+	@$(CP) $(AROSDIR)/C/IPrefs $(STAGE)/C/IPrefs
+	@for f in Touchscreen Touchscreen.info Backlight Backlight.info ; do \
+	    $(CP) $(AROSDIR)/Prefs/$$f $(STAGE)/Prefs/$$f || exit 1 ; \
+	done
+	@$(ILBMTOICON) \
+	    $(SRCDIR)/images/IconSets/Gorilla/Icons/Medium/AROS/Prefs.info.src \
+	    $(SRCDIR)/images/IconSets/Gorilla/Icons/Medium/AROS/Prefs.png \
+	    $(STAGE)/Prefs.info
 	@if $(TEST) -d $(AROSDIR)/Prefs/Env-Archive ; then \
 	    $(MKDIR) -p $(STAGE)/Prefs/Env-Archive ; \
 	    $(CP) -r $(AROSDIR)/Prefs/Env-Archive/. \

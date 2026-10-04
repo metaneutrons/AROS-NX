@@ -224,6 +224,10 @@ void PalettePrefs_Handler(STRPTR filename);
 
 void PointerPrefs_Handler(STRPTR filename);
 
+/* backlightprefs.c */
+
+void BacklightPrefs_Handler(STRPTR filename);
+
 /* printerprefs.c */
 
 void PrinterPrefs_Handler(STRPTR filename);
