@@ -52,11 +52,21 @@
 #define P4_BOARD_PANEL_LANES            2
 #define P4_BOARD_PANEL_LANE_MBPS        750
 /*
+ * The D-PHY PLL reference is PLL_F20M (20 MHz) on this silicon; the vendor
+ * firmware's and this port's clock registers agree (JTAG, 2026-10-03), and
+ * ESP-IDF computes N = 4, M = 150 for 750 Mbit/s against it.
+ */
+#define P4_BOARD_DSI_PLLREF_MHZ         20
+/*
  * The vendor asks for 52 MHz; ESP-IDF rounds PLL_F240M / 52 to the divider
  * 5, so the demos run at 48 MHz, inside the panel's 40.8-67.2 MHz range.
  * This port takes the same 48 MHz directly (about 56 Hz refresh).
  */
 #define P4_BOARD_PANEL_DPI_MHZ          48
+/* ...and times the host against the requested 52 MHz, shortening the bridge
+   line to 1241 pixels. The factory firmware's registers, read over JTAG on
+   2026-10-03, are exactly these (HSA 43, HBP 245, HLINE 2423, bridge 1241). */
+#define P4_BOARD_PANEL_DPI_NOMINAL_MHZ  52
 #define P4_BOARD_PANEL_HSYNC            24
 #ifdef P4_JC1060_PANEL_V1
 #define P4_BOARD_PANEL_HBP              160     /* IDF demo; Arduino differs */
