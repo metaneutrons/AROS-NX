@@ -24569,6 +24569,47 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   task.resource list-locking fix; and configure's refusal message, which
   points at E3's runtime-ready criteria. Decision pending.
 
+### 2026-10-04 - Giant soft-interrupt exit and the `smp` refusal moved into the port
+
+- State change: Track E; no acceptance point changes. Two of the four E3
+  traces listed as open above now live in the port only.
+- `rom/kernel/kernel_intr.c` and `rom/exec/enable.c` are back at base
+  `44336e404a`. The Giant's soft-interrupt rule on the way out of a trap
+  is now `kernel/kernel_intr.c`, an override built only with `P4_GIANT`,
+  like `kernel_scheduler.c`. Its comment now gives the Giant reason for
+  the drain loop: exec's `SoftIntDispatch` runs the handlers with
+  interrupts enabled (`KrnSti()`) and returns that way. The hook in the
+  generic `enable.c` was already dead: the Giant builds its own `enable.c`.
+  `p4-softint-exit-test.c` now includes the port copy; 106 checks pass.
+- `configure` and `configure.in` are back at their state before
+  `9fe5e2fbda`; the port's kernel makefile refuses the `smp` variant
+  instead. The source `configure` got the modification time 2026-10-02
+  07:54:55, older than both build trees' `config.status`, so the trees do
+  not demand a reconfigure. The removed block only acted on the `smp`
+  variant.
+- Finding: the port's arch-specific kernel files are compiled without
+  optimization. `%build_archspecific` with `compiler=kernel` uses
+  `KERNEL_CFLAGS`, which lack `KERNEL_OPTIMIZATION_CFLAGS` (`-O2`);
+  `arch/m68k-all/kernel/mmakefile.src` works around the same gap. The
+  moved `kernel_intr.c` first came out at `-O0` (`core_ExitInterrupt`
+  0xae to 0xec bytes, Giant core 213,760 B `153ca4e0…`). The kernel
+  makefile now gives that one object the generic flags. Every other port
+  kernel file (Giant, traps, CPU, scanout copies) still runs unoptimized;
+  changing that is a separate decision and needs hardware runs.
+- Builds (flags as in the D3 entries), no warnings: JC1060 normal core
+  `085a7655…`, byte-identical. D1001 Giant core 213,504 B
+  `41780c782049b70ec7e44c80546464370df20830b76a63d57ffcfbc42e9e04b2`:
+  same size as `fb16af6b…` and the same instructions in all 864
+  functions once addresses, branch offsets and alignment padding are
+  normalized; the two remaining differences are the addresses inside the
+  `Resident` structure and an `addi a0,a0,0` that the disassembler prints
+  as `mv`. Only the layout moved, because the object now comes from the
+  arch list. Not yet run on the D1001. Packages are unaffected.
+- Still shared: the `P4_GIANT` (and E3 SMP) branch of
+  `arch/riscv-all/exec/stackswap.S`, which cannot be overridden safely
+  because `riscv-all` builds a file of the same name into the same object
+  directory; the five Giant hooks in `rom/exec`; the task.resource fix.
+
 ## Evidence-entry template
 
 

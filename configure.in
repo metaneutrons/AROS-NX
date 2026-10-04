@@ -104,16 +104,6 @@ AC_MSG_RESULT($target_os)
 AC_MSG_CHECKING([for target cpu (debug output)])
 AC_MSG_RESULT($target_cpu)
 
-dnl Refuse the P4 SMP target before host tools or Python modules are probed.
-dnl This is intentionally a hard gate, with no configure-time bypass.
-if test "$target_os" = "esp32p4"; then
-    case "$ac_configure_args" in
-        *"'--enable-target-variant=smp'"*)
-            AC_MSG_ERROR([ESP32-P4 Exec SMP is blocked: reviewed SMP runtime prerequisites, including locks and context-switch integration, are not ready. Hart 1 must remain outside Exec. Remove this guard only after the runtime-ready criteria in arch/riscv-esp32p4/SMP.md are met; perform matched-ABI qualification afterward in an isolated build.])
-            ;;
-    esac
-fi
-
 dnl --------------------------------------------------------------------
 dnl Host Configuration Section
 dnl --------------------------------------------------------------------

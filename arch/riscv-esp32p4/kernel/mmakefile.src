@@ -1023,15 +1023,18 @@ AFILES := \
         startup \
         traps
 
-ifeq ($(P4_GIANT),1)
+# There is no Exec SMP variant for the ESP32-P4; its SMP is the transitional
+# Giant (P4_GIANT=1) on the normal target.
 ifeq ($(AROS_TARGET_VARIANT),smp)
-$(error P4_GIANT=1 is an alternative to the smp variant, not an addition)
+$(error ESP32-P4 has no smp variant; build the normal target with P4_GIANT=1)
 endif
+
+ifeq ($(P4_GIANT),1)
 ifneq ($(filter 1,$(P4_SECONDARY_PROBE) $(P4_SECONDARY_ENTRY) $(P4_E2_PRIMITIVES)),)
 $(error P4_GIANT=1 cannot share the diagnostic secondary/E2 startup)
 endif
 USER_CPPFLAGS += -DP4_GIANT=1
-CFILES += p4_giant kernel_scheduler
+CFILES += p4_giant kernel_scheduler kernel_intr
 AFILES += p4_giant_entry
 ifeq ($(P4_GIANT_MIGRATE),1)
 USER_CPPFLAGS += -DP4_GIANT_MIGRATE=1
@@ -1079,6 +1082,14 @@ endif
 %build_archspecific \
   mainmmake=kernel-kernel modname=kernel maindir=rom/kernel arch=esp32p4-riscv \
   files="$(CFILES) $(PLATFILES)" asmfiles="$(AFILES)" compiler=kernel
+
+# %build_archspecific compiles with KERNEL_CFLAGS, which lack the kernel
+# optimization flags the generic rom/kernel objects get (m68k-all/kernel
+# works around the same gap). The Giant kernel_intr.c replaces a generic
+# file, so it gets the generic file's flags.
+ifeq ($(P4_GIANT),1)
+$(GENDIR)/rom/kernel/kernel/arch/kernel_intr.o : TMP_CFLAGS += $(KERNEL_OPTIMIZATION_CFLAGS)
+endif
 
 #
 # The kickstart holds only what has to exist before anything can be

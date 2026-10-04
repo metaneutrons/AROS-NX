@@ -4,7 +4,6 @@
     Desc: High-level scheduler calling code
 */
 
-#if !defined(P4_CORE_EXIT_TEST)
 #include <exec/execbase.h>
 #include <hardware/intbits.h>
 #include <proto/exec.h>
@@ -14,10 +13,6 @@
 #include <kernel_intr.h>
 #include <kernel_scheduler.h>
 #include <kernel_syscall.h>
-#if defined(EXEC_PLATFORM_SOFTINT_PENDING)
-#include <proto/kernel.h>
-#endif
-#endif
 
 #define D(x)
 
@@ -35,21 +30,8 @@
 void core_ExitInterrupt(regs_t *regs)
 {
     /* Soft interrupt requested? It's high time to do it */
-#if defined(EXEC_PLATFORM_SOFTINT_PENDING)
-    /* Outer trap entry has MIE clear. A dispatcher enables MIE for callbacks,
-     * so its final empty-release can race a nested, already-drained IPI.
-     * Mask again before rechecking: work is either drained here or its wake
-     * remains latched for the next outer trap after returning to the task.
-     * Like the dispatcher, this deliberately drains until quiescent. */
-    while (EXEC_PLATFORM_SOFTINT_PENDING())
-    {
-        core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
-        KrnCli();
-    }
-#else
     if (SysBase->SysFlags & SFF_SoftInt)
         core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
-#endif
 
     /* If task switching is disabled, do nothing */
     if (TDNESTCOUNT_GET < 0)

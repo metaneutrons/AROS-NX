@@ -103,13 +103,7 @@
                  * only once interrupts are enabled again) software interrupt,
                  * so we check it manually here in Enable(), similar to Permit().
                  */
-                if (
-#if defined(EXEC_PLATFORM_SOFTINT_PENDING)
-                    EXEC_PLATFORM_SOFTINT_PENDING()
-#else
-                    SysBase->SysFlags & SFF_SoftInt
-#endif
-                   )
+                if (SysBase->SysFlags & SFF_SoftInt)
                 {
                     /*
                      * First we react on SFF_SoftInt by issuing KrnCause() call. This triggers

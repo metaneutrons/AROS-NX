@@ -54,7 +54,7 @@ serialized across harts.
 
 It needs no Exec ABI change: only the core image changes, and the unchanged
 normal BSP package runs with it. `P4_GIANT` is a make switch of the normal
-target, not the refused `smp` variant; configure's smp refusal is unchanged
+target, not the `smp` variant, which the port's kernel makefile refuses,
 and Codex's E3 sources were removed on 2026-10-04 (branch `e3-smp`, see E3
 below). Hart1 runs only tasks that opt in
 through the private tc_Flags bits 1 (may run on hart1) and 2 (must not run on
@@ -413,15 +413,21 @@ service behind `KATTR_AtomicOps` (`aros/atomic_ops.h`,
 `aros/platform_atomic.h`), the P4 timer service (`aros/p4timer.h`), the
 isolated secondary-Exec candidates, the host tests of all of these and the
 tools `smp-e3-check.py`, `p4-fpu-check.py` and `configure-smp-build.sh`. None
-of it built for the P4 (configure refuses the `smp` variant); the shared half
+of it built for the P4 (the `smp` variant is refused); the shared half
 changed the x86_64 and opensbi SMP builds and collided with upstream's later
 SMP rework. Both normal and Giant cores, and the E2 diagnostic core, are
 byte-identical before and after.
 
-Kept: the Giant and its six hooks, E1/E2 (secondary entry and probe, mailbox,
-primitives, `smp-e2-check.py`, `smp-retained-reset.py`), and the generic
-fixes found along the way (ChildWait signal order, NewAddTask/NewCreateTaskA
-failure paths, task.resource hook node, list locking and init order).
+Kept: the Giant, E1/E2 (secondary entry and probe, mailbox, primitives,
+`smp-e2-check.py`, `smp-retained-reset.py`), and the generic fixes found
+along the way (ChildWait signal order, NewAddTask/NewCreateTaskA failure
+paths, task.resource hook node, list locking and init order). The Giant
+needs five hooks in `rom/exec` (`TASK_READY`, `REMOVE_RUNNING`,
+`REMOVE_WAIT`, `FIND_RUNNING`, `TASK_FLAGS_INIT`) and the `P4_GIANT` branch
+in `arch/riscv-all/exec/stackswap.S`; its soft interrupt rule
+(`SOFTINT_PENDING`) is used only in the port (`exec/enable.c`,
+`kernel/kernel_intr.c`, `kernel/kernel_cpu.c`), and the port's kernel
+makefile, not configure, refuses the `smp` variant.
 
 To bring E3 back, start from branch `e3-smp` (`14f0290e21`, the last commit
 with all of it; local, not pushed) or revert the two removal commits of

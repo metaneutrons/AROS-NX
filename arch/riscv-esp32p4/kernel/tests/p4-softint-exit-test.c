@@ -1,4 +1,4 @@
-/* Host fixture for the actual rom/kernel/kernel_intr.c return path. */
+/* Host fixture for the actual Giant kernel_intr.c return path. */
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -29,7 +29,7 @@ void cpu_Dispatch(regs_t *regs);
 static int softint_pending_mock(void);
 
 #define P4_CORE_EXIT_TEST 1
-#include "../../../../rom/kernel/kernel_intr.c"
+#include "../kernel_intr.c"
 
 enum event
 {
