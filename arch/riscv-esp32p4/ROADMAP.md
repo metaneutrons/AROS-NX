@@ -138,7 +138,7 @@ gate: compensated output is not the native display contract.
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
 | D0 | Compile-time board profile, with D1001 as the first implementation | `hardware partial` | LDO2 now recovers and verifies all 32 MB without Vellum. The 20-MHz-PSRAM/90-MHz-CPU artifact showed only blue and an edge strip; changing only PSRAM to 200 MHz produced clean calibration and a spontaneously reported desktop. After the battery was reported empty, the initial non-desktop state could not be classified: opening UART coincided with a USB reset, and a subsequent controlled USB reset booted Wanderer with the restored touch firmware and zero reported faults. Fabian then saw the desktop. Neither run proves the original rail-off start completed by itself or passes the unsynchronized visual/touch gate. Isolated full core/Exec/SD/BSP and physical rail-off gates remain open; do not generalize this clock result to the earlier 360/200-MHz C1 strip. Prohibit stale cross-board objects before a second profile. |
 | D1 | Board-driver boundary and second-board onboarding | `build verified` | 2026-10-03: the profile now selects panel controller and table (JD9365/JD9165), rotation (90/0), panel power scheme (PCA9535 or plain GPIOs), touch driver (GSL3670/GT911, firmware optional), SD detect/power wiring, partition CSV and sdkconfig per board; `check-profile.py` evaluates `board.mk` per board through GNU make. The D1001 core built with these changes is byte-identical to HEAD (202,096 B `99a8f6f8…`, same flags, same tree), so the D1001 binary contract holds. Not hardware tested on either board. |
-| D2 | Guition JC1060P470C as the active development board (J0-J4) | `hardware partial (J0 passed)` | Board IDs `jc1060p470c-v2` (new panel batch, the board in use) and `jc1060p470c-v1` (old batch); profile from the vendor schematic, demos and dtsi. 2026-10-03: board `80:f1:b2:d3:3b:a6` (ESP32-P4 v1.3, 16 MB) identified, factory flash backed up twice identical (`03222de1…`), provisioned with AROS bootloader, partition table and a headless core (181,184 B `0ed58805…`). J0 passes: bootloader loads ota_0, 32 MB PSRAM at 200 MHz calibrated, Exec starts, `board jc1060p470c-v2`, 60 s alive. J1 display, J2 touch, J3 SD, J4 package open. |
+| D2 | Guition JC1060P470C as the active development board (J0-J4) | `hardware partial (J0, J1 test card passed)` | Board IDs `jc1060p470c-v2` (new panel batch, the board in use) and `jc1060p470c-v1` (old batch). 2026-10-03: board `80:f1:b2:d3:3b:a6` backed up (`03222de1…`) and provisioned; J0 headless core reaches Exec with 32 MB PSRAM. J1: the B6 test card (two frames, swap every 3 s) shows correctly (Fabian, 2026-10-04) with burst video, CPU 360/bus 180 MHz, ESP-IDF host timing (52 MHz nominal) and the D-PHY PLL computed against its real 20 MHz reference (core 193,296 B `41d36a6b…`). Found by JTAG register comparison with the factory firmware; the 40 MHz PLL reference assumption also applies to the D1001 code (open). J2 touch, J3 SD, J4 package/graphical boot open. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
 | E2 | Two-hart atomics, coherence and IPI primitives | `hardware verified; complete` | Exact219,776-byte core08 passes five ordinary headless captures/ten reset-separated epochs:650 SRAM+660 PSRAM exchanges,120 refusals,163,840 updates per AMO/CAS/lock counter with measured contention, bidirectional software IPI, remote code37/53, missing-park refusal and ten cache suspend/resume windows. Secondary reset/clock stop confirmed every exit; full221,184-byte normal range restored/verified and headless baseline boots. Atomics qualify internal SRAM only; Exec SMP/default changes wait for E3. |
@@ -23997,6 +23997,82 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Safety: only the listed ranges written; factory image recoverable.
 - Next: J1 display. First headless (PHY lock, panel ID read, DCS 0x0A after
   the video handover), then a visual check after Fabian's readiness.
+
+### 2026-10-04 - D2/J1: JC1060P470C test card displays correctly
+
+- State change: D2 `hardware partial (J0, J1 test card passed)`. J1's test
+  card gate passed by direct observation; the graphical boot (J4) is open.
+- Instrument: `P4_B6_HANDOFF_GATE=1` (two immutable 1024x600 frames, GDMA
+  source swapped at frame-done about every 3 s, scanout stopped and panel
+  made safe after 60 s), `P4_DSI_PANEL_QUERY=1`, cores written to `0x20000`
+  only under the standing authorization unless stated, every write MAC
+  checked and hash verified, captures from the first byte. Reference
+  images: `display/testcards/b6-frame-{a,b}-*.png`.
+- First light, failed (2026-10-03 22:22): non-burst, 750 Mbit/s nominal,
+  48 MHz DPI, CPU 90 MHz; core `1223fb4e…`, log `5581ca41…`. The panel lit
+  and showed parts of the frames, displaced, compressed and with wrong
+  colours; the host reported `INT_ST1` bit 7 `DPI_PLD_WR_ERR` throughout.
+  PLL locked, panel answered DCS 0x04/0x0A (power mode 0x14), 3,225 frames,
+  zero DMA faults.
+- Burst at CPU 90 MHz (`8ad0a11d…`): no payload error, panel black, as on
+  the D1001's burst runs. A headless matrix (non-burst at 1000/48, 1000/40,
+  750 with two chunks, 1500/48; burst/non-burst with DCS 0x0A after video)
+  kept `DPI_PLD_WR_ERR` in every non-burst case and showed the same power
+  mode 0x14 before and after video, so 0x0A does not separate accepted from
+  rejected video on this panel.
+- Vendor app alone in `ota_0` (with Fabian's approval): aborted in
+  `bsp_spiffs_mount` (no SPIFFS partition in the AROS table) before the
+  display was touched. With Fabian's approval the whole factory image was
+  restored at 0x0 (hash verified), the demo ran (Fabian: correct picture),
+  and OpenOCD read the DSI host, bridge and HP_SYS_CLKRST registers
+  (`factory-regs.log` `a0ed07f6…`). AROS was then provisioned again exactly
+  as for J0 (otadata and arosbsp erased, bootloader, partition table and
+  core written, three hashes verified).
+- Register comparison against AROS during scanout (`burst-regs.log`
+  `6be3dde0…`, `burst360-regs.log` `4aa804c0…`): root clocks differed
+  (factory CPU 360, mem/sys 180, APB 90; AROS test cores CPU/bus 90). With
+  `P4_CPU_MHZ=360` they match and `VID_PKT_STATUS` shows the host line
+  buffer full as in the factory, but the panel stayed black with grey
+  garbage (`557e619c…`). Remaining DSI differences were ESP-IDF's host
+  timing (computed against the requested 52 MHz, bridge line shortened to
+  1,241 pixels) and frame ACK/BTA/ACK_RQST. Matching the timing alone gave
+  `DPI_PLD_WR_ERR` and grey garbage (`55596f76…`); adding frame ACK stalled
+  after one frame, a coloured line at the top (`28d24a0e…`), as on the D1001.
+- Cause: the D-PHY PLL reference. Both firmwares select PLL_F20M
+  (`peri_clk_ctrl02.mipi_dsi_dphy_clk_src_sel` 0) with
+  `ref_20m_clk_div_num` 23, i.e. 20 MHz, and ESP-IDF computes N against
+  20 MHz on pre-v3 silicon. The port computed N for 40 MHz (a 2026-08-23
+  D1001 inference from one lane-state bit), so every lane ran at half its
+  stated rate: 375 instead of 750 Mbit/s, below the 384 Mbit/s per lane
+  that 1024 pixels at 48 MHz in RGB565 need. A subagent's GDMA comparison
+  found the channel and LLI programming identical to ESP-IDF apart from
+  the interrupt signal mask.
+- Fix: `P4_BOARD_DSI_PLLREF_MHZ 20` for the JC1060P470C (N 4, M 150 at
+  750 Mbit/s), `P4_BOARD_PANEL_DPI_NOMINAL_MHZ 52` (ESP-IDF host timing,
+  bridge HFP compensation), burst video as the board default, and
+  `P4_CPU_MHZ=360` in the gate build (the normal graphical boot sets it).
+- Result (2026-10-04 09:21): core 193,296 B
+  `41d36a6b762fc9b2d21fbdb528f7906b592d7e41f8349b55a243c10b794099ec`, log `b005acb0f35fff41…`: no payload
+  error, 1,847 frames to t30, safe stop. Fabian: "C war perfekt". The
+  non-burst variant with the same PLL fix (`07998c5c…`) was clean in the
+  host but the picture was displaced; burst stays the board default.
+- D1001 implication (open): its PHY uses the same 20 MHz source, so its
+  "1500 Mbit/s" runs at 750 and its rejected "1000" was 500, while its host
+  line times are computed for the stated rate. That is a candidate cause
+  for the unexplained +525 row-phase workaround (B5R) and for its black
+  burst runs: the JC1060P470C showed a displaced picture in non-burst too.
+  Test on the D1001: 20 MHz reference, burst, its vendor's 1000 Mbit/s and
+  40 MHz, without the workaround. Its code is unchanged: a rebuild with
+  the normal flags (`d1001-normal-7`) differs from `99a8f6f8` only in two
+  embedded module version dates (rebuilt flashdisk.device and one module
+  from the E3-GT work), the disassembly is otherwise identical.
+- Tooling: `build-core.sh` builds timer.device and flashdisk.device only
+  when their kernel objects are missing, flashdisk through its `-quick`
+  target; the plain target also builds the development volume image, which
+  no longer fits in the D1001 tree ("image too small for its contents").
+  A first version cleaned and rebuilt flashdisk and failed there.
+- Next: J2 GT911 touch, J3 read-only SD, J4 package and graphical boot to
+  Wanderer, each with Fabian's readiness for the visual part.
 
 ## Evidence-entry template
 

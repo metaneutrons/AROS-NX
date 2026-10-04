@@ -51,6 +51,9 @@ P4_BOARD_FLASHDISK_OFFSET := 0xc00000
 P4_BOARD_TOUCH_FW_FILENAME :=
 P4_BOARD_TOUCH_DRIVER := gt911
 P4_BOARD_PANEL_TABLE := jd9165_init
+# Burst video, as ESP-IDF drives this panel. Non-burst shows the image
+# displaced on this board (2026-10-03); P4_DSI_BURST=0 still selects it.
+P4_DSI_BURST ?= 1
 P4_BOARD_PARTITION_CSV := $(P4_BOARD_DIR)/partition-table.csv
 P4_BOARD_SDKCONFIG := $(P4_BOARD_DIR)/sdkconfig.defaults
 else

@@ -5,11 +5,14 @@
 #
 #   usage: build-core.sh <build-dir> <log-dir> [--clean] [--link-only] FLAG=VALUE ...
 #
-#   --clean deletes the kernel, exec, task, debug and flashdisk objects
-#   first. mmake does not track -D switches or P4_BOARD, so any change of
-#   the flag set needs it (see AGENTS.md, "Builds whose result gets
-#   documented"). timer.device and flashdisk.device are built as well, so
-#   a freshly configured tree links too.
+#   --clean deletes the kernel, exec, task and debug objects first. mmake
+#   does not track -D switches or P4_BOARD, so any change of the flag set
+#   needs it (see AGENTS.md, "Builds whose result gets documented").
+#   timer.device and flashdisk.device are built only when their kernel
+#   objects are missing (a freshly configured tree), flashdisk through its
+#   -quick target: the plain one also builds the development volume image,
+#   which fails in a tree whose volume content has outgrown it. Neither
+#   object depends on the flag set.
 #
 #   The image is linked directly from the generated kernel mmakefile, which
 #   skips the oversized standalone flashdisk stage that the aggregate
@@ -44,15 +47,17 @@ printf '%s\n' "${flags[@]}" > "$logs/flags.txt"
 export PATH="$build/.venv/bin:$PATH"
 
 if [ $clean = 1 ]; then
-    for d in rom/kernel rom/exec rom/task rom/debug arch/riscv-esp32p4/flashdisk; do
+    for d in rom/kernel rom/exec rom/task rom/debug; do
         find "$gen/$d" -name '*.o' -delete 2>/dev/null || true
     done
-    rm -f "$gen/kobjs/flashdisk_device.o"
-    echo "cleaned kernel/exec/task/debug/flashdisk objects" > "$logs/clean.txt"
+    echo "cleaned kernel/exec/task/debug objects" > "$logs/clean.txt"
 fi
 
 cd "$build"
-[ $link_only = 1 ] || for t in kernel-kernel-kobj kernel-exec-kobj kernel-task-kobj kernel-debug-kobj kernel-timer-kobj kernel-flashdisk-kobj; do
+targets="kernel-kernel-kobj kernel-exec-kobj kernel-task-kobj kernel-debug-kobj"
+[ -f "$gen/kobjs/timer_device.o" ] || targets="$targets kernel-timer-kobj"
+[ -f "$gen/kobjs/flashdisk_device.o" ] || targets="$targets kernel-flashdisk-kobj-quick"
+[ $link_only = 1 ] || for t in $targets; do
     echo "=== $t" >> "$logs/build.log"
     if ! gmake "$t" "${flags[@]}" >> "$logs/build.log" 2>&1; then
         echo "build of $t failed; see $logs/build.log" >&2

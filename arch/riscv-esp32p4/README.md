@@ -14,8 +14,9 @@ the same way `--target=opensbi-riscv64` selects `arch/riscv64-opensbi`.
 
 The SoC target has a compile-time board selector with two profiles under
 [board/](board/): `P4_BOARD=d1001` (Seeed reTerminal D1001, still the default)
-and `P4_BOARD=jc1060p470c` (Guition JC1060P470C, also accepted as
-`jc1060wp470c`), which is the active development board since 2026-10-03. A
+and the Guition JC1060P470C as `P4_BOARD=jc1060p470c-v2` (new panel batch,
+the active development board since 2026-10-03) or `jc1060p470c-v1` (old
+batch; read the batch from the factory firmware, not the "V2" sticker). A
 profile owns GPIOs, flash geometry, partition and sdkconfig input, and selects
 the panel controller and table, the rotation, the panel power scheme
 (PCA9535 or plain GPIOs), the touch driver (GSL3670 with firmware, GT911
@@ -77,7 +78,7 @@ its evidence entry in the same change.
 | :--- | :--- | :--- |
 | graphics performance | hardware partial | C1P tiled rotation, CPU360 and framebuffer v2 coalescing reduce the measured first full update from 2.776 s synchronous/CPU90 to 0.296 s queued/CPU360. Initial visual speedup confirmed, then slowdown/hang reported. Console-only nonblocking fix is sanitizer-tested, flashed and independently verified; causality and fresh visual/touch/no-reader acceptance remain open. See C1P and dated evidence. |
 | configure target | done | `--target=esp32p4-riscv`, configure completes |
-| board selection | hardware partial | `P4_BOARD=d1001` and `P4_BOARD=jc1060p470c` select wiring and drivers and reject unknown boards; the D1001 core reports `board d1001` on hardware and is byte-identical after the 2026-10-03 driver split. The JC1060P470C core builds; its J0-J4 gates are not run yet |
+| board selection | hardware partial | `P4_BOARD=d1001`, `jc1060p470c-v1` and `jc1060p470c-v2` select wiring and drivers and reject unknown boards; the D1001 core is byte-identical after the 2026-10-03 driver split. The JC1060P470C-v2 boots a headless core to Exec with 32 MB PSRAM (J0) and shows the B6 test card correctly (J1, 2026-10-04); touch, SD, package and graphical boot are open |
 | crosstools | done | binutils 2.47 and gcc 16.2.0 for riscv-aros, link libraries built |
 | rv32 CPU layer | done | M-mode CSR names, FLEN-aware FPU context, cache clears, backtrace, single-precision fenv, ABI-aware stub frames |
 | kernel arch layer | compiles | `gmake kernel-kernel-esp32p4-riscv` builds all platform objects |

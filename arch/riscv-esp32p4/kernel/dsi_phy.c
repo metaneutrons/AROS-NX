@@ -1261,8 +1261,7 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
                               ) << P4_DSI_BRG_BANK_SHIFT));
     brg_wr(P4_DSI_BRG_DPI_H_CFG0,
            ((unsigned long)P4_PANEL_H_RES << P4_DSI_BRG_DISP_SHIFT)
-           | ((unsigned long)(P4_PANEL_H_RES + P4_PANEL_HSYNC + P4_PANEL_HBP
-                              + P4_PANEL_HFP
+           | ((unsigned long)(P4_BRG_HTOTAL
 #ifdef P4_DSI_BRG_HLINE_DELTA
                               + P4_DSI_BRG_HLINE_DELTA
 #endif
@@ -1530,8 +1529,7 @@ int krnP4DsiPatternOn(struct P4DsiPattern *out)
     brg_field(P4_DSI_BRG_DPI_H_CFG0, 0x0FFFUL << P4_DSI_BRG_DISP_SHIFT,
               (unsigned long)P4_PANEL_H_RES << P4_DSI_BRG_DISP_SHIFT);
     brg_field(P4_DSI_BRG_DPI_H_CFG0, 0x0FFFUL << P4_DSI_BRG_TOTAL_SHIFT,
-              (unsigned long)(P4_PANEL_H_RES + P4_PANEL_HSYNC
-                              + P4_PANEL_HBP + P4_PANEL_HFP
+              (unsigned long)(P4_BRG_HTOTAL
 #ifdef P4_DSI_BRG_HLINE_DELTA
                               + P4_DSI_BRG_HLINE_DELTA
 #endif
