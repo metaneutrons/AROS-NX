@@ -67,10 +67,6 @@ static int FNAME_P4SD(Init)(struct SDCardBase *SDCardBase)
         bug("[P4SD--] native slot expected Unit0/Bus0, got base %u bus %u\n",
             units->sdcbu_UnitBase, bus->sdcb_BusNum);
 
-#if defined(__AROSEXEC_SMP__)
-    KrnSpinInit(&bus->sdcb_Lock);
-#endif
-
     FNAME_SDC(RegisterBus)(bus, SDCardBase);
     return TRUE;
 
