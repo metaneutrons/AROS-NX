@@ -57,6 +57,15 @@ delete the objects that the changed switch affects:
 and state the artifact size and SHA-256 in the entry, because those are what
 show which build actually reached the board.
 
+Public ABI headers are copied into `gen/include` and `AROS/Developer/include`;
+quick module/object targets do not necessarily refresh those copies. After
+changing a public header, refresh both through the compiler include-copy rules,
+then invalidate its consumers. Check struct-initializer warnings and the
+compiled ABI version/size, not only the source macro. After relocating a build,
+also inspect `riscv-aros-gcc -print-sysroot`: GCC may still point at the former
+Developer tree. The P4 fbgfx build explicitly selects this build's generated
+includes; do not silently update the abandoned sysroot as a workaround.
+
 ## Capture the console from the first byte
 
 Use `tools/reset-and-log.py`, not esptool followed by a reader:
@@ -88,6 +97,12 @@ authorization does not waive this synchronization step.  A run started before
 that confirmation is non-interactive evidence only and must not be counted as
 an interactive acceptance test, even if the user later reports that they
 missed it.
+
+Fabian explicitly authorizes flashing this development board and headless
+UART/boot tests without a new consent request. Verify the board identity,
+exact flash range and recoverable backup before a write. Only a test that
+requires his live sight or physical interaction needs a fresh readiness
+confirmation; never infer a visual pass from a headless log.
 
 ## Comparing against the working reference
 
