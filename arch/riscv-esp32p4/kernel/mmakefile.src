@@ -1048,6 +1048,15 @@ else ifeq ($(P4_SECONDARY_ENTRY),1)
 AFILES += secondary_entry
 endif
 
+# With compiler=kernel, %build_archspecific compiles with KERNEL_CFLAGS,
+# which are only USER_CFLAGS: without this line the port's kernel code is
+# built unoptimized, while the generic modules get the target optimization
+# (m68k-all/kernel works around the same gap). Optimized loops must not turn
+# into memset()/memcpy() calls: those live in XIP flash, and P4_SRAMCODE
+# runs while flash or the cache is unavailable (check-sramtext.sh catches
+# what slips through, such as struct copies).
+USER_CFLAGS += $(KERNEL_OPTIMIZATION_CFLAGS) -fno-tree-loop-distribute-patterns
+
 %build_archspecific \
   mainmmake=kernel-kernel modname=kernel maindir=rom/kernel arch=esp32p4-riscv \
   files="$(CFILES) $(PLATFILES)" asmfiles="$(AFILES)" compiler=kernel
