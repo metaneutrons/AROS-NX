@@ -129,9 +129,17 @@ static int gt911_write8(unsigned int reg, unsigned char value)
     return krnP4I2CTransfer(gt911_addr, w, 3, NULL, 0);
 }
 
+/*
+ * The touch pins can be routed to either I2C controller through the GPIO
+ * matrix. The board profile picks it: on the JC1060P470C controller 1, as
+ * the vendor does; this driver's controller 0 timing does not work at
+ * 100 kHz (recorded on the D1001) and lost arbitration on GT911 reads at
+ * 10 kHz (2026-10-04).
+ */
 static int gt911_select_bus(unsigned long hz)
 {
-    return krnP4I2CInit(0, P4_BOARD_I2C0_SDA_GPIO, P4_BOARD_I2C0_SCL_GPIO, hz)
+    return krnP4I2CInit(P4_BOARD_TOUCH_I2C_PORT, P4_BOARD_I2C0_SDA_GPIO,
+                        P4_BOARD_I2C0_SCL_GPIO, hz)
          ? P4_I2C_OK : P4_I2C_NOTREADY;
 }
 
@@ -172,15 +180,14 @@ static int gt911_start(unsigned char id[11])
 }
 
 /*
- * The controller reports in its configured resolution; the vendor demo notes
- * one batch configured for 800 x 480 on this 1024 x 600 panel. Scaling here
- * keeps the public range fixed at the panel size whatever the configuration.
+ * Contacts arrive in panel pixels. The configured resolution does not say
+ * so: the first board reports 1085 x 600, and scaling X by 1024/1085 left
+ * the pointer increasingly behind the finger towards the right edge
+ * (Fabian, 2026-10-04). The vendor driver does not scale either (its
+ * callback for that is commented out). Only clamp to the panel.
  */
-static ULONG gt911_scale(ULONG v, unsigned int res, unsigned int size)
+static ULONG gt911_clamp(ULONG v, unsigned int size)
 {
-    if (!res || res == size)
-        return v < size ? v : size - 1;
-    v = (v * size + res / 2) / res;
     return v < size ? v : size - 1;
 }
 
@@ -233,10 +240,10 @@ static BOOL gt911_read_contacts(struct KrnTouchScreenFrame *frame)
         struct KrnTouchScreenContact *contact = &frame->contact[frame->count++];
 
         contact->id = c[0];
-        contact->x = gt911_scale((ULONG)c[1] | ((ULONG)c[2] << 8),
-                                 gt911_res_x, P4_LOGICAL_W);
-        contact->y = gt911_scale((ULONG)c[3] | ((ULONG)c[4] << 8),
-                                 gt911_res_y, P4_LOGICAL_H);
+        contact->x = gt911_clamp((ULONG)c[1] | ((ULONG)c[2] << 8),
+                                 P4_LOGICAL_W);
+        contact->y = gt911_clamp((ULONG)c[3] | ((ULONG)c[4] << 8),
+                                 P4_LOGICAL_H);
     }
     for (i = frame->count; i < KRN_TOUCHSCREEN_MAX_CONTACTS; ++i)
     {
@@ -268,15 +275,46 @@ struct KrnTouchScreenOps *krnP4GT911TouchScreenOps(void)
 }
 #endif /* P4_C4_TOUCH_HIDD */
 
+/*
+ * Which addresses answer on the touch bus, at the current rate. The bus is
+ * shared with the ES8311 (0x18), the RX8025T RTC and the camera's SCCB, so
+ * an empty scan points at the bus or its pins rather than at the GT911.
+ */
+static void gt911_scan(const char *when)
+{
+    unsigned int a, found = 0;
+
+    krnP4PutStr("[touch]  i2c");
+    krnP4PutDec(P4_BOARD_TOUCH_I2C_PORT);
+    krnP4PutStr(" scan ");
+    krnP4PutStr(when);
+    krnP4PutStr(":");
+    for (a = 0x08; a < 0x78; ++a)
+        if (krnP4I2CProbe(a) == P4_I2C_OK)
+        {
+            krnP4PutStr(" ");
+            krnP4PutHex32(a);
+            ++found;
+        }
+    krnP4PutStr(found ? "\n" : " nothing\n");
+}
+
 /* Boot-time identification for the log; the HIDD starts it again later. */
 void krnP4GT911Probe(void)
 {
     unsigned char id[11];
     int r;
 
+    /* Before our reset: what the controller answers as the vendor leaves
+       it (the vendor firmware drives neither INT nor RST). */
+    if (gt911_select_bus(100000UL) == P4_I2C_OK)
+        gt911_scan("before reset, 100 kHz");
+
     krnP4PutStr("[touch]  GT911 reset on GPIO");
     krnP4PutDec(P4_BOARD_TOUCH_RST_GPIO);
-    krnP4PutStr(", I2C0 sda ");
+    krnP4PutStr(", I2C");
+    krnP4PutDec(P4_BOARD_TOUCH_I2C_PORT);
+    krnP4PutStr(" sda ");
     krnP4PutDec(P4_BOARD_I2C0_SDA_GPIO);
     krnP4PutStr(" scl ");
     krnP4PutDec(P4_BOARD_I2C0_SCL_GPIO);
@@ -285,12 +323,25 @@ void krnP4GT911Probe(void)
     r = gt911_start(id);
     if (r != P4_I2C_OK)
     {
+        unsigned long raw = 0, sr = 0;
+
+        krnP4I2CLastStatus(&raw, &sr);
         krnP4PutStr("[touch]  GT911 did not answer at 0x5d or 0x14: ");
         krnP4PutStr(r == P4_I2C_NACK      ? "no answer"
                   : r == P4_I2C_TIMEOUT   ? "bus timeout"
                   : r == P4_I2C_NOTREADY  ? "controller not initialised"
                                           : "transfer error");
-        krnP4PutStr("; no touch device\n");
+        krnP4PutStr(" (");
+        krnP4PutHex32((uint32_t)r);
+        krnP4PutStr(", raw ");
+        krnP4PutHex32((uint32_t)raw);
+        krnP4PutStr(", sr ");
+        krnP4PutHex32((uint32_t)sr);
+        krnP4PutStr("); no touch device\n");
+        if (gt911_select_bus(100000UL) == P4_I2C_OK)
+            gt911_scan("after reset, 100 kHz");
+        if (gt911_select_bus(10000UL) == P4_I2C_OK)
+            gt911_scan("after reset, 10 kHz");
         return;
     }
     krnP4PutStr("[touch]  GT911 at ");
@@ -306,8 +357,7 @@ void krnP4GT911Probe(void)
     krnP4PutDec(gt911_res_x);
     krnP4PutStr("x");
     krnP4PutDec(gt911_res_y);
-    krnP4PutStr(gt911_res_x == P4_LOGICAL_W && gt911_res_y == P4_LOGICAL_H
-                ? "\n" : ", scaled to the panel\n");
+    krnP4PutStr(" (contacts used as panel pixels)\n");
 }
 
 #endif /* P4_BOARD_TOUCH_GT911 && (C4 touch) */

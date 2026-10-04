@@ -331,6 +331,57 @@ static void test_fast_double_tap(void)
     check_event(&log, 5, P4_TOUCH_RELEASE, P4_TOUCH_LEFT, 50, 60);
 }
 
+static void test_double_tap_and_drag(void)
+{
+    struct P4TouchPolicy policy;
+    struct EventLog log = {0};
+
+    p4touch_policy_init(&policy, P4_TOUCH_TAP);
+    p4touch_policy_step(&policy, 1, 100, 100, 0, record_event, &log);
+    p4touch_policy_step(&policy, 0, 100, 100, 80, record_event, &log);
+    /* Second contact 150 ms later, 3 px away: left goes down at once. */
+    p4touch_policy_step(&policy, 1, 102, 101, 230, record_event, &log);
+    CHECK(policy.button == P4_TOUCH_LEFT);
+    check_event(&log, 4, P4_TOUCH_PRESS, P4_TOUCH_LEFT, 102, 101);
+    p4touch_policy_step(&policy, 1, 160, 150, 280, record_event, &log);
+    p4touch_policy_step(&policy, 1, 200, 200, 330, record_event, &log);
+    CHECK(policy.button == P4_TOUCH_LEFT);
+    /* A held drag debounces its release like any held button. */
+    p4touch_policy_step(&policy, 0, 200, 200, 380, record_event, &log);
+    CHECK(policy.button == P4_TOUCH_LEFT);
+    p4touch_policy_step(&policy, 0, 200, 200, 430, record_event, &log);
+    CHECK(policy.active == 0 && policy.button == P4_TOUCH_NONE);
+    check_event(&log, log.count - 1, P4_TOUCH_RELEASE, P4_TOUCH_LEFT,
+                200, 200);
+    CHECK(count_event(&log, P4_TOUCH_PRESS, P4_TOUCH_LEFT) == 2);
+    CHECK(count_event(&log, P4_TOUCH_RELEASE, P4_TOUCH_LEFT) == 2);
+    /* The drag does not arm another one. */
+    CHECK(!policy.tap_valid);
+}
+
+static void test_late_or_distant_second_tap_is_plain(void)
+{
+    struct P4TouchPolicy policy;
+    struct EventLog log = {0};
+
+    p4touch_policy_init(&policy, P4_TOUCH_TAP);
+    p4touch_policy_step(&policy, 1, 100, 100, 0, record_event, &log);
+    p4touch_policy_step(&policy, 0, 100, 100, 80, record_event, &log);
+    /* Too late: no press at touch-down. */
+    p4touch_policy_step(&policy, 1, 100, 100, 80 + P4_TOUCH_TAPDRAG_MS + 1,
+                        record_event, &log);
+    CHECK(policy.button == P4_TOUCH_NONE);
+    p4touch_policy_step(&policy, 0, 100, 100, 500, record_event, &log);
+    /* That was a tap again; now a contact too far away. */
+    p4touch_policy_step(&policy, 1, 100 + P4_TOUCH_TAPDRAG_PX + 1, 100, 550,
+                        record_event, &log);
+    CHECK(policy.button == P4_TOUCH_NONE);
+    p4touch_policy_step(&policy, 0, 100 + P4_TOUCH_TAPDRAG_PX + 1, 100, 600,
+                        record_event, &log);
+    CHECK(count_event(&log, P4_TOUCH_PRESS, P4_TOUCH_LEFT) == 3);
+    CHECK(count_event(&log, P4_TOUCH_RELEASE, P4_TOUCH_LEFT) == 3);
+}
+
 static void test_coordinates(void)
 {
     uint32_t raw;
@@ -378,6 +429,8 @@ int main(void)
     test_hold_deadline_across_uint32_wrap();
     test_single_empty_report_preserves_direct_press();
     test_fast_double_tap();
+    test_double_tap_and_drag();
+    test_late_or_distant_second_tap_is_plain();
 
     printf("policy_test: %u checks passed\n", checks);
     return EXIT_SUCCESS;

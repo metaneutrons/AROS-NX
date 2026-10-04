@@ -96,6 +96,9 @@
  * the controller's own configuration at probe time.
  */
 #define P4_BOARD_TOUCH_GT911            1
+/* I2C controller 1, as the vendor uses (I2C_NUM_1). Controller 0 failed at
+   100 kHz and lost arbitration at 10 kHz here (2026-10-04). */
+#define P4_BOARD_TOUCH_I2C_PORT         1
 #define P4_BOARD_I2C0_SDA_GPIO          7
 #define P4_BOARD_I2C0_SCL_GPIO          8
 #define P4_BOARD_TOUCH_ADDR             0x5D
@@ -103,9 +106,13 @@
 #define P4_BOARD_TOUCH_IRQ_GPIO         21
 #define P4_BOARD_TOUCH_RST_GPIO         22
 #define P4_BOARD_TOUCH_MIRROR_Y         0
-#define P4_BOARD_TOUCH_X_MIN            0U
+#define P4_BOARD_TOUCH_X_MIN            10U     /* left edge reads 6-11 */
 #define P4_BOARD_TOUCH_X_MAX            1023U
-#define P4_BOARD_TOUCH_Y_MIN            0U
+/* Edge sweep 2026-10-04 (P4_TOUCH_EDGE_TRACE): the top edge reads 14-17
+   raw, rarely 0-5 in the corner; the left edge 6-11; right and bottom
+   reach 1023 and 599. Y from 16 lets the pointer reach row 0 and the menu
+   bar; X from 10 reaches column 0 (Fabian). */
+#define P4_BOARD_TOUCH_Y_MIN            16U
 #define P4_BOARD_TOUCH_Y_MAX            599U
 
 /*
