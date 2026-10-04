@@ -426,6 +426,12 @@
  * in PERI_CLK_CTRL10 with its divider, while I2C1's enable and source select
  * are in the same register but its divider is in CTRL11.  So the tables below
  * carry a register per field rather than assuming an offset.
+ *
+ * I2C0's divider is bits [9:2] of CTRL10, after its source select (bit 0)
+ * and enable (bit 1); ESP-IDF v6.0.1 hw_ver1 hp_sys_clkrst_struct.h,
+ * reg_i2c0_clk_div_num.  Until 2026-10-04 it was written at [7:0], which at
+ * 100 kHz (divider field 0) cleared the enable and at 10 kHz (field 3) set
+ * the fast-RC source: the "controller 0 only answers at 10 kHz" record.
  */
 #define P4_I2C0_BASE            (P4_HPPERIPH1_BASE + 0x4000)
 #define P4_CLKRST_SOC_CLK_CTRL2 (P4_HP_SYS_CLKRST_BASE + 0x1C)
@@ -436,8 +442,9 @@
 #define   P4_I2C0_CLK_EN        (1UL << 1)
 #define   P4_I2C1_CLK_SRC_SEL   (1UL << 26)
 #define   P4_I2C1_CLK_EN        (1UL << 27)
+#define   P4_I2C0_CLK_DIV_NUM_S 2
 #define P4_CLKRST_PERI_CLK_CTRL11 (P4_HP_SYS_CLKRST_BASE + 0x44)
-#define   P4_I2C_CLK_DIV_NUM_S  0
+#define   P4_I2C1_CLK_DIV_NUM_S 0
 #define   P4_I2C_CLK_DIV_NUM_M  0xFFUL
 #define P4_CLKRST_HP_RST_EN1    (P4_HP_SYS_CLKRST_BASE + 0xC4)
 #define   P4_RST_EN_I2C1        (1UL << 21)

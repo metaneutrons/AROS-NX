@@ -1,0 +1,29 @@
+include $(SRCDIR)/config/aros.cfg
+
+#
+# Silead GSL3670 touch controller, as an IID_Hidd_TouchController for
+# touchscreen.hidd.  The chip runs from RAM; touchscreen.hidd reads the
+# board's firmware file and hands it to Start.  No firmware is part of
+# AROS.  See <hidd/gsl3670.h>.
+#
+
+FILES := gsl3670_init gsl3670_class
+
+INCLUDE_FILES := include/gsl3670.h
+%copy_includes path=hidd dir=include
+
+USER_CPPFLAGS := \
+               -D__OOP_NOLIBBASE__ \
+               -D__OOP_NOATTRBASES__ \
+               -D__OOP_NOMETHODBASES__
+
+USER_LDFLAGS := -static
+
+#MM- workbench-hidds : hidd-gsl3670
+#MM hidd-gsl3670 : hidd-i2c kernel-hidd-touchscreen
+
+%build_module mmake=hidd-gsl3670 \
+    modname=gsl3670 modtype=hidd \
+    files=$(FILES)
+
+%common

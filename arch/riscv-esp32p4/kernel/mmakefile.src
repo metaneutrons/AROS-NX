@@ -510,35 +510,15 @@ ifeq ($(P4_C4_TOUCH_PROBE),1)
 P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_PROBE -DP4_PANEL_PROBE
 endif
 
-# P4_C4_TOUCH_HIDD=1 keeps the proven touch transport behind a versioned
-# kernel operation table.  Firmware is supplied externally by the HIDD at
-# runtime; this flag neither embeds a private image nor executes a boot-time
-# load.  The BSP package selector separately decides whether the HIDD module
-# itself is present.
+# P4_C4_TOUCH_HIDD=1 selects the touch stack.  The drivers are package
+# modules (touchscreen.hidd, the controller's driver, the I2C bus driver and
+# esp32p4board.resource, see boot/mmakefile.src); in the kernel it adds only
+# the read-only boot-time identification above.  The GSL3670 firmware-load
+# and sampling diagnostics (P4_C4_TOUCH_LOAD, P4_C4_TOUCH_SAMPLE) went with
+# the kernel's controller drivers on 2026-10-04.
 ifeq ($(P4_C4_TOUCH_HIDD),1)
 P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_HIDD -DP4_C4_TOUCH_PROBE \
                      -DP4_PANEL_PROBE
-endif
-
-# P4_C4_TOUCH_SAMPLE=1 adds one 20-second, read-only contact-zero observation
-# after a successful private firmware load.  It creates no input object or
-# event, prints only the first 80 changes and always restores I2C1 afterwards.
-ifeq ($(P4_C4_TOUCH_SAMPLE),1)
-override P4_C4_TOUCH_LOAD := 1
-P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_SAMPLE
-endif
-
-# P4_C4_TOUCH_LOAD=1 is a development-only volatile-firmware transport gate.
-# It requires a private generated header outside the repository; no firmware
-# byte is part of AROS.  Each I2C transaction is bounded and checked, firmware
-# failure is non-fatal to the normal C3 graphical boot, and I2C1 is restored.
-ifeq ($(P4_C4_TOUCH_LOAD),1)
-ifndef P4_GSL_FW_HEADER
-$(error P4_C4_TOUCH_LOAD requires P4_GSL_FW_HEADER=/absolute/private/header.h)
-endif
-P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_LOAD -DP4_C4_TOUCH_PROBE \
-                     -DP4_PANEL_PROBE \
-                     -DP4_GSL_FW_HEADER='"$(P4_GSL_FW_HEADER)"'
 endif
 
 # P4_C1_FRAMEBUFFER_HIDD=1 keeps B6's managed double-buffered scanout alive
@@ -1006,7 +986,6 @@ CFILES := \
         getsystemattr \
         $(P4_BOARD_PANEL_TABLE) \
         i2c_hw \
-        $(P4_BOARD_TOUCH_DRIVER) \
         panel_power \
         psram_init \
         psram_tuning \

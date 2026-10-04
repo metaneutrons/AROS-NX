@@ -135,10 +135,11 @@ gate: compensated output is not the native display contract.
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
-| C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
+| C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
 | D0 | Compile-time board profile, with D1001 as the first implementation | `hardware partial` | LDO2 now recovers and verifies all 32 MB without Vellum. The 20-MHz-PSRAM/90-MHz-CPU artifact showed only blue and an edge strip; changing only PSRAM to 200 MHz produced clean calibration and a spontaneously reported desktop. After the battery was reported empty, the initial non-desktop state could not be classified: opening UART coincided with a USB reset, and a subsequent controlled USB reset booted Wanderer with the restored touch firmware and zero reported faults. Fabian then saw the desktop. Neither run proves the original rail-off start completed by itself or passes the unsynchronized visual/touch gate. Isolated full core/Exec/SD/BSP and physical rail-off gates remain open; do not generalize this clock result to the earlier 360/200-MHz C1 strip. Prohibit stale cross-board objects before a second profile. |
 | D1 | Board-driver boundary and second-board onboarding | `build verified` | 2026-10-03: the profile now selects panel controller and table (JD9365/JD9165), rotation (90/0), panel power scheme (PCA9535 or plain GPIOs), touch driver (GSL3670/GT911, firmware optional), SD detect/power wiring, partition CSV and sdkconfig per board; `check-profile.py` evaluates `board.mk` per board through GNU make. The D1001 core built with these changes is byte-identical to HEAD (202,096 B `99a8f6f8…`, same flags, same tree), so the D1001 binary contract holds. Not hardware tested on either board. |
-| D2 | Guition JC1060P470C as the active development board (J0-J5) | `hardware partial (J0-J4 passed)` | Board IDs `jc1060p470c-v2` (new panel batch, the board in use) and `jc1060p470c-v1` (old batch). 2026-10-03/04 on board `80:f1:b2:d3:3b:a6`: J0 headless Exec with 32 MB PSRAM; J1 test card correct after the 20 MHz D-PHY PLL reference fix (burst, CPU 360, ESP-IDF host timing); J2 GT911 on I2C controller 1 at 100 kHz, raw panel-pixel contacts, top/left calibration; J3/J4 graphical boot from the D1001 SD card to Wanderer: Fabian confirms picture, pointer at all four edges, double tap, two-finger menu and the new double-tap-and-drag. Core 197,920 B `160ac2a5…`, package 3,309,404 B `c0d8e728…`. Open: J5 touch/display control panel on hardware abstractions (brightness fixed at 50 % until then), cold boot/power cycle, sustained stress, the old panel batch. |
+| D2 | Guition JC1060P470C as the active development board (J0-J5) | `hardware partial (J0-J4 passed)` | Board IDs `jc1060p470c-v2` (new panel batch, the board in use) and `jc1060p470c-v1` (old batch). 2026-10-03/04 on board `80:f1:b2:d3:3b:a6`: J0 headless Exec with 32 MB PSRAM; J1 test card correct after the 20 MHz D-PHY PLL reference fix (burst, CPU 360, ESP-IDF host timing); J2 GT911 on I2C controller 1 at 100 kHz, raw panel-pixel contacts, top/left calibration; J3/J4 graphical boot from the D1001 SD card to Wanderer: Fabian confirms picture, pointer at all four edges, double tap, two-finger menu and the new double-tap-and-drag. Core 197,920 B `160ac2a5…`, package 3,309,404 B `c0d8e728…`. J5: touch control panel on the portable stack (D3), editor `Prefs/Touchscreen`; brightness becomes its own preferences through IPrefs (open, needs a new card). Open: cold boot/power cycle, sustained stress, the old panel batch. |
+| D3 | Portable touch and I2C stack | `hardware partial (JC1060P470C passed)` | 2026-10-04 on Fabian's direction: `touchscreen.hidd` (`rom/hidds/touchscreen`, polling, gestures, calibration, `ENV:Sys/touchscreen.prefs`), controller drivers `gt911.hidd` and `gsl3670.hidd` on AROS's `hidd.i2c` (`workbench/hidds`), the bus driver `hidd.i2c.esp32p4` (`arch/riscv-esp32p4/i2c`, transport shared with the kernel) and `esp32p4board.resource`, which builds the objects from the board profile; editor `workbench/prefs/touchscreen`. The kernel keeps no touch driver and no `KATTR_TouchScreenOps`. Fixes the I2C0 clock divider position (CTRL10 bits 9:2). JC1060P470C: GT911 through the new stack; Fabian confirms touch, calibration and editor (the tap/direct switch is not in the log). D1001: builds, not hardware tested. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
 | E2 | Two-hart atomics, coherence and IPI primitives | `hardware verified; complete` | Exact219,776-byte core08 passes five ordinary headless captures/ten reset-separated epochs:650 SRAM+660 PSRAM exchanges,120 refusals,163,840 updates per AMO/CAS/lock counter with measured contention, bidirectional software IPI, remote code37/53, missing-park refusal and ten cache suspend/resume windows. Secondary reset/clock stop confirmed every exit; full221,184-byte normal range restored/verified and headless baseline boots. Atomics qualify internal SRAM only; Exec SMP/default changes wait for E3. |
@@ -1214,7 +1215,16 @@ of the exact writes (AGENTS.md has none for this board yet):
     and radius, two-finger right button, tap/direct mode), brightness;
     settings stored as preferences and applied at boot.
   - Status 2026-10-04: abstractions done and checked on the JC1060P470C
-    (see evidence); the control panel is next.
+    (see evidence). The control panel was first built inside
+    `p4touch.hidd`; on Fabian's direction the touch system became generic
+    instead (D3): calibration and gestures live in `touchscreen.hidd` and
+    the editor `Prefs/Touchscreen`, brightness leaves the touch system.
+    Save cannot persist yet: only RAM: is writable.
+  - Brightness (next): its own preferences file applied by IPrefs, a small
+    editor, and on the card IPrefs, `C:Copy` and a Startup-Sequence that
+    fills `ENV:` from `ENVARC:` as the standard one does (our multi-assign
+    `ENV:` cannot be watched; see the D3 evidence). Open decisions:
+    `kms.library` optional in IPrefs (upstream fix), IFF as the format.
 
 ## Track A: storage and normal boot
 
@@ -24216,6 +24226,125 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   built; a flash attempt was refused by the MAC check because the
   JC1060P470C was connected (nothing written). Flash both together when
   the D1001 is back.
+
+### 2026-10-04 - D3: portable touch and I2C stack; I2C0 clock divider fix
+
+- State change: D3 `hardware partial (JC1060P470C passed)`. The touch
+  path no longer lives in the kernel or in a P4 module; the J5 control
+  panel, first built inside `p4touch.hidd`, moved with it. Fabian, after
+  touch and editor test on the JC1060P470C: everything works.
+- Request: Fabian: the prefs and the touch system have nothing to do with
+  the P4, the touch system should be generic and the GT911 driver
+  portable on AROS's `hidd.i2c`; brightness becomes its own preferences
+  through IPrefs; the board module is `esp32p4board`, with the wiring per
+  board in its own file as the kernel does with panel tables.
+- Layers:
+  - `rom/hidds/touchscreen` (`touchscreen.hidd`, public `<hidd/touchscreen.h>`):
+    `CLID_Hidd_Mouse_TouchScreen`, a pointing device driver that polls one
+    controller through `IID_Hidd_TouchController` (Start, Stop,
+    ReadFrame), maps through a calibration, applies the gesture rules
+    (`touch_policy.c`) and runs a DOS process that applies
+    `ENV:Sys/touchscreen.prefs` at start and on change (`StartNotify`,
+    `touch_settings.c`). Attributes: controller, name (the calibration
+    key), screen size, default and current calibration (settable, applied
+    at the next poll), firmware paths. The subsystem keeps drivers behind a
+    private proxy, so the library base begins with a public list of driver
+    objects for editors. Controller method IDs are resolved at the first
+    New, because the interface exists only once a controller class is
+    registered.
+  - `workbench/hidds/gt911` and `workbench/hidds/gsl3670`: the chip logic of
+    the former kernel drivers on `hidd.i2c.device` WriteRead, reset through
+    a board hook (`struct HIDD_TouchLineMsg`: reset/INT, low/high/release).
+    GT911: INT selects the address during reset, both addresses tried,
+    resolution from the ID block, contacts unscaled. GSL3670: image size
+    and raw range are creation attributes, every record checked before the
+    first is sent, load sequence and 0x5A5A5A5A check unchanged.
+  - `arch/riscv-esp32p4/i2c`: `hidd.i2c.esp32p4` (`i2c-esp32p4.hidd`), a
+    transaction-level subclass of `hidd.i2c` like riscv64-opensbi's dwi2c
+    (WriteRead and ProbeAddress; byte methods refuse), one lock and state
+    per controller, last transport result as an attribute. The transport
+    `p4i2c_hw.c` is the former `kernel/i2c_hw.c`, now per controller and
+    linked twice: by the kernel (`kernel/i2c_hw.c` keeps the `krnP4I2C*`
+    calls for the D1001 panel expander before Exec) and by the bus driver
+    (own SYSTIMER timebase, `KATTR_PlatformTimer` in SMP builds, because a
+    package module may not call kernel symbols).
+  - `arch/riscv-esp32p4/board`: `esp32p4board.resource` (priority 8) makes
+    the touch bus from the profile, the controller and the driver;
+    `d1001.c` (GSL3670 reset on PCA9535 output 12 behind I2C1, with
+    read-back, firmware paths) and `jc1060p470c.c` (GT911 RST/INT on
+    GPIO 22/21) hold the wiring, selected by `P4_BOARD_SETUP` in
+    `board.mk`. Profiles now state touch port, pads, rate and address,
+    and for the GSL3670 image size and raw range; `board.h` refuses a
+    profile without them; `check-profile.py` adds the wiring file and
+    controller module checks (54 of 54 pass).
+  - `workbench/prefs/touchscreen`: the editor, now finding the driver in
+    the library base, calibrating live through the attribute (Cancel puts
+    the previous calibration back) and without the brightness page.
+- Kernel: `gt911.c`, `gsl3670.c`, `KATTR_TouchScreenOps` (slot left
+  unused in `aros/kernel.h`), `aros/touchscreen.h`, the GT911 boot probe
+  and the GSL3670 load/sample diagnostics (`P4_C4_TOUCH_LOAD`,
+  `P4_C4_TOUCH_SAMPLE`) are gone; `P4_C4_TOUCH_HIDD` selects the package
+  stack and the read-only boot identification. `p4touch.hidd` and its
+  legacy `p4touch.mode` file are gone.
+- I2C0 clock divider: ESP-IDF v6.0.1 `hw_ver1/soc/hp_sys_clkrst_struct.h`
+  places `reg_i2c0_clk_div_num` at bits [9:2] of PERI_CLK_CTRL10, after
+  the source select (bit 0) and enable (bit 1); the driver wrote it at
+  [7:0]. At 100 kHz (field 0) that cleared the enable, at 10 kHz (field 3)
+  it selected the fast RC: the recorded "I2C0 only answers at 10 kHz".
+  Fixed (`P4_I2C0_CLK_DIV_NUM_S` 2); I2C1's divider in CTRL11 [7:0] was
+  right. Not yet measured on I2C0 hardware (the D1001 touch); the D1001
+  profile keeps 10 kHz until then.
+- Host tests (ASan/UBSan): `policy_test` 3,960, `prefs_test` 25,
+  `calib_test` 105,825 checks.
+- Package: `bus.hidd`, `i2c.hidd`, `i2c-esp32p4.hidd`, `touchscreen.hidd`,
+  the board's controller driver and `esp32p4board.resource` under
+  `P4_C4_TOUCH_HIDD`. In a tree that never built them, build the modules
+  once with their full targets; the `-quick` package target does not
+  generate `bus.hidd`'s interface headers.
+- JC1060P470C (`80:f1:b2:d3:3b:a6`, MAC checked), normal flags as in the J5
+  abstraction entry: core 196,976 B
+  `085a7655529bd9ca25c7d4b8570376e0e7b8c5d8d6a7460fe71bd66267cf3d88` at
+  `0x20000`, package 3,489,220 B
+  `51d0b56e43d8072fde8f236d3ad84d629b2b76ad995ed6f0c63168607055ae7e` at
+  `0x820000` (audit: 0 failed; checksize 3,489,220 of 4,063,232),
+  development volume
+  `a314b9a29ab3a812165f485a45dc1482220db1c9e0987dd5164782fc417ca9c3` at
+  `0xc00000` with the moved editor; written and verified. Boot log
+  `72d000d4…`: GT911 at 0x5D, product 911, firmware 0x1060, configured
+  1085x600; settings applied; 11 heartbeats in 60 s without read error;
+  Wanderer starts. The board module's own line is missing from this
+  lossy log; the first boot of the stack (package `6b9f0771…`, before
+  the board split) logged it.
+- Test (fresh readiness, passive capture without reset, log `56a2eabb…`):
+  Fabian checked edges, menu bar, double tap, double-tap-and-drag, two
+  fingers and the editor, and reports that everything works. The log
+  shows settings generations 3 to 10 with live calibrations (X from 26,
+  10 while calibrating, 11, 14), two Use writes of 174 bytes read by the
+  prefs process, 56 button events, multi-contact frames, no read error
+  and no recovery. It does not show a mode change: all eight settings
+  lines say tap and both files have the same length, which a direct-mode
+  file would not. The runtime mode switch is host-tested
+  (`test_runtime_mode`); on hardware it is unconfirmed.
+- D1001, Giant flags (`P4_GIANT=1 P4_GIANT_MIGRATE=1`): core 213,504 B
+  `fb16af6bb150117919fd850d651c165c135fa5e0b89675d131513a6ce2e9b80b`,
+  package 3,495,928 B
+  `427710875e1653aa55d584286a3359b84c35f7d1b2b61d9fc5e30e5171203996` (audit:
+  0 failed), not written: the board is not connected. Its development
+  volume must carry the GSL firmware (`P4_GSL_FW_BINARY`).
+- Upstream findings (aros-development-team/AROS), to be fixed separately:
+  `hidd.i2c` `WriteBytes`/`WriteVec` bypass WriteRead and fail on
+  transaction-level bus drivers (`i2cdeviceclass.c:90-113`);
+  `WriteWord` sends one byte short (`i2cdeviceclass.c:124`); the dwi2c
+  comment that every device method becomes WriteRead; IPrefs requires
+  `kms.library` (`main.c:76`) although only the input prefs need it.
+  `arch/.unmaintained/m68k-pp-native` holds an old, unbuilt driver of the
+  same name `touchscreen.hidd`.
+- Not upstream: IPrefs watches only RAM: because our Startup-Sequence
+  makes `ENV:` a multi-assign; the standard one copies `ENVARC:` into
+  `RAM:ENV`, which notification can follow.
+- Open: the tap/direct switch on hardware; the D1001 on the new stack (GSL3670 load, expander reset, I2C0 with the divider fix,
+  then 100 kHz); brightness through IPrefs (decisions: `kms.library`,
+  IFF); persistent Save; an icon of its own for the editor.
 
 ## Evidence-entry template
 

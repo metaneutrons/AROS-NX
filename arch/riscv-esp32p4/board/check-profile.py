@@ -24,6 +24,7 @@ VARIABLES = [
     "P4_BOARD_PKG_LIMIT", "P4_BOARD_FLASHDISK_SIZE_MB",
     "P4_BOARD_FLASHDISK_OFFSET", "P4_BOARD_TOUCH_FW_FILENAME",
     "P4_BOARD_PARTITION_CSV", "P4_BOARD_SDKCONFIG",
+    "P4_BOARD_TOUCH_MODULE", "P4_BOARD_SETUP",
 ]
 
 
@@ -109,6 +110,12 @@ def check(board: str, counter_probe: bool) -> bool:
             and fw in header.get("P4_BOARD_TOUCH_FW_FALLBACK", ""))
         if fw else ("P4_BOARD_TOUCH_FW_PATH" not in header
                     and "P4_BOARD_TOUCH_GSL3670" not in header),
+        # esp32p4board.resource links the board's wiring file, and the
+        # package carries the driver for the profile's controller.
+        "board wiring file": (BOARD / (make["P4_BOARD_SETUP"] + ".c"))
+        .is_file(),
+        "touch controller module": make["P4_BOARD_TOUCH_MODULE"]
+        == ("gt911" if "P4_BOARD_TOUCH_GT911" in header else "gsl3670"),
     }
 
     for label, passed in checks.items():
