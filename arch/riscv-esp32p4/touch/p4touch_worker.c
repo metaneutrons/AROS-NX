@@ -105,17 +105,51 @@ static UBYTE *p4touch_read_firmware(struct DosLibrary *DOSBase,
 }
 #endif
 
-static WORD p4touch_x(ULONG raw, const struct KrnTouchScreenOps *ops)
+/* Raw contact to screen, through the current calibration (swap first,
+   then each axis with its own bounds and mirror). */
+static void p4touch_map(const struct KrnTouchScreenCalibration *cal,
+                        const struct KrnTouchScreenOps *ops,
+                        ULONG raw_x, ULONG raw_y, WORD *x, WORD *y)
 {
-    return p4touch_coordinate(raw, P4_BOARD_TOUCH_X_MIN,
-                             P4_BOARD_TOUCH_X_MAX, ops->logical_width, 0);
+    if (cal->flags & KRN_TOUCHSCREEN_CAL_SWAP_XY)
+    {
+        ULONG t = raw_x;
+
+        raw_x = raw_y;
+        raw_y = t;
+    }
+    *x = p4touch_coordinate(raw_x, cal->x_min, cal->x_max,
+                            ops->logical_width,
+                            (cal->flags & KRN_TOUCHSCREEN_CAL_MIRROR_X) != 0);
+    *y = p4touch_coordinate(raw_y, cal->y_min, cal->y_max,
+                            ops->logical_height,
+                            (cal->flags & KRN_TOUCHSCREEN_CAL_MIRROR_Y) != 0);
 }
 
-static WORD p4touch_y(ULONG raw, const struct KrnTouchScreenOps *ops)
+/* Pick up settings a preferences editor changed (P4TouchSettings). */
+static void p4touch_refresh(struct P4TouchStaticData *ptd, ULONG *generation,
+                            struct KrnTouchScreenCalibration *cal,
+                            struct P4TouchPolicy *policy)
 {
-    return p4touch_coordinate(raw, P4_BOARD_TOUCH_Y_MIN,
-                             P4_BOARD_TOUCH_Y_MAX, ops->logical_height,
-                             P4_BOARD_TOUCH_MIRROR_Y);
+    struct ExecBase *SysBase = ptd->cs_SysBase;
+    struct P4TouchParams params;
+
+    if (*generation == ptd->generation)
+        return;
+    ObtainSemaphoreShared(&ptd->lock);
+    *cal = ptd->settings.calibration;
+    params = ptd->settings.params;
+    *generation = ptd->generation;
+    ReleaseSemaphore(&ptd->lock);
+    p4touch_policy_set_params(policy, &params);
+    bug("[P4Touch/C4] settings %lu: calibration X=%lu..%lu Y=%lu..%lu "
+        "flags 0x%lx; hold %lu ms, slop %ld px, tap-drag %lu ms/%ld px, "
+        "two-finger right %u\n", (unsigned long)*generation,
+        (unsigned long)cal->x_min, (unsigned long)cal->x_max,
+        (unsigned long)cal->y_min, (unsigned long)cal->y_max,
+        (unsigned long)cal->flags, (unsigned long)params.hold_ms,
+        (long)params.slop_px, (unsigned long)params.tapdrag_ms,
+        (long)params.tapdrag_px, params.two_finger_right);
 }
 
 static ULONG p4touch_distance(WORD ax, WORD ay, WORD bx, WORD by)
@@ -129,6 +163,7 @@ static ULONG p4touch_distance(WORD ax, WORD ay, WORD bx, WORD by)
 /* Hardware IDs are retained for diagnosis but are not assumed to be stable.
    Keep the visible primary pointer on the contact nearest its last position. */
 static ULONG p4touch_primary(const struct KrnTouchScreenFrame *frame,
+                             const struct KrnTouchScreenCalibration *cal,
                              const struct KrnTouchScreenOps *ops,
                              BOOL down, WORD last_x, WORD last_y)
 {
@@ -138,9 +173,12 @@ static ULONG p4touch_primary(const struct KrnTouchScreenFrame *frame,
         return 0;
     for (i = 0; i < frame->count; ++i)
     {
-        WORD x = p4touch_x(frame->contact[i].x, ops);
-        WORD y = p4touch_y(frame->contact[i].y, ops);
-        ULONG distance = p4touch_distance(x, y, last_x, last_y);
+        WORD x, y;
+        ULONG distance;
+
+        p4touch_map(cal, ops, frame->contact[i].x, frame->contact[i].y,
+                    &x, &y);
+        distance = p4touch_distance(x, y, last_x, last_y);
 
         if (distance < best_distance)
         {
@@ -251,6 +289,8 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
     const char *firmware_path = NULL;
     BOOL timer_open = FALSE, acquired = FALSE;
     struct P4TouchPolicy policy;
+    struct KrnTouchScreenCalibration cal;
+    ULONG generation = 0;
     struct P4TouchEmitter emitter = {data, 0};
     ULONG reads = 0, errors = 0, contact_frames = 0;
     ULONG multi_frames = 0;
@@ -323,23 +363,19 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
         goto out;
 
     p4touch_policy_init(&policy, p4touch_mode(DOSBase, firmware_path));
-    bug("[P4Touch/C4] gesture mode %s; hold %u ms, slop %u px\n",
-        policy.mode == P4_TOUCH_DIRECT ? "direct" : "tap",
-        P4_TOUCH_HOLD_MS, P4_TOUCH_SLOP_PX);
-    bug("[P4Touch/C4] calibration X=%u..%u Y=%u..%u%s\n",
-        P4_BOARD_TOUCH_X_MIN, P4_BOARD_TOUCH_X_MAX,
-        P4_BOARD_TOUCH_Y_MIN, P4_BOARD_TOUCH_Y_MAX,
-        P4_BOARD_TOUCH_MIRROR_Y ? "; mirrored Y" : "");
+    bug("[P4Touch/C4] gesture mode %s\n",
+        policy.mode == P4_TOUCH_DIRECT ? "direct" : "tap");
+    p4touch_refresh(data->ptd, &generation, &cal, &policy);
 
     acquired = data->ops->acquire();
     if (!acquired)
     {
-        bug("[P4Touch/C4] cannot acquire persistent I2C0 session; stopped\n");
+        bug("[P4Touch/C4] cannot acquire the touch bus; stopped\n");
         data->running = FALSE;
         goto out;
     }
 
-    bug("[P4Touch/C4] polling worker started with 50-ms delay after I2C0 read; "
+    bug("[P4Touch/C4] polling worker started with 50-ms delay after each read; "
         "task priority %d, timer request %p\n", (int)self->tc_Node.ln_Pri,
         timer);
     while (data->running)
@@ -348,6 +384,7 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
         BOOL read_ok;
 
         ++reads;
+        p4touch_refresh(data->ptd, &generation, &cal, &policy);
         read_ok = data->ops->read_contacts(&frame);
         if (!read_ok)
         {
@@ -423,11 +460,10 @@ static VOID P4TouchWorker(struct P4TouchMouseData *data)
                 }
             }
 
-            primary = p4touch_primary(&frame, data->ops, policy.active,
+            primary = p4touch_primary(&frame, &cal, data->ops, policy.active,
                                       policy.x, policy.y);
             contact = &frame.contact[primary];
-            x = p4touch_x(contact->x, data->ops);
-            y = p4touch_y(contact->y, data->ops);
+            p4touch_map(&cal, data->ops, contact->x, contact->y, &x, &y);
 
 #if P4_TOUCH_EDGE_TRACE
             /* Diagnostic only: never learn calibration from arbitrary use.

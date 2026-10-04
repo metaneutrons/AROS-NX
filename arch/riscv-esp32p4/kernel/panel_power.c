@@ -40,11 +40,17 @@
 #include <inttypes.h>
 #include <exec/types.h>
 
+#include <aros/backlight.h>
+
 #include "hardware.h"
 #include "kernel_intern.h"
 
 static void panel_backlight_dark(void);
 static void panel_backlight_pwm(unsigned int percent);
+
+/* The level the next backlight-on uses, and whether LEDC drives the pin. */
+static volatile unsigned int panel_bl_level = P4_LEDC_BL_PERCENT;
+static volatile int panel_bl_running;
 
 #if P4_BOARD_PANEL_EXPANDER
 
@@ -175,6 +181,7 @@ static void panel_backlight_dark(void)
 
     p4_w32(P4_GPIO_BASE + P4_GPIO_ENABLE_W1TS,
            1UL << P4_BOARD_BACKLIGHT_GPIO);
+    panel_bl_running = 0;
 }
 
 #if P4_BOARD_PANEL_EXPANDER
@@ -421,6 +428,49 @@ static void panel_backlight_pwm(unsigned int percent)
     p4_w32(P4_GPIO_BASE + P4_GPIO_FUNC_OUT_SEL(P4_BOARD_BACKLIGHT_GPIO), v);
     p4_w32(P4_GPIO_BASE + P4_GPIO_ENABLE_W1TS,
            1UL << P4_BOARD_BACKLIGHT_GPIO);
+    panel_bl_running = 1;
+}
+
+/*
+ * The runtime level (KATTR_BacklightOps). Changing it only reloads channel
+ * 0's duty; the timer, clock and pin routing set up by panel_backlight_pwm()
+ * stay as they are. Before the panel is lit the level is only stored.
+ */
+static ULONG panel_bl_get(VOID)
+{
+    return panel_bl_level;
+}
+
+static BOOL panel_bl_set(ULONG level)
+{
+    unsigned long duty;
+
+    if (level > 100)
+        level = 100;
+    panel_bl_level = level;
+    if (!panel_bl_running)
+        return TRUE;
+
+    duty = ((1UL << P4_LEDC_BL_DUTY_RES) * level) / 100;
+    p4_w32(P4_LEDC_BASE + P4_LEDC_CH0_DUTY, duty << 4);
+    p4_w32(P4_LEDC_BASE + P4_LEDC_CH0_CONF0,
+           P4_LEDC_SIG_OUT_EN | P4_LEDC_PARA_UP);
+    p4_w32(P4_LEDC_BASE + P4_LEDC_CH0_CONF1, P4_LEDC_DUTY_START);
+    return TRUE;
+}
+
+static struct KrnBacklightOps panel_backlight_ops =
+{
+    KRN_BACKLIGHT_OPS_VERSION,
+    101,
+    P4_LEDC_BL_PERCENT,
+    panel_bl_get,
+    panel_bl_set
+};
+
+struct KrnBacklightOps *krnP4BacklightOps(void)
+{
+    return &panel_backlight_ops;
 }
 
 #if P4_BOARD_PANEL_EXPANDER
@@ -456,7 +506,7 @@ int krnP4PanelBacklightOn(void)
     if (r != P4_I2C_OK)
         return r;
 
-    panel_backlight_pwm(P4_LEDC_BL_PERCENT);
+    panel_backlight_pwm(panel_bl_level);
     return P4_I2C_OK;
 }
 #endif /* P4_BOARD_PANEL_EXPANDER */
@@ -635,7 +685,7 @@ int krnP4PanelBacklightOn(void)
 {
     if (!panel_claimed)
         return P4_I2C_NOTREADY;
-    panel_backlight_pwm(P4_LEDC_BL_PERCENT);
+    panel_backlight_pwm(panel_bl_level);
     return P4_I2C_OK;
 }
 

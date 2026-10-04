@@ -382,6 +382,39 @@ static void test_late_or_distant_second_tap_is_plain(void)
     CHECK(count_event(&log, P4_TOUCH_RELEASE, P4_TOUCH_LEFT) == 3);
 }
 
+static void test_runtime_params(void)
+{
+    struct P4TouchPolicy policy;
+    struct EventLog log = {0};
+    struct P4TouchParams params;
+
+    p4touch_policy_init(&policy, P4_TOUCH_TAP);
+    p4touch_params_default(&params);
+    CHECK(params.hold_ms == P4_TOUCH_HOLD_MS && params.two_finger_right);
+    params.hold_ms = 200;
+    params.two_finger_right = 0;
+    params.tapdrag_ms = 0;
+    p4touch_policy_set_params(&policy, &params);
+    /* Applies at the next contact: hold now starts the drag at 200 ms. */
+    p4touch_policy_step(&policy, 1, 10, 10, 0, record_event, &log);
+    p4touch_policy_step(&policy, 1, 10, 10, 199, record_event, &log);
+    CHECK(policy.button == P4_TOUCH_NONE);
+    p4touch_policy_step(&policy, 1, 10, 10, 200, record_event, &log);
+    CHECK(policy.button == P4_TOUCH_LEFT);
+    /* A second finger no longer selects the right button. */
+    p4touch_policy_step(&policy, 2, 12, 10, 250, record_event, &log);
+    CHECK(policy.button == P4_TOUCH_LEFT);
+    p4touch_policy_step(&policy, 0, 12, 10, 300, record_event, &log);
+    p4touch_policy_step(&policy, 0, 12, 10, 350, record_event, &log);
+    CHECK(policy.button == P4_TOUCH_NONE);
+    CHECK(count_event(&log, P4_TOUCH_PRESS, P4_TOUCH_RIGHT) == 0);
+    /* With tapdrag_ms 0 a tap followed by a quick touch stays plain. */
+    p4touch_policy_step(&policy, 1, 50, 50, 1000, record_event, &log);
+    p4touch_policy_step(&policy, 0, 50, 50, 1050, record_event, &log);
+    p4touch_policy_step(&policy, 1, 50, 50, 1100, record_event, &log);
+    CHECK(policy.button == P4_TOUCH_NONE);
+}
+
 static void test_coordinates(void)
 {
     uint32_t raw;
@@ -431,6 +464,7 @@ int main(void)
     test_fast_double_tap();
     test_double_tap_and_drag();
     test_late_or_distant_second_tap_is_plain();
+    test_runtime_params();
 
     printf("policy_test: %u checks passed\n", checks);
     return EXIT_SUCCESS;

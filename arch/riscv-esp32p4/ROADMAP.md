@@ -1213,6 +1213,8 @@ of the exact writes (AGENTS.md has none for this board yet):
     and gesture settings (tap/hold times, slop, double-tap-and-drag window
     and radius, two-finger right button, tap/direct mode), brightness;
     settings stored as preferences and applied at boot.
+  - Status 2026-10-04: abstractions done and checked on the JC1060P470C
+    (see evidence); the control panel is next.
 
 ## Track A: storage and normal boot
 
@@ -24181,6 +24183,39 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Open: rerun the asymmetric geometry gate on the new profile; desktop and
   touch on the D1001 once its card is back; the non-Giant normal D1001 core
   on the new profile.
+
+### 2026-10-04 - J5 hardware abstractions: backlight ops, touch calibration, gesture parameters
+
+- State change: J5 abstraction step done; control panel open.
+- Backlight: new public contract `compiler/include/aros/backlight.h` behind
+  `KATTR_BacklightOps` (`KATTR_CPULoad_END + 12`): 101 levels, board
+  default, `get_level`, `set_level`. `panel_power.c` reloads only LEDC
+  channel 0's duty when the panel is lit and stores the level otherwise;
+  backlight-on uses the stored level. Published with the C1 framebuffer.
+- Touch: `KRN_TOUCHSCREEN_OPS_VERSION` 5 adds `struct
+  KrnTouchScreenCalibration` (raw bounds, swap/mirror flags) filled from
+  the board profile by `gsl3670.c` and `gt911.c`. The HIDD no longer reads
+  calibration or mirror from board headers; it keeps runtime settings
+  (calibration and `struct P4TouchParams`) under its semaphore with a
+  generation counter that the worker checks every poll. A kernel and a
+  package must now be updated together (an older HIDD refuses version 5).
+- Gesture parameters: hold time, slop, release debounce, double-tap-and-
+  drag window and radius, two-finger right button are runtime parameters
+  with the former constants as defaults; a change applies at the next
+  contact. `policy_test.c`: 3,945 checks (ASan/UBSan) incl. a runtime-
+  parameter test.
+- JC1060P470C: core `08ca4ca53f347a4fdc07edb434c7c3e4bcf55b5b8f2b56af4c741f06948212fc`,
+  package 3,311,512 B
+  `8981210d731b3fe9990f235b8e66b1e52fc77ada95e799a7001e4030fa430f69`
+  written (MAC checked, hashes verified); boot log shows backlight 9,670 of
+  20,000 and the GT911; Fabian: edges, menu bar, double tap, tap-and-drag
+  and two-finger menu behave as before.
+- D1001: Giant core `91735be1ce34cc67e5444ec23e1eac520d8559eae0d7f5f0516937eb16e3e223`
+  and package 3,316,736 B
+  `992aff41e5db0407f933165a8285e2520f67f5cc1408aecf4901b953465a2b17`
+  built; a flash attempt was refused by the MAC check because the
+  JC1060P470C was connected (nothing written). Flash both together when
+  the D1001 is back.
 
 ## Evidence-entry template
 
