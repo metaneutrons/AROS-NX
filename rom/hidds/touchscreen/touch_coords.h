@@ -1,11 +1,11 @@
-#ifndef ESP32P4_TOUCH_COORDS_H
-#define ESP32P4_TOUCH_COORDS_H
+#ifndef TOUCHSCREEN_COORDS_H
+#define TOUCHSCREEN_COORDS_H
 
 #include <stdint.h>
 
 /* Inclusive measured bounds map to the full logical axis; outliers saturate.
    16-bit bounds keep the rounded product within uint32_t. */
-static inline int16_t p4touch_coordinate(uint32_t raw, uint16_t low,
+static inline int16_t touch_coordinate(uint32_t raw, uint16_t low,
                                          uint16_t high, uint16_t size,
                                          unsigned int mirror)
 {

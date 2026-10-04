@@ -314,3 +314,9 @@ content to it is a flash write to `0xc00000` and therefore covered above, but
 it does not replace a card run: a change that touches the storage stack has
 to be shown on the card too, because the two go through different devices and
 different FAT widths.
+
+The full stage no longer fits the volume.  `kernel-devvolume-esp32p4-riscv`
+(image/mmakefile.src) builds a small one with only the port's own tools,
+today `Prefs/Touchscreen`, and no `AROS.boot`.  On the D1001, whose
+GSL3670 firmware falls back to this volume, the target refuses to build
+without `P4_GSL_FW_BINARY`, so writing it cannot remove the firmware.

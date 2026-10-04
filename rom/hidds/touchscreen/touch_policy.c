@@ -1,64 +1,70 @@
-#include "p4touch_policy.h"
+#include "touch_policy.h"
 
-void p4touch_params_default(struct P4TouchParams *params)
+void touch_params_default(struct TouchParams *params)
 {
-    params->hold_ms = P4_TOUCH_HOLD_MS;
-    params->release_polls = P4_TOUCH_RELEASE_POLLS;
-    params->tapdrag_ms = P4_TOUCH_TAPDRAG_MS;
-    params->slop_px = P4_TOUCH_SLOP_PX;
-    params->tapdrag_px = P4_TOUCH_TAPDRAG_PX;
+    params->hold_ms = TOUCH_HOLD_MS;
+    params->release_polls = TOUCH_RELEASE_POLLS;
+    params->tapdrag_ms = TOUCH_TAPDRAG_MS;
+    params->slop_px = TOUCH_SLOP_PX;
+    params->tapdrag_px = TOUCH_TAPDRAG_PX;
     params->two_finger_right = 1;
 }
 
-void p4touch_policy_init(struct P4TouchPolicy *p, unsigned int mode)
+void touch_policy_init(struct TouchPolicy *p, unsigned int mode)
 {
-    *p = (struct P4TouchPolicy){0};
+    *p = (struct TouchPolicy){0};
     p->mode = mode;
-    p4touch_params_default(&p->params);
+    touch_params_default(&p->params);
 }
 
-void p4touch_policy_set_params(struct P4TouchPolicy *p,
-                               const struct P4TouchParams *params)
+void touch_policy_set_params(struct TouchPolicy *p,
+                               const struct TouchParams *params)
 {
     p->pending = *params;
     p->have_pending = 1;
 }
 
-static void p4touch_button(struct P4TouchPolicy *p, unsigned int button,
-                           P4TouchEmit emit, void *context)
+void touch_policy_set_mode(struct TouchPolicy *p, unsigned int mode)
+{
+    p->pending_mode = mode;
+    p->have_pending_mode = 1;
+}
+
+static void touch_button(struct TouchPolicy *p, unsigned int button,
+                           TouchEmit emit, void *context)
 {
     if (p->button == button)
         return;
-    if (p->button != P4_TOUCH_NONE)
-        emit(context, P4_TOUCH_RELEASE, p->button, p->x, p->y);
+    if (p->button != TOUCH_NONE)
+        emit(context, TOUCH_RELEASE, p->button, p->x, p->y);
     p->button = button;
-    if (button != P4_TOUCH_NONE)
-        emit(context, P4_TOUCH_PRESS, button, p->x, p->y);
+    if (button != TOUCH_NONE)
+        emit(context, TOUCH_PRESS, button, p->x, p->y);
 }
 
-void p4touch_policy_cancel(struct P4TouchPolicy *p,
-                           P4TouchEmit emit, void *context)
+void touch_policy_cancel(struct TouchPolicy *p,
+                           TouchEmit emit, void *context)
 {
-    p4touch_button(p, P4_TOUCH_NONE, emit, context);
+    touch_button(p, TOUCH_NONE, emit, context);
     p->active = p->moved = p->zero_polls = p->tapdrag = 0;
 }
 
 /* Is a new contact the second half of a double-tap-and-drag? */
-static int p4touch_tapdrag_starts(const struct P4TouchPolicy *p,
+static int touch_tapdrag_starts(const struct TouchPolicy *p,
                                   int16_t x, int16_t y, uint32_t now_ms)
 {
     int32_t dx = (int32_t)x - p->tap_x;
     int32_t dy = (int32_t)y - p->tap_y;
 
-    return p->mode == P4_TOUCH_TAP && p->tap_valid && p->params.tapdrag_ms
+    return p->mode == TOUCH_TAP && p->tap_valid && p->params.tapdrag_ms
         && (uint32_t)(now_ms - p->tap_ms) <= p->params.tapdrag_ms
         && dx >= -p->params.tapdrag_px && dx <= p->params.tapdrag_px
         && dy >= -p->params.tapdrag_px && dy <= p->params.tapdrag_px;
 }
 
-void p4touch_policy_step(struct P4TouchPolicy *p, unsigned int contacts,
+void touch_policy_step(struct TouchPolicy *p, unsigned int contacts,
                          int16_t x, int16_t y, uint32_t now_ms,
-                         P4TouchEmit emit, void *context)
+                         TouchEmit emit, void *context)
 {
     if (!contacts)
     {
@@ -70,16 +76,16 @@ void p4touch_policy_step(struct P4TouchPolicy *p, unsigned int contacts,
          * glitch. Commit it on lift so a following tap cannot be swallowed
          * by drag-release debounce. Held left/right buttons still debounce. */
         if (++p->zero_polls < p->params.release_polls
-            && !(p->mode == P4_TOUCH_TAP
-                 && (p->button == P4_TOUCH_NONE
+            && !(p->mode == TOUCH_TAP
+                 && (p->button == TOUCH_NONE
                      || (p->tapdrag && !p->moved))))
             return;
         /* Use the first empty report's time, not the debounce delay. */
-        if (p->mode == P4_TOUCH_TAP && !p->moved
-            && p->button == P4_TOUCH_NONE
+        if (p->mode == TOUCH_TAP && !p->moved
+            && p->button == TOUCH_NONE
             && (uint32_t)(p->lifted_ms - p->started_ms) <= p->params.hold_ms)
         {
-            p4touch_button(p, P4_TOUCH_LEFT, emit, context);
+            touch_button(p, TOUCH_LEFT, emit, context);
             /* A tap may start a double-tap-and-drag; the second half of
                one may not start another. */
             p->tap_valid = 1;
@@ -91,7 +97,7 @@ void p4touch_policy_step(struct P4TouchPolicy *p, unsigned int contacts,
             p->tap_valid = 0;
         if (p->tapdrag)
             p->tap_valid = 0;
-        p4touch_policy_cancel(p, emit, context);
+        touch_policy_cancel(p, emit, context);
         return;
     }
 
@@ -102,17 +108,25 @@ void p4touch_policy_step(struct P4TouchPolicy *p, unsigned int contacts,
             p->params = p->pending;
             p->have_pending = 0;
         }
+        if (p->have_pending_mode)
+        {
+            /* A tap from the old mode does not start a tap-drag. */
+            if (p->mode != p->pending_mode)
+                p->tap_valid = 0;
+            p->mode = p->pending_mode;
+            p->have_pending_mode = 0;
+        }
         p->started_ms = now_ms;
         p->origin_x = x;
         p->origin_y = y;
         p->active = 1;
         p->moved = 0;
-        p->tapdrag = p4touch_tapdrag_starts(p, x, y, now_ms);
+        p->tapdrag = touch_tapdrag_starts(p, x, y, now_ms);
         p->tap_valid = 0;
-        emit(context, P4_TOUCH_MOTION, P4_TOUCH_NONE, x, y);
+        emit(context, TOUCH_MOTION, TOUCH_NONE, x, y);
     }
     else if (x != p->x || y != p->y)
-        emit(context, P4_TOUCH_MOTION, P4_TOUCH_NONE, x, y);
+        emit(context, TOUCH_MOTION, TOUCH_NONE, x, y);
     p->x = x;
     p->y = y;
     p->zero_polls = 0;
@@ -131,10 +145,10 @@ void p4touch_policy_step(struct P4TouchPolicy *p, unsigned int contacts,
 
     /* Button2 remains latched through sequential finger lift. */
     if ((contacts > 1 && p->params.two_finger_right)
-        || p->button == P4_TOUCH_RIGHT)
-        p4touch_button(p, P4_TOUCH_RIGHT, emit, context);
-    else if (p->mode == P4_TOUCH_DIRECT || p->tapdrag
+        || p->button == TOUCH_RIGHT)
+        touch_button(p, TOUCH_RIGHT, emit, context);
+    else if (p->mode == TOUCH_DIRECT || p->tapdrag
              || (!p->moved
                  && (uint32_t)(now_ms - p->started_ms) >= p->params.hold_ms))
-        p4touch_button(p, P4_TOUCH_LEFT, emit, context);
+        touch_button(p, TOUCH_LEFT, emit, context);
 }

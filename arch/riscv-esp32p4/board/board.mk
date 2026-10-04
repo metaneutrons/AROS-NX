@@ -28,7 +28,11 @@ P4_BOARD_PKG_LIMIT := 4063232
 P4_BOARD_FLASHDISK_SIZE_MB := 4
 P4_BOARD_FLASHDISK_OFFSET := 0xc00000
 P4_BOARD_TOUCH_FW_FILENAME := gsl3670-d1001.fw
-P4_BOARD_TOUCH_DRIVER := gsl3670
+# Portable driver in the package (workbench/hidds/gsl3670), wired up with
+# its expander reset and firmware by esp32p4board.resource.
+P4_BOARD_TOUCH_MODULE := gsl3670
+# The board's wiring code in esp32p4board.resource (board/d1001.c).
+P4_BOARD_SETUP := d1001
 P4_BOARD_PANEL_TABLE := jd9365_init
 # Burst video, as the vendor firmware drives this panel (2026-10-04).
 P4_DSI_BURST ?= 1
@@ -51,7 +55,11 @@ P4_BOARD_FLASHDISK_SIZE_MB := 4
 P4_BOARD_FLASHDISK_OFFSET := 0xc00000
 # The GT911 runs from its own ROM; nothing to install.
 P4_BOARD_TOUCH_FW_FILENAME :=
-P4_BOARD_TOUCH_DRIVER := gt911
+# Portable driver in the package (workbench/hidds/gt911), wired up by
+# esp32p4board.resource.
+P4_BOARD_TOUCH_MODULE := gt911
+# The board's wiring code in esp32p4board.resource (board/jc1060p470c.c).
+P4_BOARD_SETUP := jc1060p470c
 P4_BOARD_PANEL_TABLE := jd9165_init
 # Burst video, as ESP-IDF drives this panel. Non-burst shows the image
 # displaced on this board (2026-10-03); P4_DSI_BURST=0 still selects it.

@@ -6400,10 +6400,10 @@ static void krnP4PanelProbe(void)
 
 #ifdef P4_C4_TOUCH_PROBE
 #if defined(P4_BOARD_TOUCH_GT911)
-/* The GT911's identification lives with its driver (gt911.c). */
+/* The GT911 has a portable driver (workbench/hidds/gt911) that reports its
+   identity when the touchscreen driver starts it; nothing to do here. */
 static void krnP4C4TouchProbe(void)
 {
-    krnP4GT911Probe();
 }
 #else
 /*
@@ -6489,41 +6489,6 @@ restore_i2c1:
 }
 #endif /* touch controller */
 
-#ifdef P4_C4_TOUCH_LOAD
-#if !defined(P4_BOARD_TOUCH_GSL3670)
-#error "P4_C4_TOUCH_LOAD is the GSL3670 firmware-load diagnostic"
-#endif
-static void krnP4C4TouchLoad(void)
-{
-    uint32_t status = 0;
-    unsigned int failed_record = 0;
-    int r;
-
-    krnP4PutStr("[touch]  C4 bounded reset/load/start/status diagnostic\n");
-    r = krnP4GSLLoadDiagnostic(&status, &failed_record);
-    krnP4PutStr("[touch]  firmware load result: ");
-    krnP4PutStr(krnP4I2CName(r));
-    if (r != P4_I2C_OK)
-    {
-        krnP4PutStr(", record/stage ");
-        krnP4PutDec(failed_record);
-    }
-    krnP4PutStr(", 0xb0 ");
-    krnP4PutHex32(status);
-    krnP4PutStr(r == P4_I2C_OK
-                ? " -- volatile controller program alive\n"
-                : " -- no touch device published; normal boot continues\n");
-#ifdef P4_C4_TOUCH_SAMPLE
-    if (r == P4_I2C_OK)
-    {
-        r = krnP4GSLSampleDiagnostic(20);
-        krnP4PutStr("[touch]  raw sampling result: ");
-        krnP4PutStr(krnP4I2CName(r));
-        krnP4PutStr("; no input events were generated\n");
-    }
-#endif
-}
-#endif
 #endif
 #endif /* P4_PANEL_PROBE */
 
@@ -7442,9 +7407,6 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 #endif
 #ifdef P4_C4_TOUCH_PROBE
     krnP4C4TouchProbe();
-#endif
-#ifdef P4_C4_TOUCH_LOAD
-    krnP4C4TouchLoad();
 #endif
 
 #ifdef P4_SDMMC_PROBE

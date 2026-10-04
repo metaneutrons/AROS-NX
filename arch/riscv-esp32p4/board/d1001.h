@@ -28,6 +28,22 @@
 #define P4_BOARD_TOUCH_FW_PATH          "DEVS:Firmware/silead/gsl3670-d1001.fw"
 #define P4_BOARD_TOUCH_FW_FALLBACK      "FLASHDISK0P0:Firmware/silead/gsl3670-d1001.fw"
 
+/*
+ * The touch bus for esp32p4board.resource: the GSL3670 on I2C0, its reset
+ * on PCA9535 output 12 behind I2C1. 10 kHz is the rate the D1001 touch was
+ * proven at; the I2C0 clock divider was mis-placed until 2026-10-04 (see
+ * kernel/hardware.h), so 100 kHz is worth a test now. The image is the
+ * vendor's 4356 records; its configuration gives 26 x 64 by 14 x 64 raw
+ * units.
+ */
+#define P4_BOARD_TOUCH_I2C_PORT         0
+#define P4_BOARD_TOUCH_SDA_GPIO         P4_BOARD_I2C0_SDA_GPIO
+#define P4_BOARD_TOUCH_SCL_GPIO         P4_BOARD_I2C0_SCL_GPIO
+#define P4_BOARD_TOUCH_I2C_HZ           10000
+#define P4_BOARD_TOUCH_FW_BYTES         (4356U * 8U)
+#define P4_BOARD_TOUCH_RAW_W            (26U * 64U)
+#define P4_BOARD_TOUCH_RAW_H            (14U * 64U)
+
 /* Single-finger perimeter measurement, 2026-09-30. Inclusive endpoints;
    raw Y is mirrored by the mouse HIDD. Visual edges/menu opening verified. */
 #define P4_BOARD_TOUCH_X_MIN            16U
