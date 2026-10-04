@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 
 
-REPO = Path(__file__).resolve().parents[3]
+REPO = Path(__file__).resolve().parents[4]
 EVIDENCE = Path(
     "/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/"
     "smp-priority-2026-10-01"

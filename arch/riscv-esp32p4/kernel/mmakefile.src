@@ -10,9 +10,12 @@ include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 P4_GIANT_ARCHFLAG := $(if $(filter 1,$(P4_GIANT)),-DP4_GIANT=1,) \
                      $(if $(filter 1,$(P4_GIANT_MIGRATE)),-DP4_GIANT_MIGRATE=1,)
 
+# The board profile reaches the shared RISC-V kernel objects the same way:
+# getcpunumber.c in arch/riscv-all includes this port's kernel_intern.h,
+# and that includes board/board.h, which refuses to build without one.
 %set_archincludes mainmmake=kernel-kernel maindir=rom/kernel \
   modname=kernel pri=10 arch=esp32p4-riscv \
-  includes="-I$(SRCDIR)/$(CURDIR) $(P4_GIANT_ARCHFLAG)"
+  includes="-I$(SRCDIR)/$(CURDIR) $(P4_GIANT_ARCHFLAG) $(P4_BOARD_CPPFLAGS)"
 
 %get_archincludes modname=kernel \
     includeflag=TARGET_KERNEL_INCLUDES maindir=rom/kernel
