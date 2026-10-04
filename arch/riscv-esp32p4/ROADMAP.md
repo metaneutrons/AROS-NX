@@ -229,12 +229,13 @@ selected in a build or executed on hart1, and cache/XIP qualification stays open
 
 ## Track E: ESP32-P4 / RV32 SMP
 
-Status 2026-10-04: the Giant (`P4_GIANT=1`) is the SMP path on both boards.
-E3 is removed from this branch, both its shared-code integration and its
-port-side sources, switches, tests and tools; it is kept on the local branch
-`e3-smp`. See SMP.md, E3, for what went and how to bring it back, and the two
-evidence entries of that date. The E3 history below describes that work; the
-files, switches and tools it names exist only on `e3-smp`. E1/E2 stay.
+Status 2026-10-04: this branch (`feat/riscv32-esp32p4-v3`) runs on one hart.
+It was rebuilt from upstream `44336e404a` without E3 and without the Giant;
+both are kept on local branches (`e3-smp`, `giant-smp`). E0-E2 stay. The next
+step is AROS's own SMP (the `smp` build variant) with as few changes outside
+the port as possible; see SMP.md, "Current plan", stages S0-S6. The history
+below describes the earlier work: files, switches and tools it names that
+belong to E3 or the Giant exist only on those branches.
 
 [SMP.md](SMP.md) owns the staged requirements and acceptance IDs; this roadmap
 retains execution state and evidence as required by the existing repository
@@ -24691,6 +24692,44 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   `arch/riscv-all/exec/stackswap.S`, the Giant hooks in `rom/exec`, the
   `esp32p4` target in `configure`, and the root `AGENTS.md`, `CLAUDE.md`
   and `LEGAL`.
+
+### 2026-10-04 - Branch v3: rebuilt without E3 and the Giant; AROS SMP planned
+
+- State change: Track E. This branch runs on one hart again. Not built yet;
+  the boards keep what they have.
+- Why: the goal (Fabian) is to implement SMP the way AROS does it and to
+  keep changes outside `arch/riscv-esp32p4` as small as possible. Reverting
+  E3 and the Giant on the old branch would have left both and their reverts
+  in the history.
+- How: a new branch `feat/riscv32-esp32p4-v3` from `44336e404a`, onto which
+  220 of the 235 commits of `feat/riscv32-esp32p4-v2` were cherry-picked:
+  - left out: the ESP-IDF SD control experiment, E3 (six commits), the
+    Giant (five), and the E3/Giant removals and moves (three);
+  - picked partially: the `econsole` commit without its comment in
+    `econsole.c`; E0-E2 without the E3 diagnostics (CPU-local slots, SRAM
+    lock, software atomics), with the E1/E2 build switches that had come
+    with an E3 commit; the `-O2` commit without its Giant fix; the port move
+    without the task.resource tests; the scanout test without its Giant
+    variants;
+  - documentation conflicts were resolved with each picked commit's own
+    version; this commit restores `SMP.md` and the port's `AGENTS.md`.
+- One follow-up commit drops SMP timer remnants in the I2C and SD drivers
+  (they needed a kernel timer service this branch does not have) and a
+  stray `.gitignore` line.
+- Result: the tree differs from v2 `ff3395ba7f` only in Giant and E3 code,
+  the generic fixes that only came with E3 (task.resource hook node, list
+  locking, init order; NewAddTask failure paths; left out by Fabian's
+  decision, to be offered upstream), the KATTR numbering
+  (`KATTR_FrameBufferOps` +9, `KATTR_BacklightOps` +10, no unused slots) and
+  the documentation. Outside the port, `rom/exec` now carries only the alert,
+  ChildWait and NewCreateTaskA fixes and `rom/task` only the expunge fix;
+  there are no exec hooks, no `stackswap.S` change, no Raspberry Pi `fbgfx`
+  and no Intuition change.
+- Brightness via IPrefs (`prefs/backlight.h`, the IPrefs handler,
+  `Prefs/Backlight`) is still uncommitted; it is stashed on v2
+  (`stash@{0}`) and goes onto this branch next.
+- Plan: SMP.md, "Current plan". Next safe step: S0, rebase onto current
+  upstream, build and boot both boards on one hart.
 
 ## Evidence-entry template
 
