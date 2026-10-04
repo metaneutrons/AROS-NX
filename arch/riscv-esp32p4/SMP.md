@@ -55,7 +55,8 @@ serialized across harts.
 It needs no Exec ABI change: only the core image changes, and the unchanged
 normal BSP package runs with it. `P4_GIANT` is a make switch of the normal
 target, not the refused `smp` variant; configure's smp refusal is unchanged
-and Codex's E3 sources stay unselected. Hart1 runs only tasks that opt in
+and Codex's E3 sources stay unselected (their shared-code half was removed on
+2026-10-04, see E3 below). Hart1 runs only tasks that opt in
 through the private tc_Flags bits 1 (may run on hart1) and 2 (must not run on
 hart0), which exec/tasks.h leaves unused.
 
@@ -400,6 +401,23 @@ CPU-local scheduler/runtime state before ordinary tasks run on hart1.
 
 ### E3: experimental Exec SMP
 
+**Status 2026-10-04: shared-code integration removed from this branch.** At
+Fabian's direction the E3 hooks and `__AROSEXEC_SMP__` changes in the shared
+`rom/exec`, `rom/task` and `rom/kernel` sources were taken out: the
+`EXEC_PLATFORM_*` hooks that only the E3 block of `exec/exec_platform.h`
+defines, task.resource's direct core binding (`task_bootstrap.c`,
+`taskresource_cleanup.h`), `EXEC_DISPATCH_LAUNCH_IN_CPU`, and the host tests
+that extracted that code. That code never built for the P4 (configure refuses
+the `smp` variant), but it changed the x86_64 and opensbi SMP builds and
+collided with upstream's later SMP rework. The tree as it was is kept on the
+local branch `archive/e3-smp-runtime` (`14f0290e21`, not pushed). What stays:
+the Giant hooks (`TASK_READY`, `REMOVE_RUNNING`/`REMOVE_WAIT`, `FIND_RUNNING`,
+`TASK_FLAGS_INIT`, `SOFTINT_PENDING`) and the generic fixes found along the way
+(ChildWait signal order, NewAddTask/NewCreateTaskA failure paths,
+task.resource hook node, list locking and init order). The port-side E3
+sources under `exec/` and `kernel/` remain in the tree, but without their
+shared half they no longer build; whether to remove them as well is open. The
+requirements below stay as the design record for a later fine-grained SMP.
 
 Dependencies: E2 and explicit review of shared Exec SMP integration.
 

@@ -68,11 +68,6 @@ void InternalObtainSemaphore(struct SignalSemaphore *sigSem, struct Task *owner,
     if (!CheckSemaphore(sigSem, caller, SysBase))
         return;  /* A crude attempt to recover... */
 
-#if defined(EXEC_PLATFORM_OBTAIN_SEMAPHORE)
-    EXEC_PLATFORM_OBTAIN_SEMAPHORE(sigSem, ThisTask, owner);
-    return;
-#endif
-
     /*
      * Arbitrate for the semaphore structure.
      * TODO: SMP-aware versions of this code likely need to use spinlocks here
@@ -153,20 +148,9 @@ ULONG InternalAttemptSemaphore(struct SignalSemaphore *sigSem, struct Task *owne
 
     /*
      * Arbitrate for the semaphore structure.
-     * Forbid protects local task semantics; an optional platform gate also
-     * serializes the semaphore fields against concurrent harts.
+     * TODO: SMP-aware versions of this code likely need to use spinlocks here
      */
     Forbid();
-
-#if defined(EXEC_PLATFORM_SEMAPHORE_LOCK) && \
-    !defined(EXEC_PLATFORM_SEMAPHORE_UNLOCK)
-#error "Semaphore platform lock requires a matching unlock"
-#elif !defined(EXEC_PLATFORM_SEMAPHORE_LOCK) && \
-      defined(EXEC_PLATFORM_SEMAPHORE_UNLOCK)
-#error "Semaphore platform unlock requires a matching lock"
-#elif defined(EXEC_PLATFORM_SEMAPHORE_LOCK)
-    EXEC_PLATFORM_SEMAPHORE_LOCK(sigSem);
-#endif
 
     /* Increment the queue count */
     sigSem->ss_QueueCount++;
@@ -190,9 +174,6 @@ ULONG InternalAttemptSemaphore(struct SignalSemaphore *sigSem, struct Task *owne
     }
 
     /* All done. */
-#if defined(EXEC_PLATFORM_SEMAPHORE_UNLOCK)
-    EXEC_PLATFORM_SEMAPHORE_UNLOCK(sigSem);
-#endif
     Permit();
 
     return retval;

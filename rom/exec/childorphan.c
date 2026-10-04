@@ -5,7 +5,6 @@
 */
 #include "exec_intern.h"
 #include "exec_util.h"
-#include "etask.h"
 #include <proto/exec.h>
 
 /*****************************************************************************
@@ -53,63 +52,6 @@
 {
     AROS_LIBFUNC_INIT
 
-#if defined(__AROSEXEC_SMP__)
-    struct Task *ThisTask;
-    struct ETask *et, *child;
-    struct Node *nextchild;
-    BOOL found = FALSE;
-
-    /* The caller must be the current RUN/metadata owner. The ETask lock
-     * protects this active-child list; it does not provide topology lifetime
-     * discovery for an arbitrary or stale ETask pointer. */
-    Forbid();
-    ThisTask = GET_THIS_TASK;
-    if (ThisTask == NULL)
-    {
-        Permit();
-        return 0;
-    }
-
-    /* GetETask() checks TF_ETASK but dereferences its Task argument. */
-    et = GetETask(ThisTask);
-    if (et == NULL)
-    {
-        Permit();
-        return CHILD_NOTNEW;
-    }
-
-    EXEC_SPINLOCK_LOCK(&IntETask(et)->iet_TaskLock, NULL,
-                       SPINLOCK_MODE_WRITE);
-    if (tid == 0)
-    {
-        /* Remove before clearing et_Parent. Leaving linked nodes behind while
-         * replacing the sentinel would strand them on the old list. */
-        ForeachNodeSafe(&et->et_Children, child, nextchild)
-        {
-            Remove((struct Node *)child);
-            child->et_Parent = NULL;
-        }
-        found = TRUE;
-    }
-    else
-    {
-        ForeachNode(&et->et_Children, child)
-        {
-            if (child->et_UniqueID == tid)
-            {
-                Remove((struct Node *)child);
-                child->et_Parent = NULL;
-                found = TRUE;
-                break;
-            }
-        }
-    }
-    EXEC_SPINLOCK_UNLOCK(&IntETask(et)->iet_TaskLock);
-    Permit();
-
-    return found ? 0 : CHILD_NOTFOUND;
-#else
-
     struct Task *ThisTask = GET_THIS_TASK;
     struct ETask *et, *child;
 
@@ -151,7 +93,6 @@
                 }
         }
     return 0;
-#endif
 
     AROS_LIBFUNC_EXIT
 } /* ChildOrphan */

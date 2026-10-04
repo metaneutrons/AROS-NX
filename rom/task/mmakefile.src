@@ -57,7 +57,6 @@ TASKRES_FILES :=             \
         task_init            \
         task_execfuncs       \
         task_support         \
-        task_bootstrap       \
         $(TASKRES_FUNCS)
 
 %build_module mmake=kernel-task modname=task modtype=resource \

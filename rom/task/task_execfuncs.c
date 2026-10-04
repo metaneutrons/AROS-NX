@@ -10,8 +10,6 @@
 #include <aros/debug.h>
 #include <aros/symbolsets.h>
 
-#include <exec/memory.h>
-
 #include <proto/exec.h>
 #include <proto/task.h>
 
@@ -60,40 +58,6 @@ AROS_UFH3(void, TaskRes_PreLaunch,
     AROS_USERFUNC_EXIT
 }
 
-#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
-/* Direct core binding: no global Exec vector is replaced on selected P4.
- * Unlike the legacy Hook adapter above, this reports allocation failure so
- * TaskLaunch can refuse publication unless the metadata entry exists. */
-BOOL task_RegisterNewTask(struct Task *task, APTR resource)
-{
-    struct TaskResBase *TaskResBase = (struct TaskResBase *)resource;
-    struct TaskListEntry *newEntry;
-
-    if (!task || !TaskResBase)
-        return FALSE;
-
-    /* Allocator activity stays outside both the IRQ mask and topology gate. */
-    newEntry = AllocMem(sizeof(*newEntry),
-        MEMF_PUBLIC | MEMF_CLEAR | MEMF_NO_EXPUNGE);
-    if (newEntry == NULL)
-        return FALSE;
-
-    newEntry->tle_Task = task;
-    NEWLIST(&newEntry->tle_HookTypes);
-
-    Disable();
-    EXEC_SPINLOCK_LOCK(&TaskResBase->TaskListSpinLock, NULL, SPINLOCK_MODE_WRITE);
-    if (IsListEmpty(&TaskResBase->trb_LockedLists))
-        AddTail(&TaskResBase->trb_TaskList, &newEntry->tle_Node);
-    else
-        AddTail(&TaskResBase->trb_NewTasks, &newEntry->tle_Node);
-    EXEC_SPINLOCK_UNLOCK(&TaskResBase->TaskListSpinLock);
-    Enable();
-
-    return TRUE;
-}
-#endif
-
 AROS_LH4(APTR, NewAddTask,
         AROS_LHA(struct Task *,     task,      A1),
         AROS_LHA(APTR,              initialPC, A2),
@@ -110,7 +74,7 @@ AROS_LH4(APTR, NewAddTask,
         { TAG_DONE,                     0               },
         { TAG_DONE,                     0               }
     };
-    TaskResBase = TASKRES_BASE_FROM_EXEC(SysBase);
+    TaskResBase = (struct TaskResBase *)SysBase->lb_TaskResBase;
 
     D(bug("[TaskRes] %s(0x%p)\n", __func__, task));
 
@@ -143,24 +107,10 @@ AROS_LH1(void, RemTask,
     struct Task *findTask = task;
     struct TaskResBase *TaskResBase;
 
-    TaskResBase = TASKRES_BASE_FROM_EXEC(SysBase);
+    TaskResBase = (struct TaskResBase *)SysBase->lb_TaskResBase;
 
     if (!findTask)
         findTask = FindTask(NULL);
-
-#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
-    /* Identity only: core admission precedes every target/storage access.
-     * Self removal never resumes here; external removal returns after the
-     * service callback has detached metadata and released reserved storage. */
-    if (!TaskResBase || !TaskResBase->trb_RemTask)
-    {
-        EXEC_PLATFORM_TASK_FATAL();
-        return;
-    }
-    AROS_CALL1(void, TaskResBase->trb_RemTask,
-        AROS_LCA(struct Task *, findTask, A1), struct ExecBase *, SysBase);
-    return;
-#else
 
     D(
         bug("[TaskRes] %s(0x%p)\n", __func__, task);
@@ -194,7 +144,6 @@ AROS_LH1(void, RemTask,
 
     return;
 
-#endif
     AROS_LIBFUNC_EXIT
 }
 
@@ -208,7 +157,7 @@ AROS_LH3(IPTR, NewStackSwap,
     AROS_LIBFUNC_INIT
 
     struct TaskResBase *TaskResBase;
-    TaskResBase = TASKRES_BASE_FROM_EXEC(SysBase);
+    TaskResBase = (struct TaskResBase *)SysBase->lb_TaskResBase;
 
     APTR tsid = SaveTaskStorage();
     DTS(bug("[TaskRes] %s: Pre-StackSwap() <TSID=$%p, TaskStorage @ 0x%p>\n",

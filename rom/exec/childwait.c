@@ -3,10 +3,8 @@
 
     ChildWait() - Wait for a task to finish it processing.
 */
-#if !defined(P4_CHILD_WAIT_BODY_TEST)
 #include "exec_intern.h"
 #include <proto/exec.h>
-#endif
 
 /*****************************************************************************
 
@@ -93,12 +91,9 @@
     {
         /* Clear the notification before checking its durable predicate.
          * An exit published after the scan must leave SIGF_CHILD pending for
-         * Wait. Clearing after the scan would erase precisely that wakeup.
-         * No port/topology lock is held across SetSignal or Wait. */
+         * Wait. Clearing after the scan would erase precisely that wakeup. */
         SetSignal(0, SIGF_CHILD);
 #if defined(__AROSEXEC_SMP__)
-        /* Forbid alone cannot exclude interrupt-time PutMsg. */
-        Disable();
         EXEC_SPINLOCK_LOCK(&et->et_TaskMsgPort.mp_SpinLock, NULL, SPINLOCK_MODE_READ);
 #endif
         /* Check if it has returned already. This will also take the first. */
@@ -108,7 +103,6 @@
             {
 #if defined(__AROSEXEC_SMP__)
                 EXEC_SPINLOCK_UNLOCK(&et->et_TaskMsgPort.mp_SpinLock);
-                Enable();
 #endif
                 goto child_exited;
             }
@@ -116,7 +110,6 @@
 
 #if defined(__AROSEXEC_SMP__)
         EXEC_SPINLOCK_UNLOCK(&et->et_TaskMsgPort.mp_SpinLock);
-        Enable();
 #endif
         /* No matching children, we have to wait */
         Wait(SIGF_CHILD);

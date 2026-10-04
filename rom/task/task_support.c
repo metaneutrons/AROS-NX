@@ -64,35 +64,6 @@ void task_DetachEntry(struct Task *task, struct TaskResBase *TaskResBase)
         FreeMem(detached, sizeof(*detached));
 }
 
-#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
-BOOL task_CleanupRemovedTask(struct Task *task, APTR resource)
-{
-    struct TaskResBase *TaskResBase = (struct TaskResBase *)resource;
-    struct ETask *et;
-    IPTR *storage;
-    IPTR slots;
-
-    /* Caller owns the sole retained service reference and target RUN is
-     * drained. This does not establish independent parent/ETask leases. */
-    if (!task || !TaskResBase)
-        return FALSE;
-    task_DetachEntry(task, TaskResBase);
-    et = GetETask(task);
-    if (!et)
-        return TRUE;
-    storage = (IPTR *)et->et_Reserved[ETASK_RSVD_SLOTID];
-    if (!storage)
-        return TRUE;
-    slots = storage[__TS_FIRSTSLOT];
-    if (slots == 0 || slots > ((ULONG)~0UL) / sizeof(*storage))
-        return FALSE;
-    /* Clear before freeing: retained dead ETask metadata must not retain a
-     * freed storage pointer. No resource topology gate is held here. */
-    et->et_Reserved[ETASK_RSVD_SLOTID] = NULL;
-    FreeMem(storage, (ULONG)(slots * sizeof(*storage)));
-    return TRUE;
-}
-#endif
 
 void task_CleanList(struct Task * task, struct TaskResBase *TaskResBase)
 {

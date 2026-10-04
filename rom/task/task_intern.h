@@ -23,9 +23,6 @@
 
 #include <exec_intern.h>
 #include <etask.h>
-#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
-#include "../exec/taskresource_cleanup.h"
-#endif
 
 #define TASKRES_ENABLE
 
@@ -39,29 +36,12 @@
 
 #define ETASK_RSVD_SLOTID       1
 
-#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
-#define TASKRES_BASE_FROM_EXEC(exec) ((struct TaskResBase *)__atomic_load_n( \
-    &(exec)->lb_TaskResBase, __ATOMIC_ACQUIRE))
-#else
-#define TASKRES_BASE_FROM_EXEC(exec) ((struct TaskResBase *)(exec)->lb_TaskResBase)
-#endif
-
-#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
-struct TaskResBase;
-BOOL task_RegisterNewTask(struct Task *, APTR);
-BOOL task_BootstrapInventory(struct TaskResBase *);
-#endif
-
 /* Puddle size, in slots. Must be at least 1 */
 #define TASKSTORAGEPUDDLE       16
 
 struct TaskResBase
 {
-#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
-    struct taskresource_cleanup_binding trb_CleanupBinding;
-#else
     struct Library              trb_LibNode;
-#endif
     APTR                        trb_KernelBase;
     APTR                        trb_NewAddTask;
     APTR                        trb_RemTask;
@@ -135,9 +115,6 @@ void task_CleanList(struct Task * task, struct TaskResBase *TaskResBase);
  * Both TaskResource lists and the lock-holder decision share one gate.
  * Detached storage is freed only after leaving that gate. */
 void task_DetachEntry(struct Task *task, struct TaskResBase *TaskResBase);
-#if defined(EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP)
-BOOL task_CleanupRemovedTask(struct Task *, APTR);
-#endif
 struct TaskListHookEntry *GetHookTypeEntry(struct List *htList, ULONG thType, BOOL create);
 struct TaskListEntry *GetTaskEntry(struct Task *thisTask, struct TaskResBase *TaskResBase);
 

@@ -28,20 +28,6 @@ void ServiceTask(struct ExecBase *SysBase)
 #if defined(__AROSEXEC_SMP__)
     serviceTask = FindTask(NULL);
     DINIT("ServiceTask: task @ 0x%p", serviceTask);
-#if defined(EXEC_PLATFORM_SERVICE_PROTECT)
-    /* The current RUN continuation owns storage while installing the
-     * permanent housekeeper reference. Never make a queued cleanup claim
-     * from a worker whose own continuation can be remotely retired. */
-    if (!EXEC_PLATFORM_SERVICE_PROTECT(serviceTask))
-    {
-        EXEC_PLATFORM_TASK_FATAL();
-        return;
-    }
-#endif
-#if defined(EXEC_PLATFORM_SERVICE_WORKER_RUN)
-    EXEC_PLATFORM_SERVICE_WORKER_RUN();
-    return;
-#endif
 #endif
 
     do

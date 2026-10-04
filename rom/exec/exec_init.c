@@ -167,12 +167,6 @@ AROS_UFH3S(struct ExecBase *, GM_UNIQUENAME(init),
 
     NEWLIST(&t->tc_MemEntry);
 
-#if defined(__AROSEXEC_SMP__) && defined(__AROSPLATFORM_SMP__)
-    /* Bootstrap bypasses NewAddTask, so its state lock needs the same
-     * quiescent initialization before SET_THIS_TASK publishes it. */
-    EXEC_SPINLOCK_INIT(&t->tc_SpinLock);
-#endif
-
 #if defined(__AROSEXEC_SMP__)
     t->tc_Node.ln_Name = "Exec BSP Bootstrap Task";
 #else
@@ -180,16 +174,8 @@ AROS_UFH3S(struct ExecBase *, GM_UNIQUENAME(init),
 #endif
     t->tc_Node.ln_Type = NT_TASK;
     t->tc_Node.ln_Pri  = 0;
-    t->tc_SigAlloc     = 0xFFFF;
-
-#if defined(EXEC_PLATFORM_BOOT_TASK_REGISTER)
-    /* The bootstrap is already executing on hart 0. Publish its lifetime
-     * record, running owner and CPU-local identity before TS_RUN/ThisTask can
-     * become visible to another hart. This path precedes ETask initialization. */
-    if (!EXEC_PLATFORM_BOOT_TASK_REGISTER(t))
-        goto execfatal;
-#endif
     t->tc_State        = TS_RUN;
+    t->tc_SigAlloc     = 0xFFFF;
 
     /*
      * Boot-time stack can be placed anywhere in memory.

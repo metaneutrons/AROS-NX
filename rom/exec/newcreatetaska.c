@@ -109,25 +109,6 @@ static const struct newMemList MemTemplate =
     APTR   userdata  = NULL;
     ULONG  pri       = 0;
     ULONG  flags     = 0;
-#if defined(EXEC_PLATFORM_CREATION_SCOPE_BEGIN) || defined(EXEC_PLATFORM_CREATION_SCOPE_END) || defined(EXEC_PLATFORM_CREATION_SCOPE_REFUSED)
-#if !defined(EXEC_PLATFORM_CREATION_SCOPE_BEGIN) || !defined(EXEC_PLATFORM_CREATION_SCOPE_END) || !defined(EXEC_PLATFORM_CREATION_SCOPE_REFUSED) || !defined(EXEC_PLATFORM_CREATION_OWNERSHIP_RESOLVE) || !defined(EXEC_PLATFORM_CREATION_OWNERSHIP_TAG) || !defined(EXEC_PLATFORM_CREATION_GENERATION_TAG)
-#error "Creation scopes require matched Begin/End/refusal, resolver and authority tags"
-#endif
-#endif
-#if defined(EXEC_PLATFORM_CREATION_SCOPE_BEGIN)
-    ULONG creationOwnership = EXEC_PLATFORM_CREATION_CALLER_OWNED;
-#if defined(EXEC_PLATFORM_CREATION_SCOPE_BEGIN)
-    BOOL creationScopeRefused = FALSE;
-    struct p4_creation_channel creationFrame = { 0 };
-    ULONG creationGeneration = 0;
-#endif
-    struct TagItem creationTags[] = {
-        { EXEC_PLATFORM_CREATION_OWNERSHIP_TAG, (IPTR)&creationOwnership },
-        { EXEC_PLATFORM_CREATION_GENERATION_TAG, 0 },
-        { TAG_MORE, (IPTR)tags },
-        { TAG_DONE, 0 }
-    };
-#endif
 
     while ((tag = LibNextTagItem(&tstate)))
     {
@@ -207,14 +188,6 @@ static const struct newMemList MemTemplate =
 
         newtask = ml->ml_ME[0].me_Addr;
 
-#if defined(__AROSEXEC_SMP__) && defined(__AROSPLATFORM_SMP__)
-        /* Fresh creator-owned storage, not yet registered or published.
-         * The port signal is allocated before NewAddTask, so initialize the
-         * canonical state lock here, before AllocTaskSignal can acquire it.
-         * NewAddTask may initialize it again only while still unpublished. */
-        EXEC_SPINLOCK_INIT(&newtask->tc_SpinLock);
-#endif
-
         newtask->tc_Node.ln_Type = NT_TASK;
         newtask->tc_Node.ln_Pri  = pri;
         newtask->tc_Node.ln_Name = name;
@@ -271,57 +244,16 @@ static const struct newMemList MemTemplate =
          * TASKTAG_ARGx will be processed by PrepareContext()
          * TODO: process initpc and finalpc there too after ABI v1 transition
          */
-#if defined(EXEC_PLATFORM_CREATION_SCOPE_BEGIN)
-        /* Use the public vector and retain the original tag chain: bypassing
-         * it would lose task.resource's interposed prelaunch registration. */
-#if defined(EXEC_PLATFORM_CREATION_SCOPE_BEGIN)
-        if (!EXEC_PLATFORM_CREATION_SCOPE_BEGIN(newtask, &creationFrame))
-        {
-            /* No vector/record publication: caller still owns this MemList.
-             * Refusal policy runs only after the private allocation rollback. */
-            creationScopeRefused = TRUE;
-            task2 = NULL;
-            goto fail;
-        }
-        creationGeneration = creationFrame.generation;
-        creationTags[0].ti_Data = (IPTR)&creationFrame.value;
-        creationTags[1].ti_Data = (IPTR)creationGeneration;
-#endif
-        task2 = NewAddTask (newtask, initpc, finalpc, creationTags);
-#if defined(EXEC_PLATFORM_CREATION_SCOPE_BEGIN)
-        if (!EXEC_PLATFORM_CREATION_SCOPE_END(creationGeneration, &creationFrame))
-        {
-            /* Published ownership may already belong to cleanup. Do not read
-             * frame/value/Task or run allocation rollback on this path. */
-            EXEC_PLATFORM_CREATION_SCOPE_REFUSED();
-            EXEC_PLATFORM_TASK_FATAL();
-            return NULL; /* Fatal/refusal hooks must not resume this path. */
-        }
-        creationOwnership = creationFrame.value;
-#endif
-#else
         task2 = NewAddTask (newtask, initpc, finalpc, tags);
-#endif
 
 fail:   if (!task2)
         {
             /* NewAddTask can fail after the port was published for launch. */
             if (msgPortPtr)
                 *msgPortPtr = NULL;
-#if defined(EXEC_PLATFORM_CREATION_SCOPE_BEGIN)
-            if (creationOwnership == EXEC_PLATFORM_CREATION_CALLER_OWNED)
-                FreeEntry (ml);
-            else if (creationOwnership != EXEC_PLATFORM_CREATION_SERVICE_OWNED)
-                EXEC_PLATFORM_TASK_FATAL();
-#else
             FreeEntry (ml);
-#endif
             newtask = NULL;
         }
-#if defined(EXEC_PLATFORM_CREATION_SCOPE_BEGIN)
-        if (creationScopeRefused)
-            EXEC_PLATFORM_CREATION_SCOPE_REFUSED();
-#endif
     }
     else
         newtask=NULL;
