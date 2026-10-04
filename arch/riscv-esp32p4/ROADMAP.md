@@ -24144,8 +24144,13 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   written to `0x20000` (MAC checked, hash verified); boot log `8bd395f1…`
   samples the backlight pin high 9,653 of 20,000 times (48 %).
 - D1001: core with the same flags built in its tree, 202,096 B
-  `7253805936a7808270c63e9733d49f72fb30b95bda81a4e8be819132f1d2dc9a`; not
-  flashed (board not connected; it still carries the Giant visual core).
+  `7253805936a7808270c63e9733d49f72fb30b95bda81a4e8be819132f1d2dc9a`,
+  flashed at Fabian's request after he reconnected the board (MAC checked,
+  hash verified); boot log `17dfd5cb…` from the first byte, backlight pin
+  9,530 of 20,000 high, touch polling. It replaces the Giant visual core;
+  its BSP is unchanged (no double-tap-and-drag there yet) and it runs
+  without its SD card. The display still uses the +525 workaround and
+  non-burst video: this image changes nothing but the backlight.
 
 ## Evidence-entry template
 
