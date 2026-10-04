@@ -1367,6 +1367,11 @@
  *   RGB565  80 MHz  1500 Mbit/s   accepts        DPI_PLD_WR_ERR
  *   RGB565  40 MHz  1500 Mbit/s   accepts        clean
  *
+ * (2026-10-04: these rates were all half the stated value, because N was
+ * computed for a 40 MHz PLL reference that is really 20 MHz; the D1001 now
+ * runs its vendor's 1000 Mbit/s in burst mode against 20 MHz, without the
+ * row-phase workaround.  The table is history.)
+ *
  * So the lane rate decides acceptance and the pixel clock decides whether the
  * host can keep up.  1500 with 40 gets both, and it is the only combination
  * tried that does.  Note that this is not the vendor firmware's pairing - that

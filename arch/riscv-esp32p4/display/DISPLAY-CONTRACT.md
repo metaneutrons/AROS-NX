@@ -51,7 +51,9 @@ timing fields, see below, this board has never actually run.
 |---|---|---|---|
 | Bus id | 0 | `reference` | `V-panel:28` |
 | Data lanes | 2 | `reference` | `V-board:59` |
-| Lane bit rate | 1000 Mbit/s per lane | `reference` | `V-board:58` |
+| Lane bit rate | 1000 Mbit/s per lane | `verified` | `V-board:58`; ROADMAP 2026-10-04 (B5R) |
+| D-PHY PLL reference | PLL_F20M, 20 MHz: N 1, M 50 for 1000 Mbit/s | `verified` | JTAG registers on the JC1060P470C, same SoC path; ROADMAP 2026-10-04 |
+| Video mode | burst with sync pulses, no row-phase mapping | `verified` | ROADMAP 2026-10-04 (B5R) |
 | Virtual channel | 0, both DBI and DPI | `reference` | `V-panel:38,46` |
 | DBI command width | 8 bit | `reference` | `V-panel:40` |
 | DBI parameter width | 8 bit | `reference` | `V-panel:39` |

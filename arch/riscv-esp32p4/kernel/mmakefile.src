@@ -487,9 +487,6 @@ ifneq ($(P4_DSI_BURST),1)
 P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
 endif
 
-ifeq ($(P4_BOARD),d1001)
-P4_B6_ROW_PHASE_WORKAROUND ?= 525
-endif
 ifndef P4_SCANOUT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=60
 endif
@@ -556,15 +553,13 @@ ifneq ($(P4_DSI_BURST),1)
 P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
 endif
 override P4_SCANOUT_SECS := 0
-ifeq ($(P4_BOARD),d1001)
-P4_B6_ROW_PHASE_WORKAROUND ?= 525
-endif
 endif
 
-# Explicit compatibility debt, not a hardware contract.  Set this to the
-# hardware-observed 525 while B5R remains open; omit it for the B5R root-fix
-# gate.  Keeping a B6-specific name prevents the accepted B5 diagnostic from
-# becoming an invisible production assumption.
+# Former compatibility debt, now a diagnostic only.  The D1001 needed 525
+# while its D-PHY PLL was computed for a 40 MHz reference that is really
+# 20 MHz (B5R, resolved 2026-10-04); no board sets it any more.  Keeping a
+# B6-specific name prevents the B5 diagnostic from becoming an invisible
+# production assumption.
 ifdef P4_B6_ROW_PHASE_WORKAROUND
 P4_DEBUG_CPPFLAGS += \
     -DP4_B6_ROW_PHASE_WORKAROUND=$(P4_B6_ROW_PHASE_WORKAROUND)
@@ -696,6 +691,13 @@ endif
 # 500, 1000, 1500.
 ifdef P4_LANE_MBPS
 P4_DEBUG_CPPFLAGS += -DP4_DSI_LANE_MBPS=$(P4_LANE_MBPS)
+endif
+
+# P4_DSI_PLLREF_MHZ=20|40 overrides the D-PHY PLL reference the dividers are
+# computed for (board default: JC1060P470C 20, D1001 40). The registers say
+# 20 on both boards (ROADMAP 2026-10-04); the D1001 test of that is open.
+ifdef P4_DSI_PLLREF_MHZ
+P4_DEBUG_CPPFLAGS += -DP4_DSI_PLLREF_MHZ=$(P4_DSI_PLLREF_MHZ)
 endif
 
 # P4_PSRAM_TIMEOUT_TEST=1 deliberately starts one command with a bit that the
