@@ -18,12 +18,6 @@
 #if defined(P4_GIANT)
 #include "p4_giant.h"
 #endif
-#if defined(__AROSEXEC_SMP__)
-#include <proto/exec.h>
-#include "p4_soft_atomic.h"
-#include "p4_public_spinlock.h"
-#include "p4_timer_snapshot.h"
-#endif
 
 volatile unsigned long __esp32p4_ticks;
 
@@ -45,9 +39,6 @@ static inline uint32_t st_rd(uint32_t off)
  */
 uint64_t krnTimerCount(void)
 {
-#if defined(__AROSEXEC_SMP__)
-    return krnP4TimerSnapshotRead();
-#else
     unsigned int spins = 1000;
     uint32_t hi, lo;
 #if defined(P4_GIANT)
@@ -69,7 +60,6 @@ uint64_t krnTimerCount(void)
 #endif
 
     return ((uint64_t)hi << 32) | lo;
-#endif
 }
 
 void krnTimerAck(void)
@@ -104,32 +94,8 @@ void krnTimerInit(void)
 /* Counts of the tick, for anything that wants to wait without a scheduler */
 unsigned long krnTimerTicks(void)
 {
-#if defined(__AROSEXEC_SMP__)
-    if (SysBase != NULL)
-    {
-        uint32_t value;
-        if (krnP4SoftAtomicOperate(&__esp32p4_ticks, 4u,
-                P4_SOFT_ATOMIC_LOAD, 0, &value) != P4_SOFT_ATOMIC_OK)
-            krnP4PublicSpinFatal(P4_PUBLIC_SPIN_SERVICE_ERROR);
-        return value;
-    }
-#endif
     return __esp32p4_ticks;
 }
-
-#if defined(__AROSEXEC_SMP__)
-void krnTimerAdvance(void)
-{
-    uint32_t old_value;
-    /* Early boot is primary-only. Atomic preparation precedes SysBase
-     * publication; afterwards every concurrent tick access uses the service. */
-    if (SysBase == NULL)
-        ++__esp32p4_ticks;
-    else if (krnP4SoftAtomicOperate(&__esp32p4_ticks, 4u,
-                 P4_SOFT_ATOMIC_ADD, 1u, &old_value) != P4_SOFT_ATOMIC_OK)
-        krnP4PublicSpinFatal(P4_PUBLIC_SPIN_SERVICE_ERROR);
-}
-#endif
 
 /*
  * Bounded on purpose. Waiting on a tick that never arrives would leave
@@ -141,18 +107,10 @@ void krnTimerAdvance(void)
  */
 int krnTimerWait(unsigned long ticks)
 {
-#if defined(__AROSEXEC_SMP__)
-    unsigned long until = krnTimerTicks() + ticks;
-#else
     unsigned long until = __esp32p4_ticks + ticks;
-#endif
     unsigned long guard = 0;
 
-#if defined(__AROSEXEC_SMP__)
-    while ((long)(krnTimerTicks() - until) < 0)
-#else
     while ((long)(__esp32p4_ticks - until) < 0)
-#endif
     {
         /* No wfi here: with the tick dead there would be nothing to wake
            it, and this has to be able to time out. */

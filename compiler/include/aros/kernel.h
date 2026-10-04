@@ -121,7 +121,8 @@ typedef void (*irqhandler_t)(void *data, void *data2);
 #define KATTR_FrameBufferOps    (KATTR_CPULoad_END + 9) /* [.G] (APTR)    - Optional platform framebuffer operation table                 */
 /* KATTR_CPULoad_END + 10 is unused: it was a touch controller operation
    table, replaced by touch controller drivers (hidd/touchscreen.h). */
-#define KATTR_AtomicOps         (KATTR_CPULoad_END + 11) /* [.G] (APTR)   - Optional immutable struct KrnAtomicOps; -1 if unsupported       */
+/* KATTR_CPULoad_END + 11 is unused: it was an atomic operation table for
+   the experimental ESP32-P4 Exec SMP, which was removed. */
 #define KATTR_BacklightOps      (KATTR_CPULoad_END + 12) /* [.G] (APTR)   - Optional platform backlight operation table (aros/backlight.h) */
 
 /* Tag IDs for KrnStatMemory() */

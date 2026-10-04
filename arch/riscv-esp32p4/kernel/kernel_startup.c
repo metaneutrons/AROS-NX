@@ -80,25 +80,7 @@ void p4_giant_init_primary(void);
 void p4_giant_selftest(void);
 #endif
 
-#if defined(__AROSEXEC_SMP__)
-#include "secondary_hw.h"
-#include "cpu_local_runtime.h"
-#include "p4_soft_atomic.h"
-#include "p4_task_pins.h"
-#include "p4_semaphore_boot.h"
-#include "p4_remove_boot.h"
-#include "p4_ipi.h"
-#include "p4_timer_snapshot.h"
-#include "../exec/p4_softint.h"
-#define P4_STARTUP_TICKS() krnTimerTicks()
-#else
 #define P4_STARTUP_TICKS() __esp32p4_ticks
-#endif
-#if defined(P4_E3_RUNTIME_PREPARE) && (P4_E3_RUNTIME_PREPARE == 1)
-#include "secondary_hw.h"
-#include "cpu_local_runtime.h"
-extern int krnP4DiagnosticLine(const char *line);
-#endif
 
 /* Filled in by the link script; array form so the name is the address */
 extern char __text_start[], __text_end[];
@@ -210,10 +192,6 @@ static struct MemHeader *__esp32p4_mh_psram;
 /* Not static: the A5 probe judges loaded addresses against this range. */
 UWORD *__esp32p4_modules_low;
 UWORD *__esp32p4_modules_high;
-#if defined(__AROSEXEC_SMP__)
-/* Exact beginning of placed BSP sections, excluding the copied package. */
-static IPTR p4_modules_owned_begin;
-#endif
 
 #ifdef P4_PARTITION_TEST
 struct PartitionBase *PartitionBase;
@@ -6603,12 +6581,10 @@ static int krnP4PublishPSRAM(IPTR first_free)
         end = P4_FB_BASE - 4096;
 #endif
 
-#if defined(P4_B5_CONCURRENT_STRESS) || defined(P4_B6_DOUBLE_BUFFER) || \
-    defined(__AROSEXEC_SMP__)
+#if defined(P4_B5_CONCURRENT_STRESS) || defined(P4_B6_DOUBLE_BUFFER)
     /* B5 stress keeps scanning after Exec starts; B6 establishes the same
        permanent ownership contract for both handoff surfaces.  Keep every
-       reserved framebuffer outside every allocation and package placement.
-       SMP preserves this reservation even in a headless qualification build. */
+       reserved framebuffer outside every allocation and package placement. */
     if (end > P4_FB_BASE)
         end = P4_FB_BASE;
 #endif
@@ -6653,8 +6629,7 @@ static int krnP4LoadBSPPackage(unsigned long part_off,
         psram_end = P4_FB_BASE - 4096;
 #endif
 
-#if defined(P4_B5_CONCURRENT_STRESS) || defined(P4_B6_DOUBLE_BUFFER) || \
-    defined(__AROSEXEC_SMP__)
+#if defined(P4_B5_CONCURRENT_STRESS) || defined(P4_B6_DOUBLE_BUFFER)
     if (psram_end > P4_FB_BASE)
         psram_end = P4_FB_BASE;
 #endif
@@ -6701,9 +6676,6 @@ static int krnP4LoadBSPPackage(unsigned long part_off,
 
     __esp32p4_modules_low = (UWORD *)lo;
     __esp32p4_modules_high = (UWORD *)hi;
-#if defined(__AROSEXEC_SMP__)
-    p4_modules_owned_begin = memlow;
-#endif
 
     krnP4PutStr("[flash] pkg   loaded ");
     krnP4PutDec((uint32_t)modules);
@@ -6720,127 +6692,16 @@ static int krnP4LoadBSPPackage(unsigned long part_off,
     return modules;
 }
 
-#if defined(P4_E3_RUNTIME_PREPARE) && (P4_E3_RUNTIME_PREPARE == 1)
-/*
- * Prepare only hart 0's private Exec-runtime metadata. Hart 1 must still be
- * reset-held and clock-gated; this deliberately does not install an Exec
- * entry, alter interrupt routing, or make the scheduler SMP-capable.
- */
-static int krnP4PrepareExecRuntimeMetadata(void)
-{
-    unsigned long saved_status;
-    struct ExecBase *sys_base;
-    struct KernelBase *kernel_base;
-    int prepared = 0;
-
-    /* Preserve the caller's MIE state while checking and initializing state. */
-    __asm__ volatile("csrrci %0, mstatus, 8"
-                     : "=r"(saved_status) : : "memory");
-
-    /* Kernel_Init runs in the singletask resident pass and sets KernelBase. */
-    sys_base = SysBase;
-    kernel_base = getKernelBase();
-
-    if (P4_CPU_LOCAL_READ_MHARTID() == 0 && sys_base && kernel_base &&
-        (*(volatile uint32_t *)(uintptr_t)P4_SECONDARY_RESET_REG &
-         P4_SECONDARY_RESET_BIT) &&
-        !(*(volatile uint32_t *)(uintptr_t)P4_SECONDARY_CLOCK_REG &
-          P4_SECONDARY_CLOCK_BIT))
-    {
-        if (krnP4CpuLocalPrepare() &&
-            krnP4ExecRuntimePrepare(sys_base, kernel_base) &&
-            krnP4ExecRuntimeBind(sys_base, kernel_base) &&
-            (*(volatile uint32_t *)(uintptr_t)P4_SECONDARY_RESET_REG &
-             P4_SECONDARY_RESET_BIT) &&
-            !(*(volatile uint32_t *)(uintptr_t)P4_SECONDARY_CLOCK_REG &
-              P4_SECONDARY_CLOCK_BIT))
-            prepared = 1;
-    }
-
-    /* Restore just MIE, including the original disabled state. */
-    if (saved_status & MSTATUS_MIE)
-        __asm__ volatile("csrsi mstatus, 8" ::: "memory");
-    else
-        __asm__ volatile("csrci mstatus, 8" ::: "memory");
-
-    return prepared;
-}
-#endif
-
 /*
  * Hand the machine to exec. Everything above this point exists to make
  * this call possible: a heap it can allocate from, the extent of the
  * image it must not hand out, and a tick to schedule on.
  */
-#if defined(__AROSEXEC_SMP__)
-static int krnP4PrepareRuntimeAtomics(const struct MemHeader *low)
-{
-    struct p4_soft_atomic_policy policy = { 0 };
-    struct p4_soft_atomic_region *region;
-    uintptr_t low_end = (uintptr_t)low->mh_Upper;
-
-    /* Static writable data and the contiguous low heap are owned by AROS.
-     * The original low MemHeader may have become a TLSF header, so use the
-     * selected header's upper bound, not its allocation cursor. */
-    if ((uintptr_t)__data_start >= (uintptr_t)__kernel_end ||
-        (uintptr_t)__kernel_end >= low_end || low_end > P4_HEAP_LOW_END)
-        return 0;
-    region = &policy.regions[policy.region_count++];
-    region->begin = (uintptr_t)__data_start;
-    region->end = low_end;
-    region->kind = P4_SOFT_ATOMIC_REGION_SRAM;
-
-    if (__esp32p4_mh_high)
-    {
-        region = &policy.regions[policy.region_count++];
-        region->begin = (uintptr_t)__esp32p4_mh_high;
-        region->end = (uintptr_t)__esp32p4_mh_high->mh_Upper;
-        region->kind = P4_SOFT_ATOMIC_REGION_SRAM_HIGH;
-    }
-
-    if (__esp32p4_mh_psram)
-    {
-        uintptr_t heap_begin = (uintptr_t)__esp32p4_mh_psram;
-        uintptr_t heap_end = (uintptr_t)__esp32p4_mh_psram->mh_Upper;
-        uintptr_t populated_end = P4_PSRAM_WINDOW_BASE +
-                                  __esp32p4_psram_size;
-
-        if (heap_begin < P4_PSRAM_WINDOW_BASE || heap_begin >= heap_end ||
-            heap_end > populated_end ||
-            heap_end > P4_FB_BASE)
-            return 0;
-        region = &policy.regions[policy.region_count++];
-        region->begin = heap_begin;
-        if (p4_modules_owned_begin)
-        {
-            /* Placed sections and their alignment padding stay reserved;
-             * the allocator begins immediately after the loaded extent. */
-            if (p4_modules_owned_begin < P4_PSRAM_WINDOW_BASE ||
-                p4_modules_owned_begin >= heap_begin ||
-                (uintptr_t)__esp32p4_modules_high > heap_begin)
-                return 0;
-            region->begin = p4_modules_owned_begin;
-        }
-        region->end = heap_end;
-        region->kind = P4_SOFT_ATOMIC_REGION_PSRAM;
-    }
-    else if (p4_modules_owned_begin)
-        return 0; /* A partially loaded/withheld external pool is not usable. */
-
-    /* These are bounded retry/cycle counts, not calibrated elapsed times. */
-    policy.max_attempts = 20000u;
-    policy.max_cycles = 1000000u;
-    return krnP4SoftAtomicPrepare(&policy) == P4_SOFT_ATOMIC_OK;
-}
-#endif
 
 static void krnStartExec(void)
 {
     struct MemHeader *mh = __esp32p4_mh_low;
     UWORD *ranges[5];
-#if defined(__AROSEXEC_SMP__)
-    uint32_t smp_bootstrap_status;
-#endif
 
     if (!mh)
     {
@@ -6888,65 +6749,11 @@ static void krnStartExec(void)
 
     krnP4PutStr("[exec]   preparing ExecBase\n");
 
-#if defined(__AROSEXEC_SMP__)
-    /* Hart1 remains reset-held throughout Exec bootstrap. No later metadata
-     * initialization may erase nesting/task state established by Exec. */
-    {
-        int prepared;
-
-        __asm__ volatile("csrrci %0, mstatus, 8"
-                         : "=r"(smp_bootstrap_status) : : "memory");
-        prepared =
-            (*(volatile uint32_t *)(uintptr_t)P4_SECONDARY_RESET_REG &
-             P4_SECONDARY_RESET_BIT) != 0 &&
-            (*(volatile uint32_t *)(uintptr_t)P4_SECONDARY_CLOCK_REG &
-             P4_SECONDARY_CLOCK_BIT) == 0 &&
-            p4_exec_runtime_for_hart(0)->stage == P4_EXEC_RUNTIME_STAGE_PREPARED &&
-            p4_exec_runtime_for_hart(1)->stage == P4_EXEC_RUNTIME_STAGE_PREPARED &&
-            krnP4PrepareRuntimeAtomics(mh) &&
-            krnP4SemaphoreBootPrepare(__esp32p4_mh_psram,
-                P4_PSRAM_WINDOW_BASE,
-                P4_PSRAM_WINDOW_BASE + __esp32p4_psram_size) &&
-            krnP4RemoveBootPrepare(__esp32p4_mh_psram,
-                P4_PSRAM_WINDOW_BASE,
-                P4_PSRAM_WINDOW_BASE + __esp32p4_psram_size) &&
-            krnP4TaskPinsPrepare() &&
-            krnP4TaskPinsAttachRemovalBank(krnP4RemoveBootBank()) &&
-            krnP4IpiPrepare() && krnP4TimerSnapshotPrepare() && krnP4SoftIntPrepare();
-        if (!prepared)
-        {
-            krnP4PutStr("[smp-e3] runtime bootstrap FAILED; Exec withheld\n");
-            return;
-        }
-    }
-    krnP4PutStr("[smp-e3] semaphore arena: operations ");
-    krnP4PutDec(krnP4SemaphoreBootOperationCapacity());
-    krnP4PutStr(" entries ");
-    krnP4PutDec(krnP4SemaphoreBootEntryCapacity());
-    krnP4PutStr(" bytes ");
-    krnP4PutDec((uint32_t)krnP4SemaphoreBootBytes());
-    krnP4PutStr("\n");
-    krnP4PutStr("[smp-e3] removal tickets: capacity ");
-    krnP4PutDec(krnP4RemoveBootCapacity());
-    krnP4PutStr(" bytes ");
-    krnP4PutDec((uint32_t)krnP4RemoveBootBytes());
-    krnP4PutStr("\n");
-#endif
-
     if (!krnPrepareExecBase(ranges, mh, krnPrepareBootTags()))
     {
         krnP4PutStr("[exec]   krnPrepareExecBase FAILED\n");
         return;
     }
-
-#if defined(__AROSEXEC_SMP__)
-    /* SysBase publication and the platform-hook stage transition must be
-     * indivisible to timer traps, which immediately use CPU-local macros.
-     * On failed preparation keep MIE clear: a partial ExecBase is not safe
-     * to expose to the scheduler. */
-    if (smp_bootstrap_status & MSTATUS_MIE)
-        __asm__ volatile("csrsi mstatus,8" : : : "memory");
-#endif
 
     krnP4PutStr("[exec]   SysBase @ ");
     krnP4PutHex32((uint32_t)(IPTR)SysBase);
@@ -7019,58 +6826,6 @@ static void krnStartExec(void)
 
     krnP4PutStr("[exec]   InitCode(RTF_SINGLETASK)\n");
     InitCode(RTF_SINGLETASK, 0);
-
-#if defined(__AROSEXEC_SMP__)
-    {
-        uint32_t saved_status;
-
-        __asm__ volatile("csrrci %0, mstatus, 8"
-                         : "=r"(saved_status) : : "memory");
-        if (!krnP4ExecRuntimeFinalize(SysBase, getKernelBase()))
-        {
-            krnP4PutStr("[smp-e3] primary runtime binding FAILED; coldstart withheld\n");
-            return;
-        }
-        krnP4IpiArm(SysBase); /* preserves raw MIE until startup publication */
-        if (saved_status & MSTATUS_MIE)
-            __asm__ volatile("csrsi mstatus,8" : : : "memory");
-    }
-#endif
-
-#if defined(P4_E3_RUNTIME_PREPARE) && (P4_E3_RUNTIME_PREPARE == 1)
-    /* KernelBase is initialized by Kernel_Init in the pass above. */
-    if (!krnP4PrepareExecRuntimeMetadata())
-    {
-        struct KernelBase *diagnostic_kernel_base = getKernelBase();
-
-        /* The helper has restored the caller's MIE state before this readout. */
-        krnP4PutStr("[smp-e3] runtime metadata prepare FAILED; coldstart withheld; hart ");
-        krnP4PutDec(P4_CPU_LOCAL_READ_MHARTID());
-        krnP4PutStr(" KernelBase ");
-        krnP4PutHex32((uint32_t)(IPTR)diagnostic_kernel_base);
-        krnP4PutStr(" reset ");
-        krnP4PutHex32(*(volatile uint32_t *)(uintptr_t)P4_SECONDARY_RESET_REG);
-        krnP4PutStr(" clock ");
-        krnP4PutHex32(*(volatile uint32_t *)(uintptr_t)P4_SECONDARY_CLOCK_REG);
-        krnP4PutStr("\n");
-        return;
-    }
-    {
-        int diagnostic_sent;
-
-        Forbid();
-        diagnostic_sent = krnP4DiagnosticLine(
-            "[smp-e3] metadata PASS; hart0 bound only; hart1 reset-held; "
-            "no scheduler/Exec SMP\n");
-        Permit();
-
-        if (!diagnostic_sent)
-        {
-            krnP4PutStr("[smp-e3] diagnostic line FAILED; coldstart withheld\n");
-            return;
-        }
-    }
-#endif
 
     /*
      * Again, now that the resident scan has run. Before the handover this

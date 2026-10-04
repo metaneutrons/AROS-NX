@@ -55,8 +55,8 @@ serialized across harts.
 It needs no Exec ABI change: only the core image changes, and the unchanged
 normal BSP package runs with it. `P4_GIANT` is a make switch of the normal
 target, not the refused `smp` variant; configure's smp refusal is unchanged
-and Codex's E3 sources stay unselected (their shared-code half was removed on
-2026-10-04, see E3 below). Hart1 runs only tasks that opt in
+and Codex's E3 sources were removed on 2026-10-04 (branch `e3-smp`, see E3
+below). Hart1 runs only tasks that opt in
 through the private tc_Flags bits 1 (may run on hart1) and 2 (must not run on
 hart0), which exec/tasks.h leaves unused.
 
@@ -401,23 +401,34 @@ CPU-local scheduler/runtime state before ordinary tasks run on hart1.
 
 ### E3: experimental Exec SMP
 
-**Status 2026-10-04: shared-code integration removed from this branch.** At
-Fabian's direction the E3 hooks and `__AROSEXEC_SMP__` changes in the shared
-`rom/exec`, `rom/task` and `rom/kernel` sources were taken out: the
-`EXEC_PLATFORM_*` hooks that only the E3 block of `exec/exec_platform.h`
-defines, task.resource's direct core binding (`task_bootstrap.c`,
-`taskresource_cleanup.h`), `EXEC_DISPATCH_LAUNCH_IN_CPU`, and the host tests
-that extracted that code. That code never built for the P4 (configure refuses
-the `smp` variant), but it changed the x86_64 and opensbi SMP builds and
-collided with upstream's later SMP rework. The tree as it was is kept on the
-local branch `archive/e3-smp-runtime` (`14f0290e21`, not pushed). What stays:
-the Giant hooks (`TASK_READY`, `REMOVE_RUNNING`/`REMOVE_WAIT`, `FIND_RUNNING`,
-`TASK_FLAGS_INIT`, `SOFTINT_PENDING`) and the generic fixes found along the way
-(ChildWait signal order, NewAddTask/NewCreateTaskA failure paths,
-task.resource hook node, list locking and init order). The port-side E3
-sources under `exec/` and `kernel/` remain in the tree, but without their
-shared half they no longer build; whether to remove them as well is open. The
-requirements below stay as the design record for a later fine-grained SMP.
+**Status 2026-10-04: E3 removed from this branch, kept on branch `e3-smp`.**
+At Fabian's direction E3 was taken out in two commits. The shared half: the
+`EXEC_PLATFORM_*` hooks only E3 defined and the `__AROSEXEC_SMP__` changes in
+`rom/exec`, `rom/task` and `rom/kernel`, task.resource's direct core binding
+(`task_bootstrap.c`, `taskresource_cleanup.h`) and
+`EXEC_DISPATCH_LAUNCH_IN_CPU`. The port half: the `smp`-variant sources in
+`exec/` and `kernel/`, the `P4_E3_*` diagnostic switches (`CPU_LOCAL`,
+`SPINLOCK`, `SOFT_ATOMIC`, `FPU`, `FPU_TEST`, `RUNTIME_PREPARE`), the atomic
+service behind `KATTR_AtomicOps` (`aros/atomic_ops.h`,
+`aros/platform_atomic.h`), the P4 timer service (`aros/p4timer.h`), the
+isolated secondary-Exec candidates, the host tests of all of these and the
+tools `smp-e3-check.py`, `p4-fpu-check.py` and `configure-smp-build.sh`. None
+of it built for the P4 (configure refuses the `smp` variant); the shared half
+changed the x86_64 and opensbi SMP builds and collided with upstream's later
+SMP rework. Both normal and Giant cores, and the E2 diagnostic core, are
+byte-identical before and after.
+
+Kept: the Giant and its six hooks, E1/E2 (secondary entry and probe, mailbox,
+primitives, `smp-e2-check.py`, `smp-retained-reset.py`), and the generic
+fixes found along the way (ChildWait signal order, NewAddTask/NewCreateTaskA
+failure paths, task.resource hook node, list locking and init order).
+
+To bring E3 back, start from branch `e3-smp` (`14f0290e21`, the last commit
+with all of it; local, not pushed) or revert the two removal commits of
+2026-10-04 ("exec, task: drop the E3 SMP integration" and "esp32p4: drop the
+E3 SMP port sources") on a later tree. Everything below that names those
+switches, files or tools refers to that branch. The requirements stay as the
+design record for a later fine-grained SMP.
 
 Dependencies: E2 and explicit review of shared Exec SMP integration.
 

@@ -1,39 +1,14 @@
 /*
- * P4 scheduler front door. Selected only for the matched-SMP experiment
- * (__AROSEXEC_SMP__) or the transitional Giant build (P4_GIANT); every
- * other P4 build uses rom/kernel/kernel_scheduler.c unchanged.
+ * P4 scheduler front door. Selected only for the transitional Giant build
+ * (P4_GIANT); every other P4 build uses rom/kernel/kernel_scheduler.c
+ * unchanged.
  */
 #include <exec/alerts.h>
 #include <exec/execbase.h>
 #include <proto/exec.h>
 #include <kernel_scheduler.h>
 
-#if defined(__AROSEXEC_SMP__)
-
-#include "p4_schedule.h"
-#include "p4_public_spinlock.h"
-#if !defined(__AROSPLATFORM_SMP__)
-#error "P4 scheduler override requires matched Exec SMP"
-#endif
-
-BOOL core_Schedule(void)
-{
-    return krnP4ShouldSchedule(SysBase) ? TRUE : FALSE;
-}
-
-/* P4 cpu_Switch/cpu_Dispatch call the lifetime-aware P4 implementations.
- * No generic queue mutation may bypass those ownership transactions. */
-void core_Switch(void)
-{
-    krnP4PublicSpinFatal(P4_PUBLIC_SPIN_BAD_STATE);
-}
-
-struct Task *core_Dispatch(void)
-{
-    krnP4PublicSpinFatal(P4_PUBLIC_SPIN_BAD_STATE);
-}
-
-#elif defined(P4_GIANT)
+#if defined(P4_GIANT)
 
 /*
  * The generic scheduler with three changes, all running under the Giant D
@@ -200,5 +175,5 @@ struct Task *core_Dispatch(void)
 }
 
 #else
-#error "P4 scheduler override requires __AROSEXEC_SMP__ or P4_GIANT"
+#error "P4 scheduler override requires P4_GIANT"
 #endif

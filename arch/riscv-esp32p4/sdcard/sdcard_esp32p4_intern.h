@@ -17,9 +17,6 @@
 #include "../board/board.h"
 
 #define FNAME_P4SD(x)       ESP32P4SD__Device__ ## x
-#if defined(__AROSEXEC_SMP__)
-BOOL p4sd_TimePrepare(struct SDCardBase *SDCardBase);
-#endif
 #define FNAME_P4SDBUS(x)    ESP32P4SD__SDBus__ ## x
 
 struct p4sd_private

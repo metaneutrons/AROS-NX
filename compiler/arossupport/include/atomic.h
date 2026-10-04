@@ -6,7 +6,6 @@
 #define AROS_ATOMIC_H
 
 #include <exec/types.h>
-#include <aros/platform_atomic.h>
 
 #if defined(__i386__)
 #include <aros/i386/atomic.h>

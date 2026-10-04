@@ -1,3 +1,0 @@
-ifeq ($(AROS_TARGET_VARIANT),smp)
-USER_CPPFLAGS += -DP4_ATOMIC_CORE=1
-endif

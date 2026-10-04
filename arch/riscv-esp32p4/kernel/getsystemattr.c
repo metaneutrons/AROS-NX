@@ -2,11 +2,6 @@
 
 #include <aros/framebuffer.h>
 #include <aros/kernel.h>
-#if defined(__AROSEXEC_SMP__)
-#include <aros/atomic_ops.h>
-#include "p4_timer_snapshot.h"
-extern const struct KrnAtomicOps *krnP4AtomicOps(void);
-#endif
 #include <exec/execbase.h>
 
 #include <kernel_base.h>
@@ -25,12 +20,6 @@ AROS_LH1(intptr_t, KrnGetSystemAttr,
 
     switch (id)
     {
-#if defined(__AROSEXEC_SMP__)
-    case KATTR_AtomicOps:
-        return (intptr_t)krnP4AtomicOps();
-    case KATTR_PlatformTimer:
-        return (intptr_t)krnP4TimerSnapshotOps();
-#endif
     case KATTR_Architecture:
         return (intptr_t)"esp32p4-riscv";
 

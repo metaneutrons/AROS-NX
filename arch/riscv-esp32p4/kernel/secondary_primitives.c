@@ -9,20 +9,6 @@
 #include "secondary_hw.h"
 #include "secondary_mailbox.h"
 #include "secondary_primitives.h"
-#ifdef P4_E3_CPU_LOCAL
-#include "cpu_local.h"
-#include "cpu_local_probe.h"
-#define CMD_CPU_LOCAL 6u
-#endif
-#ifdef P4_E3_SPINLOCK
-#include "p4_spinlock_probe.h"
-#define CMD_SPINLOCK 7u
-#endif
-#ifdef P4_E3_SOFT_ATOMIC
-#include "p4_soft_atomic_probe.h"
-#include "p4_soft_atomic.h"
-#define CMD_SOFT_ATOMIC 8u
-#endif
 #define SRAM __attribute__((section(".sramtext.secondary_mailbox"), noinline))
 #define INLINE static inline __attribute__((always_inline))
 #define E2_LINE 22u
@@ -204,21 +190,6 @@ SRAM void krnP4E2WorkerStep(void)
         if (!wait_word(&c->command[1], cmd) ||
             !wait_word(&c->command[2], cmd)) c->worker[2] = 0;
         else c->worker[2] = atomic_work(1);
-#ifdef P4_E3_CPU_LOCAL
-    } else if (cmd == CMD_CPU_LOCAL) {
-        c->worker[14] = cmd; fence();
-        c->worker[2] = wait_word(&c->command[9], cmd) && krnP4CpuLocalExercise();
-#endif
-#ifdef P4_E3_SPINLOCK
-    } else if (cmd == CMD_SPINLOCK) {
-        c->worker[14] = cmd; fence();
-        c->worker[2] = krnP4SpinProbeExercise(1);
-#endif
-#ifdef P4_E3_SOFT_ATOMIC
-    } else if (cmd == CMD_SOFT_ATOMIC) {
-        c->worker[14] = cmd; fence();
-        c->worker[2] = krnP4SoftAtomicProbeExercise(1);
-#endif
     } else if (cmd == CMD_ARM) {
         p4_w32(P4_CLIC_CTRL(E2_LINE), E2_CTL);
         fence(); __asm__ volatile("csrsi mstatus,8" ::: "memory");
@@ -264,33 +235,6 @@ int krnP4E2Prepare(void)
     for (i = 0; i < 1024; ++i) w[i] = 0xcafef00du;
     krnP4CacheSyncData((void *)E2_SCRATCH, 4096);
     installed = 0;
-#ifdef P4_E3_CPU_LOCAL
-    /* Prepare runs only while the launcher holds hart1 reset/clock-off. */
-    if (!krnP4CpuLocalPrepare()) return 0;
-#endif
-#ifdef P4_E3_SPINLOCK
-    if (!krnP4SpinProbePrepare()) return 0;
-#endif
-#ifdef P4_E3_SOFT_ATOMIC
-    {
-        uint32_t status;
-        int ready;
-        __asm__ volatile("csrrci %0,mstatus,8" : "=r"(status) :: "memory");
-        ready = krnP4SoftAtomicProbePrepare((uintptr_t)E2_SCRATCH);
-        /* Probe preparation checks its operands in the first cache line.
-           Preserve the preceding E2 exchange's sixteen guard words while
-           hart1 is reset-held. Exercise reinitializes its own operands at GO. */
-        for (i = 0; ready && i < 16; ++i) {
-            uint32_t old_value;
-            ready = krnP4SoftAtomicOperate(
-                (volatile void *)(E2_SCRATCH + i * 4u), 4,
-                P4_SOFT_ATOMIC_STORE, 0xcafef00du,
-                &old_value) == P4_SOFT_ATOMIC_OK;
-        }
-        if (status & 8u) __asm__ volatile("csrsi mstatus,8" ::: "memory");
-        if (!ready) return 0;
-    }
-#endif
     fence();
     return 1;
 }
@@ -411,66 +355,6 @@ SRAM static int cache_window(void)
     __asm__ volatile("csrw mstatus,%0" :: "r"(status) : "memory");
     return 1;
 }
-#ifdef P4_E3_CPU_LOCAL
-static int cpu_local_stage(void)
-{
-    volatile struct e2_control *c = control();
-    uint32_t status;
-    int ok = 0;
-    /* Startup enabled primary MIE; CMD_ARM has not yet enabled hart1.
-       Mask primary explicitly while exercising owner-only depth helpers. */
-    __asm__ volatile("csrrci %0,mstatus,8" : "=r"(status) :: "memory");
-    c->command[0] = CMD_CPU_LOCAL; fence();
-    if (!wait_word(&c->worker[14], CMD_CPU_LOCAL)) goto out;
-    c->command[9] = CMD_CPU_LOCAL; fence();
-    ok = krnP4CpuLocalExercise() && wait_word(&c->worker[1], CMD_CPU_LOCAL) &&
-         c->worker[2] == 1 && krnP4CpuLocalCheck();
-out:
-    /* Restore only the MIE bit that this helper changed. */
-    if (status & 8u) __asm__ volatile("csrsi mstatus,8" ::: "memory");
-    return ok;
-}
-#endif
-#ifdef P4_E3_SPINLOCK
-static int spinlock_stage(void)
-{
-    volatile struct e2_control *c = control();
-    uint32_t status;
-    int ok = 0;
-    __asm__ volatile("csrrci %0,mstatus,8" : "=r"(status) :: "memory");
-    c->command[0] = CMD_SPINLOCK; fence();
-    if (!wait_word(&c->worker[14], CMD_SPINLOCK)) goto out;
-    ok = krnP4SpinProbeExercise(0) && wait_word(&c->worker[1], CMD_SPINLOCK) &&
-        c->worker[2] == 1 && krnP4SpinProbeCheck();
-out:
-    if (status & 8u) __asm__ volatile("csrsi mstatus,8" ::: "memory");
-    return ok;
-}
-#endif
-#ifdef P4_E3_SOFT_ATOMIC
-static int soft_atomic_stage(void)
-{
-    volatile struct e2_control *c = control();
-    uint32_t status, old_value;
-    int ok = 0;
-    __asm__ volatile("csrrci %0,mstatus,8" : "=r"(status) :: "memory");
-    c->command[0] = CMD_SOFT_ATOMIC; fence();
-    if (!wait_word(&c->worker[14], CMD_SOFT_ATOMIC)) goto out;
-    ok = krnP4SoftAtomicProbeExercise(0) &&
-         wait_word(&c->worker[1], CMD_SOFT_ATOMIC) &&
-         c->worker[2] == 1 && krnP4SoftAtomicProbeCheck();
-    /* The completed worker no longer accesses operands. Restore the E2
-       cache-reload canary through the same service, never a mixed raw store. */
-    if (ok)
-        ok = krnP4SoftAtomicOperate((volatile void *)E2_SCRATCH, 4,
-                                   P4_SOFT_ATOMIC_STORE, 0xcafef00du,
-                                   &old_value) == P4_SOFT_ATOMIC_OK &&
-             old_value == 8192u;
-out:
-    if (status & 8u) __asm__ volatile("csrsi mstatus,8" ::: "memory");
-    return ok;
-}
-#endif
 int krnP4E2Run(unsigned int epoch)
 {
     volatile struct e2_control *c = control();
@@ -502,24 +386,6 @@ int krnP4E2Run(unsigned int epoch)
     krnP4PutStr("[smp-e2] concurrent retries0="); krnP4PutHex32(c->command[6]);
     krnP4PutStr(" retries1="); krnP4PutHex32(c->worker[9]); krnP4PutStr("\n");
     krnP4PutStr("[smp-e2] ATOMICS PASS; AMO/LRSC/lock=16384 each forced-contention=1\n");
-#ifdef P4_E3_CPU_LOCAL
-    if (!cpu_local_stage()) {
-        krnP4PutStr("[smp-e3] CPU-LOCAL FAIL; ownership/state/timeout\n"); return 0;
-    }
-    krnP4PutStr("[smp-e3] CPU-LOCAL PASS; harts=0,1 iterations=8192 owner/bounds/nesting=ok\n");
-#endif
-#ifdef P4_E3_SPINLOCK
-    if (!spinlock_stage()) {
-        krnP4PutStr("[smp-e3] SPINLOCK FAIL; state/placement/contention/timeout\n"); return 0;
-    }
-    krnP4PutStr("[smp-e3] SPINLOCK PASS; harts=0,1 writes=8192 readers=2 placement/refusal=ok\n");
-#endif
-#ifdef P4_E3_SOFT_ATOMIC
-    if (!soft_atomic_stage()) {
-        krnP4PutStr("[smp-e3] SOFT-ATOMIC FAIL; state/placement/PSRAM/timeout\n"); return 0;
-    }
-    krnP4PutStr("[smp-e3] SOFT-ATOMIC PASS; harts=0,1 cached-PSRAM adds=8192 old-values/widths/guards/refusal=ok\n");
-#endif
     install_primary();
     c->command[0] = CMD_ARM; fence();
     if (!wait_word(&c->worker[1], CMD_ARM) || c->worker[2] != 1) goto out;

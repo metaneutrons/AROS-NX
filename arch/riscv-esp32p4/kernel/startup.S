@@ -29,7 +29,7 @@ _start:
 	csrw	mie, zero
 	csrci	mstatus, 8		/* MSTATUS_MIE               */
 
-#if defined(P4_SECONDARY_PROBE) || defined(__AROSEXEC_SMP__)
+#if defined(P4_SECONDARY_PROBE)
 	/* A retained diagnostic hart must stop BEFORE shared BSS is cleared.
 	   Preserve core 0 and every unrelated clock/reset bit. No stack/C call. */
 	li t0, P4_SECONDARY_RESET_REG
@@ -66,21 +66,13 @@ _start:
 	la	gp, __global_pointer$
 .option pop
 
-#if defined(__AROSEXEC_SMP__)
-	/* P4 trap frames deliberately omit kernel-owned gp/tp. Do not inherit
-	 * a ROM thread pointer: CPU-local lookup uses mhartid, not native TLS.
-	 * Any production secondary entry must establish the same tp invariant.
-	 * This does not qualify emutls/pthread storage for arbitrary Exec Tasks. */
-	li	tp, 0
-#endif
-
 	/* Boot stack */
 	la	sp, __boot_stack_end
 
 	/* Trap vector, in direct mode: every trap lands on one entry
 	   point. The CLIC's vectored table in mtvt is set up later, once
 	   there is an interrupt controller to point it at. */
-#if defined(__AROSEXEC_SMP__) || defined(P4_GIANT)
+#if defined(P4_GIANT)
 	csrw	mscratch, zero
 #endif
 	la	t0, __trap_entry
@@ -105,17 +97,6 @@ _start:
 	addi	t0, t0, 4
 	j	1b
 2:
-#if defined(__AROSEXEC_SMP__)
-	/* Prepare local trap ownership before kernel_cstart can enable IRQs.
-	 * The secondary is already reset/clock-held and BSS has been cleared.
-	 * ISR install must not be delayed until Exec or repeat on task creation. */
-	call	krnP4CpuLocalPrepare
-	beqz	a0, __startup_hang
-	call	krnP4ExecRuntimeBootstrapPrepare
-	beqz	a0, __startup_hang
-	call	krnP4ISRStackInstall
-	beqz	a0, __startup_hang
-#endif
 #ifdef P4_SECONDARY_PROBE
 	/* These registers survive our BSS loop; snapshot only AFTER clearing it.
 	   No C has run and the secondary was isolated before any BSS store. */

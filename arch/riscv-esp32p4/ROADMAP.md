@@ -230,12 +230,11 @@ selected in a build or executed on hart1, and cache/XIP qualification stays open
 ## Track E: ESP32-P4 / RV32 SMP
 
 Status 2026-10-04: the Giant (`P4_GIANT=1`) is the SMP path on both boards.
-E3's shared-code integration (hooks and `__AROSEXEC_SMP__` changes in
-`rom/exec`, `rom/task`, `rom/kernel`, task.resource's direct binding) was
-removed from this branch and is archived on the local branch
-`archive/e3-smp-runtime`; see SMP.md, E3, and the evidence entry of that date.
-The E3 history below describes that archived work. Its port-side sources stay
-in the tree but no longer build.
+E3 is removed from this branch, both its shared-code integration and its
+port-side sources, switches, tests and tools; it is kept on the local branch
+`e3-smp`. See SMP.md, E3, for what went and how to bring it back, and the two
+evidence entries of that date. The E3 history below describes that work; the
+files, switches and tools it names exist only on `e3-smp`. E1/E2 stay.
 
 [SMP.md](SMP.md) owns the staged requirements and acceptance IDs; this roadmap
 retains execution state and evidence as required by the existing repository
@@ -24429,7 +24428,8 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   (`childfree.c` would declare `ThisTask` twice, an `exec_util.c` hook
   would end up dead).
 - Archive: local branch `archive/e3-smp-runtime` at `14f0290e21` (not
-  pushed) holds the tree as it was.
+  pushed) holds the tree as it was. (Renamed to `e3-smp` later that day,
+  see "E3 port sources removed" below.)
 - Removed: every `EXEC_PLATFORM_*` hook that only the E3 block of
   `exec/exec_platform.h` defines (ETask reserve/release/staging/cleanup,
   task record create/release, new-task publication, boot-task
@@ -24462,7 +24462,8 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Still in the tree: the port-side E3 sources (`exec/p4_*`, kernel E3
   runtime) and their remaining tests. They build only in the refused `smp`
   variant and no longer build at all without their shared half; whether to
-  remove them too is open.
+  remove them too is open. (Removed, see "E3 port sources removed"
+  below.)
 - `rom/dos/fs_driver.c`: our multi-assign fix is replaced by upstream's
   identical-purpose `838e866d96` (clears `fh_Type` before each attempt;
   ours also cleared `fh_Arg1`), cherry-picked so that the file merges
@@ -24511,6 +24512,62 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Mutation check (scratch copies, not committed): a wrong row width in the
   unrotated copy fails only the unrotated variants; publishing the target
   before copying fails at once.
+
+### 2026-10-04 - E3 port sources removed; E3 kept on branch `e3-smp`
+
+- State change: Track E; no acceptance point changes. Second step after
+  the shared-code removal above, at Fabian's direction.
+- Branch: `archive/e3-smp-runtime` is renamed `e3-smp` (`14f0290e21`, the
+  last commit with all of E3; local, not pushed). SMP.md, E3, says how to
+  bring it back.
+- Removed, 264 files: the `smp`-variant sources in `exec/` (signal,
+  semaphore, ETask, removal and cleanup protocols) and `kernel/` (CPU-local
+  runtime, task registry and pins, scheduler queue, dispatch, switch,
+  IPI, public spinlocks, CPU masks, atomic service, timer snapshot,
+  task.resource bootstrap guard); the diagnostic switches `P4_E3_CPU_LOCAL`,
+  `P4_E3_SPINLOCK`, `P4_E3_SOFT_ATOMIC`, `P4_E3_FPU`, `P4_E3_FPU_TEST` and
+  `P4_E3_RUNTIME_PREPARE` with their sources; the isolated secondary-Exec
+  candidates (`p4_secondary_exec*`, `secondary_xip_signature.S`); both
+  `make.opts`; `include/aros/p4timer.h` and `include/aros/platform_atomic.h`;
+  the host tests of all of these (24 in `exec/tests`, 97 in `kernel/tests`,
+  1 in `sdcard/tests`); the tools `smp-e3-check.py`, `p4-fpu-check.py`,
+  `configure-smp-build.sh` and two tool tests. Shared:
+  `compiler/include/aros/atomic_ops.h` and `platform_atomic.h`, the include
+  in `compiler/arossupport/include/atomic.h`, and `KATTR_AtomicOps` (slot
+  +11 is now marked unused, like +10).
+- Edited, 23 files (with the two makefiles and both shared headers): the
+  E3 sections of files every build compiles were
+  removed with `unifdef` (`__AROSEXEC_SMP__`, `__AROSPLATFORM_SMP__`, the
+  `P4_E3_*` switches, `P4_ATOMIC_CORE`, `P4_SIGNAL_TASK_PIN_BOUND`
+  undefined), the multi-line and mixed conditions in `kernel_startup.c`,
+  `traps.S` and `startup.S` by hand. `p4_trap_frame.h` keeps only the two
+  constants `traps.S` uses. Comments that described E3 were rewritten.
+- Kept: the Giant, E1/E2 (secondary entry and probe, mailbox, primitives,
+  `smp-e2-check.py`, `smp-retained-reset.py`) and configure's refusal of
+  the `smp` variant.
+- Builds (flags as in the D3 entries), no compiler warnings, all
+  byte-identical to before: JC1060 normal core 196,976 B `085a7655…` and
+  package 3,487,820 B `b7bd42cb…`; D1001 Giant core 213,504 B `fb16af6b…`
+  and package 3,495,348 B `abb7ea41…`; D1001 E2 diagnostic core
+  (`P4_SECONDARY_PROBE=1 P4_E2_MAILBOX=1 P4_E2_PRIMITIVES=1`) 219,920 B
+  `7d00b556…`, built before and after the change. Both build trees first
+  needed the installed copies of the removed headers and 210 and 207 stale
+  dependency files (with their objects) deleted; `--clean` removes objects,
+  not dependency files.
+- Host checks that remain pass: `check-sramtext-test.py`,
+  `console_nonblocking_test.py`, `framebuffer_rotate_test.c` (140),
+  `p4-softint-exit-test.c` (106), `secondary-probe-test.c`,
+  `secondary-mailbox-test.c` (1,000 exchanges), `secondary-entry-test.sh`
+  (run with a `grep -E` stand-in, `rg` is not installed here),
+  `test_smp_e2_check.py`, `test_smp_retained_reset.py` and the two
+  task.resource tests; `scanout_coalesce_test.py` see the entry above.
+- Open, E3 traces outside the port that are still active:
+  `arch/riscv-all/exec/stackswap.S` (E3's `__AROSEXEC_SMP__` branch, which
+  Giant shares through `|| defined(P4_GIANT)`); the drain loop with
+  `KrnCli()` in `rom/kernel/kernel_intr.c` (Giant uses its hook, the loop
+  and comment argue from E3's dispatcher); the SMP half of the
+  task.resource list-locking fix; and configure's refusal message, which
+  points at E3's runtime-ready criteria. Decision pending.
 
 ## Evidence-entry template
 
