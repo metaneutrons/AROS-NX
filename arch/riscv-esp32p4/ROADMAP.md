@@ -229,6 +229,14 @@ selected in a build or executed on hart1, and cache/XIP qualification stays open
 
 ## Track E: ESP32-P4 / RV32 SMP
 
+Status 2026-10-04: the Giant (`P4_GIANT=1`) is the SMP path on both boards.
+E3's shared-code integration (hooks and `__AROSEXEC_SMP__` changes in
+`rom/exec`, `rom/task`, `rom/kernel`, task.resource's direct binding) was
+removed from this branch and is archived on the local branch
+`archive/e3-smp-runtime`; see SMP.md, E3, and the evidence entry of that date.
+The E3 history below describes that archived work. Its port-side sources stay
+in the tree but no longer build.
+
 [SMP.md](SMP.md) owns the staged requirements and acceptance IDs; this roadmap
 retains execution state and evidence as required by the existing repository
 rules. Work begins on 2026-10-01 at Fabian's request. E0 is an opt-in assembly
@@ -24387,11 +24395,12 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Other upstream PRs of the day: `hidd.i2c` WriteBytes/WriteVec through
   WriteRead and WriteWord length
   ([metaneutrons/AROS-NX#51](https://github.com/metaneutrons/AROS-NX/pull/51),
-  [aros-development-team/AROS#1462](https://github.com/aros-development-team/AROS/pull/1462)),
+  [aros-development-team/AROS#1465](https://github.com/aros-development-team/AROS/pull/1465)),
   IPrefs without `kms.library`
   ([metaneutrons/AROS-NX#52](https://github.com/metaneutrons/AROS-NX/pull/52),
-  [aros-development-team/AROS#1463](https://github.com/aros-development-team/AROS/pull/1463));
-  all three are on this branch.
+  [aros-development-team/AROS#1466](https://github.com/aros-development-team/AROS/pull/1466));
+  all three are on this branch. (The two upstream PRs were first opened as
+  #1462 and #1463; renaming their branches to `upstream/` closed them.)
 - JC1060P470C (`80:f1:b2:d3:3b:a6`, MAC checked): package 3,487,804 B
   `ad84f3440daca75831a9dc64b3f795f3811852b47f19820200d4b470c584dde5` at
   `0x820000`, development volume
@@ -24406,6 +24415,102 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   `357361a584f7aedbc0e9da2c03e694063fb077c12dc0f815940868ad43e8323e`
   built, audit 0 failed, not written; the firmware path through the
   worker Process is untested on hardware.
+
+### 2026-10-04 - E3 shared-code integration removed; upstream fs_Open fix taken
+
+- State change: Track E. The Giant stays the SMP path; E3's integration in
+  the shared sources is removed from this branch. No acceptance point
+  changes.
+- Why: E3 never built for the P4 (configure refuses the `smp` variant and
+  Giant is a make switch of the normal target), but its `__AROSEXEC_SMP__`
+  changes altered the x86_64 and opensbi SMP builds and collided with
+  upstream's later SMP rework: three of the eight textual conflicts against
+  upstream `5da9fd5072`, plus two silent breaks after a merge
+  (`childfree.c` would declare `ThisTask` twice, an `exec_util.c` hook
+  would end up dead).
+- Archive: local branch `archive/e3-smp-runtime` at `14f0290e21` (not
+  pushed) holds the tree as it was.
+- Removed: every `EXEC_PLATFORM_*` hook that only the E3 block of
+  `exec/exec_platform.h` defines (ETask reserve/release/staging/cleanup,
+  task record create/release, new-task publication, boot-task
+  registration, semaphore gates, service worker, self/external removal,
+  creation scopes, task.resource bootstrap); task.resource's direct core
+  binding (`rom/task/task_bootstrap.c`, `rom/exec/taskresource_cleanup.h`);
+  `EXEC_DISPATCH_LAUNCH_IN_CPU` in `kernel_scheduler.c`; the SMP-only
+  changes to `childfree.c`, `childorphan.c`, `childstatus.c`,
+  `exec_init.c`, `exec_util.c`, `semaphores.c`, `releasesemaphore.c` and
+  the SMP pre-launch reordering and `tc_SpinLock` initialization in
+  `newaddtask.c`/`newcreatetaska.c`. These files are back at the base
+  `44336e404a` version where nothing else was changed. 24 host tests that
+  extracted the removed code went with it (4 in `rom/task/tests`, 11 in
+  `exec/tests`, 9 in `kernel/tests`). Also removed: the explanatory
+  comment in `arch/all-native/econsole/econsole.c`, the Codacy line in
+  `.gitignore` and `tools/idf-sdmmc-control` (the 2026-08-22 A1 control
+  application; it stays in the archive branch).
+- Kept: the Giant hooks (`TASK_READY`, `REMOVE_RUNNING`/`REMOVE_WAIT`,
+  `FIND_RUNNING`, `TASK_FLAGS_INIT`, `SOFTINT_PENDING`) and the generic
+  fixes found along the way: ChildWait clears `SIGF_CHILD` before the
+  scan; NewAddTask frees the generated name and clears the ETask pointer
+  on its failure paths; NewCreateTaskA clears the port result on failure
+  and reads the name entry only if it was allocated; task.resource's hook
+  node, NULL hook and `sizeof`, its list locking (with its SMP
+  counterpart), base publication after the fallible setup and the
+  expunge that restores only taken vectors. Correction to the inventory of
+  this date: the "P4 direct binding in task.resource" listed there as
+  needed was E3-only (`EXEC_PLATFORM_TASKRESOURCE_SERVICE_CLEANUP` is
+  defined only in the E3 block).
+- Still in the tree: the port-side E3 sources (`exec/p4_*`, kernel E3
+  runtime) and their remaining tests. They build only in the refused `smp`
+  variant and no longer build at all without their shared half; whether to
+  remove them too is open.
+- `rom/dos/fs_driver.c`: our multi-assign fix is replaced by upstream's
+  identical-purpose `838e866d96` (clears `fh_Type` before each attempt;
+  ours also cleared `fh_Arg1`), cherry-picked so that the file merges
+  without a conflict.
+- Host checks: `p4-taskres-hook-node-test.py` and
+  `p4-taskres-topology-test.py` pass on the result (the first run failed
+  on two init-order details that had been reverted too far; restored);
+  `p4-softint-exit-test.c` 106 checks pass.
+- Builds (flags as in the D3 entries; D1001 with `P4_GIANT=1
+  P4_GIANT_MIGRATE=1`), no compiler warnings: JC1060 core 196,976 B
+  `085a7655…` and D1001 Giant core 213,504 B `fb16af6b…`, both
+  byte-identical to the previous cores, which confirms the removed code was
+  dead in both images. Packages change only through `dos.library`:
+  JC1060 3,487,820 B
+  `b7bd42cbef4aec67dafa479060e43fc6b1b2fd660435f36836fc4b673c498d6a`,
+  D1001 3,495,348 B
+  `abb7ea414d8fe5539fe1773ac90fc1c9b91557c3b5124f205f131fd692400df4`;
+  audits 0 failed.
+- JC1060P470C (`80:f1:b2:d3:3b:a6`, MAC checked): package written at
+  `0x820000`, verified; core unchanged. With the SD card written today
+  (image `37208192…`) the 60 s boot log `58ec10cb…` shows `C:Copy` filling
+  ENV: from ENVARC:, IPrefs asking for `RAM Disk:Sys/backlight.prefs`,
+  Wanderer starting, GT911 at 0x5D and 11 touch heartbeats; no alert. The
+  touch prefs file is absent on the new card (defaults); the calibration
+  saved earlier is on the old card. D1001 package built, not written.
+
+### 2026-10-04 - C1 coalescing host test runs again, now for both panel orientations
+
+- State change: none; a broken host check repaired. No production code
+  changed.
+- `kernel/tests/scanout_coalesce_test.py` (added with `0245bbb63c`) had
+  stopped compiling: the producer it extracts from `dsi_scanout.c` gained
+  the `SCANOUT_EXCLUDE_ISR`/`SCANOUT_ALLOW_ISR` guard with the Giant
+  (`d434979eeb`) and `P4_LOGICAL_W`/`P4_LOGICAL_H` and the
+  `P4_BOARD_PANEL_ROTATE` choice with the board profiles (`6dd638f9b3`),
+  none of which the fixture defined.
+- The fixture now takes the panel orientation from the command line and
+  derives the logical size as `kernel/hardware.h` does. It runs four
+  variants: rotated by 90 degrees (D1001) and unrotated (JC1060P470C), each
+  with the Giant guard modelled as a mask on the frame IRQ and without it.
+  The expected image comes from `p4_rotate_rect` or `p4_flat_copy_rect`, the
+  helpers production calls. The unrotated path had no host coverage before.
+- Result: all four pass, 400 producer submissions each, 81 swaps; 1,677
+  busy-guarded IRQs without the guard, 1,277 busy-guarded and 400 masked
+  with it; out-of-range rectangles and a short pitch are refused.
+- Mutation check (scratch copies, not committed): a wrong row width in the
+  unrotated copy fails only the unrotated variants; publishing the target
+  before copying fails at once.
 
 ## Evidence-entry template
 
