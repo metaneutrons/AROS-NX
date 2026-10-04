@@ -16,6 +16,9 @@
 #define P4_BOARD_I2C1_SDA_GPIO          20
 #define P4_BOARD_I2C1_SCL_GPIO          21
 #define P4_BOARD_BACKLIGHT_GPIO         14
+/* Fixed level until brightness is a runtime setting (Fabian, 2026-10-04;
+   it was the 20 % default kept low during display bring-up). */
+#define P4_BOARD_BACKLIGHT_PERCENT      50
 #define P4_BOARD_SD_HAS_DETECT          1
 #define P4_BOARD_SD_DETECT_GPIO         45
 #define P4_BOARD_SD_HAS_POWER_GPIO      1

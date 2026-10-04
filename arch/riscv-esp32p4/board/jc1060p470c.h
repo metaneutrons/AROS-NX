@@ -86,6 +86,8 @@
 #define P4_BOARD_PANEL_RESET_GPIO       0
 /* MP3202 boost enable, 10 k pull-down: off until driven, active high. */
 #define P4_BOARD_BACKLIGHT_GPIO         23
+/* Fixed level until brightness is a runtime setting (Fabian, 2026-10-04). */
+#define P4_BOARD_BACKLIGHT_PERCENT      50
 
 /*
  * Touch: GT911 on the panel FPC, I2C on GPIO7/8 with 5.1 k pull-ups (the

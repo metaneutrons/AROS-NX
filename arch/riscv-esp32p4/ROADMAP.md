@@ -138,7 +138,7 @@ gate: compensated output is not the native display contract.
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
 | D0 | Compile-time board profile, with D1001 as the first implementation | `hardware partial` | LDO2 now recovers and verifies all 32 MB without Vellum. The 20-MHz-PSRAM/90-MHz-CPU artifact showed only blue and an edge strip; changing only PSRAM to 200 MHz produced clean calibration and a spontaneously reported desktop. After the battery was reported empty, the initial non-desktop state could not be classified: opening UART coincided with a USB reset, and a subsequent controlled USB reset booted Wanderer with the restored touch firmware and zero reported faults. Fabian then saw the desktop. Neither run proves the original rail-off start completed by itself or passes the unsynchronized visual/touch gate. Isolated full core/Exec/SD/BSP and physical rail-off gates remain open; do not generalize this clock result to the earlier 360/200-MHz C1 strip. Prohibit stale cross-board objects before a second profile. |
 | D1 | Board-driver boundary and second-board onboarding | `build verified` | 2026-10-03: the profile now selects panel controller and table (JD9365/JD9165), rotation (90/0), panel power scheme (PCA9535 or plain GPIOs), touch driver (GSL3670/GT911, firmware optional), SD detect/power wiring, partition CSV and sdkconfig per board; `check-profile.py` evaluates `board.mk` per board through GNU make. The D1001 core built with these changes is byte-identical to HEAD (202,096 B `99a8f6f8…`, same flags, same tree), so the D1001 binary contract holds. Not hardware tested on either board. |
-| D2 | Guition JC1060P470C as the active development board (J0-J5) | `hardware partial (J0-J4 passed)` | Board IDs `jc1060p470c-v2` (new panel batch, the board in use) and `jc1060p470c-v1` (old batch). 2026-10-03/04 on board `80:f1:b2:d3:3b:a6`: J0 headless Exec with 32 MB PSRAM; J1 test card correct after the 20 MHz D-PHY PLL reference fix (burst, CPU 360, ESP-IDF host timing); J2 GT911 on I2C controller 1 at 100 kHz, raw panel-pixel contacts, top/left calibration; J3/J4 graphical boot from the D1001 SD card to Wanderer: Fabian confirms picture, pointer at all four edges, double tap, two-finger menu and the new double-tap-and-drag. Core 197,920 B `160ac2a5…`, package 3,309,404 B `c0d8e728…`. Open: J5 backlight control, cold boot/power cycle, sustained stress, the old panel batch. |
+| D2 | Guition JC1060P470C as the active development board (J0-J5) | `hardware partial (J0-J4 passed)` | Board IDs `jc1060p470c-v2` (new panel batch, the board in use) and `jc1060p470c-v1` (old batch). 2026-10-03/04 on board `80:f1:b2:d3:3b:a6`: J0 headless Exec with 32 MB PSRAM; J1 test card correct after the 20 MHz D-PHY PLL reference fix (burst, CPU 360, ESP-IDF host timing); J2 GT911 on I2C controller 1 at 100 kHz, raw panel-pixel contacts, top/left calibration; J3/J4 graphical boot from the D1001 SD card to Wanderer: Fabian confirms picture, pointer at all four edges, double tap, two-finger menu and the new double-tap-and-drag. Core 197,920 B `160ac2a5…`, package 3,309,404 B `c0d8e728…`. Open: J5 touch/display control panel on hardware abstractions (brightness fixed at 50 % until then), cold boot/power cycle, sustained stress, the old panel batch. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
 | E2 | Two-hart atomics, coherence and IPI primitives | `hardware verified; complete` | Exact219,776-byte core08 passes five ordinary headless captures/ten reset-separated epochs:650 SRAM+660 PSRAM exchanges,120 refusals,163,840 updates per AMO/CAS/lock counter with measured contention, bidirectional software IPI, remote code37/53, missing-park refusal and ten cache suspend/resume windows. Secondary reset/clock stop confirmed every exit; full221,184-byte normal range restored/verified and headless baseline boots. Atomics qualify internal SRAM only; Exec SMP/default changes wait for E3. |
@@ -1201,10 +1201,18 @@ of the exact writes (AGENTS.md has none for this board yet):
 - J3: read-only SD boot without card detect.
 - J4: package and flash disk; graphical boot to Wanderer, then visual/touch
   acceptance with fresh readiness.
-- J5 (requested by Fabian 2026-10-04): backlight brightness control. Today
-  the LEDC duty is fixed at build time (`P4_LEDC_BL_PERCENT`, default 20);
-  needed is a runtime path (kernel operation, then a preference or
-  commodity), for the D1001 as well.
+- J5 (requested by Fabian 2026-10-04): a control panel for the touch
+  driver and the display, for both boards, built on hardware abstractions
+  that come first:
+  - abstractions: a kernel operation for backlight level (today a build-time
+    constant, `P4_LEDC_BL_PERCENT`; board default via
+    `P4_BOARD_BACKLIGHT_PERCENT`, both boards 50 % since 2026-10-04), and touch
+    operations for calibration (raw range, mirror, swap) and gesture
+    parameters, so neither is a board header constant any more;
+  - control panel: calibration (edge sweep or four-point), multi-finger
+    and gesture settings (tap/hold times, slop, double-tap-and-drag window
+    and radius, two-finger right button, tap/direct mode), brightness;
+    settings stored as preferences and applied at boot.
 
 ## Track A: storage and normal boot
 
@@ -24121,6 +24129,23 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Safety: only 0x20000 and 0x820000 written in this step.
 - Open: J5 backlight control; cold boot and power cycle; a sustained run;
   the old panel batch (`-v1`) untested; the D1001 SD card is in this board.
+
+### 2026-10-04 - Backlight fixed at 50 % on both boards; J5 scoped
+
+- Request: Fabian asked for a fixed 50 % brightness on the JC1060P470C and
+  the D1001, and for a touch/display control panel on top of hardware
+  abstractions (J5 in D2, which now lists calibration, multi-finger and
+  gesture settings and brightness).
+- Source: `P4_BOARD_BACKLIGHT_PERCENT 50` in both profiles; `hardware.h`
+  takes it as the default of `P4_LEDC_BL_PERCENT` (the `P4_BL_PERCENT`
+  build override still wins). This deliberately changes the D1001 image.
+- JC1060P470C: core 197,920 B
+  `cb347a294759a0e84866e5bd7ac59b47669aab4bbf45cf20e866d9d4ad816cee`
+  written to `0x20000` (MAC checked, hash verified); boot log `8bd395f1…`
+  samples the backlight pin high 9,653 of 20,000 times (48 %).
+- D1001: core with the same flags built in its tree, 202,096 B
+  `7253805936a7808270c63e9733d49f72fb30b95bda81a4e8be819132f1d2dc9a`; not
+  flashed (board not connected; it still carries the Giant visual core).
 
 ## Evidence-entry template
 
