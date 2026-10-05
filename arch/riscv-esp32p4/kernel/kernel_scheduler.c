@@ -3,10 +3,9 @@
 
     Desc: the scheduler of the smp variant of the esp32p4-riscv target.
 
-    Built only for the smp variant; a normal build uses the generic one.
-    Adapted from arch/aarch64-native: the lists are locked task lock first,
-    list lock second, and a running task is on TaskRunning, which the
-    generic scheduler does not know about.
+    It replaces the generic one. Adapted from arch/aarch64-native: the
+    lists are locked task lock first, list lock second, and a running task
+    is on TaskRunning, which the generic scheduler does not know about.
 */
 
 #include <exec/alerts.h>

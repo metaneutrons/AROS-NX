@@ -144,24 +144,25 @@ gate: compensated output is not the native display contract.
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
 | E2 | Two-hart atomics, coherence and IPI primitives | `hardware verified; complete` | Exact219,776-byte core08 passes five ordinary headless captures/ten reset-separated epochs:650 SRAM+660 PSRAM exchanges,120 refusals,163,840 updates per AMO/CAS/lock counter with measured contention, bidirectional software IPI, remote code37/53, missing-park refusal and ten cache suspend/resume windows. Secondary reset/clock stop confirmed every exit; full221,184-byte normal range restored/verified and headless baseline boots. Atomics qualify internal SRAM only; Exec SMP/default changes wait for E3. |
 | E3 | Experimental fine-grained RV32/P4 Exec SMP (E3-RT to E3-RM) | `retired on this branch` | Kept on branch `e3-smp` (`14f0290e21`), not part of `feat/riscv32-esp32p4-v3`. Its 28 sub-rows and the E3-RM lifetime notes are in that branch's roadmap; its evidence entries remain in the log below. |
-| E3-GT | Transitional Giant Exec SMP (`P4_GIANT=1`) | `retired on this branch` | Kept on branch `giant-smp` (`ff3395ba7f`), where it is hardware partial (headless stress, visual and touch passed with the test define). Reference for S3/S4, not the base. |
+| E3-GT | Transitional Giant Exec SMP (`P4_GIANT=1`) | `retired on this branch` | Kept on branch `giant-smp` (`ff3395ba7f`), where it is hardware partial (headless stress, visual and touch passed with the test define). Reference for S3/S4, not the base; superseded by S2-S5 and not a build option since S6. |
 | S0 | Base on current upstream | `hardware partial (JC1060P470C passed)` | Evidence entries 2026-10-04/05: rebased onto `5da9fd5072`, fresh tree, JC1060P470C headless boot and visual/touch/Backlight check pass; the A1 retest is not needed (the upstream change cannot be reached on the P4). Open: the D1001 run; its artifacts are built. |
 | S1 | Native atomics on cached PSRAM across both harts | `hardware verified (JC1060P470C)` | Evidence entry 2026-10-05: `P4_S1_PSRAM_ATOMICS=1`, twelve of twelve epochs exact with proven interleaving: word AMO, CAS, GCC's 8/16-bit LR/SC loops, mixed AMO and LR/SC in one word, a lock over plain data, 1 MiB of cold lines, all read back from PSRAM. The `atomic.h` dispatch suffices. The D1001 has not run it. |
 | S2 | `smp` build on one hart | `hardware verified (headless, JC1060P470C)` | Configure allows `smp` for esp32p4; platform layer in the port; boots on hart 0 with hart 1 in reset. The SMP build tree is set up here, because configure refuses `smp` for this target until then. |
 | S3 | Second hart online, idle | `hardware verified (headless, JC1060P470C)` | Hart 1 from the E1/E2 entry with its own ISR stack, CLIC/IPI, per-hart state, a tick and an idle task; parked for cache and flash windows. |
 | S4 | Scheduling on two harts | `hardware verified (headless, JC1060P470C)` | Evidence entry 2026-10-05: upstream's affinity model (the boot task bound to hart 0, children inherit; `TASKAFFINITY_ANY` tasks run on either hart), signals, `KrnScheduleCPU` and hart 1's tick through IPIs; the acceptance test `P4_S4_TEST=1` passes six of six boots, the plain core boots six times and runs ten minutes. Ordinary tasks stay on hart 0 until S5's serialization. |
 | S5 | SMP qualification | `hardware partial (headless, JC1060P470C)` | Evidence entry 2026-10-05: upstream's ten SMP tests pass on 6 of 6 boots and over a twenty-minute run of 200 tests, after three fixes (no dispatch fallback with an idle task per hart, preemption waits for task-held spinlocks, console and SYSTIMER serialized); the production core passes five boots and ten minutes. Open: visual/touch check with a fresh "bereit", the D1001. |
-| S6 | SMP default decision | `not started` | SMP or single hart as the P4 default; retires `giant-smp`. Replaces the former E4 row. |
+| S6 | SMP default decision | `decided and done (2026-10-05)` | Evidence entry 2026-10-05: Fabian's decision, SMP is the only esp32p4 build. Configure selects the `smp` variant without being asked and refuses any other; the port's single-hart branches are gone, and a tree configured without the variant is refused. No Giant and no single-hart build; `giant-smp` and `e3-smp` stay as local history branches. Replaces the former E4 row. |
 
 ## Track E: ESP32-P4 / RV32 SMP
 
-Status 2026-10-04: this branch (`feat/riscv32-esp32p4-v3`) runs on one hart.
-It was rebuilt from upstream `44336e404a` without E3 and without the Giant
-and then rebased onto upstream `5da9fd5072`; S0 passed on the JC1060P470C
-including the visual and touch check (D1001 open);
-both are kept on local branches (`e3-smp`, `giant-smp`). E0-E2 stay. The next
-step is AROS's own SMP (the `smp` build variant) with as few changes outside
-the port as possible; see SMP.md, "Current plan", stages S0-S6. The history
+Status 2026-10-05: this branch (`feat/riscv32-esp32p4-v3`) runs AROS's own
+SMP exec on both harts, and since S6 that is its only build: configure
+selects the `smp` variant for esp32p4. Upstream's SMP tests pass on the
+JC1060P470C (S5); the visual and touch check and the D1001 are open. The
+branch was rebuilt from upstream `44336e404a` without E3 and without the
+Giant and then rebased onto upstream `5da9fd5072`; both are kept on local
+branches (`e3-smp`, `giant-smp`) as history, not as build options. E0-E2
+stay as diagnostics. See SMP.md, "Current plan", stages S0-S6. The history
 below describes the earlier work: files, switches and tools it names that
 belong to E3 or the Giant exist only on those branches.
 
@@ -25287,6 +25288,47 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   I2C transport read the SYSTIMER snapshot without the kernel's lock.
 - Next safe step: the visual and touch check on the JC1060P470C with a
   fresh "bereit"; S6.
+
+### 2026-10-05 - S6: SMP is the only build
+
+- State change: Track E S6 decided and done. Fabian's decision: SMP is the
+  only esp32p4 build; no single-hart build, no Giant (SMP.md, "S6: the
+  only build").
+- Change: configure selects the `smp` variant for esp32p4 when none is
+  given and refuses any other; the port's single-hart branches are removed
+  (the `__AROSEXEC_SMP__` guards in kernel and exec, the global trap depth,
+  the single-hart trap entry, the variant blocks of both makefiles);
+  `exec_platform.h` stops a build without `__AROSEXEC_SMP__`, the kernel
+  makefile a tree configured before S6. The console host test builds the
+  backends alone through `P4_CONSOLE_BACKEND_ONLY` and passes.
+- Configure: in two scratch trees with the SMP tree's options, no variant
+  gives `AROS_TARGET_SUFFIX = -smp`, `bin/esp32p4-riscv-smp` and both
+  defines; `--enable-target-variant=foo` stops with "The ESP32-P4 builds
+  only the smp variant". The SMP tree was configured again (the changed
+  `configure` asks for it); its `aros/config.h` is unchanged.
+- Builds (SMP tree, normal JC1060 flags, only the three known
+  `kernel_debug.h` warnings): production core 185,952 B
+  `315ab0c49162e2843d6868f639877e9b991aee5fa3d8f274486ffc95be6a9948`, runner
+  core 190,080 B `688813b7…`; both have the sizes and section sizes of the
+  S5 cores, and the symbol tables differ only by the removed
+  `__esp32p4_trap_depth`. The E2/S1 diagnostic core (`P4_SECONDARY_PROBE=1
+  P4_E2_MAILBOX=1 P4_E2_PRIMITIVES=1 P4_S1_PSRAM_ATOMICS=1`) links,
+  198,192 B `28e638e3…`; not run.
+- Hardware (JC1060P470C `80:f1:b2:d3:3b:a6`, MAC checked, core at
+  `0x20000` verified; package `86e36ba0…`, test volume `7a8b6828…` and
+  card unchanged):
+  - runner core, 180 s,
+    `6bf12a1de364c0bee7dda8e5fb8e89b0f3ebee76bc15e475c62cc8425774f25a`:
+    all ten tests as in S5, "done, 10 run, 0 not RETURN_OK", no alert;
+  - production core, first boot `f80f96cb975e1fae86ec8ce015ca38482f9bda8dbfe3cf79bb2e4a234631c167`
+    and two resets (`450236d5…`, `1e446896…`), 40 s each: online, windows
+    1-3 parked, Wanderer, GT911, no alert.
+- Build trees: `AROS-ESP32-v3-smp-build` is the JC1060P470C tree. The
+  normal trees are not built any more; `AROS-ESP32-v3-build` stays because
+  it holds the cross toolchain the SMP tree uses. The D1001 needs an SMP
+  tree of its own before it can run anything from this branch.
+- Next safe step: the visual and touch check on the JC1060P470C with a
+  fresh "bereit"; an SMP tree for the D1001.
 
 ## Evidence-entry template
 

@@ -13,6 +13,7 @@ backend_start = source.index("#if P4_CONSOLE_USB", mmio_start)
 console = source[start:mmio_start] + source[backend_start:]
 
 fixture = r'''
+#define P4_CONSOLE_BACKEND_ONLY 1
 #include <assert.h>
 #include <inttypes.h>
 #include <stdint.h>

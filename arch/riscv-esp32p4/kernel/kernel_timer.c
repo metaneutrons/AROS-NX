@@ -15,9 +15,7 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
-#if defined(__AROSEXEC_SMP__)
 #include "tls.h"
-#endif
 
 volatile unsigned long __esp32p4_ticks;
 
@@ -43,20 +41,16 @@ static inline uint32_t st_rd(uint32_t off)
  * harts the sequence runs under a lock, with interrupts masked so that
  * an interrupt on the holder cannot wait for it.
  */
-#if defined(__AROSEXEC_SMP__)
 static volatile uint32_t snapshot_lock;
-#endif
 
 uint64_t krnTimerCount(void)
 {
     unsigned int spins = 1000;
     uint32_t hi, lo;
-#if defined(__AROSEXEC_SMP__)
     unsigned long s = p4_tls_mask();
 
     while (__atomic_exchange_n(&snapshot_lock, 1, __ATOMIC_ACQUIRE))
         ;
-#endif
 
     st_wr(P4_ST_UNIT0_OP, P4_ST_UNIT0_UPDATE);
     while (spins-- && !(st_rd(P4_ST_UNIT0_OP) & P4_ST_UNIT0_VALID))
@@ -65,10 +59,8 @@ uint64_t krnTimerCount(void)
     hi = st_rd(P4_ST_UNIT0_VALUE_HI);
     lo = st_rd(P4_ST_UNIT0_VALUE_LO);
 
-#if defined(__AROSEXEC_SMP__)
     __atomic_store_n(&snapshot_lock, 0, __ATOMIC_RELEASE);
     p4_tls_unmask(s);
-#endif
 
     return ((uint64_t)hi << 32) | lo;
 }

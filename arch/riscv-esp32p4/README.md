@@ -6,7 +6,10 @@ configured with
 
     ./configure --target=esp32p4-riscv
 
-and shares the CPU layer in `arch/riscv-all` with any other 32-bit RISC-V
+Configure selects the `smp` variant for this target by itself; it is the
+only build, with AROS's SMP exec on both harts ([SMP.md](SMP.md), S6), and
+its output goes to `bin/esp32p4-riscv-smp`. The port
+shares the CPU layer in `arch/riscv-all` with any other 32-bit RISC-V
 platform. Note the two orders: an AROS target string is `<arch>-<cpu>`, built
 in `configure.in` as `$target_os-$target_cpu`, while the directory it selects
 is `<cpu>-<arch>`. Hence `--target=esp32p4-riscv` for `arch/riscv-esp32p4`,
@@ -77,7 +80,7 @@ its evidence entry in the same change.
 | Area | State | Notes |
 | :--- | :--- | :--- |
 | graphics performance | hardware partial | C1P tiled rotation, CPU360 and framebuffer v2 coalescing reduce the measured first full update from 2.776 s synchronous/CPU90 to 0.296 s queued/CPU360. Initial visual speedup confirmed, then slowdown/hang reported. Console-only nonblocking fix is sanitizer-tested, flashed and independently verified; causality and fresh visual/touch/no-reader acceptance remain open. See C1P and dated evidence. |
-| configure target | done | `--target=esp32p4-riscv`, configure completes |
+| configure target | done | `--target=esp32p4-riscv`, configure completes and selects the `smp` variant, the only esp32p4 build (S6); any other variant is refused |
 | board selection | hardware partial | `P4_BOARD=d1001`, `jc1060p470c-v1` and `jc1060p470c-v2` select wiring and drivers and reject unknown boards; the D1001 core is byte-identical after the 2026-10-03 driver split. The JC1060P470C-v2 boots from SD to Wanderer with correct picture and working GT911 touch (J0-J4, 2026-10-04); backlight control, cold boot and stress are open |
 | crosstools | done | binutils 2.47 and gcc 16.2.0 for riscv-aros, link libraries built |
 | rv32 CPU layer | done | M-mode CSR names, FLEN-aware FPU context, cache clears, backtrace, single-precision fenv, ABI-aware stub frames |
@@ -118,7 +121,7 @@ its evidence entry in the same change.
 | Layers / Intuition screen | C2 hardware verified | a 30-member package contains Layers, Keymap, Intuition and the complete generic input skeleton required by `input.device`, with no fabricated input events.  The D1001 loads all members, installs Intuition's display callback at priority 15 before fbgfx insertion at 9, creates the monitor, then a priority-8 resident opens a custom `1280 x 800` Screen and two overlapping titled simple-refresh Windows before dosboot at -50.  A priority-5 worker runs after multitasking, waits for real `LAYERREFRESH` damage from asynchronous depth changes, consumes both `IDCMP_REFRESHWINDOW` messages, redraws through `BeginRefresh()`/`EndRefresh()` and finally scrolls the front window.  Direct observation confirms readable text, correct overlap and clipping, the intended scroll strip, four corner marks and a stable red pointer; the grey unrefreshed-area failure of the first candidate is absent.  The final unchanged package passes the complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash.  This reset series is not an unplugged battery cold-boot claim |
 | Normal read-only Wanderer boot | C3 hardware verified | Normal boot mounts the prepared SD as read-only `SYS:`, executes Startup-Sequence, installs fbgfx and loads Wanderer, its Zune classes, preferences and volume icons.  The first real `ENV:` multi-directory read exposed and led to a generic DOS FileHandle routing fix.  Wanderer correctly detaches and remains alive; the corrected sequence closes only the initial CLI with the standard `EndCLI` pattern.  The exact 64-MB, 89-entry image has SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  A first-byte 60-second D1001 capture has no trap, Alert, panic, Guru or fallback prompt.  Direct observation confirms a persistent, correctly oriented Wanderer desktop with readable title, visible drive icons and all four logical edges complete.  With the SD removed, two first-byte captures reproducibly report `GPIO45 high: no card present`, boot the read-only `FLASHDISK0P0` fallback and reach a visible graphical recovery Shell without a trap, Alert, panic or Guru.  The normal artifact passes 20/20 controlled EN-reset boots with one normalized gate tuple; this is not a physical battery-cold-start claim.  It also retained the complete, artefact-free desktop for a directly observed 1,800-second UART soak with no fatal marker.  That normal run is intentionally combined with B5's accepted 1,800 seconds of active read-only SD traffic under concurrent scanout; it does not misattribute periodic reads to the idle Wanderer desktop.  Two initial integrity attempts failed honestly because macOS inserted only `.fseventsd`; all 89 intended entries still matched and those failures remain in the evidence log.  The corrected host helper holds the raw card exclusively through write, synchronization and eject.  Hardware-locked first host insertions around exactly one normal D1001 boot then produced a prepared image, pre-run readback and post-run readback that are byte-identical at the image SHA above.  This closes the complete GB0 gate |
 | touch HIDD | C4/D3 hardware partial | since 2026-10-04 a portable stack (ROADMAP D3): `touchscreen.hidd` (`rom/hidds/touchscreen`: polling, gesture rules, calibration, `ENV:Sys/touchscreen.prefs`), the controller drivers `gt911.hidd` and `gsl3670.hidd` (`workbench/hidds`) on AROS's `hidd.i2c`, the bus driver `hidd.i2c.esp32p4` (`i2c/`) and `esp32p4board.resource` (`board/`), which creates them from the board profile; editor `Prefs/Touchscreen` (`workbench/prefs/touchscreen`). The JC1060P470C boots it; the D1001 builds it but has not run it, so the D1001 history that follows is that of the former kernel GSL driver and `p4touch.hidd`. The D1001 answers at I2C0 address `0x40` with Silead ID `0x50910000`; GPIO16, reset on PCA9535 output 12 and the initially empty RAM-firmware state are measured.  No firmware blob is committed because redistribution authority is not established; a validated converter accepts a user-supplied vendor header or binary outside the repo.  The maintained absolute `mouse.hidd` path, persistent task-context I2C0 polling, direct-X/mirrored-Y normalization, scheduler idle correction and bounded press/release policy pass synchronized motion, three-tap and centre/four-edge observation.  The complete coherent 44-byte frame supports up to ten contacts while retaining the closest continuing contact as the visible pointer; its FIFO-segmented long read and actual independently moving two-contact frames are D1001-verified with zero errors.  Both contacts report ID zero, so positions rather than IDs deliberately drive continuity.  Two contacts promote the active press to Button2 and latch it through sequential finger release; synchronized UART and direct Intuition observation verify the menu/right-button response, absence of a spurious left re-press and clean final release.  Version 4 removes firmware from the normal core and loads the validated 34,848-byte D1001 record image in HIDD task context from `DEVS:Firmware/silead/gsl3670-d1001.fw`, with a development-only `FLASHDISK0P0:Firmware/...` fallback.  D1001 captures verify both properties: missing firmware leaves only touch disabled and does not block Wanderer, while the external fallback loads all 4,356 records, reaches status `0x5a5a5a5a` and polls without errors.  The bounded reload after repeated I2C errors is implemented but still lacks fault-injection hardware evidence, as does the full 1,000-cycle C4 soak |
-| second core / SMP | single hart; AROS SMP (`smp` variant) planned | This branch has no SMP. The plan is AROS's own SMP with the platform layer in the port, stages S0-S6 in [SMP.md](SMP.md). The transitional Giant ran ordinary tasks on both harts (30-minute stress and visual/touch regression passed, with the test define) and is kept on branch `giant-smp`; the fine-grained E3 attempt is on `e3-smp`. E0-E2 second-hart diagnostics remain here; S1 (native atomics on cached PSRAM) passed on the JC1060P470C on 2026-10-05. |
+| second core / SMP | both harts, SMP the only build; headless verified (JC1060P470C) | AROS's own SMP exec with the platform layer in the port, stages S0-S6 in [SMP.md](SMP.md). Ordinary tasks stay on hart 0 under upstream's affinity model; exec's housekeeper and tasks created for hart 1 or for any hart run on hart 1. Upstream's ten SMP tests and a twenty-minute run pass (S5, 2026-10-05); the visual and touch check and the D1001 are open. There is no single-hart build and no Giant (S6); the Giant and the E3 attempt remain as history on the local branches `giant-smp` and `e3-smp`. E0-E2 second-hart diagnostics remain; S1 (native atomics on cached PSRAM) passed on the JC1060P470C on 2026-10-05. |
 
 E2, the two-hart primitives, is hardware verified on both boards: on the
 D1001 on 2026-10-01 (219,776-byte candidate, five captures, two epochs each)
@@ -128,8 +131,9 @@ and 16-bit operands, are correct on cached PSRAM across both harts under full
 contention (`P4_S1_PSRAM_ATOMICS=1`, twelve of twelve epochs, results read
 back from PSRAM). So AROS's own `aros/riscv/atomic.h` suffices once the
 generic `atomic.h` selects it. Both diagnostics park the board before Exec;
-normal Exec remains single-hart. The E3 runtime work is on branch
-`e3-smp`; see SMP.md, "Current plan", and ROADMAP Track E.
+they ran in the former normal build, and since S6 they build in the `smp`
+variant, which links but has not been run. See SMP.md, "Current plan", and
+ROADMAP Track E.
 
 Current D1001 flash state (2026-09-30): the 200-MHz-PSRAM core remains at
 `0x20000`. The exact prior 4-MiB GSL3670 firmware development volume was
@@ -200,7 +204,7 @@ Read off the hardware with esptool 5.3, not taken from a datasheet.
 | Console | USB-Serial/JTAG, Espressif 303a:1001, enumerates without a bridge chip |
 | Flash | 32 MB, Winbond (manufacturer 0xef, device 0x4019) |
 | Flash layout | ESP-IDF table at 0x8000, nvs 0x9000, nvs_key 0xf000, otadata 0x10000, phy_init 0x12000, ota_0 0x20000 (8 MB), `arosbsp` 0x820000 (8064 KB), FAT storage 0x1020000 (15.9 MB) |
-| Currently flashed | D1001 (`e8:f6:0a:e0:46:4c`): patched ESP-IDF v6.0.1 second stage unchanged; the B5R test core (Giant SMP from branch `giant-smp`, 20 MHz D-PHY reference, no row-phase workaround), 213,600 bytes at `0x20000`, SHA-256 `153405e7a3ffe4485e40f2e9fff2e60a37281fa688630f18277de39f27e5dbdc` (2026-10-04); BSP `eadb8723…` at `0x820000` and firmware volume at `0xc00000` unchanged. The D3 core `fb16af6b…` and package `42771087…` are built but not written. Its SD card is in the JC1060P470C. JC1060P470C (`80:f1:b2:d3:3b:a6`): AROS bootloader `27b99e03…`, partition table `b71dde30…`, SMP S5 core `64d164ef…` at `0x20000`, SMP package `86e36ba0…` at `0x820000`, development volume `7a8b6828…` (Prefs/Touchscreen and upstream's SMP tests with their list) at `0xc00000`, SMP card image `e2df4059…`, all verified 2026-10-05; with the shared struct layout the normal core and package (`60d5f2b9…`, `241034e7…`) run with the same card and volume; factory image backed up (`03222de1…`). Backups/logs: build `evidence/`. Core and package go together: neither board's current core pairs with an older package. |
+| Currently flashed | D1001 (`e8:f6:0a:e0:46:4c`): patched ESP-IDF v6.0.1 second stage unchanged; the B5R test core (Giant SMP from branch `giant-smp`, 20 MHz D-PHY reference, no row-phase workaround), 213,600 bytes at `0x20000`, SHA-256 `153405e7a3ffe4485e40f2e9fff2e60a37281fa688630f18277de39f27e5dbdc` (2026-10-04); BSP `eadb8723…` at `0x820000` and firmware volume at `0xc00000` unchanged. The D3 core `fb16af6b…` and package `42771087…` are built but not written. Its SD card is in the JC1060P470C. JC1060P470C (`80:f1:b2:d3:3b:a6`): AROS bootloader `27b99e03…`, partition table `b71dde30…`, SMP S6 core `315ab0c4…` at `0x20000`, SMP package `86e36ba0…` at `0x820000`, development volume `7a8b6828…` (Prefs/Touchscreen and upstream's SMP tests with their list) at `0xc00000`, SMP card image `e2df4059…`, all verified 2026-10-05; factory image backed up (`03222de1…`). Backups/logs: build `evidence/`. Core and package go together: neither board's current core pairs with an older package. |
 
 Revision v1.3 means the pre-v3 memory layout applies. The hardware facts above
 were read before the first write. The bring-up now deliberately replaces only
@@ -407,7 +411,7 @@ repurposing the second slot is one command:
 M6 replaces the former second OTA/rollback slot in that table. The source is
 `bootloader/boards/d1001/partition-table.csv` (each board has its own under `bootloader/boards/`); `esp32p4-partition-table` runs ESP-IDF's
 own `gen_esp32part.py` in both directions and leaves these checked artifacts
-under `bin/esp32p4-riscv/gen/rom/boot`:
+under `bin/esp32p4-riscv-smp/gen/rom/boot`:
 
     esp32p4-partition-table.bin
     esp32p4-partition-table.decoded.csv
@@ -913,6 +917,9 @@ D1001 over its USB-C serial console.
 
     ./configure --target=esp32p4-riscv --enable-ccache
     gmake crosstools
+
+Configure adds `--enable-target-variant=smp` by itself (S6); the build
+lands in `bin/esp32p4-riscv-smp`.
 
 Out of tree, from a build directory of its own. Three things about this host
 are worth writing down, because none of them is guessable:

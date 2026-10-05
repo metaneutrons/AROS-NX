@@ -70,9 +70,6 @@ _Static_assert(sizeof(struct ExceptionContext) == 136,
 #define TRAP_RESCHEDULE 1
 #define TRAP_SYSCALL    2
 
-/* Trap/interrupt nesting depth, reported through KrnIsSuper() */
-extern int __esp32p4_trap_depth;
-
 /* What has arrived, for the bring-up report to be able to say so */
 volatile unsigned long __esp32p4_irq_count;
 volatile unsigned long __esp32p4_irq_last;
@@ -304,15 +301,11 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
              */
             if (SysBase && (IDNESTCOUNT_GET < 0))
                 core_Cause(INTB_VERTB, 1L << INTB_VERTB);
-#if defined(__AROSEXEC_SMP__)
             /* Hart 1 counts its quantum from this tick too */
             krnP4TickOthers();
-#endif
         }
-#if defined(__AROSEXEC_SMP__)
         else if (line == P4_SMP_IPI_LINE)
             krnP4IPIInterrupt();
-#endif
         else if (line == P4_DSI_DMA_LINE)
         {
             /* One complete framebuffer per interrupt.  The DesignWare item
@@ -378,14 +371,11 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
     return TRAP_DONE;
 }
 
-#if defined(__AROSEXEC_SMP__)
 #include "tls.h"
-/* Per hart: the other hart's traps are no business of this one's. A trap
-   runs with interrupts masked, so the record can be used directly. */
+/* Trap nesting depth, reported through KrnIsSuper(). Per hart: the other
+   hart's traps are no business of this one's. A trap runs with interrupts
+   masked, so the record can be used directly. */
 #define TRAP_DEPTH  (p4_tls_self()->TrapDepth)
-#else
-#define TRAP_DEPTH  __esp32p4_trap_depth
-#endif
 
 void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
                     unsigned long mtval)

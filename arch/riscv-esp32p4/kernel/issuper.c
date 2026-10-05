@@ -9,9 +9,7 @@
 
 #include <kernel_base.h>
 
-#if defined(__AROSEXEC_SMP__)
 #include "tls.h"
-#endif
 
 #include <proto/kernel.h>
 
@@ -21,20 +19,16 @@
  * Everything runs in machine mode, so the privilege level cannot
  * distinguish task context from kernel context. What callers such as the
  * exec semaphores actually need to know is whether we are inside a trap,
- * where sleeping is impossible; the trap handler maintains the count.
+ * where sleeping is impossible; the trap handler keeps the count per
+ * hart.
  */
-int __esp32p4_trap_depth;
 
 AROS_LH0I(int, KrnIsSuper,
           struct KernelBase *, KernelBase, 13, Kernel)
 {
     AROS_LIBFUNC_INIT
 
-#if defined(__AROSEXEC_SMP__)
     return TLS_GET(TrapDepth) > 0;
-#else
-    return __esp32p4_trap_depth > 0;
-#endif
 
     AROS_LIBFUNC_EXIT
 }

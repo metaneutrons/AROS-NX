@@ -27,15 +27,6 @@ struct KernelBase;
 extern unsigned long __boot_hartid;
 
 /*
- * Depth of nested trap handling. KrnIsSuper() reports from it: on a
- * machine that never leaves machine mode the privilege level cannot tell
- * task context from kernel context, and what callers such as the exec
- * semaphores need to know is whether sleeping is possible at all. The
- * trap handler maintains it.
- */
-extern int __esp32p4_trap_depth;
-
-/*
  * Which hart this is. The shared rv32 layer's getcpunumber.c calls this
  * and expects the platform to supply it. mhartid is readable here, so
  * this answers for whichever hart asks rather than for the boot one -
@@ -460,7 +451,6 @@ int  platform_wdt_quiet(void);
 void krnP4ConsoleRuntime(void);
 void krnP4ConsoleBlocking(void);
 
-#if defined(__AROSEXEC_SMP__)
 /*
  * The second hart (SMP.md, S3). Hart n raises its peer with
  * CPU_INTR_FROM_CPU_n, interrupt matrix source 79 + n; each hart's map
@@ -484,7 +474,6 @@ void krnP4TickOthers(void);
 int krnP4ParkOthers(void);
 void krnP4UnparkOthers(void);
 extern volatile ULONG __p4_parks;
-#endif
 void krnP4SpinReport(const char *what, void *lock, void *caller);
 void krnP4PutC(char c);
 void krnP4PutStr(const char *s);

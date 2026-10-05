@@ -44,7 +44,6 @@
 	.globl	__trap_entry
 	.type	__trap_entry,%function
 __trap_entry:
-#if defined(__AROSEXEC_SMP__)
 	/*
 	 * Each hart has its own interrupt stack in internal SRAM, whose top
 	 * mscratch holds while no trap is active on that hart. A trap frame
@@ -69,11 +68,6 @@ __trap_entry:
 	csrrw	t0, mscratch, zero	/* interrupted sp; 0 while inside */
 	sw	t0, 4(sp)
 2:	sw	ra, 0(sp)
-#else
-	addi	sp, sp, -144
-	sw	ra, 0(sp)
-	sw	t0, 8(sp)
-#endif
 	sw	t1, 12(sp)
 	sw	t2, 16(sp)
 	sw	s0, 20(sp)
@@ -101,10 +95,6 @@ __trap_entry:
 	sw	t5, 108(sp)
 	sw	t6, 112(sp)
 	/* interrupted sp, pc and mstatus */
-#if !defined(__AROSEXEC_SMP__)
-	addi	t0, sp, 144
-	sw	t0, 4(sp)
-#endif
 	csrr	t0, mepc
 	sw	t0, 116(sp)
 	csrr	t0, mstatus
@@ -120,19 +110,15 @@ __trap_entry:
 	call	krnTrapHandler
 
 	/* restore (the handler may have modified the context) */
-#if defined(__AROSEXEC_SMP__)
 	lw	t0, 136(sp)
 	csrw	mscratch, t0		/* the stack top again, or 0 when nested */
-#endif
 	lw	t0, 116(sp)
 	csrw	mepc, t0
 	lw	t0, 120(sp)
-#if defined(__AROSEXEC_SMP__)
 	/* Still on the interrupt stack with mscratch armed: an interrupt now
 	   would start a fresh frame over this one. MIE comes back with mret,
 	   from MPIE. */
 	andi	t0, t0, -9
-#endif
 	csrw	mstatus, t0
 	lw	ra, 0(sp)
 	lw	t1, 12(sp)

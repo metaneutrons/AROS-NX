@@ -4,12 +4,13 @@
     Desc: leaving an interrupt or a scheduler syscall, for the smp variant
           of the esp32p4-riscv target.
 
-    The generic version (rom/kernel/kernel_intr.c) with one difference:
-    soft interrupts run on hart 0 only. Their handlers - timer.device and
+    The generic version (rom/kernel/kernel_intr.c) with two differences.
+    Soft interrupts run on hart 0 only. Their handlers - timer.device and
     the drivers that Cause() - are written for one CPU, and a hart that
     happened to leave a trap while one was pending would run it alongside
     hart 0. A soft interrupt raised on hart 1 waits for hart 0's next trap
-    exit, at most one tick.
+    exit, at most one tick. And a task is not preempted while it holds a
+    spinlock it took with interrupts enabled (tls.h, p4_spin_taken()).
 */
 
 #include <exec/execbase.h>

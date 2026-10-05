@@ -17,7 +17,7 @@ classes.  The unqualified target retains the smaller A3-A5 proof content, as
 does the 4-MB flash development-volume workflow.
 
 The target writes four files next to each other in
-`bin/esp32p4-riscv/AROS/boot/esp32p4`:
+`bin/esp32p4-riscv-smp/AROS/boot/esp32p4`:
 
 | file | what it is |
 | :--- | :--- |

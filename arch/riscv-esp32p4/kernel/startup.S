@@ -30,7 +30,6 @@ _start:
 	csrw	mie, zero
 	csrci	mstatus, 8		/* MSTATUS_MIE               */
 
-#if defined(P4_SECONDARY_PROBE) || defined(__AROSEXEC_SMP__)
 	/* A retained diagnostic hart must stop BEFORE shared BSS is cleared.
 	   Preserve core 0 and every unrelated clock/reset bit. No stack/C call. */
 	li t0, P4_SECONDARY_RESET_REG
@@ -57,7 +56,6 @@ _start:
 	lw s3, 0(t0)
 	andi t1, s3, P4_SECONDARY_CLOCK_BIT
 	bnez t1, __startup_hang
-#endif
 
 	/* Global pointer. Linker relaxation has to be off while gp itself
 	   is being loaded, or the load relaxes against the gp it is

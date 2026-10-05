@@ -10,12 +10,8 @@
 #include <aros/config.h>
 
 #if !defined(__AROSEXEC_SMP__)
-
-/* One hart: exactly the generic definitions, so a normal build is the
-   same as without this file. */
-#include "../../../rom/exec/exec_platform.h"
-
-#else /* __AROSEXEC_SMP__ */
+#error "esp32p4 builds only the smp variant (SMP.md, S6)"
+#endif
 
 #include <aros/types/spinlock_s.h>
 #include <utility/hooks.h>
@@ -106,7 +102,5 @@ struct Exec_PlatformData
         AddHead(&PrivExecBase(SysBase)->TaskRunning, (struct Node *)(x)); \
         EXEC_SPINLOCK_UNLOCK(&PrivExecBase(SysBase)->TaskRunningSpinLock); \
     } while (0)
-
-#endif /* __AROSEXEC_SMP__ */
 
 #endif /* P4_EXEC_PLATFORM_H */

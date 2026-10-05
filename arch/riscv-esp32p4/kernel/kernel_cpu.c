@@ -135,14 +135,12 @@ void cpu_Switch(regs_t *regs)
         ctx->sr = (ctx->sr & ~MSTATUS_FS) | MSTATUS_FS_CLEAN;
     }
 
-#if defined(__AROSEXEC_SMP__)
     /*
      * Wait() holds tc_SpinLock across KrnSwitch(), so that no other hart
      * can dispatch the task before its context is saved. It is saved now.
      */
     if (task->tc_State == TS_WAIT)
         EXEC_SPINLOCK_UNLOCK(&task->tc_SpinLock);
-#endif
 
     /*
      * No CPU time accounting yet. The 64bit port charges the run segment
@@ -160,7 +158,6 @@ void cpu_Dispatch(regs_t *regs)
     struct Task *task;
     struct ExceptionContext *ctx;
 
-#if defined(__AROSEXEC_SMP__)
     /*
      * Preemption waits while a task holds a counted spinlock (tls.h), so
      * a task that leaves this hart with one held left of its own accord:
@@ -168,7 +165,6 @@ void cpu_Dispatch(regs_t *regs)
      * not to the next one here, which would otherwise never be preempted.
      */
     TLS_SET(SpinHeld, 0);
-#endif
 
     while (!(task = core_Dispatch()))
     {
@@ -187,18 +183,12 @@ void cpu_Dispatch(regs_t *regs)
         asm volatile("wfi");
         csr_clear(mstatus, MSTATUS_MIE);
 
-#if defined(__AROSEXEC_SMP__)
         /* Soft interrupts on hart 0 only, see kernel_intr.c */
         if ((SysBase->SysFlags & SFF_SoftInt) && GetCPUNumber() == 0)
-#else
-        if (SysBase->SysFlags & SFF_SoftInt)
-#endif
             core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
     }
 
-#if defined(__AROSEXEC_SMP__)
     GetIntETask(task)->iet_CpuNumber = GetCPUNumber();
-#endif
 
     ctx = task->tc_UnionETask.tc_ETask->et_RegFrame;
     copyContext(regs, ctx);

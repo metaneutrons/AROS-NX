@@ -2258,15 +2258,20 @@ case "$target_os" in
         dnl remapper, but nothing that translates, so kernel_mm and its
         dnl allocator have nothing to drive.
         aros_enable_mmu=no
-        dnl Two HP cores. Every build has the SMP struct layout, so that
-        dnl binaries run under both kernels; only the smp variant has
-        dnl exec's SMP code.
-        PLATFORM_EXECSMP="#define __AROSPLATFORM_SMP__"
+        dnl Two HP cores, and the smp variant is the only build: without
+        dnl --enable-target-variant it is selected here, any other
+        dnl variant is refused.
         case "$aros_target_variant" in
-            smp)
-                ENABLE_EXECSMP="#define __AROSEXEC_SMP__"
+            ""|smp)
+                aros_target_variant="smp"
+                aros_target_suffix="-smp"
+            ;;
+            *)
+                AC_MSG_ERROR("The ESP32-P4 builds only the smp variant")
             ;;
         esac
+        PLATFORM_EXECSMP="#define __AROSPLATFORM_SMP__"
+        ENABLE_EXECSMP="#define __AROSEXEC_SMP__"
         case "$target_cpu" in
             *riscv64*)
                 AC_MSG_ERROR("The ESP32-P4 HP cores are 32bit - use --target=esp32p4-riscv")

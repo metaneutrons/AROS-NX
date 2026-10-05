@@ -27,9 +27,7 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
-#if defined(__AROSEXEC_SMP__)
 #include "tls.h"
-#endif
 
 #define SPIN_LIMIT      100000
 
@@ -47,21 +45,20 @@ void krnP4ConsoleRuntime(void)
 #endif
 }
 
-#if defined(P4_SPIN_WATCHDOG) || defined(__AROSEXEC_SMP__)
 /* Back to waiting output: for a report from a hart that is stuck, and
    around the second hart's start, whose report must not be dropped. */
 void krnP4ConsoleBlocking(void)
 {
     console_runtime = 0;
 }
-#endif
 
 /*
- * With two harts the backends below write one character of a finished
- * line each (krnP4PutC() at the end of this file assembles the lines);
- * with one hart they are krnP4PutC() itself.
+ * The backends below write one character of a finished line each;
+ * krnP4PutC() at the end of this file assembles the lines of both harts.
+ * The host test (tests/console_nonblocking_test.py) builds the backends
+ * alone, as krnP4PutC() itself, with P4_CONSOLE_BACKEND_ONLY.
  */
-#if defined(__AROSEXEC_SMP__)
+#if !defined(P4_CONSOLE_BACKEND_ONLY)
 #define CONSOLE_RAW_PUTC console_raw_putc
 static void console_raw_putc(char c);
 static void console_flush_self(void);
@@ -158,7 +155,7 @@ void CONSOLE_RAW_PUTC(char c)
  */
 int krnP4GetC(void)
 {
-#if defined(__AROSEXEC_SMP__)
+#if !defined(P4_CONSOLE_BACKEND_ONLY)
     console_flush_self();
 #endif
     if (usj_pending)
@@ -201,7 +198,7 @@ int krnP4GetC(void)
 
 #endif
 
-#if defined(__AROSEXEC_SMP__)
+#if !defined(P4_CONSOLE_BACKEND_ONLY)
 /*
  * Both harts print, mostly a character at a time through RawPutChar().
  * Each hart assembles its line in a buffer of its own, and a finished

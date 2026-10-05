@@ -146,10 +146,15 @@ start, belongs in `arch/riscv-esp32p4`.
   the visual and touch check and the D1001 are open.
 - **S6 Default decision.** SMP or single hart as the P4 default; the Giant
   branch is retired then.
+  Status 2026-10-05, Fabian's decision: SMP is the only esp32p4 build, with
+  no single-hart build and no Giant ("S6: the only build" below).
 
 Each stage records its evidence in ROADMAP Track E in the same change.
 
 ### S2 platform layer (2026-10-05)
+
+Written while a normal build still existed; since S6 the `smp` variant is
+the only one, and the normal-build remarks below are history.
 
 Shared changes, each generic:
 
@@ -354,6 +359,29 @@ hart 0 and idles in `cpu_Dispatch()` as before.
   so the next task stays preemptible. Upstream's aarch64-native has the
   same exposure; all-pc has a separate path for a waiting task (TS_SPIN),
   not examined here.
+
+### S6: the only build (2026-10-05)
+
+Fabian's decision after S5: SMP is the only esp32p4 build. No single-hart
+build, no Giant.
+
+- `configure.in`/`configure`: the esp32p4 case selects the `smp` variant
+  when none is given and refuses any other, so `--target=esp32p4-riscv`
+  alone gives both defines and the output directory `bin/esp32p4-riscv-smp`.
+  `configure` is edited by hand like the rest of this case.
+- The port has no single-hart branches left: the `__AROSEXEC_SMP__` guards
+  are gone from kernel and exec, the per-hart record is the only trap depth,
+  the trap entry always switches to the hart's own stack, soft interrupts
+  run on hart 0 only. `exec/exec_platform.h` stops the build without
+  `__AROSEXEC_SMP__`, and the kernel makefile refuses a tree configured
+  before S6 without the variant. The console keeps one seam,
+  `P4_CONSOLE_BACKEND_ONLY`, for its host test.
+- The E0-E2 and S1 diagnostics stay. They stop the boot before Exec; built
+  in the smp variant they link, and have not been run since.
+- Build trees: `AROS-ESP32-v3-smp-build` is the tree for the JC1060P470C.
+  The normal trees are no longer built; `AROS-ESP32-v3-build` stays as the
+  host of the cross toolchain the SMP tree uses. The D1001 needs an SMP tree
+  of its own.
 
 Open points:
 
