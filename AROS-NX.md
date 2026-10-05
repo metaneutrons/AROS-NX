@@ -59,12 +59,27 @@ the invariant that the next sync verifies before it changes anything.
 ## Product CI
 
 `AROS-NX CI` owns filename and line-ending hygiene, locked source preparation,
-and the nine Linux/macOS product lanes. Pull requests with only Markdown file
-changes run the lightweight gates; all other pull requests run the full product
-matrix. A protected merge to `main` does not repeat the already qualified
-matrix. Manual dispatch always runs it. The required `CI Success` check verifies
-the selected gates, including the source-preparation job, so a failed or
-skipped prerequisite cannot be mistaken for a successful product build.
+and the nine Linux/macOS product lanes, three presets on three hosts.
+`scripts/ci/ci_hygiene.py plan` selects the lanes of a run from the changed
+paths:
+
+- A draft pull request builds nothing; marking it ready starts its build.
+- Changes no preset builds, Markdown and the `arch/` directories of the
+  architectures without a preset (armeb, m68k, ppc, riscv, riscv64), run the
+  lightweight gates only.
+- Changes to what runs on the build host or decides what is built
+  (`.github/`, `config/`, `scripts/`, `tools/`, configure and its macros, the
+  target and toolchain files) run all nine lanes in the pull request.
+- Other source changes build the three presets on Linux x86-64 in the pull
+  request. The locked cross-compiler has the same version on every host, so a
+  change to target sources is expected to build alike everywhere; the run on
+  `main` after the merge builds it on Linux AArch64 and macOS ARM64. A later
+  merge does not cancel that run, so every change gets those lanes.
+- Uncertain history and manual dispatch run all nine lanes.
+
+The required `CI Success` check verifies the selected gates, including the
+source-preparation job, so a failed or skipped prerequisite cannot be mistaken
+for a successful product build.
 
 The matrix uses hash-pinned native archives from the published `aros-tools`
 release. `scripts/ci/product-sources.plan.json` records each locked source and
