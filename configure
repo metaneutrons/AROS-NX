@@ -11405,9 +11405,9 @@ printf '%s\n' "$darwin_sdk_path" >&6; }
                                                 gcc_default_cpu="rv32imafc_zicsr_zifencei_zaamo_zalrsc"
         gcc_default_mode="ilp32f"
                                 aros_enable_mmu=no
-                        case "$aros_target_variant" in
+                                PLATFORM_EXECSMP="#define __AROSPLATFORM_SMP__"
+        case "$aros_target_variant" in
             smp)
-                PLATFORM_EXECSMP="#define __AROSPLATFORM_SMP__"
                 ENABLE_EXECSMP="#define __AROSEXEC_SMP__"
             ;;
         esac
