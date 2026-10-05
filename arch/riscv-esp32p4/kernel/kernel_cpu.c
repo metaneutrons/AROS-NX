@@ -23,6 +23,8 @@
 #include <kernel_intr.h>
 #include <kernel_scheduler.h>
 
+#include <exec_platform.h>
+
 #include "etask.h"
 
 #include "hardware.h"
@@ -110,7 +112,7 @@ static void krnInitFPU(void)
 
 void cpu_Switch(regs_t *regs)
 {
-    struct Task *task = SysBase->ThisTask;
+    struct Task *task = GET_THIS_TASK;
     struct ExceptionContext *ctx = task->tc_UnionETask.tc_ETask->et_RegFrame;
 
     copyContext(ctx, regs);
@@ -132,6 +134,15 @@ void cpu_Switch(regs_t *regs)
         ctx->Flags |= ECF_FPU;
         ctx->sr = (ctx->sr & ~MSTATUS_FS) | MSTATUS_FS_CLEAN;
     }
+
+#if defined(__AROSEXEC_SMP__)
+    /*
+     * Wait() holds tc_SpinLock across KrnSwitch(), so that no other hart
+     * can dispatch the task before its context is saved. It is saved now.
+     */
+    if (task->tc_State == TS_WAIT)
+        EXEC_SPINLOCK_UNLOCK(&task->tc_SpinLock);
+#endif
 
     /*
      * No CPU time accounting yet. The 64bit port charges the run segment
@@ -169,6 +180,10 @@ void cpu_Dispatch(regs_t *regs)
         if (SysBase->SysFlags & SFF_SoftInt)
             core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
     }
+
+#if defined(__AROSEXEC_SMP__)
+    GetIntETask(task)->iet_CpuNumber = GetCPUNumber();
+#endif
 
     ctx = task->tc_UnionETask.tc_ETask->et_RegFrame;
     copyContext(regs, ctx);

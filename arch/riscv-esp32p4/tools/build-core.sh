@@ -40,7 +40,11 @@ while [ $# -gt 0 ]; do
 done
 flags=("$@")
 src=$(cd "$(dirname "$0")/../../.." && pwd)
-gen="$build/bin/esp32p4-riscv/gen"
+# The tree's variant (empty, or "smp") and the suffix of its output
+# directory, as configure recorded them.
+variant=$(sed -n 's/^AROS_TARGET_VARIANT *?= *//p' "$build/Makefile")
+suffix=$(sed -n 's/^AROS_TARGET_SUFFIX *= *//p' "$build/config/make.cfg")
+gen="$build/bin/esp32p4-riscv$suffix/gen"
 
 mkdir -p "$logs"
 printf '%s\n' "${flags[@]}" > "$logs/flags.txt"
@@ -80,7 +84,7 @@ rm -f "$gen/rom/boot/core.elf"
 cd "$build/arch/riscv-esp32p4/kernel"
 gmake --no-print-directory TOP="$build" SRCDIR="$src" \
     AROS_HOST_ARCH=darwin AROS_HOST_CPU=aarch64 \
-    AROS_TARGET_ARCH=esp32p4 AROS_TARGET_CPU=riscv AROS_TARGET_VARIANT= \
+    AROS_TARGET_ARCH=esp32p4 AROS_TARGET_CPU=riscv AROS_TARGET_VARIANT="$variant" \
     CURDIR=arch/riscv-esp32p4/kernel TARGET=kernel-esp32p4-riscv \
     -f mmakefile "${flags[@]}" ESPTOOL="$build/.venv/bin/esptool" "$bin" \
     > "$logs/link.log" 2>&1 || {

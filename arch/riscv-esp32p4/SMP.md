@@ -142,6 +142,64 @@ start, belongs in `arch/riscv-esp32p4`.
 
 Each stage records its evidence in ROADMAP Track E in the same change.
 
+### S2 platform layer (2026-10-05)
+
+Shared changes, each generic:
+
+- `configure.in`/`configure`: in the esp32p4 case, the `smp` variant sets
+  `__AROSPLATFORM_SMP__` and `__AROSEXEC_SMP__`. A normal build sets
+  neither, so its struct layouts stay as they are; an SMP build and its card
+  image come from their own tree (`--enable-target-variant=smp`, output in
+  `bin/esp32p4-riscv-smp`). Whether both variants should share one layout
+  is an S6 question. `configure` was edited by inserting only autoconf's
+  output for the new lines: regenerating it with autoconf 2.73 here also
+  reorders unrelated variables and changes a help string.
+- `compiler/arossupport/include/atomic.h`: RISC-V with the A extension
+  (`__riscv_atomic`) selects `aros/riscv/atomic.h` or `aros/riscv64/atomic.h`.
+  This also changes normal builds: exec's nesting counts and scheduler flags
+  become real atomics instead of plain increments (`Forbid()` grows from 12
+  to 56 bytes, because `TDNestCnt` is a byte and takes GCC's masked loop).
+- `arch/riscv-all/exec/stackswap.S`: the task comes from `FindTask(NULL)`,
+  unconditionally, as upstream did for aarch64 (`afb47ac311`).
+
+In the port:
+
+- Per-hart data (`kernel/tls.h`, `kernel/kernel_tls.c`): one 64-byte record
+  per HP core in internal SRAM, found through `mhartid`, not through `tp`,
+  which is an ordinary register here and part of every saved task context.
+  Every access masks interrupts on its hart for its duration, so a task
+  cannot read one hart's id and update the other hart's record, and each
+  record has a single writer. The quantum is initialized statically, since
+  exec does not seed it in an SMP build.
+- `exec/exec_platform.h`: in a normal build it includes the generic header
+  unchanged; in an SMP build it maps nesting counts, scheduler flags,
+  quantum, elapsed time and `ThisTask` to the per-hart record, the spinlock
+  macros to the kernel functions by LVO, interrupt masking to `mstatus`
+  (there is one interrupt level, so the arm ports' FIQ masking is the same
+  mask), and `krnSysCallReschedTask`/`krnSysCallSwitch` to
+  `exec/exec_smp.c`.
+- Spinlocks (`kernel/spin*.c`): the layout of `<aros/types/spinlock_s.h>`
+  (`SPINLOCKF_WRITE` or a reader count), GCC's atomics as qualified in S1,
+  waiters spin on plain loads.
+- Scheduler (`kernel/kernel_scheduler.c`): aarch64-native's, adapted. Two
+  list errors it shares with that version are fixed here: a task failing
+  the stack check after `SET_THIS_TASK()` was enqueued on `TaskWait` while
+  still on `TaskRunning`, and a dispatch without a switch could add the
+  running task to `TaskRunning` a second time.
+- `cpu_Switch()` releases the `tc_SpinLock` that `Wait()` holds once the
+  context is saved; `cpu_Dispatch()` records the hart in `iet_CpuNumber`.
+- `kernel/kernel_ipi.h` and `kernel_ipi.c`: the plain `core_DoCallIPI()`
+  interface `signal.c` needs; with one hart it delivers nothing. The choice
+  of the cancelable variant that aarch64 uses belongs to S3/S4.
+- `tools/build-core.sh` takes the variant and output directory from the
+  build tree.
+- These files are built only for the `smp` variant; a normal build keeps
+  the generic scheduler and spinlock stubs.
+
+Not in S2: CPU masks, `KrnGetCPUCount()` above one, `EXECF_CPUAffinity`,
+idle tasks per hart and the second hart's start; S2 runs everything on
+hart 0 and idles in `cpu_Dispatch()` as before.
+
 Open points:
 
 - Native atomics on cached PSRAM hold on the JC1060P470C (S1); the D1001 has

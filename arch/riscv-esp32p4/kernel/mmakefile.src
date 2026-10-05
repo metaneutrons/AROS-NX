@@ -1062,6 +1062,20 @@ else ifeq ($(P4_SECONDARY_ENTRY),1)
 AFILES += secondary_entry
 endif
 
+# The smp variant's platform layer (SMP.md, S2). A normal build keeps the
+# generic scheduler and spinlock stubs, which these replace by name.
+ifeq ($(AROS_TARGET_VARIANT),smp)
+CFILES += \
+        kernel_tls \
+        kernel_scheduler \
+        kernel_ipi \
+        spininit \
+        spinislocked \
+        spintrylock \
+        spinlock \
+        spinunlock
+endif
+
 # With compiler=kernel, %build_archspecific compiles with KERNEL_CFLAGS,
 # which are only USER_CFLAGS: without this line the port's kernel code is
 # built unoptimized, while the generic modules get the target optimization

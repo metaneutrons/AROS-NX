@@ -147,7 +147,7 @@ gate: compensated output is not the native display contract.
 | E3-GT | Transitional Giant Exec SMP (`P4_GIANT=1`) | `retired on this branch` | Kept on branch `giant-smp` (`ff3395ba7f`), where it is hardware partial (headless stress, visual and touch passed with the test define). Reference for S3/S4, not the base. |
 | S0 | Base on current upstream | `hardware partial (JC1060P470C passed)` | Evidence entries 2026-10-04/05: rebased onto `5da9fd5072`, fresh tree, JC1060P470C headless boot and visual/touch/Backlight check pass; the A1 retest is not needed (the upstream change cannot be reached on the P4). Open: the D1001 run; its artifacts are built. |
 | S1 | Native atomics on cached PSRAM across both harts | `hardware verified (JC1060P470C)` | Evidence entry 2026-10-05: `P4_S1_PSRAM_ATOMICS=1`, twelve of twelve epochs exact with proven interleaving: word AMO, CAS, GCC's 8/16-bit LR/SC loops, mixed AMO and LR/SC in one word, a lock over plain data, 1 MiB of cold lines, all read back from PSRAM. The `atomic.h` dispatch suffices. The D1001 has not run it. |
-| S2 | `smp` build on one hart | `not started` | Configure allows `smp` for esp32p4; platform layer in the port; boots on hart 0 with hart 1 in reset. The SMP build tree is set up here, because configure refuses `smp` for this target until then. |
+| S2 | `smp` build on one hart | `hardware partial (headless, JC1060P470C)` | Configure allows `smp` for esp32p4; platform layer in the port; boots on hart 0 with hart 1 in reset. The SMP build tree is set up here, because configure refuses `smp` for this target until then. |
 | S3 | Second hart online, idle | `not started` | Hart 1 from the E1/E2 entry with its own ISR stack, CLIC/IPI, per-hart state, a tick and an idle task; parked for cache and flash windows. |
 | S4 | Scheduling on two harts | `not started` | Per-hart scheduler after aarch64-native, `KrnScheduleCPU` through IPIs, affinity, then free migration. |
 | S5 | SMP qualification | `not started` | Upstream SMP tests, sustained stress, device serialization, boot/visual/touch regressions on both boards with fresh readiness. |
@@ -24973,6 +24973,60 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   differs from the add only in the ALU instruction; PSRAM at 200 MHz only.
 - Next safe step: S2, the `smp` build on one hart, starting with the
   `atomic.h` dispatch as the first shared change.
+
+### 2026-10-05 - S2: the smp variant builds and boots on hart 0, headless
+
+- State change: Track E S2 hardware partial. Core, package and card image
+  of the `smp` variant build; the JC1060P470C boots the SMP core and
+  package headless on hart 0, hart 1 held in reset. Open: the SMP card
+  image on the panel (needs a card write and Fabian's readiness), the
+  D1001.
+- Design and the list of changes: SMP.md, "S2 platform layer". Shared:
+  configure's smp case for esp32p4, the RISC-V branch in `atomic.h`,
+  `FindTask(NULL)` in `riscv-all/exec/stackswap.S`. Found while building:
+  `riscv-all/exec/preparecontext.c` assigned the affinity tag's `IPTR` to
+  the `cpumask_t *` without a cast and leaked the mask `InitETask()` had
+  allocated; it now does what aarch64-all does.
+- SMP tree `AROS-ESP32-v3-smp-build` (`--enable-target-variant=smp`,
+  toolchain from the v3 tree), output in `bin/esp32p4-riscv-smp`; the
+  package lands in `AROS/boot/esp32p4-smp`, the card image in
+  `AROS/boot/esp32p4`. `aros/config.h` carries both SMP macros.
+- Builds (normal JC1060 flags): SMP core 179,968 B
+  `87e3101ae0918e96057710b21b8fc9aa972658237069cb9a9384bc94d201c003`;
+  package 3,730,376 B
+  `3814366363cb2386ef90ebe3715e8c17a35d83a81c6a0d520bc3b05d38ec6b5d`
+  (audit 0 failed); card image 67,108,864 B, 178 entries,
+  `e2df40595da47a6004a06dcdca12043ebf9303b9e7ecda403dd73784524574d2`
+  (`verify-image.sh` matches). No new warnings; upstream
+  `rom/task/task_init.c` warns about `struct KernelBase` in an SMP build
+  only, because it includes `kernel_debug.h` without `kernel_base.h`.
+- Linked image: `FindTask(NULL)` masks interrupts, reads `mhartid`,
+  indexes `__p4_tls` (internal SRAM, 64 bytes per hart), loads `ThisTask`
+  and restores `mstatus`; the port's spinlocks and scheduler replace the
+  generic ones.
+- Hardware (JC1060P470C `80:f1:b2:d3:3b:a6`, MAC checked; package at
+  `0x820000`, core at `0x20000`, both verified), 60 s headless boot with
+  the normal v3 card, `0a59a245…`: exec and all package modules come up,
+  DOS boots from `SDCARD0P0`, the Startup-Sequence's Shell starts and loads
+  `workbench.library` and `icon.library` from the card, the touch process
+  reads its prefs, eleven heartbeats to the end, no alert. Then the log
+  goes quiet: the card's programs and libraries are normal builds, whose
+  embedded semaphores and ports lack the SMP spinlock fields, so this card
+  is not a valid test past that point.
+- Normal build with the shared changes (`atomic.h`, `stackswap.S`): core
+  165,712 B `ae4367c48be28edd97b786d082f21c7321a0809599d680a640991b02b9834537`
+  differs from `85b8fc45…` only in `StackSwap` and in exec's users of the
+  nesting and flag macros (`Disable`/`Enable`/`Forbid`/`Permit`, `Cause`,
+  `Reschedule`, `SoftIntDispatch`, `InternalObtainSemaphore`), which now
+  use real atomics; package 3,726,984 B
+  `43ec2850eca9672d5c16418b8b28111fd31c043b0b6387f1f03dae8a55c88721`
+  (audit 0 failed). Flashed and booted, 90 s, `9bf1324a…`: Wanderer, GT911,
+  17 heartbeats, no alert. This core and package are on the board now.
+- Found on the way, not changed: in the normal build a task's `tc_Launch`
+  runs twice per dispatch, once from the generic `core_Dispatch()` and
+  once from the port's `cpu_Dispatch()`; the SMP scheduler calls it once.
+- Next safe step: write the SMP card image, then a headless boot and the
+  visual and touch check with Fabian's readiness.
 
 ## Evidence-entry template
 
