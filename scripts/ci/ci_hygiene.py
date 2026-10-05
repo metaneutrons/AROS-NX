@@ -17,6 +17,46 @@ OID_RE = re.compile(r"^[0-9a-fA-F]{40,64}$")
 WINDOWS_FORBIDDEN = set('<>:"\\|?*')
 RESERVED_DEVICE_RE = re.compile(r"^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])$", re.IGNORECASE)
 
+# The product matrix: every preset on every qualified build host.
+PRODUCT_HOSTS = (
+    ("linux-x86_64", "ubuntu-24.04"),
+    ("linux-aarch64", "ubuntu-24.04-arm"),
+    # Intel macOS is suspended until a separately qualified release target exists.
+    ("macos-aarch64", "macos-15"),
+)
+PRODUCT_PRESETS = ("pc-x86_64", "arm-raspi", "rpi-aarch64")
+
+# A pull request that changes only target sources builds each preset on this
+# host alone. The locked cross-compiler has the same version on every host,
+# so such a change is expected to build alike everywhere; the other hosts
+# follow on main after the merge.
+PULL_REQUEST_HOST = "linux-x86_64"
+
+# What runs on the build host itself, or decides what is built: a change here
+# is qualified on every host before it merges. Entries ending in "/" are
+# directories, the others files.
+BUILD_HOST_PATHS = (
+    ".github/",
+    "config/",
+    "scripts/",
+    "tools/",
+    ".gitmodules",
+    "Makefile.in",
+    "acinclude.m4",
+    "aclocal.m4",
+    "aros-targets.toml",
+    "aros-toolchains.lock.toml",
+    "configure",
+    "configure.in",
+    "mmake.config.in",
+    "mmakefile",
+)
+
+# Architectures no product preset builds (aros-targets.toml: x86_64 with its
+# i386 parts, aarch64, arm). Their arch/<cpu>-<name>/ directories need no
+# product build.
+UNBUILT_ARCH_CPUS = frozenset({"armeb", "m68k", "ppc", "riscv", "riscv64"})
+
 
 def _git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
@@ -195,8 +235,91 @@ def _report_line_endings(paths: Sequence[str], cwd: Path | None = None) -> None:
     print(f"Checked {checked} changed C/H file(s); reported {findings} line-ending issue(s).")
 
 
-def _write_matrix_output(full_matrix: bool, env: Mapping[str, str]) -> bool:
-    value = f"full_matrix={'true' if full_matrix else 'false'}\n"
+def _is_build_host_path(path: str) -> bool:
+    return any(
+        path.startswith(entry) if entry.endswith("/") else path == entry
+        for entry in BUILD_HOST_PATHS
+    )
+
+
+def _is_unbuilt_path(path: str) -> bool:
+    """True for a path no product preset builds: Markdown, unbuilt arch dirs."""
+    if path.endswith(".md"):
+        return True
+    components = path.split("/")
+    return (
+        len(components) > 2
+        and components[0] == "arch"
+        and components[1].split("-", 1)[0] in UNBUILT_ARCH_CPUS
+    )
+
+
+def _is_draft(payload: dict[str, object] | None) -> bool:
+    if payload is None:
+        return False
+    pull_request = payload.get("pull_request")
+    return isinstance(pull_request, dict) and pull_request.get("draft") is True
+
+
+def _scope(
+    event_name: str,
+    env: Mapping[str, str],
+    changed_paths: list[str] | None,
+    reliable_history: bool,
+    payload: dict[str, object] | None,
+) -> str:
+    """Which part of the product matrix this run builds.
+
+    none          nothing: drafts, and changes no preset builds
+    pull-request  every preset on PULL_REQUEST_HOST
+    remaining     every preset on the other hosts, after the merge
+    full          every preset on every host
+    """
+    if event_name == "pull_request" and _is_draft(payload):
+        return "none"
+    if not reliable_history or not changed_paths:
+        return "full"
+
+    if event_name == "pull_request":
+        if all(_is_unbuilt_path(path) for path in changed_paths):
+            return "none"
+        if any(_is_build_host_path(path) for path in changed_paths):
+            return "full"
+        return "pull-request"
+
+    # A protected merge to main brings a pull request that was qualified on
+    # PULL_REQUEST_HOST, or on every host if it touched the build host.
+    if event_name == "push" and env.get("GITHUB_REF") == "refs/heads/main":
+        if all(_is_unbuilt_path(path) for path in changed_paths):
+            return "none"
+        if any(_is_build_host_path(path) for path in changed_paths):
+            return "none"
+        return "remaining"
+
+    return "full"
+
+
+def _product_matrix(scope: str) -> dict[str, list[dict[str, str]]]:
+    if scope == "none":
+        hosts = ()
+    elif scope == "pull-request":
+        hosts = tuple(host for host in PRODUCT_HOSTS if host[0] == PULL_REQUEST_HOST)
+    elif scope == "remaining":
+        hosts = tuple(host for host in PRODUCT_HOSTS if host[0] != PULL_REQUEST_HOST)
+    else:
+        hosts = PRODUCT_HOSTS
+    return {
+        "include": [
+            {"host": host, "runner": runner, "preset": preset}
+            for host, runner in hosts
+            for preset in PRODUCT_PRESETS
+        ]
+    }
+
+
+def _write_matrix_output(scope: str, env: Mapping[str, str]) -> bool:
+    matrix = json.dumps(_product_matrix(scope), separators=(",", ":"))
+    value = f"scope={scope}\nmatrix={matrix}\n"
     output_path = env.get("GITHUB_OUTPUT")
     if not output_path:
         sys.stdout.write(value)
@@ -215,24 +338,7 @@ def plan(env: Mapping[str, str] | None = None, cwd: Path | None = None) -> int:
     env = os.environ if env is None else env
     event_name = env.get("GITHUB_EVENT_NAME", "")
     changed_paths, reliable_history = _resolve_diff(event_name, env, cwd=cwd)
-
-    # A protected merge to main has already passed the PR qualification matrix.
-    # Require a reliable push range before applying that optimization.
-    if (
-        event_name == "push"
-        and env.get("GITHUB_REF") == "refs/heads/main"
-        and reliable_history
-    ):
-        full_matrix = False
-    elif (
-        event_name == "pull_request"
-        and reliable_history
-        and changed_paths
-        and all(path.endswith(".md") for path in changed_paths)
-    ):
-        full_matrix = False
-    else:
-        full_matrix = True
+    scope = _scope(event_name, env, changed_paths, reliable_history, _event_payload(env))
 
     if changed_paths is None:
         print("Could not determine changed paths from reliable Git history.", file=sys.stderr)
@@ -242,7 +348,7 @@ def plan(env: Mapping[str, str] | None = None, cwd: Path | None = None) -> int:
             print("Pull request history is uncertain; using the full matrix.", file=sys.stderr)
         _report_line_endings(changed_paths, cwd=cwd)
 
-    if not _write_matrix_output(full_matrix, env):
+    if not _write_matrix_output(scope, env):
         return 2
     return 0
 

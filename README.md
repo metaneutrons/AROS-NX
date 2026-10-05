@@ -61,7 +61,10 @@ for the separately qualified capabilities.
 The synchronization workflow runs daily and can also be requested manually.
 It opens a proposal; it does not merge unchecked changes. A clean Git merge is
 not enough: source changes and upstream syncs require the tools-based product
-matrix; Markdown-only changes receive lightweight checks. If upstream exposes
+matrix, in the pull request on Linux x86-64 and, for build-host changes, on
+every host, with the remaining hosts after the merge (see
+[Product CI](AROS-NX.md#product-ci)); Markdown-only changes and architectures
+without a preset receive lightweight checks. If upstream exposes
 a missing build capability, fix the generic tools
 implementation or the relevant source defect before accepting the update.
 
