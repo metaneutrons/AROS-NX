@@ -24905,7 +24905,8 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   full-screen 8-bit planar bitmap (614 KB) cannot be allocated. Options put
   to Fabian: a fixed `MEMF_CHIP` pool carved from PSRAM (recommended),
   `MEMF_CHIP` on all of PSRAM (both Wanderer figures would count it), or
-  no change.
+  no change. Decision (Fabian, 2026-10-05): no change for now; revisit when
+  a program fails for lack of `MEMF_CHIP`.
 
 ### 2026-10-05 - Prefs/Backlight gets its own icon
 
