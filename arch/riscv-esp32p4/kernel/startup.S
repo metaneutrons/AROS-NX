@@ -22,6 +22,7 @@
 	.globl	_start
 	.type	_start,%function
 
+#include <aros/config.h>
 #include "secondary_hw.h"
 
 _start:
