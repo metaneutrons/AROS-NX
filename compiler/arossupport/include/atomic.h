@@ -19,6 +19,14 @@
 #include <aros/aarch64/atomic.h>
 #elif defined(__mc68000)
 #include <aros/m68k/atomic.h>
+#elif defined(__riscv) && defined(__riscv_atomic)
+/* Only with the A extension (or Zaamo and Zalrsc): without it the
+   compiler would turn these into libatomic calls. */
+#if __riscv_xlen == 64
+#include <aros/riscv64/atomic.h>
+#else
+#include <aros/riscv/atomic.h>
+#endif
 #endif
 
 /* Porting to other archs? Just define your asm atomics as above... else deadlock below will hit you! */
