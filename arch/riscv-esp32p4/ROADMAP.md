@@ -150,7 +150,7 @@ gate: compensated output is not the native display contract.
 | S2 | `smp` build on one hart | `hardware verified (headless, JC1060P470C)` | Configure allows `smp` for esp32p4; platform layer in the port; boots on hart 0 with hart 1 in reset. The SMP build tree is set up here, because configure refuses `smp` for this target until then. |
 | S3 | Second hart online, idle | `hardware verified (headless, JC1060P470C)` | Hart 1 from the E1/E2 entry with its own ISR stack, CLIC/IPI, per-hart state, a tick and an idle task; parked for cache and flash windows. |
 | S4 | Scheduling on two harts | `hardware verified (headless, JC1060P470C)` | Evidence entry 2026-10-05: upstream's affinity model (the boot task bound to hart 0, children inherit; `TASKAFFINITY_ANY` tasks run on either hart), signals, `KrnScheduleCPU` and hart 1's tick through IPIs; the acceptance test `P4_S4_TEST=1` passes six of six boots, the plain core boots six times and runs ten minutes. Ordinary tasks stay on hart 0 until S5's serialization. |
-| S5 | SMP qualification | `not started` | Upstream SMP tests, sustained stress, device serialization, boot/visual/touch regressions on both boards with fresh readiness. |
+| S5 | SMP qualification | `hardware partial (headless, JC1060P470C)` | Evidence entry 2026-10-05: upstream's ten SMP tests pass on 6 of 6 boots and over a twenty-minute run of 200 tests, after three fixes (no dispatch fallback with an idle task per hart, preemption waits for task-held spinlocks, console and SYSTIMER serialized); the production core passes five boots and ten minutes. Open: visual/touch check with a fresh "bereit", the D1001. |
 | S6 | SMP default decision | `not started` | SMP or single hart as the P4 default; retires `giant-smp`. Replaces the former E4 row. |
 
 ## Track E: ESP32-P4 / RV32 SMP
@@ -25207,6 +25207,86 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   should show whether it is reachable.
 - Next safe step: S5, starting with upstream's SMP tests
   (`developer/debug/test/smp`) on the JC1060P470C.
+
+### 2026-10-05 - S5: upstream's SMP tests and a sustained run pass
+
+- State change: Track E S5 hardware verified headless on the JC1060P470C
+  (upstream's ten SMP tests, a twenty-minute sustained run, the production
+  core). Open in S5: the visual and touch check with a fresh "bereit", and
+  the D1001, whose tree still has to be rebuilt.
+- Method: a core with `P4_S5_RUNNER=1` starts, after the boot, the
+  programs listed in `FLASHDISK0P0:S5/tests` (SMP.md, "S5 so far"); the
+  development volume carries upstream's tests (`gmake test-smp` in the SMP
+  tree: ten programs, 530 KB, no warnings) and the list. Test cores are
+  built with `P4_S5_RUNNER=1 P4_CONSOLE_WAIT=1 P4_SPIN_WATCHDOG=1` on the
+  normal JC1060 flags. Test volume (`image/s5-tests`)
+  `7a8b6828911394c751c00f07e80516ad12bd9f5e72b80b7c2ba5f66ce8f31063`,
+  written to `0xc00000` after a MAC check, verified; the volume it
+  replaced, `5ba28135…`, is the same as the tree's image, kept in the
+  evidence directory.
+- First build: the link failed on the SRAM ceiling because the flag set
+  had reached make as one word (a zsh command line, which does not split
+  `$FL`); built again under bash. Not a code failure.
+- Run 1, core `a20ec38e…` (189,680 B, console line buffers, SYSTIMER
+  lock, runner), `e0528b82…`: SMP-Proc 2 PASS; SMP-Affinity phases 1 and 2
+  passed (inheritance, migration of a running task to hart 0 and back),
+  phase 3 (two tasks retargeting a running one 2,000 times each) hung. The
+  spinlock watchdog on hart 1: `TaskReadySpinLock` held for writing, the
+  task running on hart 1 named as holder and as the current task, hart 1
+  in `core_Schedule()` from the interrupt exit waiting for a read lock.
+  Cause: `core_Dispatch()`'s fallback to the outgoing task (SMP.md,
+  "Dispatch without a fallback"); the trace fits a task run on hart 0
+  while it was on the ready list, which hart 1 also took from there.
+- Run 2, core `7bef05a5…` (189,760 B, no fallback, idle task for hart 0),
+  `1a1f9610…`: Proc, Affinity 18 PASS, Preempt 2 PASS, Sched 3 PASS, Sem 3
+  PASS, Trace exact, DoIO 2 PASS, Stress (QUICK) 6 passed; SMP-Lists hung
+  in phase 1: `PortListSpinLock` held by one reader, `RemPort()` on hart 1
+  under `Forbid()` waiting to write. Cause: a `FindPort()` reader
+  preempted on hart 1 (SMP.md, "Preemption waits for task-held
+  spinlocks").
+- Run 3, core
+  `9ce81f4b04b3f75b7df271e578189c70df5e3c7041cba845b7acb7a35c95034b`
+  (190,080 B, preemption deferral), ten minutes,
+  `62a08bf1ebab31e138fee14f23834e1853279f214e27576b74f96127997b8997`:
+  "[smp-s5] done, 10 run, 0 not RETURN_OK": Proc 2, Affinity 18, Preempt
+  2 (of 2 CPUs), Sched 3, Sem 3 PASS, Trace 2000 of 2000, DoIO 2, Stress
+  6 passed, Lists 4, SigRace 137 PASS, no FAIL; then 119 heartbeats to the
+  end, no alert, no watchdog report. Five resets of 120 s each
+  (`679161ba…`, `16baec36…`, `a0a58255…`, `a8c6dfe8…`, `4ad92383…`): the
+  same results every time.
+- Sustained run: volume with `image/s5-stress` (all ten tests at full
+  counts, twenty rounds)
+  `161cc6092cf452f9738cdf63e990193a06b55f4d4144aba8690fac96f3479eb5`,
+  same core, twenty minutes,
+  `461508d32c4aa75e7a079374880c1624fa1b13c7cc9521b7f33f14f2dd6f4318`:
+  "done, 200 run, 0 not RETURN_OK", each test 20 of 20, SMP-Stress at full
+  counts 9.3 s a round, 239 heartbeats to the end, no FAIL, no alert, no
+  watchdog report.
+- Production core (normal JC1060 flags, no runner, no watchdog), 185,952
+  B `64d164ef0c18845dc201c8a87b3aa9e5e2f4277f72fb403ec5843b83dff1cf62`,
+  test volume `7a8b6828…` back at `0xc00000`, MAC checked, verified:
+  - first boot, 40 s, `b36b22bbaa1f2d958116cb1e10461752f2b792734288ee74de814e53dbbbe9a9`:
+    online, cpus 2, windows 1-3 parked, Wanderer, GT911, no alert;
+  - five resets, 40 s each (`94e14b19…`, `399c24e0…`, `466695e6…`,
+    `44e86169…`, `cc94e43b…`): every boot online, Wanderer, no refused
+    window, no alert; boot 4 lacks the line of window 2, lost to the
+    console, which drops when the host is slow after the boot;
+  - ten minutes,
+    `705cfaace5e16a144e5c89ceedc8d9be849f3c2de1adcb4a4159ff5c0d8b3ebf`:
+    online, windows 1-3 parked, Wanderer, GT911, 119 heartbeats to the
+    end, no alert.
+- Normal builds: the normal JC1060 core rebuilt from this tree is
+  byte-identical, `60d5f2b9…`.
+- Not covered: SMP-SigRace's third phase (a signal storm meant to empty
+  the call pool under `Disable()`) needs three CPUs and is skipped on two
+  harts, so the pool-exhaustion deadlock in the S4 limits is still
+  untested; SMP-Sched's unpinned workers inherit hart 0 and do not
+  migrate, which the test reports and does not fail. Ordinary tasks still
+  run on hart 0 only, so the device drivers that guard with `Disable()`
+  (SD, display, touch) are not called from hart 1; sdcard.device and the
+  I2C transport read the SYSTIMER snapshot without the kernel's lock.
+- Next safe step: the visual and touch check on the JC1060P470C with a
+  fresh "bereit"; S6.
 
 ## Evidence-entry template
 

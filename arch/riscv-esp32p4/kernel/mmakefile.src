@@ -982,6 +982,12 @@ ifdef P4_S4_TEST
 P4_DEBUG_CPPFLAGS += -DP4_S4_TEST
 endif
 
+# P4_S5_RUNNER=1 (smp variant): after the boot, run the programs listed in
+# FLASHDISK0P0:S5/tests (a development volume built with P4_S5_TESTS=1).
+ifdef P4_S5_RUNNER
+P4_DEBUG_CPPFLAGS += -DP4_S5_RUNNER
+endif
+
 # P4_CONSOLE_WAIT=1: keep the console waiting for the host after the boot
 # instead of dropping, for captures that must be complete. Slows everything
 # that prints.
@@ -1103,7 +1109,8 @@ CFILES += \
         kernel_execsmp \
         kernel_smp \
         schedulecpu \
-        kernel_smptest
+        kernel_smptest \
+        kernel_smprunner
 AFILES += secondary_smp
 endif
 

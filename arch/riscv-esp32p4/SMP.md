@@ -141,6 +141,9 @@ start, belongs in `arch/riscv-esp32p4`.
   sustained stress run, serialization of SD, console, timer and graphics, and
   boot, visual and touch regressions on both boards, each visual test with a
   fresh "bereit".
+  Status 2026-10-05: upstream's ten tests and a twenty-minute sustained run
+  pass headless on the JC1060P470C after three fixes ("S5 so far" below);
+  the visual and touch check and the D1001 are open.
 - **S6 Default decision.** SMP or single hart as the P4 default; the Giant
   branch is retired then.
 
@@ -299,14 +302,67 @@ hart 0 and idles in `cpu_Dispatch()` as before.
   where each bound task ended. It waits by polling with a ten-second
   bound, so a lost wakeup reports instead of hanging.
 
+### S5 so far: upstream's tests and what they found (2026-10-05)
+
+- Runner (`P4_S5_RUNNER=1`, `kernel/kernel_smprunner.c`): an after-DOS
+  resident starts a process with a CLI structure, which waits 20 seconds
+  for the boot to settle and then runs the programs listed in
+  `FLASHDISK0P0:S5/tests` with `RunCommand()`, one line of the console
+  each with return code and duration. The development volume carries the
+  tests and the list (`image/mmakefile.src`, `P4_S5_TESTS=1`, list
+  `image/s5-tests` or `P4_S5_LIST`), so a new list needs only a new
+  volume at `0xc00000`, never a new card. Upstream's tests print through
+  `bug()`, which is the console.
+- Console (`kernel/kernel_console.c`): each hart assembles its line in a
+  buffer of its own, and a finished line goes out whole under a lock
+  taken with interrupts masked; the lock records its holder, so a fault
+  inside the output does not wait for itself, and the wait is bounded.
+  `P4_CONSOLE_WAIT=1` keeps the console waiting for the host after the
+  boot, for complete captures. Normal builds are unchanged.
+- SYSTIMER snapshot (`kernel/kernel_timer.c`): `krnTimerCount()` runs its
+  request and two reads under a lock with interrupts masked. sdcard.device
+  and the I2C transport read the snapshot registers themselves (a package
+  module cannot call the kernel function) and stay unserialized; under the
+  affinity model they run on hart 0 only.
+- Dispatch without a fallback (`kernel/kernel_scheduler.c`): aarch64's
+  `core_Dispatch()` resumes the outgoing task when the ready list has
+  nothing for this hart. With two harts that task is on the ready list
+  already (and was not found because its new mask excludes this hart), or
+  waiting, removed, or, through a pointer left from an earlier pass,
+  running on the other hart. SMP-Affinity's third phase (two tasks
+  retargeting a running one 2,000 times each) hung on the scheduler's
+  ready-list lock, with the trace of the first case: the task running on
+  hart 0 while still on the ready list, where hart 1 found it too. The
+  fallback is gone; hart 0 has an idle task now, "CPU #00 Idle" at -127
+  (`exec_smp.c`, as aarch64-native creates one per CPU), so the scan
+  always finds a task. Upstream's aarch64-native has the same fallback.
+- Preemption waits for task-held spinlocks (`kernel/tls.h`,
+  `spinlock.c`, `spinunlock.c`, `kernel_intr.c`): exec takes several
+  spinlocks in task context without blocking dispatch (`FindPort()` and
+  `FindSemaphore()` take their list's lock for reading). A task preempted
+  holding one leaves any task on the same hart that waits for the lock
+  under `Forbid()` spinning for good. SMP-Lists hit it: a `FindPort()`
+  reader preempted on hart 1, `RemPort()` on hart 1 under `Forbid()`
+  waiting for the write lock. Each hart now counts the spinlocks the
+  running task took with interrupts enabled; while the count is not zero,
+  an interrupt leaves the switch pending and `KrnSchedule()` defers it,
+  and the unlock that ends the count asks for it. Locks taken under
+  `Disable()` are not counted (nothing preempts their holder), which
+  keeps `Wait()`, whose `tc_SpinLock` is released in `cpu_Switch()`, out
+  of it. `TDNestCnt` is untouched. A task that gives up the hart holding a
+  counted lock (a `Wait()` inside it) loses the count in `cpu_Dispatch()`,
+  so the next task stays preemptible. Upstream's aarch64-native has the
+  same exposure; all-pc has a separate path for a waiting task (TS_SPIN),
+  not examined here.
+
 Open points:
 
 - Native atomics on cached PSRAM hold on the JC1060P470C (S1); the D1001 has
   not run S1.
-- Which of the generic gaps above actually affect the P4: S4 hit none of
-  them, but its test does not remove a task running on the other hart and
-  does not use task.resource or `ChildStatus()`. Upstream's SMP tests (S5)
-  should.
+- Which of the generic gaps above actually affect the P4: upstream's tests
+  (S5) remove tasks that other harts signal (SMP-SigRace) and use
+  task.resource (SMP-Affinity) and pass; none of them removes a task while
+  it runs on the other hart, and none calls `ChildStatus()`.
 - Hart 1 takes its tick from hart 0 through the inter-hart interrupt (S4);
   its own SYSTIMER alarm stays an option if the forwarding proves too
   coarse.
@@ -315,8 +371,13 @@ Open points:
   drains only under `Disable()`); two harts doing so towards each other at
   once would deadlock. It needs 64 calls pending on each side. Draining
   there as well would nest the drain inside the drain's own hook and needs
-  a design of its own; S5 stress should show whether the case is
-  reachable.
+  a design of its own. Upstream's test for it (SMP-SigRace, third phase)
+  needs three CPUs and is skipped here, and the sustained run did not hit
+  it; it stays open.
+- Ordinary tasks run on hart 0 only (the affinity model, S4). Moving them
+  freely needs the drivers that guard with `Disable()` (SD, display,
+  touch), the ROM cache routines and the package modules' SYSTIMER reads
+  serialized across harts.
 - How much of `arch/riscv-native` can be reused is unclear; it is incomplete
   and oriented to supervisor mode.
 

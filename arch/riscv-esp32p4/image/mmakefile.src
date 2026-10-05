@@ -208,8 +208,12 @@ write-flash $(FLASHDISK_OFFSET) $(FLASHDISK)"
 #   D1001's GSL3670 falls back to FLASHDISK0P0:Firmware/silead), the target
 #   refuses to build without P4_GSL_FW_BINARY, so writing the volume cannot
 #   remove the firmware.
+#   P4_S5_TESTS=1 (smp tree, after `make test-smp`) adds upstream's SMP
+#   tests in S5/ with a list, s5-tests unless P4_S5_LIST names another
+#   (s5-stress), which the P4_S5_RUNNER core runs after the boot.
 #
 DEVSTAGE  := $(GENDIR)/$(CURDIR)/devstage
+P4_S5_LIST ?= $(SRCDIR)/$(CURDIR)/s5-tests
 DEVVOLUME := $(IMAGEDIR)/aros-devvolume.img
 
 #MM kernel-devvolume-esp32p4-riscv : workbench-prefs-touchscreen
@@ -228,6 +232,11 @@ kernel-devvolume-esp32p4-riscv :
 	    $(MKDIR) -p $(DEVSTAGE)/Firmware/silead ; \
 	    $(CP) "$(P4_GSL_FW_BINARY)" \
 	        $(DEVSTAGE)/Firmware/silead/$(P4_BOARD_TOUCH_FW_FILENAME) ; \
+	fi
+	@if $(TEST) -n "$(P4_S5_TESTS)" ; then \
+	    $(MKDIR) -p $(DEVSTAGE)/S5 ; \
+	    $(CP) $(AROS_TESTS)/smp/SMP-* $(DEVSTAGE)/S5/ || exit 1 ; \
+	    $(CP) $(P4_S5_LIST) $(DEVSTAGE)/S5/tests || exit 1 ; \
 	fi
 	@$(ECHO) "Creating   $(DEVVOLUME)"
 	@$(PYTHON) $(MKFAT32) --content $(DEVSTAGE) --out $(DEVVOLUME) \
