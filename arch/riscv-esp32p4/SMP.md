@@ -100,9 +100,11 @@ start, belongs in `arch/riscv-esp32p4`.
   the work starts on Kopperud's SMP code. Single-hart builds of both boards
   boot; JC1060P470C visual and touch check with a fresh "bereit". Status
   2026-10-05: rebased onto `5da9fd5072`; the JC1060P470C passes, visual and
-  touch check included (ROADMAP, S0 entries). Open: D1001, the A1 recovery
-  retest. The SMP build tree moved to S2: configure refuses `smp` for this
-  target until S2 changes it.
+  touch check included (ROADMAP, S0 entries). The A1 recovery retest is not
+  needed: the upstream change it was meant to cover cannot be reached on the
+  P4 (ROADMAP, 2026-10-05). Open: D1001 (artifacts built). The SMP build
+  tree moved to S2: configure refuses `smp` for this target until S2
+  changes it.
 - **S1 Atomics on PSRAM.** Qualify native AMO and LR/SC on cached PSRAM across
   both harts on hardware, including the 8/16-bit sequences GCC generates, and
   check them against the LR/SC rule. If they hold, change 2 above suffices.

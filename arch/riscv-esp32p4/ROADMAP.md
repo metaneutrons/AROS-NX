@@ -145,7 +145,7 @@ gate: compensated output is not the native display contract.
 | E2 | Two-hart atomics, coherence and IPI primitives | `hardware verified; complete` | Exact219,776-byte core08 passes five ordinary headless captures/ten reset-separated epochs:650 SRAM+660 PSRAM exchanges,120 refusals,163,840 updates per AMO/CAS/lock counter with measured contention, bidirectional software IPI, remote code37/53, missing-park refusal and ten cache suspend/resume windows. Secondary reset/clock stop confirmed every exit; full221,184-byte normal range restored/verified and headless baseline boots. Atomics qualify internal SRAM only; Exec SMP/default changes wait for E3. |
 | E3 | Experimental fine-grained RV32/P4 Exec SMP (E3-RT to E3-RM) | `retired on this branch` | Kept on branch `e3-smp` (`14f0290e21`), not part of `feat/riscv32-esp32p4-v3`. Its 28 sub-rows and the E3-RM lifetime notes are in that branch's roadmap; its evidence entries remain in the log below. |
 | E3-GT | Transitional Giant Exec SMP (`P4_GIANT=1`) | `retired on this branch` | Kept on branch `giant-smp` (`ff3395ba7f`), where it is hardware partial (headless stress, visual and touch passed with the test define). Reference for S3/S4, not the base. |
-| S0 | Base on current upstream | `hardware partial (JC1060P470C passed)` | Evidence entries 2026-10-04/05: rebased onto `5da9fd5072`, fresh tree, JC1060P470C headless boot and visual/touch/Backlight check pass. Open: D1001; the A1 recovery retest after the rebase took upstream's `sdcard_ioops.c`. |
+| S0 | Base on current upstream | `hardware partial (JC1060P470C passed)` | Evidence entries 2026-10-04/05: rebased onto `5da9fd5072`, fresh tree, JC1060P470C headless boot and visual/touch/Backlight check pass; the A1 retest is not needed (the upstream change cannot be reached on the P4). Open: the D1001 run; its artifacts are built. |
 | S1 | Native atomics on cached PSRAM across both harts | `not started` | SMP.md, Stages: AMO and LR/SC including GCC's sub-word sequences, against the E2 LR/SC rule. Decides whether a RISC-V branch in `atomic.h` suffices. |
 | S2 | `smp` build on one hart | `not started` | Configure allows `smp` for esp32p4; platform layer in the port; boots on hart 0 with hart 1 in reset. The SMP build tree is set up here, because configure refuses `smp` for this target until then. |
 | S3 | Second hart online, idle | `not started` | Hart 1 from the E1/E2 entry with its own ISR stack, CLIC/IPI, per-hart state, a tick and an idle task; parked for cache and flash windows. |
@@ -24849,6 +24849,42 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   written to the card and not yet seen on the panel.
 - Next safe step: write the card, then a look at the icon with Fabian's
   readiness.
+
+### 2026-10-05 - S0: the A1 retest is not needed; D1001 artifacts built
+
+- State change: S0's A1 item closed by source analysis; the D1001 run stays
+  open (board not connected).
+- The rebase replaced our `rom/devs/sdcard/sdcard_ioops.c` with upstream's
+  (`4f6e4f50b0`). The only difference in behaviour is a CMD12 after a
+  failed data wait: ours sent one, upstream's sends none. On the P4 that
+  branch cannot be reached. `SendCmd` completes the whole transfer
+  synchronously and the backend's `WaitCmd` always returns 0
+  (`arch/riscv-esp32p4/sdcard/sdcard_esp32p4_bus.c`, `WaitCmd`). Injected
+  faults make `SendCmd` fail, which takes the same "Error .." branch in
+  both versions, and the backend runs its own CMD12/CMD13 recovery
+  (`p4sd_recover_multiblock`), which the rebase did not touch. So the P4's
+  SD path is unchanged and the A1 hardware retest is not needed for it.
+- Consequence for the A1 gate text: "generic cleanup attempts CMD12 after
+  every accepted CMD18" no longer holds in the generic layer. That matters
+  for asynchronous backends whose `WaitCmd` can fail; it is a question for
+  upstream, not for the P4.
+- A full A1 rerun as recorded is not possible at present: the matrix only
+  runs in a package without `dosboot.resource`, for which there is no
+  recipe, and its reference hashes belong to a card whose identity was not
+  recorded; the card now in use has had its first 64 MiB rewritten several
+  times. Known gap, not addressed.
+- D1001 (dedicated tree `AROS-ESP32-v3-d1001-build`, toolchain reused from
+  the v3 tree, normal flags with `P4_BOARD=d1001`): core 170,736 B
+  `c2d51ba07ae1f2a3c149cf1e684b73a6e2954de3dcb59469ee0b223fb92b84e8`,
+  package 3,735,616 of 4,063,232 B
+  `d2c8cef9b37002474dcfa67ccc2869be7bbfe31048bf9c2c7a3bc93518fc4a66`
+  (audit 0 failed), card image 67,108,864 B, 178 entries,
+  `dab862b27285c5b1003e80289badd983c9b0fb352176c981c45b9b5d813d8a55`
+  (`verify-image.sh` matches). The GSL firmware stays on the board's flash
+  volume. Not written: the board is not connected, and its SD card is in
+  the JC1060P470C.
+- Next safe step: when the D1001 is connected, core, package and a card,
+  then boot and the visual and touch check with Fabian's readiness.
 
 ## Evidence-entry template
 
