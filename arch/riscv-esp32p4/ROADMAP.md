@@ -231,8 +231,8 @@ selected in a build or executed on hart1, and cache/XIP qualification stays open
 
 Status 2026-10-04: this branch (`feat/riscv32-esp32p4-v3`) runs on one hart.
 It was rebuilt from upstream `44336e404a` without E3 and without the Giant
-and then rebased onto upstream `5da9fd5072`; S0 passed headless on the
-JC1060P470C (visual check, card and D1001 open);
+and then rebased onto upstream `5da9fd5072`; S0 passed on the JC1060P470C
+including the visual and touch check (D1001 open);
 both are kept on local branches (`e3-smp`, `giant-smp`). E0-E2 stay. The next
 step is AROS's own SMP (the `smp` build variant) with as few changes outside
 the port as possible; see SMP.md, "Current plan", stages S0-S6. The history
@@ -24834,6 +24834,48 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next safe step: write the card with the new image, boot, then the visual,
   touch and Backlight check with Fabian's readiness; the A1 recovery test;
   the D1001 when connected.
+
+### 2026-10-05 - S0: new card; visual, touch and Backlight check passes on v3
+
+- State change: Track E S0 accepted on the JC1060P470C. D2/J5 brightness
+  accepted on the panel. Open for S0: the D1001 and the SMP build tree.
+- Card: the v2 card (`AROSP4TEST`, `/dev/disk20`, 127,865,454,592 B) was
+  identified by size and content and unmounted. Its first 64 MiB were backed
+  up (`403c1505ef8eed575198aa4d2cb96ce85568c8b343bfbf4b3ea9744e17ad0ee7`;
+  not the v2 image hash, because macOS created `.fseventsd` when it mounted
+  the card). `write-image-eject` with the capacity guard then wrote image
+  `6c4a42e3…`, compared every byte read back and ejected: "wrote, verified
+  and ejected 67108864 bytes on 127865454592-byte device". Fabian ran the
+  script (`write-card.sh` in the evidence directory) with sudo.
+- Headless boot, 90 s,
+  `7579f350c016d8a285e4f22019000b8f9dbf7d9cc0255e9150e502456b356232`: boot
+  from `SDCARD0P0`, Startup-Sequence with `C:Copy` and IPrefs, GT911 at
+  0x5D, Wanderer, 17 heartbeats, no alert.
+- Interactive run after Fabian's "bereit", 600 s,
+  `20d8141ac12f0fc66a210622ef4fcba8ed93d64bf4cac44044547cb23dfdc53b`.
+  Fabian: boot picture and Wanderer correct, tapping and window dragging
+  work, `Prefs/Backlight` changes the brightness live, Use keeps the level,
+  Cancel restores it, Save reports the read-only `ENVARC:`,
+  `Prefs/Touchscreen` opens and closes; "everything works". The log agrees:
+  no alert; the editor loads from `Arosp4test:Prefs`; Use creates
+  `ENV:Sys` and writes the IFF file; Save does `Lock`/`Info` on `ENVARC:`
+  and writes nothing; the touch editor reads `ENV:Sys/touchscreen.prefs`;
+  touch events up to driver number 151.
+- Not shown by the log: IPrefs reading the file after Use. The serial
+  output drops characters and whole lines under load (34 of 151 touch
+  events are logged), so a missing line is no evidence either way. The
+  editor sets the level itself, so the panel cannot tell either.
+- Observed by Fabian: Wanderer reports 377K "Graphics" and 379K "Other"
+  memory. These are `AvailMem(MEMF_CHIP)` and `AvailMem(MEMF_FAST)`. The
+  PSRAM header carries neither flag (deliberately since `cbe6d4dcf2`, when
+  the PSRAM ran at 20 MHz), so the free PSRAM is in neither figure, and an
+  explicit `MEMF_FAST` request can only get internal SRAM. Every other AROS
+  port marks its general RAM `MEMF_FAST`. Proposed: add `MEMF_FAST` to the
+  PSRAM header and keep priority -20; awaiting Fabian's decision.
+- Requested by Fabian: a sun-on-a-display icon for `Prefs/Backlight`
+  instead of the borrowed ScreenMode icon; a draft is with him.
+- Next safe step: the `MEMF_FAST` change and the icon if approved; the A1
+  recovery test; the D1001 when connected; then S1.
 
 ## Evidence-entry template
 
