@@ -1,6 +1,6 @@
 
 include $(SRCDIR)/config/aros.cfg
-include $(SRCDIR)/workbench/libs/mesa/mesa.cfg
+include $(SRCDIR)/$(CURDIR)/../../../../libs/mesa/mesa.cfg
 
 CUR_MESADIR = src/gallium
 CUR_GALLIUMDIR = drivers/i915
@@ -65,5 +65,7 @@ USER_CFLAGS += $(NOWARN_FLAGS)
 #MM intelgma-linklibs-gallium_i915 : mesa3dgl-linklibs
 
 %build_linklib mmake=intelgma-linklibs-gallium_i915 libname=gallium_i915 libdir=$(top_libdir) objdir=$(top_builddir)/$(CUR_MESADIR)/$(CUR_GALLIUMDIR) files="$(I915_SOURCES)"
+
+#MM intelgma-linklibs-gallium_i915 : mesa3d-fetch
 
 %common

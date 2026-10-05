@@ -1,0 +1,59 @@
+Vendored subset of Boost 1.89.0
+===============================
+
+Why this exists
+---------------
+
+compiler/include/aros/preprocessor/ includes Boost unconditionally, and
+inline/posixc.h reaches it, so any C source that touches proto/posixc.h needs
+Boost headers present in the SDK. Nine AROS SDK headers use 23 distinct
+BOOST_PP_* macros, including BOOST_PP_REPEAT, BOOST_PP_EQUAL, BOOST_PP_DIV,
+BOOST_PP_MUL, BOOST_PP_ARRAY_* and BOOST_PP_TUPLE_ENUM.
+
+The relocatable toolchain producer builds offline from a verified source set,
+and ports-includes is deliberately outside its dependency closure, so the
+fetched Boost Port in ../mmakefile.src is unavailable there. Without these
+headers the produced package ships a Developer/include whose own headers do
+not compile.
+
+The full 1.89.0 source archive is 190099283 bytes for what amounts to two
+header directories, which is why the subset is carried here instead.
+
+Provenance
+----------
+
+Two of Boost's own modular libraries, at the 1.89.0 release tag, unmodified:
+
+  boost/preprocessor, boost/preprocessor.hpp
+      https://github.com/boostorg/preprocessor  tag boost-1.89.0
+      archive sha256 53de1b2e64706b73903d9f3957525fa8fa620445ec0d596aa6fb8335af6f45c0
+      taken from include/boost/ in that archive
+
+  boost/config, boost/config.hpp, boost/cstdint.hpp,
+  boost/cxx11_char_types.hpp, boost/limits.hpp, boost/version.hpp,
+  boost/detail
+      https://github.com/boostorg/config  tag boost-1.89.0
+      archive sha256 a16a53f8f0dde2a9ff485fb134a069e54aca738009d825837dac9a35cd4afe0a
+      taken from include/boost/ in that archive
+
+The checksums record what was taken. They are not a build-time pin: GitHub
+generates those archives on demand and does not guarantee their bytes over
+time, which is one reason the headers are carried here rather than fetched.
+
+Both libraries are kept whole. 301 of the 498 files are reachable from the
+AROS SDK headers today; pruning to those would need redoing whenever an AROS
+header starts using another macro.
+
+Updating
+--------
+
+Replace boost/preprocessor and boost/config from the same tag of both
+repositories, keep the version in ../mmakefile.src (BOOSTVERSION) in step, and
+re-run the closure check: every boost/... include reachable from
+compiler/include/aros/ must resolve inside this directory.
+
+Licence
+-------
+
+Boost Software License 1.0, see LICENSE_1_0.txt. Every header carries its own
+notice.

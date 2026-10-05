@@ -40,7 +40,7 @@
     usecflags=yes extracflags= \
     usecxxflags=yes extracxxflags= \
     extraldflags= useldlinker=no \
-    usecrosstoolsdir=yes
+    usecrosstoolsdir=yes metadeps="setup includes core-linklibs"
 
 ifneq (%(prefix),)
     %(mmake)-prefix          := %(prefix)
@@ -148,7 +148,7 @@ endif
 
 .PHONY : %(mmake) %(mmake)-clean %(mmake)-build_and_install-quick
 
-#MM- %(mmake): setup includes core-linklibs %(mmake)-quick
+#MM- %(mmake): %(metadeps) %(mmake)-quick
 
 #MM- %(mmake)-quick : %(mmake)-cmake %(mmake)-build_and_install-quick
 

@@ -51,28 +51,15 @@ USER_CPPFLAGS += \
 USER_CFLAGS += $(NOWARN_FLAGS)
 USER_CXXFLAGS += $(NOWARN_FLAGS)
 
-ifeq ($(AROS_TARGET_CPU),x86_64)
+ifneq ($(filter x86_64 aarch64,$(AROS_TARGET_CPU)),)
 MESA_PTR_SIZE := 8
 else
 MESA_PTR_SIZE := 4
 endif
 
 ifeq ($(MESA_MESA_LAYOUT),new)
-MESA_GENERATED_C_SOURCES := \
-            main/api_exec_init.c \
-            main/enums.c \
-            main/format_fallback.c \
-            main/unmarshal_table.c \
-            main/marshal_generated0.c \
-            main/marshal_generated1.c \
-            main/marshal_generated2.c \
-            main/marshal_generated3.c \
-            main/marshal_generated4.c \
-            main/marshal_generated5.c \
-            main/marshal_generated6.c \
-            main/marshal_generated7.c \
-            program/program_parse.tab.c \
-            program/lex.yy.c
+include $(SRCDIR)/$(CURDIR)/mesa-26.0.0.sources
+MESA_GENERATED_C_SOURCES := $(MESA26_CORE_GENERATED_C_SOURCES)
 else
 MESA_GENERATED_C_SOURCES := \
             main/api_exec.c \
@@ -120,19 +107,8 @@ MESA3D_GALLIUM_ASM_SOURCES := $(filter %.S, $(X86_64_FILES))
 MESA3D_GALLIUM_C_SOURCES += $(filter x86-64/%.c, $(ASM_C_FILES))
 endif
 else
-MESA3D_GALLIUM_C_SOURCES := $(patsubst $(top_srcdir)/$(CUR_MESADIR)/%,%,$(wildcard \
-            $(top_srcdir)/$(CUR_MESADIR)/main/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/math/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/program/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/state_tracker/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/vbo/*.c))
-MESA3D_GALLIUM_C_SOURCES := $(filter-out \
-            main/sse_minmax.c \
-            program/dummy_errors.c, \
-            $(MESA3D_GALLIUM_C_SOURCES))
-MESA3D_GALLIUM_CXX_SOURCES := $(patsubst $(top_srcdir)/$(CUR_MESADIR)/%,%,$(wildcard \
-            $(top_srcdir)/$(CUR_MESADIR)/main/*.cpp \
-            $(top_srcdir)/$(CUR_MESADIR)/state_tracker/*.cpp))
+MESA3D_GALLIUM_C_SOURCES := $(MESA26_CORE_STATIC_C_SOURCES)
+MESA3D_GALLIUM_CXX_SOURCES := $(MESA26_CORE_STATIC_CXX_SOURCES)
 MESA3D_GALLIUM_ASM_SOURCES :=
 endif
 
@@ -425,19 +401,19 @@ MESA3DGL_MESA_GENERATED_C_HEADERS := \
 endif
 
 MESA3DGL_MESA_C_SOURCES := \
-            $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_C_SOURCES))) \
+            $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_C_SOURCES)) \
             $(MESA3DGL_MESA_GENERATED_C_SOURCES)
 MESA3DGL_MESA_C_SOURCES += $(SRCDIR)/$(CURDIR)/mesa_sse_minmax_fallback.c
 
 MESA3DGL_MESA_SOURCES_C := $(MESA3DGL_MESA_C_SOURCES:.c=)
 
 MESA3DGL_MESA_CXX_SOURCES := \
-            $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_CXX_SOURCES)))
+            $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_CXX_SOURCES))
 
 MESA3DGL_MESA_SOURCES_CXX := $(MESA3DGL_MESA_CXX_SOURCES:.cpp=)
 
 MESA3DGL_MESA_ASM_SOURCES := \
-            $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_ASM_SOURCES)))
+            $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_ASM_SOURCES))
 MESA3DGL_MESA_SOURCES_ASM := $(MESA3DGL_MESA_ASM_SOURCES:.S=)
 
 #MM
@@ -456,8 +432,10 @@ TARGET_ISA_CXXFLAGS += -msse4.1
 endif
 
 MESA3DGL_MESA_SSE41_SOURCES := \
-            $(wildcard $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_SSE41_SOURCES)))
+            $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3D_GALLIUM_SSE41_SOURCES))
 MESA3DGL_MESA_SOURCES_SSE41 := $(MESA3DGL_MESA_SSE41_SOURCES:.c=)
+
+#MM mesa3d-linklib-mesa-sse41 : mesa3d-fetch
 
 %build_linklib mmake=mesa3d-linklib-mesa-sse41 libname=mesa-sse41 libdir="$(top_libdir)" objdir="$(top_builddir)/$(CUR_MESADIR)" files="$(MESA3DGL_MESA_SOURCES_SSE41)"
 

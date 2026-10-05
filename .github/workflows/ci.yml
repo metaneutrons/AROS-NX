@@ -1,0 +1,168 @@
+name: AROS-NX CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aros-nx-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Plan CI and report source hygiene
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      full_matrix: ${{ steps.plan.outputs.full_matrix }}
+    steps:
+      - name: Checkout AROS-NX with comparison history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test CI contracts
+        run: python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
+      - name: Select product qualification and report line endings
+        id: plan
+        run: python3 scripts/ci/ci_hygiene.py plan
+
+  windows-paths:
+    name: Check Windows-compatible filenames
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout AROS-NX
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Check all tracked path components
+        run: python3 scripts/ci/ci_hygiene.py paths
+
+  sources:
+    name: Prepare locked product sources
+    needs: plan
+    if: needs.plan.outputs.full_matrix == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout AROS-NX
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install the hash-pinned aros-tools release
+        run: bash scripts/ci/install-aros-tools.sh "$RUNNER_TEMP/aros-tools-runtime"
+      - name: Validate the closed source contract
+        run: python3 scripts/ci/locked_product_sources.py validate
+      - name: Fetch and verify locked product sources once
+        run: |
+          mkdir -p "$RUNNER_TEMP/aros-source-cache"
+          source_cache=$(realpath "$RUNNER_TEMP/aros-source-cache")
+          aros cache sources fetch \
+            --source-fetch-plan scripts/ci/product-sources.plan.json \
+            --dir "$source_cache"
+          aros cache sources verify \
+            --source-fetch-plan scripts/ci/product-sources.plan.json \
+            --dir "$source_cache"
+          python3 scripts/ci/locked_product_sources.py export \
+            --cache "$source_cache" \
+            --output "$RUNNER_TEMP/aros-source-inputs"
+      - name: Share the verified closed source cache
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: locked-product-sources
+          path: ${{ runner.temp }}/aros-source-inputs/*
+          if-no-files-found: error
+          retention-days: 1
+
+  product:
+    name: ${{ matrix.preset }} on ${{ matrix.host }}
+    needs: [plan, sources]
+    if: needs.plan.outputs.full_matrix == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { host: linux-x86_64, runner: ubuntu-24.04, preset: pc-x86_64 }
+          - { host: linux-x86_64, runner: ubuntu-24.04, preset: arm-raspi }
+          - { host: linux-x86_64, runner: ubuntu-24.04, preset: rpi-aarch64 }
+          - { host: linux-aarch64, runner: ubuntu-24.04-arm, preset: pc-x86_64 }
+          - { host: linux-aarch64, runner: ubuntu-24.04-arm, preset: arm-raspi }
+          - { host: linux-aarch64, runner: ubuntu-24.04-arm, preset: rpi-aarch64 }
+          # Intel macOS is suspended until a separately qualified release target exists.
+          - { host: macos-aarch64, runner: macos-15, preset: pc-x86_64 }
+          - { host: macos-aarch64, runner: macos-15, preset: arm-raspi }
+          - { host: macos-aarch64, runner: macos-15, preset: rpi-aarch64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    steps:
+      - name: Checkout AROS-NX
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Checkout the exact released aros-tools engine for its contract test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: metaneutrons/aros-tools
+          ref: b399c714560e6629b4084290ce5575513521c8e3
+          path: dependencies/aros-tools
+          persist-credentials: false
+      - name: Install audited build prerequisites
+        run: bash scripts/ci/install-build-prerequisites.sh
+      - name: Install the hash-pinned aros-tools release
+        run: bash scripts/ci/install-aros-tools.sh "$RUNNER_TEMP/aros-tools-runtime"
+      - name: Verify companion generated-header ordering in the released engine
+        env:
+          AROS_TEST_SOURCE_ROOT: ${{ github.workspace }}
+        run: |
+          AROS_TEST_TOOLS_DIR="$AROS_TOOLS_BIN" cmake -P \
+            dependencies/aros-tools/crates/aros-cmake-engine/engine/tests/HostGeneratedHeaderDependencyTest.cmake
+      - name: Download the verified source cache
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v7.0.1
+        with:
+          name: locked-product-sources
+          path: ${{ runner.temp }}/aros-source-inputs
+      - name: Verify and stage every locked source before configuration
+        run: >-
+          python3 scripts/ci/locked_product_sources.py stage
+          --cache "$RUNNER_TEMP/aros-source-inputs"
+          --build-root 'build/${{ matrix.preset }}'
+      - name: Build through the public aros frontend and published lock
+        run: aros build --preset '${{ matrix.preset }}'
+
+  result:
+    name: CI Success
+    if: always()
+    needs: [plan, windows-paths, sources, product]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PLAN_RESULT: ${{ needs.plan.result }}
+      WINDOWS_RESULT: ${{ needs.windows-paths.result }}
+      FULL_MATRIX: ${{ needs.plan.outputs.full_matrix }}
+      SOURCES_RESULT: ${{ needs.sources.result }}
+      PRODUCT_RESULT: ${{ needs.product.result }}
+    steps:
+      - name: Require all selected gates to pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PLAN_RESULT" = success
+          test "$WINDOWS_RESULT" = success
+          if [[ "$FULL_MATRIX" == true ]]; then
+            test "$SOURCES_RESULT" = success
+            test "$PRODUCT_RESULT" = success
+          elif [[ "$FULL_MATRIX" == false ]]; then
+            test "$SOURCES_RESULT" = skipped
+            test "$PRODUCT_RESULT" = skipped
+          else
+            echo 'Missing or invalid CI plan output' >&2
+            exit 1
+          fi

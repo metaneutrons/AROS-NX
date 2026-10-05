@@ -1,6 +1,6 @@
 
 include $(SRCDIR)/config/aros.cfg
-include $(SRCDIR)/workbench/libs/mesa/mesa.cfg
+include $(SRCDIR)/$(CURDIR)/../../../libs/mesa/mesa.cfg
 
 ifneq ($(AROS_TARGET_ARCH),pc)
 EXEDIR := $(AROSDIR)/Storage/Monitors

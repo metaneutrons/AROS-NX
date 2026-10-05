@@ -219,9 +219,12 @@ LLVM_NO_PROBE_LIBS := \
     -DHAVE_LIBDL:INTERNAL=0 \
     -DHAVE_LIBRT:INTERNAL=0
 
+# Gallivm's C++ memory manager and object cache derive from LLVM classes.
+# Their target-side bases must supply genuine RTTI objects, not local stubs.
 LLVM_TARGET_CMAKEOPTIONS := \
     $(LLVM_COMMON_CMAKEOPTIONS) \
     $(LLVM_NO_PROBE_LIBS) \
+    -DLLVM_ENABLE_RTTI=ON \
     -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
     -DUNIX=ON \
     -DCMAKE_POSITION_INDEPENDENT_CODE=OFF \

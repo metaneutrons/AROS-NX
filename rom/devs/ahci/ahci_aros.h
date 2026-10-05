@@ -27,7 +27,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
-#include <errno.h>
+#include <aros/posixc/errno.h>
 #include <assert.h>
 
 #include <sys/types.h>

@@ -173,6 +173,13 @@ USER_INCLUDES := \
             -I$(SRCDIR)/$(CURDIR)/include \
             -I$(top_srcdir)/src \
 
+ifeq ($(MESAGLVERSION),20.0.8)
+GALLIUM_NOUVEAU_C_SOURCES := \
+                $(addprefix $(GALLIUM_PATH)/, $(NOUVEAU20_GALLIUM_C_SOURCES))
+
+GALLIUM_NOUVEAU_CXX_SOURCES := \
+                $(addprefix $(GALLIUM_PATH)/, $(NOUVEAU20_GALLIUM_CXX_SOURCES))
+else
 GALLIUM_NOUVEAU_SOURCES := \
                 $(C_SOURCES) \
                 $(NV30_C_SOURCES) \
@@ -192,6 +199,7 @@ TMP_GALLIUM_NOUVEAU_CXX_SOURCES := \
 
 GALLIUM_NOUVEAU_CXX_SOURCES := \
                 $(addprefix $(GALLIUM_PATH)/drivers/nouveau/, $(TMP_GALLIUM_NOUVEAU_CXX_SOURCES:.cpp=))
+endif
 
 USER_CPPFLAGS += -DPACKAGE_VERSION=\"$(MESAGLVERSION)\" -DNOUVEAU_USE_UTIL_LIST
 
@@ -203,6 +211,8 @@ USER_CPPFLAGS += -DPACKAGE_VERSION=\"$(MESAGLVERSION)\" -DNOUVEAU_USE_UTIL_LIST
 ###############################################
 
 USER_INCLUDES := \
+            -I$(AROS_INCLUDES)/aros/posixc \
+            -I$(AROS_INCLUDES)/aros/stdc \
             -I$(SRCDIR)/$(CURDIR)/include \
             -I$(SRCDIR)/$(CURDIR)/include/uapi \
             -I$(SRCDIR)/$(CURDIR)/drm/nouveau/include \
@@ -216,9 +226,9 @@ USER_INCLUDES := \
             -iquote $(top_builddir)/src \
             -iquote $(top_builddir)/src/util
 
-LIBDRM_C_SOURCES := \
-            $(AROS_LIBDRM_CORE_SOURCES) \
-            $(AROS_LIBDRM_NVIDIA_SOURCES)
+# Keep the small userspace libdrm inventory independently modelable even while
+# the much larger DRM and Gallium source fragments remain legacy-only.
+include $(SRCDIR)/$(CURDIR)/nouveau-libdrm.sources
 
 %build_linklib mmake=hidd-nouveau-libdrm libname=libdrm_nouveau \
     files="$(LIBDRM_C_SOURCES)" srcdir="$(SRCDIR)/$(CURDIR)" usetree=yes

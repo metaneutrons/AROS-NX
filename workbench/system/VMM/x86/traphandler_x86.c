@@ -108,7 +108,9 @@ BOOL VMMInstallTrapHandler(void)
 
 void VMMRemoveTrapHandler(void)
 {
-  if (TrapHandlerHandle != NULL)
+  APTR KernelBase = OpenResource ("kernel.resource");
+
+  if (TrapHandlerHandle != NULL && KernelBase != NULL)
     {
     KrnRemExceptionHandler (TrapHandlerHandle);
     TrapHandlerHandle = NULL;

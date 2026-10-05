@@ -1195,3 +1195,185 @@ diff -ruN mesa-20.0.8/src/gallium/drivers/vc4/vc4_uniforms.c mesa-20.0.8.aros/sr
  }
  
  static void
+diff -ruN mesa-20.0.8/src/mesa/state_tracker/st_glsl_to_tgsi.cpp mesa-20.0.8.aros/src/mesa/state_tracker/st_glsl_to_tgsi.cpp
+--- mesa-20.0.8/src/mesa/state_tracker/st_glsl_to_tgsi.cpp
++++ mesa-20.0.8.aros/src/mesa/state_tracker/st_glsl_to_tgsi.cpp
+@@ -58 +57,0 @@
+-#include <algorithm>
+@@ -6633 +6632,10 @@
+-   std::sort(decls, decls + count, sorter);
++   for (unsigned i = 1; i < count; ++i) {
++      struct inout_decl value = decls[i];
++      unsigned j = i;
++
++      while (j > 0 && sorter(value, decls[j - 1])) {
++         decls[j] = decls[j - 1];
++         --j;
++      }
++      decls[j] = value;
++   }
+diff -ruN mesa-20.0.8/src/mesa/state_tracker/st_glsl_to_tgsi_private.h mesa-20.0.8.aros/src/mesa/state_tracker/st_glsl_to_tgsi_private.h
+--- mesa-20.0.8/src/mesa/state_tracker/st_glsl_to_tgsi_private.h
++++ mesa-20.0.8.aros/src/mesa/state_tracker/st_glsl_to_tgsi_private.h
+@@ -33,0 +34 @@
++#ifndef NDEBUG
+@@ -34,0 +36 @@
++#endif
+@@ -91,0 +94 @@
++#ifndef NDEBUG
+@@ -92,0 +96 @@
++#endif
+@@ -120,0 +125 @@
++#ifndef NDEBUG
+@@ -121,0 +127 @@
++#endif
+@@ -153,0 +160 @@
++#ifndef NDEBUG
+@@ -154,0 +162 @@
++#endif
+@@ -156,0 +165 @@
++#ifndef NDEBUG
+@@ -162,0 +172 @@
++#endif
+diff -ruN mesa-20.0.8/src/mesa/state_tracker/st_glsl_to_tgsi_private.cpp mesa-20.0.8.aros/src/mesa/state_tracker/st_glsl_to_tgsi_private.cpp
+--- mesa-20.0.8/src/mesa/state_tracker/st_glsl_to_tgsi_private.cpp
++++ mesa-20.0.8.aros/src/mesa/state_tracker/st_glsl_to_tgsi_private.cpp
+@@ -223,0 +224 @@
++#ifndef NDEBUG
+@@ -260,0 +262 @@
++#endif
+@@ -365,0 +368 @@
++#ifndef NDEBUG
+@@ -423,0 +427 @@
++#endif
+diff -ruN mesa-20.0.8/src/mesa/state_tracker/st_glsl_to_tgsi_array_merge.h mesa-20.0.8.aros/src/mesa/state_tracker/st_glsl_to_tgsi_array_merge.h
+--- mesa-20.0.8/src/mesa/state_tracker/st_glsl_to_tgsi_array_merge.h
++++ mesa-20.0.8.aros/src/mesa/state_tracker/st_glsl_to_tgsi_array_merge.h
+@@ -28,0 +29 @@
++#ifndef NDEBUG
+@@ -29,0 +31 @@
++#endif
+@@ -70,0 +73 @@
++#ifndef NDEBUG
+@@ -71,0 +75 @@
++#endif
+@@ -92,0 +97 @@
++#ifndef NDEBUG
+@@ -97,0 +103 @@
++#endif
+@@ -142,0 +149 @@
++#ifndef NDEBUG
+@@ -143,0 +151 @@
++#endif
+@@ -155,0 +164 @@
++#ifndef NDEBUG
+@@ -161,0 +171 @@
++#endif
+diff -ruN mesa-20.0.8/src/mesa/state_tracker/st_glsl_to_tgsi_array_merge.cpp mesa-20.0.8.aros/src/mesa/state_tracker/st_glsl_to_tgsi_array_merge.cpp
+--- mesa-20.0.8/src/mesa/state_tracker/st_glsl_to_tgsi_array_merge.cpp
++++ mesa-20.0.8.aros/src/mesa/state_tracker/st_glsl_to_tgsi_array_merge.cpp
+@@ -128,0 +129,3 @@
++#include "util/u_memory.h"
++#include <assert.h>
++#ifndef NDEBUG
+@@ -130,3 +132,0 @@
+-#include <cassert>
+-#include <algorithm>
+-
+@@ -133,0 +134 @@
++#endif
+@@ -137,6 +137,0 @@
+-#if __cplusplus >= 201402L
+-#include <memory>
+-using std::unique_ptr;
+-using std::make_unique;
+-#endif
+-
+@@ -152,0 +148 @@
++#ifndef NDEBUG
+@@ -153,0 +150 @@
++#endif
+@@ -304,0 +302 @@
++#ifndef NDEBUG
+@@ -314,0 +313 @@
++#endif
+@@ -390,0 +390 @@
++#ifndef NDEBUG
+@@ -401,0 +402 @@
++#endif
+@@ -547 +548,10 @@
+-   std::sort(ranges, ranges + narrays, sort_by_begin);
++   for (int i = 1; i < narrays; ++i) {
++      array_live_range value = ranges[i];
++      int j = i;
++
++      while (j > 0 && sort_by_begin(value, ranges[j - 1])) {
++         ranges[j] = ranges[j - 1];
++         --j;
++      }
++      ranges[j] = value;
++   }
+@@ -588,7 +598,2 @@
+-#if __cplusplus < 201402L
+-   int *idx_map = new int[narrays + 1];
+-   unsigned *old_sizes = new unsigned[narrays];
+-#else
+-   unique_ptr<int[]> idx_map = make_unique<int[]>(narrays + 1);
+-   unique_ptr<unsigned[]> old_sizes = make_unique<unsigned[]>(narrays);
+-#endif
++   int *idx_map = (int *) CALLOC(narrays + 1, sizeof(*idx_map));
++   unsigned *old_sizes = (unsigned *) MALLOC(narrays * sizeof(*old_sizes));
+@@ -596 +601,8 @@
+-   memcpy(&old_sizes[0], &array_sizes[0], sizeof(unsigned) * narrays);
++   if (!idx_map || (narrays > 0 && !old_sizes)) {
++      FREE(old_sizes);
++      FREE(idx_map);
++      return narrays;
++   }
++
++   if (narrays > 0)
++      memcpy(&old_sizes[0], &array_sizes[0], sizeof(unsigned) * narrays);
+@@ -674,4 +686,2 @@
+-#if __cplusplus < 201402L
+-   delete[] old_sizes;
+-   delete[] idx_map;
+-#endif
++   FREE(old_sizes);
++   FREE(idx_map);
+diff -ruN mesa-20.0.8/src/mesa/state_tracker/st_glsl_to_tgsi_temprename.cpp mesa-20.0.8.aros/src/mesa/state_tracker/st_glsl_to_tgsi_temprename.cpp
+--- mesa-20.0.8/src/mesa/state_tracker/st_glsl_to_tgsi_temprename.cpp
++++ mesa-20.0.8.aros/src/mesa/state_tracker/st_glsl_to_tgsi_temprename.cpp
+@@ -30,2 +30,2 @@
+-#include <limits>
+-#include <cstdlib>
++#include <limits.h>
++#include <stdlib.h>
+@@ -33,0 +34 @@
++#if !defined(__AROS__)
+@@ -34,0 +36 @@
++#endif
+@@ -56,2 +57,0 @@
+-using std::numeric_limits;
+-
+@@ -223 +223 @@
+-temp_comp_access::conditionality_untouched = numeric_limits<int>::max();
++temp_comp_access::conditionality_untouched = INT_MAX;
+@@ -226 +226 @@
+-temp_comp_access::write_is_unconditional = numeric_limits<int>::max() - 1;
++temp_comp_access::write_is_unconditional = INT_MAX - 1;
+@@ -291 +291 @@
+-   break_loop_line(numeric_limits<int>::max()),
++   break_loop_line(INT_MAX),
+@@ -651 +651 @@
+-   first_read(numeric_limits<int>::max()),
++   first_read(INT_MAX),
+@@ -1355 +1355 @@
+-   std::qsort(reg_access, used_temps, sizeof(register_merge_record),
++   qsort(reg_access, used_temps, sizeof(register_merge_record),
+diff -ruN mesa-20.0.8/src/broadcom/qpu/qpu_pack.c mesa-20.0.8.aros/src/broadcom/qpu/qpu_pack.c
+--- mesa-20.0.8/src/broadcom/qpu/qpu_pack.c	2020-06-12 01:21:17.000000000 +0000
++++ mesa-20.0.8.aros/src/broadcom/qpu/qpu_pack.c	2026-08-27 16:30:00.000000000 +0000
+@@ -24,2 +24,3 @@
+ #include <string.h>
++#include "util/bitscan.h"
+ #include "util/macros.h"

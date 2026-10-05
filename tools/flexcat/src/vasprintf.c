@@ -27,8 +27,10 @@
 #ifndef VA_COPY
 #if defined(__MORPHOS__)
 #define VA_COPY(dest, src) __va_copy(dest, src)
-#elif defined(__AROS__)
+#elif defined(__AROS__) || defined(va_copy)
 #define VA_COPY(dest, src) va_copy(dest, src)
+#elif defined(__va_copy)
+#define VA_COPY(dest, src) __va_copy(dest, src)
 #else
 #define VA_COPY(dest, src) (dest) = (src)
 #endif

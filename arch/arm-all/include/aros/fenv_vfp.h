@@ -62,8 +62,8 @@ extern const fenv_t	__fe_dfl_env;
 #define _FPUSW_SHIFT	8
 #define	_ENABLE_MASK	(FE_ALL_EXCEPT << _FPUSW_SHIFT)
 
-#define __rfs(__fpscr)	asm volatile("fmrx  %0, fpscr" : "=r"(*(__fpscr)))
-#define __wfs(__fpscr)	asm volatile("fmxr  fpscr, %0" :: "r"(__fpscr))
+#define __rfs(__fpscr)	__asm__ volatile("fmrx  %0, fpscr" : "=r"(*(__fpscr)))
+#define __wfs(__fpscr)	__asm__ volatile("fmxr  fpscr, %0" :: "r"(__fpscr))
 
 #ifndef STDC_NOINLINE
 static __inline int

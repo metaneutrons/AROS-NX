@@ -1,0 +1,5 @@
+# Exact userspace libdrm inventory for the consolidated Nouveau implementation.
+LIBDRM_C_SOURCES := \
+        libdrm/arosdrm \
+        libdrm/arosdrmmode \
+        libdrm/nouveau/nouveau

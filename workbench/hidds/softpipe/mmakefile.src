@@ -1,6 +1,6 @@
 
 include $(SRCDIR)/config/aros.cfg
-include $(SRCDIR)/workbench/libs/mesa/mesa.cfg
+include $(SRCDIR)/$(CURDIR)/../../libs/mesa/mesa.cfg
 
 CUR_MESADIR = src/gallium
 CUR_GALLIUMDIR = drivers/softpipe
@@ -48,7 +48,7 @@ endif
 #MM- hidd-softpipe-yes : hidd-softpipe
 
 #MM hidd-softpipe: includes hidd-gallium mesa3dgl-linklibs linklibs-libatomic linklibs-gallium_softpipe
-#MM linklibs-gallium_softpipe : mesa3dgl-linklibs
+#MM linklibs-gallium_softpipe : mesa3dgl-linklibs mesa3d-fetch
 
 MESA3D_SOFTPIPE_C_SOURCES := $(filter %.c, $(C_SOURCES))
 

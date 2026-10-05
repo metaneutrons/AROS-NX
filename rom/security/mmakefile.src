@@ -90,7 +90,11 @@ USER_CPPFLAGS := -DUSE_EXEC_DEBUG
 USER_LDFLAGS := -static
 
 #MM kernel-security : includes linklibs kernel-security-catalogs kernel-task-includes
-#MM kernel-security-includes : includes kernel-security-catalogs
+# The release closure must not re-enter the global `includes` aggregate through
+# security's header target: in MetaMake that aggregate includes optional Ports.
+# sdk-includes-0 preserves the normal upstream behaviour; sdk-includes-1 is
+# the explicit core-only closure used by the deterministic toolchain producer.
+#MM kernel-security-includes : sdk-includes-$(AROS_TOOLCHAIN_RELEASE) kernel-security-catalogs
 
 %build_module mmake=kernel-security modname=security \
   modtype=library files="security_init $(PUBLICFUNCS) $(CRTPUBLICFUNCS) $(FSFUNCS) $(PLUGINFUNCS) $(DOSFUNCS) $(SECURITYFILES)" \

@@ -8,7 +8,7 @@ include $(SRCDIR)/config/aros.cfg
 # minimal libatomic supplying the missing helper.
 
 #MM- linklibs-llvm-libatomic : linklibs-atomic-helpers
-#MM linklibs-atomic-helpers : includes
+#MM linklibs-atomic-helpers : sdk-includes-$(AROS_TOOLCHAIN_RELEASE)
 
 # clang refuses definitions of its __atomic_* builtins otherwise
 USER_CFLAGS := -fno-builtin

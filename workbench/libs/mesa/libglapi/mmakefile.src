@@ -10,6 +10,11 @@ include $(SRCDIR)/$(CURDIR)/../mesa.cfg
 CUR_MESADIR_OLD := src/mapi
 CUR_MESADIR_NEW := src/mesa/glapi
 
+# Select the locked Mesa 26 layout before the archive is fetched.
+ifeq ($(OPT_MESAGL),26.0.0)
+CUR_MESADIR := $(CUR_MESADIR_NEW)
+MESA_GLAPI_LAYOUT := new
+else
 ifneq ($(wildcard $(top_srcdir)/$(CUR_MESADIR_OLD)/Makefile.sources),)
 CUR_MESADIR := $(CUR_MESADIR_OLD)
 MESA_GLAPI_LAYOUT := old
@@ -17,6 +22,7 @@ include $(top_srcdir)/$(CUR_MESADIR)/Makefile.sources
 else
 CUR_MESADIR := $(CUR_MESADIR_NEW)
 MESA_GLAPI_LAYOUT := new
+endif
 endif
 
 #MM- mesa3dgl-linklibs : mesa3d-linklib-glapi
@@ -59,6 +65,7 @@ MESA3DGL_GLAPI_SOURCES := \
 	$(MAPI_GLAPI_C_FILES:.c=)
 
 MESA3DGL_GLAPI_SOURCES_C := $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3DGL_GLAPI_SOURCES))
+MESA3DGL_GLAPI_SOURCES_ASM :=
 
 $(top_builddir)/$(CUR_MESADIR)/glapi/glapitemp.h: $(top_srcdir)/$(CUR_MESADIR)/glapi/gen/gl_apitemp.py
 	%mkdir_q dir="$(dir $@)"
@@ -98,7 +105,7 @@ $(top_builddir)/$(CUR_MESADIR)/glapi/glapi_x86-64.s: $(top_srcdir)/$(CUR_MESADIR
 	$(Q)$(ECHO) "Generating $(if $(filter /%,$@),$(if $(filter $(SRCDIR)/%,$(abspath $@)),$(patsubst $(SRCDIR)/%,%,$(abspath $@)),$(patsubst $(TOP)/%,%,$(abspath $@))),$(patsubst $(SRCDIR)/%,%,$(abspath $(SRCDIR)/$(CURDIR)/$@)))"
 	$(Q)$(PYTHON) $(PYTHON_FLAGS) $< -f $(top_srcdir)/$(CUR_MESADIR)/glapi/gen/gl_and_es_API.xml > $@
 
-ifeq ($(MESA_USE_X86_64),TRUE)
+ifeq ($(AROS_TARGET_CPU),x86_64)
 GLAPI_GEN_FILES += $(top_builddir)/$(CUR_MESADIR)/glapi/glapi_x86-64.s
 MESA3DGL_GLAPI_SOURCES_ASM += $(top_builddir)/$(CUR_MESADIR)/glapi/glapi_x86-64
 USER_INCLUDES += \
@@ -115,6 +122,7 @@ MESA3DGL_GLAPI_SOURCES := \
 
 MESA3DGL_GLAPI_SOURCES_C := $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA3DGL_GLAPI_SOURCES)) \
 	$(top_builddir)/$(CUR_MESADIR)/shared-glapi/public_glapi_wrappers
+MESA3DGL_GLAPI_SOURCES_ASM :=
 USER_CPPFLAGS += -DMAPI_MODE_SHARED_GLAPI
 
 $(top_builddir)/$(CUR_MESADIR)/shared-glapi/shared_glapi_mapi_tmp.h: \

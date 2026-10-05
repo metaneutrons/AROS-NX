@@ -27,7 +27,8 @@ USER_INCLUDES += \
             -iquote $(top_srcdir)/src/gallium/include \
             -iquote $(top_srcdir)/src/gallium/auxiliary \
             -iquote $(top_srcdir)/$(CUR_MESADIR)/format \
-            -iquote $(top_builddir)/$(CUR_MESADIR)/format
+            -iquote $(top_builddir)/$(CUR_MESADIR)/format \
+            -I$(PORTSDIR)/zlib/chromium-da752eb2a3660cf1bf8dac620f6380b89dd953a7
 
 ifneq ($(mesa3dgl_ENTRYPOINTS),)
 MESA_COMPILEOPTIONS += $(CFLAGS_FUNCTION_SECTIONS)
@@ -72,57 +73,27 @@ $(top_builddir)/$(CUR_MESADIR)/%.c: $(top_srcdir)/$(CUR_MESADIR)/%.py $(top_srcd
 endif
 
 ifeq ($(MESA_UTIL_LAYOUT),new)
-MESA_UTIL_NEW_C_FILES := $(patsubst $(top_srcdir)/$(CUR_MESADIR)/%,%,$(wildcard \
-            $(top_srcdir)/$(CUR_MESADIR)/*.c \
-            $(top_srcdir)/$(CUR_MESADIR)/format/*.c))
-MESA_UTIL_NEW_C_FILES += \
-            perf/u_trace.c \
-            blake3/blake3.c \
-            blake3/blake3_dispatch.c \
-            blake3/blake3_portable.c \
-            ../c11/impl/time.c \
-            ../c11/impl/threads_posix.c
-
-# blake3_impl.h turns BLAKE3_USE_NEON on for little-endian aarch64, so the
-# dispatcher calls blake3_hash_many_neon there. Same gate as upstream meson.
+include $(SRCDIR)/$(CURDIR)/mesautil-26.0.0.sources
+MESA_UTIL_NEW_C_FILES := $(MESA26_UTIL_STATIC_C_SOURCES)
+# blake3_impl.h enables NEON on little-endian aarch64; retain the upstream
+# implementation under the same target-architecture gate.
 ifeq ($(CPU),aarch64)
-MESA_UTIL_NEW_C_FILES += blake3/blake3_neon.c
+MESA_UTIL_NEW_C_FILES += $(MESA26_UTIL_ARM64_C_SOURCES)
 endif
 
-MESA_UTIL_NEW_C_FILES := $(filter-out \
-            cache_ops_aarch64.c \
-            cache_ops_x86.c \
-            cache_ops_x86_clflushopt.c \
-            memstream.c \
-            os_memory_fd.c \
-            parson.c \
-            streaming-load-memcpy.c \
-            u_dl.c \
-            xmlconfig.c \
-            u_sync_provider.c, \
-            $(MESA_UTIL_NEW_C_FILES))
-
-MESA_UTIL_NEW_CXX_FILES := $(patsubst $(top_srcdir)/$(CUR_MESADIR)/%,%,$(wildcard \
-            $(top_srcdir)/$(CUR_MESADIR)/*.cpp))
-MESA_UTIL_NEW_CXX_FILES := $(filter-out \
-            u_debug_stack_android.cpp, \
-            $(MESA_UTIL_NEW_CXX_FILES))
+MESA_UTIL_NEW_CXX_FILES := $(MESA26_UTIL_STATIC_CXX_SOURCES)
 
 MESA3DGL_MESAUTIL_GENERATED_C_SOURCES := \
-            $(top_builddir)/$(CUR_MESADIR)/format/u_format_table.c \
-            $(top_builddir)/$(CUR_MESADIR)/format_srgb.c
+            $(addprefix $(top_builddir)/$(CUR_MESADIR)/,$(MESA26_UTIL_GENERATED_C_SOURCES))
 MESA3DGL_MESAUTIL_GENERATED_HEADERS := \
-            $(top_builddir)/$(CUR_MESADIR)/format/u_format_gen.h \
-            $(top_builddir)/$(CUR_MESADIR)/format/u_format_pack.h
+            $(addprefix $(top_builddir)/$(CUR_MESADIR)/,$(MESA26_UTIL_GENERATED_HEADERS))
 MESA3DGL_MESAUTIL_C_SOURCES := \
             $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA_UTIL_NEW_C_FILES)) \
+            $(addprefix $(top_srcdir)/src/,$(MESA26_UTIL_C11_C_SOURCES)) \
             $(MESA3DGL_MESAUTIL_GENERATED_C_SOURCES)
 MESA3DGL_MESAUTIL_CXX_SOURCES := \
             $(addprefix $(top_srcdir)/$(CUR_MESADIR)/, $(MESA_UTIL_NEW_CXX_FILES))
-MESA3DGL_MESAUTIL_C_SOURCES += $(SRCDIR)/$(CURDIR)/mesa_memstream_aros.c
-MESA3DGL_MESAUTIL_C_SOURCES += $(SRCDIR)/$(CURDIR)/mesa_u_dl_aros.c
-MESA3DGL_MESAUTIL_C_SOURCES += $(SRCDIR)/workbench/libs/mesa/mesa_posix_compat_aros.c
-MESA3DGL_MESAUTIL_C_SOURCES += $(SRCDIR)/workbench/libs/mesa/mesa_streaming_load_memcpy_fallback.c
+MESA3DGL_MESAUTIL_C_SOURCES += $(addprefix $(SRCDIR)/,$(MESA26_UTIL_AROS_FALLBACK_C_SOURCES))
 else
 MESA_UTIL_C_FILES := $(filter %.c, $(MESA_UTIL_FILES))
 MESA_UTIL_CXX_FILES := $(filter %.cpp, $(MESA_UTIL_FILES))
@@ -146,7 +117,17 @@ MESA3DGL_MESAUTIL_SOURCES_CXX := $(MESA3DGL_MESAUTIL_CXX_SOURCES:.cpp=)
 #MM
 mesa3d-linklib-mesautil-generated : $(MESA3DGL_MESAUTIL_GENERATED_C_SOURCES) $(MESA3DGL_MESAUTIL_GENERATED_HEADERS)
 
-#MM mesa3d-linklib-mesautil : mesa3d-linklib-mesautil-generated
+# Mesa's crc32 utility includes zlib's fetched API directly. Keep both
+# archives ordered after that fetch and the transformed zconf.h, including
+# when either private archive is requested as a standalone target.
+#MM mesa3d-linklib-mesautil : \
+#MM     mesa3d-linklib-mesautil-generated \
+#MM     zlib-fetch \
+#MM     workbench-libs-z-geninc
+
+#MM mesa3d-linklib-mesadevutil : \
+#MM     zlib-fetch \
+#MM     workbench-libs-z-geninc
 
 MESA_UTIL_BLAKE3_FLAGS :=
 ifeq ($(MESA_UTIL_LAYOUT),new)

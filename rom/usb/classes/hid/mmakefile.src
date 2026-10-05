@@ -8,7 +8,10 @@ FILES :=    hid.class hid.gui hidctrl.gui hidcontroller hidctrl_map numtostr deb
 #MM				classes-zune-classes-nlistview-class \
 #MM				workbench-hidds-controller-includes kernel-hidd-input-includes
 
-USER_CPPFLAGS := -DUSE_NLIST -DMUIMASTER_YES_INLINE_STDARG
+USER_CPPFLAGS := \
+    -DUSE_NLIST \
+    -DMUIMASTER_YES_INLINE_STDARG \
+    -DINTUITION_INLINE_NEWOBJECT
 USER_LDFLAGS := -static
 
 %build_module_library mmake=kernel-usb-classes-hid \

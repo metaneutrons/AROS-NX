@@ -1,0 +1,33 @@
+# Source inventory for the zstd 1.5.7 release archive. Keep this list in the
+# same directory and lexical order as the historic wildcard expansion.
+ZSTD_FILES := \
+    lib/common/debug \
+    lib/common/entropy_common \
+    lib/common/error_private \
+    lib/common/fse_decompress \
+    lib/common/pool \
+    lib/common/threading \
+    lib/common/xxhash \
+    lib/common/zstd_common \
+    lib/compress/fse_compress \
+    lib/compress/hist \
+    lib/compress/huf_compress \
+    lib/compress/zstd_compress \
+    lib/compress/zstd_compress_literals \
+    lib/compress/zstd_compress_sequences \
+    lib/compress/zstd_compress_superblock \
+    lib/compress/zstd_double_fast \
+    lib/compress/zstd_fast \
+    lib/compress/zstd_lazy \
+    lib/compress/zstd_ldm \
+    lib/compress/zstd_opt \
+    lib/compress/zstd_preSplit \
+    lib/compress/zstdmt_compress \
+    lib/decompress/huf_decompress \
+    lib/decompress/zstd_ddict \
+    lib/decompress/zstd_decompress \
+    lib/decompress/zstd_decompress_block \
+    lib/dictBuilder/cover \
+    lib/dictBuilder/divsufsort \
+    lib/dictBuilder/fastcover \
+    lib/dictBuilder/zdict

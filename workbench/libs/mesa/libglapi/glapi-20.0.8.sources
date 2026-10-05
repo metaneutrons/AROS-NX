@@ -1,0 +1,8 @@
+# Exact MAPI utility inventory from Mesa 20.0.8.  Keep the headers in the
+# upstream variable too: consumers may use MAPI_UTIL_FILES for more than the
+# C-only libglapi source selection below.
+MAPI_UTIL_FILES := \
+	u_current.c \
+	u_current.h \
+	u_execmem.c \
+	u_execmem.h

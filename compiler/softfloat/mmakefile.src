@@ -264,12 +264,25 @@ FILES_OTHERS = \
 FILES = $(FILES_PRIMITIVES) $(FILES_OTHERS)
 USER_INCLUDES := -I$(GENDIR)/$(CURDIR) -iquote $(SOFTFLOATARCHSRCDIR)/source/include
 
-ifneq (,$(findstring arm,$(AROS_TARGET_CPU)))
+# SoftFloat has no AArch64-specific specialization directory.  Armv8 shares
+# the AROS ARM VFP NaN/exception policy, so use its portable specialization
+# sources for both current ARM families.  `filter` deliberately matches CPU
+# names rather than the old substring test, which missed `aarch64`.
+ifneq (,$(filter arm armeb aarch64,$(AROS_TARGET_CPU)))
 FILES += $(addprefix ARM-VFPv2/,$(FILES_SPECIALIZE))
 USER_INCLUDES += -iquote $(SOFTFLOATARCHSRCDIR)/source/ARM-VFPv2
 ifeq (be,$(AROS_TARGET_VARIANT))
 SOFTFLOATLE = 0
 endif
+endif
+
+# x86_64 supplies the same specialization entry points but has its own IEEE
+# exception and NaN policy.  Its mandatory SSE2 baseline makes 8086-SSE the
+# matching behavior; 32-bit x86 deliberately remains unchanged because SSE
+# is optional there.
+ifneq (,$(filter x86_64,$(AROS_TARGET_CPU)))
+FILES += $(addprefix 8086-SSE/,$(FILES_SPECIALIZE))
+USER_INCLUDES += -iquote $(SOFTFLOATARCHSRCDIR)/source/8086-SSE
 endif
 ifeq (,$(SOFTFLOATLE))
 SOFTFLOATLE = 1

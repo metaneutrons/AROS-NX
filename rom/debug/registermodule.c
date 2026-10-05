@@ -15,7 +15,6 @@
 #include <proto/exec.h>
 #include <clib/alib_protos.h>
 
-#include <stdlib.h>
 #include <stdint.h>
 #include <aros/crt_replacement.h>
 
@@ -25,7 +24,8 @@ static inline char *getstrtab(struct sheader *sh);
 static void addsymbol(module_t *mod, dbg_sym_t *sym, struct symbol *st, APTR value);
 static void HandleModuleSegments(module_t *mod, struct MinList * list);
 static void RegisterModule_Hunk(const char *name, BPTR segList, ULONG DebugType, APTR DebugInfo, struct Library *DebugBase);
-static int compare_segments(const void *left, const void *right);
+static void sort_segments(struct segment **segments, LONG count);
+static void sift_segment(struct segment **segments, LONG root, LONG count);
 
 /*****************************************************************************
 
@@ -214,18 +214,68 @@ static void addsymbol(module_t *mod, dbg_sym_t *sym, struct symbol *st, APTR val
     mod->m_symcnt++;
 }
 
-static int compare_segments(const void *left, const void *right)
+/* One sift-down step of the heapsort above: pushes the element at `root` down
+ * until both of its children start at a lower address than it does.
+ */
+static void sift_segment(struct segment **segments, LONG root, LONG count)
 {
-    const struct segment *const *left_seg = left;
-    const struct segment *const *right_seg = right;
-    IPTR left_lowest = (IPTR)(*left_seg)->s_lowest;
-    IPTR right_lowest = (IPTR)(*right_seg)->s_lowest;
+    while (root * 2 + 1 < count)
+    {
+        LONG child = root * 2 + 1;
+        struct segment *tmp;
 
-    if (left_lowest < right_lowest)
-        return -1;
-    if (left_lowest > right_lowest)
-        return 1;
-    return 0;
+        if (child + 1 < count &&
+            (IPTR)segments[child]->s_lowest < (IPTR)segments[child + 1]->s_lowest)
+            child++;
+
+        if ((IPTR)segments[root]->s_lowest >= (IPTR)segments[child]->s_lowest)
+            return;
+
+        tmp = segments[root];
+        segments[root] = segments[child];
+        segments[child] = tmp;
+        root = child;
+    }
+}
+
+/* Sorts the segment pointers by start address, in place and without recursion.
+ *
+ * This cannot call qsort(). debug.library registers the kickstart's own modules
+ * while exec is still coming up, long before stdc.library is opened, and qsort()
+ * resolves through a stdc.library base: the generated stub loads StdCBase and
+ * jumps through its LVO table. With the base still NULL that is a jump through
+ * a negative offset from zero, which faults immediately:
+ *
+ *   [Kernel] core_IRQHandle(14): Exception error code 00000000
+ *   [PF-DBG] CR2=fffffffffffff570 IP=000000000198f711
+ *   0x0198f704: movabsq $0x17b0148, %r11   ; &StdCBase
+ *   0x0198f70e: movq    (%r11), %r11       ; StdCBase == NULL
+ *   0x0198f711: jmpq    *-0xa90(%r11)      ; LVO for qsort
+ *
+ * The file already avoids the C library this way for the string functions, via
+ * <aros/crt_replacement.h>; sorting needs the same treatment.
+ *
+ * Heapsort keeps what the qsort change was after -- O(n log n) with no
+ * degenerate case for input that is already sorted or reversed, which is the
+ * common shape here -- and adds no stack depth, since it is iterative.
+ */
+static void sort_segments(struct segment **segments, LONG count)
+{
+    LONG start;
+
+    if (count < 2)
+        return;
+
+    for (start = count / 2 - 1; start >= 0; start--)
+        sift_segment(segments, start, count);
+
+    for (start = count - 1; start > 0; start--)
+    {
+        struct segment *tmp = segments[0];
+        segments[0] = segments[start];
+        segments[start] = tmp;
+        sift_segment(segments, 0, start);
+    }
 }
 
 static void HandleModuleSegments(module_t *mod, struct MinList * list)
@@ -284,7 +334,7 @@ static void HandleModuleSegments(module_t *mod, struct MinList * list)
 
 
     /* Sort the symbols by their address so that searching can be faster */
-    qsort(mod->m_segments, mod->m_segcnt, sizeof(*mod->m_segments), compare_segments);
+    sort_segments(mod->m_segments, mod->m_segcnt);
 
     /* Set module address range information */
     mod->m_lowest = mod->m_segments[0]->s_lowest;

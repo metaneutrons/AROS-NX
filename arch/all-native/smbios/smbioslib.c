@@ -13,34 +13,28 @@
 
 #include "smbioslib.h"
 
-static BOOL SMBIOS_ChecksumOK(const UBYTE *p, ULONG len)
-{
-    UBYTE sum = 0;
-
-    while (len--)
-        sum += *p++;
-
-    return sum == 0;
-}
-
 /*
  * Fill in 'st' from an entry point candidate at 'eps'. 'anchor' says
  * which anchor was matched. Returns FALSE if the entry point is invalid.
  */
-static BOOL SMBIOS_ParseEntryPoint(struct SMBIOSTable *st, const UBYTE *eps, UBYTE version)
+static BOOL SMBIOS_ParseEntryPoint(struct SMBIOSTable *st, const UBYTE *eps,
+    UBYTE version, const UBYTE *limit)
 {
+    if (!SMBIOS_EntryPointValid(eps, version, limit))
+        return FALSE;
+
     if (version == 3)
     {
         const struct SMBIOSEntryPoint3 *ep3 = (const struct SMBIOSEntryPoint3 *)eps;
 
-        if (ep3->length < sizeof(*ep3) || !SMBIOS_ChecksumOK(eps, ep3->length))
-            return FALSE;
         if (ep3->table_address == 0 || ep3->table_length < sizeof(struct SMBIOSHeader))
             return FALSE;
 #if __WORDSIZE < 64
         if (ep3->table_address >> 32)
             return FALSE;
 #endif
+        if ((IPTR)ep3->table_address + ep3->table_length < (IPTR)ep3->table_address)
+            return FALSE;
         st->st_EntryPointVersion = 3;
         st->st_MajorVersion = ep3->major;
         st->st_MinorVersion = ep3->minor;
@@ -51,9 +45,9 @@ static BOOL SMBIOS_ParseEntryPoint(struct SMBIOSTable *st, const UBYTE *eps, UBY
     {
         const struct SMBIOSEntryPoint2 *ep2 = (const struct SMBIOSEntryPoint2 *)eps;
 
-        if (ep2->length < sizeof(*ep2) || !SMBIOS_ChecksumOK(eps, ep2->length))
-            return FALSE;
         if (ep2->table_address == 0 || ep2->table_length < sizeof(struct SMBIOSHeader))
+            return FALSE;
+        if ((IPTR)ep2->table_address + ep2->table_length < (IPTR)ep2->table_address)
             return FALSE;
 
         st->st_EntryPointVersion = 2;
@@ -85,11 +79,11 @@ BOOL SMBIOS_Locate(struct SMBIOSTable *st)
         const UBYTE *eps;
 
         eps = EFI_FindConfigTable(&smbios3_guid);
-        if (eps && SMBIOS_ParseEntryPoint(st, eps, 3))
+        if (eps && SMBIOS_ParseEntryPoint(st, eps, 3, NULL))
             return TRUE;
 
         eps = EFI_FindConfigTable(&smbios_guid);
-        if (eps && SMBIOS_ParseEntryPoint(st, eps, 2))
+        if (eps && SMBIOS_ParseEntryPoint(st, eps, 2, NULL))
             return TRUE;
     }
 
@@ -105,9 +99,11 @@ BOOL SMBIOS_Locate(struct SMBIOSTable *st)
         {
             if (ptr[0] != '_' || ptr[1] != 'S' || ptr[2] != 'M')
                 continue;
-            if (ptr[3] == '3' && ptr[4] == '_' && SMBIOS_ParseEntryPoint(st, ptr, 3))
+            if (ptr[3] == '3' && ptr[4] == '_' &&
+                SMBIOS_ParseEntryPoint(st, ptr, 3, (const UBYTE *)0x00100000))
                 return TRUE;
-            if (ptr[3] == '_' && SMBIOS_ParseEntryPoint(st, ptr, 2))
+            if (ptr[3] == '_' &&
+                SMBIOS_ParseEntryPoint(st, ptr, 2, (const UBYTE *)0x00100000))
                 return TRUE;
         }
     }
@@ -125,7 +121,9 @@ const struct SMBIOSHeader *SMBIOS_FirstStructure(const struct SMBIOSTable *st)
 {
     const struct SMBIOSHeader *s = st->st_Table;
 
-    if (!s || (const UBYTE *)s + sizeof(*s) > SMBIOS_TableEnd(st))
+    if (!s || (const UBYTE *)s + sizeof(*s) > SMBIOS_TableEnd(st) ||
+        s->sm_Length < sizeof(*s) ||
+        (const UBYTE *)s + s->sm_Length > SMBIOS_TableEnd(st))
         return NULL;
     if (s->sm_Type == SMBIOS_TYPE_END)
         return NULL;
@@ -139,7 +137,8 @@ const struct SMBIOSHeader *SMBIOS_NextStructure(const struct SMBIOSTable *st,
     const UBYTE *end = SMBIOS_TableEnd(st);
     const UBYTE *p;
 
-    if (!s || s->sm_Type == SMBIOS_TYPE_END || s->sm_Length < sizeof(*s))
+    if (!s || s->sm_Type == SMBIOS_TYPE_END || s->sm_Length < sizeof(*s) ||
+        (const UBYTE *)s + s->sm_Length > end)
         return NULL;
 
     /* Skip the formatted area, then the string set (terminated by a double NUL) */
@@ -152,7 +151,8 @@ const struct SMBIOSHeader *SMBIOS_NextStructure(const struct SMBIOSTable *st,
             if (p + sizeof(*s) > end)
                 return NULL;
             s = (const struct SMBIOSHeader *)p;
-            if (s->sm_Type == SMBIOS_TYPE_END)
+            if (s->sm_Type == SMBIOS_TYPE_END || s->sm_Length < sizeof(*s) ||
+                (const UBYTE *)s + s->sm_Length > end)
                 return NULL;
             return s;
         }
@@ -185,7 +185,8 @@ const char *SMBIOS_GetString(const struct SMBIOSTable *st,
     const UBYTE *p;
     UBYTE n = 1;
 
-    if (!s || index == 0 || s->sm_Length < sizeof(*s))
+    if (!s || index == 0 || s->sm_Length < sizeof(*s) ||
+        (const UBYTE *)s + s->sm_Length > end)
         return NULL;
 
     p = (const UBYTE *)s + s->sm_Length;

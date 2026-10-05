@@ -1,0 +1,54 @@
+Vendored ACPICA headers, acpica-unix-20260408
+=============================================
+
+Why this exists
+---------------
+
+arch/all-pc/kernel needs these to compile. include/acpica.h next to this
+directory is staged as libraries/acpica.h and includes eight of them
+(actypes.h, actbl.h, acbuffer.h, acrestyp.h, acpixf.h, acexcep.h, aclocal.h,
+acobject.h), and four kernel sources include that wrapper:
+
+    arch/all-pc/kernel/{acpi,acpi_pm,apic_ia32,platform_post}.c
+
+Without them kernel-kernel does not build, and nothing downstream of the kernel
+builds either:
+
+    GENINCDIR/libraries/acpica.h:47:10:
+        fatal error: 'acpica/actypes.h' file not found
+
+The headers normally arrive with the fetched ACPICA Port, staged by
+acpica-includes-copy in ../../mmakefile.src, which hangs on ports-includes. The
+relocatable toolchain producer builds offline from a verified source set and
+deliberately keeps ports-includes out of its closure, so that route is not
+available there. The same applies to a plain CMake configure, which does not
+fetch Ports.
+
+Provenance
+----------
+
+source/include from acpica-unix-20260408, with
+../../acpica-unix-20260408-aros.diff applied, which is the form the build uses.
+The archive comes from Intel's download mirror and axrt.org; ../../mmakefile.src
+records the identifiers. Taken from an extracted Ports tree rather than
+re-fetched, because Intel's mirror answers 403 for a plain request.
+
+Whole directory, 64 files including platform/. The closure actually reachable
+from the AROS wrapper is 12 headers, but pruning to those would need redoing
+whenever a kernel source starts using another part of the API.
+
+This is headers only. The ACPICA implementation is still built from the Port, by
+kernel-acpica-sharedlib, which needs the sources this directory does not carry.
+
+Updating
+--------
+
+Bump ACPICAVERSION in ../../mmakefile.src, refresh the AROS patch, and replace
+this directory from source/include of the patched tree. Then check that every
+header ../acpica.h includes still resolves here.
+
+Licence
+-------
+
+Intel's ACPICA dual licence, reproduced in full at the top of every file. No
+separate licence file accompanies source/include upstream.

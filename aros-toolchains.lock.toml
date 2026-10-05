@@ -1,0 +1,220 @@
+# Immutable AROS cross-toolchain selection for aros-cli.
+#
+# The nine enabled LLVM 11 host/profile artifacts below are copied from the
+# independently verified stable release index. Intel macOS is not a release
+# target. RISC-V remains disabled until its separate release matrix is qualified.
+
+schema = 1
+release_id = "v0.1.4"
+base_url = "https://github.com/metaneutrons/aros-toolchains/releases/download/v0.1.4"
+
+[[artifacts]]
+host = "macos-aarch64"
+target_profile = "pc-x86_64"
+target_triple = "x86_64-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-macos-aarch64-pc-x86_64.tar.xz"
+sha256 = "969d150761a2a999a43992660ab6c84d8ab07c1396ce49b17024bb5b08993342"
+tree_sha256 = "b24eaba7a1593e137f4457f1915c237163e91035107b3b92c8dc591d708781c0"
+llvm_version = "11.0.0"
+size = 26451000
+enabled = true
+strip_components = 1
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "bin/collect-aros32", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-x86_64.a", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-i386.a"]
+
+[[artifacts]]
+host = "macos-aarch64"
+target_profile = "arm-raspi"
+target_triple = "arm-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-macos-aarch64-arm-raspi.tar.xz"
+sha256 = "0ee2590cbf9a1172e7dc2116707b54c24f221f24009a93ce260263477649c878"
+tree_sha256 = "fcb8f77136e8fafbc746c3655cefe291a4adff4e945f3ac230c7eb451f1c60ec"
+llvm_version = "11.0.0"
+size = 26022804
+enabled = true
+strip_components = 1
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-armhf.a"]
+
+[[artifacts]]
+host = "macos-aarch64"
+target_profile = "rpi-aarch64"
+target_triple = "aarch64-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-macos-aarch64-rpi-aarch64.tar.xz"
+sha256 = "710da3cc884932b0a280fceeac21b58c692b766632a4fc1d0f8a5f82320e4511"
+tree_sha256 = "3c86b98091a267a6216728778242163d55f3d7a1841e13dd155d3794a41f9139"
+llvm_version = "11.0.0"
+size = 26011564
+enabled = true
+strip_components = 1
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-aarch64.a"]
+
+[[artifacts]]
+host = "macos-x86_64"
+target_profile = "pc-x86_64"
+target_triple = "x86_64-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-macos-x86_64-pc-x86_64.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+tree_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+llvm_version = "11.0.0"
+size = 0
+enabled = false
+strip_components = 1
+disabled_reason = "Intel macOS is not a release target"
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "bin/collect-aros32", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-x86_64.a", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-i386.a"]
+
+[[artifacts]]
+host = "macos-x86_64"
+target_profile = "arm-raspi"
+target_triple = "arm-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-macos-x86_64-arm-raspi.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+tree_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+llvm_version = "11.0.0"
+size = 0
+enabled = false
+strip_components = 1
+disabled_reason = "Intel macOS is not a release target"
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-armhf.a"]
+
+[[artifacts]]
+host = "macos-x86_64"
+target_profile = "rpi-aarch64"
+target_triple = "aarch64-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-macos-x86_64-rpi-aarch64.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+tree_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+llvm_version = "11.0.0"
+size = 0
+enabled = false
+strip_components = 1
+disabled_reason = "Intel macOS is not a release target"
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-aarch64.a"]
+
+[[artifacts]]
+host = "linux-x86_64"
+target_profile = "pc-x86_64"
+target_triple = "x86_64-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-linux-x86_64-pc-x86_64.tar.xz"
+sha256 = "9661c2a000893f811a2bb0c442d9121e74cb0a2743b8d541e121061713bcbcaf"
+tree_sha256 = "04587ed1cb5ebc39349990022065d9f74e39e587452b6b7cf1533a0689c69eda"
+llvm_version = "11.0.0"
+size = 38647276
+enabled = true
+strip_components = 1
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "bin/collect-aros32", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-x86_64.a", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-i386.a"]
+
+[[artifacts]]
+host = "linux-x86_64"
+target_profile = "arm-raspi"
+target_triple = "arm-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-linux-x86_64-arm-raspi.tar.xz"
+sha256 = "792bdb9d7d0e1cd78a735d72f3b1627f31e3bc07289882b22e42d35a2a232d04"
+tree_sha256 = "3ed8e3fbc86ebae4eeac8838947e798f472f31b28b4f93e5d591ddaffd44ebb9"
+llvm_version = "11.0.0"
+size = 38096912
+enabled = true
+strip_components = 1
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-armhf.a"]
+
+[[artifacts]]
+host = "linux-x86_64"
+target_profile = "rpi-aarch64"
+target_triple = "aarch64-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-linux-x86_64-rpi-aarch64.tar.xz"
+sha256 = "0adfd0ed7831405b7287a4f25edb4162d745ce8c3fd6c45a01e4de0cdc478b1d"
+tree_sha256 = "248fcfd2b8b18e07f77877779b1087d6ea832e4a232d38534d831379cd4dec6f"
+llvm_version = "11.0.0"
+size = 38078556
+enabled = true
+strip_components = 1
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-aarch64.a"]
+
+[[artifacts]]
+host = "linux-aarch64"
+target_profile = "pc-x86_64"
+target_triple = "x86_64-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-linux-aarch64-pc-x86_64.tar.xz"
+sha256 = "8d9be3b71eb02f60177c77ed62931caf4ebedd9c34b6ca9312b57157685c572e"
+tree_sha256 = "0298ff301f1b7681ec39fef7ecde653c85769ee1d0aa61e56beb07c3a42019b0"
+llvm_version = "11.0.0"
+size = 35097912
+enabled = true
+strip_components = 1
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "bin/collect-aros32", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-x86_64.a", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-i386.a"]
+
+[[artifacts]]
+host = "linux-aarch64"
+target_profile = "arm-raspi"
+target_triple = "arm-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-linux-aarch64-arm-raspi.tar.xz"
+sha256 = "90f5873ecd3b233100107afd27ffe12f46d16f7b4fdbbac1befbc7725b9fd720"
+tree_sha256 = "256105910ef83b060c3650fa7a8f028d12bdc95da7a0833a8c3b41d1e9ca77a8"
+llvm_version = "11.0.0"
+size = 34610104
+enabled = true
+strip_components = 1
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-armhf.a"]
+
+[[artifacts]]
+host = "linux-aarch64"
+target_profile = "rpi-aarch64"
+target_triple = "aarch64-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-linux-aarch64-rpi-aarch64.tar.xz"
+sha256 = "0969ed6abdefe85ccc41495476869b27877872eb97f62d07b08bfccc5feb4ab3"
+tree_sha256 = "b1a89bc0ef71a0792456835a66db7d84dec4c9d9d275e54cb3fe116e61fde346"
+llvm_version = "11.0.0"
+size = 34600120
+enabled = true
+strip_components = 1
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/llvm-ranlib", "bin/llvm-nm", "bin/llvm-strip", "bin/llvm-objcopy", "bin/llvm-objdump", "bin/aros-collect", "bin/collect-aros", "include/c++/v1/algorithm", "include/c++/v1/cerrno", "include/c++/v1/cinttypes", "include/c++/v1/cstddef", "include/c++/v1/cstdint", "include/c++/v1/deque", "include/c++/v1/memory", "include/c++/v1/string", "include/c++/v1/system_error", "include/c++/v1/vector", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a", "toolchain-manifest.json", "lib/clang/11.0.0/lib/aros/libclang_rt.builtins-aarch64.a"]
+
+[[artifacts]]
+host = "macos-aarch64"
+target_profile = "opensbi-riscv64"
+target_triple = "riscv64-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-macos-aarch64-opensbi-riscv64.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+tree_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+llvm_version = "11.0.0"
+enabled = false
+strip_components = 1
+disabled_reason = "RISC-V is not part of v0.1.4"
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/aros-collect", "bin/collect-aros", "include/c++/v1", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a"]
+
+[[artifacts]]
+host = "macos-x86_64"
+target_profile = "opensbi-riscv64"
+target_triple = "riscv64-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-macos-x86_64-opensbi-riscv64.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+tree_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+llvm_version = "11.0.0"
+enabled = false
+strip_components = 1
+disabled_reason = "RISC-V is not part of v0.1.4"
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/aros-collect", "bin/collect-aros", "include/c++/v1", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a"]
+
+[[artifacts]]
+host = "linux-x86_64"
+target_profile = "opensbi-riscv64"
+target_triple = "riscv64-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-linux-x86_64-opensbi-riscv64.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+tree_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+llvm_version = "11.0.0"
+enabled = false
+strip_components = 1
+disabled_reason = "RISC-V is not part of v0.1.4"
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/aros-collect", "bin/collect-aros", "include/c++/v1", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a"]
+
+[[artifacts]]
+host = "linux-aarch64"
+target_profile = "opensbi-riscv64"
+target_triple = "riscv64-unknown-aros"
+asset = "aros-toolchain-v1-llvm11.0.0-linux-aarch64-opensbi-riscv64.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+tree_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+llvm_version = "11.0.0"
+enabled = false
+strip_components = 1
+disabled_reason = "RISC-V is not part of v0.1.4"
+required_paths = ["bin/clang", "bin/clang++", "bin/ld.lld", "bin/llvm-ar", "bin/aros-collect", "bin/collect-aros", "include/c++/v1", "lib/libc++.a", "lib/libc++abi.a", "lib/libunwind.a"]

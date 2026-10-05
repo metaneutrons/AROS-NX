@@ -123,7 +123,7 @@ AROS_IMPORT_ASM_SYM(int, dummy, __includelibrarieshandling);   \
                                                                \
 static const struct libraryset __aros_libset_##bname =         \
 {                                                              \
-     name, &__aros_libreq_##bname, (void *)&bname              \
+     (CONST_STRPTR)(name), &__aros_libreq_##bname, (void *)&bname \
 };                                                             \
 ADD2SET(__aros_libset_##bname, LIBS, 0) 
 
@@ -141,7 +141,7 @@ AROS_IMPORT_ASM_SYM(int, dummy, __includerellibrarieshandling);      \
                                                                      \
 static const struct rellibraryset __aros_rellibset_##bname =   \
 {                                                                    \
-     name, &__aros_libreq_##bname, &__aros_rellib_offset_##bname     \
+     (CONST_STRPTR)(name), &__aros_libreq_##bname, &__aros_rellib_offset_##bname \
 };                                                                   \
 ADD2SET(__aros_rellibset_##bname, RELLIBS, 0) 
 

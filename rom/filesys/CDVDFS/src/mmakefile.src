@@ -4,6 +4,14 @@ include $(SRCDIR)/config/aros.cfg
 #MM- workbench-c: kernel-fs-cdvdfs-cdcontrol kernel-fs-cdvdfs-checkcd
 #MM- test: kernel-fs-cdvdfs-cdrom
 
+# CDVDFS consumes the public codesets headers without linking libcodesets: it
+# opens codesets.library at runtime.  Keep the header staging edge explicit so
+# cold parallel builds cannot compile the handler before the fetched port has
+# populated the SDK.
+#MM kernel-fs-cdvdfs : workbench-libs-codesets-includes
+#MM kernel-fs-cdvdfs-cdrom : workbench-libs-codesets-includes
+#MM kernel-fs-cdvdfs-checkcd : workbench-libs-codesets-includes
+
 TESTSDIR := $(AROS_TESTS)/cdrom
 
 HANDLER_FILES := device volumes path hfs generic iso9660 cdrom \

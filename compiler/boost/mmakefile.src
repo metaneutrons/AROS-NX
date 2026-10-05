@@ -29,3 +29,33 @@ ARCHSRCDIR := $(PORTSDIR)/boost/$(ARCHBASE)
 
 %copy_dir_recursive mmake=compiler-boost-includes-copy \
     src=$(ARCHSRCDIR)/boost/. dst="$(AROS_INCLUDES)/boost"
+
+
+# The vendored subset, for builds that cannot fetch a Port.
+#
+# aros/preprocessor/ needs boost unconditionally, and inline/posixc.h reaches
+# it, so every C source that touches proto/posixc.h needs boost headers in the
+# SDK. The toolchain producer runs offline against a verified source set and
+# ports-includes is deliberately out of its closure, which left it with an SDK
+# whose own headers could not compile.
+#
+# include/ therefore carries boost/preprocessor and boost/config from the same
+# 1.89.0 as the Port above, taken from boostorg/preprocessor and
+# boostorg/config at tag boost-1.89.0. See include/README for provenance and
+# checksums. Both libraries are kept whole rather than pruned to the 301
+# headers presently reachable, so that a new macro in an AROS header does not
+# need a re-prune.
+#
+# Only the release path uses this. An ordinary build keeps the Port, which
+# provides all of boost, and nothing stages both.
+#MM- compiler-boost-sdk-subset : \
+#MM     compiler-boost-subset-geninc-copy \
+#MM     compiler-boost-subset-includes-copy
+
+SUBSETDIR := $(SRCDIR)/$(CURDIR)/include/boost
+
+%copy_dir_recursive mmake=compiler-boost-subset-geninc-copy \
+    src=$(SUBSETDIR)/. dst="$(GENINCDIR)/boost"
+
+%copy_dir_recursive mmake=compiler-boost-subset-includes-copy \
+    src=$(SUBSETDIR)/. dst="$(AROS_INCLUDES)/boost"

@@ -7,8 +7,9 @@ include $(SRCDIR)/config/aros.cfg
 
 #MM- core-linklibs : linklibs-startup linklibs-startup-$(AROS_TARGET_CPU)
 #MM- linklibs: linklibs-startup
-#MM linklibs-startup : linklibs-startup-setup includes includes-copy \
-#MM     compiler-stdc-includes compiler-posixc-includes kernel-task-includes
+#MM linklibs-startup : linklibs-startup-setup sdk-includes-$(AROS_TOOLCHAIN_RELEASE) \
+#MM     compiler-stdc-includes compiler-posixc-includes kernel-task-includes \
+#MM     kernel-dos-includes
 
 STARTUP_DIRS := $(GENDIR)/$(CURDIR) $(GENDIR)/$(CURDIR)/nix $(GENDIR)/$(CURDIR)/cxx $(AROS_LIB)
 

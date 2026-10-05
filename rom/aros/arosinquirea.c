@@ -151,7 +151,7 @@ IPTR kickbase(void);
         */
         
         case AI_KickstartBase:
-            SetData (tag, APTR, kickbase());
+            SetData (tag, APTR, (APTR)kickbase());
             break;
         
         case AI_KickstartSize:
