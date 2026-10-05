@@ -95,7 +95,7 @@ OOP_Object *METHOD(AmigaVideoCompositor, Root, New)
                                  * stack is chip RAM on an unexpanded
                                  * machine.
                                  */
-                                TASKTAG_STACKSIZE  , 4096,
+                                TASKTAG_STACKSIZE  , 2048,
                                 TASKTAG_PC         , DisplayServiceTask,
                                 TASKTAG_ARG1       , o,
                                 TAG_DONE);
@@ -312,9 +312,11 @@ VOID METHOD(AmigaVideoCompositor, Hidd_Compositor, BitMapStackChanged)
             else
             {
                 /* The bitmap height is relative to its display top edge. */
-                screen_finish = bmdata->topedge + bmdata->height - 1;
+                screen_finish = bmdata->topedge + bmdata->viewportheight - 1;
             }
             bmdata->displayheight = limitheight(csd, (screen_finish - screen_start) + 1, bmdata->interlace, FALSE);
+            if (bmdata->displayheight > bmdata->viewportheight)
+                bmdata->displayheight = bmdata->viewportheight;
             D(bug("[AmigaVideo:Compositor] %s:  -- screen range = %d -> %d (%d rows)\n", __func__, screen_start, screen_finish, bmdata->displayheight);)
             setcopperscroll(csd, bmdata, ((csd->interlaced == TRUE) || (bmdata->interlace != 0)));
 
