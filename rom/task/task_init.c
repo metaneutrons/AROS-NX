@@ -58,8 +58,9 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
     NEWLIST(&TaskResBase->trb_NotifyHooks);
     InitSemaphore(&TaskResBase->trb_NotifySem);
     NEWLIST(&TaskResBase->trb_LockedLists);
-
-    SysBase->lb_TaskResBase = (struct Library *)TaskResBase;
+#if defined(__AROSEXEC_SMP__)
+    EXEC_SPINLOCK_INIT(&TaskResBase->TaskListSpinLock);
+#endif
 
     InitSemaphore(&TaskResBase->trb_Sem);
 
@@ -73,6 +74,9 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
     }
     freeTaskStorageSlot->FreeSlot = __TS_FIRSTSLOT + 1;
     AddHead((struct List *)&TaskResBase->trb_TaskStorageSlots, (struct Node *)freeTaskStorageSlot);
+
+    /* Publish the base only once nothing above can fail any more. */
+    SysBase->lb_TaskResBase = (struct Library *)TaskResBase;
 
     TaskResBase->trb_RemTask = SetFunction((struct Library *)SysBase, -48*LIB_VECTSIZE, AROS_SLIB_ENTRY(RemTask, Task, 48));
     TaskResBase->trb_NewAddTask = SetFunction((struct Library *)SysBase, -176*LIB_VECTSIZE, AROS_SLIB_ENTRY(NewAddTask, Task, 176));
@@ -116,6 +120,7 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
             if ((taskEntry = AllocMem(sizeof(struct TaskListEntry), MEMF_CLEAR)) != NULL)
             {
                 D(bug("[TaskRes] 0x%p [  S] %02d %s\n", curTask, GetIntETask(curTask)->iet_CpuNumber, curTask->tc_Node.ln_Name));
+                NEWLIST(&taskEntry->tle_HookTypes);
                 taskEntry->tle_Task = curTask;
                 AddTail(&TaskResBase->trb_TaskList, &taskEntry->tle_Node);
             }
@@ -142,6 +147,7 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
             if ((taskEntry = AllocMem(sizeof(struct TaskListEntry), MEMF_CLEAR)) != NULL)
             {
                 D(bug("[TaskRes] 0x%p [R--] 00 %s\n", SysBase->ThisTask, SysBase->ThisTask->tc_Node.ln_Name));
+                NEWLIST(&taskEntry->tle_HookTypes);
                 taskEntry->tle_Task = SysBase->ThisTask;
                 AddTail(&TaskResBase->trb_TaskList, &taskEntry->tle_Node);
             }
@@ -163,6 +169,7 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
             if ((taskEntry = AllocMem(sizeof(struct TaskListEntry), MEMF_CLEAR)) != NULL)
             {
                 D(bug("[TaskRes] 0x%p [-R-] -- %s\n", curTask, curTask->tc_Node.ln_Name));
+                NEWLIST(&taskEntry->tle_HookTypes);
                 taskEntry->tle_Task = curTask;
                 AddTail(&TaskResBase->trb_TaskList, &taskEntry->tle_Node);
             }
@@ -188,6 +195,7 @@ static LONG taskres_Init(struct TaskResBase *TaskResBase)
             if ((taskEntry = AllocMem(sizeof(struct TaskListEntry), MEMF_CLEAR)) != NULL)
             {
                 D(bug("[TaskRes] 0x%p [--W] -- %s\n", curTask, curTask->tc_Node.ln_Name));
+                NEWLIST(&taskEntry->tle_HookTypes);
                 taskEntry->tle_Task = curTask;
                 AddTail(&TaskResBase->trb_TaskList, &taskEntry->tle_Node);
             }
@@ -218,6 +226,9 @@ static LONG taskres_Exit(struct TaskResBase *TaskResBase)
     SetFunction((struct Library *)SysBase, -176*LIB_VECTSIZE, TaskResBase->trb_NewAddTask);
     SetFunction((struct Library *)SysBase, -48*LIB_VECTSIZE, TaskResBase->trb_RemTask);
 #endif /* TASKRES_ENABLE */
+
+    if (SysBase->lb_TaskResBase == (struct Library *)TaskResBase)
+        SysBase->lb_TaskResBase = NULL;
 
     CloseLibrary(TaskResBase->trb_UtilityBase);
 

@@ -53,25 +53,43 @@
 
 #ifdef TASKRES_ENABLE
     struct TaskListPrivate *taskList, *tltmp;
+    struct TaskListPrivate *detached = NULL;
     struct Task *thisTask = FindTask(NULL);
 #endif /* TASKRES_ENABLE */
 
     D(bug("[TaskRes] UnLockTaskList: flags = $%lx\n", flags));
 
 #ifdef TASKRES_ENABLE
-    ReleaseSemaphore(&TaskResBase->trb_Sem);
-
+#if !defined(__AROSEXEC_SMP__)
+    Forbid();
+#else
+    Disable();
+    EXEC_SPINLOCK_LOCK(&TaskResBase->TaskListSpinLock, NULL, SPINLOCK_MODE_WRITE);
+#endif
     ForeachNodeSafe(&TaskResBase->trb_LockedLists, taskList, tltmp)
     {
-        if (((struct Task *)taskList->tlp_Node.ln_Name == thisTask) &&
+        if (((struct TaskList *)taskList == tlist) &&
+            ((struct Task *)taskList->tlp_Node.ln_Name == thisTask) &&
             (taskList->tlp_Flags == flags))
         {
             D(bug("[TaskRes] UnLockTaskList: Releasing TaskList @ 0x%p\n", taskList));
             Remove(&taskList->tlp_Node);
-            FreeMem(taskList, sizeof(struct TaskListPrivate));
+            detached = taskList;
             break;
         }
     }
+#if !defined(__AROSEXEC_SMP__)
+    Permit();
+#else
+    EXEC_SPINLOCK_UNLOCK(&TaskResBase->TaskListSpinLock);
+    Enable();
+#endif
+    /* The marker is removed while its semaphore ownership still exists.
+     * Invalid handles must not release another iterator's semaphore count. */
+    if (!detached)
+        return;
+    FreeMem(detached, sizeof(*detached));
+    ReleaseSemaphore(&TaskResBase->trb_Sem);
 
     /* Purge expired entries from the list... */
     task_CleanList(NULL, TaskResBase);
