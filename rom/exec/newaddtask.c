@@ -156,8 +156,8 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
                     A NULL pointer installs the default finalizer.
 
     RESULT
-        The address of the new task or NULL if the operation failed (can only
-        happen with TF_ETASK set - currenty not implemented).
+        The address of the new task or NULL if task initialization or context
+        preparation failed.
 
     NOTES
         This function is private. Use MorphOS-compatible NewCreateTaskA()
@@ -180,6 +180,7 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
 
     struct Task *parent;
     struct MemList *mlExtra = NULL;
+    char *taskName;
     struct Hook *plHook = NULL;
     if (tagList)
         plHook = (struct Hook *)LibGetTagData(TASKTAG_PRELAUNCHHOOK, 0, tagList);
@@ -187,6 +188,7 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
     ASSERT_VALID_PTR(task);
 
     parent = GET_THIS_TASK;
+    taskName = task->tc_Node.ln_Name;
 
     /* Sigh - you should provide a name for your task. */
     if ((task->tc_Node.ln_Name == NULL) && (parent) && (parent->tc_Node.ln_Name))
@@ -269,7 +271,15 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
 
     /* Initialize ETask */
     if (!InitETask(task, parent))
+    {
+        if (mlExtra)
+        {
+            Remove(&mlExtra->ml_Node);
+            task->tc_Node.ln_Name = taskName;
+            FreeEntry(mlExtra);
+        }
         return NULL;
+    }
 
     /* Get new stackpointer. */
     if (task->tc_SPReg == NULL)
@@ -306,6 +316,16 @@ static void TaskLaunch(struct Task *parent, struct Task *task, struct Hook *plHo
     if (!PrepareContext(task, initialPC, finalPC, tagList, SysBase))
     {
         CleanupETask(task);
+        /* CleanupETask() freed the ETask, but the Task belongs to the
+         * caller: do not leave it pointing at freed memory. */
+        task->tc_UnionETask.tc_ETask = NULL;
+        task->tc_Flags &= ~TF_ETASK;
+        if (mlExtra)
+        {
+            Remove(&mlExtra->ml_Node);
+            task->tc_Node.ln_Name = taskName;
+            FreeEntry(mlExtra);
+        }
         return NULL;
     }
 
