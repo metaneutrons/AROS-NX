@@ -160,6 +160,16 @@ void cpu_Dispatch(regs_t *regs)
     struct Task *task;
     struct ExceptionContext *ctx;
 
+#if defined(__AROSEXEC_SMP__)
+    /*
+     * Preemption waits while a task holds a counted spinlock (tls.h), so
+     * a task that leaves this hart with one held left of its own accord:
+     * a Wait() with the lock still held. The count belongs to that task,
+     * not to the next one here, which would otherwise never be preempted.
+     */
+    TLS_SET(SpinHeld, 0);
+#endif
+
     while (!(task = core_Dispatch()))
     {
         /*

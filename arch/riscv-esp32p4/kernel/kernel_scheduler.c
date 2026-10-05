@@ -170,7 +170,6 @@ void core_Switch(void)
 struct Task *core_Dispatch(void)
 {
     struct Task *newtask;
-    struct Task *task = GET_THIS_TASK;
     BOOL taskStateLocked = FALSE;
     uint32_t cpumask = 1 << GetCPUNumber();
     BOOL sawContended;
@@ -219,8 +218,17 @@ dispatch_rescan:
         goto dispatch_rescan;
     }
 
-    if (!newtask && task && task->tc_State != TS_WAIT)
-        newtask = task;
+    /*
+     * No fallback to the outgoing task, unlike aarch64-native. With two
+     * harts it is in none of the states that one allows: core_Switch() has
+     * put it on the ready list, where the scan above finds it if it may
+     * run here (if its new mask excludes this hart, resuming it here
+     * would leave it on that list for the other hart as well); it is
+     * waiting; RemTask() has removed it; or, when this pointer is left
+     * over from an earlier pass, the other hart may be running it. Each
+     * hart has an idle task bound to it, so the scan finds that at least,
+     * and NULL only happens before it exists.
+     */
 
     if (newtask != NULL)
     {
@@ -234,10 +242,9 @@ dispatch_rescan:
 
             SysBase->DispCount++;
             IDNESTCOUNT_SET(newtask->tc_IDNestCnt);
-            /* Only a task from the ready list is new here. TS_RUN means the
-               running task carries on (a dispatch without a switch); it is
-               already ThisTask and on TaskRunning, and a second AddHead()
-               would corrupt that list. */
+            /* Every task here comes off the ready list. Kept as a guard:
+               a task in TS_RUN is already ThisTask and on TaskRunning,
+               and a second AddHead() would corrupt that list. */
             if (newtask->tc_State == TS_READY)
                 SET_THIS_TASK(newtask);
             /* A fresh slice only when the task used its own up */

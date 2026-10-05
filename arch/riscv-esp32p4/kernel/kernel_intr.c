@@ -31,8 +31,9 @@ void core_ExitInterrupt(regs_t *regs)
     if ((SysBase->SysFlags & SFF_SoftInt) && GetCPUNumber() == 0)
         core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
 
-    /* Task switching disabled: leave the task alone */
-    if (TDNESTCOUNT_GET < 0)
+    /* Task switching disabled, or the task holds a spinlock (tls.h,
+       p4_spin_taken()): leave the task alone. The switch stays pending. */
+    if (TDNESTCOUNT_GET < 0 && !TLS_GET(SpinHeld))
     {
         /* Only when a switch is pending */
         if (FLAG_SCHEDSWITCH_ISSET)
@@ -55,6 +56,12 @@ void core_SysCall(int sc, regs_t *regs)
         break;
 
     case SC_SCHEDULE:
+        /* Not while the task holds a spinlock: its last unlock asks again */
+        if (TLS_GET(SpinHeld))
+        {
+            FLAG_SCHEDSWITCH_SET;
+            break;
+        }
         if (!core_Schedule())
             break;
         /* Fallthrough */

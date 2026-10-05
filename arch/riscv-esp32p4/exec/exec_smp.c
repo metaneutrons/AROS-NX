@@ -5,9 +5,11 @@
           target, from arch/aarch64-native.
 */
 
+#include <aros/debug.h>
 #include <aros/symbolsets.h>
 #include <exec/execbase.h>
 #include <exec/tasks.h>
+#include <utility/tagitem.h>
 
 #include <proto/exec.h>
 #include <proto/kernel.h>
@@ -183,3 +185,43 @@ int Exec_P4SMPInit(struct ExecBase *SysBase)
 }
 
 ADD2INITLIB(Exec_P4SMPInit, -127)
+
+/* Hart 0's idle task: an interrupt wakes it, and its exit reschedules */
+static void p4_IdleTask0(struct ExecBase *SysBase)
+{
+    (void)SysBase;
+
+    for (;;)
+        asm volatile("wfi");
+}
+
+/*
+ * An idle task bound to hart 0, as aarch64-native creates one per CPU and
+ * hart 1 creates its own (kernel/kernel_smp.c). Always ready there at
+ * -127, it gives the dispatcher a task for hart 0 in every pass, so the
+ * dispatcher never has to fall back on the task it switched out
+ * (kernel/kernel_scheduler.c, core_Dispatch()). Without it hart 0 would
+ * still idle inside the dispatcher, so a failure here is reported, not
+ * fatal.
+ */
+int Exec_P4IdleInit(struct ExecBase *SysBase)
+{
+    void *aff = KrnAllocCPUMask();
+    struct Task *idle = NULL;
+
+    if (aff)
+    {
+        KrnGetCPUMask(0, aff);
+        idle = NewCreateTask(TASKTAG_NAME, (IPTR)"CPU #00 Idle",
+                             TASKTAG_AFFINITY, (IPTR)aff,
+                             TASKTAG_PRI, -127,
+                             TASKTAG_PC, (IPTR)p4_IdleTask0,
+                             TASKTAG_ARG1, (IPTR)SysBase,
+                             TAG_DONE);
+    }
+    if (!idle)
+        bug("[Exec] no idle task for hart 0\n");
+    return TRUE;
+}
+
+ADD2INITLIB(Exec_P4IdleInit, 0)

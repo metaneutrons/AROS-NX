@@ -154,6 +154,7 @@ AROS_LH3(spinlock_t *, KrnSpinLock,
             P4_SPIN_CHECK(spins);
         }
     }
+    p4_spin_taken();
     return lock;
 
     AROS_LIBFUNC_EXIT

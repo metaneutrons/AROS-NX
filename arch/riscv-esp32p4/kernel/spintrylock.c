@@ -39,6 +39,7 @@ AROS_LH2(spinlock_t *, KrnSpinTryLock,
                                          0, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
             return NULL;
         lock->s_Owner = TLS_GET(ThisTask);
+        p4_spin_taken();
         return lock;
     }
 
@@ -49,6 +50,7 @@ AROS_LH2(spinlock_t *, KrnSpinTryLock,
             return NULL;
     } while (!__atomic_compare_exchange_n(&lock->lock, &value, value + 1,
                                           0, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED));
+    p4_spin_taken();
     return lock;
 
     AROS_LIBFUNC_EXIT

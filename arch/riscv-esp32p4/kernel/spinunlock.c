@@ -12,6 +12,10 @@
 #include <kernel_base.h>
 
 #include <proto/kernel.h>
+#include <kernel_syscall.h>
+
+#include "kernel_cpu.h"
+#include "tls.h"
 
 AROS_LH1(void, KrnSpinUnLock,
         AROS_LHA(spinlock_t *, lock, A0),
@@ -28,6 +32,10 @@ AROS_LH1(void, KrnSpinUnLock,
     }
     else
         __atomic_fetch_sub(&lock->lock, 1, __ATOMIC_RELEASE);
+
+    /* A preemption deferred while the lock was held happens now */
+    if (p4_spin_released())
+        krnSysCall(SC_SCHEDULE);
 
     AROS_LIBFUNC_EXIT
 }
