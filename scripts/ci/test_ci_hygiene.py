@@ -120,6 +120,15 @@ class WindowsPathValidationTests(unittest.TestCase):
             self.assertNotIn("COM10.txt", result.stdout)
 
 
+def read_plan(output: Path) -> tuple[str, list[tuple[str, str]]]:
+    """The scope and the (host, preset) pairs a plan wrote."""
+    values = dict(
+        line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines() if "=" in line
+    )
+    matrix = json.loads(values["matrix"])
+    return values["scope"], [(entry["host"], entry["preset"]) for entry in matrix["include"]]
+
+
 class MatrixPlanTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -141,33 +150,129 @@ class MatrixPlanTests(unittest.TestCase):
         path.write_text("", encoding="utf-8")
         return path
 
+    def plan_pull_request(self, files: dict[str, bytes], **pull_request: object) -> tuple[str, list[tuple[str, str]]]:
+        base, head = pull_request_merge(self.repo, files, "change")
+        event = self.event_file("event.json", {"pull_request": {"base": {"sha": base}, **pull_request}})
+        output = self.output_file()
+        result = invoke_plan(self.repo, "pull_request", head, output, GITHUB_EVENT_PATH=str(event))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return read_plan(output)
+
+    def plan_main_push(self, files: dict[str, bytes]) -> tuple[str, list[tuple[str, str]]]:
+        parent = git(self.repo, "rev-parse", "HEAD")
+        for relative_path, contents in files.items():
+            path = self.repo / relative_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(contents)
+        head = commit(self.repo, "merged change")
+        event = self.event_file("event.json", {"before": parent})
+        output = self.output_file()
+        result = invoke_plan(
+            self.repo, "push", head, output, GITHUB_EVENT_PATH=str(event), GITHUB_REF="refs/heads/main"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return read_plan(output)
+
     def test_only_markdown_changes_on_a_pull_request_skip_the_matrix(self) -> None:
-        base, head = pull_request_merge(self.repo, {"docs/guide.md": b"guide\n"}, "docs")
-        event = self.event_file("event.json", {"pull_request": {"base": {"sha": base}}})
-        output = self.output_file()
+        scope, matrix = self.plan_pull_request({"docs/guide.md": b"guide\n"})
 
-        result = invoke_plan(self.repo, "pull_request", head, output, GITHUB_EVENT_PATH=str(event))
+        self.assertEqual(scope, "none")
+        self.assertEqual(matrix, [])
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("full_matrix=false", output.read_text(encoding="utf-8"))
+    def test_target_source_change_on_a_pull_request_builds_every_preset_on_one_host(self) -> None:
+        scope, matrix = self.plan_pull_request({"src/main.c": b"int main(void) { return 0; }\n"})
 
-    def test_source_change_on_a_pull_request_runs_the_full_matrix(self) -> None:
-        base, head = pull_request_merge(self.repo, {"src/main.c": b"int main(void) { return 0; }\n"}, "source")
-        event = self.event_file("event.json", {"pull_request": {"base": {"sha": base}}})
-        output = self.output_file()
+        self.assertEqual(scope, "pull-request")
+        self.assertEqual(
+            matrix,
+            [("linux-x86_64", "pc-x86_64"), ("linux-x86_64", "arm-raspi"), ("linux-x86_64", "rpi-aarch64")],
+        )
 
-        result = invoke_plan(self.repo, "pull_request", head, output, GITHUB_EVENT_PATH=str(event))
+    def test_draft_pull_request_builds_nothing(self) -> None:
+        scope, matrix = self.plan_pull_request({"rom/exec/x.c": b"source\n"}, draft=True)
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("full_matrix=true", output.read_text(encoding="utf-8"))
+        self.assertEqual(scope, "none")
+        self.assertEqual(matrix, [])
 
-    def test_markdown_counterprobes_and_empty_diff_run_the_full_matrix(self) -> None:
+    def test_ready_pull_request_is_planned_by_its_paths(self) -> None:
+        scope, _ = self.plan_pull_request({"rom/exec/x.c": b"source\n"}, draft=False)
+
+        self.assertEqual(scope, "pull-request")
+
+    def test_unbuilt_architectures_skip_the_matrix(self) -> None:
+        scope, matrix = self.plan_pull_request(
+            {
+                "arch/riscv-esp32p4/kernel/x.c": b"source\n",
+                "arch/m68k-amiga/y.c": b"source\n",
+                "arch/riscv64-opensbi/z.c": b"source\n",
+                "arch/ppc-chrp/w.c": b"source\n",
+                "arch/riscv-esp32p4/README.md": b"notes\n",
+            }
+        )
+
+        self.assertEqual(scope, "none")
+        self.assertEqual(matrix, [])
+
+    def test_unbuilt_architecture_counterprobes_are_built(self) -> None:
         cases = [
-            ({"docs/guide.mdx": b"guide\n"}, "mdx"),
-            ({"docs/guide.md": b"guide\n", "src/main.c": b"source\n"}, "mixed"),
-            ({}, "empty"),
+            ({"arch/riscv-esp32p4/x.c": b"source\n", "rom/exec/y.c": b"source\n"}, "with shared code"),
+            ({"arch/arm-raspi/x.c": b"source\n"}, "built arm"),
+            ({"arch/i386-pc/x.c": b"source\n"}, "i386 parts of pc-x86_64"),
+            ({"arch/all-native/x.c": b"source\n"}, "shared all-*"),
+            ({"arch/mmakefile.src": b"rules\n"}, "arch top level"),
+            ({"rom/riscv-notes/x.c": b"source\n"}, "riscv outside arch"),
         ]
-        for changes, label in cases:
+        for files, label in cases:
+            with self.subTest(label=label):
+                # a fresh repository per case; unittest cleans up the last
+                self.tearDown()
+                self.setUp()
+                scope, _ = self.plan_pull_request(files)
+                self.assertEqual(scope, "pull-request")
+
+    def test_build_host_changes_run_the_full_matrix(self) -> None:
+        cases = [
+            {"tools/genmodule/x.c": b"source\n"},
+            {"config/make.tmpl": b"rules\n"},
+            {"scripts/ci/x.py": b"script\n"},
+            {".github/workflows/x.yml": b"workflow\n"},
+            {"configure": b"script\n"},
+            {"configure.in": b"script\n"},
+            {"acinclude.m4": b"macros\n"},
+            {"aros-toolchains.lock.toml": b"lock\n"},
+            {"rom/exec/x.c": b"source\n", "tools/y.c": b"source\n"},
+        ]
+        for files in cases:
+            with self.subTest(files=sorted(files)):
+                # a fresh repository per case; unittest cleans up the last
+                self.tearDown()
+                self.setUp()
+                scope, matrix = self.plan_pull_request(files)
+                self.assertEqual(scope, "full")
+                self.assertEqual(len(matrix), 9)
+
+    def test_build_host_counterprobes_stay_on_one_host(self) -> None:
+        cases = [
+            {"rom/config/x.c": b"source\n"},
+            {"workbench/tools/x.c": b"source\n"},
+            {"configure.local": b"text\n"},
+            {"arch/x86_64-pc/mmakefile": b"rules\n"},
+        ]
+        for files in cases:
+            with self.subTest(files=sorted(files)):
+                # a fresh repository per case; unittest cleans up the last
+                self.tearDown()
+                self.setUp()
+                scope, _ = self.plan_pull_request(files)
+                self.assertEqual(scope, "pull-request")
+
+    def test_markdown_counterprobes_and_empty_diff_are_built(self) -> None:
+        cases = [
+            ({"docs/guide.mdx": b"guide\n"}, "mdx", "pull-request"),
+            ({"docs/guide.md": b"guide\n", "src/main.c": b"source\n"}, "mixed", "pull-request"),
+            ({}, "empty", "full"),
+        ]
+        for changes, label, expected in cases:
             with self.subTest(label=label), tempfile.TemporaryDirectory() as case_directory:
                 case_repo = Path(case_directory)
                 initialize_repo(case_repo)
@@ -184,7 +289,7 @@ class MatrixPlanTests(unittest.TestCase):
                 output.write_text("", encoding="utf-8")
                 result = invoke_plan(case_repo, "pull_request", head, output, GITHUB_EVENT_PATH=str(event))
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn("full_matrix=true", output.read_text(encoding="utf-8"))
+                self.assertEqual(read_plan(output)[0], expected)
 
     def test_uncertain_pr_history_fails_closed(self) -> None:
         _, head = pull_request_merge(self.repo, {"docs/guide.md": b"guide\n"}, "docs")
@@ -194,27 +299,25 @@ class MatrixPlanTests(unittest.TestCase):
         result = invoke_plan(self.repo, "pull_request", head, output, GITHUB_EVENT_PATH=str(event))
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("full_matrix=true", output.read_text(encoding="utf-8"))
+        self.assertEqual(read_plan(output)[0], "full")
 
-    def test_main_push_skips_after_a_protected_pr_merge(self) -> None:
-        parent = git(self.repo, "rev-parse", "HEAD")
-        (self.repo / "src").mkdir()
-        (self.repo / "src/main.c").write_bytes(b"source\n")
-        head = commit(self.repo, "merged source")
-        event = self.event_file("event.json", {"before": parent})
-        output = self.output_file()
+    def test_main_push_builds_target_sources_on_the_remaining_hosts(self) -> None:
+        scope, matrix = self.plan_main_push({"src/main.c": b"source\n"})
 
-        result = invoke_plan(
-            self.repo,
-            "push",
-            head,
-            output,
-            GITHUB_EVENT_PATH=str(event),
-            GITHUB_REF="refs/heads/main",
-        )
+        self.assertEqual(scope, "remaining")
+        self.assertEqual(len(matrix), 6)
+        self.assertNotIn("linux-x86_64", {host for host, _ in matrix})
+        self.assertEqual({preset for _, preset in matrix}, {"pc-x86_64", "arm-raspi", "rpi-aarch64"})
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("full_matrix=false", output.read_text(encoding="utf-8"))
+    def test_main_push_skips_what_the_pull_request_qualified_fully_or_nobody_builds(self) -> None:
+        for files in ({"tools/genmodule/x.c": b"source\n"}, {"arch/riscv-esp32p4/x.c": b"source\n"}, {"docs/x.md": b"text\n"}):
+            with self.subTest(files=sorted(files)):
+                # a fresh repository per case; unittest cleans up the last
+                self.tearDown()
+                self.setUp()
+                scope, matrix = self.plan_main_push(files)
+                self.assertEqual(scope, "none")
+                self.assertEqual(matrix, [])
 
     def test_main_push_with_missing_history_fails_closed(self) -> None:
         output = self.output_file()
@@ -227,7 +330,7 @@ class MatrixPlanTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("full_matrix=true", output.read_text(encoding="utf-8"))
+        self.assertEqual(read_plan(output)[0], "full")
 
     def test_line_ending_warning_escapes_github_command_values(self) -> None:
         path_name = "bad%,:\nname.c"
@@ -267,7 +370,9 @@ class MatrixPlanTests(unittest.TestCase):
         result = invoke_plan(self.repo, "workflow_dispatch", head, output)
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("full_matrix=true", output.read_text(encoding="utf-8"))
+        scope, matrix = read_plan(output)
+        self.assertEqual(scope, "full")
+        self.assertEqual(len(matrix), 9)
 
 
 if __name__ == "__main__":

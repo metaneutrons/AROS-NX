@@ -3,6 +3,8 @@ name: AROS-NX CI
 on:
   pull_request:
     branches: [main]
+    # ready_for_review: a draft builds nothing until it is marked ready.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -12,7 +14,9 @@ permissions:
 
 concurrency:
   group: aros-nx-ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A run on main builds what its merge brought on the remaining hosts; a newer
+  # merge must not cancel it, or that change would never be built there.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   plan:
@@ -20,7 +24,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
-      full_matrix: ${{ steps.plan.outputs.full_matrix }}
+      scope: ${{ steps.plan.outputs.scope }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - name: Checkout AROS-NX with comparison history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -48,7 +53,7 @@ jobs:
   sources:
     name: Prepare locked product sources
     needs: plan
-    if: needs.plan.outputs.full_matrix == 'true'
+    if: needs.plan.outputs.scope != 'none'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -84,21 +89,12 @@ jobs:
   product:
     name: ${{ matrix.preset }} on ${{ matrix.host }}
     needs: [plan, sources]
-    if: needs.plan.outputs.full_matrix == 'true'
+    if: needs.plan.outputs.scope != 'none'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { host: linux-x86_64, runner: ubuntu-24.04, preset: pc-x86_64 }
-          - { host: linux-x86_64, runner: ubuntu-24.04, preset: arm-raspi }
-          - { host: linux-x86_64, runner: ubuntu-24.04, preset: rpi-aarch64 }
-          - { host: linux-aarch64, runner: ubuntu-24.04-arm, preset: pc-x86_64 }
-          - { host: linux-aarch64, runner: ubuntu-24.04-arm, preset: arm-raspi }
-          - { host: linux-aarch64, runner: ubuntu-24.04-arm, preset: rpi-aarch64 }
-          # Intel macOS is suspended until a separately qualified release target exists.
-          - { host: macos-aarch64, runner: macos-15, preset: pc-x86_64 }
-          - { host: macos-aarch64, runner: macos-15, preset: arm-raspi }
-          - { host: macos-aarch64, runner: macos-15, preset: rpi-aarch64 }
+      # Hosts and presets: scripts/ci/ci_hygiene.py, PRODUCT_HOSTS and
+      # PRODUCT_PRESETS; the plan selects the hosts for this run.
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
     steps:
@@ -146,7 +142,7 @@ jobs:
     env:
       PLAN_RESULT: ${{ needs.plan.result }}
       WINDOWS_RESULT: ${{ needs.windows-paths.result }}
-      FULL_MATRIX: ${{ needs.plan.outputs.full_matrix }}
+      SCOPE: ${{ needs.plan.outputs.scope }}
       SOURCES_RESULT: ${{ needs.sources.result }}
       PRODUCT_RESULT: ${{ needs.product.result }}
     steps:
@@ -156,10 +152,10 @@ jobs:
           set -euo pipefail
           test "$PLAN_RESULT" = success
           test "$WINDOWS_RESULT" = success
-          if [[ "$FULL_MATRIX" == true ]]; then
+          if [[ "$SCOPE" == pull-request || "$SCOPE" == remaining || "$SCOPE" == full ]]; then
             test "$SOURCES_RESULT" = success
             test "$PRODUCT_RESULT" = success
-          elif [[ "$FULL_MATRIX" == false ]]; then
+          elif [[ "$SCOPE" == none ]]; then
             test "$SOURCES_RESULT" = skipped
             test "$PRODUCT_RESULT" = skipped
           else
