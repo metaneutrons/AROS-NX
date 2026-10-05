@@ -76,6 +76,8 @@ struct TaskListHookEntry
 
 struct TaskListHookNode
 {
+    /* TaskResource owns the linkage, never the caller's Hook node. */
+    struct MinNode              tln_Node;
     struct Hook                 *tln_Hook;
 };
 
