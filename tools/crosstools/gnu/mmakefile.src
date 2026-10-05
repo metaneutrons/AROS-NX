@@ -179,6 +179,12 @@ gdb-installflag := $(CROSSTOOLSDIR)/.installflag-gdb-$(GDB_VERSION)
 #MM- tools-crosstools-gnu-riscv    : tools-crosstools-gcc crosstools-gcc
 #MM- tools-crosstools-gnu-riscv64  : tools-crosstools-gcc crosstools-gcc
 
+# Compiler releases must not select the generic crosstools-gcc host macro:
+# it depends on includes and builds every configured target runtime. Use the
+# existing compiler-only rule plus the required, explicit libgcc goals instead.
+#MM- tools-crosstools-gnu-release : tools-crosstools-gcc-libgcc
+#MM tools-crosstools-gcc-libgcc : tools-crosstools-gcc
+
 #MM tools-crosstools-gcc : tools-crosstools-binutils tools-crosstools-collect-aros \
 #MM                        tools-crosstools-gmp \
 #MM                        tools-crosstools-isl \
@@ -318,6 +324,11 @@ tools-crosstools-gcc :
 #MM crosstools-gcc : includes-copy
 
 #MM tools-crosstools-gcc : crosstools-gcc--fetch crosstools-gcc--configure
+
+#MM
+tools-crosstools-gcc-libgcc :
+	$(MAKE) -C $(HOSTGENDIR)/$(CURDIR)/gcc all-target-libgcc $(crosstools-gcc-make-env)
+	$(MAKE) -j1 -C $(HOSTGENDIR)/$(CURDIR)/gcc install-target-libgcc $(crosstools-gcc-install-env)
 
 #MM tools-crosstools-gcc-libatomic : crosstools-gcc--fetch tools-crosstools-autolibs linklibs-$(AROS_TARGET_CPU)
 #MM- linklibs-gnu-libatomic : tools-crosstools-gcc-libatomic

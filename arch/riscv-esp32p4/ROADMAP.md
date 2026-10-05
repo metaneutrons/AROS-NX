@@ -138,6 +138,7 @@ gate: compensated output is not the native display contract.
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
 | D0 | Compile-time board profile, with D1001 as the first implementation | `hardware partial` | LDO2 now recovers and verifies all 32 MB without Vellum. The 20-MHz-PSRAM/90-MHz-CPU artifact showed only blue and an edge strip; changing only PSRAM to 200 MHz produced clean calibration and a spontaneously reported desktop. After the battery was reported empty, the initial non-desktop state could not be classified: opening UART coincided with a USB reset, and a subsequent controlled USB reset booted Wanderer with the restored touch firmware and zero reported faults. Fabian then saw the desktop. Neither run proves the original rail-off start completed by itself or passes the unsynchronized visual/touch gate. Isolated full core/Exec/SD/BSP and physical rail-off gates remain open; do not generalize this clock result to the earlier 360/200-MHz C1 strip. Prohibit stale cross-board objects before a second profile. |
 | D1 | Board-driver boundary and second-board onboarding | `not started` | Select or replace panel, touch, SD-power and PSRAM-chip paths per profile; add an independent board build and hardware gate when a second board and its wiring are known. Do not infer compatibility from D1001 constants. |
+| D0-N | Source-owned native aros-tools build and media contracts | `in development; source dependency review required` | Isolated baseline 763a536; current 85-input contract 18bdc262 selects a closed native MetaMake policy, not generated Classic configure snapshots. Earlier common/transpiler serial v30: 1,411 pass in 41 suites. Owner v5 diagnostic-only traversal retains 351 missing metadata endpoints; native projection reaches 1,069 targets with 12 unowned errors. Native optionality declarations may no longer erase active edges: disabled TIFF metadata and 22 selector routes require source review with recipe-bound fix upstream errors. No empty producer or inferred waiver. Selected dependency overlays, strict graph, fresh payload, BIN/FAT16, parity and RV3-A1/A2/A3 remain open. TIFF unchanged. Local only; no hardware, publication or Git mutation. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
 | E2 | Two-hart atomics, coherence and IPI primitives | `hardware verified; complete` | Exact219,776-byte core08 passes five ordinary headless captures/ten reset-separated epochs:650 SRAM+660 PSRAM exchanges,120 refusals,163,840 updates per AMO/CAS/lock counter with measured contention, bidirectional software IPI, remote code37/53, missing-park refusal and ten cache suspend/resume windows. Secondary reset/clock stop confirmed every exit; full221,184-byte normal range restored/verified and headless baseline boots. Atomics qualify internal SRAM only; Exec SMP/default changes wait for E3. |
@@ -1130,6 +1131,371 @@ establish physical rail-off, so that separate gate stays open.
 
 ### D1 - independently replaceable board drivers
 
+The isolated native-tools integration also has a host-only gate, D0-N:
+The next source-owned host-file export pins the existing Unicode 16 compiler
+inputs instead of executing the classic mutable `UCD/latest` fetch. The actual
+unmodified host C generator matches the retained Unicode 18 reference output;
+the generic sealed host-C capability and unchanged-source engine harness now
+pass, including the complete serial 37-test engine suite. The comprehensive
+diagnostic traversal exposes missing/unproven archive and copy endpoints,
+ownerless diagnostic selection, and absent BIN/filesystem producers. Correct
+these groups before repeating strict selected-graph and fresh payload gates.
+The repeated 77-input traversal on the preceding 92e0d3af identity reduces missing endpoints to two, unproven
+Make providers to four, selected errors to ten and unowned diagnostics to
+fifteen. It remains diagnostic-only; 614 configured library tests pass.
+The earlier 3ff2b97b export additionally binds an explicit empty default
+`INCLUDE_FILES` in the native configuration. The matching generic empty-copy
+proof passes positive and negative probes. The latest diagnostic traversal
+retains one missing endpoint, one unproven Make provider, three selected
+errors and fifteen unowned diagnostics across 1,060 endpoints. The configured
+transpiler library suite passes 652 tests with one existing ignored test.
+SDK aliases/manual literals, client-archive fixtures and all 40 engine tests pass. No graph
+acceptance or native payload is claimed.
+The new 2c313465 export adds explicit admitted target command roles, the measured
+GCC quote lane, source-local USER_* flag composition and the quoted-empty
+EXECSMP Make value required by the source's non-SMP execbase branch.
+Its full graph and payload qualification are pending; the earlier test/audit
+identities do not qualify the changed configuration.
+The subsequent c19b28b3 export seals the compiler include recipe, geninc.cfg.in
+and execbase.inc and declares the exact configure-owned geninc.cfg template
+with an explicit non-SMP substitution (80 inputs). Integration is in progress;
+no generated build-tree configuration is accepted as a source input.
+The next 57863b09 export keeps 80 sealed inputs and explicitly selects an
+empty INCEMPTYDIRS list, respecting the source's commented-out optional list.
+The subsequent d78394c3 export retains those exact 80 inputs and separates
+actual-host Make configuration from shared target configuration. Its host
+values are source-declared, not inferred by Rust. Current header and ownership
+corrections require fresh integrated and actual-source verification.
+The common-only host-map suite now passes 300 enabled tests. Shared Make
+evaluation is also being given aggregate work, byte and list-item limits;
+recursion depth alone did not prevent flat expansion amplification.
+Independent review requires exact GenMF argument syntax and refusal of
+indirect parser effects through immediate flag assignments. The resource
+guards must also preserve foreach body whitespace and bound the directory
+resolver reached by Make evaluation. Its 20 isolated tests now pass, including
+refusal of oversized globals before copying. Fresh CLI 0.3.19 compilation
+succeeds. Neither result qualifies the complete graph. Nested GenMF template
+verification, inline invocation refusal and surviving-include refusal are now
+implemented. Independent review found no blocker in the shared bounded
+ownership trace; active build_prog deliberately remains unproven. Clippy v19
+passes. Corrected integrated v14 passes 1,328 tests with zero failures and 19
+opt-ins ignored; explicit real P4 probes pass 5/5 and Zstd passes separately.
+Exact physical SDK Adhoc reconciliation clears the selected compiler-header
+failures. Fresh cold/warm v5 audits visit 1,070 endpoints; warm has no selected
+failure but retains 12 unowned diagnostics. Cold adds deferred Zstd-source
+materialization. Backslash-alias hardening is independently reviewed, with its
+counterprobe passing in the v17 library and v6 actual-source runs. Archive
+prerequisite closure now rejects additional automatic/explicit member rules,
+unresolved aliases and ambient conditional assignments with a shared proof
+budget. Its independent review and 22 v20 archive tests pass; workspace
+Clippy v26 passes. Serial all-targets v21 passes 1,341 tests/39 suites with
+zero failures and 19 ignored opt-ins; parallel v20 hit the documented fork
+descriptor race, without requiring a lock/assertion change. The rebuilt v7
+audit exposes libopenurl's disjoint-pattern regression: one unproven provider
+and two warm selected failures, with the prior 12 unowned rules still refused.
+Current generic pattern/root-alias/raw GenMF-before-comment guard d2fbaf79
+passes 29 focused v25 probes; workspace Clippy v28 passes. Actual P4/Zstd v8
+probes pass 5+1. Rebuilt v12 CLI gives v9 warm/cold audits with 1,070 reachable,
+zero missing/unproven, zero warm selected failures and one cold deferred Zstd
+input. Both retain 12 unowned/625 unrelated. Intermediate all-targets v22 was
+cancelled after a newer counterprobe; it is not a full success. Four
+dependency overlays require exact compile-producer identities and distinct
+normal/order-only emission. Macro imports and generated depfiles remain
+closure obligations; none is silently discarded. No strict graph or payload
+admission is claimed.
+The preceding complete serial v29 all-targets regression exits zero with 1,347
+passes in 39 suites and 19 opt-ins ignored. GenMF corrections now pass the
+independent 1,167-input source corpus; subsequent common/transpiler serial
+v30 passes 1,411 tests in 41 suites, zero failures, 20 opt-ins ignored.
+The source-owned native MetaMake policy declares P4 selectors, ordered
+projected globals and closed host/target environment, not generated Classic
+configure snapshots. Its new 85-input export is under integration.
+Active MetaMake edges are no longer waived by the native optionality list:
+the disabled TIFF owner and 22 unresolved selector endpoints require explicit
+source review. Diagnostics identify the recipe and say `fix upstream`; no
+producer is invented and no TIFF source has been activated.
+Source/global/discovery/import closure and selected dependency producer
+binding remain required; text-level projections alone are not admission.
+The c19b28b3 integrated checkpoint passes 268 common and 704 transpiler unit
+tests plus configured integrations. Complete archive binding and ordered
+header/directory lowering are new, still under verification; no strict native
+graph or complete payload is qualified by the earlier checkpoint.
+Whole-checkout measurement now includes dirty, ignored, untracked and initialized
+submodule content, omitting Git metadata and only the selected untracked CLI
+build subtree. A dated 28,436-entry snapshot and recapture pass. Sibling build
+content remains measured. Pre-build stamps bind compiler, regular engine tree,
+suite/executor bytes and configure inputs; the persistent CMake cache and literal
+Ninja include closure are sealed. CLI probes reject drift, linked engines and
+symlink-directed cleanup without changing external sentinels. These are input
+checks, not native core/BSP/Developer or successful-build/media receipts.
+External executable aliases are resolved before the generated-product exclusion.
+Explicit DTB and the consumed KOBJ member inputs are measured even inside the
+selected build tree; that location is not proof that these files are generated.
+
+The disabled TIFF metadata owner is now an explicit, source-hash-bound contract
+case, not a source activation. Classic MetaMake fixture evidence confirms the
+real linklib sibling still runs. Native translation records only proven absent
+commented metadata, retains active providers and rejects unproven missing
+dependencies. The later ZSTD inventory correction preserves cold wildcard
+metadata and separates source preparation from strict graph qualification.
+The earlier whole-tree 15-owner sidecar is superseded by typed selected-owner
+preparation; it was not selected-build readiness. Ninety-one CLI counterprobes,
+583 source-coupled library tests and 36 engine tests pass at the current
+checkpoint. Warm ZSTD verifies 30 sources and its client-archive endpoint.
+Archive preparation preserves concrete source-owned producers even without a
+handwritten consumer edge. It does not run the full mutating resolver before
+checking cold identities, so rejected raw-link requests cannot disappear.
+Exact-filename linker options and static archive flags retain full-resolver
+semantics. Private raw archives require their exact search directory; external
+interfaces require typed uselibs. The bounded independent review passes.
+The authorized GL recipe correction names the local header copier while
+preserving its global includes-copy membership, confirmed by Classic GenMF.
+The GL and POSIXC-LFA handwritten writefiles producers now use the shared
+manifest-backed client writer. Its outputs match the unmodified reference tool;
+missing outputs rebuild, and selected producer collisions, source-parent
+symlinks and unsafe subdirectories fail. Actual selected P4 preparation next
+refuses compiler-stdc-genwcharsupport, the source-owned Unicode table generator.
+Board/compiler identities are separately bound; fresh
+core/BSP/Developer and complete media qualification remain open.
+
+The payload acceptance still requires the following:
+consume the source-owned target/ABI and `native-build-v1.json` declarations;
+freshly build the core, required BSP and Developer closure without adopting
+Make-built payloads; compare the source object lists, sections, linker and
+generated ABI headers; produce and independently verify the complete media
+plan from the board and partition inputs. Reject altered inputs, wrong chip
+revision, overlap, oversize, unsafe paths and mixed core/BSP identities before
+publication. This gate does not qualify hardware, SMP or any second board.
+Current host-only state (2026-10-04): source-fetch invocation and Unicode
+source-publication corrections have bounded passing tests; a third cold RV32
+compiler attempt terminated before compilation because the source lacks the
+restricted compiler-release target and falls back to the broad ACPICA closure.
+Selected-graph enforcement passes source-coupled units and actual CLI fixtures.
+Fabian approved both isolated source-rule corrections on 2026-10-04. The FDT
+copy macro now names its declared producer, and the opt-in compiler/libgcc
+release root is implemented; fresh compiler qualification remains pending.
+The subsequent generic host-C/MUI header and five GENMODULE layout probes pass,
+and SDK text integration passes the zstd pkg-config producer. The bounded PNG
+whole-line producer matches the actual cached input against GNU sed and passes
+a real Ninja literal-data fixture. Source-owned configuration defaults resolve
+the three inactive optional P4 gates without board-specific Rust logic;
+uncertain conditional writes still refuse selection. Both CMake transpiler
+passes and replay records forward validated native identity. The selected graph
+passes both FreeType products; their exact cached-template bytes match GNU sed
+and the generated script has mode `744`. It now refuses the explicit fetched
+SDK copy `workbench-libs-codesets-fd` at the preceding checkpoint. The finite
+file-copy implementation now passes real Codesets byte parity, input-mutation
+rebuilds, missing-output repair, unchanged reconfigure and refusal tests. The
+source's full module macro now registers Resource ABI generation separately
+from runtime-only macros. Complete header/libdefs/FD byte comparison against
+the source generator, no-op and missing-header repair pass; the existing full
+library ABI fixture also passes. Actual
+selection passes finite static-pattern network copies and their directory
+setup. All 81 source header paths and bytes match a private native CMake/Ninja
+reference; generated outputs retain the single source-owned SDK destination.
+Config-owned card/cardres ABI names and actual flashdisk/base/override outputs
+match the source genmodule tool. The actual m68k/i386 named host-header
+aggregates now match independent reference invocations, including the explicit
+i386-only GEN mirror. Unchanged output mtimes, missing-output repair and
+future-dated tool/header symlink and sealed-recipe refusal pass. Selected
+translation passes the separately approved Icon prerequisite correction and
+removal of the orphaned Vega aggregate entries. The next missing endpoint is
+`kernel-cybergraphics-includes` in Colorwheel, also referenced by Coolimages;
+both should name `workbench-libs-cgfx-includes` and await separate approval.
+No missing edge is discarded. Earlier 437 source-coupled library tests and 54 CLI process tests pass,
+alongside the preceding 20 engine tests and all-target transpiler Clippy.
+Exact source macro forms now remain distinct in the translated graph. The
+standalone KOBJ localization process matches the default plain GNU nm
+field-three recipe and objcopy output byte-for-byte on a real RV32 collected
+object; 71 ordinary Collector tests and all-target Clippy pass. Precommit
+failures preserve the original object; a post-rename durability failure can
+leave the new object installed and retains a recovery journal. The CMake KOBJ
+helper now passes independent full/simple contract tests and a real RV32
+byte comparison against a separately assembled group/library invocation and
+GNU localization recipe. Source compilation groups retain logical fetched
+stems and Make architecture-object order; deferred quote paths, transitive
+usage requirements and `-noposixc` are inherited. Missing declared sources,
+missing selected architecture directories and ambiguous object basenames
+refuse configuration. Simple modules do not resolve excluded CXX/ASM inputs,
+and disabled Objective-C declarations do not become KOBJ gaps. Scoped extra
+objects/libraries/linker flags retain exact, empty or unresolved metadata with
+ordered duplicates and provenance; unresolved consumption is rejected.
+All 24 current embedded-engine tests pass. Native Core now accepts only
+registered collected/localized KOBJ intermediates in declared module order.
+The bridge consumes source-scoped macro libraries and linker values, preserving
+ordered duplicates and refusing unresolved configuration. Function instrumentation
+defaults must be source-proven; enabled instrumentation remains refused until
+the complete compile contract is bound. A source-owned native KOBJ configuration
+projection preserves the four global source defaults, including undefined
+RV32 flags; core recipes/local options are hash-bound. Bounded reader/schema/process
+integration now passes 482 library, 55 CLI, 23 contract and 24 engine tests,
+all-target Clippy and independent review. The six actual core members have
+all eight scoped fields proven. Actual P4 graph/payload integration remains
+unqualified. Generic header-only projection now retains Gallium's source config
+without runtime, archive or KOBJ ownership. Three projection regressions and
+25 embedded-engine tests pass, including absent-FD and runtime-input refusal.
+Fresh source reference generation through the header-only helper matches all
+23 private/published regular Gallium outputs against direct execution. The
+unchanged header build performs no work; a removed generated SDK header is
+repaired without changing any of those 23 output hashes. The
+actual generator validates config syntax during production; preliminary Rust
+facts are only evidence of exact readable config paths. The
+separately approved EGL include orphan is removed and rehashed. The separately
+approved Workbench Input header prerequisite now names `kernel-input-includes`;
+its recipe is inventoried. Fabian separately approved correcting the undefined
+ROM `kernel-pc-acpi-includes` alias to `kernel-acpica-sharedlib-includes`;
+that aggregate is now bound in the current 45-input export. Full selection
+passes both edges and the source-derived CIA SFDC header producer. The private
+SFDC host tool and three CIA headers match independent reference generation.
+No-op, repair, changed input/tool, unsafe path and missing fresh output probes
+pass. The current export explicitly declares optional compiler selector edges
+and binds their recipe plus the MetaMake reference implementation. Native
+admission proves each virtual edge before omitting an absent endpoint; known
+providers, unknown selectors, literal missing edges and unmarked overlapping
+declarations remain fatal. Full selection passes the nine absent alternatives
+and retains the actual architecture provider. The previously blocking
+`linklibs-autoinit-autofile` Developer-Lib copy macro now has a generic
+implementation matching the 295-byte GCC specs input in an
+isolated native copy fixture with missing-output repair. The current 59-input
+export additionally binds the unchanged startup recipe, eight C/C++ inputs and
+header, and selects inactive `STARTUP_DEBUG`. Source-derived startup graph
+integration passes actual eight-object source/lane/flag checks. Generic
+`%rule_makedirs` models its finite setup without source shell execution.
+The `libinit-libentry` frontier now has a generic compile-only producer and
+explicitly bound normal GNU flags/Developer sysroot. Its two repeated flag
+lanes are preserved, not supplied implicitly by CMake. Four current P4 source
+probes pass. Broad literal integration passes 544 library, three projection,
+64 CLI process and one GNU Make reference test; all 30 embedded-engine tests
+pass. Complete selection next reaches absent ROM architecture selectors.
+The 69-input contract binds six unchanged recipes and marks their exact
+architecture edges; concrete module capability validation remains required.
+All 69 independently altered-input refusals and four current actual-source
+probes pass. Current regression passes 545 library, 16 include-reader, three
+projection, 65 CLI and one GNU Make reference tests; all-target transpiler
+Clippy and Astro check pass for that preceding state. The typed uselib binding
+now directs missing generated spellings to the actual source archive,
+retaining explicit raw edges, known endpoints and ambiguity failures.
+552 library, 16 include-reader, three projection, 65 CLI and one GNU Make
+reference tests pass, as do all four current P4 source probes. Independent
+review identified selector-origin and ordering risks; explicit edge provenance
+is now bound before typed resolution and normalized during native pruning.
+The final ordering correction passes six focused tests and independent review.
+The generic source-value producer extracts the actual ABI text byte-identically
+to GNU sed; 562 library, nine scanner and 67 CLI process tests pass. All
+32 embedded-engine tests pass. Current contract SHA256
+`cc8d29ad2996d759a5b2811f1b9e904fa39480c3a90b3ff3011ac29edc12da34`
+binds 71 inputs, including the unchanged value recipe/input; all altered-input
+refusals and four current P4 source probes pass. Full translation advances to
+`workbench-libs-tiff-pkgconfig`, whose owner-declaration lines are commented
+out. Its dependency remains mandatory, and permission for that source fix
+is pending. Distinct local compiler descriptor/CMake/CLI focused tests pass;
+Independent review exposed a CMake tree-digest consistency gap. The correction
+passes an independent Rust-inventory/CMake comparison with quoted Unicode
+paths and a false-digest counterprobe using the updated descriptor hash.
+Actual prefix admission now passes isolated real CLI install/path/verify,
+including changed-tool and release-ambiguity refusal before execution. Exact
+GCC 16.2.0/binutils 2.47.20260726 versions and original/copy inventories are
+measured. A real embedded-engine CMake consumer admits the copied prefix with
+source-derived RV32 options and contained runtimes, without a release ID.
+Extended SDK text passes 573 library and 71 CLI tests; first-match operations
+match GNU sed and source-bound CMake/Ninja refuses changed recipes. All 34
+embedded-engine tests pass; local build-tree stamps bind the
+descriptor/tree/profile and reject mixing while preserving released stamps.
+Local native-media receipts remain unqualified;
+no release ID or producer provenance is fabricated.
+The corrected SDK/directory
+integration passes 529 library, three projection, 62 CLI process and one
+independent GNU Make reference test. Its next capability is separate literal
+compile-only ownership with explicit ordered flags, not SDK-copy staging or
+an inherited generated Make configuration.
+Optional-edge recipe proof uses the
+same measured byte snapshot as parsing, rather than a separate file read.
+The corrected Input header producer passes a separate actual Genmodule
+fixture: all 23 private/published regular outputs match direct reference
+generation, and a subsequent Ninja invocation performs no work. Both actual
+P4 core-configuration/Gallium tests also pass with the current contract;
+All 59 current bound input hashes match. This is not Input runtime or full SDK proof.
+A separate real RV32 GNU
+fixture verifies collected sets, localized symbols and the source-native KOBJ
+to Core path, including identical no-op and deletion/rebuild outputs. Its
+synthetic linker script emits an RWX segment warning; this is not P4 acceptance.
+Native package completeness
+and measured-capacity publication tests pass. Source review also found that the
+former direct raw-object core link bypassed required KOBJ intermediate links and
+symbol localization; that consumer path is now replaced, but full source parity
+and fresh P4 payloads still need qualification. Package-list declaration-time conditional append and
+replacement semantics are now covered by parser/process tests; this alone is
+not native package acceptance. Complete source-bound KOBJ parity remains open.
+GUI selection remains source-owned and does
+not blanket-disable SDK headers. A complete native build is not yet proven. Selected or
+unowned unsupported capabilities still stop translation. A fresh locked Python environment and
+external bootloader build pass on macOS ARM64; independent unsigned image and
+source-CSV partition checks pass.
+The vendor runtime is now also prepared through Rust-owned subprocess control:
+a fresh pip-free venv, locked pip bootstrap wheel, offline hash-only wheel
+installation, complete installed/report checks and retained command receipts.
+All 61 wheels match; global site packages and external import origins are
+refused. The CPython executable and prefix content are measured before/after.
+This remains a local-byte lock layered on the host platform, not vendor origin
+authentication or the complete IDF build/CLI producer.
+The internal Rust IDF adapter now owns a fresh project and build root, copies
+only four inventoried project inputs, and supervises dependency checking,
+configure and bootloader production. It validates explicit compiler/CMake/
+Ninja/Git/Python selections in parent and nested build metadata and rechecks
+source/runtime inputs after execution. Private aliases prevent vendor/wheel
+directory shadowing; selected non-executable tools are refused before alias
+publication. The fresh 22,544-byte unsigned image passes independent geometry
+and digest checks; all 16 private source-input mutations fail before build
+reservation. Default dummy application/partition outputs are not adopted.
+The adapter now requires exact archive/ordered-patch receipts and binds the
+complete live source tree, including receipt metadata. IDF runs on a no-follow
+private copy because Git describe refreshes its index even with optional locks
+disabled. Only the owned copy's regular `.git/index` may change contents/size;
+all names, kinds, modes and other files remain bound. Original source and
+receipt are revalidated unchanged. Execution snapshots must match the locked
+tree before subprocesses; pre/post complete-tree and index digests are retained.
+The final pinned-snapshot run passed all three phases and independent image
+verification. Vendor GCC/CMake/Ninja archive receipts must also match locked
+IDF host metadata and contain their selected executable trees. Fresh fully
+bound vendor production passes all three phases and independent image checks;
+it remains an internal external-producer result, not complete native acceptance.
+Public `aros image prepare` now composes a fresh Python environment, that
+external producer and source-bound table encoding. Its actual macOS ARM64
+process test passed in 267.34 s; all 8 phases exit 0 and the retained receipt states
+`complete_flash_plan:false`. Independent vendor/native table comparison and
+image refusal probes pass. Full native/media CLI acceptance remains open;
+these local byte locks are not authenticated vendor/release provenance.
+Source-owned compilation timestamps
+change the image digest between builds; no byte-identical A/B result is claimed.
+Native Rust encoding also reproduces the actual vendor partition table exactly;
+its bounded CSV parser is shared while the binary decoder remains independent.
+The writer requires the bound raw-source digest and explicit geometry, never
+D1001 offsets compiled into Rust. The generation adapter also pins the exact
+source contract digest and revalidates all inventoried inputs before/after
+encoding. A separate source adapter now resolves an explicitly inventoried
+geometry export, exact app/custom partition type/subtype declarations and five
+exclusive media slots. The current export inventories 21 inputs, including the
+approved compiler/FDT source corrections; all 21 mutation probes pass. The prior
+complete external preparation receipt remains on its original 16 inputs and
+must not be rebound to this source candidate. It accepts arbitrary declared
+board values, not D1001 defaults; inconsistent CSV roles and missing values
+fail even after input hashes are updated. This is declaration consistency,
+not independent extraction of board/vendor facts, a live NOR measurement,
+native build-set identity or release provenance. A generic read-only flash
+planner passes
+fixture checks for exact roles, matched native build-set bindings, measured
+regular files and separate minimal erase spans. BSP and Developer share
+`arosbsp`: package [0x820000,0xc00000), Developer [0xc00000,0x1000000).
+Neither a full-partition erase nor inherited Make payloads satisfy this gate.
+Source-resolved layout is integrated internally; complete producer receipts,
+fresh native artifacts and media/CLI acceptance remain open.
+The retained RV32 reference compiler separately passes a relocated compiler-only
+probe with an empty explicitly selected sysroot. Its measured default include
+search remains inside the copied compiler; old AROS SDK headers are unavailable
+and a produced soft-float object fails the selected ilp32f contract. No Make
+Developer files are copied. This still lacks producer-manifest provenance and
+does not replace the native kernel/BSP/Developer acceptance above.
+
 The existing panel-power, JD9365, GSL3670, SD-socket-power and AP Memory
 PSRAM paths remain D1001-specific implementations. A second profile must
 select appropriate drivers and package members, provide a matching IDF
@@ -2063,6 +2429,25 @@ Acceptance gate:
 | Shell ready while blocked | Unexplained: at an idle prompt the heartbeat's ready-list dump shows the Shell permanently ready at priority 0 while it is blocked waiting for a packet reply from the console handler.  Being ready rather than waiting is not what `WaitPkt()` should produce.  It may be harmless bookkeeping and it may be a scheduler or `WaitPkt` defect; either way it matters more for Track C's real console than for `econsole`. |
 
 ## Evidence log
+
+### 2026-10-03 - isolated native build declarations started (D0-N)
+
+- Identity: isolated source baseline `763a536f26a5e94176c821d48cedbcbff03b4189`
+  plus the target profile, native-build export and this documentation change.
+  The parallel maintainer worktree remains unchanged by this work.
+- Configuration: D1001; GNU RV32 `riscv-aros`, `ilp32f`, standalone public
+  ABI, no platform SMP padding and no MMU. Core declaration selects the
+  existing app-partition XIP linker script; board geometry stays in board.mk
+  and partition-table.csv, not Rust code.
+- Procedure/result: inspected configure.in, core/package recipes, board rules,
+  linker scripts and IDF inputs; recorded measured SHA-256 identities in
+  native-build-v1.json. The declaration does not run configure or Make.
+  No native core, BSP, Developer or complete media artifact is claimed yet.
+- Safety: no driver changes, device access, flashing, source push or change
+  in the parallel port worktree. Existing hardware states are unchanged.
+- Remaining risk/next step: qualify strict declaration consumption, GNU SDK
+  generation and the fresh native closure, then independently verify media
+  artifacts and refusal cases. Until then D0-N remains in development.
 
 Append new entries; do not rewrite old ones except to correct a factual typo,
 and record substantive corrections as a new entry.
@@ -23776,13 +24161,2887 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   explicit readiness; then decide whether that core or the normal core
   stays flashed.
 
+### 2026-10-04 - Native source export residency policy (local declaration only)
+
+- State: native aros-tools integration remains in development; no port or
+  hardware acceptance changes.
+- Source: isolated `763a536f26a5e94176c821d48cedbcbff03b4189` checkout with
+  only the local declarative target/native-build exports and port documentation.
+- The board preset explicitly selects local compiler profile `rv32-p4-local`.
+  Compiler identity is independent of the board name; this declaration does
+  not qualify its runtime or substitute an old Make output. A fresh compiler
+  attempt uses new work/output roots and the tested native Rust fetch bridge.
+- The export selects source-supported `ldscript-xip.lds`, not the unchanged
+  Make default `ldscript.lds`. `riscv32-xip-v1` records `.sramtext`, flash
+  `[0x40000000,0x44000000)` and SRAM `[0x4ff00000,0x4ff80000)`, matching
+  the inventoried `check-sramtext.sh` reference. The owned Rust verifier is a
+  linear named-reference lint with tracked LUI/AUIPC/ADDI/MV values, not a
+  whole-program CFG proof or an executable profile hook.
+- First fresh native RV32 compiler attempt stopped before GCC compilation:
+  the old source `fetch.sh` does not accept the native bridge's `-cs` option.
+  No native core, BSP or complete flash artifact has passed yet. The tools-side
+  correction uses the existing Rust fetcher over verified local inputs;
+  the source helper and port runtime are not changed.
+- The second fresh attempt reached the verified GCC archive but stopped before
+  compilation: atomic source publication rejected its Unicode test filename.
+  The tools correction preserves safe source names and rejects Unicode
+  case/normalization collisions without relaxing generated-output names.
+  All 23 Fetch process tests and 71 publication tests passed. A third attempt
+  uses new work/output roots; no completed RV32 result is claimed.
+- Full-tree translation reports unsupported unrelated products. Diagnostic
+  target ownership is implemented; selected dependency closure enforcement is
+  still unqualified. This is not permission to suppress unowned diagnostics.
+- The ESP-IDF 6.0.1 ZIP matches official asset 406506253: 1,825,997,344 bytes,
+  SHA-256 `4f294f44ddcf7b6677ae2347808fc708768a4890fed3c6f7227b7d4c076b9019`.
+  IDF host tool archive identities match its manifest. The Python package
+  closure and fresh bootloader remain unqualified; old Make/IDF outputs are
+  reference only.
+- Safety: no device access, flash writes, source push or prebuilt Make payload
+  substitution. Next safe step: fresh isolated compiler build with the corrected
+  native bridge, followed by native core/BSP/Developer and complete media gates.
+
+
+
+
+
+
+
+### 2026-10-04 - D0-N locked external bootloader build and independent image inspection
+
+- State: in development; AROS-native and hardware acceptance remain open.
+- Source baseline: isolated `763a536f26a5e94176c821d48cedbcbff03b4189`.
+  Tools base: `719beb99f55bf7cec75ce8d67a5f96472e9cd32e` plus local RV3
+  implementation. No parallel port changes or old Make payloads were used.
+- Procedure: safe extraction of verified ESP-IDF 6.0.1 ZIP; zero-fuzz application
+  of the source bootloader patch; fresh project and build directories; sterile
+  environment with vendor GCC 15.2.0, CMake 4.0.3 and Ninja 1.12.1; fresh
+  CPython 3.14.8 environment populated offline from 61 hashed wheels including
+  pinned pip. Official resolver/install closures agree on all 60 core packages.
+  Corrupted wheel counterprobe is rejected. Vendor constraints are copied to
+  the isolated tools state and match SHA-256
+  `f24287d8b1c90cfd5e22992f4b0cf6c71ee6e55169658cb0a61333b6e86a66f9`;
+  no ambient `~/.espressif` dependency is accepted.
+- Export correction: the complete source project (both CMakeLists and main.c),
+  not only sdkconfig.defaults, is now included in the measured native source
+  input set. Files themselves are unchanged; this closes an unbound external
+  project-input gap without making the current direct probe a CLI receipt.
+- Result: fresh bootloader build exits 0. Binary 22,544 bytes, SHA-256
+  `06b2d6fbea7537fe974f7eebcc652dd5570886bcc7f87173abd44ae9c568dd7e`;
+  ELF 745,148 bytes, SHA-256
+  `158205bd0ec04bcf87ab089b66f7675425f1241cb32fd90f0664b194500f59e6`.
+  Esptool and an independent Rust container verifier agree on chip ID 18,
+  revision 100..199, 32 MiB flash, three load segments, checksum and digest.
+  Rust checks reject corrupted payload/digest, wrong chip/revision, truncation,
+  range overflow and unsupported trailing data. No secure-boot claim.
+- Partition result: source CSV, not the IDF default table, produces 3,072 bytes,
+  SHA-256 `1011273e9c756cbbee22c1ba09794acb3bdc04f088d3a3154e61df0330b91b96`;
+  vendor decode/MD5 verification reproduces the seven source partitions.
+  `ota_0` remains 0x20000/8 MiB and `arosbsp` 0x820000/0x7e0000.
+- Limitations: external producer execution is an isolated direct probe, not yet
+  a public CLI path or full flash-artifact receipt. IDF's optional debugger
+  setup warns about missing ROM ELF input; the bootloader build succeeds.
+  Compiler attempt three is terminal, not running: no source release target
+  exists and the fallback requires unverified ACPICA before compiler production.
+  Selected native translation also exposes the missing FDT include endpoint.
+- Safety: no driver/runtime change, source push, device access, flashing or
+  publication. Next: approved source closure corrections, fresh compiler/native
+  core/BSP/Developer builds, locked external CLI orchestration and complete
+  independently checked flash plan with refusal cases.
+
+### 2026-10-04 - D0-N source-bound partition inspection and flash-slot planning
+
+- State: host-only implementation in development; RV3/native and hardware
+  acceptance remain open. No source build-rule or driver change.
+- Identities: isolated port baseline
+  `763a536f26a5e94176c821d48cedbcbff03b4189`; tools base
+  `719beb99f55bf7cec75ce8d67a5f96472e9cd32e` plus local uncommitted changes;
+  native export SHA-256
+  `35c68a51eb3a6a908743c5de5300e404f9c924472a00e4fd86e9ea36511e09b5`.
+- The independent resolver consumes the actual bound partition CSV, SHA-256
+  `7b9493ffcaf0a9c3bce3a76725889ccc214a6ca45cd0f19d9823344c4856b953`,
+  rather than a manually transcribed expected record list. Its explicit
+  geometry subset rejects inferred offsets, default subtypes, expansion,
+  unsupported syntax, overlap and unsafe capacity. Independent vendor-source
+  review confirms the selected CSV is within that supported subset.
+- Fresh external artifacts remain unchanged: bootloader 22,544 bytes,
+  SHA-256 `06b2d6fbea7537fe974f7eebcc652dd5570886bcc7f87173abd44ae9c568dd7e`;
+  unsigned partition table 3,072 bytes, SHA-256
+  `1011273e9c756cbbee22c1ba09794acb3bdc04f088d3a3154e61df0330b91b96`.
+  Both pass explicitly selected independent Rust artifact tests. The complete
+  verifier library passes 78 tests against clean integration source
+  `0cae0b0116b6246b2175c3b8b97719a81f40dcfd`; its two external tests are
+  run separately. All 14 private source-input mutations are rejected by the
+  real native-contract loader. Common/verify all-target Clippy passes.
+- Flash-role audit: source board/header/package rules agree on the BSP prefix
+  [0x820000,0xc00000) and 4 MiB Developer suffix [0xc00000,0x1000000).
+  These are intentional separate roles within `arosbsp`, not overlapping
+  payloads. The generic internal planner uses caller-resolved geometry, exact
+  required roles, bounded no-follow file hashes and one native build-set
+  binding. Three positive/refusal fixtures test minimal rounded erase spans,
+  wrong/missing roles, mixed build sets, changed files and unsafe paths.
+  Independent review requested earlier path-budget enforcement and an explicit
+  unselected-role counterprobe; both are included. Planning does not authorize
+  device writes or prove image/package format or provenance by itself.
+  The complete common library passes 200 tests; Astro check and local build
+  pass with 44 pages. No docs deployment was requested or performed.
+- Remaining gap: no source adapter, complete native producer receipt, fresh
+  kernel/BSP/Developer output or complete flash transaction is qualified.
+  The export also needs the full Developer recipe/content closure before a
+  complete build-set claim. Fixture digests are not native artifact evidence.
+  Reinspection of RV2 proof scripts located the retained GNU/RV32 reference
+  compiler and Rust collector; its old Make Developer sysroot must not enter
+  native consumer production. A compiler-only isolated prefix still requires
+  current identity/relocation verification before use. Fresh compiler
+  production remains a separate unresolved result.
+- Safety: no source push, device access, flash, release or reuse of Make-built
+  payloads. Erasing the whole shared partition could destroy the Developer
+  volume; a future writer must preserve the separately validated role spans
+  and reverify/stage bytes after planning.
+- Next: separately approved FDT/restricted compiler-release source corrections,
+  fresh native closure, locked external CLI orchestration and source-bound
+  complete flash-artifact qualification. Local evidence:
+  `/Volumes/Dev/Build/rv3-idf601-clean.V20wpg/native-verifier-evidence.md`.
+
+### 2026-10-04 - D0-N retained RV32 compiler isolation
+
+- State: supporting host-only compiler evidence; RV3-A1/A2/A3 remain open.
+  Tools base `719beb99f55bf7cec75ce8d67a5f96472e9cd32e` plus local changes;
+  isolated port baseline `763a536f26a5e94176c821d48cedbcbff03b4189` unchanged.
+- The explicit retained compiler input is
+  `/Volumes/Dev/Build/rv2-compiler-probes.jCoMID/rust-collector/compiler`.
+  Its exact measured tree digest before/after the probe is
+  `62a416c964372611bb2214c974d0cac25aa45c860c3142315cd7ca9869b1dfa9`.
+  GNU 16.2.0 still names an older Make Developer sysroot by default; the probe
+  records that fact rather than changing the reference installation.
+- Procedure: the new explicitly selected ignored process test
+  `local_rv32_compiler::relocated_rv32_compiles_and_links_without_a_make_developer_sysroot`
+  copies only the compiler tree into a unique isolated root, checks complete
+  inventory equality, compiles C/C++/assembly with ilp32f/medany and the exact
+  declared RV32 ISA, and raw-links all three with prefix-owned libgcc. It
+  verifies every resulting ELF against the existing target contract and checks
+  every link-map LOAD stays in the isolated root. No Developer files are copied.
+  The exact source export and all 14 bound inputs are revalidated; ISA, ABI and
+  code model must match it. GCC/G++/LD/readelf and GCC's selected cc1, cc1plus
+  and assembler resolve inside the copied prefix.
+- Refusal evidence: the effective ordinary GCC include search is measured
+  without `-nostdinc`, and every path stays in the copied compiler or empty
+  sysroot. `exec/types.h` cannot be loaded; the refusal does not rely on
+  `-nostdinc`. A successfully compiled ilp32 object is rejected as a float-ABI
+  mismatch. Both ordinary GCC and G++ include searches are checked; neither
+  refusal uses `-nostdinc` or `-nostdinc++`. Actual global-address relocations
+  show medany PCREL_HI20/LO12 addressing; a separately compiled medlow HI20
+  counterprobe fails that addressing check. The empty SDK and both compiler
+  inventories remain unchanged.
+- Result: the real test, formatting and focused test-target Clippy pass. Raw linked
+  relocatable ELF SHA-256
+  `48447d3960b7bf0e8a25f4f192579e9ff126736e4a10bdbf08e04ebd010609e7`;
+  selected libgcc SHA-256
+  `3febaf8629566ee3361cf196ae59477952e633e473980fd1f7416842d7f9d13b`.
+  Retained receipt, map, objects and negative logs are at
+  `/Volumes/Dev/Build/rv3-rv32-compiler-only.PaYki8/`.
+  Earlier pre-review passing evidence remains at `rv3-rv32-compiler-only.FZqbWj`;
+  it did not yet include G++ ordinary-path/helper/code-model counterprobes.
+  Independent re-review found the three gaps addressed and no remaining
+  actionable test defect. A declared source baseline is not Git/release
+  provenance; that scope limitation remains explicit in the receipt.
+- Failed probe retained in the diagnostic history: its first containment
+  comparison mixed `/tmp` and macOS's physical `/private/tmp` spelling. The
+  test now canonicalizes the newly created evidence root before comparing
+  paths; the repeated tests pass without changing compiler files or geometry.
+- Limits: no collector/final AROS application link, producer manifest,
+  compiler-release provenance, native Developer headers/libraries, kernel or
+  BSP build is proved by this test. C++ here is compiler-only, not libstdc++
+  runtime or exception qualification. This prefix must not bypass the native
+  CLI's manifest requirement by assigning invented producer/source identities.
+- Safety: no source build-rule/driver change, hardware access, flash, commit,
+  push or publication. Next: separately approved FDT/restricted-release source
+  corrections, legitimate native compiler input, fresh source-owned
+  kernel/BSP/Developer build and locked external/media CLI integration.
+
+### 2026-10-04 - D0-N native unsigned partition-table generation
+
+- State: host-only supporting implementation; RV3-A1/A2/A3 remain open.
+  Isolated source baseline `763a536f26a5e94176c821d48cedbcbff03b4189`
+  and tools base `719beb99f55bf7cec75ce8d67a5f96472e9cd32e` plus local
+  changes. No source build rules or drivers changed.
+- The pure Rust encoder lives in `aros-common::esp_partition`, beside the
+  bounded explicit-geometry source parser. Binary record decoding remains
+  separately implemented in `aros-verify`. Geometry and the expected source
+  SHA-256 are supplied at the boundary; it does not infer a board or invoke
+  Python. The writer rehashes/reparses the raw CSV and emits exactly one MD5
+  record followed by erased padding, retaining a full end-marker record.
+- Procedure: run the explicitly selected ignored verifier test
+  `independently_verify_fresh_vendor_partition_table` with the fresh external
+  artifact, the original source CSV and an evidence parent. The CSV SHA-256
+  remains `7b9493ffcaf0a9c3bce3a76725889ccc214a6ca45cd0f19d9823344c4856b953`.
+  Generated output is byte-identical to the vendor table: 3,072 bytes,
+  SHA-256 `1011273e9c756cbbee22c1ba09794acb3bdc04f088d3a3154e61df0330b91b96`.
+  Independent decoding validates all seven ordered entries, geometry,
+  mandatory MD5 and trailing erased bytes. Artifact and scoped receipt remain
+  in `/Volumes/Dev/Build/rv3-native-partition.Y8IwIL/`; receipt SHA-256
+  `7c8e4d2b911b83b1db0490be74ccb9f5a2f19c12994ed24fad31e716e1640265`.
+- Safety tests cover changed source identity/geometry, malformed CSV and
+  flags, overlap/capacity, maximum 94 records with checksum/end marker,
+  16-byte labels and altered binary bytes. Independent review found no
+  actionable format/geometry defect in the supported unsigned CSV subset.
+  The caller still owns source-contract and receipt provenance; the supplied
+  source digest alone is not release or native build-set provenance.
+- Failed verification attempt recorded: four unrelated source-coupled tests
+  initially lacked `AROS_TEST_SOURCE_ROOT` (wrong environment variable used).
+  With the exact clean integration root, all pass. A test-only Clippy
+  `format_push_string` finding was corrected with `writeln!`; no source-build
+  behavior was changed to make either check pass.
+- Verification: full common205 and verifier76 tests pass (two input-selected tests ignored in
+  the ordinary verifier run); the actual vendor table test passes separately.
+  All-target common/verify Clippy, formatting and diff checks pass.
+  Astro check reports no diagnostics and builds 44 pages; the known empty
+  i18n-collection warning remains. No deployment occurred.
+- Limits and next: no signed partition table, full native core/BSP/Developer,
+  public CLI orchestration or composed flash plan is established. No device
+  access, flash, commit, push or publication. Continue source-bound layout and
+  producer receipt integration, locked external production and the separate
+  approval-dependent FDT/restricted compiler-release source corrections.
+
+### 2026-10-04 - D0-N partition generation bound to the selected source contract
+
+- State: host-only supporting integration; RV3-A1/A2/A3 remain open. Tools
+  base `719beb99f55bf7cec75ce8d67a5f96472e9cd32e` plus local changes and
+  isolated P4 baseline `763a536f26a5e94176c821d48cedbcbff03b4189` unchanged.
+  No driver or source build-rule change.
+- `encode_bound_native_partition_table` requires the expected native contract
+  SHA-256 and parsed target selectors, validates all declared inputs before
+  and after generation, and reads the source-owned CSV through no-follow
+  traversal with a 64 KiB byte limit. In-tree CSV symlinks are refused too.
+  The returned binding includes the contract/input digests and resolved
+  selector hash, but explicitly labels the source baseline as a declaration,
+  geometry as caller input and qualification as local consistency only.
+- Procedure: run `selected_p4_export_binds_every_actual_source_input` with
+  `AROS_TEST_P4_SOURCE` selecting the isolated checkout and
+  `AROS_TEST_NATIVE_PARTITION_EVIDENCE_PARENT=/Volumes/Dev/Build`.
+  Actual contract SHA-256 remains
+  `35c68a51eb3a6a908743c5de5300e404f9c924472a00e4fd86e9ea36511e09b5`.
+  All 14 private source-input mutation probes are refused by generation as
+  well as loading; no input in the actual checkout is modified. Two portable
+  tests cover binding, wrong contract/board, every fixture input and an
+  in-tree CSV symlink.
+- Observed output: 3,072 bytes, SHA-256
+  `1011273e9c756cbbee22c1ba09794acb3bdc04f088d3a3154e61df0330b91b96`,
+  byte-identical to the prior fresh ESP-IDF result. Artifact and scoped
+  source binding remain in `/Volumes/Dev/Build/rv3-bound-native-partition.zlkdVZ/`;
+  `source-binding.json` SHA-256
+  `9fe7dbd35eb52eb5da3167a1339f6c124e886ff78cc93430099312a1cc0f60cf`.
+  All-target common/verify Clippy passes.
+- Safety/limits: this is an in-memory source consistency adapter, not atomic
+  media publication, verified source-layout resolution, a native core/BSP/
+  Developer build-set or a device operation. No commit, push, PR, hardware,
+  flash or release. The missing FDT producer and restricted compiler-release
+  source corrections remain unchanged pending explicit approval. Complete
+  locked external orchestration, source geometry, media receipts and CLI
+  acceptance remain required by RV3.
+
+### 2026-10-04 - D0-N inventoried source geometry and exact partition-role binding
+
+- State: host-only source/media consistency integration. RV3-A1/A2/A3 and
+  D0-N remain open; no hardware status changes. Tools base
+  `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`, isolated P4 baseline
+  `763a536f26a5e94176c821d48cedbcbff03b4189`, both with local changes.
+- Source declarations: `media-geometry-v1.json` supplies every numeric field,
+  exact core type/subtype 0/16 and package 64/0. Its SHA-256 is
+  `acfe78805686e06d8eaceb6accdf21afc0ca8517ca1b7e0bf9cc047c6a5a4ff1`.
+  The parent contract now inventories 16 files, including the existing
+  bootloader recipe; raw contract SHA-256 is
+  `13c0858732c4d3020731151ed3f19ffc3aae292573dd7bc0a4579c18ba3a63c6`.
+  No existing build rule or driver was modified. The export combines reviewed
+  board declarations and external format facts, not executable scripts.
+- Implementation: Rust reads bounded regular files through no-follow paths,
+  revalidates every contract input before/after generation, matches exact
+  core/package partition kinds and subtypes, and checks overflow, capacity,
+  alignment and five exclusive slots. CMake accepts the optional inventoried
+  geometry path, rejects null/unsafe/uninventoried paths and preserves older
+  core-only declarations. No board-name lookup supplies missing geometry.
+- Procedure: `selected_p4_export_binds_every_actual_source_input` selects
+  this isolated export explicitly, mutates all 16 inputs only in a private
+  copy and rejects every mutation. Actual source CMake contract/compiler
+  validation and portable CMake positive/refusal cases pass. The resulting
+  BSP [0x820000,0xc00000) and Developer [0xc00000,0x1000000) slots remain
+  exclusive despite sharing one source partition.
+- Retained output: `/Volumes/Dev/Build/rv3-bound-native-partition.5UtuZS/`.
+  The 3,072-byte table remains byte-identical to fresh source-selected IDF
+  output, SHA-256
+  `1011273e9c756cbbee22c1ba09794acb3bdc04f088d3a3154e61df0330b91b96`.
+  `source-binding.json` SHA-256
+  `2cadd81ba71954f17a43a5bbcec79ec4f87e18d55345b7188dc13b630c736483`;
+  `media-binding.json` SHA-256
+  `e45fff9a93531d926d943207c640229204fbbe37fd44b5bbafba831cbff284cf`.
+- Independent decoder: the actual fresh 22,544-byte IDF bootloader passes
+  with source-selected chip 18, revision 100..199 and 32 MiB capacity;
+  SHA-256 `06b2d6fbea7537fe974f7eebcc652dd5570886bcc7f87173abd44ae9c568dd7e`.
+  Wrong chip/revision/capacity, oversize and changed containers fail. Native
+  and vendor source-selected tables decode identically.
+- Review correction: initial geometry accepted any custom package type.
+  Independent review identified that this could diverge from the runtime's
+  exact BSP type. Required source-export kind/subtype values and tests now
+  reject even re-inventoried CSV drift; a synthetic 0x47/subtype3 fixture
+  proves no D1001 0x40 constant is embedded in the adapter. Re-review finds
+  that specific gap resolved. A changed export is still a declaration, not
+  independent extraction from the board header or vendor provenance.
+- Additional read safety: independent review found a FIFO substitution could
+  block before metadata validation. Regular-file opening now uses NONBLOCK
+  alongside NOFOLLOW, rejects nonregular handles, and a bounded POSIX FIFO
+  child regression passes. Regular files retain their ordinary behavior.
+  No negative mutation removing NONBLOCK was run or claimed.
+- Failed checks retained: the first geometry fixture used a CSV name longer
+  than 16 bytes and was corrected; the new omission regression initially
+  retained an earlier changed CSV and was corrected to restore it. A verifier
+  invocation selected IDF's default table (SHA-256
+  `7f00b6c042a89b15b0cac534f82ed988caf29278ff5700b0c511eb1b5bb7c820`),
+  which correctly differs from the source table. Reselecting the exact
+  source-generated `esp32p4-partition-table.bin` passes without changing the
+  decoder or expectations. None of these failures is native build evidence.
+- Verification: 214 common library tests, 76 source-coupled verifier tests
+  (two ordinary-run ignores), and all-target common/verify/toolchain/CLI
+  Clippy pass; the explicit actual source and external media tests pass.
+  Astro check has zero diagnostics and builds 44 pages; the known empty
+  i18n warning remains, with no deployment. These are not kernel/BSP/Developer
+  acceptance. Source closure corrections still
+  require Fabian's separate permission.
+- Safety and next: no flash/device access, commit, push, PR or release.
+  The consistency binding cannot authorize media mutation or replace full
+  native producer receipts. Continue locked external Rust/CLI orchestration,
+  legitimate fresh compiler input and native core/BSP/Developer production;
+  the FDT and restricted compiler-release corrections await explicit approval.
+
+### 2026-10-04 - D0-N external runtime/input evidence located and remeasured
+
+- State: host-only supporting evidence; no native or hardware acceptance.
+  Same isolated source763a536 and tools719beb9 plus local changes.
+- The real locked-native parent/bootloader CMake caches select Python3.14.8
+  in `idf601-python-wheelhouse-extras.WDd8EK/pristine-env`, not the mutable
+  ambient ESP-IDF venv. All61 local wheel files match their exact inventoried
+  sizes and SHA256. Fresh resolver/install reports agree on60 core packages;
+  pinned pip26.2.1 is the separate bootstrap wheel. The inventory remains
+  explicitly provisional/not-qualified. A measured Homebrew interpreter does
+  not provide sealed runtime/release provenance.
+- Current wheel inventory SHA256
+  `d8c53167f9b9b44cfcd6b0feee3d93a50d370c6b62328aed7ef05cec2b9be559`;
+  exact lock/report paths and digests are retained in
+  `/Volumes/Dev/Build/rv3-idf601-clean.V20wpg/native-verifier-evidence.md`.
+  GCC15.2.0_20251204, CMake4.0.3 and Ninja1.12.1 cache archives rehash to
+  their successful extraction receipts. The first failed GNU extraction is
+  historical, not the status of the later safe-copy run.
+- A read-only reverse-check of the exact source IDF6.0.1 patch passes in the
+  extracted external tree. Its earlier extraction receipt lists no patch,
+  so neither that receipt nor a CMake cache qualifies later patch/application
+  provenance or a full build argv/environment receipt. No current build ran.
+- Safety finding: IDF's generated flasher_args/default table belongs to the
+  dummy application, not AROS. Native orchestration must collect the explicit
+  bootloader role and use the source-owned AROS CSV/layout independently;
+  importing the dummy app offset/table would be incorrect.
+- Next: closed Rust-owned external inputs/runtime preparation and fresh
+  command receipts, then complete native media/CLI acceptance. Separate FDT
+  and restricted compiler-release source approval is still pending. No
+  source build-rule/driver change, flash, device, commit, push or release.
+
+### 2026-10-04 - D0-N fresh Rust-owned offline wheel environment
+
+- State: local host-runtime preparation verified; RV3 native core/BSP/Developer,
+  full IDF producer and public CLI acceptance remain open. Source baseline
+  `763a536f26a5e94176c821d48cedbcbff03b4189`, tools baseline
+  `719beb99f55bf7cec75ce8d67a5f96472e9cd32e` with local changes only.
+- Rust creates a fresh pip-free venv with explicit CPython3.14.8, bootstraps
+  only from the locked pip wheel, installs all61 local wheels offline with
+  hashes/no dependencies, checks pip dependencies and the exact installed
+  name/version/origin inventory. Five supervised subprocess receipts retain
+  argv, sterile environment, exit state and log hashes. No ambient venv is
+  adopted. Runtime-prefix content is checked before and after execution.
+- Raw selected lock SHA256
+  `0dc9880ff2d4c68ac9b76d2f973337b3061767a448ba18e2e236b17ffdfd3bf6`;
+  retained intact root
+  `/Volumes/Dev/Build/rv3-rust-wheel-runtime.9JJHOj/aros-wheel-environment-88240-1-0`;
+  receipt SHA256
+  `138315fed767e7161e41968def5d3a8ecd5258ee058397c93880864a35e57e08`.
+- Independent review found insufficient root read privacy and a same-hash
+  symlink substitution gap. Root mode0700 is now required before/after child
+  execution; wheels, interpreter and control files use bounded no-follow
+  regular-file reads. Privacy/size/symlink counterprobes pass. Corrupted cache
+  input is refused before reserving an output; substituted returned paths
+  are refused without corrupting the retained successful proof.
+- Five focused unit tests, three portable integration tests and the explicit
+  real61-wheel integration test pass. Toolchain/CLI all-target Clippy passes.
+  Astro checks report zero diagnostics and build44pages; known empty-i18n
+  warning remains. These results do not prove package origin, a sealed host
+  platform, a complete IDF build or hardware behavior.
+- Safety and next: no source build-rule change, commit, push, device, flash or
+  release. FDT and restricted compiler-release source permission is still
+  pending. Continue exact source-bound IDF commands and complete native/media
+  receipts; this local-byte-lock boundary is not release authority.
+
+### 2026-10-04 - D0-N fresh Rust-owned IDF bootloader adapter
+
+- State: internal external-producer build verified on macOS ARM64; native
+  core/BSP/Developer, reviewed archive/patch provenance and public CLI remain
+  open. Source763a536 and tools719beb9 plus isolated uncommitted additions;
+  no AROS build rule or driver changed.
+- Rust copies four inventoried project inputs into a unique0700 root, then
+  runs fixed dependency-check/configure/bootloader phases with locked IDF6.0.1,
+  vendor GCC15.2.0_20251204, CMake4.0.3, Ninja1.12.1 and a freshly prepared
+  CPython3.14.8/61-wheel runtime. Component-manager downloads and submodule
+  updates are disabled. The dummy application and its default table are not
+  collected. Parent and nested CMake compiler/tool metadata must match exact
+  selections; all measured external/source/runtime inputs are revalidated.
+- Final intact output root:
+  `/Volumes/Dev/Build/rv3-rust-idf-producer.ZeTOiy/aros-idf-bootloader-97931-2-0`.
+  All three phases exited0; image22544B SHA256
+  `55c01a969c7ca321fff73dd30b67979cc0e1292e81c59268fb1866f4e9502be9`;
+  receipt SHA256
+  `f8679ff92ae4fe1ed245c0b901e98ebaec5ab8a10a21a030a5b48d4a6489d8c4`.
+  Independent Rust ESP-image verification uses the bound source chip/revision/
+  capacity/slot, not vendor default flash arguments. No secure-boot claim.
+- Independent review found vendor/wheel PATH directories could shadow selected
+  tools before post-config validation, then found non-executable alias targets
+  could fall through to system tools. Both are corrected: only private selected
+  aliases precede the POSIX baseline, with execute-mode/EXEC_OK checks before
+  publication. Python launchers retain the selected venv path. Shadow marker,
+  non-executable modes0600/0644, wrong/relative selections and missing/duplicate
+  compiler-prefix tests pass; scoped follow-up review has no remaining finding.
+- All16 private single-source-file mutations, invalid job count and changed
+  constraints lock fail before reserving a build root. Five focused unit tests,
+  portable closed-lock test, fresh actual production and toolchain/CLI all-target
+  Clippy pass; the complete toolchain library passes184 tests. Astro check/build
+  passed44pages with known empty-i18n warning.
+- Earlier roots91759/93588/95810 remain retained, not erased or described as
+  final-head acceptance. IDF's source-owned __DATE__/__TIME__ descriptor changes
+  between fresh builds; image hash differences are not an A/B reproducibility
+  pass or a proven semantic divergence.
+- Safety and next: local byte consistency is not authenticated archive/patch
+  provenance, a sealed host/network sandbox, full native build-set identity or
+  flash authority. No commit, push, device, flash or release. Complete external
+  provenance and public CLI/media integration remain; FDT and restricted
+  compiler-release source-rule corrections still require separate approval.
+
+### 2026-10-04 - D0-N exact IDF archive/patch binding and owned execution source
+
+- Source: isolated P4 baseline `763a536f26a5e94176c821d48cedbcbff03b4189`;
+  native 16-input contract SHA256
+  `13c0858732c4d3020731151ed3f19ffc3aae292573dd7bc0a4579c18ba3a63c6`.
+  Tools remain a dirty local worktree at `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`.
+- Fresh official IDF archive: 1,825,997,344 bytes, SHA256
+  `4f294f44ddcf7b6677ae2347808fc708768a4890fed3c6f7227b7d4c076b9019`.
+  The exact source patch SHA256
+  `df445145767975c64aa8155a818906d7f15de709792fac1746fd0ad1d542d683`
+  is applied with `-f,-p1` inside `esp-idf-v6.0.1`. A fresh real aros-fetch
+  process retains both declarations and their current payload-tree digest.
+- Verified prepared input:
+  `/Volumes/Dev/Build/rv3-idf-source-private.HFhKPR/sources`;
+  receipt SHA256 `8900e570707d1ac37fbec7cd40fee2580250a8c10e3d91e8fd31cb4777352efe`.
+  The shared read-only API checks the closed declaration, raw receipt and
+  full tree. Added/changed receipt-namespace bytes fail revalidation; this
+  remains local editable evidence, not authenticated archive origin.
+- Two retained failures, roots `aros-idf-bootloader-8387-2-0` and `11031-2-0`,
+  built the image but failed post-source validation. The first refreshed Git
+  indexes; `GIT_OPTIONAL_LOCKS=0` suppressed submodule refreshes but did not stop
+  the root index write. Read-only ZIP comparisons found only Git index bytes
+  and the two intended source-patch changes; no extra source files.
+- Correction: copy the exact measured IDF input into the owned build root
+  through descriptor-relative no-follow copying. Consume that private copy,
+  not the prepared input. Only the regular `.git/index` can change bytes/size;
+  all other content and every name/kind/mode stay fixed. Complete tree and
+  index digests before/after remain in the receipt. A subsequent independent
+  review found a transient copy-before-restore race; both snapshots now must
+  equal the pinned tree digest before execution, with a refusal counterprobe.
+- First owned-source real run passed in 233.99 seconds at
+  `/Volumes/Dev/Build/rv3-rust-idf-producer.ZeTOiy/aros-idf-bootloader-15331-2-0`:
+  image 22,544 bytes SHA256
+  `7cc59f7d41487286aaa914a9ffd1efd9bfaec848323a9bbee4cd8acd6b94c6db`;
+  ELF 750,928 bytes SHA256
+  `9c0e61b58d1a4eec2d770cd5fdb59f8cc0162cde6de5c9f8873c5ab641ae853a`;
+  receipt SHA256 `d4447f1881045c75c0dbd9a29377db6c72158b06f2efc94739513750af313708`.
+  All three supervised phases exit0; independent source-geometry image
+  verification, original-source/Python revalidation and 16 mutation refusals
+  pass. The snapshot-race guard was added during this run; this root is not
+  final-head proof of that guard. Its complete follow-up build is in progress.
+- Separate fresh offline GCC/CMake/Ninja extractions at
+  `/Volumes/Dev/Build/rv3-vendor-source-origin.SjnmeV` match the existing
+  archive pins; their real read-only receipt/tree test passes. These bindings
+  are not yet integrated into the public producer CLI.
+- Portable checks: six IDF unit tests, exact lock test, four fetch receipt
+  subprocess tests, 74 publication tests and all 185 toolchain library tests
+  pass. All-target CLI/fetch/toolchain Clippy passes. No image A/B, signed
+  vendor origin, sealed platform or full native P4 qualification is claimed.
+- Safety/next: no source build rule, driver, device, flash, commit, push or
+  release changed. FDT/restricted compiler-source corrections still await
+  separate permission. Native core/BSP/Developer, complete external/media
+  binding and public CLI acceptance remain open.
+
+### 2026-10-04 - D0-N final execution-copy proof and vendor archive bindings
+
+- State: D0-N remains in development. Final pinned-snapshot execution passed
+  at `/Volumes/Dev/Build/rv3-rust-idf-producer.ZeTOiy/aros-idf-bootloader-19411-2-0`
+  in225.50s, using the same16-input source contract at isolated763a536.
+  All3 phases exit0, independent source-bound image checks, original source/
+  Python revalidation and16 mutation refusals pass.
+- Image22544B SHA256
+  `5f4beebcdf281c731cc2063279daf7d072cf43a56e7609397b7b7ab944da802d`;
+  ELF750928B SHA256
+  `b11b873d10dac3453d74798bd6e0151c4cd17d2b61e9b16d6d9aa2f27f9ef4c9`;
+  receipt SHA256
+  `3ec50576eb722d308496cb3a473bc7f1c7596867be5620768d23f0bc3a5f009a`.
+  This closes the previous entry's in-progress follow-up, not RV3.
+- Internal IDF inputs now additionally require pinned GCC/CMake/Ninja fetch
+  receipts. Their live trees are revalidated; archive name/hash must match
+  the unique recommended host entry in locked IDF tools/tools.json. Selected
+  prefixes/executables must stay inside their matching archive destination.
+  These three bindings are retained in the build receipt. Fresh extractions
+  are at `/Volumes/Dev/Build/rv3-vendor-source-origin.SjnmeV`.
+- Seven IDF units, exact closed-lock test, all186 toolchain library tests
+  and all-target CLI/fetch/toolchain Clippy pass. Bounded independent review
+  found no additional vendor-binding defect. Actual fully vendor-bound build
+  passed in275.18s at `aros-idf-bootloader-25533-2-0` in the same producer
+  parent: image22544B SHA256
+  `622b9df20087d7223570f30bb557ae53447bc73e1886fdd471b046febd2efbf2`;
+  ELF747144B SHA256
+  `c152b7ebc6f1bd44951c762491bb341df07cd9b5cfdaca7672b9fff0bb486375`;
+  receipt SHA256
+  `6d5ca58ef8bf1cce6e82923d4cad7571ec4d8c80a505b6f06b06d4acd2325c7d`.
+  All3 phases, independent image checks and original source/runtime/vendor
+  revalidation pass. Wrong pins for all3 vendor receipts and out-of-tree
+  compiler selection fail before reservation. Its earlier
+  invocation failed from an empty patch-origin test argument before IDF
+  output reservation; the fixture now uses the real fetch contract default.
+- Astro npm check/build passed44pages with zero diagnostics; bundler
+  head-inject/empty-i18n warnings remain. An accidental pnpm lock was moved
+  outside the repo, not adopted as a second dependency authority.
+- Safety/next: no source build rule/driver, commit/push, device or flash
+  change. FDT and restricted compiler-release rules await separate approval;
+  fresh native core/BSP/Developer, complete flash composition and public CLI
+  acceptance remain open. Local receipt checks are not authenticated origin
+  or a sealed host; source timestamps prevent an image A/B claim.
+
+### 2026-10-04 - D0-N public offline external-media preparation
+
+- State: external preparation CLI is build verified on macOS ARM64; D0-N/RV3
+  remain open. Source baseline 763a536 plus approved declarative exports only;
+  tools dirty worktree based on 719beb9. No source build rule/driver changed.
+- Actual CLI `image prepare --preset esp32p4-d1001`, explicit source/inputs,
+  jobs 12/timeout 900/json, passes in 267.34 s. Fresh 61-wheel Python preparation
+  and all 3 IDF phases exit 0, with no timeout/cancellation. JSON-only stdout
+  equals the retained preparation receipt. Core/BSP/Developer roles are not
+  substituted or invented; `complete_flash_plan` remains false.
+- Evidence root `/Volumes/Dev/Build/rv3-native-media-cli.SPoO2g`; successful
+  run `runs/aros-native-media-45238-1-0`. Exact procedure, code/input identities,
+  all phase receipts and remaining acceptance are in `qualification.md`.
+- Bootloader 22544 B SHA256
+  `622260e1349a60819106f4d18d17ff260eb6f6f04f0631e6b4562f2e51c106df`;
+  ELF 756216 B `2914b41e83eae8b9b013de6ddcdb4e19594b61ce7aa413be7056a075ecd4766a`;
+  table 3072 B `1011273e9c756cbbee22c1ba09794acb3bdc04f088d3a3154e61df0330b91b96`.
+  Preparation receipt
+  `9e8666f0d5f33e43571243a1d67ff45818c1e6fc525cbc0d815db33f39f5965a`.
+- Source-resolved chip 18/silicon 100..199/flash 32 MiB and independent
+  corruption/geometry refusals pass. A separate vendor CSV generator produces
+  the identical table. All 16 source mutation refusals, preparation/parser,
+  public-documentation, image and flash-plan checks pass; all-target Clippy
+  and formatting pass. Astro's aligned local 45-page build/check passed with
+  zero diagnostics; no deployment.
+- Retained first CLI failure `aros-native-media-39343-1-0`: Homebrew Git alias
+  was a symlink, rejected after Python but before IDF output. The corrected
+  input selects the regular executable; an early executable preflight now
+  rejects the old input before reservation. No failed output is adopted.
+- Safety/risk/next: no device, flash, commit, push or release. Local byte
+  consistency is not vendor provenance or a sealed host; no image A/B claim.
+  Fresh native core/BSP/Developer and complete flash composition/CLI gates
+  remain open. FDT and restricted compiler-source fixes require permission.
+
+### 2026-10-04 - D0-N isolated source closure authorization
+
+- State: Fabian explicitly approved the missing FDT header producer and the
+  restricted compiler-release closure. RV3/D0-N remain open.
+- Source: isolated dirty worktree based on 763a536. The FDT `%copy_includes`
+  now names `linklibs-fdt-includes` and explicitly lists `fdt.h`; the default
+  empty header list would not have emitted a usable endpoint.
+- Procedure: add validated default-off `--enable-toolchain-release` to
+  `configure.in` and generated `configure`. The top-level release target fails
+  before build actions when disabled. When enabled it selects the independent
+  `tools-crosstools-gnu-release` MetaMake root, the existing compiler-only GCC
+  recipe and explicit `all-target-libgcc`/`install-target-libgcc`. The generic
+  `crosstools-gcc` root would still enter `includes` and all configured target
+  runtimes, so it is not part of this release path. Normal GNU roots and the
+  normal `crosstools` feature/link-library path remain unchanged.
+- Results: five actual fresh configure cases pass their expected outcomes:
+  enabled/default succeed; invalid value, disabled crosstools and LLVM reject
+  the opt-in. The default generated Makefile rejects `crosstools-release`.
+  Actual `genmf.py` expands the restricted root and explicit libgcc recipe.
+  FDT/selection process tests pass 7/7. Source loading and all 21 private
+  one-input mutation refusals pass. The extracted GNU rule/process fixture
+  passes, including explicit child libgcc goals and feature/generic-root/default
+  counterprobes. Final relevant all-target Clippy and format checks pass;
+  no runtime/compiler result is inferred.
+- Identity: current native source export SHA256
+  `ec48a704c7c279343393cd794df6095e0faa8e902ac15d9926bc891180a1f3f5`.
+  Retained configure/expanded-rule/graph evidence:
+  `/Volumes/Dev/Build/rv3-source-closure-proof.qtFEBD/`.
+- Artifact: no new native compiler/core/BSP/Developer artifact yet. Prior
+  external-media CLI evidence above remains bound to its previous source inputs.
+- Safety: no driver, device, flash, commit, push or release operation. The
+  parallel maintainer source tree remains untouched. Normal build semantics
+  must remain unchanged outside the explicitly enabled compiler-release mode.
+- Risk/next: actual selected native translation now stops at the missing
+  `kernel-exec-includes-esp32p4-riscv` endpoint in the P4 Exec recipe. That
+  additional source rule has not been changed and needs separate permission.
+  A fresh cold compiler build, then native core/BSP/Developer and bound media
+  composition remain required. No inherited Make payload or old receipt may
+  substitute for those gates. GNU-rule fixtures do not prove compilation.
+
+### 2026-10-04 - D0-N P4 Exec header producer and next native graph gate
+
+- State: Fabian approved required local source changes within
+  `arch/riscv-esp32p4/`. The isolated Exec recipe now declares
+  `kernel-exec-includes-esp32p4-riscv : kernel-kernel-includes`, matching
+  the architecture endpoint requested by generic Exec. Independent review
+  found no cycle and no missing architecture-include ordering edge.
+- Source identity: dirty isolated baseline
+  `763a536f26a5e94176c821d48cedbcbff03b4189`; Exec recipe SHA256
+  `6702136d268fd668ee73cd52e892b564716061dd51bdaa8fe72f62917d6049ca`.
+  The current 22-input native export SHA256 is
+  `201bcf7de54ea000da99e38aa4d13225bd695cee00ebb1745465de0c3fc618eb`.
+- Procedure/result: native-profile translation after the rule change exits 1
+  with AT0006 at `kernel-clocksource-gen-setup`, reached through
+  `linklibs-libinit -> includes -> includes-generate ->
+  kernel-kernel-includes -> kernel-clocksource-gen-includes`. Retained logs:
+  `/Volumes/Dev/Build/rv3-source-closure-proof.qtFEBD/selected-exec-step.stderr.json`
+  and its corresponding stdout log. No selected CMake graph was emitted.
+- Diagnosis: the shared kernel source already contains a directory-only setup
+  and explicit genmodule header recipes. The remaining gap belongs to their
+  generic transpiler representation, not a missing P4 driver or source alias.
+- Safety: no hardware, flash, source commit, PR, push or release. The parallel
+  maintainer tree remains untouched. No existing media receipt is rebound to
+  the new export and no native compilation result is claimed.
+- Remaining acceptance: closed native graph, fresh compiler and native
+  core/BSP/Developer production, complete bound media composition and public
+  CLI qualification. Earlier evidence entries retain their historical hashes.
+
+### 2026-10-04 - D0-N generic directory preparation and generated-header closure
+
+- Configuration: same isolated single-hart D1001/RV32 source baseline and
+  22-input export as the preceding entry; no further source recipe changes.
+- Tools change: a closed named `%mkdirs_q` scanner creates actual CMake setup
+  targets. Unknown conditionals, extra commands, unresolved paths and repeated
+  recipe owners reject; native selection also rejects cross-file duplicate
+  producers. File-target recipes outside this capability remain unclaimed.
+- Measured verification: ten native-selection CLI process tests pass, six
+  directory capability tests pass including actual CMake directory creation,
+  lexical escape and nested symlink refusal. Relevant all-target Clippy passed.
+  The actual 22-input loader/partition/media probe passes every private
+  single-input mutation refusal; retained evidence:
+  `/Volumes/Dev/Build/rv3-source-closure-proof.qtFEBD/rv3-bound-native-partition.uOm6ad/`.
+  The actual-source restricted GNU closure fixture also passes; this remains
+  rule/process evidence, not compiler production.
+- Native replay: fresh transpiler translation exits 1 with AT0006 at
+  `includes-libraries-mui`, through `linklibs-libinit -> includes ->
+  includes-generate -> kernel-exec-includes`. Retained stdout/stderr:
+  `/Volumes/Dev/Build/rv3-source-closure-proof.qtFEBD/selected-directory-stage.*`.
+  No selected graph was published. Directory preparation now has a concrete
+  producer; handwritten genmodule and host-C generated-header production
+  remain unqualified and must not be inferred from meta-target existence.
+- Safety/artifacts: no native compiler/core/BSP/Developer artifacts, device
+  access, flash, commit, PR, push or release. Old media identities unchanged.
+- Next: represent the declared generated-header producers with explicit
+  inputs/outputs and preserved ordering, then qualify a fresh native build and
+  complete source-bound flash plan. RV3 remains open.
+
+### 2026-10-04 - D0-N source-owned header producers and explicit virtual nodes
+
+- State/configuration: isolated single-hart D1001/RV32 source baseline
+  `763a536f26a5e94176c821d48cedbcbff03b4189`, unchanged 22-input export
+  SHA256 `201bcf7de54ea000da99e38aa4d13225bd695cee00ebb1745465de0c3fc618eb`.
+  No additional source recipe change in this step.
+- Tools: generic host-C/header ownership, five handwritten GENMODULE layouts,
+  exact literal header copies, and explicit empty virtual MetaMake targets.
+  A virtual declaration cannot replace an unmodelled nonvirtual Make provider.
+  Normal full-tree translation retains its prior coverage-report policy;
+  native selected dependency closure remains fail-closed.
+- Verification: after independent provider-origin hardening, 379 source-coupled
+  transpiler unit tests and 27 native CLI
+  process tests pass. The independently rerun CMake fixture builds the actual
+  source GENMODULE tool and produces exactly 54 declared headers across five
+  layouts; no-op, byproduct repair and negative ownership/path/config probes
+  pass. The cold actual-MUI fixture matches direct source-generator output,
+  SDK mirroring and rebuild after a declared input mutation. Scoped
+  all-target Clippy with warnings denied passes.
+- Review hardening: unresolved prerequisites remain selected-owner failures
+  even when a concrete producer exists. Every nonvirtual provider needs a
+  concrete capability in its own source makefile; a foreign-file name cannot
+  prove it. GENMODULE_ONLY does not acquire a nonexistent relative archive.
+- Native graph result: the replay still exits 1 with AT0006, now at
+  `workbench-libs-zstd-pkgc`; no complete selected CMake graph exists. Retained
+  logs and exact tools identity:
+  `/Volumes/Dev/Build/rv3-source-closure-proof.qtFEBD/header-stage-qualification.md`.
+- Safety/artifacts: no compiler/core/BSP/Developer payload, device operation,
+  flash, implementation commit, PR, push or release. No old Make output or
+  earlier receipt is substituted or rebound. MUI library/GUI choices remain
+  source-owned; necessary SDK headers are not blanket-disabled.
+- Remaining acceptance: source-derived SDK text producers, closed native
+  graph, fresh qualified compiler and native core/BSP/Developer production,
+  complete source-bound flash composition and public CLI acceptance. RV3 is open.
+
+### 2026-10-04 - D0-N SDK text integration and package publication gates
+
+- State/configuration: isolated single-hart D1001 source baseline
+  `763a536f26a5e94176c821d48cedbcbff03b4189`; unchanged 22-input export
+  SHA256 `201bcf7de54ea000da99e38aa4d13225bd695cee00ebb1745465de0c3fc618eb`.
+- Tools replay binary: dirty tools baseline `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`,
+  `aros-transpiler` SHA256
+  `c5fa808abf256db5b1177b2de3bd8e040e5ce9b3ed5495de090a0da178fbb717`.
+- Procedure/result: complete source-coupled transpiler suite passes 383 unit
+  and 30 CLI process tests. Actual selected P4 replay exits 1 with AT0004 at
+  `workbench-libs-png-generated`; no complete graph is published. Logs:
+  `/Volumes/Dev/Build/rv3-source-closure-proof.qtFEBD/selected-sdk-integration.stderr.json`.
+  SDK interpreter/template parity qualification remains separate and pending.
+- Publication checks: independently rerun `NativePackagePublicationTest.cmake`,
+  `NativeBuildContractTest.cmake` and `HeaderTransformBoundaryTest.cmake` pass.
+  Capacity comes from the inventoried numeric geometry. Exact capacity passes;
+  overflow, absent/invalid capacity and missing/empty native membership refuse
+  publication without replacing the previous artifact. Non-native partial
+  packaging behavior remains unchanged. An old geometry-reference fixture was
+  corrected to supply and inventory its actual numeric capacity.
+- Source audit: `config/make.tmpl` requires per-module KOBJ partial links,
+  inner archive selection and base/set-symbol localization before the P4 final
+  ELF link. Current native raw-object linking is not equivalent. Package-list
+  collection also lacks conditional `+=` and declaration-time replacement
+  semantics. These findings are open implementation obligations, not accepted
+  shortcuts or observed hardware faults.
+- Safety: no native compiler/core/BSP/Developer output, complete flash plan,
+  device access, source payload substitution, commit, PR, push or release.
+  Historical external-media receipts retain their original input identities.
+- Next: qualify SDK interpreter and PNG header producers; correct source-derived
+  KOBJ links and package membership; produce a fresh qualified compiler, native
+  payloads and complete CLI/media evidence. RV3 remains open.
+
+### 2026-10-04 - D0-N source configuration and declaration-time history
+
+- State: host-only parser/contract progress; D0-N and RV3 remain open. The
+  source export now declares empty `P4_C2_INTUITION_GATE`,
+  `P4_C3_GRAPHICAL_BOOT` and `P4_C4_TOUCH_HIDD` defaults. Empty is explicit
+  source configuration, not a guessed absence or an ESP32-specific Rust rule.
+- Identities: isolated dirty P4 baseline `763a536f26a5e94176c821d48cedbcbff03b4189`,
+  tools baseline `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`; the 22-input
+  native contract SHA256 is
+  `e264ac218e8183d6f76e4b2aa2ebeae0262ea37f11f61431a40875368b381470`.
+  Earlier receipts retain their original contract bytes and identities.
+- Procedure: source-coupled transpiler library and CLI process tests against
+  exact modern, Mesa-20 and isolated P4 source roots; native-build contract
+  Rust/CMake boundary tests; Astro check. Independent review found and prompted
+  corrections to joined include-fragment coordinates, reset-aware equality
+  conditions and configured defaults in immediate path assignments.
+- Results: the integrated pre-FreeType suite passed 402 unit and 39 public
+  process tests; an additional full parser fixture subsequently passed for
+  a header fragment below a 90-line parent prefix and a continued assignment.
+  Contract tests passed 20 Rust cases and CMake positive/negative cases.
+  Astro check reported zero errors, warnings or hints across 13 files.
+  CMake forwards profile and raw contract hash in both transpiler passes and
+  the replay record. Unknown conditional writes remain rejected; proven later
+  resets cannot retroactively change earlier declarations.
+- Remaining: the real selected source still stops at the complete FreeType
+  header/cross-helper producer. Its generic multi-output implementation is in
+  development and is not yet acceptance evidence. Source-derived KOBJ inner
+  archive order, partial linking and symbol localization remain open, followed
+  by fresh compiler production, native core/BSP/Developer and complete media.
+- Safety: no device access, flashing, Make payload substitution, implementation
+  commit, PR, push or release. No hardware state changed or was inferred.
+- Next: qualify both FreeType products against the reference recipe, then
+  close the native KOBJ/compilation and complete CLI/media gates.
+
+### 2026-10-04 - D0-N complete FreeType source-text parity
+
+- State: host-only generic producer progress; RV3/D0-N remain open. Source
+  ownership decides GUI/MUI selection; no board-specific compiler switch was
+  added to Rust or the CMake engine.
+- Identities: isolated dirty P4 baseline `763a536f26a5e94176c821d48cedbcbff03b4189`,
+  tools baseline `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`; native contract
+  SHA256 `e264ac218e8183d6f76e4b2aa2ebeae0262ea37f11f61431a40875368b381470`.
+  Selected-translation executable SHA256
+  `f3de280c42413bb61ab4a589ae292d5498c30c1c12a6036a370765e65d0de38b`.
+- Procedure: source-coupled transpiler library/public CLI tests; isolated
+  CMake/Ninja execution of both declarations parsed from the actual P4
+  FreeType recipe; independent GNU sed reference commands on exact cached
+  FreeType 2.14.3 templates. Header input SHA256
+  `9014bc786e9c20ef03bb12cf9e4d6f273f0da24af5b9291a88eda976325ef457`,
+  script input SHA256
+  `2c1345aedd105b0bdcc9ca6f06ce403b1c8f37bc42e836f77e81422d384efdc6`.
+- Results: 411 library and 42 public process tests passed. The actual source
+  parity test passed complete header/script byte comparison and mode `744`.
+  FreeType consumer fixtures passed with both generic and fallback ownership.
+  The focused text runner passed fetched-input mutation rebuild, no-op,
+  missing-output repair, root aliases and validation-failure preservation.
+  Review found a CRLF mismatch: replaced lines must lose CR like GNU sed;
+  unmatched CRLF remains unchanged. The corrected runner passed direct GNU
+  sed byte comparison. Initially missing fetched inputs acquire depfile
+  tracking after their first successful production.
+- Remaining: translation refuses `workbench-libs-codesets-fd` before graph
+  publication. Its finite SDK file copier is in development. KOBJ inner links,
+  archive order/localization, fresh qualified compiler, native payloads and
+  complete flash/CLI acceptance remain open.
+- Safety: no device access, flashing, Make payload substitution, implementation
+  commit, PR, push or release. No hardware claim changed.
+- Next: qualify the SDK copier and continue the source-derived core/BSP graph;
+  retain all earlier failed experiments and their original identities.
+
+### 2026-10-04 - D0-N finite SDK copies and source-owned Resource ABI
+
+- State: host-only native graph progress; D0-N and RV3 remain open. Full
+  source module macros own public ABI generation; runtime-only macros do not.
+  No board-specific GUI or MUI selection was added to Rust or CMake.
+- Identities: isolated dirty P4 baseline `763a536f26a5e94176c821d48cedbcbff03b4189`,
+  tools baseline `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`; the 22-input
+  native contract remains
+  `e264ac218e8183d6f76e4b2aa2ebeae0262ea37f11f61431a40875368b381470`.
+  Selected-translator SHA256
+  `8a2f94fed5156c04aa8e325a540a22c81adacc957dd866fba7a7353e725ed4cd`.
+- Procedure: 416 source-coupled library tests and 49 public CLI process tests,
+  all-target transpiler Clippy, private CMake/Ninja SDK copy fixtures, actual
+  source Codesets staging and direct source-built genmodule reference output.
+  `ResourceModuleAbiTest.cmake` and `FullGenmoduleAbiTest.cmake` passed.
+- Results: actual Codesets FD input SHA256
+  `8ad14e1edb9c7d3d0d5c1882087fe08bf865726a12bf7ce95a6bd67b609cd498`
+  is preserved byte-for-byte. Nested runtime integrity probes cover binary
+  bytes, fetched-input mutation, missing-output repair, unchanged reconfigure,
+  symlink and recipe-tamper refusals. Review corrected an unnecessary recipe
+  rewrite; a fixture initially normalized CRLF and was corrected to preserve
+  its exact input bytes. Resource ABI output matches reference headers,
+  libdefs and FD files, including public mirrors. No-op and missing-header
+  repair pass. Runtime-only and missing-config CLI counterprobes refuse
+  invented public providers. Astro check passed 13 files without findings.
+- Correction: review initially inferred unconditional FD output from
+  `writefd.c` alone. The `genmodule.c` WRITEFD entry instead checks both
+  includes and a non-empty function list. The unconditional-FD candidate was
+  withdrawn before acceptance. A separate confirmed naming defect ignored
+  config `includename` (actual card/cardres); its correction and complete
+  base/override FD facts are now under independent reference qualification.
+- Remaining: real selected translation advances through Codesets and
+  `kernel-kernel-includes`, then refuses `network-includes-copy` before graph
+  publication. Its source-owned static-pattern rule is not yet implemented.
+  KOBJ partial links/archive order/localization, fresh qualified compiler,
+  native core/BSP/Developer and complete flash-plan/CLI acceptance remain open.
+- Safety: no device access, flashing, Make payload substitution, implementation
+  commit, PR, push or release. Existing receipts retain their exact identities;
+  these host-only probes do not qualify a native core or hardware boot.
+- Next: model and verify finite static-pattern SDK staging, then close
+  source-derived KOBJ linking and fresh native build/media acceptance.
+
+### 2026-10-04 - D0-N source-owned static headers and directory roots
+
+- State: host-only graph progress; D0-N/RV3 remain open. No ESP32-specific
+  GUI/MUI switch was added to the tools. Required ABI/SDK headers remain
+  independent of source-owned runtime selection.
+- Identities: isolated dirty P4 baseline `763a536f26a5e94176c821d48cedbcbff03b4189`,
+  tools baseline `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`; native contract
+  `e264ac218e8183d6f76e4b2aa2ebeae0262ea37f11f61431a40875368b381470`.
+  Selected translator SHA256
+  `3235a4d48348f6d0413f45975c62d205407a61dbf7d6e4c3aa42cabe88194580`.
+- Procedure/results: 430 source-coupled library tests, 52 public CLI process
+  tests and 20 embedded-engine tests passed. The actual network reference
+  staged 81 files; sorted path/SHA256 inventory digest
+  `acd1a22ee6c87915f0c2aa3b7d4d8e9eca1e6085373ed30c197cdea297dc4b2e`.
+  Exact bytes, sole SDK destination, missing-output repair and input-mutation
+  rebuilds pass. Full Resource and library ABI reference fixtures pass,
+  including config `includename`, valid device functions and per-file AUTO
+  defaults. Runtime-only/noincludes outputs are not invented.
+- Corrections: mutable include-root components needed independent configured
+  comparisons. Nonexistent directory paths under ancestor aliases required
+  canonicalizing the nearest existing directory, not applying REAL_PATH to
+  nonexistent paths. The CLI fixture initially omitted detach.c; it now
+  declares that fixture input. A repeated source-owned directory phony target
+  is valid; the no-op test now measures unchanged header mtimes rather than
+  incorrectly requiring Ninja to execute no command.
+- Evidence: `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`, retaining
+  failed experiments and their logs as well as passing reference runs.
+- Remaining: selected translation fails closed at
+  `includes-generated-m68k-libcall` (via compiler includes). KOBJ partial
+  links/archive order/localization, fresh qualified compiler, complete native
+  core/BSP/Developer and complete flash-plan/CLI acceptance remain open.
+- Safety: no device access, flashing, Make payload substitution,
+  implementation commit, PR, push or release. No hardware claim changed.
+- Next: model the source-owned generator, then qualify the complete graph
+  and source-equivalent KOBJ inputs before fresh native build/media acceptance.
+
+### 2026-10-04 - D0-N named host-header aggregates and incremental refusal
+
+- State: source-derived host-header producers are locally build verified;
+  D0-N/RV3 remain open. No source-specific GUI switch was added to Rust.
+- Identities: dirty P4 baseline `763a536f26a5e94176c821d48cedbcbff03b4189`,
+  tools baseline `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`; unchanged native
+  contract `e264ac218e8183d6f76e4b2aa2ebeae0262ea37f11f61431a40875368b381470`.
+  Current translator SHA256
+  `47e144c824642bffd6c0644416133d2207fcf7d6f4cf6049c48f1f2e51bff8b1`;
+  embedded-engine CLI SHA256
+  `97779a1157edf2fd3265a77f69385d5f88606692cd956a4d2d400f1a3143cdcd`.
+- Procedure: parse the exact m68k/i386 declarations, compile both actual
+  `gencall.c` tools with `-Wall -Werror`, build only their native CMake targets
+  in a new private tree and compare every header with independent direct
+  generator invocations. MetaMake's named marker registers its nonvirtual
+  provider independently of rule adjacency; only a bare marker consumes the
+  next line (`tools/MetaMake/dirnode.c:226-286`).
+- Measured outputs: i386 SDK and GEN copies are each 37,321 bytes,
+  SHA256 `735819102eb6e4b0046eab829ac3b64b3fdca4a515c6fe6b7019d5921696f2a6`;
+  SDK m68k asmcall is 222,652 bytes,
+  `e1e72b01dbd5f3cfc443aaa8ed5767ca250979ba3d62cfb4203a023a19cb370d`;
+  SDK m68k libcall is 283,068 bytes,
+  `945613017299f9708b4619809317b87f1c28750ba69f706a0c39a997292f083f`.
+  No m68k GEN mirror was invented.
+- Result: reference bytes, no-op mtimes, missing-output repair, normal owner
+  builds with future-dated tool/mirror symlinks and newer changed sealed
+  recipes pass. 435 library, 54 CLI and 20 embedded engine tests pass;
+  all-target transpiler Clippy passes with warnings denied.
+- Corrections: file-output commands alone did not validate up-to-date paths.
+  Phony validators now run before them, the host compiler is a dependency,
+  mirrors stage privately, and a completion output is written last. Failed
+  paired publication cannot appear current on retry. This is not atomic
+  whole-SDK publication. Root-level source paths accept only the exact empty
+  CURDIR forms, not traversal. Earlier failing fixture/config invocations
+  remain in the evidence logs.
+- Current source gate: actual selected translation passes both aggregates
+  and rejects `kernel-cfgx-includes` in `workbench/libs/icon/mmakefile.src`.
+  No such source owner exists; icon includes Cybergraphics and the actual
+  provider is `workbench-libs-cgfx-includes`. The shared-source correction
+  remains unmodified pending separate authorization.
+- Evidence: `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`, including
+  `host-header-aggregate-tamper.log`, library/CLI/Clippy logs, selected JSON
+  refusal and `evidence.md`. No Make payload was substituted.
+- Remaining: source prerequisite correction, source-equivalent KOBJ object
+  and archive order/localization, fresh core/BSP/Developer and complete
+  media/CLI acceptance. Corrected compiler-release production remains
+  separately unqualified; the retained local RV32 compiler isolation proof
+  is not a published compiler distribution.
+- Safety: no device access, flashing, implementation commit, PR, push or
+  release. Existing hardware evidence is unchanged.
+- Next: obtain authorization for the source typo; continue the complete
+  selected graph and KOBJ/native build, then verify composed flash artifacts.
+
+### 2026-10-04 - D0-N exact macro forms and standalone GNU KOBJ localization
+
+- State: bounded translation and standalone localization are locally verified;
+  D0-N/RV3 remain open. The source-selected CMake KOBJ/core bridge is not yet
+  qualified. MUI/GUI component selection remains source-owned, not a Rust
+  board-name condition; independently required SDK headers remain available.
+- Identities: dirty source baseline `763a536f26a5e94176c821d48cedbcbff03b4189`,
+  tools baseline `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`; native contract
+  unchanged at `e264ac218e8183d6f76e4b2aa2ebeae0262ea37f11f61431a40875368b381470`.
+  Measured current translator SHA256
+  `cdf6b77c41a5fdd5ace5420978e060d4b586f7ab5a7baeda6aae40f1bf299a80`;
+  Collector SHA256
+  `248f1e027802981dc15ef12bfdcfa970fcdffd460d43eb78e083eb1dc941dfc3`.
+- Configuration: local macOS ARM compiler-only prefix, GCC 16.2.0, GNU nm and
+  objcopy 2.47.20260726; RV32 `ilp32f` and
+  `rv32imafc_zicsr_zifencei_zaamo_zalrsc`, fresh empty-SDK fixture. No Make
+  payload was imported. NM SHA256
+  `06670d5d921bce58fa580f7f14041d9193cc743c628956b51bc9b459c87a0335`;
+  objcopy `9268a0c8bf0160a7def11c0416ba09a7e5f655a4ceb89e0fcb670ca3d6549819`.
+- Procedure: compile C, collect `.aros.set.INITLIB.10` through actual CLI,
+  independently translate default plain nm field three and the fixed nine
+  bases into GNU objcopy arguments, then compare complete output bytes and
+  local/global symbol bindings with `--localize-kobj`. Undefined two-field
+  records and suppressed file names are not selected; SysBase stays global.
+- Output: 2,096 bytes, SHA256
+  `4955fc00d61dbbbad136edd5383b34abc41723cdddc749710718638366a806ee`;
+  byte-identical independent reference. This fixture is not a P4 core member.
+- Tests: 437 source-coupled Transpiler library and 54 CLI tests; four valid
+  CMake macro forms and six refusal probes; 51 Collector unit plus 20 ordinary
+  process tests and one explicitly executed real-tool test. Tool failure,
+  malformed nm, corrupt output, changed machine/OSABI/ABI version, symlinks,
+  illegal mode combinations and excessive argument lists refuse; successful
+  publication preserves 0644/0755. All-target Collector Clippy and Astro check
+  pass. Premature compile/lint failures remain in the evidence logs.
+- Correction: the earlier investigation's POSIX nm/all-ELF-symbol scan was not
+  source-equivalent; it is explicitly withdrawn in `kobj-nm-evidence.md`.
+  Precommit failures preserve original output. A journal synchronization failure
+  after rename can report uncertain commit state with the new object installed;
+  the retained journal is required for recovery, not proof of rollback.
+- Remaining: selected graph still rejects the unmodified shared icon
+  `kernel-cfgx-includes` typo. Its correction awaits separate authorization.
+  Exact source KOBJ object groups, effective flags/archive ordering, fresh
+  core/BSP/Developer, composed flash artifacts and full public CLI acceptance
+  remain open. Corrected compiler-release production is separately unqualified.
+- Evidence: `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`, including
+  `module-macro-lib-final.log`, `module-macro-cli-final.log`,
+  `module-macro-cmake-fixed.log`, `kobj-collector-final.log`,
+  `kobj-real-rv32-final.log`, `kobj-clippy-final-counterprobes.log`,
+  `selected-kobj-macro.stderr.json` and `astro-kobj-final.log`.
+- Safety: no device access, flash, source driver change, commit, PR, push or
+  release. The parallel maintainer port tree was neither used nor modified.
+- Next: qualify the generic KOBJ helper, preserve exact source object groups,
+  obtain the narrow shared prerequisite correction and continue the full native
+  build before composing/verifying flash artifacts. No hardware claim changed.
+
+### 2026-10-04 - D0-N source-shaped KOBJ groups and real partial-link comparison
+
+- State: generic source-group and KOBJ helper fixtures are locally verified;
+  D0-N/RV3 remain open. No complete native kernel/BSP/Developer claim.
+- Identities: source baseline `763a536f26a5e94176c821d48cedbcbff03b4189`,
+  tools baseline `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`, both dirty;
+  22-input contract SHA256 unchanged at
+  `e264ac218e8183d6f76e4b2aa2ebeae0262ea37f11f61431a40875368b381470`.
+  KOBJ helper SHA256 `dd6066d8714bdb61252a71e0ca05ca9a517ec4fc032ca8b0438510160d93fee3`;
+  runner `abea5bd614e524530e55e591126d23b3b743079867b3bd5a436d156691f4e472`.
+- Configuration: isolated macOS ARM host; the separately verified local
+  GCC 16.2.0/binutils 2.47.20260726 compiler-only prefix, RV32 `ilp32f`,
+  `rv32imafc_zicsr_zifencei_zaamo_zalrsc`. Fresh CMake Generic/Ninja fixture;
+  no SDK or Make-produced payload substitution.
+- Procedure: compile START, two ARCH, C and END groups; resolve eight exact
+  canonical automatic archives; use the direct Collector mode for a
+  collected relocatable link, then GNU symbol localization. Independently
+  construct literal group/library arguments and the source's plain nm
+  field-three/objcopy localization recipe. Compare all bytes and ELF bindings.
+- Artifact: 2,632 bytes, SHA256
+  `780816709d3f29eeb37f2dedbba935ee7868088891f07dea4370eef5327a2827`.
+  Both invocations are byte-identical. Set list/end and `__aros_lib_fixture`
+  and DOSBase are local; SysBase remains global. This is a fixture, not a
+  P4 kernel member or comparison against the classic C Collector executable.
+- Source groups: full and simple semantics, ARCH basename order across
+  distinct directories, dotted stems and fetched proxies, generic C override,
+  raw CXX and separate non-KOBJ OBJC lanes. Finished module compile state,
+  `-noposixc`, source-specific quote/fallback paths, transitive interface
+  includes and generator barriers are retained. Actual host compilation and
+  twelve malformed/missing/foreign/duplicate/conflicting refusal cases pass.
+- Tests: independent NativeKobj helper contracts pass, including ordered
+  groups/libraries, sealed-config tamper, otherwise-current output symlinks,
+  failed localization retaining prior final output, and nonempty Collector
+  reports stopping before localization/publication. The report is retained.
+  All 22 embedded engine tests pass, including these contracts. Engine API 2
+  explicitly rejects older generated graphs. Preceding source-coupled library
+  tests (437) and current CLI selection tests (54) pass; Astro has no errors,
+  warnings or hints.
+- Failed probes retained: wrong compiler path and stale Darwin test-cache
+  configuration failed before this fresh Generic fixture; the first saved
+  reference script joined nm names into one argument under zsh. Explicit
+  newline splitting corrected that harness; the corrected full-byte proof
+  passed. Earlier fixture-language/option assertions remain in their logs.
+- Evidence: `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`, especially
+  `verify-real-kobj.sh`, `kobj-real-independent-current-collector.log`,
+  `native-kobj-independent-final.log`, `source-groups-interface-final.log`,
+  `engine-kobj-interface-final.log` and `astro-kobj-groups-final.log`.
+- Remaining: complete source invocation-scope extra inputs/flags/archive
+  binding and actual KOBJ/core/BSP/Developer/media/public CLI acceptance.
+  The unmodified shared icon `kernel-cfgx-includes` prerequisite still requires
+  separate authorization to correct. New compiler release production is a
+  separate gate; RV3 uses the verified local prefix.
+- Safety: no device access, flash, source driver change, commit, PR, push or
+  release. The parallel maintainer tree was not used. Existing hardware
+  acceptance and source-contract digests are unchanged.
+- Next: bind exact source-scoped KOBJ inputs and finish native core integration;
+  obtain the narrow shared prerequisite correction, then build and independently
+  verify the complete native artifacts before composing the flash plan.
+
+### 2026-10-04 - D0-N approved Icon/Vega closure and scoped KOBJ metadata
+
+- State: local source-closure and host-only contract progress; RV3/D0-N remain
+  open. No native core/BSP/Developer or hardware acceptance claim.
+- Identities: dirty source baseline `763a536f26a5e94176c821d48cedbcbff03b4189`;
+  dirty tools baseline `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`. The current
+  24-input export SHA256 is
+  `e08883bc70e586f5d5604e5b5d918fb34d3996d0080b6c6a2fc2dea649333cdd`.
+  Historical receipts retain their original 22-input digest.
+- Approved source changes: Icon's `kernel-cfgx-includes` becomes the existing
+  `workbench-libs-cgfx-includes`; remove only `workbench-libs-vega` and
+  `workbench-libs-vega-includes` from the library aggregates. This source has
+  neither Vega files nor a corresponding producer. Changed file hashes are
+  `89a6b39ee29f538a623c2fc3eb3fb12fbb7ac722194ddf07ce9c75c7ccf4aee6`
+  (Icon) and `6761056e54b3d8691494d47956842282f5141d63cab1a7fa03dcaac08a9d4be7`
+  (library aggregates).
+- Procedure/result: selected GNU/RV32 `ilp32f` translation passes both
+  corrected edges, then rejects Colorwheel's `kernel-cybergraphics-includes`
+  with AT0006. Coolimages contains the same invalid prerequisite. Both remain
+  unchanged pending separate authorization; no missing endpoint was invented.
+- Tools: source-scoped metadata preserves exact word order/repetitions and
+  distinguishes unknown from empty. Independent review found conditional `:=`
+  taint could be lost; the correction preserves that uncertainty until the
+  captured variable itself is replaced. A second review found the same risk
+  for unknown includes; line-ordered taint now survives transitive references
+  and simple-variable appends, while literal replacements remain exact.
+  Its counterprobes pass. All 458
+  library, 54 native CLI and 23 embedded-engine tests pass, as does integrated
+  Transpiler/engine Clippy. Source-group fixtures also pass with missing
+  excluded simple-module CXX/ASM files and disabled Objective-C. Astro reports
+  zero errors, warnings or hints. The initial `pnpm check` invocation failed
+  because no such script exists; the corrected `pnpm exec astro check` passed.
+  Final independent read-only review closed both reported taint defects and
+  found no further concrete fail-open case within its bounded scope.
+- Evidence root: `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`:
+  `selected-icon-prerequisite.stderr.json`,
+  `selected-vega-prerequisites.stderr.json`,
+  `source-groups-excluded-lanes.log`, `kobj-input-contract-main.log`,
+  `engine-kobj-scope-final.log`, `kobj-scope-lib-final.log`,
+  `kobj-scope-native-cli-final.log`, `kobj-scope-integrated-clippy.log`,
+  `astro-kobj-scope-corrected.log`, `selected-vega-final.stderr.json`,
+  `kobj-include-taint-focused.log`, `kobj-include-taint-integrated.log`,
+  `kobj-include-taint-clippy.log` and `selected-vega-include-taint-final.stderr.json`.
+- Safety/remaining: no device, flash, commit, PR, push or release. No use of
+  the parallel maintainer source tree. Next: obtain the two shared prerequisite
+  approvals, then bind global configuration
+  and qualify fresh core/BSP/Developer before complete media composition.
+
+### 2026-10-04 - D0-N registered KOBJ core integration and configuration refusals
+
+- State: local source closure and bounded integration verified. RV3/D0-N,
+  complete P4 core/BSP/Developer and media acceptance remain open.
+- Source identity: isolated dirty baseline
+  `763a536f26a5e94176c821d48cedbcbff03b4189`; tools dirty baseline
+  `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`. Current 24-input source contract
+  remains `e08883bc70e586f5d5604e5b5d918fb34d3996d0080b6c6a2fc2dea649333cdd`.
+- Approved change: remove exactly the two orphan Vega aggregate entries.
+  Icon's separately approved prerequisite correction remains local. Colorwheel
+  and Coolimages are unchanged: their `kernel-cybergraphics-includes` references
+  still block selected translation and need separate authorization.
+- Implementation: Native Core consumes registered, collected/localized KOBJ
+  intermediates instead of raw object mirrors. Eight scoped input fields
+  preserve order, duplicates and uncertainty. Absent global flags/scripts are
+  unresolved, target definitions are used only without a source definition,
+  and explicit empty source assignments override target defaults. Recursive
+  instrumentation-selector references must be bound. Enabled instrumentation
+  is refused until its compile contract is implemented; global configuration
+  includes have not been qualified by this change.
+- Procedure: full source-coupled library suite (462), native CLI selection
+  suite (54), scoped-input regressions (22) and embedded engine suite (24)
+  pass. Final all-target Transpiler/engine Clippy also passes.
+  Independent read-only review closed absent-global, fallback and
+  unbound-selector defects. Astro check has no errors, warnings or hints.
+- Real-tool fixture: GNU RV32 `ilp32f`, march
+  `rv32imafc_zicsr_zifencei_zaamo_zalrsc`, `medany`, Generic CMake/Ninja and
+  the current Rust Collector build START/ARCH/ASM/C/CXX/END groups, collect
+  `.aros.sets`, localize `__aros_lib_*` and link the core through canonical
+  archives and prefix libgcc. Runtime module executables are not used.
+  KOBJ: 3,380 bytes, SHA256
+  `5ab79dca52dc8ac9c3cdadb16299b82f0a2bda59153f3848945317704692ebd8`.
+  ELF32 RISC-V with RVC/single-float ABI: 6,484 bytes, SHA256
+  `7b97763c940695966c539492c74b4811393a20a3422c08a37f6c4aadb01f9ad9`.
+  No-op and deletion/rebuild retain both hashes. The synthetic core script
+  emits one RWX LOAD warning; fixture success does not qualify the P4 script.
+- Failed harness attempts retained: nonexistent `native_cli` Cargo target,
+  incomplete standalone CMake test arguments and initial fixture link/assertion
+  errors were corrected and rerun. None counts as a product pass.
+- Evidence: `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`, especially
+  `kobj-core-final-source-lib.log`, `kobj-core-final-native-cli.log`,
+  `kobj-required-global-focused.log`, `kobj-core-engine-final.log`,
+  `kobj-core-final-clippy.log`,
+  `astro-kobj-core-check.log` and `kobj-source-native-qiQOP2/evidence.md`.
+- Safety: no device access, flash, Make payload substitution, commit, PR, push
+  or release; the parallel maintainer tree was not used. Existing hardware
+  acceptance and media identities are unchanged.
+- Next: obtain the two narrow prerequisite approvals, bind exact source global
+  configuration, then qualify fresh complete core/BSP/Developer and media CLI.
+
+### 2026-10-04 - D0-N explicit source-native KOBJ configuration projection
+
+- State: configuration integration in progress, not complete P4 acceptance.
+  The source baseline and dirty tools baseline remain unchanged.
+- Source contract: 41 regular inventoried inputs, raw SHA256
+  `7fc607f6524d2b3a16e8c00ed30ba4d782cc35b687511b89e5595a7a6e1f49ef`.
+  The earlier 24-input contract remains historical evidence only.
+- Projection: `arch/riscv-esp32p4/native-kobj-config.mk`, SHA256
+  `4c9a0af9c3853185f458232be384f4924904cab293971d61d44b0e863a7a3e00`.
+  It explicitly replaces `config/aros.cfg` for native scoped KOBJ evaluation,
+  with both files, the source configuration templates, six core module recipes
+  and their two P4 local option files inventoried.
+  Flashdisk's `board/board.mk` is explicitly bound to the same inventoried
+  file, not a copied list of board constants. Direct bindings and projections
+  share the same hash, containment, file-type and cycle checks.
+- Source semantics: P4 has no `KOBJ_LDFLAGS` assignment in make.cfg.in's
+  aarch64-only branch; the native projection preserves it with `undefine`.
+  `KERNEL_KOBJ_LDSCRIPT` is explicitly empty outside amiga/m68k;
+  `FUNCINSTR_LIBS` remains `instrfunc`; `TARGET_FUNCINSTR` is `no`.
+  Generated global make.opts/make.defaults and ambient overrides are excluded
+  from this native profile. Local source make.opts still apply in order.
+- Correction: the initial 33-input prototype
+  `a1a8220cb5f21e82792e07d017cc271c8730331f64c130cc425e12b7ecd43ab9`
+  used projection `440f431509d7968c4e9249593e3a357b17436d1f1e1cca239d89072b16c1b333`
+  with an explicit-empty `KOBJ_LDFLAGS`. Independent review rejected this
+  normalization because it would suppress a later `?=` assignment. That
+  prototype is not configuration-equivalence evidence; undefined-state
+  regressions and the corrected projection remain under test.
+- Retained source-test failure: the first six-core configuration probe passed
+  five members but rejected Flashdisk's unbound board include. An explicit
+  inventoried self-binding resolves that source scope; the six-member replay
+  passes. No unmatched include is ignored or matched by a board-name whitelist.
+- Procedure: independent source inspection identified the exact configuration
+  include order and default assignments. The prior CLI was rebuilt and selected
+  translation again refused unchanged Colorwheel's missing prerequisite, with
+  no generated CMake publication. The extended KOBJ metadata schema accepts
+  configuration provenance and rejects null/traversal counterprobes.
+  Complete schema, reader and process-boundary verification is pending.
+- Safety: no hardware, Make-produced payload, shared source edit outside the
+  explicit approvals, commit, PR, push or release. Coolimages and Colorwheel
+  remain unchanged awaiting separate permission. Existing hardware/media
+  qualification is unchanged.
+- Next: verify source projections across Rust/CMake/process boundaries, then
+  correct the authorized prerequisites and qualify fresh complete P4 outputs.
+
+### 2026-10-04 - D0-N verified configuration reader and approved aggregate corrections
+
+- State: bounded host-side configuration integration verified; RV3/D0-N and
+  fresh complete core/BSP/Developer/media production remain open. Source/tools
+  baselines remain `763a536f26a5e94176c821d48cedbcbff03b4189` and dirty
+  `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`.
+- Current source contract: 43 regular hash-verified inputs, raw SHA256
+  `7bfdeb342e659bfa3bce47d0d7553611ff1ddbe38a4438b0c539c57bd12a451b`.
+  Earlier 41-input and intermediate 43-input receipts retain their original
+  digests; they are not receipts for the current source state.
+- Approved shared edits: Icon, Colorwheel and Coolimages now name the actual
+  `workbench-libs-cgfx-includes` producer. `workbench/libs/mmakefile` removes
+  both orphaned Vega entries, the orphaned Mesa include entry, both LCMS2
+  entries and the orphaned PCI entry; Codesets now names its declared
+  `workbench-libs-codesets-includes` producer. The aggregate hash is
+  `7d5efc826680ef9ea91e224995d98a9e4ea6142c16a5bdc138bb82c3a6761814`;
+  Colorwheel `eb7b4755803013014cf992a7809f02dfd660f2bb07ae54caa643e25eff253bc4`,
+  Coolimages `ce052af7c3e7ec6af86576d5943f7d3f8f17800a7fa0eae8385abccc1efcf74d`.
+- Procedure/result: source-coupled transpiler 482 library tests and 55 native
+  CLI tests pass; native source contract 23 and embedded engine 24 pass.
+  Actual six-core source probe passes all eight scoped fields under the current
+  digest; CMake independently validates that exact contract. All-target Clippy
+  passes with warnings denied for Common, Transpiler, Engine and CLI.
+  Logs are under `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`.
+- Independent reader corrections: wildcard traversal errors no longer vanish
+  into a successful subset. Configuration-backed `+=` containing references
+  does not guess recursive/simple flavor, including when used in an include
+  path. Early/late include counterprobes refuse before reading either file;
+  explicit source `:=` and `=` controls select early and late respectively.
+  Reset/undefine clear uncertainty correctly. Final independent review passes.
+  Initial regression-harness missing import and Clippy failures are retained,
+  not counted as producer success; corrected runs passed.
+- Selected graph: current translation passes the approved source corrections
+  and refuses `workbench-libs-gallium-includes` with AT0006, reached through
+  `linklibs-libinit -> includes -> includes-generate`. Gallium has actual
+  sources, so this is not treated as another removable orphan. No generated
+  CMake file was published. An exact source parser probe with the omitted Mesa
+  selector and with explicit `20.0.8` gives the same rejection: the Mesa 20.0.8
+  compile capability does not support `cpu=riscv platform=esp32p4 toolchain=gnu
+  cpu32= use_mmu=0 float_abi=ilp32f`. It omits the full Gallium target before
+  ABI publication, although `gallium.conf` and its source macro exist. The
+  diagnostic probe is not a successful Gallium compile or graph qualification.
+  Log: `selected-gallium-parser-diagnostics.log` under the evidence root.
+- Safety: no Make-produced payload substitution, hardware operation, commit,
+  PR, push or release; the parallel maintainer tree is untouched. No complete
+  P4 build or hardware qualification is claimed.
+- Next: retain independent source-proven ABI/header production when an
+  unselected runtime compile capability refuses a profile; runtime selection
+  must still reject unsupported Mesa builds. Then qualify the complete selected
+  native graph and fresh P4 artifacts without removing real producers.
+
+### 2026-10-04 - D0-N independent module-header projection and EGL orphan
+
+- State: bounded host-side integration progress, not a complete P4 build.
+  RV3/D0-N remain open. Tools/P4 dirty baselines remain 719beb99/763a536f.
+- Source contract: 43 inputs, SHA256
+  `51e7414692b9315783151c5418411701dcb6e857c8ecf7b473862c799ffd807b`.
+  The separately approved EGL include removal changes only the Workbench
+  aggregate; SHA256 `2bfc577664d7fcc14b7e0292e1d6ebb2aff254019d04bb35a62bd8ed8e96831f`.
+  Earlier contracts/receipts keep their original identities.
+- Implementation: full source macros whose Mesa runtime capability fails may
+  retain a readable exact genmodule config/override as `ModuleHeaders`.
+  Explicit invalid config paths never fall back to defaults. Runtime-only
+  macros are not projected; explicit ABI macros do not need runtime compilation.
+  The authoritative generator validates config syntax during production;
+  configuration derives its closed output manifest.
+  Header-only graphs retain source include prerequisites, omit runtime link
+  dependencies, and publish no runtime, archive or KOBJ target. Original
+  runtime diagnostics remain. Every emitted argument uses normal CMake quoting.
+- Tests: `header-projection-final-transpiler.log` passes 482 library, three
+  projection and 55 native process tests; actual selected-source probes pass
+  all six core members plus Gallium's independent header record. Engine suite
+  passes 25 tests, including real stamp outputs, absent-FD and refusal cases.
+  All-target Clippy passes in `header-projection-clippy-corrected.log`.
+  Stamp fixtures alone do not prove actual Gallium header-byte parity.
+- Additional real-generator evidence: a fresh native host build of the exact
+  source-owned Genmodule inventory has SHA256
+  `1508148695431621a12f55d9ad6a2f4089ee9abfa95b24ac4a3b5ab4758052fc`.
+  Actual Gallium config SHA256 is
+  `227624d60dc671c0e628b4e0198be2f3df1dcd1fa79e425d68ace986f6437ae9`.
+  The new CMake helper builds its real includes/FD/libdefs, with no runtime or
+  archive targets. `header-projection-parity.sh` checks 23 regular outputs
+  (five headers in four destinations, libdefs, private/published FD), all
+  byte-identical to separately invoked reference Genmodule. A first direct
+  harness omitted include subdirectories and failed; the corrected harness
+  creates those directories. This is header parity, not Gallium compilation.
+- Incremental extension: `header-projection-actual-noop.log` reports no work.
+  One generated SDK proto header was moved to a retained evidence backup, not
+  deleted; `header-projection-actual-repair.log` runs the real header producer
+  and restores it. All 23 outputs still match direct generation and the saved
+  proto header. All 43 contract-input hashes were independently rechecked.
+  No source, runtime module or device was changed by this experiment.
+- Retained failures: initial build had a bool/result mismatch; one harness
+  used a Vec instead of the graph's HashSet; a source-coupled run lacked its
+  explicit source environment. Corrected runs passed; failed logs remain.
+- Full selected graph passes Gallium and the approved EGL removal, then stops
+  with AT0006 at `workbench-devs-input-includes`; the actual ROM input-device
+  producer is `kernel-input-includes`. Shared-source permission is pending.
+- Safety: no commit, PR, push, release, hardware operation or Make-produced
+  P4 payload; parallel maintainer source untouched. Next: exact approved source
+  correction, complete selected graph, fresh native core/BSP/Developer/media.
+
+### 2026-10-04 - D0-N approved Input header prerequisite correction
+
+- State: native integration remains in development; no complete payload claim.
+- Source: isolated baseline `763a536f26a5e94176c821d48cedbcbff03b4189`,
+  with the explicitly approved one-line change in `workbench/devs/mmakefile.src`.
+  The incorrect `workbench-devs-input-includes` now names the actual ROM
+  Input-device producer `kernel-input-includes`. No Input implementation changed.
+- Recipe SHA256: `809c1748e1b5b015e3c086956b518ac11facff2f4cd14d6cbaad1d37ccd1e452`.
+  It is included in the current 44-input native export, SHA256
+  `1dcc052b3725b84183e63d465479ff7748058507310106532382cd1e3e4ac722`.
+  Historical receipts retain their original contract identities.
+- Procedure: run the existing native transpiler with explicit GNU/RV32/P4
+  selectors and this contract digest. Evidence root:
+  `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`.
+- Observed: `selected-input-alias-fixed.stderr.json` passes the Input edge,
+  then reports AT0006 for `kernel-pc-acpi-includes` in `rom/mmakefile.src`.
+  Exact source search finds no producer for that alias. The ACPICA module
+  declares `kernel-acpica-sharedlib`, whose header endpoint is
+  `kernel-acpica-sharedlib-includes`; shared-source correction is permission-pending.
+- Current-contract probes: both actual P4 source tests pass in
+  `input-alias-actual-source-tests.log`; all 44 bound input hashes match.
+- Separate actual Input header fixture: `input-header-actual-build.log`
+  builds the header/FD/libdefs producer with the source-owned reference tool.
+  Config SHA256: `c4fa7e900c6f390acc2fcd06d1878c94129af6e64eb862a8d7da425817c53bcb`.
+  `input-header-parity.sh` / `.log` verify 23 regular outputs byte-identical
+  to independent direct generation. FD SHA256:
+  `29e229f497fb756cccfd083b71a28521ef49e7f81e6d9eb2b9a4931510252684`.
+  `input-header-noop.log` reports no work. No runtime/archive owner is created;
+  this isolated producer fixture is not a whole SDK or Input runtime build.
+- Safety: no commit, PR, push, release, device access or Make payload
+  substitution. The parallel maintainer tree remains untouched.
+- Next: qualify the source correction before another selected-graph attempt;
+  fresh native core/BSP/Developer production and complete media gates remain open.
+
+### 2026-10-04 - D0-N approved ACPICA header prerequisite correction
+
+- State: native integration remains in development, complete payload unqualified.
+- Source: isolated baseline `763a536f26a5e94176c821d48cedbcbff03b4189`;
+  Fabian authorized only the single prerequisite correction at
+  `rom/mmakefile.src:65`. It now names `kernel-acpica-sharedlib-includes`,
+  matching the actual full ACPICA module declaration. No ACPICA runtime or
+  platform selection was changed.
+- Aggregate SHA256: `7ae81b13bbcec8f763977b57b08510975b071e24f7505224a9bccf3d9135ef41`.
+  The current native export has 45 inventoried inputs and SHA256
+  `b8992a073cab057f85cad10d06fe0bb7d495ec587d35b6dc777cd5728b54e8c3`.
+  All 45 input hashes match; historical receipts retain original identities.
+- Procedure/evidence: explicit native GNU/RV32/P4 translation in
+  `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`;
+  `selected-acpica-alias-fixed.stderr.json` records the result.
+- Observed: the corrected ACPICA edge passes; translation then refuses
+  `kernel-cia-includes` with AT0004 in `arch/m68k-amiga/cia/mmakefile.src`.
+  That source has three real SFDC header recipes (clib, macros, proto), not
+  an orphan. Generic source-derived SFDC translation is required in aros-tools;
+  no missing endpoint will be replaced by an empty target.
+- Both actual core-configuration/Gallium probes pass with the new digest in
+  `acpica-alias-actual-source-tests.log`. They do not prove full native payloads.
+- Safety: local only, no commit, PR, push, release, hardware or Make-produced
+  P4 payload substitution; parallel maintainer tree untouched.
+- Next: implement and independently qualify the generic SFDC header producer,
+  then repeat full selection and fresh native core/BSP/Developer/media gates.
+
+### 2026-10-04 - D0-N source-derived handwritten SFDC header production
+
+- State: bounded header capability verified; RV3/D0-N remain open. No fresh
+  native P4 core/BSP/Developer or complete media acceptance is claimed.
+- Source: dirty isolated tools baseline `719beb99` and P4 baseline `763a536f`;
+  current 45-input contract remains
+  `b8992a073cab057f85cad10d06fe0bb7d495ec587d35b6dc777cd5728b54e8c3`.
+  All input hashes match. No CIA source edit was made.
+- Procedure: ordinary source Make provider, finite SDK `.h` outputs, local
+  regular `.sfd` inputs and exact SFDC argv are translated. Declaring recipe
+  and inputs are hashed. Host tool preparation derives its closed source
+  concatenation/substitution recipe into a private, verified working copy.
+  No source manifest or runtime endpoint is invented.
+- Actual bytes: original GNU Make host-tool generation and private native
+  host tool match SHA256
+  `72819f2da49cf9d7cd86e438867053b83e5d15ba789bce1ddfbb33e1439bee07`.
+  Three CIA SDK headers match independent direct execution: clib
+  `4b90ea4f49f68c351823fb3d8a42e933463ed14e8d377b2cc3b73dbf26f17b6d`,
+  defines `6d414afe5ef72037affe8056a7d9a06daf3ca7d05493c32651ae3a101bea1600`,
+  proto `891f1c45c116795278ba6699f2954cbf0a6b4f80065b65049fdd24a9b7760331`.
+  The Make reference builds only the host tool, not any P4 payload.
+- Evidence root: `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`.
+  Actual no-op checks inputs without rewriting headers; deleted-output repair
+  matches retained bytes. Portable source/tool mutation, traversal, symlink,
+  ownership, absent-fresh-output and changed-class-inventory tests pass.
+  Independent review exposed stale staging and tool/guard ordering issues;
+  both have explicit regression probes. Independent Rust review also exposed
+  inactive `define` bodies and malformed control syntax being admitted. The
+  corrected scanner and counterprobes reject those cases; bounded review passes.
+- Regressions: `sfd-final-transpiler-tests-corrected.log` passes 491 library,
+  three projection and 55 native CLI tests; final engine suite passes 26 tests.
+  All-target transpiler/engine Clippy passes; Astro check has zero diagnostics.
+  Prior compilation/lint failures and one over-specific test assertion remain
+  retained in their logs. Both actual
+  source tests were explicitly run with `--ignored` and pass. A prior invocation
+  only skipped them and is retained, not counted as a passing source proof.
+- Full selected graph: `selected-sfd-headers.stderr.json` reports AT0006 for
+  `includes-esp32p4-` on path `linklibs-libinit -> includes`. The source compiler
+  aggregator includes optional variant selectors; classic MetaMake's
+  `project.c` skips missing subtargets. The strict native graph does not yet
+  model that distinction. No source dependency was silently dropped.
+- Safety: local only, no commit, PR, push, release, hardware, or Make-produced
+  P4 payload substitution; parallel maintainer source untouched.
+- Next: model optional selector aggregation without
+  weakening missing literal-provider refusals, then fresh native production
+  and complete media/CLI gates.
+
+### 2026-10-04 - D0-N explicit source-bound optional MetaMake selectors
+
+- State: bounded graph semantics implemented and tested; RV3 remains open.
+- Identity: isolated tools baseline `719beb99` and P4 baseline `763a536f`, both
+  dirty. Current 47-input native contract SHA256 is
+  `3f5a2ad8d556a309954e37ec9a86d046c9427565535ffd86850c6a92c84eb5d2`.
+  The added compiler aggregate SHA256 is
+  `dfc539022b05d2c4ac2e6d88d79230a0971492f2b1037a53e109533546cfe116`;
+  bound MetaMake `project.c` SHA256 is
+  `7eb71f3f987c24e760bd87f5825375c6e6c1e7ba8cae0266d70ed161ddea4e03`.
+  All 47 input hashes match. No shared source recipe was changed in this step.
+- Reference: MetaMake counts/recurse-builds only known subtargets and does not
+  fail on an absent subtarget. Native selection deliberately remains stricter:
+  the source contract names only ten exact selector-derived compiler edges.
+  Each must occur in its hash-bound virtual recipe; an unmarked second origin
+  is refused. Known providers and literal dependencies are never discarded.
+- Procedure: Rust/CMake schema probes, graph counterprobes, process-boundary
+  probes and complete selected P4 translation. Evidence root remains
+  `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`; see `optional-meta-*`
+  and `selected-optional-meta.*` logs. Prior zero-test filtered invocation,
+  CMake assertion-format failure and two Clippy failures are retained and do
+  not count as passing evidence.
+- Result: 26 contract tests, 494 transpiler library, three projection,
+  59 native CLI and 26 engine tests pass. Both explicit actual P4 source tests
+  pass with the new digest. Common/transpiler/engine all-target Clippy passes.
+  Full selection records nine absent alternatives and retains the real
+  architecture include provider; it next refuses `linklibs-autoinit-autofile`.
+  That is an actual `%copy_files_q` producer for a GCC specs file, not an orphan.
+- Safety: no source edge is silently removed, no empty provider invented, no
+  Make-built P4 payload substituted, no commit/PR/push/release or hardware write.
+  The parallel maintainer tree remains untouched. No complete P4 artifact size
+  or hash exists for this step; no fresh core/BSP/Developer acceptance is claimed.
+- Next: implement finite source-owned Developer-Lib file staging, repeat full
+  selection, then fresh native production and complete media/CLI gates.
+
+### 2026-10-04 - D0-N byte-snapshot integrity and Developer-Lib producer integration
+
+- State: optional selector snapshot integrity verified; generic Developer-Lib
+  copy implementation in progress. RV3 remains open, without native payloads.
+- Identities: unchanged dirty tools/source baselines `719beb99`/`763a536f`.
+  Current 49-input export SHA256 is
+  `0209f64406e0475ce755e97325df68452062e93dab4eb1a3f54653f8e5e9003e`.
+  It adds unchanged `compiler/autoinit/mmakefile.src` SHA256
+  `592e7ead9ff9ef04d0aded048ab7a6cf9fad173b3716af070233cb8f0da75fcb`
+  and the 295-byte `compiler/autoinit/auto` SHA256
+  `36fb02198dd71c7b8bd92554bfadfa6b1e5e14548f18c12e60cd727a5a4774c6`.
+- Independent review found separate hashing/parsing could accept a different
+  recipe snapshot. The parser now measures original bytes before text decoding
+  and extracts MetaMake edges from those same bytes. The snapshot counterprobe
+  checks legacy encoding and a subsequent file replacement. Bounded review
+  confirms the proof no longer uses a separate read.
+- Evidence: `optional-meta-snapshot-final-tests.log` passes 494 library,
+  three projection and 60 CLI tests; five common text tests pass.
+  `optional-meta-snapshot-clippy-corrected.log` passes all-target common,
+  Transpiler and engine Clippy. The initial documentation lint failure remains
+  retained. Full snapshot replay still stops at the real autoinit copy producer.
+- Implementation under test: two closed Developer roots, local-only library
+  staging, source Make defaults, finite declaration-time file lists, private
+  hashed recipes and pre/staged/post-copy content checks. FD semantics remain
+  separate. No ESP32 or autoinit name is hardcoded in Rust.
+- Safety/remaining: no commit, PR, push, hardware or Make-produced P4 payload
+  substitution. Parallel maintainer tree untouched. Complete native
+  kernel/BSP/Developer, media and public CLI acceptance remain unverified.
+- Next: validate the generic copy against actual source bytes and negative
+  boundaries, then repeat full selection and native production.
+
+### 2026-10-04 - D0-N Developer-Lib qualification and SDK-object graph integration
+
+- State: Developer-Lib copy verified against actual source bytes; standalone
+  SDK-object graph integration in progress. RV3/D0-N remain open. No complete
+  native P4 core/BSP/Developer payload or flash-plan acceptance is claimed.
+- Identity: dirty isolated tools baseline `719beb99` and P4 `763a536f`.
+  Current 59-input native export SHA256 is
+  `30e87f3664dcd1f8d4094a1df13043e03abeb6159c479fdb98386706047ded64`;
+  every bound input matches. The ten added startup inputs are unchanged source
+  recipe, eight C/C++ files and `startup.h`; `STARTUP_DEBUG` is explicitly
+  inactive in this experimental native profile, not a hardcoded Rust default.
+- Procedure/evidence: root `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`.
+  `developer-lib-define-final-autoinit.log` verifies actual autoinit specs bytes
+  and repair; the preceding full suite passed 504 library, three projection and
+  62 CLI tests. `sdk-objects-embedded-final.log` passes 29 engine tests before
+  graph integration. The standalone fixture compiles real host C/C++ sources,
+  stages only private CMake objects, rejects stale Make-object substitution,
+  and passes 13 configure refusals plus seven runtime symlink refusals.
+  These are not RV32/P4 object or complete build evidence.
+- Scope correction: GNU `define` bodies are inert data; named opaque values
+  and frozen `:=` aliases cannot reuse prior/configuration values. Independent
+  review also identified a conservative stale conditional-reset predicate;
+  its correction and broad regression diagnosis remain under test. The new
+  broad suite currently has 508 passes and one real-source MetaMake test failure;
+  this failure is retained, not described as a green full regression.
+- Reference rule research: clean implicit lane choice depends on all declared
+  intermediate prerequisites (GNU Make's “ought-to-exist” inputs), not only the
+  requested root. Removing those declarations changes `nixmain` selection.
+  A preseeded wrong-lane Make intermediate can also change reference staging;
+  the native model must not inherit that ambient state. Temporary reference
+  fixtures create marker objects only, never substitute P4 payloads.
+- Safety: local changes only, no commit, PR, push, release or device write.
+  Parallel maintainer tree untouched; no Make-built P4 payload adopted.
+- Next: finish and independently test source-derived startup admission,
+  graph/header ordering and native owner binding, then repeat fresh P4
+  core/BSP/Developer production and the complete media/CLI gates.
+
+### 2026-10-04 - D0-N native startup owners and next directory capability
+
+- State: bounded SDK-object engine integration verified; complete native
+  kernel/BSP/Developer and RV3-A1/A2/A3 remain open. Source baseline and the
+  59-input export remain unchanged at `763a536f` and SHA256
+  `30e87f3664dcd1f8d4094a1df13043e03abeb6159c479fdb98386706047ded64`.
+- Procedure/evidence: `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`.
+  `sdk-native-link-template-cycle-fixed.log` passes all five legacy/native
+  link modes. A native-only legacy edge originally mirrored the C++ startup
+  owner back into its own compile target; the retained failing log proves
+  that cycle. Source-native owners now keep declared header/aggregate edges.
+  `sdk-object-integrated-engine.log` passes all 29 embedded engine tests.
+  `sdk-object-generator-conflict-corrected.log` rejects conflicting output
+  ownership even when public generation is called without graph selection.
+- Scope proof: 15 Make-variable tests, explicit-CPU sourceful module test and
+  context-free STDC refusal pass. A test that requested no CPU cannot select a
+  math source inventory frozen by `:=`; the earlier 508-pass/one-failure log
+  remains historical. A full current library regression is not yet green.
+- Current frontier: `selected-sdk-object.stderr.json` refuses only
+  `linklibs-startup-setup` at the current first selected boundary. Read-only
+  diagnosis finds a supported-source `%rule_makedirs dirs=... setuptarget=...`
+  declaration, not uncertain `STARTUP_DIRS`: the CPU32 branch is false. Its
+  finite direct macro and configured Developer-library root are being added
+  generically, without a source edit or ESP32-specific Rust dispatch.
+- Safety: only local isolated tools/port documentation changes; no commit,
+  PR, push, release, imported Make P4 payload or device access. The parallel
+  maintainer source and normal hardware configuration remain untouched.
+- Next: finish directory macro admission and independent SDK-owner review,
+  repeat current-contract source/CLI regressions, then qualify fresh native
+  core/BSP/Developer artifacts and complete flash composition.
+
+### 2026-10-04 - D0-N actual startup projection and compile-only frontier
+
+- State/identity: local generic tools integration, not native P4 acceptance.
+  Dirty isolated baselines remain tools `719beb99` and source `763a536f`.
+  The unchanged 59-input contract SHA256 is
+  `30e87f3664dcd1f8d4094a1df13043e03abeb6159c479fdb98386706047ded64`.
+- Evidence: `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`.
+  `sdk-directory-actual-source-corrected.log` passes all three actual-source
+  probes, including eight startup objects, their C/C++ lanes and positional
+  `_XOPEN_SOURCE` flags. The initial assertion expected a relative path even
+  though the collector renders the configured source root; that failed log
+  remains separate. A real generator defect prepending that root twice was
+  corrected and counterprobed in `sdk-configured-source-generator.log`.
+- Link/staging evidence: `sdk-native-link-consumer-final.log` passes five
+  legacy/native modes and three real consumers refusing missing C startup,
+  C++ startup and detach roles. `sdk-objects-options-final.log` passes 16
+  configure and seven runtime refusals; plugin/specs/output flags are rejected.
+  `sdk-and-directory-engine-final.log` passes 29 embedded-engine tests before
+  the final optional-root/control-flow corrections.
+- Source/media binding: `sdk-current-source-partition-final.log` validates
+  every current input and rejects each independently corrupted file. Its
+  partition/source receipt is retained at
+  `/Volumes/Dev/Build/rv3-bound-native-partition.zeVg6A`. This is partition and
+  input proof, not a complete flash plan or native payload qualification.
+- Regression findings: the intermediate broad run passed 525 library and
+  three projection tests but failed six process tests because directory
+  admission required an unused Developer-library root. That requirement is
+  being made consumer-specific, not hidden by changing unrelated fixtures.
+  Independent SDK review found nested-definition and incomplete GNU
+  ought-to-exist membership gaps; both are being corrected and counterprobed.
+  Final broad results remain pending. Astro check passes 13 files with zero
+  errors/warnings/hints in `sdk-directory-astro-final.log`.
+- Current frontier: `selected-sdk-directory.stderr.json` proves native
+  selection passes startup setup and now refuses `libinit-libentry`. The
+  source declares a literal C compile-only rule, not a staged SDK-copy pattern.
+  It still needs a generic source-derived native object owner.
+- CLI admission risk: the retained compiler-only receipt is not release or
+  full native toolchain provenance. Compiler/collector files and GNU runtimes
+  exist, but `resolve_local`, native build variables and `GnuAROS.cmake` still
+  require the complete manifest-bound role set. No synthetic release manifest
+  or old Make Developer sysroot is used to bypass this boundary.
+- Safety/next: no source implementation edit, commit, PR, push, release,
+  imported Make P4 payload or device access. Finish the current regressions,
+  model literal compile-only owners, admit the local compiler through an
+  honest measured contract, then build core/BSP/Developer and verify complete
+  source-bound media/CLI behavior. RV3-A1/A2/A3 remain open.
+
+### 2026-10-04 - D0-N final SDK regressions and literal-object integration
+
+- Identity/evidence: isolated tools baseline `719beb99`, source baseline
+  `763a536f`, unchanged 59-input contract SHA256
+  `30e87f3664dcd1f8d4094a1df13043e03abeb6159c479fdb98386706047ded64`.
+  Evidence root: `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`.
+- `sdk-collector-complete-regression.log` passes 529 library, three module
+  projection and all 62 CLI process tests, plus the independent GNU Make
+  reference. `sdk-implicit-lane-reference.log` separately records the real
+  Make comparison. This supersedes, but does not erase, the earlier six
+  unrelated-root failures and SDK lane/control gaps.
+- Current implementation: a separate source-owned literal object collector,
+  selected graph provider and explicit compiler-command helper are being
+  integrated. Ordered flags, duplicate flag lanes and compile-only output
+  ownership must remain explicit; unknown generated Make configuration must
+  be refused rather than borrowed from an old SDK or interpreted as empty.
+  New capability/engine/process tests remain pending. No complete P4 payload
+  or compiler-admission result is inferred from the previous SDK tests.
+- Safety/next: local tools and P4 documentation only; no source implementation
+  changes, Git mutation, device access or Make P4 payload import. Verify the
+  literal object capability and its actual source policy, then qualify the
+  compiler through the CLI and build fresh core/BSP/Developer artifacts.
+  RV3-A1/A2/A3 remain open.
+
+### 2026-10-04 - D0-N explicit literal compiler policy and source binding
+
+- State: host-side literal object capability and source-policy integration;
+  RV3-A1/A2/A3 remain open. Tools/source baselines remain `719beb99`/`763a536f`.
+- Source identity: 63 regular inventoried inputs; contract SHA256
+  `905ae7882debab4c7580ac623f21bb4537da7b0f8e07128bc37f52d24325d91a`.
+  Added the unchanged libinit recipe and two C sources plus `config/features.in`.
+  The port-owned configuration projection now declares source-derived GNU
+  normal-build flags, repeated ISA/flag lanes and native Developer sysroot.
+  It selects no user flags, generated Make configuration or compiler wrapper.
+- Evidence: `literal-object-engine.log` in
+  `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk` records 39 configure
+  cases and 20 real C/C++ build/preflight checks, including incremental
+  dependency tracking, flag order and runtime path mutation refusals.
+  `literal-object-integrated-cli-final.log` passes both new CLI process probes.
+  Four bound-configuration reader probes and four actual P4 source probes
+  pass; broad tests are pending. Earlier integration failures are retained,
+  including the corrected missing provider registration and stale test digest.
+  The first 30-test embedded suite passed before the final split-flag fixture
+  update; a fresh suite will qualify that update.
+- Safety: only isolated tools and port-owned declarative configuration/docs
+  changed. No new shared AROS implementation change, Make-produced payload,
+  Git mutation or device access. Old compiler-only receipts remain limited.
+- Next: prove full P4 selection, then admit the measured local compiler through
+  the CLI and build fresh complete core/BSP/Developer artifacts plus the
+  verified source-bound flash plan.
+
+### 2026-10-04 - D0-N literal qualification and ROM architecture selectors
+
+- State: bounded literal integration qualified; complete native P4 payload
+  and RV3-A1/A2/A3 remain open. No hardware or release inference.
+- The preceding 63-input export passes every independently altered input
+  refusal and partition/geometry proof in `literal-current-source-partition.log`.
+  `literal-complete-regression.log` passes 544 library, three projection,
+  64 CLI and one GNU Make reference tests. The final embedded suite passes all
+  30 tests, including the latest split-argument fixture.
+- Full native selection passes libinit and then refuses absent Utility and
+  Layers architecture additions. Classic MetaMake skips absent subtargets;
+  native contracts now explicitly mark exact selector edges in six unchanged
+  ROM recipes (Utility, Hyperlayers, Intuition, Disk, Battclock and Card).
+  Present/rejected endpoints and literal dependencies are never skipped.
+  Concrete owners retain their ordinary capability proof, covered by a
+  supported/rejected-owner counterprobe. The first CLI positive assertion
+  used the wrong helper name and remains in its failed log.
+- Current identity: 69 inputs, SHA256
+  `15fe94bbfc18b672ffbb3c2446f7f17374918745895437d4d7acae85978ddb2d`.
+  Explicit input inventory capacity increases from 64 to 128 in both Rust
+  and CMake, retaining bounded JSON size and regular-file/hash validation;
+  128/129 boundary counterprobes pass in both consumers. No input is removed
+  to fit the earlier limit. All 69 changed-input refusals and four source
+  probes pass. Full selection advances to the implicit `linklibs-stdc.static`
+  spelling, whose real archive is declared as `linklibs-stdc-static`.
+- Independent reader review exposed an integration test importing a private
+  module without its new dependency. It now exercises the actual public crate
+  module instead; all 16 include-reader tests and the 545 library/65 CLI broad
+  regression pass. Transpiler all-target Clippy and Astro check pass. Failed
+  lint experiments remain retained. Exact archive binding is being corrected;
+  no complete selected graph or native payload is claimed yet.
+- Safety/next: isolated declarative source/tools/docs only. No shared recipe
+  change, Make P4 payload import, commit, PR, push or device access. Complete
+  current graph selection and local compiler CLI admission, then build fresh
+  core/BSP/Developer and verify the complete source-bound flash plan.
+
+### 2026-10-04 - D0-N typed archive binding and ABI text frontier
+
+- State: local graph integration progresses; RV3-A1/A2/A3 remain open.
+  Source remains the isolated 69-input export with SHA256
+  `15fe94bbfc18b672ffbb3c2446f7f17374918745895437d4d7acae85978ddb2d`.
+  No shared source recipe changed in this continuation.
+- Archive binding: a uniquely resolved typed `uselibs` request binds its
+  missing generated MetaMake spelling to the actual archive producer.
+  Source-written prerequisites retain independent provenance; known endpoints,
+  missing/ambiguous archive providers and unrelated raw edges are preserved.
+  Independent review found a selector-normalization gap and then a possible
+  conservative-guard false refusal. The correction binds exact source-edge
+  selector spellings before first library resolution, retaining unresolved
+  source dependencies for normal selected-graph rejection.
+- Evidence root: `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`.
+  `archive-binding-complete-regression-final.log` passes 552 library,
+  16 include-reader, three projection, 65 CLI and one GNU Make reference
+  tests before the last ordering refinement; the four actual P4 source
+  probes pass. Two failed broad attempts are retained: the first omitted
+  explicit source-test variables; the second selected a different historical
+  source checkout and correctly failed recipe/coverage contracts. The passing
+  integration oracle is the unchanged `0cae0b0` tree at
+  `/Volumes/Dev/Build/aros-nx-vanilla-runtime.31wJGf/source`; historical Mesa 20
+  uses the unchanged `cb6974f` regression tree. No source contract was relaxed
+  to make these tests pass. A test-only Clippy single-item iteration finding
+  was corrected; the failed log remains.
+- Full selected replay `selected-archive-binding.stderr.json` passes the
+  former stdc spelling failure and stops at `kernel-aros-create-abi-file` in
+  `rom/aros/mmakefile.src`. The exact recipe extracts a value from
+  `arosinquirea.c` into `Prefs/Env-Archive/ABI`; a generic literal-only producer
+  is in development. No successful complete graph, P4 payload or media plan
+  is inferred. Latest selector-order tests and final replay remain pending.
+- Compiler admission audit confirms that the existing GNU release path
+  requires a real release manifest, while this measured compiler-only prefix
+  has no such provenance. A separate local-byte-verified descriptor is being
+  implemented; it must not manufacture a release ID or provenance fields,
+  adopt the old Make SDK, or weaken published toolchain/media receipts.
+- Safety/next: local tools and port progress docs only; no Make P4 payload
+  import, implementation commit, PR, push or device access. Finish the exact
+  text-producer capability and local compiler/receipt integration, then build
+  fresh core/BSP/Developer and verify the complete source-bound flash plan.
+
+### 2026-10-04 - D0-N source-value parity and local compiler admission contracts
+
+- State: RV3-A1/A2/A3 remain open. Complete selected graph and fresh native
+  core/BSP/Developer payload are not yet available.
+- Source: isolated baseline `763a536f26a5e94176c821d48cedbcbff03b4189`,
+  current 71-input native export SHA256
+  `cc8d29ad2996d759a5b2811f1b9e904fa39480c3a90b3ff3011ac29edc12da34`.
+  Two unchanged ABI input files were added; no shared source recipe was
+  changed. The preceding 69-input receipts retain their original identities.
+- Procedure/evidence: `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`.
+  Final archive focused tests and independent review pass. Source-value
+  scanner passes nine tests, the pinned broad suite passes 562, and all
+  67 native-selection CLI tests pass. `source-value-embedded-engine.log`
+  passes 32 tests. `source-value-integrated-clippy.log` passes all-target
+  transpiler/engine Clippy. The previous missing-AROS_LIB fixture failure and
+  wrong-source-oracle failure remain documented; neither changed the contract.
+- Actual source value: `source-value-current-actual-reference.log` uses the
+  exact current source export and compares fresh CMake output against two
+  independent GNU sed processes. Output SHA256
+  `ee3aa64bb94a50845d5024cd4bd20202a4567aed5cd5328c0d97e9920775fc28`.
+  No ABI constant is substituted. `source-value-current-source-partition.log`
+  passes all 71 changed-input refusals and source-bound partition/geometry
+  checks; `source-value-current-p4-config.log` passes four actual source probes.
+- Graph: `selected-source-value-current.stderr.json` passes ABI extraction
+  and refuses the required TIFF pkgconfig endpoint. `linklibs-tiff` requires
+  it, but the existing owner marker/target lines are commented out. The
+  proposed two-line local source correction awaits Fabian's permission;
+  no missing endpoint is inferred or dropped.
+- Compiler admission: honest `aros-local-toolchain-v1` metadata carries
+  `local-byte-verified`, no release ID/provenance, a v3 tool layout and exact
+  sorted prefix inventory. Eight common tests, local CMake positive/refusal
+  probes and focused CLI tests pass. Published GNU contract regression passes.
+  Independent review found CMake did not compare the declared inventory tree
+  digest itself. The narrow correction now passes its real CMake fixture,
+  including quoted Unicode paths/symlinks and a false digest with an updated
+  descriptor admission hash. Clippy passes. Actual compiler-prefix
+  admission and native media receipt qualification remain open.
+- Safety/next: local implementation and progress docs only. No commit, PR,
+  push, Make P4 payload/Developer import, release or hardware operation.
+  Finish compiler independent validation and actual CLI admission; after
+  source permission, continue the complete graph and fresh native payload,
+  then close the complete flash-plan and CLI/Astro gates.
+
+### 2026-10-04 - D0-N real local compiler admission and build-tree identity
+
+- State: RV3-A1/A2/A3 remain open. This advances local compiler selection,
+  not code generation, SDK completeness, native payload or physical boot.
+- Source: isolated baseline `763a536f26a5e94176c821d48cedbcbff03b4189`,
+  unchanged 71-input native export SHA256
+  `cc8d29ad2996d759a5b2811f1b9e904fa39480c3a90b3ff3011ac29edc12da34`.
+- Procedure: opt-in `aros-cli --test local_compiler_admission` with the
+  retained RV32 compiler, exact target contract and isolated P4 source. Fresh
+  copy before metadata, independent before/after inventories, actual CLI
+  install/path/verify and restore/reverify after both negative probes.
+- Result: one process-boundary test passes; measured GCC `16.2.0`, GNU ld
+  `2.47.20260726`. Descriptor qualification is `local-byte-verified`; no
+  release ID or producer provenance. Final evidence directory:
+  `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk/rv3-local-compiler-admission-92420-1791134555466778000`.
+  Descriptor tree SHA256
+  `1951e6aa88def1fe26f05b0a1d033040fb6414e4cdbbe83774571b8489b77ecd`.
+- Refusals: modified GCC and coexisting malformed release manifest fail
+  before the executable sentinel runs. Copied GCC is restored; fake manifest
+  removed. Historical prefix, source contract/71 inputs and exact target
+  contract remain unchanged; no managed toolchain store/cache is created.
+- Build-tree lock: distinct local schema-2 identity binds prefix, exact
+  descriptor hash, profile/triple and measured tree hash. Same identity is
+  reusable; changes and local/release mixing fail without rewriting the
+  stamp. Released schema-1 bytes remain unchanged. Symlink, dangling-link,
+  directory and oversized stamps fail without writing their target.
+  `local-build-identity-counterprobes.log` passes; independent review passes.
+  `local-admission-current-engine.log` passes all 33 embedded-engine tests;
+  `local-build-identity-clippy-corrected.log` passes all-target engine Clippy.
+  The first needless-pass-by-value Clippy failure remains retained separately.
+- Failed experiment: initial opt-in CLI run used `AROS_OFFLINE=1`, which
+  Clap correctly rejects; the test now uses `true`. That failed evidence is
+  retained rather than counted as successful admission.
+- TIFF audit: original commit `471cb38007e3f6c337aaee1d6d0f464012f8a5f0`
+  introduced both the active dependency and the commented owner lines on
+  2025-06-03. No documented reason was found. Do not describe the proposal as
+  restoring a previously enabled target; source permission remains pending.
+- Safety/next: no commit/PR/push, release, Make payload/Developer import or
+  hardware write. Verify the classical dependency and exact pkgconfig recipe
+  before requesting/using source-edit authority. Finish complete native
+  core/BSP/Developer and distinct local media identity/flash-plan integration.
+
+### 2026-10-04 - D0-N real CMake compiler admission and exact SDK-text semantics
+
+- State: local host-only integration advances; RV3-A1/A2/A3 remain open.
+  No fresh complete core/BSP/Developer payload or flash-plan claim.
+- Source/configuration: unchanged 71-input native export SHA256
+  `cc8d29ad2996d759a5b2811f1b9e904fa39480c3a90b3ff3011ac29edc12da34`.
+  Real CLI/CMake evidence is
+  `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk/rv3-local-compiler-admission-8966-1791135270025742000`.
+  Descriptor SHA256 `c05072e2cb35c86aaca60ece330dbf122b0b379a9e031dd54ffe36e9bc9cb6bb`,
+  tree SHA256 `1951e6aa88def1fe26f05b0a1d033040fb6414e4cdbbe83774571b8489b77ecd`.
+- Procedure/result: true CLI install/path/verify, retained-copy mutation and
+  restore probes, then materialized embedded engine and real CMake
+  `project(NONE)` consumer. One opt-in test passes in 26.39 seconds; focused
+  CLI-test Clippy passes. Engine at that run is
+  `acae69fd9287a8e837713150215d12c943d405803a5fd8fa8c192e21c412e113`
+  (355 files). Actual GCC 16.2.0/GNU ld 2.47.20260726, all executable roles and
+  runtime archives inside the retained prefix, source-derived ISA/ilp32f/medany
+  options and exact local schema-2 stamp pass. Historical prefix, contract,
+  all 71 source inputs and managed state remain unchanged.
+- Failed probes retained: in-place restoration of a tampered signed Mach-O
+  was killed by macOS with `Code Signature Invalid`, proven by its crash report,
+  not memory pressure. Fresh sibling-inode/atomic-rename restoration fixes the
+  test harness. Another fixture confused preset and toolchain profile; it now
+  uses the source-loaded profile mapping. Neither is a P4 payload failure.
+- Generic SDK text: optional exact own-recipe prerequisite and unique
+  most-specific fetched-input ownership are modeled; explicit fetch edges
+  remain binding. Static logging/directory preparation does not execute shell.
+  Empty sed flags mean first match per line, not replace-all. Generated CMake
+  binds the exact raw declaring-source SHA256 at configure and build.
+- Verification: `sdk-text-final-library.log` passes 569 tests,
+  `sdk-text-final-cli.log` passes 69 process tests. GNU-sed differential fixtures
+  cover repeated tokens, empty/unterminated, CRLF and mixed UTF-8/line endings.
+  Actual CMake/Ninja output matches; stale declaration, symlink/outside source,
+  NUL and oversized input refusals preserve the prior output. Independent
+  engine review found no concrete defect; hostile concurrent filesystem races
+  are not claimed to be excluded by these path/hash checks.
+- Retained correction logs: ordinary CMake text reading lost CRLF; bounded
+  byte decoding restores parity. A synthetic empty explicit MetaMake edge was
+  correctly rejected; the fixture now uses the actual bare marker form. A
+  fixture substitution erased sed markers; exact placeholder replacements
+  fix it. Their failed logs remain under the same evidence root. Scanner
+  all-target Clippy initially reports four style warnings; final correction
+  must pass before recording that gate as green.
+- Additional review: the scanner admitted unknown deferred CMake path
+  variables, ignored unresolved same-owner fetch declarations on the explicit
+  edge path, and did not recognize virtual/tab-separated MetaMake edges.
+  These fail-closed gaps need corrected counterprobes and independent review
+  before using the capability in a real P4 payload build.
+- Current complete native selection at
+  `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk/sdk-text-native-selection.Wt7Lb9`
+  still returns AT0006 for the required TIFF owner and publishes no partial
+  CMake file. Initial replay mistakenly used profile CPU `riscv32` rather
+  than source MetaMake CPU `riscv`; selector refusal is retained separately
+  at `sdk-text-native-selection.qksaYF`. Astro check passes with zero findings
+  and build produces 45 pages (`sdk-text-docs-check.log`, `sdk-text-docs-build.log`).
+- Final corrections: approved single CMake roots reject extra deferred
+  variables; unresolved fetches cannot conceal ambiguity beside explicit
+  bindings; virtual and tab-separated MetaMake edges are explicit bindings.
+  Independent recheck finds no remaining concrete scanner defect. The
+  bare-marker unit fixture was tightened to place the marker immediately
+  before its owner, matching the already passing true CLI fixture.
+  `sdk-text-reviewed-final-library-engine.log` passes 573 library and all 34
+  embedded-engine tests; `sdk-text-reviewed-final-cli.log` passes 71 process
+  tests. Transpiler all-target Clippy passes; engine all-target Clippy passes
+  in `sdk-text-reviewed-final-engine-clippy.log`. These do not qualify a
+  complete native P4 graph or payload.
+- Safety/next: TIFF source activation still needs explicit permission; no
+  source dependency is omitted. No commit/PR/push, release, borrowed Make
+  payload/Developer import or device write. Continue the complete native graph,
+  fresh payload build and distinct local media identity/flash-plan integration.
+
+### 2026-10-04 - D0-N measured dirty-source inputs and local-native safety review
+
+- State: RV3-A1/A2/A3 remain open. Progress is local pre-build input binding,
+  not successful native compilation, complete flash composition or boot.
+- Source/configuration: isolated P4 baseline
+  `763a536f26a5e94176c821d48cedbcbff03b4189`; unchanged 71-input export SHA256
+  `cc8d29ad2996d759a5b2811f1b9e904fa39480c3a90b3ff3011ac29edc12da34`.
+  Tools baseline `719beb99f55bf7cec75ce8d67a5f96472e9cd32e`
+  plus local implementation, not a published producer identity.
+- Procedure/result: opt-in whole-source capture and repeat verification passed
+  in 15.85 seconds, before this documentation update. Evidence file
+  `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk/rv3-p4-source-identity-20261004-v1.json`
+  records 28,436 entries, 1,027,462,107 regular-file bytes, SHA256
+  `cf50ee3554a1c6b0f78ab6fb0fc77ac44b6084eae619e0dba365766a4437a7aa`.
+  It is a historical snapshot, not the identity after subsequent doc edits.
+- Binding: actual dirty/submodule/ignored inputs are included. Git replacement
+  refs cannot hide tracked source; only the selected untracked generated tree
+  is omitted. Sibling builds remain measured. Unsafe links, aliases exposing
+  omitted content, special files and resource excess fail. Generated-path
+  no-follow checks precede cleanup and surround source measurement.
+- Safety review: corrected a symlink-directed cleanup path, unbound engine
+  link targets and an incomplete Ninja configuration seal. Local engines now
+  require regular trees; actual executor paths/bytes and configure inputs are
+  bound. Literal include/subninja closure is measured, including extensionless
+  files. Dynamic include expressions are refused, not guessed.
+- Tests: `local-native-hardening-cli.log` passes 18 synthetic CLI process
+  probes, including external sentinels, pre-configure drift refusal and changes
+  during configure refused before build. Final common suite passes 253 tests,
+  including all 11 local-source tests and the SHA-256 Git fixture. Five local
+  binding units and five existing image/ISO process tests pass. A separate
+  actual CMake/Ninja configure/build/mutation probe passes; it tests a
+  `project(NONE)` configuration, not P4 compilation. All-target Common/CLI
+  Clippy is green. Astro check has zero findings and builds all 45 pages.
+  Logs use the `local-native-hardening-` and `local-native-real-cmake-`
+  prefixes in the evidence root. Synthetic executors are not payload proof.
+- Source recapture: after the first documentation update, the v2 snapshot
+  records the same 28,436 entries and 1,027,466,732 regular bytes, SHA256
+  `dff7b0449e02447aa88d5898289f3d3e7f558bab12b880bf8390e4d371d15ade`.
+  Capture plus verify pass in 15.09 seconds. Later evidence text legitimately
+  changes the source digest; each build must capture its own actual inputs.
+- Retained failed experiments: initial compile used an unparsed descriptor
+  digest; corrected compilation passed. Invalid two-filter Cargo invocation
+  and missing opt-in source environment failed before measurement. Clippy
+  rejected shell-parameter text in a test string; the fixture was corrected.
+  All logs remain in the same evidence root. A nonexistent `pnpm check` script
+  was also rejected; the actual `pnpm exec astro check` and build pass.
+- Safety/remaining/next: TIFF is unchanged. Fabian requires respecting the
+  commented owner; inspect classic MetaMake behavior and actual SDK need before
+  proposing any source edit. No dependency is silently omitted. No borrowed
+  Make payload, receipt weakening, hardware access, commit/PR/push or release.
+  Finish binding regressions, complete native source translation and fresh
+  core/BSP/Developer, then distinct local build/media receipts and flash plan.
+
+### 2026-10-04 - D0-N respect disabled TIFF metadata and preserve real producers
+
+- State: bounded graph-compatibility progress; RV3-A1/A2/A3 remain open. No
+  native payload, successful-build receipt, complete media plan or hardware claim.
+- Source/configuration: isolated baseline `763a536f26a5e94176c821d48cedbcbff03b4189`.
+  Current 72-input native export SHA256
+  `0bcaf5f367d6fece95f23d93f34a2933f1ad4ef7f9152767cc79a445b1a3c902`.
+  TIFF recipe is unchanged, SHA256
+  `e67a6b1218debdf8fa7f0cf8340ebda56852a06932a059eca2ec27cef5043d20`.
+  Only the port-local contract adds its exact edge, disabled-owner reason and
+  recipe digest. Tools are still dirty baseline `719beb99`, not a release.
+- Reference procedure/result: the privately compiled classic MetaMake fixture
+  runs `TIFTEST.root` in normal, verbose and logfailed modes. All three exit 0;
+  real TIFF-linklib and root rules run. Verbose reports the unknown pkg-config
+  child; logfailed records it. Direct GNU Make file-target invocation runs the
+  ordinary `.pc` rule. Logs: `classic-tiff-normal.log`, `classic-tiff-verbose.log`,
+  `classic-tiff-logfailed.log`, `classic-tiff-filetarget.log` under
+  `/Volumes/Dev/Build/rv3-static-sdk-qualified.NqvATk`. This fixture verifies
+  MetaMake routing, not TIFF compilation or a complete classic P4 build.
+- Correction to the earlier interpretation: a dangling metadata child does
+  not establish that the commented producer should be activated. Fabian
+  requires preserving it. The generic translator now accepts only an explicitly
+  source-declared disabled owner proven from its original hash-bound recipe;
+  active, unsupported, duplicate-recipe or unproven dependencies remain fatal.
+  Omissions are visible, not fabricated CMake targets.
+- Independent proof review: a macro-generated edge could initially have been
+  mistaken for a handwritten declaration. The edge-origin index and exact proof
+  now use only `explicit_meta_rules`, not combined implicit graph aliases. A new
+  CLI counterprobe pairs a macro-derived edge with an unrelated disabled-owner
+  comment and requires refusal before publication. Final rerun passes all 76
+  CLI selection tests (`disabled-owner-cli-reviewed.log`); independent review
+  finds no further concrete gap in this narrow omission rule.
+- Tests: 75 actual CLI selection tests and 574 source-coupled transpiler library
+  tests pass; four optional-contract units pass. CMake contract probes pass after
+  correcting assertions to tolerate CMake diagnostic line wrapping. Retained
+  failures are `disabled-owner-cmake.log` and `disabled-owner-cmake-corrected.log`;
+  final passing log is `disabled-owner-cmake-final.log`. A first manual source
+  probe supplied the wrong family and omitted cpu32; it correctly refused the
+  profile in `disabled-owner-native-selection.CR3aYz`, before graph publication.
+- Actual source result: correct selectors in
+  `disabled-owner-native-selection.LRaOFi` pass the TIFF metadata edge, then fail
+  closed at `workbench-libs-zstd-library-linklib`. No output graph was published.
+  Cold source-inventory/client-archive handling is the next tools investigation,
+  not permission to remove ZSTD or borrow a prebuilt Developer tree.
+- Additional completed input hardening: source identities now bind recursive
+  submodule OIDs even when their files are unchanged. Cached external executable
+  bytes and HOME selection are bound. Six local binding units, an actual
+  CMake/Ninja project(NONE) mutation probe, 253 Common tests and all-target
+  Common/CLI Clippy pass. These do not attest runtime shared libraries. The
+  independent review subsequently identified external board file inputs and
+  generated-tree executable aliases; their narrow correction is now tested and
+  independently rechecked. Schema-v2 configured input seals hash the selected
+  DTB and exact three KOBJ members even inside the build tree, with a 256-MiB
+  aggregate bound. Seven focused configuration probes and one actual CMake/Ninja
+  probe pass, as does CLI Clippy; logs are prefixed
+  `local-native-board-input-contained-reviewed-20261004-01-`. Unrelated directory
+  siblings/search paths are not claimed as measured inputs. Runtime/shared
+  library attestation remains outside this stamp's scope.
+- Retained lint corrections: Clippy required serde's borrowed skip predicate
+  to have a documented targeted allowance, then rejected redundant restricted
+  visibility in the private scanner module. Both are corrected locally; retain
+  the initial `disabled-owner-clippy*.log` failures and rerun before claiming
+  final Clippy success. The reviewed all-target Transpiler/Common/CLI rerun
+  passes (`disabled-owner-clippy-reviewed.log`). Astro check has zero findings
+  and the updated documentation builds all 45 pages.
+- Safety/remaining/next: TIFF source, existing Make payloads and parallel source
+  trees were not modified. No commit, PR, push, release or hardware access.
+  Finish independently reviewed input boundaries, materialize the selected
+  source inventory and freshly build core/BSP/Developer, then compose and
+  verify distinct local build/media receipts and complete flash plan.
+
+### 2026-10-04 - D0-N cold source inventory and strict graph ordering
+
+- State: local tools correction; no implementation commit, PR, push or device
+  write. The P4 native contract still binds 72 inputs, SHA256
+  `0bcaf5f367d6fece95f23d93f34a2933f1ad4ef7f9152767cc79a445b1a3c902`.
+  TIFF source remains unchanged. No metadata producer was reactivated.
+- Exact initial defect: the source-list evaluator retained a DeferredWildcard
+  briefly, then discarded it when the complete source list was empty. Native
+  selection therefore rejected the missing ZSTD archive before CMake could
+  prepare sources. Literal suffix substitution also stopped at the first of
+  four independent wildcard fragments; the failed exact-inventory test remains
+  in `rv3-static-sdk-qualified.NqvATk/zstd-cold-inventory.log`.
+- Correction: preserve deferred patterns without fabricating source-less
+  modules; distribute literal suffix substitutions over independent fragments.
+  Explicit conditional/variable guards remain binding. The standalone tools
+  inventory-only mode publishes only its sidecar, not a usable build graph.
+  CMake must subsequently run the full export, including warm zero-fetch trees.
+- Actual cold P4 pass exits 0, discovers 15 fetch declarations and publishes no
+  graph in `/Volumes/Dev/Build/rv3-p4-cold-inventory.jIRVCT`. Source-owned ZSTD
+  1.5.7 was fetched there through aros-fetch; no Make-built SDK/core was copied.
+  Corrected cold and warm recipe probes pass: four exact wildcard groups,
+  30 source files and the genmodule client archive. An initial warm assertion
+  wrongly expected explicit linklibname; this recipe uses the default archive
+  name. Its failed log is retained; no source or production fix was needed.
+- Regression evidence: `cold-inventory-transpiler-library.log` (574 passed),
+  `cold-inventory-native-cli.log` (78 passed),
+  `zstd-cold-inventory-complete.log`,
+  `zstd-warm-source-inventory-corrected.log` and
+  `cold-inventory-clippy.log` (all-target transpiler Clippy passed).
+  Full embedded-engine regression passes 35 tests. The first actual native CLI
+  configure stops safely before compilation: the GNU consumer compared compiler
+  profile `rv32-p4-local` with board preset `esp32p4-d1001`. The declarative
+  source keeps both identities separate; their CMake forwarding needs correction.
+  Exact stdout/stderr are retained in `rv3-p4-cold-inventory.jIRVCT`.
+  Bounded review also requires the inventory discovery to avoid unrelated
+  unselected native port owners. The inventory-only route is now limited to a
+  bound native profile; ordinary CMake builds retain the initial full export.
+  Native owner filtering and the separate compiler profile tests remain open.
+  Do not infer a successful full native build from these checks.
+- Safety: no flash/hardware acceptance. The source export, ABI and linker
+  inputs remain unchanged. RV3-A1/A2/A3 remain open. Next: run the real isolated
+  CLI/CMake graph and fresh core/BSP/Developer build, then compare payloads and
+  verify source-bound successful-build/media receipts and complete flash plan.
+
+### 2026-10-04 - D0-N selected cold preparation and compiler-profile boundary
+
+- State change: cold source preparation is now filtered by a native declaration
+  closure. Pending source identities stay separate from compilation targets;
+  only the full materialized export can publish a build graph. Unselected
+  pending wildcards and header owners do not become fetch inputs.
+- Source/configuration: isolated baseline `763a536`, experimental RV32 D1001
+  GNU profile, SMP/MMU off, tools baseline `719beb99` plus local changes.
+  Current 72-input contract SHA-256 is
+  `eda6d39886c8f6be4d16a3f6c519066cb23e93b8ac78a542404b1e30090ae9d0`.
+  The only new source-contract choice marks the exact existing
+  `core-linklibs -> linklibs-startup-${AROS_TARGET_CPU}` selector edge optional
+  when absent. The already-bound generic startup recipe remains unchanged.
+- Verified scope: 80 native-selection CLI tests pass, including selected versus
+  unrelated cold fetches and a cold direct library root. All 35 embedded-engine
+  tests pass after board/compiler profile separation. The independent bounded
+  engine review accepts explicit mismatch refusal, try-compile propagation and
+  unchanged same-profile schema-1/schema-2 stamp bytes. Ten local-input binding
+  tests pass. These are host/contract proofs, not full native payload evidence.
+- Retained failures: the first selected P4 preflight rejected the absent
+  CPU-specific startup alternative. With that exact source-owned optional edge,
+  it stops at `workbench-libs-gl-includes-copy`. Actual Classic GenMF expansion
+  `classic-gl-before.mk` emits only `includes-copy`, while the source requires
+  the former endpoint. A shared GL recipe edit is awaiting Fabian's permission.
+  The first two library-test compilations exposed test-only PathBuf assertion
+  mistakes; their logs remain retained. Provider hardening review also found
+  missing/ambiguous typed archive requests and omitted external providers; the
+  narrow correction and new counterprobes are still being verified.
+- Evidence roots: `rv3-static-sdk-qualified.NqvATk` contains selected-inventory
+  CLI, engine and library logs; `rv3-p4-cold-inventory.jIRVCT` contains exact P4
+  preflight stdout/stderr and the Classic GL expansion. Earlier 15-fetch
+  whole-tree preparation is superseded and is not selected-build readiness.
+- Safety/status: TIFF SHA-256 remains
+  `e67a6b1218debdf8fa7f0cf8340ebda56852a06932a059eca2ec27cef5043d20`.
+  Failed CMake tree remains retained outside the source. No parallel source
+  tree, flash, release, Git commit, PR or push was changed. RV3-A1/A2/A3 remain
+  open; next step is to qualify preparation/providers, correct the permitted
+  source endpoint, then run the fresh native CLI build and complete media plan.
+
+### 2026-10-04 - D0-N archive preparation parity and retained GL refusal
+
+- State change: selected cold preparation preserves source-owned archive
+  endpoints, including concrete cold recipes without a handwritten consumer
+  edge. Missing/ambiguous selected requests are fatal; unselected failures do
+  not poison the slice. Pending declarations remain metadata, not build targets.
+- Source/configuration: isolated source baseline `763a536`, tools baseline
+  `719beb99` plus local changes, D1001 GNU/RV32, SMP/MMU off. The 72-input
+  contract remains `eda6d39886c8f6be4d16a3f6c519066cb23e93b8ac78a542404b1e30090ae9d0`.
+- Procedure/result: all 89 native-selection CLI process tests and 576
+  source-coupled library tests pass. All-target transpiler Clippy passes with
+  warnings denied; updated CLI/transpiler binaries build. Independent bounded
+  review accepts archive visibility, source endpoint preservation and the
+  preparation-only resolver ordering. The ordinary full exporter is unchanged.
+- Retained failures/corrections: the first new CLI packet passed 87/89. Its
+  Full-module fixture lacked ordinary virtual include/core prerequisites; those
+  were added to the synthetic fixture. The private raw-library counterprobe
+  exposed a production ordering error: the full resolver removed an invalid
+  raw `-l` option before preparation could reject it. Inventory-only mode now
+  bypasses that mutating resolver and binds normal/cold declarations together.
+  The intermediate 88/89 run and initial logs remain retained. Raw options
+  override matching uselibs visibility, exact `-L` is required for private
+  archives, external interfaces cannot satisfy raw `-l`, and `-l:filename`
+  remains an exact-filename argument rather than a typed request.
+- Artifact identity: debug CLI SHA-256
+  `da1c88d6adf72168fd36a05d90180158194496ce8bfc1658a560e374635a4921`;
+  transpiler SHA-256
+  `c02a50b2b932c45368f17456e0c634ae9ba0d844f9e17d94fe9d6471105bf2c5`.
+  `rv3-static-sdk-qualified.NqvATk/selected-inventory-final-parity-*` retains
+  final tests, failed packets, Clippy and binary-build logs.
+- Actual P4 result: the rebuilt transpiler exits 1 at the same proven GL
+  `workbench-libs-gl-includes-copy` mismatch. Neither
+  `selected_targets_reviewed.cmake` nor its inventory sidecar was published.
+  Exact stdout/stderr are retained in `rv3-p4-cold-inventory.jIRVCT`.
+- Safety/remaining scope: TIFF is unchanged at SHA-256
+  `e67a6b1218debdf8fa7f0cf8340ebda56852a06932a059eca2ec27cef5043d20`;
+  GL is also unchanged pending permission. No complete fresh core/BSP/Developer
+  payload, complete flash plan, hardware result, commit, PR or push is claimed.
+  RV3-A1/A2/A3 remain open. Next step: permit a GL producer-name correction that
+  also preserves the global includes-copy path, bind its source bytes, rerun
+  strict preparation and the fresh native CLI build.
+
+### 2026-10-04 - D0-N Classic GL global header path and correction scope
+
+- Observation: `tools/MetaMake/project.c:698-707` tolerates an unknown
+  subtarget, and `compiler/include/mmakefile.src:81-89` routes global header
+  preparation through `includes-copy`. The existing GL `%copy_includes`
+  registers under that global name; its handwritten local dependency names
+  a different absent endpoint. `gl_funcs.c` consumes `<GL/gla.h>`.
+- Corrected scope: merely naming the copier `workbench-libs-gl-includes-copy`
+  would remove its current global membership. Any source correction must retain
+  the global includes-copy path as well as providing the named local producer.
+  GL remains unchanged at SHA-256
+  `d648e95f23a272c25f9326e61f95b29ec63bd310b49f2e5a032413294d63cae1`;
+  the previous one-line-only proposal is superseded, not a verified fix.
+- Separate media checks: three generic flash-plan tests and five source-media
+  geometry tests pass in `rv3-remaining-media-{flash-plan,geometry}.log` under
+  `rv3-static-sdk-qualified.NqvATk`. These prove bounded host contracts, not
+  native payload production or a complete P4 plan. RV3-A1/A2/A3 remain open.
+- Safety/next step: no shared-source edit, commit, PR, push or device write.
+  Await the explicit GL source-correction decision, preserve TIFF unchanged,
+  then qualify the fresh native payload and its full media composition.
+
+### 2026-10-04 - D0-N authorized GL header producer correction
+
+- Source scope: Fabian authorized the GL header correction. Only the isolated
+  shared GL recipe gains the explicit copier name and a global includes-copy
+  edge. No GL functionality is disabled and TIFF remains unchanged.
+- GL recipe SHA-256:
+  `20cf45e50d813c62439a1994a081ced602e026a926c9654d2ee31b8bd1567f55`.
+  Native declaration now binds this recipe: 73 inputs, SHA-256
+  `3d9922a5b8cad42cdf27bea25bc7694ec5197092cb0b0adca6e0b4ce7c3f7165`.
+- Classic procedure: source tools/genmf/genmf.py expands config/make.tmpl
+  and workbench/libs/gl/mmakefile.src into the retained classic-gl-fixed.mk
+  under rv3-p4-cold-inventory.jIRVCT. The global metadata edge names the local
+  copier; the concrete local rule stages both generated and Developer headers.
+- Real selected native preflight uses the rebuilt transpiler, separate GNU
+  board/compiler selectors and the new contract digest. It passes the missing
+  GL header endpoint, then exits 1 at workbench-libs-gl-gen-stubs (AT0004).
+  Logs: selected-inventory-gl-fixed.stdout.log and stderr.log. No partial
+  graph, successful payload or complete media plan is inferred.
+- Safety: local changes only, no commit, PR, push, flashing or source changes
+  in the parallel port checkout. Next step is the generic handwritten GL stub
+  producer capability and its actual source-bound regression evidence.
+- Verification: all 90 native CLI regressions and focused test Clippy pass;
+  the new test selects the local and global include routes separately and
+  requires their real named GL header copier. An independent read-only review
+  finds no cycle or broad GL dependency added to global header preparation.
+  All 73 input hashes match actual regular source files; TIFF SHA remains
+  `e67a6b1218debdf8fa7f0cf8340ebda56852a06932a059eca2ec27cef5043d20`.
+  Logs: gl-header-global-route-regression.log, gl-header-native-cli-regressions.log
+  and gl-header-test-clippy.log under rv3-static-sdk-qualified.NqvATk.
+
+### 2026-10-04 - D0-N native writefiles producer parity
+
+- Scope: aros-tools-only typed scanner, graph ownership and embedded CMake
+  writer. Safe literal subdirectories require their exact order-only output
+  directory; config/tool dependencies remain explicit. No extra AROS source
+  recipe change, GL/POSIXC suppression or TIFF activation.
+- Source: isolated 763a536 baseline; 73-input native contract SHA-256
+  `3d9922a5b8cad42cdf27bea25bc7694ec5197092cb0b0adca6e0b4ce7c3f7165`.
+  All 73 hashes verified. GL recipe stays `20cf45e5...`; TIFF stays `e67a6b12...`.
+- Procedure: unmodified source Genmodule built independently with host cc;
+  compare complete writefiles output paths and SHA-256 against CMake's private
+  writer. Normal/relative clients and the named stamp share one writer.
+  No-op, missing-output repair, duplicate owners, traversal and source/output
+  symlinks pass their counterprobes. Independent bounded review passes.
+- Verification: 583 source-coupled library tests, 91 native CLI tests and all
+  36 embedded-engine tests pass; transpiler/engine all-target Clippy passes.
+  Astro check has no findings and builds 45 pages. Logs retained under
+  `/Volumes/Dev/Build/rv3-p4-cold-inventory.jIRVCT`, prefix `writefiles-`.
+- Actual preflight: rebuilt transpiler SHA-256
+  `4efdfed92c2aef3e8fadaa7c0a74a22e39430490691183c8db5c8e48f44b2584`
+  with riscv/esp32p4, GNU/ilp32f, no MMU and the exact contract. It passes GL
+  and POSIXC-LFA, then exits 1 at compiler-stdc-genwcharsupport (AT0004).
+  `selected-inventory-writefiles-final` logs retained; no graph or inventory
+  published. This is not successful native core/BSP/Developer evidence.
+- Safety: no Make payload import, hardware/device write, commit, PR or push.
+  RV3-A1/A2/A3 remain open. Next step: represent the source-owned GenCTBL
+  Unicode inputs/generation with concrete outputs and independent parity.
+
+### 2026-10-04 - D0-N sealed host-file generator started
+
+- Scope: generic aros-tools host-C file capability and port-local declarative
+  export only. Shared STDC/GenCTBL recipes and TIFF remain unchanged.
+- Source: baseline 763a536; candidate 76-input export SHA-256
+  `832a72c3a4d13fae21385707a95ec64535128e0e2db697d5adfa43167b5510cd`.
+  Added bound recipes/source: STDC mmakefile `1ab0fcff...`, GenCTBL Makefile
+  `12313159...`, C program `91033690...`. Generic recipe matching is pending.
+- Data: existing RV32 compiler proof and compatibility lock agree on raw
+  Unicode 16.0.0: UnicodeData 2,175,362 bytes, SHA-256 `ff58e582...`;
+  SpecialCasing 16,809 bytes, SHA-256 `8d5de354...`. Both remain declared inputs,
+  although the current source C program reads only UnicodeData.
+- Procedure: compile unchanged genctbl.c with `cc -g -Wall -Werror -Wunused -O2`
+  in `/Volumes/Dev/Build/rv3-genctbl-reference.QrEVfh`; invoke independently
+  against raw Unicode 16 and retained Unicode 18 directories with the exact
+  locale stem and --emit-c. Both produce 6,180 bytes, SHA-256
+  `7906b7ca6d758463ee1788febca54b7e0a5d864f63a6c5bb070b5f1300830209`.
+  No Make-produced output was imported. Two metadata validation tests pass;
+  complete engine, transpiler, CLI and P4 selection evidence remains pending.
+- Safety: no source recipe activation, device write, commit, PR or push.
+  RV3-A1/A2/A3 stay open; next is closed recipe admission, sealed input
+  preparation and private writer parity/rejection tests.
+
+### 2026-10-04 - D0-N comprehensive native capability audit and grouped fixes
+
+- Identity: isolated source baseline 763a536; 76-input contract
+  `832a72c3a4d13fae21385707a95ec64535128e0e2db697d5adfa43167b5510cd`.
+  Tools are a dirty local worktree based on 719beb9; no release claim.
+- Verified advance: unchanged GenCTBL through the generic private CMake
+  writer passes independently; the configured engine suite passes 37/37 when
+  run serially. The preceding parallel fixture linker timeout is retained.
+  Focused scanner/cache and audit tests pass on their recorded checkpoints;
+  final integrated tests must be repeated after audit corrections.
+- Procedure: diagnostic-only source-inventory traversal for riscv/esp32p4,
+  GNU/ilp32f, no MMU, prepared ports and the exact bound contract. Initial
+  report `native-graph-audit.json` and logs are retained under
+  `/Volumes/Dev/Build/rv3-p4-cold-inventory.jIRVCT`.
+- Observed: 1,066 known reachable endpoints, eight missing endpoints and five
+  unproven Make providers. Six missing edges request ABI headers from plain
+  static archives; remaining groups include HIDD stubs, OpenURL archive/setup
+  and BZip2 installation products. The 140 ownerless diagnostics are unresolved
+  ownership, not 140 established P4 defects. Rejected declarations may hide
+  prerequisites; this traversal cannot prove complete source coverage.
+- Source-operation audit: native core currently produces ELF, not the source
+  recipe's flash BIN. Developer FAT16 staging/formatting is not yet represented
+  by the native contract. Kernel compiler lane, selected XIP linker/runtime
+  parity and success-bound source receipts require actual-build evidence.
+- Corrections in progress: typed plain-archive header semantics, concrete
+  source-owned copy/archive producers, source directory-ignore/diagnostic
+  ownership, audit output alias protection and complete producer-family
+  reporting. Do not replace missing operations with no-op targets.
+- Safety: diagnostic JSON only; no graph/inventory publication, imported Make
+  payload, shared recipe activation, device write, commit, PR or push. TIFF
+  stays unchanged. RV3-A1/A2/A3 remain open; next is strict whole-graph admission
+  followed by a fresh CLI core/BSP/Developer build and complete five-role plan.
+
+### 2026-10-04 - D0-N source-owned MetaMake discovery policy
+
+- Source: candidate export now has 77 inputs, SHA-256
+  `92e0d3afc76450b70706d2b3446c189eb691afbf1ada659bf7278602e351fc09`.
+  Newly bound unchanged `mmake.config.in` is
+  `a1a6f575d6c399c9daa454481a8437899e4bbad92e9dc0f6eecb53938765a715`.
+- Procedure: read the bound configuration before native source discovery;
+  apply only literal `ignoredir` basenames at any depth, matching Classic
+  MetaMake. Mandatory build/target/Git exclusions remain. Unresolved configure
+  templates are conservatively scanned, never executed or guessed.
+- Status: implementation and rejection fixtures added; integrated test and
+  fresh audit evidence pending. The prior 1,066-endpoint audit remains bound
+  to its original 76-input contract and must not be relabeled.
+- Safety: this respects the source's existing `.unmaintained` exclusion;
+  no architecture-specific Rust filter, source recipe change, device write,
+  commit, PR or push. Complete native payload/media gates remain open.
+
+### 2026-10-04 - D0-N integrated audit corrections and repeated P4 traversal
+
+- Identity/configuration: unchanged 77-input contract `92e0d3af...`; all 77
+  source-input hashes verified. Dirty local tools baseline 719beb9, selected
+  riscv/esp32p4, GNU/ilp32f, no MMU and prepared ports. No release identity.
+- Corrections: remove only inferred ABI-header edges for uniquely resolved
+  plain archives without ABI metadata, preserving every explicit handwritten
+  dependency even after owner projection. Follow the bound literal MetaMake
+  ignoredir policy, model macro-owned local FD producers and multiple pure
+  mkdir lines, and restrict SDK-text diagnostics to actual `.pc` candidates.
+- Verification: configured transpiler library suite passes 614, one opt-in
+  test ignored. Unconfigured first attempt failed because source-test paths
+  were missing and is retained, not counted. Audit process tests reject final
+  and parent symlink aliases, `symlink/..` output aliases and changed/unbound
+  discovery policy; missing package roots yield diagnostic errors, not graphs.
+  Independent root/publication/discovery/FD review found no actionable defect.
+- Actual repeated audit: `native-graph-audit-v77.json`, SHA256
+  `ec7be63310c1eb1c8581197ac2a4079625a38db6e454b31577824d77e63bd068`,
+  using transpiler SHA256
+  `51f7dd934376d61be6afa79af3ec91d0aa2896a333f3cf76088a15416a965f5b`.
+  It visits 1,060 known endpoints and reports two missing endpoints, four
+  unproven Make providers, ten selected failures and fifteen unowned errors.
+  No graph or inventory is published. All producer families are included.
+- Copy-engine advance: exact Developer/bin and Developer/man/man1 roots pass
+  the inherited local/fetched byte, no-op, missing-output repair, post-fetch
+  mutation, batch-preserving symlink/recipe refusals and configure counterprobes.
+  No arbitrary destination or shell invocation is admitted. Collector
+  integration and a source-reference comparison remain pending.
+- Safety/next: TIFF and shared source recipes unchanged; no commit, PR, push,
+  device write or imported Make payload. Implement remaining concrete archive,
+  SDK-copy and diagnostic ownership groups, then repeat strict admission.
+  Full P4 core/BSP/Developer, media generation/parity/receipts and RV3 remain open.
+
+### 2026-10-04 - D0-N explicit empty header-list contract
+
+- Identity/configuration: 77-input export SHA256
+  `3ff2b97b53b1ab788c513f73965e9d66655578adaec87b1aef76bf3c9917c8a2`;
+  native configuration SHA256
+  `78d52d816257ae76a6b822ab5083d79fef2df38fe7fa6f1259db993daa7e899e`.
+- Procedure/change: source-native configuration explicitly selects empty
+  `INCLUDE_FILES` as the ambient-free default. Local recipes retain their
+  declaration-time assignments. Generic tools promote only an explicitly
+  known empty list to a named empty endpoint, not failed expansion.
+- Observed result: verification/integration is in progress. Previous audit
+  identities remain unchanged and do not qualify this updated export.
+- Safety/remaining risk: no shared recipe changes, commits, push or hardware.
+  Archive/object groups, SDK aliases/manual literals and diagnostic ownership,
+  full native payload/media production and success receipts remain open.
+- Next: finish positive/negative tests, rerun the actual P4 audit, preserve its
+  exact input/binary/report identities before attempting a full native build.
+
+### 2026-10-04 - D0-N header candidate boundaries and runtime archive roles
+
+- Input identity: unchanged 77-input export
+  `3ff2b97b53b1ab788c513f73965e9d66655578adaec87b1aef76bf3c9917c8a2`.
+- Changes: known-empty copy proof rejects dynamic and multi-target owner
+  collisions; copy/transform aggregates retain both producers in either
+  declaration order. Local static-copy candidates no longer misclassify
+  generator/fetched recipes; CP overrides are refused. A runtime cannot consume
+  its own client archive; another unique implementation archive is required.
+- Tests: configured transpiler suite 640 passed, one existing ignored; exact
+  source-selector/client-selection counterprobe passes. Header collector 20
+  passed plus one actual-P4 opt-in test. Library Clippy passes without lint
+  exceptions. Earlier engine suite 39 passed; newer client-archive suppression
+  and cross-kind collision fixtures are not qualified by that earlier run.
+- Diagnostic replay: binary SHA256
+  `2786913f877464223877f81de6dfc46475656f57d71b737c67ee1d8700faa80c`;
+  report `native-graph-audit-v77-client-fixed.json`, SHA256
+  `d368baa9619b238700b86b4906360775f11f6b7dd24e1ab75c65681f430043b8`.
+  1,060 endpoints, one missing, three unproven Make providers, five selected
+  errors and fifteen unowned errors. No build graph or inventory published.
+- Failed probes retained: nonexistent resolver method, edition-incompatible
+  let-chain, and too-narrow helper visibility caused compile errors. Corrected
+  commands pass; original failure logs remain local.
+- Remaining: concrete HIDD/OpenURL archive production, BZip2 aliases/manual
+  literals, compiler header/assembly capability and diagnostic ownership;
+  fresh P4 core/BSP/Developer, BIN/FAT16, parity and successful media receipts.
+- Safety: shared AROS recipes and TIFF unchanged, no Make payload import,
+  commit, PR, push, release or hardware writes. RV3 remains open.
+
+### 2026-10-05 - D0-N exact SDK asset producers and final-output guards
+
+- Source identity: unchanged 77-input export
+  `3ff2b97b53b1ab788c513f73965e9d66655578adaec87b1aef76bf3c9917c8a2`.
+- Source-owned SDK capability: finite bin aliases and literal one-line manpage
+  stubs; the unchanged BZip2 recipe yields six copies and four text outputs.
+  Copies bind exact program/staged-file producers, not existing files or names.
+- Independent review found two defects: context-free foreign-architecture
+  program selection, and stale executable output identities after target
+  mutation. Both corrected; architecture/ambiguity and final configure-time
+  metadata counterprobes pass. Cyclic file dependencies fail before generation.
+- Measured tests: 652 configured transpiler tests passed, one existing ignored;
+  Clippy clean; complete engine suite 40 passed. SDK CMake byte/mode/incremental/refusal fixture passes, including
+  duplicate keywords, nested roots, symlink mutation and executable renaming.
+  Astro check has zero errors/warnings/hints; standalone build passes.
+- Audit binary SHA256
+  `0c4753a7b1c1e96dbe8cabcb598c7de450c77bec2ad9f05b0ddcd1fbce3f6d8e`;
+  report `native-graph-audit-v77-sdk-assets.json` SHA256
+  `242068eccd015d6410a4f40d83c1bd35343ee17691c6fe7947ee416e38c3285f`.
+  Across 1,060 endpoints: one missing, one unproven Make provider, three
+  selected errors and fifteen unowned errors. Audit remains diagnostic-only.
+- Remaining: HIDD/OpenURL object/archive producers, compiler header/assembly
+  generation and diagnostic attribution; fresh P4 core/BSP/Developer build,
+  ELF-to-BIN/FAT16, exact compiler/linker parity and success/media receipts.
+- Safety: no shared AROS recipe edits, Make-built payload adoption, commit,
+  push, PR, release or hardware write. RV3 remains open.
+
+### 2026-10-05 - D0-N explicit target command roles and source-local flags
+
+- State: native command-role configuration preparation; full P4 qualification
+  remains open. Only port-local configuration/export changed in AROS-NX.
+- Contract: 77-input export SHA256
+  `2c3134653e7b953ecb56ae4ccfd875737dd2ef1a25e0b35154ebbbf38399b574`;
+  configuration SHA256
+  `96c5031991897ace1451de9e76cab171d9acbfa40085f54e9fcc9d00aa8f0ff5`.
+- Source-local USER_CFLAGS, USER_INCLUDES and USER_CPPFLAGS now feed the ordered
+  target flags instead of disappearing from the native configuration. OBJDIR
+  derives from GENDIR/CURDIR. Target CC/AR/RANLIB use explicit admitted-tool
+  roles; GNU AR flags remain source-selected `cr`, without LTO. No ambient
+  compiler wrapper or user flags imported. EXECSMP retains the two quote
+  characters generated by geninc.cfg.in for D1001's non-SMP configuration.
+  The earlier unquoted empty projection would select the SMP replacement lane;
+  GNU Make independently reports `quoted=no` and `unquoted=yes` for the
+  exact conditional. The transpiler's previous unconditional unquoting of
+  expanded values was incorrect; quote delimiters are now removed only in
+  quoted directive syntax. Two regression cases and an independent GNU Make
+  differential pass. The configured library suite passes 674 tests with four
+  explicit opt-in probes ignored, before source-compile module registration.
+  EXECSMP is source-bound in the native Make fragment, not a JSON scalar
+  override (the JSON contract correctly refuses quote-bearing shell syntax).
+- Quote probe: admitted GCC 16.2.0 compiled with `-iquote.` and the selected
+  RV32/ilp32f ISA arguments. ELF32/RISC-V/RVC/single-float object SHA256
+  `3f19452844cc152bd8f74bb083afe99017c280693b3078666e75ebfc91f86bdd`
+  at `/Volumes/Dev/Build/rv3-iquote-probe.BjXCJ0/iquote.o`.
+- New source archive backend independently preserves AR/RANLIB bytes and object
+  order; removal of an archive member cannot reuse it from a stale archive.
+  This bounded engine fixture is not HIDD/OpenURL graph admission.
+  The admitted RV GNU AR/RANLIB fixture also passes; the complete configured
+  engine suite passes 41 tests (`audit-source-archives-engine-qualified.log`).
+- Remaining: closed macro/object role binding, compiler header/assembly
+  producers, source-span and full-suite qualification, fresh strict graph,
+  complete core/BSP/Developer, BIN/FAT16 and successful media receipts.
+- Safety: shared AROS source/TIFF unchanged; no commit, push, PR, release,
+  Make-built payload adoption or hardware writes.
+
+### 2026-10-05 - D0-N sealed generated Make template integration
+
+- Isolated baseline 763a536, no hardware changes. Current 80-input contract
+  SHA256 c19b28b3a895dd248d499c3b1de494bf233c54568d2caca0e4d21eb7f2af48ce.
+  The previous 2c313465 command-role identity remains historical evidence.
+- Only the port contract and progress documents change in AROS-NX. The sealed
+  shared compiler sources are not edited. The declared AC_CONFIG_FILES pair
+  and explicit @ENABLE_EXECSMP@ empty substitution reconstruct geninc.cfg;
+  generated files must never be read. Tools integration/tests are pending.
+- Independent ownership review exposed a diagnostic ambiguity: an unresolved
+  conditional second consumer cannot be dropped when calling an owner unique.
+  The bounded diagnostic helper now refuses that ambiguity; it creates no
+  providers. Focused verification is pending after the correction.
+- Archive role regression passes two focused tests. The archive/compile/header
+  projections remain partial; no full selected graph or payload is qualified.
+  TIFF stays unchanged. No commit, PR, push, release or flash.
+- Next: qualified template expansion and ordered header operations, complete
+  object/archive binding, fresh strict graph, then cold core/BSP/Developer and
+  media/flash-plan gates.
+
+### 2026-10-05 - D0-N complete archive and header closure integration
+
+- State: local audit remediation in progress, not a native payload pass.
+- Source baseline 763a536; 80-input export SHA256
+  `57863b094afb4d4365911ac2cb50cb7e020a24e73aab51ec0c2b6e9b1fb03e62`;
+  native Make configuration SHA256
+  `b3e1652e700f7f4f2937671ba1bfbbaf4fab545c8e1a0311f0c54507cb19e6df`.
+  Only port-local configuration/export changed; the optional commented list
+  stays inactive. Shared compiler recipes and TIFF are unchanged.
+- Previous configured all-target checkpoint passes: 268 common/704 transpiler
+  unit tests and enabled integrations (`audit-template-ownership-all-targets-v3.log`).
+  A failed generated-template source-marker probe was corrected by preserving
+  its distinct template marker; previous failure logs remain retained.
+- Archive backend: an isolated direct consumer cold build produces the object
+  list and static archive before linking, then returns the expected result.
+  Order, incremental and unowned-member/collision refusal probes pass in
+  `source-archives-imported-consumer.log` under rv3-p4-cold-inventory.jIRVCT.
+- New graph integration checks source parent-to-HIDD edges, complete member
+  coverage and distinct internal identities. An initial binder compilation
+  failure and a stale test expectation were exposed; final integration tests
+  are pending. Header pipelines lower in-place source SED operations into
+  distinct private products with explicit generated-input ownership. Local
+  directory groups must not create a global setup alias or erase unknown vars.
+- Safety: no imported Make payload, hardware/device write, commit, PR, push or
+  release. RV3-A1/A2/A3 stay open. Remaining risks: strict full-graph ownership,
+  cold core/BSP/Developer build, BIN/FAT16 production, compiler/linker parity
+  and successful-build/media receipts. Next: focused/integrated tests and
+  measured actual-source audit before any payload claim.
+
+### 2026-10-05 - D0-N runtime closure and fail-closed diagnostic ownership
+
+- State: local audit corrections under integration; RV3-A1/A2/A3 remain open.
+- Identities: tools baseline 719beb99; P4 baseline 763a536; unchanged 80-input
+  export SHA256 `57863b094afb4d4365911ac2cb50cb7e020a24e73aab51ec0c2b6e9b1fb03e62`.
+  Every bound input matches its measured hash. Only existing authorized dirty
+  source changes are present; TIFF/STDC/GenCTBL remain unchanged.
+- Procedure/result: configured serial `aros-cmake-engine` lib run with explicit
+  source and tools roots passes 42/42 in
+  `rv3-p4-cold-inventory.jIRVCT/audit-engine-runtime-closure-v6-complete-env.log`.
+  Generated-header runtime tests reject changed/symlinked inputs, outputs and
+  staging paths without changing the outside sentinel. Archive ordering,
+  cold consumer linking, incremental behavior and ownership refusals pass.
+- Retained failed probes: an earlier parallel engine run had three bounded
+  process failures and a missing source root; a serial repeat passed 41 tests
+  but lacked AROS_TEST_TOOLS_DIR for one test. That test passed independently,
+  then all 42 passed together with the complete environment. No timeout or
+  assertion was weakened. A 746-test transpiler checkpoint exposed a stale
+  producer-family expectation; its correction and subsequent ownership
+  changes still require a fresh integrated run.
+- Independent review exposed false diagnostic ownership from inert GNU Make
+  define bodies, erased physical continuations, incomplete binary macro inputs
+  and partial owner chains. The generic proof is bounded across ordinary and
+  macro identities, rejects unknown branches/cycles and retains every proved
+  owner. The physical snapshot must match the parsed snapshot. Disabled
+  metadata remains diagnosis-only, never a producer or an activation.
+- Further review: active eval/indirect Make expansions may instantiate rules
+  from inert text and therefore require an unowned refusal. Pending layered
+  aggregates and pipelines now compare all output claims before any commit;
+  conflicts must reject every claimant independently of collection order.
+  Diagnostic physical locations are separate from logical operation ordering.
+  The first bounded-owner test compilation exposed E0502 in the budget update;
+  the borrow fix is local, with integrated retest pending. The queued CLI build
+  was interrupted before transpiler compilation to avoid a changing snapshot.
+- Header proof now distinguishes case-preserving configured-root aliases from
+  conservative case-folded collision keys. Transactional sibling rollback,
+  independent owner/output conflicts and complete HIDD member coverage remain
+  required. Fresh transpiler tests and actual-source traversal are pending.
+- Public standalone-tool documentation describes these limits; Astro check
+  reports no errors/warnings and its local build produces 45 pages. No deploy.
+- Integrated v6 retest: common tests passed; transpiler library reported
+  779 passed, one failed and five ignored. The failed binary-macro ownership
+  fixture remains a real integration blocker, not a successful qualification.
+  Independent review also found exponential alias work below the recursion
+  limit and an opaque define-to-define path hiding eval. A complete-file visit
+  and byte budget and active opaque-reference veto now have counterprobes;
+  the changed guard passed independent read-only review. Retesting is pending.
+- Integrated v7: complete configured common/transpiler all-targets exited zero
+  (`audit-archive-header-all-targets-v7-stable.log`): common 268 and transpiler
+  782 library tests, plus all enabled integrations; five opt-in probes remain
+  ignored. The failed CURDIR fixture used a path other than its declaring
+  source directory; its corrected positive and literal-override negative
+  counterprobe pass. No production ownership gate was relaxed.
+- Fresh actual audit: binary SHA256
+  `55a7d259f1e6668d6f5c33f02337b75b8fe4e3f7f603dacf8d0970d56bc3c7fc`
+  produced `native-graph-audit-v80-closed-v2.json`, SHA256
+  `85dd449dcfd4b65e123c7dc5a958d60c981508db561ca38f85b3491402ca25fb`.
+  It visits 1,069 endpoints, zero missing and zero unproven Make providers,
+  four selected failures and 14 unowned diagnostics. Repeating with the
+  already materialized Zstd Ports directory removes the cold inventory
+  failure, leaving three selected failures. Neither diagnostic run qualifies
+  a build. HIDD archive binding is now complete; execbase producer closure
+  and disabled TIFF diagnostic attribution are being corrected. The existing
+  source contract already declares the disabled TIFF edge optional; a
+  diagnostic label must not fabricate an active provider. TIFF stays disabled.
+- Clippy: v9 exited nonzero with 19 library / 27 test-build errors before the
+  arity/style corrections. That failed log is retained; current lint and
+  integrated verification are pending. No lint suppression or capability
+  bypass is used as qualification.
+- Safety/next: no old Make payload reuse, device write, commit, PR, push or
+  release. Finish integrated verification, repeat the diagnostic traversal,
+  then qualify the fresh selected graph/core/BSP/Developer, source BIN/FAT16
+  operations, parity, successful-build/media receipts and complete flash plan.
+
+### 2026-10-05 - D0-N actual-host configuration and physical header reconciliation
+
+- State: audit remediation in progress; RV3-A1/A2/A3 and all payload gates open.
+- Identities: tools baseline 719beb99, isolated P4 baseline 763a536. New export
+  SHA256 `d78394c3e06261be9d447cedcdc61a5089c7eac12c6a572c14cb9a45400d38e2`
+  retains 80 unchanged input records. Source-declared host values match sealed
+  configure inputs; missing host entries fail closed. Shared defaults must not
+  impersonate a host identity. No generated build-tree config is substituted.
+- Preceding measured audit: `native-graph-audit-v80-warm-v3.json`, SHA256
+  `d4015aa2ff26fb9e16267ac25a2092237273062f6a13c5332a5323bb2e2fbaae`,
+  from binary `53e2d382d45d5376e52910e739d73d05f389b87477277942afed082d39523052`
+  and export 57863b09: 1,068 reachable endpoints, two selected failures,
+  12 unowned diagnostics, zero missing endpoints and zero unproven providers.
+  This is diagnosis, not graph admission. Disabled TIFF's already-declared
+  optional edge is respected; TIFF remains unchanged and disabled.
+- Implementation under verification: reconcile old/new header projections only
+  with identical physical file, positive rule line and exact output, after
+  complete owner-group validation. Paired compile sidecars require a verified
+  macro invocation and complete object-owner proof; no depfile-to-object build
+  edge or claim about runtime dependency contents is invented.
+- Retained failures: strict Clippy v11 found a test module before later items;
+  its relocation needs retesting. CLI build v3 was deliberately interrupted
+  with exit 130 before completion to avoid a changing source snapshot. Neither
+  is successful qualification. Logs stay in rv3-p4-cold-inventory.jIRVCT.
+- Host-map verification: `audit-common-host-context-v2.log` passes all 272
+  common library tests, including missing hosts, duplicate/unbounded maps and
+  rejection of host identities in shared defaults. An earlier common test was
+  interrupted while loading a procedural-macro dylib; its process sample shows
+  dyld code-signature validation waiting in fcntl. No security setting changed.
+- Independent ownership review found duplicate top-level macro keys and fake
+  keys inside quoted/nested values. Duplicate keys now veto proof; closed
+  top-level extraction and its counterprobes are implemented. These
+  later ownership changes are not qualified by the common-only result.
+- The complete configured common-only v3 run passes 300 enabled tests (272
+  library, 11 board registry and 17 source-contract tests); two explicitly
+  source-dependent probes remain ignored. Shared Make evaluation now also needs
+  aggregate work, byte and list-item budgets: depth alone does not bound flat
+  alias duplication, substitution growth, foreach or filter comparisons. That
+  remediation is under implementation; no complete transpiler result yet.
+- Independent review found broader-than-GenMF quote/key acceptance and indirect
+  eval through immediate macro flag assignments. Both are being corrected with
+  negative fixtures, rather than assuming flags are recipe-only. Root review
+  also found foreach whitespace normalization in the first budget patch; the
+  local correction preserves each body and empty-iteration separators and is
+  compared against GNU Make. The directory resolver is receiving its own
+  monotonic expansion guards before shared-evaluator integration is tested.
+- Independent reference reproduction uses the unchanged configured
+  tools/genmf/genmf.py and config/make.tmpl. Single-quoted basenames retain
+  literal quote bytes (generated Make SHA256
+  `a2a9823494e976695be6be6c78c767cade40a385a996f05dee41eef910525977`);
+  an unknown macro key exits 1 with a syntax error. The indirect eval fixture
+  expands successfully (Make SHA256
+  `224c0c9ed0b99ae3c30fbb9ebf8daa6a156b3b25785641d31be6e90c449f712e`),
+  and GNU Make's dry-run database contains the injected depfile consumer.
+  Database SHA256 is
+  `dd45d7c83f771beb8da248d8906ec83e0082905bf75b2c6c64208ddb6c8f394a`.
+  No compiler command or hardware operation ran in these reference probes.
+- Fresh bounded verification: `dirs-budget-harness.log` passes all 20 tests,
+  including normal scope precedence, recursive fanout, oversized values and
+  diagnostic growth. It includes the actual source and the compiled common
+  crate; isolated unused-item warnings are not workspace lint evidence.
+  `audit-cli-build-v4.log` exits 0 in 7m20s; CLI 0.3.19 SHA256 is
+  `3e84471ca957a7ed3e8b9c3a6934c2ef8388f17829d584f51f527e50d7f7f0b6`.
+  The queued integrated v8 was cancelled before transpiler compilation to
+  close new macro proof gaps; it is not a successful test result.
+  Common all-target strict Clippy v14 passes with `-D warnings` in 10.20s;
+  this does not qualify the changing transpiler.
+- Further exact counterprobes: original GenMF rejects an unquoted NBSP between
+  basename tokens with exit 1. The diagnostic lexer now vetoes non-ASCII
+  whitespace rather than accepting that invalid invocation. Independent review
+  found active inline macro invocations and nested helpers outside the outer
+  macro hash. Their correction is in progress; neither absence nor purity is
+  assumed. Active unmodeled macro effects already veto owner attribution.
+- Documentation: Astro check reports zero errors/warnings across 13 files;
+  local build succeeds with 45 pages. Build warnings remain for propagated
+  head-inject directives and the empty i18n collection; no deployment.
+- Safety/next: no TIFF/STDC/GenCTBL change, device write, commit, PR, push or
+  release. Finish regressions and actual-source audit before strict selected
+  graph, fresh core/BSP/Developer, BIN/FAT16, parity and success receipts.
+
+### 2026-10-05 - D0-N bounded ownership review and fresh source counterprobes
+
+- State: audit remediation continues; RV3-A1/A2/A3 remain open. No source
+  payload, flash, release or hardware result is inferred from diagnostic output.
+- Identity: unchanged 80-input export d78394c3; fresh audit binary SHA256
+  `08325d22b1b34830cd10094f16d888c594da1c614ae367d4eaca45b98f11a809`.
+- Ownership: all reachable helper definitions are hash-verified. Active inline
+  GenMF effects and surviving Make includes veto proof. Shared work/path budgets
+  apply across all outputs and paired-sidecar fallback. Independent read-only
+  review found no blocker; build_prog attribution is deliberately withdrawn
+  until implicit objects/dependency inputs are sealed. Native program generation
+  is separate. Order-only prerequisites remain real Make consumer dependencies.
+- Verification: strict common/transpiler Clippy v19 exits 0 without suppressions.
+  Integrated v9 passes 300 common tests but fails 12 transpiler tests; after
+  correcting trailing function whitespace, foreach iteration accounting and
+  obsolete fixtures, v12 passes 830 library tests, with one outdated budget
+  expectation failing and five ignored. Its finite 300-pair case is now a
+  positive exact-owner probe under unchanged limits. Complete rerun pending.
+- Fresh reports under `/Volumes/Dev/Build/rv3-audit-v4.xAPkwc`: cold SHA256
+  `0d1b243f5e00c5fc8d25de768ad643de45711eaf565ac4f8ccdf736b084c9108`,
+  warm SHA256
+  `a39e261effb71ddfeb2be9384d3f76bfb23463f35f42f72324d97359ed6c42df`.
+  Both traverse 1,068 endpoints without missing endpoints/unproven providers;
+  warm retains two selected compiler-header failures and 12 unowned diagnostics.
+  Cold additionally retains one deferred Zstd source failure. Audit exit 0 only
+  means that its diagnostic report was written, not that strict validation passed.
+- Explicit cold/warm Zstd probe passes. The actual P4 header binder rejects a
+  competing concrete producer; literal-object probe configuration also omitted
+  explicit native tool roles and is being aligned with the validated CLI path.
+- Astro v6 check/build succeeds: 13 files, zero check errors/warnings/hints,
+  45 pages. Existing propagated head-inject/empty i18n build warnings remain.
+  No deployment. TIFF SHA256 remains
+  `e67a6b1218debdf8fa7f0cf8340ebda56852a06932a059eca2ec27cef5043d20`.
+- Next: close actual header binding, repeat integrated/actual-source tests,
+  address remaining source families without dropping unknowns; then strict
+  graph and fresh core/BSP/Developer, BIN/FAT16, parity and success receipts.
+  Local only; no shared-source change, commit, PR, push or device operation.
+
+### 2026-10-05 - D0-N SDK projection closure and configured regression checkpoint
+
+- Identity: unchanged export d78394c3 and 80 sealed input records. Diagnostic
+  binary SHA256 b794de8f37127afb9307a4baafc019e53c4ac6a1e4f5eb228196873ba64637a0.
+- SDK copies: reconcile only unique matching physical file/line, exact SDK
+  output and sole generated-header prerequisite. Duplicate or competing
+  claims preserve the whole refused group. Independent review found a POSIX
+  backslash filename alias; source identity now rejects it instead of replacing
+  separators. Its counterprobe is added; final changed-source rerun pending.
+- Configured integrated v14 exits 0: 1,328 passed, zero failures, 19 ignored;
+  common 300, transpiler library 834. Real-source v5 opt-ins pass all five
+  P4 probes plus the cold/warm Zstd probe. v13 was a compile failure from the
+  test's ParsedMmakefile import; that import now uses its actual ast module.
+- v5 reports in rv3-audit-v4.xAPkwc: warm SHA256
+  7eb2ea1112373007c6ff2d0d5f7be0dbe26c9a8317cec2cd7ca2ce09a6b8e140;
+  cold SHA256 44d0afbc93eed1da81fbd02fb5dfecf3d11fe3fe282f9b7a9c6397320d5c7887.
+  Both visit 1,070 endpoints, zero missing/unproven providers. Warm has zero
+  selected failures, 12 unowned, 625 unrelated. Cold adds deferred Zstd source.
+- Remaining evidence: no rejected line is source-bound false. Four rules are
+  dependency overlays, not complete object producers. Ordinary diagnostic
+  edges preserve them, but typed emission needs exact producer coverage and
+  retained normal/order-only prerequisites. common imports make.tail,
+  include_deps imports .d files, and rule_makedirs changes prerequisites and
+  GLOB_MKDIRS; none is inert. No name or directory suppression is justified.
+- Safety: strict graph still refuses. No P4 payload/media or hardware result;
+  TIFF unchanged. Next: close overlays and template effects, then strict graph,
+  fresh core/BSP/Developer, BIN/FAT16, parity and success-bound receipts.
+  Local only: no source activation, commit, PR, push, release or device write.
+
+### 2026-10-05 - D0-N archive prerequisite completeness and overlay boundary
+
+- Identity: unchanged 80-input export d78394c3. Current archive collector
+  SHA256 500504a16bc33642bc757f3777b2c184512c9e31cfa8a63a77727085fec2302d.
+- Archive correction: explicit finite from= must equal the complete declared
+  prerequisite expression and preserve its variable origins until execution.
+  Active conditional assignments, later rebinding, parser effects, unknown
+  target aliases and multi-target archive overlays are rejected. The common
+  guard also covers the existing automatic $^ path; proof bytes are shared.
+  Independent review accepted the bounded semantics after the counterprobes.
+- Measured tests: v17 library 842 pass/5 ignored, then v18 archive 18 pass;
+  v19 archive had one diagnostic-string assertion failure (20 pass), corrected
+  without changing admission. v20 archive exits 0 with 22 pass/1 ignored.
+  Clippy v25 failed because let chains require Rust 2024; the implementation
+  now uses a Rust-2021 expression without changing the crate edition or lint
+  policy. Workspace/all-targets Clippy v26 exits 0. The current complete
+  configured all-targets run and rebuilt audit remain pending.
+- Previous v6 diagnostic reports visit 1,070 endpoints, zero missing/unproven
+  providers, warm zero selected/12 unowned/625 unrelated and cold one selected
+  deferred Zstd source/12 unowned. The v6 actual-source tests pass 5+1 cases.
+  These results precede the final shared archive-prerequisite guard.
+- Overlay audit: the two PC SMP rules add order-only directories to assembly
+  objects; language .o/.d pairs share directory prerequisites; AboutAROS .o/.d
+  pairs require generated headers as normal dependencies. They need typed
+  producer bindings, not standalone object admission or owner-name guesses.
+- Macro closure audit: common imports make.tail and recursive GenModule Make
+  rules; include_deps imports generated .d files. Neither is inert. The
+  MetaMake owner namespace uses project globals, not local recipe VarScope.
+  Private GenMF expansions of eleven residual files are reference evidence
+  only; no Python producer or owner-universe qualification was introduced.
+- Safety: TIFF byte-identical and disabled; no shared-source activation,
+  Make payload reuse, security setting change, commit, PR, push or device write.
+  Strict graph and RV3 remain open. Next: current regression/audit checkpoint,
+  typed overlays and complete include/producer closure, then fresh payloads.
+
+### 2026-10-05 - D0-N serial regression and archive-pattern counterprobes
+
+- Identity: export d78394c3 remains unchanged. Current archive collector
+  SHA256 3cebce75991b1c9e31a1f7dad4056b821016dff6bbc727cb3eafce9087f63e60
+  identifies the first pattern correction, before the bare-percent parser fix.
+- Regression: configured all-targets v20 failed the known parallel fork-window
+  advisory-lock test (common 271 pass/one fail). The repository already requires
+  serial execution; no lock code or assertion changed. Correct v21 exits zero:
+  39 suites, 1,341 pass, zero failures, 19 ignored opt-ins; common 272 and
+  transpiler library 847 pass. Actual P4/Zstd v7 probes pass five plus one.
+- Standalone v10 SHA256
+  259b42990a51f094c4ffed636145ab78b0422c7784824e06e31acc1060fddbef.
+  Its v7 warm/cold audit hashes are
+  e2bf3fa39ca6cc0ab4b2800ffa41155ec9a40a14887bbf4f3187218688c42121 and
+  eecb6c27acdb1210136f034c5ef9b7ceec186b7660e3dfe358e09d7c8d1664dc.
+  Each visits 1,069 endpoints, zero missing, one unproven provider, 12 unowned
+  failures and 625 unrelated failures; warm has two selected failures, cold
+  adds deferred Zstd. libopenurl's disjoint %.o rule caused this regression.
+- Correction under verification: prove unrelated one-stem patterns disjoint
+  using full paths or basenames as GNU Make requires, retaining conservative
+  case folding and the shared byte budget. Compatible or ambiguous patterns
+  remain refused. A direct gmake dry-run confirms lib%openurl.a matches
+  path/libopenurl.a with stem path/; an empty basename stem is not exclusion.
+  v22's actual openurl/HIDD opt-in passed, but two new counterprobes failed:
+  a positive explicit-expression test encountered the existing recipe-effect
+  refusal; bare %.a rules had been hidden by a starts-with-percent shortcut.
+  The positive test now isolates no-recipe overlays; the parser retains
+  colon-bearing percent rules. v23 exits 101 with 26 pass and one failure:
+  explicit from= still mistook a plain Make target pattern for a GenMF macro.
+  Correction SHA256 a2edf9da912a314ae4dd063126a6c1b2edb10519687188e6f4ca1d19965e3dbd
+  uses GenMF's actual name/whitespace grammar, including inline and unknown
+  names and Python's four extra whitespace separators. Independent root-alias
+  review led to refusal of home/physical/foreign deferred roots, unresolved
+  build suffixes, relative slash patterns and relative archive-name aliases.
+  These are generic refusals, not source-name exceptions. v24 passes 29 probes.
+  Standalone v11 SHA256 977ce545f739c7412dc6cac78a9d1b416dda9efc45efa9857e9d61a00022410e
+  restores 1,070 reachable/zero missing/zero unproven in both v8 audits.
+  Warm audit SHA256 1240b1fc9818469434e93b74706afa9451762392defa0059b18c57770790426a
+  has zero selected failures; cold SHA256 824c530b7fd5f86db72ee24d1ab57e0b98e6762c0b459a66a7112a2c5fb24951
+  retains one deferred Zstd-source failure. Both retain 12 unowned/625 unrelated.
+- Further counterprobe: actual GenMF expands X := y # %compile_q before GNU
+  Make discards its inline comment. The explicit-member guard now checks raw
+  source before comments/conditionals and exempts only its own bounded recipe.
+  Unrelated tab recipes and indented comments remain potential source effects.
+  Current collector SHA256 d2fbaf796b9dd353882c298ad0983cd65b4d68ae335335edddd0c5ce240a1fed;
+  focused v25 passes 29 with zero failures/ignored. Clippy v27 failed only its
+  nonminimal-bool lint; the equivalent expression is corrected. Workspace
+  Clippy v28 exits zero, as does standalone v12 (CLI SHA256
+  adf5438a9041f63209f64063f8f5bc5213bce81f178bb3bc6c59ae2ee4715abd).
+  Actual v8 P4/Zstd source probes pass five plus one. Current v9 audits retain
+  the exact v8 report hashes/counts above. The serial broad v22 intermediate run was deliberately
+  cancelled (exit130) after this counterprobe; no full success is claimed.
+  Read-only sample of its Mesa test PID58927 shows _dyld_start before main;
+  read-only codesign verification passes. No security setting was changed.
+  It completed 23 suites/1,229 pass/zero failures/eight ignored before
+  cancellation; those partial counts do not close the all-targets gate.
+- Safety: the private dependency-overlay prototype is not integrated or
+  qualified. No owner/provider suppression or Python producer was introduced.
+  Strict graph, fresh payload/media/parity/receipts and RV3-A1/A2/A3 remain open.
+  TIFF stays disabled and byte-identical. Local only: no commit, PR, push,
+  release, deployment, security changes or device operations.
+
+### 2026-10-05 - D0-N complete current regression and owner-projection counterprobes
+
+- State: host-only audit remediation continues; D0-N and RV3 remain open.
+  Source export d78394c3 retains its 80 input seals. Archive collector
+  d2fbaf796b9dd353882c298ad0983cd65b4d68ae335335edddd0c5ce240a1fed
+  remains the independently reviewed current production checkpoint.
+- Regression: configured serial all-targets v29 exits zero: 39 suites,
+  1,347 passes, zero failures, 19 opt-ins ignored. Common 272 and transpiler
+  library 853 tests pass. Explicit P4/Zstd v8 probes retain their independent
+  five-plus-one passes; ignored opt-ins are not claimed as run by v29.
+  Log: /Volumes/Dev/Build/rv3-p4-cold-inventory.jIRVCT/audit-integrated-all-targets-v29-serial.log.
+- Diagnostic-only corpus v1 scanned 2,799 directories and 1,197 MetaMake
+  inputs; 1,193 expanded to 74,537,706 bytes. Four CRLF continuation inputs
+  were refused, so the corpus did not establish closure. The frozen prototype
+  used there was 6d32d7b88f923297fd6d6b6a79b4bc8fbe5ff7844fc490b257357362fdc5362b.
+- Independent GenMF review of prototype 84bed0e7 found four incorrect
+  successful projections: argument-introduced calls were rescanned,
+  continuation-consumed physical calls were omitted, original character
+  offsets were lost after argument substitution, and bare CR was not
+  normalized. Saved exact template/input/reference outputs:
+  /Volumes/Dev/Build/rv3-audit-v4.xAPkwc/genmf-review-evidence-v1.
+  Corrections and further corpus comparisons remain private validation, not
+  source-owner exclusion or native-producer admission.
+- Safety: TIFF remains disabled and byte-identical (e67a6b12); make.tmpl
+  remains 2b347a8b. No AROS shared-source activation, hardware test, security
+  change, commit, PR, push, release, deployment or device operation occurred.
+  The warm/cold v9 audit still retains 12 unowned rules. Next: close the
+  exact GenMF/MetaMake source-owner/import proof and typed dependencies, then
+  strict graph validation and fresh core/BSP/Developer, BIN/FAT16 and receipts.
+
+### 2026-10-05 - D0-N native MetaMake context integration started
+
+- State: graph closure remains in development. Source-owned
+  native-metamake-policy-v1.json selects an out-of-source, closed native
+  P4 invocation. Empty selectors and absent variables remain distinct.
+  Host globals precede target globals; configure/make commands are retained
+  as metadata and never executed by this projection.
+- Source: isolated baseline 763a536; native export now seals 85 inputs.
+  Initial integrated contract SHA256 is
+  490ccd5fb54a834181561b75fc425e2912ceb97dfc7fc010e6565fe80ff674bb.
+  Added policy and three unchanged imported templates plus toolchain_def;
+  common source templates, TIFF and compiler source remain unchanged.
+- Preceding verified checkpoint: serial v30 common/transpiler all-targets
+  exits zero, 1,411 passes in 41 suites, zero failures, 20 opt-ins ignored.
+  The exact 1,167-source GenMF corpus passes against Classic; a real MetaMake
+  fixture confirms bound-empty and absent markers differ. FIFO publication
+  readers pass 72 focused probes. These precede the new policy integration.
+- Independent review: custom .RECIPEPREFIX and active eval effects could
+  masquerade as dependency-only overlays. Conservative refusals and direct
+  regressions are being integrated; neither creates compile producers.
+- Remaining gate: complete source/config/template/owner/import closure,
+  followed by strict graph validation. All 12 earlier unowned diagnostics
+  remain visible until that evidence is accepted. Full native payload,
+  ELF-to-BIN, Developer FAT16, parity and successful media receipts remain
+  open. No hardware, commit, PR, push or publication occurred.
+
+### 2026-10-05 - D0-N active MetaMake dependencies cannot be waived
+
+- Policy: source MetaMake defects must remain visible. Native optionality
+  declarations cannot erase active edges, including selector-derived routes
+  or prerequisites whose metadata owner is commented out.
+- Source evidence: workbench/libs/tiff/mmakefile.src has an active
+  linklibs-tiff dependency on workbench-libs-tiff-pkgconfig, but that metadata
+  owner is commented out. The 22 architecture selector routes have no proven
+  per-edge absence contract. Classic MetaMake tolerates missing children;
+  this is not a proof that each missing child is optional.
+- Implementation: native validation preserves all source edges and returns
+  recipe-bound AT0006 diagnostics with a `fix upstream` hint. Source-owned
+  declarations with real or rejected producers retain their normal checks;
+  unsupported translation is not automatically labelled a source defect.
+- Source checkpoint: the current 85-input contract SHA256 is
+  18bdc262d321d1829c0cf6e5b98fed202bd635a82ffcc45f978b8fb6873cba2d.
+  The earlier diagnostic-only owner v5 report traversed 2,759 metadata
+  targets and retained 351 missing endpoints; it did not qualify a build.
+  Its native projection reached 1,069 targets and retained 12 unowned errors.
+- Gate: strict graph and complete RV3 payload remain open. Shared source
+  corrections require separate approval; TIFF remains unchanged. Local only,
+  no commit, PR, push, publication, flash or hardware change.
+
 ## Evidence-entry template
-
-
-
-
-
-
 
 ```text
 ### YYYY-MM-DD - <phase and result>

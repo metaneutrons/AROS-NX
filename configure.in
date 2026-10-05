@@ -2614,6 +2614,28 @@ AC_MSG_CHECKING([whether to build crosstools])
 AC_ARG_ENABLE(crosstools,AS_HELP_STRING([--disable-crosstools],[Do not build cross-compiler toolchain]),crosstools="$enableval",crosstools="$crosstools_guess")
 AC_MSG_RESULT($crosstools)
 
+dnl This source tree's release producer exports a GNU compiler and libgcc,
+dnl not the system SDK. Keep its header-only prerequisite closure opt-in.
+AC_MSG_CHECKING([whether to build the GNU compiler-only release closure])
+AC_ARG_ENABLE([toolchain-release],
+    AS_HELP_STRING([--enable-toolchain-release],[Build the opt-in GNU compiler and core headers, without system SDK libraries]),
+    [enable_toolchain_release="$enableval"],
+    [enable_toolchain_release=no])
+case "$enable_toolchain_release" in
+    yes) aros_toolchain_release=1 ;;
+    no)  aros_toolchain_release=0 ;;
+    *)   AC_MSG_ERROR([--enable-toolchain-release accepts only yes or no]) ;;
+esac
+if test "$aros_toolchain_release" = "1"; then
+    if test "$crosstools" != "yes"; then
+        AC_MSG_ERROR([--enable-toolchain-release requires building AROS crosstools])
+    fi
+    if test "$aros_toolchain" != "gnu"; then
+        AC_MSG_ERROR([this compiler-only release closure requires --with-toolchain=gnu])
+    fi
+fi
+AC_MSG_RESULT($aros_toolchain_release)
+
 if test "${crosstools}" = "yes"; then
     if test "${crosstools_guess}" = "no"; then
         AC_MSG_ERROR([Cannot build external toolchain if an external ELF or AROS toolchain is specified])
@@ -4490,6 +4512,7 @@ AC_SUBST(aros_target_nostartup_objects)
 
 AC_SUBST(crosstools_target)
 AC_SUBST(crosstools_cxx_target)
+AC_SUBST(aros_toolchain_release)
 
 AC_SUBST(use_libatomic)
 

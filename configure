@@ -683,6 +683,7 @@ aros_nominal_height
 aros_nominal_width
 pci_hidd_target
 use_libatomic
+aros_toolchain_release
 crosstools_cxx_target
 crosstools_target
 aros_target_nostartup_objects
@@ -1017,6 +1018,7 @@ with_grub2_version
 with_grub2_splash
 enable_lzma
 enable_crosstools
+enable_toolchain_release
 with_aros_toolchain_install
 with_binutils_version
 with_gcc_version
@@ -1729,6 +1731,9 @@ Optional Features:
                           KickStart version (default=none).
   --disable-lzma          Disable optional liblzma support
   --disable-crosstools    Do not build cross-compiler toolchain
+  --enable-toolchain-release
+                          Build the opt-in GNU compiler and core headers,
+                          without system SDK libraries
   --enable-objc           Enable Objectve-C support (default=no)
   --enable-java           Enable Java support (default=no)
   --enable-rust           Enable Rust support (default=no)
@@ -12149,6 +12154,33 @@ fi
 { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $crosstools" >&5
 printf '%s\n' "$crosstools" >&6; }
 
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking whether to build the GNU compiler-only release closure" >&5
+printf %s "checking whether to build the GNU compiler-only release closure... " >&6; }
+# Check whether --enable-toolchain-release was given.
+if test ${enable_toolchain_release+y}
+then :
+  enableval=$enable_toolchain_release; enable_toolchain_release="$enableval"
+else case e in #(
+  e) enable_toolchain_release=no ;;
+esac
+fi
+
+case "$enable_toolchain_release" in
+    yes) aros_toolchain_release=1 ;;
+    no)  aros_toolchain_release=0 ;;
+    *)   as_fn_error $? "--enable-toolchain-release accepts only yes or no" "$LINENO" 5 ;;
+esac
+if test "$aros_toolchain_release" = "1"; then
+    if test "$crosstools" != "yes"; then
+        as_fn_error $? "--enable-toolchain-release requires building AROS crosstools" "$LINENO" 5
+    fi
+    if test "$aros_toolchain" != "gnu"; then
+        as_fn_error $? "this compiler-only release closure requires --with-toolchain=gnu" "$LINENO" 5
+    fi
+fi
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $aros_toolchain_release" >&5
+printf '%s\n' "$aros_toolchain_release" >&6; }
+
 if test "${crosstools}" = "yes"; then
     if test "${crosstools_guess}" = "no"; then
         as_fn_error $? "Cannot build external toolchain if an external ELF or AROS toolchain is specified" "$LINENO" 5
@@ -19949,6 +19981,7 @@ fi
 
 
 # Target Related #########################
+
 
 
 

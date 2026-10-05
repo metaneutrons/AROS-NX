@@ -44,6 +44,11 @@ PRIV_EXEC_INCLUDES = \
     $(TARGET_KERNEL_INCLUDES) \
     -I$(SRCDIR)/rom/kernel
 
+# The generic Exec include rule requests the architecture's kernel headers.
+# This is a header-only dependency, not the Exec module build (which would
+# recurse back through kernel-exec-includes).
+#MM- kernel-exec-includes-esp32p4-riscv : kernel-kernel-includes
+
 USER_INCLUDES   := $(PRIV_EXEC_INCLUDES)
 USER_AFLAGS     := $(PRIV_EXEC_INCLUDES) -I$(GENINCDIR)
 USER_CPPFLAGS   := $(P4_BOARD_CPPFLAGS)

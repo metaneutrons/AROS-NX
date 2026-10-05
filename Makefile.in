@@ -1,4 +1,4 @@
-# Copyright © 2000-2025, The AROS Development Team. All rights reserved.
+# Copyright Â© 2000-2025, The AROS Development Team. All rights reserved.
 # $Id$
 #
 # Main makefile for AROS
@@ -24,6 +24,7 @@ export AROS_GUI_THEME := @aros_target_guitheme@
 
 TOP := @AROS_BUILDDIR@
 SRCDIR := @SRCDIR@
+AROS_TOOLCHAIN_RELEASE := @aros_toolchain_release@
 include $(TOP)/config/make.cfg
 ifneq ($(CROSSTOOLS_TARGET),)
 include $(SRCDIR)/tools/crosstools/$(AROS_TOOLCHAIN).cfg
@@ -179,6 +180,19 @@ $(CROSSTOOLSDIR)/.installflag-crosstools: $(TOP)/config.status $(AROS_TOOLCHAIN_
 
 crosstools-toolchain: tools $(CROSSTOOLS_BUILDFLAG)
 	@$(NOP)
+
+# The release root builds the GNU compiler and libgcc with copied core headers.
+# Define this target in both modes so a disabled invocation cannot reach
+# .DEFAULT and silently expand to features or arbitrary MetaMake targets.
+ifeq ($(AROS_TOOLCHAIN_RELEASE),1)
+crosstools-release: tools
+	@+$(CALL) $(MMAKE) $(MMAKE_OPTIONS) AROS.tools-crosstools-gnu-release
+else
+crosstools-release:
+	@$(ECHO) 'crosstools-release requires --enable-toolchain-release' >&2
+	@exit 1
+endif
+.PHONY: crosstools-release
 
 crosstools : crosstools-toolchain features
 	@$(MAKE) $(MKARGS) toolchain-linklibs

@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "kind": "native-metamake-policy-v1",
+  "profile": "esp32p4-d1001",
+  "project": "AROS",
+  "configuration_source": "mmake.config.in",
+  "template": "config/make.tmpl",
+  "closed_environment": true,
+  "out_of_source": true,
+  "substitutions": [
+    {"name": "@aros_target_suffix@", "value": ""},
+    {"name": "@mmake_ignore_dirs@", "value": ""}
+  ],
+  "environment": [
+    {"name": "AROS_TARGET_ARCH", "value": "esp32p4"},
+    {"name": "AROS_TARGET_CPU", "value": "riscv"},
+    {"name": "AROS_TARGET_CPU32", "value": ""},
+    {"name": "AROS_TARGET_CPU_TYPE", "value": ""},
+    {"name": "AROS_TARGET_CPU_MODE", "value": ""},
+    {"name": "AROS_TARGET_VARIANT", "value": ""},
+    {"name": "AROS_TARGET_SUFFIX", "value": ""},
+    {"name": "AROS_TARGET_ICONSET", "value": "Gorilla"}
+  ],
+  "host_environment": [
+    {"host": "linux-x86_64", "bindings": [{"name": "AROS_HOST_ARCH", "value": "linux"}, {"name": "AROS_HOST_CPU", "value": "x86_64"}]},
+    {"host": "linux-aarch64", "bindings": [{"name": "AROS_HOST_ARCH", "value": "linux"}, {"name": "AROS_HOST_CPU", "value": "aarch64"}]},
+    {"host": "macos-aarch64", "bindings": [{"name": "AROS_HOST_ARCH", "value": "darwin"}, {"name": "AROS_HOST_CPU", "value": "aarch64"}]}
+  ],
+  "global_snapshots": [
+    {"source": "config/host.cfg.in", "configured_path": "$(TOP)/bin/$(AROS_HOST_ARCH)-$(AROS_HOST_CPU)/gen/host/config/host.cfg", "text": ""},
+    {"source": "config/target.cfg.in", "configured_path": "$(TOP)/bin/$(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU)/gen/config/target.cfg", "text": "FAMILY :=\nFLAVOUR := standalone\nAROS_TARGET_TOOLCHAIN := yes\nAROS_TOOLCHAIN := gnu\nTARGET_LLVM_RUNTIMES_STYLE := separate\nAROS_TARGET_BOOTLOADER :=\nTARGET_USELOGRES := no\nTARGET_UNITTESTS := no\nPCI_HIDD_TARGET :=\nOBJC_TARGET := no-objc\nJPEGXL_TOOLCHAINSUPPORT :=\nTARGET_LIBATOMIC := yes\nAROS_TARGET_PLATFORM := esp32p4-riscv\nARCH := $(AROS_TARGET_ARCH)\nCPU := $(AROS_TARGET_CPU)\n"}
+  ],
+  "declared_absent": [
+    "DEBUG", "EBFPACKEDEXES", "LLVM_CMAKE_FILES", "MESA3DGL_GALLIUMCORE",
+    "OPT_HOST_ALSA", "OPT_HOST_ANDROIDGFX", "OPT_HOST_PULSEAUDIO",
+    "OPT_HOST_SDLGFX", "OPT_HOST_X11GFX", "OPT_HOST_X11_HOSTGL"
+  ],
+  "evidence_sources": [
+    "configure.in", "config/make.cfg.in", "config/host.cfg.in",
+    "config/target.cfg.in", "config/toolchain_def", "Makefile.in"
+  ]
+}

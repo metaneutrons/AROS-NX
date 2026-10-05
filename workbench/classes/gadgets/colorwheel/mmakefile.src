@@ -12,7 +12,7 @@ FUNCS := \
 #MM workbench-gadgets-colorwheel-includes : \
 #MM     kernel-exec-includes \
 #MM     kernel-graphics-includes \
-#MM     kernel-cybergraphics-includes \
+#MM     workbench-libs-cgfx-includes \
 #MM     kernel-intuition-includes \
 #MM     kernel-dos-includes \
 #MM     kernel-layers-includes

@@ -1,0 +1,25 @@
+# Source-owned experimental native P4 contract. No other board is selected
+# implicitly. A separate build tree is required for every board and ABI.
+[[targets]]
+name = "esp32p4-d1001"
+toolchain_profile = "rv32-p4-local"
+arch = "riscv32"
+platform = "esp32p4"
+bsp = "d1001"
+features = []
+float_abi = "ilp32f"
+bootloader = ""
+native_build_contract = "arch/riscv-esp32p4/native-build-v1.json"
+
+[targets.transpiler]
+family = ""
+variant = ""
+toolchain = "gnu"
+cpu32 = ""
+use_mmu = false
+
+# configure.in's esp32p4 case selects standalone and does not declare
+# PLATFORM_EXECSMP. This does not select the experimental SMP/Giant paths.
+[targets.bootstrap_abi]
+flavour = "standalone"
+platform_smp = false

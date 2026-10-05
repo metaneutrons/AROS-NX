@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "format": "esp-unsigned-flash-v1",
+  "profile": "esp32p4-d1001",
+  "board": "d1001",
+  "chip": "esp32p4",
+  "chip_id": 18,
+  "revision_min": 100,
+  "revision_max": 199,
+  "idf_version": "6.0.1",
+  "flash_bytes": 33554432,
+  "erase_sector_bytes": 4096,
+  "bootloader_offset": 8192,
+  "partition_table_offset": 32768,
+  "core_partition_kind": 0,
+  "core_partition_subtype": 16,
+  "package_partition_kind": 64,
+  "package_partition_subtype": 0,
+  "package_limit_bytes": 4063232,
+  "development_volume_offset": 12582912,
+  "development_volume_size_bytes": 4194304
+}
