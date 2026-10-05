@@ -724,7 +724,7 @@ turned out to be, in the order it has to happen:
     the AXI path: read and write commands, address and dummy lengths,
       octal command and address with hex data, double rate, AXI enable
     the translation table: physical page n to virtual page n
-    a memory header, without MEMF_FAST, at priority -20
+    a memory header, MEMF_FAST since 2026-10-05, at priority -20
 
 Two controllers share the bus, MSPI2 for the memory-mapped path and MSPI3
 for the mode registers, which is why some of it is done twice.

@@ -24877,6 +24877,36 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next safe step: the `MEMF_FAST` change and the icon if approved; the A1
   recovery test; the D1001 when connected; then S1.
 
+### 2026-10-05 - PSRAM header gets MEMF_FAST; Wanderer shows it
+
+- State change: memory flags only; no acceptance point changes. Approved by
+  Fabian.
+- Change: `krnP4PublishPSRAM()` creates "External Memory" with
+  `MEMF_FAST | MEMF_PUBLIC | MEMF_KICK | MEMF_LOCAL`; priority stays -20,
+  so untyped allocations still use the code-capable SRAM (priority 0)
+  first, then PSRAM, then the data SRAM (-30). Explicit `MEMF_FAST`
+  requests now reach PSRAM before the data SRAM, which keeps that bank for
+  `MEMF_CHIP`.
+- Build (flags as in the S0 entry): core 165,440 B
+  `85b8fc45148b09163f26394e1b6185b8af00a1d98ecea381b9bab68b15efa067`. Its
+  disassembly differs from `1e4c5ff9…` in one instruction, `li a4,1281`
+  to `li a4,1285` (0x501 to 0x505, i.e. `MEMF_FAST`); the other changed
+  bytes are the image checksum. Package unchanged, `b9926fb5…`.
+- Flash: core at `0x20000` on the JC1060P470C (`80:f1:b2:d3:3b:a6`, MAC
+  checked), verified. Boot log 90 s
+  `c59a13d30e6dc69c824b56078132d503b8e03a268a3815d6b46dc3506bb9463a`:
+  Wanderer, GT911, 17 heartbeats, no alert.
+- Observed by Fabian on the panel: "Other" 18.06M (379K before),
+  "Graphics" 383K. The PSRAM header spans about 25.1 MB (32 MB less the
+  4.8 MB package reservation and the 2.4 MB framebuffer reservation), so
+  the running desktop holds roughly 7 MB of it; not broken down.
+- Open: `MEMF_CHIP` is still only the 384 KB data SRAM. Planar bitmaps
+  take their planes from `MEMF_CHIP` (`gfx_planarbitmapclass.c`), so a
+  full-screen 8-bit planar bitmap (614 KB) cannot be allocated. Options put
+  to Fabian: a fixed `MEMF_CHIP` pool carved from PSRAM (recommended),
+  `MEMF_CHIP` on all of PSRAM (both Wanderer figures would count it), or
+  no change.
+
 ## Evidence-entry template
 
 

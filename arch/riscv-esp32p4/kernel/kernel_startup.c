@@ -6586,10 +6586,17 @@ static int krnP4PublishPSRAM(IPTR first_free)
         return 0;
     }
 
+    /*
+     * MEMF_FAST means ordinary, non-chip RAM, as on every other port; it
+     * says nothing about speed.  Without it AvailMem(MEMF_FAST) left out
+     * the PSRAM and an explicit MEMF_FAST request could only get internal
+     * SRAM.  The priority below the code-capable SRAM still keeps untyped
+     * allocations there first.
+     */
     __esp32p4_mh_psram = (struct MemHeader *)first_free;
     krnCreateMemHeader("External Memory", -20, (APTR)first_free,
                        end - first_free,
-                       MEMF_PUBLIC | MEMF_KICK | MEMF_LOCAL);
+                       MEMF_FAST | MEMF_PUBLIC | MEMF_KICK | MEMF_LOCAL);
     return 1;
 }
 
