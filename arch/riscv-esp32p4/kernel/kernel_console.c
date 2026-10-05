@@ -23,6 +23,8 @@
 
 #include <inttypes.h>
 
+#include <aros/config.h>
+
 #include "hardware.h"
 #include "kernel_intern.h"
 
@@ -40,8 +42,9 @@ void krnP4ConsoleRuntime(void)
     console_runtime = 1;
 }
 
-#ifdef P4_SPIN_WATCHDOG
-/* Back to waiting output, for a report from a hart that is stuck. */
+#if defined(P4_SPIN_WATCHDOG) || defined(__AROSEXEC_SMP__)
+/* Back to waiting output: for a report from a hart that is stuck, and
+   around the second hart's start, whose report must not be dropped. */
 void krnP4ConsoleBlocking(void)
 {
     console_runtime = 0;

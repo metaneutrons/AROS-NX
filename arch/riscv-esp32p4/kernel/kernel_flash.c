@@ -127,6 +127,11 @@ __attribute__((always_inline)) static inline unsigned long mmu_entry_of(unsigned
  * (esp_mm/esp_mmu_map.c:820) reads them under nothing but a mutex, because
  * selecting an entry with the index register does not change any mapping.
  */
+#if defined(__AROSEXEC_SMP__)
+/* Set when the other hart did not park for a window */
+P4_SRAMDATA static volatile int flash_park_failed;
+#endif
+
 P4_SRAMCODE static void flash_map_entries(unsigned long entry,
                                           unsigned long page,
                                           unsigned long pages,
@@ -145,6 +150,16 @@ P4_SRAMCODE static void flash_map_entries(unsigned long entry,
      * will later also be used after exec is running.
      */
     csr_clear(mstatus, MSTATUS_MIE);
+#if defined(__AROSEXEC_SMP__)
+    /* The other hart waits in SRAM meanwhile, or the window stays shut */
+    if (!krnP4ParkOthers())
+    {
+        flash_park_failed = 1;
+        if (status & MSTATUS_MIE)
+            csr_set(mstatus, MSTATUS_MIE);
+        return;
+    }
+#endif
     token = krnP4CacheOff();
 
     /* Whatever the scratch window held before, in the same window, so the
@@ -157,6 +172,9 @@ P4_SRAMCODE static void flash_map_entries(unsigned long entry,
                                      flags));
 
     krnP4CacheOn(token);
+#if defined(__AROSEXEC_SMP__)
+    krnP4UnparkOthers();
+#endif
 
     if (status & MSTATUS_MIE)
         csr_set(mstatus, MSTATUS_MIE);
@@ -281,6 +299,26 @@ void *krnP4FlashMap(unsigned long paddr, unsigned long len)
 
     flash_map_entries(entry, page, pages, flash_scratch_pages,
                       flash_mapping_flags());
+#if defined(__AROSEXEC_SMP__)
+    if (flash_park_failed)
+    {
+        flash_park_failed = 0;
+        krnP4PutStr("[flash] the other hart did not park; not mapped\n");
+        return NULL;
+    }
+    {
+        static ULONG reported;
+
+        /* The first few windows the other hart waited out, as evidence */
+        if (__p4_parks != reported && __p4_parks <= 3)
+        {
+            reported = __p4_parks;
+            krnP4PutStr("[flash] the other hart waited out window ");
+            krnP4PutDec(reported);
+            krnP4PutStr("\n");
+        }
+    }
+#endif
     flash_scratch_pages = pages;
 
     /*

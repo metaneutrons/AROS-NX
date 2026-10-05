@@ -128,7 +128,9 @@ start, belongs in `arch/riscv-esp32p4`.
 - **S3 Second hart online, idle.** Start hart 1 from the E1/E2 entry with its
   own ISR stack, CLIC and IPI setup, per-hart state and a tick (forwarded from
   hart 0 or its own timer, to be decided); one idle task per hart; park for
-  cache and flash windows. Hart 1 only idles.
+  cache and flash windows. Hart 1 only idles. Status 2026-10-05: passed
+  headless on the JC1060P470C (ROADMAP, S3 entry); the per-hart interrupt
+  stacks moved here from S4, see "S3 design".
 - **S4 Scheduling on two harts.** A per-hart scheduler after the
   aarch64-native model, `cpu_Switch` releasing `tc_SpinLock` of a waiting task
   (the upstream x86_64 fix), `KrnScheduleCPU` through IPIs and task affinity;
@@ -167,8 +169,9 @@ Shared changes, each generic:
 In the port:
 
 - Per-hart data (`kernel/tls.h`, `kernel/kernel_tls.c`): one 64-byte record
-  per HP core in internal SRAM, found through `mhartid`, not through `tp`,
-  which is an ordinary register here and part of every saved task context.
+  per HP core in internal SRAM, found through `mhartid`, not through `tp`:
+  `tp` is kept out of the task context, but it would have to be set on
+  each hart before the first access, while `mhartid` needs nothing.
   Every access masks interrupts on its hart for its duration, so a task
   cannot read one hart's id and update the other hart's record, and each
   record has a single writer. The quantum is initialized statically, since
@@ -204,6 +207,52 @@ In the port:
 Not in S2: CPU masks, `KrnGetCPUCount()` above one, `EXECF_CPUAffinity`,
 idle tasks per hart and the second hart's start; S2 runs everything on
 hart 0 and idles in `cpu_Dispatch()` as before.
+
+### S3 design: hart 1 online, idle (2026-10-05)
+
+- Start: a COLDSTART resident at priority 104 (`kernel/kernel_smp.c`), after
+  exec.library has created the boot task; the Giant found a start from
+  `krnStartExec()` too early. Hart 0 writes `__p4_smp_boot` (its own
+  `mtvec`, hart 1's interrupt stack top, the C entry, the boot stack top),
+  routes only interrupt matrix source 80 to hart 1's CLIC line 22, holds
+  hart 1 and releases it in E1's order with the boot register pointing at
+  `__p4_smp_entry` (`kernel/secondary_smp.S`, internal SRAM). It waits up to
+  100 ms for hart 1 to register, else holds it again.
+- Hart 1 (`krnP4SecondaryMain`): CLIC on its local alias with line 22, a
+  bootstrap task on its boot stack (`kernel_execsmp.c`, from aarch64, at
+  -128 and bound to hart 1), nesting counts to -1, `ThisTask`, registered in
+  `__p4_harts_online` (`KrnGetCPUCount()` counts it), then its idle task
+  ("CPU #01 Idle", -127, bound to hart 1), which takes over at once.
+- Staging: until S4 hart 1 takes only tasks bound to it alone
+  (`P4_SMP_HART1_BOUND_ONLY` in `kernel_scheduler.c`); everything else
+  stays on hart 0. Hart 0 keeps idling in `cpu_Dispatch()`.
+- Interrupt stacks: 8 KiB per hart in internal SRAM; `traps.S` swaps to it
+  through `mscratch` on a fresh trap, stays put on a nested one, and clears
+  MIE in the restored `mstatus` so nothing interrupts between the
+  `mscratch` restore and `mret`. Needed in S3 already: while hart 1 waits
+  out a cache-off window, PSRAM, where task stacks are, cannot be reached.
+  It also keeps a trap frame off a task's stack for S4, when another hart
+  may already run that task.
+- Trap depth per hart (`TrapDepth` in the per-hart record): it decides
+  whether a trap reschedules on its way out and what `KrnIsSuper()`
+  answers, and with two harts trapping a global would mix them up.
+- Park: `flash_map_entries()`, the one place that switches the cache off,
+  first asks the other hart to wait (`krnP4ParkOthers()`: request word, IPI
+  work bit, wait up to 1 s for the acknowledgement) and refuses the mapping
+  if it does not answer; hart 1's line-22 handler clears the latch, then the
+  CLIC bit, then takes the work bits, and waits in SRAM with the branch
+  predictor off until the request is withdrawn.
+- Soft interrupts run on hart 0 only (`kernel_intr.c` for the smp variant
+  and the idle loop in `cpu_Dispatch()`), as in the Giant: their handlers
+  are written for one CPU.
+- `startup.S` did not include `aros/config.h`, so the hart-1 isolation it
+  has for `__AROSEXEC_SMP__` was missing from the S2 SMP cores; it now
+  includes it.
+- Not in S3: a tick for hart 1 (an idle-only hart needs no quantum),
+  `EXECF_CPUAffinity` and cross-hart signals, `KrnScheduleCPU()` by IPI,
+  serialization of the SYSTIMER snapshot, the console and the ROM cache
+  routines (only hart 0 uses them while hart 1 idles), and
+  `core_DoCallIPI()`.
 
 Open points:
 

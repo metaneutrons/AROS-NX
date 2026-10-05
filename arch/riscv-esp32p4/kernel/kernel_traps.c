@@ -305,6 +305,10 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
             if (SysBase && (IDNESTCOUNT_GET < 0))
                 core_Cause(INTB_VERTB, 1L << INTB_VERTB);
         }
+#if defined(__AROSEXEC_SMP__)
+        else if (line == P4_SMP_IPI_LINE)
+            krnP4IPIInterrupt();
+#endif
         else if (line == P4_DSI_DMA_LINE)
         {
             /* One complete framebuffer per interrupt.  The DesignWare item
@@ -370,12 +374,21 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
     return TRAP_DONE;
 }
 
+#if defined(__AROSEXEC_SMP__)
+#include "tls.h"
+/* Per hart: the other hart's traps are no business of this one's. A trap
+   runs with interrupts masked, so the record can be used directly. */
+#define TRAP_DEPTH  (p4_tls_self()->TrapDepth)
+#else
+#define TRAP_DEPTH  __esp32p4_trap_depth
+#endif
+
 void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
                     unsigned long mtval)
 {
     int action;
 
-    __esp32p4_trap_depth++;
+    TRAP_DEPTH++;
     action = krnTrapDispatch(ctx, mcause, mtval);
 
     /*
@@ -385,7 +398,7 @@ void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
      * re-enters the dispatcher from inside itself. The depth is held
      * across the call so nesting stays visible to it, and released after.
      */
-    if (SysBase && (__esp32p4_trap_depth == 1))
+    if (SysBase && (TRAP_DEPTH == 1))
     {
         if (action == TRAP_RESCHEDULE)
             core_ExitInterrupt(ctx);
@@ -393,5 +406,5 @@ void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
             core_SysCall((int)ctx->x[CTX_REG_A7], ctx);
     }
 
-    __esp32p4_trap_depth--;
+    TRAP_DEPTH--;
 }

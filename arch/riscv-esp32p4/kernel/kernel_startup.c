@@ -7516,6 +7516,10 @@ void kernel_cstart(unsigned long hartid, void *fdt)
         }
     }
 #endif
+#if defined(__AROSEXEC_SMP__)
+    /* From here on a trap on this hart runs on its own interrupt stack */
+    krnP4SMPInitPrimary();
+#endif
     krnP4PutStr("[console] runtime output nonblocking; saturated bytes dropped\n");
     krnP4ConsoleRuntime();
     krnStartExec();

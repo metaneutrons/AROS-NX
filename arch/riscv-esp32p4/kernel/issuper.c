@@ -9,6 +9,10 @@
 
 #include <kernel_base.h>
 
+#if defined(__AROSEXEC_SMP__)
+#include "tls.h"
+#endif
+
 #include <proto/kernel.h>
 
 /*
@@ -26,7 +30,11 @@ AROS_LH0I(int, KrnIsSuper,
 {
     AROS_LIBFUNC_INIT
 
+#if defined(__AROSEXEC_SMP__)
+    return TLS_GET(TrapDepth) > 0;
+#else
     return __esp32p4_trap_depth > 0;
+#endif
 
     AROS_LIBFUNC_EXIT
 }

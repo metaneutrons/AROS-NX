@@ -459,6 +459,27 @@ int  platform_wdt_quiet(void);
 /* Switch to nonblocking, lossy output before runtime tasks can print. */
 void krnP4ConsoleRuntime(void);
 void krnP4ConsoleBlocking(void);
+
+#if defined(__AROSEXEC_SMP__)
+/*
+ * The second hart (SMP.md, S3). Hart n raises its peer with
+ * CPU_INTR_FROM_CPU_n, interrupt matrix source 79 + n; each hart's map
+ * routes the source aimed at it to CLIC line 22.
+ */
+#define P4_SMP_IPI_LINE         22
+#define P4_SMP_IPI_FROM(h)      (0x500e5010UL + (h) * 4)
+#define P4_SMP_IPI_SOURCE(h)    (79 + (h))
+#define P4_SMP_INTMTX_ROUTE(c, s) (0x500d6000UL + (c) * 0x800UL + (s) * 4)
+#define P4_SMP_INTMTX_SOURCES   128
+
+#define P4_IPI_PARK             (1UL << 0)  /* wait in SRAM: cache window */
+
+void krnP4SMPInitPrimary(void);
+void krnP4IPIInterrupt(void);
+int krnP4ParkOthers(void);
+void krnP4UnparkOthers(void);
+extern volatile ULONG __p4_parks;
+#endif
 void krnP4SpinReport(const char *what, void *lock, void *caller);
 void krnP4PutC(char c);
 void krnP4PutStr(const char *s);

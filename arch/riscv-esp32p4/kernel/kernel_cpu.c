@@ -177,7 +177,12 @@ void cpu_Dispatch(regs_t *regs)
         asm volatile("wfi");
         csr_clear(mstatus, MSTATUS_MIE);
 
+#if defined(__AROSEXEC_SMP__)
+        /* Soft interrupts on hart 0 only, see kernel_intr.c */
+        if ((SysBase->SysFlags & SFF_SoftInt) && GetCPUNumber() == 0)
+#else
         if (SysBase->SysFlags & SFF_SoftInt)
+#endif
             core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
     }
 

@@ -1079,7 +1079,17 @@ CFILES += \
         spinislocked \
         spintrylock \
         spinlock \
-        spinunlock
+        spinunlock \
+        alloccpumask \
+        freecpumask \
+        clearcpumask \
+        getcpumask \
+        cpuinmask \
+        getcpucount \
+        kernel_intr \
+        kernel_execsmp \
+        kernel_smp
+AFILES += secondary_smp
 endif
 
 # With compiler=kernel, %build_archspecific compiles with KERNEL_CFLAGS,

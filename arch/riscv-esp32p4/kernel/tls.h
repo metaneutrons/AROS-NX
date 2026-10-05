@@ -13,9 +13,9 @@
  * One record per HP core, in internal SRAM, found through mhartid.
  *
  * Not through tp, as the other SMP ports use their thread register: tp is
- * an ordinary x register here and part of every saved task context, so a
- * task that moved to the other hart would bring the old hart's pointer
- * with it. mhartid cannot go stale.
+ * kept out of the task context here, but it would have to be set up on
+ * each hart before the first access and kept out of every path that might
+ * load it; mhartid is always right and needs neither.
  *
  * Every access runs with interrupts masked on this hart. A task can only
  * change harts at a reschedule, so with interrupts masked it cannot read
@@ -37,6 +37,7 @@ typedef struct tls
     UWORD       Quantum;
     UWORD       Elapsed;
     ULONG       CPUNumber;
+    LONG        TrapDepth;      /* see krnTrapHandler() */
 } __attribute__((aligned(64))) tls_t;   /* one cache line per hart */
 
 #define TLSSF_Quantum   (1 << 0)
@@ -44,6 +45,9 @@ typedef struct tls
 #define TLSSF_Dispatch  (1 << 2)
 
 extern tls_t __p4_tls[P4_TLS_HARTS];
+
+/* Bit n set once hart n runs in the kernel (KrnGetCPUCount()) */
+extern ULONG __p4_harts_online;
 
 static inline unsigned long p4_tls_mask(void)
 {

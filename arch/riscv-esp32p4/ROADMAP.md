@@ -148,7 +148,7 @@ gate: compensated output is not the native display contract.
 | S0 | Base on current upstream | `hardware partial (JC1060P470C passed)` | Evidence entries 2026-10-04/05: rebased onto `5da9fd5072`, fresh tree, JC1060P470C headless boot and visual/touch/Backlight check pass; the A1 retest is not needed (the upstream change cannot be reached on the P4). Open: the D1001 run; its artifacts are built. |
 | S1 | Native atomics on cached PSRAM across both harts | `hardware verified (JC1060P470C)` | Evidence entry 2026-10-05: `P4_S1_PSRAM_ATOMICS=1`, twelve of twelve epochs exact with proven interleaving: word AMO, CAS, GCC's 8/16-bit LR/SC loops, mixed AMO and LR/SC in one word, a lock over plain data, 1 MiB of cold lines, all read back from PSRAM. The `atomic.h` dispatch suffices. The D1001 has not run it. |
 | S2 | `smp` build on one hart | `hardware verified (headless, JC1060P470C)` | Configure allows `smp` for esp32p4; platform layer in the port; boots on hart 0 with hart 1 in reset. The SMP build tree is set up here, because configure refuses `smp` for this target until then. |
-| S3 | Second hart online, idle | `not started` | Hart 1 from the E1/E2 entry with its own ISR stack, CLIC/IPI, per-hart state, a tick and an idle task; parked for cache and flash windows. |
+| S3 | Second hart online, idle | `hardware verified (headless, JC1060P470C)` | Hart 1 from the E1/E2 entry with its own ISR stack, CLIC/IPI, per-hart state, a tick and an idle task; parked for cache and flash windows. |
 | S4 | Scheduling on two harts | `not started` | Per-hart scheduler after aarch64-native, `KrnScheduleCPU` through IPIs, affinity, then free migration. |
 | S5 | SMP qualification | `not started` | Upstream SMP tests, sustained stress, device serialization, boot/visual/touch regressions on both boards with fresh readiness. |
 | S6 | SMP default decision | `not started` | SMP or single hart as the P4 default; retires `giant-smp`. Replaces the former E4 row. |
@@ -25061,6 +25061,79 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   and switches the boot watchdogs off. A reset on a hang would need the
   hardware watchdog fed from the tick (proposed, not decided).
 - Next safe step: rebuild the normal trees and boot them headless; then S3.
+
+### 2026-10-05 - One struct layout: normal trees rebuilt, binaries interchangeable
+
+- State change: the normal v3 tree is rebuilt with the platform-wide SMP
+  layout (`__AROSPLATFORM_SMP__`), the cross toolchain included; the SMP
+  tree is rebuilt from scratch with the new toolchain. The D1001 tree is
+  not rebuilt yet.
+- Build problems on the way, both of my making: deleting only `bin/` of a
+  tree leaves `config/features.status`, the probe of the target compiler,
+  so the build skips it and `compiler.cfg` is missing (include directories
+  then reach the compiler without `-iquote`); and deleting the variant's
+  output directory also deletes the `aros/config.h` configure generated
+  there, so the tree has to be configured again. A fresh tree: delete
+  `bin/` and `config/features.status`, then run configure.
+- Normal build (JC1060 flags): core 165,648 B
+  `60d5f2b92bb94433ac736348172be442238e0bad5088de136ed2557963704af8`,
+  package 3,728,532 B
+  `241034e72797b01d114f4aa3d4d69500cdfd769eeeb59f7b4a1badd24afe9bae`
+  (audit 0 failed), card image `5c1e761f…` (178 entries, matches its
+  manifest), development volume
+  `5ba281357728aa3c92deb4dc40f8ab1da972b95407e8757e5b27c30319d6dba5`.
+- Interchangeable: the normal development volume is byte-identical to the
+  SMP one built hours earlier with the old toolchain, and the SMP card
+  image rebuilt with the new one is byte-identical to the card in the
+  board (`e2df4059…`). The normal core and package were flashed (MAC
+  checked, verified) and booted with that SMP card, 90 s,
+  `1f507fc132b5bd92beb4d457a7a46178cb31a9936fa1d9220095a7ad8f349a5f`:
+  Wanderer, GT911, IPrefs, 17 heartbeats, no alert.
+- `startup.S` did not include `aros/config.h`, so its hart-1 isolation for
+  `__AROSEXEC_SMP__` was missing from the S2 SMP cores (their `_start`
+  goes straight to `gp`); fixed with S3.
+
+### 2026-10-05 - S3: hart 1 comes online and idles
+
+- State change: Track E S3 hardware verified (headless, JC1060P470C). The
+  D1001 has not run it.
+- Design: SMP.md, "S3 design". In short: a COLDSTART resident at 104 starts
+  hart 1 from SRAM with E1's release sequence; hart 1 makes a bootstrap
+  task on its boot stack, registers, and creates its idle task, which takes
+  over; until S4 hart 1 runs only tasks bound to it alone; both harts trap
+  on their own 8 KiB SRAM interrupt stacks, with the trap depth per hart;
+  the flash cache-off window parks the other hart in SRAM through an IPI on
+  CLIC line 22 and refuses the mapping if it does not answer; soft
+  interrupts run on hart 0 only.
+- Build (SMP tree, normal JC1060 flags): core 182,976 B
+  `c16028fc6127a04dfded2a319b4781c88e857c8cb4482bc3088a719f46ffc97d`, no new
+  warnings, the SRAM residency check passes; package 3,730,376 B
+  `86e36ba0ca2e3418d0355fd77c613c0e83931ac0a0e1d4b927587fba4bf8c686` (audit
+  0 failed). In the linked image `_start` holds hart 1 again before the BSS
+  clear, `__trap_entry` begins with the `mscratch` swap, and
+  `__p4_smp_entry`, `ipi_send`, `park_here`, `krnP4ParkOthers` are in SRAM,
+  `park_here` without calls.
+- Hardware (JC1060P470C `80:f1:b2:d3:3b:a6`, MAC checked; package at
+  `0x820000`, core at `0x20000`, verified; SMP card `e2df4059…` and
+  development volume `5ba28135…` unchanged):
+  - first boot, 90 s, `93c512a9…`: "[smp] hart 1 online, cpus 2, idling in
+    'CPU #01 Idle'", "the other hart waited out window" 1 and 3 (2 lost to
+    the lossy console), Wanderer, GT911, 17 heartbeats, no alert;
+  - five resets, 40 s each (`d96eb490…`, `2fe2e2d2…`, `e22a185e…`,
+    `204b83e7…`, `b505534d…`): every boot online, windows 1, 2 and 3
+    parked, no refused window, Wanderer, no alert;
+  - ten minutes, `062639f549c5cfab0131e1106d9c5b171146e222a3b67ec1a8e547c64f9f7c9b`:
+    online, windows 1-3 parked, Wanderer, 119 heartbeats to the end, no
+    alert.
+- Hart 1 executes from XIP flash (its C entry and the idle loop) on the
+  JC1060P470C without any core-1 cache setup, as the Giant had found on the
+  D1001.
+- Normal builds are unchanged by S3: the normal JC1060 core rebuilt from
+  this commit is byte-identical, `60d5f2b9…`.
+- Limits: the windows are the flash volume's reads at boot, three per
+  boot; no runtime stress of the park. Hart 1 runs only its own tasks, so
+  nothing yet tests exec's SMP paths under load.
+- Next safe step: S4.
 
 ## Evidence-entry template
 

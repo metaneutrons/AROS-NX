@@ -20,3 +20,5 @@ tls_t __p4_tls[P4_TLS_HARTS] =
     { .Quantum = SCHEDQUANTUM_VALUE, .CPUNumber = 0 },
     { .Quantum = SCHEDQUANTUM_VALUE, .CPUNumber = 1 },
 };
+
+ULONG __p4_harts_online = 1;

@@ -33,11 +33,22 @@
 
 #define DSCHED(x)
 
+/* Until S4 (SMP.md) the second hart runs nothing that may run on hart 0 */
+#define P4_SMP_HART1_BOUND_ONLY
+
 /* iet_CpuAffinity is a cpumask buffer or the TASKAFFINITY_ANY sentinel,
    never a raw bitmask. NULL means "run anywhere". */
 static inline BOOL core_AffinityMatch(struct Task *t, uint32_t cpumask)
 {
     void *aff = (void *)(IPTR)GetIntETask(t)->iet_CpuAffinity;
+
+#if defined(P4_SMP_HART1_BOUND_ONLY)
+    /* S3: hart 1 takes only what is bound to it alone - its bootstrap and
+       idle tasks - while everything else stays on hart 0. S4 lifts this. */
+    if (cpumask != 1)
+        return aff && (IPTR)aff != TASKAFFINITY_ANY &&
+               ((uint32_t *)aff)[0] == cpumask;
+#endif
 
     if (!aff || (IPTR)aff == TASKAFFINITY_ANY)
         return TRUE;
