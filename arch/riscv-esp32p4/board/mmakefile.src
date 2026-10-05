@@ -1,0 +1,23 @@
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
+
+#
+# esp32p4board.resource: creates the board's devices from its profile
+# (board.h), so the drivers stay portable.  The profiles are data; this is
+# the code that turns them into objects: the I2C bus, the touch controller
+# on it and the touchscreen driver for both.  It is what a device tree
+# would do on a machine that had one, and RTC and audio codec belong here
+# too when they arrive.  esp32p4board.c is common; the board's own file
+# ($(P4_BOARD_SETUP), from board.mk) holds its wiring code.
+#
+
+#MM kernel-esp32p4board : kernel-hidd-i2c-esp32p4 kernel-hidd-touchscreen \
+#MM     hidd-gt911 hidd-gsl3670
+
+USER_CPPFLAGS := $(P4_BOARD_CPPFLAGS)
+
+%build_module mmake=kernel-esp32p4board \
+    modname=esp32p4board modtype=resource version=$(AROS_TARGET_PLATFORM) \
+    files="esp32p4board $(P4_BOARD_SETUP)"
+
+%common

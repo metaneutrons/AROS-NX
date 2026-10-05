@@ -69,9 +69,23 @@ static int GM_UNIQUENAME(Init)(LIBBASETYPEPTR LIBBASE)
         scs->scs_Next = 0;      // from killing us after CLI[1] exits
         scs->scs_Name = sh->sh_Name;
         __AROS_SET_FULLJMP(&scs->scs_Code, sh->sh_Command);
-#ifdef __AROS_USE_FULLJMP
+        /*
+         * Unconditional, and it used to be inside #ifdef __AROS_USE_FULLJMP.
+         * That macro means something else: it says the library jump table
+         * itself holds instructions, which is why MakeFunctions() and
+         * SetFunction() consult it.  What was just written here is
+         * instructions on every architecture that has __AROS_SET_FULLJMP at
+         * all, whatever its jump vectors look like.
+         *
+         * On 32-bit RISC-V the two differ - JumpVec is a bare pointer, so
+         * __AROS_USE_FULLJMP is correctly undefined, while the trampoline
+         * above is three real instructions.  Skipping the flush there left
+         * every resident shell command unreachable: the first `echo` took an
+         * illegal-instruction trap on a valid auipc, because instruction
+         * fetch still saw the zeroes the memory held before.  CreateSegList()
+         * flushes the same construct with no guard at all.
+         */
         CacheClearE(&scs->scs_Code, sizeof(struct FullJumpVec), CACRF_ClearI | CACRF_ClearD);
-#endif
         AddSegment(sh->sh_Name, MKBADDR(&scs->scs_Next), CMD_INTERNAL);
         if (Stricmp(sh->sh_Name, "NewShell") == 0)
             AddSegment("NewCLI", MKBADDR(&scs->scs_Next), CMD_INTERNAL);

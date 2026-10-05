@@ -1,0 +1,8 @@
+CONFIG_IDF_TARGET="esp32p4"
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_BOOTLOADER_LOG_LEVEL_INFO=y
+# The vendor builds every image for pre-v3 silicon (min 1.0, max 1.99), as
+# on the D1001; the v6.0.1 default targets v3.01, so open the gate first.
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_100=y

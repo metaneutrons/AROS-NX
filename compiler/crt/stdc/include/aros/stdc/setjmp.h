@@ -28,8 +28,11 @@
     /* LP64D callee-saved: ra, sp, s0-s11, fs0-fs11 */
 #   define _JMPLEN 25
 #elif __riscv
-    /* ILP32D callee-saved: ra, sp, s0-s11 (13 slots + pad),
-       then fs0-fs11 as 12 8-byte pairs at an 8-aligned offset */
+    /* ILP32 callee-saved: ra, sp, s0-s11 (13 slots + pad), then fs0-fs11
+       at an 8-aligned offset.  Sized for the widest ABI, where those twelve
+       registers are 8 bytes each; a single precision ABI uses half of that
+       tail and a soft float ABI none of it, and both leave the layout of
+       everything before it unchanged. */
 #   define _JMPLEN 37
 #endif
 

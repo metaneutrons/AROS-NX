@@ -63,6 +63,84 @@ static inline void wfi(void)      { asm volatile("wfi"); }
 #define SCAUSE_IRQ_SEI      9
 
 /*
+ * mstatus fields, for platforms that never leave machine mode. The
+ * layout is the one sstatus exposes a window onto, so FS, VS, SUM and
+ * MXR sit at the same bit positions and the lazy FPU and vector
+ * handling above reads the same way from either CSR. What machine mode
+ * adds is its own interrupt enable and its own previous-privilege
+ * field.
+ */
+#define MSTATUS_MIE         0x00000008UL
+#define MSTATUS_MPIE        0x00000080UL
+#define MSTATUS_VS          0x00000600UL /* Vector unit state (V ext)   */
+#define MSTATUS_VS_OFF      0x00000000UL
+#define MSTATUS_VS_INITIAL  0x00000200UL
+#define MSTATUS_VS_CLEAN    0x00000400UL
+#define MSTATUS_VS_DIRTY    0x00000600UL
+#define MSTATUS_MPP         0x00001800UL /* Privilege level trapped from */
+#define MSTATUS_MPP_U       0x00000000UL
+#define MSTATUS_MPP_S       0x00000800UL
+#define MSTATUS_MPP_M       0x00001800UL
+#define MSTATUS_FS          0x00006000UL /* FPU state                   */
+#define MSTATUS_FS_OFF      0x00000000UL
+#define MSTATUS_FS_INITIAL  0x00002000UL
+
+/*
+ * The status a freshly prepared task context is entered with.
+ *
+ * mret and sret take the privilege to return to from different fields,
+ * MPP for mret and SPP for sret, so a value that names only one of them
+ * is wrong on half the machines. An SPP-only value on a core that
+ * implements M-mode alone leaves MPP at zero, mret returns to User, and
+ * the first instruction fetch of the task faults before a single one of
+ * its instructions runs.
+ *
+ * Naming both fields costs nothing, because each platform reads only the
+ * half it owns: mstatus.SPP and mstatus.SPIE are read-only zero without
+ * S-mode, and sstatus does not expose MPP or MPIE at all, so writes to
+ * the other half are dropped by the hardware rather than by us guessing
+ * which one the port needs.
+ */
+#define RISCV_CTX_STATUS_INITIAL    (SSTATUS_SPP | SSTATUS_SPIE | \
+                                     MSTATUS_MPP_M | MSTATUS_MPIE | \
+                                     MSTATUS_FS_INITIAL)
+#define MSTATUS_FS_CLEAN    0x00004000UL
+#define MSTATUS_FS_DIRTY    0x00006000UL
+#define MSTATUS_MPRV        0x00020000UL
+#define MSTATUS_SUM         0x00040000UL
+#define MSTATUS_MXR         0x00080000UL
+
+/* mie/mip interrupt-enable/pending bits */
+#define MIE_MSIE            0x00000008UL /* Machine software (IPI)    */
+#define MIE_MTIE            0x00000080UL /* Machine timer             */
+#define MIE_MEIE            0x00000800UL /* Machine external          */
+
+/* mcause interrupt codes (with the top bit set) */
+#define MCAUSE_IRQ_MSI      3
+#define MCAUSE_IRQ_MTI      7
+#define MCAUSE_IRQ_MEI      11
+
+/*
+ * Synchronous trap causes. These are numbered the same whichever mode
+ * takes the trap, so they are named without a CSR prefix and read out of
+ * either mcause or scause.
+ */
+#define CAUSE_MISALIGNED_FETCH      0
+#define CAUSE_FETCH_ACCESS          1
+#define CAUSE_ILLEGAL_INSTRUCTION   2
+#define CAUSE_BREAKPOINT            3
+#define CAUSE_MISALIGNED_LOAD       4
+#define CAUSE_LOAD_ACCESS           5
+#define CAUSE_MISALIGNED_STORE      6
+#define CAUSE_STORE_ACCESS          7
+#define CAUSE_USER_ECALL            8
+#define CAUSE_SUPERVISOR_ECALL      9
+#define CAUSE_MACHINE_ECALL         11
+#define CAUSE_FETCH_PAGE_FAULT      12
+#define CAUSE_LOAD_PAGE_FAULT       13
+#define CAUSE_STORE_PAGE_FAULT      15
+
+/*
  * Vector extension CSR numbers. Numeric so they assemble without V in
  * the build's -march; accessing them traps unless sstatus.VS is enabled.
  */

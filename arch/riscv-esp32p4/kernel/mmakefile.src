@@ -1,0 +1,1207 @@
+
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
+
+# The board profile reaches the shared RISC-V kernel objects through the
+# arch include flags: getcpunumber.c in arch/riscv-all includes this port's
+# kernel_intern.h, and that includes board/board.h, which refuses to build
+# without one. mmake does not track the flag file: rebuild the kernel
+# cleanly when the board changes.
+%set_archincludes mainmmake=kernel-kernel maindir=rom/kernel \
+  modname=kernel pri=10 arch=esp32p4-riscv \
+  includes="-I$(SRCDIR)/$(CURDIR) $(P4_BOARD_CPPFLAGS)"
+
+%get_archincludes modname=kernel \
+    includeflag=TARGET_KERNEL_INCLUDES maindir=rom/kernel
+
+%get_archincludes modname=exec \
+    includeflag=TARGET_EXEC_INCLUDES maindir=rom/exec
+
+PRIV_KERNEL_INCLUDES = \
+    $(TARGET_KERNEL_INCLUDES) \
+	-I$(SRCDIR)/rom/kernel \
+	$(TARGET_EXEC_INCLUDES) \
+	-I$(SRCDIR)/rom/exec
+
+USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) -I$(GENINCDIR)
+
+#
+# Build-time switches, all off by default, set through P4_DEBUG_CPPFLAGS.
+# P4_A1_DIAGNOSTIC=1 is the reproducible read-only CMD18 matrix build:
+# it enables both dependent device-test switches without changing normal
+# boot artifacts.  It also enables the passive controller trace for the
+# single known-bad LBA-2048 two-block transfer; the trace is emitted only
+# after that transfer completes or fails.
+#
+#   -DP4_KEEP_WATCHDOG  leave the ROM's watchdogs armed, so a hang reboots
+#                       and repeats its output instead of going quiet
+#   -DP4_TASK_TEST      add two tasks that prove the scheduler: one that
+#                       spins and counts, one that waits on timer.device,
+#                       both reported in the heartbeat
+#   -DP4_CONSOLE_UART   use UART0 instead of USB-Serial/JTAG
+#   -DP4_PSRAM_PROBE    read and write the PSRAM window and look for
+#                       aliasing, to measure its size once it answers
+#   -DP4_PROBE          two bring-up probes: whether the core executes a
+#                       misaligned 32-bit access or traps on it, and
+#                       whether code written into PSRAM through the data
+#                       path can then be fetched as instructions. Both
+#                       decide the shape of the module loader
+#   -DP4_SDMMC_PROBE    power the D1001 SD socket, initialise one card in
+#                       1-bit/400-kHz mode and read only sector zero
+#   -DP4_SDMMC_IGNORE_CD with P4_SDMMC_PROBE, continue the bounded read-only
+#                       probe even when the mechanical GPIO45 contact is high
+#   -DP4_SDCARD_DEVICE_TEST
+#                       after exec starts, open the package-loaded
+#                       sdcard.device, query it and read only sector zero
+#   -DP4_SDCARD_MULTIBLOCK_TEST
+#                       with P4_SDCARD_DEVICE_TEST, compare CMD18 reads of
+#                       1/2/32/128 sectors against CMD17 baselines and, where
+#                       the content is known, against the test card itself
+#                       (sdcard/test-card-reference.md).  A CMD17 baseline
+#                       alone cannot decide anything: it shares the
+#                       controller, FIFO and cache path with CMD18, and at
+#                       LBA 0 both returned zeroes over a real MBR.  Optional
+#                       P4_SDCARD_REPEAT=<n> repeats the two-sector case
+#   -DP4_SDCARD_EXPECT_FAULT
+#                       allow one injected CMD18 failure and require the
+#                       immediately following CMD17 recovery read to pass
+#   -DP4_B5_CONCURRENT_STRESS
+#                       after DOS has booted from the read-only card, reserve
+#                       the framebuffer from exec and run at least 30 minutes
+#                       of display DMA, moving dirty rectangles, referenced
+#                       128-sector READ64 requests and 1-MB PSRAM verify passes
+#   -DP4_B5_VISUAL_GATE  60-second observer gate with long, separate solids,
+#                       checker, quadrant, corner-only and one-pixel-line phases
+#   -DP4_B5_FULL_EXACT_TRIAL
+#                       the complete 1,000-Mbit/s burst/ACK and exact-object
+#                       lifecycle combination; retained as one reproducible
+#                       switch because it is technically active but visually
+#                       black on D1001
+#   -DP4_B5_LIVE_UPDATE_GATE
+#                       preload the accepted coordinate frame, then apply one
+#                       small dirty rectangle before two live full-frame fills;
+#                       isolates handoff/traffic from startup geometry
+#   -DP4_PARTITION_TEST  open the package-loaded partition.library and read
+#                       one sector through its public root-partition API
+#   -DP4_AFTERDOS_PROBE an RTF_AFTERDOS resident that asks the half of the A4
+#                       gate only a running DOS can answer: Info() reporting
+#                       the volume write protected, every mutating DOS call
+#                       refused as write protection, and the medium unchanged
+#                       afterwards.  It runs after SYS: exists and before the
+#                       Shell reaches a prompt
+#   -DP4_CMDLINE="..." supply a kernel command line through the KRN_CmdLine
+#                       boot tag.  bootloader.resource splits it on
+#                       whitespace into the argument list dosboot reads;
+#                       there is no firmware source for one on this board
+#   -DP4_HEARTBEAT_TASK a heartbeat as an exec task instead of the loop at the
+#                       end of kernel_cstart().  That loop only runs because
+#                       nothing before it takes the machine over, and
+#                       dosboot.resource does, so from A4 onwards a heartbeat
+#                       has to live somewhere a boot cannot take away.
+#                       P4_HEARTBEAT_SECS sets the interval, default 5
+#   -DP4_DOS_PROBE      the half of the A4 gate that can be asked before
+#                       dosboot.resource joins the package: bootloader
+#                       arguments, the FAT entries in FileSystem.resource,
+#                       and dos.library present but not self-starting.
+#                       Everything printed after krnStartExec() becomes
+#                       unreachable once dosboot is present, so this runs
+#                       in the step before it
+#
+ifeq ($(P4_B5_FULL_EXACT_TRIAL),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_FULL_EXACT_TRIAL
+endif
+
+# P4_B5_REFERENCE_TRANSITION_TRACE=1 prints the six live DSI host words at
+# the same four lifecycle boundaries measured in the known-good Vellum image:
+# after the ID read, after the vendor table, after video/AUTO and after feed.
+# It is a bounded state discriminator, not a maintained transport setting.
+ifeq ($(P4_B5_REFERENCE_TRANSITION_TRACE),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_REFERENCE_TRANSITION_TRACE
+endif
+
+# P4_B5_BUFFERED_CMD_DRAIN=1 waits after the final vendor command for the
+# host's internal buffered command and payload FIFOs, not merely the public
+# generic write FIFOs, to report empty.  The working Vellum handover is
+# 0x50015; the black AROS handover was first measured at 0x60015.
+ifeq ($(P4_B5_BUFFERED_CMD_DRAIN),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_BUFFERED_CMD_DRAIN
+endif
+
+# P4_B5_SERIAL_COMMAND_DRAIN=1 serializes panel writes on the host's internal
+# buffered-command and buffered-payload empty indications.  On timeout it
+# prints the first command and live packet/PHY/error state, then fails B3 safe.
+ifeq ($(P4_B5_SERIAL_COMMAND_DRAIN),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_SERIAL_COMMAND_DRAIN
+endif
+
+# P4_B5_PRE_DISPLAY_REGISTER_TRACE=1 prints every readable DSI host control,
+# status and active-shadow register immediately before tail display-on.  GEN_HDR
+# and GEN_PLD_DATA are intentionally excluded because reading a FIFO-facing
+# register can disturb the command stream being measured.
+ifeq ($(P4_B5_PRE_DISPLAY_REGISTER_TRACE),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_PRE_DISPLAY_REGISTER_TRACE
+endif
+
+# P4_B5_SLEEP_OUT_NO_ACK_WINDOW=1 suppresses ACK/BTA only while the tail-table
+# sleep-out 0x11 is submitted, then restores both live reference bits before
+# its 120-ms minimum delay and the following display-on command.
+ifeq ($(P4_B5_SLEEP_OUT_NO_ACK_WINDOW),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_SLEEP_OUT_NO_ACK_WINDOW
+endif
+
+ifeq ($(P4_B5_LIVE_UPDATE_GATE),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_LIVE_UPDATE_GATE -DP4_PANEL_PROBE \
+                     -DP4_DSI_PROBE -DP4_SCANOUT_TEST \
+                     -DP4_SCANOUT_COHERENCY
+ifndef P4_SCANOUT_SECS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=60
+endif
+endif
+
+ifeq ($(P4_A1_DIAGNOSTIC),1)
+P4_DEBUG_CPPFLAGS += -DP4_SDCARD_DEVICE_TEST -DP4_SDCARD_MULTIBLOCK_TEST \
+                     -DP4_SDCARD_TRACE=1
+endif
+
+# P4_SDCARD_REPEAT=<n> sets how many bounded two-sector repetitions the A1
+# matrix runs after its cells pass.  The gate asks for at least 1,000.  It
+# defaults to 1 in the source, so a normal diagnostic build stays short.
+ifdef P4_SDCARD_REPEAT
+P4_DEBUG_CPPFLAGS += -DP4_SDCARD_REPEAT=$(P4_SDCARD_REPEAT)
+endif
+
+# P4_SDCARD_EXPECT_FAULT is the core half of the fault-injection test; the
+# package half is P4_SDCARD_FAULT_INJECT in arch/riscv-esp32p4/sdcard.  With
+# it the matrix tolerates exactly one failed cell, requires the next CMD17 to
+# succeed, and fails the run if no fault was injected at all.
+ifdef P4_SDCARD_EXPECT_FAULT
+P4_DEBUG_CPPFLAGS += -DP4_SDCARD_EXPECT_FAULT
+endif
+
+# P4_PARTITION_TEST=1 adds the A2 discovery test: it opens the
+# package-loaded partition.library, runs bounded table discovery on the card
+# and reports what it found.  It needs the SD device test as well, for the
+# shared hash helper, so build it together with P4_A1_DIAGNOSTIC=1.
+ifdef P4_PARTITION_TEST
+P4_DEBUG_CPPFLAGS += -DP4_PARTITION_TEST
+endif
+
+# P4_DOS_PROBE=1 adds the pre-dosboot half of the A4 gate.  It needs the
+# DOS-side package members to be present but not dosboot itself, so it is
+# only meaningful for the measured step between the two.
+ifdef P4_DOS_PROBE
+P4_DEBUG_CPPFLAGS += -DP4_DOS_PROBE
+endif
+
+# P4_CMDLINE="..." sets the kernel command line.  P4_HEADLESS_BOOT=1 is the
+# recovery route the A4 phase describes and sets the three words it needs:
+# `nomonitors` and `nocomposition` together are what make dos.library skip
+# C:AROSMonDrvs, which the flash package does not contain, and `econsole`
+# gives it a console when no display driver has been brought up.  Note that
+# econsole also sets the no-Startup-Sequence boot flag, so a test that has
+# to run must be an AFTERDOS resident or an interactive command.
+#
+# The two combine, and `override` is what makes them: a variable set on the
+# make command line beats a plain assignment in a makefile, so without it
+# P4_HEADLESS_BOOT=1 P4_CMDLINE="bootdevice=..." silently lost all three
+# headless words.  Anything the caller passes is appended, so it can add to
+# the headless set or contradict a word in it, which dosboot resolves by
+# reading the arguments in order.  $(strip) because without it the empty
+# caller case leaves a trailing space in the string literal, which changes the
+# core's hash for no reason and hands the argument parser an empty word.
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+# C3 is the normal boot path, even when an older invocation still supplies
+# P4_HEADLESS_BOOT=1.  Keep the two flags that suppress disk-based monitor
+# loading, but never pass `econsole`: dosboot deliberately translates it into
+# BF_NO_STARTUP_SEQUENCE, which would stop at a prompt instead of launching
+# the Startup-Sequence from the read-only SD card.  filter-out also makes the
+# C3 selector robust against a stale explicit P4_CMDLINE containing it.
+override P4_CMDLINE := \
+    $(strip nomonitors nocomposition $(filter-out econsole,$(P4_CMDLINE)))
+else ifeq ($(P4_HEADLESS_BOOT),1)
+override P4_CMDLINE := \
+    $(strip econsole nomonitors nocomposition $(P4_CMDLINE))
+endif
+
+ifdef P4_CMDLINE
+P4_DEBUG_CPPFLAGS += -DP4_CMDLINE='"$(P4_CMDLINE)"'
+endif
+
+# P4_HEARTBEAT_TASK=1 moves the heartbeat into a task at priority -20, so it
+# survives a COLDSTART resident that never returns.  P4_HEARTBEAT_SECS=<n>
+# sets the interval.
+ifdef P4_HEARTBEAT_TASK
+P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_TASK
+endif
+
+# P4_AFTERDOS_PROBE=1 adds the RTF_AFTERDOS resident described above.  It
+# needs a bootable medium: without SYS: there is nothing for it to examine
+# and it says so and returns.
+ifdef P4_AFTERDOS_PROBE
+P4_DEBUG_CPPFLAGS += -DP4_AFTERDOS_PROBE
+endif
+
+# P4_A5_PROBE=1 adds A5's non-interactive load proof to the AFTERDOS resident:
+# LoadSeg the proof command off the card, judge its address against the
+# kickstart and package ranges, run it and check its exit code, then open the
+# proof library through lddemon and judge its base the same way.  It needs
+# P4_AFTERDOS_PROBE=1, which is where it runs from, and an image built with
+# kernel-proof-esp32p4-riscv on the card.
+ifdef P4_A5_PROBE
+P4_DEBUG_CPPFLAGS += -DP4_A5_PROBE
+endif
+
+# P4_FLASHDISK_PROBE=1 reads the flash development volume through
+# krnP4FlashMap() and checks that what is there is the FAT16 volume
+# image/mmakefile.src built.  It needs nothing but the flash, so it runs
+# before exec and is the measured step before a block device exists.
+ifdef P4_FLASHDISK_PROBE
+P4_DEBUG_CPPFLAGS += -DP4_FLASHDISK_PROBE
+endif
+
+# P4_FLASHDISK_TEST=1 opens flashdisk.device, checks its geometry and write
+# refusal, and runs the A2-hardened discovery code over it to find the FAT16
+# partition inside the volume.  It needs P4_AFTERDOS_PROBE=1, which is where
+# it runs from, because partition.library lives in the package.
+ifdef P4_FLASHDISK_TEST
+P4_DEBUG_CPPFLAGS += -DP4_FLASHDISK_TEST
+endif
+
+# P4_PSRAM_MHZ=<n> asks the PSRAM bring-up for that bus clock.  Above 80 the
+# read sampling has to be calibrated on every boot, which psram_tuning.c does;
+# below it the margin is large enough that neutral sampling always works.  The
+# default is unchanged at 20, because a rate is only the default once it has
+# been shown to hold across cold and warm boots.  Only rates that divide the
+# 400 MHz MPLL exactly are exact: 20, 25, 40, 50, 80, 100, 200.
+ifdef P4_PSRAM_MHZ
+P4_DEBUG_CPPFLAGS += -DP4_PSRAM_MHZ=$(P4_PSRAM_MHZ)
+endif
+
+# P4_SCANOUT_TEST=1 is B5: a frame in PSRAM, the DSI bridge asking for pixels
+# and the DesignWare AXI DMA feeding it.  Needs P4_PANEL_PROBE and P4_DSI_PROBE,
+# because the panel has to be powered and initialised first, and it replaces
+# P4_PATTERN_TEST rather than adding to it - the host's pattern generator and
+# the bridge's pixel feed are alternatives.
+ifdef P4_SCANOUT_TEST
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_TEST
+endif
+
+# P4_DSI_ACK_REQUEST=1 sets ACK_RQST_EN, so the panel is asked to acknowledge
+# every command.  The vendor reference sets it and leaves BTA enabled after its
+# first read; this port normally returns to transmit-only state, and with the
+# bit set the bus turnaround after
+# the initialisation sequence does not always complete - PHY_STATUS keeps
+# phy_direction set through the handover to video mode, so the host is
+# receiving when it should be sending pixels.  Off by default for that reason;
+# on to reproduce the measurement.
+ifdef P4_DSI_ACK_REQUEST
+P4_DEBUG_CPPFLAGS += -DP4_DSI_ACK_REQUEST
+endif
+
+# P4_B5_IDF_CMD_STATE=1 reproduces the reference's ordered command state, not
+# merely its final register values: ACK_RQST_EN is active before the identity
+# read and BTA_EN remains active after that read throughout the vendor table
+# and video handover.  It is diagnostic because earlier ACK-only runs could
+# leave a turnaround in progress; the bounded UART edge samples decide it.
+# It deliberately does not emulate FreeRTOS scheduling: two bounded attempts
+# proved that FIFO/direction waits and artificial 1-ms gaps do not reproduce
+# the working driver's command state.
+ifdef P4_B5_IDF_CMD_STATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_IDF_CMD_STATE
+endif
+
+# P4_B5_EXACT_DBI_CREATE=1 reproduces the linked v6.0 DBI object's volatile
+# command-mode bitfield writes in their observed order: TE clear, ACK set,
+# then every generic, DCS and MRPS low-power selector separately.  It also
+# retains BTA after the identity read, as the IDF read path does.  Diagnostic
+# only; the normal bare-metal command path intentionally returns to transmit.
+ifdef P4_B5_EXACT_DBI_CREATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_EXACT_DBI_CREATE
+endif
+
+# P4_B5_EXACT_BUS_CREATE=1 reproduces the linked v6.0 bus object's post-PLL
+# volatile RMW order: separate LP-clock clears, four PHY transition fields,
+# CRC/ECC/HS+LP EoTP, timeout then escape dividers, timeout fields and maximum
+# read time.  Final values are unchanged; this is an FSM-history discriminator.
+ifdef P4_B5_EXACT_BUS_CREATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_EXACT_BUS_CREATE
+endif
+
+# P4_DSI_VPG=1 turns on the DSI host's own video pattern generator alongside
+# whatever else is feeding it.  A diagnostic: it asks whether the host will
+# begin a transmission at all, independently of its DPI input.  Not a working
+# configuration - the generator and the bridge's pixels are alternatives.
+ifdef P4_DSI_VPG
+P4_DEBUG_CPPFLAGS += -DP4_DSI_VPG
+endif
+
+# P4_DSI_NONBURST=1 selects non-burst video mode with sync pulses instead of
+# the reference's burst mode.  Burst asks the host to buffer a whole video
+# packet - one line, 800 pixels - before it transmits; non-burst transmits
+# synchronously with the pixel stream.  A test of whether the host is waiting
+# on a buffer rather than on data.
+ifdef P4_DSI_NONBURST
+P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
+endif
+
+# P4_DSI_PANEL_QUERY=1 asks the panel what state it is in - power mode, address
+# mode, pixel format, scanline - after its initialisation sequence and before
+# the video handover.  These reads were compiled out of the scanout path
+# because an unanswered read leaves the host in receive and stalls the video;
+# they are safe to re-enable now that ACK_RQST_EN is off and the read path
+# drains and balances properly, and the PHY trace proves it per run.
+ifdef P4_DSI_PANEL_QUERY
+P4_DEBUG_CPPFLAGS += -DP4_DSI_PANEL_QUERY
+endif
+
+# P4_DSI_POST_VIDEO_QUERY=1 interrupts a running B5 stream, returns the host to
+# command mode and asks for DCS power mode 0x0A before starting video again.
+# This is destructive when the panel does not answer: clearing BTA_EN does not
+# clear GEN_RD_CMD_BUSY, so the restarted host consumes no pixels and the
+# bridge FIFO remains full.  Off by default; the panel itself and the live DMA
+# are the B5 acceptance instruments, not an optional read that can stop them.
+ifdef P4_DSI_POST_VIDEO_QUERY
+P4_DEBUG_CPPFLAGS += -DP4_DSI_POST_VIDEO_QUERY
+endif
+
+# P4_BL_PERCENT overrides the backlight duty cycle, which defaults to a
+# deliberately dim 20 per cent while the display path is under development.
+# Raise it for a run that is looking for a first image.
+ifdef P4_BL_PERCENT
+P4_DEBUG_CPPFLAGS += -DP4_LEDC_BL_PERCENT=$(P4_BL_PERCENT)
+endif
+
+# P4_DSI_LP_VERT_ONLY=1 leaves the two horizontal low-power transitions off.
+# A return to low power costs 154 lane byte clocks with the reference's switch
+# times, and this panel's back and front porches are 47 and 94, so neither is
+# long enough to leave high speed and come back.
+ifdef P4_DSI_LP_VERT_ONLY
+P4_DEBUG_CPPFLAGS += -DP4_DSI_LP_VERT_ONLY
+endif
+
+# P4_DSI_NO_LP=1 keeps every video interval in high speed.  Used with the
+# feed-first UART oracle, it isolates the first frame's LP exit/re-entry from
+# packetization, frame ACK and the producer's framebuffer boundary.
+ifdef P4_DSI_NO_LP
+P4_DEBUG_CPPFLAGS += -DP4_DSI_NO_LP
+endif
+
+# P4_DSI_HLINE_DELTA=n changes only the DSI host's line time, in lane byte
+# clocks, while leaving the DPI bridge timing untouched.  This is a bounded
+# UART diagnostic for a producer/consumer rate mismatch at the first video
+# frame boundary.  It is not a geometry-acceptance mode.
+ifdef P4_DSI_HLINE_DELTA
+P4_DEBUG_CPPFLAGS += -DP4_DSI_HLINE_DELTA=$(P4_DSI_HLINE_DELTA)
+endif
+
+# P4_DSI_BRG_HLINE_DELTA=n changes only the bridge's horizontal total, in
+# pixels, while leaving the host timing fixed.  It distinguishes a first
+# assertion tied to the incoming DPI frame from one tied to the host's own
+# programmed frame period.  Diagnostic only; never a geometry mode.
+ifdef P4_DSI_BRG_HLINE_DELTA
+P4_DEBUG_CPPFLAGS += -DP4_DSI_BRG_HLINE_DELTA=$(P4_DSI_BRG_HLINE_DELTA)
+endif
+
+# P4_DSI_BRG_VBP_DELTA=n changes only the bridge VBP while preserving V total,
+# active height and host timing.  VFP changes by -n implicitly.  This is a
+# diagnostic bridge/host vertical-phase discriminator, not a panel setting.
+ifdef P4_DSI_BRG_VBP_DELTA
+P4_DEBUG_CPPFLAGS += -DP4_DSI_BRG_VBP_DELTA=$(P4_DSI_BRG_VBP_DELTA)
+endif
+
+# P4_DPI_MHZ overrides the panel's pixel clock, which defaults to the vendor
+# configuration's 80.  The divider comes off the 240 MHz tap, so only exact
+# divisors are usable: 80, 60, 48, 40.  Lowering it lowers the data rate the
+# host has to sustain, which is the way to test whether a payload overflow is
+# a bandwidth problem or a configuration one.
+ifdef P4_DPI_MHZ
+P4_DEBUG_CPPFLAGS += -DP4_PANEL_DPI_MHZ=$(P4_DPI_MHZ)
+endif
+
+# P4_DPI_NOMINAL_MHZ overrides the clock the host timing is computed against
+# (hardware.h, P4_PANEL_DPI_NOMINAL_MHZ).  Setting it to the real pixel clock
+# drops ESP-IDF's requested-clock timing and the bridge line compensation.
+ifdef P4_DPI_NOMINAL_MHZ
+P4_DEBUG_CPPFLAGS += -DP4_PANEL_DPI_NOMINAL_MHZ=$(P4_DPI_NOMINAL_MHZ)
+endif
+
+# P4_DSI_CHUNKS=n splits each video line into n packets instead of one, so the
+# host's payload fifo has to hold h_res/n pixels rather than all of them.  Must
+# divide the active width exactly.
+ifdef P4_DSI_CHUNKS
+P4_DEBUG_CPPFLAGS += -DP4_DSI_CHUNKS=$(P4_DSI_CHUNKS)
+endif
+
+# P4_SCANOUT_TESTCARD=1 fills the frame with colour bars, a border and a ruler
+# instead of a flat colour, so that the picture says whether lines are missing,
+# offset or substituted rather than merely that something arrived.
+ifdef P4_SCANOUT_TESTCARD
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_TESTCARD
+endif
+
+# P4_SCANOUT_COHERENCY=1 runs the remaining deterministic B5 framebuffer gate
+# on one native buffer: full-screen RGB/white/black fields, a deliberately
+# non-power-of-two checkerboard, four asymmetric corner marks and one-pixel
+# lines, followed by repeated non-cacheline-aligned dirty rectangles.  Every
+# transition is explicitly written back before the DMA is sampled.
+ifdef P4_SCANOUT_COHERENCY
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_COHERENCY
+endif
+
+# P4_B5_CONCURRENT_STRESS=1 is the reproducible sustained B5 gate.  It starts
+# the display from an AFTERDOS resident so the already verified sdcard.device
+# is available, and keeps moving dirty rectangles while referenced READ64
+# requests and cache-forced PSRAM passes run.  There is no card write command
+# in the harness.  Default to the gate's 30 minutes; a source assertion rejects
+# a shorter override.
+ifeq ($(P4_B5_CONCURRENT_STRESS),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_CONCURRENT_STRESS -DP4_PANEL_PROBE \
+                     -DP4_DSI_PROBE -DP4_SCANOUT_TEST \
+                     -DP4_DSI_NONBURST -DP4_SCANOUT_COHERENCY
+ifndef P4_SCANOUT_SECS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=1800
+endif
+endif
+
+# P4_B5_STRESS_SMOKE=1 permits a deliberately shorter concurrent-stress run
+# while validating the harness.  Its final line says PASSED for mechanics, not
+# for B5's 30-minute gate; never record it as sustained-stress evidence.
+ifdef P4_B5_STRESS_SMOKE
+P4_DEBUG_CPPFLAGS += -DP4_B5_STRESS_SMOKE
+endif
+
+# P4_B6_DIRTY_GATE=1 advances the accepted immutable handoff into a producer
+# gate.  It implies the base B6 harness, modifies only the inactive surface,
+# writes back only the rotated dirty-row ranges, and submits that source to the
+# ISR for the next frame boundary.
+ifeq ($(P4_B6_DIRTY_GATE),1)
+override P4_B6_HANDOFF_GATE := 1
+P4_DEBUG_CPPFLAGS += -DP4_B6_DIRTY_GATE
+endif
+
+# P4_B6_HANDOFF_GATE=1 reserves two complete native buffers, renders two
+# immutable logical 1280x800 test frames through the 90-degree clockwise CPU
+# transform, and changes the descriptor source only in the DMA frame-done ISR.
+# The frames alternate about every three seconds by default.  This is the B6
+# ownership/rotation instrument; it deliberately does not mutate either live
+# surface or enable B5's coherency schedule.
+ifeq ($(P4_B6_HANDOFF_GATE),1)
+P4_DEBUG_CPPFLAGS += -DP4_B6_HANDOFF_GATE -DP4_B6_DOUBLE_BUFFER \
+                     -DP4_PANEL_PROBE -DP4_DSI_PROBE -DP4_SCANOUT_TEST
+ifneq ($(P4_DSI_BURST),1)
+P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
+endif
+
+ifndef P4_SCANOUT_SECS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=60
+endif
+endif
+
+# P4_C3_GRAPHICAL_BOOT=1 is the normal GB0 path.  It selects the same proven
+# managed transport as C1, but tells the framebuffer HIDD not to paint C1's
+# acceptance card over the desktop that Startup-Sequence is about to launch.
+# Keeping this separate from P4_C2_INTUITION_GATE also means a GB0 build has
+# no diagnostic resident or diagnostic screen in its boot path.
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+override P4_C1_FRAMEBUFFER_HIDD := 1
+P4_DEBUG_CPPFLAGS += -DP4_C3_GRAPHICAL_BOOT
+endif
+
+# P4_C4_TOUCH_PROBE=1 adds only C4's read-only controller-identification
+# report to the normal C3 boot.  It sends address probes and register reads on
+# I2C0, samples GPIO16 without changing its pad configuration, restores I2C1
+# afterwards and never pulses the touch reset or loads controller firmware.
+ifeq ($(P4_C4_TOUCH_PROBE),1)
+P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_PROBE -DP4_PANEL_PROBE
+endif
+
+# P4_C4_TOUCH_HIDD=1 selects the touch stack.  The drivers are package
+# modules (touchscreen.hidd, the controller's driver, the I2C bus driver and
+# esp32p4board.resource, see boot/mmakefile.src); in the kernel it adds only
+# the read-only boot-time identification above.  The GSL3670 firmware-load
+# and sampling diagnostics (P4_C4_TOUCH_LOAD, P4_C4_TOUCH_SAMPLE) went with
+# the kernel's controller drivers on 2026-10-04.
+ifeq ($(P4_C4_TOUCH_HIDD),1)
+P4_DEBUG_CPPFLAGS += -DP4_C4_TOUCH_HIDD -DP4_C4_TOUCH_PROBE \
+                     -DP4_PANEL_PROBE
+endif
+
+# P4_C1_FRAMEBUFFER_HIDD=1 keeps B6's managed double-buffered scanout alive
+# across Exec startup and publishes only the logical update operation table to
+# fbgfx.hidd.  Panel/DSI/GDMA ownership remains in kernel.resource.
+ifeq ($(P4_C1_FRAMEBUFFER_HIDD),1)
+P4_DEBUG_CPPFLAGS += -DP4_C1_FRAMEBUFFER_HIDD -DP4_B6_DOUBLE_BUFFER \
+                     -DP4_PANEL_PROBE -DP4_DSI_PROBE -DP4_SCANOUT_TEST
+# Non-burst is the D1001's proven mode; a board profile that sets
+# P4_DSI_BURST := 1 (JC1060P470C) gets ESP-IDF's burst video instead.
+ifneq ($(P4_DSI_BURST),1)
+P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
+endif
+override P4_SCANOUT_SECS := 0
+endif
+
+# Former compatibility debt, now a diagnostic only.  The D1001 needed 525
+# while its D-PHY PLL was computed for a 40 MHz reference that is really
+# 20 MHz (B5R, resolved 2026-10-04); no board sets it any more.  Keeping a
+# B6-specific name prevents the B5 diagnostic from becoming an invisible
+# production assumption.
+ifdef P4_B6_ROW_PHASE_WORKAROUND
+P4_DEBUG_CPPFLAGS += \
+    -DP4_B6_ROW_PHASE_WORKAROUND=$(P4_B6_ROW_PHASE_WORKAROUND)
+endif
+
+ifdef P4_B6_SWAP_FRAMES
+P4_DEBUG_CPPFLAGS += -DP4_B6_SWAP_FRAMES=$(P4_B6_SWAP_FRAMES)
+endif
+
+# Keep the visual acceptance instrument separate from the sustained stress
+# schedule.  In particular, corner blocks and line intersections must never
+# share the only observation window: the first direct observation showed that
+# they can be confused even though the transport itself is clean.
+ifeq ($(P4_B5_VISUAL_GATE),1)
+P4_DEBUG_CPPFLAGS += -DP4_B5_VISUAL_GATE -DP4_PANEL_PROBE -DP4_DSI_PROBE \
+                     -DP4_SCANOUT_TEST -DP4_SCANOUT_COHERENCY
+ifneq ($(P4_DSI_BURST),1)
+P4_DEBUG_CPPFLAGS += -DP4_DSI_NONBURST
+endif
+
+# P4_B5_STATIC_PRELOAD=1 turns the visual gate into one immutable image.  The
+# asymmetric coordinate pattern is fully written back before DMA, host video
+# and bridge feed start; no scheduled step touches the live buffer afterwards.
+ifdef P4_B5_STATIC_PRELOAD
+P4_DEBUG_CPPFLAGS += -DP4_B5_STATIC_PRELOAD -DP4_B5_START_TRACE
+endif
+
+# P4_B5_ROW_PHASE_COMPENSATION=<pixels> is a diagnostic-only rotation of every
+# row written through the common test-pattern pixel helper.  It tests whether
+# a stable physical-to-framebuffer X phase explains the visual displacement;
+# it deliberately changes neither DSI timing nor the DMA/bridge contract.
+ifdef P4_B5_ROW_PHASE_COMPENSATION
+P4_DEBUG_CPPFLAGS += \
+    -DP4_B5_ROW_PHASE_COMPENSATION=$(P4_B5_ROW_PHASE_COMPENSATION)
+endif
+
+# P4_B5_PHASE_CALIBRATION=1 preloads an immutable nine-band phase ruler and
+# keeps it on screen for the full visual-gate interval.  Each band places its
+# coloured marker at a different raw framebuffer X, so the marker that crosses
+# the physical left/right edge brackets the transport phase without guessing.
+ifdef P4_B5_PHASE_CALIBRATION
+P4_DEBUG_CPPFLAGS += -DP4_B5_PHASE_CALIBRATION -DP4_B5_STATIC_PRELOAD \
+                     -DP4_B5_START_TRACE
+endif
+ifdef P4_B5_PHASE_CALIBRATION_BASE
+P4_DEBUG_CPPFLAGS += \
+    -DP4_B5_PHASE_CALIBRATION_BASE=$(P4_B5_PHASE_CALIBRATION_BASE)
+endif
+
+ifdef P4_B5_PHASE_CALIBRATION_STEP
+P4_DEBUG_CPPFLAGS += \
+    -DP4_B5_PHASE_CALIBRATION_STEP=$(P4_B5_PHASE_CALIBRATION_STEP)
+endif
+
+ifdef P4_B5_PHASE_CALIBRATION_WIDTH
+P4_DEBUG_CPPFLAGS += \
+    -DP4_B5_PHASE_CALIBRATION_WIDTH=$(P4_B5_PHASE_CALIBRATION_WIDTH)
+endif
+# P4_B5_BLK_RAW_FRAME=1 replaces the bridge's 720x1280 reset count with the
+# actual one-block framebuffer size.  It is an isolated revision-one state
+# diagnostic; leave it off until a visual gate proves whether the field is
+# active with multi-block mode disabled.
+ifdef P4_B5_BLK_RAW_FRAME
+P4_DEBUG_CPPFLAGS += -DP4_B5_BLK_RAW_FRAME
+endif
+ifndef P4_SCANOUT_SECS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=60
+endif
+endif
+
+# P4_BRG_RAW_DIV=n divides the bridge's frame data counter by n.  A scale test
+# for where the bridge decides to restart reading the framebuffer.
+ifdef P4_BRG_RAW_DIV
+P4_DEBUG_CPPFLAGS += -DP4_BRG_RAW_DIV=$(P4_BRG_RAW_DIV)
+endif
+
+# P4_SCANOUT_CROSS=1 draws one vertical and one horizontal line and nothing
+# else.  A vertical line is what makes shear visible: if each transmitted line
+# carries fewer pixels than the panel expects, every row is displaced from the
+# one above and the line arrives as a diagonal.
+ifdef P4_SCANOUT_CROSS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_CROSS
+endif
+
+# P4_SCANOUT_GRID=1 draws a 100-pixel grid, red for columns and green for rows.
+# 800 columns give eight vertical lines and 1280 rows thirteen horizontal ones,
+# so the counts on the panel are a direct ratio rather than a description.
+ifdef P4_SCANOUT_GRID
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_GRID
+endif
+
+# P4_SCANOUT_LINES=1 draws single lines at rows 100, 500 and 900 and nothing
+# else, so the echo that accompanies every line can be counted.  A grid cannot
+# do that: at a pitch of 100 one line's third echo lands on the next line's
+# second.
+ifdef P4_SCANOUT_LINES
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_LINES
+endif
+
+# P4_SCANOUT_HALVES=1 puts a bar in the left half of even framebuffer rows and
+# the right half of odd ones.  If the panel joins two sent rows into one, each
+# pair reassembles into a continuous line; if not, the bars stay short and
+# alternate sides.
+ifdef P4_SCANOUT_HALVES
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_HALVES
+endif
+
+# P4_SCANOUT_BANDS=1 puts 0xFF in byte 0, then byte 1, then byte 2 across three
+# horizontal bands.  A flat field written into byte 0 came back yellow, which
+# needs two channels, so the byte-to-channel mapping has to be read off the
+# panel rather than assumed.  Written byte-wise rather than through px(),
+# because px() is what is under test.
+ifdef P4_SCANOUT_BANDS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_BANDS
+endif
+
+# P4_DSI_565_CFG=1|2|3 picks which of the host's three 16-bit colour codings is
+# used.  They carry the same pixel with its bits in different places on the DPI
+# bus, so a mismatch against what the bridge lays down gives the panel a pixel
+# with displaced fields - which it may reject, and rejecting it is what "clean
+# transmit side, output still disabled" looks like from this end.
+ifdef P4_DSI_565_CFG
+P4_DEBUG_CPPFLAGS += -DP4_DSI_565_CFG=$(P4_DSI_565_CFG)
+endif
+
+# P4_LANE_MBPS overrides the lane rate independently of the panel profile, so
+# colour depth, pixel clock, lane rate and back porch can be varied one at a
+# time instead of as a bundle.  Only rates with PLL factors in hardware.h work:
+# 500, 1000, 1500.
+ifdef P4_LANE_MBPS
+P4_DEBUG_CPPFLAGS += -DP4_DSI_LANE_MBPS=$(P4_LANE_MBPS)
+endif
+
+# P4_DSI_PLLREF_MHZ=20|40 overrides the D-PHY PLL reference the dividers are
+# computed for (board default: JC1060P470C 20, D1001 40). The registers say
+# 20 on both boards (ROADMAP 2026-10-04); the D1001 test of that is open.
+ifdef P4_DSI_PLLREF_MHZ
+P4_DEBUG_CPPFLAGS += -DP4_DSI_PLLREF_MHZ=$(P4_DSI_PLLREF_MHZ)
+endif
+
+# P4_PSRAM_TIMEOUT_TEST=1 deliberately starts one command with a bit that the
+# D1001 hardware does not self-clear.  It must time out and reset the PSRAM
+# FSMs; the ordinary round-trip immediately afterwards must then answer.  The
+# normal recovery sweep is always enabled because its command waits are bounded.
+ifdef P4_PSRAM_TIMEOUT_TEST
+P4_DEBUG_CPPFLAGS += -DP4_PSRAM_TIMEOUT_TEST
+endif
+
+# P4_PANEL_VMUL=n is a diagnostic override of the transmitted line count.
+# Hardware after the RGB565 byte-order fix proves n=1: the complete clean
+# 800 x 1280 grid is visible.  Everything on the transmit side derives from
+# it - framebuffer, bridge line counts, VID_VACTIVE_LINES, raw_num_total - so
+# they cannot disagree.
+ifdef P4_PANEL_VMUL
+P4_DEBUG_CPPFLAGS += -DP4_PANEL_VMUL=$(P4_PANEL_VMUL)
+endif
+
+# P4_PSRAM_TRACE=1 prints a marker per bring-up stage.  The bring-up runs with
+# interrupts off out of SRAM and a hang inside it produces no output at all, so
+# without this a hang can only be located by bisecting builds.  Markers placed
+# only before the MSPI reset: output goes through flash on an XIP build, and
+# after that reset a flash access would hang too.
+ifdef P4_PSRAM_TRACE
+P4_DEBUG_CPPFLAGS += -DP4_PSRAM_TRACE
+endif
+
+# P4_NO_QUIESCE=1 compiles out krnP4ScanoutQuiesce, which stops whatever the
+# previous boot left reading memory before the PSRAM is brought up.  A switch
+# that exists to make the thing it guards falsifiable - and it was added to the
+# source without being wired up here, so three runs that were recorded as
+# "still hangs without the quiesce" had the quiesce compiled in.
+ifdef P4_NO_QUIESCE
+P4_DEBUG_CPPFLAGS += -DP4_NO_QUIESCE
+endif
+
+# P4_SCANOUT_SECS=n bounds how long B5 leaves the scanout running; 0 is
+# indefinite.  A scanout that outlives its boot has made this board unbootable
+# twice, because the GDMA survives a CPU reset and keeps reading PSRAM while the
+# next bring-up reconfigures the controller.  Recovering needed the vendor
+# firmware flashed; a power cycle did not do it.
+ifdef P4_SCANOUT_SECS
+P4_DEBUG_CPPFLAGS += -DP4_SCANOUT_SECS=$(P4_SCANOUT_SECS)
+endif
+
+# P4_DSI_FRAME_ACK=1 sets VID_MODE_CFG's frame_bta_ack_en, so the host requests
+# a bus turnaround after each frame and waits for the panel.  The reference
+# enables this; without it the host and the panel keep their own frame
+# boundaries and nothing holds the two together.
+ifdef P4_DSI_FRAME_ACK
+P4_DEBUG_CPPFLAGS += -DP4_DSI_FRAME_ACK
+endif
+
+# P4_B5_REF_READ_STATE=1 reproduces the two final command-read state bits
+# measured under Vellum: PCKHDL_CFG.BTA_EN and CMD_MODE_CFG.ACK_RQST_EN.  They
+# are set only after the final command so the test does not create unhandled
+# acknowledgements while the JD9365 table is sent.
+ifdef P4_B5_REF_READ_STATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_REF_READ_STATE
+endif
+
+# P4_B5_SKIP_FINAL_PANEL_ON=1 omits only the parameterless DCS 0x29 normally
+# sent immediately after video/feed start.  The vendor table has already sent
+# its own 0x29 transaction, so this diagnostic separates command injection
+# into a live video stream from the first frame's ordinary payload traffic.
+ifdef P4_B5_SKIP_FINAL_PANEL_ON
+P4_DEBUG_CPPFLAGS += -DP4_B5_SKIP_FINAL_PANEL_ON
+endif
+
+# P4_B5_ATOMIC_START=1 removes every diagnostic read between the three
+# reference start actions: host video mode, automatic HS clock and bridge DPI
+# feed commit.  Status is sampled immediately afterward.  This is not a timing
+# delay; it restores the unbroken write sequence used by esp_lcd_panel_init().
+ifdef P4_B5_ATOMIC_START
+P4_DEBUG_CPPFLAGS += -DP4_B5_ATOMIC_START
+endif
+
+# P4_B5_FULL_ATOMIC_START=1 extends the same isolation boundary back to the
+# end of the vendor command table.  No PHY, command, host, bridge or DMA status
+# is read while video timing is staged and the producer/consumer path starts;
+# all five UART edge records are populated from the first post-feed snapshot.
+ifdef P4_B5_FULL_ATOMIC_START
+P4_DEBUG_CPPFLAGS += -DP4_B5_FULL_ATOMIC_START -DP4_B5_ATOMIC_START
+endif
+
+# P4_B5_REF_BRG_IRQ=1 matches the final register write in the reference DPI
+# init path: enable bridge underrun status after committing the live feed.
+# AROS does not route that peripheral interrupt to a CPU; B5 polls RAW status.
+ifdef P4_B5_REF_BRG_IRQ
+P4_DEBUG_CPPFLAGS += -DP4_B5_REF_BRG_IRQ
+endif
+
+# P4_B5_FEED_FIRST=1 is a bounded start-order diagnostic used with the full
+# atomic path.  The bridge and DMA are already live, then valid DPI input is
+# committed immediately before host video mode instead of immediately after.
+# It cannot underrun intentionally because the producer is armed first.
+ifdef P4_B5_FEED_FIRST
+P4_DEBUG_CPPFLAGS += -DP4_B5_FEED_FIRST
+endif
+
+# P4_B5_PRESTAGE_FEED=1 writes DPI_EN into the bridge's shadow state before
+# DMA and host start, then commits it with one DPI_CFG_UPD write after host
+# video is live.  It is a bounded first-sync-edge diagnostic, not a default.
+ifdef P4_B5_PRESTAGE_FEED
+P4_DEBUG_CPPFLAGS += -DP4_B5_PRESTAGE_FEED
+endif
+
+# P4_B5_CLOCK_GATED_START=1 freezes the shared DPI pixel clock after DMA is
+# armed, enables host video and bridge feed, then releases the clock with one
+# register write.  Use with the full-atomic bounded UART oracle only.
+ifdef P4_B5_CLOCK_GATED_START
+P4_DEBUG_CPPFLAGS += -DP4_B5_CLOCK_GATED_START
+endif
+
+# P4_B5_EARLY_DPI_CREATE=1 matches the working wrapper's lifecycle rather
+# than only its final registers: enable the DPI clock, stage host/bridge timing
+# and globally enable/commit the bridge before the panel reset and vendor table.
+# DMA, video mode and the bridge pixel feed still start afterwards.
+ifdef P4_B5_EARLY_DPI_CREATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_EARLY_DPI_CREATE
+endif
+
+# P4_B5_EXACT_DPI_CREATE=1 reproduces the volatile field-write order emitted
+# by Vellum's linked IDF-v6.0 esp_lcd_new_panel_dpi() object.  This includes
+# separate DPI clock source/divider/enable writes, host and bridge timing
+# fields, LP/mode fields, and the bridge count/alignment/reload sequence.  It
+# requires the already tested early DPI lifecycle so the writes also occur at
+# the reference creation point.
+ifdef P4_B5_EXACT_DPI_CREATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_EXACT_DPI_CREATE
+endif
+
+# P4_B5_EARLY_GDMA_CREATE=1 completes the early IDF object lifecycle: reset
+# and configure the idle GDMA controller/channel before the panel reset and
+# vendor table.  The descriptor and channel enable remain at DPI init time.
+# Use only with P4_B5_EARLY_DPI_CREATE and without P4_B5_DMA_RELOAD.
+ifdef P4_B5_EARLY_GDMA_CREATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_EARLY_GDMA_CREATE
+endif
+
+# P4_B5_IDF_AUTO_CMD_CLOCK=1 compares the later local IDF v6.0.1 behaviour:
+# AUTO throughout DBI creation and the command table.  Vellum is built against
+# IDF v6.0, which selects LP here; this switch is rejected, not reference mode.
+ifdef P4_B5_IDF_AUTO_CMD_CLOCK
+P4_DEBUG_CPPFLAGS += -DP4_B5_IDF_AUTO_CMD_CLOCK
+endif
+
+# P4_B5_SPLIT_AUTO_START=1 matches the two separate volatile writes emitted by
+# Vellum's IDF v6.0 DPI init: set AUTO_CLKLANE first, TXREQUESTCLKHS second.
+# The normal combined write has the same final register but different FSM input.
+ifdef P4_B5_SPLIT_AUTO_START
+P4_DEBUG_CPPFLAGS += -DP4_B5_SPLIT_AUTO_START
+endif
+
+# P4_B5_EXACT_PHY_CREATE=1 matches the linked v6.0 PHY object lifecycle, not
+# just its final values: STOP_WAIT remains zero through PLL creation, ENABLECLK
+# and FORCEPLL are separate writes, and no extra TESTCLR pulse is injected.
+ifdef P4_B5_EXACT_PHY_CREATE
+P4_DEBUG_CPPFLAGS += -DP4_B5_EXACT_PHY_CREATE
+endif
+
+# P4_B5_DMA_RELOAD=1 removes the GDMA full-transfer stop/rearm boundary for a
+# UART localization test.  It is known to lose visual frame phase and is never
+# a geometry acceptance mode; use it only to test whether the host survives
+# continuous producer traffic across the first framebuffer boundary.
+ifdef P4_B5_DMA_RELOAD
+P4_DEBUG_CPPFLAGS += -DP4_B5_DMA_RELOAD
+endif
+
+# P4_B5_HOST_RESTART=1 pulses only the DSI host core's SHUTDOWNZ after the
+# complete vendor command table has drained and before video timing is staged.
+# The PHY, panel, bridge and DMA remain untouched.  This distinguishes hidden
+# command-engine/FSM state from the already matched public register state.
+ifdef P4_B5_HOST_RESTART
+P4_DEBUG_CPPFLAGS += -DP4_B5_HOST_RESTART
+endif
+
+# P4_PANEL_24BIT=1 selects the 24-bit profile, which was the default for one
+# session and is not any more: the panel's acceptance turns out to depend on the
+# lane rate, not the colour depth.  The default is RGB565 at 40 MHz over 1500
+# Mbit/s with the line count doubled, which is the only combination measured to
+# give both an accepting panel and a host with no payload error.
+ifdef P4_PANEL_24BIT
+P4_DEBUG_CPPFLAGS += -DP4_PANEL_24BIT
+endif
+
+# P4_VFP overrides the vertical front porch.  A scale test: the ghost line that
+# accompanies every grid line sits 34 panel lines below it, and vsync 4 plus the
+# default front porch of 30 is 34.  If the offset follows this value it is the
+# end-of-frame blanking; if it does not, the match is coincidence.
+ifdef P4_VFP
+P4_DEBUG_CPPFLAGS += -DP4_PANEL_VFP=$(P4_VFP)
+endif
+
+# P4_BRG_VDIV=n divides only the bridge's active-line count, leaving the host's
+# at the panel's.  A test of whether the bridge honours that count: if it does,
+# the measured read rate divides by n.
+ifdef P4_BRG_VDIV
+P4_DEBUG_CPPFLAGS += -DP4_BRG_VDIV=$(P4_BRG_VDIV)
+endif
+
+# P4_PATTERN_BRIDGE_FEED=1 turns on the DSI bridge's pixel feed during the B4
+# pattern test.  The bridge then asks for pixels it has no DMA to fetch and
+# must underrun; that underrun is the evidence that the pixel path runs through
+# the bridge rather than through the host's own pattern generator.  A
+# measurement, not a working configuration.
+ifdef P4_PATTERN_BRIDGE_FEED
+P4_DEBUG_CPPFLAGS += -DP4_PATTERN_BRIDGE_FEED
+endif
+
+# P4_PSRAM_STRESS=1 tests every word of the window and measures sequential
+# read bandwidth, while the window is still nobody's.  This is B1's acceptance
+# evidence and it costs a few seconds of boot, so it is not a default.
+ifdef P4_PSRAM_STRESS
+P4_DEBUG_CPPFLAGS += -DP4_PSRAM_STRESS
+endif
+
+# P4_CPU_MHZ=<n> raises the CPU clock from what the bootloader left, which
+# measured 90 MHz.  Only 360, 180 and 90 exist: the memory and peripheral
+# dividers have to move with the CPU divider and only three combinations meet
+# the MEM<=200 and APB<=100 constraints.  Not a default until it has been
+# shown to hold across cold and warm boots with storage and display work
+# running.
+# The graphical boot must not inherit the ROM's 90-MHz CPU divider.
+# Explicit overrides remain available for bring-up/comparison builds.
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+P4_CPU_MHZ ?= 360
+endif
+ifdef P4_CPU_MHZ
+P4_DEBUG_CPPFLAGS += -DP4_CPU_MHZ=$(P4_CPU_MHZ)
+endif
+
+# Expensive full-frame pixel censuses are opt-in diagnostics, not boot work.
+ifeq ($(P4_C1_FULL_DIAGNOSTICS),1)
+P4_DEBUG_CPPFLAGS += -DP4_C1_FULL_DIAGNOSTICS
+# The source/front/back equality census requires synchronous mirroring.
+override P4_C1_COALESCE = 0
+endif
+ifeq ($(P4_C1_PROFILE),1)
+P4_DEBUG_CPPFLAGS += -DP4_C1_PROFILE
+endif
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+P4_C1_COALESCE ?= 1
+endif
+ifeq ($(P4_C1_COALESCE),1)
+P4_DEBUG_CPPFLAGS += -DP4_C1_COALESCE
+endif
+
+# P4_PANEL_PROBE=1 is B2: I2C1, the port expander, the panel supply and the
+# reset pulse, run twice and returned to safe each time.  It touches no data
+# path and never enables the backlight, so it cannot light the panel.
+ifdef P4_PANEL_PROBE
+P4_DEBUG_CPPFLAGS += -DP4_PANEL_PROBE
+endif
+
+# P4_DSI_PROBE=1 is B3 stage one, and needs P4_PANEL_PROBE=1 because the panel
+# has to be powered and out of reset first.  It brings the PHY supply, the
+# clocks and the PLL up and waits, bounded, for lock and lane stop state.  It
+# produces no image and never enables the backlight.
+ifdef P4_DSI_PROBE
+P4_DEBUG_CPPFLAGS += -DP4_DSI_PROBE
+endif
+
+# P4_PATTERN_TEST=1 is B4: the DSI host's own pattern generator, then the
+# backlight.  It needs P4_DSI_PROBE=1.  This is the only build in the port that
+# lights the panel, and it does so only after a defined image is on the link.
+ifdef P4_PATTERN_TEST
+P4_DEBUG_CPPFLAGS += -DP4_PATTERN_TEST
+endif
+
+# P4_BACKLIGHT_ONLY=1 replaces the whole panel probe with the backlight alone:
+# power, reset, backlight, stop.  It exists to separate "the backlight path is
+# wrong" from "something in the DSI sequence undoes it", which no register read
+# could distinguish.
+ifdef P4_BACKLIGHT_ONLY
+P4_DEBUG_CPPFLAGS += -DP4_BACKLIGHT_ONLY
+endif
+
+# P4_POWER_OFF=1 replaces the panel probe with a countdown and then releases
+# PWR_HOLD, which powers the board off once USB is unplugged.  It is the only
+# way to cold-start this board, and the expander and the PSRAM chip both need
+# that because they keep their configuration across a CPU reset.
+ifdef P4_POWER_OFF
+P4_DEBUG_CPPFLAGS += -DP4_POWER_OFF
+endif
+
+# P4_SPIN_WATCHDOG=1 (smp variant): a spinlock wait of about a second is
+# reported once, with owner, waiter, caller and stack, over waiting output.
+ifdef P4_SPIN_WATCHDOG
+P4_DEBUG_CPPFLAGS += -DP4_SPIN_WATCHDOG
+endif
+
+# P4_S4_TEST=1 (smp variant): the S4 acceptance test, a cold-start
+# resident that runs tasks on both harts through exec's cross-hart paths.
+ifdef P4_S4_TEST
+P4_DEBUG_CPPFLAGS += -DP4_S4_TEST
+endif
+
+# P4_S5_RUNNER=1 (smp variant): after the boot, run the programs listed in
+# FLASHDISK0P0:S5/tests (a development volume built with P4_S5_TESTS=1).
+ifdef P4_S5_RUNNER
+P4_DEBUG_CPPFLAGS += -DP4_S5_RUNNER
+endif
+
+# P4_CONSOLE_WAIT=1: keep the console waiting for the host after the boot
+# instead of dropping, for captures that must be complete. Slows everything
+# that prints.
+ifdef P4_CONSOLE_WAIT
+P4_DEBUG_CPPFLAGS += -DP4_CONSOLE_WAIT
+endif
+
+ifdef P4_HEARTBEAT_SECS
+P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
+endif
+
+# P4_HEARTBEAT_PRI=<n> overrides the heartbeat task's priority, default 20.
+# Building it at 5 is the test for whether anything polls at DOS's handler
+# priority 10 and starves the rest of the machine; econsole used to.
+ifdef P4_HEARTBEAT_PRI
+P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_PRI=$(P4_HEARTBEAT_PRI)
+endif
+
+USER_CPPFLAGS := -D__AROS_EXEC_LIBRARY__ $(P4_BOARD_CPPFLAGS) $(P4_DEBUG_CPPFLAGS)
+
+CFILES := \
+        appdesc \
+        cpuclock \
+        dsi_phy \
+        dsi_scanout \
+        getsystemattr \
+        $(P4_BOARD_PANEL_TABLE) \
+        i2c_hw \
+        panel_power \
+        psram_init \
+        psram_tuning \
+        kernel_cache \
+        kernel_flash \
+        kernel_elf \
+        kernel_probe \
+        kernel_sdmmc \
+        kernel_startup \
+        platform_init \
+        kernel_clic \
+        kernel_timer \
+        kernel_cpu \
+        kernel_ram \
+        _displayalert \
+        kernel_console \
+        kernel_debug \
+        kernel_traps \
+        maygetchar \
+        cli \
+        sti \
+        issuper
+
+PLATFILES :=
+
+AFILES := \
+        startup \
+        traps
+
+# Second-hart diagnostics (E0-E2, S1): opt-in, Exec stays on hart 0.
+ifeq ($(P4_S1_PSRAM_ATOMICS),1)
+ifneq ($(P4_E2_PRIMITIVES),1)
+$(error P4_S1_PSRAM_ATOMICS=1 requires P4_E2_PRIMITIVES=1)
+endif
+USER_CPPFLAGS += -DP4_S1_PSRAM_ATOMICS=1
+endif
+ifeq ($(P4_E2_PRIMITIVES),1)
+ifneq ($(P4_E2_MAILBOX),1)
+$(error P4_E2_PRIMITIVES=1 requires P4_E2_MAILBOX=1)
+endif
+USER_CPPFLAGS += -DP4_E2_PRIMITIVES=1
+# Hart 1 runs this from SRAM: a jump table in flash .rodata would be read
+# through the cache it must be able to do without.
+USER_CFLAGS += -fno-jump-tables
+CFILES += secondary_primitives
+AFILES += secondary_irq
+endif
+ifeq ($(P4_E2_MAILBOX),1)
+ifneq ($(P4_SECONDARY_PROBE),1)
+$(error P4_E2_MAILBOX=1 requires P4_SECONDARY_PROBE=1)
+endif
+ifeq ($(P4_SECONDARY_RETAIN),1)
+$(error P4_E2_MAILBOX=1 cannot retain the secondary)
+endif
+USER_CPPFLAGS += -DP4_E2_MAILBOX=1
+CFILES += secondary_mailbox
+endif
+ifeq ($(P4_SECONDARY_RETAIN),1)
+ifneq ($(P4_SECONDARY_PROBE),1)
+$(error P4_SECONDARY_RETAIN=1 requires P4_SECONDARY_PROBE=1)
+endif
+USER_CPPFLAGS += -DP4_SECONDARY_RETAIN=1
+endif
+ifeq ($(P4_SECONDARY_PROBE),1)
+USER_CPPFLAGS += -DP4_SECONDARY_PROBE=1
+CFILES += secondary_probe
+AFILES += secondary_entry
+else ifeq ($(P4_SECONDARY_ENTRY),1)
+AFILES += secondary_entry
+endif
+
+# The platform layer of SMP exec, the only esp32p4 build (SMP.md, S2 and
+# S6). These replace the generic scheduler and spinlock stubs by name. A
+# tree configured before S6 without the smp variant would build them
+# against single-hart exec, so it is refused.
+ifneq ($(AROS_TARGET_VARIANT),smp)
+$(error esp32p4 builds only the smp variant (SMP.md, S6); configure this tree again)
+endif
+CFILES += \
+        kernel_tls \
+        kernel_scheduler \
+        kernel_ipi \
+        spininit \
+        spinislocked \
+        spintrylock \
+        spinlock \
+        spinunlock \
+        alloccpumask \
+        freecpumask \
+        clearcpumask \
+        getcpumask \
+        cpuinmask \
+        getcpucount \
+        kernel_intr \
+        kernel_execsmp \
+        kernel_smp \
+        schedulecpu \
+        kernel_smptest \
+        kernel_smprunner
+AFILES += secondary_smp
+
+# With compiler=kernel, %build_archspecific compiles with KERNEL_CFLAGS,
+# which are only USER_CFLAGS: without this line the port's kernel code is
+# built unoptimized, while the generic modules get the target optimization
+# (m68k-all/kernel works around the same gap). Optimized loops must not turn
+# into memset()/memcpy() calls: those live in XIP flash, and P4_SRAMCODE
+# runs while flash or the cache is unavailable (check-sramtext.sh catches
+# what slips through, such as struct copies).
+USER_CFLAGS += $(KERNEL_OPTIMIZATION_CFLAGS) -fno-tree-loop-distribute-patterns
+
+%build_archspecific \
+  mainmmake=kernel-kernel modname=kernel maindir=rom/kernel arch=esp32p4-riscv \
+  files="$(CFILES) $(PLATFILES)" asmfiles="$(AFILES)" compiler=kernel
+
+#
+# The kickstart holds only what has to exist before anything can be
+# loaded: kernel.resource, exec.library and task.resource. Everything
+# else, utility.library included, belongs in a package the loader places
+# in RAM later.
+#
+BSP_RES  := kernel task
+BSP_LIBS := exec debug
+#
+#   flashdisk.device is a development convenience and is in the kickstart
+#   because it has to be: it calls krnP4FlashMap(), and a package member
+#   cannot reference a kickstart symbol at all.
+#
+BSP_DEVS := timer flashdisk
+
+BSP_KOBJS := \
+    $(addprefix $(KOBJSDIR)/, $(addsuffix _resource.o, $(BSP_RES))) \
+    $(addprefix $(KOBJSDIR)/, $(addsuffix _library.o, $(BSP_LIBS))) \
+    $(addprefix $(KOBJSDIR)/, $(addsuffix _device.o, $(BSP_DEVS)))
+
+# -lexec is what carries SysBase into the image, and -lamiga what
+# satisfies libautoinit's error path.
+ELFCORELIBS := -L$(AROS_LIB) -lexec -larossupport -lautoinit -llibinit \
+               -lamiga -lstdc.static
+ifeq ("$(AROS_TOOLCHAIN)","gnu")
+ELFCORELIBS += -L$(CROSSTOOLSDIR)/lib/gcc/$(AROS_TARGET_CPU)-aros/$(TARGET_GCC_VER) -lgcc
+endif
+
+# The image declares the silicon it will run on. These are the pre-v3
+# numbers that go with the link script's memory windows; an image built
+# for one family must not be loaded by a bootloader on the other.
+ESP32P4_REV_MIN ?= $(P4_BOARD_REV_MIN)
+ESP32P4_REV_MAX ?= $(P4_BOARD_REV_MAX)
+ESPTOOL         ?= esptool
+
+ELF2IMAGE = $(ESPTOOL) --chip esp32p4 elf2image --flash-mode dio \
+	    --flash-freq 80m --flash-size $(P4_BOARD_FLASH_SIZE) \
+	    --min-rev-full $(ESP32P4_REV_MIN) --max-rev-full $(ESP32P4_REV_MAX)
+
+#MM kernel-esp32p4-riscv : kernel-kernel-kobj kernel-exec-kobj kernel-task-kobj kernel-debug-kobj \
+#MM     kernel-flashdisk-kobj
+#MM
+kernel-esp32p4-riscv: $(OSGENDIR)/boot/aros-esp32p4.bin
+	$(Q)$(NOP)
+
+# ldscript.lds puts everything in SRAM and works on both boot paths;
+# ldscript-xip.lds leaves code and read-only data in flash for the
+# bootloader to map, which only the app partition path can do. Select with
+# P4_LDSCRIPT=ldscript-xip.lds.
+P4_LDSCRIPT ?= ldscript.lds
+
+$(OSGENDIR)/boot/core.elf: $(BSP_KOBJS) $(SRCDIR)/$(CURDIR)/$(P4_LDSCRIPT) \
+                          $(SRCDIR)/$(CURDIR)/check-sramtext.sh
+	@$(ECHO) "Creating   $@ with $(P4_LDSCRIPT)"
+	%mkdirs_q $(OSGENDIR)/boot
+	@$(KERNEL_LD) -Map $(OSGENDIR)/boot/core.map \
+	    -T $(SRCDIR)/$(CURDIR)/$(P4_LDSCRIPT) -o $@ $(filter %.o,$^) $(ELFCORELIBS)
+	@$(ECHO) "Checking   $@ SRAM residency"
+	@$(SHELL) $(SRCDIR)/$(CURDIR)/check-sramtext.sh "$(TARGET_OBJDUMP)" "$@"
+
+# One image for both boot paths, because the link script's ceiling is the
+# lower of the two and the layout is otherwise the same.
+#
+#   0x2000    the second stage bootloader offset, where the first stage
+#             ROM loader picks it up directly. Nothing in the way: no
+#             partition table, no OTA data and no rollback machinery,
+#             none of which an image that is not an ESP-IDF application
+#             can satisfy.
+#   0x20000   the ota_0 app partition, loaded by whatever second stage
+#             bootloader the device already carries.
+$(OSGENDIR)/boot/aros-esp32p4.bin: $(OSGENDIR)/boot/core.elf
+	@$(ECHO) "Creating   $@"
+	@$(ELF2IMAGE) -o $@ $<
+
+%common

@@ -244,6 +244,10 @@ static LONG InitDiskHandler(struct Globals *glob)
                 {
                     D(bug("\tDevice successfully opened\n"));
                     Probe64BitSupport(glob);
+                    /* Asked before the first mount as well as on every
+                       insert, because a medium that is already in the drive
+                       never produces a disk-change event. */
+                    ProbeWriteProtection(glob);
 
                     /* Respect the device's transfer limit, if the mount
                      * environment supplies one */

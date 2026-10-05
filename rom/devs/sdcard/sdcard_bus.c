@@ -368,6 +368,17 @@ BOOL FNAME_SDCBUS(RegisterUnit)(struct sdcard_Bus *bus)
                 if ((sdcUnit = AllocVecPooled(LIBBASE->sdcard_MemPool, sizeof(struct sdcard_Unit))) != NULL)
                 {
                     sdcUnit->sdcu_Bus = bus;
+                    /*
+                     * The disc-change interrupt list, which nothing
+                     * initialised until now.  A zeroed list header is not an
+                     * empty list: AddHead() writes through lh_Head, so the
+                     * first TD_ADDCHANGEINT stored to address 4 and took a
+                     * Store/AMO access fault.  Nothing on this side ever
+                     * called it - a filesystem does, on mounting - which is
+                     * why it survived this long.  scsi.device and ata.device
+                     * do the same NEWLIST in their unit init.
+                     */
+                    NEWLIST(&sdcUnit->sdcu_SoftList);
                     if ((sdcUnit->sdcu_UnitNum = bus->sdcb_BusUnits->sdcbu_UnitCnt++) > bus->sdcb_BusUnits->sdcbu_UnitMax)
                     {
                         return FALSE;

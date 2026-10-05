@@ -1467,6 +1467,7 @@ static void * init_Pool(struct MemHeaderExt *mhe, IPTR puddleSize, IPTR initialS
  */
 void krnCreateTLSFMemHeader(CONST_STRPTR name, BYTE pri, APTR start, IPTR size, ULONG flags)
 {
+    tlsf_t *tlsf;
     /*
      * If the last available address is less than (1 << 31), MEMF_31BIT is
      * implied. On 64-bit systems an explicitly requested MEMF_31BIT is
@@ -1521,6 +1522,10 @@ void krnCreateTLSFMemHeader(CONST_STRPTR name, BYTE pri, APTR start, IPTR size, 
      */
     mhe->mhe_MemHeader.mh_Lower           = start;
     mhe->mhe_MemHeader.mh_Upper           = start + size;
+    /*
+     * Set before tlsf_init, because tlsf_init reads it to decide whether
+     * the region is large enough to hold the allocator's own structures.
+     */
     mhe->mhe_MemHeader.mh_Free            = size;
 
 #if defined(__AROSEXEC_SMP__)
@@ -1530,7 +1535,19 @@ void krnCreateTLSFMemHeader(CONST_STRPTR name, BYTE pri, APTR start, IPTR size, 
 
     D(nbug("[Kernel:TLSF] %s: 0x%p -> 0x%p\n", __PRETTY_FUNCTION__, mhe->mhe_MemHeader.mh_Lower, mhe->mhe_MemHeader.mh_Upper));
 
-    tlsf_init(mhe);
+    tlsf = tlsf_init(mhe);
+
+    /*
+     * And corrected afterwards. tlsf_init hands the region to
+     * tlsf_add_memory, which adds its length to mh_Free again, so on
+     * return the field says about twice what the header actually has. It
+     * corrects itself at the first allocation or free, which is why this
+     * has gone unnoticed: a header is normally allocated from long before
+     * anyone reads the field. A header that has been created and not yet
+     * used reports double.
+     */
+    if (tlsf)
+        mhe->mhe_MemHeader.mh_Free = tlsf->free_size;
 }
 
 struct MemHeader * krnConvertMemHeaderToTLSF(struct MemHeader * source)

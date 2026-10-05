@@ -1,0 +1,41 @@
+include $(SRCDIR)/config/aros.cfg
+
+#
+# touchscreen.hidd: a pointing device driver for any touch controller that
+# implements IID_Hidd_TouchController.  Polling, calibration, gesture rules
+# and ENV:Sys/touchscreen.prefs live here; the controller drivers know only
+# their chip, and the machine's board code wires the two together.  See
+# <hidd/touchscreen.h>.
+#
+# The gesture rules, the preferences format and the calibration fit are
+# plain C with host tests in tests/ (no AROS needed):
+#   cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+#      touch_policy.c tests/policy_test.c
+#   cc ... touch_policy.c touch_prefs.c tests/prefs_test.c
+#   cc ... touch_calib.c tests/calib_test.c
+#
+
+#MM kernel-hidd-touchscreen : kernel-hidd-mouse kernel-hidd-input linklibs
+
+FILES := touchscreen_init touchscreen_class touch_worker touch_files \
+         touch_policy touch_prefs
+
+INCLUDE_FILES := include/touchscreen.h
+%copy_includes path=hidd dir=include
+
+# Logs raw extremes of single contacts, for measuring a new panel.
+TOUCHSCREEN_EDGE_TRACE ?= 0
+
+USER_CPPFLAGS := \
+    -DTOUCHSCREEN_EDGE_TRACE=$(TOUCHSCREEN_EDGE_TRACE) \
+    -D__OOP_NOLIBBASE__ \
+    -D__UTILITY_NOLIBBASE__ \
+    -D__OOP_NOMETHODBASES__ \
+    -D__OOP_NOATTRBASES__
+
+USER_LDFLAGS := -static
+
+%build_module mmake=kernel-hidd-touchscreen \
+    modname=touchscreen modtype=hidd files=$(FILES)
+
+%common

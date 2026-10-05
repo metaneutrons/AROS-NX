@@ -161,6 +161,10 @@ static const struct newMemList MemTemplate =
         }
     }
 
+    /* The output port is valid only when task creation succeeds. */
+    if (msgPortPtr)
+        *msgPortPtr = NULL;
+
     /* We need a minimum stack to handle interrupt contexts. Additionally confirned on MorphOS that
        it sets a minimum fixed size of stack */
 #ifdef __mc68000
@@ -192,7 +196,9 @@ static const struct newMemList MemTemplate =
     if (ml)
     {
         struct Task *task2 = NULL;
-        APTR name = ml->ml_ME[2].me_Addr;
+        /* The minimal unnamed/no-port template contains only Task + stack.
+         * Do not read a third MemEntry unless it was actually allocated. */
+        APTR name = ml->ml_NumEntries > 2 ? ml->ml_ME[2].me_Addr : NULL;
 
         if (taskname)
             strcpy(name, taskname);

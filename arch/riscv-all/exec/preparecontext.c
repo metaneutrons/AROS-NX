@@ -43,7 +43,11 @@ BOOL PrepareContext(struct Task *task, APTR entryPoint, APTR fallBack,
         {
 #if defined(__AROSEXEC_SMP__)
             case TASKTAG_AFFINITY:
-                IntETask(task->tc_UnionETask.tc_ETask)->iet_CpuAffinity = t->ti_Data;
+                /* The caller's mask replaces the one InitETask() allocated */
+                if (IntETask(task->tc_UnionETask.tc_ETask)->iet_CpuAffinity &&
+                    (IPTR)IntETask(task->tc_UnionETask.tc_ETask)->iet_CpuAffinity != TASKAFFINITY_ANY)
+                    KrnFreeCPUMask(IntETask(task->tc_UnionETask.tc_ETask)->iet_CpuAffinity);
+                IntETask(task->tc_UnionETask.tc_ETask)->iet_CpuAffinity = (void *)t->ti_Data;
                 break;
 #endif
 #define REGARG(argno)                       \
@@ -67,9 +71,10 @@ BOOL PrepareContext(struct Task *task, APTR entryPoint, APTR fallBack,
     ctx->fp = 0;
     ctx->ra = (IPTR)fallBack;
     ctx->Flags = 0;
-    /* Return to S-mode with interrupts enabled and a fresh (Initial)
-       FPU state - first FP use marks it Dirty for the lazy switcher */
-    ctx->sr = SSTATUS_SPP | SSTATUS_SPIE | SSTATUS_FS_INITIAL;
+    /* Return to the privilege the kernel runs in, with interrupts
+       enabled and a fresh (Initial) FPU state - the first FP use marks
+       it Dirty for the lazy switcher */
+    ctx->sr = RISCV_CTX_STATUS_INITIAL;
 
     /* Set up the frame to be used by Dispatch() */
     ctx->sp = (IPTR)task->tc_SPReg;

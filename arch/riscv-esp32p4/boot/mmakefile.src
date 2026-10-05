@@ -1,0 +1,189 @@
+#
+#   The board-support package for the ESP32-P4 bring-up.
+#
+#   This is the standard AROS PKG v1 container, not a linked image.  Its
+#   members are complete relocatable module files; the platform ELF loader
+#   places and relocates them in PSRAM later.
+#
+#   A4 grew the package in measured steps: first the DOS side, then the
+#   emergency console, each proven to load, relocate and initialise while the
+#   post-krnStartExec() diagnostics could still be read.  `dosboot.resource`
+#   is the last of them, and the reason for that order: its COLDSTART init
+#   either boots or retries for ever, so from here on nothing after
+#   `krnStartExec()` in kernel_startup.c is reachable.  What replaces those
+#   diagnostics is the modules' own narration, which needs DOS_DEBUG=1 and
+#   DOSBOOT_DEBUG=1 to exist at all, and the heartbeat task the kickstart
+#   starts from a COLDSTART resident at -40.
+#
+#   Note that `econsole` and `sdcard.device`'s `SDCard boot wait` resident
+#   share priority -49.  That tie is harmless: one registers a boot node at
+#   bootpri -127 and the other waits for pending bus tasks, neither depends
+#   on the other, and dosboot at -50 follows both whichever way the link
+#   order falls.  A resident that does depend on the order would have to say
+#   so with a distinct priority rather than rely on this.
+#
+
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
+
+#MM kernel-package-esp32p4-riscv : \
+#MM     kernel-aros \
+#MM     kernel-oop \
+#MM     kernel-utility \
+#MM     kernel-graphics \
+#MM     kernel-layers \
+#MM     kernel-keymap \
+#MM     kernel-intuition \
+#MM     kernel-hidd \
+#MM     kernel-hidd-gfx \
+#MM     kernel-hidd-input \
+#MM     kernel-hidd-kbd \
+#MM     kernel-hidd-mouse \
+#MM     kernel-hidd-bus \
+#MM     hidd-i2c \
+#MM     kernel-hidd-i2c-esp32p4 \
+#MM     kernel-hidd-touchscreen \
+#MM     hidd-gt911 \
+#MM     hidd-gsl3670 \
+#MM     kernel-esp32p4board \
+#MM     hidd-esp32p4-fbgfx \
+#MM     kernel-input \
+#MM     kernel-keyboard \
+#MM     kernel-gameport \
+#MM     kernel-console \
+#MM     kernel-c2screen-esp32p4-riscv \
+#MM     kernel-expansion \
+#MM     kernel-misc \
+#MM     kernel-partition \
+#MM     kernel-sdcard \
+#MM     kernel-ramtest \
+#MM     kernel-dos \
+#MM     kernel-bootloader \
+#MM     kernel-filesystem \
+#MM     kernel-lddemon \
+#MM     kernel-shell \
+#MM     kernel-shellcommands \
+#MM     workbench-libs-gadtools \
+#MM     kernel-fs-con \
+#MM     kernel-fs-fat \
+#MM     kernel-fs-ram \
+#MM     kernel-econsole \
+#MM     kernel-dosboot
+
+#MM kernel-package-esp32p4-riscv-quick : \
+#MM     kernel-aros-quick \
+#MM     kernel-oop-quick \
+#MM     kernel-utility-quick \
+#MM     kernel-graphics-quick \
+#MM     kernel-layers-quick \
+#MM     kernel-keymap-quick \
+#MM     kernel-intuition-quick \
+#MM     kernel-hidd-quick \
+#MM     kernel-hidd-gfx-quick \
+#MM     kernel-hidd-input-quick \
+#MM     kernel-hidd-kbd-quick \
+#MM     kernel-hidd-mouse-quick \
+#MM     kernel-hidd-bus-quick \
+#MM     hidd-i2c-quick \
+#MM     kernel-hidd-i2c-esp32p4-quick \
+#MM     kernel-hidd-touchscreen-quick \
+#MM     hidd-gt911-quick \
+#MM     hidd-gsl3670-quick \
+#MM     kernel-esp32p4board-quick \
+#MM     hidd-esp32p4-fbgfx-quick \
+#MM     kernel-input-quick \
+#MM     kernel-keyboard-quick \
+#MM     kernel-gameport-quick \
+#MM     kernel-console-quick \
+#MM     kernel-c2screen-esp32p4-riscv-quick \
+#MM     kernel-expansion-quick \
+#MM     kernel-misc-quick \
+#MM     kernel-partition-quick \
+#MM     kernel-sdcard-quick \
+#MM     kernel-ramtest-quick \
+#MM     kernel-dos-quick \
+#MM     kernel-bootloader-quick \
+#MM     kernel-filesystem-quick \
+#MM     kernel-lddemon-quick \
+#MM     kernel-shell-quick \
+#MM     kernel-shellcommands-quick \
+#MM     workbench-libs-gadtools-quick \
+#MM     kernel-fs-con-quick \
+#MM     kernel-fs-fat-quick \
+#MM     kernel-fs-ram-quick \
+#MM     kernel-econsole-quick \
+#MM     kernel-dosboot-quick
+
+#
+#   ramtest.device is the A2 corpus fixture.  It carries only const data and
+#   has no write path, so including it costs a few kilobytes and no risk to
+#   the medium.  Drop it from the package once A2 is verified.
+#
+PKG_LIBS      := aros utility oop graphics layers keymap intuition \
+                 partition dos
+PKG_LIBS_ARCH := expansion
+PKG_HIDDS     := hiddclass gfx inputclass keyboard mouse fbgfx
+PKG_RES       := bootloader FileSystem lddemon shell shellcommands dosboot
+PKG_DEVS      := input keyboard gameport sdcard ramtest
+PKG_HANDLERS  := fat econsole
+
+# C3 adds the normal desktop's console, RAM: and utility support.  Keep these
+# members behind the C3 selector so the accepted C2 package remains exactly
+# reproducible rather than silently growing when its diagnostic is rebuilt.
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+PKG_LIBS      += gadtools
+PKG_RES       += misc
+PKG_DEVS      += console
+PKG_HANDLERS  += con ram
+endif
+
+# The touch stack: the I2C bus classes and the ESP32-P4 bus driver, the
+# generic touchscreen driver, the board's controller driver and
+# esp32p4board.resource, which wires them together from the board profile.
+# Opt-in like the rest of C4.
+ifeq ($(P4_C4_TOUCH_HIDD),1)
+PKG_HIDDS     += bus i2c i2c-esp32p4 touchscreen $(P4_BOARD_TOUCH_MODULE)
+PKG_RES       += esp32p4board
+endif
+
+# C2's one-shot screen owner is an acceptance instrument, not a normal boot
+# component.  Preserve it for exact C2 reproduction, but never put it in a C3
+# (or unqualified) package where it would compete with Wanderer for the boot
+# display.
+ifeq ($(P4_C2_INTUITION_GATE),1)
+PKG_RES       += c2screen
+endif
+
+#
+#   The package shares its partition with the flash development volume, which
+#   takes the last four megabytes; see P4_FLASHDISK_PART_OFFSET in
+#   kernel/kernel_intern.h.  Growing past the split would have the loader
+#   read filesystem bytes as package members, so it is a build error here
+#   instead.
+#
+PKG_LIMIT := $(P4_BOARD_PKG_LIMIT)
+
+%make_package mmake=kernel-package-esp32p4-riscv \
+    file=$(AROSARCHDIR)/aros-bsp.pkg \
+    libs="$(PKG_LIBS)" arch_libs="$(PKG_LIBS_ARCH)" \
+    res="$(PKG_RES)" devs="$(PKG_DEVS)" handlers="$(PKG_HANDLERS)" \
+    hidds="$(PKG_HIDDS)"
+
+USER_LDFLAGS := -static
+
+%build_module mmake=kernel-c2screen-esp32p4-riscv \
+    modname=c2screen modtype=resource version=$(AROS_TARGET_PLATFORM) \
+    files="c2screen"
+
+#MM
+kernel-package-esp32p4-riscv-checksize : kernel-package-esp32p4-riscv
+	@size=`wc -c < $(AROSARCHDIR)/aros-bsp.pkg` ; \
+	if $(TEST) $$size -gt $(PKG_LIMIT) ; then \
+	    $(ECHO) "aros-bsp.pkg is $$size bytes, over the $(PKG_LIMIT)-byte" \
+	            "split with the flash development volume" ; \
+	    exit 1 ; \
+	else \
+	    $(ECHO) "Package     $$size of $(PKG_LIMIT) bytes before the flash volume" ; \
+	fi
+
+%common

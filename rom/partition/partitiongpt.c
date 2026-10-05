@@ -259,9 +259,18 @@ static LONG GPTCheckHeader(struct Library *PartitionBase, struct PartitionHandle
         D(bug("[GPT] Header size: specified %u, expected %u\n", hdrSize, GPT_MIN_HEADER_SIZE));
         DREAD(KPrintF("[GPT] Read: Header block %llu, backup block %llu\n", currentblk, AROS_LE2QUAD(hdr->BackupBlock)));
 
-        /* Check signature, header size, and current block number */
+        /* Check signature, header size, and current block number.
+           HeaderSize is the length passed to the CRC below, and the buffer is
+           exactly one block, so it needs an upper bound as much as a lower
+           one: GPT_MAX_HEADER_SIZE already existed for this and was simply
+           never used.  Bound it by the actual block size too, since a device
+           may have blocks smaller than 512 bytes. */
+        ULONG blockSize = root->de.de_SizeBlock << 2;
+
         if ((!memcmp(hdr->Signature, GPT_SIGNATURE, sizeof(hdr->Signature))) &&
-            (hdrSize >= GPT_MIN_HEADER_SIZE) && (currentblk == block))
+            (hdrSize >= GPT_MIN_HEADER_SIZE) &&
+            (hdrSize <= GPT_MAX_HEADER_SIZE) && (hdrSize <= blockSize) &&
+            (currentblk == block))
         {
             /*
              * Use zlib routine for CRC32.
@@ -341,8 +350,34 @@ static LONG GPTReadPartitionTable(struct Library *PartitionBase, struct Partitio
         struct GPTPartition *table;
         ULONG cnt       = AROS_LE2LONG(hdr->NumEntries);
         ULONG entrysize = AROS_LE2LONG(hdr->EntrySize);
-        ULONG tablesize = AROS_ROUNDUP2(entrysize * cnt, root->de.de_SizeBlock << 2);
+        ULONG tablesize;
+        UQUAD entrybytes;
         UQUAD startblk, endblk;
+
+        /*
+         * Bound the entry array before any of it is used.  entrysize and cnt
+         * come straight from the header, and their product used to size an
+         * allocation, bound a loop and serve as a CRC length.  As a 32-bit
+         * multiplication it could wrap, which turned a huge claim into a
+         * small allocation that the loop and the CRC then walked past.
+         *
+         * The product is therefore computed in 64 bits and checked before it
+         * is narrowed.  An entry must also be able to hold the structure the
+         * code reads out of it, and the spec requires a multiple of eight.
+         */
+        entrybytes = (UQUAD)entrysize * (UQUAD)cnt;
+
+        if (entrysize < sizeof(struct GPTPartition) ||
+            entrysize > GPT_MAX_ENTRY_SIZE || (entrysize & 7) != 0 ||
+            cnt == 0 || cnt > GPT_MAX_ENTRIES ||
+            entrybytes > GPT_MAX_TABLE_BYTES)
+        {
+            D(bug("[GPT] refusing entry array: %u entries of %u bytes\n",
+                  cnt, entrysize));
+            return ERROR_OBJECT_WRONG_TYPE;
+        }
+
+        tablesize = AROS_ROUNDUP2((ULONG)entrybytes, root->de.de_SizeBlock << 2);
 
         DREAD(bug("[GPT] Read: %u entries per %u bytes, %u bytes total\n", cnt, entrysize, tablesize));
 
@@ -357,7 +392,7 @@ static LONG GPTReadPartitionTable(struct Library *PartitionBase, struct Partitio
         if (!res)
         {
             ULONG orig_crc = AROS_LE2LONG(hdr->PartCRC32);
-            ULONG crc = Crc32_ComputeBuf(0, table, entrysize * cnt);
+            ULONG crc = Crc32_ComputeBuf(0, table, (ULONG)entrybytes);
 
             D(bug("[GPT] Data CRC: calculated 0x%08X, expected 0x%08X\n", crc, orig_crc));
 
@@ -369,7 +404,14 @@ static LONG GPTReadPartitionTable(struct Library *PartitionBase, struct Partitio
                 DREAD(bug("[GPT] Adding partitions...\n"));
                 err = 0;
 
-                for (i = 0; i < cnt; i++)
+                /* The entry pointer advances in the loop header on purpose.
+                   It used to advance at the bottom, which the `unused entry`
+                   continue below skipped: after the first unused entry the
+                   pointer stopped moving and every later entry was read as a
+                   copy of that one, so the gaps the comment below promises to
+                   tolerate were in fact not tolerated at all. */
+                for (i = 0; i < cnt;
+                     i++, p = (struct GPTPartition *)((UBYTE *)p + entrysize))
                 {
                     struct GPTPartitionHandle *gph;
 
@@ -392,6 +434,21 @@ static LONG GPTReadPartitionTable(struct Library *PartitionBase, struct Partitio
                     DREAD(KPrintF("[GPT] Blocks    %llu - %llu\n", startblk, endblk));
                     DREAD(KPrintF("[GPT] Flags     0x%08lX 0x%08lX\n", AROS_LE2LONG(p->Flags0), AROS_LE2LONG(p->Flags1)));
                     DREAD(KPrintF("[GPT] Offset    0x%p\n", (APTR)p - (APTR)table));
+
+                    /* GPT states an inclusive end block, so a reversed pair
+                       underflows the count.  Check the ordering first, then
+                       the range, and only then allocate. */
+                    if (endblk < startblk)
+                    {
+                        D(bug("[GPT] entry %u has end before start\n", i));
+                        continue;
+                    }
+                    if (!partitionRangeIsSane(root, startblk,
+                                              endblk - startblk + 1))
+                    {
+                        D(bug("[GPT] entry %u out of range\n", i));
+                        continue;
+                    }
 
                     gph = AllocVec(sizeof(struct GPTPartitionHandle) + entrysize, MEMF_CLEAR);
                     if (gph)
@@ -417,8 +474,6 @@ static LONG GPTReadPartitionTable(struct Library *PartitionBase, struct Partitio
                         break;
                     }
 
-                    /* Jump to next entry, skip 'entrysize' bytes */
-                    p = (APTR)p + entrysize;
                 }
             }
             else

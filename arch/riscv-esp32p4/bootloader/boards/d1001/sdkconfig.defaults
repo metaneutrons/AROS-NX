@@ -1,0 +1,9 @@
+CONFIG_IDF_TARGET="esp32p4"
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
+CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
+CONFIG_BOOTLOADER_LOG_LEVEL_INFO=y
+# This board is an early v1.3 part; the v6.0.1 default targets v3.01 silicon.
+# IDF treats pre-v3 and v3+ as mutually exclusive builds, so the gate has to
+# be opened before the revision can be chosen.
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_100=y

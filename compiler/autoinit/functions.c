@@ -4,7 +4,15 @@
     Desc: autoinit library - functions sets handling
 */
 
+/*
+   Guarded so a build can raise it without editing this file; see
+   mmakefile.src for the AUTOINIT_DEBUG shorthand.  These functions run
+   between a loaded program's entry point and its main(), a stretch that is
+   otherwise silent, so a program that hangs in it produces no output at all.
+*/
+#ifndef DEBUG
 #define DEBUG 0
+#endif
 
 #include <aros/symbolsets.h>
 #include <aros/debug.h>
