@@ -142,8 +142,9 @@ start, belongs in `arch/riscv-esp32p4`.
   boot, visual and touch regressions on both boards, each visual test with a
   fresh "bereit".
   Status 2026-10-05: upstream's ten tests and a twenty-minute sustained run
-  pass headless on the JC1060P470C after three fixes ("S5 so far" below);
-  the visual and touch check and the D1001 are open.
+  pass headless on the JC1060P470C after three fixes ("S5 so far" below),
+  and the visual and touch check passed there on the S6 core; the D1001 is
+  open.
 - **S6 Default decision.** SMP or single hart as the P4 default; the Giant
   branch is retired then.
   Status 2026-10-05, Fabian's decision: SMP is the only esp32p4 build, with

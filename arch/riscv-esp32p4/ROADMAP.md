@@ -150,7 +150,7 @@ gate: compensated output is not the native display contract.
 | S2 | `smp` build on one hart | `hardware verified (headless, JC1060P470C)` | Configure allows `smp` for esp32p4; platform layer in the port; boots on hart 0 with hart 1 in reset. The SMP build tree is set up here, because configure refuses `smp` for this target until then. |
 | S3 | Second hart online, idle | `hardware verified (headless, JC1060P470C)` | Hart 1 from the E1/E2 entry with its own ISR stack, CLIC/IPI, per-hart state, a tick and an idle task; parked for cache and flash windows. |
 | S4 | Scheduling on two harts | `hardware verified (headless, JC1060P470C)` | Evidence entry 2026-10-05: upstream's affinity model (the boot task bound to hart 0, children inherit; `TASKAFFINITY_ANY` tasks run on either hart), signals, `KrnScheduleCPU` and hart 1's tick through IPIs; the acceptance test `P4_S4_TEST=1` passes six of six boots, the plain core boots six times and runs ten minutes. Ordinary tasks stay on hart 0 until S5's serialization. |
-| S5 | SMP qualification | `hardware partial (headless, JC1060P470C)` | Evidence entry 2026-10-05: upstream's ten SMP tests pass on 6 of 6 boots and over a twenty-minute run of 200 tests, after three fixes (no dispatch fallback with an idle task per hart, preemption waits for task-held spinlocks, console and SYSTIMER serialized); the production core passes five boots and ten minutes. Open: visual/touch check with a fresh "bereit", the D1001. |
+| S5 | SMP qualification | `hardware verified (JC1060P470C); D1001 open` | Evidence entry 2026-10-05: upstream's ten SMP tests pass on 6 of 6 boots and over a twenty-minute run of 200 tests, after three fixes (no dispatch fallback with an idle task per hart, preemption waits for task-held spinlocks, console and SYSTIMER serialized); the production core passes five boots and ten minutes; the visual and touch check passed on the S6 core (Fabian, 2026-10-05). Open: the D1001. |
 | S6 | SMP default decision | `decided and done (2026-10-05)` | Evidence entry 2026-10-05: Fabian's decision, SMP is the only esp32p4 build. Configure selects the `smp` variant without being asked and refuses any other; the port's single-hart branches are gone, and a tree configured without the variant is refused. No Giant and no single-hart build; `giant-smp` and `e3-smp` stay as local history branches. Replaces the former E4 row. |
 
 ## Track E: ESP32-P4 / RV32 SMP
@@ -158,7 +158,8 @@ gate: compensated output is not the native display contract.
 Status 2026-10-05: this branch (`feat/riscv32-esp32p4-v3`) runs AROS's own
 SMP exec on both harts, and since S6 that is its only build: configure
 selects the `smp` variant for esp32p4. Upstream's SMP tests pass on the
-JC1060P470C (S5); the visual and touch check and the D1001 are open. The
+JC1060P470C, and its visual and touch check passed (S5); the D1001 is
+open. The
 branch was rebuilt from upstream `44336e404a` without E3 and without the
 Giant and then rebased onto upstream `5da9fd5072`; both are kept on local
 branches (`e3-smp`, `giant-smp`) as history, not as build options. E0-E2
@@ -25329,6 +25330,24 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   tree of its own before it can run anything from this branch.
 - Next safe step: the visual and touch check on the JC1060P470C with a
   fresh "bereit"; an SMP tree for the D1001.
+
+### 2026-10-05 - S5: visual and touch check on the JC1060P470C passes
+
+- State change: S5 hardware verified on the JC1060P470C, headless and with
+  the visual and touch check. The D1001 is open.
+- Setup: production core of S6, `315ab0c4…` at `0x20000`, package
+  `86e36ba0…`, test volume `7a8b6828…`, SMP card `e2df4059…`; board
+  `80:f1:b2:d3:3b:a6`, MAC checked; reset after Fabian's fresh "bereit".
+- Fabian checked boot picture and Wanderer, touch at all four edges, tap,
+  double tap, two-finger menu, double-tap-and-drag, Prefs/Touchscreen from
+  the development volume (the editor whose start had turned the screen
+  blue in S2) and Prefs/Backlight, and windows moved around: "everything
+  works!".
+- Console, ten minutes from the reset,
+  `afdfa3be60db2dadaa166a42449a3c903be90ae5ac37212ca48b0afe9d0166fe`: hart 1
+  online, windows 1-3 parked, Wanderer, GT911, Touchscreen and Backlight
+  activity, 119 heartbeats to the end, no alert.
+- Next safe step: an SMP tree for the D1001 and the same S5 checks there.
 
 ## Evidence-entry template
 
