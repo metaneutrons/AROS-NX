@@ -94,6 +94,16 @@ _start:
 	addi	t0, t0, 4
 	j	1b
 2:
+#ifdef P4_SECONDARY_PROBE
+	/* These registers survive our BSS loop; snapshot only AFTER clearing it.
+	   No C has run and the secondary was isolated before any BSS store. */
+	la t0, __p4_secondary_boot_snapshot
+	sw s0, 0(t0)
+	sw s1, 4(t0)
+	sw s2, 8(t0)
+	sw s3, 12(t0)
+	sw s4, 16(t0)
+#endif
 	/* Record and pass on the hart we came up on */
 	csrr	a0, mhartid
 	la	t0, __boot_hartid

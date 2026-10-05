@@ -20,6 +20,12 @@ struct p4_mailbox {
     uint32_t output[P4_MAIL_WORDS];
 } __attribute__((aligned(64)));
 struct p4_mail_state { uint32_t ticket, sequence, accepted; };
+/* The uncached-alias offset, read from SRAM rather than written as an
+   immediate. At -O2 GCC keeps an immediate 0x40000000 in a register for a
+   whole function, and objdump's address comments then show every later
+   access through that register as an XIP reference, which the SRAM
+   residency check refuses. */
+extern volatile uintptr_t p4_secondary_uncached_offset;
 static inline __attribute__((always_inline)) void p4_mail_fence(void)
 {
 #ifndef P4_SECONDARY_HOST_TEST

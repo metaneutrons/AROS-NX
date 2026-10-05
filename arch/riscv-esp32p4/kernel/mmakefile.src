@@ -1026,6 +1026,9 @@ ifneq ($(P4_E2_MAILBOX),1)
 $(error P4_E2_PRIMITIVES=1 requires P4_E2_MAILBOX=1)
 endif
 USER_CPPFLAGS += -DP4_E2_PRIMITIVES=1
+# Hart 1 runs this from SRAM: a jump table in flash .rodata would be read
+# through the cache it must be able to do without.
+USER_CFLAGS += -fno-jump-tables
 CFILES += secondary_primitives
 AFILES += secondary_irq
 endif

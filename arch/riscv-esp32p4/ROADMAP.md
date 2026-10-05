@@ -24886,6 +24886,33 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next safe step: when the D1001 is connected, core, package and a card,
   then boot and the visual and touch check with Fabian's readiness.
 
+### 2026-10-05 - E2 diagnostic builds and runs again; first E2 pass on the JC1060P470C
+
+- State change: the E2 diagnostic is usable on v3 again; prerequisite for
+  S1. Three defects, none in a normal build:
+  1. `kernel/startup.S` measured the early isolation state (`s0`-`s4`) but
+     never stored it into `__p4_secondary_boot_snapshot`. The store had
+     landed in the E3 runtime commit (`740c2df79e`) when the work in
+     progress was split on 2026-10-02, and v3 left that commit out. The
+     probe then always read zeros and refused: "[smp] unsafe secondary
+     isolation; withholding Exec" (log `c927d56a…`). Restored after the BSS
+     clear, as on `e3-smp`.
+  2. Since the port kernel is built with `-O2` (`2ae3433f63`) the E2 core
+     no longer linked: hart 1's command dispatch became a jump table in
+     flash `.rodata`, which SRAM code must not read. Diagnostic builds now
+     use `-fno-jump-tables`.
+  3. Two further `check-sramtext.sh` refusals were objdump's stale address
+     comments: GCC keeps the alias immediate `0x40000000` in a register for
+     the whole function, and objdump annotates later accesses through it
+     as XIP. Hart 1's SRAM code now loads the offset from an SRAM variable
+     (`p4_secondary_uncached_offset`).
+- Normal builds are unaffected: the JC1060 normal core rebuilt after all
+  three changes is byte-identical, `85b8fc45…`.
+- Evidence: the E2 stages pass in every capture of the S1 entry below, and
+  `tools/smp-e2-check.py` accepts all five campaign logs (two epochs,
+  misa A bits, contention, releases reset-held/clock-off, READY). This is
+  the first E2 pass on the JC1060P470C.
+
 ## Evidence-entry template
 
 

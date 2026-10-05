@@ -49,7 +49,7 @@ INLINE uintptr_t alias(void *p)
 {
     uintptr_t out;
     __asm__ volatile("add %0,%1,%2" : "=r"(out) : "r"((uintptr_t)p),
-                     "r"(P4_SECONDARY_UNCACHED_OFFSET));
+                     "r"(p4_secondary_uncached_offset));
     return out;
 }
 INLINE volatile struct e2_control *control(void)

@@ -4,6 +4,7 @@
 #include "secondary_mailbox.h"
 #define MAIL_SRAM __attribute__((section(".sramtext.secondary_mailbox"), noinline))
 struct p4_mailbox __p4_secondary_mailbox;
+volatile uintptr_t p4_secondary_uncached_offset = P4_SECONDARY_UNCACHED_OFFSET;
 extern uint32_t __p4_secondary_report[];
 #ifdef P4_E2_PRIMITIVES
 #include "secondary_primitives.h"
@@ -15,7 +16,7 @@ static inline __attribute__((always_inline)) uintptr_t mail_uncached(void *p)
        A folded +0x40000010 pointer falsely resembles an XIP reference in
        objdump and must not weaken the SRAM residency checker. */
     __asm__ volatile("add %0, %1, %2" : "=r"(alias)
-        : "r"((uintptr_t)p), "r"(P4_SECONDARY_UNCACHED_OFFSET));
+        : "r"((uintptr_t)p), "r"(p4_secondary_uncached_offset));
     return alias;
 }
 MAIL_SRAM void krnP4SecondaryMailboxWorker(void)
