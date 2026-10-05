@@ -21,9 +21,8 @@ core/BSP/SD identities recorded on 2026-10-01 and rollback copies.
 
 Decision (Fabian, 2026-10-04): the port moves to AROS's own SMP, the `smp`
 build variant (`__AROSEXEC_SMP__`), with its SMP code in `arch/riscv-esp32p4`
-and as few changes outside it as possible. The transitional Giant (branch
-`giant-smp`, `ff3395ba7f`) and the fine-grained E3 runtime (branch `e3-smp`,
-`14f0290e21`) are references, not the base. This branch,
+and as few changes outside it as possible. The transitional Giant (`ff3395ba7f`) and the fine-grained E3 runtime
+(`14f0290e21`) are references, not the base. This branch,
 `feat/riscv32-esp32p4-v3`, was rebuilt from `44336e404a` without either. The
 E0-E2 diagnostics stay: the second hart's release, entry, mailbox and IPI
 primitives are hardware-qualified and needed again.
@@ -410,70 +409,15 @@ Open points:
 - How much of `arch/riscv-native` can be reused is unclear; it is incomplete
   and oriented to supervisor mode.
 
-The sections below are the record of the earlier approaches: the Giant, which
-ran on hardware, and E0-E3. Files, switches and tools they name that belong
-to E3 or the Giant exist only on the branches `e3-smp` and `giant-smp`.
+The sections below are the record of the earlier E0-E3 work. Files, switches
+and tools they name that belong to E3 exist only in commit `14f0290e21`.
 
-## Transitional Giant Exec SMP (`P4_GIANT=1`, decided 2026-10-02)
-
-Not on this branch: preserved on branch `giant-smp` (`ff3395ba7f`).
-
-Fabian changed the delivery strategy on 2026-10-02: instead of finishing the
-fine-grained E3 lifecycle/semaphore protocols before hart1 ever runs Exec,
-deliver a hardware-tested transitional "Giant" first. This is a **named
-workaround**, not the E3 design and not a fix for the races E3 documents.
-
-What it compensates: the absence of fine-grained, SMP-safe Exec
-synchronization. Exec on a single CPU already protects every task list and
-task state with Forbid() or Disable(); upstream AROS SMP makes both per-CPU
-and then has to add a lock to every structure. The Giant instead keeps their
-Amiga meaning system wide:
-
-- F, held by a hart while its current task is inside Forbid() or Disable();
-- D, held by a hart while its task is inside Disable(), and by every trap.
-
-Lock order is F before D. Disable() takes F first; a trap holds D and may only
-try-lock F (the dispatcher, for a task that resumes inside Disable()).
-Both locks must be fair. Plain test-and-set starved hart1 for 30 minutes
-under load (2026-10-02): every Exec call on hart0 releases and retakes F
-within a few instructions. A waiting hart therefore announces itself, and
-a hart about to take F or D, including the dispatcher's try-lock, first
-lets an announced peer go, bounded at about 55 us.
-Interrupt code takes only D, so interrupts still run while some task holds
-Forbid(). Both lock words live in canonical internal SRAM (E2 qualified AMO).
-ThisTask, ID/TD nesting, scheduler flags and quantum are per hart, selected by
-mhartid with MIE masked. Every trap from task context moves to a per-hart ISR
-stack through mscratch, because two harts must never share a task stack and
-the dispatcher idles inside the trap. Hart1 has no tick of its own: hart0's
-timer interrupt posts a tick IPI. Soft interrupts run on hart0 only. Before
-hart0 suspends the cache to rewrite the flash MMU it parks hart1 in SRAM and
-refuses the mapping if hart1 does not answer within a second. The shared
-console, the cache controller's ROM commands and the SYSTIMER snapshot are
-serialized across harts.
-
-It needs no Exec ABI change: only the core image changes, and the unchanged
-normal BSP package runs with it. `P4_GIANT` is a make switch of the normal
-target, not the `smp` variant, which the port's kernel makefile refuses,
-and Codex's E3 sources were removed on 2026-10-04 (branch `e3-smp`, see E3
-below). Hart1 runs only tasks that opt in
-through the private tc_Flags bits 1 (may run on hart1) and 2 (must not run on
-hart0), which exec/tasks.h leaves unused.
-
-Known limits of this stage: code that writes SysBase->TDNestCnt directly
-(AROSTCP's fast Forbid) bypasses F; code that reads SysBase->ThisTask
-directly sees hart0's task; Forbid() does not stop a task that is already
-running on the other hart and needs neither lock; priority is not a mutual
-exclusion between harts. RemTask() of a task running on the other hart evicts
-it through an IPI. With `P4_GIANT_MIGRATE=1` every task created by
-NewAddTask() may run on either hart; Exec's boot task and anything older
-stay on hart0. A hardware driver must not hold a short-term lock across a
-point where its task can be preempted, or it may migrate holding it (found
-and fixed in the console lock, 2026-10-02).
-
-Removal test, kept as its own item: each narrowing of the Giant (a subsystem
-moved to its own lock) must show, on hardware, unchanged results of the
-Giant self-test plus a contention measurement that motivated it. The Giant is
-removed only when no Exec path depends on F/D for cross-hart exclusion.
+The transitional Giant (`P4_GIANT=1`: Forbid() and Disable() made system wide
+by two fair cross-hart locks, decided 2026-10-02) ran on hardware and was
+retired with S6. Its design and evidence are in ROADMAP Track E (row E3-GT)
+and the evidence log, its code in commit `ff3395ba7f`. Both commits are
+reachable through the local branch `feat/riscv32-esp32p4-v2`; the branches
+`giant-smp` and `e3-smp` were deleted on 2026-10-06.
 
 ## Design boundaries
 
@@ -800,7 +744,7 @@ CPU-local scheduler/runtime state before ordinary tasks run on hart1.
 
 ### E3: experimental Exec SMP
 
-**Status 2026-10-04: E3 removed from this branch, kept on branch `e3-smp`.**
+**Status 2026-10-04: E3 removed from this branch, kept in commit `14f0290e21`.**
 At Fabian's direction E3 was taken out in two commits. The shared half: the
 `EXEC_PLATFORM_*` hooks only E3 defined and the `__AROSEXEC_SMP__` changes in
 `rom/exec`, `rom/task` and `rom/kernel`, task.resource's direct core binding
@@ -823,11 +767,12 @@ in their own commits (ChildWait signal order, NewCreateTaskA failure paths,
 the task.resource expunge). The generic fixes that came in only with E3
 (task.resource hook node, list locking and init order, NewAddTask failure
 paths) are not on this branch; they are to be offered upstream from
-`e3-smp`. The Giant is not on this branch either (`giant-smp`).
+`14f0290e21` (the task.resource changes are in `502c9c0efd`). The Giant is
+not on this branch either (`ff3395ba7f`).
 
-To bring E3 back, start from branch `e3-smp` (`14f0290e21`, the last commit
-with all of it; local, not pushed). Everything below that names those
-switches, files or tools refers to that branch. The requirements stay as the
+To bring E3 back, start from commit `14f0290e21` (the last commit with all
+of it; local, reachable through `feat/riscv32-esp32p4-v2`). Everything below that names those
+switches, files or tools refers to that commit. The requirements stay as the
 design record for a later fine-grained SMP.
 
 Dependencies: E2 and explicit review of shared Exec SMP integration.
