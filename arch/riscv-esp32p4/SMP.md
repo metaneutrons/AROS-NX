@@ -98,10 +98,11 @@ start, belongs in `arch/riscv-esp32p4`.
 
 - **S0 Base.** Rebase this branch onto current upstream (`origin/master`), so
   the work starts on Kopperud's SMP code. Single-hart builds of both boards
-  boot; JC1060P470C visual and touch check with a fresh "bereit". Set up a
-  separate SMP build tree. Status 2026-10-04: rebased onto `5da9fd5072`;
-  the JC1060P470C passes, visual and touch check included (ROADMAP, S0
-  entries). Open: D1001, SMP build tree.
+  boot; JC1060P470C visual and touch check with a fresh "bereit". Status
+  2026-10-05: rebased onto `5da9fd5072`; the JC1060P470C passes, visual and
+  touch check included (ROADMAP, S0 entries). Open: D1001, the A1 recovery
+  retest. The SMP build tree moved to S2: configure refuses `smp` for this
+  target until S2 changes it.
 - **S1 Atomics on PSRAM.** Qualify native AMO and LR/SC on cached PSRAM across
   both harts on hardware, including the 8/16-bit sequences GCC generates, and
   check them against the LR/SC rule. If they hold, change 2 above suffices.
@@ -109,9 +110,10 @@ start, belongs in `arch/riscv-esp32p4`.
   needs a hook in `atomic.h` and so a further shared change, and other
   placements. This is the main risk for the goal of few changes outside the
   port.
-- **S2 SMP build on one hart.** Configure the `smp` variant for the P4 and
-  provide the platform layer in the port: `exec_platform.h` with per-hart
-  state, `KrnSpin*`, CPU count and masks reporting one CPU, the two syscalls.
+- **S2 SMP build on one hart.** Configure the `smp` variant for the P4 in a
+  separate SMP build tree and provide the platform layer in the port:
+  `exec_platform.h` with per-hart state, `KrnSpin*`, CPU count and masks
+  reporting one CPU, the two syscalls.
   It builds, links and boots on hart 0 with hart 1 held in reset.
 - **S3 Second hart online, idle.** Start hart 1 from the E1/E2 entry with its
   own ISR stack, CLIC and IPI setup, per-hart state and a tick (forwarded from
