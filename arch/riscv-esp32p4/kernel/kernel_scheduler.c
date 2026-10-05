@@ -209,7 +209,15 @@ dispatch_rescan:
     /* Every candidate was locked elsewhere for a moment: look again
        rather than idle with runnable work on the list. */
     if (!newtask && sawContended)
+    {
+#ifdef P4_SPIN_WATCHDOG
+        static unsigned int rescans;
+
+        if (++rescans == 5000000u)
+            krnP4SpinReport("dispatch-rescan", NULL, __builtin_return_address(0));
+#endif
         goto dispatch_rescan;
+    }
 
     if (!newtask && task && task->tc_State != TS_WAIT)
         newtask = task;

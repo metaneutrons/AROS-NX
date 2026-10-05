@@ -970,6 +970,12 @@ ifdef P4_POWER_OFF
 P4_DEBUG_CPPFLAGS += -DP4_POWER_OFF
 endif
 
+# P4_SPIN_WATCHDOG=1 (smp variant): a spinlock wait of about a second is
+# reported once, with owner, waiter, caller and stack, over waiting output.
+ifdef P4_SPIN_WATCHDOG
+P4_DEBUG_CPPFLAGS += -DP4_SPIN_WATCHDOG
+endif
+
 ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif

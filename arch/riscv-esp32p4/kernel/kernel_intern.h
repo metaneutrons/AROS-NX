@@ -458,6 +458,8 @@ int  platform_wdt_quiet(void);
 /* Early UART0 debug console (kernel_console.c) */
 /* Switch to nonblocking, lossy output before runtime tasks can print. */
 void krnP4ConsoleRuntime(void);
+void krnP4ConsoleBlocking(void);
+void krnP4SpinReport(const char *what, void *lock, void *caller);
 void krnP4PutC(char c);
 void krnP4PutStr(const char *s);
 void krnP4PutHex32(uint32_t val);

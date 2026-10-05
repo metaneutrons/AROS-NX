@@ -146,14 +146,16 @@ Each stage records its evidence in ROADMAP Track E in the same change.
 
 Shared changes, each generic:
 
-- `configure.in`/`configure`: in the esp32p4 case, the `smp` variant sets
-  `__AROSPLATFORM_SMP__` and `__AROSEXEC_SMP__`. A normal build sets
-  neither, so its struct layouts stay as they are; an SMP build and its card
-  image come from their own tree (`--enable-target-variant=smp`, output in
-  `bin/esp32p4-riscv-smp`). Whether both variants should share one layout
-  is an S6 question. `configure` was edited by inserting only autoconf's
-  output for the new lines: regenerating it with autoconf 2.73 here also
-  reorders unrelated variables and changes a help string.
+- `configure.in`/`configure`: every esp32p4 build sets
+  `__AROSPLATFORM_SMP__`, the `smp` variant also `__AROSEXEC_SMP__`, as on
+  x86_64-pc and the Raspberry Pi. Both variants then have one struct layout
+  (a normal build carries the spinlock fields as padding), so every binary
+  runs under both kernels. Decided by Fabian on 2026-10-05, after a normal
+  build's program hung an SMP kernel (ROADMAP, S2 entries). An SMP build
+  comes from its own tree (`--enable-target-variant=smp`, output in
+  `bin/esp32p4-riscv-smp`). `configure` was edited by inserting only
+  autoconf's output for the new lines: regenerating it with autoconf 2.73
+  here also reorders unrelated variables and changes a help string.
 - `compiler/arossupport/include/atomic.h`: RISC-V with the A extension
   (`__riscv_atomic`) selects `aros/riscv/atomic.h` or `aros/riscv64/atomic.h`.
   This also changes normal builds: exec's nesting counts and scheduler flags
@@ -193,6 +195,9 @@ In the port:
   of the cancelable variant that aarch64 uses belongs to S3/S4.
 - `tools/build-core.sh` takes the variant and output directory from the
   build tree.
+- `P4_SPIN_WATCHDOG=1` (diagnostic): a spinlock wait or dispatcher rescan
+  of about a second is reported once over waiting output, with lock word,
+  owner, waiter, caller and stack.
 - These files are built only for the `smp` variant; a normal build keeps
   the generic scheduler and spinlock stubs.
 

@@ -147,7 +147,7 @@ gate: compensated output is not the native display contract.
 | E3-GT | Transitional Giant Exec SMP (`P4_GIANT=1`) | `retired on this branch` | Kept on branch `giant-smp` (`ff3395ba7f`), where it is hardware partial (headless stress, visual and touch passed with the test define). Reference for S3/S4, not the base. |
 | S0 | Base on current upstream | `hardware partial (JC1060P470C passed)` | Evidence entries 2026-10-04/05: rebased onto `5da9fd5072`, fresh tree, JC1060P470C headless boot and visual/touch/Backlight check pass; the A1 retest is not needed (the upstream change cannot be reached on the P4). Open: the D1001 run; its artifacts are built. |
 | S1 | Native atomics on cached PSRAM across both harts | `hardware verified (JC1060P470C)` | Evidence entry 2026-10-05: `P4_S1_PSRAM_ATOMICS=1`, twelve of twelve epochs exact with proven interleaving: word AMO, CAS, GCC's 8/16-bit LR/SC loops, mixed AMO and LR/SC in one word, a lock over plain data, 1 MiB of cold lines, all read back from PSRAM. The `atomic.h` dispatch suffices. The D1001 has not run it. |
-| S2 | `smp` build on one hart | `hardware partial (headless, JC1060P470C)` | Configure allows `smp` for esp32p4; platform layer in the port; boots on hart 0 with hart 1 in reset. The SMP build tree is set up here, because configure refuses `smp` for this target until then. |
+| S2 | `smp` build on one hart | `hardware verified (headless, JC1060P470C)` | Configure allows `smp` for esp32p4; platform layer in the port; boots on hart 0 with hart 1 in reset. The SMP build tree is set up here, because configure refuses `smp` for this target until then. |
 | S3 | Second hart online, idle | `not started` | Hart 1 from the E1/E2 entry with its own ISR stack, CLIC/IPI, per-hart state, a tick and an idle task; parked for cache and flash windows. |
 | S4 | Scheduling on two harts | `not started` | Per-hart scheduler after aarch64-native, `KrnScheduleCPU` through IPIs, affinity, then free migration. |
 | S5 | SMP qualification | `not started` | Upstream SMP tests, sustained stress, device serialization, boot/visual/touch regressions on both boards with fresh readiness. |
@@ -25027,6 +25027,40 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   once from the port's `cpu_Dispatch()`; the SMP scheduler calls it once.
 - Next safe step: write the SMP card image, then a headless boot and the
   visual and touch check with Fabian's readiness.
+
+### 2026-10-05 - S2: blue screen explained; one struct layout for both variants
+
+- State change: S2 accepted (the gate is the headless boot on hart 0,
+  which the SMP set passed to Wanderer); the visual and touch regression
+  of the SMP build moves to S5 (Fabian, 2026-10-05). Layout decision taken.
+- Board: the SMP set (core `87e3101a…`, package `38143663…`, card
+  `e2df4059…`) booted to Wanderer, headless 90 s `78e3e8ec…` and on the
+  panel. Fabian: starting the Touchscreen editor turns the screen blue
+  permanently; the log stops (`51f0962b…`).
+- Diagnosis: a core with `P4_SPIN_WATCHDOG=1` (180,928 B `15f10bf5…`)
+  reported the editor process waiting for a read lock at Task+0x88 whose
+  word held a pointer (`0x486d71d0`, so the write bit read as set), called
+  from `WaitPort()`. The editor had been started from `Arosp4dev:`, the
+  flash development volume, which still held the normal build: its
+  Workbench start code waits on `pr_MsgPort` at Task+96 (normal
+  `struct Task`), the SMP build's at Task+104, so the SMP `WaitPort()`
+  found its lock in the middle of the message list. Not an SMP code
+  error; normal and SMP binaries were not interchangeable.
+- Fix: the development volume was rebuilt from the SMP tree
+  (`5ba281357728aa3c92deb4dc40f8ab1da972b95407e8757e5b27c30319d6dba5`) and
+  written to `0xc00000`, MAC checked, verified; boot 40 s `8b4682a6…`:
+  Wanderer, `FLASHDISK0P0` online, no alert, no watchdog report. And, by
+  Fabian's decision, every esp32p4 build now has the SMP struct layout
+  (`__AROSPLATFORM_SMP__`), so the variants share one ABI. The SMP tree's
+  artifacts are unchanged by this; the normal trees are rebuilt from
+  scratch, including the cross toolchain, whose C++ runtime had been built
+  against the old headers. Until the normal trees are rebuilt their
+  earlier artifacts are not compatible with the SMP ones.
+- Why the board did not restart: the hart spun with interrupts masked,
+  which raises no exception; the port halts on the first alert by design
+  and switches the boot watchdogs off. A reset on a hang would need the
+  hardware watchdog fed from the tick (proposed, not decided).
+- Next safe step: rebuild the normal trees and boot them headless; then S3.
 
 ## Evidence-entry template
 

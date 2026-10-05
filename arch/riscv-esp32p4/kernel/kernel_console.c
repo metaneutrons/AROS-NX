@@ -40,6 +40,14 @@ void krnP4ConsoleRuntime(void)
     console_runtime = 1;
 }
 
+#ifdef P4_SPIN_WATCHDOG
+/* Back to waiting output, for a report from a hart that is stuck. */
+void krnP4ConsoleBlocking(void)
+{
+    console_runtime = 0;
+}
+#endif
+
 static inline uint32_t mmio_rd(uint32_t base, uint32_t off)
 {
     return *(volatile uint32_t *)(base + off);
