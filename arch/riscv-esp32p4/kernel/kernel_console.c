@@ -27,6 +27,9 @@
 
 #include "hardware.h"
 #include "kernel_intern.h"
+#if defined(__AROSEXEC_SMP__)
+#include "tls.h"
+#endif
 
 #define SPIN_LIMIT      100000
 
@@ -39,7 +42,9 @@ static volatile unsigned long console_dropped;
 
 void krnP4ConsoleRuntime(void)
 {
+#if !defined(P4_CONSOLE_WAIT)
     console_runtime = 1;
+#endif
 }
 
 #if defined(P4_SPIN_WATCHDOG) || defined(__AROSEXEC_SMP__)
@@ -49,6 +54,19 @@ void krnP4ConsoleBlocking(void)
 {
     console_runtime = 0;
 }
+#endif
+
+/*
+ * With two harts the backends below write one character of a finished
+ * line each (krnP4PutC() at the end of this file assembles the lines);
+ * with one hart they are krnP4PutC() itself.
+ */
+#if defined(__AROSEXEC_SMP__)
+#define CONSOLE_RAW_PUTC console_raw_putc
+static void console_raw_putc(char c);
+static void console_flush_self(void);
+#else
+#define CONSOLE_RAW_PUTC krnP4PutC
 #endif
 
 static inline uint32_t mmio_rd(uint32_t base, uint32_t off)
@@ -105,7 +123,7 @@ static void usj_flush(void)
  */
 #define ATTACH_SPINS    2000000
 
-void krnP4PutC(char c)
+void CONSOLE_RAW_PUTC(char c)
 {
     unsigned int spins;
     unsigned int limit = console_runtime ? 1 : ATTACH_SPINS;
@@ -140,6 +158,9 @@ void krnP4PutC(char c)
  */
 int krnP4GetC(void)
 {
+#if defined(__AROSEXEC_SMP__)
+    console_flush_self();
+#endif
     if (usj_pending)
         usj_flush();
 
@@ -151,7 +172,7 @@ int krnP4GetC(void)
 
 #else /* UART0 */
 
-void krnP4PutC(char c)
+void CONSOLE_RAW_PUTC(char c)
 {
     unsigned int spins = console_runtime ? 1 : SPIN_LIMIT;
 
@@ -178,6 +199,91 @@ int krnP4GetC(void)
     return (int)(mmio_rd(P4_UART0_BASE, P4_UART_FIFO) & 0xFF);
 }
 
+#endif
+
+#if defined(__AROSEXEC_SMP__)
+/*
+ * Both harts print, mostly a character at a time through RawPutChar().
+ * Each hart assembles its line in a buffer of its own, and a finished
+ * line goes out whole under a lock, so lines from the two harts do not
+ * mix and the USB writer's state has one user at a time. Interrupts are
+ * masked while a hart touches its buffer or holds the lock: an interrupt
+ * that prints would otherwise find its own hart holding it.
+ *
+ * The lock records its holder, so a fault taken inside the output, whose
+ * report comes back here, does not wait for itself. The wait is bounded
+ * like every wait in this file: past it the line goes out regardless, as
+ * a mixed line is the lesser loss against a hart stuck on the console.
+ */
+#define CONSOLE_LINE        128
+#define CONSOLE_LOCK_SPINS  20000000
+
+static char console_line[P4_TLS_HARTS][CONSOLE_LINE];
+static unsigned int console_len[P4_TLS_HARTS];
+static volatile uint32_t console_holder;    /* hart + 1, or 0 */
+
+static inline unsigned int console_hart(void)
+{
+    unsigned long hart;
+
+    asm volatile("csrr %0, mhartid" : "=r"(hart));
+    return (unsigned int)hart & (P4_TLS_HARTS - 1);
+}
+
+/* Interrupts are masked by the caller */
+static void console_emit(unsigned int hart)
+{
+    uint32_t me = hart + 1;
+    uint32_t free = 0;
+    unsigned int spins = 0;
+    int locked = 0;
+    unsigned int i;
+
+    if (console_holder != me)
+    {
+        for (;;)
+        {
+            free = 0;
+            if (__atomic_compare_exchange_n(&console_holder, &free, me, 0,
+                                            __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
+            {
+                locked = 1;
+                break;
+            }
+            if (++spins == CONSOLE_LOCK_SPINS)
+                break;
+        }
+    }
+
+    for (i = 0; i < console_len[hart]; i++)
+        console_raw_putc(console_line[hart][i]);
+    console_len[hart] = 0;
+
+    if (locked)
+        __atomic_store_n(&console_holder, 0, __ATOMIC_RELEASE);
+}
+
+/* What this hart has of an unfinished line, before it waits for input */
+static void console_flush_self(void)
+{
+    unsigned long s = p4_tls_mask();
+    unsigned int hart = console_hart();
+
+    if (console_len[hart])
+        console_emit(hart);
+    p4_tls_unmask(s);
+}
+
+void krnP4PutC(char c)
+{
+    unsigned long s = p4_tls_mask();
+    unsigned int hart = console_hart();
+
+    console_line[hart][console_len[hart]++] = c;
+    if (c == '\n' || console_len[hart] == CONSOLE_LINE)
+        console_emit(hart);
+    p4_tls_unmask(s);
+}
 #endif
 
 void krnP4PutStr(const char *s)

@@ -982,6 +982,13 @@ ifdef P4_S4_TEST
 P4_DEBUG_CPPFLAGS += -DP4_S4_TEST
 endif
 
+# P4_CONSOLE_WAIT=1: keep the console waiting for the host after the boot
+# instead of dropping, for captures that must be complete. Slows everything
+# that prints.
+ifdef P4_CONSOLE_WAIT
+P4_DEBUG_CPPFLAGS += -DP4_CONSOLE_WAIT
+endif
+
 ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
