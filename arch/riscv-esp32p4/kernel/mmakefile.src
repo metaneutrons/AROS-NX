@@ -976,6 +976,12 @@ ifdef P4_SPIN_WATCHDOG
 P4_DEBUG_CPPFLAGS += -DP4_SPIN_WATCHDOG
 endif
 
+# P4_S4_TEST=1 (smp variant): the S4 acceptance test, a cold-start
+# resident that runs tasks on both harts through exec's cross-hart paths.
+ifdef P4_S4_TEST
+P4_DEBUG_CPPFLAGS += -DP4_S4_TEST
+endif
+
 ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
@@ -1088,7 +1094,8 @@ CFILES += \
         getcpucount \
         kernel_intr \
         kernel_execsmp \
-        kernel_smp
+        kernel_smp \
+        kernel_smptest
 AFILES += secondary_smp
 endif
 
