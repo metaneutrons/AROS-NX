@@ -146,7 +146,7 @@ gate: compensated output is not the native display contract.
 | E3 | Experimental fine-grained RV32/P4 Exec SMP (E3-RT to E3-RM) | `retired on this branch` | Kept on branch `e3-smp` (`14f0290e21`), not part of `feat/riscv32-esp32p4-v3`. Its 28 sub-rows and the E3-RM lifetime notes are in that branch's roadmap; its evidence entries remain in the log below. |
 | E3-GT | Transitional Giant Exec SMP (`P4_GIANT=1`) | `retired on this branch` | Kept on branch `giant-smp` (`ff3395ba7f`), where it is hardware partial (headless stress, visual and touch passed with the test define). Reference for S3/S4, not the base. |
 | S0 | Base on current upstream | `hardware partial (JC1060P470C passed)` | Evidence entries 2026-10-04/05: rebased onto `5da9fd5072`, fresh tree, JC1060P470C headless boot and visual/touch/Backlight check pass; the A1 retest is not needed (the upstream change cannot be reached on the P4). Open: the D1001 run; its artifacts are built. |
-| S1 | Native atomics on cached PSRAM across both harts | `not started` | SMP.md, Stages: AMO and LR/SC including GCC's sub-word sequences, against the E2 LR/SC rule. Decides whether a RISC-V branch in `atomic.h` suffices. |
+| S1 | Native atomics on cached PSRAM across both harts | `hardware verified (JC1060P470C)` | Evidence entry 2026-10-05: `P4_S1_PSRAM_ATOMICS=1`, twelve of twelve epochs exact with proven interleaving: word AMO, CAS, GCC's 8/16-bit LR/SC loops, mixed AMO and LR/SC in one word, a lock over plain data, 1 MiB of cold lines, all read back from PSRAM. The `atomic.h` dispatch suffices. The D1001 has not run it. |
 | S2 | `smp` build on one hart | `not started` | Configure allows `smp` for esp32p4; platform layer in the port; boots on hart 0 with hart 1 in reset. The SMP build tree is set up here, because configure refuses `smp` for this target until then. |
 | S3 | Second hart online, idle | `not started` | Hart 1 from the E1/E2 entry with its own ISR stack, CLIC/IPI, per-hart state, a tick and an idle task; parked for cache and flash windows. |
 | S4 | Scheduling on two harts | `not started` | Per-hart scheduler after aarch64-native, `KrnScheduleCPU` through IPIs, affinity, then free migration. |
@@ -24912,6 +24912,67 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   `tools/smp-e2-check.py` accepts all five campaign logs (two epochs,
   misa A bits, contention, releases reset-held/clock-off, READY). This is
   the first E2 pass on the JC1060P470C.
+
+### 2026-10-05 - S1: native atomics on cached PSRAM hold across both harts
+
+- State change: Track E S1 hardware verified on the JC1060P470C. Shared
+  change 2 (the `atomic.h` dispatch) suffices; no SRAM-lock service and no
+  further hook outside the port is needed.
+- Finding before the test: `aros/riscv/atomic.h` already exists upstream
+  (`14ed8dcd68`, Nick Andrews, 2026-07-31) with byte, word and long forms
+  through GCC builtins, and it is installed. `compiler/arossupport/include/
+  atomic.h` has no `__riscv` branch, so RISC-V builds use its
+  `Disable()`/`Enable()` fallback.
+- GCC 16.2.0 sequences (`-O2`): a 32-bit add is `amoadd.w.aqrl`; 8- and
+  16-bit operations are `lr.w.aqrl`, four ALU instructions (mask and
+  merge), `sc.w.rl` and a backward `bnez`; a strong CAS is `lr.w`/`bne`/
+  `sc.w` in a retry loop, a weak one a single attempt. The sub-word loops
+  break E2's "three instructions, forward compare only", which was a
+  property of E2's lock code, not a documented hardware limit.
+- Test (`P4_S1_PSRAM_ATOMICS=1`, requires `P4_E2_PRIMITIVES=1`): a stage
+  after E2's SRAM atomics in which both harts start each test together and
+  run 8,191 iterations: word AMO; strong CAS loop; weak CAS loop; set and
+  clear of the hart's own bit in a shared byte and a shared halfword, with
+  the old value checked every time; a shared 16-bit counter; one byte per
+  hart plus a shared halfword in one word; a word AMO against a byte LR/SC
+  loop in the same word; a lock taken alternately by swap and by CAS over
+  a plain 14-word record that must never be seen half written; then 4,096
+  counters 256 bytes apart (1 MiB, more than both cache levels), each with
+  a word AMO and a 16-bit add, four passes in opposite and equal
+  directions. All words are in cached PSRAM 2 MiB below the E2 scratch page
+  and are only accessed through the cached address; the results are
+  checked after a write-back and invalidate, so they come from PSRAM. A
+  pass also requires evidence that the harts interleaved.
+- Build (normal JC1060 flags plus `P4_SECONDARY_PROBE=1 P4_E2_MAILBOX=1
+  P4_E2_PRIMITIVES=1 P4_S1_PSRAM_ATOMICS=1`), no warnings: core 177,616 B
+  `386319ca964fb31e637d1bd039ed89b28d886987881426733d3220fe77e013c6`. The
+  linked `s1_work` holds 11 masked LR/SC loops (four instructions between
+  LR and SC), the CAS loops, four `amoadd.w` and one `amoswap.w`; its only
+  calls go to `s1_meet` in SRAM; no libatomic calls.
+- Hardware: JC1060P470C (`80:f1:b2:d3:3b:a6`, MAC checked), core at
+  `0x20000`, verified. One run (`cf302e5d…`) and five 20 s captures of the
+  same core, two epochs each: twelve of twelve epochs pass, every counter
+  exact. Campaign logs `72df9095…`, `45a6e990…`, `7a78a2ea…`, `7a176a02…`,
+  `8081e38f…`.
+- Contention per epoch: 8,190 of 8,190 possible AMO interleavings on each
+  hart, 8,187-8,190 on the 16-bit counter, so the harts alternate almost
+  strictly; in each CAS phase one hart retries 8,176-8,191 times and the
+  other far less (zero in most phases, at most 3,254); in the ten campaign
+  epochs the strong-CAS loser is hart 0 eight times and hart 1 twice, so
+  there is no fixed hart priority; bit overlap up to 8,191. About 50 ms per
+  epoch at 360 MHz.
+- An earlier version alternated strong and weak CAS between two words and
+  produced only one to three retries (log `4b57aef8…`), which proves too
+  little; it was replaced by the separate CAS phases and the interleaving
+  requirement above.
+- Restored: the normal core `85b8fc45…` (rebuilt, byte-identical) at
+  `0x20000`; boot 60 s `6efc6b3b…`: Wanderer, GT911, no alert, no `[smp]`
+  line.
+- Limits: the JC1060P470C only; both harts run with interrupts as in E2,
+  before Exec; `fetch_sub` (AROS DEC) was not run separately, its loop
+  differs from the add only in the ALU instruction; PSRAM at 200 MHz only.
+- Next safe step: S2, the `smp` build on one hart, starting with the
+  `atomic.h` dispatch as the first shared change.
 
 ## Evidence-entry template
 

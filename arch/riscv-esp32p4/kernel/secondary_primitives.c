@@ -121,6 +121,237 @@ INLINE int atomic_work(unsigned int h)
     fence();
     return 1;
 }
+#ifdef P4_S1_PSRAM_ATOMICS
+/* S1: native atomics on cached PSRAM across both harts, through the
+   sequences GCC emits for <aros/riscv/atomic.h>: word AMOs, CAS loops, the
+   masked LR/SC loops for 8- and 16-bit operands, and a lock over plain
+   data. The words sit 2 MiB below the E2 scratch page, far above the
+   package; this diagnostic never enters Exec, so nothing else owns them.
+   GCC's own retry loops are unbounded on purpose: they are what is under
+   test, and a livelock shows as a missing PASS line. */
+#define CMD_S1 6u
+#define S1_BASE ((P4_FB_BASE - 4096u - 0x200000u) & ~0xfffu)
+#define S1_N 8191u           /* odd: a byte counter cannot wrap back to 0 */
+#define S1_COLD (S1_BASE + 4096u)
+#define S1_COLD_WORDS 4096u
+#define S1_COLD_STRIDE 256u  /* 1 MiB span, more than L1D and L2 hold */
+#define S1_COLD_PASSES 4u
+#define S1_SPAN (4096u + S1_COLD_WORDS * S1_COLD_STRIDE)
+#define S1_BOUND 1000000u
+#define S1_TIMEOUT (1u << 31)
+#define S1_W(n, o) ((uint32_t *)(S1_BASE + (n) * 64u + (o)))
+#define S1_H(n, o) ((uint16_t *)(S1_BASE + (n) * 64u + (o)))
+#define S1_B(n, o) ((uint8_t *)(S1_BASE + (n) * 64u + (o)))
+#define SEQ __ATOMIC_SEQ_CST
+enum { L_ADD, L_CAS, L_CASW, L_HALF, L_BITS, L_ADJ, L_MIXED, L_LOCK, L_STATS };
+/* Both harts start every test together. The counters only grow, and a
+   hart cannot pass meeting k before the other has reached it, so the other
+   is at k or k+1 when it is read. */
+SRAM static int s1_meet(unsigned int h, uint32_t k)
+{
+    volatile struct e2_control *c = control();
+    volatile uint32_t *mine = h ? &c->worker[14] : &c->command[9];
+    volatile uint32_t *other = h ? &c->command[9] : &c->worker[14];
+    uint32_t start = tick(), left = 200000000u;
+    fence(); *mine = k; fence();
+    do { uint32_t n = *other; fence(); if (n >= k) return 1; }
+    while (--left && (uint32_t)(tick() - start) < 1800000000u);
+    return 0;
+}
+/* Per hart, in the stats line: CAS retries strong and weak, how often the
+   other hart's update landed between two of this hart's AMO and 16-bit
+   adds, and how often this hart saw the other hart's bit set. Non-zero
+   values show the harts really ran each test at the same time. */
+enum { ST_CAS, ST_CASW, ST_AMO, ST_HALF, ST_BITS, ST_WORDS };
+SRAM static uint32_t s1_work(unsigned int h)
+{
+    uint32_t i, k, p, v, left, old, prev = 0, err = 0, meet = 0;
+    uint32_t st[ST_WORDS] = {0, 0, 0, 0, 0};
+    uint32_t *lock = S1_W(L_LOCK, 0), *rec = S1_W(L_LOCK, 0);
+    uint8_t bit = (uint8_t)(1u << h), other = (uint8_t)(2u >> h), b;
+    uint16_t hbit = (uint16_t)(0x100u << h), hv, hprev = 0;
+
+    /* 1: word AMO on one word. */
+    if (!s1_meet(h, ++meet)) return S1_TIMEOUT;
+    for (i = 0; i < S1_N; ++i) {
+        old = __atomic_fetch_add(S1_W(L_ADD, 0), 1u, SEQ);
+        if (i && old != prev + 1u) ++st[ST_AMO];
+        prev = old;
+    }
+
+    /* 2: a strong CAS loop on one word, then a weak one on another. */
+    if (!s1_meet(h, ++meet)) return S1_TIMEOUT;
+    for (i = 0; i < S1_N; ++i) {
+        v = __atomic_load_n(S1_W(L_CAS, 0), __ATOMIC_RELAXED);
+        left = S1_BOUND;
+        while (!__atomic_compare_exchange_n(S1_W(L_CAS, 0), &v, v + 1u, 0,
+                                            SEQ, __ATOMIC_RELAXED)) {
+            ++st[ST_CAS];
+            if (!--left) return S1_TIMEOUT;
+        }
+    }
+    if (!s1_meet(h, ++meet)) return S1_TIMEOUT;
+    for (i = 0; i < S1_N; ++i) {
+        v = __atomic_load_n(S1_W(L_CASW, 0), __ATOMIC_RELAXED);
+        left = S1_BOUND;
+        while (!__atomic_compare_exchange_n(S1_W(L_CASW, 0), &v, v + 1u, 1,
+                                            SEQ, __ATOMIC_RELAXED)) {
+            ++st[ST_CASW];
+            if (!--left) return S1_TIMEOUT;
+        }
+    }
+
+    /* 3: each hart sets and clears its own bit in a shared byte and a
+       shared halfword; a lost update breaks the expected old value. */
+    if (!s1_meet(h, ++meet)) return S1_TIMEOUT;
+    for (i = 0; i < S1_N; ++i) {
+        b = __atomic_fetch_or(S1_B(L_BITS, 0), bit, SEQ);
+        if (b & bit) err |= 1;
+        if (b & other) ++st[ST_BITS];
+        b = __atomic_fetch_and(S1_B(L_BITS, 0), (uint8_t)~bit, SEQ);
+        if (!(b & bit)) err |= 1;
+        hv = __atomic_fetch_or(S1_H(L_BITS, 2), hbit, SEQ);
+        if (hv & hbit) err |= 2;
+        hv = __atomic_fetch_and(S1_H(L_BITS, 2), (uint16_t)~hbit, SEQ);
+        if (!(hv & hbit)) err |= 2;
+    }
+
+    /* 4: a shared 16-bit counter; 5: one byte per hart and a shared
+       halfword, all in one word. */
+    if (!s1_meet(h, ++meet)) return S1_TIMEOUT;
+    for (i = 0; i < S1_N; ++i) {
+        hv = __atomic_fetch_add(S1_H(L_HALF, 0), (uint16_t)1, SEQ);
+        if (i && hv != (uint16_t)(hprev + 1u)) ++st[ST_HALF];
+        hprev = hv;
+        __atomic_fetch_add(S1_B(L_ADJ, h), (uint8_t)1, SEQ);
+        __atomic_fetch_add(S1_H(L_ADJ, 2), (uint16_t)1, SEQ);
+    }
+
+    /* 6: a word AMO against a byte LR/SC loop on the same word. */
+    if (!s1_meet(h, ++meet)) return S1_TIMEOUT;
+    for (i = 0; i < S1_N; ++i) {
+        if (h) __atomic_fetch_add(S1_B(L_MIXED, 0), (uint8_t)1, SEQ);
+        else __atomic_fetch_add(S1_W(L_MIXED, 0), 0x10000u, SEQ);
+    }
+
+    /* 7: a lock over plain loads and stores, taken alternately by swap and
+       by CAS: the record must never be seen half written. */
+    if (!s1_meet(h, ++meet)) return S1_TIMEOUT;
+    for (i = 0; i < S1_N; ++i) {
+        uint32_t zero = 0;
+        left = S1_BOUND;
+        if (i & 1) {
+            while (__atomic_exchange_n(lock, 1u, __ATOMIC_ACQUIRE))
+                if (!--left) return S1_TIMEOUT;
+        } else {
+            while (!__atomic_compare_exchange_n(lock, &zero, 1u, 0,
+                       __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
+                zero = 0;
+                if (!--left) return S1_TIMEOUT;
+            }
+        }
+        v = rec[2];
+        for (k = 3; k < 16; ++k) if (rec[k] != v) err |= 4;
+        ++rec[1];
+        v = (h << 31) | i;
+        for (k = 2; k < 16; ++k) rec[k] = v;
+        __atomic_store_n(lock, 0u, __ATOMIC_RELEASE);
+    }
+
+    /* 8: cold lines. 4096 counters 256 bytes apart, a word AMO and a
+       halfword LR/SC on each; even passes run the harts in opposite
+       directions, odd passes in the same one. */
+    if (!s1_meet(h, ++meet)) return S1_TIMEOUT;
+    for (p = 0; p < S1_COLD_PASSES; ++p)
+        for (k = 0; k < S1_COLD_WORDS; ++k) {
+            uint32_t idx = (h && !(p & 1)) ? S1_COLD_WORDS - 1u - k : k;
+            uintptr_t a = S1_COLD + idx * S1_COLD_STRIDE;
+            __atomic_fetch_add((uint32_t *)a, 1u, SEQ);
+            __atomic_fetch_add((uint16_t *)(a + 4u), (uint16_t)1, SEQ);
+        }
+
+    /* Statistics as plain stores; the closing meeting orders them. */
+    for (k = 0; k < ST_WORDS; ++k) S1_W(L_STATS, h * 32u)[k] = st[k];
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+    if (!s1_meet(h, ++meet)) return S1_TIMEOUT;
+    return err;
+}
+static void s1_put(const char *name, uint32_t a, uint32_t b)
+{
+    krnP4PutStr(name); krnP4PutHex32(a);
+    krnP4PutStr(","); krnP4PutHex32(b);
+}
+static int s1_run(void)
+{
+    volatile struct e2_control *c = control();
+    uint32_t i, k, err0, err1, cycles, cold_bad = 0, quiet = 0;
+    uint32_t add, cas, casw, bits, half, adj, mixed, lock, count;
+    uint32_t *st0 = S1_W(L_STATS, 0), *st1 = S1_W(L_STATS, 32);
+    if (S1_BASE < P4_PSRAM_WINDOW_BASE + 0x1000000u) return 0;
+    /* Cached stores only, then one write-back to PSRAM; no uncached alias
+       of these words is ever used. */
+    for (i = 0; i < S1_SPAN / 4u; ++i) ((uint32_t *)S1_BASE)[i] = 0;
+    krnP4CacheSyncData((void *)S1_BASE, S1_SPAN);
+    c->command[9] = 0; c->worker[14] = 0; c->worker[15] = 0;
+    fence(); c->command[0] = CMD_S1; fence();
+    cycles = tick();
+    err0 = s1_work(0);
+    cycles = tick() - cycles;
+    if (!wait_word(&c->worker[1], CMD_S1) || c->worker[2] != 1) {
+        krnP4PutStr("[smp-s1] FAIL worker did not finish err0=");
+        krnP4PutHex32(err0); krnP4PutStr("\n");
+        return 0;
+    }
+    err1 = c->worker[15];
+    /* Every value is read back from PSRAM, not from the cache. */
+    krnP4CacheSyncData((void *)S1_BASE, S1_SPAN);
+    add = *S1_W(L_ADD, 0);
+    cas = *S1_W(L_CAS, 0); casw = *S1_W(L_CASW, 0);
+    bits = *S1_W(L_BITS, 0);
+    half = *S1_W(L_HALF, 0);
+    adj = *S1_W(L_ADJ, 0);
+    mixed = *S1_W(L_MIXED, 0);
+    lock = *S1_W(L_LOCK, 0); count = *S1_W(L_LOCK, 4);
+    for (i = 0; i < S1_COLD_WORDS; ++i) {
+        uintptr_t a = S1_COLD + i * S1_COLD_STRIDE;
+        if (*(uint32_t *)a != 2u * S1_COLD_PASSES ||
+            *(uint32_t *)(a + 4u) != 2u * S1_COLD_PASSES) ++cold_bad;
+    }
+    /* Contention evidence: each hart saw the other's AMO and 16-bit adds
+       interleave with its own; the bit test and the CAS loops collided. */
+    for (k = ST_AMO; k <= ST_HALF; ++k) if (!st0[k] || !st1[k]) quiet |= 1u << k;
+    if (!(st0[ST_BITS] + st1[ST_BITS])) quiet |= 1u << ST_BITS;
+    if (!(st0[ST_CAS] + st1[ST_CAS] + st0[ST_CASW] + st1[ST_CASW])) quiet |= 1u;
+    krnP4PutStr("[smp-s1] detail");
+    s1_put(" cas=", st0[ST_CAS], st1[ST_CAS]);
+    s1_put(" casw=", st0[ST_CASW], st1[ST_CASW]);
+    s1_put(" amo-interleave=", st0[ST_AMO], st1[ST_AMO]);
+    s1_put(" half-interleave=", st0[ST_HALF], st1[ST_HALF]);
+    s1_put(" bit-overlap=", st0[ST_BITS], st1[ST_BITS]);
+    krnP4PutStr(" cycles0="); krnP4PutHex32(cycles); krnP4PutStr("\n");
+    if (err0 || err1 || quiet || add != 2u * S1_N || cas != 2u * S1_N ||
+        casw != 2u * S1_N || bits || half != 2u * S1_N ||
+        adj != ((2u * S1_N) << 16 | (S1_N & 0xffu) << 8 | (S1_N & 0xffu)) ||
+        mixed != (S1_N << 16 | (S1_N & 0xffu)) || lock ||
+        count != 2u * S1_N || cold_bad) {
+        krnP4PutStr("[smp-s1] FAIL");
+        s1_put(" err=", err0, err1);
+        krnP4PutStr(" quiet="); krnP4PutHex32(quiet);
+        krnP4PutStr(" add="); krnP4PutHex32(add);
+        s1_put(" cas=", cas, casw);
+        krnP4PutStr(" bits="); krnP4PutHex32(bits);
+        krnP4PutStr(" half="); krnP4PutHex32(half);
+        krnP4PutStr(" adj="); krnP4PutHex32(adj);
+        krnP4PutStr(" mixed="); krnP4PutHex32(mixed);
+        s1_put(" lock=", lock, count);
+        krnP4PutStr(" cold-bad="); krnP4PutHex32(cold_bad);
+        krnP4PutStr("\n");
+        return 0;
+    }
+    krnP4PutStr("[smp-s1] PSRAM ATOMICS PASS; amo/cas/sub-word/mixed/lock=8191 per hart cold=4096x4 interleaved physical readback\n");
+    return 1;
+}
+#endif
 SRAM int krnP4E2IRQ(void)
 {
     volatile struct e2_control *c = control();
@@ -190,6 +421,11 @@ SRAM void krnP4E2WorkerStep(void)
         if (!wait_word(&c->command[1], cmd) ||
             !wait_word(&c->command[2], cmd)) c->worker[2] = 0;
         else c->worker[2] = atomic_work(1);
+#ifdef P4_S1_PSRAM_ATOMICS
+    } else if (cmd == CMD_S1) {
+        c->worker[15] = s1_work(1);
+        c->worker[2] = 1;
+#endif
     } else if (cmd == CMD_ARM) {
         p4_w32(P4_CLIC_CTRL(E2_LINE), E2_CTL);
         fence(); __asm__ volatile("csrsi mstatus,8" ::: "memory");
@@ -386,6 +622,9 @@ int krnP4E2Run(unsigned int epoch)
     krnP4PutStr("[smp-e2] concurrent retries0="); krnP4PutHex32(c->command[6]);
     krnP4PutStr(" retries1="); krnP4PutHex32(c->worker[9]); krnP4PutStr("\n");
     krnP4PutStr("[smp-e2] ATOMICS PASS; AMO/LRSC/lock=16384 each forced-contention=1\n");
+#ifdef P4_S1_PSRAM_ATOMICS
+    if (!s1_run()) return 0;
+#endif
     install_primary();
     c->command[0] = CMD_ARM; fence();
     if (!wait_word(&c->worker[1], CMD_ARM) || c->worker[2] != 1) goto out;

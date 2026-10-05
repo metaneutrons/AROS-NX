@@ -56,20 +56,25 @@ What AROS SMP expects from a platform (research on the base and on upstream
   list locking and the unlocked scan in `ChildStatus()`.
 - Gaps in shared RISC-V code: `compiler/arossupport/include/atomic.h` has no
   RISC-V branch, so atomics fall back to `Disable()`/`Enable()`, which does not
-  exclude the other hart. `arch/riscv-all/exec/stackswap.S` reads
+  exclude the other hart. The RISC-V header itself exists upstream
+  (`arch/riscv-all/include/aros/atomic.h`, installed as
+  `aros/riscv/atomic.h`, byte, word and long forms through GCC builtins,
+  `14ed8dcd68`); only the dispatch to it is missing. `arch/riscv-all/exec/stackswap.S` reads
   `SysBase->ThisTask`, which an SMP build does not provide; upstream fixed the
   same for aarch64 with `FindTask(NULL)`.
 
 P4 constraints from E1-E3 and the Giant:
 
-- Native AMO and LR/SC are qualified only in cached internal SRAM. The PSRAM
-  result of E3 (81,920 adds) came from a software service behind an SRAM
-  lock, not from native PSRAM atomics. Generic AROS SMP updates fields of
-  `struct Task` atomically, 8- and 16-bit ones included, and tasks live mostly
-  in PSRAM.
-- An LR/SC sequence must stay within three instructions with a forward
-  compare only (E2); the code GCC emits for sub-word atomics has to be checked
-  against that.
+- Native AMO and LR/SC hold on cached internal SRAM (E2) and, since S1
+  (2026-10-05, JC1060P470C), on cached PSRAM across both harts, including
+  GCC's 8- and 16-bit sequences. Before S1 the only PSRAM result (E3, 81,920
+  adds) came from a software service behind an SRAM lock. Generic AROS SMP
+  updates fields of `struct Task` atomically, 8- and 16-bit ones included,
+  and tasks live mostly in PSRAM.
+- The "three instructions with a forward compare only" for LR/SC is a
+  property of E2's own lock code, confirmed by review, not a documented
+  hardware limit. GCC's sub-word loops have four instructions between LR and
+  SC and a backward branch, and they pass S1 under full contention.
 - A cache or flash window needs the other hart parked in SRAM, and code that
   runs meanwhile must be SRAM-resident (`check-sramtext.sh`).
 - IPIs use the CLIC software interrupt lines (E2-A3). Each hart needs its own
@@ -84,8 +89,9 @@ Each needs its own justification and, where it is generic, an upstream PR:
 1. `configure.in`/`configure`: allow the `smp` variant in the esp32p4 case and
    set `__AROSPLATFORM_SMP__` for it. Unavoidable.
 2. `compiler/arossupport/include/atomic.h`: a RISC-V branch that selects
-   `aros/riscv/atomic.h`, with sub-word forms there if missing. A generic
-   RISC-V gap.
+   the existing `aros/riscv/atomic.h` (and `aros/riscv64/atomic.h`). A
+   generic RISC-V gap; S1 shows the header's GCC sequences suffice on the
+   P4, so nothing else is needed here.
 3. `arch/riscv-all/exec/stackswap.S`: get the task through `FindTask(NULL)`, as
    aarch64 does upstream. Generic.
 4. Generic SMP fixes only where a gap actually affects the P4 (candidates
@@ -111,7 +117,9 @@ start, belongs in `arch/riscv-esp32p4`.
   If not, decide between an SRAM-lock software service for the port, which
   needs a hook in `atomic.h` and so a further shared change, and other
   placements. This is the main risk for the goal of few changes outside the
-  port.
+  port. Status 2026-10-05: passed on the JC1060P470C, twelve of twelve
+  epochs with exact results and proven interleaving (ROADMAP, S1 entry), so
+  change 2 suffices. The D1001 can repeat it with the same switch.
 - **S2 SMP build on one hart.** Configure the `smp` variant for the P4 in a
   separate SMP build tree and provide the platform layer in the port:
   `exec_platform.h` with per-hart state, `KrnSpin*`, CPU count and masks
@@ -136,7 +144,8 @@ Each stage records its evidence in ROADMAP Track E in the same change.
 
 Open points:
 
-- Whether native atomics on cached PSRAM hold across harts is unqualified (S1).
+- Native atomics on cached PSRAM hold on the JC1060P470C (S1); the D1001 has
+  not run S1.
 - Which of the generic gaps above actually affect the P4 is unknown until S4.
 - Whether hart 1 takes its tick from hart 0 or from its own SYSTIMER alarm is
   open.

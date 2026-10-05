@@ -1020,7 +1020,13 @@ AFILES := \
         startup \
         traps
 
-# Second-hart diagnostics (E0-E2): opt-in, Exec stays on hart 0.
+# Second-hart diagnostics (E0-E2, S1): opt-in, Exec stays on hart 0.
+ifeq ($(P4_S1_PSRAM_ATOMICS),1)
+ifneq ($(P4_E2_PRIMITIVES),1)
+$(error P4_S1_PSRAM_ATOMICS=1 requires P4_E2_PRIMITIVES=1)
+endif
+USER_CPPFLAGS += -DP4_S1_PSRAM_ATOMICS=1
+endif
 ifeq ($(P4_E2_PRIMITIVES),1)
 ifneq ($(P4_E2_MAILBOX),1)
 $(error P4_E2_PRIMITIVES=1 requires P4_E2_MAILBOX=1)
