@@ -5,10 +5,10 @@
     Desc: StackSwap() - swap the task's stack, RISC-V version.
 
     Translated from the aarch64-all version. Uses the build-generated
-    symbolic offsets from <aros/riscv/asm.h> (Disable, Enable,
-    tc_SPLower, tc_SPUpper, stk_Lower, stk_Upper, stk_Pointer, ThisTask)
-    - no magic numbers. On a non-SMP build FindTask(NULL) simply returns
-    SysBase->ThisTask, so ThisTask is read directly.
+    symbolic offsets from <aros/riscv/asm.h> (FindTask, Disable, Enable,
+    tc_SPLower, tc_SPUpper, stk_Lower, stk_Upper, stk_Pointer) - no magic
+    numbers. The task comes from FindTask(NULL), not SysBase->ThisTask: an
+    SMP build keeps the running task per hart and has no ThisTask field.
 */
 
 	#include <aros/riscv/asm.h>
@@ -28,21 +28,28 @@ AROS_SLIB_ENTRY(StackSwap,Exec,122):
 	// that spans the swap (it would move with the stack).
 
 	mv	t0, a0			// t0 = newStack
-	lw	t1, ThisTask(a1)	// t1 = current task
 
-	// Disable() - arg0 = SysBase. t0/t1 are caller-saved, so preserve
-	// a1, t0, t1 and ra across the call.
+	// FindTask(NULL) and Disable() are ordinary calls: keep a1, t0, the
+	// task and ra in a frame across both.
 	addi	sp, sp, -16
 	sw	a1, 0(sp)
 	sw	t0, 4(sp)
-	sw	t1, 8(sp)
 	sw	ra, 12(sp)
+
+	// The current task - arg0 = NULL, arg1 = SysBase.
+	li	a0, 0
+	lw	t2, FindTask(a1)
+	jalr	t2
+	sw	a0, 8(sp)
+
+	// Disable() - arg0 = SysBase.
+	lw	a1, 0(sp)
 	mv	a0, a1
 	lw	t2, Disable(a1)
 	jalr	t2
 	lw	a1, 0(sp)
 	lw	t0, 4(sp)
-	lw	t1, 8(sp)
+	lw	t1, 8(sp)		// t1 = current task
 	lw	ra, 12(sp)
 	addi	sp, sp, 16
 
