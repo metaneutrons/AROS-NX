@@ -24907,6 +24907,22 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   `MEMF_CHIP` on all of PSRAM (both Wanderer figures would count it), or
   no change.
 
+### 2026-10-05 - Prefs/Backlight gets its own icon
+
+- State change: none; requested by Fabian. Replaces the borrowed ScreenMode
+  icon, which made the editor look like a screen-mode tool.
+- Icon: a flat stroke sun, a ring with eight rounded rays, in amber
+  (`#F59E0B`) on a transparent background, 64x64 like the Gorilla prefs
+  icons; `workbench/prefs/backlight/Backlight.png`. It was drawn
+  supersampled and reduced, and stays readable on light, grey and dark
+  backdrops (a dark grey variant was not).
+- Build: card image 67,108,864 B, 178 entries,
+  `4486f2eec547283077b00cc8a72d2657f63bf74d7e785828db8a9e09a2cdcba4`
+  (`Prefs/Backlight.info` 4,240 B); `verify-image.sh` matches. Not yet
+  written to the card and not yet seen on the panel.
+- Next safe step: write the card, then a look at the icon with Fabian's
+  readiness.
+
 ## Evidence-entry template
 
 

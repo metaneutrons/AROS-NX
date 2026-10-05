@@ -16,9 +16,8 @@ EXEDIR := $(AROSDIR)/Prefs
     progname=Backlight targetdir=$(EXEDIR) \
     files=$(FILES)
 
-# The ScreenMode editor's icon until there is one of its own.
+# A flat sun, 64x64 like the Gorilla prefs icons.
 %build_icons mmake=workbench-prefs-backlight-icon \
-    icons=Backlight dir=$(EXEDIR) \
-    image=../../../images/IconSets/Gorilla/Icons/Medium/AROS/Prefs/ScreenMode.png
+    icons=Backlight dir=$(EXEDIR) image=Backlight.png
 
 %common
