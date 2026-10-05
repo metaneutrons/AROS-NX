@@ -20,6 +20,7 @@
 #include "etask.h"
 #include "hardware.h"
 #include "kernel_intern.h"
+#include "kernel_ipi.h"
 #include "secondary_hw.h"
 #include "tls.h"
 
@@ -76,7 +77,7 @@ void krnP4SMPInitPrimary(void)
 }
 
 /* SRAM: also called from inside a cache-off window's preparation. */
-P4_SRAMCODE static void ipi_send(unsigned int hart, ULONG work)
+P4_SRAMCODE void krnP4IPISend(unsigned int hart, ULONG work)
 {
     __atomic_fetch_or(&__p4_ipi_work[hart], work, __ATOMIC_SEQ_CST);
     fence();
@@ -119,6 +120,38 @@ void krnP4IPIInterrupt(void)
 
     if (work & P4_IPI_PARK)
         park_here();
+
+    /* The quantum, counted as exec's VBlankServer counts it on hart 0 */
+    if (work & P4_IPI_TICK)
+    {
+        UWORD current = SCHEDELAPSED_GET;
+
+        if (current)
+            SCHEDELAPSED_SET(--current);
+        if (current == 0)
+        {
+            FLAG_SCHEDQUANTUM_SET;
+            FLAG_SCHEDSWITCH_SET;
+        }
+    }
+
+    /* Something became ready for this hart. The quantum is given up as
+       well, or a running task of equal priority would never yield. */
+    if (work & P4_IPI_SCHEDULE)
+    {
+        FLAG_SCHEDQUANTUM_SET;
+        FLAG_SCHEDSWITCH_SET;
+    }
+
+    if (work & P4_IPI_CALL_HOOK)
+        core_RunCallIPIs(me);
+}
+
+/* From hart 0's tick: the other harts have no timer interrupt of their own */
+void krnP4TickOthers(void)
+{
+    if (__atomic_load_n(&__p4_harts_online, __ATOMIC_ACQUIRE) & (1UL << 1))
+        krnP4IPISend(1, P4_IPI_TICK);
 }
 
 /*
@@ -135,7 +168,7 @@ P4_SRAMCODE int krnP4ParkOthers(void)
         return 1;
 
     __atomic_store_n(&__p4_park_request, 1, __ATOMIC_RELEASE);
-    ipi_send(other, P4_IPI_PARK);
+    krnP4IPISend(other, P4_IPI_PARK);
     start = cycles();
     while (!__atomic_load_n(&__p4_park_ack, __ATOMIC_ACQUIRE))
     {
@@ -212,7 +245,7 @@ halt:
 /*
  * Start hart 1 from internal SRAM (__p4_smp_entry, secondary_smp.S) with
  * the release sequence E1 qualified. It sees only its inter-hart
- * interrupt. TRUE once it has registered.
+ * interrupt; hart 0 gets its own as well. TRUE once hart 1 has registered.
  */
 static BOOL p4_smp_start_secondary(void)
 {
@@ -233,6 +266,14 @@ static BOOL p4_smp_start_secondary(void)
                s == P4_SMP_IPI_SOURCE(1) ? P4_SMP_IPI_LINE : 0);
     p4_w32(P4_SMP_IPI_FROM(1), 0);
     __p4_ipi_work[1] = 0;
+
+    /* And hart 0 its own, which only its peer raises: signals to hart 0's
+       tasks from hart 1 travel this way. Nothing else of hart 0's is on
+       line 22. */
+    p4_w32(P4_SMP_IPI_FROM(0), 0);
+    __p4_ipi_work[0] = 0;
+    p4_w32(P4_SMP_INTMTX_ROUTE(0, P4_SMP_IPI_SOURCE(0)), P4_SMP_IPI_LINE);
+    krnCLICEnable(P4_SMP_IPI_LINE, 0);
 
     /* Held, in this order, as at boot */
     update(P4_SECONDARY_RESET_REG, P4_SECONDARY_RESET_BIT, P4_SECONDARY_RESET_BIT);

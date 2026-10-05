@@ -135,6 +135,8 @@ start, belongs in `arch/riscv-esp32p4`.
   aarch64-native model, `cpu_Switch` releasing `tc_SpinLock` of a waiting task
   (the upstream x86_64 fix), `KrnScheduleCPU` through IPIs and task affinity;
   first tasks bound to hart 1, then free migration.
+  Status 2026-10-05: passed on the JC1060P470C with the affinity model
+  upstream uses (ROADMAP, S4 entry; "S4 design" below).
 - **S5 Qualification.** Upstream's SMP tests (`developer/debug/test/smp`), a
   sustained stress run, serialization of SD, console, timer and graphics, and
   boot, visual and touch regressions on both boards, each visual test with a
@@ -254,13 +256,67 @@ hart 0 and idles in `cpu_Dispatch()` as before.
   routines (only hart 0 uses them while hart 1 idles), and
   `core_DoCallIPI()`.
 
+### S4 design: scheduling on both harts (2026-10-05)
+
+- Affinity model, upstream's: an exec init hook at -127
+  (`exec/exec_smp.c`, before the service task is created) sets
+  `EXECF_CPUAffinity` and binds the boot task to hart 0. A new task
+  inherits its parent's mask, so everything the cold start, DOS and
+  Workbench create stays on hart 0; only tasks created for hart 1 or for
+  `TASKAFFINITY_ANY` run there. In this tree that is exec's housekeeper
+  (exec-only work) and nothing else outside tests. The S3 staging rule is
+  gone.
+- Inter-hart interrupt work bits (`kernel_smp.c`): PARK (S3), TICK (hart
+  0's tick, forwarded from its timer interrupt, counted on hart 1 exactly
+  as exec's VBlankServer counts it on hart 0), SCHEDULE (quantum given up
+  and a switch requested) and CALL_HOOK. Both harts now have their
+  inter-hart interrupt: matrix source 79 + n routed to CLIC line 22 on
+  hart n.
+- Cross-hart calls (`kernel_ipi.c`, from aarch64-native): the cancelable
+  form exec's `Signal()` and `RemTask()` use. Static pools of 64 entries
+  per target hart, a queue per hart, one lock per hart taken only with
+  interrupts masked; the target runs its queue from the interrupt with
+  dispatch blocked. On this machine the interrupt is an ordinary one, so
+  `signal_hook` calls the full `Signal()` on the target hart, as on
+  x86_64.
+- `KrnScheduleCPU()` (`schedulecpu.c`): an IPI to the other harts in the
+  mask; on this hart a reschedule, inside a trap through the flags.
+- An idle hart learns of new work at once: when `Exec_ReschedTask()`
+  makes a task ready that may run on another hart, and that hart runs
+  something of lower priority (its idle task, typically), it gets a
+  SCHEDULE IPI.
+- Hazard left for S5: a driver that guards its data against its own
+  interrupt with `Disable()` is safe only on the hart that takes that
+  interrupt, hart 0; `Disable()` masks one hart. With the affinity model
+  above no driver call is made from hart 1 yet. Likewise the SYSTIMER
+  snapshot, the console and the ROM cache routines are not serialized.
+- Acceptance test (`P4_S4_TEST=1`, `kernel/kernel_smptest.c`): a
+  cold-start resident at 103 runs, bound pairs across the harts, 2,000
+  signal round trips, a semaphore over a deliberately non-atomic counter
+  (2 x 2,000), 1,000 messages through a port with replies, 2 x 2,000
+  allocations with pattern checks, and two CPU-bound tasks with
+  `TASKAFFINITY_ANY`, which must both have run on both harts; then checks
+  where each bound task ended. It waits by polling with a ten-second
+  bound, so a lost wakeup reports instead of hanging.
+
 Open points:
 
 - Native atomics on cached PSRAM hold on the JC1060P470C (S1); the D1001 has
   not run S1.
-- Which of the generic gaps above actually affect the P4 is unknown until S4.
-- Whether hart 1 takes its tick from hart 0 or from its own SYSTIMER alarm is
-  open.
+- Which of the generic gaps above actually affect the P4: S4 hit none of
+  them, but its test does not remove a task running on the other hart and
+  does not use task.resource or `ChildStatus()`. Upstream's SMP tests (S5)
+  should.
+- Hart 1 takes its tick from hart 0 through the inter-hart interrupt (S4);
+  its own SYSTIMER alarm stays an option if the forwarding proves too
+  coarse.
+- A hart claiming a call entry from inside an interrupt, with the target's
+  pool empty, waits without running its own queue (`core_ClaimCallIPI()`
+  drains only under `Disable()`); two harts doing so towards each other at
+  once would deadlock. It needs 64 calls pending on each side. Draining
+  there as well would nest the drain inside the drain's own hook and needs
+  a design of its own; S5 stress should show whether the case is
+  reachable.
 - How much of `arch/riscv-native` can be reused is unclear; it is incomplete
   and oriented to supervisor mode.
 

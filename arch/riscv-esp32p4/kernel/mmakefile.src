@@ -1095,6 +1095,7 @@ CFILES += \
         kernel_intr \
         kernel_execsmp \
         kernel_smp \
+        schedulecpu \
         kernel_smptest
 AFILES += secondary_smp
 endif

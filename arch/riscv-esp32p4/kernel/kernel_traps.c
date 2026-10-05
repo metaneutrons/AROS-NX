@@ -304,6 +304,10 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
              */
             if (SysBase && (IDNESTCOUNT_GET < 0))
                 core_Cause(INTB_VERTB, 1L << INTB_VERTB);
+#if defined(__AROSEXEC_SMP__)
+            /* Hart 1 counts its quantum from this tick too */
+            krnP4TickOthers();
+#endif
         }
 #if defined(__AROSEXEC_SMP__)
         else if (line == P4_SMP_IPI_LINE)

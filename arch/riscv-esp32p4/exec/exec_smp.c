@@ -5,13 +5,58 @@
           target, from arch/aarch64-native.
 */
 
+#include <aros/symbolsets.h>
 #include <exec/execbase.h>
 #include <exec/tasks.h>
 
 #include <proto/exec.h>
+#include <proto/kernel.h>
 
 #include "exec_intern.h"
 #include "etask.h"
+#include "tls.h"
+
+/* kernel.resource, linked into the same image */
+extern void krnP4IPISend(unsigned int hart, ULONG work);
+#define P4_IPI_SCHEDULE         (1UL << 2)
+
+static inline unsigned int this_hart(void)
+{
+    unsigned long hart;
+
+    asm volatile("csrr %0, mhartid" : "=r"(hart));
+    return hart;
+}
+
+/*
+ * A task has just become ready. Another hart it may run on, running
+ * something of lower priority - typically its idle task - would only
+ * notice at its next quantum; tell it now. Reading that hart's current
+ * task without its lock is only a hint: a wrong guess costs one
+ * interrupt or one quantum, nothing else.
+ */
+static void kick_other_harts(struct Task *task)
+{
+    ULONG online = __atomic_load_n(&__p4_harts_online, __ATOMIC_ACQUIRE);
+    unsigned int me = this_hart();
+    unsigned int hart;
+    void *aff;
+
+    if (!(task->tc_Flags & TF_ETASK) || !task->tc_UnionETask.tc_ETask)
+        return;
+    aff = IntETask(task->tc_UnionETask.tc_ETask)->iet_CpuAffinity;
+
+    for (hart = 0; hart < P4_TLS_HARTS; hart++)
+    {
+        struct Task *running;
+
+        if (hart == me || !(online & (1UL << hart)) || !KrnCPUInMask(hart, aff))
+            continue;
+        running = __atomic_load_n(&__p4_tls[hart].ThisTask, __ATOMIC_RELAXED);
+        if (!running || running->tc_Node.ln_Pri < task->tc_Node.ln_Pri)
+            krnP4IPISend(hart, P4_IPI_SCHEDULE);
+    }
+}
 
 /*
  * Move a task to the list matching newState, for krnSysCallReschedTask().
@@ -73,6 +118,8 @@ void Exec_ReschedTask(struct Task *task, ULONG newState)
     {
         case TS_READY:
             exec_TaskEnqueueReady(task);
+            if (PrivExecBase(SysBase)->IntFlags & EXECF_CPUAffinity)
+                kick_other_harts(task);
             break;
         case TS_WAIT:
             exec_TaskEnqueueWait(task);
@@ -102,3 +149,37 @@ void Exec_SuicideSwitch(void)
     EXEC_SPINLOCK_UNLOCK(&task->tc_SpinLock);
     EXEC_IRQFIQ_RESTORE(__if);
 }
+
+/*
+ * Early in exec's init, before its service task and anything else is
+ * created: turn on the affinity paths (signals across harts, the masks
+ * new tasks inherit) and bind the boot task to hart 0, whose cold start
+ * is not safe to move. Everything it creates inherits that, so only tasks
+ * created for another hart or for any hart run elsewhere.
+ */
+int Exec_P4SMPInit(struct ExecBase *SysBase)
+{
+    struct Task *boot = GET_THIS_TASK;
+
+    PrivExecBase(SysBase)->IntFlags |= EXECF_CPUAffinity;
+
+    if (boot && (boot->tc_Flags & TF_ETASK) && boot->tc_UnionETask.tc_ETask)
+    {
+        struct IntETask *iet = IntETask(boot->tc_UnionETask.tc_ETask);
+
+        if (!iet->iet_CpuAffinity)
+        {
+            void *aff = KrnAllocCPUMask();
+
+            if (aff)
+            {
+                KrnGetCPUMask(0, aff);
+                iet->iet_CpuAffinity = aff;
+                iet->iet_CpuNumber = 0;
+            }
+        }
+    }
+    return TRUE;
+}
+
+ADD2INITLIB(Exec_P4SMPInit, -127)

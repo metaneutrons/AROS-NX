@@ -149,7 +149,7 @@ gate: compensated output is not the native display contract.
 | S1 | Native atomics on cached PSRAM across both harts | `hardware verified (JC1060P470C)` | Evidence entry 2026-10-05: `P4_S1_PSRAM_ATOMICS=1`, twelve of twelve epochs exact with proven interleaving: word AMO, CAS, GCC's 8/16-bit LR/SC loops, mixed AMO and LR/SC in one word, a lock over plain data, 1 MiB of cold lines, all read back from PSRAM. The `atomic.h` dispatch suffices. The D1001 has not run it. |
 | S2 | `smp` build on one hart | `hardware verified (headless, JC1060P470C)` | Configure allows `smp` for esp32p4; platform layer in the port; boots on hart 0 with hart 1 in reset. The SMP build tree is set up here, because configure refuses `smp` for this target until then. |
 | S3 | Second hart online, idle | `hardware verified (headless, JC1060P470C)` | Hart 1 from the E1/E2 entry with its own ISR stack, CLIC/IPI, per-hart state, a tick and an idle task; parked for cache and flash windows. |
-| S4 | Scheduling on two harts | `not started` | Per-hart scheduler after aarch64-native, `KrnScheduleCPU` through IPIs, affinity, then free migration. |
+| S4 | Scheduling on two harts | `hardware verified (headless, JC1060P470C)` | Evidence entry 2026-10-05: upstream's affinity model (the boot task bound to hart 0, children inherit; `TASKAFFINITY_ANY` tasks run on either hart), signals, `KrnScheduleCPU` and hart 1's tick through IPIs; the acceptance test `P4_S4_TEST=1` passes six of six boots, the plain core boots six times and runs ten minutes. Ordinary tasks stay on hart 0 until S5's serialization. |
 | S5 | SMP qualification | `not started` | Upstream SMP tests, sustained stress, device serialization, boot/visual/touch regressions on both boards with fresh readiness. |
 | S6 | SMP default decision | `not started` | SMP or single hart as the P4 default; retires `giant-smp`. Replaces the former E4 row. |
 
@@ -25134,6 +25134,79 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   boot; no runtime stress of the park. Hart 1 runs only its own tasks, so
   nothing yet tests exec's SMP paths under load.
 - Next safe step: S4.
+
+### 2026-10-05 - S4: scheduling on both harts
+
+- State change: Track E S4 hardware verified (headless, JC1060P470C). The
+  D1001 has not run it.
+- Design: SMP.md, "S4 design". In short: upstream's affinity model, set
+  up by an exec init hook at -127 that sets `EXECF_CPUAffinity` and binds
+  the boot task to hart 0, so that every task created from it stays there
+  and only tasks bound to hart 1 or created with `TASKAFFINITY_ANY` (exec's
+  housekeeper, outside tests) run on hart 1; the S3 staging rule in the
+  scheduler is gone. The inter-hart interrupt carries TICK (hart 0's tick
+  forwarded to hart 1, which counts its quantum from it), SCHEDULE and
+  CALL_HOOK besides S3's PARK. `kernel_ipi.c` takes aarch64-native's
+  cancelable hook queue (static pools of 64 per hart), which exec's
+  `Signal()` and `RemTask()` use; `KrnScheduleCPU()` is new; a task made
+  ready for another hart that runs something of lower priority sends that
+  hart a SCHEDULE IPI.
+- Acceptance test: `P4_S4_TEST=1` (`kernel/kernel_smptest.c`), a
+  cold-start resident at 103 that runs, in pairs bound one to each hart,
+  2,000 signal round trips, a semaphore over a non-atomic counter
+  (2 x 2,000), 1,000 messages with replies and 2 x 2,000 allocations with
+  pattern checks, and two CPU-bound `TASKAFFINITY_ANY` tasks that must
+  each run on both harts; it polls with a ten-second bound, so a lost
+  wakeup reports instead of hanging. Test cores were built with
+  `P4_S4_TEST=1 P4_SPIN_WATCHDOG=1` on the normal JC1060 flags.
+- Failures on the way:
+  - core `5ba8e01c…` (188,912 B), boot `b895110d…`: hung after "hart 1
+    online", no report. Its successor `a53d2e36…` (189,520 B), which
+    polls with a timeout and reports, boot `c64031dd…`: "pingpong=0
+    sem=4000 msgs=0", FAIL; the hart-1 task waited for its signal while
+    its partner on hart 0 had received nothing. Hart 0's own inter-hart
+    interrupt had never been routed (S3 only routed hart 1's, for the
+    park), so every call to hart 0 was queued and never raised. Fixed in
+    `p4_smp_start_secondary()`: matrix source 79 to CLIC line 22 on hart
+    0 as well.
+  - The same report then took a load access fault at `0xd5d5d5d5`: the
+    diagnostic read the name of a task that had already ended. The test
+    keeps a done flag per task now.
+- Test core `ba09fdceef2a47c7e565203c4d3e87f673cf995497f39cf9b6b7357a56ac0417`
+  (189,584 B; JC1060P470C `80:f1:b2:d3:3b:a6`, MAC checked, core at
+  `0x20000` verified; package, card and development volume unchanged):
+  first boot `068a4db13189716de10bef3aa065fd79f9d590ac1c1c9060aaa6a6125478f78d`
+  and five resets (`144d24ec…`, `e9fabbdd…`, `559a831c…`, `3e734a58…`,
+  `3890e6bc…`), all six "[smp-s4] detail pingpong=2000 sem=4000
+  msgs=1000 msgerr=0 allocerr=0 any-harts=3 any1=3 any2=3
+  ended=1010101011", about 84.2 million cycles each, PASS; every boot
+  online, Wanderer, no alert, no spinlock watchdog report.
+- Plain core (normal JC1060 flags, no test, no watchdog), 185,168 B
+  `48b0e880ade60699141718bb86ea1acedb98167f11dfda98be1e532a68ebf154`; the
+  build's only warnings are the three known ones from `kernel_debug.h` in
+  `task_init.c`. Flashed the same way:
+  - first boot, 40 s, `3a11e6d48665c87f7757cc92277f811e13b4267b3e5a09cdc57fe54a32491cac`:
+    online, cpus 2, windows 1-3 parked, Wanderer, no alert;
+  - five resets, 40 s each (`57f802de…`, `722d8e97…`, `272f0379…`,
+    `d92f4b87…`, `7108d707…`): every boot online, Wanderer, no alert, no
+    refused window. Boots 2 and 3 show "window 1" and "window 3" with an
+    empty line between: the park counter reached 3, so window 2 was
+    parked and its line lost to the console, as in S3;
+  - ten minutes,
+    `63b541bdd182cdab764b0cb2830d55a4e2a5bbdd1c59800badbff5ecc5f54e44`:
+    online, windows 1-3 parked, Wanderer, GT911, 119 heartbeats to the
+    end, no alert.
+- Limits: apart from the housekeeper and the test, nothing runs on hart 1;
+  free migration of ordinary tasks needs S5's serialization first. Not
+  serialized across harts yet: drivers that guard against their own
+  interrupt with `Disable()`, the SYSTIMER snapshot, the console and the
+  ROM cache routines. A hart claiming a call entry from inside an
+  interrupt, with the target's pool empty, waits without running its own
+  queue; two harts doing so towards each other at once would deadlock. It
+  needs 64 calls pending on each side and has not been seen; S5 stress
+  should show whether it is reachable.
+- Next safe step: S5, starting with upstream's SMP tests
+  (`developer/debug/test/smp`) on the JC1060P470C.
 
 ## Evidence-entry template
 

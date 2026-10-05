@@ -473,9 +473,14 @@ void krnP4ConsoleBlocking(void);
 #define P4_SMP_INTMTX_SOURCES   128
 
 #define P4_IPI_PARK             (1UL << 0)  /* wait in SRAM: cache window */
+#define P4_IPI_TICK             (1UL << 1)  /* hart 0's tick, forwarded */
+#define P4_IPI_SCHEDULE         (1UL << 2)  /* look for something to run */
+#define P4_IPI_CALL_HOOK        (1UL << 3)  /* run the queued hook calls */
 
 void krnP4SMPInitPrimary(void);
 void krnP4IPIInterrupt(void);
+void krnP4IPISend(unsigned int hart, ULONG work);
+void krnP4TickOthers(void);
 int krnP4ParkOthers(void);
 void krnP4UnparkOthers(void);
 extern volatile ULONG __p4_parks;
