@@ -19,6 +19,6 @@ USER_INCLUDES := -I$(SRCDIR)/$(CURDIR)/include
 
 %build_linklib mmake=linklibs-fdt libname=fdt files=$(FILES)
 
-%copy_includes path=. dir=include
+%copy_includes mmake=linklibs-fdt-includes includes="fdt.h" path=. dir=include
 
 %common
