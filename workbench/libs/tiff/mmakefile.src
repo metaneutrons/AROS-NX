@@ -96,8 +96,10 @@ USER_INCLUDES := -iquote $(ARCHSRCDIR)/libtiff
 
 #MM workbench-libs-tiff-generated : libtiff-fetch
 
-##MM
-#workbench-libs-tiff-pkgconfig : $(AROS_LIB)/pkgconfig/libtiff.pc
+# libtiff-4.pc.in comes from the fetched archive.
+#MM workbench-libs-tiff-pkgconfig : libtiff-fetch
+#MM
+workbench-libs-tiff-pkgconfig : $(AROS_LIB)/pkgconfig/libtiff.pc
 
 $(AROS_LIB)/pkgconfig/libtiff.pc : $(ARCHSRCDIR)/libtiff-4.pc.in $(SRCDIR)/$(CURDIR)/mmakefile.src
 	@$(ECHO) "Generating /Developer/lib/pkgconfig/libtiff.pc ..."
