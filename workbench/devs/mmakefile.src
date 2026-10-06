@@ -35,7 +35,7 @@ include $(SRCDIR)/config/aros.cfg
 #MM    workbench-devs-AHI-quick
 
 #MM- includes-generate : \
-#MM      workbench-devs-input-includes
+#MM      kernel-input-includes
 
 #MM
 workbench-devs-mountlist : $(AROS_DEVS)/Mountlist workbench-devs-dosdrivers

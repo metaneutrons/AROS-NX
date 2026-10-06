@@ -30,7 +30,6 @@ include $(SRCDIR)/config/aros.cfg
 #MM     workbench-libs-iffparse \
 #MM     workbench-libs-jpeg \
 #MM     workbench-libs-kms \
-#MM     workbench-libs-lcms2 \
 #MM     workbench-libs-locale \
 #MM     workbench-libs-lowlevel \
 #MM     workbench-libs-lzma \
@@ -46,7 +45,6 @@ include $(SRCDIR)/config/aros.cfg
 #MM     workbench-libs-nonvolatile \
 #MM     workbench-libs-nvdisk \
 #MM     workbench-libs-pam \
-#MM     workbench-libs-pci \
 #MM     workbench-libs-png \
 #MM     workbench-libs-popupmenu \
 #MM     workbench-libs-prometheus \
@@ -59,7 +57,6 @@ include $(SRCDIR)/config/aros.cfg
 #MM     workbench-libs-tiff \
 #MM     workbench-libs-usergroup \
 #MM     workbench-libs-utf8proc \
-#MM     workbench-libs-vega \
 #MM     workbench-libs-version \
 #MM     workbench-libs-workbench \
 #MM     workbench-libs-z \
@@ -75,7 +72,7 @@ include $(SRCDIR)/config/aros.cfg
 #MM     workbench-libs-bullet-includes \
 #MM     workbench-libs-commodities-includes \
 #MM     workbench-libs-camd-includes \
-#MM     workbench-libs-codesets-lib-includes \
+#MM     workbench-libs-codesets-includes \
 #MM     workbench-libs-coolimages-includes \
 #MM     workbench-libs-cgfx-includes \
 #MM     workbench-libs-datatypes-includes \
@@ -93,7 +90,6 @@ include $(SRCDIR)/config/aros.cfg
 #MM     workbench-libs-iffparse-includes \
 #MM     workbench-libs-jpeg-includes \
 #MM     workbench-libs-kms-includes \
-#MM     workbench-libs-lcms2-includes \
 #MM     workbench-libs-locale-includes \
 #MM     workbench-libs-lowlevel-includes \
 #MM     workbench-libs-lzma-includes \
@@ -103,7 +99,6 @@ include $(SRCDIR)/config/aros.cfg
 #MM     workbench-libs-mathtrans-includes \
 #MM     workbench-libs-mathieeedoubbas-includes \
 #MM     workbench-libs-mathieeedoubtrans-includes \
-#MM     workbench-libs-mesa-includes \
 #MM     workbench-libs-muimaster-includes \
 #MM     workbench-libs-muiscreen-includes \
 #MM     workbench-libs-nonvolatile-includes \
@@ -119,7 +114,6 @@ include $(SRCDIR)/config/aros.cfg
 #MM     workbench-libs-tiff-includes \
 #MM     workbench-libs-usergroup-includes \
 #MM     workbench-libs-utf8proc-includes \
-#MM     workbench-libs-vega-includes \
 #MM     workbench-libs-vhi-includes \
 #MM     workbench-libs-workbench-includes \
 #MM     workbench-libs-z-includes \
