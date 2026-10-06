@@ -10,20 +10,76 @@
 
 #include "task_intern.h"
 
+void task_DetachEntry(struct Task *task, struct TaskResBase *TaskResBase)
+{
+    struct TaskListEntry *entry, *next, *detached = NULL;
+    BOOL found = FALSE;
+
+    if (!task)
+        return;
+
+#if !defined(__AROSEXEC_SMP__)
+    Forbid();
+#else
+    Disable();
+    EXEC_SPINLOCK_LOCK(&TaskResBase->TaskListSpinLock, NULL, SPINLOCK_MODE_WRITE);
+#endif
+    /* NewTasks has no published iterator; reclaim after removing its node. */
+    ForeachNodeSafe(&TaskResBase->trb_NewTasks, entry, next)
+    {
+        if (entry->tle_Task == task)
+        {
+            Remove(&entry->tle_Node);
+            detached = entry;
+            found = TRUE;
+            break;
+        }
+    }
+    if (!found)
+    {
+        ForeachNodeSafe(&TaskResBase->trb_TaskList, entry, next)
+        {
+            if (entry->tle_Task == task)
+            {
+                /* Active iterators retain the node, not a live Task. */
+                if (IsListEmpty(&TaskResBase->trb_LockedLists))
+                {
+                    Remove(&entry->tle_Node);
+                    detached = entry;
+                }
+                else
+                    entry->tle_Task = NULL;
+                break;
+            }
+        }
+    }
+#if !defined(__AROSEXEC_SMP__)
+    Permit();
+#else
+    EXEC_SPINLOCK_UNLOCK(&TaskResBase->TaskListSpinLock);
+    Enable();
+#endif
+    /* No allocator/Task/ETask access while holding the topology gate. */
+    if (detached)
+        FreeMem(detached, sizeof(*detached));
+}
+
+
 void task_CleanList(struct Task * task, struct TaskResBase *TaskResBase)
 {
+    struct TaskListEntry *taskEntry, *tetmp;
+    struct List detached;
+    NEWLIST(&detached);
+
+#if !defined(__AROSEXEC_SMP__)
+    Forbid();
+#else
+    Disable();
+    EXEC_SPINLOCK_LOCK(&TaskResBase->TaskListSpinLock, NULL, SPINLOCK_MODE_WRITE);
+#endif
     /* Are there any lock holders?, if not, do housecleaning */
     if (IsListEmpty(&TaskResBase->trb_LockedLists))
     {
-        struct TaskListEntry *taskEntry, *tetmp;
-
-#if !defined(__AROSEXEC_SMP__)
-        /* Don't let any other task interfere with us at the moment */
-        Forbid();
-#else
-        EXEC_SPINLOCK_LOCK(&TaskResBase->TaskListSpinLock, NULL, SPINLOCK_MODE_WRITE);
-#endif
-
         ForeachNodeSafe(&TaskResBase->trb_TaskList, taskEntry, tetmp)
         {
             if ((!taskEntry->tle_Task) ||
@@ -31,7 +87,7 @@ void task_CleanList(struct Task * task, struct TaskResBase *TaskResBase)
             {
                 D(bug("[TaskRes] RemTask: destroying old taskentry @ 0x%p\n", taskEntry));
                 Remove(&taskEntry->tle_Node);
-                FreeMem(taskEntry, sizeof(struct TaskListEntry));
+                AddTail(&detached, &taskEntry->tle_Node);
             }
         }
         ForeachNodeSafe(&TaskResBase->trb_NewTasks, taskEntry, tetmp)
@@ -40,11 +96,17 @@ void task_CleanList(struct Task * task, struct TaskResBase *TaskResBase)
             AddTail(&TaskResBase->trb_TaskList, &taskEntry->tle_Node);
         }
 
+    }
 #if !defined(__AROSEXEC_SMP__)
-        Permit();
+    Permit();
 #else
-        EXEC_SPINLOCK_UNLOCK(&TaskResBase->TaskListSpinLock);
+    EXEC_SPINLOCK_UNLOCK(&TaskResBase->TaskListSpinLock);
+    Enable();
 #endif
+    ForeachNodeSafe(&detached, taskEntry, tetmp)
+    {
+        Remove(&taskEntry->tle_Node);
+        FreeMem(taskEntry, sizeof(*taskEntry));
     }
 }
 
@@ -56,6 +118,7 @@ struct TaskListEntry *GetTaskEntry(struct Task *task, struct TaskResBase *TaskRe
         /* Don't let any other task interfere with us at the moment */
         Forbid();
 #else
+        Disable();
         EXEC_SPINLOCK_LOCK(&TaskResBase->TaskListSpinLock, NULL, SPINLOCK_MODE_WRITE);
 #endif
 
@@ -72,6 +135,7 @@ struct TaskListEntry *GetTaskEntry(struct Task *task, struct TaskResBase *TaskRe
         Permit();
 #else
         EXEC_SPINLOCK_UNLOCK(&TaskResBase->TaskListSpinLock);
+        Enable();
 #endif
 
     return retval;
@@ -115,11 +179,14 @@ struct TaskListHookEntry *GetHookTypeEntry(struct List *htList, ULONG thType, BO
 
 VOID TaskHookTypeDispose(struct TaskListHookEntry *task, ULONG type)
 {
+    (void)task;
+    (void)type;
     D(bug("%s(0x%p)\n", __func__));
 }
 
 VOID TaskHooksDispose(struct TaskListHookEntry *task)
 {
+    (void)task;
     D(bug("%s(0x%p)\n", __func__));
 }
 

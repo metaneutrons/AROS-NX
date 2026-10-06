@@ -265,6 +265,9 @@ static const struct newMemList MemTemplate =
 
 fail:   if (!task2)
         {
+            /* NewAddTask can fail after the port was published for launch. */
+            if (msgPortPtr)
+                *msgPortPtr = NULL;
             FreeEntry (ml);
             newtask = NULL;
         }

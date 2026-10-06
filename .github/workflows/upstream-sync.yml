@@ -131,9 +131,10 @@ jobs:
           git push "$remote" "${new_master}:refs/heads/master"
 
           git switch --create "$branch" origin/main
-          if ! git merge --no-ff --no-edit "$new_master"; then
-            git merge --abort || true
-            echo '::error::Upstream does not merge cleanly into AROS-NX main.'
+          # AROS-NX owns .github/: upstream changes there are discarded and
+          # reported. Any other conflict aborts the merge (exit 68).
+          report="${RUNNER_TEMP}/discarded-automation.md"
+          if ! python3 scripts/ci/upstream_merge.py "$new_master" --report "$report"; then
             echo 'The mirror is updated, but no integration branch was published. Resolve the merge manually.'
             exit 68
           fi
@@ -143,6 +144,7 @@ jobs:
             echo 'changed=true'
             echo "branch=${branch}"
             echo "upstream_sha=${new_master}"
+            echo "report=${report}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Open the integration pull request
@@ -151,14 +153,26 @@ jobs:
           GH_TOKEN: ${{ secrets.AROS_SYNC_TOKEN }}
           BRANCH: ${{ steps.sync.outputs.branch }}
           UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
+          REPORT: ${{ steps.sync.outputs.report }}
         run: |
           set -euo pipefail
+          body="${RUNNER_TEMP}/pull-request-body.md"
+          {
+            printf "Automated fail-closed merge of upstream AROS master at \`%s\`.\n\n" "$UPSTREAM_SHA"
+            cat <<'TEXT'
+          Do not merge until all required AROS-NX qualification checks pass. The permanent `master` branch is the exact fast-forward mirror; this PR changes only `main`.
+          TEXT
+            if [ -s "$REPORT" ]; then
+              printf '\n## Discarded upstream automation\n\n'
+              cat "$REPORT"
+            fi
+          } > "$body"
           gh pr create \
             --repo "$GITHUB_REPOSITORY" \
             --base main \
             --head "$BRANCH" \
             --title "sync: integrate upstream ${UPSTREAM_SHA:0:12}" \
-            --body "Automated fail-closed merge of upstream AROS master at \`${UPSTREAM_SHA}\`.\n\nDo not merge until all required AROS-NX qualification checks pass. The permanent \`master\` branch is the exact fast-forward mirror; this PR changes only \`main\`."
+            --body-file "$body"
 
       - name: Record outcome
         env:
