@@ -119,6 +119,35 @@ BOOL __used sdcard_WaitBusyTO(struct sdcard_Unit *unit, UWORD tout, BOOL irq, UB
 #define SD_CHUNK_BLOCKS 128
 
 /*
+ * End a multiple-block read. The card stays in the data state after CMD18
+ * until CMD12, including its R1b busy phase, has completed.
+ */
+static BOOL sdcard_StopRead(struct sdcard_Unit *unit, struct sdcard_Bus *bus)
+{
+    struct TagItem sdcStopTags[] =
+    {
+        {SDCARD_TAG_CMD,         MMC_CMD_STOP_TRANSMISSION},
+        {SDCARD_TAG_ARG,         0},
+        {SDCARD_TAG_RSPTYPE,     MMC_RSP_R1b},
+        {SDCARD_TAG_RSP,         0},
+        {TAG_DONE,               0}
+    };
+
+    DTRANS(bug("[SDCard%02ld] %s: Finishing transaction ..\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__));
+    if (SDCBUS_SendCmd(sdcStopTags, bus) == -1)
+    {
+        bug("[SDCard%02ld] %s: Failed to terminate Read operation\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__);
+        return FALSE;
+    }
+    if (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 100000, bus) == -1)
+    {
+        bug("[SDCard%02ld] %s: Failed to ACK termination of Read operation\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/*
  * 32bit Read operations
  */
 BYTE FNAME_SDCIO(ReadSector32)(struct sdcard_Unit *unit, ULONG block,
@@ -161,24 +190,8 @@ BYTE FNAME_SDCIO(ReadSector32)(struct sdcard_Unit *unit, ULONG block,
         {
             if (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 100000, bus) != -1)
             {
-                if (chunk > 1)
-                {
-                    DTRANS(bug("[SDCard%02ld] %s: Finishing transaction ..\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__));
-                    sdcReadTags[0].ti_Data = MMC_CMD_STOP_TRANSMISSION;
-                    sdcReadTags[1].ti_Data = 0;
-                    sdcReadTags[2].ti_Data = MMC_RSP_R1b;
-                    sdcReadTags[4].ti_Tag = TAG_DONE;
-                    if (SDCBUS_SendCmd(sdcReadTags, bus) == -1)
-                    {
-                        bug("[SDCard%02ld] %s: Failed to terminate Read operation\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__);
-                        retVal = IOERR_ABORTED;
-                    }
-                    else if (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 100000, bus) == -1)
-                    {
-                        bug("[SDCard%02ld] %s: Failed to ACK termination of Read operation\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__);
-                        retVal = IOERR_ABORTED;
-                    }
-                }
+                if (chunk > 1 && !sdcard_StopRead(unit, bus))
+                    retVal = IOERR_ABORTED;
 
                 /* A card that never acknowledged the stop is still streaming
                    as far as it knows, so this chunk did not arrive intact. */
@@ -188,6 +201,10 @@ BYTE FNAME_SDCIO(ReadSector32)(struct sdcard_Unit *unit, ULONG block,
             else
             {
                 bug("[SDCard%02ld] %s: Transfer error\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__);
+                /* The card accepted CMD18 and stays in the data state until
+                   it is stopped, whatever happened to the data. */
+                if (chunk > 1)
+                    sdcard_StopRead(unit, bus);
                 retVal = IOERR_ABORTED;
             }
         }
@@ -270,24 +287,8 @@ BYTE FNAME_SDCIO(ReadSector64)(struct sdcard_Unit *unit, UQUAD block,
         {
             if (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 100000, bus) != -1)
             {
-                if (chunk > 1)
-                {
-                    DTRANS(bug("[SDCard%02ld] %s: Finishing transaction ..\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__));
-                    sdcReadTags[0].ti_Data = MMC_CMD_STOP_TRANSMISSION;
-                    sdcReadTags[1].ti_Data = 0;
-                    sdcReadTags[2].ti_Data = MMC_RSP_R1b;
-                    sdcReadTags[4].ti_Tag = TAG_DONE;
-                    if (SDCBUS_SendCmd(sdcReadTags, bus) == -1)
-                    {
-                        bug("[SDCard%02ld] %s: Failed to terminate Read operation\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__);
-                        retVal = IOERR_ABORTED;
-                    }
-                    else if (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 100000, bus) == -1)
-                    {
-                        bug("[SDCard%02ld] %s: Failed to ACK termination of Read operation\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__);
-                        retVal = IOERR_ABORTED;
-                    }
-                }
+                if (chunk > 1 && !sdcard_StopRead(unit, bus))
+                    retVal = IOERR_ABORTED;
 
                 /* A card that never acknowledged the stop is still streaming
                    as far as it knows, so this chunk did not arrive intact. */
@@ -297,6 +298,10 @@ BYTE FNAME_SDCIO(ReadSector64)(struct sdcard_Unit *unit, UQUAD block,
             else
             {
                 bug("[SDCard%02ld] %s: Transfer error\n", unit->sdcu_UnitNum, __PRETTY_FUNCTION__);
+                /* The card accepted CMD18 and stays in the data state until
+                   it is stopped, whatever happened to the data. */
+                if (chunk > 1)
+                    sdcard_StopRead(unit, bus);
                 retVal = IOERR_ABORTED;
             }
         }

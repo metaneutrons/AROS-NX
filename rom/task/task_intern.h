@@ -76,6 +76,8 @@ struct TaskListHookEntry
 
 struct TaskListHookNode
 {
+    /* TaskResource owns the linkage, never the caller's Hook node. */
+    struct MinNode              tln_Node;
     struct Hook                 *tln_Hook;
 };
 
@@ -112,6 +114,10 @@ struct TaskListPrivate
 #define KernelBase TaskResBase->trb_KernelBase
 
 void task_CleanList(struct Task * task, struct TaskResBase *TaskResBase);
+/* Detach by opaque identity; never dereference the Task or call RemTask.
+ * Both TaskResource lists and the lock-holder decision share one gate.
+ * Detached storage is freed only after leaving that gate. */
+void task_DetachEntry(struct Task *task, struct TaskResBase *TaskResBase);
 struct TaskListHookEntry *GetHookTypeEntry(struct List *htList, ULONG thType, BOOL create);
 struct TaskListEntry *GetTaskEntry(struct Task *thisTask, struct TaskResBase *TaskResBase);
 

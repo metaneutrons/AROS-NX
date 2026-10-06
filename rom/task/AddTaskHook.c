@@ -61,6 +61,9 @@
     struct TaskListHookEntry *typeEntry;
     struct TaskListHookNode *hookEntry;
 
+    if (!tHook)
+        return FALSE;
+
     thisTEntry = GetTaskEntry(thisTask, TaskResBase);
     if (thisTEntry)
     {
@@ -69,9 +72,11 @@
         {
             if (typeEntry->tlhe_Node.ln_Pri >= 0)
             {
-                hookEntry = AllocMem(sizeof(struct TaskListHookNode *), MEMF_PUBLIC|MEMF_CLEAR);
+                hookEntry = AllocMem(sizeof(*hookEntry), MEMF_PUBLIC|MEMF_CLEAR);
+                if (!hookEntry)
+                    return FALSE;
                 hookEntry->tln_Hook = tHook;
-                AddTail((struct List *)&typeEntry->tlhe_Hooks, (struct Node *)&hookEntry->tln_Hook->h_MinNode);
+                AddTail((struct List *)&typeEntry->tlhe_Hooks, (struct Node *)&hookEntry->tln_Node);
             }
             else
             {
