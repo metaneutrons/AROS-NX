@@ -58,6 +58,9 @@ void ProcessDiskChange(struct Globals *glob)
         D(bug("\tDisk has been inserted\n"));
         glob->disk_inserted = TRUE;
         glob->io_muted[0] = glob->io_muted[1] = FALSE;
+        /* Before the super block is read, so that the first thing the new
+           medium is asked is whether it may be written to. */
+        ProbeWriteProtection(glob);
         DoDiskInsert(glob);
     }
     else
@@ -93,6 +96,45 @@ void UpdateDisk(struct Globals *glob)
         glob->diskioreq->iotd_Req.io_Length = 0;
         DoIO((struct IORequest *)glob->diskioreq);
     }
+}
+
+/*
+ * Ask the block device whether the medium may be written.
+ *
+ * This is asked rather than assumed, and asked again on every insert: a
+ * device can be protected by a mechanical switch, by the card, or - as on
+ * the ESP32-P4 bring-up - by a driver that has no transmit path at all.  A
+ * device that does not implement TD_PROTSTATUS answers IOERR_NOCMD, and the
+ * honest reading of that is "not protected", because a device that cannot
+ * be asked has to be treated as writable or nothing would ever mount.
+ */
+void ProbeWriteProtection(struct Globals *glob)
+{
+    LONG err;
+
+    glob->diskioreq->iotd_Req.io_Command = TD_PROTSTATUS;
+    glob->diskioreq->iotd_Req.io_Offset = 0;
+    glob->diskioreq->iotd_Req.io_Length = 0;
+    glob->diskioreq->iotd_Req.io_Actual = 0;
+    glob->diskioreq->iotd_Req.io_Data = NULL;
+
+    err = DoIO((struct IORequest *)glob->diskioreq);
+
+    glob->disk_writeprotected = (err == 0
+        && glob->diskioreq->iotd_Req.io_Actual != 0);
+
+    D(bug("[fat] TD_PROTSTATUS: error %ld, actual %ld\n",
+        err, glob->diskioreq->iotd_Req.io_Actual));
+
+    /*
+     * Said unconditionally, and only once per mount or insert.  A volume
+     * that will refuse every write is worth one line: without it the first
+     * evidence is a failure somewhere later, with no statement anywhere of
+     * why it was inevitable.
+     */
+    if (glob->disk_writeprotected)
+        bug("[fat] the medium is write protected;"
+            " every mutating packet will be refused\n");
 }
 
 /* Probe the device to determine 64-bit support */
@@ -211,6 +253,21 @@ LONG AccessDisk(BOOL do_write, ULONG num, ULONG nblocks, ULONG block_size,
     max_blocks = glob->max_transfer_bytes / block_size;
     if (max_blocks == 0)
         max_blocks = 1;
+
+    /*
+     * A write to a protected medium is refused here as well as in
+     * ProcessPackets(), because this is the only path every write goes
+     * through: the cache flush that runs off the timer does not come from a
+     * packet.  No I/O is issued and no requester is opened, so a denied
+     * write costs one comparison and leaves io_Actual at zero.
+     */
+    if (do_write && glob->disk_writeprotected)
+    {
+        D(bug("[fat] refusing to write %lu sector(s) at %lu:"
+            " the medium is write protected\n", nblocks, num));
+        glob->diskioreq->iotd_Req.io_Actual = 0;
+        return TDERR_WriteProt;
+    }
 
     err = 0;
     while (nblocks > 0)

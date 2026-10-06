@@ -104,6 +104,7 @@ preftable[] =
     {"printer"      , printerprefsname   , PrinterPrefs_Handler    },
     {"pointer"      , pointerprefsname   , PointerPrefs_Handler    },
     {"overscan"     , overscanprefsname  , NULL                    },
+    {"backlight"    , backlightprefsname , BacklightPrefs_Handler  },
     {NULL                                                          }
 
 };

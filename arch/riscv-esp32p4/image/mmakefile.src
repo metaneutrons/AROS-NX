@@ -1,0 +1,259 @@
+#
+#   The reproducible FAT32 test image for the read-only bring-up.
+#
+#   Host-side only: nothing here runs on the board and nothing here writes to
+#   a real medium.  The image is a disposable artefact, so it is not part of
+#   any default build; ask for it by name.
+#
+#   See README.md in this directory for what the target produces and how to
+#   verify it with tools that did not build it.
+#
+
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
+
+IMAGEDIR   := $(AROSDIR)/boot/esp32p4
+IMAGE      := $(IMAGEDIR)/aros-test.img
+STAGE      := $(GENDIR)/$(CURDIR)/stage
+MKFAT32    := $(SRCDIR)/$(CURDIR)/mkfat32.py
+PROOFDIR   := $(AROSARCHDIR)/proof
+C3_STARTUP := $(SRCDIR)/$(CURDIR)/Startup-Sequence.c3
+C3_THEME   := $(if $(strip $(AROS_GUI_THEME)),$(AROS_GUI_THEME),AROSDefault)
+C3_THEME_SRC := $(SRCDIR)/images/Themes/$(C3_THEME)
+C3_THEME_DST := $(STAGE)/Prefs/Presets/Themes/$(C3_THEME)
+
+#   Fixed on purpose: these are the only two fields a formatter would
+#   otherwise take from the clock, and taking them from the clock would make
+#   the image unreproducible.
+IMAGE_SERIAL    ?= 0xa5051d00
+IMAGE_TIMESTAMP ?= 2026-01-01
+IMAGE_SIZE_MB   ?= 64
+
+#   The flash development volume.  Its offset and size are also in
+#   board/d1001.h, where the board-side code reads them; the two have to
+#   agree and the probe prints both so a mismatch is visible rather than
+#   mysterious.
+FLASHDISK          := $(IMAGEDIR)/aros-flashdisk.img
+FLASHDISK_SIZE_MB  := $(P4_BOARD_FLASHDISK_SIZE_MB)
+FLASHDISK_OFFSET   := $(P4_BOARD_FLASHDISK_OFFSET)
+FLASHDISK_SERIAL   ?= 0xa5051d10
+FLASHDISK_LABEL    ?= AROSP4DEV
+
+# Optional private runtime firmware.  Supplying this absolute path stages the
+# blob only into a disposable host image; the source tree and package remain
+# firmware-free.  The HIDD first uses DEVS:Firmware and then the separately
+# mounted FLASHDISK0P0 development fallback.
+P4_GSL_FW_BINARY ?=
+
+#
+#   The A5 proof files are built separately and staged here.  They must not be
+#   in the kickstart or the flash package; the card is the only place they
+#   exist, which is what makes running them evidence of anything.
+#
+#MM- kernel-image-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
+#MM- kernel-image-esp32p4-riscv-stage : \
+#MM-     kernel-proof-esp32p4-riscv \
+#MM-     workbench-c-sh \
+#MM-     workbench-system-wanderer \
+#MM-     workbench-libs-asl \
+#MM-     workbench-libs-cgfx \
+#MM-     workbench-libs-commodities \
+#MM-     workbench-libs-coolimages \
+#MM-     workbench-libs-datatypes \
+#MM-     workbench-libs-diskfont \
+#MM-     workbench-libs-icon \
+#MM-     workbench-libs-iffparse \
+#MM-     workbench-libs-locale \
+#MM-     workbench-libs-muimaster \
+#MM-     workbench-libs-muiscreen \
+#MM-     workbench-libs-rexxsyslib \
+#MM-     workbench-libs-png \
+#MM-     workbench-libs-z \
+#MM-     compiler-posixc \
+#MM-     compiler-stdcio \
+#MM-     workbench-datatypes-picture \
+#MM-     workbench-datatypes-png \
+#MM-     workbench-devs-datatypes \
+#MM-     workbench-c-adddatatypes \
+#MM-     compiler-stdc \
+#MM-     workbench-libs-workbench \
+#MM-     workbench-c-iprefs \
+#MM-     workbench-prefs-touchscreen \
+#MM-     workbench-prefs-backlight
+
+C3_SD_LIBS := asl.library commodities.library coolimages.library \
+              cybergraphics.library datatypes.library diskfont.library \
+              icon.library iffparse.library locale.library \
+              muimaster.library muiscreen.library rexxsyslib.library \
+              stdc.library workbench.library png.library z1.library \
+              posixc.library stdcio.library
+
+kernel-image-esp32p4-riscv-stage :
+	@$(RM) $(STAGE)
+	%mkdirs_q $(STAGE) $(IMAGEDIR)
+	@$(CP) -r $(SRCDIR)/$(CURDIR)/content/. $(STAGE)/
+	@# The directory skeleton the assigns expect.  Empty directories cannot
+	@# be tracked in git, so they are created here rather than committed.
+	%mkdirs_q $(STAGE)/C $(STAGE)/L $(STAGE)/Libs $(STAGE)/Devs \
+	          $(STAGE)/Devs/DOSDrivers $(STAGE)/Prefs $(STAGE)/T \
+	          $(STAGE)/Classes $(STAGE)/System
+ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
+	@# C3 keeps the boot-critical residents in flash, but the ordinary desktop,
+	@# its loadable libraries/classes and its preferences belong to SYS:.
+	@# Wanderer's toolbar and other Zune ImageButtons open THEME: paths.  Stage
+	@# the configured theme with the image so those paths resolve on the board.
+	@$(TEST) -d $(C3_THEME_SRC) || { $(ECHO) "Missing C3 theme: $(C3_THEME_SRC)"; exit 1; }
+	@$(TEST) -f $(C3_THEME_SRC)/images/Gadgets/Search || exit 1
+	@$(TEST) -f $(C3_THEME_SRC)/images/Gadgets/DirUp || exit 1
+	@$(MKDIR) -p $(C3_THEME_DST)
+	@$(CP) -r $(C3_THEME_SRC)/. $(C3_THEME_DST)/
+	@$(SED) -e 's|@C3_THEME@|$(C3_THEME)|g' \
+	    $(C3_STARTUP) > $(STAGE)/S/Startup-Sequence
+	@$(CP) $(AROSDIR)/C/Assign $(STAGE)/C/Assign
+	@for f in $(C3_SD_LIBS) ; do \
+	    $(CP) $(AROSDIR)/Libs/$$f $(STAGE)/Libs/$$f || exit 1 ; \
+	done
+	@$(CP) -r $(AROSDIR)/Classes/. $(STAGE)/Classes/
+	@$(CP) -r $(AROSDIR)/System/Wanderer $(STAGE)/System/
+	@$(MKDIR) -p $(STAGE)/Classes/DataTypes $(STAGE)/Devs/DataTypes
+	@$(CP) $(AROSDIR)/Classes/DataTypes/picture.datatype \
+	    $(STAGE)/Classes/DataTypes/picture.datatype
+	@$(CP) $(AROSDIR)/Classes/DataTypes/png.datatype \
+	    $(STAGE)/Classes/DataTypes/png.datatype
+	@$(CP) $(AROSDIR)/Devs/DataTypes/PNG $(STAGE)/Devs/DataTypes/PNG
+	@$(CP) $(AROSDIR)/C/AddDataTypes $(STAGE)/C/AddDataTypes
+	@# IPrefs applies the preferences (brightness among them), and Copy
+	@# fills ENV: from ENVARC: as the standard Startup-Sequence does; both
+	@# write only RAM:.  C:Copy comes from the full workbench-c build,
+	@# which the stage does not run because of its catalog dependencies.
+	@$(TEST) -f $(AROSDIR)/C/Copy || { $(ECHO) "C:Copy missing; build workbench-c once"; exit 1; }
+	@$(CP) $(AROSDIR)/C/Copy $(STAGE)/C/Copy
+	@$(CP) $(AROSDIR)/C/IPrefs $(STAGE)/C/IPrefs
+	@for f in Touchscreen Touchscreen.info Backlight Backlight.info ; do \
+	    $(CP) $(AROSDIR)/Prefs/$$f $(STAGE)/Prefs/$$f || exit 1 ; \
+	done
+	@$(ILBMTOICON) \
+	    $(SRCDIR)/images/IconSets/Gorilla/Icons/Medium/AROS/Prefs.info.src \
+	    $(SRCDIR)/images/IconSets/Gorilla/Icons/Medium/AROS/Prefs.png \
+	    $(STAGE)/Prefs.info
+	@if $(TEST) -d $(AROSDIR)/Prefs/Env-Archive ; then \
+	    $(MKDIR) -p $(STAGE)/Prefs/Env-Archive ; \
+	    $(CP) -r $(AROSDIR)/Prefs/Env-Archive/. \
+	        $(STAGE)/Prefs/Env-Archive/ ; \
+	fi
+endif
+	@# The marker __dos_IsBootable() searches for with strstr().  Taken from
+	@# the build's own CPU name so it cannot drift from the target.
+	@$(ECHO) "AROS boot signature" > $(STAGE)/AROS.boot
+	@$(ECHO) "cpu $(AROS_TARGET_CPU)" >> $(STAGE)/AROS.boot
+	@$(ECHO) "arch $(AROS_TARGET_ARCH)" >> $(STAGE)/AROS.boot
+	@if $(TEST) -n "$(P4_GSL_FW_BINARY)" ; then \
+	    $(TEST) -f "$(P4_GSL_FW_BINARY)" || exit 1 ; \
+	    $(MKDIR) -p $(STAGE)/Firmware/silead ; \
+	    $(CP) "$(P4_GSL_FW_BINARY)" \
+	        $(STAGE)/Firmware/silead/$(P4_BOARD_TOUCH_FW_FILENAME) ; \
+	fi
+	@# The A5 proof command and library, if they have been built.  They are
+	@# deliberately absent from C3: GB0 must prove the ordinary Wanderer path,
+	@# not retain acceptance instruments merely because stale build artefacts
+	@# happen to exist.
+ifneq ($(P4_C3_GRAPHICAL_BOOT),1)
+	@if $(TEST) -f $(PROOFDIR)/sdboot-test ; then \
+	    $(CP) $(PROOFDIR)/sdboot-test $(STAGE)/C/sdboot-test ; \
+	fi
+	@if $(TEST) -f $(PROOFDIR)/sdload-test ; then \
+	    $(CP) $(PROOFDIR)/sdload-test $(STAGE)/C/sdload-test ; \
+	fi
+	@if $(TEST) -f $(PROOFDIR)/sdproof.library ; then \
+	    $(CP) $(PROOFDIR)/sdproof.library $(STAGE)/Libs/sdproof.library ; \
+	fi
+endif
+
+#
+#   The development volume that lives in flash rather than on a card.
+#
+#   Same staged content, same generator, FAT16 instead of FAT32.  FAT32 is
+#   not a choice here: it is only FAT32 above 65524 clusters, which is 33.5 MB
+#   at 512-byte clusters, and the whole flash is 32 MB.  FAT16 needs 4085,
+#   and four megabytes gives 6063.
+#
+#   It sits inside the `arosbsp` partition, after the package, rather than in
+#   the `storage` partition the ESP-IDF table declares.  Two reasons.  The
+#   flash cache mapping stops at 16 MB and `storage` begins at 16.9 MB, so
+#   krnP4FlashMap() cannot reach it at all; reading it would need raw SPI
+#   commands with the cache suspended, which is a great deal of new risk for
+#   a development convenience.  And `arosbsp` is a custom type this port
+#   defines, so its internal structure is ours to decide, whereas the
+#   partition table is an explicit-write target.
+#
+#MM kernel-flashdisk-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
+kernel-flashdisk-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
+	@$(ECHO) "Creating   $(FLASHDISK)"
+	@$(PYTHON) $(MKFAT32) --content $(STAGE) --out $(FLASHDISK) \
+	    --size-mb $(FLASHDISK_SIZE_MB) --fat-bits 16 \
+	    --serial $(FLASHDISK_SERIAL) --timestamp $(IMAGE_TIMESTAMP) \
+	    --label $(FLASHDISK_LABEL)
+	@shasum -a 256 $(FLASHDISK) > $(basename $(FLASHDISK)).sha256
+	@$(ECHO) "Write it with: esptool --chip esp32p4 --port <port> \
+write-flash $(FLASHDISK_OFFSET) $(FLASHDISK)"
+
+#
+#   A development volume with only the port's own tools, for the same flash
+#   region.  The full stage no longer fits there (C3 needs 8.8 MB), and the
+#   SD card is read-only, so this is how a new tool reaches the board
+#   without moving the card.  There is no AROS.boot: the volume is a second
+#   drive, never a boot candidate, even without a card.  The tools sit in
+#   the root so Wanderer shows their icons without a drawer icon.
+#   On a board whose touch controller loads firmware from this volume (the
+#   D1001's GSL3670 falls back to FLASHDISK0P0:Firmware/silead), the target
+#   refuses to build without P4_GSL_FW_BINARY, so writing the volume cannot
+#   remove the firmware.
+#   P4_S5_TESTS=1 (smp tree, after `make test-smp`) adds upstream's SMP
+#   tests in S5/ with a list, s5-tests unless P4_S5_LIST names another
+#   (s5-stress), which the P4_S5_RUNNER core runs after the boot.
+#
+DEVSTAGE  := $(GENDIR)/$(CURDIR)/devstage
+P4_S5_LIST ?= $(SRCDIR)/$(CURDIR)/s5-tests
+DEVVOLUME := $(IMAGEDIR)/aros-devvolume.img
+
+#MM kernel-devvolume-esp32p4-riscv : workbench-prefs-touchscreen
+kernel-devvolume-esp32p4-riscv :
+	@if $(TEST) -n "$(P4_BOARD_TOUCH_FW_FILENAME)" \
+	        -a ! -f "$(P4_GSL_FW_BINARY)" ; then \
+	    $(ECHO) "$(P4_BOARD) loads touch firmware from this volume;" \
+	        "set P4_GSL_FW_BINARY" ; \
+	    exit 1 ; \
+	fi
+	@$(RM) -r $(DEVSTAGE)
+	@$(MKDIR) -p $(DEVSTAGE) $(IMAGEDIR)
+	@$(CP) $(AROSDIR)/Prefs/Touchscreen $(AROSDIR)/Prefs/Touchscreen.info \
+	    $(DEVSTAGE)/
+	@if $(TEST) -n "$(P4_BOARD_TOUCH_FW_FILENAME)" ; then \
+	    $(MKDIR) -p $(DEVSTAGE)/Firmware/silead ; \
+	    $(CP) "$(P4_GSL_FW_BINARY)" \
+	        $(DEVSTAGE)/Firmware/silead/$(P4_BOARD_TOUCH_FW_FILENAME) ; \
+	fi
+	@if $(TEST) -n "$(P4_S5_TESTS)" ; then \
+	    $(MKDIR) -p $(DEVSTAGE)/S5 ; \
+	    $(CP) $(AROS_TESTS)/smp/SMP-* $(DEVSTAGE)/S5/ || exit 1 ; \
+	    $(CP) $(P4_S5_LIST) $(DEVSTAGE)/S5/tests || exit 1 ; \
+	fi
+	@$(ECHO) "Creating   $(DEVVOLUME)"
+	@$(PYTHON) $(MKFAT32) --content $(DEVSTAGE) --out $(DEVVOLUME) \
+	    --size-mb $(FLASHDISK_SIZE_MB) --fat-bits 16 \
+	    --serial $(FLASHDISK_SERIAL) --timestamp $(IMAGE_TIMESTAMP) \
+	    --label $(FLASHDISK_LABEL)
+	@shasum -a 256 $(DEVVOLUME) > $(basename $(DEVVOLUME)).sha256
+	@$(ECHO) "Write it with: esptool --chip esp32p4 --port <port> \
+write-flash $(FLASHDISK_OFFSET) $(DEVVOLUME)"
+
+#MM kernel-image-esp32p4-riscv
+kernel-image-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
+	@$(ECHO) "Creating   $(IMAGE)"
+	@$(PYTHON) $(MKFAT32) --content $(STAGE) --out $(IMAGE) \
+	    --size-mb $(IMAGE_SIZE_MB) --serial $(IMAGE_SERIAL) \
+	    --timestamp $(IMAGE_TIMESTAMP)
+	@shasum -a 256 $(IMAGE) > $(basename $(IMAGE)).sha256
+	@$(ECHO) "Verify with: sh $(SRCDIR)/$(CURDIR)/verify-image.sh $(IMAGE)"
+
+%common

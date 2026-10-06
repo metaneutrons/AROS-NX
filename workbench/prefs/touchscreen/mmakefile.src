@@ -1,0 +1,27 @@
+# Touchscreen: preferences editor for touchscreen.hidd. Shares the prefs
+# text format, the calibration fit and the gesture defaults with the
+# driver through the one-line wrappers prefs_text.c, calib_fit.c and
+# policy_params.c.
+
+include $(SRCDIR)/config/aros.cfg
+
+FILES := touchscreen calibrate prefs_text calib_fit policy_params
+
+EXEDIR := $(AROSDIR)/Prefs
+
+#MM- workbench-prefs : workbench-prefs-touchscreen
+#MM- workbench-prefs-touchscreen : workbench-prefs-touchscreen-prog \
+#MM     workbench-prefs-touchscreen-icon
+#MM workbench-prefs-touchscreen-prog : includes linklibs \
+#MM     kernel-hidd-touchscreen
+
+%build_prog mmake=workbench-prefs-touchscreen-prog \
+    progname=Touchscreen targetdir=$(EXEDIR) \
+    files=$(FILES)
+
+# The Input editor's icon until there is one of its own.
+%build_icons mmake=workbench-prefs-touchscreen-icon \
+    icons=Touchscreen dir=$(EXEDIR) \
+    image=../../../images/IconSets/Gorilla/Icons/Medium/AROS/Prefs/Input.png
+
+%common

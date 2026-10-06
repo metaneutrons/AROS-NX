@@ -1,0 +1,114 @@
+#
+#   The second stage bootloader this port boots through.
+#
+#   Nothing of ESP-IDF is kept in the AROS tree. The sources are fetched at
+#   the pinned version, the one patch this port needs is applied to the
+#   fetched copy, and only that patch and this project's own three files
+#   live here. See LEGAL for the licence the fetched sources carry and what
+#   that requires of anyone redistributing the result.
+#
+#   Not part of any default target. Building it needs a host toolchain AROS
+#   does not otherwise ask for - cmake, ninja, riscv32-esp-elf and a python
+#   with ESP-IDF's requirements installed - so it is asked for by name:
+#
+#       make esp32p4-bootloader
+#
+#   The result is bootloader.bin under the ports directory, to be written to
+#   0x2000. The partition-table targets below create the matching table under
+#   gen/rom/boot, but never write it unless the separately guarded flash
+#   target is named. See arch/riscv-esp32p4/README.md.
+#
+
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
+include $(SRCDIR)/$(CURDIR)/make.opt
+
+%fetch mmake=esp32p4-bootloader-fetch archive=$(IDFARCHBASE) \
+    destination=$(PORTSDIR)/esp-idf location=$(PORTSSOURCEDIR)/esp-idf \
+    archive_origins=$(IDFREPOSITORIES) suffixes=$(IDFARCHSUFFIX) \
+    patches_specs=$(IDFPATCHSPEC)
+
+%create_patch mmake=esp32p4-bootloader-create-patch \
+    archive=$(IDFARCHBASE) suffixes=$(IDFARCHSUFFIX) \
+    location=$(PORTSSOURCEDIR)/esp-idf destination=$(PORTSDIR)/esp-idf \
+    srcdir="$(IDFBASEDIR)"
+
+IDFPROJECTDIR := $(PORTSDIR)/esp-idf/project-$(P4_BOARD)
+IDFBOOTLOADER := $(IDFPROJECTDIR)/build/bootloader/bootloader.bin
+
+# The board's partition layout is an input kept in this tree. Generate its
+# binary with ESP-IDF's own parser rather than duplicating that format here:
+# it checks alignment, overlap, the 32 MB flash bound and writes the MD5
+# record consumed by the second-stage bootloader. Decoding the result through
+# the same tool is a second build artifact and validates that MD5 record.
+IDFPARTTOOL    := $(IDFARCHSRCDIR)/components/partition_table/gen_esp32part.py
+P4PARTCSV      := $(P4_BOARD_PARTITION_CSV)
+P4PARTDIR      := $(OSGENDIR)/boot/boards/$(P4_BOARD)
+P4PARTBIN      := $(P4PARTDIR)/esp32p4-partition-table.bin
+P4PARTREPORT   := $(P4PARTDIR)/esp32p4-partition-table.decoded.csv
+
+ESPTOOL                  ?= esptool
+ESP32P4_PORT              ?=
+ESP32P4_FLASH_BAUD        ?= 460800
+ESP32P4_PARTITION_CONFIRM ?=
+
+#MM esp32p4-bootloader : esp32p4-bootloader-fetch
+esp32p4-bootloader : $(IDFBOOTLOADER)
+	@$(ECHO) "Bootloader is $(IDFBOOTLOADER)"
+
+$(IDFBOOTLOADER) : $(P4_BOARD_SDKCONFIG) \
+                   $(SRCDIR)/$(CURDIR)/$(IDFPATCHFILE)
+	@$(ECHO) "Building   esp32p4 bootloader from $(IDFBASEDIR)"
+	%mkdirs_q $(IDFPROJECTDIR)
+	@$(CP) -r $(SRCDIR)/$(CURDIR)/project/* $(IDFPROJECTDIR)/
+	@$(CP) $(P4_BOARD_SDKCONFIG) $(IDFPROJECTDIR)/sdkconfig.defaults
+	@cd $(IDFPROJECTDIR) && \
+	    IDF_PATH=$(IDFARCHSRCDIR) \
+	    cmake -G Ninja -B build -DIDF_TARGET=esp32p4 \
+	          -DSDKCONFIG_DEFAULTS=sdkconfig.defaults > cmake.log 2>&1 && \
+	    ninja -C build bootloader > build.log 2>&1 || \
+	    { $(ECHO) "failed - see $(IDFPROJECTDIR)/{cmake,build}.log" ; exit 1 ; }
+	@$(ECHO) "Built      $@"
+
+#MM esp32p4-partition-table : esp32p4-bootloader-fetch
+esp32p4-partition-table: $(P4PARTBIN) $(P4PARTREPORT)
+	@$(ECHO) "Partition table is $(P4PARTBIN)"
+
+$(P4PARTBIN): $(P4PARTCSV) $(IDFPARTTOOL) \
+              $(SRCDIR)/$(CURDIR)/make.opt
+	@$(ECHO) "Creating   $@"
+	%mkdirs_q $(P4PARTDIR)
+	@$(PYTHON) $(IDFPARTTOOL) --quiet --offset $(P4_BOARD_PARTITION_OFFSET) --flash-size $(P4_BOARD_FLASH_SIZE) \
+	    $< $@
+
+$(P4PARTREPORT): $(P4PARTBIN)
+	@$(ECHO) "Validating $<"
+	@$(PYTHON) $(IDFPARTTOOL) --quiet --offset $(P4_BOARD_PARTITION_OFFSET) --flash-size $(P4_BOARD_FLASH_SIZE) \
+	    $< $@
+
+# Writing a partition table changes how every subsequent boot interprets
+# flash. Keep that operation out of every build target, require an explicit
+# character-device path, and make the caller spell out what slot is lost.
+#
+#MM esp32p4-flash-partition-table : esp32p4-partition-table
+esp32p4-flash-partition-table:
+	@if test -z "$(ESP32P4_PORT)"; then \
+	    $(ECHO) "Set ESP32P4_PORT to the board's explicit serial device"; \
+	    exit 2; \
+	fi
+	@if test ! -c "$(ESP32P4_PORT)"; then \
+	    $(ECHO) "ESP32P4_PORT is not a character device: $(ESP32P4_PORT)"; \
+	    exit 2; \
+	fi
+	@if test "$(ESP32P4_PARTITION_CONFIRM)" != "replace-ota_1-with-arosbsp"; then \
+	    $(ECHO) "Refusing to write the partition table without:"; \
+	    $(ECHO) "  ESP32P4_PARTITION_CONFIRM=replace-ota_1-with-arosbsp"; \
+	    exit 2; \
+	fi
+	@$(PYTHON) $(IDFPARTTOOL) --quiet --offset $(P4_BOARD_PARTITION_OFFSET) --flash-size $(P4_BOARD_FLASH_SIZE) \
+	    $(P4PARTBIN) >/dev/null
+	@$(ESPTOOL) --chip esp32p4 --port "$(ESP32P4_PORT)" \
+	    --before usb-reset --after no-reset --baud $(ESP32P4_FLASH_BAUD) \
+	    write-flash $(P4_BOARD_PARTITION_OFFSET) $(P4PARTBIN)
+
+%common

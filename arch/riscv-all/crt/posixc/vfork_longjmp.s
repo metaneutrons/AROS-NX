@@ -8,14 +8,34 @@
     Returns via the retaddr slot - __vfork() patches it to redirect the
     jump (this is the whole point of vfork_longjmp).
 
-    ILP32D layout (see aros/stdc/setjmp.h, _JMPLEN 37):
+    ILP32 layout (see aros/stdc/setjmp.h, _JMPLEN 37):
       0:      ra (retaddr)
       4-48:   s0-s11
       52:     sp
-      56-144: fs0-fs11 (8 bytes each, 8-aligned)
+      56-:    fs0-fs11, JB_FPSZ bytes each; ends at 152 under a double
+              precision ABI, at 104 under a single precision one, and is
+              not written at all under a soft float ABI
 */
 
 #include "aros/riscv/asm.h"
+
+/*
+ * The floating point half of the buffer depends on the ABI, not on the
+ * hardware: fs0-fs11 are callee-saved wherever the f registers exist, but
+ * they are 8 bytes wide under a double precision ABI, 4 under a single
+ * precision one, and absent under a soft float ABI.  The slot base stays
+ * at 56 in every case; only the stride and the opcode change.  This is the
+ * same three-way split aros/riscv/genmodule.h makes for fa0-fa7.
+ */
+#if defined(__riscv_float_abi_double)
+#define JB_FPST         fsd
+#define JB_FPLD         fld
+#define JB_FPSZ         8
+#elif defined(__riscv_float_abi_single)
+#define JB_FPST         fsw
+#define JB_FPLD         flw
+#define JB_FPSZ         4
+#endif
 
 	.text
 	.align	2
@@ -38,18 +58,20 @@ AROS_CDEFNAME(vfork_longjmp):
 	lw	s10, 11*4(a0)
 	lw	s11, 12*4(a0)
 	lw	sp, 13*4(a0)
-	fld	fs0, 56(a0)
-	fld	fs1, 64(a0)
-	fld	fs2, 72(a0)
-	fld	fs3, 80(a0)
-	fld	fs4, 88(a0)
-	fld	fs5, 96(a0)
-	fld	fs6, 104(a0)
-	fld	fs7, 112(a0)
-	fld	fs8, 120(a0)
-	fld	fs9, 128(a0)
-	fld	fs10, 136(a0)
-	fld	fs11, 144(a0)
+#ifdef JB_FPSZ
+	JB_FPLD	fs0, (56 + 0 * JB_FPSZ)(a0)
+	JB_FPLD	fs1, (56 + 1 * JB_FPSZ)(a0)
+	JB_FPLD	fs2, (56 + 2 * JB_FPSZ)(a0)
+	JB_FPLD	fs3, (56 + 3 * JB_FPSZ)(a0)
+	JB_FPLD	fs4, (56 + 4 * JB_FPSZ)(a0)
+	JB_FPLD	fs5, (56 + 5 * JB_FPSZ)(a0)
+	JB_FPLD	fs6, (56 + 6 * JB_FPSZ)(a0)
+	JB_FPLD	fs7, (56 + 7 * JB_FPSZ)(a0)
+	JB_FPLD	fs8, (56 + 8 * JB_FPSZ)(a0)
+	JB_FPLD	fs9, (56 + 9 * JB_FPSZ)(a0)
+	JB_FPLD	fs10, (56 + 10 * JB_FPSZ)(a0)
+	JB_FPLD	fs11, (56 + 11 * JB_FPSZ)(a0)
+#endif
 
 	/* No zero-check on val (unlike longjmp) */
 	mv	a0, a1

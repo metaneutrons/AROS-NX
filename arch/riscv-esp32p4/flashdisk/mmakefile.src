@@ -1,0 +1,50 @@
+#
+#   The read-only block device over the flash development volume.
+#
+#   It is linked into the kickstart rather than shipped in the package, and
+#   that is not a preference.  Package members are relocated by
+#   kernel_elf.c, whose symbol resolution fails on any undefined symbol, so a
+#   package module cannot reference krnP4FlashMap() at all.  A device that
+#   reads flash therefore has to live where that function lives.
+#
+#   Keep it out of the package for the same reason the volume exists: it is a
+#   development convenience, not part of a shipped system.
+#
+
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
+
+USER_INCLUDES := -I$(SRCDIR)/$(CURDIR) -I$(SRCDIR)/arch/riscv-esp32p4/kernel \
+                 -I$(SRCDIR)/rom/kernel
+USER_LDFLAGS := -static
+USER_CPPFLAGS := $(P4_BOARD_CPPFLAGS)
+
+#
+#   The boot node is registered by default, at a priority below the SD card's
+#   so a present card still wins and the flash volume is the fallback.  The
+#   gates live here rather than in kernel/mmakefile.src because this is where
+#   the module is compiled; P4_DEBUG_CPPFLAGS does not reach across
+#   directories.
+#
+#     P4_NO_FLASHDISK_BOOTNODE=1  register nothing, for comparing a boot
+#                                 against one from before this existed
+#     P4_FLASHDISK_BOOTPRI=n      move it, default -10
+#
+#   Neither is needed to force the flash volume: dosboot's own
+#   bootdevice=FLASHDISK0P0 on the kernel command line does that.
+#
+ifdef P4_NO_FLASHDISK_BOOTNODE
+USER_CPPFLAGS += -DP4_NO_FLASHDISK_BOOTNODE
+endif
+ifdef P4_FLASHDISK_BOOTPRI
+USER_CPPFLAGS += -DP4_FLASHDISK_BOOTPRI=$(P4_FLASHDISK_BOOTPRI)
+endif
+
+FLASHDISKFILES = \
+    flashdisk_device
+
+%build_module mmake=kernel-flashdisk \
+  modname=flashdisk modtype=device version=$(AROS_TARGET_PLATFORM) \
+  files="$(FLASHDISKFILES)"
+
+%common

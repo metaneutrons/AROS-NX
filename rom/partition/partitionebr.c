@@ -12,6 +12,14 @@
 
 #include "partition_types.h"
 #include "partition_support.h"
+
+/*
+ * How many EBRs one chain may contain.  Classic tooling stops well below
+ * this; Linux historically allowed 24 logical partitions or fewer.  The
+ * limit exists to bound the walk, not to express a real layout.
+ */
+#define EBR_MAX_CHAIN 64
+
 #include "partitionmbr.h"
 #include "platform.h"
 #include "debug.h"
@@ -67,6 +75,16 @@ static struct PartitionHandle *PartitionEBRNewHandle(struct Library *PartitionBa
 {
     struct PartitionHandle *ph;
 
+    /* An EBR link is attacker-supplied like any other table entry, and the
+       caller has already added block_no to a value read from the medium.
+       Refuse a range outside the parent before allocating for it. */
+    if (!partitionRangeIsSane(root, block_no, block_count))
+    {
+        D(bug("[EBR] logical partition out of range: start %u count %u\n",
+              block_no, block_count));
+        return NULL;
+    }
+
     ph = AllocMem(sizeof(struct PartitionHandle), MEMF_PUBLIC | MEMF_CLEAR);
     if (ph != NULL)
     {
@@ -107,13 +125,51 @@ struct MBR *ebr;
 UBYTE i;
 ULONG block_no = 0;
 BOOL atEnd = FALSE;
+/*
+ * An EBR chain is a linked list stored on the medium, so it is a linked list
+ * an attacker controls: the next link comes out of the sector just read.  The
+ * old loop ended only on a zero link or a read error, which means two sectors
+ * pointing at each other looped forever.  The counter `i` existed but appeared
+ * in no condition, so it bounded nothing.
+ *
+ * Both bounds are needed and neither replaces the other.  The visited set
+ * catches a cycle immediately, whatever its length; the depth limit catches a
+ * chain that never repeats a sector but is longer than any real disk has
+ * logical partitions.
+ */
+ULONG visited[EBR_MAX_CHAIN];
+UBYTE visits = 0;
 
     ebr = AllocMem(root->de.de_SizeBlock<<2, MEMF_PUBLIC);
     if (ebr != NULL)
     {
         NEWLIST(&root->table->list);
-        for (i = 0; !atEnd && error == 0; i++)
+        for (i = 0; !atEnd && error == 0 && i < EBR_MAX_CHAIN; i++)
         {
+            UBYTE seen;
+
+            /* Refuse a link that points outside the parent, and a link that
+               has already been followed in this chain. */
+            if (!partitionRangeIsSane(root, block_no, 1))
+            {
+                D(bug("[EBR] link %u points outside the parent: %u\n",
+                      i, block_no));
+                error = 1;
+                break;
+            }
+            for (seen = 0; seen < visits; seen++)
+            {
+                if (visited[seen] == block_no)
+                {
+                    D(bug("[EBR] cycle: block %u already visited\n", block_no));
+                    error = 1;
+                    break;
+                }
+            }
+            if (error)
+                break;
+            visited[visits++] = block_no;
+
             if (readBlock(PartitionBase, root, block_no, ebr) == 0)
             {
                 if (AROS_LE2WORD(ebr->magic) == 0xAA55)
@@ -122,9 +178,24 @@ BOOL atEnd = FALSE;
 
                     if (AROS_LE2LONG(ebr->pcpt[0].count_sector) != 0)
                     {
+                        /* The logical partition's start is this EBR's block
+                           plus an offset from the medium.  Add in 64 bits so
+                           a wrap is caught instead of folded into a small
+                           number; PartitionEBRNewHandle() then range-checks
+                           the result. */
+                        UQUAD start = (UQUAD)block_no +
+                            (UQUAD)AROS_LE2LONG(ebr->pcpt[0].first_sector);
+
+                        if (start > (UQUAD)0xFFFFFFFFUL)
+                        {
+                            D(bug("[EBR] logical start overflows 32 bits\n"));
+                            error = 1;
+                            break;
+                        }
+
                         ph = PartitionEBRNewHandle(PartitionBase, root,
                             ebr->pcpt[0].type,
-                            block_no + AROS_LE2LONG(ebr->pcpt[0].first_sector),
+                            (ULONG)start,
                             AROS_LE2LONG(ebr->pcpt[0].count_sector),
                             block_no);
                         if (ph != NULL)

@@ -29,6 +29,42 @@
 #define DEBUG DEBUG_PACKETS
 #include "debug.h"
 
+/*
+ * Would this packet change the medium?
+ *
+ * Deciding this from the packet type alone, before any of it is looked at,
+ * is what makes the refusal below cheap and complete: nothing has been
+ * allocated, no directory handle taken and no cache block touched, so there
+ * is nothing to undo and nothing left dirty.
+ *
+ * FINDOUTPUT and FINDUPDATE are here because both may write: the first
+ * creates or truncates, the second opens for update.  FINDINPUT is not, so
+ * reading a file from a protected volume still works, which is the whole
+ * point of mounting one.
+ */
+static BOOL PacketWouldMutate(LONG type)
+{
+    switch (type)
+    {
+    case ACTION_WRITE:
+    case ACTION_SET_FILE_SIZE:
+    case ACTION_DELETE_OBJECT:
+    case ACTION_RENAME_OBJECT:
+    case ACTION_CREATE_DIR:
+    case ACTION_SET_PROTECT:
+    case ACTION_SET_DATE:
+    case ACTION_SET_COMMENT:
+    case ACTION_RENAME_DISK:
+    case ACTION_FORMAT:
+    case ACTION_MAKE_LINK:
+    case ACTION_FINDOUTPUT:
+    case ACTION_FINDUPDATE:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
 void ProcessPackets(struct Globals *glob)
 {
     struct Message *msg;
@@ -41,7 +77,22 @@ void ProcessPackets(struct Globals *glob)
 
         pkt = (struct DosPacket *)msg->mn_Node.ln_Name;
 
-        switch (pkt->dp_Type)
+        /*
+         * A write protected medium refuses every mutating packet here, before
+         * the switch below can reach it.  ERROR_DISK_WRITE_PROTECTED is what
+         * dos.library turns into "disk is write protected", and it is returned
+         * immediately, so no requester is opened and no retry is offered for
+         * something that cannot succeed on a second attempt.  The standard
+         * Startup-Sequence contains write probes, which is one reason it
+         * cannot be used unchanged while this holds.
+         */
+        if (glob->disk_writeprotected && PacketWouldMutate(pkt->dp_Type))
+        {
+            D(bug("[fat] refusing packet type %ld:"
+                " the medium is write protected\n", pkt->dp_Type));
+            err = ERROR_DISK_WRITE_PROTECTED;
+        }
+        else switch (pkt->dp_Type)
         {
         case ACTION_LOCATE_OBJECT:
             {

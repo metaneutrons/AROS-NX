@@ -1,0 +1,12 @@
+; Minimal Startup-Sequence for the read-only bring-up.
+;
+; The standard sequence is deliberately not used here.  It performs file
+; management on SYS: (it makes directories, moves things, writes ENV:), and
+; during bring-up the medium is mounted read-only and must stay byte-identical
+; across board runs.  Anything that needs to write goes to RAM: instead, and
+; content is added to this file one line at a time, each audited.
+;
+; Nothing below writes to SYS:.
+
+Echo "AROS esp32p4-riscv, read-only bring-up"
+Echo "SYS: is mounted read-only on purpose; transient state belongs in RAM:"

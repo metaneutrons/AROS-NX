@@ -1,0 +1,34 @@
+
+include $(SRCDIR)/config/aros.cfg
+include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
+
+CFILES          := \
+        superstate cpu_init
+
+# The smp variant's scheduler list helpers (SMP.md, S2)
+CFILES += exec_smp
+
+%set_archincludes mainmmake=kernel-exec maindir=rom/exec \
+  modname=exec pri=2 arch=esp32p4-riscv \
+  includes="-I$(SRCDIR)/$(CURDIR)"
+
+%get_archincludes modname=kernel \
+    includeflag=TARGET_KERNEL_INCLUDES maindir=rom/kernel
+
+%get_archincludes modname=exec \
+    includeflag=TARGET_EXEC_INCLUDES maindir=rom/exec
+
+PRIV_EXEC_INCLUDES = \
+    $(TARGET_EXEC_INCLUDES) \
+    -I$(SRCDIR)/rom/exec \
+    $(TARGET_KERNEL_INCLUDES) \
+    -I$(SRCDIR)/rom/kernel
+
+USER_INCLUDES   := $(PRIV_EXEC_INCLUDES)
+USER_AFLAGS     := $(PRIV_EXEC_INCLUDES) -I$(GENINCDIR)
+
+%build_archspecific \
+  mainmmake=kernel-exec maindir=rom/exec arch=esp32p4-riscv \
+  files=$(CFILES) modname=exec
+
+%common

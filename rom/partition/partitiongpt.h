@@ -34,6 +34,17 @@ struct GPTHeader
 #define GPT_MIN_HEADER_SIZE 92
 #define GPT_MAX_HEADER_SIZE 512
 
+/*
+ * Bounds for the entry array described by the header.  Every one of these is
+ * attacker-supplied, and all three are used for arithmetic that decides an
+ * allocation size and a loop count, so each needs a ceiling as well as a
+ * floor.  The values are deliberately generous against what real tools emit:
+ * partition editors write 128 entries of 128 bytes, which is 16 KiB.
+ */
+#define GPT_MAX_ENTRY_SIZE  4096
+#define GPT_MAX_ENTRIES     1024
+#define GPT_MAX_TABLE_BYTES (128 * 1024)
+
 struct GPTPartition
 {
     uuid_t TypeID;	/* Partition type ID		*/
