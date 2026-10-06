@@ -62,7 +62,7 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-misc-includes \
 #MM	kernel-openfirmware-includes \
 #MM     kernel-processor-includes \
-#MM	kernel-pc-acpi-includes \
+#MM	kernel-acpica-sharedlib-includes \
 #MM	kernel-bestcomm-chrp-ppc-efika-includes \
 #MM	kernel-rtas-chrp-ppc-includes \
 #MM     kernel-usb-includes \

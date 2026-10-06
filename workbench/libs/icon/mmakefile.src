@@ -47,7 +47,7 @@ FUNCS := \
 #MM     kernel-intuition-includes \
 #MM     kernel-graphics-includes \
 #MM     kernel-utility-includes \
-#MM     kernel-cfgx-includes \
+#MM     workbench-libs-cgfx-includes \
 #MM     workbench-libs-iffparse-includes \
 #MM	workbench-datatypes-png-includes \
 #MM     includes-copy
