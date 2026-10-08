@@ -405,7 +405,7 @@ Open points:
 - Ordinary tasks run on hart 0 only (the affinity model, S4). Moving them
   freely needs the drivers that guard with `Disable()` (SD, display,
   touch), the ROM cache routines and the package modules' SYSTIMER reads
-  serialized across harts.
+  serialized across harts. S8 below audits this and plans it.
 - How much of `arch/riscv-native` can be reused is unclear; it is incomplete
   and oriented to supervisor mode.
 
@@ -418,6 +418,193 @@ retired with S6. Its design and evidence are in ROADMAP Track E (row E3-GT)
 and the evidence log, its code in commit `ff3395ba7f`. Both commits are
 reachable through the local branch `feat/riscv32-esp32p4-v2`; the branches
 `giant-smp` and `e3-smp` were deleted on 2026-10-06.
+
+### S7: the hardware watchdog (2026-10-09)
+
+Fabian's decision, 2026-10-08: finish the port on the JC1060P470C with full
+SMP including a hardware watchdog. The watchdog comes first (S7), since it
+turns the hangs that the migration work (S8) will meet into resets that a
+test run can see and recover from.
+
+`kernel/kernel_wdt.c`, `kernel/kernel_wdtcanary.c`. Timer group 0's main
+watchdog (MWDT0), stage 0 set to "reset system", the other stages off,
+flashboot mode off, timeout 6000 ms. It is armed in `kernel_cstart()` right
+after the tick starts (`krnTimerInit()` and the first `mstatus.MIE`), so the
+bring-up is covered from there on. Timer group 1 and the low power
+watchdog stay off, and the super watchdog stays self-feeding
+(`platform_init.c`). `-DP4_NO_WATCHDOG` builds without it,
+`-DP4_WDT_TIMEOUT_MS=<n>` changes the timeout, `-DP4_KEEP_WATCHDOG` keeps the
+ROM's own as before.
+
+Hart 0's tick interrupt decides, every 100 ms (ten ticks), whether to feed.
+It feeds only if every hart that is online shows two signs of life:
+
+- Its tick. Hart 0's own is the call itself. Hart 1 has no timer of its
+  own: it counts the tick that hart 0 forwards as an inter-hart interrupt
+  (`krnWdtBeat()` in the handler for `P4_IPI_TICK`). A hart 1 that hangs
+  with interrupts masked, or has stopped after a fatal trap, counts
+  nothing, and hart 0 stops feeding. After one second of silence hart 0
+  says so on the console, once.
+- Its canary, once that has woken for the first time. One task per hart
+  (`WDT canary 0` and `1`), bound to the hart at priority 100, started
+  after dos.library boots. It waits 500 ms on timer.device and calls
+  `krnWdtCanaryBeat()` each time it wakes. The wake needs the whole path of
+  a task becoming ready: the timer interrupt, exec's VBlank server, the
+  reply, the signal (for hart 1 the inter-hart interrupt), and the
+  dispatcher choosing the task. Three seconds without a wake stop the
+  feeding. This catches what the tick cannot: a hart that takes interrupts
+  but runs no task, among them a task stuck in `Forbid()`.
+
+Every place the kernel stops on purpose, the first alert
+(`_displayalert.c`) and a fatal trap (`kernel_traps.c`), now ends in
+`krnP4Halt()`: interrupts masked, then `wfi` in a loop. A halted hart
+takes no tick and feeds nothing. With `wfi` alone, an interrupt that
+arrived would have woken it and kept the watchdog fed.
+
+After the reset the ROM prints `rst:0x7 (HP_SYS_HP_WDT_RESET)` and the
+kernel repeats the cause as its second line, `[kernel] reset  last reset
+0x07 HP_SYS_HP_WDT_RESET`, read with the ROM's `rtc_get_reset_reason()`
+(0x4FC00018). On the boots after a flash it says `0x17
+CHIP_USB_UART_RESET`, which is the ROM's own number as well.
+
+Facts the design rests on, with their source:
+
+- The register layout, the write protection key, the stage action codes
+  (0 off, 1 interrupt, 2 reset CPU, 3 reset system) and the order of the
+  configuration (key, prescaler, hold, `CONF_UPDATE`, feed, enable) are
+  ESP-IDF 6.0.1's (`timer_group_reg.h`, `mwdt_ll.h`, `wdt_hal_iram.c`).
+- The count period was not certain. The register header says 12.5 ns times
+  the prescaler, `mwdt_ll.h` implies a 40 MHz crystal. The measurement
+  decides it: prescaler 40000 and a hold of 6000 reset the board 5.8 to 6.0
+  seconds after a hang (two cycles timed over the console), so one count is
+  1 ms and the source is the 40 MHz crystal.
+- The longest gap between two of hart 0's ticks that the SMP tests
+  produced was 44 ms (`[smp-s5] wdt:` line of the runner), 136 times
+  smaller than the timeout.
+
+Tests (host): `kernel/tests/wdt_feed_test.py` compiles the actual
+`kernel_wdt.c` against mock registers and checks arming and every feeding
+decision, including the exact point where a silent canary starves the
+watchdog.
+
+Tests (hardware), `-DP4_WDT_TEST=<n>` (`kernel/kernel_wdttest.c`): twenty
+seconds after the boot a task provokes one failure on one hart. Expected:
+the board resets by itself, the ROM reports `HP_SYS_HP_WDT_RESET`, the next
+boot prints the cause, and the same core does it again.
+
+| Case | Hart | Failure | Caught by | Result |
+|---|---|---|---|---|
+| 1 | 0 | `Disable()` and spin | hart 0's tick stops | reset 0x07, 6 s |
+| 2 | 1 | `Disable()` and spin | hart 1's beat stops | reset 0x07 |
+| 3 | 0 | store to address 1, fatal trap | `krnP4Halt()` | reset 0x07 |
+| 4 | 1 | the same | beat stops | reset 0x07 |
+| 5 | 0 | `krnDisplayAlert()` from a task | `krnP4Halt()` | reset 0x07 |
+| 6 | 1 | the same | beat stops | reset 0x07 |
+| 7 | 0 | task at priority 120 spins, interrupts on | canary | reset 0x07 |
+| 8 | 1 | the same | canary | reset 0x07 |
+| 9 | 0 | `Forbid()` and spin | canary | reset 0x07 |
+| 10 | 1 | the same | canary | reset 0x07 |
+
+Cases 1 to 4 ran on the core with the tick signs only, cases 5 to 10 on the
+core with the canary. A task's own `Alert()` is not case 5: it goes to
+Intuition first and waits for a person to answer the requester
+(`Exec_ExtAlert()`), so the board stays up with a requester on the panel.
+Only a system alert, from supervisor mode or without Intuition, reaches
+`krnDisplayAlert()`.
+
+Under load: the ten upstream SMP tests on the core with both signs pass as
+before (runner core, 600 s, no reset, no `[wdt]` line, 414 feeds).
+
+Open points:
+
+- A fatal that happens every boot now loops, one pass per few seconds,
+  instead of staying mute. The console shows it, nothing stops it.
+  A counter in a register that survives the reset could stop arming after
+  repeated watchdog resets; not built.
+- Nothing survives the reset on purpose: no crash record. Whether SRAM
+  keeps its contents across a watchdog reset the way it does across the USB
+  reset the retained-reset tool uses has not been checked.
+- Kernel start up to the arming (about the first dozen lines of output) has
+  no watchdog; the ROM's is off from `platform_init()` on.
+- A reset in the middle of a FAT write ends like a power loss. The
+  development volume and the card take that the same way as before.
+- The longest gap was measured only under the SMP tests. A flash window
+  (the cache-off park, up to a second by its own limit) is the longest
+  masked stretch the port has; the timeout leaves six times that.
+- A lock that never frees is not detected unless a canary starves because
+  of it. `P4_SPIN_WATCHDOG` reports one after a second; letting that stop
+  the feeding would make deadlocks reset the board too.
+
+### S8: free migration of ordinary tasks (audited, not started)
+
+Upstream does not have it. Every port with `__AROSEXEC_SMP__` pins the boot
+task to CPU 0 (x86_64 `smp_exec.c`, arm and aarch64 `Exec_ARMCPUSMPInit()`,
+this port's `Exec_P4SMPInit()`), and a new task inherits its parent's mask
+(`Exec_InitETask()`), so the whole legacy system stays on CPU 0 and only
+tasks created with an affinity (`NP_Affinity`, `TASKTAG_AFFINITY`,
+`SetTaskAffinity()`) use the others. The few users of `TASKAFFINITY_ANY`
+are the exec housekeeper, one ACPI service and upstream's SMP tests. The
+reason given in the code is that the cold start is not migration safe; the
+deeper one is that the legacy code protects its data with `Forbid()` and
+`Disable()`, which affect the calling hart only. The Giant that made them
+system wide was tried and retired with S6, so the audit looks for what has
+to change instead.
+
+Read from the source of this tree on 2026-10-09 (nothing run); the file
+names are in the audit notes of the evidence entry:
+
+- exec has hart-safe locks for its lists, ports, semaphores and tasks, and
+  none for: the Open, Close and Expunge vectors of libraries and devices
+  (run under `Forbid()` only, with `lib_OpenCnt` counted without a lock),
+  `WaitIO()` removing a reply from a port under `Disable()`, `RemTask()` of
+  a task that runs on the other hart (the task is unlinked but nothing
+  stops it, and its memory is freed), `ChildStatus()`, and the task ID
+  counter.
+- dos: `AddSegment()` and `FindSegment()` lists, the late-assign claim,
+  `CheckSignal()` and `EndNotify()` rely on `Forbid()` or `Disable()`.
+- timer.device: `GetSysTime()`, `ReadEClock()` and `TR_SETSYSTIME` read or
+  write the time under `Disable()` while the VBlank interrupt on hart 0
+  writes it.
+- Port code: `sdcard.device` (`BeginIO()` flags under `Disable()`, the
+  change interrupt list under `Forbid()`), flashdisk (the one mapping
+  window, `Forbid()`), the touchscreen worker (exit under `Forbid()`),
+  the ROM cache routines (one shared sync unit, no lock; `fence.i` only on
+  the calling hart), the SYSTIMER snapshot in `sdcard` and `i2c` (read
+  without the kernel's lock), the cache-off park (one request and
+  acknowledge word, two requesters would collide), `board_gpio()`.
+- The Amiga GUI stack: intuition has 32 `Forbid()` sites that arbitrate a
+  window's ports against the input handler, graphics `Disable()` for the
+  WaitTOF queue and the double buffer against the VBlank handler,
+  keyboard, gameport and inputclass `Disable()` for their queues. None of
+  it is converted; it was not classified site by site.
+
+Decision proposed: ordinary tasks stay pinned by default and migration is
+opt-in per process. The inverse default is unsafe because a GUI program
+started from a shell would inherit "any hart" and meet the intuition sites
+above from hart 1, silently. The shell and Wanderer keep their hart 0 mask,
+so everything they start stays there; a program or a launcher asks for
+both harts with `NP_Affinity` (or a small command that sets it). The plan:
+
+1. Port-owned shared state: one lock around every ROM cache call that
+   also serves the park request while it spins, the kernel's SYSTIMER
+   snapshot made reachable for the package modules, the flash window and
+   park serialized, `sdcard.device` and flashdisk and the touch worker
+   moved to the spinlocks they already have or to a semaphore.
+2. exec and dos gaps that a non-GUI task can reach: library and device
+   Open/Close/Expunge, `WaitIO()`, `lib_OpenCnt`, the time in timer.device,
+   `RemTask()` of a running task (the other hart is told and waits), the
+   dos lists. These are generic changes and go upstream to AROS-NX.
+3. The opt-in: `NP_Affinity` honoured by the shell commands that matter, a
+   command for it.
+4. A test of its own for what a migrating task meets (open and close
+   libraries, files on RAM: and the flash volume, timer queries, loading
+   and running programs, segment lists) on both harts for ten minutes
+   under the watchdog, then the 200-test stress with ANY parents.
+
+Acceptance: the upstream tests and the stress pass with parents that allow
+both harts, the new test passes for ten minutes, a boot with Wanderer
+shows no alert, and the visual and touch check passes (needs a fresh
+"bereit").
 
 ## Design boundaries
 
