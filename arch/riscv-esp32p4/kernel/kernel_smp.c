@@ -126,6 +126,9 @@ void krnP4IPIInterrupt(void)
     {
         UWORD current = SCHEDELAPSED_GET;
 
+        /* Hart 0 feeds the watchdog only while this keeps counting */
+        krnWdtBeat(me);
+
         if (current)
             SCHEDELAPSED_SET(--current);
         if (current == 0)

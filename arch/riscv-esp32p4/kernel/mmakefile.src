@@ -988,6 +988,21 @@ ifdef P4_S5_RUNNER
 P4_DEBUG_CPPFLAGS += -DP4_S5_RUNNER
 endif
 
+# P4_WDT_TEST=<1..6> (smp variant): after the boot, provoke one failure on
+# one hart and expect the watchdog to reset the board (kernel_wdttest.c).
+ifdef P4_WDT_TEST
+P4_DEBUG_CPPFLAGS += -DP4_WDT_TEST=$(P4_WDT_TEST)
+endif
+
+# P4_NO_WATCHDOG=1: build without the main watchdog (kernel_wdt.c), for a
+# capture that must survive a stop. P4_WDT_TIMEOUT_MS=<n> changes its timeout.
+ifdef P4_NO_WATCHDOG
+P4_DEBUG_CPPFLAGS += -DP4_NO_WATCHDOG
+endif
+ifdef P4_WDT_TIMEOUT_MS
+P4_DEBUG_CPPFLAGS += -DP4_WDT_TIMEOUT_MS=$(P4_WDT_TIMEOUT_MS)
+endif
+
 # P4_CONSOLE_WAIT=1: keep the console waiting for the host after the boot
 # instead of dropping, for captures that must be complete. Slows everything
 # that prints.
@@ -1028,6 +1043,7 @@ CFILES := \
         platform_init \
         kernel_clic \
         kernel_timer \
+        kernel_wdt \
         kernel_cpu \
         kernel_ram \
         _displayalert \
@@ -1114,7 +1130,9 @@ CFILES += \
         kernel_smp \
         schedulecpu \
         kernel_smptest \
-        kernel_smprunner
+        kernel_smprunner \
+        kernel_wdttest \
+        kernel_wdtcanary
 AFILES += secondary_smp
 
 # With compiler=kernel, %build_archspecific compiles with KERNEL_CFLAGS,
