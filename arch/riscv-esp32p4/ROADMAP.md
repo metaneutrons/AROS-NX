@@ -160,8 +160,8 @@ Status 2026-10-08: the port is developed on AROS-NX `main` since
 with AROS-NX#58 from branch `feat/riscv32-esp32p4-v3`. It runs AROS's own
 SMP exec on both harts, and since S6 that is its only build: configure
 selects the `smp` variant for esp32p4. Upstream's SMP tests pass on the
-JC1060P470C, also on AROS-NX `main` (entry 2026-10-08), and its visual and
-touch check passed (S5); the D1001 is open. The v3
+JC1060P470C, also on AROS-NX `main` (entries 2026-10-08), and its visual and
+touch check passed, on that state too (S5); the D1001 is open. The v3
 branch was rebuilt from upstream `44336e404a` without E3 and without the
 Giant and then rebased onto upstream `5da9fd5072`; both are kept as history in
 commits `14f0290e21` and `ff3395ba7f`, not as build options. E0-E2
@@ -25417,6 +25417,18 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   fresh "bereit"; the D1001.
 - Next safe step: an SMP tree for the D1001 and the S5 checks there; the
   visual and touch check on this state when it suits Fabian.
+
+### 2026-10-08 - Wanderer on the panel with the AROS-NX state
+
+- State change: the visual check of the 2026-10-08 baseline passed on the
+  JC1060P470C. The D1001 stays open.
+- Setup: unchanged from the entry before: production core `bce06be9…`,
+  package `ea3a23ab…`, card `5f123f79…`, development volume `7a8b6828…`,
+  all built from AROS-NX `main` `c25fb42946`.
+- Observation: Fabian tested the Wanderer interface on the panel, which on
+  this board is operated by touch (GT911): "all perfect". No console
+  capture was taken for this check.
+- Next safe step: an SMP tree for the D1001 and the S5 checks there.
 
 ## Evidence-entry template
 
