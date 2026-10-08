@@ -155,11 +155,13 @@ gate: compensated output is not the native display contract.
 
 ## Track E: ESP32-P4 / RV32 SMP
 
-Status 2026-10-05: this branch (`feat/riscv32-esp32p4-v3`) runs AROS's own
+Status 2026-10-08: the port is developed on AROS-NX `main` since
+2026-10-07 (AGENTS.md, "Where the port is developed"); it arrived there
+with AROS-NX#58 from branch `feat/riscv32-esp32p4-v3`. It runs AROS's own
 SMP exec on both harts, and since S6 that is its only build: configure
 selects the `smp` variant for esp32p4. Upstream's SMP tests pass on the
-JC1060P470C, and its visual and touch check passed (S5); the D1001 is
-open. The
+JC1060P470C, also on AROS-NX `main` (entry 2026-10-08), and its visual and
+touch check passed (S5); the D1001 is open. The v3
 branch was rebuilt from upstream `44336e404a` without E3 and without the
 Giant and then rebased onto upstream `5da9fd5072`; both are kept as history in
 commits `14f0290e21` and `ff3395ba7f`, not as build options. E0-E2
@@ -25365,6 +25367,56 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   offered upstream.
 - Next safe step: unchanged, an SMP tree for the D1001 and the S5 checks
   there.
+
+### 2026-10-08 - The port on AROS-NX main: rebuilt and verified
+
+- State change: none in the stages. The port is developed on AROS-NX since
+  2026-10-07 (AGENTS.md, "Where the port is developed"); its base is now
+  AROS-NX `main` `c25fb42946` (upstream `b01e5dbafee0` and AROS-NX's own
+  integration), 184 commits past the state tested in S5/S6 (`d1cdda007c`
+  on upstream `5da9fd5072`), among them changes in `rom/exec`
+  (`newaddtask.c`, `newcreatetaska.c`, `exec_init.c`) and
+  `rom/kernel/kernel_init.c`. S5's headless results hold on it on the
+  JC1060P470C.
+- Build (2026-10-07, SMP tree configured again from AROS-NX `main`;
+  `aros/config.h` unchanged; only the three known `kernel_debug.h`
+  warnings): package 3,730,700 B
+  `ea3a23ab9933b97165b6bec35abab5afc0178090d603ab9f32c72e62036017a5`
+  (size check passes, audit 0 failed); card image
+  `5f123f79d907f82dc46018d0a62934131d3883eb263cba4b736cee24a8eb397a`, 178
+  entries, 20 of them changed against `e2df4059…` (stdc, posixc,
+  muimaster, workbench, icon, datatypes and other libraries, `C/Assign`,
+  the picture datatype, a Zune class, two Wanderer tools); development
+  volume `7a8b6828…` unchanged; runner core 189,296 B
+  `84d0282671a3c307470cc9d88a180f1d75dc58060d0cd3c556ae591cc2327c71`;
+  production core 185,248 B
+  `bce06be9a26ff6ac3b778f2ad5cc6ac080b632b3eb0ad386210e5e03fee94d5a`.
+- Card: written by Fabian with `write-card.sh` (backup of the first 64 MiB,
+  write, read-back compare, eject before close). The card held `e2df4059…`
+  plus a `.fseventsd` macOS had created when it mounted the card in the
+  reader: 450 bytes in the FSInfo sector, both FATs, two directory sectors
+  and four data sectors; backup `8c71e30d…`.
+- Hardware (JC1060P470C `80:f1:b2:d3:3b:a6`, MAC checked; package at
+  `0x820000` and cores at `0x20000` written and verified):
+  - runner core, 300 s,
+    `10bc8752aa5ee6aed811c92aa3b1a745d9517fa16b270bcd5035bf638ab41555`:
+    "[smp-s5] done, 10 run, 0 not RETURN_OK", every test as in S5 (Proc 2,
+    Affinity 18, Preempt 2 of 2 CPUs, Sched 3, Sem 3 PASS, Trace 2000 of
+    2000, DoIO 2, Stress 6 passed, Lists 4, SigRace 137 PASS), Wanderer, no
+    alert, no watchdog report;
+  - production core, first boot
+    `83cdacbda714ed55594ff8a6278bc7c39024444c92df2c3790fbb3fcc2041989` and
+    five resets (`1e86aedb…`, `674516c6…`, `16ff0baf…`, `61e99f1b…`,
+    `5f43dc08…`), 40 s each: online, windows 1-3 parked, no refused window,
+    Wanderer, GT911, no alert;
+  - ten minutes,
+    `120f2b4be393f4e4fcc4be4cc2c7c9f3dd0113fd9e746aa6d04fef997d3754f1`:
+    online, windows 1-3 parked, Wanderer, GT911, 119 heartbeats to the end,
+    no alert.
+- Not checked: the visual and touch check on this state, which needs a
+  fresh "bereit"; the D1001.
+- Next safe step: an SMP tree for the D1001 and the S5 checks there; the
+  visual and touch check on this state when it suits Fabian.
 
 ## Evidence-entry template
 

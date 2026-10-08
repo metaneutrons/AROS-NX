@@ -4,6 +4,23 @@ Read `README.md` and `ROADMAP.md` before changing this port.  `README.md`
 contains verified history and board facts; `ROADMAP.md` is the authoritative
 forward plan and evidence record.
 
+## Where the port is developed
+
+Since 2026-10-07 the port is developed on
+[AROS-NX](https://github.com/metaneutrons/AROS-NX), following its branch
+model (`AROS-NX.md`):
+
+- port work on `feature/esp32p4-<topic>` from AROS-NX `main`, back into
+  `main` by pull request with a merge commit;
+- a generic fix that upstream AROS can take as `pr/<subsystem>-<topic>` from
+  `master`, the upstream mirror, and the same commit on `upstream/<topic>` for
+  a pull request to aros-development-team/AROS;
+- upstream changes reach `main` through AROS-NX's `sync/upstream-<sha>` pull
+  requests; port branches are not rebased onto upstream.
+
+AROS-NX's product CI builds no RISC-V target, so a change confined to this
+directory builds nothing there; the hardware evidence below stays the gate.
+
 ## Mandatory progress documentation
 
 Any change that starts, advances, blocks, invalidates or verifies a roadmap
