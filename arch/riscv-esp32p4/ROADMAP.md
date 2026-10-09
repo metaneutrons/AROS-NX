@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `in development; shared initialization host tested/build verified` | Shared DMA, command candidate and initialization have independent source/model checks and RV32 builds. ABI5 adds a sticky first-initialization marker; SD joins without implicitly resetting a previously attempted host. Neither client invokes the new command engine yet; recovery, C6 compatibility and hardware gates remain open. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; pure wire codec host tested` | Independently implemented bounded byte codec, optional checksum and non-mutating rejection;157,590 checks per O0/O2 sanitizer run and RV32 object, no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -299,6 +299,17 @@ payload, malformed offsets/spans and truncation without changing output.
 DMA padding is excluded from checksum and returned wire length; fragmented
 frames are marked, not reassembled, and sequence numbers are returned, not
 treated as universally contiguous. This is not a live transport or handshake.
+
+Serial interface payloads contain an endpoint TLV (type1, LE16 length6,
+RPCRsp or RPCEvt without NUL), then a protobuf-data TLV (type2, LE16 length).
+The new independent codec decodes exactly one complete envelope, rejects
+malformed/truncated/trailing bytes and leaves outputs unchanged on refusal.
+Its4096-byte protobuf cap is local defensive policy, not the vendor frame
+limit. Messages larger than one1536-byte Hosted frame require transport
+fragmentation/reassembly, not a larger wire-frame allowance. Strict O0/O2
+sanitizer tests pass116 checks each and the standalone RV32 object compiles.
+Protobuf semantics, UID correlation, fragmentation, credits and live RPC remain
+unimplemented; these pure helpers are not linked into a driver.
 
 Streaming RX can concatenate packets: PACKET_LEN is cumulative modulo2^20,
 not one frame's size. The codec's1536-byte bound is per frame, not per batch.
@@ -26705,6 +26716,43 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   are mocked at the resource seam. No silicon/reset-continuity pass follows.
   The final results close the pending model gate above. Next remains client
   command/recovery integration and hardware regression, not C6 activation.
+
+### 2026-10-10 - N1 independent ESP-Hosted serial TLV envelope
+
+- State: pure serial codec host tested/RV32 compile verified, not runtime Wi-Fi.
+  Parent92178fb5da, feature/esp32p4-wifi in
+  /Volumes/Dev/Build/aros-esp32p4-wifi. Selected vendor reference pinned to
+  cheops/JC1060P470C_I_W commit6304eddef32a33aa9d9a85e971e39dfb24c3cca3,
+  1-Demo/Demo_IDF/examples/slave/main/protocomm_pserial.c:76-118.
+  Primary source inspection verifies endpoint/data TLV types and LE16 lengths;
+  implementation is independent, with no Linux-driver code copied.
+- Artifacts: network/hosted_serial.h/.c, test_hosted_serial.c and
+  tools/test-hosted-serial.py. Exact six-byte endpoints,12-byte envelope overhead,
+  borrowed decoded payload, no allocation. Encode rejects aliasing and validates
+  all lengths before writing; decode rejects unknown types/endpoints, empty or
+  over-limit data, truncation and trailing bytes without mutating output.
+  Local4096-byte cap is not a vendor contract; wire fragmentation remains open.
+- Verification: primary source review adds a missing message/protobuf alias
+  refusal, a regression case and60-second runner deadlines. An initial new
+  fixture assertion used uninitialized written metadata; moved after its
+  initialization and reran. Only the corrected final runs count here.
+  tools/test-hosted-serial.py independently repeated (session85902), actual
+  exit0; strict C99 O0/O2 ASan/UBSan each116 checks. Standalone RV32 compiler
+  exits0; object5,316B SHA-256
+  `679ca68938aa52055667d3f9924b070dbce5e7f3dd21676a4d886ba2ab696058`.
+  Header SHA-256
+  `07c7b689589799e93d48a9457ef05a00acf6b9672ac31886b5d4905cd7217592`;
+  implementation
+  `85e63dcf4e7dcec3a53dc4e0115b938c06df929aec0f7bd1d2da89f9c33ebdfb`;
+  fixture
+  `399bd2de975d7b1bde1c8ace6387968602f60c5581432452e6225a97b67c6069`;
+  runner
+  `ad3bc2dfe7e805c3da586fee5bfb7ac8d8da828aef5686768879bbc0ad7569c4`.
+- Safety/limits: no core/package, serial access, flash, C6 firmware replacement,
+  SD mutation or credentials. Protobuf interpretation, fragmented-message
+  reassembly, UID correlation and station lifecycle are not implemented.
+  Next: integrate shared SD command semantics, then bounded radio enumeration
+  and transport/RPC using the installed firmware, before SANA-II qualification.
 
 ## Evidence-entry template
 

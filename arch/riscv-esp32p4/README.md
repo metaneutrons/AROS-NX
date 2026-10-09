@@ -31,8 +31,12 @@ clock/reset fault from being mistaken for first boot. Matched RV32 builds
 pass; independent source review and independently repeated extracted-source
 models pass (clock/reset:18 cases/292 checks; SD ownership/init:25 cases/400,338
 checks each O0/O2 with ASan/UBSan). These do not verify silicon behavior.
-Command integration and hardware regression remain open;
-the installed firmware is unchanged. The older
+Command integration and hardware regression remain open.
+The independently implemented ESP-Hosted serial TLV codec now validates
+RPCRsp/RPCEvt envelopes (116 checks each O0/O2 with ASan/UBSan and standalone
+RV32 compilation). It does not parse protobuf, reassemble fragments or execute
+RPC; its 4096-byte payload cap is defensive local policy, not a vendor limit.
+The installed firmware is unchanged. The older
 `cheops/JC1060P470C_I_W` package is Fabian's selected WLAN reference:
 the profile declares P4-side slot1 CLK18/CMD19/D0-3=14-17 without enabling
 radio initialization. Installed C6 compatibility remains unverified; no
