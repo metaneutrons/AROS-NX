@@ -68,6 +68,14 @@ BOOL core_Schedule(void)
 
     FLAG_SCHEDSWITCH_CLEAR;
 
+    /*
+     * A task that is no longer running - RemTask() from another hart made
+     * it TS_REMOVED - leaves the hart whatever the priorities say: it is on
+     * no list, and RemTask() waits for it to go (Exec_P4WaitOffCPU()).
+     */
+    if (task->tc_State != TS_RUN)
+        return TRUE;
+
     /* A pending exception needs the dispatcher, so reschedule */
     if (!(task->tc_Flags & TF_EXCEPT))
     {
@@ -130,13 +138,20 @@ void core_Switch(void)
     if (GetIntETask(task))
         GetIntETask(task)->iet_QuantumLeft = SCHEDELAPSED_GET;
 
-    if (task->tc_State != TS_RUN)
-        return;
-
     /* tc_SpinLock across the whole RUN->READY change of state and list, so
-       nobody sees TS_READY while the task is on no list. */
+       nobody sees TS_READY while the task is on no list. The state is
+       read under the lock too: RemTask() on another hart may have made
+       the task TS_REMOVED and taken it off TaskRunning a moment ago, and
+       going on would take it off that list a second time and put it on
+       TaskReady just before its memory is freed. */
     __if = EXEC_IRQFIQ_DISABLE();
     EXEC_SPINLOCK_LOCK(&task->tc_SpinLock, NULL, SPINLOCK_MODE_WRITE);
+    if (task->tc_State != TS_RUN)
+    {
+        EXEC_SPINLOCK_UNLOCK(&task->tc_SpinLock);
+        EXEC_IRQFIQ_RESTORE(__if);
+        return;
+    }
     exec_TaskRemoveRunning(task);
     task->tc_State = TS_READY;
 

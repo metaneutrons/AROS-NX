@@ -45,6 +45,11 @@ extern void Exec_ReschedTask(struct Task *, ULONG);
 extern void Exec_SuicideSwitch(void);
 #define krnSysCallSwitch() Exec_SuicideSwitch()
 
+/* RemTask() of another task: once it is off every list, wait until no
+   other hart is still running it, before its context and memory go. */
+extern void Exec_P4WaitOffCPU(struct Task *);
+#define EXEC_REMTASK_WAITOFFCPU(task) Exec_P4WaitOffCPU(task)
+
 struct Exec_PlatformData
 {
     /* No platform-specific data */

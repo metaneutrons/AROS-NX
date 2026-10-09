@@ -74,6 +74,16 @@ void Exec_ReschedTask(struct Task *task, ULONG newState)
 
     EXEC_SPINLOCK_LOCK(&task->tc_SpinLock, NULL, SPINLOCK_MODE_WRITE);
 
+    /* Removal is final: a task RemTask() has taken off the lists does not
+       come back onto one, whatever another hart asks for meanwhile. */
+    if ((task->tc_State == TS_REMOVED || task->tc_State == TS_TOMBSTONED) &&
+        newState != TS_REMOVED && newState != TS_TOMBSTONED)
+    {
+        EXEC_SPINLOCK_UNLOCK(&task->tc_SpinLock);
+        EXEC_IRQFIQ_RESTORE(__if);
+        return;
+    }
+
     if (newState == TS_READY)
     {
         /* Only a waiting or freshly added task moves: another hart may
@@ -133,6 +143,58 @@ void Exec_ReschedTask(struct Task *task, ULONG newState)
 
     EXEC_SPINLOCK_UNLOCK(&task->tc_SpinLock);
     EXEC_IRQFIQ_RESTORE(__if);
+}
+
+static inline unsigned long cycles(void)
+{
+    unsigned long n;
+
+    asm volatile("csrr %0, mcycle" : "=r"(n));
+    return n;
+}
+
+/*
+ * RemTask() of a task that another hart may be running. Exec_ReschedTask()
+ * has taken it off TaskRunning and made it TS_REMOVED, which nothing
+ * dispatches, but the hart that runs it keeps doing so until its next
+ * reschedule, on the stack and with the context that RemTask() is about to
+ * free. Ask that hart to reschedule and wait until it runs something else:
+ * its current task changes only after cpu_Switch() has saved the removed
+ * one's context, so from then on nothing of it is in use.
+ *
+ * The other hart switches at once unless the task has interrupts masked,
+ * holds a spinlock or is in Forbid(); then it switches when that ends.
+ * A wait of more than a second is reported, once; it goes on regardless,
+ * since freeing the memory of a running task is worse than waiting.
+ */
+#define OFFCPU_REPORT_CYCLES    360000000UL     /* about 1 s at 360 MHz */
+
+void Exec_P4WaitOffCPU(struct Task *task)
+{
+    unsigned int me = this_hart();
+    unsigned int hart;
+
+    for (hart = 0; hart < P4_TLS_HARTS; hart++)
+    {
+        unsigned long start;
+        BOOL reported = FALSE;
+
+        if (hart == me ||
+            __atomic_load_n(&__p4_tls[hart].ThisTask, __ATOMIC_ACQUIRE) != task)
+            continue;
+
+        krnP4IPISend(hart, P4_IPI_SCHEDULE);
+        start = cycles();
+        while (__atomic_load_n(&__p4_tls[hart].ThisTask, __ATOMIC_ACQUIRE) == task)
+        {
+            if (!reported && cycles() - start > OFFCPU_REPORT_CYCLES)
+            {
+                bug("[Exec] RemTask: '%s' still runs on hart %u after a second\n",
+                    task->tc_Node.ln_Name ? task->tc_Node.ln_Name : "?", hart);
+                reported = TRUE;
+            }
+        }
+    }
 }
 
 /* RemTask()'s self-removal: detach and tombstone for the service task,
