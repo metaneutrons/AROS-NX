@@ -15,6 +15,7 @@
 #include "sdcard_base.h"
 #include "sdcard_bus.h"
 #include "../board/board.h"
+#include "../sdmmc/host.h"
 
 #define FNAME_P4SD(x)       ESP32P4SD__Device__ ## x
 #define FNAME_P4SDBUS(x)    ESP32P4SD__SDBus__ ## x
@@ -24,6 +25,8 @@ struct p4sd_private
     ULONG clock_hz;
     BOOL powered;
     BOOL host_ready;
+    struct P4SDMMCHost *host;
+    ULONG host_generation;
 };
 
 #define P4SD_PRIV(bus) ((struct p4sd_private *)(IPTR)(bus)->sdcb_Private)
@@ -77,6 +80,9 @@ struct p4sd_private
 #define P4SD_RESP3                     0x003C
 #define P4SD_MINTSTS                   0x0040
 #define P4SD_RINTSTS                   0x0044
+/* Command/data W1C bits are separate from the two SDIO card interrupts.
+ * Storage must never acknowledge bits16/17 belonging to the radio client. */
+#define P4SD_INT_CMD_DATA_MASK          0x0000FFFFUL
 #define  P4SD_INT_RESP_ERR             (1UL << 1)
 #define  P4SD_INT_CMD_DONE             (1UL << 2)
 #define  P4SD_INT_DATA_OVER            (1UL << 3)
@@ -250,6 +256,8 @@ struct p4sd_private
 #define P4SD_TRACE_LBA                  2048UL
 
 void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus);
+BOOL FNAME_P4SDBUS(BeginTransaction)(struct sdcard_Bus *bus, BOOL may_wait);
+void FNAME_P4SDBUS(EndTransaction)(struct sdcard_Bus *bus);
 void FNAME_P4SDBUS(SetClock)(ULONG speed, struct sdcard_Bus *bus);
 void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
                                   struct sdcard_Bus *bus);

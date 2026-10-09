@@ -52,7 +52,7 @@
 
 static const char *str_mmc0 = "MMC0";
 
-BOOL FNAME_SDCBUS(StartUnit)(struct sdcard_Unit *sdcUnit)
+static BOOL sdcard_StartUnitLocked(struct sdcard_Unit *sdcUnit)
 {
     struct TagItem sdcStartTags[] =
     {
@@ -191,6 +191,19 @@ BOOL FNAME_SDCBUS(StartUnit)(struct sdcard_Unit *sdcUnit)
     return TRUE;
 }
 
+BOOL FNAME_SDCBUS(StartUnit)(struct sdcard_Unit *sdcUnit)
+{
+    struct sdcard_Bus *bus = sdcUnit->sdcu_Bus;
+    BOOL result;
+
+    if (!SDCBUS_BeginTransaction(bus, FALSE))
+        return FALSE;
+
+    result = sdcard_StartUnitLocked(sdcUnit);
+    SDCBUS_EndTransaction(bus);
+    return result;
+}
+
 ULONG FNAME_SDCUNIT(WaitStatus)(ULONG timeout, struct sdcard_Unit *sdcUnit)
 {
     struct TagItem sdcStatusTags[] =
@@ -234,7 +247,7 @@ ULONG FNAME_SDCUNIT(WaitStatus)(ULONG timeout, struct sdcard_Unit *sdcUnit)
 
 /* Bus Functions */
 
-BOOL FNAME_SDCBUS(RegisterUnit)(struct sdcard_Bus *bus)
+static BOOL sdcard_RegisterUnitLocked(struct sdcard_Bus *bus)
 {
     unsigned int        sdcCardPower, timeout = 1000;
     LIBBASETYPEPTR      LIBBASE = bus->sdcb_DeviceBase;
@@ -522,6 +535,18 @@ BOOL FNAME_SDCBUS(RegisterUnit)(struct sdcard_Bus *bus)
     }
 
     return FALSE;
+}
+
+BOOL FNAME_SDCBUS(RegisterUnit)(struct sdcard_Bus *bus)
+{
+    BOOL result;
+
+    if (!SDCBUS_BeginTransaction(bus, TRUE))
+        return FALSE;
+
+    result = sdcard_RegisterUnitLocked(bus);
+    SDCBUS_EndTransaction(bus);
+    return result;
 }
 
 void FNAME_SDCBUS(ReleaseUnit)(struct sdcard_Bus *bus)

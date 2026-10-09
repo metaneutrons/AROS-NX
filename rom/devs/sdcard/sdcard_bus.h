@@ -111,7 +111,27 @@ struct sdcard_Bus
 #if defined(__AROSEXEC_SMP__)
     spinlock_t                          sdcb_Lock;       /* SMP: protects BusFlags, listeners, BusStatus */
 #endif
+
+    /* Optional ownership for a complete bounded bus transaction. Both hooks
+     * must be provided together; a bus without either hook stays unlocked. */
+    BOOL                                (*sdcb_BeginTransaction)(struct sdcard_Bus *, BOOL may_wait);
+    void                                (*sdcb_EndTransaction)(struct sdcard_Bus *);
 };
+
+static inline BOOL SDCBUS_BeginTransaction(struct sdcard_Bus *bus, BOOL may_wait)
+{
+    if (!!bus->sdcb_BeginTransaction != !!bus->sdcb_EndTransaction)
+        return FALSE;
+
+    return !bus->sdcb_BeginTransaction ||
+           bus->sdcb_BeginTransaction(bus, may_wait);
+}
+
+static inline void SDCBUS_EndTransaction(struct sdcard_Bus *bus)
+{
+    if (bus->sdcb_BeginTransaction && bus->sdcb_EndTransaction)
+        bus->sdcb_EndTransaction(bus);
+}
 
 /* Bus Flags .. */
 #define AB_Bus_MediaPresent             30     /* media available */

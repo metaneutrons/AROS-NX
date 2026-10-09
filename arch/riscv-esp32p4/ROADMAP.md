@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; command builders host tested` | Pure CMD52/CMD53 validation passes 57,406 checks at O0/O2 under ASan/UBSan and RV32 compilation. Fabian selected older vendor WLAN reference; slot1 pins declared and profile checked. Not packaged or flashed. Confirm installed C6 firmware and serialize slot0 storage/slot1 radio through one host before MMIO integration. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; ownership modules build verified` | Pure CMD52/CMD53 builders, resident host ownership, reset generations and SD transaction hooks have extracted-source sanitizer coverage and successful RV32 resource/device builds. Slot1 pins declared and profile checked. Clock/command/DMA extraction, installed C6 compatibility, package and hardware regression gates remain open; no radio MMIO or flash. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; pure wire codec host tested` | Independently implemented bounded byte codec, optional checksum and non-mutating rejection;157,590 checks per O0/O2 sanitizer run and RV32 object, no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -209,6 +209,28 @@ current all-bit status clearing is not suitable with a second client.
 Host-wide recovery must invalidate both slots rather than leave either with
 stale `host_ready` state. Add transaction-scoped ownership hooks before radio
 integration; ordinary module-local locks do not serialize separate modules.
+
+The first adaptation adds permanent `esp32p4sdmmc.resource` (private ABI1,
+resident priority16, before SD priority4), a recursive task-context semaphore
+and nonzero reset generation. Acquisition has a one-second maximum requested
+timeout and a separate finite retry bound if the timer stops. The SD client
+refuses a missing/incompatible resource; it never creates a fallback host.
+Generation mismatch invalidates local readiness without adopting a reset
+generation as successful enumeration. Generic optional paired hooks hold the
+owner across each read chunk, CMD12 and recovery, and across card initialization;
+release precedes between-chunk yielding. Backends without hooks retain their
+previous behavior. StartUnit and standalone vtable calls use nonblocking
+acquisition because OpenDevice calls the device under Forbid; failed unit
+activation now undoes its open count and reports IOERR_OPENFAIL. Storage W1C
+writes preserve SDIO interrupt bits16/17. Generation invalidation currently
+fails subsequent reads safely; automatic re-enumeration is still required
+before enabling radio reset/reprobe. This is not recovery acceptance.
+Stale CMD/DATA reset and power/width setters refuse MMIO too; explicit full
+reset remains a reinitialization exception and cannot be used by a second
+client until host-wide recovery and card re-enumeration are implemented.
+This is ownership infrastructure, not a complete dual-slot host: shared
+clocks, command/FIFO/IDMAC code and buffers still reside in the SD client.
+No second hardware client may use them until that extraction is complete.
 
 ### N1 - compatible ESP-Hosted transport
 
@@ -26200,6 +26222,77 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: transaction-scoped common SDMMC resource and mechanical SD adaptation,
   preserving read-only denylist and CMD12/recovery; then bounded opt-in slot1
   enumeration/startup, compatibility checks, credit/stream/RPC and SANA-II.
+
+### 2026-10-10 - N0 transaction ownership and RV32 module build
+
+- State: ownership infrastructure build verified, not N0 completion. Worktree
+  `/Volumes/Dev/Build/aros-esp32p4-wifi`, `feature/esp32p4-wifi`, parent
+  `c1589e62f2`; isolated build `/Volumes/Dev/Build/aros-esp32p4-wifi-build`.
+  No controller-engine extraction, second hardware client or WLAN acceptance.
+- Permanent `esp32p4sdmmc.resource`, ABI1, priority16 before SD priority4,
+  supplies recursive task-context ownership, bounded acquisition and nonzero
+  reset generation. SD rejects a missing/incompatible resource. Generic
+  paired optional hooks cover initialization and each read chunk through
+  CMD18/CMD12/recovery; release precedes between-chunk Reschedule. The SD
+  command denylist and absence of FIFO TX remain unchanged.
+- Independent review found that OpenDevice invokes the Open vector under
+  Forbid (`rom/exec/opendevice.c`). Corrected StartUnit and standalone P4
+  leaf hooks to acquire nonblocking; BusTask initialization, registration and
+  read transactions may wait. Failed activation now rolls back open count,
+  clears io_Unit and returns IOERR_OPENFAIL instead of claiming success.
+  Review also found stale reset/power/width operations could still access
+  hardware: guarded those paths; full reset remains explicit reinit only.
+- Host tests: `python3 arch/riscv-esp32p4/tools/test-sdmmc-host.py`, actual
+  exit0,20 cases/400,196 checks at each O0/O2 under ASan/UBSan. Extracts actual
+  ownership, generation, W1C and stale-operation functions. Timer wrap,
+  stopped-timer retry bound, recursive ownership, wrong-owner refusal,
+  nonblocking acquisition and SDIO-status preservation pass. Hardware helpers
+  are mocked; tests verify call absence, not silicon behavior. Fixture SHA-256
+  `dcb5b5b9eef6d3ad47238a1764f546e087d54f95d70d2e7ca5e7408299132b1b`;
+  runner `be57c8d10fd6ca21c4c917de1661c3b9f0e1b5e9bad5ce8680d7ebd1d33ae0ce`.
+- Generic transaction tests: `python3
+  arch/riscv-esp32p4/tools/test-sd-transactions.py`, actual exit0,381 checks
+  at each O0/O2 under ASan/UBSan. Extracts actual read/stop/initialization/Open
+  bodies, including recovery, partial io_Actual, missing/unpaired hooks and
+  failed Open rollback. Fixture SHA-256
+  `160339b102da878af81eb94aa848e27cf7b487a18a772d7fad4e0f29bc3fce86`;
+  runner `06cad5b67abecac54afcb06a11400d3f3c021601122d68dfdfb406a3d9098fc5`.
+  Primary agent independently reran both suites after Luna implementation;
+  separate read-only review checked lock scope, init order and lifetime.
+- Build setup: configure target esp32p4-riscv selects SMP; external GCC16.2.0
+  and binutils2.47 reused without specs changes. Explicit COMPILER_SYSROOT
+  selects this build's Developer tree, not the compiler's old default.
+  Initial Python setup failed importing Cloud SDK's incompatible yaml;
+  isolated uv venv with Mako1.4.3/MarkupSafe3.0.4/PyYAML6.0.3 corrected it.
+  Configure then exited0. No installed production environment changed.
+- Build procedure in isolated build: GNU make with
+  `P4_BOARD=jc1060p470c-v2`, targets `kernel-esp32p4sdmmc` and
+  `kernel-sdcard`, actual final exits0. Fresh normal resource build prepared
+  SDK includes/linklibs. Premature resource quick-link exited2 while default
+  MUI and other linklibs were absent; object compilation alone was not a pass.
+  First SD build exited2 because a dependency-only kernel-sdcard target in
+  the resource directory had no local rule. Moved dependency onto the
+  generated P4 architecture target; repeated normal SD build exited0.
+- Artifacts under `bin/esp32p4-riscv-smp/AROS/Devs/`: resource22,552B,
+  SHA-256 `550e6ce19779251d5586709840f4616643f1a59714bb8da4c443b04aefcbc59c`;
+  sdcard.device136,824B,
+  `4cd8bb7e025c2d6e39ad058a5abd6572e5801fb63552561955e3c682bc3ea433`.
+  Both have no undefined symbols (nm exit0); resource ELF32 little-endian
+  RISC-V AROS relocatable/single-float ABI verified. Compiled resource init
+  sets ABI1 and sizeof140; generated resident priority16/name verified.
+  SD architecture object timestamp follows final guard edits; disassembly
+  confirms readiness guard before CTYPE MMIO. No full core/package built.
+- Safety: no serial open, reset, flash, media write or C6 firmware replacement.
+  Installed JC1060 production core/BSP/SYS remain unchanged. Reset generation
+  currently fails stale clients closed; automatic re-enumeration remains open.
+  Package integration, both-board storage regression and actual SMP contention
+  are not established by these host tests or module builds.
+- Next: extract shared clocks/command/FIFO/IDMAC and buffers, preserving slot0
+  read-only behavior and peer clock/status bits; implement host-wide recovery
+  and re-enumeration before opt-in bounded slot1 enumeration/startup. Integrate
+  accepted production baseline before any replacement core/package flash.
+  Then establish C6 compatibility, bounded streaming/credits/RPC, native AROS
+  SANA-II association/DHCP/data and combined-load/reconnect qualification.
 
 ## Evidence-entry template
 

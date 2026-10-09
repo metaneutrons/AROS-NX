@@ -25,6 +25,24 @@
 
 static BOOL p4sd_reset_fifo(struct sdcard_Bus *bus);
 
+BOOL FNAME_P4SDBUS(BeginTransaction)(struct sdcard_Bus *bus, BOOL may_wait)
+{
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    if (!priv->host ||
+        !priv->host->acquire(priv->host,
+                            may_wait ? P4_SDMMC_HOST_WAIT_US : 0))
+        return FALSE;
+    if (priv->host_generation != priv->host->generation)
+        priv->host_ready = FALSE;
+    return TRUE;
+}
+
+void FNAME_P4SDBUS(EndTransaction)(struct sdcard_Bus *bus)
+{
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    priv->host->release(priv->host);
+}
+
 static BOOL p4sd_fault_injected;
 static ULONG p4sd_cmd12_confirmations;
 
@@ -255,6 +273,8 @@ static inline ULONG p4sd_reg(ULONG offset)
 
 static inline void p4sd_set(ULONG offset, ULONG value)
 {
+    if (offset == P4SD_RINTSTS)
+        value &= P4SD_INT_CMD_DATA_MASK;
     p4sd_write(P4_SDMMC_BASE + offset, value);
 }
 
@@ -367,10 +387,12 @@ static void p4sd_host_clock_enable(unsigned int divider)
     sdcard_Udelay(10);
 }
 
-static void p4sd_module_reset(void)
+static void p4sd_module_reset(struct sdcard_Bus *bus)
 {
+    struct p4sd_private *priv = P4SD_PRIV(bus);
     ULONG value = p4sd_read(P4_LP_CLKRST_BASE + P4_LP_SDMMC_RST_CTRL);
 
+    priv->host->invalidate(priv->host);
     p4sd_write(P4_LP_CLKRST_BASE + P4_LP_SDMMC_RST_CTRL,
                value | P4_LP_SDMMC_RST_EN);
     p4sd_write(P4_LP_CLKRST_BASE + P4_LP_SDMMC_RST_CTRL,
@@ -464,7 +486,7 @@ static BOOL p4sd_host_init(struct sdcard_Bus *bus)
     struct p4sd_private *priv = P4SD_PRIV(bus);
 
     p4sd_host_clock_enable(10);
-    p4sd_module_reset();
+    p4sd_module_reset(bus);
 
     p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) | P4SD_CTRL_RESET_ALL);
     if (!p4sd_wait_clear(P4SD_CTRL, P4SD_CTRL_RESET_ALL,
@@ -494,6 +516,7 @@ static BOOL p4sd_host_init(struct sdcard_Bus *bus)
         priv->host_ready = FALSE;
         return FALSE;
     }
+    priv->host_generation = priv->host->generation;
     return TRUE;
 }
 
@@ -506,7 +529,7 @@ ULONG FNAME_SDCBUS(GetClockDiv)(ULONG speed, struct sdcard_Bus *bus)
     return 0;
 }
 
-void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus)
+static void p4sd_soft_reset_locked(UBYTE mask, struct sdcard_Bus *bus)
 {
     struct p4sd_private *priv = P4SD_PRIV(bus);
 
@@ -519,7 +542,7 @@ void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus)
             bus->sdcb_BusNum);
         priv->host_ready = FALSE;
 
-        p4sd_module_reset();
+        p4sd_module_reset(bus);
         if (!p4sd_host_init(bus))
         {
             bug("[P4SD%02u] full-reset host initialization failed\n",
@@ -536,6 +559,9 @@ void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus)
     if (!(mask & (SDHCI_RESET_CMD | SDHCI_RESET_DATA)))
         return;
 
+    if (!priv->host_ready)
+        return;
+
     p4sd_set(P4SD_RINTSTS, 0xFFFFFFFFUL);
     if (!p4sd_reset_fifo(bus))
     {
@@ -544,7 +570,7 @@ void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus)
     }
 }
 
-void FNAME_P4SDBUS(SetClock)(ULONG speed, struct sdcard_Bus *bus)
+static void p4sd_set_clock_locked(ULONG speed, struct sdcard_Bus *bus)
 {
     if (!P4SD_PRIV(bus)->host_ready)
         return;
@@ -552,7 +578,7 @@ void FNAME_P4SDBUS(SetClock)(ULONG speed, struct sdcard_Bus *bus)
         bug("[P4SD%02u] failed to change card clock\n", bus->sdcb_BusNum);
 }
 
-void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
+static void p4sd_set_power_locked(ULONG levels, BOOL lowest,
                                   struct sdcard_Bus *bus)
 {
     struct p4sd_private *priv = P4SD_PRIV(bus);
@@ -560,7 +586,7 @@ void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
 
     (void)levels;
     (void)lowest;
-    if (priv->powered)
+    if (!priv->host_ready || priv->powered)
         return;
 
     /* D1001 board sequence: external switch low, LDO4 at the 3.3-V
@@ -588,9 +614,13 @@ void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
     priv->powered = TRUE;
 }
 
-void FNAME_P4SDBUS(SetBusWidth)(UBYTE width, struct sdcard_Bus *bus)
+static void p4sd_set_width_locked(UBYTE width, struct sdcard_Bus *bus)
 {
-    ULONG ctype = p4sd_reg(P4SD_CTYPE);
+    ULONG ctype;
+
+    if (!P4SD_PRIV(bus)->host_ready)
+        return;
+    ctype = p4sd_reg(P4SD_CTYPE);
 
     /* MicroSD has four data lines, and on the D1001 GPIO45/46 occupy the
        native D4/D5 pins: eight-bit mode is forbidden. */
@@ -979,7 +1009,7 @@ enum p4sd_request_state
     P4SD_IDLE
 };
 
-ULONG FNAME_P4SDBUS(SendCmd)(struct TagItem *tags, struct sdcard_Bus *bus)
+static ULONG p4sd_send_cmd_locked(struct TagItem *tags, struct sdcard_Bus *bus)
 {
     ULONG command_index = GetTagData(SDCARD_TAG_CMD, 0, tags);
     ULONG argument = GetTagData(SDCARD_TAG_ARG, 0, tags);
@@ -1300,7 +1330,7 @@ ULONG FNAME_P4SDBUS(FinishData)(struct TagItem *tags,
     return 0;
 }
 
-void FNAME_P4SD(BusInit)(struct sdcard_Bus *bus)
+static void p4sd_bus_init_locked(struct sdcard_Bus *bus)
 {
     FNAME_P4SDBUS(SetPowerLevel)(bus->sdcb_Power, FALSE, bus);
     /* IDF starts strongly while identifying the card. */
@@ -1318,7 +1348,7 @@ void FNAME_P4SD(BusInit)(struct sdcard_Bus *bus)
         bus->sdcb_BusNum);
 }
 
-void FNAME_P4SD(BusPostIRQInit)(struct sdcard_Bus *bus)
+static void p4sd_bus_post_init_locked(struct sdcard_Bus *bus)
 {
     struct sdcard_Unit *unit;
 
@@ -1345,4 +1375,68 @@ void FNAME_P4SD(BusPostIRQInit)(struct sdcard_Bus *bus)
     unit = (&bus->sdcb_BusUnits->sdcbu_Units)[0];
     if (unit != NULL)
         unit->sdcu_Flags |= AF_Card_WriteProtect;
+}
+
+/* Standalone vtable calls own the host too, but never wait: OpenDevice may
+ * call them under Forbid. Generic chunk/enumeration hooks
+ * hold one outer acquisition through all dependent calls. Recovery's CMD12
+ * and status probes nest in the same task, never release the outer owner. */
+void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus)
+{
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, FALSE))
+        return;
+    p4sd_soft_reset_locked(mask, bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
+}
+
+void FNAME_P4SDBUS(SetClock)(ULONG speed, struct sdcard_Bus *bus)
+{
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, FALSE))
+        return;
+    p4sd_set_clock_locked(speed, bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
+}
+
+void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
+                               struct sdcard_Bus *bus)
+{
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, FALSE))
+        return;
+    p4sd_set_power_locked(levels, lowest, bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
+}
+
+void FNAME_P4SDBUS(SetBusWidth)(UBYTE width, struct sdcard_Bus *bus)
+{
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, FALSE))
+        return;
+    p4sd_set_width_locked(width, bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
+}
+
+ULONG FNAME_P4SDBUS(SendCmd)(struct TagItem *tags, struct sdcard_Bus *bus)
+{
+    ULONG result;
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, FALSE))
+        return (ULONG)-1;
+    result = p4sd_send_cmd_locked(tags, bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
+    return result;
+}
+
+void FNAME_P4SD(BusInit)(struct sdcard_Bus *bus)
+{
+    /* BusTask boundary, unlike the leaf vtable calls below OpenDevice. */
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, TRUE))
+        return;
+    p4sd_bus_init_locked(bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
+}
+
+void FNAME_P4SD(BusPostIRQInit)(struct sdcard_Bus *bus)
+{
+    if (!FNAME_P4SDBUS(BeginTransaction)(bus, TRUE))
+        return;
+    p4sd_bus_post_init_locked(bus);
+    FNAME_P4SDBUS(EndTransaction)(bus);
 }

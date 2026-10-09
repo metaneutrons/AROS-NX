@@ -5,8 +5,12 @@ Networking update (2026-10-10): JC1060 Wi-Fi implementation has started
 construction and a byte-oriented ESP-Hosted frame codec in `network/` have
 host-test coverage and RV32 compilation; they are not linked into the
 production firmware and are not a working Wi-Fi
-driver. SD storage and the C6 share one SDMMC controller, so hardware
-integration must first provide common host ownership. The older
+driver. SD storage and the C6 share one SDMMC controller. The development
+branch now adds a permanent ownership resource, reset generations and
+transaction-scoped SD hooks with extracted-source sanitizer tests and successful
+RV32 resource/device builds in an isolated JC1060-v2 build directory. The shared
+clock/command/DMA engine extraction and hardware regression remain open;
+the installed firmware is unchanged. The older
 `cheops/JC1060P470C_I_W` package is Fabian's selected WLAN reference:
 the profile declares P4-side slot1 CLK18/CMD19/D0-3=14-17 without enabling
 radio initialization. Installed C6 compatibility remains unverified; no

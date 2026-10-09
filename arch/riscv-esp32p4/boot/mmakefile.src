@@ -46,6 +46,7 @@ include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 #MM     hidd-gt911 \
 #MM     hidd-gsl3670 \
 #MM     kernel-esp32p4board \
+#MM     kernel-esp32p4sdmmc \
 #MM     hidd-esp32p4-fbgfx \
 #MM     kernel-input \
 #MM     kernel-keyboard \
@@ -90,6 +91,7 @@ include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 #MM     hidd-gt911-quick \
 #MM     hidd-gsl3670-quick \
 #MM     kernel-esp32p4board-quick \
+#MM     kernel-esp32p4sdmmc-quick \
 #MM     hidd-esp32p4-fbgfx-quick \
 #MM     kernel-input-quick \
 #MM     kernel-keyboard-quick \
@@ -124,6 +126,7 @@ PKG_LIBS      := aros utility oop graphics layers keymap intuition \
 PKG_LIBS_ARCH := expansion
 PKG_HIDDS     := hiddclass gfx inputclass keyboard mouse fbgfx
 PKG_RES       := bootloader FileSystem lddemon shell shellcommands dosboot
+PKG_RES       += esp32p4sdmmc
 PKG_DEVS      := input keyboard gameport sdcard ramtest
 PKG_HANDLERS  := fat econsole
 

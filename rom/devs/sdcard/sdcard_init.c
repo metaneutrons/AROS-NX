@@ -165,6 +165,9 @@ static int FNAME_SDC(Open)
                 else
                 {
                     DDEV(bug("[SDCard%02ld] %s: Failed to configure unit\n", ((struct sdcard_Unit *)iorq->io_Unit)->sdcu_UnitNum, __PRETTY_FUNCTION__));
+                    ((struct sdcard_Unit *)iorq->io_Unit)->sdcu_Unit.unit_OpenCnt--;
+                    iorq->io_Unit = NULL;
+                    iorq->io_Error = IOERR_OPENFAIL;
                 }
             }
         }

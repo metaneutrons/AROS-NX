@@ -1,0 +1,35 @@
+/* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
+#ifndef ESP32P4_SDMMC_HOST_H
+#define ESP32P4_SDMMC_HOST_H
+
+#include <exec/libraries.h>
+#include <exec/semaphores.h>
+
+#define P4_SDMMC_HOST_NAME "esp32p4sdmmc.resource"
+#define P4_SDMMC_HOST_ABI 1
+#define P4_SDMMC_HOST_WAIT_US 1000000UL
+
+/* Private port ABI, shared by separately loaded SD and radio clients.
+ * Permanent resident: OpenResource is NOT a lifetime pin. All mutable host
+ * fields, clocks, commands, DMA and status must be owned by this semaphore.
+ * A transaction may contain several commands (CMD18 through CMD12).
+ * Only task context; recursive acquisition by the owning task is supported.
+ * Blocking acquisition requires scheduling and interrupts enabled, with no
+ * Exec spin lock held. timeout0 may be used under Forbid (OpenDevice); it
+ * never yields. No hardware transaction may run with interrupts disabled. */
+struct P4SDMMCHost
+{
+    struct Library library;
+    struct ExecBase *sysbase;
+    ULONG abi;
+    ULONG size;
+    BOOL (*acquire)(struct P4SDMMCHost *, ULONG timeout_us);
+    void (*release)(struct P4SDMMCHost *);
+    void (*invalidate)(struct P4SDMMCHost *);
+    ULONG (*now_us)(void);
+
+    struct SignalSemaphore lock;
+    ULONG generation; /* Full host reset invalidates all slot clients. */
+};
+
+#endif

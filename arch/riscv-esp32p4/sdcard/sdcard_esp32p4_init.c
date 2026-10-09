@@ -19,6 +19,17 @@ static int FNAME_P4SD(Init)(struct SDCardBase *SDCardBase)
     struct sdcard_Bus *bus;
     struct sdcard_BusUnits *units;
     struct p4sd_private *priv;
+    struct P4SDMMCHost *host = (struct P4SDMMCHost *)
+        OpenResource(P4_SDMMC_HOST_NAME);
+
+    /* A missing/newer host is a refusal, not a second unsynchronized host. */
+    if (!host || host->abi != P4_SDMMC_HOST_ABI ||
+        host->size != sizeof(*host) || !host->acquire || !host->release ||
+        !host->invalidate || !host->now_us)
+    {
+        bug("[P4SD--] compatible SDMMC host resource missing\n");
+        return FALSE;
+    }
 
     bus = AllocPooled(SDCardBase->sdcard_MemPool, sizeof(*bus));
     units = AllocPooled(SDCardBase->sdcard_MemPool, sizeof(*units));
@@ -35,6 +46,8 @@ static int FNAME_P4SD(Init)(struct SDCardBase *SDCardBase)
     bus->sdcb_SectorShift = 9;
     bus->sdcb_BusUnits = units;
     bus->sdcb_Private = (IPTR)priv;
+    priv->host = host;
+    priv->host_generation = 0;
 
     /* No generic SDHCI accessor is valid for this DesignWare register set. */
     bus->sdcb_IOReadByte = NULL;
@@ -55,6 +68,8 @@ static int FNAME_P4SD(Init)(struct SDCardBase *SDCardBase)
     bus->sdcb_SetBusWidth = FNAME_P4SDBUS(SetBusWidth);
     bus->sdcb_BusInit = FNAME_P4SD(BusInit);
     bus->sdcb_BusPostIRQInit = FNAME_P4SD(BusPostIRQInit);
+    bus->sdcb_BeginTransaction = FNAME_P4SDBUS(BeginTransaction);
+    bus->sdcb_EndTransaction = FNAME_P4SDBUS(EndTransaction);
 
     ObtainSemaphore(&SDCardBase->sdcard_BusSem);
     units->sdcbu_UnitBase = SDCardBase->sdcard_TotalBusUnits;
