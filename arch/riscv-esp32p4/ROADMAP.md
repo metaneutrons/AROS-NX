@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| D2-D1001 | D1001 regression after JC1060 production acceptance | `production artifacts build/host verified; hardware open` | Fresh separate SMP build from cebe8853e3: core195216B23bfb8c4…, matched40-member BSP3642928Ba6d478c2…, SD64MiBfe15d66a…/178 entries, firmware-bearing development volume4MiB27b48944…/5 entries. SRAM, package limit/ELF and host filesystem/manifest gates pass; no device or SD write. Next identify D1001 and preserve current ranges before matched deployment; fresh readiness for sight/physical tests. No current D1001 SMP/portable-stack acceptance. |
+| D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -1194,8 +1194,12 @@ on the exact JC1060 production configuration, not the generic D1001 gate.
 The ordered cleanup and qualification steps are complete. D1001 production
 artifacts now pass a fresh separate SMP build and host checks: core23bfb8c4…,
 matched40-member BSPa6d478c2…, SDfe15d66a…/178 entries and firmware-bearing
-development volume27b48944…/5 entries. No stale cross-board objects, device
-or SD write; portable-stack/SMP hardware acceptance is still open on D1001.
+development volume27b48944…/5 entries. Core/BSP are now written and
+independently readback verified on confirmed D1001; old firmware volume is
+preserved. Complete60.958s warm capture verifies32MB PSRAM200MHz, both harts,
+watchdog and GSL startup/polling. Card absent: flash fallback only, no Wanderer
+or SD-boot acceptance. Portable-stack/SMP full hardware acceptance is open;
+obtain fresh readiness for card insertion and desktop/touch observation.
 See `qualification/README.md` for the synchronized
 reader-free procedure and its coverage limits.
 
@@ -27219,6 +27223,58 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   matched deployment, preserve GSL firmware, and plan its separate SMP/
   portable-stack boot and freshly consented desktop/touch acceptance.
   Build/host pass is not D1001 hardware acceptance or completion of the port.
+
+### 2026-10-09 - D1001 matched core/BSP deployed; no-card headless boot completed
+
+- Fabian authorizes continuation ("go"). Source baselinebae9a24011,
+  branch `fix/esp32p4-usb-boot-budget`, initially clean. Port inventory
+  identifies USB serial E8:F6:0A:E0:46:4C on `/dev/cu.usbmodem101`;
+  esptool flash-id confirms MACe8:f6:0a:e0:46:4c/P4v1.3/32MB flash.
+  Actual partition sector read verifies ota_0 at0x20000/8MB and arosbsp
+  at0x820000/0x7e0000; offsets not inferred from the port name.
+- Evidence `d1001-production-2026-10-09/deploy/`: successful backups
+  `pre-core.bin`,217088B, range0x20000..0x54fff, SHA-256
+  `89f34dff6ff5ff12b9683ed14bedcf644fe1184a549dca46e74a23ea9b7ccf9c`;
+  entire BSP/volume `pre-bsp-volume.bin`,8257536B,0x820000..0xffffff,
+  SHA-256 `7667e5a4db5cdff05a164cfc74660ffd312688e04d5081a7a810dad4d34bf931`.
+  Partition read4096B SHA-256
+  `481ba5563d71b3885f7d939ac8e719ea9073b3fa7cf36cf50e47675591773610`.
+  Backups cover all erased bytes and support restoration at their offsets.
+- Existing development volume extracted from backup,4194304B SHA-256
+  `ed5dca8356362e6065d56922220a2108442dd19db718db7b905833c20818e138`.
+  Read-only host mount verifies private GSL firmware34848B125728ad… byte
+  identical; detached afterward. Volume is preserved, NOT replaced by the
+  new build candidate27b48944…. No SD write or firmware redistribution.
+- Core195216B SHA-256
+  `23bfb8c477094db0928a12ebb1bf90f88bb2d86d78e576d20682a4bcaf485817`
+  written0x20000, erased0x20000..0x4ffff; matched BSP3642928B SHA-256
+  `a6d478c2e1098973763bdde7187a5d5001d7e83096aa07aaa45d1d62f425198b`
+  written0x820000, erased0x820000..0xb99fff. Artifact hash and USB identity
+  checked before write. `deploy.sh` session7598 exits0, esptool write/hash
+  verification passes, independent readback of each exact artifact exits0
+  and cmp/SHA match. Original bootloader, partition, otadata/NVS/storage
+  and development volume remain outside erase ranges, not newly hashed.
+- Production flags unchanged from build: C3/C4 enabled, PSRAM200MHz,
+  XIP, C1_PROFILE0/BOOT_TIMING0, quiet DOS/FAT/dosboot. CPU360MHz recorded.
+  Controlled USB warm reset with `reset-and-log.py`,session67369 exits0;
+  timing completion60.958045875s/16178B. `boot-60.log` SHA-256
+  `27e150ba9dca907b537a3805957f53f1b61ff73f8d6d38102664e15ba92cb84a`;
+  timing SHA-256 `92ccf1adfd9cf454af12aef291cd025c19c084183eb236e5ca6d4a3adda40700`.
+- Initial ROM/CHIP_USB_UART_RESET and original ESP-IDF6.0.1 bootloader
+  captured. Watchdog armed6000ms; PSRAM32MB200MHz first attempt,
+  timeouts/recoveries0/0, calibration and per-MB word verification pass.
+  Package loads40 members; hart1 online/cpus2; framebuffer1280x800
+  registered and updates accepted. Portable GSL loads4356 external
+  records, reports running, touch polling heartbeats100..400. Runtime
+  output is lossy/truncated; no claim of every-frame/counter verification.
+  No captured Trap/Alert/Guru/panic or subsequent ROM/reset; initial DMA
+  fault status0. ENV prefs watch error205 observed in fallback; defaults
+  selected, not proof of a normal SYS prefs failure.
+- SD card detect high/no card: only existing FLASHDISK0P0 fallback is
+  exercised. No Wanderer launch claim and no SD integrity/boot acceptance.
+  No human sight or touch test started. Next obtain fresh readiness to
+  insert the prepared card and observe normal desktop/touch; complete
+  D1001 SMP/portable-stack and cold/stress gates remain open.
 
 ## Evidence-entry template
 

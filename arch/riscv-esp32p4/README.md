@@ -109,7 +109,13 @@ matched40-member BSP3642928B `a6d478c2…`, FAT32 SD image64MiB `fe15d66a…`
 `27b48944…` (5/5 entries). SRAM, package limit/ELF and independent host
 filesystem/manifest checks pass. Evidence is in
 `AROS-ESP32-build/evidence/d1001-production-2026-10-09/`.
-Build-only: no board or SD changes, and no new D1001 hardware acceptance yet.
+D1001 core/BSP are now flashed and independently readback-verified at
+0x20000/0x820000. Existing firmware volume remains unchanged. A complete
+60.958s first-byte warm capture reaches32MB PSRAM200MHz, both harts,
+watchdog6000ms, graphics HIDD and running GSL3670 with4356 firmware records.
+SD detection reports no card: only the flash fallback boots. No Wanderer,
+SD-boot or visual/touch acceptance yet; fresh readiness/card insertion next.
+This supersedes the older D1001 "Currently flashed" history table below.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
