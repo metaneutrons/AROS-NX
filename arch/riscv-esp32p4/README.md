@@ -199,11 +199,13 @@ Ordinary s15 core remains the rollback; quiet package/media/bootloader unchanged
 
 Fresh diagnostic physical cold comparison (2026-10-09): after confirmed
 USB-C-only disconnection and an additional assistant-timed30s, Fabian reports
-13s to Wanderer. No serial reader during startup. A late45s reader obtains all
+initially13s to Wanderer, subsequently corrected to11s with correct desktop
+presentation confirmed. This is one cycle, not a second timed boot.
+No serial reader during startup. A late45s reader obtains all
 eight retained phases, fail0, now27..67s and no new boot banner: first output
 844ms, pre-Exec1984ms and update2564772ms. Opening is consistent with boot
-continuity in this cycle. Kernel-relative timing does not locate all13s;
-update256 is not desktop completion. Detailed geometry/touch and exact
+continuity in this cycle. Kernel-relative timing does not locate all11s;
+update256 is not desktop completion. Touch and exact
 power-on-to-kernel timing remain unmeasured. No firmware change in this test.
 
 `tools/build-quiet-package.sh` clean-rebuilds those three modules and replaces
