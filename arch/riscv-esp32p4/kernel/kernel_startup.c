@@ -463,7 +463,7 @@ static void krnDumpResidents(UWORD *lo, UWORD *hi)
     }
 }
 
-#if defined(P4_TASK_TEST) || defined(P4_HEARTBEAT_TASK)
+#if defined(P4_TASK_TEST) || defined(P4_HEARTBEAT_TASK) || defined(P4_BOOT_TIMING)
 static void krnP4TaskExit(void)
 {
     /* SysBase->TaskExitCode may be unset in a kickstart this small, and
@@ -490,7 +490,7 @@ static struct Task *krnP4SpawnTask(const char *name, BYTE pri,
     /* NewAddTask fills in tc_SPReg, the MemEntry list and the ETask */
     return AddTask(t, (APTR)entry, (APTR)krnP4TaskExit) ? t : NULL;
 }
-#endif /* P4_TASK_TEST || P4_HEARTBEAT_TASK */
+#endif /* task-test, heartbeat or boot-timing reporter */
 
 #ifdef P4_TASK_TEST
 /*
@@ -565,7 +565,7 @@ static void test_task_b(void)
 
 #endif /* P4_TASK_TEST */
 
-#ifdef P4_HEARTBEAT_TASK
+#if defined(P4_HEARTBEAT_TASK) || defined(P4_BOOT_TIMING)
 
 #ifndef P4_HEARTBEAT_SECS
 #define P4_HEARTBEAT_SECS 5
@@ -686,6 +686,14 @@ static void krnP4HeartbeatTask(void)
 
         ++beat;
 
+#ifdef P4_BOOT_TIMING
+        /* Retained phase times survive dropped early USB narration. No task
+           list traversal or rendering, and no claim that update256 is a
+           fully visible Wanderer desktop. Runtime output stays nonblocking. */
+        krnP4BootTimingReport();
+#endif
+#ifdef P4_HEARTBEAT_TASK
+
         /*
          * Forbid() here is not about the data - one task writes it - but
          * about the console: krnP4PutC() waits per character, and a task
@@ -730,6 +738,7 @@ static void krnP4HeartbeatTask(void)
         }
         krnP4PutStr("\n");
         Permit();
+#endif
     }
 }
 
@@ -781,7 +790,7 @@ const struct Resident krnP4HeartbeatResident =
     &krnP4HeartbeatInit
 };
 
-#endif /* P4_HEARTBEAT_TASK */
+#endif /* heartbeat or boot-timing reporter */
 
 #if defined(P4_AFTERDOS_PROBE) || defined(P4_B5_CONCURRENT_STRESS)
 
@@ -7064,6 +7073,10 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 {
     unsigned long beat = 0;
 
+#ifdef P4_BOOT_TIMING
+    krnP4BootTimingStart();
+#endif
+
     (void)fdt;
 
     /*
@@ -7071,6 +7084,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
      * hang inside it is still attributable to it.
      */
     krnP4PutStr("\n\n[kernel] entered\n");
+#ifdef P4_BOOT_TIMING
+    krnP4BootTimingMark(P4_BOOT_EARLY_OUTPUT);
+#endif
     krnWdtReportReset();
 #ifndef P4_KEEP_WATCHDOG
     platform_init();
@@ -7187,6 +7203,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
         csr_clear(mstatus, MSTATUS_MIE);
         up = krnPSRAMBringUp(&psram, P4_PSRAM_TARGET_HZ);
         csr_set(mstatus, MSTATUS_MIE);
+#ifdef P4_BOOT_TIMING
+        krnP4BootTimingMark(P4_BOOT_PSRAM);
+#endif
         p4_psram_probe_latency_seen = psram.probe_latency;
         p4_psram_calib_entry = psram.ana_trace[0];
         p4_psram_bias_seen = psram.bias_set;
@@ -7415,6 +7434,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 #ifdef P4_PANEL_PROBE
 #ifndef P4_B5_CONCURRENT_STRESS
     krnP4PanelProbe();
+#ifdef P4_BOOT_TIMING
+    krnP4BootTimingMark(P4_BOOT_PANEL);
+#endif
 #endif
 #endif
 #ifdef P4_C4_TOUCH_PROBE
@@ -7522,9 +7544,15 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     }
 #endif
     /* From here on a trap on this hart runs on its own interrupt stack */
+#ifdef P4_BOOT_TIMING
+    krnP4BootTimingMark(P4_BOOT_PACKAGE);
+#endif
     krnP4SMPInitPrimary();
     krnP4PutStr("[console] runtime output nonblocking; saturated bytes dropped\n");
     krnP4ConsoleRuntime();
+#ifdef P4_BOOT_TIMING
+    krnP4BootTimingMark(P4_BOOT_EXEC);
+#endif
     krnStartExec();
 
 #ifdef P4_SDCARD_DEVICE_TEST

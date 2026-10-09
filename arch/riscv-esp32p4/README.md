@@ -71,6 +71,52 @@ of the hang fix remains open.
 
 ## Status
 
+Current JC1060 production cleanup (2026-10-09): the original bootloader
+`27b99e03…` and complete original0x2000..0x7fff sector range are restored and
+independently verified. Clean-built core189968B `17249045…` is written and
+readback-verified at0x20000, with `P4_BOOT_TIMING=0` and `P4_C1_PROFILE=0`.
+The quiet package `e0869292…`, development volume and SD are unchanged.
+One complete60s headless warm boot passes PSRAM/two-hart/watchdog regression
+with no captured subsequent reset/fault. Following fresh readiness and a
+separate30s reset capture, Fabian confirms complete desktop, pointer motion,
+drive double-tap and two-finger menu without flicker/hang on this exact pair.
+Cleanup step1 is accepted. Boot-latency work is deferred, not solved. Combined
+no-reader qualification has build-verified optional user-space tools on this
+normal core (56 host tests). A volume-only deployment/readback and complete30s
+headless boot pass. The first synchronized smoke displays SMOKE:none with
+responsive touch, but incomplete late USB results reject acceptance. Paced
+post-load reports fix the short-run retrieval: the repeat has all fields,
+30s,80 CPU batches per hart,15 verified SD reads,27 window API updates and
+zero errors. Its complete late capture/validator pass; Fabian reports
+SMOKE:none, responsive pointer and visible bar updates. The short smoke
+gate is accepted. Fabian confirms fresh readiness and manual start of the
+1800s production run. Reader-free production IDf7ed5845 now passes the strict
+validator:1800s,4762 verified batches per hart,900 referenced SD reads,
+1588 window API updates, zero CPU/SD errors or mismatches, reason0/fixture1.
+The single passive45.182s retrieval exits0 with a complete successful footer
+and no captured reset/fault signatures. Following fresh readiness, Fabian
+confirms the post-load desktop, following pointer, RAM Disk double-tap and
+two-finger menu-item selection remain usable without flicker or hang, with
+no restart. D2-Q is accepted on this JC1060 configuration. API counters do
+not prove every frame during the load; the final sight check is separate.
+Cleanup and qualification are complete; D1001 regression is now the next
+authorized phase, not yet tested. Larger cold-cycle and old-panel gates remain open.
+
+D1001 production regression artifacts now pass a fresh separate SMP build
+in `AROS-ESP32-d1001-production-build`: core195216B `23bfb8c4…`,
+matched40-member BSP3642928B `a6d478c2…`, FAT32 SD image64MiB `fe15d66a…`
+(178/178 manifest entries), firmware-bearing FAT16 development volume4MiB
+`27b48944…` (5/5 entries). SRAM, package limit/ELF and independent host
+filesystem/manifest checks pass. Evidence is in
+`AROS-ESP32-build/evidence/d1001-production-2026-10-09/`.
+D1001 core/BSP are now flashed and independently readback-verified at
+0x20000/0x820000. Existing firmware volume remains unchanged. A complete
+60.958s first-byte warm capture reaches32MB PSRAM200MHz, both harts,
+watchdog6000ms, graphics HIDD and running GSL3670 with4356 firmware records.
+SD detection reports no card: only the flash fallback boots. No Wanderer,
+SD-boot or visual/touch acceptance yet; fresh readiness/card insertion next.
+This supersedes the older D1001 "Currently flashed" history table below.
+
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
 means the behaviour was verified on a board and how it was verified is
@@ -140,7 +186,104 @@ both harts online, watchdog armed, Wanderer started, no fault or reset.
 The existing development volume is `aa7eadbe…`. The exact production
 artifact also passed its synchronized Wanderer/display/touch check: Fabian
 confirmed readiness, then reported everything fine after the requested
-normal-use procedure. PR #70 merge remains pending.
+normal-use procedure. PR #70 merged as `0c15f90eb3` after required CI.
+The unchanged production core also passed a separate thirty-minute
+reader-attached idle soak; no-reader and physical cold gates remain separate.
+
+Cold-start correction candidate (2026-10-09): the same production core stayed
+black after a user-confirmed USB-only rail-off/reapply without a log reader;
+a separate reader-attached USB reset recovered Wanderer. Saved PC pointed
+into the early USB output wait. Source audit establishes repeated per-byte
+wait amplification, not the full hardware cause. USB byte and flush waits
+now share one failed-poll allowance per boot, retain single-probe late-reader
+recovery and do not renew the allowance for blocking diagnostics. The
+candidate is core `4d998b4e…`, 190,240 bytes, clean-built from
+`fix/esp32p4-usb-boot-budget` and writer-verified at `0x20000`; it supersedes
+the JC1060 core listed in the historical artifact row below. Package,
+development volume, SD and bootloader are unchanged. A 120-second
+reader-attached USB-reset boot completed normally: PSRAM, both harts,
+watchdog, Wanderer and continuing touch polls, no captured fault/reset.
+Four synchronized physical USB-only cold boots now pass visually:
+after at least 30 seconds disconnected and reapplication without a serial
+reader or reset, Fabian reports Wanderer booting cleanly after approximately
+10 seconds initially, then 11, 14 and 11 seconds in three repetitions
+(2026-10-09). Fabian also confirms pointer movement, drive double-tap and
+two-finger menu operation on this core. No cold-boot UART was captured, so
+internal reset, PSRAM and hart diagnostics are not inferred from these
+observations. Larger cold-cycle reliability and sustained no-reader/combined
+stress remain open; this is not full production qualification.
+
+Boot-latency optimization (2026-10-09): the 10-14-second visual cold-start
+estimates above used the verbose package. For the quiet comparison the s15 core
+was paired with diagnostic-off package `e0869292…` (3,636,260 bytes, verified at
+`0x820000`). Only DOS/FAT/dosboot records changed; the other 37 records and
+all media/bootloader/core are unchanged. Three reader-attached reset captures
+pass PSRAM/two-hart/watchdog/touch-polling and graphics-update checks. At the
+same graphics update marker (n256), median host receipt is 3.955s versus
+4.408s across three verbose baselines, a 0.453s difference; this is NOT
+first-visible-desktop timing. Captured output falls from about 584KB to 15KB.
+One fresh USB-only physical cold/display comparison now passes: Fabian
+reports approximately 10s to fully visible Wanderer (2026-10-09). This falls
+within the verbose baseline's 10-14s range, so material cold-start acceleration
+is not established. Fresh touch and repeated-cycle acceptance of this pair
+remain open; prior verbose-package acceptance does not transfer automatically.
+
+Optional `P4_BOOT_TIMING=1` diagnostics now retain bounded SYSTIMER phase
+measurements beginning before the kernel's first console output. A five-second
+reporter rotates one retained phase per short packet (all eight in40s), so a
+late reader need not recover discarded early narration. These are NOT time
+since power-on or proof of a completed desktop; the counter's pre-kernel
+origin is unknown. `MISSING`/`INVALID` and failure bits must not count as zero.
+The s17 diagnostic core is now flashed at `0x20000`: 191,856 bytes, SHA-256
+`e09de20b6d7f6ec2ea3c88185f4c275389cbb17a3f8c0d9e5073623d044fbf59`.
+One45s reader-attached reset reports all phases with zero measurement failures:
+PSRAM44ms, panel-probe return706ms, pre-Exec1145ms and update2563686ms.
+The final late reader preserves this warm boot (now71/76/81s, same retained
+values); the initial low-line reader instead caused a reset and is rejected.
+These are warm diagnostic results, not cold timings or fresh visual acceptance.
+Ordinary s15 core remains the rollback; quiet package/media/bootloader unchanged.
+
+Fresh diagnostic physical cold comparison (2026-10-09): after confirmed
+USB-C-only disconnection and an additional assistant-timed30s, Fabian reports
+initially13s to Wanderer, subsequently corrected to11s with correct desktop
+presentation confirmed. This is one cycle, not a second timed boot.
+No serial reader during startup. A late45s reader obtains all
+eight retained phases, fail0, now27..67s and no new boot banner: first output
+844ms, pre-Exec1984ms and update2564772ms. Opening is consistent with boot
+continuity in this cycle. Kernel-relative timing does not locate all11s;
+update256 is not desktop completion. Touch and exact
+power-on-to-kernel timing remain unmeasured. No firmware change in this test.
+
+Host correlation: `tools/observe-usb-arrival.py` observes the
+serial device node without opening it; `tools/late-boot-log.py --timing` records
+chunk receipt times and raw offsets on the same host monotonic clock. A second
+unchanged diagnostic cold boot is reported11s. All8 phases/fail0 are retrieved;
+receipt-derived kernel-origin estimates6.804..7.014s after node appearance
+motivate a pre-kernel investigation. Node appearance is not rail-on and
+buffered receipt is not device generation; no exact bootloader delay or
+material speedup is established. No bootloader write is authorized by this test.
+
+An isolated diagnostic bootloader now disables only the ROM secondary USB
+output after preserving original UART setup. Two clean builds reproduce the
+22,624-byte candidate `e9660f4d…`, with the unchanged board sdkconfig and
+verified wrapper linkage; all45 host tests pass. The normal bootloader/shared
+IDF remain unchanged. After explicit sector-range approval0x2000..0x7fff,
+candidate is flashed and independently readback verified; the full previous
+range is backed up and the partition sector unchanged. One60s first-byte warm
+capture completes with first-attempt32MB PSRAM, both harts, watchdog and all8
+phase slots/fail0, no captured fault/subsequent reset. The first synchronized
+no-reader cold comparison is reported12s versus prior11s; all8 retained phases
+and receipt-derived origin estimates remain essentially unchanged. This
+candidate has not demonstrated acceleration. The passive arrival observer
+does not establish physical rail-on, and the late capture cannot exclude
+earlier unseen resets. See the dated evidence; pre-kernel attribution remains open.
+
+`tools/build-quiet-package.sh` clean-rebuilds those three modules and replaces
+only their records in a supplied immutable baseline, then checks the board's
+package-size rule. Keep verbose package `d9e40d75…` for reversible diagnostics.
+Optional `tools/reset-and-log.py --timing <new.jsonl>` records host-receipt
+time and raw-byte offsets without changing the raw capture; USB buffering and
+the buffered ROM head prohibit claiming firmware phase or no-reader cold times.
 
 E2, the two-hart primitives, is hardware verified on both boards: on the
 D1001 on 2026-10-01 (219,776-byte candidate, five captures, two epochs each)

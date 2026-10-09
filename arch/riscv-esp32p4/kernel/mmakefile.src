@@ -925,6 +925,13 @@ endif
 ifeq ($(P4_C1_PROFILE),1)
 P4_DEBUG_CPPFLAGS += -DP4_C1_PROFILE
 endif
+
+# Bounded, retained SYSTIMER phase timestamps; starts before first USB output.
+# Diagnostic reporter uses the heartbeat resident but does not enable its
+# verbose task-list narration. Normal builds are unchanged.
+ifeq ($(P4_BOOT_TIMING),1)
+P4_DEBUG_CPPFLAGS += -DP4_BOOT_TIMING
+endif
 ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
 P4_C1_COALESCE ?= 1
 endif

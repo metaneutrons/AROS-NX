@@ -26,15 +26,45 @@
 
 import sys
 import time
+import argparse
+import json
+import math
 
 import serial
 
 
-def main():
-    if len(sys.argv) != 3:
-        sys.exit("usage: reset-and-log.py <serial-device> <seconds>")
+class CaptureOutput:
+    """Raw bytes plus optional host-receipt timing; not firmware timestamps."""
 
-    port, seconds = sys.argv[1], float(sys.argv[2])
+    def __init__(self, raw, timing=None):
+        self.raw = raw
+        self.timing = timing
+        self.offset = 0
+
+    def write(self, data, elapsed):
+        self.raw.write(data)
+        self.raw.flush()
+        if self.timing is not None:
+            self.timing.write(json.dumps({"seconds": elapsed,
+                                         "offset": self.offset,
+                                         "bytes": len(data)}) + "\n")
+            self.timing.flush()
+        self.offset += len(data)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("port")
+    parser.add_argument("seconds", type=float)
+    parser.add_argument("--timing", help="new JSONL host-receipt sidecar path")
+    args = parser.parse_args()
+    if not math.isfinite(args.seconds) or args.seconds <= 0:
+        parser.error("seconds must be positive")
+    port, seconds = args.port, args.seconds
+    # Refuse to overwrite evidence. Buffered ROM head bytes share one receipt
+    # time, so the sidecar cannot resolve sub-0.6-second early boot phases.
+    timing = open(args.timing, "x", encoding="utf-8") if args.timing else None
+    output = CaptureOutput(sys.stdout.buffer, timing)
     s = serial.Serial(port, 115200, timeout=0.2)
 
     #   Reset, then confirm the board actually restarted before settling in to
@@ -54,6 +84,7 @@ def main():
         time.sleep(0.1)
         s.setDTR(False)
         s.setRTS(False)
+        start = time.monotonic()
         time.sleep(0.15)
 
         first = s.read(1)
@@ -75,8 +106,7 @@ def main():
         if b"waiting for download" in head or b"DOWNLOAD" in head:
             continue
 
-        sys.stdout.buffer.write(head)
-        sys.stdout.buffer.flush()
+        output.write(head, time.monotonic() - start)
         break
     else:
         sys.exit("board would not boot in six attempts; it kept entering "
@@ -86,8 +116,13 @@ def main():
     while time.time() < end:
         data = s.read(4096)
         if data:
-            sys.stdout.buffer.write(data)
-            sys.stdout.buffer.flush()
+            output.write(data, time.monotonic() - start)
+    s.close()
+    if timing is not None:
+        timing.write(json.dumps({"complete": True,
+                                 "seconds": time.monotonic() - start,
+                                 "bytes": output.offset}) + "\n")
+        timing.close()
 
 
 if __name__ == "__main__":
