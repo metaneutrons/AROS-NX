@@ -469,7 +469,7 @@ void parsetypeandname(struct functionarg *funcarg)
 
     /* Regular argument */
     endname = end;
-    while (!isspace(*(end-1)) && *(end-1)!='*')
+    while (begin == end || (!isspace(*(end-1)) && *(end-1)!='*'))
     {
         if (begin == end)
         {
