@@ -483,6 +483,7 @@ void krnP4ConsoleBlocking(void);
 #define P4_IPI_TICK             (1UL << 1)  /* hart 0's tick, forwarded */
 #define P4_IPI_SCHEDULE         (1UL << 2)  /* look for something to run */
 #define P4_IPI_CALL_HOOK        (1UL << 3)  /* run the queued hook calls */
+#define P4_IPI_SOFTINT          (1UL << 4)  /* hart 0: soft interrupts are pending */
 
 void krnP4SMPInitPrimary(void);
 void krnP4IPIInterrupt(void);

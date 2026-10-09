@@ -29,8 +29,22 @@
 
 void core_ExitInterrupt(regs_t *regs)
 {
-    if ((SysBase->SysFlags & SFF_SoftInt) && GetCPUNumber() == 0)
-        core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
+    if (SysBase->SysFlags & SFF_SoftInt)
+    {
+        if (GetCPUNumber() == 0)
+            core_Cause(INTB_SOFTINT, 1L << INTB_SOFTINT);
+        else
+        {
+            /*
+             * Soft interrupts run on hart 0 only. A Cause() on this hart
+             * would otherwise wait for hart 0's next interrupt, up to a
+             * tick, and a task here that causes one after the other got
+             * no more than the tick rate (SMP-Stress, test 4, timed out
+             * once that way). Wake hart 0; its interrupt exit runs them.
+             */
+            krnP4IPISend(0, P4_IPI_SOFTINT);
+        }
+    }
 
     /* Task switching disabled, or the task holds a spinlock (tls.h,
        p4_spin_taken()): leave the task alone. The switch stays pending. */

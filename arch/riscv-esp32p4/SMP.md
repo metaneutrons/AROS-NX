@@ -717,8 +717,43 @@ Read and left as they are, with the reason:
   (each run 4 processes x 3000 opens and closes of three libraries and
   timer.device); it stays on the list.
 
-Still open in S8: the dos lists above; the check of the loaded state with
-Wanderer on the panel, which needs a fresh "bereit"; the D1001.
+Fabian confirmed the production core `s9e-plain` (`a4179c1e…`) visual and
+touch check on 2026-10-09: "yes - works!", answering the handoff's question
+about 2–3 minutes of normal Wanderer and touch use without freezing or
+restarting. This does not verify a later core.
+
+Closing-run candidate: `core_ExitInterrupt()` sends `P4_IPI_SOFTINT` to
+hart 0 when hart 1 observes pending software interrupts. Software interrupts
+remain hart-0-only; the IPI wakes that hart so its interrupt exit handles
+them instead of waiting for its next tick. This follows one test-4 timeout
+in the previous interrupted closing run. The `s11-runner` disassembly
+contains the send. The closing run failed: `SoftIntWorker.2` was suspended
+on hart 0 for saved SP `0x4ff06620`, outside its PSRAM stack
+`0x49ad1720..0x49adb720`, and test 4 timed out with only 3/4 workers done.
+Fabian's requester photograph matches the UART. The context-save cause is
+not established; this candidate does not close the software-interrupt gate.
+
+Trap-exit correction (2026-10-09, source and host verification): the generic
+`SoftIntDispatch()` calls `KrnSti()` even on its empty-list return. The P4
+handler then decremented `TrapDepth` while still on its ISR stack, before
+the C epilogue and assembly restore. A nested IRQ in that interval could
+enter the scheduler at depth one and save an ISR-stack frame as task context.
+`krnTrapHandler()` now masks MIE before releasing the depth; it deliberately
+does not restore that live bit. `mret` alone restores the selected context's
+MPIE, including nested-trap returns. `tests/trap_exit_test.py` compiles the
+actual handler against IRQ-delivery mocks: 36 cases each at O0/O2 pass,
+and removing the mask fails on ISR-stack context scheduling at both levels.
+The corrected runner `3415a01a…` completes a 360-second headless smoke
+capture: four clean upstream-test sets and three complete migration/reply-port
+pairs, no fault signature or unexpected reset. Its production counterpart
+`0e1fa444…` passed its separate 360-second headless production soak with
+both harts online, watchdog armed and Wanderer started. The fresh closing
+capture passed all 240 programs: twenty successes per test-owned summary,
+one initial boot and no fault signatures. Capture stopped after completion
+at about 33 minutes; this is not a 48-minute soak claim.
+
+Still open in S8: the dos lists above, the final production core's own
+visual/touch check, PR #70 merge, and the D1001.
 
 Decision (Fabian, 2026-10-09, as proposed): ordinary tasks stay pinned by
 default and migration is opt-in per process. The inverse default is unsafe
