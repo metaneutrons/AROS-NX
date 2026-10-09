@@ -26822,6 +26822,22 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   or production-qualified claim from this warm smoke. Next request readiness
   before visual gate; D1001 only after steps1/2 close.
 
+### 2026-10-09 - D2: synchronized clean-production visual/touch run, observation pending
+
+- Fresh readiness: Fabian answers "ja" to the requested exact-pair desktop/
+  touch check. Procedure described before reset: complete desktop, pointer
+  motion, drive double-tap, two-finger menu, report flicker/hang.
+- Unchanged JC1060-v2 core189968B17249045… at0x20000, original bootloader
+  27b99e03…, quiet package e0869292…, volume/SD unchanged. No flash or
+  physical power cycle; D1001 untouched. Source c09c48b014.
+- First-byte30s USB-reset capture exits0, complete footer30.840s/14276B.
+  `jc1060/s19-production-clean-locale/visual-boot.log` SHA-256
+  `32788dfe6e65b4340e28a181a280211c9c3d6fe42876bdfa11191d08c381ae25`.
+  Capture closes normally. Human result is pending: no visual/touch pass or
+  reader-free/combined-load acceptance inferred from the log.
+- Master/phase remain visual gate open. Next: obtain actual observation;
+  only after cleanup acceptance advance production qualification.
+
 ## Evidence-entry template
 
 
