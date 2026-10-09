@@ -225,8 +225,12 @@ IDF remain unchanged. After explicit sector-range approval0x2000..0x7fff,
 candidate is flashed and independently readback verified; the full previous
 range is backed up and the partition sector unchanged. One60s first-byte warm
 capture completes with first-attempt32MB PSRAM, both harts, watchdog and all8
-phase slots/fail0, no captured fault/subsequent reset. A new synchronized
-no-reader cold comparison is still required; no cold speedup is claimed.
+phase slots/fail0, no captured fault/subsequent reset. The first synchronized
+no-reader cold comparison is reported12s versus prior11s; all8 retained phases
+and receipt-derived origin estimates remain essentially unchanged. This
+candidate has not demonstrated acceleration. The passive arrival observer
+does not establish physical rail-on, and the late capture cannot exclude
+earlier unseen resets. See the dated evidence; pre-kernel attribution remains open.
 
 `tools/build-quiet-package.sh` clean-rebuilds those three modules and replaces
 only their records in a supplied immutable baseline, then checks the board's
