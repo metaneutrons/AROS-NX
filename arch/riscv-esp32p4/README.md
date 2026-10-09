@@ -221,8 +221,12 @@ An isolated diagnostic bootloader now disables only the ROM secondary USB
 output after preserving original UART setup. Two clean builds reproduce the
 22,624-byte candidate `e9660f4d…`, with the unchanged board sdkconfig and
 verified wrapper linkage; all45 host tests pass. The normal bootloader/shared
-IDF remain unchanged. Candidate is **unflashed**, awaiting explicit permission
-for bootloader sector range0x2000..0x7fff; no speedup or hardware pass claimed.
+IDF remain unchanged. After explicit sector-range approval0x2000..0x7fff,
+candidate is flashed and independently readback verified; the full previous
+range is backed up and the partition sector unchanged. One60s first-byte warm
+capture completes with first-attempt32MB PSRAM, both harts, watchdog and all8
+phase slots/fail0, no captured fault/subsequent reset. A new synchronized
+no-reader cold comparison is still required; no cold speedup is claimed.
 
 `tools/build-quiet-package.sh` clean-rebuilds those three modules and replaces
 only their records in a supplied immutable baseline, then checks the board's
