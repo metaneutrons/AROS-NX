@@ -171,6 +171,25 @@ stay as diagnostics. See SMP.md, "Current plan", stages S0-S6, and S7. The histo
 below describes the earlier work: files, switches and tools it names that
 belong to E3 or the Giant exist only on those branches.
 
+Status 2026-10-09: the goal is set by Fabian (2026-10-08): finish the port on
+the JC1060P470C with full SMP and a hardware watchdog. S7 (watchdog) is
+merged (AROS-NX#66), S8 stage 1 merged (#67), stage 2 in #70; migration is
+opt-in per process (`C:Affinity`). What remains for the goal: the closing
+stress run, the visual and touch check, the merge of #70.
+
+Backlog (Fabian, 2026-10-09: "keep sending to vanilla upstream in backlog;
+we follow our goal to finish esp32 port here"). Pull requests to
+aros-development-team/AROS for the generic fixes of S8, not to be opened
+until the port is finished:
+
+- `RemTask()`/`Wait()`/self-removal across cores (`9be7d7ca55`, the hook
+  `EXEC_REMTASK_WAITOFFCPU`; other SMP ports need their own counterpart);
+- timer.device `tb_TimeLock` (`3a8b2a2db6`);
+- dos `CheckSignal()`/`EndNotify()` (`c08a99b0a4`).
+
+Already open upstream: #1487 (configure host compiler, draft) and #1529
+(exec `ReplyMsg()`/`WaitIO()` with SMP-ReplyPort, draft).
+
 [SMP.md](SMP.md) owns the staged requirements and acceptance IDs; this roadmap
 retains execution state and evidence as required by the existing repository
 rules. Work begins on 2026-10-01 at Fabian's request. E0 is an opt-in assembly
