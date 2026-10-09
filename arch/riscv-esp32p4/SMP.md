@@ -650,28 +650,36 @@ the touchscreen worker's exit; the opt-in (a command that starts a program
 on both harts); the check of the loaded state with Wanderer on the panel,
 which needs a fresh "bereit".
 
-Decision proposed: ordinary tasks stay pinned by default and migration is
-opt-in per process. The inverse default is unsafe because a GUI program
-started from a shell would inherit "any hart" and meet the intuition sites
-above from hart 1, silently. The shell and Wanderer keep their hart 0 mask,
-so everything they start stays there; a program or a launcher asks for
-both harts with `NP_Affinity` (or a small command that sets it). The plan:
+Decision (Fabian, 2026-10-09, as proposed): ordinary tasks stay pinned by
+default and migration is opt-in per process. The inverse default is unsafe
+because a GUI program started from a shell would inherit "any hart" and
+meet the intuition sites above from hart 1, silently. The shell and
+Wanderer keep their hart 0 mask, so everything they start stays there; a
+program or a launcher asks for both harts with `NP_Affinity` (or a small
+command that sets it). Letting everything migrate would first need the GUI
+stack audited and converted site by site; that is not planned. The plan,
+with its state:
 
 1. Port-owned shared state: one lock around every ROM cache call that
    also serves the park request while it spins, the kernel's SYSTIMER
    snapshot made reachable for the package modules, the flash window and
    park serialized, `sdcard.device` and flashdisk and the touch worker
-   moved to the spinlocks they already have or to a semaphore.
+   moved to the spinlocks they already have or to a semaphore. Done in
+   stage 1 except `sdcard.device`'s `BeginIO()` and change list and the
+   touch worker; the SYSTIMER part became a tear-proof read in the modules.
 2. exec and dos gaps that a non-GUI task can reach: library and device
    Open/Close/Expunge, `WaitIO()`, `lib_OpenCnt`, the time in timer.device,
    `RemTask()` of a running task (the other hart is told and waits), the
    dos lists. These are generic changes and go upstream to AROS-NX.
+   `WaitIO()` (with `ReplyMsg()`) done in stage 1; the rest is stage 2.
 3. The opt-in: `NP_Affinity` honoured by the shell commands that matter, a
-   command for it.
+   command for it. Stage 2.
 4. A test of its own for what a migrating task meets (open and close
    libraries, files on RAM: and the flash volume, timer queries, loading
    and running programs, segment lists) on both harts for ten minutes
    under the watchdog, then the 200-test stress with ANY parents.
+   SMP-Migrate exists and passed fifteen runs; it grows with stage 2, and
+   the 200-test stress with it is the closing run.
 
 Acceptance: the upstream tests and the stress pass with parents that allow
 both harts, the new test passes for ten minutes, a boot with Wanderer

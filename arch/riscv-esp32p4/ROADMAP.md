@@ -153,7 +153,7 @@ gate: compensated output is not the native display contract.
 | S5 | SMP qualification | `hardware verified (JC1060P470C); D1001 open` | Evidence entry 2026-10-05: upstream's ten SMP tests pass on 6 of 6 boots and over a twenty-minute run of 200 tests, after three fixes (no dispatch fallback with an idle task per hart, preemption waits for task-held spinlocks, console and SYSTIMER serialized); the production core passes five boots and ten minutes; the visual and touch check passed on the S6 core (Fabian, 2026-10-05). Open: the D1001. |
 | S6 | SMP default decision | `decided and done (2026-10-05)` | Evidence entry 2026-10-05: Fabian's decision, SMP is the only esp32p4 build. Configure selects the `smp` variant without being asked and refuses any other; the port's single-hart branches are gone, and a tree configured without the variant is refused. No Giant and no single-hart build; the Giant (`ff3395ba7f`) and E3 (`14f0290e21`) stay as history commits. Replaces the former E4 row. |
 | S7 | Hardware watchdog | `hardware verified (JC1060P470C); D1001 open` | Evidence entry 2026-10-09: timer group 0's main watchdog (6 s, reset system), fed from hart 0's tick only while hart 1's forwarded tick and one canary task per hart show life; fatal traps and the first alert stop the hart with interrupts masked. Ten failure cases (`P4_WDT_TEST=1..10`: `Disable()`, fatal trap, system alert, a starving task, `Forbid()`, each on hart 0 and 1) all end in a reset with cause `0x07`, which the next boot prints; the ten upstream SMP tests pass under it (longest tick gap 44 ms). |
-| S8 | Free migration of ordinary tasks | `stage 1 hardware verified (JC1060P470C); rest open` | Evidence entry 2026-10-09 (second): SMP-Migrate, a test of what a program meets when it runs on either hart, found a `ReplyMsg()`/`WaitIO()` race (fixed in exec) and that `krnP4SyncCode()` dropped the other hart's writes next to the range (fixed: only the instruction caches are invalidated); one lock for the ROM cache calls (`KATTR_CacheOps` for the SD driver), a flash window lock, tear-proof SYSTIMER reads in the modules. The ten upstream tests plus SMP-Migrate pass, SMP-Migrate 15 of 15 times. Open: `RemTask()` of a running task, the dos lists, the SD driver's `BeginIO()`, the opt-in, the visual check. SMP.md, "S8". |
+| S8 | Free migration of ordinary tasks | `stage 1 hardware verified (JC1060P470C); rest open` | Decision (Fabian, 2026-10-09): pinned by default, migration opt-in per process. Evidence entry 2026-10-09 (second): SMP-Migrate, a test of what a program meets when it runs on either hart, found a `ReplyMsg()`/`WaitIO()` race (fixed in exec) and that `krnP4SyncCode()` dropped the other hart's writes next to the range (fixed: only the instruction caches are invalidated); one lock for the ROM cache calls (`KATTR_CacheOps` for the SD driver), a flash window lock, tear-proof SYSTIMER reads in the modules. The ten upstream tests plus SMP-Migrate pass, SMP-Migrate 15 of 15 times. Open: `RemTask()` of a running task, the dos lists, the SD driver's `BeginIO()`, the opt-in, the visual check. SMP.md, "S8". |
 
 ## Track E: ESP32-P4 / RV32 SMP
 
@@ -25617,6 +25617,22 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   touch check ("bereit"); then stage 2 (`RemTask()` of a running task, the
   dos lists), the opt-in command, and a push of the generic exec fix as its
   own PR.
+
+### 2026-10-09 - S7 merged; S8 decided: migration is opt-in
+
+- State change: AROS-NX#66 (the watchdog, S7) merged into `main` as
+  `400259ffdd` at Fabian's request ("do 1 and 2 as suggested"); its CI
+  passed. Fabian decided the S8 model as proposed: ordinary tasks stay
+  pinned to hart 0 by default, and a program opts in to both harts
+  (SMP.md, "S8", "Decision").
+- Why: the GUI stack (32 `Forbid()` sites in intuition, `Disable()` in
+  graphics, keyboard, gameport and inputclass) protects its state with
+  calls that stop one hart only; with "any hart" as the default a GUI
+  program started from a shell would meet that from hart 1. Converting it
+  site by site is not planned.
+- Next safe step: stage 2 (`RemTask()` of a task running on the other
+  hart first, then the opt-in command and the remaining audit points),
+  each with a phase in SMP-Migrate.
 
 ## Evidence-entry template
 
