@@ -25583,7 +25583,13 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
     same core), about eleven minutes: 15 of 15 "5 PASS, 0 FAIL, 0
     INVALID", all rc 0, the cache phase's 30 directions without a lost
     write, "fed 5918 times, longest gap between ticks 440 x 0.1 ms", no
-    reset, no `[wdt]` line, no trap.
+    reset, no `[wdt]` line, no trap;
+  - production core `s8c-plain` `36acfc27…` (the usual flag set, no test
+    flags, 188,864 bytes) with package `625e4d2e…`, volume `3817ae37…` and
+    the card: boot prints the cause and "main watchdog armed", hart 1
+    online, 360 s with no reset, no `[wdt]` line, no trap, the touch worker
+    polling to the end (7100 polls). Headless only: no visual or touch check
+    of this state yet.
 - Host: `kernel/tests/systimer_read_test.py` passes, and fails (SIGABRT on
   the assertion) on the version of the function before the change;
   `wdt_feed_test.py` and `console_nonblocking_test.py` pass.
