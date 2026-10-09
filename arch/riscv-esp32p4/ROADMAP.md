@@ -153,7 +153,7 @@ gate: compensated output is not the native display contract.
 | S5 | SMP qualification | `hardware verified (JC1060P470C); D1001 open` | Evidence entry 2026-10-05: upstream's ten SMP tests pass on 6 of 6 boots and over a twenty-minute run of 200 tests, after three fixes (no dispatch fallback with an idle task per hart, preemption waits for task-held spinlocks, console and SYSTIMER serialized); the production core passes five boots and ten minutes; the visual and touch check passed on the S6 core (Fabian, 2026-10-05). Open: the D1001. |
 | S6 | SMP default decision | `decided and done (2026-10-05)` | Evidence entry 2026-10-05: Fabian's decision, SMP is the only esp32p4 build. Configure selects the `smp` variant without being asked and refuses any other; the port's single-hart branches are gone, and a tree configured without the variant is refused. No Giant and no single-hart build; the Giant (`ff3395ba7f`) and E3 (`14f0290e21`) stay as history commits. Replaces the former E4 row. |
 | S7 | Hardware watchdog | `hardware verified (JC1060P470C); D1001 open` | Evidence entry 2026-10-09: timer group 0's main watchdog (6 s, reset system), fed from hart 0's tick only while hart 1's forwarded tick and one canary task per hart show life; fatal traps and the first alert stop the hart with interrupts masked. Ten failure cases (`P4_WDT_TEST=1..10`: `Disable()`, fatal trap, system alert, a starving task, `Forbid()`, each on hart 0 and 1) all end in a reset with cause `0x07`, which the next boot prints; the ten upstream SMP tests pass under it (longest tick gap 44 ms). |
-| S8 | Free migration of ordinary tasks | `stage 1 hardware verified (JC1060P470C); rest open` | Decision (Fabian, 2026-10-09): pinned by default, migration opt-in per process. Evidence entry 2026-10-09 (second): SMP-Migrate, a test of what a program meets when it runs on either hart, found a `ReplyMsg()`/`WaitIO()` race (fixed in exec) and that `krnP4SyncCode()` dropped the other hart's writes next to the range (fixed: only the instruction caches are invalidated); one lock for the ROM cache calls (`KATTR_CacheOps` for the SD driver), a flash window lock, tear-proof SYSTIMER reads in the modules. The ten upstream tests plus SMP-Migrate pass, SMP-Migrate 15 of 15 times. Open: `RemTask()` of a running task, the dos lists, the SD driver's `BeginIO()`, the opt-in, the visual check. SMP.md, "S8". |
+| S8 | Free migration of ordinary tasks | `stages 1 and 2 hardware verified (JC1060P470C); corrected closing suite, production headless soak and visual/touch passed` | Decision (Fabian, 2026-10-09): pinned by default, migration opt-in with `C:Affinity`. Fabian confirms Wanderer/touch on previous production `a4179c1e…`. Closing runner `f77784aa…` failed with an ISR-stack task context and later watchdog reset. The trap-exit MIE correction passes actual-body O0/O2 regressions with failing old-code controls; corrected runner `3415a01a…` passes all 240 programs in twenty rounds with no fault signature. Plain `0e1fa444…` passes its 360-second headless soak and synchronized visual/touch check. Open: #70 merge, DOS segment lists/late assigns and D1001. SMP.md, "S8". |
 
 ## Track E: ESP32-P4 / RV32 SMP
 
@@ -170,6 +170,28 @@ commits `14f0290e21` and `ff3395ba7f`, not as build options. E0-E2
 stay as diagnostics. See SMP.md, "Current plan", stages S0-S6, and S7. The history
 below describes the earlier work: files, switches and tools it names that
 belong to E3 or the Giant exist only on those branches.
+
+Status 2026-10-09: the goal is set by Fabian (2026-10-08): finish the port on
+the JC1060P470C with full SMP and a hardware watchdog. S7 (watchdog) is
+merged (AROS-NX#66), S8 stage 1 merged (#67), stage 2 in #70; migration is
+opt-in per process (`C:Affinity`). The corrected closing stress run passes
+all 240 programs and the production core passes its 360-second headless soak.
+Its own synchronized visual/touch check also passed. Remaining for the goal:
+the merge of #70, which needs explicit approval. Fabian confirmed the `s9e-plain`
+Wanderer/touch check on 2026-10-09; this does not cover the soft-interrupt fix.
+
+Backlog (Fabian, 2026-10-09: "keep sending to vanilla upstream in backlog;
+we follow our goal to finish esp32 port here"). Pull requests to
+aros-development-team/AROS for the generic fixes of S8, not to be opened
+until the port is finished:
+
+- `RemTask()`/`Wait()`/self-removal across cores (`9be7d7ca55`, the hook
+  `EXEC_REMTASK_WAITOFFCPU`; other SMP ports need their own counterpart);
+- timer.device `tb_TimeLock` (`3a8b2a2db6`);
+- dos `CheckSignal()`/`EndNotify()` (`c08a99b0a4`).
+
+Already open upstream: #1487 (configure host compiler, draft) and #1529
+(exec `ReplyMsg()`/`WaitIO()` with SMP-ReplyPort, draft).
 
 [SMP.md](SMP.md) owns the staged requirements and acceptance IDs; this roadmap
 retains execution state and evidence as required by the existing repository
@@ -25633,6 +25655,328 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next safe step: stage 2 (`RemTask()` of a task running on the other
   hart first, then the opt-in command and the remaining audit points),
   each with a phase in SMP-Migrate.
+
+### 2026-10-09 - Correction: the flashdisk change of S8 stage 1 was in no core
+
+- State change: none on the board; a record corrected. `tools/build-core.sh`
+  made `kernel-timer-kobj` and `kernel-flashdisk-kobj-quick` only when their
+  objects were missing (both dated 2026-10-05 in the tree), so changes to
+  their sources never reached a core. The stage 1 change to
+  `flashdisk.device` (`krnP4FlashCopy()` instead of `Forbid()` and
+  `krnP4FlashMap()`) was therefore in none of the stage 1 cores, the
+  production core `36acfc27…` included: a disassembly of `s8c-runner`,
+  `s8c-plain` and `s9c-runner` shows no call to `krnP4FlashCopy()` and three
+  to `krnP4FlashMap()`; `s9d-runner` and later call `krnP4FlashCopy()` once.
+  Everything else of stage 1 (cache lock, `krnP4SyncCode()`, the flash
+  window's data invalidate, the SD driver in the package) was built and
+  tested as recorded. The entry "S8 stage 1" says flashdisk uses the new
+  copy; for those runs it did not.
+- The change had merged into AROS-NX `main` with AROS-NX#67 (auto-merge)
+  before this was seen. It compiles, and it ran from `s9d-runner` on (the
+  runner loads every test from the flash volume through it).
+- Fix: the script always makes both objects; their targets are incremental.
+- Next safe step: stage 2 entry.
+
+### 2026-10-09 - S8 stage 2: RemTask across harts, the time, Affinity
+
+- State change: Track E S8 stage 2 built and run on the JC1060P470C.
+- Hardware / revision: JC1060P470C v2, `80:f1:b2:d3:3b:a6`, MAC checked
+  before each write. Written and verified: package `0x820000` `d9e40d75…`
+  (3,734,020 bytes: dos with the `CheckSignal()`/`EndNotify()` changes;
+  before: `625e4d2e…`), development volumes `0xc00000` per run, cores
+  `0x20000`. Card unchanged (`5f123f79…`).
+- Source: `feature/esp32p4-smp-stage2` from the stage 1 branch (merged as
+  AROS-NX#67), uncommitted during the runs, committed after.
+- Build: runner cores as before; `s9-tests` (the upstream tests,
+  SMP-Migrate, SMP-AffCheck plain and through `Affinity`) and `s8-migrate`
+  (SMP-Migrate fifteen times), now with phase 6. Evidence:
+  `evidence/full-smp-2026-10-08/jc1060/s9*`, `w3-case11*`.
+- Observed:
+  - phase 6 against the stage 1 runner core `ab9dac88…` (volume `6c530f91…`):
+    "[Kernel:TLSF] free-list corruption at REMOVE_HEADER ... prev=40010ad2"
+    (a code address in a free block), `Breakpoint` in
+    `smpmigrate.remover`, watchdog reset, twice;
+  - with `Exec_P4WaitOffCPU()` and the scheduler change, core `bd8638a0…`:
+    all eleven entries pass, phase 6 "120 removals, none ran on" each way;
+    fifteen runs (volume `8ef6ceba…`): seven passed, then a fatal trap in
+    `input.device` ("Store/AMO access fault", mtval 0, at
+    `Exec_45_Enqueue+0x1c` from `Exec_ReschedTask+0xb8`, from
+    `SendIntuiMessage()`), then the watchdog's reset. Cause:
+    `core_Switch()` read the state before the lock (SMP.md, "S8 stage 2");
+  - with `core_Switch()` fixed, the `Wait()` and self-removal changes, core
+    `f353e0f4…`, volume `e0e4c62e…`: fifteen entries pass, among them
+    `Affinity ANY ... SMP-AffCheck ANY` (own 0x3, children on 0x3),
+    `Affinity 1` (0x2, children on 0x2), `Affinity 0,1` (0x3) and plain
+    (0x1, children on 0x1); fifteen runs (volume `77f611dc…`): 12 of 15
+    fully pass, phase 6 30 of 30, but phase 3 fails in 3: "the time went
+    backwards" and "the time jumped ahead between two reads", workers on
+    cpu 1;
+  - timer.device time lock, `CheckSignal()`/`EndNotify()` in the package
+    `d9e40d75…`, runner core `487459d1…` (the first with the flashdisk
+    change, see the correction): the fifteen entries of `s9-tests` pass;
+    fifteen runs of SMP-Migrate: 15 of 15 "6 PASS, 0 FAIL, 0 INVALID",
+    phase 3 clean in all (about 12.2 million reads per run), phase 6 30 of
+    30, "fed 8825 times, longest gap between ticks 441 x 0.1 ms", no reset;
+  - `P4_WDT_TEST=11` core `9e1ffcf4…`: "[wdtest] waiter on hart 1 asks for
+    the leaked lock", "[wdt] a spinlock has not come free for seconds",
+    reset `0x07`, three times in 90 s;
+  - production core `s9e-plain` `a4179c1e…` (190,112 bytes): watchdog armed,
+    hart 1 online, flash windows parked, 360 s, no reset, no `[wdt]` line,
+    no trap, the touch worker polling to the end.
+- Host: `wdt_feed_test.py` (now with the stuck case), `systimer_read_test.py`
+  and `console_nonblocking_test.py` pass.
+- Acceptance points passed: removal across harts, the time and the opt-in
+  as tested; no false watchdog reset; the production core boots and runs.
+- Not covered: the visual and touch check of this state (fresh "bereit");
+  the D1001; the dos segment lists and the late assign (not converted,
+  SMP.md); a program that opens windows was not run on hart 1, and is not
+  meant to be.
+- Safety impact: package and development volume rewritten with the MAC
+  checked; previous artifacts kept in the evidence directories.
+- Remaining risk: `Exec_P4WaitOffCPU()` spins until the other hart lets go;
+  a task that keeps interrupts masked for good would keep `RemTask()`
+  waiting, and the watchdog would end that. timer.device's time lock is
+  generic code and runs on the other SMP ports as well, untested there.
+- Next safe step: the visual and touch check ("bereit"); a PR for stage 2.
+
+### 2026-10-09 - The reply race upstream; why the D1001 tree stopped
+
+- State change: the generic `ReplyMsg()`/`WaitIO()` fix (S8 stage 1) is
+  proposed upstream as aros-development-team/AROS#1529 (draft), with a test
+  of its own, SMP-ReplyPort (`developer/debug/test/smp/smpreplyport.c`),
+  which also comes to AROS-NX with the stage 2 PR. Branches:
+  `upstream/exec-replymsg-waitio-smp` (on upstream `master` `3914027415`)
+  and `pr/exec-replymsg-waitio-smp` (on AROS-NX `master`, for the record;
+  the fix itself is in AROS-NX `main` since #67). The four exec files were
+  identical between this port's base and upstream `master`.
+- SMP-ReplyPort on the JC1060P470C, five runs each (package `d9e40d75…`,
+  volume `0292dc16…`, list: SMP-ReplyPort five times): a runner core with
+  only the fix reverted, `s10-noreply-runner`: the first run "worker 2 (cpu
+  1): 1800 completed, 0 errors, 1 messages left on the port" (and worker
+  3), the next three "TIMEOUT (workers stuck)"; the stage 2 runner core
+  `487459d1…`: five of five "1 PASS", 3.0 s each.
+- The D1001 tree (`AROS-ESP32-nx-d1001-build`, worktree
+  `/Volumes/Dev/Build/aros-nx-d1001`) stopped in `rom/dos/displayerror.c`
+  (`MSG_STRING_REQUESTTITLE` undeclared) and in muimaster
+  (`muimaster_strings.h` missing). Cause: the worktree was made with
+  `git worktree add` and none of its 76 submodules was initialized. The
+  catalogs are submodules (`rom/dos/catalogs`,
+  `workbench/libs/muimaster/catalogs`, ...), each with its own
+  `mmakefile.src`, so without them mmake did not know
+  `workbench-libs-dos-catalogs` at all, skipped the declared dependency
+  without a message, and FlexCat generated no `strings.h`. Not an AROS-NX
+  bug: its CI checks out with `submodules: recursive`, and the JC1060
+  worktree has all of them. After `git submodule update --init
+  --recursive` the package builds (3,737,368 bytes, `5164cf63…`) and the
+  card image too (`6ae3c342…`), both in
+  `evidence/aros-nx-d1001-2026-10-08/d1001/after-submodules/`; nothing
+  written to a board. The D1001 build script now initializes the
+  submodules and stops if one is missing.
+- Next safe step: the D1001 stays postponed; when it resumes, the tests
+  and the runner cores of that tree are the next build steps.
+
+### 2026-10-09 - S8 handoff resumed: production visual pass, closing candidate
+
+- State change: Fabian answered "yes - works!" to the explicit handoff
+  question about Wanderer/touch and 2–3 minutes without freezing or restarting
+  on production `s9e-plain`. The closing soft-interrupt fix remains build
+  verified only; no final-goal or new-core visual acceptance is claimed.
+- Hardware: JC1060P470C v2, ESP32-P4 v1.3, MAC `80:f1:b2:d3:3b:a6`,
+  `/dev/cu.usbmodem101`; identity checked before any write. D1001 untouched.
+- Source: `feature/esp32p4-smp-stage2`, HEAD `f561ae8e4b`, with inherited
+  changes to `kernel_intr.c`, `kernel_intern.h` and `image/s9-stress`.
+- Artifacts in build evidence `full-smp-2026-10-08/jc1060/`:
+  - runner `s11-runner/core.bin`, 194,192 bytes, SHA-256
+    `f77784aa3a08b237ae5152517b8cd7ae8b96c70ac49874f5a9fa1b26a85d0e35`;
+  - plain `s11-plain/core.bin`, 190,112 bytes, SHA-256
+    `b38a751feb63fc1a5d6064f83a875278fe5771a3d287c72a7b9b6b03125d18cb`;
+  - previous recoverable production core `s9e-plain/core.bin`, 190,112 bytes,
+    SHA-256 `a4179c1e0dd9a7bd963848560e54ba28ca560157380ad56319643394ec7af627`;
+  - existing development volume `s9f-stress/devvol/aros-devvolume.img`,
+    4,194,304 bytes, SHA-256
+    `aa7eadbe371395d9fd7e0c13d64c733c9881fe293e50191443f55f3c9ee12620`.
+- Candidate check: `s11-runner/link.log` contains the successful image
+  creation; disassembly of `core_ExitInterrupt` sends bit 4 to hart 0 via
+  `krnP4IPISend`. It is not merely a source-level assumption.
+- Procedure planned: verify existing core/volume against retained files;
+  use `P4_BOARD=jc1060p470c-v2 tools/flash-core-and-log.sh` to write only
+  runner core at `0x20000` and capture 2,880 seconds to fresh
+  `jc1060/s11-closing-20261009.log`. Keep package and dev volume unchanged.
+  Flags: graphical boot, touch HIDD, PSRAM 200 MHz, XIP, C1 profile and
+  FAT/DOS/DOSBOOT debug, plus runner, console wait and spin watchdog.
+- Expected: twenty rounds of the ten upstream programs via `Affinity ANY`,
+  plus SMP-Migrate and SMP-ReplyPort each round; all own result summaries
+  pass, no unexpected reset, watchdog warning, trap or allocator corruption.
+  Interleaved runner `rc=` lines are not a reliable result counter.
+- Safety: only standing-authorized core range; backups retained, SD remains
+  read-only; no merge or auto-merge authorized by this visual confirmation.
+- Remaining risk: the prior rare software-interrupt timeout may recur;
+  DOS lists/late assigns remain documented limitations. A passing runner
+  would still require plain-core soak, fresh visual readiness and PR merge.
+- Observed start: esptool verification matched both the previous production
+  core and existing development volume before replacement. Runner write at
+  `0x20000` completed with "Hash of data verified"; first-byte capture is
+  active and contains normal boot/FAT activity. This is not a closing pass.
+- Closing-run failure observed before capture completed: Fabian supplied
+  `IMG_1265.jpeg` showing an `AN_StackProbe` requester (`0x8100000e`) for
+  `SoftIntWorker.2`, task `0x49a7f9a0`, PC `0x4000b8cc`. The live UART log
+  independently records the same task on hart 0 with bounds
+  `0x49ad1720..0x49adb720` (40 KiB) but saved SP `0x4ff06620` in internal
+  SRAM, followed by `TIMEOUT (softint-done 3/4)` and `5 passed, 1 failed`.
+  Exact-core disassembly puts the PC inside `Kernel_52_KrnSpinLock`.
+  This invalidates closing acceptance: waking hart 0 did not establish a
+  fix for the rare software-interrupt failure. An interrupt/context-save
+  defect is a hypothesis, not yet a proven cause; do not enlarge the worker
+  stack or waive the bounds check to count this run as passing.
+- Next safe step: preserve the capture, investigate why an SRAM SP was
+  saved in a PSRAM-stack task, then rebuild/retest before commit or merge.
+
+### 2026-10-09 - S8 ISR-stack context corruption: exit-window correction
+
+- State change: closing acceptance failed; root-cause source path identified
+  and a regression-qualified correction is rebuilding, not hardware verified.
+- Exact failed runner: `s11-runner`, 194,192 bytes, SHA-256
+  `f77784aa3a08b237ae5152517b8cd7ae8b96c70ac49874f5a9fa1b26a85d0e35`.
+  Failed capture `jc1060/s11-closing-20261009.log` is preserved. After its
+  stack fault and test-4 timeout, a later incident reported both canaries
+  starved and a stuck spinlock, then reset `0x07`. The failed capture was
+  deliberately stopped before completion to replace the invalid candidate;
+  neither subsequent passes nor the reboot can rescue this acceptance run.
+- Source evidence: `rom/exec/cause.c:SoftIntDispatch` enables interrupts
+  before return; P4 `krnTrapHandler` previously lowered `TrapDepth` to zero
+  before returning to `traps.S`. Its saved SP `0x4ff06620` lies in hart 0's
+  ISR-stack span `0x4ff046b0..0x4ff066b0` in the exact failed core's map.
+  A nested IRQ during the unmasked depth-zero exit can therefore schedule
+  and capture an interrupt frame. The later spinlock/reset is observed,
+  but its causal relation to the stack corruption is not yet established.
+- Correction: mask MIE, with a compiler memory barrier, before lowering
+  nesting depth. Leave it masked through the C epilogue and assembly restore;
+  `mret` restores the selected context's MPIE. No bounds-check suppression,
+  larger task stack, altered affinity or delayed softinterrupt workaround.
+- Host evidence: actual-body `tests/trap_exit_test.py` passes 36 cases each
+  at O0/O2, with old-mask-removed negative controls rejected for ISR-stack
+  scheduling at both optimization levels. Watchdog feed, SYSTIMER snapshot
+  and USB/UART nonblocking-console regression scripts also pass.
+- Procedure: clean core build to fresh `jc1060/s12-trapexit-runner`, using
+  the s11 runner's identical flag set; check new hash, image creation and
+  disassembled mask-before-depth-store before writing only `0x20000` to
+  the MAC-verified JC1060. Package, development volume and SD unchanged.
+- Remaining gate: fresh 20-round closing run without stack faults,
+  softinterrupt timeout, fatal marker or watchdog reset; final plain-core
+  soak and synchronized visual check remain separate. No merge authorized.
+- Build observation: the first invocation stopped before creating its
+  evidence directory because macOS sed rejected a non-UTF8 Makefile comment.
+  Retried with `LC_ALL=C` and a fresh output name; no stale artifact flashed.
+  `s12-trapexit-runner-locale/core.bin` clean build succeeded, 194,192 bytes,
+  SHA-256 `3415a01a69c0cf708c314bf351e95e2915228820c7bccf43efe6e2566a316b5f`.
+  Disassembly: MIE clear at `0x4000a508` precedes the depth-decrement store at
+  `0x4000a51a` and the C return; successful image-creation lines recorded.
+  A MAC-checked, hash-verified write to `0x20000` starts a 360-second runner
+  smoke capture `s12-trapexit-smoke.log`; this alone is not closing acceptance.
+  The production variant is rebuilding separately with no runner/test flags.
+- Preserved failed capture: 53,427,551 bytes, SHA-256
+  `31b4369448c994ce50099240f483c06403bc3674c38cb62e93243bb34c98133a`.
+  Host regression log `s12-trap-exit-host.log`, SHA-256
+  `0417bf97530e87de6635ca14710f3efbdfdb990fb981461b84e719d4282da41f`.
+- Smoke result: 360 seconds completed, log 15,604,453 bytes, SHA-256
+  `428d01863b36659b335d2286b12e4477a3cdd63d7c7c0a1d9819a239d671ccec`.
+  Four each of all ten upstream test-owned success summaries, three complete
+  migration/reply-port pairs; one initial USB-reset banner, no stack bounds
+  fault, timeout, watchdog warning, fatal trap or allocator-corruption marker.
+  The fourth migration was unfinished at the capture boundary, not a failure
+  or a complete twentieth-round acceptance. This is short-run evidence only.
+- Production core also clean-built: `s12-trapexit-plain-locale/core.bin`,
+  190,112 bytes, SHA-256
+  `0e1fa444b2d4349214d613af1a25f547788dd650f41a33bbd7043008c05830aa`.
+  Its disassembly clears MIE at `0x40009fa6`, before decrement store
+  `0x40009fb8`. Built but not flashed; final production soak/visual gate open.
+- Fresh full closing run started with the same immutable corrected runner:
+  `scripts/s12-closing-run.sh` (in the evidence scripts directory), 2,880 s
+  capture `jc1060/s12-trapexit-closing-20261009.log`. First connection attempt
+  failed before any write/log; the retry verified the write at `0x20000` and
+  captured the real boot banner. No volume/package write or SD change.
+  Its fail-closed postprocessor requires exactly twenty successes from each
+  test's own summaries, one boot banner, no fault signatures and the complete
+  240-entry runner result. It rejects both the old failed capture and the
+  incomplete smoke capture. It does not automatically flash production or
+  authorize a merge. Full acceptance is pending until this capture completes.
+- Next safe step: inspect the completed closing capture; only if it passes,
+  commit/push the fix with this evidence, then production soak and a fresh
+  synchronized visual check. Keep PR #70 auto-merge off pending Fabian.
+
+### 2026-10-09 - S8 corrected closing suite passed; production qualification
+
+- Hardware: JC1060P470C-v2, MAC `80:f1:b2:d3:3b:a6`.
+- Runner: `s12-trapexit-runner-locale/core.bin`, 194,192 bytes, SHA-256
+  `3415a01a69c0cf708c314bf351e95e2915228820c7bccf43efe6e2566a316b5f`.
+- Observed: all twenty rounds completed, all twelve test-owned success
+  summaries occur exactly twenty times, and the runner reports
+  `done, 240 run, 0 not RETURN_OK; all returned 0`. One initial boot banner;
+  no stack fault, timeout, watchdog, fatal trap or allocator-corruption marker.
+- Capture `jc1060/s12-trapexit-closing-20261009.log`: 93,423,752 bytes,
+  SHA-256 `c09487f54e665fdd2f1db32b91a6cc0ee58be88d58cbc749494eb11bb13d9ea3`.
+  The suite completed sooner than the planned 2,880-second ceiling. After
+  completion, the capture process was deliberately terminated at about
+  33 minutes (shell status 143); the same fail-closed parser was then run
+  independently against the final immutable log and passed. This is full
+  twenty-round suite evidence, not a completed 48-minute soak.
+- Host actual-body trap-exit regression repeated at O0/O2 with old-code
+  negative controls rejected. No stack size, affinity or alert checks waived.
+- Next: MAC-checked production core `0e1fa444…`, 190,112 bytes, write only
+  `0x20000`, capture 360 seconds from first byte; package, volume and SD
+  unchanged. Fresh visual/touch readiness and PR #70 merge consent remain
+  separate gates. DOS lists/late assigns and D1001 remain open.
+
+- Production result: `s12-trapexit-plain-locale/core.bin`, 190,112 bytes,
+  SHA-256 `0e1fa444b2d4349214d613af1a25f547788dd650f41a33bbd7043008c05830aa`,
+  MAC checked before writing `0x20000`, esptool hash verified. First-byte
+  360-second capture `jc1060/s12-production-soak-20261009.log` completed
+  normally: 547,278 bytes, SHA-256
+  `e57bf169611196aa3b393762dbb98695cb88b825de2dc925c9b4543b069bc77b`.
+  Both harts online, 6-second main watchdog armed, Wanderer started; one
+  initial USB-reset banner, no fault signatures or subsequent reset.
+  Only the core was written; existing recoverable backups remain retained.
+- Acceptance boundary: twenty-round SMP closing and production headless
+  soak pass on JC1060P470C. Visual/touch readiness requested separately;
+  no response or visual acceptance inferred. PR #70 stays open with
+  auto-merge off. Next: synchronized visual/touch check, then merge consent.
+
+### 2026-10-09 - S8 corrected production visual and touch acceptance
+
+- Hardware: JC1060P470C-v2, MAC `80:f1:b2:d3:3b:a6`; source fix
+  `c185de779236f156460bd0c21c49ce52603f7914`, PR #70.
+- Exact production core: `s12-trapexit-plain-locale/core.bin`, 190,112 bytes,
+  SHA-256 `0e1fa444b2d4349214d613af1a25f547788dd650f41a33bbd7043008c05830aa`,
+  already hash-verified at `0x20000`; configuration and 360-second headless
+  evidence are recorded in the preceding entry. No new flash or reset.
+- Procedure: fresh readiness requested; Fabian answered "ja". Requested
+  2–3 minutes on the running desktop: pointer motion, opening a drive by
+  double tap and opening/selecting a menu with two fingers, checking for
+  wrong display/touch, freeze, requester or restart.
+- Observation: Fabian replied "alles fei", understood in context as
+  everything fine. This is user-observed visual/touch acceptance, not an
+  additional UART capture or a measured timing/performance claim.
+- Result: corrected closing suite, production headless soak and synchronized
+  production visual/touch gate passed on JC1060P470C. DOS lists/late assigns
+  and D1001 qualification remain open; ordinary tasks remain pinned by
+  default and migration remains opt-in. No general migration-safe GUI claim.
+- Safety: no writes, media changes or PR merge during this visual check.
+  Next: request explicit merge approval for #70; auto-merge remains off.
+
+### 2026-10-09 - S8 integration refreshed against current AROS-NX main
+
+- Fabian authorized PR #70 merge after the corrected production acceptance.
+  Required protection is strict `CI Success`; no bypass authorized or used.
+- Merged `fork/main` `a343ccf0a8` into the feature branch with merge commit
+  `82758ffe21`. The incoming changes are a genmodule argument-boundary fix
+  and the Broadcom 2712 i2c-dw generator configuration, not P4 runtime code.
+  The tested/flashed core remains the immutable `0e1fa444…`; this integration
+  is not a new firmware build or new hardware acceptance claim.
+- State: hardware gates passed; repository integration awaits fresh required
+  CI on the updated branch. PR remains open until those checks pass.
+- Safety: no flash, SD write or physical power cycle during integration.
+  Next: protected merge, then explicit JC1060 long-term/no-reader campaign;
+  physical rail-off cold boots require fresh user readiness.
 
 ## Evidence-entry template
 

@@ -8,11 +8,10 @@
 #   --clean deletes the kernel, exec, task and debug objects first. mmake
 #   does not track -D switches or P4_BOARD, so any change of the flag set
 #   needs it (see AGENTS.md, "Builds whose result gets documented").
-#   timer.device and flashdisk.device are built only when their kernel
-#   objects are missing (a freshly configured tree), flashdisk through its
-#   -quick target: the plain one also builds the development volume image,
-#   which fails in a tree whose volume content has outgrown it. Neither
-#   object depends on the flag set.
+#   timer.device and flashdisk.device are always made (incrementally),
+#   flashdisk through its -quick target: the plain one also builds the
+#   development volume image, which fails in a tree whose volume content
+#   has outgrown it. Neither object depends on the flag set.
 #
 #   The image is linked directly from the generated kernel mmakefile, which
 #   skips the oversized standalone flashdisk stage that the aggregate
@@ -58,9 +57,13 @@ if [ $clean = 1 ]; then
 fi
 
 cd "$build"
+# timer.device and flashdisk.device are part of the core as well. They used
+# to be built only when their objects were missing, on the reasoning that
+# they do not depend on the flag set; but their sources change too, and a
+# core then linked the old objects without a word (S8, 2026-10-09). Their
+# targets are incremental, so they are always asked for now.
 targets="kernel-kernel-kobj kernel-exec-kobj kernel-task-kobj kernel-debug-kobj"
-[ -f "$gen/kobjs/timer_device.o" ] || targets="$targets kernel-timer-kobj"
-[ -f "$gen/kobjs/flashdisk_device.o" ] || targets="$targets kernel-flashdisk-kobj-quick"
+targets="$targets kernel-timer-kobj kernel-flashdisk-kobj-quick"
 [ $link_only = 1 ] || for t in $targets; do
     echo "=== $t" >> "$logs/build.log"
     if ! gmake "$t" "${flags[@]}" >> "$logs/build.log" 2>&1; then

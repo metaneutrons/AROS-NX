@@ -82,10 +82,17 @@
         if (suicide == task)
         {
             DREMTASK("Removing itself");
-            task->tc_State = TS_REMOVED;
 #if defined(EXEC_REMTASK_NEEDSSWITCH)
+            /* Interrupts masked across both steps: a reschedule between
+             * them would switch away from a TS_REMOVED task that is still
+             * on the running list, and it would never come back to finish. */
+            Disable();
+            task->tc_State = TS_REMOVED;
             // make the scheduler detach us...
             krnSysCallSwitch();
+            Enable();
+#else
+            task->tc_State = TS_REMOVED;
 #endif
         }
         else
@@ -103,6 +110,15 @@
             Disable();
             krnSysCallReschedTask(task, TS_REMOVED);
             Enable();
+#if defined(EXEC_REMTASK_WAITOFFCPU)
+            /*
+             * Off every list now, but another core may still be running
+             * it: its context, its stack and the memory freed below stay
+             * in use until that core has switched away. Forbid() does not
+             * stop the other core.
+             */
+            EXEC_REMTASK_WAITOFFCPU(task);
+#endif
 #endif
         }
 

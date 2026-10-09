@@ -23,7 +23,11 @@
              drops the line loses what the other CPU wrote in between,
           5. load and unload a program (LoadSeg() ends in the cache
              maintenance for the instruction side, a hardware unit that
-             one CPU at a time may drive).
+             one CPU at a time may drive),
+          6. RemTask() a task while it runs on the other CPU: in a busy
+             loop, in a loop of Forbid()/Permit(), and while it waits. The
+             task must stop before RemTask() returns, since its stack and
+             memory are freed then.
 
           Each phase has its own pass criterion; a failure names what
           went wrong. The processes are created with NP_Affinity, so the
@@ -643,6 +647,159 @@ static int TestCacheLine(void)
     return ok;
 }
 
+/******************************************************************************/
+/*  Phase 6: RemTask() of a task running on the other CPU                     */
+/******************************************************************************/
+
+#define REM_ITERS       40          /* victims per kind and direction */
+#define REM_KINDS       3
+
+static struct
+{
+    volatile ULONG  count;          /* the victim's sign of life */
+    volatile ULONG  started;
+} g_Victim;
+
+static void VictimBusy(void)
+{
+    g_Victim.started = 1;
+    for (;;)
+        g_Victim.count++;
+}
+
+static void VictimForbid(void)
+{
+    g_Victim.started = 1;
+    for (;;)
+    {
+        ULONG i;
+
+        Forbid();
+        for (i = 0; i < 2000; i++)
+            g_Victim.count++;
+        Permit();
+    }
+}
+
+static void VictimWait(void)
+{
+    g_Victim.started = 1;
+    g_Victim.count++;
+    Wait(0);                        /* nobody signals: removed while waiting */
+}
+
+static struct Task *spawn_victim(int kind, int cpu)
+{
+    static const APTR entries[REM_KINDS] = { VictimBusy, VictimForbid, VictimWait };
+    cpumask_t *mask = KrnAllocCPUMask();
+
+    if (!mask)
+        return NULL;
+    KrnClearCPUMask(mask);
+    KrnGetCPUMask(cpu % g_NumCPUs, mask);
+    return NewCreateTask(TASKTAG_NAME,      (IPTR)"smpmigrate.victim",
+                         TASKTAG_PRI,       -1,
+                         TASKTAG_PC,        (IPTR)entries[kind],
+                         TASKTAG_STACKSIZE, 4096,
+                         TASKTAG_AFFINITY,  (IPTR)mask,
+                         TAG_DONE);
+}
+
+/* Runs on one CPU and removes victims that run on the other */
+static void RemoverWorker(void)
+{
+    struct Worker *w = myworker();
+    int kind, i;
+
+    for (kind = 0; kind < REM_KINDS; kind++)
+    {
+        for (i = 0; i < REM_ITERS; i++)
+        {
+            struct Task *victim;
+            ULONG t, before, after;
+
+            g_Victim.count = 0;
+            g_Victim.started = 0;
+            victim = spawn_victim(kind, 1 - w->w_Cpu);
+            if (!victim)
+            {
+                w->w_What = "victim not created";
+                w->w_Errors++;
+                continue;
+            }
+            for (t = 0; t < 100 && !g_Victim.started; t++)
+                Delay(1);
+            if (!g_Victim.started)
+            {
+                w->w_What = "victim never ran";
+                w->w_Errors++;
+                RemTask(victim);
+                continue;
+            }
+            /* Remove it at a different point of its loop each time */
+            if (i & 1)
+                Delay(1);
+
+            RemTask(victim);
+
+            before = g_Victim.count;
+            Delay(3);
+            after = g_Victim.count;
+            if (after != before)
+            {
+                w->w_What = "the victim ran on after RemTask() returned";
+                w->w_Errors++;
+            }
+            w->w_Count++;
+        }
+    }
+    w->w_Done = 1;
+}
+
+static int TestRemTask(void)
+{
+    int dir, ok = 1;
+
+    bug("[smpmigrate] phase 6: RemTask() of a task running on the other CPU, "
+        "%d victims of %d kinds each way...\n", REM_ITERS, REM_KINDS);
+
+    for (dir = 0; dir < 2; dir++)
+    {
+        struct Worker *w = &g_Workers[0];
+        ULONG t;
+
+        memset(g_Workers, 0, sizeof(g_Workers));
+        w->w_Cpu = dir;
+        if (!spawn_pinned("smpmigrate.remover", RemoverWorker, dir, w))
+        {
+            bug("[smpmigrate] phase 6: INVALID (process create failed)\n");
+            return -1;
+        }
+        for (t = 0; t < WAIT_TICKS && !w->w_Done; t++)
+            Delay(1);
+        if (!w->w_Done)
+        {
+            bug("[smpmigrate] phase 6: *** TIMEOUT *** (remover stuck)\n");
+            g_Fatal = 1;
+            return 0;
+        }
+        if (w->w_Errors)
+        {
+            bug("[smpmigrate] phase 6: *** FAIL *** remover on cpu %d: %lu errors "
+                "in %lu removals, %s\n", dir, (unsigned long)w->w_Errors,
+                (unsigned long)w->w_Count, w->w_What ? w->w_What : "?");
+            ok = 0;
+        }
+        else
+            bug("[smpmigrate] phase 6: remover on cpu %d: %lu removals, none ran on\n",
+                dir, (unsigned long)w->w_Count);
+        Delay(25);
+    }
+    if (ok)
+        bug("[smpmigrate] phase 6: OK\n");
+    return ok;
+}
+
 int main(void)
 {
     int pass = 0, fail = 0, inval = 0;
@@ -666,6 +823,7 @@ int main(void)
     if (!g_Fatal) { r = TestTime();  if (r > 0) pass++; else if (!r) fail++; else inval++; }
     if (!g_Fatal) { r = TestCacheLine(); if (r > 0) pass++; else if (!r) fail++; else inval++; }
     if (!g_Fatal) { r = TestLoad();  if (r > 0) pass++; else if (!r) fail++; else inval++; }
+    if (!g_Fatal) { r = TestRemTask(); if (r > 0) pass++; else if (!r) fail++; else inval++; }
 
     bug("[smpmigrate] DONE: %d PASS, %d FAIL, %d INVALID\n", pass, fail, inval);
     return fail ? RETURN_FAIL : RETURN_OK;

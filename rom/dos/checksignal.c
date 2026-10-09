@@ -45,24 +45,15 @@
 {
     AROS_LIBFUNC_INIT
 
-    LONG rcvd;
-
-    /* Get pointer to current task structure */
-    struct Task *me = FindTask(NULL);
-
-    /* Protect the signal mask against access by other tasks. */
-    Disable();
-
-    /* Get active signals specified in mask */
-    rcvd = me->tc_SigRecvd & mask;
-
-    /* And clear them. */
-    me->tc_SigRecvd &= ~mask;
-
-    /* All done. */
-    Enable();
-
-    return rcvd;
+    /*
+     * Get the active signals in mask and clear them, in one step through
+     * exec. Doing it here under Disable() protected the signal mask only
+     * against this core: on an SMP system Signal() from another core
+     * changes tc_SigRecvd under the task's spinlock, which SetSignal()
+     * takes and Disable() does not, so a signal arriving in between could
+     * be lost.
+     */
+    return (LONG)(SetSignal(0, mask) & mask);
 
     AROS_LIBFUNC_EXIT
 } /* CheckSignal */

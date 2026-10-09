@@ -988,7 +988,7 @@ ifdef P4_S5_RUNNER
 P4_DEBUG_CPPFLAGS += -DP4_S5_RUNNER
 endif
 
-# P4_WDT_TEST=<1..6> (smp variant): after the boot, provoke one failure on
+# P4_WDT_TEST=<1..11> (smp variant): after the boot, provoke one failure on
 # one hart and expect the watchdog to reset the board (kernel_wdttest.c).
 ifdef P4_WDT_TEST
 P4_DEBUG_CPPFLAGS += -DP4_WDT_TEST=$(P4_WDT_TEST)

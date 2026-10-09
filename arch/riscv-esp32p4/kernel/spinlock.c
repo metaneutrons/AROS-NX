@@ -14,6 +14,16 @@
 #include <proto/kernel.h>
 #include "tls.h"
 
+/*
+ * A lock that has not come free after about five seconds of spinning is a
+ * deadlock: its holder runs with interrupts masked or keeps a counted lock
+ * (tls.h), and nothing holds one for long. Stop feeding the watchdog then
+ * (kernel_wdt.c), so that the board resets instead of hanging with the
+ * interrupts still served. One count is one pass of the wait loop.
+ */
+#define P4_SPIN_STUCK   250000000u
+void krnWdtStuck(const char *what);
+
 #ifdef P4_SPIN_WATCHDOG
 #include <exec/tasks.h>
 #include "kernel_intern.h"
@@ -94,9 +104,12 @@ void krnP4SpinReport(const char *what, void *lockp, void *caller)
 #define P4_SPIN_CHECK(n) \
     do { if (++(n) == P4_SPIN_LIMIT) \
         krnP4SpinReport(mode == SPINLOCK_MODE_WRITE ? "write" : "read", \
-                        lock, __builtin_return_address(0)); } while (0)
+                        lock, __builtin_return_address(0)); \
+         else if ((n) == P4_SPIN_STUCK) \
+        krnWdtStuck("a spinlock"); } while (0)
 #else
-#define P4_SPIN_CHECK(n) do { } while (0)
+#define P4_SPIN_CHECK(n) \
+    do { if (++(n) == P4_SPIN_STUCK) krnWdtStuck("a spinlock"); } while (0)
 #endif
 
 /*
@@ -117,9 +130,7 @@ AROS_LH3(spinlock_t *, KrnSpinLock,
     AROS_LIBFUNC_INIT
 
     unsigned int value;
-#ifdef P4_SPIN_WATCHDOG
     unsigned int spins = 0;
-#endif
 
     /* Like the arm ports, this never calls failhook: waiters spin. */
     (void)failhook;

@@ -73,6 +73,8 @@ static uint32_t canary_seen[P4_TLS_HARTS];
 static uint32_t canary_silent[P4_TLS_HARTS];
 
 static uint32_t armed;
+/* Set by krnWdtStuck(): something will never come free, stop feeding */
+static volatile uint32_t stuck;
 static uint32_t until_check;
 static uint64_t last_tick;
 static uint64_t max_gap;        /* SYSTIMER ticks between two of hart 0's ticks */
@@ -201,6 +203,9 @@ void krnWdtTick(void)
         }
     }
 
+    if (stuck)
+        alive = 0;
+
     if (alive)
         wdt_feed();
 }
@@ -208,6 +213,24 @@ void krnWdtTick(void)
 int krnWdtArmed(void)
 {
     return armed != 0;
+}
+
+/*
+ * Something that does not come free again - a spinlock after seconds of
+ * waiting - while the hart still takes its interrupts: the tick and the
+ * canaries would keep the watchdog fed, so stop feeding here.
+ */
+void krnWdtStuck(const char *what)
+{
+    if (__atomic_exchange_n(&stuck, 1, __ATOMIC_ACQ_REL))
+        return;
+    if (armed)
+    {
+        krnP4PutStr("[wdt] ");
+        krnP4PutStr(what);
+        krnP4PutStr(" has not come free for seconds; "
+                    "the watchdog resets the board\n");
+    }
 }
 
 /* For the bring-up report */
@@ -227,6 +250,7 @@ void krnWdtReport(void)
 void krnWdtArm(void) {}
 void krnWdtBeat(unsigned int hart) { (void)hart; }
 void krnWdtCanaryBeat(unsigned int hart) { (void)hart; }
+void krnWdtStuck(const char *what) { (void)what; }
 void krnWdtTick(void) {}
 int krnWdtArmed(void) { return 0; }
 void krnWdtReport(void)

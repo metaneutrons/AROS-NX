@@ -45,9 +45,11 @@ static AROS_INTH1(VBlankInt, struct TimerBase *, TimerBase)
      * there are no other interrupts that are allowed to interrupt us
      * that can do anything with this.
      */
+    timer_TimeLock(TimerBase);
     ADDTIME(&TimerBase->tb_CurrentTime, &TimerBase->tb_Platform.tb_VBlankTime);
     ADDTIME(&TimerBase->tb_Elapsed, &TimerBase->tb_Platform.tb_VBlankTime);
     TimerBase->tb_ticks_total++;
+    timer_TimeUnlock(TimerBase);
 
     /*
      * Now go to handle requests.
@@ -75,6 +77,7 @@ static int GM_UNIQUENAME(Init)(LIBBASETYPEPTR LIBBASE)
     {
         LIBBASE->tb_ExecLockBase = ExecLockBase;
         LIBBASE->tb_ListLock = AllocLock();
+        LIBBASE->tb_TimeLock = AllocLock();
     }
 #endif
 

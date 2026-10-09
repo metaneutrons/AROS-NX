@@ -51,14 +51,17 @@
 {
     AROS_LIBFUNC_INIT
 
+    struct timeval now;
+
     Disable();
 
-    /* Query the hardware */
-    EClockUpdate(GetTimerBase(TimerBase));
-    dest->tv_secs  = GetTimerBase(TimerBase)->tb_CurrentTime.tv_secs;
-    dest->tv_micro = GetTimerBase(TimerBase)->tb_CurrentTime.tv_micro;
+    /* Query the hardware, under the time lock on SMP */
+    timer_GetTimes(GetTimerBase(TimerBase), &now, NULL);
 
     Enable();
+
+    dest->tv_secs  = now.tv_secs;
+    dest->tv_micro = now.tv_micro;
 
     AROS_LIBFUNC_EXIT
 } /* GetSysTime */

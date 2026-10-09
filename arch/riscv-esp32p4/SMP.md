@@ -597,7 +597,8 @@ state before the fixes below, it found two real faults and one of its own:
   `WaitIO()`): the type is set inside the port's spinlock together with the
   queueing, and `WaitIO()` takes the same lock to remove. One run before the
   fix also ended in a watchdog reset during this phase; that the same race
-  caused it is not shown.
+  caused it is not shown. Proposed upstream with a test of its own,
+  SMP-ReplyPort, as aros-development-team/AROS#1529 (draft).
 - `krnP4SyncCode()` lost data. It wrote the range back and then invalidated
   it in the L1 data cache and the L2. A range that starts or ends inside a
   cache line takes the rest of the line with it, and whatever the other
@@ -628,7 +629,13 @@ Also in stage 1, from the audit:
   without the table.
 - The flash scratch window: `krnP4FlashCopy()` maps and copies under its
   own lock of this kind, and `flashdisk.device` uses it instead of
-  `Forbid()`, which stops only its own hart's tasks.
+  `Forbid()`, which stops only its own hart's tasks. Correction
+  (2026-10-09, stage 2): `tools/build-core.sh` made the timer and flashdisk
+  objects only when they were missing, so this flashdisk change was in no
+  core of stage 1, the production core `36acfc27…` included; those cores
+  called `krnP4FlashMap()` under `Forbid()` as before. The kernel side of
+  stage 1 was in them. The script now always makes both objects, and the
+  first core with the change is `s9d-runner` (stage 2).
 - The SYSTIMER snapshot in the `sdcard` and `i2c` modules reads the high
   half twice and asks again if the two differ, which makes a snapshot
   taken by the other hart in between harmless (`kernel/tests/
@@ -643,12 +650,112 @@ audit findings (library counts, the time in timer.device) are not
 demonstrated; they stay on the list as code that depends on `Forbid()`
 and `Disable()`, and the test is where to look first if one of them bites.
 
-Still open in S8: `RemTask()` of a task that runs on the other hart; the dos
-lists (`AddSegment()`, `FindSegment()`, the late assign), `CheckSignal()` and
-`EndNotify()`; `sdcard.device`'s `BeginIO()` flags and change interrupt list;
-the touchscreen worker's exit; the opt-in (a command that starts a program
-on both harts); the check of the loaded state with Wanderer on the panel,
-which needs a fresh "bereit".
+#### S8 stage 2: removal across harts, the time, the opt-in (2026-10-09)
+
+- `RemTask()` of a task that runs on the other hart. SMP-Migrate phase 6
+  removes victims while they run on the other hart (a busy loop, a loop of
+  `Forbid()`/`Permit()`, a task waiting) and checks that none runs on
+  after `RemTask()` returns. On the stage 1 core the heap's free list was
+  corrupted within the first removals, with code addresses in a free block
+  header: the victim kept running on its freed stack. Fixed in three parts:
+  - exec (generic): `RemTask()` calls `EXEC_REMTASK_WAITOFFCPU(task)` after
+    the unlink and before anything is freed; this port's
+    `Exec_P4WaitOffCPU()` asks the hart that runs the task to reschedule and
+    waits until its current task changes, which follows the context save.
+    `core_Schedule()` switches away from a current task that is not
+    `TS_RUN`.
+  - `core_Switch()` read the outgoing task's state before taking its lock.
+    A task removed from the other hart in that window was taken off
+    TaskRunning a second time and put on TaskReady, and its memory was
+    freed; the next `Enqueue()` on the ready list wrote to address 0 (a
+    fatal trap in `input.device`, seven runs into a loop). The state is read
+    under the lock now.
+  - Found reading the same paths: `Wait()` set `TS_WAIT` and moved the task
+    between lists without looking at its state, so a task just removed by
+    the other hart came back onto TaskWait; it now leaves the hart. The
+    self-removal set `TS_REMOVED` before detaching, and a reschedule in
+    between left a zombie on TaskRunning; both steps run with interrupts
+    masked now. `Exec_ReschedTask()` keeps a removed task removed.
+- The time in timer.device (generic). In 3 of 15 runs of SMP-Migrate,
+  workers on hart 1 saw the time step back and jump ahead by a second: the
+  VBlank server advances `tb_CurrentTime` and `tb_Elapsed` on hart 0, the
+  readers held only `Disable()`. A lock of its own, `tb_TimeLock`, covers
+  every write and read now; it is never held together with `tb_ListLock`
+  (the list work uses a copy of the time taken first), so a reply handler
+  may still read the time. Fifteen runs after the fix: no step.
+- dos (generic): `CheckSignal()` clears bits through `SetSignal()`, which
+  takes the task's spinlock; `EndNotify()` takes the port's spinlock, as
+  `PutMsg()` and `GetMsg()` do, and replies after dropping it.
+- The opt-in: `C:Affinity` (`workbench/c/Affinity.c`). `Affinity` shows the
+  shell's CPUs, `Affinity <cpus>` changes the shell's own set, which what it
+  starts inherits, and `Affinity <cpus> <command line>` runs the command in a
+  new shell process with that set (`NP_Affinity`). `<cpus>` is ANY or CPU
+  numbers. `SMP-AffCheck EXPECT=...` checks a process's set and that its
+  children inherit and use it; the list `image/s9-tests` runs it plain and
+  through `Affinity ANY`, `Affinity 1` and `Affinity 0,1`.
+- The watchdog: a spinlock wait of about five seconds calls `krnWdtStuck()`
+  and the feed stops, in every build (`spinlock.c`); a leaked lock, whose
+  waiter holds nothing and can be preempted, would otherwise leave the tick
+  and the canaries content. `P4_WDT_TEST=11` provokes it.
+
+Read and left as they are, with the reason:
+
+- `sdcard.device`: every command goes to its single bus task (`isSlow()` is
+  always true), so the change interrupt list is used by that task only; the
+  flags `BeginIO()` sets are informational.
+- The touchscreen worker's exit under `Forbid()`: the worker and its owner
+  are created by tasks of the boot and stay on hart 0 with everything else
+  that is not opted in.
+- The dos segment lists (`AddSegment()`, `FindSegment()`, `RemSegment()`)
+  and the late assign rely on `Forbid()`. A program that runs on both harts
+  and starts commands while another shell adds or removes residents, or
+  while a late assign is first used, can race. Not converted: their callers
+  hold `Forbid()` across the use of the result, which a lock inside the
+  functions would not cover.
+- `lib_OpenCnt` and the library vectors: SMP-Migrate's open and close phase
+  has not lost a count in 86 runs since the test settles before it counts
+  (each run 4 processes x 3000 opens and closes of three libraries and
+  timer.device); it stays on the list.
+
+Fabian confirmed the production core `s9e-plain` (`a4179c1e…`) visual and
+touch check on 2026-10-09: "yes - works!", answering the handoff's question
+about 2–3 minutes of normal Wanderer and touch use without freezing or
+restarting. This does not verify a later core.
+
+Closing-run candidate: `core_ExitInterrupt()` sends `P4_IPI_SOFTINT` to
+hart 0 when hart 1 observes pending software interrupts. Software interrupts
+remain hart-0-only; the IPI wakes that hart so its interrupt exit handles
+them instead of waiting for its next tick. This follows one test-4 timeout
+in the previous interrupted closing run. The `s11-runner` disassembly
+contains the send. The closing run failed: `SoftIntWorker.2` was suspended
+on hart 0 for saved SP `0x4ff06620`, outside its PSRAM stack
+`0x49ad1720..0x49adb720`, and test 4 timed out with only 3/4 workers done.
+Fabian's requester photograph matches the UART. The context-save cause is
+not established; this candidate does not close the software-interrupt gate.
+
+Trap-exit correction (2026-10-09, source and host verification): the generic
+`SoftIntDispatch()` calls `KrnSti()` even on its empty-list return. The P4
+handler then decremented `TrapDepth` while still on its ISR stack, before
+the C epilogue and assembly restore. A nested IRQ in that interval could
+enter the scheduler at depth one and save an ISR-stack frame as task context.
+`krnTrapHandler()` now masks MIE before releasing the depth; it deliberately
+does not restore that live bit. `mret` alone restores the selected context's
+MPIE, including nested-trap returns. `tests/trap_exit_test.py` compiles the
+actual handler against IRQ-delivery mocks: 36 cases each at O0/O2 pass,
+and removing the mask fails on ISR-stack context scheduling at both levels.
+The corrected runner `3415a01a…` completes a 360-second headless smoke
+capture: four clean upstream-test sets and three complete migration/reply-port
+pairs, no fault signature or unexpected reset. Its production counterpart
+`0e1fa444…` passed its separate 360-second headless production soak with
+both harts online, watchdog armed and Wanderer started. The fresh closing
+capture passed all 240 programs: twenty successes per test-owned summary,
+one initial boot and no fault signatures. Capture stopped after completion
+at about 33 minutes; this is not a 48-minute soak claim.
+
+The exact production core's synchronized visual/touch check also passed
+on 2026-10-09: Fabian confirmed readiness and reported everything fine
+after the requested pointer, drive-opening and menu check.
+Still open in S8: the dos lists above, PR #70 merge, and the D1001.
 
 Decision (Fabian, 2026-10-09, as proposed): ordinary tasks stay pinned by
 default and migration is opt-in per process. The inverse default is unsafe

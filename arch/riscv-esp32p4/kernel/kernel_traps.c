@@ -398,5 +398,14 @@ void krnTrapHandler(struct ExceptionContext *ctx, unsigned long mcause,
             core_SysCall((int)ctx->x[CTX_REG_A7], ctx);
     }
 
+    /*
+     * SoftIntDispatch() deliberately returns with interrupts enabled.
+     * Keep this exit atomic before publishing a reduced nesting depth:
+     * we are still on the interrupt stack, including the C epilogue and
+     * assembly restore. A nested IRQ at depth zero would save that stack
+     * as a task context. traps.S leaves MIE masked until mret restores
+     * the interrupted context's MPIE; do not restore the live MIE here.
+     */
+    asm volatile("csrc mstatus, %0" :: "r"(MSTATUS_MIE) : "memory");
     TRAP_DEPTH--;
 }

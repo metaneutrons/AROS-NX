@@ -71,6 +71,7 @@ struct TimerBase
 #if defined(__AROSEXEC_SMP__)
     void                        *tb_ExecLockBase;
     void                        *tb_ListLock;
+    void                        *tb_TimeLock;           /* tb_CurrentTime, tb_Elapsed, tb_ticks_total */
 #endif
 };
 
@@ -84,6 +85,62 @@ void TimerProcessVBlank(struct TimerBase *TimerBase, struct ExecBase *SysBase, B
 #define handleVBlank(x,y) TimerProcessVBlank(x,y,FALSE)
 void EClockUpdate(struct TimerBase *TimerBase);
 void EClockSet(struct TimerBase *TimerBase);
+
+/*
+ * The current and elapsed time are two words each, and the VBlank server
+ * advances them. Disable() keeps a reader on the same core from seeing half
+ * an update; on an SMP system the server runs on another core, and a
+ * reader saw the seconds from before a carry with the microseconds from
+ * after it, a second backwards. So on SMP the time is written and read
+ * under tb_TimeLock as well. The caller has interrupts masked: the server
+ * runs with them masked, everybody else under Disable().
+ *
+ * tb_TimeLock is never held together with tb_ListLock: code that needs
+ * both takes a copy of the time first (timer_GetTimes()), and replies go
+ * out under tb_ListLock only, so that a reply handler may read the time.
+ */
+#if defined(__AROSEXEC_SMP__)
+#include <proto/execlock.h>
+#endif
+
+static inline void timer_TimeLock(struct TimerBase *TimerBase)
+{
+#if defined(__AROSEXEC_SMP__)
+    struct ExecLockBase *ExecLockBase = TimerBase->tb_ExecLockBase;
+
+    if (ExecLockBase && TimerBase->tb_TimeLock)
+        ObtainLock(TimerBase->tb_TimeLock, SPINLOCK_MODE_WRITE, 0);
+#else
+    (void)TimerBase;
+#endif
+}
+
+static inline void timer_TimeUnlock(struct TimerBase *TimerBase)
+{
+#if defined(__AROSEXEC_SMP__)
+    struct ExecLockBase *ExecLockBase = TimerBase->tb_ExecLockBase;
+
+    if (ExecLockBase && TimerBase->tb_TimeLock)
+        ReleaseLock(TimerBase->tb_TimeLock, 0);
+#else
+    (void)TimerBase;
+#endif
+}
+
+/* The time as one consistent pair, the hardware queried first. Interrupts
+   masked by the caller; either pointer may be NULL. */
+static inline void timer_GetTimes(struct TimerBase *TimerBase,
+                                  struct timeval *current,
+                                  struct timeval *elapsed)
+{
+    timer_TimeLock(TimerBase);
+    EClockUpdate(TimerBase);
+    if (current)
+        *current = TimerBase->tb_CurrentTime;
+    if (elapsed)
+        *elapsed = TimerBase->tb_Elapsed;
+    timer_TimeUnlock(TimerBase);
+}
 
 /* Call exec VBlank vector, if present */
 static inline void vblank_Cause(struct ExecBase *SysBase)

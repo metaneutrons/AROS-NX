@@ -106,6 +106,7 @@ USER_CFLAGS      := -noposixc
 #MM        workbench-c-requeststring \
 #MM        workbench-c-eval \
 #MM        workbench-c-say \
+#MM        workbench-c-affinity \
 #MM        workbench-libs-uuid
 
 #MM workbench-c-quick : \
@@ -113,7 +114,8 @@ USER_CFLAGS      := -noposixc
 #MM        workbench-c-sh-quick \
 #MM        workbench-c-requeststring-quick \
 #MM        workbench-c-eval-quick \
-#MM        workbench-c-say-quick
+#MM        workbench-c-say-quick \
+#MM        workbench-c-affinity-quick
 
 $(OBJDIR)/evalParser.tab.c : evalParser.y
 	@$(ECHO) Generating $(notdir $@) from $<...
@@ -146,6 +148,10 @@ USER_LDFLAGS     := -static
 #MM workbench-c-say : includes workbench-libs-translator-includes linklibs-speechcore
 %build_prog mmake=workbench-c-say progname=Say \
     files="Say SayArgs" targetdir=$(AROS_C) uselibs="speechcore"
+
+#MM workbench-c-affinity : includes kernel-task-includes linklibs
+%build_prog mmake=workbench-c-affinity progname=Affinity \
+    files=Affinity targetdir=$(AROS_C)
 
 #MM workbench-c-logger : kernel-log-includes
 

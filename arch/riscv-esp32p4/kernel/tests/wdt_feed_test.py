@@ -82,6 +82,7 @@ static void reset_state(void)
     memset(canary_seen, 0, sizeof(canary_seen));
     memset(canary_silent, 0, sizeof(canary_silent));
     armed = 0;
+    stuck = 0;
     feeds = 0;
     max_gap = 0;
     warnings = 0;
@@ -187,6 +188,17 @@ int main(void)
     krnWdtCanaryBeat(1);
     ticks(30 * P4_WDT_CHECK_TICKS + 20, 0);
     assert(feeds == (30 * P4_WDT_CHECK_TICKS + 20) / P4_WDT_CHECK_TICKS);
+
+    /* Something stuck stops the feeding for good, with one warning */
+    reset_state();
+    krnWdtArm();
+    ticks(20, 0);
+    before = feeds;
+    krnWdtStuck("a test lock");
+    krnWdtStuck("a test lock");
+    ticks(100, 0);
+    assert(feeds == before);
+    assert(warnings == 1);
 
     /* The longest gap between ticks is kept */
     reset_state();

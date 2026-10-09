@@ -210,7 +210,9 @@ write-flash $(FLASHDISK_OFFSET) $(FLASHDISK)"
 #   remove the firmware.
 #   P4_S5_TESTS=1 (smp tree, after `make test-smp`) adds upstream's SMP
 #   tests in S5/ with a list, s5-tests unless P4_S5_LIST names another
-#   (s5-stress), which the P4_S5_RUNNER core runs after the boot.
+#   (s5-stress), which the P4_S5_RUNNER core runs after the boot. The
+#   Affinity command goes along when it is built (workbench-c-affinity),
+#   for the lists that start a test through it.
 #
 DEVSTAGE  := $(GENDIR)/$(CURDIR)/devstage
 P4_S5_LIST ?= $(SRCDIR)/$(CURDIR)/s5-tests
@@ -237,6 +239,9 @@ kernel-devvolume-esp32p4-riscv :
 	    $(MKDIR) -p $(DEVSTAGE)/S5 ; \
 	    $(CP) $(AROS_TESTS)/smp/SMP-* $(DEVSTAGE)/S5/ || exit 1 ; \
 	    $(CP) $(P4_S5_LIST) $(DEVSTAGE)/S5/tests || exit 1 ; \
+	    if $(TEST) -f $(AROS_C)/Affinity ; then \
+	        $(CP) $(AROS_C)/Affinity $(DEVSTAGE)/S5/ || exit 1 ; \
+	    fi ; \
 	fi
 	@$(ECHO) "Creating   $(DEVVOLUME)"
 	@$(PYTHON) $(MKFAT32) --content $(DEVSTAGE) --out $(DEVVOLUME) \

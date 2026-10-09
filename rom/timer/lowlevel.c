@@ -130,6 +130,7 @@ BOOL common_BeginIO(struct timerequest *timereq, struct TimerBase *TimerBase)
     }
     case TR_SETSYSTIME:
         Disable();
+        timer_TimeLock(TimerBase);
 
         /* Set current time value */
         TimerBase->tb_CurrentTime.tv_secs  = timereq->tr_time.tv_secs;
@@ -137,6 +138,7 @@ BOOL common_BeginIO(struct timerequest *timereq, struct TimerBase *TimerBase)
         /* Update hardware */
         EClockSet(TimerBase);
 
+        timer_TimeUnlock(TimerBase);
         Enable();
         replyit = TRUE;
         break;
@@ -145,12 +147,15 @@ BOOL common_BeginIO(struct timerequest *timereq, struct TimerBase *TimerBase)
         switch(unitNum)
         {
         case UNIT_WAITUNTIL:
+        {
+            struct timeval now;
+
             Disable();
 
-            /* Query the hardware first */
-            EClockUpdate(TimerBase);
+            /* Query the hardware first, and keep a copy of the time */
+            timer_GetTimes(TimerBase, &now, NULL);
 
-            if (CMPTIME(&TimerBase->tb_CurrentTime, &timereq->tr_time) <= 0)
+            if (CMPTIME(&now, &timereq->tr_time) <= 0)
             {
                 timereq->tr_time.tv_secs = timereq->tr_time.tv_micro = 0;
                 timereq->tr_node.io_Error = 0;
@@ -183,6 +188,7 @@ BOOL common_BeginIO(struct timerequest *timereq, struct TimerBase *TimerBase)
             
             Enable();
             break;
+        }
 
         case UNIT_VBLANK:
         case UNIT_MICROHZ:
@@ -191,17 +197,19 @@ BOOL common_BeginIO(struct timerequest *timereq, struct TimerBase *TimerBase)
                 struct ExecLockBase *ExecLockBase = TimerBase->tb_ExecLockBase;
 #endif
 
+                struct timeval elapsed;
+
                 Disable();
 
-                /* Query the hardware first */
-                EClockUpdate(TimerBase);
+                /* Query the hardware first, and keep a copy of the time */
+                timer_GetTimes(TimerBase, NULL, &elapsed);
 
 
                 /*
                  * Adjust the time request to be relative to the
                  * elapsed time counter that we keep.
                 */
-                ADDTIME(&timereq->tr_time, &TimerBase->tb_Elapsed);
+                ADDTIME(&timereq->tr_time, &elapsed);
 
 #if defined(__AROSEXEC_SMP__)
                 if (ExecLockBase) ObtainLock(TimerBase->tb_ListLock, SPINLOCK_MODE_WRITE, 0);
@@ -268,6 +276,12 @@ void TimerProcessMicroHZ(struct TimerBase *TimerBase, struct ExecBase *SysBase, 
 #endif
     struct MinList *unit = &TimerBase->tb_Lists[TL_MICROHZ];
     struct timerequest *tr, *next;
+    struct timeval elapsed;
+
+    /* A copy, taken before tb_ListLock: the two are never held together */
+    timer_TimeLock(TimerBase);
+    elapsed = TimerBase->tb_Elapsed;
+    timer_TimeUnlock(TimerBase);
 
     /*
      * Go through the list and return requests that have completed.
@@ -278,7 +292,7 @@ void TimerProcessMicroHZ(struct TimerBase *TimerBase, struct ExecBase *SysBase, 
 #endif
     ForeachNodeSafe(unit, tr, next)
     {
-        if (CMPTIME(&TimerBase->tb_Elapsed, &tr->tr_time) <= 0)
+        if (CMPTIME(&elapsed, &tr->tr_time) <= 0)
         {
             /* This request has finished */
             REMOVE(tr);
@@ -312,7 +326,7 @@ void TimerProcessMicroHZ(struct TimerBase *TimerBase, struct ExecBase *SysBase, 
                  */
                 tr->tr_time.tv_secs  = 0;
                 tr->tr_time.tv_micro = 1000000 / SysBase->VBlankFrequency;
-                ADDTIME(&tr->tr_time, &TimerBase->tb_Elapsed);
+                ADDTIME(&tr->tr_time, &elapsed);
                 addToWaitList(unit, tr, SysBase);
 
                 continue;
@@ -353,6 +367,13 @@ void TimerProcessVBlank(struct TimerBase *TimerBase, struct ExecBase *SysBase, B
      * We could use subroutines and save some space, but we prefer speed here.
      */
     struct timerequest *tr, *next;
+    struct timeval current, elapsed;
+
+    /* Copies, taken before tb_ListLock: the two are never held together */
+    timer_TimeLock(TimerBase);
+    current = TimerBase->tb_CurrentTime;
+    elapsed = TimerBase->tb_Elapsed;
+    timer_TimeUnlock(TimerBase);
 
     /*
      * Go through the "wait for x seconds" list and return requests
@@ -364,7 +385,7 @@ void TimerProcessVBlank(struct TimerBase *TimerBase, struct ExecBase *SysBase, B
 #endif
     ForeachNodeSafe(&TimerBase->tb_Lists[TL_VBLANK], tr, next)
     {
-        if (CMPTIME(&TimerBase->tb_Elapsed, &tr->tr_time) <= 0)
+        if (CMPTIME(&elapsed, &tr->tr_time) <= 0)
         {
             /* This request has finished */
             REMOVE(tr);
@@ -384,7 +405,7 @@ void TimerProcessVBlank(struct TimerBase *TimerBase, struct ExecBase *SysBase, B
      */
     ForeachNodeSafe(&TimerBase->tb_Lists[TL_WAITVBL], tr, next)
     {
-        if (CMPTIME(&TimerBase->tb_CurrentTime, &tr->tr_time) <= 0)
+        if (CMPTIME(&current, &tr->tr_time) <= 0)
         {
             /* This request has finished */
             REMOVE(tr);

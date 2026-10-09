@@ -19,6 +19,11 @@
 
 #include <string.h>
 
+#if defined(__AROSEXEC_SMP__)
+#include <aros/types/spinlock_s.h>
+#include <proto/kernel.h>
+#endif
+
         AROS_LH1(void, EndNotify,
 
 /*  SYNOPSIS */
@@ -73,11 +78,26 @@
     {
         struct MsgPort *port = notify->nr_stuff.nr_Msg.nr_Port;
         struct NotifyMessage *nm, *tmp;
+        struct MinList ours;
+#if defined(__AROSEXEC_SMP__)
+        struct KernelBase *KernelBase = OpenResource("kernel.resource");
+#endif
 
         notify->nr_Flags &= ~NRF_MAGIC;
+        NewMinList(&ours);
 
-        /* protect access to the message list */
+        /*
+         * Protect access to the message list. Disable() covers only this
+         * core; on an SMP system the handler may be queueing the next
+         * message from another, under the port's spinlock, which is what
+         * PutMsg() and GetMsg() take as well. The messages are only
+         * collected here and replied after the lock is dropped.
+         */
         Disable();
+#if defined(__AROSEXEC_SMP__)
+        if (KernelBase)
+            KrnSpinLock(&port->mp_SpinLock, NULL, SPINLOCK_MODE_WRITE);
+#endif
 
         /* loop over the messages */
         ForeachNodeSafe(&port->mp_MsgList, nm, tmp) {
@@ -86,9 +106,9 @@
                 nm->nm_Code == NOTIFY_CODE &&
                 nm->nm_NReq == notify) {
 
-                /* remove and reply */
+                /* take it off the port, to be replied below */
                 Remove((struct Node *) nm);
-                ReplyMsg((struct Message *) nm);
+                AddTail((struct List *)&ours, (struct Node *) nm);
 
                 /* decrement the count. bail early if we've done them all */
                 notify->nr_MsgCount--;
@@ -98,7 +118,14 @@
         }
 
         /* unlock the list */
+#if defined(__AROSEXEC_SMP__)
+        if (KernelBase)
+            KrnSpinUnLock(&port->mp_SpinLock);
+#endif
         Enable();
+
+        while ((nm = (struct NotifyMessage *)RemHead((struct List *)&ours)))
+            ReplyMsg((struct Message *) nm);
     }
 
     AROS_LIBFUNC_EXIT
