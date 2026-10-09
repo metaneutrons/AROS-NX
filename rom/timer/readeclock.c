@@ -54,11 +54,13 @@
     AROS_LIBFUNC_INIT
 
     Disable();
+    timer_TimeLock(TimerBase);
 
     EClockUpdate(TimerBase);
     dest->ev_hi = (ULONG)(TimerBase->tb_ticks_total >> 32);
     dest->ev_lo = (ULONG)(TimerBase->tb_ticks_total & 0xffffffff);
 
+    timer_TimeUnlock(TimerBase);
     Enable();
 
     /* We could use SysBase->ex_EClockFrequency here, but we avoid it for
