@@ -102,6 +102,15 @@ not prove every frame during the load; the final sight check is separate.
 Cleanup and qualification are complete; D1001 regression is now the next
 authorized phase, not yet tested. Larger cold-cycle and old-panel gates remain open.
 
+D1001 production regression artifacts now pass a fresh separate SMP build
+in `AROS-ESP32-d1001-production-build`: core195216B `23bfb8c4…`,
+matched40-member BSP3642928B `a6d478c2…`, FAT32 SD image64MiB `fe15d66a…`
+(178/178 manifest entries), firmware-bearing FAT16 development volume4MiB
+`27b48944…` (5/5 entries). SRAM, package limit/ELF and independent host
+filesystem/manifest checks pass. Evidence is in
+`AROS-ESP32-build/evidence/d1001-production-2026-10-09/`.
+Build-only: no board or SD changes, and no new D1001 hardware acceptance yet.
+
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
 means the behaviour was verified on a board and how it was verified is
