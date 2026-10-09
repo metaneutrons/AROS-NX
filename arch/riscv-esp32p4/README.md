@@ -11,7 +11,12 @@ transaction-scoped SD hooks with extracted-source sanitizer tests and successful
 RV32 resource/device builds in an isolated JC1060-v2 build directory. The shared
 clock/reset control is now implemented in the resource with peer-preserving
 two-slot changes, host-tested and RV32 build verified. Command/DMA engine
-extraction and hardware regression remain open;
+extraction is in progress: ABI3 now moves the single descriptor chain, bounce
+buffer, cache handoffs and FIFO/IDMAC reset into the resource. The adapted
+resource and read-only SD client build; extracted-source DMA tests pass at
+O0/O2 with sanitizers (15 cases, 2,253,671 checks each), with clock and
+ownership regressions passing too. These are host models, not hardware evidence.
+Command sequencing and hardware regression remain open;
 the installed firmware is unchanged. The older
 `cheops/JC1060P470C_I_W` package is Fabian's selected WLAN reference:
 the profile declares P4-side slot1 CLK18/CMD19/D0-3=14-17 without enabling

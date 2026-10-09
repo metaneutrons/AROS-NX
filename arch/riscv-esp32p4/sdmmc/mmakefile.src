@@ -4,6 +4,6 @@ include $(SRCDIR)/config/aros.cfg
 # initialization here: the first slot owner configures the controller.
 %build_module mmake=kernel-esp32p4sdmmc \
     modname=esp32p4sdmmc modtype=resource version=$(AROS_TARGET_PLATFORM) \
-    files="host clock clock_plan"
+    files="host clock clock_plan dma"
 
 %common

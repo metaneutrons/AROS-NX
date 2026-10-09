@@ -53,50 +53,10 @@ static ULONG p4sd_cmd12_confirmations;
 static ULONG p4sd_fifo_trace_budget = 24;
 #endif
 
-/* ESP32-P4 uses a 64-byte IDMAC descriptor.  The SDMMC peripheral can DMA
-   directly to PSRAM, but descriptors must be cache-line aligned and fully
-   visible before DBADDR is armed.  The generic driver serializes requests,
-   so one bounded static chain is sufficient and avoids adding an allocator or
-   a write-capable DMA path. */
-struct p4sd_dma_desc
-{
-    ULONG control;
-    ULONG size;
-    APTR buffer;
-    struct p4sd_dma_desc *next;
-    ULONG reserved[12];
-};
-
-#define P4SD_DESC_LAST                  (1UL << 2)
-#define P4SD_DESC_FIRST                 (1UL << 3)
-#define P4SD_DESC_CHAIN                 (1UL << 4)
-#define P4SD_DESC_OWN                   (1UL << 31)
-
-static struct p4sd_dma_desc p4sd_dma_desc[P4SD_DMA_DESC_COUNT]
-    __attribute__((aligned(64)));
-
-/* ESP-IDF moves every SDMMC data byte with the IDMAC and never reads the
-   data FIFO from software.  The measurement of 2026-08-22 showed why: a CPU
-   read of P4SD_BUFFIFO does not pop, so 128 reads returned the same word 128
-   times while STATUS.FIFO_COUNT never dropped and TBBCNT never moved.  Every
-   data read therefore goes through the IDMAC now, including the eight-byte
-   CMD51 that card identification depends on.  Such a short destination is
-   neither cache-line aligned nor a whole number of lines, so it lands here
-   first and is copied afterwards, which is also how IDF handles a buffer its
-   DMA cannot use directly.
-
-   Sized for the largest transfer the backend accepts rather than for one
-   sector, because the caller that actually needs it is a filesystem.  FAT's
-   cache reads 32 sectors at a time into a buffer it allocated with AllocMem,
-   which is 32-byte aligned on this target and so unusable as a DMA
-   destination; with a 512-byte bounce that request was refused, and FAT
-   retried it 134,101 times in one boot.  Splitting the request would work
-   too, but it would mean issuing several commands where the card expects one,
-   and the memory this costs is not scarce: the buffer lives in the module's
-   .bss, which the loader places in the 32 MB external window, so it is 64 KiB
-   of PSRAM and nothing of the 230 KB internal heap.  It is also already the
-   proven DMA destination - every unaligned read since A1 has landed here. */
-static UBYTE p4sd_bounce[P4SD_MAX_DATA_LEN] __attribute__((aligned(64)));
+#include "../sdmmc/dma.h"
+#define p4sd_dma_desc ((struct P4HostDMADesc *)P4SD_PRIV(bus)->host->dma_desc)
+#define p4sd_bounce (P4SD_PRIV(bus)->host->bounce)
+#define P4SD_DESC_OWN P4HOST_DESC_OWN
 
 static inline ULONG p4sd_reg(ULONG offset);
 
@@ -129,7 +89,8 @@ struct p4sd_trace
 
 static struct p4sd_trace p4sd_trace;
 
-static void p4sd_trace_take(struct p4sd_trace *trace, const char *event)
+static void p4sd_trace_take(struct p4sd_trace *trace, const char *event,
+                            struct sdcard_Bus *bus)
 {
     struct p4sd_trace_sample *sample;
 
@@ -178,82 +139,7 @@ static void p4sd_trace_dump(struct p4sd_trace *trace,
 }
 #endif
 
-/* CacheClearE() on this port is deliberately only an ordering fence.  The
-   P4 SDMMC IDMAC is non-coherent with PSRAM, so use the documented ROM range
-   operations for ownership handoff.  Both ROM addresses are invariant for
-   the base and ECO5 P4 ROMs. */
-#define P4_ROM_CACHE_INVALIDATE_ADDR    0x4FC003E4UL
-#define P4_ROM_CACHE_WRITEBACK_ADDR     0x4FC003F4UL
-#define P4_CACHE_MAP_L1_DCACHE          (1UL << 4)
-#define P4_CACHE_MAP_L2                 (1UL << 5)
-
-typedef int (*p4sd_cache_range_t)(ULONG map, ULONG address, ULONG length);
-
-/*
- * The ROM's cache maintenance is one hardware unit that the kernel and
- * every other task that loads code or draws use as well, possibly on the
- * other hart. The kernel owns it and serializes its users, and hands the
- * two operations this driver needs through KATTR_CacheOps. The direct ROM
- * calls below remain only for a kernel that does not offer the table.
- */
-static const struct KrnCacheOps *p4sd_cache_ops;
-static BOOL p4sd_cache_ops_known;
-
-/* sdcard_base.h makes KernelBase a field of the device base, which this
-   function does not have; it opens the resource itself, once. */
-#undef KernelBase
-static const struct KrnCacheOps *p4sd_cache_table(void)
-{
-    if (!p4sd_cache_ops_known)
-    {
-        struct Library *KernelBase = OpenResource("kernel.resource");
-
-        if (KernelBase)
-        {
-            IPTR ops = (IPTR)KrnGetSystemAttr(KATTR_CacheOps);
-
-            if (ops && ops != (IPTR)-1)
-                p4sd_cache_ops = (const struct KrnCacheOps *)ops;
-        }
-        p4sd_cache_ops_known = TRUE;
-    }
-    return p4sd_cache_ops;
-}
-#define KernelBase SDCardBase->sdcard_KernelBase
-
-static void p4sd_cache_writeback(APTR address, ULONG length)
-{
-    const struct KrnCacheOps *ops = p4sd_cache_table();
-
-    if (length && ops)
-        ops->writeback_range(address, length);
-    else if (length)
-    {
-        p4sd_cache_range_t writeback =
-            (p4sd_cache_range_t)P4_ROM_CACHE_WRITEBACK_ADDR;
-
-        writeback(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
-                  (ULONG)(IPTR)address, length);
-    }
-    __asm__ volatile("fence rw, rw" ::: "memory");
-}
-
-static void p4sd_cache_invalidate(APTR address, ULONG length)
-{
-    const struct KrnCacheOps *ops = p4sd_cache_table();
-
-    if (length && ops)
-        ops->invalidate_range(address, length);
-    else if (length)
-    {
-        p4sd_cache_range_t invalidate =
-            (p4sd_cache_range_t)P4_ROM_CACHE_INVALIDATE_ADDR;
-
-        invalidate(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
-                   (ULONG)(IPTR)address, length);
-    }
-    __asm__ volatile("fence rw, rw" ::: "memory");
-}
+/* Cache handoffs belong to the permanent shared host resource. */
 
 static inline ULONG p4sd_read(IPTR address)
 {
@@ -571,180 +457,47 @@ static void p4sd_drain_read_fifo(UBYTE *data, ULONG length, ULONG *done)
 
 static BOOL p4sd_reset_fifo(struct sdcard_Bus *bus)
 {
-#if P4_SDCARD_TRACE
-    ULONG status;
-#endif
-
-    p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) | P4SD_CTRL_FIFO_RESET);
-    if (!p4sd_wait_clear(P4SD_CTRL, P4SD_CTRL_FIFO_RESET,
-                         P4SD_CMD_TIMEOUT_US))
-    {
-        bug("[P4SD%02u] FIFO reset timed out\n", bus->sdcb_BusNum);
-        return FALSE;
-    }
-
-    /* The cleared CTRL bit is not the end of the reset.  See
-       P4SD_FIFO_RESET_SETTLE_US for why the pointers need longer, and what
-       reading them too early produced. */
-    sdcard_Udelay(P4SD_FIFO_RESET_SETTLE_US);
-
-#if P4_SDCARD_TRACE
-    /* Observe rather than enforce.  The caller in p4sd_dma_complete_read()
-       resets while an open-ended CMD18 may still be streaming, so an
-       immediately refilling FIFO is legitimate there and must not fail. */
-    status = p4sd_reg(P4SD_STATUS);
-    if (p4sd_fifo_trace_budget != 0)
-    {
-        --p4sd_fifo_trace_budget;
-        bug("[P4SD%02u] fifo reset settled: status=%08x count=%u empty=%u "
-            "full=%u\n", bus->sdcb_BusNum, status,
-            (unsigned)((status >> P4SD_STATUS_FIFO_COUNT_S) &
-                       P4SD_STATUS_FIFO_COUNT_M),
-            (status & P4SD_STATUS_FIFO_EMPTY) ? 1u : 0u,
-            (status & P4SD_STATUS_FIFO_FULL) ? 1u : 0u);
-    }
-#endif
-    return TRUE;
+    struct P4SDMMCHost *host = P4SD_PRIV(bus)->host;
+    return host->fifo_reset(host);
 }
 
 static BOOL p4sd_reset_dma(struct sdcard_Bus *bus)
 {
-    p4sd_set(P4SD_BMOD, p4sd_reg(P4SD_BMOD) | P4SD_BMOD_SWR);
-    if (!p4sd_wait_clear(P4SD_BMOD, P4SD_BMOD_SWR,
-                         P4SD_CMD_TIMEOUT_US))
-    {
-        bug("[P4SD%02u] IDMAC reset timed out\n", bus->sdcb_BusNum);
-        return FALSE;
-    }
-
-    p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) | P4SD_CTRL_DMA_RESET);
-    if (!p4sd_wait_clear(P4SD_CTRL, P4SD_CTRL_DMA_RESET,
-                         P4SD_CMD_TIMEOUT_US))
-    {
-        bug("[P4SD%02u] DMA interface reset timed out\n", bus->sdcb_BusNum);
-        return FALSE;
-    }
-
-    p4sd_set(P4SD_IDSTS, 0xFFFFFFFFUL);
-    p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) &
-             ~(P4SD_CTRL_DMA_ENABLE | P4SD_CTRL_USE_INTERNAL_DMA));
-    return TRUE;
+    struct P4SDMMCHost *host = P4SD_PRIV(bus)->host;
+    return host->dma_reset(host);
 }
 
 static BOOL p4sd_dma_prepare_read(UBYTE *data, ULONG length,
                                   struct sdcard_Bus *bus)
 {
-    ULONG index, offset = 0;
-    ULONG descriptors = (length + P4SD_DMA_DESC_BYTES - 1) /
-                        P4SD_DMA_DESC_BYTES;
-
-    if (descriptors == 0 || descriptors > P4SD_DMA_DESC_COUNT)
-        return FALSE;
-
-    memset(p4sd_dma_desc, 0, sizeof(p4sd_dma_desc));
-    for (index = 0; index < descriptors; ++index)
-    {
-        ULONG bytes = length - offset;
-        struct p4sd_dma_desc *desc = &p4sd_dma_desc[index];
-
-        if (bytes > P4SD_DMA_DESC_BYTES)
-            bytes = P4SD_DMA_DESC_BYTES;
-        desc->control = P4SD_DESC_CHAIN | P4SD_DESC_OWN;
-        if (index == 0)
-            desc->control |= P4SD_DESC_FIRST;
-        if (index + 1 == descriptors)
-            desc->control |= P4SD_DESC_LAST;
-        desc->size = bytes;
-        desc->buffer = data + offset;
-        desc->next = (index + 1 == descriptors) ? NULL :
-                     &p4sd_dma_desc[index + 1];
-        offset += bytes;
-    }
-
-    /* P4 SDMMC explicitly supports PSRAM DMA.  Make descriptor ownership and
-       the complete destination range visible before DBADDR is armed.  The
-       ROM range operations work on whole cache lines, so round up: the
-       caller guarantees either a line-aligned destination of a whole number
-       of lines, or the bounce buffer, which has room to spare. */
-    p4sd_cache_writeback(p4sd_dma_desc, sizeof(p4sd_dma_desc));
-    p4sd_cache_writeback(data, (length + 63UL) & ~63UL);
-
-    if (!p4sd_reset_dma(bus))
-        return FALSE;
-    p4sd_set(P4SD_DBADDR, (ULONG)(IPTR)p4sd_dma_desc);
-    p4sd_set(P4SD_IDINTEN, 0);
-    /* The P4 needs both halves of the DesignWare DMA gate: the controller
-       DMA interface/internal-DMAC bits and BMOD's enable/fixed-burst bits. */
-    p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) | P4SD_CTRL_DMA_ENABLE |
-             P4SD_CTRL_USE_INTERNAL_DMA);
-    p4sd_set(P4SD_BMOD, P4SD_BMOD_DE | P4SD_BMOD_FB | P4SD_BMOD_PBL_8);
-    p4sd_set(P4SD_PLDMND, 1);
-    return TRUE;
+    struct P4SDMMCHost *host = P4SD_PRIV(bus)->host;
+    return host->dma_prepare(host, data, length, FALSE);
 }
 
 static BOOL p4sd_dma_complete_read(UBYTE *data, ULONG length,
                                    struct sdcard_Bus *bus)
 {
-    ULONG index;
-
-    /* IDMAC owns and clears descriptor words.  Do not inspect a stale cached
-       OWN bit after DTO. */
-    p4sd_cache_invalidate(p4sd_dma_desc, sizeof(p4sd_dma_desc));
-    if (p4sd_reg(P4SD_IDSTS) & P4SD_IDSTS_ERRORS)
-        return FALSE;
-    for (index = 0; index < P4SD_DMA_DESC_COUNT; ++index)
-    {
-        if (p4sd_dma_desc[index].control & P4SD_DESC_OWN)
-        {
-            bug("[P4SD%02u] IDMAC retained descriptor %u\n",
-                bus->sdcb_BusNum, index);
-            return FALSE;
-        }
-        if (p4sd_dma_desc[index].control & P4SD_DESC_LAST)
-            break;
-    }
-    if (index == P4SD_DMA_DESC_COUNT)
-        return FALSE;
-
-    p4sd_set(P4SD_BMOD, 0);
-    /* Leave the controller out of internal-DMA mode between transfers.
-       p4sd_dma_prepare_read() selects it and nothing used to clear it, so
-       after the first CMD18 every later command ran with CTRL.dma_enable and
-       CTRL.use_internal_dma still set. */
-    p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) &
-             ~(P4SD_CTRL_DMA_ENABLE | P4SD_CTRL_USE_INTERNAL_DMA));
-    /* The generic owner next sends physical CMD12.  Discard a prefetched
-       FIFO tail before that stop command, after all requested bytes reached
-       completed descriptors. */
-    if (!p4sd_reset_fifo(bus))
-        return FALSE;
-    p4sd_cache_invalidate(data, (length + 63UL) & ~63UL);
-    return TRUE;
+    struct P4SDMMCHost *host = P4SD_PRIV(bus)->host;
+    return host->dma_complete(host, data, length);
 }
 
-static BOOL p4sd_dma_read_ready(ULONG length)
+static BOOL p4sd_dma_read_ready(ULONG length, struct sdcard_Bus *bus)
 {
-    ULONG descriptors = (length + P4SD_DMA_DESC_BYTES - 1) /
-                        P4SD_DMA_DESC_BYTES;
-
-    if (descriptors == 0 || descriptors > P4SD_DMA_DESC_COUNT)
-        return FALSE;
-    p4sd_cache_invalidate(p4sd_dma_desc,
-                          descriptors * sizeof(p4sd_dma_desc[0]));
-    return !(p4sd_dma_desc[descriptors - 1].control & P4SD_DESC_OWN);
+    struct P4SDMMCHost *host = P4SD_PRIV(bus)->host;
+    return host->dma_ready(host, length);
 }
 
 static void p4sd_dma_dump(ULONG length, struct sdcard_Bus *bus)
 {
+    struct P4SDMMCHost *host = P4SD_PRIV(bus)->host;
     ULONG index;
-
     (void)length;
-    p4sd_cache_invalidate(p4sd_dma_desc, sizeof(p4sd_dma_desc));
-    for (index = 0; index < P4SD_DMA_DESC_COUNT; ++index)
+    host->dma_inspect(host);
+    for (index = 0; index < P4HOST_DMA_COUNT; ++index)
         bug("[P4SD%02u] IDMAC desc %u ctrl=%08x size=%08x buf=%p next=%p\n",
             bus->sdcb_BusNum, index, p4sd_dma_desc[index].control,
-            p4sd_dma_desc[index].size, p4sd_dma_desc[index].buffer,
-            p4sd_dma_desc[index].next);
+            p4sd_dma_desc[index].size, (APTR)(IPTR)p4sd_dma_desc[index].buffer,
+            (APTR)(IPTR)p4sd_dma_desc[index].next);
 }
 
 static ULONG p4sd_card_rca(struct sdcard_Bus *bus)
@@ -838,7 +591,7 @@ failed:
     bug("[P4SD%02u] multi-block recovery failed; disabling host\n",
         bus->sdcb_BusNum);
 #if P4_SDCARD_TRACE
-    p4sd_trace_take(&p4sd_trace, "recover");
+    p4sd_trace_take(&p4sd_trace, "recover", bus);
     p4sd_trace_dump(&p4sd_trace, bus);
 #endif
     priv->host_ready = FALSE;
@@ -984,7 +737,7 @@ static ULONG p4sd_send_cmd_locked(struct TagItem *tags, struct sdcard_Bus *bus)
            buffer if it fits there. */
         if ((((IPTR)data & 63) != 0 || (data_len & 63) != 0))
         {
-            if (data_len > sizeof(p4sd_bounce))
+            if (data_len > P4HOST_DMA_MAX)
             {
                 /* Unreachable while the bounce is P4SD_MAX_DATA_LEN and the
                    length check above enforces the same bound; kept because
@@ -1010,6 +763,8 @@ static ULONG p4sd_send_cmd_locked(struct TagItem *tags, struct sdcard_Bus *bus)
 #endif
         if (!p4sd_dma_prepare_read(receive, data_len, bus))
         {
+            if (priv->host->dma_faulted)
+                priv->host_ready = FALSE;
             bug("[P4SD%02u] cannot prepare CMD%u IDMAC receive\n",
                 bus->sdcb_BusNum, command_index);
             return (ULONG)-1;
@@ -1037,14 +792,14 @@ static ULONG p4sd_send_cmd_locked(struct TagItem *tags, struct sdcard_Bus *bus)
 
     command |= P4SD_CMD_USE_HOLD | P4SD_CMD_START;
     if (!p4sd_wait_clear(P4SD_CMD, P4SD_CMD_START, P4SD_CMD_TIMEOUT_US))
-        return (ULONG)-1;
+        goto failed;
 
     p4sd_set(P4SD_RINTSTS, 0xFFFFFFFFUL);
     p4sd_set(P4SD_CMDARG, argument);
     p4sd_set(P4SD_CMD, command); /* never P4SD_CMD_WRITE */
     command_started = TRUE;
 #if P4_SDCARD_TRACE
-    p4sd_trace_take(&p4sd_trace, "start");
+    p4sd_trace_take(&p4sd_trace, "start", bus);
 #endif
     started = sdcard_CurrentTime();
 
@@ -1064,7 +819,7 @@ static ULONG p4sd_send_cmd_locked(struct TagItem *tags, struct sdcard_Bus *bus)
              p4sd_reg(P4SD_TCBCNT) != trace_tcbcnt ||
              p4sd_reg(P4SD_TBBCNT) != trace_tbbcnt))
         {
-            p4sd_trace_take(&p4sd_trace, "state");
+            p4sd_trace_take(&p4sd_trace, "state", bus);
             trace_rintsts = raw;
             trace_idsts = idstatus;
             trace_tcbcnt = p4sd_reg(P4SD_TCBCNT);
@@ -1117,7 +872,7 @@ static ULONG p4sd_send_cmd_locked(struct TagItem *tags, struct sdcard_Bus *bus)
            The rejected v5.4.2 DATA_OVER/auto-stop experiment is retained in
            the roadmap rather than left active on the development board. */
         if (dma_read && state == P4SD_SENDING_DATA &&
-            p4sd_dma_read_ready(data_len))
+            p4sd_dma_read_ready(data_len, bus))
         {
             if (!p4sd_dma_complete_read(receive, data_len, bus))
                 goto failed;
@@ -1190,8 +945,13 @@ failed:
         p4sd_dma_dump(data_len, bus);
     if (multi_read && command_started)
         (void)p4sd_recover_multiblock(bus);
-    else if (data_len && !p4sd_reset_fifo(bus))
-        priv->host_ready = FALSE;
+    else if (data_len)
+    {
+        /* Release shared DMA ownership after every failed data command,
+         * including short identification reads and a pre-start timeout. */
+        if (!p4sd_reset_dma(bus) || !p4sd_reset_fifo(bus))
+            priv->host_ready = FALSE;
+    }
     else if (command_index == MMC_CMD_STOP_TRANSMISSION)
         priv->host_ready = FALSE;
     return (ULONG)-1;

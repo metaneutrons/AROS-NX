@@ -10,7 +10,8 @@
 
 typedef uint32_t ULONG;
 typedef uintptr_t IPTR;
-typedef int BOOL;
+typedef uint8_t UBYTE;
+typedef int16_t BOOL;
 
 #define TRUE 1
 #define FALSE 0
@@ -34,8 +35,14 @@ struct P4SDMMCHost
     ULONG (*now_us)(void);
     unsigned host_div;
     ULONG slot_clock[2];
+    UBYTE *dma_data;
+    ULONG dma_length;
+    BOOL dma_writing;
+    BOOL dma_faulted;
     void (*invalidate)(struct P4SDMMCHost *);
 };
+
+static UBYTE dma_client_data[64];
 
 struct write_event
 {
@@ -304,6 +311,7 @@ static void check_failed_transition(ULONG actual)
     CHECK(clock_host.slot_clock[0] == 0UL);
     CHECK(clock_host.slot_clock[1] == 0UL);
     CHECK(clock_host.host_div == 0U);
+    CHECK(clock_host.dma_faulted == TRUE);
     CHECK(invalidate_count == 1U);
     CHECK(actual == 0x13579BDFUL);
     CHECK((read_sd(P4SD_RINTSTS) & RADIO_IRQ_BITS) == RADIO_IRQ_BITS);
@@ -345,6 +353,26 @@ static void test_invalid_calls_have_no_mmio(void)
     active_task = &task_b;
     CHECK(!p4host_reset(&clock_host));
     CHECK(read_count == 0U && write_count == 0U);
+}
+
+static void test_active_dma_refuses_clock_change_without_mmio(void)
+{
+    ULONG actual = 0x13579BDFUL;
+    unsigned invalidations;
+    begin_case();
+    setup_host(10U, 0UL, 0UL);
+    clock_host.dma_data = dma_client_data;
+    clock_host.dma_length = sizeof(dma_client_data);
+    clock_host.dma_writing = FALSE;
+    invalidations = invalidate_count;
+    CHECK(!p4host_set_clock(&clock_host, 0U, 25000000UL, FALSE, &actual));
+    CHECK(read_count == 0U && write_count == 0U && access_count == 0U);
+    CHECK(actual == 0x13579BDFUL);
+    CHECK(clock_host.dma_data == dma_client_data);
+    CHECK(clock_host.dma_length == sizeof(dma_client_data));
+    CHECK(clock_host.dma_writing == FALSE);
+    CHECK(clock_host.dma_faulted == FALSE);
+    CHECK(invalidate_count == invalidations);
 }
 
 static void test_source_divider_bounds(void)
@@ -572,7 +600,15 @@ static void test_reset_invalidates_and_pulses_source(void)
     original_clkctrl02 = read_hp(P4_HP_PERI_CLK_CTRL02);
     original_lp_reset = read_lp(P4_LP_SDMMC_RST_CTRL);
     original_clkena = read_sd(P4SD_CLKENA);
+    clock_host.dma_data = dma_client_data;
+    clock_host.dma_length = sizeof(dma_client_data);
+    clock_host.dma_writing = TRUE;
+    clock_host.dma_faulted = TRUE;
     CHECK(p4host_reset(&clock_host));
+    CHECK(clock_host.dma_data == NULL);
+    CHECK(clock_host.dma_length == 0UL);
+    CHECK(clock_host.dma_writing == FALSE);
+    CHECK(clock_host.dma_faulted == FALSE);
     gate_enable_access = first_write_setting(
         P4_HP_SYS_CLKRST_BASE + P4_HP_SOC_CLK_CTRL1,
         P4_HP_SDMMC_CLK_EN);
@@ -623,6 +659,9 @@ static void test_stalled_timer_is_bounded_and_fails_closed(void)
 
     begin_case();
     setup_host(7U, 25000000UL, 18000000UL);
+    clock_host.dma_data = dma_client_data;
+    clock_host.dma_length = sizeof(dma_client_data);
+    clock_host.dma_writing = TRUE;
     timer_step = 0U;
     CHECK(!p4host_reset(&clock_host));
     CHECK(timer_value == 0U);
@@ -631,6 +670,10 @@ static void test_stalled_timer_is_bounded_and_fails_closed(void)
     CHECK(clock_host.slot_clock[0] == 0UL &&
           clock_host.slot_clock[1] == 0UL);
     CHECK(clock_host.host_div == 0U);
+    CHECK(clock_host.dma_data == dma_client_data);
+    CHECK(clock_host.dma_length == sizeof(dma_client_data));
+    CHECK(clock_host.dma_writing == TRUE);
+    CHECK(clock_host.dma_faulted == TRUE);
     CHECK((read_sd(P4SD_CLKENA) & 3UL) == 0UL);
     CHECK(writes_to(P4_LP_CLKRST_BASE + P4_LP_SDMMC_RST_CTRL) == 0U);
 }
@@ -638,6 +681,7 @@ static void test_stalled_timer_is_bounded_and_fails_closed(void)
 int main(void)
 {
     test_invalid_calls_have_no_mmio();
+    test_active_dma_refuses_clock_change_without_mmio();
     test_source_divider_bounds();
     test_slot0_identification_clock();
     test_slot1_peer_preserves_shared_source();

@@ -221,6 +221,10 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         HOST_HEADER,
         ("P4_SDMMC_HOST_WAIT_US",),
     )
+    host_abi_constant = extract_constant_lines(
+        HOST_HEADER,
+        ("P4_SDMMC_HOST_ABI",),
+    )
     reset_constants = extract_constant_lines(
         SDHC_HEADER,
         ("SDHCI_RESET_ALL", "SDHCI_RESET_CMD", "SDHCI_RESET_DATA"),
@@ -292,6 +296,7 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     hashes.append(
         ("host policy constant", host_policy_constant.encode("utf-8"))
     )
+    hashes.append(("host ABI constant", host_abi_constant.encode("utf-8")))
     hashes.append(("SDHCI reset constants", reset_constants.encode("utf-8")))
     hashes.append(("D1001 board constants", board_constants.encode("utf-8")))
     hashes.append(("assembled fixture", assembled.encode("utf-8")))
@@ -341,6 +346,29 @@ def audit_transaction_call_modes() -> list[tuple[str, str]]:
     return results
 
 
+def audit_dma_abi() -> str:
+    source = HOST_HEADER.read_text(encoding="utf-8")
+    abi_match = re.search(r"(?m)^\s*#\s*define\s+P4_SDMMC_HOST_ABI\s+(\d+)\b", source)
+    if not abi_match or abi_match.group(1) != "3":
+        raise ValueError("P4 SDMMC host ABI must be version 3")
+    struct_match = re.search(r"\bstruct\s+P4SDMMCHost\s*\{", source)
+    if not struct_match:
+        raise ValueError("P4 SDMMC host structure is missing")
+    struct_end = source.find("\n};", struct_match.end())
+    if struct_end < 0:
+        raise ValueError("P4 SDMMC host structure is unterminated")
+    host_struct = source[struct_match.end() : struct_end]
+    fields = (
+        r"(?m)^\s*UBYTE\s*\*\s*dma_data\s*;",
+        r"(?m)^\s*ULONG\s+dma_length\s*;",
+        r"(?m)^\s*BOOL\s+dma_writing\s*;",
+        r"(?m)^\s*BOOL\s+dma_faulted\s*;",
+    )
+    if any(re.search(pattern, host_struct) is None for pattern in fields):
+        raise ValueError("P4 SDMMC ABI 3 DMA identity/fault fields are incomplete")
+    return sha256((abi_match.group(0) + host_struct).encode("utf-8"))
+
+
 def run() -> int:
     compiler = shlex.split(os.environ.get("CC", "cc"))
     if not compiler:
@@ -357,6 +385,8 @@ def run() -> int:
     )
 
     call_mode_checks = audit_transaction_call_modes()
+    dma_abi_hash = audit_dma_abi()
+    print(f"P4 SDMMC host ABI 3 DMA field check: PASS ({dma_abi_hash})")
     print("Transaction may_wait source checks:")
     for name, digest in call_mode_checks:
         print(f"  {name}: PASS ({digest})")

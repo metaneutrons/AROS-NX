@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; shared clock modules build verified` | Shared two-slot clock/reset control has peer-preservation host tests and RV32 module builds. Pure CMD52/CMD53 builders and SD transaction hooks have host coverage. Command/DMA extraction, installed C6 compatibility, package and hardware regression gates remain open; no radio MMIO or flash. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; shared DMA host-tested and build verified` | Shared descriptors/bounce/cache/FIFO/IDMAC and adapted read-only SD client build under ABI3; extracted DMA model passes 15 cases/2,253,671 checks per O0/O2 sanitizer run, with clock/ownership regressions. Command extraction, recovery, installed C6 compatibility, package and hardware regression gates remain open; no radio MMIO or flash. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; pure wire codec host tested` | Independently implemented bounded byte codec, optional checksum and non-mutating rejection;157,590 checks per O0/O2 sanitizer run and RV32 object, no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -242,9 +242,30 @@ Explicit reset invalidates both clients and still requires re-enumeration.
 Reset enables the peripheral bus gate before the first controller access.
 Extracted-source clock tests pass at O0/O2 with production timeout/poll limits;
 the RV32 modules build. Neither result establishes physical cold-boot behavior.
-This is not a complete dual-slot host: command/FIFO/IDMAC code and buffers
-still reside in the SD client.
-No second hardware client may use them until that extraction is complete.
+The ABI3 adaptation moves the single 128-by-64-byte descriptor chain and
+64-KiB bounce buffer into the permanent resource. FIFO/IDMAC reset and cache
+handoffs are shared; resets and the 20-us FIFO settlement have elapsed-time
+and finite-poll bounds. Cache operations are resolved lazily after the
+kernel resource initializes, require the supported version/both callbacks,
+and never fall back to unsynchronized ROM maintenance. Transfers reject
+active overlap and retain their identity until completion or confirmed reset.
+Only the permanent bounce/descriptor memory is visible to the bus master;
+RX invalidates that buffer and copies to the caller only on success, while
+TX copies into it before writeback/publication. Cache maintenance never
+rounds across caller-buffer neighbours. An unconfirmed reset retains identity,
+sets a fault latch and invalidates both generations; new transfers/clocks are
+refused. A confirmed reset still requires client re-enumeration.
+SD delegates only receive operations; its media-command denylist remains.
+Short-read and pre-command-start failures now reset shared DMA before another
+request. Resource/device RV32 builds pass; extracted-source DMA tests pass at
+O0/O2 with strict C99 warnings and ASan/UBSan, including permanent buffer
+publication, boundary lengths, unaligned RX neighbours, TX/RX, invalid cache
+tables, stalled timers, reset-failure identity retention and fault refusal.
+Clock and transaction-ownership regressions pass too. These are native host
+models, not silicon or installed C6 compatibility evidence.
+This is not a complete dual-slot host: command sequencing still resides in
+the SD client. Host-wide recovery/re-enumeration remains open. No second
+hardware client may use this motor until those gates are complete.
 
 ### N1 - compatible ESP-Hosted transport
 
@@ -26379,6 +26400,88 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   buffers/engine extraction with finite polls. Preserve card read-only policy
   and physical CMD12/CMD13 recovery in the storage client. Add opt-in bounded
   slot1 GPIO routing and enumeration only after this shared-engine gate.
+
+### 2026-10-10 - N0 shared descriptor/FIFO/IDMAC extraction
+
+- State: ABI3 shared DMA extraction host-tested and build verified,
+  not N0 completion. Parent `9d7c487227`, feature/esp32p4-wifi worktree
+  `/Volumes/Dev/Build/aros-esp32p4-wifi`; isolated build
+  `/Volumes/Dev/Build/aros-esp32p4-wifi-build`, JC1060-v2/SMP, GCC16.2.0
+  with explicit generated Developer sysroot.
+- Resource owns descriptor64-byte layout (compile assertion),128 descriptors,
+  64-KiB bounce, cache handoffs, FIFO/IDMAC reset, prepare/ready/complete state.
+  SD wrappers request RX only; denylist and physical CMD12/CMD13 recovery
+  stay in storage. Data failures, including pre-start inhibition, reset DMA.
+  Confirmed physical resource reset discards active transfer identity. Common TX
+  preparation is not a radio command or an SD transmit path.
+- Initial resource build exited2: missing aros/cacheops.h left KrnCacheOps
+  incomplete. Include corrected; repeated resource/device quick builds
+  exited0. Initialization priority16 precedes kernel.resource priority5;
+  cache lookup was moved out of initialization into the first owned transfer.
+  Unsupported version/missing callback refuses with no direct ROM fallback.
+  Source was then tightened to reject excessive ready/complete lengths.
+- Final current modules: resource41,988B SHA-256
+  `387bd29c1d1b4ff32d0147506bf23f9482665be91571372622d14d7f7893d7e2`;
+  sdcard.device127,092B
+  `a96c1c369a19ba57230eb21ac36ed4fe10b755a9c0d167497822179cfe514810`.
+  Both nm -u checks exit0/no undefined symbols. Compiled resource init sets
+  ABI3/sizeof204. Resource bss73,772B, SD bss12B: the buffers moved, not a
+  second per-client allocation. No core/package built or hardware run.
+- Diagnostic trace/fault-mode2 RV32 syntax-only check exits0 with exact v2
+  profile macros. Initial manual invocation used a nonexistent combined v2
+  board macro and failed profile selection; corrected to the board.mk macros.
+  This is not a diagnostic artifact or a fault-injection hardware pass.
+- Independent review found premature identity clearing before DMA reset
+  confirmation and an SD prepare-failure readiness gap. Corrected with a
+  persistent fault latch, retained data/length on reset failure, generation
+  invalidation and SD readiness poisoning. FIFO reset rejects an enabled
+  DMA engine; clock changes reject an active/faulted transfer. Review also
+  identified caller-buffer lifetime after unconfirmed reset: all descriptors
+  now point to permanent bounce memory, TX copies before publication and RX
+  copies to the caller only after successful completion. This intentionally
+  replaces direct aligned RX and adds a copy; performance regression remains
+  to be measured, not assumed unchanged. Earlier ABI3 artifacts above are
+  superseded by these corrections; final identities will be recorded below.
+- Independent source review confirms permanent bus-master buffer ownership,
+  publication/cache ordering, reset-failure identity retention, fault refusal,
+  descriptor checks and retained CMD18/CMD12/CMD13 transaction boundaries.
+  DMA readiness is explicitly not SDIO protocol success. This review is not
+  hardware verification and does not close host-wide re-enumeration.
+- Corrected final resource/device quick builds both exited0. Resource43,284B,
+  SHA-256 `97aa001a57336cd7217e4d49d3a640c02d4542a206721f52be3372cb8397b0a0`;
+  sdcard.device127,156B,
+  `a75b04d108b73a7ad72e6a11db29d534d7b459be27682d023e7ca361d2c946e1`.
+  Final nm -u reports no undefined symbols for either. ABI3 now includes the
+  fault latch (compiled sizeof204: the second 16-bit BOOL uses prior padding);
+  earlier artifacts are superseded despite the unchanged struct size.
+- Safety: no serial access, flash, C6 reset/firmware write, SD write or network
+  credentials. Installed production artifacts unchanged. No second client
+  enabled; command waits, host-wide reset recovery and re-enumeration remain
+  open, and TX must wait for protocol completion rather than only OWN release.
+- Initial independent execution of the in-progress DMA runner exited1 before
+  compiling: importing test_clock_engine failed because the existing helper
+  filename is test-clock-engine.py. This is a harness failure, not a DMA pass
+  or silicon observation; final corrected execution remains required.
+- Corrected runner and final fixtures independently rerun by the primary:
+  test-dma-engine.py, test-clock-engine.py and test-sdmmc-host.py all exit0.
+  Strict C99/ASan/UBSan O0 and O2 each pass DMA15 cases/2,253,671 checks,
+  clock16 cases/236 checks and ownership20 cases/400,196 checks. ABI3 field
+  source audit passes. DMA fixture now uses 16-bit BOOL; pointers remain
+  native host-width, while compiled RV32 size204 is separately verified above.
+  Boundary lengths are1,63,64,65,511,512,513,1023,1024,1025,65535,65536;
+  this is not an exhaustive every-length or bus-timing test. Coverage retains
+  actual250,000-us reset/1,000,000-poll limits, cache lookup retry, publication
+  ordering, completion refusals, unaligned sentinels and reset/fault behavior.
+  Assembled DMA fixture SHA-256
+  `e279b0897dce732f48d8e46af8e20438733698386c6e7d5f454e89ed220d3611`;
+  assembled clock fixture
+  `00bec648327abf83f1f9587f8df8e232149b1a820d9d02946390bd4f374dd2f0`;
+  assembled ownership fixture
+  `8409be686932e7addc1a6fd40e8d7c965b26be5a135da7b2b99fd0f12788d88a`.
+  Source review and modeled tests do not establish SD card or C6 behavior.
+- Next: common bounded
+  command engine preserving SD policy and recovery. Integrate accepted
+  production baseline/package audit before regression or opt-in C6 probing.
 
 ## Evidence-entry template
 

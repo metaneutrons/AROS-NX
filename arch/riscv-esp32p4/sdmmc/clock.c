@@ -107,6 +107,7 @@ static void clock_fail(struct P4SDMMCHost *host)
     clock_write(P4_SDMMC_BASE + P4SD_CLKENA, value & ~3UL);
     host->slot_clock[0] = host->slot_clock[1] = 0;
     host->host_div = 0;
+    host->dma_faulted = TRUE;
     host->invalidate(host);
 }
 
@@ -118,6 +119,7 @@ BOOL p4host_reset(struct P4SDMMCHost *host)
     host->invalidate(host);
     host->slot_clock[0] = host->slot_clock[1] = 0;
     host->host_div = 0;
+    host->dma_faulted = TRUE;
     /* On a cold boot the peripheral bus may still be gated. Establish the
      * bus clock before accessing its registers, but do not yet change the
      * host-wide source/divider of any retained card-clock output. */
@@ -141,6 +143,10 @@ BOOL p4host_reset(struct P4SDMMCHost *host)
         clock_fail(host);
         return FALSE;
     }
+    host->dma_data = NULL;
+    host->dma_length = 0;
+    host->dma_writing = FALSE;
+    host->dma_faulted = FALSE;
     return TRUE;
 }
 
@@ -151,6 +157,7 @@ BOOL p4host_set_clock(struct P4SDMMCHost *host, unsigned slot,
     ULONG value, bit;
     BOOL peer;
     if (!clock_owned(host) || slot > 1 || !actual ||
+        host->dma_length || host->dma_faulted ||
         host->host_div < 1 || host->host_div > 16 ||
         (low_power != FALSE && low_power != TRUE))
         return FALSE;

@@ -4,6 +4,7 @@
 #include <proto/exec.h>
 #include "host.h"
 #include "clock.h"
+#include "dma.h"
 #include LC_LIBDEFS_FILE
 
 struct ExecBase *SysBase;
@@ -94,6 +95,13 @@ static int P4SDMMC_Init(LIBBASETYPEPTR P4SDMMCBase)
     P4SDMMCBase->set_clock = p4host_set_clock;
     P4SDMMCBase->host_div = 0;
     P4SDMMCBase->slot_clock[0] = P4SDMMCBase->slot_clock[1] = 0;
+    P4SDMMCBase->fifo_reset = p4host_fifo_reset;
+    P4SDMMCBase->dma_reset = p4host_dma_reset;
+    P4SDMMCBase->dma_prepare = p4host_dma_prepare;
+    P4SDMMCBase->dma_ready = p4host_dma_ready;
+    P4SDMMCBase->dma_complete = p4host_dma_complete;
+    P4SDMMCBase->dma_inspect = p4host_dma_inspect;
+    p4host_dma_init(P4SDMMCBase);
     return TRUE;
 }
 

@@ -6,7 +6,7 @@
 #include <exec/semaphores.h>
 
 #define P4_SDMMC_HOST_NAME "esp32p4sdmmc.resource"
-#define P4_SDMMC_HOST_ABI 2
+#define P4_SDMMC_HOST_ABI 3
 #define P4_SDMMC_HOST_WAIT_US 1000000UL
 
 /* Private port ABI, shared by separately loaded SD and radio clients.
@@ -32,11 +32,25 @@ struct P4SDMMCHost
     BOOL (*reset)(struct P4SDMMCHost *);
     BOOL (*set_clock)(struct P4SDMMCHost *, unsigned slot, ULONG requested,
                       BOOL low_power, ULONG *actual);
+    BOOL (*fifo_reset)(struct P4SDMMCHost *);
+    BOOL (*dma_reset)(struct P4SDMMCHost *);
+    BOOL (*dma_prepare)(struct P4SDMMCHost *, UBYTE *, ULONG, BOOL writing);
+    BOOL (*dma_ready)(struct P4SDMMCHost *, ULONG);
+    BOOL (*dma_complete)(struct P4SDMMCHost *, UBYTE *, ULONG);
+    void (*dma_inspect)(struct P4SDMMCHost *);
 
     struct SignalSemaphore lock;
     ULONG generation; /* Full host reset invalidates all slot clients. */
     unsigned host_div;
     ULONG slot_clock[2];
+    /* One permanent shared descriptor chain and bounce destination. Only
+     * the owner may inspect these, even after an unsuccessful command. */
+    APTR dma_desc;
+    UBYTE *bounce;
+    UBYTE *dma_data;
+    ULONG dma_length;
+    BOOL dma_writing;
+    BOOL dma_faulted; /* Unknown hardware ownership: refuse new transfers. */
 };
 
 #endif
