@@ -153,7 +153,7 @@ gate: compensated output is not the native display contract.
 | S5 | SMP qualification | `hardware verified (JC1060P470C); D1001 open` | Evidence entry 2026-10-05: upstream's ten SMP tests pass on 6 of 6 boots and over a twenty-minute run of 200 tests, after three fixes (no dispatch fallback with an idle task per hart, preemption waits for task-held spinlocks, console and SYSTIMER serialized); the production core passes five boots and ten minutes; the visual and touch check passed on the S6 core (Fabian, 2026-10-05). Open: the D1001. |
 | S6 | SMP default decision | `decided and done (2026-10-05)` | Evidence entry 2026-10-05: Fabian's decision, SMP is the only esp32p4 build. Configure selects the `smp` variant without being asked and refuses any other; the port's single-hart branches are gone, and a tree configured without the variant is refused. No Giant and no single-hart build; the Giant (`ff3395ba7f`) and E3 (`14f0290e21`) stay as history commits. Replaces the former E4 row. |
 | S7 | Hardware watchdog | `hardware verified (JC1060P470C); D1001 open` | Evidence entry 2026-10-09: timer group 0's main watchdog (6 s, reset system), fed from hart 0's tick only while hart 1's forwarded tick and one canary task per hart show life; fatal traps and the first alert stop the hart with interrupts masked. Ten failure cases (`P4_WDT_TEST=1..10`: `Disable()`, fatal trap, system alert, a starving task, `Forbid()`, each on hart 0 and 1) all end in a reset with cause `0x07`, which the next boot prints; the ten upstream SMP tests pass under it (longest tick gap 44 ms). |
-| S8 | Free migration of ordinary tasks | `stage 1 hardware verified (JC1060P470C); rest open` | Decision (Fabian, 2026-10-09): pinned by default, migration opt-in per process. Evidence entry 2026-10-09 (second): SMP-Migrate, a test of what a program meets when it runs on either hart, found a `ReplyMsg()`/`WaitIO()` race (fixed in exec) and that `krnP4SyncCode()` dropped the other hart's writes next to the range (fixed: only the instruction caches are invalidated); one lock for the ROM cache calls (`KATTR_CacheOps` for the SD driver), a flash window lock, tear-proof SYSTIMER reads in the modules. The ten upstream tests plus SMP-Migrate pass, SMP-Migrate 15 of 15 times. Open: `RemTask()` of a running task, the dos lists, the SD driver's `BeginIO()`, the opt-in, the visual check. SMP.md, "S8". |
+| S8 | Free migration of ordinary tasks | `stages 1 and 2 hardware verified (JC1060P470C); visual check and dos lists open` | Decision (Fabian, 2026-10-09): pinned by default, migration opt-in per process, with `C:Affinity`. Evidence entries 2026-10-09: SMP-Migrate found and fixed a `ReplyMsg()`/`WaitIO()` race, data loss in `krnP4SyncCode()`, `RemTask()` of a task running on the other hart (with a `core_Switch()` race behind it) and a torn time in timer.device; `CheckSignal()`/`EndNotify()` locked; a stuck spinlock stops the watchdog feed. 15 of 15 runs of all six phases, the upstream tests and SMP-AffCheck pass. Open: the dos segment lists and late assign, the visual check, the D1001. SMP.md, "S8". |
 
 ## Track E: ESP32-P4 / RV32 SMP
 
@@ -25633,6 +25633,89 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next safe step: stage 2 (`RemTask()` of a task running on the other
   hart first, then the opt-in command and the remaining audit points),
   each with a phase in SMP-Migrate.
+
+### 2026-10-09 - Correction: the flashdisk change of S8 stage 1 was in no core
+
+- State change: none on the board; a record corrected. `tools/build-core.sh`
+  made `kernel-timer-kobj` and `kernel-flashdisk-kobj-quick` only when their
+  objects were missing (both dated 2026-10-05 in the tree), so changes to
+  their sources never reached a core. The stage 1 change to
+  `flashdisk.device` (`krnP4FlashCopy()` instead of `Forbid()` and
+  `krnP4FlashMap()`) was therefore in none of the stage 1 cores, the
+  production core `36acfc27…` included: a disassembly of `s8c-runner`,
+  `s8c-plain` and `s9c-runner` shows no call to `krnP4FlashCopy()` and three
+  to `krnP4FlashMap()`; `s9d-runner` and later call `krnP4FlashCopy()` once.
+  Everything else of stage 1 (cache lock, `krnP4SyncCode()`, the flash
+  window's data invalidate, the SD driver in the package) was built and
+  tested as recorded. The entry "S8 stage 1" says flashdisk uses the new
+  copy; for those runs it did not.
+- The change had merged into AROS-NX `main` with AROS-NX#67 (auto-merge)
+  before this was seen. It compiles, and it ran from `s9d-runner` on (the
+  runner loads every test from the flash volume through it).
+- Fix: the script always makes both objects; their targets are incremental.
+- Next safe step: stage 2 entry.
+
+### 2026-10-09 - S8 stage 2: RemTask across harts, the time, Affinity
+
+- State change: Track E S8 stage 2 built and run on the JC1060P470C.
+- Hardware / revision: JC1060P470C v2, `80:f1:b2:d3:3b:a6`, MAC checked
+  before each write. Written and verified: package `0x820000` `d9e40d75…`
+  (3,734,020 bytes: dos with the `CheckSignal()`/`EndNotify()` changes;
+  before: `625e4d2e…`), development volumes `0xc00000` per run, cores
+  `0x20000`. Card unchanged (`5f123f79…`).
+- Source: `feature/esp32p4-smp-stage2` from the stage 1 branch (merged as
+  AROS-NX#67), uncommitted during the runs, committed after.
+- Build: runner cores as before; `s9-tests` (the upstream tests,
+  SMP-Migrate, SMP-AffCheck plain and through `Affinity`) and `s8-migrate`
+  (SMP-Migrate fifteen times), now with phase 6. Evidence:
+  `evidence/full-smp-2026-10-08/jc1060/s9*`, `w3-case11*`.
+- Observed:
+  - phase 6 against the stage 1 runner core `ab9dac88…` (volume `6c530f91…`):
+    "[Kernel:TLSF] free-list corruption at REMOVE_HEADER ... prev=40010ad2"
+    (a code address in a free block), `Breakpoint` in
+    `smpmigrate.remover`, watchdog reset, twice;
+  - with `Exec_P4WaitOffCPU()` and the scheduler change, core `bd8638a0…`:
+    all eleven entries pass, phase 6 "120 removals, none ran on" each way;
+    fifteen runs (volume `8ef6ceba…`): seven passed, then a fatal trap in
+    `input.device` ("Store/AMO access fault", mtval 0, at
+    `Exec_45_Enqueue+0x1c` from `Exec_ReschedTask+0xb8`, from
+    `SendIntuiMessage()`), then the watchdog's reset. Cause:
+    `core_Switch()` read the state before the lock (SMP.md, "S8 stage 2");
+  - with `core_Switch()` fixed, the `Wait()` and self-removal changes, core
+    `f353e0f4…`, volume `e0e4c62e…`: fifteen entries pass, among them
+    `Affinity ANY ... SMP-AffCheck ANY` (own 0x3, children on 0x3),
+    `Affinity 1` (0x2, children on 0x2), `Affinity 0,1` (0x3) and plain
+    (0x1, children on 0x1); fifteen runs (volume `77f611dc…`): 12 of 15
+    fully pass, phase 6 30 of 30, but phase 3 fails in 3: "the time went
+    backwards" and "the time jumped ahead between two reads", workers on
+    cpu 1;
+  - timer.device time lock, `CheckSignal()`/`EndNotify()` in the package
+    `d9e40d75…`, runner core `487459d1…` (the first with the flashdisk
+    change, see the correction): the fifteen entries of `s9-tests` pass;
+    fifteen runs of SMP-Migrate: 15 of 15 "6 PASS, 0 FAIL, 0 INVALID",
+    phase 3 clean in all (about 12.2 million reads per run), phase 6 30 of
+    30, "fed 8825 times, longest gap between ticks 441 x 0.1 ms", no reset;
+  - `P4_WDT_TEST=11` core `9e1ffcf4…`: "[wdtest] waiter on hart 1 asks for
+    the leaked lock", "[wdt] a spinlock has not come free for seconds",
+    reset `0x07`, three times in 90 s;
+  - production core `s9e-plain` `a4179c1e…` (190,112 bytes): watchdog armed,
+    hart 1 online, flash windows parked, 360 s, no reset, no `[wdt]` line,
+    no trap, the touch worker polling to the end.
+- Host: `wdt_feed_test.py` (now with the stuck case), `systimer_read_test.py`
+  and `console_nonblocking_test.py` pass.
+- Acceptance points passed: removal across harts, the time and the opt-in
+  as tested; no false watchdog reset; the production core boots and runs.
+- Not covered: the visual and touch check of this state (fresh "bereit");
+  the D1001; the dos segment lists and the late assign (not converted,
+  SMP.md); a program that opens windows was not run on hart 1, and is not
+  meant to be.
+- Safety impact: package and development volume rewritten with the MAC
+  checked; previous artifacts kept in the evidence directories.
+- Remaining risk: `Exec_P4WaitOffCPU()` spins until the other hart lets go;
+  a task that keeps interrupts masked for good would keep `RemTask()`
+  waiting, and the watchdog would end that. timer.device's time lock is
+  generic code and runs on the other SMP ports as well, untested there.
+- Next safe step: the visual and touch check ("bereit"); a PR for stage 2.
 
 ## Evidence-entry template
 

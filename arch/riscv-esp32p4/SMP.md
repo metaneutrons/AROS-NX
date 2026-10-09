@@ -628,7 +628,13 @@ Also in stage 1, from the audit:
   without the table.
 - The flash scratch window: `krnP4FlashCopy()` maps and copies under its
   own lock of this kind, and `flashdisk.device` uses it instead of
-  `Forbid()`, which stops only its own hart's tasks.
+  `Forbid()`, which stops only its own hart's tasks. Correction
+  (2026-10-09, stage 2): `tools/build-core.sh` made the timer and flashdisk
+  objects only when they were missing, so this flashdisk change was in no
+  core of stage 1, the production core `36acfc27…` included; those cores
+  called `krnP4FlashMap()` under `Forbid()` as before. The kernel side of
+  stage 1 was in them. The script now always makes both objects, and the
+  first core with the change is `s9d-runner` (stage 2).
 - The SYSTIMER snapshot in the `sdcard` and `i2c` modules reads the high
   half twice and asks again if the two differ, which makes a snapshot
   taken by the other hart in between harmless (`kernel/tests/
@@ -643,12 +649,75 @@ audit findings (library counts, the time in timer.device) are not
 demonstrated; they stay on the list as code that depends on `Forbid()`
 and `Disable()`, and the test is where to look first if one of them bites.
 
-Still open in S8: `RemTask()` of a task that runs on the other hart; the dos
-lists (`AddSegment()`, `FindSegment()`, the late assign), `CheckSignal()` and
-`EndNotify()`; `sdcard.device`'s `BeginIO()` flags and change interrupt list;
-the touchscreen worker's exit; the opt-in (a command that starts a program
-on both harts); the check of the loaded state with Wanderer on the panel,
-which needs a fresh "bereit".
+#### S8 stage 2: removal across harts, the time, the opt-in (2026-10-09)
+
+- `RemTask()` of a task that runs on the other hart. SMP-Migrate phase 6
+  removes victims while they run on the other hart (a busy loop, a loop of
+  `Forbid()`/`Permit()`, a task waiting) and checks that none runs on
+  after `RemTask()` returns. On the stage 1 core the heap's free list was
+  corrupted within the first removals, with code addresses in a free block
+  header: the victim kept running on its freed stack. Fixed in three parts:
+  - exec (generic): `RemTask()` calls `EXEC_REMTASK_WAITOFFCPU(task)` after
+    the unlink and before anything is freed; this port's
+    `Exec_P4WaitOffCPU()` asks the hart that runs the task to reschedule and
+    waits until its current task changes, which follows the context save.
+    `core_Schedule()` switches away from a current task that is not
+    `TS_RUN`.
+  - `core_Switch()` read the outgoing task's state before taking its lock.
+    A task removed from the other hart in that window was taken off
+    TaskRunning a second time and put on TaskReady, and its memory was
+    freed; the next `Enqueue()` on the ready list wrote to address 0 (a
+    fatal trap in `input.device`, seven runs into a loop). The state is read
+    under the lock now.
+  - Found reading the same paths: `Wait()` set `TS_WAIT` and moved the task
+    between lists without looking at its state, so a task just removed by
+    the other hart came back onto TaskWait; it now leaves the hart. The
+    self-removal set `TS_REMOVED` before detaching, and a reschedule in
+    between left a zombie on TaskRunning; both steps run with interrupts
+    masked now. `Exec_ReschedTask()` keeps a removed task removed.
+- The time in timer.device (generic). In 3 of 15 runs of SMP-Migrate,
+  workers on hart 1 saw the time step back and jump ahead by a second: the
+  VBlank server advances `tb_CurrentTime` and `tb_Elapsed` on hart 0, the
+  readers held only `Disable()`. A lock of its own, `tb_TimeLock`, covers
+  every write and read now; it is never held together with `tb_ListLock`
+  (the list work uses a copy of the time taken first), so a reply handler
+  may still read the time. Fifteen runs after the fix: no step.
+- dos (generic): `CheckSignal()` clears bits through `SetSignal()`, which
+  takes the task's spinlock; `EndNotify()` takes the port's spinlock, as
+  `PutMsg()` and `GetMsg()` do, and replies after dropping it.
+- The opt-in: `C:Affinity` (`workbench/c/Affinity.c`). `Affinity` shows the
+  shell's CPUs, `Affinity <cpus>` changes the shell's own set, which what it
+  starts inherits, and `Affinity <cpus> <command line>` runs the command in a
+  new shell process with that set (`NP_Affinity`). `<cpus>` is ANY or CPU
+  numbers. `SMP-AffCheck EXPECT=...` checks a process's set and that its
+  children inherit and use it; the list `image/s9-tests` runs it plain and
+  through `Affinity ANY`, `Affinity 1` and `Affinity 0,1`.
+- The watchdog: a spinlock wait of about five seconds calls `krnWdtStuck()`
+  and the feed stops, in every build (`spinlock.c`); a leaked lock, whose
+  waiter holds nothing and can be preempted, would otherwise leave the tick
+  and the canaries content. `P4_WDT_TEST=11` provokes it.
+
+Read and left as they are, with the reason:
+
+- `sdcard.device`: every command goes to its single bus task (`isSlow()` is
+  always true), so the change interrupt list is used by that task only; the
+  flags `BeginIO()` sets are informational.
+- The touchscreen worker's exit under `Forbid()`: the worker and its owner
+  are created by tasks of the boot and stay on hart 0 with everything else
+  that is not opted in.
+- The dos segment lists (`AddSegment()`, `FindSegment()`, `RemSegment()`)
+  and the late assign rely on `Forbid()`. A program that runs on both harts
+  and starts commands while another shell adds or removes residents, or
+  while a late assign is first used, can race. Not converted: their callers
+  hold `Forbid()` across the use of the result, which a lock inside the
+  functions would not cover.
+- `lib_OpenCnt` and the library vectors: SMP-Migrate's open and close phase
+  has not lost a count in 86 runs since the test settles before it counts
+  (each run 4 processes x 3000 opens and closes of three libraries and
+  timer.device); it stays on the list.
+
+Still open in S8: the dos lists above; the check of the loaded state with
+Wanderer on the panel, which needs a fresh "bereit"; the D1001.
 
 Decision (Fabian, 2026-10-09, as proposed): ordinary tasks stay pinned by
 default and migration is opt-in per process. The inverse default is unsafe
