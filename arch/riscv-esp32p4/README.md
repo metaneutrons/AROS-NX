@@ -71,6 +71,18 @@ of the hang fix remains open.
 
 ## Status
 
+Current JC1060 production cleanup (2026-10-09): the original bootloader
+`27b99e03…` and complete original0x2000..0x7fff sector range are restored and
+independently verified. Clean-built core189968B `17249045…` is written and
+readback-verified at0x20000, with `P4_BOOT_TIMING=0` and `P4_C1_PROFILE=0`.
+The quiet package `e0869292…`, development volume and SD are unchanged.
+One complete60s headless warm boot passes PSRAM/two-hart/watchdog regression
+with no captured subsequent reset/fault. Visual/touch acceptance of this
+exact pair is pending. Boot-latency work is deferred, not solved. Combined
+no-reader qualification is being prepared as a user-space test on this normal
+core; no existing idle soak or raw B5 run substitutes for it. D1001 work waits
+until cleanup and that qualification finish, per Fabian's decision.
+
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
 means the behaviour was verified on a board and how it was verified is
