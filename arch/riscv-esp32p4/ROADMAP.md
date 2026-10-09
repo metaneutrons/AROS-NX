@@ -139,6 +139,7 @@ gate: compensated output is not the native display contract.
 | D0 | Compile-time board profile, with D1001 as the first implementation | `hardware partial` | LDO2 now recovers and verifies all 32 MB without Vellum. The 20-MHz-PSRAM/90-MHz-CPU artifact showed only blue and an edge strip; changing only PSRAM to 200 MHz produced clean calibration and a spontaneously reported desktop. After the battery was reported empty, the initial non-desktop state could not be classified: opening UART coincided with a USB reset, and a subsequent controlled USB reset booted Wanderer with the restored touch firmware and zero reported faults. Fabian then saw the desktop. Neither run proves the original rail-off start completed by itself or passes the unsynchronized visual/touch gate. Isolated full core/Exec/SD/BSP and physical rail-off gates remain open; do not generalize this clock result to the earlier 360/200-MHz C1 strip. Prohibit stale cross-board objects before a second profile. |
 | D1 | Board-driver boundary and second-board onboarding | `build verified` | 2026-10-03: the profile now selects panel controller and table (JD9365/JD9165), rotation (90/0), panel power scheme (PCA9535 or plain GPIOs), touch driver (GSL3670/GT911, firmware optional), SD detect/power wiring, partition CSV and sdkconfig per board; `check-profile.py` evaluates `board.mk` per board through GNU make. The D1001 core built with these changes is byte-identical to HEAD (202,096 B `99a8f6f8…`, same flags, same tree), so the D1001 binary contract holds. Not hardware tested on either board. |
 | D2 | Guition JC1060P470C as the active development board (J0-J5) | `J0-J5 accepted; four cold visual passes; sustained stress open` | Board IDs `jc1060p470c-v2` (new panel batch, active) and `jc1060p470c-v1` (old batch). On `80:f1:b2:d3:3b:a6`: J0 Exec/32MB PSRAM; J1 correct test card after 20MHz D-PHY reference fix; J2 GT911/I2C1/100kHz; J3/J4 Wanderer, four-edge pointer, double tap, two-finger menu and double-tap-and-drag visually accepted. J5 portable touch/brightness control panels accepted 2026-10-05. Aggregate early USB budget correction `4d998b4e…` passes host tests, a 120-second reader-attached USB-reset boot and four synchronized USB-only physical cold boots without a serial reader/reset: approximately 10, 11, 14 and 11 seconds (2026-10-09). Fresh pointer, double-tap and two-finger menu check accepted. Earlier black cold attempt remains recorded. Open: larger cold-cycle reliability campaign, sustained combined/no-reader stress and old panel batch. Previous-production thirty-minute reader-attached idle soak does not substitute for those gates. See dated D2/J0-J5 and s13-s15 evidence for exact configurations/artifacts. |
+| D2-BT | JC1060 boot latency | `diagnostic-off package flashed; physical comparison open` | Baseline visual cold starts 10, 11, 14, 11s on s15 core plus verbose package. Only DOS/FAT/dosboot traces disabled, other 37 records/core/media unchanged. Three reset captures per configuration: graphics n256 median host receipt 4.408s -> 3.955s; log volume ~584KB -> 15KB. This marker is not first-visible-desktop time. Fresh physical cold/touch gate for quiet package `e0869292…` remains open; preserve hardware waits and verbose rollback. See dated s16 evidence. |
 | D3 | Portable touch and I2C stack | `hardware partial (JC1060P470C passed)` | 2026-10-04 on Fabian's direction: `touchscreen.hidd` (`rom/hidds/touchscreen`, polling, gestures, calibration, `ENV:Sys/touchscreen.prefs`), controller drivers `gt911.hidd` and `gsl3670.hidd` on AROS's `hidd.i2c` (`workbench/hidds`), the bus driver `hidd.i2c.esp32p4` (`arch/riscv-esp32p4/i2c`, transport shared with the kernel) and `esp32p4board.resource`, which builds the objects from the board profile; editor `workbench/prefs/touchscreen`. The kernel keeps no touch driver and no `KATTR_TouchScreenOps`. Fixes the I2C0 clock divider position (CTRL10 bits 9:2). JC1060P470C: GT911 through the new stack; Fabian confirms touch, calibration, editor and the tap/direct switch. D1001: builds, not hardware tested. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
@@ -26181,6 +26182,111 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: sustained no-reader/combined stress qualification and a larger
   cold-cycle campaign remain separate gates; prepare PR #71 for normal
   protected review without bypassing checks or assuming merge authorization.
+
+### 2026-10-09 - D2 boot latency: phase measurement started
+
+- User requests boot-time optimization before sustained qualification.
+  Baseline: four visual USB-only cold boots approximately 10, 11, 14, 11s.
+  Accepted s15 core `4d998b4e…` and matched package/media remain unchanged.
+- Optional host-receipt JSONL sidecar added to `tools/reset-and-log.py`;
+  records elapsed seconds/byte offsets without changing raw output or reset
+  sequence. Exclusive evidence-file creation, host fixture verifies byte
+  preservation and offsets. Buffered ROM head has up to 0.6s granularity;
+  host/USB buffering and reader effects prohibit treating it as firmware or
+  unassisted physical cold timing. No optimization claim yet.
+- Plan: measure existing reader-attached USB-reset phases, audit fixed waits
+  and active diagnostic builds, then isolate one justified optimization.
+  No flash in this measurement; any changed image gets clean build/hash and
+  new headless verification before fresh user-ready visual comparison.
+- Safety: headless reset allowed; SD read-only, no media writes, D1001 excluded.
+  Next: bounded baseline capture and identify dominant measurable phases.
+- Baseline completed normally: 30-second reader-attached USB reset, process
+  exit 0; `jc1060/s16-boot-baseline.log`, 585,027 bytes, SHA-256
+  `b039ad39b37b232dadb35b32e32bb7c3f0e4a5f570a31f1232b5ccde09ca9640`;
+  receipt sidecar `s16-boot-baseline-timing.jsonl`, SHA-256
+  `10db7172ac710a66d38dc92733e805504771dfe6a9c5993fc630423051ef34f6`.
+  Kernel/PSRAM/panel reports in buffered head at 0.760s; package/Exec/hart1
+  at 1.320s; Startup-Sequence access 1.664s, GT911 start 1.823s, Wanderer
+  launch 3.191s, final Wanderer mention 5.098s and shell cleanup 5.300s.
+  Launch is not measured first visible desktop. No attribution of the
+  10-14-second no-reader physical latency from this warm reader baseline.
+- Independent Luna audit confirms debug switches gate narration only;
+  normal Startup-Sequence has no explicit delay. Keep panel sleep-out120ms/
+  display-on20ms and SD supply100ms waits; missing-media3s retry is not the
+  normal successful path. Console lock contention is a possible conditional
+  tail, not measured here and not changed for this comparison.
+- Isolated diagnostic-off candidate started with
+  `tools/build-quiet-package.sh`: invalidate DOS/FAT/dosboot objects,
+  `FAT_DEBUG=0 DOS_DEBUG=0 DOSBOOT_DEBUG=0`, retain previous board/C3/C4/
+  PSRAM/XIP/C1 flags. Replace only those three records in immutable s9c
+  package SHA-256 `d9e40d75de179dae6b85d970d40cf4de6d331ce5cb38afe4023f1be8e70559de`.
+  Other 37 records, accepted s15 core, SD, development volume and bootloader
+  stay unchanged. Build is not yet flashed or hardware accepted; diagnostic
+  visibility decreases. Candidate needs exact record comparison/size/hash,
+  headless timing and freshly synchronized physical comparison.
+
+### 2026-10-09 - D2-BT: isolated diagnostic-off package flashed; warm comparison completed
+
+- Build: `tools/build-quiet-package.sh`, fresh evidence `jc1060/s16-quiet-package`,
+  build tree `/Volumes/Dev/Source/Amiga/AROS-ESP32-v3-smp-build`, baseline
+  `jc1060/s9c/aros-bsp.pkg`, JC1060-v2/C3/C4/PSRAM200/XIP/C1_PROFILE1 retained.
+  Only FAT_DEBUG/DOS_DEBUG/DOSBOOT_DEBUG set to 0. Affected objects invalidated;
+  new DOS/FAT/dosboot modules built, no `error:`. Separate container parse
+  verifies exactly 40 records and exactly those three changes, other 37
+  records byte-identical. Native size rule passes 3,636,260 of 4,063,232 bytes.
+- Package SHA-256
+  `e0869292b2d352db822e14e397eb9a54386dcfcf26b514ad3fbb857962a8dc22`.
+  Baseline verbose backup `d9e40d75de179dae6b85d970d40cf4de6d331ce5cb38afe4023f1be8e70559de`
+  is retained and was verified against board flash before write. MAC
+  `80:f1:b2:d3:3b:a6` checked; write only `0x820000`, esptool exit0/data hash
+  verified (`s16-quiet-package-flash.log`). Core s15 `4d998b4e…`, SD
+  `5f123f79…`, development volume `aa7eadbe…`, bootloader/partitions unchanged.
+- Independent Luna review found relative baseline path ambiguity; corrected
+  to canonical absolute path and checked for changed baseline hash after build.
+  Actual build had already used an absolute baseline. Final syntax check and
+  host timing tests pass; no remaining blocking review issue. Optional timing
+  rejects nonpositive/nonfinite durations and exclusive-creates sidecars.
+- Three verbose captures completed (initial30s, repeats15s), and three quiet
+  captures completed15s each, process exit0. Quiet captures each contain one
+  initial ROM/reset17, first-attempt PSRAM32MB/200MHz, watchdog6000ms, hart1/
+  cpus2, GT911 polling and accepted graphics updates, no captured trap,
+  stack-range error or subsequent ROM/reset banner. Disabled DOS narration
+  means these are NOT direct Wanderer-launch markers or visual acceptance.
+- Same `[c1perf] n 256 w` host-receipt marker: verbose 4.350/4.408/5.068s,
+  quiet 3.954/3.955/3.955s; median difference0.453s (~10.3%). n256 is a
+  graphics progress marker, not proof of equivalent first-visible desktop
+  completion. No cold/no-reader acceleration claim from this warm comparison.
+  Third verbose run has a slower pre-Exec receipt and missing Startup marker;
+  preserve that variability rather than drop the run.
+- Raw logs/SHA-256 (all under the campaign's `jc1060/` directory):
+  `s16-boot-baseline-2.log` 583,608B
+  `6d192b16bce57e8cbf3558150412e009684f9bb08f42dde06a1781d1f99a4404`;
+  `s16-boot-baseline-3.log` 583,603B
+  `4b141566ec0a0ad220de47a73de65c83b0f6573e978f06341e115505b590c3e5`;
+  `s16-quiet-1.log` 15,200B
+  `1951755e971c83ee3c806b0e38d77bce9b18bdf8ab886ec1aca87287b54db85d`;
+  `s16-quiet-2.log` 15,068B
+  `372943ee1745a912f0f89920383b60c9b34ee30f8df06d96a5b1b9d048dcc18f`;
+  `s16-quiet-3.log` 15,276B
+  `d3350cae9ebc5f6e59c331b3f02dec58e89516153843f756c8d80110dec5280e`.
+  Timing sidecars (same stem plus `-timing.jsonl`): baseline2
+  `80b7e537fb0204af8e680263d86e2d29e36641760fe039bdb29f90a7e0776a3e`,
+  baseline3 `873ae4229ec269c1d015c0febac89500ab28c85d251820c45449be5514ab9c4a`,
+  quiet1 `722ae0edd5391dba066cf962362d4730cd4c5032467aece80acd331f743e3aac`,
+  quiet2 `bc2b48d2a94d6114615e1d0f2d15501b0312428a1c5c99ee1ee0b647b3182dcf`,
+  quiet3 `c736b4aedd1b4ebd9ae1f34bf78db96c9a7f4d25f4810c8464770aa004aa840c`.
+- Remaining lead: local IDF bootloader config retains UART0 primary plus
+  ROM secondary USB-JTAG output, INFO logging and 9000ms boot watchdog.
+  A configured watchdog timeout is NOT evidence it fired or consumed nine
+  seconds. Bootloader was neither changed nor written; such a write requires
+  separate exact-range authorization and evidence. No mandatory panel/SD/
+  PSRAM recovery wait removed.
+- Acceptance: quiet-pair warm hardware regression passes; fresh physical
+  cold/display/touch comparison is open. Earlier four cold/touch passes used
+  verbose package and are not relabeled. Diagnostic loss is explicit; keep
+  quiet and verbose profiles reproducible and do not remove fatal reporting.
+- Next: obtain fresh readiness for physical USB-only timing plus touch check.
+  No automatic unplug or further firmware change before that observation.
 
 ## Evidence-entry template
 

@@ -167,6 +167,25 @@ internal reset, PSRAM and hart diagnostics are not inferred from these
 observations. Larger cold-cycle reliability and sustained no-reader/combined
 stress remain open; this is not full production qualification.
 
+Boot-latency optimization (2026-10-09): the 10-14-second visual cold-start
+estimates above used the verbose package. Currently the same s15 core is
+paired with diagnostic-off package `e0869292…` (3,636,260 bytes, verified at
+`0x820000`). Only DOS/FAT/dosboot records changed; the other 37 records and
+all media/bootloader/core are unchanged. Three reader-attached reset captures
+pass PSRAM/two-hart/watchdog/touch-polling and graphics-update checks. At the
+same graphics update marker (n256), median host receipt is 3.955s versus
+4.408s across three verbose baselines, a 0.453s difference; this is NOT
+first-visible-desktop timing. Captured output falls from about 584KB to 15KB.
+The candidate needs fresh physical cold/display/touch acceptance; prior
+acceptance of the verbose package does not transfer automatically.
+
+`tools/build-quiet-package.sh` clean-rebuilds those three modules and replaces
+only their records in a supplied immutable baseline, then checks the board's
+package-size rule. Keep verbose package `d9e40d75…` for reversible diagnostics.
+Optional `tools/reset-and-log.py --timing <new.jsonl>` records host-receipt
+time and raw-byte offsets without changing the raw capture; USB buffering and
+the buffered ROM head prohibit claiming firmware phase or no-reader cold times.
+
 E2, the two-hart primitives, is hardware verified on both boards: on the
 D1001 on 2026-10-01 (219,776-byte candidate, five captures, two epochs each)
 and on the JC1060P470C on 2026-10-05, where it runs together with S1. S1
