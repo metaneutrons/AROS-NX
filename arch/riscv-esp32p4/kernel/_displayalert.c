@@ -6,7 +6,8 @@
 
     A failure that repeats scrolls the first one out of the console before
     it can be read, and the first one is the one worth having. Print it,
-    say the machine is stopping, and stop.
+    say the machine is stopping, and stop: with interrupts masked, so that
+    the watchdog is no longer fed and resets the board.
 */
 
 #include <kernel_base.h>
@@ -33,6 +34,5 @@ void krnDisplayAlert(const char *text, struct KernelBase *KernelBase)
 
     krnP4PutStr("\n*** halted on the first alert ***\n");
 
-    for (;;)
-        asm volatile("wfi");
+    krnP4Halt();
 }

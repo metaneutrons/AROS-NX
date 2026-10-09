@@ -3,7 +3,8 @@
 
     Desc: What has to be settled about the machine before anything else
           runs. At this stage that is the watchdogs the ROM loader leaves
-          armed; the interrupt controller and the timer follow.
+          armed, which are switched off here; kernel_wdt.c arms the main
+          one again, on the tick, once there is a tick to feed it from.
 */
 
 #include <inttypes.h>
@@ -62,14 +63,16 @@ void platform_init(void)
     reg_wr(P4_LPWDT_BASE, P4_LPWDT_SWD_WPROTECT, 0);
 }
 
-/* Whether the three are actually quiet, for the bring-up report to say */
+/*
+ * Whether the two that stay off are: timer group 1 and the low power
+ * domain's. Timer group 0's main watchdog is the one kernel_wdt.c arms
+ * once the tick runs.
+ */
 int platform_wdt_quiet(void)
 {
-    uint32_t t0 = reg_rd(P4_TIMG0_BASE, P4_TIMG_WDTCONFIG0);
     uint32_t t1 = reg_rd(P4_TIMG1_BASE, P4_TIMG_WDTCONFIG0);
     uint32_t lp = reg_rd(P4_LPWDT_BASE, P4_LPWDT_CONFIG0);
     uint32_t mask_t = P4_TIMG_WDT_EN | P4_TIMG_WDT_FLASHBOOT;
 
-    return !(t0 & mask_t) && !(t1 & mask_t) &&
-           !(lp & (P4_LPWDT_EN | P4_LPWDT_FLASHBOOT));
+    return !(t1 & mask_t) && !(lp & (P4_LPWDT_EN | P4_LPWDT_FLASHBOOT));
 }

@@ -44,7 +44,9 @@ volatile ULONG __p4_smp_boot[4];
 
 /* Work for a hart, raised with its inter-hart interrupt. */
 P4_SRAMDATA volatile ULONG __p4_ipi_work[P4_TLS_HARTS];
-/* The cache-off window: requested by one hart, acknowledged by the other. */
+/* The cache-off window: requested by one hart, acknowledged by the other.
+   The request holds 1 + the requesting hart, so that a hart that waits for
+   a lock can tell a request from its peer from its own. */
 P4_SRAMDATA volatile ULONG __p4_park_request;
 P4_SRAMDATA volatile ULONG __p4_park_ack;
 /* Windows the other hart has waited out, for the bring-up report */
@@ -126,6 +128,9 @@ void krnP4IPIInterrupt(void)
     {
         UWORD current = SCHEDELAPSED_GET;
 
+        /* Hart 0 feeds the watchdog only while this keeps counting */
+        krnWdtBeat(me);
+
         if (current)
             SCHEDELAPSED_SET(--current);
         if (current == 0)
@@ -167,7 +172,7 @@ P4_SRAMCODE int krnP4ParkOthers(void)
     if (!(__atomic_load_n(&__p4_harts_online, __ATOMIC_ACQUIRE) & (1UL << other)))
         return 1;
 
-    __atomic_store_n(&__p4_park_request, 1, __ATOMIC_RELEASE);
+    __atomic_store_n(&__p4_park_request, 1 + (1 - other), __ATOMIC_RELEASE);
     krnP4IPISend(other, P4_IPI_PARK);
     start = cycles();
     while (!__atomic_load_n(&__p4_park_ack, __ATOMIC_ACQUIRE))
@@ -185,6 +190,52 @@ P4_SRAMCODE int krnP4ParkOthers(void)
 P4_SRAMCODE void krnP4UnparkOthers(void)
 {
     __atomic_store_n(&__p4_park_request, 0, __ATOMIC_RELEASE);
+}
+
+/*
+ * For a hart that waits with interrupts masked, which cannot take the
+ * park interrupt: serve a request of the other hart from here. Without
+ * this a hart waiting for a lock that the requester holds would keep the
+ * requester waiting for its acknowledgement until the window is refused.
+ * park_here() is SRAM code, so this is safe to call from flash code that
+ * the window is about to take away: it is only entered while the request
+ * is already made, and the window opens after the acknowledgement.
+ *
+ * The inter-hart interrupt stays pending and finds nothing to do when it
+ * is taken later: park_here() returns at once once the request is gone.
+ */
+P4_SRAMCODE void krnP4ParkServe(void)
+{
+    unsigned long hart;
+    ULONG request = __atomic_load_n(&__p4_park_request, __ATOMIC_ACQUIRE);
+
+    asm volatile("csrr %0, mhartid" : "=r"(hart));
+    if (request && request != 1 + hart)
+        park_here();
+}
+
+/*
+ * A lock between harts for state that also interrupt handlers touch: the
+ * holder runs with interrupts masked, so nothing preempts it, and a hart
+ * that waits serves the other's park request meanwhile. Returns the
+ * interrupt state for krnP4LockRelease(). Not recursive.
+ */
+P4_SRAMCODE unsigned long krnP4LockTake(volatile ULONG *lock)
+{
+    unsigned long state = p4_tls_mask();
+
+    while (__atomic_exchange_n(lock, 1, __ATOMIC_ACQUIRE))
+    {
+        while (__atomic_load_n(lock, __ATOMIC_RELAXED))
+            krnP4ParkServe();
+    }
+    return state;
+}
+
+P4_SRAMCODE void krnP4LockRelease(volatile ULONG *lock, unsigned long state)
+{
+    __atomic_store_n(lock, 0, __ATOMIC_RELEASE);
+    p4_tls_unmask(state);
 }
 
 /* Hart 1's idle task: only its inter-hart interrupt wakes it. */

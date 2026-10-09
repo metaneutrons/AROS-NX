@@ -22,9 +22,10 @@
 
     One property of the underlying map deserves stating: krnP4FlashMap() owns
     a single scratch window and is not re-entrant.  Two callers interleaving
-    would each see the other's mapping.  Every use here is inside Forbid(),
-    which is enough because the map and the copy out of it are a few hundred
-    cycles and no request waits on anything.
+    would each see the other's mapping.  Forbid() stops only this hart's
+    tasks, so the read goes through krnP4FlashCopy(), which maps and copies
+    under a lock between the harts, with interrupts masked for the copy of
+    at most one FLASHDISK_CHUNK.
 */
 
 #define DEBUG 0
@@ -109,21 +110,15 @@ static void FlashDiskRead(struct IOStdReq *io)
     while (length)
     {
         ULONG piece = length > FLASHDISK_CHUNK ? FLASHDISK_CHUNK : length;
-        const void *src;
-
         /*
          * The map and the copy are one critical section: the window is
-         * shared, so a task switch between them would copy out of somebody
-         * else's mapping.
+         * shared, so another task or the other hart mapping it between
+         * them would have us copy out of somebody else's mapping. The
+         * kernel does both under a lock between harts; Forbid() alone
+         * would stop only this hart's tasks.
          */
-        Forbid();
-        src = krnP4FlashMap(__esp32p4_flashdisk_base
-                                + (unsigned long)offset, piece);
-        if (src != NULL)
-            CopyMem((APTR)src, dest, piece);
-        Permit();
-
-        if (src == NULL)
+        if (!krnP4FlashCopy(__esp32p4_flashdisk_base
+                                + (unsigned long)offset, dest, piece))
         {
             /* The only way this fails for a range already checked against
                the volume is the 16 MB cache-mapping limit, which the volume

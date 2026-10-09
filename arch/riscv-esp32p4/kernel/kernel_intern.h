@@ -376,6 +376,8 @@ void krnP4SyncCode(void *addr, unsigned long len);
 extern unsigned long __esp32p4_psram_size;
 void krnP4CacheWriteback(void);
 void krnP4CacheWritebackData(void *addr, unsigned long len);
+void krnP4CacheInvalidateData(void *addr, unsigned long len);
+extern const struct KrnCacheOps __p4_cache_ops;
 void krnP4CacheSyncData(void *addr, unsigned long len);
 unsigned long krnP4CacheOff(void);
 void krnP4CacheOn(unsigned long token);
@@ -433,6 +435,7 @@ extern unsigned long __esp32p4_flashdisk_base;
 /* Reading flash from code that executes out of it (kernel_flash.c) */
 void krnP4FlashSurvey(void);
 void *krnP4FlashMap(unsigned long paddr, unsigned long len);
+int krnP4FlashCopy(unsigned long paddr, void *dest, unsigned long len);
 int krnP4PartitionScan(unsigned char want_type, const char *want_label,
                        unsigned long *out_off, unsigned long *out_size,
                        int report);
@@ -445,6 +448,19 @@ extern void *__ks_debuginfo;
 /* Machine setup that has to happen before anything else (platform_init.c) */
 void platform_init(void);
 int  platform_wdt_quiet(void);
+
+/* The main watchdog and the reset cause (kernel_wdt.c) */
+void krnWdtArm(void);
+void krnWdtBeat(unsigned int hart);
+void krnWdtCanaryBeat(unsigned int hart);
+void krnWdtTick(void);
+int  krnWdtArmed(void);
+void krnWdtReport(void);
+void krnWdtReportReset(void);
+uint32_t krnResetCause(void);
+const char *krnResetCauseName(uint32_t cause);
+/* Stop this hart with interrupts masked, so that it feeds nothing */
+void krnP4Halt(void) __attribute__((noreturn));
 
 /* Early UART0 debug console (kernel_console.c) */
 /* Switch to nonblocking, lossy output before runtime tasks can print. */
@@ -473,6 +489,9 @@ void krnP4IPISend(unsigned int hart, ULONG work);
 void krnP4TickOthers(void);
 int krnP4ParkOthers(void);
 void krnP4UnparkOthers(void);
+void krnP4ParkServe(void);
+unsigned long krnP4LockTake(volatile ULONG *lock);
+void krnP4LockRelease(volatile ULONG *lock, unsigned long state);
 extern volatile ULONG __p4_parks;
 void krnP4SpinReport(const char *what, void *lock, void *caller);
 void krnP4PutC(char c);

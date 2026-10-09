@@ -290,6 +290,7 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
         {
             krnTimerAck();
             __esp32p4_ticks++;
+            krnWdtTick();
 
             /*
              * The tick alone preempts nothing. What counts the quantum
@@ -365,10 +366,7 @@ static int krnTrapDispatch(struct ExceptionContext *ctx, unsigned long mcause,
     krnReportException(ctx, mcause, mtval);
 
     krnP4PutStr("[trap] fatal - halting hart.\n");
-    for (;;)
-        asm volatile("wfi");
-
-    return TRAP_DONE;
+    krnP4Halt();
 }
 
 #include "tls.h"
