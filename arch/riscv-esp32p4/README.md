@@ -85,7 +85,11 @@ no-reader qualification has build-verified optional user-space tools on this
 normal core (56 host tests). A volume-only deployment/readback and complete30s
 headless boot pass. The first synchronized smoke displays SMOKE:none with
 responsive touch, but incomplete late USB results reject acceptance. Paced
-post-load reports are the correction candidate; smoke repeat/full run remain open.
+post-load reports fix the short-run retrieval: the repeat has all fields,
+30s,80 CPU batches per hart,15 verified SD reads,27 window API updates and
+zero errors. Its complete late capture/validator pass; Fabian reports
+SMOKE:none and responsive pointer. Visible redraw confirmation and full
+production duration remain open.
 No existing idle soak or raw B5 run substitutes for it. D1001 work waits
 until cleanup and that qualification finish, per Fabian's decision.
 
