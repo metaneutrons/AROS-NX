@@ -140,7 +140,25 @@ both harts online, watchdog armed, Wanderer started, no fault or reset.
 The existing development volume is `aa7eadbe…`. The exact production
 artifact also passed its synchronized Wanderer/display/touch check: Fabian
 confirmed readiness, then reported everything fine after the requested
-normal-use procedure. PR #70 merge remains pending.
+normal-use procedure. PR #70 merged as `0c15f90eb3` after required CI.
+The unchanged production core also passed a separate thirty-minute
+reader-attached idle soak; no-reader and physical cold gates remain separate.
+
+Cold-start correction candidate (2026-10-09): the same production core stayed
+black after a user-confirmed USB-only rail-off/reapply without a log reader;
+a separate reader-attached USB reset recovered Wanderer. Saved PC pointed
+into the early USB output wait. Source audit establishes repeated per-byte
+wait amplification, not the full hardware cause. USB byte and flush waits
+now share one failed-poll allowance per boot, retain single-probe late-reader
+recovery and do not renew the allowance for blocking diagnostics. The
+candidate is core `4d998b4e…`, 190,240 bytes, clean-built from
+`fix/esp32p4-usb-boot-budget` and writer-verified at `0x20000`; it supersedes
+the JC1060 core listed in the historical artifact row below. Package,
+development volume, SD and bootloader are unchanged. A 120-second
+reader-attached USB-reset boot completed normally: PSRAM, both harts,
+watchdog, Wanderer and continuing touch polls, no captured fault/reset.
+A fresh physical cold test remains required.
+The earlier warm SMP/visual passes do not close this gate.
 
 E2, the two-hart primitives, is hardware verified on both boards: on the
 D1001 on 2026-10-01 (219,776-byte candidate, five captures, two epochs each)
