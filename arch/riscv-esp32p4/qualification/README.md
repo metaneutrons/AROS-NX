@@ -38,7 +38,11 @@ BSP, bootloader and SD fixture stay unchanged.
 
 The result is held only in the current program's RAM and is repeatedly emitted
 after workers stop. Each of the nine report records fits the 64-byte endpoint
-budget, even with maximum 32-bit values. Close-window aborts the load; after
+budget, even with maximum 32-bit values. Each record is separated by two DOS
+ticks so the nonblocking USB endpoint can drain; sets repeat after a five-second
+wait. The retrieval window therefore lasts at least 300 seconds including
+these pauses. This still does not guarantee delivery: missing fields fail.
+Close-window aborts the load; after
 completion it closes the display window while the result retrieval window
 continues. No serial output is intentionally emitted by this tool during load.
 Other production components can still emit diagnostics; absence of a host

@@ -140,7 +140,7 @@ gate: compensated output is not the native display contract.
 | D1 | Board-driver boundary and second-board onboarding | `build verified` | 2026-10-03: the profile now selects panel controller and table (JD9365/JD9165), rotation (90/0), panel power scheme (PCA9535 or plain GPIOs), touch driver (GSL3670/GT911, firmware optional), SD detect/power wiring, partition CSV and sdkconfig per board; `check-profile.py` evaluates `board.mk` per board through GNU make. The D1001 core built with these changes is byte-identical to HEAD (202,096 B `99a8f6f8…`, same flags, same tree), so the D1001 binary contract holds. Not hardware tested on either board. |
 | D2 | Guition JC1060P470C as the active development board (J0-J5) | `J0-J5 accepted; four cold visual passes; sustained stress open` | Board IDs `jc1060p470c-v2` (new panel batch, active) and `jc1060p470c-v1` (old batch). On `80:f1:b2:d3:3b:a6`: J0 Exec/32MB PSRAM; J1 correct test card after 20MHz D-PHY reference fix; J2 GT911/I2C1/100kHz; J3/J4 Wanderer, four-edge pointer, double tap, two-finger menu and double-tap-and-drag visually accepted. J5 portable touch/brightness control panels accepted 2026-10-05. Aggregate early USB budget correction `4d998b4e…` passes host tests, a 120-second reader-attached USB-reset boot and four synchronized USB-only physical cold boots without a serial reader/reset: approximately 10, 11, 14 and 11 seconds (2026-10-09). Fresh pointer, double-tap and two-finger menu check accepted. Earlier black cold attempt remains recorded. Open: larger cold-cycle reliability campaign, sustained combined/no-reader stress and old panel batch. Previous-production thirty-minute reader-attached idle soak does not substitute for those gates. See dated D2/J0-J5 and s13-s15 evidence for exact configurations/artifacts. |
 | D2-BT | JC1060 boot latency | `deferred; production cleanup accepted` | Fabian defers optimization after channel2-off cold12s with no demonstrated gain. Original bootloader27b99e03… and entire sector range restored/readback-verified; clean normal core17249045… has BOOT_TIMING0/C1_PROFILE0, independent readback and complete60s warm regression pass. Quiet package/media unchanged. Fresh exact-pair desktop/pointer/double-tap/menu check accepted by Fabian; no claim that latency is fixed. |
-| D2-Q | JC1060 production no-reader combined qualification | `harness deployed; qualification gate not started` | Cleanup step1 accepted; D1001 deferred until step2 complete. Normal core17249045…/quiet package e0869292… unchanged. Separate optional SmokeQualify and ProductionQualify tools compile;55 host tests pass. Volume preserves18 original entries plus4 additions; deployed/readback verified, complete30s headless boot passes. >=1800s both-hart/SD/window load retains RAM results for late retrieval. No-reader smoke/full run and final exact-production visual/touch gates remain required. |
+| D2-Q | JC1060 production no-reader combined qualification | `smoke observed; retrieval incomplete, paced retry pending` | Cleanup step1 accepted; D1001 deferred until step2 complete. Normal core17249045…/quiet package e0869292… unchanged. Fabian observes SMOKE:none and responsive touch. Late capture drops6 mandatory fields: no acceptance. Paced result-only output correction builds;56 host tests pass. Full no-reader run and final exact-production visual/touch gates remain required. |
 | D3 | Portable touch and I2C stack | `hardware partial (JC1060P470C passed)` | 2026-10-04 on Fabian's direction: `touchscreen.hidd` (`rom/hidds/touchscreen`, polling, gestures, calibration, `ENV:Sys/touchscreen.prefs`), controller drivers `gt911.hidd` and `gsl3670.hidd` on AROS's `hidd.i2c` (`workbench/hidds`), the bus driver `hidd.i2c.esp32p4` (`arch/riscv-esp32p4/i2c`, transport shared with the kernel) and `esp32p4board.resource`, which builds the objects from the board profile; editor `workbench/prefs/touchscreen`. The kernel keeps no touch driver and no `KATTR_TouchScreenOps`. Fixes the I2C0 clock divider position (CTRL10 bits 9:2). JC1060P470C: GT911 through the new stack; Fabian confirms touch, calibration, editor and the tap/direct switch. D1001: builds, not hardware tested. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
@@ -1174,9 +1174,12 @@ ordinary managed HIDD/window rendering, both-hart workers, verified read-only
 SD traffic and a result retrievable after the reader-free load interval.
 Neither raw B5 scanout nor the console-only S5 runner meets this combination.
 The optional ordinary Workbench harness now builds, with separate smoke and
-production executables,55 passing host tests and an independently host-checked
+production executables,56 passing host tests and an independently host-checked
 development-volume candidate. Its backed-up volume-only deployment and30s
-headless boot regression pass; neither tool has run on hardware yet.
+headless boot regression pass. The first synchronized smoke shows SMOKE:none
+and responsive touch, but late retrieval loses6 mandatory fields and fails
+acceptance. Paced post-load reports are the correction candidate; repeat smoke
+and full production gates remain open.
 See `qualification/README.md` for the synchronized
 reader-free procedure and its coverage limits.
 
@@ -26944,6 +26947,47 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   neither SmokeQualify nor ProductionQualify has started. Next request fresh
   readiness for manual30s smoke and complete late results, then full1800s
   reader-free combined run. D1001 remains deferred until step2 acceptance.
+
+### 2026-10-09 - D2-Q: synchronized smoke observed; incomplete USB report rejected, pacing correction built
+
+- Fresh readiness Fabian "ja"; asks him to manually launch SmokeQualify from
+  AROSP4DEV, leave window open30s, observe updates/touch and report terminal
+  status. No reader during load; neither an automatic launch nor a reset.
+  Exact original SmokeQualify77936B b8e093b2…
+  on volume e8cecb26…; normal core17249045…/quiet package e0869292… unchanged.
+- Human observation: "SMOKE: none mauszeiger lässt sich bewegen". This
+  confirms reported terminal state/reason and responsive pointer only; no
+  explicit visible redraw observation, and no full production pass inferred.
+- Passive late capture `jc1060/s20-production-qualification/smoke-late.log`
+  exits0, successful45.122s/1008B footer; SHA-256
+  `e969940da235dc44ea7425181c38007c1bd680f2b6f59a92d6767d0cdda6fd65`.
+  No ROM banner; continuing GT911 heartbeat. ID760b4519 has SMOKE, cpu0/1=79,
+  sdmismatch0, reason0/fixture1, gfxupdates27. Six mandatory fields never
+  arrive intact: cpuerr0/cpuerr1/duration/goal/sderrors/sdreads. Validator
+  exits1 and rejects. Missing evidence is not repaired by the displayed state.
+- Runtime USB console remains deliberately nonblocking/lossy. Source and
+  repeated packet omissions show that <=64-byte records alone do not give
+  endpoint drain time between back-to-back bug() calls. Correction adds two
+  DOS ticks after each retained record, only after workers stop/load ends.
+  Kernel console and qualification workload unchanged; missing fields still
+  reject, repetition handles concurrent writer contention but guarantees none.
+- Quick targets compile/link exit0 (`qualify-paced-build.log`);56 host tests
+  pass including actual source formats/packet maxima and all9 pacing calls.
+  ProductionQualify78144B SHA-256
+  `6d529bcb4687ad0bf828df13d9c9b543e899ed0ff51f36637b50ae80a522f93e`;
+  SmokeQualify78052B SHA-256
+  `1046a418a436768fccb8a41f2781e4bd94437f23b155a8ef2b4010ac378986ea`.
+- New `s20-production-qualification/paced/aros-devvolume.img`,4194304B
+  SHA-256 `6a7011fd37f4b6ecc0facbadf2d109a9025a149861ee47cc0621530618602592`.
+  All22 manifest paths unchanged, only2 executables differ; read-only host
+  mount matches22/22 and fsck_msdos -n accepts FAT16; original hash unchanged.
+  Full prewrite0xc00000/0x400000 backup is e8cecb26…, identical to previous
+  readback; board MAC80:f1:b2:d3:3b:a6 verified. Volume-only write/erase
+  0xc00000..0xffffff completes exit0/hash verified; independent full4MiB
+  readback completes exit0 and cmp/SHA-256 match6a7011fd… exactly.
+  Recoverable prewrite image retained; serial reader closed. No qualification
+  accepted from deployment. Next obtain fresh
+  readiness for smoke repeat. No full1800s run, core/BSP/SD writes or D1001 work.
 
 ## Evidence-entry template
 

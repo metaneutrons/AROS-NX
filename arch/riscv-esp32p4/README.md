@@ -82,8 +82,10 @@ separate30s reset capture, Fabian confirms complete desktop, pointer motion,
 drive double-tap and two-finger menu without flicker/hang on this exact pair.
 Cleanup step1 is accepted. Boot-latency work is deferred, not solved. Combined
 no-reader qualification has build-verified optional user-space tools on this
-normal core (55 host tests). A volume-only deployment/readback and complete30s
-headless boot pass; neither tool has yet run on hardware or reached acceptance.
+normal core (56 host tests). A volume-only deployment/readback and complete30s
+headless boot pass. The first synchronized smoke displays SMOKE:none with
+responsive touch, but incomplete late USB results reject acceptance. Paced
+post-load reports are the correction candidate; smoke repeat/full run remain open.
 No existing idle soak or raw B5 run substitutes for it. D1001 work waits
 until cleanup and that qualification finish, per Fabian's decision.
 

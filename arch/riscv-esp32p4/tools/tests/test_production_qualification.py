@@ -79,6 +79,15 @@ class QualificationTests(unittest.TestCase):
             self.assertLessEqual(len(maximum.encode("utf-8")), 64)
         self.assertEqual(emitted, MODULE.FIELDS)
 
+    def test_retained_report_is_paced_after_each_record(self):
+        import re
+        source = (Path(__file__).parents[2] / "qualification" / "production-qualify.c").read_text()
+        body = source.split("static void pq_publish_records(void)", 1)[1].split("static void pq_report_wait_five_seconds", 1)[0]
+        records = re.findall(r'bug\("\[pq\].*?\);\s*pq_report_pause\(\);', body, re.S)
+        self.assertEqual(len(records), 9)
+        self.assertEqual(body.count("pq_report_pause();"), 9)
+        self.assertIn("static void pq_report_pause(void)\n{\n    Delay(2);\n}", source)
+
 
 if __name__ == "__main__":
     unittest.main()

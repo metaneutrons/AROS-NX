@@ -1144,25 +1144,45 @@ static void pq_close_graphics(void)
     }
 }
 
+/* Runtime USB console is deliberately lossy/nonblocking.  Packet-sized lines
+ * alone do not leave time for the endpoint to drain between consecutive bug()
+ * calls.  Pace retained records only after load/worker teardown; never change
+ * the production console into a blocking writer. Repetition still handles
+ * contention with other runtime writers; missing fields still fail acceptance.
+ */
+static void pq_report_pause(void)
+{
+    Delay(2);
+}
+
 static void pq_publish_records(void)
 {
     bug("[pq] id=%08lx state=%s\n", pq_report.nonce,
         (IPTR)pq_state_name(pq_report.state));
+    pq_report_pause();
     bug("[pq] id=%08lx duration=%lu goal=%lu\n", pq_report.nonce,
         pq_report.duration_seconds, pq_report.goal_seconds);
+    pq_report_pause();
     bug("[pq] id=%08lx cpu0=%lu cpu1=%lu\n", pq_report.nonce,
         pq_report.cpu_batches[0], pq_report.cpu_batches[1]);
+    pq_report_pause();
     bug("[pq] id=%08lx cpuerr0=%lu cpuerr1=%lu\n", pq_report.nonce,
         pq_report.cpu_errors[0], pq_report.cpu_errors[1]);
+    pq_report_pause();
     bug("[pq] id=%08lx sdreads=%lu\n", pq_report.nonce, pq_report.sd_reads);
+    pq_report_pause();
     bug("[pq] id=%08lx sdmismatch=%lu\n", pq_report.nonce,
         pq_report.sd_mismatches);
+    pq_report_pause();
     bug("[pq] id=%08lx sderrors=%lu\n", pq_report.nonce,
         pq_report.sd_errors);
+    pq_report_pause();
     bug("[pq] id=%08lx gfxupdates=%lu\n", pq_report.nonce,
         pq_report.gfx_updates);
+    pq_report_pause();
     bug("[pq] id=%08lx reason=%lu fixture=%lu\n", pq_report.nonce,
         pq_report.reason, pq_report.fixture_verified);
+    pq_report_pause();
 }
 
 static void pq_report_wait_five_seconds(void)
