@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; command callback ABI4 build verified` | Shared DMA and command candidate are host-tested/build verified. Resource ABI4 exposes the command callback, with matched RV32 resource/SD builds and version/size/callback refusal. Neither client invokes it yet. Command integration, recovery, installed C6 compatibility, package and hardware regression gates remain open; no radio MMIO or flash. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; shared initialization host tested/build verified` | Shared DMA, command candidate and initialization have independent source/model checks and RV32 builds. ABI5 adds a sticky first-initialization marker; SD joins without implicitly resetting a previously attempted host. Neither client invokes the new command engine yet; recovery, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; pure wire codec host tested` | Independently implemented bounded byte codec, optional checksum and non-mutating rejection;157,590 checks per O0/O2 sanitizer run and RV32 object, no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -273,11 +273,19 @@ must handle arbitrary-length frame tails above this layer; this remains open.
 SDIO interrupt bits are preserved by low16 W1C, and every wait has time/poll
 bounds. A request must explicitly opt into the storage-only slot0 CMD18 early
 descriptor workaround. Card recovery remains the client responsibility.
-This candidate is exposed by private resource ABI4 but not invoked by SD/radio;
-matched RV32 resource/SD builds verify version4, size208 and callback108.
+This candidate is exposed by private resource ABI5 but not invoked by SD/radio;
+matched RV32 resource/SD builds verify version5, size212 and callback108.
 Its RV32 build, independent source review and independently repeated modeled
 tests pass (20 cases, 2,001,069 checks each at O0/O2 with ASan/UBSan).
-Client integration and controller initialization migration remain open.
+Client command integration remains open. Global controller initialization now
+moves from p4sd_host_init into p4host_reset, including a bounded CTRL reset
+and common FIFO/timeout/DMA/IRQ defaults. SD only triggers the first reset when
+initialization_started is false; joining an initialized host preserves the peer through
+slot0-only RST_N/CTYPE updates and shared clock control. Explicit full reset
+still invalidates both generations. Independent source review and repeated
+extracted-source O0/O2 sanitizer models pass: clock/reset18 cases/292 checks,
+SD ownership/init25 cases/400,338 checks each. Controller MMIO and resource
+callbacks are modeled; hardware regression remains open.
 This is not a complete dual-slot host: command sequencing still resides in
 the SD client. Host-wide recovery/re-enumeration remains open. No second
 hardware client may use this motor until those gates are complete.
@@ -26627,6 +26635,76 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   its accepted diagnostics/recovery gates before bounded C6 probing. Keep the
   maximum-length/slowest-clock poll-cap gate and production-baseline integration
   open; this is not a working WLAN driver.
+
+### 2026-10-10 - N0 shared controller initialization host tested/build verified
+
+- State: implementation host tested/build verified, not hardware accepted. Parent9271e2a87e, feature/esp32p4-wifi
+  in /Volumes/Dev/Build/aros-esp32p4-wifi; isolated JC1060-v2/SMP build
+  /Volumes/Dev/Build/aros-esp32p4-wifi-build. Initial candidate retained ABI4;
+  the corrected first-initialization marker below requires ABI5.
+- p4host_reset now owns bounded CTRL reset and global controller programming
+  after its physical reset. DMA identity is released only after that succeeds;
+  failure faults/invalidate the shared host. Global reset asserts both RST_N
+  outputs and initializes CTYPE, DMA/IRQ, timeout, FIFO threshold and clock edge.
+  SD host init releases only slot0 reset and clears only its width bits;
+  existing host_div skips module reset. Active DMA/faulted initialized hosts
+  refuse joining. Generic explicit full reset still resets both clients.
+- Verification: matched resource/SD build and independent extracted-source
+  first/join/reset-failure models plus independent source review dispatched.
+  Actual final exits/artifacts remain pending; no hardware claim.
+- Safety: no serial access, core/package, flash, C6 replacement or SD writes.
+  SD command/recovery and read-only denylist are not migrated here. Host-wide
+  reset remains destructive; this change only removes implicit reset on join.
+- Next: resolve model/review results, identify built artifacts, then migrate
+  SD command/diagnostic/recovery semantics before bounded C6 probing. Preserve
+  production-baseline integration and loaded-module/hardware regression gates.
+- Correction: independent review confirmed host_div0 denotes both first boot
+  and a previous clock/reset failure. The initial admission above could
+  silently perform a destructive reset after such a fault. Added sticky
+  initialization_started (FALSE in resource constructor; TRUE before any
+  owned reset attempt, never cleared by failure). Automatic init only occurs
+  before the first attempt; later fault/active-DMA or invalid-divider states
+  refuse before slot MMIO. Explicit full reset remains the recovery authority.
+  Generation1 is not used as a boot heuristic because generations can wrap.
+- Corrected resource/SD quick builds exit0 (session24213), recompile all
+  private-header consumers; JC1060-v2/SMP, no flag/public-header changes.
+  Resource48,500B SHA-256
+  `df4adcf612c421bcf21e06175b908ccf5afcfec99f15eaa8ac5cd1ef009ba2f1`,
+  SD126,872B SHA-256
+  `a90a99a85b91a22d0e9a0204d4421bdafe4789fe11909d2240e1f849167cc361`.
+  RV32 resource constructor and SD admission disassembly both verify ABI5/
+  size212; resource nm -u is empty. These supersede intermediate ABI4 migration
+  artifacts48,492B/e86c326604a724... and126,832B/33987a88550b6e....
+  Independent final review/models remain pending; no core/package/hardware.
+- Final independent source review confirms sticky admission resolves the
+  implicit-reset defect, slot RST_N/CTYPE writes preserve the peer, clock
+  control preserves the active peer source, and failed reset retains DMA
+  identity until confirmed controller completion. No further material source
+  issue found in that scope. This closes source review, not model/hardware gates.
+  Primary command/DMA model regressions repeat exit0 (session12930), respectively
+  20 cases/2,001,069 checks and15 cases/2,253,671 checks each O0/O2; dedicated
+  initialization models remain pending.
+- Final dedicated model verification: primary independently repeats
+  tools/test-clock-engine.py (session42240) and tools/test-sdmmc-host.py
+  (session51455), both actual exit0. Strict-warning O0/O2 ASan/UBSan runs
+  pass18 cases/292 checks and25 cases/400,338 checks respectively, per mode.
+  Coverage includes CTRL self-clear, stuck reset with frozen/wrapping timer,
+  global defaults/low16 W1C, first initialization, sticky failed-reset refusal,
+  peer-preserving join and invalid-divider/fault/active-DMA refusal.
+  Extracted reset SHA-256
+  `4fdc3cec983166ee6ec474d21108e80b854880835a9533f2960252dd854b6ffc`;
+  extracted SD init
+  `87ebb1a19d562c65744ffb29415f1de6b6763a65122cbaac1b3e3cb3b568d2b1`.
+  Clock assembled fixture
+  `1d6f0cdfebc3253aada683261b90ed7fd3c011999ae3af88869b95c6eed03f84`;
+  SD assembled fixture
+  `60330bfce9252bcba033df757d48472eccd6790b748099926f2829e0aa1d4718`.
+  Initial new-test attempts exited1 due to a fixture timer-call off-by-one
+  assertion and omitted clock_hz field, corrected before these final runs.
+  Actual clock bodies execute with modeled MMIO; SD reset/set-clock callbacks
+  are mocked at the resource seam. No silicon/reset-continuity pass follows.
+  The final results close the pending model gate above. Next remains client
+  command/recovery integration and hardware regression, not C6 activation.
 
 ## Evidence-entry template
 

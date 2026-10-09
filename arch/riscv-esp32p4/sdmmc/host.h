@@ -6,7 +6,7 @@
 #include <exec/semaphores.h>
 
 #define P4_SDMMC_HOST_NAME "esp32p4sdmmc.resource"
-#define P4_SDMMC_HOST_ABI 4
+#define P4_SDMMC_HOST_ABI 5
 #define P4_SDMMC_HOST_WAIT_US 1000000UL
 
 /* Private port ABI, shared by separately loaded SD and radio clients.
@@ -30,8 +30,10 @@ struct P4SDMMCHost
     void (*release)(struct P4SDMMCHost *);
     void (*invalidate)(struct P4SDMMCHost *);
     ULONG (*now_us)(void);
-    /* Caller must own lock. reset invalidates BOTH slots; it is not card
-     * re-enumeration. set_clock preserves an active peer's source/divider. */
+    /* Caller must own lock. reset initializes global controller defaults and
+     * invalidates BOTH slots; it is not card re-enumeration. A joining slot
+     * must not reset a previously attempted host. set_clock preserves
+     * an active peer's source/divider. */
     BOOL (*reset)(struct P4SDMMCHost *);
     BOOL (*set_clock)(struct P4SDMMCHost *, unsigned slot, ULONG requested,
                       BOOL low_power, ULONG *actual);
@@ -56,6 +58,7 @@ struct P4SDMMCHost
     ULONG dma_length;
     BOOL dma_writing;
     BOOL dma_faulted; /* Unknown hardware ownership: refuse new transfers. */
+    BOOL initialization_started; /* Sticky: only the first owner may auto-reset. */
 };
 
 #endif

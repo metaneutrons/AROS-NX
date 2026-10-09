@@ -116,6 +116,7 @@ BOOL p4host_reset(struct P4SDMMCHost *host)
     ULONG value;
     if (!clock_owned(host))
         return FALSE;
+    host->initialization_started = TRUE;
     host->invalidate(host);
     host->slot_clock[0] = host->slot_clock[1] = 0;
     host->host_div = 0;
@@ -143,6 +144,29 @@ BOOL p4host_reset(struct P4SDMMCHost *host)
         clock_fail(host);
         return FALSE;
     }
+    /* Controller-wide programming belongs to the resource, not a slot.
+     * reset is explicitly destructive to both generations. A joining slot
+     * must reuse this initialized host rather than calling reset again. */
+    clock_write(P4_SDMMC_BASE + P4SD_CTRL,
+                 clock_read(P4_SDMMC_BASE + P4SD_CTRL) | P4SD_CTRL_RESET_ALL);
+    if (!clock_wait_clear(host, P4SD_CTRL, P4SD_CTRL_RESET_ALL))
+    {
+        clock_fail(host);
+        return FALSE;
+    }
+    clock_write(P4_SDMMC_BASE + P4SD_CTRL, 0);
+    clock_write(P4_SDMMC_BASE + P4SD_BMOD, 0);
+    clock_write(P4_SDMMC_BASE + P4SD_IDINTEN, 0);
+    clock_write(P4_SDMMC_BASE + P4SD_IDSTS, 0xFFFFFFFFUL);
+    clock_write(P4_SDMMC_BASE + P4SD_INTMASK, 0);
+    clock_write(P4_SDMMC_BASE + P4SD_RINTSTS, P4SD_INT_CMD_DATA_MASK);
+    clock_write(P4_SDMMC_BASE + P4SD_RST_N, 0);
+    clock_write(P4_SDMMC_BASE + P4SD_CTYPE, 0);
+    clock_write(P4_SDMMC_BASE + P4SD_TMOUT, 0xFFFFFFFFUL);
+    clock_write(P4_SDMMC_BASE + P4SD_FIFOTH,
+                 P4SD_FIFOTH_RX_WMARK | P4SD_FIFOTH_DMA_MSIZE_8);
+    clock_write(P4_SDMMC_BASE + P4SD_CARDTHRCTL, 0);
+    clock_write(P4_SDMMC_BASE + P4SD_CLK_EDGE_SEL, 0);
     host->dma_data = NULL;
     host->dma_length = 0;
     host->dma_writing = FALSE;

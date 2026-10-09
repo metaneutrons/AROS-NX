@@ -103,6 +103,7 @@ static int P4SDMMC_Init(LIBBASETYPEPTR P4SDMMCBase)
     P4SDMMCBase->dma_complete = p4host_dma_complete;
     P4SDMMCBase->dma_inspect = p4host_dma_inspect;
     P4SDMMCBase->command = p4host_command;
+    P4SDMMCBase->initialization_started = FALSE;
     p4host_dma_init(P4SDMMCBase);
     return TRUE;
 }

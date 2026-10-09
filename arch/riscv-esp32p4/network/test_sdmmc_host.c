@@ -12,6 +12,9 @@ typedef int BOOL;
 
 #define TRUE 1
 #define FALSE 0
+#define MMIO_REGISTER_COUNT 1024U
+#define WRITE_LOG_CAPACITY 64U
+#define RADIO_IRQ_BITS ((1UL << 16) | (1UL << 17))
 
 struct Task
 {
@@ -30,6 +33,14 @@ struct P4SDMMCHost
 {
     struct SignalSemaphore lock;
     ULONG generation;
+    unsigned host_div;
+    BOOL initialization_started;
+    ULONG slot_clock[2];
+    UBYTE *dma_data;
+    ULONG dma_length;
+    BOOL dma_faulted;
+    BOOL (*reset)(struct P4SDMMCHost *);
+    BOOL (*set_clock)(struct P4SDMMCHost *, unsigned, ULONG, BOOL, ULONG *);
     BOOL (*acquire)(struct P4SDMMCHost *, ULONG);
     void (*release)(struct P4SDMMCHost *);
     ULONG (*now_us)(void);
@@ -37,6 +48,7 @@ struct P4SDMMCHost
 
 struct p4sd_private
 {
+    ULONG clock_hz;
     BOOL powered;
     BOOL host_ready;
     struct P4SDMMCHost *host;
@@ -81,13 +93,28 @@ static unsigned sd_release_calls;
 static ULONG sd_last_timeout;
 static IPTR last_write_address;
 static ULONG last_write_value;
+struct write_event
+{
+    IPTR address;
+    ULONG value;
+};
+static struct write_event write_log[WRITE_LOG_CAPACITY];
+static ULONG sd_registers[MMIO_REGISTER_COUNT];
 static unsigned write_calls;
 static unsigned read_calls;
 static unsigned gpio_calls;
 static unsigned delay_calls;
 static unsigned fifo_reset_calls;
 static unsigned module_reset_calls;
-static unsigned host_init_calls;
+static unsigned clock_set_calls;
+static unsigned reset_callback_calls;
+static unsigned reset_generation;
+static unsigned clock_set_slot;
+static ULONG clock_set_requested;
+static BOOL clock_set_low_power;
+static ULONG clock_set_result_hz;
+static BOOL reset_callback_result;
+static BOOL clock_set_result;
 
 static void fail_check(const char *expression, const char *file, int line)
 {
@@ -190,26 +217,8 @@ static void bug(const char *message, ...)
     ++bug_calls;
 }
 
-static ULONG p4sd_read(IPTR address)
-{
-    (void)address;
-    ++read_calls;
-    return 0U;
-}
-
-static ULONG p4sd_reg(ULONG offset)
-{
-    (void)offset;
-    ++read_calls;
-    return 0U;
-}
-
-static void p4sd_write(IPTR address, ULONG value)
-{
-    ++write_calls;
-    last_write_address = address;
-    last_write_value = value;
-}
+static ULONG p4sd_read(IPTR address);
+static void p4sd_write(IPTR address, ULONG value);
 
 static void p4sd_gpio_output(unsigned gpio, BOOL level)
 {
@@ -231,16 +240,38 @@ static BOOL p4sd_reset_fifo(struct sdcard_Bus *bus)
     return TRUE;
 }
 
-static void p4sd_module_reset(struct sdcard_Bus *bus)
+static BOOL mock_host_reset(struct P4SDMMCHost *host)
 {
-    (void)bus;
+    CHECK(host == &sd_host);
+    ++reset_callback_calls;
     ++module_reset_calls;
+    host->initialization_started = TRUE;
+    if (!reset_callback_result)
+        return FALSE;
+    host->host_div = 10U;
+    host->generation = reset_generation;
+    host->slot_clock[0] = 0UL;
+    host->slot_clock[1] = 0UL;
+    host->dma_data = NULL;
+    host->dma_length = 0UL;
+    host->dma_faulted = FALSE;
+    return TRUE;
 }
 
-static BOOL p4sd_host_init(struct sdcard_Bus *bus)
+static BOOL mock_host_set_clock(struct P4SDMMCHost *host, unsigned slot,
+                                ULONG requested, BOOL low_power,
+                                ULONG *actual)
 {
-    (void)bus;
-    ++host_init_calls;
+    CHECK(host == &sd_host);
+    CHECK(actual != NULL);
+    ++clock_set_calls;
+    clock_set_slot = slot;
+    clock_set_requested = requested;
+    clock_set_low_power = low_power;
+    if (!clock_set_result)
+        return FALSE;
+    *actual = clock_set_result_hz;
+    host->slot_clock[slot] = *actual;
     return TRUE;
 }
 
@@ -283,15 +314,27 @@ static void reset_fixture(void)
     sd_last_timeout = 0U;
     last_write_address = 0U;
     last_write_value = 0U;
+    memset(write_log, 0, sizeof(write_log));
+    memset(sd_registers, 0, sizeof(sd_registers));
     write_calls = 0U;
     read_calls = 0U;
     gpio_calls = 0U;
     delay_calls = 0U;
     fifo_reset_calls = 0U;
     module_reset_calls = 0U;
-    host_init_calls = 0U;
+    clock_set_calls = 0U;
+    reset_callback_calls = 0U;
+    reset_generation = 8U;
+    clock_set_slot = 0U;
+    clock_set_requested = 0UL;
+    clock_set_low_power = FALSE;
+    clock_set_result_hz = 400000UL;
+    reset_callback_result = TRUE;
+    clock_set_result = TRUE;
     shared_host.now_us = mock_now_us;
     sd_host.now_us = mock_now_us;
+    sd_host.reset = mock_host_reset;
+    sd_host.set_clock = mock_host_set_clock;
 }
 
 static void run_test(const char *name, void (*test)(void))
@@ -303,6 +346,30 @@ static void run_test(const char *name, void (*test)(void))
 
 /* This file is a small simulator, not another copy of the implementation. */
 /* INSERT_ACTUAL_SOURCE */
+
+static ULONG p4sd_read(IPTR address)
+{
+    CHECK(address >= (IPTR)P4_SDMMC_BASE);
+    CHECK(address < (IPTR)P4_SDMMC_BASE + sizeof(sd_registers));
+    ++read_calls;
+    return sd_registers[(address - (IPTR)P4_SDMMC_BASE) / sizeof(ULONG)];
+}
+
+static void p4sd_write(IPTR address, ULONG value)
+{
+    CHECK(address >= (IPTR)P4_SDMMC_BASE);
+    CHECK(address < (IPTR)P4_SDMMC_BASE + sizeof(sd_registers));
+    CHECK(write_calls < WRITE_LOG_CAPACITY);
+    ++write_calls;
+    last_write_address = address;
+    last_write_value = value;
+    write_log[write_calls - 1U].address = address;
+    write_log[write_calls - 1U].value = value;
+    if (address == (IPTR)(P4_SDMMC_BASE + P4SD_RINTSTS))
+        sd_registers[P4SD_RINTSTS / sizeof(ULONG)] &= ~value;
+    else
+        sd_registers[(address - (IPTR)P4_SDMMC_BASE) / sizeof(ULONG)] = value;
+}
 
 static void test_immediate_and_nonblocking_contention(void)
 {
@@ -463,6 +530,7 @@ static void setup_sd_bus(BOOL ready, ULONG client_generation,
                          ULONG host_generation)
 {
     sd_host.generation = host_generation;
+    sd_host.initialization_started = FALSE;
     sd_host.acquire = mock_sd_acquire;
     sd_host.release = mock_sd_release;
     sd_private.host_ready = ready;
@@ -580,10 +648,174 @@ static void test_full_reset_remains_explicit_reinitialization_exception(void)
 
     p4sd_soft_reset_locked(SDHCI_RESET_ALL, &sd_bus);
     CHECK(module_reset_calls == 1U);
-    CHECK(host_init_calls == 1U);
+    CHECK(reset_callback_calls == 1U);
+    CHECK(clock_set_calls == 1U);
     CHECK(sd_private.host_ready == FALSE);
+    CHECK(read_calls == 2U);
+    CHECK(write_calls == 2U);
+    CHECK(sd_host.initialization_started == TRUE);
+    CHECK(sd_host.host_div == 10U);
+    CHECK(sd_registers[P4SD_RST_N / sizeof(ULONG)] == 1UL);
+    CHECK(sd_registers[P4SD_CTYPE / sizeof(ULONG)] == 0UL);
+}
+
+static unsigned writes_to(IPTR address)
+{
+    unsigned index;
+    unsigned count = 0U;
+    for (index = 0U; index < write_calls; ++index)
+        if (write_log[index].address == address)
+            ++count;
+    return count;
+}
+
+static void seed_host_init_registers(void)
+{
+    sd_registers[P4SD_RST_N / sizeof(ULONG)] = 0xA4UL;
+    sd_registers[P4SD_CTYPE / sizeof(ULONG)] =
+        P4SD_CTYPE_4BIT_SLOT0 | P4SD_CTYPE_8BIT_SLOT0 | 0x90000002UL;
+    sd_registers[P4SD_CTRL / sizeof(ULONG)] = 0x5A5AA5A5UL;
+    sd_registers[P4SD_TMOUT / sizeof(ULONG)] = 0x12345678UL;
+    sd_registers[P4SD_FIFOTH / sizeof(ULONG)] = 0x87654321UL;
+}
+
+static void test_extracted_host_init_first_owner_resets_then_adopts_generation(void)
+{
+    reset_fixture();
+    setup_sd_bus(FALSE, 1U, 1U);
+    seed_host_init_registers();
+
+    CHECK(p4sd_host_init(&sd_bus) == TRUE);
+    CHECK(reset_callback_calls == 1U);
+    CHECK(module_reset_calls == 1U);
+    CHECK(sd_host.initialization_started == TRUE);
+    CHECK(clock_set_calls == 1U);
+    CHECK(clock_set_slot == 0U);
+    CHECK(clock_set_requested == P4SD_CLOCK_MIN_HZ);
+    CHECK(clock_set_low_power == TRUE);
+    CHECK(clock_set_result_hz == P4SD_CLOCK_MIN_HZ);
+    CHECK(sd_private.host_ready == TRUE);
+    CHECK(sd_private.host_generation == reset_generation);
+    CHECK(sd_registers[P4SD_RST_N / sizeof(ULONG)] == 0xA5UL);
+    CHECK(sd_registers[P4SD_CTYPE / sizeof(ULONG)] == 0x90000002UL);
+    CHECK(sd_registers[P4SD_CTRL / sizeof(ULONG)] == 0x5A5AA5A5UL);
+    CHECK(sd_registers[P4SD_TMOUT / sizeof(ULONG)] == 0x12345678UL);
+    CHECK(sd_registers[P4SD_FIFOTH / sizeof(ULONG)] == 0x87654321UL);
+    CHECK(write_calls == 2U);
+    CHECK(writes_to((IPTR)(P4_SDMMC_BASE + P4SD_RST_N)) == 1U);
+    CHECK(writes_to((IPTR)(P4_SDMMC_BASE + P4SD_CTYPE)) == 1U);
+    CHECK(writes_to((IPTR)(P4_SDMMC_BASE + P4SD_CTRL)) == 0U);
+}
+
+static void test_extracted_host_init_join_preserves_initialized_peer(void)
+{
+    reset_fixture();
+    setup_sd_bus(TRUE, 5U, 9U);
+    sd_host.host_div = 10U;
+    sd_host.initialization_started = TRUE;
+    sd_host.slot_clock[1] = 12000000UL;
+    sd_host.slot_clock[0] = 400000UL;
+    seed_host_init_registers();
+    sd_registers[P4SD_RST_N / sizeof(ULONG)] = 0xB6UL;
+    sd_registers[P4SD_CTYPE / sizeof(ULONG)] =
+        P4SD_CTYPE_4BIT_SLOT0 | P4SD_CTYPE_8BIT_SLOT0 | 0x90000002UL;
+
+    CHECK(p4sd_host_init(&sd_bus) == TRUE);
+    CHECK(reset_callback_calls == 0U);
+    CHECK(module_reset_calls == 0U);
+    CHECK(clock_set_calls == 1U);
+    CHECK(sd_host.host_div == 10U);
+    CHECK(sd_host.slot_clock[1] == 12000000UL);
+    CHECK(sd_private.host_ready == TRUE);
+    CHECK(sd_private.host_generation == 9U);
+    CHECK(sd_registers[P4SD_RST_N / sizeof(ULONG)] == 0xB7UL);
+    CHECK(sd_registers[P4SD_CTYPE / sizeof(ULONG)] == 0x90000002UL);
+    CHECK(sd_registers[P4SD_CTRL / sizeof(ULONG)] == 0x5A5AA5A5UL);
+    CHECK(sd_registers[P4SD_TMOUT / sizeof(ULONG)] == 0x12345678UL);
+    CHECK(sd_registers[P4SD_FIFOTH / sizeof(ULONG)] == 0x87654321UL);
+    CHECK(write_calls == 2U);
+    CHECK(writes_to((IPTR)(P4_SDMMC_BASE + P4SD_RST_N)) == 1U);
+    CHECK(writes_to((IPTR)(P4_SDMMC_BASE + P4SD_CTYPE)) == 1U);
+    CHECK(writes_to((IPTR)(P4_SDMMC_BASE + P4SD_CTRL)) == 0U);
+}
+
+static void check_extracted_host_init_refusal(BOOL dma_faulted,
+                                               ULONG dma_length)
+{
+    reset_fixture();
+    setup_sd_bus(TRUE, 5U, 9U);
+    sd_host.host_div = 10U;
+    sd_host.initialization_started = TRUE;
+    sd_host.slot_clock[1] = 12000000UL;
+    sd_host.dma_faulted = dma_faulted;
+    sd_host.dma_length = dma_length;
+    seed_host_init_registers();
+
+    CHECK(p4sd_host_init(&sd_bus) == FALSE);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(sd_private.host_generation == 5U);
+    CHECK(reset_callback_calls == 0U);
+    CHECK(module_reset_calls == 0U);
+    CHECK(clock_set_calls == 0U);
     CHECK(read_calls == 0U);
     CHECK(write_calls == 0U);
+    CHECK(sd_host.host_div == 10U);
+    CHECK(sd_host.slot_clock[1] == 12000000UL);
+    CHECK(sd_host.dma_faulted == dma_faulted);
+    CHECK(sd_host.dma_length == dma_length);
+}
+
+static void test_extracted_host_init_refuses_faulted_or_active_dma(void)
+{
+    check_extracted_host_init_refusal(TRUE, 0UL);
+    check_extracted_host_init_refusal(FALSE, 512UL);
+}
+
+static void test_extracted_host_init_failed_reset_does_no_slot_writes(void)
+{
+    reset_fixture();
+    setup_sd_bus(TRUE, 5U, 9U);
+    reset_callback_result = FALSE;
+    seed_host_init_registers();
+
+    CHECK(p4sd_host_init(&sd_bus) == FALSE);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(reset_callback_calls == 1U);
+    CHECK(module_reset_calls == 1U);
+    CHECK(sd_host.initialization_started == TRUE);
+    CHECK(clock_set_calls == 0U);
+    CHECK(read_calls == 0U);
+    CHECK(write_calls == 0U);
+
+    /* The sticky first-attempt marker prevents a later implicit reset from
+     * treating a failed shared reset as a cold uninitialized host. */
+    CHECK(p4sd_host_init(&sd_bus) == FALSE);
+    CHECK(reset_callback_calls == 1U);
+    CHECK(read_calls == 0U);
+    CHECK(write_calls == 0U);
+}
+
+static void check_extracted_host_init_divider_refusal(unsigned host_div)
+{
+    reset_fixture();
+    setup_sd_bus(TRUE, 5U, 9U);
+    sd_host.host_div = host_div;
+    sd_host.initialization_started = TRUE;
+    seed_host_init_registers();
+
+    CHECK(p4sd_host_init(&sd_bus) == FALSE);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(reset_callback_calls == 0U);
+    CHECK(module_reset_calls == 0U);
+    CHECK(clock_set_calls == 0U);
+    CHECK(read_calls == 0U);
+    CHECK(write_calls == 0U);
+}
+
+static void test_extracted_host_init_refuses_invalid_shared_divider(void)
+{
+    check_extracted_host_init_divider_refusal(0U);
+    check_extracted_host_init_divider_refusal(17U);
 }
 
 static void test_stale_power_and_width_setters_have_no_hardware_access(void)
@@ -604,14 +836,21 @@ static void test_stale_power_and_width_setters_have_no_hardware_access(void)
 static void test_p4sd_set_acknowledges_only_low_w1c_bits(void)
 {
     reset_fixture();
+    sd_registers[P4SD_RINTSTS / sizeof(ULONG)] =
+        RADIO_IRQ_BITS | 0x0000FFFFUL;
     p4sd_set(P4SD_RINTSTS, UINT32_MAX);
     CHECK(write_calls == 1U);
     CHECK(last_write_address == (IPTR)(P4_SDMMC_BASE + P4SD_RINTSTS));
     CHECK(last_write_value == P4SD_INT_CMD_DATA_MASK);
+    CHECK(sd_registers[P4SD_RINTSTS / sizeof(ULONG)] == RADIO_IRQ_BITS);
 
+    sd_registers[P4SD_RINTSTS / sizeof(ULONG)] =
+        RADIO_IRQ_BITS | 0x0000FFFFUL;
     p4sd_set(P4SD_RINTSTS, 0xE5FF0000UL | 0xA55AUL);
     CHECK(write_calls == 2U);
     CHECK(last_write_value == 0xA55AUL);
+    CHECK(sd_registers[P4SD_RINTSTS / sizeof(ULONG)] ==
+          (RADIO_IRQ_BITS | (0xFFFFUL & ~0xA55AUL)));
 }
 
 static void test_p4sd_set_preserves_unrelated_register_write(void)
@@ -642,6 +881,11 @@ int main(void)
     run_test("nonblocking host contention preserves state", test_nonblocking_host_contention_leaves_state_unchanged);
     run_test("stale CMD/DATA reset has no hardware access", test_stale_cmd_data_reset_has_no_hardware_access);
     run_test("full reset remains an explicit reinit exception", test_full_reset_remains_explicit_reinitialization_exception);
+    run_test("extracted first-owner init resets and adopts generation", test_extracted_host_init_first_owner_resets_then_adopts_generation);
+    run_test("extracted join preserves initialized peer", test_extracted_host_init_join_preserves_initialized_peer);
+    run_test("extracted init refuses faulted or active DMA", test_extracted_host_init_refuses_faulted_or_active_dma);
+    run_test("extracted init reset failure avoids slot writes", test_extracted_host_init_failed_reset_does_no_slot_writes);
+    run_test("extracted init refuses invalid shared divider", test_extracted_host_init_refuses_invalid_shared_divider);
     run_test("stale power/width setters have no hardware access", test_stale_power_and_width_setters_have_no_hardware_access);
     run_test("W1C writes preserve only low command/data bits", test_p4sd_set_acknowledges_only_low_w1c_bits);
     run_test("unrelated register write is unchanged", test_p4sd_set_preserves_unrelated_register_write);

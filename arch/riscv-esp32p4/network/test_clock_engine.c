@@ -17,7 +17,8 @@ typedef int16_t BOOL;
 #define FALSE 0
 #define RADIO_IRQ_BITS ((1UL << 16) | (1UL << 17))
 #define WRITE_LOG_CAPACITY 128U
-#define ACCESS_LOG_CAPACITY 512U
+#define ACCESS_LOG_CAPACITY 1024U
+#define SD_REGISTER_COUNT 1024U
 
 struct Task
 {
@@ -34,6 +35,7 @@ struct P4SDMMCHost
     struct SignalSemaphore lock;
     ULONG (*now_us)(void);
     unsigned host_div;
+    BOOL initialization_started;
     ULONG slot_clock[2];
     UBYTE *dma_data;
     ULONG dma_length;
@@ -61,7 +63,7 @@ static struct Task task_a = { 1U };
 static struct Task task_b = { 2U };
 static struct Task *active_task;
 static struct P4SDMMCHost clock_host;
-static ULONG sd_registers[256];
+static ULONG sd_registers[SD_REGISTER_COUNT];
 static ULONG hp_registers[64];
 static ULONG lp_registers[32];
 static struct write_event write_log[WRITE_LOG_CAPACITY];
@@ -76,8 +78,11 @@ static unsigned checks;
 static ULONG timer_value;
 static ULONG timer_step;
 static ULONG now_call_count;
+static ULONG freeze_timer_after_calls;
 static ULONG fault_cmd_timeout_index;
 static ULONG fault_hle_index;
+static BOOL fault_ctrl_reset_stuck;
+static ULONG ctrl_assert_timer;
 
 static void fail_check(const char *expression, const char *file, int line)
 {
@@ -102,6 +107,9 @@ static struct Task *FindTask(const char *name)
 static ULONG mock_now_us(void)
 {
     ULONG result = timer_value;
+    if (freeze_timer_after_calls &&
+        now_call_count >= freeze_timer_after_calls)
+        timer_step = 0U;
     ++now_call_count;
     timer_value += timer_step;
     return result;
@@ -162,6 +170,22 @@ static void clock_write(IPTR address, ULONG value)
         /* DesignWare RINTSTS is write-one-to-clear. */
         *reg &= ~value;
     }
+    else if (address == P4_SDMMC_BASE + P4SD_IDSTS)
+    {
+        /* IDSTS is also W1C, independently of RINTSTS's low-16-bit policy. */
+        *reg &= ~value;
+    }
+    else if (address == P4_SDMMC_BASE + P4SD_CTRL &&
+             (value & P4SD_CTRL_RESET_ALL))
+    {
+        /* CTRL reset bits self-clear when the modeled controller accepts
+         * the request. A separate fault mode holds them set to exercise the
+         * production timeout path. */
+        if (fault_ctrl_reset_stuck)
+            ctrl_assert_timer = timer_value;
+        *reg = fault_ctrl_reset_stuck ? value :
+               value & ~P4SD_CTRL_RESET_ALL;
+    }
     else if (address == P4_SDMMC_BASE + P4SD_CMD &&
              (value & P4SD_CMD_START))
     {
@@ -201,12 +225,16 @@ static void setup_host(unsigned host_div, ULONG slot0_clock, ULONG slot1_clock)
     timer_value = 0U;
     timer_step = 1U;
     now_call_count = 0U;
+    freeze_timer_after_calls = 0U;
     fault_cmd_timeout_index = 0U;
     fault_hle_index = 0U;
+    fault_ctrl_reset_stuck = FALSE;
+    ctrl_assert_timer = 0U;
     active_task = &task_a;
     clock_host.lock.ss_Owner = &task_a;
     clock_host.now_us = mock_now_us;
     clock_host.host_div = host_div;
+    clock_host.initialization_started = FALSE;
     clock_host.slot_clock[0] = slot0_clock;
     clock_host.slot_clock[1] = slot1_clock;
     clock_host.invalidate = mock_invalidate;
@@ -215,6 +243,7 @@ static void setup_host(unsigned host_div, ULONG slot0_clock, ULONG slot1_clock)
     sd_registers[P4SD_CLKDIV / sizeof(ULONG)] = 0xA1B2C3D4UL;
     sd_registers[P4SD_CLKSRC / sizeof(ULONG)] = 0x9ABCDEFFUL;
     sd_registers[P4SD_RINTSTS / sizeof(ULONG)] = RADIO_IRQ_BITS | 0x000000A5UL;
+    sd_registers[P4SD_IDSTS / sizeof(ULONG)] = 0x00000155UL;
     hp_registers[P4_HP_SOC_CLK_CTRL1 / sizeof(ULONG)] = 0x80001234UL;
     hp_registers[P4_HP_REF_CLK_CTRL2 / sizeof(ULONG)] = 0x00000123UL;
     hp_registers[P4_HP_PERI_CLK_CTRL01 / sizeof(ULONG)] =
@@ -593,6 +622,8 @@ static void test_reset_invalidates_and_pulses_source(void)
     ULONG original_lp_reset;
     ULONG original_clkena;
     ULONG expected_lp_reset;
+    ULONG original_rintsts;
+    ULONG expected_fifoth;
     unsigned gate_enable_access;
     unsigned first_sd_access;
     begin_case();
@@ -600,11 +631,13 @@ static void test_reset_invalidates_and_pulses_source(void)
     original_clkctrl02 = read_hp(P4_HP_PERI_CLK_CTRL02);
     original_lp_reset = read_lp(P4_LP_SDMMC_RST_CTRL);
     original_clkena = read_sd(P4SD_CLKENA);
+    original_rintsts = read_sd(P4SD_RINTSTS);
     clock_host.dma_data = dma_client_data;
     clock_host.dma_length = sizeof(dma_client_data);
     clock_host.dma_writing = TRUE;
     clock_host.dma_faulted = TRUE;
     CHECK(p4host_reset(&clock_host));
+    CHECK(clock_host.initialization_started == TRUE);
     CHECK(clock_host.dma_data == NULL);
     CHECK(clock_host.dma_length == 0UL);
     CHECK(clock_host.dma_writing == FALSE);
@@ -619,6 +652,28 @@ static void test_reset_invalidates_and_pulses_source(void)
           clock_host.slot_clock[1] == 0UL);
     CHECK(clock_host.host_div == 10U);
     CHECK(read_sd(P4SD_CLKENA) == (original_clkena & ~3UL));
+    CHECK(read_sd(P4SD_CTRL) == 0UL);
+    CHECK(writes_to(P4_SDMMC_BASE + P4SD_CTRL) == 2U);
+    CHECK((nth_write_to(P4_SDMMC_BASE + P4SD_CTRL, 1U) &
+           P4SD_CTRL_RESET_ALL) == P4SD_CTRL_RESET_ALL);
+    CHECK(nth_write_to(P4_SDMMC_BASE + P4SD_CTRL, 2U) == 0UL);
+    CHECK(read_sd(P4SD_BMOD) == 0UL);
+    CHECK(read_sd(P4SD_IDINTEN) == 0UL);
+    CHECK(read_sd(P4SD_IDSTS) == 0UL);
+    CHECK(writes_to(P4_SDMMC_BASE + P4SD_IDSTS) == 1U);
+    CHECK(nth_write_to(P4_SDMMC_BASE + P4SD_IDSTS, 1U) == 0xFFFFFFFFUL);
+    CHECK(read_sd(P4SD_INTMASK) == 0UL);
+    CHECK(read_sd(P4SD_RST_N) == 0UL);
+    CHECK(read_sd(P4SD_CTYPE) == 0UL);
+    CHECK(read_sd(P4SD_TMOUT) == 0xFFFFFFFFUL);
+    expected_fifoth = P4SD_FIFOTH_RX_WMARK | P4SD_FIFOTH_DMA_MSIZE_8;
+    CHECK(read_sd(P4SD_FIFOTH) == expected_fifoth);
+    CHECK(read_sd(P4SD_CARDTHRCTL) == 0UL);
+    CHECK(read_sd(P4SD_CLK_EDGE_SEL) == 0UL);
+    CHECK(read_sd(P4SD_RINTSTS) == (original_rintsts & ~P4SD_INT_CMD_DATA_MASK));
+    CHECK(writes_to(P4_SDMMC_BASE + P4SD_RINTSTS) == 1U);
+    CHECK(nth_write_to(P4_SDMMC_BASE + P4SD_RINTSTS, 1U) ==
+          P4SD_INT_CMD_DATA_MASK);
     CHECK(read_hp(P4_HP_SOC_CLK_CTRL1) ==
           (0x80001234UL | P4_HP_SDMMC_CLK_EN));
     CHECK(read_hp(P4_HP_REF_CLK_CTRL2) ==
@@ -641,6 +696,67 @@ static void test_reset_invalidates_and_pulses_source(void)
           (original_lp_reset & ~P4_LP_SDMMC_RST_EN));
     CHECK(read_lp(P4_LP_SDMMC_RST_CTRL) ==
           (original_lp_reset & ~P4_LP_SDMMC_RST_EN));
+}
+
+static void test_stuck_controller_reset_retains_dma_identity(void)
+{
+    ULONG starting_timer;
+
+    begin_case();
+    setup_host(7U, 25000000UL, 18000000UL);
+    clock_host.dma_data = dma_client_data;
+    clock_host.dma_length = sizeof(dma_client_data);
+    clock_host.dma_writing = TRUE;
+    clock_host.dma_faulted = FALSE;
+    fault_ctrl_reset_stuck = TRUE;
+    freeze_timer_after_calls = 23UL;
+
+    CHECK(!p4host_reset(&clock_host));
+    CHECK(clock_host.initialization_started == TRUE);
+    CHECK((read_sd(P4SD_CTRL) & P4SD_CTRL_RESET_ALL) ==
+          P4SD_CTRL_RESET_ALL);
+    CHECK(writes_to(P4_SDMMC_BASE + P4SD_BMOD) == 0U);
+    CHECK(writes_to(P4_SDMMC_BASE + P4SD_RINTSTS) == 0U);
+    CHECK(clock_host.dma_data == dma_client_data);
+    CHECK(clock_host.dma_length == sizeof(dma_client_data));
+    CHECK(clock_host.dma_writing == TRUE);
+    CHECK(clock_host.dma_faulted == TRUE);
+    CHECK(clock_host.slot_clock[0] == 0UL &&
+          clock_host.slot_clock[1] == 0UL);
+    CHECK(clock_host.host_div == 0U);
+    CHECK(invalidate_count == 2U);
+    CHECK(now_call_count == P4HOST_POLL_BOUND + 22UL);
+    CHECK(timer_value == 23UL);
+    CHECK(timer_value == ctrl_assert_timer + 1UL);
+    CHECK((read_sd(P4SD_CLKENA) & 3UL) == 0UL);
+
+    begin_case();
+    setup_host(7U, 25000000UL, 18000000UL);
+    clock_host.dma_data = dma_client_data;
+    clock_host.dma_length = sizeof(dma_client_data);
+    clock_host.dma_writing = TRUE;
+    clock_host.dma_faulted = FALSE;
+    fault_ctrl_reset_stuck = TRUE;
+    starting_timer = UINT32_MAX - (P4HOST_CLOCK_TIMEOUT_US / 2UL);
+    timer_value = starting_timer;
+
+    CHECK(!p4host_reset(&clock_host));
+    CHECK(timer_value < starting_timer);
+    CHECK(timer_value < ctrl_assert_timer);
+    CHECK(clock_host.initialization_started == TRUE);
+    CHECK(clock_host.dma_data == dma_client_data);
+    CHECK(clock_host.dma_length == sizeof(dma_client_data));
+    CHECK(clock_host.dma_writing == TRUE);
+    CHECK(clock_host.dma_faulted == TRUE);
+    CHECK(clock_host.slot_clock[0] == 0UL &&
+          clock_host.slot_clock[1] == 0UL);
+    CHECK(clock_host.host_div == 0U);
+    CHECK(invalidate_count == 2U);
+    CHECK(now_call_count >= P4HOST_CLOCK_TIMEOUT_US);
+    CHECK(now_call_count < P4HOST_CLOCK_TIMEOUT_US + 64UL);
+    CHECK(writes_to(P4_SDMMC_BASE + P4SD_BMOD) == 0U);
+    CHECK(writes_to(P4_SDMMC_BASE + P4SD_RINTSTS) == 0U);
+    CHECK((read_sd(P4SD_CLKENA) & 3UL) == 0UL);
 }
 
 static void test_stalled_timer_is_bounded_and_fails_closed(void)
@@ -689,6 +805,7 @@ int main(void)
     test_data_busy_fails_closed();
     test_update_failures();
     test_reset_invalidates_and_pulses_source();
+    test_stuck_controller_reset_retains_dma_identity();
     test_stalled_timer_is_bounded_and_fails_closed();
     printf("PASS: %u cases, %u checks\n", test_cases, checks);
     return 0;

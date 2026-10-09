@@ -196,10 +196,14 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
             "P4_LPAON_BASE",
             "P4SD_RINTSTS",
             "P4SD_INT_CMD_DATA_MASK",
+            "P4SD_CTRL",
             "P4SD_CMDARG",
+            "P4SD_TMOUT",
             "P4SD_CTYPE",
             "P4SD_CTYPE_4BIT_SLOT0",
             "P4SD_CTYPE_8BIT_SLOT0",
+            "P4SD_FIFOTH",
+            "P4SD_RST_N",
         ),
     )
     card_constants = extract_constant_lines(
@@ -214,6 +218,8 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
             "P4_PMU_LDO_3V3",
             "P4_PMU_LDO_EN_VDET",
             "P4SD_POWER_DELAY_US",
+            "P4SD_CLOCK_MIN_HZ",
+            "P4SD_CLOCK_MAX_HZ",
         ),
     )
     constants = "\n".join((register_constants, card_constants))
@@ -236,11 +242,43 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     definitions.extend(
         [
             (
+                "p4sd_reg",
+                extract_definition(
+                    BUS_SOURCE,
+                    "p4sd_reg",
+                    r"\bstatic\s+inline\s+ULONG\s+p4sd_reg\s*\([^)]*\)\s*(?=\{)",
+                ),
+            ),
+            (
                 "p4sd_set",
                 extract_definition(
                     BUS_SOURCE,
                     "p4sd_set",
                     r"\bstatic\s+inline\s+void\s+p4sd_set\s*\(",
+                ),
+            ),
+            (
+                "p4sd_module_reset",
+                extract_definition(
+                    BUS_SOURCE,
+                    "p4sd_module_reset",
+                    r"\bstatic\s+BOOL\s+p4sd_module_reset\s*\(",
+                ),
+            ),
+            (
+                "p4sd_program_clock",
+                extract_definition(
+                    BUS_SOURCE,
+                    "p4sd_program_clock",
+                    r"\bstatic\s+BOOL\s+p4sd_program_clock\s*\(",
+                ),
+            ),
+            (
+                "p4sd_host_init",
+                extract_definition(
+                    BUS_SOURCE,
+                    "p4sd_host_init",
+                    r"\bstatic\s+BOOL\s+p4sd_host_init\s*\(",
                 ),
             ),
             (
@@ -346,11 +384,11 @@ def audit_transaction_call_modes() -> list[tuple[str, str]]:
     return results
 
 
-def audit_dma_abi() -> str:
+def audit_host_abi() -> str:
     source = HOST_HEADER.read_text(encoding="utf-8")
     abi_match = re.search(r"(?m)^\s*#\s*define\s+P4_SDMMC_HOST_ABI\s+(\d+)\b", source)
-    if not abi_match or abi_match.group(1) != "4":
-        raise ValueError("P4 SDMMC host ABI must be version 4")
+    if not abi_match or abi_match.group(1) != "5":
+        raise ValueError("P4 SDMMC host ABI must be version 5")
     struct_match = re.search(r"\bstruct\s+P4SDMMCHost\s*\{", source)
     if not struct_match:
         raise ValueError("P4 SDMMC host structure is missing")
@@ -363,13 +401,18 @@ def audit_dma_abi() -> str:
         r"(?m)^\s*ULONG\s+dma_length\s*;",
         r"(?m)^\s*BOOL\s+dma_writing\s*;",
         r"(?m)^\s*BOOL\s+dma_faulted\s*;",
+        r"(?m)^\s*BOOL\s+initialization_started\s*;",
         r"BOOL\s*\(\*command\)\(struct P4SDMMCHost \*, const struct P4HostCommand \*,\s*struct P4HostCommandResult \*\);",
     )
     if any(re.search(pattern, host_struct) is None for pattern in fields):
-        raise ValueError("P4 SDMMC ABI 4 command/DMA fields are incomplete")
+        raise ValueError("P4 SDMMC ABI 5 host initialization/command/DMA fields are incomplete")
     implementation = HOST_SOURCE.read_text(encoding="utf-8")
     if not re.search(r"P4SDMMCBase->command\s*=\s*p4host_command\s*;", implementation):
         raise ValueError("P4 SDMMC command callback is not initialized")
+    if not re.search(
+        r"P4SDMMCBase->initialization_started\s*=\s*FALSE\s*;", implementation
+    ):
+        raise ValueError("P4 SDMMC initialization marker is not initialized")
     client = (PORT / "sdcard" / "sdcard_esp32p4_init.c").read_text(encoding="utf-8")
     if not re.search(
         r"if\s*\(\s*!host\s*\|\|\s*host->abi\s*!=\s*P4_SDMMC_HOST_ABI\s*\|\|\s*"
@@ -391,14 +434,14 @@ def run() -> int:
         print(f"  {name}: {sha256(content)}")
     print(f"  test fixture: {sha256(FIXTURE.read_bytes())}")
     print(
-        "Hardware-path limitation: extracted locked functions run against "
-        "mocked MMIO, GPIO, reset and delay helpers; this checks call absence, "
-        "not peripheral behavior on silicon."
+        "Host-model limitation: extracted source bodies execute against "
+        "modeled SDMMC registers and mocked resource reset/clock callbacks; "
+        "this verifies software register protocol, not silicon behavior."
     )
 
     call_mode_checks = audit_transaction_call_modes()
-    dma_abi_hash = audit_dma_abi()
-    print(f"P4 SDMMC host ABI 4 command/DMA source check: PASS ({dma_abi_hash})")
+    host_abi_hash = audit_host_abi()
+    print(f"P4 SDMMC host ABI 5 initialization/command/DMA source check: PASS ({host_abi_hash})")
     print("Transaction may_wait source checks:")
     for name, digest in call_mode_checks:
         print(f"  {name}: PASS ({digest})")

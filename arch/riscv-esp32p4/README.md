@@ -20,10 +20,17 @@ A shared command-engine candidate now adds explicit slot/direction,
 staged RX/TX, card-response masks, error-first completion and bounded waits;
 its RV32 build and independent source review pass. Independently repeated
 extracted-source tests pass at O0/O2 with ASan/UBSan (20 cases, 2,001,069
-checks each). It is now exposed through private resource ABI4 (208 bytes on
+checks each). It is now exposed through private resource ABI5 (212 bytes on
 RV32), and SD refuses a missing callback or mismatched version/size. Neither
 slot client invokes it yet; modeled MMIO/DMA callbacks
 are not hardware evidence.
+Global controller programming now moves into the shared reset path; SD joins
+an initialized host without resetting its peer and changes only its own reset
+and width bits. A sticky first-initialization marker prevents a previous
+clock/reset fault from being mistaken for first boot. Matched RV32 builds
+pass; independent source review and independently repeated extracted-source
+models pass (clock/reset:18 cases/292 checks; SD ownership/init:25 cases/400,338
+checks each O0/O2 with ASan/UBSan). These do not verify silicon behavior.
 Command integration and hardware regression remain open;
 the installed firmware is unchanged. The older
 `cheops/JC1060P470C_I_W` package is Fabian's selected WLAN reference:

@@ -264,30 +264,17 @@ static BOOL p4sd_host_init(struct sdcard_Bus *bus)
     struct p4sd_private *priv = P4SD_PRIV(bus);
 
     priv->host_ready = FALSE;
-    if (!p4sd_module_reset(bus))
+    /* The first owner performs shared initialization. An already initialized
+     * peer must retain its clocks, width and protocol state. A faulted host
+     * requires an explicit full-reset/re-enumeration path, not slot joining. */
+    if (!priv->host->initialization_started && !p4sd_module_reset(bus))
         return FALSE;
-
-    p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) | P4SD_CTRL_RESET_ALL);
-    if (!p4sd_wait_clear(P4SD_CTRL, P4SD_CTRL_RESET_ALL,
-                         P4SD_CMD_TIMEOUT_US))
+    if (priv->host->host_div < 1 || priv->host->host_div > 16 ||
+        priv->host->dma_faulted || priv->host->dma_length)
         return FALSE;
-
-    p4sd_set(P4SD_CTRL, 0);       /* no global IRQ, DMA or IDMAC */
-    p4sd_set(P4SD_BMOD, 0);
-    p4sd_set(P4SD_IDINTEN, 0);
-    p4sd_set(P4SD_IDSTS, 0xFFFFFFFFUL);
-    p4sd_set(P4SD_INTMASK, 0);
-    p4sd_set(P4SD_RINTSTS, 0xFFFFFFFFUL);
-    p4sd_set(P4SD_RST_N, 1);
-    p4sd_set(P4SD_CTYPE, 0);      /* slot 0, one data bit, never eight */
-    p4sd_set(P4SD_TMOUT, 0xFFFFFFFFUL);
-    /* With a 32-bit FIFO port, an RX watermark of 127 releases exactly one
-       512-byte sector at a time.  Keep that safe PIO threshold and select an
-       eight-beat IDMAC burst; BMOD.PBL mirrors this FIFOTH field on P4. */
-    p4sd_set(P4SD_FIFOTH, P4SD_FIFOTH_RX_WMARK |
-             P4SD_FIFOTH_DMA_MSIZE_8);
-    p4sd_set(P4SD_CARDTHRCTL, 0);
-    p4sd_set(P4SD_CLK_EDGE_SEL, 0);
+    p4sd_set(P4SD_RST_N, p4sd_reg(P4SD_RST_N) | 1UL);
+    p4sd_set(P4SD_CTYPE, p4sd_reg(P4SD_CTYPE) &
+             ~(P4SD_CTYPE_4BIT_SLOT0 | P4SD_CTYPE_8BIT_SLOT0));
 
     priv->host_ready = TRUE;
     if (!p4sd_program_clock(P4SD_CLOCK_MIN_HZ, bus))
