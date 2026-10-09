@@ -90,8 +90,12 @@ post-load reports fix the short-run retrieval: the repeat has all fields,
 zero errors. Its complete late capture/validator pass; Fabian reports
 SMOKE:none, responsive pointer and visible bar updates. The short smoke
 gate is accepted. Fabian confirms fresh readiness and manual start of the
-1800s production run. The reader stays closed during load; timed passive
-retrieval is scheduled. Full result and final desktop/touch acceptance remain open.
+1800s production run. Reader-free production IDf7ed5845 now passes the strict
+validator:1800s,4762 verified batches per hart,900 referenced SD reads,
+1588 window API updates, zero CPU/SD errors or mismatches, reason0/fixture1.
+The single passive45.182s retrieval exits0 with a complete successful footer
+and no captured reset/fault signatures. Final desktop/touch acceptance remains
+open; API updates alone do not prove visible frames.
 No existing idle soak or raw B5 run substitutes for it. D1001 work waits
 until cleanup and that qualification finish, per Fabian's decision.
 

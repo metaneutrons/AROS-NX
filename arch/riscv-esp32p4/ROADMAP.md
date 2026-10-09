@@ -140,7 +140,7 @@ gate: compensated output is not the native display contract.
 | D1 | Board-driver boundary and second-board onboarding | `build verified` | 2026-10-03: the profile now selects panel controller and table (JD9365/JD9165), rotation (90/0), panel power scheme (PCA9535 or plain GPIOs), touch driver (GSL3670/GT911, firmware optional), SD detect/power wiring, partition CSV and sdkconfig per board; `check-profile.py` evaluates `board.mk` per board through GNU make. The D1001 core built with these changes is byte-identical to HEAD (202,096 B `99a8f6f8…`, same flags, same tree), so the D1001 binary contract holds. Not hardware tested on either board. |
 | D2 | Guition JC1060P470C as the active development board (J0-J5) | `J0-J5 accepted; four cold visual passes; sustained stress open` | Board IDs `jc1060p470c-v2` (new panel batch, active) and `jc1060p470c-v1` (old batch). On `80:f1:b2:d3:3b:a6`: J0 Exec/32MB PSRAM; J1 correct test card after 20MHz D-PHY reference fix; J2 GT911/I2C1/100kHz; J3/J4 Wanderer, four-edge pointer, double tap, two-finger menu and double-tap-and-drag visually accepted. J5 portable touch/brightness control panels accepted 2026-10-05. Aggregate early USB budget correction `4d998b4e…` passes host tests, a 120-second reader-attached USB-reset boot and four synchronized USB-only physical cold boots without a serial reader/reset: approximately 10, 11, 14 and 11 seconds (2026-10-09). Fresh pointer, double-tap and two-finger menu check accepted. Earlier black cold attempt remains recorded. Open: larger cold-cycle reliability campaign, sustained combined/no-reader stress and old panel batch. Previous-production thirty-minute reader-attached idle soak does not substitute for those gates. See dated D2/J0-J5 and s13-s15 evidence for exact configurations/artifacts. |
 | D2-BT | JC1060 boot latency | `deferred; production cleanup accepted` | Fabian defers optimization after channel2-off cold12s with no demonstrated gain. Original bootloader27b99e03… and entire sector range restored/readback-verified; clean normal core17249045… has BOOT_TIMING0/C1_PROFILE0, independent readback and complete60s warm regression pass. Quiet package/media unchanged. Fresh exact-pair desktop/pointer/double-tap/menu check accepted by Fabian; no claim that latency is fixed. |
-| D2-Q | JC1060 production no-reader combined qualification | `paced smoke accepted; full run user-started, result pending` | Cleanup step1 accepted; D1001 deferred until step2 complete. Normal core17249045…/quiet package e0869292… unchanged. Paced SmokeQualify IDd5574697:30s,80 verified batches/hart,15 referenced SD reads,27 window updates, all errors0/fixture1; complete45s late capture and validator pass. Fabian confirms SMOKE:none, responsive pointer and visible bar updates, then fresh readiness and manual full-run start. Reader remains closed during load; timed late retrieval scheduled. Full result and final exact-production visual/touch gates remain required. |
+| D2-Q | JC1060 production no-reader combined qualification | `1800s machine gate passed; final visual/touch pending` | Cleanup step1 accepted; D1001 deferred until step2 complete. Normal core17249045…/quiet package e0869292… unchanged. Production IDf7ed5845:1800s,4762 verified batches/hart,900 referenced SD reads,1588 window API updates, zero errors/mismatches, reason0/fixture1. Single45.182s passive capture and strict production validator exit0; no captured reset/fault signatures. Reader-free interval is procedural evidence; API counts are not visible-frame proof. Final exact-production visual/touch gate requires fresh readiness. |
 | D3 | Portable touch and I2C stack | `hardware partial (JC1060P470C passed)` | 2026-10-04 on Fabian's direction: `touchscreen.hidd` (`rom/hidds/touchscreen`, polling, gestures, calibration, `ENV:Sys/touchscreen.prefs`), controller drivers `gt911.hidd` and `gsl3670.hidd` on AROS's `hidd.i2c` (`workbench/hidds`), the bus driver `hidd.i2c.esp32p4` (`arch/riscv-esp32p4/i2c`, transport shared with the kernel) and `esp32p4board.resource`, which builds the objects from the board profile; editor `workbench/prefs/touchscreen`. The kernel keeps no touch driver and no `KATTR_TouchScreenOps`. Fixes the I2C0 clock divider position (CTRL10 bits 9:2). JC1060P470C: GT911 through the new stack; Fabian confirms touch, calibration, editor and the tap/direct switch. D1001: builds, not hardware tested. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
@@ -1182,7 +1182,12 @@ acceptance. The paced repeat now passes the complete machine smoke gate:
 IDd5574697/30s/both harts80 batches/15 SD reads/27 updates/zero errors.
 Fabian confirms SMOKE:none, responsive touch and visible bar updates; the
 short smoke gate is accepted. Fresh readiness and the manual full-run start
-are confirmed; the reader-free production result is pending, not accepted.
+are confirmed. The reader-free production machine gate now passes:
+IDf7ed5845/1800s/both harts4762 batches/900 SD reads/1588 API updates,
+zero CPU/SD errors or mismatches, reason0/fixture1. Single passive45.182s
+retrieval and strict production validation exit0, with complete footer and
+no captured reset/fault signatures. Final desktop/touch acceptance remains
+open and requires fresh readiness; D1001 remains deferred until that closes.
 See `qualification/README.md` for the synchronized
 reader-free procedure and its coverage limits.
 
@@ -27057,6 +27062,48 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: complete capture process/strict production validator, document exact
   result, then obtain fresh final desktop/touch readiness only if machine
   gates pass. No production acceptance from scheduling or the short smoke.
+
+### 2026-10-09 - D2-Q: reader-free 1800s production machine gate passed; final sight check open
+
+- Board JC1060P470C-v2, previously verified MAC80:f1:b2:d3:3b:a6.
+  Source documentation baseline c8ea91f286, clean branch
+  `fix/esp32p4-usb-boot-budget`. No firmware or media changes in this retrieval.
+  Normal core189968B17249045…, original bootloader22544B27b99e03…,
+  quiet BSP3636260Be0869292…, SYS image5f123f79… remain unchanged.
+  Production flags include P4_BOOT_TIMING=0/P4_C1_PROFILE=0, PSRAM200MHz,
+  full SMP, ordinary tasks pinned unless explicitly opted in.
+- Development volume4194304B SHA-256
+  `6a7011fd37f4b6ecc0facbadf2d109a9025a149861ee47cc0621530618602592`;
+  ProductionQualify78144B SHA-256
+  `6d529bcb4687ad0bf828df13d9c9b543e899ed0ff51f36637b50ae80a522f93e`.
+  These are the independently verified deployed artifacts, not a fresh
+  hardware hash read. No flash, SD write, reset, new test or D1001 action.
+- Manual start acknowledged by19:39:40 UTC; reader remained closed during
+  load and the guard through20:10:40 UTC. Exactly one passive retrieval via
+  `late-boot-log.py /dev/cu.usbmodem101 45` begins20:12:35 UTC,
+  exclusively creates `jc1060/s20-production-qualification/paced/production-late.log`,
+  and process session70773 exits0. Complete footer:45.182s,1772B,status=ok.
+  Log SHA-256 `641b0dc354415232287e970a32bc20df0440eedbebf5d93b9024fddd9a6fa313`.
+- `check-production-qualification.py` without --smoke exits0:
+  IDf7ed5845, statePASS, goal1800/duration1800s, cpu0/1=4762/4762,
+  cpuerr0/1=0/0, sdreads900, sdmismatch0, sderrors0, gfxupdates1588,
+  reason0,fixture1. All13 fields repeat consistently; each CPU/SD/gfx
+  counter exceeds the required ceil(duration/2)=900 minimum.
+  This is distinct from30s smoke IDd5574697. Result stored in
+  `paced/production-result.json`.
+- No ROM/reset/trap/Alert/Guru/fault signature in the complete retrieval;
+  GT911 heartbeat advances46800..47600 polls alongside retained results.
+  The retained matching terminal report and continuing heartbeat support
+  continuity across port open; there is no first-byte boot capture in this
+  procedure. Reader absence during load is a procedural record, not a
+  continuous serial trace proving absence of every possible fault.
+- Scope: verified both-hart arithmetic, referenced read-only SD traffic and
+  managed graphics API calls on unchanged production firmware. API updates
+  are not observed frames; low-LBA fixture checks are not whole-card or
+  >4GiB coverage, and this does not replace raw B5/upstream SMP suites.
+  Final desktop/touch/flicker/hang observation remains open. Next request
+  fresh readiness for that sight check; no automatic hardware repetition.
+  One-time result follow-up is paused after collection, chat remains open.
 
 ## Evidence-entry template
 
