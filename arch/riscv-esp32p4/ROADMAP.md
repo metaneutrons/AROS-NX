@@ -26482,6 +26482,14 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: common bounded
   command engine preserving SD policy and recovery. Integrate accepted
   production baseline/package audit before regression or opt-in C6 probing.
+  The current SD loop checks descriptor readiness before its data-error
+  branch: move error evaluation ahead of DMA completion/caller copy and test
+  simultaneous completed descriptors plus DCRC/DTO/IDMAC error. Its command
+  and busy loops still depend solely on elapsed time; retain production
+  deadlines and add finite stopped-timer bounds. Keep early descriptor
+  completion as an explicitly storage-only CMD18 workaround, with the outer
+  owner retained through physical CMD12/CMD13. Slot1 transfers require card-side
+  protocol completion and R5 validation, not only descriptor OWN release.
 
 ## Evidence-entry template
 
