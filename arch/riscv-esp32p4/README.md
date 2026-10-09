@@ -77,9 +77,11 @@ independently verified. Clean-built core189968B `17249045…` is written and
 readback-verified at0x20000, with `P4_BOOT_TIMING=0` and `P4_C1_PROFILE=0`.
 The quiet package `e0869292…`, development volume and SD are unchanged.
 One complete60s headless warm boot passes PSRAM/two-hart/watchdog regression
-with no captured subsequent reset/fault. Visual/touch acceptance of this
-exact pair is pending. Boot-latency work is deferred, not solved. Combined
-no-reader qualification is being prepared as a user-space test on this normal
+with no captured subsequent reset/fault. Following fresh readiness and a
+separate30s reset capture, Fabian confirms complete desktop, pointer motion,
+drive double-tap and two-finger menu without flicker/hang on this exact pair.
+Cleanup step1 is accepted. Boot-latency work is deferred, not solved. Combined
+no-reader qualification is in development as a user-space test on this normal
 core; no existing idle soak or raw B5 run substitutes for it. D1001 work waits
 until cleanup and that qualification finish, per Fabian's decision.
 
