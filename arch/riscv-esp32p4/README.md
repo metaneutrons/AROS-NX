@@ -88,8 +88,9 @@ responsive touch, but incomplete late USB results reject acceptance. Paced
 post-load reports fix the short-run retrieval: the repeat has all fields,
 30s,80 CPU batches per hart,15 verified SD reads,27 window API updates and
 zero errors. Its complete late capture/validator pass; Fabian reports
-SMOKE:none and responsive pointer. Visible redraw confirmation and full
-production duration remain open.
+SMOKE:none, responsive pointer and visible bar updates. The short smoke
+gate is accepted. Fresh full-run readiness is confirmed; the1800s production
+run and final desktop/touch acceptance remain open.
 No existing idle soak or raw B5 run substitutes for it. D1001 work waits
 until cleanup and that qualification finish, per Fabian's decision.
 
