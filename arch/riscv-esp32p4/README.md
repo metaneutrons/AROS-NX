@@ -157,13 +157,15 @@ the JC1060 core listed in the historical artifact row below. Package,
 development volume, SD and bootloader are unchanged. A 120-second
 reader-attached USB-reset boot completed normally: PSRAM, both harts,
 watchdog, Wanderer and continuing touch polls, no captured fault/reset.
-One freshly synchronized physical USB-only cold boot now passes visually:
+Four synchronized physical USB-only cold boots now pass visually:
 after at least 30 seconds disconnected and reapplication without a serial
 reader or reset, Fabian reports Wanderer booting cleanly after approximately
-10 seconds (2026-10-09). No cold-boot UART was captured, so internal reset,
-PSRAM and hart diagnostics are not inferred from this observation. Repeated
-cold-cycle reliability, sustained no-reader stress and fresh touch acceptance
-remain separate open gates; this is not full production qualification.
+10 seconds initially, then 11, 14 and 11 seconds in three repetitions
+(2026-10-09). Fabian also confirms pointer movement, drive double-tap and
+two-finger menu operation on this core. No cold-boot UART was captured, so
+internal reset, PSRAM and hart diagnostics are not inferred from these
+observations. Larger cold-cycle reliability and sustained no-reader/combined
+stress remain open; this is not full production qualification.
 
 E2, the two-hart primitives, is hardware verified on both boards: on the
 D1001 on 2026-10-01 (219,776-byte candidate, five captures, two epochs each)
