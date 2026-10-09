@@ -75,6 +75,21 @@
     /* If at least one of the signals is already set do not wait. */
     while (!(thisTask->tc_SigRecvd & signalSet))
     {
+#if defined(__AROSEXEC_SMP__)
+        /*
+         * RemTask() on another core has taken this task off every list
+         * and waits for it to leave this one. Going on would put it back
+         * on TaskWait and take it off TaskRunning a second time, just
+         * before its memory is freed. Leave the core instead; nothing
+         * will dispatch the task again.
+         */
+        if (thisTask->tc_State == TS_REMOVED ||
+            thisTask->tc_State == TS_TOMBSTONED)
+        {
+            EXEC_SPINLOCK_UNLOCK(&thisTask->tc_SpinLock);
+            KrnSwitch();
+        }
+#endif
         /* Set the wait signal mask */
         thisTask->tc_SigWait = signalSet;
 
