@@ -19,9 +19,14 @@
         8  hart 1: the same
         9  hart 0: Forbid(), then spin, interrupts on
        10  hart 1: the same
+       11  a spinlock left held (its owner waits for good), and a task on
+           hart 1 that wants it
 
     Cases 1 to 6 are what the tick alone catches (interrupts masked, the
-    hart stopped); 7 to 10 only the canary (kernel_wdtcanary.c) does.
+    hart stopped); 7 to 10 only the canary (kernel_wdtcanary.c) does; 11
+    neither: the waiter holds nothing and can be preempted, so the canary
+    runs, and only the spinlock's own limit (spinlock.c, krnWdtStuck())
+    stops the feeding.
 */
 
 #define __NOLIBBASE__
@@ -34,6 +39,7 @@
 #include <proto/exec.h>
 #include <utility/tagitem.h>
 
+#include <aros/types/spinlock_s.h>
 #include <proto/kernel.h>
 
 #include "hardware.h"
@@ -47,14 +53,14 @@ void krnDisplayAlert(const char *text, struct KernelBase *KernelBase);
 #define WDTEST_SETTLE_SECS      20
 
 #if P4_WDT_TEST == 1 || P4_WDT_TEST == 3 || P4_WDT_TEST == 5 || \
-    P4_WDT_TEST == 7 || P4_WDT_TEST == 9
+    P4_WDT_TEST == 7 || P4_WDT_TEST == 9 || P4_WDT_TEST == 11
 #define WDTEST_HART             0
 #else
 #define WDTEST_HART             1
 #endif
 
 /* Above the canaries' 100 for the cases that must starve them */
-#if P4_WDT_TEST >= 7
+#if P4_WDT_TEST >= 7 && P4_WDT_TEST <= 10
 #define WDTEST_PRI              120
 #else
 #define WDTEST_PRI              0
@@ -62,6 +68,18 @@ void krnDisplayAlert(const char *text, struct KernelBase *KernelBase);
 
 static struct DosLibrary *DOSBase;
 static struct Library *KernelBase;
+
+#if P4_WDT_TEST == 11
+static spinlock_t leaked;
+
+/* Takes the lock on hart 1 once the owner on hart 0 has it, and waits */
+static void wdtest_waiter(struct ExecBase *SysBase)
+{
+    krnP4PutStr("[wdtest] waiter on hart 1 asks for the leaked lock\n");
+    KrnSpinLock(&leaked, NULL, SPINLOCK_MODE_WRITE);
+    krnP4PutStr("[wdtest] the leaked lock came free\n");
+}
+#endif
 
 static void wdtest_victim(struct ExecBase *SysBase)
 {
@@ -90,6 +108,24 @@ static void wdtest_victim(struct ExecBase *SysBase)
     Forbid();
     for (;;)
         ;
+#elif P4_WDT_TEST == 11
+    {
+        void *aff = KrnAllocCPUMask();
+
+        KrnSpinInit(&leaked);
+        KrnSpinLock(&leaked, NULL, SPINLOCK_MODE_WRITE);
+        if (aff)
+        {
+            KrnGetCPUMask(1, aff);
+            NewCreateTask(TASKTAG_NAME, (IPTR)"wdt waiter",
+                          TASKTAG_AFFINITY, (IPTR)aff,
+                          TASKTAG_PRI, 0,
+                          TASKTAG_PC, (IPTR)wdtest_waiter,
+                          TASKTAG_ARG1, (IPTR)SysBase,
+                          TAG_DONE);
+        }
+        Wait(0);                    /* the owner never lets go */
+    }
 #else
     /* Not Alert(): a task's alert goes to Intuition first and waits for a
        person to answer the requester. This is where the system alert ends. */

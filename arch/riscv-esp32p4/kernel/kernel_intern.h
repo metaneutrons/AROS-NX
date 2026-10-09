@@ -453,6 +453,7 @@ int  platform_wdt_quiet(void);
 void krnWdtArm(void);
 void krnWdtBeat(unsigned int hart);
 void krnWdtCanaryBeat(unsigned int hart);
+void krnWdtStuck(const char *what);
 void krnWdtTick(void);
 int  krnWdtArmed(void);
 void krnWdtReport(void);
