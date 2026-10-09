@@ -153,7 +153,7 @@ gate: compensated output is not the native display contract.
 | S5 | SMP qualification | `hardware verified (JC1060P470C); D1001 open` | Evidence entry 2026-10-05: upstream's ten SMP tests pass on 6 of 6 boots and over a twenty-minute run of 200 tests, after three fixes (no dispatch fallback with an idle task per hart, preemption waits for task-held spinlocks, console and SYSTIMER serialized); the production core passes five boots and ten minutes; the visual and touch check passed on the S6 core (Fabian, 2026-10-05). Open: the D1001. |
 | S6 | SMP default decision | `decided and done (2026-10-05)` | Evidence entry 2026-10-05: Fabian's decision, SMP is the only esp32p4 build. Configure selects the `smp` variant without being asked and refuses any other; the port's single-hart branches are gone, and a tree configured without the variant is refused. No Giant and no single-hart build; the Giant (`ff3395ba7f`) and E3 (`14f0290e21`) stay as history commits. Replaces the former E4 row. |
 | S7 | Hardware watchdog | `hardware verified (JC1060P470C); D1001 open` | Evidence entry 2026-10-09: timer group 0's main watchdog (6 s, reset system), fed from hart 0's tick only while hart 1's forwarded tick and one canary task per hart show life; fatal traps and the first alert stop the hart with interrupts masked. Ten failure cases (`P4_WDT_TEST=1..10`: `Disable()`, fatal trap, system alert, a starving task, `Forbid()`, each on hart 0 and 1) all end in a reset with cause `0x07`, which the next boot prints; the ten upstream SMP tests pass under it (longest tick gap 44 ms). |
-| S8 | Free migration of ordinary tasks | `stages 1 and 2 hardware verified (JC1060P470C); corrected closing suite and production headless soak passed; visual pending` | Decision (Fabian, 2026-10-09): pinned by default, migration opt-in with `C:Affinity`. Fabian confirms Wanderer/touch on previous production `a4179c1e…`. Closing runner `f77784aa…` failed with an ISR-stack task context and later watchdog reset. The trap-exit MIE correction passes actual-body O0/O2 regressions with failing old-code controls; corrected runner `3415a01a…` passes all 240 programs in twenty rounds with no fault signature. Plain `0e1fa444…` passes its 360-second headless soak. Open: final plain-core visual/touch check, #70 merge, DOS segment lists/late assigns and D1001. SMP.md, "S8". |
+| S8 | Free migration of ordinary tasks | `stages 1 and 2 hardware verified (JC1060P470C); corrected closing suite, production headless soak and visual/touch passed` | Decision (Fabian, 2026-10-09): pinned by default, migration opt-in with `C:Affinity`. Fabian confirms Wanderer/touch on previous production `a4179c1e…`. Closing runner `f77784aa…` failed with an ISR-stack task context and later watchdog reset. The trap-exit MIE correction passes actual-body O0/O2 regressions with failing old-code controls; corrected runner `3415a01a…` passes all 240 programs in twenty rounds with no fault signature. Plain `0e1fa444…` passes its 360-second headless soak and synchronized visual/touch check. Open: #70 merge, DOS segment lists/late assigns and D1001. SMP.md, "S8". |
 
 ## Track E: ESP32-P4 / RV32 SMP
 
@@ -176,8 +176,8 @@ the JC1060P470C with full SMP and a hardware watchdog. S7 (watchdog) is
 merged (AROS-NX#66), S8 stage 1 merged (#67), stage 2 in #70; migration is
 opt-in per process (`C:Affinity`). The corrected closing stress run passes
 all 240 programs and the production core passes its 360-second headless soak.
-Remaining for the goal: its own synchronized visual/touch check and the
-merge of #70. Fabian confirmed the `s9e-plain`
+Its own synchronized visual/touch check also passed. Remaining for the goal:
+the merge of #70, which needs explicit approval. Fabian confirmed the `s9e-plain`
 Wanderer/touch check on 2026-10-09; this does not cover the soft-interrupt fix.
 
 Backlog (Fabian, 2026-10-09: "keep sending to vanilla upstream in backlog;
@@ -25940,6 +25940,28 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   soak pass on JC1060P470C. Visual/touch readiness requested separately;
   no response or visual acceptance inferred. PR #70 stays open with
   auto-merge off. Next: synchronized visual/touch check, then merge consent.
+
+### 2026-10-09 - S8 corrected production visual and touch acceptance
+
+- Hardware: JC1060P470C-v2, MAC `80:f1:b2:d3:3b:a6`; source fix
+  `c185de779236f156460bd0c21c49ce52603f7914`, PR #70.
+- Exact production core: `s12-trapexit-plain-locale/core.bin`, 190,112 bytes,
+  SHA-256 `0e1fa444b2d4349214d613af1a25f547788dd650f41a33bbd7043008c05830aa`,
+  already hash-verified at `0x20000`; configuration and 360-second headless
+  evidence are recorded in the preceding entry. No new flash or reset.
+- Procedure: fresh readiness requested; Fabian answered "ja". Requested
+  2–3 minutes on the running desktop: pointer motion, opening a drive by
+  double tap and opening/selecting a menu with two fingers, checking for
+  wrong display/touch, freeze, requester or restart.
+- Observation: Fabian replied "alles fei", understood in context as
+  everything fine. This is user-observed visual/touch acceptance, not an
+  additional UART capture or a measured timing/performance claim.
+- Result: corrected closing suite, production headless soak and synchronized
+  production visual/touch gate passed on JC1060P470C. DOS lists/late assigns
+  and D1001 qualification remain open; ordinary tasks remain pinned by
+  default and migration remains opt-in. No general migration-safe GUI claim.
+- Safety: no writes, media changes or PR merge during this visual check.
+  Next: request explicit merge approval for #70; auto-merge remains off.
 
 ## Evidence-entry template
 

@@ -752,8 +752,10 @@ capture passed all 240 programs: twenty successes per test-owned summary,
 one initial boot and no fault signatures. Capture stopped after completion
 at about 33 minutes; this is not a 48-minute soak claim.
 
-Still open in S8: the dos lists above, the final production core's own
-visual/touch check, PR #70 merge, and the D1001.
+The exact production core's synchronized visual/touch check also passed
+on 2026-10-09: Fabian confirmed readiness and reported everything fine
+after the requested pointer, drive-opening and menu check.
+Still open in S8: the dos lists above, PR #70 merge, and the D1001.
 
 Decision (Fabian, 2026-10-09, as proposed): ordinary tasks stay pinned by
 default and migration is opt-in per process. The inverse default is unsafe
