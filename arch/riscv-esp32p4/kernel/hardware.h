@@ -248,6 +248,15 @@
 #define  P4_TIMG_WDT_EN         (1U << 31)
 #define  P4_TIMG_WDT_FLASHBOOT  (1U << 14)
 #define P4_TIMG_WDTWPROTECT     0x0064
+/* The rest of what arming one takes (ESP-IDF's timer_group_reg.h) */
+#define  P4_TIMG_WDT_CONF_UPDATE (1U << 22)     /* write-only trigger */
+#define  P4_TIMG_WDT_STG0(a)    ((uint32_t)(a) << 29)   /* 2 bits per stage */
+#define  P4_TIMG_WDT_SYS_RST_LEN(n) ((uint32_t)(n) << 15)
+#define  P4_TIMG_WDT_CPU_RST_LEN(n) ((uint32_t)(n) << 18)
+#define  P4_TIMG_WDT_ACT_RESET_SYSTEM 3
+#define P4_TIMG_WDTCONFIG1      0x004C          /* prescaler in bits 31:16 */
+#define P4_TIMG_WDTCONFIG2      0x0050          /* stage 0 hold */
+#define P4_TIMG_WDTFEED         0x0060
 
 #define P4_LPAON_BASE           0x50110000UL
 #define P4_LPWDT_BASE           (P4_LPAON_BASE + 0x6000)
@@ -260,6 +269,13 @@
 #define P4_LPWDT_SWD_WPROTECT   0x0020
 
 #define P4_WDT_WKEY             0x50D83AA1UL
+
+/*
+ * The ROM's reset-reason function, rtc_get_reset_reason(cpu): the same
+ * answer the ROM prints in its banner, "rst:0x7 (HP_SYS_HP_WDT_RESET)".
+ * Address from ESP-IDF's esp32p4.rom.ld.
+ */
+#define P4_ROM_GET_RESET_REASON 0x4FC00018UL
 
 /*
  * Internal SRAM, as the address map sees it. How much of this the kernel

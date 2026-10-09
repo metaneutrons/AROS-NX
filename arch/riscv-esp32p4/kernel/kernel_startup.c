@@ -250,9 +250,10 @@ static void report(unsigned long hartid)
     krnP4PutStr("[kernel] board  " P4_BOARD_NAME "\n");
 
     krnP4PutStr("[kernel] wdt    ");
-    krnP4PutStr(platform_wdt_quiet() ? "timer groups and low power watchdogs off, "
-                                       "super watchdog self-feeding\n"
-                                     : "STILL ARMED - expect a reset\n");
+    krnP4PutStr(platform_wdt_quiet() ? "timer group 1 and low power watchdogs off, "
+                                       "super watchdog self-feeding, "
+                                     : "STILL ARMED - expect a reset, ");
+    krnWdtReport();
 
     krnP4PutStr("[kernel] clic   ");
     krnP4PutStr(clic_selftest_passed ? "raised line reached the trap handler"
@@ -7070,6 +7071,7 @@ void kernel_cstart(unsigned long hartid, void *fdt)
      * hang inside it is still attributable to it.
      */
     krnP4PutStr("\n\n[kernel] entered\n");
+    krnWdtReportReset();
 #ifndef P4_KEEP_WATCHDOG
     platform_init();
 #endif
@@ -7079,6 +7081,9 @@ void kernel_cstart(unsigned long hartid, void *fdt)
 
     krnTimerInit();
     csr_set(mstatus, MSTATUS_MIE);
+#ifndef P4_KEEP_WATCHDOG
+    krnWdtArm();
+#endif
 
     krnRAMInit();
     krnRAMReport();

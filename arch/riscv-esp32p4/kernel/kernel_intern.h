@@ -446,6 +446,19 @@ extern void *__ks_debuginfo;
 void platform_init(void);
 int  platform_wdt_quiet(void);
 
+/* The main watchdog and the reset cause (kernel_wdt.c) */
+void krnWdtArm(void);
+void krnWdtBeat(unsigned int hart);
+void krnWdtCanaryBeat(unsigned int hart);
+void krnWdtTick(void);
+int  krnWdtArmed(void);
+void krnWdtReport(void);
+void krnWdtReportReset(void);
+uint32_t krnResetCause(void);
+const char *krnResetCauseName(uint32_t cause);
+/* Stop this hart with interrupts masked, so that it feeds nothing */
+void krnP4Halt(void) __attribute__((noreturn));
+
 /* Early UART0 debug console (kernel_console.c) */
 /* Switch to nonblocking, lossy output before runtime tasks can print. */
 void krnP4ConsoleRuntime(void);

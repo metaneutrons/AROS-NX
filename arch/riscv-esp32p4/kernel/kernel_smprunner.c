@@ -177,6 +177,8 @@ AROS_UFH3(static ULONG, s5_runner,
         run_one(line, args, &runs, &bad);
     Close(list);
 
+    krnP4PutStr("[smp-s5] wdt: ");
+    krnWdtReport();
     krnP4PutStr("[smp-s5] done, ");
     krnP4PutDec(runs);
     krnP4PutStr(" run, ");

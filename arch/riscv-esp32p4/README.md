@@ -93,7 +93,7 @@ its evidence entry in the same change.
 | kickstart link | done | 132160 bytes of the 167 KB window, one segment at 0x4FF00000 |
 | flashable image | done | `gmake kernel-esp32p4-riscv`; diagnostics-off image 138608 bytes, F0 hardware-diagnostic core 148848 bytes with hash in the roadmap |
 | runs on hardware | **yes** | patched ESP-IDF second stage maps the XIP image from ota_0; see below |
-| watchdogs | done | timer groups and LP off, super watchdog self-feeding |
+| watchdogs | done | the ROM's are off from `platform_init()`, the super watchdog self-feeds; timer group 0's main watchdog is armed once the tick runs (6 s, reset system) and fed from hart 0's tick only while both harts show a tick and a canary task each wakes; a hang or fatal trap on either hart resets the board, the next boot prints the cause (SMP.md, S7) |
 | CLIC interrupts | done | a raised line reaches the trap handler |
 | SYSTIMER tick | done | 100 Hz sustained, 1201 ticks over 12 heartbeats, 16000000 counts per second |
 | context switch | done | tasks are entered in M-mode and their syscalls dispatch |
