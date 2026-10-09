@@ -208,11 +208,14 @@ continuity in this cycle. Kernel-relative timing does not locate all11s;
 update256 is not desktop completion. Touch and exact
 power-on-to-kernel timing remain unmeasured. No firmware change in this test.
 
-Prepared host-only correlation: `tools/observe-usb-arrival.py` observes the
+Host correlation: `tools/observe-usb-arrival.py` observes the
 serial device node without opening it; `tools/late-boot-log.py --timing` records
-chunk receipt times and raw offsets on the same host monotonic clock. Host
-fixtures pass; a new synchronized physical measurement remains open. Node
-appearance is not rail-on, and buffered receipt is not device generation.
+chunk receipt times and raw offsets on the same host monotonic clock. A second
+unchanged diagnostic cold boot is reported11s. All8 phases/fail0 are retrieved;
+receipt-derived kernel-origin estimates6.804..7.014s after node appearance
+motivate a pre-kernel investigation. Node appearance is not rail-on and
+buffered receipt is not device generation; no exact bootloader delay or
+material speedup is established. No bootloader write is authorized by this test.
 
 `tools/build-quiet-package.sh` clean-rebuilds those three modules and replaces
 only their records in a supplied immutable baseline, then checks the board's
