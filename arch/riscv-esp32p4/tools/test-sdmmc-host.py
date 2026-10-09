@@ -349,8 +349,8 @@ def audit_transaction_call_modes() -> list[tuple[str, str]]:
 def audit_dma_abi() -> str:
     source = HOST_HEADER.read_text(encoding="utf-8")
     abi_match = re.search(r"(?m)^\s*#\s*define\s+P4_SDMMC_HOST_ABI\s+(\d+)\b", source)
-    if not abi_match or abi_match.group(1) != "3":
-        raise ValueError("P4 SDMMC host ABI must be version 3")
+    if not abi_match or abi_match.group(1) != "4":
+        raise ValueError("P4 SDMMC host ABI must be version 4")
     struct_match = re.search(r"\bstruct\s+P4SDMMCHost\s*\{", source)
     if not struct_match:
         raise ValueError("P4 SDMMC host structure is missing")
@@ -363,9 +363,21 @@ def audit_dma_abi() -> str:
         r"(?m)^\s*ULONG\s+dma_length\s*;",
         r"(?m)^\s*BOOL\s+dma_writing\s*;",
         r"(?m)^\s*BOOL\s+dma_faulted\s*;",
+        r"BOOL\s*\(\*command\)\(struct P4SDMMCHost \*, const struct P4HostCommand \*,\s*struct P4HostCommandResult \*\);",
     )
     if any(re.search(pattern, host_struct) is None for pattern in fields):
-        raise ValueError("P4 SDMMC ABI 3 DMA identity/fault fields are incomplete")
+        raise ValueError("P4 SDMMC ABI 4 command/DMA fields are incomplete")
+    implementation = HOST_SOURCE.read_text(encoding="utf-8")
+    if not re.search(r"P4SDMMCBase->command\s*=\s*p4host_command\s*;", implementation):
+        raise ValueError("P4 SDMMC command callback is not initialized")
+    client = (PORT / "sdcard" / "sdcard_esp32p4_init.c").read_text(encoding="utf-8")
+    if not re.search(
+        r"if\s*\(\s*!host\s*\|\|\s*host->abi\s*!=\s*P4_SDMMC_HOST_ABI\s*\|\|\s*"
+        r"host->size\s*!=\s*sizeof\(\*host\)\s*\|\|", client
+    ):
+        raise ValueError("SD client must check ABI and exact size before shifted fields")
+    if not re.search(r"!host->command\s*\|\|", client):
+        raise ValueError("SD client does not refuse a missing command callback")
     return sha256((abi_match.group(0) + host_struct).encode("utf-8"))
 
 
@@ -386,7 +398,7 @@ def run() -> int:
 
     call_mode_checks = audit_transaction_call_modes()
     dma_abi_hash = audit_dma_abi()
-    print(f"P4 SDMMC host ABI 3 DMA field check: PASS ({dma_abi_hash})")
+    print(f"P4 SDMMC host ABI 4 command/DMA source check: PASS ({dma_abi_hash})")
     print("Transaction may_wait source checks:")
     for name, digest in call_mode_checks:
         print(f"  {name}: PASS ({digest})")

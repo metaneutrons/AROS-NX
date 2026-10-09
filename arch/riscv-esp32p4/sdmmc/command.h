@@ -49,7 +49,7 @@ struct P4HostCommandResult
  * Failure resets the prepared DMA/FIFO, not the card protocol. The client
  * must recover/confirm its card or invalidate readiness before releasing
  * its transaction. No controller-wide reset is performed here.
- * Not yet exposed through the resource ABI or used by either slot client. */
+ * Exposed through private resource ABI4; neither slot client uses it yet. */
 BOOL p4host_command(struct P4SDMMCHost *host,
                     const struct P4HostCommand *request,
                     struct P4HostCommandResult *result);

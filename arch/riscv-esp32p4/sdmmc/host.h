@@ -6,7 +6,7 @@
 #include <exec/semaphores.h>
 
 #define P4_SDMMC_HOST_NAME "esp32p4sdmmc.resource"
-#define P4_SDMMC_HOST_ABI 3
+#define P4_SDMMC_HOST_ABI 4
 #define P4_SDMMC_HOST_WAIT_US 1000000UL
 
 /* Private port ABI, shared by separately loaded SD and radio clients.
@@ -17,6 +17,9 @@
  * Blocking acquisition requires scheduling and interrupts enabled, with no
  * Exec spin lock held. timeout0 may be used under Forbid (OpenDevice); it
  * never yields. No hardware transaction may run with interrupts disabled. */
+struct P4HostCommand;
+struct P4HostCommandResult;
+
 struct P4SDMMCHost
 {
     struct Library library;
@@ -38,6 +41,8 @@ struct P4SDMMCHost
     BOOL (*dma_ready)(struct P4SDMMCHost *, ULONG);
     BOOL (*dma_complete)(struct P4SDMMCHost *, UBYTE *, ULONG);
     void (*dma_inspect)(struct P4SDMMCHost *);
+    BOOL (*command)(struct P4SDMMCHost *, const struct P4HostCommand *,
+                    struct P4HostCommandResult *);
 
     struct SignalSemaphore lock;
     ULONG generation; /* Full host reset invalidates all slot clients. */

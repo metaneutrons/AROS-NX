@@ -16,11 +16,13 @@ buffer, cache handoffs and FIFO/IDMAC reset into the resource. The adapted
 resource and read-only SD client build; extracted-source DMA tests pass at
 O0/O2 with sanitizers (15 cases, 2,253,671 checks each), with clock and
 ownership regressions passing too. These are host models, not hardware evidence.
-An unexposed shared command-engine candidate now adds explicit slot/direction,
+A shared command-engine candidate now adds explicit slot/direction,
 staged RX/TX, card-response masks, error-first completion and bounded waits;
 its RV32 build and independent source review pass. Independently repeated
 extracted-source tests pass at O0/O2 with ASan/UBSan (20 cases, 2,001,069
-checks each). Neither slot client uses it yet; modeled MMIO/DMA callbacks
+checks each). It is now exposed through private resource ABI4 (208 bytes on
+RV32), and SD refuses a missing callback or mismatched version/size. Neither
+slot client invokes it yet; modeled MMIO/DMA callbacks
 are not hardware evidence.
 Command integration and hardware regression remain open;
 the installed firmware is unchanged. The older

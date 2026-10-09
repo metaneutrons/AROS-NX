@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; command candidate host-tested/build verified` | Shared DMA is host-tested/build verified under ABI3. An unexposed shared command candidate builds, passes independent source review and independently repeated extracted-source sanitizer tests. Command integration, recovery, installed C6 compatibility, package and hardware regression gates remain open; no radio MMIO or flash. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; command callback ABI4 build verified` | Shared DMA and command candidate are host-tested/build verified. Resource ABI4 exposes the command callback, with matched RV32 resource/SD builds and version/size/callback refusal. Neither client invokes it yet. Command integration, recovery, installed C6 compatibility, package and hardware regression gates remain open; no radio MMIO or flash. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; pure wire codec host tested` | Independently implemented bounded byte codec, optional checksum and non-mutating rejection;157,590 checks per O0/O2 sanitizer run and RV32 object, no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -273,8 +273,9 @@ must handle arbitrary-length frame tails above this layer; this remains open.
 SDIO interrupt bits are preserved by low16 W1C, and every wait has time/poll
 bounds. A request must explicitly opt into the storage-only slot0 CMD18 early
 descriptor workaround. Card recovery remains the client responsibility.
-This candidate is not yet exposed by the resource ABI or invoked by SD/radio;
-its RV32 build, independent source review and independently repeated modeled
+This candidate is exposed by private resource ABI4 but not invoked by SD/radio;
+matched RV32 resource/SD builds verify version4, size208 and callback108.
+Its RV32 build, independent source review and independently repeated modeled
 tests pass (20 cases, 2,001,069 checks each at O0/O2 with ASan/UBSan).
 Client integration and controller initialization migration remain open.
 This is not a complete dual-slot host: command sequencing still resides in
@@ -26583,6 +26584,49 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   statements above describe the historical intermediate state.
 - Next: expose the tested shared engine and adapt storage without removing
   its diagnostics, read-only restrictions or protocol-recovery gates.
+
+### 2026-10-10 - N0 shared command callback exposed through private ABI4
+
+- State: build verified, not runtime integrated or hardware accepted. Parent
+  b78c50124c; feature/esp32p4-wifi, worktree
+  /Volumes/Dev/Build/aros-esp32p4-wifi and isolated JC1060-v2/SMP build
+  /Volumes/Dev/Build/aros-esp32p4-wifi-build.
+- Added a typed command callback in host.h, initialized to p4host_command in
+  the resource. Private ABI increments3 to4; SD admission requires exact ABI,
+  struct size and a non-null callback. Old/new module mixtures refuse before
+  accessing shifted mutable fields. This does not migrate the SD command loop.
+- Verification: kernel-esp32p4sdmmc-quick and kernel-sdcard-quick with
+  P4_BOARD=jc1060p470c-v2 both exit0 (sessions48261/88705). Dependencies actually
+  recompiled host/clock/DMA/command and SD init/bus/time; no compiler flag change
+  or public copied header. Resource47,916B SHA-256
+  `63bb3be3de3460b64cb6ffc221222e188ce1e8e3440721879bd9dd573b9d7366`,
+  SD device127,172B SHA-256
+  `21982d1e07b4379e92f82f52fb44e53312e174e266350833e14e49046ddc0e2b`.
+  Resource nm -u is empty. RV32 object disassembly verifies init stores ABI4
+  at52, size208 at56 and command relocation/store at108; the SD object checks
+  those same version/size values and callback108 before accepting the resource.
+- test-sdmmc-host.py exit0 (session34765): strict warning/ASan/UBSan O0/O2,
+  20 cases/400,196 checks each, plus ABI4 fields, initialized callback and SD
+  null-callback refusal source checks. test-command-engine.py repeated exit0
+  (session51929),20 cases/2,001,069 checks each O0/O2. command.c unchanged;
+  comment-only command.h SHA-256
+  `764ee526489d2f4d1e5710ed712891bfb555fb0f1af6776d04f1a2fa53b93333`.
+  Source checks and native models do not prove loaded-module or silicon behavior.
+- Safety: no hardware access, core/package, flash, C6 firmware change or media
+  write. Neither SD nor radio invokes the new command callback. Existing SD
+  read-only denylist, outer transaction lock and CMD12/13 recovery remain intact.
+- Independent Luna ABI review found no production correctness issue and only
+  one in-tree production consumer (SD). It identified a source-audit gap:
+  added an assertion for version/exact-size admission before shifted fields,
+  rather than only callback presence. Final ownership runner repeats exit0,
+  20 cases/400,196 checks each O0/O2. DMA regression also exits0,15 cases/
+  2,253,671 checks each O0/O2. No compiled implementation changed after the
+  artifact identities above. Prebuilt/out-of-tree clients require an ABI4 rebuild.
+- Remaining risk/next: migrate global initialization
+  and slot width/reset state without disturbing the peer, then adapt SD with
+  its accepted diagnostics/recovery gates before bounded C6 probing. Keep the
+  maximum-length/slowest-clock poll-cap gate and production-baseline integration
+  open; this is not a working WLAN driver.
 
 ## Evidence-entry template
 
