@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; ownership modules build verified` | Pure CMD52/CMD53 builders, resident host ownership, reset generations and SD transaction hooks have extracted-source sanitizer coverage and successful RV32 resource/device builds. Slot1 pins declared and profile checked. Clock/command/DMA extraction, installed C6 compatibility, package and hardware regression gates remain open; no radio MMIO or flash. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; shared clock modules build verified` | Shared two-slot clock/reset control has peer-preservation host tests and RV32 module builds. Pure CMD52/CMD53 builders and SD transaction hooks have host coverage. Command/DMA extraction, installed C6 compatibility, package and hardware regression gates remain open; no radio MMIO or flash. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; pure wire codec host tested` | Independently implemented bounded byte codec, optional checksum and non-mutating rejection;157,590 checks per O0/O2 sanitizer run and RV32 object, no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -228,8 +228,22 @@ before enabling radio reset/reprobe. This is not recovery acceptance.
 Stale CMD/DATA reset and power/width setters refuse MMIO too; explicit full
 reset remains a reinitialization exception and cannot be used by a second
 client until host-wide recovery and card re-enumeration are implemented.
-This is ownership infrastructure, not a complete dual-slot host: shared
-clocks, command/FIFO/IDMAC code and buffers still reside in the SD client.
+The next adaptation moves physical reset and clock programming into the
+resource (private ABI2). SD keeps its 25-MHz ceiling and the conservative
+400-kHz identification setting. A sole slot chooses its source/divider;
+with an active peer the shared source/divider stays fixed and only the target
+card divider/mux and enable/low-power bits change. Exact rational rounding
+avoids fractional-Hz overspeed from the former integer comparisons. Clock
+updates carry the target card number and preserve SDIO W1C status. Bounded
+polling has a finite fallback when the timer stops. A failed hardware update
+invalidates both slots and requests both outputs disabled, but a stuck CMD
+may prevent the disable latching; this is refusal, not recovery acceptance.
+Explicit reset invalidates both clients and still requires re-enumeration.
+Reset enables the peripheral bus gate before the first controller access.
+Extracted-source clock tests pass at O0/O2 with production timeout/poll limits;
+the RV32 modules build. Neither result establishes physical cold-boot behavior.
+This is not a complete dual-slot host: command/FIFO/IDMAC code and buffers
+still reside in the SD client.
 No second hardware client may use them until that extraction is complete.
 
 ### N1 - compatible ESP-Hosted transport
@@ -26293,6 +26307,78 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   accepted production baseline before any replacement core/package flash.
   Then establish C6 compatibility, bounded streaming/credits/RPC, native AROS
   SANA-II association/DHCP/data and combined-load/reconnect qualification.
+
+### 2026-10-10 - N0 shared two-slot clocks and physical reset
+
+- State: common clock/reset control host-tested and build verified; N0 remains incomplete.
+  Worktree `/Volumes/Dev/Build/aros-esp32p4-wifi`, branch feature/esp32p4-wifi,
+  parent `e75ca3cdf2`; build `/Volumes/Dev/Build/aros-esp32p4-wifi-build`,
+  JC1060-v2/SMP with the same GCC16.2.0 explicit generated sysroot.
+- SD delegates physical reset and card-clock programming to ABI2 resource;
+  common register constants moved into sdmmc/registers.h. Both callbacks
+  reject nonowners. Clocks require initialized host_div1..16; reset establishes
+  divider10 and invalidates both generations before touching hardware.
+  Slot-local CLKDIV/CLKSRC/CLKENA RMWs preserve the peer; global source is
+  unchanged with an initialized peer. Storage still caps25MHz and keeps
+  low-power mode; a future radio caller may explicitly request continuous clock.
+- Pure planner: `sh arch/riscv-esp32p4/tools/test-clock-plan.sh`, actual exit0,
+  O0/O2 ASan/UBSan strict C99,3,065,528 assertions each;408,818 no-peer cases,
+  85,478 peer cases,254,161 legacy comparisons,93 intentional fractional-Hz
+  overspeed corrections,9 refusals. Shared planner supports a40MHz ceiling;
+  this is not an enabled/negotiated C6 frequency and does not raise SD's25MHz.
+  Source SHA-256
+  `4f9980d8b8d592a1402ec9577f7ada99701311cc0a507da2f39bbceafb15c687`;
+  fixture `9f8725743ac5be0e17cdbf0ef0480edbb5b96daa768d9f6b3a71a400aadfdfd2`.
+  Primary independently inspected rational rounding and reran the suite.
+- Existing extracted-source ownership suite rerun after register relocation:
+  exit0,20 cases/400,196 checks each O0/O2. Generic transaction suite rerun:
+  exit0,381 checks each O0/O2. Final modeled clock suite independently rerun:
+  `python3 arch/riscv-esp32p4/tools/test-clock-engine.py`, actual exit0,
+  strict C99/ASan/UBSan,15 cases/212 checks each O0/O2. Uses the actual
+  250,000-us timeout and 1,000,000-poll fallback. Tests both target slots,
+  peer source/enable/low-power preservation, slot-number commands, SDIO W1C
+  preservation, invalid arguments/ownership, busy/HLE/timeouts, reset bounds
+  and bus-gate-before-controller ordering. Assembled fixture SHA-256
+  `79e938fbe66a1cbed8232037d1967e0339277671377306cd1f846638ed6dd4f6`;
+  test fixture `4573296dadeb9e7b2646a10ad432e6b58d1ae4359db2470033b93b034a089c90`.
+  No silicon behavior follows from modeled register read/write tests.
+- Initial fixture compilation failed on a shadowed host name and a host-LP64
+  shift conversion to RV32 ULONG; the fixture name and production ULONG cast
+  were corrected. Two incorrect fixture expectations (low-power bits and
+  command count) were corrected before the successful independent rerun.
+  Cold-boot review then found the first controller read preceded bus gating;
+  reset now enables the bus first and the fixture asserts that ordering.
+- Isolated quick builds `kernel-esp32p4sdmmc-quick` and `kernel-sdcard-quick`
+  with P4_BOARD=jc1060p470c-v2 completed with actual exits0. Planner was
+  subsequently tightened to exact rational rounding; resource rebuilt again,
+  actual exit0. Resource27,996B SHA-256
+  `13368656e4eb76c6e875fd83fefbdc0b10289e65e9594228d6852903e982cebb`;
+  sdcard.device134,984B
+  `89ea85940af933208ab8fb8f031cb8a22a1891eb2baf4810b46dcde170e8802d`.
+  nm -u reports no undefined symbols for either; resource init disassembly
+  confirms ABI2/sizeof160 and new callback fields. No core/package built.
+- The cold-boot gate-order correction supersedes the above resource artifact:
+  final `kernel-esp32p4sdmmc-quick` build exited0, resource28,012B SHA-256
+  `29f331bc83008e49e28b48c41bd9fa9ee3b9605baf1b2c3ff4568a613bb4c5e9`.
+  Final nm -u check exited0 with no undefined symbols; SD artifact unchanged.
+- Independent local IDF audit confirms slot-number bits20:16, divider bytes,
+  card mux, per-slot enable/low-power fields and global divider1..16:
+  components/esp_hal_sd/esp32p4/include/hal/sdmmc_ll.h and
+  components/esp_driver_sdmmc/src/sd_host_sdmmc.c, local IDF6.0.1
+  `8c19b156084a0753687347cca1f5355782893533`. No reference files changed.
+  Failure requests both clocks disabled and invalidates clients; with stuck
+  CMD the CIU may not latch that disable. Do not claim physical clock-off or
+  successful recovery. The clock waits have elapsed-time and finite-poll
+  bounds; legacy SD command waits/Udelay still need stopped-timer handling
+  during common engine extraction. This limitation remains an N0 gate.
+- Safety: no serial open, reset, flash, C6 write or media mutation. Installed
+  production artifacts unchanged; no WLAN connection or DHCP/data acceptance.
+  Clock/FIFO/DMA/command sequencing must still be hardware-regressed on both
+  boards, with host-wide recovery/re-enumeration, before another client runs.
+- Next: common command/IDMAC
+  buffers/engine extraction with finite polls. Preserve card read-only policy
+  and physical CMD12/CMD13 recovery in the storage client. Add opt-in bounded
+  slot1 GPIO routing and enumeration only after this shared-engine gate.
 
 ## Evidence-entry template
 

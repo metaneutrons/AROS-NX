@@ -25,7 +25,7 @@ static int FNAME_P4SD(Init)(struct SDCardBase *SDCardBase)
     /* A missing/newer host is a refusal, not a second unsynchronized host. */
     if (!host || host->abi != P4_SDMMC_HOST_ABI ||
         host->size != sizeof(*host) || !host->acquire || !host->release ||
-        !host->invalidate || !host->now_us)
+        !host->invalidate || !host->now_us || !host->reset || !host->set_clock)
     {
         bug("[P4SD--] compatible SDMMC host resource missing\n");
         return FALSE;

@@ -9,7 +9,9 @@ driver. SD storage and the C6 share one SDMMC controller. The development
 branch now adds a permanent ownership resource, reset generations and
 transaction-scoped SD hooks with extracted-source sanitizer tests and successful
 RV32 resource/device builds in an isolated JC1060-v2 build directory. The shared
-clock/command/DMA engine extraction and hardware regression remain open;
+clock/reset control is now implemented in the resource with peer-preserving
+two-slot changes, host-tested and RV32 build verified. Command/DMA engine
+extraction and hardware regression remain open;
 the installed firmware is unchanged. The older
 `cheops/JC1060P470C_I_W` package is Fabian's selected WLAN reference:
 the profile declares P4-side slot1 CLK18/CMD19/D0-3=14-17 without enabling

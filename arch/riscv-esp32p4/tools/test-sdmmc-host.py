@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[3]
 PORT = Path(__file__).resolve().parents[1]
 FIXTURE = PORT / "network" / "test_sdmmc_host.c"
 INTERN = PORT / "sdcard" / "sdcard_esp32p4_intern.h"
+REGISTERS = PORT / "sdmmc" / "registers.h"
 HOST_SOURCE = PORT / "sdmmc" / "host.c"
 HOST_HEADER = PORT / "sdmmc" / "host.h"
 BUS_SOURCE = PORT / "sdcard" / "sdcard_esp32p4_bus.c"
@@ -187,12 +188,23 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
             ),
         ),
     ]
-    constants = extract_constant_lines(
-        INTERN,
+    register_constants = extract_constant_lines(
+        REGISTERS,
         (
             "P4_HPPERIPH0_BASE",
             "P4_SDMMC_BASE",
             "P4_LPAON_BASE",
+            "P4SD_RINTSTS",
+            "P4SD_INT_CMD_DATA_MASK",
+            "P4SD_CMDARG",
+            "P4SD_CTYPE",
+            "P4SD_CTYPE_4BIT_SLOT0",
+            "P4SD_CTYPE_8BIT_SLOT0",
+        ),
+    )
+    card_constants = extract_constant_lines(
+        INTERN,
+        (
             "P4_PMU_BASE",
             "P4_PMU_LDO4_CTRL",
             "P4_PMU_LDO4_ANA",
@@ -201,15 +213,10 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
             "P4_PMU_LDO_TIEH_SEL_M",
             "P4_PMU_LDO_3V3",
             "P4_PMU_LDO_EN_VDET",
-            "P4SD_RINTSTS",
-            "P4SD_INT_CMD_DATA_MASK",
-            "P4SD_CMDARG",
-            "P4SD_CTYPE",
-            "P4SD_CTYPE_4BIT_SLOT0",
-            "P4SD_CTYPE_8BIT_SLOT0",
             "P4SD_POWER_DELAY_US",
         ),
     )
+    constants = "\n".join((register_constants, card_constants))
     host_policy_constant = extract_constant_lines(
         HOST_HEADER,
         ("P4_SDMMC_HOST_WAIT_US",),
@@ -280,7 +287,8 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     )
     assembled = fixture.replace(INSERT_MARKER, inserted)
     hashes = [(name, body.encode("utf-8")) for name, body in definitions]
-    hashes.append(("intern register constants", constants.encode("utf-8")))
+    hashes.append(("register constants", register_constants.encode("utf-8")))
+    hashes.append(("card constants", card_constants.encode("utf-8")))
     hashes.append(
         ("host policy constant", host_policy_constant.encode("utf-8"))
     )

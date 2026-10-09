@@ -351,132 +351,24 @@ static void p4sd_configure_pins(unsigned int drive)
         p4sd_iomux(gpio, P4_IOMUX_FUNC_SDMMC, TRUE, drive);
 }
 
-static void p4sd_host_clock_enable(unsigned int divider)
-{
-    ULONG value;
-
-    value = p4sd_read(P4_HP_SYS_CLKRST_BASE + P4_HP_SOC_CLK_CTRL1);
-    p4sd_write(P4_HP_SYS_CLKRST_BASE + P4_HP_SOC_CLK_CTRL1,
-               value | P4_HP_SDMMC_CLK_EN);
-
-    value = p4sd_read(P4_HP_SYS_CLKRST_BASE + P4_HP_REF_CLK_CTRL2);
-    p4sd_write(P4_HP_SYS_CLKRST_BASE + P4_HP_REF_CLK_CTRL2,
-               value | P4_HP_REF_160M_CLK_EN);
-
-    value = p4sd_read(P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL01);
-    value &= ~(P4_HP_SDIO_HS_MODE | P4_HP_SDIO_CLK_SRC);
-    if (divider == 1)
-        value |= P4_HP_SDIO_HS_MODE;
-    value |= P4_HP_SDIO_CLK_EN;
-    p4sd_write(P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL01, value);
-
-    value = p4sd_read(P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL02);
-    value &= ~P4_HP_SDIO_FIELDS_M;
-    if (divider > 1)
-    {
-        value |= ((divider - 1) << P4_HP_SDIO_EDGE_L_S) |
-                 ((divider / 2 - 1) << P4_HP_SDIO_EDGE_H_S) |
-                 ((divider - 1) << P4_HP_SDIO_EDGE_N_S);
-    }
-    value |= (1UL << P4_HP_SDIO_DRV_EDGE_S) |
-             P4_HP_SDIO_SLF_EN | P4_HP_SDIO_DRV_EN |
-             P4_HP_SDIO_SAM_EN;
-    p4sd_write(P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL02,
-               value | P4_HP_SDIO_UPDATE);
-    p4sd_write(P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL02, value);
-    sdcard_Udelay(10);
-}
-
-static void p4sd_module_reset(struct sdcard_Bus *bus)
+static BOOL p4sd_module_reset(struct sdcard_Bus *bus)
 {
     struct p4sd_private *priv = P4SD_PRIV(bus);
-    ULONG value = p4sd_read(P4_LP_CLKRST_BASE + P4_LP_SDMMC_RST_CTRL);
-
-    priv->host->invalidate(priv->host);
-    p4sd_write(P4_LP_CLKRST_BASE + P4_LP_SDMMC_RST_CTRL,
-               value | P4_LP_SDMMC_RST_EN);
-    p4sd_write(P4_LP_CLKRST_BASE + P4_LP_SDMMC_RST_CTRL,
-               value & ~P4_LP_SDMMC_RST_EN);
-    sdcard_Udelay(10);
-}
-
-static BOOL p4sd_clock_update(void)
-{
-    ULONG command = P4SD_CMD_UPDATE_CLK | P4SD_CMD_WAIT_DATA |
-                    P4SD_CMD_USE_HOLD | P4SD_CMD_START;
-
-    if (!p4sd_wait_clear(P4SD_CMD, P4SD_CMD_START, P4SD_CMD_TIMEOUT_US))
-        return FALSE;
-    p4sd_set(P4SD_RINTSTS, 0xFFFFFFFFUL);
-    p4sd_set(P4SD_CMDARG, 0);
-    p4sd_set(P4SD_CMD, command);
-    if (!p4sd_wait_clear(P4SD_CMD, P4SD_CMD_START, P4SD_CMD_TIMEOUT_US))
-        return FALSE;
-    if (p4sd_reg(P4SD_RINTSTS) & P4SD_INT_HLE)
-        return FALSE;
-    p4sd_set(P4SD_RINTSTS, 0xFFFFFFFFUL);
-    return TRUE;
+    return priv->host->reset(priv->host);
 }
 
 static BOOL p4sd_program_clock(ULONG requested, struct sdcard_Bus *bus)
 {
     struct p4sd_private *priv = P4SD_PRIV(bus);
-    ULONG host_div, card_div, actual;
-
+    ULONG actual;
+    /* Storage keeps its qualified 25-MHz ceiling; radio negotiates its own. */
     if (requested > P4SD_CLOCK_MAX_HZ)
         requested = P4SD_CLOCK_MAX_HZ;
-    if (requested < P4SD_CLOCK_MIN_HZ)
-        requested = P4SD_CLOCK_MIN_HZ;
-
-    if (requested == P4SD_CLOCK_MIN_HZ)
+    if (!priv->host->set_clock(priv->host, 0, requested, TRUE, &actual))
     {
-        /* IDF's conservative identification setting: 160M/10/(2*20). */
-        host_div = 10;
-        card_div = 20;
+        priv->host_ready = FALSE;
+        return FALSE;
     }
-    else
-    {
-        host_div = P4SD_CLOCK_SOURCE_HZ / requested;
-        if (host_div < 1)
-            host_div = 1;
-        if (host_div <= 15)
-        {
-            if ((P4SD_CLOCK_SOURCE_HZ / host_div) > requested)
-                ++host_div;
-            card_div = 0;
-        }
-        else
-        {
-            host_div = 2;
-            card_div = (P4SD_CLOCK_SOURCE_HZ / host_div) /
-                       (2 * requested);
-            if (card_div < 1)
-                card_div = 1;
-            if ((P4SD_CLOCK_SOURCE_HZ / host_div / (2 * card_div)) >
-                requested)
-                ++card_div;
-            if (card_div > 255)
-                card_div = 255;
-        }
-    }
-
-    p4sd_set(P4SD_CLKENA, 0);
-    if (!p4sd_clock_update())
-        return FALSE;
-
-    p4sd_set(P4SD_CLKDIV, card_div & 0xFF);
-    p4sd_set(P4SD_CLKSRC, 0);
-    p4sd_host_clock_enable(host_div);
-    if (!p4sd_clock_update())
-        return FALSE;
-
-    p4sd_set(P4SD_CLKENA, 1UL | (1UL << 16));
-    if (!p4sd_clock_update())
-        return FALSE;
-
-    actual = P4SD_CLOCK_SOURCE_HZ / host_div;
-    if (card_div != 0)
-        actual /= 2 * card_div;
     priv->clock_hz = actual;
     return TRUE;
 }
@@ -485,8 +377,9 @@ static BOOL p4sd_host_init(struct sdcard_Bus *bus)
 {
     struct p4sd_private *priv = P4SD_PRIV(bus);
 
-    p4sd_host_clock_enable(10);
-    p4sd_module_reset(bus);
+    priv->host_ready = FALSE;
+    if (!p4sd_module_reset(bus))
+        return FALSE;
 
     p4sd_set(P4SD_CTRL, p4sd_reg(P4SD_CTRL) | P4SD_CTRL_RESET_ALL);
     if (!p4sd_wait_clear(P4SD_CTRL, P4SD_CTRL_RESET_ALL,
