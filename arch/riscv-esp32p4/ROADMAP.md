@@ -26490,6 +26490,14 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   completion as an explicitly storage-only CMD18 workaround, with the outer
   owner retained through physical CMD12/CMD13. Slot1 transfers require card-side
   protocol completion and R5 validation, not only descriptor OWN release.
+  Independent follow-up audit confirms the current fast path actually covers
+  every DMA read, not only CMD18; narrowing it requires explicit short-read
+  and CMD17 regression evidence, not an assumed equivalence. Command responses
+  are also currently published at CMD_DONE before a later data failure; define
+  that contract during extraction. Remove the unused PIO path rather than
+  introduce a second unqualified transfer implementation. Slot and direction
+  must become explicit; controller-wide initialization leaves the SD client,
+  while per-card RCA, write refusal and CMD12/CMD13 recovery remain there.
 
 ## Evidence-entry template
 
