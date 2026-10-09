@@ -168,8 +168,8 @@ observations. Larger cold-cycle reliability and sustained no-reader/combined
 stress remain open; this is not full production qualification.
 
 Boot-latency optimization (2026-10-09): the 10-14-second visual cold-start
-estimates above used the verbose package. Currently the same s15 core is
-paired with diagnostic-off package `e0869292…` (3,636,260 bytes, verified at
+estimates above used the verbose package. For the quiet comparison the s15 core
+was paired with diagnostic-off package `e0869292…` (3,636,260 bytes, verified at
 `0x820000`). Only DOS/FAT/dosboot records changed; the other 37 records and
 all media/bootloader/core are unchanged. Three reader-attached reset captures
 pass PSRAM/two-hart/watchdog/touch-polling and graphics-update checks. At the
@@ -181,6 +181,21 @@ reports approximately 10s to fully visible Wanderer (2026-10-09). This falls
 within the verbose baseline's 10-14s range, so material cold-start acceleration
 is not established. Fresh touch and repeated-cycle acceptance of this pair
 remain open; prior verbose-package acceptance does not transfer automatically.
+
+Optional `P4_BOOT_TIMING=1` diagnostics now retain bounded SYSTIMER phase
+measurements beginning before the kernel's first console output. A five-second
+reporter rotates one retained phase per short packet (all eight in40s), so a
+late reader need not recover discarded early narration. These are NOT time
+since power-on or proof of a completed desktop; the counter's pre-kernel
+origin is unknown. `MISSING`/`INVALID` and failure bits must not count as zero.
+The s17 diagnostic core is now flashed at `0x20000`: 191,856 bytes, SHA-256
+`e09de20b6d7f6ec2ea3c88185f4c275389cbb17a3f8c0d9e5073623d044fbf59`.
+One45s reader-attached reset reports all phases with zero measurement failures:
+PSRAM44ms, panel-probe return706ms, pre-Exec1145ms and update2563686ms.
+The final late reader preserves this warm boot (now71/76/81s, same retained
+values); the initial low-line reader instead caused a reset and is rejected.
+These are warm diagnostic results, not cold timings or fresh visual acceptance.
+Ordinary s15 core remains the rollback; quiet package/media/bootloader unchanged.
 
 `tools/build-quiet-package.sh` clean-rebuilds those three modules and replaces
 only their records in a supplied immutable baseline, then checks the board's

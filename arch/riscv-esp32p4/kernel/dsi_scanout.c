@@ -1562,6 +1562,9 @@ static BOOL c1_update_rect(CONST_APTR logical_ptr, ULONG logical_pitch,
                               P4_FB_BASE, P4_FB_BACK_BASE);
     }
 #endif
+#ifdef P4_BOOT_TIMING
+    krnP4BootTimingUpdate();
+#endif
     return TRUE;
 }
 

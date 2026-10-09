@@ -139,7 +139,7 @@ gate: compensated output is not the native display contract.
 | D0 | Compile-time board profile, with D1001 as the first implementation | `hardware partial` | LDO2 now recovers and verifies all 32 MB without Vellum. The 20-MHz-PSRAM/90-MHz-CPU artifact showed only blue and an edge strip; changing only PSRAM to 200 MHz produced clean calibration and a spontaneously reported desktop. After the battery was reported empty, the initial non-desktop state could not be classified: opening UART coincided with a USB reset, and a subsequent controlled USB reset booted Wanderer with the restored touch firmware and zero reported faults. Fabian then saw the desktop. Neither run proves the original rail-off start completed by itself or passes the unsynchronized visual/touch gate. Isolated full core/Exec/SD/BSP and physical rail-off gates remain open; do not generalize this clock result to the earlier 360/200-MHz C1 strip. Prohibit stale cross-board objects before a second profile. |
 | D1 | Board-driver boundary and second-board onboarding | `build verified` | 2026-10-03: the profile now selects panel controller and table (JD9365/JD9165), rotation (90/0), panel power scheme (PCA9535 or plain GPIOs), touch driver (GSL3670/GT911, firmware optional), SD detect/power wiring, partition CSV and sdkconfig per board; `check-profile.py` evaluates `board.mk` per board through GNU make. The D1001 core built with these changes is byte-identical to HEAD (202,096 B `99a8f6f8…`, same flags, same tree), so the D1001 binary contract holds. Not hardware tested on either board. |
 | D2 | Guition JC1060P470C as the active development board (J0-J5) | `J0-J5 accepted; four cold visual passes; sustained stress open` | Board IDs `jc1060p470c-v2` (new panel batch, active) and `jc1060p470c-v1` (old batch). On `80:f1:b2:d3:3b:a6`: J0 Exec/32MB PSRAM; J1 correct test card after 20MHz D-PHY reference fix; J2 GT911/I2C1/100kHz; J3/J4 Wanderer, four-edge pointer, double tap, two-finger menu and double-tap-and-drag visually accepted. J5 portable touch/brightness control panels accepted 2026-10-05. Aggregate early USB budget correction `4d998b4e…` passes host tests, a 120-second reader-attached USB-reset boot and four synchronized USB-only physical cold boots without a serial reader/reset: approximately 10, 11, 14 and 11 seconds (2026-10-09). Fresh pointer, double-tap and two-finger menu check accepted. Earlier black cold attempt remains recorded. Open: larger cold-cycle reliability campaign, sustained combined/no-reader stress and old panel batch. Previous-production thirty-minute reader-attached idle soak does not substitute for those gates. See dated D2/J0-J5 and s13-s15 evidence for exact configurations/artifacts. |
-| D2-BT | JC1060 boot latency | `one quiet-pair cold pass; material cold speedup unproven` | Baseline visual cold starts 10, 11, 14, 11s on s15 core plus verbose package. Only DOS/FAT/dosboot traces disabled, other 37 records/core/media unchanged. Three reset captures per configuration: graphics n256 median host receipt 4.408s -> 3.955s; log volume ~584KB -> 15KB. Marker is not first-visible-desktop time. Fresh quiet-package `e0869292…` physical cold boot reaches fully visible Wanderer in ~10s, inside previous range. Fresh touch/repeated cycles remain open; next isolate pre-kernel versus post-kernel cold time without attributing an unmeasured delay to watchdog. Preserve hardware waits and verbose rollback. See dated s16 evidence. |
+| D2-BT | JC1060 boot latency | `retained phase diagnostic warm-verified; cold comparison open` | Quiet-pair physical cold pass ~10s remains within verbose 10/11/14/11s baseline. Optional s17 core e09de20b… retains kernel-relative phases before first USB output. Warm45s: PSRAM44ms, panel706ms, pre-Exec1145ms, update2563686ms, failures0; update256 not desktop completion. Compact rotating reports and asserted-line late reader preserve warm boot, low-line opener reset is rejected. Fresh cold/visual comparison open; no power-on-origin or speedup claim. Hardware waits and bootloader unchanged. |
 | D3 | Portable touch and I2C stack | `hardware partial (JC1060P470C passed)` | 2026-10-04 on Fabian's direction: `touchscreen.hidd` (`rom/hidds/touchscreen`, polling, gestures, calibration, `ENV:Sys/touchscreen.prefs`), controller drivers `gt911.hidd` and `gsl3670.hidd` on AROS's `hidd.i2c` (`workbench/hidds`), the bus driver `hidd.i2c.esp32p4` (`arch/riscv-esp32p4/i2c`, transport shared with the kernel) and `esp32p4board.resource`, which builds the objects from the board profile; editor `workbench/prefs/touchscreen`. The kernel keeps no touch driver and no `KATTR_TouchScreenOps`. Fixes the I2C0 clock divider position (CTRL10 bits 9:2). JC1060P470C: GT911 through the new stack; Fabian confirms touch, calibration, editor and the tap/direct switch. D1001: builds, not hardware tested. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
@@ -1134,6 +1134,15 @@ Selection as built on 2026-10-03 (build verified, no hardware run):
   and is D1001-only until changed.
 
 ### D2 - Guition JC1060P470C bring-up
+
+Boot-latency subgate D2-BT (2026-10-09): the quiet package's first physical
+cold observation is approximately ten seconds, not a proven speedup. An
+optional retained-phase diagnostic is now warm-verified to measure early console,
+PSRAM, panel-probe return, package/pre-Exec and successful graphics update
+milestones without treating USB host receipt time as device time. Origin is
+the early kernel SYSTIMER snapshot, not rail-on. A late reader must demonstrate
+continuity rather than assume opening USB cannot reset the device. No new
+physical test before fresh readiness; no bootloader write authorization inferred.
 
 Board facts, each from the vendor package in `~/Downloads/JC1060WP470C`
 (schematic V1.0, ESP-IDF 5.5.4 demos and their sdkconfig, panel dtsi) and
@@ -26312,6 +26321,103 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   intrusive evidence. Investigate bootloader/ROM output path as a hypothesis,
   not a proven nine-second watchdog delay. Any bootloader write still needs
   explicit exact-range authorization; no automatic additional physical test.
+
+### 2026-10-09 - D2-BT: retained kernel-relative phase diagnostic started
+
+- Source: optional `P4_BOOT_TIMING=1`; early counter enable/snapshot before
+  first kernel console output, comparator/CLIC initialization unchanged.
+  Single-try shared snapshot lock and at most1000 VALID polls; invalid origin,
+  missing phase and failures are explicit rather than fabricated zero times.
+- Retain first phase values in internal BSS. Diagnostic-only heartbeat
+  resident repeats a fixed-size report every5s without verbose ready-list
+  traversal. Successful C1 update1/128/256 markers are progress, not measured
+  first-visible Wanderer completion. No framebuffer overlay or media mutation.
+- Local source audit: AROS enables but does not zero SYSTIMER; IDF application
+  timer initialization is bypassed. Raw counter is not established power-on
+  uptime. Kernel-relative deltas can localize delays inside the kernel but
+  do not alone establish ROM/bootloader duration. Existing early USB output
+  has a bounded poll budget and remains a hypothesis until measured.
+- Candidate: same s15 board/C3/C4/PSRAM200/XIP/C1_PROFILE1 switches plus the
+  diagnostic. Quiet package `e0869292…` retained. Clean build started in
+  `jc1060/s17-boot-phases`; size/hash and actual verification pending.
+- Safety: JC1060 only, SD read-only. No flash yet; ordinary s15 core
+  `4d998b4e…` retained. Bootloader/partition/NVS/otadata remain untouched.
+- Next: host fixtures, independent review, clean-link/residency checks,
+  authorized core-only headless verification; demonstrate late-reader
+  continuity, then request fresh physical comparison readiness. No speedup
+  or hardware acceptance claim from implementation alone.
+- Host validation: extracted live C diagnostic passes strict C11 fixture
+  (`-Wall -Wextra -Werror -pedantic`): stalled VALID1000 polls, busy lock
+  owner preserved, explicit missing/invalid versus zero, immutable first
+  marks, 52-bit rollover, millisecond overflow and update milestones/cap.
+  Late-reader fake-serial fixture passes6 cases: line states assigned before
+  open, macOS HUPCL clear, exclusive evidence and failure cleanup. Prior
+  host-receipt fixture still passes2 cases. Independent Luna review caught
+  early-output mark after timer/CLIC setup; corrected to immediately after
+  the first kernel line, before watchdog report/platform initialization.
+- Initial `s17-boot-phases` build failed (exit1) while archiving libdebug:
+  response file missing with the system Make selected by nested invocations.
+  No core created or flashed. Repeat `s17-boot-phases-gnu` uses explicit
+  Homebrew GNU Make PATH and cleans all affected core objects again; its
+  final outcome is pending, not inferred from compiler output alone.
+
+### 2026-10-09 - D2-BT: packet-sized phase reports and warm late-reader continuity pass
+
+- Initial diagnostic: clean GNU-Make build/link and SRAM residency pass,
+  192,048B `6911408ff4dd4720cf7e93d735e6f82481569e9fcc8def4222e0f8557ac0f1e9`,
+  `jc1060/s17-boot-phases-gnu`. MAC checked, original s15 core read back
+  before write and equals `4d998b4e…`; `prewrite-core.bin` retained. Core-only
+  write `0x20000` verified. Initial20s reset exits0, PSRAM/harts/watchdog
+  pass but >64-byte reports are truncated by nonblocking USB. This is a
+  failed retrieval format, not complete timing evidence.
+- Initial low/low late reader explicitly configured before open nevertheless
+  causes CHIP_USB_UART_RESET: new boot and now6370/11370ms. Reject it as a
+  cold continuity path. Log `s17-boot-phases-gnu/late-first.log` SHA-256
+  `ce7cf1fc8ac2fc0758f5d5f9eaf379034b4a6197e8d0b86276c20323f3df8cdb`.
+  Separate asserted-line legacy-reader trial keeps now66370/71370ms with
+  no ROM banner (12s exit0), `late-asserted-trial.log` SHA-256
+  `2b3761a0994fd03be6eedb9be70cf3058c4756c41a7d5de4dd9af33efba54052`.
+- Correction: rotate one phase per5s report; longest numeric line54B,
+  validated by actual-C fixture, below endpoint64B. No blocking USB flush,
+  overlay, mandatory wait removal or scheduler change. Final reader requests
+  asserted DTR/RTS before opening and clears HUPCL on macOS; this profile is
+  warm-verified, not a universal guarantee against reset on opening.
+- Only changed kernel_timer object rebuilt through native kobj target after
+  the clean build; relink in `jc1060/s17-boot-phases-packet`, Creating image
+  and SRAM check confirmed, exit0. Link-only helper emits a missing build.log
+  grep warning because compilation was separate; final link/artifact are
+  present and new, not accepted by absence of an error pattern.
+  Core191,856B SHA-256
+  `e09de20b6d7f6ec2ea3c88185f4c275389cbb17a3f8c0d9e5073623d044fbf59`;
+  same flags plus P4_BOOT_TIMING1. MAC checked again; core-only0x20000
+  write exits0/hash verified (`flash.log`). Quiet package `e0869292…`,
+  SD/devvolume, bootloader/partition/otadata/NVS unchanged.
+- Final45s reader-attached USB-reset capture exits0, complete timing footer
+  45.889s/16060B. One initial ROM/reset17, PSRAM32MB200MHz first attempt,
+  watchdog6000ms, hart1/cpus2, accepted graphics/touch polls; no captured
+  trap, Alert, stack fault or subsequent reset. All eight retained phases
+  captured with fail0: first-output0ms, PSRAM-return44ms, panel-probe-return
+  706ms, package-complete1145ms, pre-Exec1145ms, successful update1/128/256
+  1586/1782/3686ms. Progress markers, NOT measured desktop completion.
+- Warm raw log SHA-256
+  `5ef80f2f1f744e9dc41686ed9b53a5973846ea56919ec7c67718c171738dde31`.
+  After capture closes, final late tool12s exits0/321B and reports now
+  71370/76370/81370ms with unchanged phase5/6/7 values and fail0; no ROM,
+  kernel-entry or hart-online banner. This demonstrates continuity for this
+  reopen, not a physical cold result. `late.log` SHA-256
+  `4eec1e2172bee9c5310d7b30c43a23a44b5298672949ca4324ca64f3c007d261`.
+- Host validation: updated actual-C fixture checks slots0..7/rotation and
+  packet length; six late-reader cases and two receipt cases pass. Independent
+  review accepts corrected mark placement and capture failure semantics.
+- Safety/limits: development diagnostic remains optional; no fresh visual/
+  touch acceptance, cold timing, no-reader stress or speedup claim. Original
+  s15/verbose rollback retained. No unauthorized bootloader write.
+- Next: fresh visual readiness for USB-only >=30s rail-off, then user's
+  power-on-to-Wanderer estimate without a reader. Wait additionally10s before
+  late retrieval; require reported now consistent with elapsed cold boot,
+  complete phase cycle/fail0 and no new boot evidence. A reset or missing
+  data invalidates the measurement; do not subtract an unproven origin or
+  attribute remaining delay to the nine-second bootloader watchdog.
 
 ## Evidence-entry template
 
