@@ -25717,6 +25717,42 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   generic code and runs on the other SMP ports as well, untested there.
 - Next safe step: the visual and touch check ("bereit"); a PR for stage 2.
 
+### 2026-10-09 - The reply race upstream; why the D1001 tree stopped
+
+- State change: the generic `ReplyMsg()`/`WaitIO()` fix (S8 stage 1) is
+  proposed upstream as aros-development-team/AROS#1529 (draft), with a test
+  of its own, SMP-ReplyPort (`developer/debug/test/smp/smpreplyport.c`),
+  which also comes to AROS-NX with the stage 2 PR. Branches:
+  `upstream/exec-replymsg-waitio-smp` (on upstream `master` `3914027415`)
+  and `pr/exec-replymsg-waitio-smp` (on AROS-NX `master`, for the record;
+  the fix itself is in AROS-NX `main` since #67). The four exec files were
+  identical between this port's base and upstream `master`.
+- SMP-ReplyPort on the JC1060P470C, five runs each (package `d9e40d75…`,
+  volume `0292dc16…`, list: SMP-ReplyPort five times): a runner core with
+  only the fix reverted, `s10-noreply-runner`: the first run "worker 2 (cpu
+  1): 1800 completed, 0 errors, 1 messages left on the port" (and worker
+  3), the next three "TIMEOUT (workers stuck)"; the stage 2 runner core
+  `487459d1…`: five of five "1 PASS", 3.0 s each.
+- The D1001 tree (`AROS-ESP32-nx-d1001-build`, worktree
+  `/Volumes/Dev/Build/aros-nx-d1001`) stopped in `rom/dos/displayerror.c`
+  (`MSG_STRING_REQUESTTITLE` undeclared) and in muimaster
+  (`muimaster_strings.h` missing). Cause: the worktree was made with
+  `git worktree add` and none of its 76 submodules was initialized. The
+  catalogs are submodules (`rom/dos/catalogs`,
+  `workbench/libs/muimaster/catalogs`, ...), each with its own
+  `mmakefile.src`, so without them mmake did not know
+  `workbench-libs-dos-catalogs` at all, skipped the declared dependency
+  without a message, and FlexCat generated no `strings.h`. Not an AROS-NX
+  bug: its CI checks out with `submodules: recursive`, and the JC1060
+  worktree has all of them. After `git submodule update --init
+  --recursive` the package builds (3,737,368 bytes, `5164cf63…`) and the
+  card image too (`6ae3c342…`), both in
+  `evidence/aros-nx-d1001-2026-10-08/d1001/after-submodules/`; nothing
+  written to a board. The D1001 build script now initializes the
+  submodules and stops if one is missing.
+- Next safe step: the D1001 stays postponed; when it resumes, the tests
+  and the runner cores of that tree are the next build steps.
+
 ## Evidence-entry template
 
 

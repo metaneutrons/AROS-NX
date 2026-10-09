@@ -597,7 +597,8 @@ state before the fixes below, it found two real faults and one of its own:
   `WaitIO()`): the type is set inside the port's spinlock together with the
   queueing, and `WaitIO()` takes the same lock to remove. One run before the
   fix also ended in a watchdog reset during this phase; that the same race
-  caused it is not shown.
+  caused it is not shown. Proposed upstream with a test of its own,
+  SMP-ReplyPort, as aros-development-team/AROS#1529 (draft).
 - `krnP4SyncCode()` lost data. It wrote the range back and then invalidated
   it in the L1 data cache and the L2. A range that starts or ends inside a
   cache line takes the rest of the line with it, and whatever the other
