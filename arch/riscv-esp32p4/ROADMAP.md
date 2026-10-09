@@ -140,7 +140,7 @@ gate: compensated output is not the native display contract.
 | D1 | Board-driver boundary and second-board onboarding | `build verified` | 2026-10-03: the profile now selects panel controller and table (JD9365/JD9165), rotation (90/0), panel power scheme (PCA9535 or plain GPIOs), touch driver (GSL3670/GT911, firmware optional), SD detect/power wiring, partition CSV and sdkconfig per board; `check-profile.py` evaluates `board.mk` per board through GNU make. The D1001 core built with these changes is byte-identical to HEAD (202,096 B `99a8f6f8…`, same flags, same tree), so the D1001 binary contract holds. Not hardware tested on either board. |
 | D2 | Guition JC1060P470C as the active development board (J0-J5) | `J0-J5 accepted; four cold visual passes; sustained stress open` | Board IDs `jc1060p470c-v2` (new panel batch, active) and `jc1060p470c-v1` (old batch). On `80:f1:b2:d3:3b:a6`: J0 Exec/32MB PSRAM; J1 correct test card after 20MHz D-PHY reference fix; J2 GT911/I2C1/100kHz; J3/J4 Wanderer, four-edge pointer, double tap, two-finger menu and double-tap-and-drag visually accepted. J5 portable touch/brightness control panels accepted 2026-10-05. Aggregate early USB budget correction `4d998b4e…` passes host tests, a 120-second reader-attached USB-reset boot and four synchronized USB-only physical cold boots without a serial reader/reset: approximately 10, 11, 14 and 11 seconds (2026-10-09). Fresh pointer, double-tap and two-finger menu check accepted. Earlier black cold attempt remains recorded. Open: larger cold-cycle reliability campaign, sustained combined/no-reader stress and old panel batch. Previous-production thirty-minute reader-attached idle soak does not substitute for those gates. See dated D2/J0-J5 and s13-s15 evidence for exact configurations/artifacts. |
 | D2-BT | JC1060 boot latency | `deferred; production cleanup accepted` | Fabian defers optimization after channel2-off cold12s with no demonstrated gain. Original bootloader27b99e03… and entire sector range restored/readback-verified; clean normal core17249045… has BOOT_TIMING0/C1_PROFILE0, independent readback and complete60s warm regression pass. Quiet package/media unchanged. Fresh exact-pair desktop/pointer/double-tap/menu check accepted by Fabian; no claim that latency is fixed. |
-| D2-Q | JC1060 production no-reader combined qualification | `1800s machine gate passed; final visual/touch pending` | Cleanup step1 accepted; D1001 deferred until step2 complete. Normal core17249045…/quiet package e0869292… unchanged. Production IDf7ed5845:1800s,4762 verified batches/hart,900 referenced SD reads,1588 window API updates, zero errors/mismatches, reason0/fixture1. Single45.182s passive capture and strict production validator exit0; no captured reset/fault signatures. Reader-free interval is procedural evidence; API counts are not visible-frame proof. Final exact-production visual/touch gate requires fresh readiness. |
+| D2-Q | JC1060 production no-reader combined qualification | `accepted on JC1060; D1001 regression next` | Cleanup step1 and qualification step2 accepted. Normal core17249045…/quiet package e0869292… unchanged. Production IDf7ed5845:1800s,4762 verified batches/hart,900 referenced SD reads,1588 window API updates, zero errors/mismatches, reason0/fixture1. Single45.182s passive capture and strict production validator exit0; no captured reset/fault signatures. Following fresh readiness, Fabian confirms post-load desktop, pointer, RAM Disk double-tap and two-finger menu-item selection without flicker/hang, no restart. Reader-free interval is procedural evidence; API counts do not prove visible frames throughout load. No D1001 acceptance implied. |
 | D3 | Portable touch and I2C stack | `hardware partial (JC1060P470C passed)` | 2026-10-04 on Fabian's direction: `touchscreen.hidd` (`rom/hidds/touchscreen`, polling, gestures, calibration, `ENV:Sys/touchscreen.prefs`), controller drivers `gt911.hidd` and `gsl3670.hidd` on AROS's `hidd.i2c` (`workbench/hidds`), the bus driver `hidd.i2c.esp32p4` (`arch/riscv-esp32p4/i2c`, transport shared with the kernel) and `esp32p4board.resource`, which builds the objects from the board profile; editor `workbench/prefs/touchscreen`. The kernel keeps no touch driver and no `KATTR_TouchScreenOps`. Fixes the I2C0 clock divider position (CTRL10 bits 9:2). JC1060P470C: GT911 through the new stack; Fabian confirms touch, calibration, editor and the tap/direct switch. D1001: builds, not hardware tested. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
@@ -1186,8 +1186,12 @@ are confirmed. The reader-free production machine gate now passes:
 IDf7ed5845/1800s/both harts4762 batches/900 SD reads/1588 API updates,
 zero CPU/SD errors or mismatches, reason0/fixture1. Single passive45.182s
 retrieval and strict production validation exit0, with complete footer and
-no captured reset/fault signatures. Final desktop/touch acceptance remains
-open and requires fresh readiness; D1001 remains deferred until that closes.
+no captured reset/fault signatures. Following fresh readiness, Fabian confirms
+the post-load desktop, following pointer, RAM Disk double-tap and two-finger
+menu-item selection without flicker or hang, with no restart. This closes D2-Q
+on the exact JC1060 production configuration, not the generic D1001 gate.
+The ordered cleanup and qualification steps are complete; D1001 regression
+may now be prepared. No D1001 action has occurred in this acceptance.
 See `qualification/README.md` for the synchronized
 reader-free procedure and its coverage limits.
 
@@ -27104,6 +27108,35 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   Final desktop/touch/flicker/hang observation remains open. Next request
   fresh readiness for that sight check; no automatic hardware repetition.
   One-time result follow-up is paused after collection, chat remains open.
+
+### 2026-10-09 - D2-Q: synchronized post-load desktop and touch accepted
+
+- Documentation baseline743e1cad8c; clean branch
+  `fix/esp32p4-usb-boot-budget`. Board JC1060P470C-v2, prior verified
+  MAC80:f1:b2:d3:3b:a6. Exact deployed artifacts unchanged:
+  core189968B17249045…, original bootloader22544B27b99e03…,
+  quiet BSP3636260Be0869292…, development volume4194304B6a7011fd…,
+  ProductionQualify78144B6d529bcb…, SYS image5f123f79….
+  PSRAM200MHz/full SMP, BOOT_TIMING0/C1_PROFILE0 remain unchanged.
+- After production machine PASS IDf7ed5845/1800s, Fabian confirms fresh
+  readiness ("bereit"). Requested interaction on the still-running device,
+  explicitly without restart: close ProductionQualify, inspect desktop,
+  move finger/pointer, open RAM Disk by double-tap, open the two-finger
+  menu and select a menu item, check continued usability without flicker/hang.
+  Fabian answers "ja" to that complete acceptance question.
+- This human report closes the post-load visual/touch gate separately from
+  the machine counters. Retained machine evidence remains
+  `s20-production-qualification/paced/production-late.log`, SHA-256
+  `641b0dc354415232287e970a32bc20df0440eedbebf5d93b9024fddd9a6fa313`;
+  capture and strict validator exit0, both-hart batches4762/4762,
+  SDreads900/gfxupdates1588, zero errors/mismatches, reason0/fixture1.
+  No new serial capture, reset, build, flash, SD write or D1001 test.
+- D2-Q accepted on this JC1060 configuration; ordered steps1/2 complete.
+  No claim of observed frames throughout the30-minute load or continuous
+  trace of every fault. Whole-card/>4GiB, larger cold-cycle campaign,
+  old panel batch and D1001 portable-stack regression remain separate gates.
+  Next prepare D1001 regression with recoverable artifacts and board identity;
+  obtain fresh readiness before any D1001 sight/physical-interaction test.
 
 ## Evidence-entry template
 

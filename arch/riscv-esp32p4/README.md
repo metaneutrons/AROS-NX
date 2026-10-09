@@ -94,10 +94,13 @@ gate is accepted. Fabian confirms fresh readiness and manual start of the
 validator:1800s,4762 verified batches per hart,900 referenced SD reads,
 1588 window API updates, zero CPU/SD errors or mismatches, reason0/fixture1.
 The single passive45.182s retrieval exits0 with a complete successful footer
-and no captured reset/fault signatures. Final desktop/touch acceptance remains
-open; API updates alone do not prove visible frames.
-No existing idle soak or raw B5 run substitutes for it. D1001 work waits
-until cleanup and that qualification finish, per Fabian's decision.
+and no captured reset/fault signatures. Following fresh readiness, Fabian
+confirms the post-load desktop, following pointer, RAM Disk double-tap and
+two-finger menu-item selection remain usable without flicker or hang, with
+no restart. D2-Q is accepted on this JC1060 configuration. API counters do
+not prove every frame during the load; the final sight check is separate.
+Cleanup and qualification are complete; D1001 regression is now the next
+authorized phase, not yet tested. Larger cold-cycle and old-panel gates remain open.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
