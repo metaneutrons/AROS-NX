@@ -2,12 +2,16 @@
 
 Networking update (2026-10-10): JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
-construction in `network/` passes host sanitizer tests and RV32 compilation;
-it is not linked into the production firmware and is not a working Wi-Fi
+construction and a byte-oriented ESP-Hosted frame codec in `network/` have
+host-test coverage and RV32 compilation; they are not linked into the
+production firmware and are not a working Wi-Fi
 driver. SD storage and the C6 share one SDMMC controller, so hardware
 integration must first provide common host ownership. The older
-`cheops/JC1060P470C_I_W` package is a protocol reference, not authoritative
-wiring for the active `_I_W_Y` variant. Fabian confirms Ethernet hardware
+`cheops/JC1060P470C_I_W` package is Fabian's selected WLAN reference:
+the profile declares P4-side slot1 CLK18/CMD19/D0-3=14-17 without enabling
+radio initialization. Installed C6 compatibility remains unverified; no
+C6 reset pin or firmware replacement is assumed. This older package is
+not the Ethernet reference for the active `_I_W_Y` variant. Fabian confirms Ethernet hardware
 on his board; exact PHY/wiring awaits the matching vendor archive. The earlier
 claim of absent Ethernet based on older schematics is withdrawn. Neither
 network interface is hardware accepted.

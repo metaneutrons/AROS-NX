@@ -117,8 +117,8 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; command builders host tested` | Pure CMD52/CMD53 validation passes 57,406 checks at O0/O2 under ASan/UBSan and RV32 compilation. Not packaged or flashed. Confirm `_I_W_Y` wiring/C6 firmware and serialize slot0 storage/slot1 radio through one host before MMIO integration. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `not started` | N0 shared-host gate, firmware/protocol compatibility, bounded credits/queues/RPC and disconnect recovery. Existing C6 firmware preserved until identified. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; command builders host tested` | Pure CMD52/CMD53 validation passes 57,406 checks at O0/O2 under ASan/UBSan and RV32 compilation. Fabian selected older vendor WLAN reference; slot1 pins declared and profile checked. Not packaged or flashed. Confirm installed C6 firmware and serialize slot0 storage/slot1 radio through one host before MMIO integration. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; pure wire codec host tested` | Independently implemented bounded byte codec, optional checksum and non-mutating rejection;157,590 checks per O0/O2 sanitizer run and RV32 object, no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -166,6 +166,10 @@ Fabian requests Wi-Fi first on 2026-10-10 while downloading the matching
 `cheops/JC1060P470C_I_W` schematics are not evidence of Ethernet absence on
 this variant. Do not turn that previous source-limited conclusion into a
 board capability flag. Existing core/BSP and SD read-only behavior stay intact.
+Fabian subsequently selected `cheops/JC1060P470C_I_W` as sufficient for WLAN.
+The JC1060 profile now declares its P4-side slot1 pins from that reference;
+hardware routing and installed firmware still require the bounded probe.
+Ethernet identification continues to require its own matching reference.
 No Bluetooth, Thread, AP mode or credential persistence is part of this first
 station-mode delivery. Use the existing roadmap/evidence structure; no new
 GitHub tracking objects were requested or created.
@@ -181,8 +185,9 @@ status validation. The functions do not start transactions or expose SD writes.
 
 Integration must move shared clocks, command engine, FIFO/IDMAC descriptors,
 interrupt status and recovery ownership behind one task-context host lock.
-Slot0 remains the card; slot1 is the expected C6 transport, subject to the
-matching board reference. Never instantiate a second backend which resets the
+Slot0 remains the card; slot1 is the C6 transport in the selected WLAN
+reference (CLK18/CMD19/D0-3=14-17). Pin declaration is not probe evidence.
+Never instantiate a second backend which resets the
 host or races existing `sdcard.device`. Bound every command, IO-ready poll,
 DMA wait and recovery; do not hold an IRQ-disabled lock across hardware waits.
 Acceptance: host positive/negative tests; controller serialization/recovery
@@ -190,7 +195,41 @@ tests; RV32 build/package audit; exact board enumeration and repeated SD reads
 before/after radio probing, with no media mutations. A test-only opt-in precedes
 normal boot enablement; missing C6 must never block Wanderer.
 
+Source audit identifies a wider lock boundary than one command: the generic
+SD read path issues CMD18 and CMD12 separately. Ownership must cover each
+bounded read chunk through physical stop and recovery, and dependent
+initialization sequences (CMD55/ACMD), not just `SendCmd`. Extract one resident
+host resource owning controller readiness, clock state, semaphore, command
+engine, descriptor/bounce buffers, FIFO/DMA and interrupt handling. Keep card
+RCA/enumeration, read-only policy, detect/power and slot pin routing in the SD
+client. Use explicitly locked internal recovery helpers, preserving current
+timeouts/cache handoffs; resource lookup alone is not lifetime management.
+Clock/CTYPE changes must preserve other-slot fields and the SDIO interrupt;
+current all-bit status clearing is not suitable with a second client.
+Host-wide recovery must invalidate both slots rather than leave either with
+stale `host_ready` state. Add transaction-scoped ownership hooks before radio
+integration; ordinary module-local locks do not serialize separate modules.
+
 ### N1 - compatible ESP-Hosted transport
+
+The first independent pure codec uses the vendor0.0.6 12-byte wire header,
+1536-byte total-frame bound, LE16 fields and additive checksum excluding its
+own field. It rejects unknown interfaces/flags/throttle-reserved bits, zero
+payload, malformed offsets/spans and truncation without changing output.
+DMA padding is excluded from checksum and returned wire length; fragmented
+frames are marked, not reassembled, and sequence numbers are returned, not
+treated as universally contiguous. This is not a live transport or handshake.
+
+Streaming RX can concatenate packets: PACKET_LEN is cumulative modulo2^20,
+not one frame's size. The codec's1536-byte bound is per frame, not per batch.
+Separate logical bytes from aligned DMA transfer lengths. TOKEN_RDATA's
+buffer counter occupies bits16..27 modulo4096. The old FG host assumes a
+ten-buffer pool but vendor0.0.6 uses twenty; do not import that startup-credit
+assumption. Queue size in a startup TLV is not proof of currently free tokens.
+The inspected startup event reports chip/capabilities/RX queue, not firmware
+version; the referenced RPC schema exposes no version request. Compatibility
+must be established explicitly instead of claiming version identification
+from that event alone.
 
 Identify the installed C6 firmware/protocol before choosing a pinned official
 ESP-Hosted reference. Preserve that firmware initially. No C6 flash write is
@@ -26104,6 +26143,63 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: inspect matching variant
   archive and confirm JC1060 connection; implement shared SDMMC ownership
   before bounded slot1 probe and preserve slot0 read-only recovery behavior.
+
+### 2026-10-10 - N0/N1 WLAN profile and validated ESP-Hosted wire codec
+
+- State: N1 starts with pure protocol code, not a running driver. Working
+  tree `/Volumes/Dev/Build/aros-esp32p4-wifi`, branch `feature/esp32p4-wifi`,
+  parent `38e791af1a`. Master table/phase/README updated together.
+- Fabian explicitly selected `cheops/JC1060P470C_I_W` as sufficient WLAN
+  reference. At pinned `6304eddef32a33aa9d9a85e971e39dfb24c3cca3`, schematic
+  page4 supplies P4 CLK18/CMD19/D0-3=14-17. Both JC1060 profiles declare
+  slot1; no runtime initialization is enabled. C6-side pins in slave sdkconfig
+  are different and are not used as P4 pins. Reset remains unspecified(-1).
+  Ethernet confirmation remains independent from this older WLAN reference.
+- Source facts rechecked in `examples/slave/main/common/include/adapter.h`,
+  `main/interface.h`, `main/sdio_slave_api.c` and `slave/sdkconfig`:
+ 12-byte header, 1536-byte transport buffer, checksum field-zero byte sum,
+  chip0x0d, streaming mode, RX pool20. Actual installed C6 not enumerated.
+  Independently written `network/hosted_wire.c` reads/writes byte fields;
+  no vendor implementation copied and no packed native-header casts.
+- `sh arch/riscv-esp32p4/tools/test-hosted-wire.sh`: actual exit0;
+ 157,590 checks each at O0/O2 under ASan/UBSan and strict C99 warnings.
+  Byte-exact checksum vector, all672 valid metadata combinations, all
+  payload lengths1..1524, truncation/offset/16-bit-span rejection, padding,
+  overlapping encoder payload, output-preserving refusals and deterministic
+  raw/structured fuzz. Main agent independently reran and inspected tests.
+  Existing SDIO command tests rerun: exit0;57,406 checks each at O0/O2.
+- RV32 freestanding strict compilation of codec: exit0, ilp32f,
+  rv32imafc_zicsr_zifencei_zaamo_zalrsc. Object2512B, SHA-256
+  `120d8bc6e38236aec50f5c84369fff3f90e6365e6e08051da25e8850136f0aa5`,
+  `/tmp/jc1060-network.AT8Ngh/hosted_wire.o`. Source SHA-256
+  `a061babc05ed8e0fd2ba63ef253aae8e315d5e639d99d4cc09bd55246d60207b`.
+  Clang static analysis exit0, no diagnostic. These are unit artifacts, not
+  a core/BSP build or hardware acceptance.
+- `python3 arch/riscv-esp32p4/board/check-profile.py`: exit0 for D1001 and
+  both JC1060 profiles, including radio/storage separation and reference pins.
+  Existing `--counter-probe` exits1 on deliberately corrupted in-memory flash
+  location for all profiles; source is not modified by that negative control.
+- Shared-host source audit: current per-module state cannot serialize a second
+  client. CMD18/CMD12 are separate generic calls, so lock scope must span the
+  chunk/stop/recovery. Record resident resource ownership/lifetime and status
+  preservation design in N0 before extraction; no shared-host fix claimed.
+- Flow audit corrects the stale old protocol document's2048-byte buffer claim:
+  pinned code uses1536. Streaming may batch frames; byte counters exclude
+  DMA padding. Credit initialization depends on the actual synchronized peer
+  pool, not old host's ten-buffer constant. No credit/RPC implementation yet.
+  Official FG reference `3769eea28bbbc59d8ea2aff425d62564b7fb3e68`,
+  `esp_hosted_fg/host/linux/host_driver/esp32/sdio/esp_sdio.c`, was inspected
+  for protocol facts only. Its TX padding adds a full block even at an aligned
+  length while credits use original length:1536 becomes2048 bus bytes but one
+  1536-byte-buffer credit. Do not reproduce this edge-case mismatch or treat
+  it as a protocol requirement; independently round only when required and
+  account for the actual transfer. No Linux GPL implementation copied.
+- Safety: no serial opening, reset, flash, SD mutation or C6 firmware write.
+  Installed production core/BSP unchanged. PR71 baseline integration remains
+  separate from this branch. No WLAN connection, DHCP or traffic claimed.
+- Next: transaction-scoped common SDMMC resource and mechanical SD adaptation,
+  preserving read-only denylist and CMD12/recovery; then bounded opt-in slot1
+  enumeration/startup, compatibility checks, credit/stream/RPC and SANA-II.
 
 ## Evidence-entry template
 

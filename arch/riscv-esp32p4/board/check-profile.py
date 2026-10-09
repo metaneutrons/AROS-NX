@@ -118,6 +118,18 @@ def check(board: str, counter_probe: bool) -> bool:
         == ("gt911" if "P4_BOARD_TOUCH_GT911" in header else "gsl3670"),
     }
 
+    wifi = number(header["P4_BOARD_WIFI_SDIO"])
+    checks["SDIO Wi-Fi declaration"] = wifi == int(board.startswith("jc1060"))
+    if wifi:
+        pins = [number(header["P4_BOARD_WIFI_" + signal + "_GPIO"])
+                for signal in ("CLK", "CMD", "D0", "D1", "D2", "D3")]
+        checks["Wi-Fi separate slot"] = number(header["P4_BOARD_WIFI_SLOT"]) == 1
+        checks["Wi-Fi P4-side reference pins"] = pins == [18, 19, 14, 15, 16, 17]
+        checks["Wi-Fi pins distinct from SD storage"] = (
+            len(set(pins)) == 6 and not set(pins).intersection(range(39, 45)))
+        checks["Wi-Fi reset not invented"] = (
+            header["P4_BOARD_WIFI_RESET_GPIO"].strip() == "(-1)")
+
     for label, passed in checks.items():
         print(f"{'PASS' if passed else 'FAIL'} {board}: {label}")
     return all(checks.values())

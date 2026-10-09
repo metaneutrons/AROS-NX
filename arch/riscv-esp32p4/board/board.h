@@ -18,6 +18,20 @@
 #ifndef P4_BOARD_PANEL_EXPANDER
 #define P4_BOARD_PANEL_EXPANDER         0
 #endif
+#ifndef P4_BOARD_WIFI_SDIO
+#define P4_BOARD_WIFI_SDIO              0
+#endif
+#if P4_BOARD_WIFI_SDIO
+#if !defined(P4_BOARD_WIFI_SLOT) || !defined(P4_BOARD_WIFI_CLK_GPIO) \
+    || !defined(P4_BOARD_WIFI_CMD_GPIO) || !defined(P4_BOARD_WIFI_D0_GPIO) \
+    || !defined(P4_BOARD_WIFI_D1_GPIO) || !defined(P4_BOARD_WIFI_D2_GPIO) \
+    || !defined(P4_BOARD_WIFI_D3_GPIO) || !defined(P4_BOARD_WIFI_RESET_GPIO)
+#error "an SDIO Wi-Fi board must declare its slot, pins and reset capability"
+#endif
+#if P4_BOARD_WIFI_SLOT != 1
+#error "P4 Wi-Fi must not claim the slot0 read-only storage interface"
+#endif
+#endif
 #if !defined(P4_BOARD_PANEL_JD9365) && !defined(P4_BOARD_PANEL_JD9165)
 #error "board profile names no panel controller"
 #endif
