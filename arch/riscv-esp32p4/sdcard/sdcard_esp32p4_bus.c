@@ -9,9 +9,12 @@
 #define DEBUG 0
 #include <aros/debug.h>
 
+#include <aros/cacheops.h>
+#include <aros/kernel.h>
 #include <hardware/mmc.h>
 #include <hardware/sdhc.h>
 #include <proto/exec.h>
+#include <proto/kernel.h>
 #include <proto/utility.h>
 
 #include <string.h>
@@ -168,25 +171,69 @@ static void p4sd_trace_dump(struct p4sd_trace *trace,
 
 typedef int (*p4sd_cache_range_t)(ULONG map, ULONG address, ULONG length);
 
+/*
+ * The ROM's cache maintenance is one hardware unit that the kernel and
+ * every other task that loads code or draws use as well, possibly on the
+ * other hart. The kernel owns it and serializes its users, and hands the
+ * two operations this driver needs through KATTR_CacheOps. The direct ROM
+ * calls below remain only for a kernel that does not offer the table.
+ */
+static const struct KrnCacheOps *p4sd_cache_ops;
+static BOOL p4sd_cache_ops_known;
+
+/* sdcard_base.h makes KernelBase a field of the device base, which this
+   function does not have; it opens the resource itself, once. */
+#undef KernelBase
+static const struct KrnCacheOps *p4sd_cache_table(void)
+{
+    if (!p4sd_cache_ops_known)
+    {
+        struct Library *KernelBase = OpenResource("kernel.resource");
+
+        if (KernelBase)
+        {
+            IPTR ops = (IPTR)KrnGetSystemAttr(KATTR_CacheOps);
+
+            if (ops && ops != (IPTR)-1)
+                p4sd_cache_ops = (const struct KrnCacheOps *)ops;
+        }
+        p4sd_cache_ops_known = TRUE;
+    }
+    return p4sd_cache_ops;
+}
+#define KernelBase SDCardBase->sdcard_KernelBase
+
 static void p4sd_cache_writeback(APTR address, ULONG length)
 {
-    p4sd_cache_range_t writeback =
-        (p4sd_cache_range_t)P4_ROM_CACHE_WRITEBACK_ADDR;
+    const struct KrnCacheOps *ops = p4sd_cache_table();
 
-    if (length)
+    if (length && ops)
+        ops->writeback_range(address, length);
+    else if (length)
+    {
+        p4sd_cache_range_t writeback =
+            (p4sd_cache_range_t)P4_ROM_CACHE_WRITEBACK_ADDR;
+
         writeback(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
                   (ULONG)(IPTR)address, length);
+    }
     __asm__ volatile("fence rw, rw" ::: "memory");
 }
 
 static void p4sd_cache_invalidate(APTR address, ULONG length)
 {
-    p4sd_cache_range_t invalidate =
-        (p4sd_cache_range_t)P4_ROM_CACHE_INVALIDATE_ADDR;
+    const struct KrnCacheOps *ops = p4sd_cache_table();
 
-    if (length)
+    if (length && ops)
+        ops->invalidate_range(address, length);
+    else if (length)
+    {
+        p4sd_cache_range_t invalidate =
+            (p4sd_cache_range_t)P4_ROM_CACHE_INVALIDATE_ADDR;
+
         invalidate(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
                    (ULONG)(IPTR)address, length);
+    }
     __asm__ volatile("fence rw, rw" ::: "memory");
 }
 

@@ -35,6 +35,8 @@
 
 #include <inttypes.h>
 
+#include <aros/cacheops.h>
+
 #include "hardware.h"
 #include "kernel_intern.h"
 
@@ -63,6 +65,7 @@ typedef void (*rom_cache_resume_t)(uint32_t autoload);
 
 #define P4_CACHE_MAP_ALL    (P4_CACHE_MAP_L1_ICACHE_0 | P4_CACHE_MAP_L1_ICACHE_1 | \
                              P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2)
+#define P4_CACHE_MAP_ICACHES (P4_CACHE_MAP_L1_ICACHE_0 | P4_CACHE_MAP_L1_ICACHE_1)
 
 /* components/riscv/include/riscv/rv_utils.h: MHCR is CSR 0x7c1, and these
    three bits are the return stack, the predictive jump and the branch
@@ -76,6 +79,19 @@ typedef void (*rom_cache_resume_t)(uint32_t autoload);
 #define P4_CACHE_AUTOLOAD    (1UL << 0)
 
 /*
+ * The ROM's cache maintenance drives one shared sync unit (range, map and
+ * size registers, then a wait for its completion). Two harts doing it at
+ * once, one for an executable it has just loaded and the other for the
+ * frame it has just drawn or the SD buffer it hands to the controller,
+ * would corrupt each other's request. Every maintenance call here, and
+ * the ones drivers make through KATTR_CacheOps, takes this lock, which
+ * holds interrupts masked and serves the other hart's cache-off window
+ * request while it waits. The cache-off window itself (krnP4CacheOff()) is
+ * not under it: the other hart is parked while it lasts.
+ */
+P4_SRAMDATA static volatile ULONG cache_lock;
+
+/*
  * Make an address range coherent for instruction fetch after it has been
  * written through the data path.
  *
@@ -83,6 +99,21 @@ typedef void (*rom_cache_resume_t)(uint32_t autoload);
  * in memory before the instruction side is told to fetch them again. The
  * ROM routines take a map of cache levels and do the address arithmetic
  * themselves, so a range that is not line aligned is handled for us.
+ *
+ * Only the two L1 instruction caches are invalidated. This used to
+ * invalidate the L1 data cache and the L2 as well, on the reasoning that
+ * the fetch should "go out again". That discards the dirty lines the range
+ * shares with its neighbours: a range starting or ending inside a cache
+ * line takes the rest of the line with it, and what the other hart wrote
+ * to that rest between the write-back and the invalidate is lost. A heap
+ * block header next to a freshly loaded hunk is such a neighbour, and
+ * SMP-Migrate (developer/debug/test/smp, phase 4) shows the loss: a clear
+ * of eight bytes in a line while the other hart writes to the line's other
+ * half lost over a hundred writes per million clears, and the heap's free
+ * list was corrupted in the load test. After the write-back the L1 data
+ * cache and the L2 hold nothing that is newer than memory for this range,
+ * and the instruction caches refill from the L2 (or memory) with the new
+ * bytes, so nothing else needs to be dropped.
  *
  * P4_SRAMCODE although the cache is enabled throughout. ESP-IDF places its
  * own equivalents (cache_hal, esp_cache_msync) in internal RAM in every
@@ -95,13 +126,16 @@ P4_SRAMCODE void krnP4SyncCode(void *addr, unsigned long len)
 {
     rom_cache_range_t wb = (rom_cache_range_t)P4_ROM_CACHE_WRITEBACK_ADDR;
     rom_cache_range_t inv = (rom_cache_range_t)P4_ROM_CACHE_INVALIDATE_ADDR;
+    unsigned long state;
 
     if (!len)
         return;
 
+    state = krnP4LockTake(&cache_lock);
     wb(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2, (uint32_t)(unsigned long)addr,
        (uint32_t)len);
-    inv(P4_CACHE_MAP_ALL, (uint32_t)(unsigned long)addr, (uint32_t)len);
+    inv(P4_CACHE_MAP_ICACHES, (uint32_t)(unsigned long)addr, (uint32_t)len);
+    krnP4LockRelease(&cache_lock, state);
 
     asm volatile("fence.i" ::: "memory");
 }
@@ -142,8 +176,10 @@ P4_SRAMCODE void krnP4SyncCode(void *addr, unsigned long len)
 void krnP4CacheWriteback(void)
 {
     rom_cache_all_t wb_all = (rom_cache_all_t)P4_ROM_CACHE_WRITEBACK_ALL;
+    unsigned long state = krnP4LockTake(&cache_lock);
 
     (void)wb_all(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2);
+    krnP4LockRelease(&cache_lock, state);
     asm volatile("fence" ::: "memory");
 }
 
@@ -159,12 +195,37 @@ void krnP4CacheWriteback(void)
 P4_SRAMCODE void krnP4CacheWritebackData(void *addr, unsigned long len)
 {
     rom_cache_range_t wb = (rom_cache_range_t)P4_ROM_CACHE_WRITEBACK_ADDR;
+    unsigned long state;
 
     if (!len)
         return;
 
+    state = krnP4LockTake(&cache_lock);
     wb(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
        (uint32_t)(unsigned long)addr, (uint32_t)len);
+    krnP4LockRelease(&cache_lock, state);
+    asm volatile("fence rw, rw" ::: "memory");
+}
+
+/*
+ * Drop a data range's lines without writing them back, for a buffer or
+ * descriptor that a bus master has just written (the SD controller's
+ * IDMAC): the CPU must read it from memory next. Same ROM routine and
+ * map as the write-back above, so the lines leave both the L1 data cache
+ * and the L2.
+ */
+P4_SRAMCODE void krnP4CacheInvalidateData(void *addr, unsigned long len)
+{
+    rom_cache_range_t inv = (rom_cache_range_t)P4_ROM_CACHE_INVALIDATE_ADDR;
+    unsigned long state;
+
+    if (!len)
+        return;
+
+    state = krnP4LockTake(&cache_lock);
+    inv(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
+        (uint32_t)(unsigned long)addr, (uint32_t)len);
+    krnP4LockRelease(&cache_lock, state);
     asm volatile("fence rw, rw" ::: "memory");
 }
 
@@ -181,14 +242,17 @@ P4_SRAMCODE void krnP4CacheSyncData(void *addr, unsigned long len)
 {
     rom_cache_range_t wb = (rom_cache_range_t)P4_ROM_CACHE_WRITEBACK_ADDR;
     rom_cache_range_t inv = (rom_cache_range_t)P4_ROM_CACHE_INVALIDATE_ADDR;
+    unsigned long state;
 
     if (!len)
         return;
 
+    state = krnP4LockTake(&cache_lock);
     wb(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
        (uint32_t)(unsigned long)addr, (uint32_t)len);
     inv(P4_CACHE_MAP_L1_DCACHE | P4_CACHE_MAP_L2,
         (uint32_t)(unsigned long)addr, (uint32_t)len);
+    krnP4LockRelease(&cache_lock, state);
     asm volatile("fence rw, rw" ::: "memory");
 }
 
@@ -222,3 +286,25 @@ P4_SRAMCODE void krnP4CacheOn(unsigned long token)
     asm volatile("csrs %0, %1" ::
                  "i"(P4_MHCR), "r"(token & P4_MHCR_PREDICTOR));
 }
+
+/*
+ * KATTR_CacheOps: what drivers in package modules use instead of calling
+ * the ROM themselves, so that their maintenance and the kernel's go
+ * through the same lock.
+ */
+static void cache_ops_writeback(APTR address, ULONG length)
+{
+    krnP4CacheWritebackData(address, length);
+}
+
+static void cache_ops_invalidate(APTR address, ULONG length)
+{
+    krnP4CacheInvalidateData(address, length);
+}
+
+const struct KrnCacheOps __p4_cache_ops =
+{
+    KRN_CACHE_OPS_VERSION,
+    cache_ops_writeback,
+    cache_ops_invalidate
+};

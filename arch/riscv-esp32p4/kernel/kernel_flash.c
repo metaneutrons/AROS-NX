@@ -319,11 +319,51 @@ void *krnP4FlashMap(unsigned long paddr, unsigned long len)
      * is the data side of the same call the ELF loader needs for the
      * instruction side.
      */
-    krnP4SyncCode((void *)P4_FLASH_SCRATCH_VADDR, pages * P4_MMU_PAGE_SIZE);
+    krnP4CacheSyncData((void *)P4_FLASH_SCRATCH_VADDR, pages * P4_MMU_PAGE_SIZE);
 
     flash_scratch_paddr = page << P4_MMU_PAGE_SHIFT;
 
     return (void *)(P4_FLASH_SCRATCH_VADDR + (paddr - flash_scratch_paddr));
+}
+
+/*
+ * The one scratch window is shared by every reader, so mapping and copying
+ * are one step that no other hart or task may interleave with: the lock
+ * holds interrupts masked on this hart and keeps the other out. A reader
+ * that mapped the window and then lost it to the other hart's mapping
+ * would copy from somebody else's range. The copy is bounded by the
+ * caller's piece size (FLASHDISK_CHUNK). The boot-time callers of
+ * krnP4FlashMap() run before the second hart exists and need no lock.
+ */
+P4_SRAMDATA static volatile ULONG flash_lock;
+
+int krnP4FlashCopy(unsigned long paddr, void *dest, unsigned long len)
+{
+    unsigned long state = krnP4LockTake(&flash_lock);
+    const unsigned char *src = krnP4FlashMap(paddr, len);
+
+    if (src != NULL)
+    {
+        unsigned long n;
+
+        if ((((unsigned long)src | (unsigned long)dest | len) & 3) == 0)
+        {
+            const volatile uint32_t *s32 = (const volatile uint32_t *)src;
+            uint32_t *d32 = dest;
+
+            for (n = 0; n < len / 4; n++)
+                d32[n] = s32[n];
+        }
+        else
+        {
+            unsigned char *d = dest;
+
+            for (n = 0; n < len; n++)
+                d[n] = src[n];
+        }
+    }
+    krnP4LockRelease(&flash_lock, state);
+    return src != NULL;
 }
 
 static inline uint16_t rd16(const unsigned char *p)
