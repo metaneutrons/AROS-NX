@@ -535,7 +535,7 @@ Open points:
   of it. `P4_SPIN_WATCHDOG` reports one after a second; letting that stop
   the feeding would make deadlocks reset the board too.
 
-### S8: free migration of ordinary tasks (audited, not started)
+### S8: free migration of ordinary tasks (audited; stage 1 done; the rest open)
 
 Upstream does not have it. Every port with `__AROSEXEC_SMP__` pins the boot
 task to CPU 0 (x86_64 `smp_exec.c`, arm and aarch64 `Exec_ARMCPUSMPInit()`,
@@ -578,28 +578,108 @@ names are in the audit notes of the evidence entry:
   keyboard, gameport and inputclass `Disable()` for their queues. None of
   it is converted; it was not classified site by site.
 
-Decision proposed: ordinary tasks stay pinned by default and migration is
-opt-in per process. The inverse default is unsafe because a GUI program
-started from a shell would inherit "any hart" and meet the intuition sites
-above from hart 1, silently. The shell and Wanderer keep their hart 0 mask,
-so everything they start stays there; a program or a launcher asks for
-both harts with `NP_Affinity` (or a small command that sets it). The plan:
+#### S8 stage 1: what a migrating task meets, and what it found (2026-10-09)
+
+`SMP-Migrate` (`developer/debug/test/smp/smpmigrate.c`, in the development
+volume list `image/s8-tests`) runs two processes per hart, pinned with
+`NP_Affinity`, through five phases: opening and closing libraries and a
+device (the count must come back), six timer requests outstanding on one
+reply port, reading the system time (no step back, no jump), `CacheClearE()`
+on a few bytes of a line while the other hart writes the rest of that line,
+and `LoadSeg()`/`UnLoadSeg()` of a program from the card. Run once on the
+state before the fixes below, it found two real faults and one of its own:
+
+- A message left on the reply port. `ReplyMsg()` marked a message replied
+  (`NT_REPLYMSG`) and then queued it; `WaitIO()` on the other hart took the
+  type as the sign that the message is on the list and removed it, so it
+  removed a node that was not linked yet and the reply landed on the port
+  afterwards. Fixed in exec (generic, `ReplyMsg()`, `InternalPutMsgType()`,
+  `WaitIO()`): the type is set inside the port's spinlock together with the
+  queueing, and `WaitIO()` takes the same lock to remove. One run before the
+  fix also ended in a watchdog reset during this phase; that the same race
+  caused it is not shown.
+- `krnP4SyncCode()` lost data. It wrote the range back and then invalidated
+  it in the L1 data cache and the L2. A range that starts or ends inside a
+  cache line takes the rest of the line with it, and whatever the other
+  hart wrote to that rest between the write-back and the invalidate was
+  gone: the test lost 101 and 235 writes in about 1.5 million clears, in
+  the two directions, and the load phase corrupted the heap's free list
+  ("[Kernel:TLSF] free-list corruption at REMOVE_HEADER", a `Breakpoint`
+  trap, then the watchdog). After the write-back nothing in those caches is
+  newer than memory for the range, so the instruction side only needs its
+  own caches invalidated, and `krnP4SyncCode()` now does that. The same
+  test loses no write in 1.6 and 1.4 million clears. The flash scratch
+  window, which is data and does need the data caches dropped, uses
+  `krnP4CacheSyncData()` now.
+- The test's own: a library that is not in memory sends `lddemon` to search
+  LIBS: for every open, which is a test of the disk, and the first version
+  used one. It now takes libraries that are resident.
+
+Also in stage 1, from the audit:
+
+- One lock for every ROM cache call (`krnP4LockTake()`, `cache_lock`): the
+  ROM drives one sync unit, which two harts must not program at once. The
+  lock holds interrupts masked and serves the other hart's cache-off window
+  request while it waits, so a window cannot be starved by a hart that
+  waits for a lock the requester holds (`krnP4ParkServe()`; the request now
+  carries the requesting hart). The SD driver reaches the same lock through
+  a new optional table, `KATTR_CacheOps` (`aros/cacheops.h`), instead of
+  calling the ROM itself; it keeps the direct calls only for a kernel
+  without the table.
+- The flash scratch window: `krnP4FlashCopy()` maps and copies under its
+  own lock of this kind, and `flashdisk.device` uses it instead of
+  `Forbid()`, which stops only its own hart's tasks.
+- The SYSTIMER snapshot in the `sdcard` and `i2c` modules reads the high
+  half twice and asks again if the two differ, which makes a snapshot
+  taken by the other hart in between harmless (`kernel/tests/
+  systimer_read_test.py` compiles the actual function against a mock with
+  an interfering reader and fails on the old one).
+
+Run on the JC1060P470C (headless, runner core with the watchdog armed): the
+ten upstream tests pass with SMP-Migrate after them, and SMP-Migrate fifteen
+times in a row passes all five phases each time (ROADMAP, 2026-10-09). The
+test has not shown a lost open count or a time that stepped, so those two
+audit findings (library counts, the time in timer.device) are not
+demonstrated; they stay on the list as code that depends on `Forbid()`
+and `Disable()`, and the test is where to look first if one of them bites.
+
+Still open in S8: `RemTask()` of a task that runs on the other hart; the dos
+lists (`AddSegment()`, `FindSegment()`, the late assign), `CheckSignal()` and
+`EndNotify()`; `sdcard.device`'s `BeginIO()` flags and change interrupt list;
+the touchscreen worker's exit; the opt-in (a command that starts a program
+on both harts); the check of the loaded state with Wanderer on the panel,
+which needs a fresh "bereit".
+
+Decision (Fabian, 2026-10-09, as proposed): ordinary tasks stay pinned by
+default and migration is opt-in per process. The inverse default is unsafe
+because a GUI program started from a shell would inherit "any hart" and
+meet the intuition sites above from hart 1, silently. The shell and
+Wanderer keep their hart 0 mask, so everything they start stays there; a
+program or a launcher asks for both harts with `NP_Affinity` (or a small
+command that sets it). Letting everything migrate would first need the GUI
+stack audited and converted site by site; that is not planned. The plan,
+with its state:
 
 1. Port-owned shared state: one lock around every ROM cache call that
    also serves the park request while it spins, the kernel's SYSTIMER
    snapshot made reachable for the package modules, the flash window and
    park serialized, `sdcard.device` and flashdisk and the touch worker
-   moved to the spinlocks they already have or to a semaphore.
+   moved to the spinlocks they already have or to a semaphore. Done in
+   stage 1 except `sdcard.device`'s `BeginIO()` and change list and the
+   touch worker; the SYSTIMER part became a tear-proof read in the modules.
 2. exec and dos gaps that a non-GUI task can reach: library and device
    Open/Close/Expunge, `WaitIO()`, `lib_OpenCnt`, the time in timer.device,
    `RemTask()` of a running task (the other hart is told and waits), the
    dos lists. These are generic changes and go upstream to AROS-NX.
+   `WaitIO()` (with `ReplyMsg()`) done in stage 1; the rest is stage 2.
 3. The opt-in: `NP_Affinity` honoured by the shell commands that matter, a
-   command for it.
+   command for it. Stage 2.
 4. A test of its own for what a migrating task meets (open and close
    libraries, files on RAM: and the flash volume, timer queries, loading
    and running programs, segment lists) on both harts for ten minutes
    under the watchdog, then the 200-test stress with ANY parents.
+   SMP-Migrate exists and passed fifteen runs; it grows with stage 2, and
+   the 200-test stress with it is the closing run.
 
 Acceptance: the upstream tests and the stress pass with parents that allow
 both harts, the new test passes for ten minutes, a boot with Wanderer

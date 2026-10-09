@@ -18,20 +18,36 @@ static inline void p4time_write(IPTR address, ULONG value)
     __asm__ volatile("fence iorw, iorw" ::: "memory");
 }
 
+/*
+ * The snapshot registers are one set for both harts and for the kernel
+ * (krnTimerCount() serializes its own use). Another hart's snapshot
+ * between this one's request and its reads replaces both halves, which
+ * is harmless on its own (the counter only grows, so the pair is a later
+ * moment and still a valid "now") unless the high half carries between
+ * the two reads. Reading the high half again after the low half shows
+ * that: if the two highs differ, ask again.
+ */
 static UQUAD p4time_count(void)
 {
-    unsigned int spins = 1000;
-    ULONG high, low;
+    unsigned int tries = 8;
+    ULONG high, low, again;
 
-    p4time_write(P4_SYSTIMER_BASE + P4_ST_UNIT0_OP, P4_ST_UNIT0_UPDATE);
-    while (spins-- != 0 &&
-           !(p4time_read(P4_SYSTIMER_BASE + P4_ST_UNIT0_OP) &
-             P4_ST_UNIT0_VALID))
-        ;
+    do
+    {
+        unsigned int spins = 1000;
 
-    high = p4time_read(P4_SYSTIMER_BASE + P4_ST_UNIT0_VALUE_HI);
-    low = p4time_read(P4_SYSTIMER_BASE + P4_ST_UNIT0_VALUE_LO);
-    return ((UQUAD)high << 32) | low;
+        p4time_write(P4_SYSTIMER_BASE + P4_ST_UNIT0_OP, P4_ST_UNIT0_UPDATE);
+        while (spins-- != 0 &&
+               !(p4time_read(P4_SYSTIMER_BASE + P4_ST_UNIT0_OP) &
+                 P4_ST_UNIT0_VALID))
+            ;
+
+        high = p4time_read(P4_SYSTIMER_BASE + P4_ST_UNIT0_VALUE_HI);
+        low = p4time_read(P4_SYSTIMER_BASE + P4_ST_UNIT0_VALUE_LO);
+        again = p4time_read(P4_SYSTIMER_BASE + P4_ST_UNIT0_VALUE_HI);
+    } while (again != high && --tries);
+
+    return ((UQUAD)again << 32) | low;
 }
 
 ULONG sdcard_CurrentTime(void)
