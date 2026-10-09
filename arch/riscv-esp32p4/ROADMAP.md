@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; shared DMA host-tested and build verified` | Shared descriptors/bounce/cache/FIFO/IDMAC and adapted read-only SD client build under ABI3; extracted DMA model passes 15 cases/2,253,671 checks per O0/O2 sanitizer run, with clock/ownership regressions. Command extraction, recovery, installed C6 compatibility, package and hardware regression gates remain open; no radio MMIO or flash. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; command candidate host-tested/build verified` | Shared DMA is host-tested/build verified under ABI3. An unexposed shared command candidate builds, passes independent source review and independently repeated extracted-source sanitizer tests. Command integration, recovery, installed C6 compatibility, package and hardware regression gates remain open; no radio MMIO or flash. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; pure wire codec host tested` | Independently implemented bounded byte codec, optional checksum and non-mutating rejection;157,590 checks per O0/O2 sanitizer run and RV32 object, no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -263,6 +263,20 @@ publication, boundary lengths, unaligned RX neighbours, TX/RX, invalid cache
 tables, stalled timers, reset-failure identity retention and fault refusal.
 Clock and transaction-ownership regressions pass too. These are native host
 models, not silicon or installed C6 compatibility evidence.
+The next candidate is a common synchronous command engine with explicit slot,
+saved generation, response flags/error mask, direction, block size and length.
+It stages TX/RX in the permanent bounce; only successful
+response/data completion publishes caller RX and response words. Word padding
+is not invented by this engine: controller/descriptor lengths match and must
+be<4 or word multiples, following the local P4 ESP-IDF host contract. Transport
+must handle arbitrary-length frame tails above this layer; this remains open.
+SDIO interrupt bits are preserved by low16 W1C, and every wait has time/poll
+bounds. A request must explicitly opt into the storage-only slot0 CMD18 early
+descriptor workaround. Card recovery remains the client responsibility.
+This candidate is not yet exposed by the resource ABI or invoked by SD/radio;
+its RV32 build, independent source review and independently repeated modeled
+tests pass (20 cases, 2,001,069 checks each at O0/O2 with ASan/UBSan).
+Client integration and controller initialization migration remain open.
 This is not a complete dual-slot host: command sequencing still resides in
 the SD client. Host-wide recovery/re-enumeration remains open. No second
 hardware client may use this motor until those gates are complete.
@@ -26498,6 +26512,77 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   introduce a second unqualified transfer implementation. Slot and direction
   must become explicit; controller-wide initialization leaves the SD client,
   while per-card RCA, write refusal and CMD12/CMD13 recovery remain there.
+
+### 2026-10-10 - N0 shared command-engine candidate
+
+- State: implementation started, not integrated or accepted. Parent293b7d393a,
+  feature/esp32p4-wifi in /Volumes/Dev/Build/aros-esp32p4-wifi; JC1060-v2/SMP
+  isolated build /Volumes/Dev/Build/aros-esp32p4-wifi-build.
+- Added sdmmc/command.c/h and resource build input. Explicit slot/generation,
+  response flags/card-error mask, direction, block size, logical/DMA lengths;
+  permanent-buffer staging, low16 status clearing, time/poll-bounded waits,
+  error precedence and success-only response/RX publication. Early DMA success
+  requires explicit slot0 CMD18 RX with sector-aligned multi-block length.
+  Slot1 CMD53 may pad its final DMA word without extending BYTCNT or caller RX.
+- Verification: independent source review and extracted-source modeled tests
+  dispatched; actual final exits/artifacts remain pending. Resource ABI3 and
+  current SD command loop remain unchanged: no client can invoke this candidate.
+  Initial and tightened-source resource quick builds both exit0, recompiling
+  command.c and rebuilding the module. Current candidate47,916B SHA-256
+  `ac3bdfbc289a0f8a437229c5bf190915af328e2efb723886c8bf052711ba042a`;
+  nm -u has no undefined symbols and nm confirms p4host_command is present.
+  This is build evidence only; final review/test corrections may supersede it.
+  Final-status resampling explicitly checks IDMAC errors before completion;
+  initial FIFO-reset failure faults/invalidate the host. Command phase retains
+  a250,000-us deadline even within a5,000,000-us data transaction.
+- Independent review found a publication window during DMA completion's FIFO
+  reset/settlement. Added a post-completion raw/IDMAC resample before caller
+  payload/response publication; pending tests must inject errors in that window.
+  Review also disproved the initial rounded-descriptor assumption: local
+  IDF6.0.1 esp_driver_sdmmc/src/sd_trans_sdmmc.c:526-550 accepts length<4 or
+  word multiples and sets descriptor/BYTCNT length identically. Removed the
+  separate dma_length field and invented padding. The initial candidate
+  described above is superseded; final build identity remains pending.
+  Arbitrary Hosted lengths still require full support: aligned RX prefix plus
+  a1-3-byte tail and TX framing-layer padding are prospective procedures, not
+  verified C6 behavior. Do not count rejecting these frames as finished Wi-Fi.
+- Corrected-source resource quick build exit0; candidate47,844B SHA-256
+  `fcc12adbc188fe5365a32ffea01f16ee7fdbc3d1e2ad47a33d27f352d392c37b`,
+  no undefined nm -u symbols. This supersedes47,916B above; modeled tests
+  and final independent review remain pending. No core/package or flash.
+  Subsequent explicit ULONG response-mask complement removes the need for a
+  host sign-conversion warning suppression; resource quick rebuild exits0,
+  recompiled candidate stays byte-identical47,844B/fcc12adbc188... above.
+- Independent follow-up source review confirms the exact-length rule and
+  post-DMA status check address its two findings; no further source blocker to
+  candidate model testing/build identified. Review is not a test or silicon
+  pass. The1,000,000-poll data fallback still needs maximum-length/slowest-clock
+  hardware timing evidence so it cannot prematurely expire before the intended
+  five-second data deadline. Adjust the finite cap if that gate disproves it.
+- Baseline revalidated read-only: production worktree remains clean at
+  acd62ff237 on fix/esp32p4-usb-boot-budget. Live AROS-NX PR71 is OPEN,
+  mergeCommit/mergedAt null; do not infer that Wi-Fi's older main base includes
+  its accepted production changes. No PR action or production worktree mutation.
+- Safety/remaining risk: no hardware access, flash, C6 replacement or media
+  writes. No second host instance or private network stack. Card protocol
+  recovery, shared initialization/width/slot configuration, ABI exposure and
+  SD migration still required before probing the C6. The accepted production
+  baseline must be integrated before replacement firmware/hardware regression.
+- Final independent primary repetition: tools/test-command-engine.py completed
+  with exit0 (terminal session78426). Strict C99 warnings plus ASan/UBSan at
+  O0 and O2 each pass20 cases/2,001,069 checks. Actual command.c SHA-256
+  `ce159cba38f18e32b77b0d852957d8630343b6dcf26a9f20adc36f9c2674f253`,
+  command.h `b129f41e772b8ca1d8ff33dd91fb857ef443dc456b806aa6295c59ac2b806082`,
+  test fixture `024698c7cfec19582ce8d26d6f42f8f10042fbba6f5cb3c2d14621f531c0776c`.
+  The actual command read/write bodies run with volatile MMIO access and the
+  RISC-V fence substituted; DMA callbacks are modeled. Tests cover late errors
+  after DMA completion, response/RX publication, exact lengths, CMD53 DTO,
+  the slot0-only CMD18 exception, stalled/wrapped timers and failed resets.
+  Native pointers do not establish RV32 ABI or silicon timing; the finite
+  maximum-length/slowest-clock timing gate remains open. Earlier pending-test
+  statements above describe the historical intermediate state.
+- Next: expose the tested shared engine and adapt storage without removing
+  its diagnostics, read-only restrictions or protocol-recovery gates.
 
 ## Evidence-entry template
 
