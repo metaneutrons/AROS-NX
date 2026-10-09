@@ -139,7 +139,7 @@ gate: compensated output is not the native display contract.
 | D0 | Compile-time board profile, with D1001 as the first implementation | `hardware partial` | LDO2 now recovers and verifies all 32 MB without Vellum. The 20-MHz-PSRAM/90-MHz-CPU artifact showed only blue and an edge strip; changing only PSRAM to 200 MHz produced clean calibration and a spontaneously reported desktop. After the battery was reported empty, the initial non-desktop state could not be classified: opening UART coincided with a USB reset, and a subsequent controlled USB reset booted Wanderer with the restored touch firmware and zero reported faults. Fabian then saw the desktop. Neither run proves the original rail-off start completed by itself or passes the unsynchronized visual/touch gate. Isolated full core/Exec/SD/BSP and physical rail-off gates remain open; do not generalize this clock result to the earlier 360/200-MHz C1 strip. Prohibit stale cross-board objects before a second profile. |
 | D1 | Board-driver boundary and second-board onboarding | `build verified` | 2026-10-03: the profile now selects panel controller and table (JD9365/JD9165), rotation (90/0), panel power scheme (PCA9535 or plain GPIOs), touch driver (GSL3670/GT911, firmware optional), SD detect/power wiring, partition CSV and sdkconfig per board; `check-profile.py` evaluates `board.mk` per board through GNU make. The D1001 core built with these changes is byte-identical to HEAD (202,096 B `99a8f6f8…`, same flags, same tree), so the D1001 binary contract holds. Not hardware tested on either board. |
 | D2 | Guition JC1060P470C as the active development board (J0-J5) | `J0-J5 accepted; four cold visual passes; sustained stress open` | Board IDs `jc1060p470c-v2` (new panel batch, active) and `jc1060p470c-v1` (old batch). On `80:f1:b2:d3:3b:a6`: J0 Exec/32MB PSRAM; J1 correct test card after 20MHz D-PHY reference fix; J2 GT911/I2C1/100kHz; J3/J4 Wanderer, four-edge pointer, double tap, two-finger menu and double-tap-and-drag visually accepted. J5 portable touch/brightness control panels accepted 2026-10-05. Aggregate early USB budget correction `4d998b4e…` passes host tests, a 120-second reader-attached USB-reset boot and four synchronized USB-only physical cold boots without a serial reader/reset: approximately 10, 11, 14 and 11 seconds (2026-10-09). Fresh pointer, double-tap and two-finger menu check accepted. Earlier black cold attempt remains recorded. Open: larger cold-cycle reliability campaign, sustained combined/no-reader stress and old panel batch. Previous-production thirty-minute reader-attached idle soak does not substitute for those gates. See dated D2/J0-J5 and s13-s15 evidence for exact configurations/artifacts. |
-| D2-BT | JC1060 boot latency | `diagnostic-off package flashed; physical comparison open` | Baseline visual cold starts 10, 11, 14, 11s on s15 core plus verbose package. Only DOS/FAT/dosboot traces disabled, other 37 records/core/media unchanged. Three reset captures per configuration: graphics n256 median host receipt 4.408s -> 3.955s; log volume ~584KB -> 15KB. This marker is not first-visible-desktop time. Fresh physical cold/touch gate for quiet package `e0869292…` remains open; preserve hardware waits and verbose rollback. See dated s16 evidence. |
+| D2-BT | JC1060 boot latency | `one quiet-pair cold pass; material cold speedup unproven` | Baseline visual cold starts 10, 11, 14, 11s on s15 core plus verbose package. Only DOS/FAT/dosboot traces disabled, other 37 records/core/media unchanged. Three reset captures per configuration: graphics n256 median host receipt 4.408s -> 3.955s; log volume ~584KB -> 15KB. Marker is not first-visible-desktop time. Fresh quiet-package `e0869292…` physical cold boot reaches fully visible Wanderer in ~10s, inside previous range. Fresh touch/repeated cycles remain open; next isolate pre-kernel versus post-kernel cold time without attributing an unmeasured delay to watchdog. Preserve hardware waits and verbose rollback. See dated s16 evidence. |
 | D3 | Portable touch and I2C stack | `hardware partial (JC1060P470C passed)` | 2026-10-04 on Fabian's direction: `touchscreen.hidd` (`rom/hidds/touchscreen`, polling, gestures, calibration, `ENV:Sys/touchscreen.prefs`), controller drivers `gt911.hidd` and `gsl3670.hidd` on AROS's `hidd.i2c` (`workbench/hidds`), the bus driver `hidd.i2c.esp32p4` (`arch/riscv-esp32p4/i2c`, transport shared with the kernel) and `esp32p4board.resource`, which builds the objects from the board profile; editor `workbench/prefs/touchscreen`. The kernel keeps no touch driver and no `KATTR_TouchScreenOps`. Fixes the I2C0 clock divider position (CTRL10 bits 9:2). JC1060P470C: GT911 through the new stack; Fabian confirms touch, calibration, editor and the tap/direct switch. D1001: builds, not hardware tested. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
@@ -26287,6 +26287,31 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   quiet and verbose profiles reproducible and do not remove fatal reporting.
 - Next: obtain fresh readiness for physical USB-only timing plus touch check.
   No automatic unplug or further firmware change before that observation.
+
+### 2026-10-09 - D2-BT: quiet package cold comparison approximately ten seconds
+
+- Unchanged s15 core: 190,240B, SHA-256
+  `4d998b4e7a9693632e1ca4001aa7b2098de1ed3aef39b7b34ec25c71575cabfa`;
+  quiet package: 3,636,260B, SHA-256
+  `e0869292b2d352db822e14e397eb9a54386dcfcf26b514ad3fbb857962a8dc22`.
+  Reproducible profile/helper in commit `2b0a19da40`; JC1060-v2,
+  CPU360/PSRAM200/XIP/C1_PROFILE1, DOS/FAT/DOSBoot tracing off. Other package
+  records, SD/devvolume and bootloader unchanged.
+- Fresh readiness and USB-C-only supply confirmed. Requested complete USB-C
+  disconnection for at least30s; after Fabian's disconnection confirmation,
+  requested reconnection and timing until fully visible Wanderer. Separation
+  interval user-timed, not instrumented. No serial reader/reset or firmware
+  write during the physical observation.
+- Observed: Fabian reports "10s". One quiet-pair physical cold/display pass;
+  no cold UART capture or measured internal phase timestamps. The result
+  remains inside the previous verbose 10/11/14/11s range: no material cold
+  speedup established. The warm marker improvement is a separate measurement.
+- Safety: no media/firmware changes, SD read-only, D1001 excluded. Fresh touch
+  and repeated-cycle qualification of the quiet pair remain open.
+- Next: isolate pre-kernel and post-kernel cold elapsed time with minimally
+  intrusive evidence. Investigate bootloader/ROM output path as a hypothesis,
+  not a proven nine-second watchdog delay. Any bootloader write still needs
+  explicit exact-range authorization; no automatic additional physical test.
 
 ## Evidence-entry template
 

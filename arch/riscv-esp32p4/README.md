@@ -176,8 +176,11 @@ pass PSRAM/two-hart/watchdog/touch-polling and graphics-update checks. At the
 same graphics update marker (n256), median host receipt is 3.955s versus
 4.408s across three verbose baselines, a 0.453s difference; this is NOT
 first-visible-desktop timing. Captured output falls from about 584KB to 15KB.
-The candidate needs fresh physical cold/display/touch acceptance; prior
-acceptance of the verbose package does not transfer automatically.
+One fresh USB-only physical cold/display comparison now passes: Fabian
+reports approximately 10s to fully visible Wanderer (2026-10-09). This falls
+within the verbose baseline's 10-14s range, so material cold-start acceleration
+is not established. Fresh touch and repeated-cycle acceptance of this pair
+remain open; prior verbose-package acceptance does not transfer automatically.
 
 `tools/build-quiet-package.sh` clean-rebuilds those three modules and replaces
 only their records in a supplied immutable baseline, then checks the board's
