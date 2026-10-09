@@ -117,6 +117,10 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; command builders host tested` | Pure CMD52/CMD53 validation passes 57,406 checks at O0/O2 under ASan/UBSan and RV32 compilation. Not packaged or flashed. Confirm `_I_W_Y` wiring/C6 firmware and serialize slot0 storage/slot1 radio through one host before MMIO integration. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `not started` | N0 shared-host gate, firmware/protocol compatibility, bounded credits/queues/RPC and disconnect recovery. Existing C6 firmware preserved until identified. |
+| N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
+| N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -154,6 +158,70 @@ gate: compensated output is not the native display contract.
 | S6 | SMP default decision | `decided and done (2026-10-05)` | Evidence entry 2026-10-05: Fabian's decision, SMP is the only esp32p4 build. Configure selects the `smp` variant without being asked and refuses any other; the port's single-hart branches are gone, and a tree configured without the variant is refused. No Giant and no single-hart build; the Giant (`ff3395ba7f`) and E3 (`14f0290e21`) stay as history commits. Replaces the former E4 row. |
 | S7 | Hardware watchdog | `hardware verified (JC1060P470C); D1001 open` | Evidence entry 2026-10-09: timer group 0's main watchdog (6 s, reset system), fed from hart 0's tick only while hart 1's forwarded tick and one canary task per hart show life; fatal traps and the first alert stop the hart with interrupts masked. Ten failure cases (`P4_WDT_TEST=1..10`: `Disable()`, fatal trap, system alert, a starving task, `Forbid()`, each on hart 0 and 1) all end in a reset with cause `0x07`, which the next boot prints; the ten upstream SMP tests pass under it (longest tick gap 44 ms). |
 | S8 | Free migration of ordinary tasks | `stages 1 and 2 hardware verified (JC1060P470C); corrected closing suite, production headless soak and visual/touch passed` | Decision (Fabian, 2026-10-09): pinned by default, migration opt-in with `C:Affinity`. Fabian confirms Wanderer/touch on previous production `a4179c1e…`. Closing runner `f77784aa…` failed with an ISR-stack task context and later watchdog reset. The trap-exit MIE correction passes actual-body O0/O2 regressions with failing old-code controls; corrected runner `3415a01a…` passes all 240 programs in twenty rounds with no fault signature. Plain `0e1fa444…` passes its 360-second headless soak and synchronized visual/touch check. Open: #70 merge, DOS segment lists/late assigns and D1001. SMP.md, "S8". |
+
+## Track N: networking
+
+Fabian requests Wi-Fi first on 2026-10-10 while downloading the matching
+`JC1060P470C_I_W_Y.zip`. He confirms fitted Ethernet hardware. Older
+`cheops/JC1060P470C_I_W` schematics are not evidence of Ethernet absence on
+this variant. Do not turn that previous source-limited conclusion into a
+board capability flag. Existing core/BSP and SD read-only behavior stay intact.
+No Bluetooth, Thread, AP mode or credential persistence is part of this first
+station-mode delivery. Use the existing roadmap/evidence structure; no new
+GitHub tracking objects were requested or created.
+
+### N0 - SDIO commands and shared controller ownership
+
+The pure command builders reject invalid booleans, functions, addresses,
+data/counts and incrementing address wrap without altering the output. Byte
+count512 encodes zero; block count0 is rejected because it is unbounded.
+Finite block count is capped511 and the supplied negotiated block size2048.
+The caller remains responsible for capabilities, buffer/DMA bounds and R5
+status validation. The functions do not start transactions or expose SD writes.
+
+Integration must move shared clocks, command engine, FIFO/IDMAC descriptors,
+interrupt status and recovery ownership behind one task-context host lock.
+Slot0 remains the card; slot1 is the expected C6 transport, subject to the
+matching board reference. Never instantiate a second backend which resets the
+host or races existing `sdcard.device`. Bound every command, IO-ready poll,
+DMA wait and recovery; do not hold an IRQ-disabled lock across hardware waits.
+Acceptance: host positive/negative tests; controller serialization/recovery
+tests; RV32 build/package audit; exact board enumeration and repeated SD reads
+before/after radio probing, with no media mutations. A test-only opt-in precedes
+normal boot enablement; missing C6 must never block Wanderer.
+
+### N1 - compatible ESP-Hosted transport
+
+Identify the installed C6 firmware/protocol before choosing a pinned official
+ESP-Hosted reference. Preserve that firmware initially. No C6 flash write is
+inferred from standing P4 core/BSP authorization. Validate byte-oriented wire
+headers, lengths, checksums when enabled, sequence/credit counters and bounded
+queues against malformed/truncated inputs; never cast untrusted packets to
+packed native structs. RPC control and Ethernet frames use separate dispatch.
+Acceptance: startup/version handshake, MAC query, station association,
+bidirectional referenced frames, timeout/cancel and disconnect recovery. A
+reference firmware example building is not evidence of AROS transport.
+
+### N2 - native AROS WLAN device
+
+Expose the transport through SANA-II, not a second private TCP/IP stack.
+Provide asynchronous request ownership, reads/writes, AbortIO, link events,
+statistics and multicast/filter behavior needed by the chosen AROS stack.
+Keep passwords out of repository, UART and captured evidence. Acceptance:
+DHCP, referenced bidirectional traffic, loss/reassociation, queued request
+cancellation and malformed-frame refusal without leaks or hangs.
+
+### N3 - qualification and Ethernet follow-up
+
+Qualify WLAN alongside referenced read-only SD traffic, normal window updates
+and verified workers on both harts for at least1800s. Require zero data
+mismatches, traps/unexpected resets and no storage corruption; document
+throughput and resource limits rather than inventing a performance target.
+Fresh readiness remains necessary for display/touch observations. Inventory
+the actual Ethernet PHY/reset/clock/MDIO/RMII wiring independently from the
+new archive before selecting or adapting an existing MAC driver. Ethernet
+implementation and its acceptance gate follow that inventory, not an assumption
+that a similarly named AROS driver matches the P4 MAC generation.
 
 ## Track E: ESP32-P4 / RV32 SMP
 
@@ -25977,6 +26045,65 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Safety: no flash, SD write or physical power cycle during integration.
   Next: protected merge, then explicit JC1060 long-term/no-reader campaign;
   physical rail-off cold boots require fresh user readiness.
+
+### 2026-10-10 - N0 Wi-Fi command foundation; board-variant correction
+
+- Initial source audit on `acd62ff237`, clean
+  `fix/esp32p4-usb-boot-budget` worktree. Implementation isolated on
+  `feature/esp32p4-wifi` from AROS-NX main `0c15f90eb3` in
+  `/Volumes/Dev/Build/aros-esp32p4-wifi`; original worktree restored clean,
+  preserving its existing production documentation and open PR71. This branch
+  does not contain PR71's pending implementation/evidence; do not build it as
+  a production replacement until that baseline is integrated.
+  Fabian requests Wi-Fi implementation while obtaining `_I_W_Y` archive;
+  confirms Ethernet exists on his board. Older `_I_W` schematic no-PHY
+  inference withdrawn; no Ethernet absence claim or production pin changes.
+- Reference `cheops/JC1060P470C_I_W` main commit
+  `6304eddef32a33aa9d9a85e971e39dfb24c3cca3`; schematic pages3/4/5,
+  `examples/slave/sdkconfig` and `lvgl_demo_v9/sdkconfig` inspected.
+  Old P4 pins:CLK18/CMD19/D0-3=14-17; C6 pins:CLK19/CMD18/D0-3=20-23.
+  They are recorded as reference only, not active `_I_W_Y` profile facts.
+  Old slave config selects Hosted SDIO streaming/high speed; old LVGL config
+  has host Wi-Fi disabled and therefore is not a WLAN success demonstration.
+- Local ESP-IDF v6.0.1 `components/sdmmc/include/sd_protocol_defs.h`
+  and `sdmmc_io.c` establish CMD52/53 layout/512-byte count encoding.
+  Existing P4 SD backend resets global controller/FIFO/DMA and uses shared
+  descriptors; a standalone concurrent radio backend would be unsafe.
+- Independently written pure `network/sdio_commands.c` validates arguments
+  and address spans, rejects unbounded block requests and preserves output
+  on refusal. No copied vendor implementation or firmware blob. Command
+  constructors are not linked into core/package; no runtime driver claim.
+- Procedure `sh arch/riscv-esp32p4/tools/test-sdio-commands.sh`: actual
+  exit0;57,406 checks at O0 and O2, ASan/UBSan/strict warnings, valid known
+  vectors, exhaustive byte counts/functions/directions and rejection probes.
+  RV32 freestanding strict compilation also exit0 (ilp32f,
+  rv32imafc_zicsr_zifencei_zaamo_zalrsc), ELF32 little-endian RISC-V object
+  1,872B SHA-256
+  `324d3c0ce270f991192811646196323692bcb9bc66dcbc2403d8b9a490dada17`.
+  Object in `/tmp/jc1060-network.AT8Ngh/sdio_commands.o`, not a firmware image.
+- Safety: no serial open, MMIO, reset, flash, C6 write or SD action. No current
+  device identity assumed. Read-only IOUSB inventory subsequently reports
+  JC1060 serial `80:F1:B2:D3:3B:A6`; serial port never opened. Installed JC1060
+  production artifacts unchanged. This is command-unit verification only,
+  not a target-driver build or hardware acceptance.
+- Protocol audit: old vendor slave declares version0.0.6 in
+  `examples/slave/main/CMakeLists.txt`; `main/common/include/adapter.h`
+  defines12-byte header with LE16 length/offset/checksum/sequence and nibble
+  interface IDs, independently rechecked. Old firmware cannot be assumed
+  compatible with current Hosted releases or with the actual installed C6.
+  Reference Linux host is GPL-2.0: do not copy its implementation into AROS;
+  independently implement the wire contract. No vendor source copied here.
+- ESP-Hosted protocol reference `release/fg-v0.0.5` at
+  `3769eea28bbbc59d8ea2aff425d62564b7fb3e68`,
+  `esp_hosted_fg/docs/sdio_protocol.md`: function1, RX interrupt bit23,
+  PACKET_LEN cumulative byte counter modulo1MiB, TX token credits, data-path
+  open/close/reset through scratch register. This near-version reference is
+  NOT proof of exact0.0.6 compatibility. Vendor0.0.6 `interface.h` caps
+  transport buffers1536B; generic CMD53 limits do not grant larger Hosted
+  packets. N1 must enforce the selected firmware's limit separately.
+- Next: inspect matching variant
+  archive and confirm JC1060 connection; implement shared SDMMC ownership
+  before bounded slot1 probe and preserve slot0 read-only recovery behavior.
 
 ## Evidence-entry template
 

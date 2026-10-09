@@ -1,5 +1,17 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Networking update (2026-10-10): JC1060 Wi-Fi implementation has started
+([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
+construction in `network/` passes host sanitizer tests and RV32 compilation;
+it is not linked into the production firmware and is not a working Wi-Fi
+driver. SD storage and the C6 share one SDMMC controller, so hardware
+integration must first provide common host ownership. The older
+`cheops/JC1060P470C_I_W` package is a protocol reference, not authoritative
+wiring for the active `_I_W_Y` variant. Fabian confirms Ethernet hardware
+on his board; exact PHY/wiring awaits the matching vendor archive. The earlier
+claim of absent Ethernet based on older schematics is withdrawn. Neither
+network interface is hardware accepted.
+
 Native AROS platform port for the ESP32-P4 SoC. The target name follows the
 AROS convention `$(AROS_TARGET_CPU)-$(AROS_TARGET_ARCH)`, so the platform is
 configured with
