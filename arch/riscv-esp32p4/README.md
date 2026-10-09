@@ -217,6 +217,13 @@ motivate a pre-kernel investigation. Node appearance is not rail-on and
 buffered receipt is not device generation; no exact bootloader delay or
 material speedup is established. No bootloader write is authorized by this test.
 
+An isolated diagnostic bootloader now disables only the ROM secondary USB
+output after preserving original UART setup. Two clean builds reproduce the
+22,624-byte candidate `e9660f4d…`, with the unchanged board sdkconfig and
+verified wrapper linkage; all45 host tests pass. The normal bootloader/shared
+IDF remain unchanged. Candidate is **unflashed**, awaiting explicit permission
+for bootloader sector range0x2000..0x7fff; no speedup or hardware pass claimed.
+
 `tools/build-quiet-package.sh` clean-rebuilds those three modules and replaces
 only their records in a supplied immutable baseline, then checks the board's
 package-size rule. Keep verbose package `d9e40d75…` for reversible diagnostics.

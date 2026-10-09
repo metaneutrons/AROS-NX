@@ -139,7 +139,7 @@ gate: compensated output is not the native display contract.
 | D0 | Compile-time board profile, with D1001 as the first implementation | `hardware partial` | LDO2 now recovers and verifies all 32 MB without Vellum. The 20-MHz-PSRAM/90-MHz-CPU artifact showed only blue and an edge strip; changing only PSRAM to 200 MHz produced clean calibration and a spontaneously reported desktop. After the battery was reported empty, the initial non-desktop state could not be classified: opening UART coincided with a USB reset, and a subsequent controlled USB reset booted Wanderer with the restored touch firmware and zero reported faults. Fabian then saw the desktop. Neither run proves the original rail-off start completed by itself or passes the unsynchronized visual/touch gate. Isolated full core/Exec/SD/BSP and physical rail-off gates remain open; do not generalize this clock result to the earlier 360/200-MHz C1 strip. Prohibit stale cross-board objects before a second profile. |
 | D1 | Board-driver boundary and second-board onboarding | `build verified` | 2026-10-03: the profile now selects panel controller and table (JD9365/JD9165), rotation (90/0), panel power scheme (PCA9535 or plain GPIOs), touch driver (GSL3670/GT911, firmware optional), SD detect/power wiring, partition CSV and sdkconfig per board; `check-profile.py` evaluates `board.mk` per board through GNU make. The D1001 core built with these changes is byte-identical to HEAD (202,096 B `99a8f6f8…`, same flags, same tree), so the D1001 binary contract holds. Not hardware tested on either board. |
 | D2 | Guition JC1060P470C as the active development board (J0-J5) | `J0-J5 accepted; four cold visual passes; sustained stress open` | Board IDs `jc1060p470c-v2` (new panel batch, active) and `jc1060p470c-v1` (old batch). On `80:f1:b2:d3:3b:a6`: J0 Exec/32MB PSRAM; J1 correct test card after 20MHz D-PHY reference fix; J2 GT911/I2C1/100kHz; J3/J4 Wanderer, four-edge pointer, double tap, two-finger menu and double-tap-and-drag visually accepted. J5 portable touch/brightness control panels accepted 2026-10-05. Aggregate early USB budget correction `4d998b4e…` passes host tests, a 120-second reader-attached USB-reset boot and four synchronized USB-only physical cold boots without a serial reader/reset: approximately 10, 11, 14 and 11 seconds (2026-10-09). Fresh pointer, double-tap and two-finger menu check accepted. Earlier black cold attempt remains recorded. Open: larger cold-cycle reliability campaign, sustained combined/no-reader stress and old panel batch. Previous-production thirty-minute reader-attached idle soak does not substitute for those gates. See dated D2/J0-J5 and s13-s15 evidence for exact configurations/artifacts. |
-| D2-BT | JC1060 boot latency | `diagnostic cold/display and phase retrieval pass; attribution open` | Quiet s15 cold ~10s; two s17 diagnostic cold cycles11s (first corrected from13s). Second correlates USB node appearance and host-stamped reports: all8 phases/fail0, first output844ms, pre-Exec1984ms, update2564685ms. Receipt-derived kernel-origin estimate6.804..7.014s after node appearance motivates pre-kernel console investigation; buffering prevents exact attribution. update256 not desktop completion; no exact rail-on interval, fresh touch or material speedup claim. Bootloader candidate still needs exact-range write authority. |
+| D2-BT | JC1060 boot latency | `diagnostic cold/display pass; bootloader comparison build verified, unflashed` | Quiet s15 cold ~10s; two s17 diagnostic cold cycles11s (first corrected from13s). Second correlates USB node appearance and host-stamped reports: all8 phases/fail0, first output844ms, pre-Exec1984ms, update2564685ms. Receipt-derived kernel-origin estimate6.804..7.014s after node appearance motivates pre-kernel console investigation; buffering prevents exact attribution. Isolated channel2-off bootloader22624B e9660f4d… clean-built/reproduced with matched config and verified linkage; normal bootloader unchanged. No exact rail-on interval or material speedup claim. Candidate needs explicit0x2000..0x7fff write authority. |
 | D3 | Portable touch and I2C stack | `hardware partial (JC1060P470C passed)` | 2026-10-04 on Fabian's direction: `touchscreen.hidd` (`rom/hidds/touchscreen`, polling, gestures, calibration, `ENV:Sys/touchscreen.prefs`), controller drivers `gt911.hidd` and `gsl3670.hidd` on AROS's `hidd.i2c` (`workbench/hidds`), the bus driver `hidd.i2c.esp32p4` (`arch/riscv-esp32p4/i2c`, transport shared with the kernel) and `esp32p4board.resource`, which builds the objects from the board profile; editor `workbench/prefs/touchscreen`. The kernel keeps no touch driver and no `KATTR_TouchScreenOps`. Fixes the I2C0 clock divider position (CTRL10 bits 9:2). JC1060P470C: GT911 through the new stack; Fabian confirms touch, calibration, editor and the tap/direct switch. D1001: builds, not hardware tested. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
@@ -1152,6 +1152,11 @@ retrieved. Receipt-derived kernel-origin estimates cluster6.804..7.014s after
 node appearance: a pre-kernel investigation lead, not exact attribution.
 This is not a rail-on measurement; USB/read buffering remains an uncertainty.
 No firmware change has occurred; see the dated correlation evidence.
+The isolated diagnostic bootloader comparison is now build verified only:
+original UART setup followed by channel2 removal, identical sdkconfig and no
+changes to validation/watchdog. Two clean builds reproduce the candidate.
+It remains unflashed pending explicit bootloader range authorization; neither
+the previous11s observation nor build success proves this output caused delay.
 
 Board facts, each from the vendor package in `~/Downloads/JC1060WP470C`
 (schematic V1.0, ESP-IDF 5.5.4 demos and their sdkconfig, panel dtsi) and
@@ -26590,6 +26595,70 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   single-variable bootloader console candidate. Any bootloader write needs
   separate exact-range authorization/backup; next physical test needs fresh
   readiness. No additional hardware test is automatically started.
+
+### 2026-10-09 - D2-BT: isolated secondary-USB bootloader comparison build verified
+
+- Change: diagnostic-only extra component under
+  `bootloader/diagnostics/no_usb_secondary`, not included by the ordinary
+  project. GNU ld wraps the external UART-install call: invoke the original
+  first, then `esp_rom_install_channel_putc(2,NULL)`. No print/wait/validation/
+  watchdog changes; application direct-register USB console is independent.
+  `tools/build-bootloader-console-comparison.sh` clean-builds two isolated
+  projects from the existing board sdkconfig/defaults, without editing shared
+  IDF or the reference project. Explicit environment checks precede evidence
+  creation; exact reference/input hashes are rechecked after build.
+- Source audit and independent Luna review: local ESP-IDF6.0.1 UART path
+  leaves ROM channel2 installed; the USB-only branch explicitly removes it
+  to avoid duplicate output. API NULL disconnects the selected channel.
+  On the configured pre-v3 P4, IDF's channel2 patch clears its `_putc2` and
+  calls ROM `ets_install_putc2` at0x4fc0002c. Removal only affects later
+  channel-based output, not first-stage ROM bytes or USB enumeration.
+  INFO/UART115200, application validation and9000ms watchdog remain unchanged.
+- Failed experiments retained: `jc1060/s18-bootloader-console` configure
+  exits1 because IDF expected a different Python-env location. Corrected
+  IDF_PYTHON_ENV_PATH points at the installed v6.0.1 venv.
+  `s18-bootloader-console-env` builds baseline but candidate link exits1:
+  compiled archive did not supply the wrapped symbol. No candidate artifact
+  or flash from either failure. WHOLE_ARCHIVE fixes component retention.
+- Successful clean pairs: `s18-bootloader-console-link` and final corrected
+  helper repeat `s18-bootloader-console-final`, both exit0. Toolchain
+  riscv32-esp-elf15.2.0_20251204, IDF Python v6.0.1, CMake4.0.3/Ninja1.12.1;
+  SOURCE_DATE_EPOCH1791504000 fixes compile metadata for the comparison.
+  Baseline22544B SHA-256
+  `3fc1bf7297e363425b63baaf15ed3b912eadf7701a1601fbd51722407649f040`;
+  candidate22624B SHA-256
+  `e9660f4d0ac49be92990c4e4ea33a28a3ea0371fcb82dbbe083cd00b2ff0dc9d`.
+  Both images byte-identical across the two successful clean pairs. Generated
+  configs match each other and reference exactly, SHA-256
+  `85c4c0a8b3200012e000ccad26dc179646e98732ffde2f65b579a3b5733bd5b4`.
+  The fresh baseline differs from the older flashed image with its original
+  embedded compile metadata; use original27b99e03… as rollback, not baseline.
+- Link verification on final ELF: baseline console_init directly calls
+  ROM UART installer0x4fc00030. Candidate console_init calls wrapper;
+  wrapper calls original0x4fc00030 then a0=2/a1=0 and channel-putc patch.
+  Existing UART wait/baud setup follows unchanged. Map/disassembly retained.
+  IDF check_sizes passes candidate0x5860,0x7a0 free before partition0x8000.
+  Local ROM map SHA-256
+  `3807ce3fe552ef579538499047cc97b58cc4498029a11137d65e72ec8008d933`;
+  API header `86c19329db888f595a67e7712c8500eb8cee317ee9af1d942953ee17041f2b54`.
+- Host validation:45 tool tests pass, including compiling live wrapper under
+  strict C11 and checking original setup precedes sole channel2/null change;
+  missing IDF environment is refused before evidence creation. Shell syntax/
+  diff checks pass. Independent review requests met; linker proof is separate
+  from the host fixture. No claim of hardware verification or faster boot.
+- Safety/current hardware: no serial access, reset or flash in this change.
+  Original bootloader22544B SHA-256
+  `27b99e03abb56eef0c2d3453a5800013f419e476ceec39a3bdb94c066c40e5f4`
+  copied to final evidence `rollback-bootloader.bin`, reference unchanged.
+  s17 core e09de20b…, quiet package e0869292…, partition b71dde30… and all
+  media unchanged. Loss of secondary USB bootloader narration is intentional,
+  not absence of execution; UART errors remain available.
+- Next: request explicit bootloader write approval at0x2000 (candidate bytes
+  through0x785f, sector erase0x2000..0x7fff). Before approved write, check MAC,
+  read back/preserve full0x6000-byte affected range and compare original image;
+  keep partition at0x8000 untouched. Then one first-byte headless warm capture
+  and, only after fresh readiness, unchanged core/package no-reader cold
+  comparison. Causality, pre-kernel timing and speedup remain open.
 
 ## Evidence-entry template
 
