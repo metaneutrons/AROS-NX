@@ -14,13 +14,20 @@ macOS after open to avoid dropping the lines on normal close.
 The file contains host start/end markers around the unmodified serial bytes.
 The elapsed footer uses the host monotonic clock; it is not a firmware phase
 timestamp.
+
+Optional --timing writes exact raw-file chunk offsets and host monotonic
+receipt timestamps to a new JSONL sidecar. These can be correlated with
+observe-usb-arrival.py only on the same host/host boot. They timestamp receipt,
+not generation: USB buffering and the serial read timeout add uncertainty.
 """
 
 import argparse
 import datetime
+import json
 import math
 import sys
 import time
+from contextlib import ExitStack
 
 import serial
 
@@ -51,7 +58,7 @@ def clear_hupcl(port, termios_module=None):
 
 
 def capture(port, seconds, path, *, serial_api=None, platform=None,
-            termios_module=None, monotonic=None, wall_time=None):
+            termios_module=None, monotonic=None, wall_time=None, timing_path=None):
     """Capture serial bytes to a new file; raise on any capture failure."""
     if serial_api is None:
         serial_api = serial
@@ -64,7 +71,16 @@ def capture(port, seconds, path, *, serial_api=None, platform=None,
 
     # Exclusive creation prevents an accidental overwrite and happens before
     # touching the serial device.
-    with open(path, "xb") as output:
+    with ExitStack() as stack:
+        output = stack.enter_context(open(path, "xb"))
+        timing = None
+
+        def stamp(event, now, **fields):
+            if timing is not None:
+                timing.write(json.dumps(dict(event=event, monotonic=now,
+                                             seconds=now - start, **fields)) + "\n")
+                timing.flush()
+
         output.write(("[host start %s]\n" % wall_time).encode("utf-8"))
         output.flush()
         start = monotonic()
@@ -73,6 +89,10 @@ def capture(port, seconds, path, *, serial_api=None, platform=None,
         failure = None
 
         try:
+            if timing_path is not None:
+                timing = stack.enter_context(open(timing_path, "x", encoding="utf-8"))
+            stamp("start", start, wall_time=wall_time, port=port,
+                  clock="host time.monotonic; same host/boot only")
             reader = serial_api.Serial(port=None, baudrate=BAUD_RATE,
                                        timeout=min(READ_TIMEOUT_SECONDS, seconds))
             # Request the warm-verified JC1060 retrieval profile before open.
@@ -87,9 +107,12 @@ def capture(port, seconds, path, *, serial_api=None, platform=None,
             while monotonic() < deadline:
                 data = reader.read(READ_CHUNK_SIZE)
                 if data:
+                    received = monotonic()
+                    offset = output.tell()
                     output.write(data)
                     output.flush()
                     byte_count += len(data)
+                    stamp("chunk", received, offset=offset, bytes=len(data))
         except BaseException as error:
             failure = error
         finally:
@@ -100,7 +123,8 @@ def capture(port, seconds, path, *, serial_api=None, platform=None,
                     if failure is None:
                         failure = error
 
-            elapsed = max(0.0, monotonic() - start)
+            ended = monotonic()
+            elapsed = max(0.0, ended - start)
             status = "ok" if failure is None else "error"
             footer = "\n[host end +%.3fs bytes=%d status=%s" % (
                 elapsed, byte_count, status)
@@ -109,6 +133,8 @@ def capture(port, seconds, path, *, serial_api=None, platform=None,
             footer += "]\n"
             output.write(footer.encode("utf-8", errors="replace"))
             output.flush()
+            stamp("end", ended, status=status, bytes=byte_count,
+                  error=None if failure is None else str(failure))
 
         if failure is not None:
             raise failure
@@ -122,13 +148,14 @@ def main(argv=None, *, serial_api=None, platform=None, termios_module=None,
     parser.add_argument("seconds", type=positive_finite_duration,
                         help="finite positive capture duration")
     parser.add_argument("log", help="new raw capture file (must not exist)")
+    parser.add_argument("--timing", help="new JSONL host receipt sidecar")
     args = parser.parse_args(argv)
 
     try:
         byte_count, elapsed = capture(
             args.port, args.seconds, args.log, serial_api=serial_api,
             platform=platform, termios_module=termios_module,
-            monotonic=monotonic, wall_time=wall_time)
+            monotonic=monotonic, wall_time=wall_time, timing_path=args.timing)
     except Exception as error:
         print("late-boot-log: capture failed: %s" % error, file=sys.stderr)
         return 1

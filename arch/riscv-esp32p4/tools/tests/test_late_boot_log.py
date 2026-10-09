@@ -2,6 +2,7 @@
 
 import importlib.util
 import io
+import json
 import pathlib
 import sys
 import tempfile
@@ -211,6 +212,47 @@ class LateBootLogTest(unittest.TestCase):
                     with self.assertRaises(SystemExit) as result:
                         capture.main(["/dev/fake", duration, "unused.bin"])
                 self.assertNotEqual(result.exception.code, 0)
+
+    def test_timing_records_absolute_clock_and_exact_raw_chunk_offset(self):
+        api = FakeSerialAPI()
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.make_path(directory)
+            timing = pathlib.Path(directory) / "timing.jsonl"
+            capture.capture("/dev/fake", 0.5, path, serial_api=api,
+                            platform="linux", monotonic=FakeClock(),
+                            wall_time="test-start", timing_path=timing)
+            records = [json.loads(line) for line in timing.read_text().splitlines()]
+            self.assertEqual([r["event"] for r in records], ["start", "chunk", "end"])
+            start, chunk, end = records
+            self.assertAlmostEqual(chunk["seconds"], chunk["monotonic"] - start["monotonic"])
+            self.assertEqual(path.read_bytes()[chunk["offset"]:
+                             chunk["offset"] + chunk["bytes"]], b"ESP-ROM: buffered\r\n")
+            self.assertEqual(end["status"], "ok")
+            self.assertEqual(end["bytes"], chunk["bytes"])
+
+    def test_existing_sidecar_is_refused_before_serial_access(self):
+        api = FakeSerialAPI()
+        with tempfile.TemporaryDirectory() as directory:
+            timing = pathlib.Path(directory) / "timing.jsonl"
+            timing.write_text("preserve")
+            with self.assertRaises(FileExistsError):
+                capture.capture("/dev/fake", 0.5, self.make_path(directory),
+                                serial_api=api, timing_path=timing)
+            self.assertEqual(api.events, [])
+            self.assertEqual(timing.read_text(), "preserve")
+            self.assertIn(b"status=error", self.make_path(directory).read_bytes())
+
+    def test_sidecar_marks_capture_error(self):
+        api = FakeSerialAPI(fail_read=True)
+        with tempfile.TemporaryDirectory() as directory:
+            timing = pathlib.Path(directory) / "timing.jsonl"
+            with self.assertRaises(OSError):
+                capture.capture("/dev/fake", 0.5, self.make_path(directory),
+                                serial_api=api, platform="linux",
+                                monotonic=FakeClock(), timing_path=timing)
+            end = json.loads(timing.read_text().splitlines()[-1])
+            self.assertEqual(end["status"], "error")
+            self.assertEqual(end["error"], "read failed")
 
 
 if __name__ == "__main__":
