@@ -25963,6 +25963,21 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Safety: no writes, media changes or PR merge during this visual check.
   Next: request explicit merge approval for #70; auto-merge remains off.
 
+### 2026-10-09 - S8 integration refreshed against current AROS-NX main
+
+- Fabian authorized PR #70 merge after the corrected production acceptance.
+  Required protection is strict `CI Success`; no bypass authorized or used.
+- Merged `fork/main` `a343ccf0a8` into the feature branch with merge commit
+  `82758ffe21`. The incoming changes are a genmodule argument-boundary fix
+  and the Broadcom 2712 i2c-dw generator configuration, not P4 runtime code.
+  The tested/flashed core remains the immutable `0e1fa444…`; this integration
+  is not a new firmware build or new hardware acceptance claim.
+- State: hardware gates passed; repository integration awaits fresh required
+  CI on the updated branch. PR remains open until those checks pass.
+- Safety: no flash, SD write or physical power cycle during integration.
+  Next: protected merge, then explicit JC1060 long-term/no-reader campaign;
+  physical rail-off cold boots require fresh user readiness.
+
 ## Evidence-entry template
 
 
