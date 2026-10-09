@@ -220,6 +220,13 @@ DEVVOLUME := $(IMAGEDIR)/aros-devvolume.img
 
 #MM kernel-devvolume-esp32p4-riscv : workbench-prefs-touchscreen
 kernel-devvolume-esp32p4-riscv :
+ifeq ($(P4_PRODUCTION_QUALIFY),1)
+	@if $(TEST) ! -f $(AROSARCHDIR)/qualification/ProductionQualify \
+	        -o ! -f $(AROSARCHDIR)/qualification/SmokeQualify ; then \
+	    $(ECHO) "Build both kernel-*-qualify-esp32p4-riscv-quick targets first" ; \
+	    exit 1 ; \
+	fi
+endif
 	@if $(TEST) -n "$(P4_BOARD_TOUCH_FW_FILENAME)" \
 	        -a ! -f "$(P4_GSL_FW_BINARY)" ; then \
 	    $(ECHO) "$(P4_BOARD) loads touch firmware from this volume;" \
@@ -230,6 +237,12 @@ kernel-devvolume-esp32p4-riscv :
 	@$(MKDIR) -p $(DEVSTAGE) $(IMAGEDIR)
 	@$(CP) $(AROSDIR)/Prefs/Touchscreen $(AROSDIR)/Prefs/Touchscreen.info \
 	    $(DEVSTAGE)/
+ifeq ($(P4_PRODUCTION_QUALIFY),1)
+	@$(CP) $(AROSARCHDIR)/qualification/ProductionQualify $(DEVSTAGE)/
+	@$(CP) $(AROSDIR)/Prefs/Touchscreen.info $(DEVSTAGE)/ProductionQualify.info
+	@$(CP) $(AROSARCHDIR)/qualification/SmokeQualify $(DEVSTAGE)/
+	@$(CP) $(AROSDIR)/Prefs/Touchscreen.info $(DEVSTAGE)/SmokeQualify.info
+endif
 	@if $(TEST) -n "$(P4_BOARD_TOUCH_FW_FILENAME)" ; then \
 	    $(MKDIR) -p $(DEVSTAGE)/Firmware/silead ; \
 	    $(CP) "$(P4_GSL_FW_BINARY)" \
