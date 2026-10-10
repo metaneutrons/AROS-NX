@@ -332,3 +332,44 @@ is retained under native-control-exchange.KnVrtu. The new pinned generated
 protobuf-c interoperability oracle passes810 O0/O2 ASan/UBSan checks each;
 all20 Init values agree semantically, including explicit native zeros versus
 proto3 omitted defaults. This does not prove installed slave firmware identity.
+
+## Native association prerequisites (source audit, 2026-10-10)
+
+Pinned common/proto/esp_hosted_rpc.proto defines SetConfig request284 /
+response540, Connect282/538 and Disconnect283/539. SetConfig body has iface
+field1 and wifi_config field2; STA is wifi_config oneof field2. Connect and
+Disconnect request bodies are empty; response status is int32 field1 with
+proto3 default0. Success of Connect's RPC is not an association event or IP
+connectivity proof. Existing native control does not yet allow these calls.
+
+The STA schema uses bounded byte strings: SSID32, password64, BSSID6. Do not
+copy an IDF wifi_config_t ABI to the wire. Mandatory nested threshold field9
+and pmf_cfg field10 must be emitted even when empty: pinned
+slave/main/slave_control.c:829-834 dereferences them without null checks.
+The generic request limit remains256 bytes; maximum-value configurations
+must be sized before writing and refused unchanged if they exceed it, not
+silently truncated. No real credentials may appear in test fixtures or logs.
+
+Typed connected/disconnected events use IDs775/776 with outer status field1
+and nested record field2 (proto:1525-1532). Their SSID byte field and explicit
+ssid_len must be checked against each other under the actual slave encoding;
+do not assume byte-field length always equals SSID length. Records must be
+owned beyond RX buffer reuse and tied to the live generation/state machine.
+Association, data-frame traffic, DHCP, cancellation and reconnect are separate
+acceptance gates; none is implemented or accepted by this source audit.
+The pinned slave emits a fixed32-byte SSID array plus its meaningful length,
+not a variable byte field of that same length (slave_control.c:2449-2461,
+2481-2492). Decode the wrapper for the actual event: the pinned host wrapper
+incorrectly reads disconnected status through event_sta_connected
+(host/drivers/rpc/core/rpc_evt.c:153); do not reproduce that defect.
+
+Credential privacy requires a separate check before transmission: the pinned
+slave handler logs SSID at ESP_LOGI and password at ESP_LOGD
+(slave_control.c:815-819). Installed54aafd0-dirty lineage/log level is unresolved,
+so suppression cannot be assumed. No credentials have been supplied or sent in
+this audit. Do not collect secret-bearing slave debug output as evidence.
+The same handler calls strlen on fixed arrays after bounded memcpy; full-width
+non-NUL SSID32/password64 are not proven safe even though schema-valid.
+Codec support must not be confused with safe installed-slave execution.
+Any shorter-string development restriction must remain a named workaround,
+not a permanent replacement for correct32-byte SSID/64-byte key support.

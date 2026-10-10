@@ -7,6 +7,9 @@ corrections, mandatory reset/timeout adaptations and the complete-host
 comparison gates. The source match does not establish installed C6 binary
 identity. The complete reference now passes one hardware MAC/scan gate;
 native AROS Wi-Fi remains open.
+Association source prerequisites are now recorded in HOSTED-REFERENCE.md:
+mandatory STA threshold/PMF nesting, exact RPC/event IDs and a slave debug-log
+privacy gate. No association codec/runtime or credentials are deployed.
 
 The native control foundation now supports bounded sequential Init/SetMode/
 Start/Stop/Deinit/GetMAC envelopes on one existing FIFO ledger, with owned
