@@ -119,7 +119,7 @@ gate: compensated output is not the native display contract.
 | :--- | :--- | :--- | :--- |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `Hosted privacy patch and private C6 candidate build verified; physical recovery/UART privacy gate open` | Separate complete pinned tree builds1106624B app; Hosted secret/network/payload log sites removed and response length bounded, actual-macro490 O0/O2 Mac/Linux checks and original ASan failure prove regression scope. Config/dependencies/artifacts archived; no deployment or installed identity proof. IDF binary SSID/BSSID log formats and MAC logs remain. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore remain mandatory under conditional authority. |
-| N2A | Association caller and native link lifecycle | `private ABI3 backend and SANA contracts model/build verified; hardware open` | Generic2eb274ff63 locally integrated; native device remains SUMMARY-only. Backend adds bounded copied-target association and traffic gate, default-disabled;14,312 sanitized workflow checks each O0/O2 pass on macOS/Linux. SANA CONNECT/DISCONNECT latch and administrative CONFIGINTERFACE models pass, but no actual observer/binding. Shared DMA clearing is model/build verified under N0P, not hardware verified. Native queued S2_SETOPTIONS, lifecycle commit/cancellation, both C6/host recovery/privacy gates and association/DHCP remain open. No credentials/deployment/link acceptance. |
+| N2A | Association caller and native link lifecycle | `private ABI3 backend and SANA contracts model/build verified; input parser model/RV32 compile verified; hardware open` | Generic2eb274ff63 locally integrated; native device remains SUMMARY-only. Backend adds bounded copied-target association and traffic gate, default-disabled;14,312 sanitized workflow checks each O0/O2 pass on macOS/Linux. Native bounded options parser copies borrowed inputs, requires explicit IE extent and refuses unsupported security;70 cases/230 checks each O0/O2 sanitized on Mac/Linux pass. Shared caller extent handover and queue/BeginIO/Close are not bound. SANA CONNECT/DISCONNECT latch and administrative CONFIGINTERFACE models pass, but no actual observer/binding. Shared DMA clearing is model/build verified under N0P, not hardware verified. Native queued S2_SETOPTIONS, lifecycle commit/cancellation, both C6/host recovery/privacy gates and association/DHCP remain open. No credentials/deployment/link acceptance. |
 | N2S | Native queued SANA scan presentation | `RV32 build verified; source review and corrected scan-helper models passed` | Single bounded owner-service scan, copied SSID filter and caller-pool-owned complete publication. Scan-helper models295 checks each O0/O2 ASan/UBSan on macOS/Linux; outer BeginIO/AbortIO/Close and runtime scheduling remain separate gates. Exact singleton metadata only; unsupported/ambiguous unknown protected. C-string binary SSIDs/invalid channels omitted; max8 local cap. SUMMARY only, no FOURWAY. No credentials/deployment/hardware acceptance. |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
 | N2W | Generic wireless security-summary/offload contract | `locally integrated; predicates/ABI and conversion/selection-helper models passed; full RV32 GUI build verified` | Upstream-based generic49972c6241 retained separately and integrated onto port branch. Explicit per-device capability, owned exact-version summary, no fabricated AP security IE. Unknown/ambiguous protected networks must not fall back to open. Initial singleton WPA/RSN PSK profile; legacy path preserved. Device query/full association and hardware gates pending. No credentials or deployment. |
@@ -839,6 +839,30 @@ WPA2-PSK/CCMP infrastructure, not a claim of full security-profile support.
 RX/TX now require the separate associated gate. Native queued S2_SETOPTIONS
 and confirmed CONNECT/DISCONNECT delivery are still missing; backend builds
 and host models do not establish actual connectivity or C6 privacy.
+The next native input stage copies bounded SANA tag options into an owned
+association target. AuthTypes is the shared caller's exact OPEN bit0, not an
+invented S2 authentication enum. WPAInfo must be absent (open) or an exact
+singleton RSN-PSK/CCMP element; credentials without the protected profile and
+protected profiles without credentials are refused. Binary PSK remains32 bytes,
+encoded as64 hex bytes for the existing C6 target contract. Unsupported or
+ambiguous security, PMF and nonempty cached PMKIDs are not silently downgraded.
+The parser requires an explicit readable IE extent before inspecting its length
+byte; the embedded length must agree. Existing SANA WPAInfo conveys only a
+pointer. Before binding, the shared caller must validate its actual wpa_ie_len
+and convey that extent through an agreed contract; never infer readable extent
+from the untrusted IE itself. No runtime binding or FOURWAY exposure is permitted
+before that handover and actual per-device FOURWAY/RAW_PSK guards. The parser
+does not retain caller memory or enable association by itself.
+Native binding must acknowledge accepted work only after copying, without
+retaining IOSana2Req after Reply; a separate opener-pinned attempt owns its data
+until the owner task completes and volatile-wipes it. Keep pending and active
+attempts bounded, cancel superseded work, and linearize final link publication
+against Close/Offline/Flush/new selection under the unit lock. Never hold that
+lock across radio RPCs. Before enabling FOURWAY, implement real teardown and
+failure propagation (the shared caller currently does not subscribe to ERROR),
+and keep native traffic blocked until current-target acceptance commits.
+Models must cover immediate caller request reuse, queued and active cancellation,
+Close drain, supersession, observer races and late failure, not only tag parsing.
 Shared-motor credential retention is an additional host-side privacy gate:
 command.c stages outgoing bytes in the persistent DMA bounce and does not wipe
 them at completion. Clear only after authoritative DMA quiescence, including
@@ -34599,3 +34623,83 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   Next: native queued association ownership/binding. Actual C6 recovery/privacy,
   WLAN association/DHCP, frames/reconnect and1800s two-hart/SD/display coexistence
   remain open. No credential enablement or Wi-Fi completion is claimed.
+
+### 2026-10-10 - N2A owned native association options prerequisite
+
+- State: staged input helper and explicit RV32 compile, not native association,
+  request-queue acceptance or hardware verification. The supported-command
+  list has not acquired S2_SETOPTIONS; the device still reports SUMMARY only.
+  Both privacy release assertions remain0. No serial, reset, flash, credentials,
+  C6 NVS/eFuse inspection or SD writes were performed.
+- Implementation: association_options.h traverses at most128 tag items,
+  including bounded MORE/SKIP controls, rejects duplicates/unknown options,
+  copies SSID/BSSID/passphrase or exactly32 binary PSK bytes into an owned
+  target, and volatile-zeroes the whole target on refusal. Only managed open
+  or singleton RSN-PSK/CCMP is admitted; no WEP/WPA1/mixed/EAP/FT/SAE/PMF or
+  nonempty PMKID fallback. Raw PSK is encoded as64 hex bytes for the existing
+  private C6 target, never interpreted as a passphrase. No pointer is retained.
+- Independent source review: acceptance is not connection. Shared
+  WirelessManager's driver_sana2.c:466..589 has stack-backed options and waits
+  for a separate CONNECT after DoIO; its RSN generator emits singleton suites
+  and explicit capabilities. No tag-list/request memory may survive Reply.
+  Review found missing IE span handover: existing WPAInfo passes only a pointer.
+  Corrected helper now requires an explicit readable20/22/24-byte extent before
+  inspecting the embedded length, then requires exact length agreement. The
+  caller must supply valid borrowed memory; a length cannot attest allocation.
+  Existing shared wpa_ie_len must be validated and conveyed before binding.
+  Per-device FOURWAY/RAW_PSK guards are also mandatory before invoking the parser.
+- Target procedure: fresh standalone parser fixture, actual generated headers
+  and current wifi-build Developer sysroot, configured riscv-aros-gcc, C99 O2
+  freestanding/no-builtin, Wall/Wextra/Werror/pedantic. AROS headers use system
+  include paths for their existing GNU extensions; changed source remains strict.
+  Initial attempt exited1 because those header extensions were treated as ISO
+  errors and the fixture incorrectly assumed BOOL4/target124. Actual headers
+  define BOOL2; corrected fixture asserts IPTR4, BOOL2, target120, password36 and
+  bssid_set110. Both corrected compiles exit0; the final explicit-extent object
+  is5840B SHA256dff6a50a36a3afb129fa9d1c7f3564a98795bc18f7209f641328586f675cec92.
+  This is target compilation, not target execution or a newly built module.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/native-options.cD6yL7.
+  Failed rv32.log is retained; rv32-explicit-extent.log is the final actualexit0
+  compile. Unchanged event/configuration models pass6 scenarios/67 checks each
+  O0/O2 ASan/UBSan on macOS, actualexit0 (events-macos.log), with Exec/list/flush
+  fakes. Dedicated input model result is recorded separately below.
+- Next: implement the explicit validated IE span handover, then a separately
+  opener-pinned bounded pending/active attempt (no IOSana2Req retained after
+  acceptance). Cover reuse/supersession/Close/Offline/Flush/cancel/late-result
+  publication, truthful error/link notification and bounded real disassociation
+  before capability exposure. C6 physical recovery/privacy, DHCP/bidirectional
+  traffic, reconnect and1800s two-hart/SD/display qualification remain open.
+- Final bounded input evidence: actual association_options.h with production
+  TagItem and wireless constants; host primitive shim fixes ULONG32/BOOL16 but
+  keeps IPTR host-width for borrowed pointers. No radio, Exec or native queue
+  executes. Models pass70 cases/230 checks each O0/O2 ASan/UBSan on macOS and
+  network-isolated Linux, actualexit0. Cover owned copies after input mutation,
+  open/protected/raw-key boundaries, whole-output wiping, RSN security/PMF/PMKID
+  refusal, independent IE length mismatch and separately allocated short spans,
+  bounded/cyclic tag traversal, duplicates and unknown options. They cannot
+  qualify shared caller extent forwarding or arbitrary invalid pointers.
+  Primary repeated both platforms; non-author source review accepted the
+  explicit-extent correction. Initial Linux bind mount exposed an empty
+  /Volumes directory and exited2 before compiling (options-linux.log), not a
+  test pass. Corrected procedure streams frozen source.tar into a disposable
+  builder container with --network none and no mount; existing GCC13.3 compiles
+  both sanitized optimizations. Libarchive provenance-header warnings are not
+  model failures. Final options-macos.log SHA256
+  3ad8aecf8280fbb5934c77098d66f0251cb39615a97976ed9d68797dc77ea2d1;
+  options-linux-final.log
+  b761366982b057e337910d184af8b4fd7cce4672306c916e901fe3daafaa2d69;
+  frozen source.tar
+  0d6d549b4625eac6152c08a5f29318b39a91fdd19fb9de0297d459c44f50acbc.
+  Production parser SHA256
+  e005cdfa6e697a3d3b9fc07f8ae9b704fb4bad6fedd65dd6c95d27427a6b5239.
+- Non-author model review independently repeats macOS70/230 at both levels
+  and finds no blocking defect. Its minor runner issue was corrected: require
+  the exact70/230 count, not just a well-formed PASS line. Primary reruns the
+  hardened runner at both levels on both hosts, actualexit0. Final logs are
+  options-macos-verified.log and options-linux-counted.log, with respectively
+  the same3ad8aecf... and b7613669... hashes above. Final frozen source-counted.tar
+  SHA256d2a00159c63c4cdf51f84a0157e65d579dd4f2d3682110d00537a58774e8d21a;
+  runner541e95a067b48a1631437bbb8fb3087c645b45f573267d3d675b82e4d00027c0.
+  Linux image SHA256e4f4b5717ab9c9bf7219716469ad3d85c01e144d09763a4eb1fcd22a4a46151d.
+  No queue/association/capability or hardware claim is inferred from this pass.

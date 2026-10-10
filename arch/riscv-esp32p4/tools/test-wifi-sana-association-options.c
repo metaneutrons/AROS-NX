@@ -1,0 +1,581 @@
+/* Host-only tests of the production association-options header. The actual
+ * SANA-II and TagItem headers are included; radio, BeginIO and hardware are
+ * outside this fixture. Borrowed tags, strings and IE extents stay readable. */
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef void *APTR;
+typedef uintptr_t IPTR;
+typedef uint32_t ULONG;
+typedef int32_t LONG;
+typedef uint16_t UWORD;
+typedef uint8_t UBYTE;
+typedef int16_t BOOL;
+#define FALSE ((BOOL)0)
+#define TRUE  ((BOOL)1)
+
+/* Let the public headers use these host-shimmed AROS primitive types while
+ * retaining their actual TagItem and wireless tag/constant definitions. */
+#define EXEC_TYPES_H 1
+#include "../network/association_options.h"
+
+typedef char assert_ulong_is_32_bits[sizeof(ULONG) == 4 ? 1 : -1];
+typedef char assert_bool_is_16_bits[sizeof(BOOL) == 2 ? 1 : -1];
+typedef char assert_tagitem_uses_native_host_iptr[
+    sizeof(struct TagItem) == 2 * sizeof(IPTR) ? 1 : -1];
+
+static struct p4_wifi_association_target target;
+static unsigned long checks;
+static unsigned long cases;
+
+#define CHECK(expression)                                                   \
+    do                                                                      \
+    {                                                                       \
+        ++checks;                                                           \
+        if (!(expression))                                                  \
+        {                                                                   \
+            fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__,        \
+                    #expression);                                          \
+            exit(1);                                                        \
+        }                                                                   \
+    } while (0)
+
+static IPTR pointer_data(const void *pointer)
+{
+    return (IPTR)(uintptr_t)pointer;
+}
+
+static void set_tag(struct TagItem *item, ULONG tag, IPTR data)
+{
+    item->ti_Tag = (Tag)tag;
+    item->ti_Data = data;
+}
+
+static BOOL bytes_are_zero(const UBYTE *bytes, size_t length)
+{
+    size_t index;
+    for (index = 0; index < length; ++index)
+        if (bytes[index] != 0u)
+            return FALSE;
+    return TRUE;
+}
+
+static void poison_target(void)
+{
+    memset(&target, 0xA5, sizeof(target));
+}
+
+static void expect_success(const struct TagItem *tags, ULONG wpa_ie_extent)
+{
+    ++cases;
+    poison_target();
+    CHECK(p4wlan_copy_association_options(&target, tags, wpa_ie_extent));
+}
+
+static void expect_refusal(const struct TagItem *tags, ULONG wpa_ie_extent)
+{
+    BOOL accepted;
+    ++cases;
+    poison_target();
+    accepted = p4wlan_copy_association_options(&target, tags, wpa_ie_extent);
+    if (accepted)
+        fprintf(stderr, "unexpected acceptance in case %lu (IE extent %lu)\n",
+                cases, (unsigned long)wpa_ie_extent);
+    CHECK(!accepted);
+    CHECK(bytes_are_zero((const UBYTE *)&target, sizeof(target)));
+}
+
+static void set_required(struct TagItem *tags, const UBYTE *ssid,
+                         const UBYTE *rsn)
+{
+    set_tag(&tags[0], S2INFO_SSID, pointer_data(ssid));
+    set_tag(&tags[1], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    /* The shared SANA contract passes WPA_AUTH_ALG_OPEN as bit zero. */
+    set_tag(&tags[2], S2INFO_AuthTypes, (IPTR)1u);
+    set_tag(&tags[3], S2INFO_WPAInfo, pointer_data(rsn));
+}
+
+static void set_rsn(UBYTE ie[24], UBYTE length)
+{
+    memset(ie, 0, 24u);
+    ie[0] = 48u;
+    ie[1] = length;
+    ie[2] = 1u;
+    ie[3] = 0u;
+    ie[4] = 0u;
+    ie[5] = 15u;
+    ie[6] = 172u;
+    ie[7] = 4u;             /* group CCMP */
+    ie[8] = 1u;
+    ie[9] = 0u;
+    ie[10] = 0u;
+    ie[11] = 15u;
+    ie[12] = 172u;
+    ie[13] = 4u;            /* one pairwise CCMP */
+    ie[14] = 1u;
+    ie[15] = 0u;
+    ie[16] = 0u;
+    ie[17] = 15u;
+    ie[18] = 172u;
+    ie[19] = 2u;            /* one AKM PSK */
+    if (length >= 20u)
+        ie[20] = 0x3Du;     /* only supported RSN capabilities */
+    if (length == 22u)
+        ie[22] = 0u;        /* no PMKIDs */
+}
+
+static void set_protected_with_passphrase(struct TagItem *tags,
+                                          const UBYTE *ssid,
+                                          const UBYTE *rsn,
+                                          const UBYTE *passphrase)
+{
+    set_required(tags, ssid, rsn);
+    set_tag(&tags[4], S2INFO_Passphrase, pointer_data(passphrase));
+    set_tag(&tags[5], TAG_DONE, 0u);
+}
+
+static void test_open_owned_copy_and_optional_target_fields(void)
+{
+    UBYTE ssid[33] = "lab-network";
+    UBYTE bssid[6] = { 0x02u, 0x12u, 0x34u, 0x56u, 0x78u, 0x9Au };
+    struct TagItem tags[7];
+    set_tag(&tags[0], S2INFO_SSID, pointer_data(ssid));
+    set_tag(&tags[1], S2INFO_BSSID, pointer_data(bssid));
+    set_tag(&tags[2], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&tags[3], S2INFO_Channel, (IPTR)14u);
+    set_tag(&tags[4], S2INFO_AuthTypes, (IPTR)1u);
+    set_tag(&tags[5], S2INFO_WPAInfo, 0u); /* explicit open profile */
+    set_tag(&tags[6], TAG_DONE, 0u);
+
+    expect_success(tags, 0u);
+    CHECK(target.ssid_length == 11u);
+    CHECK(memcmp(target.ssid, "lab-network", 11u) == 0);
+    CHECK(target.password_length == 0u && target.authmode == 0u);
+    CHECK(target.bssid_set && memcmp(target.bssid, bssid, sizeof(bssid)) == 0);
+    CHECK(target.channel == 14u);
+    CHECK(bytes_are_zero(target.password, sizeof(target.password)));
+
+    ssid[0] = (UBYTE)'X';
+    bssid[0] = 0x04u;
+    set_tag(&tags[0], S2INFO_SSID, pointer_data(bssid));
+    CHECK(target.ssid[0] == (UBYTE)'l');
+    CHECK(target.bssid[0] == 0x02u);
+}
+
+static void test_protected_passphrase_and_string_boundaries(void)
+{
+    UBYTE rsn[24];
+    UBYTE ssid32[33];
+    UBYTE pass8[] = "password";
+    UBYTE pass63[64];
+    struct TagItem tags[7];
+    size_t index;
+
+    set_rsn(rsn, 18u);
+    set_protected_with_passphrase(tags, (const UBYTE *)"secure-net", rsn,
+                                  pass8);
+    expect_success(tags, 20u);
+    CHECK(target.authmode == 3u && target.password_length == 8u);
+    CHECK(memcmp(target.password, "password", 8u) == 0);
+    pass8[0] = (UBYTE)'X';
+    rsn[0] = 0u;
+    CHECK(target.password[0] == (UBYTE)'p');
+    CHECK(target.authmode == 3u);
+
+    for (index = 0; index < 32u; ++index)
+        ssid32[index] = (UBYTE)'s';
+    ssid32[32] = 0u;
+    for (index = 0; index < 63u; ++index)
+        pass63[index] = (UBYTE)'p';
+    pass63[63] = 0u;
+    set_rsn(rsn, 20u);
+    set_protected_with_passphrase(tags, ssid32, rsn, pass63);
+    expect_success(tags, 22u);
+    CHECK(target.ssid_length == 32u && target.password_length == 63u);
+    CHECK(target.channel == 0u && !target.bssid_set);
+    CHECK(memcmp(target.ssid, ssid32, 32u) == 0);
+    CHECK(memcmp(target.password, pass63, 63u) == 0);
+}
+
+static void test_raw_binary_psk_is_owned_lowercase_hex(void)
+{
+    static const UBYTE hex[] = "0123456789abcdef";
+    UBYTE rsn[24];
+    UBYTE psk[32];
+    struct TagItem tags[6];
+    size_t index;
+    set_rsn(rsn, 22u);
+    for (index = 0; index < sizeof(psk); ++index)
+        psk[index] = (UBYTE)(index * 17u);
+    psk[0] = 0u;
+    psk[1] = 0xFFu;
+    psk[31] = 0u;
+    set_required(tags, (const UBYTE *)"raw-key", rsn);
+    set_tag(&tags[4], S2INFO_PSK, pointer_data(psk));
+    set_tag(&tags[5], TAG_DONE, 0u);
+
+    expect_success(tags, 24u);
+    CHECK(target.authmode == 3u && target.password_length == 64u);
+    for (index = 0; index < sizeof(psk); ++index)
+    {
+        CHECK(target.password[index * 2u] == hex[psk[index] >> 4]);
+        CHECK(target.password[index * 2u + 1u] == hex[psk[index] & 15u]);
+    }
+    psk[1] = 0u;
+    CHECK(target.password[0] == (UBYTE)'0');
+    CHECK(target.password[1] == (UBYTE)'0');
+    CHECK(target.password[2] == (UBYTE)'f');
+    CHECK(target.password[3] == (UBYTE)'f');
+}
+
+static void test_invalid_credentials_and_authentication_combinations(void)
+{
+    UBYTE rsn[24];
+    UBYTE passphrase[] = "correct horse";
+    UBYTE raw[32];
+    struct TagItem tags[8];
+
+    set_required(tags, (const UBYTE *)"open", NULL);
+    set_tag(&tags[4], S2INFO_Passphrase, pointer_data(passphrase));
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, 0u); /* open profile must not carry a secret */
+
+    set_rsn(rsn, 18u);
+    set_required(tags, (const UBYTE *)"protected", rsn);
+    set_tag(&tags[4], TAG_DONE, 0u);
+    expect_refusal(tags, 20u); /* protected profile needs one credential */
+
+    memset(raw, 0x5A, sizeof(raw));
+    set_required(tags, (const UBYTE *)"open", NULL);
+    set_tag(&tags[4], S2INFO_PSK, pointer_data(raw));
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, 0u);
+
+    set_required(tags, (const UBYTE *)"protected", rsn);
+    set_tag(&tags[4], S2INFO_Passphrase, pointer_data(passphrase));
+    set_tag(&tags[5], S2INFO_PSK, pointer_data(raw));
+    set_tag(&tags[6], TAG_DONE, 0u);
+    expect_refusal(tags, 20u);
+
+    set_required(tags, (const UBYTE *)"protected", rsn);
+    set_tag(&tags[4], S2INFO_PSK, pointer_data(raw));
+    set_tag(&tags[5], S2INFO_Passphrase, pointer_data(passphrase));
+    set_tag(&tags[6], TAG_DONE, 0u);
+    expect_refusal(tags, 20u);
+
+    set_required(tags, (const UBYTE *)"protected", rsn);
+    set_tag(&tags[4], S2INFO_Passphrase, 0u);
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, 20u);
+}
+
+static void expect_bad_rsn(UBYTE rsn[24], ULONG wpa_ie_extent)
+{
+    UBYTE passphrase[] = "correct horse";
+    struct TagItem tags[6];
+    set_required(tags, (const UBYTE *)"protected", rsn);
+    set_tag(&tags[4], S2INFO_Passphrase, pointer_data(passphrase));
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, wpa_ie_extent);
+}
+
+static void test_strict_rsn_suite_and_pmf_pmkid_refusals(void)
+{
+    UBYTE rsn[24];
+
+    set_rsn(rsn, 17u); expect_bad_rsn(rsn, 20u);
+    set_rsn(rsn, 19u); expect_bad_rsn(rsn, 20u);
+    set_rsn(rsn, 21u); expect_bad_rsn(rsn, 22u);
+    set_rsn(rsn, 23u); expect_bad_rsn(rsn, 24u);
+    set_rsn(rsn, 26u); expect_bad_rsn(rsn, 24u);
+
+    set_rsn(rsn, 18u); rsn[0] = 221u; expect_bad_rsn(rsn, 20u);
+    set_rsn(rsn, 18u); rsn[2] = 2u; expect_bad_rsn(rsn, 20u);
+    set_rsn(rsn, 18u); rsn[7] = 2u; expect_bad_rsn(rsn, 20u);
+    set_rsn(rsn, 18u); rsn[8] = 2u; expect_bad_rsn(rsn, 20u);
+    set_rsn(rsn, 18u); rsn[13] = 2u; expect_bad_rsn(rsn, 20u);
+    set_rsn(rsn, 18u); rsn[14] = 2u; expect_bad_rsn(rsn, 20u);
+    set_rsn(rsn, 18u); rsn[19] = 1u; expect_bad_rsn(rsn, 20u);
+
+    set_rsn(rsn, 20u); rsn[20] = 0x02u; expect_bad_rsn(rsn, 22u); /* no-pairwise */
+    set_rsn(rsn, 20u); rsn[20] = 0x40u; expect_bad_rsn(rsn, 22u); /* MFPR */
+    set_rsn(rsn, 20u); rsn[20] = 0x80u; expect_bad_rsn(rsn, 22u); /* MFPC */
+    set_rsn(rsn, 20u); rsn[21] = 1u; expect_bad_rsn(rsn, 22u);
+    set_rsn(rsn, 22u); rsn[22] = 1u; expect_bad_rsn(rsn, 24u); /* PMKID count */
+    set_rsn(rsn, 22u); rsn[23] = 1u; expect_bad_rsn(rsn, 24u);
+}
+
+static void test_explicit_ie_extent_validation(void)
+{
+    static const ULONG short_extents[] = { 0u, 1u, 2u, 19u };
+    UBYTE rsn[24];
+    UBYTE passphrase[] = "correct horse";
+    struct TagItem tags[6];
+    size_t index;
+
+    /* The allocation is readable for exactly each declared short span (and
+     * one byte for extent zero so WPAInfo remains a non-NULL pointer). */
+    for (index = 0; index < sizeof(short_extents) / sizeof(short_extents[0]);
+         ++index)
+    {
+        ULONG extent = short_extents[index];
+        size_t allocation_size = extent ? (size_t)extent : 1u;
+        UBYTE *short_ie = (UBYTE *)malloc(allocation_size);
+        CHECK(short_ie != NULL);
+        memset(short_ie, 0xA5, allocation_size);
+        set_protected_with_passphrase(tags, (const UBYTE *)"protected",
+                                      short_ie, passphrase);
+        expect_refusal(tags, extent);
+        free(short_ie);
+    }
+
+    /* The legal span and IE-internal length are independent inputs. */
+    set_rsn(rsn, 18u);
+    expect_bad_rsn(rsn, 22u);
+    set_rsn(rsn, 20u);
+    expect_bad_rsn(rsn, 20u);
+    set_rsn(rsn, 22u);
+    expect_bad_rsn(rsn, 22u);
+    set_rsn(rsn, 18u);
+    expect_bad_rsn(rsn, 0u);
+
+    /* A NULL WPAInfo denotes open, so it cannot smuggle in an IE span. */
+    set_required(tags, (const UBYTE *)"open", NULL);
+    set_tag(&tags[4], TAG_DONE, 0u);
+    expect_refusal(tags, 1u);
+}
+
+static void test_ssid_bssid_channel_auth_and_port_validation(void)
+{
+    UBYTE rsn[24];
+    UBYTE long_ssid[34];
+    UBYTE zero_bssid[6] = { 0 };
+    UBYTE multicast_bssid[6] = { 0x01u, 2u, 3u, 4u, 5u, 6u };
+    UBYTE unicast_bssid[6] = { 0x02u, 2u, 3u, 4u, 5u, 6u };
+    struct TagItem tags[8];
+    size_t index;
+
+    set_rsn(rsn, 18u);
+    memset(long_ssid, 'a', 33u);
+    long_ssid[33] = 0u;
+    set_required(tags, long_ssid, NULL);
+    set_tag(&tags[4], TAG_DONE, 0u);
+    expect_refusal(tags, 0u); /* 33-byte name; the entire input remains readable */
+
+    set_required(tags, NULL, NULL);
+    set_tag(&tags[4], TAG_DONE, 0u);
+    expect_refusal(tags, 0u);
+    set_required(tags, (const UBYTE *)"", NULL);
+    set_tag(&tags[4], TAG_DONE, 0u);
+    expect_refusal(tags, 0u);
+
+    set_required(tags, (const UBYTE *)"valid", NULL);
+    set_tag(&tags[4], S2INFO_BSSID, 0u);
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, 0u);
+    set_required(tags, (const UBYTE *)"valid", NULL);
+    set_tag(&tags[4], S2INFO_BSSID, pointer_data(zero_bssid));
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, 0u);
+    set_required(tags, (const UBYTE *)"valid", NULL);
+    set_tag(&tags[4], S2INFO_BSSID, pointer_data(multicast_bssid));
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, 0u);
+
+    set_required(tags, (const UBYTE *)"valid", NULL);
+    set_tag(&tags[4], S2INFO_BSSID, pointer_data(unicast_bssid));
+    set_tag(&tags[5], S2INFO_Channel, (IPTR)0u);
+    set_tag(&tags[6], TAG_DONE, 0u);
+    expect_success(tags, 0u);
+    CHECK(target.bssid_set && target.channel == 0u);
+
+    set_required(tags, (const UBYTE *)"valid", NULL);
+    set_tag(&tags[4], S2INFO_Channel, (IPTR)15u);
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, 0u);
+
+    for (index = 0; index < 2u; ++index)
+    {
+        set_required(tags, (const UBYTE *)"valid", NULL);
+        set_tag(&tags[1], S2INFO_PortType,
+                (IPTR)(index ? S2PORT_ADHOC : 0u));
+        set_tag(&tags[4], TAG_DONE, 0u);
+        expect_refusal(tags, 0u);
+    }
+    for (index = 0; index < 2u; ++index)
+    {
+        IPTR auth_types = index ? 2u : 0u;
+        set_required(tags, (const UBYTE *)"valid", NULL);
+        set_tag(&tags[2], S2INFO_AuthTypes, auth_types);
+        set_tag(&tags[4], TAG_DONE, 0u);
+        expect_refusal(tags, 0u);
+    }
+}
+
+static void test_passphrase_length_and_character_rules(void)
+{
+    UBYTE rsn[24];
+    UBYTE pass7[] = "1234567";
+    UBYTE pass64[65];
+    UBYTE pass_control[10] = { '1', '2', '3', '4', '5', '6', '7', 1, '9', 0 };
+    UBYTE pass_non_ascii[10] = { '1', '2', '3', '4', '5', '6', '7', 127, '9', 0 };
+    struct TagItem tags[6];
+    size_t index;
+
+    set_rsn(rsn, 18u);
+    set_protected_with_passphrase(tags, (const UBYTE *)"protected", rsn,
+                                  pass7);
+    expect_refusal(tags, 20u);
+
+    memset(pass64, 'x', 64u);
+    pass64[64] = 0u;
+    set_protected_with_passphrase(tags, (const UBYTE *)"protected", rsn,
+                                  pass64);
+    expect_refusal(tags, 20u);
+    set_protected_with_passphrase(tags, (const UBYTE *)"protected", rsn,
+                                  pass_control);
+    expect_refusal(tags, 20u);
+    set_protected_with_passphrase(tags, (const UBYTE *)"protected", rsn,
+                                  pass_non_ascii);
+    expect_refusal(tags, 20u);
+
+    set_required(tags, (const UBYTE *)"protected", rsn);
+    set_tag(&tags[4], S2INFO_PSK, 0u);
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, 20u);
+
+    for (index = 0; index < 8u; ++index)
+        CHECK(target.password[index] == 0u);
+}
+
+static void test_missing_duplicate_and_unknown_tags(void)
+{
+    UBYTE rsn[24];
+    UBYTE passphrase[] = "correct horse";
+    struct TagItem tags[10];
+
+    set_required(tags, (const UBYTE *)"valid", NULL);
+    set_tag(&tags[0], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&tags[4], TAG_DONE, 0u);
+    expect_refusal(tags, 0u); /* no SSID */
+
+    set_tag(&tags[0], S2INFO_SSID, pointer_data((const UBYTE *)"valid"));
+    set_tag(&tags[1], S2INFO_AuthTypes, (IPTR)1u);
+    set_tag(&tags[2], S2INFO_WPAInfo, 0u);
+    set_tag(&tags[3], TAG_DONE, 0u);
+    expect_refusal(tags, 0u); /* no port */
+
+    set_required(tags, (const UBYTE *)"valid", NULL);
+    set_tag(&tags[2], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&tags[3], S2INFO_WPAInfo, 0u);
+    set_tag(&tags[4], TAG_DONE, 0u);
+    expect_refusal(tags, 0u); /* no auth */
+
+    set_tag(&tags[2], S2INFO_AuthTypes, (IPTR)1u);
+    set_tag(&tags[3], TAG_DONE, 0u);
+    expect_refusal(tags, 0u); /* no WPAInfo/open-or-protected declaration */
+
+    set_required(tags, (const UBYTE *)"valid", NULL);
+    set_tag(&tags[4], S2INFO_Disassociate, 0u);
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, 0u);
+
+    set_required(tags, (const UBYTE *)"valid", NULL);
+    set_tag(&tags[4], S2INFO_SSID, pointer_data((const UBYTE *)"again"));
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, 0u);
+
+    set_required(tags, (const UBYTE *)"valid", NULL);
+    set_tag(&tags[4], S2INFO_WPAInfo, 0u);
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, 0u);
+
+    set_required(tags, (const UBYTE *)"valid", NULL);
+    set_tag(&tags[4], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags, 0u);
+
+    set_rsn(rsn, 18u);
+    set_required(tags, (const UBYTE *)"valid", rsn);
+    set_tag(&tags[4], S2INFO_Passphrase, pointer_data(passphrase));
+    set_tag(&tags[5], S2INFO_Passphrase, pointer_data(passphrase));
+    set_tag(&tags[6], TAG_DONE, 0u);
+    expect_refusal(tags, 20u);
+}
+
+static void test_tag_list_traversal_and_bounded_failure(void)
+{
+    struct TagItem first[3];
+    struct TagItem second[4];
+    struct TagItem more_null[5];
+    struct TagItem skip_valid[7];
+    struct TagItem cycle[1];
+    struct TagItem skip_overflow[1];
+    struct TagItem skip_budget[129];
+    size_t index;
+
+    set_tag(&first[0], S2INFO_SSID, pointer_data((const UBYTE *)"linked"));
+    set_tag(&first[1], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&first[2], TAG_MORE, pointer_data(second));
+    set_tag(&second[0], S2INFO_AuthTypes, (IPTR)1u);
+    set_tag(&second[1], S2INFO_WPAInfo, 0u);
+    set_tag(&second[2], TAG_DONE, 0u);
+    expect_success(first, 0u);
+    CHECK(target.ssid_length == 6u && target.authmode == 0u);
+
+    set_tag(&more_null[0], S2INFO_SSID, pointer_data((const UBYTE *)"null-more"));
+    set_tag(&more_null[1], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&more_null[2], S2INFO_AuthTypes, (IPTR)1u);
+    set_tag(&more_null[3], S2INFO_WPAInfo, 0u);
+    set_tag(&more_null[4], TAG_MORE, 0u);
+    expect_success(more_null, 0u);
+
+    set_tag(&skip_valid[0], S2INFO_SSID, pointer_data((const UBYTE *)"skip"));
+    set_tag(&skip_valid[1], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&skip_valid[2], S2INFO_AuthTypes, (IPTR)1u);
+    set_tag(&skip_valid[3], S2INFO_WPAInfo, 0u);
+    set_tag(&skip_valid[4], TAG_SKIP, (IPTR)1u);
+    set_tag(&skip_valid[5], S2INFO_Disassociate, 0u);
+    set_tag(&skip_valid[6], TAG_DONE, 0u);
+    expect_success(skip_valid, 0u);
+
+    set_tag(&cycle[0], TAG_MORE, pointer_data(cycle));
+    expect_refusal(cycle, 0u);
+
+    set_tag(&skip_overflow[0], TAG_SKIP, (IPTR)~(IPTR)0);
+    expect_refusal(skip_overflow, 0u);
+
+    for (index = 0; index < sizeof(skip_budget) / sizeof(skip_budget[0]);
+         ++index)
+        set_tag(&skip_budget[index], TAG_DONE, 0u);
+    set_tag(&skip_budget[0], TAG_SKIP, (IPTR)127u);
+    expect_refusal(skip_budget, 0u); /* consumes all 128 traversal slots */
+}
+
+static void test_null_target_refusal(void)
+{
+    struct TagItem done[1];
+    set_tag(&done[0], TAG_DONE, 0u);
+    ++cases;
+    CHECK(!p4wlan_copy_association_options(NULL, done, 0u));
+}
+
+int main(void)
+{
+    test_open_owned_copy_and_optional_target_fields();
+    test_protected_passphrase_and_string_boundaries();
+    test_raw_binary_psk_is_owned_lowercase_hex();
+    test_invalid_credentials_and_authentication_combinations();
+    test_strict_rsn_suite_and_pmf_pmkid_refusals();
+    test_explicit_ie_extent_validation();
+    test_ssid_bssid_channel_auth_and_port_validation();
+    test_passphrase_length_and_character_rules();
+    test_missing_duplicate_and_unknown_tags();
+    test_tag_list_traversal_and_bounded_failure();
+    test_null_target_refusal();
+    printf("PASS: %lu cases, %lu checks\n", cases, checks);
+    return 0;
+}

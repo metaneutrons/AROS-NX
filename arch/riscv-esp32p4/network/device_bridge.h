@@ -74,8 +74,9 @@ struct p4_wifi_device_callbacks {
  * It disconnects/verifies absence before configuration, then confirms the
  * current AP against the target and revalidates the live host epoch. TRUE is a
  * current-target snapshot, not causal attribution of UID0 events or IP proof.
- * association_enabled is false until the actual C6 privacy/recovery gate has
- * passed; even an open target must not bypass that gate. Failure/cancellation
+ * association_enabled is false until both C6 and host privacy/recovery release
+ * assertions are granted; builds cannot verify those hardware gates. Even an
+ * open target must not bypass either gate. Failure/cancellation
  * never permits traffic. Neither ready nor S2_ONLINE establishes link-up. */
 
 #endif

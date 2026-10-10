@@ -1,5 +1,18 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Native association input development (2026-10-10): a bounded options parser now
+copies the shared SANA caller's borrowed SSID/BSSID/passphrase or binary PSK into
+an owned target. It accepts only managed open or singleton RSN-PSK/CCMP, requires
+an explicit readable IE extent, and wipes the full output on refusal. The shared
+caller still needs a validated-length handover before binding. This is an
+input/lifetime prerequisite, not a queued
+S2_SETOPTIONS implementation. Actual native acceptance, cancellation, link events
+and teardown remain open; SUMMARY-only capability and both privacy assertions0
+are unchanged. Actual-header host tests pass70 cases/230 checks each O0/O2
+ASan/UBSan on macOS and network-isolated Linux; a standalone real-header RV32
+fixture compiles. These do not test the native request queue or hardware.
+No hardware, credentials or C6 firmware are touched.
+
 Native association development (2026-10-10): private bridge ABI3 adds an
 owner-service-only, aggregate-eight-second Disconnect/absence/SetConfig/
 Connect/current-AP path, owned credential copies and separate associated
