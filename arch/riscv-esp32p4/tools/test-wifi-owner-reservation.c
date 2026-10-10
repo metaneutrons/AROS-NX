@@ -27,6 +27,7 @@ struct wifi_owner_control {
     struct p4_hosted_owner_result result;
     struct p4_hosted_mac mac;
     struct p4_hosted_scan_count scan_count;
+    struct p4_hosted_sta_ap_info ap_info;
     struct p4_wifi_scan_result scan_result;
     uint16_t scan_capacity;
     uint8_t request[256];

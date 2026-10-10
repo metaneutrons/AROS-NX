@@ -16,6 +16,7 @@
 #define REPLACEMENT_GENERATION UINT32_C(0x5bd2)
 #define TEST_POOL_LIMIT 20u
 #define TEST_REQUEST_ID 282u
+#define TEST_AP_INFO_REQUEST_ID 294u
 #define TEST_CAPACITY P4_HOSTED_PENDING_BUFFER_MAX
 #define TEST_FRAME_CAPACITY P4_HOSTED_FRAME_MAX
 
@@ -343,6 +344,77 @@ static void test_events_unmatched_and_remote_error_only_correlate(void)
           fixture.ids.next_uid == 2u && fixture.ids.retired == 0u);
     /* Correlation is not acceptance of this negative remote status. */
     CHECK(remote_status < 0);
+}
+
+static void test_ap_info_request_uses_response_550_and_exact_uid(void)
+{
+    static const uint8_t not_connected_status[] = { 0x08u, 0x8fu, 0x60u };
+    struct fixture fixture;
+    struct p4_hosted_request_ids ids_before;
+    struct p4_hosted_inbox_item item;
+    uint32_t uid, next_uid;
+
+    fixture_init(&fixture, TEST_AP_INFO_REQUEST_ID, 0u);
+    uid = fixture_uid(&fixture);
+    CHECK(uid == 1u &&
+          fixture.ids.active_request_id == TEST_AP_INFO_REQUEST_ID);
+    CHECK(submit(&fixture, TEST_GENERATION, &fixture.ops, 0u,
+        fixture.request, fixture.request_size, fixture.txbuffer,
+        sizeof fixture.txbuffer));
+    CHECK(fixture.result.error == P4_HOSTED_PENDING_ERROR_NONE &&
+          fixture.result.submitted == 1u && fixture.result.uid == uid &&
+          fixture.result.request_id == TEST_AP_INFO_REQUEST_ID);
+    verify_request_frame(&fixture.fake, uid, TEST_AP_INFO_REQUEST_ID, 0u);
+    ids_before = fixture.ids;
+
+    memset(&item, 0, sizeof item);
+    item.msg_type = P4_HOSTED_RPC_TYPE_EVENT;
+    item.msg_id = 775u;
+    item.uid = 0u;
+    CHECK(p4_hosted_pending_correlate(&fixture.ids, TEST_GENERATION,
+        &item) == P4_HOSTED_PENDING_CORRELATION_EVENT);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+
+    init_response_item(&item, TEST_AP_INFO_REQUEST_ID, uid + 1u,
+                       not_connected_status, sizeof not_connected_status);
+    CHECK(item.msg_id == 550u &&
+          p4_hosted_pending_correlate(&fixture.ids, TEST_GENERATION,
+              &item) == P4_HOSTED_PENDING_CORRELATION_UNMATCHED);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+
+    init_response_item(&item, TEST_AP_INFO_REQUEST_ID + 1u, uid,
+                       not_connected_status, sizeof not_connected_status);
+    CHECK(item.msg_id == 551u &&
+          p4_hosted_pending_correlate(&fixture.ids, TEST_GENERATION,
+              &item) == P4_HOSTED_PENDING_CORRELATION_UNMATCHED);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+
+    init_response_item(&item, TEST_AP_INFO_REQUEST_ID, uid,
+                       not_connected_status, sizeof not_connected_status);
+    CHECK(item.msg_id == 550u &&
+          p4_hosted_pending_correlate(&fixture.ids, TEST_GENERATION,
+              &item) == P4_HOSTED_PENDING_CORRELATION_MATCHED);
+    CHECK(fixture.ids.active_uid == 0u &&
+          fixture.ids.active_request_id == 0u &&
+          fixture.ids.next_uid == 2u && fixture.ids.retired == 0u);
+
+    CHECK(p4_hosted_request_ids_reserve(&fixture.ids, TEST_GENERATION,
+        TEST_AP_INFO_REQUEST_ID, &next_uid));
+    CHECK(next_uid == 2u);
+    ids_before = fixture.ids;
+    init_response_item(&item, TEST_AP_INFO_REQUEST_ID, uid,
+                       not_connected_status, sizeof not_connected_status);
+    CHECK(p4_hosted_pending_correlate(&fixture.ids, TEST_GENERATION,
+        &item) == P4_HOSTED_PENDING_CORRELATION_UNMATCHED);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+
+    /* A caller timeout closes the second query without reusing its UID. */
+    CHECK(p4_hosted_request_ids_finish(&fixture.ids, TEST_GENERATION,
+        next_uid, TEST_AP_INFO_REQUEST_ID));
+    CHECK(fixture.ids.next_uid == 3u && fixture.ids.active_uid == 0u);
+    CHECK(p4_hosted_request_ids_reserve(&fixture.ids, TEST_GENERATION,
+        TEST_AP_INFO_REQUEST_ID, &next_uid));
+    CHECK(next_uid == 3u);
 }
 
 static void test_cancel_consumes_uid_and_old_reply_is_unmatched(void)
@@ -794,6 +866,7 @@ int main(void)
     test_submit_encodes_one_frame_and_leaves_identity_pending(0u);
     test_submit_encodes_one_frame_and_leaves_identity_pending(1u);
     test_events_unmatched_and_remote_error_only_correlate();
+    test_ap_info_request_uses_response_550_and_exact_uid();
     test_cancel_consumes_uid_and_old_reply_is_unmatched();
     test_submit_preflight_refusals_are_transactional();
     test_every_pending_object_pair_alias_refuses();

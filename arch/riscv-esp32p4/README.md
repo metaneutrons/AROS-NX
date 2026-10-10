@@ -155,9 +155,13 @@ IDs282..284, but its allowlist is not a credential-safety gate or a runtime
 association caller. The credential/privacy gate remains open.
 The opt-in owner now decodes775/776 into an owned, generation-bound observation
 ledger. UP_HINT is deliberately not CONNECT: the event UID is zero and cannot
-identify the Connect request. A typed correlated294/550 current-AP codec now
-exists, but is not yet admitted or called by the owner. It is a C6 state
-snapshot, not atomic proof of an association attempt. Default-off and core1
+identify the Connect request. The typed correlated294/550 current-AP query
+now runs once per new hint revision in the opt-in owner, outside client/SDMMC
+locks, with a one-second acceptance budget. Valid remote error status is not
+transport loss; malformed/late replies fail closed. Events during a query
+discard its result, and later events clear the stored snapshot. Matching owned
+SSID/BSSID/channel/auth metadata remains diagnostic, not atomic proof of an
+association attempt or permission to forward traffic. Default-off and core1
 owner resource builds pass; no new firmware is deployed. Native S2_SETOPTIONS,
 active-target confirmation, real link notifications and traffic gates remain
 open alongside C6 privacy/recovery and association/DHCP acceptance.

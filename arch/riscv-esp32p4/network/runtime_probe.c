@@ -168,6 +168,11 @@ struct wifi_probe_context
     ULONG owner_events;
     ULONG owner_last_event;
     struct p4_hosted_link_observation link_observation;
+    /* Diagnostic state snapshot only: no active association target exists
+     * yet, so even a matching AP cannot publish CONNECT or enable traffic. */
+    struct p4_hosted_sta_ap_info link_snapshot;
+    ULONG link_query_revision;
+    BOOL link_snapshot_matches_hint;
     ULONG owner_boot_start;
     ULONG owner_open_start;
     BOOL owner_cleanup;
@@ -543,6 +548,7 @@ struct wifi_owner_control {
     struct p4_hosted_mac mac;
     struct p4_hosted_tx_result frame_tx;
     struct p4_hosted_scan_count scan_count;
+    struct p4_hosted_sta_ap_info ap_info;
     struct p4_wifi_scan_result scan_result;
     uint16_t scan_capacity;
     uint8_t request[256];
@@ -664,6 +670,8 @@ static int wifi_owner_event(void *opaque,
         if (!p4_hosted_link_observe(&context->link_observation,
                                     context->generation, &rpc))
             return 0;
+        p4host_zero(&context->link_snapshot, sizeof(context->link_snapshot));
+        context->link_snapshot_matches_hint = FALSE;
     }
     /* Own typed metadata only. Uncorrelated UP_HINT cannot publish CONNECT;
      * no borrowed payload outlives this callback. Malformed link events
@@ -772,6 +780,9 @@ static int wifi_owner_request(struct wifi_probe_context *context,
         encoded = p4_hosted_scan_records_request(control->uid,
             control->scan_capacity, control->request,
             sizeof(control->request), &written);
+    else if (id == 294u)
+        encoded = p4_hosted_sta_ap_info_request(control->uid,
+            control->request, sizeof(control->request), &written);
     else
         encoded = p4_hosted_wifi_simple_request(id, control->uid,
             control->request, sizeof(control->request), &written);
@@ -801,6 +812,16 @@ static int wifi_owner_request(struct wifi_probe_context *context,
     rpc.uid = owner->reply.uid;
     rpc.payload = owner->reply.payload;
     rpc.payload_size = owner->reply.payload_size;
+    if (id == 294u) {
+        if (!p4_hosted_sta_ap_info_response(&rpc, control->uid,
+                                            &control->ap_info)) {
+            p4_hosted_owner_cancel(owner, fifo, context->generation);
+            return 0;
+        }
+        /* A decoded remote error is a completed query, not transport loss
+         * or proof of disconnection. The caller must inspect status. */
+        return 1;
+    }
     if (id == 257u) {
         if (!p4_hosted_mac_response(&rpc, control->uid, &control->mac) ||
             (control->mac.status == 0 && !control->mac.valid_mac)) {
@@ -841,6 +862,67 @@ static int wifi_owner_request(struct wifi_probe_context *context,
         return 0;
     }
     return control->status == 0;
+}
+
+/* One bounded query per observed UP_HINT revision, never per idle loop.
+ * The query runs outside client/controller locks, on the serialized owner.
+ * A hint is not an attempt ID. This snapshot remains diagnostic until native
+ * association adds an active target, cancellation and real link policy.
+ * Events drained during exchange invalidate the captured revision, including
+ * a same-AP reconnect; later events invalidate the stored snapshot in callback.
+ * A late/failed query cannot retain a previous matching snapshot. */
+static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context,
+    struct p4_hosted_owner *owner, struct wifi_owner_control *control,
+    struct p4_hosted_fifo *fifo, unsigned checksum)
+{
+    const ULONG timeout_us = 1000000UL;
+    ULONG generation = context->generation;
+    ULONG revision = context->link_observation.revision;
+    ULONG started;
+    unsigned index;
+    if (context->link_observation.kind != P4_HOSTED_LINK_UP_HINT ||
+        context->link_query_revision == revision)
+        return 1;
+    context->link_query_revision = revision;
+    context->link_snapshot_matches_hint = FALSE;
+    p4host_zero(&context->link_snapshot, sizeof(context->link_snapshot));
+    p4host_zero(&control->ap_info, sizeof(control->ap_info));
+    started = wifi_owner_now(context);
+    if (!wifi_owner_request(context, owner, control, fifo, checksum, 294u,
+                            timeout_us)) {
+        p4host_zero(&control->ap_info, sizeof(control->ap_info));
+        return 0;
+    }
+    if (context->generation != generation ||
+        context->link_observation.generation != generation ||
+        context->link_observation.revision != revision ||
+        context->link_observation.kind != P4_HOSTED_LINK_UP_HINT) {
+        p4host_zero(&control->ap_info, sizeof(control->ap_info));
+        return 1;
+    }
+    /* Exchange checks transport deadlines; include decode/callback time. */
+    if (!wifi_owner_remaining(context, started, timeout_us)) {
+        p4host_zero(&control->ap_info, sizeof(control->ap_info));
+        p4_hosted_owner_cancel(owner, fifo, generation);
+        return 0;
+    }
+    CopyMem(&control->ap_info, &context->link_snapshot,
+            sizeof(context->link_snapshot));
+    p4host_zero(&control->ap_info, sizeof(control->ap_info));
+    if (context->link_snapshot.status != 0 ||
+        context->link_snapshot.ap.ssid_size != context->link_observation.ssid_length ||
+        context->link_snapshot.ap.ssid_size > P4_HOSTED_ASSOCIATION_SSID_SIZE ||
+        context->link_snapshot.ap.primary != context->link_observation.channel ||
+        context->link_snapshot.ap.authmode != context->link_observation.authmode)
+        return 1;
+    for (index = 0; index < context->link_snapshot.ap.ssid_size; ++index)
+        if (context->link_snapshot.ap.ssid[index] != context->link_observation.ssid[index])
+            return 1;
+    for (index = 0; index < P4_HOSTED_ASSOCIATION_BSSID_SIZE; ++index)
+        if (context->link_snapshot.ap.bssid[index] != context->link_observation.bssid[index])
+            return 1;
+    context->link_snapshot_matches_hint = TRUE;
+    return 1;
 }
 
 static BOOL wifi_scan_output_valid(struct P4WifiBase *base,
@@ -1042,6 +1124,9 @@ static void wifi_owner_service(struct wifi_probe_context *context,
                     context->generation, checksum, P4_HOSTED_OWNER_MAX_SLICE_US,
                     &control->result))
                     break;
+                if (!wifi_owner_refresh_link_snapshot(context, owner, control,
+                        &opened->fifo_state, checksum))
+                    break;
                 wifi_yield(context); /* Always outside controller ownership. */
             }
         }
@@ -1082,6 +1167,9 @@ static void wifi_owner_service(struct wifi_probe_context *context,
         wifi_owner_release(context);
     }
     p4_hosted_owner_cancel(owner, &opened->fifo_state, context->generation);
+    p4host_zero(&context->link_snapshot, sizeof(context->link_snapshot));
+    context->link_snapshot_matches_hint = FALSE;
+    p4host_zero(&control->ap_info, sizeof(control->ap_info));
     bug("[WiFi] owner stopped startup=%u cleanup=%u events=%u last=%u error=%u\n",
         control->startup_ok, control->cleanup_ok, context->owner_events,
         context->owner_last_event, control->result.error);

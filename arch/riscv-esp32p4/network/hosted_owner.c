@@ -98,7 +98,7 @@ static int request_id_supported(uint32_t request_id)
 {
     return request_id == 257u || request_id == 260u ||
            (request_id >= 278u && request_id <= 284u) ||
-           (request_id >= 286u && request_id <= 289u);
+           (request_id >= 286u && request_id <= 289u) || request_id == 294u;
 }
 
 static int ids_consistent(const struct p4_hosted_request_ids *ids)

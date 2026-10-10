@@ -12,6 +12,7 @@
 #define OWNER_TEST_GENERATION UINT32_C(0x7191)
 #define OWNER_NEXT_GENERATION UINT32_C(0x7192)
 #define OWNER_TEST_REQUEST_ID 257u
+#define OWNER_TEST_AP_INFO_REQUEST_ID 294u
 #define OWNER_TIMEOUT_US 250u
 
 struct owner_fixture {
@@ -317,7 +318,112 @@ static void owner_verify_tx_request(const struct owner_fixture *fixture,
     CHECK(serial.endpoint == HOSTED_SERIAL_ENDPOINT_RPCRSP);
     CHECK(p4_hosted_rpc_decode(serial.protobuf, serial.protobuf_size, &rpc));
     CHECK(rpc.msg_type == P4_HOSTED_RPC_TYPE_REQUEST &&
-          rpc.msg_id == request_id && rpc.uid == uid);
+          rpc.msg_id == request_id && rpc.uid == uid &&
+          rpc.payload_size == 0u);
+}
+
+static void test_ap_info_exchange_correlates_response_550_after_tx(void)
+{
+    static const uint8_t status_body[] = { 0x08u, 0x8fu, 0x60u };
+    static const uint8_t event_body[] = { 0x3cu };
+    struct owner_fixture fixture;
+    struct p4_hosted_rpc early = {0};
+    uint8_t batch[TEST_CAPACITY];
+    uint32_t raw[] = { P4_HOSTED_OPEN_INT_PACKET };
+    uint32_t uid;
+    size_t used = 0u;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    owner_reserve_empty_request(&fixture, OWNER_TEST_AP_INFO_REQUEST_ID);
+    uid = fixture.owner.ids.active_uid;
+    CHECK(uid == 1u && fixture.owner.ids.active_request_id ==
+          OWNER_TEST_AP_INFO_REQUEST_ID);
+
+    /* A 775 event and exact 550 response already in the OPEN suffix are
+     * handled before TX; the response cannot settle a reservation early. */
+    early.msg_type = P4_HOSTED_RPC_TYPE_EVENT;
+    early.msg_id = 775u;
+    early.uid = 0u;
+    early.payload = event_body;
+    early.payload_size = sizeof event_body;
+    CHECK(p4_hosted_inbox_push(&fixture.owner.rx.inbox,
+        fixture.generation, &early));
+    early.msg_type = P4_HOSTED_RPC_TYPE_RESPONSE;
+    early.msg_id = OWNER_TEST_AP_INFO_REQUEST_ID + 256u;
+    early.uid = uid;
+    early.payload = status_body;
+    early.payload_size = sizeof status_body;
+    CHECK(p4_hosted_inbox_push(&fixture.owner.rx.inbox,
+        fixture.generation, &early));
+
+    /* After TX, stale UID and wrong response ID remain unmatched; only
+     * response 550 with the reserved nonzero UID completes the exchange. */
+    CHECK(append_owner_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+        OWNER_TEST_AP_INFO_REQUEST_ID + 256u, uid + 1u,
+        status_body, sizeof status_body) != 0u);
+    CHECK(append_owner_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+        OWNER_TEST_AP_INFO_REQUEST_ID + 257u, uid,
+        status_body, sizeof status_body) != 0u);
+    CHECK(append_owner_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+        OWNER_TEST_AP_INFO_REQUEST_ID + 256u, uid,
+        status_body, sizeof status_body) != 0u);
+    CHECK(add_batch(&fixture.fake, batch, used));
+    set_raws(&fixture.fake, raw, 1u);
+
+    CHECK(p4_hosted_owner_exchange(&fixture.owner, &fixture.fifo,
+        &fixture.owner_ops, fixture.generation, 0u, fixture.request,
+        fixture.request_size, OWNER_TIMEOUT_US, &fixture.result));
+    CHECK(fixture.result.error == P4_HOSTED_OWNER_OK &&
+          fixture.result.submitted == 1u && fixture.result.matched == 1u &&
+          fixture.result.uid == uid &&
+          fixture.result.request_id == OWNER_TEST_AP_INFO_REQUEST_ID);
+    CHECK(fixture.result.events == 1u && fixture.event_calls == 1u &&
+          fixture.last_event.msg_id == 775u &&
+          fixture.last_event.uid == 0u);
+    CHECK(fixture.result.unmatched == 3u);
+    CHECK(fixture.owner.reply.msg_type == P4_HOSTED_RPC_TYPE_RESPONSE &&
+          fixture.owner.reply.msg_id == 550u &&
+          fixture.owner.reply.uid == uid &&
+          fixture.owner.reply.payload_size == sizeof status_body &&
+          memcmp(fixture.owner.reply.payload, status_body,
+                 sizeof status_body) == 0);
+    CHECK(fixture.owner.pending_active == 0u &&
+          fixture.owner.ids.active_uid == 0u &&
+          fixture.owner.ids.next_uid == 2u &&
+          fixture.fake.tx_fifo_writes == 1u);
+    owner_verify_tx_request(&fixture, uid,
+                            OWNER_TEST_AP_INFO_REQUEST_ID);
+}
+
+static void test_idle_owner_admits_response_550_as_unmatched(void)
+{
+    static const uint8_t body[] = { 0x08u, 0x00u };
+    struct owner_fixture fixture;
+    uint8_t batch[TEST_CAPACITY];
+    uint32_t raw[] = { P4_HOSTED_OPEN_INT_PACKET };
+    size_t used = 0u;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    CHECK(append_owner_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+        OWNER_TEST_AP_INFO_REQUEST_ID + 256u, 1u,
+        body, sizeof body) != 0u);
+    CHECK(add_batch(&fixture.fake, batch, used));
+    set_raws(&fixture.fake, raw, 1u);
+
+    CHECK(p4_hosted_owner_step(&fixture.owner, &fixture.fifo,
+        &fixture.owner_ops, fixture.generation, 0u, 1000u,
+        &fixture.result));
+    CHECK(fixture.result.error == P4_HOSTED_OWNER_OK &&
+          fixture.result.unmatched == 1u &&
+          fixture.result.matched == 0u && fixture.result.events == 0u);
+    CHECK(fixture.owner.ids.active_uid == 0u &&
+          fixture.owner.pending_active == 0u &&
+          fixture.fake.tx_fifo_writes == 0u &&
+          fixture.fifo.poisoned == 0u);
 }
 
 static void test_exchange_dispatches_after_release_across_clock_wrap(void)
@@ -897,6 +1003,8 @@ static void test_cancel_closes_uid_without_bus_or_reuse(void)
 
 int main(void)
 {
+    test_ap_info_exchange_correlates_response_550_after_tx();
+    test_idle_owner_admits_response_550_as_unmatched();
     test_exchange_dispatches_after_release_across_clock_wrap();
     test_exchange_deadline_is_not_renewed_and_uid_is_consumed();
     test_preserved_matching_response_is_unmatched_until_tx();
