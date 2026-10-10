@@ -1,5 +1,13 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+C6 vendor logging development (2026-10-10): a pinned IDF5.4.3 C6 adapter
+patch sinks both vendor logging callbacks without formatting their arguments.
+Exact-body macOS/Linux O0/O2 ASan/UBSan tests pass18 checks each; original
+callbacks fail the negative control. This is a source-tested recipe extension,
+not a rebuilt/deployed firmware or whole-UART privacy proof. The earlier
+1106624B candidate is unchanged; direct diagnostic paths, remaining Hosted MAC
+logs and physical secured recovery/UART qualification remain open.
+
 Caller Close cleanup (2026-10-10): generic9a0a0d8346 integratedd50ca3ba1e
 cancels keepalive, unregisters its exact callback tuple before freeing state,
 drains/frees the event request and clears the owned signal before port deletion.

@@ -18,6 +18,37 @@ and full-width fields retain the previous intended length convention. Generic
 Wi-Fi MAC/status logs and IDF/vendor-library logs are not all suppressed.
 Do not claim whole-binary or hardware privacy certification from this patch.
 
+## C6 vendor logging extension (source tested, not built)
+
+`idf-wifi-privacy.patch` applies to the pinned IDF 5.4.3 commit
+`ea1c174c1cbb7348bd8ba0ff1eb306246938dd80`, specifically its C6 Wi-Fi OS
+adapter. Apply it with `git apply --check` and `git apply` only to a separate
+complete IDF source copy, then select that copy through `IDF_PATH`. Preserve
+the reference IDF and the previous candidate/evidence unchanged.
+
+Both vendor `_log_write`/`_log_writev` callbacks become unconditional sinks:
+they neither format arguments nor forward to ESP logging. This deliberately
+disables callback-routed vendor Wi-Fi diagnostics at every level, while ordinary Hosted
+status/error logs remain available. A runtime tag/INFO setting alone is not
+the privacy policy. The IDF constructor sets Wi-Fi tags to the default level,
+and `esp_wifi_init()` sets the vendor level from the configured maximum.
+
+Run `python3 test-vendor-log.py PRIVATE_IDF` to exercise the exact patched
+callback bodies at O0/O2 with ASan/UBSan. Each run checks18 cases; the original
+IDF must fail the sink-call assertion as a negative control. Additional source
+guards require the reviewed no-op bodies and expected table-binding text, so
+a future direct printf/ROM-output replacement cannot silently pass this test.
+The fixture mocks the downstream logger and does not execute the adapter
+table, vendor blobs, IDF startup or a radio. Review actual table bindings separately.
+
+This extension has not yet been included in a full firmware build. The
+previous1106624-byte candidate is unchanged and still contains vendor
+SSID/BSSID formats. Direct printf/ROM paths and remaining Hosted MAC logs
+require separate audit/correction; suppressing these two callbacks does not
+prove whole-firmware UART privacy. Rebuild from a fresh IDF build directory,
+archive the exact changed IDF inputs and perform actual UART qualification
+after secured recovery before allowing credentials.
+
 Build environment used: IDF 5.4.3, Python 3.12.13 in a private uv venv,
 IDF core requirements constrained by Espressif's `espidf.constraints.v5.4.txt`,
 CMake 3.30.2 and official Ninja 1.12.1, RISC-V GCC 14.2.0_20250730.
