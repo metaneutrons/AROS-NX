@@ -18,6 +18,10 @@
 #define WIFI_SSID_MAX       33      /* 32 octets plus terminator */
 #define WIFI_KEY_MAX        64      /* 63-character passphrase plus terminator */
 
+#ifndef WIFI_VOLATILE_DEFAULT
+#define WIFI_VOLATILE_DEFAULT 0
+#endif
+
 /* One scan result, as the window wants to show it. */
 struct WifiNet
 {
@@ -97,6 +101,8 @@ struct WifiMsg
 /* Set up by the worker before it signals the window that it is ready. */
 extern struct MsgPort *WifiWorkerPort;
 extern struct Task *WifiMainTask;
+/* Set once, before starting the worker; no mutable cross-task policy. */
+extern BOOL WifiVolatile;
 
 VOID WifiWorker(VOID);
 

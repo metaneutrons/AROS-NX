@@ -44,6 +44,7 @@
 
 #include "wifigui.h"
 #include "locale.h"
+#include "volatile_config.h"
 
 #define WIRELESS_VAR    "AROSTCP/WirelessDevice"
 #define STACK_VAR       "SYS/Packages/AROSTCP"
@@ -193,24 +194,38 @@ static CONST_STRPTR IEProtection(const UBYTE *ies)
 /* ------------------------------------------------------------------------- */
 /* Wireless.prefs                                                            */
 
-static STRPTR ReadPrefs(CONST_STRPTR name, LONG *lenp)
+static STRPTR ReadPrefsChecked(CONST_STRPTR name, LONG *lenp, BOOL *ok)
 {
     BPTR fh = Open(name, MODE_OLDFILE);
     LONG size;
     STRPTR buf = NULL;
 
     *lenp = 0;
+    *ok = FALSE;
     if (fh == BNULL)
+    {
+        *ok = IoErr() == ERROR_OBJECT_NOT_FOUND;
         return NULL;
+    }
 
-    Seek(fh, 0, OFFSET_END);
+    if (Seek(fh, 0, OFFSET_END) == -1)
+    {
+        Close(fh);
+        return NULL;
+    }
     size = Seek(fh, 0, OFFSET_BEGINNING);
-    if (size > 0 && (buf = AllocVec(size + 1, MEMF_ANY | MEMF_CLEAR)) != NULL)
+    /* An existing empty file is distinct from an absent file during rollback. */
+    if (size >= 0 && size < 0x7fffffff &&
+        (buf = AllocVec((ULONG)size + 1, MEMF_ANY | MEMF_CLEAR)) != NULL)
     {
         if (Read(fh, buf, size) == size)
+        {
             *lenp = size;
+            *ok = TRUE;
+        }
         else
         {
+            WifiClearSecret(buf, (size_t)size + 1);
             FreeVec(buf);
             buf = NULL;
         }
@@ -219,19 +234,38 @@ static STRPTR ReadPrefs(CONST_STRPTR name, LONG *lenp)
     return buf;
 }
 
+static STRPTR ReadPrefs(CONST_STRPTR name, LONG *lenp)
+{
+    BOOL ok;
+    return ReadPrefsChecked(name, lenp, &ok);
+}
+
 /* TRUE if the stored configuration already has a key for this network. */
 static BOOL PrefsHaveNetwork(CONST_STRPTR ssid)
 {
     LONG len;
-    STRPTR buf = ReadPrefs(PREFS_ENVARC, &len);
+    STRPTR buf = ReadPrefs(WifiVolatile ? PREFS_ENV : PREFS_ENVARC, &len);
     STRPTR p;
-    TEXT needle[WIFI_SSID_MAX + 8];
+    TEXT needle[2 * WIFI_SSID_MAX + 8];
     BOOL found = FALSE;
 
     if (buf == NULL)
         return FALSE;
 
-    snprintf(needle, sizeof(needle), "ssid=\"%s\"", ssid);
+    if (WifiVolatile)
+    {
+        char encoded[65];
+        if (!WifiSSIDHex(encoded, sizeof(encoded), ssid))
+        {
+            WifiClearSecret(buf, (size_t)len);
+            FreeVec(buf);
+            return FALSE;
+        }
+        /* Include the line delimiter: a shorter SSID must not match a prefix. */
+        snprintf(needle, sizeof(needle), "ssid=%s\n", encoded);
+    }
+    else
+        snprintf(needle, sizeof(needle), "ssid=\"%s\"", ssid);
     for (p = buf; (p = strstr(p, needle)) != NULL; p += 1)
     {
         /* A psk belongs to the same block, i.e. before the closing brace. */
@@ -245,6 +279,7 @@ static BOOL PrefsHaveNetwork(CONST_STRPTR ssid)
         }
     }
 
+    WifiClearSecret(buf, (size_t)len);
     FreeVec(buf);
     return found;
 }
@@ -418,6 +453,21 @@ static BOOL StackDBDir(STRPTR out, ULONG size)
 {
     TEXT dir[160];
     BPTR lock;
+
+    /* VOLATILE never falls back to (or rewrites) a database on SYS:/ENVARC:.
+     * Its image/startup must supply the complete RAM-backed ENV database. */
+    if (WifiVolatile)
+    {
+        if (size <= strlen("ENV:AROSTCP/db"))
+            return FALSE;
+        strcpy((char *)out, "ENV:AROSTCP/db");
+        lock = Lock(out, ACCESS_READ);
+        if (lock == BNULL)
+            return FALSE;
+        UnLock(lock);
+        /* The stack must read the same database; never save this variable. */
+        return SetVar("AROSTCP/Config", out, -1, GVF_GLOBAL_ONLY);
+    }
 
     if (GetVar("AROSTCP/Config", out, size, GVF_GLOBAL_ONLY) > 0)
     {
@@ -1069,40 +1119,52 @@ struct PrefsBackup
     BOOL    pb_Taken;
 };
 
-static void SavePrefs(struct PrefsBackup *b)
+static BOOL SavePrefs(struct PrefsBackup *b)
 {
-    b->pb_Env = ReadPrefs(PREFS_ENV, &b->pb_EnvLen);
-    b->pb_Envarc = ReadPrefs(PREFS_ENVARC, &b->pb_EnvarcLen);
-    b->pb_Taken = TRUE;
+    BOOL env_ok, envarc_ok = TRUE;
+    b->pb_Env = ReadPrefsChecked(PREFS_ENV, &b->pb_EnvLen, &env_ok);
+    if (!WifiVolatile)
+        b->pb_Envarc = ReadPrefsChecked(PREFS_ENVARC, &b->pb_EnvarcLen,
+                                      &envarc_ok);
+    b->pb_Taken = env_ok && envarc_ok;
+    return b->pb_Taken;
 }
 
-static void WriteWhole(CONST_STRPTR name, STRPTR buf, LONG len)
+static BOOL WriteWhole(CONST_STRPTR name, STRPTR buf, LONG len)
 {
     BPTR fh;
+    BOOL result;
 
     /* No file before the attempt means the network was unknown, and unknown is
      * what it has to go back to - or the next Connect trusts a bad key. */
     if (buf == NULL)
     {
-        DeleteFile(name);
-        return;
+        return DeleteFile(name) || IoErr() == ERROR_OBJECT_NOT_FOUND;
     }
     if ((fh = Open(name, MODE_NEWFILE)) == BNULL)
-        return;
-    Write(fh, buf, len);
-    Close(fh);
+        return FALSE;
+    result = Write(fh, buf, len) == len;
+    if (!Close(fh))
+        result = FALSE;
+    return result;
 }
 
-static void RestorePrefs(struct PrefsBackup *b)
+static BOOL RestorePrefs(struct PrefsBackup *b)
 {
+    BOOL result;
     if (!b->pb_Taken)
-        return;
-    WriteWhole(PREFS_ENV, b->pb_Env, b->pb_EnvLen);
-    WriteWhole(PREFS_ENVARC, b->pb_Envarc, b->pb_EnvarcLen);
+        return TRUE;
+    result = WriteWhole(PREFS_ENV, b->pb_Env, b->pb_EnvLen);
+    if (!WifiVolatile)
+        if (!WriteWhole(PREFS_ENVARC, b->pb_Envarc, b->pb_EnvarcLen))
+            result = FALSE;
+    return result;
 }
 
 static void FreePrefsBackup(struct PrefsBackup *b)
 {
+    WifiClearSecret(b->pb_Env, b->pb_EnvLen);
+    WifiClearSecret(b->pb_Envarc, b->pb_EnvarcLen);
     FreeVec(b->pb_Env);
     FreeVec(b->pb_Envarc);
     b->pb_Env = NULL;
@@ -1159,7 +1221,9 @@ static void RunConnect(struct WifiMsg *m, CONST_STRPTR wanted,
         {
             BOOL created;
 
-            m->wm_Result = WRES_OK;
+            /* VOLATILE commits a new selection only after an address exists. */
+            if (!WifiVolatile)
+                m->wm_Result = WRES_OK;
 
             if (!EnsureInterface(m, &created))
             {
@@ -1191,7 +1255,10 @@ static void RunConnect(struct WifiMsg *m, CONST_STRPTR wanted,
             for (tries = 0; tries < ASSOC_TIMEOUT; tries++)
             {
                 if (m->wm_Address[0] != '\0')
+                {
+                    m->wm_Result = WRES_OK;
                     return;
+                }
                 Delay(25);
                 DoStatus(m);
 
@@ -1208,6 +1275,9 @@ static void RunConnect(struct WifiMsg *m, CONST_STRPTR wanted,
                     return;
                 }
             }
+            if (WifiVolatile && m->wm_Associated &&
+                m->wm_Address[0] != '\0')
+                m->wm_Result = WRES_OK;
             return;
         }
     }
@@ -1276,9 +1346,17 @@ static void DoConnect(struct WifiMsg *m)
      * to put in it, so a reconnect to a remembered network keeps its key. */
     if (!m->wm_Protected || m->wm_Key[0] != '\0')
     {
-        SavePrefs(&backup);
-        if (!MergePrefs(PREFS_ENVARC, m->wm_SSID, m->wm_Key) ||
-            !MergePrefs(PREFS_ENV, m->wm_SSID, m->wm_Key))
+        if (!SavePrefs(&backup))
+        {
+            strcpy(m->wm_Status, (const char *)_(MSG_ST_CANNOT_WRITE_PREFS));
+            FreePrefsBackup(&backup);
+            return;
+        }
+        if ((WifiVolatile && !WifiWriteVolatilePrefs(m->wm_SSID, m->wm_Key,
+                                                  m->wm_Protected)) ||
+            (!WifiVolatile &&
+             (!MergePrefs(PREFS_ENVARC, m->wm_SSID, m->wm_Key) ||
+              !MergePrefs(PREFS_ENV, m->wm_SSID, m->wm_Key))))
         {
             strcpy(m->wm_Status, (const char *)_(MSG_ST_CANNOT_WRITE_PREFS));
             RestorePrefs(&backup);
@@ -1291,8 +1369,15 @@ static void DoConnect(struct WifiMsg *m)
 
     /* Blaming the passphrase and keeping it are contradictory: put the file
      * back, so an untested passphrase never becomes the remembered one. */
-    if (m->wm_Result == WRES_NEEDKEY)
-        RestorePrefs(&backup);
+    if (m->wm_Result == WRES_NEEDKEY ||
+        (WifiVolatile && m->wm_Result != WRES_OK))
+    {
+        if (!RestorePrefs(&backup))
+        {
+            m->wm_Result = WRES_FAILED;
+            strcpy(m->wm_Status, (const char *)_(MSG_ST_CANNOT_WRITE_PREFS));
+        }
+    }
     FreePrefsBackup(&backup);
 }
 
@@ -1369,6 +1454,7 @@ VOID WifiWorker(VOID)
 
             case WCMD_CONNECT:
                 DoConnect(m);
+                WifiClearSecret(m->wm_Key, sizeof(m->wm_Key));
                 break;
 
             case WCMD_DISCONNECT:
