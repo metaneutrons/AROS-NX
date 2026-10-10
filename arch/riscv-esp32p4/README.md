@@ -130,7 +130,7 @@ the3,764,580-byte package passes42/42 loader audits and the4,063,232-byte capaci
 gate, with all41other members byte-identical. This includes the FIFO alias
 correction. No candidate was deployed or native frame sent. The new3,768,320-byte
 erase span requires an independent full-span double backup before a write.
-No additional hardware operation occurred.
+No additional hardware operation occurred during that implementation.
 
 The opt-in `P4_WIFI_HOSTED_MAC=1` diagnostic now links one GetMAC(STA) request
 after the startup reply, using the same FIFO ledger and aggregate deadline.
@@ -144,13 +144,26 @@ fragmented RPC reception and the WLAN data-plane client remain open.
 Sanitized O0/O2 tests pass154 codec,1250 pinned protobuf-c oracle and1690
 control-gate checks each; actual controller adapters remain233 checks each.
 The fresh93,756-byte module and3,782,312-byte package pass42/42 loader checks
-and capacity, with all41other members unchanged. This candidate is not flashed
-or hardware verified. Its3,784,704-byte erase span needs a new independent
-twice-read full-span backup before deployment. Original baseline remains the
-last verified device state. Fabian has now confirmed USB-C disconnection and
-reconnection; no new hardware gate has run yet. The legacy CMD52 test fixture
+and capacity, with all41other members unchanged. At that build stage it was not
+flashed. The subsequent native hardware gate below is not WLAN acceptance.
+Its3,784,704-byte erase span was independently read twice before deployment.
+Fabian confirmed USB-C disconnection and reconnection. The legacy CMD52 fixture
 is repaired using extracted production definitions and passes28cases/193checks
 each O0/O2 sanitized; earlier failed attempts remain recorded.
+
+The first fresh-C6 native hardware gate now completes45.923s: OPEN/INIT
+receives chip0x0d/caps0x0d, the configuration frame is sent once, and a matched
+GetMAC reply returns status12289 (0x3001, ESP_ERR_WIFI_NOT_INIT). This is a
+diagnostic ordering failure: the native path omitted WiFiInit/SetMode/Start,
+which the working reference performs before GetMAC. It proves one transport
+request/response, not a valid MAC or WLAN readiness. No retry or weakened
+validation follows. CLOSE/Fn0 and Fn1 restoration succeed, ledger unpoisoned;
+cleanup error1 is the enum's OK value. No additional captured reset/fault.
+Exact full-span baseline restoration/readback pass; complete30.802s return
+capture passes PSRAM/both harts/watchdog/SD/graphics updates/Touch heartbeat,
+without another captured fault. No visible-desktop/touch gate is inferred.
+Next implement the complete reference initialization sequence, with all20
+WiFiInit scalar values validated, then repeat the native MAC/scan gate.
 
 JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
