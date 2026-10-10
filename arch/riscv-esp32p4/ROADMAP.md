@@ -115,14 +115,15 @@ gate: compensated output is not the native display contract.
 
 ## Master progress
 
-Current source radio/device pairing is private ABI8 (N2M maintenance/discovery).
+Current source radio/device pairing is private ABI9 (N2M terminal fencing).
 ABI6 counts/artifacts in N1A/N2A/N2/N2L remain historical lifecycle evidence,
-not the current deployment pair. A regenerated ABI8 candidate package passes
-all42 loader audits; no ABI7/ABI8 hardware pass exists.
+not the current deployment pair. The historical ABI8 candidate package passes
+all42 loader audits; ABI9 standalone modules/tool are not repackaged or installed.
+No ABI7/ABI8/ABI9 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle, ABI8 discovery/client and terminal contract host/build verified; separate private OTA owner transport host/module build verified (not repackaged); prior matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Native maintenance OTA-job dispatch, confirmed fenced terminal handoff and full-transfer budget; actual discovery/layout/slot provenance, secured CN5 recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle/discovery/client and terminal contract host/build verified; private OTA transport and ABI9 native terminal fence standalone build verified (not repackaged); prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Native maintenance OTA-job dispatch and engine adapter with pre-BEGIN sticky obligation and full-transfer budget; runtime fenced handoff, actual discovery/layout/slot provenance, secured CN5 recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1300,9 +1301,9 @@ radio restart/polling/reassociation and automatic reset/replay; callback success
 means confirmed bounded fenced handoff. Callback failure retains the transfer
 classification and prevents installed confirmation. Postboot confirmation
 also requires complete matching counters and begin/end flags. This is an
-adapter contract, not an implemented native handoff; ABI8 and its ordinary
-read-only release remain unchanged. Native OTA dispatch, sticky recovery state
-and a full-transfer budget still need implementation.
+adapter contract. ABI9 now adds a separate native terminal fence hook alongside
+ordinary read-only release; native OTA dispatch/engine binding and a full-transfer
+budget still need implementation.
 Terminal-policy tests pass692 checks each O0/O2 under ASan/UBSan, including
 once-only handoff, failure status preservation and postboot-result guards.
 A compiled all-NO_BEGIN mutation fails at the expected assertion with exit1.
@@ -1313,11 +1314,21 @@ host/module build verified. Exact reserved UID/generation and byte-canonical272/
 required, with no partial SERIAL or discovery arm. Normal WLAN admission is
 unchanged. Existing absolute deadlines, shared-host arbitration and terminal
 retirement are reused; success means envelope correlation, not remote status
-or installation. No private ABI8 OTA job or updater binding exists yet.
+or installation. No private ABI9 OTA job or updater binding exists yet.
 Codec11806, pending1638 and coupled owner8093 checks each O0/O2 ASan/UBSan
 pass, including false identity and normal-path rejection. Fresh Core1
 resource291220B passes its loader audit with both privacy/recovery assertions0;
 it is not in the prior matched discovery-only BSP/image candidate or installed.
+ABI9 terminal fencing is task/token-bound and queues only inside a live ACTIVE
+lease without outstanding discovery/pending/fragmented work. Queuing is not
+confirmation. The owner confirms under a fresh bounded shared-host acquisition
+and session/deadline/stop fence, then suppresses service and polling indefinitely.
+Sticky disposition survives failure/expiry/retirement and prohibits ordinary
+release and teardown Stop/Deinit/CLOSE/function restoration. It is a conservative
+caller classification, not C6 reset/commit/health proof. No OTA job is exposed;
+future dispatch must mark the obligation before BEGIN. Standalone ABI9 resource,
+device and read-only tool build, but prior ABI8 package/image is not regenerated
+or deployed. Runtime, full-transfer budget and secured recovery remain open.
 Actual-source host tests and fresh Core1 module builds pass; Exec locks,
 callbacks and RPC outcomes are mocked. The matching ABI7 resource/device must
 replace the prior ABI6 pair together in a regenerated audited package/image.
@@ -37105,3 +37116,88 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   recovery. Installed privacy and actual association/DHCP/frames/reconnect/
   combined1800s plus CLI/GUI updates/HTTPS remain open. Full Wi-Fi goal active;
   this step is at most build verified.
+
+### 2026-10-11 - N2M native ABI9 terminal fence, no OTA dispatch
+
+- Scope/source: continuation of908af825e1 in the Wi-Fi worktree, implementing
+  maintenance_fence in the native resource. Private radio/device ABI9 extends
+  the matched base; source SANA client and ESP32Board check ABI/size/hooks and
+  refuse ABI8 or a missing fence hook. This is not the independent SDMMC host
+  ABI, which remains unchanged. UPDATE-C6 stays unavailable.
+- Procedure/policy: requester/task/token plus live ACTIVE original30s lease,
+  no pending/partial/UID/FIFO/discovery job, and one of INCOMPLETE,
+  COMMIT_UNKNOWN or WAIT_REBOOT. TRUE only queues FENCING. Owner confirmation
+  requires its client lock, no recursive host lock, bounded shared acquisition,
+  live generation/deadline and no stop/fault. FENCED then remains silent after
+  lease expiry. Sticky mode blocks ordinary release/reuse and owner teardown
+  Stop/Deinit/CLOSE/function restoration even when confirmation fails. The
+  ordinary release path is preserved. Local cancellation retires metadata,
+  not transport. No automatic reset, radio restart, recovery or request replay.
+- Native builds: invalidate resource/device/tool generated objects separately;
+  one gmake at a time. Resource profile jc1060p470c-v2 with SDIO_SETUP,
+  HOSTED_INIT, HOSTED_REPLY, HOSTED_OWNER=1, OWNER_CPU=1, both privacy/recovery
+  assertions0. Module quick targets plus workbench-tools-esp32board-quick all
+  actually exit0 and emit final module/program markers, no warning/error lines.
+  Device was rebuilt after adding the required fence-hook guard; initial and
+  final logs retained. Private headers are source-local, not generated public
+  includes. Final source comment clarification does not change compiled logic.
+- Exact archived artifacts in
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/native-fence.NJ0XM4:
+  resource293896B SHA256
+  54f389e3f77c5704918eddb3f92de5fb1ea23fd65ba062dd8ae092ad0cb009b3;
+  device67604B
+  b878b42d62436d79320264b400af1733e790efd8a6e9d555b50b950f6403a200;
+  ESP32Board121816B
+  d5eef6551248367029c3b74af25fd0ec4a53bb36ac4a526abfaf4817f0e4184d.
+  Existing loader audit_elf against supported relocations accepts both modules,
+  flags3,13 relocation types each, issues[], actual exit0. These are standalone
+  ABI9 artifacts; no BSP/image/core generation or deployment. Historical ABI8
+  package/image is not this new pair and must not be mixed with it.
+- Regression evidence: association queue1054 checks each O0/O2 sanitized,
+  including ABI8 refusal and missing fence hook; bridge4421 checks each O0/O2
+  sanitized including all3 dispositions, queued/confirmed stop publication and
+  sticky state preservation; owner reservation63/AP-info393/association26131
+  each O0/O2 sanitized; portable discovery client286 checks/41cases each O0/O2,
+  accepted-release mutation rejected, frontend parity guard/three counterprobes
+  pass. These use mocked Exec/SDIO/clock/RPC, not native runtime or C6 timing.
+- Corrections: first additional bridge run could not link the newly required
+  OTA canonical helper; added hosted_ota to all four dependent old owner/bridge
+  runners. Actual subsequent regressions exit0. The first added stop-publication
+  case omitted the mock callback's global base update: O0 passed, O2 ASan found
+  stack-use-after-scope (exit134). Fixed that fixture pointer, retained failed
+  bridge-final.log, corrected bridge-corrected.log passes both optimizations0.
+  No sanitizer failure is treated as a pass. Independent production-source
+  review found no blocking defect; scope is Wi-Fi owner silence, not all host
+  users or physical C6 reboot/commit/health.
+- Log hashes: resource-build.log
+  fd49f30b1b5b2a7e27b0d942b56528131289adca2dba6dec63690225f3bf1282;
+  device-final.log
+  4b39f71c94080038ef9ebaccedf959a58e8b4033304dc7a1782505f386db4bbd;
+  tool-build.log
+  00873496be236055c8b6750baf85eaf2a76460bbd26ad5b4cfc5480b2e0ee8bc;
+  module-audit.log
+  790da275aaafe94e7495e7b9fb01bc12d8c927bd63a9dac9b710429532c26cd3;
+  association-final.log
+  a6d8c308b8a77e3e65b5ef57770a1b5520b1d40f76052625c1307292bfb0172e;
+  owner-regressions.log
+  e75fd23fd16ebf7465ff9233020eada157c8ac62ff2364fda885eb17de8c7db6;
+  bridge-corrected.log
+  5a11cdc4056afcb90366c85c8217ffe6031e7275d221a019db72f29974812784;
+  frontend-regressions.log
+  d125c0ef8e77d53f084f43447663f4f73dd93c577da014e4f3cf5b0079921221.
+- Fence verification: source-extracted maintenance tests pass2057 checks each
+  O0/O2 with ASan/UBSan, actual process exit0. ACTIVE-poll and sticky-cleanup
+  mutations are rejected at their expected assertions. This covers all three
+  modes, atomic admission refusal, queued versus confirmed state, failed/expired
+  confirmation, bounded acquisition and sticky cleanup prohibitions. Source
+  guards cover callback/poll/link observation and protocol/CLOSE/restoration.
+  maintenance.log SHA256
+  2ce325f81071aa1224642f4f8a521bd6828bda8c781789cedfac3e56a9a73061.
+- Remaining/safety: no serial/board/flash/SD
+  writes, credentials or C6 firmware changes. Native OTA dispatch must establish
+  the sticky obligation before BEGIN, bind terminal dispositions, and own an
+  immutable authenticated image under a justified full-transfer budget. This
+  hook alone does not make updates usable or safe. Live target/layout/privacy,
+  independent first-install recovery, postboot health, CLI/GUI/HTTPS updates and
+  association/DHCP/frames/reconnect/combined1800s acceptance remain open. Full
+  Wi-Fi goal stays active; at most standalone build verified.

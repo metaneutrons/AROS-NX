@@ -20,7 +20,7 @@ struct discovery_native {
     struct board_client_workspace *work;
 };
 
-typedef char discovery_abi_matches[(P4_WIFI_DEVICE_BRIDGE_ABI == 8u &&
+typedef char discovery_abi_matches[(P4_WIFI_DEVICE_BRIDGE_ABI == 9u &&
     P4_WIFI_MAINT_IDLE == BOARD_CLIENT_LEASE_IDLE &&
     P4_WIFI_MAINT_REQUESTED == BOARD_CLIENT_LEASE_REQUESTED &&
     P4_WIFI_MAINT_ACTIVE == BOARD_CLIENT_LEASE_ACTIVE &&
@@ -120,8 +120,8 @@ int boardtool_discover_c6(struct board_client_observation *output,
         c->radio->bridge_size < sizeof(*c->radio) ||
         !c->radio->maintenance_request || !c->radio->maintenance_poll ||
         !c->radio->maintenance_release || !c->radio->maintenance_discover ||
-        !c->radio->maintenance_discovery_poll) {
-        setup_failure = "incompatible resource; matched ABI8 owner/device required";
+        !c->radio->maintenance_discovery_poll || !c->radio->maintenance_fence) {
+        setup_failure = "incompatible resource; matched ABI9 owner/device required";
         goto done;
     }
     c->port = CreateMsgPort();

@@ -5,7 +5,7 @@
 #include <exec/types.h>
 #include "hosted_scan.h"
 
-#define P4_WIFI_DEVICE_BRIDGE_ABI 8u
+#define P4_WIFI_DEVICE_BRIDGE_ABI 9u
 #define P4_WIFI_DEVICE_BRIDGE_NAME "esp32p4wifi.resource"
 
 struct P4WifiBase;
@@ -31,6 +31,20 @@ struct P4WifiBase;
 #define P4_WIFI_MAINT_RELEASED 5u
 #define P4_WIFI_MAINT_BUSY 6u /* transient lock contention, retry polling */
 #define P4_WIFI_MAINT_LEASE_US 30000000u
+/* ABI9 terminal handoff, NOT OTA admission. Queue only from ACTIVE, using the
+ * original requester/token. TRUE queues; maintenance_poll must report FENCED
+ * before handoff is confirmed. The owner validates its host epoch under a
+ * bounded acquisition, then retains a silent fence even after lease expiry.
+ * No radio start, protocol cleanup, CLOSE/reset or automatic recovery is
+ * allowed after acceptance. A failed handoff remains failed and fenced.
+ * mode is a conservative caller disposition, not proof of an OTA outcome.
+ * Future OTA dispatch must mark this obligation BEFORE attempting BEGIN.
+ * No BEGIN/WRITE/END job is exposed yet. Full transfer budget remains open. */
+#define P4_WIFI_MAINT_FENCING 7u
+#define P4_WIFI_MAINT_FENCED 8u
+#define P4_WIFI_MAINT_FENCE_INCOMPLETE 1u
+#define P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN 2u
+#define P4_WIFI_MAINT_FENCE_WAIT_REBOOT 3u
 /* ABI8 read-only discovery job, inside ACTIVE maintenance. Only the requesting
  * task/token can queue or copy a result. One queued job, monotonically increasing
  * nonzero nonce, no pointer retention. READY means completed RPC, not successful

@@ -6,7 +6,7 @@ RV32-SMP with shared CLI/MUI read-only C6 image checks and an adaptive graphical
 partition-table preview. Imported extents, labels, offsets, sizes, types and
 flags determine the view; gaps are unlisted/reserved, not assumed free space.
 Capacity is explicitly supplied, not detected; active/update roles are unknown.
-Runtime P4/C6 layout discovery, owner OTA transport, secured recovery and
+Runtime P4/C6 layout discovery, native OTA dispatch, secured recovery and
 actual local/HTTPS-acquired updates remain open. UPDATE-C6 fails explicitly.
 No board, flash, serial or credential action accompanied this development.
 Requirements: [board-tool plan](../../docs/plans/esp32-board-tool.md), roadmap N2M.
@@ -18,8 +18,8 @@ no BEGIN attempt, incomplete transfer, unknown commit and acknowledged END
 waiting for reboot. Only the first allows ordinary read-only lease release;
 the others require a confirmed bounded fenced handoff, without automatic
 radio restart, reset or request replay. Failed handoff blocks installation
-confirmation. The native OTA/handoff adapter is still absent; this contract
-does not change ABI8, enable UPDATE-C6 or prove physical recovery.
+confirmation. The native OTA engine adapter is still absent; this contract
+alone does not enable UPDATE-C6 or prove physical recovery.
 Terminal-policy regressions pass692 checks each O0/O2 under ASan/UBSan;
 the compiled all-NO_BEGIN mutation fails at the expected assertion with exit1.
 The standalone engine compiles for the configured RV32-SMP ilp32f profile
@@ -27,22 +27,38 @@ without undefined imports. It is not linked into the native application.
 The low-level owner now has a separate canonical OTA transport entry, without
 widening normal WLAN submission. Its native maintenance-job adapter, complete
 transaction budget, terminal handoff and hardware qualification remain open;
-private ABI8 exposes no OTA and UPDATE-C6 stays unavailable.
+private ABI9 exposes no OTA and UPDATE-C6 stays unavailable.
+Native ABI9 adds a task/token-bound terminal fence hook (2026-10-11).
+Accepted INCOMPLETE/COMMIT_UNKNOWN/WAIT_REBOOT dispositions queue a sticky
+fence; only an owner-confirmed FENCED result establishes host ownership handoff.
+Confirmation uses the original lease and a bounded fresh host acquisition.
+After acceptance, ordinary release and teardown Stop/Deinit/CLOSE/restoration
+are prohibited, even if confirmation fails. A confirmed fence remains silent
+after lease expiry; no automatic reset/reboot/reassociation is performed.
+This is not C6 outcome/health attestation or a full OTA job. The future native
+dispatcher must establish the sticky obligation before its BEGIN attempt.
+Matched ABI9 resource/device/tool builds are standalone, not repackaged or
+installed. The previous ABI8 BSP/image remains a historical candidate; do not
+mix it with ABI9 clients. Both privacy/recovery assertions remain0.
+Source-extracted fence tests pass2057 checks each O0/O2 with ASan/UBSan;
+ACTIVE-poll and sticky-cleanup mutations are rejected. These are host tests,
+not C6 runtime qualification.
 Private transport verification (2026-10-11): canonical codec11806,
 pending1638 and coupled owner8093 checks each O0/O2 ASan/UBSan pass;
 ordinary OTA-allowlist mutation is rejected. Fresh Core1 resource291220B
 passes the loader audit with both privacy/recovery assertions0. This resource
 is not yet repackaged or installed; the prior282952B discovery-only resource
 remains the member in the previously audited BSP/image candidate.
-Native private ABI8 supplies a task-bound, nonblocking maintenance lease and
+Native private ABI8 introduced a task-bound, nonblocking maintenance lease and
 queued read-only discovery with copied results (2026-10-11); scoped host tests
 and native builds pass, runtime qualification remains open. ABI7 introduced
 the original lease handshake.
 The owner drains pending work, confirms WiFiStop and suppresses normal traffic
 and FIFO polling while ACTIVE. Release confirms WiFiStart but leaves SANA
 offline/unassociated. The 30-second lease is handshake preparation, not a
-full-image transfer budget; no OTA job is exposed. Expiry retires the session
-with bounded owner-only cleanup, not silent traffic resumption. Original ABI7
+full-image transfer budget; no OTA job is exposed. Ordinary lease expiry retires
+the session with bounded owner-only cleanup, not silent traffic resumption.
+ABI9 accepted terminal fences prohibit that cleanup. Original ABI7
 actual-source host tests pass186 checks each O0/O2 with sanitizers and a negative
 ACTIVE-poll mutation; Exec/RPC are mocked. Its historical RV32 Core1
 resource254956B/device67604B passed individual loader audits; these are not the

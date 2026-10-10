@@ -558,6 +558,13 @@ static void init_request(struct IOSana2Req *request, ULONG command,
     request->ios2_BufferManagement = opener;
 }
 
+static BOOL fake_resource_maintenance_fence(struct P4WifiBase *radio,
+                                           ULONG token, ULONG mode)
+{
+    (void)radio; (void)token; (void)mode;
+    return FALSE;
+}
+
 static void init_fixture(struct p4wlan_unit *unit,
                          struct p4wlan_opener *opener,
                          struct P4WifiBase *radio)
@@ -589,6 +596,7 @@ static void init_fixture(struct p4wlan_unit *unit,
     radio->maintenance_release = fake_resource_maintenance_release;
     radio->maintenance_discover = fake_resource_maintenance_release;
     radio->maintenance_discovery_poll = fake_resource_discovery_poll;
+    radio->maintenance_fence = fake_resource_maintenance_fence;
     active_unit = unit;
     active_opener = opener;
     replace_during_associate = FALSE;
@@ -613,7 +621,7 @@ static void init_fixture(struct p4wlan_unit *unit,
     association_reply_cookie_count = 0u;
 }
 
-static void test_resource_valid_requires_abi8_callbacks(void)
+static void test_resource_valid_requires_abi9_callbacks(void)
 {
     struct p4wlan_unit unit;
     struct p4wlan_opener opener;
@@ -623,13 +631,13 @@ static void test_resource_valid_requires_abi8_callbacks(void)
     BOOL (*release)(struct P4WifiBase *, ULONG);
 
     init_fixture(&unit, &opener, &radio);
-    CHECK(P4_WIFI_DEVICE_BRIDGE_ABI == 8u);
+    CHECK(P4_WIFI_DEVICE_BRIDGE_ABI == 9u);
     CHECK(radio.bridge_abi == P4_WIFI_DEVICE_BRIDGE_ABI);
     CHECK(radio.bridge_size == sizeof(radio));
     CHECK(p4wlan_resource_valid(&radio));
     CHECK(!p4wlan_resource_valid(NULL));
 
-    radio.bridge_abi = 7u;
+    radio.bridge_abi = 8u;
     CHECK(!p4wlan_resource_valid(&radio));
     radio.bridge_abi = P4_WIFI_DEVICE_BRIDGE_ABI;
     radio.bridge_size = sizeof(radio) - 1u;
@@ -654,6 +662,9 @@ static void test_resource_valid_requires_abi8_callbacks(void)
     radio.maintenance_discovery_poll = NULL;
     CHECK(!p4wlan_resource_valid(&radio));
     radio.maintenance_discovery_poll = fake_resource_discovery_poll;
+    radio.maintenance_fence = NULL;
+    CHECK(!p4wlan_resource_valid(&radio));
+    radio.maintenance_fence = fake_resource_maintenance_fence;
     CHECK(p4wlan_resource_valid(&radio));
 }
 
@@ -1476,7 +1487,7 @@ int main(void)
     test_disassociate_maintains_confirmed_teardown();
     test_teardown_failure_never_publishes_disconnect();
     test_new_selection_during_teardown_is_preserved();
-    test_resource_valid_requires_abi8_callbacks();
+    test_resource_valid_requires_abi9_callbacks();
     test_suite_cleanup();
     printf("SANA association queue: %lu checks, %u replies, %u/%u vector alloc/free, %u association wipes\n",
            checks, reply_calls, allocation_calls, free_calls, wipe_checks);

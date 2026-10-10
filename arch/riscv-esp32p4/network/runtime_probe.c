@@ -1479,6 +1479,13 @@ static BOOL wifi_maintenance_normal_poll(ULONG state)
            state == P4_WIFI_MAINT_REQUESTED;
 }
 
+/* Also used at owner teardown: a failed/expired handoff is not permission to
+ * issue protocol cleanup or CLOSE against a potentially rebooting C6. */
+static BOOL wifi_maintenance_cleanup_allowed(struct P4WifiBase *base)
+{
+    return base->maintenance_fence_mode == 0;
+}
+
 /* client_lock held; never reset the monotonic nonce counter. */
 static void wifi_maintenance_discovery_clear(struct wifi_device_runtime *runtime,
                                              ULONG state)
@@ -1716,7 +1723,8 @@ static ULONG wifi_maintenance_request(struct P4WifiBase *base)
         base->owner_task && base->owner_task != FindTask(NULL) &&
         (base->maintenance_state == P4_WIFI_MAINT_IDLE ||
          base->maintenance_state == P4_WIFI_MAINT_RELEASED) &&
-        base->maintenance_token != UINT32_MAX) {
+        base->maintenance_token != UINT32_MAX &&
+        !base->maintenance_fence_mode) {
         token = ++base->maintenance_token;
         wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_IDLE);
         base->maintenance_task = FindTask(NULL);
@@ -1740,7 +1748,8 @@ static ULONG wifi_maintenance_poll(struct P4WifiBase *base, ULONG token)
         if (runtime && runtime->context && runtime->context->host &&
             (base->maintenance_state == P4_WIFI_MAINT_REQUESTED ||
              base->maintenance_state == P4_WIFI_MAINT_ACTIVE ||
-             base->maintenance_state == P4_WIFI_MAINT_RELEASING) &&
+             base->maintenance_state == P4_WIFI_MAINT_RELEASING ||
+             base->maintenance_state == P4_WIFI_MAINT_FENCING) &&
             !wifi_owner_remaining(runtime->context, base->maintenance_started,
                                    P4_WIFI_MAINT_LEASE_US)) {
             base->maintenance_state = P4_WIFI_MAINT_FAILED;
@@ -1760,6 +1769,10 @@ static BOOL wifi_maintenance_release(struct P4WifiBase *base, ULONG token)
     if (!base || !token || !AttemptSemaphore(&base->client_lock)) return FALSE;
     if (base->maintenance_token == token &&
         base->maintenance_task == FindTask(NULL)) {
+        if (!wifi_maintenance_cleanup_allowed(base)) {
+            ReleaseSemaphore(&base->client_lock);
+            return FALSE;
+        }
         runtime = base->runtime;
         if (!base->ready || !runtime || !runtime->context ||
             !runtime->context->host ||
@@ -1786,13 +1799,46 @@ static BOOL wifi_maintenance_release(struct P4WifiBase *base, ULONG token)
     return accepted;
 }
 
+static BOOL wifi_maintenance_fence(struct P4WifiBase *base, ULONG token,
+                                    ULONG mode)
+{
+    struct wifi_device_runtime *runtime;
+    BOOL accepted = FALSE;
+    if (!base || !token || mode < P4_WIFI_MAINT_FENCE_INCOMPLETE ||
+        mode > P4_WIFI_MAINT_FENCE_WAIT_REBOOT ||
+        !AttemptSemaphore(&base->client_lock)) return FALSE;
+    runtime = base->runtime;
+    if (base->maintenance_token == token &&
+        base->maintenance_task == FindTask(NULL) &&
+        base->owner_task != FindTask(NULL) &&
+        base->maintenance_state == P4_WIFI_MAINT_ACTIVE &&
+        !base->maintenance_fence_mode &&
+        wifi_discovery_session_valid(base, runtime) &&
+        wifi_owner_remaining(runtime->context, base->maintenance_started,
+                              P4_WIFI_MAINT_LEASE_US) &&
+        runtime->control->discovery_state != P4_WIFI_DISCOVERY_REQUESTED &&
+        !runtime->owner->pending_active && !runtime->owner->partial_active &&
+        !runtime->owner->ids.active_uid && !runtime->fifo->busy) {
+        base->maintenance_fence_mode = mode;
+        base->maintenance_state = P4_WIFI_MAINT_FENCING;
+        base->associated = FALSE;
+        wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_FAILED);
+        accepted = TRUE;
+    }
+    ReleaseSemaphore(&base->client_lock);
+    return accepted;
+}
+
 /* Owner-only, with client_lock held and no SDMMC ownership. Return0 retires
  * session,1 permits client service,2 keeps maintenance fenced. No OTA RPC. */
 static int wifi_maintenance_service(struct P4WifiBase *base,
     struct wifi_device_runtime *runtime)
 {
     struct wifi_probe_context *context = runtime->context;
-    ULONG remaining;
+    ULONG remaining, wait;
+    BOOL fenced;
+    if (base->maintenance_state == P4_WIFI_MAINT_FENCED)
+        return 2; /* Silent until an explicitly coordinated recovery. */
     if (base->maintenance_state == P4_WIFI_MAINT_IDLE ||
         base->maintenance_state == P4_WIFI_MAINT_RELEASED) return 1;
     remaining = wifi_owner_remaining(context, base->maintenance_started,
@@ -1800,6 +1846,30 @@ static int wifi_maintenance_service(struct P4WifiBase *base,
     if (!remaining || runtime->owner->poisoned || runtime->fifo->poisoned ||
         runtime->owner->generation != context->generation ||
         runtime->fifo->generation != context->generation) goto failed;
+    if (base->maintenance_state == P4_WIFI_MAINT_FENCING) {
+        if (base->owner_task != FindTask(NULL) ||
+            base->client_lock.ss_Owner != FindTask(NULL) ||
+            context->host->lock.ss_Owner == FindTask(NULL) ||
+            !base->maintenance_fence_mode ||
+            runtime->owner->pending_active || runtime->owner->partial_active ||
+            runtime->owner->ids.active_uid || runtime->fifo->busy) goto failed;
+        wait = remaining < P4_HOSTED_OWNER_MAX_ACQUIRE_US
+            ? remaining : P4_HOSTED_OWNER_MAX_ACQUIRE_US;
+        if (!wifi_owner_acquire(context, wait)) goto failed;
+        fenced = wifi_tx_session(context, context->generation) &&
+            wifi_discovery_session_valid(base, runtime) &&
+            wifi_owner_remaining(context, base->maintenance_started,
+                                  P4_WIFI_MAINT_LEASE_US) &&
+            !wifi_owner_stopping(context);
+        if (fenced) {
+            base->ready = FALSE;
+            base->associated = FALSE;
+            base->maintenance_state = P4_WIFI_MAINT_FENCED;
+        }
+        wifi_owner_release(context);
+        if (!fenced) goto failed;
+        return 2;
+    }
     if (base->maintenance_state == P4_WIFI_MAINT_REQUESTED) {
         if (runtime->owner->pending_active || runtime->owner->ids.active_uid ||
             runtime->owner->partial_active || runtime->fifo->busy) return 2;
@@ -1943,7 +2013,8 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     base->ready = FALSE;
     wifi_maintenance_discovery_clear(base->runtime, P4_WIFI_DISCOVERY_FAILED);
     if (base->maintenance_state != P4_WIFI_MAINT_IDLE &&
-        base->maintenance_state != P4_WIFI_MAINT_RELEASED)
+        base->maintenance_state != P4_WIFI_MAINT_RELEASED &&
+        base->maintenance_state != P4_WIFI_MAINT_FENCED)
         base->maintenance_state = P4_WIFI_MAINT_FAILED;
     base->associated = FALSE;
     base->link_state = P4_WIFI_LINK_UNKNOWN;
@@ -1956,7 +2027,8 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     ReleaseSemaphore(&base->client_lock);
     context->owner_cleanup = TRUE; /* SIGBREAK cannot cancel its own cleanup. */
     cleanup_start = wifi_owner_now(context);
-    if (!owner->poisoned && !opened->fifo_state.poisoned) {
+    if (wifi_maintenance_cleanup_allowed(base) &&
+        !owner->poisoned && !opened->fifo_state.poisoned) {
         if (control->start_attempted)
             protocol_cleanup = wifi_owner_request(context, owner, control,
                 &opened->fifo_state, checksum, 281u,
@@ -1966,12 +2038,13 @@ static void wifi_owner_service(struct wifi_probe_context *context,
                 &opened->fifo_state, checksum, 279u,
                 wifi_owner_remaining(context, cleanup_start, 2000000UL)) && protocol_cleanup;
     } else protocol_cleanup = 0;
-    /* Even failed protocol cleanup gets one bounded CLOSE/restoration attempt
-     * on the original healthy host generation, never a controller reset. */
+    /* Failed ordinary cleanup gets one bounded CLOSE/restoration attempt.
+     * A sticky terminal fence prohibits even this, never resetting the peer. */
     cleanup_remaining = wifi_owner_remaining(context, cleanup_start, 2000000UL);
     cleanup_wait = cleanup_remaining < P4_HOSTED_OWNER_MAX_ACQUIRE_US
         ? cleanup_remaining : P4_HOSTED_OWNER_MAX_ACQUIRE_US;
-    if (cleanup_wait && host->acquire(host, cleanup_wait)) {
+    if (wifi_maintenance_cleanup_allowed(base) &&
+        cleanup_wait && host->acquire(host, cleanup_wait)) {
         ULONG remaining = wifi_owner_remaining(context, cleanup_start, 2000000UL);
         if (remaining && wifi_tx_session(context, context->generation) &&
             host->set_budget(host, remaining)) {
@@ -2033,6 +2106,11 @@ static ULONG wifi_maintenance_poll(struct P4WifiBase *base, ULONG token)
 static BOOL wifi_maintenance_release(struct P4WifiBase *base, ULONG token)
 {
     (void)base; (void)token;
+    return FALSE;
+}
+static BOOL wifi_maintenance_fence(struct P4WifiBase *base, ULONG token, ULONG mode)
+{
+    (void)base; (void)token; (void)mode;
     return FALSE;
 }
 static BOOL wifi_maintenance_discover(struct P4WifiBase *base, ULONG token)
@@ -2285,8 +2363,8 @@ static void wifi_identify(void)
                             wifi_owner_service(&context, &owner_storage->owner,
                                 &owner_storage->control, &opened, &open_ops,
                                 &tx_ops, &setup_ops, &setup, &restored);
-                            /* Service has closed/restored and released the bus;
-                             * do not inspect host fields or run legacy cleanup. */
+                            /* Service released the bus, with ordinary cleanup
+                             * or a retained terminal fence. No legacy cleanup. */
                             p4host_zero(open_buffer, 4096);
                             FreeVec(open_buffer);
                             p4host_zero(owner_storage, sizeof(*owner_storage));
@@ -2671,6 +2749,8 @@ static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
     P4WifiBase->maintenance_release = wifi_maintenance_release;
     P4WifiBase->maintenance_discover = wifi_maintenance_discover;
     P4WifiBase->maintenance_discovery_poll = wifi_maintenance_discovery_poll;
+    P4WifiBase->maintenance_fence = wifi_maintenance_fence;
+    P4WifiBase->maintenance_fence_mode = 0;
     P4WifiBase->maintenance_task = NULL;
     P4WifiBase->maintenance_token = 0;
     P4WifiBase->maintenance_state = P4_WIFI_MAINT_IDLE;

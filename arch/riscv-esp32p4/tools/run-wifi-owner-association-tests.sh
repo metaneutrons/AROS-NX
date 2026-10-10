@@ -169,6 +169,7 @@ for optimization in 0 2; do
 		-I "$repo_root/compiler/include" \
 		-I "$repo_root/workbench/tools/ESP32Board" \
 		"$test_root/network/hosted_pending.c" \
+		"$test_root/network/hosted_ota.c" \
 		"$test_root/network/hosted_rx.c" \
 		"$test_root/network/hosted_inbox.c" \
 		"$test_root/network/hosted_frames.c" \

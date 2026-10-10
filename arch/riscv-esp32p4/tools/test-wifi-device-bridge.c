@@ -625,6 +625,31 @@ static void test_stopped_unpublishes_before_callback(void)
     CHECK(f.base.client == NULL && !f.base.ready && f.base.runtime == NULL);
 }
 
+static void test_terminal_fence_survives_owner_stop(void)
+{
+    ULONG mode, state;
+    for (mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;
+         mode <= P4_WIFI_MAINT_FENCE_WAIT_REBOOT; ++mode) {
+        for (state = P4_WIFI_MAINT_FENCING;
+             state <= P4_WIFI_MAINT_FENCED; ++state) {
+            struct fixture f;
+            fixture_init(&f);
+            wifi_resource_base = &f.base;
+            CHECK(wifi_device_attach(&f.base, &f, &client_callbacks));
+            f.base.maintenance_fence_mode = mode;
+            f.base.maintenance_state = state;
+            wifi_test_owner_stop_publish(&f.base);
+            CHECK(f.base.maintenance_fence_mode == mode);
+            CHECK(f.base.maintenance_state == (state == P4_WIFI_MAINT_FENCED
+                ? P4_WIFI_MAINT_FENCED : P4_WIFI_MAINT_FAILED));
+            CHECK(!f.base.ready && !f.base.associated);
+            CHECK(!f.base.runtime && !f.base.owner_task);
+            CHECK(!wifi_device_send(&f.base, f.frame, sizeof(f.frame)));
+            CHECK(!host_acquire_calls && !host_held);
+        }
+    }
+}
+
 int main(void)
 {
     test_registration_and_detach();
@@ -636,6 +661,7 @@ int main(void)
     test_budget_and_acquire_failure_cleanup();
     test_association_budget_uses_remaining_deadline();
     test_stopped_unpublishes_before_callback();
+    test_terminal_fence_survives_owner_stop();
     printf("wifi device bridge: %lu checks passed (source-extracted callbacks, mocked Exec/host)\n",
            checks);
     return 0;

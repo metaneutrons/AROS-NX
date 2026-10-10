@@ -611,7 +611,8 @@ static BOOL p4wlan_resource_valid(struct P4WifiBase *radio)
            radio->detach && radio->send_frame && radio->scan && radio->associate &&
            radio->disconnect && radio->maintenance_request &&
            radio->maintenance_poll && radio->maintenance_release &&
-           radio->maintenance_discover && radio->maintenance_discovery_poll;
+           radio->maintenance_discover && radio->maintenance_discovery_poll &&
+           radio->maintenance_fence;
 }
 
 static void p4wlan_ready_callback(APTR client, const UBYTE *mac)

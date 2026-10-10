@@ -62,6 +62,11 @@ secured recovery path; source development and read-only file checks do not.
   peer automatically. Finalization succeeds only after confirmed bounded
   ownership handoff, not after queuing a release request. Its failure must
   remain visible without changing the transfer/commit classification.
+  Native ABI9 now provides that separate terminal fence queue/poll boundary,
+  but not the OTA job or engine adapter. Its sticky obligation must be set
+  by the future owner dispatcher before BEGIN, not deferred until a possibly
+  poisoned transfer completes. Original30-second discovery leases are not a
+  full-image budget. Host/module tests cannot close runtime acceptance.
 - A missing recovery proof is a refused write, not a command-line override.
   Recovery evidence must refer to the actual device and layout. Do not infer
   installed rollback from the candidate's build configuration.

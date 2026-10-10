@@ -64,6 +64,7 @@ for optimization in 0 2; do
 		-fsanitize=address,undefined -fno-omit-frame-pointer \
 		-O"$optimization" -I "$test_tmp" -I "$test_root/network" \
 		"$test_root/network/hosted_owner.c" \
+		"$test_root/network/hosted_ota.c" \
 		"$test_root/network/hosted_pending.c" \
 		"$test_root/network/hosted_rx.c" \
 		"$test_root/network/hosted_inbox.c" \

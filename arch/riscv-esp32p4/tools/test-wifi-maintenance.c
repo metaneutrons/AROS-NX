@@ -1,7 +1,7 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
-/* Host model for source-extracted production maintenance/discovery helpers.
- * Exec, RPC/codec, UID reservation, private owner exchange and host ownership
- * boundaries are modeled; separate suites exercise the actual codecs/owner. */
+/* Host model for source-extracted production maintenance/discovery/fence
+ * helpers. Exec, RPC/codec, UID reservation, private owner exchange and host
+ * ownership boundaries are modeled; actual codecs/owner have separate suites. */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -158,6 +158,7 @@ struct P4WifiBase {
     ULONG maintenance_token;
     ULONG maintenance_state;
     ULONG maintenance_started;
+    ULONG maintenance_fence_mode;
 };
 
 static struct Task owner_task = {1u};
@@ -192,6 +193,7 @@ static unsigned discovery_response_calls;
 static unsigned discovery_inventory_calls;
 static unsigned discovery_acquire_calls;
 static unsigned discovery_release_calls;
+static unsigned tx_session_calls;
 static unsigned discovery_cancel_calls;
 static unsigned discovery_unsubmitted_calls;
 static unsigned discovery_stopping_calls;
@@ -531,6 +533,7 @@ static void wifi_owner_release(void *opaque)
 
 static int wifi_tx_session(void *opaque, uint32_t generation)
 {
+    ++tx_session_calls;
     CHECK(opaque == &context);
     return discovery_tx_session_succeeds && generation == context.generation &&
         host.generation == generation && host.lock.ss_Owner == current_task;
@@ -544,7 +547,9 @@ static int wifi_owner_stopping(void *opaque)
     return discovery_stopping ? 1 : 0;
 }
 
-#ifdef WIFI_MAINTENANCE_MUTANT
+#ifdef WIFI_MAINTENANCE_CLEANUP_MUTANT
+#include "wifi_maintenance_cleanup_mutant.inc"
+#elif defined(WIFI_MAINTENANCE_MUTANT)
 #include "wifi_maintenance_mutant.inc"
 #else
 #include "wifi_maintenance_extract.inc"
@@ -570,6 +575,7 @@ static void reset_discovery_mocks(void)
     discovery_inventory_calls = 0u;
     discovery_acquire_calls = 0u;
     discovery_release_calls = 0u;
+    tx_session_calls = 0u;
     discovery_cancel_calls = 0u;
     discovery_unsubmitted_calls = 0u;
     discovery_stopping_calls = 0u;
@@ -1200,6 +1206,285 @@ static void test_request_identity_and_lock_contention(void)
     CHECK(base.maintenance_state == P4_WIFI_MAINT_REQUESTED);
 }
 
+static void check_fence_request_refused_atomic(ULONG token, ULONG mode)
+{
+    struct P4WifiBase base_before;
+    struct wifi_owner_control control_before;
+    struct p4_hosted_owner owner_before;
+    struct p4_hosted_fifo fifo_before;
+    struct P4SDMMCHost host_before;
+    unsigned request_before = request_calls;
+    unsigned acquire_before = discovery_acquire_calls;
+    unsigned release_before = discovery_release_calls;
+    unsigned tx_before = tx_session_calls;
+
+    memcpy(&base_before, &base, sizeof(base_before));
+    memcpy(&control_before, &control, sizeof(control_before));
+    memcpy(&owner_before, &owner, sizeof(owner_before));
+    memcpy(&fifo_before, &fifo, sizeof(fifo_before));
+    memcpy(&host_before, &host, sizeof(host_before));
+
+    CHECK(!wifi_maintenance_fence(&base, token, mode));
+    CHECK(memcmp(&base_before, &base, sizeof(base_before)) == 0);
+    CHECK(memcmp(&control_before, &control, sizeof(control_before)) == 0);
+    CHECK(memcmp(&owner_before, &owner, sizeof(owner_before)) == 0);
+    CHECK(memcmp(&fifo_before, &fifo, sizeof(fifo_before)) == 0);
+    CHECK(memcmp(&host_before, &host, sizeof(host_before)) == 0);
+    CHECK(request_calls == request_before);
+    CHECK(discovery_acquire_calls == acquire_before);
+    CHECK(discovery_release_calls == release_before);
+    CHECK(tx_session_calls == tx_before);
+}
+
+static void queue_terminal_fence(ULONG mode)
+{
+    prepare_discovery_active();
+    CHECK(wifi_maintenance_cleanup_allowed(&base));
+    CHECK(wifi_maintenance_fence(&base, TEST_TOKEN, mode));
+}
+
+static void test_terminal_fence_admission(void)
+{
+    static const ULONG inactive_states[] = {
+        P4_WIFI_MAINT_IDLE, P4_WIFI_MAINT_REQUESTED,
+        P4_WIFI_MAINT_RELEASING, P4_WIFI_MAINT_FAILED,
+        P4_WIFI_MAINT_RELEASED, P4_WIFI_MAINT_BUSY,
+        P4_WIFI_MAINT_FENCING, P4_WIFI_MAINT_FENCED
+    };
+    ULONG mode;
+    size_t index;
+    unsigned stopped_before, ready_before;
+
+    CHECK(!wifi_maintenance_fence(NULL, TEST_TOKEN,
+                                  P4_WIFI_MAINT_FENCE_INCOMPLETE));
+
+    for (mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;
+         mode <= P4_WIFI_MAINT_FENCE_WAIT_REBOOT; ++mode) {
+        prepare_discovery_active();
+        stopped_before = stopped_calls;
+        ready_before = ready_calls;
+        CHECK(wifi_maintenance_cleanup_allowed(&base));
+        CHECK(wifi_maintenance_fence(&base, TEST_TOKEN, mode));
+        CHECK(base.maintenance_fence_mode == mode);
+        CHECK(base.maintenance_state == P4_WIFI_MAINT_FENCING);
+        CHECK(base.ready == TRUE);
+        CHECK(base.associated == FALSE);
+        CHECK(!wifi_maintenance_cleanup_allowed(&base));
+        CHECK(wifi_maintenance_poll(&base, TEST_TOKEN) ==
+              P4_WIFI_MAINT_FENCING);
+        CHECK(discovery_acquire_calls == 0u);
+        CHECK(tx_session_calls == 0u);
+        CHECK(request_calls == 0u);
+        CHECK(stopped_calls == stopped_before);
+        CHECK(ready_calls == ready_before);
+        check_discovery_storage_cleared(P4_WIFI_DISCOVERY_FAILED, 0u);
+    }
+
+    prepare_discovery_active();
+    check_fence_request_refused_atomic(TEST_TOKEN, 0u);
+    check_fence_request_refused_atomic(TEST_TOKEN,
+                                       P4_WIFI_MAINT_FENCE_WAIT_REBOOT + 1u);
+    check_fence_request_refused_atomic(0u, P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    check_fence_request_refused_atomic(TEST_TOKEN + 1u,
+                                       P4_WIFI_MAINT_FENCE_INCOMPLETE);
+
+    current_task = &other_task;
+    check_fence_request_refused_atomic(TEST_TOKEN,
+                                       P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    current_task = &requester_task;
+
+    base.maintenance_task = &other_task;
+    check_fence_request_refused_atomic(TEST_TOKEN,
+                                       P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    base.maintenance_task = &requester_task;
+
+    base.maintenance_task = &owner_task;
+    current_task = &owner_task;
+    check_fence_request_refused_atomic(TEST_TOKEN,
+                                       P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    current_task = &requester_task;
+    base.maintenance_task = &requester_task;
+
+    base.client_lock.held = 1u;
+    check_fence_request_refused_atomic(TEST_TOKEN,
+                                       P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    base.client_lock.held = 0u;
+
+    for (index = 0u;
+         index < sizeof(inactive_states) / sizeof(inactive_states[0]); ++index) {
+        prepare_discovery_active();
+        base.maintenance_state = inactive_states[index];
+        check_fence_request_refused_atomic(TEST_TOKEN,
+                                           P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    }
+
+    prepare_discovery_active();
+    fake_now = base.maintenance_started + TEST_LEASE_US;
+    check_fence_request_refused_atomic(TEST_TOKEN,
+                                       P4_WIFI_MAINT_FENCE_INCOMPLETE);
+
+    prepare_discovery_active();
+    base.maintenance_fence_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;
+    check_fence_request_refused_atomic(TEST_TOKEN,
+                                       P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN);
+
+    prepare_discovery_active();
+    owner.pending_active = 1u;
+    check_fence_request_refused_atomic(TEST_TOKEN,
+                                       P4_WIFI_MAINT_FENCE_INCOMPLETE);
+
+    prepare_discovery_active();
+    owner.partial_active = 1u;
+    check_fence_request_refused_atomic(TEST_TOKEN,
+                                       P4_WIFI_MAINT_FENCE_INCOMPLETE);
+
+    prepare_discovery_active();
+    owner.ids.active_uid = 9u;
+    owner.ids.active_request_id = 281u;
+    check_fence_request_refused_atomic(TEST_TOKEN,
+                                       P4_WIFI_MAINT_FENCE_INCOMPLETE);
+
+    prepare_discovery_active();
+    fifo.busy = 1u;
+    check_fence_request_refused_atomic(TEST_TOKEN,
+                                       P4_WIFI_MAINT_FENCE_INCOMPLETE);
+
+    prepare_discovery_active();
+    queue_discovery();
+    check_fence_request_refused_atomic(TEST_TOKEN,
+                                       P4_WIFI_MAINT_FENCE_INCOMPLETE);
+}
+
+static void check_failed_terminal_fence(ULONG mode, unsigned expected_tx,
+                                        unsigned expected_release,
+                                        unsigned expected_stopping)
+{
+    CHECK(service_step() == 0);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FAILED);
+    CHECK(base.maintenance_fence_mode == mode);
+    CHECK(!wifi_maintenance_cleanup_allowed(&base));
+    CHECK(base.associated == FALSE);
+    CHECK(request_calls == 0u);
+    CHECK(tx_session_calls == expected_tx);
+    CHECK(discovery_release_calls == expected_release);
+    CHECK(discovery_stopping_calls == expected_stopping);
+    CHECK(host.lock.ss_Owner == NULL);
+    CHECK(wifi_maintenance_poll(&base, TEST_TOKEN) == P4_WIFI_MAINT_FAILED);
+    CHECK(!wifi_maintenance_release(&base, TEST_TOKEN));
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FAILED);
+    CHECK(base.maintenance_fence_mode == mode);
+    CHECK(request_calls == 0u);
+}
+
+static void test_terminal_fence_owner_confirmation_and_failures(void)
+{
+    ULONG mode;
+    unsigned stopped_before, ready_before;
+
+    for (mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;
+         mode <= P4_WIFI_MAINT_FENCE_WAIT_REBOOT; ++mode) {
+        queue_terminal_fence(mode);
+        stopped_before = stopped_calls;
+        ready_before = ready_calls;
+        CHECK(base.maintenance_state == P4_WIFI_MAINT_FENCING);
+        CHECK(base.ready == TRUE);
+        CHECK(discovery_acquire_calls == 0u);
+        CHECK(tx_session_calls == 0u);
+        CHECK(request_calls == 0u);
+
+        CHECK(service_step() == 2);
+        CHECK(base.maintenance_state == P4_WIFI_MAINT_FENCED);
+        CHECK(base.maintenance_fence_mode == mode);
+        CHECK(base.ready == FALSE);
+        CHECK(base.associated == FALSE);
+        CHECK(discovery_acquire_calls == 1u);
+        CHECK(discovery_acquire_wait == P4_HOSTED_OWNER_MAX_ACQUIRE_US);
+        CHECK(tx_session_calls == 1u);
+        CHECK(discovery_stopping_calls == 1u);
+        CHECK(discovery_release_calls == 1u);
+        CHECK(host.lock.ss_Owner == NULL);
+        CHECK(wifi_maintenance_poll(&base, TEST_TOKEN) == P4_WIFI_MAINT_FENCED);
+        CHECK(!wifi_maintenance_normal_poll(base.maintenance_state));
+        CHECK(!wifi_maintenance_cleanup_allowed(&base));
+        CHECK(request_calls == 0u);
+        CHECK(stopped_calls == stopped_before);
+        CHECK(ready_calls == ready_before);
+    }
+
+    queue_terminal_fence(P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    discovery_acquire_succeeds = FALSE;
+    check_failed_terminal_fence(P4_WIFI_MAINT_FENCE_INCOMPLETE, 0u, 0u, 0u);
+    CHECK(discovery_acquire_calls == 1u);
+
+    queue_terminal_fence(P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN);
+    discovery_change_host_generation_on_acquire = TRUE;
+    check_failed_terminal_fence(P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN, 1u, 1u, 0u);
+
+    queue_terminal_fence(P4_WIFI_MAINT_FENCE_WAIT_REBOOT);
+    discovery_tx_session_succeeds = FALSE;
+    check_failed_terminal_fence(P4_WIFI_MAINT_FENCE_WAIT_REBOOT, 1u, 1u, 0u);
+
+    queue_terminal_fence(P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    discovery_stopping = TRUE;
+    check_failed_terminal_fence(P4_WIFI_MAINT_FENCE_INCOMPLETE, 1u, 1u, 1u);
+
+    queue_terminal_fence(P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN);
+    discovery_acquire_advance_us = TEST_LEASE_US;
+    check_failed_terminal_fence(P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN, 1u, 1u, 0u);
+
+    /* The owner wait is capped by the original lease, not just the global
+     * acquire maximum. Expire exactly while acquiring to force a safe failure. */
+    queue_terminal_fence(P4_WIFI_MAINT_FENCE_WAIT_REBOOT);
+    fake_now = 100000000u;
+    base.maintenance_started = fake_now - (TEST_LEASE_US - 1000u);
+    discovery_acquire_advance_us = 1000u;
+    check_failed_terminal_fence(P4_WIFI_MAINT_FENCE_WAIT_REBOOT, 1u, 1u, 0u);
+    CHECK(discovery_acquire_wait == 1000u);
+}
+
+static void test_terminal_fence_sticky_after_expiry(void)
+{
+    ULONG mode = P4_WIFI_MAINT_FENCE_WAIT_REBOOT;
+    unsigned acquire_calls, release_calls, stopping_calls;
+
+    queue_terminal_fence(mode);
+    CHECK(service_step() == 2);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FENCED);
+    acquire_calls = discovery_acquire_calls;
+    release_calls = discovery_release_calls;
+    stopping_calls = discovery_stopping_calls;
+
+    fake_now = base.maintenance_started + TEST_LEASE_US;
+    CHECK(wifi_maintenance_poll(&base, TEST_TOKEN) == P4_WIFI_MAINT_FENCED);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FENCED);
+    CHECK(base.maintenance_fence_mode == mode);
+    CHECK(service_step() == 2);
+    CHECK(discovery_acquire_calls == acquire_calls);
+    CHECK(discovery_release_calls == release_calls);
+    CHECK(discovery_stopping_calls == stopping_calls);
+    CHECK(request_calls == 0u);
+    CHECK(!wifi_maintenance_normal_poll(base.maintenance_state));
+    CHECK(!wifi_maintenance_cleanup_allowed(&base));
+    CHECK(!wifi_maintenance_release(&base, TEST_TOKEN));
+    CHECK(wifi_maintenance_request(&base) == 0u);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FENCED);
+    CHECK(base.maintenance_fence_mode == mode);
+    CHECK(request_calls == 0u);
+
+    queue_terminal_fence(P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    fake_now = base.maintenance_started + TEST_LEASE_US;
+    CHECK(wifi_maintenance_poll(&base, TEST_TOKEN) == P4_WIFI_MAINT_FAILED);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FAILED);
+    CHECK(base.maintenance_fence_mode == P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    CHECK(!wifi_maintenance_cleanup_allowed(&base));
+    CHECK(service_step() == 0);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FAILED);
+    CHECK(base.maintenance_fence_mode == P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    CHECK(!wifi_maintenance_release(&base, TEST_TOKEN));
+    CHECK(request_calls == 0u);
+    CHECK(discovery_acquire_calls == 0u);
+}
+
 static void test_normal_poll_gate(void)
 {
     CHECK(wifi_maintenance_normal_poll(P4_WIFI_MAINT_IDLE) == TRUE);
@@ -1209,6 +1494,8 @@ static void test_normal_poll_gate(void)
     CHECK(wifi_maintenance_normal_poll(P4_WIFI_MAINT_RELEASING) == FALSE);
     CHECK(wifi_maintenance_normal_poll(P4_WIFI_MAINT_FAILED) == FALSE);
     CHECK(wifi_maintenance_normal_poll(P4_WIFI_MAINT_BUSY) == FALSE);
+    CHECK(wifi_maintenance_normal_poll(P4_WIFI_MAINT_FENCING) == FALSE);
+    CHECK(wifi_maintenance_normal_poll(P4_WIFI_MAINT_FENCED) == FALSE);
     CHECK(wifi_maintenance_normal_poll((ULONG)123456u) == FALSE);
 }
 
@@ -1396,6 +1683,9 @@ int main(void)
     test_service_drain_fences();
     test_stop_ack_admission_and_active_silence();
     test_release_start_ack_and_offline_state();
+    test_terminal_fence_admission();
+    test_terminal_fence_owner_confirmation_and_failures();
+    test_terminal_fence_sticky_after_expiry();
     test_poll_and_release_expiry_and_wrap();
     test_service_deadline_failures();
     printf("wifi maintenance source tests: %u checks passed\n", test_checks);

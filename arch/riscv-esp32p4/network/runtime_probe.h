@@ -46,5 +46,8 @@ struct P4WifiBase
                                         struct p4_wifi_discovery_result *);
     struct Task *maintenance_task;
     ULONG maintenance_token, maintenance_state, maintenance_started;
+    BOOL (*maintenance_fence)(struct P4WifiBase *, ULONG, ULONG);
+    /* Sticky after accepted terminal handoff; never clear on expiry/retirement. */
+    ULONG maintenance_fence_mode;
 };
 #endif

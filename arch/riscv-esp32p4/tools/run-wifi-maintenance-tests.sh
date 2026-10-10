@@ -8,6 +8,7 @@ test_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 test_tmp=$(mktemp -d "${TMPDIR:-/tmp}/p4-wifi-maintenance.XXXXXX")
 extract="$test_tmp/wifi_maintenance_extract.inc"
 mutant_extract="$test_tmp/wifi_maintenance_mutant.inc"
+cleanup_mutant_extract="$test_tmp/wifi_maintenance_cleanup_mutant.inc"
 constants="$test_tmp/wifi_maintenance_constants.inc"
 source_file="$test_root/network/runtime_probe.c"
 header_file="$test_root/network/device_bridge.h"
@@ -16,7 +17,7 @@ rpc_header="$test_root/network/hosted_rpc.h"
 owner_header="$test_root/network/hosted_owner.h"
 layout_header="$test_root/../../workbench/tools/ESP32Board/layout.h"
 wire_header="$test_root/boardtool/discovery_wire.h"
-trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$test_tmp/test-mutant" "$test_tmp/mutant.out" "$extract" "$mutant_extract" "$constants"; command rm -rf "$test_tmp/test-o0.dSYM" "$test_tmp/test-o2.dSYM" "$test_tmp/test-mutant.dSYM"; command rmdir "$test_tmp"' EXIT HUP INT TERM
+trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$test_tmp/test-mutant" "$test_tmp/test-cleanup-mutant" "$test_tmp/mutant.out" "$test_tmp/cleanup-mutant.out" "$extract" "$mutant_extract" "$cleanup_mutant_extract" "$constants"; command rm -rf "$test_tmp/test-o0.dSYM" "$test_tmp/test-o2.dSYM" "$test_tmp/test-mutant.dSYM" "$test_tmp/test-cleanup-mutant.dSYM"; command rmdir "$test_tmp"' EXIT HUP INT TERM
 
 : > "$extract"
 
@@ -69,31 +70,130 @@ extract_function() {
 # subtraction semantics compiled into runtime_probe.c.
 extract_function wifi_owner_remaining
 extract_function wifi_maintenance_normal_poll
+extract_function wifi_maintenance_cleanup_allowed
 extract_function wifi_maintenance_discovery_clear
 extract_function wifi_discovery_output_valid
 extract_function wifi_discovery_session_valid
 extract_function wifi_maintenance_request
 extract_function wifi_maintenance_poll
 extract_function wifi_maintenance_release
+extract_function wifi_maintenance_fence
 extract_function wifi_maintenance_discover
 extract_function wifi_maintenance_discovery_poll
 extract_function wifi_maintenance_discovery_service
 extract_function wifi_maintenance_service
 
-# Keep the source wiring that gates the owner FIFO poll under regression
-# coverage. An unconditional owner_step call must fail this guard.
+# Keep the owner-loop client callback, ordinary transport-poll, and link
+# observation gates under regression coverage. A terminal fence reaches none.
 awk '
+	index($0, "maintenance = wifi_maintenance_service(base, &runtime);") {
+		service_calls++
+	}
+	index($0, "if (maintenance == 1 && base->client && base->callbacks)") {
+		client_service_guards++
+	}
 	index($0, "poll_transport = wifi_maintenance_normal_poll(base->maintenance_state);") {
 		assignments++
+	}
+	index($0, "if ((base->maintenance_state == P4_WIFI_MAINT_IDLE ||") {
+		refresh_guards++
+		pending_refresh_guard = 1
+	}
+	{
+		if (pending_refresh_guard &&
+		    index($0, "base->maintenance_state == P4_WIFI_MAINT_RELEASED) &&") != 0)
+			refresh_released_state++
+		if (index($0, "!wifi_owner_refresh_link_snapshot(") != 0) {
+			refresh_calls++
+			if (!pending_refresh_guard || refresh_released_state != refresh_guards)
+				bad_refresh_guard = 1
+			pending_refresh_guard = 0
+		}
 	}
 	index($0, "p4_hosted_owner_step(") {
 		calls++
 		if (index($0, "if (poll_transport && !p4_hosted_owner_step(") != 0)
 			guarded++
 	}
-	END { if (assignments != 1 || calls != 1 || guarded != 1) exit 1 }
+	END {
+		if (service_calls != 1 || client_service_guards != 1 ||
+		    assignments != 1 || calls != 1 || guarded != 1 ||
+		    refresh_guards != 1 || refresh_released_state != 1 ||
+		    refresh_calls != 1 || bad_refresh_guard) exit 1
+	}
 ' "$source_file" || {
-	echo "owner transport polling is not gated by wifi_maintenance_normal_poll" >&2
+	echo "owner callback, transport poll, or link observation lost its maintenance gate" >&2
+	exit 1
+}
+
+# Verify both protocol cleanup and the later CLOSE/restoration acquisition stay
+# under the sticky cleanup predicate. Parse the actual owner-service braces so
+# merely leaving the predicate elsewhere in teardown cannot satisfy the guard.
+awk '
+function open_delta(text, copy) {
+	copy = text
+	return gsub(/[{]/, "", copy)
+}
+function close_delta(text, copy) {
+	copy = text
+	return gsub(/[}]/, "", copy)
+}
+/^static void wifi_owner_service[(]/ { in_service = 1 }
+in_service {
+	if (cleanup) {
+		if (index($0, "if (wifi_maintenance_cleanup_allowed(base) &&") != 0) {
+			guard_count++
+			pending_guard = guard_count
+		}
+		if ($0 ~ /checksum,[[:space:]]*281u/) {
+			protocol_calls++
+			if (protocol_guard_depth == 0 || depth < protocol_guard_depth)
+				bad = 1
+		}
+		if ($0 ~ /checksum,[[:space:]]*279u/) {
+			protocol_calls++
+			if (protocol_guard_depth == 0 || depth < protocol_guard_depth)
+				bad = 1
+		}
+		if (index($0, "host->acquire(host, cleanup_wait)") != 0) {
+			acquire_calls++
+			if (pending_guard != 2)
+				bad = 1
+		}
+		if (index($0, "p4_hosted_open_cleanup(open_ops, opened)") != 0) {
+			close_calls++
+			if (close_guard_depth == 0 || depth < close_guard_depth)
+				bad = 1
+		}
+		if (index($0, "p4_sdio_restore_function1(setup_ops, setup, restored)") != 0) {
+			restore_calls++
+			if (close_guard_depth == 0 || depth < close_guard_depth)
+				bad = 1
+		}
+		lower = tolower($0)
+		if (lower ~ /(reset|reboot)[[:space:]]*[(]/) reset_calls++
+	}
+	if (index($0, "context->owner_cleanup = TRUE;") != 0) cleanup = 1
+	line = $0
+	delta = open_delta(line) - close_delta(line)
+	depth += delta
+	if (pending_guard && open_delta(line) > 0) {
+		if (pending_guard == 1) protocol_guard_depth = depth
+		else if (pending_guard == 2) close_guard_depth = depth
+		pending_guard = 0
+	}
+	if (depth == 0 && index($0, "static void wifi_owner_service(") == 0 && cleanup) {
+		finished = 1
+		exit
+	}
+}
+END {
+	if (!cleanup || guard_count != 2 || protocol_calls != 2 ||
+	    acquire_calls != 1 || close_calls != 1 || restore_calls != 1 ||
+	    reset_calls != 0 || bad || !finished) exit 1
+}
+' "$source_file" || {
+	echo "owner teardown protocol/CLOSE/restoration escaped the sticky fence or added reset" >&2
 	exit 1
 }
 
@@ -160,3 +260,30 @@ if ! grep -Fq 'wifi_maintenance_normal_poll(P4_WIFI_MAINT_ACTIVE) == FALSE' \
 	exit 1
 fi
 echo "wifi maintenance ACTIVE-poll mutation rejected"
+
+# Negative control: if the terminal cleanup predicate is widened to always
+# allow cleanup, the sticky-mode assertions must reject it.
+sed 's/return base->maintenance_fence_mode == 0;/return base != NULL;/' \
+	"$extract" > "$cleanup_mutant_extract"
+if ! grep -Fq 'return base != NULL;' "$cleanup_mutant_extract" ||
+   grep -Fq 'return base->maintenance_fence_mode == 0;' "$cleanup_mutant_extract"; then
+	echo "could not construct cleanup-allowed mutation" >&2
+	exit 1
+fi
+"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic -g \
+	-fsanitize=address,undefined -fno-omit-frame-pointer -O0 \
+	-DWIFI_MAINTENANCE_CLEANUP_MUTANT -I "$test_tmp" \
+	"$test_root/tools/test-wifi-maintenance.c" -o "$test_tmp/test-cleanup-mutant"
+if ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
+   UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+	"$test_tmp/test-cleanup-mutant" > "$test_tmp/cleanup-mutant.out" 2>&1; then
+	echo "always-allowed cleanup mutation unexpectedly passed" >&2
+	exit 1
+fi
+if ! grep -Fq '!wifi_maintenance_cleanup_allowed(&base)' \
+	"$test_tmp/cleanup-mutant.out"; then
+	echo "cleanup mutation failed for a reason other than the sticky predicate assertion" >&2
+	cat "$test_tmp/cleanup-mutant.out" >&2
+	exit 1
+fi
+echo "wifi maintenance sticky-cleanup mutation rejected"
