@@ -132,6 +132,14 @@ PLL/PSRAM/both harts/graphics updates without another fault. Native and IDF
 both fail to obtain a C6 reply in retained-power tests. Installed firmware,
 C6 startup and actual variant wiring remain unverified; a fresh coordinated
 rail-off is requested because a P4 reset does not reset C6. WLAN remains open.
+Pinned vendor stock C6 artifact is now inspected offline: merged image
+1,146,768B SHA-2568b16a042713bca67d64a1d7af6a296432c1c5f8116fe015ae24acfca3a66fec0,
+valid extracted app `network_adapter`, version `54aafd0-dirty`, built
+2024-12-26 with IDF5.4-dev. It contains ESP-Hosted-MCU/SDIO slave code;
+this is not an installed-firmware identity or a successful startup. The
+reference example selects SDIO streaming and disables checksum, whereas the
+independent codec already accepts either negotiated checksum mode. Do not
+infer the stock binary's exact configuration from that separate sdkconfig.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device

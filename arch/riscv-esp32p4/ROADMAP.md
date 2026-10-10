@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; native and IDF CMD5 response timeout` | Corrected IDF reaches CMD0/400kHz; all3 CMD5 peripheral timeouts, no valid OCR. API/command error-channel correction host tested/build verified. Safe quiesce and exact full-span rollback pass; DSI parent fix recovers graphics startup after IDF in30.917s headless return, not visual/rail-off acceptance. Next coordinated C6 rail-off/startup and wiring/firmware evidence. C6 identity, SD integrity/coexistence and WLAN remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; native and IDF CMD5 response timeout` | Corrected IDF reaches CMD0/400kHz; all3 CMD5 peripheral timeouts, no valid OCR. Error-channel correction host tested/build verified. Quiesce/rollback and DSI return pass headlessly, not rail-off. Vendor C6 stock app identified offline as network_adapter/54aafd0-dirty, not installed identity. Next coordinated C6 rail-off/startup and wiring/firmware evidence. C6 identity, SD integrity/coexistence and WLAN remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; RX reassembly host tested` | Bounded RX helper passes312 strict sanitized checks each O0/O2 and RV32 compilation. Complete checksummed frame-to-event-TLV fixture passes. Reverse TX direction differs; no runtime transport. N0, compatibility, credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -259,6 +259,14 @@ build verified; source-corrected v3 not deployed. Exact corrected AROS span is
 restored and hardware return passes PLL/PSRAM/harts/graphics updates in30.917s.
 Installed C6 firmware, actual routing and independent C6 cold-start state remain
 open. Fresh readiness requested for coordinated full rail-off, not assumed.
+The pinned vendor merged C6 stock image is inspected offline and contains a
+valid network_adapter app54aafd0-dirty with ESP-Hosted-MCU/SDIO slave code.
+It does not identify the connected C6 or prove that its slave initialized.
+The separate source example sdkconfig selects streaming/high speed, C6
+CMD18/CLK19/D0..3=20..23/reset-1 and checksum OFF. Do not equate that config
+with the supplied binary, the fitted variant or installed image. The codec
+already supports both checksum policies; startup capability negotiation stays
+an N1 runtime gate, not a reason to relax validation speculatively.
 No firmware incompatibility inference or WLAN acceptance is justified yet.
 Enumeration alone cannot prove
 ESP-Hosted compatibility or working WLAN.
@@ -29797,6 +29805,45 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   bounded command test and verified return. If no reply, acquire C6 UART
   startup/identity and matching wiring evidence without C6 flash mutation.
   Cold-start request pending; no repeated blind reset or WLAN pass claimed.
+
+### 2026-10-10 - N0 offline vendor C6 image identity; no hardware action
+
+- Parent eadf5d4eda, same clean Wi-Fi worktree. Previous goal turn made
+  concrete progress via official-driver timeout capture, exact rollback and
+  helper correction. Physical rail-off readiness still unanswered; no serial
+  opening, reset, flash or physical test in this reference-only turn.
+- Authoritative reference cheops/JC1060P470C_I_W at
+  6304eddef32a33aa9d9a85e971e39dfb24c3cca3, path
+  `8-Burn operation/Burn files/JC1060P470_C6.bin`, Git blob
+  33e168514aa1c8e59215ee7f5ca4f7ba7c578cd2; downloaded only to external
+  evidence. Local git hash-object matches blob; merged image1146768B,
+  SHA-2568b16a042713bca67d64a1d7af6a296432c1c5f8116fe015ae24acfca3a66fec0.
+  Header identifies C6/4MB/DIO80MHz/revisions0..99; bootloader footer valid.
+- Partition bytes at0x8000 identify ota_0 at0x10000. Offline dd extraction
+  from that offset yields app1081232B; esptool image-info reports valid app
+  SHA-2568df4756f1f7112b35a057ab08234e20f0711a930512640c0ad6a9563b3e09166,
+  checksum/hash, project network_adapter, version54aafd0-dirty, compile
+  2024-12-26 18:41:41, IDFv5.4-dev-3951-g9106c43acc-dirty, ELF hash
+  4f0f5abaef3061471bc806a5a5632e619a4ee445a9a691a1876d2a103444253b.
+  Embedded strings identify ESP-Hosted-MCU Slave and SDIO slave streaming
+  implementation. Static binary contents are not runtime initialization or
+  installed-device identity; do not claim matching Git source from dirty app
+  version, or deploy this artifact as a presumed recovery image.
+- Independently retrieved pinned examples/slave/sdkconfig selects C6,
+  SDIO/streaming/high speed, CMD18/CLK19/D0..3=20..23/reset-1,
+  checksum disabled, UART0 console115200 and secondary USB Serial/JTAG.
+  These C6 pads must not replace P4 pin numbers. This separate source config
+  is not proof of the stock binary or installed firmware's effective config.
+  Existing hosted_wire supports exactly0/1 checksum policy from capabilities;
+  no codec relaxation or runtime policy change is needed from this audit.
+- Evidence files reference-c6-stock.bin and reference-c6-stock-app.bin under
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/.
+  No third-party firmware committed to AROS, no device/media change, no WLAN
+  acceptance. This records a concrete UART/app identity comparator for the
+  next C6 startup capture. Installed image remains unknown.
+- Next remains coordinated all-source rail-off after fresh readiness. If
+  CMD5 still times out, obtain C6 UART startup/identity and actual wiring
+  evidence before firmware writes. P4 warm reset cannot provide that proof.
 
 ## Evidence-entry template
 
