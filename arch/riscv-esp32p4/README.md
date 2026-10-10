@@ -8,7 +8,10 @@ contract avoids reconstructing AP security IEs. Unknown, malformed or
 ambiguous security must never select an open-network fallback. Initial
 summary association is bounded to singleton WPA/RSN PSK TKIP/CCMP; SAE, EAP,
 WPS and PMF require additional truthful metadata, not invented support.
-This is uncommitted development, not a target build or deployed capability.
+Pure summary predicates pass88 scenarios/264 checks each O0/O2 ASan/UBSan
+on macOS and isolated Linux; the explicit RV32 ABI fixture also compiles.
+Driver target syntax passes with existing warnings. Caller/conversion tests,
+complete linking and deployment remain unverified; generic work is uncommitted.
 
 Persistent owner scan development (2026-10-10): private bridge ABI2 now adds
 an owner-service-only default-config scan, using fresh persistent UIDs rather
