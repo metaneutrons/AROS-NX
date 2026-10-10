@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan reference passed once; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip12/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Native post-CMD0 settling-delay candidate passes4,764 sanitizer checks each O0/O2; not deployed. Reset-specific timeout/CRC policy still differs from IDF. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan reference passed once; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip12/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Native reset-before-identify candidate passes6,358 sanitizer checks each O0/O2; not deployed. Exact RES timeout/CRC may continue without claiming acknowledgement; generic card/host/budget failures remain fatal. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -664,10 +664,15 @@ Native bootstrap comparison now finds and corrects the missing post-CMD0
 20ms settling interval in the identification candidate. Strict sanitizer
 models pass4,764 checks each O0/O2; not yet hardware deployed.
 RV32 resource build and independent delay-contract review pass.
-The existing reset-query diagnostic still fails on all errors: IDF6 tolerates only reset
-probe timeout/CRC in SD mode, not controller INVALID_RESPONSE. Resolve that
-command-specific policy separately, preserving generic R5 card-error rejection
-and aggregate budget/generation checks before native warm-start qualification.
+The new bootstrap candidate now integrates exactly one Fn0 CCCR RES before
+identification. Only classified timeout/CRC for that exact command may continue;
+generic R5/card/host failures remain fatal. Tolerated failures retain ack0;
+subsequent CMD0/CMD5/CMD3/CMD7/CCCR/FBR still must pass under the same budget.
+The separate historical reset-query diagnostic retains its fail-stop policy.
+Strict bootstrap models now pass6,358 checks each O0/O2. Fresh RV32
+bootstrap-only and setup-enabled resource builds pass, not hardware deployed.
+Extracted runtime adapter models pass41 cases/501 checks each O0/O2;
+independent bootstrap review passes after the ACK-reporting correction.
 The empty-scan omission is a workaround for the pinned slave's API error,
 not proof that its empty-record behavior is fixed. N1E (open root-fix item):
 establish installed slave lineage, fix/upstream the erroneous empty-list API
@@ -30845,6 +30850,66 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: integrate classified reset-before-identification with negative tests
   before one bounded native bootstrap hardware run. Full association, frames,
   SANA-II, shared-SD and recovery requirements remain open.
+
+### 2026-10-10 - N1 classified SDIO reset integrated before native identification
+
+- Source baseline3bfd8eb2bb plus this change. Native bootstrap issues exactly
+  one Fn0 CMD52 CCCR0x06=0x08 before the existing CMD0/delay/CMD5/CMD3/CMD7/
+  CCCR/FBR path. Matches IDF6 sdmmc_init.c:78-91 and sdmmc_io.c:66-83 for
+  reset ordering and SD-mode timeout/CRC exceptions, not a complete IDF port.
+  Memory-card CMD8 probing remains absent from this dedicated SDIO sequence.
+- Transport returns classified negative timeout/CRC only for exact
+  CMD52arg0x80000c08/R5/mask0xcb00. Requires a started request, no IDSTS or
+  injection, sole RTO/RCRC low status apart from CMD_DONE, or an unanswered
+  started software deadline with raw low status0. Refused/pre-start, mixed
+  response/bus/data/DMA/card errors remain fatal. Runtime generation/budget
+  validation and dma_fault checks occur before classification. Rejected
+  response payloads remain unpublished; generic command errors stay fatal.
+- Bootstrap retains reset attempted/ack/status even if identification fails.
+  Tolerated timeout/CRC never claims acknowledgement or complete WLAN. One
+  existing aggregate budget spans reset and identify; it is not renewed.
+  Register setup helpers explicitly reject nonpositive command outcomes.
+- Strict exact-source protocol models: test-sdio-probe.sh exits0 with6,358
+  checks each O0/O2 ASan/UBSan, including exact single reset, allowed/unknown
+  classifications, R5 error override, pre/post/reset/idle budget boundaries,
+  missing callbacks and failure at each subsequent command. Existing
+  reset-query1,168/setup3,997/restore602 checks each O0/O2 also pass.
+- Independent Luna review found delayed ACK publication after a successful
+  reset followed by budget expiry. Fixed ACK publication before the budget
+  check; all four budget-boundary ACK assertions now pass. Independent rerun
+  confirms6,358 checks each. No tolerance leak found in the inspected path.
+- RV32: all network objects invalidated before each flagged build. GNU Make
+  PATH selects Homebrew make for nested invocations. Initial default build
+  session17010 exits0 (pre-ACK-review correction, not final acceptance).
+  Corrected setup=1/reset-query=0 quick module build session30249 exits0;
+  42,956B SHA-25688e9fbe976e9b24ab75504dc824790084ff5ea9790e5b4b1ef3701c0744aae76,
+  retained as native-bootstrap.Q2ReQE/setup-enabled.resource under external
+  evidence/wifi-2026-10-10/. Board=jc1060p470c-v2, probe=1. Final setup=0
+  quick build session32572 exits0;40,220B SHA-256
+  12669b4b46f6e73c2458a392553b3cb360c9779519336915a90debc458986125,
+  retained in the same directory as bootstrap-only.resource.
+- Extracted runtime adapter tests: test-wifi-reset-status.py exits0,41 cases/
+  501 checks each O0/O2 strict C99 ASan/UBSan, author run and primary repeat.
+  Actual five runtime function bodies, budget helper, CMD52 constructor,
+  request/result types and constants extracted SHA-256
+  7d6254dc0fc0925a75997b65c0313f63b9098aada0e010fdc6825ef205b82d27.
+  Coverage includes exact reset tuple, generic refusals, untouched response
+  sentinel on every host failure, mixed error bits, CARD_ERROR, DMA/refused/
+  pre-start/injected outcomes, generation/budget before and after host call,
+  dma_fault and negative register-helper outcomes. These mock the motor's
+  validated results and timer, not actual controller completion or elapsed
+  hardware latency; no false runtime payload publication found.
+  Primary repeated log retained in native-bootstrap.Q2ReQE/adapter-tests.log,
+  SHA-2566c6ca410e5227b4ec765162f367a771e95c43b7259531edba8e4025fd44df1db.
+- Safety: no serial open, reset/flash/C6 firmware/SD write or credentials.
+  Board remains on restored baseline. Enabling the new probe will mutate
+  slave SDIO state, unlike the historical read-only identification probe;
+  restoring P4 flash cannot undo that runtime state. No OPEN/IRQ/FIFO/RPC.
+  Separate historical RESET_QUERY diagnostic remains fail-stop, unchanged.
+- Limits/next: module/models are not package/loader or hardware acceptance.
+  Complete package/checksize/loader audit,
+  then bounded native warm-bootstrap evidence with exact baseline rollback.
+  Native OPEN/RX/RPC/association/frames/SANA-II/shared-SD/recovery remain open.
 
 ## Evidence-entry template
 

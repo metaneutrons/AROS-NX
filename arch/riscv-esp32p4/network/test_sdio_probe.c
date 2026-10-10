@@ -15,12 +15,17 @@ static const unsigned int cccr_addresses[] = {
 
 struct fake_host
 {
+    unsigned int reset_calls;
+    int reset_status;
+    uint32_t reset_response;
+    uint8_t bootstrap;
     unsigned int calls;
     unsigned int budget_calls;
     unsigned int yields;
     unsigned int polls;
     unsigned int register_reads;
     unsigned int fail_call;
+    int fail_status;
     unsigned int fail_address;
     unsigned int budget_fail_at;
     unsigned int not_ready_polls;
@@ -40,6 +45,7 @@ static void fake_init(struct fake_host *fake)
 {
     *fake = (struct fake_host){ 0 };
     fake->initial_ocr = P4_SDIO_PROBE_HOST_OCR;
+    fake->reset_status = 1;
     fake->poll_ocr = P4_SDIO_PROBE_HOST_OCR;
     fake->functions = 1;
     fake->r6 = UINT32_C(0x12340000);
@@ -60,10 +66,22 @@ static int fake_command(void *context, unsigned int index, uint32_t argument,
     uint32_t *response)
 {
     struct fake_host *fake = (struct fake_host *)context;
-    unsigned int call = ++fake->calls;
+    unsigned int call;
     uint32_t raw = 0;
 
     CHECK(response != NULL);
+    if (fake->bootstrap && !fake->reset_calls)
+    {
+        CHECK(index == 52U);
+        CHECK(argument == UINT32_C(0x80000c08));
+        CHECK(response_type == P4_SDIO_RESP_R5);
+        CHECK(error_mask == P4_SDIO_PROBE_R5_ERROR_MASK);
+        CHECK(fake->calls == 0U && fake->yields == 0U);
+        ++fake->reset_calls;
+        *response = fake->reset_response;
+        return fake->reset_status;
+    }
+    call = ++fake->calls;
     switch (index)
     {
         case 0:
@@ -134,7 +152,7 @@ static int fake_command(void *context, unsigned int index, uint32_t argument,
 
     *response = raw;
     if (call == fake->fail_call)
-        return 0;
+        return fake->fail_status;
     if (fake->honor_error_masks && (raw & error_mask) != 0)
         return 0;
     if (index == 52U && fake->fail_address_enabled &&
@@ -415,6 +433,116 @@ static void test_result_zeroing_and_validation(void)
     CHECK(p4_sdio_probe_identify(NULL, NULL) == 0);
 }
 
+static void test_bootstrap_reset_policy(void)
+{
+    static const int statuses[] = { 1, P4_SDIO_COMMAND_RESPONSE_TIMEOUT,
+        P4_SDIO_COMMAND_RESPONSE_CRC, 0, -3, 2 };
+    unsigned int i;
+    for (i = 0; i < sizeof(statuses) / sizeof(statuses[0]); ++i)
+    {
+        struct fake_host fake;
+        p4_sdio_probe_ops_t ops;
+        p4_sdio_probe_result_t result;
+        int allowed = i < 3U;
+        fake_init(&fake);
+        fake.bootstrap = 1;
+        fake.reset_status = statuses[i];
+        ops = fake_ops(&fake);
+        CHECK(p4_sdio_probe_bootstrap(&ops, &result) == allowed);
+        CHECK(fake.reset_calls == 1U);
+        CHECK(result.reset_attempted == 1U);
+        CHECK(result.reset_status == statuses[i]);
+        CHECK(result.reset_acknowledged == (i == 0U));
+        CHECK(result.complete == allowed);
+        if (allowed)
+        {
+            CHECK(fake.calls == 15U && fake.yields == 1U);
+            CHECK(result.functions == 1U && result.rca == 0x1234U);
+        }
+        else
+        {
+            CHECK(fake.calls == 0U && fake.yields == 0U);
+            CHECK(result.stage == P4_SDIO_PROBE_STAGE_RESET);
+            CHECK(result.error == P4_SDIO_PROBE_ERROR_COMMAND);
+        }
+    }
+    /* A classified transport failure must never hide R5 status errors. */
+    for (i = 0; i < 16U; ++i)
+    {
+        struct fake_host fake;
+        p4_sdio_probe_ops_t ops;
+        p4_sdio_probe_result_t result;
+        uint32_t bit = UINT32_C(1) << i;
+        if (!(bit & P4_SDIO_PROBE_R5_ERROR_MASK))
+            continue;
+        fake_init(&fake);
+        fake.bootstrap = 1;
+        fake.reset_status = P4_SDIO_COMMAND_RESPONSE_TIMEOUT;
+        fake.reset_response = bit;
+        ops = fake_ops(&fake);
+        CHECK(p4_sdio_probe_bootstrap(&ops, &result) == 0);
+        CHECK(result.error == P4_SDIO_PROBE_ERROR_R5_STATUS);
+        CHECK(result.reset_acknowledged == 0U && result.complete == 0U);
+        CHECK(fake.reset_calls == 1U && fake.calls == 0U);
+    }
+}
+
+static void test_bootstrap_failure_boundaries(void)
+{
+    unsigned int i;
+    for (i = 1; i <= 4U; ++i)
+    {
+        struct fake_host fake;
+        p4_sdio_probe_ops_t ops;
+        p4_sdio_probe_result_t result;
+        fake_init(&fake);
+        fake.bootstrap = 1;
+        fake.budget_fail_at = i;
+        ops = fake_ops(&fake);
+        CHECK(p4_sdio_probe_bootstrap(&ops, &result) == 0);
+        CHECK(result.error == P4_SDIO_PROBE_ERROR_BUDGET);
+        CHECK(result.complete == 0U);
+        CHECK(fake.reset_calls == (i > 1U));
+        CHECK(fake.calls == (i == 4U));
+        CHECK(fake.yields == (i == 4U));
+        CHECK(result.reset_acknowledged == (i > 1U));
+    }
+    for (i = 1; i <= 15U; ++i)
+    {
+        struct fake_host fake;
+        p4_sdio_probe_ops_t ops;
+        p4_sdio_probe_result_t result;
+        fake_init(&fake);
+        fake.bootstrap = 1;
+        fake.reset_status = P4_SDIO_COMMAND_RESPONSE_CRC;
+        fake.fail_call = i;
+        fake.fail_status = i & 1U ? P4_SDIO_COMMAND_RESPONSE_TIMEOUT :
+            P4_SDIO_COMMAND_RESPONSE_CRC;
+        ops = fake_ops(&fake);
+        CHECK(p4_sdio_probe_bootstrap(&ops, &result) == 0);
+        CHECK(result.complete == 0U);
+        CHECK(result.reset_attempted == 1U);
+        CHECK(result.reset_acknowledged == 0U);
+        CHECK(result.reset_status == P4_SDIO_COMMAND_RESPONSE_CRC);
+        CHECK(fake.calls == i && fake.reset_calls == 1U);
+    }
+    {
+        struct fake_host fake;
+        p4_sdio_probe_ops_t ops;
+        p4_sdio_probe_result_t result;
+        fake_init(&fake);
+        fake.bootstrap = 1;
+        ops = fake_ops(&fake);
+        ops.yield = NULL;
+        CHECK(p4_sdio_probe_bootstrap(&ops, &result) == 0);
+        CHECK(result.error == P4_SDIO_PROBE_ERROR_INVALID_ARGUMENT);
+        CHECK(fake.calls == 0U && fake.reset_calls == 0U);
+        CHECK(result.reset_attempted == 0U);
+        CHECK(p4_sdio_probe_bootstrap(NULL, &result) == 0);
+        CHECK(p4_sdio_probe_bootstrap(&ops, NULL) == 0);
+    }
+}
+
 int main(void)
 {
     test_success();
@@ -424,6 +552,8 @@ int main(void)
     test_relative_address_and_status();
     test_cccr_and_final_read();
     test_result_zeroing_and_validation();
+    test_bootstrap_reset_policy();
+    test_bootstrap_failure_boundaries();
     printf("PASS: %u SDIO probe checks\n", checks);
     return 0;
 }

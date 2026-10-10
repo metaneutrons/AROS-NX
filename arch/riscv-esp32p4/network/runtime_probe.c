@@ -1,5 +1,5 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
-/* Native opt-in identification, optionally function setup with restoration.
+/* Native opt-in SDIO reset/bootstrap, optionally setup with restoration.
  * Separate opt-in CCCR reset/query diagnostic; no OPEN, IRQ enable,
  * WLAN RPC or C6 firmware replacement. */
 #include <aros/asmcall.h>
@@ -174,6 +174,31 @@ static void wifi_observe_rejected_r5(void *opaque,
 }
 #endif
 
+/* Called only after the shared motor and generation/budget validation.
+ * Hardware response timeout/CRC must be the only low command/data status
+ * apart from CMD_DONE. Card errors, bus/DMA faults and refused/pre-start
+ * requests remain unclassified failures. No rejected response is published. */
+static int wifi_command_failure(const struct P4HostCommandResult *last)
+{
+    ULONG raw = last->raw & P4SD_INT_CMD_DATA_MASK;
+    if (!last->started || last->idstatus ||
+        last->injected_fault != P4HOST_FAULT_NONE)
+        return 0;
+    if (last->status == P4HOST_COMMAND_ERROR)
+    {
+        raw &= ~P4SD_INT_CMD_DONE;
+        if (raw == P4SD_INT_RTO)
+            return P4_SDIO_COMMAND_RESPONSE_TIMEOUT;
+        if (raw == P4SD_INT_RCRC)
+            return P4_SDIO_COMMAND_RESPONSE_CRC;
+    }
+    /* A started, unanswered command may hit the motor's polling deadline
+     * without a peripheral RTO bit. Never tolerate pre-start/busy timeout. */
+    if (last->status == P4HOST_COMMAND_TIMEOUT && raw == 0)
+        return P4_SDIO_COMMAND_RESPONSE_TIMEOUT;
+    return 0;
+}
+
 static int wifi_command(void *opaque, unsigned index, uint32_t argument,
                          enum p4_sdio_response_type response,
                          uint32_t error_mask, uint32_t *word)
@@ -182,6 +207,7 @@ static int wifi_command(void *opaque, unsigned index, uint32_t argument,
     struct P4HostCommand request;
     static const ULONG flags[] = {MMC_RSP_NONE, MMC_RSP_R4, MMC_RSP_R6,
                                   MMC_RSP_R1, MMC_RSP_R5};
+    BOOL completed;
     if (!wifi_budget(context) || response > P4_SDIO_RESP_R5 ||
         response < P4_SDIO_RESP_NONE)
         return 0;
@@ -199,9 +225,14 @@ static int wifi_command(void *opaque, unsigned index, uint32_t argument,
         request.observe_context = context;
     }
 #endif
-    if (!context->host->command(context->host, &request, &context->last) ||
-        !wifi_budget(context))
+    completed = context->host->command(context->host, &request, &context->last);
+    if (!wifi_budget(context) || context->host->dma_faulted)
         return 0;
+    if (!completed)
+        return index == 52 && argument == UINT32_C(0x80000c08) &&
+            response == P4_SDIO_RESP_R5 &&
+            error_mask == P4_SDIO_PROBE_R5_ERROR_MASK ?
+            wifi_command_failure(&context->last) : 0;
     *word = context->last.response[0];
     return 1;
 }
@@ -214,8 +245,8 @@ static int wifi_register_read(void *opaque, unsigned function,
 {
     uint32_t argument, response;
     if (!value || !p4_sdio_cmd52(0, function, 0, address, 0, &argument) ||
-        !wifi_command(opaque, 52, argument, P4_SDIO_RESP_R5,
-                      P4_SDIO_PROBE_R5_ERROR_MASK, &response) ||
+        wifi_command(opaque, 52, argument, P4_SDIO_RESP_R5,
+                      P4_SDIO_PROBE_R5_ERROR_MASK, &response) <= 0 ||
         (response & P4_SDIO_PROBE_R5_ERROR_MASK))
         return 0;
     *value = (uint8_t)response;
@@ -228,7 +259,7 @@ static int wifi_register_write(void *opaque, unsigned function,
     uint32_t argument, response;
     return p4_sdio_cmd52(1, function, 0, address, value, &argument) &&
         wifi_command(opaque, 52, argument, P4_SDIO_RESP_R5,
-                     P4_SDIO_PROBE_R5_ERROR_MASK, &response) &&
+                     P4_SDIO_PROBE_R5_ERROR_MASK, &response) > 0 &&
         !(response & P4_SDIO_PROBE_R5_ERROR_MASK);
 }
 #endif
@@ -306,7 +337,7 @@ static void wifi_identify(void)
          * continuation to selection/setup, even after a successful query. */
         success = p4_sdio_reset_query(&ops, &reset_query);
 #else
-        success = p4_sdio_probe_identify(&ops, &result);
+        success = p4_sdio_probe_bootstrap(&ops, &result);
 #endif
         identify_last = context.last;
 #if P4_WIFI_SDIO_SETUP
@@ -370,6 +401,9 @@ static void wifi_identify(void)
 #else
     bug("[WiFi] slot1 probe ok=%u stage=%u cmd=%u\n",
          success, result.stage, result.command_index);
+    Delay(5);
+    bug("[WiFi] bootstrap reset attempted=%u ack=%u status=%d\n",
+         result.reset_attempted, result.reset_acknowledged, result.reset_status);
     Delay(5);
     bug("[WiFi] error=%u status=%u\n", result.error, identify_last.status);
     Delay(5);

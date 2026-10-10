@@ -67,7 +67,7 @@ static int p4_sdio_probe_command(const p4_sdio_probe_ops_t *ops,
         return p4_sdio_probe_fail(result, P4_SDIO_PROBE_ERROR_BUDGET);
 
     if (ops->command(ops->context, index, argument, response_type,
-            error_mask, response) <= 0)
+            error_mask, response) != 1)
     {
         status_error = p4_sdio_probe_status_error(response_type, *response,
             error_mask);
@@ -81,6 +81,50 @@ static int p4_sdio_probe_command(const p4_sdio_probe_ops_t *ops,
     if (status_error != P4_SDIO_PROBE_ERROR_NONE)
         return p4_sdio_probe_fail(result, status_error);
     return 1;
+}
+
+int p4_sdio_probe_bootstrap(const p4_sdio_probe_ops_t *ops,
+    p4_sdio_probe_result_t *result)
+{
+    uint32_t argument = 0;
+    uint32_t response = 0;
+    int reset_status;
+    int identified;
+
+    if (!result)
+        return 0;
+    p4_sdio_probe_zero_result(result);
+    if (!ops || !ops->command || !ops->budget_ok || !ops->yield ||
+        !p4_sdio_cmd52(1, 0, 0, UINT32_C(0x06), 0x08, &argument))
+        return p4_sdio_probe_fail(result,
+            P4_SDIO_PROBE_ERROR_INVALID_ARGUMENT);
+    result->stage = P4_SDIO_PROBE_STAGE_RESET;
+    result->command_index = P4_SDIO_CMD_IO_RW_DIRECT;
+    if (ops->budget_ok(ops->context) <= 0)
+        return p4_sdio_probe_fail(result, P4_SDIO_PROBE_ERROR_BUDGET);
+    result->reset_attempted = 1;
+    reset_status = ops->command(ops->context, P4_SDIO_CMD_IO_RW_DIRECT,
+        argument, P4_SDIO_RESP_R5, P4_SDIO_PROBE_R5_ERROR_MASK, &response);
+    result->reset_status = reset_status;
+    /* A card error is fatal even if a broken callback classifies it as
+     * timeout/CRC. Real transport publishes response bytes only on success. */
+    if (response & P4_SDIO_PROBE_R5_ERROR_MASK)
+        return p4_sdio_probe_fail(result, P4_SDIO_PROBE_ERROR_R5_STATUS);
+    if (reset_status != 1 &&
+        reset_status != P4_SDIO_COMMAND_RESPONSE_TIMEOUT &&
+        reset_status != P4_SDIO_COMMAND_RESPONSE_CRC)
+        return p4_sdio_probe_fail(result, P4_SDIO_PROBE_ERROR_COMMAND);
+    result->reset_acknowledged = (uint8_t)(reset_status == 1);
+    if (ops->budget_ok(ops->context) <= 0)
+        return p4_sdio_probe_fail(result, P4_SDIO_PROBE_ERROR_BUDGET);
+
+    identified = p4_sdio_probe_identify(ops, result);
+    /* identify zeroes its output. Retain the reset's actual classification
+     * even when the subsequent identification fails. */
+    result->reset_attempted = 1;
+    result->reset_acknowledged = (uint8_t)(reset_status == 1);
+    result->reset_status = reset_status;
+    return identified;
 }
 
 static int p4_sdio_probe_read_cccr(const p4_sdio_probe_ops_t *ops,

@@ -36,14 +36,20 @@ SANA-II/shared-SD/recovery or installed binary lineage. Empty-scan behavior was
 not exercised (13 APs); N1E remains open. Board runs baseline AROS.
 IDF5.4.3 is an optional isolated comparison environment, not a port downgrade.
 
-The native identification candidate now requires a 20ms settling interval
-after successful CMD0, matching the working IDF6 source. The next command
-checks the existing aggregate budget again; failed CMD0 never continues.
-Strict O0/O2 sanitizer models pass4,764 checks each; the fresh RV32 resource
-build and independent delay-contract review pass. This timing correction
-has not been deployed. The separate reset-query diagnostic still fails on
-timeout/CRC instead of following IDF's narrowly scoped reset-probe policy;
-that difference must be resolved without weakening generic R5 rejection.
+The native bootstrap candidate now follows CMD52 RES with identification and
+a20ms settling interval after successful CMD0. P4_WIFI_SDIO_PROBE=1 therefore
+now resets the quiesced slave's SDIO state; it is no longer a read-only register
+probe. Only classified response timeout/CRC of the exact reset command may
+continue, with reset_acknowledged=0; complete identification must still pass.
+Generic R5/card/bus/DMA errors, generation changes and budget expiry remain
+fatal. One aggregate budget covers reset and identification. Strict O0/O2
+sanitizer models pass6,358 checks each; fresh RV32 bootstrap-only and setup
+module builds pass. This candidate has not been deployed;
+native OPEN/RPC/association/frames/SANA-II and SD coexistence remain open.
+Extracted runtime adapter models pass41 cases/501 checks each O0/O2 with
+sanitizers; these are not real controller or elapsed-time measurements.
+The separately selected P4_WIFI_SDIO_RESET_QUERY=1 historical diagnostic stays
+fail-stop and does not enable function setup.
 
 JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
