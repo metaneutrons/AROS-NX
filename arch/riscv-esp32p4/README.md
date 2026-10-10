@@ -160,6 +160,17 @@ fixture for this wider OCR/register snapshot passes4730 sanitized checks each
 O0/O2. This is one identification gate, not SD data integrity/coexistence,
 installed firmware identity, sustained recovery or WLAN traffic. Next N1:
 bounded function setup and ESP-Hosted capability negotiation.
+The pure function-1 setup helper is now host tested and RV32 compile verified
+(3997 checks each O0/O2 with ASan/UBSan). It snapshots IO_ENABLE and FBR1,
+preserves peer enable bits, verifies IO_ENABLE independently of IO_READY,
+bounds readiness polling and verifies the512-byte block size. Failure retains
+cleanup metadata even if a failed write may have reached the card. It is not
+linked into the runtime and does not restore card state itself. No new hardware
+result follows. Before OPEN, resolve the target-specific interrupt address:
+C6 IDF5.4 documentation says0x8d, while an unmatched legacy FG host uses0x8c.
+The pinned slave sends its startup event only after OPEN; waiting for that
+event before OPEN would not initialize this reference. Installed compatibility,
+runtime cleanup/transport/RPC and WLAN traffic remain open.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device

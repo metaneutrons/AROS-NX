@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; RX reassembly host tested` | Bounded RX helper passes312 strict sanitized checks each O0/O2 and RV32 compilation. Complete checksummed frame-to-event-TLV fixture passes. Reverse TX direction differs; no runtime transport. N0, compatibility, credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; function setup host tested` | Pure function-1 setup passes3997 strict sanitized checks each O0/O2 and RV32 compilation; enable readback rejects IO_READY-only false success. RX reassembly remains host tested. Helpers are not runtime transport. Resolve C6 OPEN interrupt mapping before handshake; compatibility, credits/queues/RPC, runtime cleanup and disconnect recovery remain open. Existing C6 firmware preserved. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -551,6 +551,25 @@ embedded Exec unit, count, listeners and change bookkeeping, not a whole-struct
 copy. Run recovery only after the failed request releases its transaction.
 
 ### N1 - compatible ESP-Hosted transport
+
+Pure function-1 setup is host tested/RV32 compile verified, not linked into
+the resource yet. Function-0 CMD52 callbacks snapshot IO_ENABLE and original
+FBR1 block size before any write, set only enable bit1, verify exact enable
+readback, poll IO_READY with a1000-attempt ceiling and caller-owned aggregate
+budget, then write/read back512-byte FBR1. The observed IO_ENABLE0/IO_READY2
+snapshot requires these separate checks: a ready bit alone is not enabled
+function acceptance. Every command has pre/post budget checks, polling yields,
+and uncertain writes retain mutation/snapshot metadata. Caller restoration
+and real callback timing remain open; helper success is not WLAN readiness.
+
+Pinned cheops/JC1060P470C_I_W@6304eddef32a33aa9d9a85e971e39dfb24c3cca3
+contains the C6 slave but no matching host component. Its app waits for OPEN
+before sending private INIT then ESPInit RPC event. Do not wait for INIT before
+OPEN or assume reset replays it. C6 IDF5.4 protocol names SLAVE_INT0x8d;
+unmatched legacy FG host47a14ad262fe2a2e17797dd09c69102e3e5631c1 writes
+OPEN at0x8c. Resolve target-specific mapping before either bootstrap write;
+do not treat legacy queue10 as the pinned slave's configured RX pool20.
+No OPEN/RESET/IRQ/function setup has been deployed by this implementation.
 
 The first independent pure codec uses the vendor0.0.6 12-byte wire header,
 1536-byte total-frame bound, LE16 fields and additive checksum excluding its
@@ -29968,6 +29987,58 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   baseline BSP is running, no persistent startup probe. Next N1 bounded
   function setup/capability negotiation. Installed identity, earlier retained
   timeout cause/reconnect recovery and SD/WLAN sustained qualification open.
+
+### 2026-10-10 - N1 bounded function setup host tested; runtime remains open
+
+- Parent1f363b9d9d, feature/esp32p4-wifi, isolated worktree
+  /Volumes/Dev/Build/aros-esp32p4-wifi. New independent sdio_setup.c/.h and
+  test_sdio_setup.c; tools/test-sdio-setup.sh runs actual helper, strict C99
+  -Wall/-Wextra/-Werror/-pedantic, ASan/UBSan at O0 and O2. Actual process0,
+  3997 checks each: normal/already-enabled/peer-bit-preserving setup, delayed
+  and never-ready, every command and pre/post budget failure, partial-write
+  uncertainty, block mismatch and ignored IO_ENABLE write with ready bit2.
+- Primary repeated tests pass; command construction regression57406 and
+  wire codec157590 checks each O0/O2 also pass. Helper saves original IOE/FBR
+  before first write, verifies IOE separately, bounds1000 ready polls and
+  yields; every callback checks the caller's aggregate budget before/after.
+  Mutation is marked before a write callback, including failures. No helper
+  rollback: caller must restore/readback under owned controller access or
+  explicitly report uncertain state. No wall-time guarantee for an unbounded
+  callback; real adapter, recovery and scheduling remain unverified.
+  Independent read-only review finds no concrete helper defect. Caller must
+  have identified function1 and established that512-byte blocks are supported;
+  this helper does not parse CIS limits. Register readback is not data-path
+  qualification, and fake callbacks do not verify real CMD52/host ownership.
+- Standalone strict freestanding rv32imafc_zicsr_zifencei, ilp32f, O2 object
+  compilation exits0; riscv-aros-nm -u has no unresolved symbols. Object4092B,
+  SHA-256bb24378a843ec06ccc6af14f2b51d4c4e25ed51d247d9a0451128a66f690760c.
+  Compiler /Volumes/Dev/Source/Amiga/AROS-ESP32-v3-build/bin/darwin-aarch64/tools/crosstools/riscv-aros-gcc;
+  no copied public ABI or production objects changed. This is not a full
+  package build or runtime function activation.
+- Evidence directory
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/n1-function-setup/:
+  host-tests.log SHA-2566699e779d172257b4badb2cfa15090c8806cf1c24cc8ecfdd4c116b0e9f444e2,
+  sdio_setup.rv32.o above. Helper source SHA-256
+  61aa38ae128623bf94f2db7b781148651110a0721caf3dd07bd033962228e8a8;
+  header3cd2d4c982ecd80604ad5163dfd2256284fa40cd997e5b9f7e0fb802a64e3384;
+  tests4548f302424d8390e8d3a0bff48882f4af1284523f5241eec9a20e466611aa54.
+- Read-only primary-source audit: pinned cheops commit6304eddef32a33aa9d9a85e971e39dfb24c3cca3,
+  1-Demo/Demo_IDF/examples/slave/main/app_main.c890..936 waits for datapath
+  OPEN, then generates private INIT and ESPInit; sdio_slave_api.c196..278
+  builds startup and342..374 initializes/preloads20 RX buffers. Reset callback
+  does not explicitly replay INIT. Official C6 IDF5.4.3 protocol document
+  https://docs.espressif.com/projects/esp-idf/en/v5.4.3/esp32c6/api-reference/protocols/esp_sdio_slave_protocol.html
+  specifies fn1 enable/FBR512 and SLAVE_INT0x8d. Unmatched official legacy
+  FG host47a14ad262fe2a2e17797dd09c69102e3e5631c1 uses0x8c. Pinned vendor
+  tree has no matching host implementation; do not transplant that address,
+  queue10 or startup assumptions into C6 bootstrap without reconciliation.
+- Safety: no port opening/reset/flash/SD/C6 mutation in this change. Normal
+  AROS baseline remains running after the preceding exact rollback. Tests
+  are host models only; installed C6 identity, compatibility, actual setup,
+  cleanup, traffic and SD coexistence remain open. Next: resolve C6 interrupt
+  mapping, integrate bounded opt-in setup with verified cleanup, then receive
+  capabilities and implement live transport/RPC. Fresh readiness for sight
+  or physical interaction remains mandatory; no new user action requested.
 
 ## Evidence-entry template
 
