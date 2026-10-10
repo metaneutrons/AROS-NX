@@ -64,6 +64,12 @@ typed initialization/MAC/optional scan results and restored stable shared-host
 registers. Independent positive/negative fixtures pass16 tests; this is not a
 hardware pass or proof of physical power continuity.
 
+The next native initialization hardware gate is coordination-blocked awaiting
+Fabian's fresh cold-start readiness and confirmation of the sole power source.
+No capture is running. JC1060 WIFI_RESET_GPIO=-1 provides no established
+independent C6 reset alternative. The installed initialization candidate and
+prepared undeployed scan package remain unchanged; native WLAN is incomplete.
+
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection
 also exposed and corrected the default P4>=3.x target; the corrected build
