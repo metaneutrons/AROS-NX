@@ -53,6 +53,7 @@ struct p4sd_private
     BOOL host_ready;
     struct P4SDMMCHost *host;
     ULONG host_generation;
+    ULONG card_rca;
 };
 
 struct sdcard_Bus
@@ -543,12 +544,14 @@ static void test_begin_mismatched_generation_invalidates_without_adopting(void)
 {
     reset_fixture();
     setup_sd_bus(TRUE, 7U, 8U);
+    sd_private.card_rca = 0x1234UL;
 
     CHECK(P4SDBUS_BeginTransaction(&sd_bus, TRUE) == TRUE);
     CHECK(sd_acquire_calls == 1U);
     CHECK(sd_last_timeout == P4_SDMMC_HOST_WAIT_US);
     CHECK(sd_private.host_ready == FALSE);
     CHECK(sd_private.host_generation == 7U);
+    CHECK(sd_private.card_rca == 0UL);
     P4SDBUS_EndTransaction(&sd_bus);
     CHECK(sd_release_calls == 1U);
 }
@@ -557,19 +560,23 @@ static void test_begin_matching_generation_preserves_ready_state(void)
 {
     reset_fixture();
     setup_sd_bus(TRUE, 8U, 8U);
+    sd_private.card_rca = 0x5678UL;
     CHECK(P4SDBUS_BeginTransaction(&sd_bus, TRUE) == TRUE);
     CHECK(sd_last_timeout == P4_SDMMC_HOST_WAIT_US);
     CHECK(sd_private.host_ready == TRUE);
     CHECK(sd_private.host_generation == 8U);
+    CHECK(sd_private.card_rca == 0x5678UL);
     P4SDBUS_EndTransaction(&sd_bus);
     CHECK(sd_release_calls == 1U);
 
     reset_fixture();
     setup_sd_bus(FALSE, 8U, 8U);
+    sd_private.card_rca = 0x4321UL;
     CHECK(P4SDBUS_BeginTransaction(&sd_bus, FALSE) == TRUE);
     CHECK(sd_last_timeout == 0U);
     CHECK(sd_private.host_ready == FALSE);
     CHECK(sd_private.host_generation == 8U);
+    CHECK(sd_private.card_rca == 0x4321UL);
     P4SDBUS_EndTransaction(&sd_bus);
 }
 
@@ -775,11 +782,13 @@ static void test_extracted_host_init_failed_reset_does_no_slot_writes(void)
 {
     reset_fixture();
     setup_sd_bus(TRUE, 5U, 9U);
+    sd_private.card_rca = 0xCAFEUL;
     reset_callback_result = FALSE;
     seed_host_init_registers();
 
     CHECK(p4sd_host_init(&sd_bus) == FALSE);
     CHECK(sd_private.host_ready == FALSE);
+    CHECK(sd_private.card_rca == 0UL);
     CHECK(reset_callback_calls == 1U);
     CHECK(module_reset_calls == 1U);
     CHECK(sd_host.initialization_started == TRUE);
@@ -790,6 +799,7 @@ static void test_extracted_host_init_failed_reset_does_no_slot_writes(void)
     /* The sticky first-attempt marker prevents a later implicit reset from
      * treating a failed shared reset as a cold uninitialized host. */
     CHECK(p4sd_host_init(&sd_bus) == FALSE);
+    CHECK(sd_private.card_rca == 0UL);
     CHECK(reset_callback_calls == 1U);
     CHECK(read_calls == 0U);
     CHECK(write_calls == 0U);

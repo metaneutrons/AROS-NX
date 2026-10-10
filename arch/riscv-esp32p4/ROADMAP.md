@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; generic same-media recovery host tested/build verified` | Strict activation and generic same-media recovery with matching publication/Open/Close guards host tested/build verified; accepted production source integrated locally. Backend recovery hooks/dispatch, real SMP interleavings, integrated core/package build, radio integration, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; private protocol RCA host tested/build verified` | Generic same-media recovery with matching publication/Open/Close guards and P4 private protocol RCA host tested/build verified; accepted production source integrated locally. Backend deadline/hooks/dispatch, real SMP interleavings, integrated core/package build, radio integration, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -194,6 +194,13 @@ BusTask/radio dispatch remain open, as does the end-to-end deadline. Real SMP
 interleavings and non-P4 hardware regression remain unverified. A failed media
 identity comparison must leave the backend unavailable: ordinary StartUnit
 must not subsequently select a replacement card using the cached RCA.
+The P4 client now keeps a separate host-owned RCA for live protocol operations,
+cleared on generation mismatch, initialization/full reset and before CMD0/CMD3.
+Successful CMD3 validates SD R6 or assigned MMC R1 before adopting it;
+failed/malformed enumeration refuses readiness. CMD12/CMD13 use that private
+session address, not the still-mounted unit's cached RCA. CMD13 card-error
+bits reject even TRAN/ready. This prerequisite is host tested/build verified; it does
+not enable the backend hooks or satisfy the aggregate recovery deadline.
 
 Accepted production source through acd62ff237 is integrated locally after
 12df190097. This preserves the boot-budget, quiet-profile and ProductionQualify
@@ -28602,6 +28609,62 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   of real recovery, aggregate latency, concurrent-hart correctness or WLAN.
 - Next: implement bounded P4 reinit/private candidate RCA
   and task dispatch, then integrated core/package and hardware regression.
+
+### 2026-10-10 - N0 P4 private protocol RCA host tested and build verified
+
+- State: host tested/build verified on feature/esp32p4-wifi, parent fe598cb9a6.
+  Previous goal turn made progress: generic same-media recovery committed.
+- Implementation: private P4 card_rca follows the live protocol session.
+  Generation mismatch, host initialization/full reset and CMD0/CMD3 discard
+  the previous address. Valid completed CMD3 adopts SD R6's upper 16 bits or
+  MMC's assigned argument after its R1 mask. Zero/error/malformed address or
+  transport failure refuses activation. Mounted unit identity is unchanged.
+  Physical stop/status confirmation now uses that private address and rejects
+  R1 card errors despite TRAN/ready. Existing read-only denylist remains.
+- Build: isolated JC1060-v2/SMP kernel-sdcard-quick; private P4 struct changed,
+  so all three P4 backend objects were explicitly invalidated and rebuilt.
+  Session43018 exits0; after the final failed-CMD0/CMD3 readiness correction,
+  bus object invalidated again and session57199 exits0. Final sdcard.device
+  129,948 bytes SHA-256
+  e4e0c531c090e33a48bdf6d9c53c8bedc3aa673c60b647ee65e6d1a1954620d4;
+  nm -u empty. No public/resource ABI or diagnostic switches changed.
+  Complete core/package is still unbuilt and no image was deployed.
+- Primary repeated host ownership/init models pass: 25 cases/400,343 checks
+  each O0/O2 ASan/UBSan, exit0. Added assertions cover RCA clearing on
+  generation mismatch and failed initialization, matching-generation retention.
+  Fixture SHA-256
+  0c5788051ca7be96a48c4e9e1d0f24b919a12e63f3104d0bd9ca7b6c0f49a245.
+  Independent read-only review found
+  no definite production defect; reviewed bus SHA-256
+  f67ff9629d75a9d09d0524cf880e87668446640f29c6dd98bde4c4d25f4d0c37;
+  private header SHA-256
+  c5c0f52633017de1856d800be723bfc598e3404a2bf1e92218f7bf9d87fb54a7.
+- Primary adapter rerun session19889 exits0: 44 cases/825 checks each O0/O2
+  ASan/UBSan; trace-off fault modes1/2/3 each 1 case/30 checks. Nine new cases
+  execute production private-RCA adoption for SD/MMC, zero/error/low-bit
+  refusals, failed CMD3, successful/failed CMD0, and unrelated-command retention.
+  Denylist is unchanged. Extracted p4sd_adopt_rca SHA-256
+  374f342f71674d9958692c61559fcbdf56dea932c6ab278f270d0bd3d2cc320c;
+  assembled fixture SHA-256
+  159079131ffb7e503c2b1907fa23b7a1a8ac99e3f2a241fbc51d49e5ec452513.
+  CMD13 and CMD18 recovery remain fixture stand-ins; the new physical CMD13
+  mask/private-RCA use is source reviewed, not runtime tested by this runner.
+  Generic identification is SD-only; MMC CMD3 support is not an MMC recovery
+  acceptance claim. No silicon or real SMP interleaving test occurred.
+- Deadline audit: current P4 SendCmd blocks in host->command before WaitCmd;
+  P4 WaitCmd ignores its timeout. P4HostCommand currently carries no deadline,
+  and reset/set_clock use independent phase caps. A post-call check cannot
+  enforce an aggregate time limit. The next change must pass one deadline to
+  command/reset/clock phases, clamp phase waits to remaining budget and bump
+  the separately loaded private resource ABI. Cleanup still must establish
+  safe DMA ownership; a timed-out operation cannot publish Active merely
+  because individual subcalls succeeded. Hooks remain disabled until tested.
+- Safety: no hardware, serial, reset, flash, SD writes or C6 firmware actions.
+  Recovery hooks and automatic task dispatch remain unwired. Models and a
+  device build are not silicon/installed-C6 compatibility acceptance.
+- Next: extend the shared engine with an
+  aggregate deadline before binding recovery hooks/dispatch. Existing per-call
+  timeout constants must not be reported as a whole-operation deadline.
 
 ## Evidence-entry template
 

@@ -37,6 +37,7 @@ static BOOL p4sd_fault_injected;
 #define MMC_RSP_R1                (MMC_RSP_PRESENT | MMC_RSP_CRC | MMC_RSP_OPCODE)
 #define MMC_RSP_R1b               (MMC_RSP_R1 | MMC_RSP_BUSY)
 #define MMC_RSP_R2                (MMC_RSP_PRESENT | MMC_RSP_CRC | MMC_RSP_136)
+#define MMC_RSP_R6                (MMC_RSP_PRESENT | MMC_RSP_CRC | MMC_RSP_OPCODE)
 
 #define SDCARD_TAG_RSP 4UL
 
@@ -63,6 +64,7 @@ struct p4sd_private
     BOOL host_ready;
     struct P4SDMMCHost *host;
     ULONG host_generation;
+    ULONG card_rca;
 };
 
 struct sdcard_Bus
@@ -79,6 +81,7 @@ static unsigned int memset_calls;
 static unsigned int memcpy_calls;
 static unsigned int bug_calls;
 static unsigned int command_calls;
+static ULONG card_rca_seen_during_command;
 static unsigned int confirm_calls;
 static unsigned int recover_calls;
 static BOOL command_return;
@@ -154,6 +157,7 @@ static BOOL mock_host_command(struct P4SDMMCHost *target_host,
     ++command_calls;
     CHECK(event_count < sizeof(events) / sizeof(events[0]));
     events[event_count++] = EVENT_COMMAND;
+    card_rca_seen_during_command = test_priv.card_rca;
     captured_request = *request;
     *result = command_result;
     return command_return;
@@ -189,6 +193,7 @@ static void reset_mocks(void)
     memcpy_calls = 0;
     bug_calls = 0;
     command_calls = 0;
+    card_rca_seen_during_command = 0;
     confirm_calls = 0;
     recover_calls = 0;
     command_return = TRUE;
@@ -234,6 +239,7 @@ static void prepare(void)
     test_priv.host_ready = TRUE;
     test_priv.host = &host;
     test_priv.host_generation = host.generation;
+    test_priv.card_rca = 0xA551UL;
     test_bus.sdcb_BusNum = 3;
     test_bus.sdcb_Private = (IPTR)&test_priv;
 }
@@ -332,7 +338,126 @@ static void test_r1_request_and_publication(void)
     CHECK(memcpy_calls == 0U);
     CHECK(confirm_calls == 0U);
     CHECK(test_priv.host_ready == TRUE);
+    CHECK(test_priv.card_rca == 0xA551UL);
     CHECK(bug_calls == 0U);
+}
+
+static void test_cmd3_sd_adopts_r6_rca(void)
+{
+    struct TagItem response = {SDCARD_TAG_RSP, (IPTR)0xDEADBEEFUL};
+
+    begin_case();
+    prepare();
+    command_result.response[0] = 0x13570000UL;
+    CHECK(p4sd_shared_command(&test_bus, MMC_CMD_SET_RELATIVE_ADDR, 0UL,
+                              MMC_RSP_R6, &response, NULL, 0UL, 0UL) == 0UL);
+    check_request(MMC_CMD_SET_RELATIVE_ADDR, 0UL, MMC_RSP_R6);
+    CHECK(card_rca_seen_during_command == 0UL);
+    CHECK(test_priv.card_rca == 0x1357UL);
+    CHECK(test_priv.host_ready == TRUE);
+    CHECK(response.ti_Data == (IPTR)0x13570000UL);
+}
+
+static void test_cmd3_mmc_adopts_assigned_rca(void)
+{
+    struct TagItem response = {SDCARD_TAG_RSP, (IPTR)0xDEADBEEFUL};
+    ULONG argument = 0x24680000UL;
+
+    begin_case();
+    prepare();
+    command_result.response[0] = MMC_STATUS_RDY_FOR_DATA |
+                                 MMC_STATUS_STATE_TRAN;
+    CHECK(p4sd_shared_command(&test_bus, MMC_CMD_SET_RELATIVE_ADDR, argument,
+                              MMC_RSP_R1, &response, NULL, 0UL, 0UL) == 0UL);
+    check_request(MMC_CMD_SET_RELATIVE_ADDR, argument, MMC_RSP_R1);
+    CHECK(card_rca_seen_during_command == 0UL);
+    CHECK(test_priv.card_rca == 0x2468UL);
+    CHECK(test_priv.host_ready == TRUE);
+    CHECK(response.ti_Data == (IPTR)command_result.response[0]);
+}
+
+static void check_cmd3_rejected(ULONG argument, ULONG response_word,
+                                ULONG response_flags)
+{
+    struct TagItem response = {SDCARD_TAG_RSP, (IPTR)0xC0DEC0DEUL};
+
+    prepare();
+    command_result.response[0] = response_word;
+    CHECK(p4sd_shared_command(&test_bus, MMC_CMD_SET_RELATIVE_ADDR, argument,
+                              response_flags, &response, NULL, 0UL, 0UL) ==
+          (ULONG)-1);
+    check_request(MMC_CMD_SET_RELATIVE_ADDR, argument, response_flags);
+    CHECK(card_rca_seen_during_command == 0UL);
+    CHECK(test_priv.card_rca == 0UL);
+    CHECK(test_priv.host_ready == FALSE);
+    CHECK(response.ti_Data == (IPTR)0xC0DEC0DEUL);
+}
+
+static void test_cmd3_rejects_zero_sd_rca(void)
+{
+    begin_case();
+    check_cmd3_rejected(0UL, 0UL, MMC_RSP_R6);
+}
+
+static void test_cmd3_rejects_sd_r6_error_bits(void)
+{
+    begin_case();
+    check_cmd3_rejected(0UL, 0x1357E000UL, MMC_RSP_R6);
+}
+
+static void test_cmd3_rejects_mmc_r1_errors(void)
+{
+    begin_case();
+    check_cmd3_rejected(0x35790000UL, MMC_STATUS_ILLEGAL_COMMAND,
+                        MMC_RSP_R1);
+}
+
+static void test_cmd3_rejects_mmc_argument_low_bits(void)
+{
+    begin_case();
+    check_cmd3_rejected(0x35790001UL, 0UL, MMC_RSP_R1);
+}
+
+static void test_cmd3_engine_failure_clears_rca_and_host_ready(void)
+{
+    begin_case();
+    prepare();
+    command_return = FALSE;
+    command_result.status = P4HOST_COMMAND_ERROR;
+    CHECK(p4sd_shared_command(&test_bus, MMC_CMD_SET_RELATIVE_ADDR,
+                              0x35790000UL, MMC_RSP_R1, NULL, NULL, 0UL,
+                              0UL) == (ULONG)-1);
+    check_request(MMC_CMD_SET_RELATIVE_ADDR, 0x35790000UL, MMC_RSP_R1);
+    CHECK(card_rca_seen_during_command == 0UL);
+    CHECK(test_priv.card_rca == 0UL);
+    CHECK(test_priv.host_ready == FALSE);
+}
+
+static void test_cmd0_success_clears_private_rca_before_engine(void)
+{
+    begin_case();
+    prepare();
+    CHECK(p4sd_shared_command(&test_bus, MMC_CMD_GO_IDLE_STATE, 0UL,
+                              MMC_RSP_NONE, NULL, NULL, 0UL, 0UL) == 0UL);
+    check_request(MMC_CMD_GO_IDLE_STATE, 0UL, MMC_RSP_NONE);
+    CHECK(card_rca_seen_during_command == 0UL);
+    CHECK(test_priv.card_rca == 0UL);
+    CHECK(test_priv.host_ready == TRUE);
+}
+
+static void test_cmd0_failure_invalidates_host(void)
+{
+    begin_case();
+    prepare();
+    command_return = FALSE;
+    command_result.status = P4HOST_COMMAND_ERROR;
+    CHECK(p4sd_shared_command(&test_bus, MMC_CMD_GO_IDLE_STATE, 0UL,
+                              MMC_RSP_NONE, NULL, NULL, 0UL, 0UL) ==
+          (ULONG)-1);
+    check_request(MMC_CMD_GO_IDLE_STATE, 0UL, MMC_RSP_NONE);
+    CHECK(card_rca_seen_during_command == 0UL);
+    CHECK(test_priv.card_rca == 0UL);
+    CHECK(test_priv.host_ready == FALSE);
 }
 
 static void test_r2_request_and_word_publication(void)
@@ -961,6 +1086,15 @@ int main(void)
     if (0)
     {
         test_r1_request_and_publication();
+        test_cmd3_sd_adopts_r6_rca();
+        test_cmd3_mmc_adopts_assigned_rca();
+        test_cmd3_rejects_zero_sd_rca();
+        test_cmd3_rejects_sd_r6_error_bits();
+        test_cmd3_rejects_mmc_r1_errors();
+        test_cmd3_rejects_mmc_argument_low_bits();
+        test_cmd3_engine_failure_clears_rca_and_host_ready();
+        test_cmd0_success_clears_private_rca_before_engine();
+        test_cmd0_failure_invalidates_host();
         test_r2_request_and_word_publication();
         test_null_response_tag_pointer();
         test_absent_response_is_untouched();
@@ -999,6 +1133,15 @@ int main(void)
     test_diagnostic_fault_request_is_consumed_once();
 #else
     test_r1_request_and_publication();
+    test_cmd3_sd_adopts_r6_rca();
+    test_cmd3_mmc_adopts_assigned_rca();
+    test_cmd3_rejects_zero_sd_rca();
+    test_cmd3_rejects_sd_r6_error_bits();
+    test_cmd3_rejects_mmc_r1_errors();
+    test_cmd3_rejects_mmc_argument_low_bits();
+    test_cmd3_engine_failure_clears_rca_and_host_ready();
+    test_cmd0_success_clears_private_rca_before_engine();
+    test_cmd0_failure_invalidates_host();
     test_r2_request_and_word_publication();
     test_null_response_tag_pointer();
     test_absent_response_is_untouched();

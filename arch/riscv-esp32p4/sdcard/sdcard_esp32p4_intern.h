@@ -27,6 +27,9 @@ struct p4sd_private
     BOOL host_ready;
     struct P4SDMMCHost *host;
     ULONG host_generation;
+    /* Host-owned protocol session, independent of the mounted unit's RCA.
+     * Enumeration may replace this before same-media publication succeeds. */
+    ULONG card_rca;
 };
 
 #define P4SD_PRIV(bus) ((struct p4sd_private *)(IPTR)(bus)->sdcb_Private)

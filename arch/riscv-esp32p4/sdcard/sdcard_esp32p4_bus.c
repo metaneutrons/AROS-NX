@@ -33,7 +33,10 @@ BOOL FNAME_P4SDBUS(BeginTransaction)(struct sdcard_Bus *bus, BOOL may_wait)
                             may_wait ? P4_SDMMC_HOST_WAIT_US : 0))
         return FALSE;
     if (priv->host_generation != priv->host->generation)
+    {
         priv->host_ready = FALSE;
+        priv->card_rca = 0;
+    }
     return TRUE;
 }
 
@@ -260,6 +263,7 @@ static BOOL p4sd_host_init(struct sdcard_Bus *bus)
     struct p4sd_private *priv = P4SD_PRIV(bus);
 
     priv->host_ready = FALSE;
+    priv->card_rca = 0;
     /* The first owner performs shared initialization. An already initialized
      * peer must retain its clocks, width and protocol state. A faulted host
      * requires an explicit full-reset/re-enumeration path, not slot joining. */
@@ -304,6 +308,7 @@ static void p4sd_soft_reset_locked(UBYTE mask, struct sdcard_Bus *bus)
             bus->sdcb_BusNum);
         priv->host_ready = FALSE;
 
+        priv->card_rca = 0;
         p4sd_module_reset(bus);
         if (!p4sd_host_init(bus))
         {
@@ -418,10 +423,25 @@ static BOOL p4sd_reset_dma(struct sdcard_Bus *bus)
 
 static ULONG p4sd_card_rca(struct sdcard_Bus *bus)
 {
-    if (bus->sdcb_BusUnits == NULL || bus->sdcb_BusUnits->sdcbu_Units == NULL)
-        return 0;
+    return P4SD_PRIV(bus)->card_rca;
+}
 
-    return bus->sdcb_BusUnits->sdcbu_Units[0].sdcu_CardRCA;
+/* CMD3 has SD R6 for argument zero, MMC R1 for an assigned RCA. Both share
+ * response encoding flags, so distinguish by argument, never by RSPTYPE.
+ * Called only after controller completion under the shared host owner. */
+static BOOL p4sd_adopt_rca(struct p4sd_private *priv, ULONG argument,
+                           ULONG response)
+{
+    ULONG rca = argument ? argument >> 16 : response >> 16;
+    ULONG errors = argument ? MMC_STATUS_MASK : 0xE000UL;
+    if (!rca || (argument & 0xFFFFUL) || (response & errors))
+    {
+        priv->card_rca = 0;
+        priv->host_ready = FALSE;
+        return FALSE;
+    }
+    priv->card_rca = rca;
+    return TRUE;
 }
 
 /* CMD12 is only a successful recovery when the card subsequently reports
@@ -454,7 +474,8 @@ static BOOL p4sd_confirm_tran(struct sdcard_Bus *bus)
         return FALSE;
 
     status = status_tags[3].ti_Data;
-    if ((status & MMC_STATUS_STATE_MASK) != MMC_STATUS_STATE_TRAN ||
+    if ((status & MMC_STATUS_MASK) ||
+        (status & MMC_STATUS_STATE_MASK) != MMC_STATUS_STATE_TRAN ||
         !(status & MMC_STATUS_RDY_FOR_DATA))
     {
         bug("[P4SD%02u] CMD13 state is not TRAN/ready: %08x\n",
@@ -637,6 +658,8 @@ static ULONG p4sd_shared_command(struct sdcard_Bus *bus, ULONG index,
         request.diagnostic_fault = (enum P4HostCommandFault)P4_SDCARD_FAULT_INJECT;
 #endif
     /* Preserve legacy card-status policy: no generic R1 mask is added here. */
+    if (index == MMC_CMD_GO_IDLE_STATE || index == MMC_CMD_SET_RELATIVE_ADDR)
+        priv->card_rca = 0;
     if (!priv->host->command(priv->host, &request, &result))
     {
 #if P4_SDCARD_FAULT_INJECT != P4SD_FAULT_NONE
@@ -651,7 +674,8 @@ static ULONG p4sd_shared_command(struct sdcard_Bus *bus, ULONG index,
             "raw=%08x idmac=%08x injected=%u\n", bus->sdcb_BusNum, index,
             (unsigned)result.status, (unsigned)result.started,
             result.raw, result.idstatus, (unsigned)result.injected_fault);
-        if (priv->host->dma_faulted ||
+        if (index == MMC_CMD_GO_IDLE_STATE || index == MMC_CMD_SET_RELATIVE_ADDR ||
+            priv->host->dma_faulted ||
             priv->host_generation != priv->host->generation)
             priv->host_ready = FALSE;
         else if (data_len && result.started)
@@ -672,6 +696,9 @@ static ULONG p4sd_shared_command(struct sdcard_Bus *bus, ULONG index,
 #endif
         return (ULONG)-1;
     }
+    if (index == MMC_CMD_SET_RELATIVE_ADDR &&
+        !p4sd_adopt_rca(priv, argument, result.response[0]))
+        return (ULONG)-1;
     if (index == MMC_CMD_STOP_TRANSMISSION && !p4sd_confirm_tran(bus))
     {
         priv->host_ready = FALSE;

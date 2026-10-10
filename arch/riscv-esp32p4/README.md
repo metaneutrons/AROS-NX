@@ -67,6 +67,14 @@ recovery/Open/Close tests exercise extracted production code in modeled SMP and
 non-SMP configurations. They do not prove real hart interleavings. Backend
 preparation/finish hooks, automatic BusTask dispatch and hardware recovery
 remain disabled/open.
+The P4 client now tracks the live protocol RCA privately, clearing it on host
+generation changes/reset/CMD0 and accepting CMD3 only after a successful,
+valid SD R6 or MMC R1 response. CMD12/CMD13 confirmation no longer reads the
+mounted unit's cached RCA; card-error bits also refuse TRAN confirmation.
+This recovery prerequisite is host tested and RV32 build verified (adapter:
+44 cases/825 checks each O0/O2 ASan/UBSan). CMD13 confirmation is source
+reviewed but still stubbed in that model. It is not enabled recovery or WLAN
+acceptance.
 The independently implemented ESP-Hosted serial TLV codec now validates
 RPCRsp/RPCEvt envelopes (116 checks each O0/O2 with ASan/UBSan and standalone
 RV32 compilation). It does not parse protobuf, reassemble fragments or execute

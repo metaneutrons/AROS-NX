@@ -55,6 +55,7 @@ def extract_production_bodies(helper) -> tuple[str, dict[str, str]]:
     signatures = {
         "p4sd_media_mutating_command":
             r"\bstatic\s+BOOL\s+p4sd_media_mutating_command\s*\(",
+        "p4sd_adopt_rca": r"\bstatic\s+BOOL\s+p4sd_adopt_rca\s*\(",
         "p4sd_shared_command": r"\bstatic\s+ULONG\s+p4sd_shared_command\s*\(",
         "p4sd_send_cmd_locked": r"\bstatic\s+ULONG\s+p4sd_send_cmd_locked\s*\(",
     }
@@ -62,6 +63,15 @@ def extract_production_bodies(helper) -> tuple[str, dict[str, str]]:
         name: helper.extract_definition(BUS_SOURCE, name, signature)
         for name, signature in signatures.items()
     }
+    # The production MMC_STATUS_MASK macro has legacy signed-int spelling.
+    # Keep the real helper body, but scope this warning to its conditional
+    # conversion instead of weakening conversion diagnostics for the fixture.
+    bodies["p4sd_adopt_rca_fixture"] = (
+        '#pragma GCC diagnostic push\n'
+        '#pragma GCC diagnostic ignored "-Wsign-conversion"\n'
+        + bodies["p4sd_adopt_rca"]
+        + '\n#pragma GCC diagnostic pop'
+    )
     for name, signature in command_type_signatures.items():
         bodies[name] = helper.extract_definition(COMMAND_HEADER, name, signature)
     fixture = FIXTURE.read_text(encoding="utf-8")
@@ -77,11 +87,17 @@ def extract_production_bodies(helper) -> tuple[str, dict[str, str]]:
                 MMC_HEADER,
                 (
                     "MMC_CMD_STOP_TRANSMISSION",
+                    "MMC_CMD_GO_IDLE_STATE",
+                    "MMC_CMD_SET_RELATIVE_ADDR",
                     "MMC_CMD_READ_SINGLE_BLOCK",
                     "MMC_CMD_READ_MULTIPLE_BLOCK",
                     "MMC_DATA_WRITE",
                     "MMC_DATA_READ",
                     "MMC_DATA_STREAM",
+                    "MMC_STATUS_MASK",
+                    "MMC_STATUS_ILLEGAL_COMMAND",
+                    "MMC_STATUS_RDY_FOR_DATA",
+                    "MMC_STATUS_STATE_TRAN",
                 ),
             ),
             helper.extract_constant_lines(
@@ -115,7 +131,11 @@ def extract_production_bodies(helper) -> tuple[str, dict[str, str]]:
     assembled = assembled.replace(
         INSERT_MARKER,
         "\n\n".join(
-            (bodies["p4sd_media_mutating_command"], bodies["p4sd_shared_command"])
+            (
+                bodies["p4sd_media_mutating_command"],
+                bodies["p4sd_adopt_rca_fixture"],
+                bodies["p4sd_shared_command"],
+            )
         ),
     )
     return assembled, bodies
@@ -205,6 +225,7 @@ def run() -> int:
         "P4HostCommandStatus",
         "P4HostCommandResult",
         "p4sd_shared_command",
+        "p4sd_adopt_rca",
         "p4sd_media_mutating_command",
         "p4sd_send_cmd_locked",
     ):
@@ -212,13 +233,17 @@ def run() -> int:
     print(f"  fixture: {sha256(FIXTURE.read_bytes())}")
     print(f"  actual denylist values: {sorted(denylist)}")
     print(
-        "Source coverage: shared adapter, denylist, SD data constants and "
-        "command/request/result/fault/observation type definitions execute "
-        "from production. SendCmd's single unconditional dispatch and removal "
-        "of the legacy transfer path are structurally audited. Host, CMD13 "
-        "confirmation, CMD18 recovery, TagItem/bus/private state, logging and "
-        "memory helpers are fixture stand-ins. The observer itself is not "
-        "executed; no MMIO or hardware behavior is modeled."
+        "Source coverage: shared adapter, p4sd_adopt_rca, denylist, SD/MMC "
+        "command/status constants and command/request/result/fault/observation "
+        "type definitions execute from production. CMD0/CMD3 RCA invalidation, "
+        "SD R6/MMC R1 adoption and malformed-response refusal are exercised. "
+        "SendCmd's single unconditional dispatch and removal of the legacy "
+        "transfer path are structurally audited. Host, CMD13 confirmation, "
+        "CMD18 recovery, TagItem/bus/private state, logging and memory helpers "
+        "are fixture stand-ins. The observer itself is not executed; no MMIO "
+        "or hardware behavior is modeled. The extracted helper's legacy signed "
+        "MMC_STATUS_MASK conversion warning is suppressed only around that "
+        "helper; all other fixture conversion warnings remain errors."
     )
 
     with tempfile.TemporaryDirectory(prefix="p4-sd-command-adapter-") as temporary:
