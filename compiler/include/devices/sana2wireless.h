@@ -38,6 +38,7 @@
 #define S2INFO_SecuritySummary (TAG_USER + 17) /* owned Sana2WirelessSecuritySummary */
 #define S2INFO_PSK             (TAG_USER + 18) /* borrowed binary WPA PSK */
 #define S2INFO_WPAInfoLength   (TAG_USER + 19) /* readable WPAInfo extent */
+#define S2INFO_AssociationCookie (TAG_USER + 20) /* caller-owned attempt ID */
 
 /* Send WPAInfoLength only when the actual device advertises IE_EXTENT with
  * FOURWAY. It is the caller's validated readable byte count, not a length
@@ -101,6 +102,27 @@
  * Older strict callers reject this new flag rather than supplying an inferred
  * span to an offload-only device. Capability structure size/version is unchanged. */
 #define S2WIRELESS_CAPF_IE_EXTENT       (1UL << 3)
+/* CONNECT_FAILED supports cause-free asynchronous association failure, not
+ * link loss, AP rejection or a proved timeout. Independent of FOURWAY.
+ * A caller negotiates this flag before arming S2_ONEVENT and supplies a nonzero
+ * 32-bit AssociationCookie on each association SETOPTIONS. Cookies must never
+ * be reused during that OpenDevice lifetime; refuse exhaustion rather than wrap.
+ * The device copies the cookie before Reply and scopes it to that opener.
+ * For failure of its still-current acknowledged attempt, S2_ONEVENT returns
+ * io_Error=0, WireError=S2EVENT_CONNECT_FAILED, DataLength=the copied cookie.
+ * Do not combine this edge with CONNECT/DISCONNECT or infer a remote cause.
+ * The device retains an unconsumed failure for its originating opener only,
+ * discards it on supersession/cancellation/leave/offline/close, and must not
+ * report canceled or superseded work as a new attempt's failure. The caller
+ * sends standalone S2INFO_Disassociate=1 for local cancellation/leave and
+ * retires its active cookie even if that request fails. Advertising this
+ * flag requires support for that leave tag; acknowledgment accepts the
+ * cancellation but does not prove radio teardown or grant a DISCONNECT edge.
+ * Neither a local reason code nor an AP rejection cause is conveyed by it.
+ * The caller ignores cookies that do not match its active acknowledged attempt.
+ * Legacy callers/devices receive neither a new tag nor an unsupported mask;
+ * no capability grants new credential handling. Version/size remain v1/32B. */
+#define S2WIRELESS_CAPF_CONNECT_FAILED  (1UL << 4)
 
 struct Sana2WirelessCapabilities
 {

@@ -158,11 +158,14 @@ for macro in (
 	"S2INFO_WPAInfoLength",
 	"S2INFO_Passphrase",
 	"S2INFO_PSK",
+	"S2INFO_AssociationCookie",
+	"S2INFO_Disassociate",
 	"S2_SETOPTIONS",
 	"S2_SETKEY",
 	"S2WIRELESS_CAPF_FOURWAY",
 	"S2WIRELESS_CAPF_IE_EXTENT",
 	"S2WIRELESS_CAPF_RAW_PSK",
+	"S2WIRELESS_CAPF_CONNECT_FAILED",
 	"S2WIRELESS_PSK_SIZE",
 	"S2ENC_NONE",
 	"S2ENC_WEP",
@@ -204,6 +207,49 @@ build_dir.mkdir(parents=True, exist_ok=True)
 (build_dir / "sana2-associate.inc").write_text(
 	extract_function(source_text, "wpa_driver_sana2_associate") + "\n"
 )
+(build_dir / "sana2-disassociate.inc").write_text(
+	extract_function(source_text, "wpa_driver_sana2_disassociate") + "\n"
+)
+
+disassociate = extract_function(source_text, "wpa_driver_sana2_disassociate")
+for unused_parameter in ("(void)addr;", "(void)reason_code;"):
+	if unused_parameter not in disassociate:
+		raise SystemExit(
+			f"error: disassociate helper does not explicitly ignore {unused_parameter}"
+		)
+for parameter in ("addr", "reason_code"):
+	if len(re.findall(r"\b" + parameter + r"\b", disassociate)) != 2:
+		raise SystemExit(
+			f"error: disassociate helper reads its {parameter} parameter"
+		)
+if any(token in disassociate for token in (
+	"wpa_supplicant_event", "EVENT_DISASSOC", "EVENT_DEAUTH", "EVENT_ASSOC"
+)):
+	raise SystemExit("error: local disassociate helper fabricates a link event")
+cancel_index = disassociate.find(
+	"eloop_cancel_timeout(wpa_driver_sana2_stay_alive, drv->ctx, drv);"
+)
+doio_index = disassociate.find("err = DoIO((APTR)request);")
+cookie_retire_index = disassociate.find("drv->active_association_cookie = 0;")
+if not (0 <= cookie_retire_index < cancel_index < doio_index):
+	raise SystemExit(
+		"error: disassociate must retire cookie and cancel keepalive before device I/O"
+	)
+ops_match = re.search(
+	r"const\s+struct\s+wpa_driver_ops\s+wpa_driver_sana2_ops\s*=\s*\{(.*?)\};",
+	source_text,
+	re.S,
+)
+if ops_match is None:
+	raise SystemExit("error: SANA-II driver operations table is missing")
+for operation in ("disassociate", "deauthenticate"):
+	if re.search(
+		r"\." + operation + r"\s*=\s*wpa_driver_sana2_disassociate\b",
+		ops_match.group(1),
+	) is None:
+		raise SystemExit(
+			f"error: {operation} operation does not route to disassociate helper"
+		)
 PY
 
 CC=${CC:-cc}

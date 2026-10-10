@@ -44,3 +44,40 @@ Open association conveys a NULL IE with extent zero. Nonzero extents outside
 The caller still guarantees readable memory throughout synchronous DoIO;
 length validation cannot establish arbitrary pointer validity. Native devices
 must copy borrowed data before acknowledging asynchronous association work.
+
+CONNECT_FAILED is an optional per-device event capability, independent of
+firmware handshake offload. The caller negotiates it before initial ONEVENT,
+then sends a nonzero non-reused 32-bit AssociationCookie with each attempt.
+An asynchronous failure returns that cookie in ONEVENT DataLength, with
+io_Error zero and the standalone CONNECT_FAILED WireError bit. Mismatched,
+zero, duplicate, unnegotiated or mixed-edge notifications are ignored. Counter
+exhaustion is refused before device I/O. This event does not assert an AP
+rejection, timeout or former-link loss; providers must scope retention and
+supersession to the originating opener before advertising the capability.
+The cause-free supplicant path cancels only the auth timer, resets a pending
+attempt and schedules a five-second retry unless removed or user-disabled;
+it neither emits a DISCONNECTED control event nor changes AP blacklist policy.
+Host fixtures remain models, not native provider or radio qualification.
+
+Negotiated CONNECT_FAILED devices also support standalone Disassociate=1.
+Both local deauthentication and disassociation use this cancellation tag;
+the caller retires its cookie before DoIO, including a refused leave request.
+It does not manufacture a DISCONNECT edge or claim confirmed radio teardown.
+Legacy devices still return unsupported without receiving new options.
+The internal CANCEL_PENDING flag is granted only to negotiated FullMAC
+devices. It lets the supplicant send cancellation during authentication or
+association, before a confirmed BSSID exists (NULL if even the pending address
+is unknown). The leave helper cancels its keepalive timer before I/O; a later
+CONNECT without an active cookie is ignored on these devices.
+`run-sana2-connect-failed-tests.sh` executes extracted negotiation/correlation
+helpers and source-checks initialization/rearm ordering. The separate
+`run-sana2-assoc-failed-state-tests.sh` executes extracted pending-state cleanup
+and timeout helpers; scan scheduling and device operations remain mocked.
+
+The cancellation state fixture also executes the real supplicant local
+disassociate/deauthenticate paths, including confirmed-address precedence,
+unknown pending address, legacy/MLME routing and cleanup. The lifecycle
+regression passes macOS/Linux O0/O2 ASan/UBSan: association84 scenarios/555
+checks, failure23/93, state554, security integration38/76, summary88/264.
+The separate RV32 compile checks the new cookie tag, failure capability/event
+bits and unchanged v1/32B layout. None of these is a full target or radio pass.

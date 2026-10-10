@@ -120,6 +120,7 @@
 #define S2EVENT_SOFTWARE                (1 << 7)
 #define S2EVENT_CONNECT                 (1 << 9)
 #define S2EVENT_DISCONNECT              (1 << 10)
+#define S2EVENT_CONNECT_FAILED          (1 << 11)
 
 
 /* Structures */

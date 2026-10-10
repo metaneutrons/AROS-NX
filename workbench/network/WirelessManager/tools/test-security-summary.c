@@ -1,5 +1,6 @@
 #ifdef SECURITY_SUMMARY_ABI_FIXTURE
 #include <stddef.h>
+#include <devices/sana2.h>
 #include <devices/sana2wireless.h>
 
 typedef char abi_ulong_is_32_bits[(sizeof(ULONG) == 4) ? 1 : -1];
@@ -8,6 +9,9 @@ typedef char abi_raw_psk_tag[(S2INFO_PSK == TAG_USER + 18) ? 1 : -1];
 typedef char abi_wpa_info_length_tag[(S2INFO_WPAInfoLength == TAG_USER + 19) ? 1 : -1];
 typedef char abi_raw_psk_flag[(S2WIRELESS_CAPF_RAW_PSK == (1UL << 2)) ? 1 : -1];
 typedef char abi_ie_extent_flag[(S2WIRELESS_CAPF_IE_EXTENT == (1UL << 3)) ? 1 : -1];
+typedef char abi_association_cookie_tag[(S2INFO_AssociationCookie == TAG_USER + 20) ? 1 : -1];
+typedef char abi_connect_failed_flag[(S2WIRELESS_CAPF_CONNECT_FAILED == (1UL << 4)) ? 1 : -1];
+typedef char abi_connect_failed_event[(S2EVENT_CONNECT_FAILED == (1UL << 11)) ? 1 : -1];
 typedef char abi_capabilities_version[(S2WIRELESS_CAPABILITIES_VERSION == 1) ? 1 : -1];
 typedef char abi_capabilities_size[(sizeof(struct Sana2WirelessCapabilities) == 32) ? 1 : -1];
 typedef char abi_cap_size_available[(offsetof(struct Sana2WirelessCapabilities, SizeAvailable) == 0) ? 1 : -1];

@@ -230,17 +230,23 @@ void wpa_supplicant_req_auth_timeout(struct wpa_supplicant *wpa_s,
 
 
 /**
- * wpa_supplicant_cancel_auth_timeout - Cancel authentication timeout
+ * wpa_supplicant_cancel_auth_timeout_no_blacklist - Cancel only the timer
  * @wpa_s: Pointer to wpa_supplicant data
  *
- * This function is used to cancel authentication timeout scheduled with
- * wpa_supplicant_req_auth_timeout() and it is called when authentication has
- * been completed.
+ * Cause-free attempt failure must not change AP blacklist policy. The legacy
+ * completion helper below keeps its original blacklist deletion behavior.
  */
-void wpa_supplicant_cancel_auth_timeout(struct wpa_supplicant *wpa_s)
+void wpa_supplicant_cancel_auth_timeout_no_blacklist(
+	struct wpa_supplicant *wpa_s)
 {
 	wpa_msg(wpa_s, MSG_DEBUG, "Cancelling authentication timeout");
 	eloop_cancel_timeout(wpa_supplicant_timeout, wpa_s, NULL);
+}
+
+
+void wpa_supplicant_cancel_auth_timeout(struct wpa_supplicant *wpa_s)
+{
+	wpa_supplicant_cancel_auth_timeout_no_blacklist(wpa_s);
 	wpa_blacklist_del(wpa_s, wpa_s->bssid);
 }
 
@@ -1528,6 +1534,12 @@ void wpa_supplicant_disassociate(struct wpa_supplicant *wpa_s,
 		else
 			wpa_drv_disassociate(wpa_s, wpa_s->bssid, reason_code);
 		addr = wpa_s->bssid;
+	} else if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_CANCEL_PENDING) &&
+		   (wpa_s->wpa_state == WPA_AUTHENTICATING ||
+		    wpa_s->wpa_state == WPA_ASSOCIATING)) {
+		wpa_drv_disassociate(wpa_s,
+			is_zero_ether_addr(wpa_s->pending_bssid) ? NULL :
+			wpa_s->pending_bssid, reason_code);
 	}
 	wpa_clear_keys(wpa_s, addr);
 	wpa_supplicant_mark_disassoc(wpa_s);
@@ -1563,6 +1575,12 @@ void wpa_supplicant_deauthenticate(struct wpa_supplicant *wpa_s,
 			wpa_drv_deauthenticate(wpa_s, wpa_s->bssid,
 					       reason_code);
 		addr = wpa_s->bssid;
+	} else if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_CANCEL_PENDING) &&
+		   (wpa_s->wpa_state == WPA_AUTHENTICATING ||
+		    wpa_s->wpa_state == WPA_ASSOCIATING)) {
+		wpa_drv_deauthenticate(wpa_s,
+			is_zero_ether_addr(wpa_s->pending_bssid) ? NULL :
+			wpa_s->pending_bssid, reason_code);
 	}
 	wpa_clear_keys(wpa_s, addr);
 	wpa_supplicant_mark_disassoc(wpa_s);

@@ -100,6 +100,8 @@ struct wpa_driver_sana2_data {
 	int wireless_caps_queried;
 	int wireless_caps_valid;
 	struct Sana2WirelessCapabilities wireless_caps;
+	ULONG next_association_cookie;
+	ULONG active_association_cookie;
 };
 
 static int b_rates[] = {
@@ -468,6 +470,7 @@ static int wpa_driver_sana2_associate(
 {
 	struct wpa_driver_sana2_data *drv = priv;
 	int err, i, alg, offload, has_wep = 0;
+	ULONG cookie = 0;
 	size_t passphrase_len;
 	struct IOSana2Req *request;
 	char ssid[MAX_SSID_LEN + 1];
@@ -526,6 +529,12 @@ static int wpa_driver_sana2_associate(
 		if (passphrase_len < 8 || passphrase_len > 63)
 			return -1;
 	}
+	if (drv->hard_mac && drv->wireless_caps_valid &&
+	    (drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED)) {
+		if (drv->next_association_cookie == 0xffffffffUL)
+			return -1;
+		cookie = ++drv->next_association_cookie;
+	}
 	request = drv->request;
 	CopyMem(params->ssid, ssid, params->ssid_len);
 	ssid[params->ssid_len] = '\0';
@@ -553,6 +562,7 @@ static int wpa_driver_sana2_associate(
 		{(offload && (drv->wireless_caps.Flags &
 			S2WIRELESS_CAPF_IE_EXTENT)) ? S2INFO_WPAInfoLength : TAG_IGNORE,
 			(UPINT)params->wpa_ie_len},
+		{cookie ? S2INFO_AssociationCookie : TAG_IGNORE, (UPINT)cookie},
 		{TAG_END, 0}};
 
 	/* Legacy host-handshake devices still set/clear WEP slots. Firmware
@@ -594,8 +604,49 @@ static int wpa_driver_sana2_associate(
 	/* Store current SSID and BSSID */
 	if (err == 0) {
 		strcpy(drv->ssid, ssid);
+		drv->active_association_cookie = cookie;
 	}
 
+	return err == 0 ? 0 : -1;
+}
+
+
+static void wpa_driver_sana2_stay_alive(void *eloop_ctx, void *timeout_ctx);
+
+static int wpa_driver_sana2_disassociate(void *priv, const u8 *addr,
+	int reason_code)
+{
+	struct wpa_driver_sana2_data *drv = priv;
+	struct IOSana2Req *request;
+	struct TagItem tags[] = {{S2INFO_Disassociate, 1}, {TAG_END, 0}};
+	int err;
+
+	/* This is local cancellation, not an assertion about an AP's reason.
+	 * CONNECT_FAILED devices must support the standalone leave tag. Keep
+	 * legacy devices' existing unsupported-callback behavior unchanged. */
+	(void)addr;
+	(void)reason_code;
+	if (drv == NULL || drv->request == NULL || !drv->hard_mac ||
+	    !drv->wireless_caps_valid ||
+	    !(drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED))
+		return -1;
+
+	/* Retire locally even if the device refuses leave: canceled work must
+	 * not reach the supplicant as a failure of an active attempt. Do not
+	 * fabricate DISCONNECT or claim confirmed radio teardown on Reply. */
+	drv->active_association_cookie = 0;
+	eloop_cancel_timeout(wpa_driver_sana2_stay_alive, drv->ctx, drv);
+	request = drv->request;
+	request->ios2_Req.io_Command = S2_SETOPTIONS;
+	request->ios2_DataLength = 0;
+	request->ios2_WireError = 0;
+	request->ios2_StatData = NULL;
+	request->ios2_Data = tags;
+	err = DoIO((APTR)request);
+	if (request->ios2_Req.io_Error != 0)
+		err = -1;
+	request->ios2_Data = NULL;
+	request->ios2_StatData = NULL;
 	return err == 0 ? 0 : -1;
 }
 
@@ -605,7 +656,7 @@ static int wpa_driver_sana2_wireless_caps_valid(
 {
 	const ULONG known_flags = S2WIRELESS_CAPF_FOURWAY |
 		S2WIRELESS_CAPF_SECURITY_SUMMARY | S2WIRELESS_CAPF_RAW_PSK |
-		S2WIRELESS_CAPF_IE_EXTENT;
+		S2WIRELESS_CAPF_IE_EXTENT | S2WIRELESS_CAPF_CONNECT_FAILED;
 	const ULONG known_protocols = S2WIRELESS_PROTO_WPA |
 		S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE;
 	const ULONG known_key_mgmt = S2WIRELESS_KEY_PSK |
@@ -678,6 +729,25 @@ static int wpa_driver_sana2_query_wireless_caps(
 }
 
 
+static ULONG wpa_driver_sana2_initial_event_mask(
+	struct wpa_driver_sana2_data *drv)
+{
+	ULONG mask = S2EVENT_OFFLINE;
+	if (drv->hard_mac)
+		mask |= S2EVENT_CONNECT | S2EVENT_DISCONNECT;
+	/* Capability negotiation must precede the first ONEVENT subscription.
+	 * get_capa runs later and must not silently change an already parked mask. */
+	if (!drv->wireless_caps_queried) {
+		drv->wireless_caps_queried = 1;
+		wpa_driver_sana2_query_wireless_caps(drv);
+	}
+	if (drv->hard_mac && drv->wireless_caps_valid &&
+	    (drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED))
+		mask |= S2EVENT_CONNECT_FAILED;
+	return mask;
+}
+
+
 static int wpa_driver_sana2_get_capa(void *priv, struct wpa_driver_capa *capa)
 {
 	struct wpa_driver_sana2_data *drv = priv;
@@ -735,6 +805,8 @@ static int wpa_driver_sana2_get_capa(void *priv, struct wpa_driver_capa *capa)
 	if (drv->wireless_caps_valid) {
 		const struct Sana2WirelessCapabilities *caps =
 			&drv->wireless_caps;
+		if (drv->hard_mac && (caps->Flags & S2WIRELESS_CAPF_CONNECT_FAILED))
+			capa->flags |= WPA_DRIVER_FLAGS_CANCEL_PENDING;
 
 		if (caps->Flags & S2WIRELESS_CAPF_SECURITY_SUMMARY)
 			capa->flags |= WPA_DRIVER_FLAGS_SECURITY_SUMMARY;
@@ -1024,6 +1096,22 @@ static int wpa_driver_sana2_mlme_remove_sta(void *priv, const u8 *addr)
 }
 
 
+static void wpa_driver_sana2_connect_failed(
+	struct wpa_driver_sana2_data *drv, const struct IOSana2Req *request)
+{
+	if (!drv->hard_mac || !drv->wireless_caps_valid ||
+	    !(drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED) ||
+	    request->ios2_Req.io_Error != 0 ||
+	    request->ios2_WireError != S2EVENT_CONNECT_FAILED ||
+	    !drv->active_association_cookie ||
+	    request->ios2_DataLength != drv->active_association_cookie)
+		return;
+	drv->active_association_cookie = 0;
+	eloop_cancel_timeout(wpa_driver_sana2_stay_alive, drv->ctx, drv);
+	wpa_supplicant_event(drv->ctx, EVENT_ASSOC_FAILED, NULL);
+}
+
+
 static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 {
 	struct wpa_driver_sana2_data *drv = sig_ctx;
@@ -1078,8 +1166,12 @@ static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 			events = request->ios2_WireError;
 			if (request->ios2_Req.io_Error != 0)
 				events = 0;
-			if (events & S2EVENT_CONNECT)
+			if ((events & S2EVENT_CONNECT) &&
+			    (!(drv->wireless_caps_valid &&
+			       (drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED)) ||
+			     drv->active_association_cookie != 0))
 			{
+				drv->active_association_cookie = 0;
 				request->ios2_Req.io_Command =
 					S2_GETNETWORKINFO;
 				pool = CreatePool(MEMF_PUBLIC | MEMF_CLEAR,
@@ -1112,6 +1204,7 @@ static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 			}
 
 			if (events & S2EVENT_DISCONNECT) {
+				drv->active_association_cookie = 0;
 				wpa_supplicant_event(drv->ctx, EVENT_DISASSOC,
 					NULL);
 
@@ -1120,6 +1213,9 @@ static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 					wpa_driver_sana2_stay_alive,
 					drv->ctx, drv);
 			}
+
+			if (events & S2EVENT_CONNECT_FAILED)
+				wpa_driver_sana2_connect_failed(drv, request);
 
 			if (events & S2EVENT_ONLINE) {
 				drv->event_mask &= ~S2EVENT_ONLINE;
@@ -1134,12 +1230,14 @@ static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 			}
 
 			if (events & S2EVENT_OFFLINE) {
+				drv->active_association_cookie = 0;
 				drv->event_mask &= ~S2EVENT_OFFLINE;
 				drv->event_mask |= S2EVENT_ONLINE;
 			}
 
 			/* Send request back to receive next event */
 			request->ios2_Req.io_Command = S2_ONEVENT;
+			request->ios2_DataLength = 0;
 			request->ios2_WireError = drv->event_mask;
 			SendIO((APTR)request);
 			break;
@@ -1334,12 +1432,9 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 	if (err == 0) {
 		/* Create and send event-notification request */
 		request = drv->request;
+		drv->event_mask = wpa_driver_sana2_initial_event_mask(drv);
 		request->ios2_Req.io_Command = S2_ONEVENT;
-		if (drv->hard_mac)
-			drv->event_mask = S2EVENT_CONNECT | S2EVENT_DISCONNECT
-				| S2EVENT_OFFLINE;
-		else
-			drv->event_mask = S2EVENT_OFFLINE;
+		request->ios2_DataLength = 0;
 		request->ios2_WireError = drv->event_mask;
 
 		drv->event_request = AllocVec(sizeof(struct IOSana2Req),
@@ -1374,6 +1469,8 @@ const struct wpa_driver_ops wpa_driver_sana2_ops = {
 	.deinit = wpa_driver_sana2_deinit,
 	.scan2 = wpa_driver_sana2_scan,
 	.associate = wpa_driver_sana2_associate,
+	.disassociate = wpa_driver_sana2_disassociate,
+	.deauthenticate = wpa_driver_sana2_disassociate,
 	.get_capa = wpa_driver_sana2_get_capa,
 	.get_mac_addr = wpa_driver_sana2_get_mac_addr,
 	.send_eapol = wpa_driver_sana2_send_eapol,

@@ -49,10 +49,14 @@ struct Sana2WirelessCapabilities {
 };
 
 struct wpa_driver_sana2_data {
+	void *ctx;
 	struct IOSana2Req *request;
+	int hard_mac;
 	int wireless_caps_valid;
 	struct Sana2WirelessCapabilities wireless_caps;
 	int wep_key_attempted;
+	ULONG next_association_cookie;
+	ULONG active_association_cookie;
 	char ssid[MAX_SSID_LEN + 1];
 };
 
@@ -84,8 +88,10 @@ struct doio_record {
 	UPINT statdata_pointer;
 	u8 dst_addr[ETH_ALEN];
 	UPINT options_pointer;
-	ULONG option_tags[10];
-	UPINT option_data[10];
+	ULONG active_cookie_at_call;
+	unsigned int keepalive_cancels_at_call;
+	ULONG option_tags[12];
+	UPINT option_data[12];
 	size_t option_count;
 	char option_ssid[MAX_SSID_LEN + 1];
 	int option_statdata_was_null;
@@ -129,6 +135,11 @@ struct fixture {
 };
 
 static struct io_fixture io;
+static struct wpa_driver_sana2_data *observed_driver;
+static unsigned int keepalive_cancel_calls;
+static void (*last_cancelled_handler)(void *, void *);
+static void *last_cancelled_eloop_ctx;
+static void *last_cancelled_timeout_ctx;
 static int using_wep;
 static unsigned int scenario_count;
 static unsigned int check_count;
@@ -147,6 +158,9 @@ static void CopyMem(const void *source, APTR destination, size_t size)
 #include "sana2-cipher.inc"
 
 static int DoIO(APTR request_arg);
+static void wpa_driver_sana2_stay_alive(void *eloop_ctx, void *timeout_ctx);
+static void eloop_cancel_timeout(void (*handler)(void *, void *),
+	void *eloop_ctx, void *timeout_ctx);
 static int wpa_driver_sana2_set_key(const char *ifname, void *priv,
 	enum wpa_alg alg, const u8 *addr, int key_idx, int set_tx,
 	const u8 *seq, size_t seq_len, const u8 *key, size_t key_len);
@@ -190,6 +204,7 @@ static int wpa_driver_sana2_set_key(const char *ifname, void *priv,
 }
 
 #include "sana2-associate.inc"
+#include "sana2-disassociate.inc"
 
 static int DoIO(APTR request_arg)
 {
@@ -217,6 +232,9 @@ static int DoIO(APTR request_arg)
 		struct TagItem *items = request->ios2_Data;
 
 		record->options_pointer = (UPINT) items;
+		record->active_cookie_at_call = observed_driver != NULL ?
+			observed_driver->active_association_cookie : 0;
+		record->keepalive_cancels_at_call = keepalive_cancel_calls;
 		record->option_statdata_was_null = request->ios2_StatData == NULL;
 		if (items == NULL) {
 			fprintf(stderr, "FAIL: S2_SETOPTIONS has NULL option list\n");
@@ -274,6 +292,21 @@ static int DoIO(APTR request_arg)
 	return record->result;
 }
 
+static void wpa_driver_sana2_stay_alive(void *eloop_ctx, void *timeout_ctx)
+{
+	(void) eloop_ctx;
+	(void) timeout_ctx;
+}
+
+static void eloop_cancel_timeout(void (*handler)(void *, void *),
+	void *eloop_ctx, void *timeout_ctx)
+{
+	++keepalive_cancel_calls;
+	last_cancelled_handler = handler;
+	last_cancelled_eloop_ctx = eloop_ctx;
+	last_cancelled_timeout_ctx = timeout_ctx;
+}
+
 static void check_value(const char *scenario, const char *predicate,
 			int actual, int expected)
 {
@@ -317,6 +350,10 @@ static void reset_io(void)
 	memset(&io, 0, sizeof(io));
 	io.fault_index = -1;
 	io.fault_command = -1;
+	keepalive_cancel_calls = 0;
+	last_cancelled_handler = NULL;
+	last_cancelled_eloop_ctx = NULL;
+	last_cancelled_timeout_ctx = NULL;
 }
 
 static void init_fixture(struct fixture *f, const char *ssid)
@@ -324,6 +361,8 @@ static void init_fixture(struct fixture *f, const char *ssid)
 	memset(f, 0, sizeof(*f));
 	reset_io();
 	f->drv.request = &f->request;
+	f->drv.ctx = (void *) (uintptr_t) 0xcafe;
+	observed_driver = &f->drv;
 	memcpy(f->drv.ssid, "previous", sizeof("previous"));
 	f->request.ios2_Data = (APTR) (uintptr_t) 0x1111;
 	f->request.ios2_StatData = (APTR) (uintptr_t) 0x2222;
@@ -508,7 +547,8 @@ static void test_legacy_open_and_wep_host_wpa(void)
 	      options->option_tags[6] == TAG_IGNORE &&
 	      options->option_tags[7] == TAG_IGNORE &&
 	      options->option_tags[8] == TAG_IGNORE &&
-	      options->option_tags[9] == TAG_END, 1);
+	      options->option_tags[9] == TAG_IGNORE &&
+	      options->option_tags[10] == TAG_END, 1);
 	CHECK("legacy open", "passphrase omitted", options->option_tags[6], TAG_IGNORE);
 	CHECK("legacy open", "SSID text", strcmp(options->option_ssid, "legacy-open") == 0, 1);
 	CHECK("legacy open", "managed port option",
@@ -563,7 +603,7 @@ static void test_legacy_open_and_wep_host_wpa(void)
 	CHECK("legacy WEP + host WPA", "WPA extent tag omitted",
 	      options->option_tags[8], TAG_IGNORE);
 	CHECK("legacy WEP + host WPA", "tag list terminates after extent slot",
-	      options->option_tags[9], TAG_END);
+	      options->option_tags[10], TAG_END);
 	CHECK("legacy WEP + host WPA", "passphrase omitted for host handshake",
 	      options->option_tags[6], TAG_IGNORE);
 	CHECK("legacy WEP + host WPA", "raw PSK omitted for host handshake",
@@ -681,7 +721,7 @@ static void test_negotiated_ie_extent(void)
 	CHECK("old offload WPA IE", "WPAInfoLength omitted without capability",
 	      io.doio[0].option_tags[8], TAG_IGNORE);
 	CHECK("old offload WPA IE", "tag list terminator follows ignored slot",
-	      io.doio[0].option_tags[9], TAG_END);
+	      io.doio[0].option_tags[10], TAG_END);
 
 	init_fixture(&f, "extent-open");
 	enable_offload_ie_extent(&f);
@@ -700,7 +740,7 @@ static void test_negotiated_ie_extent(void)
 	      io.doio[0].option_data[option_index(&io.doio[0], S2INFO_WPAInfo)] : -1,
 	      0);
 	CHECK("IE extent open", "tag list terminator follows extent",
-	      io.doio[0].option_tags[9], TAG_END);
+	      io.doio[0].option_tags[10], TAG_END);
 
 	init_fixture(&f, "extent-zero-nonnull");
 	enable_offload_ie_extent(&f);
@@ -779,7 +819,301 @@ static void test_negotiated_ie_extent(void)
 	CHECK("IE extent protected", "passphrase remains active",
 	      io.doio[0].option_tags[6], S2INFO_Passphrase);
 	CHECK("IE extent protected", "tag list terminator follows extent",
-	      io.doio[0].option_tags[9], TAG_END);
+	      io.doio[0].option_tags[10], TAG_END);
+}
+
+static void test_association_cookie_contract(void)
+{
+	struct fixture f;
+	struct doio_record *options;
+	int cookie_index, kind, result;
+
+	init_fixture(&f, "cookie-sequence");
+	f.drv.hard_mac = 1;
+	f.drv.wireless_caps_valid = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_CONNECT_FAILED;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("association cookie first acknowledgement", "association succeeds",
+	      result, 0);
+	CHECK("association cookie first acknowledgement", "cookie counter is one",
+	      f.drv.next_association_cookie, 1);
+	CHECK("association cookie first acknowledgement", "active cookie committed",
+	      f.drv.active_association_cookie, 1);
+	options = &io.doio[4];
+	cookie_index = option_index(options, S2INFO_AssociationCookie);
+	CHECK("association cookie first acknowledgement", "cookie tag is present",
+	      cookie_index, 9);
+	CHECK("association cookie first acknowledgement", "nonzero cookie value",
+	      cookie_index >= 0 ? options->option_data[cookie_index] : 0, 1);
+	CHECK("association cookie first acknowledgement", "terminator follows cookie",
+	      options->option_tags[10], TAG_END);
+
+	reset_io();
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("association cookie second acknowledgement", "association succeeds",
+	      result, 0);
+	CHECK("association cookie second acknowledgement", "counter is monotonic",
+	      f.drv.next_association_cookie, 2);
+	CHECK("association cookie second acknowledgement", "active cookie advanced",
+	      f.drv.active_association_cookie, 2);
+	cookie_index = option_index(&io.doio[4], S2INFO_AssociationCookie);
+	CHECK("association cookie second acknowledgement", "new cookie value",
+	      cookie_index >= 0 ? io.doio[4].option_data[cookie_index] : 0, 2);
+
+	for (kind = 0; kind < 2; ++kind) {
+		char scenario[64];
+		reset_io();
+		io.fault_index = 4;
+		io.fault_return = kind == 0 ? 5 : 0;
+		io.fault_io_error = kind == 0 ? 0 : 7;
+		SCENARIO();
+		result = wpa_driver_sana2_associate(&f.drv, &f.params);
+		(void) snprintf(scenario, sizeof(scenario),
+				"association cookie SETOPTIONS %s failure",
+				kind == 0 ? "DoIO" : "io_Error");
+		CHECK(scenario, "association reports failure", result, -1);
+		CHECK(scenario, "attempt cookie remains consumed",
+		      f.drv.next_association_cookie, 3 + kind);
+		CHECK(scenario, "previous acknowledged cookie remains active",
+		      f.drv.active_association_cookie, 2);
+		cookie_index = option_index(&io.doio[4], S2INFO_AssociationCookie);
+		CHECK(scenario, "failed attempt supplied its fresh cookie",
+		      cookie_index >= 0 ? io.doio[4].option_data[cookie_index] : 0,
+		      3 + kind);
+	}
+
+	init_fixture(&f, "cookie-unnegotiated");
+	f.drv.hard_mac = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_CONNECT_FAILED;
+	f.drv.wireless_caps_valid = 0;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("association cookie unnegotiated", "association succeeds",
+	      result, 0);
+	CHECK("association cookie unnegotiated", "cookie tag omitted",
+	      option_index(&io.doio[4], S2INFO_AssociationCookie), -1);
+	CHECK("association cookie unnegotiated", "counter unchanged",
+	      f.drv.next_association_cookie, 0);
+	CHECK("association cookie unnegotiated", "cookie slot is ignored",
+	      io.doio[4].option_tags[9], TAG_IGNORE);
+
+	init_fixture(&f, "cookie-soft-mac");
+	f.drv.wireless_caps_valid = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_CONNECT_FAILED;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("association cookie soft MAC", "association succeeds",
+	      result, 0);
+	CHECK("association cookie soft MAC", "cookie tag omitted",
+	      option_index(&io.doio[4], S2INFO_AssociationCookie), -1);
+	CHECK("association cookie soft MAC", "counter unchanged",
+	      f.drv.next_association_cookie, 0);
+
+	init_fixture(&f, "cookie-wrap-boundary");
+	f.drv.hard_mac = 1;
+	f.drv.wireless_caps_valid = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_CONNECT_FAILED;
+	f.drv.next_association_cookie = 0xfffffffeUL;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("association cookie final value", "association succeeds",
+	      result, 0);
+	CHECK("association cookie final value", "maximum nonzero cookie issued",
+	      f.drv.next_association_cookie, 0xffffffffUL);
+	CHECK("association cookie final value", "maximum cookie active",
+	      f.drv.active_association_cookie, 0xffffffffUL);
+	options = &io.doio[4];
+	cookie_index = option_index(options, S2INFO_AssociationCookie);
+	CHECK("association cookie final value", "maximum cookie forwarded",
+	      cookie_index >= 0 ? options->option_data[cookie_index] : 0,
+	      0xffffffffUL);
+
+	reset_io();
+	strcpy(f.drv.ssid, "previous");
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	check_rejected_without_io("association cookie wrap refusal", result, &f);
+	CHECK("association cookie wrap refusal", "counter does not wrap",
+	      f.drv.next_association_cookie, 0xffffffffUL);
+	CHECK("association cookie wrap refusal", "active cookie preserved",
+	      f.drv.active_association_cookie, 0xffffffffUL);
+}
+
+static void test_disassociate_contract(void)
+{
+	struct fixture f;
+	static const u8 peer_addr[ETH_ALEN] = { 0x02, 0x11, 0x22, 0x33, 0x44, 0x55 };
+	int kind, result;
+
+	init_fixture(&f, "disassociate-success");
+	f.drv.hard_mac = 1;
+	f.drv.wireless_caps_valid = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_CONNECT_FAILED;
+	f.drv.next_association_cookie = 17;
+	f.drv.active_association_cookie = 16;
+	f.request.ios2_DataLength = 99;
+	f.request.ios2_WireError = 0x1234;
+	SCENARIO();
+	result = wpa_driver_sana2_disassociate(&f.drv, peer_addr, 37);
+	CHECK("disassociate success", "returns success", result, 0);
+	CHECK("disassociate success", "one SETOPTIONS request", io.doio_count, 1);
+	CHECK("disassociate success", "no key requests", io.set_key_count, 0);
+	CHECK("disassociate success", "command", io.doio[0].command, S2_SETOPTIONS);
+	CHECK("disassociate success", "one active tag before terminator",
+	      io.doio[0].option_count, 1);
+	CHECK("disassociate success", "standalone leave tag",
+	      io.doio[0].option_tags[0], S2INFO_Disassociate);
+	CHECK("disassociate success", "leave value is one",
+	      io.doio[0].option_data[0], 1);
+	CHECK("disassociate success", "tag list has only terminator after leave",
+	      io.doio[0].option_tags[1], TAG_END);
+	CHECK("disassociate success", "no credentials in leave tag list",
+	      option_index(&io.doio[0], S2INFO_Passphrase) < 0 &&
+	      option_index(&io.doio[0], S2INFO_PSK) < 0 &&
+	      option_index(&io.doio[0], S2INFO_AssociationCookie) < 0, 1);
+	CHECK("disassociate success", "cookie retired before DoIO",
+	      io.doio[0].active_cookie_at_call, 0);
+	CHECK("disassociate success", "cancels keepalive before DoIO",
+	      io.doio[0].keepalive_cancels_at_call, 1);
+	CHECK("disassociate success", "one keepalive cancellation",
+	      keepalive_cancel_calls, 1);
+	CHECK("disassociate success", "cancels SANA stay-alive callback",
+	      last_cancelled_handler == wpa_driver_sana2_stay_alive, 1);
+	CHECK("disassociate success", "cancel context is supplicant context",
+	      last_cancelled_eloop_ctx == f.drv.ctx, 1);
+	CHECK("disassociate success", "cancel user data is driver context",
+	      last_cancelled_timeout_ctx == &f.drv, 1);
+	CHECK("disassociate success", "active cookie remains retired",
+	      f.drv.active_association_cookie, 0);
+	CHECK("disassociate success", "counter unchanged",
+	      f.drv.next_association_cookie, 17);
+	CHECK("disassociate success", "DataLength reset for leave",
+	      io.doio[0].data_length, 0);
+	CHECK("disassociate success", "WireError cleared for leave",
+	      io.doio[0].wire_error, 0);
+	CHECK("disassociate success", "StatData NULL at DoIO",
+	      io.doio[0].option_statdata_was_null, 1);
+	CHECK("disassociate success", "request Data cleared after reply",
+	      f.request.ios2_Data == NULL, 1);
+	CHECK("disassociate success", "request StatData cleared after reply",
+	      f.request.ios2_StatData == NULL, 1);
+
+	for (kind = 0; kind < 2; ++kind) {
+		char scenario[64];
+		init_fixture(&f, "disassociate-failure");
+		f.drv.hard_mac = 1;
+		f.drv.wireless_caps_valid = 1;
+		f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_CONNECT_FAILED;
+		f.drv.next_association_cookie = 23;
+		f.drv.active_association_cookie = 22;
+		io.fault_index = 0;
+		io.fault_return = kind == 0 ? 0 : 9;
+		io.fault_io_error = kind == 0 ? S2ERR_NOT_SUPPORTED : 0;
+		SCENARIO();
+		result = wpa_driver_sana2_disassociate(&f.drv, peer_addr, 15);
+		(void) snprintf(scenario, sizeof(scenario),
+				"disassociate %s failure",
+				kind == 0 ? "device refusal" : "transport");
+		CHECK(scenario, "returns failure", result, -1);
+		CHECK(scenario, "request reached device", io.doio_count, 1);
+		CHECK(scenario, "cookie retired before failed DoIO",
+		      io.doio[0].active_cookie_at_call, 0);
+		CHECK(scenario, "keepalive cancelled before failed DoIO",
+		      io.doio[0].keepalive_cancels_at_call, 1);
+		CHECK(scenario, "one keepalive cancellation",
+		      keepalive_cancel_calls, 1);
+		CHECK(scenario, "cancels SANA stay-alive callback",
+		      last_cancelled_handler == wpa_driver_sana2_stay_alive, 1);
+		CHECK(scenario, "cancel context is supplicant context",
+		      last_cancelled_eloop_ctx == f.drv.ctx, 1);
+		CHECK(scenario, "cancel user data is driver context",
+		      last_cancelled_timeout_ctx == &f.drv, 1);
+		CHECK(scenario, "cookie remains retired after failed reply",
+		      f.drv.active_association_cookie, 0);
+		CHECK(scenario, "counter unchanged after failure",
+		      f.drv.next_association_cookie, 23);
+		CHECK(scenario, "Data cleared after failed reply",
+		      f.request.ios2_Data == NULL, 1);
+		CHECK(scenario, "StatData cleared after failed reply",
+		      f.request.ios2_StatData == NULL, 1);
+	}
+
+	init_fixture(&f, "disassociate-null-driver");
+	SCENARIO();
+	result = wpa_driver_sana2_disassociate(NULL, peer_addr, 37);
+	CHECK("disassociate null driver", "returns failure", result, -1);
+	CHECK("disassociate null driver", "no device I/O", io.doio_count, 0);
+	CHECK("disassociate null driver", "no keepalive cancellation",
+	      keepalive_cancel_calls, 0);
+
+	init_fixture(&f, "disassociate-no-request");
+	f.drv.hard_mac = 1;
+	f.drv.wireless_caps_valid = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_CONNECT_FAILED;
+	f.drv.request = NULL;
+	f.drv.next_association_cookie = 31;
+	f.drv.active_association_cookie = 30;
+	SCENARIO();
+	result = wpa_driver_sana2_disassociate(&f.drv, peer_addr, 37);
+	CHECK("disassociate missing request", "returns failure", result, -1);
+	CHECK("disassociate missing request", "no device I/O", io.doio_count, 0);
+	CHECK("disassociate missing request", "active cookie unchanged",
+	      f.drv.active_association_cookie, 30);
+	CHECK("disassociate missing request", "counter unchanged",
+	      f.drv.next_association_cookie, 31);
+	CHECK("disassociate missing request", "no keepalive cancellation",
+	      keepalive_cancel_calls, 0);
+
+	init_fixture(&f, "disassociate-soft-mac");
+	f.drv.wireless_caps_valid = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_CONNECT_FAILED;
+	f.drv.next_association_cookie = 41;
+	f.drv.active_association_cookie = 40;
+	SCENARIO();
+	result = wpa_driver_sana2_disassociate(&f.drv, peer_addr, 37);
+	CHECK("disassociate soft MAC", "returns failure", result, -1);
+	CHECK("disassociate soft MAC", "no device I/O", io.doio_count, 0);
+	CHECK("disassociate soft MAC", "active cookie unchanged",
+	      f.drv.active_association_cookie, 40);
+	CHECK("disassociate soft MAC", "counter unchanged",
+	      f.drv.next_association_cookie, 41);
+	CHECK("disassociate soft MAC", "no keepalive cancellation",
+	      keepalive_cancel_calls, 0);
+
+	init_fixture(&f, "disassociate-unnegotiated");
+	f.drv.hard_mac = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_CONNECT_FAILED;
+	f.drv.next_association_cookie = 51;
+	f.drv.active_association_cookie = 50;
+	SCENARIO();
+	result = wpa_driver_sana2_disassociate(&f.drv, peer_addr, 37);
+	CHECK("disassociate unnegotiated", "returns failure", result, -1);
+	CHECK("disassociate unnegotiated", "no device I/O", io.doio_count, 0);
+	CHECK("disassociate unnegotiated", "active cookie unchanged",
+	      f.drv.active_association_cookie, 50);
+	CHECK("disassociate unnegotiated", "counter unchanged",
+	      f.drv.next_association_cookie, 51);
+	CHECK("disassociate unnegotiated", "no keepalive cancellation",
+	      keepalive_cancel_calls, 0);
+
+	init_fixture(&f, "disassociate-legacy-capabilities");
+	f.drv.hard_mac = 1;
+	f.drv.wireless_caps_valid = 1;
+	f.drv.wireless_caps.Flags = 0;
+	f.drv.next_association_cookie = 61;
+	f.drv.active_association_cookie = 60;
+	SCENARIO();
+	result = wpa_driver_sana2_disassociate(&f.drv, peer_addr, 37);
+	CHECK("disassociate legacy capabilities", "returns failure", result, -1);
+	CHECK("disassociate legacy capabilities", "no device I/O", io.doio_count, 0);
+	CHECK("disassociate legacy capabilities", "no keepalive cancellation",
+	      keepalive_cancel_calls, 0);
+	CHECK("disassociate legacy capabilities", "active cookie unchanged",
+	      f.drv.active_association_cookie, 60);
+	CHECK("disassociate legacy capabilities", "counter unchanged",
+	      f.drv.next_association_cookie, 61);
 }
 
 static u8 *new_binary_psk(u8 expected[S2WIRELESS_PSK_SIZE],
@@ -973,7 +1307,7 @@ static void test_passphrase_lengths_and_tags(void)
 	CHECK("offload passphrase length 8", "WPAInfoLength omitted without capability",
 	      options->option_tags[8], TAG_IGNORE);
 	CHECK("offload passphrase length 8", "tag list terminates after extent slot",
-	      options->option_tags[9], TAG_END);
+	      options->option_tags[10], TAG_END);
 	CHECK("offload passphrase length 8", "request Data cleared",
 	      f.request.ios2_Data == NULL, 1);
 	CHECK("offload passphrase length 8", "request StatData cleared",
@@ -1032,7 +1366,7 @@ static void test_raw_psk_forwarding_and_lifetime(void)
 	CHECK("raw PSK success", "raw PSK tag exact",
 	      options->option_tags[7], S2INFO_PSK);
 	CHECK("raw PSK success", "tag terminator follows PSK",
-	      options->option_tags[9], TAG_END);
+	      options->option_tags[10], TAG_END);
 	CHECK("raw PSK success", "WPAInfoLength omitted without capability",
 	      options->option_tags[8], TAG_IGNORE);
 	CHECK("raw PSK success", "borrowed pointer exact",
@@ -1352,6 +1686,8 @@ int main(void)
 	test_ssid_32_and_borrowed_options();
 	test_legacy_open_and_wep_host_wpa();
 	test_negotiated_ie_extent();
+	test_association_cookie_contract();
+	test_disassociate_contract();
 	test_credential_refusals_and_offload_wep();
 	test_actual_cipher_helper();
 	test_passphrase_lengths_and_tags();
