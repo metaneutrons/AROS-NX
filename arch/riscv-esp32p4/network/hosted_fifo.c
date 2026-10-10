@@ -2,6 +2,24 @@
 #include "hosted_fifo.h"
 #include "sdio_commands.h"
 
+/* Validate output/state separation before even generation checks can mutate
+ * the state. In particular &state->pending must not be used as the output:
+ * publishing a plan there otherwise aliases the transport's transaction. */
+static int valid_plan_output(const struct p4_hosted_fifo *state,
+                             const struct p4_hosted_fifo_plan *out)
+{
+    uintptr_t first, second;
+    if (!state || !out)
+        return 0;
+    first = (uintptr_t)state;
+    second = (uintptr_t)out;
+    if (first > UINTPTR_MAX - sizeof *state ||
+        second > UINTPTR_MAX - sizeof *out)
+        return 0;
+    return first + sizeof *state <= second ||
+           second + sizeof *out <= first;
+}
+
 int p4_hosted_fifo_start(struct p4_hosted_fifo *s, uint32_t generation,
                          uint32_t pool_limit)
 {
@@ -60,7 +78,7 @@ int p4_hosted_fifo_rx(struct p4_hosted_fifo *s, uint32_t generation,
                       uint32_t peer_total, struct p4_hosted_fifo_plan *out)
 {
     uint32_t bytes;
-    if (!out || !available(s, generation))
+    if (!valid_plan_output(s, out) || !available(s, generation))
         return 0;
     bytes = ((peer_total & P4_HOSTED_RX_MASK) - s->rx_consumed) &
              P4_HOSTED_RX_MASK;
@@ -79,7 +97,7 @@ int p4_hosted_fifo_tx(struct p4_hosted_fifo *s, uint32_t generation,
                       struct p4_hosted_fifo_plan *out)
 {
     uint32_t free_credits, needed;
-    if (!out || !available(s, generation) || !s->pool_limit || !wire_bytes ||
+    if (!valid_plan_output(s, out) || !available(s, generation) || !s->pool_limit || !wire_bytes ||
         wire_bytes > P4_HOSTED_FIFO_BUS_MAX)
         return 0;
     free_credits = (((token >> 16) & P4_HOSTED_TX_MASK) - s->tx_sent) &

@@ -7,11 +7,69 @@ static unsigned checks;
 #define CHECK(x) do { ++checks; if (!(x)) { \
     fprintf(stderr, "line %d: %s\n", __LINE__, #x); exit(1); } } while (0)
 
+static void test_plan_alias_refusal(void)
+{
+    union {
+        struct p4_hosted_fifo state;
+        uint8_t bytes[sizeof(struct p4_hosted_fifo) +
+                      sizeof(struct p4_hosted_fifo_plan)];
+    } storage;
+    uint8_t before[sizeof storage];
+    size_t offset;
+    for (offset = 0; offset < sizeof storage.state; offset += sizeof(uint32_t))
+    {
+        struct p4_hosted_fifo_plan *alias =
+            (struct p4_hosted_fifo_plan *)(void *)(storage.bytes + offset);
+        memset(storage.bytes, 0x93, sizeof storage.bytes);
+        CHECK(p4_hosted_fifo_start(&storage.state, 7, 20));
+        memcpy(before, storage.bytes, sizeof before);
+        CHECK(!p4_hosted_fifo_rx(&storage.state, 7, 29, alias));
+        CHECK(memcmp(before, storage.bytes, sizeof before) == 0);
+        CHECK(!p4_hosted_fifo_tx(&storage.state, 7, 20U << 16, 29, alias));
+        CHECK(memcmp(before, storage.bytes, sizeof before) == 0);
+        /* Alias refusal precedes the otherwise mutating generation check. */
+        CHECK(!p4_hosted_fifo_rx(&storage.state, 8, 29, alias));
+        CHECK(memcmp(before, storage.bytes, sizeof before) == 0);
+        CHECK(!p4_hosted_fifo_tx(&storage.state, 8, 20U << 16, 29, alias));
+        CHECK(memcmp(before, storage.bytes, sizeof before) == 0);
+    }
+    {
+        struct {
+            struct p4_hosted_fifo_plan before;
+            struct p4_hosted_fifo state;
+            struct p4_hosted_fifo_plan after;
+        } adjacent;
+        uint8_t snapshot[sizeof adjacent];
+        struct p4_hosted_fifo_plan *preceding_overlap =
+            (struct p4_hosted_fifo_plan *)(void *)
+            ((uint8_t *)&adjacent.before + sizeof adjacent.before -
+             sizeof(uint32_t));
+        memset(&adjacent, 0x57, sizeof adjacent);
+        CHECK(p4_hosted_fifo_start(&adjacent.state, 7, 20));
+        memcpy(snapshot, &adjacent, sizeof snapshot);
+        CHECK(!p4_hosted_fifo_rx(&adjacent.state, 8, 29, preceding_overlap));
+        CHECK(memcmp(snapshot, &adjacent, sizeof snapshot) == 0);
+        CHECK(!p4_hosted_fifo_tx(&adjacent.state, 8, 20U << 16, 29,
+                                preceding_overlap));
+        CHECK(memcmp(snapshot, &adjacent, sizeof snapshot) == 0);
+        /* Exact adjacent ends are disjoint, not false-positive overlap. */
+        CHECK(p4_hosted_fifo_rx(&adjacent.state, 7, 29, &adjacent.before));
+        CHECK(p4_hosted_fifo_finish(&adjacent.state, 7, 1, 1,
+                                    adjacent.before.bus_bytes));
+        CHECK(p4_hosted_fifo_tx(&adjacent.state, 7, 20U << 16, 29,
+                                &adjacent.after));
+        CHECK(p4_hosted_fifo_finish(&adjacent.state, 7, 1, 1,
+                                    adjacent.after.bus_bytes));
+    }
+    CHECK(!p4_hosted_fifo_tx(NULL, 7, 20U << 16, 29, NULL));
+}
+
 int main(void)
 {
     struct p4_hosted_fifo s, saved;
     struct p4_hosted_fifo_plan p, sentinel;
     uint32_t n;
+    test_plan_alias_refusal();
     memset(&sentinel, 0xa5, sizeof(sentinel));
     memset(&s, 0, sizeof(s));
     CHECK(!p4_hosted_fifo_rx(&s, 0, 33, &p));

@@ -101,6 +101,13 @@ overwrites its defaults with decoded scalar values, so an empty/default body
 is not a safe initialization shortcut. Fresh cold-start synchronization is
 pending; no hardware state changed during this implementation.
 
+The FIFO planner now enforces its documented output/state non-overlap rule
+before checking the generation, preventing a refused aliased plan from
+corrupting transport state. Sanitized tests pass1245355 checks each O0/O2,
+including preceding/partial overlap, unchanged state and exact adjacency;
+OPEN regressions remain716 each. Standalone RV32 compilation passes, but the
+previous OPEN candidate has not been rebuilt or deployed with this correction.
+
 JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
 construction and a byte-oriented ESP-Hosted frame codec in `network/` have
