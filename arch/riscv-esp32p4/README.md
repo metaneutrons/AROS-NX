@@ -9,6 +9,10 @@ The 64 MiB image builds and passes independent host FAT32/fsck and exact
 329-file manifest verification; original hash remains unchanged. GUI/radio
 qualification remains open; no
 hardware, credentials or privacy assertion changes have occurred.
+Deployment pairing audit: the local BSP package still contains an older
+31652B radio resource, not the standalone254812B owner resource. The image
+alone cannot qualify scanning; rebuild/check the matching ABI6 BSP before
+deployment. C6 recovery/privacy and actual radio tests remain open.
 
 WLAN lease-expiry development (2026-10-10): generic2298252dad is integrated.
 The chooser rejects missing, malformed, duplicate or expired lease timestamps,

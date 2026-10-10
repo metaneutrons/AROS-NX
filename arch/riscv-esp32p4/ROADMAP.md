@@ -132,7 +132,7 @@ gate: compensated output is not the native display contract.
 | N2 | AROS WLAN SANA-II integration | `private ABI6 association/lifecycle binding build and scoped models verified; runtime/privacy/wireless gates open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded STA TX compile for Core1. N2L records current counts/artifacts and Close/Offline/teardown models. Actual helpers/selected dispatch arms; Exec/SDMMC/hooks/radio mocked, not full BeginIO, full service callback or runtime concurrency. Queue/traffic-token fences/copied AP publication are bound; no actual association/IP claim. TX commitment rejects late AbortIO. WirelessManager/bwfm remain references; per-device four-way offload must preserve legacy behavior. Caller late failure, DHCP/build defaults, GUI saving/writable preference storage and actual teardown/reconnect/load remain open. No credentials, deployment or hardware pass. |
 | N2L | Native radio teardown and ongoing link lifecycle | `ABI6 build/scoped models verified; hardware/privacy open` | Standalone leave, deferred teardown outside unit lock, bounded Disconnect/NOT_CONNECT verification, periodic correlated AP observation and selected-RPC cancellation drain. Mac/Linux O0/O2 sanitized: association25999, observer393, bridge219, options89/258, queue785, lifetime1482, datapath16507, events6/70, scan295; sibling link102/reservation63/owner scan37447; exit0. Fresh Core1 RV32 modules have no undefined imports. Explicit teardown requires absence; persistent/foreign AP quarantines rather than reporting loss. Both privacy assertions0 and SUMMARY-only unchanged. Shared caller late-failure event and actual radio/reconnect/load qualification remain open. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
-| N2U | Credential-free WLAN image defaults and first-use selection | `opt-in JC1060 image build/host FAT verification passed; runtime open` | Existing AROS WiFi/Network preferences, WirelessManager, AROSTCP and dhclient only. Fixed device/unit0, DHCP RAM paths, empty Wireless.prefs and autostart off. Five defaults/sixteen stage tests pass; strict native ELF/default1 validation. Explicit graphical JC1060 targets exclude saved build Env-Archive and use tracked stock Wanderer preferences/ABI; legacy image profiles unchanged. WiFi151956B uses exact interface/IP and validated expiry/clock selection (203 helper checks; reader265, O0/O2 sanitized). Actual64MiB image builds; host FAT32 parser/fsck and exact329-file manifest pass with original hash unchanged. These results are not Exec, clock, routing/resolver, GUI or radio qualification. Single-manager lifetime and board acceptance remain open. First delivery excludes credential persistence; SYS/SD remains read-only. |
+| N2U | Credential-free WLAN image defaults and first-use selection | `opt-in JC1060 image build/host FAT verification passed; BSP pairing/runtime open` | Existing AROS WiFi/Network preferences, WirelessManager, AROSTCP and dhclient only. Fixed device/unit0, DHCP RAM paths, empty Wireless.prefs and autostart off. Five defaults/sixteen stage tests pass; strict native ELF/default1 validation. Explicit graphical JC1060 targets exclude saved build Env-Archive and use tracked stock Wanderer preferences/ABI; legacy image profiles unchanged. WiFi151956B uses exact interface/IP and validated expiry/clock selection (203 helper checks; reader265, O0/O2 sanitized). Actual64MiB image builds; host FAT32 parser/fsck and exact329-file manifest pass with original hash unchanged. Local BSP still contains31652B old radio resource, not standalone254812B owner; matching ABI6/Core1 package must be rebuilt/checked before deployment. These results are not Exec, clock, routing/resolver, GUI or radio qualification. Single-manager lifetime and board acceptance remain open. First delivery excludes credential persistence; SYS/SD remains read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -1480,6 +1480,9 @@ actual native stack/DHCP/manager/apps/modules/libraries and optional catalogs:
 JC1060 WLAN image targets consume the overlay, without importing saved build
 Env-Archive. The full64MiB image builds and passes host FAT32/fsck and exact
 329-file manifest verification; board/runtime acceptance remains open.
+Deployment also requires a matching ABI6 BSP with the persistent Core1 owner;
+the image target does not regenerate the package. Current local package
+contains an old31652B resource, not the standalone254812B owner resource.
 Package lookup is configured; sample host/routes are neutralized. The chooser
 now uses DHCP's configured POSIX lease path and selects complete records by
 exact interface/current address. Actual-source sanitized selection tests pass144
@@ -35951,3 +35954,27 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   not deployed or board-accepted. Next GUI/single-manager/clock/parser runtime. Installed
   C6 identity, backup/proven restore and actual UART privacy remain gates before
   real association/DHCP/bidirectional frames/reconnect/1800s combined load.
+
+### 2026-10-10 - N2U/N1P image and radio package pairing audit
+
+- Read-only current-state check after ad1f4aeecf: the image stages the SANA-II
+  device, but that device opens the separately loaded esp32p4wifi.resource,
+  checks private bridge ABI6 and requires ready/runtime/owner_task before
+  attach. Without the persistent owner, scan/send/associate are refusal stubs.
+  The image target neither regenerates nor deploys the BSP package.
+- Actual local package3720208B,42 members, SHA-256
+  8a4c5423973d80120baae1e75252182fb8e65ef2dab5799ee02e80e6ece25aa7;
+  parsed with the existing loader audit's members function. Its radio member
+  is31652B SHA-256
+  843455ebff72d4bff6edcfb689f1f10aaefb0aff600b664f640a1f65134ed1ed.
+  Standalone radio resource254812B SHA-256
+  bf1d1a529bdf257453cb3d68603e2c07e0ff58c964ab33db40e309081fca6e5c;
+  riscv-aros-nm finds owner/scan/association symbols. Symbols alone are not
+  proof of runtime readiness, release flags or installed firmware identity.
+- Result/next: package freshness is contradicted, not inferred from successful
+  image generation. Pair with explicitly rebuilt ABI6 Core1-owner BSP, verify
+  loader/capacity and exact recoverable baseline before deployment. Keep both
+  privacy assertions0; credential-free scanning can be a separate gate, not
+  association acceptance. C6 CN5 access/adapter availability remains unanswered;
+  secured recovery/privacy remains necessary before credentials or C6 writes.
+  No serial, reset, flash, SD write, credentials or new hardware test.

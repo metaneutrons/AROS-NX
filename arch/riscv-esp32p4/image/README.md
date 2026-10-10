@@ -50,6 +50,17 @@ Open Prefs/WiFi from Wanderer for first-use selection. No background manager
 is started by this image. Real GUI/single-manager, clock, DHCP, routing and
 radio acceptance remain open; neither privacy assertion is enabled here.
 
+The image is not a self-contained radio firmware: esp32p4wlan.device opens
+esp32p4wifi.resource from the separately flashed BSP and requires private
+bridge ABI6. Scanning requires a ready persistent owner (Core1 profile), not
+the one-shot MAC/scan diagnostic. Pair the image with an explicitly rebuilt,
+loader/capacity-checked BSP and verified recovery baseline before deployment.
+The image target does not rebuild or write that package. Never infer package
+freshness from a newer standalone resource: the local package inspected on
+2026-10-10 still contained the old31652B resource while the standalone owner
+resource was254812B. Both credential privacy assertions must remain0 until
+their separate acceptance gates pass.
+
 ## WLAN build defaults
 
 `python3 make-wifi-stage.py --aros-root BUILD_AROS --output NEW_DIRECTORY`
