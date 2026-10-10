@@ -19,6 +19,17 @@ Existing AROS wireless options, WirelessManager and BWFM's firmware-offload
 worker provide the intended SANA-II integration contract. The ESP32 driver,
 asynchronous lifecycle and DHCP/data acceptance remain unimplemented.
 
+Persistent receive implementation is now build verified separately from the
+installed one-shot probe: one bounded RX batch per call, immediate idle return,
+generation-bound assembly retained between calls and a four-item owned RPC
+inbox. Transport callbacks cannot dispatch events under shared-host ownership.
+Queue overflow and ambiguous consumed bytes retire the matching epoch. This
+control-plane receiver does not yet route Ethernet frames or run as an AROS
+worker, and has not been deployed. Inbox134 and coupled RX364 checks each at
+O0/O2 pass under Linux ASan/UBSan; a fresh149696B RV32 module links both APIs.
+The bounded queue is local policy, not a negotiated guarantee that all peer
+bursts fit. Overflow recovery and bus fairness still require runtime evidence.
+
 The native control foundation now supports bounded sequential Init/SetMode/
 Start/Stop/Deinit/GetMAC envelopes on one existing FIFO ledger, with owned
 response bodies and exact UID/operation correlation. Linux O0/O2 sanitizer
@@ -116,6 +127,10 @@ The subsequent user-confirmed reconnection also lacked armed early coverage:
 one45.118s passive capture exits0/status=ok with0 bytes; diagnostic validation
 exits1. USB identity matches the JC1060, but boot/WLAN continuity remains
 unqualified. No reset, flash or silent repeat was performed.
+Fabian has now reconfirmed readiness and sole USB-C power. A30-minute node
+observer and removal-then-arrival wait are armed before physical instructions;
+the latter opens the serial port once, only after observing removal/rearrival,
+for a60-second passive capture. Outcome is pending; installed firmware unchanged.
 
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection

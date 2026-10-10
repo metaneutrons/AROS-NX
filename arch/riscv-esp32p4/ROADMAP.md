@@ -122,7 +122,7 @@ gate: compensated output is not the native display contract.
 | N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; native initialization/MAC observed once; clean cold gate pending` | Existing FIFO reused with owned bodies/exact correlation. Control3529/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Generation-bound reassembly1318 isolated checks each O0/O2 sanitized pass; now linked into control with coupled epoch/deadline/failure tests and fresh113900B module build. Fragmentation integration not deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Coordinated startup reports all5 WLAN statuses0, valid MAC10:bd:a3:9b:bc:34 and restored stable registers in60.112s/16340 bytes; initial HP watchdog reset prevents clean cold acceptance. Latest late45.114s retrieval exits0 but receives0 bytes;1.425ms open latency, no armed startup coverage, inconclusive. Fresh pre-armed capture needed. No persistent UID allocator or WLAN acceptance. Original verified baseline recoverable. |
 | N1S | Typed native scan and runtime acceptance | `codec/oracle tested; opt-in runtime build verified; sequence models tested; initialized MAC observed; scan undeployed; boot continuity open` | Codec230/oracle1068/control3529/sequence537 checks each O0/O2 sanitized pass. Default-config blocking/nonblocking start, stop, AP count and owned AP/country/HE records. Runtime opt-in follows successful initialization/MAC with UIDs7..10 and at most8 owned records, named zero-AP workaround. ScanStart500 polls under same8s aggregate operation deadline;2s cleanup reserve. Independent runtime audit corrected early logging under shared-controller lock. Fresh135284B scan-enabled module and3823840B package pass42/42 loader and capacity checks;41 non-WiFi records unchanged. Not deployed; larger3825664B erase span requires new twice-read backup. No native hardware scan or WLAN acceptance; sequence/cleanup host models pass. Passive diagnostic checker passes16 independent fixture tests; no hardware acceptance. Earlier arrival expired/45.122s capture empty. Repeat native MAC succeeds once; initial HP watchdog reset makes checker reject cold continuity. Cleanup enum1/all14 flags corrected;16 tests pass. Optional serial-open timing now passes10 host tests; prior6.729s first-byte gap cannot be attributed. No live capture. |
 | N1A | Native association/configuration and owned events | `standalone codecs/oracle host tested; runtime and privacy gate open` | Typed284/540,282/538,283/539 and owned775/776; all15 STA fields, mandatory nested threshold/PMF, transactional256-byte envelope cap, temporary-secret wipe. Self239/oracle603 checks each Linux O0/O2 ASan/UBSan pass; strict RV32 object24,420B compiles with onlyrpc_encode import. Pinned oracle confirms258-byte all-width vector is refused unchanged. Nonzero event status validates/discards nested data. No runtime/control allowlist integration or deployment. Pinned slave credential logging/strlen and installed lineage remain unresolved. Persistent UID/event/generation state and credential-safe hardware association remain required. No credential transmission, association or IP pass. |
-| N1P | Persistent native control/data session | `UID ledger and reserved exchange build verified; host integration tests pass; worker not implemented` | One-outstanding non-reused UID ledger persists across retired host generations and refuses wrap. New reserved exchange validates exact identity/ranges and protects replacement state. Ledger105/legacycontrol3529/reserved300 checks each O0/O2 ASan/UBSan pass; fresh138984B module links API. Existing startup/scan fixed-UID diagnostics remain unchanged; API has no persistent caller. Idle RX, owned event queue, persistent reassembly, Ethernet frames and asynchronous ownership still required. P4 restart losing the ledger is not proof of fresh C6; no deployment or WLAN acceptance. |
+| N1P | Persistent native control/data session | `UID ledger, reserved exchange and persistent RX build verified; worker not implemented` | One-outstanding non-reused UID ledger persists across retired host generations and refuses wrap. Reserved exchange protects exact identity/ranges and replacement state; ledger105/legacycontrol3529/reserved300 checks each O0/O2 ASan/UBSan pass. Idle RX processes one batch without waiting and retains reassembly plus a bounded owned event/response inbox; inbox134/RX364 O0/O2 sanitizer checks pass, fresh149696B module links APIs. Existing startup/scan diagnostics remain unchanged; helpers have no persistent production caller. OPEN suffix preservation, response correlation, Ethernet frames and asynchronous AROS ownership remain required. P4 restart losing the ledger is not proof of fresh C6; no deployment or WLAN acceptance. |
 | N2 | AROS WLAN SANA-II integration | `existing AROS integration contract identified; driver not implemented` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. Existing sana2wireless.h, WirelessManager and bwfm offload path provide SSID/passphrase/options and link events; no second TCP/IP stack or duplicate configuration UI. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -658,6 +658,22 @@ Fresh138984B module links helpers, not a running permanent WLAN worker. Existing
 startup/scan use fixed single-use IDs. UID history cannot survive reconstructing
 the object or a P4 restart; retained-peer recovery still needs an explicit epoch
 strategy, not a claimed C6 reset from a changed host token.
+
+Persistent control-plane RX implementation now adds a one-batch poll API with
+no TX, wait, yield or event dispatch. It retains fragmented assembly across
+idle calls and copies RPC events/responses into a four-item owned queue.
+Caller releases shared-host ownership before dispatch, supplies the aggregate
+partial-message deadline and retires matching request IDs on transport loss.
+Queue overflow, malformed consumed input and ambiguous ACK/read completion
+retire the matching session without resetting counters or retrying bytes.
+Inbox134 and independent coupled RX364 checks each O0/O2 ASan/UBSan pass,
+with actual successful primary process completion. Strict RV32 compilation
+and a clean149696B module build pass; APIs are linked but not deployed.
+The20KB RX state and4KB pop item must be allocated off small task stacks;
+poll/pop remain exclusively serialized even outside the bus mutex.
+The API is not yet called by the
+one-shot runtime; OPEN suffix handling, response correlation, Ethernet routing,
+long-lived AROS lifecycle and SANA-II still require integration.
 
 Independent source audit identifies persistent RX prerequisites: OPEN discards
 extra SERIAL frames, exchange counts/discards events and receives only during
@@ -32518,7 +32534,54 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   long-lived bounded RX/event service with owned queue
   and dispatch outside host ownership; cold continuity remains separately open.
 
-## Evidence-entry template
+### 2026-10-10 - N1P bounded persistent control-plane RX implementation
+
+- Source41187c5ff0 plus hosted_rx.c/.h and owned inbox files. Exactly one
+  interrupt/FIFO batch per call; idle returns immediately. Partial SERIAL
+  assembly persists between polls; event/response payloads are owned, with
+  response ID/UID retained for the future outstanding-request matcher.
+- Exclusive serialized ownership; no allocation, event callbacks, yields or
+  resets inside RX. Caller supplies an aggregate partial-message deadline,
+  releases the bus before inbox dispatch and retires matching IDs on loss.
+  Overflow/ambiguous ACK or FIFO/malformed consumed bytes invalidate only
+  matching-generation state; start/refusal must be transactional.
+- Primary network-disabled Linux snapshots with removed write bits pass
+  inbox134 and coupled RX364 checks each O0/O2 ASan/UBSan, actual exit0.
+  Earlier RX250 checks also pass; final suite adds zero-delta ACK, peer fault,
+  capacity refusal after ACK, invalid callbacks/checksum/range/queue metadata.
+  Tests use actual RX/FIFO/reassembly/codecs/inbox with fake transport, not
+  RX stubs. They verify idle returns with no TX/yield, owned response/events,
+  partial/idle/completion with sequence wrap, counter wrap, malformed/checksum,
+  ACK/FIFO failures, expired partial budget, full queue poison, unchanged
+  preflight, transactional start and callback replacement preservation.
+- Independent read-only review found a child-init transactional edge; fixed
+  by prevalidating assembler start then transactional inbox init. Document
+  off-stack20KB RX state/4KB pop allocation, serialized dispatch and aggregate
+  deadline persistence. Queue bounds are local policy, not negotiated burst
+  guarantees. Four-item overflow is explicit session failure, not silent drop.
+- Strict freestanding RV32 O2 compilation exits0; inbox imports none, RX only
+  transport/reassembly/codecs/inbox. Poll static frame208B is not call-chain
+  high-water. Clean module build deletes all exact network .o files and uses
+  GNU Make PATH with jc1060p470c-v2, SDIO_SETUP/INIT/REPLY/MAC/SCAN=1; actual
+  exit0, all sources recompiled and module linked. First149664B module precedes
+  queue-refusal diagnostic refinement; final149696B artifact SHA-256
+  0faa2f1ca2fb3637d413b9435729bf12806b13004edd5fa41d555e5ecbd66f47.
+  nm confirms all RX/inbox APIs. Neither artifact is packaged or deployed.
+- Evidence wifi-2026-10-10/native-persistent-rx.JjMP72:
+  rx-final-primary.log SHA-256
+  d2ca42dc3d44d97b516689774e8e7864153077754f2a1037ab09341d423c9eda;
+  regression-primary.log5653b3ed4613ad74b6d6e951fd0a06728933cab55ad8d45400dfdc1b701cf667
+  also confirms legacycontrol3529/reserved300/inbox134 each O0/O2, exit0;
+  module-final-build.log7c803ed26e07a780015313640b12ea6ce0ffce481dfe27d22c7879554db9dd85;
+  rx-final.o5c25809cba19512c674ce0349c8920080d06493fed42bc52c075f47a2681216c;
+  inbox.o27028de6e9ce22954758b1d493f93d8a8c68722fbab7060c1a4f734fca3849d2.
+  RX source0ad1ed9a0d7ef12bcde7f82e880619f29d678826d50b0ee555886dbae0333027;
+  inbox sourcee7f28919007d6cf19c80ab48756d38613ebe4fee6b3a3a88582cecfab2cb23f2.
+- Qualification uses no serial/reset/flash/SD writes or credentials. Installed
+  package/core/C6 unchanged; no association, traffic or hardware acceptance.
+- Scope remains incomplete: production worker and OPEN suffix preservation,
+  exact outstanding-response matching, Ethernet frames, association lifecycle,
+  SANA-II and DHCP are not implemented by this receiver foundation.
 
 ### 2026-10-10 - N1C reconnected JC1060 late retrieval remains inconclusive
 
@@ -32543,6 +32606,23 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 
 
 
+
+### 2026-10-10 - N1C unchanged-firmware cold capture armed before interaction
+
+- Fabian freshly confirms readiness and USB-C as sole power source. Existing
+  initialization-only package/core/C6 unchanged; no flash or scan deployment.
+  USB identity80:F1:B2:D3:3B:A6, /dev/cu.usbmodem101; no existing port owner.
+- Evidence wifi-2026-10-10/native-cold-prearmed.As4uyB. Start1800-second
+  observe-usb-arrival.py process89552 (node-only/no serial). Process39772 waits
+  first for node removal, then arrival, within1800 seconds; only then runs
+  exactly one late-boot-log.py60s capture with exclusive boot.log/timing.jsonl.
+  At arm, observer records present=true; reader reports waiting for removal,
+  no serial open yet. Removal instruction issued only after both are armed.
+- Both handles are live; outcome pending, not a completed test. No fault,
+  boot continuity, MAC/scan/desktop or WLAN acceptance can yet be claimed.
+  Retain actual process exit/footer and every ROM/reset byte when complete.
+
+## Evidence-entry template
 
 ```text
 ### YYYY-MM-DD - <phase and result>
