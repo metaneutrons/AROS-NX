@@ -22,7 +22,8 @@
 #define GUI_CLOSE_ID 100
 
 int boardtool_layout_render(Object *app, Object *group,
-                            const struct board_layout *layout);
+                            const struct board_layout *layout,
+                            const struct board_discovery_snapshot *snapshot);
 
 struct MsgPort *BoardToolWorkerPort;
 struct Task *BoardToolMainTask;
@@ -43,14 +44,16 @@ static Object *flash_string;
 static Object *info_button;
 static Object *check_button;
 static Object *layout_button;
+static Object *discover_button;
 static Object *update_button;
 static Object *status_text;
 static Object *layout_group;
 
 static const char info_text[] =
     "Updater prototype: C6 file format/hash preflight only; compatibility "
-    "and recovery are NOT verified. Flash layout unavailable: live partition "
-    "query not yet implemented; updates disabled.";
+    "and recovery are NOT verified. DISCOVER-C6 queries an ABI8 owner and "
+    "compatible C6; WLAN goes offline. Registry observations are not raw-table "
+    "attestation or write permission; updates disabled.";
 
 static void set_status(CONST_STRPTR text)
 {
@@ -122,6 +125,24 @@ static void print_layout(const struct board_layout *layout)
     }
 }
 
+static void print_discovery(const struct board_client_observation *observation)
+{
+    const struct board_discovery_snapshot *s = &observation->snapshot;
+    size_t i;
+    printf("Historical C6 registry observation, not raw-table attestation; no write.\n"
+        "Running/boot/update indices: %u/%u/%u (255=unknown); state=%u\n"
+        "Security known mask=%02x enabled mask=%02x (unknown is not disabled).\n",
+        s->running, s->boot, s->update, s->running_state,
+        s->security_known, s->security_enabled);
+    printf("Index Offset      Size        Type/Subtype Flags      Label\n");
+    for (i = 0; i < s->layout.count; ++i) {
+        const struct board_partition *p = &s->layout.partitions[i];
+        printf("%2lu    %08lx  %08lx  %02x/%02x       %08lx  %s\n",
+            (unsigned long)i, (unsigned long)p->offset, (unsigned long)p->size,
+            p->type, p->subtype, (unsigned long)p->flags, p->label);
+    }
+}
+
 LONG boardtool_dispatch(ULONG operation, struct BoardToolMessage *message)
 {
     const struct BoardToolOperation *descriptor =
@@ -143,8 +164,8 @@ LONG boardtool_dispatch(ULONG operation, struct BoardToolMessage *message)
     if (!descriptor->available)
     {
         snprintf(status, capacity,
-            "C6 update unavailable: no installed owner maintenance backend "
-            "or proven recovery path; flash layout unavailable; no write");
+            "C6 update unavailable: OTA backend and independent recovery "
+            "are unverified; discovery does not authorize writes");
         return 0;
     }
 
@@ -157,6 +178,9 @@ LONG boardtool_dispatch(ULONG operation, struct BoardToolMessage *message)
         case BOARDTOOL_OP_CHECK_C6:
             return boardtool_check_c6(message->image, message->sha256,
                                       status, capacity);
+
+        case BOARDTOOL_OP_DISCOVER_C6:
+            return boardtool_discover_c6(&message->observation, status, capacity);
 
         case BOARDTOOL_OP_LAYOUT:
             if (!flash_capacity(message->flash_mb))
@@ -212,6 +236,7 @@ static BOOL send_operation(ULONG operation, CONST_STRPTR path,
     work_message->sha256[0] = '\0';
     work_message->flash_mb = flash_mb;
     memset(&work_message->layout, 0, sizeof(work_message->layout));
+    memset(&work_message->observation, 0, sizeof(work_message->observation));
     if ((operation == BOARDTOOL_OP_CHECK_C6 ||
          operation == BOARDTOOL_OP_LAYOUT) &&
         (!copy_exact(work_message->image, sizeof(work_message->image), path) ||
@@ -227,6 +252,7 @@ static BOOL send_operation(ULONG operation, CONST_STRPTR path,
     SET(check_button, MUIA_Disabled, TRUE);
     SET(info_button, MUIA_Disabled, TRUE);
     SET(layout_button, MUIA_Disabled, TRUE);
+    SET(discover_button, MUIA_Disabled, TRUE);
     SET(image_string, MUIA_Disabled, TRUE);
     SET(table_string, MUIA_Disabled, TRUE);
     SET(sha_string, MUIA_Disabled, TRUE);
@@ -247,6 +273,7 @@ static void handle_reply(void)
         SET(check_button, MUIA_Disabled, FALSE);
         SET(info_button, MUIA_Disabled, FALSE);
         SET(layout_button, MUIA_Disabled, FALSE);
+        SET(discover_button, MUIA_Disabled, FALSE);
         SET(image_string, MUIA_Disabled, FALSE);
         SET(table_string, MUIA_Disabled, FALSE);
         SET(sha_string, MUIA_Disabled, FALSE);
@@ -256,10 +283,16 @@ static void handle_reply(void)
             reply->operation == BOARDTOOL_OP_LAYOUT && layout_group != NULL)
         {
             if (!boardtool_layout_render(application, layout_group,
-                                         &reply->layout))
+                                         &reply->layout, NULL))
                 set_status("Imported table validated, but its graphical "
                            "preview could not be built; no write.");
         }
+        if (reply->result && reply->operation == BOARDTOOL_OP_DISCOVER_C6 &&
+            layout_group != NULL && !boardtool_layout_render(application,
+                layout_group, &reply->observation.snapshot.layout,
+                &reply->observation.snapshot))
+            set_status("C6 observation validated and lease released, but graph "
+                "could not be built; no write. Any preview is historical.");
     }
 }
 
@@ -284,8 +317,10 @@ static void request_close(BOOL *done)
     if (busy)
     {
         close_pending = TRUE;
-        set_status("Close requested. The read-only check/preview will finish "
-                   "before the worker and window are closed; no write is running.");
+        if (work_message->operation == BOARDTOOL_OP_DISCOVER_C6 && worker_process)
+            Signal(&worker_process->pr_Task, SIGBREAKF_CTRL_C);
+        set_status("Close requested. Discovery is cancelled with bounded lease "
+                   "release; file checks finish before closing. No write is running.");
         SET(window, MUIA_Window_Open, TRUE);
     }
     else
@@ -302,11 +337,13 @@ static LONG run_gui(void)
         boardtool_find_operation_name("LAYOUT");
     const struct BoardToolOperation *update =
         boardtool_find_operation_name("UPDATE-C6");
+    const struct BoardToolOperation *discover =
+        boardtool_find_operation_name("DISCOVER-C6");
     ULONG signals = 0;
     BOOL done = FALSE;
     LONG result = RETURN_FAIL;
 
-    if (info == NULL || check == NULL || layout == NULL || update == NULL ||
+    if (info == NULL || check == NULL || layout == NULL || update == NULL || discover == NULL ||
         !start_worker())
     {
         PutStr("ESP32Board: cannot start worker or operation registry\n");
@@ -364,6 +401,7 @@ static LONG run_gui(void)
                     Child, (IPTR)(info_button = (Object *)SimpleButton("Information")),
                     Child, (IPTR)(check_button = (Object *)SimpleButton("Check C6 file")),
                     Child, (IPTR)(layout_button = (Object *)SimpleButton("Preview imported table")),
+                    Child, (IPTR)(discover_button = (Object *)SimpleButton("Query C6 (WLAN offline)")),
                     Child, (IPTR)(update_button = (Object *)SimpleButton("Update C6 (unavailable)")),
                 End),
                 Child, (IPTR)(layout_group = (Object *)HGroup,
@@ -391,6 +429,8 @@ static LONG run_gui(void)
         (IPTR)application, 2, MUIM_Application_ReturnID, check->id);
     DoMethod(layout_button, MUIM_Notify, MUIA_Pressed, FALSE,
         (IPTR)application, 2, MUIM_Application_ReturnID, layout->id);
+    DoMethod(discover_button, MUIM_Notify, MUIA_Pressed, FALSE,
+        (IPTR)application, 2, MUIM_Application_ReturnID, discover->id);
     SET(update_button, MUIA_Disabled, !update->available);
     SET(window, MUIA_Window_Open, TRUE);
     if (!XGET(window, MUIA_Window_Open))
@@ -412,6 +452,12 @@ static LONG run_gui(void)
                 boardtool_dispatch(info->id, work_message);
                 set_status(work_message->status);
             }
+        }
+        else if (id == (LONG)discover->id && !busy && !close_pending)
+        {
+            if (send_operation((ULONG)id, NULL, NULL, 0))
+                set_status("Querying C6 registry; WLAN stops and remains offline. "
+                    "Prior preview is historical; no flash write or reset.");
         }
         else if ((id == (LONG)check->id || id == (LONG)layout->id) &&
                  !busy && !close_pending)
@@ -519,7 +565,7 @@ static LONG run_cli(CONST_STRPTR action, CONST_STRPTR image,
     if (operation == NULL)
     {
         fprintf(stderr, "ESP32Board: unknown ACTION; use INFO, CHECK-C6, "
-                        "LAYOUT or UPDATE-C6\n");
+                        "LAYOUT, DISCOVER-C6 or UPDATE-C6\n");
         return RETURN_FAIL;
     }
 
@@ -553,10 +599,15 @@ static LONG run_cli(CONST_STRPTR action, CONST_STRPTR image,
         return RETURN_FAIL;
     }
 
+    if (operation->id == BOARDTOOL_OP_DISCOVER_C6)
+        puts("DISCOVER-C6 stops WLAN and leaves it offline after release; "
+             "no flash write, credentials or automatic reset.");
     result = boardtool_dispatch(operation->id, &message);
     puts(message.status);
     if (result && operation->id == BOARDTOOL_OP_LAYOUT)
         print_layout(&message.layout);
+    if (result && operation->id == BOARDTOOL_OP_DISCOVER_C6)
+        print_discovery(&message.observation);
     return result ? RETURN_OK : RETURN_FAIL;
 }
 

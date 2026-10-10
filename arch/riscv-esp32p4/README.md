@@ -6,7 +6,7 @@ RV32-SMP with shared CLI/MUI read-only C6 image checks and an adaptive graphical
 partition-table preview. Imported extents, labels, offsets, sizes, types and
 flags determine the view; gaps are unlisted/reserved, not assumed free space.
 Capacity is explicitly supplied, not detected; active/update roles are unknown.
-Live P4/C6 layout discovery, owner OTA transport, secured recovery and
+Runtime P4/C6 layout discovery, owner OTA transport, secured recovery and
 actual local/HTTPS-acquired updates remain open. UPDATE-C6 fails explicitly.
 No board, flash, serial or credential action accompanied this development.
 Requirements: [board-tool plan](../../docs/plans/esp32-board-tool.md), roadmap N2M.
@@ -33,7 +33,8 @@ normalizes internal IDF registry entries and correlates sorted running/boot/
 update roles. Unknown bootloader rollback policies stay unknown, and virtual
 eFuses never establish hardware-security facts. This is not raw installed-table
 attestation or live discovery. The C6 candidate now includes the handler and
-advertisement; native P4 negotiation and GUI binding remain open. No board or
+advertisement; native P4 negotiation and GUI binding now exist in source,
+while installed/runtime qualification remains open. No board or
 credentials touched.
 Actual-source host tests pass35 cases each O0/O2 under ASan/UBSan:205 checks
 for normal security APIs,204 for virtual-eFuse builds. IDF runtime is mocked;
@@ -54,14 +55,15 @@ canonical inventory. This is not live epoch/lease admission. Fresh Core1 RV32
 resource builds and passes the loader audit. Generated-reference host tests pass
 1854 checks/12 cases each O0/O2 under ASan/UBSan, including32-entry inventory
 and maximum UID/nonce. These are codec tests, not runtime or stack qualification.
-Native owner transport and runtime binding now exist; frontend invocation and
-hardware qualification remain open. No new RPC has been sent on hardware;
+Native owner transport, runtime binding and frontend invocation now exist;
+hardware qualification remains open. No new RPC has been sent on hardware;
 UPDATE-C6 remains unavailable.
 The private pending transport now separates discovery350 submission and606
 correlation from ordinary WLAN traffic. Exact reserved UID/generation,
 supported INIT and canonical version/nonce are required before TX. Transport
 admission does not prove a live maintenance lease or peer freshness; runtime
-owner invocation and frontend publication are still required. Private RX now
+owner invocation and frontend publication now exist through ABI8, but are not
+runtime qualified. Private RX now
 admits one606 response only for an explicitly armed generation/UID, retaining
 duplicate rejection after pop and clearing admission on invalidation. Host
 tests and a fresh RV32 resource/loader audit pass; this is not live discovery.
@@ -76,7 +78,27 @@ Separate actual codec/coupled-owner suites also pass. Fresh RV32-SMP Core1
 resource282952B/device67584B pass individual loader audits. Only the owner performs transport; the
 requesting task queues and copies results within its lease. A fresh shared-host
 acquisition fences final publication, and unsupported peers receive no query.
-CLI/GUI discovery binding and matched ABI8 package/image remain open.
+CLI/GUI now share DISCOVER-C6 through a native ABI8 adapter and bounded
+read-only transaction (2026-10-11). It checks the exact ABI/size/hooks, uses
+timer.device ReadEClock rather than wall time, and reserves eight seconds for
+release within one original30-second client budget. Only a correlated,
+decoded inventory followed by confirmed release reaches the CLI/GUI. GUI
+closure cancels discovery but waits for bounded cleanup. Unsupported peers,
+failed/late release or malformed replies do not publish a new view. The
+query stops WLAN and leaves it offline/unassociated; it does not write flash,
+send credentials, reset or automatically re-associate. Both frontends label
+copied inventory as a historical normalized registry observation, not raw
+installed-table attestation, peer authentication or write/recovery authority.
+The graph shows reported roles and security-known/enabled masks in tooltips;
+unknown policy is not disabled policy. UPDATE-C6 remains unavailable.
+Matched ABI8 package/image regeneration and actual native/C6 runtime, UI,
+clock, cancellation/release and stack qualification remain open.
+Actual portable client plus real inventory decoder/validator pass286 checks
+across41 cases each O0/O2 ASan/UBSan, with an accepted-release mutation rejected;
+adapter hooks are mocked. Fresh RV32-SMP ESP32Board121796B compiles and links
+without warnings/errors. Six generated-make target checks still refuse other
+ports; shared frontend source guards and imported-layout regressions pass.
+These are source/build evidence, not native adapter, GUI or device acceptance.
 Owner tests pass7316 checks each O0/O2 under ASan/UBSan, including private
 success, terminal cleanup, subsequent normal exchange and atomic refusals.
 CLI examples (not yet executed on hardware):
@@ -84,10 +106,15 @@ CLI examples (not yet executed on hardware):
     ESP32Board ACTION INFO
     ESP32Board ACTION CHECK-C6 IMAGE app.bin SHA256 <trusted-64-hex-digest>
     ESP32Board ACTION LAYOUT TABLE partition-table.bin SHA256 <trusted-digest> FLASHMB 4
+    ESP32Board ACTION DISCOVER-C6
     ESP32Board GUI
 
 The digest must come from trusted metadata. File/hash acceptance is neither
 publisher authentication nor installed-target compatibility/recovery proof.
+DISCOVER-C6 needs both the matched ABI8 owner modules and an installed
+compatible C6 extension; stock Hosted receives no extension RPC. The C6
+candidate is still undeployed and requires independently secured recovery
+before first installation. A compiled command is not a working hardware query.
 
 WLAN bootimage development (2026-10-10): explicit JC1060 WLAN image targets
 now consume the native overlay and exclude saved build Env-Archive preferences.

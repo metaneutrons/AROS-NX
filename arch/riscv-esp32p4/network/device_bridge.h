@@ -39,7 +39,8 @@ struct P4WifiBase;
  * Token/generation/UID/nonce identify this observation, not peer authentication
  * or reset freshness. Requery and independently revalidate before any write.
  * Release, expiry and session retirement discard the internal result. A copied
- * result is historical data and must not be used outside its lease. */
+ * result may be displayed as historical data after release, but must not be
+ * used as live session/write authority outside its lease. */
 #define P4_WIFI_DISCOVERY_IDLE 0u
 #define P4_WIFI_DISCOVERY_REQUESTED 1u
 #define P4_WIFI_DISCOVERY_READY 2u

@@ -32,6 +32,7 @@ def inspect(header: str, main: str, worker: str) -> list[str]:
         "CHECK-C6": ("CHECK_C6", True),
         "LAYOUT": ("LAYOUT", True),
         "UPDATE-C6": ("UPDATE_C6", False),
+        "DISCOVER-C6": ("DISCOVER_C6", True),
     }
     if registry != expected or len(rows) != len(expected):
         problems.append(f"unexpected/duplicate capabilities in registry: {registry}")
@@ -47,9 +48,13 @@ def inspect(header: str, main: str, worker: str) -> list[str]:
         "GUI information dispatch": "boardtool_dispatch(info->id, work_message)",
         "GUI check button ID": "MUIM_Application_ReturnID, check->id",
         "GUI imported-layout button ID": "MUIM_Application_ReturnID, layout->id",
+        "GUI discovery button ID": "MUIM_Application_ReturnID, discover->id",
+        "shared native discovery": "boardtool_discover_c6(&message->observation, status, capacity)",
+        "CLI discovery output": "print_discovery(&message.observation)",
         "GUI check worker request": "send_operation((ULONG)id, path, digest, flash_mb)",
         "GUI worker-message ownership guard": "!busy && !close_pending",
         "GUI close remains deferred during work": "if (close_pending && !busy)",
+        "GUI discovery cancellation": "Signal(&worker_process->pr_Task, SIGBREAKF_CTRL_C)",
         "GUI unavailable-update state": "MUIA_Disabled, !update->available",
         "shared dispatch refuses unavailable operation": "if (!descriptor->available)",
         "horizontal partition graph": "layout_group = (Object *)HGroup",
@@ -90,8 +95,8 @@ def main() -> int:
         raise SystemExit("ESP32Board parity guard missed a GUI action drift")
 
     update_enabled = header.replace(
-        '{ BOARDTOOL_OP_UPDATE_C6, "UPDATE-C6", "Update C6 (unavailable)",       FALSE }',
-        '{ BOARDTOOL_OP_UPDATE_C6, "UPDATE-C6", "Update C6 (unavailable)",       TRUE  }',
+        '{ BOARDTOOL_OP_UPDATE_C6, "UPDATE-C6", "Update C6 (unavailable)",       FALSE },',
+        '{ BOARDTOOL_OP_UPDATE_C6, "UPDATE-C6", "Update C6 (unavailable)",       TRUE  },',
         1,
     )
     if not inspect(update_enabled, frontend, worker):

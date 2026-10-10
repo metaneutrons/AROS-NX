@@ -2,7 +2,12 @@
 
 include $(SRCDIR)/config/aros.cfg
 
-FILES := main worker check_file image hash layout layout_file layout_gui
+FILES := main worker check_file image hash layout layout_file layout_gui discovery_native \
+    ../../../arch/riscv-esp32p4/boardtool/discovery_client \
+    ../../../arch/riscv-esp32p4/boardtool/discovery_wire \
+    ../../../arch/riscv-esp32p4/boardtool/discovery
+
+USER_CPPFLAGS += -I$(SRCDIR)/workbench/tools/ESP32Board
 
 USER_CPPFLAGS += \
     -I$(SRCDIR)/workbench/network/WirelessManager/src \

@@ -121,7 +121,7 @@ not the current deployment pair. No ABI7/ABI8 package/image or hardware pass exi
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle and maintenance handshake host/build verified; C6 discovery candidate build verified, undeployed; native discovery codecs, TX/RX admission and exclusive-owner exchange build verified; ABI8 runtime discovery job and copied publication build/scoped host tests verified; no hardware acceptance | Frontend binding, live P4/C6 layout/active-slot provenance, owner OTA dispatch and ambiguous-write recovery policy, secured CN5 recovery, real CLI/GUI update and HTTPS acquisition; regenerate matching ABI8 package/image before runtime; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle and maintenance handshake host/build verified; C6 discovery candidate build verified, undeployed; native discovery codecs, TX/RX admission and exclusive-owner exchange build verified; ABI8 discovery publication and shared CLI/GUI discovery binding build verified; no hardware acceptance | Native/C6 discovery runtime qualification and live P4/C6 layout/active-slot provenance, owner OTA dispatch and ambiguous-write recovery policy, secured CN5 recovery, real CLI/GUI update and HTTPS acquisition; regenerate matching ABI8 package/image before runtime; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1332,8 +1332,17 @@ reply semantics and reacquires the shared host before publication. Results are
 copied only to the requesting task with a valid token, live generation and
 disjoint output storage. Release/expiry/retirement wipe internal results without
 resetting the nonce. Unsupported stock peers receive no extension RPC. This
-implementation passes scoped host tests and native builds; frontends have not yet
-invoked it and no hardware query or update permission is established.
+implementation passes scoped host tests and native builds. Shared CLI/GUI
+DISCOVER-C6 now invokes it through an exact ABI8/size/hook-checked native
+adapter, with one task owning the entire request/poll/release transaction.
+The original30-second client budget reserves eight seconds for confirmed
+release; the timer.device EClock clock is monotonic, not wall time. Copied
+inventory is decoded and displayed only after confirmed release, as historical
+registry data, never live write authority. GUI close signals cancellation and
+waits for bounded cleanup. The query leaves WLAN offline/unassociated; no
+credential, OTA, reset or auto-reassociation hook exists. No native runtime
+query, actual display or update permission is established. The unchanged
+UPDATE-C6 refusal remains intentional until OTA and recovery gates pass.
 The tool is restricted to esp32p4/riscv builds. Independent generated protobuf-c
 comparison verifies the pinned OTA wire format; normal WLAN control submission
 rejects OTA commands. Neither test establishes live transport or recovery.
@@ -36752,3 +36761,75 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   OTA backend, installed C6 identity/privacy, independent first-install recovery,
   association/DHCP/frames/reconnect/combined1800s acceptance remain open.
   UPDATE-C6 stays unavailable and the full Wi-Fi goal remains active.
+
+### 2026-10-11 - N2M shared native CLI/GUI read-only discovery client
+
+- Identity/config: parent15b71912fb, feature/esp32p4-wifi. ESP32Board adds
+  DISCOVER-C6 to the shared operation registry, retaining UPDATE-C6 disabled.
+  Native adapter requires private ABI8, sufficient base size and all five
+  maintenance hooks; compile-time assertions check every state, payload bound
+  and lease duration against the actual private header. Resource/device ABI
+  remains8; the only resource-header change clarifies that copied inventory
+  may be displayed historically, not reused as live/write authority.
+- Implementation/procedure: one CLI caller or GUI worker owns one lease and
+  at most one discovery job. Separate heap context and workspace prevent alias
+  refusal and large client scratch on small stacks. timer.device UNIT_ECLOCK
+  provides relative monotonic milliseconds with stable frequency; wall time
+  is not used. The original30-second aggregate budget limits work to22 seconds
+  and reserves eight seconds for release. All post-token exits attempt release;
+  lock contention may retry that same release, never a lease or discovery job.
+  No decoded observation is published until accepted release and RELEASED are
+  both confirmed before the original deadline. Cancellation during GUI close
+  signals the worker and defers closing until its bounded terminal reply.
+- Frontends: both paths call the same dispatcher/backend. CLI reports exact
+  entries, correlated identity, physical/usable capacity, role indices/state
+  and security-known/enabled masks. GUI renders adaptive extents/gaps with
+  historical [R]/[B]/[U] role labels and detailed tooltips; unknown policy is
+  not disabled policy, and gaps are not assumed free space. Imported previews
+  retain separate provenance and unknown roles. Refusals never publish a new
+  observation; existing graph data stays explicitly historical. Both warn
+  that querying stops WLAN and leaves it offline/unassociated after release.
+- Verification: primary rerun of the actual portable client plus real canonical
+  codec/validator passes286 checks across41 cases at each O0/O2 with ASan/UBSan;
+  adapter hooks are mocked. Covers pacing, cancellation, absent hooks,
+  aliases/overflow, wrong identity/nonce/payload, remote error, unsupported,
+  original22s/30s boundaries, callback delay, clock failure/wrap, release retry,
+  unchanged refusal output and scratch wiping. A mutant removing accepted
+  release from the publication condition fails. This is not the native adapter,
+  Exec scheduling, live Hosted transport or hardware qualification.
+- Regression/review: shared frontend source guard passes with three drift
+  counter-probes; generated make checks allow esp32p4/riscv and refuse five
+  other architecture/CPU combinations. Imported parser26 fixtures each O0/O2
+  and canonical wire136 checks/45 cases each O0/O2 pass. Independent Luna
+  source review found no blocking binding/ownership/provenance defect. Its
+  minor diagnostic finding was corrected: memory, resource/ABI and timer
+  setup failures now have distinct messages instead of all claiming owner busy.
+  Source review is not graphical or runtime acceptance.
+- Fresh native build: invalidated all ESP32Board object files in the actual
+  gen/workbench/tools/ESP32Board directory before the final documented
+  gmake workbench-tools-esp32board-quick. All12 translation units compile;
+  actual process exit0, no warning/error signatures, final link present.
+  RV32-SMP Tools/ESP32Board121796B,
+  SHA25669a3392a22c6991a2d0154326c8bcf9c549c6d519c9596d8667e77e86eb22bfe.
+  A redundant invalidation probe of gen/arch/riscv-esp32p4/boardtool reported
+  no such directory: mmake places these objects in the tool directory, which
+  had already been fully invalidated. No stale-object claim is inferred from
+  that missing path. Intermediate binaries/build logs remain separate evidence;
+  final artifact reflects cancellation, role-label and diagnostic corrections.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/discovery-frontend.U3dEbo/.
+  client.log SHA25681b1cc3e1122878d5d7878ba23ec9a7c0f8be3b046c2fecff379042baca8df85;
+  native-complete-build.log SHA25674932303be225e2d416b278270551a894cc6dc5877da65f6992e6e943dc5440b;
+  parity.log SHA256d56edd2c5b25245debae1373b198f7e69a87f81de4b7ff378dad045cb4bf9bd5;
+  target.log SHA25607c57e09d879c65bcb7d2af84aacbdf42f1af307c21140ec7dfdf7f91a31d862;
+  wire.log SHA256d12b7b0944a308e2dbff1b053b6e06063255e0c169d8a2033d7700f5dc5449d3;
+  layout.log SHA256e56910393721adef23fc92e05fdcfa154329c6c5d65cc6fb991f0739a936f9f0.
+- Safety/limits/next: no serial open, board query, reset, flash, SD write,
+  credentials, C6 installation or privacy assertion change. The compatible
+  C6 candidate remains undeployed; stock Hosted cannot satisfy discovery.
+  Regenerate/stage/audit the matched ABI8 package/image/tool before native
+  qualification; independently secured first-install recovery is mandatory
+  before writing C6. Actual inventory/table provenance, timer/scheduler/GUI
+  cancellation/release, stack and radio behavior remain unverified. Owner OTA
+  transport and ambiguous-write policy, installed privacy, recovery, actual
+  association/DHCP/frames/reconnect/combined1800s and real CLI/GUI updates/HTTPS
+  remain open. This closes source frontend binding, not Wi-Fi integration.
