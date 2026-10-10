@@ -427,7 +427,11 @@ second supply from an adapter's VCC. See the
 [pinned board schematic](https://github.com/cheops/JC1060P470C_I_W/tree/6304eddef32a33aa9d9a85e971e39dfb24c3cca3/5-Schematic)
 and [official C6 boot-mode guidance](https://docs.espressif.com/projects/esptool/en/latest/esp32c6/advanced-topics/boot-mode-selection.html).
 
-Safe next gate, not an executed procedure: explicit C6 write authorization;
+Fabian granted conditional C6 write authorization on 2026-10-10: inspect the
+firmware and update only after recovery is secured. This is not physical
+readiness, evidence of recoverability or permission to send WLAN credentials.
+
+Remaining gate, not an executed procedure:
 verified physical restore path; non-secret security summary and actual
 partition/active-slot discovery; app/bootloader/table/otadata backups where
 readback is permitted, excluding potentially credential-bearing NVS; pinned

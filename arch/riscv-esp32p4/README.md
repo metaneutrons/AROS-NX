@@ -6,7 +6,10 @@ and changes boot selection before a possible timer failure; automatic rollback
 is unproved. Native AROS has no OTA updater. The schematic CN5 UART route
 requires actual JC1060-v2 connector/pin verification, fresh physical readiness,
 non-secret backup/security checks and explicit C6 write authority before use.
-No C6/serial/credential action was taken. See HOSTED-REFERENCE.md for the gate.
+Fabian granted conditional C6 update authority on 2026-10-10: inspect firmware
+and update only with secured recovery. Physical readiness and a proven restore
+path remain outstanding. No C6/serial/credential action was taken. See
+network/HOSTED-REFERENCE.md for the gate.
 
 Association-caller correction in development (2026-10-10): the separate
 upstream-based wireless checkout now validates representable SSIDs and

@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2F | C6 firmware privacy and recoverable identity | `source audit; physical recovery/authority gates open` | Hosted init/version is not a whole-image hash. Stock OTA is not verified rollback; CN5 UART is schematic-only until actual v2 connector verified. Explicit C6 write authority, non-secret security/partition/app backups, pinned privacy-safe image and proven restore path required before credentials. No C6 action. |
+| N2F | C6 firmware privacy and recoverable identity | `source audit; conditional update authority received; physical recovery gate open` | Hosted init/version is not a whole-image hash. Stock OTA is not verified rollback; CN5 UART is schematic-only until actual v2 connector verified. Fabian authorizes C6 update only with secured recovery. Fresh physical readiness, non-secret security/partition/app backups, pinned privacy-safe image and proven restore path remain required before credentials. No C6 action. |
 | N2A | Association caller and native link lifecycle | `shared caller RV32 build/model verified; generic da74d7f23a locally integrated` | Actual associate/key/cipher models50 scenarios/339 checks each O0/O2 ASan/UBSan macOS/Linux; source/non-author test review passed with stated WEP tightening. Binary raw-PSK contract, native S2_SETOPTIONS/runtime link events, verified C6 privacy and association/DHCP remain required. No credential deployment or link acceptance. |
 | N2S | Native queued SANA scan presentation | `RV32 build verified; source review and corrected scan-helper models passed` | Single bounded owner-service scan, copied SSID filter and caller-pool-owned complete publication. Scan-helper models295 checks each O0/O2 ASan/UBSan on macOS/Linux; outer BeginIO/AbortIO/Close and runtime scheduling remain separate gates. Exact singleton metadata only; unsupported/ambiguous unknown protected. C-string binary SSIDs/invalid channels omitted; max8 local cap. SUMMARY only, no FOURWAY. No credentials/deployment/hardware acceptance. |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
@@ -1116,7 +1116,9 @@ C6 credential gate: source audit finds DEBUG plaintext password and VERBOSE
 RPC logging paths in the pinned slave. Installed binary remains unidentified;
 semantic version/SDIO capabilities do not establish privacy. Stock OTA cannot
 substitute for proven restore/rollback. Candidate schematic CN5 UART must be
-verified on the actual board after fresh physical readiness and write authority.
+verified on the actual board after fresh physical readiness. Fabian granted
+conditional update authority on 2026-10-10; secured recovery remains mandatory
+before a write, and has not been demonstrated.
 Source development may proceed without sending credentials or changing C6.
 
 Association caller correction is in development in the upstream-based generic
@@ -34054,3 +34056,18 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   P4 mutation. C6 write authority asked asynchronously, not yet received.
   Next: source integration/runtime work without credentials; only coordinate
   physical recovery once Fabian confirms readiness and C6 authority.
+
+### 2026-10-10 - N2F conditional C6 update authority received
+
+- Procedure/evidence: Fabian answered the explicit firmware-update question:
+  "Ja, C6-Firmware prüfen und bei gesicherter Wiederherstellung aktualisieren".
+  This supersedes the earlier unanswered-authority state, not the source audit.
+- State: conditional write authority received. Actual JC1060-v2 UART connector,
+  non-secret security/partition discovery, permitted backups, pinned private
+  firmware identity and a proven restore path remain unverified.
+- Configuration/artifacts: documentation only; no firmware or configuration
+  changed. Installed C6 binary remains unidentified; no new hardware result.
+- Safety: no serial access, reset, flash, credential transmission or SD write.
+  Permission does not establish fresh physical readiness or secured recovery.
+- Next: continue credential-free source work; coordinate actual-board recovery
+  verification with fresh readiness before exercising conditional write authority.
