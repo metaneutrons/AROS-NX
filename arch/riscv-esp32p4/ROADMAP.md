@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; integrated core build verified` | Generic recovery, private RCA, shared budget, P4 hooks and bounded automatic task dispatch host tested/build verified. Accepted production source integrated locally; clean core links with production XIP layout. Complete BSP/checksize/audit, radio notification, real SMP interleavings, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; integrated core/BSP build verified` | Generic recovery, private RCA, shared budget, P4 hooks and bounded automatic task dispatch host tested/build verified. Accepted production source integrated locally; production-layout XIP core and complete BSP/checksize/41-member loader audit pass. SD hardware regression, radio notification, real SMP interleavings, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -180,8 +180,9 @@ GitHub tracking objects were requested or created.
 ### N0 - SDIO commands and shared controller ownership
 
 Integrated source ad7e4171f6 now produces a clean production-layout XIP core.
-Complete BSP assembly and hardware SD regression remain pending; standalone
-module/model passes do not qualify this new integrated pair.
+Complete BSP assembly/checksize and all 41 loader members now pass. Hardware SD
+regression remains pending; build/model passes do not qualify this integrated
+pair on hardware.
 
 Generic same-media recovery is now implemented as an explicit owned operation
 behind three optional task-context backend hooks (needed/prepare/finish).
@@ -28986,6 +28987,41 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: finish aggregate package and exact checksize/loader audit; record
   result before any deployment. Then verified-identity/backed-up read-only SD
   boot regression, followed by installed-C6 protocol identification.
+
+### 2026-10-10 - N0 integrated BSP assembly and loader audit pass
+
+- State: integrated core/BSP pair is build verified only. Fabian reconfirms
+  cheops/JC1060P470C_I_W as sufficient WLAN reference; Ethernet remains separate.
+  Implementation source ad7e4171f6; documentation HEAD before this entry b835239f8e.
+- Initial aggregate session49116 exits2: MSG_STRING_REQUESTTITLE undeclared in
+  displayerror.c. The DOS catalogs submodule was uninitialized, so its generated
+  strings header was absent. Initialized rom/dos/catalogs at the recorded
+  gitlink3244436dc0eccd6ebd2b361de79260a8f5117973; no source workaround.
+- Retry session46253 exits0. JC1060-v2/SMP, C3=1, C4_TOUCH_HIDD=1,
+  PSRAM200/CPU360; FAT_DEBUG=0, DOS_DEBUG=0, DOSBOOT_DEBUG=0 explicitly.
+  Shared resource and all generic/P4 SD objects had been invalidated together
+  and rebuilt for the private ABI/unit layout changes. This is not a fresh
+  all-module compiler rebuild; unchanged package dependencies use incremental
+  build objects. Production tree and board were not modified.
+- Package3,694,032 bytes SHA-256
+  860fa1f461aaa0758852e3fb57eab9d558feb9ff4bd118ab34f595fec2f5cf09;
+  checksize session42491 exits0 against4,063,232-byte split (369,200 bytes free).
+  Loader audit chunk1dbf3a and preserved repeat39d804 both exit0:
+  41 ELF32/little-endian/REL/RISC-V members, zero rejected relocations/members.
+- Matched sdcard.device135,276 bytes a520add0472364632a115e641aa272d1fda2c212d84642c9b810a8b6da84b02f;
+  esp32p4sdmmc.resource55,028 bytes88ccdcc7bb19d650792e8daa2e97718897f80b5515cfcc9dcb47592e823fbf42.
+  Core remains189,984 bytes bbc265fad7b4e18a15b67fcea7dcf029edb671bc88387eac91050b837f92cf68;
+  esptool image-info chunk03a0bc exits0, checksum and validation hash valid.
+- Evidence root /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10:
+  package-catalog-retry.log SHA-256
+  6b6a0e505873de5fd006fadf857e8dc7007ce387608ed156552667e1bbaa7337;
+  integrated-ad7e4171f6-bsp/aros-bsp.pkg and loader-audit.log preserved.
+  Audit log SHA-256 bf84c03f075b8e5399ef44fcd9ef214af100275526412b6a5dc5b5a43a6b2aa8.
+- Safety/limits: no serial open, reset, flash, SD write, C6 firmware or D1001
+  action. No hardware pass, association, DHCP or data-path claim. Installed C6
+  firmware remains unchanged and unidentified.
+- Next: exact-identity/backed-up headless SD regression of this pair, then
+  bounded native slot1 enumeration and installed-C6 protocol identification.
 
 ## Evidence-entry template
 

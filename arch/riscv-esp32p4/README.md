@@ -49,8 +49,11 @@ quiet-profile and qualification host regressions pass. A complete integrated
 RV32 core/package build and hardware regression still precede deployment.
 The integrated ad7e4171f6 core now links successfully with the production XIP
 layout (189,984 bytes, SHA-256 bbc265fad7b4e18a15b67fcea7dcf029edb671bc88387eac91050b837f92cf68).
-Complete BSP assembly/checksize/loader audit and headless SD regression remain
-pending; the core alone is not a deployable or hardware-verified WLAN pair.
+Complete BSP assembly, checksize and loader audit now pass: 3,694,032 bytes,
+41 accepted ELF members, SHA-256
+860fa1f461aaa0758852e3fb57eab9d558feb9ff4bd118ab34f595fec2f5cf09.
+The integrated pair is build verified only; headless SD regression and installed
+C6 communication remain pending. It is not a working WLAN driver.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device
