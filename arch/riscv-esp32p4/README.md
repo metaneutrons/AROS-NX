@@ -171,6 +171,16 @@ C6 IDF5.4 documentation says0x8d, while an unmatched legacy FG host uses0x8c.
 The pinned slave sends its startup event only after OPEN; waiting for that
 event before OPEN would not initialize this reference. Installed compatibility,
 runtime cleanup/transport/RPC and WLAN traffic remain open.
+An opt-in `P4_WIFI_SDIO_SETUP=1` runtime candidate now adapts CMD52 through
+the shared command engine. It performs setup only after identification and
+attempts bounded restoration under the same host ownership. Identification
+and setup share8s; cleanup has a separate2s reserve. CMD52 writes have no
+data-transfer phase. Clean RV32 module builds pass with setup enabled and
+disabled; extracted actual CMD52 adapter tests pass21 cases/165 checks and
+restoration tests602 checks each O0/O2 with sanitizers. This candidate is not
+deployed or hardware accepted; OPEN/IRQ/RPC and C6 firmware writes remain absent.
+The current official ESP-Hosted-MCU host also writes0x8c; the discrepancy is
+not limited to the older FG host and remains unresolved before OPEN.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device

@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; function setup host tested` | Pure function-1 setup passes3997 strict sanitized checks each O0/O2 and RV32 compilation; enable readback rejects IO_READY-only false success. RX reassembly remains host tested. Helpers are not runtime transport. Resolve C6 OPEN interrupt mapping before handshake; compatibility, credits/queues/RPC, runtime cleanup and disconnect recovery remain open. Existing C6 firmware preserved. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; runtime setup build verified` | Opt-in setup/restore runtime module builds cleanly enabled and disabled. Actual CMD52 adapter21 cases/165 checks, restore602 checks each O0/O2 sanitized; setup3997. Next hardware setup+exact restore gate without OPEN. C6 OPEN mapping still differs between docs and current official host; compatibility, live transport/credits/RPC and disconnect recovery remain open. C6 firmware preserved. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -552,8 +552,8 @@ copy. Run recovery only after the failed request releases its transaction.
 
 ### N1 - compatible ESP-Hosted transport
 
-Pure function-1 setup is host tested/RV32 compile verified, not linked into
-the resource yet. Function-0 CMD52 callbacks snapshot IO_ENABLE and original
+Pure function-1 setup is host tested/RV32 compile verified; its opt-in runtime
+candidate is described below. Function-0 CMD52 callbacks snapshot IO_ENABLE and original
 FBR1 block size before any write, set only enable bit1, verify exact enable
 readback, poll IO_READY with a1000-attempt ceiling and caller-owned aggregate
 budget, then write/read back512-byte FBR1. The observed IO_ENABLE0/IO_READY2
@@ -570,6 +570,18 @@ unmatched legacy FG host47a14ad262fe2a2e17797dd09c69102e3e5631c1 writes
 OPEN at0x8c. Resolve target-specific mapping before either bootstrap write;
 do not treat legacy queue10 as the pinned slave's configured RX pool20.
 No OPEN/RESET/IRQ/function setup has been deployed by this implementation.
+The optional P4_WIFI_SDIO_SETUP=1 runtime candidate performs setup after
+successful identification, then restores saved FBR/IO_ENABLE under unchanged
+host ownership/generation. Identification+setup use8s and cleanup an explicit
+2s reserve; cleanup cannot convert failed setup into a pass. CMD52 writes
+encode the byte in CMDARG and leave the shared request data phase disabled.
+Clean RV32 module builds pass with the selector enabled/disabled. Extracted
+actual CMD52 adapter tests pass21 cases/165 checks; pure restore tests602
+checks each O0/O2 sanitized. Runtime qualification, real restoration and SD
+coexistence remain open. Current official ESP-Hosted-MCU8a593891dc915a8f8a08556224b63f842dd3ef10
+also maps HOST_TO_SLAVE_INTR to0x8c with a real Function-1 byte write; the
+address discrepancy is not only an old-host mismatch. C6 GP mask bits0..7 in
+IDF LL do not alone determine the external byte address. Reconcile before OPEN.
 
 The first independent pure codec uses the vendor0.0.6 12-byte wire header,
 1536-byte total-frame bound, LE16 fields and additive checksum excluding its
@@ -30039,6 +30051,65 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   mapping, integrate bounded opt-in setup with verified cleanup, then receive
   capabilities and implement live transport/RPC. Fresh readiness for sight
   or physical interaction remains mandatory; no new user action requested.
+
+### 2026-10-10 - N1 opt-in runtime setup and bounded exact restoration build verified
+
+- Parenta03803a32f, same isolated Wi-Fi branch/worktree/build. Runtime CMD52
+  wrappers use actual sdio_commands construction and shared engine R5 checks;
+  writes set CMDARG bit31 but no data/writing/length fields. Opt-in
+  P4_WIFI_SDIO_SETUP=1 runs only after successful identification.8s aggregate
+  identification/setup then a separate explicit2s cleanup reserve, same host
+  ownership, unchanged generation, no SD/global reset. Overall success also
+  requires setup and restoration success, not merely a renewed cleanup budget.
+- Independent pure restore implementation saves nothing new: consumes the
+  setup's original IOE/FBR snapshot, writes FBR low/high then IOE and verifies
+  all3 bytes. At most6 commands, every command pre/post-budget checked, ambiguous
+  write marked before callback. Missing snapshots/failure/mismatch refuse
+  complete. No mutation is a no-command success. Caller owns cleanup budget;
+  this does not prove real callback wall-time bounds or hardware rollback.
+- Primary reviewed restore and repeated strict C99 ASan/UBSan tests at O0/O2:
+ 602 checks each, actual process0. Extracted actual runtime adapter/budget/
+  command bodies linked to real command construction pass21 cases/165 checks
+  each O0/O2, primary repeated process0. Independent bounded runtime review
+  finds no concrete defect in budget, generation, peer-clock, restore-gated
+  result or pre-release snapshot handling. Test scope is mocked commands,
+  not real SMP/SD/USB scheduling. Initial adapter harness had a declaration
+  failure; initial agent fixture also incorrectly rejected R5 bit10, outside
+  mask0xcb00. Both harness errors corrected; failed output is not a pass.
+- Clean invalidation of only this module's generated .o files before both
+  module-quick builds; actual process0. Board JC1060-v2, SMP, existing isolated
+  build configuration. Enabled module39916B SHA-256
+  ef154557158c2f4b8eb65f4fe819b26a86409eae1889ed1cd3dfc1f6fe5d8457,
+  setup/restore symbols and report strings present. Disabled module37188B
+  SHA-256a2f03d5e020327cbd5ca75bef0606319afb658927ce053d355e1de6c57b7b618,
+  no setup/restore report strings. Current build output is disabled; enabled
+  immutable artifact saved separately. Restore RV32 object has no unresolved
+  symbols. Neither package assembly, loader audit nor hardware deployment
+  has occurred in this change.
+- Evidence directory
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/n1-runtime-setup/:
+  module-build.log, module-default-build.log, setup-enabled.resource;
+  restore-tests.log SHA-2564c71e82495f3b127dc083c14fc61ea1ccda8a48841a6dcde92179959d2de750f;
+  adapter-tests-final.log SHA-256a0fde4efc15415bf6e4f88ac821d70b5629eabf933166ac3dffc6c98822db4f3.
+  adapter-tests.log is the rejected initial harness output. Runtime source
+  SHA-256777e2e60857a1f09817ff1698eeadd319596754e1bef9e02ff13917a2830923a;
+  restore971d9518d17190f4811fa793d5f56410947dec174a0b1e150d51da775cdc1f48.
+- Primary-source address audit: IDFv5.4 tag67c1de1eebe095d554d281952fde63c16ee2dca0,
+  C6 protocol doc names0x8d; C6 LL GP enum/fetch use bits0..7 with no shift.
+  CPU-side CONF_W7 MMIO offset0x8c does not independently establish an external
+  Function-1 interrupt byte. Current official esp-hosted-mcu commit
+  8a593891dc915a8f8a08556224b63f842dd3ef10, port/os/include/eh_host_port_sdio_reg.h49/77
+  maps HOST_TO_SLAVE_INTR/SCRATCH_REG_7 to0x8c; port/os/idf/src/eh_host_port_sdio.c484..525
+  masks address then calls Function-1 sdmmc_io_write_byte without a +1 shift.
+  This extends the earlier discrepancy beyond unmatched legacy FG. Not
+  reconciled or hardware-proven: no OPEN/RESET/IRQ bootstrap write is added.
+- Safety: no serial open/reset/flash/SD/C6 mutation. Running exact prior
+  baseline remains unchanged. Restoring card configuration would not undo
+  application-side effects of OPEN, so this diagnostic deliberately excludes
+  OPEN/RPC/FIFO transfers. Next assemble/audit opt-in package, headless setup
+  and exact readback restoration gate with immutable backup/rollback; then
+  resolve interrupt mapping and receive capability events. Installed identity,
+  WLAN transport, association/DHCP/data/reconnect and SD coexistence remain open.
 
 ## Evidence-entry template
 

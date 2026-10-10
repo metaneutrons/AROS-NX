@@ -1,6 +1,6 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
-/* Native, opt-in identification only. The installed radio firmware stays
- * unchanged. No function enable, IRQ enable, CCCR write or WLAN RPC here. */
+/* Native opt-in identification, optionally function setup with restoration.
+ * No OPEN, reset, IRQ enable, WLAN RPC or C6 firmware replacement. */
 #include <aros/asmcall.h>
 #include <aros/debug.h>
 #include <aros/symbolsets.h>
@@ -15,6 +15,11 @@
 #include "../sdmmc/memory.h"
 #include "runtime_probe.h"
 #include "sdio_probe.h"
+#include "sdio_commands.h"
+#if P4_WIFI_SDIO_SETUP
+#include "sdio_setup.h"
+#include "sdio_restore.h"
+#endif
 #include LC_LIBDEFS_FILE
 
 struct ExecBase *SysBase;
@@ -158,18 +163,57 @@ static int wifi_command(void *opaque, unsigned index, uint32_t argument,
     return 1;
 }
 
+#if P4_WIFI_SDIO_SETUP
+/* CMD52 writes carry their byte in CMDARG, not a data-transfer phase.
+ * wifi_command leaves request.writing/data/length zero accordingly. */
+static int wifi_register_read(void *opaque, unsigned function,
+                              uint32_t address, uint8_t *value)
+{
+    uint32_t argument, response;
+    if (!value || !p4_sdio_cmd52(0, function, 0, address, 0, &argument) ||
+        !wifi_command(opaque, 52, argument, P4_SDIO_RESP_R5,
+                      P4_SDIO_PROBE_R5_ERROR_MASK, &response) ||
+        (response & P4_SDIO_PROBE_R5_ERROR_MASK))
+        return 0;
+    *value = (uint8_t)response;
+    return 1;
+}
+
+static int wifi_register_write(void *opaque, unsigned function,
+                               uint32_t address, uint8_t value)
+{
+    uint32_t argument, response;
+    return p4_sdio_cmd52(1, function, 0, address, value, &argument) &&
+        wifi_command(opaque, 52, argument, P4_SDIO_RESP_R5,
+                     P4_SDIO_PROBE_R5_ERROR_MASK, &response) &&
+        !(response & P4_SDIO_PROBE_R5_ERROR_MASK);
+}
+#endif
+
 static void wifi_identify(void)
 {
     struct P4SDMMCHost *host = OpenResource(P4_SDMMC_HOST_NAME);
     struct wifi_probe_context context;
     struct p4_sdio_probe_result result;
     struct p4_sdio_probe_ops ops;
+#if P4_WIFI_SDIO_SETUP
+    p4_sdio_setup_ops_t setup_ops;
+    p4_sdio_setup_result_t setup;
+    p4_sdio_restore_result_t restored;
+    int setup_attempted = 0, setup_ok = 0, restore_ok = 0;
+#endif
+    struct P4HostCommandResult identify_last;
     ULONG actual = 0, peer_clock, generation;
     ULONG before[WIFI_SNAPSHOT_WORDS], after[WIFI_SNAPSHOT_WORDS];
     unsigned snapshot_index;
     int success = 0;
     p4host_zero(&context, sizeof(context));
     p4host_zero(&ops, sizeof(ops));
+#if P4_WIFI_SDIO_SETUP
+    p4host_zero(&setup_ops, sizeof(setup_ops));
+    p4host_zero(&setup, sizeof(setup));
+    p4host_zero(&restored, sizeof(restored));
+#endif
     if (!host || host->abi != P4_SDMMC_HOST_ABI || host->size != sizeof(*host) ||
         !host->acquire || !host->release || !host->set_budget ||
         !host->set_clock || !host->command || !host->now_us)
@@ -188,7 +232,13 @@ static void wifi_identify(void)
      * Storage owns initialization/recovery; radio joins only healthy state. */
     if (!host->initialization_started || !peer_clock || !host->host_div ||
         host->host_div > 16 || host->dma_faulted || host->dma_length ||
-        !host->set_budget(host, P4_SDMMC_BUDGET_MAX_US))
+        !host->set_budget(host,
+#if P4_WIFI_SDIO_SETUP
+                          8000000UL /* Reserve a distinct2s cleanup phase. */
+#else
+                          P4_SDMMC_BUDGET_MAX_US
+#endif
+                          ))
     {
         bug("[WiFi] host not ready for bounded join\n");
         host->release(host);
@@ -205,6 +255,29 @@ static void wifi_identify(void)
     {
         wifi_snapshot(before);
         success = p4_sdio_probe_identify(&ops, &result);
+        identify_last = context.last;
+#if P4_WIFI_SDIO_SETUP
+        if (success && wifi_budget(&context))
+        {
+            setup_attempted = 1;
+            setup_ops.context = &context;
+            setup_ops.read_register = wifi_register_read;
+            setup_ops.write_register = wifi_register_write;
+            setup_ops.budget_ok = wifi_budget;
+            setup_ops.yield = wifi_yield;
+            setup_ok = p4_sdio_setup_function1(&setup_ops, &setup);
+            /* Do not renew a failed operation's budget and call it success.
+             * Cleanup has its own explicit reserve under the same ownership;
+             * generation changes refuse restoration rather than reset SD. */
+            if (!setup.mutation_attempted)
+                restore_ok = 1;
+            else if (host->generation == context.generation &&
+                     host->set_budget(host, 0) &&
+                     host->set_budget(host, 2000000UL))
+                restore_ok = p4_sdio_restore_function1(&setup_ops, &setup,
+                                                      &restored);
+        }
+#endif
         wifi_snapshot(after);
     }
     else
@@ -216,6 +289,9 @@ static void wifi_identify(void)
     }
     /* Snapshot before release; no MMIO or host field inspection afterward. */
     success = success && host->slot_clock[0] == peer_clock && wifi_budget(&context);
+#if P4_WIFI_SDIO_SETUP
+    success = success && setup_attempted && setup_ok && restore_ok;
+#endif
     host->set_budget(host, 0);
     host->release(host);
     /* Runtime console is deliberately nonblocking. Defer and pace these
@@ -225,11 +301,11 @@ static void wifi_identify(void)
     bug("[WiFi] slot1 probe ok=%u stage=%u cmd=%u\n",
          success, result.stage, result.command_index);
     Delay(5);
-    bug("[WiFi] error=%u status=%u\n", result.error, context.last.status);
+    bug("[WiFi] error=%u status=%u\n", result.error, identify_last.status);
     Delay(5);
-    bug("[WiFi] raw=%08x id=%08x\n", context.last.raw, context.last.idstatus);
+    bug("[WiFi] raw=%08x id=%08x\n", identify_last.raw, identify_last.idstatus);
     Delay(5);
-    bug("[WiFi] response=%08x\n", context.last.response[0]);
+    bug("[WiFi] response=%08x\n", identify_last.response[0]);
     Delay(5);
     bug("[WiFi] clock=%u OCR=%08x RCA=%04x fn=%u\n",
          actual, result.ocr, result.rca, result.functions);
@@ -241,6 +317,18 @@ static void wifi_identify(void)
     bug("[WiFi] enable=%02x ready=%02x CIS=%06x FBR1=%02x\n",
          result.io_enable, result.io_ready, result.cis_pointer,
          result.fbr1_interface);
+#if P4_WIFI_SDIO_SETUP
+    Delay(5);
+    bug("[WiFi] setup attempted=%u ok=%u stage=%u error=%u\n",
+        setup_attempted, setup_ok, setup.stage, setup.error);
+    Delay(5);
+    bug("[WiFi] setup ioe=%02x ready=%02x block=%u polls=%u\n",
+        setup.observed_io_enable, setup.observed_io_ready,
+        setup.observed_block_size, setup.poll_count);
+    Delay(5);
+    bug("[WiFi] restore ok=%u stage=%u error=%u mutated=%u\n",
+        restore_ok, restored.stage, restored.error, setup.mutation_attempted);
+#endif
     for (snapshot_index = 0; snapshot_index < WIFI_SNAPSHOT_WORDS; ++snapshot_index)
     {
         Delay(5);
