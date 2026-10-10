@@ -1,0 +1,15 @@
+%build_with_configure mmake=fixture-direct compiler=host
+
+%fetch_and_build mmake=fixture-fetch package=fixture version=1 compiler=host
+
+%fetch_and_build mmake=fixture-fetch-override package=fixture version=1 compiler=host \
+	hostincludes="sdk-includes-$(AROS_TOOLCHAIN_RELEASE)"
+
+%build_with_configure mmake=fixture-target-override compiler=target \
+	hostincludes="sdk-includes-$(AROS_TOOLCHAIN_RELEASE)"
+
+%build_with_configure mmake=fixture-direct-target-closure compiler=target \
+	targetincludes=fixture-headers targetlinklibs=fixture-linklibs
+
+%fetch_and_build mmake=fixture-fetch-target-closure package=fixture version=1 compiler=target \
+	targetincludes=fixture-headers targetlinklibs=fixture-linklibs

@@ -45,6 +45,10 @@ USER_LDFLAGS := -static
     modname=codesets modtype=library \
     files="$(addprefix $(CODESETSARCHSRCDIR)/src/,$(FILES))"
 
+# The linklib compiles an archive-owned source that includes proto/codesets.h.
+# Do not rely on an unrelated global header traversal to fetch/copy it first.
+#MM linklibs-codesets : workbench-libs-codesets-includes
+
 %build_linklib mmake=linklibs-codesets \
     libname=codesets \
     files="$(addprefix $(CODESETSARCHSRCDIR)/libcodesets/, autoinit-aros)" \

@@ -71,6 +71,12 @@ of the hang fix remains open.
 
 ## Status
 
+The separate RV32 compiler/SDK release track is TC0 in
+[ROADMAP.md](ROADMAP.md#track-tc-rv32-compiler-and-sdk-publication).
+GNU relocatable-release recipes are under integration on current AROS-NX
+main. Source regression tests are not a published compiler or SDK, and do
+not change the hardware status below.
+
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
 means the behaviour was verified on a board and how it was verified is
