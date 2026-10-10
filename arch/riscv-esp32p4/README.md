@@ -13,7 +13,12 @@ cancellation, RX traversal and Close-drain defects are corrected; independent
 source review and source-extracted lifecycle models pass782 checks each O0/O2
 on macOS and isolated Linux with ASan/UBSan. Exec/scheduler are mocked.
 AbortIO refuses a write after its lock-protected irreversible TX commitment;
-Close still drains its references. Full data-path/runtime testing remains open. The device
+Close still drains its references. Source-extracted RX/TX callback models now
+pass14,902 checks each O0/O2 with ASan/UBSan, independently repeated on macOS
+and network-isolated Linux. They cover cooked/raw frame boundaries, copy
+failures, filter progress, multi-opener delivery and the actual pre-send abort
+transition. Exec, hooks and radio remain mocks; actual runtime/SMP concurrency
+and transport qualification remain open. The device
 does not yet implement wireless association or advertise WPA offload.
 Registration/MAC readiness is not association. No credentials, deployment,
 DHCP, IP traffic or hardware acceptance is implied. Default-off builds retain
@@ -32,11 +37,15 @@ privacy gate. No association codec/runtime or credentials are deployed.
 Standalone typed STA SetConfig/Connect/Disconnect and owned link-event codecs
 now pass239 self-checks and603 independent pinned protobuf-c comparisons each
 at O0/O2 with ASan/UBSan in isolated Linux. Strict freestanding RV32 compilation
-passes. These are pure codecs: no control allowlist/runtime integration,
-association or IP traffic is implied. The credential/privacy gate remains open.
+passes. These are pure codecs: no association runtime, association or IP
+traffic is implied. The persistent pending transport already admits request
+IDs282..284, but its allowlist is not a credential-safety gate or a runtime
+association caller. The credential/privacy gate remains open.
 Existing AROS wireless options, WirelessManager and BWFM's asynchronous
 association worker provide the intended SANA-II integration reference. The ESP32 driver,
-asynchronous lifecycle and DHCP/data acceptance remain unimplemented.
+wireless command integration and DHCP/data acceptance remain unimplemented;
+the basic asynchronous Ethernet device lifecycle is now implemented as
+described above, without runtime acceptance.
 Correction from runtime integration audit: BWFM is an asynchronous association
 and request-lifetime reference, not a current WPA four-way offload contract.
 WirelessManager's SANA2 get_capa does not set WPA_DRIVER_FLAGS_4WAY_HANDSHAKE;
@@ -80,7 +89,8 @@ serial scratch is wiped on every accepted-call exit. A fresh160680B module
 links the API; independent427 checks each O0/O2 pass under Linux ASan/UBSan,
 with a primary repeat and UID105/RX364/OPEN716/handoff332 regressions passing.
 These are host-model tests, not hardware qualification. The
-persistent AROS owner worker and SANA-II device are still unimplemented.
+persistent AROS owner worker and SANA-II device were not implemented at that
+foundation stage; their current build/model status is described above.
 
 Ethernet RX routing now copies complete STA/0 frames into a separate four-item
 owned queue, preserving interleaved fragmented SERIAL RPCs. Its14..1518-byte
@@ -93,7 +103,9 @@ pending427 regressions each O0/O2 pass under Linux ASan/UBSan. Independent
 coupled Ethernet285 checks each O0/O2 pass, repeated by the primary in a
 network-isolated snapshot with actual exit0; source review finds no blockers.
 This has not been
-deployed and does not implement Ethernet TX, an AROS owner or SANA-II.
+deployed. That foundation stage did not implement Ethernet TX, an AROS owner
+or SANA-II; the current private bridge/device adds those source paths without
+runtime acceptance.
 
 The actual owner integration is now in development behind the default-off
 P4_WIFI_HOSTED_OWNER switch. Its process placement is configurable through
@@ -105,8 +117,9 @@ repeated by the primary with actual exit0; source review confirms the OPEN
 partial-age and TX-to-RX FIFO-direction fixes. These are fake-adapter tests.
 There is no deployment, runtime or measured performance claim;
 WirelessManager and legacy GUI placement remain unchanged. The opt-in caller
-currently consumes event metadata and refuses Ethernet delivery until its
-SANA-II consumer exists, rather than claiming a working network interface.
+currently consumes event metadata; its private bridge can deliver Ethernet
+frames to the separately built SANA-II consumer. Neither module is deployed,
+and no working network interface is claimed.
 
 The native control foundation now supports bounded sequential Init/SetMode/
 Start/Stop/Deinit/GetMAC envelopes on one existing FIFO ledger, with owned
