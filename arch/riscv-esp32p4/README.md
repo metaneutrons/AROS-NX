@@ -87,6 +87,9 @@ sequence now confirm expected slot1 clock/divider/mux and CMD/D0/CLK routing
 on silicon. CMD5 still times out. Independent IDF comparison identifies the
 missing no-CD-pin constant-low card-detect route; fixing it remains open,
 and no causality between that omission and the timeout is established.
+The no-CD-pin route is now corrected and its native module build passes;
+package/hardware verification is pending. No interrupt or firmware change is
+bundled with it.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device

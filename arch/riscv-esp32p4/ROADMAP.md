@@ -212,8 +212,10 @@ Read-only register snapshots before/after identification are now build verified
 to inspect actual card-clock/divider/mux and CMD/D0/CLK routing. They do not
 measure electrical waveforms or identify C6 firmware.
 The complete register run confirms expected clock/matrix values but repeats
-the timeout. IDF's no-CD-pin constant-low card-detect route is absent; repair
-and verification are next. Its role in the timeout is not yet established.
+the timeout. IDF's omitted no-CD-pin constant-low card-detect route is now
+corrected and native-module build verified; package/hardware verification is
+next. Its role in
+the timeout is not yet established.
 Enumeration alone cannot prove
 ESP-Hosted compatibility or working WLAN.
 
@@ -29366,6 +29368,24 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   No firmware replacement, SD write or visual acceptance.
 - Next: add no-CD-pin route and verify input-select/CDETECT status, one
   configuration change per run. Firmware/startup cause remains an open gate.
+
+### 2026-10-10 - N0 no-CD-pin slot1 setup correction started
+
+- Parentb0b4945e47. wifi_configure_pins now sets matrix endpoint127 at
+  GPIO+0x354 to constant-zero0x3e/matrix-enabled0x80, matching IDF no-CD-pin
+  contract. No controller reset or C6 reset GPIO. Slot0 route untouched.
+  Interrupt/WP routes intentionally unchanged for one-variable attribution.
+- Additional snapshot indices20..23: SDMMC CDETECT0x50, matrix CD_IN0x354,
+  INT_IN0x35c and WP_IN0x364. These are reads, reported after release.
+- Official local IDFv6.0.1 sd_host_sdmmc.c:1308-1319 uses constant zero for
+  absent CD GPIO; :852-855 checks card-detect before non-clock commands.
+  hw_ver1 gpio_reg.h confirms endpoint127 offset0x354; gpio_pins.h constant
+  zero0x3e. No claim that this software omission explains hardware RTO yet.
+- Native quick33026 exits0, module31,652 bytes SHA-256
+  843455ebff72d4bff6edcfb689f1f10aaefb0aff600b664f640a1f65134ed1ed;
+  native-probe-cd-build.log in preceding evidence root. Hardware not run.
+  Existing generated package predates this module: reassemble/audit before
+  any deploy. Next: backed-up exact-artifact probe and CDETECT readback.
 
 ## Evidence-entry template
 

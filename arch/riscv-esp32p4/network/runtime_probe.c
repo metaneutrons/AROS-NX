@@ -74,6 +74,10 @@ static void wifi_configure_pins(void)
     wifi_pin(P4_BOARD_WIFI_D3_GPIO, FALSE, 0);
     wifi_write(WIFI_GPIO_BASE + 0x15c, P4_BOARD_WIFI_CMD_GPIO | (1UL << 7));
     wifi_write(WIFI_GPIO_BASE + 0x160, P4_BOARD_WIFI_D0_GPIO | (1UL << 7));
+    /* IDF no-CD-pin contract: slot1 is permanently present. Endpoint127,
+     * constant zero0x3e, matrix enabled. This is not the slave reset pin.
+     * Leave card interrupt routing unchanged in this single-variable test. */
+    wifi_write(WIFI_GPIO_BASE + 0x354, 0x3e | (1UL << 7));
     /* Only slot1 width and DDR bits; no PWREN/UHS voltage field on P4 v1.3. */
     wifi_write(P4_SDMMC_BASE + P4SD_CTYPE,
                wifi_read(P4_SDMMC_BASE + P4SD_CTYPE) & ~0x00020002UL);
@@ -86,8 +90,9 @@ static void wifi_configure_pins(void)
 /* Read-only snapshots taken while owned, then reported after release.
  * Index order: CLKDIV, CLKSRC, CLKENA, CTYPE, RST_N, UHS, STATUS, CMD,
  * CMDARG, RINTSTS, GPIO_ENABLE, GPIO_IN, CMD_IN, D0_IN, CLK_OUT, CMD_OUT,
- * D0_OUT, CLK_MUX, CMD_MUX, D0_MUX. Registers, not electrical waveforms. */
-#define WIFI_SNAPSHOT_WORDS 20
+ * D0_OUT, CLK_MUX, CMD_MUX, D0_MUX, CDETECT, CD_IN, INT_IN, WP_IN.
+ * Registers, not electrical waveforms. */
+#define WIFI_SNAPSHOT_WORDS 24
 static void wifi_snapshot(ULONG *words)
 {
     static const ULONG offsets[] = {
@@ -107,6 +112,10 @@ static void wifi_snapshot(ULONG *words)
     words[17] = wifi_read(WIFI_IOMUX_BASE + 4 + P4_BOARD_WIFI_CLK_GPIO * 4);
     words[18] = wifi_read(WIFI_IOMUX_BASE + 4 + P4_BOARD_WIFI_CMD_GPIO * 4);
     words[19] = wifi_read(WIFI_IOMUX_BASE + 4 + P4_BOARD_WIFI_D0_GPIO * 4);
+    words[20] = wifi_read(P4_SDMMC_BASE + 0x50);
+    words[21] = wifi_read(WIFI_GPIO_BASE + 0x354);
+    words[22] = wifi_read(WIFI_GPIO_BASE + 0x35c);
+    words[23] = wifi_read(WIFI_GPIO_BASE + 0x364);
 }
 
 static int wifi_budget(void *opaque)
