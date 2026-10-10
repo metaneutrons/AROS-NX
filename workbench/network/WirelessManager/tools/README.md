@@ -74,6 +74,14 @@ helpers and source-checks initialization/rearm ordering. The separate
 `run-sana2-assoc-failed-state-tests.sh` executes extracted pending-state cleanup
 and timeout helpers; scan scheduling and device operations remain mocked.
 
+Run `run-sana2-close-tests.sh` for the extracted Amiga signal registry and
+SANA-II deinit path at O0/O2 with ASan/UBSan. It exercises callback self/other
+unregistration, same-bit handlers with distinct userdata, callback-time
+re-registration, invalid/high-bit signals, allocation failure, keepalive
+cancellation, request/port teardown order, and event-request freeing. Init
+registration/error-cleanup ordering is also source-checked. These host fakes do
+not execute Amiga Exec signal delivery, SANA-II I/O, or hardware behavior.
+
 The cancellation state fixture also executes the real supplicant local
 disassociate/deauthenticate paths, including confirmed-address precedence,
 unknown pending address, legacy/MLME routing and cleanup. The lifecycle
