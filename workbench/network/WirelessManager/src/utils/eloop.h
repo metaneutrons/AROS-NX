@@ -229,6 +229,14 @@ int eloop_is_timeout_registered(eloop_timeout_handler handler,
 int eloop_register_signal(int sig, eloop_signal_handler handler,
 			  void *user_data);
 
+/* Amiga signal bit registrations have per-callback userdata and can be
+ * removed independently of other handlers waiting on the same bit. */
+#if defined(__AROS__) || defined(__MORPHOS__) || \
+	defined(__amigaos__) || defined(__amigaos4__)
+void eloop_unregister_signal(int sig, eloop_signal_handler handler,
+			     void *user_data);
+#endif
+
 /**
  * eloop_register_signal_terminate - Register handler for terminate signals
  * @handler: Callback function to be called when the signal is received

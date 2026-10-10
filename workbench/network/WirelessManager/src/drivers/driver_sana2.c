@@ -91,6 +91,7 @@ struct wpa_driver_sana2_data {
 	char ssid[MAX_SSID_LEN + 1];
 	int freq;
 	int device_opened;
+	int signal_registered;
 	int hard_mac;
 	int scanning;
 	int online;
@@ -1256,6 +1257,14 @@ static void wpa_driver_sana2_deinit(void *priv)
 	struct wpa_driver_sana2_data *drv = priv;
 	int i;
 
+	/* Retire callbacks before destroying anything they may reference. */
+	eloop_cancel_timeout(wpa_driver_sana2_stay_alive, drv->ctx, drv);
+	if (drv->signal_registered) {
+		eloop_unregister_signal(drv->port->mp_SigBit,
+			wpa_driver_sana2_event_handler, drv);
+		drv->signal_registered = 0;
+	}
+
 	/* Abort outstanding I/O requests */
 	if (drv->eapol_request != NULL) {
 		AbortIO((APTR)drv->eapol_request);
@@ -1274,6 +1283,7 @@ static void wpa_driver_sana2_deinit(void *priv)
 	if (drv->event_request != NULL) {
 		AbortIO((APTR)drv->event_request);
 		WaitIO((APTR)drv->event_request);
+		FreeVec(drv->event_request);
 	}
 
 	/* Close device */
@@ -1282,10 +1292,15 @@ static void wpa_driver_sana2_deinit(void *priv)
 		WaitIO((APTR)drv->request);
 		CloseDevice((APTR)drv->request);
 	}
-	DeleteIORequest((APTR)drv->request);
-	DeleteMsgPort(drv->port);
+	if (drv->request != NULL)
+		DeleteIORequest((APTR)drv->request);
+	if (drv->port != NULL) {
+		SetSignal(0, (ULONG)1 << drv->port->mp_SigBit);
+		DeleteMsgPort(drv->port);
+	}
 
-	FreeVec(drv->device_name);
+	if (drv->device_name != NULL)
+		FreeVec(drv->device_name);
 
 	os_free(drv);
 }
@@ -1324,9 +1339,10 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 		unit_no = atoi(end + 1);
 
 		drv->port = CreateMsgPort();
-		drv->request = (APTR)CreateIORequest(drv->port,
-			sizeof(struct IOSana2Req));
-		if (drv->request == NULL)
+		if (drv->port != NULL)
+			drv->request = (APTR)CreateIORequest(drv->port,
+				sizeof(struct IOSana2Req));
+		if (drv->port == NULL || drv->request == NULL)
 			err = 1;
 	}
 
@@ -1342,8 +1358,11 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 	if (err == 0) {
 		drv->device_opened = 1;
 
-		eloop_register_signal(drv->port->mp_SigBit,
-			wpa_driver_sana2_event_handler, drv);
+		if (eloop_register_signal(drv->port->mp_SigBit,
+			wpa_driver_sana2_event_handler, drv) != 0)
+			err = 1;
+		else
+			drv->signal_registered = 1;
 	}
 
 	/* Check if this is a hard-MAC device */

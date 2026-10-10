@@ -61,6 +61,7 @@ struct eloop_data {
 	int signal_count;
 	struct eloop_signal *signals;
 	int signaled;
+	int signal_dispatch_depth;
 	int pending_terminate;
 
 	int terminate;
@@ -261,22 +262,57 @@ int eloop_is_timeout_registered(void (*handler)(void *eloop_ctx,
 }
 
 
+static u32 eloop_signal_mask(void)
+{
+	u32 mask = 0;
+	int i;
+
+	for (i = 0; i < eloop.signal_count; i++)
+		if (eloop.signals[i].handler != NULL)
+			mask |= (u32)1 << eloop.signals[i].sig;
+
+	return mask;
+}
+
+
 static void eloop_handle_signals(u32 sigs)
 {
 	int i;
 
 	eloop.signaled++;
 	for (i = 0; i < eloop.signal_count; i++) {
-		if (1 << eloop.signals[i].sig & sigs) {
+		if (eloop.signals[i].handler != NULL &&
+		    (sigs & ((u32)1 << eloop.signals[i].sig)))
 			eloop.signals[i].signaled++;
-		}
+	}
+}
+
+
+static void eloop_compact_signals(void)
+{
+	int i, count = 0;
+
+	if (eloop.signal_dispatch_depth != 0)
+		return;
+
+	for (i = 0; i < eloop.signal_count; i++) {
+		if (eloop.signals[i].handler == NULL)
+			continue;
+		if (i != count)
+			eloop.signals[count] = eloop.signals[i];
+		count++;
+	}
+	eloop.signal_count = count;
+	if (count == 0) {
+		free(eloop.signals);
+		eloop.signals = NULL;
 	}
 }
 
 
 static void eloop_process_pending_signals(void)
 {
-	int i;
+	int i, count;
 
 	if (eloop.signaled == 0)
 		return;
@@ -286,13 +322,23 @@ static void eloop_process_pending_signals(void)
 		eloop.pending_terminate = 0;
 	}
 
-	for (i = 0; i < eloop.signal_count; i++) {
-		if (eloop.signals[i].signaled) {
+	/* Callbacks may unregister or register signals. Keep the slots stable and
+	 * process only registrations that existed at the start of this dispatch. */
+	count = eloop.signal_count;
+	eloop.signal_dispatch_depth++;
+	for (i = 0; i < count; i++) {
+		if (eloop.signals[i].handler != NULL &&
+		    eloop.signals[i].signaled) {
+			int sig = eloop.signals[i].sig;
+			void *user_data = eloop.signals[i].user_data;
+			eloop_signal_handler handler = eloop.signals[i].handler;
+
 			eloop.signals[i].signaled = 0;
-			eloop.signals[i].handler(eloop.signals[i].sig,
-						 eloop.signals[i].user_data);
+			handler(sig, user_data);
 		}
 	}
+	eloop.signal_dispatch_depth--;
+	eloop_compact_signals();
 }
 
 
@@ -301,6 +347,25 @@ int eloop_register_signal(int sig,
 			  void *user_data)
 {
 	struct eloop_signal *tmp;
+	int i;
+
+	if (handler == NULL || sig < 0 ||
+	    sig >= (int)(sizeof(u32) * 8))
+		return -1;
+
+	/* Reuse a tombstone only when no dispatch loop can still be observing its
+	 * former registration. Re-registrations from a callback are appended. */
+	if (eloop.signal_dispatch_depth == 0) {
+		for (i = 0; i < eloop.signal_count; i++) {
+			if (eloop.signals[i].handler == NULL) {
+				eloop.signals[i].sig = sig;
+				eloop.signals[i].user_data = user_data;
+				eloop.signals[i].handler = handler;
+				eloop.signals[i].signaled = 0;
+				return 0;
+			}
+		}
+	}
 
 	tmp = (struct eloop_signal *)
 		realloc(eloop.signals,
@@ -317,6 +382,29 @@ int eloop_register_signal(int sig,
 	eloop.signals = tmp;
 
 	return 0;
+}
+
+
+void eloop_unregister_signal(int sig,
+			     eloop_signal_handler handler,
+			     void *user_data)
+{
+	int i;
+
+	if (handler == NULL || eloop.signals == NULL)
+		return;
+
+	for (i = 0; i < eloop.signal_count; i++) {
+		if (eloop.signals[i].handler == handler &&
+		    eloop.signals[i].sig == sig &&
+		    eloop.signals[i].user_data == user_data) {
+			eloop.signals[i].handler = NULL;
+			eloop.signals[i].user_data = NULL;
+			eloop.signals[i].signaled = 0;
+		}
+	}
+
+	eloop_compact_signals();
 }
 
 
@@ -342,7 +430,6 @@ int eloop_register_signal_reconfig(eloop_signal_handler handler,
 
 void eloop_run(void)
 {
-	int i;
 	struct os_time tv, now;
 	u32 sig_mask, sigs;
 	struct timerequest *cur_timer_req = NULL;
@@ -368,13 +455,12 @@ void eloop_run(void)
 			cur_timer_req = eloop.timer_request;
 		}
 		if (eloop.timeout) {
-			sig_mask |= 1 << eloop.timer_port->mp_SigBit;
+			sig_mask |= (u32)1 << eloop.timer_port->mp_SigBit;
 		}
 
 
 		/* Add registered signals to signal mask */
-		for (i = 0; i < eloop.signal_count; i++)
-			sig_mask |= 1 << eloop.signals[i].sig;
+		sig_mask |= eloop_signal_mask();
 
 		/* Wait for something to happen */
 		sigs = Wait(sig_mask);
@@ -386,7 +472,7 @@ void eloop_run(void)
 			struct eloop_timeout *tmp;
 
 			os_get_time(&now);
-			if (sigs & 1 << eloop.timer_port->mp_SigBit) {
+			if (sigs & ((u32)1 << eloop.timer_port->mp_SigBit)) {
 				tmp = eloop.timeout;
 				eloop.timeout = eloop.timeout->next;
 				tmp->handler(tmp->eloop_data,
@@ -419,6 +505,8 @@ void eloop_destroy(void)
 		free(prev);
 	}
 	free(eloop.signals);
+	eloop.signals = NULL;
+	eloop.signal_count = 0;
 
 	if (eloop.timer_request != NULL) {
 		AbortIO((APTR) eloop.timer_request);
