@@ -1389,6 +1389,22 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 }
 
 
+static void wpa_supplicant_event_assoc_failed(struct wpa_supplicant *wpa_s)
+{
+	/* Only a correlated in-progress attempt may enter this path. A generic
+	 * local failure says nothing about AP rejection or a former link's loss. */
+	if (wpa_s->wpa_state != WPA_AUTHENTICATING &&
+	    wpa_s->wpa_state != WPA_ASSOCIATING)
+		return;
+	wpa_printf(MSG_DEBUG, "Association attempt failed (cause unspecified)");
+	wpa_supplicant_cancel_auth_timeout_no_blacklist(wpa_s);
+	wpa_sm_notify_disassoc(wpa_s->wpa);
+	wpa_supplicant_mark_disassoc(wpa_s);
+	if (!wpa_s->interface_removed && !wpa_s->disconnected)
+		wpa_supplicant_req_scan(wpa_s, 5, 0);
+}
+
+
 static void wpa_supplicant_event_disassoc(struct wpa_supplicant *wpa_s,
 					  u16 reason_code)
 {
@@ -1715,6 +1731,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		break;
 	case EVENT_ASSOC:
 		wpa_supplicant_event_assoc(wpa_s, data);
+		break;
+	case EVENT_ASSOC_FAILED:
+		wpa_supplicant_event_assoc_failed(wpa_s);
 		break;
 	case EVENT_DISASSOC:
 		wpa_printf(MSG_DEBUG, "Disassociation notification");

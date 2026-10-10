@@ -506,6 +506,9 @@ struct wpa_driver_capa {
 /* Driver needs static WEP key setup after association has been completed */
 #define WPA_DRIVER_FLAGS_SET_KEYS_AFTER_ASSOC_DONE	0x00000080
 #define WPA_DRIVER_FLAGS_SECURITY_SUMMARY 0x00000100
+/* Driver accepts local cancellation even before an AP address is confirmed.
+ * disassociate/deauthenticate must accept a NULL address for this operation. */
+#define WPA_DRIVER_FLAGS_CANCEL_PENDING 0x00000200
 	unsigned int flags;
 
 	int max_scan_ssids;
@@ -2088,7 +2091,12 @@ enum wpa_event_type {
 	 * observed in frames received from the current AP if signal strength
 	 * monitoring has been enabled with signal_monitor().
 	 */
-	EVENT_SIGNAL_CHANGE
+	EVENT_SIGNAL_CHANGE,
+
+	/** A current acknowledged association attempt failed without a known
+	 * remote cause. Not AP rejection, timeout, or loss of an accepted link.
+	 * Driver-specific attempt correlation must precede this notification. */
+	EVENT_ASSOC_FAILED
 };
 
 

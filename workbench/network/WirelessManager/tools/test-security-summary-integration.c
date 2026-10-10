@@ -288,6 +288,17 @@ static void test_caps_validator(void)
 	caps = valid_caps();
 	caps.SizeAvailable--;
 	++scenario_count;
+	absent.Flags = S2WIRELESS_CAPF_CONNECT_FAILED;
+	CHECK("failure event independent of offload", "zero masks accepted",
+		wpa_driver_sana2_wireless_caps_valid(&absent), 1);
+	absent.Flags |= S2WIRELESS_CAPF_SECURITY_SUMMARY;
+	CHECK("summary and failure event", "zero masks accepted",
+		wpa_driver_sana2_wireless_caps_valid(&absent), 1);
+	++scenario_count;
+	absent.Flags |= S2WIRELESS_CAPF_RAW_PSK;
+	CHECK("failure event does not grant credential offload", "raw rejected",
+		wpa_driver_sana2_wireless_caps_valid(&absent), 0);
+	++scenario_count;
 	CHECK("short capability buffer", "rejected",
 		wpa_driver_sana2_wireless_caps_valid(&caps), 0);
 	caps = valid_caps();
@@ -352,6 +363,27 @@ static void test_actual_driver_capability_mapping(void)
 {
 	struct Sana2WirelessCapabilities caps;
 	struct wpa_driver_capa capa;
+	struct wpa_driver_sana2_data drv;
+	struct IOSana2Req request;
+
+	++scenario_count;
+	caps = valid_caps();
+	capa = get_driver_capa_from_actual_producer(caps);
+	CHECK("legacy offload mapping", "no pending cancellation permission",
+		(capa.flags & WPA_DRIVER_FLAGS_CANCEL_PENDING) != 0, 0);
+	caps.Flags |= S2WIRELESS_CAPF_CONNECT_FAILED;
+	capa = get_driver_capa_from_actual_producer(caps);
+	CHECK("negotiated FullMAC mapping", "pending cancellation enabled",
+		(capa.flags & WPA_DRIVER_FLAGS_CANCEL_PENDING) != 0, 1);
+	memset(&drv, 0, sizeof(drv));
+	memset(&request, 0, sizeof(request));
+	drv.request = &request;
+	drv.wireless_caps_queried = 1;
+	drv.wireless_caps_valid = 1;
+	drv.wireless_caps = caps;
+	wpa_driver_sana2_get_capa(&drv, &capa);
+	CHECK("SoftMAC mapping", "pending cancellation remains unsupported",
+		(capa.flags & WPA_DRIVER_FLAGS_CANCEL_PENDING) != 0, 0);
 
 	++scenario_count;
 	caps = valid_caps();

@@ -463,6 +463,8 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 			      enum wpa_states state);
 struct wpa_ssid * wpa_supplicant_get_ssid(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_cancel_auth_timeout(struct wpa_supplicant *wpa_s);
+void wpa_supplicant_cancel_auth_timeout_no_blacklist(
+	struct wpa_supplicant *wpa_s);
 void wpa_supplicant_deauthenticate(struct wpa_supplicant *wpa_s,
 				   int reason_code);
 void wpa_supplicant_disassociate(struct wpa_supplicant *wpa_s,
