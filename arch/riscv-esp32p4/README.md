@@ -23,6 +23,16 @@ host tests pass186 checks each O0/O2 with sanitizers and a negative ACTIVE-poll
 mutation; Exec/RPC are mocked. Fresh RV32 Core1 resource254956B/device67604B
 pass individual loader audits. Both modules must replace the prior ABI6 pair
 together; package/image regeneration and runtime acceptance remain open.
+A separate C6 read-only metadata producer now compiles against actual pinned
+IDF5.4.3 headers. It distinguishes detected physical and usable flash sizes,
+normalizes internal IDF registry entries and correlates sorted running/boot/
+update roles. Unknown bootloader rollback policies stay unknown, and virtual
+eFuses never establish hardware-security facts. This is not raw installed-table
+attestation or live discovery: no RPC hook, wire format, capability advertisement,
+firmware integration or GUI binding exists yet. No board/credentials touched.
+Actual-source host tests pass35 cases each O0/O2 under ASan/UBSan:205 checks
+for normal security APIs,204 for virtual-eFuse builds. IDF runtime is mocked;
+object compilation and these tests do not establish installed C6 behavior.
 CLI examples (not yet executed on hardware):
 
     ESP32Board ACTION INFO

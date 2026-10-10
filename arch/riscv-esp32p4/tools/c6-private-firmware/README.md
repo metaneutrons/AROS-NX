@@ -103,3 +103,48 @@ This extracts the actual response macro and exercises exact-width fields;
 it does not test the full RPC handler, allocation failure, wire/radio behavior,
 or compiled IDF library logging. Installed identity, security/backup/restore,
 actual UART privacy, native association and data-path acceptance remain open.
+
+## Read-only discovery producer (not installed or RPC-bound)
+
+`discovery.c/.h` collect a bounded normalized internal IDF partition inventory
+using the pinned IDF5.4.3 APIs, with shared `boardtool/discovery.c/.h` validation
+and the ESP32Board layout parser. This is a producer for the future negotiated
+extension, not an existing query on stock Hosted. There is no dispatcher hook,
+startup capability advertisement, wire schema, GUI binding or update permission.
+Do not send speculative discovery requests to the installed C6.
+
+Use `esp_flash_get_physical_size` for detected physical capacity and
+`esp_flash_get_size` separately for the usable image-header/driver limit.
+The collector records actual API-resolved running, next-boot and next-update
+roles after sorting, including unknown or aliased roles on limited layouts.
+Boot's API can resolve a fallback when otadata is invalid; it is not an
+attestation that raw boot-selection metadata is healthy. A next-update role
+equal to running is an inventory fact, never a permissible update target.
+Flags normalize IDF encryption/readonly booleans; original raw table flags
+and bytes are not preserved. Internal registry enumeration can include runtime
+registrations even on the default flash chip; installed-table correspondence
+needs separate qualification before the write gate can consume this inventory.
+
+The dispatcher must serialize against OTA/slot selection and all partition
+registry mutation, including deregistration/unload. Re-querying the roles does
+not replace that exclusion or a peer-epoch check. Both rollback enforcement
+policies stay unknown; app sdkconfig/otadata state cannot attest the installed
+bootloader. Virtual-eFuse builds also leave hardware security facts unknown.
+Only NOT_SUPPORTED/NOT_FOUND state queries become unknown; unexpected API errors
+refuse the snapshot and leave caller output untouched.
+
+Host tests mock IDF metadata APIs, not flash/radio behavior. Native object builds
+use real C6 headers/config/compiler and include `workbench/tools/ESP32Board` for
+layout.h; this does not produce an integrated firmware. Dispatcher stack size,
+protobuf/framing bounds (stock SDIO buffer1536B), capability/version negotiation,
+freshness/correlation and live owner dispatch remain open. The first installation
+cannot rely on discovery code not yet installed and still requires independently
+secured recovery. Candidate privacy/recovery/credential gates remain unchanged.
+
+Run `sh arch/riscv-esp32p4/tools/run-c6-discovery-tests.sh` from the repository.
+The actual collector, shared validator and layout parser pass35 cases per build
+under ASan/UBSan at O0/O2:205 checks with normal security APIs,204 with virtual
+eFuses. Fixtures exercise capacity errors, iterator exhaustion/release, role
+drift, slot aliasing, unknown states, malformed labels and output preservation.
+Mutation/allocation sentinels cover the production translation units, not the
+actual IDF iterator implementation, allocator or synchronization.

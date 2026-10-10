@@ -121,7 +121,7 @@ not the current deployment pair. No ABI7 package/image or hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle and native ABI7 maintenance handshake host/build verified; no hardware acceptance | Live P4/C6 layout/active-slot discovery, owner OTA dispatch and ambiguous-write recovery policy, secured CN5 recovery, real CLI/GUI update and HTTPS acquisition; regenerate matching ABI7 package/image before runtime; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle and ABI7 handshake host/build verified; C6 metadata producer object-build verified, not RPC-bound; no hardware acceptance | Live P4/C6 layout/active-slot discovery with negotiated wire/provenance, owner OTA dispatch and ambiguous-write recovery policy, secured CN5 recovery, real CLI/GUI update and HTTPS acquisition; regenerate matching ABI7 package/image before runtime; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1294,6 +1294,14 @@ and a justified full-transfer/renewal budget before binding the engine.
 Actual-source host tests and fresh Core1 module builds pass; Exec locks,
 callbacks and RPC outcomes are mocked. The matching ABI7 resource/device must
 replace the prior ABI6 pair together in a regenerated audited package/image.
+A separate read-only C6 producer uses actual IDF physical/usable capacity APIs,
+bounded normalized internal registry inventory and distinct sorted role indices.
+It does not attest raw table bytes or recovery/write authority; registry mutation
+and OTA selection must be excluded by the future dispatcher. Rollback and
+anti-rollback enforcement remain unknown, virtual-eFuse security is unknown.
+The producer compiles with actual pinned C6 headers, but is not RPC/firmware/
+GUI-bound. Startup capability negotiation, schema/codec and installed-table
+correspondence remain required before discovery can satisfy M2-A4.
 The tool is restricted to esp32p4/riscv builds. Independent generated protobuf-c
 comparison verifies the pinned OTA wire format; normal WLAN control submission
 rejects OTA commands. Neither test establishes live transport or recovery.
@@ -36281,3 +36289,67 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   recovery, secured independent restore and real CLI/GUI qualification remain
   open. No handshake test grants conditional C6 write permission or closes
   WLAN association/DHCP/frames/reconnect/combined1800s acceptance.
+
+### 2026-10-10 - N2M bounded C6 metadata producer, not live discovery
+
+- Identity/config: source parent f047c9e9a0, feature/esp32p4-wifi. New collector
+  tools/c6-private-firmware/discovery.c and shared boardtool/discovery.c reuse
+  the actual ESP32Board layout parser. Native object builds use Hosted
+  d5184217f710d54c01f932e75b4c55e3f4933fc9 and patched IDF5.4.3 base
+  ea1c174c1cbb7348bd8ba0ff1eb306246938dd80 from the separate candidate tree
+  /Volumes/Dev/Build/c6-legacy-log-build.8qQvpV. Compiler is Espressif
+  riscv32-esp-elf GCC14.2.0_20250730; no full candidate firmware was rebuilt.
+- Procedure: reuse the captured slave_control compile command, replacing only
+  input/output and adding the repository ESP32Board include path, -Werror,
+  -fstack-usage and a repository macro-prefix map. Compile collector normally
+  and with CONFIG_EFUSE_VIRTUAL=1, plus validator/parser, to fresh output names.
+  All four compiler processes exited0. Archived compile_commands.json SHA-256
+  f10856561a9f10a66a93b2d63af6ed05391acea474f562fed53b13d7333a9741;
+  sdkconfig4737c809de018a223cd0333e8e3c043bdc1b454a9a9779aad23551ae26b035e8.
+- Behavior: distinguish detected physical capacity from usable image-header/
+  driver size; collect at most32 normalized default-chip registry entries;
+  validate bounds, alignment, labels, overlap, normalized flags and sorted
+  role indices. Failure preserves caller output and releases a live iterator.
+  Unknown/not-supported OTA state stays unknown; unexpected errors refuse.
+  Bootloader rollback/anti-rollback policy stays unknown. Virtual eFuses never
+  establish hardware-security facts. No OTA, erase, boot-selection or reset API
+  is invoked. Inventory validity is never update permission.
+- Review/corrections: independent API/source review required explicit exclusion
+  of all registry mutation, not only registration; that contract is documented.
+  Bounded label comparison accepts irrelevant bytes after NUL. IDF next-update
+  can alias running on a one-slot layout; display preserves this fact, whereas
+  a future write gate must refuse it. IDF boot API may select a fallback, so
+  its result does not attest healthy raw otadata. Registry entries can include
+  runtime registrations even on the default flash chip; actual installed-table
+  correspondence remains a separate requirement.
+- Host verification: primary reran run-c6-discovery-tests.sh, exit0. Normal
+  O0/O2 each35 cases/205 checks; virtual-eFuse O0/O2 each35/204, ASan/UBSan.
+  Actual collector/validator/parser are compiled; IDF APIs, iterator and security
+  are mocks. Fixtures cover capacity/API failures,33-part overflow release,
+  null iterator item, role drift, aliasing, state failures, malformed labels,
+  forbidden mutation/allocation calls and output preservation. This does not
+  qualify IDF allocation, flash access, dispatcher locking or live hardware.
+- Native accepted objects and SHA-256: collector-reviewed.o91392B
+  051d5a78d3d2e3837d96945550f136981b735404d99ca2e3d097e79b09134a85;
+  collector-virtual-reviewed.o46016B
+  ec7e65a95eb2062ec28d806ff663de76c657df2a3d44fc930e432297d56b9177;
+  validator-reviewed.o20984B
+  f1c11eaab8e32ea6439e5f9eddc96f4ccb06b13efe2ca35246fedb7cf158ca05;
+  parser-reviewed.o24060B
+  38471bec409a5aaad74da06860e110868c8b024a9a37030231432963479af19c.
+  Earlier object outputs are superseded, not accepted deployment artifacts.
+  Compiler stack reports collector2160B/parser1120B/validator32B, not a whole
+  callgraph bound; future dispatcher/protobuf/IDF stack qualification is open.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/
+  wifi-2026-10-10/discovery.HHcteu. c6-final-object-build.log SHA-256
+  b186e64f8fc223a9287f3839b34cdc4ceb6c52d2be3df855b4206e488eb9a488;
+  host-final-tests.log
+  1a6b67b2491d62508608b95921ad2fe911232a5efb65d85d2639c535938609ce.
+- Safety/remaining/next: no serial open, reset, flash, SD write or credentials.
+  Producer is not installed or RPC-bound. Next implement bounded wire/schema,
+  capability/version negotiation, freshness/correlation and serialized handler
+  integration; do not send speculative extension requests to stock firmware.
+  First installation cannot rely on uninstalled discovery for recovery.
+  UPDATE-C6 remains unavailable until live layout/provenance, owner OTA adapter,
+  secured independent restore and real CLI/GUI qualification pass. Wi-Fi
+  association/DHCP/frames/reconnect/combined1800s acceptance remains open.
