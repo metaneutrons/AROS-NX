@@ -13,6 +13,7 @@
 
 #include "device_bridge.h"
 #include "sana_device.h"
+#include "scan_projection.h"
 
 #include LC_LIBDEFS_FILE
 
@@ -30,6 +31,8 @@ static const UWORD p4wlan_supported_commands[] = {
     S2_ONEVENT,
     S2_ONLINE,
     S2_OFFLINE,
+    S2_GETNETWORKS,
+    S2_GETWIRELESSCAPABILITIES,
     CMD_READ,
     CMD_WRITE,
     CMD_FLUSH,
@@ -233,6 +236,9 @@ static void p4wlan_finish_request(struct p4wlan_unit *unit,
             --opener->event_count;
         if (unit->event_count)
             --unit->event_count;
+    } else if (item->kind == P4WLAN_REQUEST_SCAN) {
+        if (unit->scan_count)
+            --unit->scan_count;
     }
     ReleaseSemaphore(&unit->lock);
 
@@ -275,7 +281,8 @@ static void p4wlan_queue_done_locked(struct p4wlan_unit *unit,
     (void)opener;
     if (item->state == P4WLAN_REQUEST_COMPLETING)
         return;
-    if (item->kind == P4WLAN_REQUEST_WRITE &&
+    if ((item->kind == P4WLAN_REQUEST_WRITE ||
+         item->kind == P4WLAN_REQUEST_SCAN) &&
         item->state == P4WLAN_REQUEST_QUEUED)
         REMOVE((struct Node *)&item->write_node);
     p4wlan_add_done_locked(done, item, error, wire_error);
@@ -393,6 +400,10 @@ static void p4wlan_enqueue_locked(struct p4wlan_unit *unit,
         ++opener->write_count;
         ++unit->write_count;
         ADDTAIL((struct List *)&unit->write_queue,
+                (struct Node *)&item->write_node);
+    } else if (item->kind == P4WLAN_REQUEST_SCAN) {
+        ++unit->scan_count;
+        ADDTAIL((struct List *)&unit->scan_queue,
                 (struct Node *)&item->write_node);
     } else {
         ++opener->event_count;
@@ -730,12 +741,130 @@ static BOOL p4wlan_send_one(struct p4wlan_unit *unit,
     return TRUE;
 }
 
+struct p4wlan_scan_public_record {
+    struct TagItem tags[7];
+    UBYTE ssid[33];
+    UBYTE bssid[6];
+    struct Sana2WirelessSecuritySummary security;
+};
+
+struct p4wlan_scan_publication {
+    struct TagItem *lists[P4_HOSTED_SCAN_MAX_RECORDS];
+    struct p4wlan_scan_public_record records[P4_HOSTED_SCAN_MAX_RECORDS];
+};
+
+/* Existing SANA SSID tags are C strings. Refuse an unrepresentable binary
+ * SSID rather than publish a truncated identity. Hidden empty SSIDs survive. */
+static BOOL p4wlan_scan_record_matches(const struct p4_hosted_scan_record *ap,
+                                       const struct p4wlan_request *item)
+{
+    ULONG i;
+    if (ap->ssid_size > 32 || ap->primary < 1 || ap->primary > 14)
+        return FALSE;
+    for (i = 0; i < ap->ssid_size; ++i) {
+        if (!ap->ssid[i] ||
+            (item->scan_filter_set && ap->ssid[i] != item->scan_filter[i]))
+            return FALSE;
+    }
+    return !item->scan_filter_set || item->scan_filter[ap->ssid_size] == 0;
+}
+
+static BOOL p4wlan_scan_one(struct p4wlan_unit *unit, struct P4WifiBase *radio)
+{
+    struct p4wlan_request *item;
+    struct p4wlan_scan_publication *publication = NULL;
+    struct MinNode *node;
+    ULONG count = 0, i;
+    BOOL success, cancelled;
+
+    if (!AttemptSemaphore(&unit->lock))
+        return FALSE;
+    node = unit->scan_queue.mlh_Head;
+    if (!node->mln_Succ) {
+        ReleaseSemaphore(&unit->lock);
+        return FALSE;
+    }
+    item = (struct p4wlan_request *)((UBYTE *)node -
+        offsetof(struct p4wlan_request, write_node));
+    REMOVE((struct Node *)&item->write_node);
+    item->state = P4WLAN_REQUEST_ACTIVE;
+    success = unit->hardware_ready && !unit->callback_fault &&
+              !item->opener->closing && !item->cancelled;
+    ReleaseSemaphore(&unit->lock);
+
+    p4wlan_zero_bytes((UBYTE *)&unit->scan_result, sizeof(unit->scan_result));
+    success = success && radio == unit->radio && radio->scan &&
+              radio->scan(radio, &unit->scan_result);
+    if (success && (unit->scan_result.aps.status != 0 ||
+                   unit->scan_result.aps.record_count >
+                       P4_HOSTED_SCAN_MAX_RECORDS))
+        success = FALSE;
+    if (success) {
+        publication = AllocPooled(item->data, sizeof(*publication));
+        if (publication) {
+            p4wlan_zero_bytes((UBYTE *)publication, sizeof(*publication));
+            for (i = 0; i < unit->scan_result.aps.record_count; ++i) {
+                const struct p4_hosted_scan_record *ap =
+                    &unit->scan_result.aps.records[i];
+                struct p4wlan_scan_public_record *record;
+                if (!p4wlan_scan_record_matches(ap, item))
+                    continue;
+                record = &publication->records[count];
+                p4wlan_copy_bytes(record->ssid, ap->ssid, ap->ssid_size);
+                p4wlan_copy_bytes(record->bssid, ap->bssid, 6);
+                p4wlan_scan_security(ap, &record->security);
+                record->tags[0].ti_Tag = S2INFO_SSID;
+                record->tags[0].ti_Data = (IPTR)record->ssid;
+                record->tags[1].ti_Tag = S2INFO_BSSID;
+                record->tags[1].ti_Data = (IPTR)record->bssid;
+                record->tags[2].ti_Tag = S2INFO_Channel;
+                record->tags[2].ti_Data = ap->primary;
+                record->tags[3].ti_Tag = S2INFO_Signal;
+                record->tags[3].ti_Data = (IPTR)(LONG)ap->rssi;
+                record->tags[4].ti_Tag = S2INFO_Capabilities;
+                record->tags[4].ti_Data =
+                    (record->security.Flags & S2WIRELESS_SUMF_PRIVACY) ?
+                        0x0010u : 0;
+                record->tags[5].ti_Tag = S2INFO_SecuritySummary;
+                record->tags[5].ti_Data = (IPTR)&record->security;
+                record->tags[6].ti_Tag = TAG_DONE;
+                publication->lists[count++] = record->tags;
+            }
+        }
+    }
+    p4wlan_wipe_bytes((UBYTE *)&unit->scan_result, sizeof(unit->scan_result));
+
+    ObtainSemaphore(&unit->lock);
+    cancelled = item->cancelled || item->opener->closing ||
+                !unit->hardware_ready || unit->callback_fault;
+    item->state = P4WLAN_REQUEST_COMPLETING;
+    item->completion_sets_length = FALSE;
+    item->completion_error = cancelled ? IOERR_ABORTED :
+        !success ? S2ERR_OUTOFSERVICE :
+        !publication ? S2ERR_NO_RESOURCES : 0;
+    item->completion_wire = item->completion_error ? S2WERR_GENERIC_ERROR : 0;
+    if (item->completion_error == 0) {
+        /* Atomic publication with respect to AbortIO/Close; the pool owns
+         * the whole result until its caller deletes that pool after Reply. */
+        item->request->ios2_StatData = publication->lists;
+        item->completion_sets_length = TRUE;
+        item->completion_length = count;
+        publication = NULL;
+    }
+    ReleaseSemaphore(&unit->lock);
+    if (publication)
+        FreePooled(item->data, publication, sizeof(*publication));
+    p4wlan_finish_request(unit, item);
+    return TRUE;
+}
+
 static void p4wlan_service_callback(APTR client, struct P4WifiBase *radio)
 {
     struct p4wlan_unit *unit = client;
     if (!unit || !radio)
         return;
-    (void)p4wlan_send_one(unit, radio);
+    if (!p4wlan_scan_one(unit, radio))
+        (void)p4wlan_send_one(unit, radio);
 }
 
 static const struct p4_wifi_device_callbacks p4wlan_callbacks = {
@@ -807,6 +936,56 @@ static BOOL p4wlan_validate_write(struct IOSana2Req *request,
            *length <= P4WLAN_MTU;
 }
 
+static BOOL p4wlan_scan_copy_filter(struct p4wlan_request *item,
+                                    const struct TagItem *tags)
+{
+    ULONG visited = 0;
+    BOOL ssid_seen = FALSE;
+    if (!tags)
+        return TRUE;
+    while (tags && visited < P4WLAN_TAG_LIMIT) {
+        ULONG tag = tags->ti_Tag;
+        IPTR data = tags->ti_Data;
+        ++tags;
+        ++visited;
+        if (tag == TAG_DONE)
+            return TRUE;
+        if (tag == TAG_IGNORE)
+            continue;
+        if (tag == TAG_MORE) {
+            tags = (const struct TagItem *)data;
+            if (!tags)
+                return TRUE;
+            continue;
+        }
+        if (tag == TAG_SKIP) {
+            IPTR address = (IPTR)tags;
+            if (data > (~(IPTR)0 - address) / sizeof(*tags) ||
+                data > P4WLAN_TAG_LIMIT - visited)
+                return FALSE;
+            tags = (const struct TagItem *)(address + data * sizeof(*tags));
+            visited += (ULONG)data;
+            continue;
+        }
+        if (tag != S2INFO_SSID || ssid_seen)
+            return FALSE;
+        ssid_seen = TRUE;
+        if (data) {
+            const UBYTE *ssid = (const UBYTE *)data;
+            ULONG length;
+            for (length = 0; length <= 32; ++length) {
+                item->scan_filter[length] = ssid[length];
+                if (!ssid[length])
+                    break;
+            }
+            if (length > 32)
+                return FALSE;
+            item->scan_filter_set = TRUE;
+        }
+    }
+    return FALSE;
+}
+
 static void p4wlan_begin_sana(struct p4wlan_unit *unit,
                               struct IOSana2Req *request)
 {
@@ -850,6 +1029,61 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
     }
 
     switch (command) {
+    case S2_GETWIRELESSCAPABILITIES:
+    {
+        struct Sana2WirelessCapabilities *caps = request->ios2_StatData;
+        if (!caps || caps->SizeAvailable < sizeof(*caps) ||
+            caps->Version != S2WIRELESS_CAPABILITIES_VERSION) {
+            p4wlan_immediate_error(request, S2ERR_BAD_ARGUMENT,
+                                   S2WERR_BAD_STATDATA);
+        } else {
+            ULONG available = caps->SizeAvailable;
+            p4wlan_zero_bytes((UBYTE *)caps, sizeof(*caps));
+            caps->SizeAvailable = available;
+            caps->SizeSupplied = sizeof(*caps);
+            caps->Version = S2WIRELESS_CAPABILITIES_VERSION;
+            caps->Flags = S2WIRELESS_CAPF_SECURITY_SUMMARY;
+            /* Never advertise handshake offload before association and the
+             * verified credential-safe firmware lineage are implemented. */
+        }
+        break;
+    }
+
+    case S2_GETNETWORKS:
+        if (!unit->hardware_ready || unit->callback_fault) {
+            p4wlan_immediate_error(request, S2ERR_OUTOFSERVICE,
+                                   S2WERR_UNIT_OFFLINE);
+            break;
+        }
+        if (!request->ios2_Data) {
+            p4wlan_immediate_error(request, S2ERR_BAD_ARGUMENT,
+                                   S2WERR_NULL_POINTER);
+            break;
+        }
+        if (unit->scan_count ||
+            unit->request_count >= P4WLAN_MAX_REQUESTS ||
+            opener->request_count >= P4WLAN_MAX_REQUESTS) {
+            p4wlan_immediate_error(request, S2ERR_NO_RESOURCES,
+                                   S2WERR_GENERIC_ERROR);
+            break;
+        }
+        item = p4wlan_alloc_request(opener, request, P4WLAN_REQUEST_SCAN);
+        if (!item) {
+            p4wlan_immediate_error(request, S2ERR_NO_RESOURCES,
+                                   S2WERR_GENERIC_ERROR);
+            break;
+        }
+        if (!p4wlan_scan_copy_filter(item, request->ios2_StatData)) {
+            p4wlan_immediate_error(request, S2ERR_BAD_ARGUMENT,
+                                   S2WERR_GENERIC_ERROR);
+            break;
+        }
+        item->data = request->ios2_Data; /* caller pool lives through Reply */
+        p4wlan_enqueue_locked(unit, opener, item);
+        ReleaseSemaphore(&unit->lock);
+        p4wlan_finish_done(unit, &done);
+        return;
+
     case S2_GETSTATIONADDRESS:
         if (!unit->hardware_ready || unit->callback_fault) {
             p4wlan_immediate_error(request, S2ERR_OUTOFSERVICE,
@@ -1069,6 +1303,7 @@ static BOOL GM_UNIQUENAME(Init)(LIBBASETYPEPTR LIBBASE)
     InitSemaphore(&unit->lock);
     NEWLIST(&unit->openers);
     NEWLIST(&unit->write_queue);
+    NEWLIST(&unit->scan_queue);
     unit->query.SizeAvailable = sizeof(unit->query);
     unit->query.SizeSupplied = sizeof(unit->query);
     unit->query.DevQueryFormat = 0;
@@ -1359,7 +1594,8 @@ AROS_LH1(LONG, abort_io,
         }
         if (item->state == P4WLAN_REQUEST_QUEUED) {
             item->cancelled = TRUE;
-            if (item->kind == P4WLAN_REQUEST_WRITE)
+            if (item->kind == P4WLAN_REQUEST_WRITE ||
+                item->kind == P4WLAN_REQUEST_SCAN)
                 REMOVE((struct Node *)&item->write_node);
             p4wlan_add_done_locked(&done, item,
                                    IOERR_ABORTED,

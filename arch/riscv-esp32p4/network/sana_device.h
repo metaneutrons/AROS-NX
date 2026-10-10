@@ -7,6 +7,7 @@
 #include <exec/semaphores.h>
 #include <exec/tasks.h>
 #include <devices/sana2.h>
+#include <devices/sana2wireless.h>
 #include <utility/hooks.h>
 #include <aros/libcall.h>
 #include <aros/symbolsets.h>
@@ -28,7 +29,8 @@ enum p4wlan_request_kind
 {
     P4WLAN_REQUEST_READ = 1,
     P4WLAN_REQUEST_WRITE,
-    P4WLAN_REQUEST_EVENT
+    P4WLAN_REQUEST_EVENT,
+    P4WLAN_REQUEST_SCAN
 };
 
 enum p4wlan_request_state
@@ -59,6 +61,8 @@ struct p4wlan_request
     BOOL completion_sets_length;
     BOOL cancelled;
     BOOL tx_committed;
+    BOOL scan_filter_set;
+    UBYTE scan_filter[33];
     UBYTE destination[6];
     APTR data;
     ULONG offered_frame;
@@ -101,11 +105,15 @@ struct p4wlan_unit
     struct SignalSemaphore lock;
     struct MinList openers;
     struct MinList write_queue;
+    struct MinList scan_queue;
     struct P4WifiBase *radio;
     struct Sana2DeviceStats stats;
     struct Sana2DeviceQuery query;
     UBYTE mac[6];
     UBYTE tx_frame[P4WLAN_MAX_FRAME];
+    /* Only the serialized owner-service scan uses this owned scratch. */
+    struct p4_wifi_scan_result scan_result;
+    ULONG scan_count;
     ULONG open_count;
     ULONG request_count;
     ULONG read_count;

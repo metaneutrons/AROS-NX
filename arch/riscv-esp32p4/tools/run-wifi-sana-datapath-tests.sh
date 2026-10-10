@@ -95,6 +95,7 @@ extract_block p4wlan_request_kind "$header_file"
 extract_block p4wlan_request_state "$header_file"
 extract_block p4wlan_request "$header_file"
 extract_block p4wlan_opener "$header_file"
+extract_block p4_wifi_scan_result "$test_root/network/device_bridge.h"
 extract_block p4wlan_unit "$header_file"
 
 extract_function p4wlan_copy_bytes

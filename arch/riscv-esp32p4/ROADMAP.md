@@ -117,6 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| N2S | Native queued SANA scan presentation | `RV32 build verified; source review and corrected scan-helper models passed` | Single bounded owner-service scan, copied SSID filter and caller-pool-owned complete publication. Scan-helper models295 checks each O0/O2 ASan/UBSan on macOS/Linux; outer BeginIO/AbortIO/Close and runtime scheduling remain separate gates. Exact singleton metadata only; unsupported/ambiguous unknown protected. C-string binary SSIDs/invalid channels omitted; max8 local cap. SUMMARY only, no FOURWAY. No credentials/deployment/hardware acceptance. |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
 | N2W | Generic wireless security-summary/offload contract | `locally integrated; predicates/ABI and conversion/selection-helper models passed; full RV32 GUI build verified` | Upstream-based generic49972c6241 retained separately and integrated onto port branch. Explicit per-device capability, owned exact-version summary, no fabricated AP security IE. Unknown/ambiguous protected networks must not fall back to open. Initial singleton WPA/RSN PSK profile; legacy path preserved. Device query/full association and hardware gates pending. No credentials or deployment. |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
@@ -1108,6 +1109,22 @@ bidirectional referenced frames, timeout/cancel and disconnect recovery. A
 reference firmware example building is not evidence of AROS transport.
 
 ### N2 - native AROS WLAN device
+
+Queued scan development (2026-10-10): S2_GETNETWORKS binds the private ABI2
+scan through a single asynchronous descriptor. It may scan before S2_ONLINE,
+but requires the initialized hardware owner. Optional SSID filtering is copied
+at submission and applied to owned results after scan; unsupported filter tags
+are refused rather than ignored. One pool-owned publication contains every
+list/string/BSSID/summary, published under the cancellation guard. Queued
+AbortIO removes its node; active AbortIO/Close marks cancellation and drains
+the bounded operation. Unit scratch is wiped. New device capability reports
+only security-summary metadata, not association or four-way support. First
+clean RV32 device build succeeds; independent queue/lifetime source review
+reports no blocker and existing lifetime/RX/TX models pass on macOS/Linux.
+Focused source-extracted scan models pass295 checks each O0/O2 with
+ASan/UBSan on macOS and isolated Linux after test-fixture correction.
+Radio/pool/semaphore/completion are fakes; complete BeginIO/AbortIO/Close
+integration and runtime scheduling remain separate gates. No hardware or deployment.
 
 Generic security/offload locally integrated (2026-10-10): use the upstream
 branch model, pr/wireless-offload-summary from master2875ef32831c in
@@ -33788,3 +33805,104 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   handling and raw-PSK delivery require separate correction before live use.
   Next: queued native SANA scan with pool-owned truthful summaries; then
   association/runtime privacy gate, DHCP and sustained two-hart coexistence.
+
+### 2026-10-10 - N2S queued native scan implementation and first target build
+
+- State: development/first build passed, not runtime or hardware acceptance.
+  Root adds S2_GETNETWORKS queue/service/publication and scan counters to
+  sana_device.c/.h; bounded projection helper is separately authored from
+  pinned IDF5.4.3 auth/cipher enums, independently reviewed next.
+- One global pending/active scan maximum; ordinary opener references own the
+  descriptor through Reply. No unit semaphore during radio->scan or pooled
+  allocation. Exact failure/cancellation leaves the caller result fields
+  unchanged; a successful publication contains pool-owned tag arrays, SSIDs,
+  BSSIDs and summaries, no borrowed transport pointer. Close drains active
+  requests; queued AbortIO/flush removes the scan queue node. Scratch wiped.
+- Known open only for auth0/pair0/group0; WPA-PSK auth2 and WPA2-PSK auth3
+  require each role exactly TKIP3 or CCMP4. Mixed protocols/ciphers, SAE/EAP
+  and unsupported values remain unknown protected, never open. Pinned enum
+  source: esp-hosted-reference.RzWnFu/idf-5.4.3/components/esp_wifi/include/
+  esp_wifi_types_generic.h:84-104,261-275; slave_control.c:1156-1163 copies
+  fields into the pinned protobuf schema. Proto3 defaults do not retain
+  field presence; installed firmware identity remains a separate gate.
+- Compatibility limits named: existing SANA SSID tags are C strings, so
+  embedded-NUL SSIDs are omitted, not truncated identities. Channels outside
+  1..14 omitted for this 2.4GHz device. Existing max8 private-result cap and
+  zero-count N1E workaround remain; filtering occurs after that local cap and
+  cannot promise finding every SSID. No fabricated security IEs.
+- Device query exposes SECURITY_SUMMARY only; no offload masks or FOURWAY.
+  Actual association and safe C6 credentials remain unimplemented.
+- Clean device .o invalidation, kernel-esp32p4wlan-device-quick,
+  P4_BOARD=jc1060p470c-v2 actual exit0. Device59212B SHA256
+  93d11a319656aadd14a5ed68f2f01480cb43dbccc2edb9e6a1b87a5437c5b624;
+  log /Volumes/Dev/Build/wlan-summary-build.tnKv0i/native-sana-scan-build.log.
+  Dedicated source-extracted scan models and independent source review are
+  running; this is not their pass. Existing lifecycle fixture initially fails
+  because extracted unit now embeds scan_result; runners now extract the real
+  private result definition and include actual hosted_scan.h rather than fake
+  an opaque result size. Regression completion remains pending.
+- Safety: no serial open, flash, media write or credentials. Next: qualify
+  cancellation/publication/filters and old RX/TX/lifetime regressions, then
+  association contract correction and runtime privacy/firmware gate.
+- Follow-up: filter now refuses duplicate SSID tags even if first valueNULL.
+  Projection input is snapshotted before output initialization; no false alias
+  guarantee. Fresh device .o invalidation and actual exit0 build produce
+  59236B SHA25651eba08b209402006cebcc5eb08e39f298664438ff31927d362813b933d015d8.
+  native-sana-scan-final-build.log SHA256
+  633260d04dce9844f70d2ff8a0680f215efe21dbf852427d43f541064f2d7f9e.
+  sana_device.cfd983d772fbfe8a21adf9574f5f1574d6a435e54acd5806435c5f88dac3ec89d;
+  sana_device.h8529cd53dc27d87f14cb01aaec5401d72e09182ab1f6ee54371ab1510f8bd97a;
+  scan_projection.hb8628235d0e472c05b6187dfbe3e9a698d712edcf25cb2aff13b75d30aec0f23.
+- Existing actual-helper lifetime782 and datapath14902 checks each O0/O2
+  ASan/UBSan now pass on macOS and isolated Linux, primary actual exit0.
+  These qualify old helper regressions, not new scan submission/lifetime.
+  Logs in wlan-summary-build.tnKv0i: native-scan-lifetime-final.log SHA256
+  6bc60b7c9c0dc7b63f70e17ebb5ef3542edeca2ec273c1f8508e8fd9870b5336;
+  native-scan-datapath-final.log SHA256
+  f13a5f3ca6213ffa1fd4440a51112193dd9d1cdaea264a018d87c657aaa69b1c;
+  native-scan-regression-linux.log SHA256
+  dbdb218522875ff38b5f4e612e1180dd622063627355b1d6047c8345dcebb68a.
+- Independent non-author source audit reports no blocking scan queue/lock/
+  pool-lifetime defect. Dedicated scan models remain in progress; no deployment.
+
+### 2026-10-10 - N2S corrected scan-helper qualification
+
+- State: build/model verified only. Primary independently repeats the new
+  source-extracted scan worker/filter and production security projection at
+  O0/O2 with ASan/UBSan on macOS and network-isolated Linux. Corrected runs
+  each report295 checks per optimization, actual process exit0 and no sanitizer
+  diagnostics. These are assertions, not295 independent scenarios.
+- Initial Linux capture native-sana-scan-model-linux.log exits1 because the
+  input archive omitted exec/types.h. Complete include-tree retry in
+  native-sana-scan-model-linux-final.log exits0 but reports UBSan at test
+  line213: zero-length memcpy with NULL input. That run is NOT a pass.
+  The fixture now skips empty copies and the runner forces sanitizer
+  halt_on_error=1; production code is unchanged by this correction.
+- Covered helper boundaries: exact supported/unknown security tuples,
+  SSID0/32/33 and embedded-NUL/filter behavior, bounded TAG_MORE/SKIP,
+  duplicate/null-first/overlong/cyclic filters, successful owned publication,
+  zero results, malformed status/count, allocation refusal, callback-time
+  cancellation/closing/fault/offline, unchanged failure StatData, scratch wipe
+  and radio calls outside the unit lock. Request finisher, radio, pool and
+  semaphore remain deterministic fakes. Complete BeginIO enqueue, AbortIO,
+  Close drain and real SMP scheduler concurrency are not covered here.
+- Final test C SHA256
+  22d7776dd2c2a2e78b4f7465bf3ac466267389f825de47a1276b54a811694efe;
+  runner4012de65f82de33e967f8bf48e60bcbcaccb42dbf449de4fe181d28c5dc42501.
+  Logs /Volumes/Dev/Build/wlan-summary-build.tnKv0i/
+  native-sana-scan-model-macos-final.log and
+  native-sana-scan-model-linux-corrected.log both SHA256
+  b195ff58578daff8813c715c72f9ef25f13d67f3c0d4af4aabaaef9aa8c8c27f.
+  Identical short output does not imply identical host execution; both separate
+  process completions were observed. Target device remains59236B SHA256
+  51eba08b209402006cebcc5eb08e39f298664438ff31927d362813b933d015d8.
+- Safety: no flash/serial/media mutation or credentials. Next: independent
+  final test review and functional commit, then shared association error/lifetime
+  correction and explicit raw-PSK contract before native association runtime.
+- Final independent non-author review repeats corrected Linux runner, actual
+  exit0/295 checks at each O0/O2 with no sanitizer diagnostics, and reports no
+  blocking source defect. Review explicitly confirms the integration limits:
+  fake cancellation mutates flags, pool fakes ignore the pool argument and
+  success is manually freed; real submission/Reply/ref-drain/pool identity
+  require separate integration qualification. Source inspection is not that
+  runtime proof. Proceed with the functional scan implementation commit.

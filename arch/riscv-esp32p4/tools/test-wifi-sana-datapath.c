@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../network/hosted_scan.h"
 
 typedef void *APTR;
 typedef uintptr_t IPTR;

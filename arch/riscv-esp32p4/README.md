@@ -1,5 +1,26 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Native SANA scan development (2026-10-10): S2_GETNETWORKS now queues one
+owner-service scan, copies its optional bounded SSID filter, and publishes
+one pool-owned result block only after cancellation/Close checks. Unit locks
+are not held during the existing bounded radio scan. Active cancellation
+drains through its completion, while queued cancellation removes its queue
+node. Security projection preserves exact open/WPA-PSK/WPA2-PSK singleton
+TKIP/CCMP tuples; ambiguous or unsupported profiles remain unknown protected.
+C-string SSID tags cannot represent embedded NUL: such records and invalid
+channels are omitted, never silently renamed. At most eight records are
+retained by the existing private scan; no complete-radio inventory is claimed.
+The device reports SECURITY_SUMMARY only, never FOURWAY. Corrected clean RV32
+device build passes (59236B); independent source review finds no blocker.
+Existing lifetime782 and datapath14902 model checks each O0/O2 ASan/UBSan
+pass on macOS/Linux. Dedicated source-extracted scan models pass295 checks
+each O0/O2 ASan/UBSan on macOS and network-isolated Linux after correcting
+a zero-length NULL memcpy in the test fixture and enforcing sanitizer failure.
+Radio, pool, semaphore and completion are deterministic fakes; BeginIO,
+AbortIO/Close integration and actual scheduler execution are not qualified by
+these scan-helper models.
+No deployment, scan hardware acceptance, association or credentials.
+
 WirelessManager security/offload integration (2026-10-10): generic changes
 originated separately on pr/wireless-offload-summary from verified upstream
 master2875ef32831c, in /Volumes/Dev/Build/aros-wlan-contract.qToy75. Generic
@@ -45,9 +66,9 @@ Previously the next service step retired the owner unnecessarily. This source
 correction now passes actual-owner boundary models on macOS/Linux and a fresh
 Core1 resource build; independent review finds no settlement blocker. Earlier build/model
 identities above precede it.
-ABI1 modules must not be mixed with ABI2. This private path is not yet exposed
-as S2_GETNETWORKS: truthful protected-network metadata and per-device WPA
-offload integration remain required. No deployment or hardware pass.
+ABI1 modules must not be mixed with ABI2. This private path is now connected
+to the in-development S2_GETNETWORKS queue above; per-device WPA offload and
+runtime qualification remain required. No deployment or hardware pass.
 
 Private SANA-II bridge development (2026-10-10): the opt-in Core1 owner now
 exposes nonblocking permanent-unit registration, synchronous borrowed-frame
