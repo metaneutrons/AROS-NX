@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; bounded native OPEN/INIT candidate build verified; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip13 (0x0d, C6)/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Native reset-before-identify passes one complete40.928s JC1060 warm capture. Separate41.028s setup capture passes reset ack1/status1, identification stage8, function1 enable/ready/512-byte block verification (stage11), saved IO_ENABLE/FBR1 restoration (stage7), all errors0; all24 snapshots captured, slot controls unchanged. Full BSP rollback/readback and30.885s baseline return pass. INIT/FIFO now linked into opt-in OPEN/INIT candidate: 716 OPEN,157590 wire,160 CMD53-adapter checks each O0/O2 sanitized; fresh RV32 module and42/42 loader audit pass. No OPEN candidate deployed. Zero pre-OPEN counter is only a stale-session guard; first INIT requires fresh C6 startup. Warm replay/reply/RPC/WLAN remain open. Exact RES timeout/CRC may continue without claiming acknowledgement; those exceptions are model-tested, not exercised by these hardware passes. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; bounded native OPEN/INIT candidate build verified; RPC envelope host/RV32 verified; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip13 (0x0d, C6)/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Native reset-before-identify passes one complete40.928s JC1060 warm capture. Separate41.028s setup capture passes reset ack1/status1, identification stage8, function1 enable/ready/512-byte block verification (stage11), saved IO_ENABLE/FBR1 restoration (stage7), all errors0; all24 snapshots captured, slot controls unchanged. Full BSP rollback/readback and30.885s baseline return pass. INIT/FIFO now linked into opt-in OPEN/INIT candidate: 716 OPEN,157590 wire,160 CMD53-adapter checks each O0/O2 sanitized; fresh RV32 module and42/42 loader audit pass. RPC envelope44278 and official protobuf-c interoperability600 checks/40 messages each O0/O2 sanitized pass; standalone RV32 has no undefined symbols. Nested bodies/runtime correlation/TX config reply/credits remain open. No OPEN candidate deployed. Zero pre-OPEN counter is only a stale-session guard; first INIT requires fresh C6 startup. Warm replay/reply/RPC/WLAN remain open. Exact RES timeout/CRC may continue without claiming acknowledgement; those exceptions are model-tested, not exercised by these hardware passes. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -764,8 +764,28 @@ limit and configurable first-fragment deadline bound assembly. Invalid partial
 messages are discarded, other-interface frames ignored, final TLV validated
 before publication. Strict sanitized O0/O2 tests each312 checks include
 sequence/tick wrap, aggregate expiry and checksummed frame-to-RPCEvt completion.
-No runtime qualification follows. Protobuf semantics, UID correlation,
+No runtime qualification follows. The independent RPC envelope codec now
+enforces class/operation/oneof matching, request/response nonzero UID policy,
+bounded unknown-field skipping and transactional refusal, with44278 sanitized
+checks each O0/O2. A host-only oracle compiles the pinned official generated
+protobuf-c codec and passes600 checks/40 messages each O0/O2 with byte-identical
+encoding and cross-decoding. Nested body semantics, runtime UID correlation,
 credits and live RPC remain unimplemented; these helpers are not in a driver.
+Serial TLV byte operations are now libc-free, with unchanged116-check tests
+and standalone RV32 objects free of undefined symbols.
+
+Pinned startup/TX source contract: process_init_event sends send_slave_config
+also for SDIO. For C6, no raw/throttle/host capabilities, its private payload is
+22 0f 44 01 00 45 01 0d 46 01 00 47 01 00 48 01 00; outer interface5/number0
+and packet_type0 (not the slave INIT's33). No native reply is implemented.
+Twenty hardware receive buffers are distinct from the software queue-depth
+INIT TLV. TOKEN_RDATA44 bits16..27 count credits modulo4096; each successful
+complete logical frame consumes ceil(bytes/1536), not its512-byte DMA padding.
+Installed firmware lineage and fresh live token state still need verification.
+Outbound RPC uses SERIAL interface3/number0 and RPCRsp endpoint. WiFiInit must
+encode all validated configuration values: slave_control replaces all twenty
+default fields from decoded cfg, and missing proto3 scalars become zero.
+Do not substitute an empty/default cfg or infer startup credits from queue TLV.
 
 Streaming RX can concatenate packets: PACKET_LEN is cumulative modulo2^20,
 not one frame's size. The codec's1536-byte bound is per frame, not per batch.
@@ -31209,6 +31229,60 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   Next: verify final candidate/full-span backup, deploy only permitted BSP
   range, then synchronize fresh C6 cold start and capture complete first INIT;
   retain exact rollback and baseline return before expanding to RPC.
+
+### 2026-10-10 - N1 bounded RPC envelope and pinned startup/TX contract
+
+- State: host tested / standalone RV32 compile verified only. New hosted_rpc
+  codec is not linked into a BSP or deployed. Existing OPEN candidate and last
+  verified original-baseline hardware status are unchanged.
+- Codec: complete Rpc envelope limit4096 bytes, request257..349/response513..605/
+  event769..776 with oneof tag equal to msg_id. Request/response UID must be
+  nonzero; events may omit zero. Nested bodies remain opaque. Undefined
+  operation IDs inside class ranges remain opaque too: this is not an
+  implemented-operation allowlist. Caller must match both UID and expected
+  response ID to its outstanding transaction; no runtime correlation exists.
+  Unknown bounded wire0/1/2/5 fields skip; groups, field0, duplicate known fields/oneofs,
+  mismatches, truncation and overflow refuse without publishing output.
+  Encoder checks capacity and all pairwise nonempty-buffer/metadata aliases
+  before writes. Primary review corrected missing oneof-tag matching and
+  nonzero-key field0 rejection before final tests.
+- Procedure/results: tools/test-hosted-rpc.sh passes44278 checks each O0/O2
+  ASan/UBSan; tools/test-hosted-rpc-reference.py against local d5184217 reference
+  passes600 checks/40 messages each O0/O2, actual generated protobuf-c encoding
+  compared byte-for-byte and cross-decoded. Test cases cover GetMAC requests/
+  responses with six UID boundaries, signed mode/status values and ESPInit
+  bodies0..3 bytes. Invalid modes are host fixtures only. Schema SHA-256
+  bbdbc9bb69c2b1793de6441ea55051c3ceb3f7b30994227b8ff1e995b0137dec.
+  Vendor protobuf-c is host-only, not copied into native code or firmware.
+  Oracle runner also pins both generated/runtime C and header SHA-256 values,
+  refusing source mismatches before compilation. Independent Luna source
+  review found no blocking codec defect; its noted range/correlation/oracle
+  coverage limits are retained explicitly here and in the API header.
+- Freestanding: serial libc compare/copy removed; existing116 checks each
+  O0/O2 pass. GCC16.2.0 O2 standalone hosted-serial.o3256B SHA-256
+  75a233edf100ff5f4e6d2b929bf6ff572e22cbdb740bda1ebb23dc460f5a4493;
+  hosted-rpc.o6500B SHA-256
+  d743f615a21b5f189c0203dfc1a632eba19c2830badc2786bcf274bf2eb76761.
+  Target nm -u reports no undefined symbols for either. No linked-package
+  acceptance is claimed for these new sources.
+- Source audit: d518 host transport_drv.c send_slave_config/process_init_event
+  queues private host configuration after INIT also on SDIO. Slave
+  sdio_slave_api.c hardware pool20 is not software RX queue depth. Outbound
+  control uses RPCRsp. slave_control.c WiFiInit replaces default config with
+  twenty decoded fields; sparse/default-zero configuration is unsafe. These
+  are pinned source facts, not identification of installed C6 binary lineage.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/native-rpc-contract.hXdTky/
+  contains serial-tests.log, rpc-final-tests.log, rpc-reference-pinned-final.log and
+  retained target objects. Final test commands exited0. Reproducible scripts
+  and literal/negative/boundary/fuzz tests are included in the source change.
+- Safety: no serial open, flash, reset, C6 write, SD write or physical test.
+  User readiness received; USB-C disconnect requested, confirmation pending.
+  No interaction or live acceptance is inferred from host tests.
+- Remaining: native first INIT still untested; implement explicit TX startup
+  reply/credit state and typed MAC/config/scan bodies plus runtime correlation,
+  then association/DHCP/bidirectional frames/SANA-II and sustained shared
+  SD/display/SMP/recovery. Next hardware gate needs synchronized fresh C6
+  startup, exact candidate identity and new full-span independent backups.
 
 ## Evidence-entry template
 

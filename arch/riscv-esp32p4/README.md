@@ -85,6 +85,22 @@ does not establish a fresh slave epoch. Live first-INIT acceptance therefore
 needs a fresh C6 startup; warm recovery, reply/RPC, association, traffic and
 SANA-II remain open. Board remains on the last verified original baseline.
 
+Native RPC envelope parsing/encoding is now host tested and standalone RV32
+compile verified, not linked or deployed. It enforces matching type/operation/
+oneof, nonzero request/response UIDs, bounded unknown-field skipping and
+transactional refusal. Nested operation bodies remain opaque. Tests pass44278
+checks each O0/O2 with sanitizers; a separate host-only oracle compiles the
+pinned official protobuf-c sources and passes600 checks/40 messages each.
+This proves envelope interoperability, not runtime UID correlation or WLAN.
+The serial TLV codec is now freestanding without libc imports (116 checks each).
+Source audit also establishes the missing SDIO host configuration reply after
+INIT and distinguishes the twenty-buffer hardware token pool from software
+queue depth. Neither TX startup reply nor live credits are implemented yet.
+WiFiInit must supply the complete validated configuration: the reference slave
+overwrites its defaults with decoded scalar values, so an empty/default body
+is not a safe initialization shortcut. Fresh cold-start synchronization is
+pending; no hardware state changed during this implementation.
+
 JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
 construction and a byte-oriented ESP-Hosted frame codec in `network/` have

@@ -1,7 +1,28 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
 #include "hosted_serial.h"
 
-#include <string.h>
+/* Freestanding BSP code must not import libc startup (.eh_frame is not
+ * placed by the module loader). Volatile accesses prevent the compiler from
+ * replacing these bounded byte operations with memcpy/memcmp calls. */
+static void copy_bytes(uint8_t *destination, const uint8_t *source, size_t size)
+{
+    volatile uint8_t *out = destination;
+    const volatile uint8_t *in = source;
+    size_t index;
+    for (index = 0; index < size; ++index)
+        out[index] = in[index];
+}
+
+static int equal_bytes(const uint8_t *a, const uint8_t *b, size_t size)
+{
+    const volatile uint8_t *first = a;
+    const volatile uint8_t *second = b;
+    size_t index;
+    for (index = 0; index < size; ++index)
+        if (first[index] != second[index])
+            return 0;
+    return 1;
+}
 
 static const uint8_t endpoint_rpc_rsp[HOSTED_SERIAL_ENDPOINT_SIZE] = {
     'R', 'P', 'C', 'R', 's', 'p'
@@ -49,11 +70,11 @@ static void put_le16(uint8_t *bytes, size_t value)
 static int decode_endpoint(const uint8_t *bytes,
                            enum hosted_serial_endpoint *endpoint)
 {
-    if (memcmp(bytes, endpoint_rpc_rsp, HOSTED_SERIAL_ENDPOINT_SIZE) == 0) {
+    if (equal_bytes(bytes, endpoint_rpc_rsp, HOSTED_SERIAL_ENDPOINT_SIZE)) {
         *endpoint = HOSTED_SERIAL_ENDPOINT_RPCRSP;
         return 1;
     }
-    if (memcmp(bytes, endpoint_rpc_evt, HOSTED_SERIAL_ENDPOINT_SIZE) == 0) {
+    if (equal_bytes(bytes, endpoint_rpc_evt, HOSTED_SERIAL_ENDPOINT_SIZE)) {
         *endpoint = HOSTED_SERIAL_ENDPOINT_RPCEVT;
         return 1;
     }
@@ -137,11 +158,11 @@ int hosted_serial_encode(uint8_t *bytes, size_t capacity,
 
     bytes[0] = 1u;
     put_le16(bytes + 1u, HOSTED_SERIAL_ENDPOINT_SIZE);
-    memcpy(bytes + HOSTED_SERIAL_TLV_HEADER_SIZE, endpoint_bytes,
+    copy_bytes(bytes + HOSTED_SERIAL_TLV_HEADER_SIZE, endpoint_bytes,
            HOSTED_SERIAL_ENDPOINT_SIZE);
     bytes[9] = 2u;
     put_le16(bytes + 10u, protobuf_size);
-    memcpy(bytes + HOSTED_SERIAL_MESSAGE_OVERHEAD, protobuf, protobuf_size);
+    copy_bytes(bytes + HOSTED_SERIAL_MESSAGE_OVERHEAD, protobuf, protobuf_size);
     *written = wire_size;
     return 1;
 }
