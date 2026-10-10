@@ -1,0 +1,148 @@
+# ESP32 board maintenance tool
+
+Decision: C6-first implementation authorized by Fabian on 2026-10-10, with
+both CLI and GUI. This plan defines requirements; execution and dated evidence
+remain in [the port roadmap](../../arch/riscv-esp32p4/ROADMAP.md), item N2M.
+GitHub issue tracking is unavailable: AROS-NX has issues disabled. No issue
+numbers or completed tracking setup are implied.
+
+## Outcome and boundaries
+
+`Tools/ESP32Board` is an AROS maintenance application, not another network
+manager. Both frontends use one operation registry and update backend. The
+first target is the JC1060's ESP32-C6 through the P4's existing ESP-Hosted SDIO
+transport. Subsequent backends update P4 Kickstart/core and associated modules,
+including over-the-air acquisition. Existing AROS networking tools remain
+responsible for WLAN selection, association and IP configuration.
+
+Baseline: native AROS has an opt-in serialized Core1 SDIO owner and no C6 OTA
+client. Pinned Hosted d5184217f710d54c01f932e75b4c55e3f4933fc9 has OTA_BEGIN,
+OTA_WRITE and OTA_END, but no transactional abort, offsets or replay protection.
+Installed C6 identity, partition layout and rollback remain unverified. CN5
+cabling is unavailable. Conditional C6 update authority still requires a
+secured recovery path; source development and read-only file checks do not.
+
+## Design
+
+- The CLI resolves actions and the MUI window dispatches the same operation
+  identifiers. Capability differences must be explicit and tested, not hidden
+  behind a successful command or an enabled button with no implementation.
+- MUI handlers never perform flash or lengthy file/network I/O. A worker owns
+  immutable requests; messages and source data live until their replies.
+  Closing a window requests cancellation and retains it until safe completion.
+- C6 operations must enter an exclusive maintenance lease in the existing radio
+  owner. No second task drives SDIO. SANA traffic, scans and association are
+  quiesced and fenced before maintenance; the shared SDMMC arbiter still grants
+  bounded slices to storage. Resource version and size are checked explicitly.
+- Validate an owned immutable image against a trusted manifest/digest before
+  BEGIN. Validate C6 chip/app format, exact length, device/revision, partition
+  capacity, Hosted compatibility and anti-rollback/security policy. A hash
+  supplied alongside an untrusted download is not authenticity.
+- Discover the actual P4 and C6 flash capacities and partition tables through
+  their respective read-only backends. Never derive a live layout from build
+  defaults. Render proportional partition extents and gaps in the GUI, with
+  labels, offsets, sizes, types, encryption and active/update roles. An imported
+  table is a provenance-labelled preview only, not active-slot or capacity
+  evidence. Refuse writes for missing/ambiguous layout, overlap, out-of-bounds
+  targets or unknown partition policy. CLI exposes the same layout data.
+- Reuse the pinned protobuf format and persistent UID ledger. Never replay
+  an ambiguously delivered BEGIN, WRITE or END. WRITE has no offset: retrying
+  can duplicate bytes. Correlation needs both UID and response ID.
+- BEGIN may erase the fallback. Failure/cancellation after it means an
+  incomplete update, not restored firmware. Never send END as cleanup.
+  END sets boot selection before its restart timer can fail: any failed or
+  lost END completion is commit-unknown. A successful END acknowledgement is
+  only waiting-for-reboot; installation requires fresh identity and health.
+- A missing recovery proof is a refused write, not a command-line override.
+  Recovery evidence must refer to the actual device and layout. Do not infer
+  installed rollback from the candidate's build configuration.
+- OTA acquisition uses existing AROS network/TLS facilities, not a parallel
+  Wi-Fi stack. Download and freeze the complete verified image before stopping
+  the C6 used to obtain it. Transport OTA (SDIO delivery) and remote HTTPS
+  acquisition are distinct capabilities and acceptance claims.
+- P4 updates need a deliberately designed privileged flash interface. The
+  current P4 layout has no inactive app slot; do not assume atomic swap or
+  redefine an in-place write as rollback-safe OTA. Bootloader, partition table,
+  NVS and storage remain separately authorized targets.
+
+## Delivery and normative acceptance
+
+### M1: Shared foundation and read-only preflight
+
+Dependencies: none; native tool build depends on the existing AROS SDK.
+
+- M1-A1: Exact pinned OTA request/response codecs pass positive and malformed,
+  duplicate, correlation, capacity and alias tests on O0/O2 with sanitizers.
+- M1-A2: Shared transaction engine proves no retry, cancellation boundaries,
+  exact byte accounting, single lease release, no END cleanup and the
+  distinction between acknowledged, commit-unknown and installed in mocks.
+- M1-A3: CLI and GUI invoke the same read-only image check. Actual C6 app,
+  wrong hash, wrong chip, bootloader, truncation and malformed structure are
+  accepted/rejected as appropriate; native RV32-SMP build succeeds. Read-only
+  acceptance must not claim target compatibility or successful updating.
+- M1-A4: One capability registry and source-linked frontend parity gate have
+  both positive and deliberately divergent counter-probes. Builds cannot
+  substitute for interactive GUI acceptance.
+- M1-A5: Bounded partition parser accepts identified table inputs and rejects
+  overlap, overflow, malformed/unterminated records and oversized capacity.
+  CLI lists the same extents the GUI renders graphically. Imported previews
+  are visibly distinguished from detected installed layouts.
+
+### M2: Native owner maintenance backend
+
+Dependencies: M1; audited live C6 layout/protocol and secured recovery evidence.
+
+- M2-A1: Versioned maintenance API owns requests and sources through terminal
+  completion; exclusive lease fences live SANA clients, prevents transport
+  re-entry and releases storage slices. Close/cancel/owner loss are tested.
+- M2-A4: Actual C6 capacity, table and selected/running slot are discovered;
+  both frontends use them to show and validate update targets. Changing a
+  qualified table changes the view and permitted extent without rebuilding
+  the application. Missing or inconsistent discovery prevents BEGIN.
+- M2-A2: Real BEGIN/WRITE/END use the existing owner and non-reused UID ledger.
+  Fault injection covers lost ACK, short read, peer reset, timeout and END
+  failure after selection. None produces success or automatic retry.
+- M2-A3: Freshly recovered actual C6 accepts one qualified image. Postboot
+  identity, UART privacy, SDIO startup/MAC/scan and recovery proof refer to
+  exact installed bytes, not merely a version banner or build.
+
+### M3: Usable C6 CLI and GUI updates, including OTA acquisition
+
+Dependencies: M2; qualified AROS networking and trusted release metadata.
+
+- M3-A1: Both frontends support check, explicit update, acknowledged byte
+  progress, safe cancel and postboot result; close during update remains safe.
+  CLI failures have nonzero return codes; GUI does not collapse uncertain
+  commit into failed-with-no-change or installed-success.
+- M3-A2: Both accept a local image and authenticated remote HTTPS acquisition
+  with bounded size, exact length and trusted digest/signature validation.
+  Failed TLS, changed image, wrong target and missing manifest cannot write.
+- M3-A3: Real CLI and freshly synchronized GUI update/recovery qualification
+  passes on JC1060; unaffected SD/desktop/touch and WLAN behavior are measured.
+
+### M4: P4 Kickstart/module update backend
+
+Dependencies: M1 interfaces; explicit P4 layout/recovery design, not implicit M2.
+
+- M4-A1: Board profile and exact flash layout select permitted targets; coupled
+  core/BSP compatibility and package bounds are validated before writes.
+- M4-A2: Local and OTA-acquired updates share CLI/GUI actions and backend;
+  interruption/recovery and real cold-boot tests use identified hardware and
+  immutable backups. No protection boundary is bypassed for convenience.
+
+## Risks, migration and verification
+
+This is additive; existing AROS WLAN tools and production firmware remain
+unchanged until an explicitly qualified update is deployed. First deliveries
+may expose preflight while refusing update, but cannot close M2 or M3. Mock
+tests prove their stated model only, not Exec, SDIO, flash timing or hardware
+rollback. Keep default-disabled credential/privacy gates unchanged. SHA-256
+detects corruption relative to trusted input, not publisher identity by itself.
+No release publication or repository protection change is included here.
+There is no measured end-to-end duration or committed completion estimate.
+
+## Decision changes
+
+2026-10-10: Fabian requires adaptive flash layouts and graphical partition
+display. Added M1-A5/M2-A4 and the read-only discovery/provenance boundary;
+hardcoded profile diagrams cannot satisfy installed-layout acceptance.

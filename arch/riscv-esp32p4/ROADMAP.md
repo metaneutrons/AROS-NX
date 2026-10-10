@@ -117,6 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | Read-only foundation build verified; imported preview and isolated update models host tested; no hardware acceptance | Live P4/C6 layout/active-slot discovery, serialized owner maintenance, secured recovery, real CLI/GUI update and HTTPS acquisition; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1261,6 +1262,27 @@ packed native structs. RPC control and Ethernet frames use separate dispatch.
 Acceptance: startup/version handshake, MAC query, station association,
 bidirectional referenced frames, timeout/cancel and disconnect recovery. A
 reference firmware example building is not evidence of AROS transport.
+
+### N2M - board maintenance and adaptive flash layouts
+
+Requirements and normative gates are in
+[the board-tool plan](../../docs/plans/esp32-board-tool.md). Shared CLI/MUI
+INFO, CHECK-C6 and imported LAYOUT preview build for RV32-SMP. Both frontends
+use the same registry; UPDATE-C6 is explicitly unavailable, not a successful
+stub. The proportional GUI derives extents from validated input, not hardcoded
+board diagrams. Supplied capacity and imported provenance are visible; active
+slots and update permissions are not inferred. Tiny spans have minimum visual
+weight; exact offsets/sizes remain in tooltips and CLI output.
+
+M1 source/host/build foundations are verified within their stated limits;
+native CLI/MUI interaction remains untested. The isolated OTA codec and gated
+transaction engine are not linked to a live owner backend. M2 requires actual
+device capacity/table/slot discovery and exclusive maintenance/traffic fencing.
+Pinned Hosted has no stock partition/active-slot query: a compatible backend
+extension must be designed, not replaced with candidate build defaults. M3
+real updates and authenticated remote acquisition, and M4 privileged P4 core/
+module updating remain open. Conditional C6 write authority still requires
+secured recovery; no new hardware interaction is authorized by this status.
 
 ### N2 - native AROS WLAN device
 
@@ -36047,3 +36069,66 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   exact P4 identity/full-span backup and paired deployment for credential-free
   scan after fresh coordinated C6 startup; then resolve C6 privacy/recovery and
   real association/DHCP/frames/reconnect/1800s shared-load/GUI acceptance.
+
+### 2026-10-10 - N2M read-only CLI/MUI foundation and adaptive layout preview
+
+- Identity/config: source parent51f72cba41, feature/esp32p4-wifi. Native
+  RV32-SMP tool target workbench-tools-esp32board-quick, current generated
+  includes/Developer SDK. Shared operation registry and asynchronous read-only
+  worker; updates disabled. Reuses AROS WirelessManager's existing SHA-256.
+  Isolated Hosted OTA codec follows pinned d5184217... protobuf IDs/UIDs.
+- Procedure/result: invalidate every object in the exact generated ESP32Board
+  directory; fresh gmake target finishes exit0 and links Tools/ESP32Board.
+  First earlier build failed on nonexistent exec/messages.h; remove that
+  include before the successful fresh build, rather than accepting stale output.
+  Final app96668B SHA-256
+  e66762f22878a7c430a096cad9ef547197e441860e1d8c369496927d7a8c3085.
+  Final native log has no error:/warning: signature; build process exit0 was
+  observed independently. OTA codec and transaction engine also compile as
+  freestanding RV32 objects, exit0; they are not integrated into live transport.
+- Host verification: actual C6 format/hash source17 cases, partition parser26
+  cases, OTA codec161 checks and update engine212 checks at each O0/O2 with
+  ASan/UBSan, all process exits0. Engine freestanding import guard passes.
+  Shared frontend source parity guard passes and rejects three deliberately
+  divergent in-memory counter-probes. It is not a runtime CLI/GUI test or
+  conditional-compilation proof. Review corrected overstrict image padding
+  and non-app size alignment rules; nonzero app padding and unaligned data
+  size are now positive cases, unaligned app size remains rejected.
+  GUI dispatch ignores queued actions while the worker owns its message and
+  drains replies independently of GUI input; close retains outstanding work.
+  Independent review found a close event could enter Wait after completion;
+  check completion before Wait, add a negative source guard and rebuild fresh.
+  Final independent source review found no remaining concrete blocker in
+  the frontend IPC/renderer and engine delta; it did not execute Exec or hardware.
+- Candidate inputs: offline C6 app1105312B SHA-256
+  149ec760ce40bbf159d1d780f001f44de19477b5076e40a91a15764410ce0b86;
+  partition table3072B SHA-256
+  0241fa0d2e573dee86756e39fb4181e61ff7218087619cab565b602df55954d6.
+  Table preview uses explicitly supplied4MiB, not installed capacity evidence.
+  MD5 record framing is checked, not its digest; trusted whole-table SHA-256
+  is the preview integrity check. Imported data cannot establish active slots,
+  free gaps, encryption enforcement or permissible write targets.
+- Transaction boundaries: preflight booleans are trusted caller attestations,
+  not authentication/digest computations. Exclusive lease/source revalidation
+  precede BEGIN; no retry or END cleanup; only acknowledged bytes advance
+  progress. Failed/lost END is commit-unknown; ACK means reboot pending, not
+  installed. Fresh identity/health and successful lease release are required
+  for installed confirmation. Adapters must impose finite callback deadlines;
+  mock request bounds do not prove actual SDIO wall time or recovery.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/
+  wifi-2026-10-10/board-tool.zbCtbC archives final app, RV32 objects and logs.
+  ESP32Board-final is the accepted final build; ESP32Board retains the
+  superseded96968B pre-close-correction artifact, not a deployment candidate.
+  native-build.log SHA-256
+  e21971610eaf43c730cf4df37b8125aa7b512020e4b9db68855edfa03571a94f;
+  layout-tests.log SHA-256
+  e56910393721adef23fc92e05fdcfa154329c6c5d65cc6fb991f0739a936f9f0;
+  update-tests.log SHA-256
+  afe2987b5f03c91290dc54cd196fe8fe98e51a2eb48c1cd83bf50b8af3a1c2ec.
+- Safety/remaining/next: no serial open, reset, flash, SD write, credentials or
+  new hardware test. Read-only checks are not full image loadability/security
+  validation. M1 native interaction remains open; M2 actual P4/C6 layout/slot
+  discovery, owner-maintenance ABI and secured recovery are next. Stock pinned
+  Hosted lacks layout queries; candidate defaults cannot substitute. Actual
+  C6 updating, HTTPS acquisition and P4 updates remain unavailable; GUI visual
+  acceptance needs fresh readiness. Existing AROS tools still manage WLAN.

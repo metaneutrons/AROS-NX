@@ -1,5 +1,24 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Board maintenance foundation (2026-10-10): `Tools/ESP32Board` builds for
+RV32-SMP with shared CLI/MUI read-only C6 image checks and an adaptive graphical
+partition-table preview. Imported extents, labels, offsets, sizes, types and
+flags determine the view; gaps are unlisted/reserved, not assumed free space.
+Capacity is explicitly supplied, not detected; active/update roles are unknown.
+Live P4/C6 layout discovery, owner maintenance transport, secured recovery and
+actual local/HTTPS-acquired updates remain open. UPDATE-C6 fails explicitly.
+No board, flash, serial or credential action accompanied this development.
+Requirements: [board-tool plan](../../docs/plans/esp32-board-tool.md), roadmap N2M.
+CLI examples (not yet executed on hardware):
+
+    ESP32Board ACTION INFO
+    ESP32Board ACTION CHECK-C6 IMAGE app.bin SHA256 <trusted-64-hex-digest>
+    ESP32Board ACTION LAYOUT TABLE partition-table.bin SHA256 <trusted-digest> FLASHMB 4
+    ESP32Board GUI
+
+The digest must come from trusted metadata. File/hash acceptance is neither
+publisher authentication nor installed-target compatibility/recovery proof.
+
 WLAN bootimage development (2026-10-10): explicit JC1060 WLAN image targets
 now consume the native overlay and exclude saved build Env-Archive preferences.
 Stock source Wanderer preferences and ABI add five files (83-file overlay).

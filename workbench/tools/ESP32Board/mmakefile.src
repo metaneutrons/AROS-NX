@@ -1,0 +1,19 @@
+# Makefile to build the ESP32 board maintenance prototype.
+
+include $(SRCDIR)/config/aros.cfg
+
+FILES := main worker check_file image hash layout layout_file layout_gui
+
+USER_CPPFLAGS += \
+    -I$(SRCDIR)/workbench/network/WirelessManager/src \
+    -I$(SRCDIR)/workbench/network/WirelessManager/src/crypto \
+    -I$(SRCDIR)/workbench/network/WirelessManager/src/utils
+
+#MM- workbench-tools : workbench-tools-esp32board
+#MM  workbench-tools-esp32board : includes linklibs
+
+%build_prog mmake=workbench-tools-esp32board \
+    progname=ESP32Board targetdir=$(AROSDIR)/Tools \
+    files=$(FILES) uselibs="mui"
+
+%common
