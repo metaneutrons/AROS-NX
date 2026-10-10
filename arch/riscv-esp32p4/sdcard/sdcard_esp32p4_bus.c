@@ -54,6 +54,7 @@ static ULONG p4sd_fifo_trace_budget = 24;
 #endif
 
 #include "../sdmmc/dma.h"
+#include "../sdmmc/command.h"
 #define p4sd_dma_desc ((struct P4HostDMADesc *)P4SD_PRIV(bus)->host->dma_desc)
 #define p4sd_bounce (P4SD_PRIV(bus)->host->bounce)
 #define P4SD_DESC_OWN P4HOST_DESC_OWN
@@ -642,6 +643,56 @@ enum p4sd_request_state
     P4SD_IDLE
 };
 
+/* Non-data commands use the shared motor. Card policy and response-tag
+ * publication remain in this client, including CMD12 -> CMD13 confirmation.
+ * Data commands retain the legacy diagnostics/recovery until separately
+ * migrated; no data command can select this adapter. Caller owns the host. */
+static ULONG p4sd_command_only(struct sdcard_Bus *bus, ULONG index,
+                               ULONG argument, ULONG rsp_type,
+                               struct TagItem *response)
+{
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    struct P4HostCommand request;
+    struct P4HostCommandResult result;
+
+    memset(&request, 0, sizeof(request));
+    request.slot = 0;
+    request.generation = priv->host_generation;
+    request.index = index;
+    request.argument = argument;
+    request.response_flags = rsp_type;
+    /* Preserve legacy card-status policy: no generic R1 mask is added here. */
+    if (!priv->host->command(priv->host, &request, &result))
+    {
+        bug("[P4SD%02u] shared CMD%u failed: status=%u started=%u "
+            "raw=%08x idmac=%08x\n", bus->sdcb_BusNum, index,
+            (unsigned)result.status, (unsigned)result.started,
+            result.raw, result.idstatus);
+        if (priv->host->dma_faulted ||
+            priv->host_generation != priv->host->generation ||
+            index == MMC_CMD_STOP_TRANSMISSION)
+            priv->host_ready = FALSE;
+        return (ULONG)-1;
+    }
+    if (index == MMC_CMD_STOP_TRANSMISSION && !p4sd_confirm_tran(bus))
+    {
+        priv->host_ready = FALSE;
+        return (ULONG)-1;
+    }
+    if (response && (rsp_type & MMC_RSP_PRESENT))
+    {
+        if (rsp_type & MMC_RSP_136)
+        {
+            ULONG *words = (ULONG *)(IPTR)response->ti_Data;
+            if (words)
+                memcpy(words, result.response, sizeof(result.response));
+        }
+        else
+            response->ti_Data = result.response[0];
+    }
+    return 0;
+}
+
 static ULONG p4sd_send_cmd_locked(struct TagItem *tags, struct sdcard_Bus *bus)
 {
     ULONG command_index = GetTagData(SDCARD_TAG_CMD, 0, tags);
@@ -686,6 +737,16 @@ static ULONG p4sd_send_cmd_locked(struct TagItem *tags, struct sdcard_Bus *bus)
             bus->sdcb_BusNum, command_index);
         return (ULONG)-1;
     }
+
+    /* Preserve CMD12/13 start/state samples in an already-active diagnostic
+     * CMD18 trace. Normal builds dispatch every non-data command below. */
+    if (data_len == 0
+#if P4_SDCARD_TRACE
+        && !p4sd_trace.active
+#endif
+       )
+        return p4sd_command_only(bus, command_index, argument, rsp_type,
+                                  response);
 
     if (data_len != 0)
     {

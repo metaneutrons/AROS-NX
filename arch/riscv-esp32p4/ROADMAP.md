@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; shared initialization host tested/build verified` | Shared DMA, command candidate and initialization have independent source/model checks and RV32 builds. ABI5 adds a sticky first-initialization marker; SD joins without implicitly resetting a previously attempted host. Neither client invokes the new command engine yet; recovery, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; no-data SD adapter host tested/build verified` | Shared DMA, command candidate and initialization have independent source/model checks and RV32 builds. ABI5 adds a sticky first-initialization marker. SD now dispatches non-data commands to the resource, retaining card stop confirmation and active diagnostic traces. Data/radio integration, recovery, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -273,11 +273,22 @@ must handle arbitrary-length frame tails above this layer; this remains open.
 SDIO interrupt bits are preserved by low16 W1C, and every wait has time/poll
 bounds. A request must explicitly opt into the storage-only slot0 CMD18 early
 descriptor workaround. Card recovery remains the client responsibility.
-This candidate is exposed by private resource ABI5 but not invoked by SD/radio;
+This candidate is exposed by private resource ABI5; SD now invokes it for
+non-data commands, while data/radio integration remains open;
 matched RV32 resource/SD builds verify version5, size212 and callback108.
 Its RV32 build, independent source review and independently repeated modeled
 tests pass (20 cases, 2,001,069 checks each at O0/O2 with ASan/UBSan).
-Client command integration remains open. Global controller initialization now
+The first client slice dispatches non-data requests only after the existing
+readiness, command-index and media-mutation checks. It passes saved generation,
+slot0 and the full response flags without adding new generic R1 policy. CMD12
+still confirms TRAN/ready through recursive CMD13 before response publication.
+Failures invalidate SD readiness when shared fault/generation changes or an
+unconfirmed stop demands it. Data paths and fault injection remain unchanged;
+an active diagnostic CMD18 trace retains legacy CMD12/13 start/state sampling.
+Extracted-adapter O0/O2 sanitizer models pass13 cases/266 checks each, and
+matched RV32 builds pass; no hardware acceptance. Full SendCmd dispatch is
+structurally audited, not executed by that fixture.
+Global controller initialization now
 moves from p4sd_host_init into p4host_reset, including a bounded CTRL reset
 and common FIFO/timeout/DMA/IRQ defaults. SD only triggers the first reset when
 initialization_started is false; joining an initialized host preserves the peer through
@@ -26753,6 +26764,71 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   reassembly, UID correlation and station lifecycle are not implemented.
   Next: integrate shared SD command semantics, then bounded radio enumeration
   and transport/RPC using the installed firmware, before SANA-II qualification.
+
+### 2026-10-10 - N0 non-data SD adapter host tested/build verified
+
+- State: candidate host tested/build verified, parent3f12f11bab in
+  /Volumes/Dev/Build/aros-esp32p4-wifi, isolated JC1060-v2/SMP build
+  /Volumes/Dev/Build/aros-esp32p4-wifi-build. No private ABI/layout change.
+- Implementation: no-data SD commands now use host->command under the existing
+  recursive transaction ownership, after readiness/index/denylist checks.
+  Request carries slot0, saved generation and full response flags; no added
+  card error mask. Response tags/R2 buffers publish only after success; CMD12
+  also requires the existing recursive CMD13 TRAN/ready confirmation.
+  Shared fault/generation change or failed stop disables SD readiness.
+- Boundaries: existing data loop, receive-only policy, CMD18 recovery and
+  build-only fault injection remain. Active diagnostic CMD18 traces bypass
+  the new no-data dispatch to preserve CMD12/13 start/state samples. This is
+  an explicit temporary diagnostic exception, not common data integration.
+- Verification: initial normal SD quick build exit0 (session15624). Final
+  matched resource/SD builds, extracted-adapter tests and independent source
+  review are running; sizes/hashes and acceptance remain pending.
+- Safety: no serial/device access, core/package, flash, C6 write or SD mutation.
+  No hardware equivalence is inferred. Next: finish verification, then migrate
+  data/error/diagnostic semantics and qualify shared-host/card recovery before
+  enabling C6 probing on the integrated production baseline.
+- Final matched build: session33892 actual exit0, kernel-esp32p4sdmmc-quick
+  and kernel-sdcard-quick, P4_BOARD=jc1060p470c-v2/SMP, no diagnostic flag change.
+  Actual affected private-header consumers rebuilt. Resource48,500B SHA-256
+  `df4adcf612c421bcf21e06175b908ccf5afcfec99f15eaa8ac5cd1ef009ba2f1`
+  (unchanged, engine code unchanged); SD125,424B SHA-256
+  `9f4200cdad98d19fdf1cdf0f2935ac11c195911a61ad48068170f8aafd139a47`.
+- Primary independently repeats tools/test-sd-command-adapter.py, actual exit0:
+  strict O0/O2 ASan/UBSan each13 cases/266 checks. It executes the actual
+  adapter/denylist and command/result type definitions; host callbacks,
+  confirmation, private/bus state and memory helpers are fixture stand-ins.
+  The full SendCmd body is structurally audited, not executed; recursive
+  semaphore/controller/card behavior is not proven by this fixture.
+  Adapter-body SHA-256
+  `c5b6fd57b6fad65d5ea370abc93243c8912bf4dfbd7ed4b91e9918ce3d55f9ae`;
+  fixture
+  `e41b716a2e2bf7be6a335145e9eca63cb6fdfe75412b765590af5b30449d8888`;
+  runner
+  `9cf82a6399aebca892a46f72f2dad7819c9344b0a48841f518f713f289c32f96`.
+  Initial fixture strict builds exposed shadowed globals; fixed before final
+  runs. Import bytecode output was removed and disabled in the final runner.
+  Primary command-engine regressions (session68388) exit0,20 cases/2,001,069
+  checks each O0/O2; ownership/init regression repeats exit0,25 cases/400,338
+  checks each O0/O2. These are host models, not a loaded-module pass.
+- Independent source review finds no material regression in adapter failure
+  invalidation, trace bypass or CMD12 publication. Reviewer corrects stale
+  HEAD/path labels from its first report and confirms the current parent
+  `3f12f11babe3a53d64bb88050d638702f60b9f7f` and exact adapter-body hash above.
+  Diagnostic trace.active persists after a successful traced read; the
+  temporary diagnostic bypass therefore preserves all intervening no-data
+  legacy samples, not only CMD12/13. Production builds do not take that bypass.
+- Next-pin source evidence: primary verifies local official IDF v6.0.1 at
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/bin/esp32p4-riscv/Ports/esp-idf/esp-idf-v6.0.1.
+  soc/esp32p4/include/soc/soc_caps.h distinguishes slot0 IOMUX from slot1
+  GPIO Matrix; gpio_sig_map.h maps CLK output0, CMD input/output1, D0..3
+  input/output2..5. esp_hal_sd/esp32p4/sdmmc_periph.c has no native slot1
+  pins. esp_driver_sdmmc/src/sd_host_sdmmc.c:1091-1148 configures CMD/data
+  input-output and CLK output, disables pulldown; optional pulls exclude CLK.
+  esp_hal_gpio/gpio_hal.c:48-68 selects GPIO function and matrix routing.
+  No pin/MMIO implementation or physical voltage/pullup confirmation follows.
+  Preserve other pads/slot0 state; a second client still requires shared-host
+  recovery/re-enumeration qualification. PR71 remains OPEN (checked this turn);
+  production baseline integration is required before any deployment.
 
 ## Evidence-entry template
 
