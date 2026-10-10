@@ -43,9 +43,11 @@ of build-tree preferences before this overlay may be integrated.
 The package lookup is fixed to SYS:System/Network/AROSTCP. Neutral
 netdb-myhost/static-routes replace the source package's fixed sample LAN;
 DHCP applies gateway/DNS dynamically. Prefs/WiFi now honors PATH_DHCLIENT_DB
-through POSIX stdio, with the same /T default as dhclient. Its existing final
-lease-block selection is still not interface-specific; qualify/correct that
-before first-use acceptance. Credential transmission remains gated.
+through POSIX stdio, with the same /T default as dhclient. Complete lease
+records now match the exact interface/current IP and cannot borrow options
+from other records;144 extracted-helper checks pass each O0/O2 sanitized.
+Expiry is not yet evaluated, so historical matching values remain an open
+review issue before first-use acceptance. Credential transmission remains gated.
 
 `python3 make-wifi-defaults.py NEW_DIRECTORY` generates fixed, credential-free
 preferences for native `DEVS:Networks/esp32p4wlan.device`, unit0 and DHCP.

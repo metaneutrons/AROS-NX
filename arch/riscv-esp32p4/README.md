@@ -1,5 +1,16 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WLAN lease-selection development (2026-10-10): generic 6d06770289 is integrated.
+Prefs/WiFi selects the last complete lease matching the exact interface and
+kernel-reported address; options cannot cross records. Duplicate identities
+are rejected. Static gateway lookup respects interface rows, continuations,
+case-insensitive GW= and the configured database. Actual-source host tests
+pass144 checks each O0/O2 ASan/UBSan plus5 source guards. Fresh native app
+141332B builds successfully. Lease expiry is not yet evaluated: a matching
+record can still be historical, and does not prove installed global route/DNS.
+That review issue remains open before first-use acceptance. No hardware or
+credentials; bootimage, C6 recovery/privacy and WLAN qualification remain open.
+
 WLAN lease-path correction (2026-10-10): generic 0517b53be9 is integrated.
 Prefs/WiFi uses PATH_DHCLIENT_DB or DHCP's /T/dhclient.leases default through
 the existing POSIX C runtime, not raw DOS Open. Actual reader tests pass265
