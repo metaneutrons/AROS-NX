@@ -158,6 +158,10 @@ The independently implemented ESP-Hosted serial TLV codec now validates
 RPCRsp/RPCEvt envelopes (116 checks each O0/O2 with ASan/UBSan and standalone
 RV32 compilation). It does not parse protobuf, reassemble fragments or execute
 RPC; its 4096-byte payload cap is defensive local policy, not a vendor limit.
+Bounded RX serial reassembly is now being implemented independently. The pinned
+C6 sender advances sequence numbers per fragment, whereas its reverse receive
+path expects matching numbers; RX and TX policy must not be conflated. Other
+interfaces may appear between serial fragments. No runtime transport is enabled.
 The installed firmware is unchanged. The older
 `cheops/JC1060P470C_I_W` package is Fabian's selected WLAN reference:
 the profile declares P4-side slot1 CLK18/CMD19/D0-3=14-17 without enabling

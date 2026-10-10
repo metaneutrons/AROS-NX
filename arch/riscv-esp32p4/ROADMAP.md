@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 response timeout` | Corrected CD route reads0xbe/CDETECT0 but same CMD5 timeout persists. Independent IDF-only reference build passes; review requires coordinated rail-off before deployment because IDF startup does not quiesce retained display DMA. Await fresh physical readiness; do not flash over active scanout. Startup/electrical cause, SD integrity, coexistence and C6 compatibility remain open. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; RX reassembly started` | Wire/TLV baseline regressions pass. Pinned C6 RX-facing sender uses advancing per-fragment sequence; bounded reassembly implementation started. Reverse direction differs. No runtime transport; N0, compatibility, credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -498,8 +498,12 @@ Its4096-byte protobuf cap is local defensive policy, not the vendor frame
 limit. Messages larger than one1536-byte Hosted frame require transport
 fragmentation/reassembly, not a larger wire-frame allowance. Strict O0/O2
 sanitizer tests pass116 checks each and the standalone RV32 object compiles.
-Protobuf semantics, UID correlation, fragmentation, credits and live RPC remain
-unimplemented; these pure helpers are not linked into a driver.
+Bounded RX reassembly implementation has started: pinned C6 sender advances
+sequence per fragment, splits at1500 payload bytes and clears MORE_FRAGMENT on
+the final fragment. Reverse receive code expects equal sequences, so this RX
+policy must not be reused for TX. Other-interface frames may interleave; only
+serial fragments belong to this state. Protobuf semantics, UID correlation,
+credits and live RPC remain unimplemented; these helpers are not in a driver.
 
 Streaming RX can concatenate packets: PACKET_LEN is cumulative modulo2^20,
 not one frame's size. The codec's1536-byte bound is per frame, not per batch.
@@ -29493,6 +29497,35 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   AROS baseline remain unchanged. Next: await readiness, coordinate all power
   sources, then verify backup/identity and perform bounded reference capture.
   No WLAN/SD/display acceptance is inferred from this review.
+
+### 2026-10-10 - N1 pinned fragment contract and RX reassembly implementation started
+
+- Hardware comparison remains waiting for fresh coordinated rail-off readiness;
+  no board access. Primary continues bounded software work, not a substitute
+  for N0 or real WLAN association/DHCP/data qualification.
+- Independent pinned-source extraction plus primary direct source inspection:
+  cheops/JC1060P470C_I_W6304eddef32a33aa9d9a85e971e39dfb24c3cca3,
+  app_main.c617-658 serial_write_data increments16-bitseq inside each fragment
+  loop, max1500 payload, MOREbit0 exceptfinal. iftypeSERIAL3/ifnum0.
+  protocomm_pserial.c269-306 runs serialized request/event handling; other
+  interface traffic can interleave in transport. SDIO writer
+  sdio_slave_api.c444-454 zeroes header then fills interface/length/offset/seq/
+  flags; reserved serial packet byte remains0. No vendor/GPL implementation
+  is copied. Reverse C6 process_serial_rx_pkt expects equal sequences; do not
+  generalize outbound-C6 behavior to host TX or claim installed compatibility.
+- Baseline before addition: tools/test-hosted-serial.py reports nativeO0/O2
+  each116 checks and RV32 compilation exit0, object5316B/679ca689…;
+  tools/test-hosted-wire.sh eachO0/O2 ASan/UBSan157,590 checks. Terminal95335
+  exits0; serial runner records every step exit0/PASS. Evidence root
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/`,
+  serial-before-fragments.log SHA65814f200b9cd057882a83c094f799b7fe64723a2c2a070715760dfecdf1b8b6,
+  wire-before-fragments.log SHA484ff0455b4fc19872bd71f69fa57a4ee109578a3c6f4dd1f735ec8e3e11f3c5.
+- Delegated isolated implementation: fixed4108-byte caller-owned RX state,
+  bounded fragment count/time policy, modulo16-bitsequence and unsigned tick
+  elapsed checks, no output until complete TLV validation. Main owns review,
+  verification and documentation. This is started, not tested or runtime linked.
+- Next: independent review plus strict native sanitizer/RV32 tests; runtime
+  still depends on real C6 identification and shared-host qualification.
 
 ## Evidence-entry template
 
