@@ -98,16 +98,26 @@ void app_main(void)
         idle_forever();
     }
 
-    result = sdmmc_host_set_card_clk(SDIO_SLOT, SDMMC_FREQ_PROBING);
-    print_result("clock-set", result);
-    if (result != ESP_OK) {
-        idle_forever();
-    }
-
+    /* IDF 6.0.1 legacy API-order workaround: set_card_clk marks READY
+     * before clk_src is initialized. Let the first transaction initialize
+     * the default probing clock, then verify it before requesting an OCR.
+     * This is pinned implementation behavior, not a documented API guarantee.
+     */
     sdmmc_command_t command = {0};
     result = send_command("cmd0", MMC_GO_IDLE_STATE, 0,
                           SCF_CMD_BC | SCF_RSP_R0, &command);
     if (result != ESP_OK) {
+        idle_forever();
+    }
+
+    int real_freq_khz = 0;
+    result = sdmmc_host_get_real_freq(SDIO_SLOT, &real_freq_khz);
+    print_result("clock-verify", result);
+    printf("[sdio-ref] clock_actual_khz=%d maximum_khz=%u\n",
+           real_freq_khz, (unsigned) SDMMC_FREQ_PROBING);
+    if (result != ESP_OK || real_freq_khz <= 0 ||
+        real_freq_khz > SDMMC_FREQ_PROBING) {
+        printf("[sdio-ref] probing clock invalid; CMD5 withheld\n");
         idle_forever();
     }
 

@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 response timeout` | Corrected CD route reads0xbe/CDETECT0 but same CMD5 timeout persists. Independent IDF-only reference build passes; review requires coordinated rail-off before deployment because IDF startup does not quiesce retained display DMA. Await fresh physical readiness; do not flash over active scanout. Startup/electrical cause, SD integrity, coexistence and C6 compatibility remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 timeout; corrected IDF instrument build verified` | Quiesce park passes31 stable readbacks/30.896s, not rail-off. First IDF run fails before CMD0; API-order workaround builds, not deployed. Original flash restored but retained parent F20M gate stays off; minimal DSI correction recovers PLL/harts/graphics updates in31.008s headless capture, not visual acceptance. Next corrected bounded comparison/verified return. C6 identity, SD integrity/coexistence and WLAN remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; RX reassembly host tested` | Bounded RX helper passes312 strict sanitized checks each O0/O2 and RV32 compilation. Complete checksummed frame-to-event-TLV fixture passes. Reverse TX direction differs; no runtime transport. N0, compatibility, credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -218,10 +218,39 @@ still times out identically. An IDF-only control probe is implemented to
 distinguish native-driver behavior from the unchanged radio/hardware state.
 It uses public driver APIs, CMD0 then at most three CMD5(arg0) requests at
 400kHz/one-bit on slot1. Silicon-specific build passes; safe deployment review
-requires coordinated complete rail-off before measurement, because IDF startup
-does not quiesce retained AROS display DMA. Fresh physical readiness is requested;
-no diagnostic image has been deployed. It does not initialize storage or change
-C6 firmware. CMD0 nevertheless changes SDIO protocol state.
+requires complete rail-off or separately verified scanout quiescence, because
+IDF startup does not quiesce retained AROS display DMA. The first actual IDF
+run now fails at clock-frequency calculation before CMD0; CMD5 was never reached.
+It does not qualify C6 identification, native-versus-IDF behavior or WLAN.
+The instrument does not initialize storage or change C6 firmware. CMD0 would
+nevertheless change SDIO protocol state if reached.
+An opt-in pre-PSRAM AROS park now calls the existing scanout quiesce
+and never starts Exec, package loading, the second hart or graphics. It retains
+the normal timer-fed watchdog. READY requires ten successful100-tick intervals
+and repeated channel-off, released-reset, DPI-clock-off and bridge-off readbacks;
+any failed readback or wait latches FAIL until reboot. Source/host results cannot
+replace the required complete first-byte hardware capture and continuity check.
+Strict host tests and RV32 image validation pass. A complete30.896s JC1060
+capture now passes31 stopped samples, ten timed intervals and later READY,
+normal watchdog and no further ROM reset. This verifies the known scanout
+handover, not physical rail-off or all DMA engines. The bridge register-clock
+force-on is reenabled after its chip reset solely for readback access.
+The original full core span was restored and independently read back exactly,
+but both AROS return boots fail DSI PLL lock despite healthy PSRAM/both harts.
+Graphics restoration is not accepted; resolve retained clock state and the
+IDF instrument assertion before further comparison. Physical readiness is
+not assumed. No SD writes, bootloader/table/volume or C6 firmware changes.
+The IDF6.0.1 API-order workaround builds and passes image validation but has
+not been deployed: let the first CMD0 initialize the default probing clock,
+then verify a positive frequency no greater than400kHz before CMD5. This does
+not fix IDF itself. Its removal gate is a successful uncompensated first
+transaction against a corrected driver. The display-return audit identifies
+REF_CLK_CTRL2 bit8: IDF startup clears the F20M output gate,
+whereas AROS previously enabled only DSI-local gates. The opt-in
+P4_DSI_PARENT_CLOCK_TRACE measures gate0 with correct divider23 before B3.
+The minimal OR-only parent enable now restores PLL lock and accepted graphics
+updates in one complete31.008s headless return. No visual, sustained or
+physical-cold acceptance; corrected IDF comparison still pending.
 No firmware incompatibility inference or WLAN acceptance is justified yet.
 Enumeration alone cannot prove
 ESP-Hosted compatibility or working WLAN.
@@ -29573,6 +29602,131 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   shared-host concurrency or WLAN association/DHCP/data/reconnect acceptance.
 - Next: safe reference comparison after readiness, then actual runtime SDIO
   transport/credits and bounded RPC integration; qualify complete WLAN path.
+
+### 2026-10-10 - N0 quiesce handover passes; IDF assertion and graphics return fail
+
+- Worktree /Volumes/Dev/Build/aros-esp32p4-wifi, feature/esp32p4-wifi,
+  parent37e8bfa3aa plus this change. Independent Luna reviews cover the
+  bounded park and retained-clock source audit; primary verifies their source
+  evidence and repeats the extracted-source tests. Production worktree untouched.
+- Diagnostic park is opt-in P4_REFERENCE_QUIESCE_PARK=1, immediately after
+  existing quiesce and before PSRAM/Exec/package/secondary-hart startup. Normal
+  timer-fed6000ms watchdog stays enabled. Only bridge register-clock force-on
+  is reenabled after chip reset; DPI output, bridge and GDMA remain stopped.
+  READY requires ten successful100-tick waits and all live stop readbacks;
+  any fault stays latched, including after READY. Host tests exercise both
+  optimizations with ASan/UBSan, transient register/wait faults, native-word
+  tick wrap, post-READY failure and conflicting-build guards. Host wrap is
+  not a32-bit hardware-wrap observation.
+- Full kernel build exited2 on unrelated missing muimaster_strings.h; an
+  initial direct link omitted target variables and failed the SMP guard.
+  Clean kernel objects, successful quick build and explicit target link
+  generated a valid SRAM-checked image. Build flags JC1060-v2, XIP,
+  CPU360MHz, PSRAM200MHz, C3/C4 enabled, park enabled. First174160-byte
+  park image564202b8… was never deployed. Corrected register-gate park is
+  174160 bytes, SHA-25639ce408bde307d4f4ddd67ee55a5affa91f9358c3f33ee9017b44e94a71c6e82.
+  Strict primary v2 test log SHA-256
+  1356c223355b0e79b7bcdef550d2cdb3d53f615eb137921ac82077cd6dacad1c,
+  exit0; image checksum/hash valid, silicon revisions100..199.
+- Verified connected JC1060 MAC80:f1:b2:d3:3b:a6, P4v1.3. Twice read the
+  entire affected core erase span0x20000..0x4efff,192512 bytes, identical
+  SHA-25610657e107ca25cee8675b4c0acca7874b0593936e40ce895e02a69ca4be9aa5d.
+  Original189984-byte core prefix is bbc265fad7b4e18a15b67fcea7dcf029edb671bc88387eac91050b837f92cf68.
+  Park write and independent readback exited0, exact39ce408b… match.
+- Evidence root /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10;
+  quiesce-handover/boot.log first-byte capture exited0, complete30.896133s,
+  5783 bytes, SHA-256558275d6c31d694f68e399ae10128eefaae2518b8b05440fd65d626508b0222a.
+  All31 readback pairs: channel0, reset0x100 (unrelatedbit8), clock0x423
+  (DPIbit7off), bridge0. Intervals0..9 observing,10 READY and continued
+  stopped readbacks. One commanded USB reset; no additional ROM/reset,
+  FAIL/trap/Alert/Guru or PSRAM/Exec startup. Known scanout handover passes;
+  no physical rail-off, all-DMA or visible-display qualification inferred.
+- IDF app188992 bytes, SHA-2568c2144f999ca87a943e84ced92bcdb2f340af068bd1805be4c330c7b208c1596,
+  explicitly written only0x20000 with independent matching readback; exits0.
+  idf-boot.log capture exit0, complete20.780064s,1580545 bytes, SHA-256
+  f414e585c671c25f2429d9ea209b811b123d5e15f9262fe5cd49c1998712da1d.
+  173 ROM banners,172 clock-source assertions/software resets. Host/slot
+  init and clock-set report ESP_OK; first transaction fails before hardware
+  CMD0, CMD5 never reached. This is an instrument failure, not a C6 response
+  or firmware-compatibility finding. The failed reset loop was then stopped
+  by restoring AROS; no silent repetition accepted as a pass.
+- Original entire192512-byte span restored only at0x20000, independent
+  full-span readback identical10657e10…; restore/readback exits0.
+  restored-boot.log exit0, complete30.969386s,23368 bytes, SHA-256
+  5db6a5415e43385bbebdd19b8a90c611369754e69ff9db0020482c8ce3666f57.
+  Unchanged-image repeat restored-repeat.log exit0, complete31.025387s,
+  23533 bytes, SHA-25672d330aa176c7edcbf9ce89b546b85392e2357b16e264d6eeb5b641cf9ed247e.
+  Both recover32MB PSRAM at200MHz, watchdog and both harts/41 modules but
+  DSI PLL fails with PHY0x1528. Backlight stays safe off; graphics return
+  FAIL. Exact flash restoration is not proof of retained peripheral recovery.
+- IDF6.0.1 source8c19b156… explains the assertion: legacy set_card_clk
+  marks freq_state READY while calloc-initialized clk_src remains0; first
+  transaction queries real frequency instead of initializing its source.
+  Matched ELF symbolization agrees. API-only workaround now omits the
+  premature call and verifies actual positive<=400kHz after CMD0, withholding
+  CMD5 otherwise. IDF root-fix/removal remains separate and unaccepted.
+  Fresh external build-v2/sdkconfig-v2 exits0, valid silicon100..199 image,
+  DIO80MHz/16MB/CPU360MHz/USB console/PSRAM disabled:189168 bytes,
+  SHA-25691512905cb18a923e5b958cb9c61df833d05cb5ea74dc189402ab8e1bac25a49.
+  This corrected instrument is NOT deployed; no new command result claimed.
+- Source-only display audit: IDF esp_clk_tree_initialize clears F20M output
+  gate for CHIP_USB_UART_RESET, and official rev1 DSI setup reenables it.
+  AROS previously opens local DSI gates without restoring parent bit8 at
+  0x500e602c. Candidate, not measured cause. Preparing read-only trace of
+  REF_CLK_CTRL1(0x500e6028), CTRL2 and local CLK_CTRL03 before B3.
+  Diagnostic190016-byte core1611c2b0c65fcef0368ef45ecb433e4bde4c918e6e96d7295f5c0b5f4288cefb
+  builds with clean kernel objects, SRAM/image checks; verified MAC and wrote
+  only0x20000, independently identical readback, all exits0. Capture exit0,
+  complete20.997970s/23507 bytes, parent-clock-boot.log SHA-256
+  d34ed322a42254626fbb70a7512213275b4d60093ed6151e64eaea5f0e410ac2:
+  ref1=0x40170503 (divider23), ref2=1 (F20M bit8 OFF), local0x420 and
+  repeated PLL failure. This measures the missing parent gate; the original
+  pre-IDF parent state was not captured, so no before/after register claim.
+  Minimal source correction now ORs only that named bit before local DSI
+  setup, preserving all other gates/dividers. Next: independently review and
+  verify graphics return, then safely quiesced bounded IDF comparison.
+- Safety: no bootloader/table/NVS/BSP/development-volume/SD/C6 writes.
+  C6 firmware preserved. No WLAN, SD-integrity/coexistence, rail-off or
+  visible-frame acceptance. No further IDF deployment until graphics return
+  is resolved; fresh readiness remains mandatory for physical/sight tests.
+
+### 2026-10-10 - N0 display parent-clock dependency restored on JC1060
+
+- Same worktree/parent and unchanged BSP41 modules as the preceding entry.
+  Read-only trace confirms parent F20M output gate0 with divider23. Added
+  P4_HP_REF_20M_CLK_EN bit8 and one OR-only RMW before DSI-local clocks in
+  dsi_phy.c, matching official IDF6.0.1 rev<3 DSI source enable. No divider,
+  PLL, panel table or pixel-timing change. Independent source review finds
+  no concrete defect; primary verifies register layout and official sequence.
+- Clean kernel objects before rebuild; quick build exit0, SRAM-residency
+  check and actual image generation succeed; valid checksum/hash and revision
+  bounds100..199. Flags JC1060-v2/C3/C4/XIP/CPU360/PSRAM200,
+  P4_DSI_PARENT_CLOCK_TRACE=1, park OFF. Corrected core190016 bytes,
+  SHA-256dea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0.
+  Verified exact MAC before writing only0x20000; write/readback/cmp exits0,
+  independent readback byte-identical. Original192512-byte rollback span
+  remains backed up as10657e10… from the preceding entry.
+- Evidence root wifi-2026-10-10/ under the preceding absolute directory:
+  parent-gate-fix-{quick,link,write,readback,boot}.log, core/readback.bin
+  and timing.jsonl. First-byte capture process exit0, complete31.008089s,
+  14334 bytes; boot log SHA-256
+  4a2da0fd45a7bc21417b7b1e05ecce8720ad2af760bee144b79fd1b309bd297e.
+  One commanded CHIP_USB_UART_RESET only; no further ROM/reset/FAIL/trap/
+  Alert/Guru. PSRAM32MB200MHz, watchdog6000ms, hart1 online/cpus2,
+  41 modules, PHY0x15bd locked/lanes stopped, B3 passed and graphics updates
+  accepted through update256. Touch polling heartbeats observed, not an
+  interactive touch pass. Before-call trace correctly still shows gate0;
+  it is not a post-write register measurement.
+- This controlled gate-only change restores headless graphics initialization
+  from the measured retained failure state. Visible frames, sustained DMA,
+  physical cold cycles and multi-cycle foreign-firmware handover remain open.
+  No user sight/physical interaction requested or claimed. C6/BSP/volume/SD/
+  bootloader/table untouched. Final extracted-park tests on current source
+  also exit0; log SHA-256b10ca1f1a7b32b3986776db01752686d7ac1c87a779db429009d628e01b89a0d.
+- Next: safely quiesced corrected IDF CMD0/CMD5 comparison, independent
+  rollback readback and actual return capture; then native identification.
+  API-order workaround remains named, not IDF root-fixed or hardware accepted.
+  WLAN goal remains open, no association/DHCP/data/coexistence result.
 
 ## Evidence-entry template
 

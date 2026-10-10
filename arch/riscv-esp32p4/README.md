@@ -93,10 +93,34 @@ the observed failure. An independent ESP-IDF-only reference probe is now
 implemented under `tools/idf-sdio-reference`: slot1, one-bit,400kHz,
 CMD0 and at most three CMD5(arg0) attempts through the official driver.
 It does not initialize a card, enable functions or change C6 firmware.
-Its silicon-specific build passes (P4 revisions1.0-1.99); safe deployment
-review requires coordinated rail-off before measurement: IDF startup does
-not quiesce AROS-retained display DMA. No diagnostic firmware has been deployed;
-it is not an AROS driver or a WLAN qualification result.
+Its silicon-specific build passes (P4 revisions1.0-1.99). IDF startup does
+not quiesce AROS-retained display DMA. The opt-in
+`P4_REFERENCE_QUIESCE_PARK=1` AROS handover diagnostic now passes strict host
+tests, RV32 image validation and a complete30.896s JC1060 capture:31 stopped
+readbacks, READY only after ten timed intervals, watchdog alive and no further
+reset. It parks before PSRAM/Exec and forces only the bridge register clock.
+This is not a physical cold boot or an all-DMA qualification.
+The subsequent IDF reference run fails before CMD0 at an official-driver
+clock-frequency assertion; CMD5 was never reached. It cannot compare native
+CMD5 behavior or identify C6 firmware. The original entire core erase span is
+restored and independently verified. Two restored AROS boots recover32MB PSRAM
+and both harts, but fail DSI PLL lock; graphics restoration is not accepted.
+Those failed returns remain recorded; the parent-clock correction below
+restores headless graphics startup. No WLAN qualification follows; C6 firmware
+remains unchanged.
+The IDF API-order workaround now builds and passes image validation
+(189,168 bytes, SHA-25691512905cb18a923e5b958cb9c61df833d05cb5ea74dc189402ab8e1bac25a49);
+it is not deployed. It lets CMD0 initialize the probing clock and checks the
+reported frequency before CMD5. An opt-in read-only trace measures the parent
+F20M gate OFF with the correct /24 divider. AROS now enables that parent before
+the local DSI gates, matching the official rev1 driver. The190016-byte corrected
+core dea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0
+is written/readback verified; complete31.008s headless capture recovers PLL lock,
+32MB PSRAM, both harts,41 modules and accepted graphics updates, without a
+further reset/trap/alert. This is one headless return, not a visual, sustained
+or physical-cold gate. The trace is before the correction and may still report
+the prior gate value. Next: corrected bounded IDF comparison with safe
+quiescence and verified AROS return, then native C6 identification.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device

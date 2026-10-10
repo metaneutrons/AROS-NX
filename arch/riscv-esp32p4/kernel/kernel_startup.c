@@ -5017,6 +5017,17 @@ static void krnP4PanelProbe(void)
             return;
         }
 
+#ifdef P4_DSI_PARENT_CLOCK_TRACE
+        /* Read only: distinguish the parent F20M output gate/divider from
+           the DSI-local reference gate after a foreign firmware handover. */
+        krnP4PutStr("[dsi-parent] ref1=");
+        krnP4PutHex32(p4_r32(P4_HP_SYS_CLKRST_BASE + 0x28));
+        krnP4PutStr(" ref2=");
+        krnP4PutHex32(p4_r32(P4_HP_SYS_CLKRST_BASE + P4_HP_REF_CLK_CTRL2));
+        krnP4PutStr(" local=");
+        krnP4PutHex32(p4_r32(P4_CLKRST_PERI_CLK_CTRL03));
+        krnP4PutC('\n');
+#endif
         r = krnP4DsiPhyUp(&dsi);
 
         krnP4PutStr("[dsi]    ldo ");
@@ -7187,6 +7198,57 @@ void kernel_cstart(unsigned long hartid, void *fdt)
      */
 #ifndef P4_NO_QUIESCE
     krnP4ScanoutQuiesce();
+#endif
+
+#ifdef P4_REFERENCE_QUIESCE_PARK
+#if defined(P4_NO_QUIESCE) || defined(P4_KEEP_WATCHDOG) || defined(P4_NO_WATCHDOG)
+#error "Reference park requires quiesce and the normal timer-fed watchdog"
+#endif
+    /* This diagnostic never starts PSRAM, Exec, secondary hart or graphics.
+       Keep the normal timer/watchdog path alive. A USB reset alone is not
+       quiescence evidence; require every live readback and timed interval.
+       READY qualifies this scanout handover only, never physical rail-off or
+       unrelated DMA engines. Any failure is latched until the next boot. */
+    {
+        unsigned int samples = 0;
+        int failed = 0;
+
+        /* The chip reset in quiesce resets this register-access gate to 0.
+           Enable only register access, not DPI/bridge production, before
+           inspecting the stopped bridge. */
+        p4_w32(P4_DSI_BRG_BASE + P4_DSI_BRG_CLK_EN, P4_DSI_BRG_CLK_EN_BIT);
+        krnP4PutStr("[qpark] diagnostic before PSRAM/Exec; no graphics restart\n");
+        for (;;)
+        {
+            uint32_t channel = p4_r32(P4_DMAC_CHEN);
+            uint32_t reset = p4_r32(P4_CLKRST_HP_RST_EN0);
+            uint32_t clock = p4_r32(P4_CLKRST_PERI_CLK_CTRL03);
+            uint32_t bridge = p4_r32(P4_DSI_BRG_BASE + P4_DSI_BRG_EN);
+            unsigned long tick;
+
+            if ((channel & P4_DMAC_CH1_EN) ||
+                (reset & (P4_RST_EN_GDMA | P4_RST_EN_DSI_BRG)) ||
+                (clock & P4_DSI_DPICLK_EN) ||
+                (bridge & P4_DSI_BRG_DSI_EN))
+                failed = 1;
+
+            krnP4PutStr("[qpark] channel="); krnP4PutHex32(channel);
+            krnP4PutStr(" reset="); krnP4PutHex32(reset);
+            krnP4PutC('\n');
+            krnP4PutStr("[qpark] clock="); krnP4PutHex32(clock);
+            krnP4PutStr(" bridge="); krnP4PutHex32(bridge);
+            krnP4PutC('\n');
+            krnP4PutStr("[qpark] intervals="); krnP4PutDec(samples);
+            krnP4PutStr(failed ? " FAIL\n" :
+                         samples == 10 ? " READY\n" : " observing\n");
+
+            tick = krnTimerTicks();
+            if (!krnTimerWait(100) || krnTimerTicks() - tick < 100)
+                failed = 1;
+            if (samples < 10)
+                ++samples;
+        }
+    }
 #endif
 
     {

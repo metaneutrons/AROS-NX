@@ -720,6 +720,15 @@ ifdef P4_NO_QUIESCE
 P4_DEBUG_CPPFLAGS += -DP4_NO_QUIESCE
 endif
 
+# Diagnostic-only handover to the independent IDF SDIO probe. Park before
+# PSRAM/Exec/package initialization; require repeated live stop readbacks.
+ifeq ($(P4_REFERENCE_QUIESCE_PARK),1)
+P4_DEBUG_CPPFLAGS += -DP4_REFERENCE_QUIESCE_PARK
+endif
+ifeq ($(P4_DSI_PARENT_CLOCK_TRACE),1)
+P4_DEBUG_CPPFLAGS += -DP4_DSI_PARENT_CLOCK_TRACE
+endif
+
 # P4_SCANOUT_SECS=n bounds how long B5 leaves the scanout running; 0 is
 # indefinite.  A scanout that outlives its boot has made this board unbootable
 # twice, because the GDMA survives a CPU reset and keeps reading PSRAM while the

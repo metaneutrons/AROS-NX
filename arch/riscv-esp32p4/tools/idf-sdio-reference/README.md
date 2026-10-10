@@ -8,12 +8,35 @@ CMD52/CMD53, SD data writes or C6 firmware programming is performed.
 CMD0 **does change protocol state** and can interrupt an existing C6 session.
 No successful OCR is inferred from a failed transaction.
 
+## IDF 6.0.1 API-order workaround
+
+The initial instrument called `sdmmc_host_set_card_clk()` before CMD0.
+IDF's legacy wrapper marks the slot frequency READY without initializing its
+clock source, so the first transaction asserts while calculating frequency,
+before transmitting CMD0. The instrument now lets that first transaction
+initialize the default probing clock, then queries `sdmmc_host_get_real_freq()`
+and withholds CMD5 unless the result is positive and no greater than400kHz.
+This is a pinned-IDF implementation workaround, not a documented API guarantee
+or an IDF root fix. Its removal gate requires an uncompensated first-transaction
+test against a corrected driver. Build validation does not establish that
+CMD0/CMD5 reached the hardware. Restore graphics before another comparison.
+
 ## Before deployment
 
-- Obtain fresh user readiness and coordinate complete rail-off. A USB/EN
-  reset is not proof that retained display DMA has stopped. IDF startup
-  does not invoke its restart-path DMA reset routine. Do not run this
-  diagnostic directly over an active AROS scanout session after USB reset.
+- Use coordinated complete rail-off (fresh physical readiness required), or
+  a separately hardware-verified scanout quiescence procedure. A USB/EN reset
+  alone is not proof that retained display DMA has stopped. IDF startup does
+  not invoke its restart-path DMA reset routine. Do not run this diagnostic
+  directly over an active AROS scanout session after USB reset.
+- The alternative AROS candidate is `P4_REFERENCE_QUIESCE_PARK=1`, which stops
+  scanout and parks before PSRAM/Exec/package initialization. Before accepting
+  handover, capture its actual first-byte boot and all samples0..10, ten timed
+  intervals, READY and later continued stopped readbacks. Any FAIL, missing
+  sample, unexpected reset/trap/alert or missing complete capture rejects
+  handover even if READY appeared earlier. Review the raw channel/reset/clock/
+  bridge values, not only the READY string. Keep the normal timer-fed watchdog.
+  Source/host tests are not hardware permission. This proves only the known
+  AROS scanout stop procedure, not physical rail-off or all DMA engines.
 - Verify JC1060 MAC `80:f1:b2:d3:3b:a6`, P4 revision1.3 and image hash.
 - Independently back up and verify the whole rounded core erase span.
   The diagnostic app and restored AROS core may have different lengths.
