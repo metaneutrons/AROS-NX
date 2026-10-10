@@ -24,6 +24,7 @@ run_generated() {
 		GENDIR="$task_tmp/gen" \
 		CURDIR=tools/crosstools/gnu \
 		AROS_TOOLCHAIN=gnu \
+		AROS_TOOLCHAIN_RELEASE=0 \
 		CROSSTOOLSDIR=/tmp/gnu-candidate \
 		AROS_DEVELOPER=/tmp/aros-developer \
 		HOSTDIR=/tmp/aros-host \
@@ -74,6 +75,11 @@ assert_not_contains 'classic Binutils cannot receive release compile bindir' "$c
 assert_not_contains 'classic Binutils preserves optional host zstd detection' "$classic" '--with-zstd'
 assert_not_contains 'classic Binutils has no explicit private zstd selection' "$classic" 'ZSTD_LIBS='
 assert_contains 'classic Binutils stamp is unchanged' "$classic" 'binutils-install-stamp=/tmp/gnu-candidate/.installflag-binutils-2.47-riscv64'
+assert_contains 'classic GCC stamp is unchanged' "$classic" 'gcc-install-stamp=/tmp/gnu-candidate/.installflag-gcc-16.2.0-riscv64'
+assert_contains 'classic GDB stamp is unchanged' "$classic" 'gdb-install-stamp=/tmp/gnu-candidate/.installflag-gdb-7.9'
+assert_contains 'classic GCC configure state is unchanged' "$classic" 'gcc-configure-stamp=/tmp/aros-host-gen/tools/crosstools/gnu/gcc/.configured'
+assert_contains 'classic libatomic configure state is unchanged' "$classic" 'libatomic-configure-stamp=/tmp/aros-host-gen/tools/crosstools/gnu/gcc/riscv64-aros/libatomic/.configured'
+assert_contains 'classic libatomic install state is unchanged' "$classic" 'libatomic-install-stamp=/tmp/aros-host-gen/tools/crosstools/gnu/gcc/riscv64-aros/libatomic/.installed'
 assert_not_contains 'classic Binutils stamp has no release suffix' "$classic" '-release-zstd-'
 classic_binutils_child=$(run_generated generated-binutils-build-args "crosstools-binutils--pkgdir=$task_tmp/child-make")
 assert_contains 'classic Binutils child make has no compile bindir override' "$classic_binutils_child" 'build-bindir='
@@ -170,6 +176,17 @@ release_binutils_child=$(run_generated generated-binutils-build-args AROS_GNU_RE
 assert_contains 'release Binutils child make receives directory-form bindir' "$release_binutils_child" 'build-bindir=/aros-toolchain/'
 assert_contains 'release Binutils explicitly requires zstd support' "$release" '--with-zstd'
 assert_contains 'release Binutils stamp invalidates old host dependency selection' "$release" 'binutils-install-stamp=/tmp/gnu-candidate/.installflag-binutils-2.47-riscv64-release-zstd-1.5.7'
+assert_contains 'release GCC cannot reuse classic installation' "$release" 'gcc-install-stamp=/tmp/gnu-candidate/.installflag-gcc-16.2.0-riscv64-release-layout-v1-sdk-0'
+assert_contains 'producer GCC cannot reuse complete SDK installation' "$automatic_release" 'gcc-install-stamp=/tmp/gnu-candidate/.installflag-gcc-16.2.0-riscv64-release-layout-v1-sdk-1'
+assert_contains 'release GDB cannot reuse classic installation' "$release" 'gdb-install-stamp=/tmp/gnu-candidate/.installflag-gdb-7.9-release-layout-v1'
+for package in gcc gmp binutils gdb; do
+	assert_contains "release $package cannot adopt classic configure state" "$release" "$package-configure-stamp=/tmp/aros-host-gen/tools/crosstools/gnu/release-layout-v1/sdk-0/$package/.configured"
+done
+assert_contains 'producer GCC configure state selects its header closure' "$automatic_release" 'gcc-configure-stamp=/tmp/aros-host-gen/tools/crosstools/gnu/release-layout-v1/sdk-1/gcc/.configured'
+assert_contains 'producer zstd scratch state follows release context' "$automatic_release" 'zstd-build-dir=/tmp/aros-host-gen/tools/crosstools/gnu/release-layout-v1/sdk-1/zstd'
+assert_contains 'release libatomic configure state is isolated' "$release" 'libatomic-configure-stamp=/tmp/aros-host-gen/tools/crosstools/gnu/release-layout-v1/sdk-0/gcc/riscv64-aros/libatomic-sdk-0/.configured'
+assert_contains 'release libatomic install state is isolated' "$release" 'libatomic-install-stamp=/tmp/aros-host-gen/tools/crosstools/gnu/release-layout-v1/sdk-0/gcc/riscv64-aros/libatomic-sdk-0/.installed'
+assert_contains 'producer libatomic uses its own SDK closure state' "$automatic_release" 'libatomic-install-stamp=/tmp/aros-host-gen/tools/crosstools/gnu/release-layout-v1/sdk-1/gcc/riscv64-aros/libatomic-sdk-1/.installed'
 assert_contains 'release Binutils configure uses private zstd headers' "$release" 'ZSTD_CFLAGS="-I/tmp/aros-host-gen/tools/crosstools/gnu/gnu-builddeps/zstd/include"'
 assert_contains 'release Binutils configure uses private library flags, not a nested archive' "$release" 'ZSTD_LIBS="-L/tmp/aros-host-gen/tools/crosstools/gnu/gnu-builddeps/zstd/lib -lzstd"'
 assert_contains 'private zstd headers survive nested configure make boundary' "$release_binutils_child" 'build-zstd-cflags=-I/tmp/aros-host-gen/tools/crosstools/gnu/gnu-builddeps/zstd/include'
@@ -235,7 +252,11 @@ done
 for layout in no yes; do
 	candidate="$task_tmp/candidate-$layout"
 	mkdir -p "$candidate"
-	touch "$candidate/.installflag-gcc-16.2.0-riscv64"
+	stamp="$candidate/.installflag-gcc-16.2.0-riscv64"
+	if [ "$layout" = yes ]; then
+		stamp="$stamp-release-layout-v1-sdk-0"
+	fi
+	touch "$stamp"
 	run_generated tools-crosstools-gcc \
 		AROS_GNU_RELEASE_LAYOUT="$layout" CROSSTOOLSDIR="$candidate" \
 		GCC_VERSION=16.2.0 GCC_PATH=/unused TOOLDIR="$task_tmp/unused" \
@@ -253,33 +274,128 @@ done
 # The custom all-gcc command must export the same variables as generic builds.
 # Use the actual generated recipe with a harmless child makefile, not a copied
 # command assembled by this test.
-child_gcc="$task_tmp/actual-child/tools/crosstools/gnu/gcc"
-mkdir -p "$child_gcc"
-# The dollar signs below must survive into the child make recipe.
-# shellcheck disable=SC2016
-{
-	printf '%s\n' '.PHONY: all-gcc install-gcc' 'all-gcc:'
-	printf '\t@printf "actual-metadata-layout=%%s\\n" "$$AROS_GCC_RELEASE_LAYOUT"\n'
-	printf '\t@printf "actual-metadata-build-root=%%s\\n" "$$AROS_GCC_RELEASE_BUILD_ROOT"\n'
-	printf '\t@printf "actual-metadata-source-root=%%s\\n" "$$AROS_GCC_RELEASE_SOURCE_ROOT"\n'
-	printf '%s\n' 'install-gcc:'
-	printf '\t@:\n'
-} > "$child_gcc/Makefile"
-for layout in no yes; do
+for layout in no yes producer; do
+	selector=0
+	actual_layout=$layout
+	if [ "$layout" = producer ]; then
+		selector=1
+		actual_layout=yes
+	fi
+	child_gcc="$task_tmp/actual-child/tools/crosstools/gnu"
+	if [ "$actual_layout" = yes ]; then
+		child_gcc="$child_gcc/release-layout-v1/sdk-$selector"
+	fi
+	child_gcc="$child_gcc/gcc"
+	mkdir -p "$child_gcc"
+	# The dollar signs below must survive into the child make recipe.
+	# shellcheck disable=SC2016
+	{
+		printf '%s\n' '.PHONY: all-gcc install-gcc' 'all-gcc:'
+		printf '\t@printf "actual-metadata-layout=%%s\\n" "$$AROS_GCC_RELEASE_LAYOUT"\n'
+		printf '\t@printf "actual-metadata-build-root=%%s\\n" "$$AROS_GCC_RELEASE_BUILD_ROOT"\n'
+		printf '\t@printf "actual-metadata-source-root=%%s\\n" "$$AROS_GCC_RELEASE_SOURCE_ROOT"\n'
+		printf '%s\n' 'install-gcc:'
+		printf '\t@:\n'
+	} > "$child_gcc/Makefile"
 	candidate="$task_tmp/actual-candidate-$layout"
 	mkdir -p "$candidate"
+	# A classic marker must not bypass the release all-gcc/install-gcc commands.
+	if [ "$actual_layout" = yes ]; then
+		touch "$candidate/.installflag-gcc-16.2.0-riscv64"
+	fi
+	if [ "$layout" = producer ]; then
+		touch "$candidate/.installflag-gcc-16.2.0-riscv64-release-layout-v1-sdk-0"
+	fi
 	actual_child=$(run_generated tools-crosstools-gcc \
-		AROS_GNU_RELEASE_LAYOUT="$layout" CROSSTOOLSDIR="$candidate" \
+		AROS_GNU_RELEASE_LAYOUT="$actual_layout" AROS_TOOLCHAIN_RELEASE="$selector" CROSSTOOLSDIR="$candidate" \
 		HOSTGENDIR="$task_tmp/actual-child" GCC_VERSION=16.2.0 GCC_PATH=/unused \
 		TOOLDIR="$task_tmp/unused" IF=if TEST=test SED=: TOUCH=touch \
 		MKDIR='mkdir -p' CP=cp)
-	if [ "$layout" = yes ]; then
+	if [ "$actual_layout" = yes ]; then
 		assert_contains 'actual all-gcc exports metadata mode' "$actual_child" 'actual-metadata-layout=yes'
 		assert_contains 'actual all-gcc exports build root' "$actual_child" "actual-metadata-build-root=$test_dir/fixture"
 		assert_contains 'actual all-gcc exports source root' "$actual_child" "actual-metadata-source-root=$source_root"
+		test -f "$candidate/.installflag-gcc-16.2.0-riscv64-release-layout-v1-sdk-$selector"
+		test -f "$candidate/.installflag-gcc-16.2.0-riscv64"
 	else
 		assert_not_contains 'classic actual all-gcc does not enable metadata mapping' "$actual_child" 'actual-metadata-layout=yes'
 	fi
+done
+
+# Exercise the actual debugger guard without fetching or building GDB. Both
+# layouts start with a classic marker; only release must run the child targets.
+gdb_child="$task_tmp/gdb-child"
+mkdir -p "$gdb_child"
+{
+	printf '%s\n' '.PHONY: crosstools-gdb--fetch crosstools-gdb--build_and_install-quick' \
+		'crosstools-gdb--fetch:'
+	printf '\t@printf "actual-gdb-fetch\\n"\n'
+	printf '%s\n' 'crosstools-gdb--build_and_install-quick:'
+	printf '\t@printf "actual-gdb-install\\n"\n'
+} > "$gdb_child/mmakefile"
+for layout in no yes; do
+	candidate="$task_tmp/gdb-candidate-$layout"
+	mkdir -p "$candidate"
+	touch "$candidate/.installflag-gdb-7.9"
+	actual_gdb=$(cd "$gdb_child" && run_generated tools-crosstools-gdb \
+		AROS_GNU_RELEASE_LAYOUT="$layout" CROSSTOOLSDIR="$candidate" \
+		HOSTGENDIR="$task_tmp/gdb-unused" IF=if TEST=test RM=: TOUCH=touch)
+	if [ "$layout" = yes ]; then
+		assert_contains 'release debugger fetch is not skipped by classic marker' "$actual_gdb" 'actual-gdb-fetch'
+		assert_contains 'release debugger install is not skipped by classic marker' "$actual_gdb" 'actual-gdb-install'
+		test -f "$candidate/.installflag-gdb-7.9-release-layout-v1"
+	else
+		assert_not_contains 'classic debugger retains installed reuse' "$actual_gdb" 'actual-gdb-'
+	fi
+done
+
+# Run the real generated configure guards with a harmless configure fixture.
+# Old classic .configured markers must not satisfy the release object paths.
+configure_root="$task_tmp/configure-probe"
+mkdir -p "$configure_root/top/tools/crosstools/gnu" "$configure_root/top/config" "$configure_root/source"
+cp "$test_dir/fixture/config/make.cfg" "$configure_root/top/config/make.cfg"
+touch "$configure_root/top/tools/crosstools/gnu/mmakefile" "$configure_root/input-ready"
+{
+	printf '%s\n' '#!/bin/sh' 'set -eu' 'printf "actual-configure-executed\n"'
+} > "$configure_root/source/configure"
+chmod +x "$configure_root/source/configure"
+for package in gcc libatomic; do
+	if [ "$package" = gcc ]; then
+		mmake=crosstools-gcc-
+		classic_dir="$configure_root/gen/tools/crosstools/gnu/gcc"
+		release_dir="$configure_root/gen/tools/crosstools/gnu/release-layout-v1/sdk-0/gcc"
+	else
+		mmake=tools-crosstools-gcc-libatomic
+		classic_dir="$configure_root/gen/tools/crosstools/gnu/gcc/riscv64-aros/libatomic"
+		release_dir="$configure_root/gen/tools/crosstools/gnu/release-layout-v1/sdk-0/gcc/riscv64-aros/libatomic-sdk-0"
+	fi
+	mkdir -p "$classic_dir"
+	touch "$classic_dir/.configured"
+	for layout in no yes producer; do
+		selector=0
+		actual_layout=$layout
+		if [ "$layout" = producer ]; then
+			selector=1
+			actual_layout=yes
+			if [ "$package" = gcc ]; then
+				release_dir="$configure_root/gen/tools/crosstools/gnu/release-layout-v1/sdk-1/gcc"
+			else
+				release_dir="$configure_root/gen/tools/crosstools/gnu/release-layout-v1/sdk-1/gcc/riscv64-aros/libatomic-sdk-1"
+			fi
+		fi
+		actual_configure=$(run_generated "$mmake-configure" \
+			AROS_GNU_RELEASE_LAYOUT="$actual_layout" AROS_TOOLCHAIN_RELEASE="$selector" HOSTGENDIR="$configure_root/gen" \
+			TOP="$configure_root/top" "$mmake-touchfileflag=$configure_root/input-ready" \
+			"$mmake-cfg-srcdir=$configure_root/source" "$mmake-init-env=:" \
+			"$mmake-cfg-env=" IF=if TEST=test RM='rm -f' TOUCH=touch \
+			MKDIR='mkdir -p' FOR=for NOP=: ECHO=echo Q=@)
+		if [ "$actual_layout" = yes ]; then
+			assert_contains "release $package selector $selector executes configure despite prior state" "$actual_configure" 'actual-configure-executed'
+			test -f "$release_dir/.configured"
+		else
+			assert_not_contains "classic $package keeps its valid configure state" "$actual_configure" 'actual-configure-executed'
+		fi
+	done
 done
 
 printf '%s\n' 'GNU release-layout GenMF and make expansion probes passed.'

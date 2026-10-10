@@ -47,6 +47,15 @@ Release mode also supplies `AROS_GCC_RELEASE_LAYOUT=yes` and the actual build/so
 
 The native GNU producer replaces both legacy C `collect-aros` destinations with the Rust collector before recording the collector receipt or publishing a completed candidate. That collector resolves sibling tools from its manifests and receives the SDK from the caller. The separate classic C-collector/SDK-install path is unchanged.
 
+Release host packages use a separate `release-layout-v1/sdk-<selector>` object directory;
+classic paths remain unchanged. GCC and GDB also use layout-versioned install
+markers, and GCC additionally keys its marker by SDK selector. A classic marker
+or selector-0 GCC state cannot skip a selector-1 release installation. Libatomic's
+actual configure/install state additionally separates SDK selectors `0` and `1`.
+The generated-recipe regression executes these guards against seeded classic
+state; it is not a full compiler build. Do not alternate install layouts in one
+candidate payload: qualification still requires a fresh complete native build.
+
 This is source-generation and recipe work, not strict-prefix closure qualification. The native producer's `AROS_TOOLCHAIN_RELEASE=1` selector enables this mode automatically; the producer must still provide repro maps. `test-release-layout.sh` runs GenMF and GNU make over the actual generated recipes and host configure environment, but it does not build GNU packages or scan a candidate. `test-header-closure.sh` checks macro expansion only; it does not prove the complete native MetaMake closure or a successful GNU build. A fresh complete native build, strict package scan, package read-back and compatibility tests remain required after the metadata correction. A failed earlier build or a partial installed GCC is not a completed release candidate.
 
 From the source root, run the header-closure and parameter probes with:

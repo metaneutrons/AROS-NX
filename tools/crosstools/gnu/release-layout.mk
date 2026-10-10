@@ -28,6 +28,7 @@ GNU_CONFIGURE_SYSROOT := --with-sysroot=$(AROS_DEVELOPER)
 GNU_GCC_BUILD_SYSROOT :=
 GNU_INSTALL_ENV :=
 GNU_BUILDDEPDIR := $(CROSSTOOLSDIR)
+GNU_HOST_OBJDIR := $(HOSTGENDIR)/$(CURDIR)
 GNU_HOST_PACKAGES_USE_CROSSTOOLSDIR := yes
 GNU_BUILDDEPS_PKG_CONFIG_ENV :=
 GNU_GMP_EXTRA_OPTS = --bindir=$(GNU_BUILDDEPDIR) --libdir=$(GNU_BUILDDEPDIR)/lib --disable-shared
@@ -49,6 +50,7 @@ ifeq ($(AROS_GNU_RELEASE_LAYOUT),yes)
 # relocate against /lib/gcc. Use a canonical neutral configure namespace;
 # the install overrides below still produce the flat candidate layout.
 GNU_CONFIGURE_PREFIX := /aros-toolchain
+GNU_HOST_OBJDIR := $(HOSTGENDIR)/$(CURDIR)/release-layout-v1/sdk-$(AROS_TOOLCHAIN_RELEASE)
 GNU_CONFIGURE_BINDIR := $(GNU_CONFIGURE_PREFIX)
 # libiberty compares directory components including their trailing separator.
 # Without this slash, flat ld looks outside the relocated package for scripts.

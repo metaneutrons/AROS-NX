@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipe corrections are being integrated on current AROS-NX main without changing SMP or board runtime. Source-level positive/negative regressions pass; a clean pinned compiler/SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipe corrections are being integrated on current AROS-NX main without changing SMP or board runtime. Independent review exposed Classic and SDK-selector state reuse; release object paths and GCC/GDB markers now distinguish their applicable contexts, with generated-recipe regressions. A clean pinned compiler/SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -222,6 +222,33 @@ change any board's hardware acceptance state.
   copyright ownership. No hardware, existing build tree or package modified.
 - Next: qualify the complete clean native SDK and P4 source contract against
   the newly integrated source, then the three-host mixed release baseline.
+
+### 2026-10-10 - TC0 classic-state reuse counter-probes
+
+- Independent review of source integration `de4a4e0e21` found that an old
+  classic GCC/GDB install marker could skip the release build/install guard.
+  Generated libatomic configure/install state also did not encode its changed
+  SDK prerequisite selector. A fresh compiler build had not exposed reuse.
+- Correction: layout-versioned GCC/GDB install markers; separate release host
+  object directories for GNU packages, including private zstd scratch state;
+  object paths and GCC markers select the compiler-only or complete SDK context.
+  Libatomic state is isolated too. Classic paths and marker
+  names remain unchanged. Candidate install layouts must not be alternated.
+- Procedure: `MAKE=gmake sh tools/crosstools/gnu/tests/test-release-layout.sh`.
+  A test-only configure executable and child makefiles run through the actual
+  GenMF-expanded guards. Seeded classic install markers cannot skip release
+  GCC/GDB; seeded classic `.configured` cannot skip release GCC/libatomic.
+  Selector-0 release GCC markers and configured GCC/libatomic state likewise
+  cannot skip selector-1 producer commands.
+  Valid classic state still avoids redundant configure/debugger installation.
+- Result: regression passed on macOS ARM64; the pre-fix release-marker
+  assertion failed for the expected reason. Header and native zstd fixture
+  regressions also passed. Fixtures are removed by the test's exit trap.
+- Safety: no existing compiler tree, SDK, firmware, board or media changed.
+  These are recipe/state-transition probes, not new compiler binaries, A/B
+  evidence or hardware qualification. TC0 remains `in development`.
+- Next: final independent review and required product CI, followed by a clean
+  source/runtime-bound compiler/SDK replay and full mixed release gates.
 
 ## Track E: ESP32-P4 / RV32 SMP
 

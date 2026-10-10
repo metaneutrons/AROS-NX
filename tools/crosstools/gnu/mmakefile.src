@@ -189,6 +189,12 @@ mpc-installflag := $(GNU_BUILDDEPDIR)/.installflag-mpc-$(MPC_VERSION)
 gcc-installflag := $(CROSSTOOLSDIR)/.installflag-gcc-$(GCC_VERSION)-$(AROS_TARGET_CPU)
 libatomic-installflag := $(CROSSTOOLSDIR)/.installflag-libatomic-$(GCC_VERSION)-$(AROS_TARGET_CPU)
 gdb-installflag := $(CROSSTOOLSDIR)/.installflag-gdb-$(GDB_VERSION)
+ifeq (yes,$(AROS_GNU_RELEASE_LAYOUT))
+# A classic installation cannot satisfy neutral-prefix staging or recorded
+# metadata remapping, even when compiler and debugger versions are unchanged.
+gcc-installflag := $(gcc-installflag)-release-layout-v1-sdk-$(AROS_TOOLCHAIN_RELEASE)
+gdb-installflag := $(gdb-installflag)-release-layout-v1
+endif
 
 #MM- tools-crosstools-gnu-m68k     : tools-crosstools-gcc crosstools-gcc
 #MM- tools-crosstools-gnu-i386     : tools-crosstools-gcc crosstools-gcc
@@ -222,7 +228,7 @@ tools-crosstools-zstd-no :
 
 ifeq (yes,$(AROS_GNU_RELEASE_LAYOUT))
 GNU_ZSTD_SOURCE := $(HOSTDIR)/Ports/host/zstd/zstd-$(ZSTD_VERSION)
-GNU_ZSTD_BUILD := $(HOSTGENDIR)/$(CURDIR)/zstd
+GNU_ZSTD_BUILD := $(GNU_HOST_OBJDIR)/zstd
 
 %fetch mmake=crosstools-zstd-fetch archive="zstd-$(ZSTD_VERSION)" suffixes=tar.gz \
 	checksums="zstd-1.5.7.tar.gz=sha256:eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3" \
@@ -256,13 +262,14 @@ endif
 tools-crosstools-gmp :
 	@$(IF) ! $(TEST) -d $(GNU_BUILDDEPDIR) \
 	    || ! $(TEST) -f $(gmp-installflag) ; then \
-	       $(RM) $(HOSTGENDIR)/$(CURDIR)/gmp/.files-touched \
+	       $(RM) $(GNU_HOST_OBJDIR)/gmp/.files-touched \
 	    && $(MAKE) -f ./mmakefile crosstools-gmp--fetch \
 	    && $(MAKE) -f ./mmakefile crosstools-gmp--build_and_install-quick \
 	    && $(TOUCH) $(gmp-installflag) ; \
 	fi
 
 %fetch_and_build mmake=crosstools-gmp package=gmp version=$(GMP_VERSION) compiler=host \
+	gendir="$(GNU_HOST_OBJDIR)" basedir= \
 	package_repo="cache:// $(GNU_REPOSITORY)/gmp" \
 	patch=yes \
 	prefix="$(GNU_BUILDDEPDIR)" usecppflags=no config_env_extra="$(GNU_GMP_REPRO_HOST_ENV) $(GNU_BUILDDEPS_PKG_CONFIG_ENV)" \
@@ -274,13 +281,14 @@ tools-crosstools-gmp :
 tools-crosstools-isl :
 	@$(IF) ! $(TEST) -d $(GNU_BUILDDEPDIR) \
 	    || ! $(TEST) -f $(isl-installflag) ; then \
-	       $(RM) $(HOSTGENDIR)/$(CURDIR)/isl/.files-touched \
+	       $(RM) $(GNU_HOST_OBJDIR)/isl/.files-touched \
 	    && $(MAKE) -f ./mmakefile crosstools-isl--fetch \
 	    && $(MAKE) -f ./mmakefile crosstools-isl--build_and_install-quick \
 	    && $(TOUCH) $(isl-installflag) ; \
 	fi
 
 %fetch_and_build mmake=crosstools-isl package=isl version=$(ISL_VERSION) compiler=host \
+	gendir="$(GNU_HOST_OBJDIR)" basedir= \
 	package_repo="$(ISL_REPOSITORY)" \
 	patch=no \
 	prefix="$(GNU_BUILDDEPDIR)" usecppflags=no config_env_extra="$(GNU_REPRO_HOST_ENV) $(GNU_BUILDDEPS_PKG_CONFIG_ENV)" \
@@ -292,13 +300,14 @@ tools-crosstools-isl :
 tools-crosstools-mpfr :
 	@$(IF) ! $(TEST) -d $(GNU_BUILDDEPDIR) \
 	    || ! $(TEST) -f $(mpfr-installflag) ; then \
-	       $(RM) $(HOSTGENDIR)/$(CURDIR)/mpfr/.files-touched \
+	       $(RM) $(GNU_HOST_OBJDIR)/mpfr/.files-touched \
 	    && $(MAKE) -f ./mmakefile crosstools-mpfr--fetch \
 	    && $(MAKE) -f ./mmakefile crosstools-mpfr--build_and_install-quick \
 	    && $(TOUCH) $(mpfr-installflag) ; \
 	fi
 
 %fetch_and_build mmake=crosstools-mpfr package=mpfr version=$(MPFR_VERSION) compiler=host \
+	gendir="$(GNU_HOST_OBJDIR)" basedir= \
 	package_repo="cache:// $(GNU_REPOSITORY)/mpfr" \
 	patch=no \
 	prefix="$(GNU_BUILDDEPDIR)" usecppflags=no config_env_extra="$(GNU_REPRO_HOST_ENV) $(GNU_BUILDDEPS_PKG_CONFIG_ENV)" \
@@ -310,13 +319,14 @@ tools-crosstools-mpfr :
 tools-crosstools-mpc :
 	@$(IF) ! $(TEST) -d $(GNU_BUILDDEPDIR) \
 	    || ! $(TEST) -f $(mpc-installflag) ; then \
-	       $(RM) $(HOSTGENDIR)/$(CURDIR)/mpc/.files-touched \
+	       $(RM) $(GNU_HOST_OBJDIR)/mpc/.files-touched \
 	    && $(MAKE) -f ./mmakefile crosstools-mpc--fetch \
 	    && $(MAKE) -f ./mmakefile crosstools-mpc--build_and_install-quick \
 	    && $(TOUCH) $(mpc-installflag) ; \
 	fi
 
 %fetch_and_build mmake=crosstools-mpc package=mpc version=$(MPC_VERSION) compiler=host \
+	gendir="$(GNU_HOST_OBJDIR)" basedir= \
 	package_repo="$(MPC_REPOSITORY)" suffixes="tar.xz tar.gz" \
 	patch=no \
 	prefix="$(GNU_BUILDDEPDIR)" usecppflags=no config_env_extra="$(GNU_REPRO_HOST_ENV) $(GNU_BUILDDEPS_PKG_CONFIG_ENV)" \
@@ -344,13 +354,14 @@ tools-crosstools-binutils :
 	@$(IF) ! $(TEST) -d $(CROSSTOOLSDIR) \
 	    || ! $(TEST) -f $(binutils-installflag) ; then \
 	       $(MAKE) -f ./mmakefile tools-crosstools-zstd-$(AROS_GNU_RELEASE_LAYOUT) \
-	    && $(RM) $(HOSTGENDIR)/$(CURDIR)/binutils/.files-touched \
+	    && $(RM) $(GNU_HOST_OBJDIR)/binutils/.files-touched \
 	    && $(MAKE) -f ./mmakefile crosstools-binutils--fetch \
 	    && $(MAKE) -f ./mmakefile crosstools-binutils--build_and_install-quick \
 		&& $(TOUCH) $(binutils-installflag) ; \
 	fi
 
 %fetch_and_build mmake=crosstools-binutils package=binutils version=$(BINUTILS_VERSION) compiler=host \
+	gendir="$(GNU_HOST_OBJDIR)" basedir= \
 	package_repo="$(GNU_REPOSITORY)/binutils" \
 	patch=yes patches_specs=$(BINUTILS_PATCHSPECS) \
 	prefix="$(CROSSTOOLSDIR)" aros_prefix="$(GNU_CONFIGURE_PREFIX)" install_env="$(GNU_INSTALL_ENV)" \
@@ -365,8 +376,8 @@ crosstools-gcc-KERNEL_CFLAGS := $(CFLAGS_FOR_TARGET) $(TARGET_ISA_CFLAGS)
 #MM
 tools-crosstools-gcc :
 	$(IF) ! $(TEST) -f $(gcc-installflag) ; then \
-	    $(MAKE) -C $(HOSTGENDIR)/$(CURDIR)/gcc all-gcc $(crosstools-gcc--make-env) \
-	    && $(MAKE) -j1 -C $(HOSTGENDIR)/$(CURDIR)/gcc install-gcc $(crosstools-gcc--install_opts) \
+	    $(MAKE) -C $(GNU_HOST_OBJDIR)/gcc all-gcc $(crosstools-gcc--make-env) \
+	    && $(MAKE) -j1 -C $(GNU_HOST_OBJDIR)/gcc install-gcc $(crosstools-gcc--install_opts) \
 	    && $(TOUCH) $(gcc-installflag) ; \
 	fi
 	@$(IF) $(TEST) -f $(gcc-installflag); then \
@@ -398,6 +409,7 @@ gnu-libatomic-cpu-linklibs-1 :
 #MM- gnu-libatomic-linklibs-1 : tools-crosstools-autolibs
 
 %fetch_and_build mmake=crosstools-gcc package=gcc version=$(GCC_VERSION) compiler=host \
+	gendir="$(GNU_HOST_OBJDIR)" basedir= \
 	hostincludes="sdk-includes-$(AROS_TOOLCHAIN_RELEASE)" \
 	package_repo="$(GCC_REPOSITORY)" suffixes="tar.xz tar.bz2 tar.gz" \
 	patch=yes prefix="$(CROSSTOOLSDIR)" aros_prefix="$(GNU_CONFIGURE_PREFIX)" install_env="$(GNU_INSTALL_ENV)" \
@@ -416,13 +428,14 @@ endif
 tools-crosstools-gdb :
 	@$(IF) ! $(TEST) -d $(CROSSTOOLSDIR) \
 	    || ! $(TEST) -f $(gdb-installflag) ; then \
-	       $(RM) $(HOSTGENDIR)/$(CURDIR)/gdb/.files-touched \
+	       $(RM) $(GNU_HOST_OBJDIR)/gdb/.files-touched \
 	    && $(MAKE) -f ./mmakefile crosstools-gdb--fetch \
 	    && $(MAKE) -f ./mmakefile crosstools-gdb--build_and_install-quick \
 	    && $(TOUCH) $(gdb-installflag) ; \
 	fi
 
 %fetch_and_build mmake=crosstools-gdb package=gdb version=$(GDB_VERSION) compiler=host \
+	gendir="$(GNU_HOST_OBJDIR)" basedir= \
 	package_repo="$(GNU_REPOSITORY)/gdb" \
 	patch=yes \
 	prefix="$(CROSSTOOLSDIR)" aros_prefix="$(GNU_CONFIGURE_PREFIX)" install_env="$(GNU_INSTALL_ENV)" \
@@ -432,6 +445,11 @@ tools-crosstools-gdb :
 # libatomic
 
 LIBATOMIC_OBJDIR := $(HOSTGENDIR)/$(CURDIR)/gcc/$(AROS_TARGET_CPU)-aros/libatomic
+ifeq (yes,$(AROS_GNU_RELEASE_LAYOUT))
+# The SDK prerequisite selector changes configure/link context independently
+# of the host install layout. Never adopt classic .configured/.installed state.
+LIBATOMIC_OBJDIR := $(GNU_HOST_OBJDIR)/gcc/$(AROS_TARGET_CPU)-aros/libatomic-sdk-$(AROS_TOOLCHAIN_RELEASE)
+endif
 LIBATOMIC_SRCDIR := $(HOSTDIR)/Ports/host/gcc/gcc-$(GCC_VERSION)/libatomic
 ifeq ($(AROS_TARGET_CPU),m68k)
 ISA_FLAGS:=$(ISA_FLOAT_FLAGS)
@@ -441,7 +459,7 @@ endif
 	targetlinklibs="gnu-libatomic-linklibs-$(AROS_TOOLCHAIN_RELEASE)" \
 	basedir= gendir="$(LIBATOMIC_OBJDIR)" extraoptions="$(LIBATOMIC_OPTS)" install_env="$(LIBATOMIC_ENV)"
 
-LIBATOMIC_GCCOBJDIR := $(HOSTGENDIR)/$(CURDIR)/gcc/gcc
+LIBATOMIC_GCCOBJDIR := $(GNU_HOST_OBJDIR)/gcc/gcc
 
 $(tools-crosstools-gcc-libatomic-installflag) : | $(LIBATOMIC_GCCOBJDIR)
 
