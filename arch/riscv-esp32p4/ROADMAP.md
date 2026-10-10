@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 response timeout` | Corrected CD route reads0xbe/CDETECT0 but same CMD5 timeout persists. Independent IDF-only reference build passes; review requires coordinated rail-off before deployment because IDF startup does not quiesce retained display DMA. Await fresh physical readiness; do not flash over active scanout. Startup/electrical cause, SD integrity, coexistence and C6 compatibility remain open. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; RX reassembly started` | Wire/TLV baseline regressions pass. Pinned C6 RX-facing sender uses advancing per-fragment sequence; bounded reassembly implementation started. Reverse direction differs. No runtime transport; N0, compatibility, credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; RX reassembly host tested` | Bounded RX helper passes312 strict sanitized checks each O0/O2 and RV32 compilation. Complete checksummed frame-to-event-TLV fixture passes. Reverse TX direction differs; no runtime transport. N0, compatibility, credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -498,11 +498,16 @@ Its4096-byte protobuf cap is local defensive policy, not the vendor frame
 limit. Messages larger than one1536-byte Hosted frame require transport
 fragmentation/reassembly, not a larger wire-frame allowance. Strict O0/O2
 sanitizer tests pass116 checks each and the standalone RV32 object compiles.
-Bounded RX reassembly implementation has started: pinned C6 sender advances
+Bounded RX reassembly is host tested/RV32 compile verified: pinned C6 sender advances
 sequence per fragment, splits at1500 payload bytes and clears MORE_FRAGMENT on
 the final fragment. Reverse receive code expects equal sequences, so this RX
 policy must not be reused for TX. Other-interface frames may interleave; only
-serial fragments belong to this state. Protobuf semantics, UID correlation,
+serial fragments belong to this state. A fixed4108-byte buffer, local16-fragment
+limit and configurable first-fragment deadline bound assembly. Invalid partial
+messages are discarded, other-interface frames ignored, final TLV validated
+before publication. Strict sanitized O0/O2 tests each312 checks include
+sequence/tick wrap, aggregate expiry and checksummed frame-to-RPCEvt completion.
+No runtime qualification follows. Protobuf semantics, UID correlation,
 credits and live RPC remain unimplemented; these helpers are not in a driver.
 
 Streaming RX can concatenate packets: PACKET_LEN is cumulative modulo2^20,
@@ -29526,6 +29531,48 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   verification and documentation. This is started, not tested or runtime linked.
 - Next: independent review plus strict native sanitizer/RV32 tests; runtime
   still depends on real C6 identification and shared-host qualification.
+
+### 2026-10-10 - N1 bounded RX serial reassembly host and RV32 verified
+
+- Source on40fac74109 plus network/hosted_reassembly.h/.c,
+  test_hosted_reassembly.c, tools/test-hosted-reassembly.py. Independently
+  implemented from the documented pinned byte contract; no vendor/GPL code
+  copied. Not linked into core/BSP or an operational WLAN driver.
+- Caller-owned4108-byte allocation-free state; SERIAL/0 only,1..1500-byte
+  fragments, active sequence increments modulo16bits, aggregate first-tick
+  deadline, local16-fragment cap. Both caps/time policy are local defenses,
+  not vendor limits. Other interfaces/serial numbers return IGNORED without
+  altering partial state. Only complete RPCRsp/RPCEvt TLV publishes borrowed
+  protobuf; callers serialize access, obey disjoint-object contract and reset
+  on disconnect/observation gap>=2^31ms. No protobuf semantic validation.
+  packet_type/throttle are not message identity checks; upstream wire-profile
+  decoding/compatibility policy remains required. No TX sequence policy here.
+- Primary source review found NULL-frame refusal could clear an aliased output
+  before alias validation; now NULL state/frame/output refusal is nonmutating.
+  Independent reviewer finds no further production defect; missing aggregate
+  deadline/event/pipeline/object-alias cases were added. Prerelease fixture
+  corrections refresh output snapshots after successful completion and remove
+  time-travel from interleaving tests. Only final repeated results count.
+- Primary runner actual exit0 (exec chunk959212), strict C99 Wall/Wextra/Werror/
+  pedantic/Wconversion/Wsign-conversion O0/O2 ASan/UBSan each312 checks.
+  Cases cover max4108/over-cap,1500 fragment boundary,16-count cap, malformed/
+  truncated/trailing TLV, duplicate/gap/reorder and recovery, sequence/tick
+  wrap, ignored interface after deadline followed by expired selected tail,
+  intermediate progress not extending deadline, NULL/alias preservation and
+  checksummed1500+300-byte wire-to-RPCEvt completion. No real C6 traffic.
+- Standalone RV32 compilations all exit0: serial5316B/679ca689…,
+  wire4600B/5dc1bf44…, reassembly6680B SHA-256
+ 2ff2b7287b7798e27664bd77be4a3c729bfdba38ea4bc6e17b11fd784ac8d479.
+  Evidence `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/reassembly-primary.log`
+  SHA-2562f151a968b5939fb0d0ab919454c3d2dda01b7f2d52a0a2cb8cd5f91221722a0;
+  log records source hashes and individual build/test exits. Temporary objects
+  are removed by the runner; hashes identify compiler outputs, not firmware.
+- Safety: no device open/reset/flash, SD mutation, C6 firmware change or
+  credentials. Native CMD5 timeout and required safe IDF comparison remain
+  open. Host tests cannot establish electrical/protocol/installed-firmware,
+  shared-host concurrency or WLAN association/DHCP/data/reconnect acceptance.
+- Next: safe reference comparison after readiness, then actual runtime SDIO
+  transport/credits and bounded RPC integration; qualify complete WLAN path.
 
 ## Evidence-entry template
 
