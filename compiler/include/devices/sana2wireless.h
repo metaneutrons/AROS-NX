@@ -35,6 +35,7 @@
 #define S2INFO_DefaultKeyNo   (TAG_USER + 14)
 #define S2INFO_Passphrase     (TAG_USER + 15)  /* PSK passphrase (driver-side 4-way) */
 #define S2INFO_Disassociate   (TAG_USER + 16)  /* S2_SETOPTIONS: leave the network */
+#define S2INFO_SecuritySummary (TAG_USER + 17) /* owned Sana2WirelessSecuritySummary */
 
 /* Wireless Commands */
 
@@ -50,6 +51,77 @@
 #define S2_WRITEMGMT        0xc016
 #define S2_GETRADIOBANDS    0xc017
 #define S2_GETCRYPTTYPES    0xc018
+#define S2_GETWIRELESSCAPABILITIES 0xc019
+
+/* Optional, versioned per-device contract. S2_GETWIRELESSCAPABILITIES uses
+ * ios2_StatData to point to a caller-owned structure. The caller initializes
+ * SizeAvailable and Version; the device returns SizeSupplied and the same
+ * supported Version, without writing beyond SizeAvailable. Unsupported
+ * devices return S2ERR_NOT_SUPPORTED and retain legacy handshake behavior.
+ * For v1 the caller requires SizeSupplied == sizeof this structure,
+ * Version == 1, known Flags and known mask bits only. A failed, short,
+ * oversized or unknown-version response grants no new capability.
+ * Flags apply to this device instance, never to all FullMAC devices.
+ * FOURWAY means that the device accepts credentials through S2_SETOPTIONS
+ * and completes the handshake in firmware; it must not be advertised until
+ * credential handling and firmware identity/privacy are safe for that device.
+ * The masks restrict supported offload suites; they do not claim EAP support.
+ */
+#define S2WIRELESS_CAPABILITIES_VERSION 1
+#define S2WIRELESS_CAPF_FOURWAY         (1UL << 0)
+#define S2WIRELESS_CAPF_SECURITY_SUMMARY (1UL << 1)
+
+struct Sana2WirelessCapabilities
+{
+    ULONG SizeAvailable;
+    ULONG SizeSupplied;
+    ULONG Version;
+    ULONG Flags;
+    ULONG Protocols;
+    ULONG KeyManagement;
+    ULONG PairwiseCiphers;
+    ULONG GroupCiphers;
+};
+
+/* Explicit driver-reported scan summaries, not reconstructed Beacon/Probe
+ * Response IEs. S2INFO_SecuritySummary points to this pool-owned structure;
+ * it has the same lifetime as the scan result's other pool-owned data.
+ * For v1 Size must equal sizeof this structure and Version must equal 1;
+ * unknown flag/mask bits are refused. Unknown summaries have KNOWN clear
+ * and PRIVACY set; they must never match an open profile. A known open BSS
+ * has KNOWN set, PRIVACY clear and all suite masks zero. A known protected BSS
+ * has both flags set and one bit in each suite mask. A tuple of singleton
+ * protocol, key-management, pairwise and group values describes one known
+ * co-occurring suite; independent union masks would invent combinations.
+ * Multi-suite/ambiguous APs must be reported as unknown until a future version
+ * can preserve per-suite co-occurrence. Missing or malformed summary
+ * data must not downgrade a summary-capable device's BSS to an open network.
+ * Authentic IEs retain their existing meaning and are not manufactured from
+ * these masks. Summary selection requires explicit per-device capability.
+ */
+#define S2WIRELESS_SUMMARY_VERSION 1
+#define S2WIRELESS_SUMF_KNOWN       (1UL << 0)
+#define S2WIRELESS_SUMF_PRIVACY     (1UL << 1)
+#define S2WIRELESS_PROTO_WPA       (1UL << 0)
+#define S2WIRELESS_PROTO_RSN       (1UL << 1)
+#define S2WIRELESS_PROTO_RSN_SAE   (1UL << 2)
+#define S2WIRELESS_KEY_PSK         (1UL << 0)
+#define S2WIRELESS_KEY_EAP         (1UL << 1)
+#define S2WIRELESS_KEY_SAE         (1UL << 2)
+#define S2WIRELESS_CIPHER_TKIP     (1UL << 0)
+#define S2WIRELESS_CIPHER_CCMP     (1UL << 1)
+#define S2WIRELESS_CIPHER_GCMP     (1UL << 2)
+
+struct Sana2WirelessSecuritySummary
+{
+    ULONG Size;
+    ULONG Version;
+    ULONG Flags;
+    ULONG Protocols;
+    ULONG KeyManagement;
+    ULONG PairwiseCiphers;
+    ULONG GroupCiphers;
+};
 
 /* Encryption types */
 

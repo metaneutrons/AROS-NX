@@ -46,6 +46,7 @@
 #include "bgscan.h"
 #include "bss.h"
 #include "scan.h"
+#include "common/security_summary.h"
 
 const char *wpa_supplicant_version =
 "wpa_supplicant v" VERSION_STR "\n"
@@ -782,6 +783,128 @@ static int wpa_supplicant_suites_from_ai(struct wpa_supplicant *wpa_s,
 }
 
 
+static int wpa_supplicant_summary_has_data(
+	const struct wpa_security_summary *summary)
+{
+	return summary->flags || summary->proto || summary->key_mgmt ||
+		summary->pairwise_cipher || summary->group_cipher;
+}
+
+
+static int wpa_supplicant_summary_profile_common(
+	struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
+{
+	const unsigned int required_flags =
+		WPA_DRIVER_FLAGS_SECURITY_SUMMARY |
+		WPA_DRIVER_FLAGS_4WAY_HANDSHAKE;
+
+	if ((wpa_s->drv_flags & required_flags) != required_flags ||
+	    ssid->mode != WPAS_MODE_INFRA || ssid->mixed_cell ||
+	    (ssid->auth_alg && ssid->auth_alg != WPA_AUTH_ALG_OPEN))
+		return 0;
+
+#ifdef CONFIG_WPS
+	if (ssid->key_mgmt & WPA_KEY_MGMT_WPS)
+		return 0;
+#endif /* CONFIG_WPS */
+
+#ifdef CONFIG_IEEE80211W
+	/* The summary lacks PMF capability and a management-group cipher. */
+	if (ssid->ieee80211w != NO_MGMT_FRAME_PROTECTION)
+		return 0;
+#endif /* CONFIG_IEEE80211W */
+
+	return 1;
+}
+
+
+static int wpa_supplicant_summary_open_profile(struct wpa_ssid *ssid)
+{
+	int i;
+
+	if (ssid->key_mgmt != WPA_KEY_MGMT_NONE ||
+	    ssid->mode != WPAS_MODE_INFRA || ssid->mixed_cell ||
+	    (ssid->auth_alg && ssid->auth_alg != WPA_AUTH_ALG_OPEN))
+		return 0;
+
+	for (i = 0; i < NUM_WEP_KEYS; i++) {
+		if (ssid->wep_key_len[i])
+			return 0;
+	}
+
+#ifdef CONFIG_IEEE80211W
+	if (ssid->ieee80211w != NO_MGMT_FRAME_PROTECTION)
+		return 0;
+#endif /* CONFIG_IEEE80211W */
+
+	return 1;
+}
+
+
+static int wpa_supplicant_summary_protected_profile(
+	struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
+{
+	return wpa_supplicant_summary_profile_common(wpa_s, ssid) &&
+		(ssid->key_mgmt & WPA_KEY_MGMT_PSK);
+}
+
+
+static int wpa_supplicant_summary_capa_match(
+	const struct wpa_driver_capa *capa,
+	const struct wpa_security_summary *summary)
+{
+	unsigned int required_key_mgmt;
+	unsigned int required_pairwise = 0, required_group = 0;
+	unsigned int required_union;
+
+	if (summary->proto == WPA_PROTO_WPA)
+		required_key_mgmt = WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK;
+	else if (summary->proto == WPA_PROTO_RSN)
+		required_key_mgmt = WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK;
+	else
+		return 0;
+
+	if (summary->pairwise_cipher & WPA_CIPHER_TKIP)
+		required_pairwise |= WPA_DRIVER_CAPA_ENC_TKIP;
+	if (summary->pairwise_cipher & WPA_CIPHER_CCMP)
+		required_pairwise |= WPA_DRIVER_CAPA_ENC_CCMP;
+	if (summary->group_cipher & WPA_CIPHER_TKIP)
+		required_group |= WPA_DRIVER_CAPA_ENC_TKIP;
+	if (summary->group_cipher & WPA_CIPHER_CCMP)
+		required_group |= WPA_DRIVER_CAPA_ENC_CCMP;
+
+	required_union = required_pairwise | required_group;
+	return (capa->key_mgmt & required_key_mgmt) != 0 &&
+		(capa->summary_pairwise_enc & required_pairwise) ==
+			required_pairwise &&
+		(capa->summary_group_enc & required_group) == required_group &&
+		(capa->enc & required_union) == required_union;
+}
+
+
+static int wpa_supplicant_summary_config_match(
+	struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+	const struct wpa_driver_capa *capa,
+	const struct wpa_security_summary *summary)
+{
+	const unsigned int required_flags =
+		WPA_DRIVER_FLAGS_SECURITY_SUMMARY |
+		WPA_DRIVER_FLAGS_4WAY_HANDSHAKE;
+
+	if ((wpa_s->drv_flags & required_flags) != required_flags ||
+	    (capa->flags & required_flags) != required_flags ||
+	    !wpa_supplicant_summary_profile_common(wpa_s, ssid) ||
+	    !wpa_security_summary_protected(summary) ||
+	    !wpa_security_summary_match(summary, 1, ssid->proto,
+					ssid->key_mgmt, ssid->pairwise_cipher,
+					ssid->group_cipher) ||
+	    !wpa_supplicant_summary_capa_match(capa, summary))
+		return 0;
+
+	return 1;
+}
+
+
 /**
  * wpa_supplicant_set_suites - Set authentication and encryption parameters
  * @wpa_s: Pointer to wpa_supplicant data
@@ -801,17 +924,20 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 			      u8 *wpa_ie, size_t *wpa_ie_len)
 {
 	struct wpa_ie_data ie;
-	int sel, proto;
+	int sel, proto, capa_valid, bss_has_wpa_ie, summary_only = 0;
 	const u8 *bss_wpa, *bss_rsn;
 	struct wpa_driver_capa capa;
+	const struct wpa_security_summary *summary = NULL;
 
 	if (bss) {
 		bss_wpa = wpa_bss_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE);
 		bss_rsn = wpa_bss_get_ie(bss, WLAN_EID_RSN);
+		bss_has_wpa_ie = bss_wpa != NULL || bss_rsn != NULL;
 	} else
-		bss_wpa = bss_rsn = NULL;
+		bss_wpa = bss_rsn = NULL, bss_has_wpa_ie = 0;
 
-	if (wpa_drv_get_capa(wpa_s, &capa) == 0) {
+	capa_valid = wpa_drv_get_capa(wpa_s, &capa) == 0;
+	if (capa_valid) {
 		if (!(capa.key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK)) {
 			bss_rsn = NULL;
 		}
@@ -820,7 +946,30 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		}
 	}
 
-	if (bss_rsn && (ssid->proto & WPA_PROTO_RSN) &&
+	/* Use a driver summary only when no genuine AP WPA/RSN IE was supplied.
+	 * The summary selects suites but is never installed as an AP IE. */
+	if (bss && !bss_has_wpa_ie &&
+	    wpa_supplicant_summary_has_data(&bss->security_summary)) {
+		summary = &bss->security_summary;
+		if (!capa_valid ||
+		    !wpa_supplicant_summary_config_match(wpa_s, ssid, &capa,
+							summary)) {
+			wpa_msg(wpa_s, MSG_WARNING,
+				"WPA: Refusing unsupported or ambiguous security summary");
+			return -1;
+		}
+		os_memset(&ie, 0, sizeof(ie));
+		ie.proto = summary->proto;
+		ie.key_mgmt = summary->key_mgmt;
+		ie.pairwise_cipher = summary->pairwise_cipher;
+		ie.group_cipher = summary->group_cipher;
+		proto = summary->proto;
+		summary_only = 1;
+	}
+
+	if (summary_only) {
+		wpa_msg(wpa_s, MSG_DEBUG, "WPA: using explicit security summary");
+	} else if (bss_rsn && (ssid->proto & WPA_PROTO_RSN) &&
 	    wpa_parse_wpa_ie(bss_rsn, 2 + bss_rsn[1], &ie) == 0 &&
 	    (ie.group_cipher & ssid->group_cipher) &&
 	    (ie.pairwise_cipher & ssid->pairwise_cipher) &&
@@ -1009,6 +1158,7 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 	u8 wpa_ie[80];
 	size_t wpa_ie_len;
 	int use_crypt, ret, i, bssid_changed;
+	int bss_has_wpa_ie;
 	int algs = WPA_AUTH_ALG_OPEN;
 	enum wpa_cipher cipher_pairwise, cipher_group;
 	struct wpa_driver_associate_params params;
@@ -1030,6 +1180,21 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 		wpa_printf(MSG_ERROR, "AP mode support not included in the "
 			   "build");
 #endif /* CONFIG_AP */
+		return;
+	}
+
+	/* The security-summary route is for FullMAC suite offload, not SME.
+	 * SME remains supported for a summary-capable driver only when the BSS
+	 * also supplied a genuine WPA/RSN IE; without one, never fall back to
+	 * SME's configuration-only path (including when bss is NULL). */
+	if ((wpa_s->drv_flags & (WPA_DRIVER_FLAGS_SME |
+				 WPA_DRIVER_FLAGS_SECURITY_SUMMARY)) ==
+	    (WPA_DRIVER_FLAGS_SME | WPA_DRIVER_FLAGS_SECURITY_SUMMARY) &&
+	    ssid->mode == IEEE80211_MODE_INFRA &&
+	    (!bss || (!wpa_bss_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE) &&
+		      !wpa_bss_get_ie(bss, WLAN_EID_RSN)))) {
+		wpa_msg(wpa_s, MSG_WARNING,
+			"WPA: Refusing security-summary fallback through SME");
 		return;
 	}
 
@@ -1101,8 +1266,40 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 			   algs);
 	}
 
-	if (bss && (wpa_bss_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE) ||
-		    wpa_bss_get_ie(bss, WLAN_EID_RSN)) &&
+	bss_has_wpa_ie = bss &&
+		(wpa_bss_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE) ||
+		 wpa_bss_get_ie(bss, WLAN_EID_RSN));
+	if (bss && !bss_has_wpa_ie &&
+	    ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_SECURITY_SUMMARY) ||
+	     wpa_supplicant_summary_has_data(&bss->security_summary))) {
+		if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SECURITY_SUMMARY)) {
+			wpa_msg(wpa_s, MSG_WARNING,
+				"WPA: Refusing unadvertised security summary");
+			return;
+		}
+		if (wpa_security_summary_open(&bss->security_summary)) {
+			if (!wpa_supplicant_summary_open_profile(ssid)) {
+				wpa_msg(wpa_s, MSG_WARNING,
+					"WPA: Refusing open summary for non-open profile");
+				return;
+			}
+		} else if (wpa_security_summary_protected(
+				   &bss->security_summary)) {
+			if (!wpa_supplicant_summary_protected_profile(wpa_s, ssid)) {
+				wpa_msg(wpa_s, MSG_WARNING,
+					"WPA: Refusing protected summary for unsupported profile");
+				return;
+			}
+		} else {
+			wpa_msg(wpa_s, MSG_WARNING,
+				"WPA: Refusing unknown security summary");
+			return;
+		}
+	}
+
+	if (bss && (bss_has_wpa_ie ||
+		    (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SECURITY_SUMMARY) ||
+		    wpa_supplicant_summary_has_data(&bss->security_summary)) &&
 	    (ssid->key_mgmt & (WPA_KEY_MGMT_IEEE8021X | WPA_KEY_MGMT_PSK |
 			       WPA_KEY_MGMT_FT_IEEE8021X |
 			       WPA_KEY_MGMT_FT_PSK |

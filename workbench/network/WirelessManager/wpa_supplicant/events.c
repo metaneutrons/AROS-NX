@@ -30,6 +30,7 @@
 #include "ap/hostapd.h"
 #include "notify.h"
 #include "common/ieee802_11_defs.h"
+#include "common/security_summary.h"
 #include "blacklist.h"
 #include "wpas_glue.h"
 #include "wps_supplicant.h"
@@ -419,6 +420,73 @@ static int freq_allowed(int *freqs, int freq)
 }
 
 
+static int wpa_supplicant_summary_offload_enabled(
+	struct wpa_supplicant *wpa_s)
+{
+	const unsigned int required = WPA_DRIVER_FLAGS_SECURITY_SUMMARY |
+		WPA_DRIVER_FLAGS_4WAY_HANDSHAKE;
+
+	return (wpa_s->drv_flags & required) == required;
+}
+
+
+static int wpa_supplicant_summary_has_data(
+	const struct wpa_security_summary *summary)
+{
+	return summary->flags || summary->proto || summary->key_mgmt ||
+		summary->pairwise_cipher || summary->group_cipher;
+}
+
+
+static int wpa_supplicant_summary_matches_ssid(
+	struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+	const struct wpa_security_summary *summary)
+{
+	if (!wpa_supplicant_summary_offload_enabled(wpa_s) || ssid->disabled ||
+	    ssid->mode != WPAS_MODE_INFRA || ssid->mixed_cell ||
+	    (ssid->auth_alg && ssid->auth_alg != WPA_AUTH_ALG_OPEN))
+		return 0;
+
+#ifdef CONFIG_WPS
+	if (ssid->key_mgmt & WPA_KEY_MGMT_WPS)
+		return 0;
+#endif /* CONFIG_WPS */
+
+#ifdef CONFIG_IEEE80211W
+	/* The summary has no PMF capability or management-cipher fields. */
+	if (ssid->ieee80211w != NO_MGMT_FRAME_PROTECTION)
+		return 0;
+#endif /* CONFIG_IEEE80211W */
+
+	return wpa_security_summary_match(summary, 1,
+		ssid->proto, ssid->key_mgmt, ssid->pairwise_cipher,
+		ssid->group_cipher);
+}
+
+
+static int wpa_supplicant_summary_open_profile(struct wpa_ssid *ssid)
+{
+	int i;
+
+	if (ssid->key_mgmt != WPA_KEY_MGMT_NONE ||
+	    ssid->mode != WPAS_MODE_INFRA || ssid->mixed_cell ||
+	    (ssid->auth_alg && ssid->auth_alg != WPA_AUTH_ALG_OPEN))
+		return 0;
+
+	for (i = 0; i < NUM_WEP_KEYS; i++) {
+		if (ssid->wep_key_len[i])
+			return 0;
+	}
+
+#ifdef CONFIG_IEEE80211W
+	if (ssid->ieee80211w != NO_MGMT_FRAME_PROTECTION)
+		return 0;
+#endif /* CONFIG_IEEE80211W */
+
+	return 1;
+}
+
+
 static struct wpa_bss *
 wpa_supplicant_select_bss_wpa(struct wpa_supplicant *wpa_s,
 			      struct wpa_scan_results *scan_res,
@@ -435,6 +503,7 @@ wpa_supplicant_select_bss_wpa(struct wpa_supplicant *wpa_s,
 	for (i = 0; i < scan_res->num; i++) {
 		const u8 *ssid_;
 		u8 wpa_ie_len, rsn_ie_len, ssid_len;
+		int summary_only = 0, bss_has_wpa_ie;
 		bss = scan_res->res[i];
 
 		ie = wpa_scan_get_ie(bss, WLAN_EID_SSID);
@@ -443,9 +512,11 @@ wpa_supplicant_select_bss_wpa(struct wpa_supplicant *wpa_s,
 
 		ie = wpa_scan_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE);
 		wpa_ie_len = ie ? ie[1] : 0;
+		bss_has_wpa_ie = ie != NULL;
 
 		ie = wpa_scan_get_ie(bss, WLAN_EID_RSN);
 		rsn_ie_len = ie ? ie[1] : 0;
+		bss_has_wpa_ie |= ie != NULL;
 
 		wpa_printf(MSG_DEBUG, "%d: " MACSTR " ssid='%s' "
 			   "wpa_ie_len=%u rsn_ie_len=%u caps=0x%x",
@@ -464,9 +535,18 @@ wpa_supplicant_select_bss_wpa(struct wpa_supplicant *wpa_s,
 			continue;
 		}
 
-		if (wpa_ie_len == 0 && rsn_ie_len == 0) {
-			wpa_printf(MSG_DEBUG, "   skip - no WPA/RSN IE");
-			continue;
+		if (!bss_has_wpa_ie) {
+			/* A driver summary is a separate, explicit offload route. It
+			 * does not become an AP IE and is trusted only for a device
+			 * that advertised both required per-device capabilities. */
+			if (!wpa_supplicant_summary_offload_enabled(wpa_s) ||
+			    !wpa_security_summary_protected(
+				    &bss->security_summary)) {
+				wpa_printf(MSG_DEBUG, "   skip - no WPA/RSN IE or "
+					   "usable security summary");
+				continue;
+			}
+			summary_only = 1;
 		}
 
 		for (ssid = group; ssid; ssid = ssid->pnext) {
@@ -499,7 +579,12 @@ wpa_supplicant_select_bss_wpa(struct wpa_supplicant *wpa_s,
 				continue;
 			}
 
-			if (!wpa_supplicant_ssid_bss_match(wpa_s, ssid, bss))
+			if (summary_only) {
+				if (!wpa_supplicant_summary_matches_ssid(wpa_s, ssid,
+								 &bss->security_summary))
+					continue;
+			} else if (!wpa_supplicant_ssid_bss_match(wpa_s, ssid,
+								      bss))
 				continue;
 
 			if (!freq_allowed(ssid->freq_list, bss->freq)) {
@@ -537,6 +622,7 @@ wpa_supplicant_select_bss_non_wpa(struct wpa_supplicant *wpa_s,
 	for (i = 0; i < scan_res->num; i++) {
 		const u8 *ssid_;
 		u8 wpa_ie_len, rsn_ie_len, ssid_len;
+		int summary_open = 0, bss_has_wpa_ie;
 		bss = scan_res->res[i];
 
 		ie = wpa_scan_get_ie(bss, WLAN_EID_SSID);
@@ -545,9 +631,30 @@ wpa_supplicant_select_bss_non_wpa(struct wpa_supplicant *wpa_s,
 
 		ie = wpa_scan_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE);
 		wpa_ie_len = ie ? ie[1] : 0;
+		bss_has_wpa_ie = ie != NULL;
 
 		ie = wpa_scan_get_ie(bss, WLAN_EID_RSN);
 		rsn_ie_len = ie ? ie[1] : 0;
+		bss_has_wpa_ie |= ie != NULL;
+
+		/* Summary-capable devices must provide a valid open summary before
+		 * their BSS can enter any non-WPA path. Unexpected summaries from a
+		 * device without the capability are also not trusted. This keeps
+		 * protected/unknown BSSes out of WEP, WPS and mixed-cell fallback. */
+		if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SECURITY_SUMMARY) {
+			if (!wpa_security_summary_open(&bss->security_summary) ||
+			    bss_has_wpa_ie) {
+				wpa_printf(MSG_DEBUG, "   skip - not a known open "
+					   "security summary");
+				continue;
+			}
+			summary_open = 1;
+		} else if (wpa_supplicant_summary_has_data(
+				   &bss->security_summary)) {
+			wpa_printf(MSG_DEBUG, "   skip - unadvertised security "
+				   "summary");
+			continue;
+		}
 
 		wpa_printf(MSG_DEBUG, "%d: " MACSTR " ssid='%s' "
 			   "wpa_ie_len=%u rsn_ie_len=%u caps=0x%x",
@@ -571,6 +678,15 @@ wpa_supplicant_select_bss_non_wpa(struct wpa_supplicant *wpa_s,
 
 			if (ssid->disabled) {
 				wpa_printf(MSG_DEBUG, "   skip - disabled");
+				continue;
+			}
+
+			/* The summary has no authenticated-mode metadata. A known-open
+			 * result is therefore usable only by a plain infrastructure
+			 * profile, never by WEP, WPS, mixed-cell, or PMF fallback. */
+			if (summary_open &&
+			    !wpa_supplicant_summary_open_profile(ssid)) {
+				wpa_printf(MSG_DEBUG, "   skip - profile is not plain open");
 				continue;
 			}
 

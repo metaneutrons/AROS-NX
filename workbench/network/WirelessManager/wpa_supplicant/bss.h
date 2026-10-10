@@ -15,6 +15,8 @@
 #ifndef BSS_H
 #define BSS_H
 
+#include "common/security_summary.h"
+
 struct wpa_scan_res;
 
 #define WPA_BSS_QUAL_INVALID		BIT(0)
@@ -54,6 +56,7 @@ struct wpa_bss {
 	unsigned int scan_miss_count;
 	unsigned int last_update_idx;
 	unsigned int flags;
+	struct wpa_security_summary security_summary;
 	u8 bssid[ETH_ALEN];
 	u8 ssid[32];
 	size_t ssid_len;

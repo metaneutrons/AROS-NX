@@ -92,6 +92,7 @@ static void wpa_bss_copy_res(struct wpa_bss *dst, struct wpa_scan_res *src)
 	os_time_t usec;
 
 	dst->flags = src->flags;
+	dst->security_summary = src->security_summary;
 	os_memcpy(dst->bssid, src->bssid, ETH_ALEN);
 	dst->freq = src->freq;
 	dst->beacon_int = src->beacon_int;
