@@ -17,6 +17,7 @@ typedef int16_t BOOL;
 #define REGISTER_COUNT 256U
 #define EVENT_CAPACITY 128U
 #define RESPONSE_READ_CAPACITY 8U
+#define OBSERVATION_CAPACITY 16U
 
 struct Task
 {
@@ -63,7 +64,8 @@ enum event_kind
     EVENT_DMA_READY,
     EVENT_DMA_COMPLETE,
     EVENT_DMA_RESET,
-    EVENT_INVALIDATE
+    EVENT_INVALIDATE,
+    EVENT_OBSERVATION
 };
 
 struct event
@@ -71,6 +73,23 @@ struct event
     enum event_kind kind;
     ULONG offset;
     ULONG value;
+};
+
+struct observation_record
+{
+    enum P4HostCommandObservation observation;
+    enum P4HostCommandStatus status;
+    enum P4HostCommandFault injected_fault;
+    BOOL started;
+    ULONG raw, idstatus;
+    unsigned event_index;
+};
+
+struct observation_log
+{
+    const struct P4HostCommand *request;
+    struct observation_record records[OBSERVATION_CAPACITY];
+    unsigned count;
 };
 
 static struct Task task_a = { 1U };
@@ -107,6 +126,8 @@ static ULONG late_raw_after_ready;
 static ULONG late_idstatus_after_ready;
 static ULONG late_raw_after_complete;
 static ULONG late_idstatus_after_complete;
+static ULONG raw_after_rint_read_count;
+static ULONG raw_after_rint_read;
 static ULONG last_command;
 static ULONG dma_ready_after_calls;
 static ULONG busy_reads_before_clear;
@@ -159,6 +180,69 @@ static void record_event(enum event_kind kind, ULONG offset, ULONG value)
     }
 }
 
+static void observe_command(void *context,
+                            const struct P4HostCommand *request,
+                            enum P4HostCommandObservation observation,
+                            const struct P4HostCommandResult *result)
+{
+    struct observation_log *log = (struct observation_log *)context;
+    struct observation_record *record;
+    CHECK(log != NULL);
+    CHECK(request == log->request);
+    CHECK(result != NULL);
+    CHECK(log->count < OBSERVATION_CAPACITY);
+    record = &log->records[log->count];
+    record->observation = observation;
+    record->status = result->status;
+    record->injected_fault = result->injected_fault;
+    record->started = result->started;
+    record->raw = result->raw;
+    record->idstatus = result->idstatus;
+    record->event_index = event_count;
+    ++log->count;
+    record_event(EVENT_OBSERVATION, (ULONG)observation, result->raw);
+}
+
+static void attach_observer(struct P4HostCommand *request,
+                            struct observation_log *log)
+{
+    memset(log, 0, sizeof(*log));
+    log->request = request;
+    request->observe = observe_command;
+    request->observe_context = log;
+}
+
+static unsigned find_event(enum event_kind kind, unsigned start)
+{
+    unsigned index;
+    for (index = start; index < event_count; ++index)
+        if (events[index].kind == kind)
+            return index;
+    return EVENT_CAPACITY;
+}
+
+static unsigned find_observation_event(
+    enum P4HostCommandObservation observation, unsigned start)
+{
+    unsigned index;
+    for (index = start; index < event_count; ++index)
+        if (events[index].kind == EVENT_OBSERVATION &&
+            events[index].offset == (ULONG)observation)
+            return index;
+    return EVENT_CAPACITY;
+}
+
+static unsigned find_command_start_event(void)
+{
+    unsigned index;
+    for (index = 0U; index < event_count; ++index)
+        if (events[index].kind == EVENT_MMIO_WRITE &&
+            events[index].offset == P4SD_CMD &&
+            (events[index].value & P4SD_CMD_START))
+            return index;
+    return EVENT_CAPACITY;
+}
+
 static struct Task *FindTask(const char *name)
 {
     (void)name;
@@ -179,7 +263,12 @@ static ULONG mock_mmio_read(ULONG offset)
     CHECK((offset / sizeof(ULONG)) < REGISTER_COUNT);
     ++read_count;
     if (offset == P4SD_RINTSTS)
+    {
         ++rint_read_count;
+        if (raw_after_rint_read_count &&
+            rint_read_count >= raw_after_rint_read_count)
+            registers[offset / sizeof(ULONG)] = raw_after_rint_read;
+    }
     if (offset == P4SD_STATUS)
     {
         ++status_read_count;
@@ -278,6 +367,8 @@ static void setup_case(void)
     late_idstatus_after_ready = 0U;
     late_raw_after_complete = 0U;
     late_idstatus_after_complete = 0U;
+    raw_after_rint_read_count = 0U;
+    raw_after_rint_read = 0U;
     last_command = 0U;
     dma_ready_after_calls = 0U;
     busy_reads_before_clear = 0U;
@@ -768,6 +859,304 @@ static void configure_data_request(struct P4HostCommand *request,
     request->writing = writing;
 }
 
+static void configure_diagnostic_request(struct P4HostCommand *request,
+                                         struct observation_log *log,
+                                         enum P4HostCommandFault fault)
+{
+    configure_data_request(request, 0U, 18U, FALSE, 1024U, 512U);
+    request->diagnostic_fault = fault;
+    attach_observer(request, log);
+}
+
+static void expect_diagnostic_refused(struct P4HostCommand *request,
+                                      struct observation_log *log)
+{
+    attach_observer(request, log);
+    expect_refused(request);
+    CHECK(log->count == 0U);
+}
+
+static void test_diagnostic_validation_is_non_mmio(void)
+{
+    struct P4HostCommand request;
+    struct observation_log log;
+    int context_token;
+
+    begin_case();
+    setup_case();
+    configure_data_request(&request, 0U, 18U, FALSE, 1024U, 512U);
+    request.diagnostic_fault = (enum P4HostCommandFault)99;
+    expect_diagnostic_refused(&request, &log);
+
+    setup_case();
+    configure_data_request(&request, 1U, 18U, FALSE, 1024U, 512U);
+    request.diagnostic_fault = P4HOST_FAULT_CMD_CRC;
+    expect_diagnostic_refused(&request, &log);
+
+    setup_case();
+    configure_data_request(&request, 0U, 17U, FALSE, 1024U, 512U);
+    request.diagnostic_fault = P4HOST_FAULT_DATA_CRC;
+    expect_diagnostic_refused(&request, &log);
+
+    setup_case();
+    configure_data_request(&request, 0U, 18U, TRUE, 1024U, 512U);
+    request.diagnostic_fault = P4HOST_FAULT_TIMEOUT;
+    expect_diagnostic_refused(&request, &log);
+
+    setup_case();
+    configure_data_request(&request, 0U, 18U, FALSE, 512U, 512U);
+    request.diagnostic_fault = P4HOST_FAULT_CMD_CRC;
+    expect_diagnostic_refused(&request, &log);
+
+    setup_case();
+    configure_data_request(&request, 0U, 18U, FALSE, 1280U, 512U);
+    request.diagnostic_fault = P4HOST_FAULT_DATA_CRC;
+    expect_diagnostic_refused(&request, &log);
+
+    setup_case();
+    configure_data_request(&request, 0U, 18U, FALSE, 1024U, 256U);
+    request.diagnostic_fault = P4HOST_FAULT_TIMEOUT;
+    expect_diagnostic_refused(&request, &log);
+
+    setup_case();
+    request = make_command(0U, 18U, MMC_RSP_R5);
+    request.observe_context = &context_token;
+    expect_refused(&request);
+}
+
+static void test_diagnostic_observer_and_no_observer_regression(void)
+{
+    struct P4HostCommand request;
+    struct P4HostCommandResult baseline, result;
+    struct observation_log log;
+    UBYTE baseline_payload[1024];
+    unsigned baseline_reads, baseline_writes, baseline_fifo_resets;
+    unsigned baseline_dma_prepares, baseline_dma_ready, baseline_dma_complete;
+    unsigned baseline_dma_resets, command_start_event, last_rint_write, index;
+
+    begin_case();
+    setup_case();
+    configure_data_request(&request, 0U, 18U, FALSE, 1024U, 512U);
+    next_raw = P4SD_INT_CMD_DONE | P4SD_INT_DATA_OVER;
+    CHECK(p4host_command(&command_host, &request, &baseline));
+    CHECK(baseline.status == P4HOST_COMMAND_OK);
+    CHECK(baseline.injected_fault == P4HOST_FAULT_NONE);
+    CHECK(find_event(EVENT_OBSERVATION, 0U) == EVENT_CAPACITY);
+    memcpy(baseline_payload, client_data + 4, sizeof(baseline_payload));
+    baseline_reads = read_count;
+    baseline_writes = write_count;
+    baseline_fifo_resets = fifo_reset_count;
+    baseline_dma_prepares = dma_prepare_count;
+    baseline_dma_ready = dma_ready_count;
+    baseline_dma_complete = dma_complete_count;
+    baseline_dma_resets = dma_reset_count;
+
+    setup_case();
+    configure_diagnostic_request(&request, &log, P4HOST_FAULT_NONE);
+    next_raw = P4SD_INT_CMD_DONE | P4SD_INT_DATA_OVER;
+    CHECK(p4host_command(&command_host, &request, &result));
+    CHECK(result.status == baseline.status);
+    CHECK(result.started == baseline.started);
+    CHECK(result.raw == baseline.raw);
+    CHECK(result.idstatus == baseline.idstatus);
+    CHECK(result.injected_fault == baseline.injected_fault);
+    CHECK(memcmp(result.response, baseline.response,
+                 sizeof(result.response)) == 0);
+    CHECK(read_count == baseline_reads);
+    CHECK(write_count == baseline_writes);
+    CHECK(fifo_reset_count == baseline_fifo_resets);
+    CHECK(dma_prepare_count == baseline_dma_prepares);
+    CHECK(dma_ready_count == baseline_dma_ready);
+    CHECK(dma_complete_count == baseline_dma_complete);
+    CHECK(dma_reset_count == baseline_dma_resets);
+    CHECK(memcmp(client_data + 4, baseline_payload,
+                 sizeof(baseline_payload)) == 0);
+    CHECK(log.count == 3U);
+    CHECK(log.records[0].observation == P4HOST_OBSERVE_START);
+    CHECK(log.records[0].started);
+    CHECK(log.records[1].observation == P4HOST_OBSERVE_SAMPLE);
+    CHECK(log.records[1].raw == (RADIO_IRQ_BITS | next_raw));
+    CHECK(log.records[1].idstatus == next_idstatus);
+    CHECK(log.records[1].injected_fault == P4HOST_FAULT_NONE);
+    CHECK(log.records[2].observation == P4HOST_OBSERVE_FINISH);
+    CHECK(log.records[2].status == P4HOST_COMMAND_OK);
+    CHECK(log.records[2].injected_fault == P4HOST_FAULT_NONE);
+    command_start_event = find_command_start_event();
+    CHECK(command_start_event < event_count);
+    CHECK(log.records[0].event_index > command_start_event);
+    CHECK(log.records[1].event_index > log.records[0].event_index);
+    CHECK(log.records[2].event_index > log.records[1].event_index);
+    CHECK(find_observation_event(P4HOST_OBSERVE_FINISH, 0U) ==
+          log.records[2].event_index);
+    last_rint_write = EVENT_CAPACITY;
+    for (index = 0U; index < event_count; ++index)
+        if (events[index].kind == EVENT_MMIO_WRITE &&
+            events[index].offset == P4SD_RINTSTS)
+            last_rint_write = index;
+    CHECK(last_rint_write < event_count);
+    CHECK(log.records[2].event_index > last_rint_write);
+}
+
+static void test_diagnostic_fault_modes_reset_without_publication(void)
+{
+    static const enum P4HostCommandFault faults[] = {
+        P4HOST_FAULT_CMD_CRC,
+        P4HOST_FAULT_DATA_CRC,
+        P4HOST_FAULT_TIMEOUT
+    };
+    static const enum P4HostCommandStatus statuses[] = {
+        P4HOST_COMMAND_ERROR,
+        P4HOST_COMMAND_ERROR,
+        P4HOST_COMMAND_TIMEOUT
+    };
+    static const ULONG error_bits[] = {
+        P4SD_INT_RCRC,
+        P4SD_INT_DCRC,
+        0U
+    };
+    struct P4HostCommand request;
+    struct P4HostCommandResult result;
+    struct observation_log log;
+    unsigned fault_index;
+
+    begin_case();
+    for (fault_index = 0U;
+         fault_index < sizeof(faults) / sizeof(faults[0]); ++fault_index)
+    {
+        unsigned command_start_event, first_fifo_reset, cleanup_fifo_reset;
+        setup_case();
+        configure_diagnostic_request(&request, &log, faults[fault_index]);
+        next_raw = P4SD_INT_CMD_DONE | P4SD_INT_DATA_OVER;
+        set_result_sentinel(&result);
+        CHECK(!p4host_command(&command_host, &request, &result));
+        CHECK(result.status == statuses[fault_index]);
+        CHECK(result.started);
+        CHECK(result.injected_fault == faults[fault_index]);
+        CHECK(result.raw == (RADIO_IRQ_BITS | next_raw |
+                             error_bits[fault_index]));
+        CHECK(result.idstatus == next_idstatus);
+        CHECK(log.count == 3U);
+        CHECK(log.records[0].observation == P4HOST_OBSERVE_START);
+        CHECK(log.records[1].observation == P4HOST_OBSERVE_SAMPLE);
+        CHECK(log.records[1].raw == (RADIO_IRQ_BITS | next_raw));
+        CHECK(log.records[1].idstatus == next_idstatus);
+        CHECK(log.records[1].injected_fault == P4HOST_FAULT_NONE);
+        CHECK(log.records[2].observation == P4HOST_OBSERVE_FINISH);
+        CHECK(log.records[2].status == statuses[fault_index]);
+        CHECK(log.records[2].raw == result.raw);
+        CHECK(log.records[2].injected_fault == faults[fault_index]);
+        command_start_event = find_command_start_event();
+        CHECK(command_start_event < event_count);
+        CHECK(log.records[0].event_index > command_start_event);
+        CHECK(log.records[1].event_index > log.records[0].event_index);
+        CHECK(log.records[2].event_index > log.records[1].event_index);
+        CHECK(dma_reset_count == 1U);
+        CHECK(fifo_reset_count == 2U);
+        CHECK(dma_complete_count == 0U);
+        CHECK(!command_host.dma_faulted);
+        CHECK(invalidate_count == 0U);
+        CHECK(client_data[4] == 0xCCU);
+        CHECK(client_data[4U + 1023U] == 0xCCU);
+        check_response_zero(&result);
+        first_fifo_reset = find_event(EVENT_FIFO_RESET, 0U);
+        cleanup_fifo_reset = find_event(EVENT_FIFO_RESET,
+                                        first_fifo_reset + 1U);
+        CHECK(first_fifo_reset < cleanup_fifo_reset);
+        CHECK(cleanup_fifo_reset < event_count);
+        CHECK(log.records[2].event_index > cleanup_fifo_reset);
+    }
+}
+
+static void test_data_crc_injection_beats_same_sample_early_cmd18(void)
+{
+    struct P4HostCommand request;
+    struct P4HostCommandResult result;
+    struct observation_log log;
+
+    begin_case();
+    setup_case();
+    configure_diagnostic_request(&request, &log, P4HOST_FAULT_DATA_CRC);
+    request.early_cmd18 = TRUE;
+    next_raw = P4SD_INT_CMD_DONE | P4SD_INT_DATA_OVER;
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_ERROR);
+    CHECK(result.started);
+    CHECK(result.injected_fault == P4HOST_FAULT_DATA_CRC);
+    CHECK(result.raw == (RADIO_IRQ_BITS | P4SD_INT_CMD_DONE |
+                         P4SD_INT_DATA_OVER | P4SD_INT_DCRC));
+    CHECK(log.count == 3U);
+    CHECK(log.records[1].observation == P4HOST_OBSERVE_SAMPLE);
+    CHECK(log.records[1].raw == (RADIO_IRQ_BITS | P4SD_INT_CMD_DONE |
+                                 P4SD_INT_DATA_OVER));
+    CHECK(log.records[1].idstatus == next_idstatus);
+    CHECK(log.records[1].injected_fault == P4HOST_FAULT_NONE);
+    CHECK(log.records[2].observation == P4HOST_OBSERVE_FINISH);
+    CHECK(dma_ready_count == 0U);
+    CHECK(dma_complete_count == 0U);
+    CHECK(dma_reset_count == 1U && fifo_reset_count == 2U);
+    CHECK(client_data[4] == 0xCCU && client_data[4U + 1023U] == 0xCCU);
+    check_response_zero(&result);
+}
+
+static void test_data_crc_injection_waits_for_delayed_cmd_done(void)
+{
+    struct P4HostCommand request;
+    struct P4HostCommandResult result;
+    struct observation_log log;
+
+    begin_case();
+    setup_case();
+    configure_diagnostic_request(&request, &log, P4HOST_FAULT_DATA_CRC);
+    next_raw = 0U;
+    raw_after_rint_read_count = 2U;
+    raw_after_rint_read = RADIO_IRQ_BITS | P4SD_INT_CMD_DONE |
+                          P4SD_INT_DATA_OVER;
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_ERROR);
+    CHECK(result.injected_fault == P4HOST_FAULT_DATA_CRC);
+    CHECK(result.raw == (RADIO_IRQ_BITS | P4SD_INT_CMD_DONE |
+                         P4SD_INT_DATA_OVER | P4SD_INT_DCRC));
+    CHECK(log.count == 4U);
+    CHECK(log.records[0].observation == P4HOST_OBSERVE_START);
+    CHECK(log.records[1].observation == P4HOST_OBSERVE_SAMPLE);
+    CHECK(log.records[1].raw == RADIO_IRQ_BITS);
+    CHECK(log.records[1].injected_fault == P4HOST_FAULT_NONE);
+    CHECK(log.records[2].observation == P4HOST_OBSERVE_SAMPLE);
+    CHECK(log.records[2].raw == (RADIO_IRQ_BITS | P4SD_INT_CMD_DONE |
+                                 P4SD_INT_DATA_OVER));
+    CHECK(log.records[2].injected_fault == P4HOST_FAULT_NONE);
+    CHECK(log.records[3].observation == P4HOST_OBSERVE_FINISH);
+    CHECK(log.records[3].raw == result.raw);
+    CHECK(dma_ready_count == 0U);
+    CHECK(dma_complete_count == 0U);
+    CHECK(dma_reset_count == 1U && fifo_reset_count == 2U);
+    CHECK(client_data[4] == 0xCCU && client_data[4U + 1023U] == 0xCCU);
+    check_response_zero(&result);
+}
+
+static void test_diagnostic_callbacks_are_absent_before_start(void)
+{
+    struct P4HostCommand request;
+    struct P4HostCommandResult result;
+    struct observation_log log;
+
+    begin_case();
+    setup_case();
+    configure_diagnostic_request(&request, &log, P4HOST_FAULT_CMD_CRC);
+    registers[P4SD_CMD / sizeof(ULONG)] = P4SD_CMD_START;
+    stuck_command_start = TRUE;
+    timer_step = 100000UL;
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_TIMEOUT);
+    CHECK(!result.started);
+    CHECK(result.injected_fault == P4HOST_FAULT_NONE);
+    CHECK(log.count == 0U);
+    CHECK(cmd_write_count == 0U);
+    CHECK(fifo_reset_count == 0U);
+    CHECK(dma_prepare_count == 0U);
+    CHECK(invalidate_count == 1U);
+}
+
 static void test_slot1_cmd53_subword_tails_and_neighbours(void)
 {
     struct P4HostCommand request;
@@ -1107,6 +1496,12 @@ int main(void)
     test_cmd0_and_cmd12_encoding();
     test_long_response_is_msw_first_and_success_only();
     test_r5_mask_error_does_not_publish_response();
+    test_diagnostic_validation_is_non_mmio();
+    test_diagnostic_observer_and_no_observer_regression();
+    test_diagnostic_fault_modes_reset_without_publication();
+    test_data_crc_injection_beats_same_sample_early_cmd18();
+    test_data_crc_injection_waits_for_delayed_cmd_done();
+    test_diagnostic_callbacks_are_absent_before_start();
     test_slot1_cmd53_subword_tails_and_neighbours();
     test_slot1_cmd53_requires_data_over_and_all_descriptors();
     test_tx_data_is_staged_before_dma_arm();

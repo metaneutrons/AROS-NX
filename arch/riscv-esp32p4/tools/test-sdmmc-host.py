@@ -387,8 +387,8 @@ def audit_transaction_call_modes() -> list[tuple[str, str]]:
 def audit_host_abi() -> str:
     source = HOST_HEADER.read_text(encoding="utf-8")
     abi_match = re.search(r"(?m)^\s*#\s*define\s+P4_SDMMC_HOST_ABI\s+(\d+)\b", source)
-    if not abi_match or abi_match.group(1) != "5":
-        raise ValueError("P4 SDMMC host ABI must be version 5")
+    if not abi_match or abi_match.group(1) != "6":
+        raise ValueError("P4 SDMMC host ABI must be version 6")
     struct_match = re.search(r"\bstruct\s+P4SDMMCHost\s*\{", source)
     if not struct_match:
         raise ValueError("P4 SDMMC host structure is missing")
@@ -405,7 +405,7 @@ def audit_host_abi() -> str:
         r"BOOL\s*\(\*command\)\(struct P4SDMMCHost \*, const struct P4HostCommand \*,\s*struct P4HostCommandResult \*\);",
     )
     if any(re.search(pattern, host_struct) is None for pattern in fields):
-        raise ValueError("P4 SDMMC ABI 5 host initialization/command/DMA fields are incomplete")
+        raise ValueError("P4 SDMMC ABI 6 host initialization/command/DMA fields are incomplete")
     implementation = HOST_SOURCE.read_text(encoding="utf-8")
     if not re.search(r"P4SDMMCBase->command\s*=\s*p4host_command\s*;", implementation):
         raise ValueError("P4 SDMMC command callback is not initialized")
@@ -441,7 +441,7 @@ def run() -> int:
 
     call_mode_checks = audit_transaction_call_modes()
     host_abi_hash = audit_host_abi()
-    print(f"P4 SDMMC host ABI 5 initialization/command/DMA source check: PASS ({host_abi_hash})")
+    print(f"P4 SDMMC host ABI 6 initialization/command/DMA source check: PASS ({host_abi_hash})")
     print("Transaction may_wait source checks:")
     for name, digest in call_mode_checks:
         print(f"  {name}: PASS ({digest})")

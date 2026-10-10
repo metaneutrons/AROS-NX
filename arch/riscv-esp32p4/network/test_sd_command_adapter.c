@@ -17,6 +17,17 @@ typedef int BOOL;
 
 /* INSERT_ACTUAL_SD_CONSTANTS */
 
+#ifndef P4_SDCARD_TRACE
+#define P4_SDCARD_TRACE 0
+#endif
+#ifndef P4_SDCARD_FAULT_INJECT
+#define P4_SDCARD_FAULT_INJECT P4SD_FAULT_NONE
+#endif
+
+#if P4_SDCARD_FAULT_INJECT != P4SD_FAULT_NONE
+static BOOL p4sd_fault_injected;
+#endif
+
 #define MMC_RSP_PRESENT           (1UL << 0)
 #define MMC_RSP_136               (1UL << 1)
 #define MMC_RSP_CRC               (1UL << 2)
@@ -28,6 +39,8 @@ typedef int BOOL;
 #define MMC_RSP_R2                (MMC_RSP_PRESENT | MMC_RSP_CRC | MMC_RSP_136)
 
 #define SDCARD_TAG_RSP 4UL
+
+struct P4HostCommandResult;
 
 /* INSERT_ACTUAL_COMMAND_TYPES */
 
@@ -138,7 +151,6 @@ static BOOL mock_host_command(struct P4SDMMCHost *target_host,
                               struct P4HostCommandResult *result)
 {
     (void)target_host;
-    CHECK(command_calls == 0);
     ++command_calls;
     CHECK(event_count < sizeof(events) / sizeof(events[0]));
     events[event_count++] = EVENT_COMMAND;
@@ -196,6 +208,9 @@ static void reset_mocks(void)
     captured_request.block_size = 0;
     captured_request.writing = FALSE;
     captured_request.early_cmd18 = FALSE;
+    captured_request.diagnostic_fault = P4HOST_FAULT_NONE;
+    captured_request.observe = NULL;
+    captured_request.observe_context = NULL;
     command_result.status = P4HOST_COMMAND_OK;
     command_result.started = TRUE;
     command_result.raw = 0;
@@ -204,11 +219,15 @@ static void reset_mocks(void)
     command_result.response[1] = 0x22334455UL;
     command_result.response[2] = 0x33445566UL;
     command_result.response[3] = 0x44556677UL;
+    command_result.injected_fault = P4HOST_FAULT_NONE;
 }
 
 static void prepare(void)
 {
     reset_mocks();
+#if P4_SDCARD_FAULT_INJECT != P4SD_FAULT_NONE
+    p4sd_fault_injected = FALSE;
+#endif
     host.command = mock_host_command;
     host.dma_faulted = FALSE;
     host.generation = 0xA51C23D4UL;
@@ -233,6 +252,9 @@ static void check_request(ULONG index, ULONG argument, ULONG response_flags)
     CHECK(captured_request.block_size == 0UL);
     CHECK(captured_request.writing == FALSE);
     CHECK(captured_request.early_cmd18 == FALSE);
+    CHECK(captured_request.diagnostic_fault == P4HOST_FAULT_NONE);
+    CHECK(captured_request.observe == NULL);
+    CHECK(captured_request.observe_context == NULL);
     CHECK(memset_calls == 1U);
 }
 
@@ -252,6 +274,9 @@ static void check_data_request(ULONG index, ULONG argument, ULONG response_flags
     CHECK(captured_request.block_size == block_size);
     CHECK(captured_request.writing == FALSE);
     CHECK(captured_request.early_cmd18 == early_cmd18);
+    CHECK(captured_request.diagnostic_fault == P4HOST_FAULT_NONE);
+    CHECK(captured_request.observe == NULL);
+    CHECK(captured_request.observe_context == NULL);
     CHECK(memset_calls == 1U);
 }
 
@@ -857,8 +882,122 @@ static void test_actual_denylist_is_exact(void)
     CHECK(p4sd_media_mutating_command(64UL) == FALSE);
 }
 
+#if P4_SDCARD_FAULT_INJECT != P4SD_FAULT_NONE
+static void test_diagnostic_fault_request_is_consumed_once(void)
+{
+    enum P4HostCommandFault expected_fault;
+    UBYTE *unaligned = &test_data[1];
+
+    switch (P4_SDCARD_FAULT_INJECT)
+    {
+        case P4SD_FAULT_CMD_CRC:
+            expected_fault = P4HOST_FAULT_CMD_CRC;
+            break;
+        case P4SD_FAULT_DATA_CRC:
+            expected_fault = P4HOST_FAULT_DATA_CRC;
+            break;
+        case P4SD_FAULT_TIMEOUT:
+            expected_fault = P4HOST_FAULT_TIMEOUT;
+            break;
+        default:
+            CHECK(FALSE);
+            return;
+    }
+
+    begin_case();
+    prepare();
+    prepare_data();
+    command_return = FALSE;
+    command_result.status = P4HOST_COMMAND_ERROR;
+    command_result.started = FALSE;
+
+    /* The request alone does not consume the one-shot diagnostic. */
+    CHECK(p4sd_shared_command(&test_bus, MMC_CMD_READ_MULTIPLE_BLOCK, 0x800UL,
+                              MMC_RSP_R1, NULL, unaligned, 1024UL,
+                              MMC_DATA_READ) == (ULONG)-1);
+    CHECK(command_calls == 1U);
+    CHECK(captured_request.index == MMC_CMD_READ_MULTIPLE_BLOCK);
+    CHECK(captured_request.length == 1024UL);
+    CHECK(captured_request.block_size == 512UL);
+    CHECK(captured_request.writing == FALSE);
+    CHECK(captured_request.early_cmd18 == TRUE);
+    CHECK(captured_request.diagnostic_fault == expected_fault);
+    CHECK(captured_request.observe == NULL);
+    CHECK(captured_request.observe_context == NULL);
+    CHECK(p4sd_fault_injected == FALSE);
+    CHECK(recover_calls == 0U);
+    CHECK(confirm_calls == 0U);
+
+    /* Only the result's explicit injected-fault field consumes it. */
+    command_result.injected_fault = expected_fault;
+    CHECK(p4sd_shared_command(&test_bus, MMC_CMD_READ_MULTIPLE_BLOCK, 0x800UL,
+                              MMC_RSP_R1, NULL, unaligned, 1024UL,
+                              MMC_DATA_READ) == (ULONG)-1);
+    CHECK(command_calls == 2U);
+    CHECK(captured_request.diagnostic_fault == expected_fault);
+    CHECK(p4sd_fault_injected == TRUE);
+
+    /* Once reported, the next CMD18 carries NONE even in diagnostic builds. */
+    command_result.injected_fault = P4HOST_FAULT_NONE;
+    CHECK(p4sd_shared_command(&test_bus, MMC_CMD_READ_MULTIPLE_BLOCK, 0x800UL,
+                              MMC_RSP_R1, NULL, unaligned, 1024UL,
+                              MMC_DATA_READ) == (ULONG)-1);
+    CHECK(command_calls == 3U);
+    CHECK(captured_request.diagnostic_fault == P4HOST_FAULT_NONE);
+    CHECK(captured_request.observe == NULL);
+    CHECK(captured_request.observe_context == NULL);
+    CHECK(p4sd_fault_injected == TRUE);
+    CHECK(recover_calls == 0U);
+    CHECK(confirm_calls == 0U);
+    CHECK(test_priv.host_ready == TRUE);
+    check_data_unchanged();
+}
+#endif
+
 int main(void)
 {
+#if defined(P4SD_DIAGNOSTIC_TEST_ONLY) && P4SD_DIAGNOSTIC_TEST_ONLY
+    /* Keep the normal fixture compiled under strict unused-function checks. */
+    if (0)
+    {
+        test_r1_request_and_publication();
+        test_r2_request_and_word_publication();
+        test_null_response_tag_pointer();
+        test_absent_response_is_untouched();
+        test_null_r2_storage_is_safe();
+        test_cmd17_single_block_read_mapping();
+        test_cmd18_two_block_read_mapping();
+        test_cmd18_maximum_read_mapping();
+        test_cmd51_short_scr_read_mapping();
+        test_null_data_refused_without_callback_or_mutation();
+        test_write_only_data_refused_without_callback_or_mutation();
+        test_read_write_data_refused_without_callback_or_mutation();
+        test_stream_data_refused_without_callback_or_mutation();
+        test_oversize_data_refused_without_callback_or_mutation();
+        test_bad_block_length_refused_without_callback_or_mutation();
+        test_short_cmd17_refused_without_callback_or_mutation();
+        test_multi_block_cmd17_refused_without_callback_or_mutation();
+        test_short_cmd18_refused_without_callback_or_mutation();
+        test_zero_length_cmd17_refused_without_callback_or_mutation();
+        test_zero_length_cmd18_refused_without_callback_or_mutation();
+        test_ordinary_failure_preserves_ready_and_response();
+        test_r2_failure_does_not_publish();
+        test_data_error_before_start_skips_recovery_and_publication();
+        test_started_cmd17_error_confirms_tran();
+        test_started_cmd17_error_confirm_failure_disables_ready();
+        test_started_cmd18_error_recovery_success();
+        test_started_cmd18_error_recovery_failure_disables_ready();
+        test_dma_fault_skips_data_recovery();
+        test_stale_generation_skips_data_recovery();
+        test_dma_fault_failure_disables_ready();
+        test_stale_generation_failure_disables_ready();
+        test_cmd12_engine_failure_disables_ready();
+        test_cmd12_confirm_failure_keeps_response_private();
+        test_cmd12_publication_follows_confirm();
+        test_actual_denylist_is_exact();
+    }
+    test_diagnostic_fault_request_is_consumed_once();
+#else
     test_r1_request_and_publication();
     test_r2_request_and_word_publication();
     test_null_response_tag_pointer();
@@ -894,6 +1033,7 @@ int main(void)
     test_cmd12_confirm_failure_keeps_response_private();
     test_cmd12_publication_follows_confirm();
     test_actual_denylist_is_exact();
+#endif
     printf("PASS: %u cases, %u checks\n", cases, checks);
     return 0;
 }

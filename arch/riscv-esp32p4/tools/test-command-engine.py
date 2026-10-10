@@ -21,6 +21,8 @@ COMMAND_SOURCE = PORT / "sdmmc" / "command.c"
 SDMMC = PORT / "sdmmc"
 INCLUDE = ROOT / "compiler" / "include"
 INSERT_MARKER = "/* INSERT_ACTUAL_COMMAND_ENGINE */"
+BUILD_TIMEOUT_SECONDS = 60
+RUN_TIMEOUT_SECONDS = 30
 
 CLOCK_EXTRACTION = run_path(str(PORT / "tools" / "test-clock-engine.py"))
 extract_definition = CLOCK_EXTRACTION["extract_definition"]
@@ -120,9 +122,10 @@ def run() -> int:
         print(f"  {name}: {sha256(content)}")
     print(f"  test fixture: {sha256(FIXTURE.read_bytes())}")
     print(
-        "Production command read/write logic runs with only volatile MMIO "
-        "access and the RISC-V fence substituted; DMA callbacks are modeled. "
-        "Native host pointers are not an RV32 ABI test or hardware evidence."
+        "Production command and diagnostic-observer call sites are extracted; "
+        "only MMIO access, the RISC-V fence, callback, and DMA endpoints are "
+        "modeled. Native host pointers are not an RV32 ABI test or hardware "
+        "evidence."
     )
 
     with tempfile.TemporaryDirectory(prefix="p4-command-engine-") as temporary:
@@ -163,7 +166,7 @@ def run() -> int:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=False,
-                timeout=60,
+                timeout=BUILD_TIMEOUT_SECONDS,
             )
             if build.returncode != 0:
                 sys.stderr.write(build.stdout)
@@ -174,7 +177,7 @@ def run() -> int:
             if build.stderr:
                 sys.stderr.write(build.stderr)
 
-            print(f"Running O{optimization} (30-second timeout)")
+            print(f"Running O{optimization} ({RUN_TIMEOUT_SECONDS}-second timeout)")
             try:
                 result = subprocess.run(
                     [str(binary)],
@@ -182,12 +185,13 @@ def run() -> int:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     check=False,
-                    timeout=30,
+                    timeout=RUN_TIMEOUT_SECONDS,
                     env=environment,
                 )
             except subprocess.TimeoutExpired:
                 print(
-                    "FAIL: command fixture exceeded 30 seconds; a bounded "
+                    f"FAIL: command fixture exceeded {RUN_TIMEOUT_SECONDS} "
+                    "seconds; a bounded "
                     "wait may be stalled",
                     file=sys.stderr,
                 )

@@ -52,6 +52,15 @@ static BOOL command_valid(struct P4SDMMCHost *host,
     if (request->response_error_mask &&
         (!(flags & MMC_RSP_PRESENT) || (flags & MMC_RSP_136)))
         return FALSE;
+    if (request->diagnostic_fault != P4HOST_FAULT_NONE &&
+        (request->diagnostic_fault < P4HOST_FAULT_CMD_CRC ||
+         request->diagnostic_fault > P4HOST_FAULT_TIMEOUT ||
+         request->slot != 0 || request->index != 18 || request->writing ||
+         request->length < 1024 || request->length % 512 ||
+         request->block_size != 512))
+        return FALSE;
+    if (!request->observe && request->observe_context)
+        return FALSE;
     if (!request->length)
         return !request->data && !request->block_size && !request->writing &&
                !request->early_cmd18;
@@ -143,6 +152,9 @@ BOOL p4host_command(struct P4SDMMCHost *host,
     command_write(P4SD_CMDARG, request->argument);
     command_write(P4SD_CMD, command | P4SD_CMD_USE_HOLD | P4SD_CMD_START);
     outcome.started = TRUE;
+    if (request->observe)
+        request->observe(request->observe_context, request,
+                         P4HOST_OBSERVE_START, &outcome);
     start = host->now_us();
     limit = request->length ? P4HOST_DATA_TIMEOUT_US : P4HOST_COMMAND_TIMEOUT_US;
     polls = P4HOST_COMMAND_POLLS;
@@ -150,6 +162,27 @@ BOOL p4host_command(struct P4SDMMCHost *host,
     {
         outcome.raw = command_read(P4SD_RINTSTS);
         outcome.idstatus = prepared ? command_read(P4SD_IDSTS) : 0;
+        if (request->observe)
+            request->observe(request->observe_context, request,
+                             P4HOST_OBSERVE_SAMPLE, &outcome);
+        /* Inject before completion/error decisions, including CMD_DONE and
+         * completed descriptors in the same sample. Data CRC waits until a
+         * command response is observed; it cannot be lost to early success. */
+        if (request->diagnostic_fault != P4HOST_FAULT_NONE &&
+            (request->diagnostic_fault != P4HOST_FAULT_DATA_CRC ||
+             cmd_done || (outcome.raw & P4SD_INT_CMD_DONE)))
+        {
+            outcome.injected_fault = request->diagnostic_fault;
+            if (request->diagnostic_fault == P4HOST_FAULT_CMD_CRC)
+                outcome.raw |= P4SD_INT_RCRC;
+            else if (request->diagnostic_fault == P4HOST_FAULT_DATA_CRC)
+                outcome.raw |= P4SD_INT_DCRC;
+            else
+            {
+                outcome.status = P4HOST_COMMAND_TIMEOUT;
+                goto failed;
+            }
+        }
         /* Error precedence is unconditional, including CMD_DONE/DTO and
          * completed descriptors in the very same sample. No RX copy yet. */
         if (outcome.raw & (P4SD_INT_CMD_ERRORS |
@@ -253,6 +286,9 @@ failed:
         host->invalidate(host);
     }
 finished:
+    if (outcome.started && request->observe)
+        request->observe(request->observe_context, request,
+                         P4HOST_OBSERVE_FINISH, &outcome);
     *result = outcome;
     return outcome.status == P4HOST_COMMAND_OK;
 }

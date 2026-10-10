@@ -6,7 +6,7 @@
 #include <exec/semaphores.h>
 
 #define P4_SDMMC_HOST_NAME "esp32p4sdmmc.resource"
-#define P4_SDMMC_HOST_ABI 5
+#define P4_SDMMC_HOST_ABI 6
 #define P4_SDMMC_HOST_WAIT_US 1000000UL
 
 /* Private port ABI, shared by separately loaded SD and radio clients.

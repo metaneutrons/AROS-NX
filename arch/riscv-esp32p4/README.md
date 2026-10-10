@@ -20,9 +20,11 @@ A shared command-engine candidate now adds explicit slot/direction,
 staged RX/TX, card-response masks, error-first completion and bounded waits;
 its RV32 build and independent source review pass. Independently repeated
 extracted-source tests pass at O0/O2 with ASan/UBSan (20 cases, 2,001,069
-checks each). It is now exposed through private resource ABI5 (212 bytes on
+checks each). It was exposed through private resource ABI5 (212 bytes on
 RV32), and SD refuses a missing callback or mismatched version/size.
-Normal SD builds now invoke it for all commands; radio integration remains open.
+The diagnostic migration now uses ABI6 (same host size; changed command
+request/result layout), host tested and RV32 build verified. All SD builds
+invoke it for all commands; radio integration remains open.
 Modeled MMIO/DMA callbacks
 are not hardware evidence.
 Global controller programming now moves into the shared reset path; SD joins
@@ -34,10 +36,14 @@ models pass (clock/reset:18 cases/292 checks; SD ownership/init:25 cases/400,338
 checks each O0/O2 with ASan/UBSan). These do not verify silicon behavior.
 The production SD adapter, including data reads, is host tested and RV32 build
 verified (35 cases/592 checks each O0/O2 with ASan/UBSan). CMD12 retains client-side
-CMD13 TRAN/ready confirmation before publishing its response. Active diagnostic
-CMD18 traces retain legacy CMD12/13 sampling. Diagnostic data runs temporarily
-retain the old command loop and cannot qualify the new production path.
-Shared diagnostic hooks and hardware regression remain open.
+CMD13 TRAN/ready confirmation before publishing its response. The legacy
+diagnostic loop is now removed: all builds use the shared motor, with explicit
+per-request command/data CRC or timeout injection and bounded observation hooks.
+Independent review and primary repeated sanitizer tests pass: command engine
+26 cases/2,001,566 checks each O0/O2; SD adapter35 cases/629 checks each O0/O2,
+plus all three trace-off fault modes. The12-sample trace is best-effort and may
+omit stop/finish milestones; it is not recovery acceptance evidence. Hardware
+regression, open-unit recovery and production-branch integration remain open.
 The independently implemented ESP-Hosted serial TLV codec now validates
 RPCRsp/RPCEvt envelopes (116 checks each O0/O2 with ASan/UBSan and standalone
 RV32 compilation). It does not parse protobuf, reassemble fragments or execute

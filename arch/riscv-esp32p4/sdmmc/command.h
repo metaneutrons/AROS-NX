@@ -9,6 +9,22 @@
 #define P4HOST_BUSY_TIMEOUT_US 1000000UL
 #define P4HOST_COMMAND_POLLS 1000000UL
 
+enum P4HostCommandFault
+{
+    P4HOST_FAULT_NONE,
+    P4HOST_FAULT_CMD_CRC,
+    P4HOST_FAULT_DATA_CRC,
+    P4HOST_FAULT_TIMEOUT
+};
+
+enum P4HostCommandObservation
+{
+    P4HOST_OBSERVE_START,
+    P4HOST_OBSERVE_SAMPLE,
+    P4HOST_OBSERVE_FINISH
+};
+
+struct P4HostCommandResult;
 struct P4HostCommand
 {
     unsigned slot;
@@ -18,6 +34,18 @@ struct P4HostCommand
     ULONG length, block_size;
     BOOL writing;
     BOOL early_cmd18; /* Storage workaround only; requires outer CMD12/13. */
+    /* Diagnostics are explicit per request, never global host state. Faults
+     * are restricted to valid slot0 CMD18 reads. They alter a software decision
+     * only, not registers or media. Production clients leave them at NONE. */
+    enum P4HostCommandFault diagnostic_fault;
+    /* Synchronous, under the owner; bounded, read-only, no allocation, wait,
+     * command recursion or host mutation. No callbacks for refused/pre-start
+     * requests. SAMPLE observes actual status before software fault injection;
+     * FINISH observes the decided result after controller cleanup. */
+    void (*observe)(void *context, const struct P4HostCommand *,
+                    enum P4HostCommandObservation,
+                    const struct P4HostCommandResult *);
+    void *observe_context;
 };
 
 enum P4HostCommandStatus
@@ -36,6 +64,7 @@ struct P4HostCommandResult
     BOOL started;
     ULONG raw, idstatus;
     ULONG response[4]; /* Published only on success; MSW first for R2. */
+    enum P4HostCommandFault injected_fault; /* NONE unless actually injected. */
 };
 
 /* Caller owns the resource in task context, with interrupts enabled, for
@@ -49,8 +78,8 @@ struct P4HostCommandResult
  * Failure resets the prepared DMA/FIFO, not the card protocol. The client
  * must recover/confirm its card or invalidate readiness before releasing
  * its transaction. No controller-wide reset is performed here.
- * Exposed through the private resource ABI. Production SD uses this motor;
- * legacy diagnostic SD builds and the radio client are not integrated yet. */
+ * Exposed through private resource ABI6, including diagnostic request/result
+ * layout. SD production/diagnostics use this motor; radio is not integrated. */
 BOOL p4host_command(struct P4SDMMCHost *host,
                     const struct P4HostCommand *request,
                     struct P4HostCommandResult *result);

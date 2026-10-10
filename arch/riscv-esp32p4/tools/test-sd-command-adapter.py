@@ -46,6 +46,8 @@ def load_extraction_helpers():
 
 def extract_production_bodies(helper) -> tuple[str, dict[str, str]]:
     command_type_signatures = {
+        "P4HostCommandFault": r"\benum\s+P4HostCommandFault\s*(?=\{)",
+        "P4HostCommandObservation": r"\benum\s+P4HostCommandObservation\s*(?=\{)",
         "P4HostCommand": r"\bstruct\s+P4HostCommand\s*(?=\{)",
         "P4HostCommandStatus": r"\benum\s+P4HostCommandStatus\s*(?=\{)",
         "P4HostCommandResult": r"\bstruct\s+P4HostCommandResult\s*(?=\{)",
@@ -84,7 +86,14 @@ def extract_production_bodies(helper) -> tuple[str, dict[str, str]]:
             ),
             helper.extract_constant_lines(
                 INTERN_HEADER,
-                ("P4SD_MAX_READ_BLOCKS", "P4SD_MAX_DATA_LEN"),
+                (
+                    "P4SD_MAX_READ_BLOCKS",
+                    "P4SD_MAX_DATA_LEN",
+                    "P4SD_FAULT_NONE",
+                    "P4SD_FAULT_CMD_CRC",
+                    "P4SD_FAULT_DATA_CRC",
+                    "P4SD_FAULT_TIMEOUT",
+                ),
             ),
         )
     )
@@ -94,7 +103,13 @@ def extract_production_bodies(helper) -> tuple[str, dict[str, str]]:
         INSERT_TYPES_MARKER,
         "\n\n".join(
             bodies[name] + ";"
-            for name in ("P4HostCommand", "P4HostCommandStatus", "P4HostCommandResult")
+            for name in (
+                "P4HostCommandFault",
+                "P4HostCommandObservation",
+                "P4HostCommand",
+                "P4HostCommandStatus",
+                "P4HostCommandResult",
+            )
         ),
     )
     assembled = assembled.replace(
@@ -132,68 +147,43 @@ def audit_dispatch(body: str) -> None:
             raise ValueError(f"p4sd_send_cmd_locked is missing its {label}")
         positions.append((label, match.start()))
 
-    normal = re.search(
-        r"(?m)^\s*#if\s+!P4_SDCARD_TRACE\s*&&\s*"
-        r"P4_SDCARD_FAULT_INJECT\s*==\s*P4SD_FAULT_NONE\s*$\s*"
-        r"return\s+p4sd_shared_command\s*\((?P<args>.*?)\);\s*"
-        r"#else\b",
+    dispatch = re.search(
+        r"return\s+p4sd_shared_command\s*\((?P<args>.*?)\);",
         body,
         flags=re.DOTALL,
     )
-    if normal is None:
-        raise ValueError("normal builds no longer dispatch every request to the shared adapter")
-    normal_args = re.sub(r"\s+", " ", normal.group("args")).strip()
-    if normal_args != (
+    if dispatch is None:
+        raise ValueError("SendCmd no longer dispatches to the shared adapter")
+    arguments = re.sub(r"\s+", " ", dispatch.group("args")).strip()
+    if arguments != (
         "bus, command_index, argument, rsp_type, response, data, data_len, data_flags"
     ):
-        raise ValueError(f"normal shared-adapter arguments changed: {normal_args}")
-    positions.append(("normal all-request dispatch", normal.start()))
+        raise ValueError(f"shared-adapter arguments changed: {arguments}")
+    if len(re.findall(r"\bp4sd_shared_command\s*\(", body)) != 1:
+        raise ValueError("SendCmd must have exactly one shared-adapter call site")
+    if re.search(r"(?m)^\s*#\s*(?:if|else|endif)\b", body):
+        raise ValueError("SendCmd has a conditional path around shared dispatch")
+    if "P4_SDCARD_TRACE" in body or "P4_SDCARD_FAULT_INJECT" in body:
+        raise ValueError("diagnostic build selection must annotate the shared request")
+    if re.search(r"if\s*\(\s*data_len\b", body):
+        raise ValueError("SendCmd retains a data-length branch instead of common dispatch")
+    legacy_path = (
+        "p4sd_reset_fifo",
+        "p4sd_reset_dma",
+        "p4sd_dma_prepare_read",
+        "p4sd_drain_read_fifo",
+        "p4sd_recover_multiblock",
+        "p4sd_wait_clear",
+        "P4SD_CMD_WRITE",
+    )
+    for symbol in legacy_path:
+        if symbol in body:
+            raise ValueError(f"SendCmd retains legacy transfer path symbol {symbol}")
+    positions.append(("unconditional shared dispatch", dispatch.start()))
     ordered_positions = [position for _, position in positions]
     if ordered_positions != sorted(ordered_positions):
         order = " -> ".join(label for label, _ in positions)
         raise ValueError(f"shared dispatch precedes a safety gate ({order})")
-
-    diagnostic = re.search(
-        r"if\s*\(\s*data_len\s*==\s*0(?P<guard>.*?)\)\s*"
-        r"return\s+p4sd_shared_command\s*\((?P<args>.*?)\);",
-        body[normal.end() :],
-        flags=re.DOTALL,
-    )
-    if diagnostic is None:
-        raise ValueError("diagnostic branch lost its legacy no-data shared-adapter path")
-    guard = diagnostic.group("guard")
-    if "#if P4_SDCARD_TRACE" not in guard or "&& !p4sd_trace.active" not in guard:
-        raise ValueError("diagnostic no-data path no longer preserves active CMD18 tracing")
-    if len(re.findall(r"p4sd_trace\.active", guard)) != 1:
-        raise ValueError("diagnostic no-data guard has extra trace-state conditions")
-    diagnostic_args = re.sub(r"\s+", " ", diagnostic.group("args")).strip()
-    if diagnostic_args != (
-        "bus, command_index, argument, rsp_type, response, NULL, 0, 0"
-    ):
-        raise ValueError(f"diagnostic no-data arguments changed: {diagnostic_args}")
-
-    data_branch = re.search(
-        r"if\s*\(\s*data_len\s*!=\s*0\s*\)",
-        body[normal.end() :],
-    )
-    if data_branch is None or diagnostic.end() > data_branch.start():
-        raise ValueError("diagnostic legacy data path is not after its no-data dispatch")
-    legacy = body[normal.end() + data_branch.start() :]
-    for fragment, label in (
-        ("MMC_DATA_WRITE | MMC_DATA_STREAM", "read-only data-flag validation"),
-        ("p4sd_reset_fifo", "legacy FIFO preparation"),
-        ("p4sd_dma_prepare_read", "legacy read transfer"),
-        ("p4sd_recover_multiblock", "legacy CMD18 recovery"),
-    ):
-        if fragment not in legacy:
-            raise ValueError(f"diagnostic legacy data path lost {label}")
-
-    call_count = len(re.findall(r"\bp4sd_shared_command\s*\(", body))
-    if call_count != 2:
-        raise ValueError(
-            "expected normal all-request and diagnostic no-data adapter call sites; "
-            f"found {call_count}"
-        )
 
 
 def run() -> int:
@@ -209,6 +199,8 @@ def run() -> int:
     print("Extracted production source (SHA-256):")
     for name in (
         "sd_constants",
+        "P4HostCommandFault",
+        "P4HostCommandObservation",
         "P4HostCommand",
         "P4HostCommandStatus",
         "P4HostCommandResult",
@@ -221,11 +213,12 @@ def run() -> int:
     print(f"  actual denylist values: {sorted(denylist)}")
     print(
         "Source coverage: shared adapter, denylist, SD data constants and "
-        "command/request/result type definitions execute from production. "
-        "The SendCmd wrapper's normal dispatch and diagnostic exception are "
-        "structurally audited, not executed. Host, CMD13 confirmation, "
-        "CMD18 recovery, TagItem/bus/private state, logging and memory helpers "
-        "are fixture stand-ins. No MMIO or hardware behavior is modeled."
+        "command/request/result/fault/observation type definitions execute "
+        "from production. SendCmd's single unconditional dispatch and removal "
+        "of the legacy transfer path are structurally audited. Host, CMD13 "
+        "confirmation, CMD18 recovery, TagItem/bus/private state, logging and "
+        "memory helpers are fixture stand-ins. The observer itself is not "
+        "executed; no MMIO or hardware behavior is modeled."
     )
 
     with tempfile.TemporaryDirectory(prefix="p4-sd-command-adapter-") as temporary:
@@ -297,6 +290,78 @@ def run() -> int:
                 return result.returncode
             if not re.search(r"(?m)^PASS: \d+ cases, \d+ checks$", result.stdout):
                 print("FAIL: test binary did not report its complete case count", file=sys.stderr)
+                return 1
+
+        for fault_mode in (1, 2, 3):
+            binary = directory / f"test_sd_command_adapter_fault_{fault_mode}"
+            command = compiler + [
+                "-std=c99",
+                "-O0",
+                "-g",
+                "-Wall",
+                "-Wextra",
+                "-Wpedantic",
+                "-Wconversion",
+                "-Wshadow",
+                "-Wstrict-prototypes",
+                "-Werror",
+                "-fsanitize=address,undefined",
+                "-fno-omit-frame-pointer",
+                "-DP4SD_DIAGNOSTIC_TEST_ONLY=1",
+                "-DP4_SDCARD_TRACE=0",
+                f"-DP4_SDCARD_FAULT_INJECT={fault_mode}",
+                str(source_path),
+                "-o",
+                str(binary),
+            ]
+            print(
+                f"\nBuilding trace-off diagnostic fault mode {fault_mode} "
+                "with strict C99 warnings and ASan/UBSan"
+            )
+            try:
+                build = subprocess.run(
+                    command,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                    timeout=60,
+                )
+            except subprocess.TimeoutExpired:
+                print("FAIL: diagnostic compiler exceeded 60 seconds", file=sys.stderr)
+                return 1
+            if build.returncode != 0:
+                sys.stderr.write(build.stdout)
+                sys.stderr.write(build.stderr)
+                return build.returncode or 1
+            if build.stdout:
+                sys.stdout.write(build.stdout)
+            if build.stderr:
+                sys.stderr.write(build.stderr)
+
+            print(f"Running fault mode {fault_mode} (30-second timeout)")
+            try:
+                result = subprocess.run(
+                    [str(binary)],
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                    timeout=30,
+                    env=environment,
+                )
+            except subprocess.TimeoutExpired:
+                print("FAIL: diagnostic test exceeded 30 seconds", file=sys.stderr)
+                return 1
+            sys.stdout.write(result.stdout)
+            sys.stderr.write(result.stderr)
+            if result.returncode != 0:
+                return result.returncode
+            if not re.search(r"(?m)^PASS: 1 cases, \d+ checks$", result.stdout):
+                print(
+                    "FAIL: diagnostic test did not report its complete case count",
+                    file=sys.stderr,
+                )
                 return 1
 
     return 0
