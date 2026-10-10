@@ -51,7 +51,12 @@ sequence models pass537 checks each O0/O2 with ASan/UBSan. These use actual
 scan/RPC codecs with modeled control exchanges, not physical hardware.
 ScanStart alone may poll500 times but remains
 under the same8s aggregate deadline; other RPCs retain100 polls. The135284B
-scan-enabled module is not packaged/deployed and is not a hardware scan pass.
+scan-enabled module is now in a separately prepared3823840B package:42/42
+loader checks and the4063232B size limit pass;41 non-WiFi records remain
+byte-identical to the installed initialization package. It is not deployed
+and is not a hardware scan pass. The larger3825664B erase span requires two
+new matching full-span backups before any eventual write; the existing shorter
+initialization backup does not cover it.
 
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection
