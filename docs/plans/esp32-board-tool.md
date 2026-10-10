@@ -67,6 +67,13 @@ secured recovery path; source development and read-only file checks do not.
   by the future owner dispatcher before BEGIN, not deferred until a possibly
   poisoned transfer completes. Original30-second discovery leases are not a
   full-image budget. Host/module tests cannot close runtime acceptance.
+- The portable engine requires a single original aggregate deadline, a finish
+  reserve, per-call timeout caps and a monotonic clock. Native integration must
+  enforce the passed timeout in each blocking callback; clock checks cannot
+  preempt an unbounded callback. Qualify total and reserve on actual full-image
+  transfers and storage contention; there is no production timing default.
+  Work cannot consume the finish reserve, no WRITE renews time, and a late END
+  receipt must remain acknowledged-but-unconfirmed rather than installed.
 - A missing recovery proof is a refused write, not a command-line override.
   Recovery evidence must refer to the actual device and layout. Do not infer
   installed rollback from the candidate's build configuration.

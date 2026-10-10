@@ -123,7 +123,7 @@ No ABI7/ABI8/ABI9 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle/discovery/client and terminal contract host/build verified; private OTA transport and ABI9 native terminal fence standalone build verified (not repackaged); prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Native maintenance OTA-job dispatch and engine adapter with pre-BEGIN sticky obligation and full-transfer budget; runtime fenced handoff, actual discovery/layout/slot provenance, secured CN5 recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle/discovery/client and terminal contract host/build verified; isolated aggregate deadline962-check host/standalone RV32 build verified, native timing qualification pending; private OTA transport and ABI9 native terminal fence standalone build verified (not repackaged); prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Native maintenance OTA-job dispatch and engine adapter with pre-BEGIN sticky obligation and qualified full-transfer deadline; runtime fenced handoff, actual discovery/layout/slot provenance, secured CN5 recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1292,7 +1292,7 @@ checks fail closed; expiry retires the owner with bounded owner-only
 Stop/Deinit/CLOSE/function restoration. This is not a no-write boundary or an
 OTA adapter: no maintenance client can issue SDIO/OTA through this ABI.
 Future begun/ambiguous OTA transactions need a separate terminal cleanup policy
-and a justified full-transfer/renewal budget before binding the engine.
+and a justified full-transfer deadline before binding the engine.
 The portable engine now supplies that terminal disposition explicitly to
 finish_maintenance rather than invoking undifferentiated release: NO_BEGIN,
 INCOMPLETE after any BEGIN attempt, COMMIT_UNKNOWN after unsuccessful END,
@@ -1303,7 +1303,19 @@ classification and prevents installed confirmation. Postboot confirmation
 also requires complete matching counters and begin/end flags. This is an
 adapter contract. ABI9 now adds a separate native terminal fence hook alongside
 ordinary read-only release; native OTA dispatch/engine binding and a full-transfer
-budget still need implementation.
+budget still need native implementation and qualification. The isolated engine
+now requires explicit total/reserve/per-call budgets and a monotonic clock.
+One original deadline begins before lease acquisition, work excludes the finish
+reserve, and every blocking callback receives a positive bounded remaining
+timeout. WRITE cannot renew the deadline. Failed/expired clocks prevent late
+handoff; a late verified END remains WAIT_REBOOT but cannot confirm installation.
+These are adapter obligations, not preemption of arbitrary callback code.
+No production total/reserve defaults or measured timing are implied.
+Aggregate-deadline regressions pass962 checks each O0/O2 sanitized, including
+late END inside the reserve, clock failure/backward/wrap, explicit timeout caps
+and once-only finalization. NO_BEGIN and ignored-reserve mutations fail at the
+expected assertions. Fresh standalone RV32-SMP object has no undefined imports;
+this is not native dispatch, package deployment or C6 timing acceptance.
 Terminal-policy tests pass692 checks each O0/O2 under ASan/UBSan, including
 once-only handoff, failure status preservation and postboot-result guards.
 A compiled all-NO_BEGIN mutation fails at the expected assertion with exit1.
@@ -37201,3 +37213,62 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   independent first-install recovery, postboot health, CLI/GUI/HTTPS updates and
   association/DHCP/frames/reconnect/combined1800s acceptance remain open. Full
   Wi-Fi goal stays active; at most standalone build verified.
+
+### 2026-10-11 - N2M nonrenewable aggregate OTA engine deadline
+
+- Scope: continuation of1f858a325f. The isolated portable engine now requires
+  total_budget_us, finish_reserve_us, max_call_us and a valid monotonic clock;
+  callback signatures carry explicit positive remaining timeouts. No native
+  OTA job, ABI change, enabled UPDATE-C6 or installed firmware follows.
+- Procedure/policy: one original deadline starts before cancellation/lease
+  acquisition. Work excludes a protected finalization reserve; finish consumes
+  only the remainder of the same deadline. Each blocking callback receives
+  min(remaining,max_call_us), with max_call_us<=10s matching private owner
+  exchange bounds. Total is1..INT32_MAX us, reserve is nonzero and below total.
+  This half-wrap arithmetic limit is not a measured transfer budget. No total
+  or reserve production default is supplied. Clock return must be exactly1;
+  backward/unavailable clocks fail closed. Native adapters must enforce the
+  supplied timeout themselves; engine sampling cannot preempt a bad callback.
+- Terminal results: time exhaustion stops further BEGIN/WRITE/END dispatch.
+  Previously acknowledged WRITE bytes remain acknowledged. Any BEGIN attempt
+  selects INCOMPLETE without END; unsuccessful END remains COMMIT_UNKNOWN.
+  Verified END acknowledgement remains WAIT_REBOOT even when late, but timing
+  failure/unconfirmed handoff prevents installed confirmation. No finalization
+  callback is issued after total expiry or clock failure; disposition remains
+  explicit and handoff is failed/unconfirmed. Native integration must mark its
+  sticky obligation before BEGIN so this abandoned path cannot resume radio.
+- Review/correction: independent review identified an END callback consuming
+  the work reserve while completing before total expiry. Added an immediate
+  post-END work-deadline sample, preserving the receipt while marking timing
+  failure. Follow-up source review found no new blocking defect. The callback
+  deadline-enforcement limitation remains explicit, not hardware-qualified.
+- Native build: freshly compile standalone update-rv32-final.o using configured
+  rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f, medany, AROS_SMP, current build
+  Developer sysroot, freestanding O2, warnings-as-errors. Actual compiler exits0;
+  nm exits0 with no undefined imports. Final object9180B SHA256
+  80351554d2a68b1f068417ed214540cef79672c5b3827513e5242f2933d64c75.
+  Initial8088B object predates terminal/review corrections and is retained,
+  not final evidence. No application/module/package/image regenerated.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/ota-budget.2mBtyr/.
+  Archived update.c SHA256
+  9b6e0ca3b77bac6be87c9bd30999e94accb60dcebc2736dc9349d5475c56474e;
+  update.h
+  11200a39f8183366f133ef824fe8cba1d6e3dce94b0c62796d72a01b1c81f81b.
+- Host tests: primary archived runner actually exits0;962 checks each O0/O2
+  under ASan/UBSan, retained old transaction cases plus budget/clock validation,
+  original deadline across WRITE, positive timeout caps, protected finish reserve,
+  late WRITE progress, late END inside reserve/after total, finish overrun and
+  clock unavailable/return2/backward/wrap. Compiled NO_BEGIN and ignored-reserve
+  negative controls fail at expected assertions with exit1, not compiler errors
+  or sanitizer crashes. Host freestanding undefined-import check passes.
+  update-tests.log SHA256
+  8f45390bdd63e7c586bb83e24935e8868a5f5f09f9e39c6ddeb9199a9c4a1742.
+  Exec/clock/transport callbacks are simulated. No actual C6/full-image timing
+  acceptance or callback preemption is inferred from these fixtures.
+- Safety/next: no serial, hardware, flash, SD writes, credentials or C6 update.
+  Native task/token-bound OTA job/engine adapter, explicit terminal mode mapping,
+  pre-BEGIN sticky obligation, immutable authenticated source, qualified actual
+  full-image budget and recovery/layout/privacy proofs remain mandatory. Real
+  association/DHCP/frames/reconnect/combined1800s and CLI/GUI/HTTPS/P4 updates
+  remain open. Full goal active; this isolated object is at most build verified.

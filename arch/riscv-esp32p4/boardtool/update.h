@@ -10,6 +10,10 @@
 /* Matches the smallest source OTA slot; target layout remains a separate gate. */
 #define P4_BOARD_UPDATE_MAX_IMAGE_SIZE UINT32_C(1572864)
 #define P4_BOARD_UPDATE_NO_FAILED_CHUNK UINT32_MAX
+/* Arithmetic bound, not measured transfer qualification. A deployment must
+ * choose and qualify its total budget; no production default is supplied. */
+#define P4_BOARD_UPDATE_MAX_TOTAL_US INT32_MAX
+#define P4_BOARD_UPDATE_MAX_CALL_US UINT32_C(10000000)
 #define P4_BOARD_UPDATE_MAX_CHUNKS \
     ((P4_BOARD_UPDATE_MAX_IMAGE_SIZE + P4_BOARD_UPDATE_CHUNK_SIZE - 1u) / \
      P4_BOARD_UPDATE_CHUNK_SIZE)
@@ -32,7 +36,15 @@ enum p4_board_update_status {
     P4_BOARD_UPDATE_END_COMMIT_UNKNOWN,
     P4_BOARD_UPDATE_WAIT_REBOOT,
     P4_BOARD_UPDATE_POSTBOOT_FAILED,
-    P4_BOARD_UPDATE_INSTALLED
+    P4_BOARD_UPDATE_INSTALLED,
+    P4_BOARD_UPDATE_BUDGET_EXPIRED,
+    P4_BOARD_UPDATE_CLOCK_FAILED
+};
+
+enum p4_board_update_budget_error {
+    P4_BOARD_UPDATE_BUDGET_OK = 0,
+    P4_BOARD_UPDATE_BUDGET_TIMEOUT,
+    P4_BOARD_UPDATE_BUDGET_CLOCK
 };
 
 enum p4_board_update_call_result {
@@ -67,11 +79,14 @@ struct p4_board_update_reader {
     void *context;
     size_t context_size;
     int (*read)(void *context, uint32_t offset, uint8_t *destination,
-                size_t capacity, size_t *actual_size);
+                size_t capacity, size_t *actual_size, uint32_t timeout_us);
 };
 
 /* Callbacks are synchronous and must complete under a finite adapter
- * deadline; the engine bounds request count, not callback wall-clock time.
+ * deadline. Every blocking callback receives a positive timeout capped by
+ * the remaining original aggregate budget and max_call_us. It must enforce
+ * that timeout, including lock acquisition and I/O; the engine cannot preempt
+ * a misbehaving callback. Cancellation/clock queries must be nonblocking.
  * Context spans must describe their complete objects and must not overlap the
  * plan, result or scratch. Context objects may share storage with each other.
  * A write callback issues at most one remote request, consumes data before
@@ -81,9 +96,13 @@ struct p4_board_update_reader {
 struct p4_board_update_ops {
     void *context;
     size_t context_size;
+    /* Return exactly1 with a monotonic microsecond clock modulo2^32. It must
+     * remain valid across the <=INT32_MAX-us job; no wall clock or reset. */
+    int (*clock_us)(void *context, uint32_t *now);
     /* Zero means an exclusive lease was acquired; nonzero means none was. */
-    int (*acquire_maintenance)(void *context);
-    /* Called once after acquiring a lease, with the terminal policy selected
+    int (*acquire_maintenance)(void *context, uint32_t timeout_us);
+    /* Called at most once after acquiring a lease, only while the original
+     * deadline and clock remain valid, with the terminal policy selected
      * by the engine. NO_BEGIN permits ordinary bounded read-only release.
      * All other modes must hand ownership to a fenced recovery/reboot state:
      * no WiFiStart, normal polling, auto-reassociation or automatic reset.
@@ -91,24 +110,35 @@ struct p4_board_update_ops {
      * after a release request was queued. A failure remains visible in the
      * result and must not erase the transfer/commit classification. */
     int (*finish_maintenance)(void *context,
-                              enum p4_board_update_finish_mode mode);
+                              enum p4_board_update_finish_mode mode,
+                              uint32_t timeout_us);
     /* Must confirm immutable source ownership remains held through the run,
      * then revalidate the inspected object immediately before BEGIN. */
-    int (*revalidate_source)(void *context, uint32_t expected_size);
+    int (*revalidate_source)(void *context, uint32_t expected_size,
+                              uint32_t timeout_us);
     int (*is_cancelled)(void *context);
     enum p4_board_update_call_result (*begin)(void *context,
                                                uint32_t image_size,
-                                               int32_t *remote_status);
+                                               int32_t *remote_status,
+                                               uint32_t timeout_us);
     enum p4_board_update_call_result (*write)(void *context,
                                               const uint8_t *data,
                                               size_t data_size,
-                                              int32_t *remote_status);
+                                              int32_t *remote_status,
+                                              uint32_t timeout_us);
     enum p4_board_update_call_result (*end)(void *context,
-                                            int32_t *remote_status);
+                                            int32_t *remote_status,
+                                            uint32_t timeout_us);
 };
 
 struct p4_board_update_plan {
     uint32_t image_size;
+    /* One nonrenewable deadline starts before cancellation/lease acquisition.
+     * Work cannot consume finish_reserve_us. Finalization uses only the
+     * remaining original deadline, never a fresh reserve after expiry. */
+    uint32_t total_budget_us;
+    uint32_t finish_reserve_us;
+    uint32_t max_call_us;
     struct p4_board_update_gates gates;
     struct p4_board_update_reader reader;
     struct p4_board_update_ops ops;
@@ -118,7 +148,11 @@ struct p4_board_update_plan {
 
 /* Result owns no pointers. Progress counts only acknowledged WRITE requests.
  * The legacy lease_release_* names record the once-only terminal handoff;
- * they do not mean that normal radio traffic has been resumed. */
+ * they do not mean that normal radio traffic has been resumed. If the clock
+ * fails or the total deadline expires before handoff, finish_mode is still
+ * selected but lease_release_called remains0 and lease_release_status is -1.
+ * A late verified END acknowledgement remains WAIT_REBOOT, not installed;
+ * budget_error and unconfirmed handoff prevent postboot confirmation. */
 struct p4_board_update_result {
     enum p4_board_update_status status;
     uint32_t image_size;
@@ -130,6 +164,8 @@ struct p4_board_update_result {
     int32_t local_status;
     int32_t lease_release_status;
     enum p4_board_update_finish_mode finish_mode;
+    enum p4_board_update_budget_error budget_error;
+    uint32_t elapsed_us;
     uint8_t lease_acquired;
     uint8_t lease_release_called;
     uint8_t begin_attempted;

@@ -43,6 +43,15 @@ mix it with ABI9 clients. Both privacy/recovery assertions remain0.
 Source-extracted fence tests pass2057 checks each O0/O2 with ASan/UBSan;
 ACTIVE-poll and sticky-cleanup mutations are rejected. These are host tests,
 not C6 runtime qualification.
+The isolated engine now requires one aggregate transfer deadline, a protected
+finish reserve, a valid monotonic clock and explicit bounded callback timeouts.
+No WRITE renews that deadline. A late END acknowledgement remains WAIT_REBOOT,
+but timing failure or unconfirmed finalization blocks installed confirmation.
+Total time and reserve have no production defaults: native binding and actual
+full-image timing qualification remain open. UPDATE-C6 stays unavailable.
+Aggregate-deadline host regressions pass962 checks each O0/O2 with ASan/UBSan;
+NO_BEGIN and ignored-reserve mutations are rejected. The fresh standalone
+RV32-SMP engine object has no undefined imports; it is not linked or deployed.
 Private transport verification (2026-10-11): canonical codec11806,
 pending1638 and coupled owner8093 checks each O0/O2 ASan/UBSan pass;
 ordinary OTA-allowlist mutation is rejected. Fresh Core1 resource291220B
