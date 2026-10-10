@@ -39,6 +39,12 @@ static int fail_gate(struct p4_hosted_open_result *result,
         result->error = error;
     }
     result->gate_ok = 0;
+    if (result->stream_consumed && result->generation != 0 &&
+        result->fifo_state.initialized == 1u &&
+        result->fifo_state.generation == result->generation) {
+        result->fifo_state.poisoned = 1u;
+        result->fifo_poisoned = 1u;
+    }
     return 0;
 }
 
@@ -144,10 +150,11 @@ static int decode_profile_frame(const uint8_t *bytes, size_t available,
     return p4_hosted_decode(bytes, available, 1, frame);
 }
 
-int p4_hosted_open_receive_init(const struct p4_hosted_open_ops *ops,
-                                uint32_t generation, uint8_t *buffer,
-                                size_t capacity,
-                                struct p4_hosted_open_result *result)
+static int open_receive_init_common(const struct p4_hosted_open_ops *ops,
+                                    uint32_t generation, uint8_t *buffer,
+                                    size_t capacity,
+                                    struct p4_hosted_open_result *result,
+                                    unsigned preserve_suffix)
 {
     uint8_t value;
     uint32_t word, clear_bits;
@@ -418,7 +425,10 @@ int p4_hosted_open_receive_init(const struct p4_hosted_open_ops *ops,
                              P4_HOSTED_OPEN_ERROR_INVALID_FRAME);
         }
         result->stage = P4_HOSTED_OPEN_STAGE_VALIDATE_FRAME;
-        if (additional.wire_size == 0 || additional.flags != 0)
+        if (additional.wire_size == 0 ||
+            (!preserve_suffix && additional.flags != 0) ||
+            (preserve_suffix && additional.flags != 0 &&
+             additional.flags != P4_HOSTED_MORE_FRAGMENT))
             return fail_gate(result, result->stage,
                              P4_HOSTED_OPEN_ERROR_FRAME_PROFILE);
         if (additional.interface_type == P4_HOSTED_PRIVATE_INTERFACE)
@@ -428,19 +438,48 @@ int p4_hosted_open_receive_init(const struct p4_hosted_open_ops *ops,
             additional.interface_number != 0)
             return fail_gate(result, result->stage,
                              P4_HOSTED_OPEN_ERROR_FRAME_PROFILE);
+        if (preserve_suffix &&
+            (additional.packet_type != 0 || additional.throttle != 0))
+            return fail_gate(result, result->stage,
+                             P4_HOSTED_OPEN_ERROR_FRAME_PROFILE);
 
         ++result->additional_frame_count;
         result->additional_frame_bytes += (uint32_t)additional.wire_size;
         ++result->additional_serial_frame_count;
-        result->additional_bytes_discarded +=
-            (uint32_t)additional.wire_size;
+        if (!preserve_suffix)
+            result->additional_bytes_discarded +=
+                (uint32_t)additional.wire_size;
         stream_offset += additional.wire_size;
     }
 
+    if (preserve_suffix) {
+        result->suffix_preserved = 1;
+        result->serial_suffix_offset = (uint32_t)result->frame.wire_size;
+        result->serial_suffix_bytes = result->logical_bytes -
+                                      result->serial_suffix_offset;
+    }
     result->stage = P4_HOSTED_OPEN_STAGE_NONE;
     result->error = P4_HOSTED_OPEN_ERROR_NONE;
     result->gate_ok = 1;
     return 1;
+}
+
+int p4_hosted_open_receive_init(const struct p4_hosted_open_ops *ops,
+                                uint32_t generation, uint8_t *buffer,
+                                size_t capacity,
+                                struct p4_hosted_open_result *result)
+{
+    return open_receive_init_common(ops, generation, buffer, capacity,
+                                    result, 0);
+}
+
+int p4_hosted_open_receive_init_preserve(
+    const struct p4_hosted_open_ops *ops, uint32_t generation,
+    uint8_t *buffer, size_t capacity,
+    struct p4_hosted_open_result *result)
+{
+    return open_receive_init_common(ops, generation, buffer, capacity,
+                                    result, 1);
 }
 
 static void cleanup_failure(struct p4_hosted_open_result *result,

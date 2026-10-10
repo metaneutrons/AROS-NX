@@ -122,7 +122,7 @@ gate: compensated output is not the native display contract.
 | N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; native initialization/MAC observed once; clean cold gate pending` | Existing FIFO reused with owned bodies/exact correlation. Control3529/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Generation-bound reassembly1318 isolated checks each O0/O2 sanitized pass; now linked into control with coupled epoch/deadline/failure tests and fresh113900B module build. Fragmentation integration not deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Coordinated startup reports all5 WLAN statuses0, valid MAC10:bd:a3:9b:bc:34 and restored stable registers in60.112s/16340 bytes; initial HP watchdog reset prevents clean cold acceptance. Latest late45.114s retrieval exits0 but receives0 bytes;1.425ms open latency, no armed startup coverage, inconclusive. Fresh pre-armed capture needed. No persistent UID allocator or WLAN acceptance. Original verified baseline recoverable. |
 | N1S | Typed native scan and runtime acceptance | `codec/oracle tested; opt-in runtime build verified; sequence models tested; initialized MAC observed; scan undeployed; boot continuity open` | Codec230/oracle1068/control3529/sequence537 checks each O0/O2 sanitized pass. Default-config blocking/nonblocking start, stop, AP count and owned AP/country/HE records. Runtime opt-in follows successful initialization/MAC with UIDs7..10 and at most8 owned records, named zero-AP workaround. ScanStart500 polls under same8s aggregate operation deadline;2s cleanup reserve. Independent runtime audit corrected early logging under shared-controller lock. Fresh135284B scan-enabled module and3823840B package pass42/42 loader and capacity checks;41 non-WiFi records unchanged. Not deployed; larger3825664B erase span requires new twice-read backup. No native hardware scan or WLAN acceptance; sequence/cleanup host models pass. Passive diagnostic checker passes16 independent fixture tests; no hardware acceptance. Earlier arrival expired/45.122s capture empty. Repeat native MAC succeeds once; initial HP watchdog reset makes checker reject cold continuity. Cleanup enum1/all14 flags corrected;16 tests pass. Optional serial-open timing now passes10 host tests; prior6.729s first-byte gap cannot be attributed. No live capture. |
 | N1A | Native association/configuration and owned events | `standalone codecs/oracle host tested; runtime and privacy gate open` | Typed284/540,282/538,283/539 and owned775/776; all15 STA fields, mandatory nested threshold/PMF, transactional256-byte envelope cap, temporary-secret wipe. Self239/oracle603 checks each Linux O0/O2 ASan/UBSan pass; strict RV32 object24,420B compiles with onlyrpc_encode import. Pinned oracle confirms258-byte all-width vector is refused unchanged. Nonzero event status validates/discards nested data. No runtime/control allowlist integration or deployment. Pinned slave credential logging/strlen and installed lineage remain unresolved. Persistent UID/event/generation state and credential-safe hardware association remain required. No credential transmission, association or IP pass. |
-| N1P | Persistent native control/data session | `UID ledger, reserved exchange and persistent RX build verified; worker not implemented` | One-outstanding non-reused UID ledger persists across retired host generations and refuses wrap. Reserved exchange protects exact identity/ranges and replacement state; ledger105/legacycontrol3529/reserved300 checks each O0/O2 ASan/UBSan pass. Idle RX processes one batch without waiting and retains reassembly plus a bounded owned event/response inbox; inbox134/RX364 O0/O2 sanitizer checks pass, fresh149696B module links APIs. Existing startup/scan diagnostics remain unchanged; helpers have no persistent production caller. OPEN suffix preservation, response correlation, Ethernet frames and asynchronous AROS ownership remain required. P4 restart losing the ledger is not proof of fresh C6; no deployment or WLAN acceptance. |
+| N1P | Persistent native control/data session | `UID ledger, reserved exchange, RX and OPEN handoff build verified; worker not implemented` | One-outstanding non-reused UID ledger persists across retired host generations and refuses wrap. Reserved exchange protects exact identity/ranges and replacement state; ledger105/legacycontrol3529/reserved300 checks each O0/O2 ASan/UBSan pass. Idle RX processes one batch without waiting and retains reassembly plus a bounded owned event/response inbox; inbox134/RX364 O0/O2 sanitizer checks pass. Preserving OPEN transfers suffix once without new FIFO I/O; malformed consumed OPEN poisons matching state. Legacy OPEN716 and independent handoff332 new checks each O0/O2 pass; fresh155388B module builds. Existing startup/scan diagnostics remain unchanged; helpers have no persistent production caller. Response correlation, Ethernet frames and asynchronous AROS ownership remain required. P4 restart losing the ledger is not proof of fresh C6; no deployment or WLAN acceptance. |
 | N2 | AROS WLAN SANA-II integration | `existing AROS integration contract identified; driver not implemented` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. Existing sana2wireless.h, WirelessManager and bwfm offload path provide SSID/passphrase/options and link events; no second TCP/IP stack or duplicate configuration UI. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -674,6 +674,14 @@ poll/pop remain exclusively serialized even outside the bus mutex.
 The API is not yet called by the
 one-shot runtime; OPEN suffix handling, response correlation, Ethernet routing,
 long-lived AROS lifecycle and SANA-II still require integration.
+
+OPEN suffix handling now has a preserving gate and a one-shot RX takeover.
+Accepted transfer marks OPEN consumed before revalidation, preventing replay
+with a second fresh RX object. Complete RPCs become owned inbox items; partial
+assembly survives the next poll. There is no repeated FIFO I/O or counter
+advance. Post-consumption OPEN failure retires matching FIFO state. Legacy
+OPEN716, independent handoff332 new and RX364 checks each O0/O2 pass under
+Linux ASan/UBSan; a fresh155388B module builds. No runtime caller is deployed.
 
 Independent source audit identifies persistent RX prerequisites: OPEN discards
 extra SERIAL frames, exchange counts/discards events and receives only during
@@ -32621,6 +32629,45 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Both handles are live; outcome pending, not a completed test. No fault,
   boot continuity, MAC/scan/desktop or WLAN acceptance can yet be claimed.
   Retain actual process exit/footer and every ROM/reset byte when complete.
+
+### 2026-10-10 - N1P OPEN suffix preservation and one-shot RX handoff build
+
+- Implementation: preserving OPEN validates and retains SERIAL/0 suffix frames,
+  including MORE fragments. p4_hosted_rx_take_open revalidates INIT identity,
+  copies complete messages or retains assembly without new I/O/counter changes.
+  A one-shot suffix_taken marker is consumed only after RX start acceptance,
+  including subsequent content failure. Preflight/start refusal is unchanged.
+- Independent review found replay through a second RX object and reusable-looking
+  FIFO after failed consumed OPEN parsing. Both are fixed: one-shot marker and
+  matching-generation FIFO poisoning. No stale replacement FIFO is poisoned.
+- Evidence wifi-2026-10-10/native-open-rx-handoff.Q5L5kF. Primary isolated
+  network-none Linux ASan/UBSan legacy OPEN716 checks each O0/O2 exit0;
+  open-regression.log SHA-256
+  d1f79303532de9b75fa9fef4dca27907045ca8af250d91b2f4879a1532802b98.
+  Strict freestanding RV32 O2 compilation exits0 without libc imports. First
+  RX compile exposed missing private INIT constants; fixed before successful build.
+- All network module objects deleted before GNU make quick probe build with
+  P4_BOARD=jc1060p470c-v2 and P4_WIFI_SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/
+  HOSTED_MAC/HOSTED_SCAN=1. Actual exit0; module155388B SHA-256
+  a8465fb0e943f504d848482b988b9582b98ca1e82a34d3f65649f3dde75f7a3b;
+  module-build.log7511a1aeb7a229bbea20213991a609566acf899f82428592d4fb9b699de782cd.
+- Independent OPEN-to-RX qualification is now complete: final primary exact
+  snapshot passes332 new handoff checks plus716 included OPEN checks and364
+  RX regression checks each O0/O2 with ASan/UBSan, actual exit0. Cases cover
+  INIT-only/local transfer, owned event/response, checksums, partial continuation,
+  duplicate handoff through fresh RX, valid-receipt alias/overflow rejection,
+  unchanged RX-start refusal, mutated INIT, malformed suffix and queue overflow.
+  handoff-final-primary.log SHA-256
+  5ce05c8656a4ca1f6b2b16e344f87ad16ace31f14d11e2eb99b47f862833ef04.
+  Earlier primary snapshot passed1006 cumulative checks (including716 legacy),
+  not1006 new checks; strengthened final suite reports new checks separately.
+  Installed initialization-only package/core/C6 unchanged; no flash, SD writes,
+  credentials or WLAN acceptance. N1P runtime ownership, correlation, Ethernet
+  routing and SANA-II remain open. Next: integrate the persistent worker.
+- Pre-armed unchanged-firmware cold capture remains live: process39772 observed
+  removal and waits for reappearance; observer89552 recorded removed at host
+  monotonic532508.437809291. Reconnection instruction issued after actual removal.
+  No completed boot log or clean continuity result yet.
 
 ## Evidence-entry template
 

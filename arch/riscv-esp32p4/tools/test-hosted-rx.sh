@@ -21,6 +21,7 @@ for test_opt in 0 2; do
 		"$test_root/network/hosted_rpc.c" \
 		"$test_root/network/hosted_serial.c" \
 		"$test_root/network/hosted_wire.c" \
+		"$test_root/network/hosted_init.c" \
 		"$test_root/network/test_hosted_rx.c" \
 		-o "$test_tmp/test-o$test_opt"
 	"$test_tmp/test-o$test_opt"

@@ -162,6 +162,10 @@ struct p4_hosted_open_result {
     uint32_t additional_frame_bytes;
     uint32_t additional_serial_frame_count;
     uint32_t additional_bytes_discarded; /* Complete outer wire bytes skipped. */
+    unsigned suffix_preserved;
+    unsigned suffix_taken;
+    uint32_t serial_suffix_offset;
+    uint32_t serial_suffix_bytes;
     struct p4_hosted_fifo_plan fifo_plan;
     struct p4_hosted_frame frame;
     struct p4_hosted_init init;
@@ -203,6 +207,19 @@ int p4_hosted_open_receive_init(const struct p4_hosted_open_ops *ops,
                                 uint32_t generation, uint8_t *buffer,
                                 size_t capacity,
                                 struct p4_hosted_open_result *result);
+
+/* Same bounded OPEN/INIT gate, but retain and validate every following
+ * SERIAL/0 frame in buffer. The raw suffix starts at serial_suffix_offset
+ * and has serial_suffix_bytes bytes only when gate_ok and suffix_preserved
+ * are both set. suffix_taken starts at zero; the accepted one-shot RX handoff
+ * sets it before validating/copying suffix contents, so it cannot be replayed
+ * after a content failure. It may contain MORE fragments and must be handed
+ * to the new RX assembler before buffer reuse. It is not parsed or dispatched
+ * here. */
+int p4_hosted_open_receive_init_preserve(
+    const struct p4_hosted_open_ops *ops, uint32_t generation,
+    uint8_t *buffer, size_t capacity,
+    struct p4_hosted_open_result *result);
 
 /* CLOSE is attempted first whenever OPEN was attempted, including an
  * ambiguous failed OPEN callback. If this gate attempted any Fn0 mutation,

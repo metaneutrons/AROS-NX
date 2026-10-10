@@ -1,6 +1,10 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
 #include "hosted_rx.h"
 
+#define P4_HOSTED_PRIVATE_INTERFACE 5u
+#define P4_HOSTED_PRIVATE_INIT_PACKET UINT8_C(0x33)
+#define P4_HOSTED_CHECKSUM_CAPABILITY (UINT8_C(1) << 7)
+
 static int rx_ranges(const void *const *objects, const size_t *sizes,
                      unsigned count)
 {
@@ -144,6 +148,69 @@ static int rx_batch(struct p4_hosted_rx *state, struct p4_hosted_fifo *fifo,
     return 1;
 malformed:
     return rx_fail(state, fifo, generation, result, P4_HOSTED_RX_PROTOCOL, 1u);
+}
+
+int p4_hosted_rx_take_open(struct p4_hosted_rx *state,
+    struct p4_hosted_open_result *opened, uint32_t generation,
+    const uint8_t *buffer, size_t capacity, struct p4_hosted_rx_result *result)
+{
+    const void *objects[4] = {state, opened, buffer, result};
+    const size_t sizes[4] = {sizeof(*state), sizeof(*opened), capacity,
+                             sizeof(*result)};
+    struct p4_hosted_frame initial;
+    struct p4_hosted_init identity;
+    unsigned checksum;
+    int ok;
+    if (!generation || capacity < 512u || capacity > 4096u ||
+        !rx_ranges(objects, sizes, 4u)) return 0;
+    if (opened->initialized != 1u || opened->generation != generation ||
+        opened->gate_ok != 1u || opened->suffix_preserved != 1u ||
+        opened->suffix_taken != 0u ||
+        opened->stream_consumed != 1u || opened->stream_ambiguous ||
+        opened->cleanup_attempted || opened->fifo_poisoned ||
+        opened->fifo_state.initialized != 1u ||
+        opened->fifo_state.generation != generation ||
+        opened->fifo_state.busy || opened->fifo_state.poisoned ||
+        opened->logical_bytes > capacity ||
+        opened->logical_bytes != opened->fifo_plan.logical_bytes ||
+        opened->serial_suffix_offset == 0u ||
+        opened->serial_suffix_offset != opened->frame.wire_size ||
+        opened->serial_suffix_offset > opened->logical_bytes ||
+        opened->serial_suffix_bytes !=
+            opened->logical_bytes - opened->serial_suffix_offset ||
+        opened->additional_bytes_discarded != 0u ||
+        opened->fifo_state.rx_consumed !=
+            (opened->length_counter & P4_HOSTED_RX_MASK)) return 0;
+    if (!p4_hosted_rx_start(state, generation)) return 0;
+    /* Consume the transfer capability even if its already-read contents fail
+     * validation below. A second receiver must never replay this suffix. */
+    opened->suffix_taken = 1u;
+    result->error = P4_HOSTED_RX_OK;
+    result->batches = result->messages = result->partial = 0u;
+    result->logical_bytes = opened->serial_suffix_bytes;
+    checksum = !!(opened->init.capabilities & P4_HOSTED_CHECKSUM_CAPABILITY);
+    if (!p4_hosted_decode(buffer, opened->logical_bytes, checksum, &initial) ||
+        initial.interface_type != P4_HOSTED_PRIVATE_INTERFACE ||
+        initial.interface_number != 0u || initial.flags != 0u ||
+        initial.packet_type != P4_HOSTED_PRIVATE_INIT_PACKET ||
+        initial.wire_size != opened->serial_suffix_offset ||
+        !p4_hosted_init_parse(initial.payload, initial.payload_size, &identity) ||
+        identity.chip_id != opened->init.chip_id ||
+        identity.capabilities != opened->init.capabilities ||
+        identity.test_raw_tp != opened->init.test_raw_tp ||
+        identity.rx_queue_size != opened->init.rx_queue_size ||
+        identity.tx_queue_size != opened->init.tx_queue_size ||
+        identity.extended_capabilities != opened->init.extended_capabilities ||
+        identity.present != opened->init.present)
+        ok = rx_fail(state, &opened->fifo_state, generation, result,
+                     P4_HOSTED_RX_PROTOCOL, 1u);
+    else
+        ok = rx_batch(state, &opened->fifo_state, generation,
+            buffer + opened->serial_suffix_offset, opened->serial_suffix_bytes,
+            checksum, result);
+    if (opened->fifo_state.generation == generation)
+        opened->fifo_poisoned = opened->fifo_state.poisoned;
+    return ok;
 }
 
 int p4_hosted_rx_poll(struct p4_hosted_rx *state,

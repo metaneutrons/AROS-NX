@@ -30,6 +30,15 @@ O0/O2 pass under Linux ASan/UBSan; a fresh149696B RV32 module links both APIs.
 The bounded queue is local policy, not a negotiated guarantee that all peer
 bursts fit. Overflow recovery and bus fairness still require runtime evidence.
 
+OPEN-to-RX transfer now preserves the initial SERIAL suffix instead of
+discarding it. An accepted handoff consumes a one-shot marker before parsing,
+copies complete RPCs into the owned inbox and retains incomplete assembly;
+it performs no second FIFO read or counter advance. Consumed malformed OPEN
+input poisons the matching FIFO epoch. Legacy OPEN716 checks each O0/O2 pass
+and a fresh155388B module builds. Independent handoff332 new and RX364
+regression checks each O0/O2 pass under Linux ASan/UBSan, with actual exit0.
+No production caller or hardware deployment is implied.
+
 The native control foundation now supports bounded sequential Init/SetMode/
 Start/Stop/Deinit/GetMAC envelopes on one existing FIFO ledger, with owned
 response bodies and exact UID/operation correlation. Linux O0/O2 sanitizer

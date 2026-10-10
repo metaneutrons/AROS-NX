@@ -47,6 +47,19 @@ struct p4_hosted_rx_result {
  * host acquisition is not a new peer epoch. Same-generation restart refuses.
  * State is retained between polls and exclusively serialized with FIFO/TX. */
 int p4_hosted_rx_start(struct p4_hosted_rx *state, uint32_t generation);
+/* Transfer the already-consumed raw suffix from a successful preserving OPEN
+ * before buffer reuse/config encoding. No register/FIFO I/O or counter advance.
+ * Initializer and suffix are revalidated; copied events or partial assembly
+ * become owned by this RX state. Same-generation repeated handoff refuses;
+ * caller zero-initializes RX only once, not to replay a consumed batch.
+ * OPEN cleanup must not have begun. Caller independently established peer
+ * freshness; host generation and this handoff do not prove a C6 reset.
+ * All four ranges must be disjoint. Local preflight/start refusal leaves
+ * state/OPEN/result/buffer unchanged. Consumed malformed bytes poison matching
+ * FIFO/RX after acceptance. No dispatch/association/correlation acceptance. */
+int p4_hosted_rx_take_open(struct p4_hosted_rx *state,
+    struct p4_hosted_open_result *opened, uint32_t generation,
+    const uint8_t *buffer, size_t capacity, struct p4_hosted_rx_result *result);
 /* Exactly one bounded interrupt/FIFO batch; an idle poll returns immediately.
  * No TX, waiting, yield, dispatch, allocation or hidden reset. Caller owns the
  * bus for this call only, and releases it before popping/dispatching inbox
