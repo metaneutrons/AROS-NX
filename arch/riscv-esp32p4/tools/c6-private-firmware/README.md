@@ -148,3 +148,11 @@ eFuses. Fixtures exercise capacity errors, iterator exhaustion/release, role
 drift, slot aliasing, unknown states, malformed labels and output preservation.
 Mutation/allocation sentinels cover the production translation units, not the
 actual IDF iterator implementation, allocator or synchronization.
+
+The proposed wire contract is in [discovery-protocol.md](discovery-protocol.md).
+`discovery-schema.patch` applies cleanly to the pinned Hosted schema but is not
+generated or integrated firmware. Shared discovery_wire.c/.h encode/decode a
+canonical1056-byte maximum payload with echoed nonzero nonce and normalized
+records. Run `sh arch/riscv-esp32p4/tools/run-c6-discovery-wire-tests.sh`:
+45 cases/136 assertions pass each O0/O2 with ASan/UBSan. These byte tests do not
+exercise Protobuf framing, epoch/UID correlation, handlers or live transport.

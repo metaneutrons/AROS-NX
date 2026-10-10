@@ -33,6 +33,10 @@ firmware integration or GUI binding exists yet. No board/credentials touched.
 Actual-source host tests pass35 cases each O0/O2 under ASan/UBSan:205 checks
 for normal security APIs,204 for virtual-eFuse builds. IDF runtime is mocked;
 object compilation and these tests do not establish installed C6 behavior.
+The normalized inventory now has a strict bounded1056-byte codec, checked in
+45 cases/136 assertions each O0/O2 sanitized. A schema-only candidate patch
+adds discovery350/606; generated codecs, startup negotiation, C6 handler and
+native owner transport binding remain open. No new RPC is sent by this code.
 CLI examples (not yet executed on hardware):
 
     ESP32Board ACTION INFO

@@ -1,0 +1,57 @@
+--- a/common/proto/esp_hosted_rpc.proto
++++ b/common/proto/esp_hosted_rpc.proto
+@@ -412,7 +412,8 @@
+ 
+ 	/* Add new control path command response before Req_Max
+ 	 * and update Req_Max */
+-	Req_Max = 350; //0x15e
++	Req_BoardDiscovery                = 350;
++	Req_Max = 351;
+ 
+ 	/** Response Msgs **/
+ 	Resp_Base                         = 512;
+@@ -534,7 +535,8 @@
+ 
+ 	/* Add new control path command response before Resp_Max
+ 	 * and update Resp_Max */
+-	Resp_Max = 606;
++	Resp_BoardDiscovery               = 606;
++	Resp_Max = 607;
+ 
+ 	/** Event Msgs **/
+ 	Event_Base = 768;
+@@ -1089,6 +1091,17 @@
+ message Rpc_Req_OTABegin {
+ }
+ 
++// Private version1 extension. Send only after startup capability negotiation.
++// Snapshot is a bounded C6DI normalized inventory, never raw table attestation.
++message Rpc_Req_BoardDiscovery {
++	uint32 version = 1;
++	uint32 nonce = 2;
++}
++message Rpc_Resp_BoardDiscovery {
++	int32 resp = 1;
++	bytes snapshot = 2;
++}
++
+ message Rpc_Resp_OTABegin {
+ 	int32 resp = 1;
+ }
+@@ -1620,6 +1633,7 @@
+ 		Rpc_Req_WifiGetBand                 req_wifi_get_band                 = 347;
+ 		Rpc_Req_WifiSetBandMode             req_wifi_set_bandmode             = 348;
+ 		Rpc_Req_WifiGetBandMode             req_wifi_get_bandmode             = 349;
++		Rpc_Req_BoardDiscovery              req_board_discovery               = 350;
+ 
+ 		/** Responses **/
+ 		Rpc_Resp_GetMacAddress              resp_get_mac_address               = 513;
+@@ -1697,6 +1711,8 @@
+ 		Rpc_Resp_WifiSetBandMode            resp_wifi_set_bandmode             = 604;
+ 		Rpc_Resp_WifiGetBandMode            resp_wifi_get_bandmode             = 605;
+ 
++		Rpc_Resp_BoardDiscovery             resp_board_discovery              = 606;
++
+ 		/** Notifications **/
+ 		Rpc_Event_ESPInit                   event_esp_init                     = 769;
+ 		Rpc_Event_Heartbeat                 event_heartbeat                    = 770;
