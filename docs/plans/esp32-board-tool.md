@@ -74,6 +74,13 @@ secured recovery path; source development and read-only file checks do not.
   transfers and storage contention; there is no production timing default.
   Work cannot consume the finish reserve, no WRITE renews time, and a late END
   receipt must remain acknowledged-but-unconfirmed rather than installed.
+- A port-private owner-only BEGIN/WRITE/END entry now provides task/lock/token/
+  generation admission, sticky pre-BEGIN and pre-END disposition, exact
+  acknowledged-byte accounting and no-replay closure. It is not a queued job,
+  engine adapter, authentication/layout/recovery implementation or frontend
+  permission. Both release assertions remain disabled. Its per-call deadline
+  is bounded by the original30s preparation lease, not a production full-image
+  budget; the native job must bind the engine's aggregate deadline separately.
 - A missing recovery proof is a refused write, not a command-line override.
   Recovery evidence must refer to the actual device and layout. Do not infer
   installed rollback from the candidate's build configuration.

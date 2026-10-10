@@ -62,6 +62,27 @@ loader audit. No OTA job sets this pre-arm yet, no ABI change or deployment
 occurred, and UPDATE-C6 remains unavailable. Native job/engine integration,
 full-image timing, authenticated target/layout and independent recovery remain
 required; this prerequisite does not establish a usable updater.
+The native resource now contains a port-private owner-only OTA exchange entry.
+It requires the registered resource instance, owner task and client lock, no recursive shared-host ownership,
+an ACTIVE live task/token/generation lease, C6/SDIO facts, both existing release
+assertions and all four trusted caller update attestations. BEGIN arms sticky
+INCOMPLETE before reservation/encoding/TX; WRITE counts matching status-zero
+acknowledgements only; END requires the exact image length and arms
+COMMIT_UNKNOWN before its attempt. Only a verified successful END advances to
+WAIT_REBOOT. Entered failures close the transaction without replay or normal
+radio release. Its local image ceiling matches the engine, not live capacity.
+This entry is linked into the standalone resource but has no ABI job/queue or
+frontend dispatch. Native engine binding, aggregate full-image lease/budget,
+immutable authenticated source and live layout/recovery proofs remain open.
+Both release assertions remain0; UPDATE-C6 is still unavailable, not deployed.
+Source-extracted wrapper regressions pass4480 checks each O0/O2 ASan/UBSan,
+including genuine-instance admission, atomic refusals, exact acknowledged-byte
+ordering, failure closure and late acknowledgements. Three unsafe mutations
+are rejected. Fresh Core1 resource299324B SHA256
+601d7e0a79cb79e431f36289eec74ae58723ee826d940a7b605af7f3524af0ce
+passes its loader audit; the private entry and actual lower transport/decoder
+are linked. Exec/transport callbacks are modeled; no runtime OTA or deployment
+is claimed. Full evidence is recorded in roadmap N2M (2026-10-11).
 Private transport verification (2026-10-11): canonical codec11806,
 pending1638 and coupled owner8093 checks each O0/O2 ASan/UBSan pass;
 ordinary OTA-allowlist mutation is rejected. Fresh Core1 resource291220B

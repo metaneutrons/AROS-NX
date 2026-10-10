@@ -2,7 +2,8 @@
 /* Native opt-in SDIO reset/bootstrap and setup/restoration. An additional
  * explicit diagnostic enables bounded OPEN/INIT with Fn0/CLOSE cleanup.
  * Optional one-shot Init/STA/Start/GetMAC follows the startup reply. This is not a WLAN
- * data-plane client. Separate CCCR reset/query diagnostic; no C6 flash writes. */
+ * data-plane client. Separate CCCR reset/query diagnostic. The private OTA
+ * owner entry has no public job/ABI dispatch; C6 writes remain release-gated. */
 #include <aros/asmcall.h>
 #include <aros/debug.h>
 #include <aros/symbolsets.h>
@@ -50,6 +51,8 @@
 #include "hosted_mac.h"
 #include "hosted_link.h"
 #include "hosted_discovery.h"
+#include "hosted_ota.h"
+#include "owner_ota.h"
 #include <proto/kernel.h>
 #include <proto/task.h>
 #ifndef P4_WIFI_OWNER_CPU
@@ -580,6 +583,9 @@ struct wifi_owner_control {
     struct p4_wifi_discovery_result discovery_result;
     struct p4_hosted_discovery_result discovery_decoded;
     uint8_t discovery_response[P4_HOSTED_RPC_MAX_SIZE];
+    /* Owner-local transaction identity/accounting, never published as ABI. */
+    ULONG ota_token, ota_generation, ota_image_size, ota_acknowledged_bytes;
+    unsigned ota_begin_acknowledged, ota_closed;
 };
 struct wifi_device_runtime {
     struct wifi_probe_context *context;
@@ -1540,6 +1546,192 @@ static BOOL wifi_discovery_session_valid(struct P4WifiBase *base,
         runtime->fifo->generation == runtime->context->generation &&
         runtime->context->host->generation == runtime->context->generation &&
         !runtime->context->host->dma_faulted;
+}
+
+/* The private OTA caller must not overwrite or borrow any owner/control
+ * storage through its input/status spans. All scratch lives in heap control. */
+static BOOL wifi_ota_span_valid(struct P4WifiBase *base,
+    struct wifi_device_runtime *runtime, const void *span, size_t size)
+{
+    const void *objects[] = {base, runtime, runtime->context, runtime->owner,
+        runtime->control, runtime->fifo, runtime->context->host, runtime->tx,
+        runtime->init, base->callbacks};
+    const size_t sizes[] = {sizeof(*base), sizeof(*runtime),
+        sizeof(*runtime->context), sizeof(*runtime->owner),
+        sizeof(*runtime->control), sizeof(*runtime->fifo),
+        sizeof(*runtime->context->host), sizeof(*runtime->tx),
+        sizeof(*runtime->init), sizeof(*base->callbacks)};
+    uintptr_t start = (uintptr_t)span, end;
+    unsigned i;
+    if (!span || !size || size > UINTPTR_MAX - start) return FALSE;
+    end = start + size;
+    for (i = 0; i < sizeof(objects) / sizeof(objects[0]); ++i) {
+        uintptr_t first = (uintptr_t)objects[i];
+        if (!objects[i]) continue;
+        if (sizes[i] > UINTPTR_MAX - first ||
+            (start < first + sizes[i] && first < end)) return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL wifi_ota_spans_disjoint(const void *first, size_t first_size,
+                                  const void *second, size_t second_size)
+{
+    uintptr_t a = (uintptr_t)first, b = (uintptr_t)second;
+    return first_size <= UINTPTR_MAX - a && second_size <= UINTPTR_MAX - b &&
+        (a + first_size <= b || b + second_size <= a);
+}
+
+enum p4_board_update_call_result p4_wifi_owner_ota_exchange(
+    struct P4WifiBase *base, uint32_t token, uint32_t generation,
+    uint32_t request_id, const uint8_t *data, size_t data_size,
+    uint32_t image_size, const struct p4_board_update_gates *gates,
+    uint32_t timeout_us, int32_t *remote_status)
+{
+    struct wifi_device_runtime *runtime;
+    struct wifi_probe_context *context;
+    struct wifi_owner_control *control;
+    struct p4_hosted_rpc rpc;
+    uint32_t uid = 0;
+    ULONG started, remaining, lease;
+    size_t written = 0;
+    int encoded, exchanged;
+    int32_t status;
+    /* Same local ceiling as the engine, not inferred live slot capacity. */
+    if (!base || base != wifi_resource_base || !token || !generation || !image_size ||
+        image_size > P4_BOARD_UPDATE_MAX_IMAGE_SIZE || !timeout_us ||
+        timeout_us > P4_HOSTED_OWNER_MAX_EXCHANGE_US ||
+        request_id < 272u || request_id > 274u ||
+        base->owner_task != FindTask(NULL) ||
+        base->client_lock.ss_Owner != FindTask(NULL) ||
+        base->association_enabled != TRUE ||
+        base->maintenance_token != token || !base->maintenance_task ||
+        base->maintenance_task == base->owner_task ||
+        base->maintenance_state != P4_WIFI_MAINT_ACTIVE)
+        return P4_BOARD_UPDATE_CALL_AMBIGUOUS;
+    runtime = base->runtime;
+    if (!wifi_discovery_session_valid(base, runtime) ||
+        runtime->context->generation != generation ||
+        !runtime->context->host->now_us ||
+        runtime->context->host->lock.ss_Owner == FindTask(NULL) ||
+        runtime->scanning || runtime->owner->pending_active ||
+        runtime->owner->partial_active || runtime->owner->ids.active_uid ||
+        runtime->fifo->busy ||
+        runtime->control->discovery_state == P4_WIFI_DISCOVERY_REQUESTED ||
+        runtime->control->ota_closed ||
+        runtime->init->chip_id != P4_HOSTED_INIT_CHIP_ESP32C6 ||
+        (runtime->init->present & (P4_HOSTED_INIT_HAS_CHIP_ID |
+            P4_HOSTED_INIT_HAS_CAPABILITIES)) !=
+            (P4_HOSTED_INIT_HAS_CHIP_ID | P4_HOSTED_INIT_HAS_CAPABILITIES) ||
+        !(runtime->init->capabilities & P4_HOSTED_INIT_CAP_WLAN_SDIO) ||
+        ((uintptr_t)remote_status % sizeof(*remote_status)) != 0u ||
+        !wifi_ota_span_valid(base, runtime, gates, sizeof(*gates)) ||
+        !wifi_ota_span_valid(base, runtime, remote_status, sizeof(*remote_status)) ||
+        !wifi_ota_spans_disjoint(gates, sizeof(*gates), remote_status,
+                                 sizeof(*remote_status)))
+        return P4_BOARD_UPDATE_CALL_AMBIGUOUS;
+    if (gates->manifest_accepted != 1u || gates->inspection_passed != 1u ||
+        gates->recovery_verified != 1u || gates->target_compatible != 1u)
+        return P4_BOARD_UPDATE_CALL_AMBIGUOUS;
+    context = runtime->context;
+    control = runtime->control;
+    started = context->host->now_us();
+    remaining = wifi_owner_remaining(context, base->maintenance_started,
+                                     P4_WIFI_MAINT_LEASE_US);
+    if (!remaining) return P4_BOARD_UPDATE_CALL_AMBIGUOUS;
+    if (request_id == 272u) {
+        if (data || data_size || base->maintenance_fence_mode ||
+            control->ota_token || control->ota_generation ||
+            control->ota_image_size || control->ota_begin_acknowledged ||
+            control->ota_acknowledged_bytes)
+            return P4_BOARD_UPDATE_CALL_AMBIGUOUS;
+    } else {
+        if (base->maintenance_fence_mode != P4_WIFI_MAINT_FENCE_INCOMPLETE ||
+            control->ota_token != token || control->ota_generation != generation ||
+            control->ota_image_size != image_size ||
+            control->ota_begin_acknowledged != 1u ||
+            control->ota_acknowledged_bytes > image_size)
+            return P4_BOARD_UPDATE_CALL_AMBIGUOUS;
+        if (request_id == 273u) {
+            if (!data_size || data_size > P4_HOSTED_OTA_MAX_WRITE_SIZE ||
+                data_size > image_size - control->ota_acknowledged_bytes ||
+                !wifi_ota_span_valid(base, runtime, data, data_size) ||
+                !wifi_ota_spans_disjoint(data, data_size, gates, sizeof(*gates)) ||
+                !wifi_ota_spans_disjoint(data, data_size, remote_status,
+                                         sizeof(*remote_status)))
+                return P4_BOARD_UPDATE_CALL_AMBIGUOUS;
+        } else if (data || data_size ||
+                   control->ota_acknowledged_bytes != image_size)
+            return P4_BOARD_UPDATE_CALL_AMBIGUOUS;
+    }
+    /* From here any failure closes this attempt. Arm BEFORE UID reservation,
+     * encoding or transport: finalization may never run after budget failure. */
+    if (request_id == 272u) {
+        base->maintenance_fence_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;
+        base->associated = FALSE;
+        control->ota_token = token;
+        control->ota_generation = generation;
+        control->ota_image_size = image_size;
+        wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_FAILED);
+    } else if (request_id == 274u)
+        base->maintenance_fence_mode = P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN;
+    if (!p4_hosted_request_ids_reserve(&runtime->owner->ids, generation,
+                                      request_id, &uid)) goto failed;
+    p4host_zero(&control->result, sizeof(control->result));
+    if (request_id == 272u)
+        encoded = p4_hosted_ota_begin_request(uid, control->request,
+            sizeof(control->request), &written);
+    else if (request_id == 273u)
+        encoded = p4_hosted_ota_write_request(uid, data, data_size,
+            control->request, sizeof(control->request), &written);
+    else
+        encoded = p4_hosted_ota_end_request(uid, control->request,
+            sizeof(control->request), &written);
+    remaining = wifi_owner_remaining(context, started, timeout_us);
+    lease = wifi_owner_remaining(context, base->maintenance_started,
+                                 P4_WIFI_MAINT_LEASE_US);
+    if (remaining > lease) remaining = lease;
+    exchanged = encoded && remaining &&
+        p4_hosted_owner_exchange_ota(runtime->owner, runtime->fifo,
+            &control->ops, generation, runtime->checksum, control->request,
+            written, remaining, &control->result);
+    p4host_zero(control->request, sizeof(control->request));
+    if (!exchanged) {
+        (void)wifi_owner_finish_unsubmitted_reservation(runtime->owner,
+            runtime->fifo, generation, uid, request_id, control->result.submitted);
+        goto failed;
+    }
+    rpc.msg_type = runtime->owner->reply.msg_type;
+    rpc.msg_id = runtime->owner->reply.msg_id;
+    rpc.uid = runtime->owner->reply.uid;
+    rpc.payload = runtime->owner->reply.payload;
+    rpc.payload_size = runtime->owner->reply.payload_size;
+    if (!p4_hosted_ota_status_response(&rpc, request_id, uid, &status)) goto failed;
+    *remote_status = status;
+    if (status) {
+        control->ota_closed = 1u;
+        return P4_BOARD_UPDATE_CALL_REJECTED;
+    }
+    if (request_id == 272u) control->ota_begin_acknowledged = 1u;
+    else if (request_id == 273u)
+        control->ota_acknowledged_bytes += (ULONG)data_size;
+    else {
+        base->maintenance_fence_mode = P4_WIFI_MAINT_FENCE_WAIT_REBOOT;
+        control->ota_closed = 1u;
+    }
+    /* Preserve a decoded ACK even if late, but never allow another command.
+     * The aggregate engine must separately report its timing/handoff failure. */
+    if (!wifi_owner_remaining(context, started, timeout_us) ||
+        !wifi_owner_remaining(context, base->maintenance_started,
+                              P4_WIFI_MAINT_LEASE_US) ||
+        !wifi_discovery_session_valid(base, runtime) ||
+        runtime->context->generation != generation)
+        control->ota_closed = 1u;
+    return P4_BOARD_UPDATE_CALL_ACKNOWLEDGED;
+failed:
+    control->ota_closed = 1u;
+    p4host_zero(control->request, sizeof(control->request));
+    return P4_BOARD_UPDATE_CALL_AMBIGUOUS;
 }
 
 static BOOL wifi_maintenance_discover(struct P4WifiBase *base, ULONG token)
