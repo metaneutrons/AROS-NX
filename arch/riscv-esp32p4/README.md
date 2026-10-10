@@ -192,7 +192,11 @@ inconsistency, not a silicon test result. No OPEN has been sent.
 The warm-reset investigation identifies a concrete missing reference step:
 IDF5.4.3 sends CMD52 Function0 CCCR0x06=0x08 (SDIO reset) before CMD0/CMD5;
 our current probe starts at CMD0. A bounded opt-in reset-before-identification
-diagnostic is next. This omission is not yet the proven timeout root cause;
+diagnostic is build verified: P4_WIFI_SDIO_RESET_QUERY=1 issues exactly one
+CCCR RES write, CMD0 and CMD5(0), with fail-stop and pre/post budget checks.
+It excludes function setup at compile time and never continues to selection,
+IRQ/FIFO/OPEN. Strict sanitized tests pass1168 checks each O0/O2. Hardware
+qualification is next. This omission is not yet the proven timeout root cause;
 slave-side hardware-FSM recovery may also be needed, and no host-controlled
 C6 reset GPIO has been established for this board.
 The recovery foundation now separates card identification into an unpublished

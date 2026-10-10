@@ -1,6 +1,7 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
 /* Native opt-in identification, optionally function setup with restoration.
- * No OPEN, reset, IRQ enable, WLAN RPC or C6 firmware replacement. */
+ * Separate opt-in CCCR reset/query diagnostic; no OPEN, IRQ enable,
+ * WLAN RPC or C6 firmware replacement. */
 #include <aros/asmcall.h>
 #include <aros/debug.h>
 #include <aros/symbolsets.h>
@@ -16,6 +17,12 @@
 #include "runtime_probe.h"
 #include "sdio_probe.h"
 #include "sdio_commands.h"
+#if P4_WIFI_SDIO_RESET_QUERY
+#include "sdio_reset_query.h"
+#if P4_WIFI_SDIO_SETUP
+#error "Reset-query diagnostic must not enable function setup"
+#endif
+#endif
 #if P4_WIFI_SDIO_SETUP
 #include "sdio_setup.h"
 #include "sdio_restore.h"
@@ -194,7 +201,11 @@ static void wifi_identify(void)
 {
     struct P4SDMMCHost *host = OpenResource(P4_SDMMC_HOST_NAME);
     struct wifi_probe_context context;
+#if P4_WIFI_SDIO_RESET_QUERY
+    p4_sdio_reset_query_result_t reset_query;
+#else
     struct p4_sdio_probe_result result;
+#endif
     struct p4_sdio_probe_ops ops;
 #if P4_WIFI_SDIO_SETUP
     p4_sdio_setup_ops_t setup_ops;
@@ -254,7 +265,13 @@ static void wifi_identify(void)
     if (host->set_clock(host, 1, 400000, FALSE, &actual) && wifi_budget(&context))
     {
         wifi_snapshot(before);
+#if P4_WIFI_SDIO_RESET_QUERY
+        /* Quiesced radio only: one RES write then CMD0/CMD5 query. No
+         * continuation to selection/setup, even after a successful query. */
+        success = p4_sdio_reset_query(&ops, &reset_query);
+#else
         success = p4_sdio_probe_identify(&ops, &result);
+#endif
         identify_last = context.last;
 #if P4_WIFI_SDIO_SETUP
         if (success && wifi_budget(&context))
@@ -298,6 +315,20 @@ static void wifi_identify(void)
      * snapshots after releasing ownership; never delay the storage peer
      * merely to print diagnostics. The captured command result is local. */
     Delay(50);
+#if P4_WIFI_SDIO_RESET_QUERY
+    bug("[WiFi] reset-query ok=%u stage=%u cmd=%u\n",
+        success, reset_query.stage, reset_query.command_index);
+    Delay(5);
+    bug("[WiFi] reset attempted=%u ack=%u error=%u\n",
+        reset_query.reset_attempted, reset_query.reset_acknowledged,
+        reset_query.error);
+    Delay(5);
+    bug("[WiFi] reset-query status=%u raw=%08x id=%08x\n",
+        identify_last.status, identify_last.raw, identify_last.idstatus);
+    Delay(5);
+    bug("[WiFi] reset-query clock=%u R4=%08x fn=%u\n",
+        actual, reset_query.response, reset_query.functions);
+#else
     bug("[WiFi] slot1 probe ok=%u stage=%u cmd=%u\n",
          success, result.stage, result.command_index);
     Delay(5);
@@ -317,6 +348,7 @@ static void wifi_identify(void)
     bug("[WiFi] enable=%02x ready=%02x CIS=%06x FBR1=%02x\n",
          result.io_enable, result.io_ready, result.cis_pointer,
          result.fbr1_interface);
+#endif
 #if P4_WIFI_SDIO_SETUP
     Delay(5);
     bug("[WiFi] setup attempted=%u ok=%u stage=%u error=%u\n",

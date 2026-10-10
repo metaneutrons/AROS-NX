@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; setup gate blocked by warm CMD5 timeout` | Opt-in setup/restore builds and host tests pass, but first deployment fails at initial CMD5 after P4 USB reset: setup attempted0/mutated0. Earlier post-power-cycle identification is not repeatable warm recovery. Next bounded CCCR RES before identification as in IDF. ESSL/TRM support OPEN address0x8c at source level only. Compatibility, live transport/credits/RPC and disconnect recovery remain open. C6 firmware preserved. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; bounded reset-query build verified` | Setup gate fails at warm CMD5, attempted0/mutated0. Separate opt-in CCCR RES/CMD0/single CMD5 candidate passes1168 sanitized checks each O0/O2; actual adapter21 cases/165 checks, clean RV32/module/package audits. Next one reset-query hardware gate with exact P4 rollback. ESSL/TRM support OPEN address0x8c at source level only. Compatibility, transport/RPC and recovery remain open; C6 firmware preserved. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -589,6 +589,12 @@ reference sources;0x8d is an apparent protocol-document inconsistency. No
 bootstrap write is hardware verified. Before another setup gate, test the
 missing bounded Function0 CCCR RES step used by IDF before CMD0/CMD5. Neither
 this omission nor a retained C6 hardware FSM is yet a proven fault attribution.
+The separate P4_WIFI_SDIO_RESET_QUERY=1 diagnostic is now build verified:
+one Fn0 CMD52 RES, CMD0 and one CMD5(0), no selection or setup afterwards.
+Every command is pre/post-budget checked; ambiguous reset failure stops the
+sequence. Reset attempted/acknowledged are distinct and FBR restoration cannot
+undo reset side effects. Setup+reset-query together is a compile-time error.
+Sanitized O0/O2 tests1168 checks each; first hardware result remains pending.
 
 The first independent pure codec uses the vendor0.0.6 12-byte wire header,
 1536-byte total-frame bound, LE16 fields and additive checksum excluding its
@@ -30214,6 +30220,53 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   Do not add OPEN, slave-FSM reset, guessed GPIO toggles or global SD-host reset
   to that experiment. No request for another blind physical rail-off follows.
   N1/N2/N3 remain open; source audit is not hardware acceptance.
+
+### 2026-10-10 - N1 bounded reset-query diagnostic build and host verified
+
+- Parenta847a42db3, same isolated JC1060 Wi-Fi worktree/build. New pure
+  sdio_reset_query.c/h: one CMD52 Fn0 arg80000c08/R5maskcb00, CMD0/noresponse,
+  CMD5(0)/R4; nonzero functions and host-overlapping OCR required, ready0
+  accepted as query only. Pre/post-budget checks, ambiguous reset marked
+  attempted before callback, acknowledged only after bounded valid response.
+  No retry, CMD3/7, function enable, IRQ/FIFO/OPEN or global-host reset.
+- Runtime P4_WIFI_SDIO_RESET_QUERY=1 selects this diagnostic instead of the
+  original identification; P4_WIFI_SDIO_SETUP=1 with it is refused at compile
+  time. Same healthy shared-host ownership/generation checks, slot1 one-bit
+ 394088Hz request400k,10s aggregate bound. Snapshot/output after release.
+  No hardware reset GPIO or C6 firmware change. Diagnostic R5 failure can
+  appear as generic helper command error because host rejects it first;
+  host status/raw interrupt report remains available. Do not infer reset
+  acknowledgement from a successful no-response CMD0.
+- Independent Luna tests and review; primary read tests and repeated final
+  strict C99 ASan/UBSan O0/O2:1168 checks each, process0. Intermediate primary
+  run had1080 checks before final test additions; preserved separately.
+  Actual extracted runtime CMD52 adapter passes21 cases/165 checks each,
+  process0; standalone freestanding strict RV32 helper compiles.
+- Clean module-object invalidation before enabled and default builds,
+  process0. Enabled JC1060 module38204B SHA-256
+  19abfd089076075e2cd2397db83fd2d45a40f453143c88bb51e767e61bf17899;
+  default38668B SHA-256
+  4f4c9492bca054666cf864525cf5b074e87c6c3fd8d9fb90532e75699325e0a6,
+  no reset-query report strings. First build omitted board selector and
+  produced default-D1001 stub32516B8271c31a...; rejected and not packaged.
+- Only enabled Wi-Fi member replaced in immutable prior42-member package;
+  other41 unchanged. Candidate3726760B SHA-256
+  b24515b0c0749e668d1884e62c99f8bf8cb349dbad2b19e5e60fb50169a7b648.
+  Loader audit42/42; actual board checksize3726760/4063232B process0.
+  First top-level checksize invocation measured the old3720208B build
+  output; rejected as candidate evidence. Corrected generated rule uses
+  external AROSARCHDIR and -o exact immutable aros-bsp.pkg.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/n1-reset-query/.
+  reset-query-tests-final.log SHA-256
+  adc944d2180762b77d470272c20fc13caa99040d1826723978c0fbcb2315b64b;
+  helper source d18294352f1f5381eb96d078b2d838714706f5a11dbd7f1efe3c885a87cac2b7.
+  Module logs/artifacts, adapter-tests.log, loader-audit/checksize and RV32
+  object retained. Current build output is default-off; deploy saved enabled
+  immutable candidate only. Hardware reset-query has not run yet.
+- Next: reidentify board, double-backup entire erase span, independent
+  candidate readback, one headless capture, exact P4 rollback/readback and
+  complete baseline return. No silent retry on failed reset. A P4 rollback
+  cannot claim reversal of slave reset effects. No WLAN acceptance follows.
 
 ## Evidence-entry template
 
