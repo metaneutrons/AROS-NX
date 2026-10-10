@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipe, SDK source-input and native consumer-contract corrections are being integrated without changing SMP or board runtime. Source seals, normalized cache inputs, explicit header prerequisites and target/host projections have authoring coverage. Release paths and markers distinguish Classic and SDK-selector state. New qualified tools runtime, clean compiler/SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Source-owned SDK graph is audit-verified; the incremental native build now produces OpenURL after preserving ordered source prerequisites. Zune's private-header shadowing still blocks full construction. New qualified tools runtime, clean compiler/SDK replay with final C/C++ links, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -348,6 +348,51 @@ change any board's hardware acceptance state.
 - Next: integrate the checked source prerequisites and qualified runtime, then
   build the clean native SDK, test C/C++ final links and relocation, and qualify
   the full mixed compiler/SDK release set on all three hosts.
+
+### 2026-10-10 - TC0 ordered archive preparation and next SDK blocker
+
+- State: TC0 remains `in development`. The OpenURL component is build-verified;
+  the complete SDK, C/C++ final links and relocation remain unverified.
+- Inputs: native SDK source commit `319eeae161265cf9b0d4d8945b0da26f420baf26`,
+  consumer digest
+  `f995ff42e9190fd53714f771bda1fe1e6964b07624e4c4f61e7ff1c0bd05baec`,
+  retained relocated GNU compiler and local tools runtime. The executing CLI
+  SHA-256 was
+  `56101098c77d0e481fcb66380a7c168473a328f408c8d43959d6214519b84dc8`;
+  the transpiler SHA-256 was
+  `45a5b4d8fc53702652a46a1f62aa6bcd755f3c8304c0d8cb2425230f9e592b1b`.
+- Cause: MetaMake visits `includes` before the ordinary OpenURL quick archive
+  synchronously. The native graph had scheduled them as parallel siblings.
+  The tools correction binds source-local preceding prerequisites to exact
+  archive compiler producers; it does not patch OpenURL's source or invent
+  missing endpoints. Exact source/producer joins, omission proofs, cycle
+  rejection and a bounded work budget have regression coverage.
+- Procedure: continue the same `esp32p4-riscv-gnu` build with `--jobs 12`,
+  `--compiler-cache off` and `--require-fetch-checksums`; no clean reset and
+  no concurrent second build. The recorded Ninja continuation contained
+  7,111 pending actions, not the original full action count.
+- Observed: the generated header was produced before its compiler consumer;
+  `libopenurl.a` completed at action 3,699. Header SHA-256:
+  `e58059f694dbdfb33badcab7c3d037c5cde0359814ebf19666ab62e6c3a6922f`.
+  `autoinit-aros.o` SHA-256:
+  `22abb6566d9f58694ebccf3f773f5352eafbe8f711d99ed8ef4de1d2f6c759a1`.
+  Archive SHA-256:
+  `b3dd173083b27f5c1d785361af92eb73f642d8ac5ae900d90489be469b92ae36`.
+  Fifteen ordered-preparation unit tests and a fresh physical C/C++ compiler
+  fixture with the missing-edge counterprobe passed. The source-coupled
+  transpiler suite passed 1,114 tests, with five existing ignored tests and
+  the historical Mesa 20 inventory test explicitly excluded.
+- Remaining failure: action 4,554 failed compiling Zune `balance.c`. Its
+  `<string.h>` resolves to the private muimaster classes header because the
+  native engine adds implicit module directories as `-I`; Classic uses
+  `-iquote`. Correct the generic include classification, not `STACKED` or
+  the source include spelling, and requalify the same incremental tree.
+- Safety: no board driver, SMP runtime, firmware, media or hardware change.
+  The local runtime is not a newly qualified public release. Focused tests
+  and archive output do not qualify the complete SDK or three-host release.
+- Next: prove quote/angle lookup with real C/C++ compilers and invalid-path
+  counterprobes, then finish native SDK construction, final links, relocation
+  and the full release qualification without changing immutable history.
 
 ## Track E: ESP32-P4 / RV32 SMP
 

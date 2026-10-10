@@ -82,6 +82,10 @@ native-consumer support; published v0.3.19 cannot activate this preset.
 Its selected native graph is audit-verified locally (2,250 reachable endpoints,
 no missing producer). Complete fresh SDK construction and final C/C++ links
 remain separate acceptance gates; this does not change board verification.
+The incremental GNU SDK build now produces OpenURL's archive. It next stops
+at a native-engine include-search mismatch in Zune: a private `string.h`
+shadows the C runtime header. Neither that partial build nor its focused
+regressions qualify the complete SDK; see the TC0 evidence log.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
