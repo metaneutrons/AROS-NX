@@ -44,8 +44,16 @@ continue, with reset_acknowledged=0; complete identification must still pass.
 Generic R5/card/bus/DMA errors, generation changes and budget expiry remain
 fatal. One aggregate budget covers reset and identification. Strict O0/O2
 sanitizer models pass6,358 checks each; fresh RV32 bootstrap-only and setup
-module builds pass. This candidate has not been deployed;
-native OPEN/RPC/association/frames/SANA-II and SD coexistence remain open.
+module builds pass. The bootstrap-only package now passes one complete40.928s
+JC1060 warm-start capture: reset attempted1/ack1/status1, identification
+ok1/stage8, two functions, RCA1,394088Hz and all24 controller snapshots.
+Only the Wi-Fi member changes; the other41 records remain byte-identical.
+This does not qualify repeated recovery, the timeout/CRC exception on silicon,
+native OPEN/RPC/association/frames/SANA-II or SD coexistence.
+The entire BSP erase span is restored/readback verified byte-identically;
+the complete30.934s baseline return passes PSRAM, both harts, watchdog,
+41-module loading, SD enumeration and graphics-update dispatch without
+another captured reset/fault. No visible-frame acceptance is inferred.
 Extracted runtime adapter models pass41 cases/501 checks each O0/O2 with
 sanitizers; these are not real controller or elapsed-time measurements.
 The separately selected P4_WIFI_SDIO_RESET_QUERY=1 historical diagnostic stays

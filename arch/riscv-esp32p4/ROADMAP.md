@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan reference passed once; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip12/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Native reset-before-identify candidate passes6,358 sanitizer checks each O0/O2; not deployed. Exact RES timeout/CRC may continue without claiming acknowledgement; generic card/host/budget failures remain fatal. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap passed once; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip12/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Native reset-before-identify passes one complete40.928s JC1060 warm capture: reset ack1/status1, identification ok1/stage8, two functions/RCA1/394088Hz; all24 snapshots captured, slot controls unchanged. Function setup/OPEN/RPC are not exercised. Exact RES timeout/CRC may continue without claiming acknowledgement; those exceptions are model-tested, not exercised by this hardware pass. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -670,9 +670,22 @@ generic R5/card/host failures remain fatal. Tolerated failures retain ack0;
 subsequent CMD0/CMD5/CMD3/CMD7/CCCR/FBR still must pass under the same budget.
 The separate historical reset-query diagnostic retains its fail-stop policy.
 Strict bootstrap models now pass6,358 checks each O0/O2. Fresh RV32
-bootstrap-only and setup-enabled resource builds pass, not hardware deployed.
+bootstrap-only and setup-enabled resource builds pass; at that build stage
+neither was hardware deployed.
 Extracted runtime adapter models pass41 cases/501 checks each O0/O2;
 independent bootstrap review passes after the ACK-reporting correction.
+The bootstrap-only package now passes one complete40.928s JC1060 warm-start
+capture. RES is acknowledged (status1), followed by complete identification:
+ok1/stage8, two functions, RCA1,394088Hz, all24 snapshots, unchanged slot0/1
+clock/width/reset controls. No timeout/CRC tolerance is exercised in this run;
+it does not resolve every earlier retained-state failure or prove recovery.
+The package audit accepts42/42 members and checksize3728776/4063232B passes;
+all41 non-Wi-Fi records are unchanged. Next is the bounded setup/restore gate,
+then native OPEN/RX/RPC; no WLAN completion follows from identification.
+The entire BSP erase span is restored/readback verified byte-identically;
+complete30.934s baseline return passes PSRAM/both harts/watchdog/41 modules/
+SD enumeration/graphics-update dispatch, no additional captured reset/fault.
+No visual, data-integrity or combined-load qualification is inferred.
 The empty-scan omission is a workaround for the pinned slave's API error,
 not proof that its empty-record behavior is fixed. N1E (open root-fix item):
 establish installed slave lineage, fix/upstream the erroneous empty-list API
@@ -30910,6 +30923,68 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   Complete package/checksize/loader audit,
   then bounded native warm-bootstrap evidence with exact baseline rollback.
   Native OPEN/RX/RPC/association/frames/SANA-II/shared-SD/recovery remain open.
+
+### 2026-10-10 - N1 native warm bootstrap passes; full BSP rollback verified
+
+- Source d698d37bce, JC1060-v2/P4v1.3 MAC80:f1:b2:d3:3b:a6 reidentified
+  before deployment and rollback. Unchanged AROS core190016B
+  dea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0.
+  Probe1/setup0/reset-query0, slot1 one-bit request400k/actual394088Hz,
+  one10s aggregate bootstrap budget, no OPEN/IRQ/FIFO/RPC/credentials.
+- replace-package-member.py replaces only esp32p4wifi.resource in immutable
+  n1-reset-query/aros-bsp.pkg b24515b0... with native-bootstrap.Q2ReQE/
+  bootstrap-only.resource40220B
+  12669b4b46f6e73c2458a392553b3cb360c9779519336915a90debc458986125.
+  Candidate3728776B SHA-256
+  1855b804f2cf25edb3a7cb72b0daadd6ae6cdd0fef89ff3a1ab9f5dd7b09ee8b.
+  Independent read-only Luna comparison confirms42 ordered members and all41
+  other raw records byte-identical. Loader audit42/42 accepted, process0;
+  actual generated board checksize3728776/4063232B process0 (external
+  AROSARCHDIR, -o exact candidate). No stale top-level package used.
+- Entire erase span0x820000..0xbaefff (3731456B) independently read twice,
+  compared identical and matches earlier n1-setup-hardware/before.bin.
+  SHA-256bfce64475f689cf766c5ddf241d73a09fe7a6ec6026abcfac97ac2936ef8ca1c.
+  Write only candidate at0x820000; separate3728776B readback byte-identical.
+  Both backups, deployment/write/readback processes exit0. Write session33600.
+- Exactly one bounded first-byte capture via uv run --with pyserial python
+  arch/riscv-esp32p4/tools/reset-and-log.py /dev/cu.usbmodem101 40
+  --timing <evidence>/boot-timing.jsonl, raw output boot.log. Session81378
+  exits0; complete footer40.927836333s/15256B. Log SHA-256
+  d99e5ec73334e50fb368b0265548ae68fade9b48d808edee8c505e67cdfb7872.
+- Result: PASS for this native warm bootstrap only. Reset attempted1/ack1/
+  status1; probe ok1/stage8/cmd52, error0/status0, raw00010004/IDSTS0,
+  last validated response00001000. OCR00ffff00/RCA0001/functions2,
+  CCCR02/SDIO03/bus40/cap17/enable00/ready02/CIS001000/FBR1interface00.
+  All24 before/after snapshots captured. CLKDIV1d00/CLKSRC4/CLKENA10003/
+  CTYPE1/RST_N3 unchanged. Ready02 alone is not function enable acceptance.
+  Reset timeout/CRC tolerance is not exercised (actual reset acknowledged).
+- Capture has one commanded initial CHIP_USB_UART_RESET banner,32MB PSRAM
+  200MHz/one attempt,6000ms armed watchdog, hart1 online/cpus2,42 modules,
+  DSI PLL15bd, SD121942MB and accepted graphics updates. No subsequent ROM
+  reset, trap/Alert/Guru/panic signature. Runtime console drops unrelated
+  narration; graphics API markers are not visible-frame evidence, and SD
+  enumeration is not referenced-data/coexistence acceptance. Earlier failures
+  remain unresolved; one pass does not establish repeated warm recovery.
+- Recovery: fresh MAC, full before.bin rollback at0x820000, independent full
+  3731456B readback matchesbfce6447...; write49929/readback26815 exit0.
+  Separate30s first-byte baseline return62433 exits0; complete footer
+  30.934435541s/14440B, restored-boot.log SHA-256
+  b85c8353ebe455423ecba9486119aad0fdaa86580567e2e8e35b8d53087f5c68.
+  41 modules, PSRAM32MB/200MHz, both harts/watchdog/PLL15bd/SD enumeration,
+  accepted update256 and touch heartbeat500 captured, no additional fault.
+  No Wi-Fi diagnostic remains in the running baseline. No manual clock write,
+  physical cycle or Vellum recovery used. Restoring P4 does not undo C6 RES.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/native-bootstrap-package.6MpJvq/
+  contains package, loader/checksize logs, identities, double backups,
+  deployment and rollback readbacks/write logs, both captures/timing sidecars.
+- Safety: only BSP erase span changed and fully restored; core/bootloader/
+  partition table/development volume/SD/C6 firmware not written. C6 SDIO
+  runtime state reset deliberately. No live sight/touch acceptance requested.
+- Next: bounded native function1 setup/restoration with separate verified
+  rollback, then OPEN/private INIT/RX/RPC on the measured reference protocol.
+  Native association/DHCP/bidirectional frames/SANA-II/shared SD/sustained
+  recovery gates remain open; Wi-Fi is not finished.
 
 ## Evidence-entry template
 
