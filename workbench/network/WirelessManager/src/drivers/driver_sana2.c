@@ -20,6 +20,7 @@
 
 #include <exec/types.h>
 #include <exec/io.h>
+#include <exec/errors.h>
 #include <exec/memory.h>
 #include <dos/dos.h>
 #include <devices/sana2.h>
@@ -93,6 +94,8 @@ struct wpa_driver_sana2_data {
 	int hard_mac;
 	int scanning;
 	int online;
+	/* An attempted WEP install may have changed hardware even on failure. */
+	int wep_key_attempted;
 	/* Queried and retained per open device instance; never use global defaults. */
 	int wireless_caps_queried;
 	int wireless_caps_valid;
@@ -447,10 +450,16 @@ static int wpa_driver_sana2_set_key(const char *ifname, void *priv,
 	/* Work-around for a bug in MLME code */
 	if (wpa_driver_sana2_cipher(alg) == S2ENC_WEP)
 		using_wep = 1;
+	if (alg == WPA_ALG_WEP && key_len != 0)
+		drv->wep_key_attempted = 1;
 
 	err = DoIO((APTR)request);
+	if (request->ios2_Req.io_Error != 0)
+		err = -1;
+	request->ios2_Data = NULL;
+	request->ios2_StatData = NULL;
 
-	return err;
+	return err == 0 ? 0 : -1;
 }
 
 
@@ -458,10 +467,61 @@ static int wpa_driver_sana2_associate(
 	void *priv, struct wpa_driver_associate_params *params)
 {
 	struct wpa_driver_sana2_data *drv = priv;
-	int err = 0, i, alg;
-	struct IOSana2Req *request = drv->request;
-	struct TagItem *tag_list2 = NULL;
-	char *ssid = os_zalloc(MAX_SSID_LEN + 1);
+	int err, i, alg, offload, has_wep = 0;
+	size_t passphrase_len;
+	struct IOSana2Req *request;
+	char ssid[MAX_SSID_LEN + 1];
+
+	/* SANA SSID tags are C strings, not length-delimited byte strings.
+	 * Reject identities that cannot be represented before any device I/O. */
+	if (drv == NULL || params == NULL || drv->request == NULL ||
+	    params->ssid == NULL || params->ssid_len == 0 ||
+	    params->ssid_len > MAX_SSID_LEN ||
+	    (params->wpa_ie_len != 0 && params->wpa_ie == NULL))
+		return -1;
+	for (i = 0; i < params->ssid_len; i++) {
+		if (params->ssid[i] == '\0')
+			return -1;
+	}
+	for (i = 0; i < 4; i++) {
+		if (params->wep_key_len[i] != 0 && params->wep_key[i] == NULL)
+			return -1;
+		if (params->wep_key_len[i] != 0)
+			has_wep = 1;
+	}
+	offload = drv->wireless_caps_valid &&
+		(drv->wireless_caps.Flags & S2WIRELESS_CAPF_FOURWAY);
+	if (offload) {
+		for (i = 0; i < 4; i++) {
+			if (params->wep_key_len[i] != 0)
+				return -1;
+		}
+	}
+	/* Never forward credentials based only on a caller supplying them.
+	 * Raw PSK needs a separate explicit device contract; do not reinterpret
+	 * its binary bytes as a passphrase or silently drop a raw-only PSK. */
+	if ((params->passphrase != NULL || params->psk != NULL) &&
+	    (!offload || params->key_mgmt_suite != KEY_MGMT_PSK ||
+	     params->mode != IEEE80211_MODE_INFRA))
+		return -1;
+	if (offload && params->key_mgmt_suite == KEY_MGMT_PSK &&
+	    params->passphrase == NULL)
+		return -1;
+	if (params->passphrase != NULL) {
+		for (passphrase_len = 0; passphrase_len < 64 &&
+		     params->passphrase[passphrase_len] != '\0'; passphrase_len++) {
+			if ((unsigned char)params->passphrase[passphrase_len] < 32 ||
+			    (unsigned char)params->passphrase[passphrase_len] > 126)
+				return -1;
+		}
+		if (passphrase_len < 8 || passphrase_len > 63)
+			return -1;
+	}
+	request = drv->request;
+	CopyMem(params->ssid, ssid, params->ssid_len);
+	ssid[params->ssid_len] = '\0';
+	/* DoIO waits for Reply. The device must consume/copy these borrowed
+	 * options before replying; no allocation survives the call. */
 	struct TagItem tag_list[] =
 		{{S2INFO_SSID, (UPINT)ssid},
 		{(params->bssid != NULL) ? S2INFO_BSSID : TAG_IGNORE,
@@ -479,45 +539,48 @@ static int wpa_driver_sana2_associate(
 			(UPINT)params->passphrase},
 		{TAG_END, 0}};
 
-	if (ssid == NULL) {
-		err = 1;
-	}
-
-	if (err == 0) {
-		CopyMem(params->ssid, ssid, params->ssid_len);
-		ssid[params->ssid_len] = '\0';
-
-		tag_list2 = CloneTagItems(tag_list);
-		if (tag_list2 == NULL) {
-			err = 1;
-		}
-	}
-
-	/* Set or clear WEP keys */
-	for (i = 0; i < 4; i++) {
+	/* Legacy host-handshake devices still set/clear WEP slots. Firmware
+	 * offload owns its key state and does not imply S2_SETKEY support. */
+	for (i = 0; !offload && i < 4; i++) {
 		if (params->wep_key_len[i] > 0)
 			alg = WPA_ALG_WEP;
 		else
 			alg = WPA_ALG_NONE;
-		wpa_driver_sana2_set_key(NULL, priv, alg, broadcast_addr, i,
+		err = wpa_driver_sana2_set_key(NULL, priv, alg, broadcast_addr, i,
 			i == params->wep_tx_keyidx, NULL, 0,
 			params->wep_key[i], params->wep_key_len[i]);
+		if (err != 0 || request->ios2_Req.io_Error != 0) {
+			request->ios2_Data = NULL;
+			request->ios2_StatData = NULL;
+			/* A device with no WEP history may legitimately not implement
+			 * empty WEP-slot clears. Never ignore a real install error or
+			 * a failure to remove possibly installed WEP keys. */
+			if (!has_wep && !drv->wep_key_attempted &&
+			    (request->ios2_Req.io_Error == S2ERR_NOT_SUPPORTED ||
+			     request->ios2_Req.io_Error == IOERR_NOCMD))
+				continue;
+			return -1;
+		}
 	}
+	if (!offload && !has_wep)
+		drv->wep_key_attempted = 0;
 
 	/* Set other options */
-	if (err == 0) {
-		request->ios2_Req.io_Command = S2_SETOPTIONS;
-		request->ios2_Data = tag_list2;
-		err = DoIO((APTR)request);
-		FreeTagItems(tag_list2);
-	}
+	request->ios2_Req.io_Command = S2_SETOPTIONS;
+	request->ios2_StatData = NULL;
+	request->ios2_Data = tag_list;
+	err = DoIO((APTR)request);
+	if (request->ios2_Req.io_Error != 0)
+		err = -1;
+	request->ios2_Data = NULL;
+	request->ios2_StatData = NULL;
 
 	/* Store current SSID and BSSID */
 	if (err == 0) {
 		strcpy(drv->ssid, ssid);
 	}
 
-	return 0;
+	return err == 0 ? 0 : -1;
 }
 
 

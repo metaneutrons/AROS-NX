@@ -390,3 +390,48 @@ pins schema, generated files and protobuf-c hashes and uses a no-network Colima
 snapshot with write bits removed; it does not claim root-proof immutability.
 No runtime/control allowlist or installed firmware changes are part of this
 qualification. Persistent generation-scoped event/UID handling remains needed.
+
+## C6 firmware identity and recovery gate (2026-10-10)
+
+The pinned slave's console version printer reports a semantic version, not a
+whole-image digest. Its SDIO initialization event advertises chip/capabilities,
+not a verified source commit or binary hash. Installed `54aafd0-dirty` therefore
+does not identify exact bytes. An application descriptor/ELF hash is not the
+full flashed `.bin` hash either. No credential transmission is authorized by
+matching a protocol or successful MAC/scan alone.
+
+Primary source audit in `hosted-reproduce.6qcg7E` confirms:
+
+- `slave/main/slave_control.c:819` has plaintext password DEBUG logging;
+  `slave/main/app_main.c:325` has a VERBOSE serial-payload hex dump. Compiling
+  those paths out can protect a known artifact, but says nothing about the
+  unknown installed binary. Do not collect secret-bearing output or NVS.
+- OTA_BEGIN selects the next update partition and calls
+  `esp_ota_begin(..., OTA_SIZE_UNKNOWN, ...)` (control:345-353); it can erase
+  the inactive fallback. OTA_END validates then changes the boot selection
+  before allocating/starting its reboot timer (428-455). A failure response
+  after that change does not prove the previous boot selection remains intact.
+- Two OTA slots and redundant otadata do not prove automatic rollback of a
+  defective app. Rollback configuration and app confirmation must be verified.
+  See [official C6 OTA documentation](https://docs.espressif.com/projects/esp-idf/en/release-v5.4/esp32c6/api-reference/system/ota.html).
+- The complete IDF host wrapper defaults to HTTP URL OTA (`rpc_wrap.c:45-47`),
+  not the file helper. It is not a verified authenticated native AROS updater;
+  native AROS currently has no OTA client. Do not use stock OTA as recovery.
+
+The pinned board schematic offers a candidate direct C6 UART recovery route
+through CN5: VCC3V3/GND/U0TXD/U0RXD/IO9/CHIP_PU. This is schematic evidence,
+not confirmed connector population, orientation or continuity on the active
+JC1060-v2. Before connecting anything, obtain fresh physical readiness and
+verify the actual revision/pin-1 and nets. A powered board must not receive a
+second supply from an adapter's VCC. See the
+[pinned board schematic](https://github.com/cheops/JC1060P470C_I_W/tree/6304eddef32a33aa9d9a85e971e39dfb24c3cca3/5-Schematic)
+and [official C6 boot-mode guidance](https://docs.espressif.com/projects/esptool/en/latest/esp32c6/advanced-topics/boot-mode-selection.html).
+
+Safe next gate, not an executed procedure: explicit C6 write authorization;
+verified physical restore path; non-secret security summary and actual
+partition/active-slot discovery; app/bootloader/table/otadata backups where
+readback is permitted, excluding potentially credential-bearing NVS; pinned
+privacy-safe source/configuration and image identity; fit/signature/encryption
+checks; controlled write/readback and restore verification. Secure Download
+or encryption may prevent useful readback; do not assume recoverability.
+No C6 flash, serial interaction, backup or credential use occurred in this audit.

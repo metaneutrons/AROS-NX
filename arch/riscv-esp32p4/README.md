@@ -1,5 +1,33 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+C6 recovery/privacy audit (2026-10-10): matching Hosted protocol/version is
+not verified flashed-image identity. Stock OTA can erase the inactive fallback
+and changes boot selection before a possible timer failure; automatic rollback
+is unproved. Native AROS has no OTA updater. The schematic CN5 UART route
+requires actual JC1060-v2 connector/pin verification, fresh physical readiness,
+non-secret backup/security checks and explicit C6 write authority before use.
+No C6/serial/credential action was taken. See HOSTED-REFERENCE.md for the gate.
+
+Association-caller correction in development (2026-10-10): the separate
+upstream-based wireless checkout now validates representable SSIDs and
+borrowed options before device I/O, removes the leaked temporary allocation,
+propagates key/options errors and gates credential forwarding on the actual
+per-device FOURWAY result. Firmware offload does not imply S2_SETKEY support;
+legacy host-handshake key setup remains separate. Raw-only PSKs are explicitly
+refused pending their own binary credential capability contract, not silently
+dropped or treated as passphrases. Independent review identified empty-slot
+clear compatibility and key callback return/pointer-lifetime defects; corrected
+code tracks attempted WEP state, tolerates only unsupported empty clears with
+no WEP history, and normalizes key callbacks to0/-1. A corrected clean full
+RV32 GUI build passes (680316B), as do old summary-helper regressions.
+Focused actual-source association/key/cipher models pass50 scenarios/339 checks each
+O0/O2 ASan/UBSan on macOS and network-isolated Linux after a recorder portability
+correction. SANA/DoIO/Exec are fakes, not a connection or link-up proof.
+Independent non-author review accepts the bounded test scope; its noted cipher,
+invalid-capability and non-NULL sequence coverage gaps were added and repeated.
+Generic commitda74d7f23a is locally integrated on the port branch; no remote push.
+No device association or credential deployment is implied.
+
 Native SANA scan development (2026-10-10): S2_GETNETWORKS now queues one
 owner-service scan, copies its optional bounded SSID filter, and publishes
 one pool-owned result block only after cancellation/Close checks. Unit locks

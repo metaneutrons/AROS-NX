@@ -117,6 +117,8 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| N2F | C6 firmware privacy and recoverable identity | `source audit; physical recovery/authority gates open` | Hosted init/version is not a whole-image hash. Stock OTA is not verified rollback; CN5 UART is schematic-only until actual v2 connector verified. Explicit C6 write authority, non-secret security/partition/app backups, pinned privacy-safe image and proven restore path required before credentials. No C6 action. |
+| N2A | Association caller and native link lifecycle | `shared caller RV32 build/model verified; generic da74d7f23a locally integrated` | Actual associate/key/cipher models50 scenarios/339 checks each O0/O2 ASan/UBSan macOS/Linux; source/non-author test review passed with stated WEP tightening. Binary raw-PSK contract, native S2_SETOPTIONS/runtime link events, verified C6 privacy and association/DHCP remain required. No credential deployment or link acceptance. |
 | N2S | Native queued SANA scan presentation | `RV32 build verified; source review and corrected scan-helper models passed` | Single bounded owner-service scan, copied SSID filter and caller-pool-owned complete publication. Scan-helper models295 checks each O0/O2 ASan/UBSan on macOS/Linux; outer BeginIO/AbortIO/Close and runtime scheduling remain separate gates. Exact singleton metadata only; unsupported/ambiguous unknown protected. C-string binary SSIDs/invalid channels omitted; max8 local cap. SUMMARY only, no FOURWAY. No credentials/deployment/hardware acceptance. |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
 | N2W | Generic wireless security-summary/offload contract | `locally integrated; predicates/ABI and conversion/selection-helper models passed; full RV32 GUI build verified` | Upstream-based generic49972c6241 retained separately and integrated onto port branch. Explicit per-device capability, owned exact-version summary, no fabricated AP security IE. Unknown/ambiguous protected networks must not fall back to open. Initial singleton WPA/RSN PSK profile; legacy path preserved. Device query/full association and hardware gates pending. No credentials or deployment. |
@@ -1109,6 +1111,24 @@ bidirectional referenced frames, timeout/cancel and disconnect recovery. A
 reference firmware example building is not evidence of AROS transport.
 
 ### N2 - native AROS WLAN device
+
+C6 credential gate: source audit finds DEBUG plaintext password and VERBOSE
+RPC logging paths in the pinned slave. Installed binary remains unidentified;
+semantic version/SDIO capabilities do not establish privacy. Stock OTA cannot
+substitute for proven restore/rollback. Candidate schematic CN5 UART must be
+verified on the actual board after fresh physical readiness and write authority.
+Source development may proceed without sending credentials or changing C6.
+
+Association caller correction is in development in the upstream-based generic
+checkout: validate before effects, use synchronous borrowed stack options,
+propagate key/options errors, gate credentials on actual FOURWAY and avoid
+assuming offload supports host-side S2_SETKEY. Raw-only PSK remains explicitly
+refused until a binary-credential capability contract is implemented. This
+does not implement native association or close credential/runtime gates.
+Corrected standalone RV32 GUI build and actual-source association/key models
+now pass50 scenarios/339 checks each O0/O2 ASan/UBSan on macOS/Linux.
+Device I/O remains mocked; non-author review accepts bounded scope and generic
+da74d7f23a is locally integrated, not association/runtime acceptance.
 
 Queued scan development (2026-10-10): S2_GETNETWORKS binds the private ABI2
 scan through a single asynchronous descriptor. It may scan before S2_ONLINE,
@@ -33906,3 +33926,131 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   success is manually freed; real submission/Reply/ref-drain/pool identity
   require separate integration qualification. Source inspection is not that
   runtime proof. Proceed with the functional scan implementation commit.
+
+### 2026-10-10 - N2A shared association caller correction started
+
+- State: development, target build/tests/review pending. Generic changes
+  originate in /Volumes/Dev/Build/aros-wlan-contract.qToy75 on
+  pr/wireless-offload-summary, not first in the port branch. No commit yet.
+- Source defect: associate copied unchecked ssid_len into33B, leaked its
+  allocation, ignored key setup errors and returned0 after options failure.
+  Passphrase forwarding relied only on a non-NULL caller pointer.
+- Initial correction validates pointers, SSID1..32/no embeddedNUL, IE/key
+  pointers and bounded printable passphrase8..63 before device effects.
+  Synchronous DoIO uses stack-owned SSID/tags until Reply and clears the
+  borrowed request Data afterward. Failure keeps the remembered SSID intact.
+  Actual per-device FOURWAY is required for credentials; offload skips legacy
+  WEP clears because it does not imply S2_SETKEY support. Non-offload retains
+  key setup and now reports its failures. Raw-only PSKs are explicitly refused
+  pending their distinct binary capability, not silently dropped.
+- Safety: no credentials, serial, flash or media writes. Borrowed options
+  require each device to consume/copy before Reply; asynchronous connection
+  initiation is not a link-up event. Independent source review and extracted
+  fault-path tests are running. Next: correct any compatibility defects,
+  qualify target build and models, then add raw credential contract/native
+  association and actual C6 privacy/firmware lineage gate.
+- First clean standalone RV32 GUI build (all copied object files invalidated)
+  succeeds, actual exit0, in /Volumes/Dev/Build/wlan-association-build.ehe2Se.
+  Explicit current SMP Developer sysroot, generic public includes and current
+  generated includes; checked-in SANA2/amiga configuration retained. Artifact
+  679904B SHA256b8a6ef442aab40209b3f575c1f435ddf2f0856362f5e6e9377c697aac65d3e21;
+  build.log8108406a382eb51b1188bf36b12d469c512cd46168ad06f34ccea927c8bbea93.
+  This precedes a follow-up StatData=NULL assignment before SETOPTIONS;
+  final rebuild and host tests are pending, not a qualified final artifact.
+- Independent review identifies three corrections: unsupported empty WEP
+  clears must not block a device with no WEP history; set_key must return0/-1,
+  not positive SANA errors; borrowed Data/StatData must not survive synchronous
+  calls. Root tracks attempted WEP installation conservatively before DoIO,
+  permits only NOT_SUPPORTED/NOCMD empty clears when no current/prior WEP,
+  and retains failure for uncertain installed keys. Full successful clearing
+  resets that history. set_key normalizes both DoIO/io_Error and clears both
+  pointers; SETOPTIONS clears StatData before/after and Data afterward.
+- Corrected complete GUI rebuild invalidates all copied .o again, actual exit0.
+  Source driver51612f76649a95cdc320e0477b7845475f0270b416905afa08f164a78a0772fc;
+  artifact680316B SHA256
+  cba45ca1823eb8db2635d7546c4e9f9202ad1d8ef11452abdb1c99c904d724d7;
+  build-corrected.log SHA256
+  bffea9c151baf76387bdfa84360cb8fee2227cdbc5a750831dbe0efcf340f756.
+  Existing summary integration regressions pass34 scenarios/63 checks each
+  O0/O2 on macOS with sanitizer halt_on_error enabled, actual exit0;
+  these do not cover the association call. Focused tests and final non-author
+  review remain active; no generic commit/integration or hardware claim yet.
+- Final source re-review finds one explicit compatibility decision: a WEP
+  profile with its key only in slot2 now refuses an unsupported empty clear
+  in slot0 before installation. Root retains this fail-closed behavior:
+  configured WEP requires safe clearing of unused slots; unsupported clears
+  are best effort only for non-WEP profiles with no attempted WEP history.
+  This is a deliberate legacy behavior tightening, not transparent WEP
+  compatibility or hardware verification. Dedicated regression requested.
+- Focused models now extract actual associate and set_key definitions, with
+  numeric constants extracted from production headers. Fixture structures,
+  cipher mapping, CopyMem and DoIO remain host fakes; exact option/key calls
+  and faults are recorded, not real SANA driver behavior. Primary macOS and
+  network-isolated Linux both complete with actual exit0,44 scenarios/300
+  checks each O0/O2 ASan/UBSan, halt_on_error and stack-use-after-return enabled.
+  Empty-clear WEP/no-history/history and slot2 refusal regressions are included.
+- First Linux attempt association-model-linux.log fails compilation at
+  test recorder snprintf with GCC format-truncation/Werror; no execution pass.
+  Root replaces it with explicit overlength failure plus exact byte copy,
+  not silent truncation. Corrected primary host repeats pass as above.
+  Test1844623f3ddacdd6b430423c704ed45f97a9b9b3ede57663f64ad9a83f473ad7;
+  runnere6ee2fe24447f1e2b1b7a517aaa475ae926a07748873c399bacc2deecea5b500.
+  association-model-macos-final.log/association-model-linux-final.log in
+  wlan-association-build.ehe2Se both SHA256
+  3564e3aff92e9930ae51d70916581f885f41be612d74352bab8338a09e05d2f1;
+  matching output hashes do not replace separate observed process exits.
+  Summary-regression.log19aa9d8ac3b040182866ee307829cc02c27118b7f9a8aa82d24ee962f6b424e0.
+  Final independent test review pending; no commit, deployment or credentials.
+- Non-author test review accepts the bounded harness without a blocker. Its
+  coverage gaps are closed: actual cipher helper is now extracted, invalid
+  capability/FOURWAY combinations refused, direct key calls exercise non-NULL
+  sequence cleanup on success and both failure forms. Primary repeats expanded
+  models:50 scenarios/339 checks each O0/O2 ASan/UBSan on macOS and isolated
+  Linux/GNU GCC13.3, actual exit0 and no sanitizer diagnostics. Source hash and
+  target GUI artifact above are unchanged; fixtures/DoIO remain mocks, no ABI,
+  device concurrency, native association or link-up acceptance.
+- Expanded C a8491e6c056463e6a6480e0c6b6708e8c680be1898316e58cf07ae543ec724d0;
+  runneraf949700e6abe1eebebabc7e477ca2e3d48f4da897cff4764ee681fffd59b661.
+  association-model-macos-expanded.log SHA256
+  ee86212b4676945663b9803762eb50276cb29e84b8d78debc3ab15fdc87104c7;
+  association-model-linux-expanded.log
+  50d76221dd853a72c0d06250bd70f53842fb5bd4412ecfc70a4e122e991370e6.
+  Linux old-summary regression also passes34/63 each O0/O2, actual exit0;
+  log19aa9d8ac3b040182866ee307829cc02c27118b7f9a8aa82d24ee962f6b424e0.
+  Logs and GUI artifact copied to canonical evidence
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/association-caller.5S20vB.
+- Generic commitda74d7f23a384df03c23cb44060b1d0e3fcb35cc originates on
+  pr/wireless-offload-summary in the upstream-based checkout. It corrects the
+  shared caller only; native association and raw-PSK contract remain next.
+  Local integration uses cherry-pick -x on feature/esp32p4-wifi and includes
+  this progress documentation in the same amended implementation commit.
+
+### 2026-10-10 - N2F C6 identity/privacy and recovery source audit
+
+- State: source audit only. Installed54aafd0-dirty remains unknown binary;
+  no claim of privacy-safe firmware, bootloader or physical recovery.
+  Independent bounded audit plus primary source checks identify plaintext
+  DEBUG password logging, VERBOSE RPC hex dumps and semantic-version-only
+  reporting. SDIO initialization does not attest an image hash.
+- Pinned local source /Volumes/Dev/Build/hosted-reproduce.6qcg7E:
+  slave/main/slave_control.c SHA256
+  d6234a3479376a4464cac4eac1919f9bbcf6554d24896dd1b63fe4f925bc2619;
+  slave/main/app_main.c
+  fca4b0d484308cef1f8fab8e5530577d5bbd625e6c383155d9f0facfa037fab9;
+  host/drivers/rpc/wrap/rpc_wrap.c
+  1d7975c296a254ac710acb42a7b0a079fb8556b04f8788fe41ea6d0cc49cce40.
+- Stock OTA_BEGIN erases the inactive slot; OTA_END changes boot selection
+  before timer allocation/start may fail. Two slots/otadata redundancy is not
+  a broken-app rollback guarantee. The host wrapper defaults to URL streaming,
+  not an authenticated native updater. AROS has no implemented OTA client.
+- Candidate recovery comes from board schematic commit6304eddef32a33aa9d9a85e971e39dfb24c3cca3:
+  CN5 exposes UART/IO9/CHIP_PU. Actual JC1060-v2 population/orientation/continuity
+  is unverified; no connection instructions have been executed. Documented
+  gate in network/HOSTED-REFERENCE.md requires fresh physical readiness,
+  explicit C6 authority, non-secret security/partition/active-slot discovery,
+  permitted app backups excluding potentially secret-bearing NVS, pinned
+  privacy-safe image and fit/encryption/signature/restore verification.
+- Safety: no C6 flash, serial opening, credentials, NVS/eFuse dump, media or
+  P4 mutation. C6 write authority asked asynchronously, not yet received.
+  Next: source integration/runtime work without credentials; only coordinate
+  physical recovery once Fabian confirms readiness and C6 authority.
