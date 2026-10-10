@@ -123,7 +123,7 @@ gate: compensated output is not the native display contract.
 | N1S | Typed native scan and runtime acceptance | `codec/oracle tested; opt-in runtime build verified; sequence models tested; initialized MAC observed; scan undeployed; boot continuity open` | Codec230/oracle1068/control3529/sequence537 checks each O0/O2 sanitized pass. Default-config blocking/nonblocking start, stop, AP count and owned AP/country/HE records. Runtime opt-in follows successful initialization/MAC with UIDs7..10 and at most8 owned records, named zero-AP workaround. ScanStart500 polls under same8s aggregate operation deadline;2s cleanup reserve. Independent runtime audit corrected early logging under shared-controller lock. Fresh135284B scan-enabled module and3823840B package pass42/42 loader and capacity checks;41 non-WiFi records unchanged. Not deployed; larger3825664B erase span requires new twice-read backup. No native hardware scan or WLAN acceptance; sequence/cleanup host models pass. Passive diagnostic checker passes16 independent fixture tests; no hardware acceptance. Earlier arrival expired/45.122s capture empty. Repeat native MAC succeeds once; initial HP watchdog reset makes checker reject cold continuity. Cleanup enum1/all14 flags corrected;16 tests pass. Optional serial-open timing now passes10 host tests; prior6.729s first-byte gap cannot be attributed. No live capture. |
 | N1A | Native association/configuration and owned events | `standalone codecs/oracle host tested; runtime and privacy gate open` | Typed284/540,282/538,283/539 and owned775/776; all15 STA fields, mandatory nested threshold/PMF, transactional256-byte envelope cap, temporary-secret wipe. Self239/oracle603 checks each Linux O0/O2 ASan/UBSan pass; strict RV32 object24,420B compiles with onlyrpc_encode import. Pinned oracle confirms258-byte all-width vector is refused unchanged. Nonzero event status validates/discards nested data. No runtime/control allowlist integration or deployment. Pinned slave credential logging/strlen and installed lineage remain unresolved. Persistent UID/event/generation state and credential-safe hardware association remain required. No credential transmission, association or IP pass. |
 | N1P | Persistent native control/data session | `UID ledger, reserved exchange, RX and OPEN handoff build verified; worker not implemented` | One-outstanding non-reused UID ledger persists across retired host generations and refuses wrap. Reserved exchange protects exact identity/ranges and replacement state; ledger105/legacycontrol3529/reserved300 checks each O0/O2 ASan/UBSan pass. Idle RX processes one batch without waiting and retains reassembly plus a bounded owned event/response inbox; inbox134/RX364 O0/O2 sanitizer checks pass. Preserving OPEN transfers suffix once without new FIFO I/O; malformed consumed OPEN poisons matching state. Legacy OPEN716 and independent handoff332 new checks each O0/O2 pass; fresh155388B module builds. Existing startup/scan diagnostics remain unchanged; helpers have no persistent production caller. Response correlation, Ethernet frames and asynchronous AROS ownership remain required. P4 restart losing the ledger is not proof of fresh C6; no deployment or WLAN acceptance. |
-| N2 | AROS WLAN SANA-II integration | `existing AROS integration contract identified; driver not implemented` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. Existing sana2wireless.h, WirelessManager and bwfm offload path provide SSID/passphrase/options and link events; no second TCP/IP stack or duplicate configuration UI. No network credentials in committed files or logs. |
+| N2 | AROS WLAN SANA-II integration | `worker contract identified; WPA offload capability gap confirmed; driver not implemented` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. Existing sana2wireless.h, WirelessManager and bwfm asynchronous association path provide options and link-event references. Current get_capa does not advertise firmware four-way handshake; explicit per-device offload negotiation is required for ESP-Hosted, preserving legacy behavior. One serialized owner, separate absolute RPC deadlines, bounded bus slices and real shutdown remain required. No second TCP/IP stack/UI; no credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -1031,7 +1031,12 @@ Expose the transport through SANA-II, not a second private TCP/IP stack.
 Existing local integration points are compiler/include/devices/sana2wireless.h
 (S2_SETOPTIONS, S2INFO_SSID/Passphrase/Disassociate), WirelessManager's
 driver_sana2.c association tags and workbench/devs/networks/bwfm/bwfm_dev.c's
-firmware-handshake offload worker. Use these contracts, not an ESP-only private
+asynchronous association/request-lifetime worker. The current SANA2 get_capa
+does not advertise WPA_DRIVER_FLAGS_4WAY_HANDSHAKE; its BWFM comment explicitly
+uses a user-space handshake. driver.h only provides passphrase/PSK to drivers
+advertising that flag. Add explicit per-device firmware-handshake capability
+negotiation for ESP-Hosted; do not infer it from FullMAC or enable it for all
+legacy devices. Use these contracts, not an ESP-only private
 network UI. Copy parameters before completing requests, keep association off
 the caller/event/RX task, and publish link events from verified C6 events rather
 than Connect's immediate status. Event listener races, generation-scoped stale
@@ -32668,6 +32673,30 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   removal and waits for reappearance; observer89552 recorded removed at host
   monotonic532508.437809291. Reconnection instruction issued after actual removal.
   No completed boot log or clean continuity result yet.
+
+### 2026-10-10 - N2 worker reference and missing WPA offload capability audit
+
+- Read-only local source audit, independently investigated and primary checked:
+  bwfm_dev.c start_pump creates separate RX/control processes and pins the
+  device with open counts, but both loops run forever. Reuse request queueing
+  and AbortIO ownership, not missing shutdown. New Hosted device must stop and
+  drain workers before expunge and never call hooks/ReplyMsg while holding SDIO.
+- Shared sdmmc/host.h/host.c ABI7: all mutable state owned by task-context
+  semaphore; final release clears per-acquisition budget. A logical RPC crossing
+  acquisitions needs a separate absolute deadline. Host generation changes
+  never prove fresh C6. Existing synchronous exchange discards events and holds
+  the bus across receive waits; asynchronous submit/correlation work is started
+  separately, not yet build or runtime verified.
+- Correction to prior BWFM firmware-handshake wording: current
+  WirelessManager/src/drivers/driver_sana2.c get_capa lines495ff explicitly
+  avoids four-way offload. driver.h passphrase/PSK contract is conditional on
+  WPA_DRIVER_FLAGS_4WAY_HANDSHAKE; the S2INFO_Passphrase tag alone is insufficient.
+  N2 must add per-device capability discovery while preserving legacy behavior.
+- Existing runtime_probe is still one-shot resource, not a SANA-II device.
+  Persistent owner process, Ethernet routing, cancellation/shutdown, public
+  device target/config and capability negotiation remain unimplemented.
+  Installed package/core/C6 unchanged; no hardware, credentials, flash or SD
+  writes. This source audit is not a wireless acceptance result.
 
 ## Evidence-entry template
 

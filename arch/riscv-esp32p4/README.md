@@ -15,9 +15,15 @@ now pass239 self-checks and603 independent pinned protobuf-c comparisons each
 at O0/O2 with ASan/UBSan in isolated Linux. Strict freestanding RV32 compilation
 passes. These are pure codecs: no control allowlist/runtime integration,
 association or IP traffic is implied. The credential/privacy gate remains open.
-Existing AROS wireless options, WirelessManager and BWFM's firmware-offload
-worker provide the intended SANA-II integration contract. The ESP32 driver,
+Existing AROS wireless options, WirelessManager and BWFM's asynchronous
+association worker provide the intended SANA-II integration reference. The ESP32 driver,
 asynchronous lifecycle and DHCP/data acceptance remain unimplemented.
+Correction from runtime integration audit: BWFM is an asynchronous association
+and request-lifetime reference, not a current WPA four-way offload contract.
+WirelessManager's SANA2 get_capa does not set WPA_DRIVER_FLAGS_4WAY_HANDSHAKE;
+its passphrase/PSK inputs are available only for drivers advertising that flag.
+ESP-Hosted therefore needs explicit per-device offload capability negotiation,
+without changing BWFM or legacy wireless devices to claim that capability.
 
 Persistent receive implementation is now build verified separately from the
 installed one-shot probe: one bounded RX batch per call, immediate idle return,
