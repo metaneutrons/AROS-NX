@@ -42,8 +42,9 @@ of build-tree preferences before this overlay may be integrated.
 
 The package lookup is fixed to SYS:System/Network/AROSTCP. Neutral
 netdb-myhost/static-routes replace the source package's fixed sample LAN;
-DHCP applies gateway/DNS dynamically. Prefs/WiFi still reads a hardcoded SYS
-lease path, so its status display must be corrected to honor PATH_DHCLIENT_DB
+DHCP applies gateway/DNS dynamically. Prefs/WiFi now honors PATH_DHCLIENT_DB
+through POSIX stdio, with the same /T default as dhclient. Its existing final
+lease-block selection is still not interface-specific; qualify/correct that
 before first-use acceptance. Credential transmission remains gated.
 
 `python3 make-wifi-defaults.py NEW_DIRECTORY` generates fixed, credential-free

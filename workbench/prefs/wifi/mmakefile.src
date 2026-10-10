@@ -13,7 +13,7 @@ EXEDIR := $(AROS_PREFS)
 
 #MM  workbench-prefs-wifi : includes linklibs workbench-prefs-wifi-catalogs
 
-%build_prog mmake=workbench-prefs-wifi \
+%build_prog mmake=workbench-prefs-wifi nix=yes \
     progname=WiFi targetdir=$(EXEDIR) \
     files=$(FILES) uselibs="mui"
 

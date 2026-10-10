@@ -132,7 +132,7 @@ gate: compensated output is not the native display contract.
 | N2 | AROS WLAN SANA-II integration | `private ABI6 association/lifecycle binding build and scoped models verified; runtime/privacy/wireless gates open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded STA TX compile for Core1. N2L records current counts/artifacts and Close/Offline/teardown models. Actual helpers/selected dispatch arms; Exec/SDMMC/hooks/radio mocked, not full BeginIO, full service callback or runtime concurrency. Queue/traffic-token fences/copied AP publication are bound; no actual association/IP claim. TX commitment rejects late AbortIO. WirelessManager/bwfm remain references; per-device four-way offload must preserve legacy behavior. Caller late failure, DHCP/build defaults, GUI saving/writable preference storage and actual teardown/reconnect/load remain open. No credentials, deployment or hardware pass. |
 | N2L | Native radio teardown and ongoing link lifecycle | `ABI6 build/scoped models verified; hardware/privacy open` | Standalone leave, deferred teardown outside unit lock, bounded Disconnect/NOT_CONNECT verification, periodic correlated AP observation and selected-RPC cancellation drain. Mac/Linux O0/O2 sanitized: association25999, observer393, bridge219, options89/258, queue785, lifetime1482, datapath16507, events6/70, scan295; sibling link102/reservation63/owner scan37447; exit0. Fresh Core1 RV32 modules have no undefined imports. Explicit teardown requires absence; persistent/foreign AP quarantines rather than reporting loss. Both privacy assertions0 and SUMMARY-only unchanged. Shared caller late-failure event and actual radio/reconnect/load qualification remain open. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
-| N2U | Credential-free WLAN image defaults and first-use selection | `78-file native overlay staged; host tests/build verified; bootimage/runtime open` | Fixed device/unit0, DHCP RAM paths, empty Wireless.prefs and autostart off. Five defaults/twelve stage host tests pass; required symlink/invalid ELF inputs refused before output. Actual RV32-SMP WiFi default1, Network/net4/net6, AROSTCP/dhclient and C runtime libraries stage with standard DB companions; fixed sample LAN routes/DNS replaced and package lookup set. Generic NSD classification and VOLATILE chooser helper tests remain scoped, not Exec/radio acceptance. Current image targets do not consume the overlay; full-image private-pref exclusion, DHCP lease-path status correction and actual single-manager GUI/parser/runtime acceptance remain required. OpenDevice/abort completion are not hard bounded. First delivery excludes credential persistence; SYS/SD remains read-only. |
+| N2U | Credential-free WLAN image defaults and first-use selection | `78-file native overlay staged; host tests/build verified; bootimage/runtime open` | Fixed device/unit0, DHCP RAM paths, empty Wireless.prefs and autostart off. Five defaults/twelve stage host tests pass; required symlink/invalid ELF inputs refused before output. Actual RV32-SMP WiFi default1, Network/net4/net6, AROSTCP/dhclient and C runtime libraries stage with standard DB companions; sample LAN routes/DNS replaced and package lookup set. WiFi131100B now honors configured POSIX DHCP lease paths; reader265 assertions each O0/O2 sanitized plus7 source guards pass. Generic NSD/VOLATILE helper tests remain scoped, not Exec/radio acceptance. Current image targets do not consume the overlay; full-image private-pref exclusion, interface-specific lease selection and actual single-manager GUI/parser/runtime acceptance remain required. OpenDevice/abort completion are not hard bounded. First delivery excludes credential persistence; SYS/SD remains read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -1477,8 +1477,9 @@ explicit DHCP lease/PID/config paths and empty Wireless.prefs. Autostart is off;
 five host tests pass. make-wifi-stage.py now validates/stages the standard DB,
 actual native stack/DHCP/manager/apps/modules/libraries and optional catalogs:
 78 files, twelve host tests, no bootimage consumption or runtime acceptance.
-Package lookup is configured; sample host/routes are neutralized. Correct the
-chooser's hardcoded SYS lease path, exclude private prefs from the base image,
+Package lookup is configured; sample host/routes are neutralized. The chooser
+now uses DHCP's configured POSIX lease path; correct its final-block selection
+to match the active interface/address, exclude private prefs from the base image,
 then establish a single GUI-enabled manager
 startup path (not an additional GUI process over the current NOGUI instance).
 Validate resolved DHCP paths and AROS parsing/runtime before deployment.
@@ -35748,3 +35749,41 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   exclusion, add dependencies/default1 build policy, verify complete FAT image
   and actual GUI/parser/Exec behavior. C6 identity/backup/proven restore/UART
   privacy and real association/DHCP/frames/reconnect/1800s load remain open.
+
+### 2026-10-10 - N2U generic DHCP lease-path reader correction
+
+- Identity/config: upstream-based generic0517b53be9 integrated on port parent
+  af18ccc47b. Existing Prefs/WiFi, WirelessManager and AROSTCP remain the tools;
+  no ESP-specific chooser/stack added. WiFi now links nix=yes for existing
+  POSIX C path conversion. ReadLeasePrefs honors PATH_DHCLIENT_DB (including
+  an empty override), otherwise /T/dhclient.leases, matching dhclient config.h.
+  Raw DOS preference accesses and RAM-only volatile configuration unchanged.
+- Procedure/result: tests extract the actual reader, mock stdio/ENV/alloc and
+  pass265 assertions each O0/O2 ASan/UBSan plus7 source guards on both trees,
+  exit0. Missing/empty files, seek/size/OOM/partial-read/ferror/close failures,
+  terminator, clearing-before-failure-free, allocation balance and no writes.
+  Existing volatile regression222/1538 each O0/O2 plus20 source guards exit0.
+  POSIX library/Exec/path conversion itself is not exercised by these mocks.
+- Native: initial command used relative preparation paths from the subdirectory
+  and failed to regenerate/invalidate; subsequent link exit2 lacked volatile
+  helpers in the stale generated source list. Not accepted. Correct absolute
+  genmf paths and removal of all four exact WiFi objects precede both complete
+  native builds. Current Developer sysroot and gen/include explicit,
+  WIFI_VOLATILE_DEFAULT=1. Generic and port each compile four sources/link exit0,
+  no error:/warning: signatures. App131100B, SHA-256
+  3ff82de72c2dfe9bd798778752cf05e37e92afced10fd91938ef5b0f43b5d10b,
+  byte-identical across both builds. Native symbols include PosixCBase and
+  __posixc_nixmain startup. Stage validator accepts compiled default1 and all78
+  actual runtime files; no bootimage consumption or loader/runtime claim.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/
+  wifi-2026-10-10/lease-reader.EZ5L0Q. host-tests.log SHA-256
+  6fe467589bf64c6ac978d478d9c8fa21faadebb5b03c85cec3aab9dfa18bc826;
+  native-port.log ca839c15b9cb50f17e946bb17f451719c594c8cd8e03af6a0c2482617d0b17aa.
+- Review/remaining: independent Luna source review confirms reader/path/link
+  delta, but identifies pre-existing last-block lease selection as wrong for
+  multiple/stale interfaces. Match interface/current address and bound options
+  to that block before first-use acceptance. Stored leases are not proof of
+  the current resolver/global routing state. Full-image private-pref exclusion,
+  mmake integration and real GUI/Exec/DHCP/radio/reconnect/load gates remain.
+- Safety: no serial, flash, reset, SD write, C6 update or credentials. Both
+  privacy assertions0 and SUMMARY-only unchanged. Goal remains incomplete.

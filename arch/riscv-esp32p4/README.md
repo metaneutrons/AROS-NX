@@ -1,12 +1,21 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WLAN lease-path correction (2026-10-10): generic 0517b53be9 is integrated.
+Prefs/WiFi uses PATH_DHCLIENT_DB or DHCP's /T/dhclient.leases default through
+the existing POSIX C runtime, not raw DOS Open. Actual reader tests pass265
+assertions each O0/O2 ASan/UBSan plus7 source guards; native app131100B links
+and stages with WifiVolatile=1. Independent review confirmed the path delta,
+but exposed existing last-lease selection across interfaces: fix matching to
+the current interface/address before first-use acceptance. Bootimage/runtime,
+C6 secured recovery/privacy and real WLAN qualification remain open.
+
 WLAN runtime staging (2026-10-10): the credential-free whitelist generator
 now stages 78 files from actual RV32-SMP outputs, including Network protocol
 modules, AROSTCP, DHCP and C runtime libraries. Five defaults tests and twelve
 stage tests pass; independent scoped source review found no blocker. Compiled
 WiFi must have initialized WifiVolatile=1. Package lookup is predefined and
 sample LAN routes/DNS are removed. This remains an overlay, not a bootimage:
-mmake consumption, DHCP lease-path display correction, parser/runtime and
+mmake consumption, lease selection qualification, parser/runtime and
 radio qualification remain open. No hardware, credentials or privacy change.
 
 WLAN chooser development (2026-10-10): generic Prefs/WiFi gains an explicit
