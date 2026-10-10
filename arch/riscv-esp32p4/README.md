@@ -8,8 +8,9 @@ receive no effective new tag; public capabilities remain version1/32 bytes.
 Host association models pass68 scenarios/451 checks and capability models35/70
 each O0/O2 ASan/UBSan on macOS and isolated Linux. Public RV32 ABI and a fresh
 full RV32 GUI build pass (680384B); these are not hardware evidence.
-The native parser still receives a separate helper parameter: consuming the
-new tag and binding the queue remain open. No new capability is advertised;
+The native parser now consumes the explicit length tag independently of tag
+order, with no separate helper extent parameter. Binding the queue remains
+open. No new capability is advertised;
 SUMMARY-only and both privacy assertions0 remain unchanged. No hardware,
 credentials, C6 update or deployment occurred.
 
@@ -17,12 +18,12 @@ Native association input development (2026-10-10): a bounded options parser now
 copies the shared SANA caller's borrowed SSID/BSSID/passphrase or binary PSK into
 an owned target. It accepts only managed open or singleton RSN-PSK/CCMP, requires
 an explicit readable IE extent, and wipes the full output on refusal. The shared
-caller now has the negotiated handover above; native tag consumption still
-needs integration before binding. This is an
+caller now has the negotiated handover above; native helper consumption is
+verified, but BeginIO/queue integration remains open. This is an
 input/lifetime prerequisite, not a queued
 S2_SETOPTIONS implementation. Actual native acceptance, cancellation, link events
 and teardown remain open; SUMMARY-only capability and both privacy assertions0
-are unchanged. Actual-header host tests pass70 cases/230 checks each O0/O2
+are unchanged. Actual-header host tests pass78 cases/247 checks each O0/O2
 ASan/UBSan on macOS and network-isolated Linux; a standalone real-header RV32
 fixture compiles. These do not test the native request queue or hardware.
 No hardware, credentials or C6 firmware are touched.

@@ -13,7 +13,7 @@ typedef char p4wlan_options_target_layout[
     offsetof(struct p4_wifi_association_target, bssid_set) == 110 ? 1 : -1];
 
 BOOL p4wlan_check_options_target(struct p4_wifi_association_target *target,
-                                const struct TagItem *tags, ULONG ie_extent)
+                                const struct TagItem *tags)
 {
-    return p4wlan_copy_association_options(target, tags, ie_extent);
+    return p4wlan_copy_association_options(target, tags);
 }

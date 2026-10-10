@@ -24,7 +24,7 @@ for optimization in 0 2; do
         "$test_file" -o "$test_tmp/test-o$optimization"
 
     result=$("$test_tmp/test-o$optimization")
-    if [ "$result" != "PASS: 70 cases, 230 checks" ]; then
+    if [ "$result" != "PASS: 78 cases, 247 checks" ]; then
         echo "test binary did not report the expected complete count at -O$optimization" >&2
         exit 1
     fi

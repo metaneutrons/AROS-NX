@@ -8,8 +8,8 @@
 
 /* Borrowed SANA pointers must be readable through their declared extent until
  * command Reply. The IE extent must come from a validated explicit caller
- * length, not from ie[1]. Native binding remains disabled until the shared
- * caller can convey that extent. An arbitrary pointer's allocation cannot be
+ * WPAInfoLength tag, not from ie[1]. Native binding remains disabled until the
+ * queue/lifecycle and privacy gates pass. An arbitrary pointer's allocation cannot be
  * established here; the caller must supply a readable span of that length.
  * Output is a fresh device-owned allocation and must not alias borrowed input.
  * No borrowed pointer is retained. This first profile deliberately refuses
@@ -52,13 +52,14 @@ static void p4wlan_options_wipe(struct p4_wifi_association_target *target)
  * Success produces one owned target. Failure leaves the entire output zero.
  * TAG_MORE cycles and TAG_SKIP are bounded by one 128-item traversal budget. */
 static BOOL p4wlan_copy_association_options(
-    struct p4_wifi_association_target *target, const struct TagItem *tags,
-    ULONG wpa_ie_extent)
+    struct p4_wifi_association_target *target, const struct TagItem *tags)
 {
     ULONG visited = 0, seen = 0, i;
+    ULONG wpa_ie_extent = 0;
+    const UBYTE *wpa_ie = NULL;
     BOOL ended = FALSE, protected_profile = FALSE;
     enum { SSID = 1, BSSID = 2, PORT = 4, CHANNEL = 8, AUTH = 16,
-           WPA = 32, PASSPHRASE = 64, PSK = 128 };
+           WPA = 32, PASSPHRASE = 64, PSK = 128, EXTENT = 256 };
     if (!target)
         return FALSE;
     p4wlan_options_wipe(target);
@@ -92,6 +93,7 @@ static BOOL p4wlan_copy_association_options(
         case S2INFO_Channel: bit = CHANNEL; break;
         case S2INFO_AuthTypes: bit = AUTH; break;
         case S2INFO_WPAInfo: bit = WPA; break;
+        case S2INFO_WPAInfoLength: bit = EXTENT; break;
         case S2INFO_Passphrase: bit = PASSPHRASE; break;
         case S2INFO_PSK: bit = PSK; break;
         default: goto refused;
@@ -119,10 +121,12 @@ static BOOL p4wlan_copy_association_options(
         } else if (bit == AUTH) {
             if (data != 1u) goto refused;
         } else if (bit == WPA) {
-            if (data && !p4wlan_rsn_psk_ccmp((const UBYTE *)data,
-                                           wpa_ie_extent)) goto refused;
-            if (!data && wpa_ie_extent) goto refused;
-            protected_profile = data != 0;
+            /* Borrow only during this call; validate after both tags arrive.
+             * Never inspect the IE before its independently supplied extent. */
+            wpa_ie = (const UBYTE *)data;
+        } else if (bit == EXTENT) {
+            if (data > 257u) goto refused;
+            wpa_ie_extent = (ULONG)data;
         } else if (bit == PASSPHRASE) {
             const UBYTE *s = (const UBYTE *)data;
             if (!s || (seen & PSK)) goto refused;
@@ -143,8 +147,12 @@ static BOOL p4wlan_copy_association_options(
             target->password_length = 64;
         }
     }
-    if (!ended || (seen & (SSID | PORT | AUTH | WPA)) !=
-                            (SSID | PORT | AUTH | WPA)) goto refused;
+    if (!ended || (seen & (SSID | PORT | AUTH | WPA | EXTENT)) !=
+                            (SSID | PORT | AUTH | WPA | EXTENT)) goto refused;
+    if (wpa_ie) {
+        if (!p4wlan_rsn_psk_ccmp(wpa_ie, wpa_ie_extent)) goto refused;
+        protected_profile = TRUE;
+    } else if (wpa_ie_extent) goto refused;
     if (protected_profile != (target->password_length != 0)) goto refused;
     target->authmode = protected_profile ? 3u : 0u;
     return TRUE;
