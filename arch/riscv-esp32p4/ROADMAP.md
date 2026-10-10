@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; identity snapshot host tested/build verified` | Common diagnostics and staged card identification host tested/build verified, with cached CID/CSD and failure-safe initial registration. In-place open-unit recovery, production integration, radio integration, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; strict activation host tested/build verified` | Common diagnostics, staged card identification and strict selection/configuration host tested/build verified. In-place open-unit recovery, SMP publication guards, production integration, radio integration, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -354,6 +354,15 @@ mocked. RV32 SD builds pass. This does not verify other boards, silicon, SMP
 Open/Close races or an overall recovery deadline. The new busy-bit check uses
 an unsigned high-bit shift directly, avoiding the legacy shared OCR_BUSY
 macro's undefined signed shift without modifying a public ABI header.
+The host-tested activation candidate propagates required CMD7/CMD16/CMD55/ACMD6
+transport and R1 errors, status and frequency-helper failures. CMD13 must show
+TRAN and ready without error bits, including after clock/width configuration;
+zero status timeout sends no command. Negotiated feature flags are recomputed
+and the optional register-read callback is guarded on failure. This shared
+change passes extracted-source activation tests (26 cases/140 checks) and actual
+SD/MMC helper tests (16 cases/37 checks), each O0/O2 with ASan/UBSan, plus the
+normal JC1060-v2/SMP module build. Non-P4 hardware acceptance remains open.
+It does not implement same-media recovery or guard Open/Close.
 An independent Open/Close audit confirms Forbid is local-hart only on SMP.
 The host owner does not protect unit flags/counts read by active OpenDevice;
 the in-place recovery step must add a matching brief publication guard to both
@@ -27105,6 +27114,65 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   or reset open counts. No hardware waits may occur under the metadata guard.
 - Next: strict selection/configuration and
   task-context same-media recovery without replacing mounted/open unit identity.
+
+### 2026-10-10 - N0 strict activation host tested/build verified
+
+- State: host tested/build verified, parent1b3577518e, feature/esp32p4-wifi worktree
+  /Volumes/Dev/Build/aros-esp32p4-wifi. The last goal turn was progress (tested
+  snapshot implementation committed); current worktree is authoritative.
+- Procedure: refuse ignored selection/configuration errors; require error-free
+  TRAN/ready CMD13 before and after configuration; bound zero-timeout polling;
+  clear negotiated capability flags before re-detection; guard optional register
+  reads in the P4 CMD7 failure path. Correct the MMC52 mask versus bit-number
+  mistake. No successful hardware state or recovery publication is inferred.
+- Safety: no serial/flash/SD writes or C6 changes. Initial registration on other
+  backends is affected; frequency-helper behavior must be audited because errors
+  previously ignored now propagate. Host tests/review/RV32 build completed below.
+- Independent helper audit found an inverted MMC switch-success condition,
+  swallowed SD actual-switch failure, unchecked R1 errors in SD/MMC negotiation,
+  ignored MMC switch status and a signed SD CMD6 high-bit shift. The candidate
+  corrects these paths; SD refuses an unconfirmed selected function after an
+  actual switch. Exhausted busy queries may retain default speed without issuing
+  a switch. MMC EXT_CSD failures are now refused, not silently accepted; older
+  MMC compatibility is not asserted. No MMC media is installed on the JC1060.
+- Interim SD builds sessions42445 and39610 exit0. A git diff check accidentally
+  run in the nongit build directory failed; a separate source-worktree check
+  exits0. Artifact identity is recorded only after final helper tests/build.
+- Full candidate normal JC1060-v2/SMP build session43347 exits0 and rebuilds
+  both changed frequency files. sdcard.device is 124,692 bytes, SHA-256
+  dd40855b3eb322db37fdcc9fa1c700acaf066386867fee4c2312052d56aa49e6,
+  in /Volumes/Dev/Build/aros-esp32p4-wifi-build/bin/esp32p4-riscv-smp/AROS/Devs/;
+  nm -u is empty. No diagnostic defines or public/private ABI layouts changed.
+  Source hashes: bus.c1f3dd9b400fcb066cf2ea34dd850578133efa7864cec32c16f9c8c3da5edc5c0,
+  sdscunit.c c76fa95f06845d3aa7819df5199e331c7d59bf9c609b27c81fb6924924d41564,
+  mmcunit.c77971849eb0b6e105450d659ce266e1e92e185e995183b05f34a2bc69fd3056e.
+- Independent focused re-review of those hashes finds no new definite activation
+  blocker. Existing MMC CARD_TYPE/HS_TIMING behavior remains a compatibility
+  question for non-high-speed MMC; no such media/other-board acceptance is claimed.
+  Primary regressions exit0: identity41 cases/27,369 checks, adapter35 cases/629
+  checks plus all three trace-off fault modes1case/30checks, host25 cases/400,338
+  checks, each O0/O2 with sanitizers.
+- Primary rerun of python3 arch/riscv-esp32p4/tools/test-sd-activation.py exits0:
+  activation26 cases/140 checks and actual SD/MMC helpers16 cases/37 checks each
+  O0/O2, strict C99 warnings-as-errors with ASan/UBSan. Public StartUnit source
+  audit verifies one nonblocking BeginTransaction and balanced EndTransaction.
+  Compile/runtime limits are 60/30 seconds per invocation. The narrow
+  -Wno-sign-compare exception permits existing ULONG/-1 sentinel comparisons;
+  the first compile failure from that warning and fixture shadowing was corrected
+  before the successful runs, not interpreted as a pass.
+- Test source SHA-256: test_sd_activation.c
+  7677616d0e3629c5261f6404b020fd3793bbdf6fa229ba0938761cfd678fd01d;
+  runner4bec2b149f5ec3ab2822330927f1a54cab4b462b68b2ed0daa22195c01bd562e.
+  Extracted activation functions3d27db0a00ecdf0b4bf0ed68f7a1d10de0145dc800b81429435e26e3d98470b9;
+  frequency functions c3e63143528764399d68546f37a0ce247ff0dd97f70ebc3b9ef79ddf51cad110.
+  Tests execute production bodies against scripted commands; activation mode
+  mocks frequency callbacks, while helper mode executes actual frequency code.
+  Clocks, width changes, DMA verification and delays are modeled. No silicon,
+  actual SMP/Open publication, DAT-line operation or wall-clock deadline is
+  established. Final CMD13 proves command/status readiness, not physical DAT
+  configuration. No hardware or installed-C6 acceptance is claimed.
+- Next: task-context recovery
+  with stable unit identity and matching SMP metadata guards.
 
 ## Evidence-entry template
 

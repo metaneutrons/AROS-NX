@@ -31,8 +31,10 @@ ULONG FNAME_SDCUNIT(MMCSwitch)(UBYTE offset, UBYTE value, struct sdcard_Unit *sd
     {
         if ((retVal = SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus)) != -1)
         {
+            if (sdcSwitchTags[3].ti_Data & MMC_STATUS_MASK)
+                return (ULONG)-1;
             /* Wait for units ready status */
-            FNAME_SDCUNIT(WaitStatus)(1000, sdcUnit);
+            retVal = FNAME_SDCUNIT(WaitStatus)(1000, sdcUnit);
         }
     }
     return retVal;
@@ -60,10 +62,12 @@ ULONG FNAME_SDCUNIT(MMCChangeFrequency)(struct sdcard_Unit *sdcUnit)
         return 0;
 
     D(bug("[SDCard%02ld] %s: Querying Ext_CSD ... \n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__));
-    if ((SDCBUS_SendCmd(sdcChFreqTags, sdcUnit->sdcu_Bus) == -1) || (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) == -1))
+    if ((SDCBUS_SendCmd(sdcChFreqTags, sdcUnit->sdcu_Bus) == -1) ||
+        (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) == -1) ||
+        (sdcChFreqTags[3].ti_Data & MMC_STATUS_MASK))
     {
         D(bug("[SDCard%02ld] %s: Query Failed\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__));
-        return 0;
+        return (ULONG)-1;
     }
     D(bug("[SDCard%02ld] %s: Query Response = %08x\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__, sdcChFreqTags[3].ti_Data));
 
@@ -71,13 +75,16 @@ ULONG FNAME_SDCUNIT(MMCChangeFrequency)(struct sdcard_Unit *sdcUnit)
 
     D(bug("[SDCard%02ld] %s: CardType = %d\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__, sdcCardType));
 
-    if (FNAME_SDCUNIT(MMCSwitch)(EXT_CSD_HS_TIMING, 1, sdcUnit) != -1)
+    if (FNAME_SDCUNIT(MMCSwitch)(EXT_CSD_HS_TIMING, 1, sdcUnit) == (ULONG)-1)
     {
         D(bug("[SDCard%02ld] %s: Switch failed\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__));
         return -1;
     }
 
-    if ((SDCBUS_SendCmd(sdcChFreqTags, sdcUnit->sdcu_Bus) != -1) && (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) != -1))
+    sdcChFreqTags[3].ti_Data = 0;
+    if ((SDCBUS_SendCmd(sdcChFreqTags, sdcUnit->sdcu_Bus) != -1) &&
+        (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) != -1) &&
+        !(sdcChFreqTags[3].ti_Data & MMC_STATUS_MASK))
     {
         if (sdcRespBuf[0xB9])
         {
@@ -89,5 +96,7 @@ ULONG FNAME_SDCUNIT(MMCChangeFrequency)(struct sdcard_Unit *sdcUnit)
                 sdcUnit->sdcu_Flags |= AF_Card_HighSpeed52;
         }
     }
+    else
+        return (ULONG)-1;
     return 0;
 }

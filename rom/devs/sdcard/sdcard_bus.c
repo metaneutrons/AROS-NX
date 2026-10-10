@@ -65,6 +65,9 @@ static BOOL sdcard_StartUnitLocked(struct sdcard_Unit *sdcUnit)
 
     DFUNCS(bug("[SDCard%02ld] %s()\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__));
 
+    if (sdcUnit->sdcu_Bus->sdcb_SectorShift >= 32)
+        return FALSE;
+
     /*
      * Fix #40: Send CMD7 (SELECT_CARD) BEFORE capability detection.
      * ACMD51 (SEND_SCR) and CMD6 (SWITCH_FUNC) are data transfer commands
@@ -74,24 +77,31 @@ static BOOL sdcard_StartUnitLocked(struct sdcard_Unit *sdcUnit)
      * reads (including partition table scanning by partition.library).
      * QEMU's SD emulation is more permissive and doesn't enforce this.
      */
-    if ((SDCBUS_SendCmd(sdcStartTags, sdcUnit->sdcu_Bus) != -1) && (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) != -1))
+    if ((SDCBUS_SendCmd(sdcStartTags, sdcUnit->sdcu_Bus) != -1) &&
+        (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) != -1) &&
+        !(sdcStartTags[3].ti_Data & MMC_STATUS_MASK))
     {
         if (FNAME_SDCUNIT(WaitStatus)(10000, sdcUnit) == -1)
         {
             D(bug("[SDCard%02ld] %s: Failed to Wait for Cards status\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__));
+            return FALSE;
         }
 
         D(bug("[SDCard%02ld] %s: Selected card with RCA %d [select response %08x]\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__, sdcUnit->sdcu_CardRCA, sdcStartTags[3].ti_Data));
         D(bug("[SDCard%02ld] %s: Card is now operating in Transfer Mode\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__));
 
-        /* Now that card is in transfer state, detect capabilities */
+        /* Recompute negotiated features rather than retaining a previous session. */
+        sdcUnit->sdcu_Flags &= ~(AF_Card_4bitData | AF_Card_HighSpeed | AF_Card_HighSpeed52);
+        /* Now that card is in transfer state, detect capabilities. */
         if (sdcUnit->sdcu_Flags & AF_Card_MMC)
         {
-            FNAME_SDCUNIT(MMCChangeFrequency)(sdcUnit);
+            if (FNAME_SDCUNIT(MMCChangeFrequency)(sdcUnit) == (ULONG)-1)
+                return FALSE;
         }
         else
         {
-            FNAME_SDCUNIT(SDSCChangeFrequency)(sdcUnit);
+            if (FNAME_SDCUNIT(SDSCChangeFrequency)(sdcUnit) == (ULONG)-1)
+                return FALSE;
         }
 
         sdcard_Udelay(1000);
@@ -99,16 +109,19 @@ static BOOL sdcard_StartUnitLocked(struct sdcard_Unit *sdcUnit)
         if (!(sdcUnit->sdcu_Flags & AF_Card_HighCapacity))
         {
             sdcStartTags[0].ti_Data = MMC_CMD_SET_BLOCKLEN;
-            sdcStartTags[1].ti_Data = 1 << sdcUnit->sdcu_Bus->sdcb_SectorShift;
+            sdcStartTags[1].ti_Data = 1UL << sdcUnit->sdcu_Bus->sdcb_SectorShift;
             sdcStartTags[2].ti_Data = MMC_RSP_R1;
             sdcStartTags[3].ti_Data = 0;
-            if ((SDCBUS_SendCmd(sdcStartTags, sdcUnit->sdcu_Bus) != -1) && (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) != -1))
+            if ((SDCBUS_SendCmd(sdcStartTags, sdcUnit->sdcu_Bus) != -1) &&
+                (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) != -1) &&
+                !(sdcStartTags[3].ti_Data & MMC_STATUS_MASK))
             {
                 D(bug("[SDCard%02ld] %s: Blocklen set to %d\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__, sdcStartTags[1].ti_Data));
             }
             else
             {
                 D(bug("[SDCard%02ld] %s: Failed to change Blocklen\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__));
+                return FALSE;
             }
         }
 
@@ -116,7 +129,7 @@ static BOOL sdcard_StartUnitLocked(struct sdcard_Unit *sdcUnit)
         {
             if (sdcUnit->sdcu_Flags & AF_Card_HighSpeed)
             {
-                if (sdcUnit->sdcu_Flags & AB_Card_HighSpeed52)
+                if (sdcUnit->sdcu_Flags & AF_Card_HighSpeed52)
                     SDCBUS_SetClock(52000000, sdcUnit->sdcu_Bus);
                 else
                     SDCBUS_SetClock(26000000, sdcUnit->sdcu_Bus);
@@ -135,8 +148,8 @@ static BOOL sdcard_StartUnitLocked(struct sdcard_Unit *sdcUnit)
         /* Enable 4-bit bus width if supported by the card */
         if (sdcUnit->sdcu_Flags & AF_Card_4bitData)
         {
-            UBYTE sdcHostCtrl;
-
+            if (!sdcUnit->sdcu_Bus->sdcb_SetBusWidth)
+                return FALSE;
             D(bug("[SDCard%02ld] %s: Switching to 4-bit bus width\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__));
 
             /* Send ACMD6 (SET_BUS_WIDTH) with arg=2 for 4-bit mode */
@@ -146,29 +159,38 @@ static BOOL sdcard_StartUnitLocked(struct sdcard_Unit *sdcUnit)
             sdcStartTags[3].ti_Data = 0;
             sdcStartTags[4].ti_Tag = TAG_DONE;
             if ((SDCBUS_SendCmd(sdcStartTags, sdcUnit->sdcu_Bus) != -1) &&
-                (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) != -1))
+                (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) != -1) &&
+                !(sdcStartTags[3].ti_Data & MMC_STATUS_MASK))
             {
                 sdcStartTags[0].ti_Data = SD_CMD_APP_SET_BUS_WIDTH;
                 sdcStartTags[1].ti_Data = 2; /* 4-bit mode */
                 sdcStartTags[2].ti_Data = MMC_RSP_R1;
                 sdcStartTags[3].ti_Data = 0;
                 if ((SDCBUS_SendCmd(sdcStartTags, sdcUnit->sdcu_Bus) != -1) &&
-                    (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) != -1))
+                    (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) != -1) &&
+                    !(sdcStartTags[3].ti_Data & MMC_STATUS_MASK))
                 {
                     /* Set 4-bit mode in controller — controller-specific via BusInit */
-                    if (sdcUnit->sdcu_Bus->sdcb_SetBusWidth)
-                        sdcUnit->sdcu_Bus->sdcb_SetBusWidth(4, sdcUnit->sdcu_Bus);
+                    sdcUnit->sdcu_Bus->sdcb_SetBusWidth(4, sdcUnit->sdcu_Bus);
                     D(bug("[SDCard%02ld] %s: 4-bit bus width enabled\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__));
                 }
                 else
                 {
                     D(bug("[SDCard%02ld] %s: Failed to set 4-bit bus width\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__));
+                    return FALSE;
                 }
             }
+            else
+                return FALSE;
         }
 
         /* Prove the controller's own transfers land where we think they do. */
         FNAME_SDCBUS(ADMAVerify)(sdcUnit);
+
+        /* Void backend setters and optional diagnostics cannot report errors
+         * directly. Prove TRAN/ready before the caller may publish active. */
+        if (FNAME_SDCUNIT(WaitStatus)(1000, sdcUnit) == (ULONG)-1)
+            return FALSE;
     }
     else
     {
@@ -180,7 +202,8 @@ static BOOL sdcard_StartUnitLocked(struct sdcard_Unit *sdcUnit)
          */
         bug("[SDCard%02ld] %s: CMD7 (RCA %d) not acknowledged, card stays in stand-by [PS %08x BS %08x]\n",
             sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__, sdcUnit->sdcu_CardRCA,
-            sdcUnit->sdcu_Bus->sdcb_IOReadLong(SDHCI_PRESENT_STATE, sdcUnit->sdcu_Bus),
+            sdcUnit->sdcu_Bus->sdcb_IOReadLong ?
+                sdcUnit->sdcu_Bus->sdcb_IOReadLong(SDHCI_PRESENT_STATE, sdcUnit->sdcu_Bus) : 0,
             sdcUnit->sdcu_Bus->sdcb_BusStatus);
 
         return FALSE;
@@ -219,30 +242,26 @@ ULONG FNAME_SDCUNIT(WaitStatus)(ULONG timeout, struct sdcard_Unit *sdcUnit)
 
     DFUNCS(bug("[SDCard%02ld] %s()\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__));
 
-    do {
+    while (timeout != 0) {
+        --timeout;
+        sdcStatusTags[3].ti_Data = 0;
         if ((SDCBUS_SendCmd(sdcStatusTags, sdcUnit->sdcu_Bus) != -1) && (SDCBUS_WaitCmd(SDHCI_PS_CMD_INHIBIT|SDHCI_PS_DATA_INHIBIT, 1000, sdcUnit->sdcu_Bus) != -1) )
         {
-            if ((sdcStatusTags[3].ti_Data & MMC_STATUS_RDY_FOR_DATA) &&
-                (sdcStatusTags[3].ti_Data & MMC_STATUS_STATE_MASK) != MMC_STATUS_STATE_PRG)
-                break;
-            else if (sdcStatusTags[3].ti_Data & MMC_STATUS_MASK) {
+            if (sdcStatusTags[3].ti_Data & MMC_STATUS_MASK) {
                 bug("[SDCard%02ld] %s: Status [Error = %08x]\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__, sdcStatusTags[3].ti_Data);
                 return -1;
             }
+            if ((sdcStatusTags[3].ti_Data & MMC_STATUS_RDY_FOR_DATA) &&
+                (sdcStatusTags[3].ti_Data & MMC_STATUS_STATE_MASK) == MMC_STATUS_STATE_TRAN)
+                return 0;
         } else if (--retryreq == 0)
                 return -1;
 
         sdcard_Udelay(1000);
-    } while (--timeout > 0);
-
-    if (timeout <= 0) {
-        bug("[SDCard%02ld] %s: Timeout\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__);
-        return -1;
     }
 
-    D(bug("[SDCard%02ld] %s: State = %08x\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__, sdcStatusTags[3].ti_Data & MMC_STATUS_STATE_MASK));
-
-    return 0;
+    bug("[SDCard%02ld] %s: Timeout\n", sdcUnit->sdcu_UnitNum, __PRETTY_FUNCTION__);
+    return (ULONG)-1;
 }
 
 /* Bus Functions */
