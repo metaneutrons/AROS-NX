@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The incremental native SDK build passed. Ordinary C links pass; C++ exposed a missing canonical `libm` output, whose generic correction exposed duplicate Popupmenu archive owners. The source now consolidates those client inputs; its native replay is pending. Final ordinary C/C++ links, SDK relocation, new qualified tools runtime, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The complete native SDK build passed after canonical archive output and Popupmenu ownership corrections. Ordinary C/C++ driver links passed and remain byte-identical after full SDK relocation; invalid SDK/ABI/path counterprobes were rejected. Durable source-owned application gates, a new qualified tools runtime, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -494,6 +494,50 @@ change any board's hardware acceptance state.
   release mutation. Native archive contents and initialization need inspection,
   followed by ordinary C/C++ links, relocation and durable release-gate coverage.
   Full three-host qualification and public verification remain required.
+
+### 2026-10-10 - TC0 complete native SDK and ordinary application relocation
+
+- Identity: source `953f3b96431a64a7c9fae80cb2a5c70c0c69f4a3`, tools
+  `e162b98e8b43e42c2c350f78401ecbc98450f149`, same relocated GNU RV32 compiler
+  and same native build tree as the preceding experiment. SDK source contract
+  remains SHA-256 `f995ff42e9190fd53714f771bda1fe1e6964b07624e4c4f61e7ff1c0bd05baec`.
+- Build: session 21949 exited 0 after 7,025 Ninja actions in 411.26 seconds.
+  The retained log is 4,940,186 bytes, SHA-256
+  `87ca9909c5e493672683428a0976ac78099ebc6405dc6fe25e0378512af27b4e`.
+  Both public Popupmenu archive names are byte-identical, SHA-256
+  `3275735708cb5739471f7b557f5d0c726dd9909d30c91cb1e1c4963c67e5e284`.
+  Their 12 members contain ten handwritten client inputs, generated API stubs
+  and getlibbase, with exactly one base registration. The existing version-10
+  weak requirements remain; no generated client initializer is duplicated.
+- Application procedure: ordinary GCC/G++ compilation and driver linking with
+  the explicit Developer sysroot, `rv32imafc_zicsr_zifencei_zaamo_zalrsc`,
+  `ilp32f`, `medany`, strict alignment and C++17. No `-nostdlib`,
+  `-nostartfiles` or manually requested `-r`. Link maps attribute `NewList`
+  to the selected SDK's `libamiga.a` and out-of-line C++ string symbols to the
+  selected compiler's `libstdc++.a`. AROS's normal ELF REL result is not a
+  substitution of an explicitly requested partial link.
+- Relocation: a mode-preserving APFS clone matched all 19,831 SDK inventory
+  entries (regular-file bytes/sizes/modes, directories and symlink targets).
+  Both driver links repeated successfully at the new root. C output is
+  38,156 bytes, SHA-256
+  `d92833604711265bcd24d269b169d75fcf9641eb908895fccf65c97379cf9063`;
+  C++ is 6,207,072 bytes, SHA-256
+  `6cacf405d2715ff6dfa9c074c801e4f6b24aca9ae9550f6d64bdd4261f2c35b8`.
+  Each is byte-identical before/after relocation. SDK inventories remained
+  unchanged; relocated maps/traces reject original SDK/build/sysroot paths.
+- Counterprobes: empty SDK fails at its missing public AROS header; `ilp32d`
+  fails the ISA/ABI contract; an injected original SDK path fails validation.
+  The initial copy without permission preservation was correctly rejected
+  for 48 mode-only differences, then replaced by the mode-preserving clone.
+- Retained local receipt: 14,516 bytes, SHA-256
+  `37f48792963b728d17427dd75672a87d94848230685462b0bea67c694b14628d`;
+  complete inventory JSON: 3,930,629 bytes, SHA-256
+  `2d5b2d488b95916f748fba1c6fcb9ba2ff374a943096a94fd9b52d74cda3a98b`.
+- Safety/status: local macOS ARM64 build/link evidence only. No hardware,
+  firmware, release/tag or protected-main mutation. The local Python harness
+  is not the public Rust release gate. TC0 remains `in development` until
+  durable source-declared C/C++ probes, retained read-back/admission, a released
+  runtime, all three host lanes and isolated public artifacts are qualified.
 
 ## Track E: ESP32-P4 / RV32 SMP
 

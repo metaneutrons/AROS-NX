@@ -88,8 +88,13 @@ C++ exposed a missing canonical SDK `libm` output. Correcting that generic
 output policy then exposed two source owners of `libpopupmenu.a`.
 Popupmenu now declares its existing varargs wrappers and version-10 initializer
 as inputs of the generated client archive, without a second archive producer.
-The native replay and ordinary C/C++ links after this change are still pending.
-SDK relocation and three-host release qualification remain open; see TC0.
+The native replay passed all 7,025 Ninja actions. Normal C and C++ driver links
+passed with startup and standard libraries enabled, then produced byte-identical
+programs after relocating the complete Developer tree. Empty-SDK, wrong-ABI
+and stale-SDK-path counterprobes were rejected. These are local macOS ARM64
+compiler/SDK results, not board execution or a completed release. Durable
+source-owned application gates and three-host release qualification remain open;
+see TC0.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
