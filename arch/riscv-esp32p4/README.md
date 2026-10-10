@@ -10,6 +10,9 @@ native AROS Wi-Fi remains open.
 Association source prerequisites are now recorded in HOSTED-REFERENCE.md:
 mandatory STA threshold/PMF nesting, exact RPC/event IDs and a slave debug-log
 privacy gate. No association codec/runtime or credentials are deployed.
+Existing AROS wireless options, WirelessManager and BWFM's firmware-offload
+worker provide the intended SANA-II integration contract. The ESP32 driver,
+asynchronous lifecycle and DHCP/data acceptance remain unimplemented.
 
 The native control foundation now supports bounded sequential Init/SetMode/
 Start/Stop/Deinit/GetMAC envelopes on one existing FIFO ledger, with owned
@@ -87,6 +90,12 @@ artifacts remain unchanged; native WLAN is incomplete.
 The passive reader's optional timing sidecar now also records port-open
 begin/end, separating open latency from byte waiting. Ten host-only tests
 pass; this instrumentation is not a new hardware result or a reset fix.
+After another reconnection confirmation, a single late passive retrieval
+completed45.114s with exit0/status=ok but0 bytes. The new sidecar measures
+1.425ms serial-open latency in that retrieval only. No arrival-time observer
+or armed early reader was running, so this does not qualify the cold boot,
+explain the earlier6.729s gap or establish a firmware fault. No reset or flash
+was requested. A fresh coordinated, pre-armed startup capture is still needed.
 
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection
