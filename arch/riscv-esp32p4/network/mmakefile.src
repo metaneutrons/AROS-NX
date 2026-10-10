@@ -1,15 +1,18 @@
 include $(SRCDIR)/config/aros.cfg
 include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 
-# Opt-in native identification/setup, not a working Hosted/SANA-II device.
+# Opt-in native identification/setup/INIT gate, not a working SANA-II device.
 USER_CPPFLAGS := $(P4_BOARD_CPPFLAGS)
 ifeq ($(P4_WIFI_SDIO_SETUP),1)
 USER_CPPFLAGS += -DP4_WIFI_SDIO_SETUP=1
+endif
+ifeq ($(P4_WIFI_HOSTED_INIT),1)
+USER_CPPFLAGS += -DP4_WIFI_HOSTED_INIT=1
 endif
 ifeq ($(P4_WIFI_SDIO_RESET_QUERY),1)
 USER_CPPFLAGS += -DP4_WIFI_SDIO_RESET_QUERY=1
 endif
 %build_module mmake=kernel-esp32p4wifi-probe \
     modname=esp32p4wifi modtype=resource version=$(AROS_TARGET_PLATFORM) \
-    files="runtime_probe sdio_probe sdio_commands sdio_setup sdio_restore sdio_reset_query"
+    files="runtime_probe sdio_probe sdio_commands sdio_setup sdio_restore sdio_reset_query hosted_fifo hosted_wire hosted_init hosted_open"
 %common

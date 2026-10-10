@@ -1,5 +1,27 @@
 #include "hosted_wire.h"
-#include <string.h>
+
+/* The relocatable BSP module must not pull C-runtime initialization, whose
+ * .eh_frame section the boot loader does not place. Volatile byte accesses
+ * keep the compiler from lowering this overlap-safe copy back to memmove.
+ * Integer-address ordering avoids relational comparison of unrelated objects. */
+static void payload_move(uint8_t *destination, const uint8_t *source,
+                          size_t length)
+{
+    volatile uint8_t *out = destination;
+    const volatile uint8_t *in = source;
+    size_t index;
+    if ((uintptr_t)destination > (uintptr_t)source &&
+        (uintptr_t)destination - (uintptr_t)source < length)
+    {
+        for (index = length; index != 0; --index)
+            out[index - 1] = in[index - 1];
+    }
+    else
+    {
+        for (index = 0; index < length; ++index)
+            out[index] = in[index];
+    }
+}
 
 static uint16_t get16(const uint8_t *p)
 {
@@ -80,7 +102,8 @@ int p4_hosted_encode(uint8_t *bytes, size_t capacity,
     total = P4_HOSTED_HEADER_SIZE + frame->payload_size;
     if (capacity < total)
         return 0;
-    memmove(bytes + P4_HOSTED_HEADER_SIZE, frame->payload, frame->payload_size);
+    payload_move(bytes + P4_HOSTED_HEADER_SIZE, frame->payload,
+                   frame->payload_size);
     bytes[0] = (uint8_t)((frame->interface_number << 4) | frame->interface_type);
     bytes[1] = frame->flags;
     put16(bytes + 2, (uint16_t)frame->payload_size);

@@ -1,11 +1,12 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
-/* Native opt-in SDIO reset/bootstrap, optionally setup with restoration.
- * Separate opt-in CCCR reset/query diagnostic; no OPEN, IRQ enable,
- * WLAN RPC or C6 firmware replacement. */
+/* Native opt-in SDIO reset/bootstrap and setup/restoration. An additional
+ * explicit diagnostic enables bounded OPEN/INIT with Fn0/CLOSE cleanup.
+ * Separate CCCR reset/query diagnostic; no WLAN RPC or C6 firmware writes. */
 #include <aros/asmcall.h>
 #include <aros/debug.h>
 #include <aros/symbolsets.h>
 #include <exec/resident.h>
+#include <exec/memory.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <dos/dosextens.h>
@@ -17,6 +18,12 @@
 #include "runtime_probe.h"
 #include "sdio_probe.h"
 #include "sdio_commands.h"
+#if P4_WIFI_HOSTED_INIT
+#if !P4_WIFI_SDIO_SETUP || P4_WIFI_SDIO_RESET_QUERY
+#error "Hosted INIT requires setup and must not use reset-query"
+#endif
+#include "hosted_open.h"
+#endif
 #if P4_WIFI_SDIO_RESET_QUERY
 #include "sdio_reset_query.h"
 #if P4_WIFI_SDIO_SETUP
@@ -264,6 +271,76 @@ static int wifi_register_write(void *opaque, unsigned function,
 }
 #endif
 
+#if P4_WIFI_HOSTED_INIT
+/* All data phases use the same owned command motor as storage. Register
+ * words use byte-mode4; FIFO uses the explicitly planned512-byte bus length.
+ * The motor stages data in its permanent DMA bounce buffer; no stack DMA.
+ * Failure does not retry a possibly consumed FIFO transaction. */
+static int wifi_transfer(struct wifi_probe_context *context, ULONG argument,
+                          UBYTE *data, ULONG length, ULONG block_size,
+                          BOOL writing)
+{
+    struct P4HostCommand request;
+    BOOL completed;
+    if (!wifi_budget(context))
+        return 0;
+    p4host_zero(&request, sizeof(request));
+    request.slot = P4_BOARD_WIFI_SLOT;
+    request.generation = context->generation;
+    request.index = 53;
+    request.argument = argument;
+    request.response_flags = MMC_RSP_R5;
+    request.response_error_mask = P4_SDIO_PROBE_R5_ERROR_MASK;
+    request.data = data;
+    request.length = length;
+    request.block_size = block_size;
+    request.writing = writing;
+    completed = context->host->command(context->host, &request, &context->last);
+    return completed && wifi_budget(context) && !context->host->dma_faulted;
+}
+
+static int wifi_word_read(void *opaque, uint32_t address, uint32_t *word)
+{
+    uint32_t argument;
+    UBYTE bytes[4];
+    if (!word || !p4_sdio_cmd53(0, 1, 0, 1, address, 4, 0, &argument) ||
+        !wifi_transfer(opaque, argument, bytes, 4, 4, FALSE))
+        return 0;
+    *word = (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) |
+            ((uint32_t)bytes[2] << 16) | ((uint32_t)bytes[3] << 24);
+    return 1;
+}
+
+static int wifi_word_write(void *opaque, uint32_t address, uint32_t word)
+{
+    uint32_t argument;
+    UBYTE bytes[4];
+    bytes[0] = (UBYTE)word; bytes[1] = (UBYTE)(word >> 8);
+    bytes[2] = (UBYTE)(word >> 16); bytes[3] = (UBYTE)(word >> 24);
+    return p4_sdio_cmd53(1, 1, 0, 1, address, 4, 0, &argument) &&
+        wifi_transfer(opaque, argument, bytes, 4, 4, TRUE);
+}
+
+static int wifi_fifo_read(void *opaque,
+                          const struct p4_hosted_fifo_plan *plan,
+                          uint8_t *buffer)
+{
+    uint32_t expected;
+    /* Defense in depth at the runtime boundary: no write/other function or
+     * arbitrary address supplied by the pure plan may reach the controller. */
+    if (!plan || !buffer || !plan->logical_bytes ||
+        plan->logical_bytes > P4_HOSTED_FIFO_BUS_MAX ||
+        plan->bus_bytes != ((plan->logical_bytes + 511U) & ~UINT32_C(511)) ||
+        !p4_sdio_cmd53(0, 1, 1, 1,
+                       P4_HOSTED_FIFO_END - plan->logical_bytes,
+                       plan->bus_bytes / 512U, 512, &expected) ||
+        expected != plan->argument)
+        return 0;
+    return wifi_transfer(opaque, plan->argument, buffer, plan->bus_bytes,
+                          512, FALSE);
+}
+#endif
+
 static void wifi_identify(void)
 {
     struct P4SDMMCHost *host = OpenResource(P4_SDMMC_HOST_NAME);
@@ -280,6 +357,12 @@ static void wifi_identify(void)
     p4_sdio_restore_result_t restored;
     int setup_attempted = 0, setup_ok = 0, restore_ok = 0;
 #endif
+#if P4_WIFI_HOSTED_INIT
+    struct p4_hosted_open_ops open_ops;
+    struct p4_hosted_open_result opened;
+    UBYTE *open_buffer = NULL;
+    int open_attempted = 0, open_ok = 0, open_cleanup_ok = 0;
+#endif
     struct P4HostCommandResult identify_last;
     ULONG actual = 0, peer_clock, generation;
     ULONG before[WIFI_SNAPSHOT_WORDS], after[WIFI_SNAPSHOT_WORDS];
@@ -292,6 +375,10 @@ static void wifi_identify(void)
     p4host_zero(&setup, sizeof(setup));
     p4host_zero(&restored, sizeof(restored));
 #endif
+#if P4_WIFI_HOSTED_INIT
+    p4host_zero(&open_ops, sizeof(open_ops));
+    p4host_zero(&opened, sizeof(opened));
+#endif
     if (!host || host->abi != P4_SDMMC_HOST_ABI || host->size != sizeof(*host) ||
         !host->acquire || !host->release || !host->set_budget ||
         !host->set_clock || !host->command || !host->now_us)
@@ -299,8 +386,21 @@ static void wifi_identify(void)
         bug("[WiFi] compatible shared host absent\n");
         return;
     }
+#if P4_WIFI_HOSTED_INIT
+    /* Allocate outside shared-controller ownership; never put the receive
+     * stream on the small process stack or point DMA at that stack. */
+    open_buffer = AllocVec(4096, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!open_buffer)
+    {
+        bug("[WiFi] INIT buffer unavailable\n");
+        return;
+    }
+#endif
     if (!host->acquire(host, P4_SDMMC_HOST_WAIT_US))
     {
+#if P4_WIFI_HOSTED_INIT
+        FreeVec(open_buffer);
+#endif
         bug("[WiFi] shared host busy\n");
         return;
     }
@@ -320,6 +420,9 @@ static void wifi_identify(void)
     {
         bug("[WiFi] host not ready for bounded join\n");
         host->release(host);
+#if P4_WIFI_HOSTED_INIT
+        FreeVec(open_buffer);
+#endif
         return;
     }
     wifi_configure_pins();
@@ -350,16 +453,41 @@ static void wifi_identify(void)
             setup_ops.budget_ok = wifi_budget;
             setup_ops.yield = wifi_yield;
             setup_ok = p4_sdio_setup_function1(&setup_ops, &setup);
+#if P4_WIFI_HOSTED_INIT
+            if (setup_ok && wifi_budget(&context))
+            {
+                open_attempted = 1;
+                open_ops.context = &context;
+                open_ops.read_byte = wifi_register_read;
+                open_ops.write_byte = wifi_register_write;
+                open_ops.read_word = wifi_word_read;
+                open_ops.write_word = wifi_word_write;
+                open_ops.read_fifo = wifi_fifo_read;
+                open_ops.budget_ok = wifi_budget;
+                open_ops.yield = wifi_yield;
+                open_ok = p4_hosted_open_receive_init(&open_ops, generation,
+                                                     open_buffer, 4096, &opened);
+            }
+#endif
             /* Do not renew a failed operation's budget and call it success.
              * Cleanup has its own explicit reserve under the same ownership;
              * generation changes refuse restoration rather than reset SD. */
             if (!setup.mutation_attempted)
                 restore_ok = 1;
             else if (host->generation == context.generation &&
+                     host->slot_clock[0] == peer_clock &&
                      host->set_budget(host, 0) &&
                      host->set_budget(host, 2000000UL))
+            {
+#if P4_WIFI_HOSTED_INIT
+                if (open_attempted)
+                    open_cleanup_ok = p4_hosted_open_cleanup(&open_ops, &opened);
+#endif
+                /* Try restoring Fn1 even if OPEN cleanup failed. Keep the
+                 * same reserved budget; no silent reset or budget renewal. */
                 restore_ok = p4_sdio_restore_function1(&setup_ops, &setup,
-                                                      &restored);
+                                                       &restored);
+            }
         }
 #endif
         wifi_snapshot(after);
@@ -368,6 +496,9 @@ static void wifi_identify(void)
     {
         host->set_budget(host, 0);
         host->release(host);
+#if P4_WIFI_HOSTED_INIT
+        FreeVec(open_buffer);
+#endif
         bug("[WiFi] slot1 clock failed\n");
         return;
     }
@@ -376,8 +507,15 @@ static void wifi_identify(void)
 #if P4_WIFI_SDIO_SETUP
     success = success && setup_attempted && setup_ok && restore_ok;
 #endif
+#if P4_WIFI_HOSTED_INIT
+    success = success && open_attempted && open_ok && open_cleanup_ok;
+#endif
     host->set_budget(host, 0);
     host->release(host);
+#if P4_WIFI_HOSTED_INIT
+    /* Reporting below uses only copied metadata, never frame.payload. */
+    FreeVec(open_buffer);
+#endif
     /* Runtime console is deliberately nonblocking. Defer and pace these
      * snapshots after releasing ownership; never delay the storage peer
      * merely to print diagnostics. The captured command result is local. */
@@ -433,6 +571,29 @@ static void wifi_identify(void)
     Delay(5);
     bug("[WiFi] restore ok=%u stage=%u error=%u mutated=%u\n",
         restore_ok, restored.stage, restored.error, setup.mutation_attempted);
+#endif
+#if P4_WIFI_HOSTED_INIT
+    Delay(5);
+    bug("[WiFi] INIT attempted=%u ok=%u stage=%u error=%u\n",
+        open_attempted, open_ok, opened.stage, opened.error);
+    Delay(5);
+    bug("[WiFi] INIT polls=%u raw=%08x counter=%u consumed=%u\n",
+        opened.polls, opened.raw_interrupt, opened.length_counter,
+        opened.stream_consumed);
+    Delay(5);
+    bug("[WiFi] INIT preopen=%u ambiguous=%u poisoned=%u\n",
+        opened.preopen_length_counter, opened.stream_ambiguous,
+        opened.fifo_poisoned);
+    Delay(5);
+    bug("[WiFi] INIT chip=%02x caps=%02x bytes=%u\n",
+        opened.init.chip_id, opened.init.capabilities, opened.logical_bytes);
+    Delay(5);
+    bug("[WiFi] INIT extra frames=%u bytes=%u discarded=%u\n",
+        opened.additional_frame_count, opened.additional_frame_bytes,
+        opened.additional_bytes_discarded);
+    Delay(5);
+    bug("[WiFi] INIT cleanup ok=%u error=%u flags=%08x\n",
+        open_cleanup_ok, opened.cleanup_error, opened.cleanup_flags);
 #endif
     for (snapshot_index = 0; snapshot_index < WIFI_SNAPSHOT_WORDS; ++snapshot_index)
     {

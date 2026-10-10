@@ -68,13 +68,22 @@ without an additional captured fault. Original/restored register bytes are
 not printed individually; success is the checked runtime result, not a raw
 register dump. No OPEN/IRQ/FIFO/RPC or WLAN acceptance follows from this gate.
 
-Native INIT parsing and block-only streaming FIFO planning are now separately
-host-test/RV32 verified, not linked or deployed. INIT validates the bounded
-event/TLV envelope transactionally. FIFO plans distinguish logical bytes from
-512-byte padding; RX/TX counters advance only after complete successful I/O.
-Started failures/partial transfers or generation changes invalidate the session.
-RX can receive INIT before TX pool negotiation; no guessed credits are issued.
-This foundation still needs live OPEN/INIT/FIFO/RPC integration and acceptance.
+Native INIT/FIFO now link into an opt-in bounded OPEN/INIT diagnostic
+(`P4_WIFI_HOSTED_INIT=1`, setup required), host tested and RV32 build verified,
+not deployed. OPEN tests pass716 checks each O0/O2 with sanitizers; extracted
+CMD53 adapters pass15 cases/160 checks and wire regressions157590 each.
+The first linked candidate was rejected by the loader audit for libc startup
+references to unplaced .eh_frame; explicit volatile-byte initialization/copy
+remove that dependency. The corrected42-member package passes the loader audit
+and capacity gate. Fn0 state is snapshotted/restored; OPEN is followed by
+bounded polling and one512-byte-rounded FIFO receive, then explicit CLOSE.
+Ambiguous FIFO failure poisons the session without retry/counter advance.
+Following outer-valid serial frames may be consumed/discarded opaquely;
+this is not RPC acceptance. The pinned C6 application emits INIT only once,
+not on later OPEN or SDIO reset. A zero pre-OPEN counter is necessary but
+does not establish a fresh slave epoch. Live first-INIT acceptance therefore
+needs a fresh C6 startup; warm recovery, reply/RPC, association, traffic and
+SANA-II remain open. Board remains on the last verified original baseline.
 
 JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
