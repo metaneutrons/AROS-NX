@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip13 (0x0d, C6)/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Native reset-before-identify passes one complete40.928s JC1060 warm capture. Separate41.028s setup capture passes reset ack1/status1, identification stage8, function1 enable/ready/512-byte block verification (stage11), saved IO_ENABLE/FBR1 restoration (stage7), all errors0; all24 snapshots captured, slot controls unchanged. Full BSP rollback/readback and30.885s baseline return pass. OPEN/IRQ/FIFO/RPC are not exercised. Exact RES timeout/CRC may continue without claiming acknowledgement; those exceptions are model-tested, not exercised by these hardware passes. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; INIT/FIFO models build verified; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip13 (0x0d, C6)/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Native reset-before-identify passes one complete40.928s JC1060 warm capture. Separate41.028s setup capture passes reset ack1/status1, identification stage8, function1 enable/ready/512-byte block verification (stage11), saved IO_ENABLE/FBR1 restoration (stage7), all errors0; all24 snapshots captured, slot controls unchanged. Full BSP rollback/readback and30.885s baseline return pass. INIT parser/FIFO planner sanitized models and RV32 objects pass; not linked/deployed. Next bounded OPEN/INIT/FIFO/RPC integration; these are not hardware exercised. Exact RES timeout/CRC may continue without claiming acknowledgement; those exceptions are model-tested, not exercised by these hardware passes. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -711,6 +711,20 @@ payload, malformed offsets/spans and truncation without changing output.
 DMA padding is excluded from checksum and returned wire length; fragmented
 frames are marked, not reassembled, and sequence numbers are returned, not
 treated as universally contiguous. This is not a live transport or handshake.
+
+Native `hosted_init` and `hosted_fifo` now add reference-matched pure components
+for that next gate (host-test/RV32 verified only, not linked/deployed). INIT
+requires exact event0x22 length, bounded64-byte TLVs, mandatory chip/capability,
+known-field lengths/no duplicates and WLAN-SDIO support; unknown bounded tags
+are skipped. C6 uses chip0x0d. Optional queue fields are observations, not proof
+of SDIO token-pool capacity. FIFO plans Fn1 incrementing block CMD53 at
+0x1f800-logical_length with512-byte bus rounding and a65536-byte host cap.
+RX20-bit and TX12-bit counters advance only on complete successful transfers;
+started/partial failures and generation changes poison the session. Unknown TX
+pool blocks sends but permits INIT reception. Restart requires a known fresh
+slave transport session; controller reacquisition alone must not zero counters.
+The components pass1,245,237/100,066 sanitized checks each O0/O2 respectively.
+N1's hardware status is unchanged; next remains OPEN/INIT/FIFO/RPC integration.
 
 Serial interface payloads contain an endpoint TLV (type1, LE16 length6,
 RPCRsp or RPCEvt without NUL), then a protobuf-data TLV (type2, LE16 length).
@@ -31055,6 +31069,53 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: reference-matched bounded OPEN/private INIT/FIFO/RPC, snapshot/restore
   new mutations, and explicit partial-transfer/counter recovery. Do not copy
   the reference's RX-counter advance on a failed FIFO read as a success rule.
+
+### 2026-10-10 - N1 native INIT parser and FIFO state foundation, models only
+
+- State: pure components host-test/RV32 verified; no new hardware acceptance.
+  Source base4614fd206d plus this functional change. Native WLAN remains open.
+- Reference: pinned Espressif Hosted d5184217f710d54c01f932e75b4c55e3f4933fc9,
+  common/include/adapter.h (event/header/TLV constants), transport_drv.c
+  process_init_event(), sdio_drv.c counters/write/read paths and sdio_reg.h.
+  Local working reference is measured previously; no new reference run here.
+- Added bounded transactional INIT parser and tests: exact event envelope,
+  singleton lengths/duplicates/mandatory fields/WLAN/chip validation, LE32
+  extended capabilities, bounded unknown tags. Optional queue values are not
+  treated as the slave's SDIO token-pool contract. Outer frame/checksum,
+  fragmentation and board-specific chip policy remain caller responsibilities.
+- Added pure FIFO state/plan engine: separate logical/bus sizes, correct
+  END-logical addressing, block512/count1..128,65536-byte cap, modulo RX20/TX12
+  counters and1536-byte credits. RX accepted before pool negotiation; TX waits
+  for an explicit validated pool limit. Busy/poison/initialization checks,
+  generation mismatch, pre-start refusal and started/partial failure covered.
+  Complete success advances counters once, never on partial or ambiguous I/O.
+  Oversized RX deltas and implausible free credits poison instead of silently
+  truncating. The reference advances RX count even on read failure; that
+  behavior is deliberately not adopted. start() requires a known new slave
+  transport session; shared-controller ownership/reacquisition is insufficient.
+- Verification: test-hosted-fifo.sh and test-hosted-init.sh each compile/run
+  O0/O2 with Werror/ASan/UBSan. FIFO1,245,237 and INIT100,066 checks each; exit0.
+  Primary review corrected the optional-duplicate fixture before final tests;
+  Luna independent FIFO source review found no arithmetic/window defect and
+  identified the caller-enforced fresh-session restart precondition.
+  SDIO command57,406 and frame codec157,590 regressions each O0/O2 pass;
+  hosted-serial.py passes116 each and its separate RV32 compile. An attempted
+  .sh serial-test path did not exist; corrected .py invocation passes, not
+  counted as a failed firmware or hardware run.
+- Exact new standalone RV32 objects, GCC16.2.0/O2/C99/Werror, exit0:
+  hosted_fifo-final.o3472B SHA-256
+  237a9450383af974cb1c4dc2e740427ad9987da212b99ec7e2ddbc01d83ff455;
+  hosted_init.o2640B SHA-256
+  d7e5230bfa578cbc1793b396c6830a0a3e41e37b1f80081f330b14064242de98.
+  These are not linked resource/package/firmware artifacts.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/native-transport-models.tDDAc9/
+  contains final test logs and fresh RV32 objects; source/tests are committed.
+- Safety: no serial open/reset/flash/SD or C6 operation in this change. Original
+  baseline remains as last verified. No elapsed hardware timing, peer counters,
+  WLAN association/traffic or visible frames inferred from fixtures.
+- Next: snapshot/restore additional Function0 block/INT_ENABLE state, live
+  bounded OPEN/private INIT reception and reply, then RPC MAC/scan. Check actual
+  slave TX-credit contract separately; do not promote queue TLVs to credits.
 
 ## Evidence-entry template
 

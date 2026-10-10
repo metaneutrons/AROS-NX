@@ -68,6 +68,14 @@ without an additional captured fault. Original/restored register bytes are
 not printed individually; success is the checked runtime result, not a raw
 register dump. No OPEN/IRQ/FIFO/RPC or WLAN acceptance follows from this gate.
 
+Native INIT parsing and block-only streaming FIFO planning are now separately
+host-test/RV32 verified, not linked or deployed. INIT validates the bounded
+event/TLV envelope transactionally. FIFO plans distinguish logical bytes from
+512-byte padding; RX/TX counters advance only after complete successful I/O.
+Started failures/partial transfers or generation changes invalidate the session.
+RX can receive INIT before TX pool negotiation; no guessed credits are issued.
+This foundation still needs live OPEN/INIT/FIFO/RPC integration and acceptance.
+
 JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
 construction and a byte-oriented ESP-Hosted frame codec in `network/` have
