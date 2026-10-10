@@ -5,7 +5,15 @@ source match has been established for the JC1060 vendor project. See
 [HOSTED-REFERENCE.md](network/HOSTED-REFERENCE.md) for pinned artifacts,
 corrections, mandatory reset/timeout adaptations and the complete-host
 comparison gates. This is source evidence only, not installed C6 identity,
-reference build acceptance or working Wi-Fi. JC1060 Wi-Fi implementation has started
+reference build acceptance or working Wi-Fi.
+
+The complete-host build has now been attempted with the existing IDF6.0.1:
+it exposes concrete driver-dependency, DMA-allocation and Wi-Fi-structure API
+incompatibilities. The build-only front end is retained under
+`tools/hosted-reference/`; no reference image has been accepted or flashed.
+IDF5.4.3 is an optional isolated comparison environment, not a port downgrade.
+
+JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
 construction and a byte-oriented ESP-Hosted frame codec in `network/` have
 host-test coverage and RV32 compilation; they are not linked into the

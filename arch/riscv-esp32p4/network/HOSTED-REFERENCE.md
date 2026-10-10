@@ -41,10 +41,11 @@ re-fetch pinned source paths to reproduce).
    implementation. The old host example CMake files name stale directories;
    do not repair that by inventing a replacement protocol. A small application
    using the existing APIs is the intended reference front end.
-2. ESP-IDF v5.4.3 is downloaded with submodules, commit
+2. Primary build target remains ESP-IDF 6.0.1. ESP-IDF v5.4.3 is downloaded with submodules, commit
    `ea1c174c1cbb7348bd8ba0ff1eb306246938dd80`; its fetch process exited 0.
-   Its toolchain and this candidate have not yet been built. Local IDF 6.0.1
-   must not silently substitute for this reference environment.
+   Its isolated tool installation exited 0; it is a comparison option only,
+   not a port downgrade or a proven requirement. The official host manifest
+   requires >=5.3. Its first actual build under 6.0.1 fails; see below.
 3. `esp_wifi_remote` 0.1.12 requires exactly IDF 5.3. Candidate 0.2.3 supports
    IDF >=5.3, but declares an unconditional eppp_link dependency. Resolve and
    pin the dependency closure, then verify host API compatibility by build.
@@ -67,3 +68,40 @@ re-fetch pinned source paths to reproduce).
    wire contract and behavior are demonstrated.
 
 No further hardware probe was started during this source audit.
+
+## Actual IDF 6.0.1 build attempt
+
+The build-only front end is saved in `tools/hosted-reference/`. It selects the
+complete external host and remote component; it does not bypass RPC/transport.
+It is not a scan/association test or an approved firmware image. The tested
+copy is `/Volumes/Dev/Build/esp-hosted-reference.RzWnFu/reference-app`.
+
+Build environment: local IDF commit
+`8c19b156084a0753687347cca1f5355782893533`, version 6.0.1, with pre-existing
+bootloader and esp_hw_support changes left untouched. Python environment
+`/Users/fabian/.espressif/tools/python/v6.0.1/venv`, GCC
+`esp-15.2.0_20251204`. Explicit `IDF_PYTHON_ENV_PATH` is required; otherwise
+idf.py looks for a nonexistent standard Python environment. Set IDF_PATH,
+HOSTED_REFERENCE_ROOT and ESP_IDF_VERSION=6.0.1; run `idf.py -B build-v6 build`.
+Component manager is disabled (`IDF_COMPONENT_MANAGER=0`) for the explicit
+local component closure. Remote's EPPP sources are excluded by HOSTED selection;
+no EPPP component is used in this build. This does not validate EPPP dependencies.
+
+The official gitlink for `common/protobuf-c` is
+`abc67a11c6db271bedbb9f58be85d6f4e2ea8389`. The codeload archive omits submodule
+content; supply that exact checked-out revision, not the latest protobuf-c.
+
+Actual attempts, each terminal process exit 2 after environment setup:
+
+- `build-v6.log`: missing declared `esp_driver_sdmmc` dependency.
+- `build-v6-dependencies.log`: additional DMA dependency and libc endian-macro
+  redefinitions. External CMake now declares esp_driver_sdmmc, esp_driver_dma,
+  esp_wifi_remote; common.h guards htole16/le16toh instead of suppressing warnings.
+- `build-v6-dma.log`: missing GPIO dependency, removed public
+  esp_dma_mem_info_t/esp_dma_capable_malloc, removed wifi_sta_config_t
+  reserved/he_reserved fields, and two new HTTP event cases. This is concrete
+  API incompatibility, not a working reference build. No image accepted/flashed.
+
+Next adapt these APIs with documented allocation/serialization semantics and
+verify the full build. Do not globally disable compiler diagnostics, guess
+reserved-field equivalents or claim that 5.4.3 is mandatory.

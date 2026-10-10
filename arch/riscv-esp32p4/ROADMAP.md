@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; pinned complete-host reference source matched` | Reset-query gates failed; exact baseline restored. Vendor schema/generated RPC files match official d5184217; installed C6 identity unresolved. Next complete official-host build with audited absent-reset and bounded-timeout adaptation, not another raw probe. Transport/RPC/recovery and WLAN remain open; C6 firmware preserved. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; complete-host IDF6 compatibility adaptation` | Vendor RPC source matches official d5184217; first actual IDF6.0.1 builds fail on explicit driver dependencies, removed DMA API/Wi-Fi fields and new HTTP events. Build-only front end retained; no reference image accepted/flashed. Next semantically checked API adaptation plus absent-reset/bounded-error policy. Transport/RPC/recovery/WLAN and installed C6 identity remain open. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -614,6 +614,11 @@ probe. The subsequent source audit matches vendor schema/generated files to
 official d5184217 exactly; see `network/HOSTED-REFERENCE.md`. Its reset and
 retry policies need explicit board-safe adaptation before any deployment.
 Do not convert unacknowledged reset into success or weaken normal host checks.
+The full reference is now actually compiled against IDF6.0.1, not downgraded
+to5.4.3. Attempts expose removed DMA/public Wi-Fi fields and changed driver
+dependencies; no completed link or hardware acceptance yet. Keep these
+compatibility changes separate from the preserved wire schema. The retained
+build-only front end is not a MAC/scan/association acceptance application.
 
 The first independent pure codec uses the vendor0.0.6 12-byte wire header,
 1536-byte total-frame bound, LE16 fields and additive checksum excluding its
@@ -30412,6 +30417,40 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   reference, then one backed-up bounded headless comparison with verified
   baseline restoration. No further raw probe now. N1/N2/N3 remain open;
   source lineage is neither hardware compatibility nor AROS WLAN acceptance.
+
+### 2026-10-10 - N1 actual complete-host IDF6 build identifies API differences
+
+- Parent2c81873e35; complete d518 host plus remote0.2.3 and exact protobuf-c
+  gitlinkabc67a11c6db271bedbb9f58be85d6f4e2ea8389. Build-only front end in
+  tools/hosted-reference matches external reference-app copy. No hardware run.
+- Local IDF6.0.1 commit8c19b156084a0753687347cca1f5355782893533, existing
+  bootloader/esp_hw_support modifications preserved. Pythonv6.0.1 venv,
+  GCC15.2.0_20251204; explicit IDF_PYTHON_ENV_PATH and ESP_IDF_VERSION.
+  Local component manager disabled, Hosted selected (not EPPP), PSRAMoff,
+  SDIO400kHz/1bit CLK18 CMD19 D0=14 D1=15, reset=-1,16MB DIO.
+- Configuration session14702 exits2 because archive lacks protobuf submodule;
+  exact gitlink revision supplied from separately verified local checkout.
+  First build session64511 exits2: missing esp_driver_sdmmc declaration.
+  With declaration/remote requirement, session70807 exits2: DMA dependency
+  and endian macro conflicts. Declared DMA and guarded existing macros;
+  session87946 exits2: GPIO requirement, removed DMA allocation API,
+  wifi_sta_config_t reserved/he_reserved members, new HTTP event cases.
+  No successful image/link claimed. Logs retained under
+  /Volumes/Dev/Build/esp-hosted-reference.RzWnFu/reference-app/:
+  build-v6.log SHA-256c1c950d1ef26a3c5a12840f0d96ed08bbbf7430ccf1a6801b4d385c1f82414af;
+  build-v6-dependencies.log930116795da9950d03b0f2bd985c048bead21857392eaa3d7a41aed1b4a2d155;
+  build-v6-dma.log4190b92142b08be01b5222e8365690c4243129ba9ed2da2ef7864face85c1e4e.
+- Independent Luna source audit confirms reset=-1 requires guard before GPIO
+  wrapper shift; retry1000 can exceed1100s; constructor starts workers while
+  later reconfigure activates handshake. Partial bus initialization asserts
+  and missing task checks require fail-stop adaptation. Normal worker waits
+  are distinct from synchronous startup. Startup does not call slave OTA.
+- Separate IDF5.4.3 tool installation session71441 exits0; comparison option
+  only. No evidence makes5.4.3 mandatory. Production port remains6.0.1.
+- Safety: no serial open/reset/flash, no C6 firmware or SD write. Reference
+  still unapproved for deployment. Next verify DMA/reserved-bit semantic
+  adaptations, complete6.x build, then bounded board-safe failure handling.
+  N1/N2/N3 remain open; failed compilation is useful evidence, not build pass.
 
 ## Evidence-entry template
 
