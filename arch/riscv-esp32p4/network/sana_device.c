@@ -330,7 +330,17 @@ static void p4wlan_flush_all_locked(struct p4wlan_unit *unit,
 static void p4wlan_event_locked(struct p4wlan_unit *unit, ULONG event,
                                 struct MinList *done)
 {
+    const ULONG edge_events = S2EVENT_CONNECT | S2EVENT_DISCONNECT;
+    ULONG consumed = 0;
     struct MinNode *onode;
+
+    /* CONNECT and DISCONNECT describe opposite observed link edges. A newer
+     * edge supersedes an older one that no S2_ONEVENT request consumed. */
+    if (event & S2EVENT_CONNECT)
+        unit->pending_events &= ~S2EVENT_DISCONNECT;
+    if (event & S2EVENT_DISCONNECT)
+        unit->pending_events &= ~S2EVENT_CONNECT;
+
     for (onode = unit->openers.mlh_Head; onode->mln_Succ;
          onode = onode->mln_Succ) {
         struct p4wlan_opener *opener =
@@ -349,11 +359,68 @@ static void p4wlan_event_locked(struct p4wlan_unit *unit, ULONG event,
                 item->completion_error = 0;
                 item->completion_wire = item->event_mask & event;
                 item->completion_sets_length = FALSE;
+                consumed |= item->completion_wire;
                 ADDTAIL((struct List *)done,
                         (struct Node *)&item->done_node);
             }
         }
     }
+
+    /* The control call that observes a link transition can complete before
+     * the caller rearms S2_ONEVENT. Preserve an unconsumed edge until a later
+     * request asks for it. Administrative ONLINE/OFFLINE are state, not edges. */
+    unit->pending_events |= (event & ~consumed) & edge_events;
+}
+
+static BOOL p4wlan_event_mask_valid(ULONG event_mask)
+{
+    const ULONG supported = S2EVENT_ONLINE | S2EVENT_OFFLINE |
+                            S2EVENT_CONNECT | S2EVENT_DISCONNECT;
+    return event_mask != 0 && (event_mask & ~supported) == 0;
+}
+
+/* Called with unit->lock held. ONLINE/OFFLINE are current administrative
+ * state; CONNECT/DISCONNECT are separately latched link observations. */
+static ULONG p4wlan_event_ready_locked(struct p4wlan_unit *unit,
+                                      ULONG event_mask)
+{
+    ULONG state_event = unit->online ? S2EVENT_ONLINE : S2EVENT_OFFLINE;
+    ULONG latched = event_mask & unit->pending_events &
+                    (S2EVENT_CONNECT | S2EVENT_DISCONNECT);
+    unit->pending_events &= ~latched;
+    return (event_mask & state_event) | latched;
+}
+
+/* TRUE means the request has completed immediately (either with a supported
+ * event or a precise unsupported-mask error); FALSE means it should be parked. */
+static BOOL p4wlan_onevent_immediate_locked(struct p4wlan_unit *unit,
+                                             struct IOSana2Req *request,
+                                             ULONG event_mask)
+{
+    if (!p4wlan_event_mask_valid(event_mask)) {
+        request->ios2_Req.io_Error = S2ERR_NOT_SUPPORTED;
+        request->ios2_WireError = S2WERR_BAD_EVENT;
+        return TRUE;
+    }
+
+    request->ios2_WireError = p4wlan_event_ready_locked(unit, event_mask);
+    return request->ios2_WireError != 0;
+}
+
+static void p4wlan_online_locked(struct p4wlan_unit *unit,
+                                 struct MinList *done)
+{
+    if (!unit->online) {
+        unit->online = TRUE;
+        p4wlan_event_locked(unit, S2EVENT_ONLINE, done);
+    }
+}
+
+static void p4wlan_configure_interface_locked(struct p4wlan_unit *unit,
+                                               struct MinList *done)
+{
+    unit->configured = TRUE;
+    p4wlan_online_locked(unit, done);
 }
 
 static void p4wlan_set_offline_locked(struct p4wlan_unit *unit,
@@ -362,6 +429,10 @@ static void p4wlan_set_offline_locked(struct p4wlan_unit *unit,
 {
     BOOL changed = unit->online;
     unit->online = FALSE;
+    /* Administrative shutdown is not proof of link loss, but an old CONNECT
+     * hint must not be returned after the interface has gone offline. Do not
+     * synthesize DISCONNECT here; only a confirmed link observer may do that. */
+    unit->pending_events &= ~S2EVENT_CONNECT;
     if (hardware_stopped)
         unit->hardware_ready = FALSE;
     if (changed)
@@ -1109,7 +1180,7 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
             p4wlan_immediate_error(request, S2ERR_BAD_STATE,
                                    S2WERR_UNIT_ONLINE);
         } else {
-            unit->configured = TRUE;
+            p4wlan_configure_interface_locked(unit, &done);
         }
         break;
 
@@ -1120,9 +1191,8 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         } else if (!unit->configured) {
             p4wlan_immediate_error(request, S2ERR_BAD_STATE,
                                    S2WERR_NOT_CONFIGURED);
-        } else if (!unit->online) {
-            unit->online = TRUE;
-            p4wlan_event_locked(unit, S2EVENT_ONLINE, &done);
+        } else {
+            p4wlan_online_locked(unit, &done);
         }
         break;
 
@@ -1131,16 +1201,7 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         break;
 
     case S2_ONEVENT:
-        if (!event_mask || (event_mask &
-            ~(S2EVENT_ONLINE | S2EVENT_OFFLINE))) {
-            p4wlan_immediate_error(request, S2ERR_NOT_SUPPORTED,
-                                   S2WERR_BAD_EVENT);
-            break;
-        }
-        if (event_mask &
-            (unit->online ? S2EVENT_ONLINE : S2EVENT_OFFLINE)) {
-            request->ios2_WireError = event_mask &
-                (unit->online ? S2EVENT_ONLINE : S2EVENT_OFFLINE);
+        if (p4wlan_onevent_immediate_locked(unit, request, event_mask)) {
             break;
         }
         item = p4wlan_alloc_request(opener, request,
@@ -1304,6 +1365,7 @@ static BOOL GM_UNIQUENAME(Init)(LIBBASETYPEPTR LIBBASE)
     NEWLIST(&unit->openers);
     NEWLIST(&unit->write_queue);
     NEWLIST(&unit->scan_queue);
+    unit->pending_events = 0;
     unit->query.SizeAvailable = sizeof(unit->query);
     unit->query.SizeSupplied = sizeof(unit->query);
     unit->query.DevQueryFormat = 0;

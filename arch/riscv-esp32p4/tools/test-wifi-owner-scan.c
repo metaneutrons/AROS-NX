@@ -31,6 +31,12 @@ typedef uintptr_t IPTR;
 #define P4_WIFI_HOSTED_OWNER 1
 #define P4_WIFI_SDIO_RESET_QUERY 0
 
+struct p4_wifi_association_target;
+struct p4_wifi_association_cancel {
+    APTR context;
+    BOOL (*cancelled)(APTR);
+};
+
 struct Task { unsigned marker; };
 struct Library { uint8_t opaque[64]; };
 struct ExecBase { unsigned marker; };
@@ -96,6 +102,7 @@ struct wifi_probe_context;
 static int wifi_owner_acquire(void *, uint32_t);
 static int wifi_owner_budget(void *, uint32_t);
 static void wifi_owner_release(void *);
+static ULONG wifi_owner_remaining(struct wifi_probe_context *, ULONG, ULONG);
 static const struct p4_hosted_wifi_config wifi_reference_profile;
 
 #include "wifi_owner_scan_extract.inc"
@@ -656,6 +663,7 @@ static void fixture_reset(void)
     fixture.runtime.checksum = 0u;
     fixture.runtime.servicing = TRUE;
     fixture.base.ready = TRUE;
+    fixture.base.associated = TRUE;
     fixture.base.owner_task = FindTask(NULL);
     fixture.base.runtime = &fixture.runtime;
     fixture.base.client = &fixture;

@@ -97,11 +97,11 @@ extract_function wifi_tx_session
 extract_function wifi_budget
 extract_function wifi_owner_now
 extract_function wifi_owner_acquire
+extract_function wifi_owner_remaining
 extract_function wifi_owner_budget
 extract_function wifi_owner_release
 extract_function wifi_owner_stopping
 extract_function wifi_yield
-extract_function wifi_owner_remaining
 extract_function wifi_owner_finish_unsubmitted_reservation
 extract_function wifi_owner_request
 extract_function wifi_scan_output_valid
@@ -121,6 +121,7 @@ for optimization in 0 2; do
 		"$test_root/network/hosted_rpc.c" \
 		"$test_root/network/hosted_request_ids.c" \
 		"$test_root/network/hosted_wifi.c" \
+		"$test_root/network/hosted_association.c" \
 		"$test_root/network/hosted_mac.c" \
 		"$test_root/network/hosted_tx.c" \
 		"$test_root/network/hosted_wire.c" \

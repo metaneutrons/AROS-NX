@@ -119,6 +119,11 @@ struct p4wlan_unit
     ULONG read_count;
     ULONG write_count;
     ULONG event_count;
+    /* CONNECT/DISCONNECT are coalesced edge observations. Broadcast to all
+     * matching parked waiters; with none parked, the first later matching
+     * S2_ONEVENT consumes the unit-wide latch. Repeated same-edge transitions
+     * coalesce because this is a bitmask, not an event counter. */
+    ULONG pending_events;
     ULONG rx_sequence;
     ULONG rx_dropped_frames;
     ULONG rx_unmatched_frames;

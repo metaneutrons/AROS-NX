@@ -93,6 +93,7 @@ extract_function wifi_device_attach
 extract_function wifi_device_detach
 extract_function wifi_tx_session
 extract_function wifi_owner_acquire
+extract_function wifi_owner_remaining
 extract_function wifi_owner_budget
 extract_function wifi_owner_release
 extract_function wifi_device_send

@@ -2,17 +2,53 @@
 #include "../network/hosted_link.h"
 #include "../network/hosted_mac.h"
 #include "../network/hosted_owner.h"
+#include "../network/hosted_association.h"
 #include "../network/hosted_scan.h"
 #include "../network/hosted_tx.h"
 #include "../network/hosted_wifi.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef uint32_t ULONG;
 typedef int BOOL;
 #define FALSE 0
 #define TRUE 1
+
+struct Task { unsigned marker; };
+struct SignalSemaphore { struct Task *ss_Owner; unsigned depth; };
+struct P4WifiBase {
+    BOOL associated;
+    struct SignalSemaphore client_lock;
+};
+
+static struct Task test_task;
+static struct P4WifiBase test_resource;
+static struct P4WifiBase *wifi_resource_base = &test_resource;
+
+static struct Task *FindTask(void *name)
+{
+    (void)name;
+    return &test_task;
+}
+
+static void ObtainSemaphore(struct SignalSemaphore *sem)
+{
+    if (sem->depth == 0u)
+        sem->ss_Owner = FindTask(NULL);
+    else if (sem->ss_Owner != FindTask(NULL))
+        abort();
+    ++sem->depth;
+}
+
+static void ReleaseSemaphore(struct SignalSemaphore *sem)
+{
+    if (sem->depth == 0u || sem->ss_Owner != FindTask(NULL))
+        abort();
+    if (--sem->depth == 0u)
+        sem->ss_Owner = NULL;
+}
 
 struct fake_host {
     ULONG (*now_us)(void);
@@ -41,6 +77,7 @@ struct wifi_owner_control {
     struct p4_hosted_tx_result frame_tx;
     struct p4_hosted_scan_count scan_count;
     struct p4_hosted_sta_ap_info ap_info;
+    struct p4_hosted_sta_config sta_config;
     struct p4_wifi_scan_result scan_result;
     uint16_t scan_capacity;
     uint8_t request[256];
@@ -384,6 +421,9 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
 static void fixture_init(void)
 {
     memset(&fixture, 0, sizeof fixture);
+    memset(&test_resource, 0, sizeof test_resource);
+    test_resource.associated = TRUE;
+    wifi_resource_base = &test_resource;
     clock_fixture = &fixture;
     fixture.host.now_us = fake_now_us;
     fixture.context.host = &fixture.host;
@@ -639,6 +679,8 @@ static void test_down_none_and_interleaved_events(void)
     CHECK(make_link_event_item(&event_item, 776u, 0x41u));
     CHECK(wifi_owner_event(&fixture.context, &event_item));
     CHECK(fixture.context.link_observation.kind == P4_HOSTED_LINK_DOWN);
+        CHECK(test_resource.associated == FALSE);
+        CHECK(test_resource.client_lock.depth == 0u);
     CHECK(query());
     CHECK(fixture.exchange_calls == 0u);
 

@@ -8,11 +8,21 @@ test_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 repo_root=$(CDPATH= cd -- "$test_root/../.." && pwd)
 source_file="$test_root/network/sana_device.c"
 header_file="$test_root/network/sana_device.h"
+sana_header="$repo_root/compiler/include/devices/sana2.h"
 test_tmp=$(mktemp -d "${TMPDIR:-/tmp}/p4-wifi-sana-lifetime.XXXXXX")
 extract="$test_tmp/sana_lifetime_extract.inc"
 trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$extract"; command rmdir "$test_tmp"' EXIT HUP INT TERM
 
 : > "$extract"
+
+for event_name in S2EVENT_CONNECT S2EVENT_DISCONNECT; do
+    awk -v name="$event_name" \
+        '$1 == "#define" && $2 == name { print; count++ }
+         END { if (count != 1) exit 1 }' "$sana_header" >> "$extract" || {
+        echo "could not uniquely extract $event_name from $sana_header" >&2
+        exit 1
+    }
+done
 
 extract_block() {
     block_kind=$1

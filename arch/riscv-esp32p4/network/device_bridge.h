@@ -5,10 +5,30 @@
 #include <exec/types.h>
 #include "hosted_scan.h"
 
-#define P4_WIFI_DEVICE_BRIDGE_ABI 2u
+#define P4_WIFI_DEVICE_BRIDGE_ABI 3u
 #define P4_WIFI_DEVICE_BRIDGE_NAME "esp32p4wifi.resource"
 
 struct P4WifiBase;
+/* Owned input; no caller tag/string pointers survive BeginIO. This first
+ * profile is open or WPA2-PSK/CCMP infrastructure, never WEP/enterprise/SAE.
+ * password is printable passphrase8..63 or exactly64 hexadecimal PSK bytes.
+ * The caller must volatile-wipe its copy after the bounded operation. */
+struct p4_wifi_association_target {
+    UBYTE ssid[32];
+    ULONG ssid_length;
+    UBYTE password[64];
+    ULONG password_length;
+    UBYTE bssid[6];
+    BOOL bssid_set;
+    ULONG channel; /* zero permits automatic selection */
+    ULONG authmode; /* zero=open, three=WPA2-PSK */
+};
+/* Called outside controller ownership. It must be nonblocking, may take the
+ * device unit lock, and must not re-enter transport or close/detach. */
+struct p4_wifi_association_cancel {
+    APTR context;
+    BOOL (*cancelled)(APTR);
+};
 /* Owned default-config scan result. At most eight APs are retained locally;
  * total_count is the peer's earlier count, not an atomic snapshot guarantee.
  * Security fields are summaries, not captured Beacon/RSN/WPA IEs. */
@@ -23,8 +43,8 @@ struct p4_wifi_scan_result {
  * outside the SDMMC semaphore, serialized by the client's registration lock.
  * Never attach/detach from a callback. Device close must not hold its own
  * semaphore while calling detach. No callback may retain frame pointers.
- * service may call send_frame or scan; frame/ready/stopped may not access
- * transport. scan suppresses transport re-entry for its full duration.
+ * service may call send_frame, scan or associate; frame/ready/stopped may not
+ * access transport. scan/associate suppress transport re-entry throughout.
  * No callback may wait for another client callback or invoke user code which
  * closes the device. Permanent noexpunge modules protect callback code. The
  * device registers its permanent unit once and keeps it across last Close;
@@ -48,7 +68,12 @@ struct p4_wifi_device_callbacks {
  * deadline. It runs without a client unit lock, returns owned results only on
  * success, and leaves output unchanged on failure. The output must not alias
  * resource/transport state. No scan filters or credentials are supplied.
- * Link/association API will be added with typed event and privacy gates;
- * neither ready nor successful transmission means CONNECT. */
+ * associate is owner-service-only and uses one aggregate eight-second budget.
+ * It disconnects/verifies absence before configuration, then confirms the
+ * current AP against the target and revalidates the live host epoch. TRUE is a
+ * current-target snapshot, not causal attribution of UID0 events or IP proof.
+ * association_enabled is false until the actual C6 privacy/recovery gate has
+ * passed; even an open target must not bypass that gate. Failure/cancellation
+ * never permits traffic. Neither ready nor S2_ONLINE establishes link-up. */
 
 #endif

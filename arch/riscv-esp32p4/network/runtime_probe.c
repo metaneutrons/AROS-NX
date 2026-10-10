@@ -17,6 +17,12 @@
 #include "../sdmmc/registers.h"
 #include "../sdmmc/memory.h"
 #include "runtime_probe.h"
+#ifndef P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED
+#define P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED 0
+#endif
+#if P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED && !P4_WIFI_HOSTED_OWNER
+#error "C6 verified association requires the persistent owner"
+#endif
 #include "sdio_probe.h"
 #include "sdio_commands.h"
 #if P4_WIFI_HOSTED_INIT
@@ -120,6 +126,9 @@ static void wifi_device_detach(struct P4WifiBase *base, APTR client)
 }
 
 static BOOL wifi_device_send(struct P4WifiBase *, const UBYTE *, ULONG);
+static BOOL wifi_device_associate(struct P4WifiBase *,
+    const struct p4_wifi_association_target *,
+    const struct p4_wifi_association_cancel *);
 
 #if P4_WIFI_HOSTED_OWNER
 APTR KernelBase;
@@ -173,6 +182,9 @@ struct wifi_probe_context
     struct p4_hosted_sta_ap_info link_snapshot;
     ULONG link_query_revision;
     BOOL link_snapshot_matches_hint;
+    BOOL association_active;
+    ULONG association_started;
+    const struct p4_wifi_association_cancel *association_cancel;
     ULONG owner_boot_start;
     ULONG owner_open_start;
     BOOL owner_cleanup;
@@ -549,6 +561,7 @@ struct wifi_owner_control {
     struct p4_hosted_tx_result frame_tx;
     struct p4_hosted_scan_count scan_count;
     struct p4_hosted_sta_ap_info ap_info;
+    struct p4_hosted_sta_config sta_config;
     struct p4_wifi_scan_result scan_result;
     uint16_t scan_capacity;
     uint8_t request[256];
@@ -569,6 +582,7 @@ struct wifi_device_runtime {
 static int wifi_owner_acquire(void *, uint32_t);
 static int wifi_owner_budget(void *, uint32_t);
 static void wifi_owner_release(void *);
+static ULONG wifi_owner_remaining(struct wifi_probe_context *, ULONG, ULONG);
 
 static BOOL wifi_device_send(struct P4WifiBase *base,
                              const UBYTE *bytes, ULONG size)
@@ -577,7 +591,7 @@ static BOOL wifi_device_send(struct P4WifiBase *base,
     struct p4_hosted_frame frame;
     size_t written = 0;
     int sent = 0;
-    if (!base || !base->ready || !base->runtime ||
+    if (!base || !base->ready || !base->associated || !base->runtime ||
         base->owner_task != FindTask(NULL) || !bytes || size < 14 || size > 1518)
         return FALSE;
     runtime = base->runtime;
@@ -636,6 +650,14 @@ static int wifi_owner_budget(void *opaque, uint32_t usec)
         if (usec > 8000000UL - elapsed)
             usec = 8000000UL - elapsed;
     }
+    if (context->association_active) {
+        ULONG remaining = wifi_owner_remaining(context,
+            context->association_started, 8000000UL);
+        if (!remaining)
+            return 0;
+        if (usec > remaining)
+            usec = remaining;
+    }
     return wifi_tx_session(context, context->generation) &&
         context->host->set_budget(context->host, usec);
 }
@@ -649,6 +671,12 @@ static void wifi_owner_release(void *opaque)
 static int wifi_owner_stopping(void *opaque)
 {
     struct wifi_probe_context *context = opaque;
+    if (context->association_active &&
+        ((!wifi_owner_remaining(context, context->association_started, 8000000UL)) ||
+         (context->host->lock.ss_Owner != FindTask(NULL) &&
+          context->association_cancel && context->association_cancel->cancelled &&
+          context->association_cancel->cancelled(context->association_cancel->context))))
+        return 1;
     return (context->scan_active &&
             (ULONG)(context->host->now_us() - context->scan_started) >= 8000000UL) ||
         (!context->owner_cleanup && !!(SetSignal(0, 0) & SIGBREAKF_CTRL_C));
@@ -672,6 +700,11 @@ static int wifi_owner_event(void *opaque,
             return 0;
         p4host_zero(&context->link_snapshot, sizeof(context->link_snapshot));
         context->link_snapshot_matches_hint = FALSE;
+        /* Any new link hint invalidates acceptance until explicitly queried
+         * again by an active association operation. Never infer CONNECT here. */
+        ObtainSemaphore(&wifi_resource_base->client_lock);
+        wifi_resource_base->associated = FALSE;
+        ReleaseSemaphore(&wifi_resource_base->client_lock);
     }
     /* Own typed metadata only. Uncorrelated UP_HINT cannot publish CONNECT;
      * no borrowed payload outlives this callback. Malformed link events
@@ -689,7 +722,7 @@ static int wifi_owner_frame(void *opaque, const uint8_t *bytes, size_t size)
     /* No attached client means an administratively unopened interface. Drop
      * unclaimed frames without fabricating a receive completion or link-up. */
     ObtainSemaphore(&base->client_lock);
-    if (base->ready && base->client && base->callbacks)
+    if (base->ready && base->associated && base->client && base->callbacks)
         consumed = base->callbacks->frame(base->client, bytes, (ULONG)size);
     ReleaseSemaphore(&base->client_lock);
     return consumed;
@@ -783,6 +816,15 @@ static int wifi_owner_request(struct wifi_probe_context *context,
     else if (id == 294u)
         encoded = p4_hosted_sta_ap_info_request(control->uid,
             control->request, sizeof(control->request), &written);
+    else if (id == 284u)
+        encoded = p4_hosted_association_set_config_request(control->uid,
+            &control->sta_config, control->request, sizeof(control->request), &written);
+    else if (id == 282u)
+        encoded = p4_hosted_association_connect_request(control->uid,
+            control->request, sizeof(control->request), &written);
+    else if (id == 283u)
+        encoded = p4_hosted_association_disconnect_request(control->uid,
+            control->request, sizeof(control->request), &written);
     else
         encoded = p4_hosted_wifi_simple_request(id, control->uid,
             control->request, sizeof(control->request), &written);
@@ -812,6 +854,14 @@ static int wifi_owner_request(struct wifi_probe_context *context,
     rpc.uid = owner->reply.uid;
     rpc.payload = owner->reply.payload;
     rpc.payload_size = owner->reply.payload_size;
+    if (id == 282u || id == 283u || id == 284u) {
+        if (!p4_hosted_association_status_response(&rpc, id, control->uid,
+                                                  &control->status)) {
+            p4_hosted_owner_cancel(owner, fifo, context->generation);
+            return 0;
+        }
+        return control->status == 0;
+    }
     if (id == 294u) {
         if (!p4_hosted_sta_ap_info_response(&rpc, control->uid,
                                             &control->ap_info)) {
@@ -1044,6 +1094,188 @@ finish:
     return succeeded;
 }
 
+/* Only explicitly supported security profiles may reach credential encoding.
+ * Validation occurs before changing link state or issuing any RPC. */
+static BOOL wifi_association_target_valid(
+    const struct p4_wifi_association_target *target)
+{
+    ULONG i;
+    UBYTE nonzero = 0;
+    if (!target || !target->ssid_length || target->ssid_length > 32 ||
+        target->channel > 14 ||
+        (target->bssid_set != FALSE && target->bssid_set != TRUE) ||
+        (target->authmode != 0 && target->authmode != 3))
+        return FALSE;
+    if (target->bssid_set) {
+        for (i = 0; i < 6; ++i) nonzero |= target->bssid[i];
+        if (!nonzero || (target->bssid[0] & 1)) return FALSE;
+    }
+    if (!target->authmode) return target->password_length == 0;
+    if (target->password_length < 8 || target->password_length > 64)
+        return FALSE;
+    for (i = 0; i < target->password_length; ++i) {
+        UBYTE c = target->password[i];
+        if (target->password_length == 64) {
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                  (c >= 'A' && c <= 'F'))) return FALSE;
+        } else if (c < 32 || c > 126) return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL wifi_association_ap_matches(
+    const struct p4_wifi_association_target *target,
+    const struct p4_hosted_sta_ap_info *ap)
+{
+    ULONG i;
+    UBYTE nonzero = 0;
+    for (i = 0; i < 6; ++i) nonzero |= ap->ap.bssid[i];
+    if (!nonzero || (ap->ap.bssid[0] & 1) ||
+        !ap->ap.primary || ap->ap.primary > 14 ||
+        ap->status || ap->ap.ssid_size != target->ssid_length ||
+        (target->channel && ap->ap.primary != target->channel) ||
+        ap->ap.authmode != (LONG)target->authmode ||
+        ap->ap.pairwise_cipher != (target->authmode ? 4 : 0) ||
+        ap->ap.group_cipher != (target->authmode ? 4 : 0)) return FALSE;
+    for (i = 0; i < target->ssid_length; ++i)
+        if (ap->ap.ssid[i] != target->ssid[i]) return FALSE;
+    if (target->bssid_set)
+        for (i = 0; i < 6; ++i)
+            if (ap->ap.bssid[i] != target->bssid[i]) return FALSE;
+    return TRUE;
+}
+
+static BOOL wifi_device_associate(struct P4WifiBase *base,
+    const struct p4_wifi_association_target *target,
+    const struct p4_wifi_association_cancel *cancel)
+{
+    struct wifi_device_runtime *runtime;
+    struct wifi_probe_context *context;
+    struct wifi_owner_control *control;
+    struct p4_wifi_association_target owned;
+    struct p4_wifi_association_cancel hooks;
+    ULONG started, generation, remaining, wait, revision;
+    unsigned polls;
+    BOOL succeeded = FALSE, mutated = FALSE;
+    if (!base || !base->ready || !base->association_enabled || !base->runtime ||
+        base->owner_task != FindTask(NULL) || !cancel || !cancel->cancelled ||
+        !wifi_association_target_valid(target)) return FALSE;
+    runtime = base->runtime;
+    context = runtime->context;
+    if (!context || !context->host || !runtime->owner || !runtime->fifo ||
+        !runtime->control || !runtime->servicing || runtime->scanning ||
+        context->scan_active || context->association_active ||
+        runtime->owner->poisoned || runtime->fifo->poisoned ||
+        runtime->owner->pending_active || runtime->owner->ids.active_uid ||
+        runtime->owner->generation != context->generation ||
+        runtime->fifo->generation != context->generation ||
+        base->client_lock.ss_Owner != FindTask(NULL) ||
+        context->host->lock.ss_Owner == FindTask(NULL) ||
+        cancel->cancelled(cancel->context)) return FALSE;
+    CopyMem(target, &owned, sizeof(owned));
+    CopyMem(cancel, &hooks, sizeof(hooks));
+    control = runtime->control;
+    generation = context->generation;
+    started = wifi_owner_now(context);
+    context->association_started = started;
+    context->association_cancel = &hooks;
+    context->association_active = TRUE;
+    runtime->scanning = TRUE; /* Serialize all transport service operations. */
+    runtime->servicing = FALSE;
+    base->associated = FALSE;
+    p4host_zero(&control->sta_config, sizeof(control->sta_config));
+    p4host_zero(&control->ap_info, sizeof(control->ap_info));
+    mutated = TRUE; /* Even an ambiguous Disconnect must not retain link-up. */
+    if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
+            runtime->checksum, 283u,
+            wifi_owner_remaining(context, started, 8000000UL))) goto finish;
+    for (polls = 0; polls < 500 && !wifi_owner_stopping(context); ++polls) {
+        revision = context->link_observation.revision;
+        if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
+                runtime->checksum, 294u,
+                wifi_owner_remaining(context, started, 8000000UL))) goto finish;
+        if (context->link_observation.revision != revision) {
+            wifi_yield(context);
+            continue;
+        }
+        if (control->ap_info.status != 0x300f) goto finish;
+        break;
+    }
+    if (polls == 500 || wifi_owner_stopping(context)) goto finish;
+    /* ESP_ERR_WIFI_NOT_CONNECT is required, not inferred from any error. */
+    control->sta_config.ssid = owned.ssid;
+    control->sta_config.ssid_length = owned.ssid_length;
+    control->sta_config.password = owned.password;
+    control->sta_config.password_length = owned.password_length;
+    control->sta_config.bssid_set = owned.bssid_set;
+    control->sta_config.bssid = owned.bssid_set ? owned.bssid : NULL;
+    control->sta_config.bssid_length = owned.bssid_set ? 6 : 0;
+    control->sta_config.channel = owned.channel;
+    control->sta_config.threshold_rssi = -127;
+    control->sta_config.threshold_authmode = owned.authmode;
+    if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
+            runtime->checksum, 284u,
+            wifi_owner_remaining(context, started, 8000000UL))) goto finish;
+    p4host_zero(owned.password, sizeof(owned.password));
+    p4host_zero(&control->sta_config, sizeof(control->sta_config));
+    if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
+            runtime->checksum, 282u,
+            wifi_owner_remaining(context, started, 8000000UL))) goto finish;
+    for (polls = 0; polls < 500 && !wifi_owner_stopping(context); ++polls) {
+        revision = context->link_observation.revision;
+        if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
+                runtime->checksum, 294u,
+                wifi_owner_remaining(context, started, 8000000UL))) goto finish;
+        /* An event drained after this reply can already supersede it. Never
+         * reopen traffic with that stale snapshot; query again without giving
+         * the operation a fresh deadline. */
+        if (context->link_observation.revision != revision) {
+            wifi_yield(context);
+            continue;
+        }
+        if (!control->ap_info.status) {
+            if (!wifi_association_ap_matches(&owned, &control->ap_info) ||
+                wifi_owner_stopping(context)) goto finish;
+            remaining = wifi_owner_remaining(context, started, 8000000UL);
+            wait = remaining < P4_HOSTED_OWNER_MAX_ACQUIRE_US ? remaining :
+                P4_HOSTED_OWNER_MAX_ACQUIRE_US;
+            if (!wait || !wifi_owner_acquire(context, wait)) goto finish;
+            succeeded = wifi_tx_session(context, generation) &&
+                !runtime->owner->poisoned && !runtime->fifo->poisoned &&
+                context->link_observation.generation == generation &&
+                context->link_observation.revision == revision &&
+                wifi_owner_remaining(context, started, 8000000UL);
+            wifi_owner_release(context);
+            /* Cancellation hooks never execute with controller ownership. */
+            if (wifi_owner_stopping(context)) succeeded = FALSE;
+            if (succeeded) base->associated = TRUE;
+            goto finish;
+        }
+        if (control->ap_info.status != 0x300f) goto finish;
+        wifi_yield(context);
+    }
+finish:
+    if (!succeeded && mutated) {
+        remaining = wifi_owner_remaining(context, started, 8000000UL);
+        if (runtime->owner->poisoned || runtime->fifo->poisoned ||
+            wifi_owner_stopping(context) || !remaining ||
+            !wifi_owner_request(context, runtime->owner, control, runtime->fifo,
+                runtime->checksum, 283u, remaining))
+            p4_hosted_owner_cancel(runtime->owner, runtime->fifo, generation);
+    }
+    p4host_zero(&owned, sizeof(owned));
+    p4host_zero(&hooks, sizeof(hooks));
+    p4host_zero(&control->sta_config, sizeof(control->sta_config));
+    p4host_zero(control->request, sizeof(control->request));
+    p4host_zero(&control->ap_info, sizeof(control->ap_info));
+    context->association_cancel = NULL;
+    context->association_active = FALSE;
+    context->association_started = 0;
+    runtime->scanning = FALSE;
+    runtime->servicing = TRUE;
+    return succeeded;
+}
+
 /* Enter with the bootstrap acquisition held, and always return unowned.
  * Preserved OPEN has already populated owner.rx before config buffer reuse.
  * State/buffers/control were allocated before acquiring the host. */
@@ -1133,6 +1365,7 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     }
     ObtainSemaphore(&base->client_lock);
     base->ready = FALSE;
+    base->associated = FALSE;
     base->runtime = NULL;
     base->owner_task = NULL;
     if (base->client && base->callbacks)
@@ -1177,6 +1410,14 @@ static void wifi_owner_service(struct wifi_probe_context *context,
 #endif
 
 #if !P4_WIFI_HOSTED_OWNER
+static BOOL wifi_device_associate(struct P4WifiBase *base,
+    const struct p4_wifi_association_target *target,
+    const struct p4_wifi_association_cancel *cancel)
+{
+    (void)base; (void)target; (void)cancel;
+    return FALSE;
+}
+
 static BOOL wifi_device_scan(struct P4WifiBase *base,
                              struct p4_wifi_scan_result *output)
 {
@@ -1793,6 +2034,9 @@ static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
     P4WifiBase->detach = wifi_device_detach;
     P4WifiBase->send_frame = wifi_device_send;
     P4WifiBase->scan = wifi_device_scan;
+    P4WifiBase->associate = wifi_device_associate;
+    P4WifiBase->association_enabled = P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED ? TRUE : FALSE;
+    P4WifiBase->associated = FALSE;
     InitSemaphore(&P4WifiBase->client_lock);
     P4WifiBase->client = NULL;
     P4WifiBase->callbacks = NULL;

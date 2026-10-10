@@ -45,6 +45,11 @@ extract_function()
 		candidate = 1
 		candidate_text = $0 ORS
 		signature_text = $0 " "
+		if (index($0, ";") != 0 && index($0, "{") == 0) {
+			candidate = 0
+			candidate_text = ""
+			signature_text = ""
+		}
 		next
 	}
 	candidate {

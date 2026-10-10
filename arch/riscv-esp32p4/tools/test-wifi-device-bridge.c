@@ -27,6 +27,7 @@ struct SignalSemaphore { struct Task *ss_Owner; unsigned depth; };
 #include "runtime_probe.h"
 #include "host.h"
 #include "hosted_mac.h"
+#include "hosted_association.h"
 #include "hosted_owner.h"
 #include "hosted_tx.h"
 #include "hosted_wire.h"
@@ -55,6 +56,7 @@ static unsigned host_refuse_acquire;
 static unsigned host_refuse_budget;
 static unsigned host_acquire_calls, host_release_calls, host_budget_calls;
 static ULONG host_wait_seen, host_budget_seen;
+static ULONG fake_now_us;
 
 struct wifi_probe_context {
     struct P4SDMMCHost *host;
@@ -62,12 +64,20 @@ struct wifi_probe_context {
     ULONG peer_clock;
     ULONG scan_started;
     BOOL scan_active;
+    ULONG association_started;
+    BOOL association_active;
+    const struct p4_wifi_association_cancel *association_cancel;
 };
 
 static struct Task *FindTask(void *name)
 {
     (void)name;
     return current_task;
+}
+
+static ULONG mock_now_us(void)
+{
+    return fake_now_us;
 }
 
 static BOOL AttemptSemaphore(struct SignalSemaphore *sem)
@@ -231,6 +241,7 @@ static void reset_counters(void)
     host_budget_calls = 0u;
     host_wait_seen = 0u;
     host_budget_seen = 0u;
+    fake_now_us = 1000u;
 }
 
 static void fixture_init(struct fixture *f)
@@ -239,6 +250,7 @@ static void fixture_init(struct fixture *f)
     memset(f, 0, sizeof(*f));
     reset_counters();
     f->host.generation = TEST_GENERATION;
+    f->host.now_us = mock_now_us;
     f->host.slot_clock[0] = 400000u;
     f->host.acquire = mock_host_acquire;
     f->host.release = mock_host_release;
@@ -270,6 +282,7 @@ static void fixture_init(struct fixture *f)
     f->runtime.checksum = 0u;
     f->runtime.servicing = TRUE;
     f->base.ready = TRUE;
+    f->base.associated = TRUE;
     f->base.runtime = &f->runtime;
     f->base.owner_task = current_task;
     memset(f->owner.wire, 0xa5, sizeof(f->owner.wire));
@@ -427,6 +440,12 @@ static void test_send_preflight_refusals(void)
     CHECK(host_acquire_calls == 0u && wire_is_zero(f.owner.wire,
                                                   sizeof(f.owner.wire)) == 0);
     f.runtime.servicing = TRUE;
+    f.base.associated = FALSE;
+    CHECK(!send_fixture(&f));
+    CHECK(host_acquire_calls == 0u && f.tx.read_calls == 0u &&
+          f.tx.write_calls == 0u && wire_is_zero(f.owner.wire,
+                                                  sizeof(f.owner.wire)) == 0);
+    f.base.associated = TRUE;
     current_task = &other_task;
     CHECK(!send_fixture(&f));
     current_task = &task_owner;
@@ -532,6 +551,27 @@ static void test_budget_and_acquire_failure_cleanup(void)
     CHECK(wire_is_zero(f.owner.wire, sizeof(f.owner.wire)));
 }
 
+static void test_association_budget_uses_remaining_deadline(void)
+{
+    struct fixture f;
+    fixture_init(&f);
+    f.context.association_active = TRUE;
+    f.context.association_started = 0u;
+    fake_now_us = 7999990u;
+    CHECK(mock_host_acquire(&f.host, 20000u));
+    CHECK(wifi_owner_budget(&f.context, 250000u));
+    CHECK(host_budget_seen == 10u);
+    mock_host_release(&f.host);
+
+    reset_counters();
+    fake_now_us = 8000000u;
+    CHECK(mock_host_acquire(&f.host, 20000u));
+    CHECK(!wifi_owner_budget(&f.context, 250000u));
+    CHECK(host_budget_calls == 0u);
+    mock_host_release(&f.host);
+    CHECK(host_held == 0u);
+}
+
 static void test_stopped_unpublishes_before_callback(void)
 {
     struct fixture f;
@@ -559,6 +599,7 @@ int main(void)
     test_send_failure_is_single_attempt_and_wiped();
     test_send_frame_bounds_and_checksums();
     test_budget_and_acquire_failure_cleanup();
+    test_association_budget_uses_remaining_deadline();
     test_stopped_unpublishes_before_callback();
     printf("wifi device bridge: %lu checks passed (source-extracted callbacks, mocked Exec/host)\n",
            checks);

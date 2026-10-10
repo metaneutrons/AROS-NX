@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2F | C6 firmware privacy and recoverable identity | `Hosted privacy patch and private C6 candidate build verified; physical recovery/UART privacy gate open` | Separate complete pinned tree builds1106624B app; Hosted secret/network/payload log sites removed and response length bounded, actual-macro490 O0/O2 Mac/Linux checks and original ASan failure prove regression scope. Config/dependencies/artifacts archived; no deployment or installed identity proof. IDF binary SSID/BSSID log formats and MAC logs remain. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore remain mandatory under conditional authority. |
-| N2A | Association caller and native link lifecycle | `shared binary-PSK caller verified; owned hints/current-AP runtime query build/model verified` | Generic2eb274ff63 locally integrated; native device remains SUMMARY-only. Owner copies775/776 and runs one correlated294/550 diagnostic snapshot per new hint revision, not CONNECT. Native S2_SETOPTIONS, active-target/lifecycle confirmation, real notifications/traffic gates, C6 privacy and association/DHCP remain required. No credential deployment or link acceptance. |
+| N2A | Association caller and native link lifecycle | `private ABI3 backend and SANA contracts model/build verified; hardware open` | Generic2eb274ff63 locally integrated; native device remains SUMMARY-only. Backend adds bounded copied-target association and traffic gate, default-disabled;14,312 sanitized workflow checks each O0/O2 pass on macOS/Linux. SANA CONNECT/DISCONNECT latch and administrative CONFIGINTERFACE models pass, but no actual observer/binding. Shared DMA staging secret retention, native queued S2_SETOPTIONS, lifecycle commit/cancellation, C6 recovery/privacy and association/DHCP remain open. No credentials/deployment/link acceptance. |
 | N2S | Native queued SANA scan presentation | `RV32 build verified; source review and corrected scan-helper models passed` | Single bounded owner-service scan, copied SSID filter and caller-pool-owned complete publication. Scan-helper models295 checks each O0/O2 ASan/UBSan on macOS/Linux; outer BeginIO/AbortIO/Close and runtime scheduling remain separate gates. Exact singleton metadata only; unsupported/ambiguous unknown protected. C-string binary SSIDs/invalid channels omitted; max8 local cap. SUMMARY only, no FOURWAY. No credentials/deployment/hardware acceptance. |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
 | N2W | Generic wireless security-summary/offload contract | `locally integrated; predicates/ABI and conversion/selection-helper models passed; full RV32 GUI build verified` | Upstream-based generic49972c6241 retained separately and integrated onto port branch. Explicit per-device capability, owned exact-version summary, no fabricated AP security IE. Unknown/ambiguous protected networks must not fall back to open. Initial singleton WPA/RSN PSK profile; legacy path preserved. Device query/full association and hardware gates pending. No credentials or deployment. |
@@ -126,7 +126,7 @@ gate: compensated output is not the native display contract.
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; native initialized MAC observed once; cold continuity rejected; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; Earlier GetMAC returns correlated0x3001 (WiFi not initialized). Latest initialized sequence succeeds once with expected MAC, but initial HP watchdog reset/truncated ROM output block clean cold acceptance. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
 | N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; native initialization/MAC repeated; pre-armed cold continuity rejected` | Existing FIFO reused with owned bodies/exact correlation. Control3529/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Generation-bound reassembly1318 isolated checks each O0/O2 sanitized pass; now linked into control with coupled epoch/deadline/failure tests and fresh113900B module build. Fragmentation integration not deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Coordinated startup reports all5 WLAN statuses0, valid MAC10:bd:a3:9b:bc:34 and restored stable registers in60.112s/16340 bytes; initial HP watchdog reset prevents clean cold acceptance. Latest late45.114s retrieval exits0 but receives0 bytes;1.425ms open latency, no armed startup coverage, inconclusive. Latest pre-armed removal/arrival capture exits0/status=ok,60.181s/16148 bytes and repeats native initialization/MAC/cleanup; first chunk6.525s after open contains HP watchdog reset and incomplete ROM prefix. Checker exits1; reset cause/serial-open influence unresolved; exact-image PC locates DMA IRQ dispatch, not proof of handler fault. No persistent UID allocator or WLAN acceptance. Original verified baseline recoverable. |
 | N1S | Typed native scan and runtime acceptance | `codec/oracle tested; opt-in runtime build verified; sequence models tested; initialized MAC observed; scan undeployed; boot continuity open` | Codec230/oracle1068/control3529/sequence537 checks each O0/O2 sanitized pass. Default-config blocking/nonblocking start, stop, AP count and owned AP/country/HE records. Runtime opt-in follows successful initialization/MAC with UIDs7..10 and at most8 owned records, named zero-AP workaround. ScanStart500 polls under same8s aggregate operation deadline;2s cleanup reserve. Independent runtime audit corrected early logging under shared-controller lock. Fresh135284B scan-enabled module and3823840B package pass42/42 loader and capacity checks;41 non-WiFi records unchanged. Not deployed; larger3825664B erase span requires new twice-read backup. No native hardware scan or WLAN acceptance; sequence/cleanup host models pass. Passive diagnostic checker passes16 independent fixture tests; no hardware acceptance. Earlier arrival expired/45.122s capture empty. Repeat native MAC succeeds once; initial HP watchdog reset makes checker reject cold continuity. Cleanup enum1/all14 flags corrected;16 tests pass. Optional serial-open timing now passes10 host tests; prior6.729s first-byte gap cannot be attributed. No live capture. |
-| N1A | Native association/configuration and owned events | `owned775/776 plus bounded correlated294/550 runtime snapshot build/model verified; association/privacy open` | Existing284/540,282/538,283/539 codecs/oracle remain qualified. Owner query uses fresh UID, exact550 and owned AP; status errors do not imply transport loss. Hint revision races discard result; diagnostic matches are neither active-target nor link proof. Fresh core1/default-off resource builds pass. No S2_SETOPTIONS caller, credentials, deployment or IP pass. C6 installed lineage, logging/strlen and secured recovery remain unresolved. |
+| N1A | Native association/configuration and owned events | `private default-disabled owner association backend model/build verified; hardware/privacy open` | ABI3 backend uses existing284/540,282/538,283/539 codecs and correlated294/550, one8s budget and final live-host generation validation. Open/WPA2-PSK-CCMP initial profiles only; wrong target/security refuses acceptance. UID0 hints never establish link and invalidate traffic. Sanitized workflow tests and independent review pass; native S2_SETOPTIONS binding and shared DMA staging wipe remain open. No credentials/deployment/IP pass; actual C6 identity/UART privacy/recovery unresolved. |
 | N1P | Persistent native control/data session | `UID/RPC and Ethernet RX build verified; Ethernet host qualified; actual CPU-affine owner build verified; coupled host models pass` | One-outstanding non-reused UID ledger persists across retired host generations and refuses wrap. Reserved exchange protects exact identity/ranges and replacement state; ledger105/legacycontrol3529/reserved300 checks each O0/O2 ASan/UBSan pass. Idle RX processes one batch without waiting and retains reassembly plus owned event/response inbox; inbox134/RX364 O0/O2 sanitizer checks pass. Preserving OPEN transfers SERIAL suffix once without new FIFO I/O; malformed consumed OPEN poisons matching state. OPEN716/handoff332 new checks each O0/O2 pass. Async submit leaves identity pending; owned response correlation is separated from receive/event delivery; independent427 checks each O0/O2 pass. Separate four-frame14..1518-byte owned Ethernet RX queue now builds in164788B module; independent/primary frames136 and coupled Ethernet285 plus legacy regressions each O0/O2 pass. Bounds are local policy; unsupported profiles/throttle fail closed. Existing startup/scan diagnostics unchanged; opt-in AFTERDOS owner caller clean-builds on Core0/Core1 (194792/195008B), with self-affinity checked before radio access. Independent/primary owner6723 O0/O2 sanitizer checks pass after FIFO-direction and preserved-OPEN partial-age fixes; source review confirms both. Actual CPU execution and SD fairness remain unproven. Ethernet TX and asynchronous AROS ownership remain required. P4 restart losing the ledger is not proof of fresh C6; no deployment or WLAN acceptance. |
 | N2 | AROS WLAN SANA-II integration | `private bridge build/model verified; device build, lifetime and datapath models verified; runtime/wireless gates open; WPA offload gap open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded direct STA TX compile for Core1; source-extracted bridge202 checks each O0/O2 ASan/UBSan repeat on macOS and isolated Linux, exit0, including14/1518-byte frames with checksum0/1. Exec/SDMMC mocked; no runtime concurrency pass. No association or IP readiness claim. The corrected53840B device clean-builds with no undefined imports; independent/primary lifetime782 and primary actual RX/TX datapath14902 checks each O0/O2 sanitized pass on macOS and isolated Linux after independently authored/reviewed harness additions. TX commitment rejects late AbortIO; Close drains. Exec/scheduler/hooks/radio mocked; actual runtime remains open. No device deployment. Existing sana2wireless.h, WirelessManager and bwfm provide references; per-device firmware four-way offload must preserve legacy behavior. Protected scan security metadata, DHCP/build defaults, GUI saving and writable preference storage remain open. No credentials, deployment or hardware pass. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -816,6 +816,23 @@ later events clear it. AP equality with the hint remains private diagnostic
 state, not active-target confirmation. No periodic retry, startup query or new
 public bridge API; native association, privacy and hardware gates stay open.
 
+The subsequent private ABI3 backend adds owned targets and synchronous typed
+association RPCs on the owner service task, default-disabled. Both absence and
+acceptance AP queries carry a link-revision fence; any event received during
+the query requires a fresh query without renewing the aggregate eight-second
+budget. Final acceptance also validates the live host generation under lock.
+Client cancellation hooks run only outside controller ownership; timeouts and
+ambiguous failures retire the session. First supported profiles are open and
+WPA2-PSK/CCMP infrastructure, not a claim of full security-profile support.
+RX/TX now require the separate associated gate. Native queued S2_SETOPTIONS
+and confirmed CONNECT/DISCONNECT delivery are still missing; backend builds
+and host models do not establish actual connectivity or C6 privacy.
+Shared-motor credential retention is an additional host-side privacy gate:
+command.c stages outgoing bytes in the persistent DMA bounce and does not wipe
+them at completion. Clear only after authoritative DMA quiescence, including
+cache visibility; ambiguous ownership must remain quarantined until a safe
+recovery clears it. WLAN-local wiping alone cannot close this requirement.
+
 After the user's reconnection confirmation, a passive20.061s capture on
 2026-10-10 observes advancing JC1060 touch heartbeats only. N1/N1C status
 remains unchanged: no boot continuity, initialized MAC or WLAN acceptance.
@@ -1173,6 +1190,24 @@ current-AP snapshot codec described in N1A. These are prerequisites only;
 neither hints nor administrative S2_ONLINE/MAC readiness establish link-up.
 The owner now has the bounded current-AP runtime snapshot path described in N1A;
 it cannot enable credentials, advertise WPA offload or replace association policy.
+
+Private ABI3 association backend is model/build verified with default-off
+P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED. Its single eight-second budget includes
+disconnect, required ESP_ERR_WIFI_NOT_CONNECT absence snapshot, owned typed
+configuration, connect, bounded AP polling, final host epoch validation and
+failure cleanup. Administrative online/MAC readiness are independent of the
+associated traffic gate. A successful target snapshot is not UID0 causal-event
+attribution, IP delivery or native request-lifetime acceptance. Native binding
+must own queued attempts and commit notifications under its cancellation guard.
+Source audit also found the existing SANA ONEVENT mask incompatible with the
+shared driver's CONNECT/DISCONNECT/OFFLINE subscription, and successful
+CONFIGINTERFACE left the interface offline. Per-unit edge latching and
+administrative configuration fixes are model/build verified; neither fabricates
+radio link-up or grants offload capabilities. C6 hardware gates remain open.
+The shared DMA staging wipe is also required before host-side credential
+enablement: copying into the motor's permanent bounce is outside WLAN-local
+scratch cleanup. Cache visibility and successful DMA quiescence must be proven
+on completion/recovery, without modifying potentially live DMA memory.
 
 Queued scan development (2026-10-10): S2_GETNETWORKS binds the private ABI2
 scan through a single asynchronous descriptor. It may scan before S2_ONLINE,
@@ -34380,3 +34415,84 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   security/identity/non-secret backups and proven restore remain mandatory.
   Continue native association ownership/link gating and actual recovery/privacy
   qualification; candidate build alone cannot permit credentials or close Wi-Fi.
+
+### 2026-10-10 - N1A/N2A private association backend and SANA contract qualification
+
+- Source base9a4143c618 plus the private ABI3 owner backend and native SANA
+  event/configuration changes. No hardware activity. The prior turn only
+  reconfirmed the recovery/privacy question; this turn advances actual source.
+- Owner-service association copies target and credential bytes, validates
+  open or WPA2-PSK/CCMP infrastructure inputs before effects, and uses one8s
+  deadline for Disconnect283/539, absence294/550, SetConfig284/540,
+  Connect282/538, fresh AP queries and cleanup. Stable0x300f absence is required
+  before credentials. Optional BSSID/channel and exact SSID/security must match;
+  malformed AP channel/BSSID refuses. Each polling phase is capped at500 queries.
+  Local credentials/config/request/AP scratch are volatile-wiped. The default
+  privacy/recovery gate remains0; synthetic gate1 builds are not attestations.
+- Independent non-author review found AP replies could be superseded by
+  same-drain775/776 events before acceptance or absence proof. Both queries now
+  capture revision and re-query on change within the original deadline. Final
+  acceptance validates live host generation and ledger generation/revision
+  under controller ownership. Cancellation callbacks are skipped while that
+  controller is held and checked at unlocked boundaries, avoiding unit-lock
+  inversion. Review after corrections reports no remaining backend blocker.
+- Administrative CONFIGINTERFACE now brings the native unit online without
+  fabricating CONNECT. ONEVENT accepts CONNECT/DISCONNECT/ONLINE/OFFLINE;
+  per-unit unconsumed edges survive rearming, opposite newer edges supersede
+  older ones, and offline clears stale CONNECT without inventing DISCONNECT.
+  No actual association observer is bound yet; capabilities remain SUMMARY-only.
+- Primary source-extracted event models pass6 scenarios/67 checks each O0/O2
+  ASan/UBSan on macOS and isolated network-disabled Linux. Existing SANA lifetime
+ 782, scan295 and datapath14902 checks pass each O0/O2 on both hosts, actualexit0.
+  Initial event-runner count rejected same-line struct braces (exit1); fixed
+  extractor rechecked. Initial Linux regression archive omitted exec/types.h
+  (exit1); complete compiler includes fixed the procedure, not production code.
+  Fakes cover list/completion/flush/transport mechanics, not actual Exec scheduling.
+- Primary owner/bridge regressions pass AP-info211, link-callback81,
+  reservation62, scan37447 and bridge219 checks each O0/O2 sanitized on macOS
+  and isolated network-disabled Linux, actualexit0. The first Linux archive
+  omitted sdmmc/host.h and stopped at the bridge compile (exit1); repeating
+  with the complete port source fixed the archive and all five suites passed.
+  Actual request/codec helpers are exercised by the existing owner fixtures;
+  the new full association workflow fixture is qualified separately below.
+- Clean RV32 JC1060-v2 builds invalidate all resource/device objects first.
+  Owner1/core1/privacy-gate0 resource248752B SHA256
+  e611988c12a5a4921c5f638d2c826803f5e2ac9df7c9581370e8d52515e5d919;
+  synthetic gate1 resource248760B
+  de1957530b4fa983774ad0c26d1d2f08a7b8a074b4254825e1ed09c8a57d44ad;
+  default owner0 resource209188B
+  c78e9b20d46ee8a24432cde909fda2de6240ca725d1a376ac5e9d2eb0783810d;
+  native device59296B
+ 268d7e57a223f7aee269505371e31382389744cceace8f7fc8afbde002257675.
+  All builds actually exit0. Earlier field-layout compile failures exited2,
+  corrected to nested ap.ssid_size/primary fields before final clean builds.
+  Default owner0/gate0 is left in the build tree; none is packaged or deployed.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/association-runtime.kXUxMk.
+  Primary full association workflow tests actually exit0 on macOS and
+  network-disabled Linux, each14,312 checks at O0/O2 with ASan/UBSan.
+  Production target validation, AP matching, request reservation/encoding,
+  typed codecs, cancellation, event revisions and association workflow are
+  exercised; RPC exchange, host, clock and Exec boundaries are fakes. Tests
+  cover refusal before effects, open/protected success, remote errors,
+  malformed correlation/AP metadata, stale-event races, aggregate deadlines,
+  cancellation outside controller ownership, generation retirement and
+  WLAN-owned secret wipes. They do not cover the shared motor's staging wipe
+  or actual native asynchronous request lifetime. Both final logs have SHA256
+  7b7332d491c592cb46d42856bcd01ac8231b4df61428ae433a09dc0298d1206f:
+  association-macos-final.log and association-linux-final.log. Identical
+  deterministic output is not a substitute for their actual process exit0.
+- Safety/limits/next: installed core/package/C6 and SD remain untouched; no
+  serial open/reset/flash/credentials or physical test. Native request ownership,
+  queued S2_SETOPTIONS, cancellation/notification commit and link loss lifecycle
+  must be integrated next. Actual C6 identity/security/non-secret backups/proven
+  restore/UART privacy remain mandatory before enablement. Full association,
+  DHCP, bidirectional frames, reconnect and1800s two-hart/SD/display coexistence
+  and recovery acceptance remain open; Wi-Fi is not complete.
+- Additional host privacy finding: sdmmc/command.c145-147 copies TX into the
+  permanent host->bounce and finished returns without wiping it. Later RX may
+  overwrite it but is not a cleanup guarantee, particularly after failure.
+  Native credential enablement also requires a quiescence/cache-correct shared
+  DMA staging wipe and fault/recovery tests. Do not wipe a potentially live DMA
+  buffer or claim WLAN-owned scratch wiping covers shared staging. This audit
+  does not change the motor; the disabled/unbound backend remains undeployed.

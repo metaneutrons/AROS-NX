@@ -4,12 +4,47 @@
 #include "../network/hosted_scan.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef uint32_t ULONG;
 typedef int BOOL;
 #define FALSE 0
 #define TRUE 1
+
+struct Task { unsigned marker; };
+struct SignalSemaphore { struct Task *ss_Owner; unsigned depth; };
+struct P4WifiBase {
+    BOOL associated;
+    struct SignalSemaphore client_lock;
+};
+
+static struct Task test_task;
+static struct P4WifiBase test_resource;
+static struct P4WifiBase *wifi_resource_base = &test_resource;
+
+static struct Task *FindTask(void *name)
+{
+    (void)name;
+    return &test_task;
+}
+
+static void ObtainSemaphore(struct SignalSemaphore *sem)
+{
+    if (sem->depth == 0u)
+        sem->ss_Owner = FindTask(NULL);
+    else if (sem->ss_Owner != FindTask(NULL))
+        abort();
+    ++sem->depth;
+}
+
+static void ReleaseSemaphore(struct SignalSemaphore *sem)
+{
+    if (sem->depth == 0u || sem->ss_Owner != FindTask(NULL))
+        abort();
+    if (--sem->depth == 0u)
+        sem->ss_Owner = NULL;
+}
 
 /* Only the fields read or written by the extracted callback are modeled. */
 struct wifi_probe_context {
@@ -186,11 +221,16 @@ static void check_callback_refusal_unchanged(
     struct p4_hosted_link_observation before;
     uint32_t events_before = context->owner_events;
     uint32_t last_before = context->owner_last_event;
+    memset(&test_resource, 0, sizeof test_resource);
+    test_resource.associated = TRUE;
+    wifi_resource_base = &test_resource;
     memcpy(&before, &context->link_observation, sizeof before);
     CHECK(!wifi_owner_event(context, item));
     CHECK(memcmp(&before, &context->link_observation, sizeof before) == 0);
     CHECK(context->owner_events == events_before);
     CHECK(context->owner_last_event == last_before);
+    CHECK(test_resource.associated == TRUE);
+    CHECK(test_resource.client_lock.depth == 0u);
 }
 
 static void test_callback_copies_775_and_accepts_776_down(void)
@@ -203,6 +243,9 @@ static void test_callback_copies_775_and_accepts_776_down(void)
     uint8_t disconnected_bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE];
 
     memset(&context, 0, sizeof context);
+    memset(&test_resource, 0, sizeof test_resource);
+    test_resource.associated = TRUE;
+    wifi_resource_base = &test_resource;
     context.generation = 34u;
     CHECK(p4_hosted_link_init(&context.link_observation,
                               context.generation));
@@ -220,6 +263,8 @@ static void test_callback_copies_775_and_accepts_776_down(void)
     CHECK(make_item(&item, 775u, 0, connected_ssid, 32u,
                     connected_bssid));
     CHECK(wifi_owner_event(&context, &item) == 1);
+    CHECK(test_resource.associated == FALSE);
+    CHECK(test_resource.client_lock.depth == 0u);
     CHECK(bytes_are_zero(&context.link_snapshot,
                          sizeof context.link_snapshot));
     CHECK(context.link_snapshot_matches_hint == FALSE);
@@ -249,6 +294,8 @@ static void test_callback_copies_775_and_accepts_776_down(void)
     CHECK(make_item(&item, 776u, 0, disconnected_ssid, 8u,
                     disconnected_bssid));
     CHECK(wifi_owner_event(&context, &item) == 1);
+    CHECK(test_resource.associated == FALSE);
+    CHECK(test_resource.client_lock.depth == 0u);
     CHECK(bytes_are_zero(&context.link_snapshot,
                          sizeof context.link_snapshot));
     CHECK(context.link_snapshot_matches_hint == FALSE);
@@ -272,6 +319,9 @@ static void test_malformed_and_bad_envelopes_are_transactional(void)
     uint8_t bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE];
 
     memset(&context, 0, sizeof context);
+    memset(&test_resource, 0, sizeof test_resource);
+    test_resource.associated = TRUE;
+    wifi_resource_base = &test_resource;
     context.generation = 18u;
     CHECK(p4_hosted_link_init(&context.link_observation,
                               context.generation));
@@ -279,6 +329,7 @@ static void test_malformed_and_bad_envelopes_are_transactional(void)
     fill_pattern(bssid, sizeof bssid, 0x24u);
     CHECK(make_item(&item, 775u, 0, ssid, 32u, bssid));
     CHECK(wifi_owner_event(&context, &item) == 1);
+    CHECK(test_resource.associated == FALSE);
     CHECK(context.owner_events == 1u);
 
     make_malformed_item(&item, 775u);
@@ -304,6 +355,9 @@ static void test_stale_generation_and_unrelated_metadata(void)
     uint8_t bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE];
 
     memset(&context, 0, sizeof context);
+    memset(&test_resource, 0, sizeof test_resource);
+    test_resource.associated = TRUE;
+    wifi_resource_base = &test_resource;
     context.generation = 45u;
     CHECK(p4_hosted_link_init(&context.link_observation, 44u));
     fill_pattern(ssid, sizeof ssid, 0x35u);

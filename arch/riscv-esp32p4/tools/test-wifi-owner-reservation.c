@@ -3,6 +3,7 @@
  * owner. No controller or hardware behavior is claimed. */
 #include "hosted_owner.h"
 #include "hosted_mac.h"
+#include "hosted_association.h"
 #include "hosted_scan.h"
 #include "hosted_wifi.h"
 
@@ -28,6 +29,7 @@ struct wifi_owner_control {
     struct p4_hosted_mac mac;
     struct p4_hosted_scan_count scan_count;
     struct p4_hosted_sta_ap_info ap_info;
+    struct p4_hosted_sta_config sta_config;
     struct p4_wifi_scan_result scan_result;
     uint16_t scan_capacity;
     uint8_t request[256];
