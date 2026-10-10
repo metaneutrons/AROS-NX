@@ -21,6 +21,12 @@ Fabian granted conditional C6 update authority on 2026-10-10: inspect firmware
 and update only with secured recovery. Physical readiness and a proven restore
 path remain outstanding. No C6/serial/credential action was taken. See
 network/HOSTED-REFERENCE.md for the gate.
+The local reproduction tree is not yet build verified: protobuf-c and IDF
+Python dependencies are missing. INFO-level SSID logging and unconditional
+current-AP SSID/BSSID printf survive a maximum-INFO configuration. A private
+source-redacted C6 build and archived configuration/artifact hashes are needed;
+neither a source archive nor a successful future build proves installed identity
+or secured recovery.
 
 Association-caller correction in development (2026-10-10): the separate
 upstream-based wireless checkout now validates representable SSIDs and

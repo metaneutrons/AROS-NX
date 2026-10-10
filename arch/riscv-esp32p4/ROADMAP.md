@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2F | C6 firmware privacy and recoverable identity | `source audit; conditional update authority received; physical recovery gate open` | Hosted init/version is not a whole-image hash. Stock OTA is not verified rollback; CN5 UART is schematic-only until actual v2 connector verified. Fabian authorizes C6 update only with secured recovery. Fresh physical readiness, non-secret security/partition/app backups, pinned privacy-safe image and proven restore path remain required before credentials. No C6 action. |
+| N2F | C6 firmware privacy and recoverable identity | `source/privacy audit; private build dependencies unresolved; physical recovery gate open` | Hosted init/version is not a whole-image hash. Maximum-INFO alone leaves SSID INFO and direct AP printf; source redaction required. Local reproduction lacks protobuf-c/generated config/IDF Python dependencies. Stock OTA is not verified rollback; actual CN5 verification, readiness, non-secret backups, privacy-safe image and proven restore remain mandatory under conditional authority. No C6 action. |
 | N2A | Association caller and native link lifecycle | `shared binary-PSK caller verified; owned hints/current-AP runtime query build/model verified` | Generic2eb274ff63 locally integrated; native device remains SUMMARY-only. Owner copies775/776 and runs one correlated294/550 diagnostic snapshot per new hint revision, not CONNECT. Native S2_SETOPTIONS, active-target/lifecycle confirmation, real notifications/traffic gates, C6 privacy and association/DHCP remain required. No credential deployment or link acceptance. |
 | N2S | Native queued SANA scan presentation | `RV32 build verified; source review and corrected scan-helper models passed` | Single bounded owner-service scan, copied SSID filter and caller-pool-owned complete publication. Scan-helper models295 checks each O0/O2 ASan/UBSan on macOS/Linux; outer BeginIO/AbortIO/Close and runtime scheduling remain separate gates. Exact singleton metadata only; unsupported/ambiguous unknown protected. C-string binary SSIDs/invalid channels omitted; max8 local cap. SUMMARY only, no FOURWAY. No credentials/deployment/hardware acceptance. |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
@@ -1141,6 +1141,12 @@ verified on the actual board after fresh physical readiness. Fabian granted
 conditional update authority on 2026-10-10; secured recovery remains mandatory
 before a write, and has not been demonstrated.
 Source development may proceed without sending credentials or changing C6.
+The local reproduction audit finds no generated sdkconfig or compiled candidate,
+an empty protobuf-c dependency directory and an IDF Python environment that
+cannot start idf.py. Maximum-INFO does not remove INFO SSID or direct current-AP
+printf; patch sensitive source logging and data dumps before a private build.
+Archive pinned source/dependencies, actual config and all artifact hashes; this
+offline build remains separate from actual installed identity and restore proof.
 
 Association caller correction is in development in the upstream-based generic
 checkout: validate before effects, use synchronous borrowed stack options,
@@ -34273,3 +34279,37 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   backups, privacy-safe pinned firmware and proven restore before writing.
   Next implement native association ownership/notifications/traffic gates and
   qualify real DHCP/bidirectional/shared-load/recovery; models do not close them.
+
+### 2026-10-10 - N2F local C6 private-build readiness and logging audit
+
+- State/procedure: read-only source/environment audit; no build or hardware
+  action. Reproduction /Volumes/Dev/Build/hosted-reproduce.6qcg7E has no Git
+  metadata, generated sdkconfig, build output or candidate binary. It matches
+  the extracted d5184217f710d54c01f932e75b4c55e3f4933fc9 reference except
+  common/protobuf-c is empty. Source archive identity is not flashed identity.
+- Privacy: slave/main/slave_control.c:816 logs SSID at INFO,819 password at
+  DEBUG,1141 scan SSID/BSSID at DEBUG,1281 current AP SSID/BSSID via printf.
+  app_main.c has DEBUG/VERBOSE frame/control payload dumps; SDIO transport also
+  dumps TX bytes at DEBUG. Maximum-INFO excludes D/V in a fresh configuration
+  but leaves INFO and printf. Remove/redact sensitive fields and packet dump
+  call sites rather than relying only on log configuration that can regress.
+- Build readiness: local IDF5.4.3 Python invocation fails on missing
+  esp_idf_monitor; no configured Python environment. C6 toolchain support
+  exists but only P4 is recorded as installed target; vetted Python/build
+  dependency versions and protobuf-c must be staged first. System CMake/Ninja
+  differ from the IDF tool catalog. No offline buildability claim. Source
+  defaults select C6 SDIO, custom two1536K OTA slots and Wi-Fi NVS disabled;
+  no generated config or actual board partition table was verified.
+- Identity: reference archive
+  /Volumes/Dev/Build/esp-hosted-reference.RzWnFu/hosted-d518.tar.gz,
+  SHA2561310dc05283b6adefa3ec217c017c7a8836801e263115c7192f9d8ef7d435c12;
+  slave_control.c d6234a3479376a4464cac4eac1919f9bbcf6554d24896dd1b63fe4f925bc2619;
+  app_main.c fca4b0d484308cef1f8fab8e5530577d5bbd625e6c383155d9f0facfa037fab9.
+  Primary independently confirms these file hashes; no candidate artifact.
+- Safety/next: create a separate pinned private source copy, repair vetted
+  build dependencies, apply privacy patch and archive generated config,
+  bootloader/partition/app ELF/BIN and build manifest. This permits offline
+  work only. Fresh actual CN5 availability/readiness, device security/identity,
+  non-secret backup and proven restore must precede any C6 write under Fabian's
+  conditional authority. No credentials, NVS inspection, serial, reset, flash
+  or SD writes; hardware recovery and native WLAN acceptance remain open.
