@@ -147,7 +147,10 @@ The fresh93,756-byte module and3,782,312-byte package pass42/42 loader checks
 and capacity, with all41other members unchanged. This candidate is not flashed
 or hardware verified. Its3,784,704-byte erase span needs a new independent
 twice-read full-span backup before deployment. Original baseline remains the
-last verified device state; physical disconnection confirmation is pending.
+last verified device state. Fabian has now confirmed USB-C disconnection and
+reconnection; no new hardware gate has run yet. The legacy CMD52 test fixture
+is repaired using extracted production definitions and passes28cases/193checks
+each O0/O2 sanitized; earlier failed attempts remain recorded.
 
 JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53

@@ -7,6 +7,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import runpy
 import shlex
 import subprocess
 import sys
@@ -17,6 +18,8 @@ PORT = Path(__file__).resolve().parents[1]
 ROOT = PORT.parents[1]
 RUNTIME_SOURCE = PORT / "network" / "runtime_probe.c"
 COMMAND_SOURCE = PORT / "network" / "sdio_commands.c"
+COMMAND_HEADER = PORT / "sdmmc" / "command.h"
+REGISTER_HEADER = PORT / "sdmmc" / "registers.h"
 INSERT_MARKER = "/* INSERT_ACTUAL_WIFI_ADAPTER */"
 
 
@@ -140,10 +143,30 @@ def extract_struct(source: str, name: str) -> str:
 
 def assemble() -> tuple[str, dict[str, str]]:
     runtime = RUNTIME_SOURCE.read_text(encoding="utf-8")
+    extractors = runpy.run_path(str(PORT / "tools" / "test-sdmmc-host.py"))
+    extract_definition = extractors["extract_definition"]
+    extract_constant_lines = extractors["extract_constant_lines"]
+    register_constants = extract_constant_lines(
+        REGISTER_HEADER,
+        (
+            "P4SD_INT_CMD_DATA_MASK",
+            "P4SD_INT_CMD_DONE",
+            "P4SD_INT_RCRC",
+            "P4SD_INT_RTO",
+        ),
+    )
+    command_fault = extract_definition(
+        COMMAND_HEADER,
+        "P4HostCommandFault",
+        r"(?m)^enum\s+P4HostCommandFault\b",
+    ) + ";"
     fixture = FIXTURE
     pieces = {
         "wifi_probe_context": extract_struct(runtime, "wifi_probe_context"),
+        "register_constants": register_constants,
+        "P4HostCommandFault": command_fault,
         "wifi_budget": extract_function(runtime, "wifi_budget"),
+        "wifi_command_failure": extract_function(runtime, "wifi_command_failure"),
         "wifi_command": extract_function(runtime, "wifi_command"),
         "wifi_register_read": extract_function(runtime, "wifi_register_read"),
         "wifi_register_write": extract_function(runtime, "wifi_register_write"),
@@ -219,6 +242,7 @@ struct P4SDMMCHost
     unsigned budget_checks;
     unsigned budget_fail_on_check;
     unsigned reset_calls;
+    BOOL dma_faulted;
 };
 
 static unsigned checks;
@@ -407,6 +431,59 @@ static void test_failure_preserves_outputs(void)
     CHECK(host.reset_calls == 0);
 }
 
+static void expect_classified_failure(enum P4HostCommandStatus status,
+                                      BOOL started, ULONG raw,
+                                      ULONG idstatus, int injected_fault,
+                                      int expected)
+{
+    uint32_t word = UINT32_C(0x76543210);
+    int returned;
+
+    begin_case();
+    command_return = FALSE;
+    command_result.status = status;
+    command_result.started = started;
+    command_result.raw = raw;
+    command_result.idstatus = idstatus;
+    command_result.injected_fault = injected_fault;
+    returned = wifi_command(&context, 52, UINT32_C(0x80000c08),
+                            P4_SDIO_RESP_R5,
+                            P4_SDIO_PROBE_R5_ERROR_MASK, &word);
+    CHECK(returned == expected);
+    CHECK(word == UINT32_C(0x76543210));
+    CHECK(command_calls == 1);
+    CHECK(host.budget_checks == 2);
+}
+
+static void test_exact_reset_failure_classification(void)
+{
+    expect_classified_failure(P4HOST_COMMAND_ERROR, TRUE,
+        P4SD_INT_CMD_DONE | P4SD_INT_RTO, 0, 0,
+        P4_SDIO_COMMAND_RESPONSE_TIMEOUT);
+    expect_classified_failure(P4HOST_COMMAND_ERROR, TRUE,
+        P4SD_INT_CMD_DONE | P4SD_INT_RCRC, 0, 0,
+        P4_SDIO_COMMAND_RESPONSE_CRC);
+    expect_classified_failure(P4HOST_COMMAND_TIMEOUT, TRUE, 0, 0, 0,
+        P4_SDIO_COMMAND_RESPONSE_TIMEOUT);
+    expect_classified_failure(P4HOST_COMMAND_TIMEOUT, FALSE, 0, 0, 0, 0);
+    expect_classified_failure(P4HOST_COMMAND_ERROR, TRUE,
+        P4SD_INT_CMD_DONE | P4SD_INT_RTO, 1, 0, 0);
+    expect_classified_failure(P4HOST_COMMAND_ERROR, TRUE,
+        P4SD_INT_CMD_DONE | P4SD_INT_RTO, 0, 1, 0);
+}
+
+static void test_dma_fault_rejects_completed_command(void)
+{
+    uint8_t value = UINT8_C(0x5c);
+
+    begin_case();
+    host.dma_faulted = TRUE;
+    CHECK(!wifi_register_read(&context, 0, 2, &value));
+    CHECK(value == UINT8_C(0x5c));
+    CHECK(command_calls == 1);
+    CHECK(host.budget_checks == 2);
+}
+
 static void test_budget_pre_and_post_failures_preserve_outputs(void)
 {
     uint8_t value = UINT8_C(0x39);
@@ -512,6 +589,8 @@ int main(void)
     test_write_uses_cmdarg_not_data_phase();
     test_response_flags_and_forwarded_command();
     test_failure_preserves_outputs();
+    test_exact_reset_failure_classification();
+    test_dma_fault_rejects_completed_command();
     test_budget_pre_and_post_failures_preserve_outputs();
     test_generation_change_rejects_result();
     test_r5_error_bits_are_rejected();
@@ -533,7 +612,7 @@ def run() -> int:
     for name, body in extracted.items():
         print(f"  {name}: {sha256(body.encode('utf-8'))}")
     print(f"  sdio_commands.c: {sha256(COMMAND_SOURCE.read_bytes())}")
-    print("Coverage: actual wifi_budget/wifi_command/CMD52 wrappers; actual CMD52 argument builder.")
+    print("Coverage: actual wifi_budget/wifi_command/wifi_command_failure/CMD52 wrappers; extracted register constants/fault enum; actual CMD52 argument builder.")
 
     with tempfile.TemporaryDirectory(prefix="p4-wifi-register-adapter-") as temporary:
         directory = Path(temporary)
@@ -603,7 +682,7 @@ def run() -> int:
             sys.stderr.write(result.stderr)
             if result.returncode != 0:
                 return result.returncode
-            if not re.search(r"(?m)^PASS: 21 cases, \d+ checks$", result.stdout):
+            if not re.search(r"(?m)^PASS: 28 cases, \d+ checks$", result.stdout):
                 print("FAIL: test binary did not report its complete case count", file=sys.stderr)
                 return 1
     return 0

@@ -25,4 +25,3 @@ if [ "$undefined_imports" != "p4_hosted_rpc_encode" ]; then
 	echo "unexpected undefined imports in hosted_mac.o: $undefined_imports" >&2
 	exit 1
 fi
-
