@@ -13,10 +13,11 @@ are `int32 resp=1`, `bytes snapshot=2`. Success requires resp0 and exactly one
 valid inventory. An error response must contain no snapshot. Handlers must
 bound input before unpacking and output before transport publication.
 
-The future startup advertisement must explicitly identify this extension and
+The startup advertisement must explicitly identify this extension and
 its version before a query is permitted. A stock peer receives no speculative
-request. Advertisement, schema generation, serialized handler and owner binding
-are not implemented by the schema patch or inventory codec alone.
+request. Advertisement, schema generation and a serialized handler are included
+in the separate C6 candidate recipe. Native owner negotiation/binding remains
+open; the schema patch or inventory codec alone does not provide these features.
 
 ## Canonical inventory payload
 
@@ -65,6 +66,9 @@ mutation during collection. No inventory authorizes writing or proves recovery.
 
 1056 bytes leaves room within stock1536-byte SDIO buffers for the nested and
 outer Protobuf envelopes, serial endpoint framing and transport header, but the
-actual generated-message packer/framer must still be qualified. No fragmentation
-or relaxed maximum is implied. Source/object tests do not prove live transport,
+generated-message packer and native host frame encoders now pass a maximum-size
+roundtrip (1098 bytes including both wrappers). Actual IDF serial/framing and
+live transport remain unqualified. Request unpacking is bounded by the existing
+4096-byte serial reassembly capacity, not an individual transport frame.
+Source/object tests do not prove live transport,
 stack budget, installed-table provenance or initial-install recovery.

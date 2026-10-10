@@ -104,13 +104,14 @@ it does not test the full RPC handler, allocation failure, wire/radio behavior,
 or compiled IDF library logging. Installed identity, security/backup/restore,
 actual UART privacy, native association and data-path acceptance remain open.
 
-## Read-only discovery producer (not installed or RPC-bound)
+## Read-only discovery producer (candidate integrated, not installed)
 
 `discovery.c/.h` collect a bounded normalized internal IDF partition inventory
 using the pinned IDF5.4.3 APIs, with shared `boardtool/discovery.c/.h` validation
 and the ESP32Board layout parser. This is a producer for the future negotiated
-extension, not an existing query on stock Hosted. There is no dispatcher hook,
-startup capability advertisement, wire schema, GUI binding or update permission.
+extension, not an existing query on stock Hosted. The candidate recipe below
+adds a dispatcher hook, startup capability and generated schema; native P4
+negotiation, GUI binding and update permission remain absent.
 Do not send speculative discovery requests to the installed C6.
 
 Use `esp_flash_get_physical_size` for detected physical capacity and
@@ -135,8 +136,8 @@ refuse the snapshot and leave caller output untouched.
 
 Host tests mock IDF metadata APIs, not flash/radio behavior. Native object builds
 use real C6 headers/config/compiler and include `workbench/tools/ESP32Board` for
-layout.h; this does not produce an integrated firmware. Dispatcher stack size,
-protobuf/framing bounds (stock SDIO buffer1536B), capability/version negotiation,
+layout.h; isolated object tests do not produce integrated firmware. Runtime stack
+margin, live protobuf/framing behavior, native capability/version negotiation,
 freshness/correlation and live owner dispatch remain open. The first installation
 cannot rely on discovery code not yet installed and still requires independently
 secured recovery. Candidate privacy/recovery/credential gates remain unchanged.
@@ -150,9 +151,56 @@ Mutation/allocation sentinels cover the production translation units, not the
 actual IDF iterator implementation, allocator or synchronization.
 
 The proposed wire contract is in [discovery-protocol.md](discovery-protocol.md).
-`discovery-schema.patch` applies cleanly to the pinned Hosted schema but is not
-generated or integrated firmware. Shared discovery_wire.c/.h encode/decode a
+`discovery-schema.patch` applies cleanly to the pinned Hosted schema and is
+generated in the separate candidate below. Shared discovery_wire.c/.h encode/decode a
 canonical1056-byte maximum payload with echoed nonzero nonce and normalized
 records. Run `sh arch/riscv-esp32p4/tools/run-c6-discovery-wire-tests.sh`:
 45 cases/136 assertions pass each O0/O2 with ASan/UBSan. These byte tests do not
 exercise Protobuf framing, epoch/UID correlation, handlers or live transport.
+
+## Serialized discovery RPC integration (build verified, undeployed)
+
+Start with a separate complete Hosted tree carrying both Hosted privacy patches
+above and a private IDF tree carrying both IDF privacy patches. Preserve the
+baseline. From PRIVATE_SOURCE apply each of `discovery-schema.patch` and
+`discovery-integration.patch` using `git apply --check` followed by `git apply`.
+Run the repository's `stage-discovery.sh PRIVATE_SOURCE` with `sh`; it copies
+the collector, handler, shared validator/codec and layout parser into a new
+`aros_extension` subtree and refuses to replace an existing subtree. Regenerate
+the schema from PRIVATE_SOURCE/common/proto:
+
+```sh
+protoc-c --c_out=. esp_hosted_rpc.proto
+```
+
+The verified generator is protobuf-c1.5.2 with libprotoc36.2. Use the isolated
+IDF build procedure above and a fresh build directory. The C6-only CMake branch
+links request350/response606 and defines the version1 startup TLV0x17 only with
+the handler present; other targets do not advertise it. The worker serializes
+collection with its existing OTA handlers. External registry mutations must
+also obey the collector exclusion contract. Unknown policies stay unknown.
+
+Before unpacking, the candidate checks positive input length against the shared
+4096-byte serial reassembly capacity, not a single SDIO/SPI frame. Dispatcher
+failure releases the unpacked request; normal release clears the pointer before
+later error cleanup. Reply/snapshot allocation failure and cleanup are bounded.
+The full candidate rebuild passes and produces a1110496-byte app. Neither the
+newly generated bootloader nor any app has been installed. The bootloader differs
+from the prior candidate; its difference is not qualified or authorized to flash.
+
+Run `sh arch/riscv-esp32p4/tools/run-c6-discovery-rpc-tests.sh PRIVATE_SOURCE`:
+actual handler, codec/validator, generated protobuf and vendored runtime pass
+145 checks/10 cases at both O0/O2 with ASan/UBSan;18 handler allocations and
+18 frees. The collector is stubbed. Native serial/frame encoders are exercised,
+not the actual IDF serial dispatcher/task/radio. The maximum response fits one
+1536-byte SDIO frame (1098 bytes including both wrappers). This does not prove
+runtime stack margin: the5120-byte worker still has roughly3.2KB of nested
+collector/parser scratch before RPC/IDF frames. Native negotiated owner discovery,
+installed-table provenance, secured recovery and real OTA remain open. Keep
+UPDATE-C6 disabled and stock peers query-free.
+
+Run `sh arch/riscv-esp32p4/tools/run-c6-dispatch-cleanup-tests.sh PRIVATE_SOURCE`
+for the extracted actual dispatcher body:54 checks/9 cases pass each O0/O2
+ASan/UBSan with stub dispatcher/protobuf routines. Removing the common request
+free fails the two expected ownership assertions. This tests request/response
+cleanup and the4096-byte input boundary, not IDF scheduling or real transport.

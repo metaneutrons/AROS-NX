@@ -28,15 +28,22 @@ IDF5.4.3 headers. It distinguishes detected physical and usable flash sizes,
 normalizes internal IDF registry entries and correlates sorted running/boot/
 update roles. Unknown bootloader rollback policies stay unknown, and virtual
 eFuses never establish hardware-security facts. This is not raw installed-table
-attestation or live discovery: no RPC hook, wire format, capability advertisement,
-firmware integration or GUI binding exists yet. No board/credentials touched.
+attestation or live discovery. The C6 candidate now includes the handler and
+advertisement; native P4 negotiation and GUI binding remain open. No board or
+credentials touched.
 Actual-source host tests pass35 cases each O0/O2 under ASan/UBSan:205 checks
 for normal security APIs,204 for virtual-eFuse builds. IDF runtime is mocked;
 object compilation and these tests do not establish installed C6 behavior.
 The normalized inventory now has a strict bounded1056-byte codec, checked in
-45 cases/136 assertions each O0/O2 sanitized. A schema-only candidate patch
-adds discovery350/606; generated codecs, startup negotiation, C6 handler and
-native owner transport binding remain open. No new RPC is sent by this code.
+45 cases/136 assertions each O0/O2 sanitized. Generated Protobuf discovery350/
+606, response cleanup and version1 startup TLV0x17 are linked in a fresh
+undeployed C6 candidate1110496B. The dispatcher bounds inputs by the4096-byte
+serial reassembly capacity before unpacking and releases requests on error.
+Actual handler/generated-code host tests pass145 checks/10 cases each O0/O2;
+the collector is stubbed and live IDF dispatch/transport is not qualified. It
+rejects mismatched UID/type/version/nonce and reports failure without inventory.
+Native owner transport binding/negotiation remain open. No new RPC is sent
+by the native P4 code; UPDATE-C6 remains unavailable.
 CLI examples (not yet executed on hardware):
 
     ESP32Board ACTION INFO

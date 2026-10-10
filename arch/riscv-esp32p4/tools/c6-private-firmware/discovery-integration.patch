@@ -1,0 +1,171 @@
+--- a/slave/main/CMakeLists.txt
++++ b/slave/main/CMakeLists.txt
+@@ -7,6 +7,17 @@
+ set(COMPONENT_SRCS "slave_control.c" "${common_dir}/proto/esp_hosted_rpc.pb-c.c" "protocomm_pserial.c" "app_main.c" "slave_bt.c" "mempool.c" "stats.c"  "mempool_ll.c")
+ set(COMPONENT_ADD_INCLUDEDIRS "." "${common_dir}/include" "${common_dir}/proto")
+ 
++if(CONFIG_IDF_TARGET_ESP32C6)
++    set(aros_ext "${CMAKE_CURRENT_SOURCE_DIR}/../../aros_extension")
++    set(aros_collector "${aros_ext}/arch/riscv-esp32p4/tools/c6-private-firmware")
++    set(aros_boardtool "${aros_ext}/arch/riscv-esp32p4/boardtool")
++    set(aros_layout "${aros_ext}/workbench/tools/ESP32Board")
++    list(APPEND COMPONENT_SRCS "${aros_collector}/discovery.c"
++        "${aros_collector}/rpc_discovery.c" "${aros_boardtool}/discovery.c"
++        "${aros_boardtool}/discovery_wire.c" "${aros_layout}/layout.c")
++    list(APPEND COMPONENT_ADD_INCLUDEDIRS "${aros_collector}" "${aros_boardtool}" "${aros_layout}")
++endif()
++
+ if(CONFIG_ESP_SDIO_HOST_INTERFACE)
+     list(APPEND COMPONENT_SRCS sdio_slave_api.c)
+ elseif(CONFIG_ESP_SPI_HOST_INTERFACE)
+@@ -17,6 +28,9 @@
+ 
+ 
+ register_component()
++if(CONFIG_IDF_TARGET_ESP32C6)
++    target_compile_definitions(${COMPONENT_LIB} PRIVATE C6_BOARD_DISCOVERY_VERSION=1)
++endif()
+ set(PROJECT_VERSION_MAJOR_1 "-DPROJECT_VERSION_MAJOR_1=0")
+ set(PROJECT_VERSION_MAJOR_2 "-DPROJECT_VERSION_MAJOR_2=0")
+ set(PROJECT_VERSION_MINOR "-DPROJECT_VERSION_MINOR=6")
+--- a/slave/main/slave_control.c
++++ b/slave/main/slave_control.c
+@@ -23,6 +23,9 @@
+ #include "esp_ota_ops.h"
+ #include "rpc_common.h"
+ #include "adapter.h"
++#ifdef C6_BOARD_DISCOVERY_VERSION
++#include "rpc_discovery.h"
++#endif
+ 
+ #define MAC_STR_LEN                 17
+ #define MAC2STR(a)                  (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
+@@ -1976,6 +1979,12 @@
+ 		.req_num = RPC_ID__Req_WifiGetBandMode,
+ 		.command_handler = req_wifi_get_band_mode
+ 	},
++#ifdef C6_BOARD_DISCOVERY_VERSION
++	{
++		.req_num = RPC_ID__Req_BoardDiscovery,
++		.command_handler = c6_rpc_board_discovery
++	},
++#endif
+ };
+ 
+ 
+@@ -2031,6 +2040,11 @@
+ 	}
+ 
+ 	switch (resp->msg_id) {
++#ifdef C6_BOARD_DISCOVERY_VERSION
++		case RPC_ID__Resp_BoardDiscovery:
++			c6_rpc_board_discovery_cleanup(resp);
++			break;
++#endif
+ 		case (RPC_ID__Resp_GetMACAddress ) : {
+ 			mem_free(resp->resp_get_mac_address->mac.data);
+ 			mem_free(resp->resp_get_mac_address);
+@@ -2297,6 +2311,13 @@
+ 		return ESP_FAIL;
+ 	}
+ 
++#ifdef C6_BOARD_DISCOVERY_VERSION
++	/* Bound allocator work by the serial reassembly capacity. Valid fragmented
++	 * messages may be larger than one SDIO/SPI transport frame. */
++	if (inlen <= 0 || inlen > ESP_SERIAL_REASSEMBLY_MAX)
++		return ESP_ERR_INVALID_ARG;
++#endif
++
+ 	req = rpc__unpack(NULL, inlen, inbuf);
+ 	if (!req) {
+ 		ESP_LOGE(TAG, "Unable to unpack config data");
+@@ -2316,6 +2337,7 @@
+ 	}
+ 
+ 	rpc__free_unpacked(req, NULL);
++	req = NULL;
+ 
+ 	*outlen = rpc__get_packed_size (&resp);
+ 	if (*outlen <= 0) {
+@@ -2339,6 +2361,8 @@
+ 	return ESP_OK;
+ 
+ err:
++	if (req)
++		rpc__free_unpacked(req, NULL);
+ 	esp_rpc_cleanup(&resp);
+ 	return ESP_FAIL;
+ }
+--- a/common/include/adapter.h
++++ b/common/include/adapter.h
+@@ -4,6 +4,9 @@
+ #ifndef __ESP_NETWORK_ADAPTER__H
+ #define __ESP_NETWORK_ADAPTER__H
+ 
++/* Shared bound for the reassembled serial message, not a transport frame. */
++#define ESP_SERIAL_REASSEMBLY_MAX 4096U
++
+ #define PRIO_Q_SERIAL                             0
+ #define PRIO_Q_BT                                 1
+ #define PRIO_Q_OTHERS                             2
+@@ -207,6 +210,7 @@
+ 	ESP_PRIV_RX_Q_SIZE,
+ 	ESP_PRIV_TX_Q_SIZE,
+ 	ESP_PRIV_CAP_EXT, // extended capability (4 bytes)
++	ESP_PRIV_BOARD_DISCOVERY = 0x17, // private singleton version (1 byte)
+ } ESP_PRIV_TAG_TYPE;
+ 
+ typedef enum {
+--- a/slave/main/app_main.c
++++ b/slave/main/app_main.c
+@@ -84,7 +84,7 @@
+ 	uint8_t valid;
+ 	uint16_t cur_seq_no;
+ 	int len;
+-	uint8_t data[4096];
++	uint8_t data[ESP_SERIAL_REASSEMBLY_MAX];
+ } r;
+ 
+ uint8_t ap_mac[BSSID_BYTES_SIZE] = {0};
+--- a/slave/main/sdio_slave_api.c
++++ b/slave/main/sdio_slave_api.c
+@@ -237,6 +237,11 @@
+ 	*pos = LENGTH_1_BYTE;               pos++;len++;
+ 	*pos = SDIO_RX_QUEUE_SIZE;          pos++;len++;
+ 	/* TLVs end */
++#ifdef C6_BOARD_DISCOVERY_VERSION
++	*pos = ESP_PRIV_BOARD_DISCOVERY; pos++; len++;
++	*pos = LENGTH_1_BYTE; pos++; len++;
++	*pos = C6_BOARD_DISCOVERY_VERSION; pos++; len++;
++#endif
+ 
+ 	event->event_len = len;
+ 
+--- a/slave/main/spi_slave_api.c
++++ b/slave/main/spi_slave_api.c
+@@ -299,6 +299,11 @@
+ 	*pos = SPI_TX_QUEUE_SIZE;           pos++;len++;
+ 
+ 	/* TLVs end */
++#ifdef C6_BOARD_DISCOVERY_VERSION
++	*pos = ESP_PRIV_BOARD_DISCOVERY; pos++; len++;
++	*pos = LENGTH_1_BYTE; pos++; len++;
++	*pos = C6_BOARD_DISCOVERY_VERSION; pos++; len++;
++#endif
+ 
+ 	event->event_len = len;
+ 
+--- a/slave/main/spi_hd_slave_api.c
++++ b/slave/main/spi_hd_slave_api.c
+@@ -840,6 +840,11 @@
+ 	*pos = SPI_HD_QUEUE_SIZE;           pos++;len++;
+ 
+ 	/* TLVs end */
++#ifdef C6_BOARD_DISCOVERY_VERSION
++	*pos = ESP_PRIV_BOARD_DISCOVERY; pos++; len++;
++	*pos = LENGTH_1_BYTE; pos++; len++;
++	*pos = C6_BOARD_DISCOVERY_VERSION; pos++; len++;
++#endif
+ 
+ 	event->event_len = len;
+ 
