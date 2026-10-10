@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 response timeout` | Corrected CD route reads0xbe/CDETECT0 but same CMD5 timeout persists. Clock/matrix snapshots match expected paths. Independent IDF-only CMD0/CMD5 reference build passes; safe deployment review underway. Startup/electrical cause, SD integrity, coexistence and C6 compatibility remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 response timeout` | Corrected CD route reads0xbe/CDETECT0 but same CMD5 timeout persists. Independent IDF-only reference build passes; review requires coordinated rail-off before deployment because IDF startup does not quiesce retained display DMA. Await fresh physical readiness; do not flash over active scanout. Startup/electrical cause, SD integrity, coexistence and C6 compatibility remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -218,7 +218,10 @@ still times out identically. An IDF-only control probe is implemented to
 distinguish native-driver behavior from the unchanged radio/hardware state.
 It uses public driver APIs, CMD0 then at most three CMD5(arg0) requests at
 400kHz/one-bit on slot1. Silicon-specific build passes; safe deployment review
-precedes measurement. It does not initialize storage or change C6 firmware.
+requires coordinated complete rail-off before measurement, because IDF startup
+does not quiesce retained AROS display DMA. Fresh physical readiness is requested;
+no diagnostic image has been deployed. It does not initialize storage or change
+C6 firmware. CMD0 nevertheless changes SDIO protocol state.
 No firmware incompatibility inference or WLAN acceptance is justified yet.
 Enumeration alone cannot prove
 ESP-Hosted compatibility or working WLAN.
@@ -29468,6 +29471,28 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   shared SD ownership, C6 compatibility or visible graphics.
 - Next: resolve safe startup, then bounded reference capture and verified
   AROS rollback. Compare actual CMD5 responses, not source similarity alone.
+
+### 2026-10-10 - N0 IDF deployment review requires complete rail-off
+
+- Independent read-only review confirms the command-only probe has no data
+  transfer, CMD52/53 or C6 flash programming path. CMD0 remains protocol-state
+  changing; the earlier "read-only" source description is corrected.
+- Safety finding: IDF6.0.1 `esp_system_reset_modules_on_exit()` in
+  `components/esp_system/port/soc/esp32p4/system_internal.c:37-105` aborts
+  DMA on restart/panic exit paths, not in startup `call_start_cpu0()`
+  (`components/esp_system/port/cpu_start.c:965-1008`). An external USB reset
+  from AROS therefore does not establish scanout quiescence before IDF starts.
+  Do not deploy this reference until coordinated full rail-off or a separately
+  verified quiescence procedure. Fresh physical readiness requested; no
+  hardware access, reset or write performed during this review.
+- Added diagnostic-local safety/build instructions prohibiting generated
+  flash/app-flash targets and requiring app-only0x20000, MAC, full erase-span
+  backup/readback and rollback. Existing image8c2144f9… unchanged; only source
+  comments/docs changed, no new artifact claimed.
+- Native AROS CMD5 timeout remains; C6 firmware, all storage and the running
+  AROS baseline remain unchanged. Next: await readiness, coordinate all power
+  sources, then verify backup/identity and perform bounded reference capture.
+  No WLAN/SD/display acceptance is inferred from this review.
 
 ## Evidence-entry template
 

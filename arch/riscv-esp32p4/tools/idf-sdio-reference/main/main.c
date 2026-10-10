@@ -2,8 +2,9 @@
  * SPDX-FileCopyrightText: 2026 Fabian Schmieder
  * SPDX-License-Identifier: MIT
  *
- * Bounded, read-only ESP-IDF SDIO host reference probe for ESP32-P4.
+ * Bounded ESP-IDF SDIO host reference probe for ESP32-P4.
  * Sends only CMD0 and CMD5(arg=0); it deliberately does not initialize a card.
+ * CMD0 changes protocol state; neither command programs C6 firmware.
  */
 
 #include <inttypes.h>

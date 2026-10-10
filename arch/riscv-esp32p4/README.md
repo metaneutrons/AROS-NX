@@ -94,7 +94,8 @@ implemented under `tools/idf-sdio-reference`: slot1, one-bit,400kHz,
 CMD0 and at most three CMD5(arg0) attempts through the official driver.
 It does not initialize a card, enable functions or change C6 firmware.
 Its silicon-specific build passes (P4 revisions1.0-1.99); safe deployment
-review precedes measurement. No diagnostic firmware has been deployed;
+review requires coordinated rail-off before measurement: IDF startup does
+not quiesce AROS-retained display DMA. No diagnostic firmware has been deployed;
 it is not an AROS driver or a WLAN qualification result.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
