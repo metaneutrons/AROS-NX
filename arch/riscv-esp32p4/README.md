@@ -25,6 +25,14 @@ its passphrase/PSK inputs are available only for drivers advertising that flag.
 ESP-Hosted therefore needs explicit per-device offload capability negotiation,
 without changing BWFM or legacy wireless devices to claim that capability.
 
+Build-time WLAN defaults can use the existing AROSTCP interface database and
+AutoRun/WirelessAutoRun/WirelessDevice preferences, without embedded SSIDs or
+credentials. This is not yet staged in the P4 image. The standard package
+startup uses NOGUI; user network selection requires an accessible GUI path.
+WirelessManager's current Connect action updates in-memory configuration but
+does not save it. Persistent first-use credentials therefore require explicit
+user-preference storage; the read-only SYS/SD contract is not silently relaxed.
+
 Persistent receive implementation is now build verified separately from the
 installed one-shot probe: one bounded RX batch per call, immediate idle return,
 generation-bound assembly retained between calls and a four-item owned RPC
