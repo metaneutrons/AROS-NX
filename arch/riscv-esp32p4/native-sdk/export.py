@@ -35,14 +35,23 @@ def regular_source(root, name):
 
 
 def export(root):
-    name = "arch/riscv-esp32p4/native-sdk/consumer-v1.json"
+    name = "arch/riscv-esp32p4/native-sdk/consumer-v2.json"
     original = regular_source(root, name)
     contract = json.loads(original, object_pairs_hook=unique_object)
-    if contract["schema"] != "aros-native-consumer-contract-v1":
+    if contract["schema"] != "aros-native-consumer-contract-v2":
         raise ValueError("unsupported consumer schema")
     paths = [entry["path"] for entry in contract["inputs"]]
     if not 1 <= len(paths) <= 128 or len(set(paths)) != len(paths) or name in paths:
         raise ValueError("ambiguous, recursive or excessive source inputs")
+    probes = contract["native_sdk_link_probes"]
+    if set(probes) != {"c", "cxx"}:
+        raise ValueError("expected exactly C and C++ application probes")
+    for language, suffix in (("c", ".c"), ("cxx", ".cpp")):
+        probe = probes[language]
+        if set(probe) != {"source", "libraries"}:
+            raise ValueError("unknown application probe metadata")
+        if probe["source"] not in paths or not probe["source"].endswith(suffix):
+            raise ValueError("application probe must be a sealed source input")
     contract["inputs"] = [
         {"path": path, "sha256": hashlib.sha256(regular_source(root, path)).hexdigest()}
         for path in sorted(paths)

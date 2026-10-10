@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The complete native SDK build passed after canonical archive output and Popupmenu ownership corrections. Ordinary C/C++ driver links passed and remain byte-identical after full SDK relocation; invalid SDK/ABI/path counterprobes were rejected. Durable source-owned application gates, a new qualified tools runtime, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The complete native SDK build passed after canonical archive output and Popupmenu ownership corrections. Ordinary C/C++ driver links passed and remain byte-identical after full SDK relocation; invalid SDK/ABI/path counterprobes were rejected. The source-owned v2 contract now seals C/C++ application fixtures, and its loader has positive and counterprobe coverage; this does not execute either link. Durable native execution, relocation receipt/read-back/admission, a new qualified tools runtime, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -538,6 +538,43 @@ change any board's hardware acceptance state.
   is not the public Rust release gate. TC0 remains `in development` until
   durable source-declared C/C++ probes, retained read-back/admission, a released
   runtime, all three host lanes and isolated public artifacts are qualified.
+
+### 2026-10-10 - TC0 source-owned v2 C/C++ probe declaration and loader tests
+
+- Identity: source checkout HEAD `7534dd13ae02a623817596c29f4ccb419cfb2111`
+  with the v2 declaration, exporter, profile selection and probe fixtures in
+  the working tree. `consumer-v2.json` SHA-256 is
+  `18d2c40c3013c2efc6d235ce26b7453d31feacf02ae5d4d86215ae7077e481f6`; C and
+  C++ fixture SHA-256 values are `4d717957353364882cf5b14c6e4a33489c1f6f759734619c7b8766e11ebc5c79`
+  and `7b6625c87e203b70003d67fa5962c621f079e51b928e3c39305e12cf3d519f41`;
+  tools checkout HEAD `e162b98e8b43e42c2c350f78401ecbc98450f149` with the v2
+  loader and tests in the working tree. The preceding local SDK build, links
+  and relocation remain the separate source `953f3b96431a64a7c9fae80cb2a5c70c0c69f4a3`
+  / tools `e162b98e8b43e42c2c350f78401ecbc98450f149` evidence above.
+- Scope: source profile selects `consumer-v2.json`; the source contract seals
+  ordinary `.c` and `.cpp` application fixtures with empty additional-library
+  lists, leaving normal driver runtime defaults in scope. The opt-in source
+  test asserts both typed declarations and verifies that an altered sealed
+  probe copy and missing v2 probe metadata are rejected in an isolated tree.
+- Procedure/configuration: on macOS ARM64, run
+  `python3 arch/riscv-esp32p4/native-sdk/export.py --check`,
+  `python3 arch/riscv-esp32p4/native-sdk/test_export.py` (10 tests), and
+  `AROS_TEST_P4_SOURCE=/Volumes/Dev/Source/Amiga/AROS-NX-gnu-release-integration CARGO_TARGET_DIR=/private/tmp/aros-family-v2-test.KLAdiZ CARGO_INCREMENTAL=0 cargo test -p aros-common --test p4_source_consumer -- --ignored` (1 test).
+  These checks validate source metadata and hashes only; they do not build the
+  SDK or execute either compiler/linker.
+- Evidence: exporter checks and the opt-in loader test passed. The isolated
+  digest counterprobe rejected the changed C fixture, and the loader rejected
+  a v2 contract with `native_sdk_link_probes` removed. No original source input
+  was changed by the counterprobes.
+- Safety/remaining risk: no board, firmware, media, native SDK build tree,
+  release artifact or hardware state was changed or qualified. The earlier
+  local SDK and relocation result is not yet a durable tools receipt gate.
+  Generic native execution, relocated inventory/replay, retained read-back and
+  release admission, qualified runtime, three-host comparison and publication
+  remain open. No hardware claim.
+- Next: integrate the generic ordinary C/C++ link and relocation proof with
+  bounded retained receipt, read-back and source-independent release admission;
+  then qualify the released runtime and all three host lanes.
 
 ## Track E: ESP32-P4 / RV32 SMP
 

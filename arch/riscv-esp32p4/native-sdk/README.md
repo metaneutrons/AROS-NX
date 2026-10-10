@@ -45,6 +45,21 @@ The private GSM link library explicitly exports no SDK headers. Its empty
 `%copy_includes` list preserves the classic Make result without treating an
 unknown variable as proof of an empty native producer.
 
+Contract v2 also seals two ordinary application-link fixtures in
+`native_sdk_link_probes`: one C source and one C++ source. Each path must name
+the corresponding `.c` or `.cpp` file in the measured `inputs` list. The C
+fixture includes the public Exec list and proto headers and calls `NewList`;
+the C++ fixture uses the same SDK API and `std::string` out-of-line operations.
+Both declare an empty additional `libraries` list deliberately: the eventual
+probe uses the measured language driver and must retain its normal startup and
+standard-runtime defaults. The list is only for ordered, explicit extra SDK
+libraries; it does not replace driver defaults.
+
+The source loader verifies the probe declarations and their input seals. That
+is not evidence that the SDK was built or that either fixture linked. Native
+execution, relocated SDK inventory/replay, retained receipt read-back and
+release admission remain separate TC0 gates.
+
 The contract records selector-extension edges in the SDK root, startup and
 GNU libatomic recipes for source-binding checks. It uses the transpiler's
 normalized selector names, not the similarly named Classic Make variables.

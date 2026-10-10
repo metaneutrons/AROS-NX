@@ -93,8 +93,12 @@ passed with startup and standard libraries enabled, then produced byte-identical
 programs after relocating the complete Developer tree. Empty-SDK, wrong-ABI
 and stale-SDK-path counterprobes were rejected. These are local macOS ARM64
 compiler/SDK results, not board execution or a completed release. Durable
-source-owned application gates and three-host release qualification remain open;
-see TC0.
+source-owned application gates and three-host release qualification remain open.
+The source-owned v2 contract now seals ordinary C and C++ application fixtures;
+the opt-in loader test checks both declarations and rejects a changed probe
+input or missing v2 probe metadata. This validates the declaration only: the
+durable tools gate still has to execute the links and retain relocation,
+read-back and release-admission evidence. See TC0.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`

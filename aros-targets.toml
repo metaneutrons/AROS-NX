@@ -84,7 +84,7 @@ mesa_version = "26.0.0"
 [[targets]]
 name = "esp32p4-riscv-gnu"
 toolchain_profile = "rv32-esp32p4"
-native_consumer_contract = "arch/riscv-esp32p4/native-sdk/consumer-v1.json"
+native_consumer_contract = "arch/riscv-esp32p4/native-sdk/consumer-v2.json"
 arch = "riscv32"
 platform = "esp32p4"
 bsp = "generic"

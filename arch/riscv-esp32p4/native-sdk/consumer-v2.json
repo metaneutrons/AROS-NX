@@ -1,11 +1,21 @@
 {
-  "schema": "aros-native-consumer-contract-v1",
+  "schema": "aros-native-consumer-contract-v2",
   "profile": "esp32p4-riscv-gnu",
   "source_baseline": "158dc7a3b77fb4f19c5a3522649779d677a75418",
   "roots": [
     "includes",
     "linklibs"
   ],
+  "native_sdk_link_probes": {
+    "c": {
+      "source": "arch/riscv-esp32p4/native-sdk/probes/application.c",
+      "libraries": []
+    },
+    "cxx": {
+      "source": "arch/riscv-esp32p4/native-sdk/probes/application.cpp",
+      "libraries": []
+    }
+  },
   "inputs": [
     {
       "path": "Makefile.in",
@@ -57,15 +67,23 @@
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/export.py",
-      "sha256": "2e3c95cc6b4e557d2c759b71fb58b28ecf7a6cab917491613493129afead74c4"
+      "sha256": "a8522bc9a3e5651a80de9143486b3241fd6e11a5a23aefa15260e57edd1cf4a3"
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/metamake-v1.json",
       "sha256": "8b272f174be9ca09388474523f9e1578c77665d4962e2746f01caabeed572073"
     },
     {
+      "path": "arch/riscv-esp32p4/native-sdk/probes/application.c",
+      "sha256": "4d717957353364882cf5b14c6e4a33489c1f6f759734619c7b8766e11ebc5c79"
+    },
+    {
+      "path": "arch/riscv-esp32p4/native-sdk/probes/application.cpp",
+      "sha256": "7b6625c87e203b70003d67fa5962c621f079e51b928e3c39305e12cf3d519f41"
+    },
+    {
       "path": "aros-targets.toml",
-      "sha256": "813ea6fb9d855b76289b6c50e73e8e563038be0cccc1c010d5a28b8fdc1b8039"
+      "sha256": "35099dc6bbb3ded56fdafbac5d2db330c8914da6261a2d6783f28eca1e0323c8"
     },
     {
       "path": "compiler/crt/stdc/mmakefile.src",

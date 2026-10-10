@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 
-CONTRACT_RELATIVE = Path("arch/riscv-esp32p4/native-sdk/consumer-v1.json")
+CONTRACT_RELATIVE = Path("arch/riscv-esp32p4/native-sdk/consumer-v2.json")
 EXPORTER_RELATIVE = Path("arch/riscv-esp32p4/native-sdk/export.py")
 
 
@@ -29,6 +29,8 @@ class ExporterTests(unittest.TestCase):
 
         self.write_source("src/a.in", b"alpha source\n")
         self.write_source("src/b.in", b"beta source\n")
+        self.write_source("src/probe.c", b"int main(void) { return 0; }\n")
+        self.write_source("src/probe.cpp", b"int main() { return 0; }\n")
         self.write_contract(self.make_contract())
 
     def write_source(self, name, content):
@@ -37,9 +39,13 @@ class ExporterTests(unittest.TestCase):
         path.write_bytes(content)
         return path
 
-    def make_contract(self, input_paths=("src/a.in", "src/b.in")):
+    def make_contract(self, input_paths=("src/a.in", "src/b.in", "src/probe.c", "src/probe.cpp")):
         return {
-            "schema": "aros-native-consumer-contract-v1",
+            "schema": "aros-native-consumer-contract-v2",
+            "native_sdk_link_probes": {
+                "c": {"source": "src/probe.c", "libraries": []},
+                "cxx": {"source": "src/probe.cpp", "libraries": []},
+            },
             "profile": "esp32p4-riscv-gnu",
             "source_baseline": "fixture-baseline",
             "roots": ["includes", "linklibs"],
@@ -95,7 +101,7 @@ class ExporterTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         updated = json.loads(self.contract_path.read_text(encoding="utf-8"))
-        expected_paths = ["src/a.in", "src/b.in"]
+        expected_paths = ["src/a.in", "src/b.in", "src/probe.c", "src/probe.cpp"]
         self.assertEqual([item["path"] for item in updated["inputs"]], expected_paths)
         self.assertEqual(
             [item["sha256"] for item in updated["inputs"]],
