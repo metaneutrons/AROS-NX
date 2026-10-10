@@ -1251,7 +1251,9 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
             wifi_owner_release(context);
             /* Cancellation hooks never execute with controller ownership. */
             if (wifi_owner_stopping(context)) succeeded = FALSE;
-            if (succeeded) base->associated = TRUE;
+            /* A radio snapshot is not the device's current selection commit.
+             * Keep traffic closed until the serialized service caller fences
+             * its owned attempt under the unit lock and publishes the link. */
             goto finish;
         }
         if (control->ap_info.status != 0x300f) goto finish;

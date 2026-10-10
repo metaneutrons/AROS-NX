@@ -28,15 +28,19 @@ ASan/UBSan on macOS and network-isolated Linux; a standalone real-header RV32
 fixture compiles. These do not test the native request queue or hardware.
 No hardware, credentials or C6 firmware are touched.
 
-Native association development (2026-10-10): private bridge ABI3 adds an
+Native association development (2026-10-10): private bridge ABI4 adds an
 owner-service-only, aggregate-eight-second Disconnect/absence/SetConfig/
 Connect/current-AP path, owned credential copies and separate associated
-traffic gating. It remains default-disabled behind separate C6 and host privacy/
+traffic gating. Successful AP snapshots leave traffic closed until the future
+native owner binding commits a still-current attempt under the unit lock.
+ABI3 and ABI4 clients reject each other. Native committed-link RX/TX fences,
+queue cancellation and confirmed CONNECT publication remain unimplemented.
+It remains default-disabled behind separate C6 and host privacy/
 recovery release assertions; neither build flag is a runtime attestation.
 Initial profile coverage is open or WPA2-PSK/CCMP infrastructure;
 other security profiles are not silently downgraded. This backend is not yet
 bound to S2_SETOPTIONS, and SECURITY_SUMMARY remains the only advertised
-wireless capability. Source-extracted association workflow models pass14,312
+wireless capability. Source-extracted association workflow models pass14,406
 checks each O0/O2 with ASan/UBSan on macOS and network-isolated Linux;
 native event/configuration models pass6 scenarios/67 checks at both levels.
 RPC transport, host, clock and Exec boundaries are fakes. No real credential transmission, C6 update or hardware

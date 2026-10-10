@@ -178,6 +178,8 @@ struct fixture {
     unsigned deadline_during_config;
     unsigned break_after_initial_disconnect;
     unsigned generation_change_final;
+    unsigned cancel_final_snapshot;
+    unsigned cancel_on_final_release;
     uint32_t malformed_response_request_id;
     uint32_t timeout_request_id;
     unsigned timeout_occurrence;
@@ -227,6 +229,10 @@ static void fake_host_release(struct P4SDMMCHost *host)
     CHECK(host->lock.depth == 1u);
     host->lock.ss_Owner = NULL;
     host->lock.depth = 0u;
+    if (f.cancel_on_final_release) {
+        f.cancel_on_final_release = 0u;
+        f.cancel_requested = TRUE;
+    }
 }
 
 static BOOL fake_host_set_budget(struct P4SDMMCHost *host, ULONG usec)
@@ -330,6 +336,33 @@ static int make_down_event(struct p4_hosted_inbox_item *item)
     memset(item, 0, sizeof(*item));
     item->msg_type = P4_HOSTED_RPC_TYPE_EVENT;
     item->msg_id = 776u;
+    item->uid = 0u;
+    item->payload_size = wrapper.size;
+    memcpy(item->payload, wrapper.bytes, wrapper.size);
+    return 1;
+}
+
+static int make_connected_event(struct p4_hosted_inbox_item *item)
+{
+    struct wire_buffer nested, wrapper;
+    uint8_t ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE] = {0};
+    static const uint8_t bssid[6] = {0x02u, 0x11u, 0x22u,
+                                     0x33u, 0x44u, 0x55u};
+    memcpy(ssid, TEST_SSID, sizeof(TEST_SSID) - 1u);
+    wire_init(&nested);
+    wire_bytes_field(&nested, 1u, ssid, sizeof(ssid));
+    wire_uint_field(&nested, 2u, sizeof(TEST_SSID) - 1u);
+    wire_bytes_field(&nested, 3u, bssid, sizeof(bssid));
+    wire_uint_field(&nested, 4u, 6u);
+    wire_uint_field(&nested, 5u, 0u);
+    wire_init(&wrapper);
+    wire_uint_field(&wrapper, 1u, 0u);
+    wire_bytes_field(&wrapper, 2u, nested.bytes, nested.size);
+    if (!nested.ok || !wrapper.ok || wrapper.size > sizeof(item->payload))
+        return 0;
+    memset(item, 0, sizeof(*item));
+    item->msg_type = P4_HOSTED_RPC_TYPE_EVENT;
+    item->msg_id = 775u;
     item->uid = 0u;
     item->payload_size = wrapper.size;
     memcpy(item->payload, wrapper.bytes, wrapper.size);
@@ -581,6 +614,10 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
         return 0;
     }
     fake_now += 1000u;
+    if (state->cancel_final_snapshot && request.msg_id == 294u &&
+        state->request_count[282u] != 0u &&
+        state->final_ap_calls == 1u && status == 0)
+        state->cancel_on_final_release = 1u;
     return 1;
 }
 
@@ -679,6 +716,7 @@ static void check_secret_wiped(void)
 static void test_success_open_and_protected(void)
 {
     struct p4_wifi_association_target target, original;
+    struct p4_hosted_inbox_item event_item;
     fixture_init();
     target_init(&target, 0u);
     original = target;
@@ -692,10 +730,17 @@ static void test_success_open_and_protected(void)
     CHECK(f.budget_calls != 0u);
     CHECK(f.max_timeout <= 8000000u);
     CHECK(memcmp(&target, &original, sizeof(target)) == 0);
+    CHECK(f.base.associated == FALSE);
+    CHECK(f.acquire_calls == f.release_calls);
+    CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
+    CHECK(make_connected_event(&event_item));
+    CHECK(wifi_owner_event(&f.context, &event_item) == 1);
+    CHECK(f.context.link_observation.kind == P4_HOSTED_LINK_UP_HINT);
+    CHECK(f.base.associated == FALSE);
     CHECK(bytes_zero(&f.control.sta_config, sizeof(f.control.sta_config)));
     CHECK(bytes_zero(f.control.request, sizeof(f.control.request)));
     CHECK(bytes_zero(&f.control.ap_info, sizeof(f.control.ap_info)));
-    check_restored(TRUE);
+    check_restored(FALSE);
 
     fixture_init();
     target_init(&target, 1u);
@@ -703,8 +748,27 @@ static void test_success_open_and_protected(void)
     CHECK(invoke(&target) == TRUE);
     CHECK(f.request_count[284u] == 1u && f.secret_seen_in_rpc == 1u);
     CHECK(memcmp(&target, &original, sizeof(target)) == 0);
+    CHECK(f.base.associated == FALSE);
+    CHECK(f.acquire_calls == f.release_calls);
+    CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
     check_secret_wiped();
-    check_restored(TRUE);
+    check_restored(FALSE);
+}
+
+static void test_final_cancellation_refuses_snapshot(void)
+{
+    struct p4_wifi_association_target target;
+    fixture_init();
+    target_init(&target, 0u);
+    f.cancel_final_snapshot = 1u;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.final_ap_calls == 1u);
+    CHECK(f.cancel_requested == TRUE);
+    CHECK(f.cancel_calls != 0u);
+    CHECK(f.base.associated == FALSE);
+    CHECK(f.acquire_calls == f.release_calls);
+    CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
+    check_restored(FALSE);
 }
 
 static void test_default_gate_and_validation_refuse_without_rpc(void)
@@ -796,7 +860,10 @@ static void test_initial_and_final_event_races(void)
     CHECK(invoke(&target) == TRUE);
     CHECK(f.request_count[294u] == 3u); /* Retry absence query, then final AP. */
     CHECK(f.request_count[284u] == 1u);
-    check_restored(TRUE);
+    CHECK(f.base.associated == FALSE);
+    CHECK(f.acquire_calls == f.release_calls);
+    CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
+    check_restored(FALSE);
 
     fixture_init();
     target_init(&target, 0u);
@@ -923,6 +990,7 @@ static void test_transport_timeout_and_malformed_correlation(void)
 int main(void)
 {
     test_success_open_and_protected();
+    test_final_cancellation_refuses_snapshot();
     test_default_gate_and_validation_refuse_without_rpc();
     test_remote_failures_and_absence_requirements();
     test_ap_identity_cipher_and_channel_validation();

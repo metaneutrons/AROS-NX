@@ -5,7 +5,7 @@
 #include <exec/types.h>
 #include "hosted_scan.h"
 
-#define P4_WIFI_DEVICE_BRIDGE_ABI 3u
+#define P4_WIFI_DEVICE_BRIDGE_ABI 4u
 #define P4_WIFI_DEVICE_BRIDGE_NAME "esp32p4wifi.resource"
 
 struct P4WifiBase;
@@ -74,6 +74,20 @@ struct p4_wifi_device_callbacks {
  * It disconnects/verifies absence before configuration, then confirms the
  * current AP against the target and revalidates the live host epoch. TRUE is a
  * current-target snapshot, not causal attribution of UID0 events or IP proof.
+ * associate never opens the traffic gate. On TRUE, its service caller must
+ * revalidate its owned attempt/opener/online token under the device unit lock
+ * before setting associated and publishing CONNECT together. The caller owns
+ * client_lock throughout that serialized service callback. Events can dispatch
+ * recursively inside association RPCs, but no transport call may occur between
+ * the returned snapshot's lifecycle fence and publication. Owner event dispatch
+ * then cannot interleave that commit. Device RX/TX must also check its committed
+ * link/token under unit lock so concurrent Close/Offline/supersession can
+ * invalidate traffic immediately, without taking client_lock in reverse order.
+ * After an entered operation, failed/cancelled results leave associated false;
+ * invalid calls refused before entry do not mutate an existing link. A native
+ * new selection must invalidate its own committed link before starting work.
+ * A rejected queue completion must not set associated. ABI4 changes this success
+ * semantic: an older client expecting associate to open traffic must be refused.
  * association_enabled is false until both C6 and host privacy/recovery release
  * assertions are granted; builds cannot verify those hardware gates. Even an
  * open target must not bypass either gate. Failure/cancellation
