@@ -23,6 +23,32 @@ static int rx_ranges(const void *const *objects, const size_t *sizes,
     return 1;
 }
 
+static int inbox_init_allowed(const struct p4_hosted_inbox *inbox,
+                              uint32_t generation)
+{
+    if (inbox->initialized == 0u)
+        return inbox->generation == 0u && inbox->head == 0u &&
+               inbox->count == 0u && inbox->poisoned == 0u;
+    return inbox->initialized == 1u && inbox->generation != 0u &&
+           inbox->generation != generation;
+}
+
+static int frames_init_allowed(const struct p4_hosted_frames *frames,
+                               uint32_t generation)
+{
+    if (frames->initialized == 0u)
+        return frames->generation == 0u && frames->head == 0u &&
+               frames->count == 0u && frames->poisoned == 0u;
+    if (frames->initialized != 1u || frames->generation == 0u ||
+        frames->generation == generation ||
+        frames->head >= P4_HOSTED_FRAME_QUEUE_CAPACITY ||
+        frames->count > P4_HOSTED_FRAME_QUEUE_CAPACITY ||
+        frames->poisoned > 1u)
+        return 0;
+    return frames->poisoned == 0u ||
+           (frames->head == 0u && frames->count == 0u);
+}
+
 int p4_hosted_rx_start(struct p4_hosted_rx *state, uint32_t generation)
 {
     const void *objects[1] = {state};
@@ -30,15 +56,17 @@ int p4_hosted_rx_start(struct p4_hosted_rx *state, uint32_t generation)
     if (!generation || !rx_ranges(objects, sizes, 1u)) return 0;
     if (state->initialized > 1u ||
         (state->initialized == 1u && state->generation == generation)) return 0;
-    /* Validate the assembler's complete start precondition before touching
-     * either child. Inbox init may additionally reject corrupt queue state;
-     * its refusal is transactional. After it succeeds, assembler start cannot
-     * refuse under the exclusive-owner contract. No large stack copy needed. */
+    /* Validate each child's complete start precondition before touching any
+     * child. Under exclusive ownership, the three initializers then cannot
+     * refuse partway through the composite rebind. No large stack copy needed. */
     if (state->assembly.initialized > 1u ||
         (state->assembly.initialized &&
-         state->assembly.generation == generation)) return 0;
+         state->assembly.generation == generation) ||
+        !inbox_init_allowed(&state->inbox, generation) ||
+        !frames_init_allowed(&state->frames, generation)) return 0;
     if (!p4_hosted_inbox_init(&state->inbox, generation)) return 0;
     if (!p4_hosted_reassembly_start(&state->assembly, generation)) return 0;
+    if (!p4_hosted_frames_init(&state->frames, generation)) return 0;
     state->generation = generation;
     state->initialized = 1u;
     state->poisoned = 0u;
@@ -55,6 +83,7 @@ int p4_hosted_rx_invalidate(struct p4_hosted_rx *state,
     if (state->initialized == 1u && state->generation == generation) {
         (void)p4_hosted_reassembly_abort(&state->assembly, generation);
         (void)p4_hosted_inbox_invalidate(&state->inbox, generation);
+        (void)p4_hosted_frames_invalidate(&state->frames, generation);
         state->poisoned = 1u;
         matched = 1;
     }
@@ -88,7 +117,11 @@ static int rx_guard(struct p4_hosted_rx *state, struct p4_hosted_fifo *fifo,
         state->assembly.initialized != 1u || state->assembly.poisoned ||
         state->assembly.generation != generation ||
         state->inbox.initialized != 1u || state->inbox.poisoned ||
-        state->inbox.generation != generation)
+        state->inbox.generation != generation ||
+        state->frames.initialized != 1u || state->frames.poisoned ||
+        state->frames.generation != generation ||
+        state->frames.count > P4_HOSTED_FRAME_QUEUE_CAPACITY ||
+        state->frames.head >= P4_HOSTED_FRAME_QUEUE_CAPACITY)
         return rx_fail(state, fifo, generation, result,
                        P4_HOSTED_RX_SESSION, 1u);
     if (ops->budget_ok(ops->context) != 1)
@@ -102,7 +135,11 @@ static int rx_guard(struct p4_hosted_rx *state, struct p4_hosted_fifo *fifo,
         state->assembly.initialized != 1u || state->assembly.poisoned ||
         state->assembly.generation != generation ||
         state->inbox.initialized != 1u || state->inbox.poisoned ||
-        state->inbox.generation != generation)
+        state->inbox.generation != generation ||
+        state->frames.initialized != 1u || state->frames.poisoned ||
+        state->frames.generation != generation ||
+        state->frames.count > P4_HOSTED_FRAME_QUEUE_CAPACITY ||
+        state->frames.head >= P4_HOSTED_FRAME_QUEUE_CAPACITY)
         return rx_fail(state, fifo, generation, result,
                        P4_HOSTED_RX_SESSION, 1u);
     return 1;
@@ -121,6 +158,23 @@ static int rx_batch(struct p4_hosted_rx *state, struct p4_hosted_fifo *fifo,
     while (offset < logical) {
         if (!p4_hosted_decode(buffer + offset, logical - offset,
                               checksum_enabled, &frame)) goto malformed;
+        if (frame.interface_type == P4_HOSTED_STA) {
+            full = state->frames.count == P4_HOSTED_FRAME_QUEUE_CAPACITY;
+            if (frame.interface_number != 0u || frame.flags != 0u ||
+                frame.sequence != 0u || frame.packet_type != 0u ||
+                frame.throttle != 0u ||
+                frame.payload_size < P4_HOSTED_ETHERNET_HEADER_SIZE ||
+                frame.payload_size > P4_HOSTED_ETHERNET_FRAME_MAX)
+                goto malformed;
+            if (!p4_hosted_frames_push(&state->frames, generation,
+                                       frame.payload, frame.payload_size))
+                return rx_fail(state, fifo, generation, result,
+                    full ? P4_HOSTED_RX_FRAME_QUEUE_FULL :
+                           P4_HOSTED_RX_PROTOCOL, 1u);
+            ++result->frames;
+            offset += frame.wire_size;
+            continue;
+        }
         assembled = p4_hosted_reassembly_feed(&state->assembly, generation,
                                                &frame);
         if (assembled == P4_HOSTED_REASSEMBLY_PARTIAL) {
@@ -186,7 +240,8 @@ int p4_hosted_rx_take_open(struct p4_hosted_rx *state,
      * validation below. A second receiver must never replay this suffix. */
     opened->suffix_taken = 1u;
     result->error = P4_HOSTED_RX_OK;
-    result->batches = result->messages = result->partial = 0u;
+    result->batches = result->messages = result->frames =
+        result->partial = 0u;
     result->logical_bytes = opened->serial_suffix_bytes;
     checksum = !!(opened->init.capabilities & P4_HOSTED_CHECKSUM_CAPABILITY);
     if (!p4_hosted_decode(buffer, opened->logical_bytes, checksum, &initial) ||
@@ -236,10 +291,15 @@ int p4_hosted_rx_poll(struct p4_hosted_rx *state,
         state->inbox.generation != generation ||
         state->inbox.count > P4_HOSTED_INBOX_CAPACITY ||
         state->inbox.head >= P4_HOSTED_INBOX_CAPACITY ||
+        state->frames.initialized != 1u || state->frames.generation != generation ||
+        state->frames.poisoned ||
+        state->frames.count > P4_HOSTED_FRAME_QUEUE_CAPACITY ||
+        state->frames.head >= P4_HOSTED_FRAME_QUEUE_CAPACITY ||
         fifo->initialized != 1u || fifo->generation != generation ||
         fifo->poisoned || fifo->busy) return 0;
     result->error = P4_HOSTED_RX_OK;
-    result->batches = result->messages = result->partial = 0u;
+    result->batches = result->messages = result->frames =
+        result->partial = 0u;
     result->logical_bytes = 0u;
     if (!rx_guard(state, fifo, generation, ops, result, 0u)) return 0;
     ok = ops->read_word(ops->context, P4_HOSTED_OPEN_INT_RAW, &raw);

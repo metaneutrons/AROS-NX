@@ -371,7 +371,10 @@ static void run_rx_protocol_fault(unsigned checksum_enabled,
         body, sizeof body, checksum_enabled);
     CHECK(frame_size != 0u);
     if (corrupt_header)
-        frame[0] = (uint8_t)((frame[0] & 0xf0u) | P4_HOSTED_STA);
+        /* STA now carries opaque Ethernet. AP is still unsupported and
+         * preserves this negative interface-header test without guessing
+         * an Ethernet payload's contents. */
+        frame[0] = (uint8_t)((frame[0] & 0xf0u) | P4_HOSTED_AP);
     else
         frame[frame_size - 1u] ^= 1u;
     rx_add_batch(&fixture, frame, frame_size);

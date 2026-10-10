@@ -16,6 +16,7 @@ for test_opt in 0 2; do
 		"$test_root/network/hosted_wire.c" \
 		"$test_root/network/hosted_init.c" \
 		"$test_root/network/hosted_inbox.c" \
+		"$test_root/network/hosted_frames.c" \
 		"$test_root/network/hosted_epoch_reassembly.c" \
 		"$test_root/network/hosted_serial.c" \
 		"$test_root/network/hosted_rpc.c" \

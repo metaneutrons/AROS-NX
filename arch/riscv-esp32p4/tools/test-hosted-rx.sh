@@ -11,6 +11,7 @@ for test_opt in 0 2; do
 		-fno-omit-frame-pointer \
 		"$test_root/network/hosted_rx.c" \
 		"$test_root/network/hosted_inbox.c" \
+		"$test_root/network/hosted_frames.c" \
 		"$test_root/network/hosted_control.c" \
 		"$test_root/network/hosted_request_ids.c" \
 		"$test_root/network/hosted_tx.c" \

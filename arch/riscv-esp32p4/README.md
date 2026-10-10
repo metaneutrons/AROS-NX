@@ -63,6 +63,19 @@ with a primary repeat and UID105/RX364/OPEN716/handoff332 regressions passing.
 These are host-model tests, not hardware qualification. The
 persistent AROS owner worker and SANA-II device are still unimplemented.
 
+Ethernet RX routing now copies complete STA/0 frames into a separate four-item
+owned queue, preserving interleaved fragmented SERIAL RPCs. Its14..1518-byte
+bound is local policy, not a negotiated peer limit; unsupported AP/interface
+profiles and nonzero throttle fail closed. Overflow or malformed consumed
+input wipes/retires matching-generation state. Dispatch remains outside host
+ownership. Preserving OPEN still accepts SERIAL suffixes only. A fresh164788B
+module links the new frame queue; primary frames136/RX364/OPEN716/handoff332/
+pending427 regressions each O0/O2 pass under Linux ASan/UBSan. Independent
+coupled Ethernet285 checks each O0/O2 pass, repeated by the primary in a
+network-isolated snapshot with actual exit0; source review finds no blockers.
+This has not been
+deployed and does not implement Ethernet TX, an AROS owner or SANA-II.
+
 The native control foundation now supports bounded sequential Init/SetMode/
 Start/Stop/Deinit/GetMAC envelopes on one existing FIFO ledger, with owned
 response bodies and exact UID/operation correlation. Linux O0/O2 sanitizer
