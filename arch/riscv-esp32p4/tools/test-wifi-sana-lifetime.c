@@ -138,6 +138,8 @@ static struct allocation_record allocations[128];
 static unsigned allocation_slots;
 static unsigned allocation_calls;
 static unsigned free_calls;
+static unsigned association_wipe_checks;
+static APTR association_to_wipe_check;
 static unsigned reply_calls;
 static unsigned signal_calls;
 static unsigned signal_alloc_calls;
@@ -205,6 +207,14 @@ static void FreeVec(APTR memory)
     CHECK(index < allocation_slots);
     CHECK(allocations[index].pointer == memory);
     CHECK(allocations[index].live);
+    if (memory == association_to_wipe_check) {
+        const UBYTE *bytes = memory;
+        size_t offset;
+        for (offset = 0; offset < sizeof(struct p4wlan_association); ++offset)
+            CHECK(bytes[offset] == 0u);
+        ++association_wipe_checks;
+        association_to_wipe_check = NULL;
+    }
     allocations[index].live = FALSE;
     ++free_calls;
     free(memory);
@@ -354,6 +364,8 @@ static void reset_observations(void)
     allocation_slots = 0u;
     allocation_calls = 0u;
     free_calls = 0u;
+    association_wipe_checks = 0u;
+    association_to_wipe_check = NULL;
     reply_calls = 0u;
     signal_calls = 0u;
     signal_alloc_calls = 0u;
@@ -768,6 +780,109 @@ static void test_close_drains_when_signal_allocation_fails(void)
     CHECK(close_request.ios2_BufferManagement == NULL);
 }
 
+static struct p4wlan_opener *heap_opener_for_close(struct fixture *fixture)
+{
+    struct p4wlan_opener *opener;
+    opener = AllocVec(sizeof(*opener), MEMF_PUBLIC | MEMF_CLEAR);
+    CHECK(opener != NULL);
+    minlist_init(&opener->requests);
+    opener->refs = 1u;
+    ADDTAIL((struct List *)&fixture->unit.openers,
+            (struct Node *)&opener->unit_node);
+    fixture->unit.open_count = 2u;
+    active_unit = &fixture->unit;
+    return opener;
+}
+
+static void test_close_retires_pending_association_and_credential(void)
+{
+    struct fixture fixture;
+    struct p4wlan_unit *attempt_unit;
+    struct p4wlan_opener *opener;
+    struct p4wlan_association *attempt;
+    struct IOSana2Req close_request;
+
+    reset_observations();
+    fixture_init(&fixture);
+    opener = heap_opener_for_close(&fixture);
+    attempt_unit = &fixture.unit;
+    attempt = AllocVec(sizeof(*attempt), MEMF_PUBLIC | MEMF_CLEAR);
+    CHECK(attempt != NULL);
+    association_to_wipe_check = attempt;
+#undef unit
+    attempt->unit = attempt_unit;
+#define unit base.unit
+    attempt->opener = opener;
+    attempt->token = 3u;
+    attempt->target.password_length = 8u;
+    memcpy(attempt->target.password, "password", 8u);
+    fixture.unit.selection_token = 3u;
+    fixture.unit.pending_association = attempt;
+    ++opener->refs;
+
+    memset(&close_request, 0, sizeof(close_request));
+    close_request.ios2_Req.io_Message.mn_Length = sizeof(close_request);
+    close_request.ios2_Req.io_Unit = (struct Unit *)&fixture.unit;
+    close_request.ios2_BufferManagement = opener;
+    alloc_signal_result = -1;
+    CHECK(Close(&fixture.base,
+                (struct IORequest *)&close_request.ios2_Req) == TRUE);
+    CHECK(fixture.unit.pending_association == NULL);
+    CHECK(fixture.unit.active_association == NULL);
+    CHECK(fixture.unit.selection_token == 4u);
+    CHECK(fixture.unit.link_opener == NULL && !fixture.unit.link_committed);
+    CHECK(close_request.ios2_Req.io_Unit == NULL);
+    CHECK(close_request.ios2_BufferManagement == NULL);
+    CHECK(association_wipe_checks == 1u);
+    CHECK(allocation_calls == 2u && free_calls == 2u);
+    CHECK(live_allocations() == 0u);
+    CHECK(minlist_count(&fixture.unit.openers) == 1);
+    CHECK(minlist_contains(&fixture.unit.openers,
+                           &fixture.opener.unit_node));
+}
+
+static void test_close_releases_committed_link_pin(void)
+{
+    struct fixture fixture;
+    struct p4wlan_opener *opener;
+    struct IOSana2Req close_request;
+
+    reset_observations();
+    fixture_init(&fixture);
+    opener = heap_opener_for_close(&fixture);
+    opener->refs++;
+    fixture.unit.selection_token = 8u;
+    fixture.unit.link_committed = TRUE;
+    fixture.unit.link_opener = opener;
+    fixture.unit.link_info.ssid[0] = 'a';
+    fixture.unit.link_info.ssid_length = 1u;
+    fixture.unit.link_info.bssid[0] = 2u;
+    fixture.unit.link_info.channel = 11u;
+
+    memset(&close_request, 0, sizeof(close_request));
+    close_request.ios2_Req.io_Message.mn_Length = sizeof(close_request);
+    close_request.ios2_Req.io_Unit = (struct Unit *)&fixture.unit;
+    close_request.ios2_BufferManagement = opener;
+    alloc_signal_result = -1;
+    CHECK(Close(&fixture.base,
+                (struct IORequest *)&close_request.ios2_Req) == TRUE);
+    CHECK(fixture.unit.selection_token == 9u);
+    CHECK(!fixture.unit.link_committed && fixture.unit.link_opener == NULL);
+    {
+        size_t index;
+        const UBYTE *bytes = (const UBYTE *)&fixture.unit.link_info;
+        for (index = 0; index < sizeof(fixture.unit.link_info); ++index)
+            CHECK(bytes[index] == 0u);
+    }
+    CHECK(close_request.ios2_Req.io_Unit == NULL);
+    CHECK(close_request.ios2_BufferManagement == NULL);
+    CHECK(allocation_calls == 1u && free_calls == 1u);
+    CHECK(live_allocations() == 0u);
+    CHECK(minlist_count(&fixture.unit.openers) == 1);
+    CHECK(minlist_contains(&fixture.unit.openers,
+                           &fixture.opener.unit_node));
+}
+
 static void test_event_completion_retains_owner_until_finish(void)
 {
     struct fixture fixture;
@@ -942,6 +1057,8 @@ int main(void)
     test_immediate_io_reuse_has_no_stale_membership();
     test_close_waiter_signalled_after_reply();
     test_close_drains_when_signal_allocation_fails();
+    test_close_retires_pending_association_and_credential();
+    test_close_releases_committed_link_pin();
     test_event_completion_retains_owner_until_finish();
     test_flush_respects_states_and_event_policy();
     printf("SANA lifetime host checks: %lu\n", checks);

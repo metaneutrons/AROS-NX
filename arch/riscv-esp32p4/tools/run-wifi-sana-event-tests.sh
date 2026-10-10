@@ -183,6 +183,9 @@ extract_block p4wlan_request_kind "$header_file"
 extract_block p4wlan_request_state "$header_file"
 extract_block p4wlan_request "$header_file"
 extract_block p4wlan_opener "$header_file"
+extract_block p4_wifi_link_info "$bridge_file"
+extract_block p4_wifi_association_target "$bridge_file"
+extract_block p4wlan_association "$header_file"
 extract_block p4_wifi_scan_result "$bridge_file"
 extract_block p4wlan_unit "$header_file"
 
@@ -190,6 +193,10 @@ extract_function p4wlan_event_locked
 extract_function p4wlan_event_mask_valid
 extract_function p4wlan_event_ready_locked
 extract_function p4wlan_onevent_immediate_locked
+extract_function p4wlan_wipe_bytes
+extract_function p4wlan_drop_pin_locked
+extract_function p4wlan_retire_association_locked
+extract_function p4wlan_invalidate_selection_locked
 extract_function p4wlan_online_locked
 extract_function p4wlan_configure_interface_locked
 extract_function p4wlan_set_offline_locked

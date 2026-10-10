@@ -66,6 +66,7 @@ struct p4wlan_request
     UBYTE destination[6];
     APTR data;
     ULONG offered_frame;
+    ULONG link_token;
 };
 
 /* Buffer hooks and filter are copied from the OpenDevice tag list.  The list
@@ -96,6 +97,17 @@ struct p4wlan_opener
     ULONG last_rx_frame;
 };
 
+/* SETOPTIONS is acknowledged before radio work. This allocation owns every
+ * input byte and an opener pin, never an IOSana2Req or borrowed tag pointer. */
+struct p4wlan_association
+{
+    struct p4wlan_unit *unit;
+    struct p4wlan_opener *opener;
+    struct p4_wifi_association_target target;
+    ULONG token;
+    BOOL cancelled;
+};
+
 /* This unit and its callback table live for the full noexpunge device
  * lifetime.  Its radio registration is made once and intentionally survives
  * the last CloseDevice; Close retires opener-owned requests but never detaches
@@ -107,6 +119,12 @@ struct p4wlan_unit
     struct MinList write_queue;
     struct MinList scan_queue;
     struct P4WifiBase *radio;
+    struct p4wlan_association *pending_association;
+    struct p4wlan_association *active_association;
+    struct p4wlan_opener *link_opener;
+    struct p4_wifi_link_info link_info;
+    ULONG selection_token;
+    BOOL link_committed;
     struct Sana2DeviceStats stats;
     struct Sana2DeviceQuery query;
     UBYTE mac[6];

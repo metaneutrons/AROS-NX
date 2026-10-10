@@ -204,6 +204,33 @@ struct fixture {
 
 static struct fixture f;
 
+static void check_confirmed_ap_cleared(void)
+{
+    CHECK(bytes_zero(&f.base.confirmed_ap, sizeof(f.base.confirmed_ap)));
+}
+
+static void check_confirmed_ap_preserved(void)
+{
+    const uint8_t *bytes = (const uint8_t *)&f.base.confirmed_ap;
+    size_t index;
+    for (index = 0u; index < sizeof(f.base.confirmed_ap); ++index)
+        CHECK(bytes[index] == 0xa5u);
+}
+
+static void check_confirmed_ap_matches(ULONG authmode)
+{
+    static const uint8_t bssid[6] =
+        {0x02u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u};
+    struct p4_wifi_link_info expected;
+    memset(&expected, 0, sizeof(expected));
+    memcpy(expected.ssid, TEST_SSID, sizeof(TEST_SSID) - 1u);
+    expected.ssid_length = sizeof(TEST_SSID) - 1u;
+    memcpy(expected.bssid, bssid, sizeof(bssid));
+    expected.channel = 6u;
+    expected.authmode = authmode;
+    CHECK(memcmp(&f.base.confirmed_ap, &expected, sizeof(expected)) == 0);
+}
+
 static ULONG fake_now_us(void)
 {
     return fake_now;
@@ -644,6 +671,7 @@ static void fixture_init(void)
     f.base.ready = TRUE;
     f.base.association_enabled = TRUE;
     f.base.associated = TRUE;
+    memset(&f.base.confirmed_ap, 0xa5, sizeof(f.base.confirmed_ap));
     f.base.owner_task = current_task;
     f.base.client_lock.ss_Owner = current_task;
     f.base.client_lock.depth = 1u;
@@ -731,12 +759,14 @@ static void test_success_open_and_protected(void)
     CHECK(f.max_timeout <= 8000000u);
     CHECK(memcmp(&target, &original, sizeof(target)) == 0);
     CHECK(f.base.associated == FALSE);
+    check_confirmed_ap_matches(0u);
     CHECK(f.acquire_calls == f.release_calls);
     CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
     CHECK(make_connected_event(&event_item));
     CHECK(wifi_owner_event(&f.context, &event_item) == 1);
     CHECK(f.context.link_observation.kind == P4_HOSTED_LINK_UP_HINT);
     CHECK(f.base.associated == FALSE);
+    check_confirmed_ap_cleared();
     CHECK(bytes_zero(&f.control.sta_config, sizeof(f.control.sta_config)));
     CHECK(bytes_zero(f.control.request, sizeof(f.control.request)));
     CHECK(bytes_zero(&f.control.ap_info, sizeof(f.control.ap_info)));
@@ -749,6 +779,7 @@ static void test_success_open_and_protected(void)
     CHECK(f.request_count[284u] == 1u && f.secret_seen_in_rpc == 1u);
     CHECK(memcmp(&target, &original, sizeof(target)) == 0);
     CHECK(f.base.associated == FALSE);
+    check_confirmed_ap_matches(3u);
     CHECK(f.acquire_calls == f.release_calls);
     CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
     check_secret_wiped();
@@ -766,6 +797,7 @@ static void test_final_cancellation_refuses_snapshot(void)
     CHECK(f.cancel_requested == TRUE);
     CHECK(f.cancel_calls != 0u);
     CHECK(f.base.associated == FALSE);
+    check_confirmed_ap_cleared();
     CHECK(f.acquire_calls == f.release_calls);
     CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
     check_restored(FALSE);
@@ -781,6 +813,7 @@ static void test_default_gate_and_validation_refuse_without_rpc(void)
     CHECK(invoke(&target) == FALSE);
     CHECK(f.exchange_calls == 0u);
     check_restored(TRUE);
+    check_confirmed_ap_preserved();
 
     for (invalid_case = 0u; invalid_case < 7u; ++invalid_case) {
         fixture_init();
@@ -799,6 +832,7 @@ static void test_default_gate_and_validation_refuse_without_rpc(void)
         CHECK(f.exchange_calls == 0u);
         CHECK(memcmp(&target, &original, sizeof(target)) == 0);
         check_restored(TRUE);
+        check_confirmed_ap_preserved();
     }
     CHECK(!wifi_association_target_valid(NULL));
 }
@@ -827,6 +861,7 @@ static void test_remote_failures_and_absence_requirements(void)
         if (scenario == 0u) CHECK(f.request_count[283u] == 2u);
         if (scenario >= 3u) CHECK(f.request_count[294u] == 1u);
         check_secret_wiped();
+        check_confirmed_ap_cleared();
         check_restored(FALSE);
     }
 }
@@ -847,6 +882,7 @@ static void test_ap_identity_cipher_and_channel_validation(void)
         CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
         CHECK(f.final_ap_calls == 1u);
         check_secret_wiped();
+        check_confirmed_ap_cleared();
         check_restored(FALSE);
     }
 }
@@ -861,6 +897,7 @@ static void test_initial_and_final_event_races(void)
     CHECK(f.request_count[294u] == 3u); /* Retry absence query, then final AP. */
     CHECK(f.request_count[284u] == 1u);
     CHECK(f.base.associated == FALSE);
+    check_confirmed_ap_matches(0u);
     CHECK(f.acquire_calls == f.release_calls);
     CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
     check_restored(FALSE);
@@ -871,6 +908,7 @@ static void test_initial_and_final_event_races(void)
     CHECK(invoke(&target) == FALSE);
     CHECK(f.final_ap_calls == 2u); /* Stale success discarded; fresh query fails. */
     CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+    check_confirmed_ap_cleared();
     check_restored(FALSE);
 }
 
@@ -906,6 +944,7 @@ static void test_cancel_break_timeout_and_generation_retirement(void)
     CHECK(f.exchange_calls == 0u);
     CHECK(f.cancel_calls != 0u && f.cancel_called_owned == 0u);
     check_restored(TRUE);
+    check_confirmed_ap_preserved();
 
     fixture_init();
     target_init(&target, 1u);
@@ -914,6 +953,7 @@ static void test_cancel_break_timeout_and_generation_retirement(void)
     CHECK(f.request_count[284u] == 1u && f.submitted_count[282u] == 0u);
     CHECK(f.cancel_called_owned == 0u);
     check_secret_wiped();
+    check_confirmed_ap_cleared();
     check_restored(FALSE);
 
     fixture_init();
@@ -924,6 +964,7 @@ static void test_cancel_break_timeout_and_generation_retirement(void)
     CHECK(f.submitted_count[284u] == 0u);
     CHECK(set_signal_calls != 0u);
     check_secret_wiped();
+    check_confirmed_ap_cleared();
     check_restored(FALSE);
 
     fixture_init();
@@ -934,6 +975,7 @@ static void test_cancel_break_timeout_and_generation_retirement(void)
     CHECK(f.cancel_called_owned == 0u);
     CHECK(fake_now - 100000u >= 8000000u);
     check_secret_wiped();
+    check_confirmed_ap_cleared();
     check_restored(FALSE);
 
     fixture_init();
@@ -944,6 +986,7 @@ static void test_cancel_break_timeout_and_generation_retirement(void)
     CHECK(f.base.associated == FALSE);
     CHECK(f.owner.poisoned == 1u || f.owner.ids.retired == 1u);
     check_secret_wiped();
+    check_confirmed_ap_cleared();
     check_restored(FALSE);
 }
 
@@ -965,6 +1008,7 @@ static void test_transport_timeout_and_malformed_correlation(void)
             CHECK(f.request_count[294u] == 1u);
         }
         check_secret_wiped();
+        check_confirmed_ap_cleared();
         check_restored(FALSE);
     }
 
@@ -974,6 +1018,7 @@ static void test_transport_timeout_and_malformed_correlation(void)
     CHECK(invoke(&target) == FALSE);
     CHECK(f.request_count[283u] == 1u && f.owner.poisoned == 1u);
     check_secret_wiped();
+    check_confirmed_ap_cleared();
     check_restored(FALSE);
 
     fixture_init();
@@ -984,6 +1029,7 @@ static void test_transport_timeout_and_malformed_correlation(void)
     CHECK(f.request_count[282u] == 1u && f.submitted_count[282u] == 1u);
     CHECK(f.owner.poisoned == 1u);
     check_secret_wiped();
+    check_confirmed_ap_cleared();
     check_restored(FALSE);
 }
 

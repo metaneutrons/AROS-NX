@@ -38,6 +38,7 @@ typedef int BOOL;
 #define S2ERR_TX_FAILURE 13
 #define S2WERR_BUFF_ERROR 21u
 #define S2WERR_GENERIC_ERROR 22u
+#define S2EVENT_CONNECT 0x0200u
 #define P4WLAN_MAX_FRAME 1518u
 #define P4WLAN_ETH_HEADER 14u
 #define P4WLAN_MTU 1500u
@@ -423,6 +424,8 @@ static void fixture_init(struct fixture *fixture, unsigned opener_count)
     fixture->base.unit.initialized = TRUE;
     fixture->base.unit.online = TRUE;
     fixture->base.unit.hardware_ready = TRUE;
+    fixture->base.unit.link_committed = TRUE;
+    fixture->base.unit.selection_token = 1u;
     fixture->base.unit.radio = &fixture->radio;
     fixture->base.unit.mac[0] = 0x02;
     fixture->base.unit.mac[1] = 0x11;
@@ -474,6 +477,7 @@ static struct p4wlan_request *queue_write(
     CHECK(validated_raw == raw);
     item = p4wlan_alloc_request(opener, request, P4WLAN_REQUEST_WRITE);
     CHECK(item != NULL);
+    item->link_token = fixture->base.unit.selection_token;
     item->capacity = length;
     item->packet_type = packet_type;
     item->io_flags = request->ios2_Req.io_Flags;
@@ -758,6 +762,32 @@ static void test_abort_refuses_committed_tx(void)
     CHECK(request.ios2_Req.io_Error == 0);
     CHECK(request.ios2_WireError == 0u);
     CHECK(fixture.base.unit.stats.PacketsSent == 1u);
+    check_tx_frame_wiped(&fixture.base.unit);
+    check_fixture_empty(&fixture);
+}
+
+static void test_superseded_tx_is_rejected_at_commit(void)
+{
+    struct fixture fixture;
+    struct IOSana2Req request;
+    const UBYTE destination[6] = {0x02, 0x21, 0x22, 0x23, 0x24, 0x25};
+    UBYTE payload[4] = {0x31, 0x32, 0x33, 0x34};
+    struct p4wlan_request *item;
+
+    reset_observations();
+    fixture_init(&fixture, 1u);
+    item = queue_write(&fixture, &fixture.openers[0], &request, destination,
+                       payload, sizeof(payload), 0x0800u, FALSE);
+    CHECK(item->link_token == 1u);
+    ++fixture.base.unit.selection_token;
+    CHECK(fixture.base.unit.link_committed == TRUE);
+    CHECK(p4wlan_send_one(&fixture.base.unit, &fixture.radio));
+    CHECK(send_calls == 0u);
+    CHECK(reply_calls == 1u && replies[0] == &request);
+    CHECK(request.ios2_Req.io_Error == S2ERR_TX_FAILURE);
+    CHECK(request.ios2_WireError == S2WERR_GENERIC_ERROR);
+    CHECK(fixture.base.unit.stats.PacketsSent == 0u);
+    CHECK(fixture.base.unit.tx_dropped_frames == 1u);
     check_tx_frame_wiped(&fixture.base.unit);
     check_fixture_empty(&fixture);
 }
@@ -1227,6 +1257,48 @@ static void test_offline_rx_drop_does_not_complete_read(void)
     CHECK(free_calls == 1u);
 }
 
+static void test_uncommitted_rx_drop_does_not_complete_read(void)
+{
+    struct fixture fixture;
+    struct IOSana2Req request;
+    struct p4wlan_request *item;
+    struct MinList done;
+    UBYTE buffer[16];
+    UBYTE frame[P4WLAN_ETH_HEADER + 2u];
+    const UBYTE destination[6] = {0x02, 0, 0, 0, 0, 1};
+    const UBYTE source[6] = {0x02, 0, 0, 0, 0, 2};
+    const UBYTE payload[2] = {0x56, 0x78};
+
+    reset_observations();
+    fixture_init(&fixture, 1u);
+    item = queue_read(&fixture, &fixture.openers[0], &request, buffer,
+                      sizeof(buffer), 0x0800u, 0u);
+    fixture.base.unit.link_committed = FALSE;
+    ++fixture.base.unit.selection_token;
+    build_frame(frame, destination, source, 0x0800u, payload,
+                sizeof(payload));
+
+    CHECK(p4wlan_frame_callback(&fixture.base.unit, frame, sizeof(frame)));
+    CHECK(reply_calls == 0u);
+    CHECK(item->state == P4WLAN_REQUEST_QUEUED);
+    CHECK(item->link_token == 0u);
+    CHECK(fixture.base.unit.stats.PacketsReceived == 0u);
+    CHECK(fixture.base.unit.rx_dropped_frames == 1u);
+
+    minlist_init(&done);
+    ObtainSemaphore(&fixture.base.unit.lock);
+    p4wlan_flush_all_locked(&fixture.base.unit, &done,
+                            S2ERR_OUTOFSERVICE, S2WERR_UNIT_OFFLINE, TRUE);
+    ReleaseSemaphore(&fixture.base.unit.lock);
+    CHECK(minlist_count(&done) == 1u);
+    p4wlan_finish_done(&fixture.base.unit, &done);
+    CHECK(reply_calls == 1u && replies[0] == &request);
+    CHECK(request.ios2_Req.io_Error == S2ERR_OUTOFSERVICE);
+    CHECK(request.ios2_WireError == S2WERR_UNIT_OFFLINE);
+    CHECK(fixture.openers[0].refs == 1u);
+    CHECK(minlist_count(&fixture.openers[0].requests) == 0u);
+}
+
 int main(void)
 {
     test_cooked_tx_frame_contents();
@@ -1236,6 +1308,7 @@ int main(void)
     test_radio_send_failure_completes_once_and_wipes();
     test_abort_during_copy_prevents_wire_send();
     test_abort_refuses_committed_tx();
+    test_superseded_tx_is_rejected_at_commit();
     test_rx_broadcast_multicast_and_multiple_openers();
     test_rx_filter_rejects_then_advances_to_next_frame();
     test_rx_short_buffer_completes_once_with_error();
@@ -1247,6 +1320,7 @@ int main(void)
     test_cooked_rx_rejects_payload_above_mtu();
     test_malformed_rx_lengths_drop_without_consuming_read();
     test_offline_rx_drop_does_not_complete_read();
+    test_uncommitted_rx_drop_does_not_complete_read();
     printf("SANA datapath host checks: %lu\n", checks);
     return 0;
 }

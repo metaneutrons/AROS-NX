@@ -707,6 +707,8 @@ static int wifi_owner_event(void *opaque,
          * again by an active association operation. Never infer CONNECT here. */
         ObtainSemaphore(&wifi_resource_base->client_lock);
         wifi_resource_base->associated = FALSE;
+        p4host_zero(&wifi_resource_base->confirmed_ap,
+                    sizeof(wifi_resource_base->confirmed_ap));
         ReleaseSemaphore(&wifi_resource_base->client_lock);
     }
     /* Own typed metadata only. Uncorrelated UP_HINT cannot publish CONNECT;
@@ -1187,6 +1189,7 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     runtime->servicing = FALSE;
     base->associated = FALSE;
     p4host_zero(&control->sta_config, sizeof(control->sta_config));
+    p4host_zero(&base->confirmed_ap, sizeof(base->confirmed_ap));
     p4host_zero(&control->ap_info, sizeof(control->ap_info));
     mutated = TRUE; /* Even an ambiguous Disconnect must not retain link-up. */
     if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
@@ -1251,6 +1254,14 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
             wifi_owner_release(context);
             /* Cancellation hooks never execute with controller ownership. */
             if (wifi_owner_stopping(context)) succeeded = FALSE;
+            if (succeeded) {
+                CopyMem(control->ap_info.ap.ssid, base->confirmed_ap.ssid,
+                        control->ap_info.ap.ssid_size);
+                base->confirmed_ap.ssid_length = control->ap_info.ap.ssid_size;
+                CopyMem(control->ap_info.ap.bssid, base->confirmed_ap.bssid, 6);
+                base->confirmed_ap.channel = control->ap_info.ap.primary;
+                base->confirmed_ap.authmode = control->ap_info.ap.authmode;
+            }
             /* A radio snapshot is not the device's current selection commit.
              * Keep traffic closed until the serialized service caller fences
              * its owned attempt under the unit lock and publishes the link. */
@@ -1371,6 +1382,7 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     ObtainSemaphore(&base->client_lock);
     base->ready = FALSE;
     base->associated = FALSE;
+    p4host_zero(&base->confirmed_ap, sizeof(base->confirmed_ap));
     base->runtime = NULL;
     base->owner_task = NULL;
     if (base->client && base->callbacks)
@@ -2046,6 +2058,7 @@ static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
         (P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED &&
          P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED) ? TRUE : FALSE;
     P4WifiBase->associated = FALSE;
+    p4host_zero(&P4WifiBase->confirmed_ap, sizeof(P4WifiBase->confirmed_ap));
     InitSemaphore(&P4WifiBase->client_lock);
     P4WifiBase->client = NULL;
     P4WifiBase->callbacks = NULL;

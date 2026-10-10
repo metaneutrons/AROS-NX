@@ -95,6 +95,9 @@ extract_block p4wlan_request_kind "$header_file"
 extract_block p4wlan_request_state "$header_file"
 extract_block p4wlan_request "$header_file"
 extract_block p4wlan_opener "$header_file"
+extract_block p4_wifi_link_info "$test_root/network/device_bridge.h"
+extract_block p4_wifi_association_target "$test_root/network/device_bridge.h"
+extract_block p4wlan_association "$header_file"
 extract_block p4_wifi_scan_result "$test_root/network/device_bridge.h"
 extract_block p4wlan_unit "$header_file"
 
@@ -109,6 +112,10 @@ extract_function p4wlan_first_done
 extract_function p4wlan_finish_request
 extract_function p4wlan_finish_done
 extract_function p4wlan_queue_done_locked
+extract_function p4wlan_drop_pin_locked
+extract_function p4wlan_retire_association_locked
+extract_function p4wlan_invalidate_selection_locked
+extract_function p4wlan_cancel_opener_association_locked
 extract_function p4wlan_flush_opener_locked
 extract_function p4wlan_flush_all_locked
 extract_function p4wlan_alloc_request

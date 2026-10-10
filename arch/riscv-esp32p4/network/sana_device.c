@@ -14,6 +14,7 @@
 #include "device_bridge.h"
 #include "sana_device.h"
 #include "scan_projection.h"
+#include "association_options.h"
 
 #include LC_LIBDEFS_FILE
 
@@ -33,6 +34,8 @@ static const UWORD p4wlan_supported_commands[] = {
     S2_OFFLINE,
     S2_GETNETWORKS,
     S2_GETWIRELESSCAPABILITIES,
+    S2_SETOPTIONS,
+    S2_GETNETWORKINFO,
     CMD_READ,
     CMD_WRITE,
     CMD_FLUSH,
@@ -288,6 +291,59 @@ static void p4wlan_queue_done_locked(struct p4wlan_unit *unit,
     p4wlan_add_done_locked(done, item, error, wire_error);
 }
 
+/* Both attempt and committed-link pins use Close's existing drain. This
+ * helper is called under unit->lock, never by taking client_lock in reverse. */
+static void p4wlan_drop_pin_locked(struct p4wlan_unit *unit,
+                                   struct p4wlan_opener *opener)
+{
+    (void)unit;
+    if (opener->refs) --opener->refs;
+    if (opener->closing && opener->close_waiter && opener->refs == 1 &&
+        opener->close_task && opener->close_signal)
+        Signal(opener->close_task, opener->close_signal);
+}
+
+static void p4wlan_retire_association_locked(struct p4wlan_association *attempt)
+{
+    p4wlan_drop_pin_locked(attempt->unit, attempt->opener);
+    p4wlan_wipe_bytes((UBYTE *)attempt, sizeof(*attempt));
+    FreeVec(attempt);
+}
+
+static void p4wlan_invalidate_selection_locked(struct p4wlan_unit *unit)
+{
+    /* Saturation is permanent: no old token may become valid after wrap. */
+    if (unit->selection_token != ~(ULONG)0) ++unit->selection_token;
+    if (unit->active_association)
+        unit->active_association->cancelled = TRUE;
+    if (unit->pending_association) {
+        p4wlan_retire_association_locked(unit->pending_association);
+        unit->pending_association = NULL;
+    }
+    unit->link_committed = FALSE;
+    unit->pending_events &= ~S2EVENT_CONNECT;
+    p4wlan_wipe_bytes((UBYTE *)&unit->link_info, sizeof(unit->link_info));
+    if (unit->link_opener) {
+        p4wlan_drop_pin_locked(unit, unit->link_opener);
+        unit->link_opener = NULL;
+    }
+}
+
+static void p4wlan_cancel_opener_association_locked(struct p4wlan_unit *unit,
+                                                    struct p4wlan_opener *opener)
+{
+    if ((unit->pending_association &&
+         unit->pending_association->opener == opener) ||
+        unit->link_opener == opener ||
+        (unit->active_association &&
+         unit->active_association->opener == opener &&
+         unit->active_association->token == unit->selection_token))
+        p4wlan_invalidate_selection_locked(unit);
+    else if (unit->active_association &&
+             unit->active_association->opener == opener)
+        unit->active_association->cancelled = TRUE;
+}
+
 static void p4wlan_flush_opener_locked(struct p4wlan_unit *unit,
                                        struct p4wlan_opener *opener,
                                        struct MinList *done,
@@ -295,6 +351,7 @@ static void p4wlan_flush_opener_locked(struct p4wlan_unit *unit,
                                        BOOL flush_events)
 {
     struct MinNode *node = opener->requests.mlh_Head;
+    p4wlan_cancel_opener_association_locked(unit, opener);
     while (node->mln_Succ) {
         struct MinNode *next = node->mln_Succ;
         struct p4wlan_request *item =
@@ -429,6 +486,7 @@ static void p4wlan_set_offline_locked(struct p4wlan_unit *unit,
 {
     BOOL changed = unit->online;
     unit->online = FALSE;
+    p4wlan_invalidate_selection_locked(unit);
     /* Administrative shutdown is not proof of link loss, but an old CONNECT
      * hint must not be returned after the interface has gone offline. Do not
      * synthesize DISCONNECT here; only a confirmed link observer may do that. */
@@ -494,7 +552,7 @@ static BOOL p4wlan_resource_valid(struct P4WifiBase *radio)
 {
     return radio && radio->bridge_abi == P4_WIFI_DEVICE_BRIDGE_ABI &&
            radio->bridge_size >= sizeof(*radio) && radio->attach &&
-           radio->detach && radio->send_frame && radio->scan;
+           radio->detach && radio->send_frame && radio->scan && radio->associate;
 }
 
 static void p4wlan_ready_callback(APTR client, const UBYTE *mac)
@@ -563,7 +621,8 @@ static BOOL p4wlan_frame_callback(APTR client, const UBYTE *frame,
         __sync_fetch_and_add(&unit->rx_dropped_frames, 1);
         return TRUE;
     }
-    if (!unit->hardware_ready || !unit->online || unit->callback_fault) {
+    if (!unit->hardware_ready || !unit->online || !unit->link_committed ||
+        unit->callback_fault) {
         __sync_fetch_and_add(&unit->rx_dropped_frames, 1);
         ReleaseSemaphore(&unit->lock);
         return TRUE;
@@ -600,7 +659,8 @@ static BOOL p4wlan_frame_callback(APTR client, const UBYTE *frame,
 
         if (!AttemptSemaphore(&unit->lock))
             return TRUE;
-        if (!unit->hardware_ready || !unit->online || unit->callback_fault) {
+        if (!unit->hardware_ready || !unit->online || !unit->link_committed ||
+            unit->callback_fault) {
             ReleaseSemaphore(&unit->lock);
             return TRUE;
         }
@@ -623,6 +683,7 @@ static BOOL p4wlan_frame_callback(APTR client, const UBYTE *frame,
                     candidate->packet_type == packet_type) {
                     opener = candidate_opener;
                     item = candidate;
+                    item->link_token = unit->selection_token;
                     break;
                 }
             }
@@ -691,7 +752,8 @@ static BOOL p4wlan_frame_callback(APTR client, const UBYTE *frame,
 
         ObtainSemaphore(&unit->lock);
         if (item->cancelled || opener->closing || !unit->online ||
-            !unit->hardware_ready || unit->callback_fault) {
+            !unit->hardware_ready || !unit->link_committed ||
+            item->link_token != unit->selection_token || unit->callback_fault) {
             item->completion_error = IOERR_ABORTED;
             item->completion_wire = S2WERR_GENERIC_ERROR;
             item->completion_sets_length = FALSE;
@@ -766,7 +828,9 @@ static BOOL p4wlan_send_one(struct p4wlan_unit *unit,
     }
 
     ObtainSemaphore(&unit->lock);
-    cancelled = item->cancelled || opener->closing;
+    cancelled = item->cancelled || opener->closing || !unit->online ||
+        !unit->hardware_ready || !unit->link_committed || unit->callback_fault ||
+        item->link_token != unit->selection_token;
     /* Linearize irreversible TX against AbortIO under the same lock. Once
      * committed, AbortIO must refuse rather than promise a suppressed frame.
      * Close/offline still cancel completion and drain the active reference. */
@@ -929,12 +993,140 @@ static BOOL p4wlan_scan_one(struct p4wlan_unit *unit, struct P4WifiBase *radio)
     return TRUE;
 }
 
+static BOOL p4wlan_association_cancelled(APTR opaque)
+{
+    struct p4wlan_association *attempt = opaque;
+    struct p4wlan_unit *unit = attempt->unit;
+    BOOL cancelled;
+    ObtainSemaphore(&unit->lock);
+    cancelled = attempt->cancelled || attempt->opener->closing ||
+        unit->active_association != attempt ||
+        unit->selection_token != attempt->token || !unit->online ||
+        !unit->hardware_ready || unit->callback_fault;
+    ReleaseSemaphore(&unit->lock);
+    return cancelled;
+}
+
+static BOOL p4wlan_confirmed_target_matches(
+    const struct p4_wifi_link_info *info,
+    const struct p4_wifi_association_target *target)
+{
+    ULONG i;
+    if (info->ssid_length != target->ssid_length || !info->ssid_length ||
+        info->ssid_length > 32 || !p4wlan_mac_valid(info->bssid) ||
+        info->channel < 1 || info->channel > 14 ||
+        (target->channel && info->channel != target->channel) ||
+        info->authmode != target->authmode || info->ssid[info->ssid_length])
+        return FALSE;
+    for (i = 0; i < info->ssid_length; ++i)
+        if (info->ssid[i] != target->ssid[i]) return FALSE;
+    return !target->bssid_set || p4wlan_mac_equal(info->bssid, target->bssid);
+}
+
+static BOOL p4wlan_associate_one(struct p4wlan_unit *unit,
+                                 struct P4WifiBase *radio)
+{
+    struct p4wlan_association *attempt;
+    struct p4_wifi_association_cancel cancel;
+    struct MinList done;
+    BOOL succeeded;
+    NEWLIST(&done);
+    if (!AttemptSemaphore(&unit->lock)) return TRUE;
+    /* Resource hints revoke the radio gate, never prove causal link loss.
+     * Invalidate native acceptance too, but do not fabricate DISCONNECT. */
+    if (unit->link_committed && !radio->associated)
+        p4wlan_invalidate_selection_locked(unit);
+    attempt = unit->pending_association;
+    if (!attempt) {
+        ReleaseSemaphore(&unit->lock);
+        return FALSE;
+    }
+    unit->pending_association = NULL;
+    unit->active_association = attempt;
+    ReleaseSemaphore(&unit->lock);
+    cancel.context = attempt;
+    cancel.cancelled = p4wlan_association_cancelled;
+    succeeded = !p4wlan_association_cancelled(attempt) &&
+        radio == unit->radio && radio->association_enabled && radio->associate &&
+        radio->associate(radio, &attempt->target, &cancel);
+
+    /* client_lock remains owned by this serialized service caller. No RPC
+     * between associate's returned snapshot and this unit lifecycle fence. */
+    ObtainSemaphore(&unit->lock);
+    succeeded = succeeded && !attempt->cancelled && !attempt->opener->closing &&
+        unit->active_association == attempt &&
+        unit->selection_token == attempt->token && unit->online &&
+        unit->hardware_ready && !unit->callback_fault &&
+        p4wlan_confirmed_target_matches(&radio->confirmed_ap, &attempt->target);
+    if (succeeded) {
+        CopyMem(&radio->confirmed_ap, &unit->link_info, sizeof(unit->link_info));
+        unit->link_opener = attempt->opener;
+        ++attempt->opener->refs; /* committed link has its own lifecycle pin */
+        unit->link_committed = TRUE;
+        radio->associated = TRUE;
+        p4wlan_event_locked(unit, S2EVENT_CONNECT, &done);
+    } else {
+        radio->associated = FALSE;
+        /* An acknowledged attempt's late failure is not confirmed link loss.
+         * Never synthesize CONNECT or DISCONNECT from a timeout/error. */
+    }
+    unit->active_association = NULL;
+    p4wlan_retire_association_locked(attempt);
+    p4wlan_wipe_bytes((UBYTE *)&radio->confirmed_ap, sizeof(radio->confirmed_ap));
+    ReleaseSemaphore(&unit->lock);
+    p4wlan_finish_done(unit, &done);
+    return TRUE;
+}
+
+struct p4wlan_network_publication {
+    struct TagItem tags[5];
+    struct p4_wifi_link_info info;
+};
+
+/* Caller pool owns the publication until it has consumed the reply. Never
+ * publish pointers into a unit snapshot that a later selection can replace. */
+static void p4wlan_network_info_locked(struct p4wlan_unit *unit,
+                                       struct IOSana2Req *request)
+{
+    struct p4wlan_network_publication *publication;
+    request->ios2_StatData = NULL;
+    if (!unit->online || !unit->hardware_ready || !unit->link_committed ||
+        unit->callback_fault) {
+        request->ios2_Req.io_Error = S2ERR_OUTOFSERVICE;
+        request->ios2_WireError = S2WERR_UNIT_OFFLINE;
+        return;
+    }
+    if (!request->ios2_Data) {
+        request->ios2_Req.io_Error = S2ERR_BAD_ARGUMENT;
+        request->ios2_WireError = S2WERR_NULL_POINTER;
+        return;
+    }
+    publication = AllocPooled(request->ios2_Data, sizeof(*publication));
+    if (!publication) {
+        request->ios2_Req.io_Error = S2ERR_NO_RESOURCES;
+        request->ios2_WireError = S2WERR_GENERIC_ERROR;
+        return;
+    }
+    p4wlan_zero_bytes((UBYTE *)publication, sizeof(*publication));
+    CopyMem(&unit->link_info, &publication->info, sizeof(publication->info));
+    publication->tags[0].ti_Tag = S2INFO_SSID;
+    publication->tags[0].ti_Data = (IPTR)publication->info.ssid;
+    publication->tags[1].ti_Tag = S2INFO_BSSID;
+    publication->tags[1].ti_Data = (IPTR)publication->info.bssid;
+    publication->tags[2].ti_Tag = S2INFO_Channel;
+    publication->tags[2].ti_Data = publication->info.channel;
+    publication->tags[3].ti_Tag = S2INFO_PortType;
+    publication->tags[3].ti_Data = S2PORT_MANAGED;
+    publication->tags[4].ti_Tag = TAG_DONE;
+    request->ios2_StatData = publication->tags;
+}
+
 static void p4wlan_service_callback(APTR client, struct P4WifiBase *radio)
 {
     struct p4wlan_unit *unit = client;
     if (!unit || !radio)
         return;
-    if (!p4wlan_scan_one(unit, radio))
+    if (!p4wlan_associate_one(unit, radio) && !p4wlan_scan_one(unit, radio))
         (void)p4wlan_send_one(unit, radio);
 }
 
@@ -1100,6 +1292,48 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
     }
 
     switch (command) {
+    case S2_SETOPTIONS:
+    {
+        struct p4wlan_association *attempt;
+        if (!unit->online || !unit->hardware_ready || unit->callback_fault ||
+            !unit->radio || !unit->radio->association_enabled) {
+            p4wlan_immediate_error(request, S2ERR_OUTOFSERVICE,
+                                   S2WERR_UNIT_OFFLINE);
+            break;
+        }
+        if (unit->selection_token == ~(ULONG)0) {
+            p4wlan_immediate_error(request, S2ERR_NO_RESOURCES,
+                                   S2WERR_GENERIC_ERROR);
+            break;
+        }
+        attempt = AllocVec(sizeof(*attempt), MEMF_PUBLIC | MEMF_CLEAR);
+        if (!attempt) {
+            p4wlan_immediate_error(request, S2ERR_NO_RESOURCES,
+                                   S2WERR_GENERIC_ERROR);
+            break;
+        }
+        if (!p4wlan_copy_association_options(&attempt->target,
+                (const struct TagItem *)request->ios2_Data)) {
+            p4wlan_wipe_bytes((UBYTE *)attempt, sizeof(*attempt));
+            FreeVec(attempt);
+            p4wlan_immediate_error(request, S2ERR_BAD_ARGUMENT,
+                                   S2WERR_GENERIC_ERROR);
+            break;
+        }
+        p4wlan_invalidate_selection_locked(unit);
+        attempt->unit = unit;
+        attempt->opener = opener;
+        attempt->token = unit->selection_token;
+        ++opener->refs;
+        unit->pending_association = attempt;
+        /* Normal immediate reply below: no request pointer lives in attempt. */
+        break;
+    }
+
+    case S2_GETNETWORKINFO:
+        p4wlan_network_info_locked(unit, request);
+        break;
+
     case S2_GETWIRELESSCAPABILITIES:
     {
         struct Sana2WirelessCapabilities *caps = request->ios2_StatData;
@@ -1226,6 +1460,8 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         break;
 
     case CMD_READ:
+        /* WirelessManager parks EAPOL reads before association. Delivery,
+         * not admission of these parked reads, requires a committed link. */
         if (!unit->online || !unit->hardware_ready || unit->callback_fault) {
             p4wlan_immediate_error(request, S2ERR_OUTOFSERVICE,
                                    S2WERR_UNIT_OFFLINE);
@@ -1275,7 +1511,8 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         BOOL raw = FALSE;
         UBYTE destination[6];
         ULONG i;
-        if (!unit->online || !unit->hardware_ready || unit->callback_fault) {
+        if (!unit->online || !unit->hardware_ready || !unit->link_committed ||
+            unit->callback_fault) {
             p4wlan_immediate_error(request, S2ERR_OUTOFSERVICE,
                                    S2WERR_UNIT_OFFLINE);
             break;
@@ -1318,6 +1555,7 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
             break;
         }
         item->capacity = length;
+        item->link_token = unit->selection_token;
         item->packet_type = request->ios2_PacketType;
         item->io_flags = request->ios2_Req.io_Flags;
         item->data = request->ios2_Data;

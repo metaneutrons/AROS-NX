@@ -1,5 +1,26 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Native association queue development (2026-10-10): private bridge ABI5 adds a
+credential-free correlated AP snapshot and native SETOPTIONS/GETNETWORKINFO
+binding. One pending and one active opener-pinned attempt own copied inputs;
+no acknowledged IOSana2Req is retained. Supersession, Close, Flush and Offline
+invalidate attempts and native traffic. The owner service performs RPC without
+the unit lock, then commits CONNECT, the copied AP identity and both traffic
+gates under the lifecycle fence. RX delivery and TX commitment check link tokens;
+EAPOL reads may park before association. Pool-owned GETNETWORKINFO data survives
+later selections. Clean Core1 RV32 modules build. Source-extracted queue models
+pass529 checks, lifetime1061, datapath16507, events6/70, scan295, options78/247,
+bridge219 and association snapshot14939 each O0/O2 ASan/UBSan on macOS and
+network-isolated Linux, with actual process exit0. This supersedes the earlier unbound-queue
+status below, not the outstanding radio/privacy acceptance gates.
+Queue tests exercise helpers and selected dispatch arms, not full BeginIO or
+actual concurrent tasks. Active-association Close drain and association-specific
+Offline cancellation still need focused model coverage before enablement.
+SUMMARY-only and both privacy assertions0 remain. Explicit radio teardown,
+confirmed ongoing DISCONNECT/reconnect, caller-visible late-failure handling,
+capability enablement, C6 secured recovery/UART privacy and real WLAN/IP/1800s
+qualification are still open. No package, deployment or hardware action.
+
 Association IE extent contract (2026-10-10): generic5b2cf0b82b is locally
 integrated. WirelessManager validates one complete readable IE before its
 association callback performs device I/O and sends WPAInfoLength only when
@@ -9,8 +30,8 @@ Host association models pass68 scenarios/451 checks and capability models35/70
 each O0/O2 ASan/UBSan on macOS and isolated Linux. Public RV32 ABI and a fresh
 full RV32 GUI build pass (680384B); these are not hardware evidence.
 The native parser now consumes the explicit length tag independently of tag
-order, with no separate helper extent parameter. Binding the queue remains
-open. No new capability is advertised;
+order, with no separate helper extent parameter. The subsequent native queue
+stage above implements the binding; acceptance remains open. No new capability is advertised;
 SUMMARY-only and both privacy assertions0 remain unchanged. No hardware,
 credentials, C6 update or deployment occurred.
 
@@ -19,9 +40,9 @@ copies the shared SANA caller's borrowed SSID/BSSID/passphrase or binary PSK int
 an owned target. It accepts only managed open or singleton RSN-PSK/CCMP, requires
 an explicit readable IE extent, and wipes the full output on refusal. The shared
 caller now has the negotiated handover above; native helper consumption is
-verified, but BeginIO/queue integration remains open. This is an
-input/lifetime prerequisite, not a queued
-S2_SETOPTIONS implementation. Actual native acceptance, cancellation, link events
+verified; the subsequent queue stage above binds BeginIO and lifecycle handling.
+The parser alone was an input/lifetime prerequisite, not a queued
+S2_SETOPTIONS implementation. Actual hardware acceptance, cancellation, link events
 and teardown remain open; SUMMARY-only capability and both privacy assertions0
 are unchanged. Actual-header host tests pass78 cases/247 checks each O0/O2
 ASan/UBSan on macOS and network-isolated Linux; a standalone real-header RV32
@@ -34,7 +55,8 @@ Connect/current-AP path, owned credential copies and separate associated
 traffic gating. Successful AP snapshots leave traffic closed until the future
 native owner binding commits a still-current attempt under the unit lock.
 ABI3 and ABI4 clients reject each other. Native committed-link RX/TX fences,
-queue cancellation and confirmed CONNECT publication remain unimplemented.
+queue cancellation and CONNECT publication were unimplemented at this stage;
+the subsequent ABI5 queue above adds them without hardware qualification.
 It remains default-disabled behind separate C6 and host privacy/
 recovery release assertions; neither build flag is a runtime attestation.
 Initial profile coverage is open or WPA2-PSK/CCMP infrastructure;

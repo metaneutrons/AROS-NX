@@ -8,6 +8,7 @@ test_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 repo_root=$(CDPATH= cd -- "$test_root/../.." && pwd)
 source_file="$test_root/network/sana_device.c"
 header_file="$test_root/network/sana_device.h"
+bridge_file="$test_root/network/device_bridge.h"
 sana_header="$repo_root/compiler/include/devices/sana2.h"
 test_tmp=$(mktemp -d "${TMPDIR:-/tmp}/p4-wifi-sana-lifetime.XXXXXX")
 extract="$test_tmp/sana_lifetime_extract.inc"
@@ -150,6 +151,9 @@ extract_block enum p4wlan_request_kind "$header_file"
 extract_block enum p4wlan_request_state "$header_file"
 extract_block struct p4wlan_request "$header_file"
 extract_block struct p4wlan_opener "$header_file"
+extract_block struct p4_wifi_link_info "$bridge_file"
+extract_block struct p4_wifi_association_target "$bridge_file"
+extract_block struct p4wlan_association "$header_file"
 extract_block struct p4_wifi_scan_result "$test_root/network/device_bridge.h"
 extract_block struct p4wlan_unit "$header_file"
 extract_block struct esp32p4wlan_base "$header_file"
@@ -162,6 +166,11 @@ extract_function p4wlan_first_done
 extract_function p4wlan_finish_request
 extract_function p4wlan_finish_done
 extract_function p4wlan_queue_done_locked
+extract_function p4wlan_wipe_bytes
+extract_function p4wlan_drop_pin_locked
+extract_function p4wlan_retire_association_locked
+extract_function p4wlan_invalidate_selection_locked
+extract_function p4wlan_cancel_opener_association_locked
 extract_function p4wlan_flush_opener_locked
 extract_function p4wlan_flush_all_locked
 extract_function p4wlan_event_locked

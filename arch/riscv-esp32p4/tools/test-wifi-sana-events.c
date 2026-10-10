@@ -58,6 +58,18 @@ struct IOSana2Req {
 };
 
 struct p4wlan_unit;
+
+static void FreeVec(APTR memory)
+{
+    free(memory);
+}
+
+static void Signal(struct Task *task, ULONG mask)
+{
+    (void)task;
+    (void)mask;
+}
+
 static void p4wlan_flush_all_locked(struct p4wlan_unit *unit,
                                     struct MinList *done, BYTE error,
                                     ULONG wire_error, BOOL flush_events);
@@ -92,6 +104,16 @@ static ULONG scenarios;
         exit(1); \
     } \
 } while (0)
+
+static BOOL bytes_zero(const void *memory, size_t size)
+{
+    const UBYTE *bytes = memory;
+    size_t index;
+    for (index = 0u; index < size; ++index)
+        if (bytes[index] != 0u)
+            return FALSE;
+    return TRUE;
+}
 
 #include "sana_events_extract.inc"
 
@@ -319,12 +341,17 @@ static void test_offline_discards_stale_connect_only(void)
     fixture_init(&fixture);
     fixture.unit.online = TRUE;
     fixture.unit.hardware_ready = TRUE;
+    fixture.unit.link_committed = TRUE;
+    memset(&fixture.unit.link_info, 0xa5, sizeof(fixture.unit.link_info));
     fixture.unit.pending_events = S2EVENT_CONNECT;
     flush_calls = 0;
     p4wlan_set_offline_locked(&fixture.unit, &fixture.done, FALSE);
 
     CHECK(!fixture.unit.online);
     CHECK(fixture.unit.hardware_ready);
+    CHECK(!fixture.unit.link_committed);
+    CHECK(bytes_zero(&fixture.unit.link_info, sizeof(fixture.unit.link_info)));
+    CHECK(fixture.unit.selection_token == 1u);
     CHECK(fixture.unit.pending_events == 0);
     CHECK(flush_calls == 1);
     memset(&request, 0, sizeof(request));

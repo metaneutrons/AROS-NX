@@ -5,10 +5,20 @@
 #include <exec/types.h>
 #include "hosted_scan.h"
 
-#define P4_WIFI_DEVICE_BRIDGE_ABI 4u
+#define P4_WIFI_DEVICE_BRIDGE_ABI 5u
 #define P4_WIFI_DEVICE_BRIDGE_NAME "esp32p4wifi.resource"
 
 struct P4WifiBase;
+/* Credential-free confirmed AP snapshot. Only the serialized service caller
+ * may copy it after associate returns TRUE; hints and requested targets are
+ * not substitutes for the peer's correlated current-AP result. */
+struct p4_wifi_link_info {
+    UBYTE ssid[33];
+    ULONG ssid_length;
+    UBYTE bssid[6];
+    ULONG channel;
+    ULONG authmode;
+};
 /* Owned input; no caller tag/string pointers survive BeginIO. This first
  * profile is open or WPA2-PSK/CCMP infrastructure, never WEP/enterprise/SAE.
  * password is printable passphrase8..63 or exactly64 hexadecimal PSK bytes.
@@ -74,7 +84,9 @@ struct p4_wifi_device_callbacks {
  * It disconnects/verifies absence before configuration, then confirms the
  * current AP against the target and revalidates the live host epoch. TRUE is a
  * current-target snapshot, not causal attribution of UID0 events or IP proof.
- * associate never opens the traffic gate. On TRUE, its service caller must
+ * associate never opens the traffic gate. ABI5 publishes confirmed_ap on TRUE
+ * under client_lock; failure after entry and link hints clear that snapshot.
+ * On TRUE, its service caller must
  * revalidate its owned attempt/opener/online token under the device unit lock
  * before setting associated and publishing CONNECT together. The caller owns
  * client_lock throughout that serialized service callback. Events can dispatch
@@ -86,7 +98,7 @@ struct p4_wifi_device_callbacks {
  * After an entered operation, failed/cancelled results leave associated false;
  * invalid calls refused before entry do not mutate an existing link. A native
  * new selection must invalidate its own committed link before starting work.
- * A rejected queue completion must not set associated. ABI4 changes this success
+ * A rejected queue completion must not set associated. ABI4 changed this success
  * semantic: an older client expecting associate to open traffic must be refused.
  * association_enabled is false until both C6 and host privacy/recovery release
  * assertions are granted; builds cannot verify those hardware gates. Even an
