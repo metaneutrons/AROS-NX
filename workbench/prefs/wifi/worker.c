@@ -682,11 +682,333 @@ static void CopyField(STRPTR out, ULONG size, CONST_STRPTR src)
     out[n] = '\0';
 }
 
+enum
+{
+    LT_WORD = 1, LT_STRING, LT_BAD,
+    LT_OPEN = '{', LT_CLOSE = '}', LT_SEMI = ';', LT_COMMA = ','
+};
+
+struct LeaseToken
+{
+    CONST_STRPTR text;
+    size_t length;
+    int kind;
+    BOOL escaped;
+};
+
+/* Bounded dhclient lexer. Quotes and comments cannot introduce braces/keywords. */
+static BOOL LeaseNextToken(CONST_STRPTR data, size_t length, size_t *offset,
+    struct LeaseToken *token)
+{
+    size_t p = *offset, start;
+
+    while (p < length)
+    {
+        if ((UBYTE)data[p] <= ' ')
+            p++;
+        else if (data[p] == '#')
+        {
+            while (p < length && data[p] != '\n')
+                p++;
+        }
+        else
+            break;
+    }
+    if (p == length)
+    {
+        *offset = p;
+        return FALSE;
+    }
+
+    token->text = data + p;
+    token->length = 1;
+    token->escaped = FALSE;
+    if (data[p] == '{' || data[p] == '}' || data[p] == ';' || data[p] == ',')
+    {
+        token->kind = (UBYTE)data[p];
+        *offset = p + 1;
+        return TRUE;
+    }
+    if (data[p] == '"')
+    {
+        start = ++p;
+        while (p < length)
+        {
+            if (data[p] == '\\')
+            {
+                token->escaped = TRUE;
+                if (++p == length)
+                    break;
+                p++;
+            }
+            else if (data[p] == '"')
+            {
+                token->text = data + start;
+                token->length = p - start;
+                token->kind = LT_STRING;
+                *offset = p + 1;
+                return TRUE;
+            }
+            else
+                p++;
+        }
+        token->kind = LT_BAD;
+        *offset = length;
+        return TRUE;
+    }
+
+    start = p;
+    while (p < length)
+    {
+        UBYTE c = (UBYTE)data[p];
+
+        if (c == '\\')
+        {
+            token->escaped = TRUE;
+            p += p + 1 < length ? 2 : 1;
+        }
+        else if (c <= ' ' || c == '{' || c == '}' || c == ';' ||
+            c == ',' || c == '#' || c == '"')
+            break;
+        else
+            p++;
+    }
+    token->text = data + start;
+    token->length = p - start;
+    token->kind = LT_WORD;
+    *offset = p;
+    return TRUE;
+}
+
+static BOOL LeaseTokenIs(const struct LeaseToken *token, CONST_STRPTR text)
+{
+    size_t n = strlen((const char *)text);
+
+    return !token->escaped && (token->kind == LT_WORD ||
+        token->kind == LT_STRING) && token->length == n &&
+        memcmp(token->text, text, n) == 0;
+}
+
+static BOOL LeaseCopyToken(STRPTR out, ULONG size,
+    const struct LeaseToken *token)
+{
+    size_t n;
+
+    if (size == 0 || token->kind != LT_WORD || token->escaped)
+        return FALSE;
+    n = token->length < size - 1 ? token->length : size - 1;
+    memcpy(out, token->text, n);
+    out[n] = '\0';
+    return n != 0;
+}
+
+/* Commit fields only after a complete lease matches the live interface/address. */
+static void SelectLeaseForAddress(CONST_STRPTR data, size_t length,
+    CONST_STRPTR interface, CONST_STRPTR address, STRPTR gateway,
+    ULONG gateway_size, STRPTR dns, ULONG dns_size)
+{
+    struct LeaseToken t, next, key, first, second;
+    size_t pos = 0, outer = 0, address_len;
+
+    if (gateway_size) gateway[0] = '\0';
+    if (dns_size) dns[0] = '\0';
+    if (!data || !interface || !address)
+        return;
+    address_len = strlen((const char *)address);
+
+    while (LeaseNextToken(data, length, &pos, &t))
+    {
+        if (t.kind == LT_BAD)
+            return;
+        if (t.kind == LT_OPEN) { outer++; continue; }
+        if (t.kind == LT_CLOSE) { if (outer) outer--; continue; }
+        if (outer || t.kind != LT_WORD || !LeaseTokenIs(&t, "lease"))
+            continue;
+
+        {
+            size_t after_key = pos, depth = 1;
+            BOOL valid = TRUE, iface_match = FALSE, ip_match = FALSE, closed = FALSE;
+            BOOL saw_interface = FALSE, saw_address = FALSE;
+            char route[20] = "", servers[64] = "";
+
+            if (!LeaseNextToken(data, length, &pos, &next))
+                return;
+            if (next.kind != LT_OPEN) { pos = after_key; continue; }
+
+            while (LeaseNextToken(data, length, &pos, &t))
+            {
+                size_t count = 0, nested = 0;
+                BOOL ended = FALSE, nested_stmt = FALSE;
+
+                if (t.kind == LT_BAD)
+                    return;
+                if (t.kind == LT_OPEN) { depth++; continue; }
+                if (t.kind == LT_CLOSE)
+                {
+                    if (--depth == 0) { closed = TRUE; break; }
+                    continue;
+                }
+                if (depth != 1 || t.kind == LT_SEMI)
+                    continue;
+
+                key = t;
+                while (LeaseNextToken(data, length, &pos, &next))
+                {
+                    if (next.kind == LT_BAD)
+                        return;
+                    if (next.kind == LT_OPEN) { nested++; nested_stmt = TRUE; }
+                    else if (next.kind == LT_CLOSE)
+                    {
+                        if (nested) nested--;
+                        else { valid = FALSE; depth = 0; closed = ended = TRUE; break; }
+                    }
+                    else if (!nested && next.kind == LT_SEMI) { ended = TRUE; break; }
+                    else if (!nested && next.kind != LT_COMMA && count < 2)
+                    {
+                        if (count++ == 0) first = next;
+                        else second = next;
+                    }
+                }
+                if (!ended)
+                    return;
+                if (!depth)
+                    break;
+                if (key.kind != LT_WORD) { valid = FALSE; continue; }
+
+                if (LeaseTokenIs(&key, "interface"))
+                {
+                    if (saw_interface) valid = FALSE;
+                    saw_interface = TRUE;
+                    iface_match = !nested_stmt && count == 1 &&
+                        LeaseTokenIs(&first, interface);
+                }
+                else if (LeaseTokenIs(&key, "fixed-address"))
+                {
+                    if (saw_address) valid = FALSE;
+                    saw_address = TRUE;
+                    ip_match = !nested_stmt && count == 1 &&
+                        first.kind == LT_WORD && !first.escaped &&
+                        first.length == address_len &&
+                        memcmp(first.text, address, address_len) == 0;
+                }
+                else if (LeaseTokenIs(&key, "option") && count &&
+                    first.kind == LT_WORD)
+                {
+                    STRPTR out = NULL;
+                    ULONG out_size = 0;
+
+                    if (LeaseTokenIs(&first, "routers"))
+                    {
+                        out = route;
+                        out_size = sizeof(route);
+                    }
+                    else if (LeaseTokenIs(&first, "domain-name-servers"))
+                    {
+                        out = servers;
+                        out_size = sizeof(servers);
+                    }
+                    if (out)
+                    {
+                        out[0] = '\0';
+                        if (nested_stmt || count != 2 ||
+                            !LeaseCopyToken(out, out_size, &second))
+                            valid = FALSE;
+                    }
+                }
+                if (nested_stmt &&
+                    (LeaseTokenIs(&key, "interface") ||
+                     LeaseTokenIs(&key, "fixed-address")))
+                    valid = FALSE;
+            }
+            if (!closed)
+                return;
+            if (valid && iface_match && ip_match)
+            {
+                if (gateway_size)
+                    snprintf((char *)gateway, gateway_size, "%s", route);
+                if (dns_size)
+                    snprintf((char *)dns, dns_size, "%s", servers);
+            }
+        }
+    }
+}
+
+/* Exact interface token; GW= stays case-insensitive as in the stack grammar. */
+static BOOL InterfaceGatewayFromPrefs(CONST_STRPTR data, size_t length,
+    CONST_STRPTR interface, STRPTR gateway, ULONG size)
+{
+    size_t line = 0, interface_len;
+
+    if (size) gateway[0] = '\0';
+    if (!size || !interface)
+        return FALSE;
+    interface_len = strlen((const char *)interface);
+    while (line < length)
+    {
+        size_t physical = line, end = line, p, start, limit;
+        BOOL continued, match = FALSE;
+
+        while (end < length && data[end] != '\n') end++;
+        continued = end > physical && data[end - 1] == '+';
+        limit = end - (continued ? 1 : 0);
+        p = physical;
+        while (p < limit && (data[p] == ' ' || data[p] == '\t' || data[p] == '\r')) p++;
+        if (p < limit && data[p] != '#' && data[p] != ';')
+        {
+            start = p;
+            while (p < limit && data[p] != ' ' && data[p] != '\t' &&
+                data[p] != '\r' && data[p] != '#' && data[p] != ';') p++;
+            match = p - start == interface_len &&
+                memcmp(data + start, interface, interface_len) == 0;
+        }
+
+        for (;;)
+        {
+            if (match)
+            {
+                while (p < limit)
+                {
+                    size_t value, stop;
+
+                    while (p < limit && (data[p] == ' ' || data[p] == '\t' ||
+                        data[p] == '\r')) p++;
+                    if (p == limit || data[p] == '#' || data[p] == ';') break;
+                    start = p;
+                    while (p < limit && data[p] != ' ' && data[p] != '\t' &&
+                        data[p] != '\r' && data[p] != '#' && data[p] != ';') p++;
+                    if (p - start <= 3 || ToUpper(data[start]) != 'G' ||
+                        ToUpper(data[start + 1]) != 'W' || data[start + 2] != '=')
+                        continue;
+                    value = start + 3;
+                    stop = value;
+                    while (stop < p && data[stop] != ',') stop++;
+                    if (stop == value) continue;
+                    if (stop - value >= size) stop = value + size - 1;
+                    memcpy(gateway, data + value, stop - value);
+                    gateway[stop - value] = '\0';
+                    return TRUE;
+                }
+            }
+            if (!continued) break;
+            physical = end + 1;
+            if (physical >= length) { end = physical; break; }
+            end = physical;
+            while (end < length && data[end] != '\n') end++;
+            continued = end > physical && data[end - 1] == '+';
+            limit = end - (continued ? 1 : 0);
+            p = physical;
+            while (p < limit && (data[p] == ' ' || data[p] == '\t' ||
+                data[p] == '\r')) p++;
+        }
+        line = end < length ? end + 1 : end;
+    }
+    return FALSE;
+}
 /*
- * Gateway and name servers do not come back from an ioctl: dhclient installs
- * the route and hands the servers to the resolver, keeping neither anywhere we
- * can ask for. The lease it wrote has both, so read that - and fall back to the
- * preferences for a statically configured interface.
+ * Gateway and name servers do not come back from an ioctl. The lease file is
+ * historical client data, not proof of the route or resolver's current state,
+ * so use only its last complete record for this interface and current address.
+ * Fall back to the configured preferences database for static configuration.
  */
 /* Match dhclient's PATH_DHCLIENT_DB override and POSIX /T default. The
  * preference reader uses raw DOS paths; it cannot interpret /T as T:.
@@ -730,6 +1052,7 @@ static void FillRouteAndDNS(struct WifiMsg *m)
 {
     LONG len;
     STRPTR buf, opt;
+    TEXT db[192], path[224];
 
     m->wm_Gateway[0] = '\0';
     m->wm_DNS[0] = '\0';
@@ -737,40 +1060,28 @@ static void FillRouteAndDNS(struct WifiMsg *m)
     buf = ReadLeasePrefs(&len);
     if (buf != NULL)
     {
-        STRPTR p, last = NULL;
-
-        /* The file grows by appending, so the last lease is the live one. */
-        for (p = buf; (p = (STRPTR)strstr((const char *)p, "lease {")) != NULL; p++)
-            last = p;
-
-        if (last != NULL)
-        {
-            opt = (STRPTR)strstr((const char *)last, "option routers ");
-            if (opt != NULL)
-                CopyField(m->wm_Gateway, sizeof(m->wm_Gateway), opt + 15);
-
-            opt = (STRPTR)strstr((const char *)last, "option domain-name-servers ");
-            if (opt != NULL)
-                CopyField(m->wm_DNS, sizeof(m->wm_DNS), opt + 27);
-        }
+        SelectLeaseForAddress(buf, (size_t)len, m->wm_Interface,
+            m->wm_Address, m->wm_Gateway, sizeof(m->wm_Gateway),
+            m->wm_DNS, sizeof(m->wm_DNS));
         FreeVec(buf);
     }
 
-    if (m->wm_Gateway[0] == '\0')
+    if (m->wm_Gateway[0] == '\0' && StackDBDir(db, sizeof(db)))
     {
-        buf = ReadPrefs("ENV:AROSTCP/db/interfaces", &len);
+        snprintf((char *)path, sizeof(path), "%s/interfaces", (const char *)db);
+        buf = ReadPrefs(path, &len);
         if (buf != NULL)
         {
-            opt = FindNoCase(buf, "GW=");
-            if (opt != NULL)
-                CopyField(m->wm_Gateway, sizeof(m->wm_Gateway), opt + 3);
+            InterfaceGatewayFromPrefs(buf, (size_t)len, m->wm_Interface,
+                m->wm_Gateway, sizeof(m->wm_Gateway));
             FreeVec(buf);
         }
     }
 
-    if (m->wm_DNS[0] == '\0')
+    if (m->wm_DNS[0] == '\0' && StackDBDir(db, sizeof(db)))
     {
-        buf = ReadPrefs("ENV:AROSTCP/db/netdb-myhost", &len);
+        snprintf((char *)path, sizeof(path), "%s/netdb-myhost", (const char *)db);
+        buf = ReadPrefs(path, &len);
         if (buf != NULL)
         {
             opt = FindNoCase(buf, "NAMESERVER ");
