@@ -8,11 +8,15 @@
 
 #include "hosted_owner.h"
 #include "hosted_request_ids.h"
+#include "hosted_init.h"
 
 #define OWNER_TEST_GENERATION UINT32_C(0x7191)
 #define OWNER_NEXT_GENERATION UINT32_C(0x7192)
 #define OWNER_TEST_REQUEST_ID 257u
 #define OWNER_TEST_AP_INFO_REQUEST_ID 294u
+#define OWNER_TEST_DISCOVERY_REQUEST_ID 350u
+#define OWNER_TEST_DISCOVERY_RESPONSE_ID 606u
+#define OWNER_TEST_DISCOVERY_NONCE UINT32_C(0x1234)
 #define OWNER_TIMEOUT_US 250u
 
 struct owner_fixture {
@@ -41,6 +45,8 @@ struct owner_fixture {
     unsigned stopping;
     unsigned event_calls;
     unsigned frame_calls;
+    unsigned now_calls;
+    unsigned stopping_calls;
     unsigned dispatch_under_lock;
     unsigned acquire_attempts_at_dispatch;
     uint32_t dispatch_advance_us;
@@ -83,7 +89,8 @@ static void owner_release(void *context)
 
 static uint32_t owner_now(void *context)
 {
-    const struct owner_fixture *fixture = context;
+    struct owner_fixture *fixture = context;
+    ++fixture->now_calls;
     return fixture->now;
 }
 
@@ -110,7 +117,8 @@ static int owner_set_budget(void *context, uint32_t slice_us)
 
 static int owner_stopping(void *context)
 {
-    const struct owner_fixture *fixture = context;
+    struct owner_fixture *fixture = context;
+    ++fixture->stopping_calls;
     return fixture->stopping ? 1 : 0;
 }
 
@@ -320,6 +328,112 @@ static void owner_verify_tx_request(const struct owner_fixture *fixture,
     CHECK(rpc.msg_type == P4_HOSTED_RPC_TYPE_REQUEST &&
           rpc.msg_id == request_id && rpc.uid == uid &&
           rpc.payload_size == 0u);
+}
+
+static size_t owner_put_varint(uint8_t *bytes, size_t capacity,
+                               size_t offset, uint32_t value)
+{
+    do {
+        uint8_t byte = (uint8_t)(value & 0x7fu);
+        value >>= 7;
+        if (value != 0u)
+            byte |= 0x80u;
+        if (offset >= capacity)
+            return 0u;
+        bytes[offset++] = byte;
+    } while (value != 0u);
+    return offset;
+}
+
+static void owner_reserve_discovery_request(struct owner_fixture *fixture,
+                                            uint32_t nonce)
+{
+    struct p4_hosted_rpc rpc = {0};
+    uint8_t payload[8];
+    size_t payload_size = 0u;
+    uint32_t uid = 0u;
+
+    CHECK(nonce != 0u);
+    payload[payload_size++] = 8u;
+    payload[payload_size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1;
+    payload[payload_size++] = 16u;
+    payload_size = owner_put_varint(payload, sizeof payload, payload_size,
+                                    nonce);
+    CHECK(payload_size != 0u);
+    CHECK(p4_hosted_request_ids_reserve(&fixture->owner.ids,
+        fixture->generation, OWNER_TEST_DISCOVERY_REQUEST_ID, &uid));
+    rpc.msg_type = P4_HOSTED_RPC_TYPE_REQUEST;
+    rpc.msg_id = OWNER_TEST_DISCOVERY_REQUEST_ID;
+    rpc.uid = uid;
+    rpc.payload = payload;
+    rpc.payload_size = payload_size;
+    CHECK(p4_hosted_rpc_encode_board_discovery(fixture->request,
+        sizeof fixture->request, &rpc, &fixture->request_size));
+}
+
+static struct p4_hosted_init owner_supported_discovery_init(void)
+{
+    static const uint8_t event[] = {
+        P4_HOSTED_INIT_EVENT_TYPE, 9u,
+        P4_HOSTED_INIT_TAG_CAPABILITIES, 1u,
+        P4_HOSTED_INIT_CAP_WLAN_SDIO,
+        P4_HOSTED_INIT_TAG_CHIP_ID, 1u,
+        P4_HOSTED_INIT_CHIP_ESP32C6,
+        P4_HOSTED_INIT_TAG_BOARD_DISCOVERY, 1u,
+        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1
+    };
+    struct p4_hosted_init init = {0};
+
+    CHECK(p4_hosted_init_parse(event, sizeof event, &init));
+    CHECK(p4_hosted_init_has_board_discovery(&init));
+    return init;
+}
+
+static void owner_verify_tx_discovery_request(
+    const struct owner_fixture *fixture, uint32_t uid, uint32_t nonce)
+{
+    struct p4_hosted_frame frame;
+    struct hosted_serial_message serial;
+    struct p4_hosted_rpc rpc;
+    uint8_t expected[8];
+    size_t expected_size = 0u;
+
+    expected[expected_size++] = 8u;
+    expected[expected_size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1;
+    expected[expected_size++] = 16u;
+    expected_size = owner_put_varint(expected, sizeof expected, expected_size,
+                                     nonce);
+    CHECK(expected_size != 0u);
+    CHECK(fixture->fake.tx_fifo_writes == 1u);
+    CHECK(p4_hosted_decode(fixture->fake.tx_capture,
+        fixture->fake.tx_capture_size, 0u, &frame));
+    CHECK(frame.interface_type == P4_HOSTED_SERIAL &&
+          frame.interface_number == 0u && frame.flags == 0u &&
+          frame.sequence == 0u && frame.packet_type == 0u &&
+          frame.throttle == 0u);
+    CHECK(hosted_serial_decode(frame.payload, frame.payload_size, &serial));
+    CHECK(serial.endpoint == HOSTED_SERIAL_ENDPOINT_RPCRSP);
+    CHECK(p4_hosted_rpc_decode_board_discovery(serial.protobuf,
+        serial.protobuf_size, &rpc));
+    CHECK(rpc.msg_type == P4_HOSTED_RPC_TYPE_REQUEST &&
+          rpc.msg_id == OWNER_TEST_DISCOVERY_REQUEST_ID && rpc.uid == uid &&
+          rpc.payload_size == expected_size &&
+          memcmp(rpc.payload, expected, expected_size) == 0);
+}
+
+static void owner_check_no_callbacks(const struct owner_fixture *fixture)
+{
+    CHECK(fixture->now_calls == 0u && fixture->stopping_calls == 0u);
+    CHECK(fixture->acquire_attempts == 0u &&
+          fixture->acquire_successes == 0u && fixture->releases == 0u &&
+          fixture->waits == 0u && fixture->slice_count == 0u);
+    CHECK(fixture->event_calls == 0u && fixture->frame_calls == 0u &&
+          fixture->fake.session_calls == 0u &&
+          fixture->fake.budget_calls == 0u &&
+          fixture->fake.raw_reads == 0u &&
+          fixture->fake.tx_token_reads == 0u &&
+          fixture->fake.tx_fifo_writes == 0u &&
+          fixture->fake.rx_fifo_reads == 0u);
 }
 
 static void test_ap_info_exchange_correlates_response_550_after_tx(void)
@@ -1001,6 +1115,389 @@ static void test_cancel_closes_uid_without_bus_or_reuse(void)
     CHECK(next_uid == 2u);
 }
 
+static void test_board_discovery_exchange_matches_exact_606_and_dispatches(void)
+{
+    static const uint8_t event_body[] = { 0x3cu };
+    static const uint8_t response_body[] = { 0x08u, 0x00u };
+    struct p4_hosted_init init = owner_supported_discovery_init();
+    struct owner_fixture fixture;
+    uint8_t batch[TEST_CAPACITY];
+    uint32_t raw[] = { P4_HOSTED_OPEN_INT_PACKET };
+    uint32_t uid;
+    size_t used = 0u;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    owner_reserve_discovery_request(&fixture, OWNER_TEST_DISCOVERY_NONCE);
+    uid = fixture.owner.ids.active_uid;
+    CHECK(uid == 1u && fixture.owner.ids.active_request_id ==
+          OWNER_TEST_DISCOVERY_REQUEST_ID);
+
+    /* Ordinary events and 550 responses remain in the regular owner path
+     * while the private response is gated on the exact reserved UID. */
+    CHECK(append_owner_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCEVT, P4_HOSTED_RPC_TYPE_EVENT, 775u, 0u,
+        event_body, sizeof event_body) != 0u);
+    CHECK(append_owner_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+        OWNER_TEST_AP_INFO_REQUEST_ID + 256u, uid + 1u,
+        response_body, sizeof response_body) != 0u);
+    CHECK(append_owner_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+        OWNER_TEST_DISCOVERY_RESPONSE_ID, uid, NULL, 0u) != 0u);
+    CHECK(add_batch(&fixture.fake, batch, used));
+    set_raws(&fixture.fake, raw, 1u);
+
+    CHECK(p4_hosted_owner_exchange_board_discovery(&fixture.owner,
+        &fixture.fifo, &fixture.owner_ops, fixture.generation, 0u,
+        fixture.request, fixture.request_size, OWNER_TIMEOUT_US,
+        &fixture.result, &init, OWNER_TEST_DISCOVERY_NONCE));
+    CHECK(fixture.result.error == P4_HOSTED_OWNER_OK &&
+          fixture.result.submitted == 1u && fixture.result.matched == 1u &&
+          fixture.result.uid == uid &&
+          fixture.result.request_id == OWNER_TEST_DISCOVERY_REQUEST_ID &&
+          fixture.result.events == 1u && fixture.result.unmatched == 1u);
+    CHECK(fixture.event_calls == 1u && fixture.last_event.msg_id == 775u &&
+          fixture.last_event.uid == 0u && fixture.dispatch_under_lock == 0u);
+    CHECK(fixture.owner.reply.msg_type == P4_HOSTED_RPC_TYPE_RESPONSE &&
+          fixture.owner.reply.msg_id == OWNER_TEST_DISCOVERY_RESPONSE_ID &&
+          fixture.owner.reply.uid == uid &&
+          fixture.owner.reply.payload_size == 0u);
+    CHECK(fixture.owner.pending_active == 0u &&
+          fixture.owner.ids.active_uid == 0u &&
+          fixture.owner.ids.active_request_id == 0u &&
+          fixture.owner.ids.next_uid == 2u &&
+          fixture.owner.ids.retired == 0u);
+    CHECK(fixture.owner.rx.inbox.discovery_armed == 0u &&
+          fixture.owner.rx.inbox.discovery_generation == 0u &&
+          fixture.owner.rx.inbox.discovery_uid == 0u &&
+          fixture.owner.rx.inbox.discovery_seen == 0u &&
+          fixture.owner.rx.inbox.count == 0u);
+    CHECK(fixture.fake.tx_fifo_writes == 1u && fixture.owner.poisoned == 0u &&
+          fixture.fifo.poisoned == 0u);
+    owner_verify_tx_discovery_request(&fixture, uid,
+                                      OWNER_TEST_DISCOVERY_NONCE);
+}
+
+static void test_board_discovery_timeout_invalidates_arm_and_uid(void)
+{
+    struct p4_hosted_init init = owner_supported_discovery_init();
+    struct owner_fixture fixture;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    owner_reserve_discovery_request(&fixture, OWNER_TEST_DISCOVERY_NONCE);
+    fixture.wait_step_us = 100u;
+
+    CHECK(!p4_hosted_owner_exchange_board_discovery(&fixture.owner,
+        &fixture.fifo, &fixture.owner_ops, fixture.generation, 0u,
+        fixture.request, fixture.request_size, 350u, &fixture.result, &init,
+        OWNER_TEST_DISCOVERY_NONCE));
+    CHECK(fixture.result.error == P4_HOSTED_OWNER_TIMEOUT &&
+          fixture.result.submitted == 1u && fixture.result.matched == 0u &&
+          fixture.result.elapsed_us >= 350u);
+    CHECK(fixture.fake.tx_fifo_writes == 1u && fixture.acquired == 0u &&
+          fixture.releases == fixture.acquire_successes &&
+          fixture.owner.poisoned == 1u && fixture.owner.rx.poisoned == 1u &&
+          fixture.fifo.poisoned == 1u);
+    CHECK(fixture.owner.ids.retired == 1u &&
+          fixture.owner.ids.active_uid == 0u &&
+          fixture.owner.ids.active_request_id == 0u &&
+          fixture.owner.ids.next_uid == 2u);
+    CHECK(fixture.owner.rx.inbox.discovery_armed == 0u &&
+          fixture.owner.rx.inbox.discovery_generation == 0u &&
+          fixture.owner.rx.inbox.discovery_uid == 0u &&
+          fixture.owner.rx.inbox.discovery_seen == 0u &&
+          fixture.owner.rx.inbox.count == 0u);
+    CHECK(memcmp(&fixture.owner.reply,
+          &(const struct p4_hosted_inbox_item){0},
+          sizeof fixture.owner.reply) == 0);
+}
+
+static void test_board_discovery_wrong_uid_606_fails_closed(void)
+{
+    struct p4_hosted_init init = owner_supported_discovery_init();
+    struct owner_fixture fixture;
+    uint8_t batch[TEST_CAPACITY];
+    uint32_t raw[] = { P4_HOSTED_OPEN_INT_PACKET };
+    size_t used = 0u;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    owner_reserve_discovery_request(&fixture, OWNER_TEST_DISCOVERY_NONCE);
+    CHECK(append_owner_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+        OWNER_TEST_DISCOVERY_RESPONSE_ID, fixture.owner.ids.active_uid + 1u,
+        NULL, 0u) != 0u);
+    CHECK(add_batch(&fixture.fake, batch, used));
+    set_raws(&fixture.fake, raw, 1u);
+
+    CHECK(!p4_hosted_owner_exchange_board_discovery(&fixture.owner,
+        &fixture.fifo, &fixture.owner_ops, fixture.generation, 0u,
+        fixture.request, fixture.request_size, 1000u, &fixture.result, &init,
+        OWNER_TEST_DISCOVERY_NONCE));
+    CHECK(fixture.result.error == P4_HOSTED_OWNER_RX &&
+          fixture.result.rx_error == P4_HOSTED_RX_PROTOCOL &&
+          fixture.result.submitted == 1u && fixture.result.matched == 0u);
+    CHECK(fixture.owner.poisoned == 1u && fixture.fifo.poisoned == 1u &&
+          fixture.owner.ids.retired == 1u &&
+          fixture.owner.rx.inbox.discovery_armed == 0u &&
+          fixture.owner.rx.inbox.discovery_uid == 0u);
+    CHECK(memcmp(&fixture.owner.reply,
+          &(const struct p4_hosted_inbox_item){0},
+          sizeof fixture.owner.reply) == 0);
+}
+
+static void test_board_discovery_duplicate_606_in_one_batch_fails_closed(void)
+{
+    struct p4_hosted_init init = owner_supported_discovery_init();
+    struct owner_fixture fixture;
+    uint8_t batch[TEST_CAPACITY];
+    uint32_t raw[] = { P4_HOSTED_OPEN_INT_PACKET };
+    uint32_t uid;
+    size_t used = 0u;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    owner_reserve_discovery_request(&fixture, OWNER_TEST_DISCOVERY_NONCE);
+    uid = fixture.owner.ids.active_uid;
+    CHECK(append_owner_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+        OWNER_TEST_DISCOVERY_RESPONSE_ID, uid, NULL, 0u) != 0u);
+    CHECK(append_owner_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+        OWNER_TEST_DISCOVERY_RESPONSE_ID, uid, NULL, 0u) != 0u);
+    CHECK(add_batch(&fixture.fake, batch, used));
+    set_raws(&fixture.fake, raw, 1u);
+
+    CHECK(!p4_hosted_owner_exchange_board_discovery(&fixture.owner,
+        &fixture.fifo, &fixture.owner_ops, fixture.generation, 0u,
+        fixture.request, fixture.request_size, 1000u, &fixture.result, &init,
+        OWNER_TEST_DISCOVERY_NONCE));
+    CHECK(fixture.result.error == P4_HOSTED_OWNER_RX &&
+          fixture.result.rx_error == P4_HOSTED_RX_PROTOCOL &&
+          fixture.result.submitted == 1u && fixture.result.matched == 0u &&
+          fixture.result.batches == 1u);
+    CHECK(fixture.owner.poisoned == 1u && fixture.fifo.poisoned == 1u &&
+          fixture.owner.ids.retired == 1u &&
+          fixture.owner.ids.next_uid == 2u &&
+          fixture.owner.rx.inbox.discovery_armed == 0u &&
+          fixture.owner.rx.inbox.discovery_seen == 0u &&
+          fixture.owner.rx.inbox.count == 0u);
+    CHECK(memcmp(&fixture.owner.reply,
+          &(const struct p4_hosted_inbox_item){0},
+          sizeof fixture.owner.reply) == 0);
+}
+
+static void test_normal_owner_exchange_works_after_discovery_success(void)
+{
+    struct p4_hosted_init init = owner_supported_discovery_init();
+    struct owner_fixture fixture;
+    uint8_t discovery_batch[TEST_CAPACITY];
+    uint8_t normal_batch[TEST_CAPACITY];
+    uint32_t raws[] = { P4_HOSTED_OPEN_INT_PACKET,
+                        P4_HOSTED_OPEN_INT_PACKET };
+    uint32_t discovery_uid, normal_uid;
+    size_t discovery_used = 0u, normal_used = 0u;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    owner_reserve_discovery_request(&fixture, OWNER_TEST_DISCOVERY_NONCE);
+    discovery_uid = fixture.owner.ids.active_uid;
+    CHECK(append_owner_rpc(discovery_batch, sizeof discovery_batch,
+        &discovery_used, HOSTED_SERIAL_ENDPOINT_RPCRSP,
+        P4_HOSTED_RPC_TYPE_RESPONSE, OWNER_TEST_DISCOVERY_RESPONSE_ID,
+        discovery_uid, NULL, 0u) != 0u);
+    CHECK(add_batch(&fixture.fake, discovery_batch, discovery_used));
+    CHECK(append_owner_rpc(normal_batch, sizeof normal_batch, &normal_used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+        OWNER_TEST_REQUEST_ID + 256u, 2u, NULL, 0u) != 0u);
+    CHECK(add_batch(&fixture.fake, normal_batch, normal_used));
+    set_raws(&fixture.fake, raws, 2u);
+
+    CHECK(p4_hosted_owner_exchange_board_discovery(&fixture.owner,
+        &fixture.fifo, &fixture.owner_ops, fixture.generation, 0u,
+        fixture.request, fixture.request_size, OWNER_TIMEOUT_US,
+        &fixture.result, &init, OWNER_TEST_DISCOVERY_NONCE));
+    CHECK(fixture.result.matched == 1u &&
+          fixture.result.request_id == OWNER_TEST_DISCOVERY_REQUEST_ID &&
+          fixture.owner.rx.inbox.discovery_armed == 0u &&
+          fixture.owner.ids.next_uid == 2u);
+    owner_verify_tx_discovery_request(&fixture, discovery_uid,
+                                      OWNER_TEST_DISCOVERY_NONCE);
+
+    owner_reserve_empty_request(&fixture, OWNER_TEST_REQUEST_ID);
+    normal_uid = fixture.owner.ids.active_uid;
+    CHECK(normal_uid == 2u);
+    fixture.fake.token = UINT32_C(2) << 16;
+    CHECK(p4_hosted_owner_exchange(&fixture.owner, &fixture.fifo,
+        &fixture.owner_ops, fixture.generation, 0u, fixture.request,
+        fixture.request_size, OWNER_TIMEOUT_US, &fixture.result));
+    CHECK(fixture.result.error == P4_HOSTED_OWNER_OK &&
+          fixture.result.submitted == 1u && fixture.result.matched == 1u &&
+          fixture.result.uid == normal_uid &&
+          fixture.result.request_id == OWNER_TEST_REQUEST_ID &&
+          fixture.owner.reply.msg_id == OWNER_TEST_REQUEST_ID + 256u &&
+          fixture.owner.reply.uid == normal_uid &&
+          fixture.owner.ids.next_uid == 3u &&
+          fixture.owner.ids.retired == 0u);
+    CHECK(fixture.owner.rx.inbox.discovery_armed == 0u &&
+          fixture.owner.rx.inbox.discovery_generation == 0u &&
+          fixture.owner.rx.inbox.discovery_uid == 0u &&
+          fixture.owner.rx.inbox.discovery_seen == 0u &&
+          fixture.fake.tx_fifo_writes == 2u && fixture.owner.poisoned == 0u);
+}
+
+static void owner_expect_discovery_preflight_refusal(
+    struct owner_fixture *fixture, struct p4_hosted_init *init, uint32_t nonce)
+{
+    struct p4_hosted_owner owner_before;
+    struct p4_hosted_fifo fifo_before;
+    struct p4_hosted_owner_result result_before;
+    struct p4_hosted_init init_before;
+    uint8_t request_before[P4_HOSTED_PENDING_MAX_REQUEST_SIZE];
+    size_t request_size_before = fixture->request_size;
+
+    memset(&fixture->result, 0x6du, sizeof fixture->result);
+    owner_before = fixture->owner;
+    fifo_before = fixture->fifo;
+    result_before = fixture->result;
+    init_before = *init;
+    memcpy(request_before, fixture->request, sizeof request_before);
+    CHECK(!p4_hosted_owner_exchange_board_discovery(&fixture->owner,
+        &fixture->fifo, &fixture->owner_ops, fixture->generation, 0u,
+        fixture->request, fixture->request_size, OWNER_TIMEOUT_US,
+        &fixture->result, init, nonce));
+    CHECK(memcmp(&fixture->owner, &owner_before, sizeof owner_before) == 0 &&
+          memcmp(&fixture->fifo, &fifo_before, sizeof fifo_before) == 0 &&
+          memcmp(&fixture->result, &result_before, sizeof result_before) == 0 &&
+          memcmp(init, &init_before, sizeof init_before) == 0 &&
+          memcmp(fixture->request, request_before,
+                 sizeof request_before) == 0 &&
+          fixture->request_size == request_size_before);
+    owner_check_no_callbacks(fixture);
+}
+
+static void test_unsupported_discovery_capability_refuses_atomically(void)
+{
+    struct p4_hosted_init init = owner_supported_discovery_init();
+    struct owner_fixture fixture;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    owner_reserve_discovery_request(&fixture, OWNER_TEST_DISCOVERY_NONCE);
+    init.capabilities = 0u;
+    CHECK(!p4_hosted_init_has_board_discovery(&init));
+    owner_expect_discovery_preflight_refusal(&fixture, &init,
+                                             OWNER_TEST_DISCOVERY_NONCE);
+}
+
+static void test_normal_exchange_api_rejects_discovery_350_atomically(void)
+{
+    struct owner_fixture fixture;
+    struct p4_hosted_owner owner_before;
+    struct p4_hosted_fifo fifo_before;
+    struct p4_hosted_owner_result result_before;
+    uint8_t request_before[P4_HOSTED_PENDING_MAX_REQUEST_SIZE];
+    size_t request_size_before;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    owner_reserve_discovery_request(&fixture, OWNER_TEST_DISCOVERY_NONCE);
+    memset(&fixture.result, 0x6du, sizeof fixture.result);
+    owner_before = fixture.owner;
+    fifo_before = fixture.fifo;
+    result_before = fixture.result;
+    memcpy(request_before, fixture.request, sizeof request_before);
+    request_size_before = fixture.request_size;
+
+    CHECK(!p4_hosted_owner_exchange(&fixture.owner, &fixture.fifo,
+        &fixture.owner_ops, fixture.generation, 0u, fixture.request,
+        fixture.request_size, OWNER_TIMEOUT_US, &fixture.result));
+    CHECK(memcmp(&fixture.owner, &owner_before, sizeof owner_before) == 0 &&
+          memcmp(&fixture.fifo, &fifo_before, sizeof fifo_before) == 0 &&
+          memcmp(&fixture.result, &result_before, sizeof result_before) == 0 &&
+          memcmp(fixture.request, request_before,
+                 sizeof request_before) == 0 &&
+          fixture.request_size == request_size_before);
+    owner_check_no_callbacks(&fixture);
+}
+
+static void test_discovery_refuses_existing_arm_without_mutation(void)
+{
+    struct p4_hosted_init init = owner_supported_discovery_init();
+    struct owner_fixture fixture;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    owner_reserve_discovery_request(&fixture, OWNER_TEST_DISCOVERY_NONCE);
+    CHECK(p4_hosted_inbox_arm_discovery_response(&fixture.owner.rx.inbox,
+        fixture.generation, fixture.owner.ids.active_uid));
+    owner_expect_discovery_preflight_refusal(&fixture, &init,
+                                             OWNER_TEST_DISCOVERY_NONCE);
+}
+
+static void test_discovery_nonce_and_init_alias_refusals(void)
+{
+    struct p4_hosted_init init = owner_supported_discovery_init();
+    struct owner_fixture fixture, before;
+    const void *aliases[7];
+    unsigned i;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    owner_reserve_discovery_request(&fixture, OWNER_TEST_DISCOVERY_NONCE);
+    owner_expect_discovery_preflight_refusal(&fixture, &init, 0u);
+    owner_expect_discovery_preflight_refusal(&fixture, &init,
+                                             OWNER_TEST_DISCOVERY_NONCE + 1u);
+    init.board_discovery_version = 2u;
+    owner_expect_discovery_preflight_refusal(&fixture, &init,
+                                             OWNER_TEST_DISCOVERY_NONCE);
+    aliases[0] = &fixture.owner;
+    aliases[1] = &fixture.fifo;
+    aliases[2] = &fixture.owner_ops;
+    aliases[3] = &fixture.rx_ops;
+    aliases[4] = &fixture.tx_ops;
+    aliases[5] = fixture.request;
+    aliases[6] = &fixture.result;
+    memcpy(&before, &fixture, sizeof before);
+    for (i = 0u; i < 7u; ++i) {
+        CHECK(!p4_hosted_owner_exchange_board_discovery(&fixture.owner,
+            &fixture.fifo, &fixture.owner_ops, fixture.generation, 0u,
+            fixture.request, fixture.request_size, OWNER_TIMEOUT_US,
+            &fixture.result, aliases[i], OWNER_TEST_DISCOVERY_NONCE));
+        CHECK(memcmp(&before, &fixture, sizeof before) == 0);
+        owner_check_no_callbacks(&fixture);
+    }
+    CHECK(!p4_hosted_owner_exchange_board_discovery(&fixture.owner,
+        &fixture.fifo, &fixture.owner_ops, fixture.generation, 0u,
+        fixture.request, fixture.request_size, OWNER_TIMEOUT_US,
+        &fixture.result, NULL, OWNER_TEST_DISCOVERY_NONCE));
+    CHECK(memcmp(&before, &fixture, sizeof before) == 0);
+    owner_check_no_callbacks(&fixture);
+}
+
+static void test_discovery_refuses_partial_serial_without_mutation(void)
+{
+    static const uint8_t event_body[] = { 0x47u };
+    struct p4_hosted_init init = owner_supported_discovery_init();
+    struct owner_fixture fixture;
+    struct p4_hosted_frame decoded;
+    uint8_t serial[TEST_LARGE_MESSAGE_CAPACITY];
+    uint8_t frame[TEST_FRAME_CAPACITY];
+    size_t serial_size, frame_size, split;
+
+    owner_fixture_prepare(&fixture, OWNER_TEST_GENERATION, 100u);
+    serial_size = make_serial_rpc_message(serial, sizeof serial,
+        HOSTED_SERIAL_ENDPOINT_RPCEVT, P4_HOSTED_RPC_TYPE_EVENT, 771u, 0u,
+        event_body, sizeof event_body);
+    CHECK(serial_size > 2u);
+    split = serial_size / 2u;
+    frame_size = make_fragment_frame(frame, sizeof frame, serial, split, 0u,
+                                     1u, 0u);
+    CHECK(frame_size != 0u && p4_hosted_decode(frame, frame_size, 0u,
+                                               &decoded));
+    CHECK(p4_hosted_reassembly_feed(&fixture.owner.rx.assembly,
+        fixture.generation, &decoded) == P4_HOSTED_REASSEMBLY_PARTIAL);
+    CHECK(p4_hosted_owner_ids_init(&fixture.owner, fixture.generation,
+                                    fixture.now));
+    CHECK(fixture.owner.partial_active == 1u);
+    owner_reserve_discovery_request(&fixture, OWNER_TEST_DISCOVERY_NONCE);
+    owner_expect_discovery_preflight_refusal(&fixture, &init,
+                                             OWNER_TEST_DISCOVERY_NONCE);
+}
+
 int main(void)
 {
     test_ap_info_exchange_correlates_response_550_after_tx();
@@ -1022,6 +1519,16 @@ int main(void)
     test_step_drains_owned_event_without_tx_or_host_lock();
     test_ids_init_preserves_open_handoff_event();
     test_cancel_closes_uid_without_bus_or_reuse();
+    test_board_discovery_exchange_matches_exact_606_and_dispatches();
+    test_board_discovery_timeout_invalidates_arm_and_uid();
+    test_board_discovery_wrong_uid_606_fails_closed();
+    test_board_discovery_duplicate_606_in_one_batch_fails_closed();
+    test_normal_owner_exchange_works_after_discovery_success();
+    test_unsupported_discovery_capability_refuses_atomically();
+    test_normal_exchange_api_rejects_discovery_350_atomically();
+    test_discovery_refuses_existing_arm_without_mutation();
+    test_discovery_nonce_and_init_alias_refusals();
+    test_discovery_refuses_partial_serial_without_mutation();
     printf("hosted shared-host owner: %lu checks passed\n", checks);
     return 0;
 }

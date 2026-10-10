@@ -121,7 +121,7 @@ not the current deployment pair. No ABI7 package/image or hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle and ABI7 handshake host/build verified; C6 discovery candidate build verified, undeployed; native discovery codecs and reserved-identity TX/RX admission host/build verified; no hardware acceptance | Native owner discovery request/epoch/lease binding; live P4/C6 layout/active-slot provenance, owner OTA dispatch and ambiguous-write recovery policy, secured CN5 recovery, real CLI/GUI update and HTTPS acquisition; regenerate matching ABI7 package/image before runtime; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle and ABI7 handshake host/build verified; C6 discovery candidate build verified, undeployed; native discovery codecs, TX/RX admission and exclusive-owner exchange build verified; no hardware acceptance | Runtime maintenance-job/epoch/lease binding and snapshot publication; live P4/C6 layout/active-slot provenance, owner OTA dispatch and ambiguous-write recovery policy, secured CN5 recovery, real CLI/GUI update and HTTPS acquisition; regenerate matching ABI7 package/image before runtime; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1322,6 +1322,11 @@ binding remain the next integration gate; transport helpers alone do not
 establish these properties. RX private fallback now requires explicit matching
 generation/UID admission; one606 reply is allowed and duplicates remain blocked
 after pop. Invalidation clears admission. Ordinary RPC ranges remain unchanged.
+The owner now exposes a private350/606 exchange with the existing absolute
+deadline and shared-controller arbitration. Partial SERIAL or a prior arm
+prevents admission; exact response completion disarms RX, while terminal errors
+retire the matching session. Runtime maintenance jobs must still bind this API
+to the live INIT, lease and snapshot publication. No new runtime query is sent.
 The tool is restricted to esp32p4/riscv builds. Independent generated protobuf-c
 comparison verifies the pinned OTA wire format; normal WLAN control submission
 rejects OTA commands. Neither test establishes live transport or recovery.
@@ -36604,3 +36609,65 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   Installed C6 identity/privacy and independent first-install recovery remain
   unresolved. UPDATE-C6 stays locked; OTA/CLI/GUI/HTTPS and actual WLAN
   association/DHCP/frames/reconnect/combined1800s acceptance remain open.
+
+### 2026-10-11 - N2M bounded discovery exchange in the exclusive owner
+
+- Identity/config: parent1784e98ced, feature/esp32p4-wifi. New separate owner
+  exchange350/606 preserves ordinary WLAN allowlists, generic decoder and OTA
+  rejection. Private preflight adds immutable/disjoint INIT to the existing
+  seven ranges, requires supported C6/SDIO/version1, canonical nonzero nonce,
+  exact reserved UID and no partial SERIAL or existing admission arm.
+- Procedure/behavior: drain complete stock events/responses/frames, arm the
+  reserved606 identity, transmit under the existing shared-host acquisition
+  and receive under the same single absolute deadline. No additional owner,
+  retries, resets or renewals are introduced. Envelope success drains queued
+  items, consumes the UID and disarms admission; terminal errors retire the
+  matching transport generation and clear admission. Semantic inventory/status
+  validation and live maintenance lease/freshness remain caller obligations.
+- Native verification: invalidated resource objects before gmake
+  kernel-esp32p4wifi-probe-quick in /Volumes/Dev/Build/aros-esp32p4-wifi-build,
+  P4_BOARD=jc1060p470c-v2, P4_WIFI_SDIO_SETUP=1, P4_WIFI_HOSTED_INIT=1,
+  P4_WIFI_HOSTED_REPLY=1, P4_WIFI_HOSTED_OWNER=1, P4_WIFI_OWNER_CPU=1.
+  Actual build exit0, resource275804B SHA-256
+  66f073fe7fd450b3bdb1e56d1c329b0e9e4cf038ef2972ef6142bed15be75889;
+  actual audit-package.audit_elf passes without loader issues, exit0. Build log
+  contains the module link and no warning/error signatures. No public ABI
+  change, package/image regeneration, deployment or hardware claim.
+- Existing regressions: primary runs exit0, O0/O2: reservation63,
+  source-extracted owner association26131 and maintenance186 checks each;
+  maintenance ACTIVE-poll negative mutation is rejected. Initial ordinary
+  owner regression also passes6823 checks each O0/O2 under ASan/UBSan.
+  An intermediate expanded-test run exited1 in the normal-after-discovery
+  fixture: its simulated peer supplied only one TX credit for two exchanges.
+  The fixture must advance the token after the first exchange; no transport
+  bypass or production credit change is appropriate. Intermediate log retained
+  as owner-baseline-repeat.log, not a successful final test.
+  Final coupled owner runner, primary repeat, exits0:7316 checks each O0/O2
+  under ASan/UBSan. Covers exact606 with stock event/550 draining, timeout,
+  wrong UID and duplicate606 failure, subsequent ordinary257/513 exchange,
+  unsupported capability/version, zero/wrong nonce, all seven INIT aliases,
+  missing INIT, ordinary API refusal of350, existing arm and partial SERIAL.
+  Empty private response bodies deliberately test envelope orchestration only;
+  actual inventory semantics are not verified by these fixtures. Independent
+  non-author source review found no blocking defect; it confirmed the caller
+  lease/freshness/semantic-publication gap and immutable INIT requirement.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/
+  wifi-2026-10-10/discovery-owner.zkfxuk. SHA-256:
+  resource-build.log
+  eef8b384592d6e616da9c3029a4aecad4c86027a4aaaa77d30e58f2764122407;
+  audit.log
+  02bcc95b5175c55be0905de9c2af5911b30498db3bbf3199146a4afdc1c1beeb;
+  association.log
+  33f9b4a17e1a5709da908f84ac54dc772297c3b764a308c040b7e8029d5f9a21;
+  maintenance.log
+  2902b976956428b98990c1fea6b1d46fd65059d75e4f225a0bf08ec873a73591.
+  owner-boundary-final.log
+  be45d3d358183c9cac2a4c557879fae950519bbec24f7b853125000127ea6eb9.
+- Safety/limits/next: no serial open/reset/flash/SD write/credentials.
+  Independent privacy assertions remain0; C6 candidate remains undeployed.
+  Runtime maintenance-job dispatch has not invoked this API; bind its fresh
+  negotiated INIT, task/token lease, original deadline and non-reused UID/nonce,
+  decode off small task stacks and publish atomically only while valid. Match
+  ABI7 resource/device package before runtime qualification. Installed identity,
+  privacy, recovery, OTA/CLI/GUI/HTTPS and actual WLAN acceptance remain open;
+  UPDATE-C6 is not unlocked by this exchange implementation.

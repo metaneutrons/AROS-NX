@@ -60,6 +60,13 @@ owner invocation and frontend publication are still required. Private RX now
 admits one606 response only for an explicitly armed generation/UID, retaining
 duplicate rejection after pop and clearing admission on invalidation. Host
 tests and a fresh RV32 resource/loader audit pass; this is not live discovery.
+The exclusive transport owner now provides a separate bounded discovery
+exchange: exact reserved350, supported INIT and nonce, no pre-existing partial
+SERIAL stream or admission arm, one606 response and cleanup on success/failure.
+This uses the existing absolute deadline and shared-controller arbiter. Runtime
+maintenance-job dispatch and snapshot publication are not yet wired to it.
+Owner tests pass7316 checks each O0/O2 under ASan/UBSan, including private
+success, terminal cleanup, subsequent normal exchange and atomic refusals.
 CLI examples (not yet executed on hardware):
 
     ESP32Board ACTION INFO

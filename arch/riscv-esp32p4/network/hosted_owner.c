@@ -139,11 +139,27 @@ static int owner_matches(const struct p4_hosted_owner *owner,
                          uint32_t generation)
 {
     int pending_consistent;
+    const struct p4_hosted_inbox *inbox = &owner->rx.inbox;
+
+    if (inbox->discovery_armed > 1u || inbox->discovery_seen > 1u)
+        return 0;
+    if (inbox->discovery_armed == 0u) {
+        if (inbox->discovery_generation != 0u || inbox->discovery_uid != 0u ||
+            inbox->discovery_seen != 0u ||
+            (owner->pending_active && owner->pending_request_id == 350u))
+            return 0;
+    } else if (inbox->discovery_generation != generation ||
+               inbox->discovery_uid == 0u ||
+               owner->ids.active_request_id != 350u ||
+               inbox->discovery_uid != owner->ids.active_uid) {
+        return 0;
+    }
 
     pending_consistent = owner->pending_active == 0u
         ? owner->pending_uid == 0u && owner->pending_request_id == 0u
         : owner->pending_uid != 0u &&
-          request_id_supported(owner->pending_request_id) &&
+          (request_id_supported(owner->pending_request_id) ||
+           owner->pending_request_id == 350u) &&
           owner->ids.active_uid == owner->pending_uid &&
           owner->ids.active_request_id == owner->pending_request_id;
 
@@ -211,6 +227,10 @@ int p4_hosted_owner_ids_init(struct p4_hosted_owner *owner,
         owner->rx.assembly.generation != generation ||
         owner->rx.inbox.initialized != 1u || owner->rx.inbox.poisoned != 0u ||
         owner->rx.inbox.generation != generation ||
+        owner->rx.inbox.discovery_armed != 0u ||
+        owner->rx.inbox.discovery_generation != 0u ||
+        owner->rx.inbox.discovery_uid != 0u ||
+        owner->rx.inbox.discovery_seen != 0u ||
         owner->rx.frames.initialized != 1u || owner->rx.frames.poisoned != 0u ||
         owner->rx.frames.generation != generation)
         return 0;
@@ -311,11 +331,12 @@ int p4_hosted_owner_cancel(struct p4_hosted_owner *owner,
 static int owner_ops_ranges(const struct p4_hosted_owner *owner,
     const struct p4_hosted_fifo *fifo, const struct p4_hosted_owner_ops *ops,
     const void *request, size_t request_size,
-    const struct p4_hosted_owner_result *result)
+    const struct p4_hosted_owner_result *result,
+    const struct p4_hosted_init *init)
 {
-    const void *objects[7];
-    size_t sizes[7];
-    struct owner_range ranges[7];
+    const void *objects[8];
+    size_t sizes[8];
+    struct owner_range ranges[8];
     unsigned count = 0u;
 
     objects[count] = owner;
@@ -334,27 +355,63 @@ static int owner_ops_ranges(const struct p4_hosted_owner *owner,
     }
     objects[count] = result;
     sizes[count++] = sizeof(*result);
+    if (init) {
+        objects[count] = init;
+        sizes[count++] = sizeof(*init);
+    }
     return collect_ranges(ranges, objects, sizes, count);
+}
+
+static int owner_discovery_body_matches(const struct p4_hosted_rpc *rpc,
+                                        uint32_t nonce)
+{
+    uint8_t body[8];
+    size_t size = 0u, i;
+    if (!nonce) return 0;
+    body[size++] = 8u;
+    body[size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1;
+    body[size++] = 16u;
+    while (nonce >= 128u) {
+        body[size++] = (uint8_t)(nonce | 128u);
+        nonce >>= 7;
+    }
+    body[size++] = (uint8_t)nonce;
+    if (rpc->payload_size != size) return 0;
+    for (i = 0u; i < size; ++i)
+        if (rpc->payload[i] != body[i]) return 0;
+    return 1;
 }
 
 static int owner_exchange_preflight(struct p4_hosted_owner *owner,
     struct p4_hosted_fifo *fifo, const struct p4_hosted_owner_ops *ops,
     uint32_t generation, unsigned checksum_enabled,
     const uint8_t *request, size_t request_size, uint32_t timeout_us,
-    struct p4_hosted_owner_result *result, struct p4_hosted_rpc *rpc)
+    struct p4_hosted_owner_result *result, struct p4_hosted_rpc *rpc,
+    const struct p4_hosted_init *init, uint32_t nonce, unsigned discovery)
 {
     if (!owner || !fifo || !ops || !request || !result || !rpc ||
         generation == 0u || checksum_enabled > 1u ||
         request_size == 0u ||
         request_size > P4_HOSTED_PENDING_MAX_REQUEST_SIZE ||
         timeout_us == 0u || timeout_us > P4_HOSTED_OWNER_MAX_EXCHANGE_US ||
-        !owner_ops_ranges(owner, fifo, ops, request, request_size, result) ||
+        (discovery && (!init || !nonce)) ||
+        !owner_ops_ranges(owner, fifo, ops, request, request_size, result,
+                          discovery ? init : NULL) ||
         !ops_valid(ops) || !owner_matches(owner, generation) ||
         !fifo_matches(fifo, generation) || owner->pending_active != 0u ||
         owner->ids.active_uid == 0u ||
-        !p4_hosted_rpc_decode(request, request_size, rpc) ||
+        owner->rx.inbox.discovery_armed != 0u ||
+        owner->rx.inbox.discovery_generation != 0u ||
+        owner->rx.inbox.discovery_uid != 0u ||
+        owner->rx.inbox.discovery_seen != 0u ||
+        (discovery && owner->partial_active != 0u) ||
+        !(discovery ? p4_hosted_rpc_decode_board_discovery(request, request_size, rpc)
+                    : p4_hosted_rpc_decode(request, request_size, rpc)) ||
         rpc->msg_type != P4_HOSTED_RPC_TYPE_REQUEST || rpc->uid == 0u ||
-        !request_id_supported(rpc->msg_id) ||
+        (discovery ? (rpc->msg_id != 350u ||
+                      !p4_hosted_init_has_board_discovery(init) ||
+                      !owner_discovery_body_matches(rpc, nonce))
+                   : !request_id_supported(rpc->msg_id)) ||
         owner->ids.active_uid != rpc->uid ||
         owner->ids.active_request_id != rpc->msg_id)
         return 0;
@@ -369,11 +426,15 @@ static int owner_step_preflight(struct p4_hosted_owner *owner,
     if (!owner || !fifo || !ops || !result || generation == 0u ||
         checksum_enabled > 1u || slice_budget_us == 0u ||
         slice_budget_us > P4_HOSTED_OWNER_MAX_SLICE_US ||
-        !owner_ops_ranges(owner, fifo, ops, NULL, 0u, result) ||
+        !owner_ops_ranges(owner, fifo, ops, NULL, 0u, result, NULL) ||
         !ops_valid(ops) || !owner_matches(owner, generation) ||
         !fifo_matches(fifo, generation) || owner->pending_active != 0u ||
         owner->ids.active_uid != 0u ||
-        owner->ids.active_request_id != 0u)
+        owner->ids.active_request_id != 0u ||
+        owner->rx.inbox.discovery_armed != 0u ||
+        owner->rx.inbox.discovery_generation != 0u ||
+        owner->rx.inbox.discovery_uid != 0u ||
+        owner->rx.inbox.discovery_seen != 0u)
         return 0;
     return 1;
 }
@@ -588,11 +649,13 @@ static void owner_update_partial(struct p4_hosted_owner *owner,
     }
 }
 
-static int owner_valid_response(const struct p4_hosted_inbox_item *item)
+static int owner_valid_response(const struct p4_hosted_inbox_item *item,
+                                 unsigned discovery)
 {
     return item->payload_size <= P4_HOSTED_RPC_MAX_SIZE &&
            item->msg_type == P4_HOSTED_RPC_TYPE_RESPONSE &&
-           item->msg_id >= 513u && item->msg_id <= 605u && item->uid != 0u;
+           ((item->msg_id >= 513u && item->msg_id <= 605u) ||
+            (discovery && item->msg_id == 606u)) && item->uid != 0u;
 }
 
 static void copy_reply(struct p4_hosted_inbox_item *destination,
@@ -622,14 +685,16 @@ static int owner_drain(struct p4_hosted_owner *owner,
         /* A suffix may contain a response matching an identity reserved by
          * the caller but not yet transmitted. Never let that pre-TX response
          * finish the reservation. */
-        if (!owner->pending_active && owner_valid_response(item)) {
+        if (!owner->pending_active && owner_valid_response(item, 0u)) {
             ++result->unmatched;
             wipe_bytes(item, sizeof(*item));
             continue;
         }
 
-        correlation = p4_hosted_pending_correlate(&owner->ids, generation,
-                                                   item);
+        correlation = owner->pending_active && owner->pending_request_id == 350u
+            ? p4_hosted_pending_correlate_board_discovery(&owner->ids,
+                                                         generation, item)
+            : p4_hosted_pending_correlate(&owner->ids, generation, item);
         if (correlation == P4_HOSTED_PENDING_CORRELATION_REFUSED) {
             wipe_bytes(item, sizeof(*item));
             return 0;
@@ -647,7 +712,8 @@ static int owner_drain(struct p4_hosted_owner *owner,
             continue;
         }
         if (correlation == P4_HOSTED_PENDING_CORRELATION_MATCHED) {
-            if (!owner->pending_active || !owner_valid_response(item) ||
+            if (!owner->pending_active ||
+                !owner_valid_response(item, owner->pending_request_id == 350u) ||
                 item->uid != owner->pending_uid ||
                 item->msg_id != owner->pending_request_id + 256u) {
                 wipe_bytes(item, sizeof(*item));
@@ -666,7 +732,7 @@ static int owner_drain(struct p4_hosted_owner *owner,
 
         /* A valid response observed before this invocation's TX cannot
          * complete a merely reserved identity. Keep it explicitly unmatched. */
-        if (!owner_valid_response(item)) {
+        if (!owner_valid_response(item, 0u)) {
             wipe_bytes(item, sizeof(*item));
             return 0;
         }
@@ -789,11 +855,12 @@ static int poll_one_acquisition(struct p4_hosted_owner *owner,
     return 1;
 }
 
-int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
+static int owner_exchange(struct p4_hosted_owner *owner,
     struct p4_hosted_fifo *fifo, const struct p4_hosted_owner_ops *ops,
     uint32_t generation, unsigned checksum_enabled,
     const uint8_t *request, size_t request_size, uint32_t timeout_us,
-    struct p4_hosted_owner_result *result)
+    struct p4_hosted_owner_result *result,
+    const struct p4_hosted_init *init, uint32_t nonce, unsigned discovery)
 {
     struct p4_hosted_rpc rpc;
     struct owner_runtime runtime;
@@ -804,7 +871,8 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
     int submitted, drained;
 
     if (!owner_exchange_preflight(owner, fifo, ops, generation,
-        checksum_enabled, request, request_size, timeout_us, result, &rpc))
+        checksum_enabled, request, request_size, timeout_us, result, &rpc,
+        init, nonce, discovery))
         return 0;
 
     clear_result(result);
@@ -828,6 +896,14 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
     if (drained != 1) {
         owner_set_error(result, drained == -1 ? P4_HOSTED_OWNER_DISPATCH :
                         P4_HOSTED_OWNER_PROTOCOL, owner, fifo, generation);
+        set_elapsed(result, ops, start);
+        return 0;
+    }
+
+    if (discovery && !p4_hosted_inbox_arm_discovery_response(
+        &owner->rx.inbox, generation, rpc.uid)) {
+        owner_set_error(result, P4_HOSTED_OWNER_PROTOCOL, owner, fifo,
+                        generation);
         set_elapsed(result, ops, start);
         return 0;
     }
@@ -874,9 +950,14 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
         }
 
         make_tx_adapter(&runtime, &tx_adapter);
-        submitted = p4_hosted_pending_submit(fifo, &owner->ids, generation,
-            &tx_adapter, checksum_enabled, owner->request, request_size,
-            owner->wire, sizeof(owner->wire), &owner->pending);
+        submitted = discovery
+            ? p4_hosted_pending_submit_board_discovery(fifo, &owner->ids,
+                generation, &tx_adapter, checksum_enabled, owner->request,
+                request_size, owner->wire, sizeof(owner->wire), &owner->pending,
+                init, nonce)
+            : p4_hosted_pending_submit(fifo, &owner->ids, generation,
+                &tx_adapter, checksum_enabled, owner->request, request_size,
+                owner->wire, sizeof(owner->wire), &owner->pending);
         ops->release(ops->context);
         result->pending_error = owner->pending.error;
         result->submitted = owner->pending.submitted;
@@ -967,6 +1048,13 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
                 }
             }
             if (result->matched != 0u) {
+                if (discovery && !p4_hosted_inbox_disarm_discovery_response(
+                    &owner->rx.inbox, generation, rpc.uid)) {
+                    owner_set_error(result, P4_HOSTED_OWNER_PROTOCOL, owner,
+                                    fifo, generation);
+                    set_elapsed(result, ops, start);
+                    return 0;
+                }
                 result->error = P4_HOSTED_OWNER_OK;
                 wipe_bytes(&owner->inbox_scratch,
                            sizeof(owner->inbox_scratch));
@@ -985,6 +1073,27 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
             ops->wait(ops->context);
         }
     }
+}
+
+int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
+    struct p4_hosted_fifo *fifo, const struct p4_hosted_owner_ops *ops,
+    uint32_t generation, unsigned checksum_enabled,
+    const uint8_t *request, size_t request_size, uint32_t timeout_us,
+    struct p4_hosted_owner_result *result)
+{
+    return owner_exchange(owner, fifo, ops, generation, checksum_enabled,
+        request, request_size, timeout_us, result, NULL, 0u, 0u);
+}
+
+int p4_hosted_owner_exchange_board_discovery(struct p4_hosted_owner *owner,
+    struct p4_hosted_fifo *fifo, const struct p4_hosted_owner_ops *ops,
+    uint32_t generation, unsigned checksum_enabled,
+    const uint8_t *request, size_t request_size, uint32_t timeout_us,
+    struct p4_hosted_owner_result *result,
+    const struct p4_hosted_init *init, uint32_t nonce)
+{
+    return owner_exchange(owner, fifo, ops, generation, checksum_enabled,
+        request, request_size, timeout_us, result, init, nonce, 1u);
 }
 
 int p4_hosted_owner_step(struct p4_hosted_owner *owner,

@@ -119,6 +119,22 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
     const uint8_t *request, size_t request_size, uint32_t timeout_us,
     struct p4_hosted_owner_result *result);
 
+/* Private read-only discovery exchange. Uses the same absolute deadline and
+ * controller ownership as normal exchange; requires reserved350, supported
+ * INIT, canonical version1/nonzero nonce and no partial SERIAL or existing RX
+ * arm. Arms exact606 before TX, disarms after draining success, and invalidates
+ * admission on terminal failure. INIT is an additional disjoint input range.
+ * Caller must keep INIT immutable until return, bind it to the live peer and
+ * enforce its maintenance lease. Adapter callbacks must not mutate INIT.
+ * Success is envelope correlation only, not validated inventory, freshness,
+ * authorization to update, or proof of independent recovery. */
+int p4_hosted_owner_exchange_board_discovery(struct p4_hosted_owner *owner,
+    struct p4_hosted_fifo *fifo, const struct p4_hosted_owner_ops *ops,
+    uint32_t generation, unsigned checksum_enabled,
+    const uint8_t *request, size_t request_size, uint32_t timeout_us,
+    struct p4_hosted_owner_result *result,
+    const struct p4_hosted_init *init, uint32_t nonce);
+
 /* One idle acquisition/poll. It never submits TX and returns success when a
  * bounded idle poll completed (result.idle is set when no RX work arrived).
  * slice_budget_us is 1..250ms and is per acquisition, not a renewable RPC
