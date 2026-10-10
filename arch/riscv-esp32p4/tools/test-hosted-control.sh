@@ -14,6 +14,7 @@ for test_opt in 0 2; do
 		"$test_root/network/hosted_fifo.c" \
 		"$test_root/network/sdio_commands.c" \
 		"$test_root/network/hosted_mac.c" \
+		"$test_root/network/hosted_epoch_reassembly.c" \
 		"$test_root/network/hosted_rpc.c" \
 		"$test_root/network/hosted_serial.c" \
 		"$test_root/network/hosted_wire.c" \
@@ -38,6 +39,11 @@ if ! nm -u "$test_tmp/hosted_control.o" | awk '
 		    symbol == "p4_hosted_encode" ||
 		    symbol == "p4_hosted_fifo_finish" ||
 		    symbol == "p4_hosted_fifo_rx" ||
+		    symbol == "p4_hosted_reassembly_abort" ||
+		    symbol == "p4_hosted_reassembly_feed" ||
+		    symbol == "p4_hosted_reassembly_release" ||
+		    symbol == "p4_hosted_reassembly_start" ||
+		    symbol == "p4_hosted_reassembly_view" ||
 		    symbol == "p4_hosted_mac_request" ||
 		    symbol == "p4_hosted_mac_response" ||
 		    symbol == "p4_hosted_rpc_decode" ||

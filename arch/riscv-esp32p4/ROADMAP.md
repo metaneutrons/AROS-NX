@@ -119,7 +119,7 @@ gate: compensated output is not the native display contract.
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; MAC initialization ordering failure; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; GetMAC returns correlated0x3001 (WiFi not initialized), so overall diagnostic fails. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
-| N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; runtime initialization deployed, fresh-epoch gate pending` | Existing FIFO reused with owned bodies/exact correlation. Control2413/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Separate generation-bound reassembly1318 checks each O0/O2 sanitized and RV32 no-libc compile pass; not linked/deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Download mode retained pending coordinated fresh C6 startup; no initialized MAC gate yet. No persistent UID allocator/integrated fragmentation or WLAN acceptance. Original verified baseline recoverable. |
+| N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; runtime initialization deployed, fresh-epoch gate pending` | Existing FIFO reused with owned bodies/exact correlation. Control3184/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Generation-bound reassembly1318 isolated checks each O0/O2 sanitized pass; now linked into control with coupled epoch/deadline/failure tests and fresh113900B module build. Fragmentation integration not deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Download mode retained pending coordinated fresh C6 startup; no initialized MAC gate yet. No persistent UID allocator or WLAN acceptance. Original verified baseline recoverable. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -555,7 +555,8 @@ copy. Run recovery only after the failed request releases its transaction.
 
 Bounded sequential control foundation (N1C,2026-10-10): generic exchange
 accepts the six initialization/control request IDs on an existing transport,
-correlates exact response ID/UID and owns up to256 response-body bytes. Remote
+correlates exact response ID/UID and owns response bodies within a4096-byte
+protobuf limit (requests remain capped at256 bytes). Remote
 status remains operation-codec work; envelope success is not Wi-Fi success.
 Whole batches remain validated after a match. Unread acknowledged RX failures
 poison the current session. FIFO/TX/control stale-generation calls refuse
@@ -578,12 +579,16 @@ written only at0x820000 with independent byte-identical readback after two
 matching full3801088B erase-span backups. Download mode is retained pending
 externally coordinated fresh C6 startup; this is deployment, not a run/pass.
 
-Separate epoch-bound serial reassembly is now host-model tested1318 checks
-each O0/O2 sanitized and RV32 freestanding compiled, not linked/deployed.
-It owns partial bytes, follows pinned1500-byte/incrementing-sequence fragments,
-and poisons consumed malformed/aborted assembly. The control owner must couple
-this to the same transport generation/aggregate deadline before native scan;
-an isolated helper pass cannot establish timeout or batch-drain integration.
+Epoch-bound serial reassembly is now linked into control, with1318 isolated
+helper and3184 coupled control checks each O0/O2 sanitized. It owns partial
+bytes, follows pinned1500-byte/incrementing-sequence fragments and retains
+assembly across batches under the same transport generation/aggregate deadline.
+Consumed malformed/aborted assembly and terminal partial failures wipe assembly
+and poison only the matching FIFO ledger. A matching response followed by an
+unfinished message fails rather than silently discarding it. The fresh113900B
+module and standalone RV32 objects compile without libc imports. This is model
+and build evidence, not hardware acceptance; the deployed6e3d9e577a candidate
+does not contain this integration and still awaits coordinated fresh startup.
 
 After the user's reconnection confirmation, a passive20.061s capture on
 2026-10-10 observes advancing JC1060 touch heartbeats only. N1/N1C status
@@ -31896,6 +31901,44 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   startup coordination. No scan or WLAN pass. Next integrate assembly into
   whole-batch control with epoch/deadline/failure tests and typed bounded scan;
   first initialization hardware gate separately remains pending readiness.
+
+### 2026-10-10 - N1C fragmentation integrated into bounded control, build verified
+
+- Source:185027a30b plus this change; hosted_control, epoch helper linkage and
+  coupled tests. Six initialization request IDs remain the only allowed RPCs.
+  No native scan, association or network-device acceptance is claimed.
+- Owned4096-byte protobuf responses and4108-byte assembly are caller storage;
+  runtime startup results already use AllocVec rather than task-stack arrays.
+  Requests remain256 bytes. The same generation, aggregate deadline and100-poll
+  bound govern partial replies. All terminal partial failures wipe/poison;
+  replacement-generation ledgers are preserved. No retry or UID allocator.
+- Procedure: existing network-disabled Linux builder, strict C99 O0/O2 with
+  ASan/UBSan; primary reruns exit0. Control3184, startup551, reassembly1318,
+  FIFO1245361, TX2614 and OPEN716 checks each optimization level pass. Models
+  do not establish physical timing, installed C6 identity or WLAN readiness.
+- Independent review found no blocking ownership/exit/stack issue. Its throttle
+  question was resolved against pinned d518 source: SDIO headers are zeroed,
+  and throttle signaling uses interrupts, unlike the out-of-scope SPI path.
+- Build: all module objects invalidated, mmake regenerated, exact
+  jc1060p470c-v2 with SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/HOSTED_MAC=1 and
+  RESET_QUERY=0. Actual module build exits0. fragment.resource113900B SHA-256
+  b9abdb87b5427bae916d707976357151b9ba807b2e9254a43a68401b268a4bf3.
+  RV32 hosted-control.o12792B SHA-256
+  82a5d1c30052b8f9849492e702a3788d0863a1377326ed491e43e0353b5d9246;
+  no libc imports. Largest reported local static frame560B is not whole-chain
+  or hardware stack-high-water evidence.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/control-fragment-integration.jVE8oP/.
+  control-model.log SHA-256
+  aa43b77985e14686c7ccf53de3af79b5e3e8a86ccb5144a48a61a3c360f0fb60;
+  startup-reassembly-regression.log SHA-256
+  7a10955e012187761887d7c01e3ab7cbf38a38d1802a04892fdb4e8eba815024;
+  transport-regression.log SHA-256
+  95a541ffd316f8ef49ad106075d99f53807636c399a17caff48329f940ac0129.
+- Safety: no serial access, reset, packaging, flash, SD or C6 write. Deployed
+  initialization candidate and recoverable backups unchanged. Native scan
+  codec work remains separate. Next: coordinated initialization hardware gate,
+  then source/oracle-qualified native scan and association/data/SANA-II gates.
 
 ## Evidence-entry template
 

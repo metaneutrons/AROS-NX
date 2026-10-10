@@ -11,7 +11,7 @@ native AROS Wi-Fi remains open.
 The native control foundation now supports bounded sequential Init/SetMode/
 Start/Stop/Deinit/GetMAC envelopes on one existing FIFO ledger, with owned
 response bodies and exact UID/operation correlation. Linux O0/O2 sanitizer
-models pass2,413 control,2,614 TX,1,245,361 FIFO and716 OPEN checks each.
+models pass3,184 control,2,614 TX,1,245,361 FIFO and716 OPEN checks each.
 Unread acknowledged RX failures invalidate the session; stale-generation calls
 cannot alter a replacement ledger. Standalone RV32 objects compile without
 libc imports. The full typed WiFiInit body and SetMode/Start/Stop/Deinit status
@@ -28,11 +28,16 @@ matching full-erase-span backups. The board is deliberately held in download
 mode awaiting coordinated fresh C6 startup; native initialized MAC and WLAN
 remain open. The original baseline is recoverable from both saved backups.
 
-A separate generation-bound serial reassembly helper now passes1,318 checks
+A generation-bound serial reassembly helper now passes1,318 checks
 each at O0/O2 with ASan/UBSan and freestanding RV32 compilation. It copies
 partial replies into owned memory and checks the pinned slave's per-fragment
-sequence increments. It is not yet linked into the control path or included
-in the deployed package; native scan and WLAN acceptance remain open.
+sequence increments. It is now linked into the control path, retaining partial
+replies across batches under the same epoch and aggregate deadline. Terminal
+partial failures wipe assembly and invalidate only the matching FIFO epoch;
+whole-batch validation continues after a response match. Responses are owned
+up to4096 protobuf bytes; requests remain capped at256 bytes. The fresh113900B
+module builds, but this integration is not in the deployed initialization
+package. Native scan and WLAN acceptance remain open.
 
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection

@@ -72,13 +72,19 @@ static int control_decode_batch(struct p4_hosted_fifo *state,
     struct p4_hosted_frame frame;
     struct hosted_serial_message message;
     struct p4_hosted_rpc rpc;
+    enum p4_hosted_reassembly_result assembled;
     while (offset < logical) {
         if (!p4_hosted_decode(buffer + offset, logical - offset,
-                              checksum_enabled, &frame) ||
-            frame.interface_type != P4_HOSTED_SERIAL ||
-            frame.interface_number != 0 || frame.flags != 0 ||
-            frame.packet_type != 0 ||
-            !hosted_serial_decode(frame.payload, frame.payload_size, &message) ||
+                              checksum_enabled, &frame))
+            goto malformed;
+        assembled = p4_hosted_reassembly_feed(&result->assembly, generation,
+                                               &frame);
+        if (assembled == P4_HOSTED_REASSEMBLY_PARTIAL) {
+            offset += frame.wire_size;
+            continue;
+        }
+        if (assembled != P4_HOSTED_REASSEMBLY_COMPLETE ||
+            !p4_hosted_reassembly_view(&result->assembly, generation, &message) ||
             !p4_hosted_rpc_decode(message.protobuf, message.protobuf_size, &rpc))
             goto malformed;
         if (message.endpoint == HOSTED_SERIAL_ENDPOINT_RPCEVT &&
@@ -99,19 +105,22 @@ static int control_decode_batch(struct p4_hosted_fifo *state,
                 result->matched = 1;
             } else ++result->unmatched;
         } else goto malformed;
+        if (!p4_hosted_reassembly_release(&result->assembly, generation))
+            goto malformed;
         offset += frame.wire_size;
     }
     return 1;
 malformed:
+    (void)p4_hosted_reassembly_abort(&result->assembly, generation);
     control_poison(state, generation);
     return control_fail(result, P4_HOSTED_CONTROL_PROTOCOL);
 }
 
-int p4_hosted_control_exchange(struct p4_hosted_fifo *state, uint32_t generation,
+static int control_exchange_run(struct p4_hosted_fifo *state, uint32_t generation,
     const struct p4_hosted_open_ops *rx,
     const struct p4_hosted_tx_ops *tx, unsigned checksum_enabled,
     const uint8_t *request, size_t request_size, uint8_t *buffer, size_t capacity,
-    struct p4_hosted_control_result *result)
+    struct p4_hosted_control_result *result, unsigned *begun)
 {
     const void *objects[6] = {state, rx, tx, buffer, result, request};
     const size_t sizes[6] = {sizeof(*state), sizeof(*rx), sizeof(*tx),
@@ -143,6 +152,9 @@ int p4_hosted_control_exchange(struct p4_hosted_fifo *state, uint32_t generation
          rpc.msg_id != 279u && rpc.msg_id != 280u && rpc.msg_id != 281u)) return 0;
     zero = (volatile uint8_t *)result;
     for (i = 0; i < sizeof(*result); ++i) zero[i] = 0;
+    *begun = 1;
+    if (!p4_hosted_reassembly_start(&result->assembly, generation))
+        return control_fail(result, P4_HOSTED_CONTROL_PROTOCOL);
     message.endpoint = HOSTED_SERIAL_ENDPOINT_RPCRSP;
     message.protobuf = request;
     message.protobuf_size = request_size;
@@ -221,6 +233,10 @@ int p4_hosted_control_exchange(struct p4_hosted_fifo *state, uint32_t generation
                         rpc.msg_id + 256u, buffer,
                         plan.logical_bytes, checksum_enabled, result)) return 0;
                 if (result->matched) {
+                    if (result->assembly.fragments) {
+                        control_poison(state, generation);
+                        return control_fail(result, P4_HOSTED_CONTROL_PROTOCOL);
+                    }
                     if (!control_guard(state, generation, tx, result)) return 0;
                     result->success = 1;
                     return 1;
@@ -233,6 +249,24 @@ int p4_hosted_control_exchange(struct p4_hosted_fifo *state, uint32_t generation
         }
     }
     return control_fail(result, P4_HOSTED_CONTROL_TIMEOUT);
+}
+
+int p4_hosted_control_exchange(struct p4_hosted_fifo *state, uint32_t generation,
+    const struct p4_hosted_open_ops *rx, const struct p4_hosted_tx_ops *tx,
+    unsigned checksum_enabled, const uint8_t *request, size_t request_size,
+    uint8_t *buffer, size_t capacity, struct p4_hosted_control_result *result)
+{
+    unsigned begun = 0;
+    int ok = control_exchange_run(state, generation, rx, tx, checksum_enabled,
+        request, request_size, buffer, capacity, result, &begun);
+    /* Do not inspect or mutate output on a local preflight refusal. A partial
+     * consumed response must not survive ANY terminal path into the next RPC.
+     * Epoch-aware poison preserves a replacement FIFO on session loss. */
+    if (begun && !ok && result->assembly.fragments) {
+        (void)p4_hosted_reassembly_abort(&result->assembly, generation);
+        control_poison(state, generation);
+    }
+    return ok;
 }
 
 int p4_hosted_control_get_mac(struct p4_hosted_fifo *state, uint32_t generation,

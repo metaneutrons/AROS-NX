@@ -46,12 +46,14 @@ on nonfinal fragments; the sequence increments within a message, including
 TLVs, is split into chunks. `slave/main/protocomm_pserial.c:76` composes a
 six-byte endpoint TLV followed by a DATA TLV with uint16 length.
 
-`hosted_epoch_reassembly.c/h` is a separately tested, not yet integrated
-native helper. It owns a4108-byte buffer, validates the final serial TLV and
+`hosted_epoch_reassembly.c/h` is now linked into native control exchange.
+It owns a4108-byte buffer, validates the final serial TLV and
 allows up to4096 protobuf bytes and16 fragments. These are local defensive
 caps, not negotiated slave limits. Within a partial message it requires the
 next sequence; between complete messages it does not assert continuity.
-The owner routes other interfaces separately, serializes all access, captures
+The synchronous diagnostic accepts SERIAL/0 only and fails on other interfaces;
+the future mixed data/control dispatcher must route them separately.
+The owner serializes all access, captures
 the transport generation and supplies one aggregate deadline. The helper has
 no clock, I/O, allocation or transport-counter reset. Consumed malformed
 input wipes/poisons its assembly; the owner must also invalidate the matching
@@ -60,10 +62,28 @@ any subsequent RPC. Stale feed/view/release/abort preserve replacement state.
 Only the exclusive fresh-epoch owner may start a different generation; this
 operation cannot order arbitrary generation numbers or identify stale owners.
 
+The pinned SDIO slave zeroes its payload header in
+`slave/main/sdio_slave_api.c:431` and fills only interface/length/offset/
+sequence/flags at434..439. Its SERIAL packet type and throttle field are zero.
+SDIO flow control uses START/STOP_THROTTLE interrupts, handled in
+`host/drivers/transport/sdio/sdio_drv.c:685..688`; SPI header throttling is not
+this board's transport contract. Native reassembly enforces the SDIO source
+profile, not an established identity of the installed C6 binary.
+
+Control stores assembly and up to4096 response-body bytes in the caller-owned
+result, allocated off the small runtime stack. Requests remain capped at256B;
+each committed receive batch remains capped by the512..4096B transport buffer.
+All frames in the committed batch are checked after a match, and a trailing
+unfinished message fails rather than being carried into the next RPC. Every
+terminal partial-message failure aborts/wipes its assembly and invalidates
+only the matching FIFO generation. A local preflight refusal changes neither
+output nor transport. No persistent UID allocator or retry was introduced.
+
 The earlier timestamp-based `hosted_reassembly.c/h` prototype and its tests
 remain unchanged and unlinked. The new helper addresses explicit generation
 ownership, poisoned cancellation and freestanding no-libc requirements;
-it does not silently replace the older API or prove transport integration.
+it does not silently replace the older API. Host integration tests remain
+distinct from elapsed-deadline or hardware acceptance.
 Host models validate fragment assembly, not protobuf semantic validity,
 elapsed timeout behavior, installed C6 compatibility or WLAN operation.
 
