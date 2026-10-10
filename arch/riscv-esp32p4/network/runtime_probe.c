@@ -24,6 +24,13 @@
 #endif
 #include "hosted_open.h"
 #endif
+#if P4_WIFI_HOSTED_REPLY
+#if !P4_WIFI_HOSTED_INIT
+#error "Hosted reply requires the explicit INIT gate"
+#endif
+#include "hosted_config.h"
+#include "hosted_tx.h"
+#endif
 #if P4_WIFI_SDIO_RESET_QUERY
 #include "sdio_reset_query.h"
 #if P4_WIFI_SDIO_SETUP
@@ -47,6 +54,7 @@ struct wifi_probe_context
 {
     struct P4SDMMCHost *host;
     ULONG generation;
+    ULONG peer_clock;
     struct P4HostCommandResult last;
 #if P4_WIFI_SDIO_RESET_QUERY
     ULONG rejected_r5;
@@ -339,6 +347,69 @@ static int wifi_fifo_read(void *opaque,
     return wifi_transfer(opaque, plan->argument, buffer, plan->bus_bytes,
                           512, FALSE);
 }
+#if P4_WIFI_HOSTED_REPLY
+static int wifi_tx_session(void *opaque, uint32_t generation)
+{
+    struct wifi_probe_context *context = opaque;
+    return generation == context->generation &&
+        context->host->generation == generation &&
+        context->host->lock.ss_Owner == FindTask(NULL) &&
+        context->host->slot_clock[0] == context->peer_clock &&
+        !context->host->dma_faulted;
+}
+
+/* Return authoritative motor facts, not merely a successful callback.
+ * The motor has no partial-byte counter: full bus_bytes is justified only
+ * by its complete DMA/data-over success contract. Started failures publish
+ * zero completed bytes and must poison the FIFO; they are never retried. */
+static int wifi_fifo_write(void *opaque,
+                           const struct p4_hosted_fifo_plan *plan,
+                           const uint8_t *buffer,
+                           struct p4_hosted_tx_completion *completion)
+{
+    struct wifi_probe_context *context = opaque;
+    struct P4HostCommand request;
+    struct P4HostCommandResult outcome;
+    uint32_t expected;
+    BOOL completed;
+    if (!plan || !buffer || !completion ||
+        !plan->logical_bytes || plan->logical_bytes > 1536U ||
+        plan->credits != 1U ||
+        plan->bus_bytes != ((plan->logical_bytes + 511U) & ~UINT32_C(511)) ||
+        !p4_sdio_cmd53(1, 1, 1, 1,
+                       P4_HOSTED_FIFO_END - plan->logical_bytes,
+                       plan->bus_bytes / 512U, 512, &expected) ||
+        expected != plan->argument)
+        return 0;
+    p4host_zero(completion, sizeof(*completion));
+    if (!wifi_tx_session(context, context->generation) || !wifi_budget(context))
+        return 1; /* Known unstarted refusal, no stale prior command result. */
+    p4host_zero(&request, sizeof(request));
+    p4host_zero(&outcome, sizeof(outcome));
+    request.slot = P4_BOARD_WIFI_SLOT;
+    request.generation = context->generation;
+    request.index = 53;
+    request.argument = plan->argument;
+    request.response_flags = MMC_RSP_R5;
+    request.response_error_mask = P4_SDIO_PROBE_R5_ERROR_MASK;
+    request.data = (UBYTE *)buffer; /* Motor stages writes into its bounce. */
+    request.length = plan->bus_bytes;
+    request.block_size = 512;
+    request.writing = TRUE;
+    completed = context->host->command(context->host, &request, &outcome);
+    context->last = outcome;
+    /* Refuse malformed BOOL/result combinations as ambiguous facts. */
+    if ((completed != FALSE && completed != TRUE) ||
+        (outcome.started != FALSE && outcome.started != TRUE) ||
+        (completed && (!outcome.started || outcome.status != P4HOST_COMMAND_OK)))
+        return 0;
+    completion->started = (unsigned)outcome.started;
+    completion->success = completed &&
+        wifi_tx_session(context, context->generation) && wifi_budget(context);
+    completion->completed_bytes = completion->success ? plan->bus_bytes : 0;
+    return 1;
+}
+#endif
 #endif
 
 static void wifi_identify(void)
@@ -363,6 +434,12 @@ static void wifi_identify(void)
     UBYTE *open_buffer = NULL;
     int open_attempted = 0, open_ok = 0, open_cleanup_ok = 0;
 #endif
+#if P4_WIFI_HOSTED_REPLY
+    struct p4_hosted_tx_ops tx_ops;
+    struct p4_hosted_tx_result sent;
+    size_t config_size = 0;
+    int reply_attempted = 0, reply_ok = 0;
+#endif
     struct P4HostCommandResult identify_last;
     ULONG actual = 0, peer_clock, generation;
     ULONG before[WIFI_SNAPSHOT_WORDS], after[WIFI_SNAPSHOT_WORDS];
@@ -378,6 +455,10 @@ static void wifi_identify(void)
 #if P4_WIFI_HOSTED_INIT
     p4host_zero(&open_ops, sizeof(open_ops));
     p4host_zero(&opened, sizeof(opened));
+#endif
+#if P4_WIFI_HOSTED_REPLY
+    p4host_zero(&tx_ops, sizeof(tx_ops));
+    p4host_zero(&sent, sizeof(sent));
 #endif
     if (!host || host->abi != P4_SDMMC_HOST_ABI || host->size != sizeof(*host) ||
         !host->acquire || !host->release || !host->set_budget ||
@@ -428,6 +509,7 @@ static void wifi_identify(void)
     wifi_configure_pins();
     context.host = host;
     context.generation = generation;
+    context.peer_clock = peer_clock;
     ops.context = &context;
     ops.command = wifi_command;
     ops.budget_ok = wifi_budget;
@@ -467,6 +549,33 @@ static void wifi_identify(void)
                 open_ops.yield = wifi_yield;
                 open_ok = p4_hosted_open_receive_init(&open_ops, generation,
                                                      open_buffer, 4096, &opened);
+#if P4_WIFI_HOSTED_REPLY
+                if (open_ok && wifi_tx_session(&context, generation) &&
+                    wifi_budget(&context))
+                {
+                    reply_attempted = 1;
+                    /* Pinned C6 slave sdio_slave_api.c BUFFER_NUM=20.
+                     * This explicit source-profile gate is not installed
+                     * binary identity; INIT's software queues are unrelated.
+                     * Fresh power startup remains a physical prerequisite. */
+                    if (p4_hosted_config_encode(&opened.init, open_buffer,
+                                                4096, &config_size) &&
+                        p4_hosted_fifo_set_pool(&opened.fifo_state, generation, 20))
+                    {
+                        tx_ops.context = &context;
+                        tx_ops.read_word = wifi_word_read;
+                        tx_ops.write_fifo = wifi_fifo_write;
+                        tx_ops.session_ok = wifi_tx_session;
+                        tx_ops.budget_ok = wifi_budget;
+                        tx_ops.yield = wifi_yield;
+                        reply_ok = p4_hosted_tx_send(&opened.fifo_state,
+                            generation, &tx_ops, open_buffer, 4096, config_size,
+                            !!(opened.init.capabilities & P4_HOSTED_CONFIG_CAP_CHECKSUM),
+                            &sent);
+                    }
+                    opened.fifo_poisoned = opened.fifo_state.poisoned;
+                }
+#endif
             }
 #endif
             /* Do not renew a failed operation's budget and call it success.
@@ -509,6 +618,9 @@ static void wifi_identify(void)
 #endif
 #if P4_WIFI_HOSTED_INIT
     success = success && open_attempted && open_ok && open_cleanup_ok;
+#endif
+#if P4_WIFI_HOSTED_REPLY
+    success = success && reply_attempted && reply_ok;
 #endif
     host->set_budget(host, 0);
     host->release(host);
@@ -594,6 +706,19 @@ static void wifi_identify(void)
     Delay(5);
     bug("[WiFi] INIT cleanup ok=%u error=%u flags=%08x\n",
         open_cleanup_ok, opened.cleanup_error, opened.cleanup_flags);
+#endif
+#if P4_WIFI_HOSTED_REPLY
+    Delay(5);
+    bug("[WiFi] reply attempted=%u ok=%u stage=%u error=%u polls=%u\n",
+        reply_attempted, reply_ok, sent.stage, sent.error, sent.polls);
+    Delay(5);
+    bug("[WiFi] reply token=%08x logical=%u bus=%u write=%u\n",
+        sent.token, sent.plan.logical_bytes, sent.plan.bus_bytes, sent.write_called);
+    Delay(5);
+    bug("[WiFi] reply started=%u complete=%u bytes=%u sent=%u poison=%u\n",
+        sent.completion.started, sent.completion.success,
+        sent.completion.completed_bytes, opened.fifo_state.tx_sent,
+        opened.fifo_state.poisoned);
 #endif
     for (snapshot_index = 0; snapshot_index < WIFI_SNAPSHOT_WORDS; ++snapshot_index)
     {

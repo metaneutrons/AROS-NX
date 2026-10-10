@@ -120,6 +120,8 @@ def assemble_fixture() -> tuple[str, bytes]:
             ("wifi_word_read", r"\bstatic\s+int\s+wifi_word_read\s*\("),
             ("wifi_word_write", r"\bstatic\s+int\s+wifi_word_write\s*\("),
             ("wifi_fifo_read", r"\bstatic\s+int\s+wifi_fifo_read\s*\("),
+            ("wifi_tx_session", r"\bstatic\s+int\s+wifi_tx_session\s*\("),
+            ("wifi_fifo_write", r"\bstatic\s+int\s+wifi_fifo_write\s*\("),
         )
     )
 
@@ -146,7 +148,7 @@ def run() -> int:
     assembled, extracted = assemble_fixture()
     digest = hashlib.sha256(extracted).hexdigest()
     print(
-        "Extracted production source: five runtime adapters, actual command "
+        "Extracted production source: seven runtime adapters, actual command "
         f"types/helpers and sdio_commands.c (SHA-256 {digest})"
     )
 

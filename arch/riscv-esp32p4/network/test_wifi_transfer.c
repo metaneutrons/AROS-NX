@@ -6,12 +6,19 @@
 #include <string.h>
 
 #include "hosted_fifo.h"
+#include "hosted_tx.h"
 #include "sdio_commands.h"
 
 typedef uint8_t UBYTE;
 typedef uint32_t ULONG;
 typedef uintptr_t IPTR;
 typedef int BOOL;
+static int owner_task;
+static void *FindTask(void *unused)
+{
+    (void)unused;
+    return &owner_task;
+}
 
 #define TRUE 1
 #define FALSE 0
@@ -28,6 +35,8 @@ struct P4SDMMCHost
 {
     ULONG generation;
     BOOL dma_faulted;
+    struct { void *ss_Owner; } lock;
+    ULONG slot_clock[2];
     ULONG (*now_us)(void);
     ULONG budget_start;
     ULONG budget_us;
@@ -40,6 +49,7 @@ struct wifi_probe_context
 {
     struct P4SDMMCHost *host;
     ULONG generation;
+    ULONG peer_clock;
     struct P4HostCommandResult last;
 };
 
@@ -146,6 +156,9 @@ static void begin_case(void)
     host.command = mock_host_command;
     test_context.host = &host;
     test_context.generation = host.generation;
+    test_context.peer_clock = 25000000U;
+    host.slot_clock[0] = test_context.peer_clock;
+    host.lock.ss_Owner = FindTask(NULL);
     clock_us = host.budget_start;
     command_calls = 0U;
     command_completed = TRUE;
@@ -413,6 +426,82 @@ static void test_invalid_inputs_do_not_issue_commands(void)
     CHECK(command_calls == 0U);
 }
 
+static void test_fifo_write_motor_facts(void)
+{
+    struct p4_hosted_fifo_plan plan = {0, 29, 512, 1};
+    struct p4_hosted_tx_completion completion;
+    UBYTE buffer[512] = {0};
+    unsigned variation;
+    plan.argument = expected_fifo_argument(&plan) | (UINT32_C(1) << 31);
+    begin_case();
+    CHECK(wifi_fifo_write(&test_context, &plan, buffer, &completion) == 1);
+    CHECK(command_calls == 1);
+    CHECK(captured_request.index == 53);
+    CHECK(captured_request.slot == 1);
+    CHECK(captured_request.argument == plan.argument);
+    CHECK(captured_request.length == 512);
+    CHECK(captured_request.block_size == 512);
+    CHECK(captured_request.writing == TRUE);
+    CHECK(captured_request.data == buffer);
+    CHECK(completion.started == 1 && completion.success == 1);
+    CHECK(completion.completed_bytes == 512);
+    for (variation = 0; variation < 8; ++variation)
+    {
+        begin_case();
+        if (variation == 0) clock_us += host.budget_us;
+        if (variation == 1) host.lock.ss_Owner = NULL;
+        if (variation == 2) ++host.generation;
+        if (variation == 3) ++host.slot_clock[0];
+        if (variation == 4) host.dma_faulted = TRUE;
+        if (variation == 5) expire_budget_on_command = TRUE;
+        if (variation == 6) change_generation_on_command = TRUE;
+        if (variation == 7) fault_dma_on_command = TRUE;
+        /* Deliberately stale successful previous request is not reused. */
+        test_context.last.started = TRUE;
+        test_context.last.status = P4HOST_COMMAND_OK;
+        CHECK(wifi_fifo_write(&test_context, &plan, buffer, &completion) == 1);
+        CHECK(command_calls == (variation < 5 ? 0U : 1U));
+        CHECK(completion.started == (variation < 5 ? 0U : 1U));
+        CHECK(completion.success == 0 && completion.completed_bytes == 0);
+    }
+    for (variation = 0; variation < 5; ++variation)
+    {
+        begin_case();
+        command_completed = FALSE;
+        next_result.status = P4HOST_COMMAND_ERROR;
+        if (variation == 0) next_result.started = FALSE;
+        if (variation == 2) next_result.started = 2;
+        if (variation == 3) command_completed = 2;
+        if (variation == 4) command_completed = TRUE;
+        CHECK(wifi_fifo_write(&test_context, &plan, buffer, &completion) ==
+              (variation < 2 ? 1 : 0));
+        CHECK(command_calls == 1);
+        if (variation < 2)
+        {
+            CHECK(completion.started == variation);
+            CHECK(completion.success == 0 && completion.completed_bytes == 0);
+        }
+    }
+    for (variation = 0; variation < 6; ++variation)
+    {
+        struct p4_hosted_fifo_plan invalid = plan;
+        begin_case();
+        if (variation == 0) invalid.logical_bytes = 0;
+        if (variation == 1) invalid.logical_bytes = 1537;
+        if (variation == 2) invalid.bus_bytes = 1024;
+        if (variation == 3) invalid.credits = 2;
+        if (variation == 4) invalid.argument &= ~(UINT32_C(1) << 31);
+        if (variation == 5) invalid.argument ^= (UINT32_C(1) << 28);
+        CHECK(wifi_fifo_write(&test_context, &invalid, buffer, &completion) == 0);
+        CHECK(command_calls == 0);
+    }
+    begin_case();
+    CHECK(wifi_fifo_write(&test_context, NULL, buffer, &completion) == 0);
+    CHECK(wifi_fifo_write(&test_context, &plan, NULL, &completion) == 0);
+    CHECK(wifi_fifo_write(&test_context, &plan, buffer, NULL) == 0);
+    CHECK(command_calls == 0);
+}
+
 int main(void)
 {
     test_fn1_byte_mode_word_read_is_little_endian();
@@ -430,6 +519,7 @@ int main(void)
     test_fifo_read_rejects_length_over_bus_limit();
     test_fifo_read_rejects_padding_mismatch();
     test_invalid_inputs_do_not_issue_commands();
+    test_fifo_write_motor_facts();
     printf("PASS: %u cases, %u checks\n", cases, checks);
     return 0;
 }

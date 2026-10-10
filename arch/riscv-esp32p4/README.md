@@ -95,7 +95,8 @@ This proves envelope interoperability, not runtime UID correlation or WLAN.
 The serial TLV codec is now freestanding without libc imports (116 checks each).
 Source audit also establishes the missing SDIO host configuration reply after
 INIT and distinguishes the twenty-buffer hardware token pool from software
-queue depth. Neither TX startup reply nor live credits are implemented yet.
+queue depth. A bounded opt-in TX startup reply is now integrated as described
+below; live credit/config acceptance remains unverified.
 WiFiInit must supply the complete validated configuration: the reference slave
 overwrites its defaults with decoded scalar values, so an empty/default body
 is not a safe initialization shortcut. Fresh cold-start synchronization is
@@ -113,8 +114,21 @@ RV32 compile verified. It emits the pinned17-byte configuration payload in a
 29-byte private frame (packet_type0), selecting checksum from INIT bit7,
 refusing incompatible/missing/raw-throughput profiles and overlapping outputs.
 Literal checksum-off/on vectors, bounds and refusal tests pass120243 checks
-each O0/O2 sanitized. This helper is not linked into the BSP and has sent no
-frame: live TX-credit negotiation and startup-reply acceptance remain open.
+each O0/O2 sanitized. The explicit `P4_WIFI_HOSTED_REPLY=1` diagnostic now
+connects this encoder to a persistent FIFO transmitter after accepted INIT,
+under the same eight-second operation budget and separate two-second cleanup.
+The source-pinned C6 pool of20 is explicit, not inferred from INIT queues;
+installed binary identity and live token/config acceptance remain unproven.
+TX tests pass2586 checks each O0/O2 sanitized. Actual-source controller adapter
+tests pass36 cases/233 checks each, including expired budget, lost ownership,
+generation/peer-clock changes and malformed motor results. Only complete
+motor/DMA success commits credits; uncertain started writes poison the session
+and are never retried. The fresh reply-enabled RV32 module is76,024 bytes;
+the3,764,580-byte package passes42/42 loader audits and the4,063,232-byte capacity
+gate, with all41other members byte-identical. This includes the FIFO alias
+correction. No candidate was deployed or native frame sent. The new3,768,320-byte
+erase span requires an independent full-span double backup before a write.
+No additional hardware operation occurred.
 
 JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
