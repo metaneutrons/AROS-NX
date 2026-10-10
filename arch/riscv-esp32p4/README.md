@@ -64,11 +64,14 @@ typed initialization/MAC/optional scan results and restored stable shared-host
 registers. Independent positive/negative fixtures pass16 tests; this is not a
 hardware pass or proof of physical power continuity.
 
-The next native initialization hardware gate is coordination-blocked awaiting
-Fabian's fresh cold-start readiness and confirmation of the sole power source.
-No capture is running. JC1060 WIFI_RESET_GPIO=-1 provides no established
-independent C6 reset alternative. The installed initialization candidate and
-prepared undeployed scan package remain unchanged; native WLAN is incomplete.
+Fabian confirmed sole USB-C power and coordinated disconnect/reconnection.
+The first armed reader timed out before arrival; a subsequent45.122s passive
+capture completed successfully but received0 bytes. This is an inconclusive
+retrieval, not initialized-MAC acceptance or proof of a firmware failure.
+No capture is running. A fresh coordinated repeat with a longer arrival wait
+is required. JC1060 WIFI_RESET_GPIO=-1 provides no established independent C6
+reset alternative. Installed initialization and prepared undeployed scan
+artifacts remain unchanged; native WLAN is incomplete.
 
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection
