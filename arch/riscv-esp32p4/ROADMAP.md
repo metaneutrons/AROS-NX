@@ -641,6 +641,9 @@ One late45.114s passive retrieval exits0/status=ok but receives0 bytes;
 serial open takes1.425ms. This inconclusive run leaves N1C continuity open,
 does not explain historical first-byte latency and does not establish a fault.
 No reset/flash requested; a fresh pre-armed coordinated capture is required.
+The next user-confirmed reconnection yields the same inconclusive result:
+single45.118s passive capture, exit0/status=ok,0 bytes, checker exit1.
+Master N1C continuity remains pending; no firmware change or reset follows.
 
 Persistent session foundation (N1P,2026-10-10): caller-owned identity ledger
 supports one reserved RPC at a time. Reservation consumes the UID immediately;
@@ -32516,6 +32519,25 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   and dispatch outside host ownership; cold continuity remains separately open.
 
 ## Evidence-entry template
+
+### 2026-10-10 - N1C reconnected JC1060 late retrieval remains inconclusive
+
+- User reports connected; USB serial80:F1:B2:D3:3B:A6 matches JC1060
+  /dev/cu.usbmodem101. No existing serial capture or port owner found.
+  No early reader was armed at reconnection. One late-boot-log.py retrieval
+  requests45 seconds with timing sidecar, no deliberate reset or retry.
+- Actual reader exit0; complete footer45.118s, bytes=0,status=ok.
+  check-native-wifi-log.py actual exit1: empty capture. Open latency1.330ms;
+  no received chunks. Missing boot/diagnostic/fault coverage is not a pass
+  or proof of a firmware fault; opening may disturb hardware.
+- Source935f63b464; installed initialization-only package/core/C6 unchanged.
+  No flash, SD write, credentials, sight test or WLAN acceptance.
+- Evidence wifi-2026-10-10/native-reconnected-late.peROTw/boot.log SHA-256
+  d32181948776f112b32b545b3b7f59244e83e8a4898f084a04bf4ab4d8f6f5f8;
+  timing.jsonl57fd148f5a89d6ea04afd3044f2c3237b3c1b41e2153f74b11b9885df1f59e94.
+- N1C master status remains pending. Reader has ended. Next hardware step
+  requires fresh readiness and an armed reader before physical reconnection;
+  persistent RX/event software work can proceed separately.
 
 
 

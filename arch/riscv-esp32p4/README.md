@@ -112,6 +112,10 @@ completed45.114s with exit0/status=ok but0 bytes. The new sidecar measures
 or armed early reader was running, so this does not qualify the cold boot,
 explain the earlier6.729s gap or establish a firmware fault. No reset or flash
 was requested. A fresh coordinated, pre-armed startup capture is still needed.
+The subsequent user-confirmed reconnection also lacked armed early coverage:
+one45.118s passive capture exits0/status=ok with0 bytes; diagnostic validation
+exits1. USB identity matches the JC1060, but boot/WLAN continuity remains
+unqualified. No reset, flash or silent repeat was performed.
 
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection
