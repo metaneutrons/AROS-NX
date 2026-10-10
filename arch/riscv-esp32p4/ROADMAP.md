@@ -132,7 +132,7 @@ gate: compensated output is not the native display contract.
 | N2 | AROS WLAN SANA-II integration | `private ABI6 association/lifecycle binding build and scoped models verified; runtime/privacy/wireless gates open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded STA TX compile for Core1. N2L records current counts/artifacts and Close/Offline/teardown models. Actual helpers/selected dispatch arms; Exec/SDMMC/hooks/radio mocked, not full BeginIO, full service callback or runtime concurrency. Queue/traffic-token fences/copied AP publication are bound; no actual association/IP claim. TX commitment rejects late AbortIO. WirelessManager/bwfm remain references; per-device four-way offload must preserve legacy behavior. Caller late failure, DHCP/build defaults, GUI saving/writable preference storage and actual teardown/reconnect/load remain open. No credentials, deployment or hardware pass. |
 | N2L | Native radio teardown and ongoing link lifecycle | `ABI6 build/scoped models verified; hardware/privacy open` | Standalone leave, deferred teardown outside unit lock, bounded Disconnect/NOT_CONNECT verification, periodic correlated AP observation and selected-RPC cancellation drain. Mac/Linux O0/O2 sanitized: association25999, observer393, bridge219, options89/258, queue785, lifetime1482, datapath16507, events6/70, scan295; sibling link102/reservation63/owner scan37447; exit0. Fresh Core1 RV32 modules have no undefined imports. Explicit teardown requires absence; persistent/foreign AP quarantines rather than reporting loss. Both privacy assertions0 and SUMMARY-only unchanged. Shared caller late-failure event and actual radio/reconnect/load qualification remain open. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
-| N2E | Caller-visible asynchronous association failure | `generic caller/full RV32 build verified; native binding/model/build verified; runtime open` | Generic46e9387fee integrated16a13dd08d. Native owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Capability advertisement remains disabled; close-time caller cleanup awaits integration. SUMMARY-only and privacy assertions0 unchanged. |
+| N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
@@ -924,7 +924,9 @@ expanded lifecycle models pass macOS/Linux O0/O2 ASan/UBSan. Owner execution is 
 until message acknowledgment returns, with no unit lock held during PA_CALL
 and token-only lookup afterward. Independent source review is clear and a clean
 72936B RV32 device build passes. Capability advertisement remains disabled;
-caller close cleanup and actual radio qualification remain open.
+caller close cleanup now passes independent source review and scoped macOS/Linux
+sanitized models (generic9a0a0d8346 integratedd50ca3ba1e); full679652B RV32 rebuild
+passes and actual radio/Exec lifetime qualification remains open.
 This is not a hardware or end-to-end acceptance gate.
 Models must cover immediate caller request reuse, queued and active cancellation,
 Close drain, supersession, observer races and late failure, not only tag parsing.
@@ -35261,3 +35263,44 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   network none, no installations. Initial models-final logs/archive are retained:
   both exit1 at missing CONNECT_FAILED constant in Lifetime extraction, fixed
   by extracting the real public define, not by weakening production code.
+
+### 2026-10-10 - N2E caller Close signal/timer/request lifetime integration
+
+- Generic upstream-based commit9a0a0d8346, integrated with attribution as
+  d50ca3ba1e. Deinit cancels exact keepalive tuple and unregisters only its
+  signal/handler/userdata registration before I/O cleanup or driver free;
+  Abort/Wait precede event-request FreeVec. Owned pending signal is cleared
+  after I/O drain and before DeleteMsgPort, including failed registration.
+  Init checks/tracks registration and handles allocation failure without
+  constructing a request from a missing port. No other-platform API dependency:
+  unregister is declared only for the Amiga backends that use this driver.
+- Dispatch lifetime: removed registrations are tombstones, callback-time
+  re-registration appends for the next dispatch, compaction waits until all
+  dispatch frames return. Unsigned masks cover bit31; invalid bit/NULL handler
+  and allocation failure refuse cleanly. Independent non-author source review
+  found no delta blocker. Its preexisting nullable DeleteIORequest concern was
+  checked directly: rom/exec/deleteiorequest.c guards NULL, so no AROS defect.
+- Frozen production-helper regressions actual exit0 on macOS and Linux
+  O0/O2 ASan/UBSan: Close4scenarios/55checks, association84/555, failure23/93,
+  state554. Close fixture executes extracted signal/deinit functions with
+  minimal local structs and mocked Exec I/O/timer cancellation; initialization
+  checking is static. It is not a complete eloop/Exec or dynamic hardware test.
+  Evidence `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/caller-close.D0oj4N`:
+  both models logs572f5cf978527f856bdce875cc54583c6fd9bd55b0547c6609774320a16a78bf;
+  source.tarca6f8d3a6deab6989d4f32f651cc7a91f0d05ec2141b798ac5522996c6667558.
+  Linux imagee4f4b5717ab9c9bf7219716469ad3d85c01e144d09763a4eb1fcd22a4a46151d,
+  network none; no installed dependencies. Full target build in progress after
+  invalidating every WirelessManager consumer object; no final artifact yet.
+- Safety/next: SUMMARY-only/privacy assertions0 unchanged; no serial, flash,
+  reset, SD write, C6 action or credentials. Finish RV32 integration verification,
+  then C6 secured recovery/UART privacy and actual WLAN/Exec qualification.
+- Final full RV32 consumer build: all WirelessManager objects invalidated;
+  workbench-network-wirelessmanager actual exit0, changed driver and Amiga eloop
+  compile lines, link and install present. All three changed compiled copies
+  compare identical to source. Recorded compiler/link explicitly use current
+  esp32p4-riscv-smp Developer sysroot; GCC default abandoned sysroot untouched.
+  WirelessManager679652B SHA-256
+  4a74b5bcdd73571cf77932c42a360331ad021b1c455b63efc77c89af560822ec;
+  wirelessmanager-rv32.log0e56e0baf5acdd1fa3027a25003dd9dd1c03ff48f2e7aa254593aef0e3e30981.
+  Artifact archived in caller-close.D0oj4N. CONFIG_NO_CONFIG_WRITE remains;
+  no persistent preferences, event-loop runtime, WLAN or hardware pass claimed.

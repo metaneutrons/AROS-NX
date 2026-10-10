@@ -1,5 +1,15 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Caller Close cleanup (2026-10-10): generic9a0a0d8346 integratedd50ca3ba1e
+cancels keepalive, unregisters its exact callback tuple before freeing state,
+drains/frees the event request and clears the owned signal before port deletion.
+Amiga signal dispatch defers compaction during callbacks. Independent source
+review and macOS/Linux O0/O2 ASan/UBSan scoped suites pass (Close4/55,
+association84/555, failure23/93, state554). Full RV32 rebuild passes679652B,
+SHA-2564a74b5bcdd73571cf77932c42a360331ad021b1c455b63efc77c89af560822ec;
+all three changed compiled copies match source. Exec/radio lifetime acceptance
+remains open. No hardware or credentials used.
+
 Native failure publication development (2026-10-10): owned attempt cookies and
 opener-local failure latches are wired into the device. A failure is delivered
 once, separately from link edges, and discarded on cancellation/supersession/
