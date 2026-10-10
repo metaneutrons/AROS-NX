@@ -5,7 +5,7 @@
 #include <exec/types.h>
 #include "hosted_scan.h"
 
-#define P4_WIFI_DEVICE_BRIDGE_ABI 7u
+#define P4_WIFI_DEVICE_BRIDGE_ABI 8u
 #define P4_WIFI_DEVICE_BRIDGE_NAME "esp32p4wifi.resource"
 
 struct P4WifiBase;
@@ -31,6 +31,28 @@ struct P4WifiBase;
 #define P4_WIFI_MAINT_RELEASED 5u
 #define P4_WIFI_MAINT_BUSY 6u /* transient lock contention, retry polling */
 #define P4_WIFI_MAINT_LEASE_US 30000000u
+/* ABI8 read-only discovery job, inside ACTIVE maintenance. Only the requesting
+ * task/token can queue or copy a result. One queued job, monotonically increasing
+ * nonzero nonce, no pointer retention. READY means completed RPC, not successful
+ * inventory: remote_status must be zero and inventory_size nonzero. Inventory
+ * is canonical negotiated version1 bytes, NOT the raw installed partition table.
+ * Token/generation/UID/nonce identify this observation, not peer authentication
+ * or reset freshness. Requery and independently revalidate before any write.
+ * Release, expiry and session retirement discard the internal result. A copied
+ * result is historical data and must not be used outside its lease. */
+#define P4_WIFI_DISCOVERY_IDLE 0u
+#define P4_WIFI_DISCOVERY_REQUESTED 1u
+#define P4_WIFI_DISCOVERY_READY 2u
+#define P4_WIFI_DISCOVERY_UNSUPPORTED 3u
+#define P4_WIFI_DISCOVERY_FAILED 4u
+#define P4_WIFI_DISCOVERY_BUSY 5u
+#define P4_WIFI_DISCOVERY_MAX 1056u
+struct p4_wifi_discovery_result {
+    ULONG token, generation, uid, nonce;
+    LONG remote_status;
+    ULONG inventory_size;
+    UBYTE inventory[P4_WIFI_DISCOVERY_MAX];
+};
 /* Credential-free confirmed AP snapshot. Only the serialized service caller
  * may copy it after associate returns TRUE; hints and requested targets are
  * not substitutes for the peer's correlated current-AP result. */

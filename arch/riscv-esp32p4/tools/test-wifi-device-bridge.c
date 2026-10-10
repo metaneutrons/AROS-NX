@@ -14,6 +14,7 @@
 #define EXEC_SEMAPHORES_H
 typedef void *APTR;
 typedef uint32_t ULONG;
+typedef int32_t LONG;
 typedef uint8_t UBYTE;
 typedef uintptr_t IPTR;
 typedef int BOOL;
@@ -27,6 +28,7 @@ struct SignalSemaphore { struct Task *ss_Owner; unsigned depth; };
 #include "runtime_probe.h"
 #include "host.h"
 #include "hosted_mac.h"
+#include "hosted_discovery.h"
 #include "hosted_association.h"
 #include "hosted_owner.h"
 #include "hosted_tx.h"
@@ -594,7 +596,26 @@ static void test_stopped_unpublishes_before_callback(void)
     CHECK(wifi_device_attach(&f.base, &f, &client_callbacks));
     stopped_calls = 0u;
     callback_stop_state_ok = 0u;
+    f.control.discovery_state = P4_WIFI_DISCOVERY_READY;
+    f.control.discovery_nonce = 19u;
+    f.control.discovery_token = 3u;
+    memset(&f.control.discovery_result, 0xa5, sizeof(f.control.discovery_result));
+    memset(&f.control.discovery_decoded, 0xa5, sizeof(f.control.discovery_decoded));
+    memset(f.control.discovery_response, 0xa5, sizeof(f.control.discovery_response));
     wifi_test_owner_stop_publish(&f.base);
+    CHECK(f.control.discovery_state == P4_WIFI_DISCOVERY_FAILED);
+    CHECK(f.control.discovery_nonce == 19u && f.control.discovery_token == 0u);
+    {
+        struct p4_wifi_discovery_result empty_result = {0};
+        struct p4_hosted_discovery_result empty_decoded = {0};
+        unsigned i;
+        CHECK(memcmp(&f.control.discovery_result, &empty_result,
+                     sizeof(empty_result)) == 0);
+        CHECK(memcmp(&f.control.discovery_decoded, &empty_decoded,
+                     sizeof(empty_decoded)) == 0);
+        for (i = 0; i < sizeof(f.control.discovery_response); ++i)
+            CHECK(f.control.discovery_response[i] == 0u);
+    }
     CHECK(stopped_calls == 1u && callback_stop_state_ok == 1u);
     CHECK(f.base.client == &f && f.base.callbacks == &client_callbacks);
     CHECK(!wifi_device_send(&f.base, f.frame, sizeof(f.frame)));

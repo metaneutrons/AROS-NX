@@ -13,16 +13,20 @@ Requirements: [board-tool plan](../../docs/plans/esp32-board-tool.md), roadmap N
 Independent pinned protobuf-c comparison passes 1,643 checks at each O0/O2;
 normal WLAN control submission refuses all three OTA request types. These are
 host protocol/safety checks, not evidence of a working C6 update or recovery.
-Native private ABI7 now supplies a task-bound, nonblocking maintenance lease.
+Native private ABI8 supplies a task-bound, nonblocking maintenance lease and
+queued read-only discovery with copied results (2026-10-11); scoped host tests
+and native builds pass, runtime qualification remains open. ABI7 introduced
+the original lease handshake.
 The owner drains pending work, confirms WiFiStop and suppresses normal traffic
 and FIFO polling while ACTIVE. Release confirms WiFiStart but leaves SANA
 offline/unassociated. The 30-second lease is handshake preparation, not a
 full-image transfer budget; no OTA job is exposed. Expiry retires the session
-with bounded owner-only cleanup, not silent traffic resumption. Actual-source
-host tests pass186 checks each O0/O2 with sanitizers and a negative ACTIVE-poll
-mutation; Exec/RPC are mocked. Fresh RV32 Core1 resource254956B/device67604B
-pass individual loader audits. Both modules must replace the prior ABI6 pair
-together; package/image regeneration and runtime acceptance remain open.
+with bounded owner-only cleanup, not silent traffic resumption. Original ABI7
+actual-source host tests pass186 checks each O0/O2 with sanitizers and a negative
+ACTIVE-poll mutation; Exec/RPC are mocked. Its historical RV32 Core1
+resource254956B/device67604B passed individual loader audits; these are not the
+current ABI8 artifacts. Resource/device must be replaced together;
+package/image regeneration and runtime acceptance remain open.
 A separate C6 read-only metadata producer now compiles against actual pinned
 IDF5.4.3 headers. It distinguishes detected physical and usable flash sizes,
 normalizes internal IDF registry entries and correlates sorted running/boot/
@@ -50,8 +54,9 @@ canonical inventory. This is not live epoch/lease admission. Fresh Core1 RV32
 resource builds and passes the loader audit. Generated-reference host tests pass
 1854 checks/12 cases each O0/O2 under ASan/UBSan, including32-entry inventory
 and maximum UID/nonce. These are codec tests, not runtime or stack qualification.
-Native owner transport binding remains open. No new RPC is sent
-by the native P4 code; UPDATE-C6 remains unavailable.
+Native owner transport and runtime binding now exist; frontend invocation and
+hardware qualification remain open. No new RPC has been sent on hardware;
+UPDATE-C6 remains unavailable.
 The private pending transport now separates discovery350 submission and606
 correlation from ordinary WLAN traffic. Exact reserved UID/generation,
 supported INIT and canonical version/nonce are required before TX. Transport
@@ -64,7 +69,14 @@ The exclusive transport owner now provides a separate bounded discovery
 exchange: exact reserved350, supported INIT and nonce, no pre-existing partial
 SERIAL stream or admission arm, one606 response and cleanup on success/failure.
 This uses the existing absolute deadline and shared-controller arbiter. Runtime
-maintenance-job dispatch and snapshot publication are not yet wired to it.
+maintenance-job dispatch and snapshot publication are now wired through ABI8.
+Actual-source helper tests pass1239 checks each O0/O2 ASan/UBSan and reject the
+ACTIVE-poll mutation; Exec, codec/UID/transport and host acquisition are mocked.
+Separate actual codec/coupled-owner suites also pass. Fresh RV32-SMP Core1
+resource282952B/device67584B pass individual loader audits. Only the owner performs transport; the
+requesting task queues and copies results within its lease. A fresh shared-host
+acquisition fences final publication, and unsupported peers receive no query.
+CLI/GUI discovery binding and matched ABI8 package/image remain open.
 Owner tests pass7316 checks each O0/O2 under ASan/UBSan, including private
 success, terminal cleanup, subsequent normal exchange and atomic refusals.
 CLI examples (not yet executed on hardware):

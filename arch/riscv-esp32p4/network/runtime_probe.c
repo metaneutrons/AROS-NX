@@ -49,6 +49,7 @@
 #include "hosted_wifi.h"
 #include "hosted_mac.h"
 #include "hosted_link.h"
+#include "hosted_discovery.h"
 #include <proto/kernel.h>
 #include <proto/task.h>
 #ifndef P4_WIFI_OWNER_CPU
@@ -575,6 +576,10 @@ struct wifi_owner_control {
     uint32_t uid;
     int32_t status;
     unsigned init_attempted, start_attempted, startup_ok, cleanup_ok;
+    ULONG discovery_state, discovery_nonce, discovery_token;
+    struct p4_wifi_discovery_result discovery_result;
+    struct p4_hosted_discovery_result discovery_decoded;
+    uint8_t discovery_response[P4_HOSTED_RPC_MAX_SIZE];
 };
 struct wifi_device_runtime {
     struct wifi_probe_context *context;
@@ -585,6 +590,7 @@ struct wifi_device_runtime {
     unsigned checksum;
     BOOL servicing;
     BOOL scanning;
+    const struct p4_hosted_init *init;
 };
 static int wifi_owner_acquire(void *, uint32_t);
 static int wifi_owner_budget(void *, uint32_t);
@@ -1473,6 +1479,233 @@ static BOOL wifi_maintenance_normal_poll(ULONG state)
            state == P4_WIFI_MAINT_REQUESTED;
 }
 
+/* client_lock held; never reset the monotonic nonce counter. */
+static void wifi_maintenance_discovery_clear(struct wifi_device_runtime *runtime,
+                                             ULONG state)
+{
+    struct wifi_owner_control *control;
+    if (!runtime || !runtime->control) return;
+    control = runtime->control;
+    p4host_zero(&control->discovery_result, sizeof(control->discovery_result));
+    p4host_zero(&control->discovery_decoded, sizeof(control->discovery_decoded));
+    p4host_zero(control->discovery_response, sizeof(control->discovery_response));
+    control->discovery_token = 0;
+    control->discovery_state = state;
+}
+
+typedef char wifi_discovery_wire_capacity_matches[
+    P4_WIFI_DISCOVERY_MAX == BOARD_DISCOVERY_WIRE_MAX ? 1 : -1];
+
+static BOOL wifi_discovery_output_valid(struct P4WifiBase *base,
+    struct wifi_device_runtime *runtime, struct p4_wifi_discovery_result *output)
+{
+    const void *objects[] = {base, runtime, runtime->context, runtime->owner,
+        runtime->control, runtime->fifo, runtime->context->host, runtime->tx,
+        runtime->init, base->callbacks};
+    const size_t sizes[] = {sizeof(*base), sizeof(*runtime),
+        sizeof(*runtime->context), sizeof(*runtime->owner),
+        sizeof(*runtime->control), sizeof(*runtime->fifo),
+        sizeof(*runtime->context->host), sizeof(*runtime->tx),
+        sizeof(*runtime->init), sizeof(*base->callbacks)};
+    uintptr_t start = (uintptr_t)output, end;
+    unsigned i;
+    if (!output || sizeof(*output) > UINTPTR_MAX - start) return FALSE;
+    end = start + sizeof(*output);
+    for (i = 0; i < sizeof(objects) / sizeof(objects[0]); ++i) {
+        uintptr_t first = (uintptr_t)objects[i];
+        if (!objects[i]) continue;
+        if (sizes[i] > UINTPTR_MAX - first ||
+            (start < first + sizes[i] && first < end)) return FALSE;
+    }
+    return TRUE;
+}
+
+/* Does not touch SDIO. This is a host-session fence, not C6 reset attestation. */
+static BOOL wifi_discovery_session_valid(struct P4WifiBase *base,
+                                         struct wifi_device_runtime *runtime)
+{
+    return base->ready && runtime && runtime->context &&
+        runtime->context->host && runtime->control && runtime->owner &&
+        runtime->fifo && runtime->init && base->owner_task &&
+        !runtime->owner->poisoned && !runtime->fifo->poisoned &&
+        runtime->context->generation != 0 &&
+        runtime->owner->generation == runtime->context->generation &&
+        runtime->fifo->generation == runtime->context->generation &&
+        runtime->context->host->generation == runtime->context->generation &&
+        !runtime->context->host->dma_faulted;
+}
+
+static BOOL wifi_maintenance_discover(struct P4WifiBase *base, ULONG token)
+{
+    struct wifi_device_runtime *runtime;
+    BOOL accepted = FALSE;
+    if (!base || !token || !AttemptSemaphore(&base->client_lock)) return FALSE;
+    runtime = base->runtime;
+    if (base->maintenance_token == token &&
+        base->maintenance_task == FindTask(NULL) &&
+        base->owner_task != FindTask(NULL) &&
+        base->maintenance_state == P4_WIFI_MAINT_ACTIVE &&
+        wifi_discovery_session_valid(base, runtime) &&
+        wifi_owner_remaining(runtime->context, base->maintenance_started,
+                              P4_WIFI_MAINT_LEASE_US) &&
+        runtime->control->discovery_state != P4_WIFI_DISCOVERY_REQUESTED &&
+        runtime->control->discovery_nonce != UINT32_MAX) {
+        wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_REQUESTED);
+        ++runtime->control->discovery_nonce;
+        runtime->control->discovery_token = token;
+        accepted = TRUE;
+    }
+    ReleaseSemaphore(&base->client_lock);
+    return accepted;
+}
+
+static ULONG wifi_maintenance_discovery_poll(struct P4WifiBase *base, ULONG token,
+                                             struct p4_wifi_discovery_result *out)
+{
+    struct wifi_device_runtime *runtime;
+    ULONG state = P4_WIFI_DISCOVERY_FAILED;
+    if (!base || !token) return state;
+    if (!AttemptSemaphore(&base->client_lock)) return P4_WIFI_DISCOVERY_BUSY;
+    runtime = base->runtime;
+    if (base->maintenance_token == token &&
+        base->maintenance_task == FindTask(NULL) &&
+        base->maintenance_state == P4_WIFI_MAINT_ACTIVE) {
+        if (!wifi_discovery_session_valid(base, runtime) ||
+            !wifi_owner_remaining(runtime->context, base->maintenance_started,
+                                  P4_WIFI_MAINT_LEASE_US)) {
+            wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_FAILED);
+            base->maintenance_state = P4_WIFI_MAINT_FAILED;
+            base->associated = FALSE;
+        } else {
+            state = runtime->control->discovery_state;
+            if (state == P4_WIFI_DISCOVERY_READY) {
+                if (runtime->control->discovery_token != token ||
+                    runtime->control->discovery_result.token != token ||
+                    runtime->control->discovery_result.generation !=
+                        runtime->context->generation ||
+                    !runtime->control->discovery_result.uid ||
+                    !runtime->control->discovery_result.nonce ||
+                    runtime->control->discovery_result.nonce !=
+                        runtime->control->discovery_nonce ||
+                    runtime->control->discovery_result.inventory_size >
+                        P4_WIFI_DISCOVERY_MAX ||
+                    !wifi_discovery_output_valid(base, runtime, out))
+                    state = P4_WIFI_DISCOVERY_FAILED;
+                else CopyMem(&runtime->control->discovery_result, out,
+                              sizeof(*out));
+            }
+        }
+    }
+    ReleaseSemaphore(&base->client_lock);
+    return state;
+}
+
+/* Owner-only with client_lock held. All large scratch is in heap control.
+ * Final publication is fenced by a fresh shared-host acquisition and lease. */
+static int wifi_maintenance_discovery_service(struct P4WifiBase *base,
+                                             struct wifi_device_runtime *runtime)
+{
+    struct wifi_probe_context *context = runtime->context;
+    struct wifi_owner_control *control = runtime->control;
+    struct p4_hosted_rpc rpc;
+    ULONG started, token, generation, remaining, wait;
+    uint32_t uid = 0;
+    size_t written = 0, inventory_size = 0;
+    int exchanged;
+    if (control->discovery_state != P4_WIFI_DISCOVERY_REQUESTED) return 1;
+    token = control->discovery_token;
+    generation = context->generation;
+    if (base->owner_task != FindTask(NULL) ||
+        base->client_lock.ss_Owner != FindTask(NULL) ||
+        !wifi_discovery_session_valid(base, runtime) ||
+        context->host->lock.ss_Owner == FindTask(NULL) ||
+        token != base->maintenance_token || !token ||
+        base->maintenance_state != P4_WIFI_MAINT_ACTIVE ||
+        !wifi_owner_remaining(context, base->maintenance_started,
+                              P4_WIFI_MAINT_LEASE_US)) goto failed;
+    if (!p4_hosted_init_has_board_discovery(runtime->init)) {
+        wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_UNSUPPORTED);
+        return 1; /* Stock peers receive no speculative extension. */
+    }
+    started = wifi_owner_now(context);
+    remaining = wifi_owner_remaining(context, base->maintenance_started,
+                                     P4_WIFI_MAINT_LEASE_US);
+    if (remaining > 8000000UL) remaining = 8000000UL;
+    if (!remaining || runtime->owner->pending_active ||
+        runtime->owner->partial_active || runtime->owner->ids.active_uid ||
+        !p4_hosted_request_ids_reserve(&runtime->owner->ids, generation,
+            P4_HOSTED_DISCOVERY_REQUEST_ID, &uid)) goto failed;
+    p4host_zero(&control->result, sizeof(control->result));
+    exchanged = p4_hosted_discovery_request(runtime->init, uid,
+        control->discovery_nonce, control->request, sizeof(control->request),
+        &written);
+    remaining = wifi_owner_remaining(context, started, 8000000UL);
+    wait = wifi_owner_remaining(context, base->maintenance_started,
+                               P4_WIFI_MAINT_LEASE_US);
+    if (remaining > wait) remaining = wait;
+    exchanged = exchanged && remaining &&
+        p4_hosted_owner_exchange_board_discovery(runtime->owner,
+        runtime->fifo, &control->ops, generation, runtime->checksum,
+        control->request, written, remaining, &control->result, runtime->init,
+        control->discovery_nonce);
+    if (!exchanged) {
+        (void)wifi_owner_finish_unsubmitted_reservation(runtime->owner,
+            runtime->fifo, generation, uid, P4_HOSTED_DISCOVERY_REQUEST_ID,
+            control->result.submitted);
+        goto failed;
+    }
+    rpc.msg_type = runtime->owner->reply.msg_type;
+    rpc.msg_id = runtime->owner->reply.msg_id;
+    rpc.uid = runtime->owner->reply.uid;
+    rpc.payload = runtime->owner->reply.payload;
+    rpc.payload_size = runtime->owner->reply.payload_size;
+    if (!p4_hosted_rpc_encode_board_discovery(control->discovery_response,
+        sizeof(control->discovery_response), &rpc, &written) ||
+        !p4_hosted_discovery_response(control->discovery_response, written,
+            uid, control->discovery_nonce, &control->discovery_decoded))
+        goto failed;
+    if (!control->discovery_decoded.status &&
+        !board_discovery_encode(&control->discovery_decoded.snapshot,
+            control->discovery_nonce, control->discovery_result.inventory,
+            sizeof(control->discovery_result.inventory), &inventory_size))
+        goto failed;
+    remaining = wifi_owner_remaining(context, started, 8000000UL);
+    wait = wifi_owner_remaining(context, base->maintenance_started,
+                               P4_WIFI_MAINT_LEASE_US);
+    if (remaining > wait) remaining = wait;
+    wait = remaining < P4_HOSTED_OWNER_MAX_ACQUIRE_US
+        ? remaining : P4_HOSTED_OWNER_MAX_ACQUIRE_US;
+    if (!wait || !wifi_owner_acquire(context, wait)) goto failed;
+    exchanged = wifi_tx_session(context, generation) &&
+        wifi_discovery_session_valid(base, runtime) &&
+        base->maintenance_state == P4_WIFI_MAINT_ACTIVE &&
+        base->maintenance_token == token && control->discovery_token == token &&
+        wifi_owner_remaining(context, started, 8000000UL) &&
+        wifi_owner_remaining(context, base->maintenance_started,
+                              P4_WIFI_MAINT_LEASE_US) &&
+        !wifi_owner_stopping(context);
+    if (exchanged) {
+        control->discovery_result.token = token;
+        control->discovery_result.generation = generation;
+        control->discovery_result.uid = uid;
+        control->discovery_result.nonce = control->discovery_nonce;
+        control->discovery_result.remote_status = control->discovery_decoded.status;
+        control->discovery_result.inventory_size = inventory_size;
+        control->discovery_state = P4_WIFI_DISCOVERY_READY;
+    }
+    wifi_owner_release(context);
+    if (!exchanged) goto failed;
+    p4host_zero(control->request, sizeof(control->request));
+    p4host_zero(&control->discovery_decoded, sizeof(control->discovery_decoded));
+    p4host_zero(control->discovery_response, sizeof(control->discovery_response));
+    return 1;
+failed:
+    p4_hosted_owner_cancel(runtime->owner, runtime->fifo, generation);
+    p4host_zero(control->request, sizeof(control->request));
+    wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_FAILED);
+    return 0;
+}
+
 static ULONG wifi_maintenance_request(struct P4WifiBase *base)
 {
     struct wifi_device_runtime *runtime;
@@ -1485,6 +1718,7 @@ static ULONG wifi_maintenance_request(struct P4WifiBase *base)
          base->maintenance_state == P4_WIFI_MAINT_RELEASED) &&
         base->maintenance_token != UINT32_MAX) {
         token = ++base->maintenance_token;
+        wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_IDLE);
         base->maintenance_task = FindTask(NULL);
         base->maintenance_started = runtime->context->host->now_us();
         base->maintenance_state = P4_WIFI_MAINT_REQUESTED;
@@ -1511,6 +1745,7 @@ static ULONG wifi_maintenance_poll(struct P4WifiBase *base, ULONG token)
                                    P4_WIFI_MAINT_LEASE_US)) {
             base->maintenance_state = P4_WIFI_MAINT_FAILED;
             base->associated = FALSE;
+            wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_FAILED);
         }
         state = base->maintenance_state;
     }
@@ -1532,14 +1767,17 @@ static BOOL wifi_maintenance_release(struct P4WifiBase *base, ULONG token)
                                    P4_WIFI_MAINT_LEASE_US)) {
             base->maintenance_state = P4_WIFI_MAINT_FAILED;
             base->associated = FALSE;
+            wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_FAILED);
             ReleaseSemaphore(&base->client_lock);
             return FALSE;
         }
         if (base->maintenance_state == P4_WIFI_MAINT_REQUESTED) {
+            wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_IDLE);
             /* Owner has not begun quiescence while another task has this lock. */
             base->maintenance_state = P4_WIFI_MAINT_RELEASED;
             accepted = TRUE;
         } else if (base->maintenance_state == P4_WIFI_MAINT_ACTIVE) {
+            wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_IDLE);
             base->maintenance_state = P4_WIFI_MAINT_RELEASING;
             accepted = TRUE;
         }
@@ -1579,7 +1817,10 @@ static int wifi_maintenance_service(struct P4WifiBase *base,
         base->maintenance_state = P4_WIFI_MAINT_ACTIVE;
         return 2;
     }
-    if (base->maintenance_state == P4_WIFI_MAINT_ACTIVE) return 2;
+    if (base->maintenance_state == P4_WIFI_MAINT_ACTIVE) {
+        if (!wifi_maintenance_discovery_service(base, runtime)) goto failed;
+        return 2;
+    }
     if (base->maintenance_state == P4_WIFI_MAINT_RELEASING) {
         if (remaining > 8000000UL) remaining = 8000000UL;
         if (!wifi_owner_request(context, runtime->owner, runtime->control,
@@ -1594,6 +1835,7 @@ static int wifi_maintenance_service(struct P4WifiBase *base,
 failed:
     base->maintenance_state = P4_WIFI_MAINT_FAILED;
     base->associated = FALSE;
+    wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_FAILED);
     return 0;
 }
 
@@ -1624,6 +1866,7 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     runtime.checksum = checksum;
     runtime.servicing = FALSE;
     runtime.scanning = FALSE;
+    runtime.init = &opened->init;
     control->rx_ops.context = context;
     control->rx_ops.session_ok = wifi_tx_session;
     control->rx_ops.budget_ok = wifi_budget;
@@ -1698,6 +1941,7 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     }
     ObtainSemaphore(&base->client_lock);
     base->ready = FALSE;
+    wifi_maintenance_discovery_clear(base->runtime, P4_WIFI_DISCOVERY_FAILED);
     if (base->maintenance_state != P4_WIFI_MAINT_IDLE &&
         base->maintenance_state != P4_WIFI_MAINT_RELEASED)
         base->maintenance_state = P4_WIFI_MAINT_FAILED;
@@ -1790,6 +2034,17 @@ static BOOL wifi_maintenance_release(struct P4WifiBase *base, ULONG token)
 {
     (void)base; (void)token;
     return FALSE;
+}
+static BOOL wifi_maintenance_discover(struct P4WifiBase *base, ULONG token)
+{
+    (void)base; (void)token;
+    return FALSE;
+}
+static ULONG wifi_maintenance_discovery_poll(struct P4WifiBase *base, ULONG token,
+                                             struct p4_wifi_discovery_result *out)
+{
+    (void)base; (void)token; (void)out;
+    return P4_WIFI_DISCOVERY_FAILED;
 }
 #endif
 
@@ -2414,6 +2669,8 @@ static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
     P4WifiBase->maintenance_request = wifi_maintenance_request;
     P4WifiBase->maintenance_poll = wifi_maintenance_poll;
     P4WifiBase->maintenance_release = wifi_maintenance_release;
+    P4WifiBase->maintenance_discover = wifi_maintenance_discover;
+    P4WifiBase->maintenance_discovery_poll = wifi_maintenance_discovery_poll;
     P4WifiBase->maintenance_task = NULL;
     P4WifiBase->maintenance_token = 0;
     P4WifiBase->maintenance_state = P4_WIFI_MAINT_IDLE;

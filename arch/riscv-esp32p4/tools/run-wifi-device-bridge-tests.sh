@@ -98,6 +98,7 @@ extract_function wifi_owner_budget
 extract_function wifi_owner_release
 extract_function wifi_device_send
 extract_function wifi_owner_frame
+extract_function wifi_maintenance_discovery_clear
 
 # Compile the exact owner-stop publication statements as a small callable
 # block. The preceding ObtainSemaphore and following ReleaseSemaphore are
@@ -133,6 +134,7 @@ for test_opt in 0 2; do
         -O"$test_opt" -fsanitize=address,undefined -fno-omit-frame-pointer \
         -I"$test_tmp" -I"$test_root/network" -I"$test_root/sdmmc" \
         -I"$repo_root/compiler/include" \
+        -I"$repo_root/workbench/tools/ESP32Board" \
         "$test_root/network/hosted_owner.c" \
         "$test_root/network/hosted_pending.c" \
         "$test_root/network/hosted_rx.c" \

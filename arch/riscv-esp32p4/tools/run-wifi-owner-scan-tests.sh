@@ -116,6 +116,7 @@ extract_function() {
 extract_struct wifi_probe_context "$source_file"
 extract_struct p4_wifi_scan_result "$bridge_file"
 extract_struct p4_wifi_link_info "$bridge_file"
+extract_struct p4_wifi_discovery_result "$bridge_file"
 extract_struct p4_wifi_device_callbacks "$bridge_file"
 extract_struct P4WifiBase "$header_file"
 extract_struct wifi_owner_control "$source_file"
@@ -145,6 +146,7 @@ for optimization in 0 2; do
 	"$cc" $common_flags "-O$optimization" \
 		-I "$test_tmp" -I "$test_root/network" -I "$test_root/sdmmc" \
 		-I "$repo_root/compiler/include" \
+		-I "$repo_root/workbench/tools/ESP32Board" \
 		"$test_root/network/hosted_scan.c" \
 		"$test_root/network/hosted_rpc.c" \
 		"$test_root/network/hosted_request_ids.c" \

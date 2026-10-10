@@ -167,6 +167,7 @@ for optimization in 0 2; do
 		-DP4_BOARD_WIFI_SDIO=1 -DP4_WIFI_HOSTED_OWNER=1 -DP4_WIFI_HOSTED_REPLY=1 \
 		-I "$test_tmp" -I "$test_root/network" -I "$test_root/sdmmc" \
 		-I "$repo_root/compiler/include" \
+		-I "$repo_root/workbench/tools/ESP32Board" \
 		"$test_root/network/hosted_pending.c" \
 		"$test_root/network/hosted_rx.c" \
 		"$test_root/network/hosted_inbox.c" \

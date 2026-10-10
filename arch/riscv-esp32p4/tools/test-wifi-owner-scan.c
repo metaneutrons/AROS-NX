@@ -6,6 +6,7 @@
 #include "hosted_scan.h"
 #include "hosted_wifi.h"
 #include "hosted_mac.h"
+#include "hosted_discovery.h"
 #include "hosted_link.h"
 #include "hosted_tx.h"
 #include "hosted_wire.h"
@@ -19,6 +20,7 @@
 
 typedef uint8_t UBYTE;
 typedef uint32_t ULONG;
+typedef int32_t LONG;
 typedef int BOOL;
 typedef void *APTR;
 typedef uintptr_t IPTR;
@@ -30,6 +32,7 @@ typedef uintptr_t IPTR;
 #define P4_HOSTED_OWNER_MAX_SLICE_US UINT32_C(250000)
 #define P4_WIFI_HOSTED_OWNER 1
 #define P4_WIFI_SDIO_RESET_QUERY 0
+#define P4_WIFI_DISCOVERY_MAX 1056u
 
 struct p4_wifi_association_target;
 struct p4_wifi_association_cancel {

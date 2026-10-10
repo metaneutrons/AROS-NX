@@ -1,6 +1,7 @@
 #!/bin/sh
-# Source-extract the production maintenance handshake and deadline helper.
-# Only the transport request is mocked; no hardware behavior is claimed.
+# Source-extract production maintenance/discovery helpers. The fixture models
+# Exec, codecs, UID reservation, private owner exchange and host ownership.
+# Separate suites cover actual codecs/owner transport; no hardware behavior is claimed.
 set -eu
 
 test_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -10,6 +11,11 @@ mutant_extract="$test_tmp/wifi_maintenance_mutant.inc"
 constants="$test_tmp/wifi_maintenance_constants.inc"
 source_file="$test_root/network/runtime_probe.c"
 header_file="$test_root/network/device_bridge.h"
+discovery_header="$test_root/network/hosted_discovery.h"
+rpc_header="$test_root/network/hosted_rpc.h"
+owner_header="$test_root/network/hosted_owner.h"
+layout_header="$test_root/../../workbench/tools/ESP32Board/layout.h"
+wire_header="$test_root/boardtool/discovery_wire.h"
 trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$test_tmp/test-mutant" "$test_tmp/mutant.out" "$extract" "$mutant_extract" "$constants"; command rm -rf "$test_tmp/test-o0.dSYM" "$test_tmp/test-o2.dSYM" "$test_tmp/test-mutant.dSYM"; command rmdir "$test_tmp"' EXIT HUP INT TERM
 
 : > "$extract"
@@ -63,9 +69,15 @@ extract_function() {
 # subtraction semantics compiled into runtime_probe.c.
 extract_function wifi_owner_remaining
 extract_function wifi_maintenance_normal_poll
+extract_function wifi_maintenance_discovery_clear
+extract_function wifi_discovery_output_valid
+extract_function wifi_discovery_session_valid
 extract_function wifi_maintenance_request
 extract_function wifi_maintenance_poll
 extract_function wifi_maintenance_release
+extract_function wifi_maintenance_discover
+extract_function wifi_maintenance_discovery_poll
+extract_function wifi_maintenance_discovery_service
 extract_function wifi_maintenance_service
 
 # Keep the source wiring that gates the owner FIFO poll under regression
@@ -85,9 +97,31 @@ awk '
 	exit 1
 }
 
+# The source-extracted clear helper is exercised by the C fixture. Confirm the
+# actual owner teardown invokes it before dropping the runtime pointer.
+awk '
+	index($0, "base->ready = FALSE;") { teardown = 1; next }
+	teardown && index($0, "wifi_maintenance_discovery_clear(base->runtime, P4_WIFI_DISCOVERY_FAILED);") { clear = 1 }
+	teardown && index($0, "base->runtime = NULL;") { runtime_clear = 1; exit }
+	END { if (!teardown || !clear || !runtime_clear) exit 1 }
+' "$source_file" || {
+	echo "owner teardown does not clear discovery before retiring runtime" >&2
+	exit 1
+}
+
 # These public ABI values come from the production header, not a test copy.
-awk '$1 == "#define" && $2 ~ /^P4_WIFI_(MAINT|LINK)_/ { print }' \
+awk '$1 == "#define" && $2 ~ /^P4_WIFI_(MAINT|LINK|DISCOVERY)_/ { print }' \
 	"$header_file" > "$constants"
+awk '$1 == "#define" && $2 == "P4_HOSTED_DISCOVERY_REQUEST_ID" { print }' \
+	"$discovery_header" >> "$constants"
+awk '$1 == "#define" && $2 == "P4_HOSTED_RPC_MAX_SIZE" { print }' \
+	"$rpc_header" >> "$constants"
+awk '$1 == "#define" && $2 == "P4_HOSTED_OWNER_MAX_ACQUIRE_US" { print }' \
+	"$owner_header" >> "$constants"
+awk '$1 == "#define" && $2 == "BOARD_LAYOUT_MAX_PARTITIONS" { print }' \
+	"$layout_header" >> "$constants"
+awk '$1 == "#define" && $2 == "BOARD_DISCOVERY_WIRE_MAX" { print }' \
+	"$wire_header" >> "$constants"
 
 for optimization in 0 2; do
 	"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic -g \

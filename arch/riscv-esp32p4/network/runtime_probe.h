@@ -28,7 +28,9 @@ struct P4WifiBase
     ULONG link_state;
     struct p4_wifi_link_info observed_ap;
     /* Registration and callbacks own this lock. No SDMMC mutable field is
-     * protected by it: only the actual transport owner can touch runtime. */
+     * protected by it: only the actual transport owner can perform runtime
+     * transport. Maintenance callers inspect metadata and queue/copy discovery
+     * under this lock, never invoking SDIO. */
     struct SignalSemaphore client_lock;
     APTR client;
     const struct p4_wifi_device_callbacks *callbacks;
@@ -39,6 +41,9 @@ struct P4WifiBase
     ULONG (*maintenance_request)(struct P4WifiBase *);
     ULONG (*maintenance_poll)(struct P4WifiBase *, ULONG);
     BOOL (*maintenance_release)(struct P4WifiBase *, ULONG);
+    BOOL (*maintenance_discover)(struct P4WifiBase *, ULONG);
+    ULONG (*maintenance_discovery_poll)(struct P4WifiBase *, ULONG,
+                                        struct p4_wifi_discovery_result *);
     struct Task *maintenance_task;
     ULONG maintenance_token, maintenance_state, maintenance_started;
 };
