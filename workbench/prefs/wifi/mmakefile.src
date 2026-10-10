@@ -2,7 +2,7 @@
 
 include $(SRCDIR)/config/aros.cfg
 
-FILES := main worker locale
+FILES := main worker locale volatile_config
 
 EXEDIR := $(AROS_PREFS)
 

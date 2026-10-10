@@ -1,5 +1,17 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WLAN chooser development (2026-10-10): generic Prefs/WiFi gains an explicit
+VOLATILE mode, hex SSID serialization, runtime-only stack database selection,
+checked backup/rollback and owned secret-buffer clearing. Generic d43e1b9d8b
+is integrated; macOS O0/O2 ASan/UBSan tests pass222 formatter and1538 extracted
+worker-helper assertions plus20 source guards. Independent static review is
+clear within this delta; orchestration/Exec/radio are not host-tested. The native RV32-SMP
+application links with WIFI_VOLATILE_DEFAULT=1 (124752B, SHA-256
+1f5f253fc364e665feb3f5e628d3479f4ed887d69eb7e4059018088f9eed3255).
+Workbench uses that compile-time default; ENV must be RAM-backed and contain
+the complete database. Image staging, stack dependencies and actual GUI/radio
+acceptance remain open. No hardware, credentials or privacy-gate changes.
+
 Network preference classification (2026-10-10): generic NSD capability queries
 replace the legacy device-name list. Exact remembered device/unit identity is
 owned, loaded and preserved only for an UNKNOWN configured device; positive

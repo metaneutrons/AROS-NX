@@ -29,6 +29,9 @@
 
 #include "wifigui.h"
 #include "locale.h"
+#include "volatile_config.h"
+
+BOOL WifiVolatile = WIFI_VOLATILE_DEFAULT;
 
 #define VERSION "$VER: WiFi 1.0 (20.08.2026) AROS Dev Team"
 
@@ -351,7 +354,7 @@ static void HandleReply(void)
 
 /* ------------------------------------------------------------------------- */
 
-int main(void)
+int main(int argc, char **argv)
 {
     struct Hook scan_hook, connect_hook, display_hook, keyok_hook, keycancel_hook;
     struct Hook details_hook, detailsok_hook, disconnect_hook, device_hook;
@@ -359,6 +362,18 @@ int main(void)
     LONG i, preselect = 0;
     ULONG sigs = 0, replysig;
     int rc = RETURN_FAIL;
+
+    (void)argv;
+    if (argc > 0)
+    {
+        IPTR args[1] = { 0 };
+        struct RDArgs *parsed = ReadArgs((CONST_STRPTR)"VOLATILE/S", args, NULL);
+        if (parsed == NULL)
+            return RETURN_FAIL;
+        if (args[0])
+            WifiVolatile = TRUE;
+        FreeArgs(parsed);
+    }
 
     Locale_Initialize();
 
@@ -659,6 +674,8 @@ cleanup:
         Wait(SIGF_SINGLE);              /* worker has deleted its port */
     }
 
+    if (msg != NULL)
+        WifiClearSecret(msg->wm_Key, sizeof(msg->wm_Key));
     FreeVec(msg);
     if (replyport != NULL)
         DeleteMsgPort(replyport);

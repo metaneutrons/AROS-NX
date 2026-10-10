@@ -132,7 +132,7 @@ gate: compensated output is not the native display contract.
 | N2 | AROS WLAN SANA-II integration | `private ABI6 association/lifecycle binding build and scoped models verified; runtime/privacy/wireless gates open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded STA TX compile for Core1. N2L records current counts/artifacts and Close/Offline/teardown models. Actual helpers/selected dispatch arms; Exec/SDMMC/hooks/radio mocked, not full BeginIO, full service callback or runtime concurrency. Queue/traffic-token fences/copied AP publication are bound; no actual association/IP claim. TX commitment rejects late AbortIO. WirelessManager/bwfm remain references; per-device four-way offload must preserve legacy behavior. Caller late failure, DHCP/build defaults, GUI saving/writable preference storage and actual teardown/reconnect/load remain open. No credentials, deployment or hardware pass. |
 | N2L | Native radio teardown and ongoing link lifecycle | `ABI6 build/scoped models verified; hardware/privacy open` | Standalone leave, deferred teardown outside unit lock, bounded Disconnect/NOT_CONNECT verification, periodic correlated AP observation and selected-RPC cancellation drain. Mac/Linux O0/O2 sanitized: association25999, observer393, bridge219, options89/258, queue785, lifetime1482, datapath16507, events6/70, scan295; sibling link102/reservation63/owner scan37447; exit0. Fresh Core1 RV32 modules have no undefined imports. Explicit teardown requires absence; persistent/foreign AP quarantines rather than reporting loss. Both privacy assertions0 and SUMMARY-only unchanged. Shared caller late-failure event and actual radio/reconnect/load qualification remain open. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
-| N2U | Credential-free WLAN image defaults and first-use selection | `overlay/classification host tested; Network app build verified; image/runtime open` | Fixed native device/unit0, DHCP, RAM database/temporary paths; empty Wireless.prefs, no credentials, autostart off. Four overlay tests pass; existing directories/symlinks refused. Generic NSD classification replaces legacy names, with owned persisted device/unit identity, UNKNOWN fallback and stale-selection clearing; Mac O0/O2 with/without sanitizers pass. RV32-SMP Network app268728B links; modules/runtime open. No scan/ONLINE probe; OpenDevice/abort completion are not hard bounded. Not consumed by current image targets; standard DB companions/binaries/libraries, one GUI-enabled manager path and actual parser/runtime acceptance required. First delivery excludes credential persistence; SYS/SD remains read-only. |
+| N2U | Credential-free WLAN image defaults and first-use selection | `overlay/classification host tested; Network/WiFi apps build verified; image/runtime open` | Fixed native device/unit0, DHCP, RAM database/temporary paths; empty Wireless.prefs, no credentials, autostart off. Four overlay tests pass; existing directories/symlinks refused. Generic NSD classification replaces legacy names, with owned persisted device/unit identity, UNKNOWN fallback and stale-selection clearing; Mac O0/O2 with/without sanitizers pass. RV32-SMP Network app268728B and VOLATILE WiFi124752B link; modules/runtime open. VOLATILE uses ENV only, checked backup/rollback, hex SSIDs, runtime-only Config and address-gated success; Workbench compile default1 verified. No scan/ONLINE probe; OpenDevice/abort completion are not hard bounded. Not consumed by current image targets; standard DB companions/binaries/libraries, one GUI-enabled manager path and actual parser/runtime acceptance required. First delivery excludes credential persistence; SYS/SD remains read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -1464,8 +1464,12 @@ service startup through existing preferences, with no compiled credentials.
 The current Package-Startup invokes WirelessManager with NOGUI and its GUI
 Connect action does not save new networks. Provide an accessible single-manager
 selection path and explicit writable user-preference storage if credentials
-are to persist. Read-only SYS/SD protection remains unchanged. Neither image
-staging nor first-use/persistent-network UX has been implemented or accepted.
+are to persist. Read-only SYS/SD protection remains unchanged. Generic Prefs/WiFi
+now has a developing VOLATILE mode: runtime-only ENV preferences/database,
+checked snapshots/rollback, hex SSIDs and cleared secret buffers. The complete
+RV32-SMP chooser links with its volatile default enabled; image staging and
+actual first-use acceptance remain open. Credential persistence is excluded
+from the first station delivery, not silently redirected onto read-only SYS.
 
 A separate make-wifi-defaults.py host generator now emits an exclusive new
 preferences overlay: fixed native device/unit0, IP=DHCP UP DEFER, RAM database,
@@ -35631,3 +35635,66 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   chooser/single-manager integration. Physical C6 identity/secured backup/
   restore/UART privacy, actual association/DHCP/frames/reconnect and1800s shared
   load acceptance remain open; host/native build results cannot close them.
+
+### 2026-10-10 - N2U volatile first-use chooser prerequisite
+
+- Identity: generic upstream-based commit d43e1b9d8b adds Prefs/WiFi VOLATILE;
+  integrated into feature/esp32p4-wifi without unrelated upstream changes.
+  Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/volatile-chooser.xhJub5.
+  These are offline source/build results, not a board or radio qualification.
+- Configuration: generic default remains persistent (WIFI_VOLATILE_DEFAULT=0).
+  CLI VOLATILE/S enables runtime-only preferences. The RV32-SMP build explicitly
+  used WIFI_VOLATILE_DEFAULT=1, including Workbench argc0; no ToolType support
+  or persistent opt-in is claimed for this binary. ENV must actually point to
+  RAM and already contain the complete AROSTCP database. No credential values
+  are compiled into the program or used in a live connection.
+- Behavior: volatile selection writes only ENV:Sys/Wireless.prefs, with hex
+  SSIDs and printable ASCII8..63 WPA passphrases. The actual manager parser
+  accepts internal quotes/#/backslashes literally; no incompatible escaping is
+  introduced. Lookup includes the hex line delimiter, preventing prefix matches.
+  StackDBDir publishes ENV:AROSTCP/db with GVF_GLOBAL_ONLY, never SAVE_VAR.
+  Missing files and empty files differ from seek/read/allocation failures;
+  unavailable snapshots prevent mutation. Write/Close/rollback errors surface as
+  failure. Owned preference/message buffers are volatile-cleared before free.
+  Volatile connection success requires association and an interface address;
+  persistent mode retains the pre-existing association-level success semantics.
+- Review/tests: independent read-only source review found no remaining static
+  blocker to this scoped no-ENVARC/SYS-write delta. Actual production formatter
+  passes222 assertions and extracted reader/backup/write/restore/free helpers
+  pass1538 assertions each O0/O2 with ASan/UBSan on macOS; source orchestration
+  guards pass20. Upstream and integrated port runs exit0. LeakSanitizer is off
+  on macOS; mock allocation balance and wiped-before-free checks are explicit.
+  These tests do not execute the whole GUI/worker/Exec/radio lifecycle.
+- Corrections retained: initial test guards rejected valid single-statement
+  conditionals. Expanded reader mocks initially used the new Seek position;
+  DOS returns the previous position, and fixing the mock made the real helper
+  scenarios pass. Initial diagnostic worker compile exit1 referenced absent
+  dos/doserrors.h; dos/dos.h already provides the constant. Initial application
+  build exit2 lacked the generic WiFi catalog submodule. Its exact pinned
+  355d6c5ca56cfa7f64d2912093a1084ca74ed3c8 was then initialized in both trees.
+  All build-failure logs remain in the evidence directory.
+- Native procedure/result: explicit current Developer sysroot/generated includes,
+  rv32imafc_zicsr_zifencei_zaamo_zalrsc, ilp32f, SMP, O2, volatile default1.
+  Build target FILES explicitly includes volatile_config; generated mmake cache
+  is not treated as proof of source flags. The four exact chooser objects were
+  removed before the final integrated-port rebuild. Catalog generation exit0
+  creates19 catalogs and strings.h; final upstream and integrated application
+  links exit0. WiFi124752B is byte-identical between both builds, SHA-256
+  1f5f253fc364e665feb3f5e628d3479f4ed887d69eb7e4059018088f9eed3255.
+  main.o symbol/section inspection verifies WifiVolatile initialized to1.
+  Standalone diagnostic objects compile but retain existing pointer-sign,
+  unused-parameter/hook-cast and path-truncation warnings in archived logs;
+  no warning-free standalone audit is claimed. Final normal app build has no
+  warning/error signatures.
+- Evidence hashes: test script
+  b09fe30b8f18343da1ed2ff9fe1758eef8a2e1a3b65c5bc3b74a1ca51ebcfade;
+  upstream host log
+  ea4b326a11aaa574df2d0f74d856fe5b0ced110ceb3a2d0a7f6845e41099dc0d.
+- Safety/remaining: no serial, flash, reset, SD write, C6 update, real credentials
+  or privacy-gate changes. Both privacy assertions remain0 and SUMMARY-only
+  advertisement unchanged. This is not yet consumed by a bootimage. Build/stage
+  stack/DHCP, protocol modules and complete database companions; supply the
+  package-path variable and a single accessible chooser/manager path. Existing
+  stack restart semantics, inferred password-error messages and actual task
+  lifetime require runtime qualification. C6 secured identity/backup/restore/
+  UART privacy and actual WLAN/DHCP/frames/reconnect/1800s load remain open.
