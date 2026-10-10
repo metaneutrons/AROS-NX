@@ -28,7 +28,7 @@ enable restores a complete30.948s headless AROS return (PSRAM/both harts/modules
 graphics updates). This manual recovery workaround is not a permanent reset
 fix or a physical-cold/visual gate; N1R tracks its uncompensated removal.
 The subsequent corrected360MHz hardware run completes MAC/scan in4.085s:
-slave chip12/capabilities0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records.
+slave chip13 (0x0d, C6)/capabilities0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records.
 Complete45.822s capture has no further reset/fault. Exact full-span rollback
 and complete30.925s baseline return pass without another manual clock write.
 This is one official-host reference gate, not native association, frames,
@@ -58,6 +58,15 @@ Extracted runtime adapter models pass41 cases/501 checks each O0/O2 with
 sanitizers; these are not real controller or elapsed-time measurements.
 The separately selected P4_WIFI_SDIO_RESET_QUERY=1 historical diagnostic stays
 fail-stop and does not enable function setup.
+
+The separate setup-enabled package now passes one complete41.028s warm gate:
+function1 enabled/read back, ready after one poll,512-byte block size verified,
+then saved IO_ENABLE/FBR1 block bytes restored and verified (stage7/error0).
+The full3735552-byte BSP erase span is restored byte-identically; complete
+30.885s baseline return passes both harts/PSRAM/watchdog/SD/graphics dispatch
+without an additional captured fault. Original/restored register bytes are
+not printed individually; success is the checked runtime result, not a raw
+register dump. No OPEN/IRQ/FIFO/RPC or WLAN acceptance follows from this gate.
 
 JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53

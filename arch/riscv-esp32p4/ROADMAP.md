@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap passed once; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip12/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Native reset-before-identify passes one complete40.928s JC1060 warm capture: reset ack1/status1, identification ok1/stage8, two functions/RCA1/394088Hz; all24 snapshots captured, slot controls unchanged. Function setup/OPEN/RPC are not exercised. Exact RES timeout/CRC may continue without claiming acknowledgement; those exceptions are model-tested, not exercised by this hardware pass. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip13 (0x0d, C6)/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Native reset-before-identify passes one complete40.928s JC1060 warm capture. Separate41.028s setup capture passes reset ack1/status1, identification stage8, function1 enable/ready/512-byte block verification (stage11), saved IO_ENABLE/FBR1 restoration (stage7), all errors0; all24 snapshots captured, slot controls unchanged. Full BSP rollback/readback and30.885s baseline return pass. OPEN/IRQ/FIFO/RPC are not exercised. Exact RES timeout/CRC may continue without claiming acknowledgement; those exceptions are model-tested, not exercised by these hardware passes. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -652,7 +652,7 @@ reference-to-baseline warm returns without host register compensation; include
 failure-path return and keep physical cold behavior a separate gate. Do not
 silently embed the manual write as normal AROS startup or count it as rail-off.
 The corrected360MHz complete reference now passes one hardware MAC/scan gate:
-chip12/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records, final marker at4.085s.
+chip13 (0x0d, C6)/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records, final marker at4.085s.
 Complete45.822s capture has one commanded ROM reset and no further fault.
 Exact full-span rollback and30.925s AROS return pass without another clock
 write. This is a normal-return sample, not the N1R early-failure removal gate.
@@ -686,6 +686,16 @@ The entire BSP erase span is restored/readback verified byte-identically;
 complete30.934s baseline return passes PSRAM/both harts/watchdog/41 modules/
 SD enumeration/graphics-update dispatch, no additional captured reset/fault.
 No visual, data-integrity or combined-load qualification is inferred.
+The separate setup-enabled package now passes one complete41.028s warm gate:
+function1 enable/readback, ready after one poll,512-byte block verification,
+and saved IO_ENABLE/FBR1 block restoration/readback, stage11/stage7/errors0.
+Original/restored raw bytes are not individually logged; complete stage7 is
+reported only after the implementation's exact readback checks. All24 snapshots
+are captured and slot controls unchanged. Full3735552-byte BSP rollback/readback
+and complete30.885s baseline return pass, no additional captured reset/fault.
+This is one bounded setup/restore sample, not OPEN/IRQ/FIFO/RPC or repeated
+shared-SD/WLAN recovery acceptance. Next: reference-matched OPEN/private INIT
+and bounded FIFO transport with explicit counter/failure semantics.
 The empty-scan omission is a workaround for the pinned slave's API error,
 not proof that its empty-record behavior is fixed. N1E (open root-fix item):
 establish installed slave lineage, fix/upstream the erroneous empty-list API
@@ -30985,6 +30995,66 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   rollback, then OPEN/private INIT/RX/RPC on the measured reference protocol.
   Native association/DHCP/bidirectional frames/SANA-II/shared SD/sustained
   recovery gates remain open; Wi-Fi is not finished.
+
+### 2026-10-10 - N1 native function1 setup/restoration warm gate passes once
+
+- State: N1 advances from bootstrap-only to one bounded setup/restore hardware
+  pass. WLAN/OPEN/IRQ/FIFO/RPC, coexistence and repeated recovery remain open.
+- Source:46ee35db94 (documentation), implementation d698d37bce. JC1060-v2,
+  /dev/cu.usbmodem101, MAC80:f1:b2:d3:3b:a6 verified before deployment and
+  rollback; P4v1.3/16MB flash/32MB PSRAM. No guessed C6 reset GPIO.
+- Saved clean setup-enabled resource42956B, SHA-256
+  88e9fbe976e9b24ab75504dc824790084ff5ea9790e5b4b1ef3701c0744aae76;
+  P4_WIFI_SDIO_PROBE=1/SETUP=1/RESET_QUERY=0, boardjc1060p470c-v2.
+  Only this member replaces the previous bootstrap-only package. Independent
+  record comparison preserves all41 other raw records and member order.
+  Candidate3731512B, SHA-256
+  95261bc775fb6f63ec2acb37c97c2cd7d9598e242a2933f4cefa6880a015eafb;
+  loader audit42/42 and actual checksize3731512/4063232B exit0.
+- Fresh setup/restore sanitizer fixtures pass3997/602 checks respectively
+  each O0/O2, session60618 exit0. They are not hardware/timing measurements.
+- Entire rounded erase span0x820000..0xbaffff (3735552B) read twice,
+  byte-identical SHA-256
+  cb9d42723b4cc96a28d30e6d7ad59de6bb845d136ce0bef4119dc7482d2d587c;
+  backup sessions43004/56018 exit0. Candidate write22676/readback31749 exit0,
+  separate readback matches exactly. Only BSP span written.
+- Exactly one40s reset-and-log.py first-byte capture, session95023 exit0;
+  complete footer41.028493167s/15399B, boot.log SHA-256
+  17ad5caebd9e4400f14dc6419555c8ba509c626d6cc619cf8f14ac2adb901fc2.
+  RES attempted1/ack1/status1; identification ok1/stage8/error0/status0,
+  OCR00ffff00/RCA1/functions2/394088Hz. Setup attempted1/ok1/stage11/error0,
+  IO_ENABLE02/ready02/block512/polls1. Restore ok1/stage7/error0/mutated1.
+  Original/restored IO_ENABLE/FBR bytes are not printed individually; runtime
+  complete stage7 requires all three saved-byte readbacks to match. No claim
+  that restoring these bytes undoes the preceding C6 RES.
+- All24 before/after snapshots captured; CLKDIV1d00/CLKSRC4/CLKENA10003/
+  CTYPE1/RST_N3 unchanged. One initial commanded ROM reset,32MB PSRAM200MHz,
+ 6000ms watchdog, both harts,42 modules, PLL15bd/SD121942MB and accepted
+  graphics updates through16. No additional ROM/trap/Alert/Guru/panic.
+- Exact full-span rollback8392/readback10401 exit0 matchescb9d4272...;
+  separate baseline capture97191 exit0, complete30.884834250s/14487B,
+  restored-boot.log SHA-256
+  fa9078194d34b6de1c53a8242d95a8326c18862bdb24083acb6f795bf5ac494d.
+  41 modules/PSRAM/watchdog/both harts/PLL/SD/update256/touch heartbeat500,
+  no further reset/fault, no Wi-Fi diagnostics remain. No manual clock write,
+  Vellum or rail-off used. Board now runs the original baseline.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/native-setup.Bficpt/
+  contains exact package, audits, identities, double backups/readbacks,
+  write/rollback logs, test logs and both complete captures/timing sidecars.
+- Safety/limits: core, bootloader, partitions, development volume, SD and C6
+  firmware not written. C6 SDIO runtime intentionally reset and function1
+  temporarily enabled; saved enable/block state restored. Console dispatch
+  is not visible-frame evidence; enumeration is not SD integrity qualification.
+- Correction to earlier N1 reference evidence: existing cpu360-reference.log
+  line128 records actual INIT chip13 (0x0d, C6). Line132's `Slave chip Id[12]`
+  prints hexadecimal tag0x12, not its value (pinned transport_drv.c line511).
+  The previous chip12 interpretation is withdrawn; historical entry and raw
+  capture are preserved. Capability0x0d is a separate field. This correction
+  comes from rereading existing evidence, not a new hardware run.
+- Next: reference-matched bounded OPEN/private INIT/FIFO/RPC, snapshot/restore
+  new mutations, and explicit partial-transfer/counter recovery. Do not copy
+  the reference's RX-counter advance on a failed FIFO read as a success rule.
 
 ## Evidence-entry template
 

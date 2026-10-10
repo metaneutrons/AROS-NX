@@ -210,11 +210,18 @@ Board now runs baseline AROS. Corrected360MHz reference is still not deployed.
 ## Corrected360MHz reference hardware gate
 
 The subsequent exact349e8c58... candidate passes one full MAC/scan run under
-IDF6.0.1. C6 INIT chip12/capabilities0x0d includes WLAN; MAC10:bd:a3:9b:bc:34,
+IDF6.0.1. C6 INIT chip13 (0x0d)/capabilities0x0d includes WLAN; MAC10:bd:a3:9b:bc:34,
 13 APs/eight records, result=ok at4.085s. Complete45.822s capture has no
 additional reset/fault. Entire380928-byte baseline span restored/readback
 matched; complete30.925s AROS return passes without another parent-clock write.
 See ROADMAP dated evidence for complete hashes, sessions and procedure.
+
+Correction (2026-10-10): the existing capture prints `ESP board type is : 13`.
+The later `Slave chip Id[12]` prints the hexadecimal TLV tag constant0x12,
+not its chip-ID value: pinned `transport_drv.c`, `send_slave_config()` logs
+ESP_PRIV_FIRMWARE_CHIP_ID. The earlier chip12 interpretation is withdrawn;
+the capture itself is unchanged. Chip ID and capability bits are distinct
+fields even though both observed values are0x0d.
 
 This is a measured complete official-host reference, not a native AROS Wi-Fi
 driver or an association/frame/coexistence/recovery pass. It proves installed
