@@ -1,5 +1,15 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WirelessManager security/offload integration (2026-10-10): generic changes
+are being developed separately on pr/wireless-offload-summary from verified
+upstream master2875ef32831c, in /Volumes/Dev/Build/aros-wlan-contract.qToy75.
+The explicit versioned per-device capability and pool-owned scan-summary
+contract avoids reconstructing AP security IEs. Unknown, malformed or
+ambiguous security must never select an open-network fallback. Initial
+summary association is bounded to singleton WPA/RSN PSK TKIP/CCMP; SAE, EAP,
+WPS and PMF require additional truthful metadata, not invented support.
+This is uncommitted development, not a target build or deployed capability.
+
 Persistent owner scan development (2026-10-10): private bridge ABI2 now adds
 an owner-service-only default-config scan, using fresh persistent UIDs rather
 than the single-use diagnostic IDs. Start/count/records and failure Stop share
