@@ -688,6 +688,44 @@ static void CopyField(STRPTR out, ULONG size, CONST_STRPTR src)
  * can ask for. The lease it wrote has both, so read that - and fall back to the
  * preferences for a statically configured interface.
  */
+/* Match dhclient's PATH_DHCLIENT_DB override and POSIX /T default. The
+ * preference reader uses raw DOS paths; it cannot interpret /T as T:.
+ * This application links posixc for this read-only lease access. */
+static STRPTR ReadLeasePrefs(LONG *lenp)
+{
+    const char *path = getenv("PATH_DHCLIENT_DB");
+    FILE *file;
+    long size;
+    STRPTR buf = NULL;
+
+    *lenp = 0;
+    file = fopen(path != NULL ? path : "/T/dhclient.leases", "rb");
+    if (file == NULL)
+        return NULL;
+
+    if (fseek(file, 0, SEEK_END) == 0 && (size = ftell(file)) >= 0 &&
+        size < 0x7fffffff && fseek(file, 0, SEEK_SET) == 0 &&
+        (buf = AllocVec((ULONG)size + 1, MEMF_ANY | MEMF_CLEAR)) != NULL)
+    {
+        if (fread(buf, 1, (size_t)size, file) == (size_t)size && !ferror(file))
+            *lenp = (LONG)size;
+        else
+        {
+            WifiClearSecret(buf, (size_t)size + 1);
+            FreeVec(buf);
+            buf = NULL;
+        }
+    }
+    if (fclose(file) != 0 && buf != NULL)
+    {
+        WifiClearSecret(buf, (size_t)*lenp + 1);
+        FreeVec(buf);
+        buf = NULL;
+        *lenp = 0;
+    }
+    return buf;
+}
+
 static void FillRouteAndDNS(struct WifiMsg *m)
 {
     LONG len;
@@ -696,7 +734,7 @@ static void FillRouteAndDNS(struct WifiMsg *m)
     m->wm_Gateway[0] = '\0';
     m->wm_DNS[0] = '\0';
 
-    buf = ReadPrefs("SYS:System/Network/AROSTCP/db/dhclient.leases", &len);
+    buf = ReadLeasePrefs(&len);
     if (buf != NULL)
     {
         STRPTR p, last = NULL;
