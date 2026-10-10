@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; task recovery dispatch host tested/build verified` | Generic recovery, private RCA, shared budget, P4 hooks and bounded automatic task dispatch host tested/build verified. Accepted production source integrated locally. Radio notification, real SMP interleavings, integrated core/package build, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; integrated core build verified` | Generic recovery, private RCA, shared budget, P4 hooks and bounded automatic task dispatch host tested/build verified. Accepted production source integrated locally; clean core links with production XIP layout. Complete BSP/checksize/audit, radio notification, real SMP interleavings, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -178,6 +178,10 @@ station-mode delivery. Use the existing roadmap/evidence structure; no new
 GitHub tracking objects were requested or created.
 
 ### N0 - SDIO commands and shared controller ownership
+
+Integrated source ad7e4171f6 now produces a clean production-layout XIP core.
+Complete BSP assembly and hardware SD regression remain pending; standalone
+module/model passes do not qualify this new integrated pair.
 
 Generic same-media recovery is now implemented as an explicit owned operation
 behind three optional task-context backend hooks (needed/prepare/finish).
@@ -28929,6 +28933,59 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   real card recovery, scheduler/hart races or combined workload acceptance.
 - Next: complete core/package and read-only
   SD regression, then installed-C6 communication and native SANA-II WLAN.
+
+### 2026-10-10 - N0 integrated production-layout core build verified
+
+- State: previous goal turn made progress, committing bounded automatic SD
+  task recovery as ad7e4171f6. This turn builds the integrated source in the
+  isolated nongit /Volumes/Dev/Build/aros-esp32p4-wifi-build directory, from
+  /Volumes/Dev/Build/aros-esp32p4-wifi. No hardware acceptance claim.
+- Configuration: JC1060-v2/SMP, C3=1, C4_TOUCH_HIDD=1, PSRAM200, CPU360,
+  P4_LDSCRIPT=ldscript-xip.lds; no profiling, boot timing or fault injection.
+  Kernel/Exec/task/debug objects explicitly invalidated by build-core --clean.
+  Timer rebuilt incrementally; flashdisk rebuilt before the successful link.
+- Failed experiments retained: initial build session86308 exits1 before link
+  because quick flashdisk include generation lacks its proto/clib/inline/defines
+  directories in this isolated build. Creating these generated directories
+  permits session58889 to exit0. No source workaround or stale image deployed.
+  Flashdisk reports struct FlashDiskBase declaration warnings; they are not
+  silently classified as a warning-free build. Initial link-only invocation
+  exits1 using the SRAM-only default linker script; the SRAM ceiling rejects
+  the image. Production flags.txt confirms the intended XIP script, used next.
+- Successful XIP link-only invocation chunka28110 exits0; Creating image and
+  SRAM-residency check present. Core189,984 bytes SHA-256
+  bbc265fad7b4e18a15b67fcea7dcf029edb671bc88387eac91050b837f92cf68.
+  Evidence root /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10;
+  integrated-ad7e4171f6-xip holds core.bin/core.elf/core.map/flags.txt/link.log.
+  Link log SHA-256 a9d61554c48640a6816e3c9f9e29bb5d052a6d4ac7c40b3dc1b76acce0f4e28d;
+  initial build log9cdee0bf4cd3c4808fa082e79b762eed36ca559f497c8619ca7d5c3c3694fe13.
+  Known RWX linker warning remains. BootTiming/boot_phase symbols absent.
+  Link-only script also warns about its absent separate build.log; the actual
+  compiler log above exists and the successful link log is preserved.
+- Tool setup: existing isolated venv lacked esptool; esptool5.5.0 installed
+  there. Attempt to create that already-existing venv refused replacement;
+  existing environment preserved. No global or production environment edits.
+- Primary host tool regression chunk015123 exits0:56 unittest cases, including
+  capture timing, retained-reset and production qualification validators.
+  Generated test bytecode removed; no user files removed.
+- Package preparation: all generic/P4 sdcard and shared resource objects
+  invalidated together for private layout/ABI consistency. Checksize-first
+  session35902 exits2 because input.device has not yet been built in this
+  isolated tree. Normal aggregate package build session49116 is running;
+  no completed BSP/checksize/loader-audit result exists yet. Do not deploy.
+- Independent Luna read-only audit confirms exact rollback artifacts: accepted
+  s19 core189,968 bytes17249045bc8c6f910dac675ab3c1de5266ef5aa5d545f1d9ee2267374317bae0;
+  s16 quiet package3,636,260 bytes e0869292b2d352db822e14e397eb9a54386dcfcf26b514ad3fbb857962a8dc22;
+  factory16,777,216 bytes03222de1887e5368a964c483c666ee71f66e4941a573974e95ae678587eed1df.
+  Exact paths reported under evidence/full-smp-2026-10-08/jc1060 and
+  /Volumes/Dev/Source/Amiga/ESP32P4-board-backups. Primary must recheck before writes.
+- Safety/limits: no serial opens, reset, flash, SD writes, C6 firmware or D1001
+  actions. Production worktree acd62ff237 remains clean. Reference remains
+  cheops/JC1060P470C_I_W pinned6304eddef32a33aa9d9a85e971e39dfb24c3cca3;
+  website reread does not identify the installed C6 firmware.
+- Next: finish aggregate package and exact checksize/loader audit; record
+  result before any deployment. Then verified-identity/backed-up read-only SD
+  boot regression, followed by installed-C6 protocol identification.
 
 ## Evidence-entry template
 
