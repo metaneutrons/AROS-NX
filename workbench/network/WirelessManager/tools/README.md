@@ -35,3 +35,12 @@ preference, errors and pointer cleanup. Raw PSK requires both FOURWAY and
 RAW_PSK on the actual device. Exec, request structures and device I/O remain
 host fakes: a passing model does not prove association, firmware privacy,
 target scheduling or link-up.
+
+WPAInfoLength conveys the caller's validated extent for one complete IE,
+including its two-byte header. It is sent only for negotiated FOURWAY and
+IE_EXTENT; old offload and legacy devices receive no effective additional tag.
+Open association conveys a NULL IE with extent zero. Nonzero extents outside
+2..257 or inconsistent embedded lengths are rejected before any device I/O.
+The caller still guarantees readable memory throughout synchronous DoIO;
+length validation cannot establish arbitrary pointer validity. Native devices
+must copy borrowed data before acknowledging asynchronous association work.

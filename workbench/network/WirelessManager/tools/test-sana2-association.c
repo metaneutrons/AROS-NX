@@ -84,8 +84,8 @@ struct doio_record {
 	UPINT statdata_pointer;
 	u8 dst_addr[ETH_ALEN];
 	UPINT options_pointer;
-	ULONG option_tags[9];
-	UPINT option_data[9];
+	ULONG option_tags[10];
+	UPINT option_data[10];
 	size_t option_count;
 	char option_ssid[MAX_SSID_LEN + 1];
 	int option_statdata_was_null;
@@ -403,13 +403,6 @@ static void test_null_and_ssid_validation(void)
 	check_rejected_without_io("embedded NUL in SSID", result, &f);
 
 	init_fixture(&f, "alpha");
-	f.params.wpa_ie = NULL;
-	f.params.wpa_ie_len = 1;
-	SCENARIO();
-	result = wpa_driver_sana2_associate(&f.drv, &f.params);
-	check_rejected_without_io("NULL WPA IE with nonzero length", result, &f);
-
-	init_fixture(&f, "alpha");
 	f.params.wep_key_len[2] = 5;
 	f.params.wep_key[2] = NULL;
 	SCENARIO();
@@ -505,7 +498,7 @@ static void test_legacy_open_and_wep_host_wpa(void)
 	}
 	options = &io.doio[4];
 	CHECK("legacy open", "options command", options->command, S2_SETOPTIONS);
-	CHECK("legacy open", "options tags are exact",
+	CHECK("legacy open", "options tags preserve old contract",
 	      options->option_tags[0] == S2INFO_SSID &&
 	      options->option_tags[1] == TAG_IGNORE &&
 	      options->option_tags[2] == S2INFO_PortType &&
@@ -514,7 +507,8 @@ static void test_legacy_open_and_wep_host_wpa(void)
 	      options->option_tags[5] == S2INFO_AuthTypes &&
 	      options->option_tags[6] == TAG_IGNORE &&
 	      options->option_tags[7] == TAG_IGNORE &&
-	      options->option_tags[8] == TAG_END, 1);
+	      options->option_tags[8] == TAG_IGNORE &&
+	      options->option_tags[9] == TAG_END, 1);
 	CHECK("legacy open", "passphrase omitted", options->option_tags[6], TAG_IGNORE);
 	CHECK("legacy open", "SSID text", strcmp(options->option_ssid, "legacy-open") == 0, 1);
 	CHECK("legacy open", "managed port option",
@@ -566,6 +560,10 @@ static void test_legacy_open_and_wep_host_wpa(void)
 	      wpa_ie_index >= 0 &&
 	      options->option_data[wpa_ie_index] == (UPINT) wpa_ie, 1);
 	}
+	CHECK("legacy WEP + host WPA", "WPA extent tag omitted",
+	      options->option_tags[8], TAG_IGNORE);
+	CHECK("legacy WEP + host WPA", "tag list terminates after extent slot",
+	      options->option_tags[9], TAG_END);
 	CHECK("legacy WEP + host WPA", "passphrase omitted for host handshake",
 	      options->option_tags[6], TAG_IGNORE);
 	CHECK("legacy WEP + host WPA", "raw PSK omitted for host handshake",
@@ -593,6 +591,195 @@ static void enable_offload_raw_psk(struct fixture *f, const u8 *psk)
 	f->params.key_mgmt_suite = KEY_MGMT_PSK;
 	f->params.mode = IEEE80211_MODE_INFRA;
 	f->params.psk = psk;
+}
+
+static void enable_offload_ie_extent(struct fixture *f)
+{
+	f->drv.wireless_caps_valid = 1;
+	f->drv.wireless_caps.Flags = S2WIRELESS_CAPF_FOURWAY |
+		S2WIRELESS_CAPF_IE_EXTENT;
+}
+
+static void test_wpa_ie_span_validation(void)
+{
+	struct fixture f;
+	u8 *small_ie = malloc(1);
+	u8 *two_byte_ie = malloc(2);
+	int result;
+
+	if (small_ie == NULL || two_byte_ie == NULL) {
+		fprintf(stderr, "FAIL: could not allocate short WPA IE fixtures\n");
+		++failure_count;
+		free(small_ie);
+		free(two_byte_ie);
+		return;
+	}
+	small_ie[0] = 0x30;
+
+	init_fixture(&f, "bad-ie-null");
+	f.params.wpa_ie = NULL;
+	f.params.wpa_ie_len = 2;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	check_rejected_without_io("NULL WPA IE with length 2", result, &f);
+
+	init_fixture(&f, "bad-ie-one-byte");
+	f.params.wpa_ie = small_ie;
+	f.params.wpa_ie_len = 1;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	check_rejected_without_io("one-byte WPA IE span", result, &f);
+
+	/* The oversize guard must run before reading the embedded byte. This
+	 * deliberately exposes only one allocated byte for a claimed 258-byte IE. */
+	init_fixture(&f, "bad-ie-oversize");
+	f.params.wpa_ie = small_ie;
+	f.params.wpa_ie_len = 258;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	check_rejected_without_io("WPA IE span 258", result, &f);
+
+	/* This exact two-byte allocation is a readable span, but its embedded IE
+	 * length says three bytes. The validator must reject it without device I/O. */
+	two_byte_ie[0] = 0x30;
+	two_byte_ie[1] = 1;
+	init_fixture(&f, "bad-ie-embedded-length");
+	f.params.wpa_ie = two_byte_ie;
+	f.params.wpa_ie_len = 2;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	check_rejected_without_io("WPA IE embedded length mismatch", result, &f);
+
+	free(two_byte_ie);
+	free(small_ie);
+}
+
+static void test_negotiated_ie_extent(void)
+{
+	struct fixture f;
+	static const u8 wpa_ie[] = { 0x30, 0x02, 0xaa, 0xbb };
+	static const u8 min_wpa_ie[] = { 0x30, 0x00 };
+	u8 max_wpa_ie[257];
+	int extent_index, wpa_info_index, result;
+
+	memset(max_wpa_ie, 0xa5, sizeof(max_wpa_ie));
+	max_wpa_ie[0] = 0x30;
+	max_wpa_ie[1] = 255;
+
+	init_fixture(&f, "old-offload-protected");
+	enable_offload_psk(&f, "password");
+	f.params.wpa_ie = wpa_ie;
+	f.params.wpa_ie_len = sizeof(wpa_ie);
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("old offload WPA IE", "association succeeds", result, 0);
+	CHECK("old offload WPA IE", "one SETOPTIONS call", io.doio_count, 1);
+	wpa_info_index = option_index(&io.doio[0], S2INFO_WPAInfo);
+	CHECK("old offload WPA IE", "WPAInfo pointer preserved",
+	      wpa_info_index >= 0 &&
+	      io.doio[0].option_data[wpa_info_index] == (UPINT) wpa_ie, 1);
+	CHECK("old offload WPA IE", "WPAInfoLength omitted without capability",
+	      io.doio[0].option_tags[8], TAG_IGNORE);
+	CHECK("old offload WPA IE", "tag list terminator follows ignored slot",
+	      io.doio[0].option_tags[9], TAG_END);
+
+	init_fixture(&f, "extent-open");
+	enable_offload_ie_extent(&f);
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("IE extent open", "association succeeds", result, 0);
+	CHECK("IE extent open", "offload skips legacy key clears",
+	      io.set_key_count, 0);
+	CHECK("IE extent open", "one SETOPTIONS call", io.doio_count, 1);
+	extent_index = option_index(&io.doio[0], S2INFO_WPAInfoLength);
+	CHECK("IE extent open", "WPAInfoLength tag is active", extent_index, 8);
+	CHECK("IE extent open", "zero extent accompanies NULL WPAInfo",
+	      extent_index >= 0 ? io.doio[0].option_data[extent_index] : -1, 0);
+	CHECK("IE extent open", "WPAInfo is NULL",
+	      option_index(&io.doio[0], S2INFO_WPAInfo) >= 0 ?
+	      io.doio[0].option_data[option_index(&io.doio[0], S2INFO_WPAInfo)] : -1,
+	      0);
+	CHECK("IE extent open", "tag list terminator follows extent",
+	      io.doio[0].option_tags[9], TAG_END);
+
+	init_fixture(&f, "extent-zero-nonnull");
+	enable_offload_ie_extent(&f);
+	f.params.wpa_ie = wpa_ie;
+	f.params.wpa_ie_len = 0;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("IE extent zero-length non-NULL", "association succeeds", result, 0);
+	wpa_info_index = option_index(&io.doio[0], S2INFO_WPAInfo);
+	extent_index = option_index(&io.doio[0], S2INFO_WPAInfoLength);
+	CHECK("IE extent zero-length non-NULL", "WPAInfo tag remains active",
+	      wpa_info_index, 4);
+	CHECK("IE extent zero-length non-NULL", "non-NULL caller pointer becomes NULL WPAInfo",
+	      wpa_info_index >= 0 ? io.doio[0].option_data[wpa_info_index] : -1, 0);
+	CHECK("IE extent zero-length non-NULL", "WPAInfoLength tag remains active",
+	      extent_index, 8);
+	CHECK("IE extent zero-length non-NULL", "zero caller length is forwarded",
+	      extent_index >= 0 ? io.doio[0].option_data[extent_index] : -1, 0);
+
+	init_fixture(&f, "extent-minimum-two");
+	enable_offload_psk(&f, "password");
+	f.drv.wireless_caps.Flags |= S2WIRELESS_CAPF_IE_EXTENT;
+	f.params.wpa_ie = min_wpa_ie;
+	f.params.wpa_ie_len = sizeof(min_wpa_ie);
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("IE extent minimum 2", "association succeeds", result, 0);
+	wpa_info_index = option_index(&io.doio[0], S2INFO_WPAInfo);
+	extent_index = option_index(&io.doio[0], S2INFO_WPAInfoLength);
+	CHECK("IE extent minimum 2", "WPAInfo pointer preserved",
+	      wpa_info_index >= 0 &&
+	      io.doio[0].option_data[wpa_info_index] == (UPINT) min_wpa_ie, 1);
+	CHECK("IE extent minimum 2", "two-byte extent forwarded",
+	      extent_index >= 0 ? io.doio[0].option_data[extent_index] : -1,
+	      sizeof(min_wpa_ie));
+
+	init_fixture(&f, "extent-maximum-257");
+	enable_offload_psk(&f, "password");
+	f.drv.wireless_caps.Flags |= S2WIRELESS_CAPF_IE_EXTENT;
+	f.params.wpa_ie = max_wpa_ie;
+	f.params.wpa_ie_len = sizeof(max_wpa_ie);
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("IE extent maximum 257", "association succeeds", result, 0);
+	wpa_info_index = option_index(&io.doio[0], S2INFO_WPAInfo);
+	extent_index = option_index(&io.doio[0], S2INFO_WPAInfoLength);
+	CHECK("IE extent maximum 257", "WPAInfo pointer preserved",
+	      wpa_info_index >= 0 &&
+	      io.doio[0].option_data[wpa_info_index] == (UPINT) max_wpa_ie, 1);
+	CHECK("IE extent maximum 257", "257-byte extent forwarded",
+	      extent_index >= 0 ? io.doio[0].option_data[extent_index] : -1,
+	      sizeof(max_wpa_ie));
+
+	init_fixture(&f, "extent-protected");
+	enable_offload_psk(&f, "password");
+	f.drv.wireless_caps.Flags |= S2WIRELESS_CAPF_IE_EXTENT;
+	f.params.wpa_ie = wpa_ie;
+	f.params.wpa_ie_len = sizeof(wpa_ie);
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("IE extent protected", "association succeeds", result, 0);
+	CHECK("IE extent protected", "offload skips legacy key clears",
+	      io.set_key_count, 0);
+	CHECK("IE extent protected", "one SETOPTIONS call", io.doio_count, 1);
+	wpa_info_index = option_index(&io.doio[0], S2INFO_WPAInfo);
+	extent_index = option_index(&io.doio[0], S2INFO_WPAInfoLength);
+	CHECK("IE extent protected", "WPAInfo tag is active", wpa_info_index, 4);
+	CHECK("IE extent protected", "WPAInfo pointer preserved",
+	      wpa_info_index >= 0 &&
+	      io.doio[0].option_data[wpa_info_index] == (UPINT) wpa_ie, 1);
+	CHECK("IE extent protected", "WPAInfoLength tag follows credential slots",
+	      extent_index, 8);
+	CHECK("IE extent protected", "actual four-byte IE span forwarded",
+	      extent_index >= 0 ? io.doio[0].option_data[extent_index] : -1,
+	      sizeof(wpa_ie));
+	CHECK("IE extent protected", "passphrase remains active",
+	      io.doio[0].option_tags[6], S2INFO_Passphrase);
+	CHECK("IE extent protected", "tag list terminator follows extent",
+	      io.doio[0].option_tags[9], TAG_END);
 }
 
 static u8 *new_binary_psk(u8 expected[S2WIRELESS_PSK_SIZE],
@@ -783,6 +970,10 @@ static void test_passphrase_lengths_and_tags(void)
 	      options->option_data[6] == (UPINT) f.params.passphrase, 1);
 	CHECK("offload passphrase length 8", "raw PSK tag omitted",
 	      options->option_tags[7], TAG_IGNORE);
+	CHECK("offload passphrase length 8", "WPAInfoLength omitted without capability",
+	      options->option_tags[8], TAG_IGNORE);
+	CHECK("offload passphrase length 8", "tag list terminates after extent slot",
+	      options->option_tags[9], TAG_END);
 	CHECK("offload passphrase length 8", "request Data cleared",
 	      f.request.ios2_Data == NULL, 1);
 	CHECK("offload passphrase length 8", "request StatData cleared",
@@ -841,7 +1032,9 @@ static void test_raw_psk_forwarding_and_lifetime(void)
 	CHECK("raw PSK success", "raw PSK tag exact",
 	      options->option_tags[7], S2INFO_PSK);
 	CHECK("raw PSK success", "tag terminator follows PSK",
-	      options->option_tags[8], TAG_END);
+	      options->option_tags[9], TAG_END);
+	CHECK("raw PSK success", "WPAInfoLength omitted without capability",
+	      options->option_tags[8], TAG_IGNORE);
 	CHECK("raw PSK success", "borrowed pointer exact",
 	      options->option_data[7] == psk_address, 1);
 	CHECK("raw PSK success", "DoIO copied exactly the PSK tag bytes",
@@ -1155,8 +1348,10 @@ static void test_direct_set_key_borrowed_buffer_cleanup(void)
 int main(void)
 {
 	test_null_and_ssid_validation();
+	test_wpa_ie_span_validation();
 	test_ssid_32_and_borrowed_options();
 	test_legacy_open_and_wep_host_wpa();
+	test_negotiated_ie_extent();
 	test_credential_refusals_and_offload_wep();
 	test_actual_cipher_helper();
 	test_passphrase_lengths_and_tags();

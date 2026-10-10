@@ -479,6 +479,13 @@ static int wpa_driver_sana2_associate(
 	    params->ssid_len > MAX_SSID_LEN ||
 	    (params->wpa_ie_len != 0 && params->wpa_ie == NULL))
 		return -1;
+	/* The WPA/RSN/WPS contract describes one complete IE. Validate the
+	 * caller's readable extent before looking at its embedded length, and
+	 * before any device I/O (including legacy key clears). */
+	if (params->wpa_ie_len != 0 &&
+	    (params->wpa_ie_len < 2 || params->wpa_ie_len > 257 ||
+	     (size_t)params->wpa_ie[1] + 2 != params->wpa_ie_len))
+		return -1;
 	for (i = 0; i < params->ssid_len; i++) {
 		if (params->ssid[i] == '\0')
 			return -1;
@@ -543,6 +550,9 @@ static int wpa_driver_sana2_associate(
 		 * A raw key remains binary and is borrowed only until Reply. */
 		{(params->passphrase == NULL && params->psk != NULL) ?
 			S2INFO_PSK : TAG_IGNORE, (UPINT)params->psk},
+		{(offload && (drv->wireless_caps.Flags &
+			S2WIRELESS_CAPF_IE_EXTENT)) ? S2INFO_WPAInfoLength : TAG_IGNORE,
+			(UPINT)params->wpa_ie_len},
 		{TAG_END, 0}};
 
 	/* Legacy host-handshake devices still set/clear WEP slots. Firmware
@@ -594,7 +604,8 @@ static int wpa_driver_sana2_wireless_caps_valid(
 	const struct Sana2WirelessCapabilities *caps)
 {
 	const ULONG known_flags = S2WIRELESS_CAPF_FOURWAY |
-		S2WIRELESS_CAPF_SECURITY_SUMMARY | S2WIRELESS_CAPF_RAW_PSK;
+		S2WIRELESS_CAPF_SECURITY_SUMMARY | S2WIRELESS_CAPF_RAW_PSK |
+		S2WIRELESS_CAPF_IE_EXTENT;
 	const ULONG known_protocols = S2WIRELESS_PROTO_WPA |
 		S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE;
 	const ULONG known_key_mgmt = S2WIRELESS_KEY_PSK |
@@ -627,7 +638,8 @@ static int wpa_driver_sana2_wireless_caps_valid(
 		    caps->GroupCiphers == 0 ||
 		    (caps->GroupCiphers & ~fourway_ciphers) != 0)
 			return 0;
-	} else if ((caps->Flags & S2WIRELESS_CAPF_RAW_PSK) != 0 ||
+	} else if ((caps->Flags & (S2WIRELESS_CAPF_RAW_PSK |
+				 S2WIRELESS_CAPF_IE_EXTENT)) != 0 ||
 		   caps->Protocols != 0 || caps->KeyManagement != 0 ||
 		   caps->PairwiseCiphers != 0 || caps->GroupCiphers != 0) {
 		return 0;

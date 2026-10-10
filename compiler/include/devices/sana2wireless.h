@@ -37,6 +37,16 @@
 #define S2INFO_Disassociate   (TAG_USER + 16)  /* S2_SETOPTIONS: leave the network */
 #define S2INFO_SecuritySummary (TAG_USER + 17) /* owned Sana2WirelessSecuritySummary */
 #define S2INFO_PSK             (TAG_USER + 18) /* borrowed binary WPA PSK */
+#define S2INFO_WPAInfoLength   (TAG_USER + 19) /* readable WPAInfo extent */
+
+/* Send WPAInfoLength only when the actual device advertises IE_EXTENT with
+ * FOURWAY. It is the caller's validated readable byte count, not a length
+ * inferred by the device from WPAInfo[1]. Zero accompanies NULL WPAInfo (open);
+ * otherwise one complete IE spans 2..257 bytes including its two-byte header.
+ * The embedded length must agree. Both tags are borrowed through Reply; tag
+ * order is irrelevant and devices must copy before acknowledging async work.
+ * An extent does not attest arbitrary pointer validity: the caller guarantees
+ * readable memory for the full count. No credential lifetime is extended. */
 
 /* S2INFO_PSK is exactly 32 binary bytes, never a string or passphrase.
  * Send it only with FOURWAY and RAW_PSK capabilities on the actual device.
@@ -85,6 +95,12 @@
  * does not guarantee connectivity to devices without legacy key support;
  * an offload-only device and caller must use matching contract support. */
 #define S2WIRELESS_CAPF_RAW_PSK         (1UL << 2)
+/* IE_EXTENT requires FOURWAY and means WPAInfoLength is required/understood by
+ * this device's S2_SETOPTIONS path, including zero for an open association.
+ * Keep old/legacy devices' tag lists unchanged unless this flag is negotiated.
+ * Older strict callers reject this new flag rather than supplying an inferred
+ * span to an offload-only device. Capability structure size/version is unchanged. */
+#define S2WIRELESS_CAPF_IE_EXTENT       (1UL << 3)
 
 struct Sana2WirelessCapabilities
 {
