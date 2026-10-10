@@ -200,6 +200,29 @@ change any board's hardware acceptance state.
 - Remaining gate: independent source review, normal product CI, clean
   source/runtime binding and fresh mixed compiler/SDK release qualification.
 
+### 2026-10-10 - TC0 sealed Unicode generation replay
+
+- State: compiler/SDK source preparation remains `in development`; no
+  compiler release or board acceptance is inferred.
+- Configuration: Unicode 16.0.0 archive SHA-256
+  `c86dd81f2b14a43b0cc064aa5f89aa7241386801e35c59c7984e579832634eb2`.
+  The ordinary source Makefiles use this checked archive rather than loose
+  text files from a moving `latest` endpoint.
+- Procedure: `tools/genctbl/test-locked-sources.sh` with the existing native
+  CLI, reviewed GNU source lock and verified UCD archive. The test denies
+  curl, invokes the actual generator and stdc rules, removes one generated
+  input in its isolated fixture, and corrupts a separate archive copy.
+- Result: real locale generation and incremental recovery passed; both
+  direct and stdc routes refused corrupted input before output or usage
+  receipt. Recovered `en_GB_ISO8859-1.c` SHA-256:
+  `7906b7ca6d758463ee1788febca54b7e0a5d864f63a6c5bb070b5f1300830209`.
+  No loose Unicode text cache was used. Existing CI contract tests: 34 passed.
+- Safety: tests used disposable host fixtures only. The two changed
+  Makefiles' copyright marks were normalized to UTF-8 without changing
+  copyright ownership. No hardware, existing build tree or package modified.
+- Next: qualify the complete clean native SDK and P4 source contract against
+  the newly integrated source, then the three-host mixed release baseline.
+
 ## Track E: ESP32-P4 / RV32 SMP
 
 Status 2026-10-08: the port is developed on AROS-NX `main` since
