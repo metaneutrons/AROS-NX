@@ -46,8 +46,10 @@ DHCP applies gateway/DNS dynamically. Prefs/WiFi now honors PATH_DHCLIENT_DB
 through POSIX stdio, with the same /T default as dhclient. Complete lease
 records now match the exact interface/current IP and cannot borrow options
 from other records;144 extracted-helper checks pass each O0/O2 sanitized.
-Expiry is not yet evaluated, so historical matching values remain an open
-review issue before first-use acceptance. Credential transmission remains gated.
+Expiry now refuses missing/malformed/duplicate/expired timestamps and invalid
+clocks;203 actual-helper checks pass in host/32-bit time_t at O0/O2 sanitized.
+Stored values still do not prove installed global routing/resolver state;
+clock/GUI/runtime qualification remains open. Credential transmission remains gated.
 
 `python3 make-wifi-defaults.py NEW_DIRECTORY` generates fixed, credential-free
 preferences for native `DEVS:Networks/esp32p4wlan.device`, unit0 and DHCP.

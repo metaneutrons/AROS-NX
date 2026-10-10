@@ -1,5 +1,16 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WLAN lease-expiry development (2026-10-10): generic2298252dad is integrated.
+The chooser rejects missing, malformed, duplicate or expired lease timestamps,
+including expiry exactly at now; an unusable latest matching record clears old
+values. Actual helper tests pass203 checks in host/32-bit time_t at both O0/O2
+with ASan/UBSan, plus6 source guards. UTC calendar, epoch and never formats
+match dhclient's writer; DOS DateStamp supplies the clock without a worker-owned
+lazy libc timer request. Unset/invalid/32-bit-overflow clocks are refused.
+Fresh RV32-SMP app151956B builds and stages successfully. This closes the
+source expiry issue, not real clock/GUI/resolver/routing or WLAN qualification.
+No hardware or credentials; bootimage and C6 secured recovery/privacy remain open.
+
 WLAN lease-selection development (2026-10-10): generic 6d06770289 is integrated.
 Prefs/WiFi selects the last complete lease matching the exact interface and
 kernel-reported address; options cannot cross records. Duplicate identities

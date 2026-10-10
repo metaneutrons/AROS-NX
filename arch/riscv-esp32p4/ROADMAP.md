@@ -132,7 +132,7 @@ gate: compensated output is not the native display contract.
 | N2 | AROS WLAN SANA-II integration | `private ABI6 association/lifecycle binding build and scoped models verified; runtime/privacy/wireless gates open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded STA TX compile for Core1. N2L records current counts/artifacts and Close/Offline/teardown models. Actual helpers/selected dispatch arms; Exec/SDMMC/hooks/radio mocked, not full BeginIO, full service callback or runtime concurrency. Queue/traffic-token fences/copied AP publication are bound; no actual association/IP claim. TX commitment rejects late AbortIO. WirelessManager/bwfm remain references; per-device four-way offload must preserve legacy behavior. Caller late failure, DHCP/build defaults, GUI saving/writable preference storage and actual teardown/reconnect/load remain open. No credentials, deployment or hardware pass. |
 | N2L | Native radio teardown and ongoing link lifecycle | `ABI6 build/scoped models verified; hardware/privacy open` | Standalone leave, deferred teardown outside unit lock, bounded Disconnect/NOT_CONNECT verification, periodic correlated AP observation and selected-RPC cancellation drain. Mac/Linux O0/O2 sanitized: association25999, observer393, bridge219, options89/258, queue785, lifetime1482, datapath16507, events6/70, scan295; sibling link102/reservation63/owner scan37447; exit0. Fresh Core1 RV32 modules have no undefined imports. Explicit teardown requires absence; persistent/foreign AP quarantines rather than reporting loss. Both privacy assertions0 and SUMMARY-only unchanged. Shared caller late-failure event and actual radio/reconnect/load qualification remain open. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
-| N2U | Credential-free WLAN image defaults and first-use selection | `78-file native overlay staged; host tests/build verified; bootimage/runtime open` | Fixed device/unit0, DHCP RAM paths, empty Wireless.prefs and autostart off. Five defaults/twelve stage host tests pass; required symlink/invalid ELF inputs refused before output. Actual RV32-SMP WiFi default1, Network/net4/net6, AROSTCP/dhclient and C runtime libraries stage with standard DB companions; sample LAN routes/DNS replaced and package lookup set. WiFi141332B honors configured POSIX DHCP lease paths and selects complete records by exact interface/current IP; selection144 and reader265 checks each O0/O2 sanitized pass. Duplicate identities, bounded/truncated records and static GW continuation rows covered; expiry remains unchecked. Generic NSD/VOLATILE helper tests remain scoped, not Exec/radio acceptance. Current image targets do not consume the overlay; full-image private-pref exclusion, lease-expiry qualification and actual single-manager GUI/parser/runtime acceptance remain required. OpenDevice/abort completion are not hard bounded. First delivery excludes credential persistence; SYS/SD remains read-only. |
+| N2U | Credential-free WLAN image defaults and first-use selection | `78-file native overlay staged; host tests/build verified; bootimage/runtime open` | Fixed device/unit0, DHCP RAM paths, empty Wireless.prefs and autostart off. Five defaults/twelve stage host tests pass; required symlink/invalid ELF inputs refused before output. Actual RV32-SMP WiFi default1, Network/net4/net6, AROSTCP/dhclient and C runtime libraries stage with standard DB companions; sample LAN routes/DNS replaced and package lookup set. WiFi151956B honors configured POSIX DHCP lease paths and selects complete records by exact interface/current IP; selection/expiry203 and reader265 checks each O0/O2 sanitized pass. Duplicate identities, bounded/truncated records and static GW continuation rows covered; expiry rejects missing/malformed/duplicate/expired timestamps and invalid clocks (host/32-bit time_t tested). Generic NSD/VOLATILE helper tests remain scoped, not Exec/radio acceptance. Current image targets do not consume the overlay; full-image private-pref exclusion, clock/routing/resolver qualification and actual single-manager GUI/parser/runtime acceptance remain required. OpenDevice/abort completion are not hard bounded. First delivery excludes credential persistence; SYS/SD remains read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -1481,8 +1481,11 @@ Package lookup is configured; sample host/routes are neutralized. The chooser
 now uses DHCP's configured POSIX lease path and selects complete records by
 exact interface/current address. Actual-source sanitized selection tests pass144
 checks each O0/O2; duplicate identities and static GW continuation rows are
-covered. Lease expiry is not yet checked, so historical matching values remain
-a review issue before first-use acceptance. Exclude private prefs from the base image,
+covered. Expiry now rejects missing/malformed/duplicate/expired timestamps and
+unknown clocks;203 actual-helper checks pass in host/32-bit time_t at O0/O2.
+Clock conversion uses DOS DateStamp and the same UTC adjustment as dhclient.
+Stored records still do not prove installed global routing/resolver state;
+actual clock/GUI/runtime qualification remains required. Exclude private prefs from the base image,
 then establish a single GUI-enabled manager
 startup path (not an additional GUI process over the current NOGUI instance).
 Validate resolved DHCP paths and AROS parsing/runtime before deployment.
@@ -35838,3 +35841,47 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Safety: host files only; no serial, reset, flash, SD write, C6 update or
   credentials. Both privacy assertions0 and SUMMARY-only unchanged. Secured
   installed C6 identity/backup/proven restore/UART privacy remain prerequisites.
+
+### 2026-10-10 - N2U DHCP lease-expiry and worker-clock correction
+
+- Identity/config: generic2298252dad integrated on port parent8164f81e0a.
+  Existing Prefs/WiFi only. Lease expiry supports the actual dhclient writer's
+  never, epoch seconds and weekday/UTC-calendar forms. Bounded decimal
+  overflow, calendar/leap-century/weekday/date/time validation and strict
+  expiry > now. Missing/malformed/duplicate/expired expiry on the latest
+  complete matching identity clears previous values; no older-record fallback.
+- Clock: the first implementation used time(NULL); local stdc/time.c documents
+  that API as unsuitable for threaded contexts and lazily opens a timer
+  request. Replaced before integration with DOS DateStamp over DOS's initialized
+  timer base, plus the same 2922-day/GMT-offset conversion as stdc/dhclient.
+  Invalid fields, the DOS all-zero unset sentinel, negative time and signed
+  32-bit time_t overflow are refused. Real system-clock behavior and locale
+  services remain runtime gates, not proven by these mocks.
+- Tests/result: actual helper extraction, clang -Wall -Wextra -Werror,
+  ASan/UBSan, O0/O2 for both host and actual signed-32-bit time_t shapes:
+  203 checks each plus6 source guards, generic and port exit0. Includes exact
+  expiry, absent/bad/duplicate expiry, decimal overflow, leap/century/weekday
+  cases, timezone independence, unknown clock, DOS field validation/epoch/GMT
+  conversion and overflow. Existing reader265/7 and volatile222/1538/20
+  regression checks each O0/O2 pass exit0. Independent source review confirms
+  arithmetic/writer shapes and found the unset-clock sentinel; fixed and tested.
+- Native: regenerate current generated makefile, invalidate all four WiFi
+  objects, explicit current Developer sysroot/gen/include, RV32-SMP and
+  WIFI_VOLATILE_DEFAULT=1. Generic and integrated port compile/link exit0,
+  no error:/warning: signatures; byte-identical final app151956B SHA-256
+  3555f3e3ed43a65166586f6a2b1b510bf5fa09a43f84dd139b06fedec4e74454.
+  Earlier151652B time(NULL) and151856B pre-sentinel builds were superseded,
+  not deployed or accepted. Final78-file whitelist stage succeeds, exit0,
+  with initialized WifiVolatile=1 validated from the actual ELF.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/
+  wifi-2026-10-10/lease-expiry.cLT8L9. expiry-final.log SHA-256
+  e57722937847d1e163a1ca242c9bf0f52f1a808efa85fb46bf5c3bb10bbe37a5.
+  Native logs/port test log and exact staged binary retained in that directory.
+- Limits/next: expiry source issue corrected; historical leases still cannot
+  establish installed global routing/resolver state. No real GUI/clock/Exec/
+  POSIX/radio qualification. Next integrate an opt-in credential-free JC1060
+  bootimage through existing AROS targets, excluding saved build preferences,
+  then verify single-manager GUI/runtime behavior. C6 identity/backup/proven
+  restore/UART privacy and real association/DHCP/frames/reconnect/1800s load
+  remain open. No serial, reset, flash, SD write, C6 update or credentials;
+  SUMMARY-only and both privacy assertions0 remain unchanged.

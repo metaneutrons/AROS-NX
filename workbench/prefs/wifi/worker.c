@@ -41,6 +41,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <time.h>
 
 #include "wifigui.h"
 #include "locale.h"
@@ -802,12 +804,99 @@ static BOOL LeaseCopyToken(STRPTR out, ULONG size,
     return n != 0;
 }
 
-/* Commit fields only after a complete lease matches the live interface/address. */
+/* Strict decimal parsing from bounded, unescaped tokens. */
+static BOOL LeaseUnsigned(const struct LeaseToken *token, uint64_t *value)
+{
+    size_t i;
+    uint64_t n = 0;
+
+    if (token->kind != LT_WORD || token->escaped || token->length == 0)
+        return FALSE;
+    for (i = 0; i < token->length; i++)
+    {
+        unsigned digit = (unsigned char)token->text[i] - '0';
+
+        if (digit > 9 || n > (UINT64_MAX - digit) / 10)
+            return FALSE;
+        n = n * 10 + digit;
+    }
+    *value = n;
+    return TRUE;
+}
+
+/* dhclient print_time writes never, epoch seconds, or a UTC calendar tuple.
+ * Convert explicitly: mktime would incorrectly apply the local timezone. */
+static BOOL LeaseExpiryActive(const struct LeaseToken fields[3], size_t count,
+    time_t now)
+{
+    uint64_t expiry, weekday, year, month, day, hour, minute, second, days;
+    struct LeaseToken part;
+    unsigned i, month_days;
+    BOOL leap;
+    static const unsigned month_lengths[12] =
+        { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+
+    if (now < 0)
+        return FALSE;
+    if (count == 1 && fields[0].kind == LT_WORD &&
+        LeaseTokenIs(&fields[0], "never"))
+        return TRUE;
+    if (count == 2 && fields[0].kind == LT_WORD &&
+        LeaseTokenIs(&fields[0], "epoch"))
+        return LeaseUnsigned(&fields[1], &expiry) && expiry > (uint64_t)now;
+    if (count != 3 || !LeaseUnsigned(&fields[0], &weekday) || weekday > 6 ||
+        fields[0].length != 1 || fields[1].kind != LT_WORD ||
+        fields[2].kind != LT_WORD || fields[1].escaped || fields[2].escaped ||
+        fields[1].length != 10 || fields[2].length != 8 ||
+        fields[1].text[4] != '/' || fields[1].text[7] != '/' ||
+        fields[2].text[2] != ':' || fields[2].text[5] != ':')
+        return FALSE;
+
+    part = fields[1];
+    part.length = 4;
+    if (!LeaseUnsigned(&part, &year) || year < 1970 || year > 9999)
+        return FALSE;
+    part.text = fields[1].text + 5;
+    part.length = 2;
+    if (!LeaseUnsigned(&part, &month) || month < 1 || month > 12)
+        return FALSE;
+    part.text = fields[1].text + 8;
+    if (!LeaseUnsigned(&part, &day))
+        return FALSE;
+    leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    month_days = month_lengths[month - 1] + (month == 2 && leap);
+    if (day < 1 || day > month_days)
+        return FALSE;
+    part = fields[2];
+    part.length = 2;
+    if (!LeaseUnsigned(&part, &hour) || hour > 23)
+        return FALSE;
+    part.text = fields[2].text + 3;
+    if (!LeaseUnsigned(&part, &minute) || minute > 59)
+        return FALSE;
+    part.text = fields[2].text + 6;
+    if (!LeaseUnsigned(&part, &second) || second > 59)
+        return FALSE;
+
+    days = 365 * (year - 1970) + (year - 1) / 4 - 1969 / 4
+        - ((year - 1) / 100 - 1969 / 100)
+        + (year - 1) / 400 - 1969 / 400;
+    for (i = 1; i < month; i++)
+        days += month_lengths[i - 1] + (i == 2 && leap);
+    days += day - 1;
+    if ((days + 4) % 7 != weekday)
+        return FALSE;
+    expiry = days * 86400 + hour * 3600 + minute * 60 + second;
+    return expiry > (uint64_t)now;
+}
+
+/* Commit fields only after a complete lease matches the live interface/address.
+ * A last matching but unusable expiry clears older historical values. */
 static void SelectLeaseForAddress(CONST_STRPTR data, size_t length,
-    CONST_STRPTR interface, CONST_STRPTR address, STRPTR gateway,
+    CONST_STRPTR interface, CONST_STRPTR address, time_t now, STRPTR gateway,
     ULONG gateway_size, STRPTR dns, ULONG dns_size)
 {
-    struct LeaseToken t, next, key, first, second;
+    struct LeaseToken t, next, key, first, second, fields[3];
     size_t pos = 0, outer = 0, address_len;
 
     if (gateway_size) gateway[0] = '\0';
@@ -829,6 +918,7 @@ static void SelectLeaseForAddress(CONST_STRPTR data, size_t length,
             size_t after_key = pos, depth = 1;
             BOOL valid = TRUE, iface_match = FALSE, ip_match = FALSE, closed = FALSE;
             BOOL saw_interface = FALSE, saw_address = FALSE;
+            BOOL saw_expiry = FALSE, expiry_active = FALSE, duplicate_expiry = FALSE;
             char route[20] = "", servers[64] = "";
 
             if (!LeaseNextToken(data, length, &pos, &next))
@@ -863,10 +953,14 @@ static void SelectLeaseForAddress(CONST_STRPTR data, size_t length,
                         else { valid = FALSE; depth = 0; closed = ended = TRUE; break; }
                     }
                     else if (!nested && next.kind == LT_SEMI) { ended = TRUE; break; }
-                    else if (!nested && next.kind != LT_COMMA && count < 2)
+                    else if (!nested && next.kind != LT_COMMA)
                     {
-                        if (count++ == 0) first = next;
-                        else second = next;
+                        if (count < 3)
+                            fields[count] = next;
+                        if (count == 0) first = next;
+                        else if (count == 1) second = next;
+                        if (count < 4)
+                            count++;
                     }
                 }
                 if (!ended)
@@ -891,6 +985,14 @@ static void SelectLeaseForAddress(CONST_STRPTR data, size_t length,
                         first.length == address_len &&
                         memcmp(first.text, address, address_len) == 0;
                 }
+                else if (LeaseTokenIs(&key, "expire"))
+                {
+                    if (saw_expiry)
+                        duplicate_expiry = TRUE;
+                    saw_expiry = TRUE;
+                    expiry_active = !nested_stmt && !duplicate_expiry &&
+                        LeaseExpiryActive(fields, count, now);
+                }
                 else if (LeaseTokenIs(&key, "option") && count &&
                     first.kind == LT_WORD)
                 {
@@ -910,7 +1012,7 @@ static void SelectLeaseForAddress(CONST_STRPTR data, size_t length,
                     if (out)
                     {
                         out[0] = '\0';
-                        if (nested_stmt || count != 2 ||
+                        if (nested_stmt || count < 2 ||
                             !LeaseCopyToken(out, out_size, &second))
                             valid = FALSE;
                     }
@@ -924,6 +1026,11 @@ static void SelectLeaseForAddress(CONST_STRPTR data, size_t length,
                 return;
             if (valid && iface_match && ip_match)
             {
+                if (!saw_expiry || !expiry_active)
+                {
+                    route[0] = '\0';
+                    servers[0] = '\0';
+                }
                 if (gateway_size)
                     snprintf((char *)gateway, gateway_size, "%s", route);
                 if (dns_size)
@@ -931,6 +1038,27 @@ static void SelectLeaseForAddress(CONST_STRPTR data, size_t length,
             }
         }
     }
+}
+
+/* DateStamp uses DOS's initialized timer base. Unlike stdc time(), it does not
+ * lazily open a timer request owned by this worker on a shared libc base.
+ * Use the same epoch/timezone adjustment as stdc time() and dhclient. */
+static time_t LeaseCurrentTime(void)
+{
+    struct DateStamp stamp;
+    int64_t seconds;
+    time_t now;
+
+    if (DateStamp(&stamp) == NULL || stamp.ds_Days < 0 ||
+        (stamp.ds_Days == 0 && stamp.ds_Minute == 0 && stamp.ds_Tick == 0) ||
+        stamp.ds_Minute < 0 || stamp.ds_Minute >= 1440 ||
+        stamp.ds_Tick < 0 || stamp.ds_Tick >= 3000)
+        return (time_t)-1;
+    seconds = ((int64_t)stamp.ds_Days + 2922) * 86400 +
+        stamp.ds_Minute * 60 + stamp.ds_Tick / 50 +
+        (int64_t)__stdc_gmtoffset() * 60;
+    now = (time_t)seconds;
+    return seconds >= 0 && (int64_t)now == seconds ? now : (time_t)-1;
 }
 
 /* Exact interface token; GW= stays case-insensitive as in the stack grammar. */
@@ -1061,7 +1189,7 @@ static void FillRouteAndDNS(struct WifiMsg *m)
     if (buf != NULL)
     {
         SelectLeaseForAddress(buf, (size_t)len, m->wm_Interface,
-            m->wm_Address, m->wm_Gateway, sizeof(m->wm_Gateway),
+            m->wm_Address, LeaseCurrentTime(), m->wm_Gateway, sizeof(m->wm_Gateway),
             m->wm_DNS, sizeof(m->wm_DNS));
         FreeVec(buf);
     }
