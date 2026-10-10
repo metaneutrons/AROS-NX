@@ -82,11 +82,12 @@ native-consumer support; published v0.3.19 cannot activate this preset.
 Its selected native graph is audit-verified locally (2,250 reachable endpoints,
 no missing producer). Complete fresh SDK construction and final C/C++ links
 remain separate acceptance gates; this does not change board verification.
-The latest completed incremental GNU SDK run produces OpenURL's archive but
-stops at Zune's private `string.h` shadowing the C runtime header. A tested
-generic engine correction keeps implicit module paths quote-only; the native
-build is being requalified. Neither that partial build nor focused regressions
-qualify the complete SDK; see the TC0 evidence log.
+The latest incremental GNU SDK run rebuilt OpenURL and Zune after generic
+ordering and quote-only include corrections. It stopped at POSIXC's `_exit.c`,
+which called `_Exit` without including its standard declaration. The source
+now includes `<stdlib.h>`; exact RV32 compiler positive/negative probes pass.
+Complete SDK construction, final links and relocation remain unqualified;
+see the TC0 evidence log.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`

@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Source-owned SDK graph is audit-verified; the native build produces OpenURL after preserving ordered source prerequisites. The last completed SDK replay stopped at Zune's private-header shadowing; the tested quote-only engine correction is under native requalification. New qualified tools runtime, clean compiler/SDK replay with final C/C++ links, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Source-owned SDK graph is audit-verified; the native build now compiles OpenURL and Zune. POSIXC's missing `_Exit` declaration is corrected with its standard header and exact RV32 positive/negative probes. Complete SDK construction, new qualified tools runtime, clean compiler/SDK replay with final C/C++ links, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -430,6 +430,32 @@ change any board's hardware acceptance state.
   change. A local runtime and synthetic header probes do not qualify the full
   SDK or public release. Next inspect the actual native outcome, then prove
   final C/C++ links and relocation and complete three-host qualification.
+
+### 2026-10-10 - TC0 native replay and POSIXC exit declaration
+
+- State: TC0 remains `in development`. Native SDK run 79526 exited 1 at
+  action 7453/8284; the action count is not a release completion percentage.
+- Inputs: source baseline `a64bcb1f7275fbfe3e861ecf31a476fbd0ea47ec`,
+  tools `02ea41b78064fd2ee184b14bc697899f9efe3555`, the retained relocated
+  GNU RV32 compiler and unchanged sealed native SDK declaration. The existing
+  `esp32p4-riscv-gnu` tree was continued without a clean reset or concurrent build.
+- Observed: OpenURL's archive was rebuilt at action 4903. Zune `balance.c`
+  compiled at action 5728; its object is 17,548 bytes, SHA-256
+  `0cf2304e27a1cc5a79bfcf6e64fda97219588814d54bf020ab83f87df53da8bc`.
+  The two previously failing components therefore pass the real native replay.
+- Next source failure: `compiler/crt/posixc/_exit.c` calls `_Exit` without
+  including `<stdlib.h>`, which declares it. Classic POSIXC recipe flags do
+  not supply that declaration implicitly. Add only the standard include;
+  vfork interception, normal termination, ABI and warning policy are unchanged.
+- Verification: use the exact generated RV32 GCC command with dependency/output
+  flags removed for syntax-only probes and `-Werror=implicit-function-declaration`.
+  The unmodified committed source fails specifically at `_Exit` (exit 1);
+  the corrected source passes (exit 0). Independent source/header review
+  confirms this is a missing source declaration, not a transpiler workaround.
+- Safety/remaining risk: no board, firmware, media, SMP implementation, tag or
+  release changed. Focused compilation does not qualify the entire Developer
+  SDK. Next finish this same build, then prove native C/C++ links and relocation
+  before the complete three-host release qualification.
 
 ## Track E: ESP32-P4 / RV32 SMP
 
