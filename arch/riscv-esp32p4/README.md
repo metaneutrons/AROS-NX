@@ -1,6 +1,11 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
-Networking update (2026-10-10): JC1060 Wi-Fi implementation has started
+Networking update (2026-10-10): an exact historical official ESP-Hosted RPC
+source match has been established for the JC1060 vendor project. See
+[HOSTED-REFERENCE.md](network/HOSTED-REFERENCE.md) for pinned artifacts,
+corrections, mandatory reset/timeout adaptations and the complete-host
+comparison gates. This is source evidence only, not installed C6 identity,
+reference build acceptance or working Wi-Fi. JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
 construction and a byte-oriented ESP-Hosted frame codec in `network/` have
 host-test coverage and RV32 compilation; they are not linked into the

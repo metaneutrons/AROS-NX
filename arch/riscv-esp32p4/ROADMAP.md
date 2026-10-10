@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; reset-query hardware gates failed` | First CMD52 RES CARD_ERROR/status4/raw10004; separate instrumented gate response timeout/status3/raw10100, no valid R5. CMD0/CMD5 not sent. Full BSP rollback/readback and complete baseline returns pass. Next bounded official-IDF reset-policy comparison; no weakened native error checks. Compatibility, transport/RPC and recovery remain open; C6 firmware preserved. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; pinned complete-host reference source matched` | Reset-query gates failed; exact baseline restored. Vendor schema/generated RPC files match official d5184217; installed C6 identity unresolved. Next complete official-host build with audited absent-reset and bounded-timeout adaptation, not another raw probe. Transport/RPC/recovery and WLAN remain open; C6 firmware preserved. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -609,8 +609,11 @@ instead (status3/raw10100), so the observer correctly reports valid0. No R5
 decoded, CMD0/CMD5 withheld. Exact rejected bits from the earlier run and the
 state transition between runs remain unknown. Full larger-span baseline
 rollback/readback and a complete30.869s return pass. Next compare the bounded
-official-IDF reset continuation policy, which allows certain reset errors;
-do not convert unacknowledged reset into success or weaken normal host checks.
+official host as a complete reference instead of another isolated reset-policy
+probe. The subsequent source audit matches vendor schema/generated files to
+official d5184217 exactly; see `network/HOSTED-REFERENCE.md`. Its reset and
+retry policies need explicit board-safe adaptation before any deployment.
+Do not convert unacknowledged reset into success or weaken normal host checks.
 
 The first independent pure codec uses the vendor0.0.6 12-byte wire header,
 1536-byte total-frame bound, LE16 fields and additive checksum excluding its
@@ -30382,6 +30385,33 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   CCCR reset and IDF's documented timeout/invalidCRC continuation behavior,
   retaining independent reset acknowledgement and subsequent query results.
   Native error checks stay intact; no guessed C6 reset GPIO or blind rail-off.
+
+### 2026-10-10 - N1 complete official-host reference source pinned
+
+- Source parent402d95146b; source audit only, no hardware action or firmware
+  mutation. Normal41-member baseline remains the last verified running image.
+- Official esp-hosted d5184217f710d54c01f932e75b4c55e3f4933fc9 archive SHA-256
+  1310dc05283b6adefa3ec217c017c7a8836801e263115c7192f9d8ef7d435c12,
+  downloaded/extracted in /Volumes/Dev/Build/esp-hosted-reference.RzWnFu.
+  Compared root common/proto files to pinned cheops6304eddef32a source:
+  separate cmp calls for schema/generated C/generated H each exit0.
+  Full hashes and reproducible source paths in network/HOSTED-REFERENCE.md.
+  Adapter diff is only HCI comment and vendor UART capability bits8/9.
+- Correction: vendor adds newer RPC IDs relative to registry0.0.6, not removes
+  them. The vendor schema matches d518 exactly. Version0.0.6 is not an adequate
+  provenance pin; installed54aafd0-dirty firmware identity remains unresolved.
+- Complete IDF5.4.3 fetch session91407 exits0, commit
+  ea1c174c1cbb7348bd8ba0ff1eb306246938dd80 with submodules. No reference build
+  yet. Remote0.2.3 dependency closure/API compatibility remain to be verified.
+- Safety audit: official reset_slave writes GPIO unconditionally and retries
+  up to1000 times. No established JC1060 reset pin; WIFI_RESET_GPIO=-1.
+  Explicit absent-reset guard, bounded failure policy and exact board pin map
+  are required before deployment. Complete host writes function/IRQ/OPEN state;
+  P4 rollback is not reversal of C6 state. No C6 flash or SD write authorized.
+- Next: build/audit the complete pinned official transport/bootstrap/RPC
+  reference, then one backed-up bounded headless comparison with verified
+  baseline restoration. No further raw probe now. N1/N2/N3 remain open;
+  source lineage is neither hardware compatibility nor AROS WLAN acceptance.
 
 ## Evidence-entry template
 
