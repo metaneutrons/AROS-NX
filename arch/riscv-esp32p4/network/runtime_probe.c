@@ -1552,6 +1552,7 @@ static BOOL wifi_maintenance_discover(struct P4WifiBase *base, ULONG token)
         base->maintenance_task == FindTask(NULL) &&
         base->owner_task != FindTask(NULL) &&
         base->maintenance_state == P4_WIFI_MAINT_ACTIVE &&
+        !base->maintenance_fence_mode &&
         wifi_discovery_session_valid(base, runtime) &&
         wifi_owner_remaining(runtime->context, base->maintenance_started,
                               P4_WIFI_MAINT_LEASE_US) &&
@@ -1576,7 +1577,8 @@ static ULONG wifi_maintenance_discovery_poll(struct P4WifiBase *base, ULONG toke
     runtime = base->runtime;
     if (base->maintenance_token == token &&
         base->maintenance_task == FindTask(NULL) &&
-        base->maintenance_state == P4_WIFI_MAINT_ACTIVE) {
+        base->maintenance_state == P4_WIFI_MAINT_ACTIVE &&
+        !base->maintenance_fence_mode) {
         if (!wifi_discovery_session_valid(base, runtime) ||
             !wifi_owner_remaining(runtime->context, base->maintenance_started,
                                   P4_WIFI_MAINT_LEASE_US)) {
@@ -1624,6 +1626,7 @@ static int wifi_maintenance_discovery_service(struct P4WifiBase *base,
     generation = context->generation;
     if (base->owner_task != FindTask(NULL) ||
         base->client_lock.ss_Owner != FindTask(NULL) ||
+        base->maintenance_fence_mode ||
         !wifi_discovery_session_valid(base, runtime) ||
         context->host->lock.ss_Owner == FindTask(NULL) ||
         token != base->maintenance_token || !token ||
@@ -1808,11 +1811,15 @@ static BOOL wifi_maintenance_fence(struct P4WifiBase *base, ULONG token,
         mode > P4_WIFI_MAINT_FENCE_WAIT_REBOOT ||
         !AttemptSemaphore(&base->client_lock)) return FALSE;
     runtime = base->runtime;
+    /* A future owner OTA job must arm before BEGIN. Its requester may then
+     * confirm that exact disposition, never replace it with a weaker one.
+     * FENCING still requires owner confirmation before it becomes FENCED. */
     if (base->maintenance_token == token &&
         base->maintenance_task == FindTask(NULL) &&
         base->owner_task != FindTask(NULL) &&
         base->maintenance_state == P4_WIFI_MAINT_ACTIVE &&
-        !base->maintenance_fence_mode &&
+        (!base->maintenance_fence_mode ||
+         base->maintenance_fence_mode == mode) &&
         wifi_discovery_session_valid(base, runtime) &&
         wifi_owner_remaining(runtime->context, base->maintenance_started,
                               P4_WIFI_MAINT_LEASE_US) &&
@@ -1888,6 +1895,13 @@ static int wifi_maintenance_service(struct P4WifiBase *base,
         return 2;
     }
     if (base->maintenance_state == P4_WIFI_MAINT_ACTIVE) {
+        /* Future OTA dispatch arms before BEGIN while keeping ACTIVE for its
+         * private transport. Never service discovery after that obligation;
+         * a queued query cannot outlive the no-normal-traffic boundary. */
+        if (base->maintenance_fence_mode) {
+            wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_FAILED);
+            return 2;
+        }
         if (!wifi_maintenance_discovery_service(base, runtime)) goto failed;
         return 2;
     }

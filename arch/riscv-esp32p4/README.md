@@ -52,6 +52,16 @@ full-image timing qualification remain open. UPDATE-C6 stays unavailable.
 Aggregate-deadline host regressions pass962 checks each O0/O2 with ASan/UBSan;
 NO_BEGIN and ignored-reserve mutations are rejected. The fresh standalone
 RV32-SMP engine object has no undefined imports; it is not linked or deployed.
+Native pre-BEGIN fencing prerequisite (2026-10-11): a sticky ACTIVE disposition
+now refuses new discovery, suppresses any queued discovery without an RPC and
+prevents copying a stored READY result while sticky.
+The requester can queue confirmation of the same pre-armed disposition only;
+changing it or repeating the request after FENCING is refused. Source-extracted
+tests pass2450 checks each O0/O2 sanitized; the fresh Core1 resource passes its
+loader audit. No OTA job sets this pre-arm yet, no ABI change or deployment
+occurred, and UPDATE-C6 remains unavailable. Native job/engine integration,
+full-image timing, authenticated target/layout and independent recovery remain
+required; this prerequisite does not establish a usable updater.
 Private transport verification (2026-10-11): canonical codec11806,
 pending1638 and coupled owner8093 checks each O0/O2 ASan/UBSan pass;
 ordinary OTA-allowlist mutation is rejected. Fresh Core1 resource291220B

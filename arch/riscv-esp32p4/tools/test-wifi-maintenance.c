@@ -924,6 +924,58 @@ static void test_discovery_poll_status_copy_and_output_guard(void)
     CHECK(memcmp(&output, &expected, sizeof(output)) == 0);
 }
 
+static void test_sticky_fence_blocks_discovery_poll(void)
+{
+    struct p4_wifi_discovery_result output, expected_output, expected_result;
+    struct p4_wifi_discovery_result *invalid_output =
+        (struct p4_wifi_discovery_result *)(uintptr_t)(UINTPTR_MAX - 8u);
+    ULONG mode;
+
+    for (mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;
+         mode <= P4_WIFI_MAINT_FENCE_WAIT_REBOOT; ++mode) {
+        prepare_discovery_active();
+        queue_discovery();
+        fill_ready_result(0);
+        CHECK(control.discovery_state == P4_WIFI_DISCOVERY_READY);
+        memcpy(&expected_result, &control.discovery_result,
+               sizeof(expected_result));
+        base.maintenance_fence_mode = mode;
+
+        fill_output(&output, 0xa1u);
+        memcpy(&expected_output, &output, sizeof(expected_output));
+        CHECK(wifi_maintenance_discovery_poll(&base, TEST_TOKEN, &output) ==
+              P4_WIFI_DISCOVERY_FAILED);
+        CHECK(memcmp(&output, &expected_output, sizeof(output)) == 0);
+        CHECK(wifi_maintenance_discovery_poll(&base, TEST_TOKEN + 1u,
+                                               &output) ==
+              P4_WIFI_DISCOVERY_FAILED);
+        CHECK(memcmp(&output, &expected_output, sizeof(output)) == 0);
+        CHECK(wifi_maintenance_discovery_poll(&base, TEST_TOKEN, NULL) ==
+              P4_WIFI_DISCOVERY_FAILED);
+        CHECK(wifi_maintenance_discovery_poll(&base, TEST_TOKEN,
+                                               invalid_output) ==
+              P4_WIFI_DISCOVERY_FAILED);
+        CHECK(memcmp(&output, &expected_output, sizeof(output)) == 0);
+
+        CHECK(base.maintenance_state == P4_WIFI_MAINT_ACTIVE);
+        CHECK(base.maintenance_fence_mode == mode);
+        CHECK(control.discovery_state == P4_WIFI_DISCOVERY_READY);
+        CHECK(memcmp(&control.discovery_result, &expected_result,
+                     sizeof(expected_result)) == 0);
+        CHECK(request_calls == 0u);
+        CHECK(discovery_supported_calls == 0u);
+        CHECK(discovery_reserve_calls == 0u);
+        CHECK(discovery_request_calls == 0u);
+        CHECK(discovery_exchange_calls == 0u);
+        CHECK(discovery_rpc_encode_calls == 0u);
+        CHECK(discovery_response_calls == 0u);
+        CHECK(discovery_inventory_calls == 0u);
+        CHECK(discovery_acquire_calls == 0u);
+        CHECK(discovery_release_calls == 0u);
+        CHECK(discovery_cancel_calls == 0u);
+    }
+}
+
 static void test_discovery_service_success_unsupported_and_remote_error(void)
 {
     struct p4_wifi_discovery_result output, untouched;
@@ -1355,6 +1407,129 @@ static void test_terminal_fence_admission(void)
                                        P4_WIFI_MAINT_FENCE_INCOMPLETE);
 }
 
+static void test_prearmed_terminal_fence_admission(void)
+{
+    ULONG armed_mode, requested_mode;
+
+    for (armed_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;
+         armed_mode <= P4_WIFI_MAINT_FENCE_WAIT_REBOOT; ++armed_mode) {
+        prepare_discovery_active();
+        base.maintenance_fence_mode = armed_mode;
+        CHECK(!wifi_maintenance_cleanup_allowed(&base));
+        CHECK(wifi_maintenance_fence(&base, TEST_TOKEN, armed_mode));
+        CHECK(base.maintenance_fence_mode == armed_mode);
+        CHECK(base.maintenance_state == P4_WIFI_MAINT_FENCING);
+        CHECK(base.ready == TRUE);
+        CHECK(base.associated == FALSE);
+        CHECK(!wifi_maintenance_cleanup_allowed(&base));
+        CHECK(request_calls == 0u);
+        CHECK(discovery_acquire_calls == 0u);
+        CHECK(tx_session_calls == 0u);
+
+        /* Once this pre-armed disposition enters FENCING, even an identical
+         * second request is refused. While still ACTIVE, only this exact
+         * armed disposition may advance the state. */
+        check_fence_request_refused_atomic(TEST_TOKEN, armed_mode);
+
+        prepare_discovery_active();
+        base.maintenance_fence_mode = armed_mode;
+        check_fence_request_refused_atomic(TEST_TOKEN, 0u);
+        for (requested_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;
+             requested_mode <= P4_WIFI_MAINT_FENCE_WAIT_REBOOT;
+             ++requested_mode) {
+            if (requested_mode != armed_mode)
+                check_fence_request_refused_atomic(TEST_TOKEN,
+                                                   requested_mode);
+        }
+    }
+}
+
+static void test_sticky_fence_blocks_discovery(void)
+{
+    struct P4WifiBase base_before;
+    struct wifi_owner_control control_before;
+    struct p4_hosted_owner owner_before;
+    struct p4_hosted_fifo fifo_before;
+    struct P4SDMMCHost host_before;
+    ULONG nonce;
+    struct Task *saved_task;
+    struct Task *saved_lock_owner;
+    unsigned saved_lock_held;
+
+    prepare_discovery_active();
+    base.maintenance_fence_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;
+    memcpy(&base_before, &base, sizeof(base_before));
+    memcpy(&control_before, &control, sizeof(control_before));
+    memcpy(&owner_before, &owner, sizeof(owner_before));
+    memcpy(&fifo_before, &fifo, sizeof(fifo_before));
+    memcpy(&host_before, &host, sizeof(host_before));
+    CHECK(!wifi_maintenance_discover(&base, TEST_TOKEN));
+    CHECK(memcmp(&base_before, &base, sizeof(base_before)) == 0);
+    CHECK(memcmp(&control_before, &control, sizeof(control_before)) == 0);
+    CHECK(memcmp(&owner_before, &owner, sizeof(owner_before)) == 0);
+    CHECK(memcmp(&fifo_before, &fifo, sizeof(fifo_before)) == 0);
+    CHECK(memcmp(&host_before, &host, sizeof(host_before)) == 0);
+    CHECK(discovery_supported_calls == 0u);
+    CHECK(discovery_reserve_calls == 0u);
+    CHECK(discovery_request_calls == 0u);
+    CHECK(discovery_exchange_calls == 0u);
+    CHECK(discovery_rpc_encode_calls == 0u);
+    CHECK(discovery_response_calls == 0u);
+    CHECK(discovery_inventory_calls == 0u);
+    CHECK(discovery_acquire_calls == 0u);
+    CHECK(discovery_release_calls == 0u);
+    CHECK(discovery_cancel_calls == 0u);
+
+    prepare_discovery_active();
+    queue_discovery();
+    nonce = control.discovery_nonce;
+    base.maintenance_fence_mode = P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN;
+    CHECK(service_step() == 2);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_ACTIVE);
+    CHECK(base.maintenance_fence_mode ==
+          P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN);
+    check_discovery_storage_cleared(P4_WIFI_DISCOVERY_FAILED, nonce);
+    CHECK(request_calls == 0u);
+    CHECK(discovery_supported_calls == 0u);
+    CHECK(discovery_reserve_calls == 0u);
+    CHECK(discovery_request_calls == 0u);
+    CHECK(discovery_exchange_calls == 0u);
+    CHECK(discovery_rpc_encode_calls == 0u);
+    CHECK(discovery_response_calls == 0u);
+    CHECK(discovery_inventory_calls == 0u);
+    CHECK(discovery_acquire_calls == 0u);
+    CHECK(discovery_release_calls == 0u);
+    CHECK(discovery_cancel_calls == 0u);
+
+    prepare_discovery_active();
+    queue_discovery();
+    nonce = control.discovery_nonce;
+    base.maintenance_fence_mode = P4_WIFI_MAINT_FENCE_WAIT_REBOOT;
+    saved_task = current_task;
+    saved_lock_owner = base.client_lock.ss_Owner;
+    saved_lock_held = base.client_lock.held;
+    current_task = &owner_task;
+    base.client_lock.held = 1u;
+    base.client_lock.ss_Owner = &owner_task;
+    CHECK(wifi_maintenance_discovery_service(&base, &runtime) == 0);
+    base.client_lock.held = saved_lock_held;
+    base.client_lock.ss_Owner = saved_lock_owner;
+    current_task = saved_task;
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_ACTIVE);
+    CHECK(base.maintenance_fence_mode == P4_WIFI_MAINT_FENCE_WAIT_REBOOT);
+    check_discovery_storage_cleared(P4_WIFI_DISCOVERY_FAILED, nonce);
+    CHECK(discovery_cancel_calls == 1u);
+    CHECK(discovery_supported_calls == 0u);
+    CHECK(discovery_reserve_calls == 0u);
+    CHECK(discovery_request_calls == 0u);
+    CHECK(discovery_exchange_calls == 0u);
+    CHECK(discovery_rpc_encode_calls == 0u);
+    CHECK(discovery_response_calls == 0u);
+    CHECK(discovery_inventory_calls == 0u);
+    CHECK(discovery_acquire_calls == 0u);
+    CHECK(discovery_release_calls == 0u);
+}
+
 static void check_failed_terminal_fence(ULONG mode, unsigned expected_tx,
                                         unsigned expected_release,
                                         unsigned expected_stopping)
@@ -1675,6 +1850,7 @@ int main(void)
     test_request_identity_and_lock_contention();
     test_discovery_queue_admission_and_nonce();
     test_discovery_poll_status_copy_and_output_guard();
+    test_sticky_fence_blocks_discovery_poll();
     test_discovery_service_success_unsupported_and_remote_error();
     test_discovery_service_deadline_and_failure_fences();
     test_discovery_poll_retires_expired_or_changed_session();
@@ -1684,6 +1860,8 @@ int main(void)
     test_stop_ack_admission_and_active_silence();
     test_release_start_ack_and_offline_state();
     test_terminal_fence_admission();
+    test_prearmed_terminal_fence_admission();
+    test_sticky_fence_blocks_discovery();
     test_terminal_fence_owner_confirmation_and_failures();
     test_terminal_fence_sticky_after_expiry();
     test_poll_and_release_expiry_and_wrap();
