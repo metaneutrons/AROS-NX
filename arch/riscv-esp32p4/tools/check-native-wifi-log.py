@@ -18,7 +18,8 @@ def validate(text, require_scan=False):
             "ESP-ROM:", "waiting for download", "Guru Meditation",
             "Software Failure", "panic", "unhandled trap", "[trap]",
             "*** alert ***", "SW_SYS_RESET",
-            "WDT_SYS_RESET", "watchdog reset")):
+            "WDT_SYS_RESET", "HP_SYS_HP_WDT_RESET",
+            "CPU has been reset by WDT", "watchdog reset")):
         raise ValueError("fault/reset signature or unestablished continuity")
     if text.count("[host start ") != 1 or text.count("[host end ") != 1:
         raise ValueError("capture must have exactly one start and end")
@@ -80,7 +81,9 @@ def validate(text, require_scan=False):
            {"preopen": 0, "ambiguous": 0, "poisoned": 0})
     expect("INIT ", {"chip": 16, "caps": 16, "bytes": 10}, {"chip": 13})
     expect("INIT cleanup ", {**decimals("ok error"), "flags": 16},
-           {"ok": 1, "error": 0})
+           # hosted_open.h: NOT_RUN=0, CLEANUP_OK=1. This full setup
+           # profile also requires all14 attempted/verified cleanup flags.
+           {"ok": 1, "error": 1, "flags": 0x3fff})
     expect("reply ", decimals("attempted ok stage error polls"),
            {"attempted": 1, "ok": 1, "error": 0})
     expect("reply ", decimals("started complete bytes sent poison"),

@@ -24,9 +24,10 @@ conservative Stop/Deinit is integrated into the opt-in fresh-epoch gate and
 the new42-member package passes loader/capacity checks. Sequencing models
 pass551 O0/O2 sanitizer checks each. The initialization candidate is now
 deployed at0x820000 and independently read back byte-identically after two
-matching full-erase-span backups. The board is deliberately held in download
-mode awaiting coordinated fresh C6 startup; native initialized MAC and WLAN
-remain open. The original baseline is recoverable from both saved backups.
+matching full-erase-span backups. One coordinated JC1060 startup now reports
+successful native Init/STA/Start/GetMAC/Stop/Deinit and MAC10:bd:a3:9b:bc:34.
+The captured start contains an HP watchdog reset, so clean cold-start acceptance
+and native WLAN remain open. The original baseline is recoverable.
 
 A generation-bound serial reassembly helper now passes1,318 checks
 each at O0/O2 with ASan/UBSan and freestanding RV32 compilation. It copies
@@ -68,8 +69,16 @@ Fabian confirmed sole USB-C power and coordinated disconnect/reconnection.
 The first armed reader timed out before arrival; a subsequent45.122s passive
 capture completed successfully but received0 bytes. This is an inconclusive
 retrieval, not initialized-MAC acceptance or proof of a firmware failure.
-No capture is running. A fresh coordinated repeat with a longer arrival wait
-is required. JC1060 WIFI_RESET_GPIO=-1 provides no established independent C6
+The coordinated repeat received16340 bytes over60.112s with actual exit0 and
+status=ok. All five WLAN operations report status/error0; MAC matches and all
+six stable shared-host registers are restored. However, the initial
+HP_SYS_HP_WDT_RESET and truncated ROM banner prevent a clean-boot claim;
+port opening can disturb startup. The strict checker rejects this capture.
+Its cleanup expectation is corrected to the source enum CLEANUP_OK=1 and
+all14 flags;16 regression tests pass. No further reset is captured. The USB
+observer was intentionally interrupted (exit130), not qualified as a pass.
+No capture is running. Next: resolve startup/reset continuity before scan
+deployment. JC1060 WIFI_RESET_GPIO=-1 provides no established independent C6
 reset alternative. Installed initialization and prepared undeployed scan
 artifacts remain unchanged; native WLAN is incomplete.
 

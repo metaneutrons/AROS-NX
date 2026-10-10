@@ -29,7 +29,8 @@ def valid_lines(*, ap_count=3, record_count=None):
         "[WiFi] INIT preopen=0 ambiguous=0 poisoned=0",
         "[WiFi] INIT chip=0d caps=0d bytes=64",
         "[WiFi] INIT extra frames=0 bytes=0 discarded=0",
-        "[WiFi] INIT cleanup ok=1 error=0 flags=0000000f",
+        # CLEANUP_OK is enum value1; this profile requires all14 cleanup flags.
+        "[WiFi] INIT cleanup ok=1 error=1 flags=00003fff",
         "[WiFi] reply attempted=1 ok=1 stage=8 error=0 polls=1",
         "[WiFi] reply token=00000001 logical=35 bus=512 write=1",
         "[WiFi] reply started=1 complete=1 bytes=512 sent=1 poison=0",
@@ -38,8 +39,8 @@ def valid_lines(*, ap_count=3, record_count=None):
         "[WiFi] WLAN status init=0 mode=0 start=0 stop=0 deinit=0",
         "[WiFi] WLAN error init=0 mode=0 start=0 stop=0 deinit=0",
         "[WiFi] MAC attempted=1 ok=1 error=0 polls=4",
-        "[WiFi] MAC matched=1 status=0 events=0 unmatched=0",
-        "[WiFi] MAC valid=1 02:00:00:00:00:01",
+        "[WiFi] MAC matched=1 status=0 events=3 unmatched=0",
+        "[WiFi] MAC valid=1 10:bd:a3:9b:bc:34",
     ]
     if ap_count is not None:
         empty = int(ap_count == 0)
@@ -83,7 +84,7 @@ def changed_line(lines, old, new):
 class NativeWifiLogTest(unittest.TestCase):
     def test_valid_passive_initialization_report_is_scoped(self):
         result = checker.validate(capture())
-        self.assertEqual(result["mac"], "02:00:00:00:00:01")
+        self.assertEqual(result["mac"], "10:bd:a3:9b:bc:34")
         self.assertIsNone(result["ap_count"])
         self.assertIsNone(result["record_count"])
         self.assertIsNone(result["empty_workaround"])
@@ -157,8 +158,12 @@ class NativeWifiLogTest(unittest.TestCase):
              "[WiFi] INIT chip=0c caps=0d bytes=64"),
             ("[WiFi] reply started=1 complete=1 bytes=512 sent=1 poison=0",
              "[WiFi] reply started=1 complete=0 bytes=0 sent=0 poison=0"),
-            ("[WiFi] INIT cleanup ok=1 error=0 flags=0000000f",
-             "[WiFi] INIT cleanup ok=0 error=2 flags=00000000"),
+            ("[WiFi] INIT cleanup ok=1 error=1 flags=00003fff",
+             "[WiFi] INIT cleanup ok=1 error=0 flags=00003fff"),
+            ("[WiFi] INIT cleanup ok=1 error=1 flags=00003fff",
+             "[WiFi] INIT cleanup ok=1 error=1 flags=00001fff"),
+            ("[WiFi] INIT cleanup ok=1 error=1 flags=00003fff",
+             "[WiFi] INIT cleanup ok=1 error=1 flags=00007fff"),
             ("[WiFi] restore ok=1 stage=7 error=0 mutated=1",
              "[WiFi] restore ok=0 stage=7 error=1 mutated=1"),
         )
@@ -170,13 +175,13 @@ class NativeWifiLogTest(unittest.TestCase):
     def test_mac_must_be_matched_nonzero_unicast(self):
         for mac in ("00:00:00:00:00:00", "03:00:00:00:00:01"):
             lines = changed_line(valid_lines(),
-                "[WiFi] MAC valid=1 02:00:00:00:00:01",
+                "[WiFi] MAC valid=1 10:bd:a3:9b:bc:34",
                 "[WiFi] MAC valid=1 " + mac)
             with self.subTest(mac=mac), self.assertRaises(ValueError):
                 checker.validate(capture(lines))
         lines = changed_line(valid_lines(),
-            "[WiFi] MAC matched=1 status=0 events=0 unmatched=0",
-            "[WiFi] MAC matched=0 status=0 events=0 unmatched=0")
+            "[WiFi] MAC matched=1 status=0 events=3 unmatched=0",
+            "[WiFi] MAC matched=0 status=0 events=3 unmatched=0")
         with self.assertRaises(ValueError):
             checker.validate(capture(lines))
         lines = valid_lines() + ["[WiFi] MAC valid=0 02:00:00:00:00:01"]
@@ -237,8 +242,11 @@ class NativeWifiLogTest(unittest.TestCase):
                                  require_scan=True)
 
     def test_fault_reset_and_rom_signatures_reject_passive_capture(self):
-        for marker in ("ESP-ROM: reset", "WDT_SYS_RESET", "panic: fault",
-                       "[trap] fatal kernel trap", "*** alert ***"):
+        for marker in (
+                "ESP-ROM: reset", "WDT_SYS_RESET", "panic: fault",
+                "[trap] fatal kernel trap", "*** alert ***",
+                "rst:0x7 (HP_SYS_HP_WDT_RESET),boot:0xc",
+                "W (49) boot.esp32p4: CPU has been reset by WDT."):
             with self.subTest(marker=marker), self.assertRaises(ValueError):
                 checker.validate(capture(valid_lines() + [marker]))
 
@@ -258,7 +266,7 @@ class NativeWifiLogTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "capture.log"
             bad = changed_line(valid_lines(),
-                "[WiFi] MAC valid=1 02:00:00:00:00:01",
+                "[WiFi] MAC valid=1 10:bd:a3:9b:bc:34",
                 "[WiFi] MAC valid=1 03:00:00:00:00:01")
             path.write_text(capture(bad), encoding="utf-8")
             result = subprocess.run([sys.executable, str(TOOL), str(path)],
