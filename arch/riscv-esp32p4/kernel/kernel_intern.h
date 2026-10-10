@@ -348,6 +348,18 @@ int krnP4CPUClockSet(unsigned int mhz);
 void krnTimerInit(void);
 void krnTimerAck(void);
 uint64_t krnTimerCount(void);
+#ifdef P4_BOOT_TIMING
+enum P4BootPhase
+{
+    P4_BOOT_EARLY_OUTPUT, P4_BOOT_PSRAM, P4_BOOT_PANEL,
+    P4_BOOT_PACKAGE, P4_BOOT_EXEC, P4_BOOT_UPDATE1,
+    P4_BOOT_UPDATE128, P4_BOOT_UPDATE256, P4_BOOT_PHASES
+};
+void krnP4BootTimingStart(void);
+void krnP4BootTimingMark(enum P4BootPhase phase);
+void krnP4BootTimingUpdate(void);
+void krnP4BootTimingReport(void);
+#endif
 unsigned long krnTimerTicks(void);
 int  krnTimerWait(unsigned long ticks);
 extern volatile unsigned long __esp32p4_ticks;

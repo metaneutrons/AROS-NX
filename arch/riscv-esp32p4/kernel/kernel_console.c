@@ -33,8 +33,9 @@
 
 /* Set once before Exec can schedule callers. Runtime debug must never wait
  * for a USB reader: callers include input publication and locked redraws.
- * Saturated output is deliberately lossy; the early boot capture policy is
- * unchanged. This is a single-hart transition, not a console lock. */
+ * Saturated output is deliberately lossy. Early USB waits share one boot
+ * budget as well: a bound per byte still stalls a large boot report for
+ * minutes without a reader. This is a single-hart transition, not a lock. */
 static volatile unsigned int console_runtime;
 static volatile unsigned long console_dropped;
 
@@ -85,10 +86,47 @@ static inline void mmio_wr(uint32_t base, uint32_t off, uint32_t val)
  */
 static unsigned int usj_pending;
 
+/* One aggregate failed-poll budget for this boot, shared by byte and flush
+ * waits. Blocking diagnostic mode must not replenish it. After exhaustion
+ * each call still probes once, so a reader arriving later recovers output.
+ * Normal writers are serialized by console_emit's lock; atomic accounting
+ * also covers its reentrant fault/unlocked fallback paths. */
+#define ATTACH_SPINS    2000000
+static unsigned int usj_wait_remaining = ATTACH_SPINS;
+
+static int usj_wait_free(unsigned int cap)
+{
+    unsigned int limit = 1;
+    unsigned int i;
+    unsigned int remaining = __atomic_load_n(&usj_wait_remaining,
+                                              __ATOMIC_RELAXED);
+
+    if (!console_runtime && remaining)
+        limit = remaining < cap ? remaining : cap;
+    for (i = 0; i < limit; i++)
+    {
+        if (mmio_rd(P4_USJ_BASE, P4_USJ_EP1_CONF) & P4_USJ_IN_EP_DATA_FREE)
+            return 1;
+        if (!console_runtime)
+        {
+            remaining = __atomic_load_n(&usj_wait_remaining, __ATOMIC_RELAXED);
+            while (remaining &&
+                   !__atomic_compare_exchange_n(&usj_wait_remaining, &remaining,
+                                                remaining - 1, 0,
+                                                __ATOMIC_RELAXED,
+                                                __ATOMIC_RELAXED))
+                ;
+            /* Another writer may have exhausted the snapshot allowance.
+             * Stop here rather than spinning to that obsolete local limit. */
+            if (remaining <= 1)
+                break;
+        }
+    }
+    return 0;
+}
+
 static void usj_flush(void)
 {
-    unsigned int spins = SPIN_LIMIT;
-
     if (!usj_pending)
         return;
 
@@ -100,37 +138,23 @@ static void usj_flush(void)
 
     /* Wait for the host to collect it, so the next byte has somewhere to
        go. If no host ever does, give up and keep going. */
-    while (spins--)
-    {
-        if (mmio_rd(P4_USJ_BASE, P4_USJ_EP1_CONF) & P4_USJ_IN_EP_DATA_FREE)
-            return;
-    }
+    (void)usj_wait_free(SPIN_LIMIT);
 }
 
 /*
  * Waits for the host rather than dropping. During bring-up the important
  * output is the earliest, and the host is typically not attached yet when
  * it is produced - so dropping means the one sequence worth reading is
- * the one that cannot be read. Waiting means a listener attaching a
- * second later still gets it from the beginning.
+ * the one that cannot be read. A finite waiting allowance helps a listener
+ * attaching during enumeration, but cannot guarantee lossless early output.
  *
- * Still bounded, so a board with nothing attached boots rather than
- * stopping to talk to itself; the bound is long enough for a host to
- * finish enumerating and short enough not to look like a hang.
+ * The waiting allowance is aggregate, not renewed for every character.
+ * A board with no reader consumes it once and then uses single probes.
  */
-#define ATTACH_SPINS    2000000
 
 void CONSOLE_RAW_PUTC(char c)
 {
-    unsigned int spins;
-    unsigned int limit = console_runtime ? 1 : ATTACH_SPINS;
-
-    for (spins = 0; spins < limit; spins++)
-    {
-        if (mmio_rd(P4_USJ_BASE, P4_USJ_EP1_CONF) & P4_USJ_IN_EP_DATA_FREE)
-            break;
-    }
-    if (spins == limit)
+    if (!usj_wait_free(ATTACH_SPINS))
     {
         console_dropped++;
         return;
