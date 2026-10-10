@@ -140,6 +140,16 @@ this is not an installed-firmware identity or a successful startup. The
 reference example selects SDIO streaming and disables checksum, whereas the
 independent codec already accepts either negotiated checksum mode. Do not
 infer the stock binary's exact configuration from that separate sdkconfig.
+After Fabian confirmed complete power disconnection and reconnection, the
+corrected IDF v3 probe now receives three valid CMD5 R4 responses:0x20ffff00,
+two SDIO functions, OCR0xffff00, ready0. Both error channels are ESP_OK at
+400kHz. This proves a responding SDIO slave in this post-disconnection run,
+not voltage negotiation, installed firmware identity or working WLAN.
+The previous retained-power timeouts remain unexplained; no C6 startup log
+or electrical rail measurement was captured. Exact AROS core-span rollback
+and a complete30.933s headless return pass PLL/PSRAM/both harts/graphics startup.
+Next is the native shared-host identification gate, followed by ESP-Hosted
+compatibility negotiation; do not require another blind physical reset.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device

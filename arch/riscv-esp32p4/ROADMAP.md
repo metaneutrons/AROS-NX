@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; native and IDF CMD5 response timeout` | Corrected IDF reaches CMD0/400kHz; all3 CMD5 peripheral timeouts, no valid OCR. Error-channel correction host tested/build verified. Quiesce/rollback and DSI return pass headlessly, not rail-off. Vendor C6 stock app identified offline as network_adapter/54aafd0-dirty, not installed identity. Next coordinated C6 rail-off/startup and wiring/firmware evidence. C6 identity, SD integrity/coexistence and WLAN remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; IDF CMD5 responds after confirmed power cycle; native identification open` | Corrected IDF v3 at400kHz receives3 valid R4=0x20ffff00/two functions/ready0 after user-confirmed all-source disconnect/reconnect. Not negotiated-ready or installed identity. Earlier retained-power timeouts remain unexplained. Quiesce, exact rollback and30.933s headless AROS return pass. Next native shared-host identification, then capability negotiation; SD integrity/coexistence and WLAN remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; RX reassembly host tested` | Bounded RX helper passes312 strict sanitized checks each O0/O2 and RV32 compilation. Complete checksummed frame-to-event-TLV fixture passes. Reverse TX direction differs; no runtime transport. N0, compatibility, credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -268,6 +268,19 @@ with the supplied binary, the fitted variant or installed image. The codec
 already supports both checksum policies; startup capability negotiation stays
 an N1 runtime gate, not a reason to relax validation speculatively.
 No firmware incompatibility inference or WLAN acceptance is justified yet.
+After fresh readiness and Fabian's explicit disconnected/reconnected reports,
+IDF v3 at400kHz receives three CMD5 responses with both API and peripheral
+errors ESP_OK: R4=0x20ffff00, OCR0xffff00, two functions, ready0, no memory.
+CMD5(arg0) queries capabilities; this is not voltage negotiation or an
+initialized ESP-Hosted session. It proves a responding SDIO slave in this run,
+but not independently measured C6 rail-off, startup or installed firmware.
+The prior retained-power timeouts remain unresolved rather than reclassified
+as proven firmware incompatibility. Exact AROS core-span restoration and
+complete30.933s headless graphics/PSRAM/two-hart return pass without another
+captured fault. Physical-readiness prerequisite for this comparison is now
+satisfied. Next: native shared-host identification, including negotiated
+CMD5/CMD3/CMD7/CCCR/FBR reads, before runtime transport work. No new blind
+power cycle, C6 flash or WLAN acceptance follows from this result.
 Enumeration alone cannot prove
 ESP-Hosted compatibility or working WLAN.
 
@@ -29844,6 +29857,53 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next remains coordinated all-source rail-off after fresh readiness. If
   CMD5 still times out, obtain C6 UART startup/identity and actual wiring
   evidence before firmware writes. P4 warm reset cannot provide that proof.
+
+### 2026-10-10 - N0 IDF CMD5 response after coordinated power disconnection
+
+- Parent9d5564147e; feature/esp32p4-wifi, isolated Wi-Fi worktree/build.
+  Fabian confirmed readiness, disconnection and reconnection of all requested
+  supplies. Requested minimum10s off; actual rail voltage/off duration and
+  C6 startup were not independently captured. Subsequent host operations are
+  P4 USB resets, not additional physical-cold measurements.
+- Identified JC1060 MAC80:f1:b2:d3:3b:a6, P4v1.3/16MB. Original core
+  190016B/dea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0.
+  Read full0x20000..0x4efff span192512B twice; byte comparison passes,
+  SHA-2561407e41ef0861269471f5871e4abc1178ce12372c1bb8cb6ccf997a4fcacabe0.
+- Raw app-only park at0x20000:174160B,
+  SHA-25639ce408bde307d4f4ddd67ee55a5affa91f9358c3f33ee9017b44e94a71c6e82;
+  independent readback exact. First-byte reset-and-log15s, actual process0,
+  complete footer15.826589s/4073B. Stopped channel0/reset0x100/clock0x423/
+  bridge0, intervals0..9 observing,10 READY and later stable; no FAIL.
+  Park log SHA-256f2a44ab48849647a4f07db3994addd0b4afef15a1cf66455109f80d38f0228b5.
+- Raw IDF v3 app at0x20000:189168B,
+  SHA-256a3e2be71a051c90d968b0e94d459277313b18091d8a6637fb1fa8ba5c026095b;
+  independent readback exact. Same pinned IDF6.0.1/silicon/API-order workaround,
+  slot1/one-bit/P4 CLK18 CMD19 D0..3=14..17,500ms commands,100ms retries.
+  Complete capture/process0,15.864955s/5980B. Host/slot/CMD0 successful,
+  measured400kHz. All3 CMD5(arg0) API and command.error ESP_OK, each valid
+  R4=0x20ffff00/OCR0xffff00/functions2/ready0/memory0; then idle.
+  IDF log SHA-256688bf86f59f5363338d1f0b0942270f962b683c601379de4215ce6a609123cf4.
+  Independent read-only review confirms byte-contiguous timing coverage,
+  16 stopped park cycles (ten observing, six READY) and all three successful
+  API/peripheral responses. Review is not a second hardware run.
+  Unlike prior v2 retained-power run, real replies arrive. ready0 is not a
+  failure of this capability query and is not negotiated readiness. No claim
+  of native-driver success, installed image identity, firmware compatibility,
+  association/DHCP/data, root cause or repeated cold-start reliability.
+- Restored entire original192512B span at0x20000, independent readback exact
+  SHA1407e41e... above. Complete30s first-byte return, process0,
+  footer30.933006s/14333B:32MB200MHz PSRAM,6000ms watchdog, DSI PLL0x15bd/B3
+  passes,41 modules,hart1 online/cpus2 and accepted graphics updates through256.
+  Return log SHA-256362cf48b1f7e8edf247f8b05546b0b9e7b46345f5e6b1f3c4a369d3f53230418.
+  All3 captures contain one commanded USB reset and no subsequent captured
+  reset/assert/panic/trap/Alert/Guru signature. Headless startup only;
+  console truncation and API updates do not prove visible desktop/touch.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/c6-railoff-idf-v3/.
+  Backups/readbacks, operation logs and all boot/timing pairs retained.
+  Bootloader/table/NVS/BSP/development volume/SD/C6 firmware unchanged.
+  Running image is restored AROS. Next native shared-host identification;
+  retained-power recovery/root cause and SD coexistence remain open.
 
 ## Evidence-entry template
 
