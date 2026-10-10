@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; setup gate blocked by warm CMD5 timeout` | Opt-in setup/restore builds and host tests pass, but first deployment fails at initial CMD5 after P4 USB reset: setup attempted0/mutated0. Earlier post-power-cycle identification is not repeatable warm recovery. Resolve bounded warm reidentification before setup acceptance. C6 OPEN mapping, compatibility, live transport/credits/RPC and disconnect recovery remain open. C6 firmware preserved. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; setup gate blocked by warm CMD5 timeout` | Opt-in setup/restore builds and host tests pass, but first deployment fails at initial CMD5 after P4 USB reset: setup attempted0/mutated0. Earlier post-power-cycle identification is not repeatable warm recovery. Next bounded CCCR RES before identification as in IDF. ESSL/TRM support OPEN address0x8c at source level only. Compatibility, live transport/credits/RPC and disconnect recovery remain open. C6 firmware preserved. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -583,8 +583,12 @@ mutated0. This is a warm-reidentification failure before setup, not a setup
 or restoration pass. Runtime qualification, real restoration and SD
 coexistence remain open. Current official ESP-Hosted-MCU8a593891dc915a8f8a08556224b63f842dd3ef10
 also maps HOST_TO_SLAVE_INTR to0x8c with a real Function-1 byte write; the
-address discrepancy is not only an old-host mismatch. C6 GP mask bits0..7 in
-IDF LL do not alone determine the external byte address. Reconcile before OPEN.
+address discrepancy is not only an old-host mismatch. A later focused ESSL/TRM
+audit below establishes explicit low10-bit Function1 mapping to0x8c in the
+reference sources;0x8d is an apparent protocol-document inconsistency. No
+bootstrap write is hardware verified. Before another setup gate, test the
+missing bounded Function0 CCCR RES step used by IDF before CMD0/CMD5. Neither
+this omission nor a retained C6 hardware FSM is yet a proven fault attribution.
 
 The first independent pure codec uses the vendor0.0.6 12-byte wire header,
 1536-byte total-frame bound, LE16 fields and additive checksum excluding its
@@ -30166,6 +30170,50 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   setup/restore hardware acceptance, installed compatibility, transport/RPC,
   association/DHCP/data/reconnect and sustained SD/display/SMP coexistence
   remain open. Any sight or physical-power request needs fresh readiness.
+
+### 2026-10-10 - N1 primary-source bootstrap and warm-reidentification audit
+
+- Offline investigation after failed gate cfaee66611; no serial opening,
+  flash, GPIO, SD, C6 firmware or runtime change. Normal baseline stays running.
+  Luna delegated two bounded read-only investigations; primary verified pinned
+  ESSL code, streamed official TRM text and pinned IDF initialization sources.
+- Interrupt mapping: registry-linked ESSL1.1.1 source commit
+  ba101162deb3f6b81896c9e97236ebbd874fa516,
+  https://github.com/espressif/idf-extra-components/blob/ba101162deb3f6b81896c9e97236ebbd874fa516/esp_serial_slave_link/essl_sdio.c
+  defines CONF_W7+0x8c, writes Function1 addr&0x3ff, send_slave_intr uses+0
+  and an8-bit mask. Registry changelog1.1.0 adds C6 support. Official C6 TRM
+  https://documentation.espressif.com/esp32-c6_technical_reference_manual_en.pdf
+  section34.5.4.1 explicitly maps CMD52/53 Register Address to low10 bits
+  of SLC Host register address;34.8.3 printedp1122 lists host-to-slave vector
+  SLCHOST_CONF_W7_REG at0x008c. This explicit mapping resolves the earlier
+  CPU-MMIO-only ambiguity at source level. IDF5.4.3 protocol table says0x8d;
+  apparent documentation inconsistency, not hardware proof or a sent OPEN.
+- Warm identification: official C6 IDF5.4.3 protocol initialization
+  https://docs.espressif.com/projects/esp-idf/en/v5.4.3/esp32c6/api-reference/protocols/esp_sdio_slave_protocol.html
+  prescribes Function0 CMD52 CCCR0x06=0x08 before CMD0/CMD5. Pinned IDF
+  https://github.com/espressif/esp-idf/blob/v5.4.3/components/sdmmc/sdmmc_init.c
+  lines71..81 invokes sdmmc_io_reset before go_idle/init_io. sdmmc_io.c65ff
+  implements that write; generic initialization tolerates timeout/invalidCRC
+  because non-IO cards or previous state can produce them. Our known-C6
+  diagnostic must distinguish an unacknowledged reset from successful reset,
+  remain bounded and retain both reset and subsequent identification results.
+  Current native probe starts CMD0 and omits this step. A no-response CMD0
+  completion proves only host transaction completion, not slave acceptance.
+- Additional risk: C6 IDF6.0 slave documentation reset-SDIO section
+  https://docs.espressif.com/projects/esp-idf/en/v6.0/esp32c6/api-reference/peripherals/sdio_slave.html#reset-sdio
+  describes persistent powered slave with restarted host/unknown line signals
+  corrupting slave hardware state and requiring slave-side sdio_slave_reset_hw.
+  Software counter reset alone is distinct; hardware reset loses shared
+  registers/interrupt settings. This resembles, but does not prove, our USB
+  reset failure. Preserved installed firmware support is unknown; board
+  declares WIFI_RESET_GPIO=-1, no established host-controlled C6 reset pin.
+- Next safe implementation: separately opt-in, one bounded CMD52 CCCR RES
+  before native identification, actual adapter tests and clean artifact build;
+  then one independently backed-up headless diagnostic with exact P4 rollback.
+  Reset side effects cannot be claimed reversible by restoring FBR/IO_ENABLE.
+  Do not add OPEN, slave-FSM reset, guessed GPIO toggles or global SD-host reset
+  to that experiment. No request for another blind physical rail-off follows.
+  N1/N2/N3 remain open; source audit is not hardware acceptance.
 
 ## Evidence-entry template
 

@@ -186,8 +186,15 @@ OPEN/IRQ/RPC and C6 firmware writes remain absent.
 The entire3,731,456-byte BSP erase span was restored and independently
 read back byte-identically; the complete30.981s baseline return boot succeeds.
 The board is running the original41-member package without a Wi-Fi probe.
-The current official ESP-Hosted-MCU host also writes0x8c; the discrepancy is
-not limited to the older FG host and remains unresolved before OPEN.
+The C6-capable ESSL reference and explicit C6 TRM address mapping now support
+Function1 byte0x8c; the protocol page's0x8d is an apparent documentation
+inconsistency, not a silicon test result. No OPEN has been sent.
+The warm-reset investigation identifies a concrete missing reference step:
+IDF5.4.3 sends CMD52 Function0 CCCR0x06=0x08 (SDIO reset) before CMD0/CMD5;
+our current probe starts at CMD0. A bounded opt-in reset-before-identification
+diagnostic is next. This omission is not yet the proven timeout root cause;
+slave-side hardware-FSM recovery may also be needed, and no host-controlled
+C6 reset GPIO has been established for this board.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device
