@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; no-data SD adapter host tested/build verified` | Shared DMA, command candidate and initialization have independent source/model checks and RV32 builds. ABI5 adds a sticky first-initialization marker. SD now dispatches non-data commands to the resource, retaining card stop confirmation and active diagnostic traces. Data/radio integration, recovery, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; no-data SD adapter host tested/build verified` | Shared DMA, command candidate and initialization have independent source/model checks and RV32 builds. ABI5 adds a sticky first-initialization marker. SD now dispatches non-data commands to the resource, retaining card stop confirmation and active diagnostic traces. Recovery must refresh the existing open unit, not re-register another boot node. Data/radio integration, recovery, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -300,6 +300,13 @@ callbacks are modeled; hardware regression remains open.
 This is not a complete dual-slot host: command sequencing still resides in
 the SD client. Host-wide recovery/re-enumeration remains open. No second
 hardware client may use this motor until those gates are complete.
+Do not reuse RegisterUnit as a recovery refresh: it allocates/publishes a new
+unit and boot node rather than preserving an already-open unit. Split card
+identification from publication, then run bounded recovery in the bus task
+after the failing request releases its host transaction. Preserve open-unit
+identity, change listeners and in-flight request ownership; publish readiness
+only after identification and selection/configuration both succeed. Radio
+reset/reprobe must release host ownership before waiting for SD recovery.
 
 ### N1 - compatible ESP-Hosted transport
 
@@ -26829,6 +26836,30 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   Preserve other pads/slot0 state; a second client still requires shared-host
   recovery/re-enumeration qualification. PR71 remains OPEN (checked this turn);
   production baseline integration is required before any deployment.
+
+### 2026-10-10 - N0 SD recovery integration points identified
+
+- State: source investigation only; shared-host recovery still open.
+  Worktree /Volumes/Dev/Build/aros-esp32p4-wifi parentb0ea497a2d, no hardware.
+  Delegated source map and primary inspection of rom/devs/sdcard/sdcard_bus.c
+  verify RegisterUnit begins CMD0, obtains RCA and allocates/publishes a new
+  sdcard_Unit and AddBootNode. It is not a refresh API for a mounted/open unit.
+  Its wrapper holds the host transaction through discovery. ReleaseUnit is
+  currently empty, so re-registration does not safely retire the old object.
+- Current generation mismatch only clears backend host_ready; subsequent
+  reads fail rather than re-enumerating. BusTask owns queued I/O processing
+  and includes sdcb_TaskSig in its wait mask; its existing media branch invokes
+  registration, not in-place recovery. Source findings are not runtime proof.
+- Next implementation boundary: split card discovery from allocation/boot-node
+  publication; recover in bus task after failed I/O releases transaction, keep
+  published unit identity/open counts/change listeners and define synchronization
+  of refreshed metadata. Select/configure card before publishing readiness.
+  Do not enumerate recursively in SendCmd or under OpenDevice/Forbid. Radio
+  must release the shared owner before waiting for SD recovery.
+- Safety: read-only source inspection, no serial, firmware, media or other
+  hardware mutations. No card recovery gate is closed. Required later evidence:
+  injected host reset/failure, bounded recovery with existing open unit, repeated
+  SD reads before/after slot1 probing and no new boot node or media mutation.
 
 ## Evidence-entry template
 
