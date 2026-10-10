@@ -81,6 +81,9 @@ No capture is running. Next: resolve startup/reset continuity before scan
 deployment. JC1060 WIFI_RESET_GPIO=-1 provides no established independent C6
 reset alternative. Installed initialization and prepared undeployed scan
 artifacts remain unchanged; native WLAN is incomplete.
+The passive reader's optional timing sidecar now also records port-open
+begin/end, separating open latency from byte waiting. Ten host-only tests
+pass; this instrumentation is not a new hardware result or a reset fix.
 
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection

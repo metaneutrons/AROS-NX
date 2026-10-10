@@ -19,6 +19,8 @@ Optional --timing writes exact raw-file chunk offsets and host monotonic
 receipt timestamps to a new JSONL sidecar. These can be correlated with
 observe-usb-arrival.py only on the same host/host boot. They timestamp receipt,
 not generation: USB buffering and the serial read timeout add uncertainty.
+Port-open begin/end timestamps separate time spent opening from waiting for
+bytes; neither establishes when the firmware booted or caused a reset.
 """
 
 import argparse
@@ -99,7 +101,11 @@ def capture(port, seconds, path, *, serial_api=None, platform=None,
             reader.dtr = True
             reader.rts = True
             reader.port = port
+            if timing is not None:
+                stamp("open_begin", monotonic(), dtr=True, rts=True)
             reader.open()
+            if timing is not None:
+                stamp("open_end", monotonic())
             if platform == "darwin":
                 clear_hupcl(reader, termios_module)
 

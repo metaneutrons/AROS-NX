@@ -222,13 +222,32 @@ class LateBootLogTest(unittest.TestCase):
                             platform="linux", monotonic=FakeClock(),
                             wall_time="test-start", timing_path=timing)
             records = [json.loads(line) for line in timing.read_text().splitlines()]
-            self.assertEqual([r["event"] for r in records], ["start", "chunk", "end"])
-            start, chunk, end = records
+            self.assertEqual([r["event"] for r in records],
+                             ["start", "open_begin", "open_end", "chunk", "end"])
+            start, begin, opened, chunk, end = records
+            self.assertTrue(begin["dtr"])
+            self.assertTrue(begin["rts"])
+            self.assertLess(begin["monotonic"], opened["monotonic"])
+            self.assertLess(opened["monotonic"], chunk["monotonic"])
             self.assertAlmostEqual(chunk["seconds"], chunk["monotonic"] - start["monotonic"])
             self.assertEqual(path.read_bytes()[chunk["offset"]:
                              chunk["offset"] + chunk["bytes"]], b"ESP-ROM: buffered\r\n")
             self.assertEqual(end["status"], "ok")
             self.assertEqual(end["bytes"], chunk["bytes"])
+
+    def test_open_failure_has_begin_but_no_successful_open_timestamp(self):
+        api = FakeSerialAPI(fail_open=True)
+        with tempfile.TemporaryDirectory() as directory:
+            timing = pathlib.Path(directory) / "timing.jsonl"
+            with self.assertRaises(OSError):
+                capture.capture("/dev/fake", 1, self.make_path(directory),
+                                serial_api=api, platform="linux",
+                                monotonic=FakeClock(), timing_path=timing)
+            records = [json.loads(line) for line in timing.read_text().splitlines()]
+            self.assertEqual([r["event"] for r in records],
+                             ["start", "open_begin", "end"])
+            self.assertEqual(records[-1]["status"], "error")
+            self.assertTrue(api.reader.closed)
 
     def test_existing_sidecar_is_refused_before_serial_access(self):
         api = FakeSerialAPI()
