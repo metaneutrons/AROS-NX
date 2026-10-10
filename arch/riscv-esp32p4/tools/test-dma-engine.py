@@ -123,7 +123,12 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         ("p4host_dma_complete", r"\bBOOL\s+p4host_dma_complete\s*\("),
         ("p4host_dma_inspect", r"\bvoid\s+p4host_dma_inspect\s*\("),
     )
+    memory_source = (SDMMC / "memory.h").read_text(encoding="utf-8")
     definitions = [
+        (name, extract_definition(memory_source, name,
+                                 rf"\bstatic\s+inline\s+void\s+{name}\s*\("))
+        for name in ("p4host_zero", "p4host_move")
+    ] + [
         (name, extract_definition(source, name, signature))
         for name, signature in function_specs
     ]

@@ -52,8 +52,19 @@ layout (189,984 bytes, SHA-256 bbc265fad7b4e18a15b67fcea7dcf029edb671bc88387eac9
 Complete BSP assembly, checksize and loader audit now pass: 3,694,032 bytes,
 41 accepted ELF members, SHA-256
 860fa1f461aaa0758852e3fb57eab9d558feb9ff4bd118ab34f595fec2f5cf09.
-The integrated pair is build verified only; headless SD regression and installed
-C6 communication remain pending. It is not a working WLAN driver.
+The first integrated pair fails the headless hardware boot: the shared resource
+accidentally pulls C-runtime startup with a relocation to the loader-discarded
+`.eh_frame` section. The accepted production pair has been restored and verified.
+A correction removes libc memory-operation dependencies from the early resource;
+command/DMA sanitizer regressions and the RV32 resource build pass. The corrected
+package passes the strengthened relocation-placement audit and loads all 41
+modules on hardware. Removing selfinit corrects missing Exec registration:
+SD now accepts the shared host and enumerates the 121,942 MB card on hardware.
+The first corrected capture has a pre-AROS ROM watchdog reset; the 45-second
+repeat completes without another reset/trap/alert. Its cause remains open.
+This is not SD data-integrity/shared-WLAN qualification.
+Installed C6
+communication remains pending. This is not a working WLAN driver.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device

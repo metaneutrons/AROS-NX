@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; integrated core/BSP build verified` | Generic recovery, private RCA, shared budget, P4 hooks and bounded automatic task dispatch host tested/build verified. Accepted production source integrated locally; production-layout XIP core and complete BSP/checksize/41-member loader audit pass. SD hardware regression, radio notification, real SMP interleavings, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; shared-host SD enumeration observed` | Memory correction passes the strengthened audit and loads all 41 modules on hardware. Registration correction enables SD card enumeration; first capture has pre-AROS ROM WDT reset, 45-second repeat completes without recurrence. SD data integrity, shared-radio regression, real SMP interleavings and C6 compatibility remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -182,7 +182,16 @@ GitHub tracking objects were requested or created.
 Integrated source ad7e4171f6 now produces a clean production-layout XIP core.
 Complete BSP assembly/checksize and all 41 loader members now pass. Hardware SD
 regression remains pending; build/model passes do not qualify this integrated
-pair on hardware.
+pair on hardware. The first hardware attempt fails resource loading because libc
+memory helpers pull C-runtime startup referencing discarded `.eh_frame`. Baseline
+restored; resource-local bounded helpers now remove that dependency, with host
+regressions and RV32 resource build passing. Strengthened audit now rejects the
+actual failed package and accepts the correction; the corrected hardware boot
+loads 41 modules but SD refuses the unregistered resource. Removing selfinit
+allows generated startup to register it; hardware now accepts the host and
+enumerates the card. First corrected capture includes a pre-AROS ROM watchdog
+reset; a 45-second repeat completes without recurrence. The ROM-reset cause,
+SD data integrity and radio coexistence remain open.
 
 Generic same-media recovery is now implemented as an explicit owned operation
 behind three optional task-context backend hooks (needed/prepare/finish).
@@ -29022,6 +29031,133 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   firmware remains unchanged and unidentified.
 - Next: exact-identity/backed-up headless SD regression of this pair, then
   bounded native slot1 enumeration and installed-C6 protocol identification.
+
+### 2026-10-10 - N0 first integrated boot failure and resource dependency correction
+
+- State: previous turn advanced integrated BSP build verification. This turn
+  tests that exact pair and invalidates its deployment readiness; no SD/WLAN pass.
+- Board identity: esptool read-mac chunk2356d2 exits0, ESP32-P4v1.3,
+  MAC80:f1:b2:d3:3b:a6. Port101 had no active reader before opening.
+  Accepted rollback artifacts rehashed before writes. Current flash prefixes
+  match accepted core17249045… and BSPe0869292… exactly.
+- Before-write erase-range backups: core0x20000/0x2f000 (192,512 bytes),
+  SHA-256 ac45d149cd9c922e3d031fc7a487b67553cdb013482b84870ecc4e8c96eaf4ce;
+  BSP0x820000/0x386000 (3,694,592 bytes),
+  SHA-2568b4db161c67b35f7c28842fe7ba86f32f4e76bdc309956e23028bb1e8075a0b8.
+  Core/package write session57627 exits0; independent readback sessions59958
+  and39046 exit0 and match bbc265fad…/860fa1f4… from the prior build entry.
+- First-byte reset-and-log session75415 exits0, complete45.946307s/64,739 bytes.
+  boot.log SHA-2561b5a6a3e7ba859291662ea96b5294ef28e88f3be688c610767f35a1d0d937456.
+  Repeated failure: invalid/unplaced __eh_frame_start in esp32p4sdmmc.resource;
+  pkg load fails, PSRAM withheld, memory alert and watchdog reset. The audit's
+  accepted relocation-type set was insufficient to establish symbol placement.
+- Cause: shared DMA/command memory helpers link stdc startup, which references
+  .eh_frame that kernel_elf.c intentionally discards. Do not suppress the loader
+  refusal or treat a successful audit as hardware proof. New memory.h provides
+  bounded volatile-byte zero/move (overlap supported), avoiding libc startup.
+  Actual RV32 resource no longer contains __eh_frame_start/stdc/memory libc symbols.
+- Corrected resource build session87732 exits0:49,436 bytes SHA-256
+  f7a6d3c632457f5146b364897fd9ca0e5e7fed14131c6739011b053d86644a11.
+  Corrected package/checksize session45768 exits0:3,688,440 bytes SHA-256
+  f1e0295b29c8bf2399fcbc7b26c225a3f333c19bb680a25afbce08645ecee049.
+  No core source/flags changed; same189,984-byte core. Correction not yet deployed.
+- Primary command/DMA extracted-source tests session26221 exit0:
+  33 cases/2,001,779 and22 cases/2,253,994 checks per O0/O2 ASan/UBSan.
+  Direct actual-header overlap/zero tests:278,850 comparisons each O0/O2,
+  strict C99 warnings and ASan/UBSan. Independent source review finds no concrete
+  helper/extraction defect. Host models are not silicon/concurrent-SMP evidence.
+- Rollback: full backed-up erase ranges restored, session17779 exits0;
+  separate verify-flash77552 exits0, both complete ranges digest matched.
+  First-byte baseline capture40620 exits0, complete20.925255s/14,124 bytes,
+  restore-boot.log SHA-2563878d7db136006a59869ebd692b2787f7b3b983ae68c67f977b5e2964a333af5.
+  40 modules loaded, hart1 online/cpus2, runtime graphics/touch polling; no
+  repeated loader failure. This restores headless baseline only, no visual pass.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/
+  integrated-ad7e4171f6-hardware holds backups/write/readback/failure/rollback logs.
+  resource-memory-build.log, resource-memory-package.log and command/DMA test
+  logs preserve correction results. SD media were not written or host rehashed;
+  no byte-for-byte media integrity acceptance inferred from read-only policy.
+  Bootloader/partition/volume/C6 firmware unchanged; no C6 GPIO/reset assumption.
+- Next: strengthen predeployment audit for relocations into unplaced sections,
+  test rejection of the actual failed package and acceptance of corrected one,
+  then corrected-pair headless SD regression and native slot1 identification.
+
+### 2026-10-10 - N0 corrected loader pass, resource registration failure
+
+- Strengthened package audit checks runtime relocation symbol placement, not
+  just supported relocation types. Actual failed package rejected (exit1,
+  __eh_frame_start references); corrected package accepted (exit0, 41 members).
+  Primary tool suite passes64 tests, including8 new audit regressions.
+  This is not full loader-execution or silicon proof.
+- Same core bbc265fad7b4e18a15b67fcea7dcf029edb671bc88387eac91050b837f92cf68;
+  corrected BSP3,688,440 bytes SHA-256
+  f1e0295b29c8bf2399fcbc7b26c225a3f333c19bb680a25afbce08645ecee049.
+  Exact JC1060 MAC80:f1:b2:d3:3b:a6 rechecked. Existing verified full-range
+  rollback backups retained; write48965 exits0; independent readbacks40627
+  and18907 exit0 and match both artifact hashes.
+- First-byte capture36684 exits0, complete45.866180s/14,643 bytes.
+  boot.log SHA-256593d5dbd16ef1ea5e93899afe7b1ba42e48557b38e194bb9d7f7a6adeb4af92d.
+  Loads41 modules, PSRAM added, hart1 online/cpus2, watchdog armed and runtime
+  graphics/touch polling. SD reports compatible SDMMC host resource missing;
+  flash fallback is NOT an SD pass. One initial commanded USB reset/ROM banner,
+  no subsequent ROM boot, trap, Guru or alert in this capture.
+- Source/generated-startup diagnosis: selfinit suppresses AddResource in
+  genmodule. Non-AUTOINIT Exec InitResident does not register it either.
+  Both compiled clients expect ABI7/224 bytes; no stale ABI mismatch found.
+  Remove selfinit so generated successful startup registers the resource once.
+  No board-resource change is implied; it currently performs side effects only.
+- Evidence root: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10;
+  resource-memory-hardware/boot.log and boot-timing.jsonl; resource-memory-audit-
+  old/new/primary.log and resource-memory-all-tool-tests.log. No SD write or
+  visual acceptance, no C6 firmware/reset-pin change. Installed C6 unchanged.
+- Next: rebuild resource/package, audit actual AddResource call, independent
+  flash readback and headless SD regression, then native slot1 identification.
+
+### 2026-10-10 - N0 resource registered, SD enumeration observed on JC1060
+
+- Source: same dirty feature/esp32p4-wifi checkout after801e427ad6. Resource
+  config SHA-2569bd0d8d3cf9d2b133d29a3c3741a7b41465b5fd9724ee56b52c0e8221cb40703.
+  Generated startup now calls AddResource exactly once after successful INITLIB;
+  independent readonly review confirms no premature/duplicate registration.
+  Generated start SHA-256884d6084f52342ebd5fbda326605a25bbfa0d51e2d0ba3fb8e3c7e571852d438.
+- Build: GNU make4 via Homebrew gnubin PATH, resource quick target exits0
+  (session65383). Module49,520 bytes SHA-256
+  26ed86747187124dd624af588b8dbdc1e6f721448192a23aadff02820df0859b.
+  Earlier direct mmake target lacked project prefix; system make3.81 rejected;
+  mixed inner make3.81 failed response-file generation. All failed logs retained.
+  A stale non-graphical package was rejected by member comparison and never
+  deployed. Delete only generated BSP, rebuild checksize with P4_BOARD=jc1060p470c-v2,
+  P4_C3_GRAPHICAL_BOOT=1/P4_C4_TOUCH_HIDD=1, CPU360/PSRAM200, XIP layout.
+  Final package session89385 exits0,41 modules,3,688,524 of4,063,232 bytes:
+  SHA-2568749d489d46b1c62e084f6701d8b197bbae4fd6ab0cc5ab9d268545f197f1392.
+  Same core bbc265fad… unchanged. Final audit exit0;64 tool tests pass.
+- Exact MAC80:f1:b2:d3:3b:a6 revalidated. Only BSP0x820000 changed, rounded
+  erase0x385000, inside previously backed-up0x386000 range. Backup hash remains
+  8b4db161c67b35f7c28842fe7ba86f32f4e76bdc309956e23028bb1e8075a0b8.
+  Write3900 exits0; independent readback25837 exits0 and matches final BSP hash.
+- First capture53521 exits0, complete45.905745s/14,830 bytes, SHA-256
+  7832e7409782ed9b198b2fcd391a005bef212343658639271ccf73c7da706c0a.
+  Initial commanded USB reset is followed by ROM HP_SYS_HP_WDT_RESET before
+  AROS entry (Saved PC0x4fc10c7e, not mapped by core ELF). No claim of a clean
+  first boot; cause unresolved. Subsequent AROS loads41 modules, adds PSRAM,
+  brings hart1 online, accepts slot0 shared host and enumerates121,942 MB card.
+- Repeat14897 exits0, complete45.937893s/14,637 bytes, SHA-256
+  fc048e42a790c05c810e54edce586a6749732d9c984b6be2ee8a7214b96e1291.
+  One commanded USB-reset ROM banner, no further ROM/reset/trap/alert/Guru.
+  Shared SD enumeration repeats; both harts, watchdog armed, graphics updates
+  and GT911 polling observed. API updates are not visual acceptance. Quiet logs
+  do not provide a sector-read integrity corpus or shared-radio qualification.
+- Evidence root /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10:
+  resource-registration-hardware/{write,readback-bsp,boot,repeat-boot}.log,
+  both timing sidecars; resource-registration-build-fixed-path.log,
+  resource-registration-package-final.log, resource-registration-audit-final.log
+  (ec55fcc81cd6c72ed0213e299b88bb5f2cb2e42d446268e91e048c4412cfbd7a),
+  resource-registration-tool-tests.log
+  (50aafa5b920ea3876ec04dfe42c44677bac087a0745aefeb95d06c45d31b0d3b).
+- Safety: no SD write, firmware replacement, bootloader/partition/volume change,
+  C6 reset GPIO assumption or user sight test. No SD media rehash; integrity
+  not inferred. Next: owned bounded native slot1 CMD5/CMD3/CMD7/CMD52 probe
+  against unchanged installed C6, plus explicit SD read-integrity regression.
 
 ## Evidence-entry template
 

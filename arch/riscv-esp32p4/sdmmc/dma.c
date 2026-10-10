@@ -3,8 +3,8 @@
 #include <aros/cacheops.h>
 #include <proto/exec.h>
 #include <proto/kernel.h>
-#include <string.h>
 #include "dma.h"
+#include "memory.h"
 #include "registers.h"
 
 static struct P4HostDMADesc descriptors[P4HOST_DMA_COUNT]
@@ -156,9 +156,9 @@ BOOL p4host_dma_prepare(struct P4SDMMCHost *host, UBYTE *data,
      * DMA writing a client buffer which its caller may release on error.
      * This also keeps rounded cache maintenance away from client neighbours. */
     if (writing && data != bounce)
-        memmove(bounce, data, length);
+        p4host_move(bounce, data, length);
     count = (length + P4HOST_DMA_SEGMENT - 1) / P4HOST_DMA_SEGMENT;
-    memset(descriptors, 0, sizeof(descriptors));
+    p4host_zero(descriptors, sizeof(descriptors));
     for (index = 0; index < count; ++index)
     {
         ULONG bytes = length - offset;
@@ -233,7 +233,7 @@ BOOL p4host_dma_complete(struct P4SDMMCHost *host, UBYTE *data, ULONG length)
         if (!p4host_budget_ok(host))
             return FALSE;
         if (data != bounce)
-            memmove(data, bounce, length);
+            p4host_move(data, bounce, length);
     }
     if (!p4host_budget_ok(host))
         return FALSE;

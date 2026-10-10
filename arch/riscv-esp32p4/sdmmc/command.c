@@ -1,7 +1,7 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
 #include <proto/exec.h>
-#include <string.h>
 #include "command.h"
+#include "memory.h"
 #include "dma.h"
 #include "registers.h"
 
@@ -94,7 +94,7 @@ BOOL p4host_command(struct P4SDMMCHost *host,
     BOOL prepared = FALSE, cmd_done = FALSE, data_over = FALSE;
     if (!result)
         return FALSE;
-    memset(&outcome, 0, sizeof(outcome));
+    p4host_zero(&outcome, sizeof(outcome));
     outcome.status = P4HOST_COMMAND_REFUSED;
     if (!command_valid(host, request))
         goto finished;
@@ -144,7 +144,7 @@ BOOL p4host_command(struct P4SDMMCHost *host,
         }
         if (request->writing)
         {
-            memmove(host->bounce, request->data, request->length);
+            p4host_move(host->bounce, request->data, request->length);
             command |= P4SD_CMD_WRITE;
         }
         if (!p4host_budget_ok(host))
@@ -309,8 +309,8 @@ BOOL p4host_command(struct P4SDMMCHost *host,
         goto failed;
     }
     if (prepared && !request->writing && request->data != host->bounce)
-        memmove(request->data, host->bounce, request->length);
-    memcpy(outcome.response, response, sizeof(response));
+        p4host_move(request->data, host->bounce, request->length);
+    p4host_move(outcome.response, response, sizeof(response));
     outcome.status = P4HOST_COMMAND_OK;
     command_write(P4SD_RINTSTS, P4SD_INT_CMD_DATA_MASK);
     goto finished;
