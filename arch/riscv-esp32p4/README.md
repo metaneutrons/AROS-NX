@@ -1,5 +1,16 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Binary PSK caller contract (2026-10-10): S2INFO_PSK now represents exactly
+32 borrowed binary bytes and requires explicit per-device FOURWAY+RAW_PSK.
+The caller prefers a valid passphrase when both forms are supplied. Raw-only
+requests without RAW_PSK are refused before I/O. Actual-source models pass
+59 scenarios/402 checks each O0/O2 ASan/UBSan on macOS/Linux; capability
+models pass35/67, and the public RV32 ABI and clean full GUI build pass.
+Generic2eb274ff63 is locally integrated, not deployed. The native device
+still advertises SECURITY_SUMMARY only: no credential transmission or actual
+association is enabled. Older strict callers reject the new capability flag;
+connectivity to offload-only devices requires matching caller support.
+
 C6 recovery/privacy audit (2026-10-10): matching Hosted protocol/version is
 not verified flashed-image identity. Stock OTA can erase the inactive fallback
 and changes boot selection before a possible timer failure; automatic rollback
@@ -16,9 +27,9 @@ upstream-based wireless checkout now validates representable SSIDs and
 borrowed options before device I/O, removes the leaked temporary allocation,
 propagates key/options errors and gates credential forwarding on the actual
 per-device FOURWAY result. Firmware offload does not imply S2_SETKEY support;
-legacy host-handshake key setup remains separate. Raw-only PSKs are explicitly
-refused pending their own binary credential capability contract, not silently
-dropped or treated as passphrases. Independent review identified empty-slot
+legacy host-handshake key setup remains separate. Raw-only PSKs were initially
+refused; the later explicit binary contract above permits them only for a
+device advertising RAW_PSK, never by passphrase reinterpretation. Independent review identified empty-slot
 clear compatibility and key callback return/pointer-lifetime defects; corrected
 code tracks attempted WEP state, tolerates only unsupported empty clears with
 no WEP history, and normalizes key callbacks to0/-1. A corrected clean full

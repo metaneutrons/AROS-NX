@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2F | C6 firmware privacy and recoverable identity | `source audit; conditional update authority received; physical recovery gate open` | Hosted init/version is not a whole-image hash. Stock OTA is not verified rollback; CN5 UART is schematic-only until actual v2 connector verified. Fabian authorizes C6 update only with secured recovery. Fresh physical readiness, non-secret security/partition/app backups, pinned privacy-safe image and proven restore path remain required before credentials. No C6 action. |
-| N2A | Association caller and native link lifecycle | `shared caller RV32 build/model verified; generic da74d7f23a locally integrated` | Actual associate/key/cipher models50 scenarios/339 checks each O0/O2 ASan/UBSan macOS/Linux; source/non-author test review passed with stated WEP tightening. Binary raw-PSK contract, native S2_SETOPTIONS/runtime link events, verified C6 privacy and association/DHCP remain required. No credential deployment or link acceptance. |
+| N2A | Association caller and native link lifecycle | `shared binary-PSK caller RV32 build/model verified; generic 2eb274ff63 locally integrated` | Actual associate/key/cipher models59 scenarios/402 checks each O0/O2 ASan/UBSan macOS/Linux; fixed32-byte PSK requires FOURWAY+RAW_PSK. Native device remains SUMMARY-only. Native S2_SETOPTIONS/runtime link events, verified C6 privacy and association/DHCP remain required. No credential deployment or link acceptance. |
 | N2S | Native queued SANA scan presentation | `RV32 build verified; source review and corrected scan-helper models passed` | Single bounded owner-service scan, copied SSID filter and caller-pool-owned complete publication. Scan-helper models295 checks each O0/O2 ASan/UBSan on macOS/Linux; outer BeginIO/AbortIO/Close and runtime scheduling remain separate gates. Exact singleton metadata only; unsupported/ambiguous unknown protected. C-string binary SSIDs/invalid channels omitted; max8 local cap. SUMMARY only, no FOURWAY. No credentials/deployment/hardware acceptance. |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
 | N2W | Generic wireless security-summary/offload contract | `locally integrated; predicates/ABI and conversion/selection-helper models passed; full RV32 GUI build verified` | Upstream-based generic49972c6241 retained separately and integrated onto port branch. Explicit per-device capability, owned exact-version summary, no fabricated AP security IE. Unknown/ambiguous protected networks must not fall back to open. Initial singleton WPA/RSN PSK profile; legacy path preserved. Device query/full association and hardware gates pending. No credentials or deployment. |
@@ -1124,13 +1124,15 @@ Source development may proceed without sending credentials or changing C6.
 Association caller correction is in development in the upstream-based generic
 checkout: validate before effects, use synchronous borrowed stack options,
 propagate key/options errors, gate credentials on actual FOURWAY and avoid
-assuming offload supports host-side S2_SETKEY. Raw-only PSK remains explicitly
-refused until a binary-credential capability contract is implemented. This
+assuming offload supports host-side S2_SETKEY. Binary-credential contract now
+accepts raw-only PSK only with valid FOURWAY+RAW_PSK, preserving all32 bytes;
+the native device does not yet advertise either offload capability. This
 does not implement native association or close credential/runtime gates.
 Corrected standalone RV32 GUI build and actual-source association/key models
-now pass50 scenarios/339 checks each O0/O2 ASan/UBSan on macOS/Linux.
-Device I/O remains mocked; non-author review accepts bounded scope and generic
-da74d7f23a is locally integrated, not association/runtime acceptance.
+now pass59 scenarios/402 checks each O0/O2 ASan/UBSan on macOS/Linux.
+Device I/O remains mocked; generic2eb274ff63 is locally integrated, not
+association/runtime acceptance. Public RV32 layout and capability models
+are separately checked; earlier strict clients may reject the new RAW flag.
 
 Queued scan development (2026-10-10): S2_GETNETWORKS binds the private ABI2
 scan through a single asynchronous descriptor. It may scan before S2_ONLINE,
@@ -34071,3 +34073,53 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   Permission does not establish fresh physical readiness or secured recovery.
 - Next: continue credential-free source work; coordinate actual-board recovery
   verification with fresh readiness before exercising conditional write authority.
+
+### 2026-10-10 - N2A explicit binary PSK caller contract
+
+- State: shared caller/ABI build and bounded host models verified, not native
+  association or hardware acceptance. Generic commit2eb274ff6334635209bb58823ed97a420f58c803
+  originates on upstream-based pr/wireless-offload-summary and is integrated
+  locally by cherry-pick -x with this documentation, not pushed remotely.
+- Contract: new S2INFO_PSK TAG_USER+18 borrows exactly32 binary bytes through
+  synchronous Reply; RAW_PSK bit2 is legal only with FOURWAY. Device must copy,
+  protect and wipe retained secrets. Caller validates before effects, prefers
+  passphrase if both forms exist and refuses raw-only without explicit support.
+  No string conversion, logging or implicit raw support. Existing struct
+  v1/32B remains unchanged. Older strict readers reject the new flag and use
+  legacy handshake; offload-only device availability is not guaranteed there.
+- Source header6495485666f40ff566631b807912ab38d6d5ea74801a5c196e77110b7e60cf27;
+  driverf316613bd74ae0303b9a81aeacf008366400d74e6fdabc9f77950b46663a7168.
+  Independent non-author production review found no credential-safety blocker
+  and identified the older-reader limitation now explicitly documented.
+- Primary actual-source association/key/cipher models pass59 scenarios/402
+  checks each O0/O2 ASan/UBSan on macOS and isolated Linux/GNU GCC13.3,
+  actual successful process exits. Binary NUL/0xff, both credential forms,
+  capability/mode/suite refusals, DoIO/io_Error and free-after-Reply exercised.
+  DoIO/Exec/request structures remain fakes, not native concurrency or link-up.
+  Independent frozen-test review finds no false-pass blocker; it confirms actual
+  source extraction and bounded credential cases. Capability query-to-associate
+  integration and a device retaining borrowed pointers are not tested by these
+  models. Caller free-after-Reply does not prove device lifetime correctness.
+  Initial59/401 runs preceded the explicit PSK-size assertion; final frozen
+  repeats above are authoritative. Test71b0c9e3dc51e63ee1172f07e24edfa82e7a6fbd9310ff92aec9faa964172e05;
+  runnerf1a5b8627198bc07ca5563700fc9fdeb69e7b2baf2b6548aab4c9acf726700d4.
+- Capability conversion/selection regression models pass35 scenarios/67 checks
+  each O0/O2 on both hosts; pure predicates88/264 plus explicit RV32 structure,
+  tag/flag/32-byte PSK compile assertions pass. Source/generated/Developer
+  wireless headers match after compiler-includes actual exit0.
+- Fresh complete RV32 GUI build compiles all consumers and links680512B,
+  SHA256e10ab00acf4b9d616c1e6a419d0d93919a5ee4a2cf881add6c1e1e0dafdebc53;
+  explicit current SMP sysroot and generic public source headers. Existing
+  mlme unused-variable warning only. Native device objects invalidated and
+  rebuilt for jc1060p470c-v2:59236B,
+  SHA25651eba08b209402006cebcc5eb08e39f298664438ff31927d362813b933d015d8,
+  unchanged as expected because the device still exposes SUMMARY only.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/raw-psk.QaUQci.
+  Final association Mac logeec94d02c36ec486077eae4c78ec773f4d454d660ae0f78738caf65b8089b27a;
+  Linuxcd2a2e167558af87f3971b3af93618f5fd6c3967f1517cbad38c5a59835df9ee;
+  both clean caps logs6f0aeeb80cacfb2f30b719ecc9916cb4b255ffd009676a22fe4113620a02ee93;
+  buildlog3c82cf4f325cd12af07a24b156df0aaebc47c55c4e98792bd94b3f17f6f2546e.
+- Safety/next: no serial, flash, credentials, SD or C6 changes. Conditional
+  C6 authority does not waive recovery/privacy gates. Implement owned native
+  association and typed link-event lifecycle without enabling credentials until
+  verified C6 lineage, then qualify association/DHCP/frames/shared load/recovery.

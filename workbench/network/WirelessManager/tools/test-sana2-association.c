@@ -84,11 +84,14 @@ struct doio_record {
 	UPINT statdata_pointer;
 	u8 dst_addr[ETH_ALEN];
 	UPINT options_pointer;
-	ULONG option_tags[8];
-	UPINT option_data[8];
+	ULONG option_tags[9];
+	UPINT option_data[9];
 	size_t option_count;
 	char option_ssid[MAX_SSID_LEN + 1];
 	int option_statdata_was_null;
+	UPINT psk_pointer;
+	u8 psk_copy[S2WIRELESS_PSK_SIZE];
+	int psk_copied;
 };
 
 struct set_key_record {
@@ -223,6 +226,17 @@ static int DoIO(APTR request_arg)
 				     sizeof(record->option_tags[0]); ++i) {
 				record->option_tags[i] = items[i].ti_Tag;
 				record->option_data[i] = items[i].ti_Data;
+				/* Copy raw PSK bytes only while the exact active tag is
+				 * inside synchronous DoIO. TAG_IGNORE may retain the caller's
+				 * pointer, but that does not authorize reading it. */
+				if (items[i].ti_Tag == S2INFO_PSK &&
+				    items[i].ti_Data != 0) {
+					record->psk_pointer = items[i].ti_Data;
+					memcpy(record->psk_copy,
+					       (const void *) (uintptr_t) items[i].ti_Data,
+					       S2WIRELESS_PSK_SIZE);
+					record->psk_copied = 1;
+				}
 				if (items[i].ti_Tag == TAG_END) {
 					record->option_count = i;
 					break;
@@ -499,7 +513,8 @@ static void test_legacy_open_and_wep_host_wpa(void)
 	      options->option_tags[4] == S2INFO_WPAInfo &&
 	      options->option_tags[5] == S2INFO_AuthTypes &&
 	      options->option_tags[6] == TAG_IGNORE &&
-	      options->option_tags[7] == TAG_END, 1);
+	      options->option_tags[7] == TAG_IGNORE &&
+	      options->option_tags[8] == TAG_END, 1);
 	CHECK("legacy open", "passphrase omitted", options->option_tags[6], TAG_IGNORE);
 	CHECK("legacy open", "SSID text", strcmp(options->option_ssid, "legacy-open") == 0, 1);
 	CHECK("legacy open", "managed port option",
@@ -553,6 +568,8 @@ static void test_legacy_open_and_wep_host_wpa(void)
 	}
 	CHECK("legacy WEP + host WPA", "passphrase omitted for host handshake",
 	      options->option_tags[6], TAG_IGNORE);
+	CHECK("legacy WEP + host WPA", "raw PSK omitted for host handshake",
+	      options->option_tags[7], TAG_IGNORE);
 	CHECK("legacy WEP + host WPA", "StatData cleared before DoIO",
 	      options->option_statdata_was_null, 1);
 	check_string("legacy WEP + host WPA", "stored SSID", f.drv.ssid,
@@ -566,6 +583,38 @@ static void enable_offload_psk(struct fixture *f, const char *passphrase)
 	f->params.key_mgmt_suite = KEY_MGMT_PSK;
 	f->params.mode = IEEE80211_MODE_INFRA;
 	f->params.passphrase = passphrase;
+}
+
+static void enable_offload_raw_psk(struct fixture *f, const u8 *psk)
+{
+	f->drv.wireless_caps_valid = 1;
+	f->drv.wireless_caps.Flags = S2WIRELESS_CAPF_FOURWAY |
+		S2WIRELESS_CAPF_RAW_PSK;
+	f->params.key_mgmt_suite = KEY_MGMT_PSK;
+	f->params.mode = IEEE80211_MODE_INFRA;
+	f->params.psk = psk;
+}
+
+static u8 *new_binary_psk(u8 expected[S2WIRELESS_PSK_SIZE],
+			  UPINT *address)
+{
+	u8 *psk = malloc(S2WIRELESS_PSK_SIZE);
+	size_t i;
+
+	if (psk == NULL) {
+		fprintf(stderr, "FAIL: could not allocate binary PSK fixture\n");
+		++failure_count;
+		return NULL;
+	}
+	for (i = 0; i < S2WIRELESS_PSK_SIZE; ++i)
+		psk[i] = (u8) (0x31 + (i * 7));
+	psk[0] = 0;
+	psk[7] = 0;
+	psk[19] = 0xff;
+	psk[S2WIRELESS_PSK_SIZE - 1] = 0;
+	memcpy(expected, psk, S2WIRELESS_PSK_SIZE);
+	*address = (UPINT) psk;
+	return psk;
 }
 
 static void test_credential_refusals_and_offload_wep(void)
@@ -622,7 +671,56 @@ static void test_credential_refusals_and_offload_wep(void)
 	f.params.psk = raw_psk;
 	SCENARIO();
 	result = wpa_driver_sana2_associate(&f.drv, &f.params);
-	check_rejected_without_io("raw-only PSK with four-way offload", result, &f);
+	check_rejected_without_io("raw-only PSK without RAW_PSK capability", result, &f);
+
+	init_fixture(&f, "credential");
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_FOURWAY |
+		S2WIRELESS_CAPF_RAW_PSK;
+	f.drv.wireless_caps_valid = 0;
+	f.params.key_mgmt_suite = KEY_MGMT_PSK;
+	f.params.psk = raw_psk;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	check_rejected_without_io("raw PSK with invalid capability response", result, &f);
+
+	init_fixture(&f, "credential");
+	f.drv.wireless_caps_valid = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_RAW_PSK;
+	f.params.key_mgmt_suite = KEY_MGMT_PSK;
+	f.params.psk = raw_psk;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	check_rejected_without_io("RAW_PSK without FOURWAY", result, &f);
+
+	init_fixture(&f, "credential");
+	f.drv.wireless_caps_valid = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_FOURWAY |
+		S2WIRELESS_CAPF_RAW_PSK;
+	f.params.key_mgmt_suite = 0;
+	f.params.psk = raw_psk;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	check_rejected_without_io("raw PSK with invalid key management", result, &f);
+
+	init_fixture(&f, "credential");
+	f.drv.wireless_caps_valid = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_FOURWAY |
+		S2WIRELESS_CAPF_RAW_PSK;
+	f.params.key_mgmt_suite = KEY_MGMT_PSK;
+	f.params.mode = IEEE80211_MODE_IBSS;
+	f.params.psk = raw_psk;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	check_rejected_without_io("raw PSK outside infrastructure mode", result, &f);
+
+	init_fixture(&f, "credential");
+	f.drv.wireless_caps_valid = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_FOURWAY |
+		S2WIRELESS_CAPF_RAW_PSK;
+	f.params.key_mgmt_suite = KEY_MGMT_PSK;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	check_rejected_without_io("missing PSK credential with offload", result, &f);
 
 	init_fixture(&f, "credential");
 	enable_offload_psk(&f, "password");
@@ -683,6 +781,8 @@ static void test_passphrase_lengths_and_tags(void)
 	      options->option_tags[6], S2INFO_Passphrase);
 	CHECK("offload passphrase length 8", "exact passphrase pointer",
 	      options->option_data[6] == (UPINT) f.params.passphrase, 1);
+	CHECK("offload passphrase length 8", "raw PSK tag omitted",
+	      options->option_tags[7], TAG_IGNORE);
 	CHECK("offload passphrase length 8", "request Data cleared",
 	      f.request.ios2_Data == NULL, 1);
 	CHECK("offload passphrase length 8", "request StatData cleared",
@@ -704,8 +804,122 @@ static void test_passphrase_lengths_and_tags(void)
 	      options->option_tags[6], S2INFO_Passphrase);
 	CHECK("offload passphrase length 63", "exact passphrase pointer",
 	      options->option_data[6] == (UPINT) f.params.passphrase, 1);
+	CHECK("offload passphrase length 63", "raw PSK tag omitted",
+	      options->option_tags[7], TAG_IGNORE);
 	check_string("offload passphrase length 63", "stored SSID", f.drv.ssid,
 		     "offload-63");
+}
+
+static void test_raw_psk_forwarding_and_lifetime(void)
+{
+	struct fixture f;
+	struct doio_record *options;
+	u8 expected[S2WIRELESS_PSK_SIZE];
+	UPINT psk_address;
+	u8 *psk;
+	int kind, result;
+	static const char passphrase[] = "both-credentials";
+
+	psk = new_binary_psk(expected, &psk_address);
+	if (psk == NULL)
+		return;
+	init_fixture(&f, "raw-psk-success");
+	enable_offload_raw_psk(&f, psk);
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	/* Free immediately after the synchronous reply. Remaining assertions use
+	 * only the saved address and bytes copied by the DoIO callback. */
+	free(psk);
+	CHECK("raw PSK success", "association succeeds", result, 0);
+	CHECK("raw PSK success", "fixed credential size is 32 bytes",
+	      S2WIRELESS_PSK_SIZE, 32);
+	CHECK("raw PSK success", "offload skips WEP key calls", io.set_key_count, 0);
+	CHECK("raw PSK success", "one SETOPTIONS call", io.doio_count, 1);
+	options = &io.doio[0];
+	CHECK("raw PSK success", "passphrase tag omitted",
+	      options->option_tags[6], TAG_IGNORE);
+	CHECK("raw PSK success", "raw PSK tag exact",
+	      options->option_tags[7], S2INFO_PSK);
+	CHECK("raw PSK success", "tag terminator follows PSK",
+	      options->option_tags[8], TAG_END);
+	CHECK("raw PSK success", "borrowed pointer exact",
+	      options->option_data[7] == psk_address, 1);
+	CHECK("raw PSK success", "DoIO copied exactly the PSK tag bytes",
+	      options->psk_copied, 1);
+	CHECK("raw PSK success", "DoIO recorded borrowed pointer",
+	      options->psk_pointer == psk_address, 1);
+	check_bytes("raw PSK success", "all 32 binary bytes preserved",
+		    options->psk_copy, expected, S2WIRELESS_PSK_SIZE);
+	CHECK("raw PSK success", "embedded NUL preserved",
+	      options->psk_copy[0], 0);
+	CHECK("raw PSK success", "0xff byte preserved",
+	      options->psk_copy[19], 0xff);
+	CHECK("raw PSK success", "request Data cleared after reply",
+	      f.request.ios2_Data == NULL, 1);
+	CHECK("raw PSK success", "request StatData cleared after reply",
+	      f.request.ios2_StatData == NULL, 1);
+	CHECK("raw PSK success", "StatData cleared before DoIO",
+	      options->option_statdata_was_null, 1);
+	check_string("raw PSK success", "SSID updated", f.drv.ssid,
+		     "raw-psk-success");
+
+	for (kind = 0; kind < 2; ++kind) {
+		char scenario[64];
+		psk = new_binary_psk(expected, &psk_address);
+		if (psk == NULL)
+			return;
+		init_fixture(&f, "raw-psk-failure");
+		enable_offload_raw_psk(&f, psk);
+		io.fault_index = 0;
+		io.fault_return = kind == 0 ? 9 : 0;
+		io.fault_io_error = kind == 0 ? 0 : 7;
+		SCENARIO();
+		result = wpa_driver_sana2_associate(&f.drv, &f.params);
+		free(psk);
+		(void) snprintf(scenario, sizeof(scenario),
+				"raw PSK SETOPTIONS %s failure",
+				kind == 0 ? "DoIO return" : "io_Error");
+		CHECK(scenario, "association fails", result, -1);
+		CHECK(scenario, "DoIO inspected active PSK before reply",
+		      io.doio_count, 1);
+		CHECK(scenario, "PSK bytes copied during failing DoIO",
+		      io.doio[0].psk_copied, 1);
+		CHECK(scenario, "borrowed pointer matches caller allocation",
+		      io.doio[0].psk_pointer == psk_address, 1);
+		check_bytes(scenario, "all 32 binary bytes preserved before error",
+			    io.doio[0].psk_copy, expected,
+			    S2WIRELESS_PSK_SIZE);
+		CHECK(scenario, "request Data cleared after reply",
+		      f.request.ios2_Data == NULL, 1);
+		CHECK(scenario, "request StatData cleared after reply",
+		      f.request.ios2_StatData == NULL, 1);
+		check_string(scenario, "SSID unchanged", f.drv.ssid, "previous");
+	}
+
+	psk = new_binary_psk(expected, &psk_address);
+	if (psk == NULL)
+		return;
+	init_fixture(&f, "prefer-passphrase");
+	enable_offload_psk(&f, passphrase);
+	f.params.psk = psk;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	free(psk);
+	CHECK("passphrase preferred when both are supplied", "association succeeds",
+	      result, 0);
+	CHECK("passphrase preferred when both are supplied", "passphrase tag exact",
+	      io.doio[0].option_tags[6], S2INFO_Passphrase);
+	CHECK("passphrase preferred when both are supplied", "passphrase pointer exact",
+	      io.doio[0].option_data[6] == (UPINT) passphrase, 1);
+	CHECK("passphrase preferred when both are supplied", "raw tag omitted",
+	      io.doio[0].option_tags[7], TAG_IGNORE);
+	CHECK("passphrase preferred when both are supplied",
+	      "ignored option may retain pointer without reading it",
+	      io.doio[0].option_data[7] == psk_address, 1);
+	CHECK("passphrase preferred when both are supplied",
+	      "recorder does not copy ignored raw PSK", io.doio[0].psk_copied, 0);
+	CHECK("passphrase preferred when both are supplied",
+	      "recorder has no active raw PSK pointer", io.doio[0].psk_pointer, 0);
 }
 
 static void test_setkey_faults_and_option_faults(void)
@@ -946,6 +1160,7 @@ int main(void)
 	test_credential_refusals_and_offload_wep();
 	test_actual_cipher_helper();
 	test_passphrase_lengths_and_tags();
+	test_raw_psk_forwarding_and_lifetime();
 	test_setkey_faults_and_option_faults();
 	test_unsupported_empty_clear_contract();
 	test_direct_set_key_borrowed_buffer_cleanup();

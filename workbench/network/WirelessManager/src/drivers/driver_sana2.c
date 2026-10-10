@@ -498,14 +498,16 @@ static int wpa_driver_sana2_associate(
 		}
 	}
 	/* Never forward credentials based only on a caller supplying them.
-	 * Raw PSK needs a separate explicit device contract; do not reinterpret
-	 * its binary bytes as a passphrase or silently drop a raw-only PSK. */
+	 * Raw PSK additionally requires its explicit binary credential capability;
+	 * never reinterpret its bytes as a passphrase or silently drop it. */
 	if ((params->passphrase != NULL || params->psk != NULL) &&
 	    (!offload || params->key_mgmt_suite != KEY_MGMT_PSK ||
 	     params->mode != IEEE80211_MODE_INFRA))
 		return -1;
 	if (offload && params->key_mgmt_suite == KEY_MGMT_PSK &&
-	    params->passphrase == NULL)
+	    params->passphrase == NULL &&
+	    (params->psk == NULL ||
+	     !(drv->wireless_caps.Flags & S2WIRELESS_CAPF_RAW_PSK)))
 		return -1;
 	if (params->passphrase != NULL) {
 		for (passphrase_len = 0; passphrase_len < 64 &&
@@ -537,6 +539,10 @@ static int wpa_driver_sana2_associate(
 		 * run the handshake ourselves wpa_supplicant leaves these NULL. */
 		{(params->passphrase != NULL) ? S2INFO_Passphrase : TAG_IGNORE,
 			(UPINT)params->passphrase},
+		/* Prefer the validated passphrase when the caller supplies both.
+		 * A raw key remains binary and is borrowed only until Reply. */
+		{(params->passphrase == NULL && params->psk != NULL) ?
+			S2INFO_PSK : TAG_IGNORE, (UPINT)params->psk},
 		{TAG_END, 0}};
 
 	/* Legacy host-handshake devices still set/clear WEP slots. Firmware
@@ -588,7 +594,7 @@ static int wpa_driver_sana2_wireless_caps_valid(
 	const struct Sana2WirelessCapabilities *caps)
 {
 	const ULONG known_flags = S2WIRELESS_CAPF_FOURWAY |
-		S2WIRELESS_CAPF_SECURITY_SUMMARY;
+		S2WIRELESS_CAPF_SECURITY_SUMMARY | S2WIRELESS_CAPF_RAW_PSK;
 	const ULONG known_protocols = S2WIRELESS_PROTO_WPA |
 		S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE;
 	const ULONG known_key_mgmt = S2WIRELESS_KEY_PSK |
@@ -621,7 +627,8 @@ static int wpa_driver_sana2_wireless_caps_valid(
 		    caps->GroupCiphers == 0 ||
 		    (caps->GroupCiphers & ~fourway_ciphers) != 0)
 			return 0;
-	} else if (caps->Protocols != 0 || caps->KeyManagement != 0 ||
+	} else if ((caps->Flags & S2WIRELESS_CAPF_RAW_PSK) != 0 ||
+		   caps->Protocols != 0 || caps->KeyManagement != 0 ||
 		   caps->PairwiseCiphers != 0 || caps->GroupCiphers != 0) {
 		return 0;
 	}
