@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Source-owned SDK graph is audit-verified; the incremental native build now produces OpenURL after preserving ordered source prerequisites. Zune's private-header shadowing still blocks full construction. New qualified tools runtime, clean compiler/SDK replay with final C/C++ links, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Source-owned SDK graph is audit-verified; the native build produces OpenURL after preserving ordered source prerequisites. The last completed SDK replay stopped at Zune's private-header shadowing; the tested quote-only engine correction is under native requalification. New qualified tools runtime, clean compiler/SDK replay with final C/C++ links, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -393,6 +393,43 @@ change any board's hardware acceptance state.
 - Next: prove quote/angle lookup with real C/C++ compilers and invalid-path
   counterprobes, then finish native SDK construction, final links, relocation
   and the full release qualification without changing immutable history.
+
+### 2026-10-10 - TC0 quote-only implicit module include correction
+
+- State: TC0 remains `in development`; complete native SDK construction is
+  being requalified in the existing tree. No full SDK or hardware pass.
+- Cause: Classic `config/make.tmpl` passes implicit module source/build
+  directories through `CFLAGS_IQUOTE`. The native engine had additionally
+  added these directories as ordinary `-I`, letting Zune's local `string.h`
+  shadow `<string.h>`. The source recipe and include spelling are correct.
+- Correction: tools commit `02ea41b78064fd2ee184b14bc697899f9efe3555`
+  keeps implicit generated/module directories quote-only. Explicit source
+  `INCLUDES` and architecture include paths retain angle-header lookup. No
+  Zune-specific exception, invented macro or AROS source correction is used.
+  Ordered archive preparation is separately committed as
+  `9b8ed87d45a40c1e94bb6d8941978a466af2699f`.
+- Procedure/results: all 41 engine tests passed on the final fixture in
+  30.39 seconds. Real LLVM and retained RV32 GCC/G++ compile probes preserve
+  quoted private headers and explicit source angle includes. C/C++ attempts
+  to use module-only headers through angle lookup fail with the expected
+  missing-header diagnostic. Isolated old-policy copies reproduce the LLVM
+  module-root leak and the GNU private-header collision. Disposable fixture
+  trees were removed after verification; workspace Clippy and secret guards
+  passed before pushing the functional fixes.
+- Native requalification: use source baseline
+  `73f65915e39c434523b1bdbd7624d4f21dedb622` and the unchanged sealed SDK
+  contract. Rebuilt CLI SHA-256:
+  `c0bb9ee59c5aa82170d312016a9ce86322a2c05ae65c06beff1753bf9032b2a5`;
+  transpiler SHA-256:
+  `5ae01a7b87058ebe02a43db7a1d1024e3d1f7adac2d2649b32b201601ad97f63`.
+  Continue `esp32p4-riscv-gnu` with the retained relocated compiler,
+  `--jobs 12 --compiler-cache off --require-fetch-checksums`. The continuation
+  was confirmed running, not terminal success; no clean reset or second
+  concurrent native build was started.
+- Safety/remaining risk: no board, SMP runtime, firmware, media or hardware
+  change. A local runtime and synthetic header probes do not qualify the full
+  SDK or public release. Next inspect the actual native outcome, then prove
+  final C/C++ links and relocation and complete three-host qualification.
 
 ## Track E: ESP32-P4 / RV32 SMP
 
