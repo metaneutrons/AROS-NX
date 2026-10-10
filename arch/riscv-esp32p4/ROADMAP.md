@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; bounded reset-query build verified` | Setup gate fails at warm CMD5, attempted0/mutated0. Separate opt-in CCCR RES/CMD0/single CMD5 candidate passes1168 sanitized checks each O0/O2; actual adapter21 cases/165 checks, clean RV32/module/package audits. Next one reset-query hardware gate with exact P4 rollback. ESSL/TRM support OPEN address0x8c at source level only. Compatibility, transport/RPC and recovery remain open; C6 firmware preserved. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; reset-query hardware gate failed` | CMD52 RES stops with CARD_ERROR/status4/raw10004; CMD0/CMD5 not sent. Full BSP rollback/readback and complete baseline return pass. Read-only rejected-R5 observer host tested/build verified, not yet deployed. ESSL/TRM support OPEN address0x8c at source level only. Compatibility, transport/RPC and recovery remain open; C6 firmware preserved. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -594,7 +594,17 @@ one Fn0 CMD52 RES, CMD0 and one CMD5(0), no selection or setup afterwards.
 Every command is pre/post-budget checked; ambiguous reset failure stops the
 sequence. Reset attempted/acknowledged are distinct and FBR restoration cannot
 undo reset side effects. Setup+reset-query together is a compile-time error.
-Sanitized O0/O2 tests1168 checks each; first hardware result remains pending.
+Sanitized O0/O2 tests1168 checks each. The first hardware gate stops at CMD52
+with CARD_ERROR/status4/raw10004, not a response timeout. CMD0/CMD5 were not
+sent; R4=0 is an unused diagnostic field, not a received response. Exact full
+BSP-span rollback/readback and a complete31.003s baseline return pass. Reset
+acknowledged0 does not establish that the write never reached the slave.
+A diagnostic-only observer now reads the rejected R5 at FINISH under existing
+host ownership, only for completed non-data slot1 CMD52/R5 CARD_ERROR without
+command-error bits. It preserves the host API's success-only response contract
+and all error checks. Actual extracted observer tests pass22 cases/72 checks
+each O0/O2 ASan/UBSan; clean RV32 build and package audit pass. Not deployed
+yet: exact rejected bits and their cause remain unknown.
 
 The first independent pure codec uses the vendor0.0.6 12-byte wire header,
 1536-byte total-frame bound, LE16 fields and additive checksum excluding its
@@ -30267,6 +30277,68 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   candidate readback, one headless capture, exact P4 rollback/readback and
   complete baseline return. No silent retry on failed reset. A P4 rollback
   cannot claim reversal of slave reset effects. No WLAN acceptance follows.
+
+### 2026-10-10 - N1 reset-query rejected on hardware; baseline restored
+
+- Source ad2fb45419, JC1060-v2 P4 MAC80:f1:b2:d3:3b:a6; unchanged corrected
+  core190016B dea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0.
+  Enabled package3726760B b24515b0c0749e668d1884e62c99f8bf8cb349dbad2b19e5e60fb50169a7b648;
+  RESET_QUERY1/SETUP0, slot1 one-bit394088Hz, ten-second aggregate budget.
+- Fresh identity and two matching backups of the entire erase span
+  0x820000..0xbadfff,3727360B, SHA-256
+  14a2cf3b8d080fbe763c81267a2e262274713ba235807845b15f76a0a519f55f.
+  Candidate written only at0x820000 and independently read back identically.
+  Capture session64835 exits0; complete footer40.877208792s/15988B.
+- Observed reset-query ok0/stage1/cmd52, reset attempted1/ack0/error3;
+  host status4 CARD_ERROR, raw00010004, IDMAC0. CMD_DONE and SDIO interrupt,
+  no command-error interrupt bits. The host rejected R5 before exposing its
+  response payload. Exact R5 unknown. CMD0/CMD5 never sent; cleared R4/fn
+  fields are not slave responses. Ambiguous reset effects cannot be excluded.
+- All24 before/after snapshots captured; first five clock/slot controls
+  unchanged. PSRAM32MB/200MHz, watchdog6000ms, hart1/cpus2, PLL15bd,
+ 42 modules, SD121942MB and accepted graphics updates. No additional ROM
+  reset/trap/Alert/Guru signature. No visible-frame or WLAN acceptance inferred.
+- Fresh identity, entire-span baseline rollback and independent readback
+  match14a2cf3b...; session97321 exits0. Complete return31.002671084s/14491B:
+ 41 baseline modules, PSRAM/watchdog/both harts/PLL/SD/graphics startup pass,
+  no additional fault signature. Original41-member firmware is running.
+  No bootloader, partitions, development volume, SD or C6 firmware writes.
+  P4 rollback is not evidence that C6 reset effects were reversed.
+- Evidence n1-reset-query under
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/:
+  boot.log SHA-256c6f3ae7693b5a15d8d72cae3b77c571ae060be386b02989153f5e392146d84b4;
+  restored-boot.log e8dec9d7aed144a381a7a12f825fbbb3026c9ce1728c0a0e409ab451999cae22.
+  Backup/write/readback logs and complete timing sidecars retained.
+- Next: observe rejected response under command ownership in a separately
+  instrumented bounded gate; do not weaken R5 checks or silently retry.
+
+### 2026-10-10 - N1 read-only rejected-R5 observer host and build verified
+
+- Adds only private reset-query diagnostic state and FINISH observer to
+  runtime_probe.c. Reads RESP0 under existing ownership for started slot1
+  non-data CMD52/R5 CARD_ERROR with CMD_DONE/no command errors. No allocation,
+  UART, reset, DMA or extra command in callback; paced output after release.
+  Rejected response stays outside successful host response fields. Default off.
+- Independent Luna review found no concrete safety/ownership defect. Separate
+  Luna test author; primary inspected and repeated actual-source strict C99
+  O0/O2 ASan/UBSan tests:22 cases/72 checks each, exit0. Invalid stages,
+  statuses, request fields and command errors publish nothing/read no register.
+  Actual runtime adapter regression21 cases/165 checks each, exit0.
+- Clean module invalidation, explicit P4_BOARD=jc1060p470c-v2,
+  RESET_QUERY1/SETUP0; RV32 build session83979 exits0. Module38844B SHA-256
+  208e54a13a921dda72fa30e6b570450dccc25a6662a9a2e28a79efa3397766de.
+  Only Wi-Fi member replaced; other41 unchanged. Package3727400B SHA-256
+  f9bf40543de5da903b2a90c1015193a70f278d1a23c64269db548e262cbd9e64;
+  loader audit42/42 and exact generated checksize3727400/4063232 pass, exit0.
+- Evidence sibling n1-rejected-r5, observer-tests.log SHA-256
+  4b2e4b97eac5085fa865333b3b0c15302af566bbc71e413a938ba4c287bacf0b.
+  Actual runtime source c5289571fb89fdd3b7b1591b0cb164e2b1f37e18d5e98ec61696bc5664cc37ed.
+  Build/audit logs and immutable enabled artifacts retained. Current generic
+  build output is enabled; do not package it as normal firmware.
+- Not deployed. New candidate exceeds the previous erase span by40B; before
+  deployment compute sector rounding and freshly double-backup the entire
+  larger span. Exact P4 rollback required; no new C6/SD/volume action follows.
+  N1/N2/N3 remain open. Next: one distinct instrumented diagnostic gate.
 
 ## Evidence-entry template
 

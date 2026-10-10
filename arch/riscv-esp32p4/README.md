@@ -195,8 +195,15 @@ our current probe starts at CMD0. A bounded opt-in reset-before-identification
 diagnostic is build verified: P4_WIFI_SDIO_RESET_QUERY=1 issues exactly one
 CCCR RES write, CMD0 and CMD5(0), with fail-stop and pre/post budget checks.
 It excludes function setup at compile time and never continues to selection,
-IRQ/FIFO/OPEN. Strict sanitized tests pass1168 checks each O0/O2. Hardware
-qualification is next. This omission is not yet the proven timeout root cause;
+IRQ/FIFO/OPEN. Strict sanitized tests pass1168 checks each O0/O2. Its first
+hardware gate stops at CMD52 with CARD_ERROR (status4, raw0x10004), not a
+response timeout; CMD0/CMD5 were not sent. Reset attempted1/acknowledged0
+does not prove the write failed to reach the slave. The entire BSP erase span
+was restored with independent byte-identical readback and a complete31.003s
+baseline return. A reset-query-only rejected-R5 observer is now host tested
+and build verified (22 cases/72 checks each O0/O2 ASan/UBSan): it reads RESP0
+under existing command ownership without weakening response rejection.
+That instrumentation has not been deployed. This omission is not yet the proven timeout root cause;
 slave-side hardware-FSM recovery may also be needed, and no host-controlled
 C6 reset GPIO has been established for this board.
 The recovery foundation now separates card identification into an unpublished

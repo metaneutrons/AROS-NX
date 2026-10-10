@@ -41,6 +41,10 @@ struct wifi_probe_context
     struct P4SDMMCHost *host;
     ULONG generation;
     struct P4HostCommandResult last;
+#if P4_WIFI_SDIO_RESET_QUERY
+    ULONG rejected_r5;
+    BOOL rejected_r5_valid;
+#endif
 };
 
 static ULONG wifi_read(IPTR address)
@@ -145,6 +149,30 @@ static void wifi_yield(void *opaque)
     Delay(1);
 }
 
+#if P4_WIFI_SDIO_RESET_QUERY
+/* Under command ownership, before another request can overwrite RESP0.
+ * Keep rejected responses out of the host API's success-only payload fields.
+ * No DMA, reset, allocation or UART operation in this observer. */
+static void wifi_observe_rejected_r5(void *opaque,
+    const struct P4HostCommand *request,
+    enum P4HostCommandObservation observation,
+    const struct P4HostCommandResult *outcome)
+{
+    struct wifi_probe_context *context = opaque;
+    if (observation == P4HOST_OBSERVE_FINISH &&
+        request->slot == P4_BOARD_WIFI_SLOT && request->index == 52 &&
+        request->response_flags == MMC_RSP_R5 && !request->data &&
+        !request->length && !request->writing &&
+        outcome->started && outcome->status == P4HOST_COMMAND_CARD_ERROR &&
+        (outcome->raw & P4SD_INT_CMD_DONE) &&
+        !(outcome->raw & P4SD_INT_CMD_ERRORS))
+    {
+        context->rejected_r5 = wifi_read(P4_SDMMC_BASE + P4SD_RESP0);
+        context->rejected_r5_valid = TRUE;
+    }
+}
+#endif
+
 static int wifi_command(void *opaque, unsigned index, uint32_t argument,
                          enum p4_sdio_response_type response,
                          uint32_t error_mask, uint32_t *word)
@@ -163,6 +191,13 @@ static int wifi_command(void *opaque, unsigned index, uint32_t argument,
     request.argument = argument;
     request.response_flags = flags[response];
     request.response_error_mask = error_mask;
+#if P4_WIFI_SDIO_RESET_QUERY
+    if (index == 52)
+    {
+        request.observe = wifi_observe_rejected_r5;
+        request.observe_context = context;
+    }
+#endif
     if (!context->host->command(context->host, &request, &context->last) ||
         !wifi_budget(context))
         return 0;
@@ -328,6 +363,9 @@ static void wifi_identify(void)
     Delay(5);
     bug("[WiFi] reset-query clock=%u R4=%08x fn=%u\n",
         actual, reset_query.response, reset_query.functions);
+    Delay(5);
+    bug("[WiFi] rejected R5 valid=%u value=%08x\n",
+        context.rejected_r5_valid, context.rejected_r5);
 #else
     bug("[WiFi] slot1 probe ok=%u stage=%u cmd=%u\n",
          success, result.stage, result.command_index);
