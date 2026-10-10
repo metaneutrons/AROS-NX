@@ -1,5 +1,13 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Native failure metadata preparation (2026-10-10): the bounded options parser
+can copy a nonzero 32-bit AssociationCookie independently of the radio target
+ABI, rejects duplicates/overflow and clears it on refusal. Legacy consumers
+reject rather than silently discard a supplied cookie. macOS O0/O2 ASan/UBSan
+parser tests pass (91 cases/275 checks); native queue/event binding, caller
+close cleanup and runtime qualification remain open. No new advertisement,
+credentials or hardware action.
+
 Association failure caller (2026-10-10): upstream-based commit46e9387fee,
 integrated as16a13dd08d, negotiates a cause-free failure event with a nonzero
 non-reused per-open cookie. Local pending cancellation reaches standalone leave,

@@ -726,6 +726,43 @@ static void test_disassociate_option_contract(void)
     expect_disassociate_refusal(traversal_limit);
 }
 
+static void test_association_cookie_metadata(void)
+{
+    struct TagItem tags[8];
+    ULONG cookie = 123;
+    set_required(tags, (const UBYTE *)"cookie-test", NULL, 0);
+    set_tag(&tags[5], S2INFO_AssociationCookie, 1);
+    set_tag(&tags[6], TAG_DONE, 0);
+    ++cases;
+    CHECK(p4wlan_copy_association_options_cookie(&target, &cookie, tags));
+    CHECK(cookie == 1);
+    CHECK(target.ssid_length == 11);
+    set_tag(&tags[5], S2INFO_AssociationCookie, (IPTR)~(ULONG)0);
+    CHECK(p4wlan_copy_association_options_cookie(&target, &cookie, tags));
+    CHECK(cookie == ~(ULONG)0);
+    expect_refusal(tags); /* legacy path cannot drop correlation metadata */
+    set_tag(&tags[5], S2INFO_AssociationCookie, 0);
+    CHECK(!p4wlan_copy_association_options_cookie(&target, &cookie, tags));
+    CHECK(cookie == 0 && bytes_are_zero((const UBYTE *)&target, sizeof(target)));
+    set_tag(&tags[5], S2INFO_AssociationCookie, 17);
+    set_tag(&tags[6], S2INFO_AssociationCookie, 18);
+    set_tag(&tags[7], TAG_DONE, 0);
+    CHECK(!p4wlan_copy_association_options_cookie(&target, &cookie, tags));
+    CHECK(cookie == 0 && bytes_are_zero((const UBYTE *)&target, sizeof(target)));
+    if (sizeof(IPTR) > sizeof(ULONG)) {
+        set_tag(&tags[5], S2INFO_AssociationCookie, (IPTR)~(ULONG)0 + (IPTR)1);
+        set_tag(&tags[6], TAG_DONE, 0);
+        CHECK(!p4wlan_copy_association_options_cookie(&target, &cookie, tags));
+        CHECK(cookie == 0);
+    }
+    set_tag(&tags[5], TAG_DONE, 0);
+    CHECK(p4wlan_copy_association_options_cookie(&target, &cookie, tags));
+    CHECK(cookie == 0); /* optional only until capability negotiation */
+    cookie = 123;
+    CHECK(!p4wlan_copy_association_options_cookie(NULL, &cookie, tags));
+    CHECK(cookie == 0);
+}
+
 int main(void)
 {
     test_open_owned_copy_and_optional_target_fields();
@@ -741,6 +778,7 @@ int main(void)
     test_tag_list_traversal_and_bounded_failure();
     test_null_target_refusal();
     test_disassociate_option_contract();
+    test_association_cookie_metadata();
     printf("PASS: %lu cases, %lu checks\n", cases, checks);
     return 0;
 }

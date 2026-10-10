@@ -83,15 +83,18 @@ static void p4wlan_options_wipe(struct p4_wifi_association_target *target)
  * Insist on that exact value; never infer a cipher from auth-alg alone.
  * Success produces one owned target. Failure leaves the entire output zero.
  * TAG_MORE cycles and TAG_SKIP are bounded by one 128-item traversal budget. */
-static BOOL p4wlan_copy_association_options(
-    struct p4_wifi_association_target *target, const struct TagItem *tags)
+static BOOL p4wlan_copy_association_options_cookie(
+    struct p4_wifi_association_target *target, ULONG *cookie,
+    const struct TagItem *tags)
 {
     ULONG visited = 0, seen = 0, i;
     ULONG wpa_ie_extent = 0;
     const UBYTE *wpa_ie = NULL;
     BOOL ended = FALSE, protected_profile = FALSE;
     enum { SSID = 1, BSSID = 2, PORT = 4, CHANNEL = 8, AUTH = 16,
-           WPA = 32, PASSPHRASE = 64, PSK = 128, EXTENT = 256 };
+           WPA = 32, PASSPHRASE = 64, PSK = 128, EXTENT = 256,
+           COOKIE = 512 };
+    if (cookie) *cookie = 0;
     if (!target)
         return FALSE;
     p4wlan_options_wipe(target);
@@ -128,6 +131,7 @@ static BOOL p4wlan_copy_association_options(
         case S2INFO_WPAInfoLength: bit = EXTENT; break;
         case S2INFO_Passphrase: bit = PASSPHRASE; break;
         case S2INFO_PSK: bit = PSK; break;
+        case S2INFO_AssociationCookie: bit = COOKIE; break;
         default: goto refused;
         }
         if (seen & bit) goto refused;
@@ -168,6 +172,11 @@ static BOOL p4wlan_copy_association_options(
             }
             if (i < 8 || i > 63) goto refused;
             target->password_length = i;
+        } else if (bit == COOKIE) {
+            /* The cookie is request metadata, not part of the radio ABI.
+             * Validate before narrowing IPTR on a wider host. */
+            if (!cookie || !data || data > (IPTR)~(ULONG)0) goto refused;
+            *cookie = (ULONG)data;
         } else if (bit == PSK) {
             const UBYTE *s = (const UBYTE *)data;
             static const UBYTE hex[] = "0123456789abcdef";
@@ -189,8 +198,17 @@ static BOOL p4wlan_copy_association_options(
     target->authmode = protected_profile ? 3u : 0u;
     return TRUE;
 refused:
+    if (cookie) *cookie = 0;
     p4wlan_options_wipe(target);
     return FALSE;
+}
+
+/* Legacy consumers have not negotiated failure publication. Do not silently
+ * discard a supplied correlation cookie on those paths. */
+static BOOL p4wlan_copy_association_options(
+    struct p4_wifi_association_target *target, const struct TagItem *tags)
+{
+    return p4wlan_copy_association_options_cookie(target, NULL, tags);
 }
 
 #endif

@@ -17,3 +17,15 @@ BOOL p4wlan_check_options_target(struct p4_wifi_association_target *target,
 {
     return p4wlan_copy_association_options(target, tags);
 }
+
+BOOL p4wlan_check_options_cookie_target(
+    struct p4_wifi_association_target *target, ULONG *cookie,
+    const struct TagItem *tags)
+{
+    return p4wlan_copy_association_options_cookie(target, cookie, tags);
+}
+
+BOOL p4wlan_check_disassociate_target(const struct TagItem *tags)
+{
+    return p4wlan_disassociate_options(tags);
+}
