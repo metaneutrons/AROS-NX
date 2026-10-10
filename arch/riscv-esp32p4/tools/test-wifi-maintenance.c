@@ -2051,6 +2051,51 @@ static void test_ota_finish_no_begin_deadlines_and_late_ready(void)
     CHECK(discovery_acquire_calls == 0u && discovery_release_calls == 0u);
 }
 
+static void test_ota_finish_generation_change_during_acquire(void)
+{
+    prepare_finish_active();
+    discovery_change_host_generation_on_acquire = TRUE;
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_INCOMPLETE, 100000u,
+        TEST_TOKEN, TEST_GENERATION) == -1);
+    check_begun_finish_failed();
+    CHECK(host.generation == TEST_GENERATION + 1u);
+    CHECK(discovery_acquire_calls == 1u);
+    CHECK(discovery_acquire_wait == P4_HOSTED_OWNER_MAX_ACQUIRE_US);
+    CHECK(tx_session_calls == 1u);
+    CHECK(discovery_release_calls == 1u);
+    CHECK(finish_fence_release_observations == 0u);
+    CHECK(discovery_stopping_calls == 1u);
+    CHECK(host.lock.ss_Owner == NULL);
+    CHECK(base.ready == TRUE);
+    CHECK(request_calls == 0u);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_INCOMPLETE,
+        100000u, TEST_TOKEN, TEST_GENERATION);
+}
+
+static void test_ota_finish_no_begin_request_failure(void)
+{
+    prepare_finish_active();
+    request_succeeds = FALSE;
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_NO_BEGIN, 9000000u,
+        TEST_TOKEN, TEST_GENERATION) == -1);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FAILED);
+    CHECK(base.maintenance_fence_mode == 0u);
+    CHECK(base.associated == FALSE);
+    CHECK(base.ready == TRUE);
+    CHECK(control.ota_closed == 0u);
+    CHECK(control.discovery_state == P4_WIFI_DISCOVERY_FAILED);
+    CHECK(request_calls == 1u && request_ids[0] == 280u);
+    CHECK(request_budgets[0] == 8000000u);
+    CHECK(finish_no_begin_clear_observations == 1u);
+    CHECK(ready_calls == 0u);
+    CHECK(discovery_acquire_calls == 0u);
+    CHECK(discovery_release_calls == 0u);
+    CHECK(host.lock.ss_Owner == NULL);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        9000000u, TEST_TOKEN, TEST_GENERATION);
+    CHECK(request_calls == 1u && ready_calls == 0u);
+}
+
 static ULONG begin_request(void)
 {
     ULONG token = wifi_maintenance_request(&base);
@@ -3252,6 +3297,8 @@ int main(void)
     test_ota_finish_begun_revalidation_failures();
     test_ota_finish_acquire_release_and_lease_failures();
     test_ota_finish_no_begin_deadlines_and_late_ready();
+    test_ota_finish_generation_change_during_acquire();
+    test_ota_finish_no_begin_request_failure();
     test_normal_poll_gate();
     test_request_identity_and_lock_contention();
     test_discovery_queue_admission_and_nonce();

@@ -91,11 +91,13 @@ published under host ownership; a late release remains sticky FAILED.
 This is still a private prerequisite: queued jobs, engine binding, an explicit
 qualified full-image lease and actual updates remain open. UPDATE-C6 stays
 unavailable and no hardware has been changed.
-Direct-finalizer source tests now pass5828 checks each O0/O2 ASan/UBSan,
+Direct-finalizer source tests now pass5913 checks each O0/O2 ASan/UBSan,
 with four unsafe mutations rejected. Fresh Core1 resource303616B SHA256
 ef9547e5c8330c355f51583696ade6262bbfbe11240ef19931898612056c3352
 passes its loader audit. Exec/host ownership and RPC callbacks are modeled;
-this is not a full engine-bound job or runtime handoff acceptance.
+this is not a full engine-bound job or runtime handoff acceptance. Direct
+host-generation-change and failed pre-BEGIN restart cases also pass; neither
+may confirm handoff or replay a request.
 Private transport verification (2026-10-11): canonical codec11806,
 pending1638 and coupled owner8093 checks each O0/O2 ASan/UBSan pass;
 ordinary OTA-allowlist mutation is rejected. Fresh Core1 resource291220B
