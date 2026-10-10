@@ -57,6 +57,7 @@ struct p4sd_private
     struct P4SDMMCHost *host;
     ULONG host_generation;
     ULONG card_rca;
+    BOOL recovery_budget;
 };
 
 struct sdcard_Bus
@@ -119,6 +120,14 @@ static BOOL clock_set_low_power;
 static ULONG clock_set_result_hz;
 static BOOL reset_callback_result;
 static BOOL clock_set_result;
+static BOOL card_present_result;
+static unsigned card_check_calls;
+static unsigned card_check_pin_drive[8];
+static BOOL expire_budget_on_card_check;
+static unsigned pin_config_calls;
+static unsigned pin_drive;
+static BOOL expire_budget_on_pin_drive;
+static UBYTE modeled_dma_buffer[16];
 
 static void fail_check(const char *expression, const char *file, int line)
 {
@@ -223,6 +232,11 @@ static void bug(const char *message, ...)
 
 static ULONG p4sd_read(IPTR address);
 static void p4sd_write(IPTR address, ULONG value);
+/* Recovery hooks call these two narrow board operations. The fixture models
+ * GPIO45 as a logical presence result and records the signal-pad drive level;
+ * it deliberately does not pretend to emulate electrical behavior. */
+static BOOL p4sd_card_present(void);
+static void p4sd_configure_pins(unsigned int drive);
 
 static void p4sd_gpio_output(unsigned gpio, BOOL level)
 {
@@ -335,6 +349,13 @@ static void reset_fixture(void)
     clock_set_result_hz = 400000UL;
     reset_callback_result = TRUE;
     clock_set_result = TRUE;
+    card_present_result = TRUE;
+    card_check_calls = 0U;
+    memset(card_check_pin_drive, 0, sizeof(card_check_pin_drive));
+    expire_budget_on_card_check = FALSE;
+    pin_config_calls = 0U;
+    pin_drive = 0U;
+    expire_budget_on_pin_drive = FALSE;
     shared_host.now_us = mock_now_us;
     sd_host.now_us = mock_now_us;
     sd_host.reset = mock_host_reset;
@@ -357,6 +378,33 @@ static ULONG p4sd_read(IPTR address)
     CHECK(address < (IPTR)P4_SDMMC_BASE + sizeof(sd_registers));
     ++read_calls;
     return sd_registers[(address - (IPTR)P4_SDMMC_BASE) / sizeof(ULONG)];
+}
+
+static BOOL p4sd_card_present(void)
+{
+    if (card_check_calls < sizeof(card_check_pin_drive) /
+                           sizeof(card_check_pin_drive[0]))
+        card_check_pin_drive[card_check_calls] = pin_drive;
+    ++card_check_calls;
+    if (expire_budget_on_card_check)
+    {
+        clock_value = sd_host.budget_start + sd_host.budget_us;
+        clock_step = 0U;
+        expire_budget_on_card_check = FALSE;
+    }
+    return card_present_result;
+}
+
+static void p4sd_configure_pins(unsigned int drive)
+{
+    ++pin_config_calls;
+    pin_drive = drive;
+    if (expire_budget_on_pin_drive)
+    {
+        clock_value = sd_host.budget_start + sd_host.budget_us;
+        clock_step = 0U;
+        expire_budget_on_pin_drive = FALSE;
+    }
 }
 
 static void p4sd_write(IPTR address, ULONG value)
@@ -664,6 +712,23 @@ static void setup_sd_bus(BOOL ready, ULONG client_generation,
     sd_bus.sdcb_Private = (IPTR)&sd_private;
 }
 
+static void setup_recovery_bus(BOOL ready)
+{
+    reset_fixture();
+    setup_sd_bus(ready, 9U, 9U);
+    sd_host.acquire = p4host_acquire;
+    sd_host.release = p4host_release;
+    sd_host.set_budget = p4host_set_budget;
+    sd_host.host_div = 10U;
+    sd_host.initialization_started = TRUE;
+    sd_host.slot_clock[0] = P4SD_CLOCK_MIN_HZ;
+    sd_host.slot_clock[1] = 12000000UL;
+    sd_private.powered = TRUE;
+    sd_private.clock_hz = P4SD_CLOCK_MIN_HZ;
+    sd_private.card_rca = 0x1234UL;
+    CHECK(p4host_acquire(&sd_host, 0U) == TRUE);
+}
+
 static void test_begin_mismatched_generation_invalidates_without_adopting(void)
 {
     reset_fixture();
@@ -952,6 +1017,354 @@ static void test_extracted_host_init_refuses_invalid_shared_divider(void)
     check_extracted_host_init_divider_refusal(17U);
 }
 
+static void test_recovery_needed_checks_owned_consistent_state(void)
+{
+    setup_recovery_bus(TRUE);
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == FALSE);
+
+    sd_private.powered = FALSE;
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == TRUE);
+    sd_private.powered = TRUE;
+    sd_private.card_rca = 0UL;
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == TRUE);
+    sd_private.card_rca = 0x1234UL;
+    sd_private.clock_hz = 0UL;
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == TRUE);
+    sd_private.clock_hz = P4SD_CLOCK_MIN_HZ;
+    sd_host.slot_clock[0] = 800000UL;
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == TRUE);
+    sd_host.slot_clock[0] = P4SD_CLOCK_MIN_HZ;
+    sd_private.host_generation = 8U;
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == TRUE);
+    sd_private.host_generation = 9U;
+    sd_host.host_div = 0U;
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == TRUE);
+    sd_host.host_div = 10U;
+    sd_host.dma_faulted = TRUE;
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == TRUE);
+    sd_host.dma_faulted = FALSE;
+    sd_host.dma_data = modeled_dma_buffer;
+    sd_host.dma_length = sizeof(modeled_dma_buffer);
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == TRUE);
+    sd_host.dma_data = NULL;
+    sd_host.dma_length = 0UL;
+    sd_private.host_ready = FALSE;
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == TRUE);
+    p4host_release(&sd_host);
+}
+
+static void test_recovery_hooks_refuse_nonowner_without_mutation(void)
+{
+    setup_recovery_bus(TRUE);
+    active_task = &task_a;
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == FALSE);
+    CHECK(P4SDBUS_RecoveryPrepare(&sd_bus) == FALSE);
+    CHECK(sd_private.host_ready == TRUE);
+    CHECK(sd_private.card_rca == 0x1234UL);
+    CHECK(sd_private.recovery_budget == FALSE);
+
+    sd_private.recovery_budget = TRUE;
+    sd_host.budget_start = 55U;
+    sd_host.budget_us = 500U;
+    CHECK(P4SDBUS_RecoveryFinish(&sd_bus, TRUE) == FALSE);
+    CHECK(sd_private.host_ready == TRUE);
+    CHECK(sd_private.card_rca == 0x1234UL);
+    CHECK(sd_host.budget_start == 55U);
+    CHECK(sd_host.budget_us == 500U);
+    CHECK(pin_config_calls == 0U);
+
+    active_task = &task_b;
+    sd_private.recovery_budget = FALSE;
+    p4host_release(&sd_host);
+}
+
+static void test_recovery_budget_refusal_preserves_foreign_budget(void)
+{
+    setup_recovery_bus(TRUE);
+    CHECK(p4host_set_budget(&sd_host, 900U) == TRUE);
+    {
+        ULONG foreign_start = sd_host.budget_start;
+        ULONG foreign_budget = sd_host.budget_us;
+        unsigned calls_before = now_calls;
+
+        CHECK(P4SDBUS_RecoveryPrepare(&sd_bus) == FALSE);
+        CHECK(sd_private.host_ready == FALSE);
+        CHECK(sd_private.card_rca == 0UL);
+        CHECK(sd_private.recovery_budget == FALSE);
+        CHECK(sd_host.budget_start == foreign_start);
+        CHECK(sd_host.budget_us == foreign_budget);
+        CHECK(now_calls == calls_before);
+        CHECK(card_check_calls == 0U);
+        CHECK(pin_config_calls == 0U);
+        CHECK(reset_callback_calls == 0U);
+        CHECK(P4SDBUS_RecoveryFinish(&sd_bus, FALSE) == FALSE);
+        CHECK(sd_host.budget_start == foreign_start);
+        CHECK(sd_host.budget_us == foreign_budget);
+        CHECK(sd_private.recovery_budget == FALSE);
+    }
+    p4host_release(&sd_host);
+}
+
+static void check_recovery_refuses_unavailable_card(BOOL powered,
+                                                     BOOL card_present)
+{
+    reset_fixture();
+    setup_recovery_bus(TRUE);
+    sd_private.powered = powered;
+    card_present_result = card_present;
+
+    CHECK(P4SDBUS_RecoveryPrepare(&sd_bus) == FALSE);
+    CHECK(sd_private.recovery_budget == TRUE);
+    CHECK(sd_host.budget_us == P4SD_RECOVERY_BUDGET_US);
+    CHECK(reset_callback_calls == 0U);
+    CHECK(pin_config_calls == 0U);
+    CHECK(card_check_calls == (powered ? 1U : 0U));
+    CHECK(P4SDBUS_RecoveryFinish(&sd_bus, FALSE) == FALSE);
+    CHECK(sd_private.recovery_budget == FALSE);
+    CHECK(sd_host.budget_start == 0UL);
+    CHECK(sd_host.budget_us == 0UL);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(sd_private.card_rca == 0UL);
+    CHECK(pin_drive == 1U);
+    CHECK(gpio_calls == 0U);
+    p4host_release(&sd_host);
+}
+
+static void test_recovery_prepare_requires_powered_present_card(void)
+{
+    check_recovery_refuses_unavailable_card(FALSE, TRUE);
+    check_recovery_refuses_unavailable_card(TRUE, FALSE);
+}
+
+static void test_healthy_recovery_join_preserves_peer_without_global_reset(void)
+{
+    setup_recovery_bus(TRUE);
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == FALSE);
+    CHECK(P4SDBUS_RecoveryPrepare(&sd_bus) == TRUE);
+    CHECK(reset_callback_calls == 0U);
+    CHECK(module_reset_calls == 0U);
+    CHECK(sd_host.host_div == 10U);
+    CHECK(sd_host.generation == 9U);
+    CHECK(sd_host.slot_clock[1] == 12000000UL);
+    CHECK(sd_host.slot_clock[0] == P4SD_CLOCK_MIN_HZ);
+    CHECK(sd_private.host_ready == TRUE);
+    CHECK(sd_private.host_generation == sd_host.generation);
+    CHECK(sd_private.card_rca == 0UL);
+    CHECK(sd_private.recovery_budget == TRUE);
+    CHECK(pin_drive == 3U);
+    CHECK(gpio_calls == 0U);
+
+    /* Generic same-media enumeration supplies the candidate RCA privately. */
+    sd_private.card_rca = 0x4567UL;
+    CHECK(P4SDBUS_RecoveryFinish(&sd_bus, TRUE) == TRUE);
+    CHECK(sd_private.host_ready == TRUE);
+    CHECK(sd_private.card_rca == 0x4567UL);
+    CHECK(sd_private.host_generation == sd_host.generation);
+    CHECK(sd_host.slot_clock[0] == sd_private.clock_hz);
+    CHECK(sd_host.dma_faulted == FALSE);
+    CHECK(sd_host.dma_length == 0UL);
+    CHECK(sd_host.dma_data == NULL);
+    CHECK(pin_drive == 1U);
+    CHECK(card_check_calls == 2U);
+    CHECK(card_check_pin_drive[1] == 1U);
+    CHECK(sd_private.recovery_budget == FALSE);
+    CHECK(sd_host.budget_start == 0UL);
+    CHECK(sd_host.budget_us == 0UL);
+    CHECK(gpio_calls == 0U);
+    p4host_release(&sd_host);
+}
+
+static void check_recovery_explicit_reset(BOOL dma_faulted,
+                                          unsigned host_div,
+                                          ULONG dma_length)
+{
+    reset_fixture();
+    setup_recovery_bus(TRUE);
+    sd_host.dma_faulted = dma_faulted;
+    sd_host.host_div = host_div;
+    sd_host.dma_data = dma_length ? modeled_dma_buffer : NULL;
+    sd_host.dma_length = dma_length;
+
+    CHECK(P4SDBUS_RecoveryNeeded(&sd_bus) == TRUE);
+    CHECK(P4SDBUS_RecoveryPrepare(&sd_bus) == TRUE);
+    CHECK(reset_callback_calls == 1U);
+    CHECK(module_reset_calls == 1U);
+    CHECK(sd_host.generation == reset_generation);
+    CHECK(sd_private.host_generation == reset_generation);
+    CHECK(sd_host.host_div == 10U);
+    CHECK(sd_host.dma_faulted == FALSE);
+    CHECK(sd_host.dma_data == NULL);
+    CHECK(sd_host.dma_length == 0UL);
+    CHECK(sd_private.host_ready == TRUE);
+    CHECK(sd_host.slot_clock[0] == sd_private.clock_hz);
+    CHECK(P4SDBUS_RecoveryFinish(&sd_bus, FALSE) == FALSE);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(sd_private.card_rca == 0UL);
+    CHECK(sd_private.recovery_budget == FALSE);
+    CHECK(sd_host.budget_us == 0UL);
+    p4host_release(&sd_host);
+}
+
+static void test_fault_clock_and_dma_recovery_use_explicit_reset(void)
+{
+    check_recovery_explicit_reset(TRUE, 10U, 0UL);
+    check_recovery_explicit_reset(FALSE, 0U, 0UL);
+    check_recovery_explicit_reset(FALSE, 17U, 0UL);
+    check_recovery_explicit_reset(FALSE, 10U, 512UL);
+}
+
+static void test_recovery_reset_and_clock_init_failures_stay_unavailable(void)
+{
+    setup_recovery_bus(TRUE);
+    sd_host.host_div = 17U;
+    reset_callback_result = FALSE;
+    CHECK(P4SDBUS_RecoveryPrepare(&sd_bus) == FALSE);
+    CHECK(reset_callback_calls == 1U);
+    CHECK(sd_private.recovery_budget == TRUE);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(sd_private.card_rca == 0UL);
+    CHECK(pin_config_calls == 0U);
+    CHECK(P4SDBUS_RecoveryFinish(&sd_bus, FALSE) == FALSE);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(sd_private.card_rca == 0UL);
+    CHECK(sd_private.recovery_budget == FALSE);
+    p4host_release(&sd_host);
+
+    reset_fixture();
+    setup_recovery_bus(TRUE);
+    clock_set_result = FALSE;
+    CHECK(P4SDBUS_RecoveryPrepare(&sd_bus) == FALSE);
+    CHECK(reset_callback_calls == 0U);
+    CHECK(clock_set_calls == 1U);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(sd_private.card_rca == 0UL);
+    CHECK(sd_private.recovery_budget == TRUE);
+    CHECK(pin_drive == 3U);
+    CHECK(P4SDBUS_RecoveryFinish(&sd_bus, FALSE) == FALSE);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(sd_private.card_rca == 0UL);
+    CHECK(sd_private.recovery_budget == FALSE);
+    CHECK(pin_drive == 1U);
+    p4host_release(&sd_host);
+}
+
+static void test_recovery_prepare_refuses_exact_wrapped_expiry(void)
+{
+    setup_recovery_bus(TRUE);
+    clock_value = UINT32_MAX - 20U;
+    clock_step = 0U;
+    expire_budget_on_pin_drive = TRUE;
+
+    CHECK(P4SDBUS_RecoveryPrepare(&sd_bus) == FALSE);
+    CHECK(sd_host.budget_start == UINT32_MAX - 20U);
+    CHECK(clock_value == (ULONG)(sd_host.budget_start +
+                                 sd_host.budget_us));
+    CHECK(clock_value < sd_host.budget_start);
+    CHECK(pin_drive == 3U);
+    CHECK(clock_set_calls == 0U);
+    CHECK(sd_private.recovery_budget == TRUE);
+    CHECK(P4SDBUS_RecoveryFinish(&sd_bus, FALSE) == FALSE);
+    CHECK(sd_private.recovery_budget == FALSE);
+    CHECK(sd_host.budget_us == 0UL);
+    CHECK(pin_drive == 1U);
+    p4host_release(&sd_host);
+}
+
+static void test_recovery_finish_rechecks_expiry_after_lowering_pins(void)
+{
+    ULONG recovery_start;
+
+    setup_recovery_bus(TRUE);
+    clock_value = UINT32_MAX - 20U;
+    clock_step = 0U;
+    CHECK(P4SDBUS_RecoveryPrepare(&sd_bus) == TRUE);
+    recovery_start = sd_host.budget_start;
+    sd_private.card_rca = 0xCAFEUL;
+    expire_budget_on_card_check = TRUE;
+
+    CHECK(P4SDBUS_RecoveryFinish(&sd_bus, TRUE) == FALSE);
+    CHECK(clock_value == (ULONG)(recovery_start +
+                                 P4SD_RECOVERY_BUDGET_US));
+    CHECK(clock_value < recovery_start);
+    CHECK(card_check_calls == 2U);
+    CHECK(card_check_pin_drive[1] == 1U);
+    CHECK(pin_drive == 1U);
+    CHECK(sd_private.recovery_budget == FALSE);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(sd_private.card_rca == 0UL);
+    CHECK(sd_host.budget_start == 0UL);
+    CHECK(sd_host.budget_us == 0UL);
+    p4host_release(&sd_host);
+}
+
+static void check_recovery_finish_refuses_inconsistent_state(BOOL provide_rca,
+                                                              BOOL bad_clock,
+                                                              BOOL active_dma,
+                                                              BOOL dma_faulted)
+{
+    reset_fixture();
+    setup_recovery_bus(TRUE);
+    CHECK(P4SDBUS_RecoveryPrepare(&sd_bus) == TRUE);
+    if (provide_rca)
+        sd_private.card_rca = 0xC0DEUL;
+    if (bad_clock)
+        sd_host.slot_clock[0] = P4SD_CLOCK_MIN_HZ + 1UL;
+    if (active_dma)
+    {
+        sd_host.dma_data = modeled_dma_buffer;
+        sd_host.dma_length = 512UL;
+    }
+    sd_host.dma_faulted = dma_faulted;
+
+    CHECK(P4SDBUS_RecoveryFinish(&sd_bus, TRUE) == FALSE);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(sd_private.card_rca == 0UL);
+    CHECK(sd_private.recovery_budget == FALSE);
+    CHECK(sd_host.budget_start == 0UL);
+    CHECK(sd_host.budget_us == 0UL);
+    CHECK(pin_drive == 1U);
+    p4host_release(&sd_host);
+}
+
+static void test_recovery_finish_refuses_missing_rca_clock_or_dma_faults(void)
+{
+    check_recovery_finish_refuses_inconsistent_state(FALSE, FALSE, FALSE,
+                                                     FALSE);
+    check_recovery_finish_refuses_inconsistent_state(TRUE, TRUE, FALSE,
+                                                     FALSE);
+    check_recovery_finish_refuses_inconsistent_state(TRUE, FALSE, TRUE,
+                                                     FALSE);
+    check_recovery_finish_refuses_inconsistent_state(TRUE, FALSE, FALSE,
+                                                     TRUE);
+}
+
+static void test_recovery_finish_failure_and_generation_mismatch_invalidate(void)
+{
+    setup_recovery_bus(TRUE);
+    CHECK(P4SDBUS_RecoveryPrepare(&sd_bus) == TRUE);
+    sd_private.card_rca = 0xABCDUL;
+    CHECK(P4SDBUS_RecoveryFinish(&sd_bus, FALSE) == FALSE);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(sd_private.card_rca == 0UL);
+    CHECK(sd_private.recovery_budget == FALSE);
+    CHECK(pin_drive == 1U);
+    p4host_release(&sd_host);
+
+    reset_fixture();
+    setup_recovery_bus(TRUE);
+    CHECK(P4SDBUS_RecoveryPrepare(&sd_bus) == TRUE);
+    sd_private.card_rca = 0xABCDUL;
+    ++sd_host.generation;
+    CHECK(P4SDBUS_RecoveryFinish(&sd_bus, TRUE) == FALSE);
+    CHECK(sd_private.host_ready == FALSE);
+    CHECK(sd_private.card_rca == 0UL);
+    CHECK(sd_private.recovery_budget == FALSE);
+    CHECK(pin_drive == 1U);
+    CHECK(sd_host.budget_start == 0UL);
+    CHECK(sd_host.budget_us == 0UL);
+    p4host_release(&sd_host);
+}
+
 static void test_stale_power_and_width_setters_have_no_hardware_access(void)
 {
     reset_fixture();
@@ -1024,6 +1437,17 @@ int main(void)
     run_test("extracted init refuses faulted or active DMA", test_extracted_host_init_refuses_faulted_or_active_dma);
     run_test("extracted init reset failure avoids slot writes", test_extracted_host_init_failed_reset_does_no_slot_writes);
     run_test("extracted init refuses invalid shared divider", test_extracted_host_init_refuses_invalid_shared_divider);
+    run_test("recovery-needed checks owned consistent state", test_recovery_needed_checks_owned_consistent_state);
+    run_test("recovery hooks refuse non-owner", test_recovery_hooks_refuse_nonowner_without_mutation);
+    run_test("recovery budget refusal preserves foreign budget", test_recovery_budget_refusal_preserves_foreign_budget);
+    run_test("recovery prepare requires powered present card", test_recovery_prepare_requires_powered_present_card);
+    run_test("healthy recovery join preserves peer without reset", test_healthy_recovery_join_preserves_peer_without_global_reset);
+    run_test("fault, clock and DMA recovery use explicit reset", test_fault_clock_and_dma_recovery_use_explicit_reset);
+    run_test("recovery reset/clock init failures stay unavailable", test_recovery_reset_and_clock_init_failures_stay_unavailable);
+    run_test("recovery prepare refuses exact wrapped expiry", test_recovery_prepare_refuses_exact_wrapped_expiry);
+    run_test("recovery finish rechecks after pin lowering", test_recovery_finish_rechecks_expiry_after_lowering_pins);
+    run_test("recovery finish refuses RCA/clock/DMA inconsistency", test_recovery_finish_refuses_missing_rca_clock_or_dma_faults);
+    run_test("recovery finish failure/generation mismatch invalidates", test_recovery_finish_failure_and_generation_mismatch_invalidate);
     run_test("stale power/width setters have no hardware access", test_stale_power_and_width_setters_have_no_hardware_access);
     run_test("W1C writes preserve only low command/data bits", test_p4sd_set_acknowledges_only_low_w1c_bits);
     run_test("unrelated register write is unchanged", test_p4sd_set_preserves_unrelated_register_write);

@@ -52,6 +52,7 @@ static int FNAME_P4SD(Init)(struct SDCardBase *SDCardBase)
     bus->sdcb_Private = (IPTR)priv;
     priv->host = host;
     priv->host_generation = 0;
+    priv->recovery_budget = FALSE;
 
     /* No generic SDHCI accessor is valid for this DesignWare register set. */
     bus->sdcb_IOReadByte = NULL;
@@ -74,6 +75,9 @@ static int FNAME_P4SD(Init)(struct SDCardBase *SDCardBase)
     bus->sdcb_BusPostIRQInit = FNAME_P4SD(BusPostIRQInit);
     bus->sdcb_BeginTransaction = FNAME_P4SDBUS(BeginTransaction);
     bus->sdcb_EndTransaction = FNAME_P4SDBUS(EndTransaction);
+    bus->sdcb_RecoveryNeeded = FNAME_P4SDBUS(RecoveryNeeded);
+    bus->sdcb_RecoveryPrepare = FNAME_P4SDBUS(RecoveryPrepare);
+    bus->sdcb_RecoveryFinish = FNAME_P4SDBUS(RecoveryFinish);
 
     ObtainSemaphore(&SDCardBase->sdcard_BusSem);
     units->sdcbu_UnitBase = SDCardBase->sdcard_TotalBusUnits;

@@ -235,6 +235,7 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
             "P4_PMU_LDO_3V3",
             "P4_PMU_LDO_EN_VDET",
             "P4SD_POWER_DELAY_US",
+            "P4SD_RECOVERY_BUDGET_US",
             "P4SD_CLOCK_MIN_HZ",
             "P4SD_CLOCK_MAX_HZ",
         ),
@@ -296,6 +297,30 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
                     BUS_SOURCE,
                     "p4sd_host_init",
                     r"\bstatic\s+BOOL\s+p4sd_host_init\s*\(",
+                ),
+            ),
+            (
+                "P4SDBUS_RecoveryNeeded",
+                extract_definition(
+                    BUS_SOURCE,
+                    "P4SDBUS_RecoveryNeeded",
+                    r"\bBOOL\s+FNAME_P4SDBUS\s*\(\s*RecoveryNeeded\s*\)\s*\(",
+                ),
+            ),
+            (
+                "P4SDBUS_RecoveryPrepare",
+                extract_definition(
+                    BUS_SOURCE,
+                    "P4SDBUS_RecoveryPrepare",
+                    r"\bBOOL\s+FNAME_P4SDBUS\s*\(\s*RecoveryPrepare\s*\)\s*\(",
+                ),
+            ),
+            (
+                "P4SDBUS_RecoveryFinish",
+                extract_definition(
+                    BUS_SOURCE,
+                    "P4SDBUS_RecoveryFinish",
+                    r"\bBOOL\s+FNAME_P4SDBUS\s*\(\s*RecoveryFinish\s*\)\s*\(",
                 ),
             ),
             (
@@ -401,6 +426,26 @@ def audit_transaction_call_modes() -> list[tuple[str, str]]:
     return results
 
 
+def audit_startup_power_order() -> str:
+    body = extract_definition(
+        BUS_SOURCE,
+        "p4sd_bus_init_locked",
+        r"\bstatic\s+void\s+p4sd_bus_init_locked\s*\(",
+    )
+    host_failure = re.search(
+        r"if\s*\(\s*!p4sd_host_init\s*\(\s*bus\s*\)\s*\)\s*"
+        r"\{(?P<failure>.*?)\breturn\s*;\s*\}",
+        body,
+        flags=re.DOTALL,
+    )
+    power_call = body.find("FNAME_P4SDBUS(SetPowerLevel)(")
+    if not host_failure:
+        raise ValueError("bus initialization must return when host init fails")
+    if power_call <= host_failure.end():
+        raise ValueError("bus initialization must power the card after host init")
+    return sha256(body.encode("utf-8"))
+
+
 def audit_host_abi() -> str:
     source = HOST_HEADER.read_text(encoding="utf-8")
     abi_match = re.search(r"(?m)^\s*#\s*define\s+P4_SDMMC_HOST_ABI\s+(\d+)\b", source)
@@ -482,6 +527,11 @@ def run() -> int:
     )
 
     call_mode_checks = audit_transaction_call_modes()
+    startup_power_hash = audit_startup_power_order()
+    print(
+        "Startup host-init-before-power source-order audit: PASS "
+        f"({startup_power_hash}; not runtime exercised)"
+    )
     host_abi_hash = audit_host_abi()
     print(f"P4 SDMMC host ABI 7 initialization/budget/command/DMA source check: PASS ({host_abi_hash})")
     budget_checks, command_hash = audit_command_budget_usage()

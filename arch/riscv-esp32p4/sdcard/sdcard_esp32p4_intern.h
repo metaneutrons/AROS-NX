@@ -30,6 +30,7 @@ struct p4sd_private
     /* Host-owned protocol session, independent of the mounted unit's RCA.
      * Enumeration may replace this before same-media publication succeeds. */
     ULONG card_rca;
+    BOOL recovery_budget; /* This client started the current owned budget. */
 };
 
 #define P4SD_PRIV(bus) ((struct p4sd_private *)(IPTR)(bus)->sdcb_Private)
@@ -88,6 +89,7 @@ struct p4sd_private
 #define P4SD_DATA_TIMEOUT_US           5000000UL
 #define P4SD_BUSY_TIMEOUT_US           1000000UL
 #define P4SD_POWER_DELAY_US            100000UL
+#define P4SD_RECOVERY_BUDGET_US        10000000UL
 /*
  * A1 keeps transfers bounded to the generic sdcard.device chunk size.  The
  * controller remains polling and read-only; larger requests are split by the
@@ -131,6 +133,9 @@ struct p4sd_private
 void FNAME_P4SDBUS(SoftReset)(UBYTE mask, struct sdcard_Bus *bus);
 BOOL FNAME_P4SDBUS(BeginTransaction)(struct sdcard_Bus *bus, BOOL may_wait);
 void FNAME_P4SDBUS(EndTransaction)(struct sdcard_Bus *bus);
+BOOL FNAME_P4SDBUS(RecoveryNeeded)(struct sdcard_Bus *bus);
+BOOL FNAME_P4SDBUS(RecoveryPrepare)(struct sdcard_Bus *bus);
+BOOL FNAME_P4SDBUS(RecoveryFinish)(struct sdcard_Bus *bus, BOOL success);
 void FNAME_P4SDBUS(SetClock)(ULONG speed, struct sdcard_Bus *bus);
 void FNAME_P4SDBUS(SetPowerLevel)(ULONG levels, BOOL lowest,
                                   struct sdcard_Bus *bus);

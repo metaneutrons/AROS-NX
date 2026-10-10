@@ -286,6 +286,79 @@ static BOOL p4sd_host_init(struct sdcard_Bus *bus)
     return TRUE;
 }
 
+/* Called only by RecoverUnit with one outer task-context host acquisition.
+ * Generation invalidation is shared with the radio; ordinary slot joining
+ * must not reset a healthy peer. No unit state is published here. */
+BOOL FNAME_P4SDBUS(RecoveryNeeded)(struct sdcard_Bus *bus)
+{
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    struct P4SDMMCHost *host = priv->host;
+    if (!host || host->lock.ss_Owner != FindTask(NULL))
+        return FALSE;
+    return !priv->host_ready || !priv->powered || !priv->card_rca ||
+           !priv->clock_hz || host->slot_clock[0] != priv->clock_hz ||
+           priv->host_generation != host->generation ||
+           host->host_div < 1 || host->host_div > 16 ||
+           host->dma_faulted || host->dma_length;
+}
+
+BOOL FNAME_P4SDBUS(RecoveryPrepare)(struct sdcard_Bus *bus)
+{
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    struct P4SDMMCHost *host = priv->host;
+    if (!host || host->lock.ss_Owner != FindTask(NULL) ||
+        priv->recovery_budget)
+        return FALSE;
+    priv->host_ready = FALSE;
+    priv->card_rca = 0;
+    if (!host->set_budget(host, P4SD_RECOVERY_BUDGET_US))
+        return FALSE;
+    priv->recovery_budget = TRUE;
+    /* Recovery does not cycle rails or toggle a powered card's switch. */
+    if (!priv->powered || !p4sd_card_present() || !p4host_budget_ok(host))
+        return FALSE;
+    if (!host->initialization_started || host->host_div < 1 ||
+        host->host_div > 16 || host->dma_faulted || host->dma_length)
+        if (!p4sd_module_reset(bus))
+            return FALSE;
+    p4sd_configure_pins(3);
+    return p4host_budget_ok(host) && p4sd_host_init(bus) &&
+           p4host_budget_ok(host);
+}
+
+BOOL FNAME_P4SDBUS(RecoveryFinish)(struct sdcard_Bus *bus, BOOL success)
+{
+    struct p4sd_private *priv = P4SD_PRIV(bus);
+    struct P4SDMMCHost *host = priv->host;
+    BOOL result;
+    if (!host || host->lock.ss_Owner != FindTask(NULL))
+        return FALSE;
+    result = success && priv->recovery_budget && priv->host_ready &&
+             priv->powered && priv->card_rca &&
+             priv->host_generation == host->generation &&
+             host->host_div >= 1 && host->host_div <= 16 &&
+             !host->dma_faulted && !host->dma_length &&
+             host->slot_clock[0] == priv->clock_hz && priv->clock_hz &&
+             p4host_budget_ok(host);
+    if (priv->recovery_budget)
+    {
+        p4sd_configure_pins(1);
+        /* GPIO/cache/observer callbacks may consume the remaining budget. */
+        result = result && p4sd_card_present() && p4host_budget_ok(host);
+        if (!host->set_budget(host, 0))
+            result = FALSE;
+        priv->recovery_budget = FALSE;
+    }
+    if (!result)
+    {
+        /* SameCard mismatch and every failed preparation stay unavailable.
+         * A later ordinary StartUnit cannot use the mounted cached RCA. */
+        priv->host_ready = FALSE;
+        priv->card_rca = 0;
+    }
+    return result;
+}
+
 /* Generic SDHCI SetClock is linked into sdcard.device even though this bus
    never calls it.  Supply its architecture hook so that object can link. */
 ULONG FNAME_SDCBUS(GetClockDiv)(ULONG speed, struct sdcard_Bus *bus)
@@ -784,10 +857,6 @@ ULONG FNAME_P4SDBUS(FinishData)(struct TagItem *tags,
 
 static void p4sd_bus_init_locked(struct sdcard_Bus *bus)
 {
-    FNAME_P4SDBUS(SetPowerLevel)(bus->sdcb_Power, FALSE, bus);
-    /* IDF starts strongly while identifying the card. */
-    p4sd_configure_pins(3);
-
     if (!p4sd_host_init(bus))
     {
         bug("[P4SD%02u] host clock/reset initialization failed\n",
@@ -795,6 +864,10 @@ static void p4sd_bus_init_locked(struct sdcard_Bus *bus)
         return;
     }
 
+    /* Power's ready guard requires successful host initialization first. */
+    FNAME_P4SDBUS(SetPowerLevel)(bus->sdcb_Power, FALSE, bus);
+    /* IDF starts strongly while identifying the card. */
+    p4sd_configure_pins(3);
     FNAME_P4SDBUS(SetBusWidth)(1, bus);
     bug("[P4SD%02u] slot 0 polling IDMAC receive, 1-bit/400 kHz, read-only\n",
         bus->sdcb_BusNum);

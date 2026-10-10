@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; aggregate-budget ABI7 host tested/build verified` | Generic recovery, private RCA and shared command/clock/DMA budget host tested/build verified; accepted production source integrated locally. Backend hooks/dispatch, real SMP interleavings, integrated core/package build, radio integration, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; P4 recovery hooks host tested/build verified` | Generic recovery, private RCA and shared command/clock/DMA budget host tested/build verified; P4 hooks bound and host tested/build verified. Accepted production source integrated locally. Task dispatch, real SMP interleavings, integrated core/package build, radio integration, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -189,8 +189,8 @@ Open/Close, active recheck and initial registration publication use the same
 task-only metadata lock, separate from the IRQ command-listener lock; no host
 acquisition or hardware waits occur under it. Relative unit-base indexing and
 open-count overflow/underflow are guarded. This is host tested and RV32 build
-verified, not an enabled hardware recovery path: P4 backend hooks and
-BusTask/radio dispatch remain open, as does the end-to-end deadline. Real SMP
+verified, not an enabled hardware recovery path: P4 hooks and the aggregate
+budget are now bound below; BusTask/radio dispatch remain open. Real SMP
 interleavings and non-P4 hardware regression remain unverified. A failed media
 identity comparison must leave the backend unavailable: ordinary StartUnit
 must not subsequently select a replacement card using the cached RCA.
@@ -208,10 +208,21 @@ acquisition/release does not reset it, and final release clears it. This
 avoids separate request/reset/clock deadline parameters and enforces the same
 owner operation across every callback. Expired DMA cleanup preserves possible
 bus-master metadata, latches fault and invalidates generations rather than
-claiming idle. It is host tested/build verified and is not bound to recovery yet.
+claiming idle. It is host tested/build verified and now bound to recovery below.
 Poll caps still bound stopped-clock loops; scheduler/cache-callback latency
 is not hard real-time bounded by this API. Final recovery publication must
 also validate the budget after all callbacks, before clearing it.
+P4 needed/prepare/finish hooks now bind that budget to the generic owned
+recovery operation. Preparation clears private readiness/RCA, refuses a
+pre-existing active budget, preserves powered rails, resets only an
+uninitialized/faulted/invalid-clock/active-DMA controller and otherwise joins
+the healthy shared host. Finish validates private RCA/generation/clocks/DMA,
+lowers signal drive, rechecks presence/budget after callbacks and clears only
+its own budget. Any failure, including same-media mismatch, leaves the
+backend unavailable. This candidate is host tested/build verified; automatic task
+dispatch/retry policy remains open. Startup now initializes the host before
+its ready-guarded power callback, correcting a skipped initial power sequence.
+Neither this source correction nor bound hooks establish hardware acceptance.
 
 Accepted production source through acd62ff237 is integrated locally after
 12df190097. This preserves the boot-budget, quiet-profile and ProductionQualify
@@ -28764,6 +28775,72 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: bind backend needed/prepare/finish and
   task-context recovery, integrated core/package and SD hardware regression,
   then C6 SDIO/ESP-Hosted communication and native SANA-II WLAN.
+
+### 2026-10-10 - N0 P4 recovery hooks host tested and build verified
+
+- State: host tested/build verified on feature/esp32p4-wifi, parent799c4eda40. Previous
+  goal turn made progress: aggregate controller budget tested/built/committed.
+- Implementation: bound task-only needed/prepare/finish hooks use the shared
+  ten-second budget through reset, clock, enumeration and configuration.
+  Healthy generation joining preserves the peer; explicit reset invalidates
+  both clients after a host fault. Powered rails are not cycled. Candidate
+  identity/configuration failure leaves host_ready false and card_rca zero;
+  the mounted unit identity remains the generic layer's responsibility.
+  An active budget not started by this client is not cleared by finish.
+- Startup correction: bus initialization previously called SetPowerLevel
+  before host initialization although SetPowerLevel refuses !host_ready.
+  Host initialization now precedes the power callback; signal setup and
+  width follow. This removes reliance on inherited power state in this
+  development branch. No claim is made about a new cold-boot result.
+- Verification: extracted-source hook models, independent review
+  and isolated RV32 SD module build completed. Private p4sd_private changed; all three
+  P4 client objects explicitly invalidated. Resource ABI remains7/224 bytes,
+  no public AROS ABI or diagnostic switches changed.
+- Isolated JC1060-v2/SMP kernel-sdcard-quick build session30738 exits0 after
+  explicit three-object invalidation. Final Needed consistency guard then
+  rebuilt in session53342, exit0. Final device133,804 bytes SHA-256
+  408c5b20ecf63ec2e5e19a430a21fceba75bedcc68853bb1cafe05d1b68f0407;
+  undefined symbols empty. Resource is unchanged ABI7; complete core/package
+  still unbuilt and no image deployed.
+- Primary generic recovery regression session37208 exits0: 22 cases/1,043
+  checks non-SMP and22 cases/1,435 checks modeled SMP, each O0/O2 sanitizers;
+  assembled fixture463d237a1367f96b8e98e47142bdfa29c676499438787cf643489c7d82904603.
+  This substitutes identification and activation callbacks, not actual P4
+  backend/silicon or hart interleavings. Adapter regression session97108
+  exits0:44 cases/825 checks each O0/O2 ASan/UBSan; trace-off fault modes1/2/3
+  each1 case/30 checks. Actual denylist unchanged, physical CMD13 is stubbed.
+- Independent read-only production review found no concrete ownership,
+  foreign-budget clearing, same-media, peer-reset or powered-rail defect.
+  The memory pool uses MEMF_CLEAR; initial powered state is false and the
+  corrected host-before-power order is necessary. Final generic publication
+  uses a short metadata guard with no hardware callbacks. Reviewed bus source
+  SHA-256 90df02bbf1cf3e8b0023ab18d93fa2a32776003a78568471b5900027ba76a617;
+  init 814b789da72e418cd9707ba30d2f3eff2e75eb0d68a22038303c5fce84488dc4;
+  private header d6f10cb098b0281271f616ae64b2761511456b453492a85468b05ea00d5ccb7a.
+  Review is source evidence only, not a controller or card experiment.
+- Primary hook regression session12192 exits0: 40 cases/401,034 checks each
+  O0/O2 with ASan/UBSan and strict warnings. Coverage includes owned entry,
+  foreign budget preservation, powered/present-card refusal, healthy peer
+  joining, explicit reset after fault/invalid clock/active DMA, reset/clock
+  failure, wrapped exact expiry, callback expiry and final RCA/clock/DMA
+  consistency. Extracted production functions run against modeled registers
+  and callbacks, not real card enumeration or SMP interleavings.
+  Assembled fixture SHA-256
+  40cfdcc473a366b4b4670cf3e5640c42ee15621d1da09526d2cf593b278661f6;
+  test fixture5d8d170773d1d549b29a29b92e639f2caaf09534f3eba8a99fe810b331205409;
+  runner60ff60db85b7080dbe65c7f9748ba958b1271c5fb0e801a99b3ed5d8a93433d8.
+  Startup host-before-power source-order audit PASS, input SHA-256
+  2e2a8c8c41429092f43e71e9c5856110089826e0cb4de9d8028978d81679b56d;
+  this startup sequence is not runtime exercised by that model.
+- Limits: aggregate acceptance/polling budget is not hard real-time
+  cancellation of scheduler/cache/copy latency. Generic same-media tests
+  use scripted identification/activation; silicon and real SMP concurrency
+  are not established. Automatic BusTask recovery dispatch remains absent.
+- Safety: no hardware, serial, reset, flash, SD writes or C6 firmware actions.
+  Accepted production checkout and installed artifacts are unchanged.
+- Next: enable bounded task dispatch without
+  silent failed-IO replay, integrated core/package plus SD hardware regression,
+  then installed-C6 SDIO/ESP-Hosted and native SANA-II WLAN.
 
 ## Evidence-entry template
 
