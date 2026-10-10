@@ -32,6 +32,27 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def materialize_ulong_mask(source: str, name: str) -> str:
+    """Give an extracted mask the target-width ULONG type in the LP64 model."""
+    pattern = re.compile(
+        rf"(?m)^([ \t]*#[ \t]*define[ \t]+{re.escape(name)}\b[ \t]+)([^\r\n]+)$"
+    )
+    matches = list(pattern.finditer(source))
+    if len(matches) != 1:
+        raise ValueError(
+            f"expected one single-line {name} definition to materialize, "
+            f"found {len(matches)}"
+        )
+    expression = matches[0].group(2).strip()
+    if not expression or "/*" in expression or "//" in expression:
+        raise ValueError(f"cannot safely materialize {name}: {expression!r}")
+    return pattern.sub(
+        lambda match: f"{match.group(1)}((ULONG)({expression}))",
+        source,
+        count=1,
+    )
+
+
 def load_extraction_helpers():
     sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location(
@@ -63,15 +84,7 @@ def extract_production_bodies(helper) -> tuple[str, dict[str, str]]:
         name: helper.extract_definition(BUS_SOURCE, name, signature)
         for name, signature in signatures.items()
     }
-    # The production MMC_STATUS_MASK macro has legacy signed-int spelling.
-    # Keep the real helper body, but scope this warning to its conditional
-    # conversion instead of weakening conversion diagnostics for the fixture.
-    bodies["p4sd_adopt_rca_fixture"] = (
-        '#pragma GCC diagnostic push\n'
-        '#pragma GCC diagnostic ignored "-Wsign-conversion"\n'
-        + bodies["p4sd_adopt_rca"]
-        + '\n#pragma GCC diagnostic pop'
-    )
+    bodies["p4sd_adopt_rca_fixture"] = bodies["p4sd_adopt_rca"]
     for name, signature in command_type_signatures.items():
         bodies[name] = helper.extract_definition(COMMAND_HEADER, name, signature)
     fixture = FIXTURE.read_text(encoding="utf-8")
@@ -114,7 +127,9 @@ def extract_production_bodies(helper) -> tuple[str, dict[str, str]]:
         )
     )
     bodies["sd_constants"] = constants
-    assembled = fixture.replace(INSERT_CONSTANTS_MARKER, constants)
+    host_constants = materialize_ulong_mask(constants, "MMC_STATUS_MASK")
+    bodies["host_sd_constants"] = host_constants
+    assembled = fixture.replace(INSERT_CONSTANTS_MARKER, host_constants)
     assembled = assembled.replace(
         INSERT_TYPES_MARKER,
         "\n\n".join(
@@ -230,6 +245,10 @@ def run() -> int:
         "p4sd_send_cmd_locked",
     ):
         print(f"  {name}: {sha256(bodies[name].encode('utf-8'))}")
+    print(
+        "  host-typed SD constants (test-only): "
+        f"{sha256(bodies['host_sd_constants'].encode('utf-8'))}"
+    )
     print(f"  fixture: {sha256(FIXTURE.read_bytes())}")
     print(f"  actual denylist values: {sorted(denylist)}")
     print(
@@ -241,9 +260,11 @@ def run() -> int:
         "transfer path are structurally audited. Host, CMD13 confirmation, "
         "CMD18 recovery, TagItem/bus/private state, logging and memory helpers "
         "are fixture stand-ins. The observer itself is not executed; no MMIO "
-        "or hardware behavior is modeled. The extracted helper's legacy signed "
-        "MMC_STATUS_MASK conversion warning is suppressed only around that "
-        "helper; all other fixture conversion warnings remain errors."
+        "or hardware behavior is modeled. Host-only injection difference: the "
+        "extracted MMC_STATUS_MASK macro is explicitly cast to fixture ULONG "
+        "(uint32_t) to preserve its RV32 width on LP64; the production helper "
+        "body and source header remain unchanged. All conversion warnings "
+        "remain errors."
     )
 
     with tempfile.TemporaryDirectory(prefix="p4-sd-command-adapter-") as temporary:

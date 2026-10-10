@@ -23,11 +23,14 @@ HOST_HEADER = SDMMC / "host.h"
 INCLUDE = ROOT / "compiler" / "include"
 INSERT_MARKER = "/* INSERT_ACTUAL_COMMAND_ENGINE */"
 INSERT_BUDGET_MARKER = "/* INSERT_ACTUAL_BUDGET_HELPER */"
+INSERT_WIDTH_MARKER = "/* INSERT_HOST_WIDTH_CONSTANTS */"
 BUILD_TIMEOUT_SECONDS = 60
 RUN_TIMEOUT_SECONDS = 30
 
 CLOCK_EXTRACTION = run_path(str(PORT / "tools" / "test-clock-engine.py"))
 extract_definition = CLOCK_EXTRACTION["extract_definition"]
+materialize_ulong_macros = CLOCK_EXTRACTION["materialize_ulong_macros"]
+production_macro_candidates = CLOCK_EXTRACTION["production_macro_candidates"]
 
 
 def sha256(data: bytes) -> str:
@@ -42,7 +45,7 @@ def replace_once(body: str, label: str, old: str, new: str) -> str:
 
 def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     fixture = FIXTURE.read_text(encoding="utf-8")
-    for marker in (INSERT_MARKER, INSERT_BUDGET_MARKER):
+    for marker in (INSERT_MARKER, INSERT_BUDGET_MARKER, INSERT_WIDTH_MARKER):
         if fixture.count(marker) != 1:
             raise ValueError(f"fixture must contain exactly one {marker}")
     source = COMMAND_SOURCE.read_text(encoding="utf-8")
@@ -62,10 +65,25 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         for name, signature in function_specs
     ]
     host_header = HOST_HEADER.read_text(encoding="utf-8")
+    abi_match = re.search(
+        r"(?m)^\s*#\s*define\s+P4_SDMMC_HOST_ABI\s+8\s*$", host_header
+    )
+    if not abi_match:
+        raise ValueError("command fixture requires production host ABI 8")
+    abi = abi_match.group(0)
     budget_helper = extract_definition(
         host_header,
         "p4host_budget_ok",
         r"\bstatic\s+inline\s+BOOL\s+p4host_budget_ok\s*\(",
+    )
+    macro_headers = [
+        ("command.h", (SDMMC / "command.h").read_text(encoding="utf-8")),
+        ("dma.h", (SDMMC / "dma.h").read_text(encoding="utf-8")),
+        ("registers.h", (SDMMC / "registers.h").read_text(encoding="utf-8")),
+        ("host.h", host_header),
+    ]
+    width_originals, width_overrides = materialize_ulong_macros(
+        macro_headers, production_macro_candidates(fixture + source)
     )
 
     command_read = extract_definition(
@@ -101,7 +119,10 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         ),
     )
     assembled = assembled.replace(INSERT_BUDGET_MARKER, budget_helper)
+    assembled = assembled.replace(INSERT_WIDTH_MARKER, width_overrides)
     hashes = [(name, body.encode("utf-8")) for name, body in definitions]
+    hashes.extend((name, body.encode("utf-8")) for name, body in width_originals)
+    hashes.append(("target-width register/command overrides", width_overrides.encode("utf-8")))
     hashes.extend(
         (name, body.encode("utf-8"))
         for name, body in (
@@ -125,6 +146,7 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         )
     )
     hashes.append(("p4host_budget_ok source", budget_helper.encode("utf-8")))
+    hashes.append(("production ABI 8 constant", abi.encode("utf-8")))
     hashes.append(("assembled fixture", assembled.encode("utf-8")))
     return assembled, hashes
 
@@ -142,7 +164,8 @@ def run() -> int:
         "Production command and diagnostic-observer call sites are extracted; "
         "only MMIO access, the RISC-V fence, callback, and DMA endpoints are "
         "modeled. Native host pointers are not an RV32 ABI test or hardware "
-        "evidence."
+        "evidence; register/command constants are explicitly materialized as "
+        "target ULONGs, and the fake DMA endpoint is not a DMA privacy proof."
     )
 
     with tempfile.TemporaryDirectory(prefix="p4-command-engine-") as temporary:

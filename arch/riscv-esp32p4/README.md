@@ -3,8 +3,9 @@
 Native association development (2026-10-10): private bridge ABI3 adds an
 owner-service-only, aggregate-eight-second Disconnect/absence/SetConfig/
 Connect/current-AP path, owned credential copies and separate associated
-traffic gating. It remains default-disabled behind the actual C6 privacy and
-recovery gate. Initial profile coverage is open or WPA2-PSK/CCMP infrastructure;
+traffic gating. It remains default-disabled behind separate C6 and host privacy/
+recovery release assertions; neither build flag is a runtime attestation.
+Initial profile coverage is open or WPA2-PSK/CCMP infrastructure;
 other security profiles are not silently downgraded. This backend is not yet
 bound to S2_SETOPTIONS, and SECURITY_SUMMARY remains the only advertised
 wireless capability. Source-extracted association workflow models pass14,312
@@ -13,10 +14,17 @@ native event/configuration models pass6 scenarios/67 checks at both levels.
 RPC transport, host, clock and Exec boundaries are fakes. No real credential transmission, C6 update or hardware
 acceptance occurred. Models, independent review and final artifact evidence
 are recorded in ROADMAP.md; development is not a connectivity pass.
-Host-side privacy remains open too: the shared SDMMC motor stages TX into
-its permanent DMA bounce buffer without a final wipe. A quiescence- and
-cache-correct clearing path must be qualified before native credentials are
-enabled; wiping only WLAN-owned scratch is insufficient.
+Host-side privacy development (2026-10-10): private host ABI8 now makes DMA
+preparation own TX staging and tracks residue in the permanent motor. Successful
+completion/reset clears it with volatile writes and serialized cache writeback
+only after DMA/FIFO quiescence. An unconfirmed reset retains residue and faults
+the host until a physical controller reset can safely scrub it. TX bounce aliases
+are refused; RX remains staged until final command-status validation. This path
+passes source-extracted host models and clean RV32 module builds, not hardware
+acceptance. The corrected privacy model passes7 cases/197 checks each O0/O2
+ASan/UBSan on macOS and network-isolated Linux; reset/cache/MMIO boundaries
+remain modeled. Both C6 and host privacy assertions stay0. Native credentials
+remain disabled; C6 identity/recovery/UART privacy is still open.
 
 Binary PSK caller contract (2026-10-10): S2INFO_PSK now represents exactly
 32 borrowed binary bytes and requires explicit per-device FOURWAY+RAW_PSK.

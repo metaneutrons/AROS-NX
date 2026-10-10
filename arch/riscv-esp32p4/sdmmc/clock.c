@@ -2,6 +2,7 @@
 #include <proto/exec.h>
 #include "clock.h"
 #include "clock_plan.h"
+#include "dma.h"
 #include "registers.h"
 
 #define P4HOST_CLOCK_TIMEOUT_US 250000UL
@@ -48,6 +49,18 @@ static BOOL clock_delay(struct P4SDMMCHost *host, ULONG usec)
         if (!--polls || !p4host_budget_ok(host))
             return FALSE;
     return p4host_budget_ok(host);
+}
+
+/* Only after RESET_ALL completed and both DMA enables were disabled. An
+ * expired request budget must not suppress cleanup of already-quiescent
+ * permanent memory. A stopped clock still fails after the finite poll cap. */
+static BOOL clock_cleanup_settle(struct P4SDMMCHost *host)
+{
+    ULONG started = host->now_us(), polls = P4HOST_POLL_BOUND;
+    while ((ULONG)(host->now_us() - started) < 20UL)
+        if (!--polls)
+            return FALSE;
+    return TRUE;
 }
 
 static BOOL clock_source(struct P4SDMMCHost *host, unsigned divider)
@@ -172,7 +185,7 @@ BOOL p4host_reset(struct P4SDMMCHost *host)
                  P4SD_FIFOTH_RX_WMARK | P4SD_FIFOTH_DMA_MSIZE_8);
     clock_write(P4_SDMMC_BASE + P4SD_CARDTHRCTL, 0);
     clock_write(P4_SDMMC_BASE + P4SD_CLK_EDGE_SEL, 0);
-    if (!p4host_budget_ok(host))
+    if (!clock_cleanup_settle(host) || !p4host_dma_scrub_idle(host))
     {
         clock_fail(host);
         return FALSE;
@@ -180,6 +193,11 @@ BOOL p4host_reset(struct P4SDMMCHost *host)
     host->dma_data = NULL;
     host->dma_length = 0;
     host->dma_writing = FALSE;
+    if (!p4host_budget_ok(host))
+    {
+        clock_fail(host);
+        return FALSE;
+    }
     host->dma_faulted = FALSE;
     return TRUE;
 }

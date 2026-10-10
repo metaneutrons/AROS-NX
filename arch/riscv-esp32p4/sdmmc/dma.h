@@ -19,12 +19,22 @@ struct P4HostDMADesc
 };
 
 void p4host_dma_init(struct P4SDMMCHost *host);
+/* Internal resource-only recovery hook. Caller has completed physical reset,
+ * disabled DMA and settled FIFO before calling. Never a substitute for reset.
+ * Scrub sticky TX staging and write zeros through the serialized cache API;
+ * failure must leave the controller faulted, not advertise idle. */
+BOOL p4host_dma_scrub_idle(struct P4SDMMCHost *host);
 /* All calls except initialization require task ownership. Caller memory is
  * never exposed to DMA: TX is copied at prepare, RX only at successful
  * complete. DMA-ready is NOT card-side protocol success. The command engine
  * must check command/data status before completion; the qualified CMD18
- * exception retains the outer transaction through physical CMD12/CMD13. */
+ * exception retains the outer transaction through physical CMD12/CMD13.
+ * ABI8: TX input must not overlap the permanent bounce. Preparation owns all
+ * TX staging; completion/recovery wipes it only after proven DMA quiescence.
+ * The command engine keeps RX in bounce until its final error resample. */
 BOOL p4host_fifo_reset(struct P4SDMMCHost *host);
+/* ABI8 successful DMA reset includes FIFO reset/settle and TX scrub. Failure
+ * preserves the sticky residue and faults the host until physical recovery. */
 BOOL p4host_dma_reset(struct P4SDMMCHost *host);
 BOOL p4host_dma_prepare(struct P4SDMMCHost *host, UBYTE *data,
                        ULONG length, BOOL writing);

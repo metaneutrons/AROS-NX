@@ -13,7 +13,7 @@ typedef int16_t BOOL;
 
 #define TRUE 1
 #define FALSE 0
-#define RADIO_IRQ_BITS ((1UL << 16) | (1UL << 17))
+#define RADIO_IRQ_BITS ((1U << 16) | (1U << 17))
 #define REGISTER_COUNT 256U
 #define EVENT_CAPACITY 128U
 #define RESPONSE_READ_CAPACITY 8U
@@ -37,6 +37,8 @@ struct P4SDMMCHost;
 #include "command.h"
 #include "dma.h"
 #include "registers.h"
+
+/* INSERT_HOST_WIDTH_CONSTANTS */
 
 struct P4SDMMCHost
 {
@@ -151,6 +153,8 @@ static BOOL command_started;
 static BOOL dma_prepare_saw_tx_copy;
 static BOOL dma_writing;
 static ULONG dma_transfer_length;
+static UBYTE *dma_prepare_input;
+static UBYTE *dma_complete_input;
 static UBYTE expected_tx[8];
 
 static void mock_invalidate(struct P4SDMMCHost *host);
@@ -407,6 +411,8 @@ static void setup_case(void)
     dma_reset_value = TRUE;
     fifo_reset_value = TRUE;
     dma_prepare_saw_tx_copy = FALSE;
+    dma_prepare_input = NULL;
+    dma_complete_input = NULL;
     stuck_command_start = FALSE;
     post_start_busy = FALSE;
     busy_stuck = FALSE;
@@ -451,16 +457,20 @@ static BOOL mock_dma_prepare(struct P4SDMMCHost *host, UBYTE *data,
 {
     ULONG index;
     CHECK(host == &command_host);
-    CHECK(data == bounce_buffer);
+    CHECK(data == (writing ? client_data + 4 : bounce_buffer));
     ++dma_prepare_count;
     dma_transfer_length = length;
     dma_writing = writing;
+    dma_prepare_input = data;
     if (writing)
     {
         for (index = 0U; index < length && index < sizeof(expected_tx); ++index)
             if (data[index] != expected_tx[index])
                 break;
         dma_prepare_saw_tx_copy = index == length;
+        /* This fake models the DMA endpoint copying client TX into its
+         * permanent destination. It does not test production DMA scrubbing. */
+        memcpy(bounce_buffer, data, length);
     }
     record_event(EVENT_DMA_PREPARE, length, writing ? 1U : 0U);
     if (expire_budget_in_dma_prepare)
@@ -489,9 +499,10 @@ static BOOL mock_dma_complete(struct P4SDMMCHost *host, UBYTE *data,
                               ULONG length)
 {
     CHECK(host == &command_host);
-    CHECK(data == bounce_buffer);
+    CHECK(data == (dma_writing ? client_data + 4 : bounce_buffer));
     CHECK(length == dma_transfer_length);
     ++dma_complete_count;
+    dma_complete_input = data;
     record_event(EVENT_DMA_COMPLETE, length, dma_writing ? 1U : 0U);
     if (!dma_writing)
         memcpy(data, rx_payload, length);
@@ -626,7 +637,7 @@ static void test_invalid_requests_are_non_mmio(void)
 
     setup_case();
     request = make_command(0U, 1U, MMC_RSP_R1);
-    request.response_flags |= (1UL << 8);
+    request.response_flags |= (1U << 8);
     expect_refused(&request);
 
     setup_case();
@@ -1057,7 +1068,7 @@ static void test_diagnostic_fault_modes_reset_without_publication(void)
     for (fault_index = 0U;
          fault_index < sizeof(faults) / sizeof(faults[0]); ++fault_index)
     {
-        unsigned command_start_event, first_fifo_reset, cleanup_fifo_reset;
+        unsigned command_start_event;
         setup_case();
         configure_diagnostic_request(&request, &log, faults[fault_index]);
         next_raw = P4SD_INT_CMD_DONE | P4SD_INT_DATA_OVER;
@@ -1085,19 +1096,13 @@ static void test_diagnostic_fault_modes_reset_without_publication(void)
         CHECK(log.records[1].event_index > log.records[0].event_index);
         CHECK(log.records[2].event_index > log.records[1].event_index);
         CHECK(dma_reset_count == 1U);
-        CHECK(fifo_reset_count == 2U);
+        CHECK(fifo_reset_count == 0U);
         CHECK(dma_complete_count == 0U);
         CHECK(!command_host.dma_faulted);
         CHECK(invalidate_count == 0U);
         CHECK(client_data[4] == 0xCCU);
         CHECK(client_data[4U + 1023U] == 0xCCU);
         check_response_zero(&result);
-        first_fifo_reset = find_event(EVENT_FIFO_RESET, 0U);
-        cleanup_fifo_reset = find_event(EVENT_FIFO_RESET,
-                                        first_fifo_reset + 1U);
-        CHECK(first_fifo_reset < cleanup_fifo_reset);
-        CHECK(cleanup_fifo_reset < event_count);
-        CHECK(log.records[2].event_index > cleanup_fifo_reset);
     }
 }
 
@@ -1127,7 +1132,7 @@ static void test_data_crc_injection_beats_same_sample_early_cmd18(void)
     CHECK(log.records[2].observation == P4HOST_OBSERVE_FINISH);
     CHECK(dma_ready_count == 0U);
     CHECK(dma_complete_count == 0U);
-    CHECK(dma_reset_count == 1U && fifo_reset_count == 2U);
+    CHECK(dma_reset_count == 1U && fifo_reset_count == 0U);
     CHECK(client_data[4] == 0xCCU && client_data[4U + 1023U] == 0xCCU);
     check_response_zero(&result);
 }
@@ -1163,7 +1168,7 @@ static void test_data_crc_injection_waits_for_delayed_cmd_done(void)
     CHECK(log.records[3].raw == result.raw);
     CHECK(dma_ready_count == 0U);
     CHECK(dma_complete_count == 0U);
-    CHECK(dma_reset_count == 1U && fifo_reset_count == 2U);
+    CHECK(dma_reset_count == 1U && fifo_reset_count == 0U);
     CHECK(client_data[4] == 0xCCU && client_data[4U + 1023U] == 0xCCU);
     check_response_zero(&result);
 }
@@ -1273,12 +1278,15 @@ static void test_tx_data_is_staged_before_dma_arm(void)
     next_raw = P4SD_INT_CMD_DONE | P4SD_INT_DATA_OVER;
     CHECK(p4host_command(&command_host, &request, &result));
     CHECK(dma_prepare_saw_tx_copy);
+    CHECK(dma_prepare_input == request.data);
     CHECK(dma_writing);
     CHECK(dma_transfer_length == 4U);
     CHECK(registers[P4SD_BYTCNT / sizeof(ULONG)] == 4U);
     CHECK((last_command & P4SD_CMD_WRITE) != 0U);
     CHECK((last_command & P4SD_CMD_DATA) != 0U);
     CHECK(dma_complete_count == 1U);
+    CHECK(dma_complete_input == request.data);
+    CHECK(fifo_reset_count == 0U);
     for (index = 0U; index < 4U; ++index)
         CHECK(bounce_buffer[index] == (UBYTE)(0x70U + index));
     for (index = 0U; index < event_count; ++index)
@@ -1515,7 +1523,7 @@ static void test_budget_expiry_after_dma_setup_fails_closed(void)
     check_response_zero(&result);
 }
 
-static void test_budget_expiry_after_tx_copy_prevents_programming(void)
+static void test_budget_expiry_before_dma_prepare_prevents_programming(void)
 {
     struct P4HostCommand request;
     struct P4HostCommandResult result;
@@ -1531,7 +1539,7 @@ static void test_budget_expiry_after_tx_copy_prevents_programming(void)
     CHECK(result.status == P4HOST_COMMAND_TIMEOUT);
     CHECK(!result.started);
     CHECK(read_count == 2U);
-    CHECK(fifo_reset_count == 1U);
+    CHECK(fifo_reset_count == 0U);
     CHECK(write_count == 0U);
     CHECK(dma_prepare_count == 0U && cmd_write_count == 0U);
     CHECK(!command_host.dma_faulted && invalidate_count == 0U);
@@ -1705,7 +1713,7 @@ static void test_dma_reset_failure_invalidates_without_copy(void)
     check_response_zero(&result);
 }
 
-static void test_initial_fifo_reset_failure_invalidates(void)
+static void test_dma_prepare_failure_refuses_before_start(void)
 {
     struct P4HostCommand request;
     struct P4HostCommandResult result;
@@ -1713,13 +1721,14 @@ static void test_initial_fifo_reset_failure_invalidates(void)
     begin_case();
     setup_case();
     configure_data_request(&request, 0U, 18U, FALSE, 512U, 512U);
-    fifo_reset_value = FALSE;
+    dma_prepare_value = FALSE;
     CHECK(!p4host_command(&command_host, &request, &result));
     CHECK(result.status == P4HOST_COMMAND_DMA_ERROR);
     CHECK(!result.started);
-    CHECK(command_host.dma_faulted);
-    CHECK(invalidate_count == 1U);
-    CHECK(dma_prepare_count == 0U);
+    CHECK(!command_host.dma_faulted);
+    CHECK(invalidate_count == 0U);
+    CHECK(dma_prepare_count == 1U);
+    CHECK(dma_reset_count == 0U);
     CHECK(dma_complete_count == 0U);
     CHECK(client_data[4] == 0xCCU);
     check_response_zero(&result);
@@ -1751,14 +1760,14 @@ int main(void)
     test_budget_expiry_at_entry_and_command_wait();
     test_budget_expiry_during_status_wait_across_wrap();
     test_budget_expiry_after_dma_setup_fails_closed();
-    test_budget_expiry_after_tx_copy_prevents_programming();
+    test_budget_expiry_before_dma_prepare_prevents_programming();
     test_budget_expiry_in_mainloop_and_dma_ready();
     test_budget_expiry_at_completion_and_publication();
     test_stalled_timer_is_bounded_by_poll_count();
     test_timeout_timer_wraps_and_command_wait_is_capped();
     test_busy_response_waits_and_times_out();
     test_dma_reset_failure_invalidates_without_copy();
-    test_initial_fifo_reset_failure_invalidates();
+    test_dma_prepare_failure_refuses_before_start();
     printf("PASS: %u cases, %u checks\n", test_cases, checks);
     return 0;
 }

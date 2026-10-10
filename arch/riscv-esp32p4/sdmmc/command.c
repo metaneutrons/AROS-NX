@@ -135,16 +135,11 @@ BOOL p4host_command(struct P4SDMMCHost *host,
         command |= P4SD_CMD_WAIT_DATA;
     if (request->length)
     {
-        if (!host->fifo_reset(host))
-        {
-            host->dma_faulted = TRUE;
-            host->invalidate(host);
-            outcome.status = P4HOST_COMMAND_DMA_ERROR;
-            goto finished;
-        }
+        /* ABI8 preparation owns DMA/FIFO reset and all TX staging. No second
+         * FIFO reset here or after recovery: it would consume the same budget
+         * twice and could fault an already quiesced/scrubbed controller. */
         if (request->writing)
         {
-            p4host_move(host->bounce, request->data, request->length);
             command |= P4SD_CMD_WRITE;
         }
         if (!p4host_budget_ok(host))
@@ -154,7 +149,7 @@ BOOL p4host_command(struct P4SDMMCHost *host,
         }
         command_write(P4SD_BLKSIZ, request->block_size);
         command_write(P4SD_BYTCNT, request->length);
-        if (!host->dma_prepare(host, host->bounce, request->length,
+        if (!host->dma_prepare(host, request->writing ? request->data : host->bounce, request->length,
                                 request->writing))
         {
             outcome.status = P4HOST_COMMAND_DMA_ERROR;
@@ -282,7 +277,7 @@ BOOL p4host_command(struct P4SDMMCHost *host,
         outcome.status = P4HOST_COMMAND_DMA_ERROR;
         goto failed;
     }
-    if (prepared && !host->dma_complete(host, host->bounce,
+    if (prepared && !host->dma_complete(host, request->writing ? request->data : host->bounce,
                                        request->length))
     {
         outcome.status = P4HOST_COMMAND_DMA_ERROR;
@@ -315,7 +310,7 @@ BOOL p4host_command(struct P4SDMMCHost *host,
     command_write(P4SD_RINTSTS, P4SD_INT_CMD_DATA_MASK);
     goto finished;
 failed:
-    if (prepared && (!host->dma_reset(host) || !host->fifo_reset(host)))
+    if (prepared && !host->dma_reset(host))
     {
         host->dma_faulted = TRUE;
         host->invalidate(host);

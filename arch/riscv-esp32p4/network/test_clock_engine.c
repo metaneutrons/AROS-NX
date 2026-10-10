@@ -15,10 +15,12 @@ typedef int16_t BOOL;
 
 #define TRUE 1
 #define FALSE 0
-#define RADIO_IRQ_BITS ((1UL << 16) | (1UL << 17))
+#define RADIO_IRQ_BITS ((1U << 16) | (1U << 17))
 #define WRITE_LOG_CAPACITY 128U
 #define ACCESS_LOG_CAPACITY 1024U
 #define SD_REGISTER_COUNT 1024U
+
+/* INSERT_HOST_WIDTH_CONSTANTS */
 
 struct Task
 {
@@ -45,6 +47,8 @@ struct P4SDMMCHost
     BOOL dma_faulted;
     void (*invalidate)(struct P4SDMMCHost *);
 };
+
+BOOL p4host_dma_scrub_idle(struct P4SDMMCHost *host);
 
 static UBYTE dma_client_data[64];
 
@@ -75,6 +79,8 @@ static unsigned access_count;
 static unsigned read_count;
 static unsigned cmd_write_count;
 static unsigned invalidate_count;
+static unsigned scrub_endpoint_calls;
+static BOOL scrub_endpoint_result;
 static unsigned test_cases;
 static unsigned checks;
 static ULONG timer_value;
@@ -221,7 +227,9 @@ static void clock_write(IPTR address, ULONG value)
         address == P4_SDMMC_BASE + P4SD_CLK_EDGE_SEL)
     {
         expire_budget_after_reset_programming = FALSE;
-        expire_budget_now();
+        /* Keep the mock clock advancing so the unbudgeted settle can prove
+         * quiescence; elapsed operation budget remains permanently expired. */
+        timer_value = clock_host.budget_start + clock_host.budget_us;
     }
     if (expire_budget_after_source_programming &&
         address == P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL02 &&
@@ -234,6 +242,18 @@ static void clock_write(IPTR address, ULONG value)
 
 /* INSERT_ACTUAL_BUDGET_HELPER */
 /* INSERT_ACTUAL_CLOCK_SOURCE */
+
+/* The clock model delegates DMA-residue cleanup to a mocked DMA endpoint.
+ * Actual scrub/cache behavior is tested by test-dma-engine.c. */
+BOOL p4host_dma_scrub_idle(struct P4SDMMCHost *host)
+{
+    CHECK(host == &clock_host);
+    ++scrub_endpoint_calls;
+    CHECK(sd_registers[P4SD_CTRL / sizeof(ULONG)] == 0UL);
+    CHECK((sd_registers[P4SD_BMOD / sizeof(ULONG)] &
+           (P4SD_BMOD_DE | P4SD_BMOD_SWR)) == 0UL);
+    return scrub_endpoint_result;
+}
 
 static void begin_case(void)
 {
@@ -253,6 +273,8 @@ static void setup_host(unsigned host_div, ULONG slot0_clock, ULONG slot1_clock)
     read_count = 0U;
     cmd_write_count = 0U;
     invalidate_count = 0U;
+    scrub_endpoint_calls = 0U;
+    scrub_endpoint_result = TRUE;
     timer_value = 0U;
     timer_step = 1U;
     now_call_count = 0U;
@@ -481,8 +503,8 @@ static void test_slot0_identification_clock(void)
     CHECK(p4host_set_clock(&clock_host, 0U, 400000UL, FALSE, &actual));
     CHECK(actual == plan.actual_hz && actual == 400000UL);
     CHECK(read_sd(P4SD_CLKDIV) ==
-          ((original_clkdiv & ~0xFFUL) | (ULONG)plan.card_div));
-    CHECK(read_sd(P4SD_CLKSRC) == (original_clksrc & ~3UL));
+          ((original_clkdiv & ~((ULONG)0xFFU)) | (ULONG)plan.card_div));
+    CHECK(read_sd(P4SD_CLKSRC) == (original_clksrc & ~((ULONG)3U)));
     CHECK(read_sd(P4SD_CLKENA) == 0x00020003UL);
     CHECK(clock_host.host_div == 10U);
     CHECK(clock_host.slot_clock[0] == 400000UL &&
@@ -545,9 +567,9 @@ static void test_slot1_peer_preserves_shared_source(void)
     CHECK(plan.host_div == 10U && plan.card_div == 2U);
     CHECK(p4host_set_clock(&clock_host, 1U, 4000000UL, TRUE, &actual));
     CHECK(actual == plan.actual_hz && actual == 4000000UL);
-    expected_clkdiv = (original_clkdiv & ~(0xFFUL << 8)) |
+    expected_clkdiv = (original_clkdiv & ~((ULONG)(0xFFU << 8))) |
                       ((ULONG)plan.card_div << 8);
-    expected_clksrc = (original_clksrc & ~(3UL << 2)) | (1UL << 2);
+    expected_clksrc = (original_clksrc & ~((ULONG)(3U << 2))) | (1U << 2);
     expected_clkena = 0x00030003UL;
     CHECK(read_sd(P4SD_CLKDIV) == expected_clkdiv);
     CHECK(read_sd(P4SD_CLKSRC) == expected_clksrc);
@@ -612,8 +634,8 @@ static void test_slot0_peer_preserves_slot1_source_and_low_power(void)
     CHECK(plan.host_div == 10U && plan.card_div == 0U);
     CHECK(p4host_set_clock(&clock_host, 0U, 25000000UL, FALSE, &actual));
     CHECK(actual == plan.actual_hz && actual == 16000000UL);
-    CHECK(read_sd(P4SD_CLKDIV) == (original_clkdiv & ~0xFFUL));
-    CHECK(read_sd(P4SD_CLKSRC) == (original_clksrc & ~3UL));
+    CHECK(read_sd(P4SD_CLKDIV) == (original_clkdiv & ~((ULONG)0xFFU)));
+    CHECK(read_sd(P4SD_CLKSRC) == (original_clksrc & ~((ULONG)3U)));
     CHECK(read_sd(P4SD_CLKENA) == 0x00020003UL);
     CHECK(clock_host.host_div == 10U);
     CHECK(clock_host.slot_clock[0] == 16000000UL &&
@@ -687,6 +709,7 @@ static void test_reset_invalidates_and_pulses_source(void)
     CHECK(clock_host.dma_length == 0UL);
     CHECK(clock_host.dma_writing == FALSE);
     CHECK(clock_host.dma_faulted == FALSE);
+    CHECK(scrub_endpoint_calls == 1U);
     gate_enable_access = first_write_setting(
         P4_HP_SYS_CLKRST_BASE + P4_HP_SOC_CLK_CTRL1,
         P4_HP_SDMMC_CLK_EN);
@@ -696,7 +719,7 @@ static void test_reset_invalidates_and_pulses_source(void)
     CHECK(clock_host.slot_clock[0] == 0UL &&
           clock_host.slot_clock[1] == 0UL);
     CHECK(clock_host.host_div == 10U);
-    CHECK(read_sd(P4SD_CLKENA) == (original_clkena & ~3UL));
+    CHECK(read_sd(P4SD_CLKENA) == (original_clkena & ~((ULONG)3U)));
     CHECK(read_sd(P4SD_CTRL) == 0UL);
     CHECK(writes_to(P4_SDMMC_BASE + P4SD_CTRL) == 2U);
     CHECK((nth_write_to(P4_SDMMC_BASE + P4SD_CTRL, 1U) &
@@ -770,6 +793,7 @@ static void test_stuck_controller_reset_retains_dma_identity(void)
           clock_host.slot_clock[1] == 0UL);
     CHECK(clock_host.host_div == 0U);
     CHECK(invalidate_count == 2U);
+    CHECK(scrub_endpoint_calls == 0U);
     CHECK(now_call_count == P4HOST_POLL_BOUND + 22UL);
     CHECK(timer_value == 23UL);
     CHECK(timer_value == ctrl_assert_timer + 1UL);
@@ -797,11 +821,44 @@ static void test_stuck_controller_reset_retains_dma_identity(void)
           clock_host.slot_clock[1] == 0UL);
     CHECK(clock_host.host_div == 0U);
     CHECK(invalidate_count == 2U);
+    CHECK(scrub_endpoint_calls == 0U);
     CHECK(now_call_count >= P4HOST_CLOCK_TIMEOUT_US);
     CHECK(now_call_count < P4HOST_CLOCK_TIMEOUT_US + 64UL);
     CHECK(writes_to(P4_SDMMC_BASE + P4SD_BMOD) == 0U);
     CHECK(writes_to(P4_SDMMC_BASE + P4SD_RINTSTS) == 0U);
     CHECK((read_sd(P4SD_CLKENA) & 3UL) == 0UL);
+}
+
+static void test_dma_scrub_refusal_retains_identity_and_faults(void)
+{
+    begin_case();
+    setup_host(7U, 25000000UL, 18000000UL);
+    clock_host.dma_data = dma_client_data;
+    clock_host.dma_length = sizeof(dma_client_data);
+    clock_host.dma_writing = TRUE;
+    scrub_endpoint_result = FALSE;
+
+    CHECK(!p4host_reset(&clock_host));
+    CHECK(scrub_endpoint_calls == 1U);
+    CHECK(clock_host.dma_data == dma_client_data);
+    CHECK(clock_host.dma_length == sizeof(dma_client_data));
+    CHECK(clock_host.dma_writing == TRUE);
+    CHECK(clock_host.dma_faulted == TRUE);
+    CHECK(invalidate_count == 2U);
+}
+
+static void test_cleanup_settle_is_unbudgeted_but_poll_bounded(void)
+{
+    begin_case();
+    setup_host(7U, 25000000UL, 18000000UL);
+    clock_host.budget_start = 0UL;
+    clock_host.budget_us = 1UL;
+    timer_step = 0UL;
+    now_call_count = 0UL;
+
+    CHECK(!clock_cleanup_settle(&clock_host));
+    CHECK(now_call_count == P4HOST_POLL_BOUND + 1UL);
+    CHECK(read_count == 0U && write_count == 0U);
 }
 
 static void test_stalled_timer_is_bounded_and_fails_closed(void)
@@ -929,17 +986,22 @@ static void test_reset_budget_expiry_before_dma_publication(void)
     clock_host.dma_length = sizeof(dma_client_data);
     clock_host.dma_writing = TRUE;
     clock_host.budget_start = 0U;
-    clock_host.budget_us = 100U;
+    /* Leave enough room for source setup and RESET_ALL programming; the
+     * modeled CLK_EDGE_SEL write below expires the budget at cleanup. */
+    clock_host.budget_us = 10000U;
     expire_budget_after_reset_programming = TRUE;
     CHECK(!p4host_reset(&clock_host));
     CHECK(clock_host.initialization_started == TRUE);
-    CHECK(clock_host.dma_data == dma_client_data);
-    CHECK(clock_host.dma_length == sizeof(dma_client_data));
-    CHECK(clock_host.dma_writing == TRUE);
+    /* RESET_ALL and idle cleanup succeeded despite budget expiry; stale
+     * transfer identity is cleared before publication is refused. */
+    CHECK(clock_host.dma_data == NULL);
+    CHECK(clock_host.dma_length == 0UL);
+    CHECK(clock_host.dma_writing == FALSE);
     CHECK(clock_host.dma_faulted == TRUE);
     CHECK(clock_host.slot_clock[0] == 0U && clock_host.slot_clock[1] == 0U);
     CHECK(clock_host.host_div == 0U);
     CHECK(invalidate_count == 2U);
+    CHECK(scrub_endpoint_calls == 1U);
     CHECK((read_sd(P4SD_CLKENA) & 3UL) == 0UL);
     CHECK(writes_to(P4_SDMMC_BASE + P4SD_CLK_EDGE_SEL) == 1U);
 }
@@ -982,6 +1044,8 @@ int main(void)
     test_update_failures();
     test_reset_invalidates_and_pulses_source();
     test_stuck_controller_reset_retains_dma_identity();
+    test_dma_scrub_refusal_retains_identity_and_faults();
+    test_cleanup_settle_is_unbudgeted_but_poll_bounded();
     test_stalled_timer_is_bounded_and_fails_closed();
     test_budget_helper_inactive_and_wraps();
     test_budget_expiry_before_clock_mmio();

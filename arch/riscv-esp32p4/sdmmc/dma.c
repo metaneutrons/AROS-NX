@@ -13,6 +13,10 @@ typedef char p4host_dma_descriptor_must_be_64_bytes[
     sizeof(struct P4HostDMADesc) == 64 ? 1 : -1];
 static UBYTE bounce[P4HOST_DMA_MAX] __attribute__((aligned(64)));
 static const struct KrnCacheOps *cache_ops;
+/* Sticky until CPU zeros have been written back after proven DMA idle. This
+ * belongs to the single permanent motor, not a client request or its lifetime.
+ * A failed reset must preserve it even when the client has already returned. */
+static ULONG tx_residue;
 
 static BOOL dma_owned(struct P4SDMMCHost *host)
 {
@@ -89,12 +93,35 @@ void p4host_dma_init(struct P4SDMMCHost *host)
     /* Resource priority16 precedes kernel.resource priority5. Resolve cache
      * operations only on the first owned transfer, after COLDSTART. */
     cache_ops = NULL;
+    tx_residue = 0;
     host->dma_desc = descriptors;
     host->bounce = bounce;
     host->dma_data = NULL;
     host->dma_length = 0;
     host->dma_writing = FALSE;
     host->dma_faulted = TRUE; /* Physical reset must establish idle first. */
+}
+
+BOOL p4host_dma_scrub_idle(struct P4SDMMCHost *host)
+{
+    ULONG rounded;
+    if (!dma_owned(host) ||
+        (dma_read(P4SD_CTRL) & (P4SD_CTRL_DMA_ENABLE |
+                               P4SD_CTRL_DMA_RESET | P4SD_CTRL_FIFO_RESET)) ||
+        (dma_read(P4SD_BMOD) & (P4SD_BMOD_DE | P4SD_BMOD_SWR)))
+        return FALSE;
+    if (!tx_residue)
+        return TRUE;
+    if (tx_residue > P4HOST_DMA_MAX ||
+        (!cache_ops && !dma_cache_available()))
+        return FALSE;
+    rounded = (tx_residue + 63UL) & ~63UL;
+    /* Once quiescence has been established, an expired operation budget must
+     * not skip bounded CPU/cache cleanup or leave secret bytes in RAM. */
+    p4host_zero(bounce, rounded);
+    dma_writeback(bounce, rounded);
+    tx_residue = 0;
+    return TRUE;
 }
 
 BOOL p4host_fifo_reset(struct P4SDMMCHost *host)
@@ -123,7 +150,8 @@ BOOL p4host_dma_reset(struct P4SDMMCHost *host)
     dma_write(P4SD_IDSTS, 0xffffffffUL);
     dma_write(P4SD_CTRL, dma_read(P4SD_CTRL) &
               ~(P4SD_CTRL_DMA_ENABLE | P4SD_CTRL_USE_INTERNAL_DMA));
-    if (!p4host_budget_ok(host))
+    dma_write(P4SD_BMOD, 0);
+    if (!p4host_fifo_reset(host) || !p4host_dma_scrub_idle(host))
         goto failed;
     host->dma_data = NULL;
     host->dma_length = 0;
@@ -148,6 +176,11 @@ BOOL p4host_dma_prepare(struct P4SDMMCHost *host, UBYTE *data,
         (writing != FALSE && writing != TRUE) || host->dma_length ||
         host->dma_faulted)
         return FALSE;
+    /* An input inside bounce would be erased by recovery of previous residue
+     * and could hide an untracked caller-side pre-copy. ABI8 forbids TX alias. */
+    if (writing && (IPTR)data < (IPTR)bounce + sizeof(bounce) &&
+        (IPTR)bounce < (IPTR)data + length)
+        return FALSE;
     if (!cache_ops && !dma_cache_available())
         return FALSE;
     if (!p4host_dma_reset(host))
@@ -155,8 +188,12 @@ BOOL p4host_dma_prepare(struct P4SDMMCHost *host, UBYTE *data,
     /* All bus-master memory is permanent. A timed-out reset must not leave
      * DMA writing a client buffer which its caller may release on error.
      * This also keeps rounded cache maintenance away from client neighbours. */
-    if (writing && data != bounce)
+    if (writing)
+    {
+        if (length > tx_residue)
+            tx_residue = length;
         p4host_move(bounce, data, length);
+    }
     count = (length + P4HOST_DMA_SEGMENT - 1) / P4HOST_DMA_SEGMENT;
     p4host_zero(descriptors, sizeof(descriptors));
     for (index = 0; index < count; ++index)
@@ -179,7 +216,15 @@ BOOL p4host_dma_prepare(struct P4SDMMCHost *host, UBYTE *data,
     dma_writeback(descriptors, sizeof(descriptors));
     dma_writeback(bounce, (length + 63UL) & ~63UL);
     if (!p4host_budget_ok(host))
+    {
+        /* DMA has not been enabled; reset above already established idle. */
+        if (!p4host_dma_scrub_idle(host))
+        {
+            host->dma_faulted = TRUE;
+            host->invalidate(host);
+        }
         return FALSE;
+    }
     host->dma_data = data;
     host->dma_length = length;
     host->dma_writing = writing;
@@ -227,7 +272,12 @@ BOOL p4host_dma_complete(struct P4SDMMCHost *host, UBYTE *data, ULONG length)
               ~(P4SD_CTRL_DMA_ENABLE | P4SD_CTRL_USE_INTERNAL_DMA));
     if (!p4host_fifo_reset(host))
         return FALSE;
-    if (!host->dma_writing)
+    if (host->dma_writing)
+    {
+        if (!p4host_dma_scrub_idle(host))
+            return FALSE;
+    }
+    else
     {
         dma_invalidate(bounce, (length + 63UL) & ~63UL);
         if (!p4host_budget_ok(host))

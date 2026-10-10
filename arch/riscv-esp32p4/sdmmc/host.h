@@ -6,7 +6,7 @@
 #include <exec/semaphores.h>
 
 #define P4_SDMMC_HOST_NAME "esp32p4sdmmc.resource"
-#define P4_SDMMC_HOST_ABI 7
+#define P4_SDMMC_HOST_ABI 8
 #define P4_SDMMC_HOST_WAIT_US 1000000UL
 #define P4_SDMMC_BUDGET_MAX_US 10000000UL
 

@@ -20,6 +20,9 @@
 #ifndef P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED
 #define P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED 0
 #endif
+#ifndef P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED
+#define P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED 0
+#endif
 #if P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED && !P4_WIFI_HOSTED_OWNER
 #error "C6 verified association requires the persistent owner"
 #endif
@@ -2035,7 +2038,11 @@ static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
     P4WifiBase->send_frame = wifi_device_send;
     P4WifiBase->scan = wifi_device_scan;
     P4WifiBase->associate = wifi_device_associate;
-    P4WifiBase->association_enabled = P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED ? TRUE : FALSE;
+    /* These are explicit release assertions, not runtime attestations. A C6
+     * logging fix alone cannot qualify the host's DMA/cache recovery path. */
+    P4WifiBase->association_enabled =
+        (P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED &&
+         P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED) ? TRUE : FALSE;
     P4WifiBase->associated = FALSE;
     InitSemaphore(&P4WifiBase->client_lock);
     P4WifiBase->client = NULL;

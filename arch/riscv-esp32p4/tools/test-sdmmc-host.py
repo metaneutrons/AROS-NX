@@ -158,6 +158,30 @@ def extract_constant_lines(path: Path, names: tuple[str, ...]) -> str:
     return "\n".join(lines)
 
 
+def materialize_ulong_masks(source: str, names: tuple[str, ...]) -> str:
+    """Give extracted UL masks target-width ULONG type in the LP64 host model."""
+    materialized = source
+    for name in names:
+        pattern = re.compile(
+            rf"(?m)^([ \t]*#[ \t]*define[ \t]+{re.escape(name)}\b[ \t]+)([^\r\n]+)$"
+        )
+        matches = list(pattern.finditer(materialized))
+        if len(matches) != 1:
+            raise ValueError(
+                f"expected one single-line {name} definition to materialize, "
+                f"found {len(matches)}"
+            )
+        expression = matches[0].group(2).strip()
+        if not expression or "/*" in expression or "//" in expression:
+            raise ValueError(f"cannot safely materialize {name}: {expression!r}")
+        materialized = pattern.sub(
+            lambda match: f"{match.group(1)}((ULONG)({expression}))",
+            materialized,
+            count=1,
+        )
+    return materialized
+
+
 def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     fixture = FIXTURE.read_text(encoding="utf-8")
     if fixture.count(INSERT_MARKER) != 1:
@@ -240,7 +264,18 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
             "P4SD_CLOCK_MAX_HZ",
         ),
     )
-    constants = "\n".join((register_constants, card_constants))
+    register_constants_host = materialize_ulong_masks(
+        register_constants,
+        ("P4SD_CTYPE_4BIT_SLOT0", "P4SD_CTYPE_8BIT_SLOT0"),
+    )
+    card_constants_host = materialize_ulong_masks(
+        card_constants,
+        ("P4_PMU_LDO_XPD", "P4_PMU_LDO_TIEH_SEL_M"),
+    )
+    host_width_materializations = "\n".join(
+        (register_constants_host, card_constants_host)
+    )
+    constants = host_width_materializations
     host_policy_constants = extract_constant_lines(
         HOST_HEADER,
         ("P4_SDMMC_HOST_WAIT_US", "P4_SDMMC_BUDGET_MAX_US"),
@@ -374,6 +409,9 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     hashes.append(("register constants", register_constants.encode("utf-8")))
     hashes.append(("card constants", card_constants.encode("utf-8")))
     hashes.append(
+        ("host-width typed masks", host_width_materializations.encode("utf-8"))
+    )
+    hashes.append(
         ("host policy constants", host_policy_constants.encode("utf-8"))
     )
     hashes.append(("host ABI constant", host_abi_constant.encode("utf-8")))
@@ -449,8 +487,8 @@ def audit_startup_power_order() -> str:
 def audit_host_abi() -> str:
     source = HOST_HEADER.read_text(encoding="utf-8")
     abi_match = re.search(r"(?m)^\s*#\s*define\s+P4_SDMMC_HOST_ABI\s+(\d+)\b", source)
-    if not abi_match or abi_match.group(1) != "7":
-        raise ValueError("P4 SDMMC host ABI must be version 7")
+    if not abi_match or abi_match.group(1) != "8":
+        raise ValueError("P4 SDMMC host ABI must be version 8")
     struct_match = re.search(r"\bstruct\s+P4SDMMCHost\s*\{", source)
     if not struct_match:
         raise ValueError("P4 SDMMC host structure is missing")
@@ -469,7 +507,7 @@ def audit_host_abi() -> str:
         r"(?m)^\s*ULONG\s+budget_start\s*,\s*budget_us\s*;",
     )
     if any(re.search(pattern, host_struct) is None for pattern in fields):
-        raise ValueError("P4 SDMMC ABI 7 host initialization/budget/command/DMA fields are incomplete")
+        raise ValueError("P4 SDMMC ABI 8 host initialization/budget/command/DMA fields are incomplete")
     implementation = HOST_SOURCE.read_text(encoding="utf-8")
     if not re.search(r"P4SDMMCBase->command\s*=\s*p4host_command\s*;", implementation):
         raise ValueError("P4 SDMMC command callback is not initialized")
@@ -525,6 +563,12 @@ def run() -> int:
         "modeled SDMMC registers and mocked resource reset/clock callbacks; "
         "this verifies software register protocol, not silicon behavior."
     )
+    print(
+        "Host-only injection difference: the extracted CTYPE and PMU mask "
+        "macros are explicitly cast to fixture ULONG (uint32_t) to preserve "
+        "the RV32 mask width on LP64 hosts; production source and headers are "
+        "unchanged."
+    )
 
     call_mode_checks = audit_transaction_call_modes()
     startup_power_hash = audit_startup_power_order()
@@ -533,7 +577,7 @@ def run() -> int:
         f"({startup_power_hash}; not runtime exercised)"
     )
     host_abi_hash = audit_host_abi()
-    print(f"P4 SDMMC host ABI 7 initialization/budget/command/DMA source check: PASS ({host_abi_hash})")
+    print(f"P4 SDMMC host ABI 8 initialization/budget/command/DMA source check: PASS ({host_abi_hash})")
     budget_checks, command_hash = audit_command_budget_usage()
     print(
         "Command engine budget source check: PASS "

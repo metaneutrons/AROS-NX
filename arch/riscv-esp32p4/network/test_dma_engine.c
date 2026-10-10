@@ -38,6 +38,8 @@ struct P4SDMMCHost;
 #include "dma.h"
 #include "registers.h"
 
+/* INSERT_HOST_WIDTH_CONSTANTS */
+
 struct Library
 {
     unsigned unused;
@@ -115,6 +117,8 @@ static ULONG timer_step;
 static ULONG now_call_count;
 static APTR invalidate_expiry_address;
 static ULONG invalidate_timer_advance;
+static APTR writeback_expiry_address;
+static ULONG writeback_timer_advance;
 static unsigned invalidate_count;
 static ULONG stuck_ctrl_mask;
 static BOOL stuck_bmod;
@@ -192,6 +196,8 @@ static void mock_writeback_range(APTR address, ULONG length)
 {
     ++cache_writeback_count;
     record_event(EVENT_CACHE_WRITEBACK, 0UL, 0UL, address, length);
+    if (address == writeback_expiry_address)
+        timer_value += writeback_timer_advance;
 }
 
 static void mock_invalidate_range(APTR address, ULONG length)
@@ -289,6 +295,8 @@ static void setup_host(void)
     now_call_count = 0UL;
     invalidate_expiry_address = NULL;
     invalidate_timer_advance = 0UL;
+    writeback_expiry_address = NULL;
+    writeback_timer_advance = 0UL;
     stuck_ctrl_mask = 0UL;
     stuck_bmod = FALSE;
     resource_available = TRUE;
@@ -308,7 +316,7 @@ static void setup_host(void)
 
 static ULONG rounded_cache_length(ULONG length)
 {
-    return (length + 63UL) & ~63UL;
+    return (length + 63U) & ~((ULONG)63U);
 }
 
 static unsigned find_event(enum event_kind kind, ULONG offset)
@@ -456,6 +464,10 @@ static void test_invalid_arguments_and_wrong_owner_are_nonmutating(void)
         1UL,
         FALSE));
     CHECK(!p4host_dma_prepare(&dma_host, test_data, 64UL, 2));
+    CHECK(!p4host_dma_prepare(&dma_host, bounce, 64UL, TRUE));
+    CHECK(!p4host_dma_prepare(
+        &dma_host, (UBYTE *)((IPTR)bounce + P4HOST_DMA_MAX - 16UL),
+        64UL, TRUE));
     active_task = &task_b;
     CHECK(!p4host_dma_prepare(&dma_host, test_data, 64UL, FALSE));
     CHECK(dma_host.dma_data == test_data);
@@ -473,7 +485,7 @@ static void test_invalid_arguments_and_wrong_owner_are_nonmutating(void)
 
 static void check_descriptor_chain(ULONG length)
 {
-    ULONG count = (length + P4HOST_DMA_SEGMENT - 1UL) /
+    ULONG count = (length + P4HOST_DMA_SEGMENT - 1U) /
                   P4HOST_DMA_SEGMENT;
     ULONG offset = 0UL;
     ULONG index;
@@ -513,7 +525,7 @@ static void test_boundary_transfer_lengths_and_descriptor_fields(void)
     {
         ULONG length = lengths[index];
         ULONG expected_count =
-            (length + P4HOST_DMA_SEGMENT - 1UL) / P4HOST_DMA_SEGMENT;
+            (length + P4HOST_DMA_SEGMENT - 1U) / P4HOST_DMA_SEGMENT;
         ULONG byte;
         clear_activity();
         for (byte = 0UL; byte < length; ++byte)
@@ -539,7 +551,7 @@ static void test_boundary_transfer_lengths_and_descriptor_fields(void)
 static void test_publish_after_cache_and_ready_matching_length(void)
 {
     ULONG length = P4HOST_DMA_SEGMENT + 1UL;
-    ULONG count = (length + P4HOST_DMA_SEGMENT - 1UL) /
+    ULONG count = (length + P4HOST_DMA_SEGMENT - 1U) /
                   P4HOST_DMA_SEGMENT;
     unsigned dbaddr;
     unsigned desc_wb;
@@ -561,7 +573,7 @@ static void test_publish_after_cache_and_ready_matching_length(void)
 
     clear_activity();
     CHECK(!p4host_dma_ready(&dma_host, 0UL));
-    CHECK(!p4host_dma_ready(&dma_host, length - 1UL));
+    CHECK(!p4host_dma_ready(&dma_host, length - 1U));
     CHECK(!p4host_dma_ready(&dma_host, length + 1UL));
     CHECK(!p4host_dma_ready(&dma_host, P4HOST_DMA_MAX + 1UL));
     CHECK(cache_invalidate_count == 0U);
@@ -578,7 +590,7 @@ static void test_publish_after_cache_and_ready_matching_length(void)
 
 static void finish_descriptors(ULONG length)
 {
-    ULONG count = (length + P4HOST_DMA_SEGMENT - 1UL) /
+    ULONG count = (length + P4HOST_DMA_SEGMENT - 1U) /
                   P4HOST_DMA_SEGMENT;
     ULONG index;
     for (index = 0UL; index < count; ++index)
@@ -629,22 +641,42 @@ static void test_rx_rounded_cache_and_fifo_settle(void)
 static void test_tx_does_not_invalidate_client_data(void)
 {
     ULONG length = 129UL;
+    ULONG rounded = rounded_cache_length(length);
     ULONG byte;
-    unsigned index;
+    unsigned index, last_ctrl_write = 0U, last_bmod_write = 0U;
     begin_case();
     setup_host();
+    memset(bounce, 0xA5, sizeof(bounce));
     memset(unaligned_data, 0xD9, sizeof(unaligned_data));
     for (byte = 0UL; byte < length; ++byte)
         unaligned_data[byte + 1UL] = (UBYTE)(byte * 11UL + 3UL);
     CHECK(p4host_dma_prepare(&dma_host, unaligned_data + 1, length, TRUE));
     CHECK(memcmp(bounce, unaligned_data + 1, length) == 0);
+    CHECK(tx_residue == length);
     CHECK(unaligned_data[0] == 0xD9U);
     CHECK(unaligned_data[length + 1UL] == 0xD9U);
     finish_descriptors(length);
     clear_activity();
     CHECK(p4host_dma_complete(&dma_host, unaligned_data + 1, length));
-    CHECK(cache_writeback_count == 0U);
+    CHECK(cache_writeback_count == 1U);
     CHECK(cache_invalidate_count == 1U);
+    for (index = 0U; index < event_count; ++index)
+    {
+        if (events[index].kind == EVENT_MMIO_WRITE &&
+            events[index].offset == P4SD_CTRL)
+            last_ctrl_write = index;
+        if (events[index].kind == EVENT_MMIO_WRITE &&
+            events[index].offset == P4SD_BMOD)
+            last_bmod_write = index;
+    }
+    CHECK(events[find_cache_event(EVENT_CACHE_WRITEBACK, bounce)].length ==
+          rounded);
+    CHECK(find_cache_event(EVENT_CACHE_WRITEBACK, bounce) > last_ctrl_write);
+    CHECK(find_cache_event(EVENT_CACHE_WRITEBACK, bounce) > last_bmod_write);
+    CHECK(tx_residue == 0UL);
+    for (byte = 0UL; byte < rounded; ++byte)
+        CHECK(bounce[byte] == 0U);
+    CHECK(bounce[rounded] == 0xA5U);
     for (index = 0U; index < event_count; ++index)
         if (events[index].kind == EVENT_CACHE_INVALIDATE)
             CHECK(events[index].address != unaligned_data + 1 &&
@@ -745,7 +777,11 @@ static void test_faulted_engine_refuses_until_reset_retry(void)
 {
     begin_case();
     setup_host();
+    memset(bounce, 0xB6, sizeof(bounce));
+    memset(test_data, 0x5B, 513UL);
     CHECK(p4host_dma_prepare(&dma_host, test_data, 513UL, TRUE));
+    CHECK(tx_residue == 513UL);
+    CHECK(memcmp(bounce, test_data, 513UL) == 0);
     clear_activity();
     stuck_bmod = TRUE;
     timer_step = 0UL;
@@ -754,6 +790,8 @@ static void test_faulted_engine_refuses_until_reset_retry(void)
     CHECK(dma_host.dma_length == 513UL);
     CHECK(dma_host.dma_writing == TRUE);
     CHECK(dma_host.dma_faulted == TRUE);
+    CHECK(tx_residue == 513UL);
+    CHECK(memcmp(bounce, test_data, 513UL) == 0);
     CHECK(invalidate_count == 1U);
 
     clear_activity();
@@ -772,7 +810,42 @@ static void test_faulted_engine_refuses_until_reset_retry(void)
     CHECK(dma_host.dma_length == 0UL);
     CHECK(dma_host.dma_writing == FALSE);
     CHECK(dma_host.dma_faulted == FALSE);
+    CHECK(tx_residue == 0UL);
+    for (ULONG index = 0UL; index < rounded_cache_length(513UL); ++index)
+        CHECK(bounce[index] == 0U);
+    CHECK(cache_writeback_count == 1U);
+    CHECK(events[find_cache_event(EVENT_CACHE_WRITEBACK, bounce)].length ==
+          rounded_cache_length(513UL));
     CHECK(p4host_dma_prepare(&dma_host, test_data, 64UL, FALSE));
+}
+
+static void test_tx_prepare_budget_expiry_scrubs_before_refusal(void)
+{
+    ULONG index;
+    unsigned launch_before;
+    begin_case();
+    setup_host();
+    memset(bounce, 0xE3, sizeof(bounce));
+    memset(test_data, 0x73, 129UL);
+    dma_host.budget_start = timer_value;
+    dma_host.budget_us = 1000UL;
+    writeback_expiry_address = bounce;
+    writeback_timer_advance = 1000UL;
+
+    launch_before = writes_to(P4SD_PLDMND);
+    CHECK(!p4host_dma_prepare(&dma_host, test_data, 129UL, TRUE));
+    CHECK(writes_to(P4SD_DBADDR) == 0U);
+    CHECK(writes_to(P4SD_PLDMND) == launch_before);
+    CHECK(dma_host.dma_data == NULL);
+    CHECK(dma_host.dma_length == 0UL);
+    CHECK(dma_host.dma_faulted == FALSE);
+    CHECK(tx_residue == 0UL);
+    CHECK(cache_writeback_count == 3U);
+    CHECK(events[find_cache_event(EVENT_CACHE_WRITEBACK, bounce)].length ==
+          rounded_cache_length(129UL));
+    for (index = 0UL; index < rounded_cache_length(129UL); ++index)
+        CHECK(bounce[index] == 0U);
+    CHECK(bounce[rounded_cache_length(129UL)] == 0xE3U);
 }
 
 static void test_reset_stuck_bmod_and_ctrl_with_timer_bounds(void)
@@ -932,7 +1005,9 @@ static void test_budget_expiry_after_prepare_cache_ops_prevents_launch_and_reuse
     begin_case();
     setup_host();
     dma_host.budget_start = timer_value;
-    dma_host.budget_us = 7UL;
+    dma_host.budget_us = 100UL;
+    writeback_expiry_address = bounce;
+    writeback_timer_advance = 100UL;
 
     CHECK(!p4host_dma_prepare(&dma_host, test_data, 64UL, FALSE));
     CHECK(cache_writeback_count == 2U);
@@ -1056,6 +1131,7 @@ int main(void)
     test_completion_error_and_malformed_descriptors_refuse();
     test_active_transfer_refusals_are_nonmutating();
     test_faulted_engine_refuses_until_reset_retry();
+    test_tx_prepare_budget_expiry_scrubs_before_refusal();
     test_reset_stuck_bmod_and_ctrl_with_timer_bounds();
     test_fifo_settle_stopped_timer_is_poll_bounded();
     test_wrong_owner_refusal_and_inspect();

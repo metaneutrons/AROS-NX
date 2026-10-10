@@ -60,7 +60,9 @@ struct p4_wifi_device_callbacks {
     void (*stopped)(APTR client);
 };
 
-/* Attachment does not start/reset a radio or establish association. It is
+/* Credential enablement requires separate, default-off C6 and host privacy/
+ * recovery release assertions. A source build proves neither hardware gate.
+ * Attachment does not start/reset a radio or establish association. It is
  * refused until the opt-in owner has initialized and published its MAC.
  * send_frame is owner-task-only and returns after bounded transmission, not
  * after IP delivery. Request ownership and cancellation stay in the device.

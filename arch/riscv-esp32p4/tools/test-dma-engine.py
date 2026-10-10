@@ -25,9 +25,12 @@ TAGITEM_HEADER = ROOT / "compiler" / "include" / "utility" / "tagitem.h"
 INSERT_SOURCE = "/* INSERT_ACTUAL_DMA_SOURCE */"
 INSERT_BUDGET_HELPER = "/* INSERT_ACTUAL_BUDGET_HELPER */"
 INSERT_CACHEOPS = "/* INSERT_ACTUAL_CACHEOPS_CONSTANTS */"
+INSERT_WIDTH = "/* INSERT_HOST_WIDTH_CONSTANTS */"
 CLOCK_EXTRACTION = run_path(str(PORT / "tools" / "test-clock-engine.py"))
 extract_constant = CLOCK_EXTRACTION["extract_constant"]
 extract_definition = CLOCK_EXTRACTION["extract_definition"]
+materialize_ulong_macros = CLOCK_EXTRACTION["materialize_ulong_macros"]
+production_macro_candidates = CLOCK_EXTRACTION["production_macro_candidates"]
 
 
 def sha256(data: bytes) -> str:
@@ -58,8 +61,9 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         raise ValueError(f"fixture must contain exactly one {INSERT_SOURCE}")
     if fixture.count(INSERT_BUDGET_HELPER) != 1:
         raise ValueError(f"fixture must contain exactly one {INSERT_BUDGET_HELPER}")
-    if fixture.count(INSERT_CACHEOPS) != 1:
-        raise ValueError(f"fixture must contain exactly one {INSERT_CACHEOPS}")
+    for marker in (INSERT_CACHEOPS, INSERT_WIDTH):
+        if fixture.count(marker) != 1:
+            raise ValueError(f"fixture must contain exactly one {marker}")
 
     source = DMA_SOURCE.read_text(encoding="utf-8")
     host_header = HOST_HEADER.read_text(encoding="utf-8")
@@ -73,6 +77,11 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         extract_constant(kernel_source, "KATTR_CacheOps"),
         extract_constant(cacheops_source, "KRN_CACHE_OPS_VERSION"),
     ]
+    attr_originals, attr_overrides = materialize_ulong_macros(
+        [("kernel/cache attributes", "\n".join(constants))],
+        ("TAG_USER", "KATTR_CPULoad", "KATTR_CPULoad_END",
+         "KATTR_CacheOps", "KRN_CACHE_OPS_VERSION"),
+    )
     data_declarations = [
         (
             "descriptor array",
@@ -106,6 +115,14 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
                 r"^static\s+const\s+struct\s+KrnCacheOps\s*\*cache_ops\s*",
             ),
         ),
+        (
+            "sticky TX residue extent",
+            extract_declaration(
+                source,
+                "sticky TX residue extent",
+                r"^static\s+ULONG\s+tx_residue\s*",
+            ),
+        ),
     ]
 
     function_specs = (
@@ -116,6 +133,7 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         ("dma_invalidate", r"\bstatic\s+void\s+dma_invalidate\s*\("),
         ("dma_cache_available", r"\bstatic\s+BOOL\s+dma_cache_available\s*\("),
         ("p4host_dma_init", r"\bvoid\s+p4host_dma_init\s*\("),
+        ("p4host_dma_scrub_idle", r"\bBOOL\s+p4host_dma_scrub_idle\s*\("),
         ("p4host_fifo_reset", r"\bBOOL\s+p4host_fifo_reset\s*\("),
         ("p4host_dma_reset", r"\bBOOL\s+p4host_dma_reset\s*\("),
         ("p4host_dma_prepare", r"\bBOOL\s+p4host_dma_prepare\s*\("),
@@ -137,6 +155,9 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         "p4host_budget_ok",
         r"\bstatic\s+inline\s+BOOL\s+p4host_budget_ok\s*\(",
     )
+    abi = extract_constant(host_header, "P4_SDMMC_HOST_ABI")
+    if not re.search(r"\bP4_SDMMC_HOST_ABI\s+8\s*$", abi):
+        raise ValueError("DMA privacy fixture requires production host ABI 8")
     for index, (name, body) in enumerate(definitions):
         if name in ("dma_writeback", "dma_invalidate"):
             definitions[index] = (name, translate_host_barrier(body, name))
@@ -151,11 +172,21 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
             extract_definition(source, "dma_write", r"\bstatic\s+void\s+dma_write\s*\("),
         ),
     ]
+    register_header_path = SDMMC / "registers.h"
+    dma_header_path = SDMMC / "dma.h"
+    width_originals, width_overrides = materialize_ulong_macros(
+        [
+            ("registers.h", register_header_path.read_text(encoding="utf-8")),
+            ("dma.h", dma_header_path.read_text(encoding="utf-8")),
+        ],
+        production_macro_candidates(fixture + source),
+    )
     inserted = "\n\n".join(
         [body for _, body in data_declarations] +
         [body for _, body in definitions]
     )
-    assembled = fixture.replace(INSERT_CACHEOPS, "\n".join(constants))
+    assembled = fixture.replace(INSERT_CACHEOPS, attr_overrides)
+    assembled = assembled.replace(INSERT_WIDTH, width_overrides)
     assembled = assembled.replace(INSERT_BUDGET_HELPER, budget_helper)
     assembled = assembled.replace(INSERT_SOURCE, inserted)
 
@@ -164,6 +195,10 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     ]
     hashes.extend((name, body.encode("utf-8")) for name, body in definitions)
     hashes.extend((name, body.encode("utf-8")) for name, body in low_level)
+    hashes.extend((name, body.encode("utf-8")) for name, body in attr_originals)
+    hashes.append(("target-width cache/tag overrides", attr_overrides.encode("utf-8")))
+    hashes.extend((name, body.encode("utf-8")) for name, body in width_originals)
+    hashes.append(("target-width register/DMA overrides", width_overrides.encode("utf-8")))
     hashes.append(("actual p4host_budget_ok", budget_helper.encode("utf-8")))
     hashes.extend(
         (f"production constant: {name}", value.encode("utf-8"))
@@ -172,9 +207,10 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
              "KATTR_CacheOps", "cache ops version"), constants
         )
     )
-    hashes.append(("actual dma.h", (SDMMC / "dma.h").read_bytes()))
+    hashes.append(("actual dma.h", dma_header_path.read_bytes()))
     hashes.append(("actual host.h", HOST_HEADER.read_bytes()))
-    hashes.append(("actual registers.h", (SDMMC / "registers.h").read_bytes()))
+    hashes.append(("production ABI 8 constant", abi.encode("utf-8")))
+    hashes.append(("actual registers.h", register_header_path.read_bytes()))
     hashes.append(("assembled fixture", assembled.encode("utf-8")))
     return assembled, hashes
 
@@ -190,7 +226,9 @@ def run() -> int:
     print(f"  test fixture: {sha256(FIXTURE.read_bytes())}")
     print(
         "Host-only modeled MMIO and kernel cache lookup; production poll, "
-        "timeout and settle limits are retained. This is not hardware evidence."
+        "timeout and settle limits are retained. LP64 fixtures explicitly "
+        "materialize target ULONG register/DMA and cache/tag constants. This "
+        "is not hardware evidence."
     )
 
     with tempfile.TemporaryDirectory(prefix="p4-dma-engine-") as temporary:
