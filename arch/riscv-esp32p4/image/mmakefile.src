@@ -15,6 +15,31 @@ include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 IMAGEDIR   := $(AROSDIR)/boot/esp32p4
 IMAGE      := $(IMAGEDIR)/aros-test.img
 STAGE      := $(GENDIR)/$(CURDIR)/stage
+P4_C3_WLAN_IMAGE ?= 0
+# Explicit opt-in: keep normal images and the small flash development volume
+# unchanged. The WLAN image is for the C6-equipped JC1060 only.
+ifeq ($(P4_C3_WLAN_IMAGE),1)
+ifneq ($(P4_C3_GRAPHICAL_BOOT),1)
+$(error WLAN image requires P4_C3_GRAPHICAL_BOOT=1)
+endif
+ifeq ($(filter jc1060p470c-v1 jc1060p470c-v2,$(P4_BOARD)),)
+$(error WLAN image requires an explicit JC1060 board profile)
+endif
+ifneq ($(strip $(P4_GSL_FW_BINARY)),)
+$(error WLAN image must not include private GSL firmware)
+endif
+ifneq ($(filter kernel-image-esp32p4-riscv kernel-flashdisk-esp32p4-riscv kernel-devvolume-esp32p4-riscv,$(MAKECMDGOALS) $(TARGET)),)
+$(error P4_C3_WLAN_IMAGE=1 is only supported by the explicit WLAN targets)
+endif
+IMAGE := $(IMAGEDIR)/aros-wifi.img
+STAGE := $(GENDIR)/$(CURDIR)/stage-wifi
+endif
+ifneq ($(filter kernel-image-esp32p4-riscv-wifi kernel-image-esp32p4-riscv-wifi-stage,$(MAKECMDGOALS) $(TARGET)),)
+ifneq ($(P4_C3_WLAN_IMAGE),1)
+$(error WLAN targets require P4_C3_WLAN_IMAGE=1)
+endif
+endif
+WIFI_OVERLAY := $(STAGE)-wlan-overlay
 MKFAT32    := $(SRCDIR)/$(CURDIR)/mkfat32.py
 PROOFDIR   := $(AROSARCHDIR)/proof
 C3_STARTUP := $(SRCDIR)/$(CURDIR)/Startup-Sequence.c3
@@ -81,6 +106,16 @@ P4_GSL_FW_BINARY ?=
 #MM-     workbench-prefs-touchscreen \
 #MM-     workbench-prefs-backlight
 
+#MM- kernel-image-esp32p4-riscv-wifi : kernel-image-esp32p4-riscv-wifi-stage
+#MM- kernel-image-esp32p4-riscv-wifi-stage : \
+#MM-     kernel-image-esp32p4-riscv-stage \
+#MM-     kernel-esp32p4wlan-device \
+#MM-     workbench-prefs-wifi \
+#MM-     workbench-prefs-network \
+#MM-     workbench-network-stacks-arostcp \
+#MM-     network-dhcp-client \
+#MM-     workbench-network-wirelessmanager
+
 C3_SD_LIBS := asl.library commodities.library coolimages.library \
               cybergraphics.library datatypes.library diskfont.library \
               icon.library iffparse.library locale.library \
@@ -124,9 +159,8 @@ ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
 	@$(CP) $(AROSDIR)/C/AddDataTypes $(STAGE)/C/AddDataTypes
 	@# IPrefs applies the preferences (brightness among them), and Copy
 	@# fills ENV: from ENVARC: as the standard Startup-Sequence does; both
-	@# write only RAM:.  C:Copy comes from the full workbench-c build,
-	@# which the stage does not run because of its catalog dependencies.
-	@$(TEST) -f $(AROSDIR)/C/Copy || { $(ECHO) "C:Copy missing; build workbench-c once"; exit 1; }
+	@# write only RAM:. C:Copy is part of the workbench-c-sh dependency.
+	@$(TEST) -f $(AROSDIR)/C/Copy || { $(ECHO) "C:Copy missing; build workbench-c-sh"; exit 1; }
 	@$(CP) $(AROSDIR)/C/Copy $(STAGE)/C/Copy
 	@$(CP) $(AROSDIR)/C/IPrefs $(STAGE)/C/IPrefs
 	@for f in Touchscreen Touchscreen.info Backlight Backlight.info ; do \
@@ -136,11 +170,13 @@ ifeq ($(P4_C3_GRAPHICAL_BOOT),1)
 	    $(SRCDIR)/images/IconSets/Gorilla/Icons/Medium/AROS/Prefs.info.src \
 	    $(SRCDIR)/images/IconSets/Gorilla/Icons/Medium/AROS/Prefs.png \
 	    $(STAGE)/Prefs.info
+ifneq ($(P4_C3_WLAN_IMAGE),1)
 	@if $(TEST) -d $(AROSDIR)/Prefs/Env-Archive ; then \
 	    $(MKDIR) -p $(STAGE)/Prefs/Env-Archive ; \
 	    $(CP) -r $(AROSDIR)/Prefs/Env-Archive/. \
 	        $(STAGE)/Prefs/Env-Archive/ ; \
 	fi
+endif
 endif
 	@# The marker __dos_IsBootable() searches for with strstr().  Taken from
 	@# the build's own CPU name so it cannot drift from the target.
@@ -169,6 +205,14 @@ ifneq ($(P4_C3_GRAPHICAL_BOOT),1)
 	fi
 endif
 
+#MM kernel-image-esp32p4-riscv-wifi-stage
+kernel-image-esp32p4-riscv-wifi-stage : kernel-image-esp32p4-riscv-stage
+	@$(TEST) "$(P4_C3_WLAN_IMAGE)" = 1 || exit 1
+	@$(RM) $(WIFI_OVERLAY)
+	@$(PYTHON) $(SRCDIR)/$(CURDIR)/make-wifi-stage.py \
+	    --aros-root $(AROSDIR) --output $(WIFI_OVERLAY) --desktop-defaults
+	@$(CP) -r $(WIFI_OVERLAY)/. $(STAGE)/
+
 #
 #   The development volume that lives in flash rather than on a card.
 #
@@ -188,6 +232,9 @@ endif
 #
 #MM kernel-flashdisk-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
 kernel-flashdisk-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
+ifeq ($(P4_C3_WLAN_IMAGE),1)
+	@$(ECHO) "WLAN bootimage is not a flash development volume"; exit 1
+endif
 	@$(ECHO) "Creating   $(FLASHDISK)"
 	@$(PYTHON) $(MKFAT32) --content $(STAGE) --out $(FLASHDISK) \
 	    --size-mb $(FLASHDISK_SIZE_MB) --fat-bits 16 \
@@ -267,6 +314,9 @@ write-flash $(FLASHDISK_OFFSET) $(DEVVOLUME)"
 
 #MM kernel-image-esp32p4-riscv
 kernel-image-esp32p4-riscv : kernel-image-esp32p4-riscv-stage
+#MM kernel-image-esp32p4-riscv-wifi
+kernel-image-esp32p4-riscv-wifi : kernel-image-esp32p4-riscv-wifi-stage
+kernel-image-esp32p4-riscv kernel-image-esp32p4-riscv-wifi :
 	@$(ECHO) "Creating   $(IMAGE)"
 	@$(PYTHON) $(MKFAT32) --content $(STAGE) --out $(IMAGE) \
 	    --size-mb $(IMAGE_SIZE_MB) --serial $(IMAGE_SERIAL) \

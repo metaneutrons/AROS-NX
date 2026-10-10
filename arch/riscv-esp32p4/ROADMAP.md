@@ -132,7 +132,7 @@ gate: compensated output is not the native display contract.
 | N2 | AROS WLAN SANA-II integration | `private ABI6 association/lifecycle binding build and scoped models verified; runtime/privacy/wireless gates open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded STA TX compile for Core1. N2L records current counts/artifacts and Close/Offline/teardown models. Actual helpers/selected dispatch arms; Exec/SDMMC/hooks/radio mocked, not full BeginIO, full service callback or runtime concurrency. Queue/traffic-token fences/copied AP publication are bound; no actual association/IP claim. TX commitment rejects late AbortIO. WirelessManager/bwfm remain references; per-device four-way offload must preserve legacy behavior. Caller late failure, DHCP/build defaults, GUI saving/writable preference storage and actual teardown/reconnect/load remain open. No credentials, deployment or hardware pass. |
 | N2L | Native radio teardown and ongoing link lifecycle | `ABI6 build/scoped models verified; hardware/privacy open` | Standalone leave, deferred teardown outside unit lock, bounded Disconnect/NOT_CONNECT verification, periodic correlated AP observation and selected-RPC cancellation drain. Mac/Linux O0/O2 sanitized: association25999, observer393, bridge219, options89/258, queue785, lifetime1482, datapath16507, events6/70, scan295; sibling link102/reservation63/owner scan37447; exit0. Fresh Core1 RV32 modules have no undefined imports. Explicit teardown requires absence; persistent/foreign AP quarantines rather than reporting loss. Both privacy assertions0 and SUMMARY-only unchanged. Shared caller late-failure event and actual radio/reconnect/load qualification remain open. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
-| N2U | Credential-free WLAN image defaults and first-use selection | `78-file native overlay staged; host tests/build verified; bootimage/runtime open` | Fixed device/unit0, DHCP RAM paths, empty Wireless.prefs and autostart off. Five defaults/twelve stage host tests pass; required symlink/invalid ELF inputs refused before output. Actual RV32-SMP WiFi default1, Network/net4/net6, AROSTCP/dhclient and C runtime libraries stage with standard DB companions; sample LAN routes/DNS replaced and package lookup set. WiFi151956B honors configured POSIX DHCP lease paths and selects complete records by exact interface/current IP; selection/expiry203 and reader265 checks each O0/O2 sanitized pass. Duplicate identities, bounded/truncated records and static GW continuation rows covered; expiry rejects missing/malformed/duplicate/expired timestamps and invalid clocks (host/32-bit time_t tested). Generic NSD/VOLATILE helper tests remain scoped, not Exec/radio acceptance. Current image targets do not consume the overlay; full-image private-pref exclusion, clock/routing/resolver qualification and actual single-manager GUI/parser/runtime acceptance remain required. OpenDevice/abort completion are not hard bounded. First delivery excludes credential persistence; SYS/SD remains read-only. |
+| N2U | Credential-free WLAN image defaults and first-use selection | `opt-in JC1060 image build/host FAT verification passed; runtime open` | Existing AROS WiFi/Network preferences, WirelessManager, AROSTCP and dhclient only. Fixed device/unit0, DHCP RAM paths, empty Wireless.prefs and autostart off. Five defaults/sixteen stage tests pass; strict native ELF/default1 validation. Explicit graphical JC1060 targets exclude saved build Env-Archive and use tracked stock Wanderer preferences/ABI; legacy image profiles unchanged. WiFi151956B uses exact interface/IP and validated expiry/clock selection (203 helper checks; reader265, O0/O2 sanitized). Actual64MiB image builds; host FAT32 parser/fsck and exact329-file manifest pass with original hash unchanged. These results are not Exec, clock, routing/resolver, GUI or radio qualification. Single-manager lifetime and board acceptance remain open. First delivery excludes credential persistence; SYS/SD remains read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -1476,7 +1476,10 @@ preferences overlay: fixed native device/unit0, IP=DHCP UP DEFER, RAM database,
 explicit DHCP lease/PID/config paths and empty Wireless.prefs. Autostart is off;
 five host tests pass. make-wifi-stage.py now validates/stages the standard DB,
 actual native stack/DHCP/manager/apps/modules/libraries and optional catalogs:
-78 files, twelve host tests, no bootimage consumption or runtime acceptance.
+83 files with stock desktop defaults, sixteen host tests. Explicit graphical
+JC1060 WLAN image targets consume the overlay, without importing saved build
+Env-Archive. The full64MiB image builds and passes host FAT32/fsck and exact
+329-file manifest verification; board/runtime acceptance remains open.
 Package lookup is configured; sample host/routes are neutralized. The chooser
 now uses DHCP's configured POSIX lease path and selects complete records by
 exact interface/current address. Actual-source sanitized selection tests pass144
@@ -1485,9 +1488,10 @@ covered. Expiry now rejects missing/malformed/duplicate/expired timestamps and
 unknown clocks;203 actual-helper checks pass in host/32-bit time_t at O0/O2.
 Clock conversion uses DOS DateStamp and the same UTC adjustment as dhclient.
 Stored records still do not prove installed global routing/resolver state;
-actual clock/GUI/runtime qualification remains required. Exclude private prefs from the base image,
-then establish a single GUI-enabled manager
-startup path (not an additional GUI process over the current NOGUI instance).
+actual clock/GUI/runtime qualification remains required. The WLAN profile now
+excludes private build preferences. Prefs/WiFi is the sole first-use GUI path;
+it starts the existing manager NOGUI when needed, not a second manager GUI.
+Qualify actual singleton/task lifetime behavior before first-use acceptance.
 Validate resolved DHCP paths and AROS parsing/runtime before deployment.
 Credential persistence remains outside first station-mode delivery.
 Network preferences now identifies wireless devices by NSD's advertised
@@ -35885,3 +35889,65 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   restore/UART privacy and real association/DHCP/frames/reconnect/1800s load
   remain open. No serial, reset, flash, SD write, C6 update or credentials;
   SUMMARY-only and both privacy assertions0 remain unchanged.
+
+### 2026-10-10 - N2U opt-in JC1060 WLAN image integration
+
+- Identity/config: port parent 4c57a72f74; existing AROS WiFi/Network prefs,
+  WirelessManager, AROSTCP and dhclient, no new WLAN application or stack.
+  Explicit kernel-image-esp32p4-riscv-wifi[-stage] with JC1060 panel profile,
+  P4_C3_GRAPHICAL_BOOT=1 and P4_C3_WLAN_IMAGE=1. Separate stage-wifi/aros-wifi.img;
+  the 64 MiB reproducible FAT32 image remains a host artifact, not a flash volume.
+- Privacy/policy: skip recursive saved build Env-Archive import for this profile;
+  copy tracked stock Wanderer global/toolbar/statusbar/backdrop preferences and
+  source ABI major(-1), plus the existing neutral WLAN defaults/runtime whitelist.
+  Standard Startup-Sequence copies ENVARC to RAM-backed ENV. No background
+  manager autostart; Prefs/WiFi starts the existing NOGUI manager as needed.
+  ESP32 WiFi builds use default VOLATILE, including Workbench launches; other
+  architectures retain generic defaults. Stage rejects a stale persistent ELF.
+- Host tests/review: five defaults tests and sixteen stage tests exit0. New tests
+  cover exact five desktop additions, reproducibility, private build preference
+  exclusion, missing/empty/symlink source prefs, invalid/duplicate ABI and CLI.
+  Independent source review and generated-subdirectory gmake dry-runs confirm
+  valid JC1060 target selection, refusal of missing opt-in/D1001/non-graphical/
+  private GSL inputs and legacy target misuse. Default D1001 image/flashdisk
+  dry-runs retain original paths. This is not executed hardware or FAT validation.
+- Actual overlay: 83 files from native RV32-SMP outputs, generator exit0. WiFi
+  151956B SHA-256 3555f3e3ed43a65166586f6a2b1b510bf5fa09a43f84dd139b06fedec4e74454,
+  initialized default1 verified by ELF parser. Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/bootimage.KIgHoY.
+  stage-tests.log SHA-256 a592632511a1258ae79e0b35204e5365ef3027e683cabe20de254ba516c0cbb8;
+  make-wifi-stage.py SHA-256 efeba33e38bbf189aec748ea0a9b8f34bfd7b1ceb8f1b9ceb34059141abf87cf.
+- Build attempts retained: direct image recipe exit2 on absent asl.library;
+  first MetaMake interrupted(exit130) after configured host make3.81 was found,
+  then local build host.cfg selected gmake. Subsequent full dependency attempt
+  exit10 on missing MUI catalog-generated header. Initialize pinned MUI
+  c023091e8efad955dd337f9c9bb1bb96a7fcf4c0. Next attempt exit10 on absent
+  Wanderer strings; initialize pinned Wanderer189431eef09025d8914d1661dfe20f8af9746ff5
+  and ASL39f27897137827c0e88113728ec04baf9a9961bc. All four exact WiFi objects
+  invalidated before documented full rebuild; current sysroot/generated includes
+  explicit. Further attempt exit10 on missing ExecuteCommand catalog header;
+  initialize its pinned catalog and the five other required tool catalogs.
+  Dependencies-only MetaMake then exits0 but creates no image: executable #MM
+  registrations were missing for both new targets. Add them and independently
+  review the correction; do not count that earlier exit0 as image success.
+  Final metamake-registered.log exits0 and creates the actual image with329
+  entries. Existing translation and icon const-discard warnings remain; this
+  full dependency build is not warning-free.
+- Independent image result: verify-image.sh exits0 after host MBR/FAT32 parsing,
+  fsck_msdos -n and exact329/329 mounted manifest comparison on a temporary copy.
+  Original67108864B image SHA-256 before/after
+  47614760d3b7177c9802e82edd3a78f9819a75e2d88383a57cac6bf0a83e394c.
+  Manifest29202B SHA-256
+  238940872016ca3910c67a9d89310c7e1cb111f7a219fb8765a118543cb07443;
+  verify-image.log SHA-256
+  7582bb05aabdd9bab279b0eab834c24c31869c4aeadc31647c9e2f9050b2e69b.
+  diff -r of full-stage and whitelist-overlay Env-Archive exits0. A deliberately
+  planted non-secret saved-build preference probe is absent from the stage;
+  remove only that owned probe after checking. Actual artifacts retained with
+  logs in the evidence directory. Lease regression203 checks for host/32-bit
+  time_t each O0/O2 sanitized plus6 source guards also passes exit0.
+- Safety/next: no serial, reset, flash, SD write, C6 update or credentials;
+  both privacy assertions0 and SUMMARY-only unchanged. Host image is verified,
+  not deployed or board-accepted. Next GUI/single-manager/clock/parser runtime. Installed
+  C6 identity, backup/proven restore and actual UART privacy remain gates before
+  real association/DHCP/bidirectional frames/reconnect/1800s combined load.

@@ -4,7 +4,9 @@
 import importlib.util
 from pathlib import Path
 import re
+import subprocess
 import struct
+import sys
 import tempfile
 import unittest
 
@@ -13,6 +15,17 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 STAGE_PATH = HERE / "make-wifi-stage.py"
 AUDIT_TESTS_PATH = REPO / "arch/riscv-esp32p4/tools/tests/test_package_audit.py"
+WANDERER_DEFAULTS = ("global", "toolbar", "statusbar", "backdrop")
+DESKTOP_STAGE_PATHS = {
+    name: "Prefs/Env-Archive/Sys/Wanderer/" + name + ".prefs"
+    for name in WANDERER_DEFAULTS
+}
+DESKTOP_SOURCE_PATHS = {
+    name: "workbench/system/Wanderer/Env/default/" + name + ".prefs"
+    for name in WANDERER_DEFAULTS
+}
+ABI_SOURCE_PATH = "rom/aros/arosinquirea.c"
+ABI_STAGE_PATH = "Prefs/Env-Archive/ABI"
 
 
 def load_module(name, path):
@@ -124,54 +137,181 @@ class WifiStageTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def _make_inputs(self, wifi_elf=None):
-        self.aros_root.mkdir(parents=True, exist_ok=True)
-        self.source_root.mkdir(parents=True, exist_ok=True)
+    def _make_inputs(self, wifi_elf=None, aros_root=None, source_root=None):
+        aros_root = aros_root or self.aros_root
+        source_root = source_root or self.source_root
+        aros_root.mkdir(parents=True, exist_ok=True)
+        source_root.mkdir(parents=True, exist_ok=True)
 
         wifi_elf = wifi_elf or make_wifi_elf()
         for relative in STAGE.BINARIES:
-            path = self.aros_root / relative
+            path = aros_root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(wifi_elf if relative == "Prefs/WiFi"
                              else ELF_FIXTURES.make_elf())
 
         for relative in STAGE.IMAGES:
-            path = self.aros_root / relative
+            path = aros_root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(("image fixture: " + relative + "\n").encode("ascii"))
 
-        icon = self.aros_root / "Prefs/Touchscreen.info"
+        icon = aros_root / "Prefs/Touchscreen.info"
         icon.parent.mkdir(parents=True, exist_ok=True)
         icon.write_bytes(b"test icon fixture\n")
 
-        database = self.source_root / "workbench/network/stacks/AROSTCP/Env/db"
+        database = source_root / "workbench/network/stacks/AROSTCP/Env/db"
         database.mkdir(parents=True, exist_ok=True)
         for name in STAGE.DB_FILES:
             (database / name).write_bytes(("database fixture: " + name + "\n")
                                           .encode("ascii"))
 
+        defaults = source_root / "workbench/system/Wanderer/Env/default"
+        defaults.mkdir(parents=True, exist_ok=True)
+        for name in WANDERER_DEFAULTS:
+            (defaults / (name + ".prefs")).write_bytes(
+                ("stock Wanderer fixture: " + name + "\n").encode("ascii"))
+
+        abi_source = source_root / ABI_SOURCE_PATH
+        abi_source.parent.mkdir(parents=True, exist_ok=True)
+        abi_source.write_text(
+            "/* source ABI fixture */\n"
+            "#define AROS_ABI_VERSION_MAJOR -1\n",
+            encoding="ascii",
+        )
+
         # These represent private build-tree content that must not be imported.
-        saved = self.aros_root / "Prefs/Env-Archive/AROSTCP/db/private-saved-network"
+        saved = aros_root / "Prefs/Env-Archive/AROSTCP/db/private-saved-network"
         saved.parent.mkdir(parents=True, exist_ok=True)
         saved.write_text("host saved network sentinel\n", encoding="ascii")
-        (self.aros_root / "Package-Startup").write_text(
+        (aros_root / "Package-Startup").write_text(
             "host package startup sentinel\n", encoding="ascii")
-        (self.aros_root / "C/Package-Startup").write_text(
+        (aros_root / "C/Package-Startup").write_text(
             "host C startup sentinel\n", encoding="ascii")
 
-    def _generate(self, output=None, aros_root=None, source_root=None):
+    def _generate(self, output=None, aros_root=None, source_root=None,
+                  include_desktop=False):
         return STAGE.generate(
             aros_root or self.aros_root,
             output or self.output,
             source_root or self.source_root,
+            include_desktop=include_desktop,
         )
 
     def _assert_rejected_before_reservation(self, output=None, aros_root=None,
-                                            source_root=None):
+                                            source_root=None,
+                                            include_desktop=False):
         target = output or self.output
         with self.assertRaises(ValueError):
-            self._generate(target, aros_root, source_root)
+            self._generate(target, aros_root, source_root, include_desktop)
         self.assertFalse(target.exists(), "invalid input reserved an output directory")
+
+    def test_desktop_defaults_add_exact_stock_preferences_and_abi(self):
+        arbitrary = (self.aros_root /
+                     "Prefs/Env-Archive/Sys/Wanderer/custom-build.prefs")
+        arbitrary.parent.mkdir(parents=True, exist_ok=True)
+        arbitrary.write_bytes(b"arbitrary build preference credential sentinel\n")
+        build_copy = (self.aros_root /
+                      "Prefs/Env-Archive/Sys/Wanderer/global.prefs")
+        build_copy.write_bytes(b"build-tree global preference sentinel\n")
+
+        baseline = self._generate(self.base / "stage-without-desktop")
+        desktop_output = self.base / "stage-with-desktop"
+        desktop = self._generate(desktop_output, include_desktop=True)
+        repeated = self._generate(
+            self.base / "stage-with-desktop-repeat", include_desktop=True)
+
+        expected_additions = {
+            DESKTOP_STAGE_PATHS[name]:
+                (self.source_root / DESKTOP_SOURCE_PATHS[name]).read_bytes()
+            for name in WANDERER_DEFAULTS
+        }
+        expected_additions[ABI_STAGE_PATH] = b"-1\n"
+        self.assertEqual(set(baseline) | set(expected_additions), set(desktop))
+        self._assert_exact_tree(set(desktop), desktop_output)
+        repeated_output = self.base / "stage-with-desktop-repeat"
+        self._assert_exact_tree(set(repeated), repeated_output)
+        self.assertEqual(desktop, repeated)
+        for relative, content in expected_additions.items():
+            self.assertEqual(content, desktop[relative])
+            self.assertEqual(content, (desktop_output / relative).read_bytes())
+
+        all_content = b"\n".join(desktop.values())
+        self.assertNotIn("custom-build.prefs", desktop)
+        self.assertNotIn(b"arbitrary build preference credential sentinel", all_content)
+        self.assertNotIn(b"build-tree global preference sentinel", all_content)
+
+    def test_desktop_defaults_reject_missing_empty_and_symlink_preferences(self):
+        for label in ("missing", "empty", "symlink"):
+            with self.subTest(label=label):
+                aros_root = self.base / ("aros-" + label)
+                source_root = self.base / ("source-" + label)
+                self._make_inputs(aros_root=aros_root, source_root=source_root)
+                source = source_root / DESKTOP_SOURCE_PATHS["toolbar"]
+                if label == "missing":
+                    source.unlink()
+                elif label == "empty":
+                    source.write_bytes(b"")
+                else:
+                    outside = self.base / "external-toolbar-prefs"
+                    outside.write_bytes(b"external stock preference fixture\n")
+                    source.unlink()
+                    source.symlink_to(outside)
+
+                self._assert_rejected_before_reservation(
+                    output=self.base / ("stage-invalid-desktop-" + label),
+                    aros_root=aros_root,
+                    source_root=source_root,
+                    include_desktop=True,
+                )
+
+    def test_desktop_defaults_reject_missing_duplicate_and_nonnumeric_abi(self):
+        for label, contents in (
+            ("missing", None),
+            ("duplicate", "#define AROS_ABI_VERSION_MAJOR -1\n"
+                          "#define AROS_ABI_VERSION_MAJOR 3\n"),
+            ("nonnumeric", "#define AROS_ABI_VERSION_MAJOR current\n"),
+        ):
+            with self.subTest(label=label):
+                aros_root = self.base / ("aros-abi-" + label)
+                source_root = self.base / ("source-abi-" + label)
+                self._make_inputs(aros_root=aros_root, source_root=source_root)
+                source = source_root / ABI_SOURCE_PATH
+                if contents is None:
+                    source.unlink()
+                else:
+                    source.write_text(contents, encoding="ascii")
+
+                self._assert_rejected_before_reservation(
+                    output=self.base / ("stage-invalid-abi-" + label),
+                    aros_root=aros_root,
+                    source_root=source_root,
+                    include_desktop=True,
+                )
+
+    def test_cli_desktop_defaults_flag_stages_the_five_extra_files(self):
+        output = self.base / "stage-cli-desktop"
+        result = subprocess.run(
+            [sys.executable, str(STAGE_PATH),
+             "--aros-root", str(self.aros_root),
+             "--output", str(output), "--desktop-defaults"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("Staged ", result.stdout)
+        for name in WANDERER_DEFAULTS:
+            source = REPO / DESKTOP_SOURCE_PATHS[name]
+            self.assertEqual(source.read_bytes(),
+                             (output / DESKTOP_STAGE_PATHS[name]).read_bytes())
+        abi_source = (REPO / ABI_SOURCE_PATH).read_text(encoding="ascii")
+        abi_values = re.findall(
+            r"^#define\s+AROS_ABI_VERSION_MAJOR\s+(-?\d+)\s*(?:/\*.*)?$",
+            abi_source, re.MULTILINE,
+        )
+        self.assertEqual(1, len(abi_values))
+        self.assertEqual((abi_values[0] + "\n").encode("ascii"),
+                         (output / ABI_STAGE_PATH).read_bytes())
 
     def test_stage_has_the_exact_runtime_set_and_reproducible_content(self):
         first = self._generate(self.output)

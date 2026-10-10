@@ -26,7 +26,31 @@ The target writes four files next to each other in
 | `aros-test.manifest` | every entry with size and SHA-256 |
 | `aros-test.sha256` | checksum of the image |
 
-## WLAN build defaults (overlay only)
+## Opt-in JC1060 WLAN bootimage (development)
+
+In the separate JC1060 RV32-SMP build tree:
+
+    gmake kernel-image-esp32p4-riscv-wifi P4_BOARD=jc1060p470c-v2 \
+        P4_C3_GRAPHICAL_BOOT=1 P4_C3_WLAN_IMAGE=1
+
+Use v1 only for that verified panel batch. The explicit target declares the
+existing AROS runtime dependencies and writes `aros-wifi.img` with its layout,
+manifest and checksum, separately from `aros-test.img`. It does not write SD
+or flash. D1001, nongraphical builds and private GSL blobs are refused.
+Do not pass the WLAN flag to legacy image/flash-volume targets.
+
+The WLAN stage excludes the build's entire saved Env-Archive. Instead it uses
+tracked stock Wanderer preferences, the source ABI major value and generated
+credential-free network defaults. ESP32 WiFi builds default to VOLATILE;
+staging validates the actual ELF policy and rejects stale persistent builds.
+Other architectures retain the generic default. Rebuild all four WiFi objects
+when changing flags, as required by the port's AGENTS.md.
+
+Open Prefs/WiFi from Wanderer for first-use selection. No background manager
+is started by this image. Real GUI/single-manager, clock, DHCP, routing and
+radio acceptance remain open; neither privacy assertion is enabled here.
+
+## WLAN build defaults
 
 `python3 make-wifi-stage.py --aros-root BUILD_AROS --output NEW_DIRECTORY`
 collects a whitelist of native WLAN runtime files and the generated defaults.
@@ -34,11 +58,12 @@ Every required executable must parse as little-endian RISC-V ELF32 ET_REL;
 WiFi must contain one initialized writable two-byte WifiVolatile symbol set
 to 1. Missing, empty or symlinked required inputs fail before reserving output.
 Built WiFi/Network catalogs are optional and allowlisted. No build-tree saved
-preferences or Package-Startup are imported. Twelve host tests pass and a real
-RV32-SMP build produced 78 staged files; this is not loader/runtime acceptance.
-Neither image target consumes this stage yet. The existing C3 base supplies
-the GUI classes; full-image credential exclusion must also cover its copying
-of build-tree preferences before this overlay may be integrated.
+preferences or Package-Startup are imported. Sixteen host tests pass and actual
+RV32-SMP outputs produce 83 files with desktop defaults (78 without them);
+this is not loader/runtime acceptance.
+The explicit WLAN target consumes this stage with `--desktop-defaults`.
+The existing C3 base supplies GUI classes, but its recursive build preference
+import is disabled for this profile. Normal image targets retain their behavior.
 
 The package lookup is fixed to SYS:System/Network/AROSTCP. Neutral
 netdb-myhost/static-routes replace the source package's fixed sample LAN;
@@ -53,10 +78,9 @@ clock/GUI/runtime qualification remains open. Credential transmission remains ga
 
 `python3 make-wifi-defaults.py NEW_DIRECTORY` generates fixed, credential-free
 preferences for native `DEVS:Networks/esp32p4wlan.device`, unit0 and DHCP.
-The output is a preferences overlay, not a complete network image: the standard
-AROSTCP database companions, stack/DHCP/manager binaries, libraries, Network
-preferences and single-manager GUI startup still need explicit image staging.
-Neither existing image target consumes the overlay yet.
+This helper alone produces a preferences overlay, not a complete network image.
+The WLAN stage adds the standard database, stack/DHCP/manager binaries,
+libraries and Network preferences through the existing AROS build targets.
 
 Existing output directories and symlinks are refused; never merge this output
 over saved private preferences. `AutoRun` and `WirelessAutoRun` are False.

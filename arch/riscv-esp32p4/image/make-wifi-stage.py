@@ -8,6 +8,7 @@ a new directory; the C3 image target consumes it after validation succeeds.
 import argparse
 import importlib.util
 from pathlib import Path
+import re
 import sys
 
 sys.dont_write_bytecode = True
@@ -77,13 +78,30 @@ def verify_volatile(elf, data):
         raise ValueError("WiFi must be rebuilt with WIFI_VOLATILE_DEFAULT=1")
 
 
-def collect(aros_root, source_root=REPO):
+def desktop_defaults(source_root):
+    """Use tracked stock preferences, never the build's saved Env-Archive."""
+    payload = {}
+    for name in ("global", "toolbar", "statusbar", "backdrop"):
+        payload["Prefs/Env-Archive/Sys/Wanderer/" + name + ".prefs"] = read_file(
+            source_root, "workbench/system/Wanderer/Env/default/" + name + ".prefs")
+    source = read_file(source_root, "rom/aros/arosinquirea.c").decode("ascii")
+    values = re.findall(r"^#define\s+AROS_ABI_VERSION_MAJOR\s+(-?\d+)\s*(?:/\*.*)?$",
+                        source, re.MULTILINE)
+    if len(values) != 1:
+        raise ValueError("expected one literal AROS ABI major version")
+    payload["Prefs/Env-Archive/ABI"] = (values[0] + "\n").encode("ascii")
+    return payload
+
+
+def collect(aros_root, source_root=REPO, include_desktop=False):
     """Validate every required input before reserving or writing output."""
     for root in (aros_root, source_root):
         if root.is_symlink() or not root.is_dir():
             raise ValueError("runtime/source root must be a real directory: " + str(root))
     payload = {name: text.encode("ascii")
                for name, text in DEFAULTS.defaults().items()}
+    if include_desktop:
+        payload.update(desktop_defaults(source_root))
     for name in BINARIES:
         data = read_file(aros_root, name)
         elf, _ = ELF._parse_elf(data)
@@ -113,8 +131,8 @@ def collect(aros_root, source_root=REPO):
     return payload
 
 
-def generate(aros_root, output, source_root=REPO):
-    payload = collect(aros_root, source_root)
+def generate(aros_root, output, source_root=REPO, include_desktop=False):
+    payload = collect(aros_root, source_root, include_desktop)
     output.mkdir(parents=False, exist_ok=False)
     for name, content in sorted(payload.items()):
         target = output / name
@@ -128,8 +146,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--aros-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--desktop-defaults", action="store_true",
+                        help="include tracked stock Wanderer preferences and ABI")
     args = parser.parse_args()
-    payload = generate(args.aros_root, args.output)
+    payload = generate(args.aros_root, args.output, include_desktop=args.desktop_defaults)
     print("Staged %d WLAN files; no credentials, autostart or hardware action." % len(payload))
 
 

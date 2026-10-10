@@ -4,6 +4,12 @@ include $(SRCDIR)/config/aros.cfg
 
 FILES := main worker locale volatile_config
 
+# The read-only ESP32 delivery uses RAM-only first-use configuration, including
+# Workbench launch. Other ports retain the generic persistent default.
+ifeq ($(AROS_TARGET_ARCH),esp32p4)
+USER_CPPFLAGS += -DWIFI_VOLATILE_DEFAULT=1
+endif
+
 EXEDIR := $(AROS_PREFS)
 
 # Only bwfm answers the wireless SANA-II commands this needs, so the program is
