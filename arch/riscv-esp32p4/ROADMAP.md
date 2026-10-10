@@ -122,7 +122,7 @@ all42 loader audits; no ABI7/ABI8 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle, ABI8 maintenance/discovery and shared CLI/GUI binding host/build verified; matched42-member BSP candidate audited and tool included in WLAN image; C6 candidate undeployed; no hardware acceptance | Native/C6 discovery runtime qualification and live P4/C6 layout/active-slot provenance, owner OTA dispatch and ambiguous-write recovery policy, secured CN5 recovery, real CLI/GUI update and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle, ABI8 maintenance/discovery and shared CLI/GUI binding host/build verified; matched42-member BSP/image candidate; isolated OTA terminal-disposition contract host/object build verified; C6 candidate undeployed; no hardware acceptance | Native owner OTA dispatch, confirmed fenced terminal handoff and full-transfer budget; actual discovery/layout/slot provenance, secured CN5 recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1292,6 +1292,22 @@ Stop/Deinit/CLOSE/function restoration. This is not a no-write boundary or an
 OTA adapter: no maintenance client can issue SDIO/OTA through this ABI.
 Future begun/ambiguous OTA transactions need a separate terminal cleanup policy
 and a justified full-transfer/renewal budget before binding the engine.
+The portable engine now supplies that terminal disposition explicitly to
+finish_maintenance rather than invoking undifferentiated release: NO_BEGIN,
+INCOMPLETE after any BEGIN attempt, COMMIT_UNKNOWN after unsuccessful END,
+WAIT_REBOOT after acknowledged END. Post-BEGIN dispositions prohibit normal
+radio restart/polling/reassociation and automatic reset/replay; callback success
+means confirmed bounded fenced handoff. Callback failure retains the transfer
+classification and prevents installed confirmation. Postboot confirmation
+also requires complete matching counters and begin/end flags. This is an
+adapter contract, not an implemented native handoff; ABI8 and its ordinary
+read-only release remain unchanged. Native OTA dispatch, sticky recovery state
+and a full-transfer budget still need implementation.
+Terminal-policy tests pass692 checks each O0/O2 under ASan/UBSan, including
+once-only handoff, failure status preservation and postboot-result guards.
+A compiled all-NO_BEGIN mutation fails at the expected assertion with exit1.
+The isolated engine builds with the actual RV32-SMP ilp32f configuration and
+no undefined imports; it remains outside the native application/module/package.
 Actual-source host tests and fresh Core1 module builds pass; Exec locks,
 callbacks and RPC outcomes are mocked. The matching ABI7 resource/device must
 replace the prior ABI6 pair together in a regenerated audited package/image.
@@ -36940,3 +36956,69 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   dispatch/ambiguous-write policy, installed privacy/recovery and actual
   association/DHCP/bidirectional frames/reconnect/combined1800s plus CLI/GUI
   updates/HTTPS remain open. Full Wi-Fi goal remains active.
+
+### 2026-10-11 - N2M explicit OTA terminal maintenance disposition
+
+- Scope/configuration: source-only work in
+  /Volumes/Dev/Build/aros-esp32p4-wifi on feature/esp32p4-wifi, after
+  74c795cacd. Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/ota-terminal.eTyi8W/.
+  No board, serial, reset, flash, SD write or credential operation.
+- Reference finding: the pinned C6 candidate's slave_control.c BEGIN calls
+  esp_ota_begin with OTA_SIZE_UNKNOWN; an attempted BEGIN cannot prove the
+  fallback untouched. END sets the boot partition before timer creation/start,
+  so a failed END response can follow changed boot selection. This supports
+  conservative classification, not installed C6 behavior or recovery evidence.
+- Implementation: the portable engine calls finish_maintenance exactly once
+  after successful lease acquisition, selecting NO_BEGIN, INCOMPLETE,
+  COMMIT_UNKNOWN or WAIT_REBOOT. Only NO_BEGIN permits ordinary read-only
+  release. Post-BEGIN dispositions require confirmed bounded fenced ownership
+  handoff: no WiFiStart, ordinary polling/reassociation, replay, END cleanup or
+  automatic reset. Failed handoff remains separately visible without erasing
+  the transfer/commit classification. Installation confirmation additionally
+  requires successful handoff, begin/end flags and complete consistent image/
+  chunk/byte counters, followed by caller-supplied fresh identity and health.
+  The engine itself does not authenticate these attestations or compute a hash.
+- Primary verification: test-board-update.sh actual process exit0;692 checks
+  each O0/O2 with C11 warnings-as-errors, ASan/UBSan. Tests cover rejected,
+  ambiguous and invalid callback outcomes, nonzero acknowledgement status,
+  source failures, cancellation, once-only finalization, all four dispositions,
+  positive/negative finalizer failures retaining transfer status and24 mutated
+  result fields/values refused without changing the result. The compiled
+  all-NO_BEGIN mutant exits1 at the expected finish-mode CHECK; compilation
+  failure or unrelated crash is not accepted. Host freestanding no-import
+  check passes. Independent scoped code review found no blocking defect.
+- Regressions: hosted OTA codec161 checks each O0/O2; normal pending transport
+  986 checks each O0/O2; allowing OTA in its ordinary allowlist causes the
+  expected negative-test rejection. Both complete shell processes exit0.
+  These are host fixtures, not Exec/SDIO/C6 execution or wall-clock deadline
+  qualification. Finite callback deadlines remain the adapter's obligation.
+- Native object: freshly compiled update-rv32-final.o,6288B, SHA256
+  73044e8b730d9a9433d098f3bcb0a6b4017f925012dcc501317593069a982c6d;
+  compiler exits0, nm -u exits0 with no symbols. Actual target.cfg selects
+  rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f; explicit current-build sysroot,
+  medany, freestanding O2 and warnings-as-errors used. Initial successful
+  update-rv32.o used ilp32d/double-float by mistake; it is retained but is NOT
+  accepted P4-profile evidence. Corrected profile/final objects use ilp32f.
+  This is a standalone engine object, not a new linked application, resource,
+  BSP package or image; prior matched candidate hashes remain unchanged.
+- Source identities: archived update.c SHA256
+  ff21a3decc8310630f50b5c3b1b7d6736fc9b4b43864e847076f8d0d41a5cf0b;
+  update.h SHA256
+  99e00136cb05db40bb7eb275026f10df2816d05796265af0211093492516899b.
+  update-tests.log SHA256
+  99631d153c5ad37e8f0c2a4d38f841dcf5a61380642ff1180844f5f9f4af6831;
+  ota-codec-verified.log SHA256
+  ba5f14676392a0a60da21f091a221905a89bd9506af902bfe9b9b453a5759943;
+  pending-ota-verified.log SHA256
+  7a7d8945fed6bf25e5d5b4443dd943dd9a5f75707281ac52b493691675a9d3b7.
+- Safety/limits/next: private ABI8 and its ordinary discovery release are
+  unchanged. No native OTA/fenced-handoff adapter exists yet, UPDATE-C6 stays
+  unavailable, installed identity/privacy/layout and independent C6 recovery
+  are unproven. Implement native owner dispatch and sticky terminal state with
+  a justified full-transfer budget before binding the engine. The current
+  30-second discovery lease is not such a budget. Secure independent recovery
+  before first C6 deployment; the undeployed discovery extension cannot serve
+  as its own bootstrap recovery. Actual association/DHCP/bidirectional frames,
+  reconnect, combined1800s and CLI/GUI updates/HTTPS remain open. The full
+  Wi-Fi goal remains active; this step is at most build verified.

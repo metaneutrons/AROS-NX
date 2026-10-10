@@ -41,6 +41,17 @@ enum p4_board_update_call_result {
     P4_BOARD_UPDATE_CALL_AMBIGUOUS = 2
 };
 
+/* Terminal owner policy, not permission to resume traffic. Once BEGIN has
+ * been attempted even a rejected response cannot prove the fallback untouched.
+ * No terminal path may replay a request or send END as cleanup. */
+enum p4_board_update_finish_mode {
+    P4_BOARD_UPDATE_FINISH_NONE = 0,
+    P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+    P4_BOARD_UPDATE_FINISH_INCOMPLETE,
+    P4_BOARD_UPDATE_FINISH_COMMIT_UNKNOWN,
+    P4_BOARD_UPDATE_FINISH_WAIT_REBOOT
+};
+
 /* These are trusted caller attestations from manifest/inspection work. The
  * engine does not parse manifests, authenticate images, or compute a digest. */
 struct p4_board_update_gates {
@@ -72,7 +83,15 @@ struct p4_board_update_ops {
     size_t context_size;
     /* Zero means an exclusive lease was acquired; nonzero means none was. */
     int (*acquire_maintenance)(void *context);
-    int (*release_maintenance)(void *context);
+    /* Called once after acquiring a lease, with the terminal policy selected
+     * by the engine. NO_BEGIN permits ordinary bounded read-only release.
+     * All other modes must hand ownership to a fenced recovery/reboot state:
+     * no WiFiStart, normal polling, auto-reassociation or automatic reset.
+     * Return zero only after that bounded handoff is confirmed, not merely
+     * after a release request was queued. A failure remains visible in the
+     * result and must not erase the transfer/commit classification. */
+    int (*finish_maintenance)(void *context,
+                              enum p4_board_update_finish_mode mode);
     /* Must confirm immutable source ownership remains held through the run,
      * then revalidate the inspected object immediately before BEGIN. */
     int (*revalidate_source)(void *context, uint32_t expected_size);
@@ -97,7 +116,9 @@ struct p4_board_update_plan {
     size_t scratch_size;
 };
 
-/* Result owns no pointers. Progress counts only acknowledged WRITE requests. */
+/* Result owns no pointers. Progress counts only acknowledged WRITE requests.
+ * The legacy lease_release_* names record the once-only terminal handoff;
+ * they do not mean that normal radio traffic has been resumed. */
 struct p4_board_update_result {
     enum p4_board_update_status status;
     uint32_t image_size;
@@ -108,6 +129,7 @@ struct p4_board_update_result {
     int32_t callback_status;
     int32_t local_status;
     int32_t lease_release_status;
+    enum p4_board_update_finish_mode finish_mode;
     uint8_t lease_acquired;
     uint8_t lease_release_called;
     uint8_t begin_attempted;

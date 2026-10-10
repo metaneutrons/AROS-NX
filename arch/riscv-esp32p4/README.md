@@ -13,6 +13,17 @@ Requirements: [board-tool plan](../../docs/plans/esp32-board-tool.md), roadmap N
 Independent pinned protobuf-c comparison passes 1,643 checks at each O0/O2;
 normal WLAN control submission refuses all three OTA request types. These are
 host protocol/safety checks, not evidence of a working C6 update or recovery.
+The isolated OTA engine now distinguishes terminal maintenance policies:
+no BEGIN attempt, incomplete transfer, unknown commit and acknowledged END
+waiting for reboot. Only the first allows ordinary read-only lease release;
+the others require a confirmed bounded fenced handoff, without automatic
+radio restart, reset or request replay. Failed handoff blocks installation
+confirmation. The native OTA/handoff adapter is still absent; this contract
+does not change ABI8, enable UPDATE-C6 or prove physical recovery.
+Terminal-policy regressions pass692 checks each O0/O2 under ASan/UBSan;
+the compiled all-NO_BEGIN mutation fails at the expected assertion with exit1.
+The standalone engine compiles for the configured RV32-SMP ilp32f profile
+without undefined imports. It is not linked into the native application.
 Native private ABI8 supplies a task-bound, nonblocking maintenance lease and
 queued read-only discovery with copied results (2026-10-11); scoped host tests
 and native builds pass, runtime qualification remains open. ABI7 introduced

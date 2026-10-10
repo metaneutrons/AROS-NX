@@ -92,7 +92,7 @@ static int plan_is_valid(const struct p4_board_update_plan *plan)
                             plan->reader.context_size) &&
            context_is_valid(plan->ops.context, plan->ops.context_size) &&
            plan->reader.read && plan->ops.acquire_maintenance &&
-           plan->ops.release_maintenance && plan->ops.revalidate_source &&
+           plan->ops.finish_maintenance && plan->ops.revalidate_source &&
            plan->ops.is_cancelled && plan->ops.begin && plan->ops.write &&
            plan->ops.end;
 }
@@ -105,16 +105,26 @@ static int gates_pass(const struct p4_board_update_gates *gates)
            gates->target_compatible == 1u;
 }
 
-static void release_lease(const struct p4_board_update_plan *plan,
+static void finish_lease(const struct p4_board_update_plan *plan,
                           struct p4_board_update_result *result)
 {
     if (!result->lease_acquired || result->lease_release_called)
         return;
 
+    if (!result->begin_attempted)
+        result->finish_mode = P4_BOARD_UPDATE_FINISH_NO_BEGIN;
+    else if (!result->end_attempted)
+        result->finish_mode = P4_BOARD_UPDATE_FINISH_INCOMPLETE;
+    else if (result->status == P4_BOARD_UPDATE_WAIT_REBOOT)
+        result->finish_mode = P4_BOARD_UPDATE_FINISH_WAIT_REBOOT;
+    else
+        result->finish_mode = P4_BOARD_UPDATE_FINISH_COMMIT_UNKNOWN;
+
     /* Mark before invoking user code so even a re-entrant callback is once. */
     result->lease_release_called = 1u;
     result->lease_release_status =
-        (int32_t)plan->ops.release_maintenance(plan->ops.context);
+        (int32_t)plan->ops.finish_maintenance(plan->ops.context,
+                                             result->finish_mode);
 }
 
 static enum p4_board_update_status finish(
@@ -123,7 +133,7 @@ static enum p4_board_update_status finish(
     enum p4_board_update_status status)
 {
     result->status = status;
-    release_lease(plan, result);
+    finish_lease(plan, result);
     return result->status;
 }
 
@@ -184,6 +194,7 @@ p4_board_update_run(const struct p4_board_update_plan *plan,
     result->callback_status = 0;
     result->local_status = 0;
     result->lease_release_status = 0;
+    result->finish_mode = P4_BOARD_UPDATE_FINISH_NONE;
     result->lease_acquired = 0u;
     result->lease_release_called = 0u;
     result->begin_attempted = 0u;
@@ -314,7 +325,14 @@ int p4_board_update_confirm_postboot(struct p4_board_update_result *result,
     if (!result || result->status != P4_BOARD_UPDATE_WAIT_REBOOT ||
         result->lease_acquired != 1u ||
         result->lease_release_called != 1u ||
-        result->lease_release_status != 0)
+        result->lease_release_status != 0 ||
+        result->finish_mode != P4_BOARD_UPDATE_FINISH_WAIT_REBOOT ||
+        result->begin_attempted != 1u || result->end_attempted != 1u ||
+        result->image_size == 0u ||
+        result->image_size > P4_BOARD_UPDATE_MAX_IMAGE_SIZE ||
+        result->total_chunks != chunks_for_size(result->image_size) ||
+        result->acknowledged_chunks != result->total_chunks ||
+        result->acknowledged_bytes != result->image_size)
         return 0;
 
     if (target_identity_matches != 1 || health_check_passed != 1) {

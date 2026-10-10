@@ -53,6 +53,15 @@ secured recovery path; source development and read-only file checks do not.
   END sets boot selection before its restart timer can fail: any failed or
   lost END completion is commit-unknown. A successful END acknowledgement is
   only waiting-for-reboot; installation requires fresh identity and health.
+- Maintenance finalization must receive an explicit terminal disposition.
+  Before any BEGIN attempt, ordinary bounded read-only release is permitted.
+  After BEGIN, including rejected or ambiguous BEGIN, an incomplete transfer
+  remains fenced for recovery. Any unsuccessful END is commit-unknown;
+  successful END remains fenced waiting for reboot. These states may not
+  call WiFiStart, resume normal polling/reassociation, retry OTA or reset the
+  peer automatically. Finalization succeeds only after confirmed bounded
+  ownership handoff, not after queuing a release request. Its failure must
+  remain visible without changing the transfer/commit classification.
 - A missing recovery proof is a refused write, not a command-line override.
   Recovery evidence must refer to the actual device and layout. Do not infer
   installed rollback from the candidate's build configuration.
