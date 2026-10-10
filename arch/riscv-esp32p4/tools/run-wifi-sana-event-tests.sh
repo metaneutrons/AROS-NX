@@ -138,7 +138,7 @@ extract_function() {
 awk '
     /^    case S2_ONEVENT:/ { one_count++; in_one = 1; next }
     in_one && /^    case / { in_one = 0 }
-    in_one && /p4wlan_onevent_immediate_locked\(unit, request, event_mask\)/ { one_helper = 1 }
+    in_one && /p4wlan_onevent_immediate_locked\(unit, opener, request, event_mask\)/ { one_helper = 1 }
     in_one && /p4wlan_alloc_request\(opener, request,/ { one_queue = 1 }
     /^    case S2_CONFIGINTERFACE:/ { config_count++; in_config = 1; next }
     in_config && /^    case / { in_config = 0 }
@@ -174,7 +174,8 @@ awk '
 
 for constant in S2ERR_NOT_SUPPORTED S2ERR_OUTOFSERVICE S2WERR_BAD_EVENT \
                 S2WERR_UNIT_OFFLINE S2EVENT_ONLINE S2EVENT_OFFLINE \
-                S2EVENT_CONNECT S2EVENT_DISCONNECT; do
+                S2EVENT_CONNECT S2EVENT_DISCONNECT \
+                S2EVENT_CONNECT_FAILED; do
     extract_constant "$constant" "$sana_header"
 done
 extract_constant P4WLAN_MAX_FRAME "$header_file"
@@ -193,10 +194,12 @@ extract_function p4wlan_event_locked
 extract_function p4wlan_event_mask_valid
 extract_function p4wlan_event_ready_locked
 extract_function p4wlan_onevent_immediate_locked
+extract_function p4wlan_association_failed_locked
 extract_function p4wlan_wipe_bytes
 extract_function p4wlan_drop_pin_locked
 extract_function p4wlan_retire_association_locked
 extract_function p4wlan_invalidate_selection_locked
+extract_function p4wlan_cancel_opener_association_locked
 extract_function p4wlan_online_locked
 extract_function p4wlan_configure_interface_locked
 extract_function p4wlan_set_offline_locked

@@ -312,6 +312,14 @@ static void p4wlan_retire_association_locked(struct p4wlan_association *attempt)
 
 static void p4wlan_invalidate_selection_locked(struct p4wlan_unit *unit)
 {
+    struct MinNode *node;
+    for (node = unit->openers.mlh_Head; node->mln_Succ; node = node->mln_Succ) {
+        struct p4wlan_opener *opener =
+            (struct p4wlan_opener *)((UBYTE *)node -
+                offsetof(struct p4wlan_opener, unit_node));
+        opener->active_cookie = 0;
+        opener->failed_cookie = 0;
+    }
     if (unit->link_committed || unit->active_association)
         unit->teardown_pending = TRUE;
     unit->teardown_notify = FALSE;
@@ -335,6 +343,8 @@ static void p4wlan_invalidate_selection_locked(struct p4wlan_unit *unit)
 static void p4wlan_cancel_opener_association_locked(struct p4wlan_unit *unit,
                                                     struct p4wlan_opener *opener)
 {
+    opener->active_cookie = 0;
+    opener->failed_cookie = 0;
     if ((unit->pending_association &&
          unit->pending_association->opener == opener) ||
         unit->link_opener == opener ||
@@ -394,6 +404,9 @@ static void p4wlan_event_locked(struct p4wlan_unit *unit, ULONG event,
     ULONG consumed = 0;
     struct MinNode *onode;
 
+    /* Failure is exclusively opener-scoped with cookie metadata. */
+    event &= ~S2EVENT_CONNECT_FAILED;
+
     /* CONNECT and DISCONNECT describe opposite observed link edges. A newer
      * edge supersedes an older one that no S2_ONEVENT request consumed. */
     if (event & S2EVENT_CONNECT)
@@ -432,10 +445,41 @@ static void p4wlan_event_locked(struct p4wlan_unit *unit, ULONG event,
     unit->pending_events |= (event & ~consumed) & edge_events;
 }
 
+/* One acknowledged attempt, one originating opener, one failure consumption.
+ * This is not a unit-wide link edge and must never be coalesced with one. */
+static void p4wlan_association_failed_locked(struct p4wlan_opener *opener,
+                                             ULONG cookie,
+                                             struct MinList *done)
+{
+    struct MinNode *node;
+    if (opener->closing || !cookie || opener->active_cookie != cookie) return;
+    opener->active_cookie = 0;
+    opener->failed_cookie = cookie;
+    for (node = opener->requests.mlh_Head; node->mln_Succ;
+         node = node->mln_Succ) {
+        struct p4wlan_request *item =
+            (struct p4wlan_request *)((UBYTE *)node -
+                offsetof(struct p4wlan_request, owner_node));
+        if (item->kind == P4WLAN_REQUEST_EVENT &&
+            item->state == P4WLAN_REQUEST_QUEUED &&
+            (item->event_mask & S2EVENT_CONNECT_FAILED)) {
+            item->state = P4WLAN_REQUEST_COMPLETING;
+            item->completion_error = 0;
+            item->completion_wire = S2EVENT_CONNECT_FAILED;
+            item->completion_sets_length = TRUE;
+            item->completion_length = cookie;
+            opener->failed_cookie = 0;
+            ADDTAIL((struct List *)done, (struct Node *)&item->done_node);
+            break;
+        }
+    }
+}
+
 static BOOL p4wlan_event_mask_valid(ULONG event_mask)
 {
     const ULONG supported = S2EVENT_ONLINE | S2EVENT_OFFLINE |
-                            S2EVENT_CONNECT | S2EVENT_DISCONNECT;
+                            S2EVENT_CONNECT | S2EVENT_DISCONNECT |
+                            S2EVENT_CONNECT_FAILED;
     return event_mask != 0 && (event_mask & ~supported) == 0;
 }
 
@@ -454,6 +498,7 @@ static ULONG p4wlan_event_ready_locked(struct p4wlan_unit *unit,
 /* TRUE means the request has completed immediately (either with a supported
  * event or a precise unsupported-mask error); FALSE means it should be parked. */
 static BOOL p4wlan_onevent_immediate_locked(struct p4wlan_unit *unit,
+                                             struct p4wlan_opener *opener,
                                              struct IOSana2Req *request,
                                              ULONG event_mask)
 {
@@ -463,6 +508,14 @@ static BOOL p4wlan_onevent_immediate_locked(struct p4wlan_unit *unit,
         return TRUE;
     }
 
+    if ((event_mask & S2EVENT_CONNECT_FAILED) && opener->failed_cookie &&
+        !opener->closing) {
+        request->ios2_Req.io_Error = 0;
+        request->ios2_WireError = S2EVENT_CONNECT_FAILED;
+        request->ios2_DataLength = opener->failed_cookie;
+        opener->failed_cookie = 0;
+        return TRUE;
+    }
     request->ios2_WireError = p4wlan_event_ready_locked(unit, event_mask);
     return request->ios2_WireError != 0;
 }
@@ -1041,6 +1094,10 @@ static BOOL p4wlan_associate_one(struct p4wlan_unit *unit,
         ReleaseSemaphore(&unit->lock);
         return FALSE;
     }
+    if (!attempt->acknowledged) {
+        ReleaseSemaphore(&unit->lock);
+        return TRUE;
+    }
     unit->pending_association = NULL;
     unit->active_association = attempt;
     ReleaseSemaphore(&unit->lock);
@@ -1059,6 +1116,8 @@ static BOOL p4wlan_associate_one(struct p4wlan_unit *unit,
         unit->hardware_ready && !unit->callback_fault &&
         p4wlan_confirmed_target_matches(&radio->confirmed_ap, &attempt->target);
     if (succeeded) {
+        attempt->opener->active_cookie = 0;
+        attempt->opener->failed_cookie = 0;
         CopyMem(&radio->confirmed_ap, &unit->link_info, sizeof(unit->link_info));
         unit->link_opener = attempt->opener;
         ++attempt->opener->refs; /* committed link has its own lifecycle pin */
@@ -1069,6 +1128,12 @@ static BOOL p4wlan_associate_one(struct p4wlan_unit *unit,
         radio->associated = FALSE;
         /* An acknowledged attempt's late failure is not confirmed link loss.
          * Never synthesize CONNECT or DISCONNECT from a timeout/error. */
+        if (!attempt->cancelled && !attempt->opener->closing &&
+            unit->active_association == attempt &&
+            unit->selection_token == attempt->token && unit->online &&
+            unit->hardware_ready && !unit->callback_fault)
+            p4wlan_association_failed_locked(attempt->opener,
+                                             attempt->cookie, &done);
     }
     unit->active_association = NULL;
     p4wlan_retire_association_locked(attempt);
@@ -1369,6 +1434,7 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
     case S2_SETOPTIONS:
     {
         struct p4wlan_association *attempt;
+        ULONG acknowledged_token;
         if (!unit->online || !unit->hardware_ready || unit->callback_fault ||
             !unit->radio || !unit->radio->association_enabled) {
             p4wlan_immediate_error(request, S2ERR_OUTOFSERVICE,
@@ -1393,8 +1459,8 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
                                    S2WERR_GENERIC_ERROR);
             break;
         }
-        if (!p4wlan_copy_association_options(&attempt->target,
-                (const struct TagItem *)request->ios2_Data)) {
+        if (!p4wlan_copy_association_options_cookie(&attempt->target,
+                &attempt->cookie, (const struct TagItem *)request->ios2_Data)) {
             p4wlan_wipe_bytes((UBYTE *)attempt, sizeof(*attempt));
             FreeVec(attempt);
             p4wlan_immediate_error(request, S2ERR_BAD_ARGUMENT,
@@ -1405,10 +1471,25 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         attempt->unit = unit;
         attempt->opener = opener;
         attempt->token = unit->selection_token;
+        opener->active_cookie = attempt->cookie;
         ++opener->refs;
         unit->pending_association = attempt;
-        /* Normal immediate reply below: no request pointer lives in attempt. */
-        break;
+        acknowledged_token = attempt->token;
+        /* Force a message acknowledgment even for quick I/O. ReplyMsg may
+         * invoke a PA_CALL hook, so never hold the unit lock across it. The
+         * owner skips unacknowledged work; after Reply, identify it solely by
+         * the non-reused selection token, not a possibly freed attempt/opener
+         * or a request that the callback may already have reused. */
+        request->ios2_Req.io_Flags &= (UBYTE)~IOF_QUICK;
+        ReleaseSemaphore(&unit->lock);
+        p4wlan_term_io(request);
+        ObtainSemaphore(&unit->lock);
+        if (unit->pending_association &&
+            unit->pending_association->token == acknowledged_token)
+            unit->pending_association->acknowledged = TRUE;
+        ReleaseSemaphore(&unit->lock);
+        p4wlan_finish_done(unit, &done);
+        return;
     }
 
     case S2_GETNETWORKINFO:
@@ -1516,7 +1597,7 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         break;
 
     case S2_ONEVENT:
-        if (p4wlan_onevent_immediate_locked(unit, request, event_mask)) {
+        if (p4wlan_onevent_immediate_locked(unit, opener, request, event_mask)) {
             break;
         }
         item = p4wlan_alloc_request(opener, request,

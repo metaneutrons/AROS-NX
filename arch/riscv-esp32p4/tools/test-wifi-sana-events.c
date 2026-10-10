@@ -55,6 +55,7 @@ struct IORequest { BYTE io_Error; };
 struct IOSana2Req {
     struct IORequest ios2_Req;
     ULONG ios2_WireError;
+    ULONG ios2_DataLength;
 };
 
 struct p4wlan_unit;
@@ -185,22 +186,28 @@ static void test_supported_masks_and_error_mapping(void)
          ++index) {
         CHECK(p4wlan_event_mask_valid(supported[index]));
     }
+    CHECK(p4wlan_event_mask_valid(S2EVENT_CONNECT |
+                                  S2EVENT_DISCONNECT |
+                                  S2EVENT_CONNECT_FAILED));
 
     memset(&request, 0, sizeof(request));
-    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                            &request,
                                             S2EVENT_CONNECT));
     CHECK(request.ios2_Req.io_Error == 0);
     CHECK(request.ios2_WireError == 0);
 
     memset(&request, 0, sizeof(request));
     CHECK(!p4wlan_event_mask_valid(0));
-    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &request, 0));
+    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                           &request, 0));
     CHECK(request.ios2_Req.io_Error == S2ERR_NOT_SUPPORTED);
     CHECK(request.ios2_WireError == S2WERR_BAD_EVENT);
 
     memset(&request, 0, sizeof(request));
     CHECK(!p4wlan_event_mask_valid(0x80000000u));
-    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                           &request,
                                            0x80000000u));
     CHECK(request.ios2_Req.io_Error == S2ERR_NOT_SUPPORTED);
     CHECK(request.ios2_WireError == S2WERR_BAD_EVENT);
@@ -217,24 +224,30 @@ static void test_edge_latch_and_one_shot_rearm(void)
     CHECK(fixture.unit.pending_events == S2EVENT_CONNECT);
 
     memset(&request, 0, sizeof(request));
-    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+    request.ios2_DataLength = 0xA5A5u;
+    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                           &request,
                                            S2EVENT_CONNECT));
     CHECK(request.ios2_WireError == S2EVENT_CONNECT);
+    CHECK(request.ios2_DataLength == 0xA5A5u);
     CHECK(fixture.unit.pending_events == 0);
 
     memset(&request, 0, sizeof(request));
-    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                            &request,
                                             S2EVENT_CONNECT));
     CHECK(request.ios2_WireError == 0);
 
     /* A state query remains administrative and cannot invent a link edge. */
     fixture.unit.online = TRUE;
     memset(&request, 0, sizeof(request));
-    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                           &request,
                                            S2EVENT_ONLINE));
     CHECK(request.ios2_WireError == S2EVENT_ONLINE);
     memset(&request, 0, sizeof(request));
-    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                            &request,
                                             S2EVENT_CONNECT));
 }
 
@@ -249,10 +262,12 @@ static void test_new_edge_supersedes_opposite(void)
     p4wlan_event_locked(&fixture.unit, S2EVENT_DISCONNECT, &fixture.done);
     CHECK(fixture.unit.pending_events == S2EVENT_DISCONNECT);
     memset(&request, 0, sizeof(request));
-    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                            &request,
                                             S2EVENT_CONNECT));
     CHECK(request.ios2_WireError == 0);
-    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                           &request,
                                            S2EVENT_DISCONNECT));
     CHECK(request.ios2_WireError == S2EVENT_DISCONNECT);
     CHECK(fixture.unit.pending_events == 0);
@@ -291,11 +306,135 @@ static void test_parked_requests_receive_edges_once(void)
     {
         struct IOSana2Req request;
         memset(&request, 0, sizeof(request));
-        CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+        CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                               &request,
                                                S2EVENT_DISCONNECT));
         CHECK(request.ios2_WireError == S2EVENT_DISCONNECT);
         CHECK(fixture.unit.pending_events == 0);
     }
+}
+
+static void test_connect_failed_is_opener_scoped_and_one_shot(void)
+{
+    struct event_fixture fixture;
+    struct p4wlan_request first_waiter, second_waiter, other_waiter;
+    struct IOSana2Req request;
+    const ULONG combined_mask = S2EVENT_CONNECT | S2EVENT_DISCONNECT |
+                                S2EVENT_CONNECT_FAILED;
+    const ULONG cookie = 0xF1234567u;
+
+    ++scenarios;
+    fixture_init(&fixture);
+    fixture.opener.active_cookie = cookie;
+    fixture.second_opener.active_cookie = 77u;
+    park_event_on(&fixture.opener, &first_waiter, combined_mask);
+    park_event_on(&fixture.opener, &second_waiter, S2EVENT_CONNECT_FAILED);
+    park_event_on(&fixture.second_opener, &other_waiter, combined_mask);
+
+    p4wlan_association_failed_locked(&fixture.opener, cookie,
+                                      &fixture.done);
+    CHECK(first_waiter.state == P4WLAN_REQUEST_COMPLETING);
+    CHECK(first_waiter.completion_error == 0);
+    CHECK(first_waiter.completion_wire == S2EVENT_CONNECT_FAILED);
+    CHECK(first_waiter.completion_sets_length == TRUE);
+    CHECK(first_waiter.completion_length == cookie);
+    CHECK(second_waiter.state == P4WLAN_REQUEST_QUEUED);
+    CHECK(other_waiter.state == P4WLAN_REQUEST_QUEUED);
+    CHECK(fixture.opener.failed_cookie == 0u);
+    CHECK(fixture.second_opener.failed_cookie == 0u);
+    CHECK(fixture.done.mlh_TailPred != (struct MinNode *)&fixture.done);
+
+    /* The second parked request and other opener cannot consume this result. */
+    memset(&request, 0, sizeof(request));
+    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit,
+                                            &fixture.second_opener, &request,
+                                            S2EVENT_CONNECT_FAILED));
+    CHECK(request.ios2_WireError == 0u);
+    CHECK(request.ios2_DataLength == 0u);
+}
+
+static void test_connect_failed_latch_is_standalone_and_consumed_once(void)
+{
+    struct event_fixture fixture;
+    struct IOSana2Req request;
+    const ULONG cookie = 0xF0000001u;
+    const ULONG combined_mask = S2EVENT_CONNECT | S2EVENT_DISCONNECT |
+                                S2EVENT_CONNECT_FAILED;
+
+    ++scenarios;
+    fixture_init(&fixture);
+    fixture.opener.active_cookie = cookie;
+    fixture.unit.pending_events = S2EVENT_DISCONNECT;
+    p4wlan_association_failed_locked(&fixture.opener, cookie,
+                                      &fixture.done);
+    CHECK(fixture.opener.active_cookie == 0u);
+    CHECK(fixture.opener.failed_cookie == cookie);
+
+    memset(&request, 0, sizeof(request));
+    request.ios2_DataLength = 0xDEADBEEFu;
+    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                           &request, combined_mask));
+    CHECK(request.ios2_Req.io_Error == 0);
+    CHECK(request.ios2_WireError == S2EVENT_CONNECT_FAILED);
+    CHECK(request.ios2_DataLength == cookie);
+    CHECK(fixture.opener.failed_cookie == 0u);
+    CHECK(fixture.unit.pending_events == S2EVENT_DISCONNECT);
+
+    memset(&request, 0, sizeof(request));
+    request.ios2_DataLength = 0xABCDu;
+    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                            &request,
+                                            S2EVENT_CONNECT_FAILED));
+    CHECK(request.ios2_WireError == 0u);
+    CHECK(request.ios2_DataLength == 0xABCDu);
+
+    /* The ordinary link edge remains independently available. */
+    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                           &request,
+                                           S2EVENT_CONNECT | S2EVENT_DISCONNECT));
+    CHECK(request.ios2_WireError == S2EVENT_DISCONNECT);
+    CHECK(request.ios2_DataLength == 0xABCDu);
+}
+
+static void test_stale_failure_and_lifecycle_clear(void)
+{
+    struct event_fixture fixture;
+    struct MinList done;
+
+    ++scenarios;
+    fixture_init(&fixture);
+    fixture.opener.active_cookie = 91u;
+    p4wlan_association_failed_locked(&fixture.opener, 90u, &fixture.done);
+    CHECK(fixture.opener.active_cookie == 91u);
+    CHECK(fixture.opener.failed_cookie == 0u);
+
+    fixture.opener.failed_cookie = 92u;
+    fixture.second_opener.active_cookie = 93u;
+    fixture.second_opener.failed_cookie = 94u;
+    p4wlan_cancel_opener_association_locked(&fixture.unit, &fixture.opener);
+    CHECK(fixture.opener.active_cookie == 0u);
+    CHECK(fixture.opener.failed_cookie == 0u);
+    CHECK(fixture.second_opener.active_cookie == 93u);
+    CHECK(fixture.second_opener.failed_cookie == 94u);
+
+    fixture.opener.active_cookie = 95u;
+    fixture.opener.failed_cookie = 96u;
+    NEWLIST(&done);
+    p4wlan_invalidate_selection_locked(&fixture.unit);
+    CHECK(fixture.opener.active_cookie == 0u);
+    CHECK(fixture.opener.failed_cookie == 0u);
+    CHECK(fixture.second_opener.active_cookie == 0u);
+    CHECK(fixture.second_opener.failed_cookie == 0u);
+
+    fixture.opener.active_cookie = 97u;
+    fixture.opener.failed_cookie = 98u;
+    fixture.second_opener.active_cookie = 99u;
+    fixture.second_opener.failed_cookie = 100u;
+    p4wlan_set_offline_locked(&fixture.unit, &done, FALSE);
+    CHECK(fixture.opener.active_cookie == 0u);
+    CHECK(fixture.opener.failed_cookie == 0u);
+    CHECK(fixture.second_opener.active_cookie == 0u);
+    CHECK(fixture.second_opener.failed_cookie == 0u);
 }
 
 static void test_configure_admin_online_without_association(void)
@@ -319,10 +458,12 @@ static void test_configure_admin_online_without_association(void)
     CHECK(fixture.unit.pending_events == 0);
 
     memset(&request, 0, sizeof(request));
-    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                            &request,
                                             S2EVENT_CONNECT));
     CHECK(request.ios2_WireError == 0);
-    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                           &request,
                                            S2EVENT_ONLINE));
     CHECK(request.ios2_WireError == S2EVENT_ONLINE);
 
@@ -355,10 +496,12 @@ static void test_offline_discards_stale_connect_only(void)
     CHECK(fixture.unit.pending_events == 0);
     CHECK(flush_calls == 1);
     memset(&request, 0, sizeof(request));
-    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                            &request,
                                             S2EVENT_CONNECT));
     CHECK(request.ios2_WireError == 0);
-    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &request,
+    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                           &request,
                                            S2EVENT_OFFLINE));
     CHECK(request.ios2_WireError == S2EVENT_OFFLINE);
 
@@ -376,6 +519,9 @@ int main(void)
     test_edge_latch_and_one_shot_rearm();
     test_new_edge_supersedes_opposite();
     test_parked_requests_receive_edges_once();
+    test_connect_failed_is_opener_scoped_and_one_shot();
+    test_connect_failed_latch_is_standalone_and_consumed_once();
+    test_stale_failure_and_lifecycle_clear();
     test_configure_admin_online_without_association();
     test_offline_discards_stale_connect_only();
     printf("SANA-II event model: %lu scenarios, %lu checks\n",

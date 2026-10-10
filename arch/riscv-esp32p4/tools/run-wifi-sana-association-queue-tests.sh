@@ -138,7 +138,8 @@ extract_case() {
 }
 
 for macro_name in S2EVENT_ONLINE S2EVENT_OFFLINE S2EVENT_CONNECT \
-                  S2EVENT_DISCONNECT S2EVENT_ERROR; do
+                  S2EVENT_DISCONNECT S2EVENT_CONNECT_FAILED \
+                  S2EVENT_ERROR; do
     extract_define "$macro_name" "$sana_header"
 done
 for macro_name in P4_WIFI_LINK_UNKNOWN P4_WIFI_LINK_UP P4_WIFI_LINK_DOWN; do
@@ -187,6 +188,7 @@ extract_function p4wlan_term_io
 extract_function p4wlan_immediate_error
 extract_function p4wlan_association_cancelled
 extract_function p4wlan_confirmed_target_matches
+extract_function p4wlan_association_failed_locked
 extract_function p4wlan_associate_one
 extract_function p4wlan_link_info_equal
 extract_function p4wlan_maintain_link

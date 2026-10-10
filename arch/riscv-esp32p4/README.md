@@ -1,5 +1,17 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Native failure publication development (2026-10-10): owned attempt cookies and
+opener-local failure latches are wired into the device. A failure is delivered
+once, separately from link edges, and discarded on cancellation/supersession/
+offline/close. Owner execution waits until a forced message acknowledgment has
+returned; PA_CALL callbacks run without the unit lock and post-reply lookup
+uses only the non-reused selection token. Independent source review is clear;
+expanded macOS/Linux O0/O2 ASan/UBSan model suites pass: options91/275,
+events9/113, queue1040, lifetime1506, datapath16507 and scan295.
+Clean RV32 device build passes72936B,
+SHA-2567c5085dd63c03a6622f343d2b7e0b96a737ffe9ba38ed40b1011fb45d7f4e234.
+No capability advertisement, credential permission or hardware acceptance added.
+
 Native failure metadata preparation (2026-10-10): the bounded options parser
 can copy a nonzero 32-bit AssociationCookie independently of the radio target
 ABI, rejects duplicates/overflow and clears it on refusal. Legacy consumers

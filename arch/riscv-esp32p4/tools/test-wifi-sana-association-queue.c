@@ -186,9 +186,19 @@ static BOOL disconnect_returns_success;
 static BOOL replace_during_disconnect;
 static ULONG mismatch_snapshot_field;
 static unsigned associate_calls;
+static unsigned unlocked_association_replies;
+static unsigned unacknowledged_service_skips;
 static unsigned associate_cancel_checks;
 static unsigned offline_cancel_checks;
 static unsigned disconnect_calls;
+static BOOL reuse_request_during_association_reply;
+static struct TagItem *tags_to_reuse_during_reply;
+static size_t tags_to_reuse_count;
+static struct TagItem *replacement_tags_for_reply;
+static BOOL association_reply_callback_active;
+static BOOL service_before_association_ack;
+static ULONG cookies_seen_at_association_reply[128];
+static unsigned association_reply_cookie_count;
 
 static void dispatch_case(struct p4wlan_unit *unit,
                           struct p4wlan_opener *opener,
@@ -325,7 +335,77 @@ static void ReplyMsg(struct Message *message)
 {
     struct IOSana2Req *request = (struct IOSana2Req *)message;
     CHECK(active_unit != NULL);
-    CHECK(active_unit->lock.depth == 0u);
+    if (request->ios2_Req.io_Command == S2_SETOPTIONS &&
+        active_unit->lock.depth == 0u &&
+        request->ios2_Req.io_Error == 0 &&
+        active_unit->pending_association &&
+        !active_unit->pending_association->acknowledged &&
+        active_unit->pending_association->opener ==
+            request->ios2_BufferManagement) {
+        struct p4wlan_association *pending;
+        ULONG token_at_reply;
+        CHECK(request->ios2_Req.io_Flags & IOF_QUICK ? FALSE : TRUE);
+        CHECK(active_unit->lock.depth == 0u);
+        CHECK(active_unit->pending_association != NULL);
+        CHECK(active_unit->pending_association->opener ==
+              request->ios2_BufferManagement);
+        pending = active_unit->pending_association;
+        token_at_reply = pending->token;
+        CHECK(!pending->acknowledged);
+        CHECK(association_reply_cookie_count <
+              sizeof(cookies_seen_at_association_reply) /
+                  sizeof(cookies_seen_at_association_reply[0]));
+        cookies_seen_at_association_reply[association_reply_cookie_count++] =
+            pending->cookie;
+        ++unlocked_association_replies;
+
+        /* ReplyMsg may call PA_CALL code. Service must not consume a pending
+         * selection until this exact request has been acknowledged. */
+        if (!association_reply_callback_active &&
+            service_before_association_ack) {
+            unsigned calls_before = associate_calls;
+            association_reply_callback_active = TRUE;
+            service_before_association_ack = FALSE;
+            CHECK(p4wlan_associate_one(active_unit, active_unit->radio));
+            CHECK(active_unit->pending_association == pending);
+            CHECK(!pending->acknowledged);
+            CHECK(associate_calls == calls_before);
+            ++unacknowledged_service_skips;
+            association_reply_callback_active = FALSE;
+        }
+
+        /* Reuse both borrowed objects from the PA_CALL reply hook. A nested
+         * accepted request supersedes the old attempt while its BeginIO frame
+         * is suspended; the old frame may only ACK by its saved token. */
+        if (!association_reply_callback_active &&
+            reuse_request_during_association_reply) {
+            CHECK(tags_to_reuse_during_reply != NULL);
+            CHECK(replacement_tags_for_reply != NULL);
+            CHECK(request->ios2_Data == tags_to_reuse_during_reply);
+            association_reply_callback_active = TRUE;
+            reuse_request_during_association_reply = FALSE;
+            memcpy(tags_to_reuse_during_reply, replacement_tags_for_reply,
+                   tags_to_reuse_count * sizeof(*tags_to_reuse_during_reply));
+            request->ios2_Req.io_Flags |= IOF_QUICK;
+            dispatch_case(active_unit, active_opener, request);
+            CHECK(active_unit->pending_association != NULL);
+            CHECK(active_unit->pending_association->token != token_at_reply);
+            CHECK(active_unit->pending_association->acknowledged);
+            /* Model another accepted BeginIO still between SETOPTIONS and
+             * its own ACK while this older ReplyMsg callback is unwinding. */
+            active_unit->pending_association->acknowledged = FALSE;
+            memset(tags_to_reuse_during_reply, 0,
+                   tags_to_reuse_count * sizeof(*tags_to_reuse_during_reply));
+            memset(replacement_tags_for_reply, 0,
+                   tags_to_reuse_count * sizeof(*replacement_tags_for_reply));
+            request->ios2_Data = NULL;
+            request->ios2_BufferManagement = NULL;
+            request->ios2_Req.io_Command = 0xDEADu;
+            association_reply_callback_active = FALSE;
+        }
+    } else {
+        CHECK(active_unit->lock.depth == 0u);
+    }
     CHECK(reply_calls < sizeof(replied) / sizeof(replied[0]));
     replied[reply_calls++] = request;
 }
@@ -459,6 +539,15 @@ static void init_fixture(struct p4wlan_unit *unit,
     disconnect_returns_success = TRUE;
     replace_during_disconnect = FALSE;
     disconnect_calls = 0u;
+    reuse_request_during_association_reply = FALSE;
+    tags_to_reuse_during_reply = NULL;
+    tags_to_reuse_count = 0u;
+    replacement_tags_for_reply = NULL;
+    association_reply_callback_active = FALSE;
+    service_before_association_ack = FALSE;
+    unlocked_association_replies = 0u;
+    unacknowledged_service_skips = 0u;
+    association_reply_cookie_count = 0u;
 }
 
 static void make_tags(struct TagItem tags[10], const UBYTE *ssid,
@@ -498,6 +587,21 @@ static void make_tags(struct TagItem tags[10], const UBYTE *ssid,
     tags[index].ti_Data = 0u;
 }
 
+static void make_tags_with_cookie(struct TagItem tags[10],
+                                  const UBYTE *ssid,
+                                  const UBYTE *passphrase,
+                                  ULONG cookie)
+{
+    ULONG index;
+    make_tags(tags, ssid, passphrase, NULL, 0u);
+    for (index = 0; index < 9u && tags[index].ti_Tag != TAG_DONE; ++index)
+        ;
+    CHECK(index < 9u);
+    tags[index + 1u] = tags[index];
+    tags[index].ti_Tag = S2INFO_AssociationCookie;
+    tags[index].ti_Data = cookie;
+}
+
 static struct p4wlan_association *queue_profile(
     struct p4wlan_unit *unit, struct p4wlan_opener *opener,
     struct IOSana2Req *request, struct TagItem *tags)
@@ -506,6 +610,90 @@ static struct p4wlan_association *queue_profile(
     request->ios2_Data = tags;
     dispatch_case(unit, opener, request);
     return unit->pending_association;
+}
+
+static void test_cookie_copy_and_reply_ack_fencing(void)
+{
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    struct IOSana2Req request, flush_request;
+    struct TagItem borrowed_tags[10], replacement_tags[10], legacy_tags[10];
+    struct p4_wifi_association_target parsed;
+    struct p4wlan_association *attempt;
+    UBYTE old_ssid[] = "old-max-cookie";
+    UBYTE next_ssid[] = "lower-new-cookie";
+    const ULONG old_cookie = ~(ULONG)0;
+    const ULONG next_cookie = 3u; /* valid, deliberately non-monotonic */
+    unsigned calls_before;
+    unsigned wipes_before;
+
+    init_fixture(&unit, &opener, &radio);
+
+    /* Preserve the no-cookie ABI wrapper and require an owned clean output. */
+    make_tags(legacy_tags, old_ssid, NULL, NULL, 0u);
+    CHECK(p4wlan_copy_association_options(&parsed, legacy_tags));
+    CHECK(parsed.ssid_length == strlen("old-max-cookie"));
+    make_tags_with_cookie(legacy_tags, old_ssid, NULL, old_cookie);
+    CHECK(!p4wlan_copy_association_options(&parsed, legacy_tags));
+    CHECK(bytes_are_zero((const UBYTE *)&parsed, sizeof(parsed)));
+
+    make_tags_with_cookie(borrowed_tags, old_ssid, NULL, old_cookie);
+    make_tags_with_cookie(replacement_tags, next_ssid, NULL, next_cookie);
+    init_request(&request, S2_SETOPTIONS, &opener);
+    request.ios2_Req.io_Flags = IOF_QUICK;
+    request.ios2_Data = borrowed_tags;
+    service_before_association_ack = TRUE;
+    reuse_request_during_association_reply = TRUE;
+    tags_to_reuse_during_reply = borrowed_tags;
+    tags_to_reuse_count = 10u;
+    replacement_tags_for_reply = replacement_tags;
+    calls_before = associate_calls;
+    wipes_before = wipe_checks;
+
+    /* The first Reply hook services too early, then reuses this request and
+     * tag buffer to submit a new selection before the old frame resumes. */
+    dispatch_case(&unit, &opener, &request);
+    CHECK(unlocked_association_replies == 2u);
+    CHECK(association_reply_cookie_count == 2u);
+    CHECK(cookies_seen_at_association_reply[0] == old_cookie);
+    CHECK(cookies_seen_at_association_reply[1] == next_cookie);
+    CHECK(unacknowledged_service_skips == 1u);
+    CHECK(associate_calls == calls_before);
+    CHECK(unit.pending_association != NULL);
+    attempt = unit.pending_association;
+    CHECK(attempt->cookie == next_cookie);
+    CHECK(attempt->target.ssid_length == strlen("lower-new-cookie"));
+    CHECK(memcmp(attempt->target.ssid, next_ssid,
+                 strlen("lower-new-cookie")) == 0);
+    CHECK(opener.active_cookie == next_cookie);
+    CHECK(opener.failed_cookie == 0u);
+    CHECK(!attempt->acknowledged); /* older Reply token cannot ACK replacement */
+    CHECK(request.ios2_Req.io_Command == 0xDEADu);
+    CHECK(request.ios2_Data == NULL && request.ios2_BufferManagement == NULL);
+    CHECK(bytes_are_zero((const UBYTE *)borrowed_tags,
+                         sizeof(borrowed_tags)));
+    CHECK(bytes_are_zero((const UBYTE *)replacement_tags,
+                         sizeof(replacement_tags)));
+    CHECK(wipe_checks == wipes_before + 1u); /* superseded attempt retired */
+
+    /* The unacknowledged replacement remains invisible to radio service. Once
+     * its own ACK is released, its failure is bound to cookie 3, never max. */
+    CHECK(p4wlan_associate_one(&unit, &radio));
+    CHECK(associate_calls == calls_before);
+    attempt->acknowledged = TRUE; /* finish the modeled replacement ACK */
+    associate_returns_success = FALSE;
+    CHECK(p4wlan_associate_one(&unit, &radio));
+    CHECK(unit.pending_association == NULL);
+    CHECK(opener.active_cookie == 0u);
+    CHECK(opener.failed_cookie == next_cookie);
+    CHECK(opener.failed_cookie != old_cookie);
+    CHECK(unit.pending_events == 0u);
+
+    init_request(&flush_request, CMD_FLUSH, &opener);
+    dispatch_case(&unit, &opener, &flush_request);
+    CHECK(opener.active_cookie == 0u && opener.failed_cookie == 0u);
+    CHECK(unit.pending_association == NULL);
 }
 
 static void seed_committed_link(struct p4wlan_unit *unit,
@@ -1167,6 +1355,7 @@ static void test_suite_cleanup(void)
 int main(void)
 {
     test_beginio_refusals_preserve_selection_and_link();
+    test_cookie_copy_and_reply_ack_fencing();
     test_replacement_owns_and_wipes_attempt();
     test_service_commit_and_owned_network_snapshot();
     test_confirmed_snapshot_mismatch_never_connects();

@@ -132,7 +132,7 @@ gate: compensated output is not the native display contract.
 | N2 | AROS WLAN SANA-II integration | `private ABI6 association/lifecycle binding build and scoped models verified; runtime/privacy/wireless gates open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded STA TX compile for Core1. N2L records current counts/artifacts and Close/Offline/teardown models. Actual helpers/selected dispatch arms; Exec/SDMMC/hooks/radio mocked, not full BeginIO, full service callback or runtime concurrency. Queue/traffic-token fences/copied AP publication are bound; no actual association/IP claim. TX commitment rejects late AbortIO. WirelessManager/bwfm remain references; per-device four-way offload must preserve legacy behavior. Caller late failure, DHCP/build defaults, GUI saving/writable preference storage and actual teardown/reconnect/load remain open. No credentials, deployment or hardware pass. |
 | N2L | Native radio teardown and ongoing link lifecycle | `ABI6 build/scoped models verified; hardware/privacy open` | Standalone leave, deferred teardown outside unit lock, bounded Disconnect/NOT_CONNECT verification, periodic correlated AP observation and selected-RPC cancellation drain. Mac/Linux O0/O2 sanitized: association25999, observer393, bridge219, options89/258, queue785, lifetime1482, datapath16507, events6/70, scan295; sibling link102/reservation63/owner scan37447; exit0. Fresh Core1 RV32 modules have no undefined imports. Explicit teardown requires absence; persistent/foreign AP quarantines rather than reporting loss. Both privacy assertions0 and SUMMARY-only unchanged. Shared caller late-failure event and actual radio/reconnect/load qualification remain open. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
-| N2E | Caller-visible asynchronous association failure | `generic caller/full RV32 build verified; native/runtime open` | Generic46e9387fee integrated16a13dd08d. Cause-free negotiated current-cookie failure, pending local cancellation, keepalive stop and canceled-CONNECT guard pass expanded scoped macOS/Linux O0/O2 sanitizer suites; independent review no delta blocker. RV32 ABI and fresh676928B WirelessManager build pass. Cookie-aware native options parser passes scoped macOS O0/O2 sanitized91/275; native queue/opener latch/advertisement not yet bound; close-time caller cleanup under development. SUMMARY-only and privacy assertions0 unchanged. |
+| N2E | Caller-visible asynchronous association failure | `generic caller/full RV32 build verified; native binding/model/build verified; runtime open` | Generic46e9387fee integrated16a13dd08d. Native owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Capability advertisement remains disabled; close-time caller cleanup awaits integration. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
@@ -919,8 +919,12 @@ commit46e9387fee is integrated as16a13dd08d. Native provider/cookie/latch bindin
 and caller close-time timer lifetime audit remain required before runtime gates.
 The native options parser now validates/copies cookie metadata separately from
 the radio target ABI; scoped macOS sanitized parser tests pass91/275. This is
-preparation only: native association storage, opener latches and publication
-remain unbound, and no capability advertisement is enabled.
+now bound to native association storage and opener-local failure publication;
+expanded lifecycle models pass macOS/Linux O0/O2 ASan/UBSan. Owner execution is fenced
+until message acknowledgment returns, with no unit lock held during PA_CALL
+and token-only lookup afterward. Independent source review is clear and a clean
+72936B RV32 device build passes. Capability advertisement remains disabled;
+caller close cleanup and actual radio qualification remain open.
 This is not a hardware or end-to-end acceptance gate.
 Models must cover immediate caller request reuse, queued and active cancellation,
 Close drain, supersession, observer races and late failure, not only tag parsing.
@@ -35207,3 +35211,53 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Safety/next: SUMMARY-only, both privacy assertions0, radio target ABI and
   hardware unchanged. Native originating-opener storage/latch/lifecycle
   publication, close-time caller cleanup and actual C6/WLAN gates remain open.
+
+### 2026-10-10 - N2E native opener failure binding and acknowledgment fence
+
+- Native attempt owns its cookie before SETOPTIONS reply; opener holds current
+  and failed cookies separately from unit-wide link events. Cause-free failure
+  completes only the first matching originating-opener waiter, exact failure
+  bit/error0/DataLength cookie, or remains latched for that opener's next wait.
+  Ordinary event lengths are preserved; the broadcast helper strips failure.
+  Cancellation/Close/flush clear that opener; selection replacement and offline
+  clear all current/failure associations. Non-reuse remains the caller contract,
+  not an undocumented numeric-order requirement. Legacy zero-cookie profiles
+  remain possible while failure capability is not advertised.
+- Independent source review identified an ACK race: the owner could consume
+  queued work before the immediate reply. First correction replied while locked;
+  review of Exec ReplyMsg/InternalPutMsgType exposed synchronous PA_CALL callback
+  reentrancy, making that correction unsafe. Final correction adds an acknowledged
+  flag: owner skips pending work before ACK; SETOPTIONS forces nonquick message
+  reply outside the unit lock, then acknowledges only a matching non-reused token.
+  No request, opener or attempt pointer is dereferenced after Reply. Reentrant
+  close/supersession may retire the attempt; absent/new token is not acknowledged.
+  Independent re-review finds no remaining source blocker; not runtime evidence.
+- Build: invalidated exact esp32p4wlan object directory before each quick build
+  in `/Volumes/Dev/Build/aros-esp32p4-wifi-build`; JC1060v2, SDIO_SETUP/
+  HOSTED_INIT/HOSTED_REPLY/HOSTED_OWNER1, OWNER_CPU1, both privacy assertions0.
+  Final process exit0 and module creation line, no undefined imports. Device
+  72936B SHA-2567c5085dd63c03a6622f343d2b7e0b96a737ffe9ba38ed40b1011fb45d7f4e234.
+  Evidence `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/native-failure.Pfq3Pn`:
+  device-final-rv32.log/device-final. Earlier device-rv32/device-before-ack-fence
+  and device-ack-rv32/device-ack artifacts are retained, not final qualification.
+- Expanded event/queue/ACK lifecycle fixtures are under verification. No full
+  BeginIO/Exec scheduling, PA_CALL runtime, radio or credentials pass claimed.
+  SUMMARY-only and both privacy assertions0 remain; no serial, flash or SD write.
+  Next: final frozen model verification, caller Close cleanup integration,
+  C6 secured recovery/UART privacy, actual WLAN/DHCP/frames/reconnect/load gates.
+- Final primary frozen-source verification: all six suites process exit0 on
+  macOS and isolated Linux O0/O2 ASan/UBSan: options91cases/275checks,
+  events9/113, queue1040checks/35replies/18alloc+free/18wipes, lifetime1506,
+  datapath16507, scan295. Actual helpers/selected dispatch arms cover cookie
+  copy, originating-opener one-shot/latch, stale and lifecycle clearing,
+  unlocked Reply, owner skip before ACK, borrowed request/tag reuse and nested
+  replacement with token-fenced acknowledgment. Exec lists/semaphores/Reply and
+  radio remain host fakes, not full BeginIO or target scheduling evidence.
+  Both models-final2 logs SHA-256
+  a716091e1eb7aab9da1606eef2442db7c3e45c6d7c49ed5a44a1b293791ca881;
+  source-final2.tar49a280e740bdeed59be8c18ddc9744fd799c796b4d048cbb1b66cf625431e738;
+  device-final-rv32.log4b39f71c94080038ef9ebaccedf959a58e8b4033304dc7a1782505f386db4bbd.
+  Linux image e4f4b5717ab9c9bf7219716469ad3d85c01e144d09763a4eb1fcd22a4a46151d,
+  network none, no installations. Initial models-final logs/archive are retained:
+  both exit1 at missing CONNECT_FAILED constant in Lifetime extraction, fixed
+  by extracting the real public define, not by weakening production code.

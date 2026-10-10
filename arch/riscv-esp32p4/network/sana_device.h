@@ -95,6 +95,10 @@ struct p4wlan_opener
     BOOL closing;
     BOOL close_waiter;
     ULONG last_rx_frame;
+    /* Correlation metadata belongs to this OpenDevice lifetime, not the radio.
+     * Cookie non-reuse is the caller's public-contract obligation. */
+    ULONG active_cookie;
+    ULONG failed_cookie;
 };
 
 /* SETOPTIONS is acknowledged before radio work. This allocation owns every
@@ -105,6 +109,8 @@ struct p4wlan_association
     struct p4wlan_opener *opener;
     struct p4_wifi_association_target target;
     ULONG token;
+    ULONG cookie;
+    BOOL acknowledged;
     BOOL cancelled;
 };
 

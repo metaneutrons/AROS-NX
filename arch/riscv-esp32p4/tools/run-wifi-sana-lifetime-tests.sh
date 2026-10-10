@@ -20,7 +20,8 @@ UBSAN_OPTIONS="${UBSAN_OPTIONS:+$UBSAN_OPTIONS:}halt_on_error=1"
 ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}halt_on_error=1"
 export UBSAN_OPTIONS ASAN_OPTIONS
 
-for event_name in S2EVENT_CONNECT S2EVENT_DISCONNECT; do
+for event_name in S2EVENT_CONNECT S2EVENT_DISCONNECT \
+                  S2EVENT_CONNECT_FAILED; do
     awk -v name="$event_name" \
         '$1 == "#define" && $2 == name { print; count++ }
          END { if (count != 1) exit 1 }' "$sana_header" >> "$extract" || {
