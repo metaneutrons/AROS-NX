@@ -203,7 +203,10 @@ was restored with independent byte-identical readback and a complete31.003s
 baseline return. A reset-query-only rejected-R5 observer is now host tested
 and build verified (22 cases/72 checks each O0/O2 ASan/UBSan): it reads RESP0
 under existing command ownership without weakening response rejection.
-That instrumentation has not been deployed. This omission is not yet the proven timeout root cause;
+Its separate hardware run instead reports a CMD52 response timeout
+(status3/raw0x10100), so rejected-R5 valid0 and no response can be decoded.
+The baseline is again restored/readback verified; complete30.869s return passes.
+Neither result establishes reset acknowledgement or the timeout root cause;
 slave-side hardware-FSM recovery may also be needed, and no host-controlled
 C6 reset GPIO has been established for this board.
 The recovery foundation now separates card identification into an unpublished

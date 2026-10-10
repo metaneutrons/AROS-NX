@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; reset-query hardware gate failed` | CMD52 RES stops with CARD_ERROR/status4/raw10004; CMD0/CMD5 not sent. Full BSP rollback/readback and complete baseline return pass. Read-only rejected-R5 observer host tested/build verified, not yet deployed. ESSL/TRM support OPEN address0x8c at source level only. Compatibility, transport/RPC and recovery remain open; C6 firmware preserved. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; reset-query hardware gates failed` | First CMD52 RES CARD_ERROR/status4/raw10004; separate instrumented gate response timeout/status3/raw10100, no valid R5. CMD0/CMD5 not sent. Full BSP rollback/readback and complete baseline returns pass. Next bounded official-IDF reset-policy comparison; no weakened native error checks. Compatibility, transport/RPC and recovery remain open; C6 firmware preserved. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -604,7 +604,13 @@ host ownership, only for completed non-data slot1 CMD52/R5 CARD_ERROR without
 command-error bits. It preserves the host API's success-only response contract
 and all error checks. Actual extracted observer tests pass22 cases/72 checks
 each O0/O2 ASan/UBSan; clean RV32 build and package audit pass. Not deployed
-yet: exact rejected bits and their cause remain unknown.
+at that build stage. Its separate hardware run now stops on a response timeout
+instead (status3/raw10100), so the observer correctly reports valid0. No R5
+decoded, CMD0/CMD5 withheld. Exact rejected bits from the earlier run and the
+state transition between runs remain unknown. Full larger-span baseline
+rollback/readback and a complete30.869s return pass. Next compare the bounded
+official-IDF reset continuation policy, which allows certain reset errors;
+do not convert unacknowledged reset into success or weaken normal host checks.
 
 The first independent pure codec uses the vendor0.0.6 12-byte wire header,
 1536-byte total-frame bound, LE16 fields and additive checksum excluding its
@@ -30339,6 +30345,43 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   deployment compute sector rounding and freshly double-backup the entire
   larger span. Exact P4 rollback required; no new C6/SD/volume action follows.
   N1/N2/N3 remain open. Next: one distinct instrumented diagnostic gate.
+
+### 2026-10-10 - N1 instrumented reset-query times out; exact rollback passes
+
+- Source563743caf4, same JC1060-v2 identity and unchanged core. Enabled
+  package3727400B f9bf40543de5da903b2a90c1015193a70f278d1a23c64269db548e262cbd9e64,
+  RESET_QUERY1/SETUP0. Distinct diagnostic adds response observation only;
+  no silent retry of the previous gate, no selection/setup/OPEN/IRQ/FIFO.
+- Fresh MAC before backup and write. Two identical entire erase-span backups
+  0x820000..0xbaefff,3731456B/0x38f000, SHA-256
+  bfce64475f689cf766c5ddf241d73a09fe7a6ec6026abcfac97ac2936ef8ca1c.
+  Independent candidate readback exact. Session47290 exits0, full capture
+  footer41.024093s/15973B. boot.log SHA-256
+  bdfd5e1d63b33ac6094b7c7a9399bead300820691a50677843f991a13c591101.
+- Observed ok0/stage1/cmd52, attempted1/ack0/error3, status3 ERROR,
+  raw00010100 response-timeout bit8, IDMAC0. Observer valid0/value0 is not
+  an R5 response. CMD0/CMD5 not sent. Unlike the prior CARD_ERROR run, this
+  transaction supplies no decodable reply. Cause/state transition unknown;
+  do not replace the earlier result or infer reset success from this timeout.
+  All24 snapshots captured, first five slot/clock controls unchanged. PSRAM,
+  watchdog, both harts, PLL15bd,42 modules, SD and graphics startup pass;
+  only commanded initial USB reset, no further fault/reset signature.
+- Fresh MAC and full backup-span write/readback matchbfce6447..., session46161
+  exits0. Complete baseline return30.869374875s/14383B, original41 modules,
+ 32MB PSRAM200MHz, watchdog6000ms, hart1/cpus2, PLL15bd, SD121942MB and
+  accepted graphics updates. No additional reset/trap/Alert/Guru. Log SHA-256
+  07a54418b985694060bc7a25d5a737afbc70740c470c8d65a332f3c4970af428.
+  Evidence n1-rejected-r5 contains full backup/write/readback/capture logs.
+- Default-off module also freshly rebuilt, session41131 exits0;38668B
+  4f4c9492bca054666cf864525cf5b074e87c6c3fd8d9fb90532e75699325e0a6,
+  byte-identical to prior default and no diagnostic report strings. Generic
+  module build output is now default-off again; immutable enabled artifact kept.
+- Safety: normal baseline running; no bootloader/partition/volume/SD/C6
+  firmware write. P4 rollback cannot prove reversal of slave-reset effects.
+  No visual or WLAN acceptance. Next: bounded official-driver comparison of
+  CCCR reset and IDF's documented timeout/invalidCRC continuation behavior,
+  retaining independent reset acknowledgement and subsequent query results.
+  Native error checks stay intact; no guessed C6 reset GPIO or blind rail-off.
 
 ## Evidence-entry template
 
