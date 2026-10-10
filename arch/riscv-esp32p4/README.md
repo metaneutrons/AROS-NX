@@ -7,10 +7,12 @@ corrections, mandatory reset/timeout adaptations and the complete-host
 comparison gates. This is source evidence only, not installed C6 identity,
 reference build acceptance or working Wi-Fi.
 
-The complete-host build has now been attempted with the existing IDF6.0.1:
-it exposes concrete driver-dependency, DMA-allocation and Wi-Fi-structure API
-incompatibilities. The build-only front end is retained under
-`tools/hosted-reference/`; no reference image has been accepted or flashed.
+The complete-host build now links with IDF6.0.1 after explicit dependency,
+DMA-allocation and legacy reserved-field adaptations. Image-header inspection
+also exposed and corrected the default P4>=3.x target; the corrected build
+targets1.0..1.99. The build-only front end and compatibility patch are retained
+under `tools/hosted-reference/`; no reference image has been approved for
+deployment or flashed. Reset/timeout/error policies still need adaptation.
 IDF5.4.3 is an optional isolated comparison environment, not a port downgrade.
 
 JC1060 Wi-Fi implementation has started

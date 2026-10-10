@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; complete-host IDF6 compatibility adaptation` | Vendor RPC source matches official d5184217; first actual IDF6.0.1 builds fail on explicit driver dependencies, removed DMA API/Wi-Fi fields and new HTTP events. Build-only front end retained; no reference image accepted/flashed. Next semantically checked API adaptation plus absent-reset/bounded-error policy. Transport/RPC/recovery/WLAN and installed C6 identity remain open. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; complete-host IDF6 link verified` | Pinned d518 complete host links under6.0.1 after scoped compatibility bridge; corrected image377856B targets P4rev1.0..1.99. Wire schema unchanged. No deployment: reset/timeout/constructor failure policies still unsafe and automatic flash layout wrong. Next bounded board-safe adaptation, then MAC/scan/frame/recovery gates; WLAN and installed C6 identity remain open. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -616,9 +616,12 @@ retry policies need explicit board-safe adaptation before any deployment.
 Do not convert unacknowledged reset into success or weaken normal host checks.
 The full reference is now actually compiled against IDF6.0.1, not downgraded
 to5.4.3. Attempts expose removed DMA/public Wi-Fi fields and changed driver
-dependencies; no completed link or hardware acceptance yet. Keep these
-compatibility changes separate from the preserved wire schema. The retained
-build-only front end is not a MAC/scan/association acceptance application.
+dependencies. The compatibility bridge now links the complete host; the first
+image's incompatible rev3.x target was rejected and the explicit rev<3 selector
+corrects the rebuilt image to1.0..1.99. Keep these compatibility changes
+separate from the preserved wire schema. No hardware acceptance: the retained
+build-only front end is not a MAC/scan/association acceptance application and
+reset/startup failure policies remain to be adapted.
 
 The first independent pure codec uses the vendor0.0.6 12-byte wire header,
 1536-byte total-frame bound, LE16 fields and additive checksum excluding its
@@ -30451,6 +30454,46 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   still unapproved for deployment. Next verify DMA/reserved-bit semantic
   adaptations, complete6.x build, then bounded board-safe failure handling.
   N1/N2/N3 remain open; failed compilation is useful evidence, not build pass.
+
+### 2026-10-10 - N1 complete reference links under IDF6; revision gate corrected
+
+- Parentf3ef33e21d; external full d518 host,remote0.2.3, exact protobuf-c
+  gitlink, same IDF6.0.1 environment. No board interaction.
+- Compatibility patch adds explicit SDMMC/DMA/GPIO/remote dependencies,
+  guards libc endian macros, uses overflow-checked64-byte-aligned rounded
+  internal byte-accessible DMA allocation (PSRAM forbidden), zeroes opaque
+  outgoing STA/HE wire bits and ignores incoming reserved bits. Known old
+  feature bits retained; IDF6 new features not mapped into old reservations.
+  Explicit new HTTP event cases; no warning suppression or OTA call added.
+  Independent source comparison supports the allocator/bit-field policy;
+  actual silicon allocation/cache behavior remains unverified.
+- Full build session64334 exits0,379040B SHA-256
+  4c60061ab7c44db14f4bc645468cea65154fad80994e030e39b131c1e01dcdb9.
+  Image-info reveals incompatible revision3.1..3.99 despite REV_MIN_100:
+  rejected, not flashed. Added ESP32P4_SELECTS_REV_LESS_V3=y to defaults and
+  actual generated config. Session85767 exits0,377856B SHA-256
+  8c6d4b967adf9820714b0beb1200c3a1320e337758aea65bba4b6220482b34bd;
+  image-info validates P4revision1.0..1.99,16MB DIO80. Log SHA-256
+  6ab1bd3d9055a999bbf1efd12cf89727a327fff301ddc772b2a2d6825a093a60.
+- All schema/generated protobuf SHA-256 values remain the pinned originals.
+  Retained idf6-compat.patch SHA-256
+  0232d1d573929724a076677cd4e521f0cbf5ebf382be5e0f324a7426131426cb;
+  git apply --check against pristine archive exits0. Reproduction instructions
+  and exact limitations in tools/hosted-reference/README.md.
+- Independent Luna allocator test author; primary read script and repeated
+  strict C11 O0/O2 ASan/UBSan actual-source extraction tests:10 cases/41
+  checks each, process0. Stub verifies overflow/rounding/exact caps/return,
+  not hardware memory placement or cache behavior. Retained script SHA-256
+  c13855a062f517c30de329de12580ecaee6503c60f5260a741bce9d4c44275b4;
+  allocator-tests-primary.log5786a8b111f0febef67f2be1aa240cc84223ec95aeb60c5701b16c8274b327da.
+- Safety: no serial/reset/flash/SD/C6 firmware write. Automatic flash commands
+  name bootloader/partition/app0x10000 and are forbidden for AROS layout.
+  Correct revision is necessary, not deployment approval. Reset=-1 guard,
+  bounded reconfiguration and fail-stop constructor/task/error propagation
+  remain mandatory. Front end only calls init; no MAC/scan/frame acceptance.
+- Next: adapt and review bounded failure
+  policy, add complete reference acceptance front end, then exact-span backup
+  and headless comparison. N1/N2/N3 remain open; no AROS WLAN pass inferred.
 
 ## Evidence-entry template
 

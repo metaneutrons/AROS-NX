@@ -102,6 +102,36 @@ Actual attempts, each terminal process exit 2 after environment setup:
   reserved/he_reserved fields, and two new HTTP event cases. This is concrete
   API incompatibility, not a working reference build. No image accepted/flashed.
 
-Next adapt these APIs with documented allocation/serialization semantics and
-verify the full build. Do not globally disable compiler diagnostics, guess
-reserved-field equivalents or claim that 5.4.3 is mandatory.
+The compatibility bridge is now retained as `tools/hosted-reference/idf6-compat.patch`,
+SHA-256 `0232d1d573929724a076677cd4e521f0cbf5ebf382be5e0f324a7426131426cb`.
+It applies cleanly to a freshly extracted pinned archive (`git apply --check`,
+exit0). No global compiler-warning suppression or wire-schema change.
+DMA uses overflow-checked 64-byte rounding/alignment and deliberately stricter
+DMA|INTERNAL|8BIT placement, with PSRAM builds rejected. Reserved STA/HE wire
+bits are zero on request and ignored on response, not remapped into IDF6's new
+feature positions. Two new HTTP event variants are explicitly handled.
+
+Full build session64334 exits0 under IDF6.0.1. Its first image379040B
+SHA-256 `4c60061ab7c44db14f4bc645468cea65154fad80994e030e39b131c1e01dcdb9`
+targets revisions3.1..3.99 and is rejected for the JC1060. IDF6 requires
+ESP32P4_SELECTS_REV_LESS_V3=y in addition to REV_MIN_100. Corrected full
+build session85767 exits0;377856B SHA-256
+`8c6d4b967adf9820714b0beb1200c3a1320e337758aea65bba4b6220482b34bd`.
+Image-info validates P4, revision1.0..1.99,16MB DIO80MHz. Build log
+`build-v6-rev1.log` SHA-256
+`6ab1bd3d9055a999bbf1efd12cf89727a327fff301ddc772b2a2d6825a093a60`.
+The normal generated flash commands would overwrite the AROS layout; forbidden.
+
+Independent actual-source allocator tests and primary reruns pass strict C11
+O0/O2 ASan/UBSan,10 cases/41 checks each, exit0. Test extracts the external
+function verbatim and checks overflow, rounding, exact allocation arguments,
+failure and pointer forwarding with a heap stub. It does not test actual P4
+memory placement or DMA. Retained test script SHA-256
+`c13855a062f517c30de329de12580ecaee6503c60f5260a741bce9d4c44275b4`;
+`allocator-tests-primary.log` SHA-256
+`5786a8b111f0febef67f2be1aa240cc84223ec95aeb60c5701b16c8274b327da`.
+
+This is build verification only. No serial/device activity. The reset/timeout,
+constructor and task failure policies still require adaptation before a run.
+The reference currently initializes Wi-Fi only; MAC/scan/association/frame and
+recovery acceptance remain open. Do not claim that 5.4.3 is mandatory.
