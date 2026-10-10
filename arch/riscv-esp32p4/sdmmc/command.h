@@ -49,8 +49,8 @@ struct P4HostCommandResult
  * Failure resets the prepared DMA/FIFO, not the card protocol. The client
  * must recover/confirm its card or invalidate readiness before releasing
  * its transaction. No controller-wide reset is performed here.
- * Exposed through the private resource ABI. SD uses non-data requests;
- * its data path and the radio client are not integrated yet. */
+ * Exposed through the private resource ABI. Production SD uses this motor;
+ * legacy diagnostic SD builds and the radio client are not integrated yet. */
 BOOL p4host_command(struct P4SDMMCHost *host,
                     const struct P4HostCommand *request,
                     struct P4HostCommandResult *result);

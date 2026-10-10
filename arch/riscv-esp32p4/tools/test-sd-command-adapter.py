@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile and exercise the extracted P4 SD non-data command adapter."""
+"""Compile and exercise the extracted P4 SD shared command adapter."""
 
 from __future__ import annotations
 
@@ -19,9 +19,12 @@ TOOLS = PORT / "tools"
 FIXTURE = PORT / "network" / "test_sd_command_adapter.c"
 BUS_SOURCE = PORT / "sdcard" / "sdcard_esp32p4_bus.c"
 COMMAND_HEADER = PORT / "sdmmc" / "command.h"
+INTERN_HEADER = PORT / "sdcard" / "sdcard_esp32p4_intern.h"
+MMC_HEADER = PORT.parents[1] / "compiler" / "include" / "hardware" / "mmc.h"
 HOST_TEST_HELPERS = TOOLS / "test-sdmmc-host.py"
 INSERT_MARKER = "/* INSERT_ACTUAL_SOURCE */"
 INSERT_TYPES_MARKER = "/* INSERT_ACTUAL_COMMAND_TYPES */"
+INSERT_CONSTANTS_MARKER = "/* INSERT_ACTUAL_SD_CONSTANTS */"
 EXPECTED_DENYLIST = {20, 24, 25, 26, 27, 28, 29, 32, 33, 35, 36, 38, 42, 56}
 
 
@@ -50,7 +53,7 @@ def extract_production_bodies(helper) -> tuple[str, dict[str, str]]:
     signatures = {
         "p4sd_media_mutating_command":
             r"\bstatic\s+BOOL\s+p4sd_media_mutating_command\s*\(",
-        "p4sd_command_only": r"\bstatic\s+ULONG\s+p4sd_command_only\s*\(",
+        "p4sd_shared_command": r"\bstatic\s+ULONG\s+p4sd_shared_command\s*\(",
         "p4sd_send_cmd_locked": r"\bstatic\s+ULONG\s+p4sd_send_cmd_locked\s*\(",
     }
     bodies = {
@@ -64,7 +67,30 @@ def extract_production_bodies(helper) -> tuple[str, dict[str, str]]:
         raise ValueError(f"fixture must contain exactly one {INSERT_MARKER}")
     if fixture.count(INSERT_TYPES_MARKER) != 1:
         raise ValueError(f"fixture must contain exactly one {INSERT_TYPES_MARKER}")
-    assembled = fixture.replace(
+    if fixture.count(INSERT_CONSTANTS_MARKER) != 1:
+        raise ValueError(f"fixture must contain exactly one {INSERT_CONSTANTS_MARKER}")
+    constants = "\n".join(
+        (
+            helper.extract_constant_lines(
+                MMC_HEADER,
+                (
+                    "MMC_CMD_STOP_TRANSMISSION",
+                    "MMC_CMD_READ_SINGLE_BLOCK",
+                    "MMC_CMD_READ_MULTIPLE_BLOCK",
+                    "MMC_DATA_WRITE",
+                    "MMC_DATA_READ",
+                    "MMC_DATA_STREAM",
+                ),
+            ),
+            helper.extract_constant_lines(
+                INTERN_HEADER,
+                ("P4SD_MAX_READ_BLOCKS", "P4SD_MAX_DATA_LEN"),
+            ),
+        )
+    )
+    bodies["sd_constants"] = constants
+    assembled = fixture.replace(INSERT_CONSTANTS_MARKER, constants)
+    assembled = assembled.replace(
         INSERT_TYPES_MARKER,
         "\n\n".join(
             bodies[name] + ";"
@@ -74,7 +100,7 @@ def extract_production_bodies(helper) -> tuple[str, dict[str, str]]:
     assembled = assembled.replace(
         INSERT_MARKER,
         "\n\n".join(
-            (bodies["p4sd_media_mutating_command"], bodies["p4sd_command_only"])
+            (bodies["p4sd_media_mutating_command"], bodies["p4sd_shared_command"])
         ),
     )
     return assembled, bodies
@@ -106,40 +132,68 @@ def audit_dispatch(body: str) -> None:
             raise ValueError(f"p4sd_send_cmd_locked is missing its {label}")
         positions.append((label, match.start()))
 
-    dispatch = re.search(
-        r"if\s*\(\s*data_len\s*==\s*0(?P<guard>.*?)\)\s*"
-        r"return\s+p4sd_command_only\s*\(",
+    normal = re.search(
+        r"(?m)^\s*#if\s+!P4_SDCARD_TRACE\s*&&\s*"
+        r"P4_SDCARD_FAULT_INJECT\s*==\s*P4SD_FAULT_NONE\s*$\s*"
+        r"return\s+p4sd_shared_command\s*\((?P<args>.*?)\);\s*"
+        r"#else\b",
         body,
         flags=re.DOTALL,
     )
-    if dispatch is None:
-        raise ValueError("no-data path no longer dispatches to p4sd_command_only")
-    positions.append(("no-data dispatch", dispatch.start()))
+    if normal is None:
+        raise ValueError("normal builds no longer dispatch every request to the shared adapter")
+    normal_args = re.sub(r"\s+", " ", normal.group("args")).strip()
+    if normal_args != (
+        "bus, command_index, argument, rsp_type, response, data, data_len, data_flags"
+    ):
+        raise ValueError(f"normal shared-adapter arguments changed: {normal_args}")
+    positions.append(("normal all-request dispatch", normal.start()))
     ordered_positions = [position for _, position in positions]
     if ordered_positions != sorted(ordered_positions):
         order = " -> ".join(label for label, _ in positions)
-        raise ValueError(f"no-data dispatch precedes a safety gate ({order})")
+        raise ValueError(f"shared dispatch precedes a safety gate ({order})")
 
-    call_count = len(re.findall(r"\bp4sd_command_only\s*\(", body))
-    if call_count != 1:
+    diagnostic = re.search(
+        r"if\s*\(\s*data_len\s*==\s*0(?P<guard>.*?)\)\s*"
+        r"return\s+p4sd_shared_command\s*\((?P<args>.*?)\);",
+        body[normal.end() :],
+        flags=re.DOTALL,
+    )
+    if diagnostic is None:
+        raise ValueError("diagnostic branch lost its legacy no-data shared-adapter path")
+    guard = diagnostic.group("guard")
+    if "#if P4_SDCARD_TRACE" not in guard or "&& !p4sd_trace.active" not in guard:
+        raise ValueError("diagnostic no-data path no longer preserves active CMD18 tracing")
+    if len(re.findall(r"p4sd_trace\.active", guard)) != 1:
+        raise ValueError("diagnostic no-data guard has extra trace-state conditions")
+    diagnostic_args = re.sub(r"\s+", " ", diagnostic.group("args")).strip()
+    if diagnostic_args != (
+        "bus, command_index, argument, rsp_type, response, NULL, 0, 0"
+    ):
+        raise ValueError(f"diagnostic no-data arguments changed: {diagnostic_args}")
+
+    data_branch = re.search(
+        r"if\s*\(\s*data_len\s*!=\s*0\s*\)",
+        body[normal.end() :],
+    )
+    if data_branch is None or diagnostic.end() > data_branch.start():
+        raise ValueError("diagnostic legacy data path is not after its no-data dispatch")
+    legacy = body[normal.end() + data_branch.start() :]
+    for fragment, label in (
+        ("MMC_DATA_WRITE | MMC_DATA_STREAM", "read-only data-flag validation"),
+        ("p4sd_reset_fifo", "legacy FIFO preparation"),
+        ("p4sd_dma_prepare_read", "legacy read transfer"),
+        ("p4sd_recover_multiblock", "legacy CMD18 recovery"),
+    ):
+        if fragment not in legacy:
+            raise ValueError(f"diagnostic legacy data path lost {label}")
+
+    call_count = len(re.findall(r"\bp4sd_shared_command\s*\(", body))
+    if call_count != 2:
         raise ValueError(
-            "expected exactly one adapter call site in p4sd_send_cmd_locked; "
+            "expected normal all-request and diagnostic no-data adapter call sites; "
             f"found {call_count}"
         )
-
-    guard = dispatch.group("guard")
-    if "#if P4_SDCARD_TRACE" not in guard or "&& !p4sd_trace.active" not in guard:
-        raise ValueError(
-            "trace-only CMD18 sampling exception changed or gained an unreviewed gate"
-        )
-    if len(re.findall(r"p4sd_trace\.active", guard)) != 1:
-        raise ValueError("no-data adapter guard has extra trace-state conditions")
-
-    data_branch = re.search(r"if\s*\(\s*data_len\s*!=\s*0\s*\)", body)
-    if data_branch is None or dispatch.end() > data_branch.start():
-        raise ValueError("legacy data path is not after the no-data adapter dispatch")
-    if re.search(r"p4sd_command_only\s*\(", body[data_branch.start() :]):
-        raise ValueError("data path has an alternate command-adapter bypass")
 
 
 def run() -> int:
@@ -154,10 +208,11 @@ def run() -> int:
 
     print("Extracted production source (SHA-256):")
     for name in (
+        "sd_constants",
         "P4HostCommand",
         "P4HostCommandStatus",
         "P4HostCommandResult",
-        "p4sd_command_only",
+        "p4sd_shared_command",
         "p4sd_media_mutating_command",
         "p4sd_send_cmd_locked",
     ):
@@ -165,11 +220,12 @@ def run() -> int:
     print(f"  fixture: {sha256(FIXTURE.read_bytes())}")
     print(f"  actual denylist values: {sorted(denylist)}")
     print(
-        "Source coverage: adapter, denylist and command/request/result type "
-        "definitions execute from production; the full SendCmd wrapper is "
+        "Source coverage: shared adapter, denylist, SD data constants and "
+        "command/request/result type definitions execute from production. "
+        "The SendCmd wrapper's normal dispatch and diagnostic exception are "
         "structurally audited, not executed. Host, CMD13 confirmation, "
-        "TagItem/bus/private state, logging and memory helpers are fixture "
-        "stand-ins. No MMIO or hardware behavior is modeled."
+        "CMD18 recovery, TagItem/bus/private state, logging and memory helpers "
+        "are fixture stand-ins. No MMIO or hardware behavior is modeled."
     )
 
     with tempfile.TemporaryDirectory(prefix="p4-sd-command-adapter-") as temporary:

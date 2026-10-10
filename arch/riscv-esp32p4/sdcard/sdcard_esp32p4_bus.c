@@ -643,13 +643,14 @@ enum p4sd_request_state
     P4SD_IDLE
 };
 
-/* Non-data commands use the shared motor. Card policy and response-tag
- * publication remain in this client, including CMD12 -> CMD13 confirmation.
- * Data commands retain the legacy diagnostics/recovery until separately
- * migrated; no data command can select this adapter. Caller owns the host. */
-static ULONG p4sd_command_only(struct sdcard_Bus *bus, ULONG index,
-                               ULONG argument, ULONG rsp_type,
-                               struct TagItem *response)
+/* Production commands use the shared motor. This client retains the read-only
+ * policy, CMD18 workaround permission and card recovery/confirmation. Legacy
+ * diagnostic builds remain separate until their probes are moved to the motor;
+ * their recovery results must not qualify this new production path. */
+static ULONG p4sd_shared_command(struct sdcard_Bus *bus, ULONG index,
+                                 ULONG argument, ULONG rsp_type,
+                                 struct TagItem *response, UBYTE *data,
+                                 ULONG data_len, ULONG data_flags)
 {
     struct p4sd_private *priv = P4SD_PRIV(bus);
     struct P4HostCommand request;
@@ -661,6 +662,32 @@ static ULONG p4sd_command_only(struct sdcard_Bus *bus, ULONG index,
     request.index = index;
     request.argument = argument;
     request.response_flags = rsp_type;
+    /* A block read without DATA would leave the card protocol active while
+     * the controller reports a completed no-data command. */
+    if (!data_len && (index == MMC_CMD_READ_SINGLE_BLOCK ||
+                      index == MMC_CMD_READ_MULTIPLE_BLOCK))
+        return (ULONG)-1;
+    /* This storage client configures 512-byte sectors. CMD17 transfers exactly
+     * one of them; multi-block transfers require CMD18 and its stop path. */
+    if (index == MMC_CMD_READ_SINGLE_BLOCK && data_len != 512)
+        return (ULONG)-1;
+    if (data_len)
+    {
+        if (!data || data_len > P4SD_MAX_DATA_LEN ||
+            !(data_flags & MMC_DATA_READ) ||
+            (data_flags & (MMC_DATA_WRITE | MMC_DATA_STREAM)))
+            return (ULONG)-1;
+        request.block_size = data_len > 512 ? 512 : data_len;
+        if (data_len % request.block_size ||
+            (index == MMC_CMD_READ_MULTIPLE_BLOCK &&
+             (data_len < 1024 || data_len % 512)))
+            return (ULONG)-1;
+        request.data = data;
+        request.length = data_len;
+        /* Known storage-only workaround, never enable for CMD17/SCR/radio.
+         * The generic outer transaction must still issue physical CMD12/13. */
+        request.early_cmd18 = index == MMC_CMD_READ_MULTIPLE_BLOCK;
+    }
     /* Preserve legacy card-status policy: no generic R1 mask is added here. */
     if (!priv->host->command(priv->host, &request, &result))
     {
@@ -669,8 +696,18 @@ static ULONG p4sd_command_only(struct sdcard_Bus *bus, ULONG index,
             (unsigned)result.status, (unsigned)result.started,
             result.raw, result.idstatus);
         if (priv->host->dma_faulted ||
-            priv->host_generation != priv->host->generation ||
-            index == MMC_CMD_STOP_TRANSMISSION)
+            priv->host_generation != priv->host->generation)
+            priv->host_ready = FALSE;
+        else if (data_len && result.started)
+        {
+            /* DMA/FIFO reset is not card protocol recovery. A started read
+             * needs a confirmed stop/TRAN before this transaction can end. */
+            if (index == MMC_CMD_READ_MULTIPLE_BLOCK)
+                (void)p4sd_recover_multiblock(bus);
+            else if (!p4sd_confirm_tran(bus))
+                priv->host_ready = FALSE;
+        }
+        else if (index == MMC_CMD_STOP_TRANSMISSION)
             priv->host_ready = FALSE;
         return (ULONG)-1;
     }
@@ -738,15 +775,21 @@ static ULONG p4sd_send_cmd_locked(struct TagItem *tags, struct sdcard_Bus *bus)
         return (ULONG)-1;
     }
 
-    /* Preserve CMD12/13 start/state samples in an already-active diagnostic
-     * CMD18 trace. Normal builds dispatch every non-data command below. */
+    /* Normal builds use the shared motor for ALL requests. Until diagnostic
+     * hooks migrate too, explicitly retain legacy data fault/trace runs; they
+     * must not count as production-motor recovery qualification. */
+#if !P4_SDCARD_TRACE && P4_SDCARD_FAULT_INJECT == P4SD_FAULT_NONE
+    return p4sd_shared_command(bus, command_index, argument, rsp_type,
+                               response, data, data_len, data_flags);
+#else
     if (data_len == 0
 #if P4_SDCARD_TRACE
         && !p4sd_trace.active
 #endif
        )
-        return p4sd_command_only(bus, command_index, argument, rsp_type,
-                                  response);
+        return p4sd_shared_command(bus, command_index, argument, rsp_type,
+                                   response, NULL, 0, 0);
+#endif
 
     if (data_len != 0)
     {

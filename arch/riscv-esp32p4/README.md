@@ -22,7 +22,7 @@ its RV32 build and independent source review pass. Independently repeated
 extracted-source tests pass at O0/O2 with ASan/UBSan (20 cases, 2,001,069
 checks each). It is now exposed through private resource ABI5 (212 bytes on
 RV32), and SD refuses a missing callback or mismatched version/size.
-SD now invokes it for non-data commands; data/radio integration remains open.
+Normal SD builds now invoke it for all commands; radio integration remains open.
 Modeled MMIO/DMA callbacks
 are not hardware evidence.
 Global controller programming now moves into the shared reset path; SD joins
@@ -32,10 +32,12 @@ clock/reset fault from being mistaken for first boot. Matched RV32 builds
 pass; independent source review and independently repeated extracted-source
 models pass (clock/reset:18 cases/292 checks; SD ownership/init:25 cases/400,338
 checks each O0/O2 with ASan/UBSan). These do not verify silicon behavior.
-The no-data SD adapter is host tested and RV32 build verified; CMD12 retains client-side
+The production SD adapter, including data reads, is host tested and RV32 build
+verified (35 cases/592 checks each O0/O2 with ASan/UBSan). CMD12 retains client-side
 CMD13 TRAN/ready confirmation before publishing its response. Active diagnostic
-CMD18 traces retain legacy CMD12/13 sampling. Data-command integration and
-hardware regression remain open.
+CMD18 traces retain legacy CMD12/13 sampling. Diagnostic data runs temporarily
+retain the old command loop and cannot qualify the new production path.
+Shared diagnostic hooks and hardware regression remain open.
 The independently implemented ESP-Hosted serial TLV codec now validates
 RPCRsp/RPCEvt envelopes (116 checks each O0/O2 with ASan/UBSan and standalone
 RV32 compilation). It does not parse protobuf, reassemble fragments or execute

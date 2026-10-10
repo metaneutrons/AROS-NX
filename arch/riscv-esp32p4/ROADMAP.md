@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; no-data SD adapter host tested/build verified` | Shared DMA, command candidate and initialization have independent source/model checks and RV32 builds. ABI5 adds a sticky first-initialization marker. SD now dispatches non-data commands to the resource, retaining card stop confirmation and active diagnostic traces. Recovery must refresh the existing open unit, not re-register another boot node. Data/radio integration, recovery, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; production SD adapter host tested/build verified` | Shared DMA, command candidate, initialization and complete production SD adapter have independent source/model checks and RV32 builds. Normal SD builds now dispatch all commands to the resource; diagnostic data builds temporarily retain the old loop and cannot qualify the new path. Recovery must refresh the existing open unit. Shared diagnostics, radio integration, recovery, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -273,8 +273,8 @@ must handle arbitrary-length frame tails above this layer; this remains open.
 SDIO interrupt bits are preserved by low16 W1C, and every wait has time/poll
 bounds. A request must explicitly opt into the storage-only slot0 CMD18 early
 descriptor workaround. Card recovery remains the client responsibility.
-This candidate is exposed by private resource ABI5; SD now invokes it for
-non-data commands, while data/radio integration remains open;
+This candidate is exposed by private resource ABI5; normal SD builds now
+invoke it for all commands, while diagnostic data/radio integration remains open;
 matched RV32 resource/SD builds verify version5, size212 and callback108.
 Its RV32 build, independent source review and independently repeated modeled
 tests pass (20 cases, 2,001,069 checks each at O0/O2 with ASan/UBSan).
@@ -297,9 +297,23 @@ still invalidates both generations. Independent source review and repeated
 extracted-source O0/O2 sanitizer models pass: clock/reset18 cases/292 checks,
 SD ownership/init25 cases/400,338 checks each. Controller MMIO and resource
 callbacks are modeled; hardware regression remains open.
-This is not a complete dual-slot host: command sequencing still resides in
-the SD client. Host-wide recovery/re-enumeration remains open. No second
+This is not a complete dual-slot host: card policy/recovery and legacy diagnostic
+sequencing still reside in the SD client. Host-wide recovery/re-enumeration remains open. No second
 hardware client may use this motor until those gates are complete.
+The new production-data adapter validates read-only flags, bounded lengths and
+block divisibility; CMD17 requires exactly one 512-byte sector, and CMD18
+requires at least two complete sectors. Empty block reads are refused before
+the command callback. It permits early descriptor completion only on CMD18.
+CMD17/SCR require controller DATA_OVER plus completed descriptors. A failed
+started CMD18 retains physical CMD12/CMD13 recovery; other started reads require
+TRAN/ready confirmation or invalidate readiness. Host fault/generation changes
+skip unsafe card recovery. Shared motor stages caller RX and checks errors before
+completion, unlike the legacy loop's premature descriptor success. This deliberate
+behavior change needs hardware regression. P4_SDCARD_TRACE/fault builds explicitly
+retain the old data loop until shared hooks exist; their results do not qualify
+production recovery. Independent source review and primary repeated host tests
+pass (35 cases/592 checks each O0/O2 ASan/UBSan), with normal and diagnostic RV32
+builds. These do not establish controller/card behavior or loaded-module recovery.
 Do not reuse RegisterUnit as a recovery refresh: it allocates/publishes a new
 unit and boot node rather than preserving an already-open unit. Split card
 identification from publication, then run bounded recovery in the bus task
@@ -26860,6 +26874,75 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   hardware mutations. No card recovery gate is closed. Required later evidence:
   injected host reset/failure, bounded recovery with existing open unit, repeated
   SD reads before/after slot1 probing and no new boot node or media mutation.
+
+### 2026-10-10 - N0 production SD data adapter host tested/build verified
+
+- State: data candidate in verification, parentb007ace61b in
+  /Volumes/Dev/Build/aros-esp32p4-wifi; isolated JC1060-v2/SMP build
+  /Volumes/Dev/Build/aros-esp32p4-wifi-build. ABI5/layout unchanged.
+- Implementation: generalized p4sd_shared_command handles normal read-only SD
+  requests after existing readiness/index/denylist checks. Maps bounded lengths,
+  block size and saved generation; writing remains FALSE. CMD18 alone opts into
+  the documented early-descriptor workaround. Generic outer stop remains required.
+  Started CMD18 errors recover through physical CMD12/CMD13; other started read
+  errors confirm TRAN/ready or make the host unavailable. A shared fault/stale
+  generation skips unsafe card recovery. Responses only publish on success.
+- Explicit temporary diagnostic exception: trace/fault builds retain the legacy
+  data loop; active traces retain old no-data sampling. This preserves old tools
+  but cannot establish new shared-motor fault recovery. Shared hooks and exact
+  diagnostic/controller qualification are still required before radio probing.
+- Initial normal resource/SD quick build exits0 (session64563), actual affected
+  source/private-header consumers rebuilt. Test extension and independent source
+  review are running; final artifact identities/results remain pending.
+- Safety: no device/serial, flash, core/package, C6 firmware or SD writes. Caller
+  data/response semantics and stricter completion are not yet silicon accepted.
+  Next: finish tests/review, migrate diagnostic hooks, then in-place SD recovery
+  and bounded C6 enumeration on the integrated production baseline.
+- Review correction: malformed CMD17/18 with no data previously reached the
+  callback; CMD17 also accepted short/multi-sector shapes. Both now refuse
+  before the callback, with CMD17 restricted to exactly512 bytes and CMD18
+  to2..128 whole512-byte sectors. Independent post-correction source review
+  finds no further material issue in this scope. Exact reviewed bus-source
+  SHA-256 `2e7ecce1db53a100ae95a158f0d5738791ad3fc8b81f0ea87072e9e82a50d7d9`.
+- Primary independently repeats tools/test-sd-command-adapter.py, actual exit0:
+  strict C99 O0/O2 ASan/UBSan,35 cases/592 checks each,30-second runtime bounds.
+  Actual helper/denylist/types/constants execute; full SendCmd dispatch is
+  structurally audited. Host callback, CMD13 confirmation, CMD18 recovery and
+  bus/private state are stand-ins, not executed controller/card protocol.
+  Caller preservation checks only prove the adapter does not itself alter the
+  destination; the engine's staging has separate modeled tests. Extracted
+  helper SHA-256 `d79e5a1f15269114290fd0c134600b91d87ab053dea8eb2962e52767099a80f4`;
+  fixture `55c538940e2e81fad0724c726edbc52559df7ee530393b652f7113e2d9692e73`;
+  runner `8977c55b01b92470c9a5b80e378a9dbfe98c8bf96648bb952469cd64959b2e33`.
+  Earlier no-data invalidation cases used empty CMD17 and were adjusted to a
+  valid no-data CMD7 after the admission fix, retaining callback error coverage.
+- Boundary: engine success copies CMD18 RX before the generic outer CMD12/13;
+  io_Actual only advances after stop succeeds, as in the legacy read path.
+  An erroring read does not promise an unchanged destination. No stronger
+  all-or-nothing buffer contract is claimed by the adapter tests.
+- Primary regressions actual exit0: command engine session32384,20 cases/
+  2,001,069 checks; ownership/init session15867,25 cases/400,338 checks; DMA
+  session87739,15 cases/2,253,671 checks, each strict O0/O2 ASan/UBSan. These
+  source/models are not silicon evidence. PR71 is still OPEN with null merge
+  commit (checked this turn); accepted-production integration remains mandatory
+  before any deployment. Final normal/diagnostic build identities follow below.
+- Final RV32 builds: normal SD session47513 exits0 after both admission fixes;
+  SD121,212B SHA-256
+  `648446182afd0a71c219f3d5b0b1d9f516525ea13bbad9f88bb7971210e0545a`.
+  Resource remains48,500B SHA-256
+  `df4adcf612c421bcf21e06175b908ccf5afcfec99f15eaa8ac5cd1ef009ba2f1`.
+  Diagnostic P4_A1_DIAGNOSTIC=1/P4_SDCARD_FAULT_INJECT=2 session35123 exits0;
+  SD133,160B SHA-256
+  `7682e72287a07be1ed66da13a0983d1a46a696b1479cb00db9a733f6aee0caa5`.
+  Before each switch, exactly the three generated SD arch objects (bus/init/time)
+  were invalidated. Final restoration to normal session86549 exits0, recompiles
+  all three and reproduces the normal hash above. No stale diagnostic output
+  remains in the build. Earlier diagnostic session3283 exited0 with pre-fix
+  SD133,164B/e35488d1dc7b11c9a216975e15d5e414d3d66244befbbfd19565ec55706e34d1;
+  it is superseded, not final-source evidence.
+- Final state: production adapter host tested/build verified; no hardware or
+  dual-slot recovery acceptance. Next: shared diagnostic hooks, in-place card
+  recovery and production integration before bounded installed-C6 enumeration.
 
 ## Evidence-entry template
 
