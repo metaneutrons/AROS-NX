@@ -83,6 +83,42 @@ static const struct p4_hosted_wifi_config wifi_reference_profile = {
 
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
+static struct P4WifiBase *wifi_resource_base;
+
+/* The noexpunge device registers its permanent unit, not an opener. Closing
+ * an opener therefore never waits for registration or transport ownership. */
+static BOOL wifi_device_attach(struct P4WifiBase *base, APTR client,
+    const struct p4_wifi_device_callbacks *callbacks)
+{
+    BOOL accepted = FALSE;
+    if (!base || !client || !callbacks || !callbacks->service ||
+        !callbacks->frame || !callbacks->ready || !callbacks->stopped ||
+        !AttemptSemaphore(&base->client_lock))
+        return FALSE;
+    if (base->ready && base->runtime && base->owner_task && !base->client) {
+        base->client = client;
+        base->callbacks = callbacks;
+        callbacks->ready(client, base->mac);
+        accepted = TRUE;
+    }
+    ReleaseSemaphore(&base->client_lock);
+    return accepted;
+}
+
+/* Not a CloseDevice hook. Reserved for teardown outside Forbid, after client
+ * queues have retired; permanent device registration normally never detaches. */
+static void wifi_device_detach(struct P4WifiBase *base, APTR client)
+{
+    if (!base || !client) return;
+    ObtainSemaphore(&base->client_lock);
+    if (base->client == client) {
+        base->client = NULL;
+        base->callbacks = NULL;
+    }
+    ReleaseSemaphore(&base->client_lock);
+}
+
+static BOOL wifi_device_send(struct P4WifiBase *, const UBYTE *, ULONG);
 
 #if P4_WIFI_HOSTED_OWNER
 APTR KernelBase;
@@ -497,11 +533,63 @@ struct wifi_owner_control {
     struct p4_hosted_rx_ops rx_ops;
     struct p4_hosted_owner_result result;
     struct p4_hosted_mac mac;
+    struct p4_hosted_tx_result frame_tx;
     uint8_t request[256];
     uint32_t uid;
     int32_t status;
     unsigned init_attempted, start_attempted, startup_ok, cleanup_ok;
 };
+struct wifi_device_runtime {
+    struct wifi_probe_context *context;
+    struct p4_hosted_owner *owner;
+    struct wifi_owner_control *control;
+    struct p4_hosted_fifo *fifo;
+    const struct p4_hosted_tx_ops *tx;
+    unsigned checksum;
+    BOOL servicing;
+};
+static int wifi_owner_acquire(void *, uint32_t);
+static int wifi_owner_budget(void *, uint32_t);
+static void wifi_owner_release(void *);
+
+static BOOL wifi_device_send(struct P4WifiBase *base,
+                             const UBYTE *bytes, ULONG size)
+{
+    struct wifi_device_runtime *runtime;
+    struct p4_hosted_frame frame;
+    size_t written = 0;
+    int sent = 0;
+    if (!base || !base->ready || !base->runtime ||
+        base->owner_task != FindTask(NULL) || !bytes || size < 14 || size > 1518)
+        return FALSE;
+    runtime = base->runtime;
+    if (!runtime->servicing || runtime->owner->poisoned || runtime->fifo->poisoned ||
+        runtime->owner->pending_active)
+        return FALSE;
+    p4host_zero(&frame, sizeof(frame));
+    frame.interface_type = P4_HOSTED_STA;
+    frame.payload = bytes;
+    frame.payload_size = size;
+    if (!p4_hosted_encode(runtime->owner->wire,
+            sizeof(runtime->owner->wire), runtime->checksum, &frame, &written))
+        return FALSE;
+    if (wifi_owner_acquire(runtime->context, P4_HOSTED_OWNER_MAX_ACQUIRE_US)) {
+        if (wifi_owner_budget(runtime->context, P4_HOSTED_OWNER_MAX_SLICE_US)) {
+            p4host_zero(&runtime->control->frame_tx,
+                        sizeof(runtime->control->frame_tx));
+            sent = p4_hosted_tx_send(runtime->fifo,
+                runtime->context->generation, runtime->tx,
+                runtime->owner->wire, sizeof(runtime->owner->wire), written,
+                runtime->checksum, &runtime->control->frame_tx);
+        }
+        wifi_owner_release(runtime->context);
+    }
+    p4host_zero(runtime->owner->wire, sizeof(runtime->owner->wire));
+    if (runtime->fifo->poisoned)
+        p4_hosted_owner_cancel(runtime->owner, runtime->fifo,
+                                runtime->context->generation);
+    return sent ? TRUE : FALSE;
+}
 struct wifi_owner_storage {
     struct p4_hosted_owner owner;
     struct wifi_owner_control control;
@@ -552,10 +640,16 @@ static int wifi_owner_event(void *opaque,
 
 static int wifi_owner_frame(void *opaque, const uint8_t *bytes, size_t size)
 {
+    struct P4WifiBase *base = wifi_resource_base;
+    int consumed = 1;
     (void)opaque; (void)bytes; (void)size;
-    /* Until a SANA-II consumer exists, refuse instead of silently dropping
-     * packets and pretending that the production data path is online. */
-    return 0;
+    /* No attached client means an administratively unopened interface. Drop
+     * unclaimed frames without fabricating a receive completion or link-up. */
+    ObtainSemaphore(&base->client_lock);
+    if (base->ready && base->client && base->callbacks)
+        consumed = base->callbacks->frame(base->client, bytes, (ULONG)size);
+    ReleaseSemaphore(&base->client_lock);
+    return consumed;
 }
 
 static ULONG wifi_owner_remaining(struct wifi_probe_context *context,
@@ -643,6 +737,15 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     unsigned index;
     ULONG cleanup_start, cleanup_remaining, cleanup_wait;
     int protocol_cleanup = 1;
+    struct P4WifiBase *base = wifi_resource_base;
+    struct wifi_device_runtime runtime;
+    runtime.context = context;
+    runtime.owner = owner;
+    runtime.control = control;
+    runtime.fifo = &opened->fifo_state;
+    runtime.tx = tx_ops;
+    runtime.checksum = checksum;
+    runtime.servicing = FALSE;
     control->rx_ops.context = context;
     control->rx_ops.session_ok = wifi_tx_session;
     control->rx_ops.budget_ok = wifi_budget;
@@ -670,12 +773,27 @@ static void wifi_owner_service(struct wifi_probe_context *context,
                 break;
         control->startup_ok = index == sizeof(startup_ids) / sizeof(startup_ids[0]);
         if (control->startup_ok) {
+            ObtainSemaphore(&base->client_lock);
+            CopyMem(control->mac.mac, base->mac, sizeof(base->mac));
+            base->owner_task = FindTask(NULL);
+            base->runtime = &runtime;
+            base->ready = TRUE;
+            if (base->client && base->callbacks)
+                base->callbacks->ready(base->client, base->mac);
+            ReleaseSemaphore(&base->client_lock);
             /* Identity/status only. No SSID, passwords or peer payload logs. */
             bug("[WiFi] owner ready CPU=%u MAC=%02x:%02x:%02x:%02x:%02x:%02x\n",
                 P4_WIFI_OWNER_CPU, control->mac.mac[0], control->mac.mac[1],
                 control->mac.mac[2], control->mac.mac[3], control->mac.mac[4],
                 control->mac.mac[5]);
             while (!wifi_owner_stopping(context)) {
+                ObtainSemaphore(&base->client_lock);
+                if (base->client && base->callbacks) {
+                    runtime.servicing = TRUE;
+                    base->callbacks->service(base->client, base);
+                    runtime.servicing = FALSE;
+                }
+                ReleaseSemaphore(&base->client_lock);
                 if (!p4_hosted_owner_step(owner, &opened->fifo_state, &control->ops,
                     context->generation, checksum, P4_HOSTED_OWNER_MAX_SLICE_US,
                     &control->result))
@@ -684,6 +802,13 @@ static void wifi_owner_service(struct wifi_probe_context *context,
             }
         }
     }
+    ObtainSemaphore(&base->client_lock);
+    base->ready = FALSE;
+    base->runtime = NULL;
+    base->owner_task = NULL;
+    if (base->client && base->callbacks)
+        base->callbacks->stopped(base->client);
+    ReleaseSemaphore(&base->client_lock);
     context->owner_cleanup = TRUE; /* SIGBREAK cannot cancel its own cleanup. */
     cleanup_start = wifi_owner_now(context);
     if (!owner->poisoned && !opened->fifo_state.poisoned) {
@@ -716,6 +841,15 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     bug("[WiFi] owner stopped startup=%u cleanup=%u events=%u last=%u error=%u\n",
         control->startup_ok, control->cleanup_ok, context->owner_events,
         context->owner_last_event, control->result.error);
+}
+#endif
+
+#if !P4_WIFI_HOSTED_OWNER
+static BOOL wifi_device_send(struct P4WifiBase *base,
+                             const UBYTE *bytes, ULONG size)
+{
+    (void)base; (void)bytes; (void)size;
+    return FALSE;
 }
 #endif
 
@@ -1313,6 +1447,18 @@ const struct Resident wifiProbeResident =
 static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
 {
     SysBase = P4WifiBase->sysbase;
+    wifi_resource_base = P4WifiBase;
+    P4WifiBase->bridge_abi = P4_WIFI_DEVICE_BRIDGE_ABI;
+    P4WifiBase->bridge_size = sizeof(*P4WifiBase);
+    P4WifiBase->attach = wifi_device_attach;
+    P4WifiBase->detach = wifi_device_detach;
+    P4WifiBase->send_frame = wifi_device_send;
+    InitSemaphore(&P4WifiBase->client_lock);
+    P4WifiBase->client = NULL;
+    P4WifiBase->callbacks = NULL;
+    P4WifiBase->ready = FALSE;
+    P4WifiBase->runtime = NULL;
+    P4WifiBase->owner_task = NULL;
     return TRUE;
 }
 ADD2INITLIB(P4Wifi_Init, 0)

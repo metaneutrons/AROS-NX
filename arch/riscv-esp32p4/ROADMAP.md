@@ -123,7 +123,7 @@ gate: compensated output is not the native display contract.
 | N1S | Typed native scan and runtime acceptance | `codec/oracle tested; opt-in runtime build verified; sequence models tested; initialized MAC observed; scan undeployed; boot continuity open` | Codec230/oracle1068/control3529/sequence537 checks each O0/O2 sanitized pass. Default-config blocking/nonblocking start, stop, AP count and owned AP/country/HE records. Runtime opt-in follows successful initialization/MAC with UIDs7..10 and at most8 owned records, named zero-AP workaround. ScanStart500 polls under same8s aggregate operation deadline;2s cleanup reserve. Independent runtime audit corrected early logging under shared-controller lock. Fresh135284B scan-enabled module and3823840B package pass42/42 loader and capacity checks;41 non-WiFi records unchanged. Not deployed; larger3825664B erase span requires new twice-read backup. No native hardware scan or WLAN acceptance; sequence/cleanup host models pass. Passive diagnostic checker passes16 independent fixture tests; no hardware acceptance. Earlier arrival expired/45.122s capture empty. Repeat native MAC succeeds once; initial HP watchdog reset makes checker reject cold continuity. Cleanup enum1/all14 flags corrected;16 tests pass. Optional serial-open timing now passes10 host tests; prior6.729s first-byte gap cannot be attributed. No live capture. |
 | N1A | Native association/configuration and owned events | `standalone codecs/oracle host tested; runtime and privacy gate open` | Typed284/540,282/538,283/539 and owned775/776; all15 STA fields, mandatory nested threshold/PMF, transactional256-byte envelope cap, temporary-secret wipe. Self239/oracle603 checks each Linux O0/O2 ASan/UBSan pass; strict RV32 object24,420B compiles with onlyrpc_encode import. Pinned oracle confirms258-byte all-width vector is refused unchanged. Nonzero event status validates/discards nested data. No runtime/control allowlist integration or deployment. Pinned slave credential logging/strlen and installed lineage remain unresolved. Persistent UID/event/generation state and credential-safe hardware association remain required. No credential transmission, association or IP pass. |
 | N1P | Persistent native control/data session | `UID/RPC and Ethernet RX build verified; Ethernet host qualified; actual CPU-affine owner build verified; coupled host models pass` | One-outstanding non-reused UID ledger persists across retired host generations and refuses wrap. Reserved exchange protects exact identity/ranges and replacement state; ledger105/legacycontrol3529/reserved300 checks each O0/O2 ASan/UBSan pass. Idle RX processes one batch without waiting and retains reassembly plus owned event/response inbox; inbox134/RX364 O0/O2 sanitizer checks pass. Preserving OPEN transfers SERIAL suffix once without new FIFO I/O; malformed consumed OPEN poisons matching state. OPEN716/handoff332 new checks each O0/O2 pass. Async submit leaves identity pending; owned response correlation is separated from receive/event delivery; independent427 checks each O0/O2 pass. Separate four-frame14..1518-byte owned Ethernet RX queue now builds in164788B module; independent/primary frames136 and coupled Ethernet285 plus legacy regressions each O0/O2 pass. Bounds are local policy; unsupported profiles/throttle fail closed. Existing startup/scan diagnostics unchanged; opt-in AFTERDOS owner caller clean-builds on Core0/Core1 (194792/195008B), with self-affinity checked before radio access. Independent/primary owner6723 O0/O2 sanitizer checks pass after FIFO-direction and preserved-OPEN partial-age fixes; source review confirms both. Actual CPU execution and SD fairness remain unproven. Ethernet TX and asynchronous AROS ownership remain required. P4 restart losing the ledger is not proof of fresh C6; no deployment or WLAN acceptance. |
-| N2 | AROS WLAN SANA-II integration | `worker contract identified; WPA offload capability gap confirmed; driver not implemented` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. Existing sana2wireless.h, WirelessManager and bwfm asynchronous association path provide options and link-event references. Current get_capa does not advertise firmware four-way handshake; explicit per-device offload negotiation is required for ESP-Hosted, preserving legacy behavior. One serialized owner, separate absolute RPC deadlines, bounded bus slices and real shutdown remain required. Existing build-time DHCP/service defaults identified; NOGUI startup, GUI saving and writable preference storage still need integration. No second TCP/IP stack/UI; no credentials in committed files or logs. |
+| N2 | AROS WLAN SANA-II integration | `private bridge build/model verified; device implementation and qualification pending; WPA offload gap open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded direct STA TX compile for Core1; source-extracted bridge154 checks each O0/O2 ASan/UBSan independently repeat on macOS and isolated Linux, exit0. Exec/SDMMC mocked; no full device or runtime concurrency pass. No association or IP readiness claim. Asynchronous read/write/cancel/event request lifetime and full device integration remain under development. Existing sana2wireless.h, WirelessManager and bwfm provide references; per-device firmware four-way offload must preserve legacy behavior. DHCP/build defaults, GUI saving and writable preference storage remain open. No credentials, deployment or hardware pass. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -555,6 +555,18 @@ embedded Exec unit, count, listeners and change bookkeeping, not a whole-struct
 copy. Run recovery only after the failed request releases its transaction.
 
 ### N1 - compatible ESP-Hosted transport
+
+Current device-bridge work (2026-10-10): a private resource contract now
+connects the opt-in persistent owner to a permanent noexpunge SANA unit.
+Attach is nonblocking and requires an initialized MAC; no radio start occurs
+from OpenDevice. The unit remains registered across last Close so device
+hooks do not wait for registration/transport teardown. Actual owner service
+dispatches outside host ownership; direct STA/0 TX reuses the same FIFO and
+bounded acquire/slice budget. Initial clean Core1 resource build exits0.
+Independent source-extracted bridge models now pass154 checks each O0/O2
+under ASan/UBSan, with primary macOS and isolated Linux repeats exiting0.
+Device request lifetime tests remain pending; association/link events,
+offload, DHCP and hardware gates stay open.
 
 Bounded sequential control foundation (N1C,2026-10-10): generic exchange
 accepts the ten initialization/control/scan request IDs on an existing transport,
@@ -33005,6 +33017,93 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   measured qualification requirement, not a software-test pass. Next: SANA-II
   request/read/write/AbortIO/link-event ownership, per-device firmware WPA
   offload, build defaults and DHCP; cold continuity/privacy stay open.
+
+### 2026-10-10 - N1D private resource/device bridge initial build
+
+- State: implementation in progress, initial resource build only; no hardware
+  verification. Source5688d4a594 plus uncommitted runtime_probe.c/h and new
+  network/device_bridge.h. SANA device is independently being implemented.
+- Procedure: removed all esp32p4wifi module objects, GNU make
+  kernel-esp32p4wifi-probe-quick in aros-esp32p4-wifi-build;
+  boardjc1060p470c-v2, SDIO_SETUP/INIT/REPLY/OWNER=1, MAC/SCAN=0, OWNER_CPU=1.
+  Terminal63680 actual exit0, compiled all module sources and linked resource.
+  Initial198408B module SHA-256
+  30b59bf116d9a16b0658909bf166859f471e535ba7fb0fbf6e36459adf89b32d.
+  Subsequent initialization/contract clarifications were clean rebuilt with
+  the same configuration, Terminal82321 actual exit0. Current198400B module
+  SHA-25647bec3ad076b16b4500e9e9845a42548ae461c8efbaaa869258d39c8c8779f4c;
+  runtime sourcec1cae4c6117a2cde87b8d0d9d1f9e70796cccc3795dc066ed5dbeb57603ae774,
+  base header27ae8829291b4a08f448012dd0a6db4e264da2ed51e4e99682f9d673b20492e3,
+  bridge headerd674a2075f7cb50bf2be95cf81a1fe4e99d15c7482cc0965de81c092f1a6a12b.
+  These identify the reviewed candidate, not a deployed artifact.
+- Independent static review found missing semantics/enforcement: frame FALSE
+  is terminal dispatch failure, so normal no-reader/filter/full drops must
+  return TRUE with device statistics; send now additionally requires an
+  owner-local servicing flag set only around service, refusing transport from
+  frame/ready/stopped even on the correct task. Both fixes are implemented.
+  Clean rebuild Terminal89251 actual exit0, resource198448B SHA-256
+  03dcb07c7b13c68bf3629eedec822962bb911700640a34ff5482b8cf2ffceefb.
+  Evidence wifi-2026-10-10/native-device-bridge.1Qmy4K/cpu1-build.log SHA-256
+  09ad9fd870fba8b641e8d95363157cf027a17beb9ec5adc203486415584b32aa.
+  Current runtime source d84827a579a2087ac605d46c57012380b32e00e2b5dc29017ac58bbb5b64d767,
+  bridge6b796461ed92219278f054c10349a1730b3a6b0083f2ff09d3a650448cc9feab.
+  Primary macOS ASan/UBSan owner regression6723 checks each O0/O2 exits0
+  (Terminal73512); log e3477c08d9372c53a156838de60abb62c286a87e5b8ced86493dc7765a472afe.
+  These old owner models do not qualify the newly added bridge; independent
+  actual-source bridge tests are running. Device header/config are drafted and
+  a separate kernel-esp32p4wlan-device build target is added, not yet built.
+- Default-off compatibility: all module objects removed again, OWNER=0,
+  MAC/SCAN=1 with SETUP/INIT/REPLY=1 on the same board. Terminal9301 actual
+  exit0; legacy resource191380B SHA-256
+  737eb39c678622202cb12982ee742e1a6082e18e89b505cf2b62ee86412f00f3;
+  legacy-build.log ccca4ea5274380588ac5279a8f0970e8597964172432e1a15356df0b0d6cb43e.
+  The saved cpu1.resource retains the198448B owner artifact above; build tree
+  now holds the legacy variant. No package/core or deployment was produced.
+- Private ABI1 preserves the resource prefix, publishes MAC only after typed
+  successful Init/STA/Start/GetMAC, and clears runtime/ready before stopped
+  callback. Permanent unit registration survives last Close; ready during
+  attach is synchronous metadata-only and must not block. Direct Ethernet TX
+  accepts14..1518 bytes, encodes STA/0, reuses persistent FIFO/generation and
+  balances bounded acquisition/release, wiping wire scratch afterward.
+- Frame callbacks consume borrowed bytes synchronously after host release.
+  Unattached-interface frames are discarded, not reported as delivered or
+  CONNECT. Administrative readiness is not link-up. Callback registration
+  serialization and exact IO cancellation remain under independent review.
+- No serial/reset/flash/C6 action, credentials or SD writes; installed images
+  unchanged. No core/package generated. Next: review/model tests, device build
+  and exact-once request retirement; then typed association/offload and actual
+  network gates. Boot continuity and credential privacy remain open.
+
+### 2026-10-10 - N2 private bridge independent host qualification
+
+- Source5688d4a594 plus corrected resource/device bridge; source/module hashes
+  and build configuration in preceding N1D entry. Frozen tests
+  test-wifi-device-bridge.c b893c11e7d7d26fddaeb1d7b415ce50c00adb4ba5e1d0decc5b869db22880ca5,
+  runner9fffe09ca825a16285175e4326ae0f0ef99ed743da54ec47f4b7a68e7ec48e4d.
+- Independent and primary macOS O0/O2 ASan/UBSan each154 checks, actual exit0;
+  primary Terminal62614, log148ab4d2e2110529a9d08deff78a8a09bfaf456c01e90c024431e585f9dd0ceb.
+  Primary no-network Linux snapshot in builder imagee4f4b5717ab9c9bf7219716469ad3d85c01e144d09763a4eb1fcd22a4a46151d,
+  Terminal62909 actual exit0, each154 checks; log
+  b44de7e0fc14faaccff28324411c24c0a0ad0955fd8674265129d4aa43fcfe85.
+  Snapshot write bits removed, not immutable/root-proof. Colima direct bind
+  path was unavailable to independent worker, not counted as a test pass.
+- Harness extracts actual attach/detach/send/frame/session/acquire/budget/
+  release functions, runtime structs and stopped-unpublish statements; links
+  real Hosted owner/TX/FIFO/wire code with small Exec/SDMMC mocks. Covers
+  nonblocking attach refusal, registration lifetime, borrowed frame copy,
+  callback lock boundary, wrong-task/not-servicing/pending/poison/size refusal,
+  one canonical STA/0 transfer, bounded acquire/budget and balanced release,
+  no TX retry on started failure, wire wipe and unpublish before stopped.
+  It does not execute full owner service/publication init or SANA device;
+  semaphore scheduling and actual time/bus fairness remain hardware questions.
+- Recheck confirms frame FALSE fatal semantics and service-only TX enforcement.
+  The additional claimed uninitialized servicing field is contradicted by
+  runtime_probe.c's explicit FALSE assignment before publication, verified by
+  the primary; no unnecessary source change was made for that claim.
+- No hardware/serial/flash/SD actions, credentials or installed-image changes.
+  Full WiFi remains incomplete: device requests/AbortIO, wireless control,
+  offload capability/privacy, DHCP/traffic, storage/UI and coexistence gates.
+  Device source and its separate build target remain the next integration.
 
 ## Evidence-entry template
 

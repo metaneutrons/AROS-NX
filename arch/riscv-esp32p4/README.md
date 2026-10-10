@@ -1,5 +1,17 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Private SANA-II bridge development (2026-10-10): the opt-in Core1 owner now
+exposes nonblocking permanent-unit registration, synchronous borrowed-frame
+delivery outside SDMMC ownership and bounded direct STA/0 Ethernet TX using
+the existing FIFO/generation. An initial clean RV32 resource build succeeds;
+independent bridge tests/review now pass. Source-extracted bridge models pass
+154 checks each O0/O2 with ASan/UBSan, independently repeated on macOS and
+network-isolated Linux. Exec/SDMMC are mocks, not runtime concurrency proof.
+The SANA device implementation remains pending.
+Registration/MAC readiness is not association. No credentials, deployment,
+DHCP, IP traffic or hardware acceptance is implied. Default-off builds retain
+an unavailable bridge rather than silently starting the radio.
+
 Networking update (2026-10-10): an exact historical official ESP-Hosted RPC
 source match has been established for the JC1060 vendor project. See
 [HOSTED-REFERENCE.md](network/HOSTED-REFERENCE.md) for pinned artifacts,
