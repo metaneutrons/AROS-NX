@@ -119,7 +119,7 @@ gate: compensated output is not the native display contract.
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; MAC initialization ordering failure; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; GetMAC returns correlated0x3001 (WiFi not initialized), so overall diagnostic fails. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
-| N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence host tested; runtime initialization deployed, fresh-epoch gate pending` | Existing FIFO reused with owned bodies/exact correlation. Control2413/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Download mode retained pending coordinated fresh C6 startup; no initialized MAC gate yet. No persistent UID allocator/fragmentation or WLAN acceptance. Original verified baseline recoverable. |
+| N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; runtime initialization deployed, fresh-epoch gate pending` | Existing FIFO reused with owned bodies/exact correlation. Control2413/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Separate generation-bound reassembly1318 checks each O0/O2 sanitized and RV32 no-libc compile pass; not linked/deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Download mode retained pending coordinated fresh C6 startup; no initialized MAC gate yet. No persistent UID allocator/integrated fragmentation or WLAN acceptance. Original verified baseline recoverable. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -577,6 +577,13 @@ each O0/O2 and no new hardware acceptance is claimed. The candidate is now
 written only at0x820000 with independent byte-identical readback after two
 matching full3801088B erase-span backups. Download mode is retained pending
 externally coordinated fresh C6 startup; this is deployment, not a run/pass.
+
+Separate epoch-bound serial reassembly is now host-model tested1318 checks
+each O0/O2 sanitized and RV32 freestanding compiled, not linked/deployed.
+It owns partial bytes, follows pinned1500-byte/incrementing-sequence fragments,
+and poisons consumed malformed/aborted assembly. The control owner must couple
+this to the same transport generation/aggregate deadline before native scan;
+an isolated helper pass cannot establish timeout or batch-drain integration.
 
 After the user's reconnection confirmation, a passive20.061s capture on
 2026-10-10 observes advancing JC1060 touch heartbeats only. N1/N1C status
@@ -31844,6 +31851,51 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   recoverable from either backup. N1 initialized MAC/WLAN remains unverified.
   Next fresh user readiness/only-USB-power confirmation, then coordinate
   disconnection and first-INIT capture; never reuse a consumed C6 epoch.
+
+### 2026-10-10 - N1C owned epoch reassembly, isolated host tests only
+
+- Source:1879017789 plus this change. New hosted_epoch_reassembly.c/h is
+  separate from unchanged/unlinked hosted_reassembly.c/h and legacy tests.
+  The initial Add File operation accidentally replaced tracked legacy files;
+  immediately restored exactly from HEAD through apply_patch and moved new
+  code to distinct filenames. Final git diff verifies no legacy change.
+- Reference correction: initial untested new helper assumed constant sequence.
+  Independent pinned source audit and primary source inspection establish
+  app_main.c63/606 serial_write_data uses1500-byte chunks and seq_num++ per
+  fragment. Corrected to next uint16 sequence/wrap before final tests; no
+  constant-sequence candidate was linked or flashed. HOSTED-REFERENCE records
+  the source contract and owner obligations; no installed binary identity claim.
+- Design: owned4108B stream/4096B protobuf cap,16fragment cap, no libc/I/O/
+  allocation/clock. Validate complete serial TLV only after final chunk.
+  Per-fragment sequence/1500B bound/16th-MORE refusal; complete views borrow
+  owned bytes until release. Consumed malformed input and matching abort wipe/
+  poison state; stale operations preserve replacement generation. Fresh-epoch
+  start requires exclusive owner and cannot classify arbitrary old generations.
+  Integration must poison matching FIFO and abort partial messages on timeout,
+  cancellation or failure without restarting a budget or admitting later RPCs.
+- Tests: Luna bounded test author plus independent primary full-source review
+  and rerun, isolated existing Colima image
+  e4f4b5717ab9c9bf7219716469ad3d85c01e144d09763a4eb1fcd22a4a46151d,
+  streamed source/--network none/no devices. Strict C99 O0/O2 ASan/UBSan,
+  complete runner and standalone compile invocation exit0;1318 checks each.
+  Literal RPCRsp/RPCEvt TLVs split at every byte boundary, increment/wrap/
+  duplicate/skip,16final vs16MORE/17th,1500/1501,4096/4097 and4108 limits,
+  ownership after DMA storage overwrite, lifecycle/abort/stale epoch,
+  alias/range overflow/forged sizes/unsupported fields/wipe/poison.
+  TLV assembly tests do not imply valid RPC payload semantics. Independent
+  helper/delta review finds no blocking bounds/sequence issue, documents the
+  exclusive start-owner caveat; no control integration reviewed or claimed.
+- RV32: GCC16.2 strict freestanding object4432B SHA-256
+  42c2583ff4e919650e5a597adff72db0164186542ae8cc154a1562a3726e045e;
+  nm shows only hosted_serial_decode, no libc imports. Evidence directory
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/epoch-reassembly.A3MTOh/;
+  linux-model.log SHA-256
+  60c0fe231f56797bc8e933d47526d75bb1b2f241bed7a80a18762b6d6027e6c8.
+- Safety/state: software only; no serial/flash/reset/C6/SD/credential operation
+  in this change. Deployed6e3d9e577a package unchanged, board awaits physical
+  startup coordination. No scan or WLAN pass. Next integrate assembly into
+  whole-batch control with epoch/deadline/failure tests and typed bounded scan;
+  first initialization hardware gate separately remains pending readiness.
 
 ## Evidence-entry template
 

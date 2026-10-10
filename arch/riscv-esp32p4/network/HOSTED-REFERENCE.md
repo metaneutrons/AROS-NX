@@ -37,6 +37,36 @@ re-fetch pinned source paths to reproduce).
 
 ## Build and deployment gates
 
+### Native serial fragmentation contract
+
+Pinned `slave/main/app_main.c:63,606..650` defines ETH_DATA_LEN1500 and
+increments a static uint16 sequence before each serial fragment. MORE is set
+on nonfinal fragments; the sequence increments within a message, including
+65535-to-0 wrap. The entire pserial TLV stream, not independently decodable
+TLVs, is split into chunks. `slave/main/protocomm_pserial.c:76` composes a
+six-byte endpoint TLV followed by a DATA TLV with uint16 length.
+
+`hosted_epoch_reassembly.c/h` is a separately tested, not yet integrated
+native helper. It owns a4108-byte buffer, validates the final serial TLV and
+allows up to4096 protobuf bytes and16 fragments. These are local defensive
+caps, not negotiated slave limits. Within a partial message it requires the
+next sequence; between complete messages it does not assert continuity.
+The owner routes other interfaces separately, serializes all access, captures
+the transport generation and supplies one aggregate deadline. The helper has
+no clock, I/O, allocation or transport-counter reset. Consumed malformed
+input wipes/poisons its assembly; the owner must also invalidate the matching
+transport and abort partial assembly on timeout/cancellation/failure before
+any subsequent RPC. Stale feed/view/release/abort preserve replacement state.
+Only the exclusive fresh-epoch owner may start a different generation; this
+operation cannot order arbitrary generation numbers or identify stale owners.
+
+The earlier timestamp-based `hosted_reassembly.c/h` prototype and its tests
+remain unchanged and unlinked. The new helper addresses explicit generation
+ownership, poisoned cancellation and freestanding no-libc requirements;
+it does not silently replace the older API or prove transport integration.
+Host models validate fragment assembly, not protobuf semantic validity,
+elapsed timeout behavior, installed C6 compatibility or WLAN operation.
+
 1. Build the actual root component and its complete transport/bootstrap/RPC
    implementation. The old host example CMake files name stale directories;
    do not repair that by inventing a replacement protocol. A small application

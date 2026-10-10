@@ -28,6 +28,12 @@ matching full-erase-span backups. The board is deliberately held in download
 mode awaiting coordinated fresh C6 startup; native initialized MAC and WLAN
 remain open. The original baseline is recoverable from both saved backups.
 
+A separate generation-bound serial reassembly helper now passes1,318 checks
+each at O0/O2 with ASan/UBSan and freestanding RV32 compilation. It copies
+partial replies into owned memory and checks the pinned slave's per-fragment
+sequence increments. It is not yet linked into the control path or included
+in the deployed package; native scan and WLAN acceptance remain open.
+
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection
 also exposed and corrected the default P4>=3.x target; the corrected build
