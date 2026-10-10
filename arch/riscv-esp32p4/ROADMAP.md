@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
-| N2W | Generic wireless security-summary/offload contract | `development; predicate models, RV32 ABI and driver syntax passed; full build pending` | Separate upstream-based pr/wireless-offload-summary checkout. Explicit per-device capability, owned exact-version summary, no fabricated AP security IE. Unknown/ambiguous protected networks must not fall back to open. Initial singleton WPA/RSN PSK profile; legacy path preserved. Caller/conversion models and integration pending. No credentials or deployment. |
+| N2W | Generic wireless security-summary/offload contract | `development; predicates/ABI and conversion/selection-helper models passed; full RV32 GUI build verified` | Separate upstream-based pr/wireless-offload-summary checkout. Explicit per-device capability, owned exact-version summary, no fabricated AP security IE. Unknown/ambiguous protected networks must not fall back to open. Initial singleton WPA/RSN PSK profile; legacy path preserved. Device query/full association and integration pending. No credentials or deployment. |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; native initialized MAC observed once; cold continuity rejected; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; Earlier GetMAC returns correlated0x3001 (WiFi not initialized). Latest initialized sequence succeeds once with expected MAC, but initial HP watchdog reset/truncated ROM output block clean cold acceptance. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
 | N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; native initialization/MAC repeated; pre-armed cold continuity rejected` | Existing FIFO reused with owned bodies/exact correlation. Control3529/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Generation-bound reassembly1318 isolated checks each O0/O2 sanitized pass; now linked into control with coupled epoch/deadline/failure tests and fresh113900B module build. Fragmentation integration not deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Coordinated startup reports all5 WLAN statuses0, valid MAC10:bd:a3:9b:bc:34 and restored stable registers in60.112s/16340 bytes; initial HP watchdog reset prevents clean cold acceptance. Latest late45.114s retrieval exits0 but receives0 bytes;1.425ms open latency, no armed startup coverage, inconclusive. Latest pre-armed removal/arrival capture exits0/status=ok,60.181s/16148 bytes and repeats native initialization/MAC/cleanup; first chunk6.525s after open contains HP watchdog reset and incomplete ROM prefix. Checker exits1; reset cause/serial-open influence unresolved; exact-image PC locates DMA IRQ dispatch, not proof of handler fault. No persistent UID allocator or WLAN acceptance. Original verified baseline recoverable. |
@@ -1123,12 +1123,18 @@ independent conversion/selection tests and private SANA scan remain open.
 Pure summary predicates now pass88 scenarios/264 checks each O0/O2 sanitized
 on macOS and isolated Linux. Explicit RV32 public ABI compile asserts32-byte
 capability and28-byte summary with every field offset; Linux skips ABI
-explicitly and is not an ABI pass. Driver target syntax succeeds, not linking.
+explicitly and is not an ABI pass. Driver target syntax succeeds. Follow-up
+role-specific masks correct the disjoint cipher refusal, and a clean standalone
+RV32 WirelessManager/MUI GUI compile and link succeeds with the current SMP
+sysroot. Conversion/capability/selection-helper models now pass32 scenarios/59
+checks each O0/O2 ASan/UBSan on macOS and isolated Linux. Device query/full
+association and integration remain separate gates.
 
 Private bridge ABI2 scan now clean-builds with its matched device; ABI1/ABI2
 mixing fails resource validation. This is a transport prerequisite only:
 queued SANA wireless commands and truthful summary-aware security/offload
-integration remain open. Scan-specific source-extracted models are pending.
+integration remain open. Scan-specific source-extracted models now pass37447
+assertions each O0/O2; actual transport, Exec and timing remain mocked.
 
 Current integration state (2026-10-10): the private bridge is build/model
 verified; the separate esp32p4wlan.device now clean-builds (53840B), with
@@ -33679,3 +33685,67 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Remaining risk or blocker:
 - Next safe step:
 ```
+
+### 2026-10-10 - N2W separate cipher roles and full standalone GUI build
+
+- State: generic source correction and full RV32 build verified, not hardware
+  acceptance. Work remains uncommitted in pr/wireless-offload-summary at
+  /Volumes/Dev/Build/aros-wlan-contract.qToy75; no port integration yet.
+- Correction: append separate pairwise/group cipher masks to internal
+  wpa_driver_capa. The strict public capability validator accepts disjoint
+  supported roles; the driver maps each separately and retains their union
+  only for legacy enc consumers. Summary association checks both actual roles.
+  Public ABI sizes/versions are unchanged. Independent role review and new
+  source-extracted conversion/caller tests are pending.
+- Procedure: copy the frozen WirelessManager sources into a fresh directory
+  /Volumes/Dev/Build/wlan-summary-build.tnKv0i. GNU make wpa_supplicant,
+  checked-in .config (SANA2, amiga/MUI, IEEE8021X), -MMD -O2 -Wall, explicit
+  generic public headers and current SMP generated headers; compiler
+  riscv-aros-gcc16.2 with --sysroot pointing explicitly to
+  /Volumes/Dev/Build/aros-esp32p4-wifi-build/bin/esp32p4-riscv-smp/AROS/Developer.
+  Do not use the compiler's older default Developer tree.
+- First invocation incorrectly overrode Makefile CFLAGS additions, so includes
+  were missing (exit2, build.log). Corrected invocation used environment CFLAGS;
+  all copied .o files were then deleted and the full build repeated (actual
+  exit0, build-clean.log). No error or undefined-reference diagnostics.
+  Existing unrelated warnings remain; no changed-code initializer warning.
+- Artifact: copied WirelessManager/wpa_supplicant/wpa_supplicant, AROS RV32
+  relocatable executable,678472B SHA256
+  9efdf540fd104a65b8b43398ca5c6d96f6336ed625a163afda5e2a24b08ef647.
+  build-clean.log SHA256
+  62d70480b02459fede0e3980b6085aabd8b0aafa45b03995ab22b7bd24309e10.
+  driver_sana2.c SHA256
+  167cb94e131793e0aaad4f0fb28cf03ba374df761ac3f71cc9cb73a7d1ea4d27;
+  driver.h22ffe9103c89982b79704764383bfc21c0061e9376a43c620e76a59c7f6f357b;
+  wpa_supplicant.c5c3cf15b45800acb987e67533ae75c737db36e1365476417edbbeb056c5f9440.
+- Pure summary regression repeated:88 scenarios/264 predicate checks each
+  O0/O2 ASan/UBSan and explicit RV32 public ABI fixture, actual exit0.
+- Independent source review of the role producer/consumer reports no blocking
+  defect; exact size/version and unsupported-mask checks remain intact and
+  legacy role fields remain zero. This does not replace conversion models.
+- New source-extracted conversion/capability/selection-helper models pass32
+  scenarios/59 checks each O0/O2 ASan/UBSan; independently authored, repeated
+  by primary with actual exit0 on macOS and network-isolated Linux.
+  Actual get_capa producer is extracted, but receives already queried state;
+  Exec/tag/device operations and consumed structure shapes are fixtures, not
+  actual device query/full selection/association or live SANA evidence.
+  Duplicate open-helper symbol alone is renamed; production bodies unchanged.
+  C SHA2567ca68dcf6b16ba154297507d9c6bed2a80adcb3541c7b722c9bd4c292eaed57e;
+  runner97dcc4a735ac903279a3fc3090c1fd6e5824867dadbb855014d9ef029ce3da99.
+  Logs in wlan-summary-build.tnKv0i: integration-macos.log SHA256
+  de11d32e08bb177979843e5450c8371c5c348e2da0ef772392b97fd39c84f00e;
+  integration-linux-tar.log SHA256
+  12886aaf98eb897670a1cea2c99580d4ac0f6174c492528405889cc317bec18f.
+  Initial bind-mounted Linux attempt could not see /Volumes sources (exit2);
+  corrected procedure feeds frozen sources by tar into network-none Docker
+  tmpfs /work (actual exit0). Harmless macOS xattr warnings retained in log.
+- Additional optional configuration attempted from a second fresh source copy
+  /Volumes/Dev/Build/wlan-summary-extended.Qolhu3 with CONFIG_WPS=y and
+  CONFIG_IEEE80211W=y. It fails compilation (actual exit2): unchanged
+  src/wps/wps_upnp_i.h requires complete client/sockaddr_in socket types.
+  Therefore full WPS/PMF configuration is not qualified by the default GUI
+  build; do not claim it is. Summary-only WPS/PMF refusal remains required.
+- Safety: no port open/reset/flash, no SD writes or credentials. Core1 owner
+  placement remains build/model verified only, not measured CPU execution or
+  performance. Next: conversion/caller qualification and independent review,
+  qualified upstream commit, then native queued scan and association integration.

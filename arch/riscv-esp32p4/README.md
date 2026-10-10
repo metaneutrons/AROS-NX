@@ -10,11 +10,16 @@ summary association is bounded to singleton WPA/RSN PSK TKIP/CCMP; SAE, EAP,
 WPS and PMF require additional truthful metadata, not invented support.
 Pure summary predicates pass88 scenarios/264 checks each O0/O2 ASan/UBSan
 on macOS and isolated Linux; the explicit RV32 ABI fixture also compiles.
-Driver and caller target syntax pass with existing warnings. Independent source
-audit finds no remaining security bypass, but flags an interoperability defect:
-disjoint pairwise/group cipher capabilities are conservatively refused. Correct
-the role-specific capability mapping before qualification. Caller/conversion
-tests, complete linking and deployment remain unverified; generic work is uncommitted.
+Driver and caller target syntax pass with existing warnings. The disjoint
+pairwise/group capability refusal is corrected using separate role masks;
+the legacy cipher mask is their union, not authority for either role.
+A clean standalone RV32 WirelessManager build, including the existing MUI GUI,
+now compiles and links with the current SMP Developer sysroot (678472B).
+Source-extracted conversion/capability/selection-helper models now pass32
+scenarios/59 checks each O0/O2 ASan/UBSan on macOS and isolated Linux.
+Device queries, complete selection/association flow and deployment remain
+unverified; generic work is uncommitted. This build is not association, DHCP
+or hardware acceptance.
 
 Persistent owner scan development (2026-10-10): private bridge ABI2 now adds
 an owner-service-only default-config scan, using fresh persistent UIDs rather
