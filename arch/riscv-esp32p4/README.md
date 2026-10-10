@@ -5,7 +5,8 @@ exposes nonblocking permanent-unit registration, synchronous borrowed-frame
 delivery outside SDMMC ownership and bounded direct STA/0 Ethernet TX using
 the existing FIFO/generation. An initial clean RV32 resource build succeeds;
 independent bridge tests/review now pass. Source-extracted bridge models pass
-154 checks each O0/O2 with ASan/UBSan, independently repeated on macOS and
+202 checks each O0/O2 with ASan/UBSan, including minimum/maximum Ethernet
+frames with negotiated checksum disabled/enabled, repeated on macOS and
 network-isolated Linux. Exec/SDMMC are mocks, not runtime concurrency proof.
 The SANA device implementation remains pending.
 Registration/MAC readiness is not association. No credentials, deployment,

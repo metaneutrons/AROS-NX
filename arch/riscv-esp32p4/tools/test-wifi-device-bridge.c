@@ -106,9 +106,10 @@ struct tx_mock {
     unsigned read_calls, write_calls, session_calls, budget_calls, yield_calls;
     unsigned write_mode;
     unsigned decoded_ok;
+    unsigned checksum;
     ULONG token;
     size_t expected_size;
-    UBYTE expected_frame[TEST_FRAME_SIZE];
+    UBYTE expected_frame[P4_HOSTED_ETHERNET_FRAME_MAX];
 };
 
 static BOOL mock_host_acquire(struct P4SDMMCHost *host, ULONG wait_us)
@@ -162,7 +163,7 @@ static int mock_tx_write_fifo(void *opaque,
     ++mock->write_calls;
     if (!host_held || !plan || !buffer || !completion)
         return 0;
-    mock->decoded_ok = p4_hosted_decode(buffer, plan->logical_bytes, 0u,
+    mock->decoded_ok = p4_hosted_decode(buffer, plan->logical_bytes, mock->checksum,
                                          &decoded) &&
         decoded.interface_type == P4_HOSTED_STA &&
         decoded.interface_number == 0u && decoded.flags == 0u &&
@@ -473,6 +474,35 @@ static void test_send_failure_is_single_attempt_and_wiped(void)
     CHECK(wire_is_zero(f.owner.wire, sizeof(f.owner.wire)));
 }
 
+static void test_send_frame_bounds_and_checksums(void)
+{
+    static const size_t lengths[] = {14u, P4_HOSTED_ETHERNET_FRAME_MAX};
+    struct fixture f;
+    UBYTE bytes[P4_HOSTED_ETHERNET_FRAME_MAX];
+    size_t index, variant;
+    unsigned checksum;
+    for (index = 0; index < sizeof(bytes); ++index)
+        bytes[index] = (UBYTE)(index * 19u + 3u);
+    for (checksum = 0; checksum <= 1; ++checksum) {
+        for (variant = 0; variant < sizeof(lengths) / sizeof(lengths[0]); ++variant) {
+            fixture_init(&f);
+            f.runtime.checksum = checksum;
+            f.tx.checksum = checksum;
+            f.tx.expected_size = lengths[variant];
+            memcpy(f.tx.expected_frame, bytes, lengths[variant]);
+            CHECK(wifi_device_send(&f.base, bytes, (ULONG)lengths[variant]));
+            CHECK(f.tx.decoded_ok == 1u && f.tx.write_calls == 1u);
+            CHECK(f.control.frame_tx.plan.logical_bytes == lengths[variant] +
+                    P4_HOSTED_HEADER_SIZE);
+            CHECK(f.control.frame_tx.plan.bus_bytes ==
+                    ((lengths[variant] + P4_HOSTED_HEADER_SIZE + 511u) & ~511u));
+            CHECK(f.fifo.tx_sent == 1u && !f.fifo.poisoned);
+            CHECK(host_acquire_calls == 1u && host_release_calls == 1u);
+            CHECK(wire_is_zero(f.owner.wire, sizeof(f.owner.wire)));
+        }
+    }
+}
+
 static void test_budget_and_acquire_failure_cleanup(void)
 {
     struct fixture f;
@@ -525,6 +555,7 @@ int main(void)
     test_send_preflight_refusals();
     test_send_one_sta_transfer_and_wipe();
     test_send_failure_is_single_attempt_and_wiped();
+    test_send_frame_bounds_and_checksums();
     test_budget_and_acquire_failure_cleanup();
     test_stopped_unpublishes_before_callback();
     printf("wifi device bridge: %lu checks passed (source-extracted callbacks, mocked Exec/host)\n",
