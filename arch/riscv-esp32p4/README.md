@@ -8,7 +8,10 @@ independent bridge tests/review now pass. Source-extracted bridge models pass
 202 checks each O0/O2 with ASan/UBSan, including minimum/maximum Ethernet
 frames with negotiated checksum disabled/enabled, repeated on macOS and
 network-isolated Linux. Exec/SDMMC are mocks, not runtime concurrency proof.
-The SANA device implementation remains pending.
+The separate SANA device now clean-builds for RV32 (53800B). Initial
+cancellation, RX traversal and Close-drain defects are corrected; independent
+review and source-extracted lifecycle tests remain in progress. The device
+does not yet implement wireless association or advertise WPA offload.
 Registration/MAC readiness is not association. No credentials, deployment,
 DHCP, IP traffic or hardware acceptance is implied. Default-off builds retain
 an unavailable bridge rather than silently starting the radio.
