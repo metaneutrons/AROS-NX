@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
-| N2F | C6 firmware privacy and recoverable identity | `extended C6 candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105760B; Hosted Wi-Fi/BT MAC and direct AP prints removed, RPC/events retained. ELF vendor callbacks have no outgoing calls; Mac/Linux O0/O2 sanitized18 callback/490 string checks each plus source guards pass. Earlier1106624B candidate/reference unchanged. Direct vendor stdio/PHY paths need link-map/runtime assessment. No deployment or installed identity proof. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory. |
+| N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
 | N2S | Native queued SANA scan presentation | `RV32 build verified; source review and corrected scan-helper models passed` | Single bounded owner-service scan, copied SSID filter and caller-pool-owned complete publication. Scan-helper models295 checks each O0/O2 ASan/UBSan on macOS/Linux; outer BeginIO/AbortIO/Close and runtime scheduling remain separate gates. Exact singleton metadata only; unsupported/ambiguous unknown protected. C-string binary SSIDs/invalid channels omitted; max8 local cap. SUMMARY only, no FOURWAY. No credentials/deployment/hardware acceptance. |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
@@ -1301,6 +1301,16 @@ have no outgoing calls in the resulting ELF; fresh Mac/Linux sanitized suites
 pass. The earlier candidate/reference remains unchanged. This is build evidence
 only; direct vendor stdio/PHY route analysis and actual secured-recovery/UART
 qualification remain mandatory before credentials or deployment.
+
+The retained legacy Wi-Fi/coexistence/PHY formatters bypass those callback
+sinks through ESP_LOGI. A C6-only recipe patch now sinks all three shared
+helpers without consuming arguments, returning zero printed characters; other
+targets retain the original body. Fresh full build1105312B and actual-body
+Mac/Linux O0/O2 sanitizer tests/source guards pass. Static error puts routes
+remain outside these helpers. The independent link-map review distinguishes
+retained error branches from discarded debug sections; actual UART privacy,
+installed identity and recoverable update remain hardware gates, not implied
+by formatter suppression. Previous candidates/reference are preserved.
 
 Association caller correction is in development in the upstream-based generic
 checkout: validate before effects, use synchronous borrowed stack options,
@@ -35431,3 +35441,59 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   No serial/reset/flash, NVS inspection, credentials or SD write; both AROS
   privacy assertions0. Generated flash_args are not authorization. No WLAN/IP
   or hardware pass inferred from build/tests.
+
+### 2026-10-10 - N2F C6 legacy formatter suppression and fresh full build
+
+- Independent ELF review and primary disassembly confirm net80211/pp,
+  coexistence and PHY wrappers call helpers containing only li a0,0; ret,
+  with no formatter/output call. rtc_printf is absent from the linked ELF;
+  no compiled-wrapper claim for it. Disassembly logs are archived below.
+- Procedure: separate complete APFS IDF/source copy at
+  /Volumes/Dev/Build/c6-legacy-log-build.8qQvpV, derived from the previous
+  private candidate. Apply C6-only idf-legacy-log-privacy.patch to the three
+  Wi-Fi/coexistence/PHY shared lib_printf helpers. Original non-C6 bodies stay
+  unchanged. Independent source review finds no blocker; public wrappers own
+  va_start/va_end, sinks consume no arguments and return zero output length.
+- Route evidence: previous linked legacy formatters call helpers that invoke
+  ESP_LOGI, bypassing the OS callback sinks. Retained direct puts branches in
+  Wi-Fi/coexistence registration/initialization report fixed invalid-input
+  errors, not network arguments. Archive imports alone overstate reachability:
+  smartconfig is not extracted, and reviewed PP raw debug sections are discarded.
+  These findings are static scoped evidence, not whole-firmware privacy proof.
+- Tests: actual extracted three helper bodies, three cases/six checks each
+  O0/O2 ASan/UBSan on macOS and frozen network-isolated Linux, actual exits0.
+  Sensitive formats, missing arguments/percent-n and NULL format do not reach
+  the mocked sink; exact C6 body guards pass. Original Wi-Fi helper negative
+  control fails assertion, actual exit1. Other two original helpers were not
+  separately negative-tested. Linux image
+  e4f4b5717ab9c9bf7219716469ad3d85c01e144d09763a4eb1fcd22a4a46151d;
+  retained tar xattr warnings are not failures. No radio/Exec/UART execution.
+- Build: same IDF5.4.3/Python3.12.13/CMake3.30.2/Ninja1.12.1/GCC14.2.0_20250730,
+  fresh build directory, existing content-addressed ccache, no downloads.
+  Actual process exit0,936 actions, ELF/BIN generation and capacity pass;
+  no compiler error/warning signatures. Config remains C6/SDIO, INFO maximum
+  and default, Wi-Fi NVS off, BT enabled and source4MB partition layout.
+- Artifacts: app1105312B SHA256
+  149ec760ce40bbf159d1d780f001f44de19477b5076e40a91a15764410ce0b86;
+  ELFf2fdf976378fa69b6f9863a7c1e815313b44463581c42680d570db3b1c77b10b;
+  mapa723a6aa8aae4b0987c883a7cdcf0ea68c3a9547dbfd6d9dad3703818f2111e5;
+  bootloadera9e4d1007843eeff73c23a9ef7fc239da72b224171ada81e1324ebcc2d8372b4;
+  partition0241fa0d2e573dee86756e39fb4181e61ff7218087619cab565b602df55954d6;
+  config4737c809de018a223cd0333e8e3c043bdc1b454a9a9779aad23551ae26b035e8.
+  Source OTA slot1572864B,467552B free; not installed-device layout evidence.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/c6-legacy-log-build.biMMgO.
+  Archived artifacts/config/compilecommands, four patches, three changed helper
+  sources, test and frozen inputs. Build loga3e3268d96039f208eb213f087c652c25b5f9484f3dfc7921c953cc44791772e;
+  Mac66e683d8d5bedf72c5f055e2a5c951c1973b11aa3b860bdf2a4ec24f4311659f;
+  Linuxe207d2ead3e4bf4c90aea771cdf1978c879696329f8f56b9139bcd194bb6b73e;
+  input736fa5c737c998fa8d37bfda14cc2b684a9e3d0df1c50791cd1b8c753cb4fd92;
+  patchad93fd9bc7d140e0389f52b50ae5b444cdca2c5bb9a0d3482421d3b828f176dd.
+- Preservation/safety/next: original IDF clean at
+  ea1c174c1cbb7348bd8ba0ff1eb306246938dd80. Both previous app hashes unchanged
+  (d4a992b9... and93cc504d...). No serial/reset/flash, credentials, NVS inspection
+  or SD write. Both AROS privacy assertions remain0. Vendor legacy diagnostics
+  are deliberately unavailable; fixed direct error outputs remain. Installed
+  identity/security, physical CN5 access, verified backup/restore and actual
+  UART privacy are next gates before credentials. Native association/DHCP/
+  bidirectional frames/reconnect/shared-load qualification remains open.

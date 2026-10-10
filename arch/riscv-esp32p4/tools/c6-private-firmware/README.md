@@ -55,6 +55,25 @@ Direct stdio/ROM and PHY diagnostics require link-map/reachability review;
 callback suppression does not prove whole-firmware UART privacy. Actual UART
 qualification after secured recovery remains required before credentials.
 
+## C6 legacy formatter extension (build verified, undeployed)
+
+Apply `idf-legacy-log-privacy.patch` with `git apply --check` and `git apply`
+to the separate pinned IDF tree as well. Wi-Fi, coexistence and PHY legacy
+shared formatters otherwise bypass the OS callback sinks through ESP_LOGI.
+For C6 only, they ignore all arguments and return zero printed characters;
+public wrappers retain ownership of their va_list. Other targets retain the
+existing body. This deliberately loses these vendor diagnostics at all levels.
+Direct static error-message puts branches remain outside the helpers.
+
+Run `python3 test-legacy-log.py PRIVATE_IDF`: actual extracted bodies are
+compiled at O0/O2 with ASan/UBSan, six checks per helper, and exact no-op source
+guards. The original Wi-Fi helper fails the negative control. Fixtures mock
+the output sink; neither this test nor the build proves runtime UART privacy.
+The fresh extended app is1105312B, SHA-256
+`149ec760ce40bbf159d1d780f001f44de19477b5076e40a91a15764410ce0b86`.
+Keep all four patches and actual build inputs with the evidence. Earlier
+candidates are preserved. Do not enable credentials before the hardware gates.
+
 Build environment used: IDF 5.4.3, Python 3.12.13 in a private uv venv,
 IDF core requirements constrained by Espressif's `espidf.constraints.v5.4.txt`,
 CMake 3.30.2 and official Ninja 1.12.1, RISC-V GCC 14.2.0_20250730.

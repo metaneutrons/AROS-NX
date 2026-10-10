@@ -1,5 +1,15 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+C6 legacy logging extension (2026-10-10): fresh full build passes with
+Wi-Fi, coexistence and PHY shared formatters suppressed specifically for C6.
+App1105312B SHA-256
+149ec760ce40bbf159d1d780f001f44de19477b5076e40a91a15764410ce0b86.
+Actual-body Mac/Linux O0/O2 sanitizer tests and exact sink guards pass for
+all three helpers. Static error-message puts routes remain; this is not a
+whole-UART privacy certificate. Earlier candidates/reference are unchanged.
+No deployment or credentials; installed identity, secured restore, actual UART
+privacy and association/IP/reconnect/load acceptance remain open.
+
 C6 logging candidate build (2026-10-10): fresh full build against a separate
 patched IDF5.4.3 tree passes; app1105760B SHA-256
 d4a992b9aa806d61b0e406b848dfc4e449f3a06eab102120b84453c7ae7c358e.
