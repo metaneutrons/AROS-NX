@@ -1,6 +1,10 @@
 include $(SRCDIR)/config/aros.cfg
 include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 
+# Use the BSP static link mode. The default link mode produced runtime frame
+# registration references to .eh_frame, which the P4 loader does not place.
+USER_LDFLAGS := -static
+
 # Opt-in native identification/setup/INIT gate, not a working SANA-II device.
 USER_CPPFLAGS := $(P4_BOARD_CPPFLAGS)
 ifeq ($(P4_WIFI_SDIO_SETUP),1)

@@ -61,6 +61,13 @@ freshness from a newer standalone resource: the local package inspected on
 resource was254812B. Both credential privacy assertions must remain0 until
 their separate acceptance gates pass.
 
+The subsequent loader audit found discarded-frame references in both old
+default-linked modules. network/mmakefile.src now uses the standard BSP static
+link mode; fresh resource249944B/device67492B pass loader audit. The corrected
+42-member test package passes with41 other payloads unchanged. The regenerated
+image includes the corrected device and passes329-file/FAT32 verification.
+These are build/host checks, not deployment or actual WLAN acceptance.
+
 ## WLAN build defaults
 
 `python3 make-wifi-stage.py --aros-root BUILD_AROS --output NEW_DIRECTORY`
@@ -69,9 +76,11 @@ Every required executable must parse as little-endian RISC-V ELF32 ET_REL;
 WiFi must contain one initialized writable two-byte WifiVolatile symbol set
 to 1. Missing, empty or symlinked required inputs fail before reserving output.
 Built WiFi/Network catalogs are optional and allowlisted. No build-tree saved
-preferences or Package-Startup are imported. Sixteen host tests pass and actual
+preferences or Package-Startup are imported. Seventeen host tests pass and actual
 RV32-SMP outputs produce 83 files with desktop defaults (78 without them);
-this is not loader/runtime acceptance.
+this is not board/runtime acceptance.
+The WLAN device additionally must pass the P4 loader relocation audit before
+output is reserved; a runtime reference to discarded .eh_frame is rejected.
 The explicit WLAN target consumes this stage with `--desktop-defaults`.
 The existing C3 base supplies GUI classes, but its recursive build preference
 import is disabled for this profile. Normal image targets retain their behavior.

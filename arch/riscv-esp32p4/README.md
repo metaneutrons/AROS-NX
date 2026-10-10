@@ -3,16 +3,26 @@
 WLAN bootimage development (2026-10-10): explicit JC1060 WLAN image targets
 now consume the native overlay and exclude saved build Env-Archive preferences.
 Stock source Wanderer preferences and ABI add five files (83-file overlay).
-Sixteen host stage tests pass; ESP32 WiFi uses a volatile compile-time default,
+Seventeen host stage tests pass; ESP32 WiFi uses a volatile compile-time default,
 validated in the actual ELF. Normal image profiles retain their behavior.
 The 64 MiB image builds and passes independent host FAT32/fsck and exact
 329-file manifest verification; original hash remains unchanged. GUI/radio
 qualification remains open; no
 hardware, credentials or privacy assertion changes have occurred.
-Deployment pairing audit: the local BSP package still contains an older
+Initial deployment pairing audit: the local BSP package contains an older
 31652B radio resource, not the standalone254812B owner resource. The image
 alone cannot qualify scanning; rebuild/check the matching ABI6 BSP before
 deployment. C6 recovery/privacy and actual radio tests remain open.
+
+WLAN loader correction (2026-10-10): default module linking produced runtime
+references to loader-discarded .eh_frame in both the resource and SANA-II
+device. BSP static linking removes those invalid references in the fresh
+249944B resource/67492B device; individual loader audits and42-member test
+package audit pass. The WLAN stage now rejects loader-invalid devices before
+writing output. Earlier329-file FAT verification did not establish driver
+loadability; the old image is superseded, never deployed. Current image is
+regenerated with the corrected device. Package and image remain undeployed;
+CN5 cable is unavailable, so independent C6 UART recovery is not established.
 
 WLAN lease-expiry development (2026-10-10): generic2298252dad is integrated.
 The chooser rejects missing, malformed, duplicate or expired lease timestamps,

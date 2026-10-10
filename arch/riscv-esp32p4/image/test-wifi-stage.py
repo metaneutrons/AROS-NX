@@ -137,6 +137,16 @@ class WifiStageTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
+    def test_wlan_runtime_reference_to_discarded_frame_is_rejected(self):
+        self._make_inputs()
+        broken = ELF_FIXTURES.make_elf(
+            runtime_relocations=[(0, "__eh_frame_start", 1, 0)],
+            symbols=[{"name": "__eh_frame_start", "section": 5}])
+        (self.aros_root / "Devs/Networks/esp32p4wlan.device").write_bytes(broken)
+        with self.assertRaisesRegex(ValueError, "WLAN device fails loader audit"):
+            STAGE.generate(self.aros_root, self.output, self.source_root)
+        self.assertFalse(self.output.exists())
+
     def _make_inputs(self, wifi_elf=None, aros_root=None, source_root=None):
         aros_root = aros_root or self.aros_root
         source_root = source_root or self.source_root

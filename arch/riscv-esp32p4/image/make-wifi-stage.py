@@ -107,6 +107,10 @@ def collect(aros_root, source_root=REPO, include_desktop=False):
         elf, _ = ELF._parse_elf(data)
         if name == "Prefs/WiFi":
             verify_volatile(elf, data)
+        if name == "Devs/Networks/esp32p4wlan.device":
+            _, _, issues = ELF.audit_elf(data)
+            if issues:
+                raise ValueError("WLAN device fails loader audit: " + "; ".join(issues))
         payload[name] = data
     for name in IMAGES:
         payload[name] = read_file(aros_root, name)
