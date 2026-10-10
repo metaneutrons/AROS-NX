@@ -177,8 +177,15 @@ attempts bounded restoration under the same host ownership. Identification
 and setup share8s; cleanup has a separate2s reserve. CMD52 writes have no
 data-transfer phase. Clean RV32 module builds pass with setup enabled and
 disabled; extracted actual CMD52 adapter tests pass21 cases/165 checks and
-restoration tests602 checks each O0/O2 with sanitizers. This candidate is not
-deployed or hardware accepted; OPEN/IRQ/RPC and C6 firmware writes remain absent.
+restoration tests602 checks each O0/O2 with sanitizers. Its first headless
+deployment failed before setup: after a P4 USB reset, CMD5 timed out again
+(stage2, command5, error3/status3). Setup attempted0 and mutated0; real setup
+and card-state restoration are therefore unverified, not passed. The earlier
+post-power-cycle identification pass does not establish warm reidentification.
+OPEN/IRQ/RPC and C6 firmware writes remain absent.
+The entire3,731,456-byte BSP erase span was restored and independently
+read back byte-identically; the complete30.981s baseline return boot succeeds.
+The board is running the original41-member package without a Wi-Fi probe.
 The current official ESP-Hosted-MCU host also writes0x8c; the discrepancy is
 not limited to the older FG host and remains unresolved before OPEN.
 The recovery foundation now separates card identification into an unpublished

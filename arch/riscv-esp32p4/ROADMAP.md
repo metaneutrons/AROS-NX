@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; runtime setup build verified` | Opt-in setup/restore runtime module builds cleanly enabled and disabled. Actual CMD52 adapter21 cases/165 checks, restore602 checks each O0/O2 sanitized; setup3997. Next hardware setup+exact restore gate without OPEN. C6 OPEN mapping still differs between docs and current official host; compatibility, live transport/credits/RPC and disconnect recovery remain open. C6 firmware preserved. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; setup gate blocked by warm CMD5 timeout` | Opt-in setup/restore builds and host tests pass, but first deployment fails at initial CMD5 after P4 USB reset: setup attempted0/mutated0. Earlier post-power-cycle identification is not repeatable warm recovery. Resolve bounded warm reidentification before setup acceptance. C6 OPEN mapping, compatibility, live transport/credits/RPC and disconnect recovery remain open. C6 firmware preserved. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -569,7 +569,7 @@ OPEN or assume reset replays it. C6 IDF5.4 protocol names SLAVE_INT0x8d;
 unmatched legacy FG host47a14ad262fe2a2e17797dd09c69102e3e5631c1 writes
 OPEN at0x8c. Resolve target-specific mapping before either bootstrap write;
 do not treat legacy queue10 as the pinned slave's configured RX pool20.
-No OPEN/RESET/IRQ/function setup has been deployed by this implementation.
+No OPEN/RESET/IRQ bootstrap write has been deployed by this implementation.
 The optional P4_WIFI_SDIO_SETUP=1 runtime candidate performs setup after
 successful identification, then restores saved FBR/IO_ENABLE under unchanged
 host ownership/generation. Identification+setup use8s and cleanup an explicit
@@ -577,7 +577,10 @@ host ownership/generation. Identification+setup use8s and cleanup an explicit
 encode the byte in CMDARG and leave the shared request data phase disabled.
 Clean RV32 module builds pass with the selector enabled/disabled. Extracted
 actual CMD52 adapter tests pass21 cases/165 checks; pure restore tests602
-checks each O0/O2 sanitized. Runtime qualification, real restoration and SD
+checks each O0/O2 sanitized. The first opt-in package deployment fails at
+initial CMD5 after P4 USB reset (stage2, error3/status3): setup attempted0,
+mutated0. This is a warm-reidentification failure before setup, not a setup
+or restoration pass. Runtime qualification, real restoration and SD
 coexistence remain open. Current official ESP-Hosted-MCU8a593891dc915a8f8a08556224b63f842dd3ef10
 also maps HOST_TO_SLAVE_INTR to0x8c with a real Function-1 byte write; the
 address discrepancy is not only an old-host mismatch. C6 GP mask bits0..7 in
@@ -30110,6 +30113,59 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   and exact readback restoration gate with immutable backup/rollback; then
   resolve interrupt mapping and receive capability events. Installed identity,
   WLAN transport, association/DHCP/data/reconnect and SD coexistence remain open.
+
+### 2026-10-10 - N1 setup deployment blocked before mutation; exact baseline restored
+
+- Source43180c960f, feature/esp32p4-wifi; worktree
+  /Volumes/Dev/Build/aros-esp32p4-wifi. JC1060-v2 P4v1.3 eco2,
+  MAC80:f1:b2:d3:3b:a6 reconfirmed before deployment and rollback. No new
+  physical rail-off in this run. Existing SMP/CPU360/PSRAM200 configuration.
+- Immutable enabled module39916B ef154557... from n1-runtime-setup replaces
+  only esp32p4wifi.resource in the previous diagnostic container; other41
+  members unchanged. Candidate3728472B SHA-256
+  416c693a32543a54add838a5ddf015d1cbc2711ffabcf44cadda14fba6d3e0d1.
+  Loader audit accepts42/42; actual checksize exits0,3728472/4063232B.
+  First checksize invocation used a noncanonical package filename and tried
+  missing dependencies; it failed and is not accepted. Corrected invocation
+  uses aros-bsp.pkg and marks that exact external artifact unchanged.
+- Entire candidate erase span0x820000..0xbaefff (3731456B) read twice and
+  compared identical before write, including additional tail sectors. SHA-256
+  bfce64475f689cf766c5ddf241d73a09fe7a6ec6026abcfac97ac2936ef8ca1c.
+  Its original3723264B prefix matches the previous baseline readback.
+  Write only at0x820000, separate candidate readback matches its complete
+  SHA above. Terminal29444 exits0; first-byte reset capture timing footer
+  complete=true,40.875032s,16077 bytes. boot.log SHA-256
+  6b1e2e75b6eec8ac850b0fae7aa9c983b05202edd92fe91fa3520cdf1fb2b371.
+- Result: FAIL before setup. Initial CMD5 stage2, error3/status3,
+  raw00010100/IDSTS0, no valid response/OCR/RCA. Setup attempted0/ok0,
+  polls0, mutated0; restoration not invoked. No successful setup or card-state
+  restoration is inferred. Earlier identification after physical power cycle
+  remains a single successful run, not warm-reset recovery acceptance.
+  Slot0+slot1 CLKDIV1d00/CLKSRC4/CLKENA10003/CTYPE1/RST_N3 unchanged.
+  Console drops the reg20 report; do not claim all24 snapshots were captured.
+- Exact recovery: reidentified MAC, write full before.bin at0x820000, read
+  all3731456B independently and compare identical bfce6447...; terminal53300
+  exits0 after separate first-byte baseline capture. Its timing footer is
+  complete=true,30.981413s,14492 bytes; restored-boot.log SHA-256
+  bcb5d66de685b82201a12c182f82baef8908fc1f7785bdff27ef5ebc7a528e01.
+  Both captures show only the commanded initial USB reset,32MB PSRAM200,
+  armed6000ms watchdog, hart1 online/cpus2, PLL15bd, SD121942MB and graphics
+  update dispatch. No additional ROM/reset, trap/Alert/Guru/panic signature.
+  Return package41 modules. API dispatch is not visible-frame evidence;
+  SD enumeration is not referenced-data or coexistence qualification.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/n1-setup-hardware/
+  contains package/audits, identities, double backups, independent readbacks,
+  write logs, both boot logs and exclusive timing sidecars.
+- Safety: only BSP range changed and fully restored. Core, bootloader,
+  partition table, volume, SD and C6 firmware unchanged. No OPEN/IRQ/FIFO/RPC
+  write; no silent repeated failed gate or Vellum recovery. Original normal
+  AROS package is running without automatic Wi-Fi diagnostics.
+- Next: investigate bounded warm SDIO reidentification against official C6
+  reference before another setup gate. Resolve interrupt mapping offline;
+  setup/restore hardware acceptance, installed compatibility, transport/RPC,
+  association/DHCP/data/reconnect and sustained SD/display/SMP coexistence
+  remain open. Any sight or physical-power request needs fresh readiness.
 
 ## Evidence-entry template
 
