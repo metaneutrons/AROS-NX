@@ -78,6 +78,7 @@ static int fake_command(void *context, unsigned int index, uint32_t argument,
             if (argument == 0)
             {
                 CHECK(call == 2U);
+                CHECK(fake->yields == 1U);
                 raw = ((uint32_t)fake->functions << 28) |
                     fake->initial_ocr;
             }
@@ -194,7 +195,7 @@ static void test_success(void)
     CHECK(fake.polls == 1U);
     CHECK(fake.register_reads == 10U);
     CHECK(fake.budget_calls == fake.calls + 1U);
-    CHECK(fake.yields == 0U);
+    CHECK(fake.yields == 1U);
 }
 
 /* Regression fixture from the observed JC1060 C6 register snapshot.
@@ -231,7 +232,7 @@ static void test_observed_c6_snapshot(void)
     CHECK(result.cis_pointer == UINT32_C(0x001000));
     CHECK(result.fbr1_interface == 0U);
     CHECK(fake.calls == 15U && fake.polls == 1U);
-    CHECK(fake.register_reads == 10U && fake.yields == 0U);
+    CHECK(fake.register_reads == 10U && fake.yields == 1U);
 }
 
 static void test_initial_failures(void)
@@ -279,7 +280,7 @@ static void test_polling_and_budget(void)
     ops = fake_ops(&fake);
     CHECK(p4_sdio_probe_identify(&ops, &result) == 1);
     CHECK(fake.polls == 4U);
-    CHECK(fake.yields == 3U);
+    CHECK(fake.yields == 4U);
 
     fake_init(&fake);
     fake.never_ready = 1;
@@ -289,7 +290,7 @@ static void test_polling_and_budget(void)
     CHECK(result.error == P4_SDIO_PROBE_ERROR_NOT_READY);
     CHECK(result.complete == 0U);
     CHECK(fake.polls == P4_SDIO_PROBE_MAX_POLLS);
-    CHECK(fake.yields == P4_SDIO_PROBE_MAX_POLLS - 1U);
+    CHECK(fake.yields == P4_SDIO_PROBE_MAX_POLLS);
     CHECK(fake.calls == P4_SDIO_PROBE_MAX_POLLS + 2U);
 
     fake_init(&fake);
@@ -300,6 +301,32 @@ static void test_polling_and_budget(void)
     CHECK(result.error == P4_SDIO_PROBE_ERROR_BUDGET);
     CHECK(fake.budget_calls == 3U);
     CHECK(fake.calls == 2U);
+
+    /* Budget expires during the mandatory idle interval: no CMD5 follows. */
+    fake_init(&fake);
+    fake.budget_fail_at = 2;
+    ops = fake_ops(&fake);
+    CHECK(p4_sdio_probe_identify(&ops, &result) == 0);
+    CHECK(result.stage == P4_SDIO_PROBE_STAGE_CMD5_INITIAL);
+    CHECK(result.error == P4_SDIO_PROBE_ERROR_BUDGET);
+    CHECK(result.complete == 0U);
+    CHECK(fake.calls == 1U && fake.yields == 1U);
+
+    /* Failed CMD0 must not trigger a settling delay or a subsequent command. */
+    fake_init(&fake);
+    fake.fail_call = 1;
+    ops = fake_ops(&fake);
+    CHECK(p4_sdio_probe_identify(&ops, &result) == 0);
+    CHECK(result.stage == P4_SDIO_PROBE_STAGE_CMD0);
+    CHECK(result.error == P4_SDIO_PROBE_ERROR_COMMAND);
+    CHECK(fake.calls == 1U && fake.yields == 0U);
+
+    fake_init(&fake);
+    ops = fake_ops(&fake);
+    ops.yield = NULL;
+    CHECK(p4_sdio_probe_identify(&ops, &result) == 0);
+    CHECK(result.error == P4_SDIO_PROBE_ERROR_INVALID_ARGUMENT);
+    CHECK(fake.calls == 0U && fake.yields == 0U);
 }
 
 static void test_relative_address_and_status(void)

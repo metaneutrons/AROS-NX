@@ -119,7 +119,7 @@ int p4_sdio_probe_identify(const p4_sdio_probe_ops_t *ops,
     if (!result)
         return 0;
     p4_sdio_probe_zero_result(result);
-    if (!ops || !ops->command || !ops->budget_ok)
+    if (!ops || !ops->command || !ops->budget_ok || !ops->yield)
         return p4_sdio_probe_fail(result,
             P4_SDIO_PROBE_ERROR_INVALID_ARGUMENT);
 
@@ -127,6 +127,11 @@ int p4_sdio_probe_identify(const p4_sdio_probe_ops_t *ops,
             P4_SDIO_CMD_GO_IDLE_STATE, 0, P4_SDIO_RESP_NONE, 0,
             &response))
         return 0;
+
+    /* IDF's SD-mode GO_IDLE helper waits 20 ms after successful CMD0.
+     * The caller must provide at least that delay; the following command
+     * rechecks the same aggregate budget before touching the controller. */
+    ops->yield(ops->context);
 
     if (!p4_sdio_probe_command(ops, result,
             P4_SDIO_PROBE_STAGE_CMD5_INITIAL, P4_SDIO_CMD_SEND_OP_COND, 0,
@@ -160,7 +165,7 @@ int p4_sdio_probe_identify(const p4_sdio_probe_ops_t *ops,
             ready = 1;
             break;
         }
-        if (poll + 1U < P4_SDIO_PROBE_MAX_POLLS && ops->yield)
+        if (poll + 1U < P4_SDIO_PROBE_MAX_POLLS)
             ops->yield(ops->context);
     }
     if (!ready)

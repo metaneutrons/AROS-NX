@@ -144,7 +144,8 @@ static int wifi_budget(void *opaque)
 static void wifi_yield(void *opaque)
 {
     (void)opaque;
-    /* Give the powered radio time to become ready. The shared aggregate
+    /* One DOS tick is 20 ms: required after CMD0 as well as readiness polls.
+     * Give the powered radio time to become ready. The shared aggregate
      * budget still caps the entire sequence; do not reset it per poll. */
     Delay(1);
 }

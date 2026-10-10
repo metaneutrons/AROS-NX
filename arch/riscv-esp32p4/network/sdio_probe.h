@@ -54,6 +54,8 @@ typedef struct p4_sdio_probe_ops
         p4_sdio_response_type_t response_type, uint32_t error_mask,
         uint32_t *response);
     int (*budget_ok)(void *context);
+    /* Required by identify: wait at least 20 ms, without renewing budget.
+     * Used after successful CMD0 and between not-ready CMD5 responses. */
     void (*yield)(void *context);
 } p4_sdio_probe_ops_t;
 

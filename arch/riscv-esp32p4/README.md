@@ -36,6 +36,15 @@ SANA-II/shared-SD/recovery or installed binary lineage. Empty-scan behavior was
 not exercised (13 APs); N1E remains open. Board runs baseline AROS.
 IDF5.4.3 is an optional isolated comparison environment, not a port downgrade.
 
+The native identification candidate now requires a 20ms settling interval
+after successful CMD0, matching the working IDF6 source. The next command
+checks the existing aggregate budget again; failed CMD0 never continues.
+Strict O0/O2 sanitizer models pass4,764 checks each; the fresh RV32 resource
+build and independent delay-contract review pass. This timing correction
+has not been deployed. The separate reset-query diagnostic still fails on
+timeout/CRC instead of following IDF's narrowly scoped reset-probe policy;
+that difference must be resolved without weakening generic R5 rejection.
+
 JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
 construction and a byte-oriented ESP-Hosted frame codec in `network/` have

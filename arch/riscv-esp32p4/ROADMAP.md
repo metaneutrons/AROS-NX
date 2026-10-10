@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan reference passed once; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip12/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan reference passed once; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip12/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Native post-CMD0 settling-delay candidate passes4,764 sanitizer checks each O0/O2; not deployed. Reset-specific timeout/CRC policy still differs from IDF. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -660,6 +660,14 @@ The official driver/card/function/OPEN/RPC path is now a measured working
 reference for native integration. Prior timeouts do not prove C6 firmware
 incompatibility. Association, bidirectional frames, SANA-II/shared SD and
 recovery qualification remain open; installed binary lineage is not identified.
+Native bootstrap comparison now finds and corrects the missing post-CMD0
+20ms settling interval in the identification candidate. Strict sanitizer
+models pass4,764 checks each O0/O2; not yet hardware deployed.
+RV32 resource build and independent delay-contract review pass.
+The existing reset-query diagnostic still fails on all errors: IDF6 tolerates only reset
+probe timeout/CRC in SD mode, not controller INVALID_RESPONSE. Resolve that
+command-specific policy separately, preserving generic R5 card-error rejection
+and aggregate budget/generation checks before native warm-start qualification.
 The empty-scan omission is a workaround for the pinned slave's API error,
 not proof that its empty-record behavior is fixed. N1E (open root-fix item):
 establish installed slave lineage, fix/upstream the erroneous empty-list API
@@ -30792,6 +30800,51 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: use this exact working reference to compare native card/bootstrap
   transaction order and shared-controller behavior; implement native control
   and frame paths with bounded failure handling, then association/traffic gates.
+
+### 2026-10-10 - N1 native CMD0 settling interval corrected, hardware pending
+
+- Source baseline a099ab3949 plus this change. Verified local IDF6.0.1
+  sdmmc_cmd.c:94-117 and include/esp_private/sdmmc_common.h:34: successful
+  SD-mode CMD0 waits20ms. Native identify previously dispatched CMD5 directly.
+  It now requires a delay callback, invokes it only after successful CMD0,
+  and rechecks the same aggregate budget before CMD5. Runtime uses DOS
+  Delay(1); no budget renewal, new register write or global controller reset.
+- Exact-source tests: sh tools/test-sdio-probe.sh from the port root (or
+  sh arch/riscv-esp32p4/tools/test-sdio-probe.sh from the repository root),
+  strict C99 O0/O2 with ASan/UBSan, exits0,4,764 checks each. Tests assert
+  CMD5 follows the delay, expired budget dispatches no CMD5, failed CMD0
+  neither delays nor continues, and missing callback refuses all commands.
+  Reset-query regressions exit0,1,168 checks each O0/O2; its policy unchanged.
+- Separate source comparison: IDF sdmmc_init.c:78-91 sends CMD52 RES before
+  CMD0; sdmmc_io.c:66-83 tolerates timeout/CRC only for this reset probe in
+  SD mode. Native reset query remains fail-stop. Generic CMD52 R5 rejection
+  remains unchanged; accepting ambiguous reset does not prove acknowledgement.
+- RV32 verification: all network module objects invalidated before building
+  kernel-esp32p4wifi-probe, board=jc1060p470c-v2, probe=1/setup=0/reset-query=0.
+  First build session58765 exits2: nested Apple Make3.81 omits the response
+  file, link fails; old38,668B module4f4c9492... is not accepted as output.
+  Repeat session88348 uses PATH=/opt/homebrew/opt/make/libexec/gnubin:$PATH,
+  gmake -j4 kernel-esp32p4wifi-probe with the same flags, exits0 and rebuilds
+  the module. New38,412B esp32p4wifi.resource SHA-256
+  dd10ccad9939b50c8569cd38d3ff89884cc4eca9255e5b9e1cbd031f015bd466.
+  This is module build verification only, not assembled package/loader audit
+  or hardware. Setup/restore sanitizer regressions also pass3,997/602 checks
+  each O0/O2. DOS Delay source converts ticks using50Hz into a timer request;
+  the configured Delay(1) asks for20,000us, not a wall-clock silicon sample.
+- Safety: no flash, serial open, reset, C6 firmware, credentials or SD writes.
+  Board remains on the previously restored baseline. These modeled command
+  tests are not a measured20ms silicon interval or a WLAN acceptance gate.
+- Independent Luna review repeats4,764 checks each O0/O2 and confirms the
+  delay/budget contract, no continuation on failure. It also identifies an
+  existing diagnostic limitation: shared motor refuses CARD_ERROR without
+  publishing response bytes; runtime returns without setting the probe word,
+  so native failures can be reported as generic COMMAND rather than R1/R5/R6
+  status. The fake callback supplies rejected bytes and does not model this
+  runtime mapping. This cannot produce a false success; preserve host payload
+  rejection and use classified outcomes for the upcoming reset policy.
+- Next: integrate classified reset-before-identification with negative tests
+  before one bounded native bootstrap hardware run. Full association, frames,
+  SANA-II, shared-SD and recovery requirements remain open.
 
 ## Evidence-entry template
 
