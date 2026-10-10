@@ -58,6 +58,12 @@ and is not a hardware scan pass. The larger3825664B erase span requires two
 new matching full-span backups before any eventual write; the existing shorter
 initialization backup does not cover it.
 
+Native diagnostic log validation is available in
+`tools/check-native-wifi-log.py`. It checks one completed passive capture,
+typed initialization/MAC/optional scan results and restored stable shared-host
+registers. Independent positive/negative fixtures pass16 tests; this is not a
+hardware pass or proof of physical power continuity.
+
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection
 also exposed and corrected the default P4>=3.x target; the corrected build

@@ -120,7 +120,7 @@ gate: compensated output is not the native display contract.
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; MAC initialization ordering failure; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; GetMAC returns correlated0x3001 (WiFi not initialized), so overall diagnostic fails. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
 | N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; runtime initialization deployed, fresh-epoch gate pending` | Existing FIFO reused with owned bodies/exact correlation. Control3529/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Generation-bound reassembly1318 isolated checks each O0/O2 sanitized pass; now linked into control with coupled epoch/deadline/failure tests and fresh113900B module build. Fragmentation integration not deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Download mode retained pending coordinated fresh C6 startup; no initialized MAC gate yet. No persistent UID allocator or WLAN acceptance. Original verified baseline recoverable. |
-| N1S | Typed native scan and runtime acceptance | `codec/oracle tested; opt-in runtime build verified; sequence models tested; hardware gate open` | Codec230/oracle1068/control3529/sequence537 checks each O0/O2 sanitized pass. Default-config blocking/nonblocking start, stop, AP count and owned AP/country/HE records. Runtime opt-in follows successful initialization/MAC with UIDs7..10 and at most8 owned records, named zero-AP workaround. ScanStart500 polls under same8s aggregate operation deadline;2s cleanup reserve. Independent runtime audit corrected early logging under shared-controller lock. Fresh135284B scan-enabled module and3823840B package pass42/42 loader and capacity checks;41 non-WiFi records unchanged. Not deployed; larger3825664B erase span requires new twice-read backup. No native hardware scan or WLAN acceptance; sequence/cleanup host models pass. |
+| N1S | Typed native scan and runtime acceptance | `codec/oracle tested; opt-in runtime build verified; sequence models tested; hardware gate open` | Codec230/oracle1068/control3529/sequence537 checks each O0/O2 sanitized pass. Default-config blocking/nonblocking start, stop, AP count and owned AP/country/HE records. Runtime opt-in follows successful initialization/MAC with UIDs7..10 and at most8 owned records, named zero-AP workaround. ScanStart500 polls under same8s aggregate operation deadline;2s cleanup reserve. Independent runtime audit corrected early logging under shared-controller lock. Fresh135284B scan-enabled module and3823840B package pass42/42 loader and capacity checks;41 non-WiFi records unchanged. Not deployed; larger3825664B erase span requires new twice-read backup. No native hardware scan or WLAN acceptance; sequence/cleanup host models pass. Passive diagnostic checker passes16 independent fixture tests; no hardware acceptance. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -611,6 +611,8 @@ Fresh135284B module builds. A3823840B candidate now passes42/42 loader checks
 and the4063232B capacity rule, with41 non-WiFi records byte-identical to the
 installed initialization package. No deployment/hardware pass. Its larger
 3825664B erase span needs two new matching full-span backups before any write.
+Passive diagnostic checker passes16 independent fixture tests; it
+cannot establish physical cold-start continuity or replace external gates.
 
 After the user's reconnection confirmation, a passive20.061s capture on
 2026-10-10 observes advancing JC1060 touch heartbeats only. N1/N1C status
@@ -32097,6 +32099,42 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: coordinated fresh-C6 initialized MAC hardware gate first; only
   after that gate prepare/verify new backups and deploy this scan candidate.
   Native scan, association, frames, SANA-II/DHCP and coexistence remain open.
+
+### 2026-10-10 - N1S passive native diagnostic checker fixture tests pass
+
+- Source ce47dc6430 plus new tools/check-native-wifi-log.py. No firmware
+  or runtime configuration changes. Missing/duplicate/failed native reports,
+  incomplete capture/footer, invalid MAC, wrong scan counts and fault/reset
+  signatures are rejected. All24 snapshot records required; only stable
+  shared-controller configuration indexes0..5 require equality. Dynamic
+  status/command/input registers are not incorrectly compared.
+- Dedicated independent fixtures pass16 tests. Primary final unittest rerun
+  completes with actual exit0; independent report-selection and byte-count
+  review finds no blocking defect. Tests exercise successful initialization,
+  positive/zero scans, missing/duplicate/failed reports, wrong counts,
+  overflow/negative values, incomplete envelopes, restored/dynamic registers,
+  real kernel trap/alert signatures and scoped CLI output.
+  Reproduce: python3 -B -m unittest discover -s
+  arch/riscv-esp32p4/tools/tests -p test_native_wifi_log.py -v.
+  Evidence native-scan-codec.lCCVaO/native-log-checker-final-tests.log SHA-256
+  94c7f95b6affa0433ce531829a8eaa1e57329ddf8472c626fc8ffa7d54339a2f.
+  Checker SHA-256
+  3e806b9fc12394920a2ac1bd850245e3d804c03b30e84589cf53978a0a0a9233;
+  fixture source SHA-256
+  a0724deb4ed3ebe781c95182398ec21bc3850ac0e355e435b7d2aa91be3b0c1b.
+  Use python3 tools/check-native-wifi-log.py CAPTURE [--scan] from the port
+  directory only on a complete passive capture with its status=ok footer.
+  A first-byte raw boot/reset capture is not this profile; ROM data is
+  rejected rather than discarded. Never trim a fault/banner to manufacture
+  a passing capture. A rejected/missing report is not hardware failure proof
+  by itself, but cannot pass the acceptance gate.
+  This parser explicitly leaves fresh C6 power, board/artifact identity,
+  process exit, firmware lineage and actual networking as external gates.
+- Safety: no serial/reset/flash/SD/C6 access. Deployed initialization remains
+  unchanged; no new cold startup confirmation received. Next: coordinated
+  initialized-MAC hardware gate. Existing failed native-mac-hardware.GvUW3o/
+  boot.log is rejected with exit1 (ROM/passive continuity). No successful
+  hardware capture has been accepted by this new tool.
 
 ## Evidence-entry template
 
