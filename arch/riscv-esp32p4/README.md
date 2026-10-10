@@ -150,6 +150,16 @@ or electrical rail measurement was captured. Exact AROS core-span rollback
 and a complete30.933s headless return pass PLL/PSRAM/both harts/graphics startup.
 Next is the native shared-host identification gate, followed by ESP-Hosted
 compatibility negotiation; do not require another blind physical reset.
+The native AROS identification now also passes on the retained C6 state after
+that cycle: complete CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 reads, two functions,
+RCA1,394088Hz, no command error and unchanged slot0 clock configuration.
+CCCR IO_ENABLE0/IO_READY2 are separate observed values, not WLAN readiness.
+The probe package adds only one module to the byte-identical41-member baseline.
+Exact baseline rollback and complete31.057s headless return pass. A regression
+fixture for this wider OCR/register snapshot passes4730 sanitized checks each
+O0/O2. This is one identification gate, not SD data integrity/coexistence,
+installed firmware identity, sustained recovery or WLAN traffic. Next N1:
+bounded function setup and ESP-Hosted capability negotiation.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device

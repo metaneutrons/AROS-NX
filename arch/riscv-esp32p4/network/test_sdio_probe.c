@@ -197,6 +197,43 @@ static void test_success(void)
     CHECK(fake.yields == 0U);
 }
 
+/* Regression fixture from the observed JC1060 C6 register snapshot.
+ * The wider slave OCR must be intersected with the host's supported range;
+ * IO_READY alone must not be mistaken for IO_ENABLE or WLAN readiness. */
+static void test_observed_c6_snapshot(void)
+{
+    struct fake_host fake;
+    p4_sdio_probe_ops_t ops;
+    p4_sdio_probe_result_t result;
+
+    fake_init(&fake);
+    fake.initial_ocr = UINT32_C(0x00ffff00);
+    fake.poll_ocr = UINT32_C(0x00ffff00);
+    fake.functions = 2;
+    fake.r6 = UINT32_C(0x00010000);
+    fake.registers[0x00] = 0x32;
+    fake.registers[0x02] = 0x00;
+    fake.registers[0x03] = 0x02;
+    fake.registers[0x07] = 0x40;
+    fake.registers[0x08] = 0x17;
+    fake.registers[0x09] = 0x00;
+    fake.registers[0x0a] = 0x10;
+    fake.registers[0x0b] = 0x00;
+    fake.registers[0x100] = 0x00;
+    ops = fake_ops(&fake);
+    CHECK(p4_sdio_probe_identify(&ops, &result) == 1);
+    CHECK(result.complete == 1 && result.error == P4_SDIO_PROBE_ERROR_NONE);
+    CHECK(result.functions == 2U && result.ocr == UINT32_C(0x00ffff00));
+    CHECK(result.rca == 1U);
+    CHECK(result.cccr_revision == 2U && result.sdio_revision == 3U);
+    CHECK(result.io_enable == 0U && result.io_ready == 2U);
+    CHECK(result.bus_interface == 0x40U && result.capabilities == 0x17U);
+    CHECK(result.cis_pointer == UINT32_C(0x001000));
+    CHECK(result.fbr1_interface == 0U);
+    CHECK(fake.calls == 15U && fake.polls == 1U);
+    CHECK(fake.register_reads == 10U && fake.yields == 0U);
+}
+
 static void test_initial_failures(void)
 {
     struct fake_host fake;
@@ -354,6 +391,7 @@ static void test_result_zeroing_and_validation(void)
 int main(void)
 {
     test_success();
+    test_observed_c6_snapshot();
     test_initial_failures();
     test_polling_and_budget();
     test_relative_address_and_status();

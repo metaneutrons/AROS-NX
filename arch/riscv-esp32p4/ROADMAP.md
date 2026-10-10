@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; IDF CMD5 responds after confirmed power cycle; native identification open` | Corrected IDF v3 at400kHz receives3 valid R4=0x20ffff00/two functions/ready0 after user-confirmed all-source disconnect/reconnect. Not negotiated-ready or installed identity. Earlier retained-power timeouts remain unexplained. Quiesce, exact rollback and30.933s headless AROS return pass. Next native shared-host identification, then capability negotiation; SD integrity/coexistence and WLAN remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; RX reassembly host tested` | Bounded RX helper passes312 strict sanitized checks each O0/O2 and RV32 compilation. Complete checksummed frame-to-event-TLV fixture passes. Reverse TX direction differs; no runtime transport. N0, compatibility, credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -283,6 +283,18 @@ CMD5/CMD3/CMD7/CCCR/FBR reads, before runtime transport work. No new blind
 power cycle, C6 flash or WLAN acceptance follows from this result.
 Enumeration alone cannot prove
 ESP-Hosted compatibility or working WLAN.
+The native identification gate now passes once using the same retained C6
+state after the confirmed cycle and IDF query. No new physical cycle occurred.
+Negotiated CMD5 readiness is required before CMD3/CMD7, then ten function0
+CMD52 reads complete: two functions/RCA1/OCR0xffff00, CCCR2/SDIO3,
+IO_ENABLE0/IO_READY2/bus0x40/cap0x17/CIS0x1000/FBR1=0. Successful slot1
+clock394088Hz preserves the snapshotted slot0 divider/source/enable/width/reset
+configuration. This is not simultaneous data-path or SD-integrity qualification;
+fail-closed controller clock transitions can still invalidate both peers.
+Existing baseline restored byte-for-byte, headless return healthy. Observed
+OCR/status fixture is now covered by4730 strict sanitized checks each O0/O2.
+Proceed to bounded N1 setup/capability negotiation without claiming full N0,
+firmware compatibility, function traffic or repeated cold-start acceptance.
 
 Generic same-media recovery is now implemented as an explicit owned operation
 behind three optional task-context backend hooks (needed/prepare/finish).
@@ -29904,6 +29916,58 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   Bootloader/table/NVS/BSP/development volume/SD/C6 firmware unchanged.
   Running image is restored AROS. Next native shared-host identification;
   retained-power recovery/root cause and SD coexistence remain open.
+
+### 2026-10-10 - N0 native SDIO identification completes after C6 cycle
+
+- Parent a143bcfc73; feature/esp32p4-wifi. No new physical interaction or
+  rail-off. Reuse native diagnostic artifact from8e7eabcbc7, whose42-member
+  package contains byte-identical41 baseline members plus esp32p4wifi.resource.
+  Fresh loader audit exits0/all42 accepted. Current source runtime is unchanged;
+  this change adds only a host regression fixture and progress documentation.
+- JC1060 MAC80:f1:b2:d3:3b:a6 reidentified before write. Core remains190016B
+  SHAdea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0.
+  Fresh BSP span backup3723264B at0x820000..0xbacfff is identical to prior
+  independently verified backup, SHA-256
+  7ae7b4a5f73757aca4a5ba0b3779164b972b73133d5fcc60eaf30ea6572bc44e.
+  Baseline declared3688524B/SHA8749d489d46b1c62e084f6701d8b197bbae4fd6ab0cc5ab9d268545f197f1392.
+  Probe3720208B/SHA8a4c5423973d80120baae1e75252182fb8e65ef2dab5799ee02e80e6ece25aa7,
+  raw BSP-only write0x820000 then independent readback exact. Neither package
+  overlaps the0xc00000 volume. CPU360/PSRAM200/JC1060-v2/C3/C4=1,
+  P4_WIFI_SDIO_PROBE=1; bounded10s aggregate join, no global reset/function
+  enable/IRQ enable/CCCR writes/C6 firmware replacement/SD writes.
+- First-byte40s capture actual exit0, complete41.001315s/15215B,
+  SHA-256a56cded2e28bbcf0fe73d41757e2d297391150a35a50cd0cef4100257cc648c9.
+  Native ok1/stage8/cmd52/error0/status0, raw0x10004/IDMAC0,
+  clock394088Hz/OCR0xffff00/RCA1/functions2. CCCR02/SDIO03/bus40/cap17,
+  enable00/ready02/CIS001000/FBR1=00. All24 paced register snapshots present.
+  Slot0+slot1 CLKDIV0x1d00/CLKSRC4/CLKENA0x10003/CTYPE1/RST_N3 are
+  unchanged before/after. Successful CCCR sequence requires prior CMD5
+  READY negotiation and CMD3/CMD7 success; no per-command trace inferred.
+  IO_READY2 does not imply enabled function or WLAN readiness.42 modules,
+  watchdog/both harts/PLL/32MB PSRAM and121942MB SD enumeration observed.
+  No SD reference-data test, concurrent WLAN transfer or visible desktop gate.
+- Restore entire3723264B original BSP span; actual write/read/cmp process0,
+  independent full-span SHA7ae7b4a5... above. Complete30s return process0,
+  footer31.056532s/14449B, SHA-256
+  98a73087e59ffcbc6f4804003bc1499c21349045038db097b8c057a6e73089d5.
+  Baseline41 modules/PLL0x15bd/32MB200MHz/watchdog6000ms/hart1/cpus2,
+  SD capacity and graphics updates through256 observed. Each capture has
+  exactly one commanded USB reset, no subsequent captured reset/assert/
+  panic/trap/Alert/Guru. Nonblocking console has truncated runtime lines;
+  headless API updates cannot establish visible frames or touch acceptance.
+- Host tests repeated before fixture:4597 checks each O0/O2. Added observed
+  C6 snapshot fixture exercises wider0xffff00 OCR intersected with host0xff8000,
+  two functions/RCA1 and separately asserted IO_ENABLE0/IO_READY2.
+  Strict C99 warnings/ASan/UBSan O0/O2 now pass4730 checks each, exit0.
+  Independent source review finds no concrete sequence defect and confirms
+  fixture argument/read-only checks. These are models, not another hardware run.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/native-after-c6-cycle/.
+  Loader audit, backups/readbacks, operation logs and both boot/timing pairs
+  retained. Core/bootloader/table/NVS/volume/SD/C6 firmware unchanged;
+  baseline BSP is running, no persistent startup probe. Next N1 bounded
+  function setup/capability negotiation. Installed identity, earlier retained
+  timeout cause/reconnect recovery and SD/WLAN sustained qualification open.
 
 ## Evidence-entry template
 
