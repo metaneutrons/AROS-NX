@@ -1,7 +1,8 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
 /* Native opt-in SDIO reset/bootstrap and setup/restoration. An additional
  * explicit diagnostic enables bounded OPEN/INIT with Fn0/CLOSE cleanup.
- * Separate CCCR reset/query diagnostic; no WLAN RPC or C6 firmware writes. */
+ * Optional one-shot GetMAC RPC follows the startup reply. This is not a WLAN
+ * data-plane client. Separate CCCR reset/query diagnostic; no C6 flash writes. */
 #include <aros/asmcall.h>
 #include <aros/debug.h>
 #include <aros/symbolsets.h>
@@ -30,6 +31,12 @@
 #endif
 #include "hosted_config.h"
 #include "hosted_tx.h"
+#endif
+#if P4_WIFI_HOSTED_MAC
+#if !P4_WIFI_HOSTED_REPLY
+#error "Hosted MAC requires the explicit startup reply gate"
+#endif
+#include "hosted_control.h"
 #endif
 #if P4_WIFI_SDIO_RESET_QUERY
 #include "sdio_reset_query.h"
@@ -440,6 +447,10 @@ static void wifi_identify(void)
     size_t config_size = 0;
     int reply_attempted = 0, reply_ok = 0;
 #endif
+#if P4_WIFI_HOSTED_MAC
+    struct p4_hosted_control_result mac_result;
+    int mac_attempted = 0, mac_ok = 0;
+#endif
     struct P4HostCommandResult identify_last;
     ULONG actual = 0, peer_clock, generation;
     ULONG before[WIFI_SNAPSHOT_WORDS], after[WIFI_SNAPSHOT_WORDS];
@@ -459,6 +470,9 @@ static void wifi_identify(void)
 #if P4_WIFI_HOSTED_REPLY
     p4host_zero(&tx_ops, sizeof(tx_ops));
     p4host_zero(&sent, sizeof(sent));
+#endif
+#if P4_WIFI_HOSTED_MAC
+    p4host_zero(&mac_result, sizeof(mac_result));
 #endif
     if (!host || host->abi != P4_SDMMC_HOST_ABI || host->size != sizeof(*host) ||
         !host->acquire || !host->release || !host->set_budget ||
@@ -572,6 +586,20 @@ static void wifi_identify(void)
                             generation, &tx_ops, open_buffer, 4096, config_size,
                             !!(opened.init.capabilities & P4_HOSTED_CONFIG_CAP_CHECKSUM),
                             &sent);
+#if P4_WIFI_HOSTED_MAC
+                        if (reply_ok && wifi_tx_session(&context, generation) &&
+                            wifi_budget(&context))
+                        {
+                            mac_attempted = 1;
+                            /* UID1 is reserved to this single outstanding
+                             * request in the physically fresh diagnostic
+                             * epoch. Not a persistent client UID allocator. */
+                            mac_ok = p4_hosted_control_get_mac(&opened.fifo_state,
+                                generation, &open_ops, &tx_ops,
+                                !!(opened.init.capabilities & P4_HOSTED_CONFIG_CAP_CHECKSUM),
+                                1, open_buffer, 4096, &mac_result);
+                        }
+#endif
                     }
                     opened.fifo_poisoned = opened.fifo_state.poisoned;
                 }
@@ -621,6 +649,9 @@ static void wifi_identify(void)
 #endif
 #if P4_WIFI_HOSTED_REPLY
     success = success && reply_attempted && reply_ok;
+#endif
+#if P4_WIFI_HOSTED_MAC
+    success = success && mac_attempted && mac_ok;
 #endif
     host->set_budget(host, 0);
     host->release(host);
@@ -719,6 +750,20 @@ static void wifi_identify(void)
         sent.completion.started, sent.completion.success,
         sent.completion.completed_bytes, opened.fifo_state.tx_sent,
         opened.fifo_state.poisoned);
+#endif
+#if P4_WIFI_HOSTED_MAC
+    Delay(5);
+    bug("[WiFi] MAC attempted=%u ok=%u error=%u polls=%u\n",
+        mac_attempted, mac_ok, mac_result.error, mac_result.polls);
+    Delay(5);
+    bug("[WiFi] MAC matched=%u status=%d events=%u unmatched=%u\n",
+        mac_result.matched, mac_result.mac.status, mac_result.events,
+        mac_result.unmatched);
+    Delay(5);
+    bug("[WiFi] MAC valid=%u %02x:%02x:%02x:%02x:%02x:%02x\n",
+        mac_result.mac.valid_mac, mac_result.mac.mac[0], mac_result.mac.mac[1],
+        mac_result.mac.mac[2], mac_result.mac.mac[3], mac_result.mac.mac[4],
+        mac_result.mac.mac[5]);
 #endif
     for (snapshot_index = 0; snapshot_index < WIFI_SNAPSHOT_WORDS; ++snapshot_index)
     {

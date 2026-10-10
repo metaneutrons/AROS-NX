@@ -12,10 +12,13 @@ endif
 ifeq ($(P4_WIFI_HOSTED_REPLY),1)
 USER_CPPFLAGS += -DP4_WIFI_HOSTED_REPLY=1
 endif
+ifeq ($(P4_WIFI_HOSTED_MAC),1)
+USER_CPPFLAGS += -DP4_WIFI_HOSTED_MAC=1
+endif
 ifeq ($(P4_WIFI_SDIO_RESET_QUERY),1)
 USER_CPPFLAGS += -DP4_WIFI_SDIO_RESET_QUERY=1
 endif
 %build_module mmake=kernel-esp32p4wifi-probe \
     modname=esp32p4wifi modtype=resource version=$(AROS_TARGET_PLATFORM) \
-    files="runtime_probe sdio_probe sdio_commands sdio_setup sdio_restore sdio_reset_query hosted_fifo hosted_wire hosted_init hosted_open hosted_config hosted_tx"
+    files="runtime_probe sdio_probe sdio_commands sdio_setup sdio_restore sdio_reset_query hosted_fifo hosted_wire hosted_init hosted_open hosted_config hosted_tx hosted_rpc hosted_serial hosted_mac hosted_control"
 %common
