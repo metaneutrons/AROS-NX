@@ -10,6 +10,7 @@ extract="$test_tmp/wifi_maintenance_extract.inc"
 mutant_extract="$test_tmp/wifi_maintenance_mutant.inc"
 cleanup_mutant_extract="$test_tmp/wifi_maintenance_cleanup_mutant.inc"
 ota_mutant_extract="$test_tmp/wifi_maintenance_ota_mutant.inc"
+finish_mutant_extract="$test_tmp/wifi_maintenance_finish_mutant.inc"
 constants="$test_tmp/wifi_maintenance_constants.inc"
 source_file="$test_root/network/runtime_probe.c"
 header_file="$test_root/network/device_bridge.h"
@@ -22,14 +23,16 @@ init_header="$test_root/network/hosted_init.h"
 ota_header="$test_root/network/hosted_ota.h"
 owner_ota_header="$test_root/network/owner_ota.h"
 update_header="$test_root/boardtool/update.h"
-trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$test_tmp/test-mutant" "$test_tmp/test-cleanup-mutant" "$test_tmp/test-ota-mutant" "$test_tmp/mutant.out" "$test_tmp/cleanup-mutant.out" "$test_tmp/ota-mutant.out" "$extract" "$mutant_extract" "$cleanup_mutant_extract" "$ota_mutant_extract" "$constants"; command rm -rf "$test_tmp/test-o0.dSYM" "$test_tmp/test-o2.dSYM" "$test_tmp/test-mutant.dSYM" "$test_tmp/test-cleanup-mutant.dSYM" "$test_tmp/test-ota-mutant.dSYM"; command rmdir "$test_tmp"' EXIT HUP INT TERM
+trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$test_tmp/test-mutant" "$test_tmp/test-cleanup-mutant" "$test_tmp/test-ota-mutant" "$test_tmp/test-finish-mutant" "$test_tmp/mutant.out" "$test_tmp/cleanup-mutant.out" "$test_tmp/ota-mutant.out" "$test_tmp/finish-mutant.out" "$extract" "$mutant_extract" "$cleanup_mutant_extract" "$ota_mutant_extract" "$finish_mutant_extract" "$constants"; command rm -rf "$test_tmp/test-o0.dSYM" "$test_tmp/test-o2.dSYM" "$test_tmp/test-mutant.dSYM" "$test_tmp/test-cleanup-mutant.dSYM" "$test_tmp/test-ota-mutant.dSYM" "$test_tmp/test-finish-mutant.dSYM"; command rmdir "$test_tmp"' EXIT HUP INT TERM
 
-if grep -Fq 'p4_wifi_owner_ota_exchange' "$header_file"; then
+if grep -Fq 'p4_wifi_owner_ota_exchange' "$header_file" ||
+	grep -Fq 'p4_wifi_owner_ota_finish' "$header_file"; then
 	echo "private OTA owner entry leaked into the device bridge header" >&2
 	exit 1
 fi
 if ! grep -Fq '#include "../boardtool/update.h"' "$owner_ota_header" ||
-   ! grep -Fq 'struct p4_board_update_gates' "$update_header"; then
+   ! grep -Fq 'struct p4_board_update_gates' "$update_header" ||
+   ! grep -Fq 'int p4_wifi_owner_ota_finish(' "$owner_ota_header"; then
 	echo "private OTA owner declaration is detached from board update types" >&2
 	exit 1
 fi
@@ -122,6 +125,47 @@ extract_global_function() {
 	}
 }
 
+extract_global_int_function() {
+	function_name=$1
+	awk -v name="$function_name" '
+		!candidate && $0 ~ "^[[:space:]]*int[[:space:]]+" name "[[:space:]]*\\(" {
+			candidate = 1
+			candidate_text = $0 ORS
+			next
+		}
+		candidate {
+			candidate_text = candidate_text $0 ORS
+			line = $0
+			opens = gsub(/\{/, "", line)
+			closes = gsub(/\}/, "", line)
+			if (opens != 0) {
+				copy = 1
+				depth = opens - closes
+				printf "%s", candidate_text
+				candidate = 0
+				candidate_text = ""
+				if (depth == 0) { found = 1; exit }
+			} else if (index($0, ";") != 0) {
+				candidate = 0
+				candidate_text = ""
+			}
+			next
+		}
+		copy {
+			print
+			line = $0
+			opens = gsub(/\{/, "", line)
+			closes = gsub(/\}/, "", line)
+			depth += opens - closes
+			if (depth == 0) { found = 1; exit }
+		}
+		END { if (!found) exit 1 }
+	' "$source_file" >> "$extract" || {
+		echo "could not extract runtime_probe.c function: $function_name" >&2
+		exit 1
+	}
+}
+
 # Exercise the production helper too, so clock wrap and expiry use the exact
 # subtraction semantics compiled into runtime_probe.c.
 extract_function wifi_owner_remaining
@@ -133,6 +177,7 @@ extract_function wifi_discovery_session_valid
 extract_function wifi_ota_span_valid
 extract_function wifi_ota_spans_disjoint
 extract_global_function p4_wifi_owner_ota_exchange
+extract_global_int_function p4_wifi_owner_ota_finish
 extract_function wifi_maintenance_request
 extract_function wifi_maintenance_poll
 extract_function wifi_maintenance_release
@@ -383,3 +428,31 @@ if ! grep -Fq 'base.maintenance_fence_mode == P4_WIFI_MAINT_FENCE_INCOMPLETE' \
 	exit 1
 fi
 echo "wifi OTA pre-BEGIN sticky-fence mutation rejected"
+
+# Explicit engine/native mode mapping must not regress to enum casting.
+sed 's/case P4_BOARD_UPDATE_FINISH_NO_BEGIN: native_mode = 0; break;/case P4_BOARD_UPDATE_FINISH_NO_BEGIN: native_mode = (ULONG)mode; break;/' \
+	"$extract" > "$finish_mutant_extract"
+if ! grep -Fq 'case P4_BOARD_UPDATE_FINISH_NO_BEGIN: native_mode = (ULONG)mode; break;' \
+	"$finish_mutant_extract"; then
+	echo "could not construct OTA finish enum-cast mutation" >&2
+	exit 1
+fi
+"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic -g \
+	-fsanitize=address,undefined -fno-omit-frame-pointer -O0 \
+	-DWIFI_OTA_FINISH_CAST_MUTANT -I "$test_tmp" -I "$test_root/network" \
+	"$test_root/tools/test-wifi-maintenance.c" -o "$test_tmp/test-finish-mutant"
+if ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
+	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+	"$test_tmp/test-finish-mutant" > "$test_tmp/finish-mutant.out" 2>&1; then
+	echo "OTA finish enum-cast mutation unexpectedly passed" >&2
+	exit 1
+fi
+if ! grep -Fq 'base.maintenance_fence_mode == cases[index].native_mode' \
+	"$test_tmp/finish-mutant.out"; then
+	echo "finish mapping mutation failed for an unrelated reason" >&2
+	cat "$test_tmp/finish-mutant.out" >&2
+	exit 1
+fi
+grep -F 'base.maintenance_fence_mode == cases[index].native_mode' \
+	"$test_tmp/finish-mutant.out"
+echo "wifi OTA finish enum-cast mutation rejected"

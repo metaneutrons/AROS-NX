@@ -24,4 +24,14 @@ enum p4_board_update_call_result p4_wifi_owner_ota_exchange(
     uint32_t image_size, const struct p4_board_update_gates *gates,
     uint32_t timeout_us, int32_t *remote_status);
 
+/* Direct owner-side engine finalization, never the requester queue/poll hook.
+ * Explicitly maps engine modes to the native ABI; no enum cast is valid.
+ * NO_BEGIN may restart only a pristine read-only lease. Any begun mode closes
+ * the transaction and retains sticky silence even on timeout/session failure.
+ * Zero means a bounded confirmed handoff, never queued intent or C6 health.
+ * This does not supply the future job/aggregate-budget adapter. */
+int p4_wifi_owner_ota_finish(struct P4WifiBase *base, uint32_t token,
+    uint32_t generation, enum p4_board_update_finish_mode mode,
+    uint32_t timeout_us);
+
 #endif

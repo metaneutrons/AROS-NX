@@ -183,6 +183,7 @@ static BOOL request_succeeds = TRUE;
 static ULONG request_advance_us;
 static unsigned stopped_calls;
 static unsigned ready_calls;
+static ULONG ready_advance_us;
 static unsigned test_checks;
 static BOOL discovery_exchange_succeeds = TRUE;
 static BOOL discovery_request_succeeds = TRUE;
@@ -214,8 +215,14 @@ static LONG discovery_remote_status;
 static ULONG discovery_request_advance_us;
 static ULONG discovery_exchange_advance_us;
 static ULONG discovery_acquire_advance_us;
+static ULONG discovery_release_advance_us;
 static ULONG discovery_exchange_timeout;
 static ULONG discovery_acquire_wait;
+static BOOL finish_stopping_probe;
+static unsigned finish_stopping_unlocked_calls;
+static unsigned finish_stopping_locked_calls;
+static unsigned finish_no_begin_clear_observations;
+static unsigned finish_fence_release_observations;
 static ULONG discovery_wire_uid;
 static ULONG discovery_wire_nonce;
 static ULONG discovery_wire_request_id;
@@ -296,6 +303,8 @@ static void p4host_zero(void *memory, size_t size)
     memset(memory, 0, size);
 }
 
+static BOOL bytes_are_zero(const void *memory, size_t size);
+
 static void CopyMem(const void *source, void *destination, ULONG size)
 {
     memmove(destination, source, size);
@@ -312,6 +321,7 @@ static void mock_ready(APTR client, const UBYTE *mac)
     CHECK(client != NULL);
     CHECK(mac != NULL);
     ++ready_calls;
+    fake_now += ready_advance_us;
 }
 
 static const struct p4_wifi_device_callbacks callbacks = {
@@ -347,6 +357,18 @@ static int wifi_owner_request(struct wifi_probe_context *request_context,
     CHECK(request_control == &control);
     CHECK(request_fifo == &fifo);
     CHECK(checksum == runtime.checksum);
+    if (finish_stopping_probe && id == 280u) {
+        CHECK(base.maintenance_state == P4_WIFI_MAINT_RELEASING);
+        CHECK(control.discovery_state == P4_WIFI_DISCOVERY_IDLE);
+        CHECK(control.discovery_token == 0u);
+        CHECK(bytes_are_zero(&control.discovery_result,
+                             sizeof(control.discovery_result)));
+        CHECK(bytes_are_zero(&control.discovery_decoded,
+                             sizeof(control.discovery_decoded)));
+        CHECK(bytes_are_zero(control.discovery_response,
+                             sizeof(control.discovery_response)));
+        ++finish_no_begin_clear_observations;
+    }
     if (slot < sizeof(request_ids) / sizeof(request_ids[0])) {
         request_ids[slot] = id;
         request_budgets[slot] = remaining;
@@ -736,8 +758,14 @@ static void wifi_owner_release(void *opaque)
 {
     CHECK(opaque == &context);
     CHECK(host.lock.ss_Owner == current_task);
+    if (finish_stopping_probe &&
+        base.maintenance_state == P4_WIFI_MAINT_FENCED) {
+        CHECK(base.ready == FALSE);
+        ++finish_fence_release_observations;
+    }
     ++discovery_release_calls;
     host.lock.ss_Owner = NULL;
+    fake_now += discovery_release_advance_us;
 }
 
 static int wifi_tx_session(void *opaque, uint32_t generation)
@@ -751,7 +779,14 @@ static int wifi_tx_session(void *opaque, uint32_t generation)
 static int wifi_owner_stopping(void *opaque)
 {
     CHECK(opaque == &context);
-    CHECK(host.lock.ss_Owner == current_task);
+    if (finish_stopping_probe) {
+        if (host.lock.ss_Owner == current_task)
+            ++finish_stopping_locked_calls;
+        else
+            ++finish_stopping_unlocked_calls;
+    } else {
+        CHECK(host.lock.ss_Owner == current_task);
+    }
     ++discovery_stopping_calls;
     return discovery_stopping ? 1 : 0;
 }
@@ -762,6 +797,8 @@ static int wifi_owner_stopping(void *opaque)
 #include "wifi_maintenance_mutant.inc"
 #elif defined(WIFI_OTA_PREBEGIN_MUTANT)
 #include "wifi_maintenance_ota_mutant.inc"
+#elif defined(WIFI_OTA_FINISH_CAST_MUTANT)
+#include "wifi_maintenance_finish_mutant.inc"
 #else
 #include "wifi_maintenance_extract.inc"
 #endif
@@ -799,8 +836,14 @@ static void reset_discovery_mocks(void)
     discovery_request_advance_us = 0u;
     discovery_exchange_advance_us = 0u;
     discovery_acquire_advance_us = 0u;
+    discovery_release_advance_us = 0u;
     discovery_exchange_timeout = 0u;
     discovery_acquire_wait = 0u;
+    finish_stopping_probe = FALSE;
+    finish_stopping_unlocked_calls = 0u;
+    finish_stopping_locked_calls = 0u;
+    finish_no_begin_clear_observations = 0u;
+    finish_fence_release_observations = 0u;
     discovery_wire_uid = 0u;
     discovery_wire_nonce = 0u;
     discovery_wire_request_id = 0u;
@@ -850,6 +893,7 @@ static void reset_fixture(void)
     request_advance_us = 0u;
     stopped_calls = 0u;
     ready_calls = 0u;
+    ready_advance_us = 0u;
 
     host.now_us = fake_now_us;
     context.host = &host;
@@ -891,6 +935,19 @@ static void prepare_ota_active(void)
     base.maintenance_task = &requester_task;
     base.maintenance_started = fake_now;
     base.associated = TRUE;
+}
+
+static void prepare_finish_active(void)
+{
+    prepare_ota_active();
+    finish_stopping_probe = TRUE;
+}
+
+static int call_finish(enum p4_board_update_finish_mode mode,
+    uint32_t timeout_us, uint32_t token, uint32_t generation)
+{
+    return p4_wifi_owner_ota_finish(&base, token, generation, mode,
+                                    timeout_us);
 }
 
 static enum p4_board_update_call_result call_ota(uint32_t request_id,
@@ -954,6 +1011,52 @@ static void expect_default_ota_refusal(uint32_t request_id,
 {
     expect_ota_preflight_refusal(request_id, data, data_size, image_size,
         gates, timeout_us, TEST_TOKEN, TEST_GENERATION);
+}
+
+static void expect_finish_preflight_refusal(
+    enum p4_board_update_finish_mode mode, uint32_t timeout_us,
+    uint32_t token, uint32_t generation)
+{
+    struct P4WifiBase base_before;
+    struct P4SDMMCHost host_before;
+    struct wifi_probe_context context_before;
+    struct p4_hosted_owner owner_before;
+    struct p4_hosted_fifo fifo_before;
+    struct wifi_owner_control control_before;
+    struct wifi_device_runtime runtime_before;
+    const ULONG time_before = fake_now;
+    const unsigned now_before = now_calls;
+    const unsigned requests_before = request_calls;
+    const unsigned acquires_before = discovery_acquire_calls;
+    const unsigned releases_before = discovery_release_calls;
+    const unsigned ready_before = ready_calls;
+    const unsigned stops_before = discovery_stopping_calls;
+    const unsigned unlocked_stops_before = finish_stopping_unlocked_calls;
+    const unsigned locked_stops_before = finish_stopping_locked_calls;
+
+    memcpy(&base_before, &base, sizeof(base_before));
+    memcpy(&host_before, &host, sizeof(host_before));
+    memcpy(&context_before, &context, sizeof(context_before));
+    memcpy(&owner_before, &owner, sizeof(owner_before));
+    memcpy(&fifo_before, &fifo, sizeof(fifo_before));
+    memcpy(&control_before, &control, sizeof(control_before));
+    memcpy(&runtime_before, &runtime, sizeof(runtime_before));
+    CHECK(call_finish(mode, timeout_us, token, generation) == -1);
+    CHECK(memcmp(&base_before, &base, sizeof(base_before)) == 0);
+    CHECK(memcmp(&host_before, &host, sizeof(host_before)) == 0);
+    CHECK(memcmp(&context_before, &context, sizeof(context_before)) == 0);
+    CHECK(memcmp(&owner_before, &owner, sizeof(owner_before)) == 0);
+    CHECK(memcmp(&fifo_before, &fifo, sizeof(fifo_before)) == 0);
+    CHECK(memcmp(&control_before, &control, sizeof(control_before)) == 0);
+    CHECK(memcmp(&runtime_before, &runtime, sizeof(runtime_before)) == 0);
+    CHECK(fake_now == time_before && now_calls == now_before);
+    CHECK(request_calls == requests_before);
+    CHECK(discovery_acquire_calls == acquires_before);
+    CHECK(discovery_release_calls == releases_before);
+    CHECK(ready_calls == ready_before);
+    CHECK(discovery_stopping_calls == stops_before);
+    CHECK(finish_stopping_unlocked_calls == unlocked_stops_before);
+    CHECK(finish_stopping_locked_calls == locked_stops_before);
 }
 
 static void test_ota_span_helpers(void)
@@ -1518,6 +1621,434 @@ static void test_ota_deadline_caps_and_late_ack(void)
         &status) == P4_BOARD_UPDATE_CALL_AMBIGUOUS);
     CHECK(status == -6);
     CHECK(ota_exchange_calls == exchanges);
+}
+
+struct finish_mode_case {
+    enum p4_board_update_finish_mode engine_mode;
+    ULONG native_mode;
+};
+
+static void test_ota_finish_mode_mapping_and_success(void)
+{
+    static const struct finish_mode_case cases[] = {
+        {P4_BOARD_UPDATE_FINISH_NO_BEGIN, 0u},
+        {P4_BOARD_UPDATE_FINISH_INCOMPLETE,
+         P4_WIFI_MAINT_FENCE_INCOMPLETE},
+        {P4_BOARD_UPDATE_FINISH_COMMIT_UNKNOWN,
+         P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN},
+        {P4_BOARD_UPDATE_FINISH_WAIT_REBOOT,
+         P4_WIFI_MAINT_FENCE_WAIT_REBOOT}
+    };
+    unsigned index;
+    for (index = 0u; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+        unsigned requests;
+        unsigned acquires;
+        unsigned releases;
+        prepare_finish_active();
+        if (cases[index].native_mode >= P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN) {
+            base.maintenance_fence_mode = cases[index].native_mode;
+            control.ota_token = TEST_TOKEN;
+            control.ota_generation = TEST_GENERATION;
+            control.ota_image_size = 19u;
+            control.ota_begin_acknowledged = 1u;
+            control.ota_acknowledged_bytes = 19u;
+        }
+        CHECK(base.maintenance_fence_mode ==
+              (index == 0u ? 0u : cases[index].native_mode ==
+                  P4_WIFI_MAINT_FENCE_INCOMPLETE ? 0u :
+                  cases[index].native_mode));
+        if (cases[index].native_mode == 0u) {
+            control.discovery_state = P4_WIFI_DISCOVERY_READY;
+            control.discovery_token = TEST_TOKEN;
+            memset(&control.discovery_result, 0xa5,
+                   sizeof(control.discovery_result));
+            memset(&control.discovery_decoded, 0x5a,
+                   sizeof(control.discovery_decoded));
+            memset(control.discovery_response, 0xc3,
+                   sizeof(control.discovery_response));
+        }
+
+        CHECK(call_finish(cases[index].engine_mode,
+            cases[index].native_mode == 0u ? 9000000u : 100000u,
+            TEST_TOKEN, TEST_GENERATION) == 0);
+        CHECK(base.maintenance_fence_mode == cases[index].native_mode);
+        CHECK(control.discovery_state == (cases[index].native_mode == 0u
+            ? P4_WIFI_DISCOVERY_IDLE : P4_WIFI_DISCOVERY_FAILED));
+        CHECK(control.discovery_token == 0u);
+        CHECK(bytes_are_zero(&control.discovery_result,
+                             sizeof(control.discovery_result)));
+        CHECK(bytes_are_zero(&control.discovery_decoded,
+                             sizeof(control.discovery_decoded)));
+        CHECK(bytes_are_zero(control.discovery_response,
+                             sizeof(control.discovery_response)));
+        if (cases[index].native_mode == 0u) {
+            CHECK(base.maintenance_state == P4_WIFI_MAINT_RELEASED);
+            CHECK(base.ready == TRUE);
+            CHECK(ready_calls == 1u);
+            CHECK(request_calls == 1u && request_ids[0] == 280u);
+            CHECK(request_budgets[0] == 8000000u);
+            CHECK(finish_no_begin_clear_observations == 1u);
+            CHECK(discovery_acquire_calls == 0u);
+            CHECK(discovery_release_calls == 0u);
+            CHECK(finish_fence_release_observations == 0u);
+            CHECK(finish_stopping_unlocked_calls == 2u);
+            CHECK(finish_stopping_locked_calls == 0u);
+        } else {
+            CHECK(base.maintenance_state == P4_WIFI_MAINT_FENCED);
+            CHECK(base.ready == FALSE);
+            CHECK(base.associated == FALSE);
+            CHECK(control.ota_closed == 1u);
+            CHECK(ready_calls == 0u);
+            CHECK(request_calls == 0u);
+            CHECK(discovery_acquire_calls == 1u);
+            CHECK(discovery_acquire_wait == P4_HOSTED_OWNER_MAX_ACQUIRE_US);
+            CHECK(discovery_release_calls == 1u);
+            CHECK(finish_fence_release_observations == 1u);
+            CHECK(host.lock.ss_Owner == NULL);
+            CHECK(finish_stopping_unlocked_calls == 1u);
+            CHECK(finish_stopping_locked_calls == 1u);
+            CHECK(finish_no_begin_clear_observations == 0u);
+        }
+
+        requests = request_calls;
+        acquires = discovery_acquire_calls;
+        releases = discovery_release_calls;
+        expect_finish_preflight_refusal(cases[index].engine_mode,
+            100000u, TEST_TOKEN, TEST_GENERATION);
+        CHECK(request_calls == requests);
+        CHECK(discovery_acquire_calls == acquires);
+        CHECK(discovery_release_calls == releases);
+        CHECK(ready_calls == (cases[index].native_mode == 0u ? 1u : 0u));
+    }
+}
+
+static void test_ota_finish_preflight_refusals(void)
+{
+    unsigned dirty_field;
+    prepare_finish_active();
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NONE,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    expect_finish_preflight_refusal(
+        (enum p4_board_update_finish_mode)99, 1000u,
+        TEST_TOKEN, TEST_GENERATION);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        0u, TEST_TOKEN, TEST_GENERATION);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        P4_HOSTED_OWNER_MAX_EXCHANGE_US + 1u,
+        TEST_TOKEN, TEST_GENERATION);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        1000u, 0u, TEST_GENERATION);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        1000u, TEST_TOKEN + 1u, TEST_GENERATION);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        1000u, TEST_TOKEN, 0u);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        1000u, TEST_TOKEN, TEST_GENERATION + 1u);
+
+    current_task = &requester_task;
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    current_task = &owner_task;
+
+    base.client_lock.held = 0u;
+    base.client_lock.ss_Owner = NULL;
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    base.client_lock.held = 1u;
+    base.client_lock.ss_Owner = &requester_task;
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    base.client_lock.ss_Owner = &owner_task;
+
+    host.lock.ss_Owner = &owner_task;
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    host.lock.ss_Owner = NULL;
+
+    base.maintenance_task = NULL;
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    base.maintenance_task = &owner_task;
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    base.maintenance_task = &requester_task;
+    base.maintenance_state = P4_WIFI_MAINT_RELEASED;
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+
+    prepare_finish_active();
+    CHECK(p4_wifi_owner_ota_finish(NULL, TEST_TOKEN, TEST_GENERATION,
+        P4_BOARD_UPDATE_FINISH_NO_BEGIN, 1000u) == -1);
+    CHECK(request_calls == 0u && discovery_acquire_calls == 0u);
+    {
+        struct P4WifiBase lookalike = base;
+        struct P4WifiBase before;
+        memcpy(&before, &lookalike, sizeof(before));
+        CHECK(p4_wifi_owner_ota_finish(&lookalike, TEST_TOKEN,
+            TEST_GENERATION, P4_BOARD_UPDATE_FINISH_NO_BEGIN, 1000u) == -1);
+        CHECK(memcmp(&before, &lookalike, sizeof(before)) == 0);
+        CHECK(request_calls == 0u && discovery_acquire_calls == 0u);
+    }
+
+    for (dirty_field = 0u; dirty_field < 7u; ++dirty_field) {
+        prepare_finish_active();
+        switch (dirty_field) {
+        case 0: control.ota_token = TEST_TOKEN; break;
+        case 1: control.ota_generation = TEST_GENERATION; break;
+        case 2: control.ota_image_size = 1u; break;
+        case 3: control.ota_begin_acknowledged = 1u; break;
+        case 4: control.ota_acknowledged_bytes = 1u; break;
+        case 5: control.ota_closed = 1u; break;
+        default:
+            base.maintenance_fence_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;
+            break;
+        }
+        expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+            1000u, TEST_TOKEN, TEST_GENERATION);
+    }
+
+    prepare_finish_active();
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_COMMIT_UNKNOWN,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_WAIT_REBOOT,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    prepare_finish_active();
+    base.maintenance_fence_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;
+    control.ota_closed = 1u;
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_NO_BEGIN,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_COMMIT_UNKNOWN,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_WAIT_REBOOT,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    prepare_finish_active();
+    base.maintenance_fence_mode = P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN;
+    control.ota_token = TEST_TOKEN;
+    control.ota_generation = TEST_GENERATION;
+    control.ota_image_size = 3u;
+    control.ota_begin_acknowledged = 1u;
+    control.ota_acknowledged_bytes = 3u;
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_WAIT_REBOOT,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_INCOMPLETE,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+}
+
+static void test_ota_finish_completed_identity_refusals(void)
+{
+    unsigned invalid_field;
+    for (invalid_field = 0u; invalid_field < 4u; ++invalid_field) {
+        prepare_finish_active();
+        switch (invalid_field) {
+        case 0: control.ota_generation = TEST_GENERATION; break;
+        case 1: control.ota_image_size = 1u; break;
+        case 2: control.ota_begin_acknowledged = 1u; break;
+        default: control.ota_acknowledged_bytes = 1u; break;
+        }
+        expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_INCOMPLETE,
+            1000u, TEST_TOKEN, TEST_GENERATION);
+    }
+
+    prepare_finish_active();
+    control.ota_token = TEST_TOKEN + 1u;
+    control.ota_generation = TEST_GENERATION;
+    control.ota_image_size = 1u;
+    control.ota_begin_acknowledged = 1u;
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_INCOMPLETE,
+        1000u, TEST_TOKEN, TEST_GENERATION);
+
+    for (invalid_field = 0u; invalid_field < 8u; ++invalid_field) {
+        prepare_finish_active();
+        base.maintenance_fence_mode = P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN;
+        control.ota_token = TEST_TOKEN;
+        control.ota_generation = TEST_GENERATION;
+        control.ota_image_size = 4u;
+        control.ota_begin_acknowledged = 1u;
+        control.ota_acknowledged_bytes = 4u;
+        switch (invalid_field) {
+        case 0: control.ota_token = 0u; break;
+        case 1: control.ota_token = TEST_TOKEN + 1u; break;
+        case 2: control.ota_generation = TEST_GENERATION + 1u; break;
+        case 3: control.ota_image_size = 0u; break;
+        case 4:
+            control.ota_image_size = P4_BOARD_UPDATE_MAX_IMAGE_SIZE + 1u;
+            break;
+        case 5: control.ota_acknowledged_bytes = 5u; break;
+        case 6: control.ota_begin_acknowledged = 0u; break;
+        default: control.ota_acknowledged_bytes = 3u; break;
+        }
+        expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_COMMIT_UNKNOWN,
+            1000u, TEST_TOKEN, TEST_GENERATION);
+    }
+}
+
+static void check_begun_finish_failed(void)
+{
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FAILED);
+    CHECK(base.maintenance_fence_mode == P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    CHECK(control.ota_closed == 1u);
+    CHECK(base.associated == FALSE);
+    CHECK(control.discovery_state == P4_WIFI_DISCOVERY_FAILED);
+    CHECK(request_calls == 0u);
+    CHECK(ready_calls == 0u);
+}
+
+static void test_ota_finish_begun_revalidation_failures(void)
+{
+    unsigned condition;
+    for (condition = 0u; condition < 9u; ++condition) {
+        prepare_finish_active();
+        switch (condition) {
+        case 0: owner.poisoned = 1u; break;
+        case 1: fifo.poisoned = 1u; break;
+        case 2: owner.pending_active = 1u; break;
+        case 3: owner.partial_active = 1u; break;
+        case 4: owner.ids.active_uid = 77u; break;
+        case 5: fifo.busy = 1u; break;
+        case 6: runtime.scanning = 1u; break;
+        case 7: control.discovery_state = P4_WIFI_DISCOVERY_REQUESTED; break;
+        default: host.dma_faulted = TRUE; break;
+        }
+        if (condition == 7u) {
+            /* Begun finalization discards queued read-only discovery first. */
+            CHECK(call_finish(P4_BOARD_UPDATE_FINISH_INCOMPLETE, 10000u,
+                TEST_TOKEN, TEST_GENERATION) == 0);
+            CHECK(base.maintenance_state == P4_WIFI_MAINT_FENCED);
+            CHECK(base.maintenance_fence_mode ==
+                  P4_WIFI_MAINT_FENCE_INCOMPLETE);
+            CHECK(control.ota_closed == 1u);
+            CHECK(control.discovery_state == P4_WIFI_DISCOVERY_FAILED);
+            CHECK(request_calls == 0u);
+            CHECK(discovery_acquire_calls == 1u);
+            CHECK(discovery_release_calls == 1u);
+            CHECK(finish_fence_release_observations == 1u);
+            continue;
+        }
+        CHECK(call_finish(P4_BOARD_UPDATE_FINISH_INCOMPLETE, 10000u,
+            TEST_TOKEN, TEST_GENERATION) == -1);
+        check_begun_finish_failed();
+        CHECK(discovery_acquire_calls == 0u);
+        CHECK(discovery_release_calls == 0u);
+        CHECK(discovery_stopping_calls == 0u);
+        CHECK(host.lock.ss_Owner == NULL);
+        expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_INCOMPLETE,
+            10000u, TEST_TOKEN, TEST_GENERATION);
+    }
+}
+
+static void test_ota_finish_acquire_release_and_lease_failures(void)
+{
+    prepare_finish_active();
+    discovery_acquire_succeeds = FALSE;
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_INCOMPLETE, 100000u,
+        TEST_TOKEN, TEST_GENERATION) == -1);
+    check_begun_finish_failed();
+    CHECK(discovery_acquire_calls == 1u);
+    CHECK(discovery_release_calls == 0u);
+    CHECK(host.lock.ss_Owner == NULL);
+    CHECK(finish_stopping_unlocked_calls == 1u);
+
+    prepare_finish_active();
+    discovery_stopping = TRUE;
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_INCOMPLETE, 100000u,
+        TEST_TOKEN, TEST_GENERATION) == -1);
+    check_begun_finish_failed();
+    CHECK(discovery_acquire_calls == 0u);
+    CHECK(discovery_release_calls == 0u);
+    CHECK(finish_stopping_unlocked_calls == 1u);
+
+    prepare_finish_active();
+    fake_now = base.maintenance_started + TEST_LEASE_US;
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_INCOMPLETE, 100000u,
+        TEST_TOKEN, TEST_GENERATION) == -1);
+    check_begun_finish_failed();
+    CHECK(discovery_acquire_calls == 0u);
+    CHECK(discovery_release_calls == 0u);
+    CHECK(finish_stopping_unlocked_calls == 0u);
+
+    prepare_finish_active();
+    discovery_acquire_advance_us = 101u;
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_INCOMPLETE, 100u,
+        TEST_TOKEN, TEST_GENERATION) == -1);
+    check_begun_finish_failed();
+    CHECK(discovery_acquire_calls == 1u);
+    CHECK(discovery_acquire_wait == 100u);
+    CHECK(discovery_release_calls == 1u);
+    CHECK(finish_fence_release_observations == 0u);
+    CHECK(base.ready == TRUE);
+    CHECK(host.lock.ss_Owner == NULL);
+
+    prepare_finish_active();
+    discovery_release_advance_us = 101u;
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_INCOMPLETE, 100u,
+        TEST_TOKEN, TEST_GENERATION) == -1);
+    check_begun_finish_failed();
+    CHECK(discovery_acquire_calls == 1u);
+    CHECK(discovery_acquire_wait == 100u);
+    CHECK(discovery_release_calls == 1u);
+    CHECK(finish_fence_release_observations == 1u);
+    CHECK(base.ready == FALSE);
+    CHECK(host.lock.ss_Owner == NULL);
+    expect_finish_preflight_refusal(P4_BOARD_UPDATE_FINISH_INCOMPLETE,
+        100u, TEST_TOKEN, TEST_GENERATION);
+
+    prepare_finish_active();
+    fake_now = base.maintenance_started + TEST_LEASE_US - 50u;
+    discovery_acquire_advance_us = 51u;
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_INCOMPLETE, 1000u,
+        TEST_TOKEN, TEST_GENERATION) == -1);
+    check_begun_finish_failed();
+    CHECK(discovery_acquire_calls == 1u);
+    CHECK(discovery_acquire_wait == 50u);
+    CHECK(discovery_release_calls == 1u);
+    CHECK(finish_fence_release_observations == 0u);
+    CHECK(base.ready == TRUE);
+    CHECK(host.lock.ss_Owner == NULL);
+
+    prepare_finish_active();
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_INCOMPLETE, 1234u,
+        TEST_TOKEN, TEST_GENERATION) == 0);
+    CHECK(discovery_acquire_calls == 1u);
+    CHECK(discovery_acquire_wait == 1234u);
+    CHECK(discovery_release_calls == 1u);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FENCED);
+    CHECK(base.ready == FALSE);
+}
+
+static void test_ota_finish_no_begin_deadlines_and_late_ready(void)
+{
+    prepare_finish_active();
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_NO_BEGIN, 3000000u,
+        TEST_TOKEN, TEST_GENERATION) == 0);
+    CHECK(request_calls == 1u && request_ids[0] == 280u);
+    CHECK(request_budgets[0] == 3000000u);
+
+    prepare_finish_active();
+    fake_now = base.maintenance_started + TEST_LEASE_US - 2000000u;
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_NO_BEGIN, 3000000u,
+        TEST_TOKEN, TEST_GENERATION) == 0);
+    CHECK(request_calls == 1u && request_ids[0] == 280u);
+    CHECK(request_budgets[0] == 2000000u);
+
+    prepare_finish_active();
+    fake_now = base.maintenance_started + TEST_LEASE_US - 500u;
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_NO_BEGIN, 1000u,
+        TEST_TOKEN, TEST_GENERATION) == 0);
+    CHECK(request_calls == 1u && request_ids[0] == 280u);
+    CHECK(request_budgets[0] == 500u);
+
+    prepare_finish_active();
+    ready_advance_us = 101u;
+    CHECK(call_finish(P4_BOARD_UPDATE_FINISH_NO_BEGIN, 100u,
+        TEST_TOKEN, TEST_GENERATION) == -1);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FAILED);
+    CHECK(base.maintenance_fence_mode == 0u);
+    CHECK(base.associated == FALSE);
+    CHECK(control.ota_closed == 0u);
+    CHECK(ready_calls == 1u);
+    CHECK(request_calls == 1u && request_ids[0] == 280u);
+    CHECK(request_budgets[0] == 100u);
+    CHECK(discovery_acquire_calls == 0u && discovery_release_calls == 0u);
 }
 
 static ULONG begin_request(void)
@@ -2715,6 +3246,12 @@ int main(void)
     test_ota_begin_failures_are_sticky_and_closed();
     test_ota_remote_rejection_and_end_commit_unknown();
     test_ota_deadline_caps_and_late_ack();
+    test_ota_finish_mode_mapping_and_success();
+    test_ota_finish_preflight_refusals();
+    test_ota_finish_completed_identity_refusals();
+    test_ota_finish_begun_revalidation_failures();
+    test_ota_finish_acquire_release_and_lease_failures();
+    test_ota_finish_no_begin_deadlines_and_late_ready();
     test_normal_poll_gate();
     test_request_identity_and_lock_contention();
     test_discovery_queue_admission_and_nonce();

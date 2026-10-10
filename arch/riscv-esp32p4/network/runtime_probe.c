@@ -1734,6 +1734,125 @@ failed:
     return P4_BOARD_UPDATE_CALL_AMBIGUOUS;
 }
 
+int p4_wifi_owner_ota_finish(struct P4WifiBase *base, uint32_t token,
+    uint32_t generation, enum p4_board_update_finish_mode mode,
+    uint32_t timeout_us)
+{
+    struct wifi_device_runtime *runtime;
+    struct wifi_probe_context *context;
+    struct wifi_owner_control *control;
+    ULONG native_mode, started, remaining, lease, wait;
+    BOOL confirmed;
+    /* Engine enums start at NONE/NO_BEGIN; ABI modes start at INCOMPLETE. */
+    switch (mode) {
+    case P4_BOARD_UPDATE_FINISH_NO_BEGIN: native_mode = 0; break;
+    case P4_BOARD_UPDATE_FINISH_INCOMPLETE:
+        native_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE; break;
+    case P4_BOARD_UPDATE_FINISH_COMMIT_UNKNOWN:
+        native_mode = P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN; break;
+    case P4_BOARD_UPDATE_FINISH_WAIT_REBOOT:
+        native_mode = P4_WIFI_MAINT_FENCE_WAIT_REBOOT; break;
+    default: return -1;
+    }
+    if (!base || base != wifi_resource_base || !token || !generation ||
+        !timeout_us || timeout_us > P4_HOSTED_OWNER_MAX_EXCHANGE_US ||
+        base->owner_task != FindTask(NULL) ||
+        base->client_lock.ss_Owner != FindTask(NULL) ||
+        base->maintenance_token != token || !base->maintenance_task ||
+        base->maintenance_task == base->owner_task ||
+        base->maintenance_state != P4_WIFI_MAINT_ACTIVE)
+        return -1;
+    runtime = base->runtime;
+    if (!runtime || !runtime->context || !runtime->context->host ||
+        !runtime->context->host->now_us || !runtime->control ||
+        !runtime->owner || !runtime->fifo ||
+        runtime->context->generation != generation ||
+        runtime->context->host->lock.ss_Owner == FindTask(NULL)) return -1;
+    context = runtime->context;
+    control = runtime->control;
+    /* Never let the engine downgrade or invent an END acknowledgement. */
+    if (base->maintenance_fence_mode != native_mode &&
+        (base->maintenance_fence_mode ||
+         native_mode != P4_WIFI_MAINT_FENCE_INCOMPLETE)) return -1;
+    if (!native_mode && (control->ota_token || control->ota_generation ||
+        control->ota_image_size || control->ota_begin_acknowledged ||
+        control->ota_acknowledged_bytes || control->ota_closed)) return -1;
+    if (native_mode &&
+        ((control->ota_token && (control->ota_token != token ||
+            control->ota_generation != generation || !control->ota_image_size ||
+            control->ota_image_size > P4_BOARD_UPDATE_MAX_IMAGE_SIZE ||
+            control->ota_acknowledged_bytes > control->ota_image_size)) ||
+         (!control->ota_token && (control->ota_generation ||
+            control->ota_image_size || control->ota_begin_acknowledged ||
+            control->ota_acknowledged_bytes)))) return -1;
+    if (native_mode >= P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN &&
+        (!control->ota_token || control->ota_begin_acknowledged != 1u ||
+         control->ota_acknowledged_bytes != control->ota_image_size)) return -1;
+    /* A BEGIN refused locally can still have been classified as attempted
+     * by the engine. Conservatively arm its obligation before any failure. */
+    if (native_mode) {
+        base->maintenance_fence_mode = native_mode;
+        control->ota_closed = 1u;
+        base->associated = FALSE;
+        wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_FAILED);
+    }
+    started = context->host->now_us();
+    remaining = wifi_owner_remaining(context, started, timeout_us);
+    lease = wifi_owner_remaining(context, base->maintenance_started,
+                                 P4_WIFI_MAINT_LEASE_US);
+    if (remaining > lease) remaining = lease;
+    if (!remaining || !wifi_discovery_session_valid(base, runtime) ||
+        runtime->owner->pending_active || runtime->owner->partial_active ||
+        runtime->owner->ids.active_uid || runtime->fifo->busy ||
+        runtime->scanning ||
+        control->discovery_state == P4_WIFI_DISCOVERY_REQUESTED ||
+        wifi_owner_stopping(context)) goto failed;
+    if (!native_mode) {
+        wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_IDLE);
+        base->maintenance_state = P4_WIFI_MAINT_RELEASING;
+        if (remaining > 8000000UL) remaining = 8000000UL;
+        if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
+                runtime->checksum, 280u, remaining) ||
+            !wifi_discovery_session_valid(base, runtime) ||
+            !wifi_owner_remaining(context, started, timeout_us) ||
+            !wifi_owner_remaining(context, base->maintenance_started,
+                                  P4_WIFI_MAINT_LEASE_US) ||
+            wifi_owner_stopping(context)) goto failed;
+        base->maintenance_state = P4_WIFI_MAINT_RELEASED;
+        if (base->client && base->callbacks)
+            base->callbacks->ready(base->client, base->mac);
+        if (!wifi_owner_remaining(context, started, timeout_us) ||
+            !wifi_owner_remaining(context, base->maintenance_started,
+                                  P4_WIFI_MAINT_LEASE_US)) goto failed;
+        return 0;
+    }
+    base->maintenance_state = P4_WIFI_MAINT_FENCING;
+    wait = remaining < P4_HOSTED_OWNER_MAX_ACQUIRE_US
+        ? remaining : P4_HOSTED_OWNER_MAX_ACQUIRE_US;
+    if (!wifi_owner_acquire(context, wait)) goto failed;
+    confirmed = wifi_tx_session(context, generation) &&
+        wifi_discovery_session_valid(base, runtime) &&
+        wifi_owner_remaining(context, started, timeout_us) &&
+        wifi_owner_remaining(context, base->maintenance_started,
+                              P4_WIFI_MAINT_LEASE_US) &&
+        !wifi_owner_stopping(context);
+    if (confirmed) {
+        /* Linearize the handoff while the checked host epoch is still held. */
+        base->ready = FALSE;
+        base->maintenance_state = P4_WIFI_MAINT_FENCED;
+    }
+    wifi_owner_release(context);
+    if (!confirmed || !wifi_owner_remaining(context, started, timeout_us) ||
+        !wifi_owner_remaining(context, base->maintenance_started,
+                              P4_WIFI_MAINT_LEASE_US)) goto failed;
+    return 0;
+failed:
+    base->maintenance_state = P4_WIFI_MAINT_FAILED;
+    base->associated = FALSE;
+    wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_FAILED);
+    return -1;
+}
+
 static BOOL wifi_maintenance_discover(struct P4WifiBase *base, ULONG token)
 {
     struct wifi_device_runtime *runtime;

@@ -81,6 +81,11 @@ secured recovery path; source development and read-only file checks do not.
   permission. Both release assertions remain disabled. Its per-call deadline
   is bounded by the original30s preparation lease, not a production full-image
   budget; the native job must bind the engine's aggregate deadline separately.
+- Native finalization now has a direct owner-only entry, not a call back into
+  the requester's queue/poll hook. It maps engine dispositions explicitly to
+  the different ABI enums and confirms bounded release or a fresh host fence.
+  It is a prerequisite for the engine adapter, not a queued update operation;
+  post-BEGIN failure retains sticky silence and never sends cleanup RPCs.
 - A missing recovery proof is a refused write, not a command-line override.
   Recovery evidence must refer to the actual device and layout. Do not infer
   installed rollback from the candidate's build configuration.

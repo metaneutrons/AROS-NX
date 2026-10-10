@@ -83,6 +83,19 @@ are rejected. Fresh Core1 resource299324B SHA256
 passes its loader audit; the private entry and actual lower transport/decoder
 are linked. Exec/transport callbacks are modeled; no runtime OTA or deployment
 is claimed. Full evidence is recorded in roadmap N2M (2026-10-11).
+Native owner-side finalization now maps engine modes explicitly to ABI9 rather
+than waiting on the requester hook from the owner task. A pristine NO_BEGIN
+lease clears discovery and confirms one bounded restart; begun modes close
+the transaction and confirm a fresh host fence without an RPC. FENCED is
+published under host ownership; a late release remains sticky FAILED.
+This is still a private prerequisite: queued jobs, engine binding, an explicit
+qualified full-image lease and actual updates remain open. UPDATE-C6 stays
+unavailable and no hardware has been changed.
+Direct-finalizer source tests now pass5828 checks each O0/O2 ASan/UBSan,
+with four unsafe mutations rejected. Fresh Core1 resource303616B SHA256
+ef9547e5c8330c355f51583696ade6262bbfbe11240ef19931898612056c3352
+passes its loader audit. Exec/host ownership and RPC callbacks are modeled;
+this is not a full engine-bound job or runtime handoff acceptance.
 Private transport verification (2026-10-11): canonical codec11806,
 pending1638 and coupled owner8093 checks each O0/O2 ASan/UBSan pass;
 ordinary OTA-allowlist mutation is rejected. Fresh Core1 resource291220B

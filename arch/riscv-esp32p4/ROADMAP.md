@@ -123,7 +123,7 @@ No ABI7/ABI8/ABI9 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle/discovery/client and terminal contract host/build verified; isolated aggregate deadline962-check host/standalone RV32 build verified, native timing qualification pending; private canonical owner OTA entry4480-check host/standalone build verified and ABI9 terminal fence standalone build verified (not repackaged), sticky ACTIVE discovery exclusion/same-mode pre-arm confirmation2450-check host/build verified; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Native maintenance OTA-job dispatch and engine adapter with pre-BEGIN sticky obligation and qualified full-transfer deadline; runtime fenced handoff, actual discovery/layout/slot provenance, secured CN5 recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle/discovery/client and terminal contract host/build verified; isolated aggregate deadline962-check host/standalone RV32 build verified, native timing qualification pending; private canonical owner OTA entry4480-check host/standalone build verified, direct owner terminal finalizer5828-check host/standalone build verified and ABI9 terminal fence standalone build verified (not repackaged), sticky ACTIVE discovery exclusion/same-mode pre-arm confirmation2450-check host/build verified; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Native maintenance OTA-job dispatch and engine adapter with pre-BEGIN sticky obligation and qualified full-transfer deadline; runtime fenced handoff, actual discovery/layout/slot provenance, secured CN5 recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1368,6 +1368,18 @@ Source-extracted wrapper tests pass4480 checks each O0/O2 ASan/UBSan;
 three unsafe mutations are rejected. Fresh Core1 resource299324B passes its
 loader audit with actual lower transport/decoder linked. Exec and transport
 are modeled; this closes only the private entry's host/build prerequisite.
+The native engine-finalization prerequisite now provides a direct owner-only
+entry with explicit enum mapping and bounded confirmation. It never queues a
+requester hook and waits on itself. NO_BEGIN requires pristine OTA state and
+clears discovery before one restart. Begun modes validate frozen identity and
+progress, close the transaction, and confirm a fresh host fence with no RPC.
+FENCED is published while the checked epoch is held; late release turns it
+into sticky FAILED. The full job/engine binding and qualified aggregate lease
+remain open; this private entry alone enables no update.
+Direct-finalizer tests pass5828 checks each O0/O2 ASan/UBSan; four unsafe
+mutations fail at their expected assertions. Fresh Core1 resource303616B
+passes its loader audit; actual engine regressions remain962 each O0/O2.
+Exec/host ownership/RPC are modeled, not native concurrency or C6 behavior.
 Actual-source host tests and fresh Core1 module builds pass; Exec locks,
 callbacks and RPC outcomes are mocked. The matching ABI7 resource/device must
 replace the prior ABI6 pair together in a regenerated audited package/image.
@@ -37428,3 +37440,79 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   association/DHCP/bidirectional frames/reconnect/combined1800s remain open,
   as do actual CLI/GUI/HTTPS and P4 updates. Full Wi-Fi goal stays active;
   this standalone resource is not a newly packaged or deployed BSP member.
+
+### 2026-10-11 - N2M direct owner engine-terminal finalization prerequisite
+
+- Scope: continueebab8064fd with port-private p4_wifi_owner_ota_finish.
+  No queued job, public ABI hook or complete engine adapter is claimed. A
+  future owner callback must not invoke the requester fence queue and wait on
+  itself. Native ABI9 remains unchanged; enum values are explicitly mapped,
+  never cast. NONE/unknown modes are refused.
+- Admission/policy: actual registered resource, owner task holding client_lock,
+  no shared-host ownership, ACTIVE exact requester token and generation,
+  positive bounded callback timeout. NO_BEGIN requires pristine OTA state and
+  no sticky mode, discards discovery and confirms one ID280 restart bounded
+  by caller/remaining lease/eight-second request cap. Begun modes validate
+  frozen identity and counters; END classifications require acknowledged BEGIN
+  and exact acknowledged image length. No downgrade or invented END receipt.
+  An engine BEGIN locally refused before native entry may conservatively arm
+  INCOMPLETE with otherwise empty transaction state. Begun finalization closes
+  the attempt and sets sticky disposition before poison/expiry/acquire failure.
+  It issues no protocol RPC and confirms one fresh bounded host acquisition.
+  FENCED/readyFALSE are published while the checked host epoch is held. A late
+  acquire/release/callback or lease expiry reports failure, retains sticky
+  silence and cannot replay/restart/reset. Duplicate finish is refused.
+- Corrections: independent review found FENCED publication after host release
+  could linearize against a stale epoch, and NO_BEGIN retained old discovery
+  results. Publish now occurs under host ownership; late release downgrades
+  to FAILED while the client lock still excludes observers. Discovery is
+  cleared before restart. Additional frozen identity/count guards and the
+  post-ready callback deadline check are included in the final resource.
+- Host procedure: source-extracted suite actually exits0,5828 checks each
+  O0/O2 ASan/UBSan. New direct calls cover all modes, pristine release, exact
+  enum mapping, genuine/lookalike resource, task/lock/token/generation/timeout
+  refusals, dirty/forged transaction state, poison/pending/FIFO conditions,
+  queued discovery discard, publish-under-lock, once-only behavior, lease
+  and acquire/release/ready callback lateness. Four mutations are rejected:
+  ACTIVE polling, normal sticky cleanup, missing pre-BEGIN fence, enum cast.
+  The last fails at the expected native-mode assertion printed in the log.
+  These are actual extracted helper bodies with modeled Exec/clock/host/RPC,
+  not full native job/concurrency or hardware proof. Separate actual portable
+  engine suite exits0,962 checks each O0/O2 with its two mutations rejected.
+- Host evidence:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/native-ota-finish.Zu7vma/run-04.log,
+  SHA256e1f63648997521a99344f27a9eba89a935f2f248ba66a1e83480c5cbc0ea927e.
+  run-03.log passed5764 checks; final run adds forged no-token metadata
+  refusals. Independent review found no further production defect. Direct
+  acquisition-generation-change and ID280-failure cases remain test gaps;
+  the fixture cannot establish actual native concurrency or hardware behavior.
+  run-01.log retains a duplicate bytes_are_zero fixture definition compile
+  error; run-02.log retains an incorrect test expectation that a queued
+  discovery must block begun finalization. Corrected coverage verifies its
+  safe discard and fence confirmation; neither failed run is a pass.
+- Native procedure: invalidate all generated resource objects for initial
+  and corrected final builds; gmake -j4 kernel-esp32p4wifi-probe-quick,
+  jc1060p470c-v2, SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/HOSTED_OWNER=1,
+  OWNER_CPU=1, both privacy/recovery assertions0. Processes3705 and58165
+  actually exit0 and emit resource markers with no warning/error lines.
+  Final resource303616B SHA256
+  ef9547e5c8330c355f51583696ade6262bbfbe11240ef19931898612056c3352.
+  Initial303228B f964b1f0f5b10784811711336ef0922fdfba78b2d4a9810b6833c902496bc1d1
+  predates review corrections and remains retained, not final evidence.
+  Loader audit exits0, flags3,13 supported relocation types, issues[].
+  nm exits0 and shows both private exchange and finish as linked T symbols.
+- Build/engine evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/native-ota-finish.WLEOe6/.
+  resource-final-build.log SHA256
+  eb83db56eaf48c24f2873c56b8466c8b0846317e2e31b29db330ec26156f9f86;
+  module-final-audit.log SHA256
+  1806efbdcf289df8eabda86d183e746870fd1d4d0279576f719a4530a9b3f353;
+  engine.log SHA2568f45390bdd63e7c586bb83e24935e8868a5f5f09f9e39c6ddeb9199a9c4a1742.
+- Safety/next: no serial, hardware, flash, SD writes, credentials or C6 change.
+  UPDATE-C6 stays unavailable. The original30s preparation lease is not a
+  qualified full-image budget. Bind the immutable owned queued job and actual
+  engine with one explicit aggregate lease/deadline/reserve; verify live
+  target/layout/source authenticity and independent first-install recovery.
+  Runtime handoff/postboot health, CLI/GUI/HTTPS/P4 updates and installed C6
+  privacy/identity plus real WLAN association/DHCP/frames/reconnect/combined
+  1800s remain open. Full Wi-Fi goal remains active; no package/deployment pass.
