@@ -19,8 +19,10 @@ ROOT = PORT.parents[1]
 FIXTURE = PORT / "network" / "test_command_engine.c"
 COMMAND_SOURCE = PORT / "sdmmc" / "command.c"
 SDMMC = PORT / "sdmmc"
+HOST_HEADER = SDMMC / "host.h"
 INCLUDE = ROOT / "compiler" / "include"
 INSERT_MARKER = "/* INSERT_ACTUAL_COMMAND_ENGINE */"
+INSERT_BUDGET_MARKER = "/* INSERT_ACTUAL_BUDGET_HELPER */"
 BUILD_TIMEOUT_SECONDS = 60
 RUN_TIMEOUT_SECONDS = 30
 
@@ -40,8 +42,9 @@ def replace_once(body: str, label: str, old: str, new: str) -> str:
 
 def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     fixture = FIXTURE.read_text(encoding="utf-8")
-    if fixture.count(INSERT_MARKER) != 1:
-        raise ValueError(f"fixture must contain exactly one {INSERT_MARKER}")
+    for marker in (INSERT_MARKER, INSERT_BUDGET_MARKER):
+        if fixture.count(marker) != 1:
+            raise ValueError(f"fixture must contain exactly one {marker}")
     source = COMMAND_SOURCE.read_text(encoding="utf-8")
 
     function_specs = (
@@ -53,6 +56,12 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         (name, extract_definition(source, name, signature))
         for name, signature in function_specs
     ]
+    host_header = HOST_HEADER.read_text(encoding="utf-8")
+    budget_helper = extract_definition(
+        host_header,
+        "p4host_budget_ok",
+        r"\bstatic\s+inline\s+BOOL\s+p4host_budget_ok\s*\(",
+    )
 
     command_read = extract_definition(
         source, "command_read", r"\bstatic\s+ULONG\s+command_read\s*\("
@@ -86,6 +95,7 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
             + [body for _, body in definitions]
         ),
     )
+    assembled = assembled.replace(INSERT_BUDGET_MARKER, budget_helper)
     hashes = [(name, body.encode("utf-8")) for name, body in definitions]
     hashes.extend(
         (name, body.encode("utf-8"))
@@ -102,12 +112,14 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         (f"actual {path.name}", path.read_bytes())
         for path in (
             COMMAND_SOURCE,
+            HOST_HEADER,
             SDMMC / "command.h",
             SDMMC / "dma.h",
             SDMMC / "registers.h",
             INCLUDE / "hardware" / "mmc.h",
         )
     )
+    hashes.append(("p4host_budget_ok source", budget_helper.encode("utf-8")))
     hashes.append(("assembled fixture", assembled.encode("utf-8")))
     return assembled, hashes
 

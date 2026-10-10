@@ -61,6 +61,8 @@ struct P4SDMMCHost
     BOOL dma_writing;
     BOOL dma_faulted;
     void (*invalidate)(struct P4SDMMCHost *);
+    ULONG budget_start;
+    ULONG budget_us;
 };
 
 enum event_kind
@@ -111,6 +113,8 @@ static unsigned checks;
 static ULONG timer_value;
 static ULONG timer_step;
 static ULONG now_call_count;
+static APTR invalidate_expiry_address;
+static ULONG invalidate_timer_advance;
 static unsigned invalidate_count;
 static ULONG stuck_ctrl_mask;
 static BOOL stuck_bmod;
@@ -194,6 +198,8 @@ static void mock_invalidate_range(APTR address, ULONG length)
 {
     ++cache_invalidate_count;
     record_event(EVENT_CACHE_INVALIDATE, 0UL, 0UL, address, length);
+    if (address == invalidate_expiry_address)
+        timer_value += invalidate_timer_advance;
 }
 
 static void mock_invalidate_host(struct P4SDMMCHost *host)
@@ -250,6 +256,8 @@ static void dma_write(ULONG offset, ULONG value)
     modeled_memory_barrier();
 }
 
+/* INSERT_ACTUAL_BUDGET_HELPER */
+
 /* INSERT_ACTUAL_DMA_SOURCE */
 
 static void begin_case(void)
@@ -279,6 +287,8 @@ static void setup_host(void)
     timer_value = 0UL;
     timer_step = 1UL;
     now_call_count = 0UL;
+    invalidate_expiry_address = NULL;
+    invalidate_timer_advance = 0UL;
     stuck_ctrl_mask = 0UL;
     stuck_bmod = FALSE;
     resource_available = TRUE;
@@ -862,6 +872,178 @@ static void test_ready_and_complete_refuse_missing_cache_ops(void)
     CHECK(dma_host.dma_faulted == FALSE);
 }
 
+static void test_budget_wrap_and_unbudgeted_mode(void)
+{
+    unsigned index;
+    begin_case();
+    setup_host();
+    timer_step = 1UL;
+    CHECK(p4host_budget_ok(&dma_host));
+    CHECK(timer_value == 0UL);
+
+    dma_host.budget_start = (ULONG)-4;
+    dma_host.budget_us = 8UL;
+    timer_value = dma_host.budget_start;
+    for (index = 0U; index < 8U; ++index)
+        CHECK(p4host_budget_ok(&dma_host));
+    CHECK(!p4host_budget_ok(&dma_host));
+    CHECK(timer_value < dma_host.budget_start);
+    CHECK(!p4host_budget_ok(NULL));
+}
+
+static void test_budget_expiry_in_dma_reset_preserves_stale_metadata(void)
+{
+    begin_case();
+    setup_host();
+    CHECK(p4host_dma_prepare(&dma_host, test_data, 64UL, TRUE));
+    clear_activity();
+    stuck_bmod = TRUE;
+    dma_host.budget_start = timer_value;
+    dma_host.budget_us = 4UL;
+
+    CHECK(!p4host_dma_reset(&dma_host));
+    CHECK(writes_to(P4SD_BMOD) == 1U);
+    CHECK(writes_to(P4SD_IDSTS) == 0U);
+    CHECK(writes_to(P4SD_CTRL) == 0U);
+    CHECK(dma_host.dma_data == test_data);
+    CHECK(dma_host.dma_length == 64UL);
+    CHECK(dma_host.dma_writing == TRUE);
+    CHECK(dma_host.dma_faulted == TRUE);
+    CHECK(invalidate_count == 1U);
+}
+
+static void test_budget_expiry_in_fifo_settle(void)
+{
+    begin_case();
+    setup_host();
+    dma_host.budget_start = timer_value;
+    dma_host.budget_us = 4UL;
+
+    CHECK(!p4host_fifo_reset(&dma_host));
+    CHECK(writes_to(P4SD_CTRL) == 1U);
+    CHECK((registers[P4SD_CTRL / sizeof(ULONG)] & P4SD_CTRL_FIFO_RESET) == 0UL);
+    CHECK(!p4host_budget_ok(&dma_host));
+    CHECK(dma_host.dma_faulted == FALSE);
+    CHECK(invalidate_count == 0U);
+}
+
+static void test_budget_expiry_after_prepare_cache_ops_prevents_launch_and_reuse(void)
+{
+    begin_case();
+    setup_host();
+    dma_host.budget_start = timer_value;
+    dma_host.budget_us = 7UL;
+
+    CHECK(!p4host_dma_prepare(&dma_host, test_data, 64UL, FALSE));
+    CHECK(cache_writeback_count == 2U);
+    CHECK(writes_to(P4SD_DBADDR) == 0U);
+    CHECK(writes_to(P4SD_PLDMND) == 0U);
+    CHECK(dma_host.dma_data == NULL);
+    CHECK(dma_host.dma_length == 0UL);
+    CHECK(dma_host.dma_faulted == FALSE);
+
+    clear_activity();
+    CHECK(!p4host_dma_prepare(&dma_host, test_data, 64UL, FALSE));
+    check_no_activity();
+    CHECK(dma_host.dma_data == NULL);
+    CHECK(dma_host.dma_length == 0UL);
+}
+
+static void test_budget_expiry_at_ready_cache_boundary_blocks_readiness(void)
+{
+    begin_case();
+    setup_host();
+    CHECK(p4host_dma_prepare(&dma_host, test_data, 64UL, FALSE));
+    finish_descriptors(64UL);
+    clear_activity();
+    dma_host.budget_start = timer_value;
+    dma_host.budget_us = 1UL;
+
+    CHECK(!p4host_dma_ready(&dma_host, 64UL));
+    CHECK(cache_invalidate_count == 1U);
+    CHECK(writes_to(P4SD_DBADDR) == 0U);
+    CHECK(dma_host.dma_data == test_data);
+    CHECK(dma_host.dma_length == 64UL);
+    CHECK(dma_host.dma_faulted == FALSE);
+    CHECK(invalidate_count == 0U);
+
+    clear_activity();
+    CHECK(!p4host_dma_prepare(&dma_host, unaligned_data, 64UL, TRUE));
+    check_no_activity();
+    CHECK(dma_host.dma_data == test_data);
+    CHECK(dma_host.dma_length == 64UL);
+}
+
+static void test_budget_expiry_during_completion_keeps_rx_staged(void)
+{
+    ULONG index;
+    begin_case();
+    prepare_completed_rx(65UL);
+    for (index = 0UL; index < 65UL; ++index)
+        bounce[index] = (UBYTE)(0x30UL + index);
+    dma_host.budget_start = timer_value;
+    dma_host.budget_us = 1UL;
+
+    CHECK(!p4host_dma_complete(&dma_host, test_data, 65UL));
+    CHECK(cache_invalidate_count == 1U);
+    CHECK(events[find_cache_event(EVENT_CACHE_INVALIDATE, descriptors)].address ==
+          descriptors);
+    CHECK(writes_to(P4SD_BMOD) == 0U);
+    CHECK(writes_to(P4SD_CTRL) == 0U);
+    CHECK(dma_host.dma_data == test_data);
+    CHECK(dma_host.dma_length == 65UL);
+    CHECK(dma_host.dma_writing == FALSE);
+    CHECK(dma_host.dma_faulted == FALSE);
+    CHECK(invalidate_count == 0U);
+    for (index = 0UL; index < 65UL; ++index)
+        CHECK(test_data[index] == 0xA5U);
+
+    clear_activity();
+    CHECK(!p4host_dma_prepare(&dma_host, unaligned_data, 65UL, FALSE));
+    check_no_activity();
+    CHECK(dma_host.dma_data == test_data);
+    CHECK(dma_host.dma_length == 65UL);
+}
+
+static void test_budget_expiry_after_bounce_invalidate_keeps_rx_staged(void)
+{
+    ULONG index;
+    begin_case();
+    prepare_completed_rx(65UL);
+    for (index = 0UL; index < 65UL; ++index)
+        bounce[index] = (UBYTE)(0x30UL + index);
+    dma_host.budget_start = timer_value;
+    dma_host.budget_us = 100UL;
+    invalidate_expiry_address = bounce;
+    invalidate_timer_advance = 100UL;
+
+    CHECK(!p4host_dma_complete(&dma_host, test_data, 65UL));
+    CHECK(cache_invalidate_count == 2U);
+    CHECK(events[find_cache_event(EVENT_CACHE_INVALIDATE, descriptors)].address ==
+          descriptors);
+    CHECK(events[find_cache_event(EVENT_CACHE_INVALIDATE, bounce)].address ==
+          bounce);
+    CHECK(writes_to(P4SD_BMOD) == 1U);
+    CHECK(writes_to(P4SD_CTRL) == 2U);
+    CHECK(dma_host.dma_data == test_data);
+    CHECK(dma_host.dma_length == 65UL);
+    CHECK(dma_host.dma_writing == FALSE);
+    CHECK(dma_host.dma_faulted == FALSE);
+    CHECK(invalidate_count == 0U);
+    for (index = 0UL; index < 65UL; ++index)
+        CHECK(test_data[index] == 0xA5U);
+
+    /* Expiry leaves the staged ownership marker intact, so even after the
+     * caller ends the elapsed budget this descriptor chain cannot be reused. */
+    dma_host.budget_start = 0UL;
+    dma_host.budget_us = 0UL;
+    clear_activity();
+    CHECK(!p4host_dma_prepare(&dma_host, unaligned_data, 65UL, FALSE));
+    check_no_activity();
+    CHECK(dma_host.dma_data == test_data);
+    CHECK(dma_host.dma_length == 65UL);
+}
+
 int main(void)
 {
     test_descriptor_layout_and_init();
@@ -879,6 +1061,13 @@ int main(void)
     test_wrong_owner_refusal_and_inspect();
     test_active_fifo_reset_refuses_without_mutation();
     test_ready_and_complete_refuse_missing_cache_ops();
+    test_budget_wrap_and_unbudgeted_mode();
+    test_budget_expiry_in_dma_reset_preserves_stale_metadata();
+    test_budget_expiry_in_fifo_settle();
+    test_budget_expiry_after_prepare_cache_ops_prevents_launch_and_reuse();
+    test_budget_expiry_at_ready_cache_boundary_blocks_readiness();
+    test_budget_expiry_during_completion_keeps_rx_staged();
+    test_budget_expiry_after_bounce_invalidate_keeps_rx_staged();
     printf("PASS: %u cases, %u checks\n", test_cases, checks);
     return 0;
 }

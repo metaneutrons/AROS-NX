@@ -53,6 +53,8 @@ struct P4SDMMCHost
     ULONG dma_length;
     BOOL dma_faulted;
     UBYTE *bounce;
+    ULONG budget_start;
+    ULONG budget_us;
 };
 
 enum event_kind
@@ -131,6 +133,11 @@ static ULONG raw_after_rint_read;
 static ULONG last_command;
 static ULONG dma_ready_after_calls;
 static ULONG busy_reads_before_clear;
+static BOOL expire_budget_in_observer;
+static BOOL expire_budget_in_dma_prepare;
+static BOOL expire_budget_in_dma_ready;
+static BOOL expire_budget_in_dma_complete;
+static BOOL expire_budget_after_complete_sample;
 static unsigned post_start_status_reads;
 static BOOL dma_ready_value;
 static BOOL dma_prepare_value;
@@ -180,6 +187,12 @@ static void record_event(enum event_kind kind, ULONG offset, ULONG value)
     }
 }
 
+static void expire_budget_now(void)
+{
+    timer_value = command_host.budget_start + command_host.budget_us;
+    timer_step = 0U;
+}
+
 static void observe_command(void *context,
                             const struct P4HostCommand *request,
                             enum P4HostCommandObservation observation,
@@ -201,6 +214,9 @@ static void observe_command(void *context,
     record->event_index = event_count;
     ++log->count;
     record_event(EVENT_OBSERVATION, (ULONG)observation, result->raw);
+    if (expire_budget_in_observer &&
+        observation == P4HOST_OBSERVE_SAMPLE)
+        expire_budget_now();
 }
 
 static void attach_observer(struct P4HostCommand *request,
@@ -262,6 +278,12 @@ static ULONG mock_mmio_read(ULONG offset)
     ULONG value;
     CHECK((offset / sizeof(ULONG)) < REGISTER_COUNT);
     ++read_count;
+    if (offset == P4SD_RINTSTS && dma_complete_count != 0U &&
+        expire_budget_after_complete_sample)
+    {
+        expire_budget_after_complete_sample = FALSE;
+        expire_budget_now();
+    }
     if (offset == P4SD_RINTSTS)
     {
         ++rint_read_count;
@@ -329,6 +351,7 @@ static void mock_mmio_barrier(void)
     record_event(EVENT_MMIO_BARRIER, 0U, 0U);
 }
 
+/* INSERT_ACTUAL_BUDGET_HELPER */
 /* INSERT_ACTUAL_COMMAND_ENGINE */
 
 static void begin_case(void)
@@ -372,6 +395,11 @@ static void setup_case(void)
     last_command = 0U;
     dma_ready_after_calls = 0U;
     busy_reads_before_clear = 0U;
+    expire_budget_in_observer = FALSE;
+    expire_budget_in_dma_prepare = FALSE;
+    expire_budget_in_dma_ready = FALSE;
+    expire_budget_in_dma_complete = FALSE;
+    expire_budget_after_complete_sample = FALSE;
     post_start_status_reads = 0U;
     dma_ready_value = TRUE;
     dma_prepare_value = TRUE;
@@ -435,6 +463,8 @@ static BOOL mock_dma_prepare(struct P4SDMMCHost *host, UBYTE *data,
         dma_prepare_saw_tx_copy = index == length;
     }
     record_event(EVENT_DMA_PREPARE, length, writing ? 1U : 0U);
+    if (expire_budget_in_dma_prepare)
+        expire_budget_now();
     return dma_prepare_value;
 }
 
@@ -450,6 +480,8 @@ static BOOL mock_dma_ready(struct P4SDMMCHost *host, ULONG length)
         registers[P4SD_IDSTS / sizeof(ULONG)] |= late_idstatus_after_ready;
     if (dma_ready_after_calls && dma_ready_count < dma_ready_after_calls)
         return FALSE;
+    if (expire_budget_in_dma_ready)
+        expire_budget_now();
     return dma_ready_value;
 }
 
@@ -467,6 +499,8 @@ static BOOL mock_dma_complete(struct P4SDMMCHost *host, UBYTE *data,
         registers[P4SD_RINTSTS / sizeof(ULONG)] |= late_raw_after_complete;
     if (late_idstatus_after_complete)
         registers[P4SD_IDSTS / sizeof(ULONG)] |= late_idstatus_after_complete;
+    if (expire_budget_in_dma_complete)
+        expire_budget_now();
     return dma_complete_value;
 }
 
@@ -1371,6 +1405,211 @@ static void test_early_cmd18_is_storage_slot0_only(void)
     CHECK(client_data[4] == 0xCCU);
 }
 
+static void test_budget_helper_inactive_and_wraps(void)
+{
+    begin_case();
+    setup_case();
+    command_host.now_us = NULL;
+    CHECK(p4host_budget_ok(&command_host));
+
+    command_host.now_us = mock_now_us;
+    command_host.budget_start = UINT32_MAX - 1U;
+    command_host.budget_us = 3U;
+    timer_value = 0U;
+    timer_step = 0U;
+    CHECK(p4host_budget_ok(&command_host));
+    timer_value = 1U;
+    CHECK(!p4host_budget_ok(&command_host));
+}
+
+static void test_budget_expiry_at_entry_and_command_wait(void)
+{
+    struct P4HostCommand request;
+    struct P4HostCommandResult result;
+
+    begin_case();
+    setup_case();
+    request = make_command(0U, 13U, MMC_RSP_NONE);
+    command_host.budget_start = 0U;
+    command_host.budget_us = 4U;
+    timer_value = 4U;
+    timer_step = 0U;
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_TIMEOUT);
+    CHECK(!result.started);
+    CHECK(read_count == 0U && write_count == 0U);
+    CHECK(!command_host.dma_faulted);
+    check_response_zero(&result);
+
+    setup_case();
+    request = make_command(0U, 13U, MMC_RSP_NONE);
+    command_host.budget_start = 0U;
+    command_host.budget_us = 2U;
+    timer_step = 1U;
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_TIMEOUT);
+    CHECK(!result.started);
+    CHECK(read_count == 0U && write_count == 0U);
+    CHECK(command_host.dma_faulted);
+    CHECK(invalidate_count == 1U);
+    check_response_zero(&result);
+}
+
+static void test_budget_expiry_during_status_wait_across_wrap(void)
+{
+    struct P4HostCommand request;
+    struct P4HostCommandResult result;
+
+    begin_case();
+    setup_case();
+    configure_data_request(&request, 0U, 18U, FALSE, 512U, 512U);
+    registers[P4SD_STATUS / sizeof(ULONG)] = P4SD_STATUS_DATA_BUSY;
+    command_host.budget_start = UINT32_MAX - 3U;
+    command_host.budget_us = 4U;
+    timer_value = command_host.budget_start;
+    timer_step = 1U;
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_TIMEOUT);
+    CHECK(!result.started);
+    CHECK(read_count == 1U);
+    CHECK(status_read_count == 0U);
+    CHECK(write_count == 0U && dma_prepare_count == 0U);
+    CHECK(!command_host.dma_faulted);
+    check_response_zero(&result);
+}
+
+static void test_budget_expiry_after_dma_setup_fails_closed(void)
+{
+    struct P4HostCommand request;
+    struct P4HostCommandResult result;
+    unsigned reads_before;
+    unsigned writes_before;
+
+    begin_case();
+    setup_case();
+    configure_data_request(&request, 0U, 18U, FALSE, 512U, 512U);
+    command_host.budget_start = 0U;
+    command_host.budget_us = 100U;
+    expire_budget_in_dma_prepare = TRUE;
+    dma_reset_value = FALSE;
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_TIMEOUT);
+    CHECK(!result.started);
+    CHECK(dma_prepare_count == 1U);
+    CHECK(dma_ready_count == 0U && dma_complete_count == 0U);
+    CHECK(dma_reset_count == 1U);
+    CHECK(command_host.dma_faulted);
+    CHECK(invalidate_count == 1U);
+    CHECK(cmd_write_count == 0U);
+    CHECK(client_data[4] == 0xCCU && client_data[4U + 512U] == 0xCCU);
+    check_response_zero(&result);
+
+    reads_before = read_count;
+    writes_before = write_count;
+    set_result_sentinel(&result);
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_REFUSED);
+    CHECK(!result.started);
+    CHECK(read_count == reads_before && write_count == writes_before);
+    CHECK(dma_prepare_count == 1U && dma_reset_count == 1U);
+    check_response_zero(&result);
+}
+
+static void test_budget_expiry_after_tx_copy_prevents_programming(void)
+{
+    struct P4HostCommand request;
+    struct P4HostCommandResult result;
+
+    begin_case();
+    setup_case();
+    configure_data_request(&request, 0U, 24U, TRUE, 512U, 512U);
+    command_host.budget_start = 0U;
+    command_host.budget_us = 5U;
+    timer_value = 0U;
+    timer_step = 1U;
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_TIMEOUT);
+    CHECK(!result.started);
+    CHECK(read_count == 2U);
+    CHECK(fifo_reset_count == 1U);
+    CHECK(write_count == 0U);
+    CHECK(dma_prepare_count == 0U && cmd_write_count == 0U);
+    CHECK(!command_host.dma_faulted && invalidate_count == 0U);
+    check_response_zero(&result);
+}
+
+static void test_budget_expiry_in_mainloop_and_dma_ready(void)
+{
+    struct P4HostCommand request;
+    struct P4HostCommandResult result;
+    struct observation_log log;
+
+    begin_case();
+    setup_case();
+    configure_data_request(&request, 0U, 18U, FALSE, 512U, 512U);
+    attach_observer(&request, &log);
+    command_host.budget_start = 0U;
+    command_host.budget_us = 100U;
+    expire_budget_in_observer = TRUE;
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_TIMEOUT);
+    CHECK(result.started);
+    CHECK(log.count >= 3U);
+    CHECK(log.records[log.count - 1U].observation == P4HOST_OBSERVE_FINISH);
+    CHECK(dma_ready_count == 0U && dma_complete_count == 0U);
+    CHECK(dma_reset_count == 1U);
+    CHECK(client_data[4] == 0xCCU && client_data[4U + 512U] == 0xCCU);
+    check_response_zero(&result);
+
+    setup_case();
+    configure_data_request(&request, 0U, 18U, FALSE, 512U, 512U);
+    next_raw = P4SD_INT_CMD_DONE | P4SD_INT_DATA_OVER;
+    command_host.budget_start = 0U;
+    command_host.budget_us = 100U;
+    expire_budget_in_dma_ready = TRUE;
+    dma_ready_value = FALSE;
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_TIMEOUT);
+    CHECK(result.started);
+    CHECK(dma_ready_count == 1U && dma_complete_count == 0U);
+    CHECK(dma_reset_count == 1U);
+    CHECK(client_data[4] == 0xCCU && client_data[4U + 512U] == 0xCCU);
+    check_response_zero(&result);
+}
+
+static void test_budget_expiry_at_completion_and_publication(void)
+{
+    struct P4HostCommand request;
+    struct P4HostCommandResult result;
+
+    begin_case();
+    setup_case();
+    configure_data_request(&request, 0U, 18U, FALSE, 512U, 512U);
+    next_raw = P4SD_INT_CMD_DONE | P4SD_INT_DATA_OVER;
+    command_host.budget_start = 0U;
+    command_host.budget_us = 100U;
+    expire_budget_in_dma_complete = TRUE;
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_TIMEOUT);
+    CHECK(result.started);
+    CHECK(dma_complete_count == 1U && dma_reset_count == 1U);
+    CHECK(client_data[4] == 0xCCU && client_data[4U + 512U] == 0xCCU);
+    check_response_zero(&result);
+
+    setup_case();
+    configure_data_request(&request, 0U, 18U, FALSE, 512U, 512U);
+    next_raw = P4SD_INT_CMD_DONE | P4SD_INT_DATA_OVER;
+    command_host.budget_start = 0U;
+    command_host.budget_us = 100U;
+    expire_budget_after_complete_sample = TRUE;
+    CHECK(!p4host_command(&command_host, &request, &result));
+    CHECK(result.status == P4HOST_COMMAND_TIMEOUT);
+    CHECK(result.started);
+    CHECK(dma_complete_count == 1U && dma_reset_count == 1U);
+    CHECK(client_data[4] == 0xCCU && client_data[4U + 512U] == 0xCCU);
+    check_response_zero(&result);
+}
+
 static void test_stalled_timer_is_bounded_by_poll_count(void)
 {
     struct P4HostCommand request;
@@ -1508,6 +1747,13 @@ int main(void)
     test_simultaneous_data_error_precedes_done_and_ready();
     test_late_raw_and_idmac_errors_prevent_copy();
     test_early_cmd18_is_storage_slot0_only();
+    test_budget_helper_inactive_and_wraps();
+    test_budget_expiry_at_entry_and_command_wait();
+    test_budget_expiry_during_status_wait_across_wrap();
+    test_budget_expiry_after_dma_setup_fails_closed();
+    test_budget_expiry_after_tx_copy_prevents_programming();
+    test_budget_expiry_in_mainloop_and_dma_ready();
+    test_budget_expiry_at_completion_and_publication();
     test_stalled_timer_is_bounded_by_poll_count();
     test_timeout_timer_wraps_and_command_wait_is_capped();
     test_busy_response_waits_and_times_out();

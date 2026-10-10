@@ -34,10 +34,15 @@ static void dma_write(ULONG offset, ULONG value)
 static BOOL dma_wait(struct P4SDMMCHost *host, ULONG offset, ULONG mask)
 {
     ULONG started = host->now_us(), polls = 1000000UL;
-    while (dma_read(offset) & mask)
+    for (;;)
+    {
+        if (!p4host_budget_ok(host))
+            return FALSE;
+        if (!(dma_read(offset) & mask))
+            return TRUE;
         if (!--polls || (ULONG)(host->now_us() - started) >= 250000UL)
             return FALSE;
-    return TRUE;
+    }
 }
 
 static BOOL dma_settle(struct P4SDMMCHost *host)
@@ -46,9 +51,9 @@ static BOOL dma_settle(struct P4SDMMCHost *host)
     /* FIFO reset needs two system clocks and two card clocks. Preserve the
      * qualified 20-us margin at 400 kHz, including after CMD18 completion. */
     while ((ULONG)(host->now_us() - started) < 20UL)
-        if (!--polls)
+        if (!--polls || !p4host_budget_ok(host))
             return FALSE;
-    return TRUE;
+    return p4host_budget_ok(host);
 }
 
 static void dma_writeback(APTR address, ULONG length)
@@ -94,7 +99,7 @@ void p4host_dma_init(struct P4SDMMCHost *host)
 
 BOOL p4host_fifo_reset(struct P4SDMMCHost *host)
 {
-    if (!dma_owned(host))
+    if (!dma_owned(host) || !p4host_budget_ok(host))
         return FALSE;
     if ((dma_read(P4SD_CTRL) & P4SD_CTRL_DMA_ENABLE) ||
         (dma_read(P4SD_BMOD) & P4SD_BMOD_DE))
@@ -107,6 +112,8 @@ BOOL p4host_dma_reset(struct P4SDMMCHost *host)
 {
     if (!dma_owned(host))
         return FALSE;
+    if (!p4host_budget_ok(host))
+        goto failed;
     dma_write(P4SD_BMOD, dma_read(P4SD_BMOD) | P4SD_BMOD_SWR);
     if (!dma_wait(host, P4SD_BMOD, P4SD_BMOD_SWR))
         goto failed;
@@ -116,6 +123,8 @@ BOOL p4host_dma_reset(struct P4SDMMCHost *host)
     dma_write(P4SD_IDSTS, 0xffffffffUL);
     dma_write(P4SD_CTRL, dma_read(P4SD_CTRL) &
               ~(P4SD_CTRL_DMA_ENABLE | P4SD_CTRL_USE_INTERNAL_DMA));
+    if (!p4host_budget_ok(host))
+        goto failed;
     host->dma_data = NULL;
     host->dma_length = 0;
     host->dma_writing = FALSE;
@@ -133,7 +142,7 @@ BOOL p4host_dma_prepare(struct P4SDMMCHost *host, UBYTE *data,
                        ULONG length, BOOL writing)
 {
     ULONG index, offset = 0, count;
-    if (!dma_owned(host) || !data || !length ||
+    if (!dma_owned(host) || !p4host_budget_ok(host) || !data || !length ||
         length > P4HOST_DMA_MAX ||
         (IPTR)data > (IPTR)-1 - length ||
         (writing != FALSE && writing != TRUE) || host->dma_length ||
@@ -169,6 +178,8 @@ BOOL p4host_dma_prepare(struct P4SDMMCHost *host, UBYTE *data,
     }
     dma_writeback(descriptors, sizeof(descriptors));
     dma_writeback(bounce, (length + 63UL) & ~63UL);
+    if (!p4host_budget_ok(host))
+        return FALSE;
     host->dma_data = data;
     host->dma_length = length;
     host->dma_writing = writing;
@@ -184,18 +195,19 @@ BOOL p4host_dma_prepare(struct P4SDMMCHost *host, UBYTE *data,
 BOOL p4host_dma_ready(struct P4SDMMCHost *host, ULONG length)
 {
     ULONG count;
-    if (!dma_owned(host) || host->dma_faulted || !cache_ops || !length ||
+    if (!dma_owned(host) || !p4host_budget_ok(host) || host->dma_faulted || !cache_ops || !length ||
         length > P4HOST_DMA_MAX || length != host->dma_length)
         return FALSE;
     count = (length + P4HOST_DMA_SEGMENT - 1) / P4HOST_DMA_SEGMENT;
     dma_invalidate(descriptors, count * sizeof(descriptors[0]));
-    return !(descriptors[count - 1].control & P4HOST_DESC_OWN);
+    return p4host_budget_ok(host) &&
+            !(descriptors[count - 1].control & P4HOST_DESC_OWN);
 }
 
 BOOL p4host_dma_complete(struct P4SDMMCHost *host, UBYTE *data, ULONG length)
 {
     ULONG index, count;
-    if (!dma_owned(host) || host->dma_faulted || !cache_ops || !length ||
+    if (!dma_owned(host) || !p4host_budget_ok(host) || host->dma_faulted || !cache_ops || !length ||
         length > P4HOST_DMA_MAX || length != host->dma_length ||
         data != host->dma_data)
         return FALSE;
@@ -208,6 +220,8 @@ BOOL p4host_dma_complete(struct P4SDMMCHost *host, UBYTE *data, ULONG length)
             ((descriptors[index].control & P4HOST_DESC_LAST) != 0) !=
              (index + 1 == count))
             return FALSE;
+    if (!p4host_budget_ok(host))
+        return FALSE;
     dma_write(P4SD_BMOD, 0);
     dma_write(P4SD_CTRL, dma_read(P4SD_CTRL) &
               ~(P4SD_CTRL_DMA_ENABLE | P4SD_CTRL_USE_INTERNAL_DMA));
@@ -216,9 +230,13 @@ BOOL p4host_dma_complete(struct P4SDMMCHost *host, UBYTE *data, ULONG length)
     if (!host->dma_writing)
     {
         dma_invalidate(bounce, (length + 63UL) & ~63UL);
+        if (!p4host_budget_ok(host))
+            return FALSE;
         if (data != bounce)
             memmove(data, bounce, length);
     }
+    if (!p4host_budget_ok(host))
+        return FALSE;
     host->dma_data = NULL;
     host->dma_length = 0;
     host->dma_writing = FALSE;

@@ -22,7 +22,7 @@ its RV32 build and independent source review pass. Independently repeated
 extracted-source tests pass at O0/O2 with ASan/UBSan (20 cases, 2,001,069
 checks each). It was exposed through private resource ABI5 (212 bytes on
 RV32), and SD refuses a missing callback or mismatched version/size.
-The diagnostic migration now uses ABI6 (same host size; changed command
+The diagnostic migration used ABI6 (same host size; changed command
 request/result layout), host tested and RV32 build verified. All SD builds
 invoke it for all commands; radio integration remains open.
 Modeled MMIO/DMA callbacks
@@ -75,6 +75,14 @@ This recovery prerequisite is host tested and RV32 build verified (adapter:
 44 cases/825 checks each O0/O2 ASan/UBSan). CMD13 confirmation is source
 reviewed but still stubbed in that model. It is not enabled recovery or WLAN
 acceptance.
+A shared aggregate-budget candidate now uses private resource ABI7: the owner
+starts one bounded operation budget; command, clock and DMA polling consult
+that same start time instead of restarting a duration for each phase. Nested
+ownership preserves it and final release clears it. It is host tested and
+RV32 build verified (ownership29/400,435; command33/2,001,779;
+clock25/367; DMA22/2,253,994 cases/checks each O0/O2 ASan/UBSan).
+Recovery dispatch and WLAN remain disabled. This is not a hard real-time claim
+for scheduler latency or kernel cache callbacks.
 The independently implemented ESP-Hosted serial TLV codec now validates
 RPCRsp/RPCEvt envelopes (116 checks each O0/O2 with ASan/UBSan and standalone
 RV32 compilation). It does not parse protobuf, reassemble fragments or execute

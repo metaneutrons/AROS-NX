@@ -20,6 +20,7 @@ INTERN = PORT / "sdcard" / "sdcard_esp32p4_intern.h"
 REGISTERS = PORT / "sdmmc" / "registers.h"
 HOST_SOURCE = PORT / "sdmmc" / "host.c"
 HOST_HEADER = PORT / "sdmmc" / "host.h"
+COMMAND_SOURCE = PORT / "sdmmc" / "command.c"
 BUS_SOURCE = PORT / "sdcard" / "sdcard_esp32p4_bus.c"
 GENERIC_BUS_SOURCE = ROOT / "rom" / "devs" / "sdcard" / "sdcard_bus.c"
 GENERIC_IO_SOURCE = ROOT / "rom" / "devs" / "sdcard" / "sdcard_ioops.c"
@@ -187,6 +188,22 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
                 r"\bstatic\s+void\s+p4host_invalidate\s*\(",
             ),
         ),
+        (
+            "p4host_set_budget",
+            extract_definition(
+                HOST_SOURCE,
+                "p4host_set_budget",
+                r"\bstatic\s+BOOL\s+p4host_set_budget\s*\(",
+            ),
+        ),
+        (
+            "p4host_budget_ok",
+            extract_definition(
+                HOST_HEADER,
+                "p4host_budget_ok",
+                r"\bstatic\s+inline\s+BOOL\s+p4host_budget_ok\s*\(",
+            ),
+        ),
     ]
     register_constants = extract_constant_lines(
         REGISTERS,
@@ -223,9 +240,9 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         ),
     )
     constants = "\n".join((register_constants, card_constants))
-    host_policy_constant = extract_constant_lines(
+    host_policy_constants = extract_constant_lines(
         HOST_HEADER,
-        ("P4_SDMMC_HOST_WAIT_US",),
+        ("P4_SDMMC_HOST_WAIT_US", "P4_SDMMC_BUDGET_MAX_US"),
     )
     host_abi_constant = extract_constant_lines(
         HOST_HEADER,
@@ -324,7 +341,7 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         ]
     )
     inserted = "\n\n".join(
-        [constants, host_policy_constant, reset_constants, board_constants]
+        [constants, host_policy_constants, reset_constants, board_constants]
         + [body for _, body in definitions]
     )
     assembled = fixture.replace(INSERT_MARKER, inserted)
@@ -332,7 +349,7 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     hashes.append(("register constants", register_constants.encode("utf-8")))
     hashes.append(("card constants", card_constants.encode("utf-8")))
     hashes.append(
-        ("host policy constant", host_policy_constant.encode("utf-8"))
+        ("host policy constants", host_policy_constants.encode("utf-8"))
     )
     hashes.append(("host ABI constant", host_abi_constant.encode("utf-8")))
     hashes.append(("SDHCI reset constants", reset_constants.encode("utf-8")))
@@ -387,8 +404,8 @@ def audit_transaction_call_modes() -> list[tuple[str, str]]:
 def audit_host_abi() -> str:
     source = HOST_HEADER.read_text(encoding="utf-8")
     abi_match = re.search(r"(?m)^\s*#\s*define\s+P4_SDMMC_HOST_ABI\s+(\d+)\b", source)
-    if not abi_match or abi_match.group(1) != "6":
-        raise ValueError("P4 SDMMC host ABI must be version 6")
+    if not abi_match or abi_match.group(1) != "7":
+        raise ValueError("P4 SDMMC host ABI must be version 7")
     struct_match = re.search(r"\bstruct\s+P4SDMMCHost\s*\{", source)
     if not struct_match:
         raise ValueError("P4 SDMMC host structure is missing")
@@ -403,12 +420,21 @@ def audit_host_abi() -> str:
         r"(?m)^\s*BOOL\s+dma_faulted\s*;",
         r"(?m)^\s*BOOL\s+initialization_started\s*;",
         r"BOOL\s*\(\*command\)\(struct P4SDMMCHost \*, const struct P4HostCommand \*,\s*struct P4HostCommandResult \*\);",
+        r"BOOL\s*\(\*set_budget\)\(struct P4SDMMCHost \*, ULONG usec\);",
+        r"(?m)^\s*ULONG\s+budget_start\s*,\s*budget_us\s*;",
     )
     if any(re.search(pattern, host_struct) is None for pattern in fields):
-        raise ValueError("P4 SDMMC ABI 6 host initialization/command/DMA fields are incomplete")
+        raise ValueError("P4 SDMMC ABI 7 host initialization/budget/command/DMA fields are incomplete")
     implementation = HOST_SOURCE.read_text(encoding="utf-8")
     if not re.search(r"P4SDMMCBase->command\s*=\s*p4host_command\s*;", implementation):
         raise ValueError("P4 SDMMC command callback is not initialized")
+    if not re.search(r"P4SDMMCBase->set_budget\s*=\s*p4host_set_budget\s*;", implementation):
+        raise ValueError("P4 SDMMC budget callback is not initialized")
+    if not re.search(
+        r"P4SDMMCBase->budget_start\s*=\s*P4SDMMCBase->budget_us\s*=\s*0\s*;",
+        implementation,
+    ):
+        raise ValueError("P4 SDMMC operation budget is not initialized")
     if not re.search(
         r"P4SDMMCBase->initialization_started\s*=\s*FALSE\s*;", implementation
     ):
@@ -421,7 +447,23 @@ def audit_host_abi() -> str:
         raise ValueError("SD client must check ABI and exact size before shifted fields")
     if not re.search(r"!host->command\s*\|\|", client):
         raise ValueError("SD client does not refuse a missing command callback")
+    if not re.search(r"!host->set_budget\s*\|\|", client):
+        raise ValueError("SD client does not refuse a missing budget callback")
     return sha256((abi_match.group(0) + host_struct).encode("utf-8"))
+
+
+def audit_command_budget_usage() -> tuple[int, str]:
+    body = extract_definition(
+        COMMAND_SOURCE,
+        "p4host_command",
+        r"\bBOOL\s+p4host_command\s*\(",
+    )
+    checks = re.findall(r"\bp4host_budget_ok\s*\(\s*host\s*\)", body)
+    if len(checks) < 3:
+        raise ValueError("command engine must consult the shared operation budget")
+    if re.search(r"host->budget_(?:start|us)\s*=", body):
+        raise ValueError("command engine must not restart or alter the budget")
+    return len(checks), sha256(body.encode("utf-8"))
 
 
 def run() -> int:
@@ -441,7 +483,12 @@ def run() -> int:
 
     call_mode_checks = audit_transaction_call_modes()
     host_abi_hash = audit_host_abi()
-    print(f"P4 SDMMC host ABI 6 initialization/command/DMA source check: PASS ({host_abi_hash})")
+    print(f"P4 SDMMC host ABI 7 initialization/budget/command/DMA source check: PASS ({host_abi_hash})")
+    budget_checks, command_hash = audit_command_budget_usage()
+    print(
+        "Command engine budget source check: PASS "
+        f"({budget_checks} checks, no deadline reset; {command_hash})"
+    )
     print("Transaction may_wait source checks:")
     for name, digest in call_mode_checks:
         print(f"  {name}: PASS ({digest})")

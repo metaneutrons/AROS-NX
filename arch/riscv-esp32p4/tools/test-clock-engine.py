@@ -19,6 +19,7 @@ CLOCK_SOURCE = PORT / "sdmmc" / "clock.c"
 PLANNER_SOURCE = PORT / "sdmmc" / "clock_plan.c"
 SDMMC = PORT / "sdmmc"
 INSERT_MARKER = "/* INSERT_ACTUAL_CLOCK_SOURCE */"
+INSERT_BUDGET_MARKER = "/* INSERT_ACTUAL_BUDGET_HELPER */"
 
 
 def sha256(data: bytes) -> str:
@@ -143,9 +144,17 @@ def extract_constant(source: str, name: str) -> str:
 
 def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     fixture = FIXTURE.read_text(encoding="utf-8")
-    if fixture.count(INSERT_MARKER) != 1:
-        raise ValueError(f"fixture must contain exactly one {INSERT_MARKER}")
+    for marker in (INSERT_MARKER, INSERT_BUDGET_MARKER):
+        if fixture.count(marker) != 1:
+            raise ValueError(f"fixture must contain exactly one {marker}")
     source = CLOCK_SOURCE.read_text(encoding="utf-8")
+    host_header_path = SDMMC / "host.h"
+    host_header = host_header_path.read_text(encoding="utf-8")
+    budget_helper = extract_definition(
+        host_header,
+        "p4host_budget_ok",
+        r"\bstatic\s+inline\s+BOOL\s+p4host_budget_ok\s*\(",
+    )
     constants = [
         extract_constant(source, "P4HOST_CLOCK_TIMEOUT_US"),
         extract_constant(source, "P4HOST_POLL_BOUND"),
@@ -179,6 +188,7 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     ]
     bodies = "\n\n".join(constants + [body for _, body in definitions])
     assembled = fixture.replace(INSERT_MARKER, bodies)
+    assembled = assembled.replace(INSERT_BUDGET_MARKER, budget_helper)
     hashes = [(name, body.encode("utf-8")) for name, body in definitions]
     hashes.extend((name, body.encode("utf-8")) for name, body in low_level)
     hashes.extend(
@@ -186,6 +196,8 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         for name, value in zip(("poll timeout", "poll bound"), constants)
     )
     hashes.append(("actual planner source", PLANNER_SOURCE.read_bytes()))
+    hashes.append(("actual host.h", host_header_path.read_bytes()))
+    hashes.append(("p4host_budget_ok source", budget_helper.encode("utf-8")))
     hashes.append(("assembled fixture", assembled.encode("utf-8")))
     return assembled, hashes
 

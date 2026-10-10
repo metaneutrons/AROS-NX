@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; private protocol RCA host tested/build verified` | Generic same-media recovery with matching publication/Open/Close guards and P4 private protocol RCA host tested/build verified; accepted production source integrated locally. Backend deadline/hooks/dispatch, real SMP interleavings, integrated core/package build, radio integration, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; aggregate-budget ABI7 host tested/build verified` | Generic recovery, private RCA and shared command/clock/DMA budget host tested/build verified; accepted production source integrated locally. Backend hooks/dispatch, real SMP interleavings, integrated core/package build, radio integration, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -201,6 +201,17 @@ failed/malformed enumeration refuses readiness. CMD12/CMD13 use that private
 session address, not the still-mounted unit's cached RCA. CMD13 card-error
 bits reject even TRAN/ready. This prerequisite is host tested/build verified; it does
 not enable the backend hooks or satisfy the aggregate recovery deadline.
+An ABI7 candidate adds host-owned set_budget plus start/duration state, capped
+at ten seconds. It refuses ownerless calls and restarts/extensions of an active
+budget. Commands, reset/clock and DMA share this elapsed-time limit; nested
+acquisition/release does not reset it, and final release clears it. This
+avoids separate request/reset/clock deadline parameters and enforces the same
+owner operation across every callback. Expired DMA cleanup preserves possible
+bus-master metadata, latches fault and invalidates generations rather than
+claiming idle. It is host tested/build verified and is not bound to recovery yet.
+Poll caps still bound stopped-clock loops; scheduler/cache-callback latency
+is not hard real-time bounded by this API. Final recovery publication must
+also validate the budget after all callbacks, before clearing it.
 
 Accepted production source through acd62ff237 is integrated locally after
 12df190097. This preserves the boot-budget, quiet-profile and ProductionQualify
@@ -380,7 +391,7 @@ R1/R6 errors, zero RCA, incompatible OCR voltage and unsupported/inconsistent CS
 are refused. ACMD41 has at most1000 attempts; this is a finite attempt bound,
 not a claimed end-to-end deadline. Unit count is not incremented on failure.
 Strict selection/configuration is tested separately below; in-place commit
-is now a candidate in verification, while backend/task recovery remains open.
+is now host tested/build verified, while backend/task recovery remains open.
 Extracted identity/registration tests pass 41 cases/27,369 checks each at O0/O2
 with ASan/UBSan; the one-slot layout is modeled and allocation/DOS APIs are
 mocked. RV32 SD builds pass. This does not verify other boards, silicon, SMP
@@ -28665,6 +28676,94 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: extend the shared engine with an
   aggregate deadline before binding recovery hooks/dispatch. Existing per-call
   timeout constants must not be reported as a whole-operation deadline.
+
+### 2026-10-10 - N0 aggregate controller budget host tested and build verified
+
+- State: host tested/build verified, feature/esp32p4-wifi, parent e218fb5b2c. Previous
+  goal turn progressed via independently tracked live RCA and tested module.
+- Implementation: ABI7 expands the shared resource with set_budget and
+  budget_start/budget_us. One owner-selected start/duration is shared by
+  commands, clocks/reset and DMA; cap 10,000,000 us, unsigned wrap-safe elapsed
+  checks, no restarting/extending an active budget. Zero explicitly ends it;
+  nested release preserves it and final release clears it. P4 SD requires the
+  new callback and exact ABI/size. Request layout and reset/clock signatures
+  are unchanged: host-owned state replaces the earlier audit's proposed
+  separate deadline parameters, covering all operations in one transaction.
+- Expiry: entry/wait/main-loop/cache-boundary/publication checks refuse new
+  launch or success. Expired DMA reset preserves possible destination metadata,
+  faults the host and invalidates both generations; permanent DMA storage is
+  not reused until physical reset establishes idle. Existing normal phase
+  caps remain when no aggregate budget is set. No new waits under spinlocks.
+- Limits: bounded MMIO batches and memory copies are not preemptible;
+  scheduler and kernel cache-operation latency are outside a hard real-time
+  guarantee. A stopped timer has finite polling caps, not a calibrated elapsed
+  duration. Recovery finish must check budget again before active publication.
+  Command FINISH observation follows the result decision; recovery must check
+  again after that callback. Direct DMA completion is not an atomic buffer
+  operation: expiry during a bounded copy can return failure after modifying
+  its caller buffer. The command engine uses the permanent bounce buffer and
+  separately checks before copying externally; this is not a rollback promise.
+- Verification: ownership, command/clock and DMA extracted-source sanitizer
+  tests and independent source review pass. These are modeled host runs,
+  not controller silicon, installed C6 compatibility or SMP runtime evidence.
+- Matched build session38013 exits0: kernel-esp32p4sdmmc and
+  kernel-sdcard-quick, isolated JC1060-v2/SMP build. All seven resource objects
+  including generated start/end and all three P4 client objects explicitly
+  invalidated for the private ABI layout change. No diagnostic switches
+  changed. Resource 54,508 bytes SHA-256
+  da03152247081d5b971336bca7ceb668754146aba12ea70474fbd7bc697827ff;
+  SD device 129,964 bytes SHA-256
+  bcfc9b3374d86d6e05d0dc252cba9bcae8b03e81cf2771c22067cbefaed52a4b.
+  Both undefined-symbol listings are empty. RV32 init disassembly stores
+  ABI7 and size224, not merely source macros. Complete core/package remains
+  unbuilt and nothing was deployed. Normal target refreshed dependencies in
+  this isolated build, not the accepted production worktree.
+- Final entry guards were then added after command FIFO/TX staging and DMA
+  descriptor validation. Rebuild session91437 exits0, recompiling command.c
+  and dma.c. Superseding resource 55,028 bytes SHA-256
+  88ccdcc7bb19d650792e8daa2e97718897f80b5515cfcc9dcb47592e823fbf42;
+  SD device remains 129,964 bytes with the hash above. Both final undefined
+  symbol listings are empty. This supersedes the first resource artifact,
+  not the matched ABI7 client.
+- Primary ownership model repeat exits0: 29 cases/400,435 checks each at
+  O0/O2 with ASan/UBSan. Actual budget helper SHA-256
+  fb9a19c47115a9f91b622565e1decc8b7daf22a26e2b2f12a7269996926fad12;
+  assembled fixture
+  c5c9c0b591f56955fcd8b9826b7de9370ad69a9f73ced2663d21e54fa0791aa4.
+  It covers owner-only configuration, no active extension, exact expiry,
+  timer wrap and actual ss_NestCount nested/final release behavior. The
+  command non-restart check is a source audit, not a command runtime test.
+- Primary DMA repeat session44161 exits0: 22 cases/2,253,994 checks each
+  O0/O2 ASan/UBSan. Expiry is tested before launch, during reset and FIFO
+  settlement, after descriptor invalidation and after RX bounce invalidation;
+  failed completion retains staged metadata and prevents descriptor reuse.
+  Final assembled fixture SHA-256
+  98798f5797ea5584d9b2caf2d0618b5c72d9540c655e4de4946d15ffc3eca72e.
+  Independent production review found no definite reset/clock/command budget
+  defect; FINISH-callback and non-atomic-copy limitations are recorded above.
+  Reviewed command.c SHA-256
+  d474d0a29b2cc0666a7b4d1f5db4546afccd475db8d23922e1def94186e83923;
+  clock.c 3de8d36ef58152a8868ed1a0f6119c89a56b149490ea22e0e1d15129a2aa6b2f;
+  dma.c 50da0ac63250f2c1da5257157db0a573d24baed4ca87cc45d1ed205637ea709a.
+- Generic activation regression session40307 exits0: 30 cases/220 checks;
+  frequency helper mode 16 cases/37 checks, each O0/O2 ASan/UBSan. The
+  scripted command bus is not actual controller/card recovery evidence.
+- Primary command repeat session64408 exits0: 33 cases/2,001,779 checks each
+  O0/O2 ASan/UBSan; clock repeat exits0: 25 cases/367 checks each. Actual
+  budget helper is extracted, not stubbed. Command tests cover expired entry,
+  pre-command/data-busy waits, TX staging, prepare/ready/completion callbacks,
+  main-loop observation, failed cleanup and final publication. Clock tests
+  cover cumulative waits/delays, wrap, slot-clock publication and reset DMA
+  metadata publication. Assembled command fixture SHA-256
+  943cc924d2f87230c9ee688d0853186c76e1fc0eb5853da2dfcf0a0f46bf3a7a;
+  assembled clock fixture
+  378f5a405c9246e665619c90ce7c17b150aad8006da02a6fb6836bd004a54478.
+- Safety: no hardware/serial/flash/SD/C6 action. Recovery hooks/dispatch remain
+  disabled; no WLAN or installed firmware compatibility claim. No public
+  AROS ABI changed, but resource/client private ABI7 must be deployed together.
+- Next: bind backend needed/prepare/finish and
+  task-context recovery, integrated core/package and SD hardware regression,
+  then C6 SDIO/ESP-Hosted communication and native SANA-II WLAN.
 
 ## Evidence-entry template
 

@@ -37,6 +37,8 @@ struct P4SDMMCHost
     unsigned host_div;
     BOOL initialization_started;
     ULONG slot_clock[2];
+    ULONG budget_start;
+    ULONG budget_us;
     UBYTE *dma_data;
     ULONG dma_length;
     BOOL dma_writing;
@@ -83,6 +85,9 @@ static ULONG fault_cmd_timeout_index;
 static ULONG fault_hle_index;
 static BOOL fault_ctrl_reset_stuck;
 static ULONG ctrl_assert_timer;
+static BOOL expire_budget_after_final_update;
+static BOOL expire_budget_after_reset_programming;
+static BOOL expire_budget_after_source_programming;
 
 static void fail_check(const char *expression, const char *file, int line)
 {
@@ -113,6 +118,12 @@ static ULONG mock_now_us(void)
     ++now_call_count;
     timer_value += timer_step;
     return result;
+}
+
+static void expire_budget_now(void)
+{
+    timer_value = clock_host.budget_start + clock_host.budget_us;
+    timer_step = 0U;
 }
 
 static void mock_invalidate(struct P4SDMMCHost *target)
@@ -200,8 +211,28 @@ static void clock_write(IPTR address, ULONG value)
     {
         *reg = value;
     }
+    if (expire_budget_after_final_update &&
+        address == P4_SDMMC_BASE + P4SD_RINTSTS && cmd_write_count == 3U)
+    {
+        expire_budget_after_final_update = FALSE;
+        expire_budget_now();
+    }
+    if (expire_budget_after_reset_programming &&
+        address == P4_SDMMC_BASE + P4SD_CLK_EDGE_SEL)
+    {
+        expire_budget_after_reset_programming = FALSE;
+        expire_budget_now();
+    }
+    if (expire_budget_after_source_programming &&
+        address == P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL02 &&
+        !(value & P4_HP_SDIO_UPDATE))
+    {
+        expire_budget_after_source_programming = FALSE;
+        expire_budget_now();
+    }
 }
 
+/* INSERT_ACTUAL_BUDGET_HELPER */
 /* INSERT_ACTUAL_CLOCK_SOURCE */
 
 static void begin_case(void)
@@ -230,6 +261,9 @@ static void setup_host(unsigned host_div, ULONG slot0_clock, ULONG slot1_clock)
     fault_hle_index = 0U;
     fault_ctrl_reset_stuck = FALSE;
     ctrl_assert_timer = 0U;
+    expire_budget_after_final_update = FALSE;
+    expire_budget_after_reset_programming = FALSE;
+    expire_budget_after_source_programming = FALSE;
     active_task = &task_a;
     clock_host.lock.ss_Owner = &task_a;
     clock_host.now_us = mock_now_us;
@@ -273,6 +307,17 @@ static unsigned writes_to(IPTR address)
     unsigned count = 0U;
     for (index = 0U; index < write_count; ++index)
         if (write_log[index].address == address)
+            ++count;
+    return count;
+}
+
+static unsigned reads_to(IPTR address)
+{
+    unsigned index;
+    unsigned count = 0U;
+    for (index = 0U; index < access_count; ++index)
+        if (!access_log[index].is_write &&
+            access_log[index].address == address)
             ++count;
     return count;
 }
@@ -794,6 +839,137 @@ static void test_stalled_timer_is_bounded_and_fails_closed(void)
     CHECK(writes_to(P4_LP_CLKRST_BASE + P4_LP_SDMMC_RST_CTRL) == 0U);
 }
 
+static void test_budget_helper_inactive_and_wraps(void)
+{
+    begin_case();
+    setup_host(10U, 0UL, 0UL);
+    clock_host.now_us = NULL;
+    CHECK(p4host_budget_ok(&clock_host));
+
+    clock_host.now_us = mock_now_us;
+    clock_host.budget_start = UINT32_MAX - 1U;
+    clock_host.budget_us = 3U;
+    timer_value = 0U;
+    timer_step = 0U;
+    CHECK(p4host_budget_ok(&clock_host));
+    timer_value = 1U;
+    CHECK(!p4host_budget_ok(&clock_host));
+}
+
+static void test_budget_expiry_before_clock_mmio(void)
+{
+    ULONG actual = 0x13579BDFUL;
+    begin_case();
+    setup_host(10U, 0UL, 0UL);
+    clock_host.budget_start = 0U;
+    clock_host.budget_us = 1U;
+    timer_value = 1U;
+    timer_step = 0U;
+    CHECK(!p4host_set_clock(&clock_host, 0U, 25000000UL, FALSE, &actual));
+    CHECK(read_count == 0U && write_count == 0U && access_count == 0U);
+    CHECK(actual == 0x13579BDFUL);
+    CHECK(clock_host.slot_clock[0] == 0U && clock_host.slot_clock[1] == 0U);
+    CHECK(clock_host.host_div == 10U && !clock_host.dma_faulted);
+    CHECK(invalidate_count == 0U);
+}
+
+static void test_budget_expiry_in_cumulative_busy_wait_across_wrap(void)
+{
+    ULONG actual = 0x13579BDFUL;
+    begin_case();
+    setup_host(10U, 12000000UL, 7000000UL);
+    clock_host.budget_start = UINT32_MAX - 3U;
+    clock_host.budget_us = 5U;
+    timer_value = clock_host.budget_start;
+    timer_step = 1U;
+    sd_registers[P4SD_STATUS / sizeof(ULONG)] = P4SD_STATUS_DATA_BUSY;
+    CHECK(!p4host_set_clock(&clock_host, 0U, 25000000UL, FALSE, &actual));
+    CHECK(reads_to(P4_SDMMC_BASE + P4SD_STATUS) > 0U);
+    CHECK(writes_to(P4_SDMMC_BASE + P4SD_CMD) == 0U);
+    CHECK(timer_value < clock_host.budget_start);
+    check_failed_transition(actual);
+}
+
+static void test_budget_expiry_during_source_delay_fails_closed(void)
+{
+    ULONG actual = 0x13579BDFUL;
+    begin_case();
+    setup_host(10U, 0UL, 0UL);
+    clock_host.budget_start = 0U;
+    clock_host.budget_us = 100U;
+    timer_value = 0U;
+    timer_step = 1U;
+    expire_budget_after_source_programming = TRUE;
+    CHECK(!p4host_set_clock(&clock_host, 0U, 400000UL, FALSE, &actual));
+    CHECK(writes_to(P4_SDMMC_BASE + P4SD_CMD) == 1U);
+    CHECK(writes_to(P4_HP_SYS_CLKRST_BASE + P4_HP_PERI_CLK_CTRL02) == 2U);
+    CHECK(timer_value >= clock_host.budget_us);
+    check_failed_transition(actual);
+}
+
+static void test_budget_expiry_at_clock_publication(void)
+{
+    ULONG actual = 0x13579BDFUL;
+    begin_case();
+    setup_host(10U, 0UL, 0UL);
+    clock_host.budget_start = 0U;
+    clock_host.budget_us = 100U;
+    expire_budget_after_final_update = TRUE;
+    CHECK(!p4host_set_clock(&clock_host, 0U, 400000UL, FALSE, &actual));
+    CHECK(cmd_write_count == 3U);
+    CHECK((read_sd(P4SD_CLKENA) & 3UL) == 0UL);
+    check_failed_transition(actual);
+}
+
+static void test_reset_budget_expiry_before_dma_publication(void)
+{
+    begin_case();
+    setup_host(7U, 25000000UL, 18000000UL);
+    clock_host.dma_data = dma_client_data;
+    clock_host.dma_length = sizeof(dma_client_data);
+    clock_host.dma_writing = TRUE;
+    clock_host.budget_start = 0U;
+    clock_host.budget_us = 100U;
+    expire_budget_after_reset_programming = TRUE;
+    CHECK(!p4host_reset(&clock_host));
+    CHECK(clock_host.initialization_started == TRUE);
+    CHECK(clock_host.dma_data == dma_client_data);
+    CHECK(clock_host.dma_length == sizeof(dma_client_data));
+    CHECK(clock_host.dma_writing == TRUE);
+    CHECK(clock_host.dma_faulted == TRUE);
+    CHECK(clock_host.slot_clock[0] == 0U && clock_host.slot_clock[1] == 0U);
+    CHECK(clock_host.host_div == 0U);
+    CHECK(invalidate_count == 2U);
+    CHECK((read_sd(P4SD_CLKENA) & 3UL) == 0UL);
+    CHECK(writes_to(P4_SDMMC_BASE + P4SD_CLK_EDGE_SEL) == 1U);
+}
+
+static void test_reset_cumulative_delay_budget_across_wrap(void)
+{
+    begin_case();
+    setup_host(7U, 25000000UL, 18000000UL);
+    clock_host.dma_data = dma_client_data;
+    clock_host.dma_length = sizeof(dma_client_data);
+    clock_host.dma_writing = TRUE;
+    clock_host.budget_start = UINT32_MAX - 4U;
+    clock_host.budget_us = 18U;
+    timer_value = clock_host.budget_start;
+    timer_step = 1U;
+    CHECK(!p4host_reset(&clock_host));
+    CHECK(timer_value < clock_host.budget_start);
+    CHECK(writes_to(P4_LP_CLKRST_BASE + P4_LP_SDMMC_RST_CTRL) == 2U);
+    CHECK(writes_to(P4_SDMMC_BASE + P4SD_CTRL) == 0U);
+    CHECK(clock_host.initialization_started == TRUE);
+    CHECK(clock_host.dma_data == dma_client_data);
+    CHECK(clock_host.dma_length == sizeof(dma_client_data));
+    CHECK(clock_host.dma_writing == TRUE);
+    CHECK(clock_host.dma_faulted == TRUE);
+    CHECK(clock_host.slot_clock[0] == 0U && clock_host.slot_clock[1] == 0U);
+    CHECK(clock_host.host_div == 0U);
+    CHECK(invalidate_count == 2U);
+    CHECK((read_sd(P4SD_CLKENA) & 3UL) == 0UL);
+}
+
 int main(void)
 {
     test_invalid_calls_have_no_mmio();
@@ -807,6 +983,13 @@ int main(void)
     test_reset_invalidates_and_pulses_source();
     test_stuck_controller_reset_retains_dma_identity();
     test_stalled_timer_is_bounded_and_fails_closed();
+    test_budget_helper_inactive_and_wraps();
+    test_budget_expiry_before_clock_mmio();
+    test_budget_expiry_in_cumulative_busy_wait_across_wrap();
+    test_budget_expiry_during_source_delay_fails_closed();
+    test_budget_expiry_at_clock_publication();
+    test_reset_budget_expiry_before_dma_publication();
+    test_reset_cumulative_delay_budget_across_wrap();
     printf("PASS: %u cases, %u checks\n", test_cases, checks);
     return 0;
 }

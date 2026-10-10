@@ -63,9 +63,23 @@ static BOOL p4host_acquire(struct P4SDMMCHost *host, ULONG timeout_us)
 static void p4host_release(struct P4SDMMCHost *host)
 {
     if (host && host->lock.ss_Owner == FindTask(NULL))
+    {
+        if (host->lock.ss_NestCount == 1)
+            host->budget_start = host->budget_us = 0;
         ReleaseSemaphore(&host->lock);
+    }
     else
         bug("[P4SDMMC] refusing release by non-owner\n");
+}
+
+static BOOL p4host_set_budget(struct P4SDMMCHost *host, ULONG usec)
+{
+    if (!host || host->lock.ss_Owner != FindTask(NULL) || !host->now_us ||
+        usec > P4_SDMMC_BUDGET_MAX_US || (usec && host->budget_us))
+        return FALSE;
+    host->budget_start = usec ? host->now_us() : 0;
+    host->budget_us = usec;
+    return TRUE;
 }
 
 static void p4host_invalidate(struct P4SDMMCHost *host)
@@ -103,6 +117,8 @@ static int P4SDMMC_Init(LIBBASETYPEPTR P4SDMMCBase)
     P4SDMMCBase->dma_complete = p4host_dma_complete;
     P4SDMMCBase->dma_inspect = p4host_dma_inspect;
     P4SDMMCBase->command = p4host_command;
+    P4SDMMCBase->set_budget = p4host_set_budget;
+    P4SDMMCBase->budget_start = P4SDMMCBase->budget_us = 0;
     P4SDMMCBase->initialization_started = FALSE;
     p4host_dma_init(P4SDMMCBase);
     return TRUE;

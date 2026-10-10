@@ -22,10 +22,15 @@ static BOOL command_wait(struct P4SDMMCHost *host, ULONG offset,
                           ULONG mask, ULONG limit)
 {
     ULONG start = host->now_us(), polls = P4HOST_COMMAND_POLLS;
-    while (command_read(offset) & mask)
+    for (;;)
+    {
+        if (!p4host_budget_ok(host))
+            return FALSE;
+        if (!(command_read(offset) & mask))
+            return TRUE;
         if (!--polls || (ULONG)(host->now_us() - start) >= limit)
             return FALSE;
-    return TRUE;
+    }
 }
 
 static BOOL command_valid(struct P4SDMMCHost *host,
@@ -93,6 +98,11 @@ BOOL p4host_command(struct P4SDMMCHost *host,
     outcome.status = P4HOST_COMMAND_REFUSED;
     if (!command_valid(host, request))
         goto finished;
+    if (!p4host_budget_ok(host))
+    {
+        outcome.status = P4HOST_COMMAND_TIMEOUT;
+        goto finished;
+    }
     /* Refuse an inhibited command before changing FIFO/DMA. A stuck command
      * start cannot be recovered by resetting DMA; invalidate both clients. */
     if (!command_wait(host, P4SD_CMD, P4SD_CMD_START,
@@ -137,6 +147,11 @@ BOOL p4host_command(struct P4SDMMCHost *host,
             memmove(host->bounce, request->data, request->length);
             command |= P4SD_CMD_WRITE;
         }
+        if (!p4host_budget_ok(host))
+        {
+            outcome.status = P4HOST_COMMAND_TIMEOUT;
+            goto failed;
+        }
         command_write(P4SD_BLKSIZ, request->block_size);
         command_write(P4SD_BYTCNT, request->length);
         if (!host->dma_prepare(host, host->bounce, request->length,
@@ -147,6 +162,11 @@ BOOL p4host_command(struct P4SDMMCHost *host,
         }
         prepared = TRUE;
         command |= P4SD_CMD_DATA;
+    }
+    if (!p4host_budget_ok(host))
+    {
+        outcome.status = P4HOST_COMMAND_TIMEOUT;
+        goto failed;
     }
     command_write(P4SD_RINTSTS, P4SD_INT_CMD_DATA_MASK);
     command_write(P4SD_CMDARG, request->argument);
@@ -160,11 +180,21 @@ BOOL p4host_command(struct P4SDMMCHost *host,
     polls = P4HOST_COMMAND_POLLS;
     do
     {
+        if (!p4host_budget_ok(host))
+        {
+            outcome.status = P4HOST_COMMAND_TIMEOUT;
+            goto failed;
+        }
         outcome.raw = command_read(P4SD_RINTSTS);
         outcome.idstatus = prepared ? command_read(P4SD_IDSTS) : 0;
         if (request->observe)
             request->observe(request->observe_context, request,
                              P4HOST_OBSERVE_SAMPLE, &outcome);
+        if (!p4host_budget_ok(host))
+        {
+            outcome.status = P4HOST_COMMAND_TIMEOUT;
+            goto failed;
+        }
         /* Inject before completion/error decisions, including CMD_DONE and
          * completed descriptors in the same sample. Data CRC waits until a
          * command response is observed; it cannot be lost to early success. */
@@ -271,6 +301,11 @@ BOOL p4host_command(struct P4SDMMCHost *host,
     if (outcome.idstatus & P4SD_IDSTS_ERRORS)
     {
         outcome.status = P4HOST_COMMAND_DMA_ERROR;
+        goto failed;
+    }
+    if (!p4host_budget_ok(host))
+    {
+        outcome.status = P4HOST_COMMAND_TIMEOUT;
         goto failed;
     }
     if (prepared && !request->writing && request->data != host->bounce)

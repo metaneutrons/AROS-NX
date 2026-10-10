@@ -18,10 +18,12 @@ PORT = Path(__file__).resolve().parents[1]
 FIXTURE = PORT / "network" / "test_dma_engine.c"
 DMA_SOURCE = PORT / "sdmmc" / "dma.c"
 SDMMC = PORT / "sdmmc"
+HOST_HEADER = SDMMC / "host.h"
 CACHEOPS_HEADER = ROOT / "compiler" / "include" / "aros" / "cacheops.h"
 KERNEL_HEADER = ROOT / "compiler" / "include" / "aros" / "kernel.h"
 TAGITEM_HEADER = ROOT / "compiler" / "include" / "utility" / "tagitem.h"
 INSERT_SOURCE = "/* INSERT_ACTUAL_DMA_SOURCE */"
+INSERT_BUDGET_HELPER = "/* INSERT_ACTUAL_BUDGET_HELPER */"
 INSERT_CACHEOPS = "/* INSERT_ACTUAL_CACHEOPS_CONSTANTS */"
 CLOCK_EXTRACTION = run_path(str(PORT / "tools" / "test-clock-engine.py"))
 extract_constant = CLOCK_EXTRACTION["extract_constant"]
@@ -54,10 +56,13 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     fixture = FIXTURE.read_text(encoding="utf-8")
     if fixture.count(INSERT_SOURCE) != 1:
         raise ValueError(f"fixture must contain exactly one {INSERT_SOURCE}")
+    if fixture.count(INSERT_BUDGET_HELPER) != 1:
+        raise ValueError(f"fixture must contain exactly one {INSERT_BUDGET_HELPER}")
     if fixture.count(INSERT_CACHEOPS) != 1:
         raise ValueError(f"fixture must contain exactly one {INSERT_CACHEOPS}")
 
     source = DMA_SOURCE.read_text(encoding="utf-8")
+    host_header = HOST_HEADER.read_text(encoding="utf-8")
     cacheops_source = CACHEOPS_HEADER.read_text(encoding="utf-8")
     kernel_source = KERNEL_HEADER.read_text(encoding="utf-8")
 
@@ -122,6 +127,11 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         (name, extract_definition(source, name, signature))
         for name, signature in function_specs
     ]
+    budget_helper = extract_definition(
+        host_header,
+        "p4host_budget_ok",
+        r"\bstatic\s+inline\s+BOOL\s+p4host_budget_ok\s*\(",
+    )
     for index, (name, body) in enumerate(definitions):
         if name in ("dma_writeback", "dma_invalidate"):
             definitions[index] = (name, translate_host_barrier(body, name))
@@ -141,6 +151,7 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         [body for _, body in definitions]
     )
     assembled = fixture.replace(INSERT_CACHEOPS, "\n".join(constants))
+    assembled = assembled.replace(INSERT_BUDGET_HELPER, budget_helper)
     assembled = assembled.replace(INSERT_SOURCE, inserted)
 
     hashes: list[tuple[str, bytes]] = [
@@ -148,6 +159,7 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
     ]
     hashes.extend((name, body.encode("utf-8")) for name, body in definitions)
     hashes.extend((name, body.encode("utf-8")) for name, body in low_level)
+    hashes.append(("actual p4host_budget_ok", budget_helper.encode("utf-8")))
     hashes.extend(
         (f"production constant: {name}", value.encode("utf-8"))
         for name, value in zip(
@@ -156,6 +168,7 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
         )
     )
     hashes.append(("actual dma.h", (SDMMC / "dma.h").read_bytes()))
+    hashes.append(("actual host.h", HOST_HEADER.read_bytes()))
     hashes.append(("actual registers.h", (SDMMC / "registers.h").read_bytes()))
     hashes.append(("assembled fixture", assembled.encode("utf-8")))
     return assembled, hashes

@@ -24,7 +24,7 @@ struct Task
 struct SignalSemaphore
 {
     struct Task *ss_Owner;
-    unsigned nesting;
+    unsigned ss_NestCount;
 };
 
 struct P4SDMMCHost;
@@ -44,6 +44,9 @@ struct P4SDMMCHost
     BOOL (*acquire)(struct P4SDMMCHost *, ULONG);
     void (*release)(struct P4SDMMCHost *);
     ULONG (*now_us)(void);
+    BOOL (*set_budget)(struct P4SDMMCHost *, ULONG);
+    ULONG budget_start;
+    ULONG budget_us;
 };
 
 struct p4sd_private
@@ -176,12 +179,12 @@ static BOOL AttemptSemaphore(struct SignalSemaphore *semaphore)
     if (!semaphore->ss_Owner)
     {
         semaphore->ss_Owner = active_task;
-        semaphore->nesting = 1U;
+        semaphore->ss_NestCount = 1U;
         return TRUE;
     }
     if (semaphore->ss_Owner == active_task)
     {
-        ++semaphore->nesting;
+        ++semaphore->ss_NestCount;
         return TRUE;
     }
     return FALSE;
@@ -190,9 +193,9 @@ static BOOL AttemptSemaphore(struct SignalSemaphore *semaphore)
 static void ReleaseSemaphore(struct SignalSemaphore *semaphore)
 {
     CHECK(semaphore->ss_Owner == active_task);
-    CHECK(semaphore->nesting != 0U);
+    CHECK(semaphore->ss_NestCount != 0U);
     ++release_calls;
-    if (--semaphore->nesting == 0U)
+    if (--semaphore->ss_NestCount == 0U)
         semaphore->ss_Owner = NULL;
 }
 
@@ -372,23 +375,144 @@ static void p4sd_write(IPTR address, ULONG value)
         sd_registers[(address - (IPTR)P4_SDMMC_BASE) / sizeof(ULONG)] = value;
 }
 
+static void test_budget_set_requires_owner_and_enforces_limit(void)
+{
+    reset_fixture();
+    shared_host.budget_start = 11U;
+    shared_host.budget_us = 22U;
+
+    CHECK(p4host_set_budget(NULL, 1U) == FALSE);
+    CHECK(p4host_set_budget(&shared_host, 1U) == FALSE);
+    CHECK(shared_host.budget_start == 11U);
+    CHECK(shared_host.budget_us == 22U);
+    CHECK(now_calls == 0U);
+
+    shared_host.lock.ss_Owner = &task_b;
+    shared_host.lock.ss_NestCount = 1U;
+    shared_host.budget_start = 0U;
+    shared_host.budget_us = 0U;
+    CHECK(p4host_set_budget(&shared_host,
+                            P4_SDMMC_BUDGET_MAX_US + 1UL) == FALSE);
+    CHECK(shared_host.budget_start == 0U);
+    CHECK(shared_host.budget_us == 0U);
+    CHECK(now_calls == 0U);
+
+    CHECK(p4host_set_budget(&shared_host, P4_SDMMC_BUDGET_MAX_US) == TRUE);
+    CHECK(shared_host.budget_us == P4_SDMMC_BUDGET_MAX_US);
+    CHECK(now_calls == 1U);
+    CHECK(p4host_set_budget(&shared_host, 0U) == TRUE);
+    CHECK(shared_host.budget_start == 0U);
+    CHECK(shared_host.budget_us == 0U);
+    CHECK(now_calls == 1U);
+
+    shared_host.now_us = NULL;
+    CHECK(p4host_set_budget(&shared_host, 0U) == FALSE);
+    CHECK(now_calls == 1U);
+    p4host_release(&shared_host);
+    CHECK(shared_host.lock.ss_Owner == NULL);
+}
+
+static void test_budget_deadline_expiry_clear_and_command_checks(void)
+{
+    unsigned calls_before_clear;
+
+    reset_fixture();
+    CHECK(p4host_acquire(&shared_host, 0U) == TRUE);
+    clock_value = 100U;
+    clock_step = 0U;
+    CHECK(p4host_set_budget(&shared_host, 500U) == TRUE);
+    CHECK(shared_host.budget_start == 100U);
+    CHECK(shared_host.budget_us == 500U);
+    CHECK(now_calls == 1U);
+
+    clock_value = 200U;
+    CHECK(p4host_set_budget(&shared_host, 900U) == FALSE);
+    CHECK(shared_host.budget_start == 100U);
+    CHECK(shared_host.budget_us == 500U);
+    CHECK(now_calls == 1U);
+
+    /* The real command engine checks this same deadline across phases. */
+    clock_value = 350U;
+    CHECK(p4host_budget_ok(&shared_host) == TRUE);
+    clock_value = 599U;
+    CHECK(p4host_budget_ok(&shared_host) == TRUE);
+    CHECK(shared_host.budget_start == 100U);
+    clock_value = 600U;
+    CHECK(p4host_budget_ok(&shared_host) == FALSE);
+    CHECK(shared_host.budget_start == 100U);
+
+    calls_before_clear = now_calls;
+    CHECK(p4host_set_budget(&shared_host, 0U) == TRUE);
+    CHECK(shared_host.budget_start == 0U);
+    CHECK(shared_host.budget_us == 0U);
+    CHECK(now_calls == calls_before_clear);
+    shared_host.now_us = NULL;
+    CHECK(p4host_budget_ok(&shared_host) == TRUE);
+    CHECK(now_calls == calls_before_clear);
+    CHECK(p4host_budget_ok(NULL) == FALSE);
+    p4host_release(&shared_host);
+}
+
+static void test_budget_unsigned_wrap_and_exact_expiry(void)
+{
+    reset_fixture();
+    CHECK(p4host_acquire(&shared_host, 0U) == TRUE);
+    clock_value = UINT32_MAX - 3U;
+    clock_step = 0U;
+    CHECK(p4host_set_budget(&shared_host, 8U) == TRUE);
+    CHECK(shared_host.budget_start == UINT32_MAX - 3U);
+
+    clock_value = 3U;
+    CHECK(p4host_budget_ok(&shared_host) == TRUE);
+    clock_value = 4U;
+    CHECK(p4host_budget_ok(&shared_host) == FALSE);
+    p4host_release(&shared_host);
+    CHECK(shared_host.budget_start == 0U);
+    CHECK(shared_host.budget_us == 0U);
+}
+
+static void test_budget_nested_release_preserves_then_discards(void)
+{
+    reset_fixture();
+    CHECK(p4host_acquire(&shared_host, 0U) == TRUE);
+    CHECK(p4host_acquire(&shared_host, 0U) == TRUE);
+    CHECK(shared_host.lock.ss_NestCount == 2U);
+    clock_step = 0U;
+    CHECK(p4host_set_budget(&shared_host, 700U) == TRUE);
+    CHECK(shared_host.budget_start == clock_value);
+    CHECK(shared_host.budget_us == 700U);
+
+    p4host_release(&shared_host);
+    CHECK(shared_host.lock.ss_Owner == &task_b);
+    CHECK(shared_host.lock.ss_NestCount == 1U);
+    CHECK(shared_host.budget_start == clock_value);
+    CHECK(shared_host.budget_us == 700U);
+    CHECK(p4host_budget_ok(&shared_host) == TRUE);
+
+    p4host_release(&shared_host);
+    CHECK(shared_host.lock.ss_Owner == NULL);
+    CHECK(shared_host.lock.ss_NestCount == 0U);
+    CHECK(shared_host.budget_start == 0U);
+    CHECK(shared_host.budget_us == 0U);
+}
+
 static void test_immediate_and_nonblocking_contention(void)
 {
     reset_fixture();
     CHECK(p4host_acquire(&shared_host, 0U) == TRUE);
     CHECK(shared_host.lock.ss_Owner == &task_b);
-    CHECK(shared_host.lock.nesting == 1U);
+    CHECK(shared_host.lock.ss_NestCount == 1U);
     CHECK(attempt_calls == 1U);
     CHECK(now_calls == 0U);
     CHECK(reschedule_calls == 0U);
 
     p4host_release(&shared_host);
     shared_host.lock.ss_Owner = &task_a;
-    shared_host.lock.nesting = 1U;
+    shared_host.lock.ss_NestCount = 1U;
     active_task = &task_b;
     CHECK(p4host_acquire(&shared_host, 0U) == FALSE);
     CHECK(shared_host.lock.ss_Owner == &task_a);
-    CHECK(shared_host.lock.nesting == 1U);
+    CHECK(shared_host.lock.ss_NestCount == 1U);
     CHECK(now_calls == 0U);
     CHECK(reschedule_calls == 0U);
 }
@@ -399,20 +523,20 @@ static void test_nested_same_task_acquisition(void)
     CHECK(p4host_acquire(&shared_host, 0U) == TRUE);
     CHECK(p4host_acquire(&shared_host, 0U) == TRUE);
     CHECK(shared_host.lock.ss_Owner == &task_b);
-    CHECK(shared_host.lock.nesting == 2U);
+    CHECK(shared_host.lock.ss_NestCount == 2U);
     p4host_release(&shared_host);
     CHECK(shared_host.lock.ss_Owner == &task_b);
-    CHECK(shared_host.lock.nesting == 1U);
+    CHECK(shared_host.lock.ss_NestCount == 1U);
     p4host_release(&shared_host);
     CHECK(shared_host.lock.ss_Owner == NULL);
-    CHECK(shared_host.lock.nesting == 0U);
+    CHECK(shared_host.lock.ss_NestCount == 0U);
 }
 
 static void test_contended_acquire_after_yield(void)
 {
     reset_fixture();
     shared_host.lock.ss_Owner = &task_a;
-    shared_host.lock.nesting = 1U;
+    shared_host.lock.ss_NestCount = 1U;
     scheduled_semaphore = &shared_host.lock;
     scheduled_owner = &task_a;
     release_on_reschedule = 2U;
@@ -420,7 +544,7 @@ static void test_contended_acquire_after_yield(void)
     CHECK(p4host_acquire(&shared_host, 100U) == TRUE);
     CHECK(reschedule_calls == 2U);
     CHECK(shared_host.lock.ss_Owner == &task_b);
-    CHECK(shared_host.lock.nesting == 1U);
+    CHECK(shared_host.lock.ss_NestCount == 1U);
     CHECK(irq_disable_depth == 0U);
     CHECK(forbid_depth == 0U);
 }
@@ -429,12 +553,12 @@ static void test_timeout_preserves_owner_and_nesting(void)
 {
     reset_fixture();
     shared_host.lock.ss_Owner = &task_a;
-    shared_host.lock.nesting = 2U;
+    shared_host.lock.ss_NestCount = 2U;
     clock_step = 3U;
 
     CHECK(p4host_acquire(&shared_host, 10U) == FALSE);
     CHECK(shared_host.lock.ss_Owner == &task_a);
-    CHECK(shared_host.lock.nesting == 2U);
+    CHECK(shared_host.lock.ss_NestCount == 2U);
     CHECK(reschedule_calls == 4U);
     CHECK(release_calls == 0U);
 }
@@ -443,14 +567,14 @@ static void test_timeout_across_clock_wrap(void)
 {
     reset_fixture();
     shared_host.lock.ss_Owner = &task_a;
-    shared_host.lock.nesting = 1U;
+    shared_host.lock.ss_NestCount = 1U;
     clock_value = UINT32_MAX - 3U;
     clock_step = 2U;
 
     CHECK(p4host_acquire(&shared_host, 4U) == FALSE);
     CHECK(reschedule_calls == 2U);
     CHECK(shared_host.lock.ss_Owner == &task_a);
-    CHECK(shared_host.lock.nesting == 1U);
+    CHECK(shared_host.lock.ss_NestCount == 1U);
 }
 
 static void test_invalid_arguments_do_not_touch_semaphore_or_clock(void)
@@ -467,19 +591,19 @@ static void test_release_and_invalidate_reject_nonowner(void)
 {
     reset_fixture();
     shared_host.lock.ss_Owner = &task_a;
-    shared_host.lock.nesting = 2U;
+    shared_host.lock.ss_NestCount = 2U;
     shared_host.generation = 9U;
 
     p4host_release(&shared_host);
     CHECK(shared_host.lock.ss_Owner == &task_a);
-    CHECK(shared_host.lock.nesting == 2U);
+    CHECK(shared_host.lock.ss_NestCount == 2U);
     CHECK(release_calls == 0U);
     CHECK(bug_calls == 1U);
 
     p4host_invalidate(&shared_host);
     CHECK(shared_host.generation == 9U);
     CHECK(shared_host.lock.ss_Owner == &task_a);
-    CHECK(shared_host.lock.nesting == 2U);
+    CHECK(shared_host.lock.ss_NestCount == 2U);
     CHECK(bug_calls == 2U);
 }
 
@@ -487,7 +611,7 @@ static void test_generation_increment_skips_zero_on_wrap(void)
 {
     reset_fixture();
     shared_host.lock.ss_Owner = &task_b;
-    shared_host.lock.nesting = 1U;
+    shared_host.lock.ss_NestCount = 1U;
     shared_host.generation = UINT32_MAX;
 
     p4host_invalidate(&shared_host);
@@ -495,20 +619,20 @@ static void test_generation_increment_skips_zero_on_wrap(void)
     p4host_invalidate(&shared_host);
     CHECK(shared_host.generation == 2U);
     CHECK(shared_host.lock.ss_Owner == &task_b);
-    CHECK(shared_host.lock.nesting == 1U);
+    CHECK(shared_host.lock.ss_NestCount == 1U);
 }
 
 static void test_stalled_clock_has_finite_refusal_bound(void)
 {
     reset_fixture();
     shared_host.lock.ss_Owner = &task_a;
-    shared_host.lock.nesting = 1U;
+    shared_host.lock.ss_NestCount = 1U;
     clock_step = 0U;
 
     CHECK(p4host_acquire(&shared_host, 100U) == FALSE);
     CHECK(reschedule_calls == 100000U);
     CHECK(shared_host.lock.ss_Owner == &task_a);
-    CHECK(shared_host.lock.nesting == 1U);
+    CHECK(shared_host.lock.ss_NestCount == 1U);
     CHECK(irq_disable_depth == 0U);
     CHECK(forbid_depth == 0U);
 }
@@ -517,7 +641,7 @@ static void test_wait_and_yield_are_not_irq_disabled(void)
 {
     reset_fixture();
     shared_host.lock.ss_Owner = &task_a;
-    shared_host.lock.nesting = 1U;
+    shared_host.lock.ss_NestCount = 1U;
     clock_step = 10U;
 
     CHECK(p4host_acquire(&shared_host, 20U) == FALSE);
@@ -613,13 +737,13 @@ static void test_nonblocking_host_contention_leaves_state_unchanged(void)
     sd_host.acquire = p4host_acquire;
     sd_host.release = p4host_release;
     sd_host.lock.ss_Owner = &task_a;
-    sd_host.lock.nesting = 2U;
+    sd_host.lock.ss_NestCount = 2U;
 
     CHECK(P4SDBUS_BeginTransaction(&sd_bus, FALSE) == FALSE);
     CHECK(sd_private.host_ready == TRUE);
     CHECK(sd_private.host_generation == 7U);
     CHECK(sd_host.lock.ss_Owner == &task_a);
-    CHECK(sd_host.lock.nesting == 2U);
+    CHECK(sd_host.lock.ss_NestCount == 2U);
     CHECK(attempt_calls == 1U);
     CHECK(now_calls == 0U);
     CHECK(reschedule_calls == 0U);
@@ -874,6 +998,10 @@ static void test_p4sd_set_preserves_unrelated_register_write(void)
 
 int main(void)
 {
+    run_test("budget set requires owner and enforces limit", test_budget_set_requires_owner_and_enforces_limit);
+    run_test("budget expiry, clear and command checks", test_budget_deadline_expiry_clear_and_command_checks);
+    run_test("budget unsigned wrap and exact expiry", test_budget_unsigned_wrap_and_exact_expiry);
+    run_test("nested release preserves then discards budget", test_budget_nested_release_preserves_then_discards);
     run_test("immediate and nonblocking contention", test_immediate_and_nonblocking_contention);
     run_test("nested same-task acquisition", test_nested_same_task_acquisition);
     run_test("contended acquisition after yield", test_contended_acquire_after_yield);

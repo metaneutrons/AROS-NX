@@ -28,11 +28,16 @@ static BOOL clock_wait_clear(struct P4SDMMCHost *host, ULONG offset,
 {
     ULONG started = host->now_us();
     ULONG polls = P4HOST_POLL_BOUND;
-    while (clock_read(P4_SDMMC_BASE + offset) & mask)
+    for (;;)
+    {
+        if (!p4host_budget_ok(host))
+            return FALSE;
+        if (!(clock_read(P4_SDMMC_BASE + offset) & mask))
+            return TRUE;
         if (!--polls ||
             (ULONG)(host->now_us() - started) >= P4HOST_CLOCK_TIMEOUT_US)
             return FALSE;
-    return TRUE;
+    }
 }
 
 static BOOL clock_delay(struct P4SDMMCHost *host, ULONG usec)
@@ -40,15 +45,15 @@ static BOOL clock_delay(struct P4SDMMCHost *host, ULONG usec)
     ULONG started = host->now_us();
     ULONG polls = P4HOST_POLL_BOUND;
     while ((ULONG)(host->now_us() - started) < usec)
-        if (!--polls)
+        if (!--polls || !p4host_budget_ok(host))
             return FALSE;
-    return TRUE;
+    return p4host_budget_ok(host);
 }
 
 static BOOL clock_source(struct P4SDMMCHost *host, unsigned divider)
 {
     ULONG value;
-    if (divider < 1 || divider > 16)
+    if (divider < 1 || divider > 16 || !p4host_budget_ok(host))
         return FALSE;
     value = clock_read(P4_HP_SYS_CLKRST_BASE + P4_HP_SOC_CLK_CTRL1);
     clock_write(P4_HP_SYS_CLKRST_BASE + P4_HP_SOC_CLK_CTRL1,
@@ -114,7 +119,7 @@ static void clock_fail(struct P4SDMMCHost *host)
 BOOL p4host_reset(struct P4SDMMCHost *host)
 {
     ULONG value;
-    if (!clock_owned(host))
+    if (!clock_owned(host) || !p4host_budget_ok(host))
         return FALSE;
     host->initialization_started = TRUE;
     host->invalidate(host);
@@ -167,6 +172,11 @@ BOOL p4host_reset(struct P4SDMMCHost *host)
                  P4SD_FIFOTH_RX_WMARK | P4SD_FIFOTH_DMA_MSIZE_8);
     clock_write(P4_SDMMC_BASE + P4SD_CARDTHRCTL, 0);
     clock_write(P4_SDMMC_BASE + P4SD_CLK_EDGE_SEL, 0);
+    if (!p4host_budget_ok(host))
+    {
+        clock_fail(host);
+        return FALSE;
+    }
     host->dma_data = NULL;
     host->dma_length = 0;
     host->dma_writing = FALSE;
@@ -180,7 +190,7 @@ BOOL p4host_set_clock(struct P4SDMMCHost *host, unsigned slot,
     struct p4sdmmc_clock_plan plan;
     ULONG value, bit;
     BOOL peer;
-    if (!clock_owned(host) || slot > 1 || !actual ||
+    if (!clock_owned(host) || !p4host_budget_ok(host) || slot > 1 || !actual ||
         host->dma_length || host->dma_faulted ||
         host->host_div < 1 || host->host_div > 16 ||
         (low_power != FALSE && low_power != TRUE))
@@ -216,6 +226,8 @@ BOOL p4host_set_clock(struct P4SDMMCHost *host, unsigned slot,
         value |= bit << 16;
     clock_write(P4_SDMMC_BASE + P4SD_CLKENA, value);
     if (!clock_update(host, slot))
+        goto failed;
+    if (!p4host_budget_ok(host))
         goto failed;
     host->slot_clock[slot] = plan.actual_hz;
     *actual = plan.actual_hz;

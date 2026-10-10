@@ -28,7 +28,7 @@ static int FNAME_P4SD(Init)(struct SDCardBase *SDCardBase)
         !host->invalidate || !host->now_us || !host->reset || !host->set_clock ||
         !host->fifo_reset || !host->dma_reset || !host->dma_prepare ||
         !host->dma_ready || !host->dma_complete || !host->dma_inspect ||
-        !host->command ||
+        !host->command || !host->set_budget ||
         !host->dma_desc || !host->bounce)
     {
         bug("[P4SD--] compatible SDMMC host resource missing\n");
