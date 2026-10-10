@@ -13,6 +13,7 @@ struct P4WifiBase
                    const struct p4_wifi_device_callbacks *);
     void (*detach)(struct P4WifiBase *, APTR);
     BOOL (*send_frame)(struct P4WifiBase *, const UBYTE *, ULONG);
+    BOOL (*scan)(struct P4WifiBase *, struct p4_wifi_scan_result *);
     /* Registration and callbacks own this lock. No SDMMC mutable field is
      * protected by it: only the actual transport owner can touch runtime. */
     struct SignalSemaphore client_lock;

@@ -1,5 +1,18 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Persistent owner scan development (2026-10-10): private bridge ABI2 now adds
+an owner-service-only default-config scan, using fresh persistent UIDs rather
+than the single-use diagnostic IDs. Start/count/records and failure Stop share
+one eight-second budget; callbacks cannot re-enter transport during the scan.
+Only complete owned results are published; late success and failed cleanup
+retire the session. Zero-count records retain the named N1E workaround; eight
+records are a local cap, with explicit truncation. The Core1 resource and
+matched device and owner-off resource clean-build; independent source review
+accepts the corrected absolute-deadline guards. Dedicated scan models are pending.
+ABI1 modules must not be mixed with ABI2. This private path is not yet exposed
+as S2_GETNETWORKS: truthful protected-network metadata and per-device WPA
+offload integration remain required. No deployment or hardware pass.
+
 Private SANA-II bridge development (2026-10-10): the opt-in Core1 owner now
 exposes nonblocking permanent-unit registration, synchronous borrowed-frame
 delivery outside SDMMC ownership and bounded direct STA/0 Ethernet TX using

@@ -60,6 +60,8 @@ struct wifi_probe_context {
     struct P4SDMMCHost *host;
     ULONG generation;
     ULONG peer_clock;
+    ULONG scan_started;
+    BOOL scan_active;
 };
 
 static struct Task *FindTask(void *name)

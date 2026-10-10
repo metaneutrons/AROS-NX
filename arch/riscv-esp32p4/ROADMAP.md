@@ -117,6 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1/resource and matched device build verified; source review passed; scan models pending` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results; no re-entry, late success or uncertain cleanup. N1E empty-record workaround remains. Default-off build and existing bridge regressions pass. No SANA scan presentation or hardware acceptance; truthful security/offload and runtime qualification remain open. |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; native initialized MAC observed once; cold continuity rejected; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; Earlier GetMAC returns correlated0x3001 (WiFi not initialized). Latest initialized sequence succeeds once with expected MAC, but initial HP watchdog reset/truncated ROM output block clean cold acceptance. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
 | N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; native initialization/MAC repeated; pre-armed cold continuity rejected` | Existing FIFO reused with owned bodies/exact correlation. Control3529/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Generation-bound reassembly1318 isolated checks each O0/O2 sanitized pass; now linked into control with coupled epoch/deadline/failure tests and fresh113900B module build. Fragmentation integration not deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Coordinated startup reports all5 WLAN statuses0, valid MAC10:bd:a3:9b:bc:34 and restored stable registers in60.112s/16340 bytes; initial HP watchdog reset prevents clean cold acceptance. Latest late45.114s retrieval exits0 but receives0 bytes;1.425ms open latency, no armed startup coverage, inconclusive. Latest pre-armed removal/arrival capture exits0/status=ok,60.181s/16148 bytes and repeats native initialization/MAC/cleanup; first chunk6.525s after open contains HP watchdog reset and incomplete ROM prefix. Checker exits1; reset cause/serial-open influence unresolved; exact-image PC locates DMA IRQ dispatch, not proof of handler fault. No persistent UID allocator or WLAN acceptance. Original verified baseline recoverable. |
@@ -555,6 +556,17 @@ embedded Exec unit, count, listeners and change bookkeeping, not a whole-struct
 copy. Run recovery only after the failed request releases its transaction.
 
 ### N1 - compatible ESP-Hosted transport
+
+Persistent scan extension (2026-10-10): bridge ABI2 adds a default-config
+owner-service scan with monotonic ledger UIDs and exact blocking Start response
+correlation. Start/count/records/failure Stop share eight seconds, including
+the final decode/publication check. Transport re-entry is suppressed; output
+aliasing with live resource/transport objects is refused. Failed cleanup retires
+the matching session; no renewed deadline or peer reset is introduced. Owned
+records are capped at eight with explicit truncation; zero count retains the
+N1E workaround. Dedicated scan models are pending; independent deadline review
+finds no blocker. Clean Core1 resource
+and matched device builds pass. No hardware/native scan acceptance.
 
 Current device-bridge work (2026-10-10): a private resource contract now
 connects the opt-in persistent owner to a permanent noexpunge SANA unit.
@@ -1087,6 +1099,11 @@ bidirectional referenced frames, timeout/cancel and disconnect recovery. A
 reference firmware example building is not evidence of AROS transport.
 
 ### N2 - native AROS WLAN device
+
+Private bridge ABI2 scan now clean-builds with its matched device; ABI1/ABI2
+mixing fails resource validation. This is a transport prerequisite only:
+queued SANA wireless commands and truthful summary-aware security/offload
+integration remain open. Scan-specific source-extracted models are pending.
 
 Current integration state (2026-10-10): the private bridge is build/model
 verified; the separate esp32p4wlan.device now clean-builds (53840B), with
@@ -33379,6 +33396,74 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   and queued SANA wireless requests with re-entry/lifetime gates, then explicit
   per-device offload and safe peer lineage, UI/preferences, DHCP/traffic and
   >=1800s shared-load/recovery acceptance. Full WLAN goal remains open.
+
+### 2026-10-10 - N1S/N2 persistent owner scan implementation and clean builds
+
+- State: private ABI2 scan build verified; independent corrected-deadline source
+  review finds no blocker; dedicated scan models pending. SANA wireless
+  presentation, association/privacy and hardware
+  gates remain open. No acceptance state is closed by this entry.
+- Dirty source: runtime_probe.c/.h, device_bridge.h and sana_device.c after
+  705d1df1e5. Scan uses owner-service context, fresh ledger IDs, blocking exact
+  response542/UID, typed count/records and unchanged output on failure.
+- One aggregate8s budget includes decoding; failed submitted scan cleanup
+  cannot silently preserve an uncertain session. Re-entry gates and disjoint
+  output checks protect live transport state. Named N1E empty-record workaround
+  and local eight-record cap remain explicit, not peer guarantees.
+- Build evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/owner-scan.5fA33U.
+  All affected resource/device objects invalidated before the recorded builds.
+  Initial resource compile succeeded but link failed with missing .link.rsp
+  under the wrong make PATH (exit2); retained core1-build.log is not a pass.
+  GNU make gnubin PATH retry exits0. Core1 owner=1, SDIO_SETUP/INIT/REPLY=1,
+  MAC/SCAN diagnostics=0, board jc1060p470c-v2: resource203704B,
+  SHA256 dfcda1d6ab7d6da3b21747ec613a5b138cd8918cd6d8caf0fcf08d956e2dcc9d.
+  Matched ABI2 device53860B, actual build exit0,
+  SHA256 feec81d5be318eca4087bec14471e9a4cb518dc8aeb3daf040a5b59bfcbb2a1e.
+  Both matched artifacts have no undefined symbols (riscv-aros-nm -u).
+  Clean owner=0 regression exits0, resource187624B,
+  SHA256 5c7b531e431727fce93f2797260122c81339157f309cd3079bd2e3e848517d58;
+  frozen artifacts are not deployed. This uses the same board/setup/init/reply
+  flags, with MAC/SCAN diagnostics=0; it verifies owner-off, not all radio flags
+  at their production defaults.
+  Separate clean build with only P4_BOARD=jc1060p470c-v2 and all radio flags
+  at source defaults exits0: resource176416B,
+  SHA256 5217850787cd6bd438d2d3cfee88a933621f651ee6a1c2fc76da4296449fa5b2.
+  Source runtime_probe.c SHA256
+  61ebf26a44787c75b30ea7da6f4357854575c444936a7a62fccaddc99e33e435;
+  runtime_probe.h ac4d9353e7823c1c5245b0067b7e5a8193df4e099cd8effa4802691a98f6b484;
+  device_bridge.h 5ddd93d1eea4826501d3b334c4f823ebad7856e6c29c440b42d5917955fac561;
+  sana_device.c 8778a39197e926aa3a4eb631cd08ca4de5aa6e844d407d6acf1f1398f6111c01.
+  These resource builds precede the independent deadline-review correction:
+  preemption between remaining-time sampling and exchange could rebase the
+  relative wait. They are retained historical artifacts, not current-source
+  qualification. The correction adds scan start/active state to the context,
+  absolute expiry to owner stopping/poll checks and low-level budget checks,
+  and caps hardware slices to absolute remaining time. Corrected clean Core1
+  resource build exits0:204848B,
+  SHA256 2ff85431e7956ae5d0cebe2bf2926593b22f90988599a455db1e587d40111e06.
+  Corrected runtime_probe.c SHA256
+  78dee557bf1e224521acbc7e8b98d337a9551e9e7271f81a40bac5c808514f6f.
+  Corrected clean all-production-defaults build exits0 and is byte-identical
+  to the earlier176416B default artifact (owner code excluded).
+  Scan-specific models for this correction are pending. Scheduler starvation
+  cannot be given a hard real-time completion guarantee by software checks.
+  Independent correction review confirms absolute checks before transport and
+  in polling, shared finish-path clearing, and no renewed cleanup deadline;
+  no blocking defect found. This is source evidence, not runtime acceptance.
+- Existing bridge202, lifetime782 and datapath14902 source-extracted checks
+  pass each O0/O2 ASan/UBSan on macOS. Exec/radio/SDMMC remain mocked; these
+  do not qualify the new scan path, scheduling, bus fairness or hardware.
+  Owner6723 regression checks each O0/O2 pass on macOS, actual exit0.
+  Corrected bridge202 O0/O2 repeats pass on macOS and network-isolated Linux,
+  actual exit0; bridge fixture adds the new context fields. These existing
+  tests still do not exercise the new scan RPC sequence.
+- Safety: no serial open, reset, flash, SD write or credential transmission.
+  Installed firmware unchanged. ABI bump requires matched modules; protected
+  networks must not be downgraded to open through SSID-only IE fallback.
+- Next: scan-specific models/review, then queued SANA
+  wireless/offload and truthful security presentation, safe C6 lineage,
+  existing GUI/preferences, DHCP/traffic and unchanged sustained hardware gates.
 
 ## Evidence-entry template
 

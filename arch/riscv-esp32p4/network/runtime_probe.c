@@ -169,6 +169,8 @@ struct wifi_probe_context
     ULONG owner_boot_start;
     ULONG owner_open_start;
     BOOL owner_cleanup;
+    ULONG scan_started;
+    BOOL scan_active;
 #endif
 #if P4_WIFI_SDIO_RESET_QUERY
     ULONG rejected_r5;
@@ -268,6 +270,10 @@ static int wifi_budget(void *opaque)
     struct wifi_probe_context *context = opaque;
     return context->host->lock.ss_Owner == FindTask(NULL) &&
            context->host->generation == context->generation &&
+#if P4_WIFI_HOSTED_OWNER
+           (!context->scan_active ||
+            (ULONG)(context->host->now_us() - context->scan_started) < 8000000UL) &&
+#endif
            p4host_budget_ok(context->host);
 }
 
@@ -534,6 +540,9 @@ struct wifi_owner_control {
     struct p4_hosted_owner_result result;
     struct p4_hosted_mac mac;
     struct p4_hosted_tx_result frame_tx;
+    struct p4_hosted_scan_count scan_count;
+    struct p4_wifi_scan_result scan_result;
+    uint16_t scan_capacity;
     uint8_t request[256];
     uint32_t uid;
     int32_t status;
@@ -547,6 +556,7 @@ struct wifi_device_runtime {
     const struct p4_hosted_tx_ops *tx;
     unsigned checksum;
     BOOL servicing;
+    BOOL scanning;
 };
 static int wifi_owner_acquire(void *, uint32_t);
 static int wifi_owner_budget(void *, uint32_t);
@@ -563,7 +573,8 @@ static BOOL wifi_device_send(struct P4WifiBase *base,
         base->owner_task != FindTask(NULL) || !bytes || size < 14 || size > 1518)
         return FALSE;
     runtime = base->runtime;
-    if (!runtime->servicing || runtime->owner->poisoned || runtime->fifo->poisoned ||
+    if (!runtime->servicing || runtime->scanning ||
+        runtime->owner->poisoned || runtime->fifo->poisoned ||
         runtime->owner->pending_active)
         return FALSE;
     p4host_zero(&frame, sizeof(frame));
@@ -610,6 +621,13 @@ static int wifi_owner_acquire(void *opaque, uint32_t wait_us)
 static int wifi_owner_budget(void *opaque, uint32_t usec)
 {
     struct wifi_probe_context *context = opaque;
+    if (context->scan_active) {
+        ULONG elapsed = context->host->now_us() - context->scan_started;
+        if (elapsed >= 8000000UL)
+            return 0;
+        if (usec > 8000000UL - elapsed)
+            usec = 8000000UL - elapsed;
+    }
     return wifi_tx_session(context, context->generation) &&
         context->host->set_budget(context->host, usec);
 }
@@ -623,8 +641,9 @@ static void wifi_owner_release(void *opaque)
 static int wifi_owner_stopping(void *opaque)
 {
     struct wifi_probe_context *context = opaque;
-    return !context->owner_cleanup &&
-        !!(SetSignal(0, 0) & SIGBREAKF_CTRL_C);
+    return (context->scan_active &&
+            (ULONG)(context->host->now_us() - context->scan_started) >= 8000000UL) ||
+        (!context->owner_cleanup && !!(SetSignal(0, 0) & SIGBREAKF_CTRL_C));
 }
 
 static int wifi_owner_event(void *opaque,
@@ -680,10 +699,24 @@ static int wifi_owner_request(struct wifi_probe_context *context,
     else if (id == 257u)
         encoded = p4_hosted_mac_request(control->uid, control->request,
             sizeof(control->request), &written);
+    else if (id == 286u)
+        encoded = p4_hosted_scan_start_request(control->uid, 1,
+            control->request, sizeof(control->request), &written);
+    else if (id == 287u)
+        encoded = p4_hosted_scan_stop_request(control->uid,
+            control->request, sizeof(control->request), &written);
+    else if (id == 288u)
+        encoded = p4_hosted_scan_num_request(control->uid,
+            control->request, sizeof(control->request), &written);
+    else if (id == 289u)
+        encoded = p4_hosted_scan_records_request(control->uid,
+            control->scan_capacity, control->request,
+            sizeof(control->request), &written);
     else
         encoded = p4_hosted_wifi_simple_request(id, control->uid,
             control->request, sizeof(control->request), &written);
     if (!encoded) {
+        p4host_zero(control->request, sizeof(control->request));
         p4_hosted_request_ids_finish(&owner->ids, context->generation,
                                      control->uid, id);
         return 0;
@@ -712,12 +745,157 @@ static int wifi_owner_request(struct wifi_probe_context *context,
         }
         return control->mac.status == 0;
     }
+    if (id == 288u) {
+        if (!p4_hosted_scan_num_response(&rpc, control->uid,
+                                        &control->scan_count)) {
+            p4_hosted_owner_cancel(owner, fifo, context->generation);
+            return 0;
+        }
+        return control->scan_count.status == 0;
+    }
+    if (id == 289u) {
+        if (!p4_hosted_scan_records_response(&rpc, control->uid,
+                control->scan_capacity, &control->scan_result.aps) ||
+            (control->scan_result.aps.status == 0 &&
+             control->scan_result.aps.number != control->scan_capacity)) {
+            p4_hosted_owner_cancel(owner, fifo, context->generation);
+            return 0;
+        }
+        return control->scan_result.aps.status == 0;
+    }
+    if (id == 286u || id == 287u) {
+        if (!p4_hosted_scan_status_response(&rpc, id, control->uid,
+                                           &control->status)) {
+            p4_hosted_owner_cancel(owner, fifo, context->generation);
+            return 0;
+        }
+        return control->status == 0;
+    }
     if (!p4_hosted_wifi_status_response(&rpc, id, control->uid,
                                        &control->status)) {
         p4_hosted_owner_cancel(owner, fifo, context->generation);
         return 0;
     }
     return control->status == 0;
+}
+
+static BOOL wifi_scan_output_valid(struct P4WifiBase *base,
+    struct wifi_device_runtime *runtime, struct p4_wifi_scan_result *output)
+{
+    const void *objects[] = {base, runtime, runtime->context, runtime->owner,
+        runtime->control, runtime->fifo, runtime->context->host, runtime->tx,
+        base->callbacks};
+    const size_t sizes[] = {sizeof(*base), sizeof(*runtime),
+        sizeof(*runtime->context), sizeof(*runtime->owner),
+        sizeof(*runtime->control), sizeof(*runtime->fifo),
+        sizeof(*runtime->context->host), sizeof(*runtime->tx),
+        sizeof(*base->callbacks)};
+    uintptr_t start = (uintptr_t)output, end;
+    unsigned i;
+    if (!output || sizeof(*output) > UINTPTR_MAX - start)
+        return FALSE;
+    end = start + sizeof(*output);
+    for (i = 0; i < sizeof(objects) / sizeof(objects[0]); ++i) {
+        uintptr_t first = (uintptr_t)objects[i];
+        if (!objects[i])
+            continue;
+        if (sizes[i] > UINTPTR_MAX - first ||
+            (start < first + sizes[i] && first < end))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL wifi_device_scan(struct P4WifiBase *base,
+                             struct p4_wifi_scan_result *output)
+{
+    struct wifi_device_runtime *runtime;
+    struct wifi_owner_control *control;
+    ULONG started;
+    BOOL succeeded = FALSE, start_submitted = FALSE;
+    if (!base || !base->ready || !base->runtime ||
+        base->owner_task != FindTask(NULL))
+        return FALSE;
+    runtime = base->runtime;
+    if (!runtime->context || !runtime->context->host || !runtime->owner ||
+        !runtime->control || !runtime->fifo ||
+        !runtime->servicing || runtime->scanning || runtime->context->scan_active ||
+        runtime->owner->poisoned || runtime->fifo->poisoned ||
+        runtime->owner->pending_active || runtime->owner->ids.active_uid ||
+        runtime->owner->generation != runtime->context->generation ||
+        runtime->fifo->generation != runtime->context->generation ||
+        base->client_lock.ss_Owner != FindTask(NULL) ||
+        runtime->context->host->lock.ss_Owner == FindTask(NULL) ||
+        !wifi_scan_output_valid(base, runtime, output))
+        return FALSE;
+    control = runtime->control;
+    /* No unit semaphore may be held by the service caller. Owner exchange
+     * dispatches frame/event callbacks after releasing SDMMC; these callbacks
+     * may recursively take client_lock but must not start another operation. */
+    runtime->scanning = TRUE;
+    runtime->servicing = FALSE;
+    p4host_zero(&control->scan_count, sizeof(control->scan_count));
+    p4host_zero(&control->scan_result, sizeof(control->scan_result));
+    control->scan_capacity = 0;
+    started = wifi_owner_now(runtime->context);
+    runtime->context->scan_started = started;
+    runtime->context->scan_active = TRUE;
+    p4host_zero(&control->result, sizeof(control->result));
+    if (!wifi_owner_request(runtime->context, runtime->owner, control,
+            runtime->fifo, runtime->checksum, 286u,
+            wifi_owner_remaining(runtime->context, started, 8000000UL))) {
+        start_submitted = control->result.submitted != 0;
+        goto finish;
+    }
+    start_submitted = control->result.submitted != 0;
+    if (!wifi_owner_request(runtime->context, runtime->owner, control,
+            runtime->fifo, runtime->checksum, 288u,
+            wifi_owner_remaining(runtime->context, started, 8000000UL)))
+        goto finish;
+    control->scan_result.total_count = control->scan_count.number;
+    if (!control->scan_count.number) {
+        /* Named N1E workaround: the pinned peer rejects empty GetAPRecords.
+         * Skipping it does not fix that peer defect or prove scan completeness. */
+        control->scan_result.empty_records_workaround = TRUE;
+        succeeded = TRUE;
+        goto finish;
+    }
+    control->scan_capacity = control->scan_count.number < P4_HOSTED_SCAN_MAX_RECORDS
+        ? control->scan_count.number : P4_HOSTED_SCAN_MAX_RECORDS;
+    control->scan_result.truncated =
+        control->scan_count.number > P4_HOSTED_SCAN_MAX_RECORDS;
+    succeeded = wifi_owner_request(runtime->context, runtime->owner, control,
+        runtime->fifo, runtime->checksum, 289u,
+        wifi_owner_remaining(runtime->context, started, 8000000UL)) ? TRUE : FALSE;
+finish:
+    /* Decoding and callbacks are part of the aggregate budget as well.
+     * Never publish a late successful reply as an on-time scan result. */
+    if (succeeded && !wifi_owner_remaining(runtime->context, started, 8000000UL)) {
+        succeeded = FALSE;
+        p4_hosted_owner_cancel(runtime->owner, runtime->fifo,
+                               runtime->context->generation);
+    }
+    /* A failure gets no renewed cleanup deadline and never resurrects a
+     * consumed/poisoned session. A successful blocking scan needs no Stop. */
+    if (!succeeded && start_submitted && !runtime->owner->poisoned &&
+        !runtime->fifo->poisoned) {
+        ULONG remaining = wifi_owner_remaining(runtime->context, started, 8000000UL);
+        if (runtime->owner->pending_active || !remaining ||
+            !wifi_owner_request(runtime->context, runtime->owner, control,
+                runtime->fifo, runtime->checksum, 287u, remaining))
+            p4_hosted_owner_cancel(runtime->owner, runtime->fifo,
+                                   runtime->context->generation);
+    }
+    if (succeeded)
+        CopyMem(&control->scan_result, output, sizeof(*output));
+    p4host_zero(&control->scan_count, sizeof(control->scan_count));
+    p4host_zero(&control->scan_result, sizeof(control->scan_result));
+    control->scan_capacity = 0;
+    runtime->context->scan_active = FALSE;
+    runtime->context->scan_started = 0;
+    runtime->scanning = FALSE;
+    runtime->servicing = TRUE;
+    return succeeded;
 }
 
 /* Enter with the bootstrap acquisition held, and always return unowned.
@@ -746,6 +924,7 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     runtime.tx = tx_ops;
     runtime.checksum = checksum;
     runtime.servicing = FALSE;
+    runtime.scanning = FALSE;
     control->rx_ops.context = context;
     control->rx_ops.session_ok = wifi_tx_session;
     control->rx_ops.budget_ok = wifi_budget;
@@ -845,6 +1024,13 @@ static void wifi_owner_service(struct wifi_probe_context *context,
 #endif
 
 #if !P4_WIFI_HOSTED_OWNER
+static BOOL wifi_device_scan(struct P4WifiBase *base,
+                             struct p4_wifi_scan_result *output)
+{
+    (void)base; (void)output;
+    return FALSE;
+}
+
 static BOOL wifi_device_send(struct P4WifiBase *base,
                              const UBYTE *bytes, ULONG size)
 {
@@ -1453,6 +1639,7 @@ static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
     P4WifiBase->attach = wifi_device_attach;
     P4WifiBase->detach = wifi_device_detach;
     P4WifiBase->send_frame = wifi_device_send;
+    P4WifiBase->scan = wifi_device_scan;
     InitSemaphore(&P4WifiBase->client_lock);
     P4WifiBase->client = NULL;
     P4WifiBase->callbacks = NULL;
