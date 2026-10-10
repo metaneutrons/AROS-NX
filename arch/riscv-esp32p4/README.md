@@ -44,6 +44,13 @@ Independent review and primary repeated sanitizer tests pass: command engine
 plus all three trace-off fault modes. The12-sample trace is best-effort and may
 omit stop/finish milestones; it is not recovery acceptance evidence. Hardware
 regression, open-unit recovery and production-branch integration remain open.
+The recovery foundation now separates card identification into an unpublished
+CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
+allocating/publishing a unit and caches its media identity. This shared-device
+change is host tested and RV32 build verified: extracted identification and
+registration tests pass 41 cases/27,369 checks each at O0/O2 with ASan/UBSan.
+Those scripted host tests do not establish hardware or concurrent-open behavior;
+automatic open-unit recovery is not enabled yet.
 The independently implemented ESP-Hosted serial TLV codec now validates
 RPCRsp/RPCEvt envelopes (116 checks each O0/O2 with ASan/UBSan and standalone
 RV32 compilation). It does not parse protobuf, reassemble fragments or execute

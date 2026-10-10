@@ -1,7 +1,7 @@
 #ifndef _SDCARD_BUS_H
 #define _SDCARD_BUS_H
 /*
-    Copyright � 2013, The AROS Development Team. All rights reserved.
+    Copyright (C) 2013, The AROS Development Team. All rights reserved.
     $Id$
 */
 
@@ -25,6 +25,17 @@ struct sdcard_BusUnits
     ULONG                               sdcbu_UnitMax;
     ULONG                               sdcbu_UnitCnt;
     struct sdcard_Unit                  *sdcbu_Units;      /* Units on the bus ( x sdcbu_UnitMax) */
+};
+
+/* Identification snapshot: no Exec unit, listeners, IO requests or boot node.
+ * The caller holds its complete bus transaction through discovery. */
+struct sdcard_CardInfo
+{
+    ULONG cid[4], csd[4];
+    ULONG rca, power, flags;
+    UQUAD capacity;
+    ULONG cylinders, block_words;
+    UBYTE heads, sectors;
 };
 
 struct sdcard_Bus
@@ -175,6 +186,7 @@ struct sdcard_ADMADesc
 
 BOOL FNAME_SDCBUS(RegisterUnit)(struct sdcard_Bus *);
 BOOL FNAME_SDCBUS(StartUnit)(struct sdcard_Unit *);
+BOOL FNAME_SDCBUS(IdentifyCardLocked)(struct sdcard_Bus *, struct sdcard_CardInfo *);
 
 void FNAME_SDCBUS(SoftReset)(UBYTE, struct sdcard_Bus *);
 ULONG FNAME_SDCBUS(GetClockDiv)(ULONG, struct sdcard_Bus *);

@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; common diagnostics host tested/build verified` | ABI6 adds explicit per-request diagnostics; all SD builds now dispatch to the resource, with the legacy diagnostic motor removed. Independent review and repeated sanitizer models pass. In-place open-unit recovery, production integration, radio integration, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; identity snapshot host tested/build verified` | Common diagnostics and staged card identification host tested/build verified, with cached CID/CSD and failure-safe initial registration. In-place open-unit recovery, production integration, radio integration, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -340,6 +340,27 @@ after the failing request releases its host transaction. Preserve open-unit
 identity, change listeners and in-flight request ownership; publish readiness
 only after identification and selection/configuration both succeed. Radio
 reset/reprobe must release host ownership before waiting for SD recovery.
+The recovery-foundation candidate now exposes IdentifyCardLocked with a staged
+CID/CSD/RCA/power/geometry snapshot, without unit allocation or publication.
+Initial registration uses that same path, caches CID/CSD and publishes only
+after complete identification and boot-node construction. Invalid CMD8 echo,
+R1/R6 errors, zero RCA, incompatible OCR voltage and unsupported/inconsistent CSD
+are refused. ACMD41 has at most1000 attempts; this is a finite attempt bound,
+not a claimed end-to-end deadline. Unit count is not incremented on failure.
+Selection/configuration, in-place commit and bus-task recovery remain open.
+Extracted identity/registration tests pass 41 cases/27,369 checks each at O0/O2
+with ASan/UBSan; the one-slot layout is modeled and allocation/DOS APIs are
+mocked. RV32 SD builds pass. This does not verify other boards, silicon, SMP
+Open/Close races or an overall recovery deadline. The new busy-bit check uses
+an unsigned high-bit shift directly, avoiding the legacy shared OCR_BUSY
+macro's undefined signed shift without modifying a public ABI header.
+An independent Open/Close audit confirms Forbid is local-hart only on SMP.
+The host owner does not protect unit flags/counts read by active OpenDevice;
+the in-place recovery step must add a matching brief publication guard to both
+writer and readers. Keep host acquisition and all card waits outside that
+spinlock; use nonblocking ownership/recheck under OpenDevice. Preserve the
+embedded Exec unit, count, listeners and change bookkeeping, not a whole-struct
+copy. Run recovery only after the failed request releases its transaction.
 
 ### N1 - compatible ESP-Hosted transport
 
@@ -27019,6 +27040,71 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   Native fixtures do not prove card stop/reset or physical SD/WLAN coexistence.
   Next: in-place SD recovery and production
   integration before bounded C6 enumeration. No networking gate is closed.
+
+### 2026-10-10 - N0 unpublished SD identity snapshot host tested/build verified
+
+- State: host tested/build verified, parent47f180e531 in
+  /Volumes/Dev/Build/aros-esp32p4-wifi. Shared sdcard.device code now separates
+  identification from allocation/publication; no automatic recovery enabled.
+- Procedure: stage all card fields locally; preserve output on failure; cache
+  initial CID/CSD in the unit. Retain successful SDSC/SDHC geometry formulas,
+  with explicit refusal of unrepresentable/unsupported geometry. Registration
+  avoids early UnitCnt/pointer publication and frees allocation if MakeDosNode
+  fails. Zero-initialize the DOS environment and use actual unit number.
+- Initial JC1060-v2/SMP quick SD build session3772 exits0; all SD objects,
+  including the generic and P4 consumers of changed private headers, rebuilt.
+  An attempted git diff check in the nongit build directory failed; the source
+  worktree check was repeated independently and exits0. Legacy copyright
+  comments in both private headers were normalized to ASCII (C) for safe editing;
+  a conversion that produced mojibake in bus.h was corrected before acceptance.
+- Tests: primary repeated tools/test-sd-identity.py exits0, 41 cases/27,369
+  checks at each O0/O2 with strict C99, ASan/UBSan and 60/30-second compile/run
+  limits. Real source functions and private types are extracted, not copied.
+  Scripted bus, one-slot layout and mocked allocation/MakeDosNode/AddBootNode
+  verify command sequence, geometry, failure output preservation, cached media
+  identity, callbacks and initial publication. No hardware or SMP race coverage.
+  The initial sanitizer run exposed the signed OCR_BUSY high-bit shift; the new
+  production check now uses 1UL << 31. A fixture-only unsigned substitution was
+  removed; final tests use the unmodified extracted source/constants.
+  Fixture SHA-256:6df2c063e39db84eaa41fa7dcf9eee20f48edcae5a654fe535a37d021c176c92;
+  runner:82e169ffd650f64d391954cabc8242112def2536dcdc30df627cc0972310120c.
+  Adapter regression exits0, 35 cases/629 checks each O0/O2 plus all three
+  trace-off fault modes (1 case/30 checks each); ownership/init regression exits0,
+  25 cases/400,338 checks each O0/O2. These are extracted-source host models.
+- Final normal JC1060-v2/SMP quick build session69144 exits0 after rebuilding
+  every generic/P4 consumer of the private headers. Artifact:
+  /Volumes/Dev/Build/aros-esp32p4-wifi-build/bin/esp32p4-riscv-smp/AROS/Devs/sdcard.device,
+  123,936 bytes, SHA-256
+  8bdc0c897f8006cc4e4db0779f7514f075f9b509311a310ff6b8a47c4404cf07;
+  nm -u is empty. It differs from parent47f180's 121,244-byte module, but is
+  identical to the initial snapshot build: comments and the equivalent unsigned
+  busy mask do not change this generated RV32 code. Source bus.c SHA-256
+  af95ea912889f246d46b64a05060705f717feaefb49be5bb61e57e877fea04f9;
+  bus.h ae6848e8b693fc5609d6dfa2f32171da19fd7c11efc9002e1494f470c0916d40;
+  unit.h 1ab179c697a679a029275e8f9bf65ec8312685a1494f78b1b4d860e3a946a8b1.
+- Independent review's claimed SDHC geometry change was withdrawn after checking
+  the original arithmetic (256 words, two 512-byte sectors). Its claimed legacy
+  CMD8 ILLEGAL_COMMAND regression was also withdrawn: the cited response mapping
+  belongs to SPI, while native legacy SD uses no response/timeout; official local
+  ESP-IDF sdmmc_sd.c distinguishes these paths. No protocol change was made from
+  either withdrawn finding. Review covers snapshot/initial registration only.
+- No changed
+  diagnostic defines; private headers are consumed directly by the rebuilt SD
+  module, not copied public SDK headers. Production worktree remains clean at
+  acd62ff237; PR71 is still OPEN/unmerged on this check. Integration remains
+  required before deployment, rather than assuming these changes are already main.
+- Safety: no hardware/serial/flash/SD writes or C6 firmware changes. Existing
+  Exec units/listeners/open counts are not refreshed by the new helper. Changes
+  also affect non-P4 initial registration and require their regression evidence;
+  finite attempts do not establish an end-to-end recovery time budget.
+- Independent Open/Close audit at parent47f180e531 identifies the local-hart
+  Forbid versus second-hart BusTask metadata race. Existing host semaphore alone
+  is insufficient for final in-place publication; matching short spinlocked
+  Open/Close/publication guards and nonblocking StartUnit recheck are required.
+  Recovery must not replace the unit, re-register a boot node, copy listeners
+  or reset open counts. No hardware waits may occur under the metadata guard.
+- Next: strict selection/configuration and
+  task-context same-media recovery without replacing mounted/open unit identity.
 
 ## Evidence-entry template
 

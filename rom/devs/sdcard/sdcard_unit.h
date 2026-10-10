@@ -1,7 +1,7 @@
 #ifndef _SDCARD_UNIT_H
 #define _SDCARD_UNIT_H
 /*
-    Copyright © 2013, The AROS Development Team. All rights reserved.
+    Copyright (C) 2013, The AROS Development Team. All rights reserved.
     $Id$
 */
 
@@ -53,6 +53,11 @@ struct sdcard_Unit
    UBYTE                                sdcu_DevMask;             /* device mask used to simplify device number coding */
    UBYTE                                sdcu_SenseKey;            /* Sense key from ATAPI devices */
    UBYTE                                sdcu_DevType;
+
+    /* Stable media identity for in-place re-enumeration. Never replace the
+     * containing Exec unit to refresh controller/card protocol state. */
+    ULONG                                sdcu_CardCID[4];
+    ULONG                                sdcu_CardCSD[4];
 };
 
 #define Unit(io)                        ((struct sdcard_Unit *)(io)->io_Unit)
