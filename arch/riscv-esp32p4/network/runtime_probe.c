@@ -1,0 +1,248 @@
+/* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
+/* Native, opt-in identification only. The installed radio firmware stays
+ * unchanged. No function enable, IRQ enable, CCCR write or WLAN RPC here. */
+#include <aros/asmcall.h>
+#include <aros/debug.h>
+#include <aros/symbolsets.h>
+#include <exec/resident.h>
+#include <proto/exec.h>
+#include <proto/dos.h>
+#include <dos/dosextens.h>
+#include <utility/tagitem.h>
+#include "../board/board.h"
+#include "../sdmmc/command.h"
+#include "../sdmmc/registers.h"
+#include "../sdmmc/memory.h"
+#include "runtime_probe.h"
+#include "sdio_probe.h"
+#include LC_LIBDEFS_FILE
+
+struct ExecBase *SysBase;
+struct DosLibrary *DOSBase;
+
+#if P4_BOARD_WIFI_SDIO
+#define WIFI_GPIO_BASE  (P4_HPPERIPH1_BASE + 0x20000)
+#define WIFI_IOMUX_BASE (P4_HPPERIPH1_BASE + 0x21000)
+
+struct wifi_probe_context
+{
+    struct P4SDMMCHost *host;
+    ULONG generation;
+    struct P4HostCommandResult last;
+};
+
+static ULONG wifi_read(IPTR address)
+{
+    return *(volatile ULONG *)address;
+}
+
+static void wifi_write(IPTR address, ULONG value)
+{
+    *(volatile ULONG *)address = value;
+    __asm__ volatile("fence iorw, iorw" ::: "memory");
+}
+
+/* ESP-IDF f80e6467, esp32p4 register/hw_ver1 GPIO/IO_MUX contracts.
+ * Only the profile's radio pins are touched; storage pins remain untouched.
+ * Clock output0, CMD input/output1, D0 input/output2. Matrix peripheral OEN.
+ * Internal pulls are not proof of sufficient external electrical pull-ups. */
+static void wifi_pin(unsigned pin, BOOL output, unsigned signal)
+{
+    IPTR mux = WIFI_IOMUX_BASE + 4 + pin * 4;
+    ULONG value = wifi_read(mux);
+    value &= ~((1UL << 7) | (3UL << 10) | (7UL << 12));
+    value |= (1UL << 8) | (1UL << 9) | (2UL << 10) | (1UL << 12);
+    wifi_write(mux, value);
+    /* GPIO_ENABLE W1TC/W1TS touches this pin only. */
+    wifi_write(WIFI_GPIO_BASE + 0x28, 1UL << pin);
+    wifi_write(WIFI_GPIO_BASE + 0x74 + pin * 4,
+               wifi_read(WIFI_GPIO_BASE + 0x74 + pin * 4) & ~(1UL << 2));
+    if (output)
+    {
+        wifi_write(WIFI_GPIO_BASE + 0x558 + pin * 4, signal);
+        wifi_write(WIFI_GPIO_BASE + 0x24, 1UL << pin);
+    }
+}
+
+static void wifi_configure_pins(void)
+{
+    wifi_pin(P4_BOARD_WIFI_CLK_GPIO, TRUE, 0);
+    wifi_pin(P4_BOARD_WIFI_CMD_GPIO, TRUE, 1);
+    wifi_pin(P4_BOARD_WIFI_D0_GPIO, TRUE, 2);
+    wifi_pin(P4_BOARD_WIFI_D1_GPIO, FALSE, 0);
+    wifi_pin(P4_BOARD_WIFI_D2_GPIO, FALSE, 0);
+    wifi_pin(P4_BOARD_WIFI_D3_GPIO, FALSE, 0);
+    wifi_write(WIFI_GPIO_BASE + 0x15c, P4_BOARD_WIFI_CMD_GPIO | (1UL << 7));
+    wifi_write(WIFI_GPIO_BASE + 0x160, P4_BOARD_WIFI_D0_GPIO | (1UL << 7));
+    /* Only slot1 width and DDR bits; no PWREN/UHS voltage field on P4 v1.3. */
+    wifi_write(P4_SDMMC_BASE + P4SD_CTYPE,
+               wifi_read(P4_SDMMC_BASE + P4SD_CTYPE) & ~0x00020002UL);
+    wifi_write(P4_SDMMC_BASE + 0x74,
+               wifi_read(P4_SDMMC_BASE + 0x74) & ~(1UL << 17));
+    wifi_write(P4_SDMMC_BASE + P4SD_RST_N,
+               wifi_read(P4_SDMMC_BASE + P4SD_RST_N) | (1UL << 1));
+}
+
+static int wifi_budget(void *opaque)
+{
+    struct wifi_probe_context *context = opaque;
+    return context->host->generation == context->generation &&
+           p4host_budget_ok(context->host);
+}
+
+static void wifi_yield(void *opaque)
+{
+    (void)opaque;
+    /* Give the powered radio time to become ready. The shared aggregate
+     * budget still caps the entire sequence; do not reset it per poll. */
+    Delay(1);
+}
+
+static int wifi_command(void *opaque, unsigned index, uint32_t argument,
+                         enum p4_sdio_response_type response,
+                         uint32_t error_mask, uint32_t *word)
+{
+    struct wifi_probe_context *context = opaque;
+    struct P4HostCommand request;
+    static const ULONG flags[] = {MMC_RSP_NONE, MMC_RSP_R4, MMC_RSP_R6,
+                                  MMC_RSP_R1, MMC_RSP_R5};
+    if (!wifi_budget(context) || response > P4_SDIO_RESP_R5 ||
+        response < P4_SDIO_RESP_NONE)
+        return 0;
+    p4host_zero(&request, sizeof(request));
+    request.slot = P4_BOARD_WIFI_SLOT;
+    request.generation = context->generation;
+    request.index = index;
+    request.argument = argument;
+    request.response_flags = flags[response];
+    request.response_error_mask = error_mask;
+    if (!context->host->command(context->host, &request, &context->last) ||
+        !wifi_budget(context))
+        return 0;
+    *word = context->last.response[0];
+    return 1;
+}
+
+static void wifi_identify(void)
+{
+    struct P4SDMMCHost *host = OpenResource(P4_SDMMC_HOST_NAME);
+    struct wifi_probe_context context;
+    struct p4_sdio_probe_result result;
+    struct p4_sdio_probe_ops ops;
+    ULONG actual = 0, peer_clock, generation;
+    int success = 0;
+    p4host_zero(&context, sizeof(context));
+    p4host_zero(&ops, sizeof(ops));
+    if (!host || host->abi != P4_SDMMC_HOST_ABI || host->size != sizeof(*host) ||
+        !host->acquire || !host->release || !host->set_budget ||
+        !host->set_clock || !host->command || !host->now_us)
+    {
+        bug("[WiFi] compatible shared host absent\n");
+        return;
+    }
+    if (!host->acquire(host, P4_SDMMC_HOST_WAIT_US))
+    {
+        bug("[WiFi] shared host busy\n");
+        return;
+    }
+    peer_clock = host->slot_clock[0];
+    generation = host->generation;
+    /* No reset of a healthy peer, and no silent reset of a faulted host.
+     * Storage owns initialization/recovery; radio joins only healthy state. */
+    if (!host->initialization_started || !peer_clock || !host->host_div ||
+        host->host_div > 16 || host->dma_faulted || host->dma_length ||
+        !host->set_budget(host, P4_SDMMC_BUDGET_MAX_US))
+    {
+        bug("[WiFi] host not ready for bounded join\n");
+        host->release(host);
+        return;
+    }
+    wifi_configure_pins();
+    context.host = host;
+    context.generation = generation;
+    ops.context = &context;
+    ops.command = wifi_command;
+    ops.budget_ok = wifi_budget;
+    ops.yield = wifi_yield;
+    if (host->set_clock(host, 1, 400000, FALSE, &actual) && wifi_budget(&context))
+        success = p4_sdio_probe_identify(&ops, &result);
+    else
+    {
+        host->set_budget(host, 0);
+        host->release(host);
+        bug("[WiFi] slot1 clock failed\n");
+        return;
+    }
+    /* Snapshot before release; no MMIO or host field inspection afterward. */
+    success = success && host->slot_clock[0] == peer_clock && wifi_budget(&context);
+    host->set_budget(host, 0);
+    host->release(host);
+    bug("[WiFi] slot1 probe ok=%u stage=%u cmd=%u\n",
+         success, result.stage, result.command_index);
+    bug("[WiFi] clock=%u OCR=%08x RCA=%04x fn=%u\n",
+         actual, result.ocr, result.rca, result.functions);
+    bug("[WiFi] last status=%u raw=%08x id=%08x\n",
+         context.last.status, context.last.raw, context.last.idstatus);
+    bug("[WiFi] CCCR=%02x SDIO=%02x bus=%02x cap=%02x\n",
+         result.cccr_revision, result.sdio_revision,
+         result.bus_interface, result.capabilities);
+    bug("[WiFi] enable=%02x ready=%02x CIS=%06x FBR1=%02x\n",
+         result.io_enable, result.io_ready, result.cis_pointer,
+         result.fbr1_interface);
+    /* No inference of firmware/protocol compatibility from SDIO enumeration. */
+}
+#endif
+
+AROS_UFH3(static ULONG, wifi_runner,
+           AROS_UFPA(void *, dummy, A0),
+           AROS_UFPA(LONG, argsize, D0),
+           AROS_UFPA(struct ExecBase *, sysbase, A6))
+{
+    AROS_USERFUNC_INIT
+    (void)dummy; (void)argsize; (void)sysbase;
+#if P4_BOARD_WIFI_SDIO
+    wifi_identify();
+#else
+    bug("[WiFi] board has no supported SDIO radio\n");
+#endif
+    CloseLibrary((struct Library *)DOSBase);
+    return 0;
+    AROS_USERFUNC_EXIT
+}
+
+AROS_UFH3(static APTR, wifi_afterdos,
+           AROS_UFPA(void *, dummy, D0),
+           AROS_UFPA(BPTR, seglist, A0),
+           AROS_UFPA(struct ExecBase *, sysbase, A6))
+{
+    AROS_USERFUNC_INIT
+    (void)dummy; (void)seglist; (void)sysbase;
+    DOSBase = (struct DosLibrary *)OpenLibrary("dos.library", 0);
+    if (!DOSBase)
+        return NULL;
+    if (!CreateNewProcTags(NP_Entry, (IPTR)wifi_runner,
+                           NP_Name, (IPTR)"P4 SDIO identification",
+                           NP_StackSize, 8192, NP_Priority, 0, TAG_DONE))
+    {
+        CloseLibrary((struct Library *)DOSBase);
+        bug("[WiFi] identification process unavailable\n");
+    }
+    return NULL;
+    AROS_USERFUNC_EXIT
+}
+
+const struct Resident wifiProbeResident =
+{
+    RTC_MATCHWORD, (struct Resident *)&wifiProbeResident,
+    (APTR)((const char *)&wifiProbeResident + sizeof(struct Resident)),
+    RTF_AFTERDOS, 1, NT_TASK, -126,
+    "esp32p4 SDIO identification", "esp32p4 SDIO identification 1.0",
+    &wifi_afterdos
+};
+
+static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
+{
+    SysBase = P4WifiBase->sysbase;
+    return TRUE;
+}
+ADD2INITLIB(P4Wifi_Init, 0)

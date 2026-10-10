@@ -65,6 +65,17 @@ repeat completes without another reset/trap/alert. Its cause remains open.
 This is not SD data-integrity/shared-WLAN qualification.
 Installed C6
 communication remains pending. This is not a working WLAN driver.
+An opt-in `P4_WIFI_SDIO_PROBE=1` package runner is build verified: an
+AFTERDOS child process joins the healthy shared host, uses a ten-second
+aggregate budget and reads slot1 SDIO identification/CCCR/FBR registers.
+It never resets the global controller, enables functions/IRQs or replaces C6
+firmware. Independent runtime review found no concrete defect; strict C99
+ASan/UBSan protocol tests pass 4,597 checks each at O0/O2. The 42-member
+package passes checksize and the loader audit. The first complete headless
+hardware run fails at initial CMD5 (no usable OCR/functions). Runtime console
+saturation loses detailed status lines; the precise cause remains unknown.
+The prior package is restored with matching independent full-range readback.
+None of these results demonstrates WLAN.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device

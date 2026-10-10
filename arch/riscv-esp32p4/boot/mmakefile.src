@@ -127,6 +127,11 @@ PKG_LIBS_ARCH := expansion
 PKG_HIDDS     := hiddclass gfx inputclass keyboard mouse fbgfx
 PKG_RES       := bootloader FileSystem lddemon shell shellcommands dosboot
 PKG_RES       += esp32p4sdmmc
+# This identification runner must remain opt-in until real SD/WLAN
+# coexistence is qualified; it never replaces the installed C6 firmware.
+ifeq ($(P4_WIFI_SDIO_PROBE),1)
+PKG_RES       += esp32p4wifi
+endif
 PKG_DEVS      := input keyboard gameport sdcard ramtest
 PKG_HANDLERS  := fat econsole
 

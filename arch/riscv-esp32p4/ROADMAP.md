@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; shared-host SD enumeration observed` | Memory correction passes the strengthened audit and loads all 41 modules on hardware. Registration correction enables SD card enumeration; first capture has pre-AROS ROM WDT reset, 45-second repeat completes without recurrence. SD data integrity, shared-radio regression, real SMP interleavings and C6 compatibility remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 hardware failure` | Opt-in AFTERDOS runner passes build, independent review and 4,597 protocol checks each O0/O2. Complete headless capture fails initial CMD5; detailed status partly lost to console saturation. SD data integrity, shared-radio regression, real SMP interleavings and C6 compatibility remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -192,6 +192,19 @@ allows generated startup to register it; hardware now accepts the host and
 enumerates the card. First corrected capture includes a pre-AROS ROM watchdog
 reset; a 45-second repeat completes without recurrence. The ROM-reset cause,
 SD data integrity and radio coexistence remain open.
+
+Native slot1 identification is now build verified as an opt-in package
+member (`P4_WIFI_SDIO_PROBE=1`). An AFTERDOS process joins only a healthy,
+already-initialized storage host and retains ownership/generation plus one
+ten-second aggregate budget through GPIO/clock and CMD0/5/3/7/52 reads.
+Slot0 clock and width must remain intact; no controller-wide reset or C6 GPIO
+reset, CCCR/FBR writes, function/IRQ enables or firmware replacement. Build,
+strict sanitized protocol tests and independent runtime review pass; the
+first hardware run fails initial CMD5 without usable OCR/functions. Precise
+command status is lost to runtime console saturation; identification is not
+accepted. The prior package is restored with matching full-range readback.
+Enumeration alone cannot prove
+ESP-Hosted compatibility or working WLAN.
 
 Generic same-media recovery is now implemented as an explicit owned operation
 behind three optional task-context backend hooks (needed/prepare/finish).
@@ -29158,6 +29171,97 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   C6 reset GPIO assumption or user sight test. No SD media rehash; integrity
   not inferred. Next: owned bounded native slot1 CMD5/CMD3/CMD7/CMD52 probe
   against unchanged installed C6, plus explicit SD read-integrity regression.
+
+### 2026-10-10 - N0 native slot1 identification implementation started
+
+- Source parent341def9592, feature/esp32p4-wifi. New network resource and
+  AFTERDOS child process, board-selected slot1 matrix CLK18/CMD19/D0=14;
+  remaining radio data pins input/pull-up for one-bit enumeration.
+  Pure bounded protocol routine and scripted tests delegated to Luna; primary
+  owns runtime integration/board MMIO and documentation. Build/tests pending.
+- Register evidence: ESP-IDF commit f80e646743684fb0324fe78defad921653e5cada,
+  components/soc/esp32p4/register/hw_ver1/soc/{gpio_reg,io_mux_reg,sdmmc_reg}.h;
+  hw_ver1 applies to P4 v1.3. GPIO input endpoints1/2 and output0/1/2,
+  normal pad driver, functionGPIO, input/pulls, peripheral output-enable.
+  No PWREN register or UHS voltage-select field is assumed. Shared host owns
+  all controller operations; only slot1 width/DDR/reset-release bits touched.
+- Hardware not yet run. Installed C6 unchanged; no WLAN/SD-data-integrity pass.
+  Next: finish protocol tests, review actual runner/ELF and audit full package,
+  then backed-up/readback-verified headless slot1 identification.
+
+### 2026-10-10 - N0 native identification build and protocol verification
+
+- Parent341def9592, feature/esp32p4-wifi. New esp32p4wifi.resource opt-in
+  AFTERDOS runner transfers one DOS library reference to a child process.
+  Independent readonly runtime/startup/ownership review found no concrete
+  defect. Runtime source SHA-256
+  207630e693e4360ebf549cf7e125f5da22aff110073434a810371a2737e25eac.
+- Pure probe: CMD0/5/3/7 and function0 CMD52 CCCR/FBR reads, maximum1000
+  readiness polls, one shared ten-second aggregate budget, Delay(1) between
+  polls. R1 mask0xfff98000 is a private conservative probe policy, not the
+  existing SD client's policy. No CIS parsing or Hosted-version inference.
+  Primary strict C99 O0/O2 -Wall/-Wextra/-Werror/-Wconversion/
+  -Wsign-conversion/-pedantic ASan/UBSan runs exit0,4,597 checks each.
+- GNU make4 native module build99406 exits0 after two preserved failures:
+  source invoked before delegated file existed; static DOSBase conflicted with
+  proto/dos extern. Module29,676 bytes SHA-256
+  355a75da8284ffc9cc41332786016bd9b64c9b4d67f8e598548743ec54183285.
+  No undefined nonzero ELF symbols or discarded eh_frame dependency.
+- Package14909 exits0, P4_BOARD=jc1060p470c-v2, C3=1/C4=1,
+  P4_WIFI_SDIO_PROBE=1, CPU360/PSRAM200, unchanged XIP core bbc265fad….
+  BSP3,718,232 bytes/42 members, SHA-256
+  0d95d66d5067028fbac54fce88a26ffd11b299c99a133bbdb948f5ff33b3f067.
+  Checksize below4,063,232; strengthened loader audit exits0/all42 accepted.
+- Exact MAC80:f1:b2:d3:3b:a6 identified during backup96112 (exit0).
+  Expanded rollback range0x820000..0xbac000 (0x38c000 bytes), SHA-256
+  74ac45382e7779a4d5660f3892cf01f97a1ef5f4ec67531668f626fb03298a19.
+  Prefix matches onboard baseline BSP8749d489…. New probe deployment/capture
+  is in progress; no hardware identification result claimed here.
+- Evidence root /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10:
+  native-probe-{build,build-ready,build-dosbase,package,audit,tests-o0,tests-o2}.log;
+  native-probe-hardware/{backup.log,before-bsp-range.bin,probe-bsp.pkg}.
+- No SD write, C6 firmware replacement, controller-wide reset, function/IRQ
+  enable or visual acceptance. Next: independent flashed-package readback,
+  first-byte headless capture, retain failure evidence and restore if unsafe.
+
+### 2026-10-10 - N0 native slot1 initial CMD5 failure on JC1060
+
+- Same opt-in BSP0d95d66d… and unchanged corebbc265fad…. BSP write50319 exits0;
+  independent exact-length readback94282 exits0 and matches SHA-256.
+  Only0x820000..0xbac000 touched, below development volume0xc00000.
+- First-byte reset-and-log capture13922 exits0, complete46.026120333s,
+  14,995 bytes, boot.log SHA-256
+  127422c4f52c4fd52ad7fe058ca207c4225fcc883819d0b065d0f3fa2a655ce7.
+  Initial commanded CHIP_USB_UART_RESET followed by pre-AROS
+  HP_SYS_HP_WDT_RESET, savedPC0x4fc10c76. Do not call this a clean boot.
+  AROS subsequently loads42 modules; both harts online, watchdog armed,
+  shared SD host enumerates121,942MB; graphics updates and GT911 polling.
+- Radio reports ok=0/stage2/cmd5, actual slot1clock394,088Hz, OCR0/RCA0/fn0.
+  Nonblocking runtime console drops last-status/raw/id and CCCR detail lines;
+  zero initialized fields do not prove a received all-zero card response.
+  CMD0 was completed before CMD5 failure. No later trap/alert/Guru or further
+  ROM banner observed in this finite capture. No sector-integrity or visual pass.
+- Failure remains open: distinguish matrix/electrical/startup prerequisites,
+  actual command status and installed-C6 behavior. No C6 firmware replacement,
+  reset GPIO assumption, SD write or function enable. Full verified baseline
+  range restored (write99356 exit0); independent full-range readback37875
+  exits0 and matches74ac4538…. Core, volume and C6 firmware unchanged.
+- Restored first-byte capture43231 exits0, complete20.808715875s/14,173 bytes,
+  SHA-256955b489662204cce44b68d78e0a3d1b35dfe73462db9131d73ad728a939941fa.
+  One commanded USB reset,41 modules, two harts, watchdog armed and SD capacity;
+  no subsequent ROM/trap/alert/Guru observed. This is a short headless baseline
+  check, not storage-integrity, visual or rail-off qualification.
+- Pinned vendor6304eddef32a33aa9d9a85e971e39dfb24c3cca3 supplies a C6 SDIO
+  slave example, not a P4 master startup example. Slave Kconfig pins refer to
+  C6-side pads, not P4 GPIO numbers. app_main.c initializes interface/SDIO slave;
+  sdio_slave_api.c initializes buffers/interrupts before starting the slave.
+  Reset config-1 uses slave EN; another configured reset pin is an input that
+  invokes esp_restart after a sufficiently long pulse. This does not identify
+  board wiring, effective installed firmware or authorize its replacement.
+- Evidence native-probe-hardware/{write.log,readback-bsp.bin,readback-bsp.log,
+  boot.log,boot-timing.jsonl} under the preceding evidence root. Preserve this
+  failed experiment. Next: paced complete status reporting plus pinned vendor
+  C6 startup comparison, not transport/RPC work past a failed enumeration gate.
 
 ## Evidence-entry template
 
