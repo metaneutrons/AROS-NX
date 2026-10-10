@@ -48,4 +48,14 @@ int p4_hosted_rpc_decode(const uint8_t *bytes, size_t size,
 int p4_hosted_rpc_encode(uint8_t *bytes, size_t capacity,
                          const struct p4_hosted_rpc *rpc, size_t *written);
 
+/* Separate private extension codec. Accepts ONLY discovery request350 or
+ * response606 with matching type/nonzero UID. It never widens the ordinary
+ * RPC APIs or normal WLAN submission allowlist. Capability, owner epoch and
+ * lease admission remain caller responsibilities; decoding is not admission.
+ * Same bounds, alias refusal and unchanged-output contract as above. */
+int p4_hosted_rpc_decode_board_discovery(const uint8_t *bytes, size_t size,
+                                         struct p4_hosted_rpc *rpc);
+int p4_hosted_rpc_encode_board_discovery(uint8_t *bytes, size_t capacity,
+    const struct p4_hosted_rpc *rpc, size_t *written);
+
 #endif

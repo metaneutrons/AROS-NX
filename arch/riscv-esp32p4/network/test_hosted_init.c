@@ -33,6 +33,24 @@ static const uint8_t full_init[] = {
     P4_HOSTED_INIT_TAG_EXTENDED_CAPABILITIES, 4, 0x10, 0, 0, 0
 };
 
+/* Discovery appears before the required legacy fields in this fixture to
+ * verify that capability interpretation is independent of TLV order. */
+static const uint8_t discovery_first_init[] = {
+    P4_HOSTED_INIT_EVENT_TYPE, 9,
+    P4_HOSTED_INIT_TAG_BOARD_DISCOVERY, 1,
+    P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1,
+    P4_HOSTED_INIT_TAG_CHIP_ID, 1, P4_HOSTED_INIT_CHIP_ESP32C6,
+    P4_HOSTED_INIT_TAG_CAPABILITIES, 1, 0x0d
+};
+
+static const uint8_t discovery_last_init[] = {
+    P4_HOSTED_INIT_EVENT_TYPE, 9,
+    P4_HOSTED_INIT_TAG_CAPABILITIES, 1, 0x0d,
+    P4_HOSTED_INIT_TAG_CHIP_ID, 1, P4_HOSTED_INIT_CHIP_ESP32C6,
+    P4_HOSTED_INIT_TAG_BOARD_DISCOVERY, 1,
+    P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1
+};
+
 static uint32_t random_state = UINT32_C(0x91e10da5);
 
 static uint32_t next_random(void)
@@ -67,6 +85,47 @@ static void test_observed_c6_event(void)
     CHECK((result.capabilities & P4_HOSTED_INIT_CAP_WLAN_SDIO) != 0);
     CHECK(result.present == (P4_HOSTED_INIT_HAS_CAPABILITIES |
                              P4_HOSTED_INIT_HAS_CHIP_ID));
+    CHECK(!p4_hosted_init_has_board_discovery(&result));
+}
+
+static void test_board_discovery_capability(void)
+{
+    struct p4_hosted_init result;
+    uint8_t event[sizeof discovery_last_init];
+
+    CHECK(p4_hosted_init_parse(discovery_first_init,
+                               sizeof discovery_first_init, &result));
+    CHECK(result.board_discovery_version ==
+          P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1);
+    CHECK((result.present & P4_HOSTED_INIT_HAS_BOARD_DISCOVERY) != 0);
+    CHECK(p4_hosted_init_has_board_discovery(&result));
+
+    CHECK(p4_hosted_init_parse(discovery_last_init,
+                               sizeof discovery_last_init, &result));
+    CHECK(p4_hosted_init_has_board_discovery(&result));
+
+    /* Preserve zero and unknown versions as inventory facts without enabling
+     * the version-1 capability. */
+    memcpy(event, discovery_last_init, sizeof event);
+    event[sizeof event - 1u] = 0;
+    CHECK(p4_hosted_init_parse(event, sizeof event, &result));
+    CHECK(result.board_discovery_version == 0);
+    CHECK((result.present & P4_HOSTED_INIT_HAS_BOARD_DISCOVERY) != 0);
+    CHECK(!p4_hosted_init_has_board_discovery(&result));
+
+    memcpy(event, discovery_last_init, sizeof event);
+    event[sizeof event - 1u] = 2;
+    CHECK(p4_hosted_init_parse(event, sizeof event, &result));
+    CHECK(result.board_discovery_version == 2);
+    CHECK(!p4_hosted_init_has_board_discovery(&result));
+
+    memcpy(event, discovery_last_init, sizeof event);
+    event[7] = P4_HOSTED_INIT_CHIP_ESP32C3;
+    CHECK(p4_hosted_init_parse(event, sizeof event, &result));
+    CHECK(result.board_discovery_version ==
+          P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1);
+    CHECK(!p4_hosted_init_has_board_discovery(&result));
+    CHECK(!p4_hosted_init_has_board_discovery(NULL));
 }
 
 static void test_all_known_fields_and_unknown_tag(void)
@@ -182,9 +241,10 @@ static void test_malformed_tlvs(void)
             P4_HOSTED_INIT_TAG_TEST_RAW_TP,
             P4_HOSTED_INIT_TAG_RX_QUEUE_SIZE,
             P4_HOSTED_INIT_TAG_TX_QUEUE_SIZE,
-            P4_HOSTED_INIT_TAG_EXTENDED_CAPABILITIES
+            P4_HOSTED_INIT_TAG_EXTENDED_CAPABILITIES,
+            P4_HOSTED_INIT_TAG_BOARD_DISCOVERY
         };
-        static const uint8_t lengths[] = { 1, 1, 1, 1, 1, 4 };
+        static const uint8_t lengths[] = { 1, 1, 1, 1, 1, 4, 1 };
         size_t i;
 
         for (i = 0; i < sizeof tags; ++i) {
@@ -287,6 +347,7 @@ static void test_random_inputs(void)
 int main(void)
 {
     test_observed_c6_event();
+    test_board_discovery_capability();
     test_all_known_fields_and_unknown_tag();
     test_maximum_bounded_unknown_tag();
     test_envelope_and_truncation();

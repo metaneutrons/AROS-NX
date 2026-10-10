@@ -17,7 +17,9 @@ The startup advertisement must explicitly identify this extension and
 its version before a query is permitted. A stock peer receives no speculative
 request. Advertisement, schema generation and a serialized handler are included
 in the separate C6 candidate recipe. Native owner negotiation/binding remains
-open; the schema patch or inventory codec alone does not provide these features.
+open; the native INIT parser and separate private discovery codecs now exist,
+but neither issues a request or binds the live owner epoch/lease. The schema
+patch or inventory codec alone does not provide these features.
 
 ## Canonical inventory payload
 

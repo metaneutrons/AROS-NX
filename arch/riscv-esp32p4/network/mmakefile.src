@@ -6,7 +6,7 @@ include $(SRCDIR)/arch/riscv-esp32p4/board/board.mk
 USER_LDFLAGS := -static
 
 # Opt-in native identification/setup/INIT gate, not a working SANA-II device.
-USER_CPPFLAGS := $(P4_BOARD_CPPFLAGS)
+USER_CPPFLAGS := $(P4_BOARD_CPPFLAGS) -I$(SRCDIR)/workbench/tools/ESP32Board
 ifeq ($(P4_WIFI_SDIO_SETUP),1)
 USER_CPPFLAGS += -DP4_WIFI_SDIO_SETUP=1
 endif
@@ -38,7 +38,7 @@ USER_CPPFLAGS += -DP4_WIFI_SDIO_RESET_QUERY=1
 endif
 %build_module mmake=kernel-esp32p4wifi-probe \
     modname=esp32p4wifi modtype=resource version=$(AROS_TARGET_PLATFORM) \
-    files="runtime_probe sdio_probe sdio_commands sdio_setup sdio_restore sdio_reset_query hosted_fifo hosted_wire hosted_init hosted_open hosted_config hosted_tx hosted_rpc hosted_serial hosted_mac hosted_epoch_reassembly hosted_request_ids hosted_inbox hosted_frames hosted_rx hosted_pending hosted_owner hosted_control hosted_wifi hosted_startup hosted_scan hosted_scan_sequence hosted_association hosted_link"
+    files="runtime_probe sdio_probe sdio_commands sdio_setup sdio_restore sdio_reset_query hosted_fifo hosted_wire hosted_init hosted_open hosted_config hosted_tx hosted_rpc hosted_discovery ../boardtool/discovery ../boardtool/discovery_wire hosted_serial hosted_mac hosted_epoch_reassembly hosted_request_ids hosted_inbox hosted_frames hosted_rx hosted_pending hosted_owner hosted_control hosted_wifi hosted_startup hosted_scan hosted_scan_sequence hosted_association hosted_link"
 # Private resource bridge is defined by this port, not generated public ABI.
 # Build separately; packaging remains an explicit qualification step.
 %build_module mmake=kernel-esp32p4wlan-device \

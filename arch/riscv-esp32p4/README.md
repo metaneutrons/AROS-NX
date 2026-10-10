@@ -42,7 +42,15 @@ serial reassembly capacity before unpacking and releases requests on error.
 Actual handler/generated-code host tests pass145 checks/10 cases each O0/O2;
 the collector is stubbed and live IDF dispatch/transport is not qualified. It
 rejects mismatched UID/type/version/nonce and reports failure without inventory.
-Native owner transport binding/negotiation remain open. No new RPC is sent
+Native INIT parsing now retains the advertised discovery version and supports
+version1 only on C6/SDIO. Separate native discovery-envelope functions leave
+ordinary RPC ranges unchanged. The native request codec requires the supported
+capability; response decoding validates ID/type/UID, echoed nonce, status and
+canonical inventory. This is not live epoch/lease admission. Fresh Core1 RV32
+resource builds and passes the loader audit. Generated-reference host tests pass
+1854 checks/12 cases each O0/O2 under ASan/UBSan, including32-entry inventory
+and maximum UID/nonce. These are codec tests, not runtime or stack qualification.
+Native owner transport binding remains open. No new RPC is sent
 by the native P4 code; UPDATE-C6 remains unavailable.
 CLI examples (not yet executed on hardware):
 

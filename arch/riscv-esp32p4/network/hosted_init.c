@@ -97,6 +97,12 @@ int p4_hosted_init_parse(const uint8_t *event, size_t event_size,
                 return 0;
             parsed.extended_capabilities = read_le32(value);
             break;
+        case P4_HOSTED_INIT_TAG_BOARD_DISCOVERY:
+            field = P4_HOSTED_INIT_HAS_BOARD_DISCOVERY;
+            if (tag_size != 1u)
+                return 0;
+            parsed.board_discovery_version = value[0];
+            break;
         default:
             /* The pinned host skips unknown tags by their bounded TLV size. */
             break;
@@ -120,4 +126,16 @@ int p4_hosted_init_parse(const uint8_t *event, size_t event_size,
 
     *result = parsed;
     return 1;
+}
+
+int p4_hosted_init_has_board_discovery(const struct p4_hosted_init *init)
+{
+    const uint8_t required = P4_HOSTED_INIT_HAS_BOARD_DISCOVERY |
+        P4_HOSTED_INIT_HAS_CAPABILITIES | P4_HOSTED_INIT_HAS_CHIP_ID;
+
+    return init && (init->present & required) == required &&
+        init->board_discovery_version ==
+            P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1 &&
+        init->chip_id == P4_HOSTED_INIT_CHIP_ESP32C6 &&
+        (init->capabilities & P4_HOSTED_INIT_CAP_WLAN_SDIO) != 0;
 }

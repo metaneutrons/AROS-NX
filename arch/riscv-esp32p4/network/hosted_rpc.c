@@ -3,13 +3,16 @@
 
 #define RPC_MAX_FIELD UINT32_C(0x1fffffff)
 
-static int rpc_id_matches_type(uint32_t msg_type, uint32_t msg_id)
+static int rpc_id_matches_type(uint32_t msg_type, uint32_t msg_id,
+                               unsigned discovery)
 {
     switch (msg_type) {
     case P4_HOSTED_RPC_TYPE_REQUEST:
-        return msg_id > 256u && msg_id < 350u;
+        return (msg_id > 256u && msg_id < 350u) ||
+               (discovery && msg_id == 350u);
     case P4_HOSTED_RPC_TYPE_RESPONSE:
-        return msg_id > 512u && msg_id < 606u;
+        return (msg_id > 512u && msg_id < 606u) ||
+               (discovery && msg_id == 606u);
     case P4_HOSTED_RPC_TYPE_EVENT:
         return msg_id > 768u && msg_id < 777u;
     default:
@@ -134,15 +137,16 @@ static int skip_unknown(const uint8_t *bytes, size_t size, size_t *offset,
     }
 }
 
-static int is_rpc_payload_field(uint32_t field)
+static int is_rpc_payload_field(uint32_t field, unsigned discovery)
 {
     return (field > 256u && field < 350u) ||
            (field > 512u && field < 606u) ||
-           (field > 768u && field < 777u);
+           (field > 768u && field < 777u) ||
+           (discovery && (field == 350u || field == 606u));
 }
 
-int p4_hosted_rpc_decode(const uint8_t *bytes, size_t size,
-                         struct p4_hosted_rpc *rpc)
+static int rpc_decode(const uint8_t *bytes, size_t size,
+                       struct p4_hosted_rpc *rpc, unsigned discovery)
 {
     uint32_t msg_type = 0;
     uint32_t msg_id = 0;
@@ -201,7 +205,7 @@ int p4_hosted_rpc_decode(const uint8_t *bytes, size_t size,
             continue;
         }
 
-        if (is_rpc_payload_field(field)) {
+        if (is_rpc_payload_field(field, discovery)) {
             if (wire_type != 2u || seen_payload ||
                 !read_varint(bytes, size, &offset, &value) ||
                 value > (uint64_t)(size - offset) ||
@@ -220,7 +224,8 @@ int p4_hosted_rpc_decode(const uint8_t *bytes, size_t size,
     }
 
     if (!seen_type || !seen_id || !seen_payload ||
-        !rpc_id_matches_type(msg_type, msg_id) ||
+        !rpc_id_matches_type(msg_type, msg_id, discovery) ||
+        (discovery && msg_id != 350u && msg_id != 606u) ||
         payload_field != msg_id ||
         (msg_type != P4_HOSTED_RPC_TYPE_EVENT && uid == 0))
         return 0;
@@ -233,8 +238,9 @@ int p4_hosted_rpc_decode(const uint8_t *bytes, size_t size,
     return 1;
 }
 
-int p4_hosted_rpc_encode(uint8_t *bytes, size_t capacity,
-                         const struct p4_hosted_rpc *rpc, size_t *written)
+static int rpc_encode(uint8_t *bytes, size_t capacity,
+                       const struct p4_hosted_rpc *rpc, size_t *written,
+                       unsigned discovery)
 {
     const uint8_t *payload;
     size_t payload_size;
@@ -245,7 +251,8 @@ int p4_hosted_rpc_encode(uint8_t *bytes, size_t capacity,
     if (!bytes || !rpc || !written ||
         (rpc->payload_size != 0 && !rpc->payload) ||
         rpc->payload_size > P4_HOSTED_RPC_MAX_SIZE ||
-        !rpc_id_matches_type(rpc->msg_type, rpc->msg_id) ||
+        !rpc_id_matches_type(rpc->msg_type, rpc->msg_id, discovery) ||
+        (discovery && rpc->msg_id != 350u && rpc->msg_id != 606u) ||
         (rpc->msg_type != P4_HOSTED_RPC_TYPE_EVENT && rpc->uid == 0))
         return 0;
 
@@ -283,4 +290,28 @@ int p4_hosted_rpc_encode(uint8_t *bytes, size_t capacity,
 
     *written = offset;
     return 1;
+}
+
+int p4_hosted_rpc_decode(const uint8_t *bytes, size_t size,
+                         struct p4_hosted_rpc *rpc)
+{
+    return rpc_decode(bytes, size, rpc, 0u);
+}
+
+int p4_hosted_rpc_encode(uint8_t *bytes, size_t capacity,
+                         const struct p4_hosted_rpc *rpc, size_t *written)
+{
+    return rpc_encode(bytes, capacity, rpc, written, 0u);
+}
+
+int p4_hosted_rpc_decode_board_discovery(const uint8_t *bytes, size_t size,
+                                         struct p4_hosted_rpc *rpc)
+{
+    return rpc_decode(bytes, size, rpc, 1u);
+}
+
+int p4_hosted_rpc_encode_board_discovery(uint8_t *bytes, size_t capacity,
+    const struct p4_hosted_rpc *rpc, size_t *written)
+{
+    return rpc_encode(bytes, capacity, rpc, written, 1u);
 }
