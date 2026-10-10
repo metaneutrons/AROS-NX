@@ -120,6 +120,7 @@ gate: compensated output is not the native display contract.
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; MAC initialization ordering failure; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; GetMAC returns correlated0x3001 (WiFi not initialized), so overall diagnostic fails. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
 | N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; runtime initialization deployed, fresh-epoch gate pending` | Existing FIFO reused with owned bodies/exact correlation. Control3184/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Generation-bound reassembly1318 isolated checks each O0/O2 sanitized pass; now linked into control with coupled epoch/deadline/failure tests and fresh113900B module build. Fragmentation integration not deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Download mode retained pending coordinated fresh C6 startup; no initialized MAC gate yet. No persistent UID allocator or WLAN acceptance. Original verified baseline recoverable. |
+| N1S | Typed native scan and runtime acceptance | `codec host tested/RV32 compiled; oracle and runtime pending` | Default-config blocking/nonblocking start, stop, AP count and owned AP/country/HE records pass230 checks each O0/O2 sanitized, independent source review and freestanding RV32 compile. Local eight-record/4096-byte response bounds, exact ID/UID and binary lengths. No runtime linkage, deployed package or native hardware scan pass. Scan wait policy must match full scan duration under the aggregate deadline; zero-AP vendor workaround stays named in N1E. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -589,6 +590,16 @@ unfinished message fails rather than silently discarding it. The fresh113900B
 module and standalone RV32 objects compile without libc imports. This is model
 and build evidence, not hardware acceptance; the deployed6e3d9e577a candidate
 does not contain this integration and still awaits coordinated fresh startup.
+
+Typed scan codec (N1S,2026-10-10): default-config ScanStart286 accepts block0/1;
+ScanStop287, GetApNum288 and GetApRecords289 have bounded typed bodies. Exact
+response ID/UID, signed int32/default-zero status and owned AP/country/HE
+records pass230 checks each O0/O2 sanitized and freestanding RV32 compile.
+Binary SSID length is at most32, BSSID exactly6 and country code at most3;
+the local eight-record count must match the repeated records and capacity.
+The official reference uses blocking scan. Future runtime integration must
+allow its full bounded duration: the current100-poll/20ms control wait is not
+an accepted scan budget. No oracle/runtime/package/hardware scan pass yet.
 
 After the user's reconnection confirmation, a passive20.061s capture on
 2026-10-10 observes advancing JC1060 touch heartbeats only. N1/N1C status
@@ -31939,6 +31950,43 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   initialization candidate and recoverable backups unchanged. Native scan
   codec work remains separate. Next: coordinated initialization hardware gate,
   then source/oracle-qualified native scan and association/data/SANA-II gates.
+
+### 2026-10-10 - N1S typed native scan codec, isolated tests and RV32 compile
+
+- Source:75350a67a8 plus new hosted_scan.c/h, test_hosted_scan.c and
+  tools/test-hosted-scan.sh. No runtime or mmake linkage change in this step.
+- Protocol: pinned d518 schema/source profile, request IDs286..289 and exact
+  response/UID matching. Default NULL scan config, explicit config_set=0,
+  block0/1; no credentials or SSID output. Count0..65535; requested record
+  count1..8, response repeated/count consistency and owned binary AP records.
+  All named country/HE values retained. Known duplicates, wrong wire types,
+  malformed/overflow/group/alias inputs refuse without output mutation.
+- Review corrections: full private result is zeroed before publication,
+  eliminating indeterminate padding; redundant eight-record scratch removed.
+  Reference.c uses blocking scan, so both bool modes are supported instead of
+  hardcoding asynchronous mode. Encoder scratch reduced4096->64 bytes; only
+  supported request bodies up to4 bytes accepted. Native scan runtime still
+  needs a longer bounded wait than100 DOS-tick polls, not per-RPC renewal.
+- Procedure: primary network-disabled Linux builder O0/O2 strict C99
+  ASan/UBSan rerun exits0,230 checks each. Independent review confirms the
+  schema mapping and corrections; host-default stack-canary imports exposed
+  a runner issue, fixed with explicit-fno-stack-protector for the freestanding
+  import check. Script executable bit set. No test result implies radio use.
+- RV32 GCC16.2 strict freestanding compilation exits0; only undefined import
+  p4_hosted_rpc_encode. hosted-scan-final.o17456B SHA-256
+  2a247c72ed227859930702170936f04b0d8f529ecb01a0ee9a3af28f49b60a3c.
+  Reported local static frames: encoder144B (previous4176B), records1056B;
+  these are not full call-chain or hardware stack-high-water measurements.
+- Evidence:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/native-scan-codec.lCCVaO/.
+  scan-final-model.log SHA-256
+  91ebebd439f0fe501ed44bcca6c43face23788e124452ea61180a8dc6f02637c.
+  Earlier object/hash/stack report retained to show the scratch correction.
+- Safety: no serial/reset/flash/SD/C6/reference-tree mutation. Deployed
+  initialization candidate and backups unchanged. Oracle qualification remains
+  a separate pending change. Next: actual initialization gate after fresh
+  physical readiness; qualify and integrate blocking native scan, then
+  association, frames, SANA-II/DHCP and coexistence/recovery.
 
 ## Evidence-entry template
 

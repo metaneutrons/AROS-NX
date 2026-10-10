@@ -39,6 +39,13 @@ up to4096 protobuf bytes; requests remain capped at256 bytes. The fresh113900B
 module builds, but this integration is not in the deployed initialization
 package. Native scan and WLAN acceptance remain open.
 
+Typed scan requests/responses now pass230 checks each O0/O2 with ASan/UBSan
+and standalone freestanding RV32 compilation. Default-config ScanStart accepts
+blocking or nonblocking mode; owned results retain all pinned AP/country/HE
+fields with binary string lengths and a local eight-record bound. Independent
+protobuf-c oracle qualification and runtime integration remain pending. This
+codec is neither linked into the deployed package nor a hardware scan pass.
+
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection
 also exposed and corrected the default P4>=3.x target; the corrected build
