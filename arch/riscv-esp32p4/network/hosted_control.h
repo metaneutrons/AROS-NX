@@ -7,6 +7,10 @@
 #include "hosted_epoch_reassembly.h"
 
 #define P4_HOSTED_CONTROL_MAX_POLLS 100u
+/* ScanStart may need to return only after a blocking scan has completed. A
+ * 500-poll cap covers a nominal 20 ms caller tick (10 s); budget_ok remains
+ * the authoritative aggregate deadline and is checked throughout. */
+#define P4_HOSTED_CONTROL_MAX_SCAN_POLLS 500u
 #define P4_HOSTED_CONTROL_MAX_RPC_SIZE 256u
 #define P4_HOSTED_CONTROL_MAX_RESPONSE_SIZE HOSTED_SERIAL_PROTOBUF_MAX
 enum p4_hosted_control_error {
@@ -59,13 +63,15 @@ int p4_hosted_control_get_mac(struct p4_hosted_fifo *state, uint32_t generation,
     uint32_t uid, uint8_t *buffer, size_t capacity,
     struct p4_hosted_control_result *result);
 /* Exchange one encoded RPC request on the already-open transport. Currently
- * allowlisted: GetMAC, SetMode, WiFiInit/Deinit/Start/Stop. Request and output
- * ranges must also be disjoint. A success means a correlated complete response
- * envelope, NOT a successful remote status: the caller must validate the owned
- * response body with its operation-specific codec. Same bounds/deadline/no-
- * retry/UID-consumption rules as above. Requests remain at most256 bytes;
- * responses are bounded by4096 protobuf bytes including envelope overhead.
- * No persistent UID allocator. */
+ * allowlisted: GetMAC, SetMode, WiFiInit/Deinit/Start/Stop and ScanStart/Stop/
+ * GetApNum/GetApRecords. Request and output ranges must also be disjoint. A
+ * success means a correlated complete response envelope, NOT a successful
+ * remote status: the caller must validate the owned response body with its
+ * operation-specific codec. ScanStart alone has a 500-poll cap; all other
+ * exchanges retain 100 polls. The caller's aggregate deadline remains
+ * authoritative. Same no-retry/UID-consumption rules as above. Requests remain
+ * at most256 bytes; responses are bounded by4096 protobuf bytes including
+ * envelope overhead. No persistent UID allocator. */
 int p4_hosted_control_exchange(struct p4_hosted_fifo *state, uint32_t generation,
     const struct p4_hosted_open_ops *rx_ops,
     const struct p4_hosted_tx_ops *tx_ops, unsigned checksum_enabled,

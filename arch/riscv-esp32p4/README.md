@@ -11,7 +11,7 @@ native AROS Wi-Fi remains open.
 The native control foundation now supports bounded sequential Init/SetMode/
 Start/Stop/Deinit/GetMAC envelopes on one existing FIFO ledger, with owned
 response bodies and exact UID/operation correlation. Linux O0/O2 sanitizer
-models pass3,184 control,2,614 TX,1,245,361 FIFO and716 OPEN checks each.
+models pass3,529 control,2,614 TX,1,245,361 FIFO and716 OPEN checks each.
 Unread acknowledged RX failures invalidate the session; stale-generation calls
 cannot alter a replacement ledger. Standalone RV32 objects compile without
 libc imports. The full typed WiFiInit body and SetMode/Start/Stop/Deinit status
@@ -43,9 +43,15 @@ Typed scan requests/responses now pass230 checks each O0/O2 with ASan/UBSan
 and standalone freestanding RV32 compilation. Default-config ScanStart accepts
 blocking or nonblocking mode; owned results retain all pinned AP/country/HE
 fields with binary string lengths and a local eight-record bound. Independent
-pinned protobuf-c oracle qualification passes1068 checks each O0/O2 sanitized;
-runtime integration qualification remains pending. This
-codec is neither linked into the deployed package nor a hardware scan pass.
+pinned protobuf-c oracle qualification passes1068 checks each O0/O2 sanitized.
+The opt-in native scan runtime now builds after successful initialization/MAC,
+with bounded blocking scan, count, owned records and conservative failure
+cleanup. Its control regression passes3529 checks each O0/O2; the dedicated
+sequence models pass537 checks each O0/O2 with ASan/UBSan. These use actual
+scan/RPC codecs with modeled control exchanges, not physical hardware.
+ScanStart alone may poll500 times but remains
+under the same8s aggregate deadline; other RPCs retain100 polls. The135284B
+scan-enabled module is not packaged/deployed and is not a hardware scan pass.
 
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection

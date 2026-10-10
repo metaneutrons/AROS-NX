@@ -45,6 +45,12 @@ static const struct p4_hosted_wifi_config wifi_reference_profile = {
     UINT64_C(129), 1, 7, INT32_C(0x1f2f3f4f)
 };
 #endif
+#if P4_WIFI_HOSTED_SCAN
+#if !P4_WIFI_HOSTED_MAC
+#error "Hosted scan requires successful typed WiFi initialization and MAC"
+#endif
+#include "hosted_scan_sequence.h"
+#endif
 #if P4_WIFI_SDIO_RESET_QUERY
 #include "sdio_reset_query.h"
 #if P4_WIFI_SDIO_SETUP
@@ -458,6 +464,10 @@ static void wifi_identify(void)
     struct p4_hosted_startup *wlan = NULL;
     int mac_attempted = 0, mac_ok = 0;
 #endif
+#if P4_WIFI_HOSTED_SCAN
+    struct p4_hosted_scan_sequence *scan = NULL;
+    int scan_attempted = 0, scan_ok = 0;
+#endif
     struct P4HostCommandResult identify_last;
     ULONG actual = 0, peer_clock, generation;
     ULONG before[WIFI_SNAPSHOT_WORDS], after[WIFI_SNAPSHOT_WORDS];
@@ -502,6 +512,16 @@ static void wifi_identify(void)
         bug("[WiFi] WLAN metadata unavailable\n");
         return;
     }
+#if P4_WIFI_HOSTED_SCAN
+    scan = AllocVec(sizeof(*scan), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!scan)
+    {
+        FreeVec(wlan);
+        FreeVec(open_buffer);
+        bug("[WiFi] scan metadata unavailable\n");
+        return;
+    }
+#endif
 #endif
 #endif
     if (!host->acquire(host, P4_SDMMC_HOST_WAIT_US))
@@ -510,6 +530,9 @@ static void wifi_identify(void)
         FreeVec(open_buffer);
 #if P4_WIFI_HOSTED_MAC
         FreeVec(wlan);
+#if P4_WIFI_HOSTED_SCAN
+        FreeVec(scan);
+#endif
 #endif
 #endif
         bug("[WiFi] shared host busy\n");
@@ -529,14 +552,17 @@ static void wifi_identify(void)
 #endif
                           ))
     {
-        bug("[WiFi] host not ready for bounded join\n");
         host->release(host);
 #if P4_WIFI_HOSTED_INIT
         FreeVec(open_buffer);
 #if P4_WIFI_HOSTED_MAC
         FreeVec(wlan);
+#if P4_WIFI_HOSTED_SCAN
+        FreeVec(scan);
 #endif
 #endif
+#endif
+        bug("[WiFi] host not ready for bounded join\n");
         return;
     }
     wifi_configure_pins();
@@ -617,6 +643,19 @@ static void wifi_identify(void)
                                 generation, &open_ops, &tx_ops,
                                 !!(opened.init.capabilities & P4_HOSTED_CONFIG_CAP_CHECKSUM),
                                 open_buffer, 4096);
+#if P4_WIFI_HOSTED_SCAN
+                            if (mac_ok)
+                            {
+                                scan_attempted = 1;
+                                /* Blocking reference scan uses UIDs7..9 under
+                                 * the same8s aggregate operation budget. */
+                                scan_ok = p4_hosted_scan_sequence_run(scan,
+                                    wlan, &opened.fifo_state, generation,
+                                    &open_ops, &tx_ops,
+                                    !!(opened.init.capabilities & P4_HOSTED_CONFIG_CAP_CHECKSUM),
+                                    open_buffer, 4096);
+                            }
+#endif
                         }
 #endif
                     }
@@ -641,10 +680,19 @@ static void wifi_identify(void)
                  * This is the same2s cleanup reserve, never per-RPC budgets.
                  * Unknown/poisoned outcomes remain a failed gate. */
                 if (wlan->entered)
+                {
+#if P4_WIFI_HOSTED_SCAN
+                    if (scan->entered)
+                        p4_hosted_scan_sequence_cleanup(scan, wlan,
+                            &opened.fifo_state, generation, &open_ops, &tx_ops,
+                            !!(opened.init.capabilities & P4_HOSTED_CONFIG_CAP_CHECKSUM),
+                            open_buffer, 4096);
+#endif
                     p4_hosted_startup_cleanup(wlan, &opened.fifo_state,
                         generation, &open_ops, &tx_ops,
                         !!(opened.init.capabilities & P4_HOSTED_CONFIG_CAP_CHECKSUM),
                         open_buffer, 4096);
+                }
                 opened.fifo_poisoned = opened.fifo_state.poisoned;
 #endif
                 if (open_attempted)
@@ -667,6 +715,9 @@ static void wifi_identify(void)
         FreeVec(open_buffer);
 #if P4_WIFI_HOSTED_MAC
         FreeVec(wlan);
+#if P4_WIFI_HOSTED_SCAN
+        FreeVec(scan);
+#endif
 #endif
 #endif
         bug("[WiFi] slot1 clock failed\n");
@@ -685,6 +736,9 @@ static void wifi_identify(void)
 #endif
 #if P4_WIFI_HOSTED_MAC
     success = success && mac_attempted && mac_ok && wlan->cleanup_success;
+#endif
+#if P4_WIFI_HOSTED_SCAN
+    success = success && scan_attempted && scan_ok && scan->cleanup_success;
 #endif
     host->set_budget(host, 0);
     host->release(host);
@@ -823,6 +877,25 @@ static void wifi_identify(void)
         wlan->mac.mac.mac[2], wlan->mac.mac.mac[3], wlan->mac.mac.mac[4],
         wlan->mac.mac.mac[5]);
 #endif
+#if P4_WIFI_HOSTED_SCAN
+    Delay(5);
+    bug("[WiFi] SCAN attempted=%u ok=%u aps=%u records=%u empty_workaround=%u cleanup=%u\n",
+        scan_attempted, scan_ok, scan->ap_count.number,
+        (unsigned)scan->aps.record_count, scan->skipped_empty_records,
+        scan->cleanup_success);
+    Delay(5);
+    bug("[WiFi] SCAN valid start=%u count=%u records=%u stop=%u\n",
+        scan->start.status_valid, scan->count.status_valid,
+        scan->records.status_valid, scan->stop.status_valid);
+    Delay(5);
+    bug("[WiFi] SCAN status start=%d count=%d records=%d stop=%d\n",
+        scan->start.status, scan->count.status,
+        scan->records.status, scan->stop.status);
+    Delay(5);
+    bug("[WiFi] SCAN error start=%u count=%u records=%u stop=%u polls=%u\n",
+        scan->start.error, scan->count.error, scan->records.error,
+        scan->stop.error, scan->start.polls);
+#endif
     for (snapshot_index = 0; snapshot_index < WIFI_SNAPSHOT_WORDS; ++snapshot_index)
     {
         Delay(5);
@@ -832,6 +905,9 @@ static void wifi_identify(void)
     /* No inference of firmware/protocol compatibility from SDIO enumeration. */
 #if P4_WIFI_HOSTED_MAC
     FreeVec(wlan);
+#endif
+#if P4_WIFI_HOSTED_SCAN
+    FreeVec(scan);
 #endif
 }
 #endif

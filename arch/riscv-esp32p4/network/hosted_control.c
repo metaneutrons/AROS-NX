@@ -133,7 +133,7 @@ static int control_exchange_run(struct p4_hosted_fifo *state, uint32_t generatio
     struct p4_hosted_frame frame;
     struct p4_hosted_fifo_plan plan;
     uint32_t raw, counter, clear, delta;
-    unsigned poll;
+    unsigned poll, poll_limit;
     unsigned packet_acknowledged;
     int ok;
     if (capacity < 512 || capacity > 4096 || checksum_enabled > 1 ||
@@ -149,7 +149,11 @@ static int control_exchange_run(struct p4_hosted_fifo *state, uint32_t generatio
     if (!p4_hosted_rpc_decode(request, request_size, &rpc) ||
         rpc.msg_type != P4_HOSTED_RPC_TYPE_REQUEST || !rpc.uid ||
         (rpc.msg_id != 257u && rpc.msg_id != 260u && rpc.msg_id != 278u &&
-         rpc.msg_id != 279u && rpc.msg_id != 280u && rpc.msg_id != 281u)) return 0;
+         rpc.msg_id != 279u && rpc.msg_id != 280u && rpc.msg_id != 281u &&
+         rpc.msg_id != 286u && rpc.msg_id != 287u && rpc.msg_id != 288u &&
+         rpc.msg_id != 289u)) return 0;
+    poll_limit = rpc.msg_id == 286u ? P4_HOSTED_CONTROL_MAX_SCAN_POLLS :
+                                     P4_HOSTED_CONTROL_MAX_POLLS;
     zero = (volatile uint8_t *)result;
     for (i = 0; i < sizeof(*result); ++i) zero[i] = 0;
     *begun = 1;
@@ -170,7 +174,7 @@ static int control_exchange_run(struct p4_hosted_fifo *state, uint32_t generatio
     if (!p4_hosted_tx_send(state, generation, tx, buffer, capacity, wire_size,
                            checksum_enabled, &result->tx))
         return control_fail(result, P4_HOSTED_CONTROL_TX);
-    for (poll = 0; poll < P4_HOSTED_CONTROL_MAX_POLLS; ++poll) {
+    for (poll = 0; poll < poll_limit; ++poll) {
         packet_acknowledged = 0;
         ++result->polls;
         if (!control_read(state, generation, rx, tx,
@@ -243,7 +247,7 @@ static int control_exchange_run(struct p4_hosted_fifo *state, uint32_t generatio
                 }
             }
         }
-        if (poll + 1u < P4_HOSTED_CONTROL_MAX_POLLS) {
+        if (poll + 1u < poll_limit) {
             rx->yield(rx->context);
             if (!control_guard(state, generation, tx, result)) return 0;
         }

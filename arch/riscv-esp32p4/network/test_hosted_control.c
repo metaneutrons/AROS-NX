@@ -18,7 +18,7 @@
 #define TEST_MAX_BATCHES 4u
 #define TEST_FRAME_CAPACITY 1536u
 #define TEST_LARGE_MESSAGE_CAPACITY 4608u
-#define TEST_RAW_CAPACITY P4_HOSTED_CONTROL_MAX_POLLS
+#define TEST_RAW_CAPACITY P4_HOSTED_CONTROL_MAX_SCAN_POLLS
 
 static unsigned long checks;
 
@@ -1848,24 +1848,42 @@ static void test_invalid_inputs_and_state(void)
 
 static void test_exchange_allowlist_and_response_correlation(void)
 {
-    static const uint32_t request_ids[] = { 257u, 260u, 278u, 279u, 280u, 281u };
+    static const uint32_t request_ids[] = {
+        257u, 260u, 278u, 279u, 280u, 281u,
+        286u, 287u, 288u, 289u
+    };
     static const uint8_t body[] = { 0xffu, 0x00u, 0x7fu, 0x80u };
     static const uint8_t request_body[] = { 0x0au, 0x01u, 0xa5u };
+    static const uint8_t scan_start_body[] = { 0x18u, 0x00u };
+    static const uint8_t scan_records_body[] = { 0x08u, 0x01u };
     unsigned index;
 
     for (index = 0; index < sizeof request_ids / sizeof request_ids[0]; ++index) {
         struct fixture fixture;
         uint8_t request[P4_HOSTED_CONTROL_MAX_RPC_SIZE];
         uint8_t batch[TEST_CAPACITY], response[TEST_FRAME_CAPACITY];
+        const uint8_t *current_body = request_body;
+        size_t current_body_size = sizeof request_body;
         uint32_t uid = UINT32_C(0x10010000) + (uint32_t)index;
         uint32_t response_id = request_ids[index] + 256u;
         size_t request_size, used = 0, response_size;
         uint32_t raw[] = { P4_HOSTED_OPEN_INT_PACKET };
 
         fixture_init(&fixture);
+        if (request_ids[index] == 286u) {
+            current_body = scan_start_body;
+            current_body_size = sizeof scan_start_body;
+        } else if (request_ids[index] == 287u ||
+                   request_ids[index] == 288u) {
+            current_body = NULL;
+            current_body_size = 0u;
+        } else if (request_ids[index] == 289u) {
+            current_body = scan_records_body;
+            current_body_size = sizeof scan_records_body;
+        }
         request_size = make_request(request, sizeof request, uid,
-                                    request_ids[index], request_body,
-                                    sizeof request_body);
+                                    request_ids[index], current_body,
+                                    current_body_size);
         CHECK(request_size != 0u);
 
         /* Correct response ID with a stale UID must remain unmatched. */
@@ -1908,13 +1926,130 @@ static void test_exchange_allowlist_and_response_correlation(void)
         CHECK(fixture.state.poisoned == 0u);
         CHECK(fixture.fake.rx_fifo_reads == 1u);
         verify_exchange_request(&fixture, request, request_size, uid,
-                                request_ids[index], request_body,
-                                sizeof request_body, 1u);
+                                request_ids[index], current_body,
+                                current_body_size, 1u);
 
         /* Arbitrary operation-specific bytes are owned by the result, even
          * though this fixture is not a valid nested operation message. */
         memset(fixture.buffer, 0, sizeof fixture.buffer);
         CHECK(memcmp(fixture.result.response_body, body, sizeof body) == 0);
+    }
+}
+
+static void test_scan_start_extended_poll_bound(void)
+{
+    struct fixture fixture;
+    static const uint8_t request_body[] = { 0x10u, 0x01u, 0x18u, 0x00u };
+    static const uint8_t response_body[] = { 0x08u, 0x00u };
+    uint8_t request[P4_HOSTED_CONTROL_MAX_RPC_SIZE];
+    uint8_t response[TEST_FRAME_CAPACITY];
+    uint32_t raw[P4_HOSTED_CONTROL_MAX_SCAN_POLLS];
+    uint32_t uid = UINT32_C(0x65432109);
+    size_t request_size, response_size;
+    unsigned i;
+
+    fixture_init(&fixture);
+    request_size = make_request(request, sizeof request, uid, 286u,
+                                request_body, sizeof request_body);
+    response_size = make_serial_rpc_frame(response, sizeof response,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE, 542u,
+        uid, response_body, sizeof response_body, 0u,
+        P4_HOSTED_SERIAL, 0u, 0u, 0u);
+    CHECK(request_size != 0u && response_size != 0u);
+    CHECK(add_batch(&fixture.fake, response, response_size));
+    for (i = 0; i < 100u; ++i)
+        raw[i] = 0u;
+    raw[100] = P4_HOSTED_OPEN_INT_PACKET;
+    set_raws(&fixture.fake, raw, 101u);
+
+    CHECK(call_exchange(&fixture, TEST_GENERATION, request, request_size,
+                        fixture.buffer, sizeof fixture.buffer,
+                        &fixture.result) == 1);
+    CHECK(fixture.result.error == P4_HOSTED_CONTROL_OK);
+    CHECK(fixture.result.success == 1u && fixture.result.matched == 1u);
+    CHECK(fixture.result.polls == 101u);
+    CHECK(fixture.fake.raw_reads == 101u && fixture.fake.yield_calls == 100u);
+    CHECK(fixture.result.response_id == 542u &&
+          fixture.result.response_uid == uid);
+    CHECK(fixture.result.response_size == sizeof response_body &&
+          memcmp(fixture.result.response_body, response_body,
+                 sizeof response_body) == 0);
+    CHECK(fixture.fake.tx_fifo_writes == 1u &&
+          fixture.fake.tx_token_reads == 1u);
+    CHECK(fixture.state.tx_sent == 1u && fixture.state.poisoned == 0u);
+    CHECK(fixture.fake.budget_value == 1 && fixture.fake.budget_calls > 101u);
+    verify_exchange_request(&fixture, request, request_size, uid, 286u,
+                            request_body, sizeof request_body, 1u);
+}
+
+static void test_scan_poll_cap_and_aggregate_budget(void)
+{
+    struct fixture fixture;
+    static const uint8_t start_body[] = { 0x10u, 0x01u, 0x18u, 0x00u };
+    uint8_t request[P4_HOSTED_CONTROL_MAX_RPC_SIZE];
+    size_t request_size;
+    static const uint32_t non_start_scan_ids[] = { 287u, 288u, 289u };
+    unsigned i;
+
+    fixture_init(&fixture);
+    request_size = make_request(request, sizeof request, 33301u, 286u,
+                                start_body, sizeof start_body);
+    CHECK(request_size != 0u);
+    CHECK(call_exchange(&fixture, TEST_GENERATION, request, request_size,
+                        fixture.buffer, sizeof fixture.buffer,
+                        &fixture.result) == 0);
+    CHECK(fixture.result.error == P4_HOSTED_CONTROL_TIMEOUT);
+    CHECK(fixture.result.polls == P4_HOSTED_CONTROL_MAX_SCAN_POLLS);
+    CHECK(fixture.fake.raw_reads == P4_HOSTED_CONTROL_MAX_SCAN_POLLS);
+    CHECK(fixture.fake.yield_calls == P4_HOSTED_CONTROL_MAX_SCAN_POLLS - 1u);
+    CHECK(fixture.fake.tx_fifo_writes == 1u &&
+          fixture.fake.tx_token_reads == 1u);
+    CHECK(fixture.state.tx_sent == 1u && fixture.state.rx_consumed == 0u);
+    CHECK(fixture.state.poisoned == 0u);
+    verify_exchange_request(&fixture, request, request_size, 33301u, 286u,
+                            start_body, sizeof start_body, 1u);
+
+    /* Deadline expiry after the first yield is still caller-owned: the scan
+     * poll cap does not renew it, retry TX, or keep polling after refusal. */
+    fixture_init(&fixture);
+    request_size = make_request(request, sizeof request, 33302u, 286u,
+                                start_body, sizeof start_body);
+    CHECK(request_size != 0u);
+    fixture.fake.expire_after_yield = 1u;
+    CHECK(call_exchange(&fixture, TEST_GENERATION, request, request_size,
+                        fixture.buffer, sizeof fixture.buffer,
+                        &fixture.result) == 0);
+    CHECK(fixture.result.error == P4_HOSTED_CONTROL_BUDGET);
+    CHECK(fixture.result.polls == 1u && fixture.fake.raw_reads == 1u);
+    CHECK(fixture.fake.yield_calls == 1u && fixture.fake.budget_value == 0);
+    CHECK(fixture.fake.tx_fifo_writes == 1u &&
+          fixture.fake.tx_token_reads == 1u);
+    CHECK(fixture.fake.budget_calls > 0u && fixture.fake.budget_fail_countdown == 0u);
+    CHECK(fixture.state.tx_sent == 1u && fixture.state.rx_consumed == 0u);
+
+    for (i = 0; i < sizeof non_start_scan_ids / sizeof non_start_scan_ids[0];
+         ++i) {
+        uint8_t body[] = { 0x08u, 0x01u };
+        uint32_t uid = UINT32_C(0x33310000) + (uint32_t)i;
+
+        fixture_init(&fixture);
+        request_size = make_request(request, sizeof request, uid,
+                                    non_start_scan_ids[i],
+                                    non_start_scan_ids[i] == 289u ?
+                                        body : NULL,
+                                    non_start_scan_ids[i] == 289u ?
+                                        sizeof body : 0u);
+        CHECK(request_size != 0u);
+        CHECK(call_exchange(&fixture, TEST_GENERATION, request, request_size,
+                            fixture.buffer, sizeof fixture.buffer,
+                            &fixture.result) == 0);
+        CHECK(fixture.result.error == P4_HOSTED_CONTROL_TIMEOUT);
+        CHECK(fixture.result.polls == P4_HOSTED_CONTROL_MAX_POLLS);
+        CHECK(fixture.fake.raw_reads == P4_HOSTED_CONTROL_MAX_POLLS);
+        CHECK(fixture.fake.yield_calls == P4_HOSTED_CONTROL_MAX_POLLS - 1u);
+        CHECK(fixture.fake.tx_fifo_writes == 1u &&
+              fixture.fake.tx_token_reads == 1u);
+        CHECK(fixture.state.tx_sent == 1u && fixture.state.poisoned == 0u);
     }
 }
 
@@ -2109,15 +2244,18 @@ static void test_exchange_oversized_body_and_preflight_failures(void)
             0x02u, 0x8au, 0x10u, 0x00u };
         const uint8_t unsupported_request[] = { 0x08u, 0x01u, 0x10u, 0x82u,
             0x02u, 0x18u, 0x01u, 0x92u, 0x10u, 0x00u };
+        const uint8_t unsupported_scan_request[] = { 0x08u, 0x01u,
+            0x10u, 0xa2u, 0x02u, 0x18u, 0x01u, 0x92u, 0x12u, 0x00u };
         const uint8_t response_as_request[] = { 0x08u, 0x02u, 0x10u, 0x81u,
             0x04u, 0x18u, 0x01u, 0x8au, 0x20u, 0x00u };
         const uint8_t *invalid_requests[] = {
             malformed_request, zero_uid_request, unsupported_request,
-            response_as_request, NULL
+            unsupported_scan_request, response_as_request, NULL
         };
         const size_t invalid_sizes[] = {
             sizeof malformed_request, sizeof zero_uid_request,
-            sizeof unsupported_request, sizeof response_as_request, 0u
+            sizeof unsupported_request, sizeof unsupported_scan_request,
+            sizeof response_as_request, 0u
         };
 
         for (index = 0; index < sizeof invalid_sizes / sizeof invalid_sizes[0];
@@ -2125,7 +2263,7 @@ static void test_exchange_oversized_body_and_preflight_failures(void)
             struct p4_hosted_fifo state_before;
             struct p4_hosted_control_result result_before;
             uint8_t buffer_before[TEST_CAPACITY];
-            uint8_t request_before[sizeof malformed_request];
+            uint8_t request_before[sizeof unsupported_scan_request];
             const uint8_t *input = invalid_requests[index];
             size_t input_size = invalid_sizes[index];
 
@@ -2405,6 +2543,8 @@ int main(void)
     test_endpoint_profile_and_checksum();
     test_invalid_inputs_and_state();
     test_exchange_allowlist_and_response_correlation();
+    test_scan_start_extended_poll_bound();
+    test_scan_poll_cap_and_aggregate_budget();
     test_exchange_reuses_persistent_fifo_with_fresh_uids();
     test_exchange_timeout_consumes_one_transmission();
     test_exchange_oversized_body_and_preflight_failures();
