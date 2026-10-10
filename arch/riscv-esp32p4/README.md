@@ -11,8 +11,18 @@ The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection
 also exposed and corrected the default P4>=3.x target; the corrected build
 targets1.0..1.99. The build-only front end and compatibility patch are retained
-under `tools/hosted-reference/`; no reference image has been approved for
-deployment or flashed. Reset/timeout/error policies still need adaptation.
+under `tools/hosted-reference/`. A bounded MAC/scan candidate now removes implicit
+initialization, guards absent reset GPIO, uses ten-/forty-second connection/app
+deadlines and panic-halt behavior, and corrects scan result validation/count
+publication, and preserves the existing bus mutex after worker startup.
+Its IDF6 link, independent review and actual-source startup/scan/app models
+pass. Its first headless deployment fails before application entry: the
+generated 400MHz setting is unsupported on revision1.3. Defaults now select
+360MHz; a generated-configuration checker and corrected build pass, not yet
+deployed. Exact full-span AROS rollback/readback matches, but the return boot
+faults in ROM at address0x50091000 and watchdog-resets. The board is parked in
+the download loader pending recovery. No MAC/scan hardware acceptance and no
+successful baseline return from this run.
 IDF5.4.3 is an optional isolated comparison environment, not a port downgrade.
 
 JC1060 Wi-Fi implementation has started

@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; complete-host IDF6 link verified` | Pinned d518 complete host links under6.0.1 after scoped compatibility bridge; corrected image377856B targets P4rev1.0..1.99. Wire schema unchanged. No deployment: reset/timeout/constructor failure policies still unsafe and automatic flash layout wrong. Next bounded board-safe adaptation, then MAC/scan/frame/recovery gates; WLAN and installed C6 identity remain open. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; reference startup failed; baseline recovery pending` | Pinned d518 host links under6.0.1; actual-source startup/scan/app tests pass. Hardware exposes unsupported400MHz configuration before app entry. Corrected360MHz build/configuration gate pass, not deployed. Exact AROS span restored/readback matched, but ROM faults at0x50091000; board parked in download loader. Empty-scan workaround and N1E removal remain open. No MAC/scan, native association/frame/recovery or WLAN acceptance. Automatic flash layout forbidden. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -621,7 +621,31 @@ image's incompatible rev3.x target was rejected and the explicit rev<3 selector
 corrects the rebuilt image to1.0..1.99. Keep these compatibility changes
 separate from the preserved wire schema. No hardware acceptance: the retained
 build-only front end is not a MAC/scan/association acceptance application and
-reset/startup failure policies remain to be adapted.
+reset/startup failure policies remain to be adapted at that stage. A subsequent
+bounded candidate removes implicit constructor/destructor initialization,
+guards reset=-1, limits connection to10s and app startup/MAC/scan to40s using
+an independent task-dispatched timer, and halts on panic instead of rebooting.
+Transport/card/OPEN failures fail-stop; this is not a hard real-time guarantee
+under a blocked scheduler or hardware. Scan validation now defaults malformed
+RPC responses to decode errors, checks counts/pointers/lengths before copies,
+enforces caller capacity and returns the actual count. Empty scans skip the
+pinned slave's erroneous empty-record request without modifying C6. Build and
+actual-source startup models pass; final scan/app models and independent review
+also pass. First headless comparison fails before app entry at esp_clk_init:
+400MHz is unsupported by the selected revision<3 path. Defaults now select
+360MHz, and a strict generated-configuration checker covers21 required values.
+Corrected build passes but is not deployed. Exact full-span AROS rollback
+matches independent readback; the return instead faults in ROM on a store to
+0x50091000, followed by watchdog resets. The board is parked in download
+loader; baseline recovery is pending, not accepted.
+No hardware MAC/scan, association, bidirectional frames or recovery accepted.
+The empty-scan omission is a workaround for the pinned slave's API error,
+not proof that its empty-record behavior is fixed. N1E (open root-fix item):
+establish installed slave lineage, fix/upstream the erroneous empty-list API
+only under separately authorized C6 firmware work, then remove the app skip
+and demonstrate zero APs through the uncompensated get_records path. MAC/scan
+acceptance while the skip is present verifies the workaround only. No C6 flash
+is authorized by this item.
 
 The first independent pure codec uses the vendor0.0.6 12-byte wire header,
 1536-byte total-frame bound, LE16 fields and additive checksum excluding its
@@ -30494,6 +30518,142 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: adapt and review bounded failure
   policy, add complete reference acceptance front end, then exact-span backup
   and headless comparison. N1/N2/N3 remain open; no AROS WLAN pass inferred.
+
+### 2026-10-10 - N1 bounded complete-host MAC/scan candidate and parser corrections
+
+- Parent32d5ec1500; same external d518/remote0.2.3/protobuf-c revisions and
+  IDF6.0.1 environment as the preceding evidence. No board interaction.
+  Explicit initialization follows a forty-second app deadline; no constructor
+  starts the transport early. Reset=-1 performs no GPIO shift/config/write.
+  Connection uses one attempt/ten-second deadline, not1000 repeated resets.
+  Card-init/OPEN/worker failures fail-stop, configured panic prints/halts.
+  Existing pre-worker bus mutex is preserved; removed post-worker replacement.
+  Cooperative timing is not a hard bound during scheduler/hardware stalls.
+- MAC must be six bytes/unicast/nonzero; one scan, at most eight records,
+  Wi-Fi stop before success. No SSID/password output, credentials, association,
+  OTA or frame qualification. Actual old wrapper failed to update returned
+  count and copied slave count beyond caller capacity; parser trusted repeated
+  count/field lengths and defaulted malformed responses to calloc SUCCESS.
+  Corrected count/capacity/pointers/lengths before copies and default decode
+  status. Wire schema/generated protobuf remain byte-identical to pinned hashes.
+- Empty-scan compatibility workaround: the app skips get_records after a
+  successful zero-AP scan because the pinned slave rejects an empty list.
+  This does not fix C6. N1E remains open with uncompensated removal test above.
+- Build session65439 exits0, bounded candidate380368B/hash04f712b9...;
+  scan correction session59062 exits2 (missing rpc_common.h enum declaration),
+  repaired session91126 exits0. Final scan/front-end session30271 exits0,
+  380304B/hash12383bd3...; live-lock correction session49737 exits0,
+  superseding final image380240B SHA-256
+  a765b9f65617dddd52e3b670dc09310e4c4a64209313809a7923c8fc8d3e3a5a.
+  Log build-v6-lock-safe.log SHA-256
+  64d66f375af9c121ce4928822e31929b844c3c98407a6ad23f4f5ba21421ff4a.
+  All logs retained in /Volumes/Dev/Build/esp-hosted-reference.RzWnFu/reference-app.
+  P4rev1.0..1.99/16MB DIO80/PSRAMoff/slot1 1bit400kHz/PRINT_HALT,
+  CLK18 CMD19 D0=14 D1=15 reset=-1 verified in generated config/image.
+- Retained bounded-reference.patch SHA-256
+  eaa4416b0b8f22ae6f3b28eaf9d2ea42552e3659eb93eb00f6513f4521b6f067;
+  scan-safety.patch97567b958609200ee9710712fec3a206036931bdb5a1d442d8226f118f1db18e.
+  Sequential apply checks on pristine+compat succeed; primary reproduction
+  initially matches external host exactly before the live-lock correction.
+  Final patch/reproduction check is still required before deployment.
+- Independent Luna startup test author; primary read/repeated actual extracted
+  transport functions under strict C11 O0/O2 ASan/UBSan:6 cases/49 checks each,
+  process0. Zero GPIO callbacks, timeout, already-ready, readiness20ms before
+  and exactly at expiry, independent subsequent calls. Primary log SHA-256
+  c72bdbb6dbd130667849725d29d88071a8a8a9183d1399ee2a4ab9f6bcbf313e.
+  Scan/app actual-source tests and independent runtime review pending at this
+  build stage; closing results follow below.
+- Safety: no serial open, reset, flash, SD or C6 firmware write. Normal41-member
+  AROS baseline remains last hardware-verified image. Reference changes powered
+  C6 function/IRQ/OPEN state; P4 rollback would not reverse that slave state.
+  Never use generated flash_args/0x10000 app layout. Fresh identity, exact-span
+  backup/readback, scanout park and verified baseline return remain mandatory.
+- Next: finish negative-path tests/review, then one backed-up headless complete
+  reference MAC/scan comparison. N1/N2/N3 remain open; IDF reference success
+  would not prove native AROS association, frames, SD coexistence or recovery.
+
+### 2026-10-10 - N1 reference negative paths reviewed and verified; headless gate prepared
+
+- Independent Luna review finds no remaining blocker in reviewed startup,
+  reset, timing, worker or IDF6 scan mapping. It identifies short-record false
+  acceptance; primary fixes app to require copied=min(ap_count,8), not merely
+  a count within capacity. Session24368 exits0, final380256B image SHA-256
+  2e92b5e6bd13fcdf04f177849c48140c9246f5e81efb2bd0b03e163e807c3c3e;
+  build-v6-record-oracle.log SHA-256
+  ba92c19b6876c3b4af60919896795510ceafc79ee6c46281e6aaa44033782d07.
+- Final bounded patch generation initially loses a trailing context line;
+  apply-check rejects it as corrupt (line152). Regenerated without trimming
+  context; corrected patch SHA-256
+  00d891752f2af26e386b4a8e7b49e7e68c23bdd7b8cd3e89db3d617105100b71.
+  Fresh pristine apply-check succeeds; reproduced host including lock fix is
+  byte-identical to actual external host. The earlier eaa4416... patch hash
+  above is superseded and is not a reproducible/deployable patch.
+- Independent test authors; primary inspects/repeats actual-source tests at
+  O0/O2 with strict C11/ASan/UBSan, process0 each. Startup6 cases/49 checks,
+  parser/wrapper30 cases/172 checks, full app30 cases/184 checks. Parser test
+  initially models default-status scaffold; primary requires actual prefix/
+  suffix extraction, and final tests exercise actual initialization/success/
+  failure bodies. Full app strips SDK includes only. Models cannot verify
+  installed C6, actual cache/DMA, timing under scheduling stalls or WLAN.
+- Fresh JC1060 identity80:f1:b2:d3:3b:a6/P4v1.3, sessionchip-id exits0.
+  Full candidate erase span0x20000..0x7cfff,0x5d000/380928B, read twice:
+  sessions36022/38492 exit0, cmp identical, SHA-256
+  1880a2f41f07fe14a32df7dde2dd4a09119248e6b67442967b49b8b95ce3e62e.
+  Original190016B prefix matches dea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0.
+  Evidence directory /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/complete-host-mac-scan/.
+  No missing backup bytes or smaller-prefix-only rollback permitted.
+- Headless handover now in progress: known quiesce park39ce408b... only at
+  0x20000, stopped readbacks required before IDF startup. No reference MAC/scan
+  hardware result yet. Bootloader/partition/BSP/volume/SD/C6 firmware preserved.
+  Powered slave-state mutations are not reversible by P4 flash restoration.
+
+### 2026-10-10 - N1 reference clock failure and unsuccessful baseline return
+
+- Hardware JC1060 MAC80:f1:b2:d3:3b:a6, P4v1.3. Known quiesce core
+  39ce408b... written only at0x20000, readback matched; capture24195 exits0,
+  fifteen stopped readback pairs and READY after ten intervals. Requested15s
+  has no timing footer, so exact duration is not asserted. Log SHA-256
+  398ae18d673cb52afc73f2549c8b46f6a66550e9d11a96b7f68f296eeaf1b331.
+- Candidate380256B 2e92b5e6... written only at0x20000, session10872 exits0;
+  independent readback51915 matches. Capture58660 exits0 with complete footer,
+  45.879422458s/6005 bytes. reference-boot.log SHA-256
+  15b2431e129ce60fb6dd91286e9ba71c2d693d660329901b56279f8b9a373d8c.
+  Bootloader loads candidate, then esp_clk_init asserts (res), before app/host
+  initialization. No MAC/scan/OPEN result. One ROM banner, panic halt.
+- Source attribution: IDF6 esp_hw_support/port/esp32p4/rtc_clk.c rejects400MHz
+  under CONFIG_ESP32P4_SELECTS_REV_LESS_V3; supported PLL rates90/180/360MHz.
+  Earlier runtime review did not catch generated CPU400; its scope is not
+  deployment/configuration acceptance. Defaults now explicitly select360MHz.
+  check-config.py validates21 required generated values, rejects wrong/missing/
+  duplicate required keys and the CPU400 regression; selftest/config checks0.
+  Build28216 exits0:380256B SHA-256
+  349e8c588870d98e938055ac008dd3d5e4de5b430b298233c7bd7c94ad6ba900;
+  build-v6-cpu360.log SHA-256
+  a5805c543f1b576e3cf8a18a945dee29fd5bd1f8321a2ad8613b8f521dfc1a9a.
+  Corrected candidate is NOT deployed.
+- Full380928B backup span0x20000..0x7cfff restored, session60768 exits0;
+  independent full read82386 exits0, byte-identical SHA-256
+  1880a2f41f07fe14a32df7dde2dd4a09119248e6b67442967b49b8b95ce3e62e.
+  Flash identity is not a boot pass. Return capture19015 exits0, complete
+  30.895399750s/204625 bytes; restored-boot.log SHA-256
+  7114b99842807d55e83b22d66748f8f68b64559eac151a2c8cbd09041f179d22.
+  ROM Store/AMO access fault PC4fc0424c, MTVAL50091000, MCAUSE38000007;
+  repeated HP_SYS_HP_WDT_RESET before AROS startup. Cause not established.
+- Primary verification confirms no live serial capture. esptool chip-id
+  default-reset/no-reset exits0, identifies same MAC/revision and leaves stub
+  running in download loader to interrupt the reset loop. No new flash.
+  Bootloader/partition/BSP/volume/SD/C6 firmware were not written. A physical
+  rail-off requires fresh user readiness; no Vellum recovery or silent retry.
+- Startup/parser/app source-model logs in reference-app have respective hashes
+  c72bdbb6dbd130667849725d29d88071a8a8a9183d1399ee2a4ab9f6bcbf313e,
+  077ce9dbd1b4f1678c780ea35b63a590b4b0478fb9dbee0176203c2d73c46b8c,
+  0a6826ae20f48ce6c28a932bc3056851e8311edd981838efbc9fdaa0116af009.
+  They prove only modeled negative paths, not hardware WLAN. Empty-scan
+  workaround remains compensated; N1E uncompensated removal stays open.
+- Next: establish safe baseline boot recovery, then deploy verified360MHz
+  reference with configuration gate, quiesce and exact rollback. Native
+  association, bidirectional frames, SANA-II, coexistence and recovery remain
+  required for the full Wi-Fi objective.
 
 ## Evidence-entry template
 

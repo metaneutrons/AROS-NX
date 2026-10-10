@@ -1,6 +1,9 @@
-# Complete Hosted reference: build only
+# Complete Hosted reference: bounded MAC/scan candidate
 
-Not approved for flashing. Never execute the generated `idf.py flash` or
+No further deployment until baseline boot recovery is established. The first
+400MHz candidate failed before app entry; its exact AROS rollback matches flash
+but faults in ROM. The corrected360MHz candidate is build verified only.
+Never execute the generated `idf.py flash` or
 `flash_args`: they use a different partition layout and would overwrite AROS
 bootloader/partition state. Passing compilation does not verify Wi-Fi.
 
@@ -9,7 +12,8 @@ dependency revisions, hardware safety gates and evidence.
 
 Build with IDF6.0.1 and the pinned external components. From a fresh verified
 Hosted d518 archive (including its exact protobuf-c gitlink), apply the retained
-compatibility patch with `git apply --check`, then `git apply`.
+compatibility patch with `git apply --check`, then `git apply`. Next apply
+`bounded-reference.patch`, then `scan-safety.patch`, checking each first.
 Do not apply it to another upstream revision or already patched source.
 
 Set `HOSTED_REFERENCE_ROOT` to the external directory containing
@@ -19,7 +23,9 @@ IDF_PYTHON_ENV_PATH, ESP_IDF_VERSION=6.0.1 and IDF_COMPONENT_MANAGER=0.
 Use an external build directory and SDKCONFIG path to keep generated files
 outside the repository. Run `idf.py -B <build> -D SDKCONFIG=<config> build`.
 For a fresh configuration, SDKCONFIG_DEFAULTS must point to this directory's
-sdkconfig.defaults. Verify the resulting settings and the final image header.
+sdkconfig.defaults. Run `python3 check-config.py --selftest`, then
+`python3 check-config.py <generated-sdkconfig>`; verify the final image header
+separately. Revision1.x requires360MHz, not the generated400MHz default.
 
 ## Compatibility changes and limitations
 
@@ -42,9 +48,36 @@ The allocator host test extracts the actual external source function:
 `python3 test-allocator.py <patched-host>/host/port/os_wrapper.h`.
 Host stubs cannot verify actual DMA capability, silicon cache behavior or WLAN.
 
-Still required before any deployment: absent-reset GPIO guard, bounded
-startup/connection failure handling, safe constructor/task error propagation,
-explicit board identity and compatible image/layout verification, scanout
-quiesce, fresh exact-span backup, independent readback and baseline restoration.
-The current front end only calls Wi-Fi initialization; MAC/scan/association,
-frame transfer and recovery gates must be added before reference acceptance.
+The bounded patch removes implicit constructor/destructor initialization,
+guards absent reset GPIO, replaces repeated reset attempts with a ten-second
+connection deadline, propagates connection failure, and fail-stops on SDIO
+card-init, OPEN or transport-worker creation failures. It preserves the bus
+mutex created before workers instead of replacing that live lock afterwards.
+The application starts
+its forty-second aggregate timer before explicit host initialization; panic
+prints and halts rather than automatically rebooting. These are cooperative
+timing/error policies, not proof of a hard bound during a hardware/scheduler
+stall. Persistent transport workers still run after application success.
+
+The scan patch defaults malformed RPC responses to decode failure, validates
+MAC length, scan counts/repeated records and field pointers/byte lengths before
+allocation/copy, and enforces caller capacity while publishing returned count.
+The app avoids the pinned slave's empty-list error by omitting get_records when
+the successful scan reports zero APs. No slave firmware changes. The application
+queries a unicast MAC, runs one scan, obtains at most eight records, stops Wi-Fi
+and prints `REFERENCE result=ok scope=MAC_SCAN`. No credentials or SSIDs logged;
+no association, OTA or Ethernet-frame test. This marker alone cannot qualify WLAN.
+
+Tests extract actual external source, not replacement policies:
+`python3 test-startup.py <patched-host>/host/drivers/transport/transport_drv.c`.
+Heap/time/GPIO mocks are not silicon or installed-firmware evidence.
+
+Actual-source parser/app tests are `python3 test-scan.py <rpc_wrap.c> <rpc_rsp.c>`
+and `python3 test-app.py main/reference.c`. All three models
+and independent runtime review pass; this did not detect the generated CPU
+configuration error. Still required before further deployment: baseline boot
+recovery, generated-configuration gate, explicit board
+identity and compatible image/layout verification, scanout quiesce, fresh
+exact-span backup, independent readback and baseline restoration. Complete
+reference MAC/scan hardware acceptance and native AROS association, frame
+transfer, shared-SD operation and recovery remain open.

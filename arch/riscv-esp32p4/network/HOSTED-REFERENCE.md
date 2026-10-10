@@ -133,5 +133,70 @@ memory placement or DMA. Retained test script SHA-256
 
 This is build verification only. No serial/device activity. The reset/timeout,
 constructor and task failure policies still require adaptation before a run.
-The reference currently initializes Wi-Fi only; MAC/scan/association/frame and
-recovery acceptance remain open. Do not claim that 5.4.3 is mandatory.
+The front end at that stage initializes Wi-Fi only; MAC/scan/association/frame
+and recovery acceptance remain open. Do not claim that 5.4.3 is mandatory.
+
+## Bounded MAC/scan candidate
+
+Apply `idf6-compat.patch`, `bounded-reference.patch`, then `scan-safety.patch`
+to the pinned archive, checking each before application. Primary reproduction
+in `/Volumes/Dev/Build/hosted-reproduce.6qcg7E` exits0 and matches the actual
+external host tree byte-for-byte. All three pinned protobuf hashes remain
+unchanged. No replacement transport or RPC implementation.
+
+The bounded patch removes implicit initialization/destruction, forbids reset
+GPIO access for -1, uses a ten-second connection deadline and propagates
+connection failure. Card-init, OPEN and worker-creation failures abort under
+PRINT_HALT. The app starts its forty-second timer before explicit init, checks
+each API before/after deadline, validates a unicast MAC, performs one blocking
+scan and retrieves at most eight records before stopping Wi-Fi. Cooperative
+timer dispatch cannot guarantee a hard deadline if scheduling/hardware hangs.
+Persistent workers are not automatically torn down after application success.
+
+The old scan wrapper copied the slave count without capacity validation and
+never published that count. The parser also trusted repeated counts, pointers
+and byte lengths and could report malformed replies as successful because
+calloc initialized status to zero. The scan patch corrects these concrete
+paths, validates MAC length and defaults decode failures to a nonzero error.
+The pinned slave rejects empty get_records; the app therefore skips that API
+after a successful zero-AP scan, preserving C6 firmware. This is an explicitly
+named empty-scan compatibility workaround, not a slave API root fix.
+
+Actual-source startup models pass strict O0/O2 ASan/UBSan:6 cases/49 checks
+each. The final build process30271 exits0, image380304B SHA-256
+`12383bd32aee7c2f4ad40dae48f3a58aa141a9cf9ba67c7f4190ca7237c5aa27`;
+`build-v6-scan-safe-final.log` SHA-256
+`5ca0d68d912fd73b1b9e46cb7fab9ef8aa2e27311a88c136c28e627e69da77bf`.
+P4 revision1.0..1.99,16MB DIO80, PRINT_HALT, PSRAMoff, reset=-1,
+slot1/1bit/400kHz unchanged. Scan/application tests and independent runtime
+review are pending. No hardware deployed or accepted. Association, Ethernet
+frames, native AROS/SANA-II integration, coexistence and recovery remain open.
+
+A subsequent source correction removes the second mutex creation after worker
+launch: replacing a live global lock could split bus ownership and leaked the
+initial mutex. Session49737 exits0; final380240B image SHA-256
+`a765b9f65617dddd52e3b670dc09310e4c4a64209313809a7923c8fc8d3e3a5a`;
+`build-v6-lock-safe.log` SHA-256
+`64d66f375af9c121ce4928822e31929b844c3c98407a6ad23f4f5ba21421ff4a`.
+The earlier image above is superseded, not deployed. This correction is retained
+in bounded-reference.patch; rebuild and review remain separate from hardware.
+
+## First bounded hardware attempt: startup failure, recovery pending
+
+Final actual-source startup/scan/app models and independent review pass (see
+ROADMAP dated evidence). The380256-byte 2e92b5e6... image was explicitly
+written/readback verified at0x20000 after quiescence. It fails before app entry
+at esp_clk_init: the generated400MHz setting is unsupported on revision1.3.
+No Hosted initialization or MAC/scan acceptance follows. Defaults now select
+360MHz and check-config.py enforces21 required generated settings. Corrected
+build380256B SHA-256349e8c588870d98e938055ac008dd3d5e4de5b430b298233c7bd7c94ad6ba900
+passes, not deployed.
+
+The entire380928-byte original core span was restored and independently
+verified, SHA-2561880a2f41f07fe14a32df7dde2dd4a09119248e6b67442967b49b8b95ce3e62e.
+Its return capture instead faults in ROM at store address0x50091000 and
+watchdog-resets. Byte-identical flash restoration is not boot recovery.
+Board identity is verified and the board is left in download loader; retained
+state/root cause remains open. No more reference deployment before baseline
+recovery. Bootloader/partition/BSP/SD/C6 firmware were not written. Empty-scan
+workaround and its separate N1E uncompensated removal test remain open.
