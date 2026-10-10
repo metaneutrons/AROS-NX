@@ -22,8 +22,11 @@ installed C6 binary identity. An independent pinned protobuf-c oracle now
 passes810 O0/O2 sanitizer checks each. Runtime Init/STA/Start/GetMAC plus
 conservative Stop/Deinit is integrated into the opt-in fresh-epoch gate and
 the new42-member package passes loader/capacity checks. Sequencing models
-pass551 O0/O2 sanitizer checks each. No candidate was flashed. The board remains on the
-verified original baseline; native initialized MAC and WLAN remain open.
+pass551 O0/O2 sanitizer checks each. The initialization candidate is now
+deployed at0x820000 and independently read back byte-identically after two
+matching full-erase-span backups. The board is deliberately held in download
+mode awaiting coordinated fresh C6 startup; native initialized MAC and WLAN
+remain open. The original baseline is recoverable from both saved backups.
 
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection

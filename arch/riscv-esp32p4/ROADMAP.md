@@ -119,7 +119,7 @@ gate: compensated output is not the native display contract.
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; MAC initialization ordering failure; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; GetMAC returns correlated0x3001 (WiFi not initialized), so overall diagnostic fails. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
-| N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence host tested; runtime initialization build verified` | Existing FIFO reused with owned bodies/exact correlation. Control2413/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; no deployment/initialized MAC gate yet. No persistent UID allocator/fragmentation or WLAN acceptance. Original verified baseline unchanged. |
+| N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence host tested; runtime initialization deployed, fresh-epoch gate pending` | Existing FIFO reused with owned bodies/exact correlation. Control2413/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Download mode retained pending coordinated fresh C6 startup; no initialized MAC gate yet. No persistent UID allocator/fragmentation or WLAN acceptance. Original verified baseline recoverable. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -573,7 +573,14 @@ pinned protobuf-c oracle passes810 checks each O0/O2. Init/STA/Start/MAC and
 bounded Stop/Deinit are now integrated in the fresh-epoch diagnostic, with
 explicit profile, non-reused UIDs1..6 and conservative cleanup after uncertain
 writes. Loader/capacity pass the new package; sequencing models pass551 checks
-each O0/O2 and no new hardware acceptance is claimed.
+each O0/O2 and no new hardware acceptance is claimed. The candidate is now
+written only at0x820000 with independent byte-identical readback after two
+matching full3801088B erase-span backups. Download mode is retained pending
+externally coordinated fresh C6 startup; this is deployment, not a run/pass.
+
+After the user's reconnection confirmation, a passive20.061s capture on
+2026-10-10 observes advancing JC1060 touch heartbeats only. N1/N1C status
+remains unchanged: no boot continuity, initialized MAC or WLAN acceptance.
 
 First native hardware result: one externally coordinated fresh-C6 run accepts
 INIT chip0x0d/caps0x0d and the config transmission, then receives a correlated
@@ -31788,6 +31795,55 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   pass. Next exact-range double backup/identity checks and bounded deployment;
   coordinate a fresh C6 startup before first-INIT run.
   Scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open.
+
+### 2026-10-10 - JC1060 reconnected, passive baseline liveness only
+
+- Source:6e3d9e577a; separate unlinked reassembly work remains uncommitted.
+  No firmware or flash range changed in this observation.
+- Procedure: after Fabian confirmed connection, late-boot-log.py captured
+  /dev/cu.usbmodem101 for20s without an explicit reset or retry. Actual exit0,
+  complete status=ok footer,20.061s and256 serial bytes.
+- Observed: jc1060p470c-v2 touch heartbeat count advances43100..43400.
+  No ROM/boot banner or fault appears in this short capture. This establishes
+  live serial activity, not a complete boot, rail-off continuity, display/
+  touch acceptance, both-hart/watchdog health or initialized native WLAN.
+  Port opening can disturb hardware; continuity is not inferred from absence
+  of a ROM banner. Master N1/N1C acceptance status remains unchanged.
+- Evidence: native-control-exchange.KnVrtu/reconnected-baseline-boot.log under
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/;
+  SHA-2560fa49e2031355eccd481a4186186bfc758568c777cb5e9af4c1df53fd6d84529.
+- Safety: no flash/reset/SD write/C6 write or visual test. Next deploy the
+  audited initialization candidate with exact-span backup, then coordinate a
+  fresh C6 startup; do not reuse an already-consumed INIT epoch.
+
+### 2026-10-10 - N1C initialization candidate deployed, test not started
+
+- Source/artifact:6e3d9e577a; prebuilt startup.resource108816B SHA-256
+  a83b76f1453f274ebf4d6efcbe0a46a56b85ff09749e4f85ddb61719f0169ca2;
+  package3797372B SHA-256
+  cda8c8a7ebbb249e4aebf5ea2ed5a280f108530c4258771ca9a7a445507bf627.
+  Separate unlinked epoch-reassembly work is not present in this artifact.
+- Identity: esptool5.5.0 flash-id and all subsequent operations report
+  MAC80:f1:b2:d3:3b:a6/P4v1.3/16MB. No active capture owns the port.
+- Backup: full3801088B at0x820000 read twice, sessions83590/5995 actual
+  exit0; cmp exact, both SHA-256
+  270e67209a17a4fdcb6e17403a5c01d5152c829791213f72cfd0d917523ec0fe.
+  Prior3784704B verified baseline prefix matches exactly. Core190016B read
+  at0x20000 remains dea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0.
+- Deployment: package audit rerun exit0,42members/zero failures. Only
+  write-flash0x820000 package, --before no-reset --after no-reset;
+  session44680 actual exit0/internal hash verified, erase0x820000..0xbbffff.
+  Independent3797372B readback session36098 actual exit0, cmp exact and
+  SHA-256 equals candidate. No bootloader/core/partition/volume/SD/C6 write.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/native-startup-hardware.Y8uRvH/
+  retains before.bin/before-verify.bin/core-before.bin/readback.bin and
+  complete backup/core/write/readback logs.
+- State/safety: deliberately remains in download stub; no reset/run/test or
+  visual acceptance after deployment. Original full-span baseline is
+  recoverable from either backup. N1 initialized MAC/WLAN remains unverified.
+  Next fresh user readiness/only-USB-power confirmation, then coordinate
+  disconnection and first-INIT capture; never reuse a consumed C6 epoch.
 
 ## Evidence-entry template
 
