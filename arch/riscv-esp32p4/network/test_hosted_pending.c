@@ -18,6 +18,9 @@
 #define TEST_POOL_LIMIT 20u
 #define TEST_REQUEST_ID 282u
 #define TEST_AP_INFO_REQUEST_ID 294u
+#define TEST_DISCOVERY_REQUEST_ID 350u
+#define TEST_DISCOVERY_RESPONSE_ID 606u
+#define TEST_DISCOVERY_NONCE UINT32_C(0x12345678)
 #define TEST_CAPACITY P4_HOSTED_PENDING_BUFFER_MAX
 #define TEST_FRAME_CAPACITY P4_HOSTED_FRAME_MAX
 
@@ -66,11 +69,67 @@ struct fixture {
     struct p4_hosted_request_ids ids;
     struct p4_hosted_tx_ops ops;
     struct fake_tx fake;
+    struct p4_hosted_init init;
     uint8_t request[P4_HOSTED_PENDING_MAX_REQUEST_SIZE];
     size_t request_size;
     uint8_t txbuffer[TEST_CAPACITY];
     struct p4_hosted_pending_result result;
 };
+
+static size_t encode_discovery_body(uint8_t version, uint32_t nonce,
+                                    uint8_t body[8])
+{
+    size_t size = 0u;
+
+    body[size++] = 8u; /* DiscoveryRequest.version, field 1. */
+    body[size++] = version;
+    body[size++] = 16u; /* DiscoveryRequest.nonce, field 2. */
+    while (nonce >= 128u) {
+        body[size++] = (uint8_t)((nonce & UINT32_C(0x7f)) |
+                                 UINT32_C(0x80));
+        nonce >>= 7;
+    }
+    body[size++] = (uint8_t)nonce;
+    return size;
+}
+
+static size_t encode_board_discovery_request(uint32_t uid, uint8_t version,
+                                             uint32_t nonce, uint8_t *bytes,
+                                             size_t capacity)
+{
+    uint8_t body[8];
+    size_t body_size, written = 0u;
+    struct p4_hosted_rpc rpc = {0};
+
+    body_size = encode_discovery_body(version, nonce, body);
+    rpc.msg_type = P4_HOSTED_RPC_TYPE_REQUEST;
+    rpc.msg_id = TEST_DISCOVERY_REQUEST_ID;
+    rpc.uid = uid;
+    rpc.payload = body;
+    rpc.payload_size = body_size;
+    if (!p4_hosted_rpc_encode_board_discovery(bytes, capacity, &rpc,
+                                               &written))
+        return 0u;
+    return written;
+}
+
+static void set_supported_board_discovery_init(struct p4_hosted_init *init)
+{
+    /* The normal parsed C6 INIT facts, including the singleton version TLV. */
+    static const uint8_t event[] = {
+        P4_HOSTED_INIT_EVENT_TYPE, 9u,
+        P4_HOSTED_INIT_TAG_CAPABILITIES, 1u,
+        P4_HOSTED_INIT_CAP_WLAN_SDIO,
+        P4_HOSTED_INIT_TAG_CHIP_ID, 1u,
+        P4_HOSTED_INIT_CHIP_ESP32C6,
+        P4_HOSTED_INIT_TAG_BOARD_DISCOVERY, 1u,
+        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1
+    };
+
+    memset(init, 0xa7, sizeof *init);
+    CHECK(p4_hosted_init_parse(event, sizeof event, init));
+    CHECK(p4_hosted_init_has_board_discovery(init));
+}
 
 static size_t encode_request(uint32_t request_id, uint32_t uid,
                              uint8_t *bytes, size_t capacity)
@@ -84,6 +143,10 @@ static size_t encode_request(uint32_t request_id, uint32_t uid,
     if (request_id == 283u)
         return p4_hosted_association_disconnect_request(uid, bytes, capacity,
                                                          &written) ? written : 0u;
+    if (request_id == TEST_DISCOVERY_REQUEST_ID)
+        return encode_board_discovery_request(uid,
+            P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1,
+            TEST_DISCOVERY_NONCE, bytes, capacity);
     rpc.msg_type = P4_HOSTED_RPC_TYPE_REQUEST;
     rpc.msg_id = request_id;
     rpc.uid = uid;
@@ -218,6 +281,17 @@ static int submit(struct fixture *fixture, uint32_t generation,
         capacity, &fixture->result);
 }
 
+static int submit_board_discovery(struct fixture *fixture,
+    uint32_t generation, const struct p4_hosted_tx_ops *ops,
+    unsigned checksum_enabled, const uint8_t *request, size_t request_size,
+    uint8_t *buffer, size_t capacity, const struct p4_hosted_init *init,
+    uint32_t nonce)
+{
+    return p4_hosted_pending_submit_board_discovery(&fixture->fifo,
+        &fixture->ids, generation, ops, checksum_enabled, request,
+        request_size, buffer, capacity, &fixture->result, init, nonce);
+}
+
 static void verify_request_frame(const struct fake_tx *fake,
                                  uint32_t uid, uint32_t request_id,
                                  unsigned checksum_enabled)
@@ -239,6 +313,47 @@ static void verify_request_frame(const struct fake_tx *fake,
     CHECK(rpc.msg_type == P4_HOSTED_RPC_TYPE_REQUEST &&
           rpc.msg_id == request_id && rpc.uid == uid &&
           rpc.payload_size == 0u);
+}
+
+static void verify_board_discovery_request_frame(const struct fake_tx *fake,
+    uint32_t uid, uint32_t nonce, unsigned checksum_enabled)
+{
+    static const uint8_t sample_body[] = {
+        0x08u, 0x01u, 0x10u, 0xf8u, 0xacu, 0xd1u, 0x91u, 0x01u
+    };
+    static const uint8_t maximum_body[] = {
+        0x08u, 0x01u, 0x10u, 0xffu, 0xffu, 0xffu, 0xffu, 0x0fu
+    };
+    const uint8_t *expected_body;
+    struct p4_hosted_frame frame;
+    struct hosted_serial_message serial;
+    struct p4_hosted_rpc rpc;
+    uint8_t generated_body[8];
+    size_t expected_size;
+
+    CHECK(fake->captured_size == fake->plan.logical_bytes);
+    CHECK(p4_hosted_decode(fake->captured, fake->captured_size,
+                           checksum_enabled, &frame));
+    CHECK(frame.interface_type == P4_HOSTED_SERIAL &&
+          frame.interface_number == 0u && frame.flags == 0u &&
+          frame.packet_type == 0u && frame.throttle == 0u &&
+          frame.sequence == 0u);
+    CHECK(hosted_serial_decode(frame.payload, frame.payload_size, &serial));
+    CHECK(serial.endpoint == HOSTED_SERIAL_ENDPOINT_RPCRSP);
+    CHECK(p4_hosted_rpc_decode_board_discovery(serial.protobuf,
+        serial.protobuf_size, &rpc));
+    CHECK(rpc.msg_type == P4_HOSTED_RPC_TYPE_REQUEST &&
+          rpc.msg_id == TEST_DISCOVERY_REQUEST_ID && rpc.uid == uid);
+
+    expected_body = nonce == UINT32_MAX ? maximum_body : sample_body;
+    expected_size = nonce == UINT32_MAX ? sizeof maximum_body
+                                         : sizeof sample_body;
+    CHECK(nonce == UINT32_MAX || nonce == TEST_DISCOVERY_NONCE);
+    CHECK(rpc.payload_size == expected_size && expected_size == 8u);
+    CHECK(memcmp(rpc.payload, expected_body, expected_size) == 0);
+    CHECK(encode_discovery_body(P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1,
+        nonce, generated_body) == expected_size);
+    CHECK(memcmp(rpc.payload, generated_body, expected_size) == 0);
 }
 
 static void test_submit_encodes_one_frame_and_leaves_identity_pending(
@@ -484,6 +599,86 @@ static void expect_preflight_unchanged(struct fixture *fixture,
           fixture->fake.session_calls == sessions &&
           fixture->fake.budget_calls == budgets &&
           fixture->fake.yield_calls == yields);
+}
+
+static void expect_board_discovery_preflight_unchanged(struct fixture *fixture,
+    struct p4_hosted_fifo *fifo, struct p4_hosted_request_ids *ids,
+    uint32_t generation, const struct p4_hosted_tx_ops *ops,
+    unsigned checksum_enabled, const uint8_t *request, size_t request_size,
+    uint8_t *buffer, size_t capacity, const struct p4_hosted_init *init,
+    uint32_t nonce)
+{
+    struct p4_hosted_fifo fifo_before;
+    struct p4_hosted_request_ids ids_before;
+    struct p4_hosted_tx_ops ops_before;
+    struct p4_hosted_pending_result result_before;
+    struct p4_hosted_init init_before;
+    uint8_t request_before[P4_HOSTED_PENDING_MAX_REQUEST_SIZE];
+    uint8_t buffer_before[P4_HOSTED_PENDING_BUFFER_MAX];
+    unsigned token_reads = fixture->fake.token_reads;
+    unsigned other_reads = fixture->fake.other_reads;
+    unsigned writes = fixture->fake.write_calls;
+    unsigned sessions = fixture->fake.session_calls;
+    unsigned budgets = fixture->fake.budget_calls;
+    unsigned yields = fixture->fake.yield_calls;
+    int accepted;
+
+    CHECK(request_size <= sizeof request_before);
+    CHECK(capacity <= sizeof buffer_before);
+    memcpy(&fifo_before, fifo, sizeof fifo_before);
+    memcpy(&ids_before, ids, sizeof ids_before);
+    memcpy(&ops_before, ops, sizeof ops_before);
+    memcpy(&result_before, &fixture->result, sizeof result_before);
+    if (request_size != 0u)
+        memcpy(request_before, request, request_size);
+    memcpy(buffer_before, buffer, capacity);
+    if (init)
+        memcpy(&init_before, init, sizeof init_before);
+
+    accepted = p4_hosted_pending_submit_board_discovery(fifo, ids,
+        generation, ops, checksum_enabled, request, request_size, buffer,
+        capacity, &fixture->result, init, nonce);
+    CHECK(!accepted);
+    CHECK(memcmp(&fifo_before, fifo, sizeof fifo_before) == 0);
+    CHECK(memcmp(&ids_before, ids, sizeof ids_before) == 0);
+    CHECK(memcmp(&ops_before, ops, sizeof ops_before) == 0);
+    CHECK(memcmp(&result_before, &fixture->result,
+                 sizeof result_before) == 0);
+    if (request_size != 0u)
+        CHECK(memcmp(request_before, request, request_size) == 0);
+    CHECK(memcmp(buffer_before, buffer, capacity) == 0);
+    if (init)
+        CHECK(memcmp(&init_before, init, sizeof init_before) == 0);
+    CHECK(fixture->fake.token_reads == token_reads &&
+          fixture->fake.other_reads == other_reads &&
+          fixture->fake.write_calls == writes &&
+          fixture->fake.session_calls == sessions &&
+          fixture->fake.budget_calls == budgets &&
+          fixture->fake.yield_calls == yields);
+}
+
+static void test_board_discovery_init_aliases_each_pending_object(void)
+{
+    struct fixture fixture;
+    void *objects[6];
+    unsigned index;
+
+    fixture_init(&fixture, TEST_DISCOVERY_REQUEST_ID, 0u);
+    set_supported_board_discovery_init(&fixture.init);
+    objects[0] = &fixture.fifo;
+    objects[1] = &fixture.ids;
+    objects[2] = &fixture.ops;
+    objects[3] = fixture.request;
+    objects[4] = fixture.txbuffer;
+    objects[5] = &fixture.result;
+
+    for (index = 0u; index < 6u; ++index)
+        expect_board_discovery_preflight_unchanged(&fixture,
+            &fixture.fifo, &fixture.ids, TEST_GENERATION, &fixture.ops,
+            0u, fixture.request, fixture.request_size, fixture.txbuffer,
+            sizeof fixture.txbuffer,
+            (const struct p4_hosted_init *)objects[index],
+            TEST_DISCOVERY_NONCE);
 }
 
 static void test_submit_preflight_refusals_are_transactional(void)
@@ -862,6 +1057,415 @@ static void test_max_uid_response_finishes_but_never_reuses_uid(void)
     CHECK(next_uid == 0u && ids.exhausted == 1u);
 }
 
+static void test_board_discovery_submit_canonical_body_and_checksums(void)
+{
+    unsigned checksum_enabled;
+
+    for (checksum_enabled = 0u; checksum_enabled <= 1u;
+         ++checksum_enabled) {
+        struct fixture fixture;
+        uint32_t uid;
+
+        fixture_init(&fixture, TEST_DISCOVERY_REQUEST_ID,
+                     checksum_enabled);
+        set_supported_board_discovery_init(&fixture.init);
+        uid = fixture_uid(&fixture);
+        CHECK(uid == 1u &&
+              fixture.ids.active_request_id == TEST_DISCOVERY_REQUEST_ID);
+        CHECK(submit_board_discovery(&fixture, TEST_GENERATION,
+            &fixture.ops, checksum_enabled, fixture.request,
+            fixture.request_size, fixture.txbuffer,
+            sizeof fixture.txbuffer, &fixture.init,
+            TEST_DISCOVERY_NONCE));
+        CHECK(fixture.result.error == P4_HOSTED_PENDING_ERROR_NONE &&
+              fixture.result.submitted == 1u && fixture.result.uid == uid &&
+              fixture.result.request_id == TEST_DISCOVERY_REQUEST_ID &&
+              fixture.result.request_size == fixture.request_size);
+        CHECK(fixture.ids.generation == TEST_GENERATION &&
+              fixture.ids.active_uid == uid &&
+              fixture.ids.active_request_id == TEST_DISCOVERY_REQUEST_ID &&
+              fixture.ids.next_uid == 2u && fixture.ids.retired == 0u);
+        CHECK(fixture.fake.token_reads == 1u &&
+              fixture.fake.write_calls == 1u &&
+              fixture.fake.captured_padding_zero &&
+              fixture.fifo.tx_sent == 1u && !fixture.fifo.poisoned);
+        verify_board_discovery_request_frame(&fixture.fake, uid,
+            TEST_DISCOVERY_NONCE, checksum_enabled);
+
+        /* UINT32_MAX must fit the canonical eight-byte nested request body. */
+        fixture_init(&fixture, TEST_DISCOVERY_REQUEST_ID,
+                     checksum_enabled);
+        set_supported_board_discovery_init(&fixture.init);
+        uid = fixture_uid(&fixture);
+        fixture.request_size = encode_board_discovery_request(uid,
+            P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1, UINT32_MAX,
+            fixture.request, sizeof fixture.request);
+        CHECK(fixture.request_size != 0u);
+        CHECK(submit_board_discovery(&fixture, TEST_GENERATION,
+            &fixture.ops, checksum_enabled, fixture.request,
+            fixture.request_size, fixture.txbuffer,
+            sizeof fixture.txbuffer, &fixture.init, UINT32_MAX));
+        CHECK(fixture.result.error == P4_HOSTED_PENDING_ERROR_NONE &&
+              fixture.result.submitted == 1u && fixture.result.uid == uid &&
+              fixture.result.request_id == TEST_DISCOVERY_REQUEST_ID);
+        verify_board_discovery_request_frame(&fixture.fake, uid,
+            UINT32_MAX, checksum_enabled);
+    }
+}
+
+static void test_board_discovery_submit_preflight_refusals_are_atomic(void)
+{
+    struct fixture fixture;
+    struct p4_hosted_init unsupported_init;
+    struct p4_hosted_request_ids wrong_ids;
+    uint8_t malformed[P4_HOSTED_PENDING_MAX_REQUEST_SIZE];
+    uint32_t uid;
+    size_t malformed_size;
+
+    fixture_init(&fixture, TEST_DISCOVERY_REQUEST_ID, 0u);
+    set_supported_board_discovery_init(&fixture.init);
+    uid = fixture_uid(&fixture);
+
+    malformed_size = encode_board_discovery_request(uid,
+        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1,
+        TEST_DISCOVERY_NONCE + 1u, malformed, sizeof malformed);
+    CHECK(malformed_size != 0u);
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, malformed,
+        malformed_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &fixture.init, TEST_DISCOVERY_NONCE);
+
+    malformed_size = encode_board_discovery_request(uid, 2u,
+        TEST_DISCOVERY_NONCE, malformed, sizeof malformed);
+    CHECK(malformed_size != 0u);
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, malformed,
+        malformed_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &fixture.init, TEST_DISCOVERY_NONCE);
+
+    malformed_size = encode_board_discovery_request(uid,
+        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1, 0u, malformed,
+        sizeof malformed);
+    CHECK(malformed_size != 0u);
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, malformed,
+        malformed_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &fixture.init, 0u);
+
+    malformed_size = encode_board_discovery_request(uid + 1u,
+        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1, TEST_DISCOVERY_NONCE,
+        malformed, sizeof malformed);
+    CHECK(malformed_size != 0u);
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, malformed,
+        malformed_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &fixture.init, TEST_DISCOVERY_NONCE);
+
+    /* Missing or changed INIT singleton facts never reach the callbacks. */
+    unsupported_init = fixture.init;
+    unsupported_init.chip_id = P4_HOSTED_INIT_CHIP_ESP32S3;
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &unsupported_init, TEST_DISCOVERY_NONCE);
+
+    unsupported_init = fixture.init;
+    unsupported_init.capabilities = 0u;
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &unsupported_init, TEST_DISCOVERY_NONCE);
+
+    unsupported_init = fixture.init;
+    unsupported_init.present = (uint8_t)(unsupported_init.present &
+        (uint8_t)~P4_HOSTED_INIT_HAS_CAPABILITIES);
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &unsupported_init, TEST_DISCOVERY_NONCE);
+
+    unsupported_init = fixture.init;
+    unsupported_init.present = (uint8_t)(unsupported_init.present &
+        (uint8_t)~P4_HOSTED_INIT_HAS_CHIP_ID);
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &unsupported_init, TEST_DISCOVERY_NONCE);
+
+    unsupported_init = fixture.init;
+    unsupported_init.present = (uint8_t)(unsupported_init.present &
+        (uint8_t)~P4_HOSTED_INIT_HAS_BOARD_DISCOVERY);
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &unsupported_init, TEST_DISCOVERY_NONCE);
+
+    /* A parsed peer advertising version 2 is not the version-1 contract. */
+    unsupported_init = fixture.init;
+    unsupported_init.board_discovery_version = 2u;
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &unsupported_init, TEST_DISCOVERY_NONCE);
+
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 2u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &fixture.init, TEST_DISCOVERY_NONCE);
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION + 1u, &fixture.ops, 0u,
+        fixture.request, fixture.request_size, fixture.txbuffer,
+        sizeof fixture.txbuffer, &fixture.init, TEST_DISCOVERY_NONCE);
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        NULL, TEST_DISCOVERY_NONCE);
+
+    /* The call must match an already reserved 350 UID and generation. */
+    wrong_ids = fixture.ids;
+    wrong_ids.active_request_id = 349u;
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &wrong_ids, TEST_GENERATION, &fixture.ops, 0u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &fixture.init, TEST_DISCOVERY_NONCE);
+
+    wrong_ids = fixture.ids;
+    CHECK(p4_hosted_request_ids_finish(&wrong_ids, TEST_GENERATION, uid,
+        TEST_DISCOVERY_REQUEST_ID));
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &wrong_ids, TEST_GENERATION, &fixture.ops, 0u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &fixture.init, TEST_DISCOVERY_NONCE);
+
+    wrong_ids = fixture.ids;
+    wrong_ids.active_uid = uid + 1u;
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &wrong_ids, TEST_GENERATION, &fixture.ops, 0u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &fixture.init, TEST_DISCOVERY_NONCE);
+
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u,
+        (const uint8_t *)(const void *)&fixture.fifo, fixture.request_size,
+        fixture.txbuffer, sizeof fixture.txbuffer, &fixture.init,
+        TEST_DISCOVERY_NONCE);
+}
+
+static void test_board_discovery_tx_failures_consume_and_retire_once(void)
+{
+    struct fixture fixture;
+    struct p4_hosted_request_ids ids_before;
+    uint32_t uid;
+
+    fixture_init(&fixture, TEST_DISCOVERY_REQUEST_ID, 0u);
+    set_supported_board_discovery_init(&fixture.init);
+    uid = fixture_uid(&fixture);
+    fixture.fake.token_result = 0;
+    CHECK(!submit_board_discovery(&fixture, TEST_GENERATION, &fixture.ops,
+        0u, fixture.request, fixture.request_size, fixture.txbuffer,
+        sizeof fixture.txbuffer, &fixture.init, TEST_DISCOVERY_NONCE));
+    CHECK(fixture.result.error == P4_HOSTED_PENDING_ERROR_TX &&
+          fixture.result.tx.error == P4_HOSTED_TX_ERROR_TOKEN_READ &&
+          fixture.result.submitted == 0u);
+    CHECK(fixture.fake.token_reads == 1u && fixture.fake.write_calls == 0u &&
+          !fixture.fifo.poisoned && fixture.ids.retired == 0u &&
+          fixture.ids.next_uid == uid + 1u && fixture.ids.active_uid == 0u &&
+          fixture.ids.active_request_id == 0u);
+
+    fixture_init(&fixture, TEST_DISCOVERY_REQUEST_ID, 0u);
+    set_supported_board_discovery_init(&fixture.init);
+    uid = fixture_uid(&fixture);
+    fixture.fake.write_result = 0;
+    fixture.fake.completion_overridden = 1u;
+    fixture.fake.completion_override.started = 1u;
+    fixture.fake.completion_override.success = 0u;
+    fixture.fake.completion_override.completed_bytes = 0u;
+    CHECK(!submit_board_discovery(&fixture, TEST_GENERATION, &fixture.ops,
+        0u, fixture.request, fixture.request_size, fixture.txbuffer,
+        sizeof fixture.txbuffer, &fixture.init, TEST_DISCOVERY_NONCE));
+    CHECK(fixture.result.error == P4_HOSTED_PENDING_ERROR_SESSION &&
+          fixture.result.tx.error == P4_HOSTED_TX_ERROR_WRITE_AMBIGUOUS &&
+          fixture.result.submitted == 0u &&
+          fixture.result.tx.write_called == 1u);
+    CHECK(fixture.fake.write_calls == 1u && fixture.fifo.poisoned &&
+          !fixture.fifo.busy && fixture.ids.retired == 1u &&
+          fixture.ids.next_uid == uid + 1u && fixture.ids.active_uid == 0u &&
+          fixture.ids.active_request_id == 0u);
+    ids_before = fixture.ids;
+    expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
+        &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,
+        &fixture.init, TEST_DISCOVERY_NONCE);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0 &&
+          fixture.fake.write_calls == 1u);
+}
+
+static void test_board_discovery_tx_does_not_mutate_callback_replacements(void)
+{
+    struct fixture fixture;
+    struct p4_hosted_fifo replacement_fifo, fifo_before;
+    struct p4_hosted_request_ids replacement_ids, ids_before;
+    uint32_t replacement_uid = 0u;
+
+    fixture_init(&fixture, TEST_DISCOVERY_REQUEST_ID, 0u);
+    set_supported_board_discovery_init(&fixture.init);
+    memset(&replacement_fifo, 0, sizeof replacement_fifo);
+    memset(&replacement_ids, 0, sizeof replacement_ids);
+    CHECK(p4_hosted_fifo_start(&replacement_fifo, REPLACEMENT_GENERATION,
+                               TEST_POOL_LIMIT));
+    replacement_fifo.tx_sent = 7u;
+    CHECK(p4_hosted_request_ids_init(&replacement_ids,
+                                     REPLACEMENT_GENERATION));
+    CHECK(p4_hosted_request_ids_reserve(&replacement_ids,
+        REPLACEMENT_GENERATION, 257u, &replacement_uid));
+    CHECK(replacement_uid == 1u);
+    fixture.fake.replacement_fifo = replacement_fifo;
+    fixture.fake.replacement_ids = replacement_ids;
+    fixture.fake.replace_epoch_on_write = 1u;
+
+    CHECK(!submit_board_discovery(&fixture, TEST_GENERATION, &fixture.ops,
+        0u, fixture.request, fixture.request_size, fixture.txbuffer,
+        sizeof fixture.txbuffer, &fixture.init, TEST_DISCOVERY_NONCE));
+    fifo_before = replacement_fifo;
+    ids_before = replacement_ids;
+    CHECK(memcmp(&fifo_before, &fixture.fifo, sizeof fifo_before) == 0 &&
+          memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+    CHECK(fixture.result.error == P4_HOSTED_PENDING_ERROR_SESSION &&
+          fixture.result.submitted == 0u && fixture.fake.write_calls == 1u);
+
+    fixture_init(&fixture, TEST_DISCOVERY_REQUEST_ID, 0u);
+    set_supported_board_discovery_init(&fixture.init);
+    memset(&replacement_ids, 0, sizeof replacement_ids);
+    CHECK(p4_hosted_request_ids_init(&replacement_ids,
+                                     REPLACEMENT_GENERATION));
+    CHECK(p4_hosted_request_ids_reserve(&replacement_ids,
+        REPLACEMENT_GENERATION, 283u, &replacement_uid));
+    fixture.fake.replacement_ids = replacement_ids;
+    fixture.fake.replace_ids_on_write = 1u;
+
+    CHECK(!submit_board_discovery(&fixture, TEST_GENERATION, &fixture.ops,
+        0u, fixture.request, fixture.request_size, fixture.txbuffer,
+        sizeof fixture.txbuffer, &fixture.init, TEST_DISCOVERY_NONCE));
+    ids_before = replacement_ids;
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+    CHECK(fixture.result.error == P4_HOSTED_PENDING_ERROR_SESSION &&
+          fixture.result.submitted == 1u && fixture.result.tx.success == 1u &&
+          fixture.fake.write_calls == 1u && fixture.fifo.tx_sent == 1u &&
+          !fixture.fifo.poisoned && !fixture.fifo.busy);
+}
+
+static void test_board_discovery_correlation_is_private_and_uid_exact(void)
+{
+    struct fixture fixture;
+    struct p4_hosted_request_ids wrong_ids;
+    struct p4_hosted_request_ids ids_before;
+    struct p4_hosted_inbox_item item;
+    uint32_t uid, next_uid = 0u;
+
+    fixture_init(&fixture, TEST_DISCOVERY_REQUEST_ID, 0u);
+    set_supported_board_discovery_init(&fixture.init);
+    uid = fixture_uid(&fixture);
+    CHECK(submit_board_discovery(&fixture, TEST_GENERATION, &fixture.ops,
+        0u, fixture.request, fixture.request_size, fixture.txbuffer,
+        sizeof fixture.txbuffer, &fixture.init, TEST_DISCOVERY_NONCE));
+    ids_before = fixture.ids;
+
+    memset(&item, 0, sizeof item);
+    item.msg_type = P4_HOSTED_RPC_TYPE_EVENT;
+    item.msg_id = 775u;
+    item.uid = 0u;
+    CHECK(p4_hosted_pending_correlate_board_discovery(&fixture.ids,
+        TEST_GENERATION, &item) == P4_HOSTED_PENDING_CORRELATION_EVENT);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+
+    wrong_ids = fixture.ids;
+    wrong_ids.active_request_id = 349u;
+    init_response_item(&item, TEST_DISCOVERY_REQUEST_ID, uid, NULL, 0u);
+    ids_before = wrong_ids;
+    CHECK(p4_hosted_pending_correlate_board_discovery(&wrong_ids,
+        TEST_GENERATION, &item) == P4_HOSTED_PENDING_CORRELATION_REFUSED);
+    CHECK(memcmp(&ids_before, &wrong_ids, sizeof ids_before) == 0);
+    ids_before = fixture.ids;
+
+    init_response_item(&item, TEST_AP_INFO_REQUEST_ID, uid, NULL, 0u);
+    CHECK(item.msg_id == 550u &&
+          p4_hosted_pending_correlate_board_discovery(&fixture.ids,
+              TEST_GENERATION, &item) ==
+              P4_HOSTED_PENDING_CORRELATION_UNMATCHED);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+    init_response_item(&item, 349u, uid, NULL, 0u);
+    CHECK(item.msg_id == 605u &&
+          p4_hosted_pending_correlate_board_discovery(&fixture.ids,
+              TEST_GENERATION, &item) ==
+              P4_HOSTED_PENDING_CORRELATION_UNMATCHED);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+
+    init_response_item(&item, TEST_DISCOVERY_REQUEST_ID, uid + 1u,
+                       NULL, 0u);
+    CHECK(item.msg_id == TEST_DISCOVERY_RESPONSE_ID &&
+          p4_hosted_pending_correlate_board_discovery(&fixture.ids,
+              TEST_GENERATION, &item) ==
+              P4_HOSTED_PENDING_CORRELATION_UNMATCHED);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+
+    /* The normal WLAN correlator must not admit the private 606 response. */
+    init_response_item(&item, TEST_DISCOVERY_REQUEST_ID, uid, NULL, 0u);
+    CHECK(p4_hosted_pending_correlate(&fixture.ids, TEST_GENERATION,
+        &item) == P4_HOSTED_PENDING_CORRELATION_REFUSED);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+
+    CHECK(p4_hosted_pending_correlate_board_discovery(&fixture.ids,
+        TEST_GENERATION, &item) == P4_HOSTED_PENDING_CORRELATION_MATCHED);
+    CHECK(fixture.ids.active_uid == 0u &&
+          fixture.ids.active_request_id == 0u &&
+          fixture.ids.next_uid == uid + 1u && fixture.ids.retired == 0u);
+    ids_before = fixture.ids;
+    CHECK(p4_hosted_pending_correlate_board_discovery(&fixture.ids,
+        TEST_GENERATION, &item) == P4_HOSTED_PENDING_CORRELATION_REFUSED);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+
+    CHECK(p4_hosted_request_ids_reserve(&fixture.ids, TEST_GENERATION,
+        TEST_DISCOVERY_REQUEST_ID, &next_uid));
+    CHECK(next_uid == uid + 1u);
+    ids_before = fixture.ids;
+    CHECK(p4_hosted_pending_correlate_board_discovery(&fixture.ids,
+        TEST_GENERATION, &item) == P4_HOSTED_PENDING_CORRELATION_UNMATCHED);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+    init_response_item(&item, TEST_DISCOVERY_REQUEST_ID, next_uid, NULL, 0u);
+    CHECK(p4_hosted_pending_correlate_board_discovery(&fixture.ids,
+        TEST_GENERATION + 1u, &item) == P4_HOSTED_PENDING_CORRELATION_REFUSED);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+    CHECK(p4_hosted_pending_correlate_board_discovery(&fixture.ids,
+        TEST_GENERATION, &item) == P4_HOSTED_PENDING_CORRELATION_MATCHED);
+}
+
+static void test_normal_pending_path_rejects_private_discovery_ids(void)
+{
+    struct fixture fixture;
+    struct p4_hosted_inbox_item item;
+    struct p4_hosted_request_ids ids_before;
+    uint32_t uid;
+
+    fixture_init(&fixture, TEST_DISCOVERY_REQUEST_ID, 0u);
+    set_supported_board_discovery_init(&fixture.init);
+    expect_preflight_unchanged(&fixture, &fixture.fifo, &fixture.ids,
+        TEST_GENERATION, &fixture.ops, 0u, fixture.request,
+        fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer);
+    uid = fixture_uid(&fixture);
+    CHECK(submit_board_discovery(&fixture, TEST_GENERATION, &fixture.ops,
+        0u, fixture.request, fixture.request_size, fixture.txbuffer,
+        sizeof fixture.txbuffer, &fixture.init, TEST_DISCOVERY_NONCE));
+
+    memset(&item, 0, sizeof item);
+    item.msg_type = P4_HOSTED_RPC_TYPE_RESPONSE;
+    item.msg_id = TEST_DISCOVERY_RESPONSE_ID;
+    item.uid = uid;
+    ids_before = fixture.ids;
+    CHECK(p4_hosted_pending_correlate(&fixture.ids, TEST_GENERATION,
+        &item) == P4_HOSTED_PENDING_CORRELATION_REFUSED);
+    CHECK(memcmp(&ids_before, &fixture.ids, sizeof ids_before) == 0);
+}
+
 static void test_ota_cannot_use_normal_control_submission(void)
 {
     uint32_t request_id;
@@ -909,6 +1513,13 @@ int main(void)
     test_replacement_identity_is_not_completed_after_write();
     test_correlator_refuses_bad_metadata_without_mutation();
     test_max_uid_response_finishes_but_never_reuses_uid();
+    test_board_discovery_submit_canonical_body_and_checksums();
+    test_board_discovery_submit_preflight_refusals_are_atomic();
+    test_board_discovery_init_aliases_each_pending_object();
+    test_board_discovery_tx_failures_consume_and_retire_once();
+    test_board_discovery_tx_does_not_mutate_callback_replacements();
+    test_board_discovery_correlation_is_private_and_uid_exact();
+    test_normal_pending_path_rejects_private_discovery_ids();
     test_ota_cannot_use_normal_control_submission();
     printf("hosted pending TX/correlation: %lu checks passed\n", checks);
     return 0;

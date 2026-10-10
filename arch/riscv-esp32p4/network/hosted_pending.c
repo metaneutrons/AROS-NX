@@ -4,6 +4,31 @@
 #include "hosted_rpc.h"
 #include "hosted_serial.h"
 #include "hosted_wire.h"
+#include "hosted_init.h"
+
+/* Deliberately private: normal WLAN admission must not grow with extensions. */
+#define DISCOVERY_REQUEST_ID 350u
+#define DISCOVERY_RESPONSE_ID 606u
+
+static int discovery_body_matches(const struct p4_hosted_rpc *rpc,
+                                   uint32_t nonce)
+{
+    uint8_t body[8];
+    size_t size = 0, i;
+    if (!nonce) return 0;
+    body[size++] = 8u;
+    body[size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1;
+    body[size++] = 16u;
+    while (nonce >= 128u) {
+        body[size++] = (uint8_t)(nonce | 128u);
+        nonce >>= 7;
+    }
+    body[size++] = (uint8_t)nonce;
+    if (rpc->payload_size != size) return 0;
+    for (i = 0; i < size; ++i)
+        if (rpc->payload[i] != body[i]) return 0;
+    return 1;
+}
 
 struct pending_range {
     uintptr_t first;
@@ -131,9 +156,12 @@ static int submit_preflight(struct p4_hosted_fifo *fifo,
                             const uint8_t *request, size_t request_size,
                             uint8_t *txbuffer, size_t capacity,
                             struct p4_hosted_pending_result *result,
-                            struct p4_hosted_rpc *rpc)
+                            struct p4_hosted_rpc *rpc,
+                            const struct p4_hosted_init *init,
+                            uint32_t nonce, unsigned discovery)
 {
-    struct pending_range ranges[6];
+    struct pending_range ranges[7];
+    unsigned count = discovery ? 7u : 6u;
     unsigned first, second;
 
     if (!fifo || !ids || !tx_ops || !request || !txbuffer || !result ||
@@ -147,11 +175,13 @@ static int submit_preflight(struct p4_hosted_fifo *fifo,
         !make_range(tx_ops, sizeof(*tx_ops), &ranges[2]) ||
         !make_range(request, request_size, &ranges[3]) ||
         !make_range(txbuffer, capacity, &ranges[4]) ||
-        !make_range(result, sizeof(*result), &ranges[5]))
+        !make_range(result, sizeof(*result), &ranges[5]) ||
+        (discovery && (!nonce ||
+         !make_range(init, sizeof(*init), &ranges[6]))))
         return 0;
 
-    for (first = 0u; first < 6u; ++first)
-        for (second = first + 1u; second < 6u; ++second)
+    for (first = 0u; first < count; ++first)
+        for (second = first + 1u; second < count; ++second)
             if (!ranges_disjoint(&ranges[first], &ranges[second]))
                 return 0;
 
@@ -160,9 +190,13 @@ static int submit_preflight(struct p4_hosted_fifo *fifo,
         !fifo_session_healthy(fifo, generation) ||
         !ledger_consistent(ids) || ids->retired != 0u ||
         ids->generation != generation || ids->active_uid == 0u ||
-        !p4_hosted_rpc_decode(request, request_size, rpc) ||
+        !(discovery ? p4_hosted_rpc_decode_board_discovery(request, request_size, rpc)
+                    : p4_hosted_rpc_decode(request, request_size, rpc)) ||
         rpc->msg_type != P4_HOSTED_RPC_TYPE_REQUEST || rpc->uid == 0u ||
-        !request_id_supported(rpc->msg_id) ||
+        (discovery ? (rpc->msg_id != DISCOVERY_REQUEST_ID ||
+                      !p4_hosted_init_has_board_discovery(init) ||
+                      !discovery_body_matches(rpc, nonce))
+                   : !request_id_supported(rpc->msg_id)) ||
         rpc->uid != ids->active_uid ||
         rpc->msg_id != ids->active_request_id)
         return 0;
@@ -170,14 +204,16 @@ static int submit_preflight(struct p4_hosted_fifo *fifo,
     return 1;
 }
 
-int p4_hosted_pending_submit(struct p4_hosted_fifo *fifo,
+static int pending_submit(struct p4_hosted_fifo *fifo,
                              struct p4_hosted_request_ids *ids,
                              uint32_t generation,
                              const struct p4_hosted_tx_ops *tx_ops,
                              unsigned checksum_enabled,
                              const uint8_t *request, size_t request_size,
                              uint8_t *txbuffer, size_t capacity,
-                             struct p4_hosted_pending_result *result)
+                             struct p4_hosted_pending_result *result,
+                             const struct p4_hosted_init *init,
+                             uint32_t nonce, unsigned discovery)
 {
     uint8_t serial_buffer[HOSTED_SERIAL_MESSAGE_OVERHEAD +
                           P4_HOSTED_PENDING_MAX_REQUEST_SIZE];
@@ -189,7 +225,7 @@ int p4_hosted_pending_submit(struct p4_hosted_fifo *fifo,
 
     if (!submit_preflight(fifo, ids, generation, tx_ops, checksum_enabled,
                           request, request_size, txbuffer, capacity, result,
-                          &rpc))
+                          &rpc, init, nonce, discovery))
         return 0;
 
     clear_result(result);
@@ -261,22 +297,46 @@ done:
     return submit_ok;
 }
 
-static int valid_inbox_envelope(const struct p4_hosted_inbox_item *item)
+int p4_hosted_pending_submit(struct p4_hosted_fifo *fifo,
+    struct p4_hosted_request_ids *ids, uint32_t generation,
+    const struct p4_hosted_tx_ops *tx_ops, unsigned checksum_enabled,
+    const uint8_t *request, size_t request_size, uint8_t *txbuffer,
+    size_t capacity, struct p4_hosted_pending_result *result)
+{
+    return pending_submit(fifo, ids, generation, tx_ops, checksum_enabled,
+        request, request_size, txbuffer, capacity, result, NULL, 0u, 0u);
+}
+
+int p4_hosted_pending_submit_board_discovery(struct p4_hosted_fifo *fifo,
+    struct p4_hosted_request_ids *ids, uint32_t generation,
+    const struct p4_hosted_tx_ops *tx_ops, unsigned checksum_enabled,
+    const uint8_t *request, size_t request_size, uint8_t *txbuffer,
+    size_t capacity, struct p4_hosted_pending_result *result,
+    const struct p4_hosted_init *init, uint32_t nonce)
+{
+    return pending_submit(fifo, ids, generation, tx_ops, checksum_enabled,
+        request, request_size, txbuffer, capacity, result, init, nonce, 1u);
+}
+
+static int valid_inbox_envelope(const struct p4_hosted_inbox_item *item,
+                                unsigned discovery)
 {
     if (item->payload_size > P4_HOSTED_RPC_MAX_SIZE)
         return 0;
     if (item->msg_type == P4_HOSTED_RPC_TYPE_EVENT)
         return item->msg_id >= 769u && item->msg_id <= 776u;
     if (item->msg_type == P4_HOSTED_RPC_TYPE_RESPONSE)
-        return item->msg_id >= 513u && item->msg_id <= 605u &&
+        return ((item->msg_id >= 513u && item->msg_id <= 605u) ||
+                (discovery && item->msg_id == DISCOVERY_RESPONSE_ID)) &&
                item->uid != 0u;
     return 0;
 }
 
-enum p4_hosted_pending_correlation
-p4_hosted_pending_correlate(struct p4_hosted_request_ids *ids,
+static enum p4_hosted_pending_correlation
+pending_correlate(struct p4_hosted_request_ids *ids,
                             uint32_t generation,
-                            const struct p4_hosted_inbox_item *item)
+                            const struct p4_hosted_inbox_item *item,
+                            unsigned discovery)
 {
     struct pending_range ids_range, item_range;
 
@@ -285,7 +345,9 @@ p4_hosted_pending_correlate(struct p4_hosted_request_ids *ids,
         !make_range(item, sizeof(*item), &item_range) ||
         !ranges_disjoint(&ids_range, &item_range) ||
         !ledger_consistent(ids) || ids->retired != 0u ||
-        ids->generation != generation || !valid_inbox_envelope(item))
+        ids->generation != generation || !valid_inbox_envelope(item, discovery) ||
+        (discovery && (!ids->active_uid ||
+                       ids->active_request_id != DISCOVERY_REQUEST_ID)))
         return P4_HOSTED_PENDING_CORRELATION_REFUSED;
 
     if (item->msg_type == P4_HOSTED_RPC_TYPE_EVENT)
@@ -300,4 +362,18 @@ p4_hosted_pending_correlate(struct p4_hosted_request_ids *ids,
                                       ids->active_request_id))
         return P4_HOSTED_PENDING_CORRELATION_REFUSED;
     return P4_HOSTED_PENDING_CORRELATION_MATCHED;
+}
+
+enum p4_hosted_pending_correlation
+p4_hosted_pending_correlate(struct p4_hosted_request_ids *ids,
+    uint32_t generation, const struct p4_hosted_inbox_item *item)
+{
+    return pending_correlate(ids, generation, item, 0u);
+}
+
+enum p4_hosted_pending_correlation
+p4_hosted_pending_correlate_board_discovery(struct p4_hosted_request_ids *ids,
+    uint32_t generation, const struct p4_hosted_inbox_item *item)
+{
+    return pending_correlate(ids, generation, item, 1u);
 }

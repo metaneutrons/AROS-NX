@@ -71,8 +71,13 @@ int p4_hosted_rx_take_open(struct p4_hosted_rx *state,
  * bus for this call only, and releases it before popping/dispatching inbox
  * items. Callbacks must not release ownership/re-enter/mutate these objects.
  * All five ranges must be disjoint. Preflight refusal changes nothing.
- * SERIAL events/responses are copied into the RPC inbox; partial serial
- * assembly survives idle calls and interleaved STA frames. Complete STA/0
+ * SERIAL events/ordinary responses are copied into the RPC inbox; private
+ * response606 reaches its decoder only while the inbox carries an explicit
+ * matching-generation UID arm, and inbox admission still rejects wrong UIDs
+ * and duplicates. Requests350 are never accepted here. Arming does not
+ * establish peer freshness, capability, lease or UID non-reuse; the owner
+ * must establish those conditions and drain queued/partial work before arming.
+ * Partial serial assembly survives idle calls and interleaved STA frames. Complete STA/0
  * Ethernet frames from later RX packets are copied into `state->frames` and
  * counted separately in result.frames; result.messages remains the
  * RPC-envelope count. The pinned

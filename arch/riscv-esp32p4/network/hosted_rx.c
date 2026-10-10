@@ -28,9 +28,28 @@ static int inbox_init_allowed(const struct p4_hosted_inbox *inbox,
 {
     if (inbox->initialized == 0u)
         return inbox->generation == 0u && inbox->head == 0u &&
-               inbox->count == 0u && inbox->poisoned == 0u;
+               inbox->count == 0u && inbox->poisoned == 0u &&
+               inbox->discovery_generation == 0u &&
+               inbox->discovery_uid == 0u && inbox->discovery_armed == 0u &&
+               inbox->discovery_seen == 0u;
     return inbox->initialized == 1u && inbox->generation != 0u &&
            inbox->generation != generation;
+}
+
+static int inbox_matches(const struct p4_hosted_inbox *inbox,
+                         uint32_t generation)
+{
+    if (inbox->initialized != 1u || inbox->poisoned != 0u ||
+        inbox->generation != generation ||
+        inbox->count > P4_HOSTED_INBOX_CAPACITY ||
+        inbox->head >= P4_HOSTED_INBOX_CAPACITY ||
+        inbox->discovery_armed > 1u || inbox->discovery_seen > 1u)
+        return 0;
+    if (inbox->discovery_armed == 0u)
+        return inbox->discovery_generation == 0u &&
+               inbox->discovery_uid == 0u && inbox->discovery_seen == 0u;
+    return inbox->discovery_generation == generation &&
+           inbox->discovery_uid != 0u;
 }
 
 static int frames_init_allowed(const struct p4_hosted_frames *frames,
@@ -116,8 +135,7 @@ static int rx_guard(struct p4_hosted_rx *state, struct p4_hosted_fifo *fifo,
         state->generation != generation || fifo->generation != generation ||
         state->assembly.initialized != 1u || state->assembly.poisoned ||
         state->assembly.generation != generation ||
-        state->inbox.initialized != 1u || state->inbox.poisoned ||
-        state->inbox.generation != generation ||
+        !inbox_matches(&state->inbox, generation) ||
         state->frames.initialized != 1u || state->frames.poisoned ||
         state->frames.generation != generation ||
         state->frames.count > P4_HOSTED_FRAME_QUEUE_CAPACITY ||
@@ -134,8 +152,7 @@ static int rx_guard(struct p4_hosted_rx *state, struct p4_hosted_fifo *fifo,
         state->generation != generation || fifo->generation != generation ||
         state->assembly.initialized != 1u || state->assembly.poisoned ||
         state->assembly.generation != generation ||
-        state->inbox.initialized != 1u || state->inbox.poisoned ||
-        state->inbox.generation != generation ||
+        !inbox_matches(&state->inbox, generation) ||
         state->frames.initialized != 1u || state->frames.poisoned ||
         state->frames.generation != generation ||
         state->frames.count > P4_HOSTED_FRAME_QUEUE_CAPACITY ||
@@ -182,9 +199,20 @@ static int rx_batch(struct p4_hosted_rx *state, struct p4_hosted_fifo *fifo,
             continue;
         }
         if (assembled != P4_HOSTED_REASSEMBLY_COMPLETE ||
-            !p4_hosted_reassembly_view(&state->assembly, generation, &message) ||
-            !p4_hosted_rpc_decode(message.protobuf, message.protobuf_size, &rpc))
+            !p4_hosted_reassembly_view(&state->assembly, generation, &message))
             goto malformed;
+        if (!p4_hosted_rpc_decode(message.protobuf, message.protobuf_size,
+                                  &rpc)) {
+            uint32_t expected_uid =
+                p4_hosted_inbox_discovery_response_expected_uid(
+                    &state->inbox, generation);
+            if (expected_uid == 0u ||
+                !p4_hosted_rpc_decode_board_discovery(
+                    message.protobuf, message.protobuf_size, &rpc) ||
+                rpc.msg_type != P4_HOSTED_RPC_TYPE_RESPONSE ||
+                rpc.msg_id != 606u || rpc.uid != expected_uid)
+                goto malformed;
+        }
         if (!((message.endpoint == HOSTED_SERIAL_ENDPOINT_RPCEVT &&
                rpc.msg_type == P4_HOSTED_RPC_TYPE_EVENT) ||
               (message.endpoint == HOSTED_SERIAL_ENDPOINT_RPCRSP &&
@@ -287,10 +315,7 @@ int p4_hosted_rx_poll(struct p4_hosted_rx *state,
         state->poisoned || state->generation != generation ||
         state->assembly.initialized != 1u || state->assembly.poisoned ||
         state->assembly.generation != generation ||
-        state->inbox.initialized != 1u || state->inbox.poisoned ||
-        state->inbox.generation != generation ||
-        state->inbox.count > P4_HOSTED_INBOX_CAPACITY ||
-        state->inbox.head >= P4_HOSTED_INBOX_CAPACITY ||
+        !inbox_matches(&state->inbox, generation) ||
         state->frames.initialized != 1u || state->frames.generation != generation ||
         state->frames.poisoned ||
         state->frames.count > P4_HOSTED_FRAME_QUEUE_CAPACITY ||

@@ -65,13 +65,29 @@ static int valid_envelope(uint32_t msg_type, uint32_t msg_id,
     return 0;
 }
 
+static int discovery_arm_matches(const struct p4_hosted_inbox *inbox,
+                                 uint32_t generation, uint32_t uid)
+{
+    return inbox->discovery_armed == 1u &&
+           inbox->discovery_generation == generation &&
+           inbox->generation == generation && inbox->discovery_uid == uid &&
+           uid != 0u;
+}
+
 static int queue_matches(const struct p4_hosted_inbox *inbox,
                          uint32_t generation)
 {
-    return generation != 0 && inbox->initialized == 1u &&
-           inbox->generation == generation && inbox->poisoned == 0u &&
-           inbox->head < P4_HOSTED_INBOX_CAPACITY &&
-           inbox->count <= P4_HOSTED_INBOX_CAPACITY;
+    if (generation == 0u || inbox->initialized != 1u ||
+        inbox->generation != generation || inbox->poisoned != 0u ||
+        inbox->head >= P4_HOSTED_INBOX_CAPACITY ||
+        inbox->count > P4_HOSTED_INBOX_CAPACITY ||
+        inbox->discovery_armed > 1u || inbox->discovery_seen > 1u)
+        return 0;
+    if (inbox->discovery_armed == 0u)
+        return inbox->discovery_generation == 0u &&
+               inbox->discovery_uid == 0u && inbox->discovery_seen == 0u;
+    return inbox->discovery_generation == generation &&
+           inbox->discovery_uid != 0u;
 }
 
 int p4_hosted_inbox_init(struct p4_hosted_inbox *inbox,
@@ -82,7 +98,9 @@ int p4_hosted_inbox_init(struct p4_hosted_inbox *inbox,
 
     if (inbox->initialized == 0u) {
         if (inbox->generation != 0 || inbox->head != 0 || inbox->count != 0 ||
-            inbox->poisoned != 0)
+            inbox->poisoned != 0 || inbox->discovery_generation != 0u ||
+            inbox->discovery_uid != 0u || inbox->discovery_armed != 0u ||
+            inbox->discovery_seen != 0u)
             return 0;
     } else if (inbox->initialized == 1u) {
         if (inbox->generation == 0 || inbox->generation == generation)
@@ -97,6 +115,10 @@ int p4_hosted_inbox_init(struct p4_hosted_inbox *inbox,
     inbox->count = 0;
     inbox->initialized = 1;
     inbox->poisoned = 0;
+    inbox->discovery_generation = 0u;
+    inbox->discovery_uid = 0u;
+    inbox->discovery_armed = 0u;
+    inbox->discovery_seen = 0u;
     return 1;
 }
 
@@ -114,8 +136,7 @@ int p4_hosted_inbox_push(struct p4_hosted_inbox *inbox,
         !ranges_disjoint(inbox, sizeof(*inbox), rpc, sizeof(*rpc)))
         return 0;
 
-    if (!valid_envelope(rpc->msg_type, rpc->msg_id, rpc->uid,
-                        rpc->payload_size))
+    if (rpc->payload_size > P4_HOSTED_RPC_MAX_SIZE)
         return 0;
     if (rpc->payload_size != 0 &&
         (!valid_range(rpc->payload, rpc->payload_size) ||
@@ -127,11 +148,24 @@ int p4_hosted_inbox_push(struct p4_hosted_inbox *inbox,
 
     if (!queue_matches(inbox, generation))
         return 0;
+    if (rpc->msg_type == P4_HOSTED_RPC_TYPE_RESPONSE && rpc->msg_id == 606u) {
+        if (rpc->uid == 0u || !discovery_arm_matches(inbox, generation,
+                                                      rpc->uid) ||
+            inbox->discovery_seen != 0u)
+            return 0;
+    } else if (!valid_envelope(rpc->msg_type, rpc->msg_id, rpc->uid,
+                               rpc->payload_size)) {
+        return 0;
+    }
     if (inbox->count == P4_HOSTED_INBOX_CAPACITY) {
         wipe_items(inbox);
         inbox->head = 0;
         inbox->count = 0;
         inbox->poisoned = 1;
+        inbox->discovery_generation = 0u;
+        inbox->discovery_uid = 0u;
+        inbox->discovery_armed = 0u;
+        inbox->discovery_seen = 0u;
         return 0;
     }
 
@@ -149,6 +183,8 @@ int p4_hosted_inbox_push(struct p4_hosted_inbox *inbox,
     for (i = 0; i < rpc->payload_size; ++i)
         destination[i] = source[i];
     ++inbox->count;
+    if (rpc->msg_type == P4_HOSTED_RPC_TYPE_RESPONSE && rpc->msg_id == 606u)
+        inbox->discovery_seen = 1u;
     return 1;
 }
 
@@ -165,9 +201,17 @@ int p4_hosted_inbox_pop(struct p4_hosted_inbox *inbox,
         return 0;
 
     item = &inbox->items[inbox->head];
-    if (!valid_envelope(item->msg_type, item->msg_id, item->uid,
-                        item->payload_size))
+    if (item->msg_type == P4_HOSTED_RPC_TYPE_RESPONSE &&
+        item->msg_id == 606u) {
+        if (item->uid == 0u || !discovery_arm_matches(inbox, generation,
+                                                       item->uid) ||
+            inbox->discovery_seen != 1u ||
+            item->payload_size > P4_HOSTED_RPC_MAX_SIZE)
+            return 0;
+    } else if (!valid_envelope(item->msg_type, item->msg_id, item->uid,
+                               item->payload_size)) {
         return 0;
+    }
 
     copy_bytes(out, item, sizeof(*out));
     wipe_bytes(item, sizeof(*item));
@@ -176,6 +220,50 @@ int p4_hosted_inbox_pop(struct p4_hosted_inbox *inbox,
         inbox->head = 0;
     --inbox->count;
     return 1;
+}
+
+int p4_hosted_inbox_arm_discovery_response(struct p4_hosted_inbox *inbox,
+                                           uint32_t generation,
+                                           uint32_t uid)
+{
+    if (!valid_range(inbox, sizeof(*inbox)) || uid == 0u ||
+        !queue_matches(inbox, generation) || inbox->count != 0u ||
+        inbox->discovery_armed != 0u)
+        return 0;
+
+    inbox->discovery_generation = generation;
+    inbox->discovery_uid = uid;
+    inbox->discovery_seen = 0u;
+    inbox->discovery_armed = 1u;
+    return 1;
+}
+
+int p4_hosted_inbox_disarm_discovery_response(struct p4_hosted_inbox *inbox,
+                                              uint32_t generation,
+                                              uint32_t uid)
+{
+    if (!valid_range(inbox, sizeof(*inbox)) || uid == 0u ||
+        !queue_matches(inbox, generation) || inbox->count != 0u ||
+        !discovery_arm_matches(inbox, generation, uid))
+        return 0;
+
+    inbox->discovery_generation = 0u;
+    inbox->discovery_uid = 0u;
+    inbox->discovery_armed = 0u;
+    inbox->discovery_seen = 0u;
+    return 1;
+}
+
+uint32_t p4_hosted_inbox_discovery_response_expected_uid(
+    const struct p4_hosted_inbox *inbox, uint32_t generation)
+{
+    if (!valid_range(inbox, sizeof(*inbox)) ||
+        !queue_matches(inbox, generation) ||
+        inbox->discovery_armed != 1u ||
+        inbox->discovery_generation != generation ||
+        inbox->discovery_uid == 0u)
+        return 0u;
+    return inbox->discovery_uid;
 }
 
 int p4_hosted_inbox_invalidate(struct p4_hosted_inbox *inbox,
@@ -189,5 +277,9 @@ int p4_hosted_inbox_invalidate(struct p4_hosted_inbox *inbox,
     inbox->head = 0;
     inbox->count = 0;
     inbox->poisoned = 1;
+    inbox->discovery_generation = 0u;
+    inbox->discovery_uid = 0u;
+    inbox->discovery_armed = 0u;
+    inbox->discovery_seen = 0u;
     return 1;
 }

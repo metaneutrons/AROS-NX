@@ -209,7 +209,7 @@ static void test_rx_idle_poll_is_one_nonblocking_batch(void)
 static void test_rx_owned_event_and_response_items(void)
 {
     struct rx_fixture fixture;
-    struct p4_hosted_inbox_item event, response;
+    struct p4_hosted_inbox_item event, response, last_response;
     static const uint8_t event_body[] = { 0x00u, 0x7fu, 0xffu, 0x41u };
     static const uint8_t response_body[] = { 0x91u, 0x00u, 0x22u };
     static const uint32_t interrupt[] = { P4_HOSTED_OPEN_INT_PACKET };
@@ -224,13 +224,16 @@ static void test_rx_owned_event_and_response_items(void)
     CHECK(append_rx_rpc(batch, sizeof batch, &used,
         HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE, 513u,
         UINT32_C(0x10203040), response_body, sizeof response_body, 0u) != 0u);
+    CHECK(append_rx_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE, 605u,
+        UINT32_C(0x10203041), response_body, sizeof response_body, 0u) != 0u);
     rx_add_batch(&fixture, batch, used);
     rx_set_interrupts(&fixture, interrupt, 1u);
 
     CHECK(rx_poll(&fixture, RX_TEST_GENERATION, 0u,
         fixture.legacy.buffer, sizeof fixture.legacy.buffer) == 1);
     CHECK(fixture.result.error == P4_HOSTED_RX_OK);
-    CHECK(fixture.result.batches == 1u && fixture.result.messages == 2u);
+    CHECK(fixture.result.batches == 1u && fixture.result.messages == 3u);
     CHECK(fixture.result.partial == 0u);
     CHECK(fixture.result.logical_bytes == (uint32_t)used);
     CHECK(fixture.legacy.fake.raw_reads == 1u);
@@ -254,7 +257,118 @@ static void test_rx_owned_event_and_response_items(void)
     CHECK(response.msg_id == 513u && response.uid == UINT32_C(0x10203040));
     CHECK(response.payload_size == sizeof response_body);
     CHECK(memcmp(response.payload, response_body, sizeof response_body) == 0);
+    CHECK(p4_hosted_inbox_pop(&fixture.rx.inbox, RX_TEST_GENERATION,
+                              &last_response) == 1);
+    CHECK(last_response.msg_type == P4_HOSTED_RPC_TYPE_RESPONSE);
+    CHECK(last_response.msg_id == 605u &&
+          last_response.uid == UINT32_C(0x10203041));
+    CHECK(last_response.payload_size == sizeof response_body);
+    CHECK(memcmp(last_response.payload, response_body,
+                 sizeof response_body) == 0);
     CHECK(fixture.rx.inbox.count == 0u && fixture.rx.inbox.poisoned == 0u);
+}
+
+static void test_rx_private_discovery_admission(void)
+{
+    struct rx_fixture fixture;
+    struct p4_hosted_inbox_item item;
+    static const uint8_t body[] = { 0x60u, 0x6fu, 0x6du };
+    static const uint32_t one_packet[] = { P4_HOSTED_OPEN_INT_PACKET };
+    static const uint32_t two_packets[] = {
+        P4_HOSTED_OPEN_INT_PACKET, P4_HOSTED_OPEN_INT_PACKET
+    };
+    const uint32_t expected_uid = UINT32_C(0x6060a55a);
+    const uint32_t wrong_uid = UINT32_C(0x6060a55b);
+    uint8_t batch[TEST_CAPACITY];
+    size_t used;
+
+    /* An arm for a stale generation is refused; without a live matching arm,
+     * response606 cannot enter through the private decoder. */
+    rx_fixture_init(&fixture);
+    rx_fixture_install_callbacks(&fixture);
+    CHECK(p4_hosted_inbox_arm_discovery_response(&fixture.rx.inbox,
+          RX_TEST_GENERATION + 1u, expected_uid) == 0);
+    used = 0u;
+    CHECK(append_rx_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE, 606u,
+        expected_uid, body, sizeof body, 0u) != 0u);
+    rx_add_batch(&fixture, batch, used);
+    rx_set_interrupts(&fixture, one_packet, 1u);
+    CHECK(rx_poll(&fixture, RX_TEST_GENERATION, 0u,
+        fixture.legacy.buffer, sizeof fixture.legacy.buffer) == 0);
+    CHECK(fixture.result.error == P4_HOSTED_RX_PROTOCOL);
+    CHECK(fixture.rx.poisoned == 1u && fixture.rx.inbox.poisoned == 1u);
+    CHECK(fixture.rx.inbox.count == 0u &&
+          fixture.rx.inbox.discovery_armed == 0u);
+
+    /* Correct UID is admitted exactly once, remains marked seen after pop,
+     * and a later duplicate fails closed instead of being queued again. */
+    rx_fixture_init(&fixture);
+    rx_fixture_install_callbacks(&fixture);
+    CHECK(p4_hosted_inbox_arm_discovery_response(&fixture.rx.inbox,
+          RX_TEST_GENERATION, expected_uid) == 1);
+    used = 0u;
+    CHECK(append_rx_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE, 606u,
+        expected_uid, body, sizeof body, 0u) != 0u);
+    rx_add_batch(&fixture, batch, used);
+    rx_add_batch(&fixture, batch, used);
+    rx_set_interrupts(&fixture, two_packets, 2u);
+    CHECK(rx_poll(&fixture, RX_TEST_GENERATION, 0u,
+        fixture.legacy.buffer, sizeof fixture.legacy.buffer) == 1);
+    CHECK(fixture.result.error == P4_HOSTED_RX_OK);
+    CHECK(fixture.result.messages == 1u && fixture.rx.inbox.count == 1u);
+    CHECK(fixture.rx.inbox.discovery_seen == 1u);
+    CHECK(p4_hosted_inbox_pop(&fixture.rx.inbox, RX_TEST_GENERATION,
+                              &item) == 1);
+    CHECK(item.msg_type == P4_HOSTED_RPC_TYPE_RESPONSE &&
+          item.msg_id == 606u && item.uid == expected_uid);
+    CHECK(item.payload_size == sizeof body &&
+          memcmp(item.payload, body, sizeof body) == 0);
+    CHECK(fixture.rx.inbox.count == 0u &&
+          fixture.rx.inbox.discovery_armed == 1u &&
+          fixture.rx.inbox.discovery_seen == 1u);
+    CHECK(rx_poll(&fixture, RX_TEST_GENERATION, 0u,
+        fixture.legacy.buffer, sizeof fixture.legacy.buffer) == 0);
+    CHECK(fixture.result.error == P4_HOSTED_RX_PROTOCOL);
+    CHECK(fixture.rx.poisoned == 1u && fixture.rx.inbox.poisoned == 1u);
+    CHECK(fixture.rx.inbox.count == 0u &&
+          fixture.rx.inbox.discovery_armed == 0u);
+
+    /* A valid private envelope with another UID cannot satisfy the arm. */
+    rx_fixture_init(&fixture);
+    rx_fixture_install_callbacks(&fixture);
+    CHECK(p4_hosted_inbox_arm_discovery_response(&fixture.rx.inbox,
+          RX_TEST_GENERATION, expected_uid) == 1);
+    used = 0u;
+    CHECK(append_rx_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE, 606u,
+        wrong_uid, body, sizeof body, 0u) != 0u);
+    rx_add_batch(&fixture, batch, used);
+    rx_set_interrupts(&fixture, one_packet, 1u);
+    CHECK(rx_poll(&fixture, RX_TEST_GENERATION, 0u,
+        fixture.legacy.buffer, sizeof fixture.legacy.buffer) == 0);
+    CHECK(fixture.result.error == P4_HOSTED_RX_PROTOCOL);
+    CHECK(fixture.rx.poisoned == 1u && fixture.rx.inbox.count == 0u);
+    CHECK(fixture.rx.inbox.discovery_armed == 0u);
+
+    /* Discovery request350 remains inadmissible even while response606 is
+     * armed; the private codec's broader decode is not an RX authorization. */
+    rx_fixture_init(&fixture);
+    rx_fixture_install_callbacks(&fixture);
+    CHECK(p4_hosted_inbox_arm_discovery_response(&fixture.rx.inbox,
+          RX_TEST_GENERATION, expected_uid) == 1);
+    used = 0u;
+    CHECK(append_rx_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_REQUEST, 350u,
+        expected_uid, body, sizeof body, 0u) != 0u);
+    rx_add_batch(&fixture, batch, used);
+    rx_set_interrupts(&fixture, one_packet, 1u);
+    CHECK(rx_poll(&fixture, RX_TEST_GENERATION, 0u,
+        fixture.legacy.buffer, sizeof fixture.legacy.buffer) == 0);
+    CHECK(fixture.result.error == P4_HOSTED_RX_PROTOCOL);
+    CHECK(fixture.rx.poisoned == 1u && fixture.rx.inbox.count == 0u);
+    CHECK(fixture.rx.inbox.discovery_armed == 0u);
 }
 
 static void test_rx_fragment_survives_idle_poll(void)
@@ -709,6 +823,7 @@ int main(void)
 {
     test_rx_idle_poll_is_one_nonblocking_batch();
     test_rx_owned_event_and_response_items();
+    test_rx_private_discovery_admission();
     test_rx_fragment_survives_idle_poll();
     test_rx_queue_overflow_poison();
     test_rx_malformed_and_checksum_poison();

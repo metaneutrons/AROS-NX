@@ -28,6 +28,19 @@ static struct p4_hosted_rpc event_rpc(uint32_t msg_id, uint32_t uid,
     return rpc;
 }
 
+static struct p4_hosted_rpc response_rpc(uint32_t msg_id, uint32_t uid,
+                                        const uint8_t *payload, size_t size)
+{
+    struct p4_hosted_rpc rpc;
+
+    rpc.msg_type = P4_HOSTED_RPC_TYPE_RESPONSE;
+    rpc.msg_id = msg_id;
+    rpc.uid = uid;
+    rpc.payload = payload;
+    rpc.payload_size = size;
+    return rpc;
+}
+
 static void check_queue_unchanged(const struct p4_hosted_inbox *inbox,
                                   const struct p4_hosted_inbox *snapshot)
 {
@@ -166,6 +179,13 @@ static void test_response_and_payload_boundaries(void)
     CHECK(out.uid == 1u && out.payload_size == P4_HOSTED_RPC_MAX_SIZE);
     CHECK(memcmp(out.payload, maximum, sizeof(maximum)) == 0);
 
+    rpc.msg_id = 605u;
+    rpc.uid = 2u;
+    CHECK(p4_hosted_inbox_push(&inbox, 30u, &rpc) == 1);
+    CHECK(p4_hosted_inbox_pop(&inbox, 30u, &out) == 1);
+    CHECK(out.msg_type == P4_HOSTED_RPC_TYPE_RESPONSE && out.msg_id == 605u);
+    CHECK(out.uid == 2u && out.payload_size == P4_HOSTED_RPC_MAX_SIZE);
+
     rpc.msg_type = P4_HOSTED_RPC_TYPE_EVENT;
     rpc.msg_id = 769u;
     rpc.uid = 0u;
@@ -284,6 +304,139 @@ static void test_stale_generation_preserves_state_and_output(void)
     check_queue_unchanged(&inbox, &before);
 }
 
+static void test_discovery_response_admission_and_drain(void)
+{
+    struct p4_hosted_inbox inbox = {0};
+    struct p4_hosted_inbox before;
+    struct p4_hosted_inbox_item out, before_out;
+    uint8_t payload[] = {0xd1u, 0x06u, 0xacu};
+    const uint32_t generation = 80u;
+    const uint32_t uid = UINT32_C(0x61006060);
+    struct p4_hosted_rpc discovery = response_rpc(606u, uid, payload,
+                                                   sizeof(payload));
+    struct p4_hosted_rpc ordinary = event_rpc(775u, 0u, payload,
+                                               sizeof(payload));
+
+    CHECK(p4_hosted_inbox_init(&inbox, generation) == 1);
+    memcpy(&before, &inbox, sizeof(before));
+    CHECK(p4_hosted_inbox_push(&inbox, generation, &discovery) == 0);
+    check_queue_unchanged(&inbox, &before);
+    CHECK(p4_hosted_inbox_arm_discovery_response(&inbox, generation - 1u,
+                                                  uid) == 0);
+    check_queue_unchanged(&inbox, &before);
+    CHECK(p4_hosted_inbox_arm_discovery_response(&inbox, generation, 0u) == 0);
+    check_queue_unchanged(&inbox, &before);
+    CHECK(p4_hosted_inbox_arm_discovery_response(&inbox, generation, uid) == 1);
+    CHECK(p4_hosted_inbox_discovery_response_expected_uid(&inbox,
+                                                           generation) == uid);
+    memcpy(&before, &inbox, sizeof(before));
+    CHECK(p4_hosted_inbox_arm_discovery_response(&inbox, generation,
+                                                  uid + 1u) == 0);
+    check_queue_unchanged(&inbox, &before);
+    CHECK(p4_hosted_inbox_disarm_discovery_response(&inbox, generation,
+                                                    uid + 1u) == 0);
+    check_queue_unchanged(&inbox, &before);
+    CHECK(p4_hosted_inbox_disarm_discovery_response(&inbox, generation - 1u,
+                                                    uid) == 0);
+    check_queue_unchanged(&inbox, &before);
+
+    discovery.uid = uid + 1u;
+    CHECK(p4_hosted_inbox_push(&inbox, generation, &discovery) == 0);
+    check_queue_unchanged(&inbox, &before);
+    discovery.uid = uid;
+    CHECK(p4_hosted_inbox_push(&inbox, generation, &ordinary) == 1);
+    ordinary = response_rpc(605u, uid + 2u, payload, sizeof(payload));
+    CHECK(p4_hosted_inbox_push(&inbox, generation, &ordinary) == 1);
+    CHECK(p4_hosted_inbox_push(&inbox, generation, &discovery) == 1);
+    CHECK(inbox.count == 3u && inbox.discovery_seen == 1u);
+    memcpy(&before, &inbox, sizeof(before));
+    CHECK(p4_hosted_inbox_push(&inbox, generation, &discovery) == 0);
+    check_queue_unchanged(&inbox, &before);
+    CHECK(p4_hosted_inbox_disarm_discovery_response(&inbox, generation,
+                                                    uid) == 0);
+    check_queue_unchanged(&inbox, &before);
+
+    CHECK(p4_hosted_inbox_pop(&inbox, generation, &out) == 1);
+    CHECK(out.msg_type == P4_HOSTED_RPC_TYPE_EVENT && out.msg_id == 775u);
+    CHECK(p4_hosted_inbox_pop(&inbox, generation, &out) == 1);
+    CHECK(out.msg_type == P4_HOSTED_RPC_TYPE_RESPONSE && out.msg_id == 605u);
+
+    /* A queued 606 is poppable only while its exact arm remains valid. */
+    inbox.discovery_uid = uid + 1u;
+    memcpy(&before, &inbox, sizeof(before));
+    memset(&out, 0x9cu, sizeof(out));
+    memcpy(&before_out, &out, sizeof(out));
+    CHECK(p4_hosted_inbox_pop(&inbox, generation, &out) == 0);
+    check_queue_unchanged(&inbox, &before);
+    CHECK(memcmp(&out, &before_out, sizeof(out)) == 0);
+    inbox.discovery_uid = uid;
+    CHECK(p4_hosted_inbox_pop(&inbox, generation, &out) == 1);
+    CHECK(out.msg_type == P4_HOSTED_RPC_TYPE_RESPONSE && out.msg_id == 606u);
+    CHECK(out.uid == uid && out.payload_size == sizeof(payload));
+    CHECK(memcmp(out.payload, payload, sizeof(payload)) == 0);
+    CHECK(inbox.count == 0u && inbox.discovery_seen == 1u);
+
+    memcpy(&before, &inbox, sizeof(before));
+    CHECK(p4_hosted_inbox_push(&inbox, generation, &discovery) == 0);
+    check_queue_unchanged(&inbox, &before);
+    CHECK(p4_hosted_inbox_disarm_discovery_response(&inbox, generation,
+                                                    uid) == 1);
+    CHECK(p4_hosted_inbox_discovery_response_expected_uid(&inbox,
+                                                           generation) == 0u);
+    CHECK(inbox.discovery_armed == 0u && inbox.discovery_seen == 0u &&
+          inbox.discovery_generation == 0u && inbox.discovery_uid == 0u);
+    CHECK(p4_hosted_inbox_push(&inbox, generation, &discovery) == 0);
+}
+
+static void test_discovery_arm_reset_invalidation_and_stale_calls(void)
+{
+    struct p4_hosted_inbox inbox = {0};
+    struct p4_hosted_inbox before;
+    uint8_t payload[] = {0x60u};
+    const uint32_t old_generation = 90u;
+    const uint32_t new_generation = 91u;
+    const uint32_t uid = UINT32_C(0x90060600);
+    struct p4_hosted_rpc discovery = response_rpc(606u, uid, payload,
+                                                   sizeof(payload));
+
+    CHECK(p4_hosted_inbox_init(&inbox, old_generation) == 1);
+    CHECK(p4_hosted_inbox_arm_discovery_response(&inbox, old_generation,
+                                                  uid) == 1);
+    CHECK(p4_hosted_inbox_init(&inbox, old_generation) == 0);
+    CHECK(p4_hosted_inbox_push(&inbox, old_generation, &discovery) == 1);
+    CHECK(p4_hosted_inbox_init(&inbox, new_generation) == 1);
+    CHECK(inbox.count == 0u && inbox.head == 0u);
+    CHECK(inbox.discovery_generation == 0u && inbox.discovery_uid == 0u &&
+          inbox.discovery_armed == 0u && inbox.discovery_seen == 0u);
+    check_items_zero(&inbox);
+    memcpy(&before, &inbox, sizeof(before));
+    CHECK(p4_hosted_inbox_arm_discovery_response(&inbox, old_generation,
+                                                  uid) == 0);
+    CHECK(p4_hosted_inbox_disarm_discovery_response(&inbox, old_generation,
+                                                    uid) == 0);
+    CHECK(p4_hosted_inbox_discovery_response_expected_uid(&inbox,
+                                                           old_generation) == 0u);
+    check_queue_unchanged(&inbox, &before);
+
+    CHECK(p4_hosted_inbox_arm_discovery_response(&inbox, new_generation,
+                                                  uid) == 1);
+    CHECK(p4_hosted_inbox_push(&inbox, new_generation, &discovery) == 1);
+    CHECK(p4_hosted_inbox_invalidate(&inbox, new_generation) == 1);
+    CHECK(inbox.poisoned == 1u && inbox.count == 0u && inbox.head == 0u);
+    CHECK(inbox.discovery_generation == 0u && inbox.discovery_uid == 0u &&
+          inbox.discovery_armed == 0u && inbox.discovery_seen == 0u);
+    memcpy(&before, &inbox, sizeof(before));
+    CHECK(p4_hosted_inbox_disarm_discovery_response(&inbox, new_generation,
+                                                    uid) == 0);
+    CHECK(p4_hosted_inbox_arm_discovery_response(&inbox, new_generation,
+                                                  uid) == 0);
+    check_queue_unchanged(&inbox, &before);
+
+    CHECK(p4_hosted_inbox_init(&inbox, new_generation + 1u) == 1);
+    CHECK(inbox.discovery_generation == 0u && inbox.discovery_uid == 0u &&
+          inbox.discovery_armed == 0u && inbox.discovery_seen == 0u);
+}
+
 static void test_alias_and_range_overflow_refusals(void)
 {
     struct p4_hosted_inbox inbox = {0};
@@ -347,6 +500,8 @@ int main(void)
     test_reject_invalid_envelopes();
     test_full_poison_and_invalidation();
     test_stale_generation_preserves_state_and_output();
+    test_discovery_response_admission_and_drain();
+    test_discovery_arm_reset_invalidation_and_stale_calls();
     test_alias_and_range_overflow_refusals();
     printf("hosted inbox: %u checks passed\n", checks);
     return 0;

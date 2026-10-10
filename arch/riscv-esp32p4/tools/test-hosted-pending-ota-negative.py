@@ -23,7 +23,7 @@ def main():
         "return (request_id >= 272u && request_id <= 274u) || "
         "request_id == 257u || request_id == 260u ||", 1)
     names = ["hosted_fifo", "sdio_commands", "hosted_wire", "hosted_tx",
-             "hosted_rpc", "hosted_ota", "hosted_serial", "hosted_request_ids",
+             "hosted_rpc", "hosted_init", "hosted_ota", "hosted_serial", "hosted_request_ids",
              "hosted_association", "test_hosted_pending"]
     environment = os.environ.copy()
     environment["ASAN_OPTIONS"] = "halt_on_error=1"

@@ -52,6 +52,14 @@ resource builds and passes the loader audit. Generated-reference host tests pass
 and maximum UID/nonce. These are codec tests, not runtime or stack qualification.
 Native owner transport binding remains open. No new RPC is sent
 by the native P4 code; UPDATE-C6 remains unavailable.
+The private pending transport now separates discovery350 submission and606
+correlation from ordinary WLAN traffic. Exact reserved UID/generation,
+supported INIT and canonical version/nonce are required before TX. Transport
+admission does not prove a live maintenance lease or peer freshness; runtime
+owner invocation and frontend publication are still required. Private RX now
+admits one606 response only for an explicitly armed generation/UID, retaining
+duplicate rejection after pop and clearing admission on invalidation. Host
+tests and a fresh RV32 resource/loader audit pass; this is not live discovery.
 CLI examples (not yet executed on hardware):
 
     ESP32Board ACTION INFO

@@ -9,6 +9,7 @@
 #include "hosted_inbox.h"
 #include "hosted_request_ids.h"
 #include "hosted_tx.h"
+#include "hosted_init.h"
 
 #define P4_HOSTED_PENDING_MAX_REQUEST_SIZE 256u
 #define P4_HOSTED_PENDING_BUFFER_MIN 512u
@@ -93,5 +94,32 @@ enum p4_hosted_pending_correlation
 p4_hosted_pending_correlate(struct p4_hosted_request_ids *ids,
                             uint32_t generation,
                             const struct p4_hosted_inbox_item *item);
+
+/* Private read-only extension path, not ordinary WLAN admission. Requires
+ * an exact reserved350 identity, supported C6 INIT and canonical version1/
+ * supplied nonzero nonce body. INIT is a seventh disjoint input range. Same
+ * bounds, preflight atomicity, terminal UID consumption and no-retry contract
+ * as normal submit. Caller must independently bind INIT to the fresh live
+ * peer, enforce the exclusive maintenance lease/deadline, arm matching RX and
+ * serialize this call under controller ownership. This helper does NOT prove
+ * those facts, issue OTA, authorize credentials or grant write permission. */
+int p4_hosted_pending_submit_board_discovery(struct p4_hosted_fifo *fifo,
+    struct p4_hosted_request_ids *ids, uint32_t generation,
+    const struct p4_hosted_tx_ops *tx_ops, unsigned checksum_enabled,
+    const uint8_t *request, size_t request_size, uint8_t *txbuffer,
+    size_t capacity, struct p4_hosted_pending_result *result,
+    const struct p4_hosted_init *init, uint32_t nonce);
+
+/* Call only after successful submit and while the original deadline/session
+ * remain authoritative; an active reservation alone does not prove TX. Caller
+ * exclusively serializes correlation and independently tracks submission.
+ * Exact active350 ledger required. Only606 can match/finish it; ordinary
+ * events/responses may be classified for draining but cannot finish350.
+ * Matching consumes UID before semantic inventory/status validation. A match
+ * is not success or freshness; caller validates nonce/body and lease/session
+ * before publishing. Replays/stale generations cannot finish another UID. */
+enum p4_hosted_pending_correlation
+p4_hosted_pending_correlate_board_discovery(struct p4_hosted_request_ids *ids,
+    uint32_t generation, const struct p4_hosted_inbox_item *item);
 
 #endif
