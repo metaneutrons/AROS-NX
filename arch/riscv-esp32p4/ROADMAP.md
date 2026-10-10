@@ -33538,6 +33538,16 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - No serial, reset, flash, SD write or credentials. C6 lineage/privacy remains
   an association gate. Next: qualify generic selectors/ABI, integrate matching
   public includes, then queued SANA scan/association and real runtime gates.
+- Target syntax follow-up: riscv-aros-gcc -fsyntax-only -Wall -Wextra,
+  __AROS__/CONFIG_DRIVER_SANA2, generic compiler/include before this build's
+  explicit generated includes and WirelessManager src/utils/common/drivers/src,
+  succeeds (direct process exit0). This is driver translation-unit syntax,
+  not a linked WirelessManager build. Existing unused-parameter, sign-compare
+  and newstyle partial-initializer warnings remain; no warning-free claim.
+  driver_sana2.c SHA256
+  a9596cedfbe91b2cd81b4cde538f89d0236bd884f183be3dccc49955ab852dd2;
+  wlan-summary-driver-rv32-syntax.log in owner-scan.5fA33U SHA256
+  c9c203184ff09a092d74175b807668d642754f2e94f1ea9fd8f0faee21b2eadb.
 
 ## Evidence-entry template
 
