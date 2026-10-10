@@ -685,6 +685,11 @@ static BOOL p4wlan_send_one(struct p4wlan_unit *unit,
 
     ObtainSemaphore(&unit->lock);
     cancelled = item->cancelled || opener->closing;
+    /* Linearize irreversible TX against AbortIO under the same lock. Once
+     * committed, AbortIO must refuse rather than promise a suppressed frame.
+     * Close/offline still cancel completion and drain the active reference. */
+    if (copied && !cancelled)
+        item->tx_committed = TRUE;
     ReleaseSemaphore(&unit->lock);
 
     if (copied && !cancelled) {
@@ -1348,6 +1353,10 @@ AROS_LH1(LONG, abort_io,
         }
     }
     if (item) {
+        if (item->kind == P4WLAN_REQUEST_WRITE && item->tx_committed) {
+            ReleaseSemaphore(&unit->lock);
+            return -1;
+        }
         if (item->state == P4WLAN_REQUEST_QUEUED) {
             item->cancelled = TRUE;
             if (item->kind == P4WLAN_REQUEST_WRITE)

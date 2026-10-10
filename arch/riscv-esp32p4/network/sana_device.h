@@ -58,6 +58,7 @@ struct p4wlan_request
     BYTE completion_error;
     BOOL completion_sets_length;
     BOOL cancelled;
+    BOOL tx_committed;
     UBYTE destination[6];
     APTR data;
     ULONG offered_frame;

@@ -8,9 +8,12 @@ independent bridge tests/review now pass. Source-extracted bridge models pass
 202 checks each O0/O2 with ASan/UBSan, including minimum/maximum Ethernet
 frames with negotiated checksum disabled/enabled, repeated on macOS and
 network-isolated Linux. Exec/SDMMC are mocks, not runtime concurrency proof.
-The separate SANA device now clean-builds for RV32 (53800B). Initial
+The separate SANA device now clean-builds for RV32 (53840B). Initial
 cancellation, RX traversal and Close-drain defects are corrected; independent
-review and source-extracted lifecycle tests remain in progress. The device
+source review and source-extracted lifecycle models pass782 checks each O0/O2
+on macOS and isolated Linux with ASan/UBSan. Exec/scheduler are mocked.
+AbortIO refuses a write after its lock-protected irreversible TX commitment;
+Close still drains its references. Full data-path/runtime testing remains open. The device
 does not yet implement wireless association or advertise WPA offload.
 Registration/MAC readiness is not association. No credentials, deployment,
 DHCP, IP traffic or hardware acceptance is implied. Default-off builds retain

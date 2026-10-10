@@ -123,7 +123,7 @@ gate: compensated output is not the native display contract.
 | N1S | Typed native scan and runtime acceptance | `codec/oracle tested; opt-in runtime build verified; sequence models tested; initialized MAC observed; scan undeployed; boot continuity open` | Codec230/oracle1068/control3529/sequence537 checks each O0/O2 sanitized pass. Default-config blocking/nonblocking start, stop, AP count and owned AP/country/HE records. Runtime opt-in follows successful initialization/MAC with UIDs7..10 and at most8 owned records, named zero-AP workaround. ScanStart500 polls under same8s aggregate operation deadline;2s cleanup reserve. Independent runtime audit corrected early logging under shared-controller lock. Fresh135284B scan-enabled module and3823840B package pass42/42 loader and capacity checks;41 non-WiFi records unchanged. Not deployed; larger3825664B erase span requires new twice-read backup. No native hardware scan or WLAN acceptance; sequence/cleanup host models pass. Passive diagnostic checker passes16 independent fixture tests; no hardware acceptance. Earlier arrival expired/45.122s capture empty. Repeat native MAC succeeds once; initial HP watchdog reset makes checker reject cold continuity. Cleanup enum1/all14 flags corrected;16 tests pass. Optional serial-open timing now passes10 host tests; prior6.729s first-byte gap cannot be attributed. No live capture. |
 | N1A | Native association/configuration and owned events | `standalone codecs/oracle host tested; runtime and privacy gate open` | Typed284/540,282/538,283/539 and owned775/776; all15 STA fields, mandatory nested threshold/PMF, transactional256-byte envelope cap, temporary-secret wipe. Self239/oracle603 checks each Linux O0/O2 ASan/UBSan pass; strict RV32 object24,420B compiles with onlyrpc_encode import. Pinned oracle confirms258-byte all-width vector is refused unchanged. Nonzero event status validates/discards nested data. No runtime/control allowlist integration or deployment. Pinned slave credential logging/strlen and installed lineage remain unresolved. Persistent UID/event/generation state and credential-safe hardware association remain required. No credential transmission, association or IP pass. |
 | N1P | Persistent native control/data session | `UID/RPC and Ethernet RX build verified; Ethernet host qualified; actual CPU-affine owner build verified; coupled host models pass` | One-outstanding non-reused UID ledger persists across retired host generations and refuses wrap. Reserved exchange protects exact identity/ranges and replacement state; ledger105/legacycontrol3529/reserved300 checks each O0/O2 ASan/UBSan pass. Idle RX processes one batch without waiting and retains reassembly plus owned event/response inbox; inbox134/RX364 O0/O2 sanitizer checks pass. Preserving OPEN transfers SERIAL suffix once without new FIFO I/O; malformed consumed OPEN poisons matching state. OPEN716/handoff332 new checks each O0/O2 pass. Async submit leaves identity pending; owned response correlation is separated from receive/event delivery; independent427 checks each O0/O2 pass. Separate four-frame14..1518-byte owned Ethernet RX queue now builds in164788B module; independent/primary frames136 and coupled Ethernet285 plus legacy regressions each O0/O2 pass. Bounds are local policy; unsupported profiles/throttle fail closed. Existing startup/scan diagnostics unchanged; opt-in AFTERDOS owner caller clean-builds on Core0/Core1 (194792/195008B), with self-affinity checked before radio access. Independent/primary owner6723 O0/O2 sanitizer checks pass after FIFO-direction and preserved-OPEN partial-age fixes; source review confirms both. Actual CPU execution and SD fairness remain unproven. Ethernet TX and asynchronous AROS ownership remain required. P4 restart losing the ledger is not proof of fresh C6; no deployment or WLAN acceptance. |
-| N2 | AROS WLAN SANA-II integration | `private bridge build/model verified; device clean-build verified; lifecycle qualification pending; WPA offload gap open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded direct STA TX compile for Core1; source-extracted bridge202 checks each O0/O2 ASan/UBSan repeat on macOS and isolated Linux, exit0, including14/1518-byte frames with checksum0/1. Exec/SDMMC mocked; no full device or runtime concurrency pass. No association or IP readiness claim. The corrected53800B device clean-builds with no undefined imports; independent lifecycle qualification remains pending. No device deployment. Existing sana2wireless.h, WirelessManager and bwfm provide references; per-device firmware four-way offload must preserve legacy behavior. DHCP/build defaults, GUI saving and writable preference storage remain open. No credentials, deployment or hardware pass. |
+| N2 | AROS WLAN SANA-II integration | `private bridge build/model verified; device build and lifetime models verified; runtime/wireless gates open; WPA offload gap open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded direct STA TX compile for Core1; source-extracted bridge202 checks each O0/O2 ASan/UBSan repeat on macOS and isolated Linux, exit0, including14/1518-byte frames with checksum0/1. Exec/SDMMC mocked; no full device or runtime concurrency pass. No association or IP readiness claim. The corrected53840B device clean-builds with no undefined imports; independent/primary lifetime782 checks each O0/O2 sanitized pass on macOS and isolated Linux. TX commitment rejects late AbortIO; Close drains. Exec/scheduler mocked; full RX/TX callbacks and runtime remain open. No device deployment. Existing sana2wireless.h, WirelessManager and bwfm provide references; per-device firmware four-way offload must preserve legacy behavior. DHCP/build defaults, GUI saving and writable preference storage remain open. No credentials, deployment or hardware pass. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -1086,8 +1086,9 @@ reference firmware example building is not evidence of AROS transport.
 ### N2 - native AROS WLAN device
 
 Current integration state (2026-10-10): the private bridge is build/model
-verified; the separate esp32p4wlan.device now clean-builds (53800B), with
-independent lifecycle qualification pending. Review requires retirement before ReplyMsg with opener
+verified; the separate esp32p4wlan.device now clean-builds (53840B), with
+independent/primary lifetime782 model checks each O0/O2 passing on macOS and
+isolated Linux. No scheduler/runtime pass is implied. Review requires retirement before ReplyMsg with opener
 references retained through reply completion, restartable RX traversal,
 initialized completion lists and guaranteed Close draining even when signal
 allocation fails. Terminal owner shutdown must flush queued requests without
@@ -33210,6 +33211,51 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   This is build evidence only. Independent corrected-source review/lifetime
   model tests, wireless controls/offload, privacy, DHCP/traffic, preference/UI
   integration and actual sustained shared-load qualification remain required.
+
+### 2026-10-10 - N2 lifecycle host qualification and TX abort linearization
+
+- Source3ed200d457 plus explicit tx_committed descriptor field and shared-lock
+  irreversible-send transition. AbortIO accepted before that transition
+  prevents send; after it, committed writes return -1 without cancellation.
+  Close/offline still cancel completion and drain, not undo an attempted wire
+  transmission. Independent corrected-source review finds no blocking
+  lifetime issue; separate TX commitment review confirms the shared-lock
+  ordering. These are source judgments, not runtime observations.
+- New source SHA-256
+  2dd1f256db84c1efd445b3a375c8874f8e1b994b532cef31d7be38264a9e1cd8,
+  header e0a50318354f0c06d350080d8d996c5706b29aedac8c3ec7af0236bc6a5df354.
+  Clean invalidated-object GNU make device rebuild, same JC1060v2 target,
+  Terminal32724 actual exit0; artifact53840B SHA-256
+  1a9ead12ca4ca5e355b48d51675c581b0fe920400fe6903b08c895a6ff4c830d,
+  nm -u empty. Saved as sana-device.UJ86yg/esp32p4wlan-tx-committed.device.
+  tx-commit-build.log4b39f71c94080038ef9ebaccedf959a58e8b4033304dc7a1782505f386db4bbd;
+  log text identical to previous build, artifact identity is not.
+- Independent source-extracted tests initially pass723 checks each O0/O2
+  on macOS; primary repeats macOS and network-none Linux each exit0.
+  Initial test aeb94678d5e42a170f708008f910658758aa550a5885e549735a345af0a3ee2f,
+  logs8aff36550c97809cc1b560b163193d34ea2e407f22ed9fc3b744db9e2b36cafd
+  and d5caa597912713f4b19934330b33733652844af8f28933e162745a912aca5da4.
+  Updated committed-write refusal test adds59 checks: final test
+  c59beae8f3dc5c43f7cc083d5b09e3a70816df8f857c91489ab20089305f293b;
+  runner90249b6ff22009559b640608ba7356e88289591ef8e73f65af36c1ecce416875.
+  Primary macOS/Linux final repeats each actual exit0,782 checks O0/O2 under
+  ASan/UBSan. Final logs6bc60b7c9c0dc7b63f70e17ebb5ef3542edeca2ec273c1f8508e8fd9870b5336
+  and f4fb081e477d39507b51664ea661134b4b5fb34f607d2762dc648dcacd5e7c84.
+- Harness extracts production enums/structs, queue/flush/event/finish helpers,
+  AbortIO and Close, using Exec list/message/lock/signal/allocator fakes.
+  Covers exact-once queued abort, active marking, completing refusal,
+  reply-time IO reuse, reference retention through ReplyMsg, event ownership,
+  terminal flush helpers and allocation-failure Close drain. Fake Wait
+  completes one active IO deterministically. send_one's pre-send transition
+  is not extracted; that path is source-reviewed only. Full RX/TX callbacks,
+  actual SMP scheduling, bus fairness and runtime lifetime remain unqualified.
+  Linux snapshot uses prior builder image, network disabled and write bits
+  removed (not immutable/root-proof); macOS tar provenance warnings are not
+  test assertions. Shell syntax and git diff --check pass.
+- No hardware/serial/flash/SD/credential action, installed artifacts unchanged.
+  Next: full device data-path qualification and native wireless scan/association
+  integration, explicit offload negotiation and privacy lineage, then DHCP,
+  UI/preferences and sustained shared-load/recovery hardware gates.
 
 ## Evidence-entry template
 
