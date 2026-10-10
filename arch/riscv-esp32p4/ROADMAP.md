@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Source-owned SDK graph is audit-verified; the native build now compiles OpenURL and Zune. POSIXC's missing `_Exit` declaration is corrected with its standard header and exact RV32 positive/negative probes. Complete SDK construction, new qualified tools runtime, clean compiler/SDK replay with final C/C++ links, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The incremental native SDK build passed. Ordinary C links pass; C++ exposed a missing canonical `libm` output, whose generic correction exposed duplicate Popupmenu archive owners. The source now consolidates those client inputs; its native replay is pending. Final ordinary C/C++ links, SDK relocation, new qualified tools runtime, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -456,6 +456,44 @@ change any board's hardware acceptance state.
   release changed. Focused compilation does not qualify the entire Developer
   SDK. Next finish this same build, then prove native C/C++ links and relocation
   before the complete three-host release qualification.
+
+### 2026-10-10 - TC0 full SDK build and Popupmenu archive ownership
+
+- State: TC0 remains `in development`. Native SDK continuation 76826 passed
+  in 273.81 seconds on source `58deb413a532c409bddaf6240d4cf84bbb7125d5`
+  and tools `02ea41b78064fd2ee184b14bc697899f9efe3555`. Its retained log is
+  4,775,575 bytes, SHA-256
+  `3c4acb70fa9197f6b6464ea86a8948e75141f8ae46cce5a73946050d1d971872`.
+- Application probes: ordinary C linking passed. Ordinary C++ linking failed
+  because `-lm` had no public SDK archive. The source's ordinary `libm` recipe
+  correctly uses the default Developer library directory; the transpiler did
+  not publish selected default archives without an in-tree link consumer.
+  The generic correction is tools `e9fcc03`, with focused regressions and
+  1,116 source-coupled transpiler tests passed (five existing ignored tests and
+  one explicitly filtered historical Mesa20 test).
+- Next observed source fault: native configure 28374 rejected two owners of
+  `SYS/Developer/lib/libpopupmenu.a`. Classic's generated library recipe
+  publishes both the module and explicit `linklibname` spellings, while a
+  separate Popupmenu recipe independently publishes the module spelling.
+  Suppressing an alias in aros-tools would conceal the ownership conflict.
+- Source correction: move the ten existing static-client inputs into the main
+  module's `linklibfiles`, retain `staticlib/autoinit.c` and its minimum library
+  version 10, and state `options noautoinit` to disable only the duplicate
+  generated client initializer. Generated stubs/getlibbase remain selected.
+  The historical `linklibs-popupmenu` endpoint now requires the module's
+  client archive. Runtime implementation inputs are unchanged; its unneeded
+  self-client dependency is removed. Both public archive names remain required.
+- Procedure: continue the same native tree with the same relocated RV32 GCC,
+  `--jobs 12 --compiler-cache off --require-fetch-checksums`; no clean reset or
+  concurrent native build. Replay 16341 exited 1 before compilation because
+  the rewritten `linklibs-popupmenu` still claimed a nonvirtual own recipe.
+  Its source declaration is now a virtual `#MM-` aggregate requiring the
+  actual module client archive; no transpiler provider check was weakened.
+  Replay 21949 is running; do not infer success yet.
+- Safety/remaining risk: no board, firmware, media, SMP implementation, tag or
+  release mutation. Native archive contents and initialization need inspection,
+  followed by ordinary C/C++ links, relocation and durable release-gate coverage.
+  Full three-host qualification and public verification remain required.
 
 ## Track E: ESP32-P4 / RV32 SMP
 

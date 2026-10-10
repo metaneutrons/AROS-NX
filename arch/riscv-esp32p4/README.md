@@ -82,12 +82,14 @@ native-consumer support; published v0.3.19 cannot activate this preset.
 Its selected native graph is audit-verified locally (2,250 reachable endpoints,
 no missing producer). Complete fresh SDK construction and final C/C++ links
 remain separate acceptance gates; this does not change board verification.
-The latest incremental GNU SDK run rebuilt OpenURL and Zune after generic
-ordering and quote-only include corrections. It stopped at POSIXC's `_exit.c`,
-which called `_Exit` without including its standard declaration. The source
-now includes `<stdlib.h>`; exact RV32 compiler positive/negative probes pass.
-Complete SDK construction, final links and relocation remain unqualified;
-see the TC0 evidence log.
+The incremental GNU SDK build completed after the OpenURL, quote-only include
+and POSIXC declaration corrections. Ordinary C application linking passes;
+C++ exposed a missing canonical SDK `libm` output. Correcting that generic
+output policy then exposed two source owners of `libpopupmenu.a`.
+Popupmenu now declares its existing varargs wrappers and version-10 initializer
+as inputs of the generated client archive, without a second archive producer.
+The native replay and ordinary C/C++ links after this change are still pending.
+SDK relocation and three-host release qualification remain open; see TC0.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
