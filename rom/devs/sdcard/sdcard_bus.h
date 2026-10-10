@@ -121,13 +121,28 @@ struct sdcard_Bus
 
 #if defined(__AROSEXEC_SMP__)
     spinlock_t                          sdcb_Lock;       /* SMP: protects BusFlags, listeners, BusStatus */
+    spinlock_t                          sdcb_UnitLock;   /* Task-only unit publication/open counts. */
 #endif
 
     /* Optional ownership for a complete bounded bus transaction. Both hooks
      * must be provided together; a bus without either hook stays unlocked. */
     BOOL                                (*sdcb_BeginTransaction)(struct sdcard_Bus *, BOOL may_wait);
     void                                (*sdcb_EndTransaction)(struct sdcard_Bus *);
+
+    /* Optional task-context recovery, all called with transaction ownership.
+     * Needed only observes state. Prepare establishes identification mode but
+     * must not publish a unit; Finish validates readiness or abandons it. */
+    BOOL                                (*sdcb_RecoveryNeeded)(struct sdcard_Bus *);
+    BOOL                                (*sdcb_RecoveryPrepare)(struct sdcard_Bus *);
+    BOOL                                (*sdcb_RecoveryFinish)(struct sdcard_Bus *, BOOL);
 };
+
+/* Never share this task-only lock with the interrupt command-listener lock.
+ * Forbid protects against local task preemption; the spinlock also protects
+ * against the other hart. No host acquisition, callback, wait or allocation
+ * may occur inside this short metadata section. */
+void SDCBUS_LockUnit(struct sdcard_Bus *bus);
+void SDCBUS_UnlockUnit(struct sdcard_Bus *bus);
 
 static inline BOOL SDCBUS_BeginTransaction(struct sdcard_Bus *bus, BOOL may_wait)
 {
@@ -186,6 +201,7 @@ struct sdcard_ADMADesc
 
 BOOL FNAME_SDCBUS(RegisterUnit)(struct sdcard_Bus *);
 BOOL FNAME_SDCBUS(StartUnit)(struct sdcard_Unit *);
+BOOL FNAME_SDCBUS(RecoverUnit)(struct sdcard_Unit *);
 BOOL FNAME_SDCBUS(IdentifyCardLocked)(struct sdcard_Bus *, struct sdcard_CardInfo *);
 
 void FNAME_SDCBUS(SoftReset)(UBYTE, struct sdcard_Bus *);

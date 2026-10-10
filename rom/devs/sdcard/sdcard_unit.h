@@ -65,6 +65,7 @@ struct sdcard_Unit
 /* Unit Flags .. */
 
 #define AB_Card_Active                  30
+#define AB_Card_Configuring             29
 #define AB_Card_HighSpeed52             27
 #define AB_Card_HighSpeed               26
 #define AB_Card_HighCapacity            25
@@ -74,6 +75,7 @@ struct sdcard_Unit
 #define AB_Card_Locked                  0
 
 #define AF_Card_Active                  (1 << AB_Card_Active)
+#define AF_Card_Configuring             (1UL << AB_Card_Configuring)
 #define AF_Card_HighSpeed52             (1 << AB_Card_HighSpeed52)
 #define AF_Card_HighSpeed               (1 << AB_Card_HighSpeed)
 #define AF_Card_HighCapacity            (1 << AB_Card_HighCapacity)

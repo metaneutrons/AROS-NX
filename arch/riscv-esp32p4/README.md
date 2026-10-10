@@ -58,7 +58,15 @@ Strict card activation is host tested and RV32 build verified: required
 command/status and configuration failures refuse activation. Extracted-source
 activation tests pass 26 cases/140 checks and SD/MMC helper tests 16 cases/37
 checks each at O0/O2 with ASan/UBSan. This is not yet a same-media recovery
-path or a hardware WLAN driver; concurrent publication remains open.
+path or a hardware WLAN driver; real concurrent publication remains unverified.
+A same-media recovery candidate now stages protocol state without replacing
+the mounted Exec unit and compares cached CID/CSD/capacity/geometry before
+publication. Open/Close and publication use a matching short task-only SMP
+metadata guard. This candidate is host tested and RV32 build verified:
+recovery/Open/Close tests exercise extracted production code in modeled SMP and
+non-SMP configurations. They do not prove real hart interleavings. Backend
+preparation/finish hooks, automatic BusTask dispatch and hardware recovery
+remain disabled/open.
 The independently implemented ESP-Hosted serial TLV codec now validates
 RPCRsp/RPCEvt envelopes (116 checks each O0/O2 with ASan/UBSan and standalone
 RV32 compilation). It does not parse protobuf, reassemble fragments or execute

@@ -52,6 +52,28 @@
 
 static const char *str_mmc0 = "MMC0";
 
+void SDCBUS_LockUnit(struct sdcard_Bus *bus)
+{
+    Forbid();
+#if defined(__AROSEXEC_SMP__)
+    struct SDCardBase *SDCardBase = bus->sdcb_DeviceBase;
+    KrnSpinLock(&bus->sdcb_UnitLock, NULL, SPINLOCK_MODE_WRITE);
+#else
+    (void)bus;
+#endif
+}
+
+void SDCBUS_UnlockUnit(struct sdcard_Bus *bus)
+{
+#if defined(__AROSEXEC_SMP__)
+    struct SDCardBase *SDCardBase = bus->sdcb_DeviceBase;
+    KrnSpinUnLock(&bus->sdcb_UnitLock);
+#else
+    (void)bus;
+#endif
+    Permit();
+}
+
 static BOOL sdcard_StartUnitLocked(struct sdcard_Unit *sdcUnit)
 {
     struct TagItem sdcStartTags[] =
@@ -214,15 +236,135 @@ static BOOL sdcard_StartUnitLocked(struct sdcard_Unit *sdcUnit)
     return TRUE;
 }
 
+/* Stage protocol/transfer fields only, never the embedded Exec unit, open
+ * count, change notifications or lists. The caller holds the unit guard. */
+static void sdcard_StageUnit(const struct sdcard_Unit *unit,
+                              struct sdcard_Unit *candidate)
+{
+    memset(candidate, 0, sizeof(*candidate));
+    candidate->sdcu_Bus = unit->sdcu_Bus;
+    candidate->sdcu_UnitNum = unit->sdcu_UnitNum;
+    candidate->sdcu_CardRCA = unit->sdcu_CardRCA;
+    candidate->sdcu_CardPower = unit->sdcu_CardPower;
+    candidate->sdcu_Flags = unit->sdcu_Flags &
+                            ~(AF_Card_Active | AF_Card_Configuring);
+    candidate->sdcu_Capacity = unit->sdcu_Capacity;
+    candidate->sdcu_Cylinders = unit->sdcu_Cylinders;
+    candidate->sdcu_Heads = unit->sdcu_Heads;
+    candidate->sdcu_Sectors = unit->sdcu_Sectors;
+    candidate->sdcu_Read32 = unit->sdcu_Read32;
+    candidate->sdcu_Read64 = unit->sdcu_Read64;
+}
+
+/* Publish only mutable negotiated protocol state. Geometry, identity and
+ * write policy must never change underneath a mounted/open unit. */
+static void sdcard_PublishUnit(struct sdcard_Unit *unit,
+                                const struct sdcard_Unit *candidate, BOOL result)
+{
+    const ULONG negotiated = AF_Card_4bitData | AF_Card_HighSpeed |
+                             AF_Card_HighSpeed52;
+    SDCBUS_LockUnit(unit->sdcu_Bus);
+    if (result)
+    {
+        unit->sdcu_CardRCA = candidate->sdcu_CardRCA;
+        unit->sdcu_Flags = (unit->sdcu_Flags &
+                            ~(negotiated | AF_Card_Configuring)) |
+                            (candidate->sdcu_Flags & negotiated) | AF_Card_Active;
+    }
+    else
+        unit->sdcu_Flags &= ~(AF_Card_Active | AF_Card_Configuring);
+    SDCBUS_UnlockUnit(unit->sdcu_Bus);
+}
+
 BOOL FNAME_SDCBUS(StartUnit)(struct sdcard_Unit *sdcUnit)
 {
     struct sdcard_Bus *bus = sdcUnit->sdcu_Bus;
+    struct sdcard_Unit candidate;
     BOOL result;
 
     if (!SDCBUS_BeginTransaction(bus, FALSE))
         return FALSE;
 
-    result = sdcard_StartUnitLocked(sdcUnit);
+    SDCBUS_LockUnit(bus);
+    if (sdcUnit->sdcu_Flags & (AF_Card_Active | AF_Card_Configuring))
+    {
+        result = !!(sdcUnit->sdcu_Flags & AF_Card_Active) &&
+                   !(sdcUnit->sdcu_Flags & AF_Card_Configuring);
+        SDCBUS_UnlockUnit(bus);
+        SDCBUS_EndTransaction(bus);
+        return result;
+    }
+    sdcUnit->sdcu_Flags |= AF_Card_Configuring;
+    sdcard_StageUnit(sdcUnit, &candidate);
+    SDCBUS_UnlockUnit(bus);
+
+    result = sdcard_StartUnitLocked(&candidate);
+    sdcard_PublishUnit(sdcUnit, &candidate, result);
+    SDCBUS_EndTransaction(bus);
+    return result;
+}
+
+static BOOL sdcard_SameCard(const struct sdcard_Unit *unit,
+                             const struct sdcard_CardInfo *card)
+{
+    const ULONG protocol = AF_Card_HighCapacity | AF_Card_MMC;
+    return !memcmp(unit->sdcu_CardCID, card->cid, sizeof(card->cid)) &&
+           !memcmp(unit->sdcu_CardCSD, card->csd, sizeof(card->csd)) &&
+           unit->sdcu_Capacity == card->capacity &&
+           unit->sdcu_Cylinders == card->cylinders &&
+           unit->sdcu_Heads == card->heads && unit->sdcu_Sectors == card->sectors &&
+           (unit->sdcu_Flags & protocol) == (card->flags & protocol);
+}
+
+/* Explicit task-context operation. BusTask/radio dispatch is deliberately
+ * separate; callers must not call this while holding a metadata/IRQ lock.
+ * A failed request must release its outer host transaction first. */
+BOOL FNAME_SDCBUS(RecoverUnit)(struct sdcard_Unit *unit)
+{
+    struct sdcard_Bus *bus = unit->sdcu_Bus;
+    struct sdcard_Unit candidate;
+    struct sdcard_CardInfo card;
+    BOOL result = FALSE;
+
+    if (!bus->sdcb_RecoveryNeeded || !bus->sdcb_RecoveryPrepare ||
+        !bus->sdcb_RecoveryFinish || !bus->sdcb_BeginTransaction ||
+        !bus->sdcb_EndTransaction || !SDCBUS_BeginTransaction(bus, TRUE))
+        return FALSE;
+
+    if (!bus->sdcb_RecoveryNeeded(bus))
+    {
+        SDCBUS_LockUnit(bus);
+        result = !!(unit->sdcu_Flags & AF_Card_Active) &&
+                    !(unit->sdcu_Flags & AF_Card_Configuring);
+        SDCBUS_UnlockUnit(bus);
+        SDCBUS_EndTransaction(bus);
+        return result;
+    }
+    SDCBUS_LockUnit(bus);
+    if (unit->sdcu_Flags & AF_Card_Configuring)
+    {
+        SDCBUS_UnlockUnit(bus);
+        SDCBUS_EndTransaction(bus);
+        return FALSE;
+    }
+    unit->sdcu_Flags = (unit->sdcu_Flags & ~AF_Card_Active) | AF_Card_Configuring;
+    sdcard_StageUnit(unit, &candidate);
+    SDCBUS_UnlockUnit(bus);
+
+    if (bus->sdcb_RecoveryPrepare(bus) &&
+        FNAME_SDCBUS(IdentifyCardLocked)(bus, &card) && sdcard_SameCard(unit, &card))
+    {
+        candidate.sdcu_CardRCA = card.rca;
+        candidate.sdcu_CardPower = card.power;
+        /* Keep the mounted unit's write policy, recompute negotiated bits. */
+        candidate.sdcu_Flags &= ~(AF_Card_4bitData | AF_Card_HighSpeed |
+                                  AF_Card_HighSpeed52);
+        result = sdcard_StartUnitLocked(&candidate);
+    }
+    /* Backend must refuse success if the host faulted or changed generation
+     * during configuration. Failure cleanup is called even after prepare fails. */
+    result = bus->sdcb_RecoveryFinish(bus, result) && result;
+    sdcard_PublishUnit(unit, &candidate, result);
     SDCBUS_EndTransaction(bus);
     return result;
 }
@@ -456,8 +598,10 @@ static BOOL sdcard_RegisterUnitLocked(struct sdcard_Bus *bus)
     }
     /* Publish only after complete identity/geometry and boot-node construction.
      * Re-enumeration must use the snapshot, never this allocation/publication. */
+    SDCBUS_LockUnit(bus);
     (&bus->sdcb_BusUnits->sdcbu_Units)[ordinal] = unit;
     bus->sdcb_BusUnits->sdcbu_UnitCnt = ordinal + 1;
+    SDCBUS_UnlockUnit(bus);
     bus->sdcb_BusFlags |= AF_Bus_MediaPresent;
     bug("[SDBus%02u] %b: [%ldMB Capacity]\n", bus->sdcb_BusNum,
         devnode->dn_Name, (ULONG)((card.capacity >> 11) & 0xFFFFFFFFUL));

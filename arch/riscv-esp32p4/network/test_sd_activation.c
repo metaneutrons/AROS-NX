@@ -73,14 +73,14 @@ struct sdcard_Bus
 #define DFUNCS(...) ((void)0)
 #define bug(...) mock_bug(__VA_ARGS__)
 
-ULONG FNAME_SDCUNIT(WaitStatus)(ULONG timeout, struct sdcard_Unit *unit);
-ULONG FNAME_SDCUNIT(SDSCChangeFrequency)(struct sdcard_Unit *unit);
-ULONG FNAME_SDCUNIT(MMCChangeFrequency)(struct sdcard_Unit *unit);
+ULONG FNAME_SDCUNIT(WaitStatus)(ULONG timeout, struct sdcard_Unit *test_unit);
+ULONG FNAME_SDCUNIT(SDSCChangeFrequency)(struct sdcard_Unit *test_unit);
+ULONG FNAME_SDCUNIT(MMCChangeFrequency)(struct sdcard_Unit *test_unit);
 ULONG FNAME_SDCUNIT(SDSCSwitch)(BOOL test, int group, UBYTE value,
-                                APTR buffer, struct sdcard_Unit *unit);
+                                APTR buffer, struct sdcard_Unit *test_unit);
 ULONG FNAME_SDCUNIT(MMCSwitch)(UBYTE offset, UBYTE value,
-                               struct sdcard_Unit *unit);
-void FNAME_SDCBUS(ADMAVerify)(struct sdcard_Unit *unit);
+                               struct sdcard_Unit *test_unit);
+void FNAME_SDCBUS(ADMAVerify)(struct sdcard_Unit *test_unit);
 
 #define COMMAND_CAPACITY 128U
 #define STATUS_CAPACITY 32U
@@ -139,6 +139,11 @@ struct test_model
     BOOL begin_succeeds;
     BOOL last_may_wait;
     BOOL transaction_owned;
+    unsigned int unit_lock_calls;
+    unsigned int unit_unlock_calls;
+    unsigned int unit_lock_depth;
+    unsigned int unit_lock_errors;
+    unsigned int callbacks_under_unit_lock;
     unsigned int bug_calls;
     ULONG scr_word0;
     BOOL sd_highspeed_supported;
@@ -151,9 +156,15 @@ struct test_model
 
 static struct test_model model;
 static struct sdcard_Bus mock_bus_state;
-static struct sdcard_Unit unit;
+static struct sdcard_Unit test_unit;
 static unsigned int test_cases;
 static unsigned int checks;
+
+static void record_external_callback(void)
+{
+    if (model.unit_lock_depth != 0U)
+        ++model.callbacks_under_unit_lock;
+}
 
 static void fail_check(const char *expression, const char *file, int line)
 {
@@ -227,6 +238,7 @@ static ULONG mock_send_cmd(struct TagItem *tags, struct sdcard_Bus *mock_bus)
 {
     ULONG command = (ULONG)get_tag(tags, SDCARD_TAG_CMD);
     unsigned int occurrence;
+    record_external_callback();
     (void)mock_bus;
     ++model.send_calls;
     if (command >= 64UL || model.event_count >= COMMAND_CAPACITY)
@@ -295,6 +307,7 @@ static ULONG mock_wait_cmd(ULONG mask, ULONG timeout,
     ULONG command;
     ULONG response = 0UL;
     unsigned int occurrence;
+    record_external_callback();
     (void)mock_bus;
     ++model.wait_calls;
     if (!model.pending_valid)
@@ -332,6 +345,7 @@ static ULONG mock_wait_cmd(ULONG mask, ULONG timeout,
 
 static void sdcard_Udelay(ULONG usec)
 {
+    record_external_callback();
     ++model.delays;
     model.delayed_us += usec;
 }
@@ -344,6 +358,7 @@ static void mock_bug(const char *format, ...)
 
 static ULONG mock_read_long(ULONG offset, struct sdcard_Bus *mock_bus)
 {
+    record_external_callback();
     (void)offset;
     (void)mock_bus;
     ++model.io_read_calls;
@@ -354,7 +369,7 @@ static void reset_fixture(void)
 {
     memset(&model, 0, sizeof(model));
     memset(&mock_bus_state, 0, sizeof(mock_bus_state));
-    memset(&unit, 0, sizeof(unit));
+    memset(&test_unit, 0, sizeof(test_unit));
     model.fail_send_command = NO_COMMAND;
     model.fail_wait_command = NO_COMMAND;
     model.error_response_command = NO_COMMAND;
@@ -369,9 +384,9 @@ static void reset_fixture(void)
     mock_bus_state.sdcb_WaitCmd = mock_wait_cmd;
     mock_bus_state.sdcb_IOReadLong = mock_read_long;
     mock_bus_state.sdcb_SectorShift = 9U;
-    unit.sdcu_Bus = &mock_bus_state;
-    unit.sdcu_CardRCA = 0x1234UL;
-    unit.sdcu_UnitNum = 2UL;
+    test_unit.sdcu_Bus = &mock_bus_state;
+    test_unit.sdcu_CardRCA = 0x1234UL;
+    test_unit.sdcu_UnitNum = 2UL;
 }
 
 static unsigned int count_command(ULONG command)
@@ -395,8 +410,28 @@ static const struct command_event *event_for_command(ULONG command,
 #ifndef TEST_FREQUENCY_ONLY
 /* INSERT_ACTUAL_BUS_TRANSACTION_HELPERS */
 
+static void SDCBUS_LockUnit(struct sdcard_Bus *mock_bus)
+{
+    (void)mock_bus;
+    ++model.unit_lock_calls;
+    if (model.unit_lock_depth != 0U)
+        ++model.unit_lock_errors;
+    ++model.unit_lock_depth;
+}
+
+static void SDCBUS_UnlockUnit(struct sdcard_Bus *mock_bus)
+{
+    (void)mock_bus;
+    ++model.unit_unlock_calls;
+    if (model.unit_lock_depth == 0U)
+        ++model.unit_lock_errors;
+    else
+        --model.unit_lock_depth;
+}
+
 static BOOL mock_begin_transaction(struct sdcard_Bus *mock_bus, BOOL may_wait)
 {
+    record_external_callback();
     (void)mock_bus;
     ++model.begin_calls;
     model.last_may_wait = may_wait;
@@ -408,6 +443,7 @@ static BOOL mock_begin_transaction(struct sdcard_Bus *mock_bus, BOOL may_wait)
 
 static void mock_end_transaction(struct sdcard_Bus *mock_bus)
 {
+    record_external_callback();
     (void)mock_bus;
     ++model.end_calls;
     model.transaction_owned = FALSE;
@@ -415,6 +451,7 @@ static void mock_end_transaction(struct sdcard_Bus *mock_bus)
 
 static void mock_set_clock(ULONG hz, struct sdcard_Bus *mock_bus)
 {
+    record_external_callback();
     (void)mock_bus;
     ++model.set_clock_calls;
     model.clock_hz = hz;
@@ -422,6 +459,7 @@ static void mock_set_clock(ULONG hz, struct sdcard_Bus *mock_bus)
 
 static void mock_set_width(UBYTE width, struct sdcard_Bus *mock_bus)
 {
+    record_external_callback();
     (void)mock_bus;
     ++model.set_width_calls;
     model.bus_width = width;
@@ -429,6 +467,7 @@ static void mock_set_width(UBYTE width, struct sdcard_Bus *mock_bus)
 
 static ULONG mock_frequency(struct sdcard_Unit *mock_unit, BOOL mmc)
 {
+    record_external_callback();
     model.frequency_flags_seen = mock_unit->sdcu_Flags;
     mock_unit->sdcu_Flags |= model.frequency_flags;
     if (mmc)
@@ -450,6 +489,7 @@ ULONG FNAME_SDCUNIT(MMCChangeFrequency)(struct sdcard_Unit *mock_unit)
 
 void FNAME_SDCBUS(ADMAVerify)(struct sdcard_Unit *mock_unit)
 {
+    record_external_callback();
     (void)mock_unit;
     ++model.adma_verify_calls;
     if (model.invalidate_on_verify)
@@ -469,11 +509,20 @@ static void prepare_sdsc_4bit(void)
     model.begin_succeeds = TRUE;
 }
 
+static void check_public_start_balanced(void)
+{
+    CHECK(model.transaction_owned == FALSE);
+    CHECK(model.unit_lock_depth == 0U);
+    CHECK(model.unit_lock_calls == model.unit_unlock_calls);
+    CHECK(model.unit_lock_errors == 0U);
+    CHECK(model.callbacks_under_unit_lock == 0U);
+}
+
 static void test_wait_status_zero_and_finite_poll(void)
 {
     begin_case();
     reset_fixture();
-    CHECK(FNAME_SDCUNIT(WaitStatus)(0UL, &unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(WaitStatus)(0UL, &test_unit) == (ULONG)-1);
     CHECK(model.send_calls == 0U);
     CHECK(model.wait_calls == 0U);
     CHECK(model.delays == 0UL);
@@ -483,7 +532,7 @@ static void test_wait_status_zero_and_finite_poll(void)
     model.status[1] = MMC_STATUS_STATE_TRAN;
     model.status[2] = READY_TRAN_STATUS;
     model.status_count = 3U;
-    CHECK(FNAME_SDCUNIT(WaitStatus)(3UL, &unit) == 0UL);
+    CHECK(FNAME_SDCUNIT(WaitStatus)(3UL, &test_unit) == 0UL);
     CHECK(count_command(MMC_CMD_SEND_STATUS) == 3U);
     CHECK(model.delays == 2UL);
     CHECK(model.delayed_us == 2000UL);
@@ -495,20 +544,20 @@ static void test_wait_status_error_precedence_and_bounds(void)
     reset_fixture();
     model.status[0] = MMC_STATUS_ILLEGAL_COMMAND | READY_TRAN_STATUS;
     model.status_count = 1U;
-    CHECK(FNAME_SDCUNIT(WaitStatus)(10UL, &unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(WaitStatus)(10UL, &test_unit) == (ULONG)-1);
     CHECK(count_command(MMC_CMD_SEND_STATUS) == 1U);
     CHECK(model.delays == 0UL);
 
     reset_fixture();
     model.default_status = MMC_STATUS_STATE_TRAN;
-    CHECK(FNAME_SDCUNIT(WaitStatus)(4UL, &unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(WaitStatus)(4UL, &test_unit) == (ULONG)-1);
     CHECK(count_command(MMC_CMD_SEND_STATUS) == 4U);
     CHECK(model.delays == 4UL);
 
     reset_fixture();
     model.fail_wait_command = MMC_CMD_SEND_STATUS;
     model.fail_wait_occurrence = 0U;
-    CHECK(FNAME_SDCUNIT(WaitStatus)(20UL, &unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(WaitStatus)(20UL, &test_unit) == (ULONG)-1);
     CHECK(count_command(MMC_CMD_SEND_STATUS) == 5U);
     CHECK(model.wait_calls == 5U);
     CHECK(model.delays == 4UL);
@@ -518,10 +567,10 @@ static void test_activation_success_paths(void)
 {
     begin_case();
     prepare_sdsc_4bit();
-    unit.sdcu_Flags = AF_Card_HighCapacity | AF_Card_HighSpeed |
+    test_unit.sdcu_Flags = AF_Card_HighCapacity | AF_Card_HighSpeed |
                       AF_Card_HighSpeed52 | AF_Card_4bitData;
     model.frequency_flags = AF_Card_HighSpeed | AF_Card_4bitData;
-    CHECK(sdcard_StartUnitLocked(&unit) == TRUE);
+    CHECK(sdcard_StartUnitLocked(&test_unit) == TRUE);
     CHECK(model.sd_frequency_calls == 1U);
     CHECK(model.mmc_frequency_calls == 0U);
     CHECK(model.frequency_flags_seen == AF_Card_HighCapacity);
@@ -535,7 +584,7 @@ static void test_activation_success_paths(void)
 
     begin_case();
     prepare_sdsc_4bit();
-    CHECK(sdcard_StartUnitLocked(&unit) == TRUE);
+    CHECK(sdcard_StartUnitLocked(&test_unit) == TRUE);
     CHECK(count_command(MMC_CMD_SET_BLOCKLEN) == 1U);
     CHECK(event_for_command(MMC_CMD_SET_BLOCKLEN, 1U)->argument == 512U);
     CHECK(model.sd_frequency_calls == 1U);
@@ -545,10 +594,10 @@ static void test_activation_success_paths(void)
 
     begin_case();
     prepare_sdsc_4bit();
-    unit.sdcu_Flags = AF_Card_MMC | AF_Card_HighCapacity |
+    test_unit.sdcu_Flags = AF_Card_MMC | AF_Card_HighCapacity |
                       AF_Card_HighSpeed | AF_Card_4bitData;
     model.frequency_flags = AF_Card_HighSpeed | AF_Card_HighSpeed52;
-    CHECK(sdcard_StartUnitLocked(&unit) == TRUE);
+    CHECK(sdcard_StartUnitLocked(&test_unit) == TRUE);
     CHECK(model.mmc_frequency_calls == 1U);
     CHECK(model.sd_frequency_calls == 0U);
     CHECK(model.frequency_flags_seen == (AF_Card_MMC | AF_Card_HighCapacity));
@@ -570,7 +619,7 @@ static void test_activation_failures_and_r1_commands(void)
     begin_case();
     reset_fixture();
     mock_bus_state.sdcb_SectorShift = 32U;
-    CHECK(sdcard_StartUnitLocked(&unit) == FALSE);
+    CHECK(sdcard_StartUnitLocked(&test_unit) == FALSE);
     CHECK(model.send_calls == 0U);
 
     for (command_index = 0U;
@@ -596,7 +645,7 @@ static void test_activation_failures_and_r1_commands(void)
                 model.error_response_command = commands[command_index];
                 model.error_response_occurrence = 1U;
             }
-            CHECK(sdcard_StartUnitLocked(&unit) == FALSE);
+            CHECK(sdcard_StartUnitLocked(&test_unit) == FALSE);
             CHECK(count_command(commands[command_index]) == 1U);
             CHECK(model.adma_verify_calls == 0U);
             if (failure_mode == 0U)
@@ -615,7 +664,7 @@ static void test_activation_failures_and_r1_commands(void)
     begin_case();
     prepare_sdsc_4bit();
     model.frequency_result = (ULONG)-1;
-    CHECK(sdcard_StartUnitLocked(&unit) == FALSE);
+    CHECK(sdcard_StartUnitLocked(&test_unit) == FALSE);
     CHECK(model.set_clock_calls == 0U);
     CHECK(model.adma_verify_calls == 0U);
 
@@ -624,14 +673,14 @@ static void test_activation_failures_and_r1_commands(void)
     mock_bus_state.sdcb_IOReadLong = NULL;
     model.fail_send_command = MMC_CMD_SELECT_CARD;
     model.fail_send_occurrence = 1U;
-    CHECK(sdcard_StartUnitLocked(&unit) == FALSE);
+    CHECK(sdcard_StartUnitLocked(&test_unit) == FALSE);
     CHECK(model.io_read_calls == 0U);
 
     begin_case();
     prepare_sdsc_4bit();
     model.status[0] = MMC_STATUS_ILLEGAL_COMMAND;
     model.status_count = 1U;
-    CHECK(sdcard_StartUnitLocked(&unit) == FALSE);
+    CHECK(sdcard_StartUnitLocked(&test_unit) == FALSE);
     CHECK(count_command(MMC_CMD_SEND_STATUS) == 1U);
     CHECK(model.sd_frequency_calls == 0U);
 
@@ -640,7 +689,7 @@ static void test_activation_failures_and_r1_commands(void)
     model.status[0] = READY_TRAN_STATUS;
     model.status_count = 1U;
     model.invalidate_on_verify = TRUE;
-    CHECK(sdcard_StartUnitLocked(&unit) == FALSE);
+    CHECK(sdcard_StartUnitLocked(&test_unit) == FALSE);
     CHECK(model.adma_verify_calls == 1U);
     CHECK(model.verify_seen_before_second_status == TRUE);
     CHECK(count_command(MMC_CMD_SEND_STATUS) == 2U);
@@ -649,7 +698,7 @@ static void test_activation_failures_and_r1_commands(void)
     prepare_sdsc_4bit();
     model.frequency_flags = AF_Card_4bitData;
     mock_bus_state.sdcb_SetBusWidth = NULL;
-    CHECK(sdcard_StartUnitLocked(&unit) == FALSE);
+    CHECK(sdcard_StartUnitLocked(&test_unit) == FALSE);
     CHECK(count_command(MMC_CMD_APP_CMD) == 0U);
     CHECK(count_command(SD_CMD_APP_SET_BUS_WIDTH) == 0U);
     CHECK(model.adma_verify_calls == 0U);
@@ -660,30 +709,132 @@ static void test_public_start_transaction(void)
     begin_case();
     prepare_sdsc_4bit();
     model.begin_succeeds = FALSE;
-    CHECK(FNAME_SDCBUS(StartUnit)(&unit) == FALSE);
+    CHECK(FNAME_SDCBUS(StartUnit)(&test_unit) == FALSE);
     CHECK(model.begin_calls == 1U);
     CHECK(model.end_calls == 0U);
     CHECK(model.last_may_wait == FALSE);
     CHECK(model.send_calls == 0U);
+    CHECK(model.unit_lock_calls == 0U);
+    check_public_start_balanced();
 
     begin_case();
     prepare_sdsc_4bit();
-    CHECK(FNAME_SDCBUS(StartUnit)(&unit) == TRUE);
+    CHECK(FNAME_SDCBUS(StartUnit)(&test_unit) == TRUE);
     CHECK(model.begin_calls == 1U);
     CHECK(model.end_calls == 1U);
     CHECK(model.last_may_wait == FALSE);
     CHECK(model.transaction_owned == FALSE);
+    CHECK(model.unit_lock_calls == 2U);
+    CHECK(model.unit_unlock_calls == 2U);
+    check_public_start_balanced();
 
     begin_case();
     prepare_sdsc_4bit();
     model.fail_send_command = MMC_CMD_SELECT_CARD;
     model.fail_send_occurrence = 1U;
-    CHECK(FNAME_SDCBUS(StartUnit)(&unit) == FALSE);
+    CHECK(FNAME_SDCBUS(StartUnit)(&test_unit) == FALSE);
     CHECK(model.begin_calls == 1U);
     CHECK(model.end_calls == 1U);
     CHECK(model.last_may_wait == FALSE);
     CHECK(model.transaction_owned == FALSE);
     CHECK(model.io_read_calls == 1U);
+    CHECK(model.unit_lock_calls == 2U);
+    CHECK(model.unit_unlock_calls == 2U);
+    check_public_start_balanced();
+}
+
+static void test_public_start_metadata_guards_and_publication(void)
+{
+    ULONG original_flags;
+    ULONG original_rca;
+    ULONG original_change_num;
+
+    begin_case();
+    prepare_sdsc_4bit();
+    test_unit.sdcu_Flags = AF_Card_Active | AF_Card_HighCapacity;
+    CHECK(FNAME_SDCBUS(StartUnit)(&test_unit) == TRUE);
+    CHECK(model.send_calls == 0U);
+    CHECK(model.sd_frequency_calls == 0U);
+    CHECK(model.begin_calls == 1U);
+    CHECK(model.end_calls == 1U);
+    CHECK(model.unit_lock_calls == 1U);
+    CHECK(model.unit_unlock_calls == 1U);
+    CHECK(test_unit.sdcu_Flags == (AF_Card_Active | AF_Card_HighCapacity));
+    check_public_start_balanced();
+
+    begin_case();
+    prepare_sdsc_4bit();
+    test_unit.sdcu_Flags = AF_Card_Configuring | AF_Card_HighCapacity;
+    CHECK(FNAME_SDCBUS(StartUnit)(&test_unit) == FALSE);
+    CHECK(model.send_calls == 0U);
+    CHECK(model.sd_frequency_calls == 0U);
+    CHECK(model.begin_calls == 1U);
+    CHECK(model.end_calls == 1U);
+    CHECK(model.unit_lock_calls == 1U);
+    CHECK(model.unit_unlock_calls == 1U);
+    CHECK(test_unit.sdcu_Flags == (AF_Card_Configuring | AF_Card_HighCapacity));
+    check_public_start_balanced();
+
+    begin_case();
+    prepare_sdsc_4bit();
+    test_unit.sdcu_Flags = AF_Card_HighCapacity | AF_Card_HighSpeed52 |
+                      AF_Card_4bitData | AF_Card_WriteProtect |
+                      AF_Card_Locked;
+    test_unit.sdcu_Capacity = 0x123456789ABCDEF0ULL;
+    test_unit.sdcu_Cylinders = 0x13579BDFUL;
+    test_unit.sdcu_Heads = 11U;
+    test_unit.sdcu_Sectors = 17U;
+    test_unit.sdcu_ChangeNum = 0x2468ACE0UL;
+    test_unit.sdcu_CardRCA = 0x4567UL;
+    original_change_num = test_unit.sdcu_ChangeNum;
+    original_rca = test_unit.sdcu_CardRCA;
+    model.frequency_flags = AF_Card_HighSpeed;
+    CHECK(FNAME_SDCBUS(StartUnit)(&test_unit) == TRUE);
+    CHECK((test_unit.sdcu_Flags & (AF_Card_Active | AF_Card_Configuring |
+                               AF_Card_HighCapacity | AF_Card_HighSpeed |
+                               AF_Card_HighSpeed52 | AF_Card_4bitData |
+                               AF_Card_WriteProtect | AF_Card_Locked)) ==
+          (AF_Card_Active | AF_Card_HighCapacity | AF_Card_HighSpeed |
+           AF_Card_WriteProtect | AF_Card_Locked));
+    CHECK(test_unit.sdcu_CardRCA == original_rca);
+    CHECK(test_unit.sdcu_ChangeNum == original_change_num);
+    CHECK(test_unit.sdcu_Capacity == 0x123456789ABCDEF0ULL);
+    CHECK(test_unit.sdcu_Cylinders == 0x13579BDFUL);
+    CHECK(test_unit.sdcu_Heads == 11U);
+    CHECK(test_unit.sdcu_Sectors == 17U);
+    CHECK(model.begin_calls == 1U);
+    CHECK(model.end_calls == 1U);
+    CHECK(model.unit_lock_calls == 2U);
+    CHECK(model.unit_unlock_calls == 2U);
+    CHECK(model.transaction_owned == FALSE);
+    check_public_start_balanced();
+
+    begin_case();
+    prepare_sdsc_4bit();
+    test_unit.sdcu_Flags = AF_Card_HighCapacity | AF_Card_HighSpeed52 |
+                      AF_Card_4bitData | AF_Card_WriteProtect;
+    test_unit.sdcu_CardRCA = 0x7654UL;
+    test_unit.sdcu_ChangeNum = 0xFEDCBA98UL;
+    test_unit.sdcu_Capacity = 0x0FEDCBA987654321ULL;
+    original_flags = test_unit.sdcu_Flags;
+    original_rca = test_unit.sdcu_CardRCA;
+    original_change_num = test_unit.sdcu_ChangeNum;
+    model.frequency_flags = 0UL;
+    model.frequency_result = (ULONG)-1;
+    CHECK(FNAME_SDCBUS(StartUnit)(&test_unit) == FALSE);
+    CHECK((test_unit.sdcu_Flags & (AF_Card_Active | AF_Card_Configuring)) == 0UL);
+    CHECK((test_unit.sdcu_Flags & (AF_Card_HighCapacity | AF_Card_HighSpeed |
+                               AF_Card_HighSpeed52 | AF_Card_4bitData |
+                               AF_Card_WriteProtect)) == original_flags);
+    CHECK(test_unit.sdcu_CardRCA == original_rca);
+    CHECK(test_unit.sdcu_ChangeNum == original_change_num);
+    CHECK(test_unit.sdcu_Capacity == 0x0FEDCBA987654321ULL);
+    CHECK(model.begin_calls == 1U);
+    CHECK(model.end_calls == 1U);
+    CHECK(model.unit_lock_calls == 2U);
+    CHECK(model.unit_unlock_calls == 2U);
+    CHECK(model.transaction_owned == FALSE);
+    check_public_start_balanced();
 }
 
 int main(void)
@@ -693,6 +844,7 @@ int main(void)
     test_activation_success_paths();
     test_activation_failures_and_r1_commands();
     test_public_start_transaction();
+    test_public_start_metadata_guards_and_publication();
     printf("PASS: %u cases, %u checks\n", test_cases, checks);
     return 0;
 }
@@ -706,7 +858,7 @@ static void test_sd_switch_argument_and_errors(void)
     begin_case();
     reset_fixture();
     memset(response_buffer, 0, sizeof(response_buffer));
-    CHECK(FNAME_SDCUNIT(SDSCSwitch)(FALSE, 0, 1U, response_buffer, &unit) == 0UL);
+    CHECK(FNAME_SDCUNIT(SDSCSwitch)(FALSE, 0, 1U, response_buffer, &test_unit) == 0UL);
     event = event_for_command(SD_CMD_SWITCH_FUNC, 1U);
     CHECK(event != NULL);
     CHECK(event->argument == (IPTR)0x80FFFFF1UL);
@@ -715,7 +867,7 @@ static void test_sd_switch_argument_and_errors(void)
     reset_fixture();
     model.error_response_command = SD_CMD_SWITCH_FUNC;
     model.error_response_occurrence = 1U;
-    CHECK(FNAME_SDCUNIT(SDSCSwitch)(TRUE, 0, 1U, response_buffer, &unit) ==
+    CHECK(FNAME_SDCUNIT(SDSCSwitch)(TRUE, 0, 1U, response_buffer, &test_unit) ==
           (ULONG)-1);
 }
 
@@ -725,49 +877,49 @@ static void test_sd_frequency_status_and_switch_failures(void)
     reset_fixture();
     model.error_response_command = MMC_CMD_APP_CMD;
     model.error_response_occurrence = 1U;
-    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&test_unit) == (ULONG)-1);
     CHECK(count_command(SD_CMD_APP_SEND_SCR) == 0U);
 
     begin_case();
     reset_fixture();
     model.error_response_command = SD_CMD_APP_SEND_SCR;
     model.error_response_occurrence = 1U;
-    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&test_unit) == (ULONG)-1);
     CHECK(count_command(SD_CMD_SWITCH_FUNC) == 0U);
 
     begin_case();
     reset_fixture();
     model.error_response_command = SD_CMD_SWITCH_FUNC;
     model.error_response_occurrence = 1U;
-    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&test_unit) == (ULONG)-1);
     CHECK(count_command(SD_CMD_SWITCH_FUNC) == 1U);
 
     begin_case();
     reset_fixture();
     model.error_response_command = SD_CMD_SWITCH_FUNC;
     model.error_response_occurrence = 2U;
-    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&test_unit) == (ULONG)-1);
     CHECK(count_command(SD_CMD_SWITCH_FUNC) == 2U);
 
     begin_case();
     reset_fixture();
     model.sd_switch_result_word = 0x02000000UL;
-    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&test_unit) == (ULONG)-1);
     CHECK(count_command(SD_CMD_SWITCH_FUNC) == 2U);
 
     begin_case();
     reset_fixture();
     model.sd_test_busy_count = 3U;
-    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&unit) == 0UL);
+    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&test_unit) == 0UL);
     CHECK(model.sd_test_calls == 3U);
     CHECK(count_command(SD_CMD_SWITCH_FUNC) == 3U);
-    CHECK((unit.sdcu_Flags & AF_Card_HighSpeed) == 0UL);
+    CHECK((test_unit.sdcu_Flags & AF_Card_HighSpeed) == 0UL);
 
     begin_case();
     reset_fixture();
     model.fail_wait_command = SD_CMD_APP_SEND_SCR;
     model.fail_wait_occurrence = 0U;
-    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(SDSCChangeFrequency)(&test_unit) == (ULONG)-1);
     CHECK(count_command(SD_CMD_APP_SEND_SCR) == 3U);
 }
 
@@ -777,7 +929,7 @@ static void test_mmc_switch_and_frequency_errors(void)
     reset_fixture();
     model.error_response_command = MMC_CMD_SWITCH;
     model.error_response_occurrence = 1U;
-    CHECK(FNAME_SDCUNIT(MMCSwitch)(EXT_CSD_HS_TIMING, 1U, &unit) ==
+    CHECK(FNAME_SDCUNIT(MMCSwitch)(EXT_CSD_HS_TIMING, 1U, &test_unit) ==
           (ULONG)-1);
     CHECK(count_command(MMC_CMD_SEND_STATUS) == 0U);
 
@@ -785,51 +937,51 @@ static void test_mmc_switch_and_frequency_errors(void)
     reset_fixture();
     model.status[0] = MMC_STATUS_ILLEGAL_COMMAND;
     model.status_count = 1U;
-    CHECK(FNAME_SDCUNIT(MMCSwitch)(EXT_CSD_HS_TIMING, 1U, &unit) ==
+    CHECK(FNAME_SDCUNIT(MMCSwitch)(EXT_CSD_HS_TIMING, 1U, &test_unit) ==
           (ULONG)-1);
     CHECK(count_command(MMC_CMD_SEND_STATUS) == 1U);
 
     begin_case();
     reset_fixture();
-    unit.sdcu_Flags = AF_Card_MMC;
-    CHECK(FNAME_SDCUNIT(MMCChangeFrequency)(&unit) == 0UL);
+    test_unit.sdcu_Flags = AF_Card_MMC;
+    CHECK(FNAME_SDCUNIT(MMCChangeFrequency)(&test_unit) == 0UL);
     CHECK(count_command(MMC_CMD_SEND_EXT_CSD) == 2U);
     CHECK(count_command(MMC_CMD_SWITCH) == 1U);
     CHECK(model.events[1].argument ==
           (IPTR)((MMC_SWITCH_WRITE_BYTE << 24) |
                  (EXT_CSD_HS_TIMING << 16) | (1U << 8)));
     CHECK(model.events[1].response_type == MMC_RSP_R1b);
-    CHECK((unit.sdcu_Flags & (AF_Card_HighSpeed | AF_Card_HighSpeed52)) ==
+    CHECK((test_unit.sdcu_Flags & (AF_Card_HighSpeed | AF_Card_HighSpeed52)) ==
           (AF_Card_HighSpeed | AF_Card_HighSpeed52));
 
     begin_case();
     reset_fixture();
-    unit.sdcu_Flags = AF_Card_MMC;
+    test_unit.sdcu_Flags = AF_Card_MMC;
     model.error_response_command = MMC_CMD_SEND_EXT_CSD;
     model.error_response_occurrence = 1U;
-    CHECK(FNAME_SDCUNIT(MMCChangeFrequency)(&unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(MMCChangeFrequency)(&test_unit) == (ULONG)-1);
     CHECK(count_command(MMC_CMD_SWITCH) == 0U);
 
     begin_case();
     reset_fixture();
-    unit.sdcu_Flags = AF_Card_MMC;
+    test_unit.sdcu_Flags = AF_Card_MMC;
     model.error_response_command = MMC_CMD_SWITCH;
     model.error_response_occurrence = 1U;
-    CHECK(FNAME_SDCUNIT(MMCChangeFrequency)(&unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(MMCChangeFrequency)(&test_unit) == (ULONG)-1);
     CHECK(count_command(MMC_CMD_SEND_EXT_CSD) == 1U);
 
     begin_case();
     reset_fixture();
-    unit.sdcu_Flags = AF_Card_MMC;
+    test_unit.sdcu_Flags = AF_Card_MMC;
     model.error_response_command = MMC_CMD_SEND_EXT_CSD;
     model.error_response_occurrence = 2U;
-    CHECK(FNAME_SDCUNIT(MMCChangeFrequency)(&unit) == (ULONG)-1);
+    CHECK(FNAME_SDCUNIT(MMCChangeFrequency)(&test_unit) == (ULONG)-1);
 
     begin_case();
     reset_fixture();
     mock_bus_state.sdcb_BusFlags = AF_Bus_SPI;
-    unit.sdcu_Flags = AF_Card_MMC;
-    CHECK(FNAME_SDCUNIT(MMCChangeFrequency)(&unit) == 0UL);
+    test_unit.sdcu_Flags = AF_Card_MMC;
+    CHECK(FNAME_SDCUNIT(MMCChangeFrequency)(&test_unit) == 0UL);
     CHECK(model.send_calls == 0U);
 }
 

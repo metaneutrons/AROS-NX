@@ -137,6 +137,18 @@ static BYTE SDCIO_Eject(struct sdcard_Unit *);
 
 ULONG FNAME_SDCBUS(Rsp136Unpack)(ULONG *buffer, ULONG offset, const ULONG length);
 
+/* Registration publication is guarded in production. This single-task
+ * identity fixture does not model SMP lock behavior; recovery tests do. */
+static void SDCBUS_LockUnit(struct sdcard_Bus *target_bus)
+{
+    (void)target_bus;
+}
+
+static void SDCBUS_UnlockUnit(struct sdcard_Bus *target_bus)
+{
+    (void)target_bus;
+}
+
 /* INSERT_ACTUAL_SD_PRODUCTION */
 
 #define CMD_LOG_CAPACITY 2208U

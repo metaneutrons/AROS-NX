@@ -140,37 +140,59 @@ static int FNAME_SDC(Open)
 )
 {
     struct sdcard_Bus   *busCurrent;
+    struct sdcard_Unit *unit;
+    ULONG ordinal;
 
     DDEV(bug("[SDCard--] %s()\n", __PRETTY_FUNCTION__));
 
     /* Assume it failed */
     iorq->io_Error = IOERR_OPENFAIL;
+    iorq->io_Unit = NULL;
 
     ForeachNode(&LIBBASE->sdcard_Buses, busCurrent)
     {
-        if ((unitnum < (busCurrent->sdcb_BusUnits->sdcbu_UnitBase + busCurrent->sdcb_BusUnits->sdcbu_UnitCnt)) && ((&busCurrent->sdcb_BusUnits->sdcbu_Units)[unitnum] != NULL))
+        SDCBUS_LockUnit(busCurrent);
+        if (unitnum < busCurrent->sdcb_BusUnits->sdcbu_UnitBase)
         {
-            iorq->io_Unit = (struct Unit *)(&busCurrent->sdcb_BusUnits->sdcbu_Units)[unitnum];
-            ((struct sdcard_Unit *)iorq->io_Unit)->sdcu_Unit.unit_OpenCnt++;
-
-            iorq->io_Error = 0;
-
-            if (!(((struct sdcard_Unit *)iorq->io_Unit)->sdcu_Flags & AF_Card_Active))
-            {
-                if (FNAME_SDCBUS(StartUnit)((struct sdcard_Unit *)iorq->io_Unit))
-                {
-                    DDEV(bug("[SDCard%02ld] %s: Unit @ 0x%p configured for operation\n", ((struct sdcard_Unit *)iorq->io_Unit)->sdcu_UnitNum, __PRETTY_FUNCTION__, iorq->io_Unit));
-                    ((struct sdcard_Unit *)iorq->io_Unit)->sdcu_Flags |= AF_Card_Active;
-                }
-                else
-                {
-                    DDEV(bug("[SDCard%02ld] %s: Failed to configure unit\n", ((struct sdcard_Unit *)iorq->io_Unit)->sdcu_UnitNum, __PRETTY_FUNCTION__));
-                    ((struct sdcard_Unit *)iorq->io_Unit)->sdcu_Unit.unit_OpenCnt--;
-                    iorq->io_Unit = NULL;
-                    iorq->io_Error = IOERR_OPENFAIL;
-                }
-            }
+            SDCBUS_UnlockUnit(busCurrent);
+            continue;
         }
+        ordinal = unitnum - busCurrent->sdcb_BusUnits->sdcbu_UnitBase;
+        unit = ordinal < busCurrent->sdcb_BusUnits->sdcbu_UnitCnt ?
+                (&busCurrent->sdcb_BusUnits->sdcbu_Units)[ordinal] : NULL;
+        if (!unit)
+        {
+            SDCBUS_UnlockUnit(busCurrent);
+            continue;
+        }
+        if (unit->sdcu_Unit.unit_OpenCnt == 0xFFFF ||
+            (unit->sdcu_Flags & AF_Card_Configuring))
+        {
+            SDCBUS_UnlockUnit(busCurrent);
+            break;
+        }
+        unit->sdcu_Unit.unit_OpenCnt++;
+        iorq->io_Unit = (struct Unit *)unit;
+        /* An already active unit needs no host acquisition. Recovery clears
+         * Active under this same guard before touching controller state. */
+        if (unit->sdcu_Flags & AF_Card_Active)
+        {
+            iorq->io_Error = 0;
+            SDCBUS_UnlockUnit(busCurrent);
+            break;
+        }
+        SDCBUS_UnlockUnit(busCurrent);
+
+        if (FNAME_SDCBUS(StartUnit)(unit))
+            iorq->io_Error = 0;
+        else
+        {
+            SDCBUS_LockUnit(busCurrent);
+            unit->sdcu_Unit.unit_OpenCnt--;
+            SDCBUS_UnlockUnit(busCurrent);
+            iorq->io_Unit = NULL;
+        }
+        break;
     }
     return iorq->io_Error ? FALSE : TRUE;
 }
@@ -190,7 +212,10 @@ static int FNAME_SDC(Close)
     iorq->io_Unit = (struct Unit *)~0;
 
     /* Decrease use counters of unit */
-    unit->sdcu_Unit.unit_OpenCnt--;
+    SDCBUS_LockUnit(unit->sdcu_Bus);
+    if (unit->sdcu_Unit.unit_OpenCnt)
+        unit->sdcu_Unit.unit_OpenCnt--;
+    SDCBUS_UnlockUnit(unit->sdcu_Bus);
 
     return TRUE;
 }

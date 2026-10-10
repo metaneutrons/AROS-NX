@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; strict activation host tested/build verified` | Common diagnostics, staged card identification and strict selection/configuration host tested/build verified; accepted production source integrated locally. In-place open-unit recovery, SMP publication guards, integrated core/package build, radio integration, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; generic same-media recovery host tested/build verified` | Strict activation and generic same-media recovery with matching publication/Open/Close guards host tested/build verified; accepted production source integrated locally. Backend recovery hooks/dispatch, real SMP interleavings, integrated core/package build, radio integration, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -178,6 +178,22 @@ station-mode delivery. Use the existing roadmap/evidence structure; no new
 GitHub tracking objects were requested or created.
 
 ### N0 - SDIO commands and shared controller ownership
+
+Generic same-media recovery is now implemented as an explicit owned operation
+behind three optional task-context backend hooks (needed/prepare/finish).
+It stages only protocol/transfer fields, compares cached CID/CSD, capacity,
+geometry and addressing family, configures privately and publishes RCA plus
+negotiated bits under a short guard before relinquishing host ownership.
+Failure clears availability without replacing the Exec unit/open counts/lists.
+Open/Close, active recheck and initial registration publication use the same
+task-only metadata lock, separate from the IRQ command-listener lock; no host
+acquisition or hardware waits occur under it. Relative unit-base indexing and
+open-count overflow/underflow are guarded. This is host tested and RV32 build
+verified, not an enabled hardware recovery path: P4 backend hooks and
+BusTask/radio dispatch remain open, as does the end-to-end deadline. Real SMP
+interleavings and non-P4 hardware regression remain unverified. A failed media
+identity comparison must leave the backend unavailable: ordinary StartUnit
+must not subsequently select a replacement card using the cached RCA.
 
 Accepted production source through acd62ff237 is integrated locally after
 12df190097. This preserves the boot-budget, quiet-profile and ProductionQualify
@@ -356,7 +372,8 @@ after complete identification and boot-node construction. Invalid CMD8 echo,
 R1/R6 errors, zero RCA, incompatible OCR voltage and unsupported/inconsistent CSD
 are refused. ACMD41 has at most1000 attempts; this is a finite attempt bound,
 not a claimed end-to-end deadline. Unit count is not incremented on failure.
-Selection/configuration, in-place commit and bus-task recovery remain open.
+Strict selection/configuration is tested separately below; in-place commit
+is now a candidate in verification, while backend/task recovery remains open.
 Extracted identity/registration tests pass 41 cases/27,369 checks each at O0/O2
 with ASan/UBSan; the one-slot layout is modeled and allocation/DOS APIs are
 mocked. RV32 SD builds pass. This does not verify other boards, silicon, SMP
@@ -371,11 +388,12 @@ and the optional register-read callback is guarded on failure. This shared
 change passes extracted-source activation tests (26 cases/140 checks) and actual
 SD/MMC helper tests (16 cases/37 checks), each O0/O2 with ASan/UBSan, plus the
 normal JC1060-v2/SMP module build. Non-P4 hardware acceptance remains open.
-It does not implement same-media recovery or guard Open/Close.
+Strict activation alone is not same-media recovery; the newly staged recovery
+and matching Open/Close guards are host tested/build verified as described above.
 An independent Open/Close audit confirms Forbid is local-hart only on SMP.
 The host owner does not protect unit flags/counts read by active OpenDevice;
-the in-place recovery step must add a matching brief publication guard to both
-writer and readers. Keep host acquisition and all card waits outside that
+the recovery candidate adds a matching brief publication guard to both
+writer and Open/Close readers. Keep host acquisition and all card waits outside that
 spinlock; use nonblocking ownership/recheck under OpenDevice. Preserve the
 embedded Exec unit, count, listeners and change bookkeeping, not a whole-struct
 copy. Run recovery only after the failed request releases its transaction.
@@ -27241,7 +27259,7 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   7677616d0e3629c5261f6404b020fd3793bbdf6fa229ba0938761cfd678fd01d;
   runner4bec2b149f5ec3ab2822330927f1a54cab4b462b68b2ed0daa22195c01bd562e.
   Extracted activation functions3d27db0a00ecdf0b4bf0ed68f7a1d10de0145dc800b81429435e26e3d98470b9;
-  frequency functions c3e63143528764399d68546f37a0ce247ff0dd97f70ebc3b9ef79ddf51cad110.
+  frequency functions c3e63143528764399d68546e37a0ce247ff0dd97f70ebc3b9ef79ddf51cad110.
   Tests execute production bodies against scripted commands; activation mode
   mocks frequency callbacks, while helper mode executes actual frequency code.
   Clocks, width changes, DMA verification and delays are modeled. No silicon,
@@ -28512,6 +28530,78 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   change. Earlier production acceptance does not qualify the new shared host.
 - Next: task-context same-media recovery and matching SMP metadata guards,
   followed by integrated build and explicit hardware regression before C6 probe.
+
+### 2026-10-10 - N0 generic same-media recovery host tested and build verified
+
+- State: host tested/build verified, parent6493aa1bbe, feature/esp32p4-wifi. Previous
+  goal turn made progress via activation commit and production integration.
+  Authoritative worktree /Volumes/Dev/Build/aros-esp32p4-wifi.
+- Implementation: task-only per-bus metadata lock matches Open/Close, initial
+  registration and active publication. StartUnit privately stages/configures
+  and publishes before host release; it rechecks active/configuring state.
+  RecoverUnit requires paired transaction hooks plus needed/prepare/finish,
+  compares immutable media/geometry/protocol and commits only mutable session
+  state. No Exec unit/listener/count replacement or new boot-node allocation.
+- Initial build session75394 failed at link with undefined KernelBase: inline
+  guard definitions were parsed before the sdcard_base.h base mapping because
+  of its header cycle. Guard implementations were moved into bus.c with its
+  local SDCardBase mapping; the failed build is not acceptance evidence.
+  Corrected build session46455 exits0, recompiling the generic SD device and
+  every P4/private-header consumer. sdcard.device129,368 bytes SHA-256
+  39cc0b9a944f9bfb7b2ee88597cd9de0cccd9b74c8619310eb6c8106ca5785f6
+  in /Volumes/Dev/Build/aros-esp32p4-wifi-build/bin/esp32p4-riscv-smp/AROS/Devs/;
+  nm -u is empty. Private bus layout changed; public/resource ABI is unchanged.
+  No diagnostic switches changed. This is not a complete merged core/package.
+- Identity regression exits0:41 cases/27,369 checks each O0/O2 ASan/UBSan.
+  Its fixture now stubs the newly guarded initial publication; this remains a
+  single-task identity test, not SMP lock proof. Recovery/Open/Close and
+  activation-publication tests and independent review completed below.
+- Primary host/adapter regressions pass O0/O2 with ASan/UBSan: host25
+  cases/400,338 checks; adapter35 cases/629 checks plus trace-off injected
+  modes1/2/3 each1case/30checks. Adapter was rerun using the actual
+  test-sd-command-adapter.py path after an initial nonexistent-path typo;
+  that failed invocation was not counted as a pass. Final adapter session9244
+  exits0. These extracted models do not test the new recovery dispatcher.
+- Primary activation rerun session67486 exits0:30 cases/220 checks each O0/O2
+  now includes actual private staging/publication and instrumented guards;
+  frequency16 cases/37 checks each. The earlier frequency-functions hash was
+  corrected from an agent-report transcription against the primary runner's
+  actual output (46e37, not46f37); implementation/tests did not change for it.
+- Final build after initializing failed Open's io_Unit to NULL: session42858
+  exits0; sdcard.device 129,368 bytes, SHA-256
+  66e136b48f033a001ba26bed4cdc612a88772e6d80488027093edfd00e909c47.
+  Undefined-symbol listing is empty. This supersedes the earlier module hash,
+  not the still-required complete integrated core/package gate.
+- Primary repeated transaction runner session60324 exits0: 588 checks each
+  O0/O2 ASan/UBSan. The old extraction initially failed compilation after the
+  new staging/guard interfaces; the updated fixture extracts the production
+  StageUnit/PublishUnit/StartUnit/Open bodies and flags, rather than bypassing
+  those transitions. Legacy unlocked read fallback remains covered.
+- Primary repeated recovery runner session88398 exits0: 22 cases per mode,
+  1,043 checks non-SMP and 1,435 modeled SMP, each O0/O2 ASan/UBSan.
+  Actual recovery, publication, transaction, guard and Open/Close bodies run;
+  identification and activation are scripted callbacks and separately tested.
+  Guards instrument ordering/balance only, not real SMP interleavings.
+  Fixture review found a post-return dereference of the stack candidate; it
+  was replaced by scalar snapshots captured during activation before accepting
+  these results. Production behavior was unchanged by that fixture correction.
+  Production-function SHA-256:
+  16ecc57ff8237fcd171fdc2d1ad23cb9b492fc9133cd9af9265cb64ca818d08f;
+  fixture SHA-256:
+  5d6683f7d46f00ca31b34b9e1f4ca63939d325795b5ec4c1cdd1c0ec8617a48a;
+  assembled SHA-256:
+  463d237a1367f96b8e98e47142bdfa29c676499438787cf643489c7d82904603.
+- Independent read-only publication review found no definite current defect.
+  It identified an integration requirement: after media mismatch, keep the
+  backend unavailable so ordinary StartUnit cannot activate cached RCA on a
+  replacement card. This is a required backend failure gate, not an enabled
+  recovery behavior. Reviewed bus/init/header sources match the final tree;
+  git diff --check passes. No real SMP or non-P4 hardware gate was executed.
+- Safety: no hardware/serial/flash/SD/C6 actions. Hooks are not wired to the
+  P4 backend and no automatic BusTask dispatch is enabled. There is no claim
+  of real recovery, aggregate latency, concurrent-hart correctness or WLAN.
+- Next: implement bounded P4 reinit/private candidate RCA
+  and task dispatch, then integrated core/package and hardware regression.
 
 ## Evidence-entry template
 

@@ -71,10 +71,33 @@ def main() -> None:
     bus_source = (ROOT / "rom/devs/sdcard/sdcard_bus.c").read_text()
     io_source = (ROOT / "rom/devs/sdcard/sdcard_ioops.c").read_text()
     init_source = (ROOT / "rom/devs/sdcard/sdcard_init.c").read_text()
+    unit_header = (ROOT / "rom/devs/sdcard/sdcard_unit.h").read_text()
     harness = (ROOT / "arch/riscv-esp32p4/network/test_sd_transactions.c").read_text()
     chunk_define = re.search(r"(?m)^#define SD_CHUNK_BLOCKS\s+\d+\s*$", io_source)
     if chunk_define is None:
         raise RuntimeError("could not find production SD_CHUNK_BLOCKS definition")
+
+    unit_flags = []
+    for name in (
+        "AB_Card_HighCapacity",
+        "AB_Card_Active",
+        "AB_Card_Configuring",
+        "AB_Card_4bitData",
+        "AB_Card_HighSpeed",
+        "AB_Card_HighSpeed52",
+        "AF_Card_HighCapacity",
+        "AF_Card_Active",
+        "AF_Card_Configuring",
+        "AF_Card_4bitData",
+        "AF_Card_HighSpeed",
+        "AF_Card_HighSpeed52",
+    ):
+        definition = re.search(
+            rf"(?m)^#define[ \t]+{re.escape(name)}\b[^\n]*$", unit_header
+        )
+        if definition is None:
+            raise RuntimeError(f"could not find production {name} definition")
+        unit_flags.append(definition.group(0))
 
     signatures = (
         (bus_header, "static inline BOOL SDCBUS_BeginTransaction"),
@@ -82,6 +105,8 @@ def main() -> None:
         (io_source, "static BOOL sdcard_StopRead"),
         (io_source, "BYTE FNAME_SDCIO(ReadSector32)"),
         (io_source, "BYTE FNAME_SDCIO(ReadSector64)"),
+        (bus_source, "static void sdcard_StageUnit"),
+        (bus_source, "static void sdcard_PublishUnit"),
         (bus_source, "BOOL FNAME_SDCBUS(StartUnit)"),
         (bus_source, "BOOL FNAME_SDCBUS(RegisterUnit)"),
         (init_source, "static int FNAME_SDC(Open)"),
@@ -92,7 +117,11 @@ def main() -> None:
     marker = "/* INSERT_EXTRACTED_SDCARD_FUNCTIONS */"
     if harness.count(marker) != 1:
         raise RuntimeError("test harness must have exactly one extraction marker")
-    generated_source = harness.replace(marker, actual_functions)
+    flags_marker = "/* INSERT_ACTUAL_UNIT_FLAGS */"
+    if harness.count(flags_marker) != 1:
+        raise RuntimeError("test harness must have exactly one unit-flag marker")
+    generated_source = harness.replace(flags_marker, "\n".join(unit_flags))
+    generated_source = generated_source.replace(marker, actual_functions)
 
     compiler = shlex.split(os.environ.get("CC", "cc"))
     with tempfile.TemporaryDirectory(prefix="sd-transaction-tests-") as temp:

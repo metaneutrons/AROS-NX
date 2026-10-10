@@ -163,16 +163,24 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
             extract_constants(
                 UNIT_HEADER,
                 (
+                    "AB_Card_Active",
+                    "AB_Card_Configuring",
                     "AB_Card_HighSpeed52",
                     "AB_Card_HighSpeed",
                     "AB_Card_HighCapacity",
                     "AB_Card_4bitData",
                     "AB_Card_MMC",
+                    "AB_Card_WriteProtect",
+                    "AB_Card_Locked",
+                    "AF_Card_Active",
+                    "AF_Card_Configuring",
                     "AF_Card_HighSpeed52",
                     "AF_Card_HighSpeed",
                     "AF_Card_HighCapacity",
                     "AF_Card_4bitData",
                     "AF_Card_MMC",
+                    "AF_Card_WriteProtect",
+                    "AF_Card_Locked",
                 ),
             ),
             extract_constants(BUS_HEADER, ("AB_Bus_SPI", "AF_Bus_SPI")),
@@ -217,6 +225,18 @@ def assemble_fixture() -> tuple[str, list[tuple[str, bytes]]]:
                 GENERIC_BUS,
                 "sdcard_StartUnitLocked",
                 r"\bstatic\s+BOOL\s+sdcard_StartUnitLocked\s*\(",
+            ),
+            extract_function(
+                helper,
+                GENERIC_BUS,
+                "sdcard_StageUnit",
+                r"\bstatic\s+void\s+sdcard_StageUnit\s*\(",
+            ),
+            extract_function(
+                helper,
+                GENERIC_BUS,
+                "sdcard_PublishUnit",
+                r"\bstatic\s+void\s+sdcard_PublishUnit\s*\(",
             ),
             extract_function(
                 helper,
@@ -304,11 +324,29 @@ def audit_public_start(helper) -> str:
     acquire = re.findall(
         r"SDCBUS_BeginTransaction\s*\(\s*bus\s*,\s*FALSE\s*\)", body
     )
-    release = re.findall(r"SDCBUS_EndTransaction\s*\(\s*bus\s*\)", body)
-    work = body.find("sdcard_StartUnitLocked(sdcUnit)")
-    unlock = body.find("SDCBUS_EndTransaction(bus)")
-    if len(acquire) != 1 or len(release) != 1 or work < 0 or unlock < work:
-        raise ValueError("public StartUnit must acquire nonblocking, run, then release once")
+    release = list(
+        re.finditer(r"SDCBUS_EndTransaction\s*\(\s*bus\s*\)", body)
+    )
+    lock = body.find("SDCBUS_LockUnit(bus)")
+    stage = body.find("sdcard_StageUnit(sdcUnit, &candidate)")
+    unlock = body.find("SDCBUS_UnlockUnit(bus)", stage)
+    work = body.find("sdcard_StartUnitLocked(&candidate)")
+    publish = body.find("sdcard_PublishUnit(sdcUnit, &candidate, result)")
+    if (
+        len(acquire) != 1
+        or len(release) < 2
+        or lock < 0
+        or stage < lock
+        or unlock < stage
+        or work < unlock
+        or stage < 0
+        or publish < work
+        or release[-1].start() < publish
+    ):
+        raise ValueError(
+            "public StartUnit must acquire nonblocking, stage/configure/publish, "
+            "and release its transaction on each acquired path"
+        )
     return sha256(body.encode("utf-8"))
 
 
@@ -326,8 +364,9 @@ def run() -> int:
     print(
         "Host model: actual activation and frequency functions execute against a "
         "scripted command bus. Activation substitutes frequency callbacks to "
-        "isolate the generic state transition; frequency mode executes the "
-        "actual SDSC/MMC helper bodies. No controller silicon or media is used."
+        "isolate the generic state transition; unit locks are instrumented and "
+        "frequency mode executes the actual SDSC/MMC helper bodies. No controller "
+        "silicon or media is used."
     )
 
     with tempfile.TemporaryDirectory(prefix="p4-sd-activation-") as temporary:

@@ -35,8 +35,7 @@ typedef int BOOL;
 #define MMC_DATA_READ 1
 #define SDHCI_PS_CMD_INHIBIT 1
 #define SDHCI_PS_DATA_INHIBIT 2
-#define AF_Card_HighCapacity (1UL << 25)
-#define AF_Card_Active (1UL << 30)
+/* INSERT_ACTUAL_UNIT_FLAGS */
 
 #define FNAME_SDCIO(name) test_##name
 #define FNAME_SDCBUS(name) test_bus_##name
@@ -84,6 +83,15 @@ struct sdcard_Unit
     struct sdcard_Bus *sdcu_Bus;
     ULONG sdcu_Flags;
     ULONG sdcu_UnitNum;
+    ULONG sdcu_CardRCA;
+    ULONG sdcu_CardPower;
+    UQUAD sdcu_Capacity;
+    ULONG sdcu_Cylinders;
+    UBYTE sdcu_Heads;
+    UBYTE sdcu_Sectors;
+    BYTE (*sdcu_Read32)(struct sdcard_Unit *, ULONG, ULONG, APTR, ULONG *);
+    BYTE (*sdcu_Read64)(struct sdcard_Unit *, UQUAD, ULONG, APTR, ULONG *);
+    ULONG sdcu_ChangeNum;
 };
 
 struct IORequest
@@ -136,6 +144,20 @@ static unsigned int start_body_calls;
 static unsigned int register_body_calls;
 static BOOL start_body_result;
 static BOOL register_body_result;
+static ULONG start_body_flags;
+static ULONG start_body_rca;
+static struct sdcard_Unit *expected_start_source;
+static unsigned int unit_lock_calls;
+static unsigned int unit_unlock_calls;
+static unsigned int unit_lock_depth;
+static unsigned int unit_lock_errors;
+static unsigned int callbacks_under_unit_lock;
+
+static void record_external_callback(void)
+{
+    if (unit_lock_depth != 0U)
+        ++callbacks_under_unit_lock;
+}
 
 #define CHECK(expression) do { \
     ++checks; \
@@ -162,6 +184,11 @@ static void reset_mocks(void)
     wait_calls = 0;
     yield_calls = 0;
     owner_depth = 0;
+    unit_lock_calls = 0;
+    unit_unlock_calls = 0;
+    unit_lock_depth = 0;
+    unit_lock_errors = 0;
+    callbacks_under_unit_lock = 0;
     begin_allowed = 1;
     fail_send_call = 0;
     fail_wait_call = 0;
@@ -170,6 +197,9 @@ static void reset_mocks(void)
     memset(event_value, 0, sizeof(event_value));
     memset(begin_wait_modes, 0, sizeof(begin_wait_modes));
     memset(sent_commands, 0, sizeof(sent_commands));
+    start_body_flags = 0;
+    start_body_rca = 0;
+    expected_start_source = NULL;
 }
 
 static void reset_bus(struct sdcard_Bus *bus, BOOL with_hooks)
@@ -186,6 +216,7 @@ static void reset_bus(struct sdcard_Bus *bus, BOOL with_hooks)
 
 static BOOL mock_begin(struct sdcard_Bus *bus, BOOL may_wait)
 {
+    record_external_callback();
     (void)bus;
     CHECK(begin_calls < sizeof(begin_wait_modes) / sizeof(begin_wait_modes[0]));
     begin_wait_modes[begin_calls] = may_wait;
@@ -199,6 +230,7 @@ static BOOL mock_begin(struct sdcard_Bus *bus, BOOL may_wait)
 
 static void mock_end(struct sdcard_Bus *bus)
 {
+    record_external_callback();
     (void)bus;
     CHECK(owner_depth > 0);
     --owner_depth;
@@ -220,6 +252,7 @@ static BOOL hooks_are_paired(const struct sdcard_Bus *bus)
 static ULONG mock_send_cmd(struct TagItem *tags, struct sdcard_Bus *bus)
 {
     int command = (int)tags[0].ti_Data;
+    record_external_callback();
     ++send_calls;
     if (hooks_are_paired(bus))
         CHECK(owner_depth > 0);
@@ -233,6 +266,7 @@ static ULONG mock_send_cmd(struct TagItem *tags, struct sdcard_Bus *bus)
 
 static ULONG mock_wait_cmd(ULONG mask, ULONG timeout, struct sdcard_Bus *bus)
 {
+    record_external_callback();
     (void)mask;
     (void)timeout;
     ++wait_calls;
@@ -246,6 +280,7 @@ static ULONG mock_wait_cmd(ULONG mask, ULONG timeout, struct sdcard_Bus *bus)
 
 static void mock_reschedule(void)
 {
+    record_external_callback();
     CHECK(owner_depth == 0);
     ++yield_calls;
     record_event(EVENT_YIELD, 0);
@@ -254,17 +289,61 @@ static void mock_reschedule(void)
 static BOOL sdcard_StartUnitLocked(struct sdcard_Unit *unit)
 {
     CHECK(owner_depth == 1);
+    CHECK(unit_lock_depth == 0U);
     CHECK(unit->sdcu_Bus != NULL);
+    if (expected_start_source != NULL)
+    {
+        CHECK(unit != expected_start_source);
+        CHECK(unit->sdcu_Flags == (expected_start_source->sdcu_Flags &
+                                   ~(AF_Card_Active | AF_Card_Configuring)));
+        CHECK(unit->sdcu_Bus == expected_start_source->sdcu_Bus);
+        CHECK(unit->sdcu_UnitNum == expected_start_source->sdcu_UnitNum);
+        CHECK(unit->sdcu_CardRCA == expected_start_source->sdcu_CardRCA);
+        CHECK(unit->sdcu_CardPower == expected_start_source->sdcu_CardPower);
+        CHECK(unit->sdcu_Capacity == expected_start_source->sdcu_Capacity);
+        CHECK(unit->sdcu_Cylinders == expected_start_source->sdcu_Cylinders);
+        CHECK(unit->sdcu_Heads == expected_start_source->sdcu_Heads);
+        CHECK(unit->sdcu_Sectors == expected_start_source->sdcu_Sectors);
+        CHECK(unit->sdcu_Read32 == expected_start_source->sdcu_Read32);
+        CHECK(unit->sdcu_Read64 == expected_start_source->sdcu_Read64);
+    }
+    record_external_callback();
     ++start_body_calls;
+    unit->sdcu_Flags = (unit->sdcu_Flags &
+                        ~(AF_Card_4bitData | AF_Card_HighSpeed |
+                          AF_Card_HighSpeed52)) | start_body_flags;
+    if (start_body_rca != 0UL)
+        unit->sdcu_CardRCA = start_body_rca;
     return start_body_result;
 }
 
 static BOOL sdcard_RegisterUnitLocked(struct sdcard_Bus *bus)
 {
     CHECK(owner_depth == 1);
+    CHECK(unit_lock_depth == 0U);
     CHECK(bus != NULL);
+    record_external_callback();
     ++register_body_calls;
     return register_body_result;
+}
+
+static void SDCBUS_LockUnit(struct sdcard_Bus *bus)
+{
+    (void)bus;
+    ++unit_lock_calls;
+    if (unit_lock_depth != 0U)
+        ++unit_lock_errors;
+    ++unit_lock_depth;
+}
+
+static void SDCBUS_UnlockUnit(struct sdcard_Bus *bus)
+{
+    (void)bus;
+    ++unit_unlock_calls;
+    if (unit_lock_depth == 0U)
+        ++unit_lock_errors;
+    else
+        --unit_lock_depth;
 }
 
 /* INSERT_EXTRACTED_SDCARD_FUNCTIONS */
@@ -493,6 +572,15 @@ static void test_no_hooks(read32_fn read32, read64_fn read64)
     CHECK(send_calls == 3 && wait_calls == 3 && yield_calls == 1);
 }
 
+static void check_unit_guard_and_transaction(void)
+{
+    CHECK(owner_depth == 0);
+    CHECK(unit_lock_depth == 0U);
+    CHECK(unit_lock_calls == unit_unlock_calls);
+    CHECK(unit_lock_errors == 0U);
+    CHECK(callbacks_under_unit_lock == 0U);
+}
+
 static void test_setup_wrappers(void)
 {
     struct sdcard_Bus bus;
@@ -502,22 +590,34 @@ static void test_setup_wrappers(void)
     unit.sdcu_Bus = &bus;
     start_body_calls = 0;
     start_body_result = TRUE;
+    expected_start_source = &unit;
     CHECK(test_bus_StartUnit(&unit));
     CHECK(start_body_calls == 1 && begin_calls == 1 && end_calls == 1);
     CHECK(!begin_wait_modes[0]);
     CHECK(owner_depth == 0);
+    CHECK(unit_lock_calls == 2 && unit_unlock_calls == 2);
+    CHECK(unit.sdcu_Flags & AF_Card_Active);
+    CHECK(!(unit.sdcu_Flags & AF_Card_Configuring));
+    check_unit_guard_and_transaction();
+    unit.sdcu_Flags &= ~AF_Card_Active;
 
     reset_mocks();
     start_body_result = FALSE;
+    expected_start_source = &unit;
     CHECK(!test_bus_StartUnit(&unit));
     CHECK(start_body_calls == 2 && begin_calls == 1 && end_calls == 1);
     CHECK(!begin_wait_modes[0]);
     CHECK(owner_depth == 0);
+    CHECK(unit_lock_calls == 2 && unit_unlock_calls == 2);
+    CHECK(!(unit.sdcu_Flags & (AF_Card_Active | AF_Card_Configuring)));
+    check_unit_guard_and_transaction();
 
     reset_mocks();
     begin_allowed = 0;
     CHECK(!test_bus_StartUnit(&unit));
     CHECK(start_body_calls == 2 && begin_calls == 1 && end_calls == 0);
+    CHECK(unit_lock_calls == 0 && unit_unlock_calls == 0);
+    check_unit_guard_and_transaction();
 
     setup_read(&bus, &unit, TRUE);
     register_body_calls = 0;
@@ -526,6 +626,7 @@ static void test_setup_wrappers(void)
     CHECK(register_body_calls == 1 && begin_calls == 1 && end_calls == 1);
     CHECK(begin_wait_modes[0]);
     CHECK(owner_depth == 0);
+    check_unit_guard_and_transaction();
 
     reset_mocks();
     register_body_result = FALSE;
@@ -533,11 +634,151 @@ static void test_setup_wrappers(void)
     CHECK(register_body_calls == 2 && begin_calls == 1 && end_calls == 1);
     CHECK(begin_wait_modes[0]);
     CHECK(owner_depth == 0);
+    check_unit_guard_and_transaction();
 
     reset_mocks();
     begin_allowed = 0;
     CHECK(!test_bus_RegisterUnit(&bus));
     CHECK(register_body_calls == 2 && begin_calls == 1 && end_calls == 0);
+    check_unit_guard_and_transaction();
+}
+
+static void test_start_unit_staging_and_publication(void)
+{
+    struct sdcard_Bus bus;
+    struct sdcard_Unit unit;
+    ULONG original_flags;
+    ULONG original_rca;
+    ULONG original_change_num;
+
+    setup_read(&bus, &unit, TRUE);
+    unit.sdcu_Flags = AF_Card_Active | AF_Card_HighCapacity;
+    unit.sdcu_CardRCA = 0x1234UL;
+    start_body_calls = 0;
+    CHECK(test_bus_StartUnit(&unit));
+    CHECK(start_body_calls == 0);
+    CHECK(begin_calls == 1 && end_calls == 1);
+    CHECK(unit_lock_calls == 1 && unit_unlock_calls == 1);
+    CHECK(unit.sdcu_Flags == (AF_Card_Active | AF_Card_HighCapacity));
+    check_unit_guard_and_transaction();
+
+    setup_read(&bus, &unit, TRUE);
+    unit.sdcu_Flags = AF_Card_Configuring | AF_Card_HighCapacity;
+    start_body_calls = 0;
+    CHECK(!test_bus_StartUnit(&unit));
+    CHECK(start_body_calls == 0);
+    CHECK(begin_calls == 1 && end_calls == 1);
+    CHECK(unit_lock_calls == 1 && unit_unlock_calls == 1);
+    CHECK(unit.sdcu_Flags == (AF_Card_Configuring | AF_Card_HighCapacity));
+    check_unit_guard_and_transaction();
+
+    setup_read(&bus, &unit, TRUE);
+    unit.sdcu_Flags = AF_Card_HighCapacity | AF_Card_HighSpeed52 |
+                      AF_Card_4bitData;
+    unit.sdcu_CardRCA = 0x2345UL;
+    unit.sdcu_CardPower = 0x3456UL;
+    unit.sdcu_Capacity = UINT64_C(0x123456789ABCDEF0);
+    unit.sdcu_Cylinders = 0x1234UL;
+    unit.sdcu_Heads = 9U;
+    unit.sdcu_Sectors = 17U;
+    unit.sdcu_Read32 = test_ReadSector32;
+    unit.sdcu_Read64 = test_ReadSector64;
+    unit.sdcu_ChangeNum = 0x4567UL;
+    original_change_num = unit.sdcu_ChangeNum;
+    start_body_calls = 0;
+    start_body_result = TRUE;
+    start_body_flags = AF_Card_HighSpeed;
+    start_body_rca = 0x5678UL;
+    expected_start_source = &unit;
+    CHECK(test_bus_StartUnit(&unit));
+    CHECK(start_body_calls == 1);
+    CHECK((unit.sdcu_Flags & (AF_Card_Active | AF_Card_Configuring |
+                               AF_Card_HighCapacity | AF_Card_HighSpeed |
+                               AF_Card_HighSpeed52 | AF_Card_4bitData)) ==
+          (AF_Card_Active | AF_Card_HighCapacity | AF_Card_HighSpeed));
+    CHECK(unit.sdcu_CardRCA == 0x5678UL);
+    CHECK(unit.sdcu_CardPower == 0x3456UL);
+    CHECK(unit.sdcu_Capacity == UINT64_C(0x123456789ABCDEF0));
+    CHECK(unit.sdcu_Cylinders == 0x1234UL);
+    CHECK(unit.sdcu_Heads == 9U && unit.sdcu_Sectors == 17U);
+    CHECK(unit.sdcu_Read32 == test_ReadSector32);
+    CHECK(unit.sdcu_Read64 == test_ReadSector64);
+    CHECK(unit.sdcu_ChangeNum == original_change_num);
+    CHECK(unit_lock_calls == 2 && unit_unlock_calls == 2);
+    CHECK(begin_calls == 1 && end_calls == 1);
+    check_unit_guard_and_transaction();
+
+    setup_read(&bus, &unit, TRUE);
+    unit.sdcu_Flags = AF_Card_HighCapacity | AF_Card_HighSpeed52 |
+                      AF_Card_4bitData;
+    unit.sdcu_CardRCA = 0x6789UL;
+    unit.sdcu_ChangeNum = 0x89ABUL;
+    original_flags = unit.sdcu_Flags;
+    original_rca = unit.sdcu_CardRCA;
+    original_change_num = unit.sdcu_ChangeNum;
+    start_body_calls = 0;
+    start_body_result = FALSE;
+    start_body_flags = AF_Card_HighSpeed;
+    start_body_rca = 0x9876UL;
+    expected_start_source = &unit;
+    CHECK(!test_bus_StartUnit(&unit));
+    CHECK(start_body_calls == 1);
+    CHECK((unit.sdcu_Flags & (AF_Card_Active | AF_Card_Configuring)) == 0UL);
+    CHECK((unit.sdcu_Flags & (AF_Card_HighCapacity | AF_Card_HighSpeed |
+                               AF_Card_HighSpeed52 | AF_Card_4bitData)) ==
+          original_flags);
+    CHECK(unit.sdcu_CardRCA == original_rca);
+    CHECK(unit.sdcu_ChangeNum == original_change_num);
+    CHECK(unit_lock_calls == 2 && unit_unlock_calls == 2);
+    CHECK(begin_calls == 1 && end_calls == 1);
+    check_unit_guard_and_transaction();
+}
+
+static void test_open_metadata_guard_shortcuts(void)
+{
+    struct SDCardBase base;
+    struct sdcard_Bus bus;
+    struct sdcard_BusUnits bus_units;
+    struct sdcard_Unit unit;
+    struct IORequest request;
+
+    memset(&base, 0, sizeof(base));
+    memset(&bus, 0, sizeof(bus));
+    memset(&bus_units, 0, sizeof(bus_units));
+    memset(&unit, 0, sizeof(unit));
+    memset(&request, 0, sizeof(request));
+    setup_read(&bus, &unit, TRUE);
+    bus.sdcb_BusUnits = &bus_units;
+    bus_units.sdcbu_UnitCnt = 1;
+    bus_units.sdcbu_Units = &unit;
+    base.sdcard_Buses.first = &bus;
+    unit.sdcu_Flags = AF_Card_Active | AF_Card_HighCapacity;
+    start_body_calls = 0;
+    CHECK(test_device_Open(&base, &request, 0, 0));
+    CHECK(unit.sdcu_Unit.unit_OpenCnt == 1);
+    CHECK(request.io_Unit == (struct Unit *)&unit && request.io_Error == 0);
+    CHECK(start_body_calls == 0 && begin_calls == 0 && end_calls == 0);
+    CHECK(unit_lock_calls == 1 && unit_unlock_calls == 1);
+    check_unit_guard_and_transaction();
+
+    memset(&base, 0, sizeof(base));
+    memset(&bus, 0, sizeof(bus));
+    memset(&bus_units, 0, sizeof(bus_units));
+    memset(&unit, 0, sizeof(unit));
+    memset(&request, 0, sizeof(request));
+    setup_read(&bus, &unit, TRUE);
+    bus.sdcb_BusUnits = &bus_units;
+    bus_units.sdcbu_UnitCnt = 1;
+    bus_units.sdcbu_Units = &unit;
+    base.sdcard_Buses.first = &bus;
+    unit.sdcu_Flags = AF_Card_Configuring | AF_Card_HighCapacity;
+    start_body_calls = 0;
+    CHECK(!test_device_Open(&base, &request, 0, 0));
+    CHECK(unit.sdcu_Unit.unit_OpenCnt == 0);
+    CHECK(request.io_Unit == NULL && request.io_Error == IOERR_OPENFAIL);
+    CHECK(start_body_calls == 0 && begin_calls == 0 && end_calls == 0);
+    CHECK(unit_lock_calls == 1 && unit_unlock_calls == 1);
+    check_unit_guard_and_transaction();
 }
 
 static void test_open_start_failure(void)
@@ -563,12 +804,16 @@ static void test_open_start_failure(void)
     base.sdcard_Buses.first = &bus;
     start_body_calls = 0;
     start_body_result = FALSE;
+    expected_start_source = &unit;
 
     CHECK(!test_device_Open(&base, &request, 0, 0));
     CHECK(unit.sdcu_Unit.unit_OpenCnt == 0);
     CHECK(request.io_Unit == NULL && request.io_Error == IOERR_OPENFAIL);
     CHECK(start_body_calls == 1 && begin_calls == 1 && end_calls == 1);
     CHECK(!begin_wait_modes[0]);
+    CHECK(unit_lock_calls == 4 && unit_unlock_calls == 4);
+    CHECK(!(unit.sdcu_Flags & (AF_Card_Active | AF_Card_Configuring)));
+    check_unit_guard_and_transaction();
 
     reset_mocks();
     start_body_calls = 0;
@@ -578,6 +823,8 @@ static void test_open_start_failure(void)
     CHECK(request.io_Unit == NULL && request.io_Error == IOERR_OPENFAIL);
     CHECK(start_body_calls == 0 && begin_calls == 1 && end_calls == 0);
     CHECK(!begin_wait_modes[0]);
+    CHECK(unit_lock_calls == 2 && unit_unlock_calls == 2);
+    check_unit_guard_and_transaction();
 }
 
 int main(void)
@@ -590,6 +837,8 @@ int main(void)
     test_partial_accounting(test_ReadSector32, test_ReadSector64);
     test_no_hooks(test_ReadSector32, test_ReadSector64);
     test_setup_wrappers();
+    test_start_unit_staging_and_publication();
+    test_open_metadata_guard_shortcuts();
     test_open_start_failure();
     printf("PASS: %u SD transaction checks\n", checks);
     return 0;
