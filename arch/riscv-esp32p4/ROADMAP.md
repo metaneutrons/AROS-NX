@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | Read-only foundation build verified; imported preview and isolated update models host tested; no hardware acceptance | Live P4/C6 layout/active-slot discovery, serialized owner maintenance, secured recovery, real CLI/GUI update and HTTPS acquisition; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; independent OTA protobuf oracle and normal-control refusal tested; no hardware acceptance | Live P4/C6 layout/active-slot discovery, serialized owner maintenance, secured CN5 recovery, real CLI/GUI update and HTTPS acquisition; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1276,7 +1276,11 @@ weight; exact offsets/sizes remain in tooltips and CLI output.
 
 M1 source/host/build foundations are verified within their stated limits;
 native CLI/MUI interaction remains untested. The isolated OTA codec and gated
-transaction engine are not linked to a live owner backend. M2 requires actual
+transaction engine are not linked to a live owner backend.
+The tool is restricted to esp32p4/riscv builds. Independent generated protobuf-c
+comparison verifies the pinned OTA wire format; normal WLAN control submission
+rejects OTA commands. Neither test establishes live transport or recovery.
+M2 requires actual
 device capacity/table/slot discovery and exclusive maintenance/traffic fencing.
 Pinned Hosted has no stock partition/active-slot query: a compatible backend
 extension must be designed, not replaced with candidate build defaults. M3
@@ -36132,3 +36136,60 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   Hosted lacks layout queries; candidate defaults cannot substitute. Actual
   C6 updating, HTTPS acquisition and P4 updates remain unavailable; GUI visual
   acceptance needs fresh readiness. Existing AROS tools still manage WLAN.
+
+### 2026-10-10 - N2M target restriction and independent OTA protocol qualification
+
+- Identity/config: source parent f1b1ae1fbc, feature/esp32p4-wifi;
+  generated native esp32p4/riscv SMP makefile, unchanged read-only application.
+  Aggregate registration is architecture/CPU-specific; direct normal/quick
+  targets explicitly fail outside esp32p4/riscv. Non-SMP uses the same target
+  restriction but was not freshly built in this verification.
+- Procedure/result: actual generated GNU makefile evaluated with isolated
+  configuration fixtures for six architecture/CPU pairs. Only esp32p4/riscv
+  defines the application; ten non-target direct invocations refuse, exit2.
+  Fixture runner exit0. This is not six full cross-builds or a complete
+  production MetaMake graph execution. The expanded runner also exercises
+  real MetaMake aggregate traversal over the actual generated makefile with
+  isolated vars and a recording maketool: supported target invokes the tool,
+  five unsupported pairs skip it, exit0. A review's GNU-make missing-target
+  reproduction does not apply to #MM- edges: MetaMake visits only existing
+  dependency nodes (project.c), as used by existing workbench-hidds rules.
+  Independent reviewer reran the expanded gate successfully and withdrew the
+  aggregate finding after checking actual MetaMake traversal. No other concrete
+  gap was reported in the reviewed build and normal-control refusal gates.
+  Fresh native build after object invalidation
+  exits0; app96668B SHA-256
+  e66762f22878a7c430a096cad9ef547197e441860e1d8c369496927d7a8c3085.
+- Host protocol evidence: hash-pinned d5184217... schema/generated protobuf-c
+  oracle compares actual codec bytes: 36 requests, 72 status responses,
+  unknown-field handling and six mismatch probes; 1643 checks each O0/O2
+  with ASan/UBSan, exits0. Temporary BEGIN-ID mutation fails at the intended
+  byte-comparison assertion. Expanded pending-control suite passes529 checks
+  each O0/O2, exits0: valid BEGIN/WRITE/END requests with both checksum modes
+  cannot enter normal WLAN submission or change its ledger/FIFO/scratch.
+  Temporary allowlist mutation fails at the intended acceptance assertion;
+  negative runner exits0. Production normal-control allowlist is unchanged.
+- Evidence directory: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/
+  wifi-2026-10-10/ota-oracle.Qs1yL9. Log SHA-256 values:
+  ota-oracle.log 70246b69c13b8b14238a3fe9f9722356e7d05e8936365d22dc803f01f15886c6;
+  pending-tests.log e820ea7b7e282dde35191437e7e3b29cde1ab994e0aa9ca55d515098e33cc5b9;
+  pending-negative.log c313bf57e2d27cd08cfc02ed23370277860ed566013b7a361440089560b4e404;
+  target-tests.log 07c57e09d879c65bcb7d2af84aacbdf42f1af307c21140ec7dfdf7f91a31d862;
+  target-meta-tests.log 07c57e09d879c65bcb7d2af84aacbdf42f1af307c21140ec7dfdf7f91a31d862
+  (same printed summary; expanded runner additionally executes MetaMake);
+  target-build.log 3362cb71bc20127e2642a68bda8248a5c3151ba6a621fe681e15b85c99d68049.
+- Safety/remaining: no serial open, flash, reset, SD write or credentials.
+  Protocol discovery extension is a design only, with capability negotiation,
+  bounded consistent snapshots and lease-time revalidation; no speculative
+  calls to legacy firmware. Pinned OTA writes an inactive app and otadata,
+  not the bootloader; retaining the bootloader alone does not prove recovery.
+  Candidate sdkconfig disables app rollback, but installed bootloader policy
+  is unknown. Risk acknowledgement does not replace conditional write authority.
+- CN5: visually inspected published C6 schematic at board repository commit
+  6304eddef32a33aa9d9a85e971e39dfb24c3cca3, 5-Schematic/5_ESP32-C6.png.
+  Logical pins1..6 are 3.3 V, GND, TX, RX, IO9 and CHIP_PU respectively.
+  Connector family/pitch and actual-board orientation/population are not
+  established; this is not wiring authorization. Fabian will arrange a cable
+  when needed; software development can continue, first update remains gated
+  on demonstrated independent recovery. Next: read-only device discovery and
+  exclusive owner-maintenance ABI, then fresh native CLI/GUI acceptance.

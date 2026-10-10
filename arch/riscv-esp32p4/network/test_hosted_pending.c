@@ -3,6 +3,7 @@
  * response correlation. No RX callback, hardware or elapsed-time claim. */
 #include "hosted_association.h"
 #include "hosted_pending.h"
+#include "hosted_ota.h"
 #include "hosted_rpc.h"
 #include "hosted_serial.h"
 #include "hosted_wire.h"
@@ -861,6 +862,39 @@ static void test_max_uid_response_finishes_but_never_reuses_uid(void)
     CHECK(next_uid == 0u && ids.exhausted == 1u);
 }
 
+static void test_ota_cannot_use_normal_control_submission(void)
+{
+    uint32_t request_id;
+    unsigned checksum;
+    static const uint8_t data[] = {0xe9, 0x00, 0xff};
+
+    /* Even a well-formed request with a live reserved identity cannot bypass
+     * the missing exclusive maintenance backend through the WLAN API. */
+    for (checksum = 0u; checksum <= 1u; ++checksum) {
+        for (request_id = 272u; request_id <= 274u; ++request_id) {
+            struct fixture fixture;
+            int encoded;
+            fixture_init(&fixture, request_id, checksum);
+            if (request_id == 272u)
+                encoded = p4_hosted_ota_begin_request(fixture_uid(&fixture),
+                    fixture.request, sizeof fixture.request,
+                    &fixture.request_size);
+            else if (request_id == 273u)
+                encoded = p4_hosted_ota_write_request(fixture_uid(&fixture),
+                    data, sizeof data, fixture.request, sizeof fixture.request,
+                    &fixture.request_size);
+            else
+                encoded = p4_hosted_ota_end_request(fixture_uid(&fixture),
+                    fixture.request, sizeof fixture.request,
+                    &fixture.request_size);
+            CHECK(encoded);
+            expect_preflight_unchanged(&fixture, &fixture.fifo, &fixture.ids,
+                TEST_GENERATION, &fixture.ops, checksum, fixture.request,
+                fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer);
+        }
+    }
+}
+
 int main(void)
 {
     test_submit_encodes_one_frame_and_leaves_identity_pending(0u);
@@ -875,6 +909,7 @@ int main(void)
     test_replacement_identity_is_not_completed_after_write();
     test_correlator_refuses_bad_metadata_without_mutation();
     test_max_uid_response_finishes_but_never_reuses_uid();
+    test_ota_cannot_use_normal_control_submission();
     printf("hosted pending TX/correlation: %lu checks passed\n", checks);
     return 0;
 }

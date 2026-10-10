@@ -1,6 +1,7 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
-Board maintenance foundation (2026-10-10): `Tools/ESP32Board` builds for
+Board maintenance foundation (2026-10-10): `Tools/ESP32Board` is restricted to
+esp32p4/riscv targets; other targets explicitly refuse direct builds. It builds for
 RV32-SMP with shared CLI/MUI read-only C6 image checks and an adaptive graphical
 partition-table preview. Imported extents, labels, offsets, sizes, types and
 flags determine the view; gaps are unlisted/reserved, not assumed free space.
@@ -9,6 +10,9 @@ Live P4/C6 layout discovery, owner maintenance transport, secured recovery and
 actual local/HTTPS-acquired updates remain open. UPDATE-C6 fails explicitly.
 No board, flash, serial or credential action accompanied this development.
 Requirements: [board-tool plan](../../docs/plans/esp32-board-tool.md), roadmap N2M.
+Independent pinned protobuf-c comparison passes 1,643 checks at each O0/O2;
+normal WLAN control submission refuses all three OTA request types. These are
+host protocol/safety checks, not evidence of a working C6 update or recovery.
 CLI examples (not yet executed on hardware):
 
     ESP32Board ACTION INFO
@@ -41,7 +45,9 @@ package audit pass. The WLAN stage now rejects loader-invalid devices before
 writing output. Earlier329-file FAT verification did not establish driver
 loadability; the old image is superseded, never deployed. Current image is
 regenerated with the corrected device. Package and image remain undeployed;
-CN5 cable is unavailable, so independent C6 UART recovery is not established.
+CN5 cable is not yet available, so independent C6 UART recovery is not established.
+The published schematic exposes six pins (3.3 V, GND, TX, RX, IO9, CHIP_PU),
+but connector family/pitch and actual-board orientation still need verification.
 
 WLAN lease-expiry development (2026-10-10): generic2298252dad is integrated.
 The chooser rejects missing, malformed, duplicate or expired lease timestamps,

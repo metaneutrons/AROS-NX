@@ -67,6 +67,35 @@ secured recovery path; source development and read-only file checks do not.
 
 ## Delivery and normative acceptance
 
+### Proposed C6 read-only discovery extension
+
+The pinned schema has only OTA_BEGIN/WRITE/END; none returns capacity,
+partitions or active slots. Extend the owned C6 candidate rather than assuming
+those facts from its build CSV. This is a design requirement, not an installed
+capability or a completed protocol implementation:
+
+- Explicit startup capability/version negotiation must precede any new query.
+  A stock peer receives no speculative command. Allocate extension message IDs
+  only after checking the complete pinned schema and negotiated envelope bounds;
+  a version banner alone is not protocol or binary identity.
+- Return an owned, bounded snapshot: actual flash size, partition extents,
+  labels/type/subtype/flags, running partition, selected boot partition and
+  next update partition. Every role references an exact validated table entry;
+  missing, inconsistent or overlapping entries prevent target selection.
+- Distinguish detected facts, unsupported capabilities and unknown security
+  policy. Report flash encryption, secure boot, anti-rollback and rollback
+  state when supported. Missing values must not deserialize as safe/disabled.
+  A normalized partition list must be labelled as such, not raw table bytes.
+- Correlate replies with the existing owner generation and unique UID. Snapshot
+  consistency must cover all pages if chunking is needed; never merge records
+  across peer resets or slot-selection changes. Revalidate before BEGIN under
+  the exclusive maintenance lease. Discovery itself must not erase, select a
+  boot slot, reset the peer or change Wi-Fi configuration.
+- The first installation cannot use discovery code that is not installed yet.
+  Its recovery evidence and residual brick risk need a separate explicit
+  deployment decision. Neither a source-tested extension nor a successful END
+  acknowledgement proves postboot health or independent recovery.
+
 ### M1: Shared foundation and read-only preflight
 
 Dependencies: none; native tool build depends on the existing AROS SDK.
@@ -146,3 +175,13 @@ There is no measured end-to-end duration or committed completion estimate.
 2026-10-10: Fabian requires adaptive flash layouts and graphical partition
 display. Added M1-A5/M2-A4 and the read-only discovery/provenance boundary;
 hardcoded profile diagrams cannot satisfy installed-layout acceptance.
+
+2026-10-10: Fabian restricts the native application to RISC-V ESP32 builds.
+Current implementation permits only esp32p4/riscv, including its SMP variant;
+aggregate registration and direct normal/quick targets enforce the restriction.
+Other ESP32 variants need an explicit supported backend, not a generic build.
+
+2026-10-10: Fabian identifies C6 protocol extension as a possible requirement
+and states that the first update remains a risk. Record the proposed read-only
+discovery contract above. Risk cannot be reduced to zero; this statement alone
+does not lift the existing conditional write authority or waive recovery.
