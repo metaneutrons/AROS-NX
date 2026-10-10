@@ -177,15 +177,26 @@ static void wifi_identify(void)
     success = success && host->slot_clock[0] == peer_clock && wifi_budget(&context);
     host->set_budget(host, 0);
     host->release(host);
+    /* Runtime console is deliberately nonblocking. Defer and pace these
+     * snapshots after releasing ownership; never delay the storage peer
+     * merely to print diagnostics. The captured command result is local. */
+    Delay(50);
     bug("[WiFi] slot1 probe ok=%u stage=%u cmd=%u\n",
          success, result.stage, result.command_index);
+    Delay(5);
+    bug("[WiFi] error=%u status=%u\n", result.error, context.last.status);
+    Delay(5);
+    bug("[WiFi] raw=%08x id=%08x\n", context.last.raw, context.last.idstatus);
+    Delay(5);
+    bug("[WiFi] response=%08x\n", context.last.response[0]);
+    Delay(5);
     bug("[WiFi] clock=%u OCR=%08x RCA=%04x fn=%u\n",
          actual, result.ocr, result.rca, result.functions);
-    bug("[WiFi] last status=%u raw=%08x id=%08x\n",
-         context.last.status, context.last.raw, context.last.idstatus);
+    Delay(5);
     bug("[WiFi] CCCR=%02x SDIO=%02x bus=%02x cap=%02x\n",
          result.cccr_revision, result.sdio_revision,
          result.bus_interface, result.capabilities);
+    Delay(5);
     bug("[WiFi] enable=%02x ready=%02x CIS=%06x FBR1=%02x\n",
          result.io_enable, result.io_ready, result.cis_pointer,
          result.fbr1_interface);

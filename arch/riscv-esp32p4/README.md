@@ -76,6 +76,12 @@ hardware run fails at initial CMD5 (no usable OCR/functions). Runtime console
 saturation loses detailed status lines; the precise cause remains unknown.
 The prior package is restored with matching independent full-range readback.
 None of these results demonstrates WLAN.
+Paced probe diagnostics are now build verified: reporting waits until host
+ownership is released, then prints short status snapshots between DOS delays.
+Their purpose is to resolve the initial CMD5 failure, not change the bus setup.
+The paced hardware run now identifies response-timeout bit8 (raw0x00010100,
+shared command status ERROR, IDMAC status0); no additional reset was observed.
+Electrical/startup cause remains unresolved, not firmware incompatibility proven.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device

@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 hardware failure` | Opt-in AFTERDOS runner passes build, independent review and 4,597 protocol checks each O0/O2. Complete headless capture fails initial CMD5; detailed status partly lost to console saturation. SD data integrity, shared-radio regression, real SMP interleavings and C6 compatibility remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 response timeout` | Opt-in AFTERDOS runner passes build, independent review and 4,597 protocol checks each O0/O2. Paced capture identifies CMD5 response-timeout bit8, raw0x00010100/IDMAC0; no additional reset. Startup/electrical cause, SD integrity, coexistence and C6 compatibility remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -203,6 +203,11 @@ strict sanitized protocol tests and independent runtime review pass; the
 first hardware run fails initial CMD5 without usable OCR/functions. Precise
 command status is lost to runtime console saturation; identification is not
 accepted. The prior package is restored with matching full-range readback.
+Paced post-release diagnostic reporting is now build verified; the second
+headless run captures error/status/raw-IDMAC snapshots without extending
+controller ownership. The bus sequence remains unchanged. It reports CMD5
+response timeout (raw0x00010100, status3, IDMAC0).
+It does not identify the electrical/startup cause or installed firmware.
 Enumeration alone cannot prove
 ESP-Hosted compatibility or working WLAN.
 
@@ -29262,6 +29267,50 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   boot.log,boot-timing.jsonl} under the preceding evidence root. Preserve this
   failed experiment. Next: paced complete status reporting plus pinned vendor
   C6 startup comparison, not transport/RPC work past a failed enumeration gate.
+
+### 2026-10-10 - N0 paced status reporting build verified
+
+- Parentc5db6fdd0e. Runtime reporting now waits50 DOS ticks after releasing
+  ownership/budget, with5-tick gaps between short local snapshot lines.
+  No altered CMD sequence, pins, clocks, reset, budget or firmware behavior.
+  Response snapshots are published by the shared engine only on success;
+  zero on failure is not a received zero-valued response.
+- Native quick build85530 exit0, module SHA-256
+  ca5f3d47ae76afb8352a4c773226fba132e1677125675d46355bf5af3052e738.
+  Reassembled opt-in JC1060-v2 C3/C4 package50436 exit0/checksize,
+  BSP3,718,868 bytes SHA-256
+  2aec61223c845920d45d4596510ca9fe1baaacbf489ab8d470c1b5a6cf947635.
+  Loader audit exit0/all42 members. Corebbc265fad… unchanged.
+- native-probe-paced-{build,package,audit}.log in preceding evidence root.
+  Rounded flash span still0x820000..0xbac000, within independently verified
+  baseline backup74ac4538…. Hardware capture is pending; no WLAN pass.
+- Next: verified readback and bounded complete status capture. Existing C6
+  firmware remains unchanged; do not infer absent firmware from a timeout.
+
+### 2026-10-10 - N0 CMD5 response timeout captured without console loss
+
+- Same paced BSP2aec6122…; write47224 exit0; independent readback45717
+  exit0/SHA-256 matches exact3,718,868-byte artifact. MAC unchanged.
+- First-byte capture23568 exit0/complete30.824877416s/14,730 bytes, SHA-256
+  d085e4a85b985543caafa0aa5fec9650bc9079fd3d4ae735ea318a7aebbfcdfd.
+  One commanded USB reset,42 modules, two harts/watchdog and SD capacity.
+  No additional ROM/reset/trap/alert/Guru observed; not a visual acceptance.
+- Full radio lines: ok0/stage2/cmd5, probe error3, shared status3(ERROR),
+  raw0x00010100, IDMAC0, unpublished response0, actualclock394,088Hz.
+  Raw bit8 is response timeout; bit16 is a separate retained card interrupt,
+  not command completion or CRC failure. No firmware absence/incompatibility
+  inference is justified from this status. Diagnostic pacing succeeded.
+- Independent readonly follow-up confirms all new paced reporting occurs
+  after budget clear/release and uses local snapshots only. Existing early
+  'host not ready' diagnostic precedes release; this is not a claim that every
+  console output in the runner is outside ownership. Runtime SHA-256
+  5c6118ef4f210f0b57a2dd35d7fa22efc556a2768a2db2b35625e1f7d1da273a.
+- native-probe-hardware/paced-{write,readback,boot}.log, readback.bin and
+  boot-timing.jsonl in preceding evidence root. Baseline write71479 exits0;
+  independent full-range readback74274 exits0 and matches74ac4538… exactly.
+  No SD write, C6 flash, reset-pin assumption or function/IRQ enable.
+- Next: confirm P4 matrix/slot CLK/CMD path and board C6 startup state against
+  actual matching reference; retain the response-timeout finding as evidence.
 
 ## Evidence-entry template
 
