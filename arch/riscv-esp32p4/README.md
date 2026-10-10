@@ -108,6 +108,14 @@ including preceding/partial overlap, unchanged state and exact adjacency;
 OPEN regressions remain716 each. Standalone RV32 compilation passes, but the
 previous OPEN candidate has not been rebuilt or deployed with this correction.
 
+The C6 SDIO host-configuration frame encoder is now host tested and standalone
+RV32 compile verified. It emits the pinned17-byte configuration payload in a
+29-byte private frame (packet_type0), selecting checksum from INIT bit7,
+refusing incompatible/missing/raw-throughput profiles and overlapping outputs.
+Literal checksum-off/on vectors, bounds and refusal tests pass120243 checks
+each O0/O2 sanitized. This helper is not linked into the BSP and has sent no
+frame: live TX-credit negotiation and startup-reply acceptance remain open.
+
 JC1060 Wi-Fi implementation has started
 ([ROADMAP.md](ROADMAP.md#track-n-networking), N0-N3). Pure CMD52/CMD53
 construction and a byte-oriented ESP-Hosted frame codec in `network/` have
