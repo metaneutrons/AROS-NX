@@ -20,11 +20,13 @@ pass. Its first headless deployment fails before application entry: the
 generated 400MHz setting is unsupported on revision1.3. Defaults now select
 360MHz; a generated-configuration checker and corrected build pass, not yet
 deployed. Exact full-span AROS rollback/readback matches, but the return boot
-faults in ROM at address0x50091000 and watchdog-resets. The board is parked in
-the download loader pending recovery. Independent bootloader/partition readback
-matches the originals; the fault address maps to SHA hardware, not image RAM.
-No MAC/scan hardware acceptance and no
-successful baseline return from this run.
+faults in ROM at address0x50091000 and watchdog-resets. Independent bootloader/
+partition readback matches the originals. A read-only snapshot finds Crypto
+selecting240MHz while that parent is gated off. A single masked parent-clock
+enable restores a complete30.948s headless AROS return (PSRAM/both harts/modules/
+graphics updates). This manual recovery workaround is not a permanent reset
+fix or a physical-cold/visual gate; N1R tracks its uncompensated removal.
+No MAC/scan hardware acceptance yet. Board now runs baseline AROS again.
 IDF5.4.3 is an optional isolated comparison environment, not a port downgrade.
 
 JC1060 Wi-Fi implementation has started

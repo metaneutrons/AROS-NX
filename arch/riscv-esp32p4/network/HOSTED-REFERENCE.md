@@ -200,3 +200,9 @@ Board identity is verified and the board is left in download loader; retained
 state/root cause remains open. No more reference deployment before baseline
 recovery. Bootloader/partition/BSP/SD/C6 firmware were not written. Empty-scan
 workaround and its separate N1E uncompensated removal test remain open.
+Subsequent current-state reading finds the240MHz parent gate off while Crypto
+selects that parent (mux2, established by esp_crypto_clk.h). Exactly one masked
+bit30 enable at0x500e6028 changes0x00170503 to0x40170503 and restores a complete
+30.948s baseline return. This is a manual recovery workaround, not a permanent
+fix or rail-off gate; N1R tracks warm/early-failure return without compensation.
+Board now runs baseline AROS. Corrected360MHz reference is still not deployed.

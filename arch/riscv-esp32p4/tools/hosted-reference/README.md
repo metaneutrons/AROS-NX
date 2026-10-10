@@ -1,8 +1,10 @@
 # Complete Hosted reference: bounded MAC/scan candidate
 
-No further deployment until baseline boot recovery is established. The first
+Baseline headless boot has recovered by a manual parent-clock workaround. The first
 400MHz candidate failed before app entry; its exact AROS rollback matches flash
-but faults in ROM. The corrected360MHz candidate is build verified only.
+but initially faults in ROM. A single documented240MHz parent-clock enable
+restores AROS; N1R requires uncompensated handoff/early-failure return tests.
+The corrected360MHz candidate is build verified only.
 Never execute the generated `idf.py flash` or
 `flash_args`: they use a different partition layout and would overwrite AROS
 bootloader/partition state. Passing compilation does not verify Wi-Fi.

@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; reference startup failed; baseline recovery pending` | Pinned d518 host links under6.0.1; actual-source startup/scan/app tests pass. Hardware exposes unsupported400MHz configuration before app entry. Corrected360MHz build/configuration gate pass, not deployed. Exact AROS span restored/readback matched; bootloader/partition also match originals, but ROM faults at SHA0x50091000. Board parked in download loader. Empty-scan workaround and N1E removal remain open. No MAC/scan, native association/frame/recovery or WLAN acceptance. Automatic flash layout forbidden. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; reference startup failed; baseline recovered by workaround` | Pinned d518 host links under6.0.1; actual-source startup/scan/app tests pass. Hardware exposes unsupported400MHz before app entry. Corrected360MHz build/config gate pass, not deployed. Exact AROS/bootloader/partition match. SHA ROM fault clears after one masked240MHz parent enable; complete30.948s headless return passes. Manual recovery workaround/N1R and empty-scan workaround/N1E removal remain open. No MAC/scan, native association/frame/recovery or WLAN acceptance. Automatic flash layout forbidden. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -642,7 +642,15 @@ Independent readback also matches original bootloader and partition sector.
 The fault address is the SHA register bank. Official restart cleanup resets
 Crypto peripherals; current upstream additionally restores the Crypto mux to
 XTAL for next-boot ROM operations. Retained clock/reset state is a source-backed
-hypothesis, not a measured attribution or authorization for arbitrary writes.
+hypothesis at that stage, not authorization for arbitrary writes. Subsequent
+source correlation and current-state reading establish raw mux2 selects240MHz
+and parent gate bit30 is off. Exactly one masked bit30 enable (no other
+register/flash changes) yields a complete30.948s baseline return, no further
+reset/fault. This verifies a manual recovery workaround only. N1R remains open:
+establish safe IDF handoff/early-failure clock restoration and demonstrate
+reference-to-baseline warm returns without host register compensation; include
+failure-path return and keep physical cold behavior a separate gate. Do not
+silently embed the manual write as normal AROS startup or count it as rail-off.
 No hardware MAC/scan, association, bidirectional frames or recovery accepted.
 The empty-scan omission is a workaround for the pinned slave's API error,
 not proof that its empty-record behavior is fixed. N1E (open root-fix item):
@@ -30698,6 +30706,38 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - State remains baseline recovery pending, corrected360MHz image not deployed.
   Await fresh full-power-disconnection readiness before physical interaction.
   Next restore boot continuity and only then resume MAC/scan/native WLAN gates.
+
+### 2026-10-10 - N1 ROM SHA recovery by one documented parent-clock enable
+
+- Source correlation: IDF6.0.1 cpu_start.c:815-816 calls clock-tree init before
+  esp_clk_init. esp_clk_tree.c:110-127 disables PLL reference gates on the
+  observed USB reset path. esp_clk_init asserts at104 before CPU switch when
+  400MHz conversion fails; later SECONDARY esp_security_init never runs.
+  esp_security/src/esp32p4/esp_crypto_clk.h:11-16 explicitly enables240MHz and
+  sets Crypto mux2. Therefore raw mux2 can now be decoded from executable
+  source, not an assumption about its generated-register description.
+- Additional read-mem0x500e6028, no-reset/no-reset, same MAC/P4v1.3, exits0:
+  REF_CLK_CTRL1=0x00170503, bit30 clear. Prior mux2/gates/reset snapshot remains
+  as recorded. Readings are post-ROM/stub, not reconstructed pre-fault values.
+- Targeted headless recovery within standing development authorization:
+  esptool write-mem0x500e6028 value0x40000000 mask0x40000000, exits0.
+  Independent read returns0x40170503, exactly the original value OR bit30.
+  No Flash/SD/C6/GPIO/other register writes. This is a manual clock recovery
+  workaround, not a permanent software root fix. N1R removal gate stays open.
+- First-byte reset-and-log capture98179 exits0, complete footer30.948003792s,
+  14300 bytes. crypto-parent-return.log SHA-256
+  5f366435d9db37d8300fd66fcfa9b680252aaa8659e0003c006384e6120f4bf5.
+  One commanded USB ROM banner; original bootloader/core load,32MB PSRAM200MHz,
+  zero PSRAM timeouts/recoveries, DSI startup,41 modules, hart1 online, SD card
+  enumeration and accepted graphics updates. No further ROM/reset/trap/Guru/
+  panic/alert signature. Does not prove SD integrity or visible/touch output.
+- Safety/current state: baseline AROS is running again. Asked physical Kaltstart
+  is no longer needed for this recovery; Fabian advised not to disconnect.
+  This measured intervention restores boot, but one run does not prove all
+  causes/reset paths. Preserve prior failed captures and do not call rail-off
+  or permanent reset qualification passed. Corrected360MHz candidate remains
+  unflashed; next bounded reference attempt retains exact backup/quiescence/
+  image/config gates. Full native WLAN delivery remains required.
 
 ## Evidence-entry template
 
