@@ -45,6 +45,16 @@ and a fresh155388B module builds. Independent handoff332 new and RX364
 regression checks each O0/O2 pass under Linux ASan/UBSan, with actual exit0.
 No production caller or hardware deployment is implied.
 
+Asynchronous reserved RPC submit/correlation now builds separately from the
+existing synchronous diagnostic: one TX leaves its identity outstanding;
+owned events and unrelated replies cannot finish it. Exact UID/response-ID
+matching completes envelope correlation only, not remote success. Private
+serial scratch is wiped on every accepted-call exit. A fresh160680B module
+links the API; independent427 checks each O0/O2 pass under Linux ASan/UBSan,
+with a primary repeat and UID105/RX364/OPEN716/handoff332 regressions passing.
+These are host-model tests, not hardware qualification. The
+persistent AROS owner worker and SANA-II device are still unimplemented.
+
 The native control foundation now supports bounded sequential Init/SetMode/
 Start/Stop/Deinit/GetMAC envelopes on one existing FIFO ledger, with owned
 response bodies and exact UID/operation correlation. Linux O0/O2 sanitizer
@@ -63,7 +73,11 @@ pass551 O0/O2 sanitizer checks each. The initialization candidate is now
 deployed at0x820000 and independently read back byte-identically after two
 matching full-erase-span backups. One coordinated JC1060 startup now reports
 successful native Init/STA/Start/GetMAC/Stop/Deinit and MAC10:bd:a3:9b:bc:34.
-The captured start contains an HP watchdog reset, so clean cold-start acceptance
+The latest pre-armed60.181s repeat again contains an HP watchdog reset,
+despite successful native initialization/MAC and cleanup afterward. USB removal
+and arrival were observed; the first serial chunk arrived6.525s after open.
+The initial ROM prefix is incomplete and serial-open influence is unresolved.
+Thus clean cold-start acceptance
 and native WLAN remain open. The original baseline is recoverable.
 
 Persistent caller identity support now builds: one reserved RPC at a time,
