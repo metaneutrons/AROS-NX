@@ -132,7 +132,7 @@ gate: compensated output is not the native display contract.
 | N2 | AROS WLAN SANA-II integration | `private ABI6 association/lifecycle binding build and scoped models verified; runtime/privacy/wireless gates open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded STA TX compile for Core1. N2L records current counts/artifacts and Close/Offline/teardown models. Actual helpers/selected dispatch arms; Exec/SDMMC/hooks/radio mocked, not full BeginIO, full service callback or runtime concurrency. Queue/traffic-token fences/copied AP publication are bound; no actual association/IP claim. TX commitment rejects late AbortIO. WirelessManager/bwfm remain references; per-device four-way offload must preserve legacy behavior. Caller late failure, DHCP/build defaults, GUI saving/writable preference storage and actual teardown/reconnect/load remain open. No credentials, deployment or hardware pass. |
 | N2L | Native radio teardown and ongoing link lifecycle | `ABI6 build/scoped models verified; hardware/privacy open` | Standalone leave, deferred teardown outside unit lock, bounded Disconnect/NOT_CONNECT verification, periodic correlated AP observation and selected-RPC cancellation drain. Mac/Linux O0/O2 sanitized: association25999, observer393, bridge219, options89/258, queue785, lifetime1482, datapath16507, events6/70, scan295; sibling link102/reservation63/owner scan37447; exit0. Fresh Core1 RV32 modules have no undefined imports. Explicit teardown requires absence; persistent/foreign AP quarantines rather than reporting loss. Both privacy assertions0 and SUMMARY-only unchanged. Shared caller late-failure event and actual radio/reconnect/load qualification remain open. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
-| N2U | Credential-free WLAN image defaults and first-use selection | `overlay generator host tested; image/runtime open` | Fixed native device/unit0, DHCP, RAM database/temporary paths; empty Wireless.prefs, no credentials, autostart off. Four host tests pass; existing directories/symlinks refused. Not consumed by current image targets; standard DB companions/binaries/libraries, one GUI-enabled manager path and actual parser/runtime acceptance required. First delivery excludes credential persistence; SYS/SD remains read-only. |
+| N2U | Credential-free WLAN image defaults and first-use selection | `overlay/classification host tested; Network app build verified; image/runtime open` | Fixed native device/unit0, DHCP, RAM database/temporary paths; empty Wireless.prefs, no credentials, autostart off. Four overlay tests pass; existing directories/symlinks refused. Generic NSD classification replaces legacy names, with owned persisted device/unit identity, UNKNOWN fallback and stale-selection clearing; Mac O0/O2 with/without sanitizers pass. RV32-SMP Network app268728B links; modules/runtime open. No scan/ONLINE probe; OpenDevice/abort completion are not hard bounded. Not consumed by current image targets; standard DB companions/binaries/libraries, one GUI-enabled manager path and actual parser/runtime acceptance required. First delivery excludes credential persistence; SYS/SD remains read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -1476,9 +1476,18 @@ stack/DHCP/manager and libraries, then establish a single GUI-enabled manager
 startup path (not an additional GUI process over the current NOGUI instance).
 Validate resolved DHCP paths and AROS parsing/runtime before deployment.
 Credential persistence remains outside first station-mode delivery.
-Network preferences currently identifies wireless devices by a legacy name
-list; the native device is not recognized when saving. Correct that generic
-classification before using Network preferences for first-use settings.
+Network preferences now identifies wireless devices by NSD's advertised
+S2_GETNETWORKS capability, not a legacy name list. A malformed or unavailable
+query is UNKNOWN and preserves only an exact previously stored device/unit
+still configured; a positive wireless query takes precedence. Stored identity
+is copied independently of editable interface buffers and restored on load;
+an empty WirelessDevice scalar clears obsolete selections persistently.
+Queries run before truncating output files and do not invoke scan/ONLINE.
+The two-second query timer does not bound OpenDevice or nonconforming abort
+completion; Save still probes separately for ENVARC and ENV. Mac actual-source
+mock tests pass O0/O2 with and without ASan/UBSan, not GUI/radio acceptance.
+Native RV32-SMP Network application links268728B with exit0 after initializing
+only its pinned catalog submodule. Protocol modules/image/runtime remain open.
 
 ### N3 - qualification and Ethernet follow-up
 
@@ -35562,3 +35571,63 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   stage and one-manager first-use GUI workflow next, then native/runtime tests
   after C6 identity/backup/restore/UART privacy. Credential persistence remains
   outside the first station-mode delivery; read-only SYS/SD is unchanged.
+
+### 2026-10-10 - N2U generic capability-based Network preferences
+
+- Generic upstream-worktree commit48083cfc3cca4c9dc4a5cea3e31f79ad85fc92f8
+  replaces legacy wireless device-name matching with NSCMD_DEVICEQUERY and
+  advertised S2_GETNETWORKS. Integration resolves only an include conflict:
+  retain this port's existing headers, add utility/errno, do not import the
+  unrelated newer upstream netcontrol headers. No board-specific name added.
+- Validate format0, SANA-II type, actual/available pointer-field extent and a
+  terminator within256 commands. UNKNOWN is distinct from NO. Open with public
+  cleared IOSana2Req and refusing buffer hooks; issue only NSD query and timer.
+  WaitIO reaps both requests before closing/freeing any borrowed storage.
+  Device-owned command pointers require a conforming driver. OpenDevice may
+  initialize hardware; two-second request timeout does not bound OpenDevice
+  or nonconforming AbortIO/WaitIO. Save still probes twice (ENVARC then ENV).
+- Independent review found and primary corrected first-load identity loss,
+  aliased editable device names, UNKNOWN overriding YES, and stale on-disk
+  identity. Own/copy the prior identity, strictly load device UNIT int32 tokens,
+  resolve all candidates before opening output, prefer YES over UNKNOWN exact
+  prior match, and write an empty scalar for removed/nonwireless selection.
+  AutostartFalse does not erase a valid stored device identity. Review clears
+  the corrected delta; no end-to-end GUI latency claim.
+- Tests compile actual query code under Exec/timer mocks and extract actual
+  candidate loop, setters, scalar loader and writer statement. Mac O0/O2 plain
+  and ASan/UBSan all pass, process exit0, repeated after port integration.
+  Cover metadata/list bounds, every allocation/open failure, IO error, timeout
+  abort/wait-before-free, simultaneous completion, exact unit/name fallback,
+  copy ownership and malformed/overflow/trailing scalar data. LSan is disabled
+  because the Mac runtime rejects it; explicit mock allocation balance checks
+  run. These are host fixtures, not real Exec or radio tests.
+- Build: strict RV32-SMP helper -Wall/-Wextra/-Werror exits0,3820B; initial
+  TIMERNAME signedness warning corrected. Direct generic prefsdata compile
+  failed on newer netcontrol header unavailable in this port; no pass claimed.
+  Initial build entry-point attempts failed (mmake project/environment, system
+  make3.81). Full Network build then failed on absent catalog submodule.
+  Initialize only pinned e31213cb8ff00a39b4d2402e6dbdeebcc6f6cbb3;
+  an incomplete direct mmake environment hit the SMP variant guard. Final
+  generated Network app target with explicit darwin/aarch64, esp32p4/riscv/smp,
+  this build's Developer sysroot and generated includes compiles/links exit0
+  without warning/error signatures. Initial absent app objects were compiled;
+  no pre-existing app binary was counted as a build. Protocol modules not
+  qualified by this application target.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/network-capability.mcUje4
+  contains source/tests, successful and failed build logs, host runs and
+  artifacts. Network268728B SHA256
+  f6b4c42b3dac97488e663bb89799bceb1df323e769a47456fb6ed457594c000d;
+  prefsdata-native.o98000B
+  2a447e3cc96e3db86e8199233e285b616a5b01a89ebd14aa474fa56a71fc0df6;
+  wireless_device-native.o3820B
+  fd63ff918f8799ce37b0b9df941f4c7b4d0b2d144e82303ae5261daa3a4b5061;
+  test script b51f047d4295e7592bf80af4ebaac6faba782feef6da0f43fa342cc1812f4cd2;
+  host and port test logs429d2ba96b979eeba74177f9c912fe397e8ae0a997ba75675efef6db835b5ca1;
+  final app log92149990a2bea352da21ef168968096c3ebd4d6dbbc18de685aa3531c3fee857.
+- Safety/next: no serial, flash, reset, SD write, C6 update, credentials or
+  privacy assertion changes. Both privacy assertions remain0, SUMMARY-only
+  unchanged. Complete module/database/binary staging and RAM-only first-use
+  chooser/single-manager integration. Physical C6 identity/secured backup/
+  restore/UART privacy, actual association/DHCP/frames/reconnect and1800s shared
+  load acceptance remain open; host/native build results cannot close them.

@@ -4,12 +4,15 @@
 
 #include <proto/dos.h>
 #include <proto/exec.h>
+#include <proto/utility.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include "prefsdata.h"
 #include "protocols.h"
 #include "netprefs_intern.h"
+#include "wireless_device.h"
 
 #include <aros/debug.h>
 
@@ -125,6 +128,8 @@ static const TEXT control_template[] =
     "SERVICE/A";
 
 static struct TCPPrefs prefs;
+/* Keep the remembered selection independent of editable interface storage. */
+static TEXT wirelessDeviceName[NAMEBUFLEN];
 
 struct Tokenizer
 {
@@ -393,6 +398,35 @@ BOOL WriteNetworkPrefs(CONST_STRPTR  destdir)
     TEXT destdbdir[destdbdirlen];
     LONG interfacecount = GetInterfaceCount();
     LONG hostcount = GetHostCount();
+    STRPTR previousWirelessDevice = GetWirelessDevice();
+    LONG previousWirelessUnit = GetWirelessUnit();
+    STRPTR wirelessDevice = NULL;
+    LONG wirelessUnit = 0;
+
+    /* Resolve before opening/truncating output files. OpenDevice can itself
+     * initialize hardware; the request timer is not an OpenDevice deadline. */
+    for (i = 0; i < interfacecount; ++i)
+    {
+        enum NetPrefsWirelessKind kind;
+        iface = GetInterface(i);
+        if (GetIsTunnel(iface))
+            continue;
+        kind = NetPrefs_QueryWireless(GetDevice(iface), GetUnit(iface));
+        if (kind == NETPREFS_WIRELESS_YES)
+        {
+            wirelessDevice = GetDevice(iface);
+            wirelessUnit = GetUnit(iface);
+        }
+        else if (wirelessDevice == NULL &&
+                 kind == NETPREFS_WIRELESS_UNKNOWN &&
+                 previousWirelessDevice != NULL &&
+                 Stricmp(GetDevice(iface), previousWirelessDevice) == 0 &&
+                 GetUnit(iface) == previousWirelessUnit)
+        {
+            wirelessDevice = GetDevice(iface);
+            wirelessUnit = GetUnit(iface);
+        }
+    }
 
     CombinePath2P(destdbdir, destdbdirlen, destdir, "db");
 
@@ -458,19 +492,15 @@ BOOL WriteNetworkPrefs(CONST_STRPTR  destdir)
 
         if (!GetIsTunnel(iface))
         {
-            if (strstr(GetDevice(iface), "atheros5000.device") != NULL
-                || strstr(GetDevice(iface), "prism2.device") != NULL
-                || strstr(GetDevice(iface), "realtek8180.device") != NULL
-                || strstr(GetDevice(iface), "bwfm.device") != NULL)
-            {
-                SetWirelessDevice(GetDevice(iface));
-                SetWirelessUnit(GetUnit(iface));
-            }
-            else if (strstr(GetDevice(iface), "ppp.device") != NULL)
+            if (strstr(GetDevice(iface), "ppp.device") != NULL)
                 SetMobile_Autostart(TRUE);
         }
     }
 
+    /* Recompute from configured interfaces, not from the stale previous
+     * selection. Removed or positively non-wireless devices must disappear. */
+    SetWirelessDevice(wirelessDevice);
+    SetWirelessUnit(wirelessUnit);
     fclose(ConfFile);
 
     CombinePath2P(filename, filenamelen, destdbdir, "netdb-myhost");
@@ -533,15 +563,14 @@ BOOL WriteNetworkPrefs(CONST_STRPTR  destdir)
     fprintf(ConfFile, "%s", (GetWirelessDevice() != NULL) ? "True" : "False");
     fclose(ConfFile);
 
+    /* An empty scalar clears an obsolete selection on the next load too. */
+    CombinePath2P(filename, filenamelen, destdir, "WirelessDevice");
+    ConfFile = fopen(filename, "w");
+    if (!ConfFile) return FALSE;
     if (GetWirelessDevice() != NULL)
-    {
-        CombinePath2P(filename, filenamelen, destdir, "WirelessDevice");
-        ConfFile = fopen(filename, "w");
-        if (!ConfFile) return FALSE;
         fprintf(ConfFile, "%s UNIT %ld", GetWirelessDevice(),
             (long int)GetWirelessUnit());
-        fclose(ConfFile);
-    }
+    fclose(ConfFile);
 
     CombinePath2P(filename, filenamelen, destdbdir, "hosts");
     ConfFile = fopen(filename, "w");
@@ -1049,6 +1078,35 @@ void ReadNetworkPrefs(CONST_STRPTR directory)
     LONG interfacecount, hostcount;
     struct Interface *iface = NULL;
     struct Host *host = NULL;
+
+    /* WirelessDevice is a scalar written alongside db/. Restore only its
+     * exact device/unit identity; a later capability query decides whether
+     * it is still eligible. Never infer capabilities from a device name. */
+    {
+        char device[NAMEBUFLEN], keyword[16], unitText[32], extra[2], *end;
+        long unit;
+        FILE *selection;
+        CombinePath2P(filename, filenamelen, directory, "WirelessDevice");
+        selection = fopen(filename, "r");
+        SetWirelessDevice(NULL);
+        SetWirelessUnit(0);
+        if (selection != NULL)
+        {
+            if (fscanf(selection, "%127s %15s %31s %1s", device, keyword,
+                       unitText, extra) == 3 && strcmp(keyword, "UNIT") == 0)
+            {
+                errno = 0;
+                unit = strtol(unitText, &end, 10);
+                if (errno == 0 && end != unitText && *end == '\0' &&
+                    unit >= 0 && unit <= 2147483647L)
+                {
+                    SetWirelessDevice((STRPTR)device);
+                    SetWirelessUnit((LONG)unit);
+                }
+            }
+            fclose(selection);
+        }
+    }
 
     /* This function will not fail. It will load as much data as possible. Rest will be default values */
 
@@ -2158,7 +2216,17 @@ void SetNetworkCount(LONG w)
 
 void SetWirelessDevice(STRPTR w)
 {
-    prefs.wirelessDevice = w;
+    if (w == NULL)
+    {
+        wirelessDeviceName[0] = '\0';
+        prefs.wirelessDevice = NULL;
+    }
+    else
+    {
+        if (w != wirelessDeviceName)
+            strlcpy(wirelessDeviceName, w, sizeof(wirelessDeviceName));
+        prefs.wirelessDevice = wirelessDeviceName;
+    }
 }
 
 void SetWirelessUnit(LONG w)

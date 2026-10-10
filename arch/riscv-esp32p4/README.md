@@ -1,5 +1,16 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Network preference classification (2026-10-10): generic NSD capability queries
+replace the legacy device-name list. Exact remembered device/unit identity is
+owned, loaded and preserved only for an UNKNOWN configured device; positive
+wireless results take precedence, and removed selections are cleared on disk.
+Mac O0/O2 host tests pass with and without ASan/UBSan; Exec/timer calls are
+mocked. No scan, association or ONLINE command is issued. The two-second
+request timer does not bound OpenDevice or a nonconforming AbortIO/WaitIO.
+Native RV32-SMP Network app links successfully (268728B, SHA-256
+f6b4c42b3dac97488e663bb89799bceb1df323e769a47456fb6ed457594c000d).
+Protocol modules, image integration and actual device/GUI acceptance remain open.
+
 WLAN build defaults (2026-10-10): a separate credential-free preferences
 overlay generator and four host tests now pass. Native device/unit0, DHCP,
 RAM database and DHCP temporary paths are predefined; autostart stays off.
