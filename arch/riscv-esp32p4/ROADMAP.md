@@ -132,7 +132,7 @@ gate: compensated output is not the native display contract.
 | N2 | AROS WLAN SANA-II integration | `private ABI6 association/lifecycle binding build and scoped models verified; runtime/privacy/wireless gates open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded STA TX compile for Core1. N2L records current counts/artifacts and Close/Offline/teardown models. Actual helpers/selected dispatch arms; Exec/SDMMC/hooks/radio mocked, not full BeginIO, full service callback or runtime concurrency. Queue/traffic-token fences/copied AP publication are bound; no actual association/IP claim. TX commitment rejects late AbortIO. WirelessManager/bwfm remain references; per-device four-way offload must preserve legacy behavior. Caller late failure, DHCP/build defaults, GUI saving/writable preference storage and actual teardown/reconnect/load remain open. No credentials, deployment or hardware pass. |
 | N2L | Native radio teardown and ongoing link lifecycle | `ABI6 build/scoped models verified; hardware/privacy open` | Standalone leave, deferred teardown outside unit lock, bounded Disconnect/NOT_CONNECT verification, periodic correlated AP observation and selected-RPC cancellation drain. Mac/Linux O0/O2 sanitized: association25999, observer393, bridge219, options89/258, queue785, lifetime1482, datapath16507, events6/70, scan295; sibling link102/reservation63/owner scan37447; exit0. Fresh Core1 RV32 modules have no undefined imports. Explicit teardown requires absence; persistent/foreign AP quarantines rather than reporting loss. Both privacy assertions0 and SUMMARY-only unchanged. Shared caller late-failure event and actual radio/reconnect/load qualification remain open. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
-| N2U | Credential-free WLAN image defaults and first-use selection | `overlay/classification host tested; Network/WiFi apps build verified; image/runtime open` | Fixed native device/unit0, DHCP, RAM database/temporary paths; empty Wireless.prefs, no credentials, autostart off. Four overlay tests pass; existing directories/symlinks refused. Generic NSD classification replaces legacy names, with owned persisted device/unit identity, UNKNOWN fallback and stale-selection clearing; Mac O0/O2 with/without sanitizers pass. RV32-SMP Network app268728B and VOLATILE WiFi124752B link; modules/runtime open. VOLATILE uses ENV only, checked backup/rollback, hex SSIDs, runtime-only Config and address-gated success; Workbench compile default1 verified. No scan/ONLINE probe; OpenDevice/abort completion are not hard bounded. Not consumed by current image targets; standard DB companions/binaries/libraries, one GUI-enabled manager path and actual parser/runtime acceptance required. First delivery excludes credential persistence; SYS/SD remains read-only. |
+| N2U | Credential-free WLAN image defaults and first-use selection | `78-file native overlay staged; host tests/build verified; bootimage/runtime open` | Fixed device/unit0, DHCP RAM paths, empty Wireless.prefs and autostart off. Five defaults/twelve stage host tests pass; required symlink/invalid ELF inputs refused before output. Actual RV32-SMP WiFi default1, Network/net4/net6, AROSTCP/dhclient and C runtime libraries stage with standard DB companions; fixed sample LAN routes/DNS replaced and package lookup set. Generic NSD classification and VOLATILE chooser helper tests remain scoped, not Exec/radio acceptance. Current image targets do not consume the overlay; full-image private-pref exclusion, DHCP lease-path status correction and actual single-manager GUI/parser/runtime acceptance remain required. OpenDevice/abort completion are not hard bounded. First delivery excludes credential persistence; SYS/SD remains read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -1474,9 +1474,12 @@ from the first station delivery, not silently redirected onto read-only SYS.
 A separate make-wifi-defaults.py host generator now emits an exclusive new
 preferences overlay: fixed native device/unit0, IP=DHCP UP DEFER, RAM database,
 explicit DHCP lease/PID/config paths and empty Wireless.prefs. Autostart is off;
-four host tests pass. It is not consumed by image targets and is not a complete
-stack database or network image. Stage standard database companions, compiled
-stack/DHCP/manager and libraries, then establish a single GUI-enabled manager
+five host tests pass. make-wifi-stage.py now validates/stages the standard DB,
+actual native stack/DHCP/manager/apps/modules/libraries and optional catalogs:
+78 files, twelve host tests, no bootimage consumption or runtime acceptance.
+Package lookup is configured; sample host/routes are neutralized. Correct the
+chooser's hardcoded SYS lease path, exclude private prefs from the base image,
+then establish a single GUI-enabled manager
 startup path (not an additional GUI process over the current NOGUI instance).
 Validate resolved DHCP paths and AROS parsing/runtime before deployment.
 Credential persistence remains outside first station-mode delivery.
@@ -35698,3 +35701,50 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   stack restart semantics, inferred password-error messages and actual task
   lifetime require runtime qualification. C6 secured identity/backup/restore/
   UART privacy and actual WLAN/DHCP/frames/reconnect/1800s load remain open.
+
+### 2026-10-10 - N2U actual native runtime overlay staging
+
+- Identity/configuration: port parent df41c03e82, native build
+  /Volumes/Dev/Build/aros-esp32p4-wifi-build, RV32-SMP and explicit current
+  AROS/Developer sysroot. Existing WiFi124752B default1 and SUMMARY-only device
+  retained. New whitelist stage validates ELF32 LE ET_REL/EM_RISCV and one
+  initialized global writable BOOL WifiVolatile=1 before exclusive output.
+  Generated defaults add Sys/Packages/AROSTCP and neutral host/routes; Sys case
+  spelling is shared with Wireless.prefs, avoiding FAT/case-insensitive host
+  directory collisions. Five defaults and twelve stage tests pass, exit0.
+- Procedure/result: direct generated gmake targets, exact TARGET and complete
+  darwin/aarch64/esp32p4/riscv/smp environment. Module includes-dirs must precede
+  module compilation; the initial IPv4 build exit2 and IPv6 initial header
+  warnings are retained. Both final ordered targets exit0. AROSTCP built with
+  its existing kernel/multicast/FD macros plus current generated includes;
+  DHCP libraries common/dst/omapip/minires precede client, source flags retained.
+  Both linked exit0. stdcio built exit0. Initial posixc exit2 selected generic
+  CPU placeholders because the direct target omitted compiler-posixc-riscv;
+  building that existing architecture target first then posixc exits0. No CPU
+  stub substitution or source workaround. Final logs contain no error:/warning:
+  signatures apart from the recorded IPv6 first-header-generation messages.
+- Artifacts (bytes/SHA-256): net4 48956 /
+  8334f74992253cab597b8ff906f979764075d5673b485a79bb136c1aa32e6694;
+  net6 49580 / 680b882b73b5d57afc2b76d78c0838db8311981da8bddf643ffd49e5845fc569;
+  AROSTCP1111316 / 64563d0b6a45e248d724613f5ff0bcb930c9818c865b9dc942f248de227a45a7;
+  dhclient1571512 / 451caf9513d1b9ccffa452f91fef0634da3d17aba3e425c72c3ab4fb161dec60;
+  stdcio100428 / 4464e8f128d0b7745480d2784fd4c315dbae5678abd5cbe2f58b44deb27a5f09;
+  posixc579568 / 14a2fe8d8030a2e86e03da1e08cfb467beacb98ac16085df94f3b39a64644111.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/
+  wifi-2026-10-10/wlan-image.Hd9BA9. Native stage first exit1 refused absent
+  Touchscreen.info without reserving output. Building that actual icon then
+  rerunning exits0:78 files. native-stage.sha256 is the exact sorted file hash
+  list, SHA-256270f4135baab3b9a7cd4f348ae81239b5064edbf694e2eaffa69d8e1edc194b8.
+  Native ELF validation is not loader/import or runtime acceptance. Independent
+  Luna source review found no blocker within the generator delta; its suggested
+  source-DB byte and RAM-path assertions were added and tests rerun exit0.
+- Runtime audit: DHCP honors ENV PATH_DHCLIENT_CONF/DB/PID and applies router/
+  DNS via AROS APIs, without an external dhclient-script or rewriting
+  netdb-myhost. Prefs/WiFi still reads a fixed SYS lease path, so its status
+  display would miss the RAM lease. Correct upstream before first-use gate.
+- Safety/remaining: host files only; no serial, reset, flash, SD write, C6
+  update or credentials. Both privacy assertions0 unchanged. This stage is
+  not yet consumed by mmake/image targets. Preserve base-image private-pref
+  exclusion, add dependencies/default1 build policy, verify complete FAT image
+  and actual GUI/parser/Exec behavior. C6 identity/backup/proven restore/UART
+  privacy and real association/DHCP/frames/reconnect/1800s load remain open.

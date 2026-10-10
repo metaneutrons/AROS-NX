@@ -60,6 +60,16 @@ class DefaultsTest(unittest.TestCase):
         self.assertEqual(values["Prefs/Env-Archive/PATH_DHCLIENT_DB"],
                          "/T/dhclient.leases")
 
+    def test_stack_package_and_dhcp_owned_configuration(self):
+        values = module.defaults()
+        self.assertEqual(values["Prefs/Env-Archive/Sys/Packages/AROSTCP"],
+                         "SYS:System/Network/AROSTCP")
+        for name in ("netdb-myhost", "static-routes"):
+            lines = values["Prefs/Env-Archive/AROSTCP/db/" + name].splitlines()
+            self.assertTrue(lines)
+            self.assertTrue(all(line.startswith(";") for line in lines))
+        self.assertNotIn("192.168.", "".join(values.values()))
+
 
 if __name__ == "__main__":
     unittest.main()

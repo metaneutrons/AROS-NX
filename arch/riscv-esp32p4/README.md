@@ -1,5 +1,14 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WLAN runtime staging (2026-10-10): the credential-free whitelist generator
+now stages 78 files from actual RV32-SMP outputs, including Network protocol
+modules, AROSTCP, DHCP and C runtime libraries. Five defaults tests and twelve
+stage tests pass; independent scoped source review found no blocker. Compiled
+WiFi must have initialized WifiVolatile=1. Package lookup is predefined and
+sample LAN routes/DNS are removed. This remains an overlay, not a bootimage:
+mmake consumption, DHCP lease-path display correction, parser/runtime and
+radio qualification remain open. No hardware, credentials or privacy change.
+
 WLAN chooser development (2026-10-10): generic Prefs/WiFi gains an explicit
 VOLATILE mode, hex SSID serialization, runtime-only stack database selection,
 checked backup/rollback and owned secret-buffer clearing. Generic d43e1b9d8b

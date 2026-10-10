@@ -28,6 +28,24 @@ The target writes four files next to each other in
 
 ## WLAN build defaults (overlay only)
 
+`python3 make-wifi-stage.py --aros-root BUILD_AROS --output NEW_DIRECTORY`
+collects a whitelist of native WLAN runtime files and the generated defaults.
+Every required executable must parse as little-endian RISC-V ELF32 ET_REL;
+WiFi must contain one initialized writable two-byte WifiVolatile symbol set
+to 1. Missing, empty or symlinked required inputs fail before reserving output.
+Built WiFi/Network catalogs are optional and allowlisted. No build-tree saved
+preferences or Package-Startup are imported. Twelve host tests pass and a real
+RV32-SMP build produced 78 staged files; this is not loader/runtime acceptance.
+Neither image target consumes this stage yet. The existing C3 base supplies
+the GUI classes; full-image credential exclusion must also cover its copying
+of build-tree preferences before this overlay may be integrated.
+
+The package lookup is fixed to SYS:System/Network/AROSTCP. Neutral
+netdb-myhost/static-routes replace the source package's fixed sample LAN;
+DHCP applies gateway/DNS dynamically. Prefs/WiFi still reads a hardcoded SYS
+lease path, so its status display must be corrected to honor PATH_DHCLIENT_DB
+before first-use acceptance. Credential transmission remains gated.
+
 `python3 make-wifi-defaults.py NEW_DIRECTORY` generates fixed, credential-free
 preferences for native `DEVS:Networks/esp32p4wlan.device`, unit0 and DHCP.
 The output is a preferences overlay, not a complete network image: the standard
@@ -44,7 +62,7 @@ The read-only C3 startup copies ENVARC into RAM-backed ENV. AROSTCP/Config
 selects its working database there; DHCP lease/PID paths explicitly use /T/,
 and the DHCP executable path remains on SYS. Both privacy gates stay disabled.
 
-`python3 test-wifi-defaults.py` checks exact outputs, reproducibility and
+`python3 test-wifi-defaults.py` passes five tests for exact outputs, reproducibility and
 existing-directory/symlink refusal. It is a host generator test, not execution
 of the AROS parsers, DHCP, GUI or radio. Production stage/runtime acceptance
 remains open; do not treat generated defaults as a working WLAN image.

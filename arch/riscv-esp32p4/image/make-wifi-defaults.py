@@ -18,6 +18,7 @@ def defaults():
         root + "AROSTCP/WirelessAutoRun": "False",
         root + "AROSTCP/WirelessDevice":
             "DEVS:Networks/esp32p4wlan.device UNIT 0",
+        root + "Sys/Packages/AROSTCP": "SYS:System/Network/AROSTCP",
         root + "AROSTCP/db/interfaces":
             "wlan0 DEV=DEVS:Networks/esp32p4wlan.device UNIT=0 "
             "IP=DHCP UP DEFER\n",
@@ -30,6 +31,10 @@ def defaults():
         root + "PATH_DHCLIENT_CONF": "ENV:AROSTCP/db/dhclient.conf",
         root + "AROSTCP/db/dhclient.conf":
             "# No fixed address or private network configuration.\n",
+        root + "AROSTCP/db/netdb-myhost":
+            "; Address, DNS and domain come from DHCP, not a sample LAN.\n",
+        root + "AROSTCP/db/static-routes":
+            "; The default route comes from DHCP.\n",
         # CONFIG_NO_CONFIG_WRITE omits update_config from the parser table.
         root + "Sys/Wireless.prefs": "ap_scan=1\n",
     }
