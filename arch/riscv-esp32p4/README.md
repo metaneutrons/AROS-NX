@@ -21,7 +21,9 @@ generated 400MHz setting is unsupported on revision1.3. Defaults now select
 360MHz; a generated-configuration checker and corrected build pass, not yet
 deployed. Exact full-span AROS rollback/readback matches, but the return boot
 faults in ROM at address0x50091000 and watchdog-resets. The board is parked in
-the download loader pending recovery. No MAC/scan hardware acceptance and no
+the download loader pending recovery. Independent bootloader/partition readback
+matches the originals; the fault address maps to SHA hardware, not image RAM.
+No MAC/scan hardware acceptance and no
 successful baseline return from this run.
 IDF5.4.3 is an optional isolated comparison environment, not a port downgrade.
 

@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; reference startup failed; baseline recovery pending` | Pinned d518 host links under6.0.1; actual-source startup/scan/app tests pass. Hardware exposes unsupported400MHz configuration before app entry. Corrected360MHz build/configuration gate pass, not deployed. Exact AROS span restored/readback matched, but ROM faults at0x50091000; board parked in download loader. Empty-scan workaround and N1E removal remain open. No MAC/scan, native association/frame/recovery or WLAN acceptance. Automatic flash layout forbidden. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; reference startup failed; baseline recovery pending` | Pinned d518 host links under6.0.1; actual-source startup/scan/app tests pass. Hardware exposes unsupported400MHz configuration before app entry. Corrected360MHz build/configuration gate pass, not deployed. Exact AROS span restored/readback matched; bootloader/partition also match originals, but ROM faults at SHA0x50091000. Board parked in download loader. Empty-scan workaround and N1E removal remain open. No MAC/scan, native association/frame/recovery or WLAN acceptance. Automatic flash layout forbidden. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -638,6 +638,11 @@ Corrected build passes but is not deployed. Exact full-span AROS rollback
 matches independent readback; the return instead faults in ROM on a store to
 0x50091000, followed by watchdog resets. The board is parked in download
 loader; baseline recovery is pending, not accepted.
+Independent readback also matches original bootloader and partition sector.
+The fault address is the SHA register bank. Official restart cleanup resets
+Crypto peripherals; current upstream additionally restores the Crypto mux to
+XTAL for next-boot ROM operations. Retained clock/reset state is a source-backed
+hypothesis, not a measured attribution or authorization for arbitrary writes.
 No hardware MAC/scan, association, bidirectional frames or recovery accepted.
 The empty-scan omission is a workaround for the pinned slave's API error,
 not proof that its empty-record behavior is fixed. N1E (open root-fix item):
@@ -30654,6 +30659,37 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   reference with configuration gate, quiesce and exact rollback. Native
   association, bidirectional frames, SANA-II, coexistence and recovery remain
   required for the full Wi-Fi objective.
+
+### 2026-10-10 - N1 ROM recovery: immutable flash and SHA address attribution
+
+- Board stays in download stub. Two read-only esptool operations with
+  before=no-reset/after=no-reset identify MAC80:f1:b2:d3:3b:a6 and exit0.
+  bootloader-readback.bin22544B at0x2000 SHA-256
+  27b99e03abb56eef0c2d3453a5800013f419e476ceec39a3bdb94c066c40e5f4,
+  matching the original. partition-readback.bin4096B at0x8000 SHA-256
+  b96e4eb9478d7b02864faa0685d10b78e0c5a321cdc0637b2d58023504c1d193,
+  matching the accepted sector. Evidence in complete-host-mac-scan/.
+  No writes/reset/test restart; these matches do not prove boot recovery.
+- Independent Luna read-only source investigation, verified by primary:
+  IDF6.0.1 components/soc/esp32p4/ld/esp32p4.peripherals.ld maps SHA to
+  0x50091000. components/esp_system/port/soc/esp32p4/system_internal.c
+  resets Crypto/SHA before restart to avoid ROM security-flow failures.
+  Official upstream source additionally selects Crypto XTAL before restart
+  to avoid next-boot operations with a gated parent:
+  https://github.com/espressif/esp-idf/blob/master/components/esp_system/port/soc/esp32p4/system_internal.c
+  This is a relevant retained-state hypothesis, not proof of the concrete
+  fault or a stable pin to upstream master. No register writes performed.
+- Tests repeated from actual current source: app30 cases/184 checks,
+  scan30/172, startup6/49 each O0/O2 with ASan/UBSan, all successful.
+  Initial scan invocation used a nonexistent guessed source path and exited2;
+  rerun with host/drivers/rpc/wrap/rpc_wrap.c and core/rpc_rsp.c exits0.
+  Config selftest and actual generated config exit0 (21 settings).
+  Commit a356ea303a preserves reference implementation/test evidence.
+  Nested patch context retains upstream whitespace by design; generic git
+  whitespace checks report that context, so no whitespace-clean claim.
+- State remains baseline recovery pending, corrected360MHz image not deployed.
+  Await fresh full-power-disconnection readiness before physical interaction.
+  Next restore boot continuity and only then resume MAC/scan/native WLAN gates.
 
 ## Evidence-entry template
 
