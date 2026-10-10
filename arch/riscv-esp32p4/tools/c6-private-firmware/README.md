@@ -18,7 +18,7 @@ and full-width fields retain the previous intended length convention. Generic
 Wi-Fi MAC/status logs and IDF/vendor-library logs are not all suppressed.
 Do not claim whole-binary or hardware privacy certification from this patch.
 
-## C6 vendor logging extension (source tested, not built)
+## C6 vendor logging extension (build verified, undeployed)
 
 `idf-wifi-privacy.patch` applies to the pinned IDF 5.4.3 commit
 `ea1c174c1cbb7348bd8ba0ff1eb306246938dd80`, specifically its C6 Wi-Fi OS
@@ -41,13 +41,19 @@ a future direct printf/ROM-output replacement cannot silently pass this test.
 The fixture mocks the downstream logger and does not execute the adapter
 table, vendor blobs, IDF startup or a radio. Review actual table bindings separately.
 
-This extension has not yet been included in a full firmware build. The
-previous1106624-byte candidate is unchanged and still contains vendor
-SSID/BSSID formats. Direct printf/ROM paths and remaining Hosted MAC logs
-require separate audit/correction; suppressing these two callbacks does not
-prove whole-firmware UART privacy. Rebuild from a fresh IDF build directory,
-archive the exact changed IDF inputs and perform actual UART qualification
-after secured recovery before allowing credentials.
+Apply `hosted-metadata-privacy.patch` to the Hosted tree after `privacy.patch`.
+It removes the remaining Wi-Fi/Bluetooth MAC and direct country/HE AP diagnostic
+outputs without changing RPC payloads or Wi-Fi event forwarding. Verify patch
+application and retain all three patches with the build inputs.
+
+A fresh complete build with both extensions now generates a1105760-byte app,
+SHA-256 `d4a992b9aa806d61b0e406b848dfc4e449f3a06eab102120b84453c7ae7c358e`.
+The previous1106624-byte candidate is unchanged. The new ELF's two logging
+callbacks have no outgoing calls; the variadic callback still has ordinary
+ABI register spills. Vendor format strings may remain despite those sinks.
+Direct stdio/ROM and PHY diagnostics require link-map/reachability review;
+callback suppression does not prove whole-firmware UART privacy. Actual UART
+qualification after secured recovery remains required before credentials.
 
 Build environment used: IDF 5.4.3, Python 3.12.13 in a private uv venv,
 IDF core requirements constrained by Espressif's `espidf.constraints.v5.4.txt`,

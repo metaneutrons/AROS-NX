@@ -1,5 +1,15 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+C6 logging candidate build (2026-10-10): fresh full build against a separate
+patched IDF5.4.3 tree passes; app1105760B SHA-256
+d4a992b9aa806d61b0e406b848dfc4e449f3a06eab102120b84453c7ae7c358e.
+Remaining Hosted Wi-Fi/Bluetooth MAC and direct country/HE AP prints removed;
+RPC payloads/events retained. Both vendor log callbacks have no outgoing calls
+in the ELF. Mac/Linux O0/O2 sanitizer tests pass18 callback and490 string checks
+each, with source guards. Earlier candidate/reference unchanged. Direct vendor
+stdio/PHY diagnostic paths, secured recovery and actual UART privacy remain
+separate gates; no deployment, credentials or WLAN acceptance.
+
 C6 vendor logging development (2026-10-10): a pinned IDF5.4.3 C6 adapter
 patch sinks both vendor logging callbacks without formatting their arguments.
 Exact-body macOS/Linux O0/O2 ASan/UBSan tests pass18 checks each; original

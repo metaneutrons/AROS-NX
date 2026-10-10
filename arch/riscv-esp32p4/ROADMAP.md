@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
-| N2F | C6 firmware privacy and recoverable identity | `Hosted candidate build verified; vendor callback source tests passed; recovery/UART privacy open` | Earlier1106624B candidate unchanged. New pinned IDF5.4.3 C6 patch sinks both vendor logging callbacks; exact-body18 checks each O0/O2 sanitized on Mac/Linux pass, original negative control fails. Extension not yet firmware-built; direct diagnostic paths and Hosted MAC logs need audit/correction. Previous Hosted response490 checks/config/artifacts retained. No deployment or installed identity proof. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory. |
+| N2F | C6 firmware privacy and recoverable identity | `extended C6 candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105760B; Hosted Wi-Fi/BT MAC and direct AP prints removed, RPC/events retained. ELF vendor callbacks have no outgoing calls; Mac/Linux O0/O2 sanitized18 callback/490 string checks each plus source guards pass. Earlier1106624B candidate/reference unchanged. Direct vendor stdio/PHY paths need link-map/runtime assessment. No deployment or installed identity proof. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
 | N2S | Native queued SANA scan presentation | `RV32 build verified; source review and corrected scan-helper models passed` | Single bounded owner-service scan, copied SSID filter and caller-pool-owned complete publication. Scan-helper models295 checks each O0/O2 ASan/UBSan on macOS/Linux; outer BeginIO/AbortIO/Close and runtime scheduling remain separate gates. Exact singleton metadata only; unsupported/ambiguous unknown protected. C-string binary SSIDs/invalid channels omitted; max8 local cap. SUMMARY only, no FOURWAY. No credentials/deployment/hardware acceptance. |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
@@ -1293,6 +1293,14 @@ negative control. This extension is not part of the previous candidate build.
 Archive a fresh full build against a separately patched complete IDF tree;
 review remaining direct diagnostic paths and Hosted MAC disclosures before
 actual secured-recovery/UART qualification. Both AROS privacy assertions stay0.
+
+A fresh full build against a separate complete patched IDF tree now includes
+the callback extension and an additional Hosted metadata patch (Wi-Fi/BT MAC,
+direct country/HE AP prints removed; RPC/events retained). Both callback bodies
+have no outgoing calls in the resulting ELF; fresh Mac/Linux sanitized suites
+pass. The earlier candidate/reference remains unchanged. This is build evidence
+only; direct vendor stdio/PHY route analysis and actual secured-recovery/UART
+qualification remain mandatory before credentials or deployment.
 
 Association caller correction is in development in the upstream-based generic
 checkout: validate before effects, use synchronous borrowed stack options,
@@ -35371,3 +35379,55 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   changed by this patch. Primary confirms net80211/pp/smartconfig direct stdio
   imports and phy_printf's ESP_LOGI path; direct-imports.log archived. No whole
   firmware privacy claim or change to hardware gates.
+
+### 2026-10-10 - N2F extended C6 candidate full build and metadata removal
+
+- State/procedure: fresh complete build in /Volumes/Dev/Build/c6-private-log-build.nmywHG.
+  APFS copied complete pinned IDF/source; original reference IDF Git remains
+  clean at ea1c174c1cbb7348bd8ba0ff1eb306246938dd80, original adapter hash unchanged.
+  New IDF has exactly the adapter patch modification. New Hosted source copies
+  the prior private candidate, then removes Wi-Fi/BT MAC and direct country/HE
+  AP diagnostics using hosted-metadata-privacy.patch. RPC fields and event
+  forwarding unchanged. Patch reapplication to separate copied baseline files
+  compares byte-identical to both compiled source files.
+- Build: IDF5.4.3, same private Python3.12.13/CMake3.30.2/Ninja1.12.1/GCC14.2.0_20250730;
+  fresh build directory/no reused local objects, existing ccache content-addressed
+  tool enabled. No dependency downloads. Initial build exits1 because reference
+  IDF_TOOLS_PATH lacks constraints; retained build.log. Corrected tools path
+  uses c6-private.m7Gzhv/idf-tools with explicit existing compiler PATH; final
+  actual exit0,936 build actions, adapter/control/BT compile lines, ELF link and
+  app generation/capacity pass. No compiler warning/error signatures in final
+  log. Generated sdkconfig unchanged: C6/SDIO, maximum/default INFO, Wi-Fi NVS
+  disabled, BT enabled, source4MB layout; no installed layout/security claim.
+- Artifact: app1105760B SHA256
+  d4a992b9aa806d61b0e406b848dfc4e449f3a06eab102120b84453c7ae7c358e;
+  ELF40c10c84f6cecc71f4b7368e0835015dc0ad7e09529f45e637ec4ab2598b970a;
+  map2b691c89a78b3b94e9bb2a2fe7163bb5859ce9baf8d093275bdf1f484b2d681d;
+  bootloader22016B b97cb6f97742da0d5c11a08fa94a2070adb2688bad1a08c818758c27cc324a87;
+  partition3072B0241fa0d2e573dee86756e39fb4181e61ff7218087619cab565b602df55954d6;
+  sdkconfig4737c809de018a223cd0333e8e3c043bdc1b454a9a9779aad23551ae26b035e8.
+  Source OTA slot1572864B/467104B free. Earlier1106624B candidate remains
+  93cc504db3109c33efebef1ff70701f3caadf195f62da8303a8078e6c749229d.
+- Tests: actual callback bodies18 checks and response-string macro490 checks
+  each O0/O2 ASan/UBSan pass on macOS/Linux, actual exits0. Source callback/body
+  guards pass. Linux uses frozen streamed test-input.tar.gz and existing image
+  e4f4b5717ab9c9bf7219716469ad3d85c01e144d09763a4eb1fcd22a4a46151d with networknone.
+  Tar xattr warnings retained, not failures. Tests mock log sink/extract response
+  macro; no transport/runtime/UART proof. Primary ELF disassembly confirms
+  writev wrapper is ret and variadic wrapper only ABI register spills/return,
+  no argument dereference, formatter or outgoing calls.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/c6-private-log-build.dBhRzB
+  archives app/ELF/map/bootloader/table/config/compilecommands, modified adapter,
+  all three patches and exact Hosted source. Source archive60930d0037bdf847e8f4c302dc0b32df6c2ab0c48121b17167c0916dbf9a26e8;
+  metadata patchdd39fece25261f6c615e3deb7b13bb1cc1b1300238f79427f0cc3d876c40e3d5;
+  final build logec58d19f26e3e97a9411492ebd12ab9dae68c1503781a50bbde58e63a0c477f9;
+  Linux log383a0800a54af83a37768ef80bb9a45d4abdca196c9ad0b0d536fd7d28df8f24;
+  test-input2e38fe6637099857f7fe16a84eec2ba4f217612ae60aaee267e99f902820d93d;
+  Mac vendorb159e2915a347b429783b7199a9381dd86fff988dc419a94d719b3edf39f157e;
+  Mac strings45c57f7ae0ea94087792fe25ff0f70163a8148ee8efd36776c72102dd519461b.
+- Safety/limits/next: undeployed. Vendor strings/direct stdio/PHY output may
+  remain; assess actual kept link-map routes separately and then qualify UART
+  only after secured identity/backup/restore and fresh physical readiness.
+  No serial/reset/flash, NVS inspection, credentials or SD write; both AROS
+  privacy assertions0. Generated flash_args are not authorization. No WLAN/IP
+  or hardware pass inferred from build/tests.
