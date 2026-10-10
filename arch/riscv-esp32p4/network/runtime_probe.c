@@ -83,6 +83,32 @@ static void wifi_configure_pins(void)
                wifi_read(P4_SDMMC_BASE + P4SD_RST_N) | (1UL << 1));
 }
 
+/* Read-only snapshots taken while owned, then reported after release.
+ * Index order: CLKDIV, CLKSRC, CLKENA, CTYPE, RST_N, UHS, STATUS, CMD,
+ * CMDARG, RINTSTS, GPIO_ENABLE, GPIO_IN, CMD_IN, D0_IN, CLK_OUT, CMD_OUT,
+ * D0_OUT, CLK_MUX, CMD_MUX, D0_MUX. Registers, not electrical waveforms. */
+#define WIFI_SNAPSHOT_WORDS 20
+static void wifi_snapshot(ULONG *words)
+{
+    static const ULONG offsets[] = {
+        P4SD_CLKDIV, P4SD_CLKSRC, P4SD_CLKENA, P4SD_CTYPE, P4SD_RST_N,
+        0x74, P4SD_STATUS, P4SD_CMD, P4SD_CMDARG, P4SD_RINTSTS
+    };
+    unsigned i;
+    for (i = 0; i < sizeof(offsets) / sizeof(offsets[0]); ++i)
+        words[i] = wifi_read(P4_SDMMC_BASE + offsets[i]);
+    words[10] = wifi_read(WIFI_GPIO_BASE + 0x20);
+    words[11] = wifi_read(WIFI_GPIO_BASE + 0x3c);
+    words[12] = wifi_read(WIFI_GPIO_BASE + 0x15c);
+    words[13] = wifi_read(WIFI_GPIO_BASE + 0x160);
+    words[14] = wifi_read(WIFI_GPIO_BASE + 0x558 + P4_BOARD_WIFI_CLK_GPIO * 4);
+    words[15] = wifi_read(WIFI_GPIO_BASE + 0x558 + P4_BOARD_WIFI_CMD_GPIO * 4);
+    words[16] = wifi_read(WIFI_GPIO_BASE + 0x558 + P4_BOARD_WIFI_D0_GPIO * 4);
+    words[17] = wifi_read(WIFI_IOMUX_BASE + 4 + P4_BOARD_WIFI_CLK_GPIO * 4);
+    words[18] = wifi_read(WIFI_IOMUX_BASE + 4 + P4_BOARD_WIFI_CMD_GPIO * 4);
+    words[19] = wifi_read(WIFI_IOMUX_BASE + 4 + P4_BOARD_WIFI_D0_GPIO * 4);
+}
+
 static int wifi_budget(void *opaque)
 {
     struct wifi_probe_context *context = opaque;
@@ -130,6 +156,8 @@ static void wifi_identify(void)
     struct p4_sdio_probe_result result;
     struct p4_sdio_probe_ops ops;
     ULONG actual = 0, peer_clock, generation;
+    ULONG before[WIFI_SNAPSHOT_WORDS], after[WIFI_SNAPSHOT_WORDS];
+    unsigned snapshot_index;
     int success = 0;
     p4host_zero(&context, sizeof(context));
     p4host_zero(&ops, sizeof(ops));
@@ -165,7 +193,11 @@ static void wifi_identify(void)
     ops.budget_ok = wifi_budget;
     ops.yield = wifi_yield;
     if (host->set_clock(host, 1, 400000, FALSE, &actual) && wifi_budget(&context))
+    {
+        wifi_snapshot(before);
         success = p4_sdio_probe_identify(&ops, &result);
+        wifi_snapshot(after);
+    }
     else
     {
         host->set_budget(host, 0);
@@ -200,6 +232,12 @@ static void wifi_identify(void)
     bug("[WiFi] enable=%02x ready=%02x CIS=%06x FBR1=%02x\n",
          result.io_enable, result.io_ready, result.cis_pointer,
          result.fbr1_interface);
+    for (snapshot_index = 0; snapshot_index < WIFI_SNAPSHOT_WORDS; ++snapshot_index)
+    {
+        Delay(5);
+        bug("[WiFi] reg%u before=%08x after=%08x\n", snapshot_index,
+             before[snapshot_index], after[snapshot_index]);
+    }
     /* No inference of firmware/protocol compatibility from SDIO enumeration. */
 }
 #endif

@@ -82,6 +82,11 @@ Their purpose is to resolve the initial CMD5 failure, not change the bus setup.
 The paced hardware run now identifies response-timeout bit8 (raw0x00010100,
 shared command status ERROR, IDMAC status0); no additional reset was observed.
 Electrical/startup cause remains unresolved, not firmware incompatibility proven.
+Read-only controller/matrix snapshots before and after the identification
+sequence now confirm expected slot1 clock/divider/mux and CMD/D0/CLK routing
+on silicon. CMD5 still times out. Independent IDF comparison identifies the
+missing no-CD-pin constant-low card-detect route; fixing it remains open,
+and no causality between that omission and the timeout is established.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device

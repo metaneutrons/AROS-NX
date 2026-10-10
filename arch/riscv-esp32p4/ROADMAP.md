@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 response timeout` | Opt-in AFTERDOS runner passes build, independent review and 4,597 protocol checks each O0/O2. Paced capture identifies CMD5 response-timeout bit8, raw0x00010100/IDMAC0; no additional reset. Startup/electrical cause, SD integrity, coexistence and C6 compatibility remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 response timeout` | Register capture confirms expected slot1 clock/matrix setup but CMD5 times out. Independent IDF comparison identifies omitted no-CD-pin constant-low route, not proven timeout cause. Startup/electrical cause, SD integrity, coexistence and C6 compatibility remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -208,6 +208,12 @@ headless run captures error/status/raw-IDMAC snapshots without extending
 controller ownership. The bus sequence remains unchanged. It reports CMD5
 response timeout (raw0x00010100, status3, IDMAC0).
 It does not identify the electrical/startup cause or installed firmware.
+Read-only register snapshots before/after identification are now build verified
+to inspect actual card-clock/divider/mux and CMD/D0/CLK routing. They do not
+measure electrical waveforms or identify C6 firmware.
+The complete register run confirms expected clock/matrix values but repeats
+the timeout. IDF's no-CD-pin constant-low card-detect route is absent; repair
+and verification are next. Its role in the timeout is not yet established.
 Enumeration alone cannot prove
 ESP-Hosted compatibility or working WLAN.
 
@@ -29311,6 +29317,55 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   No SD write, C6 flash, reset-pin assumption or function/IRQ enable.
 - Next: confirm P4 matrix/slot CLK/CMD path and board C6 startup state against
   actual matching reference; retain the response-timeout finding as evidence.
+
+### 2026-10-10 - N0 read-only slot1 register instrument build verified
+
+- Parent3e27fde3e8. Local20-word before/after snapshots under host ownership,
+  no new MMIO writes; paced reporting after release. Index order in source:
+  CLKDIV/CLKSRC/CLKENA/CTYPE/RST_N/UHS/STATUS/CMD/CMDARG/RINTSTS,
+  GPIO_ENABLE/IN, CMD_IN/D0_IN, CLK_OUT/CMD_OUT/D0_OUT,
+  CLK_MUX/CMD_MUX/D0_MUX. Register values are not electrical measurements.
+- Native quick7221 exit0, module SHA-256
+  8fed0ef18ad07a1c5ef50e7f1c8d5537f7d8b890ec79f905db0f7446f9f9468b.
+  JC1060-v2 C3/C4 opt-in package58589 exit0/checksize;3,720,156 bytes,
+  SHA-2562cc3ac04ef5816b235c7a87496e59cb07a723276de727ce5119a38f4021b0f9f.
+  Strengthened loader audit exit0/all42 members. Corebbc265fad… unchanged.
+- Expanded rounded flash span0x820000..0xbad000 (0x38d000) requires new
+  full-range baseline backup19644 exit0, SHA-256
+  7ae7b4a5f73757aca4a5ba0b3779164b972b73133d5fcc60eaf30ea6572bc44e.
+  Prefix matches baseline BSP8749d489…, exact MAC80:f1:b2:d3:3b:a6.
+  No hardware register pass.
+  native-probe-register-{build,package,audit}.log in preceding evidence root.
+- Next: verify backup identity/hash, flash/readback exact artifact, capture
+  complete paced register output; no C6 firmware/reset change or SD write.
+
+### 2026-10-10 - N0 slot1 active register state captured; CD omission identified
+
+- Register BSP2cc3ac04… write3948 exit0, independent readback8725 exit0
+  matches exact SHA-256. No core/volume/C6 change; same JC1060 identity.
+- First-byte capture73641 exit0, complete30.897998625s/15,695 bytes,
+  SHA-25683656fd9a802ac9338ab0900a7aad3e28439dc068dfe7e645c7324f61f020199.
+  One commanded USB reset,42 modules/two harts/watchdog/SD capacity; no
+  additional ROM/trap/alert/Guru observed. CMD5 same status3/raw0x10100/IDMAC0.
+- Complete before/after snapshots: CLKDIV0x1d00, CLKSRC4, CLKENA0x10003,
+  CTYPE1, RST_N3, UHS0; CMD_IN0x93(GPIO19), D0_IN0x8e(GPIO14),
+  CLK/CMD/D0 outputs0/1/2; all three IOMUX0x1b00. GPIO_ENABLE0x8c4001;
+  GPIO_IN before0x8fc005/after0xbc005. These match expected configured paths;
+  single input samples cannot prove clock waveforms or a functioning C6.
+- Independent read-only IDF comparison: no-CD-pin slot init forces card-detect
+  input127 to constant0x3e. Runtime omitted this. IDF's command-start checks
+  card detect; our direct engine bypasses that software check. Therefore this
+  is a real setup omission, not proof it caused RTO. Also absent: card-int129
+  constant-high route and WP131 (writes are outside current scope).
+  Clock/CMD/D0 matrix match official P4 signals. Snapshot diff is read-only,
+  initialized, all reporting after release; source SHA-256
+  b0208c8ee1aed9bf8f43f06300f8dcc3a84717d0dcdbaadd1f38996ca18c4bb8.
+- Evidence native-probe-hardware/register-{backup,write,readback,boot}.log,
+  boot-timing.jsonl and before-range/readback binaries. Baseline write6179
+  exits0; independent full-range readback76310 exits0 and matches7ae7b4a5….
+  No firmware replacement, SD write or visual acceptance.
+- Next: add no-CD-pin route and verify input-select/CDETECT status, one
+  configuration change per run. Firmware/startup cause remains an open gate.
 
 ## Evidence-entry template
 
