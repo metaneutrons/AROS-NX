@@ -14,7 +14,9 @@ enum p4_hosted_control_error {
     P4_HOSTED_CONTROL_PEER_FAULT, P4_HOSTED_CONTROL_COUNTER,
     P4_HOSTED_CONTROL_CAPACITY, P4_HOSTED_CONTROL_RX,
     P4_HOSTED_CONTROL_PROTOCOL, P4_HOSTED_CONTROL_REMOTE,
-    P4_HOSTED_CONTROL_TIMEOUT
+    P4_HOSTED_CONTROL_TIMEOUT,
+    /* Caller-side classification when exchange refuses without output. */
+    P4_HOSTED_CONTROL_PREFLIGHT
 };
 struct p4_hosted_control_result {
     enum p4_hosted_control_error error;

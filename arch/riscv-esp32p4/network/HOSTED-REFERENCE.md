@@ -271,4 +271,14 @@ additional struct members/pointers are not part of the legacy schema and must
 not be serialized by copying its raw layout. Native hosted_wifi.c now encodes
 the typed body but deliberately provides no default profile. The caller must
 explicitly select and validate its compatibility profile. Native runtime
-initialization/cleanup and hardware success remain separate open gates.
+initialization/cleanup is now integrated as a bounded fresh-epoch diagnostic;
+hardware success remains a separate open gate. Main independently reproduces
+the expanded initializer from the exact recorded compile command (-c replaced
+by -E -P, -o/object removed, build cwd and other flags preserved). IDF_VER is
+v6.0.1-dirty; no clean-IDF provenance is claimed. Evidence
+reference-config-preprocessor.log SHA-256
+d6b25bcfbf3f276425cdcf6a6a6eac0fa50f771d6ffd56e74469345d036f2941
+is retained under native-control-exchange.KnVrtu. The new pinned generated
+protobuf-c interoperability oracle passes810 O0/O2 ASan/UBSan checks each;
+all20 Init values agree semantically, including explicit native zeros versus
+proto3 omitted defaults. This does not prove installed slave firmware identity.

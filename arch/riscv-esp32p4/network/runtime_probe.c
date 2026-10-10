@@ -1,7 +1,7 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
 /* Native opt-in SDIO reset/bootstrap and setup/restoration. An additional
  * explicit diagnostic enables bounded OPEN/INIT with Fn0/CLOSE cleanup.
- * Optional one-shot GetMAC RPC follows the startup reply. This is not a WLAN
+ * Optional one-shot Init/STA/Start/GetMAC follows the startup reply. This is not a WLAN
  * data-plane client. Separate CCCR reset/query diagnostic; no C6 flash writes. */
 #include <aros/asmcall.h>
 #include <aros/debug.h>
@@ -36,7 +36,14 @@
 #if !P4_WIFI_HOSTED_REPLY
 #error "Hosted MAC requires the explicit startup reply gate"
 #endif
-#include "hosted_control.h"
+#include "hosted_startup.h"
+/* Exact successful reference-app IDF6 profile, preprocessed from its actual
+ * build. NVS is explicitly disabled by reference.c. This is source-derived
+ * compatibility, not installed C6 binary lineage or a generic IDF default. */
+static const struct p4_hosted_wifi_config wifi_reference_profile = {
+    10, 32, 0, 16, 0, 0, 0, 1, 1, 0, 0, 0, 6, 0, 752, 32,
+    UINT64_C(129), 1, 7, INT32_C(0x1f2f3f4f)
+};
 #endif
 #if P4_WIFI_SDIO_RESET_QUERY
 #include "sdio_reset_query.h"
@@ -448,7 +455,7 @@ static void wifi_identify(void)
     int reply_attempted = 0, reply_ok = 0;
 #endif
 #if P4_WIFI_HOSTED_MAC
-    struct p4_hosted_control_result mac_result;
+    struct p4_hosted_startup *wlan = NULL;
     int mac_attempted = 0, mac_ok = 0;
 #endif
     struct P4HostCommandResult identify_last;
@@ -471,9 +478,6 @@ static void wifi_identify(void)
     p4host_zero(&tx_ops, sizeof(tx_ops));
     p4host_zero(&sent, sizeof(sent));
 #endif
-#if P4_WIFI_HOSTED_MAC
-    p4host_zero(&mac_result, sizeof(mac_result));
-#endif
     if (!host || host->abi != P4_SDMMC_HOST_ABI || host->size != sizeof(*host) ||
         !host->acquire || !host->release || !host->set_budget ||
         !host->set_clock || !host->command || !host->now_us)
@@ -490,11 +494,23 @@ static void wifi_identify(void)
         bug("[WiFi] INIT buffer unavailable\n");
         return;
     }
+#if P4_WIFI_HOSTED_MAC
+    wlan = AllocVec(sizeof(*wlan), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!wlan)
+    {
+        FreeVec(open_buffer);
+        bug("[WiFi] WLAN metadata unavailable\n");
+        return;
+    }
+#endif
 #endif
     if (!host->acquire(host, P4_SDMMC_HOST_WAIT_US))
     {
 #if P4_WIFI_HOSTED_INIT
         FreeVec(open_buffer);
+#if P4_WIFI_HOSTED_MAC
+        FreeVec(wlan);
+#endif
 #endif
         bug("[WiFi] shared host busy\n");
         return;
@@ -517,6 +533,9 @@ static void wifi_identify(void)
         host->release(host);
 #if P4_WIFI_HOSTED_INIT
         FreeVec(open_buffer);
+#if P4_WIFI_HOSTED_MAC
+        FreeVec(wlan);
+#endif
 #endif
         return;
     }
@@ -591,13 +610,13 @@ static void wifi_identify(void)
                             wifi_budget(&context))
                         {
                             mac_attempted = 1;
-                            /* UID1 is reserved to this single outstanding
-                             * request in the physically fresh diagnostic
-                             * epoch. Not a persistent client UID allocator. */
-                            mac_ok = p4_hosted_control_get_mac(&opened.fifo_state,
+                            /* One fresh epoch, UIDs1..4, same aggregate
+                             * deadline/ledger; no retries or budget renewal. */
+                            mac_ok = p4_hosted_startup_run(wlan,
+                                &wifi_reference_profile, &opened.fifo_state,
                                 generation, &open_ops, &tx_ops,
                                 !!(opened.init.capabilities & P4_HOSTED_CONFIG_CAP_CHECKSUM),
-                                1, open_buffer, 4096, &mac_result);
+                                open_buffer, 4096);
                         }
 #endif
                     }
@@ -617,6 +636,17 @@ static void wifi_identify(void)
                      host->set_budget(host, 2000000UL))
             {
 #if P4_WIFI_HOSTED_INIT
+#if P4_WIFI_HOSTED_MAC
+                /* Stop/Deinit precede CLOSE while FIFO remains available.
+                 * This is the same2s cleanup reserve, never per-RPC budgets.
+                 * Unknown/poisoned outcomes remain a failed gate. */
+                if (wlan->entered)
+                    p4_hosted_startup_cleanup(wlan, &opened.fifo_state,
+                        generation, &open_ops, &tx_ops,
+                        !!(opened.init.capabilities & P4_HOSTED_CONFIG_CAP_CHECKSUM),
+                        open_buffer, 4096);
+                opened.fifo_poisoned = opened.fifo_state.poisoned;
+#endif
                 if (open_attempted)
                     open_cleanup_ok = p4_hosted_open_cleanup(&open_ops, &opened);
 #endif
@@ -635,6 +665,9 @@ static void wifi_identify(void)
         host->release(host);
 #if P4_WIFI_HOSTED_INIT
         FreeVec(open_buffer);
+#if P4_WIFI_HOSTED_MAC
+        FreeVec(wlan);
+#endif
 #endif
         bug("[WiFi] slot1 clock failed\n");
         return;
@@ -651,7 +684,7 @@ static void wifi_identify(void)
     success = success && reply_attempted && reply_ok;
 #endif
 #if P4_WIFI_HOSTED_MAC
-    success = success && mac_attempted && mac_ok;
+    success = success && mac_attempted && mac_ok && wlan->cleanup_success;
 #endif
     host->set_budget(host, 0);
     host->release(host);
@@ -752,18 +785,43 @@ static void wifi_identify(void)
         opened.fifo_state.poisoned);
 #endif
 #if P4_WIFI_HOSTED_MAC
+    /* Bits0..4: Init, Mode, Start, Stop, Deinit. Status values without their
+     * valid bit are only initialized metadata, never remote acknowledgments. */
+    Delay(5);
+    bug("[WiFi] WLAN attempted=%02x valid=%02x written=%02x\n",
+        wlan->init.attempted | (wlan->mode.attempted << 1) |
+        (wlan->start.attempted << 2) | (wlan->stop.attempted << 3) |
+        (wlan->deinit.attempted << 4),
+        wlan->init.status_valid | (wlan->mode.status_valid << 1) |
+        (wlan->start.status_valid << 2) | (wlan->stop.status_valid << 3) |
+        (wlan->deinit.status_valid << 4),
+        wlan->init.write_called | (wlan->mode.write_called << 1) |
+        (wlan->start.write_called << 2) | (wlan->stop.write_called << 3) |
+        (wlan->deinit.write_called << 4));
+    Delay(5);
+    bug("[WiFi] WLAN init=%u mode=%u start=%u stop=%u deinit=%u cleanup=%u\n",
+        wlan->init.success, wlan->mode.success, wlan->start.success,
+        wlan->stop.success, wlan->deinit.success, wlan->cleanup_success);
+    Delay(5);
+    bug("[WiFi] WLAN status init=%d mode=%d start=%d stop=%d deinit=%d\n",
+        wlan->init.status, wlan->mode.status, wlan->start.status,
+        wlan->stop.status, wlan->deinit.status);
+    Delay(5);
+    bug("[WiFi] WLAN error init=%u mode=%u start=%u stop=%u deinit=%u\n",
+        wlan->init.error, wlan->mode.error, wlan->start.error,
+        wlan->stop.error, wlan->deinit.error);
     Delay(5);
     bug("[WiFi] MAC attempted=%u ok=%u error=%u polls=%u\n",
-        mac_attempted, mac_ok, mac_result.error, mac_result.polls);
+        wlan->mac_attempted, mac_ok, wlan->mac.error, wlan->mac.polls);
     Delay(5);
     bug("[WiFi] MAC matched=%u status=%d events=%u unmatched=%u\n",
-        mac_result.matched, mac_result.mac.status, mac_result.events,
-        mac_result.unmatched);
+        wlan->mac.matched, wlan->mac.mac.status, wlan->mac.events,
+        wlan->mac.unmatched);
     Delay(5);
     bug("[WiFi] MAC valid=%u %02x:%02x:%02x:%02x:%02x:%02x\n",
-        mac_result.mac.valid_mac, mac_result.mac.mac[0], mac_result.mac.mac[1],
-        mac_result.mac.mac[2], mac_result.mac.mac[3], mac_result.mac.mac[4],
-        mac_result.mac.mac[5]);
+        wlan->mac.mac.valid_mac, wlan->mac.mac.mac[0], wlan->mac.mac.mac[1],
+        wlan->mac.mac.mac[2], wlan->mac.mac.mac[3], wlan->mac.mac.mac[4],
+        wlan->mac.mac.mac[5]);
 #endif
     for (snapshot_index = 0; snapshot_index < WIFI_SNAPSHOT_WORDS; ++snapshot_index)
     {
@@ -772,6 +830,9 @@ static void wifi_identify(void)
              before[snapshot_index], after[snapshot_index]);
     }
     /* No inference of firmware/protocol compatibility from SDIO enumeration. */
+#if P4_WIFI_HOSTED_MAC
+    FreeVec(wlan);
+#endif
 }
 #endif
 
