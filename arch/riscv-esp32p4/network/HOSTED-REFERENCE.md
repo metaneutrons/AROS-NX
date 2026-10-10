@@ -231,3 +231,44 @@ N1R still needs uncompensated early-failure return. Reference function/OPEN
 mutations persist in powered C6 state; P4 flash restoration does not undo them.
 Use the exact working card/bootstrap path for native comparison rather than
 infer firmware incompatibility from prior timeouts. C6 firmware unchanged.
+
+## Recovered working host WiFiInit profile (2026-10-10)
+
+Use the actual reference-app/build-v6 configuration, not the separate
+idf_sdio_reference project or a new SDK's unexpanded defaults. Its built app
+and CPU360 readback are byte-identical SHA-256349e8c588870d98e938055ac008dd3d5e4de5b430b298233c7bd7c94ad6ba900.
+The generated sdkconfig.h is SHA-256555142211028a03b54d50b339ebb09660793ddf2257fdf905d47b8199048c5cf.
+Expanding IDF6.0.1 WIFI_INIT_CONFIG_DEFAULT() with that build's reference.c
+compile command, followed by its explicit nvs_enable=0 override, yields:
+
+| RPC field | Name | Value |
+| --- | --- | --- |
+| 1 | static_rx_buf_num | 10 |
+| 2 | dynamic_rx_buf_num | 32 |
+| 3 | tx_buf_type | 0 |
+| 4 | static_tx_buf_num | 16 |
+| 5 | dynamic_tx_buf_num | 0 |
+| 6 | cache_tx_buf_num | 0 |
+| 7 | csi_enable | 0 |
+| 8 | ampdu_rx_enable | 1 |
+| 9 | ampdu_tx_enable | 1 |
+| 10 | amsdu_tx_enable | 0 |
+| 11 | nvs_enable | 0 (explicit app override) |
+| 12 | nano_enable | 0 |
+| 13 | rx_ba_win | 6 |
+| 14 | wifi_task_core_id | 0 |
+| 15 | beacon_max_len | 752 |
+| 16 | mgmt_sbuf_num | 32 |
+| 17 | feature_caps (uint64) | 129 /0x81 |
+| 18 | sta_disconnected_pm (bool) | true |
+| 19 | espnow_max_encrypt_num | 7 |
+| 20 | magic | 0x1f2f3f4f |
+
+These are recovered semantic host values, not a captured RPC packet or proof
+of installed C6 source/binary identity. The pinned host maps these20 fields
+individually; the slave replaces all20 defaults with decoded values. IDF6's
+additional struct members/pointers are not part of the legacy schema and must
+not be serialized by copying its raw layout. Native hosted_wifi.c now encodes
+the typed body but deliberately provides no default profile. The caller must
+explicitly select and validate its compatibility profile. Native runtime
+initialization/cleanup and hardware success remain separate open gates.

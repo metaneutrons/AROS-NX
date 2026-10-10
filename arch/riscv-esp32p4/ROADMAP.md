@@ -119,7 +119,7 @@ gate: compensated output is not the native display contract.
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; MAC initialization ordering failure; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; GetMAC returns correlated0x3001 (WiFi not initialized), so overall diagnostic fails. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
-| N1C | N1 bounded sequential control foundation | `host tested and standalone RV32 compile verified; runtime initialization pending` | Existing FIFO reused for allowlisted Init/SetMode/Start/Stop/Deinit/GetMAC envelopes with exact response ID/UID and owned body. Control2413/TX2614/FIFO1245361/OPEN716 checks each O0/O2 ASan/UBSan in isolated local Linux container pass. Post-ack unread RX failures poison matching session; stale-generation helper calls preserve replacement ledger. No UID allocator/fragmentation, full typed init/runtime sequence or new package deployment yet. No additional hardware change; original verified baseline remains running. |
+| N1C | N1 bounded sequential control foundation | `typed initialization and control host tested/standalone RV32 compile verified; runtime initialization pending` | Existing FIFO reused for allowlisted Init/SetMode/Start/Stop/Deinit/GetMAC envelopes with exact response ID/UID and owned body. Control2413/TX2614/FIFO1245361/OPEN716 plus typed WiFi149 checks each O0/O2 ASan/UBSan in isolated local Linux container pass. All20 typed config scalars encoded explicitly; actual working IDF6 host config recovered, NVSdisabled. Post-ack unread RX failures poison matching session; stale-generation helper calls preserve replacement ledger. No UID allocator/fragmentation, runtime init/cleanup sequence or new package deployment yet. Original verified baseline unchanged. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -564,7 +564,12 @@ replacement: shared-controller ownership still serializes all transport calls.
 Linux O0/O2 sanitizer models and standalone RV32 compilation pass; native macOS
 test launches hang before main and do not count as passes. No complete package
 rebuild or hardware deployment in this change. Full typed WiFiInit and the
-Init/STA/Start/MAC plus bounded Stop/Deinit runtime sequence remain next.
+SetMode/Start/Stop/Deinit status codecs now separately pass149 Linux O0/O2
+sanitizer checks each and standalone RV32 compilation. The actual working
+IDF6 host config is recovered from its generated configuration and expanded
+initializer; see HOSTED-REFERENCE.md. This is semantic source provenance, not
+a captured request or installed slave firmware identity. The Init/STA/Start/
+MAC plus bounded Stop/Deinit runtime sequence remains next.
 
 First native hardware result: one externally coordinated fresh-C6 run accepts
 INIT chip0x0d/caps0x0d and the config transmission, then receives a correlated
@@ -31668,6 +31673,47 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   baseline remains unchanged. Next full typed20-field initialization codec
   from actual working IDF6 config, bounded initialization/cleanup integration,
   fresh package verification and coordinated first-C6 hardware gate.
+
+### 2026-10-10 - N1C complete typed WiFi initialization codec and source profile
+
+- State: pure typed codec host tested and standalone RV32 compile verified,
+  following b617917b4d. Not linked into a new BSP and no hardware operation.
+- WiFiInit278 explicitly serializes all20 cfg fields inside request field1;
+  field17 uint64 and negative int32 sign extension retained. SetMode260 only
+  STA1;279/280/281 empty Deinit/Start/Stop. Response IDs are request+256,
+  exact nonzero UID/type enforced; proto3 omitted status means zero, but
+  malformed/duplicate/wrong-wire/oversized body refuses unchanged.
+  Typed codec supplies no default values or firmware-compatibility guarantee.
+- Main review corrected config range-overflow validation before dereference;
+  fake-pointer tests added. Independent schema/alias/transaction review finds
+  no blocking defect. Linux local Colima image identity/procedure as in the
+  preceding evidence, network disabled/no hardware mount: O0/O2 ASan+UBSan
+  149 checks each and host import gate pass, complete process exits0.
+  Native macOS launch remains inconclusive, not a pass. Main independently
+  reruns the Linux suite; linux-wifi-codec.log SHA-256
+  713358d2b302d646cc872917224725cc797e3093e875c433d930d9b2c1dc094c.
+- Evidence same native-control-exchange.KnVrtu directory. RV32 GCC16.2 strict
+  C99/O2/freestanding/rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f:
+  hosted_wifi.o8420B SHA-256
+  698cf1beb30fe96fb45134ae3d11ace0a756ce40dfc13e40df7e941aa568776b;
+  only undefined import p4_hosted_rpc_encode. No module/package build claimed.
+- Profile: actual reference-app/build-v6/config/sdkconfig.h SHA-256
+  555142211028a03b54d50b339ebb09660793ddf2257fdf905d47b8199048c5cf;
+  sdkconfig SHA-256
+  e6130333056e14d74c7758828ca6eaaed07d082bd9f28205393cdc2098c7afe2;
+  source main/reference.c SHA-256
+  4bd063cb3532e50e26f317fc6fb8729d7b0dc26fce52479085d6b392ed22a4ce.
+  Actual built CPU360 image and cpu360-reference-read.bin independently hash
+  349e8c588870d98e938055ac008dd3d5e4de5b430b298233c7bd7c94ad6ba900,
+  cmp exact. Thus actual generated host config, IDF6 default macro and explicit
+  nvs_enable0 establish the20 semantic values used in the successful reference;
+  not an on-wire packet dump or installed C6 firmware lineage. Values retained
+  in HOSTED-REFERENCE.md, including feature_caps129/magic0x1f2f3f4f.
+- Safety: no serial open/reset/flash/SD writes/credentials/C6 writes or physical
+  interaction. Original verified baseline unchanged. Next independent pinned
+  protobuf-c interoperability tests, then complete bounded runtime init/STA/
+  start/MAC and Stop/Deinit before CLOSE/restoration; new package/hardware gates
+  remain separate and require fresh C6 startup coordination.
 
 ## Evidence-entry template
 

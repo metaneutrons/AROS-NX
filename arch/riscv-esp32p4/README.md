@@ -14,9 +14,13 @@ response bodies and exact UID/operation correlation. Linux O0/O2 sanitizer
 models pass2,413 control,2,614 TX,1,245,361 FIFO and716 OPEN checks each.
 Unread acknowledged RX failures invalidate the session; stale-generation calls
 cannot alter a replacement ledger. Standalone RV32 objects compile without
-libc imports. This is host/build verification only: the full WiFiInit body and
-runtime initialization/cleanup sequence are still pending, and no new package
-was linked or flashed. The board remains on the verified original baseline.
+libc imports. The full typed WiFiInit body and SetMode/Start/Stop/Deinit status
+codecs now pass149 O0/O2 Linux sanitizer checks each and standalone RV32
+compilation. The working IDF6 host's20 configuration values are documented in
+HOSTED-REFERENCE.md; they are derived source semantics, not a packet capture or
+installed C6 binary identity. Runtime initialization/cleanup remains pending;
+no new package was linked or flashed. The board remains on the verified
+original baseline.
 
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection
