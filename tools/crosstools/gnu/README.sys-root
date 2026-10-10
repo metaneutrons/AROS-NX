@@ -1,0 +1,5 @@
+This directory anchors the compiler's relocatable default sysroot.
+It does not contain an AROS SDK, target headers or target runtime libraries.
+
+Supply your target SDK explicitly with --sysroot when compiling or linking.
+Do not use the producer's temporary build SDK on the consumer host.

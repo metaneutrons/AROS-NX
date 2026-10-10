@@ -34,6 +34,11 @@ jobs:
           persist-credentials: false
       - name: Test CI contracts
         run: python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
+      - name: Test GNU release recipe contracts
+        run: |
+          sh tools/crosstools/gnu/tests/test-header-closure.sh
+          sh tools/crosstools/gnu/tests/test-release-layout.sh
+          sh tools/crosstools/gnu/tests/test-zstd-closure.sh
       - name: Select product qualification and report line endings
         id: plan
         run: python3 scripts/ci/ci_hygiene.py plan
