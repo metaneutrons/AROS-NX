@@ -585,6 +585,93 @@ static size_t make_response(uint8_t *frame, size_t capacity, uint32_t uid,
         body, body_size, checksum_enabled, P4_HOSTED_SERIAL, 0, 0, 0);
 }
 
+static size_t make_request(uint8_t *bytes, size_t capacity, uint32_t uid,
+                           uint32_t id, const uint8_t *body,
+                           size_t body_size)
+{
+    return make_rpc(bytes, capacity, P4_HOSTED_RPC_TYPE_REQUEST, id, uid,
+                    body, body_size);
+}
+
+static size_t make_expected_exchange_frame(uint8_t *bytes, size_t capacity,
+                                           const uint8_t *request,
+                                           size_t request_size,
+                                           unsigned checksum_enabled)
+{
+    uint8_t serial[HOSTED_SERIAL_MESSAGE_OVERHEAD +
+                   P4_HOSTED_CONTROL_MAX_RPC_SIZE];
+
+    if (request_size > P4_HOSTED_CONTROL_MAX_RPC_SIZE ||
+        capacity < P4_HOSTED_HEADER_SIZE + HOSTED_SERIAL_MESSAGE_OVERHEAD +
+                   request_size)
+        return 0;
+    serial[0] = 1u;
+    put_le16(serial + 1u, HOSTED_SERIAL_ENDPOINT_SIZE);
+    memcpy(serial + 3u, "RPCRsp", HOSTED_SERIAL_ENDPOINT_SIZE);
+    serial[9] = 2u;
+    put_le16(serial + 10u, (uint16_t)request_size);
+    memcpy(serial + HOSTED_SERIAL_MESSAGE_OVERHEAD, request, request_size);
+    return make_frame(bytes, capacity, P4_HOSTED_SERIAL, 0u, 0u, 0u,
+                      checksum_enabled, serial,
+                      HOSTED_SERIAL_MESSAGE_OVERHEAD + request_size);
+}
+
+static int call_exchange(struct fixture *fixture, uint32_t generation,
+                         const uint8_t *request, size_t request_size,
+                         uint8_t *buffer, size_t capacity,
+                         struct p4_hosted_control_result *result)
+{
+    return p4_hosted_control_exchange(&fixture->state, generation,
+        &fixture->rx_ops, &fixture->tx_ops, 0u, request, request_size,
+        buffer, capacity, result);
+}
+
+static void verify_exchange_request(struct fixture *fixture,
+                                    const uint8_t *request,
+                                    size_t request_size, uint32_t uid,
+                                    uint32_t request_id, const uint8_t *body,
+                                    size_t body_size,
+                                    unsigned expected_writes)
+{
+    uint8_t expected[TEST_FRAME_CAPACITY];
+    size_t expected_size = make_expected_exchange_frame(
+        expected, sizeof expected, request, request_size, 0u);
+    struct p4_hosted_frame frame;
+    struct hosted_serial_message serial;
+    struct p4_hosted_rpc rpc;
+
+    CHECK(expected_size != 0u);
+    CHECK(fixture->fake.tx_fifo_writes == expected_writes);
+    CHECK(fixture->fake.tx_token_reads == expected_writes);
+    CHECK(fixture->fake.token_address_last == P4_HOSTED_TX_TOKEN_ADDRESS);
+    CHECK(fixture->fake.token_last == fixture->fake.token);
+    CHECK(fixture->result.tx.token == fixture->fake.token);
+    CHECK(fixture->fake.tx_capture_size == expected_size);
+    CHECK(memcmp(fixture->fake.tx_capture, expected, expected_size) == 0);
+    CHECK(fixture->fake.tx_plan.logical_bytes == expected_size);
+    CHECK(fixture->fake.tx_plan.bus_bytes == 512u);
+    CHECK(fixture->fake.tx_plan.credits == 1u);
+    CHECK(fixture->result.tx.write_called == 1u);
+    CHECK(fixture->result.tx.completion_well_formed == 1u);
+    CHECK(fixture->result.tx.success == 1u);
+    CHECK(p4_hosted_decode(fixture->fake.tx_capture,
+                           fixture->fake.tx_capture_size, 0u, &frame));
+    CHECK(frame.interface_type == P4_HOSTED_SERIAL);
+    CHECK(frame.interface_number == 0u && frame.flags == 0u);
+    CHECK(frame.packet_type == 0u && frame.throttle == 0u);
+    CHECK(hosted_serial_decode(frame.payload, frame.payload_size, &serial));
+    CHECK(serial.endpoint == HOSTED_SERIAL_ENDPOINT_RPCRSP);
+    CHECK(p4_hosted_rpc_decode(serial.protobuf, serial.protobuf_size, &rpc));
+    CHECK(rpc.msg_type == P4_HOSTED_RPC_TYPE_REQUEST);
+    CHECK(rpc.msg_id == request_id);
+    CHECK(rpc.uid == uid);
+    CHECK(rpc.payload_size == body_size);
+    if (body_size != 0u)
+        CHECK(memcmp(rpc.payload, body, body_size) == 0);
+    CHECK(serial.protobuf_size == request_size);
+    CHECK(memcmp(serial.protobuf, request, request_size) == 0);
+}
+
 static void verify_success_state(struct fixture *fixture, size_t rx_bytes)
 {
     CHECK(fixture->state.initialized == 1u);
@@ -779,7 +866,7 @@ static void test_trailing_malformed_and_duplicate_match(void)
                         &fixture.tx_ops, 0u, TEST_UID, fixture.buffer,
                         sizeof fixture.buffer, &fixture.result) == 0);
         CHECK(fixture.result.error == P4_HOSTED_CONTROL_PROTOCOL);
-        CHECK(fixture.result.matched == 0u);
+        CHECK(fixture.result.matched == 1u);
         CHECK(fixture.state.poisoned == 1u);
         CHECK(fixture.fake.rx_fifo_reads == 1u);
         verify_single_request(&fixture, TEST_UID, 0u);
@@ -945,10 +1032,35 @@ static void test_wrapped_counter_and_capacity_refusal(void)
     CHECK(fixture.result.error == P4_HOSTED_CONTROL_CAPACITY);
     CHECK(fixture.fake.rx_fifo_reads == 0u);
     CHECK(fixture.state.busy == 0u);
-    CHECK(fixture.state.poisoned == 0u);
+    CHECK(fixture.state.poisoned == 1u);
     CHECK(fixture.state.rx_consumed == 0u);
     CHECK(fixture.fake.tx_fifo_writes == 1u);
     verify_single_request(&fixture, TEST_UID, 0u);
+    {
+        struct p4_hosted_fifo state_before;
+        struct p4_hosted_control_result result_before;
+        uint8_t buffer_before[TEST_CAPACITY];
+        unsigned writes = fixture.fake.tx_fifo_writes;
+        unsigned raw_reads = fixture.fake.raw_reads;
+        unsigned length_reads = fixture.fake.length_reads;
+        unsigned token_reads = fixture.fake.tx_token_reads;
+
+        memcpy(&state_before, &fixture.state, sizeof state_before);
+        memcpy(&result_before, &fixture.result, sizeof result_before);
+        memcpy(buffer_before, fixture.buffer, sizeof buffer_before);
+        CHECK(call_gate(&fixture, TEST_GENERATION, &fixture.rx_ops,
+                        &fixture.tx_ops, 0u, TEST_UID, fixture.buffer,
+                        sizeof fixture.buffer, &fixture.result) == 0);
+        CHECK(memcmp(&state_before, &fixture.state, sizeof state_before) == 0);
+        CHECK(memcmp(&result_before, &fixture.result,
+                     sizeof result_before) == 0);
+        CHECK(memcmp(buffer_before, fixture.buffer,
+                     sizeof buffer_before) == 0);
+        CHECK(fixture.fake.tx_fifo_writes == writes);
+        CHECK(fixture.fake.raw_reads == raw_reads);
+        CHECK(fixture.fake.length_reads == length_reads);
+        CHECK(fixture.fake.tx_token_reads == token_reads);
+    }
 
     fixture_init(&fixture);
     fixture.fake.counter_override_enabled = 1u;
@@ -1003,7 +1115,7 @@ static void test_budget_session_and_ambiguous_rx(void)
     CHECK(fixture.fake.rx_fifo_reads == 0u);
     CHECK(fixture.state.rx_consumed == 0u);
     CHECK(fixture.state.generation == TEST_GENERATION + 1u);
-    CHECK(fixture.state.poisoned == 1u);
+    CHECK(fixture.state.poisoned == 0u);
     verify_single_request(&fixture, TEST_UID, 0u);
 
     fixture_init(&fixture);
@@ -1016,7 +1128,21 @@ static void test_budget_session_and_ambiguous_rx(void)
     CHECK(fixture.result.error == P4_HOSTED_CONTROL_BUDGET);
     CHECK(fixture.fake.rx_fifo_reads == 0u);
     CHECK(fixture.state.busy == 0u);
-    CHECK(fixture.state.poisoned == 0u);
+    CHECK(fixture.state.poisoned == 1u);
+    CHECK(fixture.state.rx_consumed == 0u);
+    verify_single_request(&fixture, TEST_UID, 0u);
+
+    fixture_init(&fixture);
+    CHECK(add_batch(&fixture.fake, response, response_size));
+    set_raws(&fixture.fake, raw, 1u);
+    fixture.fake.length_return = 0;
+    CHECK(call_gate(&fixture, TEST_GENERATION, &fixture.rx_ops,
+                    &fixture.tx_ops, 0u, TEST_UID, fixture.buffer,
+                    sizeof fixture.buffer, &fixture.result) == 0);
+    CHECK(fixture.result.error == P4_HOSTED_CONTROL_REGISTER);
+    CHECK(fixture.fake.rx_fifo_reads == 0u);
+    CHECK(fixture.state.busy == 0u);
+    CHECK(fixture.state.poisoned == 1u);
     CHECK(fixture.state.rx_consumed == 0u);
     verify_single_request(&fixture, TEST_UID, 0u);
 
@@ -1228,6 +1354,287 @@ static void test_invalid_inputs_and_state(void)
                                   0u, fixture.buffer, sizeof fixture.buffer);
 }
 
+static void test_exchange_allowlist_and_response_correlation(void)
+{
+    static const uint32_t request_ids[] = { 257u, 260u, 278u, 279u, 280u, 281u };
+    static const uint8_t body[] = { 0xffu, 0x00u, 0x7fu, 0x80u };
+    static const uint8_t request_body[] = { 0x0au, 0x01u, 0xa5u };
+    unsigned index;
+
+    for (index = 0; index < sizeof request_ids / sizeof request_ids[0]; ++index) {
+        struct fixture fixture;
+        uint8_t request[P4_HOSTED_CONTROL_MAX_RPC_SIZE];
+        uint8_t batch[TEST_CAPACITY], response[TEST_FRAME_CAPACITY];
+        uint32_t uid = UINT32_C(0x10010000) + (uint32_t)index;
+        uint32_t response_id = request_ids[index] + 256u;
+        size_t request_size, used = 0, response_size;
+        uint32_t raw[] = { P4_HOSTED_OPEN_INT_PACKET };
+
+        fixture_init(&fixture);
+        request_size = make_request(request, sizeof request, uid,
+                                    request_ids[index], request_body,
+                                    sizeof request_body);
+        CHECK(request_size != 0u);
+
+        /* Correct response ID with a stale UID must remain unmatched. */
+        response_size = make_serial_rpc_frame(response, sizeof response,
+            HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+            response_id, uid + 1u, body, sizeof body, 0u,
+            P4_HOSTED_SERIAL, 0u, 0u, 0u);
+        CHECK(response_size != 0u);
+        CHECK(append_bytes(batch, sizeof batch, &used, response, response_size));
+        /* Correct UID with the adjacent response ID must also be unmatched. */
+        response_size = make_serial_rpc_frame(response, sizeof response,
+            HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+            response_id + 1u, uid, body, sizeof body, 0u,
+            P4_HOSTED_SERIAL, 0u, 0u, 0u);
+        CHECK(response_size != 0u);
+        CHECK(append_bytes(batch, sizeof batch, &used, response, response_size));
+        response_size = make_serial_rpc_frame(response, sizeof response,
+            HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+            response_id, uid, body, sizeof body, 0u,
+            P4_HOSTED_SERIAL, 0u, 0u, 0u);
+        CHECK(response_size != 0u);
+        CHECK(append_bytes(batch, sizeof batch, &used, response, response_size));
+        CHECK(add_batch(&fixture.fake, batch, used));
+        set_raws(&fixture.fake, raw, 1u);
+
+        CHECK(call_exchange(&fixture, TEST_GENERATION, request, request_size,
+                            fixture.buffer, sizeof fixture.buffer,
+                            &fixture.result) == 1);
+        CHECK(fixture.result.error == P4_HOSTED_CONTROL_OK);
+        CHECK(fixture.result.success == 1u);
+        CHECK(fixture.result.matched == 1u);
+        CHECK(fixture.result.unmatched == 2u);
+        CHECK(fixture.result.response_id == response_id);
+        CHECK(fixture.result.response_uid == uid);
+        CHECK(fixture.result.response_size == sizeof body);
+        CHECK(memcmp(fixture.result.response_body, body, sizeof body) == 0);
+        CHECK(fixture.result.response_body[sizeof body] == 0u);
+        CHECK(fixture.state.tx_sent == 1u);
+        CHECK(fixture.state.rx_consumed == (uint32_t)used);
+        CHECK(fixture.state.poisoned == 0u);
+        CHECK(fixture.fake.rx_fifo_reads == 1u);
+        verify_exchange_request(&fixture, request, request_size, uid,
+                                request_ids[index], request_body,
+                                sizeof request_body, 1u);
+
+        /* Arbitrary operation-specific bytes are owned by the result, even
+         * though this fixture is not a valid nested operation message. */
+        memset(fixture.buffer, 0, sizeof fixture.buffer);
+        CHECK(memcmp(fixture.result.response_body, body, sizeof body) == 0);
+    }
+}
+
+static void test_exchange_reuses_persistent_fifo_with_fresh_uids(void)
+{
+    struct fixture fixture;
+    static const uint8_t request_body_1[] = { 0x10u, 0x01u };
+    static const uint8_t request_body_2[] = { 0x08u, 0x02u, 0x10u, 0x01u };
+    static const uint8_t response_body_1[] = { 0xdeu, 0xadu };
+    static const uint8_t response_body_2[] = { 0x00u, 0x10u, 0xffu };
+    uint8_t request_1[P4_HOSTED_CONTROL_MAX_RPC_SIZE];
+    uint8_t request_2[P4_HOSTED_CONTROL_MAX_RPC_SIZE];
+    uint8_t response[TEST_FRAME_CAPACITY];
+    uint32_t raw[] = { P4_HOSTED_OPEN_INT_PACKET, P4_HOSTED_OPEN_INT_PACKET };
+    size_t request_size_1, request_size_2, response_size_1, response_size_2;
+    uint32_t initial_rx;
+
+    fixture_init(&fixture);
+    request_size_1 = make_request(request_1, sizeof request_1, 9001u, 257u,
+                                  request_body_1, sizeof request_body_1);
+    request_size_2 = make_request(request_2, sizeof request_2, 9002u, 260u,
+                                  request_body_2, sizeof request_body_2);
+    response_size_1 = make_serial_rpc_frame(response, sizeof response,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE, 513u,
+        9001u, response_body_1, sizeof response_body_1, 0u,
+        P4_HOSTED_SERIAL, 0u, 0u, 0u);
+    CHECK(request_size_1 != 0u && request_size_2 != 0u);
+    CHECK(response_size_1 != 0u);
+    CHECK(add_batch(&fixture.fake, response, response_size_1));
+    response_size_2 = make_serial_rpc_frame(response, sizeof response,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE, 516u,
+        9002u, response_body_2, sizeof response_body_2, 0u,
+        P4_HOSTED_SERIAL, 0u, 0u, 0u);
+    CHECK(response_size_2 != 0u);
+    CHECK(add_batch(&fixture.fake, response, response_size_2));
+    set_raws(&fixture.fake, raw, 2u);
+
+    CHECK(call_exchange(&fixture, TEST_GENERATION, request_1, request_size_1,
+                        fixture.buffer, sizeof fixture.buffer,
+                        &fixture.result) == 1);
+    CHECK(fixture.result.response_id == 513u);
+    CHECK(fixture.result.response_uid == 9001u);
+    CHECK(fixture.result.response_size == sizeof response_body_1);
+    CHECK(memcmp(fixture.result.response_body, response_body_1,
+                 sizeof response_body_1) == 0);
+    verify_exchange_request(&fixture, request_1, request_size_1, 9001u, 257u,
+                            request_body_1, sizeof request_body_1, 1u);
+    CHECK(fixture.state.tx_sent == 1u);
+    CHECK(fixture.state.rx_consumed == (uint32_t)response_size_1);
+    CHECK(fixture.state.busy == 0u && fixture.state.poisoned == 0u);
+
+    initial_rx = fixture.state.rx_consumed;
+    fixture.fake.token = UINT32_C(2) << 16;
+    CHECK(call_exchange(&fixture, TEST_GENERATION, request_2, request_size_2,
+                        fixture.buffer, sizeof fixture.buffer,
+                        &fixture.result) == 1);
+    CHECK(fixture.result.response_id == 516u);
+    CHECK(fixture.result.response_uid == 9002u);
+    CHECK(fixture.result.response_size == sizeof response_body_2);
+    CHECK(memcmp(fixture.result.response_body, response_body_2,
+                 sizeof response_body_2) == 0);
+    verify_exchange_request(&fixture, request_2, request_size_2, 9002u, 260u,
+                            request_body_2, sizeof request_body_2, 2u);
+    CHECK(fixture.state.initialized == 1u);
+    CHECK(fixture.state.generation == TEST_GENERATION);
+    CHECK(fixture.state.pool_limit == TEST_POOL_LIMIT);
+    CHECK(fixture.state.tx_sent == 2u);
+    CHECK(fixture.state.rx_consumed ==
+          (initial_rx + (uint32_t)response_size_2));
+    CHECK(fixture.state.busy == 0u && fixture.state.poisoned == 0u);
+    CHECK(fixture.fake.tx_fifo_writes == 2u);
+    CHECK(fixture.fake.rx_fifo_reads == 2u);
+}
+
+static void test_exchange_timeout_consumes_one_transmission(void)
+{
+    struct fixture fixture;
+    static const uint8_t body[] = { 0x05u, 0x01u };
+    uint8_t request[P4_HOSTED_CONTROL_MAX_RPC_SIZE];
+    size_t request_size;
+
+    fixture_init(&fixture);
+    request_size = make_request(request, sizeof request, 4321u, 279u,
+                                body, sizeof body);
+    CHECK(request_size != 0u);
+    CHECK(call_exchange(&fixture, TEST_GENERATION, request, request_size,
+                        fixture.buffer, sizeof fixture.buffer,
+                        &fixture.result) == 0);
+    CHECK(fixture.result.error == P4_HOSTED_CONTROL_TIMEOUT);
+    CHECK(fixture.result.success == 0u);
+    CHECK(fixture.result.polls == P4_HOSTED_CONTROL_MAX_POLLS);
+    CHECK(fixture.fake.raw_reads == P4_HOSTED_CONTROL_MAX_POLLS);
+    CHECK(fixture.fake.yield_calls == P4_HOSTED_CONTROL_MAX_POLLS - 1u);
+    CHECK(fixture.fake.tx_fifo_writes == 1u);
+    CHECK(fixture.fake.tx_token_reads == 1u);
+    CHECK(fixture.fake.rx_fifo_reads == 0u);
+    CHECK(fixture.state.tx_sent == 1u);
+    CHECK(fixture.state.rx_consumed == 0u);
+    CHECK(fixture.state.poisoned == 0u);
+    verify_exchange_request(&fixture, request, request_size, 4321u, 279u,
+                            body, sizeof body, 1u);
+}
+
+static void test_exchange_oversized_body_and_preflight_failures(void)
+{
+    struct fixture fixture;
+    static const uint8_t request_body[] = { 0x01u };
+    uint8_t request[P4_HOSTED_CONTROL_MAX_RPC_SIZE];
+    uint8_t large_body[P4_HOSTED_CONTROL_MAX_RPC_SIZE + 1u];
+    uint8_t response[TEST_FRAME_CAPACITY];
+    uint32_t raw[] = { P4_HOSTED_OPEN_INT_PACKET };
+    size_t request_size, response_size;
+    unsigned index;
+
+    fixture_init(&fixture);
+    request_size = make_request(request, sizeof request, 721u, 278u,
+                                request_body, sizeof request_body);
+    CHECK(request_size != 0u);
+    for (index = 0; index < sizeof large_body; ++index)
+        large_body[index] = (uint8_t)(index * 37u + 11u);
+    response_size = make_serial_rpc_frame(response, sizeof response,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE, 534u,
+        721u, large_body, sizeof large_body, 0u,
+        P4_HOSTED_SERIAL, 0u, 0u, 0u);
+    CHECK(response_size != 0u);
+    CHECK(add_batch(&fixture.fake, response, response_size));
+    set_raws(&fixture.fake, raw, 1u);
+    CHECK(call_exchange(&fixture, TEST_GENERATION, request, request_size,
+                        fixture.buffer, sizeof fixture.buffer,
+                        &fixture.result) == 0);
+    CHECK(fixture.result.error == P4_HOSTED_CONTROL_PROTOCOL);
+    CHECK(fixture.result.matched == 0u);
+    CHECK(fixture.result.response_size == 0u);
+    CHECK(fixture.result.batches == 1u);
+    CHECK(fixture.state.rx_consumed == (uint32_t)response_size);
+    CHECK(fixture.state.poisoned == 1u);
+    CHECK(fixture.fake.rx_fifo_reads == 1u);
+    verify_exchange_request(&fixture, request, request_size, 721u, 278u,
+                            request_body, sizeof request_body, 1u);
+
+    {
+        const uint8_t malformed_request[] = { 0x08u, 0x01u, 0x10u, 0x81u };
+        const uint8_t zero_uid_request[] = { 0x08u, 0x01u, 0x10u, 0x81u,
+            0x02u, 0x8au, 0x10u, 0x00u };
+        const uint8_t unsupported_request[] = { 0x08u, 0x01u, 0x10u, 0x82u,
+            0x02u, 0x18u, 0x01u, 0x92u, 0x10u, 0x00u };
+        const uint8_t response_as_request[] = { 0x08u, 0x02u, 0x10u, 0x81u,
+            0x04u, 0x18u, 0x01u, 0x8au, 0x20u, 0x00u };
+        const uint8_t *invalid_requests[] = {
+            malformed_request, zero_uid_request, unsupported_request,
+            response_as_request, NULL
+        };
+        const size_t invalid_sizes[] = {
+            sizeof malformed_request, sizeof zero_uid_request,
+            sizeof unsupported_request, sizeof response_as_request, 0u
+        };
+
+        for (index = 0; index < sizeof invalid_sizes / sizeof invalid_sizes[0];
+             ++index) {
+            struct p4_hosted_fifo state_before;
+            struct p4_hosted_control_result result_before;
+            uint8_t buffer_before[TEST_CAPACITY];
+            uint8_t request_before[sizeof malformed_request];
+            const uint8_t *input = invalid_requests[index];
+            size_t input_size = invalid_sizes[index];
+
+            fixture_init(&fixture);
+            memcpy(&state_before, &fixture.state, sizeof state_before);
+            memcpy(&result_before, &fixture.result, sizeof result_before);
+            memcpy(buffer_before, fixture.buffer, sizeof buffer_before);
+            memset(request_before, 0, sizeof request_before);
+            if (input && input_size <= sizeof request_before)
+                memcpy(request_before, input, input_size);
+            CHECK(call_exchange(&fixture, TEST_GENERATION, input, input_size,
+                        fixture.buffer, sizeof fixture.buffer,
+                        &fixture.result) == 0);
+            CHECK(memcmp(&state_before, &fixture.state,
+                         sizeof state_before) == 0);
+            CHECK(memcmp(&result_before, &fixture.result,
+                         sizeof result_before) == 0);
+            CHECK(memcmp(buffer_before, fixture.buffer,
+                         sizeof buffer_before) == 0);
+            if (input && input_size <= sizeof request_before)
+                CHECK(memcmp(request_before, input, input_size) == 0);
+            no_callbacks(&fixture.fake);
+        }
+    }
+
+    fixture_init(&fixture);
+    memset(request, 0x5a, sizeof request);
+    {
+        struct p4_hosted_fifo state_before;
+        struct p4_hosted_control_result result_before;
+        uint8_t buffer_before[TEST_CAPACITY];
+        uint8_t request_before[sizeof request];
+        memcpy(&state_before, &fixture.state, sizeof state_before);
+        memcpy(&result_before, &fixture.result, sizeof result_before);
+        memcpy(buffer_before, fixture.buffer, sizeof buffer_before);
+        memcpy(request_before, request, sizeof request_before);
+        CHECK(call_exchange(&fixture, TEST_GENERATION, request,
+                    sizeof request, fixture.buffer, sizeof fixture.buffer,
+                    &fixture.result) == 0);
+        CHECK(memcmp(&state_before, &fixture.state, sizeof state_before) == 0);
+        CHECK(memcmp(&result_before, &fixture.result,
+                     sizeof result_before) == 0);
+        CHECK(memcmp(buffer_before, fixture.buffer,
+                     sizeof buffer_before) == 0);
+        CHECK(memcmp(request_before, request, sizeof request_before) == 0);
+        no_callbacks(&fixture.fake);
+    }
+}
+
 union aligned_alias_region {
     long double alignment;
     uint8_t bytes[8192];
@@ -1304,6 +1711,99 @@ static void test_pairwise_alias_refusals(void)
     }
 }
 
+static void test_exchange_request_alias_refusals(void)
+{
+    unsigned object;
+
+    for (object = 0; object < 5u; ++object) {
+        struct fixture fixture;
+        union aligned_alias_region area;
+        uint8_t area_before[sizeof area.bytes];
+        struct p4_hosted_fifo state_before;
+        struct p4_hosted_control_result result_before;
+        uint8_t buffer_before[TEST_CAPACITY];
+        struct p4_hosted_fifo *state;
+        const struct p4_hosted_open_ops *rx;
+        const struct p4_hosted_tx_ops *tx;
+        uint8_t *buffer;
+        struct p4_hosted_control_result *result;
+        const uint8_t *request;
+        size_t capacity = TEST_CAPACITY;
+        uintptr_t base;
+        size_t object_size;
+
+        fixture_init(&fixture);
+        memcpy(&state_before, &fixture.state, sizeof state_before);
+        memcpy(&result_before, &fixture.result, sizeof result_before);
+        memcpy(buffer_before, fixture.buffer, sizeof buffer_before);
+        memset(&area, 0x39, sizeof area);
+        memcpy(area_before, area.bytes, sizeof area_before);
+        state = &fixture.state;
+        rx = &fixture.rx_ops;
+        tx = &fixture.tx_ops;
+        buffer = fixture.buffer;
+        result = &fixture.result;
+        base = (uintptr_t)area.bytes;
+
+        switch (object) {
+        case 0:
+            state = (struct p4_hosted_fifo *)base;
+            object_size = sizeof *state;
+            break;
+        case 1:
+            rx = (const struct p4_hosted_open_ops *)base;
+            object_size = sizeof *rx;
+            break;
+        case 2:
+            tx = (const struct p4_hosted_tx_ops *)base;
+            object_size = sizeof *tx;
+            break;
+        case 3:
+            buffer = area.bytes;
+            capacity = TEST_CAPACITY;
+            object_size = capacity;
+            break;
+        default:
+            result = (struct p4_hosted_control_result *)base;
+            object_size = sizeof *result;
+            break;
+        }
+        request = (const uint8_t *)(base + object_size - 1u);
+        CHECK(p4_hosted_control_exchange(state, TEST_GENERATION, rx, tx, 0u,
+                request, 1u, buffer, capacity, result) == 0);
+        CHECK(memcmp(area_before, area.bytes, sizeof area_before) == 0);
+        CHECK(memcmp(&state_before, &fixture.state, sizeof state_before) == 0);
+        CHECK(memcmp(&result_before, &fixture.result,
+                     sizeof result_before) == 0);
+        CHECK(memcmp(buffer_before, fixture.buffer,
+                     sizeof buffer_before) == 0);
+        no_callbacks(&fixture.fake);
+    }
+
+    {
+        struct fixture fixture;
+        struct p4_hosted_fifo state_before;
+        struct p4_hosted_control_result result_before;
+        uint8_t buffer_before[TEST_CAPACITY];
+        uintptr_t near_end = UINTPTR_MAX - 1u;
+
+        fixture_init(&fixture);
+        memcpy(&state_before, &fixture.state, sizeof state_before);
+        memcpy(&result_before, &fixture.result, sizeof result_before);
+        memcpy(buffer_before, fixture.buffer, sizeof buffer_before);
+        CHECK(p4_hosted_control_exchange(&fixture.state, TEST_GENERATION,
+                &fixture.rx_ops, &fixture.tx_ops, 0u,
+                (const uint8_t *)near_end, 4u, fixture.buffer,
+                sizeof fixture.buffer, &fixture.result) == 0);
+        CHECK(memcmp(&state_before, &fixture.state, sizeof state_before) == 0);
+        CHECK(memcmp(&result_before, &fixture.result,
+                     sizeof result_before) == 0);
+        CHECK(memcmp(buffer_before, fixture.buffer,
+                     sizeof buffer_before) == 0);
+        no_callbacks(&fixture.fake);
+    }
+}
+
 static void test_pointer_range_overflow_refusals(void)
 {
     unsigned invalid_index;
@@ -1358,7 +1858,12 @@ int main(void)
     test_budget_session_and_ambiguous_rx();
     test_endpoint_profile_and_checksum();
     test_invalid_inputs_and_state();
+    test_exchange_allowlist_and_response_correlation();
+    test_exchange_reuses_persistent_fifo_with_fresh_uids();
+    test_exchange_timeout_consumes_one_transmission();
+    test_exchange_oversized_body_and_preflight_failures();
     test_pairwise_alias_refusals();
+    test_exchange_request_alias_refusals();
     test_pointer_range_overflow_refusals();
     printf("hosted_control: %lu checks passed\n", checks);
     return 0;

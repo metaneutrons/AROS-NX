@@ -8,6 +8,16 @@ comparison gates. The source match does not establish installed C6 binary
 identity. The complete reference now passes one hardware MAC/scan gate;
 native AROS Wi-Fi remains open.
 
+The native control foundation now supports bounded sequential Init/SetMode/
+Start/Stop/Deinit/GetMAC envelopes on one existing FIFO ledger, with owned
+response bodies and exact UID/operation correlation. Linux O0/O2 sanitizer
+models pass2,413 control,2,614 TX,1,245,361 FIFO and716 OPEN checks each.
+Unread acknowledged RX failures invalidate the session; stale-generation calls
+cannot alter a replacement ledger. Standalone RV32 objects compile without
+libc imports. This is host/build verification only: the full WiFiInit body and
+runtime initialization/cleanup sequence are still pending, and no new package
+was linked or flashed. The board remains on the verified original baseline.
+
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection
 also exposed and corrected the default P4>=3.x target; the corrected build

@@ -17,8 +17,10 @@ struct p4_hosted_fifo_plan {
 
 /* One outstanding transfer under shared-host ownership. Counters start at
  * zero only after a known new slave transport session, never on reacquiring
- * the shared controller. A changed generation or ambiguous FIFO completion
- * poisons the session: callers must rebootstrap, not fabricate consumed data.
+ * the shared controller. Stale-generation calls refuse without altering the
+ * current ledger, including its pending plan. The shared-host owner must
+ * invalidate/rebootstrap its obsolete session, not fabricate consumed data.
+ * Ambiguous FIFO completion in the matching generation poisons that session.
  * pool_limit comes from a validated peer contract, not a guessed free count.
  * Zero means unknown: RX of INIT is allowed, TX is refused until negotiation.
  */

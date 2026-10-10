@@ -37,11 +37,7 @@ static int available(struct p4_hosted_fifo *s, uint32_t generation)
 {
     if (!s || s->initialized != 1 || s->poisoned)
         return 0;
-    if (s->generation != generation)
-    {
-        s->poisoned = 1;
-        return 0;
-    }
+    if (s->generation != generation) return 0;
     return !s->busy;
 }
 
@@ -117,10 +113,11 @@ int p4_hosted_fifo_finish(struct p4_hosted_fifo *s, uint32_t generation,
                           unsigned started, unsigned success,
                           uint32_t completed_bytes)
 {
-    if (!s || s->initialized != 1 || !s->busy || s->poisoned)
+    if (!s || s->initialized != 1 || s->generation != generation ||
+        !s->busy || s->poisoned)
         return 0;
     s->busy = 0;
-    if (s->generation != generation || started > 1 || success > 1 ||
+    if (started > 1 || success > 1 ||
         (success && (!started || completed_bytes != s->pending.bus_bytes)) ||
         (!success && (started || completed_bytes)))
     {

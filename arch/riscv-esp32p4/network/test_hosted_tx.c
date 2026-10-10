@@ -45,6 +45,9 @@ static const uint8_t c6_config_with_checksum[] = {
 };
 
 struct mock {
+    struct p4_hosted_fifo *state;
+    struct p4_hosted_fifo replacement;
+    unsigned replace_on_session, replace_on_read, replace_on_write;
     int session_value;
     int budget_value;
     uint32_t generation;
@@ -87,6 +90,8 @@ static int mock_session(void *context, uint32_t generation)
 {
     struct mock *mock = (struct mock *)context;
     ++mock->session_calls;
+    if (mock->replace_on_session == mock->session_calls)
+        *mock->state = mock->replacement;
     if (mock->fail_session_at == mock->session_calls ||
         mock->generation != generation)
         return 0;
@@ -108,6 +113,8 @@ static int mock_read_word(void *context, uint32_t address, uint32_t *value)
     unsigned index;
 
     ++mock->read_calls;
+    if (mock->replace_on_read == mock->read_calls)
+        *mock->state = mock->replacement;
     if (address != P4_HOSTED_TX_TOKEN_ADDRESS || !value)
         mock->address_bad = 1;
     index = mock->read_calls - 1u;
@@ -133,6 +140,8 @@ static int mock_write_fifo(void *context,
     uint32_t index;
 
     ++mock->write_calls;
+    if (mock->replace_on_write == mock->write_calls)
+        *mock->state = mock->replacement;
     if (plan)
     {
         mock->observed_plan.argument = plan->argument;
@@ -184,6 +193,7 @@ static void expect_frame(struct mock *mock, const uint8_t *frame, size_t size)
 static void fixture_init(struct fixture *fixture)
 {
     memset(fixture, 0, sizeof(*fixture));
+    fixture->mock.state = &fixture->state;
     memset(fixture->buffer, 0xa5, sizeof(fixture->buffer));
     memcpy(fixture->buffer, c6_config_without_checksum,
            sizeof(c6_config_without_checksum));
@@ -802,6 +812,31 @@ static void test_postwrite_expiry_and_loss(void)
     CHECK(fixture.state.tx_sent == 0);
 }
 
+static void test_stale_callbacks_preserve_new_ledger(void)
+{
+    unsigned variant;
+    for (variant = 0; variant < 4; ++variant) {
+        struct fixture fixture;
+        fixture_init(&fixture);
+        CHECK(p4_hosted_fifo_start(&fixture.mock.replacement,
+                                  GENERATION + 1u, POOL_LIMIT));
+        fixture.mock.replacement.rx_consumed = 37;
+        fixture.mock.replacement.tx_sent = 3;
+        /* Model a new owner's in-flight transfer; stale cleanup must not
+         * release its busy marker, pending plan or poison flag. */
+        fixture.mock.replacement.busy = 1;
+        if (variant == 0) fixture.mock.replace_on_session = 1;
+        if (variant == 1) fixture.mock.replace_on_read = 1;
+        if (variant == 2) fixture.mock.replace_on_session = 3;
+        if (variant == 3) fixture.mock.replace_on_write = 1;
+        CHECK(!send_fixture(&fixture, 29, 0));
+        CHECK(fixture.result.error == P4_HOSTED_TX_ERROR_SESSION_LOST);
+        CHECK(memcmp(&fixture.state, &fixture.mock.replacement,
+                     sizeof fixture.state) == 0);
+        CHECK(fixture.mock.write_calls == (variant == 3 ? 1u : 0u));
+    }
+}
+
 int main(void)
 {
     test_literal_config_send();
@@ -815,6 +850,7 @@ int main(void)
     test_prewrite_expiry_and_session_loss();
     test_write_completion_outcomes();
     test_postwrite_expiry_and_loss();
+    test_stale_callbacks_preserve_new_ledger();
     printf("hosted TX checks: %lu\n", checks);
     return 0;
 }

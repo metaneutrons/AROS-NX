@@ -27,7 +27,7 @@ static void test_plan_alias_refusal(void)
         CHECK(memcmp(before, storage.bytes, sizeof before) == 0);
         CHECK(!p4_hosted_fifo_tx(&storage.state, 7, 20U << 16, 29, alias));
         CHECK(memcmp(before, storage.bytes, sizeof before) == 0);
-        /* Alias refusal precedes the otherwise mutating generation check. */
+        /* Alias and stale-generation refusal both leave state untouched. */
         CHECK(!p4_hosted_fifo_rx(&storage.state, 8, 29, alias));
         CHECK(memcmp(before, storage.bytes, sizeof before) == 0);
         CHECK(!p4_hosted_fifo_tx(&storage.state, 8, 20U << 16, 29, alias));
@@ -142,9 +142,19 @@ int main(void)
     CHECK(p4_hosted_fifo_start(&s, 7, 10));
     CHECK(p4_hosted_fifo_rx(&s, 7, 33, &p));
     CHECK(!p4_hosted_fifo_finish(&s, 8, 1, 1, 512));
-    CHECK(s.poisoned && s.rx_consumed == 0);
+    CHECK(!s.poisoned && s.busy && s.rx_consumed == 0);
+    CHECK(p4_hosted_fifo_finish(&s, 7, 1, 1, 512));
     CHECK(p4_hosted_fifo_start(&s, 7, 10));
-    CHECK(!p4_hosted_fifo_rx(&s, 8, 33, &p) && s.poisoned);
+    CHECK(!p4_hosted_fifo_rx(&s, 8, 33, &p) && !s.poisoned);
+    {
+        struct p4_hosted_fifo before = s;
+        struct p4_hosted_fifo_plan plan_before = p;
+        CHECK(!p4_hosted_fifo_tx(&s, 8, 1U << 16, 33, &p));
+        CHECK(!p4_hosted_fifo_set_pool(&s, 8, 1));
+        CHECK(!p4_hosted_fifo_finish(&s, 8, 1, 0, 0));
+        CHECK(!memcmp(&before, &s, sizeof s));
+        CHECK(!memcmp(&plan_before, &p, sizeof p));
+    }
     CHECK(p4_hosted_fifo_start(&s, 7, 10));
     CHECK(!p4_hosted_fifo_rx(&s, 7, 65537, &p) && s.poisoned);
     CHECK(p4_hosted_fifo_start(&s, 7, 10));

@@ -119,6 +119,7 @@ gate: compensated output is not the native display contract.
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; MAC initialization ordering failure; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; GetMAC returns correlated0x3001 (WiFi not initialized), so overall diagnostic fails. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
+| N1C | N1 bounded sequential control foundation | `host tested and standalone RV32 compile verified; runtime initialization pending` | Existing FIFO reused for allowlisted Init/SetMode/Start/Stop/Deinit/GetMAC envelopes with exact response ID/UID and owned body. Control2413/TX2614/FIFO1245361/OPEN716 checks each O0/O2 ASan/UBSan in isolated local Linux container pass. Post-ack unread RX failures poison matching session; stale-generation helper calls preserve replacement ledger. No UID allocator/fragmentation, full typed init/runtime sequence or new package deployment yet. No additional hardware change; original verified baseline remains running. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -551,6 +552,19 @@ embedded Exec unit, count, listeners and change bookkeeping, not a whole-struct
 copy. Run recovery only after the failed request releases its transaction.
 
 ### N1 - compatible ESP-Hosted transport
+
+Bounded sequential control foundation (N1C,2026-10-10): generic exchange
+accepts the six initialization/control request IDs on an existing transport,
+correlates exact response ID/UID and owns up to256 response-body bytes. Remote
+status remains operation-codec work; envelope success is not Wi-Fi success.
+Whole batches remain validated after a match. Unread acknowledged RX failures
+poison the current session. FIFO/TX/control stale-generation calls refuse
+without canceling or poisoning a replacement ledger. This is not thread-safe
+replacement: shared-controller ownership still serializes all transport calls.
+Linux O0/O2 sanitizer models and standalone RV32 compilation pass; native macOS
+test launches hang before main and do not count as passes. No complete package
+rebuild or hardware deployment in this change. Full typed WiFiInit and the
+Init/STA/Start/MAC plus bounded Stop/Deinit runtime sequence remain next.
 
 First native hardware result: one externally coordinated fresh-C6 run accepts
 INIT chip0x0d/caps0x0d and the config transmission, then receives a correlated
@@ -31609,6 +31623,51 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   retains identity, both backups, core read, write/readback, boot timing/log
   and rollback artifacts. Next: full reference initialization before native
   MAC/scan; persistent RPC/recovery, association/DHCP/frames/SANA-II still open.
+
+### 2026-10-10 - N1C bounded sequential RPC exchange and epoch safety
+
+- State: host tested/standalone RV32 compile verified only. Source follows
+  2990300ee7; no native WLAN/MAC acceptance and no hardware operation.
+- Generic synchronous exchange allowlists requests257/260/278/279/280/281,
+  matches response=request+256/exactUID, copies owned body<=256 bytes,
+  validates trailing batch frames and preserves the typed GetMAC wrapper.
+  Request/result/buffer/state/ops overlap and malformed request refuse before
+  mutation. Same aggregate caller deadline, bounded polling, one send and no
+  retry; UID allocation/never-reuse remains caller responsibility.
+- Independent review found pre-consumption failures after packet IRQ clear
+  could leave unread RX reusable, and stale callbacks could poison a new
+  ledger. Corrected control/TX/FIFO helpers; same-generation ambiguity still
+  poisons. Added poisoned-session reuse refusal and exact replacement-ledger
+  preservation cases. Ownership remains mandatory; this is not a concurrent
+  lock-free state container.
+- Native Apple Clang21 strict compilation succeeds, but ARM64 sanitizer and
+  non-sanitizer launches hang at dyld_start before main (sample128KB); bounded
+  runs timeout/are terminated. One x86_64 non-sanitized launch also times out.
+  These are inconclusive, not model passes; samples retained.
+- Alternative: existing local Colima image aros-esp32p4-builder:latest,
+  sha256:e4f4b5717ab9c9bf7219716469ad3d85c01e144d09763a4eb1fcd22a4a46151d,
+  ARM64 Ubuntu GCC13.3.0. Source streamed into ephemeral container; network
+  disabled, no device mount, no repository writes. Strict O0/O2 ASan+UBSan:
+  FIFO1245361,TX2614,control2413,OPEN716 checks each; full pipeline exits0.
+  First Linux TX import gate reported compiler-generated memset (outer command
+  still continued); standalone gate now explicitly uses -ffreestanding and
+  -fno-stack-protector. Full set rerun exits0 including import gates.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/native-control-exchange.KnVrtu/.
+  linux-regressions.log SHA-256
+  bc9bcb219b98ac63e845cfaed3224560bfd35598dc9df5247625a061429e5b8c.
+  Standalone RV32 GCC16.2 strict C99/O2/freestanding, rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f:
+  hosted_control-final.o10656B SHA-256
+  2dfbc452a32a0f6c954bc9760b173e664503987b6f6f5be254acc91c59772111;
+  hosted_tx-final.o6520B SHA-256
+  8128ba1010ddfb1432638243f699cea3482472f73ac54843bf26b8c2bb4b40a1;
+  hosted_fifo-final.o3572B SHA-256
+  5fb8d71163b0b26cc23147554d8df8f0ebd274ca7fcb4c7c4550a4903a1c036e.
+  nm imports only documented local transport/protocol helpers, no libc.
+- Safety: no new core/package link, flash, serial open/reset, SD write,
+  credentials, C6 firmware or physical interaction. Original verified AROS
+  baseline remains unchanged. Next full typed20-field initialization codec
+  from actual working IDF6 config, bounded initialization/cleanup integration,
+  fresh package verification and coordinated first-C6 hardware gate.
 
 ## Evidence-entry template
 

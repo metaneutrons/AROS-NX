@@ -16,6 +16,7 @@ for test_opt in 0 2; do
 done
 
 cc -std=c99 -Wall -Wextra -Werror -pedantic -O2 \
+    -ffreestanding -fno-stack-protector \
     -c "$test_root/network/hosted_tx.c" -o "$test_tmp/hosted_tx.o"
 if ! nm -u "$test_tmp/hosted_tx.o" | awk '
     NF == 0 { next }

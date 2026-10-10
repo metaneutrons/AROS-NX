@@ -112,6 +112,7 @@ static int preflight(struct p4_hosted_fifo *state, uint32_t generation,
 static void release_unstarted(struct p4_hosted_fifo *state,
                               uint32_t generation)
 {
+    if (state->generation != generation) return;
     if (state->busy == 1)
     {
         (void)p4_hosted_fifo_finish(state, generation, 0, 0, 0);
@@ -126,6 +127,7 @@ static void release_unstarted(struct p4_hosted_fifo *state,
 static void poison_pending(struct p4_hosted_fifo *state,
                            uint32_t generation)
 {
+    if (state->generation != generation) return;
     if (state->busy == 1)
     {
         (void)p4_hosted_fifo_finish(state, generation, 1, 0, 0);
@@ -144,7 +146,9 @@ static int check_session(struct p4_hosted_fifo *state, uint32_t generation,
                          struct p4_hosted_tx_result *result)
 {
     result->stage = P4_HOSTED_TX_STAGE_SESSION;
-    if (ops->session_ok(ops->context, generation) == 1)
+    if (state->generation == generation &&
+        ops->session_ok(ops->context, generation) == 1 &&
+        state->generation == generation)
         return 1;
 
     poison_pending(state, generation);
@@ -263,7 +267,7 @@ int p4_hosted_tx_send(struct p4_hosted_fifo *state, uint32_t generation,
         if (state->generation != generation || state->busy != 0 ||
             state->initialized != 1 || state->pool_limit == 0)
         {
-            state->poisoned = 1;
+            if (state->generation == generation) state->poisoned = 1;
             result->error = P4_HOSTED_TX_ERROR_PLAN_REFUSED;
             return 0;
         }
