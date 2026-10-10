@@ -105,7 +105,9 @@ static BOOL wifi_device_attach(struct P4WifiBase *base, APTR client,
         !callbacks->frame || !callbacks->ready || !callbacks->stopped ||
         !AttemptSemaphore(&base->client_lock))
         return FALSE;
-    if (base->ready && base->runtime && base->owner_task && !base->client) {
+    if (base->ready && base->runtime && base->owner_task && !base->client &&
+        (base->maintenance_state == P4_WIFI_MAINT_IDLE ||
+         base->maintenance_state == P4_WIFI_MAINT_RELEASED)) {
         base->client = client;
         base->callbacks = callbacks;
         callbacks->ready(client, base->mac);
@@ -597,6 +599,8 @@ static BOOL wifi_device_send(struct P4WifiBase *base,
     size_t written = 0;
     int sent = 0;
     if (!base || !base->ready || !base->associated || !base->runtime ||
+        (base->maintenance_state != P4_WIFI_MAINT_IDLE &&
+         base->maintenance_state != P4_WIFI_MAINT_RELEASED) ||
         base->owner_task != FindTask(NULL) || !bytes || size < 14 || size > 1518)
         return FALSE;
     runtime = base->runtime;
@@ -733,7 +737,9 @@ static int wifi_owner_frame(void *opaque, const uint8_t *bytes, size_t size)
     /* No attached client means an administratively unopened interface. Drop
      * unclaimed frames without fabricating a receive completion or link-up. */
     ObtainSemaphore(&base->client_lock);
-    if (base->ready && base->associated && base->client && base->callbacks)
+    if (base->ready && base->associated && base->client && base->callbacks &&
+        (base->maintenance_state == P4_WIFI_MAINT_IDLE ||
+         base->maintenance_state == P4_WIFI_MAINT_RELEASED))
         consumed = base->callbacks->frame(base->client, bytes, (ULONG)size);
     ReleaseSemaphore(&base->client_lock);
     return consumed;
@@ -1081,6 +1087,8 @@ static BOOL wifi_device_scan(struct P4WifiBase *base,
     ULONG started;
     BOOL succeeded = FALSE, start_submitted = FALSE;
     if (!base || !base->ready || !base->runtime ||
+        (base->maintenance_state != P4_WIFI_MAINT_IDLE &&
+         base->maintenance_state != P4_WIFI_MAINT_RELEASED) ||
         base->owner_task != FindTask(NULL))
         return FALSE;
     runtime = base->runtime;
@@ -1229,6 +1237,8 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     unsigned polls;
     BOOL succeeded = FALSE, mutated = FALSE;
     if (!base || !base->ready || !base->association_enabled || !base->runtime ||
+        (base->maintenance_state != P4_WIFI_MAINT_IDLE &&
+         base->maintenance_state != P4_WIFI_MAINT_RELEASED) ||
         base->owner_task != FindTask(NULL) || !cancel || !cancel->cancelled ||
         !wifi_association_target_valid(target)) return FALSE;
     runtime = base->runtime;
@@ -1383,6 +1393,8 @@ static BOOL wifi_device_disconnect(struct P4WifiBase *base)
     unsigned polls;
     BOOL succeeded = FALSE;
     if (!base || !base->ready || !base->association_enabled || !base->runtime ||
+        (base->maintenance_state != P4_WIFI_MAINT_IDLE &&
+         base->maintenance_state != P4_WIFI_MAINT_RELEASED) ||
         base->owner_task != FindTask(NULL) ||
         base->client_lock.ss_Owner != FindTask(NULL)) return FALSE;
     runtime = base->runtime;
@@ -1455,6 +1467,136 @@ finish:
     return succeeded;
 }
 
+static BOOL wifi_maintenance_normal_poll(ULONG state)
+{
+    return state == P4_WIFI_MAINT_IDLE || state == P4_WIFI_MAINT_RELEASED ||
+           state == P4_WIFI_MAINT_REQUESTED;
+}
+
+static ULONG wifi_maintenance_request(struct P4WifiBase *base)
+{
+    struct wifi_device_runtime *runtime;
+    ULONG token = 0;
+    if (!base || !AttemptSemaphore(&base->client_lock)) return 0;
+    runtime = base->runtime;
+    if (base->ready && runtime && runtime->context && runtime->context->host &&
+        base->owner_task && base->owner_task != FindTask(NULL) &&
+        (base->maintenance_state == P4_WIFI_MAINT_IDLE ||
+         base->maintenance_state == P4_WIFI_MAINT_RELEASED) &&
+        base->maintenance_token != UINT32_MAX) {
+        token = ++base->maintenance_token;
+        base->maintenance_task = FindTask(NULL);
+        base->maintenance_started = runtime->context->host->now_us();
+        base->maintenance_state = P4_WIFI_MAINT_REQUESTED;
+    }
+    ReleaseSemaphore(&base->client_lock);
+    return token;
+}
+
+static ULONG wifi_maintenance_poll(struct P4WifiBase *base, ULONG token)
+{
+    struct wifi_device_runtime *runtime;
+    ULONG state = P4_WIFI_MAINT_FAILED;
+    if (!base || !token) return state;
+    if (!AttemptSemaphore(&base->client_lock)) return P4_WIFI_MAINT_BUSY;
+    if (base->maintenance_token == token &&
+        base->maintenance_task == FindTask(NULL))
+    {
+        runtime = base->runtime;
+        if (runtime && runtime->context && runtime->context->host &&
+            (base->maintenance_state == P4_WIFI_MAINT_REQUESTED ||
+             base->maintenance_state == P4_WIFI_MAINT_ACTIVE ||
+             base->maintenance_state == P4_WIFI_MAINT_RELEASING) &&
+            !wifi_owner_remaining(runtime->context, base->maintenance_started,
+                                   P4_WIFI_MAINT_LEASE_US)) {
+            base->maintenance_state = P4_WIFI_MAINT_FAILED;
+            base->associated = FALSE;
+        }
+        state = base->maintenance_state;
+    }
+    ReleaseSemaphore(&base->client_lock);
+    return state;
+}
+
+static BOOL wifi_maintenance_release(struct P4WifiBase *base, ULONG token)
+{
+    struct wifi_device_runtime *runtime;
+    BOOL accepted = FALSE;
+    if (!base || !token || !AttemptSemaphore(&base->client_lock)) return FALSE;
+    if (base->maintenance_token == token &&
+        base->maintenance_task == FindTask(NULL)) {
+        runtime = base->runtime;
+        if (!base->ready || !runtime || !runtime->context ||
+            !runtime->context->host ||
+            !wifi_owner_remaining(runtime->context, base->maintenance_started,
+                                   P4_WIFI_MAINT_LEASE_US)) {
+            base->maintenance_state = P4_WIFI_MAINT_FAILED;
+            base->associated = FALSE;
+            ReleaseSemaphore(&base->client_lock);
+            return FALSE;
+        }
+        if (base->maintenance_state == P4_WIFI_MAINT_REQUESTED) {
+            /* Owner has not begun quiescence while another task has this lock. */
+            base->maintenance_state = P4_WIFI_MAINT_RELEASED;
+            accepted = TRUE;
+        } else if (base->maintenance_state == P4_WIFI_MAINT_ACTIVE) {
+            base->maintenance_state = P4_WIFI_MAINT_RELEASING;
+            accepted = TRUE;
+        }
+    }
+    ReleaseSemaphore(&base->client_lock);
+    return accepted;
+}
+
+/* Owner-only, with client_lock held and no SDMMC ownership. Return0 retires
+ * session,1 permits client service,2 keeps maintenance fenced. No OTA RPC. */
+static int wifi_maintenance_service(struct P4WifiBase *base,
+    struct wifi_device_runtime *runtime)
+{
+    struct wifi_probe_context *context = runtime->context;
+    ULONG remaining;
+    if (base->maintenance_state == P4_WIFI_MAINT_IDLE ||
+        base->maintenance_state == P4_WIFI_MAINT_RELEASED) return 1;
+    remaining = wifi_owner_remaining(context, base->maintenance_started,
+                                     P4_WIFI_MAINT_LEASE_US);
+    if (!remaining || runtime->owner->poisoned || runtime->fifo->poisoned ||
+        runtime->owner->generation != context->generation ||
+        runtime->fifo->generation != context->generation) goto failed;
+    if (base->maintenance_state == P4_WIFI_MAINT_REQUESTED) {
+        if (runtime->owner->pending_active || runtime->owner->ids.active_uid ||
+            runtime->owner->partial_active || runtime->fifo->busy) return 2;
+        base->associated = FALSE;
+        base->link_state = P4_WIFI_LINK_UNKNOWN;
+        p4host_zero(&base->confirmed_ap, sizeof(base->confirmed_ap));
+        p4host_zero(&base->observed_ap, sizeof(base->observed_ap));
+        if (base->client && base->callbacks)
+            base->callbacks->stopped(base->client);
+        if (remaining > 8000000UL) remaining = 8000000UL;
+        if (!wifi_owner_request(context, runtime->owner, runtime->control,
+            runtime->fifo, runtime->checksum, 281u, remaining)) goto failed;
+        if (!wifi_owner_remaining(context, base->maintenance_started,
+                                  P4_WIFI_MAINT_LEASE_US)) goto failed;
+        base->maintenance_state = P4_WIFI_MAINT_ACTIVE;
+        return 2;
+    }
+    if (base->maintenance_state == P4_WIFI_MAINT_ACTIVE) return 2;
+    if (base->maintenance_state == P4_WIFI_MAINT_RELEASING) {
+        if (remaining > 8000000UL) remaining = 8000000UL;
+        if (!wifi_owner_request(context, runtime->owner, runtime->control,
+            runtime->fifo, runtime->checksum, 280u, remaining)) goto failed;
+        if (!wifi_owner_remaining(context, base->maintenance_started,
+                                  P4_WIFI_MAINT_LEASE_US)) goto failed;
+        base->maintenance_state = P4_WIFI_MAINT_RELEASED;
+        if (base->client && base->callbacks)
+            base->callbacks->ready(base->client, base->mac);
+        return 1;
+    }
+failed:
+    base->maintenance_state = P4_WIFI_MAINT_FAILED;
+    base->associated = FALSE;
+    return 0;
+}
+
 /* Enter with the bootstrap acquisition held, and always return unowned.
  * Preserved OPEN has already populated owner.rx before config buffer reuse.
  * State/buffers/control were allocated before acquiring the host. */
@@ -1524,26 +1666,41 @@ static void wifi_owner_service(struct wifi_probe_context *context,
                 control->mac.mac[2], control->mac.mac[3], control->mac.mac[4],
                 control->mac.mac[5]);
             while (!wifi_owner_stopping(context)) {
+                int maintenance;
+                BOOL poll_transport;
                 ObtainSemaphore(&base->client_lock);
-                if (base->client && base->callbacks) {
+                maintenance = wifi_maintenance_service(base, &runtime);
+                if (maintenance == 1 && base->client && base->callbacks) {
                     runtime.servicing = TRUE;
                     base->callbacks->service(base->client, base);
                     runtime.servicing = FALSE;
                 }
+                /* Pending fragmented RX must drain before Stop admission.
+                 * ACTIVE never enters the normal FIFO poll path: future
+                 * maintenance RPC jobs must run here in this same owner. */
+                poll_transport = wifi_maintenance_normal_poll(base->maintenance_state);
                 ReleaseSemaphore(&base->client_lock);
-                if (!p4_hosted_owner_step(owner, &opened->fifo_state, &control->ops,
+                if (!maintenance) break;
+                if (poll_transport && !p4_hosted_owner_step(owner, &opened->fifo_state, &control->ops,
                     context->generation, checksum, P4_HOSTED_OWNER_MAX_SLICE_US,
                     &control->result))
                     break;
-                if (!wifi_owner_refresh_link_snapshot(context, owner, control,
-                        &opened->fifo_state, checksum))
-                    break;
+                ObtainSemaphore(&base->client_lock);
+                if ((base->maintenance_state == P4_WIFI_MAINT_IDLE ||
+                     base->maintenance_state == P4_WIFI_MAINT_RELEASED) &&
+                    !wifi_owner_refresh_link_snapshot(context, owner, control,
+                        &opened->fifo_state, checksum)) maintenance = 0;
+                ReleaseSemaphore(&base->client_lock);
+                if (!maintenance) break;
                 wifi_yield(context); /* Always outside controller ownership. */
             }
         }
     }
     ObtainSemaphore(&base->client_lock);
     base->ready = FALSE;
+    if (base->maintenance_state != P4_WIFI_MAINT_IDLE &&
+        base->maintenance_state != P4_WIFI_MAINT_RELEASED)
+        base->maintenance_state = P4_WIFI_MAINT_FAILED;
     base->associated = FALSE;
     base->link_state = P4_WIFI_LINK_UNKNOWN;
     p4host_zero(&base->observed_ap, sizeof(base->observed_ap));
@@ -1617,6 +1774,21 @@ static BOOL wifi_device_send(struct P4WifiBase *base,
                              const UBYTE *bytes, ULONG size)
 {
     (void)base; (void)bytes; (void)size;
+    return FALSE;
+}
+static ULONG wifi_maintenance_request(struct P4WifiBase *base)
+{
+    (void)base;
+    return 0;
+}
+static ULONG wifi_maintenance_poll(struct P4WifiBase *base, ULONG token)
+{
+    (void)base; (void)token;
+    return P4_WIFI_MAINT_FAILED;
+}
+static BOOL wifi_maintenance_release(struct P4WifiBase *base, ULONG token)
+{
+    (void)base; (void)token;
     return FALSE;
 }
 #endif
@@ -2239,6 +2411,13 @@ static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
     P4WifiBase->ready = FALSE;
     P4WifiBase->runtime = NULL;
     P4WifiBase->owner_task = NULL;
+    P4WifiBase->maintenance_request = wifi_maintenance_request;
+    P4WifiBase->maintenance_poll = wifi_maintenance_poll;
+    P4WifiBase->maintenance_release = wifi_maintenance_release;
+    P4WifiBase->maintenance_task = NULL;
+    P4WifiBase->maintenance_token = 0;
+    P4WifiBase->maintenance_state = P4_WIFI_MAINT_IDLE;
+    P4WifiBase->maintenance_started = 0;
     return TRUE;
 }
 ADD2INITLIB(P4Wifi_Init, 0)

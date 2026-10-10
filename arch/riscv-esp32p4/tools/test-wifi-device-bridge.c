@@ -380,6 +380,12 @@ static void test_registration_and_detach(void)
     CHECK(!wifi_device_attach(&f.base, &client_a, &client_callbacks));
     CHECK(f.base.client == NULL && f.base.client_lock.depth == 0u);
 
+    f.base.maintenance_state = P4_WIFI_MAINT_ACTIVE;
+    CHECK(!wifi_device_attach(&f.base, &client_a, &client_callbacks));
+    CHECK(f.base.client == NULL && f.base.callbacks == NULL);
+    CHECK(f.base.client_lock.depth == 0u);
+    f.base.maintenance_state = P4_WIFI_MAINT_IDLE;
+
     CHECK(wifi_device_attach(&f.base, &client_a, &client_callbacks));
     CHECK(f.base.client == &client_a && f.base.callbacks == &client_callbacks);
     CHECK(ready_calls == 1u && callback_saw_client_lock == 1u);

@@ -28,6 +28,8 @@ typedef int16_t BOOL;
 /* Let the production association-options and bridge headers use these host
  * primitive types while retaining their real tag values and target layouts. */
 #define EXEC_TYPES_H 1
+#define EXEC_LIBRARIES_H 1
+#define EXEC_SEMAPHORES_H 1
 #include "../network/association_options.h"
 
 struct MinNode {
@@ -55,12 +57,15 @@ struct List {
 
 struct SignalSemaphore { unsigned depth; };
 struct Task { ULONG id; };
+struct Library { ULONG unused; };
 struct Device { ULONG unused; };
 struct Unit { ULONG unused; };
 struct Hook { ULONG unused; };
 struct ExecBase { ULONG unused; };
 struct Sana2DeviceStats { ULONG words[16]; };
 struct Sana2DeviceQuery { ULONG words[16]; };
+
+#include "../network/runtime_probe.h"
 
 typedef BOOL (*p4wlan_copy_fn)(APTR, APTR, ULONG);
 
@@ -85,23 +90,6 @@ struct IOSana2Req {
     APTR ios2_BufferManagement;
     APTR ios2_Data;
     APTR ios2_StatData;
-};
-
-struct P4WifiBase;
-typedef BOOL (*p4wlan_associate_fn)(
-    struct P4WifiBase *radio,
-    const struct p4_wifi_association_target *target,
-    const struct p4_wifi_association_cancel *cancel);
-typedef BOOL (*p4wlan_disconnect_fn)(struct P4WifiBase *radio);
-
-struct P4WifiBase {
-    BOOL association_enabled;
-    BOOL associated;
-    p4wlan_associate_fn associate;
-    p4wlan_disconnect_fn disconnect;
-    struct p4_wifi_link_info confirmed_ap;
-    ULONG link_state;
-    struct p4_wifi_link_info observed_ap;
 };
 
 struct p4wlan_opener;
@@ -497,6 +485,61 @@ static BOOL fake_disconnect(struct P4WifiBase *radio)
     return disconnect_returns_success;
 }
 
+static BOOL fake_resource_attach(struct P4WifiBase *radio, APTR client,
+    const struct p4_wifi_device_callbacks *callbacks)
+{
+    /* Presence stubs: p4wlan_resource_valid never invokes bridge callbacks. */
+    (void)radio;
+    (void)client;
+    (void)callbacks;
+    return TRUE;
+}
+
+static void fake_resource_detach(struct P4WifiBase *radio, APTR client)
+{
+    (void)radio;
+    (void)client;
+}
+
+static BOOL fake_resource_send_frame(struct P4WifiBase *radio,
+    const UBYTE *frame, ULONG length)
+{
+    (void)radio;
+    (void)frame;
+    (void)length;
+    return TRUE;
+}
+
+static BOOL fake_resource_scan(struct P4WifiBase *radio,
+    struct p4_wifi_scan_result *result)
+{
+    (void)radio;
+    (void)result;
+    return TRUE;
+}
+
+static ULONG fake_resource_maintenance_request(struct P4WifiBase *radio)
+{
+    (void)radio;
+    return 1u;
+}
+
+static ULONG fake_resource_maintenance_poll(struct P4WifiBase *radio,
+    ULONG token)
+{
+    (void)radio;
+    (void)token;
+    return P4_WIFI_MAINT_ACTIVE;
+}
+
+static BOOL fake_resource_maintenance_release(struct P4WifiBase *radio,
+    ULONG token)
+{
+    (void)radio;
+    (void)token;
+    return TRUE;
+}
+
 static void init_request(struct IOSana2Req *request, ULONG command,
                          struct p4wlan_opener *opener)
 {
@@ -523,9 +566,18 @@ static void init_fixture(struct p4wlan_unit *unit,
     unit->hardware_ready = TRUE;
     unit->selection_token = 10u;
     unit->radio = radio;
+    radio->bridge_abi = P4_WIFI_DEVICE_BRIDGE_ABI;
+    radio->bridge_size = sizeof(*radio);
+    radio->attach = fake_resource_attach;
+    radio->detach = fake_resource_detach;
+    radio->send_frame = fake_resource_send_frame;
+    radio->scan = fake_resource_scan;
     radio->association_enabled = TRUE;
     radio->associate = fake_associate;
     radio->disconnect = fake_disconnect;
+    radio->maintenance_request = fake_resource_maintenance_request;
+    radio->maintenance_poll = fake_resource_maintenance_poll;
+    radio->maintenance_release = fake_resource_maintenance_release;
     active_unit = unit;
     active_opener = opener;
     replace_during_associate = FALSE;
@@ -548,6 +600,44 @@ static void init_fixture(struct p4wlan_unit *unit,
     unlocked_association_replies = 0u;
     unacknowledged_service_skips = 0u;
     association_reply_cookie_count = 0u;
+}
+
+static void test_resource_valid_requires_abi7_callbacks(void)
+{
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    ULONG (*request)(struct P4WifiBase *);
+    ULONG (*poll)(struct P4WifiBase *, ULONG);
+    BOOL (*release)(struct P4WifiBase *, ULONG);
+
+    init_fixture(&unit, &opener, &radio);
+    CHECK(P4_WIFI_DEVICE_BRIDGE_ABI == 7u);
+    CHECK(radio.bridge_abi == P4_WIFI_DEVICE_BRIDGE_ABI);
+    CHECK(radio.bridge_size == sizeof(radio));
+    CHECK(p4wlan_resource_valid(&radio));
+    CHECK(!p4wlan_resource_valid(NULL));
+
+    radio.bridge_abi = 6u;
+    CHECK(!p4wlan_resource_valid(&radio));
+    radio.bridge_abi = P4_WIFI_DEVICE_BRIDGE_ABI;
+    radio.bridge_size = sizeof(radio) - 1u;
+    CHECK(!p4wlan_resource_valid(&radio));
+    radio.bridge_size = sizeof(radio);
+
+    request = radio.maintenance_request;
+    radio.maintenance_request = NULL;
+    CHECK(!p4wlan_resource_valid(&radio));
+    radio.maintenance_request = request;
+    poll = radio.maintenance_poll;
+    radio.maintenance_poll = NULL;
+    CHECK(!p4wlan_resource_valid(&radio));
+    radio.maintenance_poll = poll;
+    release = radio.maintenance_release;
+    radio.maintenance_release = NULL;
+    CHECK(!p4wlan_resource_valid(&radio));
+    radio.maintenance_release = release;
+    CHECK(p4wlan_resource_valid(&radio));
 }
 
 static void make_tags(struct TagItem tags[10], const UBYTE *ssid,
@@ -1369,6 +1459,7 @@ int main(void)
     test_disassociate_maintains_confirmed_teardown();
     test_teardown_failure_never_publishes_disconnect();
     test_new_selection_during_teardown_is_preserved();
+    test_resource_valid_requires_abi7_callbacks();
     test_suite_cleanup();
     printf("SANA association queue: %lu checks, %u replies, %u/%u vector alloc/free, %u association wipes\n",
            checks, reply_calls, allocation_calls, free_calls, wipe_checks);

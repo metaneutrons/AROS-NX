@@ -6,13 +6,23 @@ RV32-SMP with shared CLI/MUI read-only C6 image checks and an adaptive graphical
 partition-table preview. Imported extents, labels, offsets, sizes, types and
 flags determine the view; gaps are unlisted/reserved, not assumed free space.
 Capacity is explicitly supplied, not detected; active/update roles are unknown.
-Live P4/C6 layout discovery, owner maintenance transport, secured recovery and
+Live P4/C6 layout discovery, owner OTA transport, secured recovery and
 actual local/HTTPS-acquired updates remain open. UPDATE-C6 fails explicitly.
 No board, flash, serial or credential action accompanied this development.
 Requirements: [board-tool plan](../../docs/plans/esp32-board-tool.md), roadmap N2M.
 Independent pinned protobuf-c comparison passes 1,643 checks at each O0/O2;
 normal WLAN control submission refuses all three OTA request types. These are
 host protocol/safety checks, not evidence of a working C6 update or recovery.
+Native private ABI7 now supplies a task-bound, nonblocking maintenance lease.
+The owner drains pending work, confirms WiFiStop and suppresses normal traffic
+and FIFO polling while ACTIVE. Release confirms WiFiStart but leaves SANA
+offline/unassociated. The 30-second lease is handshake preparation, not a
+full-image transfer budget; no OTA job is exposed. Expiry retires the session
+with bounded owner-only cleanup, not silent traffic resumption. Actual-source
+host tests pass186 checks each O0/O2 with sanitizers and a negative ACTIVE-poll
+mutation; Exec/RPC are mocked. Fresh RV32 Core1 resource254956B/device67604B
+pass individual loader audits. Both modules must replace the prior ABI6 pair
+together; package/image regeneration and runtime acceptance remain open.
 CLI examples (not yet executed on hardware):
 
     ESP32Board ACTION INFO

@@ -15,6 +15,33 @@ trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$extract"; command 
 
 : > "$extract"
 
+# The scan fixture uses the actual ABI7 maintenance states. Extract the public
+# constants instead of assigning host-only meanings to the state values.
+if ! awk '
+    /^#define P4_WIFI_MAINT_(IDLE|REQUESTED|ACTIVE|RELEASING|FAILED|RELEASED|BUSY|LEASE_US)[[:space:]]/ {
+        name = $2
+        counts[name]++
+        lines[name] = lines[name] $0 ORS
+    }
+    END {
+        names[1] = "P4_WIFI_MAINT_IDLE"
+        names[2] = "P4_WIFI_MAINT_REQUESTED"
+        names[3] = "P4_WIFI_MAINT_ACTIVE"
+        names[4] = "P4_WIFI_MAINT_RELEASING"
+        names[5] = "P4_WIFI_MAINT_FAILED"
+        names[6] = "P4_WIFI_MAINT_RELEASED"
+        names[7] = "P4_WIFI_MAINT_BUSY"
+        names[8] = "P4_WIFI_MAINT_LEASE_US"
+        for (i = 1; i <= 8; ++i) {
+            if (counts[names[i]] != 1) exit 1
+            printf "%s", lines[names[i]]
+        }
+    }
+' "$bridge_file" >> "$extract"; then
+	echo "could not uniquely extract ABI7 maintenance constants from $bridge_file" >&2
+	exit 1
+fi
+
 extract_struct() {
 	struct_name=$1
 	input_file=$2

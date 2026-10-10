@@ -609,7 +609,8 @@ static BOOL p4wlan_resource_valid(struct P4WifiBase *radio)
     return radio && radio->bridge_abi == P4_WIFI_DEVICE_BRIDGE_ABI &&
            radio->bridge_size >= sizeof(*radio) && radio->attach &&
            radio->detach && radio->send_frame && radio->scan && radio->associate &&
-           radio->disconnect;
+           radio->disconnect && radio->maintenance_request &&
+           radio->maintenance_poll && radio->maintenance_release;
 }
 
 static void p4wlan_ready_callback(APTR client, const UBYTE *mac)

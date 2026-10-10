@@ -169,6 +169,7 @@ extract_block struct p4wlan_unit "$header_file"
 extract_block struct esp32p4wlan_base "$header_file"
 extract_function p4wlan_mac_valid
 extract_function p4wlan_mac_equal
+extract_function p4wlan_resource_valid
 extract_function p4wlan_zero_bytes
 extract_function p4wlan_wipe_bytes
 extract_function p4wlan_add_done_locked

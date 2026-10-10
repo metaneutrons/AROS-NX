@@ -115,9 +115,13 @@ gate: compensated output is not the native display contract.
 
 ## Master progress
 
+Current source radio/device pairing is private ABI7 (N2M maintenance handshake).
+ABI6 counts/artifacts in N1A/N2A/N2/N2L remain historical lifecycle evidence,
+not the current deployment pair. No ABI7 package/image or hardware pass exists.
+
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; independent OTA protobuf oracle and normal-control refusal tested; no hardware acceptance | Live P4/C6 layout/active-slot discovery, serialized owner maintenance, secured CN5 recovery, real CLI/GUI update and HTTPS acquisition; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle and native ABI7 maintenance handshake host/build verified; no hardware acceptance | Live P4/C6 layout/active-slot discovery, owner OTA dispatch and ambiguous-write recovery policy, secured CN5 recovery, real CLI/GUI update and HTTPS acquisition; regenerate matching ABI7 package/image before runtime; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1277,6 +1281,19 @@ weight; exact offsets/sizes remain in tooltips and CLI output.
 M1 source/host/build foundations are verified within their stated limits;
 native CLI/MUI interaction remains untested. The isolated OTA codec and gated
 transaction engine are not linked to a live owner backend.
+Private ABI7 adds a nonblocking task-bound request/poll/release handshake.
+The owner drains pending/fragmented traffic, confirms correlated WiFiStop and
+fences service, frames, normal control entry and FIFO polling while ACTIVE.
+Release confirms WiFiStart but does not restore administrative online/link
+state. Non-reused tokens, 30-second aggregate expiry and transport-generation
+checks fail closed; expiry retires the owner with bounded owner-only
+Stop/Deinit/CLOSE/function restoration. This is not a no-write boundary or an
+OTA adapter: no maintenance client can issue SDIO/OTA through this ABI.
+Future begun/ambiguous OTA transactions need a separate terminal cleanup policy
+and a justified full-transfer/renewal budget before binding the engine.
+Actual-source host tests and fresh Core1 module builds pass; Exec locks,
+callbacks and RPC outcomes are mocked. The matching ABI7 resource/device must
+replace the prior ABI6 pair together in a regenerated audited package/image.
 The tool is restricted to esp32p4/riscv builds. Independent generated protobuf-c
 comparison verifies the pinned OTA wire format; normal WLAN control submission
 rejects OTA commands. Neither test establishes live transport or recovery.
@@ -36193,3 +36210,74 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   when needed; software development can continue, first update remains gated
   on demonstrated independent recovery. Next: read-only device discovery and
   exclusive owner-maintenance ABI, then fresh native CLI/GUI acceptance.
+
+### 2026-10-10 - N2M native owner maintenance handshake, private ABI7
+
+- Identity/config: source parent a362b22692, feature/esp32p4-wifi, build tree
+  /Volumes/Dev/Build/aros-esp32p4-wifi-build, RV32-SMP JC1060P470C-v2.
+  Resource flags P4_BOARD=jc1060p470c-v2, P4_WIFI_SDIO_SETUP=1,
+  P4_WIFI_HOSTED_INIT=1, P4_WIFI_HOSTED_REPLY=1, P4_WIFI_HOSTED_OWNER=1,
+  P4_WIFI_OWNER_CPU=1; independent credential/privacy assertions remain0.
+  Device uses P4_BOARD=jc1060p470c-v2. Initial invalid P4_BOARD=jc1060
+  invocation failed exit2 before producing an accepted artifact. Resource and
+  device object consumers were invalidated; final resource runtime object was
+  invalidated/recompiled after review corrections. Private headers are consumed
+  directly by both modules, not stale generated public-header copies.
+- Implementation: nonblocking request/poll/release under client_lock, task-bound
+  non-wrapping tokens, one30s handshake deadline, pending UID/partial/FIFO drain,
+  correlated WiFiStop before ACTIVE and WiFiStart before RELEASED. SANA stopped
+  closes traffic/queued work; release does not re-associate or administratively
+  re-online. Normal attach/send/scan/associate/disconnect/frame/service paths are
+  fenced. REQUESTED may drain existing RX; ACTIVE never normal-polls the FIFO.
+  ABI7 exact version/size/callback validation rejects old or incomplete radios.
+  Owner-disabled stubs return refusal with the same ABI callback presence.
+- Review/correction: independent read-only review found the initial owner loop
+  still entered normal FIFO polling after ACTIVE. Helper/wiring corrected and
+  checked by positive status matrix plus an ACTIVE-allowed negative mutation.
+  Reviewer found no remaining normal enqueue/dispatch/TX bypass in this scoped
+  contract. On FAILED/expiry, bounded owner-only Stop/Deinit/CLOSE/function
+  restoration remains permitted; no requester can write SDIO or submit OTA.
+  This deliberately is not a hard no-write boundary. A future begun/ambiguous
+  OTA transfer must select a separate terminal recovery/cleanup policy rather
+  than inheriting normal cleanup. Thirty seconds is not a justified full-image
+  update budget; renewal/transfer timing remains an integration obligation.
+- Verification: primary reran actual-source handshake tests186 each O0/O2
+  ASan/UBSan, including expiry, wrap, wrong task/token, pending drain, failed or
+  late Stop/Start, normal-poll matrix and negative mutation; exit0. Exec locks,
+  callbacks, clock and RPC outcome are mocked, not real task/SDIO concurrency.
+  Regression runners each O0/O2 sanitized exit0: owner-link102, AP observer393,
+  scan37478, association26131, bridge225, SANA association queue1051. Added ACTIVE
+  refusal leaves scan/association output and link state untouched; ABI guard
+  checks use actual P4WifiBase header and production validation function.
+- Native results: owner resource254956B SHA-256
+  2201556059116ff8f7bb3a79e69e0cad4f382c83a82272975750a79ba02561ed;
+  device67604B SHA-256
+  21e5b5e4fd3de49c9751cdfee712497bc394688eaab47aea769e0d187891868c;
+  owner-disabled resource205372B SHA-256
+  92cff60b1e70accd240a6dc37f7801f8101b4ba40c1c250603065e6373077fc3.
+  Owner-disabled build sets SETUP/INIT/REPLY/OWNER=0. All successful native
+  processes exit0; actual audit-package.audit_elf passes all three modules.
+  Initial254812B resource1919b392... is archived but superseded by the final
+  reviewed resource, never a deployment candidate. No package/image rebuilt.
+- Evidence directory: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/
+  wifi-2026-10-10/maintenance.WlG4J6. Final resource archived as
+  esp32p4wifi-final.resource; device as esp32p4wlan.device. Log SHA-256:
+  resource-reviewed-build.log 14b3d116f97f27a3879fa4e0c405b161e67a1f324abf251b2c33bd692cba4b09;
+  device-build.log 4b39f71c94080038ef9ebaccedf959a58e8b4033304dc7a1782505f386db4bbd;
+  resource-no-owner.log 2248b3e5f84dedba901588ca4a02d13dc891b95cfdd39d8a7bb87ad9d851cc31;
+  maintenance-final-tests.log 2902b976956428b98990c1fea6b1d46fd65059d75e4f225a0bf08ec873a73591;
+  module-final-audit.log e9df9c2765b07f18917d28ee4a67c647a9f3d430fdf64ade412411511227a16e;
+  owner-link-final.log 312c9470da683fa9466c90a6fba366531d848191c7980d22078db293698c8245;
+  owner-apinfo-final.log 8b537dbc3300168881471de8bdb627f2897ac73c727d2384fc736523ffe82b73;
+  owner-scan-final.log df13f4a4dcd880bcbe33520f1312b14f016b5f0a73bf2835d1ba61ca7ce9e082;
+  owner-association-final.log 33f9b4a17e1a5709da908f84ac54dc772297c3b764a308c040b7e8029d5f9a21;
+  device-bridge-final.log 9c8379cb0a7de59771c47edca78060869b35649b6cbce7738b0afe3d7b33613b;
+  sana-association-queue-final.log 836c5651ec79005e48952275052a76d252a8efd43144f0f06caa5e248b94ffa8.
+- Safety/remaining/next: no serial open, reset, flash, SD write or credentials.
+  Current hardware remains unchanged. Replace both ABI7 modules together in
+  regenerated audited package/image before any deployment; ABI6/7 mixing is
+  refused. UPDATE-C6 stays unavailable: live layout/slot/capability discovery,
+  owner-only OTA job adapter, digest/source revalidation, ambiguous-commit
+  recovery, secured independent restore and real CLI/GUI qualification remain
+  open. No handshake test grants conditional C6 write permission or closes
+  WLAN association/DHCP/frames/reconnect/combined1800s acceptance.

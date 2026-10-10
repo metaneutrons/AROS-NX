@@ -5,7 +5,7 @@
 #include <exec/types.h>
 #include "hosted_scan.h"
 
-#define P4_WIFI_DEVICE_BRIDGE_ABI 6u
+#define P4_WIFI_DEVICE_BRIDGE_ABI 7u
 #define P4_WIFI_DEVICE_BRIDGE_NAME "esp32p4wifi.resource"
 
 struct P4WifiBase;
@@ -14,6 +14,23 @@ struct P4WifiBase;
 #define P4_WIFI_LINK_UNKNOWN 0u
 #define P4_WIFI_LINK_UP 1u
 #define P4_WIFI_LINK_DOWN 2u
+/* ABI7 nonblocking maintenance handshake. All status is protected by the
+ * resource client_lock; only the owner task touches SDIO. A lease request
+ * fences client work, then the owner drains requests and confirms WiFiStop.
+ * ACTIVE is a host/peer quiescence claim, not update permission or recovery.
+ * No OTA commands are exposed by this ABI. Tokens never wrap or get reused.
+ * Only the requesting task may poll/release its token. Lease expiry retires
+ * the owner; it never silently restores traffic after an abandoned updater.
+ * Release is asynchronous: owner confirms WiFiStart, publishes ready again,
+ * but the device remains administratively offline/unassociated. */
+#define P4_WIFI_MAINT_IDLE 0u
+#define P4_WIFI_MAINT_REQUESTED 1u
+#define P4_WIFI_MAINT_ACTIVE 2u
+#define P4_WIFI_MAINT_RELEASING 3u
+#define P4_WIFI_MAINT_FAILED 4u
+#define P4_WIFI_MAINT_RELEASED 5u
+#define P4_WIFI_MAINT_BUSY 6u /* transient lock contention, retry polling */
+#define P4_WIFI_MAINT_LEASE_US 30000000u
 /* Credential-free confirmed AP snapshot. Only the serialized service caller
  * may copy it after associate returns TRUE; hints and requested targets are
  * not substitutes for the peer's correlated current-AP result. */

@@ -913,6 +913,24 @@ static void test_default_gate_and_validation_refuse_without_rpc(void)
     check_restored(TRUE);
     check_confirmed_ap_preserved();
 
+    fixture_init();
+    target_init(&target, 0u);
+    original = target;
+    f.base.maintenance_state = P4_WIFI_MAINT_ACTIVE;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.exchange_calls == 0u);
+    CHECK(memcmp(&target, &original, sizeof(target)) == 0);
+    CHECK(f.base.maintenance_state == P4_WIFI_MAINT_ACTIVE);
+    CHECK(f.base.link_state == P4_WIFI_LINK_UP);
+    check_restored(TRUE);
+    check_confirmed_ap_preserved();
+    {
+        const uint8_t *bytes = (const uint8_t *)&f.base.observed_ap;
+        size_t index;
+        for (index = 0u; index < sizeof(f.base.observed_ap); ++index)
+            CHECK(bytes[index] == 0xa5u);
+    }
+
     for (invalid_case = 0u; invalid_case < 7u; ++invalid_case) {
         fixture_init();
         target_init(&target, 1u);

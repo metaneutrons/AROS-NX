@@ -36,5 +36,10 @@ struct P4WifiBase
     UBYTE mac[6];
     struct Task *owner_task;
     APTR runtime;
+    ULONG (*maintenance_request)(struct P4WifiBase *);
+    ULONG (*maintenance_poll)(struct P4WifiBase *, ULONG);
+    BOOL (*maintenance_release)(struct P4WifiBase *, ULONG);
+    struct Task *maintenance_task;
+    ULONG maintenance_token, maintenance_state, maintenance_started;
 };
 #endif

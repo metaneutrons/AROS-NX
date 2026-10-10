@@ -981,6 +981,11 @@ static void test_preflight_refusals_and_aliases(void)
     check_refusal_unchanged();
 
     fixture_reset();
+    fixture.base.maintenance_state = P4_WIFI_MAINT_ACTIVE;
+    check_refusal_unchanged();
+    CHECK(fixture.base.maintenance_state == P4_WIFI_MAINT_ACTIVE);
+
+    fixture_reset();
     fixture.owner.poisoned = 1u;
     check_refusal_unchanged();
 
