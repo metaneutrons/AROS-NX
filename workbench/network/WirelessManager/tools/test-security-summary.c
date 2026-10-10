@@ -5,7 +5,10 @@
 typedef char abi_ulong_is_32_bits[(sizeof(ULONG) == 4) ? 1 : -1];
 typedef char abi_raw_psk_size[(S2WIRELESS_PSK_SIZE == 32) ? 1 : -1];
 typedef char abi_raw_psk_tag[(S2INFO_PSK == TAG_USER + 18) ? 1 : -1];
+typedef char abi_wpa_info_length_tag[(S2INFO_WPAInfoLength == TAG_USER + 19) ? 1 : -1];
 typedef char abi_raw_psk_flag[(S2WIRELESS_CAPF_RAW_PSK == (1UL << 2)) ? 1 : -1];
+typedef char abi_ie_extent_flag[(S2WIRELESS_CAPF_IE_EXTENT == (1UL << 3)) ? 1 : -1];
+typedef char abi_capabilities_version[(S2WIRELESS_CAPABILITIES_VERSION == 1) ? 1 : -1];
 typedef char abi_capabilities_size[(sizeof(struct Sana2WirelessCapabilities) == 32) ? 1 : -1];
 typedef char abi_cap_size_available[(offsetof(struct Sana2WirelessCapabilities, SizeAvailable) == 0) ? 1 : -1];
 typedef char abi_cap_size_supplied[(offsetof(struct Sana2WirelessCapabilities, SizeSupplied) == 4) ? 1 : -1];

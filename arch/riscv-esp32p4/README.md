@@ -1,10 +1,24 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Association IE extent contract (2026-10-10): generic5b2cf0b82b is locally
+integrated. WirelessManager validates one complete readable IE before its
+association callback performs device I/O and sends WPAInfoLength only when
+the actual device negotiates FOURWAY+IE_EXTENT. Old offload and legacy devices
+receive no effective new tag; public capabilities remain version1/32 bytes.
+Host association models pass68 scenarios/451 checks and capability models35/70
+each O0/O2 ASan/UBSan on macOS and isolated Linux. Public RV32 ABI and a fresh
+full RV32 GUI build pass (680384B); these are not hardware evidence.
+The native parser still receives a separate helper parameter: consuming the
+new tag and binding the queue remain open. No new capability is advertised;
+SUMMARY-only and both privacy assertions0 remain unchanged. No hardware,
+credentials, C6 update or deployment occurred.
+
 Native association input development (2026-10-10): a bounded options parser now
 copies the shared SANA caller's borrowed SSID/BSSID/passphrase or binary PSK into
 an owned target. It accepts only managed open or singleton RSN-PSK/CCMP, requires
 an explicit readable IE extent, and wipes the full output on refusal. The shared
-caller still needs a validated-length handover before binding. This is an
+caller now has the negotiated handover above; native tag consumption still
+needs integration before binding. This is an
 input/lifetime prerequisite, not a queued
 S2_SETOPTIONS implementation. Actual native acceptance, cancellation, link events
 and teardown remain open; SUMMARY-only capability and both privacy assertions0

@@ -257,6 +257,11 @@ static void test_caps_validator(void)
 
 	++scenario_count;
 	caps = valid_caps();
+	caps.Flags = S2WIRELESS_CAPF_FOURWAY | S2WIRELESS_CAPF_RAW_PSK |
+		S2WIRELESS_CAPF_SECURITY_SUMMARY | S2WIRELESS_CAPF_IE_EXTENT;
+	CHECK("combined offload capability contract",
+		"fourway+summary+raw+extent accepted",
+		wpa_driver_sana2_wireless_caps_valid(&caps), 1);
 	caps.Flags = S2WIRELESS_CAPF_FOURWAY | S2WIRELESS_CAPF_RAW_PSK;
 	CHECK("raw PSK capability contract", "fourway+raw without summary accepted",
 		wpa_driver_sana2_wireless_caps_valid(&caps), 1);
@@ -269,6 +274,15 @@ static void test_caps_validator(void)
 	absent.Flags |= S2WIRELESS_CAPF_SECURITY_SUMMARY;
 	CHECK("raw PSK capability contract",
 		"raw+summary without fourway rejected with zero masks",
+		wpa_driver_sana2_wireless_caps_valid(&absent), 0);
+	absent.Flags = S2WIRELESS_CAPF_IE_EXTENT;
+	CHECK("IE extent capability contract",
+		"extent without fourway rejected with zero masks",
+		wpa_driver_sana2_wireless_caps_valid(&absent), 0);
+	absent.Flags = S2WIRELESS_CAPF_SECURITY_SUMMARY |
+		S2WIRELESS_CAPF_IE_EXTENT;
+	CHECK("IE extent capability contract",
+		"summary+extent without fourway rejected with zero masks",
 		wpa_driver_sana2_wireless_caps_valid(&absent), 0);
 
 	caps = valid_caps();
@@ -287,9 +301,11 @@ static void test_caps_validator(void)
 	CHECK("wrong capability version", "rejected",
 		wpa_driver_sana2_wireless_caps_valid(&caps), 0);
 	caps = valid_caps();
-	caps.Flags |= 1UL << 7;
+	caps.Flags |= S2WIRELESS_CAPF_RAW_PSK | S2WIRELESS_CAPF_IE_EXTENT |
+		(1UL << 7);
 	++scenario_count;
-	CHECK("unknown capability flag", "rejected",
+	CHECK("unknown capability flag with IE extent",
+		"unknown bit remains rejected",
 		wpa_driver_sana2_wireless_caps_valid(&caps), 0);
 	caps = valid_caps();
 	caps.Protocols = S2WIRELESS_PROTO_RSN_SAE;
