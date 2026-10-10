@@ -172,6 +172,21 @@ class ExporterTests(unittest.TestCase):
 
         self.assert_invalid_contract_has_no_effect()
 
+    def test_missing_sdk_probe_metadata_is_rejected_without_rewriting_contract(self):
+        contract = self.make_contract()
+        del contract["native_sdk_link_probes"]
+        self.write_contract(contract)
+
+        self.assert_invalid_contract_has_no_effect()
+
+    def test_unsealed_sdk_probe_is_rejected_without_rewriting_contract(self):
+        contract = self.make_contract()
+        contract["inputs"] = [entry for entry in contract["inputs"]
+                              if entry["path"] != "src/probe.cpp"]
+        self.write_contract(contract)
+
+        self.assert_invalid_contract_has_no_effect()
+
     def test_duplicate_input_path_is_rejected_without_rewriting_contract(self):
         self.write_contract(self.make_contract(("src/a.in", "src/a.in")))
 

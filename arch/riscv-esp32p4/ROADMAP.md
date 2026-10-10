@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The complete native SDK build passed after canonical archive output and Popupmenu ownership corrections. Ordinary C/C++ driver links passed and remain byte-identical after full SDK relocation; invalid SDK/ABI/path counterprobes were rejected. The source-owned v2 contract now seals C/C++ application fixtures, and its loader has positive and counterprobe coverage; this does not execute either link. Durable native execution, relocation receipt/read-back/admission, a new qualified tools runtime, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The complete native SDK build passed after canonical archive output and Popupmenu ownership corrections. Ordinary C/C++ driver links passed and remain byte-identical after full SDK relocation; invalid SDK/ABI/path counterprobes were rejected. The source-owned v2 contract seals C/C++ application fixtures; the loader and corrected source CI authoring gate have positive and counterprobe coverage, not compiler execution evidence. All 46 source CI authoring tests pass. Durable native execution, relocation receipt/read-back/admission, a new qualified tools runtime, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -575,6 +575,32 @@ change any board's hardware acceptance state.
 - Next: integrate the generic ordinary C/C++ link and relocation proof with
   bounded retained receipt, read-back and source-independent release admission;
   then qualify the released runtime and all three host lanes.
+
+### 2026-10-10 - TC0 source CI follows the mandatory v2 SDK probes
+
+- Baseline: source `f4231ae46063c219f5f8fcca5e474bb3f32e5fee`; the selected
+  SDK contract remains SHA-256
+  `18d2c40c3013c2efc6d235ce26b7453d31feacf02ae5d4d86215ae7077e481f6`.
+  Before correction the CI-discovered declaration suite failed with two
+  missing-v1-file errors and one stale profile-path assertion. The exporter
+  itself and source profile already selected v2 correctly.
+- Correction: declaration tests read the selected v2 contract, require exactly
+  the ordinary C/C++ probe paths and empty additional-library lists, and verify
+  both fixture hashes against the source-input seals. Exporter counterprobes
+  reject absent SDK probe metadata and an unsealed C++ probe without changing
+  the rejected contract or its source inputs.
+- Procedure: `python3 scripts/ci/test_native_sdk_declaration.py` and
+  `python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v`.
+- Result: five declaration tests and all 46 discovered source CI tests passed
+  on macOS ARM64. The declaration suite also executes all 12 isolated exporter
+  tests. These are source-authoring checks, not SDK compiler/link execution,
+  A/B, publication or hardware evidence.
+- Safety: no source implementation, compiler package, source contract seal,
+  retained build tree, board, firmware, media, tag or release changed. The live
+  integrated SDK diagnostic retains its independently frozen f4231ae source.
+- Remaining gate: actual owning SDK execution and relocation/read-back, exact
+  qualified source/runtime integration, then mixed three-host qualification
+  and independent public artifact verification. TC0 remains `in development`.
 
 ## Track E: ESP32-P4 / RV32 SMP
 
