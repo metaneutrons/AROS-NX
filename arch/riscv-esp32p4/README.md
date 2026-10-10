@@ -21,12 +21,17 @@ Fabian granted conditional C6 update authority on 2026-10-10: inspect firmware
 and update only with secured recovery. Physical readiness and a proven restore
 path remain outstanding. No C6/serial/credential action was taken. See
 network/HOSTED-REFERENCE.md for the gate.
-The local reproduction tree is not yet build verified: protobuf-c and IDF
-Python dependencies are missing. INFO-level SSID logging and unconditional
-current-AP SSID/BSSID printf survive a maximum-INFO configuration. A private
-source-redacted C6 build and archived configuration/artifact hashes are needed;
-neither a source archive nor a successful future build proves installed identity
-or secured recovery.
+The initial reproduction tree lacked protobuf-c and IDF Python dependencies.
+A separate private C6 candidate now builds from the complete pinned source:
+Hosted SSID/password/AP prints and payload dumps removed, fixed-width response
+length reads bounded. Real-macro models pass490 checks each O0/O2 on macOS/Linux;
+the original macro fails the ASan negative control. App1106624B,
+SHA25693cc504db3109c33efebef1ff70701f3caadf195f62da8303a8078e6c749229d.
+Config/artifacts/dependencies are archived and patch application independently
+reviewed. This is undeployed build evidence, not installed identity or secured
+recovery. IDF binary SSID/BSSID log formats and device/client MAC logs remain;
+whole-firmware UART privacy still needs verification. Recipe and scope:
+tools/c6-private-firmware/README.md.
 
 Association-caller correction in development (2026-10-10): the separate
 upstream-based wireless checkout now validates representable SSIDs and

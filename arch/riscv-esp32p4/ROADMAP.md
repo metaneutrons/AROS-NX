@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2F | C6 firmware privacy and recoverable identity | `source/privacy audit; private build dependencies unresolved; physical recovery gate open` | Hosted init/version is not a whole-image hash. Maximum-INFO alone leaves SSID INFO and direct AP printf; source redaction required. Local reproduction lacks protobuf-c/generated config/IDF Python dependencies. Stock OTA is not verified rollback; actual CN5 verification, readiness, non-secret backups, privacy-safe image and proven restore remain mandatory under conditional authority. No C6 action. |
+| N2F | C6 firmware privacy and recoverable identity | `Hosted privacy patch and private C6 candidate build verified; physical recovery/UART privacy gate open` | Separate complete pinned tree builds1106624B app; Hosted secret/network/payload log sites removed and response length bounded, actual-macro490 O0/O2 Mac/Linux checks and original ASan failure prove regression scope. Config/dependencies/artifacts archived; no deployment or installed identity proof. IDF binary SSID/BSSID log formats and MAC logs remain. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore remain mandatory under conditional authority. |
 | N2A | Association caller and native link lifecycle | `shared binary-PSK caller verified; owned hints/current-AP runtime query build/model verified` | Generic2eb274ff63 locally integrated; native device remains SUMMARY-only. Owner copies775/776 and runs one correlated294/550 diagnostic snapshot per new hint revision, not CONNECT. Native S2_SETOPTIONS, active-target/lifecycle confirmation, real notifications/traffic gates, C6 privacy and association/DHCP remain required. No credential deployment or link acceptance. |
 | N2S | Native queued SANA scan presentation | `RV32 build verified; source review and corrected scan-helper models passed` | Single bounded owner-service scan, copied SSID filter and caller-pool-owned complete publication. Scan-helper models295 checks each O0/O2 ASan/UBSan on macOS/Linux; outer BeginIO/AbortIO/Close and runtime scheduling remain separate gates. Exact singleton metadata only; unsupported/ambiguous unknown protected. C-string binary SSIDs/invalid channels omitted; max8 local cap. SUMMARY only, no FOURWAY. No credentials/deployment/hardware acceptance. |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
@@ -1141,12 +1141,20 @@ verified on the actual board after fresh physical readiness. Fabian granted
 conditional update authority on 2026-10-10; secured recovery remains mandatory
 before a write, and has not been demonstrated.
 Source development may proceed without sending credentials or changing C6.
-The local reproduction audit finds no generated sdkconfig or compiled candidate,
+The initial local reproduction audit found no generated sdkconfig or compiled candidate,
 an empty protobuf-c dependency directory and an IDF Python environment that
 cannot start idf.py. Maximum-INFO does not remove INFO SSID or direct current-AP
 printf; patch sensitive source logging and data dumps before a private build.
 Archive pinned source/dependencies, actual config and all artifact hashes; this
 offline build remains separate from actual installed identity and restore proof.
+The separate complete-source private tree now builds for C6/SDIO with maximum
+INFO and Wi-Fi NVS disabled. The Hosted disclosure sites are removed at source;
+the response macro uses bounded strnlen and its actual-source regression is
+sanitizer verified, including a failing original negative control. The source
+patch/recipe and archived generated config/artifacts are reproducible inputs,
+not proof of deterministic byte-identical rebuilds. IDF/vendor-library
+SSID/BSSID log formats remain in the app; actual UART privacy and secured
+restore remain open before credential deployment or C6 writing.
 
 Association caller correction is in development in the upstream-based generic
 checkout: validate before effects, use synchronous borrowed stack options,
@@ -34313,3 +34321,62 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   non-secret backup and proven restore must precede any C6 write under Fabian's
   conditional authority. No credentials, NVS inspection, serial, reset, flash
   or SD writes; hardware recovery and native WLAN acceptance remain open.
+
+### 2026-10-10 - N2F private C6 candidate build and bounded response correction
+
+- State: undeployed source/model/C6 build verified. Separate workspace
+  /Volumes/Dev/Build/c6-private.m7Gzhv uses the complete pinned Hosted source
+  including protobuf-c. Original reference and reproduction trees unchanged.
+  Repo tools/c6-private-firmware contains privacy.patch, config, reproduction
+  instructions and actual-macro tests. Independent non-author patch application
+  to a fresh four-file baseline matches private files byte-for-byte.
+- Changes: remove Hosted STA SSID/password diagnostics, scan/current-AP
+  SSID/BSSID prints and all active payload dump calls on C6 SDIO/serial/Wi-Fi
+  and Bluetooth paths. No intended RPC/data-path change. The existing response
+  string macro did bounded strndup followed by unbounded strlen on fixed arrays;
+  it now computes length using strnlen(src,max_len), preserving terminated
+  lengths and full-width maximum. Actual macro tests exercise every NUL position
+  plus exact32/64-byte unterminated heap fields, content, length and terminator.
+- Procedure/results: private Python3.12.13 venv, official v5.4 constraints,
+  resolved dependency freeze, CMake3.30.2, official Ninja1.12.1, GCC14.2.0_20250730,
+  clean IDF5.4.3 Git ea1c174c1cbb7348bd8ba0ff1eb306246938dd80. Provisioning used
+  downloads; builds used local files, not an offline provisioning claim.
+  Actual initial and post-strnlen build exits0; final log confirms source
+  recompilation, ELF link, binary generation and source-layout capacity pass.
+  No compiler warning/error signatures. Generated config confirms C6, SDIO,
+  max/defaultINFO, 4MB source layout and Wi-Fi NVS disabled. No live layout proof.
+- Primary final actual-macro O0/O2 ASan/UBSan repeats pass490 checks each on
+  macOS and isolated Linux/GCC13.3, actual exits0. Independent reviewer runs490
+  each O0/O2 and finds no false-pass blocker. Original-source negative control
+  exits134 with ASan heap-buffer-overflow. Scope excludes allocation failures,
+  full handler/wire behavior and radio concurrency. Initial Mac test printed
+  passes but cleanup exited1 because -g produced an unremoved dSYM; final runner
+  drops unnecessary -g and completes0. Initial Docker bind mount lacked source;
+  final run transfers exact source/fixture via tar and completes0. Failed logs
+  retained. Wrong initial constraint URL404 and nonexistent PyPI Ninja1.12.1
+  corrected to official IDF constraints URL and catalog-verified Ninja download.
+- Artifacts: app1106624B,
+  SHA25693cc504db3109c33efebef1ff70701f3caadf195f62da8303a8078e6c749229d;
+  ELF7d25e9af2c569f97d4867465f255ce16cd2b4ea67de9119d4e72f3f4114587f1;
+  bootloader22016B,53357bd3be81e58ed90428a9e1faaaa73666de14ba1fd49f95888d6ee2e7d2f2;
+  partition3072B,0241fa0d2e573dee86756e39fb4181e61ff7218087619cab565b602df55954d6;
+  sdkconfig4737c809de018a223cd0333e8e3c043bdc1b454a9a9779aad23551ae26b035e8.
+  Smallest source OTA slot1572864B,466240B free. Generated flash_args are not
+  authorized instructions: actual installed partitions/security/recovery unknown.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/c6-private.PRG4rx
+  contains app/bootloader/ELF/map/table/otadata/config, private-source archive,
+  dependency freeze/constraints, patch, successful/failed test and build logs
+  and SHA256SUMS. Patch431de5e1105f879895a4ac3d854335b2ccebaa8a4a07656c994e62e3d2f425fe;
+  private-source archiveab45017489f26d379280236f7fc1712ca0b2ecdb7f5376366a08f7b302ae5265;
+  final buildcc2c9b296ddb47a2424fd09f1e0d2bbf7962d9283f65c517eaa9fbcca984b9e3;
+  final Mac/Linux tests45c57f7ae0ea94087792fe25ff0f70163a8148ee8efd36776c72102dd519461b;
+  negative75cafb392d9dd0f245696394f05608268fc3f3c6d2a4b4d82e9c1a68eb618181.
+- Limits/safety/next: binary strings still include IDF 'connected with %s'
+  SSID/BSSID format and other vendor network metadata. Presence is not proof of
+  execution, absence of Hosted formats is not whole-binary privacy proof.
+  C6 device/client MAC logs remain; reference host-side dumps are outside this
+  C6-only build, and native AROS logging requires its own gate. No serial/reset,
+  flash, credentials, NVS inspection or SD writes. Actual CN5 availability,
+  security/identity/non-secret backups and proven restore remain mandatory.
+  Continue native association ownership/link gating and actual recovery/privacy
+  qualification; candidate build alone cannot permit credentials or close Wi-Fi.
