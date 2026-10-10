@@ -132,6 +132,7 @@ gate: compensated output is not the native display contract.
 | N2 | AROS WLAN SANA-II integration | `private ABI6 association/lifecycle binding build and scoped models verified; runtime/privacy/wireless gates open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded STA TX compile for Core1. N2L records current counts/artifacts and Close/Offline/teardown models. Actual helpers/selected dispatch arms; Exec/SDMMC/hooks/radio mocked, not full BeginIO, full service callback or runtime concurrency. Queue/traffic-token fences/copied AP publication are bound; no actual association/IP claim. TX commitment rejects late AbortIO. WirelessManager/bwfm remain references; per-device four-way offload must preserve legacy behavior. Caller late failure, DHCP/build defaults, GUI saving/writable preference storage and actual teardown/reconnect/load remain open. No credentials, deployment or hardware pass. |
 | N2L | Native radio teardown and ongoing link lifecycle | `ABI6 build/scoped models verified; hardware/privacy open` | Standalone leave, deferred teardown outside unit lock, bounded Disconnect/NOT_CONNECT verification, periodic correlated AP observation and selected-RPC cancellation drain. Mac/Linux O0/O2 sanitized: association25999, observer393, bridge219, options89/258, queue785, lifetime1482, datapath16507, events6/70, scan295; sibling link102/reservation63/owner scan37447; exit0. Fresh Core1 RV32 modules have no undefined imports. Explicit teardown requires absence; persistent/foreign AP quarantines rather than reporting loss. Both privacy assertions0 and SUMMARY-only unchanged. Shared caller late-failure event and actual radio/reconnect/load qualification remain open. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
+| N2U | Credential-free WLAN image defaults and first-use selection | `overlay generator host tested; image/runtime open` | Fixed native device/unit0, DHCP, RAM database/temporary paths; empty Wireless.prefs, no credentials, autostart off. Four host tests pass; existing directories/symlinks refused. Not consumed by current image targets; standard DB companions/binaries/libraries, one GUI-enabled manager path and actual parser/runtime acceptance required. First delivery excludes credential persistence; SYS/SD remains read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -1465,6 +1466,19 @@ Connect action does not save new networks. Provide an accessible single-manager
 selection path and explicit writable user-preference storage if credentials
 are to persist. Read-only SYS/SD protection remains unchanged. Neither image
 staging nor first-use/persistent-network UX has been implemented or accepted.
+
+A separate make-wifi-defaults.py host generator now emits an exclusive new
+preferences overlay: fixed native device/unit0, IP=DHCP UP DEFER, RAM database,
+explicit DHCP lease/PID/config paths and empty Wireless.prefs. Autostart is off;
+four host tests pass. It is not consumed by image targets and is not a complete
+stack database or network image. Stage standard database companions, compiled
+stack/DHCP/manager and libraries, then establish a single GUI-enabled manager
+startup path (not an additional GUI process over the current NOGUI instance).
+Validate resolved DHCP paths and AROS parsing/runtime before deployment.
+Credential persistence remains outside first station-mode delivery.
+Network preferences currently identifies wireless devices by a legacy name
+list; the native device is not recognized when saving. Correct that generic
+classification before using Network preferences for first-use settings.
 
 ### N3 - qualification and Ethernet follow-up
 
@@ -35497,3 +35511,54 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   identity/security, physical CN5 access, verified backup/restore and actual
   UART privacy are next gates before credentials. Native association/DHCP/
   bidirectional frames/reconnect/shared-load qualification remains open.
+
+### 2026-10-10 - N2U credential-free WLAN preference overlay
+
+- Current-state inventory: C3 image recipe stages neither Network preferences,
+  manager nor AROSTCP/DHCP; its startup does not execute Package-Startup.
+  WirelessManager main_amiga.c47..135 supports DEVICE/UNIT/CONFIG/NOGUI,
+  defaults UNIT0/ENV:Sys/Wireless.prefs, and starts GUI in the same manager
+  when NOGUI is absent. Package-Startup9..14 uses NOGUI. GUI Connect changes
+  memory only; .config271 disables config writing. No GUI attachment/singleton
+  path for a second launch was established. Independent read-only inventory
+  confirms these missing integration pieces, not runtime acceptance.
+- Implementation: image/make-wifi-defaults.py generates eleven fixed files in
+  a new exclusively created overlay directory. Native device/unit0, wlan0
+  DHCP UP DEFER, ENV:AROSTCP/db, source-root DHCP binary, /T/ lease/PID paths,
+  ENV DHCP config, no network in Wireless.prefs. Environment
+  scalar formats match existing prefsdata.c writers (no trailing newline,
+  WirelessDevice includes UNIT0). No private input or autostart; no image
+  target consumes the overlay yet. Standard DB companions are not supplied
+  by this overlay, so it must not be used as a standalone stack database.
+- Tests: four Python host tests pass, actual exit0: exact file set/content,
+  byte-identical second generation, existing directory/user-file preservation,
+  symlink refusal and explicit no-network/no-startup invariants. Initial test
+  incorrectly counted dotted filenames (expected6, actual3) and failed; corrected
+  to compare the full actual file set. This was a test expectation defect, not
+  an output mutation. Generated import cache removed; test disables bytecode
+  creation. Host fixtures do not execute AROS parsers, GUI, DHCP or radio.
+- Correction: first generated config contained update_config0. Primary source
+  check and independent review found CONFIG_NO_CONFIG_WRITE removes that key
+  from the manager parser table (config_file.c444..446). Removed it, retaining
+  ap_scan1 alone; fresh generation/four host tests pass. Earlier overlay remains
+  archived at wifi-defaults.truqMj as a superseded parser-incompatible input,
+  not a runtime pass. This demonstrates the limits of host content tests.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/wifi-defaults-final.Bnocje
+  contains actual corrected overlay/source and tests.log
+  SHA256b6a161abed43b9a0dba9259cd451b39b20b10425ac13cc14786554c0e6fac7f1.
+  Generator1ee4bf61458d2f4cdfba9679232eb3cf0f9770f51132f73feb48357c4fb7ae8b;
+  test17d727f682db6de99c387cc49b603915dbd2f510291e549f1d8bdf214de46a87.
+- Additional integration finding: Network prefsdata.c461..468 recognizes
+  wireless devices using a fixed legacy-name list; native esp32p4wlan is absent.
+  Saving Network preferences would therefore omit WirelessDevice/disable
+  WirelessAutoRun. Fix classification via the generic upstream workflow before
+  relying on that UI; do not merely add another board-specific name to it.
+- Safety/limits/next: no existing user config changed, no flash/serial/SD write,
+  no credentials, no privacy flag enablement. No native build or hardware pass
+  claimed. DHCP source config.h100..104 uses /T/ but cf/aros.h differs; explicit
+  environment overrides are provided, and the final resolved build/runtime
+  path remains to prove. AROSTCP/Config requires its RAM database to exist
+  before launch and does not relocate dhclient itself. Complete binary/database
+  stage and one-manager first-use GUI workflow next, then native/runtime tests
+  after C6 identity/backup/restore/UART privacy. Credential persistence remains
+  outside the first station-mode delivery; read-only SYS/SD is unchanged.

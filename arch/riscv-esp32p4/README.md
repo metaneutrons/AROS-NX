@@ -1,5 +1,12 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WLAN build defaults (2026-10-10): a separate credential-free preferences
+overlay generator and four host tests now pass. Native device/unit0, DHCP,
+RAM database and DHCP temporary paths are predefined; autostart stays off.
+Not yet consumed by image targets. Standard database/binary dependencies,
+single-manager GUI launch and runtime acceptance remain open. First delivery
+does not persist credentials or relax read-only SYS/SD protection.
+
 C6 legacy logging extension (2026-10-10): fresh full build passes with
 Wi-Fi, coexistence and PHY shared formatters suppressed specifically for C6.
 App1105312B SHA-256

@@ -26,6 +26,29 @@ The target writes four files next to each other in
 | `aros-test.manifest` | every entry with size and SHA-256 |
 | `aros-test.sha256` | checksum of the image |
 
+## WLAN build defaults (overlay only)
+
+`python3 make-wifi-defaults.py NEW_DIRECTORY` generates fixed, credential-free
+preferences for native `DEVS:Networks/esp32p4wlan.device`, unit0 and DHCP.
+The output is a preferences overlay, not a complete network image: the standard
+AROSTCP database companions, stack/DHCP/manager binaries, libraries, Network
+preferences and single-manager GUI startup still need explicit image staging.
+Neither existing image target consumes the overlay yet.
+
+Existing output directories and symlinks are refused; never merge this output
+over saved private preferences. `AutoRun` and `WirelessAutoRun` are False.
+Wireless.prefs contains no network; config writing is disabled in the manager
+build (its parser does not accept update_config). No SSID/password
+input is accepted. Credential persistence is not part of the first delivery.
+The read-only C3 startup copies ENVARC into RAM-backed ENV. AROSTCP/Config
+selects its working database there; DHCP lease/PID paths explicitly use /T/,
+and the DHCP executable path remains on SYS. Both privacy gates stay disabled.
+
+`python3 test-wifi-defaults.py` checks exact outputs, reproducibility and
+existing-directory/symlink refusal. It is a host generator test, not execution
+of the AROS parsers, DHCP, GUI or radio. Production stage/runtime acceptance
+remains open; do not treat generated defaults as a working WLAN image.
+
 ## Verifying
 
     sh arch/riscv-esp32p4/image/verify-image.sh <path>/aros-test.img
