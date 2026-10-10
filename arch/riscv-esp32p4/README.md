@@ -4,13 +4,14 @@ Networking update (2026-10-10): an exact historical official ESP-Hosted RPC
 source match has been established for the JC1060 vendor project. See
 [HOSTED-REFERENCE.md](network/HOSTED-REFERENCE.md) for pinned artifacts,
 corrections, mandatory reset/timeout adaptations and the complete-host
-comparison gates. This is source evidence only, not installed C6 identity,
-reference build acceptance or working Wi-Fi.
+comparison gates. The source match does not establish installed C6 binary
+identity. The complete reference now passes one hardware MAC/scan gate;
+native AROS Wi-Fi remains open.
 
 The complete-host build now links with IDF6.0.1 after explicit dependency,
 DMA-allocation and legacy reserved-field adaptations. Image-header inspection
 also exposed and corrected the default P4>=3.x target; the corrected build
-targets1.0..1.99. The build-only front end and compatibility patch are retained
+targets1.0..1.99. The reference front end and compatibility patch are retained
 under `tools/hosted-reference/`. A bounded MAC/scan candidate now removes implicit
 initialization, guards absent reset GPIO, uses ten-/forty-second connection/app
 deadlines and panic-halt behavior, and corrects scan result validation/count
@@ -18,15 +19,21 @@ publication, and preserves the existing bus mutex after worker startup.
 Its IDF6 link, independent review and actual-source startup/scan/app models
 pass. Its first headless deployment fails before application entry: the
 generated 400MHz setting is unsupported on revision1.3. Defaults now select
-360MHz; a generated-configuration checker and corrected build pass, not yet
-deployed. Exact full-span AROS rollback/readback matches, but the return boot
+360MHz; a generated-configuration checker and corrected build pass.
+In that first failed attempt exact full-span AROS rollback/readback matches, but the return boot
 faults in ROM at address0x50091000 and watchdog-resets. Independent bootloader/
 partition readback matches the originals. A read-only snapshot finds Crypto
 selecting240MHz while that parent is gated off. A single masked parent-clock
 enable restores a complete30.948s headless AROS return (PSRAM/both harts/modules/
 graphics updates). This manual recovery workaround is not a permanent reset
 fix or a physical-cold/visual gate; N1R tracks its uncompensated removal.
-No MAC/scan hardware acceptance yet. Board now runs baseline AROS again.
+The subsequent corrected360MHz hardware run completes MAC/scan in4.085s:
+slave chip12/capabilities0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records.
+Complete45.822s capture has no further reset/fault. Exact full-span rollback
+and complete30.925s baseline return pass without another manual clock write.
+This is one official-host reference gate, not native association, frames,
+SANA-II/shared-SD/recovery or installed binary lineage. Empty-scan behavior was
+not exercised (13 APs); N1E remains open. Board runs baseline AROS.
 IDF5.4.3 is an optional isolated comparison environment, not a port downgrade.
 
 JC1060 Wi-Fi implementation has started

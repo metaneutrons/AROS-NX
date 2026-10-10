@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
-| N1 | ESP-Hosted control and Ethernet-frame transport | `in development; reference startup failed; baseline recovered by workaround` | Pinned d518 host links under6.0.1; actual-source startup/scan/app tests pass. Hardware exposes unsupported400MHz before app entry. Corrected360MHz build/config gate pass, not deployed. Exact AROS/bootloader/partition match. SHA ROM fault clears after one masked240MHz parent enable; complete30.948s headless return passes. Manual recovery workaround/N1R and empty-scan workaround/N1E removal remain open. No MAC/scan, native association/frame/recovery or WLAN acceptance. Automatic flash layout forbidden. |
+| N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan reference passed once; native WLAN open` | Corrected IDF6.0.1/360MHz d518 reference completes MAC/scan in4.085s: chip12/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight validated records. Complete45.822s capture, exact full-span rollback and30.925s AROS return pass, no new clock compensation. Prior early failure required manual240MHz recovery; N1R early-failure removal and N1E empty-scan root fix remain open. No native association/frame/SANA-II/coexistence/recovery acceptance or installed binary lineage. Automatic flash layout forbidden. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -651,7 +651,15 @@ establish safe IDF handoff/early-failure clock restoration and demonstrate
 reference-to-baseline warm returns without host register compensation; include
 failure-path return and keep physical cold behavior a separate gate. Do not
 silently embed the manual write as normal AROS startup or count it as rail-off.
-No hardware MAC/scan, association, bidirectional frames or recovery accepted.
+The corrected360MHz complete reference now passes one hardware MAC/scan gate:
+chip12/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records, final marker at4.085s.
+Complete45.822s capture has one commanded ROM reset and no further fault.
+Exact full-span rollback and30.925s AROS return pass without another clock
+write. This is a normal-return sample, not the N1R early-failure removal gate.
+The official driver/card/function/OPEN/RPC path is now a measured working
+reference for native integration. Prior timeouts do not prove C6 firmware
+incompatibility. Association, bidirectional frames, SANA-II/shared SD and
+recovery qualification remain open; installed binary lineage is not identified.
 The empty-scan omission is a workaround for the pinned slave's API error,
 not proof that its empty-record behavior is fixed. N1E (open root-fix item):
 establish installed slave lineage, fix/upstream the erroneous empty-list API
@@ -30738,6 +30746,52 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   or permanent reset qualification passed. Corrected360MHz candidate remains
   unflashed; next bounded reference attempt retains exact backup/quiescence/
   image/config gates. Full native WLAN delivery remains required.
+
+### 2026-10-10 - N1 corrected IDF6 complete-host MAC/scan hardware gate passes
+
+- Hardware MAC80:f1:b2:d3:3b:a6/P4v1.3 confirmed before each write. Corrected
+  reference380256B SHA-256349e8c588870d98e938055ac008dd3d5e4de5b430b298233c7bd7c94ad6ba900,
+  CPU360MHz, rev1.0..1.99,16MB DIO80, PSRAMoff, panic halt, reset=-1,
+  slot1/one-bit/400kHz CLK18/CMD19/D0=14/D1=15. Config21 checks/image checksum
+  and validation hash pass. Source4398076ff9 plus pinned external patches.
+- Known quiesce park174160B39ce408b... written0x20000, write22292 exits0;
+  independent readback/cmp exits0. Capture97396 exits0, complete15.823275458s/
+  4064 bytes, stopped channel/reset/clock/bridge readbacks and intervals10 READY.
+  cpu360-park.log SHA-256
+  178ef3d70eb7fe160b9ef596ba15eecf12e429539f9665717c570ceb272305c1.
+- Reference write26836 exits0, only0x20000..0x7cfff erase span. Independent
+  read84721 exits0, byte-identical candidate. Capture79461 exits0, complete
+  45.822383875s/6918 bytes. cpu360-reference.log SHA-256
+  db1ae815edc7dabd6b08b239529363805fe1715029a3df61b8fdb6ea5da740fc.
+  One commanded USB ROM banner. Actual360MHz startup; card initialized,
+  both block sizes512, streaming mode, OPEN sent, private INIT received at305ms,
+  chip12/caps0x0d with WLAN. MAC10:bd:a3:9b:bc:34 at1455ms, final
+  REFERENCE result=ok scope=MAC_SCAN aps=13 records=8 at4085ms. No further
+  reset/assert/Guru/panic/failure/timeout signature. Early IDF log lines have
+  duplicated characters; raw bytes retained, later acceptance lines intact.
+- Full original380928B span restored at0x20000, write86469 exits0;
+  independent read40343/cmp exits0, SHA-256
+  1880a2f41f07fe14a32df7dde2dd4a09119248e6b67442967b49b8b95ce3e62e.
+  Return capture31900 exits0, complete30.924513583s/14557 bytes.
+  cpu360-return.log SHA-256
+  b2adefe4565ef8b8fd55c9699410caf3c862a02a8a83b5e396f0266ab42ef9f4.
+  Normal kernel/32MB PSRAM200MHz/DSI/41 modules/hart1/SD enumeration/accepted
+  graphics and touch-poll heartbeat; one commanded USB banner, no further
+  reset/trap/alert/Guru. No register compensation in this reference-return run.
+- Safety: all evidence in complete-host-mac-scan/. Bootloader/partition/BSP/
+  volume/SD/C6 firmware not written. Hosted changes powered slave function/
+  streaming/OPEN state; restoring P4 flash does not undo those runtime changes.
+  Wi-Fi stopped by app. No credentials, association, traffic or OTA; no SSIDs
+  logged. Baseline AROS running. No visual/touch/physical-cold pass inferred.
+- Acceptance scope: one complete official-host MAC/scan reference succeeds.
+  This establishes usable installed protocol compatibility, not binary lineage
+  or sustained/recovery behavior.13 APs means empty-scan workaround was not
+  exercised; N1E stays open. N1R normal return has one sample; early-failure
+  removal is unproven. Native CMD52/setup/OPEN/RX/RPC/association/frames/SANA-II
+  integration and SD coexistence remain required for working AROS Wi-Fi.
+- Next: use this exact working reference to compare native card/bootstrap
+  transaction order and shared-controller behavior; implement native control
+  and frame paths with bounded failure handling, then association/traffic gates.
 
 ## Evidence-entry template
 
