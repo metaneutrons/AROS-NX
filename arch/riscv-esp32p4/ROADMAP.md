@@ -120,7 +120,7 @@ gate: compensated output is not the native display contract.
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; MAC initialization ordering failure; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; GetMAC returns correlated0x3001 (WiFi not initialized), so overall diagnostic fails. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
 | N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; runtime initialization deployed, fresh-epoch gate pending` | Existing FIFO reused with owned bodies/exact correlation. Control3184/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Generation-bound reassembly1318 isolated checks each O0/O2 sanitized pass; now linked into control with coupled epoch/deadline/failure tests and fresh113900B module build. Fragmentation integration not deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Download mode retained pending coordinated fresh C6 startup; no initialized MAC gate yet. No persistent UID allocator or WLAN acceptance. Original verified baseline recoverable. |
-| N1S | Typed native scan and runtime acceptance | `codec host tested/RV32 compiled; oracle and runtime pending` | Default-config blocking/nonblocking start, stop, AP count and owned AP/country/HE records pass230 checks each O0/O2 sanitized, independent source review and freestanding RV32 compile. Local eight-record/4096-byte response bounds, exact ID/UID and binary lengths. No runtime linkage, deployed package or native hardware scan pass. Scan wait policy must match full scan duration under the aggregate deadline; zero-AP vendor workaround stays named in N1E. |
+| N1S | Typed native scan and runtime acceptance | `codec/oracle host tested/RV32 compiled; runtime qualification pending` | Default-config blocking/nonblocking start, stop, AP count and owned AP/country/HE records pass230 checks each O0/O2 sanitized, independent source review and freestanding RV32 compile. Pinned protobuf-c oracle1068 checks each O0/O2 sanitized pass. Local eight-record/4096-byte response bounds, exact ID/UID and binary lengths. No deployed package or native hardware scan pass. Runtime scan qualification in progress; scan wait policy must match full scan duration under the aggregate deadline, and zero-AP vendor workaround stays named in N1E. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -599,7 +599,8 @@ Binary SSID length is at most32, BSSID exactly6 and country code at most3;
 the local eight-record count must match the repeated records and capacity.
 The official reference uses blocking scan. Future runtime integration must
 allow its full bounded duration: the current100-poll/20ms control wait is not
-an accepted scan budget. No oracle/runtime/package/hardware scan pass yet.
+an accepted scan budget. Independent pinned protobuf-c oracle now passes1068
+checks each O0/O2 sanitized; runtime/package/hardware scan acceptance remains open.
 
 After the user's reconnection confirmation, a passive20.061s capture on
 2026-10-10 observes advancing JC1060 touch heartbeats only. N1/N1C status
@@ -31987,6 +31988,29 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   a separate pending change. Next: actual initialization gate after fresh
   physical readiness; qualify and integrate blocking native scan, then
   association, frames, SANA-II/DHCP and coexistence/recovery.
+
+### 2026-10-10 - N1S independent pinned protobuf-c scan oracle passes
+
+- Source:d9718f4fa1 plus test_hosted_scan_reference.c and
+  tools/test-hosted-scan-reference.py. Original generated codec and runtime
+  are compiled only in temporary host-test storage, never linked into AROS.
+- The runner refuses mismatched schema/generated/runtime SHA-256, using the
+  existing pinned d518 identities. Official encoder/decoder checks native
+  Start block0/1, NULL config/config_set0 semantics, Stop/Num empty requests,
+  Records1..8, response IDs/UIDs, signed status boundaries/default-zero,
+  count bounds and every owned AP/country/HE field. Binary SSID32/BSSID zeros,
+  absent/empty nested defaults and result ownership after source overwrite
+  are explicitly checked. This tests source compatibility, not C6 identity.
+- Primary read-only review and rerun in network-disabled Linux builder:
+  O0 and O2 ASan/UBSan each1068 semantic checks, actual exit0. No native macOS
+  launch or hardware observation is counted. Evidence scan-reference.log in
+  native-scan-codec.lCCVaO, SHA-256
+  d094883da2dcdcf79741219b633506f1d87336fcd1389cae80d4161378fcce01.
+- Safety: no reference-tree mutation, serial/reset/flash/SD/C6 access.
+  Runtime scan integration is separate work under qualification; installed
+  initialization package remains unchanged awaiting fresh physical startup.
+  Next: validate sequence/cleanup/wait models and module, then the actual
+  initialization and scan hardware gates before association/data/SANA-II.
 
 ## Evidence-entry template
 

@@ -43,7 +43,8 @@ Typed scan requests/responses now pass230 checks each O0/O2 with ASan/UBSan
 and standalone freestanding RV32 compilation. Default-config ScanStart accepts
 blocking or nonblocking mode; owned results retain all pinned AP/country/HE
 fields with binary string lengths and a local eight-record bound. Independent
-protobuf-c oracle qualification and runtime integration remain pending. This
+pinned protobuf-c oracle qualification passes1068 checks each O0/O2 sanitized;
+runtime integration qualification remains pending. This
 codec is neither linked into the deployed package nor a hardware scan pass.
 
 The complete-host build now links with IDF6.0.1 after explicit dependency,
