@@ -36,6 +36,15 @@
 #define S2INFO_Passphrase     (TAG_USER + 15)  /* PSK passphrase (driver-side 4-way) */
 #define S2INFO_Disassociate   (TAG_USER + 16)  /* S2_SETOPTIONS: leave the network */
 #define S2INFO_SecuritySummary (TAG_USER + 17) /* owned Sana2WirelessSecuritySummary */
+#define S2INFO_PSK             (TAG_USER + 18) /* borrowed binary WPA PSK */
+
+/* S2INFO_PSK is exactly 32 binary bytes, never a string or passphrase.
+ * Send it only with FOURWAY and RAW_PSK capabilities on the actual device.
+ * S2_SETOPTIONS borrows the bytes until Reply; the device must copy them
+ * before replying and protect/wipe any retained credential state. A caller
+ * sends either Passphrase or PSK, not both. Neither credential belongs in
+ * scan results, logs or capability responses. */
+#define S2WIRELESS_PSK_SIZE 32
 
 /* Wireless Commands */
 
@@ -70,6 +79,12 @@
 #define S2WIRELESS_CAPABILITIES_VERSION 1
 #define S2WIRELESS_CAPF_FOURWAY         (1UL << 0)
 #define S2WIRELESS_CAPF_SECURITY_SUMMARY (1UL << 1)
+/* RAW_PSK is valid only together with FOURWAY; FOURWAY alone promises
+ * passphrase handling, not support for S2INFO_PSK. Older strict v1 callers
+ * reject this new flag and retain their legacy host-handshake path. This
+ * does not guarantee connectivity to devices without legacy key support;
+ * an offload-only device and caller must use matching contract support. */
+#define S2WIRELESS_CAPF_RAW_PSK         (1UL << 2)
 
 struct Sana2WirelessCapabilities
 {
