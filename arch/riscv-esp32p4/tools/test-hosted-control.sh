@@ -10,6 +10,7 @@ for test_opt in 0 2; do
 		-O"$test_opt" -fsanitize=address,undefined \
 		-fno-omit-frame-pointer \
 		"$test_root/network/hosted_control.c" \
+		"$test_root/network/hosted_request_ids.c" \
 		"$test_root/network/hosted_tx.c" \
 		"$test_root/network/hosted_fifo.c" \
 		"$test_root/network/sdio_commands.c" \
@@ -47,6 +48,8 @@ if ! nm -u "$test_tmp/hosted_control.o" | awk '
 		    symbol == "p4_hosted_mac_request" ||
 		    symbol == "p4_hosted_mac_response" ||
 		    symbol == "p4_hosted_rpc_decode" ||
+		    symbol == "p4_hosted_request_ids_finish" ||
+		    symbol == "p4_hosted_request_ids_invalidate" ||
 		    symbol == "p4_hosted_tx_send")
 			next
 		bad = 1

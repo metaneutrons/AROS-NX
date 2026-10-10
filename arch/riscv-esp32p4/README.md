@@ -40,6 +40,17 @@ successful native Init/STA/Start/GetMAC/Stop/Deinit and MAC10:bd:a3:9b:bc:34.
 The captured start contains an HP watchdog reset, so clean cold-start acceptance
 and native WLAN remain open. The original baseline is recoverable.
 
+Persistent caller identity support now builds: one reserved RPC at a time,
+monotonic non-reused UIDs even across host-generation changes, permanent
+exhaustion rather than wrap, and exact stale-completion refusal. The new
+reserved-exchange API is linked into a fresh138984B module, but existing
+single-use diagnostic sequences still use fixed UIDs and no persistent worker
+calls the API. Ledger105 and legacy control3529 O0/O2 sanitizer checks pass;
+independent reserved-exchange qualification passes300 O0/O2 sanitized checks
+each against the real control implementation and fake transport. This does
+not add event delivery or idle RX. Losing the ledger on a P4 restart is not
+safe proof that a retained C6 has forgotten earlier UIDs.
+
 A generation-bound serial reassembly helper now passes1,318 checks
 each at O0/O2 with ASan/UBSan and freestanding RV32 compilation. It copies
 partial replies into owned memory and checks the pinned slave's per-fragment

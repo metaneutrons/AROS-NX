@@ -5,8 +5,9 @@
 static int control_disjoint(const void *const *objects, const size_t *sizes,
                             unsigned count)
 {
-    uintptr_t starts[6], ends[6];
+    uintptr_t starts[7], ends[7];
     unsigned i, j;
+    if (count > 7u) return 0;
     for (i = 0; i < count; ++i) {
         starts[i] = (uintptr_t)objects[i];
         if (!objects[i] || (uintmax_t)sizes[i] > UINTPTR_MAX - starts[i])
@@ -270,6 +271,50 @@ int p4_hosted_control_exchange(struct p4_hosted_fifo *state, uint32_t generation
         (void)p4_hosted_reassembly_abort(&result->assembly, generation);
         control_poison(state, generation);
     }
+    return ok;
+}
+
+int p4_hosted_control_exchange_reserved(struct p4_hosted_fifo *state,
+    struct p4_hosted_request_ids *ids, uint32_t generation,
+    const struct p4_hosted_open_ops *rx, const struct p4_hosted_tx_ops *tx,
+    unsigned checksum_enabled, const uint8_t *request, size_t request_size,
+    uint8_t *buffer, size_t capacity, struct p4_hosted_control_result *result)
+{
+    const void *objects[7] = {state, ids, rx, tx, request, buffer, result};
+    const size_t sizes[7] = {sizeof(*state), sizeof(*ids), sizeof(*rx),
+        sizeof(*tx), request_size, capacity, sizeof(*result)};
+    struct p4_hosted_rpc rpc;
+    int ok;
+    if (!generation || request_size == 0u ||
+        request_size > P4_HOSTED_CONTROL_MAX_RPC_SIZE ||
+        capacity < 512u || capacity > 4096u || checksum_enabled > 1u ||
+        !control_disjoint(objects, sizes, 7u)) return 0;
+    if (ids->initialized != 1u || ids->retired ||
+        ids->generation != generation || !ids->active_uid ||
+        !p4_hosted_rpc_decode(request, request_size, &rpc) ||
+        rpc.msg_type != P4_HOSTED_RPC_TYPE_REQUEST ||
+        rpc.uid != ids->active_uid || rpc.msg_id != ids->active_request_id)
+        return 0;
+
+    /* No range borrowed by this wrapper may escape the owner's critical
+     * section. Preserve the captured request identity across callbacks. */
+    ok = p4_hosted_control_exchange(state, generation, rx, tx,
+        checksum_enabled, request, request_size, buffer, capacity, result);
+    if (ids->initialized != 1u || ids->retired ||
+        ids->generation != generation || ids->active_uid != rpc.uid ||
+        ids->active_request_id != rpc.msg_id) {
+        /* Never complete an old operation against replacement identity state.
+         * A complete old response is not success in a changed identity epoch. */
+        if (ok) {
+            result->success = 0u;
+            result->error = P4_HOSTED_CONTROL_SESSION;
+        }
+        return 0;
+    }
+    if (state->generation != generation || state->poisoned)
+        (void)p4_hosted_request_ids_invalidate(ids, generation);
+    else
+        (void)p4_hosted_request_ids_finish(ids, generation, rpc.uid, rpc.msg_id);
     return ok;
 }
 

@@ -5,6 +5,7 @@
 #include "hosted_open.h"
 #include "hosted_tx.h"
 #include "hosted_epoch_reassembly.h"
+#include "hosted_request_ids.h"
 
 #define P4_HOSTED_CONTROL_MAX_POLLS 100u
 /* ScanStart may need to return only after a blocking scan has completed. A
@@ -77,4 +78,21 @@ int p4_hosted_control_exchange(struct p4_hosted_fifo *state, uint32_t generation
     const struct p4_hosted_tx_ops *tx_ops, unsigned checksum_enabled,
     const uint8_t *request, size_t request_size,
     uint8_t *buffer, size_t capacity, struct p4_hosted_control_result *result);
+/* Persistent caller variant. Reserve an identity before encoding and keep the
+ * same ledger for the lifetime of a possibly retained C6. The encoded request
+ * must match the live reservation and generation exactly. All seven object
+ * ranges must be disjoint. Wrapper preflight refusal changes nothing. Once
+ * accepted, every terminal exchange outcome finishes the reservation without
+ * rewinding its consumed UID, including lower-level preflight refusal. FIFO
+ * poison or generation loss retires only the matching identity epoch. A
+ * callback must not release controller ownership, re-enter this API or mutate
+ * the request-ID ledger; a stale completion cannot
+ * finish or invalidate a replacement ledger. This is still synchronous and
+ * does not add idle RX/event delivery, retries or an association allowlist. */
+int p4_hosted_control_exchange_reserved(struct p4_hosted_fifo *state,
+    struct p4_hosted_request_ids *ids, uint32_t generation,
+    const struct p4_hosted_open_ops *rx_ops,
+    const struct p4_hosted_tx_ops *tx_ops, unsigned checksum_enabled,
+    const uint8_t *request, size_t request_size, uint8_t *buffer,
+    size_t capacity, struct p4_hosted_control_result *result);
 #endif
