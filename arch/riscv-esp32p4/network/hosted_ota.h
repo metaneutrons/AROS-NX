@@ -13,6 +13,13 @@
 #define P4_HOSTED_OTA_MAX_WRITE_SIZE 238u
 #define P4_HOSTED_OTA_MAX_RESPONSE_BODY_SIZE 256u
 
+/* Read-only admission predicate for the private transport. Accept only byte-
+ * exact canonical BEGIN/END empty bodies or WRITE field1 containing1..238
+ * bytes, in a bounded request envelope with nonzero UID. Unknown fields,
+ * duplicate fields and noncanonical encodings are refused. This is neither
+ * maintenance authorization nor peer/layout/recovery or operation-order proof. */
+int p4_hosted_ota_request_is_canonical(const uint8_t *bytes, size_t size);
+
 /* Encode schema-defined empty Rpc_Req_OTABegin (ID 272). */
 int p4_hosted_ota_begin_request(uint32_t uid, uint8_t *bytes,
                                 size_t capacity, size_t *written);

@@ -79,6 +79,20 @@ int p4_hosted_pending_submit(struct p4_hosted_fifo *fifo,
                              uint8_t *txbuffer, size_t capacity,
                              struct p4_hosted_pending_result *result);
 
+/* Private OTA submission, deliberately not the ordinary WLAN allowlist.
+ * Same reserved-identity/range/TX/terminal-failure contract as normal submit,
+ * accepting only canonical272/273/274 requests. Caller must independently
+ * enforce exclusive maintenance, immutable verified source, live target/
+ * layout/recovery authority, transaction ordering and aggregate deadline.
+ * This helper proves none of those and never retries, resets or sends END
+ * for cleanup. No native maintenance job exposes it yet. Responses use the
+ * existing exact UID/request+256 correlation, followed by OTA status decoding. */
+int p4_hosted_pending_submit_ota(struct p4_hosted_fifo *fifo,
+    struct p4_hosted_request_ids *ids, uint32_t generation,
+    const struct p4_hosted_tx_ops *tx_ops, unsigned checksum_enabled,
+    const uint8_t *request, size_t request_size, uint8_t *txbuffer,
+    size_t capacity, struct p4_hosted_pending_result *result);
+
 /* Correlate one already-owned inbox item with the caller's persistent ledger.
  * Call only after successful submit and while the caller's deadline/session
  * is still authoritative; the caller tracks submitted/deadline state, timeout

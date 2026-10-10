@@ -5,6 +5,7 @@
 #include "hosted_serial.h"
 #include "hosted_wire.h"
 #include "hosted_init.h"
+#include "hosted_ota.h"
 
 /* Deliberately private: normal WLAN admission must not grow with extensions. */
 #define DISCOVERY_REQUEST_ID 350u
@@ -158,14 +159,15 @@ static int submit_preflight(struct p4_hosted_fifo *fifo,
                             struct p4_hosted_pending_result *result,
                             struct p4_hosted_rpc *rpc,
                             const struct p4_hosted_init *init,
-                            uint32_t nonce, unsigned discovery)
+                            uint32_t nonce, unsigned path)
 {
     struct pending_range ranges[7];
+    unsigned discovery = path == 1u;
     unsigned count = discovery ? 7u : 6u;
     unsigned first, second;
 
     if (!fifo || !ids || !tx_ops || !request || !txbuffer || !result ||
-        !rpc || generation == 0u || checksum_enabled > 1u ||
+        !rpc || generation == 0u || checksum_enabled > 1u || path > 2u ||
         request_size == 0u ||
         request_size > P4_HOSTED_PENDING_MAX_REQUEST_SIZE ||
         capacity < P4_HOSTED_PENDING_BUFFER_MIN ||
@@ -196,7 +198,9 @@ static int submit_preflight(struct p4_hosted_fifo *fifo,
         (discovery ? (rpc->msg_id != DISCOVERY_REQUEST_ID ||
                       !p4_hosted_init_has_board_discovery(init) ||
                       !discovery_body_matches(rpc, nonce))
-                   : !request_id_supported(rpc->msg_id)) ||
+                   : (path == 2u
+                       ? !p4_hosted_ota_request_is_canonical(request, request_size)
+                       : !request_id_supported(rpc->msg_id))) ||
         rpc->uid != ids->active_uid ||
         rpc->msg_id != ids->active_request_id)
         return 0;
@@ -213,7 +217,7 @@ static int pending_submit(struct p4_hosted_fifo *fifo,
                              uint8_t *txbuffer, size_t capacity,
                              struct p4_hosted_pending_result *result,
                              const struct p4_hosted_init *init,
-                             uint32_t nonce, unsigned discovery)
+                             uint32_t nonce, unsigned path)
 {
     uint8_t serial_buffer[HOSTED_SERIAL_MESSAGE_OVERHEAD +
                           P4_HOSTED_PENDING_MAX_REQUEST_SIZE];
@@ -225,7 +229,7 @@ static int pending_submit(struct p4_hosted_fifo *fifo,
 
     if (!submit_preflight(fifo, ids, generation, tx_ops, checksum_enabled,
                           request, request_size, txbuffer, capacity, result,
-                          &rpc, init, nonce, discovery))
+                          &rpc, init, nonce, path))
         return 0;
 
     clear_result(result);
@@ -316,6 +320,16 @@ int p4_hosted_pending_submit_board_discovery(struct p4_hosted_fifo *fifo,
 {
     return pending_submit(fifo, ids, generation, tx_ops, checksum_enabled,
         request, request_size, txbuffer, capacity, result, init, nonce, 1u);
+}
+
+int p4_hosted_pending_submit_ota(struct p4_hosted_fifo *fifo,
+    struct p4_hosted_request_ids *ids, uint32_t generation,
+    const struct p4_hosted_tx_ops *tx_ops, unsigned checksum_enabled,
+    const uint8_t *request, size_t request_size, uint8_t *txbuffer,
+    size_t capacity, struct p4_hosted_pending_result *result)
+{
+    return pending_submit(fifo, ids, generation, tx_ops, checksum_enabled,
+        request, request_size, txbuffer, capacity, result, NULL, 0u, 2u);
 }
 
 static int valid_inbox_envelope(const struct p4_hosted_inbox_item *item,

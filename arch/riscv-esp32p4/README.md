@@ -24,6 +24,16 @@ Terminal-policy regressions pass692 checks each O0/O2 under ASan/UBSan;
 the compiled all-NO_BEGIN mutation fails at the expected assertion with exit1.
 The standalone engine compiles for the configured RV32-SMP ilp32f profile
 without undefined imports. It is not linked into the native application.
+The low-level owner now has a separate canonical OTA transport entry, without
+widening normal WLAN submission. Its native maintenance-job adapter, complete
+transaction budget, terminal handoff and hardware qualification remain open;
+private ABI8 exposes no OTA and UPDATE-C6 stays unavailable.
+Private transport verification (2026-10-11): canonical codec11806,
+pending1638 and coupled owner8093 checks each O0/O2 ASan/UBSan pass;
+ordinary OTA-allowlist mutation is rejected. Fresh Core1 resource291220B
+passes the loader audit with both privacy/recovery assertions0. This resource
+is not yet repackaged or installed; the prior282952B discovery-only resource
+remains the member in the previously audited BSP/image candidate.
 Native private ABI8 supplies a task-bound, nonblocking maintenance lease and
 queued read-only discovery with copied results (2026-10-11); scoped host tests
 and native builds pass, runtime qualification remains open. ABI7 introduced

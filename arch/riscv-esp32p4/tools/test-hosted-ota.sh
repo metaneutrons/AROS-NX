@@ -21,7 +21,9 @@ done
 	"$test_root/network/hosted_ota.c" -o "$test_tmp/hosted_ota.o"
 undefined_imports=$("${NM:-nm}" -u "$test_tmp/hosted_ota.o" | \
 	awk 'NF { symbol = $NF; sub(/^_/, "", symbol); print symbol }')
-if [ "$undefined_imports" != "p4_hosted_rpc_encode" ]; then
+undefined_imports=$(printf '%s\n' "$undefined_imports" | sort)
+expected_imports=$(printf '%s\n' p4_hosted_rpc_decode p4_hosted_rpc_encode)
+if [ "$undefined_imports" != "$expected_imports" ]; then
 	echo "unexpected undefined imports in hosted_ota.o: $undefined_imports" >&2
 	exit 1
 fi

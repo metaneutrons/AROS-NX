@@ -238,6 +238,229 @@ static void test_request_refusal_and_aliasing(void)
     CHECK(memcmp(bytes, before, sizeof bytes) == 0 && written == 0x2468u);
 }
 
+static void expect_canonical_unchanged(const uint8_t *bytes, size_t size,
+                                       int expected)
+{
+    uint8_t before[P4_HOSTED_OTA_MAX_REQUEST_SIZE + 1u];
+
+    CHECK(bytes != NULL);
+    CHECK(size <= sizeof before);
+    memcpy(before, bytes, size);
+    CHECK(p4_hosted_ota_request_is_canonical(bytes, size) == expected);
+    CHECK(memcmp(bytes, before, size) == 0);
+}
+
+static size_t encode_test_rpc(uint32_t type, uint32_t msg_id, uint32_t uid,
+                              const uint8_t *payload, size_t payload_size,
+                              uint8_t *bytes, size_t capacity)
+{
+    struct p4_hosted_rpc rpc;
+    size_t written = SIZE_MAX;
+
+    rpc.msg_type = type;
+    rpc.msg_id = msg_id;
+    rpc.uid = uid;
+    rpc.payload = payload;
+    rpc.payload_size = payload_size;
+    CHECK(p4_hosted_rpc_encode(bytes, capacity, &rpc, &written));
+    return written;
+}
+
+static void test_canonical_valid_requests(void)
+{
+    static const uint32_t uids[] = {
+        1u, 127u, 128u, 16383u, 16384u, 2097151u, 2097152u, UINT32_MAX
+    };
+    uint8_t data[P4_HOSTED_OTA_MAX_WRITE_SIZE];
+    uint8_t bytes[P4_HOSTED_OTA_MAX_REQUEST_SIZE];
+    size_t uid_index, data_size, i, written;
+
+    for (i = 0u; i < sizeof data; ++i)
+        data[i] = (uint8_t)(i * 73u + 19u);
+
+    for (uid_index = 0u; uid_index < sizeof uids / sizeof uids[0];
+         ++uid_index) {
+        written = 0u;
+        CHECK(p4_hosted_ota_begin_request(uids[uid_index], bytes,
+                                          sizeof bytes, &written));
+        expect_canonical_unchanged(bytes, written, 1);
+
+        written = 0u;
+        CHECK(p4_hosted_ota_end_request(uids[uid_index], bytes,
+                                        sizeof bytes, &written));
+        expect_canonical_unchanged(bytes, written, 1);
+
+        for (data_size = 1u; data_size <= sizeof data; ++data_size) {
+            written = 0u;
+            CHECK(p4_hosted_ota_write_request(uids[uid_index], data,
+                                               data_size, bytes,
+                                               sizeof bytes, &written));
+            CHECK(written >= 1u &&
+                  written <= P4_HOSTED_OTA_MAX_REQUEST_SIZE);
+            if (uid_index == sizeof uids / sizeof uids[0] - 1u &&
+                data_size == sizeof data)
+                CHECK(written == P4_HOSTED_OTA_MAX_REQUEST_SIZE);
+            expect_canonical_unchanged(bytes, written, 1);
+        }
+    }
+}
+
+static void test_canonical_refusals(void)
+{
+    static const uint8_t begin_uid1[] = {
+        0x08, 0x01, 0x10, 0x90, 0x02, 0x18, 0x01,
+        0x82, 0x11, 0x00
+    };
+    static const uint8_t begin_with_body[] = {
+        0x08, 0x01, 0x10, 0x90, 0x02, 0x18, 0x01,
+        0x82, 0x11, 0x02, 0x18, 0x01
+    };
+    static const uint8_t begin_uid_zero[] = {
+        0x08, 0x01, 0x10, 0x90, 0x02, 0x18, 0x00,
+        0x82, 0x11, 0x00
+    };
+    static const uint8_t begin_uid_omitted[] = {
+        0x08, 0x01, 0x10, 0x90, 0x02, 0x82, 0x11, 0x00
+    };
+    static const uint8_t begin_reordered[] = {
+        0x08, 0x01, 0x18, 0x01, 0x10, 0x90, 0x02,
+        0x82, 0x11, 0x00
+    };
+    static const uint8_t begin_duplicate_uid[] = {
+        0x08, 0x01, 0x10, 0x90, 0x02, 0x18, 0x01, 0x18, 0x01,
+        0x82, 0x11, 0x00
+    };
+    static const uint8_t begin_duplicate_id[] = {
+        0x08, 0x01, 0x10, 0x90, 0x02, 0x10, 0x90, 0x02,
+        0x18, 0x01, 0x82, 0x11, 0x00
+    };
+    static const uint8_t begin_and_end[] = {
+        0x08, 0x01, 0x10, 0x90, 0x02, 0x18, 0x01,
+        0x82, 0x11, 0x00, 0x92, 0x11, 0x00
+    };
+    static const uint8_t begin_unknown_envelope_field[] = {
+        0x08, 0x01, 0x10, 0x90, 0x02, 0x18, 0x01,
+        0x20, 0x01, 0x82, 0x11, 0x00
+    };
+    static const uint8_t begin_overlong_uid[] = {
+        0x08, 0x01, 0x10, 0x90, 0x02, 0x18, 0x81, 0x00,
+        0x82, 0x11, 0x00
+    };
+    static const uint8_t begin_overlong_id[] = {
+        0x08, 0x01, 0x10, 0x90, 0x82, 0x00, 0x18, 0x01,
+        0x82, 0x11, 0x00
+    };
+    static const uint8_t end_with_body[] = {
+        0x08, 0x01, 0x10, 0x92, 0x02, 0x18, 0x01,
+        0x92, 0x11, 0x02, 0x18, 0x01
+    };
+    static const uint8_t write_empty_data[] = { 0x0a, 0x00 };
+    static const uint8_t write_wrong_field[] = { 0x12, 0x01, 0xa5 };
+    static const uint8_t write_duplicate_data[] = {
+        0x0a, 0x01, 0xa5, 0x0a, 0x01, 0x5a
+    };
+    static const uint8_t write_unknown_body_field[] = {
+        0x0a, 0x01, 0xa5, 0x18, 0x01
+    };
+    static const uint8_t write_overlong_key[] = {
+        0x8a, 0x00, 0x01, 0xa5
+    };
+    static const uint8_t write_overlong_length[] = {
+        0x0a, 0x81, 0x00, 0xa5
+    };
+    static const uint8_t write_truncated_data[] = { 0x0a, 0x02, 0xa5 };
+    static const uint8_t write_bad_trailing_field[] = {
+        0x0a, 0x01, 0xa5, 0x18, 0x80
+    };
+    static const uint8_t write_trailing_declared_length[] = {
+        0x0a, 0x01, 0xa5, 0x00
+    };
+    const uint8_t *bad_payloads[] = {
+        write_empty_data, write_wrong_field, write_duplicate_data,
+        write_unknown_body_field, write_overlong_key,
+        write_overlong_length, write_truncated_data,
+        write_bad_trailing_field, write_trailing_declared_length
+    };
+    const size_t bad_payload_sizes[] = {
+        sizeof write_empty_data, sizeof write_wrong_field,
+        sizeof write_duplicate_data, sizeof write_unknown_body_field,
+        sizeof write_overlong_key, sizeof write_overlong_length,
+        sizeof write_truncated_data, sizeof write_bad_trailing_field,
+        sizeof write_trailing_declared_length
+    };
+    const uint8_t *bad_envelopes[] = {
+        begin_with_body, begin_uid_zero, begin_uid_omitted, begin_reordered,
+        begin_duplicate_uid, begin_duplicate_id, begin_and_end,
+        begin_unknown_envelope_field,
+        begin_overlong_uid, begin_overlong_id, end_with_body
+    };
+    const size_t bad_envelope_sizes[] = {
+        sizeof begin_with_body, sizeof begin_uid_zero,
+        sizeof begin_uid_omitted, sizeof begin_reordered,
+        sizeof begin_duplicate_uid, sizeof begin_duplicate_id,
+        sizeof begin_and_end, sizeof begin_unknown_envelope_field,
+        sizeof begin_overlong_uid, sizeof begin_overlong_id,
+        sizeof end_with_body
+    };
+    uint8_t bytes[P4_HOSTED_OTA_MAX_REQUEST_SIZE + 1u];
+    uint8_t before[sizeof bytes];
+    uint8_t payload[P4_HOSTED_OTA_MAX_WRITE_SIZE + 4u];
+    size_t i, written;
+
+    expect_canonical_unchanged(begin_uid1, sizeof begin_uid1, 1);
+    for (i = 0u; i < sizeof bad_envelopes / sizeof bad_envelopes[0]; ++i)
+        expect_canonical_unchanged(bad_envelopes[i], bad_envelope_sizes[i], 0);
+
+    for (i = 0u; i < sizeof bad_payloads / sizeof bad_payloads[0]; ++i) {
+        written = encode_test_rpc(P4_HOSTED_RPC_TYPE_REQUEST, 273u, 1u,
+                                  bad_payloads[i], bad_payload_sizes[i],
+                                  bytes, sizeof bytes);
+        expect_canonical_unchanged(bytes, written, 0);
+    }
+
+    written = encode_test_rpc(P4_HOSTED_RPC_TYPE_REQUEST, 271u, 1u,
+                              NULL, 0u, bytes, sizeof bytes);
+    expect_canonical_unchanged(bytes, written, 0);
+    written = encode_test_rpc(P4_HOSTED_RPC_TYPE_REQUEST, 275u, 1u,
+                              NULL, 0u, bytes, sizeof bytes);
+    expect_canonical_unchanged(bytes, written, 0);
+    written = encode_test_rpc(P4_HOSTED_RPC_TYPE_REQUEST, 273u, 1u,
+                              NULL, 0u, bytes, sizeof bytes);
+    expect_canonical_unchanged(bytes, written, 0);
+    written = encode_test_rpc(P4_HOSTED_RPC_TYPE_RESPONSE, 529u, 1u,
+                              NULL, 0u, bytes, sizeof bytes);
+    expect_canonical_unchanged(bytes, written, 0);
+    written = encode_test_rpc(P4_HOSTED_RPC_TYPE_EVENT, 769u, 1u,
+                              NULL, 0u, bytes, sizeof bytes);
+    expect_canonical_unchanged(bytes, written, 0);
+
+    memset(bytes, 0x6d, sizeof bytes);
+    expect_canonical_unchanged(bytes, 1u, 0);
+    expect_canonical_unchanged(bytes, 0u, 0);
+    expect_canonical_unchanged(bytes, sizeof bytes, 0);
+    CHECK(!p4_hosted_ota_request_is_canonical(NULL, 1u));
+    CHECK(!p4_hosted_ota_request_is_canonical(NULL, 0u));
+    memcpy(before, bytes, sizeof before);
+    CHECK(!p4_hosted_ota_request_is_canonical(bytes, SIZE_MAX));
+    CHECK(memcmp(bytes, before, sizeof before) == 0);
+    {
+        const uint8_t *bad_range =
+            (const uint8_t *)(uintptr_t)(UINTPTR_MAX - 1u);
+        CHECK(!p4_hosted_ota_request_is_canonical(bad_range, 4u));
+    }
+
+    /* A valid envelope with a declared write size beyond the local policy is
+     * rejected even though the RPC decoder accepts its outer framing. */
+    payload[0] = 0x0au;
+    payload[1] = (uint8_t)(P4_HOSTED_OTA_MAX_WRITE_SIZE + 1u);
+    payload[2] = 1u; /* Canonical varint239, not a truncated length. */
+    memset(payload + 3u, 0xa5, P4_HOSTED_OTA_MAX_WRITE_SIZE + 1u);
+    written = encode_test_rpc(P4_HOSTED_RPC_TYPE_REQUEST, 273u, 1u,
+                              payload, P4_HOSTED_OTA_MAX_WRITE_SIZE + 4u,
+                              bytes, sizeof bytes);
+    expect_canonical_unchanged(bytes, written, 0);
+}
+
 static void test_status_positive_responses(void)
 {
     static const uint8_t explicit_zero[] = { 0x08, 0x00 };
@@ -428,6 +651,8 @@ int main(void)
     test_request_vectors();
     test_maximum_request_and_input_ownership();
     test_request_refusal_and_aliasing();
+    test_canonical_valid_requests();
+    test_canonical_refusals();
     test_status_positive_responses();
     test_status_refusals();
 

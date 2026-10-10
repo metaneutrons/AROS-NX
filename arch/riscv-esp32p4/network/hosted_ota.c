@@ -228,6 +228,48 @@ static int supported_request_id(uint32_t request_id)
            request_id == OTA_REQ_END;
 }
 
+int p4_hosted_ota_request_is_canonical(const uint8_t *bytes, size_t size)
+{
+    struct p4_hosted_rpc rpc;
+    uint8_t canonical[P4_HOSTED_OTA_MAX_REQUEST_SIZE];
+    size_t written = 0u, offset = 0u, i;
+    uint64_t length;
+    int encoded;
+
+    if (!bytes || size == 0u || size > sizeof canonical ||
+        !range_is_valid(bytes, size) ||
+        !p4_hosted_rpc_decode(bytes, size, &rpc) ||
+        rpc.msg_type != P4_HOSTED_RPC_TYPE_REQUEST || rpc.uid == 0u ||
+        !supported_request_id(rpc.msg_id))
+        return 0;
+
+    if (rpc.msg_id == OTA_REQ_WRITE) {
+        if (rpc.payload_size < 3u || rpc.payload[0] != 10u)
+            return 0;
+        offset = 1u;
+        if (!read_varint(rpc.payload, rpc.payload_size, &offset, &length) ||
+            length == 0u || length > P4_HOSTED_OTA_MAX_WRITE_SIZE ||
+            length != rpc.payload_size - offset)
+            return 0;
+        encoded = p4_hosted_ota_write_request(rpc.uid, rpc.payload + offset,
+            (size_t)length, canonical, sizeof canonical, &written);
+    } else {
+        if (rpc.payload_size != 0u)
+            return 0;
+        encoded = rpc.msg_id == OTA_REQ_BEGIN
+            ? p4_hosted_ota_begin_request(rpc.uid, canonical,
+                sizeof canonical, &written)
+            : p4_hosted_ota_end_request(rpc.uid, canonical,
+                sizeof canonical, &written);
+    }
+    if (!encoded || written != size)
+        return 0;
+    for (i = 0u; i < size; ++i)
+        if (canonical[i] != bytes[i])
+            return 0;
+    return 1;
+}
+
 int p4_hosted_ota_status_response(const struct p4_hosted_rpc *rpc,
                                   uint32_t expected_request_id,
                                   uint32_t expected_uid, int32_t *status)

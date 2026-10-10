@@ -9,6 +9,7 @@
 #include "hosted_owner.h"
 #include "hosted_request_ids.h"
 #include "hosted_init.h"
+#include "hosted_ota.h"
 
 #define OWNER_TEST_GENERATION UINT32_C(0x7191)
 #define OWNER_NEXT_GENERATION UINT32_C(0x7192)
@@ -43,6 +44,7 @@ struct owner_fixture {
     unsigned always_busy;
     unsigned budget_fail;
     unsigned stopping;
+    unsigned stop_after_wait;
     unsigned event_calls;
     unsigned frame_calls;
     unsigned now_calls;
@@ -100,6 +102,9 @@ static void owner_wait(void *context)
     CHECK(fixture->acquired == 0u);
     ++fixture->waits;
     fixture->now += fixture->wait_step_us;
+    if (fixture->stop_after_wait != 0u &&
+        fixture->waits >= fixture->stop_after_wait)
+        fixture->stopping = 1u;
 }
 
 static int owner_set_budget(void *context, uint32_t slice_us)
@@ -293,6 +298,46 @@ static void owner_reserve_empty_request(struct owner_fixture *fixture,
                                &rpc, &fixture->request_size));
 }
 
+static uint32_t owner_reserve_ota_request(struct owner_fixture *fixture,
+                                          uint32_t request_id,
+                                          const uint8_t *data,
+                                          size_t data_size)
+{
+    uint32_t uid = 0u;
+
+    CHECK(p4_hosted_request_ids_reserve(&fixture->owner.ids,
+        fixture->generation, request_id, &uid));
+    if (request_id == 272u)
+        CHECK(p4_hosted_ota_begin_request(uid, fixture->request,
+            sizeof fixture->request, &fixture->request_size));
+    else if (request_id == 273u)
+        CHECK(p4_hosted_ota_write_request(uid, data, data_size,
+            fixture->request, sizeof fixture->request,
+            &fixture->request_size));
+    else if (request_id == 274u)
+        CHECK(p4_hosted_ota_end_request(uid, fixture->request,
+            sizeof fixture->request, &fixture->request_size));
+    else
+        CHECK(0);
+    return uid;
+}
+
+static void owner_encode_raw_request(struct owner_fixture *fixture,
+                                     uint32_t msg_type, uint32_t request_id,
+                                     uint32_t uid, const uint8_t *payload,
+                                     size_t payload_size)
+{
+    struct p4_hosted_rpc rpc = {0};
+
+    rpc.msg_type = msg_type;
+    rpc.msg_id = request_id;
+    rpc.uid = uid;
+    rpc.payload = payload;
+    rpc.payload_size = payload_size;
+    CHECK(p4_hosted_rpc_encode(fixture->request, sizeof fixture->request,
+                               &rpc, &fixture->request_size));
+}
+
 static size_t append_owner_rpc(uint8_t *destination, size_t capacity,
                                size_t *used,
                                enum hosted_serial_endpoint endpoint,
@@ -328,6 +373,33 @@ static void owner_verify_tx_request(const struct owner_fixture *fixture,
     CHECK(rpc.msg_type == P4_HOSTED_RPC_TYPE_REQUEST &&
           rpc.msg_id == request_id && rpc.uid == uid &&
           rpc.payload_size == 0u);
+}
+
+static void owner_verify_tx_ota_request(const struct owner_fixture *fixture,
+                                        uint32_t expected_writes,
+                                        uint32_t uid, uint32_t request_id)
+{
+    struct p4_hosted_frame frame;
+    struct hosted_serial_message serial;
+    struct p4_hosted_rpc rpc;
+
+    CHECK(fixture->fake.tx_fifo_writes == expected_writes);
+    CHECK(p4_hosted_decode(fixture->fake.tx_capture,
+        fixture->fake.tx_capture_size, 0u, &frame));
+    CHECK(frame.interface_type == P4_HOSTED_SERIAL &&
+          frame.interface_number == 0u && frame.flags == 0u &&
+          frame.sequence == 0u && frame.packet_type == 0u &&
+          frame.throttle == 0u);
+    CHECK(hosted_serial_decode(frame.payload, frame.payload_size, &serial));
+    CHECK(serial.endpoint == HOSTED_SERIAL_ENDPOINT_RPCRSP);
+    CHECK(p4_hosted_rpc_decode(serial.protobuf, serial.protobuf_size, &rpc));
+    CHECK(rpc.msg_type == P4_HOSTED_RPC_TYPE_REQUEST &&
+          rpc.msg_id == request_id && rpc.uid == uid &&
+          p4_hosted_ota_request_is_canonical(serial.protobuf,
+                                              serial.protobuf_size));
+    CHECK(serial.protobuf_size == fixture->request_size &&
+          memcmp(serial.protobuf, fixture->request,
+                 fixture->request_size) == 0);
 }
 
 static size_t owner_put_varint(uint8_t *bytes, size_t capacity,
@@ -1498,6 +1570,344 @@ static void test_discovery_refuses_partial_serial_without_mutation(void)
                                              OWNER_TEST_DISCOVERY_NONCE);
 }
 
+static void owner_expect_ota_preflight_refusal(
+    struct owner_fixture *fixture, const uint8_t *request,
+    size_t request_size, uint32_t generation,
+    struct p4_hosted_owner_result *result)
+{
+    struct owner_fixture before;
+
+    memset(&fixture->result, 0x6du, sizeof fixture->result);
+    before = *fixture;
+    CHECK(!p4_hosted_owner_exchange_ota(&fixture->owner, &fixture->fifo,
+        &fixture->owner_ops, generation, 0u, request, request_size,
+        OWNER_TIMEOUT_US, result));
+    CHECK(memcmp(fixture, &before, sizeof before) == 0);
+    owner_check_no_callbacks(fixture);
+}
+
+static void test_ota_all_operations_match_and_normal_exchange_follows(void)
+{
+    static const uint8_t write_data[] = { 0x01u, 0x7fu, 0x80u, 0xffu };
+    static const uint8_t status_body[] = { 0x08u, 0x07u };
+    struct owner_fixture fixture;
+    uint8_t batch[TEST_CAPACITY];
+    uint32_t raw[] = { P4_HOSTED_OPEN_INT_PACKET,
+                       P4_HOSTED_OPEN_INT_PACKET,
+                       P4_HOSTED_OPEN_INT_PACKET,
+                       P4_HOSTED_OPEN_INT_PACKET };
+    const uint32_t request_ids[] = { 272u, 273u, 274u };
+    const uint32_t response_ids[] = { 528u, 529u, 530u };
+    unsigned index;
+    size_t used;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    for (index = 0u; index < 3u; ++index) {
+        used = 0u;
+        CHECK(append_owner_rpc(batch, sizeof batch, &used,
+            HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+            response_ids[index], index + 1u, status_body,
+            sizeof status_body) != 0u);
+        CHECK(add_batch(&fixture.fake, batch, used));
+    }
+    used = 0u;
+    CHECK(append_owner_rpc(batch, sizeof batch, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+        OWNER_TEST_REQUEST_ID + 256u, 4u, NULL, 0u) != 0u);
+    CHECK(add_batch(&fixture.fake, batch, used));
+    set_raws(&fixture.fake, raw, 4u);
+
+    for (index = 0u; index < 3u; ++index) {
+        struct p4_hosted_rpc status_rpc = {0};
+        int32_t remote_status = -1;
+        uint32_t uid = owner_reserve_ota_request(&fixture,
+            request_ids[index], write_data, sizeof write_data);
+
+        CHECK(uid == index + 1u);
+        fixture.fake.token = (uint32_t)(index + 1u) << 16;
+        CHECK(p4_hosted_owner_exchange_ota(&fixture.owner, &fixture.fifo,
+            &fixture.owner_ops, fixture.generation, 0u, fixture.request,
+            fixture.request_size, OWNER_TIMEOUT_US, &fixture.result));
+        CHECK(fixture.result.error == P4_HOSTED_OWNER_OK &&
+              fixture.result.submitted == 1u &&
+              fixture.result.matched == 1u &&
+              fixture.result.uid == uid &&
+              fixture.result.request_id == request_ids[index]);
+        CHECK(fixture.owner.reply.msg_type == P4_HOSTED_RPC_TYPE_RESPONSE &&
+              fixture.owner.reply.msg_id == response_ids[index] &&
+              fixture.owner.reply.uid == uid &&
+              fixture.owner.reply.payload_size == sizeof status_body &&
+              memcmp(fixture.owner.reply.payload, status_body,
+                     sizeof status_body) == 0);
+        CHECK(fixture.owner.pending_active == 0u &&
+              fixture.owner.ids.active_uid == 0u &&
+              fixture.owner.ids.next_uid == uid + 1u &&
+              fixture.owner.ids.retired == 0u &&
+              fixture.owner.poisoned == 0u && fixture.fifo.poisoned == 0u);
+        CHECK(fixture.fake.tx_fifo_writes == index + 1u);
+        owner_verify_tx_ota_request(&fixture, index + 1u, uid,
+                                    request_ids[index]);
+
+        status_rpc.msg_type = fixture.owner.reply.msg_type;
+        status_rpc.msg_id = fixture.owner.reply.msg_id;
+        status_rpc.uid = fixture.owner.reply.uid;
+        status_rpc.payload = fixture.owner.reply.payload;
+        status_rpc.payload_size = fixture.owner.reply.payload_size;
+        CHECK(p4_hosted_ota_status_response(&status_rpc,
+            request_ids[index], uid, &remote_status));
+        CHECK(remote_status == 7);
+    }
+
+    owner_reserve_empty_request(&fixture, OWNER_TEST_REQUEST_ID);
+    CHECK(fixture.owner.ids.active_uid == 4u);
+    fixture.fake.token = UINT32_C(4) << 16;
+    CHECK(p4_hosted_owner_exchange(&fixture.owner, &fixture.fifo,
+        &fixture.owner_ops, fixture.generation, 0u, fixture.request,
+        fixture.request_size, OWNER_TIMEOUT_US, &fixture.result));
+    CHECK(fixture.result.error == P4_HOSTED_OWNER_OK &&
+          fixture.result.submitted == 1u && fixture.result.matched == 1u &&
+          fixture.result.uid == 4u &&
+          fixture.result.request_id == OWNER_TEST_REQUEST_ID &&
+          fixture.owner.reply.msg_id == OWNER_TEST_REQUEST_ID + 256u &&
+          fixture.owner.reply.uid == 4u &&
+          fixture.owner.ids.next_uid == 5u &&
+          fixture.owner.ids.retired == 0u);
+    CHECK(fixture.fake.tx_fifo_writes == 4u &&
+          fixture.owner.poisoned == 0u && fixture.fifo.poisoned == 0u);
+}
+
+static void test_ota_preflight_rejections_are_transactional(void)
+{
+    static const uint8_t malformed_begin[] = { 0x08u, 0x01u };
+    static const uint8_t noncanonical_write[] = {
+        0x0au, 0x81u, 0x00u, 0x5au
+    };
+    static const uint8_t write_byte[] = { 0x5au };
+    struct owner_fixture fixture;
+    uint32_t uid;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    uid = owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+    owner_encode_raw_request(&fixture, P4_HOSTED_RPC_TYPE_REQUEST, 272u,
+        uid, malformed_begin, sizeof malformed_begin);
+    owner_expect_ota_preflight_refusal(&fixture, fixture.request,
+        fixture.request_size, fixture.generation, &fixture.result);
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    uid = owner_reserve_ota_request(&fixture, 273u, write_byte,
+                                    sizeof write_byte);
+    owner_encode_raw_request(&fixture, P4_HOSTED_RPC_TYPE_REQUEST, 273u,
+        uid, noncanonical_write, sizeof noncanonical_write);
+    owner_expect_ota_preflight_refusal(&fixture, fixture.request,
+        fixture.request_size, fixture.generation, &fixture.result);
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    uid = owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+    CHECK(p4_hosted_ota_begin_request(uid + 1u, fixture.request,
+        sizeof fixture.request, &fixture.request_size));
+    owner_expect_ota_preflight_refusal(&fixture, fixture.request,
+        fixture.request_size, fixture.generation, &fixture.result);
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    uid = owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+    owner_expect_ota_preflight_refusal(&fixture, fixture.request,
+        fixture.request_size, OWNER_NEXT_GENERATION, &fixture.result);
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    uid = owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+    CHECK(p4_hosted_ota_end_request(uid, fixture.request,
+        sizeof fixture.request, &fixture.request_size));
+    owner_expect_ota_preflight_refusal(&fixture, fixture.request,
+        fixture.request_size, fixture.generation, &fixture.result);
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    uid = owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+    owner_encode_raw_request(&fixture, P4_HOSTED_RPC_TYPE_RESPONSE, 528u,
+        uid, NULL, 0u);
+    owner_expect_ota_preflight_refusal(&fixture, fixture.request,
+        fixture.request_size, fixture.generation, &fixture.result);
+}
+
+static void test_ota_preflight_rejects_partial_arm_and_aliases_atomically(void)
+{
+    static const uint8_t event_body[] = { 0x49u };
+    struct owner_fixture fixture;
+    struct p4_hosted_frame decoded;
+    uint8_t serial[TEST_LARGE_MESSAGE_CAPACITY];
+    uint8_t frame[TEST_FRAME_CAPACITY];
+    const uint8_t *aliases[6];
+    size_t serial_size, frame_size, split;
+    uint32_t uid;
+    unsigned index;
+
+    owner_fixture_prepare(&fixture, OWNER_TEST_GENERATION, 100u);
+    serial_size = make_serial_rpc_message(serial, sizeof serial,
+        HOSTED_SERIAL_ENDPOINT_RPCEVT, P4_HOSTED_RPC_TYPE_EVENT, 771u, 0u,
+        event_body, sizeof event_body);
+    CHECK(serial_size > 2u);
+    split = serial_size / 2u;
+    frame_size = make_fragment_frame(frame, sizeof frame, serial, split, 0u,
+                                     1u, 0u);
+    CHECK(frame_size != 0u && p4_hosted_decode(frame, frame_size, 0u,
+                                               &decoded));
+    CHECK(p4_hosted_reassembly_feed(&fixture.owner.rx.assembly,
+        fixture.generation, &decoded) == P4_HOSTED_REASSEMBLY_PARTIAL);
+    CHECK(p4_hosted_owner_ids_init(&fixture.owner, fixture.generation,
+                                    fixture.now));
+    uid = owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+    owner_expect_ota_preflight_refusal(&fixture, fixture.request,
+        fixture.request_size, fixture.generation, &fixture.result);
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    CHECK(p4_hosted_request_ids_reserve(&fixture.owner.ids,
+        fixture.generation, OWNER_TEST_DISCOVERY_REQUEST_ID, &uid));
+    CHECK(p4_hosted_inbox_arm_discovery_response(&fixture.owner.rx.inbox,
+        fixture.generation, uid));
+    CHECK(p4_hosted_ota_begin_request(uid, fixture.request,
+        sizeof fixture.request, &fixture.request_size));
+    owner_expect_ota_preflight_refusal(&fixture, fixture.request,
+        fixture.request_size, fixture.generation, &fixture.result);
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    (void)owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+    aliases[0] = (const uint8_t *)&fixture.owner;
+    aliases[1] = (const uint8_t *)&fixture.fifo;
+    aliases[2] = (const uint8_t *)&fixture.owner_ops;
+    aliases[3] = (const uint8_t *)&fixture.rx_ops;
+    aliases[4] = (const uint8_t *)&fixture.tx_ops;
+    aliases[5] = (const uint8_t *)&fixture.result;
+    for (index = 0u; index < 6u; ++index)
+        owner_expect_ota_preflight_refusal(&fixture, aliases[index],
+            fixture.request_size, fixture.generation, &fixture.result);
+    owner_expect_ota_preflight_refusal(&fixture, fixture.request,
+        fixture.request_size, fixture.generation,
+        (struct p4_hosted_owner_result *)(void *)&fixture.owner);
+}
+
+static void test_normal_exchange_rejects_private_ota_request_atomically(void)
+{
+    struct owner_fixture fixture;
+    struct owner_fixture before;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    (void)owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+    memset(&fixture.result, 0x6du, sizeof fixture.result);
+    before = fixture;
+    CHECK(!p4_hosted_owner_exchange(&fixture.owner, &fixture.fifo,
+        &fixture.owner_ops, fixture.generation, 0u, fixture.request,
+        fixture.request_size, OWNER_TIMEOUT_US, &fixture.result));
+    CHECK(memcmp(&fixture, &before, sizeof before) == 0);
+    owner_check_no_callbacks(&fixture);
+}
+
+static void test_ota_terminal_failures_do_not_retry_or_retire_replacement(void)
+{
+    struct owner_fixture fixture;
+    uint8_t response[TEST_CAPACITY];
+    uint32_t raw[] = { P4_HOSTED_OPEN_INT_PACKET };
+    size_t used = 0u;
+    uint32_t uid;
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    uid = owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+    fixture.wait_step_us = 100u;
+    CHECK(!p4_hosted_owner_exchange_ota(&fixture.owner, &fixture.fifo,
+        &fixture.owner_ops, fixture.generation, 0u, fixture.request,
+        fixture.request_size, 400u, &fixture.result));
+    CHECK(fixture.result.error == P4_HOSTED_OWNER_TIMEOUT &&
+          fixture.result.submitted == 1u && fixture.result.matched == 0u &&
+          fixture.fake.tx_fifo_writes == 1u &&
+          fixture.owner.ids.next_uid == uid + 1u &&
+          fixture.owner.ids.retired == 1u && fixture.owner.poisoned == 1u &&
+          fixture.fifo.poisoned == 1u);
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    uid = owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+    fixture.stop_after_wait = 1u;
+    CHECK(!p4_hosted_owner_exchange_ota(&fixture.owner, &fixture.fifo,
+        &fixture.owner_ops, fixture.generation, 0u, fixture.request,
+        fixture.request_size, OWNER_TIMEOUT_US, &fixture.result));
+    CHECK(fixture.result.error == P4_HOSTED_OWNER_STOPPED &&
+          fixture.result.submitted == 1u && fixture.fake.tx_fifo_writes == 1u &&
+          fixture.waits == 1u && fixture.owner.ids.next_uid == uid + 1u &&
+          fixture.owner.ids.retired == 1u && fixture.owner.poisoned == 1u &&
+          fixture.fifo.poisoned == 1u);
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    uid = owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+    fixture.fake.tx_fifo_return = 0;
+    CHECK(!p4_hosted_owner_exchange_ota(&fixture.owner, &fixture.fifo,
+        &fixture.owner_ops, fixture.generation, 0u, fixture.request,
+        fixture.request_size, OWNER_TIMEOUT_US, &fixture.result));
+    CHECK(fixture.result.submitted == 0u &&
+          fixture.fake.tx_fifo_writes == 1u && fixture.fake.rx_fifo_reads == 0u &&
+          fixture.owner.ids.next_uid == uid + 1u &&
+          fixture.owner.ids.retired == 1u && fixture.fifo.poisoned == 1u);
+
+    owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+    uid = owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+    CHECK(append_owner_rpc(response, sizeof response, &used,
+        HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+        528u, uid, NULL, 0u) != 0u);
+    CHECK(add_batch(&fixture.fake, response, used));
+    set_raws(&fixture.fake, raw, 1u);
+    fixture.fake.replace_generation_after_fifo = 1u;
+    fixture.fake.replacement_generation = OWNER_NEXT_GENERATION;
+    CHECK(!p4_hosted_owner_exchange_ota(&fixture.owner, &fixture.fifo,
+        &fixture.owner_ops, fixture.generation, 0u, fixture.request,
+        fixture.request_size, OWNER_TIMEOUT_US, &fixture.result));
+    CHECK(fixture.result.matched == 0u && fixture.fake.tx_fifo_writes == 1u &&
+          fixture.owner.ids.next_uid == uid + 1u &&
+          fixture.owner.ids.retired == 1u && fixture.owner.poisoned == 1u);
+    CHECK(fixture.fifo.initialized == 1u &&
+          fixture.fifo.generation == OWNER_NEXT_GENERATION &&
+          fixture.fifo.poisoned == 0u && fixture.fifo.tx_sent == 0u &&
+          fixture.fifo.busy == 0u);
+}
+
+static void test_ota_wrong_response_identity_never_matches(void)
+{
+    struct owner_fixture fixture;
+    uint8_t response[TEST_CAPACITY];
+    uint32_t raw[] = { P4_HOSTED_OPEN_INT_PACKET };
+    unsigned variant;
+
+    for (variant = 0u; variant < 3u; ++variant) {
+        uint32_t uid;
+        uint32_t id = variant == 1u ? 529u :
+                      (variant == 2u ? 769u : 528u);
+        uint32_t type = variant == 2u ? P4_HOSTED_RPC_TYPE_EVENT
+                                      : P4_HOSTED_RPC_TYPE_RESPONSE;
+        enum hosted_serial_endpoint endpoint = variant == 2u
+            ? HOSTED_SERIAL_ENDPOINT_RPCEVT : HOSTED_SERIAL_ENDPOINT_RPCRSP;
+        size_t used = 0u;
+
+        owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+        uid = owner_reserve_ota_request(&fixture, 272u, NULL, 0u);
+        CHECK(append_owner_rpc(response, sizeof response, &used, endpoint,
+            type, id, variant == 0u ? uid + 1u :
+                         (variant == 2u ? 0u : uid), NULL, 0u) != 0u);
+        CHECK(add_batch(&fixture.fake, response, used));
+        set_raws(&fixture.fake, raw, 1u);
+        fixture.wait_step_us = 100u;
+        CHECK(!p4_hosted_owner_exchange_ota(&fixture.owner, &fixture.fifo,
+            &fixture.owner_ops, fixture.generation, 0u, fixture.request,
+            fixture.request_size, 250u, &fixture.result));
+        CHECK(fixture.result.error == P4_HOSTED_OWNER_TIMEOUT &&
+              fixture.result.matched == 0u &&
+              fixture.fake.tx_fifo_writes == 1u &&
+              fixture.owner.ids.next_uid == uid + 1u &&
+              fixture.owner.ids.retired == 1u &&
+              fixture.owner.poisoned == 1u && fixture.fifo.poisoned == 1u);
+        if (variant == 2u)
+            CHECK(fixture.result.events == 1u &&
+                  fixture.result.unmatched == 0u);
+        else
+            CHECK(fixture.result.unmatched == 1u &&
+                  fixture.result.events == 0u);
+    }
+}
+
 int main(void)
 {
     test_ap_info_exchange_correlates_response_550_after_tx();
@@ -1529,6 +1939,12 @@ int main(void)
     test_discovery_refuses_existing_arm_without_mutation();
     test_discovery_nonce_and_init_alias_refusals();
     test_discovery_refuses_partial_serial_without_mutation();
+    test_ota_all_operations_match_and_normal_exchange_follows();
+    test_ota_preflight_rejections_are_transactional();
+    test_ota_preflight_rejects_partial_arm_and_aliases_atomically();
+    test_normal_exchange_rejects_private_ota_request_atomically();
+    test_ota_terminal_failures_do_not_retry_or_retire_replacement();
+    test_ota_wrong_response_identity_never_matches();
     printf("hosted shared-host owner: %lu checks passed\n", checks);
     return 0;
 }

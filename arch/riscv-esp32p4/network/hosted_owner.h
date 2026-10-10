@@ -119,6 +119,21 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
     const uint8_t *request, size_t request_size, uint32_t timeout_us,
     struct p4_hosted_owner_result *result);
 
+/* Private OTA exchange: canonical272/273/274 only, with exact reserved UID
+ * and no partial SERIAL or discovery arm. Uses the same bounded absolute
+ * deadline, shared-host arbitration, no retry/reset and terminal matching-
+ * generation retirement as normal exchange. Return1 is only528/529/530
+ * envelope correlation, not acknowledged operation; caller must decode status.
+ * Exclusive maintenance, transaction order, verified image/layout/recovery,
+ * full-transfer budget and fenced terminal handoff remain trusted caller
+ * obligations. This low-level helper is not exposed through private ABI8 or
+ * a native updater, and must not be used as write authorization. */
+int p4_hosted_owner_exchange_ota(struct p4_hosted_owner *owner,
+    struct p4_hosted_fifo *fifo, const struct p4_hosted_owner_ops *ops,
+    uint32_t generation, unsigned checksum_enabled,
+    const uint8_t *request, size_t request_size, uint32_t timeout_us,
+    struct p4_hosted_owner_result *result);
+
 /* Private read-only discovery exchange. Uses the same absolute deadline and
  * controller ownership as normal exchange; requires reserved350, supported
  * INIT, canonical version1/nonzero nonce and no partial SERIAL or existing RX

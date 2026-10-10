@@ -122,7 +122,7 @@ all42 loader audits; no ABI7/ABI8 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle, ABI8 maintenance/discovery and shared CLI/GUI binding host/build verified; matched42-member BSP/image candidate; isolated OTA terminal-disposition contract host/object build verified; C6 candidate undeployed; no hardware acceptance | Native owner OTA dispatch, confirmed fenced terminal handoff and full-transfer budget; actual discovery/layout/slot provenance, secured CN5 recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle, ABI8 discovery/client and terminal contract host/build verified; separate private OTA owner transport host/module build verified (not repackaged); prior matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Native maintenance OTA-job dispatch, confirmed fenced terminal handoff and full-transfer budget; actual discovery/layout/slot provenance, secured CN5 recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1308,6 +1308,16 @@ once-only handoff, failure status preservation and postboot-result guards.
 A compiled all-NO_BEGIN mutation fails at the expected assertion with exit1.
 The isolated engine builds with the actual RV32-SMP ilp32f configuration and
 no undefined imports; it remains outside the native application/module/package.
+The lower-level owner now offers a separate canonical OTA transport entry,
+host/module build verified. Exact reserved UID/generation and byte-canonical272/273/274 are
+required, with no partial SERIAL or discovery arm. Normal WLAN admission is
+unchanged. Existing absolute deadlines, shared-host arbitration and terminal
+retirement are reused; success means envelope correlation, not remote status
+or installation. No private ABI8 OTA job or updater binding exists yet.
+Codec11806, pending1638 and coupled owner8093 checks each O0/O2 ASan/UBSan
+pass, including false identity and normal-path rejection. Fresh Core1
+resource291220B passes its loader audit with both privacy/recovery assertions0;
+it is not in the prior matched discovery-only BSP/image candidate or installed.
 Actual-source host tests and fresh Core1 module builds pass; Exec locks,
 callbacks and RPC outcomes are mocked. The matching ABI7 resource/device must
 replace the prior ABI6 pair together in a regenerated audited package/image.
@@ -37022,3 +37032,76 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   as its own bootstrap recovery. Actual association/DHCP/bidirectional frames,
   reconnect, combined1800s and CLI/GUI updates/HTTPS remain open. The full
   Wi-Fi goal remains active; this step is at most build verified.
+
+### 2026-10-11 - N2M private canonical OTA owner transport, no maintenance job
+
+- Scope/identity: source parent9007136a7c, feature/esp32p4-wifi in
+  /Volumes/Dev/Build/aros-esp32p4-wifi. Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/ota-owner.sAloRx/.
+  Software/build work only: no serial, reset, flash, SD write, credential or
+  C6 operation. Private bridge ABI8 and its existing read-only job are unchanged.
+- Implementation: bounded read-only predicate accepts only byte-exact canonical
+  request272 empty BEGIN,273 WRITE field1 bytes1..238 and274 empty END with
+  nonzero UID and at most256 envelope bytes. RPC decoding plus re-encoding/
+  byte comparison refuses unknown/duplicate fields, alternate order, overlong
+  varints, malformed lengths and unsupported IDs/types. Private pending-submit
+  and owner-exchange functions reuse existing range/alias/epoch checks, reserved
+  UID ledger, one TX, deadline and shared-host arbitration. OTA owner admission
+  rejects a partial SERIAL stream or discovery arm. Normal WLAN allowlists
+  remain unchanged and reject all three OTA requests. Exact UID and request+256
+  correlation copies528/529/530 only; remote status must still be decoded by
+  the future maintenance adapter. Transport success is not operation success.
+  Failures retain existing matching-generation retirement and no-retry/reset
+  behavior; replacement FIFO generations are not poisoned by an old failure.
+- Host verification: primary reruns complete with exit0 for all three scripts:
+  test-hosted-ota.sh11806 checks each O0/O2; test-hosted-pending.sh1638 each;
+  test-hosted-owner.sh8093 each, all ASan/UBSan and warnings-as-errors. Codec
+  covers eight UID boundaries and every WRITE length1..238, malformed and
+  noncanonical forms, immutable input and overflow refusal. Pending checks
+  capture all three operations, max256-byte envelope, identity/disjoint
+  preflight atomicity, ambiguous TX, replacement epoch and ordinary-path
+  exclusion. Owner checks correlated responses with nonzero remote status,
+  later normal exchange, wrong response UID/ID/event, cancellation, timeout,
+  no retransmission and generation replacement. These are deterministic host
+  fixtures, not Exec/SDIO/radio, stack or timing acceptance. Freestanding OTA
+  imports are exactly rpc_decode/rpc_encode. Ordinary allowlist mutation still
+  fails at the expected negative-test assertion; compiler/crash is not a pass.
+- Test correction/review: the first oversized-codec fixture encoded239 with
+  a truncated varint, testing malformed length rather than oversized data.
+  Corrected to canonical239 (ef01) plus239 data bytes and reran, exit0; both
+  initial and final logs are retained. Independent source review found no
+  blocking defect. Its initial OTA-specific wrong-response coverage gap was
+  rechecked against the writer's final test and confirmed resolved.
+- Native verification: invalidate every resource .o in the explicit generated
+  esp32p4wifi directory, run only one gmake kernel-esp32p4wifi-probe-quick.
+  Profile jc1060p470c-v2, SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/HOSTED_OWNER=1,
+  OWNER_CPU=1 and both privacy/recovery assertions0. hosted_ota is now an
+  explicit resource build input; all resource objects freshly compile and
+  final module marker appears, actual exit0, no warning/error diagnostics.
+  Resource291220B SHA256
+  759871cbf28ed878725b2184dcfd819df112c34b91df128f676b01f3a5d20635;
+  archived exact bytes pass audit-package.py audit_elf against supported loader
+  relocations, flags3, zero issues, actual exit0. No package/image/core or
+  device rebuild/deployment is claimed; the prior matched package still holds
+  the earlier282952B resource and is not this new standalone artifact.
+- Log hashes: ota-tests-final.log SHA256
+  78c18e5a18439345e3b8408010611a735dddd2ae601f22f6112e149e0884b8be;
+  pending-tests.log
+  7388f0dd7ca8d58579f6f43e6f604bb89bc0e00074d3212cdf4ed87b888a14f7;
+  owner-tests.log
+  ad22cc181c12109adc65a9e56abb6dcb2791fa8715612944467b9b61b1a335c2;
+  resource-build.log
+  91856c3ad695be9e3671022747b34a6f285dbff997423387a387a4f7bff3f98c;
+  resource-audit.log
+  9eaf18bf88a47ed91fe795960a2e90aa96f1e83948d75a5353dbdc74034f25b7.
+- Limits/safety/next: lower-layer helpers do not establish maintenance, image
+  authentication/immutability, installed target/layout, independent recovery,
+  transaction ordering or full-transfer budget. Those remain mandatory caller
+  obligations. No native ABI8 job or frontend can invoke OTA; UPDATE-C6 remains
+  unavailable. Bind these helpers through a task/token-bound maintenance job,
+  implement explicit fenced terminal policy and a justified aggregate budget,
+  then pair/package and qualify the actual path. Independently secure C6
+  recovery before first installation; undeployed discovery is not bootstrap
+  recovery. Installed privacy and actual association/DHCP/frames/reconnect/
+  combined1800s plus CLI/GUI updates/HTTPS remain open. Full Wi-Fi goal active;
+  this step is at most build verified.

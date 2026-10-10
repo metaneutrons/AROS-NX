@@ -2,6 +2,7 @@
 #include "hosted_owner.h"
 
 #include "hosted_rpc.h"
+#include "hosted_ota.h"
 
 struct owner_range {
     uintptr_t first;
@@ -387,10 +388,12 @@ static int owner_exchange_preflight(struct p4_hosted_owner *owner,
     uint32_t generation, unsigned checksum_enabled,
     const uint8_t *request, size_t request_size, uint32_t timeout_us,
     struct p4_hosted_owner_result *result, struct p4_hosted_rpc *rpc,
-    const struct p4_hosted_init *init, uint32_t nonce, unsigned discovery)
+    const struct p4_hosted_init *init, uint32_t nonce, unsigned path)
 {
+    unsigned discovery = path == 1u;
+    unsigned ota = path == 2u;
     if (!owner || !fifo || !ops || !request || !result || !rpc ||
-        generation == 0u || checksum_enabled > 1u ||
+        generation == 0u || checksum_enabled > 1u || path > 2u ||
         request_size == 0u ||
         request_size > P4_HOSTED_PENDING_MAX_REQUEST_SIZE ||
         timeout_us == 0u || timeout_us > P4_HOSTED_OWNER_MAX_EXCHANGE_US ||
@@ -404,14 +407,16 @@ static int owner_exchange_preflight(struct p4_hosted_owner *owner,
         owner->rx.inbox.discovery_generation != 0u ||
         owner->rx.inbox.discovery_uid != 0u ||
         owner->rx.inbox.discovery_seen != 0u ||
-        (discovery && owner->partial_active != 0u) ||
+        ((discovery || ota) && owner->partial_active != 0u) ||
         !(discovery ? p4_hosted_rpc_decode_board_discovery(request, request_size, rpc)
                     : p4_hosted_rpc_decode(request, request_size, rpc)) ||
         rpc->msg_type != P4_HOSTED_RPC_TYPE_REQUEST || rpc->uid == 0u ||
         (discovery ? (rpc->msg_id != 350u ||
                       !p4_hosted_init_has_board_discovery(init) ||
                       !owner_discovery_body_matches(rpc, nonce))
-                   : !request_id_supported(rpc->msg_id)) ||
+                   : (ota
+                       ? !p4_hosted_ota_request_is_canonical(request, request_size)
+                       : !request_id_supported(rpc->msg_id))) ||
         owner->ids.active_uid != rpc->uid ||
         owner->ids.active_request_id != rpc->msg_id)
         return 0;
@@ -860,7 +865,7 @@ static int owner_exchange(struct p4_hosted_owner *owner,
     uint32_t generation, unsigned checksum_enabled,
     const uint8_t *request, size_t request_size, uint32_t timeout_us,
     struct p4_hosted_owner_result *result,
-    const struct p4_hosted_init *init, uint32_t nonce, unsigned discovery)
+    const struct p4_hosted_init *init, uint32_t nonce, unsigned path)
 {
     struct p4_hosted_rpc rpc;
     struct owner_runtime runtime;
@@ -869,10 +874,11 @@ static int owner_exchange(struct p4_hosted_owner *owner,
     unsigned acquired, attempts = 0u, polls = 0u, worked = 0u;
     enum owner_lifetime lifetime;
     int submitted, drained;
+    unsigned discovery = path == 1u;
 
     if (!owner_exchange_preflight(owner, fifo, ops, generation,
         checksum_enabled, request, request_size, timeout_us, result, &rpc,
-        init, nonce, discovery))
+        init, nonce, path))
         return 0;
 
     clear_result(result);
@@ -955,9 +961,13 @@ static int owner_exchange(struct p4_hosted_owner *owner,
                 generation, &tx_adapter, checksum_enabled, owner->request,
                 request_size, owner->wire, sizeof(owner->wire), &owner->pending,
                 init, nonce)
-            : p4_hosted_pending_submit(fifo, &owner->ids, generation,
+            : (path == 2u
+                ? p4_hosted_pending_submit_ota(fifo, &owner->ids, generation,
+                    &tx_adapter, checksum_enabled, owner->request, request_size,
+                    owner->wire, sizeof(owner->wire), &owner->pending)
+                : p4_hosted_pending_submit(fifo, &owner->ids, generation,
                 &tx_adapter, checksum_enabled, owner->request, request_size,
-                owner->wire, sizeof(owner->wire), &owner->pending);
+                owner->wire, sizeof(owner->wire), &owner->pending));
         ops->release(ops->context);
         result->pending_error = owner->pending.error;
         result->submitted = owner->pending.submitted;
@@ -1094,6 +1104,16 @@ int p4_hosted_owner_exchange_board_discovery(struct p4_hosted_owner *owner,
 {
     return owner_exchange(owner, fifo, ops, generation, checksum_enabled,
         request, request_size, timeout_us, result, init, nonce, 1u);
+}
+
+int p4_hosted_owner_exchange_ota(struct p4_hosted_owner *owner,
+    struct p4_hosted_fifo *fifo, const struct p4_hosted_owner_ops *ops,
+    uint32_t generation, unsigned checksum_enabled,
+    const uint8_t *request, size_t request_size, uint32_t timeout_us,
+    struct p4_hosted_owner_result *result)
+{
+    return owner_exchange(owner, fifo, ops, generation, checksum_enabled,
+        request, request_size, timeout_us, result, NULL, 0u, 2u);
 }
 
 int p4_hosted_owner_step(struct p4_hosted_owner *owner,
