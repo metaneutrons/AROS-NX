@@ -117,11 +117,12 @@ gate: compensated output is not the native display contract.
 
 Current source radio/device pairing is private ABI8 (N2M maintenance/discovery).
 ABI6 counts/artifacts in N1A/N2A/N2/N2L remain historical lifecycle evidence,
-not the current deployment pair. No ABI7/ABI8 package/image or hardware pass exists.
+not the current deployment pair. A regenerated ABI8 candidate package passes
+all42 loader audits; no ABI7/ABI8 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle and maintenance handshake host/build verified; C6 discovery candidate build verified, undeployed; native discovery codecs, TX/RX admission and exclusive-owner exchange build verified; ABI8 discovery publication and shared CLI/GUI discovery binding build verified; no hardware acceptance | Native/C6 discovery runtime qualification and live P4/C6 layout/active-slot provenance, owner OTA dispatch and ambiguous-write recovery policy, secured CN5 recovery, real CLI/GUI update and HTTPS acquisition; regenerate matching ABI8 package/image before runtime; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle, ABI8 maintenance/discovery and shared CLI/GUI binding host/build verified; matched42-member BSP candidate audited and tool included in WLAN image; C6 candidate undeployed; no hardware acceptance | Native/C6 discovery runtime qualification and live P4/C6 layout/active-slot provenance, owner OTA dispatch and ambiguous-write recovery policy, secured CN5 recovery, real CLI/GUI update and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -137,7 +138,7 @@ not the current deployment pair. No ABI7/ABI8 package/image or hardware pass exi
 | N2 | AROS WLAN SANA-II integration | `private ABI6 association/lifecycle binding build and scoped models verified; runtime/privacy/wireless gates open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded STA TX compile for Core1. N2L records current counts/artifacts and Close/Offline/teardown models. Actual helpers/selected dispatch arms; Exec/SDMMC/hooks/radio mocked, not full BeginIO, full service callback or runtime concurrency. Queue/traffic-token fences/copied AP publication are bound; no actual association/IP claim. TX commitment rejects late AbortIO. WirelessManager/bwfm remain references; per-device four-way offload must preserve legacy behavior. Caller late failure, DHCP/build defaults, GUI saving/writable preference storage and actual teardown/reconnect/load remain open. No credentials, deployment or hardware pass. |
 | N2L | Native radio teardown and ongoing link lifecycle | `ABI6 build/scoped models verified; hardware/privacy open` | Standalone leave, deferred teardown outside unit lock, bounded Disconnect/NOT_CONNECT verification, periodic correlated AP observation and selected-RPC cancellation drain. Mac/Linux O0/O2 sanitized: association25999, observer393, bridge219, options89/258, queue785, lifetime1482, datapath16507, events6/70, scan295; sibling link102/reservation63/owner scan37447; exit0. Fresh Core1 RV32 modules have no undefined imports. Explicit teardown requires absence; persistent/foreign AP quarantines rather than reporting loss. Both privacy assertions0 and SUMMARY-only unchanged. Shared caller late-failure event and actual radio/reconnect/load qualification remain open. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
-| N2U | Credential-free WLAN image defaults and first-use selection | `corrected static-linked image/BSP loader and host FAT verification passed; deployment/runtime open` | Existing AROS WiFi/Network preferences, WirelessManager, AROSTCP and dhclient only. Fixed device/unit0, DHCP RAM paths, empty Wireless.prefs and autostart off. Five defaults/seventeen stage tests pass; strict native ELF/default1 plus WLAN-device loader validation. Explicit graphical JC1060 targets exclude saved build Env-Archive and use tracked stock Wanderer preferences/ABI; legacy image profiles unchanged. WiFi151956B uses exact interface/IP and validated expiry/clock selection (203 helper checks; reader265, O0/O2 sanitized). Default-linked radio254812B/device72936B fail discarded-frame relocation audit; superseded without deployment. Fresh static-linked radio249944B/device67492B pass; corrected42-member package3938500B passes with41 other payloads unchanged. Regenerated64MiB image passes host FAT32/fsck and exact329-file manifest with original hash unchanged. Installed baseline backup/full-span recovery, single-manager lifetime and board acceptance remain open. No Exec, clock, routing/resolver, GUI or radio qualification. First delivery excludes credential persistence; SYS/SD remains read-only. |
+| N2U | Credential-free WLAN image defaults and first-use selection | `matched ABI8 candidate BSP/image build and host verification; deployment/runtime open` | Existing AROS WiFi/Network preferences, WirelessManager, AROSTCP and dhclient only; device/unit0, DHCP RAM paths, empty Wireless.prefs, autostart off. Five defaults/eighteen stage tests pass. WLAN-only whitelist includes ESP32Board/icon; actual85-file overlay, tracked Wanderer defaults, no saved build Env-Archive. Fresh static-linked resource282952B/device67584B, audited42-member BSP3971508B,41 other payloads unchanged. Final64MiB AROSDefault image has332 manifest entries; historical loader failures/artifacts retained in dated evidence. Installed baseline backup/full-span recovery, native discovery, single-manager lifetime, clock/routing/resolver/GUI/radio acceptance remain open. Both privacy assertions0; credentials excluded and SYS/SD read-only. |
 | N2E | Caller-visible asynchronous association failure | `generic caller/native binding/Close model+build verified; runtime open` | Native76cc32560a owned cookies/opener failure latches and message-ACK/token fence are bound; independent source review clear, clean72936B RV32 device build and all six scoped macOS/Linux O0/O2 sanitizer suites pass. Caller Close9a0a0d8346 integratedd50ca3ba1e passes independent review/macOS/Linux models and full679652B RV32 rebuild. Capability advertisement remains disabled. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
@@ -1343,6 +1344,12 @@ waits for bounded cleanup. The query leaves WLAN offline/unassociated; no
 credential, OTA, reset or auto-reassociation hook exists. No native runtime
 query, actual display or update permission is established. The unchanged
 UPDATE-C6 refusal remains intentional until OTA and recovery gates pass.
+The matching ABI8 candidate BSP now passes all42 loader audits:3971508B,
+91724B package headroom, exactly the fresh282952B owner resource and41
+byte-identical other member payloads. The whitelist and WLAN-only dependency
+now include the freshly linked ESP32Board and generic tool icon. Eighteen
+host stage regressions pass; no candidate is deployed and the local input
+package is not evidence of the currently installed firmware or its recovery.
 The tool is restricted to esp32p4/riscv builds. Independent generated protobuf-c
 comparison verifies the pinned OTA wire format; normal WLAN control submission
 rejects OTA commands. Neither test establishes live transport or recovery.
@@ -1572,7 +1579,7 @@ actual native stack/DHCP/manager/apps/modules/libraries and optional catalogs:
 JC1060 WLAN image targets consume the overlay, without importing saved build
 Env-Archive. The full64MiB image builds and passes host FAT32/fsck and exact
 329-file manifest verification; board/runtime acceptance remains open.
-Deployment also requires a matching ABI6 BSP with the persistent Core1 owner;
+Deployment now requires a matching ABI8 BSP with the persistent Core1 owner;
 the image target does not regenerate the package. Current local package
 contains an old31652B resource, not the standalone254812B owner resource.
 Both that default-linked owner and the72936B device fail discarded-frame
@@ -1580,6 +1587,14 @@ relocation audits. Static-linked replacements249944B/67492B now pass; the
 separate corrected42-member test package and regenerated image pass host
 verification. Neither is deployed; exact installed baseline recovery remains
 mandatory. Stage now refuses a loader-invalid WLAN device before writing.
+The2026-10-11 candidate supersedes that historical pairing: fresh282952B
+resource/67584B device,3971508B audited BSP and121796B ESP32Board. The tool
+and generic icon are included only in the WLAN stage, now85 files with desktop
+defaults; eighteen stage regressions pass. The final AROSDefault64MiB image
+passes332-entry mounted-manifest/FAT32 verification with unchanged original.
+Compared with the archived329-entry image, only the existing WLAN device
+payload changes; Tools directory/tool/icon are added, startup/theme unchanged.
+No deployment, actual installed recovery or discovery/WLAN acceptance follows.
 Package lookup is configured; sample host/routes are neutralized. The chooser
 now uses DHCP's configured POSIX lease path and selects complete records by
 exact interface/current address. Actual-source sanitized selection tests pass144
@@ -36833,3 +36848,95 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   transport and ambiguous-write policy, installed privacy, recovery, actual
   association/DHCP/frames/reconnect/combined1800s and real CLI/GUI updates/HTTPS
   remain open. This closes source frontend binding, not Wi-Fi integration.
+
+### 2026-10-11 - N2M/N2U matched ABI8 BSP and WLAN image candidate
+
+- Status: build/host verified, undeployed. Worktree
+  /Volumes/Dev/Build/aros-esp32p4-wifi, branch feature/esp32p4-wifi,
+  parent c88c086657; native build /Volumes/Dev/Build/aros-esp32p4-wifi-build.
+  Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/discovery-package.Vz1t9h/.
+- Implementation: add Tools/ESP32Board and its generic TOOL icon to the
+  strict WLAN whitelist, and register its native build dependency only on
+  the explicit WLAN stage. The icon is copied byte-exactly from
+  Prefs/Touchscreen.info, whose source declares TOOL/stack16384, like the
+  existing WiFi/Network icon mapping; actual Workbench launch remains untested.
+  Luna authored scoped regressions; primary inspected and reran them.
+  Eighteen stage tests and five defaults tests pass, actual exits0.
+  Tests check the exact whitelist, tool/icon bytes and missing/empty/wrong-ELF/
+  symlink refusal before reserving output, plus WLAN-only dependency placement.
+- Build procedure/correction: invalidate all resource/device objects and later
+  all twelve ESP32Board objects. Initial concurrently launched resource/device
+  gmake processes raced in MetaMake/genmf: resource-build.log records an actual
+  exit2/FileNotFoundError while regenerating the image makefile; device exits0.
+  Do not count the failed resource invocation as a fresh build. Re-invalidate
+  resource objects and rerun serially: resource-serial-build.log exits0 with
+  final module marker. All later make invocations are serial. Resource profile
+  is jc1060p470c-v2, SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/HOSTED_OWNER=1,
+  OWNER_CPU=1; both C6/host privacy-recovery assertions0. Device quick build
+  uses the same board and both assertions0. Final image command uses
+  kernel-image-esp32p4-riscv-wifi, GRAPHICAL_BOOT/WLAN_IMAGE=1, these owner
+  flags and explicit AROS_GUI_THEME=AROSDefault; actual exit0. Source/header
+  private ABI8 is paired by fresh builds and byte comparisons, not an
+  automatic exported-ABI attestation or a new core build.
+- Artifact identities: fresh resource282952B SHA256
+  2d059ca8349f77367de07682000fd1e02640b592ae44854d5a4d493772dd0443;
+  device67584B SHA256
+  a0255658631666f313c7fc069d6e87dd13a84b71a6983e0c9892fae8442d9fbb;
+  ESP32Board121796B SHA256
+  69a3392a22c6991a2d0154326c8bcf9c549c6d519c9596d8667e77e86eb22bfe.
+  All twelve tool objects actually compile in image-build.log and link;
+  subsequent explicit-theme build reuses that exact tool. Successful native
+  logs contain no warning:/error: diagnostics. Unchanged hashes relative to
+  the prior standalone builds are expected: this delta packages existing code.
+- Package: replace only esp32p4wifi.resource in the immutable local
+  paired-bsp.HI7pAD/aros-bsp-owner-static.pkg, SHA256
+  a49afd31f98d7d4697a8ce23c6d60631d1e083b2f4456a045f8505f8b6f94a6f.
+  Exclusive new output aros-bsp-abi8.pkg is3971508B SHA256
+  5493f6f03740c73acbd55dfbd48adcc236a441c62986453a1ff922e2c073fd1e.
+  Audit accepts all42 members,0 failures, exit0. Separate content comparison
+  confirms all41 other payloads/name order unchanged and exact fresh resource.
+  Package is91724B below board.mk's4063232B limit. This local baseline is NOT
+  a backup or identity statement for the currently installed physical board.
+- Image/config correction: first successful image build selected Ice through
+  existing build configuration,325 entries, SHA256
+  c4e31b619422da5fc083d81733430e96168a8a699e691c467d9c48a8a3e0facb.
+  Its host verification exits0; retained as aros-wifi-ice.img, not the final
+  paired candidate. To avoid an unrelated theme change, explicitly rebuild
+  AROSDefault. Final aros-wifi.img is67108864B SHA256
+  11251521dff0aee2e9d6b6921e2a0fbf0a9ea5b4551488272ba99fbdc428f2b1,
+  overlay85 files,332 manifest entries. Compared with the archived329-entry
+  image, no entry is removed; only existing WLAN-device bytes change and
+  Tools directory/tool/icon are added. Startup/theme are unchanged.
+  Manifest entries contain the exact fresh device/tool sizes and hashes.
+  Host hdiutil/fsck_msdos and mounted-manifest checks run on a COPY, not SD;
+  final verify process exits0,332/332 entries match exactly, original before/
+  after hash unchanged. Manifest SHA256
+  d1f804f1d9fe08e12e48be7b67d1e0ab3e29b9ecc4d86dd1002f6a1f3903bbba.
+- Evidence hashes: stage-tests.log
+  d71ce97f584e94cf86b1da69188b382e593dfaf5bca0bad7793c04aaedaeae7d;
+  resource-build.log (FAILED)
+  312f09ff07472fa63ad8f6901c67fa58b58ae233b8f20c72377b878a91c9c841;
+  resource-serial-build.log
+  23fda680a64da8124010917271322723486bf541a3ae7e1e54edd2f380e56170;
+  package-audit.log
+  690a19838bd27de6ce065a19464ad082eec1244ef5f8dc018e25d33c808046aa;
+  package-pairing.log
+  6351eb53d41e75b524f3698be77453bb5391444987cd5fae61ae4971f7edbfe9;
+  image-default-build.log
+  5bbc6823ec17813ab23ea451a267d8ee4c357fbc5d2410d5240437505b2f1fd6;
+  completed image-default-verify.log
+  f9f2b07dde98c6c9de598bcdda78449d622eb788b9278f8c255a81829921dfde;
+  image-delta.log
+  baa42cc7e79d078f25aaabe510a4abc8e3a7449413c4659a2b98f85f617b49f7.
+- Safety/limits/next: no serial, board query, reset, flash, SD write, credential,
+  C6 installation or privacy-gate change. Host FAT checks do not establish AROS
+  execution, actual UI/timer/release/stack/owner affinity or WLAN operation.
+  Compatible C6 discovery firmware remains undeployed; stock Hosted receives
+  no extension query and cannot provide its inventory. First install cannot
+  use that uninstalled extension as recovery. Verify installed P4 baseline and
+  recoverable full erase-span backups before any deployment; independently
+  secure C6 recovery before a C6 write. UPDATE-C6 stays unavailable. Owner OTA
+  dispatch/ambiguous-write policy, installed privacy/recovery and actual
+  association/DHCP/bidirectional frames/reconnect/combined1800s plus CLI/GUI
+  updates/HTTPS remain open. Full Wi-Fi goal remains active.

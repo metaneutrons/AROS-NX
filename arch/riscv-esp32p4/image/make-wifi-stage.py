@@ -32,6 +32,7 @@ BINARIES = (
     "Prefs/WiFi", "Prefs/Network", "Prefs/NetModules/net4.netprefs",
     "Prefs/NetModules/net6.netprefs", "C/WirelessManager",
     "Devs/Networks/esp32p4wlan.device",
+    "Tools/ESP32Board",
     "System/Network/AROSTCP/C/AROSTCP",
     "System/Network/AROSTCP/C/dhclient",
     "Libs/posixc.library", "Libs/stdcio.library", "Libs/stdc.library",
@@ -118,6 +119,7 @@ def collect(aros_root, source_root=REPO, include_desktop=False):
     icon = read_file(aros_root, "Prefs/Touchscreen.info")
     payload["Prefs/WiFi.info"] = icon
     payload["Prefs/Network.info"] = icon
+    payload["Tools/ESP32Board.info"] = icon
     db = "workbench/network/stacks/AROSTCP/Env/db/"
     for name in DB_FILES:
         payload["Prefs/Env-Archive/AROSTCP/db/" + name] = read_file(

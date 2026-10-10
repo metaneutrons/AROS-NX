@@ -157,8 +157,11 @@ class WifiStageTests(unittest.TestCase):
         for relative in STAGE.BINARIES:
             path = aros_root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(wifi_elf if relative == "Prefs/WiFi"
-                             else ELF_FIXTURES.make_elf())
+            if relative == "Prefs/WiFi":
+                data = wifi_elf
+            else:
+                data = ELF_FIXTURES.make_elf()
+            path.write_bytes(data)
 
         for relative in STAGE.IMAGES:
             path = aros_root / relative
@@ -167,7 +170,7 @@ class WifiStageTests(unittest.TestCase):
 
         icon = aros_root / "Prefs/Touchscreen.info"
         icon.parent.mkdir(parents=True, exist_ok=True)
-        icon.write_bytes(b"test icon fixture\n")
+        icon.write_bytes(b"shared generic tool icon fixture\n")
 
         database = source_root / "workbench/network/stacks/AROSTCP/Env/db"
         database.mkdir(parents=True, exist_ok=True)
@@ -333,6 +336,7 @@ class WifiStageTests(unittest.TestCase):
             "Prefs/WiFi", "Prefs/Network", "Prefs/NetModules/net4.netprefs",
             "Prefs/NetModules/net6.netprefs", "C/WirelessManager",
             "Devs/Networks/esp32p4wlan.device",
+            "Tools/ESP32Board",
             "System/Network/AROSTCP/C/AROSTCP",
             "System/Network/AROSTCP/C/dhclient", "Libs/posixc.library",
             "Libs/stdcio.library", "Libs/stdc.library",
@@ -347,7 +351,8 @@ class WifiStageTests(unittest.TestCase):
             for name in STAGE.DB_FILES
         }
         expected = (required_defaults | required_binaries | required_images |
-                    database_files | {"Prefs/WiFi.info", "Prefs/Network.info"})
+                    database_files | {"Prefs/WiFi.info", "Prefs/Network.info",
+                                      "Tools/ESP32Board.info"})
 
         self.assertEqual(required_binaries, set(STAGE.BINARIES))
         self.assertEqual(required_images, set(STAGE.IMAGES))
@@ -380,6 +385,31 @@ class WifiStageTests(unittest.TestCase):
         self.assertEqual((self.aros_root / "Prefs/Touchscreen.info").read_bytes(),
                          first["Prefs/WiFi.info"])
         self.assertEqual(first["Prefs/WiFi.info"], first["Prefs/Network.info"])
+        self.assertEqual((self.aros_root / "Tools/ESP32Board").read_bytes(),
+                         first["Tools/ESP32Board"])
+        self.assertEqual((self.aros_root / "Prefs/Touchscreen.info").read_bytes(),
+                         first["Tools/ESP32Board.info"])
+
+        makefile = (HERE / "mmakefile.src").read_text(encoding="ascii")
+        self.assertEqual(1, makefile.count("workbench-tools-esp32board"))
+        normal_target = "#MM- kernel-image-esp32p4-riscv-stage :"
+        wifi_target = "#MM- kernel-image-esp32p4-riscv-wifi-stage :"
+
+        def dependency_lines(target):
+            lines = makefile.splitlines()
+            start = next(index for index, line in enumerate(lines)
+                         if line.startswith(target))
+            dependencies = []
+            for line in lines[start + 1:]:
+                if not line.startswith("#MM-     "):
+                    break
+                dependencies.append(line.removeprefix("#MM-     ").rstrip(" \\"))
+            return dependencies
+
+        self.assertNotIn("workbench-tools-esp32board",
+                         dependency_lines(normal_target))
+        self.assertIn("workbench-tools-esp32board",
+                      dependency_lines(wifi_target))
 
         all_content = b"\n".join(first.values())
         staged_names = b"\n".join(path.encode("ascii") for path in first)
@@ -448,6 +478,33 @@ class WifiStageTests(unittest.TestCase):
         system.rename(real_system)
         system.symlink_to(real_system, target_is_directory=True)
         self._assert_rejected_before_reservation()
+
+    def test_board_tool_missing_empty_wrong_elf_and_symlink_are_rejected(self):
+        for label in ("missing", "empty", "wrong-elf", "symlink"):
+            with self.subTest(label=label):
+                aros_root = self.base / ("aros-board-tool-" + label)
+                source_root = self.base / ("source-board-tool-" + label)
+                output = self.base / ("stage-board-tool-" + label)
+                self._make_inputs(aros_root=aros_root, source_root=source_root)
+                tool = aros_root / "Tools/ESP32Board"
+                if label == "missing":
+                    tool.unlink()
+                elif label == "empty":
+                    tool.write_bytes(b"")
+                elif label == "wrong-elf":
+                    data = bytearray(ELF_FIXTURES.make_elf())
+                    struct.pack_into("<H", data, 18, 62)  # ELF machine: x86-64
+                    tool.write_bytes(data)
+                else:
+                    outside = self.base / "external-board-tool"
+                    outside.write_bytes(ELF_FIXTURES.make_elf())
+                    tool.unlink()
+                    tool.symlink_to(outside)
+
+                self._assert_rejected_before_reservation(
+                    output=output, aros_root=aros_root,
+                    source_root=source_root,
+                )
 
     def test_symlinked_aros_and_source_roots_are_rejected(self):
         ar_link = self.base / "aros-link"

@@ -91,8 +91,13 @@ copied inventory as a historical normalized registry observation, not raw
 installed-table attestation, peer authentication or write/recovery authority.
 The graph shows reported roles and security-known/enabled masks in tooltips;
 unknown policy is not disabled policy. UPDATE-C6 remains unavailable.
-Matched ABI8 package/image regeneration and actual native/C6 runtime, UI,
-clock, cancellation/release and stack qualification remain open.
+Matched ABI8 package/image regeneration passes host verification
+(2026-10-11):3971508B BSP,42 loader-valid members,41 other payloads unchanged;
+64MiB AROSDefault image,332 exact mounted manifest entries, original unchanged.
+Tools/ESP32Board and its generic tool icon are included in the85-file WLAN
+overlay; eighteen staging tests pass. These candidates are not deployed and
+are not backups of the installed board. Actual native/C6 runtime, UI, clock,
+cancellation/release and stack qualification remain open.
 Actual portable client plus real inventory decoder/validator pass286 checks
 across41 cases each O0/O2 ASan/UBSan, with an accepted-release mutation rejected;
 adapter hooks are mocked. Fresh RV32-SMP ESP32Board121796B compiles and links

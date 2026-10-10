@@ -114,7 +114,8 @@ P4_GSL_FW_BINARY ?=
 #MM-     workbench-prefs-network \
 #MM-     workbench-network-stacks-arostcp \
 #MM-     network-dhcp-client \
-#MM-     workbench-network-wirelessmanager
+#MM-     workbench-network-wirelessmanager \
+#MM-     workbench-tools-esp32board
 
 C3_SD_LIBS := asl.library commodities.library coolimages.library \
               cybergraphics.library datatypes.library diskfont.library \

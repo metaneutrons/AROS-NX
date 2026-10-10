@@ -31,7 +31,7 @@ The target writes four files next to each other in
 In the separate JC1060 RV32-SMP build tree:
 
     gmake kernel-image-esp32p4-riscv-wifi P4_BOARD=jc1060p470c-v2 \
-        P4_C3_GRAPHICAL_BOOT=1 P4_C3_WLAN_IMAGE=1
+        P4_C3_GRAPHICAL_BOOT=1 P4_C3_WLAN_IMAGE=1 AROS_GUI_THEME=AROSDefault
 
 Use v1 only for that verified panel batch. The explicit target declares the
 existing AROS runtime dependencies and writes `aros-wifi.img` with its layout,
@@ -52,7 +52,7 @@ radio acceptance remain open; neither privacy assertion is enabled here.
 
 The image is not a self-contained radio firmware: esp32p4wlan.device opens
 esp32p4wifi.resource from the separately flashed BSP and requires private
-bridge ABI6. Scanning requires a ready persistent owner (Core1 profile), not
+bridge ABI8. Scanning requires a ready persistent owner (Core1 profile), not
 the one-shot MAC/scan diagnostic. Pair the image with an explicitly rebuilt,
 loader/capacity-checked BSP and verified recovery baseline before deployment.
 The image target does not rebuild or write that package. Never infer package
@@ -60,6 +60,15 @@ freshness from a newer standalone resource: the local package inspected on
 2026-10-10 still contained the old31652B resource while the standalone owner
 resource was254812B. Both credential privacy assertions must remain0 until
 their separate acceptance gates pass.
+
+The2026-10-11 ABI8 candidate pairs resource282952B/device67584B with
+ESP32Board121796B. Its3971508B BSP passes all42 loader audits, with41 other
+payloads unchanged and91724B headroom. The matched64MiB AROSDefault image
+passes FAT32/fsck and all332 mounted manifest entries; its original hash is
+unchanged. This supersedes the older pairing below for development, not for
+hardware acceptance. Neither candidate is deployed. DISCOVER-C6 still needs
+an installed compatible C6 extension; it cannot bootstrap its own first-install
+recovery. UPDATE-C6 remains unavailable.
 
 The subsequent loader audit found discarded-frame references in both old
 default-linked modules. network/mmakefile.src now uses the standard BSP static
@@ -76,8 +85,12 @@ Every required executable must parse as little-endian RISC-V ELF32 ET_REL;
 WiFi must contain one initialized writable two-byte WifiVolatile symbol set
 to 1. Missing, empty or symlinked required inputs fail before reserving output.
 Built WiFi/Network catalogs are optional and allowlisted. No build-tree saved
-preferences or Package-Startup are imported. Seventeen host tests pass and actual
-RV32-SMP outputs produce 83 files with desktop defaults (78 without them);
+preferences or Package-Startup are imported. The whitelist also includes
+Tools/ESP32Board and its generic tool icon, copied from Prefs/Touchscreen.info
+like the WiFi/Network icons. Its build dependency is confined to the WLAN
+target. Eighteen host tests pass, including byte-exact tool/icon staging and
+missing/empty/wrong-architecture/symlink refusal before output creation.
+The expected overlay has 85 files with desktop defaults (80 without them);
 this is not board/runtime acceptance.
 The WLAN device additionally must pass the P4 loader relocation audit before
 output is reserved; a runtime reference to discarded .eh_frame is rejected.
