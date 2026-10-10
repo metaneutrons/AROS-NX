@@ -10,6 +10,11 @@ native AROS Wi-Fi remains open.
 Association source prerequisites are now recorded in HOSTED-REFERENCE.md:
 mandatory STA threshold/PMF nesting, exact RPC/event IDs and a slave debug-log
 privacy gate. No association codec/runtime or credentials are deployed.
+Standalone typed STA SetConfig/Connect/Disconnect and owned link-event codecs
+now pass239 self-checks and603 independent pinned protobuf-c comparisons each
+at O0/O2 with ASan/UBSan in isolated Linux. Strict freestanding RV32 compilation
+passes. These are pure codecs: no control allowlist/runtime integration,
+association or IP traffic is implied. The credential/privacy gate remains open.
 Existing AROS wireless options, WirelessManager and BWFM's firmware-offload
 worker provide the intended SANA-II integration contract. The ESP32 driver,
 asynchronous lifecycle and DHCP/data acceptance remain unimplemented.

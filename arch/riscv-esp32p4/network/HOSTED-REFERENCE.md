@@ -373,3 +373,20 @@ non-NUL SSID32/password64 are not proven safe even though schema-valid.
 Codec support must not be confused with safe installed-slave execution.
 Any shorter-string development restriction must remain a named workaround,
 not a permanent replacement for correct32-byte SSID/64-byte key support.
+
+Standalone native codec qualification (2026-10-10): hosted_association.c now
+encodes all fifteen known STA fields, correlated284/540,282/538,283/539 and
+owned775/776 events. Mandatory threshold/PMF exist even when empty. It rejects
+alias/overflow/invalid lengths and stages writes; failed encoding leaves output
+and written unchanged, transient credential copies are volatile-wiped. A
+nonzero event status validates any nested record but publishes zero data fields.
+The caller must protect and wipe successful credential-bearing output.
+Independent generated protobuf-c confirms a full-width all-value envelope is
+258 bytes (STA237, cfg240, request243, envelope258), so the256-byte cap refuses
+it transactionally. Full-width byte strings with supported fitting values are
+accepted; schema support is not proof of safe installed-slave strlen behavior.
+Self-tests239/oracle603 checks each O0/O2 sanitized pass. The oracle runner
+pins schema, generated files and protobuf-c hashes and uses a no-network Colima
+snapshot with write bits removed; it does not claim root-proof immutability.
+No runtime/control allowlist or installed firmware changes are part of this
+qualification. Persistent generation-scoped event/UID handling remains needed.

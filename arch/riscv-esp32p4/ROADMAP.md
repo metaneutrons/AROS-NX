@@ -121,7 +121,7 @@ gate: compensated output is not the native display contract.
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; native initialized MAC observed once; cold continuity rejected; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; Earlier GetMAC returns correlated0x3001 (WiFi not initialized). Latest initialized sequence succeeds once with expected MAC, but initial HP watchdog reset/truncated ROM output block clean cold acceptance. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
 | N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; native initialization/MAC observed once; clean cold gate pending` | Existing FIFO reused with owned bodies/exact correlation. Control3529/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Generation-bound reassembly1318 isolated checks each O0/O2 sanitized pass; now linked into control with coupled epoch/deadline/failure tests and fresh113900B module build. Fragmentation integration not deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Coordinated startup reports all5 WLAN statuses0, valid MAC10:bd:a3:9b:bc:34 and restored stable registers in60.112s/16340 bytes; initial HP watchdog reset prevents clean cold acceptance. Latest late45.114s retrieval exits0 but receives0 bytes;1.425ms open latency, no armed startup coverage, inconclusive. Fresh pre-armed capture needed. No persistent UID allocator or WLAN acceptance. Original verified baseline recoverable. |
 | N1S | Typed native scan and runtime acceptance | `codec/oracle tested; opt-in runtime build verified; sequence models tested; initialized MAC observed; scan undeployed; boot continuity open` | Codec230/oracle1068/control3529/sequence537 checks each O0/O2 sanitized pass. Default-config blocking/nonblocking start, stop, AP count and owned AP/country/HE records. Runtime opt-in follows successful initialization/MAC with UIDs7..10 and at most8 owned records, named zero-AP workaround. ScanStart500 polls under same8s aggregate operation deadline;2s cleanup reserve. Independent runtime audit corrected early logging under shared-controller lock. Fresh135284B scan-enabled module and3823840B package pass42/42 loader and capacity checks;41 non-WiFi records unchanged. Not deployed; larger3825664B erase span requires new twice-read backup. No native hardware scan or WLAN acceptance; sequence/cleanup host models pass. Passive diagnostic checker passes16 independent fixture tests; no hardware acceptance. Earlier arrival expired/45.122s capture empty. Repeat native MAC succeeds once; initial HP watchdog reset makes checker reject cold continuity. Cleanup enum1/all14 flags corrected;16 tests pass. Optional serial-open timing now passes10 host tests; prior6.729s first-byte gap cannot be attributed. No live capture. |
-| N1A | Native association/configuration and owned events | `source contract audited; implementation and privacy gate open` | Exact284/540,282/538,283/539 and775/776 contracts; mandatory nested STA threshold/PMF. Pinned slave logs credentials at DEBUG and calls strlen on fixed arrays; installed behavior unresolved. Typed codecs/oracle,256-byte transactional cap, owned fixed-width SSID event decoding, asynchronous state/generation handling and verified credential-safe hardware association remain required. No credential transmission or association pass. |
+| N1A | Native association/configuration and owned events | `standalone codecs/oracle host tested; runtime and privacy gate open` | Typed284/540,282/538,283/539 and owned775/776; all15 STA fields, mandatory nested threshold/PMF, transactional256-byte envelope cap, temporary-secret wipe. Self239/oracle603 checks each Linux O0/O2 ASan/UBSan pass; strict RV32 object24,420B compiles with onlyrpc_encode import. Pinned oracle confirms258-byte all-width vector is refused unchanged. Nonzero event status validates/discards nested data. No runtime/control allowlist integration or deployment. Pinned slave credential logging/strlen and installed lineage remain unresolved. Persistent UID/event/generation state and credential-safe hardware association remain required. No credential transmission, association or IP pass. |
 | N2 | AROS WLAN SANA-II integration | `existing AROS integration contract identified; driver not implemented` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. Existing sana2wireless.h, WirelessManager and bwfm offload path provide SSID/passphrase/options and link events; no second TCP/IP stack or duplicate configuration UI. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
@@ -649,6 +649,15 @@ typed configurations rather than truncate. Secret-bearing slave debug logging
 is unresolved for the installed binary and must be checked before credentials
 are transmitted. HOSTED-REFERENCE.md records the contract. No implementation,
 association or credential transmission from this source-only preparation.
+Standalone codec implementation now passes239 self-checks and603 pinned
+generated protobuf-c interoperability checks each Linux O0/O2 ASan/UBSan.
+All15 STA fields and mandatory nested messages are supported; complete256-byte
+cap refuses the independently measured258-byte maximal envelope without partial
+writes. Event data is owned; nonzero status preserves status and zeroes fields
+after validating any nested data. Strict freestanding RV32 compiles with only
+rpc_encode imported; SetConfig1168-byte static frame is not measured runtime
+high-water. No runtime integration or hardware deployment; privacy and
+persistent event/association state gates remain open.
 
 After the user's reconnection confirmation, a passive20.061s capture on
 2026-10-10 observes advancing JC1060 touch heartbeats only. N1/N1C status
@@ -32372,6 +32381,54 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   Reader closed; N1C clean startup remains open, scan remains undeployed.
   Next: fresh readiness and a pre-armed coordinated startup capture, without
   interpreting a late empty log as a pass or silently repeating a power cycle.
+
+### 2026-10-10 - N1A standalone association codecs and pinned oracle qualified
+
+- Source dffe3673c7 plus new hosted_association.c/.h, self-tests, independent
+  generated protobuf-c oracle and runners. Pure SetConfig/Connect/Disconnect
+  and owned connected/disconnected event codecs, no mmake/control allowlist/
+  runtime integration. All15 known STA fields; mandatory empty threshold/PMF;
+  exact status/UID correlation, malformed/duplicate/length/alias/overflow
+  refusal, staged output and volatile temporary credential-copy wiping.
+- Independent Luna source review found nonzero-status event data was initially
+  retained despite header contract. Fixed: validate any nested data then publish
+  only status/zero fields. Primary checks the implementation and final tests.
+  No other source-level blocker found; review is not hardware acceptance.
+- Primary Linux Colima snapshot tests with --network none, ASan/UBSan,
+  halt_on_error=1, strict warnings: self-tests239 each O0/O2, actual exit0;
+  pinned protobuf-c oracle603 each O0/O2, actual exit0 on two primary runs.
+  Oracle pins schema/generated/protobuf-c source hashes before execution and
+  tests byte and semantic compatibility, full-width binary fields, defaults,
+  signed statuses, event ownership and malformed/refusal cases. Synthetic
+  credentials only. Removed write bits are not root-proof filesystem protection.
+- Independent oracle packs258-byte maximal envelope: STA237/cfg240/request243/
+  envelope258, full-width bytes, uint32/UID max and five INT32_MIN values.
+  Native256-byte cap refuses unchanged even if caller supplies larger storage;
+  separate fitting full-width vectors pass. Preliminary248 estimate concerned
+  a different incomplete vector and was not a qualified maximum.
+- Primary AROS riscv-aros-gcc strict C99 -Wall -Wextra -Werror -pedantic,
+  -ffreestanding -fno-builtin -O2 -fstack-usage exits0; nm imports only
+  p4_hosted_rpc_encode. association-final.o24,420B SHA-256
+  53cbbc02bff643a9829a87626eeaf0d2d2a04a0d8d2c62cc00132e9606393ee4;
+  .su SHA-256 ac8f9a755736b1c9c1fc0dd2cad5e5ee9e24aec879936965064ff0f415748b21.
+  SetConfig static frame1168B; connected176/disconnected144. These are local
+  frames, not call-chain/runtime high-water. Earlier unused-helper compile
+  failed/no object; removed before final compile. Fresh final filename retained.
+- Evidence wifi-2026-10-10/native-association-codec.kdDuAu:
+  selftests-primary.log SHA-256
+  b71649f7f6d8d484a0212c54a752e68bdcd85d57b5ffcb649a628aeb2fc79290;
+  oracle-primary.log SHA-256
+  6afa3e8ac2617b13f3a9be1024d886a71e3e2b50dcb7fb919cbf115ac2db0ff8.
+  Codec SHA-25636d12d102d2145d1614930ed97493c27d2b10880f47cca1af081da1b60a05494;
+  header e70a72b1e79e02905d17454f3fbef7fb92bd707dded7dbd840c391f73dd7900e;
+  self-test0457a9cb6664f165a7bbb6a82d4e2fd77c74d8f7499b69a089daaeea0d1493af;
+  oracle f0259c31474b273cfd74d138c32f7d3fbc685dd13d5990a81fe47339b5951d6c.
+- No serial/reset/flash/media actions in codec qualification. Installed core/
+  package/C6 unchanged. No credential transmission or association/frame/IP
+  acceptance. Successful encoded output remains caller-owned secret-bearing
+  storage. Slave privacy/full-width strlen and installed lineage remain open.
+  Next: persistent generation-scoped UID/event state and asynchronous lifecycle;
+  separately resolve pre-armed cold continuity before native scan deployment.
 
 ## Evidence-entry template
 
