@@ -1,8 +1,10 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
 WirelessManager security/offload integration (2026-10-10): generic changes
-are being developed separately on pr/wireless-offload-summary from verified
-upstream master2875ef32831c, in /Volumes/Dev/Build/aros-wlan-contract.qToy75.
+originated separately on pr/wireless-offload-summary from verified upstream
+master2875ef32831c, in /Volumes/Dev/Build/aros-wlan-contract.qToy75. Generic
+commit49972c6241 is retained on upstream/wireless-offload-summary and has
+been integrated locally onto feature/esp32p4-wifi; it is not pushed upstream.
 The explicit versioned per-device capability and pool-owned scan-summary
 contract avoids reconstructing AP security IEs. Unknown, malformed or
 ambiguous security must never select an open-network fallback. Initial
@@ -15,10 +17,13 @@ pairwise/group capability refusal is corrected using separate role masks;
 the legacy cipher mask is their union, not authority for either role.
 A clean standalone RV32 WirelessManager build, including the existing MUI GUI,
 now compiles and links with the current SMP Developer sysroot (678472B).
-Source-extracted conversion/capability/selection-helper models now pass32
-scenarios/59 checks each O0/O2 ASan/UBSan on macOS and isolated Linux.
+Source-extracted conversion/capability/selection-helper models now pass34
+scenarios/63 checks each O0/O2 ASan/UBSan on macOS and isolated Linux.
+Numeric fixture constants are extracted from production headers, and legacy
+and summary-only profiles leave both offload role masks zero. Both generated
+public headers were refreshed through compiler-includes and match the source.
 Device queries, complete selection/association flow and deployment remain
-unverified; generic work is uncommitted. This build is not association, DHCP
+unverified. This build is not association, DHCP
 or hardware acceptance.
 
 Persistent owner scan development (2026-10-10): private bridge ABI2 now adds

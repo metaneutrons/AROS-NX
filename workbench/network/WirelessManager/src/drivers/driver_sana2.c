@@ -93,6 +93,10 @@ struct wpa_driver_sana2_data {
 	int hard_mac;
 	int scanning;
 	int online;
+	/* Queried and retained per open device instance; never use global defaults. */
+	int wireless_caps_queried;
+	int wireless_caps_valid;
+	struct Sana2WirelessCapabilities wireless_caps;
 };
 
 static int b_rates[] = {
@@ -213,6 +217,74 @@ static int wpa_driver_sana2_scan(void *priv,
 }
 
 
+static void wpa_driver_sana2_set_security_summary(
+	struct wpa_driver_sana2_data *drv, struct wpa_scan_res *res,
+	struct TagItem **tag_lists, size_t index)
+{
+	struct TagItem *tag;
+	const struct Sana2WirelessSecuritySummary *source;
+	struct wpa_security_summary *summary = &res->security_summary;
+	const ULONG known_flags = S2WIRELESS_SUMF_KNOWN |
+		S2WIRELESS_SUMF_PRIVACY;
+	const ULONG no_suites = 0;
+
+	if (!drv->wireless_caps_valid ||
+	    !(drv->wireless_caps.Flags & S2WIRELESS_CAPF_SECURITY_SUMMARY))
+		return;
+
+	/* A missing or unusable summary from a summary-capable device is not
+	 * evidence that the network is open. */
+	os_memset(summary, 0, sizeof(*summary));
+	summary->flags = WPA_SECURITY_SUMMARY_PRESENT |
+		WPA_SECURITY_SUMMARY_PRIVACY;
+	res->caps |= IEEE80211_CAP_PRIVACY;
+	tag = FindTagItem(S2INFO_SecuritySummary, tag_lists[index]);
+	if (tag == NULL || tag->ti_Data == 0)
+		return;
+
+	source = (const struct Sana2WirelessSecuritySummary *) (UPINT)
+		tag->ti_Data;
+	if (source->Size != (ULONG) sizeof(*source) ||
+	    source->Version != S2WIRELESS_SUMMARY_VERSION ||
+	    (source->Flags & ~known_flags) != 0)
+		return;
+
+	if (source->Flags == S2WIRELESS_SUMF_KNOWN &&
+	    source->Protocols == no_suites &&
+	    source->KeyManagement == no_suites &&
+	    source->PairwiseCiphers == no_suites &&
+	    source->GroupCiphers == no_suites) {
+		summary->flags = WPA_SECURITY_SUMMARY_PRESENT |
+			WPA_SECURITY_SUMMARY_KNOWN;
+		res->caps &= ~IEEE80211_CAP_PRIVACY;
+		return;
+	}
+
+	if (source->Flags != (S2WIRELESS_SUMF_KNOWN |
+			      S2WIRELESS_SUMF_PRIVACY) ||
+	    source->KeyManagement != S2WIRELESS_KEY_PSK ||
+	    (source->Protocols != S2WIRELESS_PROTO_WPA &&
+	     source->Protocols != S2WIRELESS_PROTO_RSN) ||
+	    (source->PairwiseCiphers != S2WIRELESS_CIPHER_TKIP &&
+	     source->PairwiseCiphers != S2WIRELESS_CIPHER_CCMP) ||
+	    (source->GroupCiphers != S2WIRELESS_CIPHER_TKIP &&
+	     source->GroupCiphers != S2WIRELESS_CIPHER_CCMP))
+		return;
+
+	summary->flags = WPA_SECURITY_SUMMARY_PRESENT |
+		WPA_SECURITY_SUMMARY_KNOWN | WPA_SECURITY_SUMMARY_PRIVACY;
+	summary->proto = source->Protocols == S2WIRELESS_PROTO_WPA ?
+		WPA_PROTO_WPA : WPA_PROTO_RSN;
+	summary->key_mgmt = WPA_KEY_MGMT_PSK;
+	summary->pairwise_cipher =
+		source->PairwiseCiphers == S2WIRELESS_CIPHER_TKIP ?
+		WPA_CIPHER_TKIP : WPA_CIPHER_CCMP;
+	summary->group_cipher =
+		source->GroupCiphers == S2WIRELESS_CIPHER_TKIP ?
+		WPA_CIPHER_TKIP : WPA_CIPHER_CCMP;
+}
+
+
 static struct wpa_scan_results * wpa_driver_sana2_get_scan_results(void *priv)
 {
 	struct wpa_driver_sana2_data *drv = priv;
@@ -282,6 +354,9 @@ static struct wpa_scan_results * wpa_driver_sana2_get_scan_results(void *priv)
 
 			if (res->level > res->noise)
 				res->qual = res->level - res->noise;
+
+			wpa_driver_sana2_set_security_summary(drv, res,
+				tag_lists, i);
 
 			/* Copy all IEs if available, or make fake IEs
 			 * containing just SSID */
@@ -446,6 +521,81 @@ static int wpa_driver_sana2_associate(
 }
 
 
+static int wpa_driver_sana2_wireless_caps_valid(
+	const struct Sana2WirelessCapabilities *caps)
+{
+	const ULONG known_flags = S2WIRELESS_CAPF_FOURWAY |
+		S2WIRELESS_CAPF_SECURITY_SUMMARY;
+	const ULONG known_protocols = S2WIRELESS_PROTO_WPA |
+		S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE;
+	const ULONG known_key_mgmt = S2WIRELESS_KEY_PSK |
+		S2WIRELESS_KEY_EAP | S2WIRELESS_KEY_SAE;
+	const ULONG known_ciphers = S2WIRELESS_CIPHER_TKIP |
+		S2WIRELESS_CIPHER_CCMP | S2WIRELESS_CIPHER_GCMP;
+	const ULONG fourway_protocols = S2WIRELESS_PROTO_WPA |
+		S2WIRELESS_PROTO_RSN;
+	const ULONG fourway_ciphers = S2WIRELESS_CIPHER_TKIP |
+		S2WIRELESS_CIPHER_CCMP;
+
+	if (caps->SizeAvailable != (ULONG) sizeof(*caps) ||
+	    caps->SizeSupplied != (ULONG) sizeof(*caps) ||
+	    caps->Version != S2WIRELESS_CAPABILITIES_VERSION ||
+	    (caps->Flags & ~known_flags) != 0 ||
+	    (caps->Protocols & ~known_protocols) != 0 ||
+	    (caps->KeyManagement & ~known_key_mgmt) != 0 ||
+	    (caps->PairwiseCiphers & ~known_ciphers) != 0 ||
+	    (caps->GroupCiphers & ~known_ciphers) != 0)
+		return 0;
+
+	/* The masks describe offload suites. Reject incomplete or unsupported
+	 * declarations instead of projecting EAP/SAE/GCMP onto older WPA fields. */
+	if (caps->Flags & S2WIRELESS_CAPF_FOURWAY) {
+		if (caps->Protocols == 0 ||
+		    (caps->Protocols & ~fourway_protocols) != 0 ||
+		    caps->KeyManagement != S2WIRELESS_KEY_PSK ||
+		    caps->PairwiseCiphers == 0 ||
+		    (caps->PairwiseCiphers & ~fourway_ciphers) != 0 ||
+		    caps->GroupCiphers == 0 ||
+		    (caps->GroupCiphers & ~fourway_ciphers) != 0)
+			return 0;
+	} else if (caps->Protocols != 0 || caps->KeyManagement != 0 ||
+		   caps->PairwiseCiphers != 0 || caps->GroupCiphers != 0) {
+		return 0;
+	}
+
+	return 1;
+}
+
+
+static int wpa_driver_sana2_query_wireless_caps(
+	struct wpa_driver_sana2_data *drv)
+{
+	struct Sana2WirelessCapabilities caps;
+	struct IOSana2Req *request = drv->request;
+
+	if (request == NULL)
+		return 0;
+
+	os_memset(&caps, 0, sizeof(caps));
+	caps.SizeAvailable = sizeof(caps);
+	caps.Version = S2WIRELESS_CAPABILITIES_VERSION;
+	request->ios2_Req.io_Command = S2_GETWIRELESSCAPABILITIES;
+	request->ios2_StatData = (APTR) &caps;
+	request->ios2_Data = NULL;
+	request->ios2_DataLength = 0;
+	if (DoIO((APTR) request) != 0 || request->ios2_Req.io_Error != 0 ||
+	    !wpa_driver_sana2_wireless_caps_valid(&caps)) {
+		request->ios2_StatData = NULL;
+		return 0;
+	}
+	request->ios2_StatData = NULL;
+
+	drv->wireless_caps = caps;
+	drv->wireless_caps_valid = 1;
+	return 1;
+}
+
+
 static int wpa_driver_sana2_get_capa(void *priv, struct wpa_driver_capa *capa)
 {
 	struct wpa_driver_sana2_data *drv = priv;
@@ -493,12 +643,55 @@ static int wpa_driver_sana2_get_capa(void *priv, struct wpa_driver_capa *capa)
 	}
 
 	if (!drv->hard_mac)
-		capa->flags = WPA_DRIVER_FLAGS_USER_SPACE_MLME;
+		capa->flags |= WPA_DRIVER_FLAGS_USER_SPACE_MLME;
 
-	/* No 4-way offload: the newer FullMAC firmware (CYW43456) has no
-	 * internal supplicant - sup_wpa comes back BCME_UNSUPPORTED - so we run
-	 * the handshake here and hand the driver the keys with S2_SETKEY, the
-	 * way brcmfmac and OpenBSD's bwfm do it. */
+	if (!drv->wireless_caps_queried) {
+		drv->wireless_caps_queried = 1;
+		wpa_driver_sana2_query_wireless_caps(drv);
+	}
+
+	if (drv->wireless_caps_valid) {
+		const struct Sana2WirelessCapabilities *caps =
+			&drv->wireless_caps;
+
+		if (caps->Flags & S2WIRELESS_CAPF_SECURITY_SUMMARY)
+			capa->flags |= WPA_DRIVER_FLAGS_SECURITY_SUMMARY;
+
+		if (caps->Flags & S2WIRELESS_CAPF_FOURWAY) {
+			unsigned int pairwise_enc = 0;
+			unsigned int group_enc = 0;
+
+			/* The legacy capa structure can represent only these two
+			 * ciphers and the PSK variants of WPA and RSN. Keep the
+			 * role-specific masks separate for summary-aware selection. */
+			capa->key_mgmt = 0;
+			capa->enc = 0;
+			if (caps->Protocols & S2WIRELESS_PROTO_WPA)
+				capa->key_mgmt |=
+					WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK;
+			if (caps->Protocols & S2WIRELESS_PROTO_RSN)
+				capa->key_mgmt |=
+					WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK;
+			if (caps->PairwiseCiphers & S2WIRELESS_CIPHER_TKIP)
+				pairwise_enc |= WPA_DRIVER_CAPA_ENC_TKIP;
+			if (caps->PairwiseCiphers & S2WIRELESS_CIPHER_CCMP)
+				pairwise_enc |= WPA_DRIVER_CAPA_ENC_CCMP;
+			if (caps->GroupCiphers & S2WIRELESS_CIPHER_TKIP)
+				group_enc |= WPA_DRIVER_CAPA_ENC_TKIP;
+			if (caps->GroupCiphers & S2WIRELESS_CIPHER_CCMP)
+				group_enc |= WPA_DRIVER_CAPA_ENC_CCMP;
+			capa->enc = pairwise_enc | group_enc;
+			if ((caps->Flags & S2WIRELESS_CAPF_SECURITY_SUMMARY) &&
+			    (caps->Flags & S2WIRELESS_CAPF_FOURWAY)) {
+				capa->summary_pairwise_enc = pairwise_enc;
+				capa->summary_group_enc = group_enc;
+			}
+			capa->flags |= WPA_DRIVER_FLAGS_4WAY_HANDSHAKE;
+		}
+	}
+
+	/* Without a valid per-device FOURWAY result, the existing host-side
+	 * handshake and S2_SETKEY path remains unchanged. */
 
 	return 0;
 }

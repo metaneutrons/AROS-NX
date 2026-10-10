@@ -118,7 +118,7 @@ gate: compensated output is not the native display contract.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
-| N2W | Generic wireless security-summary/offload contract | `development; predicates/ABI and conversion/selection-helper models passed; full RV32 GUI build verified` | Separate upstream-based pr/wireless-offload-summary checkout. Explicit per-device capability, owned exact-version summary, no fabricated AP security IE. Unknown/ambiguous protected networks must not fall back to open. Initial singleton WPA/RSN PSK profile; legacy path preserved. Device query/full association and integration pending. No credentials or deployment. |
+| N2W | Generic wireless security-summary/offload contract | `locally integrated; predicates/ABI and conversion/selection-helper models passed; full RV32 GUI build verified` | Upstream-based generic49972c6241 retained separately and integrated onto port branch. Explicit per-device capability, owned exact-version summary, no fabricated AP security IE. Unknown/ambiguous protected networks must not fall back to open. Initial singleton WPA/RSN PSK profile; legacy path preserved. Device query/full association and hardware gates pending. No credentials or deployment. |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; native initialized MAC observed once; cold continuity rejected; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; Earlier GetMAC returns correlated0x3001 (WiFi not initialized). Latest initialized sequence succeeds once with expected MAC, but initial HP watchdog reset/truncated ROM output block clean cold acceptance. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
 | N1C | N1 bounded sequential control foundation | `typed control/oracle/sequence/reassembly host tested; native initialization/MAC repeated; pre-armed cold continuity rejected` | Existing FIFO reused with owned bodies/exact correlation. Control3529/TX2614/FIFO1245361/OPEN716, typed WiFi149, pinned protobuf-c810 and sequence551 checks each O0/O2 ASan/UBSan pass. Generation-bound reassembly1318 isolated checks each O0/O2 sanitized pass; now linked into control with coupled epoch/deadline/failure tests and fresh113900B module build. Fragmentation integration not deployed. Explicit working IDF6 profile supplies all20 config fields, NVSdisabled. Fresh-epoch Init/STA/Start/MAC and conservative Stop/Deinit integrated; one8s operation budget and2s cleanup reserve, fixed non-reused UIDs1..6. Loader/capacity pass42-member candidate; exact0x820000 deployment and independent readback pass after twice-read full3801088B backup. Coordinated startup reports all5 WLAN statuses0, valid MAC10:bd:a3:9b:bc:34 and restored stable registers in60.112s/16340 bytes; initial HP watchdog reset prevents clean cold acceptance. Latest late45.114s retrieval exits0 but receives0 bytes;1.425ms open latency, no armed startup coverage, inconclusive. Latest pre-armed removal/arrival capture exits0/status=ok,60.181s/16148 bytes and repeats native initialization/MAC/cleanup; first chunk6.525s after open contains HP watchdog reset and incomplete ROM prefix. Checker exits1; reset cause/serial-open influence unresolved; exact-image PC locates DMA IRQ dispatch, not proof of handler fault. No persistent UID allocator or WLAN acceptance. Original verified baseline recoverable. |
@@ -1109,10 +1109,12 @@ reference firmware example building is not evidence of AROS transport.
 
 ### N2 - native AROS WLAN device
 
-Generic security/offload work in progress (2026-10-10): use the upstream
+Generic security/offload locally integrated (2026-10-10): use the upstream
 branch model, pr/wireless-offload-summary from master2875ef32831c in
 /Volumes/Dev/Build/aros-wlan-contract.qToy75, then the same qualified commit
 on upstream/wireless-offload-summary and integration on the port branch.
+Generic49972c6241 now follows that model, with explicit cherry-pick provenance;
+no external push/PR or upstream acceptance is implied.
 An exact-size/version per-device capability query and pool-owned explicit
 security summary replace any temptation to fabricate AP WPA/RSN IEs.
 Absent/invalid/multisuite metadata remains unknown protected. Initial known
@@ -1126,9 +1128,10 @@ capability and28-byte summary with every field offset; Linux skips ABI
 explicitly and is not an ABI pass. Driver target syntax succeeds. Follow-up
 role-specific masks correct the disjoint cipher refusal, and a clean standalone
 RV32 WirelessManager/MUI GUI compile and link succeeds with the current SMP
-sysroot. Conversion/capability/selection-helper models now pass32 scenarios/59
+sysroot. Conversion/capability/selection-helper models now pass34 scenarios/63
 checks each O0/O2 ASan/UBSan on macOS and isolated Linux. Device query/full
-association and integration remain separate gates.
+association remain separate gates. Numeric fixtures now use actual header
+definitions; generated/Developer public headers match after compiler-includes.
 
 Private bridge ABI2 scan now clean-builds with its matched device; ABI1/ABI2
 mixing fails resource validation. This is a transport prerequisite only:
@@ -33749,3 +33752,39 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   placement remains build/model verified only, not measured CPU execution or
   performance. Next: conversion/caller qualification and independent review,
   qualified upstream commit, then native queued scan and association integration.
+
+### 2026-10-10 - N2W hardened fixtures and local upstream-contract integration
+
+- Generic commit49972c6241 from master2875ef32831c is retained on both
+  pr/wireless-offload-summary and upstream/wireless-offload-summary, then
+  cherry-picked with explicit provenance onto feature/esp32p4-wifi. No remote
+  push/PR or upstream acceptance. Earlier uncommitted entries are history.
+- Hardened models add legacy and summary-only role-zero cases. Numeric
+  tag/mask/flag constants are extracted from actual public/internal headers;
+  missing or duplicate definitions fail. Consumed structure shapes and OS
+  operations remain fixtures. Current result34 scenarios/63 checks each
+  O0/O2 ASan/UBSan on macOS and isolated Linux, repeated by primary exit0;
+  same tests also pass on integrated port source (exit0).
+  C SHA256f1e08f012cfc5c128d3055fe1f1654d3e4dd7c92cdca91596bef8993b7bdff0e;
+  runnerab72cfb9763941b5a44b031f4465e0c03c4c3344fb6ea5b8c99a60f923175b13.
+  Logs /Volumes/Dev/Build/wlan-summary-build.tnKv0i:
+  integration-hardened-macos.log SHA256
+  19aa9d8ac3b040182866ee307829cc02c27118b7f9a8aa82d24ee962f6b424e0;
+  integration-hardened-linux.log SHA256
+  5be28bdf495ff39db046d8abe3a8dafaa322b20e6601cecfeb83e8e4277926e4.
+  Linux tar now includes compiler/include as required; no silent ABI skip.
+- compiler-includes actual exit0 refreshes both gen/include and
+  AROS/Developer/include. Source and both sana2wireless.h copies SHA256
+  5ea298a19b679b147c5445934d332e0082a2556b9a1fac04e4ccb49d47124140.
+  SANA device objects invalidated; kernel-esp32p4wlan-device-quick for
+  jc1060p470c-v2 actual exit0,53860B SHA256
+  feec81d5be318eca4087bec14471e9a4cb518dc8aeb3daf040a5b59bfcbb2a1e.
+  Binary unchanged as expected: this device does not consume new wireless
+  commands yet. port-device-build.log SHA256
+  1338c1c5bee8845c8391f61cb4a80829951614d48abfbe8d18bb14b0c1469024.
+- Safety: no serial open, hardware test, credentials or media writes.
+  Association still needs genuine device results/events and credential-safe
+  firmware lineage. Existing driver association error propagation/SSID buffer
+  handling and raw-PSK delivery require separate correction before live use.
+  Next: queued native SANA scan with pool-owned truthful summaries; then
+  association/runtime privacy gate, DHCP and sustained two-hart coexistence.

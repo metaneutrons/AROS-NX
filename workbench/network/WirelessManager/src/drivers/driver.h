@@ -26,6 +26,7 @@
 #define WPA_SUPPLICANT_DRIVER_VERSION 4
 
 #include "common/defs.h"
+#include "common/security_summary.h"
 
 #define HOSTAPD_CHAN_DISABLED 0x00000001
 #define HOSTAPD_CHAN_PASSIVE_SCAN 0x00000002
@@ -145,6 +146,8 @@ struct hostapd_hw_modes {
  */
 struct wpa_scan_res {
 	unsigned int flags;
+	/* Separate from genuine received IEs; zero means legacy IE-only data. */
+	struct wpa_security_summary security_summary;
 	u8 bssid[ETH_ALEN];
 	int freq;
 	u16 beacon_int;
@@ -502,6 +505,7 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS_AP		0x00000040
 /* Driver needs static WEP key setup after association has been completed */
 #define WPA_DRIVER_FLAGS_SET_KEYS_AFTER_ASSOC_DONE	0x00000080
+#define WPA_DRIVER_FLAGS_SECURITY_SUMMARY 0x00000100
 	unsigned int flags;
 
 	int max_scan_ssids;
@@ -510,6 +514,22 @@ struct wpa_driver_capa {
 	 * max_remain_on_chan - Maximum remain-on-channel duration in msec
 	 */
 	unsigned int max_remain_on_chan;
+
+	/**
+	 * summary_pairwise_enc - Pairwise ciphers from a validated SANA security
+	 * summary/offload capability profile. Valid only when both
+	 * WPA_DRIVER_FLAGS_SECURITY_SUMMARY and WPA_DRIVER_FLAGS_4WAY_HANDSHAKE
+	 * are set; otherwise zero. Uses WPA_DRIVER_CAPA_ENC_* masks.
+	 */
+	unsigned int summary_pairwise_enc;
+
+	/**
+	 * summary_group_enc - Group ciphers from a validated SANA security
+	 * summary/offload capability profile. Valid only when both
+	 * WPA_DRIVER_FLAGS_SECURITY_SUMMARY and WPA_DRIVER_FLAGS_4WAY_HANDSHAKE
+	 * are set; otherwise zero. Uses WPA_DRIVER_CAPA_ENC_* masks.
+	 */
+	unsigned int summary_group_enc;
 };
 
 
