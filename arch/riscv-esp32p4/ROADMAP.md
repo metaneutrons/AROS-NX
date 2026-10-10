@@ -30679,6 +30679,14 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   https://github.com/espressif/esp-idf/blob/master/components/esp_system/port/soc/esp32p4/system_internal.c
   This is a relevant retained-state hypothesis, not proof of the concrete
   fault or a stable pin to upstream master. No register writes performed.
+- Three subsequent read-mem operations in the already running stub, all
+  before=no-reset/after=no-reset, identify the same MAC and exit0:
+  SOC_CLK_CTRL1(0x500e6018)=0x0e0d5030, PERI_CLK_CTRL25(0x500e60a8)=0x00782f01,
+  HP_RST_EN2(0x500e60c8)=0. Rev1 header masks show Crypto system clock bit26
+  and SHA clock bit20 set, Crypto/SHA reset bits clear, raw mux field2.
+  No source encoding inferred. This is post-ROM/post-stub state, not a
+  pre-fault snapshot; it does not prove the fault-time clock was enabled or
+  exclude a transient retained-state defect. No register write or test restart.
 - Tests repeated from actual current source: app30 cases/184 checks,
   scan30/172, startup6/49 each O0/O2 with ASan/UBSan, all successful.
   Initial scan invocation used a nonexistent guessed source path and exited2;
