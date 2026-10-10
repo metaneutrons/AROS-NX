@@ -39,6 +39,7 @@
 #include "hosted_owner.h"
 #include "hosted_wifi.h"
 #include "hosted_mac.h"
+#include "hosted_link.h"
 #include <proto/kernel.h>
 #include <proto/task.h>
 #ifndef P4_WIFI_OWNER_CPU
@@ -166,6 +167,7 @@ struct wifi_probe_context
 #if P4_WIFI_HOSTED_OWNER
     ULONG owner_events;
     ULONG owner_last_event;
+    struct p4_hosted_link_observation link_observation;
     ULONG owner_boot_start;
     ULONG owner_open_start;
     BOOL owner_cleanup;
@@ -650,8 +652,22 @@ static int wifi_owner_event(void *opaque,
                             const struct p4_hosted_inbox_item *item)
 {
     struct wifi_probe_context *context = opaque;
-    /* Current opt-in owner consumes metadata only, never claims to forward
-     * link events to SANA-II. No borrowed payload outlives this callback. */
+    struct p4_hosted_rpc rpc;
+    if (!item)
+        return 0;
+    if (item->msg_id == 775u || item->msg_id == 776u) {
+        rpc.msg_type = item->msg_type;
+        rpc.msg_id = item->msg_id;
+        rpc.uid = item->uid;
+        rpc.payload = item->payload;
+        rpc.payload_size = item->payload_size;
+        if (!p4_hosted_link_observe(&context->link_observation,
+                                    context->generation, &rpc))
+            return 0;
+    }
+    /* Own typed metadata only. Uncorrelated UP_HINT cannot publish CONNECT;
+     * no borrowed payload outlives this callback. Malformed link events
+     * cause the owner's existing dispatch-failure retirement. */
     ++context->owner_events;
     context->owner_last_event = item->msg_id;
     return 1;
@@ -991,7 +1007,8 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     control->ops.rx = &control->rx_ops;
     control->ops.tx = tx_ops;
     wifi_owner_release(context);
-    if (p4_hosted_owner_ids_init(owner, context->generation,
+    if (p4_hosted_link_init(&context->link_observation, context->generation) &&
+        p4_hosted_owner_ids_init(owner, context->generation,
                                 context->owner_open_start)) {
         for (index = 0; index < sizeof(startup_ids) / sizeof(startup_ids[0]); ++index)
             if (!wifi_owner_request(context, owner, control, &opened->fifo_state,

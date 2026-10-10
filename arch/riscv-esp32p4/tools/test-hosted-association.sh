@@ -17,7 +17,7 @@ for test_opt in 0 2; do
 done
 
 "${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic \
-	-ffreestanding -fno-builtin -O2 -c \
+	-ffreestanding -fno-builtin -fno-stack-protector -O2 -c \
 	"$test_root/network/hosted_association.c" \
 	-o "$test_tmp/hosted_association.o"
 undefined_imports=$("${NM:-nm}" -u "$test_tmp/hosted_association.o" | \

@@ -6,6 +6,7 @@
 #include "hosted_scan.h"
 #include "hosted_wifi.h"
 #include "hosted_mac.h"
+#include "hosted_link.h"
 #include "hosted_tx.h"
 #include "hosted_wire.h"
 

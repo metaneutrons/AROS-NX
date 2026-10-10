@@ -153,6 +153,14 @@ passes. These are pure codecs: no association runtime, association or IP
 traffic is implied. The persistent pending transport already admits request
 IDs282..284, but its allowlist is not a credential-safety gate or a runtime
 association caller. The credential/privacy gate remains open.
+The opt-in owner now decodes775/776 into an owned, generation-bound observation
+ledger. UP_HINT is deliberately not CONNECT: the event UID is zero and cannot
+identify the Connect request. A typed correlated294/550 current-AP codec now
+exists, but is not yet admitted or called by the owner. It is a C6 state
+snapshot, not atomic proof of an association attempt. Default-off and core1
+owner resource builds pass; no new firmware is deployed. Native S2_SETOPTIONS,
+active-target confirmation, real link notifications and traffic gates remain
+open alongside C6 privacy/recovery and association/DHCP acceptance.
 Existing AROS wireless options, WirelessManager and BWFM's asynchronous
 association worker provide the intended SANA-II integration reference. The ESP32 driver,
 wireless command integration and DHCP/data acceptance remain unimplemented;

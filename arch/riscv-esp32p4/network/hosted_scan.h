@@ -48,6 +48,14 @@ struct p4_hosted_scan_records {
     struct p4_hosted_scan_record records[P4_HOSTED_SCAN_MAX_RECORDS];
 };
 
+/* Owned result of WifiStaGetApInfo (294). A nonzero status is preserved and
+ * the AP record is zeroed, even if the peer supplied a valid record alongside
+ * the error. */
+struct p4_hosted_sta_ap_info {
+    int32_t status;
+    struct p4_hosted_scan_record ap;
+};
+
 /* Encode ScanStart for the NULL/default config and block in {0,1}. The false
  * default is omitted; config_set=0 is explicitly present. uid must be
  * nonzero. Refusal leaves bytes and *written unchanged. */
@@ -65,6 +73,10 @@ int p4_hosted_scan_num_request(uint32_t uid, uint8_t *bytes,
 int p4_hosted_scan_records_request(uint32_t uid, uint16_t number,
                                    uint8_t *bytes, size_t capacity,
                                    size_t *written);
+
+/* Encode the empty WifiStaGetApInfo (294) request body. */
+int p4_hosted_sta_ap_info_request(uint32_t uid, uint8_t *bytes,
+                                  size_t capacity, size_t *written);
 
 /* Decode ScanStart or ScanStop status only. The response type, ID, and
  * nonzero expected UID must match. An omitted proto3 status means zero. */
@@ -86,5 +98,12 @@ int p4_hosted_scan_records_response(const struct p4_hosted_rpc *rpc,
                                    uint32_t expected_uid,
                                    uint16_t requested_capacity,
                                    struct p4_hosted_scan_records *result);
+
+/* Decode a correlated WifiStaGetApInfo (294 -> 550) response. A zero status
+ * requires exactly one valid AP record. Nonzero status may omit the record;
+ * if present it is fully validated and discarded. */
+int p4_hosted_sta_ap_info_response(const struct p4_hosted_rpc *rpc,
+                                   uint32_t expected_uid,
+                                   struct p4_hosted_sta_ap_info *result);
 
 #endif

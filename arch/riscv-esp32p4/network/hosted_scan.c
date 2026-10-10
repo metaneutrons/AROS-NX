@@ -6,6 +6,7 @@
 #define SCAN_REQ_STOP 287u
 #define SCAN_REQ_NUM 288u
 #define SCAN_REQ_RECORDS 289u
+#define SCAN_REQ_STA_AP_INFO 294u
 
 static int range_is_valid(const void *pointer, size_t size)
 {
@@ -79,7 +80,7 @@ static int encode_request(uint32_t request_id, uint32_t uid,
                           const uint8_t *payload, size_t payload_size,
                           uint8_t *bytes, size_t capacity, size_t *written)
 {
-    /* All four supported request bodies fit in four bytes. Even with a
+    /* All supported request bodies fit in four bytes. Even with a
      * maximal UID their envelope fits comfortably here; a response-sized
      * scratch buffer would waste4KiB of the small runtime task stack. */
     uint8_t envelope[64];
@@ -155,6 +156,13 @@ int p4_hosted_scan_records_request(uint32_t uid, uint16_t number,
     body[offset++] = 0x08u;
     write_varint(body, &offset, number);
     return encode_request(SCAN_REQ_RECORDS, uid, body, offset,
+                          bytes, capacity, written);
+}
+
+int p4_hosted_sta_ap_info_request(uint32_t uid, uint8_t *bytes,
+                                  size_t capacity, size_t *written)
+{
+    return encode_request(SCAN_REQ_STA_AP_INFO, uid, NULL, 0u,
                           bytes, capacity, written);
 }
 
@@ -576,6 +584,46 @@ static int parse_record(const uint8_t *bytes, size_t size,
     return (seen & 1u) != 0u;
 }
 
+static int parse_sta_ap_info_body(const uint8_t *bytes, size_t size,
+                                  struct p4_hosted_sta_ap_info *result)
+{
+    size_t offset = 0u;
+    int seen_status = 0;
+    int seen_ap = 0;
+
+    while (offset < size) {
+        uint32_t field;
+        unsigned int wire_type;
+
+        if (!next_field(bytes, size, &offset, &field, &wire_type))
+            return 0;
+        if (field == 1u) {
+            if (wire_type != 0u || seen_status ||
+                !read_int32(bytes, size, &offset, &result->status))
+                return 0;
+            seen_status = 1;
+        } else if (field == 2u) {
+            const uint8_t *record_bytes;
+            size_t record_size;
+
+            if (wire_type != 2u || seen_ap ||
+                !read_length_delimited(bytes, size, &offset,
+                                       &record_bytes, &record_size) ||
+                !parse_record(record_bytes, record_size, &result->ap))
+                return 0;
+            seen_ap = 1;
+        } else if (!skip_unknown(bytes, size, &offset, wire_type)) {
+            return 0;
+        }
+    }
+
+    if (result->status == 0 && !seen_ap)
+        return 0;
+    if (result->status != 0)
+        clear_bytes((uint8_t *)&result->ap, sizeof result->ap);
+    return 1;
+}
+
 static int parse_records_body(const uint8_t *bytes, size_t size,
                               uint16_t requested_capacity,
                               struct p4_hosted_scan_records *result)
@@ -645,6 +693,23 @@ int p4_hosted_scan_records_response(const struct p4_hosted_rpc *rpc,
         !response_matches(rpc, SCAN_REQ_RECORDS, expected_uid) ||
         !parse_records_body(rpc->payload, rpc->payload_size,
                             requested_capacity, &decoded))
+        return 0;
+    copy_bytes((uint8_t *)result, (const uint8_t *)&decoded, sizeof decoded);
+    return 1;
+}
+
+int p4_hosted_sta_ap_info_response(const struct p4_hosted_rpc *rpc,
+                                   uint32_t expected_uid,
+                                   struct p4_hosted_sta_ap_info *result)
+{
+    struct p4_hosted_sta_ap_info decoded;
+
+    if (!response_input_valid(rpc, expected_uid, result,
+                              result ? sizeof *result : 0u))
+        return 0;
+    clear_bytes((uint8_t *)&decoded, sizeof decoded);
+    if (!response_matches(rpc, SCAN_REQ_STA_AP_INFO, expected_uid) ||
+        !parse_sta_ap_info_body(rpc->payload, rpc->payload_size, &decoded))
         return 0;
     copy_bytes((uint8_t *)result, (const uint8_t *)&decoded, sizeof decoded);
     return 1;
