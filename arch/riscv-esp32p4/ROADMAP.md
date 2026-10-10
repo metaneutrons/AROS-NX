@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 response timeout` | Corrected CD route reads0xbe/CDETECT0 but same CMD5 timeout persists. Clock/matrix snapshots match expected paths. Independent IDF-only reference probe being prepared. Startup/electrical cause, SD integrity, coexistence and C6 compatibility remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 response timeout` | Corrected CD route reads0xbe/CDETECT0 but same CMD5 timeout persists. Clock/matrix snapshots match expected paths. Independent IDF-only CMD0/CMD5 reference build passes; safe deployment review underway. Startup/electrical cause, SD integrity, coexistence and C6 compatibility remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -214,8 +214,11 @@ measure electrical waveforms or identify C6 firmware.
 The complete register run confirms expected clock/matrix values but repeats
 the timeout. IDF's omitted no-CD-pin constant-low card-detect route is now
 corrected and hardware readback verified (route0xbe/CDETECT0), but CMD5
-still times out identically. An IDF-only control probe is being prepared to
+still times out identically. An IDF-only control probe is implemented to
 distinguish native-driver behavior from the unchanged radio/hardware state.
+It uses public driver APIs, CMD0 then at most three CMD5(arg0) requests at
+400kHz/one-bit on slot1. Silicon-specific build passes; safe deployment review
+precedes measurement. It does not initialize storage or change C6 firmware.
 No firmware incompatibility inference or WLAN acceptance is justified yet.
 Enumeration alone cannot prove
 ESP-Hosted compatibility or working WLAN.
@@ -29425,6 +29428,46 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   no sdmmc_card_init/CCCR writes or firmware replacement. Bounded source task
   delegated to Luna, primary owns review/build/hardware. This compares driver
   paths; it cannot substitute for actual AROS WLAN/SD/shared-resource gates.
+
+### 2026-10-10 - N0 independent IDF SDIO reference build verified, not deployed
+
+- State: diagnostic source/build verified only; native CMD5 timeout remains.
+  Bounded Luna implementation was reviewed and integrated by the primary.
+  Source `tools/idf-sdio-reference/`, based on03783b9dde plus these files.
+  Public IDF host APIs send only CMD0 then at most3 CMD5(arg0)/R4 attempts,
+ 500ms per command,100ms between attempts, then idle. Slot1/one-bit,
+ 400kHz,CLK18/CMD19/D0-3=14-17,noCD/WP,internal pullups. Failed responses
+  are explicitly invalid and not decoded. No sdmmc_card_init, function/IRQ
+  enable, CMD52/53, storage write, C6 reset GPIO or C6 firmware replacement.
+- Build environment: ESP-IDF6.0.1 commit
+ 8c19b156084a0753687347cca1f5355782893533 in the existing port IDF tree;
+  GCC15.2.0_20251204, Python3.14 IDF venv, `ESP_IDF_VERSION=6.0.1` required.
+  IDF tree is not pristine: existing two bootloader-support modifications
+  and esp_hw_support dependency correction are preserved. PSRAM is disabled
+  in this diagnostic; generated bootloader/table are never deployment targets.
+- Initial invocation exits1 before configuration because component-manager
+  version parsing received no ESP_IDF_VERSION. Explicit version fixes it.
+  First completed build exits0 but defaults select revision301/max399:
+  requesting REV_MIN_100 alone is insufficient. That image is rejected and
+  was not flashed. Explicit ESP32P4_SELECTS_REV_LESS_V3 plus a fresh
+  build-v1/sdkconfig-v1 produces min100/max199 (verified generated config and
+  image header),360MHz,DIO80MHz/16MB,USB Serial/JTAG,PSRAM disabled.
+- Corrected build session94348 exits0,600/600 tasks and complete-build footer.
+  `build-v1/idf_sdio_reference.bin`:188,992 bytes, SHA-256
+ 8c2144f999ca87a943e84ced92bcdb2f340af068bd1805be4c330c7b208c1596.
+  Image-info validates checksum/hash and revision1.0-1.99. sdkconfig-v1 SHA
+ 90a1233870f21eec3984d8c5ffc57e6d3ae3ae76048762646b4efd05f78e058e;
+  build-v1.log SHA54c6d7b93314eb91f406e99176ddb51d140d1f650088ad179ecf8884f74406df.
+  Evidence root `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/idf-reference/`;
+  retain build.log/build-version-env.log for failed/rejected attempts.
+- Safety: no hardware access/write in this change. AROS baseline remains.
+  Do not run generated flash instructions (bootloader/table/app0x10000).
+  Before any raw diagnostic app at0x20000, verify MAC, back up the entire
+  rounded erase span, verify rollback and retained-scanout safety. Independent
+  deployment review is pending. This experiment cannot qualify AROS WLAN,
+  shared SD ownership, C6 compatibility or visible graphics.
+- Next: resolve safe startup, then bounded reference capture and verified
+  AROS rollback. Compare actual CMD5 responses, not source similarity alone.
 
 ## Evidence-entry template
 
