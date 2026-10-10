@@ -32,6 +32,22 @@
 #include "hosted_config.h"
 #include "hosted_tx.h"
 #endif
+#if P4_WIFI_HOSTED_OWNER
+#if !P4_WIFI_HOSTED_REPLY || P4_WIFI_HOSTED_SCAN || P4_WIFI_HOSTED_MAC
+#error "Hosted owner requires reply and excludes one-shot MAC/scan diagnostics"
+#endif
+#include "hosted_owner.h"
+#include "hosted_wifi.h"
+#include "hosted_mac.h"
+#include <proto/kernel.h>
+#include <proto/task.h>
+#ifndef P4_WIFI_OWNER_CPU
+#define P4_WIFI_OWNER_CPU 1
+#endif
+#if P4_WIFI_OWNER_CPU < 0 || P4_WIFI_OWNER_CPU > 1
+#error "P4 owner CPU must be 0 or 1"
+#endif
+#endif
 #if P4_WIFI_HOSTED_MAC
 #if !P4_WIFI_HOSTED_REPLY
 #error "Hosted MAC requires the explicit startup reply gate"
@@ -40,6 +56,8 @@
 /* Exact successful reference-app IDF6 profile, preprocessed from its actual
  * build. NVS is explicitly disabled by reference.c. This is source-derived
  * compatibility, not installed C6 binary lineage or a generic IDF default. */
+#endif
+#if P4_WIFI_HOSTED_MAC || P4_WIFI_HOSTED_OWNER
 static const struct p4_hosted_wifi_config wifi_reference_profile = {
     10, 32, 0, 16, 0, 0, 0, 1, 1, 0, 0, 0, 6, 0, 752, 32,
     UINT64_C(129), 1, 7, INT32_C(0x1f2f3f4f)
@@ -66,6 +84,39 @@ static const struct p4_hosted_wifi_config wifi_reference_profile = {
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
 
+#if P4_WIFI_HOSTED_OWNER
+APTR KernelBase;
+APTR TaskResBase;
+
+/* SetTaskAffinity copies the mask; unlike a transferred NP_Affinity mask,
+ * the caller can free it on either success or failure. Pin only this radio
+ * process, before any controller access; leave legacy DOS/GUI placement alone. */
+static int wifi_owner_pin(void)
+{
+#if defined(__AROSEXEC_SMP__)
+    APTR mask;
+    BOOL changed;
+    KernelBase = OpenResource("kernel.resource");
+    TaskResBase = OpenResource("task.resource");
+    if (!KernelBase || !TaskResBase || KrnGetCPUCount() <= P4_WIFI_OWNER_CPU)
+        return 0;
+    mask = KrnAllocCPUMask();
+    if (!mask)
+        return 0;
+    KrnClearCPUMask(mask);
+    KrnGetCPUMask(P4_WIFI_OWNER_CPU, mask);
+    changed = SetTaskAffinity(NULL, mask);
+    KrnFreeCPUMask(mask);
+    if (!changed)
+        return 0;
+    Delay(1); /* Scheduling point before verifying the actual running hart. */
+    return KrnGetCPUNumber() == P4_WIFI_OWNER_CPU;
+#else
+    return P4_WIFI_OWNER_CPU == 0;
+#endif
+}
+#endif
+
 #if P4_BOARD_WIFI_SDIO
 #define WIFI_GPIO_BASE  (P4_HPPERIPH1_BASE + 0x20000)
 #define WIFI_IOMUX_BASE (P4_HPPERIPH1_BASE + 0x21000)
@@ -76,6 +127,13 @@ struct wifi_probe_context
     ULONG generation;
     ULONG peer_clock;
     struct P4HostCommandResult last;
+#if P4_WIFI_HOSTED_OWNER
+    ULONG owner_events;
+    ULONG owner_last_event;
+    ULONG owner_boot_start;
+    ULONG owner_open_start;
+    BOOL owner_cleanup;
+#endif
 #if P4_WIFI_SDIO_RESET_QUERY
     ULONG rejected_r5;
     BOOL rejected_r5_valid;
@@ -172,7 +230,8 @@ static void wifi_snapshot(ULONG *words)
 static int wifi_budget(void *opaque)
 {
     struct wifi_probe_context *context = opaque;
-    return context->host->generation == context->generation &&
+    return context->host->lock.ss_Owner == FindTask(NULL) &&
+           context->host->generation == context->generation &&
            p4host_budget_ok(context->host);
 }
 
@@ -432,6 +491,234 @@ static int wifi_fifo_write(void *opaque,
 #endif
 #endif
 
+#if P4_WIFI_HOSTED_OWNER
+struct wifi_owner_control {
+    struct p4_hosted_owner_ops ops;
+    struct p4_hosted_rx_ops rx_ops;
+    struct p4_hosted_owner_result result;
+    struct p4_hosted_mac mac;
+    uint8_t request[256];
+    uint32_t uid;
+    int32_t status;
+    unsigned init_attempted, start_attempted, startup_ok, cleanup_ok;
+};
+struct wifi_owner_storage {
+    struct p4_hosted_owner owner;
+    struct wifi_owner_control control;
+};
+
+static uint32_t wifi_owner_now(void *opaque)
+{
+    struct wifi_probe_context *context = opaque;
+    return context->host->now_us();
+}
+
+static int wifi_owner_acquire(void *opaque, uint32_t wait_us)
+{
+    struct wifi_probe_context *context = opaque;
+    return context->host->acquire(context->host, wait_us) ? 1 : 0;
+}
+
+static int wifi_owner_budget(void *opaque, uint32_t usec)
+{
+    struct wifi_probe_context *context = opaque;
+    return wifi_tx_session(context, context->generation) &&
+        context->host->set_budget(context->host, usec);
+}
+
+static void wifi_owner_release(void *opaque)
+{
+    struct wifi_probe_context *context = opaque;
+    context->host->release(context->host); /* Also ends this slice's budget. */
+}
+
+static int wifi_owner_stopping(void *opaque)
+{
+    struct wifi_probe_context *context = opaque;
+    return !context->owner_cleanup &&
+        !!(SetSignal(0, 0) & SIGBREAKF_CTRL_C);
+}
+
+static int wifi_owner_event(void *opaque,
+                            const struct p4_hosted_inbox_item *item)
+{
+    struct wifi_probe_context *context = opaque;
+    /* Current opt-in owner consumes metadata only, never claims to forward
+     * link events to SANA-II. No borrowed payload outlives this callback. */
+    ++context->owner_events;
+    context->owner_last_event = item->msg_id;
+    return 1;
+}
+
+static int wifi_owner_frame(void *opaque, const uint8_t *bytes, size_t size)
+{
+    (void)opaque; (void)bytes; (void)size;
+    /* Until a SANA-II consumer exists, refuse instead of silently dropping
+     * packets and pretending that the production data path is online. */
+    return 0;
+}
+
+static ULONG wifi_owner_remaining(struct wifi_probe_context *context,
+                                  ULONG started, ULONG limit)
+{
+    ULONG elapsed = context->host->now_us() - started;
+    return elapsed < limit ? limit - elapsed : 0;
+}
+
+static int wifi_owner_request(struct wifi_probe_context *context,
+    struct p4_hosted_owner *owner, struct wifi_owner_control *control,
+    struct p4_hosted_fifo *fifo, unsigned checksum, uint32_t id,
+    ULONG remaining)
+{
+    struct p4_hosted_rpc rpc;
+    size_t written = 0;
+    int encoded, exchanged;
+    if (!remaining || !p4_hosted_request_ids_reserve(&owner->ids,
+            context->generation, id, &control->uid))
+        return 0;
+    if (id == 278u)
+        encoded = p4_hosted_wifi_init_request(control->uid,
+            &wifi_reference_profile, control->request,
+            sizeof(control->request), &written);
+    else if (id == 260u)
+        encoded = p4_hosted_wifi_set_mode_request(control->uid, 1,
+            control->request, sizeof(control->request), &written);
+    else if (id == 257u)
+        encoded = p4_hosted_mac_request(control->uid, control->request,
+            sizeof(control->request), &written);
+    else
+        encoded = p4_hosted_wifi_simple_request(id, control->uid,
+            control->request, sizeof(control->request), &written);
+    if (!encoded) {
+        p4_hosted_request_ids_finish(&owner->ids, context->generation,
+                                     control->uid, id);
+        return 0;
+    }
+    /* Conservatively mark mutating attempts even if their TX later refuses.
+     * Ambiguous poisoned sessions are never resurrected for cleanup RPCs. */
+    if (id == 278u) control->init_attempted = 1;
+    if (id == 280u) control->start_attempted = 1;
+    p4host_zero(&control->result, sizeof(control->result));
+    exchanged = p4_hosted_owner_exchange(owner, fifo, &control->ops,
+        context->generation, checksum, control->request, written,
+        remaining, &control->result);
+    p4host_zero(control->request, sizeof(control->request));
+    if (!exchanged)
+        return 0;
+    rpc.msg_type = owner->reply.msg_type;
+    rpc.msg_id = owner->reply.msg_id;
+    rpc.uid = owner->reply.uid;
+    rpc.payload = owner->reply.payload;
+    rpc.payload_size = owner->reply.payload_size;
+    if (id == 257u) {
+        if (!p4_hosted_mac_response(&rpc, control->uid, &control->mac) ||
+            (control->mac.status == 0 && !control->mac.valid_mac)) {
+            p4_hosted_owner_cancel(owner, fifo, context->generation);
+            return 0;
+        }
+        return control->mac.status == 0;
+    }
+    if (!p4_hosted_wifi_status_response(&rpc, id, control->uid,
+                                       &control->status)) {
+        p4_hosted_owner_cancel(owner, fifo, context->generation);
+        return 0;
+    }
+    return control->status == 0;
+}
+
+/* Enter with the bootstrap acquisition held, and always return unowned.
+ * Preserved OPEN has already populated owner.rx before config buffer reuse.
+ * State/buffers/control were allocated before acquiring the host. */
+static void wifi_owner_service(struct wifi_probe_context *context,
+    struct p4_hosted_owner *owner, struct wifi_owner_control *control,
+    struct p4_hosted_open_result *opened,
+    const struct p4_hosted_open_ops *open_ops,
+    const struct p4_hosted_tx_ops *tx_ops,
+    p4_sdio_setup_ops_t *setup_ops, p4_sdio_setup_result_t *setup,
+    p4_sdio_restore_result_t *restored)
+{
+    static const uint32_t startup_ids[] = {278u, 260u, 280u, 257u};
+    struct P4SDMMCHost *host = context->host;
+    unsigned checksum = !!(opened->init.capabilities & P4_HOSTED_CONFIG_CAP_CHECKSUM);
+    unsigned index;
+    ULONG cleanup_start, cleanup_remaining, cleanup_wait;
+    int protocol_cleanup = 1;
+    control->rx_ops.context = context;
+    control->rx_ops.session_ok = wifi_tx_session;
+    control->rx_ops.budget_ok = wifi_budget;
+    control->rx_ops.read_word = wifi_word_read;
+    control->rx_ops.write_word = wifi_word_write;
+    control->rx_ops.read_fifo = wifi_fifo_read;
+    control->ops.context = context;
+    control->ops.acquire = wifi_owner_acquire;
+    control->ops.set_budget = wifi_owner_budget;
+    control->ops.release = wifi_owner_release;
+    control->ops.now_us = wifi_owner_now;
+    control->ops.wait = wifi_yield;
+    control->ops.stopping = wifi_owner_stopping;
+    control->ops.dispatch_event = wifi_owner_event;
+    control->ops.dispatch_frame = wifi_owner_frame;
+    control->ops.rx = &control->rx_ops;
+    control->ops.tx = tx_ops;
+    wifi_owner_release(context);
+    if (p4_hosted_owner_ids_init(owner, context->generation,
+                                context->owner_open_start)) {
+        for (index = 0; index < sizeof(startup_ids) / sizeof(startup_ids[0]); ++index)
+            if (!wifi_owner_request(context, owner, control, &opened->fifo_state,
+                checksum, startup_ids[index], wifi_owner_remaining(context,
+                    context->owner_boot_start, 8000000UL)))
+                break;
+        control->startup_ok = index == sizeof(startup_ids) / sizeof(startup_ids[0]);
+        if (control->startup_ok) {
+            /* Identity/status only. No SSID, passwords or peer payload logs. */
+            bug("[WiFi] owner ready CPU=%u MAC=%02x:%02x:%02x:%02x:%02x:%02x\n",
+                P4_WIFI_OWNER_CPU, control->mac.mac[0], control->mac.mac[1],
+                control->mac.mac[2], control->mac.mac[3], control->mac.mac[4],
+                control->mac.mac[5]);
+            while (!wifi_owner_stopping(context)) {
+                if (!p4_hosted_owner_step(owner, &opened->fifo_state, &control->ops,
+                    context->generation, checksum, P4_HOSTED_OWNER_MAX_SLICE_US,
+                    &control->result))
+                    break;
+                wifi_yield(context); /* Always outside controller ownership. */
+            }
+        }
+    }
+    context->owner_cleanup = TRUE; /* SIGBREAK cannot cancel its own cleanup. */
+    cleanup_start = wifi_owner_now(context);
+    if (!owner->poisoned && !opened->fifo_state.poisoned) {
+        if (control->start_attempted)
+            protocol_cleanup = wifi_owner_request(context, owner, control,
+                &opened->fifo_state, checksum, 281u,
+                wifi_owner_remaining(context, cleanup_start, 2000000UL));
+        if (control->init_attempted)
+            protocol_cleanup = wifi_owner_request(context, owner, control,
+                &opened->fifo_state, checksum, 279u,
+                wifi_owner_remaining(context, cleanup_start, 2000000UL)) && protocol_cleanup;
+    } else protocol_cleanup = 0;
+    /* Even failed protocol cleanup gets one bounded CLOSE/restoration attempt
+     * on the original healthy host generation, never a controller reset. */
+    cleanup_remaining = wifi_owner_remaining(context, cleanup_start, 2000000UL);
+    cleanup_wait = cleanup_remaining < P4_HOSTED_OWNER_MAX_ACQUIRE_US
+        ? cleanup_remaining : P4_HOSTED_OWNER_MAX_ACQUIRE_US;
+    if (cleanup_wait && host->acquire(host, cleanup_wait)) {
+        ULONG remaining = wifi_owner_remaining(context, cleanup_start, 2000000UL);
+        if (remaining && wifi_tx_session(context, context->generation) &&
+            host->set_budget(host, remaining)) {
+            opened->fifo_poisoned = opened->fifo_state.poisoned;
+            int close_ok = p4_hosted_open_cleanup(open_ops, opened);
+            int restore_ok = p4_sdio_restore_function1(setup_ops, setup, restored);
+            control->cleanup_ok = protocol_cleanup && close_ok && restore_ok;
+        }
+        wifi_owner_release(context);
+    }
+    p4_hosted_owner_cancel(owner, &opened->fifo_state, context->generation);
+    bug("[WiFi] owner stopped startup=%u cleanup=%u events=%u last=%u error=%u\n",
+        control->startup_ok, control->cleanup_ok, context->owner_events,
+        context->owner_last_event, control->result.error);
+}
+#endif
+
 static void wifi_identify(void)
 {
     struct P4SDMMCHost *host = OpenResource(P4_SDMMC_HOST_NAME);
@@ -459,6 +746,9 @@ static void wifi_identify(void)
     struct p4_hosted_tx_result sent;
     size_t config_size = 0;
     int reply_attempted = 0, reply_ok = 0;
+#endif
+#if P4_WIFI_HOSTED_OWNER
+    struct wifi_owner_storage *owner_storage = NULL;
 #endif
 #if P4_WIFI_HOSTED_MAC
     struct p4_hosted_startup *wlan = NULL;
@@ -504,6 +794,14 @@ static void wifi_identify(void)
         bug("[WiFi] INIT buffer unavailable\n");
         return;
     }
+#if P4_WIFI_HOSTED_OWNER
+    owner_storage = AllocVec(sizeof(*owner_storage), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!owner_storage) {
+        FreeVec(open_buffer);
+        bug("[WiFi] owner metadata unavailable\n");
+        return;
+    }
+#endif
 #if P4_WIFI_HOSTED_MAC
     wlan = AllocVec(sizeof(*wlan), MEMF_PUBLIC | MEMF_CLEAR);
     if (!wlan)
@@ -536,6 +834,9 @@ static void wifi_identify(void)
 #endif
 #endif
         bug("[WiFi] shared host busy\n");
+#if P4_WIFI_HOSTED_OWNER
+        FreeVec(owner_storage);
+#endif
         return;
     }
     peer_clock = host->slot_clock[0];
@@ -563,12 +864,18 @@ static void wifi_identify(void)
 #endif
 #endif
         bug("[WiFi] host not ready for bounded join\n");
+#if P4_WIFI_HOSTED_OWNER
+        FreeVec(owner_storage);
+#endif
         return;
     }
     wifi_configure_pins();
     context.host = host;
     context.generation = generation;
     context.peer_clock = peer_clock;
+#if P4_WIFI_HOSTED_OWNER
+    context.owner_boot_start = host->budget_start;
+#endif
     ops.context = &context;
     ops.command = wifi_command;
     ops.budget_ok = wifi_budget;
@@ -606,8 +913,20 @@ static void wifi_identify(void)
                 open_ops.read_fifo = wifi_fifo_read;
                 open_ops.budget_ok = wifi_budget;
                 open_ops.yield = wifi_yield;
+#if P4_WIFI_HOSTED_OWNER
+                /* Conservative first-fragment lower bound: OPEN and config
+                 * transmission must not renew an already received suffix. */
+                context.owner_open_start = wifi_owner_now(&context);
+                open_ok = p4_hosted_open_receive_init_preserve(&open_ops, generation,
+                                                     open_buffer, 4096, &opened);
+                if (open_ok)
+                    open_ok = p4_hosted_rx_take_open(&owner_storage->owner.rx,
+                        &opened, generation, open_buffer, 4096,
+                        &owner_storage->owner.rx_result);
+#else
                 open_ok = p4_hosted_open_receive_init(&open_ops, generation,
                                                      open_buffer, 4096, &opened);
+#endif
 #if P4_WIFI_HOSTED_REPLY
                 if (open_ok && wifi_tx_session(&context, generation) &&
                     wifi_budget(&context))
@@ -631,6 +950,21 @@ static void wifi_identify(void)
                             generation, &tx_ops, open_buffer, 4096, config_size,
                             !!(opened.init.capabilities & P4_HOSTED_CONFIG_CAP_CHECKSUM),
                             &sent);
+#if P4_WIFI_HOSTED_OWNER
+                        if (reply_ok && wifi_tx_session(&context, generation) &&
+                            wifi_budget(&context)) {
+                            wifi_owner_service(&context, &owner_storage->owner,
+                                &owner_storage->control, &opened, &open_ops,
+                                &tx_ops, &setup_ops, &setup, &restored);
+                            /* Service has closed/restored and released the bus;
+                             * do not inspect host fields or run legacy cleanup. */
+                            p4host_zero(open_buffer, 4096);
+                            FreeVec(open_buffer);
+                            p4host_zero(owner_storage, sizeof(*owner_storage));
+                            FreeVec(owner_storage);
+                            return;
+                        }
+#endif
 #if P4_WIFI_HOSTED_MAC
                         if (reply_ok && wifi_tx_session(&context, generation) &&
                             wifi_budget(&context))
@@ -721,6 +1055,9 @@ static void wifi_identify(void)
 #endif
 #endif
         bug("[WiFi] slot1 clock failed\n");
+#if P4_WIFI_HOSTED_OWNER
+        FreeVec(owner_storage);
+#endif
         return;
     }
     /* Snapshot before release; no MMIO or host field inspection afterward. */
@@ -745,6 +1082,10 @@ static void wifi_identify(void)
 #if P4_WIFI_HOSTED_INIT
     /* Reporting below uses only copied metadata, never frame.payload. */
     FreeVec(open_buffer);
+#endif
+#if P4_WIFI_HOSTED_OWNER
+    p4host_zero(owner_storage, sizeof(*owner_storage));
+    FreeVec(owner_storage);
 #endif
     /* Runtime console is deliberately nonblocking. Defer and pace these
      * snapshots after releasing ownership; never delay the storage peer
@@ -920,6 +1261,11 @@ AROS_UFH3(static ULONG, wifi_runner,
     AROS_USERFUNC_INIT
     (void)dummy; (void)argsize; (void)sysbase;
 #if P4_BOARD_WIFI_SDIO
+#if P4_WIFI_HOSTED_OWNER
+    if (!wifi_owner_pin())
+        bug("[WiFi] owner CPU placement refused; no radio access\n");
+    else
+#endif
     wifi_identify();
 #else
     bug("[WiFi] board has no supported SDIO radio\n");
@@ -940,7 +1286,12 @@ AROS_UFH3(static APTR, wifi_afterdos,
     if (!DOSBase)
         return NULL;
     if (!CreateNewProcTags(NP_Entry, (IPTR)wifi_runner,
-                           NP_Name, (IPTR)"P4 SDIO identification",
+                           NP_Name, (IPTR)
+#if P4_WIFI_HOSTED_OWNER
+                           "P4 WiFi owner",
+#else
+                           "P4 SDIO identification",
+#endif
                            NP_StackSize, 8192, NP_Priority, 0, TAG_DONE))
     {
         CloseLibrary((struct Library *)DOSBase);

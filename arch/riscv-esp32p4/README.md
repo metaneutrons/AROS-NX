@@ -76,6 +76,19 @@ network-isolated snapshot with actual exit0; source review finds no blockers.
 This has not been
 deployed and does not implement Ethernet TX, an AROS owner or SANA-II.
 
+The actual owner integration is now in development behind the default-off
+P4_WIFI_HOSTED_OWNER switch. Its process placement is configurable through
+P4_WIFI_OWNER_CPU (default1, comparison0), using explicit affinity before
+radio access. Corrected clean CPU0/CPU1 modules now link (194792/195008B), and
+strict freestanding RV32 owner compilation passes without libc imports.
+Independent coupled owner6723 checks each O0/O2 pass under Linux ASan/UBSan,
+repeated by the primary with actual exit0; source review confirms the OPEN
+partial-age and TX-to-RX FIFO-direction fixes. These are fake-adapter tests.
+There is no deployment, runtime or measured performance claim;
+WirelessManager and legacy GUI placement remain unchanged. The opt-in caller
+currently consumes event metadata and refuses Ethernet delivery until its
+SANA-II consumer exists, rather than claiming a working network interface.
+
 The native control foundation now supports bounded sequential Init/SetMode/
 Start/Stop/Deinit/GetMAC envelopes on one existing FIFO ledger, with owned
 response bodies and exact UID/operation correlation. Linux O0/O2 sanitizer
