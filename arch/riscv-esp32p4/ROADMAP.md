@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 timeout; corrected IDF instrument build verified` | Quiesce park passes31 stable readbacks/30.896s, not rail-off. First IDF run fails before CMD0; API-order workaround builds, not deployed. Original flash restored but retained parent F20M gate stays off; minimal DSI correction recovers PLL/harts/graphics updates in31.008s headless capture, not visual acceptance. Next corrected bounded comparison/verified return. C6 identity, SD integrity/coexistence and WLAN remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; native and IDF CMD5 response timeout` | Corrected IDF reaches CMD0/400kHz; all3 CMD5 peripheral timeouts, no valid OCR. API/command error-channel correction host tested/build verified. Safe quiesce and exact full-span rollback pass; DSI parent fix recovers graphics startup after IDF in30.917s headless return, not visual/rail-off acceptance. Next coordinated C6 rail-off/startup and wiring/firmware evidence. C6 identity, SD integrity/coexistence and WLAN remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; RX reassembly host tested` | Bounded RX helper passes312 strict sanitized checks each O0/O2 and RV32 compilation. Complete checksummed frame-to-event-TLV fixture passes. Reverse TX direction differs; no runtime transport. N0, compatibility, credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -250,7 +250,15 @@ whereas AROS previously enabled only DSI-local gates. The opt-in
 P4_DSI_PARENT_CLOCK_TRACE measures gate0 with correct divider23 before B3.
 The minimal OR-only parent enable now restores PLL lock and accepted graphics
 updates in one complete31.008s headless return. No visual, sustained or
-physical-cold acceptance; corrected IDF comparison still pending.
+physical-cold acceptance. Corrected IDF comparison now reaches CMD0 at400kHz
+and repeats CMD5 response timeouts on all three attempts, matching the native
+failure class but not proving identical electrical cause. API dispatch success
+does not imply command success: command.error is ESP_ERR_TIMEOUT, so printed
+zero OCRs are invalid. Helper now propagates either failure, host tested and
+build verified; source-corrected v3 not deployed. Exact corrected AROS span is
+restored and hardware return passes PLL/PSRAM/harts/graphics updates in30.917s.
+Installed C6 firmware, actual routing and independent C6 cold-start state remain
+open. Fresh readiness requested for coordinated full rail-off, not assumed.
 No firmware incompatibility inference or WLAN acceptance is justified yet.
 Enumeration alone cannot prove
 ESP-Hosted compatibility or working WLAN.
@@ -29727,6 +29735,68 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   rollback readback and actual return capture; then native identification.
   API-order workaround remains named, not IDF root-fixed or hardware accepted.
   WLAN goal remains open, no association/DHCP/data/coexistence result.
+
+### 2026-10-10 - N0 official-driver comparison reaches CMD5 but C6 does not reply
+
+- Parent3f61e05ae5, same Wi-Fi worktree/branch; hardware identity reconfirmed
+  MAC80:f1:b2:d3:3b:a6, P4v1.3. Current corrected190016-byte core dea08a12…
+  plus entire rounded192512-byte span0x20000..0x4efff backed up twice;
+  byte-identical SHA-2561407e41ef0861269471f5871e4abc1178ce12372c1bb8cb6ccf997a4fcacabe0.
+  All writes are explicit raw app-only0x20000, no generated IDF flash targets.
+- Reused immutable hardware-verified park174160B39ce408b…; write/readback
+  exits0 and byte-identical. Complete first-byte park capture exit0,
+  15.941559s/4065 bytes,16 stable sample pairs channel0/reset0x100/
+  clock0x423/bridge0, intervals0..9 observing then10 READY and later stable
+  samples. One commanded USB reset only, no FAIL/trap/Alert/Guru. Park capture
+  SHA-2561f4fa20370d816eaefdb31d37d545dbb3bf55102f154fa4af39ab7aa41dfa9ff.
+  This is scanout-handover evidence, not physical rail-off/all-DMA acceptance.
+- IDF build-v2 app189168B SHA-256
+  91512905cb18a923e5b958cb9c61df833d05cb5ea74dc189402ab8e1bac25a49
+  written0x20000 with independent identical readback; exits0. Configuration
+  IDF6.0.1/P4rev100..199/CPU360/DIO80/16MB/USB console/PSRAM disabled,
+  slot1 CLK18/CMD19/D0..3=14..17, one-bit400kHz,500ms command timeout,
+  three CMD5(arg0) attempts with100ms retry gaps. Full first-byte capture
+  exits0, complete15.952459s/5949B; SHA-256
+  1ee7f1a8729ee2ab88339c6e907ccc562d05b6307d54714c584389c6452e7671.
+- Host/slot init, CMD0 and clock-verify ESP_OK; measured400kHz. All three
+  CMD5 dispatches return ESP_OK but each command.error=ESP_ERR_TIMEOUT0x107,
+  response0=0. Those zero OCR decode lines are INVALID: no usable received
+  R4 or function count. No assertion or additional ROM/reset/trap/Alert/Guru;
+  instrument reaches idle. This rejects C6 identification. Both native and
+  official-driver retained-power tests fail to get a reply, not evidence that
+  firmware is incompatible, absent or corrupt, nor proof of pin continuity.
+  CMD0 expects no reply (R0), so its success does not prove C6 reception.
+- Original entire corrected AROS span restored/readback identical1407e41e…,
+  write/readback/cmp exits0. Complete30.917133s/14483B return capture exits0,
+  SHA-25644b1983c0deddaca4824c55796dc9ca70d0d21d572f10bf8c61d5f503942c343.
+  32MB PSRAM200MHz, normal watchdog, hart1/cpus2,41 modules, PHY0x15bd
+  locked/lanes stopped, B3 pass and accepted graphics updates. One commanded
+  USB reset only, no additional reset/fault. Headless return passes; no sight,
+  touch, physical-cold or sustained qualification inferred.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/idf-reference-v2-hardware/;
+  before{,-verify}.bin, restored.bin, park/idf readbacks, operation logs and
+  all three boot.log/timing.jsonl pairs retained. BSP/volume/SD/C6 firmware,
+  bootloader/partition table/NVS unchanged. The running core is restored AROS,
+  not the diagnostic. No physical action was performed or inferred.
+- Instrument correction propagates API failure first, otherwise command.error;
+  OCR decode is withheld after either failure. Actual extracted helper tested
+  in16 API/peripheral success/failure combinations at both O0/O2, strict C99
+  warnings/ASan/UBSan, exit0, test log SHA-256
+  8471f7443401ce6178a10b7a4a69329bccfa3f453ea6a2eb8e345756afabd5d8.
+  Fresh external IDF build-v3/sdkconfig-v3 exits0; valid image189168B,
+  SHA-256a3e2be71a051c90d968b0e94d459277313b18091d8a6637fb1fa8ba5c026095b,
+  same silicon/clock/configuration bounds, NOT deployed. Host model is not
+  command/electrical hardware proof; API-order workaround remains named.
+  Independent source review confirms IDF response-timeout processing sets
+  command.error separately from dispatch return, and the corrected helper
+  withholds decode. Review is not a second hardware result. The fixture tests
+  the actual extracted helper only, not IDF scheduling/ABI or application flow.
+- Next: fresh physical readiness for coordinated all-source rail-off so C6
+  actually restarts; do not treat P4 USB/EN reset as C6 reset. Then repeat
+  bounded command test and verified return. If no reply, acquire C6 UART
+  startup/identity and matching wiring evidence without C6 flash mutation.
+  Cold-start request pending; no repeated blind reset or WLAN pass claimed.
 
 ## Evidence-entry template
 

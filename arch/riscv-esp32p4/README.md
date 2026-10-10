@@ -121,6 +121,17 @@ further reset/trap/alert. This is one headless return, not a visual, sustained
 or physical-cold gate. The trace is before the correction and may still report
 the prior gate value. Next: corrected bounded IDF comparison with safe
 quiescence and verified AROS return, then native C6 identification.
+The corrected IDF build-v2 now has a complete15.952s hardware capture:
+CMD0 succeeds and actual probing clock is400kHz, but all three CMD5 requests
+report peripheral ESP_ERR_TIMEOUT despite API dispatch returning ESP_OK.
+The zero OCRs printed by that older helper are invalid, not received responses.
+The helper now checks both error channels; strict sanitized extracted-helper
+tests and fresh build-v3 pass, but v3 is not deployed. Original corrected AROS
+core erase span restored/readback verified, complete30.917s return recovers
+PLL/PSRAM/both harts/graphics updates without another fault. Native and IDF
+both fail to obtain a C6 reply in retained-power tests. Installed firmware,
+C6 startup and actual variant wiring remain unverified; a fresh coordinated
+rail-off is requested because a P4 reset does not reset C6. WLAN remains open.
 The recovery foundation now separates card identification into an unpublished
 CID/CSD/RCA/geometry snapshot. Initial registration stages that snapshot before
 allocating/publishing a unit and caches its media identity. This shared-device

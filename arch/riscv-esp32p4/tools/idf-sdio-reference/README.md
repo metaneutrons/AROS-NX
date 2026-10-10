@@ -7,6 +7,11 @@ a500ms timeout and retries are100ms apart. No card initialization,
 CMD52/CMD53, SD data writes or C6 firmware programming is performed.
 CMD0 **does change protocol state** and can interrupt an existing C6 session.
 No successful OCR is inferred from a failed transaction.
+Both error channels are authoritative: `sdmmc_host_do_transaction()` can
+return ESP_OK while `command.error` reports a peripheral timeout. The helper
+returns the API error first, otherwise the command error; never decode a
+response unless both succeeded. The actual-helper host fixture exercises
+16 combinations at O0/O2 with sanitizers, not physical SDIO behavior.
 
 ## IDF 6.0.1 API-order workaround
 

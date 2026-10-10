@@ -49,7 +49,9 @@ static esp_err_t send_command(const char *stage, uint32_t opcode, uint32_t arg,
            stage, esp_err_to_name(result), (uint32_t) result,
            esp_err_to_name(command->error), (uint32_t) command->error,
            command->response[0]);
-    return result;
+    /* Legacy IDF may report successful dispatch while the peripheral result
+     * lives in command->error. Never decode an OCR after either failure. */
+    return result != ESP_OK ? result : command->error;
 }
 
 static void idle_forever(void)
