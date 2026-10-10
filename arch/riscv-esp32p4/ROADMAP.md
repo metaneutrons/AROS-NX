@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; P4 recovery hooks host tested/build verified` | Generic recovery, private RCA and shared command/clock/DMA budget host tested/build verified; P4 hooks bound and host tested/build verified. Accepted production source integrated locally. Task dispatch, real SMP interleavings, integrated core/package build, radio integration, C6 compatibility and hardware gates remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; task recovery dispatch host tested/build verified` | Generic recovery, private RCA, shared budget, P4 hooks and bounded automatic task dispatch host tested/build verified. Accepted production source integrated locally. Radio notification, real SMP interleavings, integrated core/package build, C6 compatibility and hardware gates remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -190,7 +190,7 @@ task-only metadata lock, separate from the IRQ command-listener lock; no host
 acquisition or hardware waits occur under it. Relative unit-base indexing and
 open-count overflow/underflow are guarded. This is host tested and RV32 build
 verified, not an enabled hardware recovery path: P4 hooks and the aggregate
-budget are now bound below; BusTask/radio dispatch remain open. Real SMP
+budget and BusTask dispatch are now bound below; radio notification remains open. Real SMP
 interleavings and non-P4 hardware regression remain unverified. A failed media
 identity comparison must leave the backend unavailable: ordinary StartUnit
 must not subsequently select a replacement card using the cached RCA.
@@ -220,9 +220,15 @@ the healthy shared host. Finish validates private RCA/generation/clocks/DMA,
 lowers signal drive, rechecks presence/budget after callbacks and clears only
 its own budget. Any failure, including same-media mismatch, leaves the
 backend unavailable. This candidate is host tested/build verified; automatic task
-dispatch/retry policy remains open. Startup now initializes the host before
+dispatch/retry policy is integrated below. Startup now initializes the host before
 its ready-guarded power callback, correcting a skipped initial power sequence.
 Neither this source correction nor bound hooks establish hardware acceptance.
+BusTask now checks recovery before sector reads, dispatches each IO once,
+and latches failed recovery per mounted unit until an explicit TaskSig wake
+rearms one attempt. The task wake does not publish a replacement card or issue
+a media-registration operation. Control and write-protection handling remain
+on their original path. This candidate is host tested/build verified; radio notification
+must occur after releasing shared host ownership and is not integrated yet.
 
 Accepted production source through acd62ff237 is integrated locally after
 12df190097. This preserves the boot-budget, quiet-profile and ProductionQualify
@@ -28841,6 +28847,88 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 - Next: enable bounded task dispatch without
   silent failed-IO replay, integrated core/package plus SD hardware regression,
   then installed-C6 SDIO/ESP-Hosted and native SANA-II WLAN.
+
+### 2026-10-10 - N0 bounded SD task recovery dispatch host tested/build verified
+
+- State: host tested/build verified on feature/esp32p4-wifi, parent4da1032d90. Previous
+  goal turn made progress: bounded P4 hooks committed after model/build checks.
+- Implementation: BusTask gates sector reads through same-identity
+  recovery before one IO dispatch. Direct SCSI was initially included, then
+  removed after checking its unsupported/no-card-IO handler contract below.
+  Per-unit task-owned failure latch prevents
+  repeated recovery attempts from a queued IO backlog. Explicit TaskSig wake
+  rearms one attempt per mounted unit; no automatic timer/retry loop and no
+  replay of failed IO. Control queries and write-protection replies bypass
+  this gate. No register-unit, unit replacement or media-change notification.
+- Verification completed below: extracted dispatch models, independent source
+  review and isolated RV32 SD build. Unit-private header changed; all
+  sdcard.device consumer objects invalidated before recording the build.
+- Build: all sdcard.device objects explicitly invalidated for the private
+  unit-header change. JC1060-v2/SMP kernel-sdcard-quick session12018 exits0.
+  A fail-closed correction then changes legacy bypass to require all three
+  recovery hooks absent; partial vtables now latch refusal rather than bypass.
+  Superseding session30195 exits0; final device134,736 bytes SHA-256
+  7c60b56f6f68311ba275c5880f73a56f56a5db28fa25539b3a3c6746eb639976.
+  The earlier134,876-byte artifact is superseded and not deployed. Final
+  undefined-symbol check exits0 with empty output. Task dispatch is linked
+  into BusTask (static helper bodies may be inlined); no core/package built.
+- Primary generic recovery regression session74670 exits0:22 cases/1,043
+  checks non-SMP and22 cases/1,435 modeled SMP, each O0/O2 sanitizers.
+  Assembled fixture2e7afe9da77c91ed6ce78c8234d847126d090749ea69aae62c69d14e9db38c3d.
+  Adapter regression session74745 exits0:44 cases/825 checks each O0/O2
+  ASan/UBSan; trace-off fault modes1/2/3 each1 case/30 checks. This substitutes
+  physical host/CMD13 behavior and does not exercise task dispatch.
+- Independent review identified a lifecycle bypass: after recovery failure
+  ordinary Open/StartUnit could attempt the cached RCA despite the task retry
+  latch. P4 readiness already rejected those commands, but the generic policy
+  was incomplete. Correction: StartUnit checks the latch under UnitLock;
+  TaskRecoverUnit reserves the latch before recovery under the same short
+  guard and only clears it after success. No hardware callback or host wait
+  occurs under the guard. Review of this correction and revised dispatch tests
+  completed below; the earlier unguarded-latch build is superseded.
+- Corrected isolated build session49829 exits0, device135,384 bytes SHA-256
+  d268ceb30564e0f9cd12f30a1c615e446bc3fc768bda14f48ef559e227e28f37;
+  final undefined-symbol check is empty. Bus source SHA-256
+  dbb9b1f546a7703d92b7e63629fecc76ac23cf064789eabf0a61dfc78acc1186,
+  unit header3ba296e6090513f2d8d2accf9f79c038013b1feb1137af04f09188fd75114f3b.
+- Review also identified a direct-SCSI reply-contract mismatch in the new
+  early refusal. The existing cmd_DirectSCSI is an unsupported stub that only
+  sets sizeof(SCSICmd)/IOERR_BADADDRESS and never accesses the card. The final
+  gate therefore excludes HD_SCSICMD entirely, preserving that existing API;
+  only CMD_READ, TD_READ64 and NSCMD_TD_READ64 trigger automatic recovery.
+- Corrected generic regression session39460 exits0:25 cases/1,108 checks
+  non-SMP and25 cases/1,553 modeled SMP, each O0/O2 ASan/UBSan. New tests call
+  actual StartUnit for active/inactive latched units and actual Open for an
+  inactive latched unit, with no activation and unchanged open count.
+  Assembled fixtureb8276c4fa53f33f2fe6732acba85cfa1b1f277f8c16db5affa72339534ea5bee;
+  fixture789cc193c42c15dab1df6fac7ac8120d9227aef41550f7c9ef27df12edc35df4.
+- Final independent review confirms both lifecycle and direct-SCSI findings
+  closed, with no remaining concrete dispatch defect found. This is source
+  evidence, not hardware acceptance. Reviewed final bus SHA-256
+  102caa2e3d95d8ce8a271f0d234eba7a2f8dbf156ca351f9ec4435c0bf054152;
+  unit header3ba296e6090513f2d8d2accf9f79c038013b1feb1137af04f09188fd75114f3b.
+- Final superseding isolated build session60010 exits0: device135,276 bytes
+  SHA-256 a520add0472364632a115e641aa272d1fda2c212d84642c9b810a8b6da84b02f;
+  no undefined symbols. Prior candidate artifacts are not deployed/accepted.
+- Primary repeat of tools/test-sd-task-recovery.py exits0 (chunk3a5d06):
+  9 cases/822 checks each O0/O2 strict warnings and ASan/UBSan. Extracted
+  wrappers exercise all supported sector-read variants, failure latching,
+  exact-one dispatch/no replay, failed and successful explicit rearm, healthy
+  paths, ownership refusal, partial vtables, multiunit/null-slot iteration and
+  preserved control/write/direct-SCSI/change-listener replies. Short guard
+  instrumentation verifies reservation before modeled recovery, release before
+  callbacks and guarded result publication. Source ordering audits pass for
+  BusTask wake/dequeue, unit guards and ordinary StartUnit latch refusal.
+  Assembled fixtureb2ae114efea0aa7a9c2af3789d2a024211bf0a876c7f5850ffa9291776a14360;
+  fixtureb49adbc74ae0ac820528825a8ff2aae3fc7c7e3cbba43579abe6437b88e7f9d6;
+  runner9e8c1349ff4a9aafd8ab6d9ff239fb95cde34dfee7c21b00c6907078fa56a855.
+  RecoverUnit/HandleIO are scripted seams in this dispatch model; the separate
+  generic regression above executes real recovery/Open/StartUnit bodies.
+- Procedure/limits: no hardware, serial, reset, flash, SD writes or C6 firmware
+  actions. Radio wake path still absent. Host-model dispatch does not prove
+  real card recovery, scheduler/hart races or combined workload acceptance.
+- Next: complete core/package and read-only
+  SD regression, then installed-C6 communication and native SANA-II WLAN.
 
 ## Evidence-entry template
 

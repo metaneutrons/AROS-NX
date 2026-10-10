@@ -58,6 +58,9 @@ struct sdcard_Unit
      * containing Exec unit to refresh controller/card protocol state. */
     ULONG                                sdcu_CardCID[4];
     ULONG                                sdcu_CardCSD[4];
+    /* BusTask writes under UnitLock; StartUnit reads under the same guard.
+     * An explicit task wake rearms one attempt for this mounted identity. */
+    BOOL                                 sdcu_RecoveryBlocked;
 };
 
 #define Unit(io)                        ((struct sdcard_Unit *)(io)->io_Unit)

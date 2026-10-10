@@ -66,7 +66,7 @@ metadata guard. This candidate is host tested and RV32 build verified:
 recovery/Open/Close tests exercise extracted production code in modeled SMP and
 non-SMP configurations. They do not prove real hart interleavings. At that
 candidate stage backend preparation/finish hooks remained unbound; automatic
-BusTask dispatch and hardware recovery are still open.
+BusTask dispatch was still open at that stage; hardware recovery remains open.
 The P4 client now tracks the live protocol RCA privately, clearing it on host
 generation changes/reset/CMD0 and accepting CMD3 only after a successful,
 valid SD R6 or MMC R1 response. CMD12/CMD13 confirmation no longer reads the
@@ -81,7 +81,8 @@ that same start time instead of restarting a duration for each phase. Nested
 ownership preserves it and final release clears it. It is host tested and
 RV32 build verified (ownership29/400,435; command33/2,001,779;
 clock25/367; DMA22/2,253,994 cases/checks each O0/O2 ASan/UBSan).
-Recovery dispatch and WLAN remain disabled. This is not a hard real-time claim
+At that budget stage recovery dispatch was still disabled; WLAN remains
+disabled. This is not a hard real-time claim
 for scheduler latency or kernel cache callbacks.
 P4 task-context recovery hooks are now bound to the generic staged operation
 and are host tested and RV32 build verified (40 cases/401,034 checks each
@@ -89,9 +90,20 @@ O0/O2 with ASan/UBSan). They establish one ten-second budget, reset a faulted
 controller explicitly, join a healthy peer without resetting it, and refuse
 publication after expiry, generation change or failed identity/configuration.
 Failure leaves the private live RCA unavailable. Automatic BusTask dispatch
-is not enabled yet. Initial startup now initializes the host before the
+is integrated as a candidate below, not hardware accepted. Initial startup
+now initializes the host before the
 ready-guarded power callback; the previous order skipped power programming.
 This is a development-branch source correction, not new cold-boot evidence.
+Automatic SD BusTask recovery is now host tested and RV32 build verified:
+the extracted dispatch model passes9 cases/822 checks each O0/O2 ASan/UBSan;
+sector-read
+requests check the mounted identity before dispatch. A failed
+attempt is latched per unit until an explicit TaskSig wake rearms it; queued
+requests cannot start repeated ten-second attempts. Failed IO is never replayed.
+Control queries, unsupported direct SCSI and write-protection replies retain
+their original path. The latch is reserved/published under UnitLock and also
+blocks ordinary StartUnit after failure, including a close/reopen cycle.
+Radio-triggered notification and real combined SD/WLAN operation remain open.
 The independently implemented ESP-Hosted serial TLV codec now validates
 RPCRsp/RPCEvt envelopes (116 checks each O0/O2 with ASan/UBSan and standalone
 RV32 compilation). It does not parse protobuf, reassemble fragments or execute

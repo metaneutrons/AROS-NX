@@ -18,6 +18,8 @@
 #include <dos/bptr.h>
 #include <dos/dosextens.h>
 #include <dos/filehandler.h>
+#include <devices/trackdisk.h>
+#include <devices/newstyle.h>
 
 #include <proto/exec.h>
 #include <proto/timer.h>
@@ -286,6 +288,12 @@ BOOL FNAME_SDCBUS(StartUnit)(struct sdcard_Unit *sdcUnit)
         return FALSE;
 
     SDCBUS_LockUnit(bus);
+    if (sdcUnit->sdcu_RecoveryBlocked)
+    {
+        SDCBUS_UnlockUnit(bus);
+        SDCBUS_EndTransaction(bus);
+        return FALSE;
+    }
     if (sdcUnit->sdcu_Flags & (AF_Card_Active | AF_Card_Configuring))
     {
         result = !!(sdcUnit->sdcu_Flags & AF_Card_Active) &&
@@ -1784,6 +1792,65 @@ void FNAME_SDCBUS(BusIRQ)(struct sdcard_Bus *bus, void *_unused)
 #define DIRQ(x) /* x */
 /********** BUS MANAGEMENT TASK **************/
 
+/* Only the bus task writes the retry latch. Backend calls and host waits
+ * run outside metadata/IRQ locks. Buses without recovery retain their path. */
+static BOOL sdcard_TaskRecoverUnit(struct sdcard_Unit *unit, BOOL rearm)
+{
+    struct sdcard_Bus *bus = unit->sdcu_Bus;
+    BOOL blocked, result;
+    if (!bus->sdcb_RecoveryNeeded && !bus->sdcb_RecoveryPrepare &&
+        !bus->sdcb_RecoveryFinish)
+        return TRUE;
+    SDCBUS_LockUnit(bus);
+    if (rearm)
+        unit->sdcu_RecoveryBlocked = FALSE;
+    blocked = unit->sdcu_RecoveryBlocked;
+    /* Reserve the attempt before releasing the guard: a concurrent Open
+     * cannot start from cached protocol state after failed recovery. */
+    if (!blocked)
+        unit->sdcu_RecoveryBlocked = TRUE;
+    SDCBUS_UnlockUnit(bus);
+    if (blocked)
+        return FALSE;
+    result = FNAME_SDCBUS(RecoverUnit)(unit);
+    SDCBUS_LockUnit(bus);
+    unit->sdcu_RecoveryBlocked = !result;
+    SDCBUS_UnlockUnit(bus);
+    return result;
+}
+
+/* TaskSig is an explicit recovery notification, not a media-change event.
+ * A radio client must release host ownership before signalling this task.
+ * No registration, replacement unit or retry of a completed IO occurs here. */
+static void sdcard_TaskRecoverBus(struct sdcard_Bus *bus)
+{
+    ULONG ordinal;
+    for (ordinal = 0; ordinal < bus->sdcb_BusUnits->sdcbu_UnitCnt; ordinal++)
+    {
+        struct sdcard_Unit *unit = (&bus->sdcb_BusUnits->sdcbu_Units)[ordinal];
+        if (unit)
+            sdcard_TaskRecoverUnit(unit, TRUE);
+    }
+}
+
+static BOOL sdcard_TaskHandleIO(struct IORequest *io)
+{
+    /* Metadata queries, write-protection replies and change listeners remain
+     * usable after recovery failure. Gate every sector-read entry. The
+     * existing direct-SCSI handler is unsupported and performs no card IO. */
+    if (io->io_Command == CMD_READ || io->io_Command == TD_READ64 ||
+        io->io_Command == NSCMD_TD_READ64)
+        if (!sdcard_TaskRecoverUnit(Unit(io), FALSE))
+        {
+            io->io_Error = TDERR_DiskChanged;
+            ((struct IOStdReq *)io)->io_Actual = 0;
+            return TRUE;
+        }
+    /* Exactly one dispatch. Failure is returned unchanged, never replayed.
+     * The next request observes backend invalidation under host ownership. */
+    return FNAME_SDC(HandleIO)(io);
+}
+
 void FNAME_SDCBUS(BusTask)(struct sdcard_Bus *bus)
 {
     LIBBASETYPEPTR LIBBASE = bus->sdcb_DeviceBase;
@@ -1868,6 +1935,9 @@ void FNAME_SDCBUS(BusTask)(struct sdcard_Bus *bus)
             }
         }
 
+        if (tasksig & (1L << bus->sdcb_TaskSig))
+            sdcard_TaskRecoverBus(bus);
+
         /* Defer IORequest processing if the bus is active */
         {
             BOOL canProcess;
@@ -1891,7 +1961,7 @@ void FNAME_SDCBUS(BusTask)(struct sdcard_Bus *bus)
                 while ((msg = (struct IORequest *)GetMsg(bus->sdcb_MsgPort)))
                 {
                     /* And do IO's */
-                    if (FNAME_SDC(HandleIO)(msg))
+                    if (sdcard_TaskHandleIO(msg))
                     {
                         ReplyMsg((struct Message *)msg);
                     }

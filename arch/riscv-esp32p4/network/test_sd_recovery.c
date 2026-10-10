@@ -842,6 +842,43 @@ static void test_open_close_guards(void)
     assert_guard_balanced();
 }
 
+static void test_start_refuses_recovery_latch(void)
+{
+    struct sdcard_Bus bus;
+    struct sdcard_Unit unit;
+    struct sdcard_BusUnits units;
+    unsigned int active;
+    for (active = 0; active < 2; active++)
+    {
+        begin_case();
+        setup_recovery(&bus, &unit, &units);
+        if (!active)
+            unit.sdcu_Flags &= ~AF_Card_Active;
+        unit.sdcu_RecoveryBlocked = TRUE;
+        CHECK(!FNAME_SDCBUS(StartUnit)(&unit));
+        CHECK(model.begin_calls == 1U && model.end_calls == 1U);
+        CHECK(model.activate_calls == 0U);
+        CHECK(unit.sdcu_RecoveryBlocked == TRUE);
+        CHECK(!(unit.sdcu_Flags & AF_Card_Configuring));
+        assert_guard_balanced();
+    }
+    {
+        struct IORequest request;
+        begin_case();
+        setup_recovery(&bus, &unit, &units);
+        unit.sdcu_Flags &= ~AF_Card_Active;
+        unit.sdcu_RecoveryBlocked = TRUE;
+        model.base.sdcard_Buses.first = &bus;
+        memset(&request, 0, sizeof(request));
+        CHECK(!FNAME_SDC(Open)(&model.base, &request, 4UL, 0UL));
+        CHECK(request.io_Unit == NULL && request.io_Error == IOERR_OPENFAIL);
+        CHECK(unit.sdcu_Unit.unit_OpenCnt == 3UL);
+        CHECK(model.activate_calls == 0U);
+        CHECK(unit.sdcu_RecoveryBlocked == TRUE);
+        assert_guard_balanced();
+    }
+}
+
 int main(void)
 {
     test_stage_and_same_card();
@@ -853,6 +890,7 @@ int main(void)
     test_identity_rejections();
     test_recovery_guards_and_hooks();
     test_open_close_guards();
+    test_start_refuses_recovery_latch();
     printf("SD recovery fixture: %u cases, %u checks\n",
            model.cases, model.checks);
     return 0;
