@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 response timeout` | Register capture confirms expected slot1 clock/matrix setup but CMD5 times out. Independent IDF comparison identifies omitted no-CD-pin constant-low route, not proven timeout cause. Startup/electrical cause, SD integrity, coexistence and C6 compatibility remain open. |
+| N0 | JC1060 SDIO command and shared-host foundation | `in development; native CMD5 response timeout` | Corrected CD route reads0xbe/CDETECT0 but same CMD5 timeout persists. Clock/matrix snapshots match expected paths. Independent IDF-only reference probe being prepared. Startup/electrical cause, SD integrity, coexistence and C6 compatibility remain open. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `in development; wire/serial codecs host tested` | Independently implemented wire codec (157,590 checks per O0/O2) and serial TLV codec (116 checks per O0/O2), sanitizers and RV32 compilation; no runtime transport. N0 shared-host gate, firmware/protocol compatibility, bounded fragments/credits/queues/RPC and disconnect recovery remain open. Existing C6 firmware preserved until identified. |
 | N2 | AROS WLAN SANA-II integration | `not started` | N1, asynchronous read/write/cancel/event semantics, association and DHCP/data traffic. No network credentials in committed files or logs. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
@@ -213,9 +213,10 @@ to inspect actual card-clock/divider/mux and CMD/D0/CLK routing. They do not
 measure electrical waveforms or identify C6 firmware.
 The complete register run confirms expected clock/matrix values but repeats
 the timeout. IDF's omitted no-CD-pin constant-low card-detect route is now
-corrected and native-module build verified; package/hardware verification is
-next. Its role in
-the timeout is not yet established.
+corrected and hardware readback verified (route0xbe/CDETECT0), but CMD5
+still times out identically. An IDF-only control probe is being prepared to
+distinguish native-driver behavior from the unchanged radio/hardware state.
+No firmware incompatibility inference or WLAN acceptance is justified yet.
 Enumeration alone cannot prove
 ESP-Hosted compatibility or working WLAN.
 
@@ -29386,6 +29387,44 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   native-probe-cd-build.log in preceding evidence root. Hardware not run.
   Existing generated package predates this module: reassemble/audit before
   any deploy. Next: backed-up exact-artifact probe and CDETECT readback.
+
+### 2026-10-10 - N0 card-detect correction package prepared
+
+- Source8e7eabcbc7, JC1060-v2 C3/C4=1, P4_WIFI_SDIO_PROBE=1,
+  unchanged corebbc265fad…. Native module843455eb…; package73982 exits0,
+  BSP3,720,208 bytes SHA-256
+  8a4c5423973d80120baae1e75252182fb8e65ef2dab5799ee02e80e6ece25aa7.
+  Checksize and strengthened loader audit exit0/all42 members. Initial git
+  status command mistakenly addressed non-Git build directory, then source
+  worktree clean/HEAD revalidated; build result itself completed successfully.
+- Exact MAC80:f1:b2:d3:3b:a6 reidentified before write. Rounded range remains
+  0x820000..0xbad000, baseline backup7ae7b4a5… independently revalidated.
+  Write88354 exits0; separate readback/capture pending. No hardware CD pass.
+- Evidence native-probe-cd-{package,audit}.log and native-probe-hardware/
+  cd-{bsp.pkg,write.log}, prior evidence root. Only constant-low slot1 CD route
+  changed; no firmware/reset/interrupt/clock change or SD mutation.
+- Next: verify readback hash and complete first-byte snapshot/CMD5 capture.
+
+### 2026-10-10 - N0 corrected card-detect measured; CMD5 timeout persists
+
+- Same source8e7eabcbc7/BSP8a4c5423…. Separate readback38674 exits0 and
+  matches exact package SHA-256. First-byte capture35291 exits0, complete
+  30.917197834s/15,769 bytes SHA-256
+  e70357df61dea7bb9073d6ef4fac74cf66ba3f57b4d03115b440246dc5bf7405.
+- CD input-select before/after0xbe, CDETECT0; slot1 is detected. CMD5 remains
+  ok0/stage2/error3/status3/raw0x10100/IDMAC0. Thus correction is effective
+  but did not repair the observed response timeout. Same clock/matrix values;
+  INT_IN0x3f/WP_IN0x3e are observed defaults, not explicit client programming.
+- One commanded USB reset/ROM banner;42 modules, both harts/watchdog/SD
+  capacity, no further ROM/trap/alert/Guru observed. Not visual/SD integrity.
+  No C6 firmware/reset/function/IRQ change or SD write. Baseline write64147
+  exit0; independent full-range readback40914 exit0 matches7ae7b4a5….
+- Evidence native-probe-hardware/cd-{readback,boot}.log, readback.bin and
+  boot-timing.jsonl, preceding root. Preserve unsuccessful correction test.
+- Next: independent minimal ESP-IDF slot1 CMD0/CMD5-only reference probe,
+  no sdmmc_card_init/CCCR writes or firmware replacement. Bounded source task
+  delegated to Luna, primary owns review/build/hardware. This compares driver
+  paths; it cannot substitute for actual AROS WLAN/SD/shared-resource gates.
 
 ## Evidence-entry template
 
