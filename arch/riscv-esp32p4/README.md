@@ -1,5 +1,18 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Association failure caller (2026-10-10): upstream-based commit46e9387fee,
+integrated as16a13dd08d, negotiates a cause-free failure event with a nonzero
+non-reused per-open cookie. Local pending cancellation reaches standalone leave,
+retires the cookie and stops keepalive; canceled CONNECT with no active attempt
+is ignored. Independent review found no remaining blocker in this delta.
+Mac/Linux O0/O2 ASan/UBSan scoped suites pass: association84/555,
+failure23/93, state554, integration38/76, summary88/264. Public RV32 ABI and
+full WirelessManager build pass (676928B, SHA-256
+b1df162ae0f6e25f66df011fb2e2bef1de5630ac86bd6a52f8b6ea95139a6d41).
+This is not event-loop or radio acceptance: native provider/cookie/latch binding,
+caller close-time timer audit and actual C6/WLAN qualification remain open.
+SUMMARY-only advertisement, both privacy gates0 and hardware are unchanged.
+
 Native radio lifecycle development (2026-10-10): private ABI6 adds bounded
 owner-service Disconnect/absence confirmation, queued administrative teardown,
 standalone Disassociate options and correlated periodic current-AP observation.

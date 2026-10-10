@@ -132,6 +132,7 @@ gate: compensated output is not the native display contract.
 | N2 | AROS WLAN SANA-II integration | `private ABI6 association/lifecycle binding build and scoped models verified; runtime/privacy/wireless gates open` | Nonblocking permanent-unit registration, actual owner service/frame callbacks and bounded STA TX compile for Core1. N2L records current counts/artifacts and Close/Offline/teardown models. Actual helpers/selected dispatch arms; Exec/SDMMC/hooks/radio mocked, not full BeginIO, full service callback or runtime concurrency. Queue/traffic-token fences/copied AP publication are bound; no actual association/IP claim. TX commitment rejects late AbortIO. WirelessManager/bwfm remain references; per-device four-way offload must preserve legacy behavior. Caller late failure, DHCP/build defaults, GUI saving/writable preference storage and actual teardown/reconnect/load remain open. No credentials, deployment or hardware pass. |
 | N2L | Native radio teardown and ongoing link lifecycle | `ABI6 build/scoped models verified; hardware/privacy open` | Standalone leave, deferred teardown outside unit lock, bounded Disconnect/NOT_CONNECT verification, periodic correlated AP observation and selected-RPC cancellation drain. Mac/Linux O0/O2 sanitized: association25999, observer393, bridge219, options89/258, queue785, lifetime1482, datapath16507, events6/70, scan295; sibling link102/reservation63/owner scan37447; exit0. Fresh Core1 RV32 modules have no undefined imports. Explicit teardown requires absence; persistent/foreign AP quarantines rather than reporting loss. Both privacy assertions0 and SUMMARY-only unchanged. Shared caller late-failure event and actual radio/reconnect/load qualification remain open. |
 | N3 | JC1060 network qualification and Ethernet hardware inventory | `not started` | WLAN reconnect and combined SD/display/two-hart sustained tests; identify fitted Ethernet PHY and exact board wiring from matching archive, then define Ethernet implementation gate separately. |
+| N2E | Caller-visible asynchronous association failure | `generic caller/full RV32 build verified; native/runtime open` | Generic46e9387fee integrated16a13dd08d. Cause-free negotiated current-cookie failure, pending local cancellation, keepalive stop and canceled-CONNECT guard pass expanded scoped macOS/Linux O0/O2 sanitizer suites; independent review no delta blocker. RV32 ABI and fresh676928B WirelessManager build pass. Native provider/tag/opener latch/advertisement not yet bound; close-time caller timer audit open. SUMMARY-only and privacy assertions0 unchanged. |
 | D2-D1001 | D1001 regression after JC1060 production acceptance | `core/BSP deployed; no-card headless boot passes; SD/visual open` | Confirmed MACe8:f6:0a:e0:46:4c/P4v1.3/32MB. Backed-up core23bfb8c4… and matched40-member BSPa6d478c2… written at0x20000/0x820000, independent readback exact. Existing GSL firmware volume preserved. Complete60.958s first-byte warm capture:32MB PSRAM200MHz, both harts, watchdog6000ms, graphics HIDD and4356-record GSL startup/polling; no captured fatal/subsequent reset. Card absent; no Wanderer/SD-boot or visual/touch acceptance. Fresh readiness/card insertion required next. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
@@ -904,6 +905,19 @@ Offline dispatch helpers with mocked retirement/scheduling, not real concurrent
 tasks. Explicit teardown only accepts absence; persistent or foreign current AP
 is retried within the same deadline and then quarantined with ERROR, not a false
 DISCONNECT. Generic caller late-failure propagation remains a separate obligation.
+N2E develops a per-device negotiated failure edge with an opener-scoped non-reused
+caller cookie. A cause-free event must not enter the AP rejection, timeout or
+DISCONNECTED paths. The shared caller may consume only its current acknowledged
+attempt; native provider retention/cancellation is required before advertising
+the capability. Independent review found missing local cancellation dispatch;
+the shared caller now retires its cookie and sends standalone leave only on
+negotiated devices. Initial callback models pass on macOS/Linux; subsequent
+review found pending cancellation bypass and retained keepalive. Internal
+CANCEL_PENDING routing, timer cancellation and canceled-CONNECT guard now pass
+expanded final regression/re-review and full RV32 target integration. Generic
+commit46e9387fee is integrated as16a13dd08d. Native provider/cookie/latch binding
+and caller close-time timer lifetime audit remain required before runtime gates.
+This is not a hardware or end-to-end acceptance gate.
 Models must cover immediate caller request reuse, queued and active cancellation,
 Close drain, supersession, observer races and late failure, not only tag parsing.
 Shared-motor credential retention is an additional host-side privacy gate:
@@ -35057,3 +35071,106 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   serial, flash, reset, SD write, C6 update or real credentials. Complete generic
   caller failure propagation, then actual
   C6 secured recovery/UART privacy, WLAN/DHCP/frames/reconnect/1800s qualification.
+
+### 2026-10-10 - N2E generic late-failure caller and local cancellation development
+
+- Source identity: upstream-based shared worktree
+  `/Volumes/Dev/Build/aros-wlan-contract.qToy75`, branch
+  `pr/wireless-offload-summary`, base5b2cf0b82b. Pending uncommitted changes;
+  no target integration, module or deployment identity yet.
+- Contract: independent CONNECT_FAILED capability, non-reused nonzero32bit
+  originating-opener AssociationCookie, successful standalone ONEVENT failure
+  carrying that cookie in DataLength. Counter exhaustion refuses before I/O;
+  active cookie commits only after acknowledged association. No fabricated
+  AP rejection, timeout, link-loss reason or credential permission.
+- Caller: query capability before initial event subscription; exact-bit/error/
+  current-cookie filter; rearm clears DataLength. Pending-state failure cancels
+  the timer without blacklist changes, clears state and requests a five-second
+  scan unless removed/user-disabled. Host models mock the device/scheduler.
+- Review correction: independent audit found no SANA-II disassociate callback,
+  so local cancellation could leave an attempt current in the provider. Added
+  both local disassociate/deauthenticate callbacks, negotiated FullMAC only,
+  sending standalone Disassociate=1. Retire local cookie before I/O even on
+  refusal; neither acknowledgment nor failure fabricates confirmed DISCONNECT.
+  Header now requires leave support before advertising CONNECT_FAILED.
+  Callback verification was pending at this entry's initial write; the final
+  five-runner suites below now include the callback and retirement boundaries.
+- Evidence: pre-correction extracted-helper macOS O0/O2 ASan/UBSan tests report
+  association76 scenarios/486 checks, failure23/93 and state138 checks.
+  Primary security integration37/73 passes after fixing the extraction runner's
+  missing new flag; its initial exit1 is retained in
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-10/late-failure.ZYj0WK`.
+  These are host-model results, not full event-loop, target or radio evidence.
+- Safety/next: no serial/flash/reset/SD/C6/credentials. Both privacy assertions0
+  and native SUMMARY-only unchanged. Finish callback tests/review, frozen
+  verification and generic commit/port integration; bind native opener-scoped
+  failure publication before any capability advertisement or hardware gate.
+- Final primary verification: all five runners complete with actual exit0 on
+  macOS and network-isolated Linux, O0/O2 ASan/UBSan: association83 scenarios/
+  531 checks, failure23/93, state138, security integration37/73, summary88/264.
+  Separate RV32 public-header compile exits0 and checks cookie tag20, capability
+  bit4, event bit11, unchanged v1/32B capability layout. No full target build
+  or full event-loop runtime claim. Linux image
+  e4f4b5717ab9c9bf7219716469ad3d85c01e144d09763a4eb1fcd22a4a46151d,
+  network none, no installed dependencies. Both final suite logs SHA-256
+  7228d343d85a261796409dcc29fd6eea2a935cea580b6248b256bdb0d7843a68;
+  RV32 ABI log2f059de679df317c2726f09b54125e0dbc922cf2a1f696900dee86a91b4be49b.
+  Frozen caller-final-source.tar SHA-256
+  91170820a4cebf48285128371614739a4da9e1e179389c3fe2b2b46b0cf4af90;
+  a second no-xattrs archive compares byte-identical before documentation edits.
+  Independent cancellation re-review and target integration are still pending.
+- Subsequent review invalidates completeness of the first cancellation model:
+  generic disassociate/deauthenticate skipped the callback when confirmed BSSID
+  was zero during pending association; leave also retained the keepalive timer
+  if no DISCONNECT edge arrived. Corrected both production paths: internal
+  CANCEL_PENDING only for negotiated FullMAC, pending-state callback dispatch
+  using pending BSSID or NULL, keepalive cancellation before I/O. Negotiated
+  CONNECT now requires a live active cookie, preventing canceled completion
+  with no replacement attempt. A provider must still correlate supersession;
+  CONNECT carries no cookie and this guard is not a provider replacement.
+  Expanded caller/state tests and independent review are running. Primary
+  capability mapping38 scenarios/76 checks passes O0/O2 sanitized, including
+  negotiated FullMAC enablement and SoftMAC/legacy refusal. The frozen first
+  suites remain retained, not evidence for these later edits. No hardware action.
+- Expanded primary frozen lifecycle suites: actual exit0 macOS/Linux O0/O2
+  ASan/UBSan, association84 scenarios/555 checks, failure23/93, state554,
+  integration38/76, summary88/264. Both caller-lifecycle-final suite logs
+  SHA-256 c73c539c22f63903066734ddc889465e8ae0c13dba45512c5a7b4c9479e49118;
+  source archivef5641bdbb438952e5c1395620763a14b6a54043a29b4fe8358c84e6651c50392.
+  State harness now executes extracted generic local cancellation functions,
+  including pending/unknown BSSID, negotiated gating, confirmed-BSSID precedence
+  and legacy/MLME cleanup. Keepalive helper invocation is recorded before DoIO;
+  the canceled-CONNECT gate remains a static source assertion, not event-loop
+  runtime. Final review, commit and target integration remain pending.
+- Additional caller lifecycle audit: existing SANA-II deinit frees driver state
+  without explicitly canceling stay_alive in that function. This is a separate
+  potential timer-after-free risk on a close path without a prior DISCONNECT;
+  it is not demonstrated by these host models and must receive a focused
+  teardown regression before runtime qualification. No new runtime finding
+  or device fault is claimed from source alone.
+- Final integration: independent non-author review found no remaining blocker
+  in corrected pending cancellation, legacy gating, current-cookie failure or
+  event state paths. Generic commit46e9387feeaad6f8ead036f4217b79fa0167f967
+  is cherry-picked with origin attribution as
+  16a13dd08dbb798b3366af14ceddf1b6be893f4b. No push/PR/deployment this entry.
+- Full target verification: make compiler-includes and
+  workbench-network-wirelessmanager both complete with actual exit0 in
+  `/Volumes/Dev/Build/aros-esp32p4-wifi-build`. There were no pre-existing
+  WirelessManager generated directory/objects; this was a fresh consumer build.
+  Both header copies compare identical to source, as do all five changed
+  compiled source/header copies. GCC's default sysroot remains the abandoned
+  esp32p4-riscv tree, but the recorded compiler/link commands explicitly use
+  this build's esp32p4-riscv-smp/AROS/Developer sysroot. No abandoned tree edited.
+  RV32IM AFC/ilp32f/O2/-MD/MUI_GUI, CONFIG_DRIVER_SANA2, backend-file and
+  CONFIG_NO_CONFIG_WRITE; no configuration-saving capability is claimed.
+  Installed WirelessManager676928B, SHA-256
+  b1df162ae0f6e25f66df011fb2e2bef1de5630ac86bd6a52f8b6ea95139a6d41,
+  archived as caller-final.WirelessManager in the evidence directory.
+  Includes loga71f7051de0b551cbbed99815bc9af9fd38685a2be8ce2fc328e526adeb75f6a;
+  build logc069e1b44f3a749f75fad48e9bc29dffb8d995e2a82db029cc5d71944c9af4bd.
+  Actual source CC lines, linking and installation are present. A successful
+  build is not native-provider or actual radio/event-loop acceptance.
+- Final next: native opener-scoped cookie/failure latch binding, focused caller
+  close-time timer cleanup, C6 identity/secured recovery/UART privacy and actual
+  association/DHCP/frames/reconnect/1800s shared-load verification. Both privacy
+  assertions0 and SUMMARY-only are unchanged; no hardware or real credentials.
