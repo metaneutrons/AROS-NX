@@ -678,6 +678,50 @@ static ULONG wifi_owner_remaining(struct wifi_probe_context *context,
     return elapsed < limit ? limit - elapsed : 0;
 }
 
+/* A wrapper may reserve before encoding, while owner_exchange can still
+ * refuse its own preflight without consuming anything. Retire that exact
+ * reservation only when no TX was submitted and both live objects still
+ * describe the same healthy generation. Any uncertain or replaced state is
+ * left for the matching session's terminal cleanup. */
+static int wifi_owner_finish_unsubmitted_reservation(
+    struct p4_hosted_owner *owner, struct p4_hosted_fifo *fifo,
+    uint32_t generation, uint32_t uid, uint32_t request_id,
+    unsigned submitted)
+{
+    if (submitted != 0u || !owner || !fifo || generation == 0u || uid == 0u ||
+        owner->initialized != 1u || owner->poisoned != 0u ||
+        owner->generation != generation ||
+        owner->rx.initialized != 1u || owner->rx.poisoned != 0u ||
+        owner->rx.generation != generation ||
+        owner->rx.assembly.initialized != 1u ||
+        owner->rx.assembly.poisoned != 0u ||
+        owner->rx.assembly.generation != generation ||
+        owner->rx.inbox.initialized != 1u || owner->rx.inbox.poisoned != 0u ||
+        owner->rx.inbox.generation != generation ||
+        owner->rx.inbox.count > P4_HOSTED_INBOX_CAPACITY ||
+        owner->rx.inbox.head >= P4_HOSTED_INBOX_CAPACITY ||
+        owner->rx.frames.initialized != 1u || owner->rx.frames.poisoned != 0u ||
+        owner->rx.frames.generation != generation ||
+        owner->rx.frames.count > P4_HOSTED_FRAME_QUEUE_CAPACITY ||
+        owner->rx.frames.head >= P4_HOSTED_FRAME_QUEUE_CAPACITY ||
+        owner->partial_active > 1u || owner->pending_active != 0u ||
+        owner->partial_active != !!owner->rx.assembly.fragments ||
+        owner->pending_uid != 0u || owner->pending_request_id != 0u ||
+        fifo->initialized != 1u || fifo->generation != generation ||
+        fifo->busy != 0u || fifo->poisoned != 0u ||
+        fifo->pending_write > 1u || fifo->rx_consumed > P4_HOSTED_RX_MASK ||
+        fifo->tx_sent > P4_HOSTED_TX_MASK ||
+        fifo->pool_limit > P4_HOSTED_TX_MASK ||
+        owner->ids.initialized != 1u || owner->ids.retired != 0u ||
+        owner->ids.generation != generation || owner->ids.active_uid != uid ||
+        owner->ids.active_request_id != request_id)
+        return 0;
+
+    return p4_hosted_request_ids_finish(&owner->ids, generation, uid,
+                                        request_id);
+}
+
+
 static int wifi_owner_request(struct wifi_probe_context *context,
     struct p4_hosted_owner *owner, struct wifi_owner_control *control,
     struct p4_hosted_fifo *fifo, unsigned checksum, uint32_t id,
@@ -730,8 +774,12 @@ static int wifi_owner_request(struct wifi_probe_context *context,
         context->generation, checksum, control->request, written,
         remaining, &control->result);
     p4host_zero(control->request, sizeof(control->request));
-    if (!exchanged)
+    if (!exchanged) {
+        (void)wifi_owner_finish_unsubmitted_reservation(owner, fifo,
+            context->generation, control->uid, id,
+            control->result.submitted);
         return 0;
+    }
     rpc.msg_type = owner->reply.msg_type;
     rpc.msg_id = owner->reply.msg_id;
     rpc.uid = owner->reply.uid;

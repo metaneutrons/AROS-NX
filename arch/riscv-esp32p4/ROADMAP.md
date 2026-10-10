@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 build verified; source review and macOS/Linux scan models passed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results; no re-entry, late success or uncertain cleanup. N1E empty-record workaround remains. Exchange/cancellation/clock/Exec/SDIO mocked; outer owner preflight and runtime remain unqualified. No SANA scan presentation or hardware acceptance; truthful security/offload remains open. |
+| N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
 | N2W | Generic wireless security-summary/offload contract | `development; predicate models, RV32 ABI and driver syntax passed; full build pending` | Separate upstream-based pr/wireless-offload-summary checkout. Explicit per-device capability, owned exact-version summary, no fabricated AP security IE. Unknown/ambiguous protected networks must not fall back to open. Initial singleton WPA/RSN PSK profile; legacy path preserved. Caller/conversion models and integration pending. No credentials or deployment. |
 | N0 | JC1060 SDIO command and shared-host foundation | `native identification passed once; shared SD/WLAN qualification open` | Following confirmed power cycle and IDF replies, native CMD5 negotiation/CMD3/CMD7/CCCR/FBR1 completes at394088Hz: two functions/RCA1/error0, slot0 clock unchanged. Exact baseline rollback/31.057s headless return pass;4730 sanitized fixture checks each O0/O2. Earlier timeouts/recovery cause and installed C6 identity remain open. Next N1 capability negotiation; SD integrity/coexistence and WLAN not accepted. |
 | N1 | ESP-Hosted control and Ethernet-frame transport | `official-host MAC/scan and native warm bootstrap/setup/restore passed once; native first INIT/config and correlated RPC reply passed once; native initialized MAC observed once; cold continuity rejected; native WLAN open` | IDF6.0.1/360MHz d518 reference passes one MAC/scan gate (4.085s, C6/caps0x0d, MAC10:bd:a3:9b:bc:34,13 APs/eight records) with exact rollback and complete AROS return. Native warm bootstrap/reset and separate41.028s setup/restoration gate pass once; one fresh-C6 native OPEN/INIT/config run passes; Earlier GetMAC returns correlated0x3001 (WiFi not initialized). Latest initialized sequence succeeds once with expected MAC, but initial HP watchdog reset/truncated ROM output block clean cold acceptance. Opt-in INIT/reply/GetMAC now links:154 codec/1250 pinned protobuf-c oracle/1690 control checks each O0/O2 sanitized, fresh93,756B module/3,782,312B package with42/42 loader checks and capacity pass. TX2586, actual transfer adapters233 and corrected CMD52 adapters193 (28cases), FIFO1245355, config120243 and OPEN716 checks each O0/O2 sanitized pass. All41 non-WiFi package members unchanged. New3,784,704B erase span requires independent twice-read backup before deployment. 45.923s complete capture has successful cleanup/no new captured fault; exact full-span rollback and30.802s headless baseline return pass; no WLAN readiness claimed. First INIT requires externally confirmed fresh C6 startup; zero RX counter is not epoch proof. Pool20 is a pinned source-profile assumption, not installed binary identity. UID1 is single-use; timeout must not lead to reuse. Persistent RPC/cancellation/reassembly, config/scan/association/DHCP/frame/SANA-II/coexistence/recovery remain open. N1R early-failure clock-workaround removal and N1E empty-scan root fix remain open. No firmware lineage or native WLAN acceptance; automatic flash layout forbidden. Detailed prior passes/failures remain in phase and dated evidence. |
@@ -569,7 +569,12 @@ N1E workaround. Dedicated source-extracted scan models now pass O0/O2
 ASan/UBSan on macOS and isolated Linux; exchange/cancellation and scheduler
 boundaries are mocked. Outer owner-preflight reservation settlement is not
 covered by the mock's cancellation case. Independent deadline review
-finds no blocker. Clean Core1 resource
+finds no blocker. Follow-up unsubmitted-reservation settlement is in development:
+only the exact UID/request of a healthy matching owner/FIFO epoch can finish
+locally after a no-TX refusal; uncertain/replaced state retains terminal cleanup.
+Real-owner boundary regression passes62 checks each O0/O2 on macOS/Linux;
+fresh205696B Core1 resource builds and independent settlement review pass.
+Clean Core1 resource
 and matched device builds pass. No hardware/native scan acceptance.
 
 Current device-bridge work (2026-10-10): a private resource contract now
@@ -33585,6 +33590,76 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   selectors, association, firmware privacy or live concurrency is qualified.
   No serial, flash, reset, credential or media mutation. Next: independent
   caller review/models and linked target build before port integration.
+- Caller compile correction pending: primary RV32 syntax with IEEE8021X_EAPOL,
+  CONFIG_IEEE80211W and CONFIG_WPS enabled exits1 at events.c:580: new summary
+  match helper takes wpa_bss* but its scan selector supplies wpa_scan_res*.
+  wlan-summary-callers-rv32-syntax.log retains this failed result. The author
+  corrected the actual type; the primary final syntax repeat exits0 with the
+  same WPS/PMF/IEEE8021X flags. Predicate/ABI success did not cover this caller
+  defect. No failed syntax run is counted as a target build. Final syntax log
+  wlan-summary-callers-final-rv32-syntax.log SHA256
+  47615b5edc4b453a3ce1993898899543f6bd4627b1733ab74ad4cce80fa65376;
+  events.c SHA256
+  16079b468ef7e7a7f4d5afa4a4794d8dbfdb08b7ff8f6839ed1cfc38540e732e;
+  wpa_supplicant.c SHA256
+  65892a35b4f601a661cad446be87f14373370a1dd360d8b935d2eb0f37d49706.
+  Summary-only SME bypass is explicitly refused before sme_authenticate;
+  genuine-IE legacy SME remains unchanged. Independent caller review and
+  source-based caller tests are still pending, not replaced by syntax.
+- Independent final caller/driver source audit finds no remaining security
+  bypass after the SME correction. Interoperability correction remains open:
+  driver capability validation intersects pairwise/group masks and rejects
+  valid disjoint supported roles. This is a false-negative, not a downgrade;
+  keep role-specific capability masks through validation rather than invent
+  combinations from a single union. No generic integration/feature acceptance
+  until this is corrected and conversion/caller tests plus full link pass.
+
+### 2026-10-10 - N1S-P unsubmitted reservation boundary correction in development
+
+- State: source correction and focused real-owner regression in development;
+  no corrected binary/runtime qualification. Previous scan models/builds
+  qualify the preceding source snapshot, not this new helper.
+- Finding: runtime wifi_owner_request reserves before owner_exchange. Actual
+  outer owner preflight refusal returns without settling IDs; first ScanStart
+  has submitted=0 and scan cleanup skips Stop. The next owner step refuses
+  active_uid and service cleanup retires the epoch. This is not a permanent
+  allocation leak but unnecessarily terminates the persistent owner.
+- Correction: wifi_owner_finish_unsubmitted_reservation validates submitted=0,
+  the full healthy same-generation owner/RX/FIFO and exact active UID/request,
+  then finishes that identity without reuse. Submitted, poisoned, pending or
+  replacement state is not cleared. No retry, deadline renewal or radio reset.
+  Existing scan extraction runner includes the new actual helper.
+- Focused tests will link actual hosted_owner exchange/preflight, not replace
+  it with the scan fake. Qualification and independent review remain pending.
+- Qualification follow-up: focused actual-owner tests now pass62 checks each
+  O0/O2 ASan/UBSan on macOS and isolated Linux; primary sessions68784/14324
+  actual exit0. Outer preflight refusal executes no callbacks and settles only
+  the exact reservation; subsequent reserve takes the next UID, not the old.
+  Submitted/poisoned/stale/wrong-ID/pending/busy counterprobes preserve state.
+  Exec/transport callbacks remain fake; no live concurrency claim.
+  reservation-final-macos.log SHA256
+  4e41919f76f3958f3056d9dbc4d1010bd930bc0e45100410ba6c2cbf78678f60;
+  reservation-final-linux.log SHA256
+  af6bd850a8b393acac17d55c53449462db3b77b81e1e4d37e7bbada7f1406fdb.
+  Existing scan models repeat37,447 checks each O0/O2 on macOS, exit0.
+  Clean Core1 owner=1/setup=1/init=1/reply=1/MAC=0/SCAN=0,
+  jc1060p470c-v2 resource build exits0 (session38386),205696B,
+  SHA256 a4e95c568c16c8cb97841e5012c47841241b81202c1850d6329e13aa4b7d8ad3.
+  All affected resource objects invalidated first; artifact frozen as
+  esp32p4wifi-core1-reservation.resource in owner-scan.5fA33U, not deployed.
+  runtime_probe.c SHA256
+  0267f530206cd94ffa0a000d7e1a2d3eb717234580a1cb44feb9b900dbc339a9;
+  focused test C e4e0bcfa0856bb8b63143df8d7a8c04e78208d86d2c4aa4328ee26abbb313ddc;
+  focused runner4159be8a2f4e937c2e4c4f69c9c8eef02231cec6016d5d0d9f539790699abd90.
+  Independent correction review finds no settlement blocker. The adjacent
+  conservative startup marker still sets init_attempted before exchange;
+  known unsubmitted Init refusal may therefore trigger bounded Deinit despite
+  no Init TX. Record this separately for startup cleanup refinement; it does
+  not permit a credential or runtime readiness claim. Runner executable mode
+  aligned with the adjacent scan runner; recorded invocations used sh.
+- Safety: source only; installed firmware/media unchanged, no credentials,
+  serial, reset or flash. Next: real-boundary tests, regressions and clean
+  matched target builds before any runtime acceptance.
 
 ## Evidence-entry template
 

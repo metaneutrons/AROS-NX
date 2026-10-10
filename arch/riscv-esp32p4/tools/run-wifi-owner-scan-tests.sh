@@ -102,6 +102,7 @@ extract_function wifi_owner_release
 extract_function wifi_owner_stopping
 extract_function wifi_yield
 extract_function wifi_owner_remaining
+extract_function wifi_owner_finish_unsubmitted_reservation
 extract_function wifi_owner_request
 extract_function wifi_scan_output_valid
 extract_function wifi_device_scan

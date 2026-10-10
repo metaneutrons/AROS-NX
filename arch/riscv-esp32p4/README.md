@@ -10,8 +10,11 @@ summary association is bounded to singleton WPA/RSN PSK TKIP/CCMP; SAE, EAP,
 WPS and PMF require additional truthful metadata, not invented support.
 Pure summary predicates pass88 scenarios/264 checks each O0/O2 ASan/UBSan
 on macOS and isolated Linux; the explicit RV32 ABI fixture also compiles.
-Driver target syntax passes with existing warnings. Caller/conversion tests,
-complete linking and deployment remain unverified; generic work is uncommitted.
+Driver and caller target syntax pass with existing warnings. Independent source
+audit finds no remaining security bypass, but flags an interoperability defect:
+disjoint pairwise/group cipher capabilities are conservatively refused. Correct
+the role-specific capability mapping before qualification. Caller/conversion
+tests, complete linking and deployment remain unverified; generic work is uncommitted.
 
 Persistent owner scan development (2026-10-10): private bridge ABI2 now adds
 an owner-service-only default-config scan, using fresh persistent UIDs rather
@@ -26,6 +29,12 @@ models pass at O0/O2 with ASan/UBSan on macOS and isolated Linux (37,447
 assertions each, including per-byte checks, not independent test cases).
 Exchange, cancellation, Exec, clock and SDIO are mocked; outer owner-preflight
 reservation settlement and actual concurrency/timing remain separate gates.
+Follow-up development settles an exact reserved UID after a proven unsubmitted
+exchange refusal only while the complete owner/FIFO generation remains healthy.
+Previously the next service step retired the owner unnecessarily. This source
+correction now passes actual-owner boundary models on macOS/Linux and a fresh
+Core1 resource build; independent review finds no settlement blocker. Earlier build/model
+identities above precede it.
 ABI1 modules must not be mixed with ABI2. This private path is not yet exposed
 as S2_GETNETWORKS: truthful protected-network metadata and per-device WPA
 offload integration remain required. No deployment or hardware pass.
