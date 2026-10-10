@@ -184,8 +184,10 @@ struct wifi_probe_context
      * yet, so even a matching AP cannot publish CONNECT or enable traffic. */
     struct p4_hosted_sta_ap_info link_snapshot;
     ULONG link_query_revision;
+    ULONG link_query_started;
     BOOL link_snapshot_matches_hint;
     BOOL association_active;
+    BOOL association_exchanging;
     ULONG association_started;
     const struct p4_wifi_association_cancel *association_cancel;
     ULONG owner_boot_start;
@@ -677,7 +679,8 @@ static int wifi_owner_stopping(void *opaque)
     if (context->association_active &&
         ((!wifi_owner_remaining(context, context->association_started, 8000000UL)) ||
          (context->host->lock.ss_Owner != FindTask(NULL) &&
-          context->association_cancel && context->association_cancel->cancelled &&
+          !context->association_exchanging && context->association_cancel &&
+          context->association_cancel->cancelled &&
           context->association_cancel->cancelled(context->association_cancel->context))))
         return 1;
     return (context->scan_active &&
@@ -707,6 +710,9 @@ static int wifi_owner_event(void *opaque,
          * again by an active association operation. Never infer CONNECT here. */
         ObtainSemaphore(&wifi_resource_base->client_lock);
         wifi_resource_base->associated = FALSE;
+        wifi_resource_base->link_state = P4_WIFI_LINK_UNKNOWN;
+        p4host_zero(&wifi_resource_base->observed_ap,
+                    sizeof(wifi_resource_base->observed_ap));
         p4host_zero(&wifi_resource_base->confirmed_ap,
                     sizeof(wifi_resource_base->confirmed_ap));
         ReleaseSemaphore(&wifi_resource_base->client_lock);
@@ -844,9 +850,15 @@ static int wifi_owner_request(struct wifi_probe_context *context,
     if (id == 278u) control->init_attempted = 1;
     if (id == 280u) control->start_attempted = 1;
     p4host_zero(&control->result, sizeof(control->result));
+    /* A caller cancellation invalidates publication immediately, but an
+     * already selected RPC drains its correlated reply within the existing
+     * deadline. Abandoning a submitted reply would unnecessarily poison the
+     * whole session and prevent the next selection from reconnecting. */
+    context->association_exchanging = TRUE;
     exchanged = p4_hosted_owner_exchange(owner, fifo, &control->ops,
         context->generation, checksum, control->request, written,
         remaining, &control->result);
+    context->association_exchanging = FALSE;
     p4host_zero(control->request, sizeof(control->request));
     if (!exchanged) {
         (void)wifi_owner_finish_unsubmitted_reservation(owner, fifo,
@@ -919,10 +931,11 @@ static int wifi_owner_request(struct wifi_probe_context *context,
     return control->status == 0;
 }
 
-/* One bounded query per observed UP_HINT revision, never per idle loop.
+/* Query a new event revision immediately; when association is enabled, also
+ * refresh at most once per second to detect loss without an event hint.
  * The query runs outside client/controller locks, on the serialized owner.
- * A hint is not an attempt ID. This snapshot remains diagnostic until native
- * association adds an active target, cancellation and real link policy.
+ * A hint is not an attempt ID. Native service compares a correlated snapshot
+ * against its still-committed target before reopening traffic.
  * Events drained during exchange invalidate the captured revision, including
  * a same-AP reconnect; later events invalidate the stored snapshot in callback.
  * A late/failed query cannot retain a previous matching snapshot. */
@@ -933,16 +946,24 @@ static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context,
     const ULONG timeout_us = 1000000UL;
     ULONG generation = context->generation;
     ULONG revision = context->link_observation.revision;
-    ULONG started;
+    ULONG started, wait;
     unsigned index;
-    if (context->link_observation.kind != P4_HOSTED_LINK_UP_HINT ||
-        context->link_query_revision == revision)
+    struct P4WifiBase *base = wifi_resource_base;
+    if (context->link_query_revision == revision &&
+        (!base->association_enabled ||
+         (ULONG)(wifi_owner_now(context) - context->link_query_started) < timeout_us))
         return 1;
     context->link_query_revision = revision;
     context->link_snapshot_matches_hint = FALSE;
     p4host_zero(&context->link_snapshot, sizeof(context->link_snapshot));
     p4host_zero(&control->ap_info, sizeof(control->ap_info));
     started = wifi_owner_now(context);
+    context->link_query_started = started;
+    ObtainSemaphore(&base->client_lock);
+    base->associated = FALSE;
+    base->link_state = P4_WIFI_LINK_UNKNOWN;
+    p4host_zero(&base->observed_ap, sizeof(base->observed_ap));
+    ReleaseSemaphore(&base->client_lock);
     if (!wifi_owner_request(context, owner, control, fifo, checksum, 294u,
                             timeout_us)) {
         p4host_zero(&control->ap_info, sizeof(control->ap_info));
@@ -950,8 +971,7 @@ static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context,
     }
     if (context->generation != generation ||
         context->link_observation.generation != generation ||
-        context->link_observation.revision != revision ||
-        context->link_observation.kind != P4_HOSTED_LINK_UP_HINT) {
+        context->link_observation.revision != revision) {
         p4host_zero(&control->ap_info, sizeof(control->ap_info));
         return 1;
     }
@@ -961,9 +981,55 @@ static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context,
         p4_hosted_owner_cancel(owner, fifo, generation);
         return 0;
     }
+    wait = wifi_owner_remaining(context, started, timeout_us);
+    if (wait > P4_HOSTED_OWNER_MAX_ACQUIRE_US) wait = P4_HOSTED_OWNER_MAX_ACQUIRE_US;
+    if (!wait || !wifi_owner_acquire(context, wait)) {
+        p4host_zero(&control->ap_info, sizeof(control->ap_info));
+        p4_hosted_owner_cancel(owner, fifo, generation);
+        return 0;
+    }
+    index = wifi_tx_session(context, generation) && !owner->poisoned &&
+        !fifo->poisoned && wifi_owner_remaining(context, started, timeout_us);
+    wifi_owner_release(context);
+    if (!index) {
+        p4host_zero(&control->ap_info, sizeof(control->ap_info));
+        p4_hosted_owner_cancel(owner, fifo, generation);
+        return 0;
+    }
     CopyMem(&control->ap_info, &context->link_snapshot,
             sizeof(context->link_snapshot));
     p4host_zero(&control->ap_info, sizeof(control->ap_info));
+    if (context->link_snapshot.status == 0) {
+        unsigned nonzero = 0;
+        const struct p4_hosted_scan_record *ap = &context->link_snapshot.ap;
+        for (index = 0; index < 6; ++index) nonzero |= ap->bssid[index];
+        if (!nonzero || (ap->bssid[0] & 1u) || !ap->ssid_size ||
+            ap->ssid_size > 32 || !ap->primary || ap->primary > 14 ||
+            (ap->authmode != 0 && ap->authmode != 3) ||
+            ap->pairwise_cipher != (ap->authmode ? 4 : 0) ||
+            ap->group_cipher != (ap->authmode ? 4 : 0)) {
+            p4_hosted_owner_cancel(owner, fifo, generation);
+            return 0;
+        }
+    } else if (context->link_snapshot.status != 0x300f) {
+        p4_hosted_owner_cancel(owner, fifo, generation);
+        return 0;
+    }
+    ObtainSemaphore(&base->client_lock);
+    if (context->link_snapshot.status == 0x300f) {
+        base->link_state = P4_WIFI_LINK_DOWN;
+    } else if (context->link_snapshot.status == 0 &&
+               context->link_snapshot.ap.ssid_size > 0 &&
+               context->link_snapshot.ap.ssid_size <= 32) {
+        CopyMem(context->link_snapshot.ap.ssid, base->observed_ap.ssid,
+                context->link_snapshot.ap.ssid_size);
+        base->observed_ap.ssid_length = context->link_snapshot.ap.ssid_size;
+        CopyMem(context->link_snapshot.ap.bssid, base->observed_ap.bssid, 6);
+        base->observed_ap.channel = context->link_snapshot.ap.primary;
+        base->observed_ap.authmode = context->link_snapshot.ap.authmode;
+        base->link_state = P4_WIFI_LINK_UP;
+    }
+    ReleaseSemaphore(&base->client_lock);
     if (context->link_snapshot.status != 0 ||
         context->link_snapshot.ap.ssid_size != context->link_observation.ssid_length ||
         context->link_snapshot.ap.ssid_size > P4_HOSTED_ASSOCIATION_SSID_SIZE ||
@@ -1188,6 +1254,8 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     runtime->scanning = TRUE; /* Serialize all transport service operations. */
     runtime->servicing = FALSE;
     base->associated = FALSE;
+    base->link_state = P4_WIFI_LINK_UNKNOWN;
+    p4host_zero(&base->observed_ap, sizeof(base->observed_ap));
     p4host_zero(&control->sta_config, sizeof(control->sta_config));
     p4host_zero(&base->confirmed_ap, sizeof(base->confirmed_ap));
     p4host_zero(&control->ap_info, sizeof(control->ap_info));
@@ -1195,11 +1263,13 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
             runtime->checksum, 283u,
             wifi_owner_remaining(context, started, 8000000UL))) goto finish;
+    if (wifi_owner_stopping(context)) goto finish;
     for (polls = 0; polls < 500 && !wifi_owner_stopping(context); ++polls) {
         revision = context->link_observation.revision;
         if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
                 runtime->checksum, 294u,
                 wifi_owner_remaining(context, started, 8000000UL))) goto finish;
+        if (wifi_owner_stopping(context)) goto finish;
         if (context->link_observation.revision != revision) {
             wifi_yield(context);
             continue;
@@ -1224,6 +1294,10 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
             wifi_owner_remaining(context, started, 8000000UL))) goto finish;
     p4host_zero(owned.password, sizeof(owned.password));
     p4host_zero(&control->sta_config, sizeof(control->sta_config));
+    /* The selected CONFIG exchange may have drained after supersession or
+     * Close. Do not submit CONNECT for that abandoned caller. Cleanup below
+     * ignores its publication hook, but keeps the original deadline. */
+    if (wifi_owner_stopping(context)) goto finish;
     if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
             runtime->checksum, 282u,
             wifi_owner_remaining(context, started, 8000000UL))) goto finish;
@@ -1232,6 +1306,7 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
         if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
                 runtime->checksum, 294u,
                 wifi_owner_remaining(context, started, 8000000UL))) goto finish;
+        if (wifi_owner_stopping(context)) goto finish;
         /* An event drained after this reply can already supersede it. Never
          * reopen traffic with that stale snapshot; query again without giving
          * the operation a fresh deadline. */
@@ -1261,6 +1336,9 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
                 CopyMem(control->ap_info.ap.bssid, base->confirmed_ap.bssid, 6);
                 base->confirmed_ap.channel = control->ap_info.ap.primary;
                 base->confirmed_ap.authmode = control->ap_info.ap.authmode;
+                CopyMem(&base->confirmed_ap, &base->observed_ap,
+                        sizeof(base->observed_ap));
+                base->link_state = P4_WIFI_LINK_UP;
             }
             /* A radio snapshot is not the device's current selection commit.
              * Keep traffic closed until the serialized service caller fences
@@ -1271,6 +1349,10 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
         wifi_yield(context);
     }
 finish:
+    /* Publication cancellation is not a transport abort. Once a correlated
+     * exchange has drained, clean up within the same remaining budget without
+     * allowing its caller's cancel hook to abort the cleanup itself. */
+    context->association_cancel = NULL;
     if (!succeeded && mutated) {
         remaining = wifi_owner_remaining(context, started, 8000000UL);
         if (runtime->owner->poisoned || runtime->fifo->poisoned ||
@@ -1285,6 +1367,87 @@ finish:
     p4host_zero(control->request, sizeof(control->request));
     p4host_zero(&control->ap_info, sizeof(control->ap_info));
     context->association_cancel = NULL;
+    context->association_active = FALSE;
+    context->association_started = 0;
+    runtime->scanning = FALSE;
+    runtime->servicing = TRUE;
+    return succeeded;
+}
+
+static BOOL wifi_device_disconnect(struct P4WifiBase *base)
+{
+    struct wifi_device_runtime *runtime;
+    struct wifi_probe_context *context;
+    struct wifi_owner_control *control;
+    ULONG started, generation, revision, wait;
+    unsigned polls;
+    BOOL succeeded = FALSE;
+    if (!base || !base->ready || !base->association_enabled || !base->runtime ||
+        base->owner_task != FindTask(NULL) ||
+        base->client_lock.ss_Owner != FindTask(NULL)) return FALSE;
+    runtime = base->runtime;
+    context = runtime->context;
+    if (!context || !context->host || !runtime->owner || !runtime->fifo ||
+        !runtime->control || !runtime->servicing || runtime->scanning ||
+        context->scan_active || context->association_active ||
+        runtime->owner->poisoned || runtime->fifo->poisoned ||
+        runtime->owner->pending_active || runtime->owner->ids.active_uid ||
+        runtime->owner->generation != context->generation ||
+        runtime->fifo->generation != context->generation ||
+        context->host->lock.ss_Owner == FindTask(NULL) ||
+        wifi_owner_stopping(context)) return FALSE;
+    control = runtime->control;
+    generation = context->generation;
+    started = wifi_owner_now(context);
+    context->association_started = started;
+    context->association_cancel = NULL;
+    context->association_active = TRUE;
+    runtime->scanning = TRUE;
+    runtime->servicing = FALSE;
+    base->associated = FALSE;
+    base->link_state = P4_WIFI_LINK_UNKNOWN;
+    p4host_zero(&base->confirmed_ap, sizeof(base->confirmed_ap));
+    p4host_zero(&base->observed_ap, sizeof(base->observed_ap));
+    p4host_zero(&control->ap_info, sizeof(control->ap_info));
+    control->status = -1;
+    if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
+            runtime->checksum, 283u,
+            wifi_owner_remaining(context, started, 8000000UL)) &&
+        (control->status != 0x300f || runtime->owner->poisoned ||
+         runtime->fifo->poisoned)) goto finish;
+    for (polls = 0; polls < 500 && !wifi_owner_stopping(context); ++polls) {
+        revision = context->link_observation.revision;
+        if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
+                runtime->checksum, 294u,
+                wifi_owner_remaining(context, started, 8000000UL))) goto finish;
+        if (context->link_observation.revision != revision) {
+            wifi_yield(context);
+            continue;
+        }
+        if (control->ap_info.status == 0x300f) {
+            wait = wifi_owner_remaining(context, started, 8000000UL);
+            if (wait > P4_HOSTED_OWNER_MAX_ACQUIRE_US)
+                wait = P4_HOSTED_OWNER_MAX_ACQUIRE_US;
+            if (!wait || !wifi_owner_acquire(context, wait)) goto finish;
+            succeeded = wifi_tx_session(context, generation) &&
+                !runtime->owner->poisoned && !runtime->fifo->poisoned &&
+                context->link_observation.generation == generation &&
+                context->link_observation.revision == revision &&
+                wifi_owner_remaining(context, started, 8000000UL);
+            wifi_owner_release(context);
+            if (wifi_owner_stopping(context)) succeeded = FALSE;
+            if (succeeded) base->link_state = P4_WIFI_LINK_DOWN;
+            goto finish;
+        }
+        if (control->ap_info.status != 0) goto finish;
+        wifi_yield(context);
+    }
+finish:
+    if (!succeeded)
+        p4_hosted_owner_cancel(runtime->owner, runtime->fifo, generation);
+    p4host_zero(&control->sta_config, sizeof(control->sta_config));
+    p4host_zero(control->request, sizeof(control->request));
+    p4host_zero(&control->ap_info, sizeof(control->ap_info));
     context->association_active = FALSE;
     context->association_started = 0;
     runtime->scanning = FALSE;
@@ -1382,6 +1545,8 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     ObtainSemaphore(&base->client_lock);
     base->ready = FALSE;
     base->associated = FALSE;
+    base->link_state = P4_WIFI_LINK_UNKNOWN;
+    p4host_zero(&base->observed_ap, sizeof(base->observed_ap));
     p4host_zero(&base->confirmed_ap, sizeof(base->confirmed_ap));
     base->runtime = NULL;
     base->owner_task = NULL;
@@ -1427,6 +1592,12 @@ static void wifi_owner_service(struct wifi_probe_context *context,
 #endif
 
 #if !P4_WIFI_HOSTED_OWNER
+static BOOL wifi_device_disconnect(struct P4WifiBase *base)
+{
+    (void)base;
+    return FALSE;
+}
+
 static BOOL wifi_device_associate(struct P4WifiBase *base,
     const struct p4_wifi_association_target *target,
     const struct p4_wifi_association_cancel *cancel)
@@ -2052,12 +2223,15 @@ static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
     P4WifiBase->send_frame = wifi_device_send;
     P4WifiBase->scan = wifi_device_scan;
     P4WifiBase->associate = wifi_device_associate;
+    P4WifiBase->disconnect = wifi_device_disconnect;
     /* These are explicit release assertions, not runtime attestations. A C6
      * logging fix alone cannot qualify the host's DMA/cache recovery path. */
     P4WifiBase->association_enabled =
         (P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED &&
          P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED) ? TRUE : FALSE;
     P4WifiBase->associated = FALSE;
+    P4WifiBase->link_state = P4_WIFI_LINK_UNKNOWN;
+    p4host_zero(&P4WifiBase->observed_ap, sizeof(P4WifiBase->observed_ap));
     p4host_zero(&P4WifiBase->confirmed_ap, sizeof(P4WifiBase->confirmed_ap));
     InitSemaphore(&P4WifiBase->client_lock);
     P4WifiBase->client = NULL;

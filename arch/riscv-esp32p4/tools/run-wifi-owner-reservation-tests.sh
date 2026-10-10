@@ -84,5 +84,7 @@ for optimization in 0 2; do
 		"$test_root/network/hosted_association.c" \
 		"$test_root/tools/test-wifi-owner-reservation.c" \
 		-o "$test_tmp/test-o$optimization"
-	"$test_tmp/test-o$optimization"
+	ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
+	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+		"$test_tmp/test-o$optimization"
 done

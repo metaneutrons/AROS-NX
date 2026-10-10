@@ -6,6 +6,38 @@
 #include <devices/sana2wireless.h>
 #include <utility/tagitem.h>
 
+/* A leave request is a standalone command, never mixed with credentials or
+ * a new profile. Effective tags and TAG_MORE/SKIP share one bounded budget. */
+static BOOL p4wlan_disassociate_options(const struct TagItem *tags)
+{
+    ULONG visited = 0;
+    BOOL seen = FALSE;
+    while (tags && visited < 128u) {
+        ULONG tag = tags->ti_Tag;
+        IPTR data = tags->ti_Data;
+        ++tags;
+        ++visited;
+        if (tag == TAG_DONE) return seen;
+        if (tag == TAG_IGNORE) continue;
+        if (tag == TAG_MORE) {
+            tags = (const struct TagItem *)data;
+            if (!tags) return seen;
+            continue;
+        }
+        if (tag == TAG_SKIP) {
+            IPTR address = (IPTR)tags;
+            if (data > 128u - visited ||
+                data > (~(IPTR)0 - address) / sizeof(*tags)) return FALSE;
+            tags = (const struct TagItem *)(address + data * sizeof(*tags));
+            visited += (ULONG)data;
+            continue;
+        }
+        if (tag != S2INFO_Disassociate || data != TRUE || seen) return FALSE;
+        seen = TRUE;
+    }
+    return FALSE;
+}
+
 /* Borrowed SANA pointers must be readable through their declared extent until
  * command Reply. The IE extent must come from a validated explicit caller
  * WPAInfoLength tag, not from ie[1]. Native binding remains disabled until the

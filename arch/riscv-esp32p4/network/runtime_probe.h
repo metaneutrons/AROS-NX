@@ -17,6 +17,7 @@ struct P4WifiBase
     BOOL (*associate)(struct P4WifiBase *,
         const struct p4_wifi_association_target *,
         const struct p4_wifi_association_cancel *);
+    BOOL (*disconnect)(struct P4WifiBase *);
     BOOL association_enabled;
     /* Protected by client_lock, independent of administrative S2_ONLINE.
      * ABI5 associate leaves this FALSE even on TRUE return. Only its owner
@@ -24,6 +25,8 @@ struct P4WifiBase
      * native RX/TX must also require the unit's committed link. */
     BOOL associated;
     struct p4_wifi_link_info confirmed_ap;
+    ULONG link_state;
+    struct p4_wifi_link_info observed_ap;
     /* Registration and callbacks own this lock. No SDMMC mutable field is
      * protected by it: only the actual transport owner can touch runtime. */
     struct SignalSemaphore client_lock;

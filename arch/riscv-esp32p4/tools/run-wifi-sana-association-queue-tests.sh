@@ -20,6 +20,10 @@ trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$extract" "$cases";
 : > "$extract"
 : > "$cases"
 
+UBSAN_OPTIONS="${UBSAN_OPTIONS:+$UBSAN_OPTIONS:}halt_on_error=1"
+ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}halt_on_error=1"
+export UBSAN_OPTIONS ASAN_OPTIONS
+
 extract_define() {
     macro_name=$1
     macro_file=$2
@@ -60,6 +64,14 @@ extract_block() {
 
 extract_function() {
     function_name=$1
+    matches=$(awk -v name="$function_name" '
+        $0 ~ "^[[:space:]]*static[[:space:]].*" name "[[:space:]]*\\(" { count++ }
+        END { print count + 0 }
+    ' "$source_file")
+    if [ "$matches" -ne 1 ]; then
+        echo "expected one source definition of $function_name, found $matches" >&2
+        exit 1
+    fi
     awk -v name="$function_name" '
         !candidate && !copy && $0 ~ "^[[:space:]]*static[[:space:]].*" name "[[:space:]]*\\(" {
             candidate = 1
@@ -125,13 +137,18 @@ extract_case() {
     printf '\n' >> "$cases"
 }
 
-for macro_name in S2EVENT_CONNECT S2EVENT_DISCONNECT; do
+for macro_name in S2EVENT_ONLINE S2EVENT_OFFLINE S2EVENT_CONNECT \
+                  S2EVENT_DISCONNECT S2EVENT_ERROR; do
     extract_define "$macro_name" "$sana_header"
+done
+for macro_name in P4_WIFI_LINK_UNKNOWN P4_WIFI_LINK_UP P4_WIFI_LINK_DOWN; do
+    extract_define "$macro_name" "$bridge_file"
 done
 for macro_name in S2_SETOPTIONS S2_GETNETWORKINFO; do
     extract_define "$macro_name" "$wireless_header"
 done
-for macro_name in CMD_FLUSH; do
+extract_define S2_OFFLINE "$sana_header"
+for macro_name in CMD_FLUSH CMD_NONSTD; do
     extract_define "$macro_name" "$io_header"
 done
 for macro_name in IOERR_ABORTED; do
@@ -163,16 +180,20 @@ extract_function p4wlan_retire_association_locked
 extract_function p4wlan_invalidate_selection_locked
 extract_function p4wlan_cancel_opener_association_locked
 extract_function p4wlan_flush_opener_locked
+extract_function p4wlan_flush_all_locked
 extract_function p4wlan_event_locked
+extract_function p4wlan_set_offline_locked
 extract_function p4wlan_term_io
 extract_function p4wlan_immediate_error
 extract_function p4wlan_association_cancelled
 extract_function p4wlan_confirmed_target_matches
 extract_function p4wlan_associate_one
+extract_function p4wlan_link_info_equal
+extract_function p4wlan_maintain_link
 extract_block struct p4wlan_network_publication "$source_file"
 extract_function p4wlan_network_info_locked
 
-for case_name in S2_SETOPTIONS S2_GETNETWORKINFO CMD_FLUSH; do
+for case_name in S2_SETOPTIONS S2_GETNETWORKINFO S2_OFFLINE CMD_FLUSH; do
     extract_case "$case_name"
 done
 

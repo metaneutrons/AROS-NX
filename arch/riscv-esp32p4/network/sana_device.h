@@ -125,6 +125,8 @@ struct p4wlan_unit
     struct p4_wifi_link_info link_info;
     ULONG selection_token;
     BOOL link_committed;
+    BOOL teardown_pending;
+    BOOL teardown_notify;
     struct Sana2DeviceStats stats;
     struct Sana2DeviceQuery query;
     UBYTE mac[6];

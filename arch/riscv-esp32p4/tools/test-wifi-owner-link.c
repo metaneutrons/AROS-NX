@@ -8,14 +8,21 @@
 #include <string.h>
 
 typedef uint32_t ULONG;
+typedef uint8_t UBYTE;
 typedef int BOOL;
 #define FALSE 0
 #define TRUE 1
+
+/* Generated from device_bridge.h by the test runner. */
+#include "wifi_owner_link_types.inc"
 
 struct Task { unsigned marker; };
 struct SignalSemaphore { struct Task *ss_Owner; unsigned depth; };
 struct P4WifiBase {
     BOOL associated;
+    struct p4_wifi_link_info confirmed_ap;
+    ULONG link_state;
+    struct p4_wifi_link_info observed_ap;
     struct SignalSemaphore client_lock;
 };
 
@@ -214,22 +221,54 @@ static int bytes_are_zero(const void *memory, size_t size)
     return 1;
 }
 
+static void seed_resource_link(void)
+{
+    test_resource.associated = TRUE;
+    test_resource.link_state = P4_WIFI_LINK_UP;
+    memset(&test_resource.confirmed_ap, 0x5a,
+           sizeof test_resource.confirmed_ap);
+    memset(&test_resource.observed_ap, 0xa5,
+           sizeof test_resource.observed_ap);
+}
+
+static void check_resource_link_invalidated(void)
+{
+    CHECK(test_resource.associated == FALSE);
+    CHECK(test_resource.link_state == P4_WIFI_LINK_UNKNOWN);
+    CHECK(bytes_are_zero(&test_resource.confirmed_ap,
+                         sizeof test_resource.confirmed_ap));
+    CHECK(bytes_are_zero(&test_resource.observed_ap,
+                         sizeof test_resource.observed_ap));
+}
+
 static void check_callback_refusal_unchanged(
     struct wifi_probe_context *context,
     const struct p4_hosted_inbox_item *item)
 {
     struct p4_hosted_link_observation before;
+    struct p4_wifi_link_info confirmed_before, observed_before;
+    ULONG link_state_before;
     uint32_t events_before = context->owner_events;
     uint32_t last_before = context->owner_last_event;
     memset(&test_resource, 0, sizeof test_resource);
-    test_resource.associated = TRUE;
+    seed_resource_link();
     wifi_resource_base = &test_resource;
+    memcpy(&confirmed_before, &test_resource.confirmed_ap,
+           sizeof confirmed_before);
+    memcpy(&observed_before, &test_resource.observed_ap,
+           sizeof observed_before);
+    link_state_before = test_resource.link_state;
     memcpy(&before, &context->link_observation, sizeof before);
     CHECK(!wifi_owner_event(context, item));
     CHECK(memcmp(&before, &context->link_observation, sizeof before) == 0);
     CHECK(context->owner_events == events_before);
     CHECK(context->owner_last_event == last_before);
     CHECK(test_resource.associated == TRUE);
+    CHECK(test_resource.link_state == link_state_before);
+    CHECK(memcmp(&confirmed_before, &test_resource.confirmed_ap,
+                 sizeof confirmed_before) == 0);
+    CHECK(memcmp(&observed_before, &test_resource.observed_ap,
+                 sizeof observed_before) == 0);
     CHECK(test_resource.client_lock.depth == 0u);
 }
 
@@ -244,7 +283,7 @@ static void test_callback_copies_775_and_accepts_776_down(void)
 
     memset(&context, 0, sizeof context);
     memset(&test_resource, 0, sizeof test_resource);
-    test_resource.associated = TRUE;
+    seed_resource_link();
     wifi_resource_base = &test_resource;
     context.generation = 34u;
     CHECK(p4_hosted_link_init(&context.link_observation,
@@ -263,7 +302,7 @@ static void test_callback_copies_775_and_accepts_776_down(void)
     CHECK(make_item(&item, 775u, 0, connected_ssid, 32u,
                     connected_bssid));
     CHECK(wifi_owner_event(&context, &item) == 1);
-    CHECK(test_resource.associated == FALSE);
+    check_resource_link_invalidated();
     CHECK(test_resource.client_lock.depth == 0u);
     CHECK(bytes_are_zero(&context.link_snapshot,
                          sizeof context.link_snapshot));
@@ -293,8 +332,9 @@ static void test_callback_copies_775_and_accepts_776_down(void)
     context.link_snapshot_matches_hint = TRUE;
     CHECK(make_item(&item, 776u, 0, disconnected_ssid, 8u,
                     disconnected_bssid));
+    seed_resource_link();
     CHECK(wifi_owner_event(&context, &item) == 1);
-    CHECK(test_resource.associated == FALSE);
+    check_resource_link_invalidated();
     CHECK(test_resource.client_lock.depth == 0u);
     CHECK(bytes_are_zero(&context.link_snapshot,
                          sizeof context.link_snapshot));

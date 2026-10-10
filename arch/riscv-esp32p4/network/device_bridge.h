@@ -5,10 +5,15 @@
 #include <exec/types.h>
 #include "hosted_scan.h"
 
-#define P4_WIFI_DEVICE_BRIDGE_ABI 5u
+#define P4_WIFI_DEVICE_BRIDGE_ABI 6u
 #define P4_WIFI_DEVICE_BRIDGE_NAME "esp32p4wifi.resource"
 
 struct P4WifiBase;
+/* Correlated current-AP observations only. UID0 hints make this UNKNOWN,
+ * never DOWN. DOWN requires the peer's exact NOT_CONNECT response. */
+#define P4_WIFI_LINK_UNKNOWN 0u
+#define P4_WIFI_LINK_UP 1u
+#define P4_WIFI_LINK_DOWN 2u
 /* Credential-free confirmed AP snapshot. Only the serialized service caller
  * may copy it after associate returns TRUE; hints and requested targets are
  * not substitutes for the peer's correlated current-AP result. */
@@ -53,7 +58,7 @@ struct p4_wifi_scan_result {
  * outside the SDMMC semaphore, serialized by the client's registration lock.
  * Never attach/detach from a callback. Device close must not hold its own
  * semaphore while calling detach. No callback may retain frame pointers.
- * service may call send_frame, scan or associate; frame/ready/stopped may not
+ * service may call send_frame, scan, associate or disconnect; frame/ready/stopped may not
  * access transport. scan/associate suppress transport re-entry throughout.
  * No callback may wait for another client callback or invoke user code which
  * closes the device. Permanent noexpunge modules protect callback code. The
@@ -104,5 +109,13 @@ struct p4_wifi_device_callbacks {
  * assertions are granted; builds cannot verify those hardware gates. Even an
  * open target must not bypass either gate. Failure/cancellation
  * never permits traffic. Neither ready nor S2_ONLINE establishes link-up. */
+
+/* ABI6 disconnect is owner-service-only, under client_lock and without a
+ * device unit lock. It uses one aggregate eight-second deadline, verifies
+ * NOT_CONNECT under a stable event revision and live host epoch, and leaves
+ * traffic closed. Failure is not proof of radio absence. UNKNOWN/UP/DOWN and
+ * observed_ap are owner-published under client_lock; the native device must
+ * compare UP against its still-current accepted identity before reopening
+ * traffic. Observations never create an unsolicited new association. */
 
 #endif

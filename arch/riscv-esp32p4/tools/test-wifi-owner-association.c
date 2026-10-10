@@ -162,6 +162,8 @@ struct fixture {
     unsigned cancel_called_owned;
     unsigned request_count[600];
     unsigned submitted_count[600];
+    ULONG first_disconnect_timeout;
+    ULONG cleanup_disconnect_timeout;
     unsigned no_response_count;
     unsigned malformed_request_count;
     unsigned secret_seen_in_rpc;
@@ -175,6 +177,12 @@ struct fixture {
     unsigned postreply_disconnect_once;
     unsigned repeat_final_event;
     unsigned cancel_after_config;
+    uint32_t cancel_after_response_id;
+    unsigned cancel_after_response_occurrence;
+    unsigned expect_disconnect_final_fence;
+    unsigned disconnect_intermediate_unknown_checks;
+    unsigned disconnect_final_fence_checks;
+    int32_t last_ap_info_status;
     unsigned deadline_during_config;
     unsigned break_after_initial_disconnect;
     unsigned generation_change_final;
@@ -229,6 +237,8 @@ static void check_confirmed_ap_matches(ULONG authmode)
     expected.channel = 6u;
     expected.authmode = authmode;
     CHECK(memcmp(&f.base.confirmed_ap, &expected, sizeof(expected)) == 0);
+    CHECK(memcmp(&f.base.observed_ap, &expected, sizeof(expected)) == 0);
+    CHECK(f.base.link_state == P4_WIFI_LINK_UP);
 }
 
 static ULONG fake_now_us(void)
@@ -241,6 +251,17 @@ static BOOL fake_host_acquire(struct P4SDMMCHost *host, ULONG wait_us)
     ++f.acquire_calls;
     CHECK(host == &f.host);
     CHECK(wait_us > 0u && wait_us <= P4_HOSTED_OWNER_MAX_ACQUIRE_US);
+    if (f.expect_disconnect_final_fence && f.request_count[294u] == 2u &&
+        f.last_ap_info_status == 0x300f) {
+        CHECK(f.base.link_state == P4_WIFI_LINK_UNKNOWN);
+        CHECK(f.base.associated == FALSE);
+        CHECK(f.context.generation == TEST_GENERATION);
+        CHECK(f.context.link_observation.generation == TEST_GENERATION);
+        CHECK(f.context.link_observation.revision == 0u);
+        CHECK(f.host.generation == TEST_GENERATION);
+        CHECK(f.owner.poisoned == 0u && f.fifo.poisoned == 0u);
+        ++f.disconnect_final_fence_checks;
+    }
     if (host->lock.ss_Owner || f.host.dma_faulted)
         return FALSE;
     host->lock.ss_Owner = current_task;
@@ -512,6 +533,12 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
         return 0;
     }
     occurrence = ++state->request_count[request.msg_id];
+    if (request.msg_id == 283u) {
+        if (occurrence == 1u)
+            state->first_disconnect_timeout = timeout_us;
+        else if (occurrence == 2u)
+            state->cleanup_disconnect_timeout = timeout_us;
+    }
     if (request.msg_id == 284u && state->is_protected) {
         const uint8_t *needle = watched_secret;
         size_t i;
@@ -617,6 +644,19 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
                (!state->fail_occurrence || occurrence == state->fail_occurrence)) {
         status = state->fail_status;
     }
+    if (request.msg_id == 294u) {
+        state->last_ap_info_status = status;
+        if (state->expect_disconnect_final_fence && occurrence == 1u) {
+            CHECK(status == 0);
+            CHECK(state->base.link_state == P4_WIFI_LINK_UNKNOWN);
+            CHECK(state->base.associated == FALSE);
+            CHECK(bytes_zero(&state->base.confirmed_ap,
+                             sizeof(state->base.confirmed_ap)));
+            CHECK(bytes_zero(&state->base.observed_ap,
+                             sizeof(state->base.observed_ap)));
+            ++state->disconnect_intermediate_unknown_checks;
+        }
+    }
 
     if (request.msg_id == 283u && state->break_after_initial_disconnect &&
         occurrence == 1u)
@@ -641,6 +681,10 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
         return 0;
     }
     fake_now += 1000u;
+    if (request.msg_id == state->cancel_after_response_id &&
+        (!state->cancel_after_response_occurrence ||
+         occurrence == state->cancel_after_response_occurrence))
+        state->cancel_requested = TRUE;
     if (state->cancel_final_snapshot && request.msg_id == 294u &&
         state->request_count[282u] != 0u &&
         state->final_ap_calls == 1u && status == 0)
@@ -671,7 +715,9 @@ static void fixture_init(void)
     f.base.ready = TRUE;
     f.base.association_enabled = TRUE;
     f.base.associated = TRUE;
+    f.base.link_state = P4_WIFI_LINK_UP;
     memset(&f.base.confirmed_ap, 0xa5, sizeof(f.base.confirmed_ap));
+    memset(&f.base.observed_ap, 0xa5, sizeof(f.base.observed_ap));
     f.base.owner_task = current_task;
     f.base.client_lock.ss_Owner = current_task;
     f.base.client_lock.depth = 1u;
@@ -718,6 +764,11 @@ static BOOL invoke(struct p4_wifi_association_target *target)
     return wifi_device_associate(&f.base, target, &cancel);
 }
 
+static BOOL invoke_disconnect(void)
+{
+    return wifi_device_disconnect(&f.base);
+}
+
 static void check_restored(BOOL expected_associated)
 {
     CHECK(f.context.association_active == FALSE);
@@ -739,6 +790,51 @@ static void check_secret_wiped(void)
     CHECK(bytes_zero(&f.control.sta_config, sizeof(f.control.sta_config)));
     CHECK(bytes_zero(f.control.request, sizeof(f.control.request)));
     CHECK(bytes_zero(&f.control.ap_info, sizeof(f.control.ap_info)));
+}
+
+static void check_disconnected_down(void)
+{
+    CHECK(f.base.associated == FALSE);
+    CHECK(f.base.link_state == P4_WIFI_LINK_DOWN);
+    CHECK(bytes_zero(&f.base.confirmed_ap, sizeof(f.base.confirmed_ap)));
+    CHECK(bytes_zero(&f.base.observed_ap, sizeof(f.base.observed_ap)));
+    CHECK(f.context.association_active == FALSE);
+    CHECK(f.context.association_started == 0u);
+    CHECK(f.runtime.scanning == FALSE && f.runtime.servicing == TRUE);
+    CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
+    CHECK(f.base.client_lock.ss_Owner == current_task);
+    CHECK(f.base.client_lock.depth == 1u);
+}
+
+static void check_disconnect_failure_unknown(void)
+{
+    CHECK(f.base.associated == FALSE);
+    CHECK(f.base.link_state == P4_WIFI_LINK_UNKNOWN);
+    CHECK(bytes_zero(&f.base.confirmed_ap, sizeof(f.base.confirmed_ap)));
+    CHECK(bytes_zero(&f.base.observed_ap, sizeof(f.base.observed_ap)));
+    CHECK(f.context.association_active == FALSE);
+    CHECK(f.context.association_started == 0u);
+    CHECK(f.runtime.scanning == FALSE && f.runtime.servicing == TRUE);
+    CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
+    CHECK(f.base.client_lock.ss_Owner == current_task);
+    CHECK(f.base.client_lock.depth == 1u);
+}
+
+static void check_disconnect_refused_unchanged(void)
+{
+    CHECK(f.exchange_calls == 0u);
+    CHECK(f.base.associated == TRUE);
+    CHECK(f.base.link_state == P4_WIFI_LINK_UP);
+    CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
+    {
+        const uint8_t *bytes = (const uint8_t *)&f.base.confirmed_ap;
+        size_t index;
+        for (index = 0u; index < sizeof(f.base.confirmed_ap); ++index)
+            CHECK(bytes[index] == 0xa5u);
+        bytes = (const uint8_t *)&f.base.observed_ap;
+        for (index = 0u; index < sizeof(f.base.observed_ap); ++index)
+            CHECK(bytes[index] == 0xa5u);
+    }
 }
 
 static void test_success_open_and_protected(void)
@@ -766,6 +862,8 @@ static void test_success_open_and_protected(void)
     CHECK(wifi_owner_event(&f.context, &event_item) == 1);
     CHECK(f.context.link_observation.kind == P4_HOSTED_LINK_UP_HINT);
     CHECK(f.base.associated == FALSE);
+    CHECK(f.base.link_state == P4_WIFI_LINK_UNKNOWN);
+    CHECK(bytes_zero(&f.base.observed_ap, sizeof(f.base.observed_ap)));
     check_confirmed_ap_cleared();
     CHECK(bytes_zero(&f.control.sta_config, sizeof(f.control.sta_config)));
     CHECK(bytes_zero(f.control.request, sizeof(f.control.request)));
@@ -934,6 +1032,53 @@ static void test_bounded_repeated_event_races(void)
     check_restored(FALSE);
 }
 
+static void check_cancelled_association_cleanup(unsigned expected_ap_queries)
+{
+    ULONG expected_elapsed = (2u + expected_ap_queries) * 1000u;
+    ULONG expected_budget_delta = (1u + expected_ap_queries) * 1000u;
+    CHECK(f.request_count[283u] == 2u);
+    CHECK(f.submitted_count[283u] == 2u);
+    CHECK(f.request_count[294u] == expected_ap_queries);
+    CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+    CHECK(f.submitted_count[284u] == 0u && f.submitted_count[282u] == 0u);
+    CHECK(f.owner.poisoned == 0u && f.fifo.poisoned == 0u);
+    CHECK(f.owner.ids.retired == 0u && f.owner.ids.active_uid == 0u);
+    CHECK(f.first_disconnect_timeout == 8000000u);
+    CHECK(f.cleanup_disconnect_timeout < f.first_disconnect_timeout);
+    CHECK(f.first_disconnect_timeout - f.cleanup_disconnect_timeout ==
+          expected_budget_delta);
+    CHECK(fake_now - 100000u == expected_elapsed);
+    CHECK(f.acquire_calls == f.release_calls);
+    CHECK(f.cancel_called_owned == 0u);
+    CHECK(f.base.link_state == P4_WIFI_LINK_UNKNOWN);
+    CHECK(bytes_zero(&f.base.confirmed_ap, sizeof(f.base.confirmed_ap)));
+    CHECK(bytes_zero(&f.base.observed_ap, sizeof(f.base.observed_ap)));
+    check_secret_wiped();
+    check_restored(FALSE);
+}
+
+static void test_cancel_between_initial_rpc_steps(void)
+{
+    struct p4_wifi_association_target target;
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.cancel_after_response_id = 283u;
+    f.cancel_after_response_occurrence = 1u;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.cancel_requested == TRUE && f.cancel_calls != 0u);
+    check_cancelled_association_cleanup(0u);
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.cancel_after_response_id = 294u;
+    f.cancel_after_response_occurrence = 1u;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.cancel_requested == TRUE && f.cancel_calls != 0u);
+    CHECK(f.last_ap_info_status == 0x300f);
+    check_cancelled_association_cleanup(1u);
+}
+
 static void test_cancel_break_timeout_and_generation_retirement(void)
 {
     struct p4_wifi_association_target target;
@@ -950,8 +1095,26 @@ static void test_cancel_break_timeout_and_generation_retirement(void)
     target_init(&target, 1u);
     f.cancel_after_config = 1u;
     CHECK(invoke(&target) == FALSE);
-    CHECK(f.request_count[284u] == 1u && f.submitted_count[282u] == 0u);
+    CHECK(f.request_count[284u] == 1u && f.submitted_count[284u] == 1u);
+    CHECK(f.submitted_count[282u] == 0u);
+    CHECK(f.request_count[283u] >= 2u); /* Initial and healthy cleanup leave. */
+    CHECK(f.owner.poisoned == 0u && f.fifo.poisoned == 0u);
+    CHECK(f.owner.ids.retired == 0u && f.owner.ids.active_uid == 0u);
     CHECK(f.cancel_called_owned == 0u);
+    check_secret_wiped();
+    check_confirmed_ap_cleared();
+    check_restored(FALSE);
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.timeout_request_id = 284u;
+    f.timeout_occurrence = 1u;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.request_count[284u] == 1u && f.submitted_count[284u] == 1u);
+    CHECK(f.request_count[282u] == 0u);
+    CHECK(f.request_count[283u] == 1u); /* No cleanup over an ambiguous session. */
+    CHECK(f.owner.poisoned == 1u && f.fifo.poisoned == 1u);
+    CHECK(f.owner.ids.retired == 1u && f.owner.ids.active_uid == 0u);
     check_secret_wiped();
     check_confirmed_ap_cleared();
     check_restored(FALSE);
@@ -1033,8 +1196,154 @@ static void test_transport_timeout_and_malformed_correlation(void)
     check_restored(FALSE);
 }
 
+static void test_disconnect_requires_healthy_service_gate(void)
+{
+    fixture_init();
+    f.base.association_enabled = FALSE;
+    CHECK(invoke_disconnect() == FALSE);
+    check_disconnect_refused_unchanged();
+
+    fixture_init();
+    f.runtime.servicing = FALSE;
+    CHECK(invoke_disconnect() == FALSE);
+    check_disconnect_refused_unchanged();
+
+    fixture_init();
+    f.runtime.scanning = TRUE;
+    CHECK(invoke_disconnect() == FALSE);
+    CHECK(f.exchange_calls == 0u);
+    CHECK(f.base.associated == TRUE && f.base.link_state == P4_WIFI_LINK_UP);
+
+    fixture_init();
+    f.owner.poisoned = 1u;
+    CHECK(invoke_disconnect() == FALSE);
+    check_disconnect_refused_unchanged();
+
+    fixture_init();
+    f.context.association_active = TRUE;
+    CHECK(invoke_disconnect() == FALSE);
+    check_disconnect_refused_unchanged();
+
+    fixture_init();
+    f.base.client_lock.ss_Owner = NULL;
+    f.base.client_lock.depth = 0u;
+    CHECK(invoke_disconnect() == FALSE);
+    check_disconnect_refused_unchanged();
+}
+
+static void test_disconnect_uses_correlated_not_connected(void)
+{
+    fixture_init();
+    f.fail_id = 283u;
+    f.fail_status = 0x300f;
+    CHECK(invoke_disconnect() == TRUE);
+    CHECK(f.request_count[283u] == 1u);
+    CHECK(f.request_count[294u] == 1u);
+    CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+    CHECK(f.control.status == 0x300f);
+    CHECK(f.owner.poisoned == 0u && f.fifo.poisoned == 0u);
+    CHECK(f.acquire_calls == f.release_calls);
+    CHECK(f.max_timeout <= 8000000u);
+    check_disconnected_down();
+}
+
+static void test_disconnect_waits_through_attached_snapshot(void)
+{
+    fixture_init();
+    f.expect_disconnect_final_fence = 1u;
+    f.fail_id = 294u;
+    f.fail_occurrence = 1u;
+    f.fail_status = 0; /* First query still sees an attached station. */
+    CHECK(invoke_disconnect() == TRUE);
+    CHECK(f.request_count[283u] == 1u);
+    CHECK(f.request_count[294u] == 2u);
+    CHECK(f.disconnect_intermediate_unknown_checks == 1u);
+    CHECK(f.disconnect_final_fence_checks == 1u);
+    CHECK(f.last_ap_info_status == 0x300f);
+    CHECK(f.context.generation == TEST_GENERATION);
+    CHECK(f.context.link_observation.generation == TEST_GENERATION);
+    CHECK(f.context.link_observation.revision == 0u);
+    CHECK(f.base.link_state == P4_WIFI_LINK_DOWN);
+    CHECK(f.base.associated == FALSE);
+    CHECK(bytes_zero(&f.base.confirmed_ap, sizeof(f.base.confirmed_ap)));
+    CHECK(bytes_zero(&f.base.observed_ap, sizeof(f.base.observed_ap)));
+    CHECK(f.owner.poisoned == 0u && f.fifo.poisoned == 0u);
+    CHECK(f.owner.ids.retired == 0u && f.owner.ids.active_uid == 0u);
+    CHECK(f.acquire_calls == f.release_calls);
+    CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
+    CHECK(f.max_timeout <= 8000000u);
+    check_disconnected_down();
+}
+
+static void test_disconnect_failures_never_infer_down(void)
+{
+    fixture_init();
+    f.fail_id = 283u;
+    f.fail_status = 5;
+    CHECK(invoke_disconnect() == FALSE);
+    CHECK(f.request_count[283u] == 1u && f.request_count[294u] == 0u);
+    CHECK(f.owner.poisoned == 1u && f.fifo.poisoned == 1u);
+    check_disconnect_failure_unknown();
+
+    fixture_init();
+    f.fail_id = 294u;
+    f.fail_status = 5;
+    CHECK(invoke_disconnect() == FALSE);
+    CHECK(f.request_count[283u] == 1u && f.request_count[294u] == 1u);
+    CHECK(f.owner.poisoned == 1u && f.fifo.poisoned == 1u);
+    check_disconnect_failure_unknown();
+
+    fixture_init();
+    f.timeout_request_id = 294u;
+    CHECK(invoke_disconnect() == FALSE);
+    CHECK(f.request_count[283u] == 1u && f.request_count[294u] == 1u);
+    CHECK(f.owner.poisoned == 1u && f.fifo.poisoned == 1u);
+    check_disconnect_failure_unknown();
+
+    fixture_init();
+    f.fail_id = 294u;
+    f.fail_status = 0; /* Still present throughout the aggregate deadline. */
+    CHECK(invoke_disconnect() == FALSE);
+    CHECK(f.request_count[283u] == 1u);
+    CHECK(f.request_count[294u] <= 500u);
+    CHECK(fake_now - 100000u >= 8000000u);
+    CHECK(f.owner.poisoned == 1u && f.fifo.poisoned == 1u);
+    check_disconnect_failure_unknown();
+}
+
+static void test_disconnect_revision_race(void)
+{
+    fixture_init();
+    f.initial_event_once = 1u;
+    CHECK(invoke_disconnect() == TRUE);
+    CHECK(f.request_count[294u] == 2u);
+    CHECK(f.context.link_observation.revision == 1u);
+    CHECK(f.base.link_state == P4_WIFI_LINK_DOWN);
+    CHECK(f.base.associated == FALSE);
+    CHECK(bytes_zero(&f.base.observed_ap, sizeof(f.base.observed_ap)));
+    CHECK(f.owner.poisoned == 0u && f.fifo.poisoned == 0u);
+    CHECK(f.acquire_calls == f.release_calls);
+    CHECK(f.runtime.servicing == TRUE && f.runtime.scanning == FALSE);
+
+    fixture_init();
+    f.repeat_initial_event = 1u;
+    CHECK(invoke_disconnect() == FALSE);
+    CHECK(f.request_count[294u] <= 500u);
+    CHECK(fake_now - 100000u >= 8000000u);
+    CHECK(f.base.link_state == P4_WIFI_LINK_UNKNOWN);
+    CHECK(f.base.associated == FALSE);
+    CHECK(bytes_zero(&f.base.observed_ap, sizeof(f.base.observed_ap)));
+    CHECK(f.owner.poisoned == 1u && f.fifo.poisoned == 1u);
+    CHECK(f.acquire_calls == f.release_calls);
+}
+
 int main(void)
 {
+    test_disconnect_requires_healthy_service_gate();
+    test_disconnect_uses_correlated_not_connected();
+    test_disconnect_waits_through_attached_snapshot();
+    test_disconnect_failures_never_infer_down();
+    test_disconnect_revision_race();
     test_success_open_and_protected();
     test_final_cancellation_refuses_snapshot();
     test_default_gate_and_validation_refuse_without_rpc();
@@ -1042,6 +1351,7 @@ int main(void)
     test_ap_identity_cipher_and_channel_validation();
     test_initial_and_final_event_races();
     test_bounded_repeated_event_races();
+    test_cancel_between_initial_rpc_steps();
     test_cancel_break_timeout_and_generation_retirement();
     test_transport_timeout_and_malformed_correlation();
     if (f.acquire_calls != f.release_calls || f.cancel_called_owned ||

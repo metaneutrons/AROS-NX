@@ -66,6 +66,7 @@ struct wifi_probe_context {
     BOOL scan_active;
     ULONG association_started;
     BOOL association_active;
+    BOOL association_exchanging;
     const struct p4_wifi_association_cancel *association_cancel;
 };
 
@@ -230,6 +231,12 @@ struct fixture {
     UBYTE frame[TEST_FRAME_SIZE];
 };
 
+static BOOL mock_disconnect(struct P4WifiBase *base)
+{
+    (void)base;
+    return FALSE;
+}
+
 static void reset_counters(void)
 {
     semaphore_fail_next = 0u;
@@ -283,6 +290,7 @@ static void fixture_init(struct fixture *f)
     f->runtime.servicing = TRUE;
     f->base.ready = TRUE;
     f->base.associated = TRUE;
+    f->base.disconnect = mock_disconnect;
     f->base.runtime = &f->runtime;
     f->base.owner_task = current_task;
     memset(f->owner.wire, 0xa5, sizeof(f->owner.wire));

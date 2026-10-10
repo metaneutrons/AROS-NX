@@ -1,5 +1,24 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Native radio lifecycle development (2026-10-10): private ABI6 adds bounded
+owner-service Disconnect/absence confirmation, queued administrative teardown,
+standalone Disassociate options and correlated periodic current-AP observation.
+UID0 hints close traffic but cannot claim loss; confirmed DOWN or a different
+current AP revokes a previously accepted link. A matching confirmed UP restores
+only that accepted link, never creates unsolicited CONNECT. Selected RPCs drain
+before caller cancellation cleanup under the original deadline, preserving a
+healthy session for a later selection. Source-extracted models pass on macOS
+and network-isolated Linux at O0/O2 with ASan/UBSan: association25999,
+AP observer393, bridge219, options89 cases/258 checks, queue785,
+lifetime1482, datapath16507, events6/70, scan295; sibling link102,
+reservation63 and owner scan37447. Clean Core1 RV32 modules
+build with no undefined imports; this is not hardware evidence. Explicit
+teardown requires confirmed absence: an AP still present, including a foreign
+AP, leads to bounded retry and then quarantine rather than a loss notification.
+Both privacy assertions remain0 and
+SUMMARY-only capability remains. Caller-visible asynchronous association failure,
+real reconnection, C6 recovery/privacy and WLAN/IP/load acceptance are still open.
+
 Native association queue development (2026-10-10): private bridge ABI5 adds a
 credential-free correlated AP snapshot and native SETOPTIONS/GETNETWORKINFO
 binding. One pending and one active opener-pinned attempt own copied inputs;
@@ -14,8 +33,9 @@ bridge219 and association snapshot14939 each O0/O2 ASan/UBSan on macOS and
 network-isolated Linux, with actual process exit0. This supersedes the earlier unbound-queue
 status below, not the outstanding radio/privacy acceptance gates.
 Queue tests exercise helpers and selected dispatch arms, not full BeginIO or
-actual concurrent tasks. Active-association Close drain and association-specific
-Offline cancellation still need focused model coverage before enablement.
+actual concurrent tasks. The ABI6 stage above adds active Close drain and
+pending/active association-specific Offline host models; actual concurrent
+task/radio qualification remains required before enablement.
 SUMMARY-only and both privacy assertions0 remain. Explicit radio teardown,
 confirmed ongoing DISCONNECT/reconnect, caller-visible late-failure handling,
 capability enablement, C6 secured recovery/UART privacy and real WLAN/IP/1800s

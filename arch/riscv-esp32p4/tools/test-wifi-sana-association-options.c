@@ -650,6 +650,82 @@ static void test_null_target_refusal(void)
     CHECK(!p4wlan_copy_association_options(NULL, done));
 }
 
+static void expect_disassociate_success(const struct TagItem *tags)
+{
+    ++cases;
+    CHECK(p4wlan_disassociate_options(tags));
+}
+
+static void expect_disassociate_refusal(const struct TagItem *tags)
+{
+    ++cases;
+    CHECK(!p4wlan_disassociate_options(tags));
+}
+
+static void test_disassociate_option_contract(void)
+{
+    struct TagItem plain[2];
+    struct TagItem ignored[3];
+    struct TagItem first[1];
+    struct TagItem second[2];
+    struct TagItem skip_with_done[4];
+    struct TagItem mixed[3];
+    struct TagItem duplicate[3];
+    struct TagItem false_value[2];
+    struct TagItem done_only[1];
+    struct TagItem cycle[1];
+    struct TagItem traversal_limit[128];
+    size_t index;
+
+    set_tag(&plain[0], S2INFO_Disassociate, (IPTR)TRUE);
+    set_tag(&plain[1], TAG_DONE, 0u);
+    expect_disassociate_success(plain);
+
+    set_tag(&ignored[0], TAG_IGNORE, 0u);
+    set_tag(&ignored[1], S2INFO_Disassociate, (IPTR)TRUE);
+    set_tag(&ignored[2], TAG_DONE, 0u);
+    expect_disassociate_success(ignored);
+
+    set_tag(&first[0], TAG_MORE, pointer_data(second));
+    set_tag(&second[0], S2INFO_Disassociate, (IPTR)TRUE);
+    set_tag(&second[1], TAG_DONE, 0u);
+    expect_disassociate_success(first);
+
+    set_tag(&skip_with_done[0], TAG_SKIP, (IPTR)1u);
+    set_tag(&skip_with_done[1], S2INFO_SSID,
+            pointer_data((const UBYTE *)"must-be-skipped"));
+    set_tag(&skip_with_done[2], S2INFO_Disassociate, (IPTR)TRUE);
+    set_tag(&skip_with_done[3], TAG_DONE, 0u);
+    expect_disassociate_success(skip_with_done);
+
+    set_tag(&mixed[0], S2INFO_Disassociate, (IPTR)TRUE);
+    set_tag(&mixed[1], S2INFO_SSID,
+            pointer_data((const UBYTE *)"new-profile"));
+    set_tag(&mixed[2], TAG_DONE, 0u);
+    expect_disassociate_refusal(mixed);
+
+    set_tag(&duplicate[0], S2INFO_Disassociate, (IPTR)TRUE);
+    set_tag(&duplicate[1], S2INFO_Disassociate, (IPTR)TRUE);
+    set_tag(&duplicate[2], TAG_DONE, 0u);
+    expect_disassociate_refusal(duplicate);
+
+    set_tag(&false_value[0], S2INFO_Disassociate, 0u);
+    set_tag(&false_value[1], TAG_DONE, 0u);
+    expect_disassociate_refusal(false_value);
+
+    set_tag(&done_only[0], TAG_DONE, 0u);
+    expect_disassociate_refusal(done_only);
+    expect_disassociate_refusal(NULL);
+
+    set_tag(&cycle[0], TAG_MORE, pointer_data(cycle));
+    expect_disassociate_refusal(cycle);
+
+    for (index = 0u; index < sizeof traversal_limit / sizeof traversal_limit[0];
+         ++index)
+        set_tag(&traversal_limit[index], TAG_IGNORE, 0u);
+    expect_disassociate_refusal(traversal_limit);
+}
+
 int main(void)
 {
     test_open_owned_copy_and_optional_target_fields();
@@ -664,6 +740,7 @@ int main(void)
     test_missing_duplicate_and_unknown_tags();
     test_tag_list_traversal_and_bounded_failure();
     test_null_target_refusal();
+    test_disassociate_option_contract();
     printf("PASS: %lu cases, %lu checks\n", cases, checks);
     return 0;
 }

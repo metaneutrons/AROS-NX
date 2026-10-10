@@ -312,6 +312,9 @@ static void p4wlan_retire_association_locked(struct p4wlan_association *attempt)
 
 static void p4wlan_invalidate_selection_locked(struct p4wlan_unit *unit)
 {
+    if (unit->link_committed || unit->active_association)
+        unit->teardown_pending = TRUE;
+    unit->teardown_notify = FALSE;
     /* Saturation is permanent: no old token may become valid after wrap. */
     if (unit->selection_token != ~(ULONG)0) ++unit->selection_token;
     if (unit->active_association)
@@ -552,7 +555,8 @@ static BOOL p4wlan_resource_valid(struct P4WifiBase *radio)
 {
     return radio && radio->bridge_abi == P4_WIFI_DEVICE_BRIDGE_ABI &&
            radio->bridge_size >= sizeof(*radio) && radio->attach &&
-           radio->detach && radio->send_frame && radio->scan && radio->associate;
+           radio->detach && radio->send_frame && radio->scan && radio->associate &&
+           radio->disconnect;
 }
 
 static void p4wlan_ready_callback(APTR client, const UBYTE *mac)
@@ -1032,10 +1036,6 @@ static BOOL p4wlan_associate_one(struct p4wlan_unit *unit,
     BOOL succeeded;
     NEWLIST(&done);
     if (!AttemptSemaphore(&unit->lock)) return TRUE;
-    /* Resource hints revoke the radio gate, never prove causal link loss.
-     * Invalidate native acceptance too, but do not fabricate DISCONNECT. */
-    if (unit->link_committed && !radio->associated)
-        p4wlan_invalidate_selection_locked(unit);
     attempt = unit->pending_association;
     if (!attempt) {
         ReleaseSemaphore(&unit->lock);
@@ -1076,6 +1076,79 @@ static BOOL p4wlan_associate_one(struct p4wlan_unit *unit,
     ReleaseSemaphore(&unit->lock);
     p4wlan_finish_done(unit, &done);
     return TRUE;
+}
+
+static BOOL p4wlan_link_info_equal(const struct p4_wifi_link_info *a,
+                                    const struct p4_wifi_link_info *b)
+{
+    ULONG i;
+    if (!a->ssid_length || a->ssid_length > 32 ||
+        a->ssid_length != b->ssid_length || a->channel != b->channel ||
+        a->authmode != b->authmode || !p4wlan_mac_equal(a->bssid, b->bssid))
+        return FALSE;
+    for (i = 0; i < a->ssid_length; ++i)
+        if (a->ssid[i] != b->ssid[i]) return FALSE;
+    return TRUE;
+}
+
+/* Serialized owner service holds client_lock. Unit locks protect only local
+ * metadata: neither close nor offline waits for RPC while holding that lock. */
+static BOOL p4wlan_maintain_link(struct p4wlan_unit *unit,
+                                 struct P4WifiBase *radio)
+{
+    struct MinList done;
+    ULONG token;
+    BOOL succeeded, notify;
+    NEWLIST(&done);
+    if (!AttemptSemaphore(&unit->lock)) return TRUE;
+    if (unit->teardown_pending) {
+        token = unit->selection_token;
+        notify = unit->teardown_notify;
+        radio->associated = FALSE;
+        ReleaseSemaphore(&unit->lock);
+        succeeded = radio == unit->radio && radio->disconnect &&
+            radio->disconnect(radio);
+        ObtainSemaphore(&unit->lock);
+        if (!succeeded) {
+            /* Ambiguous radio state cannot be reused for a newer selection. */
+            p4wlan_invalidate_selection_locked(unit);
+            unit->teardown_pending = FALSE;
+            unit->callback_fault = TRUE;
+            p4wlan_event_locked(unit, S2EVENT_ERROR, &done);
+        } else if (unit->selection_token == token) {
+            unit->teardown_pending = FALSE;
+            unit->teardown_notify = FALSE;
+            if (notify) p4wlan_event_locked(unit, S2EVENT_DISCONNECT, &done);
+        }
+        ReleaseSemaphore(&unit->lock);
+        p4wlan_finish_done(unit, &done);
+        return TRUE;
+    }
+    if (unit->link_committed) {
+        if (radio->link_state != P4_WIFI_LINK_UP &&
+            radio->link_state != P4_WIFI_LINK_DOWN) {
+            /* Preserve the accepted identity/pin until a correlated query
+             * resolves the hint; the radio gate remains closed meanwhile. */
+            radio->associated = FALSE;
+            ReleaseSemaphore(&unit->lock);
+            return TRUE;
+        }
+        if (radio->link_state == P4_WIFI_LINK_DOWN ||
+            !p4wlan_link_info_equal(&unit->link_info, &radio->observed_ap)) {
+            p4wlan_invalidate_selection_locked(unit);
+            if (radio->link_state == P4_WIFI_LINK_DOWN)
+                unit->teardown_pending = FALSE; /* absence already proved */
+            radio->associated = FALSE;
+            p4wlan_event_locked(unit, S2EVENT_DISCONNECT, &done);
+        } else {
+            radio->associated = TRUE; /* same accepted link, not a new CONNECT */
+        }
+    } else {
+        radio->associated = FALSE;
+    }
+    ReleaseSemaphore(&unit->lock);
+    p4wlan_finish_done(unit, &done);
+    return FALSE;
 }
 
 struct p4wlan_network_publication {
@@ -1126,7 +1199,8 @@ static void p4wlan_service_callback(APTR client, struct P4WifiBase *radio)
     struct p4wlan_unit *unit = client;
     if (!unit || !radio)
         return;
-    if (!p4wlan_associate_one(unit, radio) && !p4wlan_scan_one(unit, radio))
+    if (!p4wlan_maintain_link(unit, radio) &&
+        !p4wlan_associate_one(unit, radio) && !p4wlan_scan_one(unit, radio))
         (void)p4wlan_send_one(unit, radio);
 }
 
@@ -1299,6 +1373,13 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
             !unit->radio || !unit->radio->association_enabled) {
             p4wlan_immediate_error(request, S2ERR_OUTOFSERVICE,
                                    S2WERR_UNIT_OFFLINE);
+            break;
+        }
+        if (p4wlan_disassociate_options((const struct TagItem *)request->ios2_Data)) {
+            BOOL had_link = unit->link_committed;
+            p4wlan_invalidate_selection_locked(unit);
+            unit->teardown_pending = TRUE;
+            unit->teardown_notify = had_link;
             break;
         }
         if (unit->selection_token == ~(ULONG)0) {

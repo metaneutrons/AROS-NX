@@ -16,6 +16,10 @@ trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$extract"; command 
 
 : > "$extract"
 
+UBSAN_OPTIONS="${UBSAN_OPTIONS:+$UBSAN_OPTIONS:}halt_on_error=1"
+ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}halt_on_error=1"
+export UBSAN_OPTIONS ASAN_OPTIONS
+
 for event_name in S2EVENT_CONNECT S2EVENT_DISCONNECT; do
     awk -v name="$event_name" \
         '$1 == "#define" && $2 == name { print; count++ }
@@ -57,6 +61,14 @@ extract_block() {
 
 extract_function() {
     function_name=$1
+    matches=$(awk -v name="$function_name" '
+        $0 ~ "^[[:space:]]*static[[:space:]].*" name "[[:space:]]*\\(" { count++ }
+        END { print count + 0 }
+    ' "$source_file")
+    if [ "$matches" -ne 1 ]; then
+        echo "expected one source definition of $function_name, found $matches" >&2
+        exit 1
+    fi
     awk -v name="$function_name" '
         !candidate && !copy && $0 ~ "^[[:space:]]*static[[:space:]].*" name "[[:space:]]*\\(" {
             candidate = 1
@@ -125,6 +137,12 @@ extract_abort_entry() {
 }
 
 extract_close_entry() {
+    matches=$(awk '/^static BOOL GM_UNIQUENAME\(Close\)/ { count++ }
+        END { print count + 0 }' "$source_file")
+    if [ "$matches" -ne 1 ]; then
+        echo "expected one actual Close entry, found $matches" >&2
+        exit 1
+    fi
     awk '
         !capture && /^static BOOL GM_UNIQUENAME\(Close\)/ { capture = 1 }
         capture {

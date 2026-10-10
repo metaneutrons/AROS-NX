@@ -88,6 +88,7 @@ extract_function() {
 
 extract_struct wifi_probe_context "$source_file"
 extract_struct p4_wifi_scan_result "$bridge_file"
+extract_struct p4_wifi_link_info "$bridge_file"
 extract_struct p4_wifi_device_callbacks "$bridge_file"
 extract_struct P4WifiBase "$header_file"
 extract_struct wifi_owner_control "$source_file"
@@ -129,5 +130,7 @@ for optimization in 0 2; do
 		"$test_root/network/sdio_commands.c" \
 		"$test_root/tools/test-wifi-owner-scan.c" \
 		-o "$test_tmp/test-o$optimization"
-	"$test_tmp/test-o$optimization"
+	ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
+	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+		"$test_tmp/test-o$optimization"
 done

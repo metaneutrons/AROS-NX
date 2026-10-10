@@ -92,12 +92,16 @@ typedef BOOL (*p4wlan_associate_fn)(
     struct P4WifiBase *radio,
     const struct p4_wifi_association_target *target,
     const struct p4_wifi_association_cancel *cancel);
+typedef BOOL (*p4wlan_disconnect_fn)(struct P4WifiBase *radio);
 
 struct P4WifiBase {
     BOOL association_enabled;
     BOOL associated;
     p4wlan_associate_fn associate;
+    p4wlan_disconnect_fn disconnect;
     struct p4_wifi_link_info confirmed_ap;
+    ULONG link_state;
+    struct p4_wifi_link_info observed_ap;
 };
 
 struct p4wlan_opener;
@@ -156,8 +160,8 @@ static unsigned long checks;
 
 struct allocation_record {
     void *pointer;
-    size_t size;
     BOOL live;
+    BOOL association;
 };
 
 static struct allocation_record allocation_records[128];
@@ -176,9 +180,15 @@ static struct IOSana2Req *replacement_request;
 static const struct TagItem *replacement_tags;
 static BOOL replace_during_associate;
 static BOOL associate_returns_success;
+static BOOL association_allocation_expected;
+static BOOL offline_during_associate;
+static BOOL disconnect_returns_success;
+static BOOL replace_during_disconnect;
 static ULONG mismatch_snapshot_field;
 static unsigned associate_calls;
 static unsigned associate_cancel_checks;
+static unsigned offline_cancel_checks;
+static unsigned disconnect_calls;
 
 static void dispatch_case(struct p4wlan_unit *unit,
                           struct p4wlan_opener *opener,
@@ -189,6 +199,7 @@ static void dispatch_case(struct p4wlan_unit *unit,
     NEWLIST(&done);
     request->ios2_Req.io_Error = 0;
     request->ios2_WireError = 0;
+    association_allocation_expected = command == S2_SETOPTIONS;
     ObtainSemaphore(&unit->lock);
     switch (command) {
 #include "sana_association_queue_cases.inc"
@@ -198,6 +209,7 @@ static void dispatch_case(struct p4wlan_unit *unit,
         break;
     }
     ReleaseSemaphore(&unit->lock);
+    association_allocation_expected = FALSE;
     p4wlan_finish_done(unit, &done);
     p4wlan_term_io(request);
 }
@@ -227,6 +239,8 @@ static BOOL AttemptSemaphore(struct SignalSemaphore *semaphore)
 static APTR AllocVec(IPTR size, ULONG flags)
 {
     void *memory;
+    BOOL association = association_allocation_expected;
+    association_allocation_expected = FALSE;
     if (fail_next_vector_allocation) {
         fail_next_vector_allocation = FALSE;
         return NULL;
@@ -238,8 +252,8 @@ static APTR AllocVec(IPTR size, ULONG flags)
     CHECK(allocation_slots <
           sizeof(allocation_records) / sizeof(allocation_records[0]));
     allocation_records[allocation_slots].pointer = memory;
-    allocation_records[allocation_slots].size = (size_t)size;
     allocation_records[allocation_slots].live = TRUE;
+    allocation_records[allocation_slots].association = association;
     ++allocation_slots;
     ++allocation_calls;
     return memory;
@@ -266,7 +280,7 @@ static void FreeVec(APTR memory)
     CHECK(index < allocation_slots);
     CHECK(allocation_records[index].pointer == memory);
     CHECK(allocation_records[index].live);
-    if (allocation_records[index].size == sizeof(struct p4wlan_association)) {
+    if (allocation_records[index].association) {
         CHECK(bytes_are_zero((const UBYTE *)memory,
                              sizeof(struct p4wlan_association)));
         ++wipe_checks;
@@ -295,6 +309,16 @@ static void FreePooled(APTR pool, APTR memory, ULONG size)
     CHECK(memory != NULL && memory == pool_memory);
     free(pool_memory);
     pool_memory = NULL;
+}
+
+static unsigned live_allocations(void)
+{
+    unsigned index;
+    unsigned count = 0u;
+    for (index = 0u; index < allocation_slots; ++index)
+        if (allocation_records[index].live)
+            ++count;
+    return count;
 }
 
 static void ReplyMsg(struct Message *message)
@@ -337,6 +361,17 @@ static BOOL fake_associate(struct P4WifiBase *radio,
         CHECK(cancel->cancelled(cancel->context));
         ++associate_cancel_checks;
     }
+    if (offline_during_associate) {
+        struct IOSana2Req offline_request;
+        offline_during_associate = FALSE;
+        memset(&offline_request, 0, sizeof(offline_request));
+        offline_request.ios2_Req.io_Command = S2_OFFLINE;
+        offline_request.ios2_BufferManagement = active_opener;
+        dispatch_case(active_unit, active_opener, &offline_request);
+        CHECK(!active_unit->online);
+        CHECK(cancel->cancelled(cancel->context));
+        ++offline_cancel_checks;
+    }
     if (!associate_returns_success)
         return FALSE;
     memset(&radio->confirmed_ap, 0, sizeof(radio->confirmed_ap));
@@ -359,7 +394,27 @@ static BOOL fake_associate(struct P4WifiBase *radio,
         ++radio->confirmed_ap.channel;
     else if (mismatch_snapshot_field == 4u)
         ++radio->confirmed_ap.authmode;
+    radio->observed_ap = radio->confirmed_ap;
+    radio->link_state = P4_WIFI_LINK_UP;
     return TRUE;
+}
+
+static BOOL fake_disconnect(struct P4WifiBase *radio)
+{
+    CHECK(active_unit != NULL && active_opener != NULL);
+    CHECK(active_unit->lock.depth == 0u);
+    CHECK(radio == active_unit->radio);
+    ++disconnect_calls;
+    if (replace_during_disconnect) {
+        replace_during_disconnect = FALSE;
+        replacement_request->ios2_Data = (APTR)replacement_tags;
+        dispatch_case(active_unit, active_opener, replacement_request);
+    }
+    if (disconnect_returns_success) {
+        radio->link_state = P4_WIFI_LINK_DOWN;
+        memset(&radio->observed_ap, 0, sizeof(radio->observed_ap));
+    }
+    return disconnect_returns_success;
 }
 
 static void init_request(struct IOSana2Req *request, ULONG command,
@@ -390,6 +445,7 @@ static void init_fixture(struct p4wlan_unit *unit,
     unit->radio = radio;
     radio->association_enabled = TRUE;
     radio->associate = fake_associate;
+    radio->disconnect = fake_disconnect;
     active_unit = unit;
     active_opener = opener;
     replace_during_associate = FALSE;
@@ -397,6 +453,12 @@ static void init_fixture(struct p4wlan_unit *unit,
     mismatch_snapshot_field = 0u;
     replacement_request = NULL;
     replacement_tags = NULL;
+    association_allocation_expected = FALSE;
+    offline_during_associate = FALSE;
+    offline_cancel_checks = 0u;
+    disconnect_returns_success = TRUE;
+    replace_during_disconnect = FALSE;
+    disconnect_calls = 0u;
 }
 
 static void make_tags(struct TagItem tags[10], const UBYTE *ssid,
@@ -461,6 +523,14 @@ static void seed_committed_link(struct p4wlan_unit *unit,
     unit->link_info.channel = 1u;
     unit->link_info.authmode = 0u;
     radio->associated = TRUE;
+}
+
+static void make_disassociate_tags(struct TagItem tags[2])
+{
+    tags[0].ti_Tag = S2INFO_Disassociate;
+    tags[0].ti_Data = TRUE;
+    tags[1].ti_Tag = TAG_DONE;
+    tags[1].ti_Data = 0u;
 }
 
 static void test_beginio_refusals_preserve_selection_and_link(void)
@@ -826,6 +896,264 @@ static void test_success_and_failure_wipe_secrets(void)
     CHECK(opener.refs == 1u);
 }
 
+static void test_offline_cancels_pending_attempt(void)
+{
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    struct IOSana2Req request, offline_request;
+    struct TagItem tags[10];
+    UBYTE ssid[] = "pending-offline";
+    UBYTE password[] = "wipe-this-key";
+    struct p4wlan_association *attempt;
+    ULONG token;
+    unsigned prior_wipes;
+    unsigned prior_replies;
+
+    init_fixture(&unit, &opener, &radio);
+    make_tags(tags, ssid, password, NULL, 0u);
+    attempt = queue_profile(&unit, &opener, &request, tags);
+    CHECK(attempt != NULL && opener.refs == 2u);
+    token = unit.selection_token;
+    prior_wipes = wipe_checks;
+    prior_replies = reply_calls;
+
+    init_request(&offline_request, S2_OFFLINE, &opener);
+    dispatch_case(&unit, &opener, &offline_request);
+    CHECK(offline_request.ios2_Req.io_Error == 0);
+    CHECK(reply_calls == prior_replies + 1u);
+    CHECK(!unit.online);
+    CHECK(unit.pending_association == NULL && unit.active_association == NULL);
+    CHECK(unit.selection_token == token + 1u);
+    CHECK(opener.refs == 1u);
+    CHECK(wipe_checks == prior_wipes + 1u);
+    CHECK(!unit.link_committed && unit.link_opener == NULL);
+    CHECK((unit.pending_events &
+           (S2EVENT_CONNECT | S2EVENT_DISCONNECT)) == 0u);
+    CHECK(allocation_calls == free_calls);
+    CHECK(live_allocations() == 0u);
+}
+
+static void test_offline_cancels_active_attempt_before_commit(void)
+{
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    struct IOSana2Req request;
+    struct TagItem tags[10];
+    UBYTE ssid[] = "active-offline";
+    UBYTE password[] = "late-secret";
+    unsigned prior_calls;
+    unsigned prior_wipes;
+    unsigned prior_replies;
+    ULONG token;
+
+    init_fixture(&unit, &opener, &radio);
+    make_tags(tags, ssid, password, NULL, 0u);
+    CHECK(queue_profile(&unit, &opener, &request, tags) != NULL);
+    token = unit.selection_token;
+    prior_calls = associate_calls;
+    prior_wipes = wipe_checks;
+    prior_replies = reply_calls;
+    offline_during_associate = TRUE;
+
+    CHECK(p4wlan_associate_one(&unit, &radio));
+    CHECK(!offline_during_associate);
+    CHECK(offline_cancel_checks == 1u);
+    CHECK(associate_calls == prior_calls + 1u);
+    CHECK(reply_calls == prior_replies + 1u);
+    CHECK(!unit.online);
+    CHECK(unit.selection_token == token + 1u);
+    CHECK(unit.pending_association == NULL && unit.active_association == NULL);
+    CHECK(!unit.link_committed && unit.link_opener == NULL);
+    CHECK(!radio.associated);
+    CHECK(unit.teardown_pending);
+    CHECK(bytes_are_zero((const UBYTE *)&radio.confirmed_ap,
+                         sizeof(radio.confirmed_ap)));
+    CHECK((unit.pending_events &
+           (S2EVENT_CONNECT | S2EVENT_DISCONNECT)) == 0u);
+    CHECK(opener.refs == 1u);
+    CHECK(wipe_checks == prior_wipes + 1u);
+    CHECK(allocation_calls == free_calls);
+    CHECK(live_allocations() == 0u);
+}
+
+static void test_confirmed_down_revokes_committed_link(void)
+{
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    ULONG token;
+
+    init_fixture(&unit, &opener, &radio);
+    seed_committed_link(&unit, &opener, &radio);
+    radio.link_state = P4_WIFI_LINK_DOWN;
+    unit.pending_events = S2EVENT_CONNECT;
+    token = unit.selection_token;
+
+    CHECK(!p4wlan_maintain_link(&unit, &radio));
+    CHECK(unit.selection_token == token + 1u);
+    CHECK(!unit.link_committed && unit.link_opener == NULL);
+    CHECK(bytes_are_zero((const UBYTE *)&unit.link_info,
+                         sizeof(unit.link_info)));
+    CHECK(opener.refs == 1u);
+    CHECK(!radio.associated);
+    CHECK(!unit.teardown_pending);
+    CHECK(unit.pending_events == S2EVENT_DISCONNECT);
+}
+
+static void test_link_observations_preserve_only_exact_accepted_ap(void)
+{
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    struct p4_wifi_link_info accepted;
+    ULONG token;
+
+    init_fixture(&unit, &opener, &radio);
+    seed_committed_link(&unit, &opener, &radio);
+    accepted = unit.link_info;
+    token = unit.selection_token;
+    radio.link_state = P4_WIFI_LINK_UNKNOWN;
+    radio.associated = FALSE;
+
+    CHECK(p4wlan_maintain_link(&unit, &radio));
+    CHECK(unit.selection_token == token);
+    CHECK(unit.link_committed && unit.link_opener == &opener);
+    CHECK(memcmp(&unit.link_info, &accepted, sizeof(accepted)) == 0);
+    CHECK(opener.refs == 2u && !radio.associated);
+    CHECK(unit.pending_events == 0u);
+
+    radio.link_state = P4_WIFI_LINK_UP;
+    radio.observed_ap = accepted;
+    CHECK(!p4wlan_maintain_link(&unit, &radio));
+    CHECK(unit.selection_token == token);
+    CHECK(unit.link_committed && unit.link_opener == &opener);
+    CHECK(radio.associated);
+    CHECK(opener.refs == 2u);
+    CHECK(unit.pending_events == 0u); /* restoring same AP is not CONNECT */
+
+    radio.observed_ap.ssid[0] ^= 0x20u;
+    CHECK(!p4wlan_maintain_link(&unit, &radio));
+    CHECK(unit.selection_token == token + 1u);
+    CHECK(!unit.link_committed && unit.link_opener == NULL);
+    CHECK(opener.refs == 1u && !radio.associated);
+    CHECK(unit.teardown_pending);
+    CHECK(unit.pending_events == S2EVENT_DISCONNECT);
+}
+
+static void test_disassociate_maintains_confirmed_teardown(void)
+{
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    struct IOSana2Req request;
+    struct TagItem leave_tags[2];
+
+    init_fixture(&unit, &opener, &radio);
+    seed_committed_link(&unit, &opener, &radio);
+    unit.pending_events = S2EVENT_CONNECT;
+    make_disassociate_tags(leave_tags);
+    init_request(&request, S2_SETOPTIONS, &opener);
+    request.ios2_Data = leave_tags;
+    dispatch_case(&unit, &opener, &request);
+
+    CHECK(request.ios2_Req.io_Error == 0);
+    CHECK(!unit.link_committed && unit.link_opener == NULL);
+    CHECK(unit.teardown_pending && unit.teardown_notify);
+    CHECK(opener.refs == 1u);
+    CHECK((unit.pending_events & S2EVENT_CONNECT) == 0u);
+    CHECK(p4wlan_maintain_link(&unit, &radio));
+    CHECK(disconnect_calls == 1u && radio.disconnect == fake_disconnect);
+    CHECK(!unit.teardown_pending && !unit.teardown_notify);
+    CHECK(!unit.callback_fault && !radio.associated);
+    CHECK(unit.pending_events == S2EVENT_DISCONNECT);
+}
+
+static void test_teardown_failure_never_publishes_disconnect(void)
+{
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    struct IOSana2Req request;
+    struct TagItem leave_tags[2];
+
+    init_fixture(&unit, &opener, &radio);
+    seed_committed_link(&unit, &opener, &radio);
+    unit.pending_events = S2EVENT_CONNECT;
+    make_disassociate_tags(leave_tags);
+    init_request(&request, S2_SETOPTIONS, &opener);
+    request.ios2_Data = leave_tags;
+    dispatch_case(&unit, &opener, &request);
+    disconnect_returns_success = FALSE;
+
+    CHECK(p4wlan_maintain_link(&unit, &radio));
+    CHECK(disconnect_calls == 1u);
+    CHECK(unit.callback_fault);
+    CHECK(!unit.teardown_pending && !unit.link_committed);
+    CHECK(!radio.associated);
+    CHECK((unit.pending_events & S2EVENT_DISCONNECT) == 0u);
+}
+
+static void test_new_selection_during_teardown_is_preserved(void)
+{
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    struct IOSana2Req leave_request, replacement_request_local, flush_request;
+    struct TagItem leave_tags[2], replacement_tags_local[10];
+    UBYTE replacement_ssid[] = "new-selection";
+    struct p4wlan_association *attempt;
+    ULONG token;
+    unsigned prior_wipes;
+
+    init_fixture(&unit, &opener, &radio);
+    seed_committed_link(&unit, &opener, &radio);
+    unit.pending_events = S2EVENT_CONNECT;
+    make_disassociate_tags(leave_tags);
+    init_request(&leave_request, S2_SETOPTIONS, &opener);
+    leave_request.ios2_Data = leave_tags;
+    dispatch_case(&unit, &opener, &leave_request);
+    token = unit.selection_token;
+
+    make_tags(replacement_tags_local, replacement_ssid, NULL, NULL, 0u);
+    init_request(&replacement_request_local, S2_SETOPTIONS, &opener);
+    replacement_request = &replacement_request_local;
+    replacement_tags = replacement_tags_local;
+    replace_during_disconnect = TRUE;
+    prior_wipes = wipe_checks;
+
+    CHECK(p4wlan_maintain_link(&unit, &radio));
+    CHECK(!replace_during_disconnect);
+    CHECK(disconnect_calls == 1u);
+    CHECK(unit.selection_token == token + 1u);
+    CHECK(unit.teardown_pending && !unit.teardown_notify);
+    CHECK(!unit.link_committed && unit.link_opener == NULL);
+    CHECK(unit.pending_events == 0u); /* no stale CONNECT/DISCONNECT */
+    attempt = unit.pending_association;
+    CHECK(attempt != NULL && attempt->target.ssid_length ==
+          strlen("new-selection"));
+    CHECK(memcmp(attempt->target.ssid, replacement_ssid,
+                 strlen("new-selection")) == 0);
+    CHECK(opener.refs == 2u);
+    CHECK(wipe_checks == prior_wipes);
+
+    token = unit.selection_token;
+    CHECK(p4wlan_maintain_link(&unit, &radio));
+    CHECK(disconnect_calls == 2u);
+    CHECK(unit.selection_token == token);
+    CHECK(!unit.teardown_pending && !unit.teardown_notify);
+    CHECK(unit.pending_association == attempt);
+    CHECK(unit.pending_events == 0u);
+
+    init_request(&flush_request, CMD_FLUSH, &opener);
+    dispatch_case(&unit, &opener, &flush_request);
+    CHECK(unit.pending_association == NULL && opener.refs == 1u);
+    CHECK(wipe_checks == prior_wipes + 1u);
+    CHECK(allocation_calls == free_calls);
+    CHECK(live_allocations() == 0u);
+}
+
 static void test_suite_cleanup(void)
 {
     unsigned index;
@@ -845,6 +1173,13 @@ int main(void)
     test_active_attempt_replacement_and_flush_cancellation();
     test_flush_releases_committed_pin_without_disconnect();
     test_success_and_failure_wipe_secrets();
+    test_offline_cancels_pending_attempt();
+    test_offline_cancels_active_attempt_before_commit();
+    test_confirmed_down_revokes_committed_link();
+    test_link_observations_preserve_only_exact_accepted_ap();
+    test_disassociate_maintains_confirmed_teardown();
+    test_teardown_failure_never_publishes_disconnect();
+    test_new_selection_during_teardown_is_preserved();
     test_suite_cleanup();
     printf("SANA association queue: %lu checks, %u replies, %u/%u vector alloc/free, %u association wipes\n",
            checks, reply_calls, allocation_calls, free_calls, wipe_checks);

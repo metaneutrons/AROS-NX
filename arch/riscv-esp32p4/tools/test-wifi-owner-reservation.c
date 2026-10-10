@@ -13,9 +13,13 @@
 #include <string.h>
 
 typedef uint32_t ULONG;
+typedef int BOOL;
+#define TRUE 1
+#define FALSE 0
 
 struct wifi_probe_context {
     uint32_t generation;
+    BOOL association_exchanging;
 };
 
 struct p4_wifi_scan_result {
@@ -252,6 +256,7 @@ static void test_real_outer_preflight_refusal_settles(void)
 
     CHECK(!wifi_owner_request(&fixture.context, &fixture.owner,
         &fixture.control, &fixture.fifo, 0u, 286u, 100000u));
+    CHECK(fixture.context.association_exchanging == FALSE);
     CHECK(fixture.control.result.submitted == 0u);
     CHECK(fixture.control.result.error == P4_HOSTED_OWNER_OK);
     CHECK(callback_calls == 0u);

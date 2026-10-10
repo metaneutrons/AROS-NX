@@ -106,6 +106,12 @@ extract_function wifi_owner_event \
 	'static int wifi_owner_event(void *opaque, const struct p4_hosted_inbox_item *item)'
 extract_function wifi_owner_now \
 	'static uint32_t wifi_owner_now(void *opaque)'
+extract_function wifi_tx_session \
+	'static int wifi_tx_session(void *opaque, uint32_t generation)'
+extract_function wifi_owner_acquire \
+	'static int wifi_owner_acquire(void *opaque, uint32_t wait_us)'
+extract_function wifi_owner_release \
+	'static void wifi_owner_release(void *opaque)'
 extract_function wifi_owner_finish_unsubmitted_reservation \
 	'static int wifi_owner_finish_unsubmitted_reservation(struct p4_hosted_owner *owner, struct p4_hosted_fifo *fifo, uint32_t generation, uint32_t uid, uint32_t request_id, unsigned submitted)'
 extract_function wifi_owner_request \
