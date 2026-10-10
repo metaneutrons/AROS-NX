@@ -8,7 +8,11 @@ Only complete owned results are published; late success and failed cleanup
 retire the session. Zero-count records retain the named N1E workaround; eight
 records are a local cap, with explicit truncation. The Core1 resource and
 matched device and owner-off resource clean-build; independent source review
-accepts the corrected absolute-deadline guards. Dedicated scan models are pending.
+accepts the corrected absolute-deadline guards. Dedicated source-extracted scan
+models pass at O0/O2 with ASan/UBSan on macOS and isolated Linux (37,447
+assertions each, including per-byte checks, not independent test cases).
+Exchange, cancellation, Exec, clock and SDIO are mocked; outer owner-preflight
+reservation settlement and actual concurrency/timing remain separate gates.
 ABI1 modules must not be mixed with ABI2. This private path is not yet exposed
 as S2_GETNETWORKS: truthful protected-network metadata and per-device WPA
 offload integration remain required. No deployment or hardware pass.
