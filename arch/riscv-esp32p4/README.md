@@ -76,6 +76,12 @@ The separate RV32 compiler/SDK release track is TC0 in
 GNU recipes and complete SDK source inputs are being integrated on current
 AROS-NX main. Source regressions do not qualify a published compiler or SDK
 and do not change the hardware status below.
+The separate [native SDK declaration](native-sdk/README.md) selects the full
+Developer header/link-library graph. It requires a new tools runtime with
+native-consumer support; published v0.3.19 cannot activate this preset.
+Its selected native graph is audit-verified locally (2,250 reachable endpoints,
+no missing producer). Complete fresh SDK construction and final C/C++ links
+remain separate acceptance gates; this does not change board verification.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`

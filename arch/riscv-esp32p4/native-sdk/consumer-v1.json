@@ -1,0 +1,346 @@
+{
+  "schema": "aros-native-consumer-contract-v1",
+  "profile": "esp32p4-riscv-gnu",
+  "source_baseline": "158dc7a3b77fb4f19c5a3522649779d677a75418",
+  "roots": [
+    "includes",
+    "linklibs"
+  ],
+  "inputs": [
+    {
+      "path": "Makefile.in",
+      "sha256": "c51fb4b6dd57126574f823119f880bfa0d05ccf85afe33c03f12ebde45e0e5ca"
+    },
+    {
+      "path": "arch/riscv-all/binutils_def",
+      "sha256": "5c7f1625c27f6a11750ccd4ae72805a157057c0ccc3f101cec2edf8b95f310a8"
+    },
+    {
+      "path": "arch/riscv-all/crt/posixc/mmakefile.src",
+      "sha256": "7109ea2a17224b79d6f19f7a4fc9c44504c6b17f8993be9489ac7a1a8cdac5c6"
+    },
+    {
+      "path": "arch/riscv-all/crt/stdc/mmakefile.src",
+      "sha256": "cdfbb1fb4a8cf5cc74df282bff1bca5dfc57ef7c23744294be40a6ce0b83642d"
+    },
+    {
+      "path": "arch/riscv-all/exec/mmakefile.src",
+      "sha256": "daf33d57fca642c5a8036fce790deea380d8b34d767fc810a072e372c812ea77"
+    },
+    {
+      "path": "arch/riscv-all/gcc_def",
+      "sha256": "4430a38612d7a1533b53180a4288bd5d1c9c7e4baae9a84f0d505e13e3f5a7a5"
+    },
+    {
+      "path": "arch/riscv-all/include/mmakefile.src",
+      "sha256": "f3f35bba6ed841ca7a960693497a5b862a6d883818155b8adfd2cfaa5a04ba5e"
+    },
+    {
+      "path": "arch/riscv-all/kernel/mmakefile.src",
+      "sha256": "56e531a7b092866d37ad3c6a9781c6763530c41909f0723acca3cc56bbfae88c"
+    },
+    {
+      "path": "arch/riscv-esp32p4/board/board.mk",
+      "sha256": "d4467f7f00b8d6e7d9f735234511b7addc35ff17562f8e2e0074dee30a6abe4d"
+    },
+    {
+      "path": "arch/riscv-esp32p4/exec/mmakefile.src",
+      "sha256": "939bf2e5f3226dfe58b8420b40345b86999828fcfdcc10d65a37aac555786403"
+    },
+    {
+      "path": "arch/riscv-esp32p4/mmakefile.src",
+      "sha256": "131ebbc32f5d2f262dd5bbda5d94d74adb0a4a85f39a7f377be6fb95d4178158"
+    },
+    {
+      "path": "arch/riscv-esp32p4/native-sdk/config.mk",
+      "sha256": "24835386da373294e38b3b096eb20016cde3bf369e74c066d5c365eb19ba5ad5"
+    },
+    {
+      "path": "arch/riscv-esp32p4/native-sdk/export.py",
+      "sha256": "2e3c95cc6b4e557d2c759b71fb58b28ecf7a6cab917491613493129afead74c4"
+    },
+    {
+      "path": "arch/riscv-esp32p4/native-sdk/metamake-v1.json",
+      "sha256": "8b272f174be9ca09388474523f9e1578c77665d4962e2746f01caabeed572073"
+    },
+    {
+      "path": "aros-targets.toml",
+      "sha256": "813ea6fb9d855b76289b6c50e73e8e563038be0cccc1c010d5a28b8fdc1b8039"
+    },
+    {
+      "path": "compiler/crt/stdc/mmakefile.src",
+      "sha256": "528207cdba02ce8ebd49d3ac999420c90f4abe9de4d82d2ee974f9edee797cf0"
+    },
+    {
+      "path": "compiler/include/geninc.cfg.in",
+      "sha256": "3b8abca9ee03a9caeca017efa53e52204ef0f81ccc6d1be9f3db5c2652b45503"
+    },
+    {
+      "path": "compiler/include/mmakefile.src",
+      "sha256": "4b3752606535bf41519afd58603e298e487f56b36b4e06c198379ba84bdc048c"
+    },
+    {
+      "path": "compiler/libinit/mmakefile.src",
+      "sha256": "557a3a5341fc9aac79974002a43c7211d35848b21af99b42c775b9c2b6329b12"
+    },
+    {
+      "path": "compiler/mmakefile.src",
+      "sha256": "dfc539022b05d2c4ac2e6d88d79230a0971492f2b1037a53e109533546cfe116"
+    },
+    {
+      "path": "compiler/startup/mmakefile.src",
+      "sha256": "a261b40e350588396e135c136a9a93bae7ef1f5eab7eb098d1ff924acfc65644"
+    },
+    {
+      "path": "config/aros.cfg",
+      "sha256": "5b7025c9eb6a7e29f29dad9e9235a4e9140214739c3b1e6c91868e7cd3caa1f7"
+    },
+    {
+      "path": "config/config.h.in",
+      "sha256": "cb465337329520a1a891ee85f8ae62469de6ad0e8419c4d08190be78b2a131ae"
+    },
+    {
+      "path": "config/host.cfg.in",
+      "sha256": "eb33e2b2ac62b3d5183960bcad34f6521a4259d1921082d62e171f544f9fb649"
+    },
+    {
+      "path": "config/kobj-romtag.ld",
+      "sha256": "e815e4622e9e2b3f5ab0a342d19ac1ff8f99f0b7ffe54fc91b96918dc460d16a"
+    },
+    {
+      "path": "config/llvm_def",
+      "sha256": "7bd6bcbe3813e0cd55e0998053d182b7bc8c97dcfd0b85028e9f7f55af4ad61b"
+    },
+    {
+      "path": "config/make-autotools.tmpl",
+      "sha256": "9aec13f27fa2424d3dfebeae0f1db04a34bc2986fa255d8a1f2937d2ba352f81"
+    },
+    {
+      "path": "config/make-cmake.tmpl",
+      "sha256": "0967aacdb27eee75f879b963cda7ceb8a499b52325bbc7fe248f28adc6a67dda"
+    },
+    {
+      "path": "config/make-meson.tmpl",
+      "sha256": "cbec43feb387c3e16b6e82b0346266ed9cd8292c0f82ce2b7c8914bfa283bc54"
+    },
+    {
+      "path": "config/make.cfg.in",
+      "sha256": "55a6fe963d015d11fbd4509f0bf752f1036d9addf251a192fb57d150f974b5f4"
+    },
+    {
+      "path": "config/make.tmpl",
+      "sha256": "8661d2bf16e94d6fdb5b89f26663bb813766afb02209e6e0368b94858812ec75"
+    },
+    {
+      "path": "config/target.cfg.in",
+      "sha256": "8770627b4a1134160a5a4c6235c950a251dcb695bd349d6e4307e2436ffa26a0"
+    },
+    {
+      "path": "configure.in",
+      "sha256": "8060e95c723df2adccabd1ecab11ebc745b5b2b31c6ecfc866860edb15e2b759"
+    },
+    {
+      "path": "mmake.config.in",
+      "sha256": "a1a6f575d6c399c9daa454481a8437899e4bbad92e9dc0f6eecb53938765a715"
+    },
+    {
+      "path": "rom/exec/mmakefile.src",
+      "sha256": "5809868ffe9a11b2a1b1006e5e170433db411ec26a1880540dab4fa13edb29fc"
+    },
+    {
+      "path": "tools/MetaMake/cache.c",
+      "sha256": "c9a80fec85c0bb2d269578acedf01e9a53c468d404966ec453d6967c042f2f61"
+    },
+    {
+      "path": "tools/MetaMake/dirnode.c",
+      "sha256": "82c4627c2b66bf9a46d5d5d5e7de7fc95dda962ec51448a604e717a3b0278f84"
+    },
+    {
+      "path": "tools/MetaMake/project.c",
+      "sha256": "655a2bfc2a500d02ae5ad4a4201b5568d54ee3312cd831c6b2d98f468354ca77"
+    },
+    {
+      "path": "tools/MetaMake/var.c",
+      "sha256": "645fca18a3be32a42759ee1e6bf78e87b54680429750fb88512f8ed9463b8735"
+    },
+    {
+      "path": "tools/crosstools/gnu/mmakefile.src",
+      "sha256": "9452b41216533c97bbbe366808e018de81d931fccb42cf43ef455c290b26dc3c"
+    },
+    {
+      "path": "tools/genctbl/Makefile",
+      "sha256": "7a4e570b4a9365e47dcf37a3b8cbfcbc0458ba8938052d47d3f190123ff59fb2"
+    },
+    {
+      "path": "tools/genctbl/genctbl.c",
+      "sha256": "364cc4479b64e2dd76a8aa56793adc67b04551b4d3fe32f39638eb49259c5e52"
+    },
+    {
+      "path": "tools/genmf/genmf.py",
+      "sha256": "f5640603dcf6008ab2612daf0b975f17ca349aacc4a03ec25afc9c5cf1c4be52"
+    },
+    {
+      "path": "workbench/classes/datatypes/wav/gsm/mmakefile.src",
+      "sha256": "afd654d3d1b3f8fe320011ed10da4c5eaed0d85e84186746d7e7010bc07fcbef"
+    }
+  ],
+  "abi": {
+    "source_cpu": "riscv",
+    "target_triple": "riscv-aros",
+    "isa": "rv32imafc_zicsr_zifencei_zaamo_zalrsc",
+    "abi": "ilp32f",
+    "code_model": "medany",
+    "flavour": "standalone",
+    "platform_smp": true,
+    "use_mmu": false
+  },
+  "metamake_projection": "arch/riscv-esp32p4/native-sdk/metamake-v1.json",
+  "make_variables": {
+    "AROS_TOOLCHAIN_RELEASE": "0",
+    "CROSSTOOLS_PORTS_INCLUDES": "ports-includes",
+    "FLAVOUR": "standalone",
+    "KERNEL_TOOLCHAIN": "gnu",
+    "TARGET_LIBATOMIC": "yes",
+    "TARGET_USELOGRES": "no",
+    "TARGET_BINUTILS_VER": "2.47",
+    "TARGET_GCC_VER": "16.2.0",
+    "AROS_TARGET_ICONSET": "Gorilla",
+    "AROS_TARGET_BOOTLOADER": "",
+    "AROS_TARGET_TOOLCHAIN": "yes",
+    "PCI_HIDD_TARGET": "",
+    "JPEGXL_TOOLCHAINSUPPORT": "",
+    "NOUVEAU_TOOLCHAINSUPPORT": "",
+    "OBJC_TARGET": "no-objc",
+    "TARGET_UNITTESTS": "no",
+    "STARTUP_DEBUG": "0",
+    "P4_BOARD": "d1001"
+  },
+  "host_make_variables": {
+    "macos-aarch64": {
+      "AROS_HOST_ARCH": "darwin",
+      "AROS_HOST_CPU": "aarch64"
+    },
+    "linux-aarch64": {
+      "AROS_HOST_ARCH": "linux",
+      "AROS_HOST_CPU": "aarch64"
+    },
+    "linux-x86_64": {
+      "AROS_HOST_ARCH": "linux",
+      "AROS_HOST_CPU": "x86_64"
+    }
+  },
+  "make_include_bindings": {
+    "config/aros.cfg": "arch/riscv-esp32p4/native-sdk/config.mk",
+    "arch/riscv-esp32p4/board/board.mk": "arch/riscv-esp32p4/board/board.mk"
+  },
+  "kernel_compiler_role": "target",
+  "optional_meta_dependencies": [
+    {
+      "recipe": "compiler/mmakefile.src",
+      "target": "includes",
+      "dependency": "includes-${AROS_TARGET_CPU}"
+    },
+    {
+      "recipe": "compiler/mmakefile.src",
+      "target": "includes",
+      "dependency": "includes-${AROS_TARGET_PLATFORM}"
+    },
+    {
+      "recipe": "compiler/mmakefile.src",
+      "target": "includes",
+      "dependency": "includes-${AROS_TARGET_PLATFORM}-${AROS_TARGET_CPU}"
+    },
+    {
+      "recipe": "compiler/mmakefile.src",
+      "target": "includes",
+      "dependency": "includes-${AROS_TARGET_PLATFORM}-${AROS_TARGET_VARIANT}"
+    },
+    {
+      "recipe": "compiler/mmakefile.src",
+      "target": "includes",
+      "dependency": "includes-${AROS_TARGET_PLATFORM}-${AROS_TARGET_CPU}-${AROS_TARGET_VARIANT}"
+    },
+    {
+      "recipe": "compiler/mmakefile.src",
+      "target": "linklibs",
+      "dependency": "linklibs-${AROS_TARGET_CPU}"
+    },
+    {
+      "recipe": "compiler/mmakefile.src",
+      "target": "linklibs",
+      "dependency": "linklibs-${AROS_TARGET_PLATFORM}"
+    },
+    {
+      "recipe": "compiler/mmakefile.src",
+      "target": "linklibs",
+      "dependency": "linklibs-${AROS_TARGET_PLATFORM}-${AROS_TARGET_CPU}"
+    },
+    {
+      "recipe": "compiler/mmakefile.src",
+      "target": "linklibs",
+      "dependency": "linklibs-${AROS_TARGET_PLATFORM}-${AROS_TARGET_VARIANT}"
+    },
+    {
+      "recipe": "compiler/mmakefile.src",
+      "target": "linklibs",
+      "dependency": "linklibs-${AROS_TARGET_PLATFORM}-${AROS_TARGET_CPU}-${AROS_TARGET_VARIANT}"
+    },
+    {
+      "recipe": "compiler/startup/mmakefile.src",
+      "target": "core-linklibs",
+      "dependency": "linklibs-startup-${AROS_TARGET_CPU}"
+    },
+    {
+      "recipe": "tools/crosstools/gnu/mmakefile.src",
+      "target": "gnu-libatomic-cpu-linklibs-0",
+      "dependency": "linklibs-${AROS_TARGET_CPU}"
+    }
+  ],
+  "host_file_generators": [
+    {
+      "owner": "compiler-stdc-genwcharsupport",
+      "recipe": "compiler/crt/stdc/mmakefile.src",
+      "tool_recipe": "tools/genctbl/Makefile",
+      "tool_source": "tools/genctbl/genctbl.c",
+      "tool_variable": "GENCTBL",
+      "output": "gen/compiler/crt/stdc/defaults/en_GB_ISO8859-1.c",
+      "input_directory": "gen/ucd",
+      "compile_flags": [
+        "-g",
+        "-Wall",
+        "-Werror",
+        "-Wunused",
+        "-O2"
+      ],
+      "arguments": [
+        "@INPUT_DIRECTORY@",
+        "@OUTPUT_DIRECTORY@",
+        "en_GB_ISO8859-1",
+        "--emit-c"
+      ],
+      "inputs": [
+        {
+          "filename": "UnicodeData.txt",
+          "url": "https://www.unicode.org/Public/16.0.0/ucd/UnicodeData.txt",
+          "sha256": "ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f",
+          "size": 2175362
+        },
+        {
+          "filename": "SpecialCasing.txt",
+          "url": "https://www.unicode.org/Public/16.0.0/ucd/SpecialCasing.txt",
+          "sha256": "8d5de354eef79f2395a54c9c7dcebbaf3d30fc962d0f85611ea97aa973a0c451",
+          "size": 16809
+        }
+      ]
+    }
+  ],
+  "generated_make_templates": {
+    "compiler/include/geninc.cfg": {
+      "template": "compiler/include/geninc.cfg.in",
+      "configure_source": "configure.in",
+      "substitutions": {
+        "@ENABLE_EXECSMP@": "#define __AROSEXEC_SMP__"
+      }
+    }
+  }
+}

@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipe and SDK source-input corrections are being integrated on current AROS-NX main without changing SMP or board runtime. Source-owned pins, normalized cache contracts and explicit header prerequisites have fixture coverage. Release object paths and applicable GCC/GDB markers distinguish Classic and SDK-selector state. Clean source/runtime-bound compiler and complete SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipe, SDK source-input and native consumer-contract corrections are being integrated without changing SMP or board runtime. Source seals, normalized cache inputs, explicit header prerequisites and target/host projections have authoring coverage. Release paths and markers distinguish Classic and SDK-selector state. New qualified tools runtime, clean compiler/SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -281,6 +281,73 @@ change any board's hardware acceptance state.
   evidence or hardware qualification. TC0 remains `in development`.
 - Next: final independent review and required product CI, followed by a clean
   source/runtime-bound compiler/SDK replay and full mixed release gates.
+
+### 2026-10-10 - TC0 source-owned native SDK declaration
+
+- Starting point: local integration commit
+  `158dc7a3b77fb4f19c5a3522649779d677a75418`, combining the separately reviewed
+  GNU recipe and SDK source-input prerequisites. This is not protected-main
+  acceptance or a qualified new release source. No existing board runtime or
+  OpenSBI/RV64 target is imported.
+- Contract: `esp32p4-riscv-gnu` selects compiler profile `rv32-esp32p4`,
+  RV32 `rv32imafc_zicsr_zifencei_zaamo_zalrsc`, `ilp32f`, `medany`, standalone,
+  MMU off and mandatory platform SMP. Exec SMP is separately enabled in the
+  generated include template. The full `includes` and `linklibs` roots remain
+  selected with ordinary `ports-includes` and SDK selector 0.
+- Configuration: compiler/archive executables are native-engine roles; the
+  sysroot is the build's Developer tree. The existing source-owned d1001 board
+  selection supplies shared-header compilation flags, not a kernel or media
+  readiness claim. The 44 regular source inputs are freshly hash-sealed.
+  Three host projections select host generators without changing the target ABI.
+- Procedure: source-seal `export.py --check`, the exporter positive/invalid-input
+  regressions, CI-discovered declaration tests, and the actual aros-common
+  `p4_source_consumer` opt-in Rust loader test against this checkout. The Rust
+  counterprobes use isolated copies to reject width, MMU, SMP, source-profile
+  and linker-input substitutions.
+- Observed: the exact Rust loader test passed on macOS ARM64 against tools
+  `04ad2f40dccc2a08d1582dfd3d707bb0217ae797`; exporter checks and all ten exporter
+  regressions passed. These are declaration/authoring results, not a fresh
+  complete native SDK, compiler A/B, relocation, firmware or hardware proof.
+- Release boundary: published tools v0.3.19 lacks native-consumer support.
+  Source feature activation and product CI must use only the measured new
+  qualified runtime. The declared baseline does not replace actual clean
+  qualification source identity. Standalone SDK distribution/installation
+  is separate from this compiler-consumer contract.
+- Next: independent declaration review and prerequisite merges; qualify the
+  tools runtime, bind exact source/producer inputs, then complete native SDK
+  C/C++ final links, P4 integration and mixed three-host release qualification.
+
+### 2026-10-10 - TC0 strict SDK graph closure
+
+- State: TC0 remains `in development`; selected SDK graph audit passed, not
+  complete SDK construction, compiler publication or hardware acceptance.
+- Source: local integration baseline `158dc7a3b77fb4f19c5a3522649779d677a75418`
+  plus the reviewed native SDK declaration. The consumer contract SHA-256 is
+  `f995ff42e9190fd53714f771bda1fe1e6964b07624e4c4f61e7ff1c0bd05baec`.
+  Its 44 regular source inputs remain individually sealed.
+- Correction: remove the erroneous optional Exec selector declaration. Common
+  Exec prerequisites remain mandatory. Declare the missing P4 endpoint
+  `kernel-exec-includes-esp32p4-riscv` with `kernel-kernel-includes`, following
+  the existing native RISC-V/ARM ports. No endpoint is invented by Rust and no
+  mandatory edge is waived. The internal normalized selector names are correct
+  and remain unchanged.
+- Procedure: initialize the four selected catalog submodules at their exact
+  source gitlinks; run exporter checks and all 45 CI-authoring tests (passed).
+  Run the real local transpiler against the complete `includes` and `linklibs`
+  selection, GNU/RV32 `ilp32f`, MMU off, SMP variant and retained sealed ports.
+  The runtime also rejects mandatory-source optionality, with valid virtual,
+  mandatory and colliding-selector counterprobes. Those are runtime safeguards,
+  not P4-specific graph compensation.
+- Observed: 2,250 reachable endpoints; zero missing endpoints, selected
+  capability failures, partial projections, unowned failures or unproven Make
+  providers. Root/dependency/strict validation errors are absent. The diagnostic
+  invocation published neither a build graph nor a source inventory.
+- Safety/limits: no compiler build, firmware, media or hardware mutation. The
+  local runtime is not a newly qualified public release. This measurement is
+  not a complete native SDK, final C/C++ link, relocation or three-host result.
+- Next: integrate the checked source prerequisites and qualified runtime, then
+  build the clean native SDK, test C/C++ final links and relocation, and qualify
+  the full mixed compiler/SDK release set on all three hosts.
 
 ## Track E: ESP32-P4 / RV32 SMP
 
