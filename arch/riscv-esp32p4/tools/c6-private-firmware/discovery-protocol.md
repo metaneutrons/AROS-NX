@@ -15,7 +15,12 @@ bound input before unpacking and output before transport publication.
 
 The startup advertisement must explicitly identify this extension and
 its version before a query is permitted. A stock peer receives no speculative
-request. Advertisement, schema generation and a serialized handler are included
+request. The private startup singleton is tag0xf0, length1, value2. It is a
+candidate-specific allocation, not an upstream-reserved tag or authentication.
+Tag0x17 is not discovery: the installed vendor peer sends it with a four-byte
+value. Earlier undeployed candidates using0x17 must be rebuilt; they cannot
+negotiate this revised advertisement. Never accept0x17 as a discovery alias.
+Advertisement, schema generation and a serialized handler are included
 in the separate C6 candidate recipe. The native INIT/owner/client paths now
 require negotiated version2 and preserve peer epoch/lease correlation. Their
 host tests and standalone builds are not installed-peer or live SDIO proof.

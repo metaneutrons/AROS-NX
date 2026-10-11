@@ -127,10 +127,15 @@ coordinated rail-off attempt reaches INIT parsing (stage27/error14,35bytes,
 preopen0); HP watchdog reset invalidates clean cold continuity.
 No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 
+The2026-10-11 measured0x17/4 vendor collision supersedes every earlier
+undeployed C6 discovery candidate's startup advertisement. Current host and
+recipe use private0xf0/version2; rebuild those candidates before qualification.
+Historical image hashes/build evidence remain historical, not deployable proof.
+
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2T | Explicit accepted-risk WLAN association test | ABI11 SD image and shared-host ABI8 BSP deployed/readback verified; warm INIT13/6; rail-off INIT27/14 with35bytes/preopen0 and HP watchdog reset; structural rejection diagnostics deployed/readback verified341080B resource/4032124B BSP; both short records complete, final warm boot still preopen35/stage13/error6; backups retained, privacy/recovery assertions0, OTA unchanged | Fresh coordinated C6 rail-off INIT measurement, identify exact parser rejection and watchdog/reset continuity, then existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed/readback verified; fresh INIT refused at offset17/tag0x17/length4 because of private discovery collision; marker relocated0xf0 with bounded vendor skip and synthetic regressions; fresh341104B resource/4032148B BSP deployed/readback verified, warm return still preopen35/13/6 before parsing; HP watchdog reset prevents clean cold pass; privacy/recovery assertions0, OTA unchanged | Fresh coordinated C6 rail-off INIT and reset continuity, then existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1552,8 +1557,10 @@ and a full C6 build pass; request350/response606 schema and integration patches
 apply to the pinned source. Generated Protobuf codecs, C6 capability advertisement
 and serialized handler now exist in the undeployed candidate. Native owner
 correlation/binding and dispatcher runtime/stack qualification remain open.
-Native INIT now parses singleton version TLV0x17, preserving unsupported values
-without permitting a query. Its supported-capability helper requires version1,
+Native INIT now parses singleton version TLV0xf0, preserving unsupported values
+without permitting a query. The earlier0x17 advertisement collided with an
+installed vendor four-byte TLV and is no longer accepted as discovery; previous
+undeployed C6 binaries must be rebuilt. Its supported-capability helper requires version2,
 C6 and WLAN/SDIO facts. Private envelope/request/response codecs compile in the
 Core1 RV32 resource; ordinary RPC ranges and WLAN allowlists stay unchanged.
 UID/nonce validation is a codec property, not reset freshness or authentication.
@@ -1688,10 +1695,12 @@ metadata and payload size in two sub64-byte records for the lossy runtime USB
 console;
 never emit raw INIT/SSID/credential bytes. New host tests cover every reason,
 alias refusal and wrapper parity; resource/BSP build and loader audits pass.
-Final diagnostic warm boot still refuses preopen35/stage13/error6 before the
-parser; both short reports arrive completely, with successful restore/cleanup
-and no watchdog reset. Deployment is independently byte-verified. This is not a
-fresh C6 measurement: the35-byte parser refusal and cold continuity remain open.
+The coordinated fresh attempt now locates the parser refusal: FIELD_SIZE at
+offset17, tag0x17/length4, payload23/declared21/present1f. The private discovery
+tag is relocated0xf0 in host and undeployed C6 recipe; vendor0x17 remains
+bounded opaque data, not0x16 extended capabilities or discovery. Host
+regressions pass; corrected package deployment/readback and warm return pass,
+but installed fix qualification requires a fresh C6 start. Reset continuity remains open.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -38955,3 +38964,71 @@ remain open. No partial stage is a complete A/B update system.
   rail-off measurement. Identify
   the exact fresh INIT refusal and separately qualify reset continuity before
   transmitting credentials or claiming native WLAN functionality.
+
+### 2026-10-11 - N2T installed vendor/private INIT tag collision
+
+- Fabian freshly confirmed readiness, USB-C as the only supply, disconnection
+  and reconnection. Port absence was checked before arming. Dispatcher armed
+  monotonic607479.555743291, observed arrival607504.291160041 (previous sample
+  607504.270722125), passive reader open607504.362476375..607504.365192416.
+  No serial access while absent, no reset/retry in this dispatcher. Capture
+  opens DTR/RTS true and can still disturb hardware; first bytes arrived
+  6.765782375s after reader start. Rail-off interaction is established, not
+  clean CPU-reset continuity.
+- Unchanged diagnostic BSP4032124B SHA256f4d5d685... on JC1060P470C-v2,
+  MAC80:f1:b2:d3:3b:a6/P4v1.3. `cold-diagnostic.log` actual exit0,
+  status=ok footer60.033658459s/16876B; SHA256
+  `1ec444409fed8a536bad95eec34a738da5898e553509ac7d0289d259733a5f5c`.
+  Evidence remains the absolute `init-diagnostic.P6jvRd` directory in the
+  preceding entry. Both harts and SDIO setup11/0/ready02 observed. INIT
+  preopen0/polls3/counter35/consumed1, stage27/error14/poison1; restoreok1 and
+  cleanupok1. No reply or credentials transmitted.
+- Complete diagnostic: FIELD_SIZE7, offset17, tag0x17, length4, present1f,
+  payload23, declared21. The peer's TLV collides with our private one-byte
+  discovery marker. No raw peer value bytes were logged or invented. Pinned
+  reference `common/include/adapter.h:203..210` defines CAP_EXT0x16, not0x17;
+  `host/drivers/transport/transport_drv.c:563..594` skips bounded unknown TLVs.
+  Independent Luna review confirms that tag length does not establish its
+  meaning. Retain0x17 as opaque, never an alias for0x16 extended capabilities.
+- Capture again starts with HP_SYS_HP_WDT_RESET. No additional ROM/reset,
+  trap/Guru/Alert/panic signature in the window; this watchdog/reset continuity
+  blocker remains independent of the demonstrated parser collision. It is
+  not a cold-boot, initialization, association or traffic pass.
+- Correction relocates only the private advertisement to0xf0/one-byte version2,
+  matching the undeployed C6 recipe and explicit protocol contract. No old0x17
+  alias is admitted. It is candidate-specific, not an upstream allocation or
+  authentication. Earlier C6 candidate binaries are retained but superseded
+  for deployment; no new C6 build/hardware acceptance inferred. Integration
+  patch `git apply --check` passes against pinned pristine source (exit0).
+- Synthetic regressions use arbitrary values with the measured shape, not
+  alleged captured bytes. Vendor0x17/4 and0x17/1=2 grant no discovery or ext-cap;
+  private0xf0 alone/coexisting works, malformed/truncated tags and duplicate
+  private marker remain refused. INIT350245, OPEN734, OPEN-to-RX332 and
+  generated discovery1855 each O0/O2 ASan+UBSan, actual exit0. Client286 each
+  O0/O2 and expected negative-control rejection pass. Initial discovery runner
+  invocation omitted its required source argument (exit2); corrected run uses
+  `c6-discovery-v2.3RE1Sf/source`. That source's old C6 startup advertisement
+  is not current, but its unchanged generated request/response schema is used.
+- Full native resource objects invalidated/rebuilt/linked (exit0), same Core1
+  diagnostic flags and all three privacy/recovery/update assertions0.
+  `esp32p4wifi-tagfix.resource`341104B SHA256
+  `7b0afa6fe25202fd7aea0d7f7df26255b941fc246c668313b4fe76dc946bcd2a`;
+  `bsp-init-tagfix.pkg`4032148B SHA256
+  `b493af07dc4ddb9629d59bf9d5f97386ea706b55184fa376f87ca5413d2053e6`.
+  Audited42 members/0 failures; only WLAN resource replaced, other41 retained.
+  Exact size helper passes0x3e0000, rounded erase4034560B ends0xbf8fff.
+- Board MAC reidentified (exit0); current4034560B erase-span backup read (exit0)
+  matches independently verified installed prefix4032124B. Backup SHA256
+  `b3a85819ead878ade35e57f6b76ec298a3dd8a0e45b6b69ebeeaeb9879190173`.
+  P4-only write at0x820000 actual exit0; independent4032148B readback/cmp
+  matches exactly (exit0/same package SHA256). Warm reset/capture exit0,
+  complete footer30.836285875s/16612B; `warm-tagfix.log` SHA256
+  `2e76f52d06c8b580b066027066d4ec4b670577a5c1c64e64c63f780fade78b83`.
+  One CHIP_USB_UART_RESET banner, both harts, setup11/0/ready02 and graphics
+  updates; preopen35/INIT13/6 before parsing, consumed0, cleanupok1/restoreok1.
+  No trap/Guru/Alert/panic/watchdog-reset signature or credential/reply attempt.
+  Reader closed. No core/bootloader/table/metadata/C6/SD or credential write.
+- Next: fresh coordinated rail-off to qualify
+  the installed correction, separate watchdog continuity diagnosis, then
+  native initialization/scan and existing WirelessManager association/DHCP/data.
+  Public ABI and stock-peer discovery/OTA denial remain unchanged. WLAN is open.

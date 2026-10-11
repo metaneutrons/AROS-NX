@@ -51,6 +51,19 @@ static const uint8_t discovery_last_init[] = {
     P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT
 };
 
+/* Synthetic shape-matching fixture: five standard fields followed by the
+ * vendor's 0x17/4 TLV at byte offset 17. The values below are test examples,
+ * not bytes copied from a captured event. */
+static const uint8_t synthetic_vendor_tag_init[] = {
+    P4_HOSTED_INIT_EVENT_TYPE, 21,
+    P4_HOSTED_INIT_TAG_CAPABILITIES, 1, 0x0d,
+    P4_HOSTED_INIT_TAG_CHIP_ID, 1, P4_HOSTED_INIT_CHIP_ESP32C6,
+    P4_HOSTED_INIT_TAG_TEST_RAW_TP, 1, 0,
+    P4_HOSTED_INIT_TAG_RX_QUEUE_SIZE, 1, 20,
+    P4_HOSTED_INIT_TAG_TX_QUEUE_SIZE, 1, 20,
+    0x17, 4, 0xa1, 0xb2, 0xc3, 0xd4
+};
+
 static uint32_t random_state = UINT32_C(0x91e10da5);
 
 static uint32_t next_random(void)
@@ -273,6 +286,10 @@ static void test_board_discovery_capability(void)
     CHECK(p4_hosted_init_parse(discovery_last_init,
                                sizeof discovery_last_init, &result));
     CHECK(p4_hosted_init_has_board_discovery(&result));
+    CHECK(result.present == (P4_HOSTED_INIT_HAS_CAPABILITIES |
+                             P4_HOSTED_INIT_HAS_CHIP_ID |
+                             P4_HOSTED_INIT_HAS_BOARD_DISCOVERY));
+    CHECK((result.present & P4_HOSTED_INIT_HAS_EXTENDED_CAPABILITIES) == 0);
 
     /* Preserve zero and unknown versions as inventory facts without enabling
      * the version-2 capability. */
@@ -296,6 +313,109 @@ static void test_board_discovery_capability(void)
           P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT);
     CHECK(!p4_hosted_init_has_board_discovery(&result));
     CHECK(!p4_hosted_init_has_board_discovery(NULL));
+}
+
+static void test_vendor_tag_is_opaque(void)
+{
+    uint8_t event[sizeof synthetic_vendor_tag_init + 6u];
+    struct p4_hosted_init result;
+    const uint8_t base_fields = P4_HOSTED_INIT_HAS_CAPABILITIES |
+        P4_HOSTED_INIT_HAS_CHIP_ID | P4_HOSTED_INIT_HAS_TEST_RAW_TP |
+        P4_HOSTED_INIT_HAS_RX_QUEUE_SIZE | P4_HOSTED_INIT_HAS_TX_QUEUE_SIZE;
+    size_t size;
+
+    /* Synthetic 23-byte shape: admit the five base fields while treating
+     * 0x17/4 as opaque; it is neither board discovery nor tag 0x16. */
+    CHECK(sizeof synthetic_vendor_tag_init == 23u);
+    CHECK(synthetic_vendor_tag_init[17] == 0x17u);
+    CHECK(synthetic_vendor_tag_init[18] == 4u);
+    CHECK(p4_hosted_init_parse(synthetic_vendor_tag_init,
+                               sizeof synthetic_vendor_tag_init, &result));
+    CHECK(result.chip_id == P4_HOSTED_INIT_CHIP_ESP32C6);
+    CHECK((result.capabilities & P4_HOSTED_INIT_CAP_WLAN_SDIO) != 0);
+    CHECK(result.present == base_fields);
+    CHECK(result.extended_capabilities == 0);
+    CHECK(!p4_hosted_init_has_board_discovery(&result));
+
+    /* A synthetic 0x17/1 value of 2 is still opaque and grants no capability. */
+    memcpy(event, observed_init, sizeof observed_init);
+    size = sizeof observed_init;
+    event[size++] = 0x17;
+    event[size++] = 1;
+    event[size++] = 2;
+    event[1] = (uint8_t)(size - P4_HOSTED_INIT_EVENT_HEADER_SIZE);
+    CHECK(p4_hosted_init_parse(event, size, &result));
+    CHECK(result.present == (P4_HOSTED_INIT_HAS_CAPABILITIES |
+                             P4_HOSTED_INIT_HAS_CHIP_ID));
+    CHECK(result.board_discovery_version == 0);
+    CHECK(!p4_hosted_init_has_board_discovery(&result));
+
+    /* The private tag works with the vendor TLV present as well as by itself
+     * in discovery_last_init above. */
+    memcpy(event, synthetic_vendor_tag_init,
+           sizeof synthetic_vendor_tag_init);
+    size = sizeof synthetic_vendor_tag_init;
+    event[size++] = P4_HOSTED_INIT_TAG_BOARD_DISCOVERY;
+    event[size++] = 1;
+    event[size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT;
+    event[1] = (uint8_t)(size - P4_HOSTED_INIT_EVENT_HEADER_SIZE);
+    CHECK(p4_hosted_init_parse(event, size, &result));
+    CHECK(result.present == (base_fields |
+                             P4_HOSTED_INIT_HAS_BOARD_DISCOVERY));
+    CHECK(result.extended_capabilities == 0);
+    CHECK(p4_hosted_init_has_board_discovery(&result));
+}
+
+static void test_vendor_and_private_tag_malformed_refusal(void)
+{
+    uint8_t event[sizeof synthetic_vendor_tag_init + 6u];
+    const uint8_t vendor_base_fields = P4_HOSTED_INIT_HAS_CAPABILITIES |
+        P4_HOSTED_INIT_HAS_CHIP_ID | P4_HOSTED_INIT_HAS_TEST_RAW_TP |
+        P4_HOSTED_INIT_HAS_RX_QUEUE_SIZE | P4_HOSTED_INIT_HAS_TX_QUEUE_SIZE;
+    size_t size;
+
+    /* Truncate the 0x17/4 value after three bytes while keeping the declared
+     * size consistent, so the parser must reject the bounded TLV itself. */
+    memcpy(event, synthetic_vendor_tag_init,
+           sizeof synthetic_vendor_tag_init - 1u);
+    size = sizeof synthetic_vendor_tag_init - 1u;
+    event[1] = (uint8_t)(size - P4_HOSTED_INIT_EVENT_HEADER_SIZE);
+    expect_diagnostic_refusal(event, size, P4_HOSTED_INIT_ERROR_TLV_SIZE,
+        17, 0x17, 4, vendor_base_fields,
+        (uint8_t)(size - P4_HOSTED_INIT_EVENT_HEADER_SIZE));
+
+    /* A dangling 0x17 tag is a truncated TLV header, not an ignorable field. */
+    memcpy(event, synthetic_vendor_tag_init, 18u);
+    event[1] = 16;
+    expect_diagnostic_refusal(event, 18u, P4_HOSTED_INIT_ERROR_TLV_HEADER,
+        17, 0, 0, vendor_base_fields, 16);
+
+    /* Private 0xf0 keeps its fixed one-byte version and singleton rule. */
+    memcpy(event, observed_init, sizeof observed_init);
+    size = sizeof observed_init;
+    event[size++] = P4_HOSTED_INIT_TAG_BOARD_DISCOVERY;
+    event[size++] = 2;
+    event[size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT;
+    event[size++] = 0;
+    event[1] = (uint8_t)(size - P4_HOSTED_INIT_EVENT_HEADER_SIZE);
+    expect_diagnostic_refusal(event, size, P4_HOSTED_INIT_ERROR_FIELD_SIZE,
+        sizeof observed_init, P4_HOSTED_INIT_TAG_BOARD_DISCOVERY, 2,
+        P4_HOSTED_INIT_HAS_CAPABILITIES | P4_HOSTED_INIT_HAS_CHIP_ID, 10);
+
+    memcpy(event, observed_init, sizeof observed_init);
+    size = sizeof observed_init;
+    event[size++] = P4_HOSTED_INIT_TAG_BOARD_DISCOVERY;
+    event[size++] = 1;
+    event[size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT;
+    event[size++] = P4_HOSTED_INIT_TAG_BOARD_DISCOVERY;
+    event[size++] = 1;
+    event[size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT;
+    event[1] = (uint8_t)(size - P4_HOSTED_INIT_EVENT_HEADER_SIZE);
+    expect_diagnostic_refusal(event, size, P4_HOSTED_INIT_ERROR_DUPLICATE,
+        sizeof observed_init + 3u, P4_HOSTED_INIT_TAG_BOARD_DISCOVERY, 1,
+        P4_HOSTED_INIT_HAS_CAPABILITIES | P4_HOSTED_INIT_HAS_CHIP_ID |
+            P4_HOSTED_INIT_HAS_BOARD_DISCOVERY,
+        (uint8_t)(size - P4_HOSTED_INIT_EVENT_HEADER_SIZE));
 }
 
 static void test_all_known_fields_and_unknown_tag(void)
@@ -546,6 +666,8 @@ int main(void)
 {
     test_observed_c6_event();
     test_board_discovery_capability();
+    test_vendor_tag_is_opaque();
+    test_vendor_and_private_tag_malformed_refusal();
     test_all_known_fields_and_unknown_tag();
     test_maximum_bounded_unknown_tag();
     test_envelope_and_truncation();

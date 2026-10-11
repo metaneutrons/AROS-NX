@@ -205,10 +205,15 @@ protoc-c --c_out=. esp_hosted_rpc.proto
 
 The verified generator is protobuf-c1.5.2 with libprotoc36.2. Use the isolated
 IDF build procedure above and a fresh build directory. The C6-only CMake branch
-links request350/response606 and defines the version1 startup TLV0x17 only with
+links request350/response606 and defines the version2 startup TLV0xf0 only with
 the handler present; other targets do not advertise it. The worker serializes
 collection with its existing OTA handlers. External registry mutations must
 also obey the collector exclusion contract. Unknown policies stay unknown.
+
+The startup tag was relocated from0x17 on2026-10-11 after the installed stock
+peer reported that tag with a four-byte value. Previously recorded candidate
+builds advertise the old colliding tag and are not current deployable artifacts;
+rebuild from this recipe before qualification. No installed C6 update occurred.
 
 Before unpacking, the candidate checks positive input length against the shared
 4096-byte serial reassembly capacity, not a single SDIO/SPI frame. Dispatcher

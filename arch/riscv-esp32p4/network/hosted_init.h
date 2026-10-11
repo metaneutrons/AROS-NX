@@ -18,7 +18,9 @@
 #define P4_HOSTED_INIT_TAG_RX_QUEUE_SIZE 0x14u
 #define P4_HOSTED_INIT_TAG_TX_QUEUE_SIZE 0x15u
 #define P4_HOSTED_INIT_TAG_EXTENDED_CAPABILITIES 0x16u
-#define P4_HOSTED_INIT_TAG_BOARD_DISCOVERY 0x17u
+/* Private candidate only. Vendor peers already use 0x17 with a four-byte
+ * value: never interpret that stock tag as our discovery capability. */
+#define P4_HOSTED_INIT_TAG_BOARD_DISCOVERY 0xf0u
 
 #define P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT 2u
 

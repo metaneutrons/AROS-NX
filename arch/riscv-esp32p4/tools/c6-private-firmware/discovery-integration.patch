@@ -112,7 +112,7 @@
  	ESP_PRIV_RX_Q_SIZE,
  	ESP_PRIV_TX_Q_SIZE,
  	ESP_PRIV_CAP_EXT, // extended capability (4 bytes)
-+	ESP_PRIV_BOARD_DISCOVERY = 0x17, // private singleton version (1 byte)
++	ESP_PRIV_BOARD_DISCOVERY = 0xf0, // private singleton version (1 byte)
  } ESP_PRIV_TAG_TYPE;
  
  typedef enum {

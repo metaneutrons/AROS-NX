@@ -1,21 +1,21 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
-WLAN INIT rejection diagnostics (2026-10-11): the unchanged admission parser
-now exposes a bounded structural reason/offset/tag/length/present mask and
-declared TLV length, copied
-into the native OPEN report without peer value bytes or credential logging.
-The Core1 diagnostic resource341080B and audited42-member BSP4032124B
-are deployed and independently readback verified. All12
-reasons/alias refusal and wrapper parity pass350198 checks each O0/O2
-ASan/UBSan; OPEN734 and OPEN-to-RX332 checks pass each configuration.
-Original-parser admission parity passes50000 cases. The first warm diagnostic
-boot still refuses stale preopen35bytes at stage13/error6, before parsing;
-it does not explain the prior fresh INIT refusal. Runtime USB output dropped
-the tail of the long report, so the final report uses two sub64-byte records.
-Both short records arrive completely in the final30-second warm capture;
-INIT still refuses preopen35/stage13/error6 before parsing. The actual35-byte
-parser rejection and cold/watchdog continuity remain
-unresolved until a fresh coordinated measurement. No C6 update is enabled.
+WLAN INIT collision identified (2026-10-11): the coordinated rail-off capture
+reaches stage27/error14 and reports FIELD_SIZE at offset17, tag0x17/length4,
+payload23/declared21/present1f. Our one-byte private discovery advertisement
+collided with an installed vendor TLV. The private candidate now uses0xf0;
+0x17 remains bounded opaque data, never discovery or an alias for0x16.
+The undeployed C6 recipe is aligned; previous candidate binaries must be rebuilt.
+No C6 firmware, public ABI or update permission changed. Synthetic regression
+fixtures use arbitrary values, not invented captured bytes. INIT350245,
+OPEN734, OPEN-to-RX332 and generated discovery1855 checks pass each O0/O2
+sanitized; discovery-client286 checks and its negative control pass.
+Fresh Core1 resource341104B/audited42-member BSP4032148B are deployed and
+independently readback verified. Warm return30.836s still refuses preopen35
+before parsing; it cannot qualify the fix without a fresh C6 start.
+The diagnosis capture completed60.034s
+but again reports HP_SYS_HP_WDT_RESET, so clean cold continuity remains open.
+Native initialization/association/DHCP/data acceptance requires a new measurement.
 
 Firmware release contracts (2026-10-11): the
 [signed release contract](../../docs/plans/esp32-firmware-release-contract.md)
@@ -363,14 +363,16 @@ for normal security APIs,204 for virtual-eFuse builds. IDF runtime is mocked;
 object compilation and these tests do not establish installed C6 behavior.
 The normalized inventory now has a strict bounded1056-byte codec, checked in
 45 cases/136 assertions each O0/O2 sanitized. Generated Protobuf discovery350/
-606, response cleanup and version1 startup TLV0x17 are linked in a fresh
-undeployed C6 candidate1110496B. The dispatcher bounds inputs by the4096-byte
+606, response cleanup and the historical version1 startup TLV0x17 were linked
+in an undeployed C6 candidate1110496B. That advertisement is superseded by
+version2/tag0xf0 after the measured vendor collision; old candidates are not
+current deployable artifacts. The dispatcher bounds inputs by the4096-byte
 serial reassembly capacity before unpacking and releases requests on error.
 Actual handler/generated-code host tests pass145 checks/10 cases each O0/O2;
 the collector is stubbed and live IDF dispatch/transport is not qualified. It
 rejects mismatched UID/type/version/nonce and reports failure without inventory.
 Native INIT parsing now retains the advertised discovery version and supports
-version1 only on C6/SDIO. Separate native discovery-envelope functions leave
+version2 only on C6/SDIO using private tag0xf0. Separate native discovery-envelope functions leave
 ordinary RPC ranges unchanged. The native request codec requires the supported
 capability; response decoding validates ID/type/UID, echoed nonce, status and
 canonical inventory. This is not live epoch/lease admission. Fresh Core1 RV32
