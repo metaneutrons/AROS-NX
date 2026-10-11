@@ -123,7 +123,7 @@ No ABI7/ABI8/ABI9/ABI10 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1279,6 +1279,21 @@ stub. The proportional GUI derives extents from validated input, not hardcoded
 board diagrams. Supplied capacity and imported provenance are visible; active
 slots and update permissions are not inferred. Tiny spans have minimum visual
 weight; exact offsets/sizes remain in tooltips and CLI output.
+
+CHECK-C6 now uses an owned bounded source loader shared with future update
+preparation. Open once, accumulate short reads, require exact EOF, close before
+publication and verify the held bytes; refusal preserves the source object.
+Recheck verifies the original digest and metadata without reopening. Current
+CHECK disposes after inspection; future synchronous submit must copy/refuse
+before disposal. Exclusive immutable ownership is a caller contract, not a
+hostile-memory or concurrent-mutation defense. Native tool builds129432B;
+actual-source host regressions pass26 cases/374 checks each sanitized O0/O2,
+with primary repeat and independent code/fixture review. DOS/Exec are modeled,
+not native file interaction or hardware evidence.
+Recheck has no production update caller. Source retention creates no trusted
+manifest, live target/layout compatibility or device-specific recovery proof;
+the authoritative producers for all four job attestations remain open.
+UPDATE-C6 stays unavailable and all three release assertions0.
 
 M1 source/host/build foundations are verified within their stated limits;
 native CLI/MUI interaction remains untested. The isolated OTA codec and gated
@@ -38032,3 +38047,82 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   proof, full-image deadline and recovery remain open. Real WLAN association,
   DHCP, bidirectional traffic, reconnect/combined1800s and HTTPS/P4 updates are
   still required; this correction does not complete the Wi-Fi objective.
+
+### 2026-10-11 - N2M retained inspected C6 source, no fabricated admission
+
+- Scope: shared tool-private source_file loader/recheck/dispose, linked into
+  ESP32Board; actual CHECK-C6 delegates to that loader and disposes after its
+  read-only check. Open once, bounded positive short reads at most4096B, exact
+  EOF, close before format/hash verification and publication. Failures preserve
+  the caller's empty source and free unpublished allocations. Recheck uses held
+  bytes, the copied original digest and inspected bytes/revisions/security/hash
+  metadata; no pathname reopen. Dispose clears ownership before one free.
+- Contracts/correction: the private object must be zero-initialized, exclusively
+  owned and immutable through future recheck/submit. Input strings/objects and
+  status must be valid/disjoint. A second load refuses live ownership; the status
+  buffer also cannot overlap its retained image, so refusal cannot corrupt that
+  image. This guard was added after the first build and rebuilt separately.
+  This is not malicious-memory isolation, a file lock or concurrency support.
+- Native procedure: invalidate the exact generated ESP32Board object directory,
+  then gmake -j1 workbench-tools-esp32board-quick in
+  `/Volumes/Dev/Build/aros-esp32p4-wifi-build`. First process8165 and final
+  guarded-source process92185 actually exit0. RV32-SMP/esp32p4, JC1060-v2,
+  SDIO/INIT/reply/persistent owner enabled, CPU1; all three privacy/update release
+  assertions0. No resource/device ABI change. All source functions and CHECK
+  appear as defined symbols in the final tool; no DOS-executable boot-module
+  audit or package/deployment pass is implied.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/c6-owned-source.zHXoW3/`.
+  Archived final ESP32Board129432B SHA256
+  0955580588aafc44a147dce59abe4dd71f60eb18eacc7d5bd5df08e38695c3c9.
+  Final native-build-owned-alias.log SHA256
+  9b1438e51d588dd5946a59f7083cf5f8dd1b72b6608ea0db2f3240fa2ddfc775;
+  initial pre-guard native-build.log SHA256
+  eea8613f7a0253abaaba987ad3c560171aa2049d7aedc0a2990541c0436b3132.
+  Existing real image/hash regression17 cases each O0/O2 ASan/UBSan and frontend
+  parity/three rejected counterprobes actually exit0 in process61599. Image log
+  SHA2562dffc2c4a77d11771facb6dc04833c77f8990cfae7d4458adac447e84e7292fa;
+  parity log SHA256d56edd2c5b25245debae1373b198f7e69a87f81de4b7ff378dad045cb4bf9bd5.
+  Actual generated-make and MetaMake target restriction probe exits0 across six
+  architecture/CPU pairs; target-regression.log SHA256
+  07c57e09d879c65bcb7d2af84aacbdf42f1af307c21140ec7dfdf7f91a31d862.
+- Independent production source review finds no concrete defect under the
+  documented ownership contract. Local rom/dos/close.c confirms that Close
+  releases its handle even on failure; retrying Close would be invalid.
+  The source audit separately confirms no authoritative production producer
+  yet for authenticated manifest acceptance, inspected held update source,
+  device-specific recovery or compatibility against the actual target. The
+  read-only CHECK supplies format/hash inspection, not those admission proofs.
+- New actual-source regressions: runner
+  workbench/tools/ESP32Board/tools/test-board-source.py compiles actual loader,
+  CHECK adapter, image verifier and SHA separately with warnings-as-errors and
+  ASan/UBSan. The verifier wrapper observes close-before-check then calls the
+  real checker. Synthetic valid image bytes exercise26 cases/374 checks each
+  O0/O2: retained deep copy, copied original input digest, maximum bounded reads,
+  exact EOF, failures/cleanup, unchanged ownership, aliases, no-reopen recheck
+  mutations, CHECK disposal and owner clearing observed before FreeVec.
+  Final author evidence sibling c6-owned-source-tests.tjv5d5u9/ passes; primary
+  process9748 actually exits0 with the same counts in sibling
+  c6-owned-source-tests.0m4_qjb_/. Independent fixture review finds no concrete
+  gap. These model DOS/Exec, not native filesystem/SMP/SDIO behavior.
+  Primary manifest SHA256
+  8ec8469f5139b36a5d96084152404f271bed73fffd3427e823cb637091817d8c;
+  O0/test.log SHA256
+  59599d0eaadde79547787d6fc0e8d3e973f32d8620f0fe885b444614e6749411;
+  O2/test.log SHA256
+  c556c53527c74ab9fcb408c7cc181c262ddaa0298d0c511bb0c838cc982ced5a;
+  source-primary.log SHA256
+  f612c85173ce653081e22f8dd47402f97bccd1023d3c2805598e9e616944dab0.
+  Preserved initial sibling c6-owned-source-tests.jspfblm_/ manifest exits1:
+  both test processes exit-6 before the harness because Apple ASan rejects
+  detect_leaks. Corrected runner explicitly disables unsupported LSan; exact
+  modeled allocation/free accounting remains enabled. Earlier successful
+  sibling347u4hyz/ has373 checks before the direct pre-free observation was
+  added; it is superseded, not silently counted as the final fixture.
+- Safety/remaining: no hardware, serial, flash, SD write, credential, package
+  or image change. UPDATE-C6 remains unavailable; all three assertions0.
+  Recheck is linked but has no production update caller. Implement authentic
+  source admission, actual target/layout/recovery producers and CLI/GUI progress
+  dispatch; qualify the full transfer and secure first-install recovery before
+  any C6 write. Real WLAN association/DHCP/traffic/reconnect/combined1800s and
+  HTTPS/P4 updater acceptance remain open; no Wi-Fi completion is claimed.

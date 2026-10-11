@@ -39,6 +39,15 @@ secured recovery path; source development and read-only file checks do not.
   BEGIN. Validate C6 chip/app format, exact length, device/revision, partition
   capacity, Hosted compatibility and anti-rollback/security policy. A hash
   supplied alongside an untrusted download is not authenticity.
+- The tool-private C6 source loader opens once, freezes and inspects the bytes,
+  closes before publication, and retains the exact source until explicit
+  disposal. CHECK-C6 uses this loader, then disposes. A future admitted updater
+  must retain it, recheck the stored digest/metadata and submit these bytes
+  without reopening a pathname; dispose only after synchronous submit has
+  copied or refused them. The object is exclusively owned, not concurrent or
+  protected from a malicious caller. Its digest is trusted input, not a release
+  manifest or publisher-authentication producer. No OTA gate may be fabricated
+  from this object or from the current user-supplied SHA field.
 - Discover the actual P4 and C6 flash capacities and partition tables through
   their respective read-only backends. Never derive a live layout from build
   defaults. Render proportional partition extents and gaps in the GUI, with

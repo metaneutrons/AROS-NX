@@ -1,5 +1,20 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+C6 inspected-source ownership (2026-10-11): CHECK-C6 now uses a shared
+tool-private loader that opens once, retains bounded verified bytes, closes
+before publication and frees on refusal. A future admitted update can recheck
+those same held bytes against the original digest and inspected metadata,
+without reopening the path. The current read-only CHECK disposes them after
+inspection; recheck has no production update caller yet. Caller-supplied SHA256
+is not publisher authentication. Authentic manifest, live target/layout and
+device recovery proof producers remain absent; no proof boolean is fabricated.
+The fresh RV32-SMP tool build is129432B; actual loader/check/image/hash host
+tests pass26 cases/374 checks each O0/O2 ASan/UBSan, including primary repeat
+and independent review. DOS/Exec are modeled; no native file interaction or
+recovery is tested. UPDATE-C6 and all three release
+assertions remain off; no hardware, serial, flash, SD or credential action.
+Detailed evidence and limits are in roadmap N2M.
+
 Bootstrap update release separation (2026-10-11): installing the C6 privacy
 fix must not require that fix already installed. OTA hook registration and
 the three native OTA admission boundaries now use a resource-private update
