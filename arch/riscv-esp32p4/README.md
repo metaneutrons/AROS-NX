@@ -2113,6 +2113,12 @@ package-size rule. Keep verbose package `d9e40d75…` for reversible diagnostics
 Optional `tools/reset-and-log.py --timing <new.jsonl>` records host-receipt
 time and raw-byte offsets without changing the raw capture; USB buffering and
 the buffered ROM head prohibit claiming firmware phase or no-reader cold times.
+For causal diagnosis, `--once --attempt-log <new.jsonl>` retains all received
+bytes (base64 journal plus raw stdout), bounds pre-reset draining to 64 KiB/2s,
+issues one explicit reset pulse and captures the full requested interval without
+retry. Silent/download observations return failure; other output is unclassified,
+not a boot pass. This mode is host tested only; opening the port can still reset
+the device. Baseline desktop remains restored; lifecycle/WPA3/IP gates stay open.
 
 E2, the two-hart primitives, is hardware verified on both boards: on the
 D1001 on 2026-10-01 (219,776-byte candidate, five captures, two epochs each)

@@ -148,9 +148,9 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `flash/runtime and desktop return verified, cold continuity rejected`: exact385024B AROS backup restored/readback matched; coordinated45s return observes both harts/graphics/touch/WLAN owner, Fabian confirms desktop; initial HP WDT reset40001ea8 maps exact-core DMA interrupt clear50081198, cause unproved; both65s lifecycle captures had zero firmware bytes | Attribute initial reset/silent diagnostic and compare IDF startup differences before new reference deployment; no lifecycle or peer-contract qualification from restoration |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `runtime/desktop restored; capture harness host tested`: exact385024B AROS rollback verified, desktop observed; initial HP WDT reset40001ea8 maps DMA interrupt clear50081198, cause unproved; both65s lifecycle captures empty; opt-in one-pulse full-byte journal now retains failed attempts | Calibrate one-pulse capture against restored baseline before further diagnostic deployment; no cold-continuity or lifecycle/peer qualification |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin publication implemented; foreign leave isolation, failed-teardown replacement-cookie and pre-ACK completion repairs host/native-build verified; CONNECT_FAILED shares admission gate, FOURWAY absent; reference inventory/INIT SAE-bit verified; single-handler C6 candidate retained; credential-free P4 STOP/START diagnostic deployed with two matching full-span backups and independent readback after exclusive-port correction; not run, no event-fence qualification; native admission final gate0, undeployed; installed failure/cancellation/reconnect and peer qualification open | Coordinated USB-C rail-off, single lifecycle capture and exact-span AROS rollback, then source-backed producer fence or attempt correlation and installed-peer qualification; explicit negotiated SAE/PMF, password semantics, no transition downgrade, native caller lifecycle and all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1963,6 +1963,9 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   actual ota_0 offset0x20000 is confirmed. No demonstrated startup/config cause.
   Reset reader discards failed attempts; improve attempt evidence before new
   deployment rather than treating an accepted final boot as the complete trace.
+  Opt-in one-pulse full-byte journal is now host tested: bounded pre-reset
+  snapshot, full-duration silent/download retention, no automatic retry and
+  terminal status. Hardware calibration remains pending; port open can reset.
   Typed BeginIO/capability wiring now uses the owned parser and a shared,
   default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
   permission alone cannot advertise/admit FullMAC; the resource checks that
@@ -41212,3 +41215,33 @@ remain open. No partial stage is a complete A/B update system.
   cannot establish every attempt entered download mode. Preserve full attempt
   evidence and distinguish reset/ROM/app/reader state before another diagnostic
   deployment. Original peer event/WPA3/PMF/IP/data requirements unchanged.
+
+### 2026-10-11 — One-pulse full-byte capture harness, host verified only
+
+- Artifact: tools/reset-and-log.py SHA256
+  eac85ef27b8bfaba20862e455816270d15aa5e7dcd78ac7583b6f48fe782a4e5;
+  tests/test_reset_once_log.py SHA256
+  06d38384a891c6368857fb35173e8fde01da8b19e4b3a3b50a7bc0b4dec453f3.
+  Opt-in --once requires --attempt-log with exclusive new JSONL creation
+  before serial access. Legacy default six-attempt behavior is unchanged.
+- Procedure: mock serial/monotonic clock only, no board access. Primary runs
+  python3 -B tools/tests/test_reset_once_log.py: 11 tests PASS; discovery
+  -p test_*log.py: 37 tests PASS (includes those11); boot_capture_timing:
+  2 tests PASS. All processes exit0; git diff --check exits0.
+  Luna authors bounded tests and independently reviews capture safety;
+  primary integrates and rechecks. Review catches unbounded pre-reset drain
+  and interrupted pulse leaving RTS asserted; both corrected and regression
+  tested. No hardware acceptance inferred.
+- Observation: bounded64KiB/2s pre-reset snapshot retained, one explicit pulse,
+  full post-release duration even for silence/download, exact raw chunks plus
+  base64 journal/offsets, terminal status/error and cleanup errors. Existing
+  journals refuse before opening serial. Interrupted pulse attempts independent
+  DTR/RTS release before close, including with macOS HUPCL disabled.
+- Safety/limits: no reset/flash/C6/SD/credentials action in this change. Current
+  restored AROS baseline unchanged. Port open can still cause a physical reset;
+  receipt timestamps/phases do not prove generation time or cold continuity.
+  Prefix classification is bounded64KiB; unclassified/exit0 is not a boot pass.
+  OS/driver stalls and bytes never delivered to the host cannot be ruled out.
+- Next: calibrate this instrument with one bounded headless baseline capture
+  before new lifecycle deployment. Peer fence, SAE/required PMF, DHCP/routes/DNS,
+  bidirectional data/reconnect and sustained qualification remain open.

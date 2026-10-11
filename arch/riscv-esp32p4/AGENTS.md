@@ -112,6 +112,14 @@ was moved into a later report only so it could be read, and a `SW_SYS_RESET`
 loop was misattributed for the same reason.  A measurement you cannot reliably
 read is not a measurement.
 
+For causal reset diagnosis use `--once --attempt-log <new.jsonl>` with a
+separate raw stdout capture. This issues one explicit reset pulse, retains
+all received bytes and never retries silent/download boots. Inspect the
+journal's final status, duration and classification; exit 0 is not a boot
+pass. Opening the port can itself reset the device, and host receipt phases
+do not identify the execution that generated buffered bytes. The legacy
+default may discard failed attempts and is not a single-reset continuity test.
+
 ## Confirm availability before interactive hardware tests
 
 The user often works remotely and cannot necessarily see or touch the D1001.
