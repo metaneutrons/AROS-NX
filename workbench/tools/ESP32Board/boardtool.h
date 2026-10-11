@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "layout.h"
+#include "compare_file.h"
 #include "../../../arch/riscv-esp32p4/boardtool/discovery_client.h"
 #include "../../../arch/riscv-esp32p4/boardtool/ota_client.h"
 
@@ -22,7 +23,8 @@ enum BoardToolOperationId
     BOARDTOOL_OP_CHECK_C6,
     BOARDTOOL_OP_LAYOUT,
     BOARDTOOL_OP_UPDATE_C6,
-    BOARDTOOL_OP_DISCOVER_C6
+    BOARDTOOL_OP_DISCOVER_C6,
+    BOARDTOOL_OP_COMPARE_C6
 };
 
 struct BoardToolOperation
@@ -40,7 +42,8 @@ static const struct BoardToolOperation boardtool_operations[] =
     { BOARDTOOL_OP_CHECK_C6,  "CHECK-C6",  "Check C6 image",                 TRUE  },
     { BOARDTOOL_OP_LAYOUT,    "LAYOUT",    "Preview imported flash table",   TRUE  },
     { BOARDTOOL_OP_UPDATE_C6, "UPDATE-C6", "Update C6 (unavailable)",       FALSE },
-    { BOARDTOOL_OP_DISCOVER_C6, "DISCOVER-C6", "Query C6 (WLAN goes offline)", TRUE }
+    { BOARDTOOL_OP_DISCOVER_C6, "DISCOVER-C6", "Query C6 (WLAN goes offline)", TRUE },
+    { BOARDTOOL_OP_COMPARE_C6, "COMPARE-C6", "Compare C6 (no admission)", TRUE }
 };
 
 #define BOARDTOOL_OPERATION_COUNT \
@@ -90,6 +93,7 @@ struct BoardToolMessage
     ULONG flash_mb;
     struct board_layout layout;
     struct board_client_observation observation;
+    struct board_c6_target_report comparison;
     char status[BOARDTOOL_STATUS_MAX];
 };
 

@@ -110,6 +110,9 @@ int boardtool_c6_source_recheck(const struct boardtool_c6_source *source)
         checked.secure_version == source->info.secure_version &&
         checked.min_revision == source->info.min_revision &&
         checked.max_revision == source->info.max_revision &&
+        checked.min_efuse_revision == source->info.min_efuse_revision &&
+        checked.max_efuse_revision == source->info.max_efuse_revision &&
+        checked.mmu_page_size == source->info.mmu_page_size &&
         memcmp(checked.digest, source->info.digest, sizeof(checked.digest)) == 0;
 }
 

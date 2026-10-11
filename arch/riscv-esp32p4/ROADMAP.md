@@ -123,7 +123,7 @@ No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M-C | Actual C6 image-to-target compatibility | Discovery-v2 facts/codec host verified; matched ABI11 native modules/tool and fresh complete C6 candidate build verified1110928B; exact-app preflight passed; no installed extension or complete compatibility producer | Image comparison, independent installed bootloader policy, actual slot/layout, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
+| N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
@@ -1271,6 +1271,26 @@ bidirectional referenced frames, timeout/cancel and disconnect recovery. A
 reference firmware example building is not evidence of AROS transport.
 
 ### N2M - board maintenance and adaptive flash layouts
+
+Current diagnostic addition: shared `COMPARE-C6 IMAGE=... SHA256=...` and MUI
+button retain checked image bytes through negotiated discovery and exact
+recheck. Report production is not compatibility admission: explicit rejected,
+unknown and risk masks; CLI FAIL for rejection and WARN otherwise. The query
+leaves WLAN offline and source disposal follows every entered exit. GUI Close
+signals the existing bounded discovery cancellation and waits for the reply;
+successful comparison can render only the historical registry observation.
+Image metadata now includes separate eFuse-block revision bounds and MMU page
+log2. Version2 does not provide the matching block revision/loader-page facts
+or maximum-revision disable bits. Maximum wafer revision is screened
+conservatively; the full physical secure counter is not an enforced floor.
+Policy and provenance are always unknown. No authentication/recovery producer
+or frontend update dispatch is supplied; UPDATE-C6 and all release assertions0.
+This is software progress toward compatibility, not a closed N2M-C gate.
+Native tool134864B builds after invalidating every tool object; comparator
+43cases/187checks, orchestration11/250 and owned source29/398 each pass O0/O2
+ASan/UBSan, with primary repeats. Image preflight passes19 cases each including
+the exact current C6 candidate. Frontend source guard rejects five mutations;
+actual native GUI interaction and installed discovery remain untested.
 
 Requirements and normative gates are in
 [the board-tool plan](../../docs/plans/esp32-board-tool.md). Shared CLI/MUI
@@ -38306,3 +38326,65 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   budget handling; actual CN5-secured independent recovery, installed identity/
   security/layout and UART/SDIO qualification precede a C6 write/credentials.
   Association/DHCP/traffic/reconnect/1800s combined WLAN acceptance stays open.
+
+### 2026-10-11 - N2M shared image-to-target diagnostic, no update admission
+
+- Source parent822beeabe4. Added actual tool-private target comparator and
+  `COMPARE-C6` operation shared by CLI/MUI dispatcher/worker. The owned loader
+  inspects once before any query; query/recheck/comparison run before disposal.
+  A failed file check performs no radio query. Every entered query exit disposes
+  the retained source; report publication is success-only. GUI Close signals
+  the existing bounded discovery cancellation and awaits worker reply.
+  Partition rendering uses the historical registry only. CLI returns FAIL on
+  rejection and WARN otherwise, never compatibility approval. No OTA call.
+- Pinned IDF5.4.3 source audit: app descriptor block-revision minimum/maximum
+  at176/178 (image208/210), MMU log2 at180 (image212). Those are separate from
+  wafer revision. Parser extracts all three; recheck includes them. Known facts
+  screen revision, unsigned/unencrypted support and slot capacity/role/state.
+  Maximum revision is conservatively enforced without a detected disable bit.
+  Physical secure-version count is risk only, not a claimed installed floor.
+  Missing block/loader facts remain unknown; policy and provenance always do.
+  This is not complete image loading, flash-mode/rate, signature, authenticated
+  installed-table or recovery qualification. No v2 wire/bridge ABI change.
+- Main evidence directory
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/c6-compare.hCIf4H/`:
+  native logs, actual tool, image/target/flow/parity/target-selection logs and
+  independent review. Owned-source primary run:
+  `.../wifi-2026-10-11/c6-owned-source-tests.adfu6he4/`.
+  Actual comparator+snapshot validator43cases/187checks each O0/O2 ASan/UBSan
+  pass, including independent known bits/zero values, revision bounds/sentinels,
+  counter16/17/risk, slot states/flags/roles, persistent unknown proofs, invalid
+  and output-alias refusal. Primary repeats pass. Actual orchestration with
+  modeled source/query/comparator hooks11cases/250checks each O0/O2 sanitized
+  passes; allocation/free/order/report-refusal assertions model ownership, not
+  native DOS/SDIO. Actual source/image/hash recheck29cases/398checks each passes,
+  including each new metadata mutation and no file reopen.
+- Exact candidate preflight at both O0/O2:19 image/hash cases pass, including
+  actual1110928B C6 app SHA256
+  3583e341ea108a087a924c4320833f3cad3c3be436070c1ebf5d80f14292b2f4.
+  Image log6e1cd895c8e0577902f154eeaa87fa88ed76353fd92e9b7a928d022c5400cdd6.
+  Frontend source guard passes and rejects five in-memory mutations, including
+  false comparison OK and dispatch drift. Generated makefile/MetaMake selection
+  enables esp32p4/riscv and refuses five nonmatching architecture/CPU pairs.
+  These source/recipe checks are not MUI rendering or hardware interaction.
+- Native build `/Volumes/Dev/Build/aros-esp32p4-wifi-build`, RV32-SMP ilp32f:
+  deleted all exact tool-directory `.o` before `gmake -j1
+  workbench-tools-esp32board-quick`; all source objects recompile and link,
+  actual process exit0. Final command explicitly supplies
+  P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=0,
+  P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=0,
+  P4_WIFI_C6_UPDATE_RECOVERY_VERIFIED=0; tool-only build does not rebuild owner.
+  Initial command misspelled two privacy variable names (unused, no enablement);
+  repeated with correct names after full invalidation, byte-identical tool.
+  Final tool134864B SHA256
+  5c65baa928ae339115a0ac77cd60bd268e78fac6c4c6f026a781a504b5c2a7ab;
+  final build log7c53d86558004babaf5cf5bd471d36b30ded67fb09b8a16cc710169f661d285f.
+  Independent read-only code review found no concrete defect; did not run
+  hardware/tests. Test authors and reviewer were separate workers under the
+  Luna delegation skill; main verified implementations and repeated tests.
+- Safety/next: no board/serial/reset/flash/SD/credential operation, no package
+  or core regeneration/deployment, existing C6 candidates unchanged. UPDATE-C6
+  unavailable and three assertions0. Next: actual installed/bootstrap target
+  evidence and independently secured CN5 recovery before first write; fill
+  remaining loader/policy/layout proof gaps and qualify whole-transfer timing.
+  Association/DHCP/traffic/reconnect/1800s combined WLAN acceptance remains open.

@@ -68,6 +68,12 @@ enum board_image_error board_c6_image_check(const uint8_t *image, size_t bytes,
     checked.secure_version = le32(image + 36);
     checked.min_revision = le16(image + 15);
     checked.max_revision = le16(image + 17);
+    /* Pinned IDF esp_app_desc_t offsets within the first segment's
+     * descriptor: min/max efuse block revisions at 176/178, then the
+     * MMU page-size log2 at 180. The first segment begins at image offset 32. */
+    checked.min_efuse_revision = le16(image + 32 + 176);
+    checked.max_efuse_revision = le16(image + 32 + 178);
+    checked.mmu_page_size = image[32 + 180];
     *info = checked;
     return BOARD_IMAGE_OK;
 }

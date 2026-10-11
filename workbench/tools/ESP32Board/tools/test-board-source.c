@@ -549,7 +549,10 @@ enum recheck_mutation {
     MUTATE_INFO_DIGEST,
     MUTATE_SECURE_VERSION,
     MUTATE_MIN_REVISION,
-    MUTATE_MAX_REVISION
+    MUTATE_MAX_REVISION,
+    MUTATE_MIN_EFUSE_REVISION,
+    MUTATE_MAX_EFUSE_REVISION,
+    MUTATE_MMU_PAGE_SIZE
 };
 
 static void test_recheck_detects_changes(const uint8_t *image, size_t size,
@@ -565,7 +568,10 @@ static void test_recheck_detects_changes(const uint8_t *image, size_t size,
         {MUTATE_INFO_DIGEST, "recheck changed inspected digest"},
         {MUTATE_SECURE_VERSION, "recheck changed secure version"},
         {MUTATE_MIN_REVISION, "recheck changed minimum revision"},
-        {MUTATE_MAX_REVISION, "recheck changed maximum revision"}
+        {MUTATE_MAX_REVISION, "recheck changed maximum revision"},
+        {MUTATE_MIN_EFUSE_REVISION, "recheck changed minimum eFuse block revision"},
+        {MUTATE_MAX_EFUSE_REVISION, "recheck changed maximum eFuse block revision"},
+        {MUTATE_MMU_PAGE_SIZE, "recheck changed MMU page size"}
     };
     size_t i;
 
@@ -604,6 +610,15 @@ static void test_recheck_detects_changes(const uint8_t *image, size_t size,
             break;
         case MUTATE_MAX_REVISION:
             ++source.info.max_revision;
+            break;
+        case MUTATE_MIN_EFUSE_REVISION:
+            ++source.info.min_efuse_revision;
+            break;
+        case MUTATE_MAX_EFUSE_REVISION:
+            ++source.info.max_efuse_revision;
+            break;
+        case MUTATE_MMU_PAGE_SIZE:
+            ++source.info.mmu_page_size;
             break;
         }
         opens_before = dos.open_calls;

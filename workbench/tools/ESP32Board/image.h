@@ -15,6 +15,8 @@ struct board_image_info {
     size_t bytes;
     uint32_t secure_version;
     uint16_t min_revision, max_revision;
+    uint16_t min_efuse_revision, max_efuse_revision;
+    uint8_t mmu_page_size;
     uint8_t digest[32];
 };
 /* Corruption/format preflight only. No installed identity, partition capacity,

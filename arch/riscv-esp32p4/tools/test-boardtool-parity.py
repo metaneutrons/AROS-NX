@@ -33,6 +33,7 @@ def inspect(header: str, main: str, worker: str) -> list[str]:
         "LAYOUT": ("LAYOUT", True),
         "UPDATE-C6": ("UPDATE_C6", False),
         "DISCOVER-C6": ("DISCOVER_C6", True),
+        "COMPARE-C6": ("COMPARE_C6", True),
     }
     if registry != expected or len(rows) != len(expected):
         problems.append(f"unexpected/duplicate capabilities in registry: {registry}")
@@ -49,6 +50,9 @@ def inspect(header: str, main: str, worker: str) -> list[str]:
         "GUI check button ID": "MUIM_Application_ReturnID, check->id",
         "GUI imported-layout button ID": "MUIM_Application_ReturnID, layout->id",
         "GUI discovery button ID": "MUIM_Application_ReturnID, discover->id",
+        "GUI comparison button ID": "MUIM_Application_ReturnID, compare->id",
+        "shared comparison": "boardtool_compare_c6(message->image, message->sha256,",
+        "CLI comparison never returns OK": "return message.comparison.rejected ? RETURN_FAIL : RETURN_WARN;",
         "shared native discovery": "boardtool_discover_c6(&message->observation, status, capacity)",
         "CLI discovery output": "print_discovery(&message.observation)",
         "GUI check worker request": "send_operation((ULONG)id, path, digest, flash_mb)",
@@ -107,7 +111,18 @@ def main() -> int:
     if not inspect(header, close_drift, worker):
         raise SystemExit("ESP32Board guard missed a blocking close regression")
 
-    print("ESP32Board parity guard passed; three counter-probes rejected.")
+    compare_drift = frontend.replace(
+        "boardtool_compare_c6(message->image, message->sha256,",
+        "boardtool_check_c6(message->image, message->sha256,", 1)
+    if not inspect(header, compare_drift, worker):
+        raise SystemExit("ESP32Board guard missed a comparison dispatch drift")
+    compare_ok = frontend.replace(
+        "return message.comparison.rejected ? RETURN_FAIL : RETURN_WARN;",
+        "return RETURN_OK;", 1)
+    if not inspect(header, compare_ok, worker):
+        raise SystemExit("ESP32Board guard missed false comparison approval")
+
+    print("ESP32Board parity guard passed; five counter-probes rejected.")
     return 0
 
 

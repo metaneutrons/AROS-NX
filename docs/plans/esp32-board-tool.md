@@ -151,6 +151,17 @@ device proofs and independent first-install restore remain acceptance gates.
 
 ### Proposed C6 read-only discovery extension
 
+Read-only diagnostic implementation (2026-10-11): COMPARE-C6 in CLI/MUI
+combines an owned checked image with negotiated registry discovery and exact
+source recheck. Rejected/unknown/risk reports do not populate the update-job
+compatibility assertion. CLI uses FAIL/WARN, never OK for compatibility.
+Policy/provenance stay unknown. App-descriptor eFuse-block bounds and MMU page
+log2 are distinct from wafer revision; v2 has no matching block/loader facts.
+Physical secure-bit count does not supply the installed bootloader's enforced
+floor. Maximum wafer revision is conservatively screened without a detected
+override bit. Flash mode/rate, signature/encryption-aware handling, installed
+layout and independent first-install recovery remain separate requirements.
+
 Compatibility audit (2026-10-11): the historical version1 inventory had no chip
 model/revision or eFuse secure_version. Capacity and slot roles alone cannot
 validate an image's revision limits or security version. A later explicitly

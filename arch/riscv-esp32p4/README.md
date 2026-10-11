@@ -1,5 +1,22 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Read-only image-to-target diagnostics (2026-10-11): `COMPARE-C6` now shares
+one CLI/MUI backend. It opens/inspects an owned application once, queries the
+negotiated C6 registry, rechecks the held bytes and produces explicit rejected,
+unknown and risk masks, then disposes the source. Invalid files do not query
+the radio. The query leaves WLAN offline; GUI close uses discovery cancellation.
+CLI returns FAIL on rejected conditions, otherwise WARN, never update approval.
+The image parser now retains separate eFuse-block revision bounds and MMU-page
+exponent. Discovery-v2 lacks those corresponding device/loader facts;
+installed policy and registry provenance always remain unknown. Full physical
+secure-version count is a risk screen, not the installed anti-rollback floor;
+the upper wafer-revision screen conservatively assumes no disable override.
+The new GUI action can display the historical partition observation, not a
+live write target. No update dispatch or release flag is enabled. Host tests
+and a fresh native build134864B (SHA256
+5c65baa928ae339115a0ac77cd60bd268e78fac6c4c6f026a781a504b5c2a7ab)
+are recorded in N2M; no hardware operation occurred.
+
 Discovery target facts (2026-10-11): the undeployed extension now negotiates
 version2, with a canonical40-byte header and1064-byte maximum. It adds detected
 C6 image chip ID, MXX revision and a full physical SECURE_VERSION burned-bit

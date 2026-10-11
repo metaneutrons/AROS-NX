@@ -3,6 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include "image.h"
+static uint16_t source_le16(const uint8_t *p)
+{
+    return (uint16_t)(p[0] | (uint16_t)p[1] << 8);
+}
 int main(int argc, char **argv)
 {
     FILE *file;
@@ -30,7 +34,10 @@ int main(int argc, char **argv)
     if (result != (enum board_image_error)atoi(argv[3])) return 94;
     if (result != BOARD_IMAGE_OK && memcmp(&info, &before, sizeof(info))) return 95;
     if (result == BOARD_IMAGE_OK && (info.bytes != bytes ||
-        !board_sha256(image, bytes, digest) || memcmp(info.digest, digest, 32))) return 96;
+        !board_sha256(image, bytes, digest) || memcmp(info.digest, digest, 32) ||
+        info.min_efuse_revision != source_le16(image + 32 + 176) ||
+        info.max_efuse_revision != source_le16(image + 32 + 178) ||
+        info.mmu_page_size != image[32 + 180])) return 96;
     /* Aliased output refusal must not modify the image. */
     if (bytes >= sizeof(info) && board_c6_image_check(image, bytes, argv[2],
             (struct board_image_info *)image) != BOARD_IMAGE_ARGUMENT) return 97;

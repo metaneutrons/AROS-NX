@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Compile actual image/SHA sources; good/corrupt copies never touch hardware."""
+import argparse
 import hashlib
 import os
 from pathlib import Path
@@ -12,13 +13,17 @@ APP = ROOT / "workbench/tools/ESP32Board"
 WPA = ROOT / "workbench/network/WirelessManager/src"
 
 
-def image(chip=13, app=True):
+def image(chip=13, app=True, min_efuse_revision=0,
+          max_efuse_revision=0, mmu_page_size=0):
     header = bytearray(24)
     header[0:2] = b"\xe9\x01"
     struct.pack_into("<H", header, 12, chip)
     header[23] = 1
     data = bytearray(256)
     struct.pack_into("<I", data, 0, 0xABCD5432 if app else 0)
+    struct.pack_into("<H", data, 176, min_efuse_revision)
+    struct.pack_into("<H", data, 178, max_efuse_revision)
+    data[180] = mmu_page_size
     blob = header + struct.pack("<II", 0x42000000, len(data)) + data
     checksum = 0xEF
     for value in data:
@@ -29,7 +34,18 @@ def image(chip=13, app=True):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--candidate", type=Path,
+                        help="also check this exact app image as a positive case")
+    parser.add_argument("--candidate-sha256",
+                        help="expected SHA-256 for --candidate")
+    args = parser.parse_args()
+    if (args.candidate is None) != (args.candidate_sha256 is None):
+        parser.error("--candidate and --candidate-sha256 must be supplied together")
+
     good = image()
+    metadata_rich = image(min_efuse_revision=0x1234,
+                          max_efuse_revision=0x5678, mmu_page_size=12)
     checksum_bad = bytearray(good)
     checksum_bad[-33] ^= 1
     simple_bad = bytearray(good)
@@ -43,6 +59,7 @@ def main():
     padding_bad[-32:] = hashlib.sha256(padding_bad[:-32]).digest()
     cases = [
         ("good", good, None, 0),
+        ("metadata-rich", metadata_rich, None, 0),
         ("upper-hash", good, hashlib.sha256(good).hexdigest().upper(), 0),
         ("wrong-hash", good, "0" * 64, 2),
         ("bad-hex", good, "g" * 64, 1),
@@ -66,6 +83,14 @@ def main():
         assert len(data) == 1105312
         assert hashlib.sha256(data).hexdigest() == "149ec760ce40bbf159d1d780f001f44de19477b5076e40a91a15764410ce0b86"
         cases.append(("actual-c6-candidate", data, None, 0))
+    if args.candidate is not None:
+        candidate = args.candidate.expanduser().resolve(strict=True)
+        data = candidate.read_bytes()
+        actual_sha256 = hashlib.sha256(data).hexdigest()
+        if actual_sha256.lower() != args.candidate_sha256.lower():
+            raise SystemExit(
+                f"candidate SHA-256 mismatch for {candidate}: {actual_sha256}")
+        cases.append((f"candidate-{candidate.name}", data, None, 0))
     with tempfile.TemporaryDirectory(prefix="board-image-") as temp:
         temp = Path(temp)
         for opt in ("0", "2"):
