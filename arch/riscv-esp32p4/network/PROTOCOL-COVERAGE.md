@@ -157,7 +157,8 @@ to the installed peer and does not resolve UID0 attempt provenance by itself.
    remain open.
 5. Resolve/qualify installed peer version and attempt-ordering assumptions;
    runtime receipt revisions are not C6-generated attempt IDs.
-6. Complete BeginIO/capability integration, then native WPA3/PMF, DHCP, routes,
+6. Guarded BeginIO/capability integration is implemented, default-off until
+   peer qualification; failure/cancellation advertisement remains open. Then native WPA3/PMF, DHCP, routes,
    DNS, bidirectional data, reconnect and original sustained-load/privacy/reset
    gates. No C6 update or AP downgrade is implied by this source audit.
 

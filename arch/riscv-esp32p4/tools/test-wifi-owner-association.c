@@ -2063,8 +2063,32 @@ static void test_disconnect_revision_race(void)
     CHECK(f.acquire_calls == f.release_calls);
 }
 
+static void test_unqualified_peer_refuses_typed_without_io(void)
+{
+    struct p4_wifi_association_target target, original;
+    unsigned profile;
+    for (profile = 0; profile < 3; ++profile) {
+        fixture_init();
+        if (profile == 0) target_init_typed_open(&target);
+        else if (profile == 1) target_init_typed_wpa2(&target, 64u);
+        else target_init_typed_sae(&target, 3u, 16u, 1u);
+        original = target;
+        CHECK(wifi_association_target_valid(&target));
+        CHECK(invoke(&target) == FALSE);
+        CHECK(f.acquire_calls == 0u && f.release_calls == 0u);
+        CHECK(f.request_count[283u] == 0u && f.request_count[294u] == 0u &&
+              f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+        CHECK(memcmp(&target, &original, sizeof(target)) == 0);
+    }
+}
+
 int main(void)
 {
+    if (!P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED) {
+        test_unqualified_peer_refuses_typed_without_io();
+        printf("wifi owner unqualified-peer refusal checks: %lu\n", checks);
+        return 0;
+    }
     test_disconnect_requires_healthy_service_gate();
     test_disconnect_uses_correlated_not_connected();
     test_disconnect_waits_through_attached_snapshot();

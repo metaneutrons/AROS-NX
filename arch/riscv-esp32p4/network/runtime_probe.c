@@ -1492,6 +1492,9 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
          base->maintenance_state != P4_WIFI_MAINT_RELEASED) ||
         base->owner_task != FindTask(NULL) || !cancel || !cancel->cancelled ||
         !wifi_association_target_valid(target)) return FALSE;
+#if !P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED
+    if (target->fullmac_profile) return FALSE;
+#endif
 #if !(P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED && P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED)
     /* The build-level diagnostic exception is not implicit per-attempt
      * permission for a typed caller. Keep that distinction at the owner too. */

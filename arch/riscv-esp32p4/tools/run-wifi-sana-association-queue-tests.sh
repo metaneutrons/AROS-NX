@@ -15,7 +15,7 @@ errors_header="$repo_root/compiler/include/exec/errors.h"
 test_tmp=$(mktemp -d "${TMPDIR:-/tmp}/p4-wifi-sana-association-queue.XXXXXX")
 extract="$test_tmp/sana_association_queue_extract.inc"
 cases="$test_tmp/sana_association_queue_cases.inc"
-trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$extract" "$cases"; command rmdir "$test_tmp"' EXIT HUP INT TERM
+trap 'command rm -f "$test_tmp"/test-* "$extract" "$cases"; command rmdir "$test_tmp"' EXIT HUP INT TERM
 
 : > "$extract"
 : > "$cases"
@@ -111,6 +111,27 @@ extract_function() {
     }
 }
 
+extract_supported_commands() {
+    awk '
+        !capture && $0 ~ "^static[[:space:]]+const[[:space:]]+UWORD[[:space:]]+p4wlan_supported_commands\\[\\][[:space:]]*=" {
+            capture = 1
+        }
+        capture {
+            print
+            line = $0
+            opens = gsub(/\{/, "", line)
+            closes = gsub(/\}/, "", line)
+            depth += opens - closes
+            if (opens != 0) started = 1
+            if (started && depth == 0) { found = 1; exit }
+        }
+        END { if (!found) exit 1 }
+    ' "$source_file" >> "$extract" || {
+        echo "could not extract production supported-command array from $source_file" >&2
+        exit 1
+    }
+}
+
 extract_case() {
     case_name=$1
     awk -v name="$case_name" '
@@ -145,12 +166,18 @@ done
 for macro_name in P4_WIFI_LINK_UNKNOWN P4_WIFI_LINK_UP P4_WIFI_LINK_DOWN; do
     extract_define "$macro_name" "$bridge_file"
 done
-for macro_name in S2_SETOPTIONS S2_GETNETWORKINFO; do
+for macro_name in S2_SETOPTIONS S2_GETNETWORKINFO \
+                  S2_GETWIRELESSCAPABILITIES S2_GETFULLMACCAPABILITIES; do
     extract_define "$macro_name" "$wireless_header"
 done
+for macro_name in S2_DEVICEQUERY S2_GETSTATIONADDRESS S2_CONFIGINTERFACE \
+                  S2_BROADCAST S2_MULTICAST S2_GETGLOBALSTATS S2_ONLINE; do
+    extract_define "$macro_name" "$sana_header"
+done
+extract_define NSCMD_DEVICEQUERY "$repo_root/compiler/include/devices/newstyle.h"
 extract_define S2_OFFLINE "$sana_header"
 extract_define S2_ONEVENT "$sana_header"
-for macro_name in CMD_FLUSH CMD_NONSTD; do
+for macro_name in CMD_READ CMD_WRITE CMD_FLUSH CMD_NONSTD; do
     extract_define "$macro_name" "$io_header"
 done
 for macro_name in IOERR_ABORTED; do
@@ -158,7 +185,8 @@ for macro_name in IOERR_ABORTED; do
 done
 for macro_name in S2ERR_NO_RESOURCES S2ERR_BAD_ARGUMENT S2ERR_OUTOFSERVICE \
                   S2ERR_NOT_SUPPORTED S2WERR_GENERIC_ERROR \
-                  S2WERR_UNIT_OFFLINE S2WERR_NULL_POINTER S2WERR_BAD_EVENT; do
+                  S2WERR_UNIT_OFFLINE S2WERR_NULL_POINTER S2WERR_BAD_EVENT \
+                  S2WERR_BAD_STATDATA; do
     extract_define "$macro_name" "$sana_header"
 done
 
@@ -169,11 +197,13 @@ extract_block struct p4wlan_opener "$header_file"
 extract_block struct p4wlan_association "$header_file"
 extract_block struct p4wlan_unit "$header_file"
 extract_block struct esp32p4wlan_base "$header_file"
+extract_supported_commands
 extract_function p4wlan_mac_valid
 extract_function p4wlan_mac_equal
 extract_function p4wlan_resource_valid
 extract_function p4wlan_zero_bytes
 extract_function p4wlan_wipe_bytes
+extract_function p4wlan_fullmac_capabilities
 extract_function p4wlan_add_done_locked
 extract_function p4wlan_first_done
 extract_function p4wlan_finish_request
@@ -206,15 +236,38 @@ extract_function p4wlan_maintain_link
 extract_block struct p4wlan_network_publication "$source_file"
 extract_function p4wlan_network_info_locked
 
-for case_name in S2_SETOPTIONS S2_GETNETWORKINFO S2_OFFLINE CMD_FLUSH; do
+for case_name in S2_SETOPTIONS S2_GETNETWORKINFO \
+                 S2_GETWIRELESSCAPABILITIES S2_GETFULLMACCAPABILITIES \
+                 S2_OFFLINE CMD_FLUSH; do
     extract_case "$case_name"
 done
 
-for test_opt in 0 2; do
-    "${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic \
-        -O"$test_opt" -fsanitize=address,undefined -fno-omit-frame-pointer \
-        -I"$test_tmp" -isystem "$repo_root/compiler/include" \
-        "$test_root/tools/test-wifi-sana-association-queue.c" \
-        -o "$test_tmp/test-o$test_opt"
-    "$test_tmp/test-o$test_opt"
+for policy_config in disabled-default disabled-peer-gate disabled-no-policy \
+                     diagnostic-risk diagnostic-partial production-qualified; do
+    case "$policy_config" in
+        disabled-default)
+            policy_flags='-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=0 -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=0' ;;
+        disabled-peer-gate)
+            policy_flags='-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=0 -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=1 -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=1 -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=1' ;;
+        disabled-no-policy)
+            policy_flags='-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=1 -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=0' ;;
+        diagnostic-risk)
+            policy_flags='-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=1 -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=1' ;;
+        diagnostic-partial)
+            policy_flags='-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=1 -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=1 -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=0 -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=1' ;;
+        production-qualified)
+            policy_flags='-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=1 -DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=1 -DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=1 -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=0' ;;
+    esac
+    for test_opt in 0 2; do
+        # Intentional word splitting passes the four independent policy gates.
+        # shellcheck disable=SC2086
+        "${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic \
+            -O"$test_opt" -fsanitize=address,undefined -fno-omit-frame-pointer \
+            $policy_flags -I"$test_tmp" -isystem "$repo_root/compiler/include" \
+            "$test_root/tools/test-wifi-sana-association-queue.c" \
+            -o "$test_tmp/test-$policy_config-o$test_opt"
+        printf '%s O%s: ' "$policy_config" "$test_opt"
+        "$test_tmp/test-$policy_config-o$test_opt"
+        command rm -f "$test_tmp/test-$policy_config-o$test_opt"
+    done
 done

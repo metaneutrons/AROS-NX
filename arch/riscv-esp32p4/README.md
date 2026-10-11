@@ -1,5 +1,18 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Typed native admission (2026-10-11): SETOPTIONS now routes negotiated FullMAC
+tags through the owned typed parser; the separate capability query uses the
+same trusted policy. A default-off peer-contract gate independently blocks
+both device admission and resource association. Diagnostic permission cannot
+substitute for that contract or remove the diagnostic capability flag.
+Teardown completion preserves a newer pending typed opener's event mode.
+No installed firmware changed; the gate remains0. Peer qualification, correlated
+failure/cancellation advertisement and actual WPA3/PMF/IP/data remain open.
+Twelve source-extracted O0/O2 ASan/UBSan policy runs pass, including exact
+capability advertisement, diagnostic consent, owned SAE credentials and newer
+typed selection across old teardown. Native gate0 device73084B/resource357096B
+build verified, undeployed; enabled branches are host-tested only.
+
 C6 lifecycle candidate (2026-10-11): a separately retained patch registers one
 WiFi event handler before INIT and keeps it across failed INIT/DEINIT retries
 on the persistent default loop. It prevents the pinned reference's duplicate

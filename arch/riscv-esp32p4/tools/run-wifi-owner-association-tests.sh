@@ -157,6 +157,7 @@ cc=${CC:-cc}
 common_flags="-std=c99 -Wall -Wextra -Werror -pedantic -g -fsanitize=address,undefined -fno-omit-frame-pointer"
 
 for optimization in 0 2; do
+	for peer_gate in 0 1; do
 	# Rename only the real exchange implementation; retain production owner
 	# cancellation/retirement, RX/FIFO checks, request IDs, and all codecs.
 	# shellcheck disable=SC2086
@@ -168,6 +169,7 @@ for optimization in 0 2; do
 	"$cc" $common_flags "-O$optimization" \
 		-DP4_BOARD_WIFI_SDIO=1 -DP4_WIFI_HOSTED_OWNER=1 -DP4_WIFI_HOSTED_REPLY=1 \
 		-DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=0 \
+		-DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED="$peer_gate" \
 		-DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=0 \
 		-I "$test_tmp" -I "$test_root/network" -I "$test_root/sdmmc" \
 		-I "$repo_root/compiler/include" \
@@ -195,8 +197,9 @@ for optimization in 0 2; do
 		"$test_root/network/hosted_link.c" \
 		"$test_root/tools/test-wifi-owner-association.c" \
 		"$owner_object" -o "$test_tmp/test-o$optimization"
-	printf 'O%s: ' "$optimization"
+	printf 'O%s peer-gate%s: ' "$optimization" "$peer_gate"
 	ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
 	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 		"$test_tmp/test-o$optimization"
+	done
 done

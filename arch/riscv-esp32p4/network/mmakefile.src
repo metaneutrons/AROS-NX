@@ -41,6 +41,11 @@ endif
 ifeq ($(P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED),1)
 USER_CPPFLAGS += -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=1
 endif
+# Independent default-off peer lifecycle/attempt qualification, not permission
+# to replace the C6 firmware or infer qualification from a host test.
+ifeq ($(P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED),1)
+USER_CPPFLAGS += -DP4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED=1
+endif
 ifeq ($(P4_WIFI_SDIO_RESET_QUERY),1)
 USER_CPPFLAGS += -DP4_WIFI_SDIO_RESET_QUERY=1
 endif

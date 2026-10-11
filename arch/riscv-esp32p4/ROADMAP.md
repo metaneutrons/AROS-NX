@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication build verified; reference protocol inventory and actual INIT SAE-bit serialization verified; separate single-handler C6 lifecycle candidate retained; typed BeginIO/capability admission, producer/attempt barrier, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, default-off guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication implemented; reference protocol inventory and actual INIT SAE-bit serialization verified; separate single-handler C6 lifecycle candidate retained; peer-contract qualification, failure/cancellation advertisement, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1921,10 +1921,19 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   before INIT and retains it for the persistent event loop, including failed
   init/deinit retries. It does not add attempt IDs or prove producer draining.
   No automatic repeated-init workaround or C6 deployment is enabled.
+  Typed BeginIO/capability wiring now uses the owned parser and a shared,
+  default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
+  permission alone cannot advertise/admit FullMAC; the resource checks that
+  gate independently before any typed RPC. Synthetic host-test configurations
+  can exercise the enabled path but cannot set installed-peer qualification.
+  Capability query and admission share profile/PWE/risk policy. Legacy v1
+  FOURWAY and CONNECT_FAILED remain unadvertised in this slice; the native
+  caller's correlated failure/cancellation prerequisite remains separate.
   ABI12 now owns explicit profile/PMF/PWE/diagnostic policy, validates before
   RPC and copies borrowed credentials before use. Typed parser and native
-  consumer builds are verified only; BeginIO/capability advertisement and
-  authenticated event publication are not implemented by this slice.
+  consumer builds were verified in the earlier parser slice; guarded
+  BeginIO/capability wiring and service publication are now implemented as
+  described above, still undeployed and subject to peer qualification.
   IDF documents STA_CONNECTED after EAPOL4/4 and identifies its authmode as
   the connection mode; AP-info authmode is BSS metadata, not negotiated SAE.
   A fresh matching connection event plus current AP/cipher checks are needed;
@@ -40549,3 +40558,67 @@ remain open. No partial stage is a complete A/B update system.
   and pending-typed event-mode handoff tests. Complete those with truthful
   qualification gates, then real WPA3/PMF/IP/data/reconnect/load verification.
   Goal remains open.
+
+### 2026-10-11 - N2-SAE guarded typed native admission
+
+- Status: source-extracted host tests and native gate0 builds verified,
+  undeployed. SETOPTIONS now uses the owned FullMAC parser after legacy
+  parsing refuses typed tags. Capability query and command advertisement share
+  fullmac_policy.h; P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED defaults0 and is
+  independent of diagnostic permission. The resource also refuses typed
+  targets before any RPC when that peer gate is0. No public ABI change.
+  Capability flags remain diagnostic unless both privacy/recovery gates are1.
+  Teardown completion preserves a newer pending typed selection on its opener.
+- Primary verification: run-wifi-sana-association-queue-tests.sh completed
+  with exit0, twelve O0/O2 ASan/UBSan runs across six synthetic policies.
+  Three disabled policies each pass2148 checks/84 replies/46 alloc-free pairs/
+  25 wipes; diagnostic-risk and diagnostic-partial each pass2565/105/56/28;
+  production-qualified passes2546/104/55/27. The latter name denotes a mock
+  configuration, not actual production qualification. Tests extract actual
+  capability helpers, supported-command array and selected BeginIO arms;
+  mocked radio/Exec boundaries do not execute the whole native BeginIO entry.
+  Typed OPEN/SAE tests use real tags rather than mutating the owned profile;
+  they check per-attempt consent, caller-buffer mutation after Reply, wiping,
+  exact-origin/cookie delivery and pending-typed old-teardown handoff.
+- Owner suite exit0: gate0 refuses OPEN/WPA2/SAE without any RPC (27 checks
+  each O0/O2); synthetic gate1 passes43985 each O0/O2. Event144, lifetime1554
+  and datapath16507 checks each O0/O2 ASan/UBSan also pass with exit0.
+  Initial owner harness failed compilation from an incorrect fixture arity;
+  fixed to the actual four-argument SAE initializer before the final pass.
+  Neither failed compile nor synthetic gate1 is installed-peer evidence.
+- Native procedure: affected device/resource objects deleted before sequential
+  gmake -j4 kernel-esp32p4wlan-device-quick and
+  kernel-esp32p4wifi-probe-quick. Both actual processes exit0. Configuration:
+  P4_BOARD=jc1060p470c-v2; SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/HOSTED_OWNER=1;
+  OWNER_CPU=1; ASSOCIATION_TEST_RISK_ACCEPTED=1;
+  C6_PRIVACY_RECOVERY_VERIFIED/HOST_PRIVACY_RECOVERY_VERIFIED/
+  C6_UPDATE_RECOVERY_VERIFIED/FULLMAC_PEER_CONTRACT_VERIFIED=0.
+  All WiFi switches have the P4_WIFI_ prefix. Native enabled gate1 branch was
+  not built in this slice. Final device73084B SHA256
+  `a873ebbc5af26b38bafa9d977f4eb4f9b6e1ded52552081cb2c925489b11d8ff`;
+  resource357096B SHA256
+  `d25142c72f6cadb7f1807b9101338cdbcaccd530c0ca86958a69903eec7c99f8`.
+  Review found capability query erroneously listed while disabled; corrected
+  conditional command list and rebuilt after another object invalidation.
+  Superseded device73084B SHA256
+  `5f1d29aa2361b1e033b384e3bc7711d639747f172ee840a10d9b71c6ac4a4d21`
+  is retained, never deployed.
+- Independent final source review found no concrete blocker in the policy,
+  corrected command advertisement, owned credentials or pending-typed handoff.
+  Reviewer did not execute tests; primary runs above provide execution evidence.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/fullmac-admission.2nyOwO/`.
+  SHA256: queue-final.log
+  `02d25b2b49ff7120fa2ef43ab6f6ffe24ecacb79ffdf453c40a434cc0d0deb91`;
+  owner-final.log
+  `7a30fe7ad27ce0bbfabfb169cc9ad64bc62c905131dd7ab598415cb8c6271477`;
+  device-final-build.log
+  `5aecb5b39618f275c00ff2dd799aaae71ed72d701d674feac7af4817314023bf`;
+  resource-build.log
+  `c1b1661dd8e4fbb524bb66980eb5c73c3cbeb480f69d6e3dde84c6db45ccbdb7`.
+- Safety/remaining: no serial/flash/reset/SD/credential transfer or C6 update;
+  installed artifacts remain unchanged. Failure/cancellation capability
+  advertisement, peer lifecycle/attempt provenance and actual WPA3/required
+  PMF/DHCP/routes/DNS/bidirectional traffic/reconnect/load remain open. Do not
+  set peer qualification from these models. Complete native failure contract,
+  then qualify the installed peer and conduct the original hardware gates.

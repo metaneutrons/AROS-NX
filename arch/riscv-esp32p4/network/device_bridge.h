@@ -4,6 +4,7 @@
 
 #include <exec/types.h>
 #include "hosted_scan.h"
+#include "fullmac_policy.h"
 
 #define P4_WIFI_DEVICE_BRIDGE_ABI 12u
 /* ABI12 extends the owned association target with explicit FullMAC policy.

@@ -34,6 +34,9 @@ static const UWORD p4wlan_supported_commands[] = {
     S2_OFFLINE,
     S2_GETNETWORKS,
     S2_GETWIRELESSCAPABILITIES,
+#if P4_WIFI_FULLMAC_ADMISSION_ENABLED
+    S2_GETFULLMACCAPABILITIES,
+#endif
     S2_SETOPTIONS,
     S2_GETNETWORKINFO,
     CMD_READ,
@@ -80,6 +83,26 @@ static void p4wlan_wipe_bytes(UBYTE *data, ULONG length)
     volatile UBYTE *bytes = data;
     while (length--)
         *bytes++ = 0;
+}
+
+static BOOL p4wlan_fullmac_capabilities(struct Sana2FullMACCapabilities *caps)
+{
+    p4wlan_zero_bytes((UBYTE *)caps, sizeof(*caps));
+#if P4_WIFI_FULLMAC_ADMISSION_ENABLED
+    caps->SizeAvailable = sizeof(*caps);
+    caps->SizeSupplied = sizeof(*caps);
+    caps->Version = S2FULLMAC_VERSION;
+#if !(P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED && P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED)
+    caps->Flags = S2FULLMAC_CAPF_DIAGNOSTIC_RISK;
+#endif
+    caps->Profiles = S2FULLMAC_PROFILE_OPEN | S2FULLMAC_PROFILE_WPA2_CCMP |
+                     S2FULLMAC_PROFILE_SAE_CCMP_PMF;
+    caps->SAEPweMethods = S2FULLMAC_SAE_PWE_HUNT_AND_PECK |
+                         S2FULLMAC_SAE_PWE_H2E | S2FULLMAC_SAE_PWE_BOTH;
+    return TRUE;
+#else
+    return FALSE;
+#endif
 }
 
 static BOOL p4wlan_copy_open_tags(struct p4wlan_opener *opener,
@@ -313,7 +336,12 @@ static void p4wlan_retire_association_locked(struct p4wlan_association *attempt)
 static void p4wlan_drop_teardown_locked(struct p4wlan_unit *unit)
 {
     if (unit->teardown_opener) {
-        unit->teardown_opener->fullmac_events = FALSE;
+        /* A newer typed attempt may already be queued on this opener. Its
+         * mode must survive completion of the old committed-link terminal. */
+        unit->teardown_opener->fullmac_events =
+            unit->pending_association &&
+            unit->pending_association->opener == unit->teardown_opener &&
+            unit->pending_association->target.fullmac_profile != 0;
         p4wlan_drop_pin_locked(unit, unit->teardown_opener);
         unit->teardown_opener = NULL;
     }
@@ -1603,6 +1631,7 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
     case S2_SETOPTIONS:
     {
         struct p4wlan_association *attempt;
+        struct Sana2FullMACCapabilities fullmac;
         ULONG acknowledged_token;
         if (!unit->online || !unit->hardware_ready || unit->callback_fault ||
             !unit->radio || !unit->radio->association_enabled) {
@@ -1626,7 +1655,11 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
             break;
         }
         if (!p4wlan_copy_association_options_cookie(&attempt->target,
-                &attempt->cookie, (const struct TagItem *)request->ios2_Data)) {
+                &attempt->cookie, (const struct TagItem *)request->ios2_Data) &&
+            (!p4wlan_fullmac_capabilities(&fullmac) ||
+             !p4wlan_copy_fullmac_association_options(&attempt->target,
+                &attempt->cookie, (const struct TagItem *)request->ios2_Data,
+                &fullmac))) {
             p4wlan_wipe_bytes((UBYTE *)attempt, sizeof(*attempt));
             FreeVec(attempt);
             p4wlan_immediate_error(request, S2ERR_BAD_ARGUMENT,
@@ -1640,10 +1673,10 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
             p4wlan_begin_teardown_locked(unit);
         else
             p4wlan_replace_selection_locked(unit);
-        /* This arm still admits legacy options only. Future typed admission
-         * must choose mode after the same invalidation fence, never at query. */
+        /* Negotiated typed requests are owned before Reply. Preserve an old
+         * terminal's mode on its opener until teardown completes. */
         if (unit->teardown_opener != opener)
-            opener->fullmac_events = FALSE;
+            opener->fullmac_events = attempt->target.fullmac_profile != 0;
         attempt->unit = unit;
         attempt->opener = opener;
         attempt->token = unit->selection_token;
@@ -1688,6 +1721,23 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
             caps->Flags = S2WIRELESS_CAPF_SECURITY_SUMMARY;
             /* Never advertise handshake offload before association and the
              * verified credential-safe firmware lineage are implemented. */
+        }
+        break;
+    }
+
+    case S2_GETFULLMACCAPABILITIES:
+    {
+        struct Sana2FullMACCapabilities *caps = request->ios2_StatData;
+        struct Sana2FullMACCapabilities offered;
+        if (!p4wlan_fullmac_capabilities(&offered)) {
+            p4wlan_immediate_error(request, S2ERR_NOT_SUPPORTED,
+                                   S2WERR_GENERIC_ERROR);
+        } else if (!caps || caps->SizeAvailable != sizeof(*caps) ||
+                   caps->Version != S2FULLMAC_VERSION) {
+            p4wlan_immediate_error(request, S2ERR_BAD_ARGUMENT,
+                                   S2WERR_BAD_STATDATA);
+        } else {
+            *caps = offered;
         }
         break;
     }
