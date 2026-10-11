@@ -7,8 +7,14 @@ pure-SAE display projection. A later successful scan now repairs the one-shot
 startup chooser from its actual device/unit, without enabling association or
 fabricating capabilities. Sanitizer tests and fresh RV32-SMP Prefs166332B
 build pass; single-file SD installation and read-only332-entry manifest
-verification now pass. Card ejected; return and a fresh visual scan remain pending. Mixed
+verification now pass. The subsequent visual scan below still fails security-label acceptance. Mixed
 WPA2/WPA3 metadata remains unknown; no PMF, authentication or IP/data pass.
+
+Corrected-Prefs retest (2026-10-11): card returned and fresh readiness given;
+45s capture reaches owner ready CPU1 and successful Scan. Fabian still sees
+'?' for both named WPA3 networks; installed-app staleness was not the whole
+cause. Device chooser response and actual live auth/cipher tuples remain
+unresolved. No automatic association or firmware change followed.
 
 Canonical network driver name (2026-10-11): `esp32p4wifi.device`, built by
 `kernel-esp32p4wifi-device-quick`, replaces `esp32p4wlan.device`. The separate

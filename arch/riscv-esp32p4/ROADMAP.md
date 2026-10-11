@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `first warm-start observed`: matched ABI12 SD/BSP installed; one-pulse45s capture reaches owner ready CPU1/expected C6 MAC after GPIO54 reset; Fabian reports four scan results, stale Prefs WPA3 labels and empty chooser; corrected Prefs166332B now SD installed/read-only manifest verified, card ejected | Card return and fresh corrected-Prefs Scan test; repeat continuity qualification remains open; reset alone is not an association-attempt fence or full WiFi pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: matched ABI12 SD/BSP and corrected Prefs166332B installed; latest45s capture reaches owner ready CPU1/expected C6 MAC and successful Scan; Fabian still sees '?' for both named WPA3 networks; chooser observation pending | Diagnose actual scan security tuples/projection and repeat continuity; reset alone is not an association-attempt fence or full WiFi pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1886,7 +1886,9 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   a successful scan of the configured device/unit, without capability or
   association gate changes. Host/native build and single-file SD installation
   with read-only manifest verified; card return and fresh visual acceptance
-  pending. Mixed7 remains unknown, not silently WPA3.
+  pending at installation. Subsequent ready/returned-card retest still shows
+  '?' for both named networks; actual live tuple/projection diagnosis remains
+  open. Mixed7 remains unknown, not silently WPA3.
 - SAE-M2 contract/caller (depends on M1): negotiate a versioned per-device SAE
   firmware-offload profile and typed association selection without fabricated
   RSN IEs. Preserve v1 layouts/legacy behavior; old callers must not silently
@@ -41590,3 +41592,26 @@ remain open. No partial stage is a complete A/B update system.
 - Next: Fabian returns card and confirms fresh visual Scan readiness; verify
   actual device chooser and security labels. No boot/reset or automatic
   association run in this installation. Full SAE/PMF/IP/data gates unchanged.
+
+### 2026-10-11 — Corrected-Prefs scan still reports unknown security
+
+- Fresh 'drin und bereit' confirms card return and observation readiness.
+  No writes; installed identities remain the preceding records. Single-pulse
+ 45s reset-and-log process6842 actually exits0. Journal complete/status=ok,
+  elapsed45.002034375s,total16670B/post-reset16620B; decoded chunk stream
+  equals raw capture. Two ROM banners retain port-open/reset ambiguity,
+  not one physical reset or rail-off acceptance.
+- Captured watchdog6000ms, hart1 online/cpus2,42 modules, graphics/touch
+  activity, GPIO54 startup prefix and owner ready CPU1/expected C6 MAC.
+  Scan reports s=3 ok=1 n=10 r=8 h=8 e=0. Console truncation remains;
+  neither GUI security projection nor actual per-AP auth/ciphers is logged.
+- Fabian reports both named networks again show '?'. This rejects complete
+  security-display acceptance after the Prefs update; old installed Prefs
+  was not a sufficient explanation. Device chooser observation was requested
+  separately and is pending. No connect, credentials, negotiated SAE/PMF or
+  IP/data pass. Next: actual scan metadata/GUI projection diagnosis, without
+  relabeling transition/unknown metadata as pure WPA3.
+- Evidence prefs-fix.g2WA81: scan-boot.log SHA256
+  54b457b150e8f992ad3ffd5a6a710fffa2b27fc764868a3809b9c8b8382383a1;
+  scan-attempt.jsonl f18c8fb094abb4b19112cd8311668044bab8f901a6cd18cce0ea1cdb9a5ee034;
+  scan-timing.jsonl1ee193bbe3535881316afb0916724ac8939cd2b4ee6f63f65423007a91b9b77a.
