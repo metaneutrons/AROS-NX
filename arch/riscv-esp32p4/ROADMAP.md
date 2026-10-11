@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, default-off guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication implemented; foreign typed leave isolated and failed-teardown replacement-cookie notification repaired, including deferred pre-ACK completion without radio admission; faulted local leave revokes requester state without introducing physical teardown; CONNECT_FAILED advertisement shares the admission gate, host/native-build verified with FOURWAY absent; reference inventory/INIT SAE-bit verified; single-handler C6 candidate retained and separate credential-free P4 STOP/START observation app host/native-build verified; deployment stopped at two failed full-span backup reads, no write or lifecycle result; no event-fence qualification; installed failure/cancellation, reconnect and peer qualification open; final gate0, undeployed | Coordinated USB-C rail-off and two complete matching backups before fresh cold lifecycle diagnostic/rollback, then source-backed producer fence or attempt correlation and installed-peer qualification; explicit negotiated SAE/PMF, password semantics, no transition downgrade, native caller lifecycle and all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin publication implemented; foreign leave isolation, failed-teardown replacement-cookie and pre-ACK completion repairs host/native-build verified; CONNECT_FAILED shares admission gate, FOURWAY absent; reference inventory/INIT SAE-bit verified; single-handler C6 candidate retained; credential-free P4 STOP/START diagnostic deployed with two matching full-span backups and independent readback after exclusive-port correction; not run, no event-fence qualification; native admission final gate0, undeployed; installed failure/cancellation/reconnect and peer qualification open | Coordinated USB-C rail-off, single lifecycle capture and exact-span AROS rollback, then source-backed producer fence or attempt correlation and installed-peer qualification; explicit negotiated SAE/PMF, password semantics, no transition downgrade, native caller lifecycle and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1934,6 +1934,11 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   backup reads failed with serial-stream errors before any write. Diagnostic
   remains undeployed; coordinated USB-C rail-off and two fresh complete matching
   backups are prerequisites before deployment. No lifecycle result exists.
+  Subsequent rail-off did not resolve the transfer failure. lsof identified
+  devserial holding the port; closing that single managed port restored full
+  reads. Two complete matching backups now exist, and app-only diagnostic
+  deployment/readback pass. Await coordinated rail-off/capture and rollback;
+  no peer contract or WLAN result is inferred.
   Typed BeginIO/capability wiring now uses the owned parser and a shared,
   default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
   permission alone cannot advertise/admit FullMAC; the resource checks that
@@ -41003,3 +41008,30 @@ remain open. No partial stage is a complete A/B update system.
   fresh identity/layout and two independent complete matching erase-span
   backups. Do not deploy until backup/readback/rollback prerequisites pass.
   FullMAC gate0 and all original WPA3/PMF/IP/data/reconnect gates remain open.
+
+### 2026-10-11 — Exclusive-port backup and lifecycle app deployment
+
+- Fabian confirmed disconnected/reconnected USB-C; node absence observed.
+  Fresh identity flash-id exit0 again matches P4v1.3/16MB/MAC80:f1:b2:d3:3b:a6.
+  Immediate backup attempt exits1 with readiness/no-data serial exception.
+  lsof, unlike the earlier process-name filter, finds devserial PID91153
+  holding usbmodem101. Earlier statement that no serial owner remained is
+  withdrawn: the filter did not identify this daemon. Rail-off alone did not
+  fix concurrent access. Cause attribution is supported by successful full
+  reads after closing only this managed port; daemon/Bluetooth port retained.
+- devserial close usbmodem101 exits0; lsof then finds no owner. esptool
+  backup processes55781/21427 both actual exit0, each385024B at0x20000.
+  cmp0, both SHA256
+  088edb7e57474f02bf87a8fc4122e45faf587c3e24241ca012aab40ce09852ae.
+  First190016B hashes to installed coredea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0.
+  Candidate382656B identity and generated21-setting gate rechecked.
+- App-only write process7230 actual exit0,0x20000..0x7dfff erased, no-reset
+  after; independent382656B readback process86423 actual exit0/cmp0/SHA256
+  4e507f1acc244e88fb156dd4a3e9e0ca32a2a0c6619a5ac6ddcfbcd0ce4d6674.
+  Evidence lifecycle-hardware.UkjyId retains before-exclusive.bin and
+  before-exclusive-verify.bin, identity/backup/write/readback logs and image.
+- State: diagnostic deployed but NOT run; P4 deliberately in download mode.
+  No bootloader/table/BSP/SD/C6 write or credential transfer. Restore exact
+  entire385024B backup after observation, independently verify before AROS
+  return. Next coordinated complete rail-off and pre-armed single capture.
+  Successful finite trace cannot qualify a repeated-association event fence.

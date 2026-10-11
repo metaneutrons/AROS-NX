@@ -1,16 +1,18 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
-Lifecycle deployment prerequisite (2026-10-11): fresh JC1060 identity/layout
-checks pass, but two full-span backup reads fail with serial-stream errors.
-No flash write occurred; diagnostic remains undeployed. Coordinate USB-C
-rail-off, then revalidate identity and obtain two complete matching backups
-before writing. AROS contents remain unchanged; P4 is in download mode.
+Lifecycle diagnostic deployed (2026-10-11): serial backup failures persisted
+after rail-off; lsof identified devserial holding the same port. Closing only
+that managed port allowed two complete matching385024B backups. P4 diagnostic
+written only at0x20000 and independently read back byte-identically; C6/BSP/SD
+unchanged. Waiting for coordinated rail-off and credential-free measurement,
+then exact-span AROS rollback. No lifecycle or WLAN pass yet.
 
 Credential-free lifecycle diagnostic (2026-10-11): separate opt-in official
 Hosted P4 app observes one INIT and three STOP/START cycles, with checked
 callback-window closure and one40s budget. Host tests and native IDF6.0.1
-build verified, undeployed; default reference app and installed AROS/C6 are
-unchanged. A finite trace cannot qualify a repeated-association event fence.
+build verified; default reference app and C6 firmware are unchanged. The P4
+diagnostic temporarily replaces the backed-up core. A finite trace cannot
+qualify a repeated-association event fence.
 Next is a freshly coordinated cold diagnostic plus exact AROS rollback;
 FullMAC peer gate remains0 and actual WPA3/PMF/IP/data remain open.
 
