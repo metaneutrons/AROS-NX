@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `first warm-start observed`: matched ABI12 SD/BSP installed; one-pulse45s capture reaches owner ready CPU1/expected C6 MAC after GPIO54 reset; Fabian reports four scan results, stale Prefs WPA3 labels and empty chooser; chooser repair native-build verified, awaiting SD installation | Fresh corrected-Prefs Scan test and repeat continuity qualification; reset alone is not an association-attempt fence or full WiFi pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `first warm-start observed`: matched ABI12 SD/BSP installed; one-pulse45s capture reaches owner ready CPU1/expected C6 MAC after GPIO54 reset; Fabian reports four scan results, stale Prefs WPA3 labels and empty chooser; corrected Prefs166332B now SD installed/read-only manifest verified, card ejected | Card return and fresh corrected-Prefs Scan test; repeat continuity qualification remains open; reset alone is not an association-attempt fence or full WiFi pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1881,11 +1881,12 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   mixed7, TKIP, unknown suites and malformed data. No new public ABI or PMF/
   negotiated-authentication claim. Source/host/native builds cannot qualify RF.
   Fabian now reports four scan results with WPA3 '?' and an empty device
-  selector. Installed SD Prefs153004B predates this display projection.
+  selector. Previous installed SD Prefs153004B predates this display projection.
   Refreshed Prefs166332B also repairs a missing startup chooser entry after
   a successful scan of the configured device/unit, without capability or
-  association gate changes. Host/native build verified; SD deployment and
-  fresh visual acceptance pending. Mixed7 remains unknown, not silently WPA3.
+  association gate changes. Host/native build and single-file SD installation
+  with read-only manifest verified; card return and fresh visual acceptance
+  pending. Mixed7 remains unknown, not silently WPA3.
 - SAE-M2 contract/caller (depends on M1): negotiate a versioned per-device SAE
   firmware-offload profile and typed association selection without fabricated
   RSN IEs. Preserve v1 layouts/legacy behavior; old callers must not silently
@@ -41562,3 +41563,30 @@ remain open. No partial stage is a complete A/B update system.
   automatic connection, hardware reset or sight test in this change. Next:
   verified installation, then fresh readiness for scan/chooser observation.
   All original SAE/required-PMF/IP/data/reconnect/load gates remain open.
+
+### 2026-10-11 — Install corrected native WiFi preferences on JC1060 SD
+
+- Fabian freshly confirms SD in Mac reader. Identified sole external physical
+  USB/removable disk21,127865454592B/512B sectors; AROSP4TEST FAT32 disk21s1
+  at offset1048576,66060288B, UUID9CA4E5C4-BA41-3CE2-90D0-8C9263F13D61.
+  Existing332-entry sd-renamed.manifest matches exactly before mutation.
+- Successful unmount precedes two complete67108864B raw-prefix backups,
+  sd-before-a.bin/sd-before-b.bin, cmp exit0, both SHA256
+  f04a06345889985fca2d07440f44858cae18b6fe18c5d8741704dd2e31370772.
+  Raw-image identity differs from the earlier prefix; the cause was not
+  byte-localized, but all manifested runtime files remain exact. Old153004B
+  Prefs/WiFi also retained separately as WiFi-before for single-file rollback.
+- Replace only /Prefs/WiFi with retained166332B candidate SHA256
+  195f45e4ed39cc28b2557af499b3829a0b9ed3634795dbce38d898ea5c3bc52d.
+  Clear exact old file's uchg flag for replacement, restore uchg afterwards,
+  sync, successful unmount and read-only remount. Full332-entry candidate
+  manifest matches exactly; installed hash/size match candidate and volume
+  reports read-only. Driver, configs, WirelessManager and all other331
+  manifested entries remain unchanged; no credentials, C6 or flash write.
+- Final unmount/raw-prefix read completes67108864B exit0; sd-after.bin SHA256
+  07d7163b76008d9b3d176e159efb75c60810e4beb67b2ecd48fe3e4f454d5902.
+  Evidence retained in wifi-2026-10-11/prefs-fix.g2WA81. Disk eject succeeds.
+  Status: media installation verified, not GUI/WPA3 association acceptance.
+- Next: Fabian returns card and confirms fresh visual Scan readiness; verify
+  actual device chooser and security labels. No boot/reset or automatic
+  association run in this installation. Full SAE/PMF/IP/data gates unchanged.

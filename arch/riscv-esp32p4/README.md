@@ -2,11 +2,12 @@
 
 WiFi chooser correction (2026-10-11): Fabian observes four scanned networks,
 but WPA3 labels remain '?' and the device selector remains empty. The SD
-manifest still identifies the older153004B Prefs/WiFi, without the current
+pre-update manifest identifies the older153004B Prefs/WiFi, without the current
 pure-SAE display projection. A later successful scan now repairs the one-shot
 startup chooser from its actual device/unit, without enabling association or
 fabricating capabilities. Sanitizer tests and fresh RV32-SMP Prefs166332B
-build pass; installation and a fresh visual scan remain pending. Mixed
+build pass; single-file SD installation and read-only332-entry manifest
+verification now pass. Card ejected; return and a fresh visual scan remain pending. Mixed
 WPA2/WPA3 metadata remains unknown; no PMF, authentication or IP/data pass.
 
 Canonical network driver name (2026-10-11): `esp32p4wifi.device`, built by
