@@ -17,10 +17,10 @@ def defaults():
         root + "AROSTCP/AutoRun": "False",
         root + "AROSTCP/WirelessAutoRun": "False",
         root + "AROSTCP/WirelessDevice":
-            "DEVS:Networks/esp32p4wlan.device UNIT 0",
+            "DEVS:Networks/esp32p4wifi.device UNIT 0",
         root + "Sys/Packages/AROSTCP": "SYS:System/Network/AROSTCP",
         root + "AROSTCP/db/interfaces":
-            "wlan0 DEV=DEVS:Networks/esp32p4wlan.device UNIT=0 "
+            "wlan0 DEV=DEVS:Networks/esp32p4wifi.device UNIT=0 "
             "IP=DHCP UP DEFER\n",
         root + "AROSTCP/db/general.config":
             "USELOOPBACK=YES\nDEBUGSANA=NO\nUSENS=SECOND\nGATEWAY=NO\n"

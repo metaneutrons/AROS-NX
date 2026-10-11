@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `GPIO54 startup reset build verified, undeployed`: newly supplied vendor schematic establishes C6 CHIP_PU; low200ms/high1s startup pulse implemented outside shared SDMMC ownership; retained-counter guard unchanged | Install matching ABI12 SD driver/resource, then bounded headless warm-reset/INIT qualification; reset alone is not an association-attempt fence or full WiFi pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `matched ABI12 installation verified; boot pending`: GPIO54 C6 CHIP_PU low200ms/high1s resource independently read back; renamed esp32p4wifi.device and AROSTCP references SD manifest verified; retained-counter guard unchanged | Return SD, then bounded headless warm-reset/INIT qualification; reset alone is not an association-attempt fence or full WiFi pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1909,6 +1909,9 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   reset is native-build verified, not deployed; waits occur outside SDMMC
   ownership. Matching ABI12 SD driver installation precedes resource flash.
   Qualify fresh C6 INIT on a warm P4 reboot before lifecycle experiments.
+  Canonical SANA-II device name is now esp32p4wifi.device; matched ABI12 SD
+  driver and both AROSTCP paths are installed/manifest verified. BSP deployment
+  is separately recorded below; no boot or negotiated-link pass inferred.
   Do not use startup reset as evidence of a runtime association event fence.
   Use existing Hosted STA config fields for PMF capable/required, SAE PWE
   and optional identifier; verify exact
@@ -41409,3 +41412,65 @@ remain open. No partial stage is a complete A/B update system.
   continuity; never disable stale-counter rejection. WPA3/required PMF,
   producer/attempt fencing, DHCP/routes/DNS/bidirectional data/reconnect/load
   remain independent open gates. No forced GPIO reset counts as rail-off.
+
+### 2026-10-11 — Canonical WiFi device name and matched SD deployment
+
+- Fabian requests esp32p4wlan.device -> esp32p4wifi.device while matched
+  deployment is being prepared. External filename/resident basename, BeginIO/
+  AbortIO module stem, mmake target, stage allowlist/audit, defaults and tests
+  now agree. Internal esp32p4wlan_base remains private; no public SANA-II ABI
+  alteration. Resource name esp32p4wifi.resource and private bridge ABI12 stay
+  unchanged. Device uses explicit esp32p4wifi-device.conf and isolated
+  sana-device object directory; no collision with generated resource files.
+  Historical evidence retains the original names.
+- Verification: image/test-wifi-stage.py18 tests exit0; native new-target
+  build exits0, fresh object directory and complete device module. Renamed
+  device74600B SHA256
+  6208beae1eff7509c22303423bcb964c70469be84869fff47cb7ef399a5bb942.
+  SANA lifetime suite1554 checks each O0/O2 sanitized, actual exit0.
+  Independent Luna source review finds no concrete missed name/build collision;
+  primary verifies actual generated path and final artifact. No old external
+  device-name references remain in executable port source/defaults.
+- Card initially absent despite user insertion confirmation; no target guessed.
+  Fresh reinsertion identifies sole external/removable USB disk21,
+  capacity127865454592B,512B sectors, FAT32 AROSP4TEST. Initial raw reads without
+  privileges fail before backup/write. sudo-n reads succeed twice/67108864B,
+  cmp0/SHA25615177c8dcfb87eb03bf893cf6ae2386355b11da404424aae5677575d4df2bf92.
+  Read-only mount confirms332/332 old manifest entries exactly.
+- First copy refuses FAT read-only/uchg attribute before replacing the device.
+  Clear only that file's flag, install ABI12, restore flag, synchronize/remount
+  read-only and verify332/332 manifest. Card ejected. Subsequent user-confirmed
+  reinsertion verifies the intermediate manifest; backup67108864B before rename,
+  SHA2562a532eb9e89a97f9770f5b62b2731d3517e28e28e30fe7680cacaafd95405be6.
+  Install renamed driver and update only AROSTCP/WirelessDevice and
+  AROSTCP/db/interfaces device paths (WirelessDevice gains a final newline).
+  Old driver moved to evidence/sd-old-abi12-device.bin, recoverable, not left
+  as a stale alias on SYS. Restore original protected flags. Delta audit
+  identifies exactly these three runtime changes; final read-only remount
+  verifies332/332 revised manifest entries, actual exit0. Sync/unmount/raw
+  readback/eject all complete. sd-renamed-after.bin67108864B SHA256
+  2dfb27d11c6292abc7439dec7373b8bb74901f176f7bb8206f885e6147b217af.
+  User files/settings outside this delta are preserved; no credential edits.
+- Evidence remains gpio54-startup.YghWCa. SD is ejected pending return to
+  JC1060. No sight/touch or association result exists. Resource deployment
+  and headless INIT qualification are separate prerequisites below.
+
+### 2026-10-11 — GPIO54 reset resource deployed with independent readback
+
+- Standing headless/flash authorization; MAC80:f1:b2:d3:3b:a6/P4v1.3
+  reidentified. Existing full BSP span0x820000/4063232B verified against the
+  two matching saved reads with esptool digest success/exit0 before writing.
+  Only esp32p4wifi.resource changes among42 BSP members; all other41 records,
+  including shared-host ABI8 resource and storage consumer, stay byte-identical.
+- Write exactly4048884B candidate at0x820000, within0xc00000 volume boundary;
+  actual exit0, automatic verification successful. Independent new read at
+  same offset/length completes exit0; cmp0 to candidate, SHA256
+  120ccb912e93425b3fbe32295496ee7d42c76324f8de241f7c4dac2548b4b16f.
+  Evidence bsp-prewrite-verify.log/bsp-write.log/bsp-readback.log and
+  bsp-readback.bin in gpio54-startup.YghWCa. No P4 core, bootloader/table,
+  development volume, C6 firmware or credentials touched.
+- Matching SD driver/config installation is separately manifest verified
+  above. The card is ejected, P4 remains in ROM/stub download mode. No reset
+  capture or visual/WLAN pass has occurred. Next: user-confirmed card return,
+  single-pulse bounded headless capture of reset/INIT/MAC and both-hart/storage
+  continuity. Full SAE/PMF, IP/data and reconnect gates remain open.

@@ -31,7 +31,7 @@ ELF = load_module("wifi_elf_audit", HERE.parent / "boot/audit-package.py")
 BINARIES = (
     "Prefs/WiFi", "Prefs/Network", "Prefs/NetModules/net4.netprefs",
     "Prefs/NetModules/net6.netprefs", "C/WirelessManager",
-    "Devs/Networks/esp32p4wlan.device",
+    "Devs/Networks/esp32p4wifi.device",
     "Tools/ESP32Board",
     "System/Network/AROSTCP/C/AROSTCP",
     "System/Network/AROSTCP/C/dhclient",
@@ -108,7 +108,7 @@ def collect(aros_root, source_root=REPO, include_desktop=False):
         elf, _ = ELF._parse_elf(data)
         if name == "Prefs/WiFi":
             verify_volatile(elf, data)
-        if name == "Devs/Networks/esp32p4wlan.device":
+        if name == "Devs/Networks/esp32p4wifi.device":
             _, _, issues = ELF.audit_elf(data)
             if issues:
                 raise ValueError("WLAN device fails loader audit: " + "; ".join(issues))

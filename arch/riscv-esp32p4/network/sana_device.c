@@ -2306,7 +2306,7 @@ ADD2CLOSEDEV(GM_UNIQUENAME(Close), 0)
 
 AROS_LH1(void, begin_io,
          AROS_LHA(struct IORequest *, iorequest, A1),
-         LIBBASETYPEPTR, LIBBASE, 5, esp32p4wlan)
+         LIBBASETYPEPTR, LIBBASE, 5, esp32p4wifi)
 {
     AROS_LIBFUNC_INIT
     p4wlan_begin(LIBBASE, (struct IOSana2Req *)iorequest);
@@ -2315,7 +2315,7 @@ AROS_LH1(void, begin_io,
 
 AROS_LH1(LONG, abort_io,
          AROS_LHA(struct IORequest *, iorequest, A1),
-         LIBBASETYPEPTR, LIBBASE, 6, esp32p4wlan)
+         LIBBASETYPEPTR, LIBBASE, 6, esp32p4wifi)
 {
     AROS_LIBFUNC_INIT
     struct IOSana2Req *request = (struct IOSana2Req *)iorequest;

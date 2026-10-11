@@ -117,7 +117,7 @@ P4_GSL_FW_BINARY ?=
 #MM- kernel-image-esp32p4-riscv-wifi : kernel-image-esp32p4-riscv-wifi-stage
 #MM- kernel-image-esp32p4-riscv-wifi-stage : \
 #MM-     kernel-image-esp32p4-riscv-stage \
-#MM-     kernel-esp32p4wlan-device \
+#MM-     kernel-esp32p4wifi-device \
 #MM-     workbench-prefs-wifi \
 #MM-     workbench-prefs-network \
 #MM-     workbench-network-stacks-arostcp \

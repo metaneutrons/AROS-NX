@@ -142,7 +142,7 @@ class WifiStageTests(unittest.TestCase):
         broken = ELF_FIXTURES.make_elf(
             runtime_relocations=[(0, "__eh_frame_start", 1, 0)],
             symbols=[{"name": "__eh_frame_start", "section": 5}])
-        (self.aros_root / "Devs/Networks/esp32p4wlan.device").write_bytes(broken)
+        (self.aros_root / "Devs/Networks/esp32p4wifi.device").write_bytes(broken)
         with self.assertRaisesRegex(ValueError, "WLAN device fails loader audit"):
             STAGE.generate(self.aros_root, self.output, self.source_root)
         self.assertFalse(self.output.exists())
@@ -335,7 +335,7 @@ class WifiStageTests(unittest.TestCase):
         required_binaries = {
             "Prefs/WiFi", "Prefs/Network", "Prefs/NetModules/net4.netprefs",
             "Prefs/NetModules/net6.netprefs", "C/WirelessManager",
-            "Devs/Networks/esp32p4wlan.device",
+            "Devs/Networks/esp32p4wifi.device",
             "Tools/ESP32Board",
             "System/Network/AROSTCP/C/AROSTCP",
             "System/Network/AROSTCP/C/dhclient", "Libs/posixc.library",
@@ -378,7 +378,7 @@ class WifiStageTests(unittest.TestCase):
         self.assertEqual("False", defaults["Prefs/Env-Archive/AROSTCP/AutoRun"])
         self.assertEqual(
             "False", defaults["Prefs/Env-Archive/AROSTCP/WirelessAutoRun"])
-        self.assertIn("DEVS:Networks/esp32p4wlan.device UNIT 0",
+        self.assertIn("DEVS:Networks/esp32p4wifi.device UNIT 0",
                       defaults["Prefs/Env-Archive/AROSTCP/WirelessDevice"])
         self.assertIn("IP=DHCP", defaults["Prefs/Env-Archive/AROSTCP/db/interfaces"])
         self.assertEqual(1, wifi_volatile_value(first["Prefs/WiFi"]))
