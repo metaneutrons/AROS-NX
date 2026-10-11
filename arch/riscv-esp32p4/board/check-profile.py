@@ -387,7 +387,11 @@ def check(board_name: str, layout: str, counter_probe: bool) -> bool:
         checks["Wi-Fi pins distinct from SD storage"] = (
             len(set(pins)) == 6 and not set(pins).intersection(range(39, 45))
         )
-        checks["Wi-Fi reset not invented"] = macros["P4_BOARD_WIFI_RESET_GPIO"].strip() == "(-1)"
+        checks["Wi-Fi vendor CHIP_PU reset"] = (
+            macro_number(macros, "P4_BOARD_WIFI_RESET_GPIO") == 54
+            and macro_number(macros, "P4_BOARD_WIFI_RESET_ACTIVE_LEVEL") == 0
+            and 54 not in pins and 54 not in range(39, 45)
+        )
 
     for label, passed in checks.items():
         print(f"{'PASS' if passed else 'FAIL'} {board}/{layout}: {label}")

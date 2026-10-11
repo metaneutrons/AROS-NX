@@ -19,6 +19,7 @@
 #include "../sdmmc/registers.h"
 #include "../sdmmc/memory.h"
 #include "runtime_probe.h"
+#include "radio_reset.h"
 #ifndef P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED
 #define P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED 0
 #endif
@@ -248,6 +249,26 @@ static void wifi_write(IPTR address, ULONG value)
     *(volatile ULONG *)address = value;
     __asm__ volatile("fence iorw, iorw" ::: "memory");
 }
+
+#if P4_BOARD_WIFI_RESET_GPIO >= 0
+static uint32_t wifi_radio_read(void *context, uint32_t offset)
+{
+    (void)context;
+    return wifi_read(WIFI_GPIO_BASE + offset);
+}
+
+static void wifi_radio_write(void *context, uint32_t offset, uint32_t value)
+{
+    (void)context;
+    wifi_write(WIFI_GPIO_BASE + offset, value);
+}
+
+static void wifi_radio_wait(void *context, uint32_t microseconds)
+{
+    (void)context;
+    Delay((microseconds + 19999u) / 20000u);
+}
+#endif
 
 /* ESP-IDF f80e6467, esp32p4 register/hw_ver1 GPIO/IO_MUX contracts.
  * Only the profile's radio pins are touched; storage pins remain untouched.
@@ -3374,6 +3395,23 @@ static void wifi_identify(void)
         bug("[WiFi] compatible shared host absent\n");
         return;
     }
+#if P4_BOARD_WIFI_RESET_GPIO >= 0
+    /* Only this initial owner startup resets the C6. No shared SDMMC claim
+     * is held across the pulse or scheduling delays. Runtime association,
+     * cancellation and OTA paths must not silently reset the peer. */
+    {
+        const struct p4_radio_reset_ops radio_ops = {
+            NULL, wifi_radio_read, wifi_radio_write, wifi_radio_wait
+        };
+        int reset_ok = p4_radio_reset(&radio_ops, P4_BOARD_WIFI_RESET_GPIO,
+                                      P4_BOARD_WIFI_RESET_ACTIVE_LEVEL);
+        bug("[WiFi] C6 hardware reset gpio=%ld active=%ld pulse_us=200000 settle_us=1000000 ok=%ld\n",
+            (LONG)P4_BOARD_WIFI_RESET_GPIO,
+            (LONG)P4_BOARD_WIFI_RESET_ACTIVE_LEVEL, (LONG)reset_ok);
+        if (!reset_ok)
+            return;
+    }
+#endif
 #if P4_WIFI_HOSTED_INIT
     /* Allocate outside shared-controller ownership; never put the receive
      * stream on the small process stack or point DMA at that stack. */

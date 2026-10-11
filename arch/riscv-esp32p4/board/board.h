@@ -34,6 +34,17 @@
 #if P4_BOARD_WIFI_SLOT != 1
 #error "P4 Wi-Fi must not claim the slot0 read-only storage interface"
 #endif
+#if P4_BOARD_WIFI_RESET_GPIO < -1 || P4_BOARD_WIFI_RESET_GPIO > 54
+#error "invalid P4 Wi-Fi reset GPIO"
+#endif
+#if P4_BOARD_WIFI_RESET_GPIO >= 0
+#ifndef P4_BOARD_WIFI_RESET_ACTIVE_LEVEL
+#error "a radio reset GPIO requires an explicit assertion level"
+#endif
+#if P4_BOARD_WIFI_RESET_ACTIVE_LEVEL != 0 && P4_BOARD_WIFI_RESET_ACTIVE_LEVEL != 1
+#error "invalid P4 Wi-Fi reset assertion level"
+#endif
+#endif
 #endif
 #if !defined(P4_BOARD_PANEL_JD9365) && !defined(P4_BOARD_PANEL_JD9165)
 #error "board profile names no panel controller"

@@ -1,5 +1,16 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+C6 startup reset (2026-10-11): the newly supplied JC1060P470C_I_W_Y
+schematic establishes P4 GPIO54 -> C6_CHIP_PU, independent of the P4 reset.
+This supersedes the earlier resetGPIO=-1 wiring assumption for the JC1060
+profiles. Native startup now pulses low for200ms and releases high, waiting
+1s outside shared SDMMC ownership, with GPIO configuration/level checks.
+Profile and native builds verified; hardware reset/INIT acceptance pending.
+The ABI12 resource must be installed with its matching SD-based WLAN device;
+the currently installed ABI11 baseline has not been changed. C6 firmware,
+kernel, bootloader and SD remain unchanged. No WPA3/PMF/IP/data result follows
+from this source correction. See N2-SAE-REC and the dated GPIO54 evidence.
+
 AROS runtime restored (2026-10-11): exact-span flash rollback and45s return
 capture verified. Both harts, graphics updates, GT911 polling and WLAN owner
 CPU1/expected C6 MAC observed. Initial HP_SYS_HP_WDT_RESET/Saved PC40001ea8

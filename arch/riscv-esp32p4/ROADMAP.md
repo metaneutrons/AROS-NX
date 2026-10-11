@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `baseline restored; stale-counter guard revalidated`: one-pulse45s capture observed both-hart AROS, two ROM banners, INIT stale counter26378; CCCR acknowledgment is not C6 reset; Hosted transport-reset candidate source identified, unqualified | Fresh readiness for C6 rail-off/baseline INIT; independently qualify transport recovery without treating it as application/attempt fence |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `GPIO54 startup reset build verified, undeployed`: newly supplied vendor schematic establishes C6 CHIP_PU; low200ms/high1s startup pulse implemented outside shared SDMMC ownership; retained-counter guard unchanged | Install matching ABI12 SD driver/resource, then bounded headless warm-reset/INIT qualification; reset alone is not an association-attempt fence or full WiFi pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1903,8 +1903,15 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   remains the sole authority; PWE modes are
   selectable client policies, never observed AP facts. Provider integration,
   explicit diagnostic deployment configuration and actual link lifecycle remain open.
-- SAE-M3 owner/peer (depends on M2): use existing Hosted STA config fields
-  for PMF capable/required, SAE PWE and optional identifier; verify exact
+- SAE-M3 owner/peer (depends on M2):
+  New JC1060 vendor schematic establishes GPIO54 -> C6_CHIP_PU and supersedes
+  the earlier absent-reset wiring assumption. Startup-only low200ms/high1s
+  reset is native-build verified, not deployed; waits occur outside SDMMC
+  ownership. Matching ABI12 SD driver installation precedes resource flash.
+  Qualify fresh C6 INIT on a warm P4 reboot before lifecycle experiments.
+  Do not use startup reset as evidence of a runtime association event fence.
+  Use existing Hosted STA config fields for PMF capable/required, SAE PWE
+  and optional identifier; verify exact
   encoder/caller values, credential ownership/wiping, timeout/cancellation,
   teardown and current-link lifecycle. The scan RPC lacks PMF/H2E information;
   do not claim those as observed AP facts. Establish whether a threshold alone
@@ -41327,3 +41334,78 @@ remain open. No partial stage is a complete A/B update system.
   the raw reset event as a production shortcut from source audit alone.
   No installed-peer equivalence inferred. Physical cold prerequisite retained;
   an eventual C6 correction would require deferred firmware/recovery authority.
+
+### 2026-10-11 — Vendor-proven GPIO54 C6 startup reset
+
+- Status: profile/host/native build verified, **undeployed**. The new vendor
+  archive `/Users/fabian/Downloads/JC1060P470C_I_W_Y` supplies schematic
+  `5-Schematic/JC1060P470C_I_W_Y-V1.0.pdf`, SHA256
+  ae3f41fe9a66b201358ef8cf1f531fdced68c63f84c8bde36e23cde5132a23ee.
+  Page1 visually connects GPIO54 to C6_CHIP_PU, with R81=10K pull-up and
+  C64=105/10V settling capacitor. This supersedes the earlier negative
+  resetGPIO=-1 statement for this board; historical evidence is retained.
+  Actual connected revision/electrical reset still needs hardware proof.
+- Vendor New_Panel/xiaozhi-esp32-main/sdkconfig lines3023/3073/3077/3934
+  specify SDIO_RESET_ACTIVE_HIGH, reset every host boot, and GPIO54.
+  Independently rechecked pinned Hosted d5184217 Kconfig352ff defines that
+  option as high-low-high with low causing reset. transport_drv.c63ff uses
+  high50ms/low50ms/high plus1s settling. The installed C6 source lineage is
+  not established by this reference. No firmware update is implied.
+- Implementation: explicit profile reset assertion level0, checked GPIO54
+  bank1 bit22, preloaded high output, GPIO matrix/function/input configuration,
+  low200ms then high1s settling. Configuration failure disables the target
+  output so external R81 releases CHIP_PU; failed assertion still releases.
+  Runs once at owner startup, after shared-host ABI validation but before
+  controller acquisition. No storage register/pin, CCCR reset policy, runtime
+  association cancellation, OTA or peer-contract release gate is changed.
+- Primary host verification: clang C99 Wall/Wextra/Werror, O0 and O2 with
+  ASan/UBSan, actual exit0 each;1228 checks/10 scenarios each. GPIO54 bank,
+  unrelated-bit preservation, absent/invalid capability, both polarities,
+  three configuration failures, assertion failure and final readback failures.
+  Model evidence is not physical GPIO qualification. All six board/layout
+  profiles pass check-profile.py, actual exit0.
+  Reproducible primary tools/test-radio-reset.sh also exits0 at O0/O2 with
+  pedantic/ASan/UBSan,1228 checks each (reset-suite.log). Luna independently
+  ran GCC12 O0/O2 without sanitizers; its sanitizer link failed from missing
+  libasan/libubsan, not a test pass. Apple Clang sanitizer runs succeed.
+- Native: affected WiFi/device objects removed before sequential quick targets
+  kernel-esp32p4wlan-device-quick and kernel-esp32p4wifi-probe-quick, actual
+  exit0. Final resource rebuilt again after configuration-failure cleanup.
+  P4_BOARD=jc1060p470c-v2; P4_WIFI_SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/
+  HOSTED_OWNER=1; OWNER_CPU=1; ASSOCIATION_TEST_RISK_ACCEPTED=1;
+  C6_PRIVACY_RECOVERY_VERIFIED/HOST_PRIVACY_RECOVERY_VERIFIED/
+  C6_UPDATE_RECOVERY_VERIFIED/FULLMAC_PEER_CONTRACT_VERIFIED=0.
+  Resource357840B SHA256
+  3711711890f1d69c77eeab38330c90ca39bc2e857b11bcb0c3b6b1bceb92e0d4;
+  device74600B SHA256
+  5aee4b539ff16b6d7f9bb1dd80a786a1461b82b5e3ce7ade7b92da3c78eb4d90.
+  Resource disassembly confirms bridge ABI12/size348 and host ABI8 check.
+- Read-only preparation: expected MAC80:f1:b2:d3:3b:a6/P4v1.3 verified;
+  table independently read/decoded: ota_0=0x20000, arosbsp=0x820000,
+  volume boundary0xc00000. Two complete4063232B BSP reads, actual exit0,
+  compare identical SHA256
+  5e155d6b56781d021a4041cdbb316568ea221c585bed1014d1d62d383feddf8d.
+  Embedded42-member baseline4032772B matches43bdf487...; existing host/SD
+  members retained. Replacement utility initially rejected a nonexistent
+  Devs/-prefixed package member, creating no output. Correct bare member
+  replacement preserves all other41 records. Final candidate4048884B
+  SHA256120ccb912e93425b3fbe32295496ee7d42c76324f8de241f7c4dac2548b4b16f
+  remains below4063232B and is not flashed. Superseded initial candidate
+  f57ced03... and resource d26825a1... are retained, not deployment artifacts.
+- Deployment prerequisite: installed SD WLAN device is ABI11; exact bridge
+  ABI matching must not be bypassed. The device is not in the BSP. Requested
+  fresh SD-card transfer readiness to install the matching ABI12 driver
+  before resource flash. No card write, flash write, C6 upgrade, credential
+  transmission or interactive acceptance took place. Serial preparation
+  leaves P4 in ROM/stub download mode; no current desktop claim.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/gpio54-startup.YghWCa`.
+  resource-final-build.log SHA256
+  b50e6c4226dc8c747ccdfd2853c650da8470da0fe2e115481fcbb7fc4e9a03be;
+  profiles.log414847c0f394d9b1d203c0c5e24a3be7c873e3a182f1f62cb9bd8fd5f179c7e5;
+  partition-table.bin b96e4eb9478d7b02864faa0685d10b78e0c5a321cdc0637b2d58023504c1d193.
+- Next: matched SD/BSP install with backups/readback, then one-pulse headless
+  warm P4 reboot. Require reset success, fresh INIT/MAC and both-hart/storage
+  continuity; never disable stale-counter rejection. WPA3/required PMF,
+  producer/attempt fencing, DHCP/routes/DNS/bidirectional data/reconnect/load
+  remain independent open gates. No forced GPIO reset counts as rail-off.

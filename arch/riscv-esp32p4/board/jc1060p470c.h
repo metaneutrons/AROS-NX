@@ -133,7 +133,10 @@
  * schematic page 4 (P4 side); Fabian selected this WLAN reference 2026-10-10.
  * C6-side GPIO numbers are different and must not be used on the P4.
  * These are wiring declarations only: no radio initialization is enabled.
- * No host-controlled C6 reset is established by this reference. */
+ * The vendor JC1060P470C_I_W_Y-V1.0 schematic (2025-09-06) connects
+ * P4 GPIO54 to C6_CHIP_PU, with R81 pull-up and C64 settling capacitor.
+ * CHIP_PU low disables/resets the C6; high releases it. This is independent
+ * of the P4 reset and of SDIO CCCR function reset. */
 #define P4_BOARD_WIFI_SDIO              1
 #define P4_BOARD_WIFI_SLOT              1
 #define P4_BOARD_WIFI_CLK_GPIO          18
@@ -142,7 +145,8 @@
 #define P4_BOARD_WIFI_D1_GPIO           15
 #define P4_BOARD_WIFI_D2_GPIO           16
 #define P4_BOARD_WIFI_D3_GPIO           17
-#define P4_BOARD_WIFI_RESET_GPIO        (-1)
+#define P4_BOARD_WIFI_RESET_GPIO        54
+#define P4_BOARD_WIFI_RESET_ACTIVE_LEVEL 0
 
 /* Legacy layout: last four MiB of arosbsp, at physical offset 0xc00000. */
 #define P4_BOARD_FLASHDISK_PART_OFFSET 0x003E0000UL
