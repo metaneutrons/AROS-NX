@@ -116,9 +116,21 @@ the full counter nor the app configuration attests installed bootloader policy.
 Virtual-eFuse builds publish none of these physical facts. IDF retries reads
 concurrent with an eFuse burn internally without a deadline; exclude concurrent
 burns and qualify runtime timing rather than claiming a bounded whole RPC.
-The preserved complete candidate and counts below are historical version1.
-Current v2 collector object compilation is not a complete linked firmware build
-or live discovery/recovery proof. No C6 write or release gate was enabled.
+The previous complete candidate and counts below are historical version1.
+A fresh full version2 build now completes941 steps and links the collector,
+handler, codec and full-field eFuse counter. App1110928B SHA256
+3583e341ea108a087a924c4320833f3cad3c3be436070c1ebf5d80f14292b2f4;
+source/build `/Volumes/Dev/Build/c6-discovery-v2.3RE1Sf` and evidence
+`/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/c6-discovery-v2.dLbUla/`.
+The complete archive includes ELF/map/config/generated sources/recipe and logs.
+The new table matches the prior candidate; the bootloader differs and must not
+be flashed from generated flash_args. Neither is installed-device evidence.
+Fresh RPC146/10, dispatcher54/9 and string490 checks pass each O0/O2, alongside
+vendor/legacy source-body privacy checks and exact-app ESP32Board preflight.
+Static C6 GCC stack reports: collector2192B + parser1120B + RPC48B =3360B,
+before outer IDF/library frames in the5120B worker. Runtime stack high-water,
+UART privacy, installed-table provenance and recovery remain unqualified.
+No C6 write or release gate was enabled.
 
 `discovery.c/.h` collect a bounded normalized internal IDF partition inventory
 using the pinned IDF5.4.3 APIs, with shared `boardtool/discovery.c/.h` validation

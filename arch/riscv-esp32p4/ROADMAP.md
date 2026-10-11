@@ -123,7 +123,7 @@ No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M-C | Actual C6 image-to-target compatibility | Discovery-v2 detected chip/revision/full physical counter producer and canonical codec host verified; matched ABI11 native modules/tool build verified; C6 collector object only, no installed extension or complete compatibility producer | Complete version2 candidate build; independent installed bootloader policy, actual slot/layout, image comparison and secured first-install recovery; CN5 availability requested, not verified |
+| N2M-C | Actual C6 image-to-target compatibility | Discovery-v2 facts/codec host verified; matched ABI11 native modules/tool and fresh complete C6 candidate build verified1110928B; exact-app preflight passed; no installed extension or complete compatibility producer | Image comparison, independent installed bootloader policy, actual slot/layout, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
@@ -1300,12 +1300,20 @@ burned-bit count with independent known bits. It rejects legacy version1 and
 unknown nonzero facts. Chip/revision/counter are detected information, not
 installed bootloader-policy, image comparison or first-install proofs. Matched
 private ABI11 resource/device/tool rebuilds are required for the copied snapshot
-shape; no v2 deployment or complete firmware claim. The IDF convenience helper
+shape; full candidate v2 build1110928B passes, but no v2 deployment. The IDF convenience helper
 reads an app-config-sized prefix, so the producer uses status-checked full-field
 counting instead. Concurrent eFuse burns must be excluded: IDF internally
 retries damaged reads without an absolute deadline. No extension writes eFuses.
 CN5 availability has been requested; no actual connector orientation, adapter
 access or restore is verified. UPDATE-C6 and all three release assertions0.
+
+Full candidate evidence now includes fresh941-step IDF build, ELF/map/config,
+generated schema and exact-app image/hash preflight, without replacing the
+version1 candidate. The candidate table is byte-identical to the prior table;
+the new bootloader differs and is not authorized/qualified for flashing.
+Static nested RPC/collector/parser stack subtotal3360B leaves no proven runtime
+margin in the5120B worker; IDF/allocator/outer dispatcher frames are additional.
+No live C6 origin/security/slot facts, transfer timing or recovery are proved.
 
 M1 source/host/build foundations are verified within their stated limits;
 native CLI/MUI interaction remains untested. The isolated OTA codec and gated
@@ -38237,3 +38245,64 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   image/target compatibility; first-write independent CN5 recovery and full
   transfer/privacy qualification remain mandatory. Real association, DHCP,
   frames, reconnect and1800-second combined acceptance remain open.
+
+### 2026-10-11 - N2M complete discovery-v2 C6 candidate, no deployment
+
+- Source parentb831c991f0; fresh private Hosted source/build
+  `/Volumes/Dev/Build/c6-discovery-v2.3RE1Sf`, copied from the preserved
+  legacy privacy candidate. Checked/applied current discovery schema/integration
+  patches, staged committed extension, regenerated with protobuf-c1.5.2/
+  libprotoc36.2. A patch check from the parent rather than source directory
+  first failed without changes, then correct-source check/application passed.
+  Complete existing candidates and IDF reference remain unchanged.
+- Build environment: pinned privacy-patched IDF5.4.3 base
+  ea1c174c1cbb7348bd8ba0ff1eb306246938dd80, existing private Python3.12 venv,
+  CMake3.30.2, Ninja1.12.1, GCC14.2.0_20250730. IDF_COMPONENT_MANAGER=0;
+  targetesp32c6; SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.private.
+  Configuration verifies SDIO, Wi-Fi NVS disabled, virtual eFuses disabled,
+  maximum/default INFO and candidate4MB two1536KiB OTA slots. These are build
+  settings, not detected installed layout/security. Fresh build directory
+  contains no reused objects. First idf.py attempt exit1 used a tools directory
+  missing the constraints file; corrected existing private tools path builds
+  all941 steps, links app and passes partition check, actual process exit0.
+- Evidence:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/c6-discovery-v2.dLbUla/`.
+  RESULT.md, source tar/input recipe, ELF/BIN/map, config, compile commands,
+  generated-source archive, build/error/test logs and hashes are retained.
+  Successful build log SHA256
+  0ede48730bc37878401594306a280776c2af6ec2a8314028d7d586df6cb3c2bb.
+  Source archive38193a84b37d457deaa27c25118e083a2b4c920ad8e082a8fe6221092b989ce3.
+- App1110928B SHA256
+  3583e341ea108a087a924c4320833f3cad3c3be436070c1ebf5d80f14292b2f4;
+  ELF6d31f9ce468dac325dc935f1b9bc23cb7dfaf83cdc0f1e05324966f83616b320.
+  Link map contains actual collector, full-field eFuse read and routed RPC.
+  Bootloader22016B483fe9f93dbdc49a340fd588cd03398185f12691048a0150924cf2fc88d47197
+  differs from prior candidate; no flash permission or compatibility claim.
+  Table3072B0241fa0d2e573dee86756e39fb4181e61ff7218087619cab565b602df55954d6
+  matches prior candidate, not proven installed table. Old v1 app SHA remains
+  3ca76076862620945d0510a4fc2647e8b20bb091e868341f8d3d937361aef1a9.
+  Generated flash_args is archival data only; do not execute it as provisioning.
+- Local esptool4.12 image_info exit0: chip13, revisions0..99, secure_version0,
+  checksum/hash valid. Actual ESP32Board image/hash preflight compiled with
+  ASan/UBSan accepts this exact digest/file O0/O2, both exits0. Fresh generated
+  RPC tests146checks/10cases with18allocs/frees each; dispatcher54/9;
+  string-response490 each O0/O2, all exits0. IDF vendor callbacks18checks each,
+  legacy Wi-Fi/coexistence/PHY helpers6checks each per optimization and source
+  guards pass exit0. These are source-body/host tests with mocked IDF/transport,
+  not live handler/whole-UART privacy. Caller digest is not authentication.
+- Separate actual C6 compiler -fstack-usage builds succeed: collector2192B,
+  layout parser1120B, RPC48B nested subtotal3360B, before outer dispatcher,
+  allocator and IDF frames in5120B worker; validator32B. Static reports cannot
+  prove runtime high-water or interrupt/transport margin. Independent read-only
+  candidate/config/staging audit confirms all10 staged extension files match
+  HEAD, C6-only version2 define/advertisement/handler/cleanup agree, generated
+  schema IDs350/606 agree and expected four privacy-patched IDF inputs exist.
+  This source/config audit is separate from the primary build procedure and
+  does not establish binary-level or hardware privacy.
+- Safety/next: no package/image, board/serial/reset/flash/SD or credential action;
+  UPDATE-C6 disabled and three release assertions0. Complete v2 build closes
+  only the candidate-build gap, not first-install recovery or image-to-device
+  compatibility. Next software gate is factual compatibility plus runtime
+  budget handling; actual CN5-secured independent recovery, installed identity/
+  security/layout and UART/SDIO qualification precede a C6 write/credentials.
+  Association/DHCP/traffic/reconnect/1800s combined WLAN acceptance stays open.

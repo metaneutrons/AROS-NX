@@ -19,8 +19,9 @@ request. Advertisement, schema generation and a serialized handler are included
 in the separate C6 candidate recipe. The native INIT/owner/client paths now
 require negotiated version2 and preserve peer epoch/lease correlation. Their
 host tests and standalone builds are not installed-peer or live SDIO proof.
-The preserved complete C6 candidate is still version1; version2 collector
-object compilation is not a complete firmware build or first-install evidence.
+A fresh complete version2 C6 candidate is build verified, not installed; the
+earlier version1 candidate is preserved. Neither build proves live SDIO,
+stack margin, installed-table provenance or first-install recovery.
 
 ## Canonical inventory payload
 

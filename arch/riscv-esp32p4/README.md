@@ -8,8 +8,13 @@ The IDF app-config-sized secure-version helper is unsuitable for this fact;
 the collector uses a status-checked full-field count instead. Installed
 bootloader policy, image compatibility and independent restore remain unproved.
 Private ABI11 requires matched resource/device/tool rebuilds; standalone builds
-are not repackaged or deployed. The historical complete C6 version1 candidate
-is preserved; a collector object does not establish a complete version2 image.
+are not repackaged or deployed. A fresh complete C6 version2 build now succeeds:
+app1110928B SHA2563583e341ea108a087a924c4320833f3cad3c3be436070c1ebf5d80f14292b2f4.
+The old version1 candidate is preserved. Candidate table bytes match it, not
+the installed device; the new bootloader differs and is not flash-qualified.
+Real image/hash preflight and fresh RPC/privacy helper tests pass. Separate
+static stack reports give3360B for nested RPC/collector/parser before outer IDF
+frames in the5120B worker; runtime stack margin and UART privacy remain open.
 UPDATE-C6 and all three release assertions remain off. No hardware action.
 
 C6 inspected-source ownership (2026-10-11): CHECK-C6 now uses a shared
