@@ -45,7 +45,10 @@ shared-host admission gate: bundled SDMMC ABI7 versus required ABI8. The correct
 package refreshes the host and sdcard together; other40 candidate payloads are
 unchanged. Its warm boot passes host admission and SDIO setup but INIT still
 fails stage13/error6. A coordinated fresh C6 cold start is the next diagnostic,
-not an assumed fix. No credentials are embedded and C6 firmware is unchanged.
+not an assumed fix. The coordinated rail-off attempt receives a35-byte INIT
+with preopen0 but parsing refuses stage27/error14; an HP watchdog reset in
+the capture invalidates clean cold continuity. No credentials are embedded
+and C6 firmware is unchanged.
 The unchanged baseline returned from USB reset, but its old WLAN INIT failed
 at stage13/error6; neither run is an association pass. See roadmap N2T.
 

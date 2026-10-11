@@ -122,12 +122,14 @@ all42 loader audits. An ABI11 diagnostic candidate now replaces only the WLAN
 resource in the actual installed BSP backup, with a matched rebuilt device/tool
 system image (N2T); both are host verified. The SD image is written/readback
 verified; the corrected host-ABI8 BSP is installed/readback verified. Warm
-startup passes host admission but INIT still fails stage13/error6.
+startup passes host admission but INIT still fails stage13/error6. The subsequent
+coordinated rail-off attempt reaches INIT parsing (stage27/error14,35bytes,
+preopen0); HP watchdog reset invalidates clean cold continuity.
 No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2T | Explicit accepted-risk WLAN association test | ABI11 SD image and corrected shared-host ABI8 BSP deployed/readback verified; initial host mismatch corrected by paired host/SD refresh; warm INIT stage13/error6 remains; recoverable backups retained; privacy/recovery assertions0, OTA unchanged | Fresh coordinated C6 cold-start diagnosis, existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | ABI11 SD image and shared-host ABI8 BSP deployed/readback verified; host mismatch corrected; warm INIT13/6; coordinated rail-off INIT27/14 with35bytes/preopen0, HP watchdog reset prevents clean cold pass; backups retained, privacy/recovery assertions0, OTA unchanged | Diagnose exact INIT parser rejection and watchdog/reset continuity, then existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1681,7 +1683,9 @@ diagnostic BSP and system image are now host verified against the actual
 installed BSP backup; SD image deployment is readback verified, while the
 corrected host-ABI8 BSP is also deployed/readback verified and card returned.
 Warm host admission/SDIO setup pass, but INIT stage13/error6 remains; fresh
-coordinated C6 cold-start diagnosis precedes association. The unchanged
+coordinated rail-off attempt reaches INIT parsing stage27/error14 with35bytes
+and preopen0, but HP watchdog reset invalidates clean continuity. Exact parser
+rejection and reset continuity must be diagnosed before association. The unchanged
 baseline USB-reset capture reports old INIT stage13/error6, not candidate
 acceptance. See the dated N2T preparation record below.
 Source audit also found the existing SANA ONEVENT mask incompatible with the
@@ -38798,3 +38802,29 @@ remain open. No partial stage is a complete A/B update system.
   power-cycle repetition or credential attempt was made.
 - No core, bootloader, partition table, metadata, C6, credentials or SD writes.
   These headless boot checks do not establish visible desktop/touch acceptance.
+
+### 2026-10-11 - N2T coordinated rail-off attempt, INIT parser refusal
+
+- Fabian confirmed USB-C as the only supply, readiness, disconnection and
+  reconnection. Observed `/dev/cu.usbmodem101` absent before arming. The bounded
+  dispatcher recorded armed monotonic599068.912457125 and arrival599076.508817708;
+  no serial opened while absent. Passive late-boot-log opened22.029ms after
+  observed arrival, requesting DTR/RTS true; opening can disturb the board.
+- Unchanged deployed package4028096B SHA2567798a494...; no flash, SD or C6
+  write. Evidence remains `wlan-deploy.xP4hZ5` under the preceding absolute
+  evidence path. Dispatcher/capture actual exit0, status=ok footer60.158s,
+  16626 serial bytes. `cold1-boot.log` SHA256
+  `c6b61f7548dfc77c1bb6086ef6412358cc5d5ef9fb13741593b2f29fd86f9142`.
+  First chunk6.723494916s after reader start, open duration1.625541ms.
+- ROM reports HP_SYS_HP_WDT_RESET, not a clean power-on banner. Both Harts,
+  SDIO setup/ready and graphics updates appear. Bootstrap reset attempted1,
+  ack0/status-1. INIT preopen0, polls3, counter35, consumed1, bytes35; valid
+  outer frame reaches parse stage27, refused error14 (INVALID_INIT), poisoned1.
+  Cleanupok1, restoreok1; no peer reply/association attempted.
+- This distinguishes the warm stale-counter rejection from the current INIT
+  parser refusal, but does not identify which payload check failed. The log
+  contains no INIT payload bytes. Do not weaken parsing based on length alone.
+  HP watchdog/serial-open continuity remains unresolved, so this is not a clean
+  cold-boot or WLAN pass. Next: bounded INIT rejection diagnostics against the
+  installed peer format and separate watchdog/reset diagnosis; no automatic
+  repeated physical interaction or credential transmission.
