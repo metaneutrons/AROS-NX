@@ -8,6 +8,9 @@ network identifiers. Source-extracted owner tests37478 each O0/O2 sanitized
 and resource341600B/audited42-member BSP4032644B builds pass. P4 BSP deployment
 and independent exact readback pass; board remains in download mode. Fresh
 synchronized diagnostic scan is next, not an observed fix; WiFi remains open.
+The subsequent180.157s coordinated capture reaches owner ready again, but
+contains no scan diagnostic. Initial HP watchdog reset persists; neither scan
+attribution nor clean cold acceptance follows from this window.
 
 WLAN owner startup observed (2026-10-11): after the INIT tag correction and
 fresh coordinated USB-C rail-off, the installed persistent owner reports ready

@@ -136,6 +136,8 @@ Fabian's first native Prefs/WiFi scan reports zero networks. Count-only owner
 instrumentation is build/model verified, not a demonstrated radio/GUI fix.
 Its4032644B diagnostic BSP is now installed and independently readback verified;
 the board remains in download mode pending freshly coordinated C6 startup.
+Subsequent coordinated startup reaches owner ready again;180.157s captureexit0
+contains no scan record. Board is now running, but scan attribution remains open.
 
 The2026-10-11 measured0x17/4 vendor collision supersedes every earlier
 undeployed C6 discovery candidate's startup advertisement. Current host and
@@ -1724,6 +1726,8 @@ no delay, deadline renewal, ABI or radio policy change. Until correlated native
 evidence exists, zero count must not be treated as scan completeness.
 Diagnostic package4032644B deployment and independent byte-exact readback now
 pass; no scan with this diagnostic has run, and the board stays in download mode.
+The subsequent coordinated180.157s capture reaches owner ready but records no
+scan diagnostic; no scan invocation/attribution is established by that window.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -39173,3 +39177,25 @@ remain open. No partial stage is a complete A/B update system.
   Next fresh USB-C-only readiness, coordinated rail-off and owner-ready capture,
   then an explicitly timed GUI scan while the same reader is already attached.
   Do not infer that the diagnostic fixes scanning or qualifies reset continuity.
+
+### 2026-10-11 - N2T diagnostic owner startup; scan measurement absent
+
+- Fabian freshly confirmed USB-C-only readiness, disconnection and reconnection.
+  Port absent before dispatcher arm609186.671598875; arrival609193.207482291,
+  previous sample609193.182362041. Passive reader opened609193.215919958..
+  609193.217309375, DTR/RTS true; first chunk6.708606500s after reader start.
+  Opening remains a reset confound. No concurrent reader, reset/retry or write.
+- Same installed scan diagnostic BSP4032644B/resource341600B and flags from
+  previous entry, unchanged C6/core/SD. Session84874 actual exit0; complete
+  cold-scan.log status=ok footer180.156879833s/16414 captured bytes, SHA256
+  531e1c5d51b47fc5105e3ace046a92d1a7a46e7be39b734077f16a22fb2a699b.
+  Evidence remains scan-zero.zNMPDR with dispatcher/timing sidecar preserved.
+- Both harts and owner ready CPU1/MAC10:bd:a3:9b:bc:34 observed again;
+  graphics updates/touch polls are not visual acceptance. Initial
+  HP_SYS_HP_WDT_RESET remains; no later captured reset/trap/Guru/Alert/panic or
+  owner-stop record. No scan s/ok/n/r/h/e record appears in the window.
+  With lossy console and no confirmed scan-time observation, absence does not
+  prove the scan was not invoked, successful, failed or actually empty.
+- Reader closed normally. No automatic repeat; request a fresh synchronized
+  scan window before opening another reader (which can disturb current state).
+  Do not turn this missing measurement into a scan or WLAN gate PASS.
