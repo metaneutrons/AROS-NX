@@ -139,6 +139,11 @@ INIT cycles as an assumed exactly-once recovery path. This reference defect
 does not prove that the unidentified installed C6 has the same implementation.
 Keep C6 deployment postponed; first choose/qualify a compatible lifecycle
 contract, with recovery-backed firmware work only if necessary.
+The separate `tools/hosted-reference/slave-lifecycle.patch` fixes repeated
+registration for the pinned source: one handler is registered before INIT and
+retained across DEINIT. Registration errors propagate before driver init. This
+candidate assumes serialized requests and a persistent loop; it is not applied
+to the installed peer and does not resolve UID0 attempt provenance by itself.
 
 1. Source/build verified: typed bounded validation for every accepted RPC event; explicit dispatch
    classification, including unsupported modes and unknown future IDs.

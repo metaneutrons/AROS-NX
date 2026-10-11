@@ -76,6 +76,31 @@ Tests extract actual external source, not replacement policies:
 `python3 test-startup.py <patched-host>/host/drivers/transport/transport_drv.c`.
 Heap/time/GPIO mocks are not silicon or installed-firmware evidence.
 
+## Optional C6 lifecycle candidate (not deployed)
+
+`slave-lifecycle.patch` is a separate C6-side patch for the exact pinned
+`slave/main/slave_control.c`, original SHA256
+`d6234a3479376a4464cac4eac1919f9bbcf6554d24896dd1b63fe4f925bc2619`.
+Do not include it silently in the P4 reference build or apply it to the installed
+unidentified C6 image. C6 deployment remains postponed and requires the
+separately qualified recovery/update path.
+
+Apply with `git apply --check` followed by `git apply` in a disposable verified
+Hosted tree. It registers the WiFi handler once, before driver INIT, and keeps
+that single handler for the persistent default event loop. Registration failure
+returns an RPC error before driver init rather than panicking; a failed driver
+init can retry without leaking another handler. DEINIT deliberately does not
+remove the handler, so already-queued events still have a consumer. This assumes
+the pinned single pserial request dispatcher and persistent default event loop;
+it is not safe to reuse the helper for concurrent RPC dispatch or a destroyed
+and recreated event loop without an explicit synchronization/reset contract.
+
+This corrects duplicate notification production, not UID0 attempt provenance,
+producer quiescence, event queue draining, or a negotiated-security contract.
+STOP/DEINIT/INIT/START qualification remains separate. The source-extracted host
+test is `python3 test-slave-lifecycle.py <patched-slave>/slave/main/slave_control.c`;
+mocked IDF boundaries cannot qualify the actual C6 firmware or radio.
+
 Actual-source parser/app tests are `python3 test-scan.py <rpc_wrap.c> <rpc_rsp.c>`
 and `python3 test-app.py main/reference.c`. All three models
 and independent runtime review pass; this did not detect the generated CPU

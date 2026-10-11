@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication build verified; reference protocol inventory and actual INIT SAE-bit serialization verified; repeated peer INIT handler defect identified; typed BeginIO/capability admission, producer/attempt barrier, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication build verified; reference protocol inventory and actual INIT SAE-bit serialization verified; separate single-handler C6 lifecycle candidate retained; typed BeginIO/capability admission, producer/attempt barrier, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1917,7 +1917,10 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   producer-stop/FIFO fence, not a proven installed-peer contract. The pinned
   Hosted source registers duplicate handlers on repeated INIT without DEINIT
   unregistration; qualify/fix that lifecycle before assuming exactly-once
-  recovery. No automatic repeated-init workaround or C6 deployment is enabled.
+  recovery. A separate undeployed C6 reference patch now registers one handler
+  before INIT and retains it for the persistent event loop, including failed
+  init/deinit retries. It does not add attempt IDs or prove producer draining.
+  No automatic repeated-init workaround or C6 deployment is enabled.
   ABI12 now owns explicit profile/PMF/PWE/diagnostic policy, validates before
   RPC and copies borrowed credentials before use. Typed parser and native
   consumer builds are verified only; BeginIO/capability advertisement and
@@ -40493,3 +40496,56 @@ remain open. No partial stage is a complete A/B update system.
   lifecycle fence or recovery-backed peer contract, then finish typed native
   admission and WPA3/PMF/DHCP/routes/DNS/bidirectional/reconnect/load gates.
   Goal remains open; no hardware or negotiated-security pass claimed.
+
+### 2026-10-11 - N2-SAE single-handler C6 lifecycle reference candidate
+
+- Status: source/host-test verified, not a C6 firmware build or deployment.
+  Separate tools/hosted-reference/slave-lifecycle.patch corrects the pinned
+  Hosted repeated-INIT handler leak. A serialized helper registers once before
+  esp_wifi_init; the successful flag survives failed driver init and deinit.
+  Registration failures propagate through the actual RPC error macro without
+  driver-init side effects or ESP_ERROR_CHECK panic. The handler deliberately
+  lives with the persistent default event loop so queued events retain a
+  consumer. No event payload, UID, protocol version or attempt generation changes.
+- Preconditions rechecked in source: app_main.c915 creates default loop once;
+  protocomm_pserial.c269-301 dispatches requests serially in one task. This
+  helper is not qualified for concurrent dispatch or loop deletion/recreation.
+  Independent patch review found no concrete defect under those assumptions;
+  neither review nor mocked tests establishes a producer-drain barrier.
+- Identity/procedure: original external slave_control.c SHA256
+  `d6234a3479376a4464cac4eac1919f9bbcf6554d24896dd1b63fe4f925bc2619`
+  independently remains unchanged. Copy made in disposable
+  `/Volumes/Dev/Build/c6-lifecycle-reference.FIsls6/slave/main/`;
+  git apply --check then apply succeeded. Patched source SHA256
+  `337ff8106ea926d2504ba8b260f1255bed4b70cd6bbd4bfaec46e85fed41b187`.
+  Reverse apply check succeeds; second forward apply refuses as expected.
+  An initial hand-authored patch had wrong hunk counts and was rejected before
+  application; corrected counts passed the normal check, not --recount.
+  Retained patch SHA256
+  `425d83a5d6e9d7f95cefe38ed1935c8e33768806e6723445f2b2169684f64e6e`.
+- Tests: test-slave-lifecycle.py extracts the actual helper, INIT/DEINIT
+  functions, registration state and RPC_TEMPLATE/_SIMPLE/RET_FAIL_IF macros.
+  WiFi/event APIs, callback and generated boundary types are explicit mocks.
+  Primary run exits0:42 checks across4 cases each O0/O2 ASan/UBSan. Cases
+  cover successful repeated init/deinit, registration failure/retry with no
+  init side effect, init failure/retry without duplicate registration, deinit
+  failure/retry, and synchronous callback visibility during driver init.
+  Original unpatched source refuses extraction before compilation with exit2;
+  that is an expected incompatible-source refusal, not a baseline runtime test.
+  Initial harness quoting error was corrected by extracting original RPC
+  macros; no slave failure was inferred from that failed harness compile.
+  Test SHA256 `ddfad9fe03e2dc0271ece64f06edc2b7448dca82103470043929a2bcb26d6079`.
+- Evidence:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/c6-lifecycle.4lrcCr/`.
+  lifecycle.log SHA256
+  `9b5ea0f3de8028143cd31b90123943462f4afe2145b58f8a612646c78f5e2a83`;
+  unpatched-refusal.log SHA256
+  `7618a0ae5db97b361824a1fc34372c4f72a7ca01f64c8f60d9614b58bbaba317`.
+- Safety/remaining: no hardware/serial/reset/flash/SD/credential actions;
+  installed firmware unchanged and C6 deployment still postponed. This fixes
+  a source-confirmed reference defect only; installed lineage, lifecycle fence
+  and attempt provenance remain open. Native admission audit identifies missing
+  typed SETOPTIONS parser/capability wiring, diagnostic-vs-production policy
+  and pending-typed event-mode handoff tests. Complete those with truthful
+  qualification gates, then real WPA3/PMF/IP/data/reconnect/load verification.
+  Goal remains open.

@@ -1,5 +1,11 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+C6 lifecycle candidate (2026-10-11): a separately retained patch registers one
+WiFi event handler before INIT and keeps it across failed INIT/DEINIT retries
+on the persistent default loop. It prevents the pinned reference's duplicate
+registration; no installed C6 update or attempt-generation contract is implied.
+See tools/hosted-reference/README.md for application, tests and limitations.
+
 INIT/lifecycle audit (2026-10-11): the actual runtime INIT profile requests
 feature_caps129, including the pinned IDF SAE bit0, with NVS disabled. Its
 serialized values now pass the pinned protobuf oracle (962 checks each O0/O2
