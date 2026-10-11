@@ -7,7 +7,10 @@ written only at0x20000 and independently read back byte-identically; C6/BSP/SD
 unchanged. Coordinated cold capture completed65s with zero firmware bytes;
 no lifecycle result. Rollback connection failed before writing; diagnostic
 remains installed, AROS backups intact. Coordinate rail-off and prioritize
-exact-span restoration before any further diagnostic. No WLAN pass.
+exact-span restoration before any further diagnostic. User-requested repeat
+with DTR/RTS both false also captured zero bytes; default and single USB-reset
+ROM connections fail with devserial absent. Manual BOOT recovery is next.
+No WLAN pass.
 
 Credential-free lifecycle diagnostic (2026-10-11): separate opt-in official
 Hosted P4 app observes one INIT and three STOP/START cycles, with checked

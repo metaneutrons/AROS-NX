@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `recovery pending`: first cold capture completed65s/zero firmware bytes; rollback ROM connection failed before any write; diagnostic still installed, two complete matching AROS erase-span backups intact | Priority over further N2-SAE testing: coordinated USB-C rail-off, exclusive ROM connection, exact385024B restoration/readback and AROS return; silent capture is not lifecycle qualification |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `recovery pending`: two coordinated cold captures, including DTR/RTS false repeat, each65s/zero firmware bytes; default and USB-reset ROM connections fail without devserial; no rollback write; diagnostic still installed, two complete matching AROS backups intact | Priority over further N2-SAE testing: coordinated manual BOOT entry, exclusive ROM identity check, exact385024B restoration/readback and AROS return; silent captures are not lifecycle qualification |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin publication implemented; foreign leave isolation, failed-teardown replacement-cookie and pre-ACK completion repairs host/native-build verified; CONNECT_FAILED shares admission gate, FOURWAY absent; reference inventory/INIT SAE-bit verified; single-handler C6 candidate retained; credential-free P4 STOP/START diagnostic deployed with two matching full-span backups and independent readback after exclusive-port correction; not run, no event-fence qualification; native admission final gate0, undeployed; installed failure/cancellation/reconnect and peer qualification open | Coordinated USB-C rail-off, single lifecycle capture and exact-span AROS rollback, then source-backed producer fence or attempt correlation and installed-peer qualification; explicit negotiated SAE/PMF, password semantics, no transition downgrade, native caller lifecycle and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1944,6 +1944,9 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   no lifecycle result. Subsequent rollback failed to connect before writing.
   Diagnostic remains installed; prioritize coordinated rail-off and exact-span
   restoration, then attribute the silent capture before another measurement.
+  Explicitly requested repeat with deasserted DTR/RTS also yields zero bytes;
+  devserial absent. Both default ROM entry and one USB-reset attempt fail.
+  Manual BOOT entry/restoration now takes priority; no further diagnostic.
   Typed BeginIO/capability wiring now uses the owned parser and a shared,
   default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
   permission alone cannot advertise/admit FullMAC; the resource checks that
@@ -41065,3 +41068,29 @@ remain open. No partial stage is a complete A/B update system.
   USB-C rail-off, direct exclusive ROM connection and exact-span restoration;
   verify full readback and AROS return before another lifecycle test.
   All peer-contract/WPA3/PMF/IP/data/reconnect gates remain open.
+
+### 2026-10-11 — Deasserted cold capture also silent; manual recovery required
+
+- Fabian explicitly requested another test and confirmed USB-C disconnected
+  and connected. Node absent before arming; devserial daemon not running.
+  Separate exclusive cold-deasserted-dispatch.py starts629835.457134833;
+  arrival629913.947459833, previous sample629913.926391916; one serial open
+ 629913.950972375 with DTR=False/RTS=False, HUPCL cleared, no reset/retry.
+- Process79694 actual exit0, footer status=ok,65.158s/ZERO firmware bytes.
+  No lifecycle/API/event/ROM evidence. Deasserting control lines did not
+  establish a running application. A boot fault, capture issue or other cause
+  remains unidentified; devserial contention cannot explain this run alone.
+  Log SHA25611c1f753e6c67d70a5676387ff0f2cdd84fd32edc10c25134e45de2f29671e49.
+- Exact-span rollback process80802 exits2 before connection/write; no serial
+  data. One separately selected esptool --before usb-reset --connect-attempts1
+  flash-id process18866 also exits2/no data, no write. Last lsof shows no owner;
+  devserial daemon remains absent. Diagnostic remains installed and both
+  verified385024B AROS backups remain intact. No C6/BSP/SD/table/credential action.
+- Evidence lifecycle-hardware.UkjyId retains dispatcher, raw/timing capture,
+  rollback-after-deasserted.log SHA256
+  c8d362d79f6cada32bf2aefac043440d51cd71bfa401894017ed2e8212f48b34,
+  recovery-usb-reset-identity.log SHA256
+  f743ff7b968ec30fecf687ed1729232d462331c10466c3dc78b470765ddde898.
+  Next fresh coordinated physical BOOT/download entry, identity check and
+  exact-span AROS restoration/readback/return before any new lifecycle test.
+  No finite-trace or actual WiFi qualification is claimed.
