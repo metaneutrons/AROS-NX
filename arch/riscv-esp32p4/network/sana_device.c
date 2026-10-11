@@ -1693,14 +1693,24 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         struct p4wlan_association *attempt;
         struct Sana2FullMACCapabilities fullmac;
         ULONG acknowledged_token;
+        if (p4wlan_disassociate_options((const struct TagItem *)request->ios2_Data)) {
+            if (!unit->online || !unit->hardware_ready || unit->callback_fault ||
+                !unit->radio || !unit->radio->association_enabled) {
+                BOOL had_teardown = unit->teardown_pending;
+                /* Local leave remains usable after a radio fault. Revoke
+                 * only this opener; do not introduce another physical RPC.
+                 * Keep teardown already owed/in flight before this request. */
+                p4wlan_cancel_opener_association_locked(unit, opener);
+                unit->teardown_pending = had_teardown;
+            } else {
+                p4wlan_disassociate_opener_locked(unit, opener);
+            }
+            break;
+        }
         if (!unit->online || !unit->hardware_ready || unit->callback_fault ||
             !unit->radio || !unit->radio->association_enabled) {
             p4wlan_immediate_error(request, S2ERR_OUTOFSERVICE,
                                    S2WERR_UNIT_OFFLINE);
-            break;
-        }
-        if (p4wlan_disassociate_options((const struct TagItem *)request->ios2_Data)) {
-            p4wlan_disassociate_opener_locked(unit, opener);
             break;
         }
         if (unit->selection_token == ~(ULONG)0) {

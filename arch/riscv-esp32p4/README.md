@@ -1,5 +1,11 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Faulted local leave (2026-10-11): standalone Disassociate now revokes its
+opener's pending/cookie state even when radio admission is unavailable.
+It does not introduce a new physical teardown or affect a foreign selection;
+healthy scoped leave and already-owed teardown remain separate. Host tests
+and native gate0 build verified, undeployed; capability flags remain unchanged.
+
 Pre-ACK fault completion (2026-10-11): failed old teardown retains a valid
 owned replacement until its post-Reply acknowledgment. The fault gate blocks
 radio admission; subsequent service delivers exactly one originating-cookie

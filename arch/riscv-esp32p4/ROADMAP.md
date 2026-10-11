@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, default-off guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication implemented; foreign typed leave isolated and failed-teardown replacement-cookie notification repaired, including deferred pre-ACK completion without radio admission; reference protocol inventory and actual INIT SAE-bit serialization verified; separate single-handler C6 lifecycle candidate retained; peer-contract qualification, failure/cancellation advertisement, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, default-off guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication implemented; foreign typed leave isolated and failed-teardown replacement-cookie notification repaired, including deferred pre-ACK completion without radio admission; faulted local leave now revokes requester state without introducing physical teardown; reference protocol inventory and actual INIT SAE-bit serialization verified; separate single-handler C6 lifecycle candidate retained; peer-contract qualification, failure/cancellation advertisement, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1935,6 +1935,10 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   unacknowledged pending replacement survives failed teardown until its ACK;
   the closed fault gate then causes a one-shot exact-cookie failure without
   radio admission. Offline/cancel revoke it through normal invalidation.
+  Standalone Disassociate now precedes the health gate. Unavailable/faulted
+  radio state still permits requester-local cancellation; it preserves any
+  already-owed teardown but does not introduce a new physical RPC. Healthy
+  scoped leave semantics and foreign selections remain unchanged.
   Ready/callback faults now preserve a still-current active attempt's failure
   identity; they remain disqualifying for CONNECT success. The pre-ACK
   teardown-failure boundary is host-model/native-build verified, not a C6
@@ -40766,3 +40770,61 @@ remain open. No partial stage is a complete A/B update system.
   remaining lifecycle interleavings; qualify installed C6 event/attempt
   ordering before admission. Actual WPA3/required PMF, DHCP/routes/DNS,
   bidirectional traffic/reconnect/load remain required. Goal remains open.
+
+### 2026-10-11 - N2-SAE local cancellation survives unavailable radio
+
+- Status: host tests and native gate0 module build verified, undeployed.
+  Standalone valid Disassociate is now recognized before the admission health
+  gate. Healthy scoped leave is unchanged. Unavailable/faulted radio state
+  still revokes only the requesting opener's pending/link/cookie/latch state.
+  A snapshot of teardown_pending prevents the cancellation helper from
+  introducing new physical disconnect work while preserving teardown already
+  owed/in flight. Reply accepts local cancellation, never proves radio absence
+  or fabricates DISCONNECT. No health/admission gate is relaxed for association.
+- Regression: real extracted SETOPTIONS leave in the pre-ACK fault Reply hook
+  failed baseline diagnostic-risk O0 with exit1: OUTOFSERVICE at the leave ACK
+  assertion; six disabled runs passed. Primary corrected matrix process95138
+  exit0: twelve six-policy O0/O2 ASan/UBSan runs. Disabled variants each2195
+  checks/87 replies/47 alloc-free pairs/25 wipes; diagnostic-risk/partial each
+  4292/191/99/39; synthetic qualified4273/190/98/38. Tests prove requester
+  cancellation before the original ACK, monotonic token revocation, no new
+  association RPC/failure terminal, parked foreign/old edges unaffected,
+  and pin/wipe accounting. A seeded faulted committed-link case verifies no
+  newly scheduled teardown. Close coverage models closing/flush/cancel using
+  extracted helpers; it does not execute the native Close wait/drain loop.
+- Primary collateral tests exit0: actual extracted caller FullMAC query/typed
+  dispatch77 scenarios/468 checks, caller failure23/94, caller close4/55,
+  device events144 and lifetime1554, each O0/O2. Mocked DoIO/Exec/radio does
+  not prove an installed native driver-to-caller run or actual C6 lifecycle.
+- Independent source audit confirms snapshot/lock/tombstone consistency.
+  A preliminary concern interpreted cause-free failure as excluding attempts
+  that internally end on deadline/RPC error. Follow-up found no caller cause
+  inference: adapter emits EVENT_ASSOC_FAILED with NULL data; supplicant
+  labels cause unspecified and does not blacklist. Surrounding normative
+  comments support non-attestation of AP rejection/proved timeout, not a
+  forbidden internal-failure taxonomy. Clarify that ambiguous sentence before
+  enabling the capability. No result-provenance API redesign is justified by
+  this audit. Reviewer did not execute tests or builds.
+- Native procedure: invalidate exact device object directory, sequential
+  gmake -j4 kernel-esp32p4wlan-device-quick, process82543 exit0 with actual
+  sana_device.c compile/module link. P4_BOARD=jc1060p470c-v2;
+  P4_WIFI_SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/HOSTED_OWNER=1, OWNER_CPU=1,
+  ASSOCIATION_TEST_RISK_ACCEPTED=1; C6_PRIVACY_RECOVERY_VERIFIED,
+  HOST_PRIVACY_RECOVERY_VERIFIED,C6_UPDATE_RECOVERY_VERIFIED and
+  FULLMAC_PEER_CONTRACT_VERIFIED=0 (all P4_WIFI_). Device74600B SHA256
+  `5aee4b539ff16b6d7f9bb1dd80a786a1461b82b5e3ce7ade7b92da3c78eb4d90`.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/failure-negotiation.neunv7/`.
+  SHA256 baseline-faulted-disassociate.log
+  `4e29afd1ebc1c12e12987278bd8e38f6dc5ce0cc21526d989f982d7227d090a0`;
+  queue-final.log
+  `e9302523009600332a0ca5946b64e60bf1ff60c7db71a2d431d9e809052514af`;
+  caller-fullmac.log
+  `6946a0c4b2dd8a5bbbefd10f41b25e845cd341361da397ba52b8b8be1407d83a`;
+  device-gate0-build.log
+  `5aecb5b39618f275c00ff2dd799aaae71ed72d701d674feac7af4817314023bf`.
+- Safety/next: no serial/reset/flash/SD/credential transfer or C6 update;
+  public ABI and all capability flags unchanged. Resource/installed artifacts
+  unchanged. Clarify cause-free contract, complete gated provider negotiation,
+  then qualify installed-peer event/attempt ordering and actual WPA3/required
+  PMF/DHCP/routes/DNS/bidirectional traffic/reconnect/load. Goal remains open.
