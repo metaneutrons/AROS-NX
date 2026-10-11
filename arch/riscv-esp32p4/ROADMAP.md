@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, default-off guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication implemented; foreign typed leave isolated and failed-teardown replacement-cookie notification repaired, including deferred pre-ACK completion without radio admission; faulted local leave revokes requester state without introducing physical teardown; CONNECT_FAILED advertisement shares the admission gate, host/native-build verified with FOURWAY absent; reference inventory/INIT SAE-bit verified; single-handler C6 candidate retained and separate credential-free P4 STOP/START observation app host/native-build verified; no event-fence qualification; installed failure/cancellation, reconnect and peer qualification open; final gate0, undeployed | Fresh cold lifecycle diagnostic/rollback, then source-backed producer fence or attempt correlation and installed-peer qualification; explicit negotiated SAE/PMF, password semantics, no transition downgrade, native caller lifecycle and all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, default-off guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication implemented; foreign typed leave isolated and failed-teardown replacement-cookie notification repaired, including deferred pre-ACK completion without radio admission; faulted local leave revokes requester state without introducing physical teardown; CONNECT_FAILED advertisement shares the admission gate, host/native-build verified with FOURWAY absent; reference inventory/INIT SAE-bit verified; single-handler C6 candidate retained and separate credential-free P4 STOP/START observation app host/native-build verified; deployment stopped at two failed full-span backup reads, no write or lifecycle result; no event-fence qualification; installed failure/cancellation, reconnect and peer qualification open; final gate0, undeployed | Coordinated USB-C rail-off and two complete matching backups before fresh cold lifecycle diagnostic/rollback, then source-backed producer fence or attempt correlation and installed-peer qualification; explicit negotiated SAE/PMF, password semantics, no transition downgrade, native caller lifecycle and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1930,6 +1930,10 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   contract does not prove an association-attempt fence. Host/native build
   evidence is preparation for a fresh cold diagnostic/rollback, not permission
   to set FULLMAC_PEER_CONTRACT_VERIFIED. Installed firmware remains unchanged.
+  Hardware preparation identified the correct JC1060/layout, but two full-span
+  backup reads failed with serial-stream errors before any write. Diagnostic
+  remains undeployed; coordinated USB-C rail-off and two fresh complete matching
+  backups are prerequisites before deployment. No lifecycle result exists.
   Typed BeginIO/capability wiring now uses the owned parser and a shared,
   default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
   permission alone cannot advertise/admit FullMAC; the resource checks that
@@ -40972,3 +40976,30 @@ remain open. No partial stage is a complete A/B update system.
   Observation failure rejects lifecycle compatibility; success only qualifies
   the finite trace, not repeated-association ordering. Source-backed producer
   fencing or peer attempt correlation and actual SAE/PMF/IP/data remain open.
+
+### 2026-10-11 — Lifecycle deployment stopped at backup prerequisite
+
+- Fabian freshly confirmed readiness and USB-C as sole power source. Source
+  eeca2e7353; diagnostic remains382656B SHA256
+  4e507f1acc244e88fb156dd4a3e9e0ca32a2a0c6619a5ac6ddcfbcd0ce4d6674.
+- esptool5.5.0 flash-id exits0: P4v1.3 MAC80:f1:b2:d3:3b:a6,16MB.
+  Partition read exits0; IDF partition decoder exits0: ota_0 at0x20000/8MB,
+  BSP0x820000; unchanged legacy table. Partition4096B SHA256
+  b96e4eb9478d7b02864faa0685d10b78e0c5a321cdc0637b2d58023504c1d193.
+- Exact385024B backup at0x20000 process53366 exits2 around152KiB:
+  No more data to read from serial port. Explicitly reported retry with fresh
+  stub/default reset and baud115200 process60291 exits2 around200KiB:
+  Serial data stream stopped / possible noise or corruption. Neither output
+  binary exists. No partial read is a rollback artifact or a successful backup.
+- Evidence wifi-2026-10-11/lifecycle-hardware.UkjyId:
+  backup-first.log SHA256
+  6e9ae103b876a09464cfebaf9d2e62c3633d30d9b41d380fd6574abb69d6575f;
+  backup-retry.log SHA256
+  3b86136f6f6a0516c7d312f4651bbe7fa0f69ea3d76b73ea67f225c1363989c8.
+- Safety: no flash/SD/C6 write, credentials or diagnostic run. Reset/stub
+  entry disturbed P4 execution; installed bytes remain unchanged, download
+  mode retained. USB node still present; no serial owner remains. Cause of
+  stream failure is unproven. Next coordinated complete USB-C rail-off, then
+  fresh identity/layout and two independent complete matching erase-span
+  backups. Do not deploy until backup/readback/rollback prerequisites pass.
+  FullMAC gate0 and all original WPA3/PMF/IP/data/reconnect gates remain open.
