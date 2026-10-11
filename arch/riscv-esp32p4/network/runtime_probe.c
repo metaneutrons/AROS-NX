@@ -1140,6 +1140,7 @@ static BOOL wifi_device_scan(struct P4WifiBase *base,
     struct wifi_device_runtime *runtime;
     struct wifi_owner_control *control;
     ULONG started;
+    unsigned scan_stage = 1, visible_records = 0, scan_index;
     BOOL succeeded = FALSE, start_submitted = FALSE;
     if (!base || !base->ready || !base->runtime ||
         (base->maintenance_state != P4_WIFI_MAINT_IDLE &&
@@ -1178,6 +1179,7 @@ static BOOL wifi_device_scan(struct P4WifiBase *base,
         goto finish;
     }
     start_submitted = control->result.submitted != 0;
+    scan_stage = 2;
     if (!wifi_owner_request(runtime->context, runtime->owner, control,
             runtime->fifo, runtime->checksum, 288u,
             wifi_owner_remaining(runtime->context, started, 8000000UL)))
@@ -1194,6 +1196,7 @@ static BOOL wifi_device_scan(struct P4WifiBase *base,
         ? control->scan_count.number : P4_HOSTED_SCAN_MAX_RECORDS;
     control->scan_result.truncated =
         control->scan_count.number > P4_HOSTED_SCAN_MAX_RECORDS;
+    scan_stage = 3;
     succeeded = wifi_owner_request(runtime->context, runtime->owner, control,
         runtime->fifo, runtime->checksum, 289u,
         wifi_owner_remaining(runtime->context, started, 8000000UL)) ? TRUE : FALSE;
@@ -1218,6 +1221,18 @@ finish:
     }
     if (succeeded)
         CopyMem(&control->scan_result, output, sizeof(*output));
+    /* Count-only diagnosis: never print peer records, SSIDs or credentials.
+     * One short record fits the lossy 64-byte runtime console endpoint.
+     * No wait or renewed transport budget is introduced. */
+    for (scan_index = 0;
+         scan_index < control->scan_result.aps.record_count &&
+         scan_index < P4_HOSTED_SCAN_MAX_RECORDS; ++scan_index)
+        if (control->scan_result.aps.records[scan_index].ssid_size)
+            ++visible_records;
+    bug("[WiFi] scan s=%u ok=%u n=%u r=%u h=%u e=%u\n",
+        scan_stage, (unsigned)succeeded, (unsigned)control->scan_count.number,
+        (unsigned)control->scan_result.aps.record_count, visible_records,
+        (unsigned)control->scan_result.empty_records_workaround);
     p4host_zero(&control->scan_count, sizeof(control->scan_count));
     p4host_zero(&control->scan_result, sizeof(control->scan_result));
     control->scan_capacity = 0;

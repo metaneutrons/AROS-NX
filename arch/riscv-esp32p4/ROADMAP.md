@@ -132,6 +132,10 @@ HP watchdog reset still invalidates clean cold continuity. Scan/association/
 DHCP/data acceptance remains open; no full ABI7/ABI8/ABI9/ABI10/ABI11 pass exists.
 Exact-core Saved-PC binding locates interrupt dispatch/restoration but does not
 attribute the watchdog reset; pre-reset telemetry and open continuity are missing.
+Fabian's first native Prefs/WiFi scan reports zero networks. Count-only owner
+instrumentation is build/model verified, not a demonstrated radio/GUI fix.
+Its4032644B diagnostic BSP is now installed and independently readback verified;
+the board remains in download mode pending freshly coordinated C6 startup.
 
 The2026-10-11 measured0x17/4 vendor collision supersedes every earlier
 undeployed C6 discovery candidate's startup advertisement. Current host and
@@ -1713,6 +1717,13 @@ Offline exact-core symbol binding resolves the two captured saved PCs to the
 interrupt dispatcher and trap-entry register restoration, not a ROM address.
 No preceding mcause/mtval or retained interrupt timeline establishes causation;
 serial-open disturbance remains a confound, not an attributed cause.
+The first freshly authorized GUI scan reports zero networks. Owner diagnostic
+fields s/ok/n/r/h/e distinguish stage, success, remote count, decoded records,
+nonempty SSIDs and empty-record workaround. No record values are emitted;
+no delay, deadline renewal, ABI or radio policy change. Until correlated native
+evidence exists, zero count must not be treated as scan completeness.
+Diagnostic package4032644B deployment and independent byte-exact readback now
+pass; no scan with this diagnostic has run, and the board stays in download mode.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -39110,3 +39121,55 @@ remain open. No partial stage is a complete A/B update system.
   priorities or substitute a speculative fix. Next remains synchronized native
   scan/association/DHCP/data, with any reset-attribution experiment separately
   scoped. Owner readiness once is unchanged; full WLAN and continuity gates open.
+
+### 2026-10-11 - N2T native GUI reports zero networks; count-only scan diagnosis
+
+- Fabian freshly accepted a scan-only Prefs/WiFi interaction and reports
+  "0 networks found". No association or credential transmission requested.
+  The installed owner-ready observation alone cannot distinguish actual remote
+  zero count from decoded/projection/hidden-record loss. No scan PASS inferred.
+- Independent Luna source audit finds SANA rejects channels outside1..14 and
+  embedded-NUL SSIDs, and Prefs omits hidden empty SSIDs. Duplicates retain one
+  strongest entry. GUI uses no exact-SSID filter. Ordinary visible2.4GHz records
+  have no demonstrated static drop; no DoScan integration test was found.
+- Owner emits one count-only diagnostic after its existing transport and before
+  wiping scratch: s(stage1 Start/2 Count/3 Records), ok, n(remote count),
+  r(decoded records), h(nonempty SSID lengths), e(N1E empty-record workaround).
+  h is NOT SANA-eligible or GUI-visible count; channel/NUL filters still matter.
+  No peer fields/SSID/password bytes, extra RPC, wait, renewed budget or ABI
+  change. Console formatting has execution overhead, not a timing qualification.
+- First source-extracted owner test compilation exited1 because its stale
+  harness lacked owner_ota_queue.h for the current ABI10 hook types. Added the
+  actual header, not dummy enum definitions. Rerun actual exit0:37478 checks
+  each O0/O2 ASan/UBSan, including bounded63-character diagnostic/range checks.
+  Existing behavioral models cover totals/records/workaround; emitted individual
+  values are not independently asserted. Host boundaries remain mocked.
+- Evidence directory
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/scan-zero.zNMPDR/`.
+  All native resource objects invalidated; full module link actual exit0,
+  esp32p4wifi.resource341600B SHA256
+  25629dda877ad59039427bd31c6e820ef1791dd0f6c3b3af1de94fc99aeafaef.
+  Same JC-v2 CPU1 owner/INIT/reply/setup flags and accepted-risk exception;
+  C6/host privacy/recovery and update assertions remain0, no credentials.
+- Replaced only WLAN resource in independently verified tagfix readback;
+  other41 records preserved,42-member loader audit0 failures, size helperexit0.
+  bsp-scan.pkg4032644B SHA256
+  5c9f91d08658b53f2b0a94da2acc2049e88525cc3d34ab530799ad5d3dd7ed43.
+  Rounded erase4034560B ends0xbf8fff, before DEVELOP0xc00000.
+- MAC80:f1:b2:d3:3b:a6/P4v1.3/16MiB reidentified, actual exit0. Full rounded
+  span read at0x820000 actual exit0; its4032148B prefix matches installed tagfix
+  readback byte-for-byte. bsp-before.bin4034560B SHA256
+  19a64f23001b6fbc5a8b00e354221d8e705d9e50285cd99d8ec2ddc4e9105999.
+  Only a P4 BSP write at0x820000 is being performed; no core/bootloader/table/
+  metadata/C6/SD/credential write. Deployment/readback and synchronized scan
+  results must be appended before treating the diagnostic as installed evidence.
+- P4 BSP write session29777 actual exit0/internal hash verified; separate
+  readback session85009 actual exit0, byte-exact cmp exit0 and same package
+  SHA2565c9f91d0... . Board stays in download mode, no automatic test/restart.
+  Owner-test log SHA256
+  df13f4a4dcd880bcbe33520f1312b14f016b5f0a73bf2835d1ba61ca7ce9e082;
+  native-build log SHA256
+  cd25c6ef1016ba23d53e94f2c065a1e8044186f29318e9967c6f9440e17f0457.
+  Next fresh USB-C-only readiness, coordinated rail-off and owner-ready capture,
+  then an explicitly timed GUI scan while the same reader is already attached.
+  Do not infer that the diagnostic fixes scanning or qualifies reset continuity.

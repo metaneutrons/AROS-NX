@@ -1,5 +1,14 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Native WLAN GUI scan (2026-10-11): Fabian observes "0 networks found" with
+the ready CPU1 owner. This is not scan-completeness acceptance. Count-only
+owner diagnostics now distinguish RPC stage, remote AP count, decoded and
+nonempty-SSID records, and the named empty-record workaround without logging
+network identifiers. Source-extracted owner tests37478 each O0/O2 sanitized
+and resource341600B/audited42-member BSP4032644B builds pass. P4 BSP deployment
+and independent exact readback pass; board remains in download mode. Fresh
+synchronized diagnostic scan is next, not an observed fix; WiFi remains open.
+
 WLAN owner startup observed (2026-10-11): after the INIT tag correction and
 fresh coordinated USB-C rail-off, the installed persistent owner reports ready
 on CPU1 with C6 MAC10:bd:a3:9b:bc:34. Its startup RPC sequence completed once.

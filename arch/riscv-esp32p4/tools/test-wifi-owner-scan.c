@@ -10,11 +10,13 @@
 #include "hosted_link.h"
 #include "hosted_tx.h"
 #include "hosted_wire.h"
+#include "owner_ota_queue.h"
 
 #include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -107,6 +109,26 @@ static int wifi_owner_budget(void *, uint32_t);
 static void wifi_owner_release(void *);
 static ULONG wifi_owner_remaining(struct wifi_probe_context *, ULONG, ULONG);
 static const struct p4_hosted_wifi_config wifi_reference_profile;
+
+/* Runtime scan diagnostics must remain one endpoint-sized, count-only line. */
+static void bug(const char *format, ...)
+{
+    char line[64];
+    unsigned stage, ok, total, records, visible, empty;
+    va_list args;
+    int length;
+    va_start(args, format);
+    length = vsnprintf(line, sizeof(line), format, args);
+    va_end(args);
+    if (length < 0 || length >= (int)sizeof(line) ||
+        sscanf(line, "[WiFi] scan s=%u ok=%u n=%u r=%u h=%u e=%u",
+               &stage, &ok, &total, &records, &visible, &empty) != 6 ||
+        stage < 1 || stage > 3 || ok > 1 || empty > 1 ||
+        records > P4_HOSTED_SCAN_MAX_RECORDS || visible > records) {
+        fprintf(stderr, "invalid bounded scan diagnostic\n");
+        exit(1);
+    }
+}
 
 #include "wifi_owner_scan_extract.inc"
 
