@@ -42005,3 +42005,28 @@ remain open. No partial stage is a complete A/B update system.
   journal f257b031f225138386534ff89e742965aa95aeb26452f90ff8ef04f81e34f54e.
   Reader closed. Next: fresh readiness for four-tab visual inspection and a
   stage-correlated exact flash WiFi open-network attempt, without C6 flashing.
+
+### 2026-10-11 - N2-SAE-REC residual open-link failure source localization
+
+- Independent read-only caller/provider audit, checked against the production
+  sources by the primary: Prefs RunConnect's "Could not connect" follows its
+  initial association polling timeout. DoStatus needs successful
+  S2_GETNETWORKINFO with non-NULL data before setting wm_Associated. The DHCP
+  branch is entered only after that state. Fabian's OPEN-network error thus
+  reports no observed committed SANA link, not a DHCP failure.
+- S2_SETOPTIONS acknowledgement queues an owned attempt; it is not a radio
+  association result. Default-off FullMAC peer gate0 refuses typed requests,
+  not legacy open accepted-risk association. Asynchronous provider refusal is
+  not exposed as CONNECT_FAILED under that gate and can become this timeout.
+- One concrete input candidate, not a proved cause: driver_sana2.c converts
+  frequency unconditionally to S2INFO_Channel, with only2484 treated specially.
+  Zero/invalid frequency can produce a channel the P4 parser rejects. Also
+  inspect auth_alg (legacy P4 requires1), mode and explicit NULL IE form.
+  Other candidates include provider busy/cancel/admission, pre-CONNECT
+  disconnect/query status, CONFIG284/CONNECT282, GETAPINFO status/security/
+  channel and final selection/TX-session commit fences.
+- No source fix or hardware test follows this audit. Next diagnostic should
+  capture numeric input fields/immediate S2 errors and an asynchronous
+  terminal stage/RPC result for one synchronized open attempt. Never emit
+  SSIDs, BSSIDs, keys, credentials or IE payloads. Obtain fresh readiness before
+  asking Fabian to click Connect; no inference from an uncorrelated attempt.
