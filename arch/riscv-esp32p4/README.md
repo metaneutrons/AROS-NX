@@ -1,5 +1,15 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+JC1060 kernel+BSP A/B target (2026-10-11): Fabian selected a 128-KiB boot
+infrastructure prefix, two512-KiB kernel slots, two6-MiB BSP slots and the
+remaining2944KiB for independent DEVELOP. The inactive
+`bootloader/boards/jc1060p470c/partition-table-ab.candidate.csv` passes the
+local ESP-IDF6.0.1 table parser/MD5 roundtrip and exact boundary checks.
+The active layout, installed firmware and WLAN preparation remain unchanged.
+Paired selection/confirmation/rollback, XIP qualification, independent volume
+support and migration are not implemented or hardware verified. See roadmap
+M4-AB and the ESP32Board plan; do not flash this candidate with the legacy boot.
+
 Explicit WLAN test exception (2026-10-11): Fabian requested an association
 test after the unknown installed C6 password-logging risk was explained,
 postponing the C6 update. `P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=1` now permits

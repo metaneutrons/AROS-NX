@@ -266,6 +266,46 @@ Dependencies: M2; qualified AROS networking and trusted release metadata.
 
 Dependencies: M1 interfaces; explicit P4 layout/recovery design, not implicit M2.
 
+JC1060 target layout selected by Fabian on 2026-10-11 (MiB/KiB units):
+
+| Region | Flash offset | Size |
+| --- | --- | --- |
+| Boot infrastructure, including existing metadata and alignment | 0x000000 | 128 KiB |
+| KERNEL_A (`ota_0`) | 0x020000 | 512 KiB |
+| KERNEL_B (`ota_1`) | 0x0a0000 | 512 KiB |
+| BSP_A | 0x120000 | 6 MiB |
+| BSP_B | 0x720000 | 6 MiB |
+| DEVELOP, independent data partition | 0xd20000 | 2944 KiB (2.875 MiB) |
+
+The last byte is 0xffffff. The 128-KiB prefix is not a bootloader binary
+size: preserve the existing bootloader/table/NVS/otadata/PHY placement within
+it. The inactive `partition-table-ab.candidate.csv` records this design;
+neither the active board profile nor installed device uses it. D1001 remains
+unchanged; this decision covers JC1060's 16-MiB capacity only.
+
+Before activation, map the selected kernel to its matching BSP, remove the
+current shared-BSP/development-volume split assumption, and derive DEVELOP
+from its independent partition. Retain runtime partition provenance for the
+tool's graphical layout. Enforce complete kernel-image size <=512 KiB and
+package size <=6 MiB, including image-format overhead. Define a power-loss-safe
+pair manifest/commit policy with bounded boot attempts and explicit successful
+boot confirmation; both components must be authenticated/validated before
+selection. A kernel slot alone is not a valid update pair.
+
+Migration relocates the current BSP and shrinks the development volume from
+4 MiB to 2.875 MiB. Preserve its files and rebuild the filesystem; truncation
+is not a migration. Back up the actual device, qualify the bootloader/XIP path
+for both application offsets and keep a ROM restore route before any table
+write. Do not use the current legacy partition-flash confirmation for A/B.
+The existing table at0x8000 limits the bootloader starting at0x2000 to24KiB;
+the recorded production bootloader22544B leaves only2032B. A/B bootloader
+growth must be measured against that actual bound, not the128-KiB prefix.
+Moving the table and metadata within the same prefix may be required; that
+needs a separately validated internal-prefix design and migration. The
+candidate currently preserves their historical positions, not new headroom.
+Complete these gates separately from the prepared WLAN test; no current
+artifact or deployed layout is silently reinterpreted as A/B.
+
 - M4-A1: Board profile and exact flash layout select permitted targets; coupled
   core/BSP compatibility and package bounds are validated before writes.
 - M4-A2: Local and OTA-acquired updates share CLI/GUI actions and backend;
