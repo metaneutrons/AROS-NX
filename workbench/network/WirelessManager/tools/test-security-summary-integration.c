@@ -14,11 +14,28 @@
 
 /* The production helpers are extracted verbatim by the runner. These small
  * host-side shapes supply only the fields those helpers consume. Constants
- * mirror driver.h and devices/sana2wireless.h; the public ABI is checked by
+ * mirror driver.h and the public SANA-II headers; the ABI is checked by
  * test-security-summary.c's separate RV32 fixture. */
 typedef uint32_t ULONG;
+typedef uint16_t UWORD;
 typedef uintptr_t UPINT;
 typedef void *APTR;
+
+struct IOStdReq {
+	int io_Command;
+	int io_Error;
+	ULONG io_Actual;
+	ULONG io_Length;
+	APTR io_Data;
+};
+
+struct NSDeviceQueryResult {
+	ULONG DevQueryFormat;
+	ULONG SizeAvailable;
+	UWORD DeviceType;
+	UWORD DeviceSubType;
+	UWORD *SupportedCommands;
+};
 
 struct Sana2WirelessCapabilities {
 	ULONG SizeAvailable;
@@ -62,6 +79,9 @@ struct IOSana2Req {
 	struct {
 		int io_Command;
 		int io_Error;
+		ULONG io_Actual;
+		ULONG io_Length;
+		APTR io_Data;
 	} ios2_Req;
 	APTR ios2_Data;
 	APTR ios2_StatData;
@@ -93,6 +113,12 @@ struct wpa_supplicant {
 };
 
 struct wpa_ssid {
+	u8 *ssid;
+	size_t ssid_len;
+	char *passphrase;
+	u8 *sae_password;
+	size_t sae_password_len;
+	int psk_set;
 	int proto;
 	int key_mgmt;
 	int pairwise_cipher;
@@ -102,6 +128,7 @@ struct wpa_ssid {
 	int auth_alg;
 	int disabled;
 	int ieee80211w;
+	int fullmac_allow_diagnostic;
 	size_t wep_key_len[NUM_WEP_KEYS];
 };
 
@@ -174,12 +201,14 @@ static int wpa_driver_sana2_query_wireless_caps(
 }
 
 #include "driver_caps_valid.inc"
+#include "driver_query_helpers.inc"
 #include "driver_set_security_summary.inc"
 #include "driver_get_capa.inc"
 #include "supplicant_summary_profile_common.inc"
 #include "supplicant_summary_open_profile.inc"
 #include "supplicant_summary_capa_match.inc"
 #include "supplicant_summary_config_match.inc"
+#include "supplicant_fullmac_config_match.inc"
 #include "events_summary_offload_enabled.inc"
 #include "events_summary_matches_ssid.inc"
 #include "events_summary_open_profile.inc"
@@ -214,6 +243,127 @@ static struct Sana2WirelessSecuritySummary valid_wire_summary(void)
 	summary.PairwiseCiphers = S2WIRELESS_CIPHER_CCMP;
 	summary.GroupCiphers = S2WIRELESS_CIPHER_TKIP;
 	return summary;
+}
+
+static struct Sana2WirelessSecuritySummary valid_transition_wire_summary(void)
+{
+	struct Sana2WirelessSecuritySummary summary;
+
+	memset(&summary, 0, sizeof(summary));
+	summary.Size = sizeof(summary);
+	summary.Version = S2WIRELESS_SUMMARY_VERSION;
+	summary.Flags = S2WIRELESS_SUMF_KNOWN | S2WIRELESS_SUMF_PRIVACY;
+	summary.Protocols = S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE;
+	summary.KeyManagement = S2WIRELESS_KEY_PSK | S2WIRELESS_KEY_SAE;
+	summary.PairwiseCiphers = S2WIRELESS_CIPHER_CCMP;
+	summary.GroupCiphers = S2WIRELESS_CIPHER_CCMP;
+	return summary;
+}
+
+static int strict_mock_device_query(struct IOStdReq *request)
+{
+	struct NSDeviceQueryResult *result;
+	static UWORD commands[] = { S2_GETNETWORKS, S2_GETSTATIONADDRESS, 0 };
+
+	if (request->io_Command != NSCMD_DEVICEQUERY ||
+	    request->io_Length < sizeof(*result) || request->io_Data == NULL) {
+		request->io_Error = -1;
+		return -1;
+	}
+	result = request->io_Data;
+	if (result->DevQueryFormat != 0 || result->SizeAvailable != 0) {
+		request->io_Error = -1;
+		return -1;
+	}
+	result->SizeAvailable = sizeof(*result);
+	result->DeviceType = NSDEVTYPE_SANA2;
+	result->DeviceSubType = 0;
+	result->SupportedCommands = commands;
+	request->io_Actual = sizeof(*result);
+	request->io_Error = 0;
+	return 0;
+}
+
+static void test_driver_query_helpers(void)
+{
+	struct IOStdReq request;
+	struct NSDeviceQueryResult result;
+	UWORD unterminated[256];
+	int hard_mac;
+	size_t i;
+
+	++scenario_count;
+	memset(&request, 0xa5, sizeof(request));
+	memset(&result, 0xa5, sizeof(result));
+	wpa_driver_sana2_prepare_device_query(&request, &result);
+	CHECK("new-style device query", "command and exact request length",
+		request.io_Command == NSCMD_DEVICEQUERY &&
+			request.io_Length == sizeof(result), 1);
+	CHECK("new-style device query", "buffer and empty input header",
+		request.io_Data == &result && result.DevQueryFormat == 0 &&
+			result.SizeAvailable == 0, 1);
+	CHECK("new-style device query", "strict mocked driver accepts prepared query",
+		strict_mock_device_query(&request) == 0, 1);
+	hard_mac = 0;
+	CHECK("new-style device query", "valid SANA-II result finds hard-MAC command",
+		wpa_driver_sana2_device_query_result_valid(&result,
+			request.io_Actual, request.io_Error, &hard_mac) && hard_mac, 1);
+
+	wpa_driver_sana2_prepare_device_query(&request, &result);
+	request.io_Length = 0;
+	CHECK("short new-style query", "strict mocked driver rejects missing length",
+		strict_mock_device_query(&request) != 0, 1);
+	hard_mac = 1;
+	CHECK("short new-style query", "failed result is not accepted",
+		!wpa_driver_sana2_device_query_result_valid(&result,
+			request.io_Actual, request.io_Error, &hard_mac) && !hard_mac, 1);
+
+	wpa_driver_sana2_prepare_device_query(&request, &result);
+	CHECK("invalid new-style result", "mock query succeeds",
+		strict_mock_device_query(&request) == 0, 1);
+	result.DevQueryFormat++;
+	CHECK("invalid new-style result", "wrong format rejected",
+		!wpa_driver_sana2_device_query_result_valid(&result,
+			request.io_Actual, request.io_Error, &hard_mac), 1);
+	result.DevQueryFormat = 0;
+	result.DeviceType = NSDEVTYPE_UNKNOWN;
+	CHECK("invalid new-style result", "wrong device type rejected",
+		!wpa_driver_sana2_device_query_result_valid(&result,
+			request.io_Actual, request.io_Error, &hard_mac), 1);
+	result.DeviceType = NSDEVTYPE_SANA2;
+	CHECK("invalid new-style result", "short actual size rejected",
+		!wpa_driver_sana2_device_query_result_valid(&result,
+			request.io_Actual - 1, request.io_Error, &hard_mac), 1);
+	result.SupportedCommands = NULL;
+	CHECK("invalid new-style result", "missing command list rejected",
+		!wpa_driver_sana2_device_query_result_valid(&result,
+			request.io_Actual, request.io_Error, &hard_mac), 1);
+	for (i = 0; i < sizeof(unterminated) / sizeof(unterminated[0]); ++i)
+		unterminated[i] = S2_GETNETWORKS;
+	result.SupportedCommands = unterminated;
+	CHECK("invalid new-style result", "unterminated command list rejected",
+		!wpa_driver_sana2_device_query_result_valid(&result,
+			request.io_Actual, request.io_Error, &hard_mac) && !hard_mac, 1);
+}
+
+static void test_configinterface_already_online(void)
+{
+	++scenario_count;
+	CHECK("S2_CONFIGINTERFACE is idempotent", "specific already-online error",
+		wpa_driver_sana2_configinterface_already_online(S2ERR_BAD_STATE,
+			S2WERR_UNIT_ONLINE), 1);
+	CHECK("S2_CONFIGINTERFACE is idempotent", "configured error still retries online",
+		wpa_driver_sana2_configinterface_already_online(S2ERR_BAD_STATE,
+			S2WERR_IS_CONFIGURED), 0);
+	CHECK("S2_CONFIGINTERFACE is idempotent", "unrelated error still fails",
+		wpa_driver_sana2_configinterface_already_online(S2ERR_NOT_SUPPORTED,
+			S2WERR_GENERIC_ERROR), 0);
+	CHECK("S2_CONFIGINTERFACE is idempotent", "online wire error requires bad-state io error",
+		wpa_driver_sana2_configinterface_already_online(S2ERR_NOT_SUPPORTED,
+			S2WERR_UNIT_ONLINE), 0);
+	CHECK("S2_CONFIGINTERFACE is idempotent", "success is not reclassified",
+		wpa_driver_sana2_configinterface_already_online(0,
+			S2WERR_UNIT_ONLINE), 0);
 }
 
 static struct wpa_security_summary mapped_summary(
@@ -480,6 +630,49 @@ static void test_driver_mapping(void)
 		(bss_caps & IEEE80211_CAP_PRIVACY) != 0, 1);
 
 	++scenario_count;
+	wire_summary = valid_transition_wire_summary();
+	bss_caps = 0;
+	summary = mapped_summary(&wire_summary, 1, &bss_caps, 1);
+	CHECK("transition tuple mapping", "known protected RSN transition tuple",
+		summary.flags == (WPA_SECURITY_SUMMARY_PRESENT |
+			WPA_SECURITY_SUMMARY_KNOWN | WPA_SECURITY_SUMMARY_PRIVACY) &&
+			summary.proto == WPA_PROTO_RSN &&
+			summary.key_mgmt == (WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_SAE) &&
+			summary.pairwise_cipher == WPA_CIPHER_CCMP &&
+			summary.group_cipher == WPA_CIPHER_CCMP, 1);
+	CHECK("transition tuple mapping", "SAE-only predicate accepts exact tuple",
+		wpa_security_summary_sae(&summary), 1);
+	CHECK("transition tuple mapping", "legacy PSK predicate refuses tuple",
+		wpa_security_summary_protected(&summary), 0);
+	CHECK("transition tuple mapping", "legacy PSK tuple matcher refuses tuple",
+		wpa_security_summary_match(&summary, 1, WPA_PROTO_RSN,
+			WPA_KEY_MGMT_PSK, WPA_CIPHER_CCMP, WPA_CIPHER_CCMP), 0);
+
+	++scenario_count;
+	wire_summary = valid_transition_wire_summary();
+	wire_summary.Protocols = S2WIRELESS_PROTO_RSN;
+	bss_caps = 0;
+	summary = mapped_summary(&wire_summary, 1, &bss_caps, 1);
+	CHECK("inexact transition tuple", "protocol downgrade remains unknown",
+		(summary.flags & WPA_SECURITY_SUMMARY_KNOWN) == 0, 1);
+	wire_summary = valid_transition_wire_summary();
+	wire_summary.KeyManagement = S2WIRELESS_KEY_PSK;
+	bss_caps = 0;
+	summary = mapped_summary(&wire_summary, 1, &bss_caps, 1);
+	CHECK("inexact transition tuple", "PSK-only AKM remains unknown",
+		(summary.flags & WPA_SECURITY_SUMMARY_KNOWN) == 0, 1);
+	wire_summary = valid_transition_wire_summary();
+	wire_summary.PairwiseCiphers = S2WIRELESS_CIPHER_TKIP;
+	bss_caps = 0;
+	summary = mapped_summary(&wire_summary, 1, &bss_caps, 1);
+	CHECK("inexact transition tuple", "TKIP remains unknown",
+		(summary.flags & WPA_SECURITY_SUMMARY_KNOWN) == 0, 1);
+
+	++scenario_count;
+	test_driver_query_helpers();
+	test_configinterface_already_online();
+
+	++scenario_count;
 	memset(&wire_summary, 0, sizeof(wire_summary));
 	wire_summary.Size = sizeof(wire_summary);
 	wire_summary.Version = S2WIRELESS_SUMMARY_VERSION;
@@ -712,6 +905,68 @@ static void test_role_specific_selector(void)
 		wpa_supplicant_summary_matches_ssid(&wpa_s, &ssid, &summary), 0);
 }
 
+static void test_transition_selects_sae_fullmac_profile(void)
+{
+	static u8 ssid_bytes[] = { 's' };
+	static u8 sae_password[] = { 's', 'a', 'e', 'p', 'a', 's', 's' };
+	struct wpa_supplicant wpa_s;
+	struct wpa_ssid ssid;
+	struct wpa_driver_capa capa;
+	struct Sana2WirelessSecuritySummary wire_summary;
+	struct wpa_security_summary summary;
+	unsigned int profile, pwe;
+	unsigned int required = WPA_DRIVER_FLAGS_SECURITY_SUMMARY |
+		WPA_DRIVER_FLAGS_FULLMAC_ASSOCIATION |
+		WPA_DRIVER_FLAGS_CANCEL_PENDING;
+	unsigned int sae_profile = WPA_FULLMAC_PROFILE_SAE_CCMP_PMF;
+
+	++scenario_count;
+	memset(&wpa_s, 0, sizeof(wpa_s));
+	memset(&ssid, 0, sizeof(ssid));
+	memset(&capa, 0, sizeof(capa));
+	wpa_s.drv_flags = required;
+	ssid.ssid = ssid_bytes;
+	ssid.ssid_len = sizeof(ssid_bytes);
+	ssid.proto = WPA_PROTO_RSN;
+	ssid.key_mgmt = WPA_KEY_MGMT_SAE;
+	ssid.pairwise_cipher = WPA_CIPHER_CCMP;
+	ssid.group_cipher = WPA_CIPHER_CCMP;
+	ssid.mode = WPAS_MODE_INFRA;
+	ssid.sae_password = sae_password;
+	ssid.sae_password_len = sizeof(sae_password);
+	capa.flags = required;
+	capa.fullmac_profiles = sae_profile;
+	capa.fullmac_sae_pwe_modes = WPA_FULLMAC_SAE_PWE_H2E;
+	wire_summary = valid_transition_wire_summary();
+	{
+		unsigned int bss_caps = 0;
+		summary = mapped_summary(&wire_summary, 1, &bss_caps, 1);
+	}
+	profile = pwe = 0;
+	CHECK("transition summary SAE selection", "SAE-only config selects SAE profile",
+		wpa_supplicant_fullmac_config_match(&wpa_s, &ssid, &capa,
+			&summary, &profile, &pwe) && profile == sae_profile &&
+			pwe == WPA_FULLMAC_SAE_PWE_H2E, 1);
+
+	ssid.key_mgmt = WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_SAE;
+	profile = pwe = 0;
+	CHECK("transition summary SAE selection", "mixed configured AKM is refused",
+		wpa_supplicant_fullmac_config_match(&wpa_s, &ssid, &capa,
+			&summary, &profile, &pwe), 0);
+
+	ssid.key_mgmt = WPA_KEY_MGMT_PSK;
+	ssid.sae_password = NULL;
+	ssid.sae_password_len = 0;
+	ssid.passphrase = "longsecurepass";
+	capa.fullmac_profiles |= WPA_FULLMAC_PROFILE_WPA2_CCMP;
+	profile = pwe = 0;
+	CHECK("transition summary SAE selection", "transition never falls back to PSK",
+		wpa_supplicant_fullmac_config_match(&wpa_s, &ssid, &capa,
+			&summary, &profile, &pwe), 0);
+	CHECK("transition summary SAE selection", "PSK profile remains unselected",
+		profile == 0 && pwe == 0, 1);
+}
+
 static void test_open_profiles(void)
 {
 	struct wpa_ssid ssid;
@@ -772,6 +1027,7 @@ int main(void)
 	test_actual_driver_capability_mapping();
 	test_driver_mapping();
 	test_role_specific_selector();
+	test_transition_selects_sae_fullmac_profile();
 	test_open_profiles();
 
 	if (failure_count != 0) {

@@ -167,6 +167,38 @@ static void test_open_owned_copy_and_optional_target_fields(void)
     CHECK(target.bssid[0] == 0x02u);
 }
 
+static void test_open_profile_may_omit_extent_only(void)
+{
+    UBYTE rsn[24];
+    UBYTE passphrase[] = "correct horse";
+    struct TagItem tags[6];
+
+    set_tag(&tags[0], S2INFO_SSID, pointer_data((const UBYTE *)"open"));
+    set_tag(&tags[1], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&tags[2], S2INFO_AuthTypes, (IPTR)1u);
+    set_tag(&tags[3], S2INFO_WPAInfo, 0u);
+    set_tag(&tags[4], TAG_DONE, 0u);
+    expect_success(tags);
+    CHECK(target.authmode == 0u && target.password_length == 0u);
+
+    set_rsn(rsn, 18u);
+    set_tag(&tags[3], S2INFO_WPAInfo, pointer_data(rsn));
+    set_tag(&tags[4], S2INFO_Passphrase, pointer_data(passphrase));
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags); /* protected IE still needs an explicit extent */
+
+    set_tag(&tags[3], S2INFO_WPAInfo, 0u);
+    set_tag(&tags[4], S2INFO_WPAInfoLength, 1u);
+    set_tag(&tags[5], TAG_DONE, 0u);
+    expect_refusal(tags); /* NULL WPAInfo cannot smuggle a nonzero extent */
+
+    set_tag(&tags[4], S2INFO_Passphrase, pointer_data(passphrase));
+    expect_refusal(tags); /* open WPAInfo cannot carry a credential */
+
+    set_tag(&tags[3], TAG_DONE, 0u);
+    expect_refusal(tags); /* WPAInfo itself remains mandatory */
+}
+
 static void test_protected_passphrase_and_string_boundaries(void)
 {
     UBYTE rsn[24];
@@ -1316,6 +1348,7 @@ static void test_fullmac_tag_contract_and_failure_wipe(void)
 int main(void)
 {
     test_open_owned_copy_and_optional_target_fields();
+    test_open_profile_may_omit_extent_only();
     test_protected_passphrase_and_string_boundaries();
     test_raw_binary_psk_is_owned_lowercase_hex();
     test_invalid_credentials_and_authentication_combinations();

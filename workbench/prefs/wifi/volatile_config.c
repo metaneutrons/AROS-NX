@@ -45,7 +45,9 @@ enum WifiSecurityProfile WifiSecurityProfileFromLabel(CONST_STRPTR label)
     if (strcmp((const char *)label, "WPA") == 0 ||
         strcmp((const char *)label, "WPA2") == 0)
         return WIFI_SECURITY_PSK;
-    if (strcmp((const char *)label, "WPA3") == 0)
+    /* Transition-mode availability is not permission to downgrade. */
+    if (strcmp((const char *)label, "WPA3") == 0 ||
+        strcmp((const char *)label, "WPA2/3") == 0)
         return WIFI_SECURITY_SAE;
     return WIFI_SECURITY_UNKNOWN;
 }

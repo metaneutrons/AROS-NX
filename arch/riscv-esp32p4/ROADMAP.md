@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2H | Flash-delivered helper entry points | `deployment/readback verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi; synchronized capture has scan ok1/11 remote/8 results and auth7/CCMP transition records left unknown | Truthful transition display and target correlation; no full WiFi/SAE/PMF/IP pass |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: matched ABI12 SD/BSP and corrected Prefs166332B installed; latest45s capture reaches owner ready CPU1/expected C6 MAC and successful Scan; Fabian still sees '?' for both named WPA3 networks; chooser observation pending | Diagnose actual scan security tuples/projection and repeat continuity; reset alone is not an association-attempt fence or full WiFi pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: generation1.2 host/native/readback/headless verified; Fabian confirms transition labels and no old manager-load error, open association fails; generation1.3 NULL-WPA extent correction host/native build verified, not deployed | Deploy exact generation1.3 helpers and obtain synchronized association evidence; peer admission remains0, no IP/data pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1894,6 +1894,21 @@ actual selection logic; it is not a capture of the AP's original RSN/WPA IEs.
 Unsupported profiles must remain distinguishable/refused rather than downgraded.
 
 ### N2-SAE: WPA3-Personal through existing AROS tools
+
+Current correction (2026-10-11): exact auth7/CCMP transition metadata is
+represented as PSK|SAE and displayed as WPA2/3, not mislabeled pure WPA3.
+Selecting this label configures SAE only; the legacy PSK matcher is not
+widened. WirelessManager must supply the NSCMD_DEVICEQUERY buffer length
+required by the strict P4 driver. Prefs distinguishes loader/shell/init
+failure and allocates a64KiB child stack. Generation1.2 prevents resident
+older scan projection substitution. Hardware verification is separate;
+FullMAC peer-contract admission remains0 and the original SAE/PMF/IP/data
+acceptance gates remain open. Fabian subsequently confirms the corrected
+labels and absence of the old manager-load error, but open association fails.
+The open legacy options omit an extent which the P4 parser required even for
+a NULL WPA IE. Generation1.3 accepts only the credential-free explicit NULL
+form without that extent; host/native build verified, not deployed yet.
+See the dated evidence appended below.
 
 The measured target is reported by Fabian as WPA3; the deployed GUI displays
 '?'. N2T must not be completed by substituting a WPA2 access point. Reuse this
@@ -41752,3 +41767,127 @@ remain open. No partial stage is a complete A/B update system.
 - Next: explicit transition-mode presentation and target correlation with
   tests keeping unknown metadata private and connection selection SAE-only;
   no PMF/association/IP/data pass or downgrade permission from a GUI label.
+
+### 2026-10-11 — Transition display, SAE-only selection and manager initialization
+
+- Exact received auth7/pair4/group4 now projects known-private RSN|RSN_SAE,
+  PSK|SAE, CCMP summary metadata and displays WPA2/3. Pure auth6 stays WPA3;
+  unknown/malformed/TKIP transition tuples stay unknown. The exact WPA2/3 label
+  selects the existing SAE configuration only: RSN/CCMP, required PMF and
+  direct SAE password, never PSK/PBKDF2 or a WPA2 fallback. WM preserves the
+  transition AKM pair in its scan mapper; only its strict SAE configuration
+  selector accepts it. Legacy PSK matching and public ABI layouts unchanged.
+- Concrete initialization incompatibility: WM omitted io_Length for
+  NSCMD_DEVICEQUERY; the P4 handler rejects buffers shorter than its result.
+  WM now supplies the exact buffer extent and checks actual/format/type and
+  a bounded terminated command list. Already-online configuration accepts
+  only S2ERR_BAD_STATE/S2WERR_UNIT_ONLINE after the station-address copy;
+  failed S2_ONLINE is no longer ignored. Optional FullMAC capability absence
+  does not itself prevent initialization. Source plus strict mock evidence
+  identifies these defects; actual GUI startup remains to be tested.
+- Prefs now separates LoadSeg failure (numeric IoErr), shell-start failure
+  and no surviving manager task; it no longer labels all as a load failure.
+  Child stack explicitly64KiB. No manager output/SSID/password is captured.
+  Driver/Prefs/stager generation1.2 prevents silent reuse of resident1.0/1.1.
+  FullMAC peer-contract gate remains0; no C6/credential-policy gate enabled.
+- O0/O2 ASan/UBSan host results: scan372 checks each, display97,
+  config228 plus1538 extracted-worker checks and20 source checks, launcher131,
+  summary278 predicates/88 scenarios, integration104 checks/44 scenarios
+  including strict query, online state and transition SAE selection. SAE
+  parser/config tests pass; actual RV32 public-header summary ABI fixture
+  compiles. Seven staging policy tests pass including stale1.0/1.1 rejection.
+  An early integration invocation during runner edits exits1 with no result;
+  only the completed104-check run counts. Independent review recorded below.
+- Native RV32-SMP board jc1060p470c-v2, legacy layout: affected Prefs/device
+  objects invalidated; Prefs quick process42596 exit0, device quick77305 exit0,
+  diagnostic scan flag1 and peer gate0. A broad WM target process63164 was
+  interrupted (exit130) while fetching unrelated dependencies; no pass claimed.
+  WM quick3129 exits0, actually compiles driver_sana2/main and links/installs
+  after driver_sana2/wpa_supplicant object invalidation. No public header change.
+  WiFi166464B SHA2561162acf5890eaca72111df583d78e21b0315da0fe0199fe8d0e98552390a7afd;
+  WirelessManager699228B aa6d6b17610bd189790a1a56401b93d32fbdff12ce19547b39e73432f5489874;
+  device1.2/75020B e5bff88f2f530c0ce3dd3b17a6cd91e7783b19610c853b29f47f8bc2619c8635.
+- JC1060 identity80:f1:b2:d3:3b:a6/P4v1.3 verified; unchanged live table SHA256
+  b96e4eb9478d7b02864faa0685d10b78e0c5a321cdc0637b2d58023504c1d193.
+  Two complete4194304B pre-write reads match original helper image
+  565782b3bb2aed00212e097457bcaed8fef512845a382b139ac975d01ae5ba4d,
+  processes52578/83324 exit0/cmp0. Fabian then clarified that reproducible
+  development images need no fresh full backup on every rewrite; AGENTS now
+  records retained recovery plus identity/range/readback requirements, without
+  expanding NVS/bootloader/table authority or discarding existing backups.
+- Copied original stage preserves qualification/touch tools, overlays helpers.
+  helpers.img4194304B SHA256634e6ef05736421fae80de1570da80424dc10cb8cd2bbe776eeb9dbfaeff35d4.
+  Independent raw FAT16 read-only mount matches all33 manifest entries, detached.
+  Exact write only0xc00000..0xffffff process33773 exit0/digest verified;
+  independent full readback82319 exit0/cmp0/same SHA256. Core, BSP, bootloader,
+  table, SD and C6 unchanged. Evidence wifi-2026-10-11/transition-sae.bBSd0K
+  retains build/test logs, stage, image/manifest, originals and readback.
+- Next: complete bounded headless return capture; obtain fresh readiness for
+  flash WiFi Scan/label and manager-start tests. No negotiated SAE/PMF, IP/data,
+  open-network or visual pass inferred. Schmieder24 authentication remains
+  dependent on qualified FullMAC peer admission; do not remove this gate to
+  make a chooser or scan pass.
+
+- Headless return process89027 exits0 after45.00567487499211s; journal
+  complete/status=ok/error=null/cleanup_errors=[], total14993B (14962 after
+  reset capture window). Two ROM banners/CHIP_USB_UART_RESET retain port-open
+  ambiguity, not rail-off evidence. PSRAM32MiB200MHz/timeouts0, watchdog6000ms,
+  hart1 online/cpus2,42 modules, graphics updates, GT911 polling and owner
+  readyCPU1/expected C6 MAC captured. No captured Guru/Alert/trap/panic;
+  truncated console limits negative evidence. Reader closed. No flash helper
+  launch, manager initialization, Scan or association observed in this run.
+  boot.log SHA2561177a34a043e30bcb7287c763df9ff8760c9b5955682728445397d131fdf0c95;
+  boot-attempt.jsonl d094d59f8f2f928b8ea1ff837232e3715273b7f73522eee26c8f3014cfa85812.
+
+### 2026-10-11 — Open-network association failure after helper correction
+
+- Fabian confirms WPA2/3 labels now correct and the previous manager-load
+  error gone. An open-network connect attempt still reports Could not connect.
+  This is a user observation, not captured C6 authentication or IP evidence.
+  RunConnect emits this status after its association polling window; DHCP
+  has not been established by this report.
+- Source mismatch: WirelessManager emits S2INFO_WPAInfoLength only under
+  FOURWAY plus IE_EXTENT. The deployed P4 capability response advertises
+  SECURITY_SUMMARY, not FOURWAY. Its legacy options parser nevertheless
+  requires EXTENT even when the explicitly supplied WPAInfo is NULL, so the
+  plain-open request is rejected before radio association. Targeted repair
+  and negative tests are in progress; no protected credential or peer gate
+  is to be enabled implicitly.
+- Independent review found an unrelated generic SANA regression: a previously
+  configured and online rtl8029 reports BAD_STATE/UNIT_ONLINE on S2_ONLINE.
+  The retry now accepts only that exact pair, retaining other failures.
+  O0/O2 summary integration rerun:44 scenarios/104 checks each, process42289
+  exit0. No transition-to-PSK fallback found by independent review.
+
+- Open-options repair: explicit NULL WPAInfo may omit the extent only without
+  credentials. Missing WPAInfo, non-NULL IE without extent, NULL plus nonzero
+  extent and credentials on open remain refused/wiped. Production manager
+  tag construction independently traced to this exact no-offload form.
+  No capability flag, privacy assertion or FullMAC admission gate changed.
+- Primary repeat O0/O2 ASan/UBSan options167 cases/584 checks each. Queue
+  matrix default/peer-disabled/no-policy2474 checks, diagnostic4571 and
+  production-qualified4552 each O0/O2; build-policy alternatives are host
+  fixtures, not installed-peer qualification. Prefs config228 plus worker1538
+  each O0/O2/20 source checks, display97, launcher131 and WM integration104
+  each O0/O2 pass. Staging7 tests include resident generations1.0/1.1/1.2.
+  Primary test process89126 exits0; no radio behavior inferred.
+- Invalidate all device and Prefs objects. Native quick device/Prefs builds
+  exit0, actual source compilation and links, board jc1060p470c-v2,
+  scan diagnostics1/FullMAC peer gate0, private bridge ABI unchanged12.
+  Device1.3/75100B SHA256
+  5cedc7567db2b748770eee1ddd8f4840b283d11e7c2a983c5f6a7171042a9db4;
+  WiFi166464B SHA256
+  3d014c7ef35c39c458c6b83ab797570d2959429532af042dfa8a74b8ebbc27a8.
+  Explicitly invalidated WM driver object rebuilt/linked exit0;699228B
+  aa6d6b17610bd189790a1a56401b93d32fbdff12ce19547b39e73432f5489874.
+  Objects lost to earlier terminal-session polling have no claimed completion;
+  only final explicit successful builds count. No public headers changed.
+  Generation1.3 is not deployed yet. Next: checked helper overlay/readback,
+  headless return, then fresh coordinated open-network association test.
+- Independent open-parser/generation review finds no blocker: only explicit
+  NULL/no-credential form widened; protected extent checks, traversal bounds,
+  failure cookie/target wiping and default-off peer/privacy gates unchanged.
+  This correction does not make protected non-offload association usable.
+  Retained host evidence:
+  wifi-2026-10-11/board-ui-open-fix.Bzs2Qv/options.log,
+  wm-integration.log and staging-tests.log. No connection result yet.

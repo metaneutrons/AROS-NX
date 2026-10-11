@@ -334,11 +334,16 @@ static void test_summaries(void)
         S2WIRELESS_KEY_SAE, S2WIRELESS_CIPHER_CCMP,
         S2WIRELESS_CIPHER_CCMP);
     CHECK_PROTECTION(&summary, "WPA3");
+    summary = make_summary(protected_flags,
+        S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_KEY_PSK | S2WIRELESS_KEY_SAE,
+        S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "WPA2/3");
     summary = protected_summary(S2WIRELESS_PROTO_WPA | unknown,
         S2WIRELESS_CIPHER_TKIP, S2WIRELESS_CIPHER_TKIP);
     CHECK_PROTECTION(&summary, "?");
 
-    /* WPA3 is only the exact RSN-SAE/SAE/CCMP tuple. */
+    /* WPA3 and transition mode require their exact protocol/key/cipher tuples. */
     summary = make_summary(protected_flags, S2WIRELESS_PROTO_RSN_SAE,
         S2WIRELESS_KEY_PSK, S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_CCMP);
     CHECK_PROTECTION(&summary, "?");
@@ -352,9 +357,23 @@ static void test_summaries(void)
         S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE,
         S2WIRELESS_KEY_SAE, S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_CCMP);
     CHECK_PROTECTION(&summary, "?");
+    summary = make_summary(protected_flags,
+        S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_KEY_PSK, S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
     summary = make_summary(protected_flags, S2WIRELESS_PROTO_RSN_SAE,
         S2WIRELESS_KEY_PSK | S2WIRELESS_KEY_SAE,
         S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = make_summary(protected_flags,
+        S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_KEY_PSK | S2WIRELESS_KEY_SAE,
+        S2WIRELESS_CIPHER_TKIP, S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = make_summary(protected_flags,
+        S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_KEY_PSK | S2WIRELESS_KEY_SAE,
+        S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_GCMP);
     CHECK_PROTECTION(&summary, "?");
     summary = protected_summary(S2WIRELESS_PROTO_RSN_SAE,
         S2WIRELESS_CIPHER_TKIP, S2WIRELESS_CIPHER_CCMP);

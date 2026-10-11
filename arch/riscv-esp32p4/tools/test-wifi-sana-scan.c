@@ -335,6 +335,9 @@ static void test_security_projection(void)
          S2WIRELESS_SUMF_KNOWN | S2WIRELESS_SUMF_PRIVACY},
         {6, 4, 4, S2WIRELESS_PROTO_RSN_SAE, S2WIRELESS_CIPHER_CCMP,
          S2WIRELESS_CIPHER_CCMP,
+         S2WIRELESS_SUMF_KNOWN | S2WIRELESS_SUMF_PRIVACY},
+        {7, 4, 4, S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE,
+         S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_CCMP,
          S2WIRELESS_SUMF_KNOWN | S2WIRELESS_SUMF_PRIVACY}
     };
     size_t i;
@@ -352,7 +355,10 @@ static void test_security_projection(void)
         CHECK(summary.Protocols == cases[i].protocol);
         CHECK(summary.KeyManagement == (cases[i].protocol ==
             S2WIRELESS_PROTO_RSN_SAE ? S2WIRELESS_KEY_SAE :
-            (cases[i].protocol ? S2WIRELESS_KEY_PSK : 0u)));
+            (cases[i].protocol == (S2WIRELESS_PROTO_RSN |
+                                   S2WIRELESS_PROTO_RSN_SAE) ?
+                S2WIRELESS_KEY_PSK | S2WIRELESS_KEY_SAE :
+                (cases[i].protocol ? S2WIRELESS_KEY_PSK : 0u))));
         CHECK(summary.PairwiseCiphers == cases[i].cipher_pair);
         CHECK(summary.GroupCiphers == cases[i].cipher_group);
     }
@@ -363,7 +369,10 @@ static void test_security_projection(void)
             {2, 4, 5}, {3, 6, 4}, {4, 4, 4}, {-1, 3, 3},
             {6, 3, 4}, {6, 4, 3}, {6, 5, 4}, {6, 4, 5},
             {6, 6, 4}, {6, 4, 6}, {6, 0, 4}, {6, 4, 0},
-            {7, 4, 4}, {8, 4, 4}, {9, 4, 4}, {INT32_MAX, 4, 4}
+            {7, 3, 4}, {7, 4, 3}, {7, 5, 4}, {7, 4, 5},
+            {7, 6, 4}, {7, 4, 6}, {7, 0, 4}, {7, 4, 0},
+            {7, -1, 4}, {7, 4, -1},
+            {8, 4, 4}, {9, 4, 4}, {INT32_MAX, 4, 4}
         };
         for (i = 0; i < sizeof(unsupported) / sizeof(unsupported[0]); ++i) {
             memset(&record, 0, sizeof(record));

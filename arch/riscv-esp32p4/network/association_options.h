@@ -196,12 +196,13 @@ static BOOL p4wlan_copy_association_options_cookie(
             target->password_length = 64;
         }
     }
-    if (!ended || (seen & (SSID | PORT | AUTH | WPA | EXTENT)) !=
-                            (SSID | PORT | AUTH | WPA | EXTENT)) goto refused;
+    if (!ended || (seen & (SSID | PORT | AUTH | WPA)) !=
+                            (SSID | PORT | AUTH | WPA)) goto refused;
     if (wpa_ie) {
-        if (!p4wlan_rsn_psk_ccmp(wpa_ie, wpa_ie_extent)) goto refused;
+        if (!(seen & EXTENT) ||
+            !p4wlan_rsn_psk_ccmp(wpa_ie, wpa_ie_extent)) goto refused;
         protected_profile = TRUE;
-    } else if (wpa_ie_extent) goto refused;
+    } else if ((seen & EXTENT) && wpa_ie_extent) goto refused;
     if (protected_profile != (target->password_length != 0)) goto refused;
     target->authmode = protected_profile ? 3u : 0u;
     return TRUE;

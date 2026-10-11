@@ -22,7 +22,7 @@ class Policy(unittest.TestCase):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"FLASHDISK0P0:Devs/Networks\0FLASHDISK0P0:C/WirelessManager\0"
-                             b"$VER: esp32p4wifi.device smp-riscv 1.1 (11.10.2026)\0")
+                             b"$VER: esp32p4wifi.device smp-riscv 1.3 (11.10.2026)\0")
 
     def run_overlay(self):
         with patch.object(helpers.stage.ELF, "_parse_elf", return_value=({}, None)), \
@@ -62,9 +62,12 @@ class Policy(unittest.TestCase):
         self.assertFalse((self.out / "WiFi").exists())
 
     def test_rejects_stale_device_generation(self):
-        (self.root / "Devs/Networks/esp32p4wifi.device").write_bytes(
-            b"$VER: esp32p4wifi.device smp-riscv 1.0 (11.10.2026)")
-        with self.assertRaises(ValueError): self.run_overlay()
-        self.assertFalse((self.out / "WiFi").exists())
+        for generation in (b"1.0", b"1.1", b"1.2"):
+            with self.subTest(generation=generation):
+                (self.root / "Devs/Networks/esp32p4wifi.device").write_bytes(
+                    b"$VER: esp32p4wifi.device smp-riscv " + generation +
+                    b" (11.10.2026)")
+                with self.assertRaises(ValueError): self.run_overlay()
+                self.assertFalse((self.out / "WiFi").exists())
 
 if __name__ == "__main__": unittest.main()

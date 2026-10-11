@@ -1,5 +1,27 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Open-network correction (2026-10-11): the production manager sends an explicit
+NULL WPAInfo but no WPAInfoLength on its non-offload open path. The P4 parser
+now accepts that exact credential-free form; protected IEs still require an
+explicit validated extent. Sanitizer parser/queue tests and fresh RV32 device
+and Prefs builds pass. Helper generation1.3 rejects resident1.0/1.1/1.2.
+Not deployed yet; open association, DHCP and traffic remain unverified.
+
+Transition security and manager startup (2026-10-11): exact Hosted
+auth7/CCMP4/CCMP4 now displays WPA2/3; selecting it emits only SAE/RSN/CCMP,
+never a WPA2 fallback. Unknown or malformed metadata remains unknown.
+WirelessManager's missing NSCMD_DEVICEQUERY response-buffer length explains
+a concrete initialization failure with the strict P4 driver. Prefs now
+distinguishes LoadSeg failure, shell-start failure and no surviving manager
+task instead of reporting all three as a load failure; the child gets a
+64KiB stack. Flash helper generation1.2 rejects older resident devices.
+Host/native tests, exact flash readback and45s headless return are verified;
+Fabian confirms corrected labels and disappearance of the old manager-load
+error; an open-network attempt still times out without association. Source
+inspection finds an open-options extent mismatch (see ROADMAP), not an IP pass.
+Installed C6 FullMAC
+admission remains gate0, not an SAE/PMF/IP/data pass. Evidence is in ROADMAP.
+
 Flash helpers (2026-10-11): the small development volume now has an opt-in
 `P4_FLASH_HELPERS=1` overlay for root WiFi/ESP32Board icons, WirelessManager
 and esp32p4wifi.device. Launch `FLASHDISK0P0:WiFi`, not the legacy
@@ -24,8 +46,8 @@ Synchronized flash-app scan (2026-10-11): Fabian confirms AROSP4DEV WiFi.
 55.053s passive capture succeeds; owner scan ok1/remote11/result8/host8/error0.
 Captured AP indices0/4/6 report auth7/pair4/group4/privacy-only flags2;
 index2 reports auth3/pair4/group4/known-private flags3. In the pinned IDF
-enum7 means WPA2/WPA3-Personal transition mode, which the current projection
-deliberately leaves unknown. This explains '?' for those records, not a pure
+enum7 means WPA2/WPA3-Personal transition mode, which generation1.1
+deliberately left unknown. This explains '?' for those records, not a pure
 SAE display failure. Console drops prevent complete AP coverage and logs omit
 SSID identity, so neither named network is individually correlated yet.
 Next: truthful transition-mode display and explicit SAE-only selection policy,
@@ -39,7 +61,7 @@ startup chooser from its actual device/unit, without enabling association or
 fabricating capabilities. Sanitizer tests and fresh RV32-SMP Prefs166332B
 build pass; single-file SD installation and read-only332-entry manifest
 verification now pass. The subsequent visual scan below still fails security-label acceptance. Mixed
-WPA2/WPA3 metadata remains unknown; no PMF, authentication or IP/data pass.
+WPA2/WPA3 metadata was unknown in that deployment; no PMF, authentication or IP/data pass.
 
 Corrected-Prefs retest (2026-10-11): card returned and fresh readiness given;
 45s capture reaches owner ready CPU1 and successful Scan. Fabian still sees

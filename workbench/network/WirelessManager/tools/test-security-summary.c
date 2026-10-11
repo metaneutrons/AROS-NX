@@ -354,15 +354,41 @@ int main(void)
 		wpa_security_summary_sae(&sae), 1);
 	check_predicate("SAE is not legacy PSK", "protected",
 		wpa_security_summary_protected(&sae), 0);
-	sae.key_mgmt |= WPA_KEY_MGMT_PSK;
-	check_predicate("mixed AKM", "sae", wpa_security_summary_sae(&sae), 0);
+	sae.key_mgmt = WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_SAE;
+	check_predicate("transition AKMs select SAE", "sae",
+		wpa_security_summary_sae(&sae), 1);
+	check_predicate("transition AKMs never match legacy PSK", "protected",
+		wpa_security_summary_protected(&sae), 0);
+	check_predicate("transition AKMs never match legacy PSK", "PSK tuple",
+		wpa_security_summary_match(&sae, 1, WPA_PROTO_RSN,
+			WPA_KEY_MGMT_PSK, WPA_CIPHER_CCMP, WPA_CIPHER_CCMP), 0);
+	sae.key_mgmt = WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_IEEE8021X;
+	check_predicate("unsupported SAE AKM union", "sae",
+		wpa_security_summary_sae(&sae), 0);
+	sae.key_mgmt = WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_SAE;
+	sae.proto = WPA_PROTO_WPA | WPA_PROTO_RSN;
+	check_predicate("transition with WPA1 protocol", "sae",
+		wpa_security_summary_sae(&sae), 0);
+	sae.proto = WPA_PROTO_RSN;
 	sae.key_mgmt = WPA_KEY_MGMT_SAE;
 	sae.pairwise_cipher = WPA_CIPHER_TKIP;
 	check_predicate("SAE TKIP", "sae", wpa_security_summary_sae(&sae), 0);
 	sae.pairwise_cipher = WPA_CIPHER_CCMP;
+	sae.key_mgmt = WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_SAE;
+	sae.pairwise_cipher = WPA_CIPHER_TKIP;
+	check_predicate("transition TKIP", "sae",
+		wpa_security_summary_sae(&sae), 0);
+	sae.pairwise_cipher = WPA_CIPHER_CCMP;
 	sae.group_cipher = WPA_CIPHER_TKIP;
 	check_predicate("SAE group TKIP", "sae", wpa_security_summary_sae(&sae), 0);
 	sae.group_cipher = WPA_CIPHER_CCMP;
+	check_predicate("transition group CCMP", "sae",
+		wpa_security_summary_sae(&sae), 1);
+	sae.key_mgmt = WPA_KEY_MGMT_SAE;
+	sae.group_cipher = WPA_CIPHER_TKIP;
+	check_predicate("SAE group TKIP", "sae",
+		wpa_security_summary_sae(&sae), 0);
+	sae.key_mgmt = WPA_KEY_MGMT_SAE;
 	sae.flags &= ~WPA_SECURITY_SUMMARY_KNOWN;
 	check_predicate("unknown SAE", "sae", wpa_security_summary_sae(&sae), 0);
 	sae.flags |= WPA_SECURITY_SUMMARY_KNOWN;

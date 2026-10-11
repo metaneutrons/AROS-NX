@@ -15,9 +15,12 @@
  *
  * This projects summary metadata only. It does not construct Beacon/Probe
  * Response IEs. Unsupported, mixed, or incomplete profiles remain unknown
- * and private; only exact singleton suite tuples are marked known. Pure
- * WPA3-Personal/CCMP reports SAE metadata, not PMF/H2E capability, negotiated
- * authentication, firmware offload support or permission to associate.
+ * and private; only exact suite tuples are marked known. Pure
+ * WPA3-Personal/CCMP reports SAE metadata, while the exact WPA2/WPA3-Personal
+ * transition tuple reports both PSK and SAE metadata. Neither identifies the
+ * profile selected for a later connection, nor reports PMF/H2E capability,
+ * negotiated authentication, firmware offload support or permission to
+ * associate.
  */
 static void p4wlan_scan_security(
     const struct p4_hosted_scan_record *record,
@@ -65,6 +68,10 @@ static void p4wlan_scan_security(
         /* WIFI_AUTH_WPA3_PSK: pure SAE, not WPA2/WPA3 transition mode7.
          * SAE never inherits the WPA1/WPA2 TKIP allowance below. */
         protocol = S2WIRELESS_PROTO_RSN_SAE;
+    } else if (authmode == 7 && pairwise_cipher == 4 && group_cipher == 4) {
+        /* WIFI_AUTH_WPA2_WPA3_PSK: advertise the exact transition metadata.
+         * This does not select SAE or permit a WPA2 fallback for association. */
+        protocol = S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE;
     } else {
         return;
     }
@@ -87,8 +94,13 @@ static void p4wlan_scan_security(
 
     summary->Flags = S2WIRELESS_SUMF_KNOWN | S2WIRELESS_SUMF_PRIVACY;
     summary->Protocols = protocol;
-    summary->KeyManagement = protocol == S2WIRELESS_PROTO_RSN_SAE ?
-        S2WIRELESS_KEY_SAE : S2WIRELESS_KEY_PSK;
+    if (protocol == S2WIRELESS_PROTO_RSN_SAE)
+        summary->KeyManagement = S2WIRELESS_KEY_SAE;
+    else if (protocol == (S2WIRELESS_PROTO_RSN |
+                          S2WIRELESS_PROTO_RSN_SAE))
+        summary->KeyManagement = S2WIRELESS_KEY_PSK | S2WIRELESS_KEY_SAE;
+    else
+        summary->KeyManagement = S2WIRELESS_KEY_PSK;
     summary->PairwiseCiphers = pairwise;
     summary->GroupCiphers = group;
 }

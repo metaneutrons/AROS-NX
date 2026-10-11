@@ -78,6 +78,59 @@ static const struct TagItem buffer_tags[] = {
 	{TAG_END, 0}
 };
 
+#define WPA_DRIVER_SANA2_QUERY_COMMAND_LIMIT 256
+
+static void wpa_driver_sana2_prepare_device_query(
+	struct IOStdReq *request, struct NSDeviceQueryResult *device_info)
+{
+	device_info->DevQueryFormat = 0;
+	device_info->SizeAvailable = 0;
+	device_info->DeviceType = NSDEVTYPE_UNKNOWN;
+	device_info->DeviceSubType = 0;
+	device_info->SupportedCommands = NULL;
+	request->io_Command = NSCMD_DEVICEQUERY;
+	request->io_Data = device_info;
+	request->io_Length = sizeof(*device_info);
+	request->io_Actual = 0;
+	request->io_Error = 0;
+}
+
+static int wpa_driver_sana2_device_query_result_valid(
+	const struct NSDeviceQueryResult *device_info, ULONG actual, int io_error,
+	int *hard_mac)
+{
+	ULONG i;
+	int has_get_networks = 0;
+
+	if (hard_mac == NULL)
+		return 0;
+	*hard_mac = 0;
+	if (device_info == NULL || io_error != 0 ||
+		actual != sizeof(*device_info) || device_info->DevQueryFormat != 0 ||
+		device_info->SizeAvailable < sizeof(*device_info) ||
+		device_info->DeviceType != NSDEVTYPE_SANA2 ||
+		device_info->SupportedCommands == NULL)
+		return 0;
+
+	for (i = 0; i < WPA_DRIVER_SANA2_QUERY_COMMAND_LIMIT; i++) {
+		if (device_info->SupportedCommands[i] == 0) {
+			*hard_mac = has_get_networks;
+			return 1;
+		}
+		if (device_info->SupportedCommands[i] == S2_GETNETWORKS)
+			has_get_networks = 1;
+	}
+
+	return 0;
+}
+
+static int wpa_driver_sana2_configinterface_already_online(
+	int io_error, ULONG wire_error)
+{
+	return io_error == S2ERR_BAD_STATE &&
+		wire_error == S2WERR_UNIT_ONLINE;
+}
+
 struct wpa_driver_sana2_data {
 	void *ctx;
 	char *device_name;
@@ -269,6 +322,24 @@ static void wpa_driver_sana2_set_security_summary(
 		summary->flags = WPA_SECURITY_SUMMARY_PRESENT |
 			WPA_SECURITY_SUMMARY_KNOWN;
 		res->caps &= ~IEEE80211_CAP_PRIVACY;
+		return;
+	}
+
+	if (source->Flags == (S2WIRELESS_SUMF_KNOWN | S2WIRELESS_SUMF_PRIVACY) &&
+	    source->Protocols == (S2WIRELESS_PROTO_RSN |
+				  S2WIRELESS_PROTO_RSN_SAE) &&
+	    source->KeyManagement == (S2WIRELESS_KEY_PSK |
+				      S2WIRELESS_KEY_SAE) &&
+	    source->PairwiseCiphers == S2WIRELESS_CIPHER_CCMP &&
+	    source->GroupCiphers == S2WIRELESS_CIPHER_CCMP) {
+		summary->flags |= WPA_SECURITY_SUMMARY_KNOWN;
+		/* WPA_PROTO_RSN has no separate transition-mode value. Preserve the
+		 * explicit PSK|SAE AKM pair so the SAE-only selector can distinguish
+		 * this mapped tuple from pure SAE without enabling legacy PSK matching. */
+		summary->proto = WPA_PROTO_RSN;
+		summary->key_mgmt = WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_SAE;
+		summary->pairwise_cipher = WPA_CIPHER_CCMP;
+		summary->group_cipher = WPA_CIPHER_CCMP;
 		return;
 	}
 
@@ -1597,17 +1668,17 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 
 	/* Check if this is a hard-MAC device */
 	if (err == 0) {
+		struct IOStdReq *std_request = (struct IOStdReq *)drv->request;
+		int hard_mac = 0;
+
 		request = drv->request;
-		((struct IOStdReq *)request)->io_Command = NSCMD_DEVICEQUERY;
-		((struct IOStdReq *)request)->io_Data = &device_info;
-		if (DoIO((APTR)request) != 0)
+		wpa_driver_sana2_prepare_device_query(std_request, &device_info);
+		if (DoIO((APTR)request) != 0 ||
+			!wpa_driver_sana2_device_query_result_valid(&device_info,
+				std_request->io_Actual, std_request->io_Error, &hard_mac))
 			err = 1;
-		else {
-			for (i = 0; device_info.SupportedCommands[i] != 0; i++)
-				if (device_info.SupportedCommands[i]
-					== S2_GETNETWORKS)
-					drv->hard_mac = 1;
-		}
+		else
+			drv->hard_mac = hard_mac;
 	}
 
 	/* Put device online */
@@ -1627,11 +1698,18 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 		if (DoIO((APTR)request) != 0) {
 			if (request->ios2_WireError == S2WERR_IS_CONFIGURED) {
 				request->ios2_Req.io_Command = S2_ONLINE;
-				DoIO((APTR)request);
-			} else
+				if (DoIO((APTR)request) != 0 &&
+				    !wpa_driver_sana2_configinterface_already_online(
+					request->ios2_Req.io_Error,
+					request->ios2_WireError))
+					err = 1;
+			} else if (!wpa_driver_sana2_configinterface_already_online(
+					request->ios2_Req.io_Error,
+					request->ios2_WireError))
 				err = 1;
 		}
-		drv->online = 1;
+		if (err == 0)
+			drv->online = 1;
 	}
 
 	/* Create and queue up EAPOL frame read request */

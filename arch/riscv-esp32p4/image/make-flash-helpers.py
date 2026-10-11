@@ -44,8 +44,8 @@ def overlay(aros_root, output):
                 if marker not in data:
                     raise ValueError("WiFi lacks deterministic flash load policy")
         if dest.endswith(".device"):
-            if not re.search(rb"\$VER: esp32p4wifi\.device [^\x00\r\n]* 1\.1 \(", data):
-                raise ValueError("flash helper requires device generation1.1")
+            if not re.search(rb"\$VER: esp32p4wifi\.device [^\x00\r\n]* 1\.3 \(", data):
+                raise ValueError("flash helper requires device generation1.3")
             _, _, issues = stage.ELF.audit_elf(data)
             if issues:
                 raise ValueError("device loader audit: " + "; ".join(issues))
@@ -58,7 +58,7 @@ def overlay(aros_root, output):
         "CLI: FLASHDISK0P0:WiFi or FLASHDISK0P0:ESP32Board\n"
         "WiFi loads only the flash device and WirelessManager; no SD fallback.\n"
         "SYS:Prefs/WiFi is a legacy copy, not this helper entry point.\n"
-        "After reboot open flash WiFi first; resident SD driver1.0 is rejected.\n"
+        "After reboot open flash WiFi first; driver generation1.3 is required.\n"
         "TCP/IP stack and shared libraries remain on SYS:.\n"
         "No autostart, credentials, saved configuration or C6 firmware.\n"
     ).encode("ascii")

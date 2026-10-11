@@ -134,7 +134,7 @@ static BOOL OpenWifiDev(struct WifiDev *dev, CONST_STRPTR device, LONG unit)
      * Reject the legacy SD resident rather than silently testing its bytes.
      * Advance this exact pair with every incompatible helper generation. */
     if (dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Version != 1 ||
-        dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Revision != 1)
+        dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Revision != 3)
     {
         CloseWifiDev(dev);
         return FALSE;
@@ -464,22 +464,43 @@ static BOOL StopSupplicant(void)
     return FALSE;
 }
 
-static BOOL StartSupplicant(CONST_STRPTR device, LONG unit)
+static BOOL StartSupplicant(CONST_STRPTR device, LONG unit,
+    STRPTR status, size_t capacity)
 {
     TEXT command[160];
+    BPTR segment;
+    LONG error;
     struct TagItem tags[] =
     {
         { SYS_Input,    (IPTR)NULL  },
         { SYS_Output,   (IPTR)NULL  },
         { SYS_Error,    (IPTR)NULL  },
         { SYS_Asynch,   (IPTR)TRUE  },
+        { NP_StackSize,  (IPTR)65536 },
         { TAG_DONE,     0           }
     };
     int tries;
 
+    /* Distinguish DOS loader failure from a process that exits during init.
+     * Never capture supplicant output: it can contain network identifiers. */
+    segment = LoadSeg(WIFI_MANAGER);
+    if (segment == BNULL)
+    {
+        error = IoErr();
+        snprintf(status, capacity, "WirelessManager: LoadSeg failed (%ld)",
+            (long)error);
+        return FALSE;
+    }
+    UnLoadSeg(segment);
     snprintf(command, sizeof(command),
         WIFI_MANAGER " \"%s\" UNIT %ld NOGUI\n", device, (long)unit);
-    SystemTagList(command, tags);
+    if (SystemTagList(command, tags) == -1)
+    {
+        error = IoErr();
+        snprintf(status, capacity, "WirelessManager: shell start failed (%ld)",
+            (long)error);
+        return FALSE;
+    }
 
     for (tries = 0; tries < 20; tries++)
     {
@@ -487,6 +508,7 @@ static BOOL StartSupplicant(CONST_STRPTR device, LONG unit)
             return TRUE;
         Delay(25);
     }
+    snprintf(status, capacity, "WirelessManager loaded; no running task after init");
     return FALSE;
 }
 
@@ -1815,9 +1837,9 @@ static void RunConnect(struct WifiMsg *m, CONST_STRPTR wanted,
         strcpy(m->wm_Status, (const char *)_(MSG_ST_WM_NO_STOP));
         return;
     }
-    if (!StartSupplicant(m->wm_Device, m->wm_Unit))
+    if (!StartSupplicant(m->wm_Device, m->wm_Unit,
+                        m->wm_Status, sizeof(m->wm_Status)))
     {
-        strcpy(m->wm_Status, (const char *)_(MSG_ST_WM_NO_START));
         return;
     }
 

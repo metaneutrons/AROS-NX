@@ -50,16 +50,19 @@ static inline int wpa_security_summary_open(
         !summary->group_cipher;
 }
 
-/* Pure SAE/CCMP scan identity only, not proof of AP PMF/PWE support or a
- * completed handshake. Admission also needs a negotiated typed FullMAC
- * profile and required-PMF client policy. Mixed profiles are not widened. */
+/* Pure SAE/CCMP and the exact SAE side of a WPA2/WPA3 transition scan tuple
+ * select the same SAE-only FullMAC profile. The mapper preserves the transition
+ * AKM pair as PSK|SAE; the supplicant config must still be SAE alone. This is
+ * not proof of AP PMF/PWE support or a completed handshake. Admission also
+ * needs a negotiated typed FullMAC profile and required-PMF client policy. */
 static inline int wpa_security_summary_sae(
     const struct wpa_security_summary *summary)
 {
     return summary->flags == (WPA_SECURITY_SUMMARY_PRESENT |
         WPA_SECURITY_SUMMARY_KNOWN | WPA_SECURITY_SUMMARY_PRIVACY) &&
         summary->proto == WPA_PROTO_RSN &&
-        summary->key_mgmt == WPA_KEY_MGMT_SAE &&
+        (summary->key_mgmt == WPA_KEY_MGMT_SAE ||
+         summary->key_mgmt == (WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_SAE)) &&
         summary->pairwise_cipher == WPA_CIPHER_CCMP &&
         summary->group_cipher == WPA_CIPHER_CCMP;
 }

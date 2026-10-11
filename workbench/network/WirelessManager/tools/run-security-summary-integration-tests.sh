@@ -66,6 +66,9 @@ extract_enum_value()
 }
 
 PUBLIC_SANA="$REPO_ROOT/compiler/include/devices/sana2wireless.h"
+PUBLIC_SANA2="$REPO_ROOT/compiler/include/devices/sana2.h"
+PUBLIC_NEWSTYLE="$REPO_ROOT/compiler/include/devices/newstyle.h"
+PUBLIC_IO="$REPO_ROOT/compiler/include/exec/io.h"
 PUBLIC_TAGS="$REPO_ROOT/compiler/include/utility/tagitem.h"
 PUBLIC_MEMORY="$REPO_ROOT/compiler/include/exec/memory.h"
 DRIVER_HEADER="$SRC_DIR/drivers/driver.h"
@@ -73,7 +76,9 @@ WPA_CONFIG="$WM_ROOT/wpa_supplicant/config_ssid.h"
 AP_CONFIG="$SRC_DIR/ap/ap_config.h"
 SOURCE_CONSTANTS="$BUILD_DIR/security-summary-source-constants.inc"
 if [ ! -f "$PUBLIC_SANA" ] || [ ! -f "$PUBLIC_TAGS" ] ||
-	[ ! -f "$PUBLIC_MEMORY" ] || [ ! -f "$DRIVER_HEADER" ] ||
+	[ ! -f "$PUBLIC_SANA2" ] || [ ! -f "$PUBLIC_NEWSTYLE" ] ||
+	[ ! -f "$PUBLIC_IO" ] || [ ! -f "$PUBLIC_MEMORY" ] ||
+	[ ! -f "$DRIVER_HEADER" ] ||
 	[ ! -f "$WPA_CONFIG" ] || [ ! -f "$AP_CONFIG" ]; then
 	echo "error: required public or WirelessManager headers are missing" >&2
 	exit 1
@@ -92,21 +97,36 @@ for macro in S2FULLMAC_CAPF_DIAGNOSTIC_RISK \
 	S2WIRELESS_KEY_EAP S2WIRELESS_KEY_SAE S2WIRELESS_CIPHER_TKIP \
 	S2WIRELESS_CIPHER_CCMP S2WIRELESS_CIPHER_GCMP S2INFO_SecuritySummary \
 	S2INFO_WPAInfoLength \
-	S2_GETCRYPTTYPES S2ENC_WEP S2ENC_TKIP S2ENC_CCMP; do
+	S2_GETNETWORKS S2_GETCRYPTTYPES S2ENC_WEP S2ENC_TKIP S2ENC_CCMP; do
 	extract_define "$PUBLIC_SANA" "$macro" "$SOURCE_CONSTANTS"
 done
+for macro in S2_GETSTATIONADDRESS S2ERR_BAD_STATE \
+	S2ERR_NOT_SUPPORTED S2WERR_GENERIC_ERROR S2WERR_UNIT_ONLINE \
+	S2WERR_IS_CONFIGURED; do
+	extract_define "$PUBLIC_SANA2" "$macro" "$SOURCE_CONSTANTS"
+done
+for macro in NSCMD_DEVICEQUERY NSDEVTYPE_UNKNOWN NSDEVTYPE_SANA2; do
+	extract_define "$PUBLIC_NEWSTYLE" "$macro" "$SOURCE_CONSTANTS"
+done
+extract_define "$PUBLIC_IO" CMD_NONSTD "$SOURCE_CONSTANTS"
 for macro in MEMB_PUBLIC MEMF_PUBLIC MEMB_CLEAR MEMF_CLEAR; do
 	extract_define "$PUBLIC_MEMORY" "$macro" "$SOURCE_CONSTANTS"
 done
 extract_define "$SRC_DIR/drivers/driver_sana2.c" PUDDLE_SIZE \
 	"$SOURCE_CONSTANTS"
+extract_define "$SRC_DIR/drivers/driver_sana2.c" \
+	WPA_DRIVER_SANA2_QUERY_COMMAND_LIMIT "$SOURCE_CONSTANTS"
 for macro in IEEE80211_CAP_PRIVACY WPA_DRIVER_CAPA_KEY_MGMT_WPA \
 	WPA_DRIVER_CAPA_KEY_MGMT_WPA2 WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK \
 	WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK WPA_DRIVER_CAPA_ENC_WEP40 \
 	WPA_DRIVER_CAPA_ENC_WEP104 WPA_DRIVER_CAPA_ENC_TKIP \
 	WPA_DRIVER_CAPA_ENC_CCMP WPA_DRIVER_FLAGS_USER_SPACE_MLME \
 	WPA_DRIVER_FLAGS_4WAY_HANDSHAKE WPA_DRIVER_FLAGS_SECURITY_SUMMARY \
-	WPA_DRIVER_FLAGS_CANCEL_PENDING WPA_DRIVER_FLAGS_FULLMAC_ASSOCIATION; do
+	WPA_DRIVER_FLAGS_CANCEL_PENDING WPA_DRIVER_FLAGS_FULLMAC_ASSOCIATION \
+	WPA_DRIVER_FLAGS_SME WPA_FULLMAC_PROFILE_OPEN \
+	WPA_FULLMAC_PROFILE_WPA2_CCMP WPA_FULLMAC_PROFILE_SAE_CCMP_PMF \
+	WPA_FULLMAC_SAE_PWE_HNP WPA_FULLMAC_SAE_PWE_H2E \
+	WPA_FULLMAC_SAE_PWE_BOTH; do
 	extract_define "$DRIVER_HEADER" "$macro" "$SOURCE_CONSTANTS"
 done
 extract_define "$AP_CONFIG" NUM_WEP_KEYS "$SOURCE_CONSTANTS"
@@ -114,6 +134,16 @@ extract_enum_value "$WPA_CONFIG" WPAS_MODE_INFRA "$SOURCE_CONSTANTS"
 
 extract_function "$SRC_DIR/drivers/driver_sana2.c" \
 	wpa_driver_sana2_wireless_caps_valid "$BUILD_DIR/driver_caps_valid.inc"
+for function in wpa_driver_sana2_prepare_device_query \
+	wpa_driver_sana2_device_query_result_valid \
+	wpa_driver_sana2_configinterface_already_online; do
+	extract_function "$SRC_DIR/drivers/driver_sana2.c" "$function" \
+		"$BUILD_DIR/${function}.inc"
+done
+cat "$BUILD_DIR/wpa_driver_sana2_prepare_device_query.inc" \
+	"$BUILD_DIR/wpa_driver_sana2_device_query_result_valid.inc" \
+	"$BUILD_DIR/wpa_driver_sana2_configinterface_already_online.inc" \
+	> "$BUILD_DIR/driver_query_helpers.inc"
 extract_function "$SRC_DIR/drivers/driver_sana2.c" \
 	wpa_driver_sana2_set_security_summary "$BUILD_DIR/driver_set_security_summary.inc"
 extract_function "$SRC_DIR/drivers/driver_sana2.c" \
@@ -126,6 +156,9 @@ extract_function "$WM_ROOT/wpa_supplicant/wpa_supplicant.c" \
 	wpa_supplicant_summary_capa_match "$BUILD_DIR/supplicant_summary_capa_match.inc"
 extract_function "$WM_ROOT/wpa_supplicant/wpa_supplicant.c" \
 	wpa_supplicant_summary_config_match "$BUILD_DIR/supplicant_summary_config_match.inc"
+extract_function "$WM_ROOT/wpa_supplicant/wpa_supplicant.c" \
+	wpa_supplicant_fullmac_config_match \
+	"$BUILD_DIR/supplicant_fullmac_config_match.inc"
 extract_function "$WM_ROOT/wpa_supplicant/events.c" \
 	wpa_supplicant_summary_offload_enabled "$BUILD_DIR/events_summary_offload_enabled.inc"
 extract_function "$WM_ROOT/wpa_supplicant/events.c" \

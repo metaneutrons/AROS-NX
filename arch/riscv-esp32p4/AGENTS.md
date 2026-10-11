@@ -132,6 +132,13 @@ that confirmation is non-interactive evidence only and must not be counted as
 an interactive acceptance test, even if the user later reports that they
 missed it.
 
+Fabian clarified on2026-10-11 that reproducible development firmware/volumes
+do not require a fresh full flash backup before every rewrite. A retained
+known-good image or reproducible build can provide recovery. Continue to
+verify board identity, exact range, image identity and post-write readback.
+This does not waive preservation of irreplaceable data or authorize new
+bootloader/partition-table/NVS writes. Keep existing factory/recovery backups.
+
 Fabian explicitly authorizes flashing this development board and headless
 UART/boot tests without a new consent request. Verify the board identity,
 exact flash range and recoverable backup before a write. Only a test that

@@ -251,6 +251,12 @@ static void test_write_path(void)
 
 int main(void)
 {
+    CHECK(WifiSecurityProfileFromLabel("WPA2/3") == WIFI_SECURITY_SAE);
+    CHECK(WifiSecurityProfileFromLabel("WPA3") == WIFI_SECURITY_SAE);
+    CHECK(WifiSecurityProfileFromLabel("WPA2") == WIFI_SECURITY_PSK);
+    CHECK(WifiSecurityProfileFromLabel("WPA2/WPA3") == WIFI_SECURITY_UNKNOWN);
+    CHECK(WifiSecurityProfileFromLabel("?") == WIFI_SECURITY_UNKNOWN);
+    CHECK(WifiSecurityProfileFromLabel(NULL) == WIFI_SECURITY_UNKNOWN);
     test_ssid_hex();
     test_formatting();
     test_clear();
