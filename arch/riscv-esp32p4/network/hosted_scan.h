@@ -12,7 +12,10 @@
 #define P4_HOSTED_SCAN_COUNTRY_CC_MAX_SIZE 3u
 
 /* Owned, typed representation of the pinned wifi_ap_record schema. Byte
- * strings carry explicit lengths and are not C strings. Optional country and
+ * strings carry explicit lengths and are not C strings. SSIDs normalize one
+ * trailing NUL from the pinned slave's RPC_RESP_COPY_STR contract; embedded
+ * NULs and additional padding remain for the consumer to reject. This vendor
+ * string contract cannot distinguish a binary SSID ending in NUL. Country and
  * HE submessages retain their proto3 zero defaults. */
 struct p4_hosted_scan_record {
     uint8_t bssid[P4_HOSTED_SCAN_BSSID_SIZE];

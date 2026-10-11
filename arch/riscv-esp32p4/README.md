@@ -1,5 +1,17 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Native scan projection correction (2026-10-11): a synchronized scan reports
+stage3/ok1/remote8/decoded8/nonempty8/workaround0 while Prefs shows zero.
+The pinned Espressif producer includes one terminal NUL in short SSIDs;
+the decoder now normalizes that byte, including shared AP-info replies.
+Embedded NULs remaining on the wire are still rejected by SANA. The producer
+already truncates binary SSIDs at its first NUL, so binary identity fidelity
+is NOT guaranteed. Installed peer lineage and the corrected GUI result remain
+unverified. Codec290/reference1432 and SANA295 checks each O0/O2 pass;
+native module and package are build verified. BSP4032772B is now deployed
+at0x820000 and independently byte-exact readback verified; board remains in
+download mode pending fresh coordinated rail-off/scan readiness. No GUI PASS.
+
 Native WLAN GUI scan (2026-10-11): Fabian observes "0 networks found" with
 the ready CPU1 owner. This is not scan-completeness acceptance. Count-only
 owner diagnostics now distinguish RPC stage, remote AP count, decoded and

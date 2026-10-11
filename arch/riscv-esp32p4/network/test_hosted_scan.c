@@ -495,6 +495,101 @@ static size_t make_simple_record(uint8_t *bytes, size_t ssid_size,
     return size;
 }
 
+static size_t make_ssid_record(uint8_t *bytes, const uint8_t *ssid,
+                               size_t ssid_size)
+{
+    static const uint8_t bssid[P4_HOSTED_SCAN_BSSID_SIZE] = {
+        0u, 0x11u, 0u, 0x33u, 0x44u, 0xffu
+    };
+    size_t size = 0u, i;
+
+    append_byte(bytes, &size, 0x0au);
+    append_byte(bytes, &size, P4_HOSTED_SCAN_BSSID_SIZE);
+    for (i = 0; i < P4_HOSTED_SCAN_BSSID_SIZE; ++i)
+        append_byte(bytes, &size, bssid[i]);
+    append_byte(bytes, &size, 0x12u);
+    append_varint(bytes, &size, ssid_size);
+    for (i = 0; i < ssid_size; ++i)
+        append_byte(bytes, &size, ssid[i]);
+    return size;
+}
+
+static void check_ssid_normalization_case(const uint8_t *wire_ssid,
+                                          size_t wire_ssid_size,
+                                          const uint8_t *expected_ssid,
+                                          size_t expected_ssid_size)
+{
+    uint8_t record[64], records_body[80], ap_info_body[72];
+    size_t record_size, records_size = 0u, ap_info_size = 0u;
+    struct p4_hosted_rpc rpc;
+    struct p4_hosted_scan_records records;
+    struct p4_hosted_sta_ap_info ap_info;
+
+    record_size = make_ssid_record(record, wire_ssid, wire_ssid_size);
+    append_byte(records_body, &records_size, 0x10u);
+    append_byte(records_body, &records_size, 0x01u);
+    append_byte(records_body, &records_size, 0x1au);
+    append_varint(records_body, &records_size, record_size);
+    for (size_t i = 0; i < record_size; ++i)
+        append_byte(records_body, &records_size, record[i]);
+
+    set_response(&rpc, 289u, 19u, records_body, records_size);
+    CHECK(p4_hosted_scan_records_response(&rpc, 19u, 1u, &records));
+    CHECK(records.record_count == 1u);
+    CHECK(records.records[0].ssid_size == expected_ssid_size);
+    check_bytes(records.records[0].ssid, records.records[0].ssid_size,
+                expected_ssid, expected_ssid_size);
+
+    append_byte(ap_info_body, &ap_info_size, 0x12u);
+    append_varint(ap_info_body, &ap_info_size, record_size);
+    for (size_t i = 0; i < record_size; ++i)
+        append_byte(ap_info_body, &ap_info_size, record[i]);
+
+    set_response(&rpc, 294u, 19u, ap_info_body, ap_info_size);
+    CHECK(p4_hosted_sta_ap_info_response(&rpc, 19u, &ap_info));
+    CHECK(ap_info.status == 0);
+    CHECK(ap_info.ap.ssid_size == expected_ssid_size);
+    check_bytes(ap_info.ap.ssid, ap_info.ap.ssid_size,
+                expected_ssid, expected_ssid_size);
+}
+
+static void test_ssid_terminator_normalization(void)
+{
+    static const uint8_t short_terminated[] = { 'n', 'e', 't', 0u };
+    static const uint8_t short_expected[] = { 'n', 'e', 't' };
+    static const uint8_t hidden[] = { 0u };
+    static const uint8_t empty_expected[] = { 0u };
+    static const uint8_t internal_and_terminated[] = { 'a', 0u, 'b', 0u };
+    static const uint8_t internal_expected[] = { 'a', 0u, 'b' };
+    static const uint8_t double_terminated[] = { 'x', 0u, 0u };
+    static const uint8_t double_expected[] = { 'x', 0u };
+    static const uint8_t no_terminator_padding[] = {
+        'A', 0u, 'B', ' ', ' '
+    };
+    uint8_t full_ssid[P4_HOSTED_SCAN_SSID_MAX_SIZE];
+
+    for (size_t i = 0; i < sizeof full_ssid; ++i)
+        full_ssid[i] = (uint8_t)(0x80u + i);
+
+    check_ssid_normalization_case(short_terminated,
+                                  sizeof short_terminated,
+                                  short_expected, sizeof short_expected);
+    check_ssid_normalization_case(hidden, sizeof hidden,
+                                  empty_expected, 0u);
+    check_ssid_normalization_case(full_ssid, sizeof full_ssid,
+                                  full_ssid, sizeof full_ssid);
+    check_ssid_normalization_case(internal_and_terminated,
+                                  sizeof internal_and_terminated,
+                                  internal_expected, sizeof internal_expected);
+    check_ssid_normalization_case(no_terminator_padding,
+                                  sizeof no_terminator_padding,
+                                  no_terminator_padding,
+                                  sizeof no_terminator_padding);
+    check_ssid_normalization_case(double_terminated,
+                                  sizeof double_terminated,
+                                  double_expected, sizeof double_expected);
+}
+
 static size_t make_records_body(uint8_t *body, unsigned int count,
                                 size_t ssid_size)
 {
@@ -845,6 +940,7 @@ int main(void)
     test_num_refusals();
     test_records_literal_vector();
     test_records_capacity_and_binary_lengths();
+    test_ssid_terminator_normalization();
     test_records_zero_and_unknowns();
     test_records_malformed_fields();
     test_nested_malformed_and_preserved_fields();

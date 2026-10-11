@@ -541,6 +541,13 @@ static int parse_record(const uint8_t *bytes, size_t size,
                 } else {
                     if (value_size > P4_HOSTED_SCAN_SSID_MAX_SIZE)
                         return 0;
+                    /* Pinned slave RPC_RESP_COPY_STR includes the C-string
+                     * terminator in its byte-field length for short SSIDs.
+                     * Normalize exactly that last byte, not embedded NULs or
+                     * arbitrary padding. SANA still rejects binary identities
+                     * that cannot be represented by its C-string SSID tag. */
+                    if (value_size && value[value_size - 1u] == 0u)
+                        --value_size;
                     record->ssid_size = value_size;
                     copy_bytes(record->ssid, value, value_size);
                 }

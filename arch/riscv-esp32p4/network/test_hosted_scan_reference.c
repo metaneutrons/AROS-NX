@@ -500,16 +500,45 @@ static size_t pack_records_response(uint32_t uid, int32_t status,
     return pack_rpc(&response, bytes, capacity);
 }
 
+static size_t pack_ap_info_response(uint32_t uid, int32_t status,
+                                    WifiApRecord *record, uint8_t *bytes,
+                                    size_t capacity)
+{
+    RpcRespWifiStaGetApInfo body =
+        RPC__RESP__WIFI_STA_GET_AP_INFO__INIT;
+    Rpc response = RPC__INIT;
+
+    body.resp = status;
+    body.ap_records = record;
+    response.msg_type = RPC_TYPE__Resp;
+    response.msg_id = (RpcId)550u;
+    response.uid = uid;
+    response.payload_case = RPC__PAYLOAD_RESP_WIFI_STA_GET_AP_INFO;
+    response.resp_wifi_sta_get_ap_info = &body;
+    return pack_rpc(&response, bytes, capacity);
+}
+
+static size_t normalized_ssid_size(const ProtobufCBinaryData *ssid)
+{
+    size_t size = ssid->len;
+
+    if (size != 0u && ssid->data[size - 1u] == 0u)
+        --size;
+    return size;
+}
+
 static void check_owned_record(const struct p4_hosted_scan_record *actual,
                                const WifiApRecord *expected)
 {
+    size_t expected_ssid_size = normalized_ssid_size(&expected->ssid);
+
     CHECK(expected->bssid.len == P4_HOSTED_SCAN_BSSID_SIZE);
-    CHECK(actual->ssid_size == expected->ssid.len);
+    CHECK(actual->ssid_size == expected_ssid_size);
     CHECK(memcmp(actual->bssid, expected->bssid.data,
                  P4_HOSTED_SCAN_BSSID_SIZE) == 0);
-    if (expected->ssid.len != 0u)
+    if (expected_ssid_size != 0u)
         CHECK(memcmp(actual->ssid, expected->ssid.data,
-                     expected->ssid.len) == 0);
+                     expected_ssid_size) == 0);
     CHECK(actual->primary == expected->primary);
     CHECK(actual->second == expected->second);
     CHECK(actual->rssi == expected->rssi);
@@ -638,6 +667,112 @@ static void test_records_response_boundaries_and_ownership(void)
     check_records_response(P4_HOSTED_SCAN_MAX_RECORDS, 0);
 }
 
+static void set_fixture_ssid(struct record_fixture *fixture, size_t index,
+                             const uint8_t *ssid, size_t ssid_size)
+{
+    CHECK(index < P4_HOSTED_SCAN_MAX_RECORDS);
+    CHECK(ssid_size <= P4_HOSTED_SCAN_SSID_MAX_SIZE);
+    if (ssid_size != 0u) {
+        memcpy(fixture->ssid[index], ssid, ssid_size);
+        fixture->record[index].ssid.data = fixture->ssid[index];
+    } else {
+        fixture->record[index].ssid.data = NULL;
+    }
+    fixture->record[index].ssid.len = ssid_size;
+}
+
+static void test_ssid_terminator_normalization_against_oracle(void)
+{
+    static const uint8_t short_terminated[] = { 'n', 'e', 't', 0u };
+    static const uint8_t hidden[] = { 0u };
+    static const uint8_t internal_and_terminated[] = { 'a', 0u, 'b', 0u };
+    static const uint8_t no_terminator_padding[] = {
+        'A', 0u, 'B', ' ', ' '
+    };
+    static const uint8_t double_terminated[] = { 'x', 0u, 0u };
+    static const uint8_t trailing_spaces[] = { 'p', 'a', 'd', ' ', ' ' };
+    struct record_fixture fixture;
+    struct p4_hosted_scan_records actual;
+    struct p4_hosted_rpc envelope;
+    Rpc *reference;
+    uint8_t exact32[P4_HOSTED_SCAN_SSID_MAX_SIZE];
+    uint8_t bytes[TEST_WIRE_CAPACITY];
+    size_t size, index;
+
+    init_record_fixture(&fixture);
+    for (index = 0; index < sizeof exact32; ++index)
+        exact32[index] = (uint8_t)(0x80u + index);
+
+    set_fixture_ssid(&fixture, 0u, short_terminated,
+                     sizeof short_terminated);
+    set_fixture_ssid(&fixture, 1u, hidden, sizeof hidden);
+    set_fixture_ssid(&fixture, 2u, exact32, sizeof exact32);
+    set_fixture_ssid(&fixture, 3u, internal_and_terminated,
+                     sizeof internal_and_terminated);
+    set_fixture_ssid(&fixture, 4u, no_terminator_padding,
+                     sizeof no_terminator_padding);
+    set_fixture_ssid(&fixture, 5u, double_terminated,
+                     sizeof double_terminated);
+    set_fixture_ssid(&fixture, 6u, trailing_spaces, sizeof trailing_spaces);
+    set_fixture_ssid(&fixture, 7u, NULL, 0u);
+
+    size = pack_records_response(TEST_UID, 0,
+            P4_HOSTED_SCAN_MAX_RECORDS, P4_HOSTED_SCAN_MAX_RECORDS,
+            fixture.record_ptr, bytes, sizeof bytes);
+    CHECK(size != 0u);
+    reference = unpack_rpc(bytes, size, 2u, 545u, TEST_UID,
+                           RPC__PAYLOAD_RESP_WIFI_SCAN_GET_AP_RECORDS);
+    CHECK(reference->resp_wifi_scan_get_ap_records->n_ap_records ==
+          P4_HOSTED_SCAN_MAX_RECORDS);
+    for (index = 0; index < P4_HOSTED_SCAN_MAX_RECORDS; ++index)
+        check_reference_record(
+            reference->resp_wifi_scan_get_ap_records->ap_records[index],
+            &fixture.record[index]);
+
+    CHECK(p4_hosted_rpc_decode(bytes, size, &envelope));
+    CHECK(p4_hosted_scan_records_response(&envelope, TEST_UID,
+            P4_HOSTED_SCAN_MAX_RECORDS, &actual));
+    CHECK(actual.record_count == P4_HOSTED_SCAN_MAX_RECORDS);
+    for (index = 0; index < P4_HOSTED_SCAN_MAX_RECORDS; ++index)
+        check_owned_record(&actual.records[index],
+            reference->resp_wifi_scan_get_ap_records->ap_records[index]);
+    CHECK(actual.records[0].ssid_size == 3u);
+    CHECK(actual.records[1].ssid_size == 0u);
+    CHECK(actual.records[2].ssid_size == P4_HOSTED_SCAN_SSID_MAX_SIZE);
+    CHECK(actual.records[3].ssid_size == 3u &&
+          actual.records[3].ssid[1] == 0u);
+    CHECK(actual.records[4].ssid_size == sizeof no_terminator_padding &&
+          actual.records[4].ssid[1] == 0u &&
+          actual.records[4].ssid[3] == ' ' &&
+          actual.records[4].ssid[4] == ' ');
+    CHECK(actual.records[5].ssid_size == 2u &&
+          actual.records[5].ssid[1] == 0u);
+    CHECK(actual.records[6].ssid_size == sizeof trailing_spaces &&
+          actual.records[6].ssid[3] == ' ' &&
+          actual.records[6].ssid[4] == ' ');
+    rpc__free_unpacked(reference, NULL);
+
+    /* AP-info uses the same record parser and the generated schema as oracle. */
+    size = pack_ap_info_response(TEST_UID, 0, &fixture.record[0],
+                                 bytes, sizeof bytes);
+    CHECK(size != 0u);
+    reference = unpack_rpc(bytes, size, 2u, 550u, TEST_UID,
+                           RPC__PAYLOAD_RESP_WIFI_STA_GET_AP_INFO);
+    CHECK(reference->resp_wifi_sta_get_ap_info->resp == 0);
+    check_reference_record(reference->resp_wifi_sta_get_ap_info->ap_records,
+                           &fixture.record[0]);
+    CHECK(p4_hosted_rpc_decode(bytes, size, &envelope));
+    {
+        struct p4_hosted_sta_ap_info ap_info;
+
+        CHECK(p4_hosted_sta_ap_info_response(&envelope, TEST_UID, &ap_info));
+        CHECK(ap_info.status == 0 && ap_info.ap.ssid_size == 3u);
+        check_owned_record(&ap_info.ap,
+                           reference->resp_wifi_sta_get_ap_info->ap_records);
+    }
+    rpc__free_unpacked(reference, NULL);
+}
+
 static void test_records_response_refusals(void)
 {
     struct record_fixture fixture;
@@ -702,6 +837,7 @@ int main(void)
     test_status_responses();
     test_num_responses();
     test_records_response_boundaries_and_ownership();
+    test_ssid_terminator_normalization_against_oracle();
     test_records_response_refusals();
     printf("hosted_scan_reference: %u semantic checks passed\n", checks);
     return 0;

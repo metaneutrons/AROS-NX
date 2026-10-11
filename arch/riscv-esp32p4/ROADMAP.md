@@ -147,7 +147,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed/readback verified; private0xf0 correction receives one persistent CPU1 owner-ready/MAC observation after coordinated rail-off; capture exit0/status=ok60.024s; initial HP watchdog reset prevents clean cold pass; privacy/recovery assertions0, OTA unchanged | Freshly synchronized Prefs/WiFi scan, existing WirelessManager temporary RAM configuration and actual association/DHCP/traffic; independently diagnose reset continuity; no C6 write or credential-privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; CPU1 owner ready; synchronized scan remote8/decoded8/nonempty8 but GUI zero; pinned-producer terminal-NUL normalization codec/reference/SANA and native build verified, hardware result pending; initial watchdog continuity unresolved; privacy/recovery assertions0 | Deploy/readback corrected resource and freshly synchronize GUI scan; existing WirelessManager temporary RAM association/DHCP/traffic; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1728,6 +1728,12 @@ Diagnostic package4032644B deployment and independent byte-exact readback now
 pass; no scan with this diagnostic has run, and the board stays in download mode.
 The subsequent coordinated180.157s capture reaches owner ready but records no
 scan diagnostic; no scan invocation/attribution is established by that window.
+The following synchronized warm window captures stage3/ok1/remote8/decoded8/
+nonempty8/workaround0 while Fabian observes GUI zero. Pinned slave string
+serialization includes a terminal NUL; decoder normalization is host/build
+verified, not yet a device fix. No per-record wire bytes were captured.
+Binary SSID identity is unsupported by the producer's strlen-based contract;
+normalizing a final NUL cannot recover a tail it already discarded.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -39199,3 +39205,58 @@ remain open. No partial stage is a complete A/B update system.
 - Reader closed normally. No automatic repeat; request a fresh synchronized
   scan window before opening another reader (which can disturb current state).
   Do not turn this missing measurement into a scan or WLAN gate PASS.
+
+### 2026-10-11 - N2T remote scan succeeds; vendor SSID terminator correction
+
+- Fabian clarified the first reader window ended before his Scan click. A new
+  explicitly synchronized warm passive capture session76428 exited0 with the
+  full status=ok footer180.204978166s/2575bytes. scan-interactive.log in
+  scan-zero.zNMPDR has SHA256
+  6673aef22db183c80f6c1571253913d04bd13529b31cb7e9448fa03473b26c22.
+  It records s=3 ok=1 n=8 r=8 h=8 e=0 while he reports zero networks.
+  No captured ROM/reset/trap/Guru/Alert/panic/owner-stop signature; lossy
+  console absence is not proof of complete continuity. Reader closed normally.
+- Pinned ESP-Hosted d5184217 slave_control.c:152..163 RPC_RESP_COPY_STR uses
+  strndup and min(32,strlen+1); scan1156/AP-info1291 include a final NUL for
+  ordinary short SSIDs. Our explicit-length decoder retained it and SANA
+  rejected it. Normalize exactly one final zero after the existing32-byte
+  bound, retaining internal NULs and any further padding. AP-info shares this
+  parser. No per-record live wire bytes or installed peer lineage were proven;
+  the source explanation and candidate require a device retest.
+- Independent Luna review finds bounded parsing correct for this producer,
+  but binary SSIDs can already be truncated by its strlen before transmission.
+  A bytes-faithful different peer's meaningful last NUL is indistinguishable.
+  This producer-specific string contract is explicit; no binary-identity or
+  credential privacy guarantee follows. SANA still rejects remaining NULs.
+- Evidence: /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/
+  wifi-2026-10-11/ssid-terminator.oUOieO/. Luna regression coverage includes
+  short/hidden/32-byte/internal-NUL/double-NUL/padding and AP-info; codec290
+  checks and pinned protobuf-c oracle1432 checks each O0/O2 pass. SANA295 each
+  O0/O2 pass. Mistyped nonexistent test runner exited127, corrected runner0;
+  nonexistent readback-scan.pkg packaging attempt exited1 before output,
+  correct actual readback.pkg replacement0. Keep failures, no stale artifact.
+- Native resource objects invalidated; full module build session39311 exit0,
+  resource341728B SHA256
+  123f22118e9159afe48c1df262feac704b6d3c8b0b0721c0a39aa9fffb287706.
+  Same JC-v2 setup/INIT/reply/CPU1 owner and accepted-risk flags; privacy,
+  recovery and update flags0. No public ABI/layout change. Actual installed
+ 42-member backup replacement preserves all other41 records/shared-hostABI8;
+  loader audit0 failures, size helper0. BSP4032772B SHA256
+  43bdf4875095a63f930064c0c33670e6c016b1f2d40e9fee4d8966805ddc802d.
+- MAC80:f1:b2:d3:3b:a6/P4v1.3/16MiB identity check0. Rounded4034560B span
+  at0x820000 read session41968 exit0;4032644B prefix cmp0 against prior exact
+  readback. Backup SHA256
+  74268ff9079a5d64b4af4264198f166e13c5ddfc9ac909938c787e5ddc4d2a3e.
+  Erase ends0xbf8fff before DEVELOP. Only WLAN BSP resource write authorized;
+  no core/bootloader/table/metadata/C6/SD/credential changes. Deployment and
+  independent readback are now complete, not a hardware PASS. Next fresh
+  USB-C-only readiness for coordinated rail-off and GUI scan, then existing
+  AROS association/DHCP/data workflow. Watchdog continuity remains separate.
+- Write session58584 exit0/internal hash verified; independent readback92502
+  exit0, cmp0 and SHA25643bdf487... match the complete4032772B candidate.
+  Board stays in download mode; no test/reset automatically started. Primary
+  verification reruns codec41030 and reference68279 exit0; SANA94669 exit0.
+  Log SHA256: native60a0f1949d587abb746de678ea037a318b84c540266eb6052c7ecef72be7a72a;
+  codec6848f441c7e5f6ea8a996968698e570aded7d4504839c616ef8fa742b916357d;
+  reference1944f6ae9759376c7911120a512f8ad619b8feb275724fd863be92f2e4231e42;
+  SANAb195ff58578daff8813c715c72f9ef25f13d67f3c0d4af4aabaaef9aa8c8c27f.
