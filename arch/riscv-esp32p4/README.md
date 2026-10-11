@@ -1,11 +1,21 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Typed link maintenance groundwork (2026-10-11): the owner now retains a
+credential-free accepted profile/AP/generation/event revision after a successful
+typed association. Refresh can preserve only that exact acceptance, including
+SAE connection mode6 with BSS metadata6/7; a new same-AP connected event cannot
+inherit it. AP-query991/association36939/callback247/maintenance9416 checks
+each O0/O2 pass; native resource348388B build verified, undeployed. This conservative
+path retires the owner on contradictory connected identity/revision, not automatic
+roaming. Security-change events, complete reconnect/cookie publication, typed
+admission and installed WPA3/DHCP/IP/data qualification remain open.
+
 Station lifecycle owner integration (2026-10-11): successful Hosted START/STOP
 events now invalidate the owned link ledger and AP confirmation. A later
 disconnect or station transition cannot reopen the link from AP-info alone.
 Ledger135, callback247, AP-query448, association36842 and codec289 checks each
 O0/O2 sanitized pass; resource346280B native build verified, undeployed.
-This is observation invalidation, not a peer attempt barrier. Ongoing SAE
+This is observation invalidation, not a peer attempt barrier. Complete SAE
 maintenance, typed capability/admission/cookie publication and real WPA3/IP/data
 qualification remain open; installed firmware/card and C6 update deferral unchanged.
 

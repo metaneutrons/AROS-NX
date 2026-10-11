@@ -12,6 +12,7 @@
 #include <string.h>
 
 typedef uint32_t ULONG;
+typedef int32_t LONG;
 typedef uint8_t UBYTE;
 typedef int BOOL;
 #define FALSE 0
@@ -20,14 +21,7 @@ typedef int BOOL;
 #define P4_WIFI_LINK_UNKNOWN 0u
 #define P4_WIFI_LINK_UP 1u
 #define P4_WIFI_LINK_DOWN 2u
-
-struct p4_wifi_link_info {
-    UBYTE ssid[33];
-    ULONG ssid_length;
-    UBYTE bssid[6];
-    ULONG channel;
-    ULONG authmode;
-};
+#include "wifi_owner_apinfo_types.inc"
 
 struct Task { unsigned marker; };
 struct SignalSemaphore { struct Task *ss_Owner; unsigned depth; };
@@ -89,6 +83,10 @@ struct wifi_probe_context {
     ULONG link_query_revision;
     ULONG link_query_started;
     BOOL link_snapshot_matches_hint;
+    ULONG accepted_profile;
+    ULONG accepted_generation;
+    ULONG accepted_revision;
+    struct p4_wifi_link_info accepted_ap;
 };
 
 struct p4_wifi_scan_result {
@@ -232,6 +230,7 @@ enum fake_exchange_mode {
     FAKE_LATE_SUCCESS,
     FAKE_INTERLEAVE_DOWN,
     FAKE_INTERLEAVE_UP,
+    FAKE_INTERLEAVE_SAME_UP,
     FAKE_INTERLEAVE_GENERATION,
     FAKE_INTERLEAVE_HOST_EPOCH
 };
@@ -277,6 +276,8 @@ static void expect_link_unknown(void)
 
 static void expect_observed_ap(void)
 {
+    ULONG expected_authmode = fixture.context.accepted_profile ?
+        fixture.context.accepted_ap.authmode : (ULONG)fixture.ap_authmode;
     CHECK(test_resource.associated == FALSE);
     CHECK(test_resource.link_state == P4_WIFI_LINK_UP);
     CHECK(test_resource.observed_ap.ssid_length == fixture.ap_ssid_size);
@@ -284,8 +285,7 @@ static void expect_observed_ap(void)
                  fixture.ap_ssid_size) == 0);
     CHECK(memcmp(test_resource.observed_ap.bssid, fixture.ap_bssid, 6u) == 0);
     CHECK(test_resource.observed_ap.channel == fixture.ap_channel);
-    CHECK(test_resource.observed_ap.authmode ==
-          (ULONG)fixture.ap_authmode);
+    CHECK(test_resource.observed_ap.authmode == expected_authmode);
 }
 
 static ULONG fake_now_us(void)
@@ -357,6 +357,38 @@ static int make_link_event_item(struct p4_hosted_inbox_item *item,
     return 1;
 }
 
+static int make_current_ap_event_item(struct p4_hosted_inbox_item *item)
+{
+    struct wire_buffer data, wrapper;
+    uint8_t ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE] = { 0 };
+    ULONG event_authmode = fixture.context.accepted_profile ?
+        fixture.context.accepted_ap.authmode : (ULONG)fixture.ap_authmode;
+
+    if (fixture.ap_ssid_size > sizeof ssid)
+        return 0;
+    memcpy(ssid, fixture.ap_ssid, fixture.ap_ssid_size);
+    wire_init(&data);
+    wire_bytes_field(&data, 1u, ssid, sizeof ssid);
+    wire_uint_field(&data, 2u, (uint32_t)fixture.ap_ssid_size);
+    wire_bytes_field(&data, 3u, fixture.ap_bssid,
+                     sizeof fixture.ap_bssid);
+    wire_uint_field(&data, 4u, fixture.ap_channel);
+    wire_uint_field(&data, 5u, (uint32_t)event_authmode);
+    wire_uint_field(&data, 6u, 1u);
+    wire_init(&wrapper);
+    wire_uint_field(&wrapper, 1u, 0u);
+    wire_bytes_field(&wrapper, 2u, data.bytes, data.size);
+    if (!data.ok || !wrapper.ok || wrapper.size > sizeof item->payload)
+        return 0;
+    memset(item, 0, sizeof *item);
+    item->msg_type = P4_HOSTED_RPC_TYPE_EVENT;
+    item->msg_id = 775u;
+    item->uid = 0u;
+    item->payload_size = wrapper.size;
+    memcpy(item->payload, wrapper.bytes, wrapper.size);
+    return 1;
+}
+
 static int make_ap_response_payload(struct ap_fixture *state,
                                     uint8_t *payload, size_t capacity,
                                     size_t *payload_size)
@@ -385,10 +417,10 @@ static int make_ap_response_payload(struct ap_fixture *state,
                          ssid_size);
         wire_uint_field(&record, 3u, channel);
         wire_uint_field(&record, 6u, (uint32_t)authmode);
-        wire_uint_field(&record, 7u,
-                        state->ap_fault == 4u ? 2u :
-                        (authmode == 3 ? 4u : 0u));
-        wire_uint_field(&record, 8u, authmode == 3 ? 4u : 0u);
+        wire_uint_field(&record, 7u, state->ap_fault == 4u ? 2u :
+                        (authmode == 0 ? 0u : 4u));
+        wire_uint_field(&record, 8u, state->ap_fault == 6u ? 2u :
+                        (authmode == 0 ? 0u : 4u));
     }
     wire_init(&body);
     wire_uint_field(&body, 1u, (uint32_t)state->response_status);
@@ -450,10 +482,14 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
     }
 
     if (state->mode == FAKE_INTERLEAVE_DOWN ||
-        state->mode == FAKE_INTERLEAVE_UP) {
+        state->mode == FAKE_INTERLEAVE_UP ||
+        state->mode == FAKE_INTERLEAVE_SAME_UP) {
         uint32_t event_id = state->mode == FAKE_INTERLEAVE_DOWN ? 776u : 775u;
-        if (!make_link_event_item(&event_item, event_id,
-                state->mode == FAKE_INTERLEAVE_DOWN ? 0x71u : 0x91u) ||
+        int event_ok = state->mode == FAKE_INTERLEAVE_SAME_UP ?
+            make_current_ap_event_item(&event_item) :
+            make_link_event_item(&event_item, event_id,
+                state->mode == FAKE_INTERLEAVE_DOWN ? 0x71u : 0x91u);
+        if (!event_ok ||
             wifi_owner_event(&state->context, &event_item) != 1)
             return 0;
         ++state->event_dispatches;
@@ -579,6 +615,39 @@ static void prepare_hint(const uint8_t *ssid, size_t ssid_size,
     hint->reason = 0u;
 }
 
+static void prepare_typed_acceptance(ULONG profile,
+                                     int32_t event_authmode)
+{
+    uint8_t hint_ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE] = { 0 };
+    ULONG accepted_authmode;
+
+    memcpy(hint_ssid, fixture.ap_ssid, fixture.ap_ssid_size);
+    prepare_hint(hint_ssid, fixture.ap_ssid_size, fixture.ap_bssid,
+                 fixture.ap_channel, event_authmode);
+    fixture.context.accepted_profile = profile;
+    fixture.context.accepted_generation = fixture.context.generation;
+    fixture.context.accepted_revision =
+        fixture.context.link_observation.revision;
+    if (profile == P4_WIFI_FULLMAC_OPEN)
+        accepted_authmode = 0u;
+    else if (profile == P4_WIFI_FULLMAC_WPA2_CCMP)
+        accepted_authmode = 3u;
+    else if (profile == P4_WIFI_FULLMAC_SAE_CCMP_PMF)
+        accepted_authmode = 6u;
+    else
+        accepted_authmode = (ULONG)fixture.ap_authmode;
+    p4host_zero(&fixture.context.accepted_ap,
+                sizeof fixture.context.accepted_ap);
+    memcpy(fixture.context.accepted_ap.ssid, fixture.ap_ssid,
+           fixture.ap_ssid_size);
+    fixture.context.accepted_ap.ssid_length =
+        (ULONG)fixture.ap_ssid_size;
+    memcpy(fixture.context.accepted_ap.bssid, fixture.ap_bssid,
+           sizeof fixture.ap_bssid);
+    fixture.context.accepted_ap.channel = fixture.ap_channel;
+    fixture.context.accepted_ap.authmode = accepted_authmode;
+}
+
 static int query(void)
 {
     return wifi_owner_refresh_link_snapshot(&fixture.context,
@@ -599,9 +668,197 @@ static void expect_match(void)
                  P4_HOSTED_ASSOCIATION_BSSID_SIZE) == 0);
     CHECK(fixture.context.link_snapshot.ap.primary ==
           fixture.context.link_observation.channel);
-    CHECK(fixture.context.link_snapshot.ap.authmode ==
-          fixture.context.link_observation.authmode);
+    if (fixture.context.accepted_profile == P4_WIFI_FULLMAC_SAE_CCMP_PMF)
+        CHECK(fixture.context.link_snapshot.ap.authmode == 6 ||
+              fixture.context.link_snapshot.ap.authmode == 7);
+    else
+        CHECK(fixture.context.link_snapshot.ap.authmode ==
+              fixture.context.link_observation.authmode);
     expect_observed_ap();
+}
+
+static void expect_typed_owner_retired(void)
+{
+    CHECK(fixture.owner.poisoned == 1u);
+    CHECK(fixture.fifo.poisoned == 1u);
+    CHECK(fixture.owner.ids.retired == 1u);
+    CHECK(fixture.owner.ids.active_uid == 0u);
+    CHECK(fixture.host.lock.depth == 0u);
+    CHECK(host_acquire_calls == host_release_calls);
+    expect_link_unknown();
+}
+
+static void prepare_typed_failure(ULONG profile, int32_t event_authmode)
+{
+    prepare_typed_acceptance(profile, event_authmode);
+    memset(&fixture.context.link_snapshot, 0xa5,
+           sizeof fixture.context.link_snapshot);
+    fixture.context.link_snapshot_matches_hint = TRUE;
+    memset(&fixture.control.ap_info, 0x5a, sizeof fixture.control.ap_info);
+}
+
+static void expect_typed_failure(void)
+{
+    CHECK(!query());
+    CHECK(fixture.exchange_calls == 1u);
+    CHECK(fixture.context.link_snapshot_matches_hint == FALSE);
+    CHECK(fixture.context.link_snapshot.status == 0);
+    CHECK(bytes_are_zero(&fixture.control.ap_info,
+                         sizeof fixture.control.ap_info));
+    expect_typed_owner_retired();
+}
+
+static void run_typed_success(ULONG profile, int32_t ap_authmode,
+                              int32_t event_authmode)
+{
+    fixture_init();
+    fixture.ap_authmode = ap_authmode;
+    prepare_typed_acceptance(profile, event_authmode);
+    CHECK(fixture.context.accepted_generation == fixture.context.generation);
+    CHECK(fixture.context.accepted_revision ==
+          fixture.context.link_observation.revision);
+    CHECK(query());
+    CHECK(fixture.exchange_calls == 1u);
+    expect_match();
+
+    /* A repeated lookup reuses only this accepted revision's fresh snapshot. */
+    CHECK(query());
+    CHECK(fixture.exchange_calls == 1u);
+    expect_match();
+
+    fixture.now += 1000000u;
+    CHECK(query());
+    CHECK(fixture.exchange_calls == 2u);
+    expect_match();
+}
+
+static void test_typed_profile_apinfo_acceptance(void)
+{
+    run_typed_success(P4_WIFI_FULLMAC_OPEN, 0, 0);
+    run_typed_success(P4_WIFI_FULLMAC_WPA2_CCMP, 3, 3);
+    run_typed_success(P4_WIFI_FULLMAC_SAE_CCMP_PMF, 6, 6);
+    /* IDF scan authmode 7 is accepted for a successful pure-SAE profile,
+     * while the published credential-free identity remains authmode 6. */
+    run_typed_success(P4_WIFI_FULLMAC_SAE_CCMP_PMF, 7, 6);
+}
+
+static void test_typed_profile_rejections(void)
+{
+    fixture_init();
+    prepare_typed_failure(3u, 3);
+    expect_typed_failure(); /* unsupported profile */
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.context.accepted_generation = 0u;
+    expect_typed_failure();
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.context.accepted_generation--;
+    expect_typed_failure();
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.context.link_observation.generation = 0u;
+    CHECK(query()); /* The event-generation race gate remains conservative. */
+    CHECK(fixture.exchange_calls == 1u);
+    CHECK(fixture.context.link_snapshot_matches_hint == FALSE);
+    CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
+    expect_link_unknown();
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.context.accepted_revision = 0u;
+    expect_typed_failure();
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    ++fixture.context.link_observation.revision;
+    expect_typed_failure();
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.context.accepted_ap.ssid[2] ^= 0x80u;
+    expect_typed_failure();
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.context.accepted_ap.bssid[5] ^= 1u;
+    expect_typed_failure();
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    ++fixture.context.accepted_ap.channel;
+    expect_typed_failure();
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.context.link_observation.ssid[2] ^= 0x80u;
+    expect_typed_failure();
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.context.link_observation.bssid[5] ^= 1u;
+    expect_typed_failure();
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.context.link_observation.channel++;
+    expect_typed_failure();
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 0);
+    expect_typed_failure(); /* event authmode contradicts accepted WPA2 */
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.ap_authmode = 0;
+    expect_typed_failure(); /* peer reports open rather than WPA2 */
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.ap_fault = 4u;
+    expect_typed_failure(); /* wrong pairwise cipher */
+
+    fixture_init();
+    prepare_typed_failure(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.ap_fault = 6u;
+    expect_typed_failure(); /* wrong group cipher */
+
+    fixture_init();
+    fixture.ap_authmode = 6;
+    prepare_typed_failure(0u, 6);
+    expect_typed_failure(); /* AP-only SAE is not an accepted SAE profile */
+}
+
+static void test_typed_acceptance_event_interleaving(void)
+{
+    fixture_init();
+    prepare_typed_acceptance(P4_WIFI_FULLMAC_WPA2_CCMP, 3);
+    fixture.mode = FAKE_INTERLEAVE_SAME_UP;
+
+    /* The same AP's later event still makes the in-flight query stale. */
+    CHECK(query());
+    CHECK(fixture.exchange_calls == 1u);
+    CHECK(fixture.event_dispatches == 1u);
+    CHECK(fixture.context.link_observation.revision == 2u);
+    CHECK(fixture.context.link_snapshot_matches_hint == FALSE);
+    CHECK(bytes_are_zero(&fixture.context.link_snapshot,
+                         sizeof fixture.context.link_snapshot));
+    CHECK(bytes_are_zero(&fixture.control.ap_info,
+                         sizeof fixture.control.ap_info));
+    expect_link_unknown();
+
+    /* The old acceptance cannot authorize the new event revision. */
+    fixture.mode = FAKE_AP_SUCCESS;
+    CHECK(!query());
+    CHECK(fixture.exchange_calls == 2u);
+    CHECK(fixture.context.link_snapshot_matches_hint == FALSE);
+    CHECK(fixture.context.link_snapshot.status == 0);
+    CHECK(bytes_are_zero(&fixture.control.ap_info,
+                         sizeof fixture.control.ap_info));
+    expect_typed_owner_retired();
 }
 
 static void test_exact_request_response_and_dedup(void)
@@ -979,6 +1236,9 @@ int main(void)
     test_uid0_hints_and_interleaved_events();
     test_generation_change_and_deadline_wrap();
     test_station_transition_cannot_reopen_from_snapshot();
+    test_typed_profile_apinfo_acceptance();
+    test_typed_profile_rejections();
+    test_typed_acceptance_event_interleaving();
     if (failures != 0u) {
         fprintf(stderr, "wifi-owner-apinfo: %u checks, %u failures\n",
                 checks, failures);

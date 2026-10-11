@@ -4,19 +4,56 @@ set -eu
 test_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 test_tmp=$(mktemp -d "${TMPDIR:-/tmp}/p4-wifi-owner-apinfo.XXXXXX")
 source_file="$test_root/network/runtime_probe.c"
+bridge_header="$test_root/network/device_bridge.h"
 extract="$test_tmp/wifi_owner_apinfo_extract.inc"
+types="$test_tmp/wifi_owner_apinfo_types.inc"
 owner_object="$test_tmp/hosted_owner_noexchange.o"
 
 cleanup()
 {
 	command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" \
-		"$extract" "$owner_object"
+		"$extract" "$types" "$owner_object"
 	command rm -rf "$test_tmp/test-o0.dSYM" "$test_tmp/test-o2.dSYM"
 	rmdir "$test_tmp"
 }
 trap cleanup EXIT HUP INT TERM
 
 : > "$extract"
+
+# Keep the typed acceptance fields and profile IDs tied to the resource-private
+# bridge declarations. This test deliberately uses only the small production
+# type it needs, not Amiga headers or the complete native translation unit.
+if ! awk '
+    /^struct p4_wifi_link_info \{$/ {
+        struct_count++
+        if (struct_count == 1) capturing = 1
+    }
+    capturing {
+        struct_lines[++struct_line_count] = $0
+        if ($0 == "};") {
+            capturing = 0
+            struct_closed++
+        }
+    }
+    /^#define P4_WIFI_FULLMAC_(OPEN|WPA2_CCMP|SAE_CCMP_PMF)[[:space:]]/ {
+        profile_count++
+        profile_lines[$2] = $0
+    }
+    END {
+        if (struct_count != 1 || struct_closed != 1 || capturing ||
+            struct_line_count == 0 || profile_count != 3 ||
+            !profile_lines["P4_WIFI_FULLMAC_OPEN"] ||
+            !profile_lines["P4_WIFI_FULLMAC_WPA2_CCMP"] ||
+            !profile_lines["P4_WIFI_FULLMAC_SAE_CCMP_PMF"]) exit 1
+        for (i = 1; i <= struct_line_count; ++i) print struct_lines[i]
+        print profile_lines["P4_WIFI_FULLMAC_OPEN"]
+        print profile_lines["P4_WIFI_FULLMAC_WPA2_CCMP"]
+        print profile_lines["P4_WIFI_FULLMAC_SAE_CCMP_PMF"]
+    }
+' "$bridge_header" > "$types"; then
+	echo "could not extract unique AP type and typed profile constants from device_bridge.h" >&2
+	exit 1
+fi
 
 # Each expected normalized signature is checked exactly. The extractor counts
 # definitions, captures one complete brace-balanced body, and rejects changed

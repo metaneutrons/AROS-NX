@@ -212,6 +212,13 @@ struct wifi_probe_context
     ULONG link_query_revision;
     ULONG link_query_started;
     BOOL link_snapshot_matches_hint;
+    /* Credential-free acceptance retained only by a successful typed attempt.
+     * The exact event revision prevents a later same-AP reconnect from
+     * inheriting this acceptance. This is not peer-side attempt correlation. */
+    ULONG accepted_profile;
+    ULONG accepted_generation;
+    ULONG accepted_revision;
+    struct p4_wifi_link_info accepted_ap;
     BOOL association_active;
     BOOL association_exchanging;
     ULONG association_started;
@@ -1082,10 +1089,51 @@ static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context,
             context->link_observation.kind == P4_HOSTED_LINK_STATION_STOP) {
             return 1;
         }
+        if (context->accepted_profile) {
+            BOOL matches = context->accepted_generation == generation &&
+                context->link_observation.generation == generation &&
+                context->accepted_revision != 0 &&
+                context->accepted_revision == revision &&
+                ((context->accepted_profile == P4_WIFI_FULLMAC_OPEN &&
+                    context->accepted_ap.authmode == 0) ||
+                 (context->accepted_profile == P4_WIFI_FULLMAC_WPA2_CCMP &&
+                    context->accepted_ap.authmode == 3) ||
+                 (context->accepted_profile == P4_WIFI_FULLMAC_SAE_CCMP_PMF &&
+                    context->accepted_ap.authmode == 6)) &&
+                context->link_observation.kind == P4_HOSTED_LINK_UP_HINT &&
+                !context->link_observation.status &&
+                context->link_observation.authmode ==
+                    (LONG)context->accepted_ap.authmode &&
+                ap->ssid_size == context->accepted_ap.ssid_length &&
+                ap->primary == context->accepted_ap.channel &&
+                ap->pairwise_cipher == (context->accepted_ap.authmode ? 4 : 0) &&
+                ap->group_cipher == (context->accepted_ap.authmode ? 4 : 0) &&
+                (context->accepted_profile == P4_WIFI_FULLMAC_SAE_CCMP_PMF ?
+                    (ap->authmode == 6 || ap->authmode == 7) :
+                    ap->authmode == (LONG)context->accepted_ap.authmode);
+            if (!ap->ssid_size || ap->ssid_size > 32) matches = FALSE;
+            for (index = 0; matches && index < ap->ssid_size; ++index)
+                if (ap->ssid[index] != context->accepted_ap.ssid[index] ||
+                    ap->ssid[index] != context->link_observation.ssid[index])
+                    matches = FALSE;
+            if (context->link_observation.ssid_length != ap->ssid_size ||
+                context->link_observation.channel != ap->primary)
+                matches = FALSE;
+            for (index = 0; matches && index < 6; ++index)
+                if (ap->bssid[index] != context->accepted_ap.bssid[index] ||
+                    ap->bssid[index] != context->link_observation.bssid[index])
+                    matches = FALSE;
+            /* A contradictory authenticated identity cannot be adopted as a
+             * new link. Retire the owner through its existing failure path. */
+            if (!matches) {
+                p4_hosted_owner_cancel(owner, fifo, generation);
+                return 0;
+            }
+        }
         for (index = 0; index < 6; ++index) nonzero |= ap->bssid[index];
         if (!nonzero || (ap->bssid[0] & 1u) || !ap->ssid_size ||
             ap->ssid_size > 32 || !ap->primary || ap->primary > 14 ||
-            (ap->authmode != 0 && ap->authmode != 3) ||
+            (!context->accepted_profile && ap->authmode != 0 && ap->authmode != 3) ||
             ap->pairwise_cipher != (ap->authmode ? 4 : 0) ||
             ap->group_cipher != (ap->authmode ? 4 : 0)) {
             p4_hosted_owner_cancel(owner, fifo, generation);
@@ -1106,7 +1154,8 @@ static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context,
         base->observed_ap.ssid_length = context->link_snapshot.ap.ssid_size;
         CopyMem(context->link_snapshot.ap.bssid, base->observed_ap.bssid, 6);
         base->observed_ap.channel = context->link_snapshot.ap.primary;
-        base->observed_ap.authmode = context->link_snapshot.ap.authmode;
+        base->observed_ap.authmode = context->accepted_profile ?
+            context->accepted_ap.authmode : (ULONG)context->link_snapshot.ap.authmode;
         base->link_state = P4_WIFI_LINK_UP;
     }
     ReleaseSemaphore(&base->client_lock);
@@ -1114,7 +1163,9 @@ static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context,
         context->link_snapshot.ap.ssid_size != context->link_observation.ssid_length ||
         context->link_snapshot.ap.ssid_size > P4_HOSTED_ASSOCIATION_SSID_SIZE ||
         context->link_snapshot.ap.primary != context->link_observation.channel ||
-        context->link_snapshot.ap.authmode != context->link_observation.authmode)
+        (context->accepted_profile ? context->accepted_ap.authmode :
+            (ULONG)context->link_snapshot.ap.authmode) !=
+                (ULONG)context->link_observation.authmode)
         return 1;
     for (index = 0; index < context->link_snapshot.ap.ssid_size; ++index)
         if (context->link_snapshot.ap.ssid[index] != context->link_observation.ssid[index])
@@ -1415,6 +1466,10 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     runtime->servicing = FALSE;
     base->associated = FALSE;
     base->link_state = P4_WIFI_LINK_UNKNOWN;
+    context->accepted_profile = 0;
+    context->accepted_generation = 0;
+    context->accepted_revision = 0;
+    p4host_zero(&context->accepted_ap, sizeof(context->accepted_ap));
     p4host_zero(&base->observed_ap, sizeof(base->observed_ap));
     p4host_zero(&control->sta_config, sizeof(control->sta_config));
     p4host_zero(&base->confirmed_ap, sizeof(base->confirmed_ap));
@@ -1518,6 +1573,13 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
                     owned.authmode : (ULONG)control->ap_info.ap.authmode;
                 CopyMem(&base->confirmed_ap, &base->observed_ap,
                         sizeof(base->observed_ap));
+                if (owned.fullmac_profile) {
+                    CopyMem(&base->confirmed_ap, &context->accepted_ap,
+                            sizeof(context->accepted_ap));
+                    context->accepted_generation = generation;
+                    context->accepted_revision = revision;
+                    context->accepted_profile = owned.fullmac_profile;
+                }
                 base->link_state = P4_WIFI_LINK_UP;
             }
             /* A radio snapshot is not the device's current selection commit.
@@ -1592,6 +1654,10 @@ static BOOL wifi_device_disconnect(struct P4WifiBase *base)
     p4host_zero(&base->observed_ap, sizeof(base->observed_ap));
     p4host_zero(&control->ap_info, sizeof(control->ap_info));
     control->status = -1;
+    context->accepted_profile = 0;
+    context->accepted_generation = 0;
+    context->accepted_revision = 0;
+    p4host_zero(&context->accepted_ap, sizeof(context->accepted_ap));
     if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
             runtime->checksum, 283u,
             wifi_owner_remaining(context, started, 8000000UL)) &&
@@ -2993,6 +3059,10 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     control->ops.rx = &control->rx_ops;
     control->ops.tx = tx_ops;
     wifi_owner_release(context);
+    context->accepted_profile = 0;
+    context->accepted_generation = 0;
+    context->accepted_revision = 0;
+    p4host_zero(&context->accepted_ap, sizeof(context->accepted_ap));
     if (p4_hosted_link_init(&context->link_observation, context->generation) &&
         p4_hosted_owner_ids_init(owner, context->generation,
                                 context->owner_open_start)) {
@@ -3060,6 +3130,10 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     p4host_zero(&base->observed_ap, sizeof(base->observed_ap));
     p4host_zero(&base->confirmed_ap, sizeof(base->confirmed_ap));
     base->runtime = NULL;
+    context->accepted_profile = 0;
+    context->accepted_generation = 0;
+    context->accepted_revision = 0;
+    p4host_zero(&context->accepted_ap, sizeof(context->accepted_ap));
     base->owner_task = NULL;
     if (base->client && base->callbacks)
         base->callbacks->stopped(base->client);

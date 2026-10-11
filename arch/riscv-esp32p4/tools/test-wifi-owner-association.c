@@ -274,6 +274,24 @@ static void check_confirmed_ap_matches(ULONG authmode)
     CHECK(f.base.link_state == P4_WIFI_LINK_UP);
 }
 
+static void check_typed_acceptance(ULONG profile)
+{
+    CHECK(f.context.accepted_profile == profile);
+    CHECK(f.context.accepted_generation == TEST_GENERATION);
+    CHECK(f.context.accepted_revision != 0u);
+    CHECK(f.context.accepted_revision == f.context.link_observation.revision);
+    CHECK(memcmp(&f.context.accepted_ap, &f.base.confirmed_ap,
+                 sizeof(f.context.accepted_ap)) == 0);
+}
+
+static void check_acceptance_cleared(void)
+{
+    CHECK(f.context.accepted_profile == 0u);
+    CHECK(f.context.accepted_generation == 0u);
+    CHECK(f.context.accepted_revision == 0u);
+    CHECK(bytes_zero(&f.context.accepted_ap, sizeof(f.context.accepted_ap)));
+}
+
 static ULONG fake_now_us(void)
 {
     return fake_now;
@@ -972,6 +990,7 @@ static void check_secret_wiped(void)
 
 static void check_disconnected_down(void)
 {
+    check_acceptance_cleared();
     CHECK(f.base.associated == FALSE);
     CHECK(f.base.link_state == P4_WIFI_LINK_DOWN);
     CHECK(bytes_zero(&f.base.confirmed_ap, sizeof(f.base.confirmed_ap)));
@@ -986,6 +1005,7 @@ static void check_disconnected_down(void)
 
 static void check_disconnect_failure_unknown(void)
 {
+    check_acceptance_cleared();
     CHECK(f.base.associated == FALSE);
     CHECK(f.base.link_state == P4_WIFI_LINK_UNKNOWN);
     CHECK(bytes_zero(&f.base.confirmed_ap, sizeof(f.base.confirmed_ap)));
@@ -1084,6 +1104,7 @@ static void test_fullmac_typed_profile_association(void)
     CHECK(memcmp(&target, &original, sizeof(target)) == 0);
     check_confirmed_ap_matches(0u);
     CHECK(bytes_zero(&f.control.sta_config, sizeof(f.control.sta_config)));
+    check_typed_acceptance(P4_WIFI_FULLMAC_OPEN);
     check_restored(FALSE);
 
     fixture_init();
@@ -1106,6 +1127,7 @@ static void test_fullmac_typed_profile_association(void)
     check_secret_wiped();
     check_restored(FALSE);
 
+    check_typed_acceptance(P4_WIFI_FULLMAC_WPA2_CCMP);
     for (pwe = 1u; pwe <= 3u; ++pwe) {
         fixture_init();
         target_init_typed_sae(&target, pwe, 63u, 1u);
@@ -1126,6 +1148,7 @@ static void test_fullmac_typed_profile_association(void)
         CHECK(f.secret_seen_in_rpc == 1u);
         CHECK(memcmp(&target, &original, sizeof(target)) == 0);
         check_confirmed_ap_matches(6u);
+        check_typed_acceptance(P4_WIFI_FULLMAC_SAE_CCMP_PMF);
         check_secret_wiped();
         check_restored(FALSE);
     }
@@ -1214,6 +1237,7 @@ static void test_fullmac_event_matcher_strict_identity(void)
 
 static void check_sae_association_failed(void)
 {
+    check_acceptance_cleared();
     CHECK(f.base.associated == FALSE);
     CHECK(f.base.link_state == P4_WIFI_LINK_UNKNOWN);
     check_confirmed_ap_cleared();
@@ -1229,6 +1253,11 @@ static void test_fullmac_event_required_and_config_baseline(void)
     for (scenario = 0u; scenario < 2u; ++scenario) {
         fixture_init();
         target_init_typed_sae(&target, 2u, 16u, 1u);
+        /* An abandoned new attempt must not retain an older acceptance. */
+        f.context.accepted_profile = P4_WIFI_FULLMAC_WPA2_CCMP;
+        f.context.accepted_generation = TEST_GENERATION;
+        f.context.accepted_revision = 9u;
+        memset(&f.context.accepted_ap, 0x6a, sizeof(f.context.accepted_ap));
         if (scenario)
             f.event_during_config = 1u;
         CHECK(invoke(&target) == FALSE);
@@ -1802,6 +1831,10 @@ static void test_disconnect_requires_healthy_service_gate(void)
 static void test_disconnect_uses_correlated_not_connected(void)
 {
     fixture_init();
+    f.context.accepted_profile = P4_WIFI_FULLMAC_SAE_CCMP_PMF;
+    f.context.accepted_generation = TEST_GENERATION;
+    f.context.accepted_revision = 9u;
+    memset(&f.context.accepted_ap, 0x6a, sizeof(f.context.accepted_ap));
     f.fail_id = 283u;
     f.fail_status = 0x300f;
     CHECK(invoke_disconnect() == TRUE);
