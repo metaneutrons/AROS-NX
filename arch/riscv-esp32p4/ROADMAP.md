@@ -123,6 +123,7 @@ No ABI7/ABI8/ABI9/ABI10 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| N2M-C | Actual C6 image-to-target compatibility | Source audit: version1 lacks chip revision/eFuse secure-version floor; no complete compatibility producer or installed extension | Explicitly negotiated detected facts; independent installed bootloader policy, actual slot/layout and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
@@ -1294,6 +1295,11 @@ Recheck has no production update caller. Source retention creates no trusted
 manifest, live target/layout compatibility or device-specific recovery proof;
 the authoritative producers for all four job attestations remain open.
 UPDATE-C6 stays unavailable and all three release assertions0.
+The current version1 snapshot has no chip model/revision or eFuse secure_version;
+its capacity and slot roles cannot close image compatibility. A negotiated
+extension can add detected facts, but cannot prove installed bootloader policy
+or bootstrap first-install recovery. CN5 availability has been requested; no
+actual connector orientation, adapter access or restore is verified.
 
 M1 source/host/build foundations are verified within their stated limits;
 native CLI/MUI interaction remains untested. The isolated OTA codec and gated
@@ -38126,3 +38132,36 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   dispatch; qualify the full transfer and secure first-install recovery before
   any C6 write. Real WLAN association/DHCP/traffic/reconnect/combined1800s and
   HTTPS/P4 updater acceptance remain open; no Wi-Fi completion is claimed.
+
+### 2026-10-11 - N2M compatibility-data and first-install dependency audit
+
+- Procedure: inspect actual discovery snapshot, canonical wire version1,
+  C6 IDF collector, image_info and update gates, plus the documented CN5
+  recovery boundary. Source parent1599177d63; no implementation change or
+  hardware process. Version1 contains capacity, normalized partition inventory,
+  slot roles and security known/enabled masks, but no detected chip model,
+  revision or eFuse secure_version. The collector deliberately leaves installed
+  rollback/anti-rollback enforcement unknown. Only tests assign all four update
+  attestations; there is still no production prepared-job producer.
+- Evidence identities: boardtool/discovery.h SHA256
+  179ea2ac84fd87b2e378b93d3bc0d48390ff760ff40db59035f8d728c9c1e0d8;
+  tools/c6-private-firmware/discovery.c SHA256
+  cda3f8a1e5b409dde9aaf6b1625bc5c80366a47fa5fb96a38bafe4d263b401af;
+  boardtool/discovery_wire.h SHA256
+  b958324514be85f115c843de49f194c7cc28572fc5723fb348963be7c5521b61.
+  The local pinned IDF tree
+  `/Volumes/Dev/Build/c6-legacy-log-build.8qQvpV/idf` exposes esp_chip_info
+  (MXX chip revision) and esp_efuse_read_secure_version in its public headers.
+  These supply detected facts, not bootloader-policy or restore attestations.
+- Decision/safety: do not create a target_compatible producer from this
+  incomplete inventory, or silently reuse canonical version1 reserved bytes.
+  A future explicitly negotiated revision needs the missing facts and their
+  provenance. It remains unable to qualify the first install because the
+  extension itself is undeployed. Fabian was asked whether a3.3-V UART adapter
+  and CN5 cable are now available, or for a connector photograph first.
+  Schematic pin numbering is not actual-board orientation or wiring permission.
+  No serial, reset, flash, SD, credentials, eFuse/NVS access or firmware change;
+  all three release assertions0 and UPDATE-C6 unavailable. Physical readiness,
+  actual device security/layout, permitted backups and demonstrated independent
+  recovery are still required before the first C6 write. Full WLAN acceptance
+  and the software updater requirements remain open; no completion claim.

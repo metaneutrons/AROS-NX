@@ -14,6 +14,10 @@ and independent review. DOS/Exec are modeled; no native file interaction or
 recovery is tested. UPDATE-C6 and all three release
 assertions remain off; no hardware, serial, flash, SD or credential action.
 Detailed evidence and limits are in roadmap N2M.
+Compatibility audit: current discovery version1 lacks chip revision and eFuse
+secure_version; its capacity/slot inventory is not full image compatibility.
+Installed bootloader policy and first-install recovery remain unknown. Actual
+CN5 adapter/cable availability was requested, not assumed or exercised.
 
 Bootstrap update release separation (2026-10-11): installing the C6 privacy
 fix must not require that fix already installed. OTA hook registration and
