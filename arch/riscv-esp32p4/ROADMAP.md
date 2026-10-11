@@ -123,6 +123,7 @@ No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| N2T | Explicit accepted-risk WLAN association test | Default-off owner-required test exception host/native-resource build verified; privacy/recovery assertions remain0; OTA unchanged | Matched diagnostic package/deployment, existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
@@ -1272,6 +1273,10 @@ reference firmware example building is not evidence of AROS transport.
 
 ### N2M - board maintenance and adaptive flash layouts
 
+C6 update postponed by Fabian (2026-10-11) in favor of a WLAN test on the
+installed peer. UPDATE-C6 remains disabled; this is a sequencing decision,
+not cancellation of the CLI/MUI updater requirements or a C6 recovery pass.
+
 Bootstrap sequencing correction (2026-10-11): follow the
 [independent C6 first-install runbook](../../docs/plans/esp32-c6-first-install.md).
 CN5 ROM access, actual layout/security and secured restore precede a possible
@@ -1656,6 +1661,17 @@ failure cleanup. Administrative online/MAC readiness are independent of the
 associated traffic gate. A successful target snapshot is not UID0 causal-event
 attribution, IP delivery or native request-lifetime acceptance. Native binding
 must own queued attempts and commit notifications under its cancellation guard.
+
+Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
+after explicit explanation of possible password logging in the unknown
+installed peer and postponed its firmware update. A separate default0
+`P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED` enables association only with the
+persistent owner. Both privacy/recovery assertions and the update assertion
+remain0; no fake verification or OTA permission. Existing timeout, queue,
+cancellation, link and DMA fences remain intact. Credentials must not enter
+tracked files, build flags, artifacts or logs; existing WirelessManager uses
+temporary RAM configuration for the test. Association/DHCP/data/load acceptance
+and host/C6 privacy/recovery qualification remain open.
 Source audit also found the existing SANA ONEVENT mask incompatible with the
 shared driver's CONNECT/DISCONNECT/OFFLINE subscription, and successful
 CONFIGINTERFACE left the interface offline. Per-unit edge latching and
@@ -38435,3 +38451,43 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   "establishes" recovery to one that requires it: no recovery was performed.
   `git diff --check` passes; no software/hardware test is claimed for this
   documentation-only change.
+
+### 2026-10-11 - N2T user-authorized WLAN test preparation, C6 update postponed
+
+- Source parentd6ce9f12be. Fabian postponed the C6 upgrade, requested a WLAN
+  test after explanation of possible installed-peer password logging, and
+  supplied credentials. No credentials are reproduced here or in tracked
+  sources/build flags/test logs. This accepts a diagnostic risk; it does not
+  establish installed C6 identity, privacy, host recovery or update authority.
+- Added default0 `P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED`; value1 permits
+  association independently of verification assertions and requires the
+  persistent owner at compile time. Update hooks remain separately gated;
+  no OTA/verification flag change. Updated the private bridge comment, not ABI.
+  Independent read-only Luna review found that stale contract comment, now
+  corrected; review performed no hardware/build/test/credential operation.
+- Actual initializer assignment extracted into host wrapper: defaults and all
+  eight verification/test combinations pass at O0/O2 with ASan/UBSan,18runs/
+  36checks, exit0. Default/build/owner/OTA separation source checks pass; these
+  do not execute a complete native initializer or physical owner refusal.
+  Source extraction digest1b0c008cbeb4223339c2d71288eadfaed7583f0b5f871fd15ff50bcf8afb3f4d.
+- Evidence `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/association-test.AVMDjK/`.
+  Host gate log76bf7f3e8e4bc6e55a2874048e531c08c62ab300c9844a41aef3100ceef81574.
+  Deleted all actual resource `.o`; `gmake -j4 kernel-esp32p4wifi-probe-quick`
+  with jc1060p470c-v2, SDIO_SETUP/INIT/REPLY/OWNER=1, OWNER_CPU=1, diagnostic=1,
+  all three verification assertions0. Actual process exit0 and resource sources
+  recompile/link. Resource337052B SHA256
+  9d7e88795bb67983a5ce38806d47f1023b07bd484175eb6aa6cc001081208745;
+  build log25c5b627df8af2759bcb091ea877d5b4045e71fd7c3d2da05069be37b0491857.
+  An initial guessed Libs artifact path failed; actual artifact is AROS/Devs.
+- No repackaging/deployment, serial/reset/flash/SD operation or credential
+  transmission yet. Existing AROS WirelessManager is the test client, not a
+  new networking app. Next: verify the matched package and executable/config
+  delivery route, then native association/DHCP/traffic. Interactive tests need
+  fresh readiness. UPDATE-C6 remains unavailable; C6 firmware stays untouched.
+- Existing extracted OTA registration regression also exits0:16 configurations
+  at O0/O2,480 checks including both association states and rejected privacy-
+  coupling mutation. This matrix uses the existing helper wrapper, not physical
+  update operations. Attempting a compiler override containing extra flags
+  fails127 because the script treats CC as a single executable; that second
+  invocation is not a pass. New test-flag/OTA separation is source-audited,
+  not claimed as a complete positive-flag runtime qualification.

@@ -161,9 +161,10 @@ struct p4_wifi_device_callbacks {
  * new selection must invalidate its own committed link before starting work.
  * A rejected queue completion must not set associated. ABI4 changed this success
  * semantic: an older client expecting associate to open traffic must be refused.
- * association_enabled is false until both C6 and host privacy/recovery release
- * assertions are granted; builds cannot verify those hardware gates. Even an
- * open target must not bypass either gate. Failure/cancellation
+ * association_enabled requires both C6 and host privacy/recovery release
+ * assertions, or an explicit owner-required diagnostic test-risk exception.
+ * The exception verifies neither hardware gate and never grants OTA permission.
+ * An open target does not itself grant association. Failure/cancellation
  * never permits traffic. Neither ready nor S2_ONLINE establishes link-up. */
 
 /* ABI6 disconnect is owner-service-only, under client_lock and without a

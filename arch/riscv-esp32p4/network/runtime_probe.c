@@ -28,6 +28,12 @@
 #ifndef P4_WIFI_C6_UPDATE_RECOVERY_VERIFIED
 #define P4_WIFI_C6_UPDATE_RECOVERY_VERIFIED 0
 #endif
+#ifndef P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED
+#define P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED 0
+#endif
+#if P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED && !P4_WIFI_HOSTED_OWNER
+#error "Diagnostic association requires the persistent owner"
+#endif
 #if P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED && !P4_WIFI_HOSTED_OWNER
 #error "C6 verified association requires the persistent owner"
 #endif
@@ -3666,11 +3672,13 @@ static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
     P4WifiBase->scan = wifi_device_scan;
     P4WifiBase->associate = wifi_device_associate;
     P4WifiBase->disconnect = wifi_device_disconnect;
-    /* These are explicit release assertions, not runtime attestations. A C6
-     * logging fix alone cannot qualify the host's DMA/cache recovery path. */
+    /* Test exception is explicit accepted risk, NOT a privacy/recovery proof.
+     * It grants association only; OTA registration never consumes this flag.
+     * Keep release assertions false in an unqualified diagnostic build. */
     P4WifiBase->association_enabled =
-        (P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED &&
-         P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED) ? TRUE : FALSE;
+        ((P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED &&
+          P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED) ||
+         P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED) ? TRUE : FALSE;
     P4WifiBase->associated = FALSE;
     P4WifiBase->link_state = P4_WIFI_LINK_UNKNOWN;
     p4host_zero(&P4WifiBase->observed_ap, sizeof(P4WifiBase->observed_ap));

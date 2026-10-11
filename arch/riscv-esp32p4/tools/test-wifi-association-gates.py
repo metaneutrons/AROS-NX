@@ -21,6 +21,7 @@ EXTRACTOR = PORT / "tools" / "test-sdmmc-host.py"
 GATES = (
     "P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED",
     "P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED",
+    "P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED",
 )
 
 
@@ -81,8 +82,9 @@ def extract_assignment() -> tuple[str, str, str]:
     )
     assignment_pattern = re.compile(
         r"(?m)^[ \t]*P4WifiBase->association_enabled[ \t]*=[ \t]*\r?\n"
-        r"[ \t]*\(P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED[ \t]*&&[ \t]*\r?\n"
-        r"[ \t]*P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED\)[ \t]*"
+        r"[ \t]*\(\(P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED[ \t]*&&[ \t]*\r?\n"
+        r"[ \t]*P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED\)[ \t]*\|\|[ \t]*\r?\n"
+        r"[ \t]*P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED\)[ \t]*"
         r"\?[ \t]*TRUE[ \t]*:[ \t]*FALSE[ \t]*;"
     )
     assignments = list(assignment_pattern.finditer(init_body))
@@ -106,9 +108,23 @@ def extract_assignment() -> tuple[str, str, str]:
             f"owner #error guard; found {len(owner_guards)}"
         )
 
+    diagnostic_guard = (
+        '#if P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED && !P4_WIFI_HOSTED_OWNER\n'
+        '#error "Diagnostic association requires the persistent owner"\n'
+        '#endif'
+    )
+    if source.count(diagnostic_guard) != 1:
+        raise ValueError("diagnostic association must require the persistent owner")
+    ota_init = extract_function(
+        RUNTIME_SOURCE, "wifi_ota_hooks_init",
+        r"\bstatic\s+void\s+wifi_ota_hooks_init\s*\(",
+    )
+    if "P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED" in ota_init:
+        raise ValueError("diagnostic association must not enable OTA hooks")
+
     makefile = NETWORK_MMAKEFILE.read_text(encoding="utf-8")
     mmake_blocks = "\n".join(audit_build_flag(makefile, name) for name in GATES)
-    digest_material = "\n".join((defaults, assignment, owner_guards[0].group(0), mmake_blocks))
+    digest_material = "\n".join((defaults, assignment, owner_guards[0].group(0), diagnostic_guard, ota_init, mmake_blocks))
     return defaults, assignment, digest_material
 
 
@@ -180,10 +196,14 @@ def main() -> int:
 
     configurations = (
         ("defaults-unset", (), 0),
-        ("C6-0-HOST-0", (0, 0), 0),
-        ("C6-0-HOST-1", (0, 1), 0),
-        ("C6-1-HOST-0", (1, 0), 0),
-        ("C6-1-HOST-1", (1, 1), 1),
+        ("C6-0-HOST-0", (0, 0, 0), 0),
+        ("C6-0-HOST-1", (0, 1, 0), 0),
+        ("C6-1-HOST-0", (1, 0, 0), 0),
+        ("C6-1-HOST-1", (1, 1, 0), 1),
+        ("TEST-C6-0-HOST-0", (0, 0, 1), 1),
+        ("TEST-C6-0-HOST-1", (0, 1, 1), 1),
+        ("TEST-C6-1-HOST-0", (1, 0, 1), 1),
+        ("TEST-C6-1-HOST-1", (1, 1, 1), 1),
     )
     environment = os.environ.copy()
     environment["ASAN_OPTIONS"] = "detect_leaks=0:halt_on_error=1"
@@ -219,6 +239,7 @@ def main() -> int:
                     command += [
                         f"-DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED={values[0]}",
                         f"-DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED={values[1]}",
+                        f"-DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED={values[2]}",
                     ]
                 command += [str(source_path), "-o", str(binary)]
                 print(f"Building {label} at O{optimization} with ASan/UBSan")

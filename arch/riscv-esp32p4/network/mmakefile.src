@@ -36,6 +36,11 @@ endif
 ifeq ($(P4_WIFI_C6_UPDATE_RECOVERY_VERIFIED),1)
 USER_CPPFLAGS += -DP4_WIFI_C6_UPDATE_RECOVERY_VERIFIED=1
 endif
+# Diagnostic build only: accepts unqualified credential/recovery risk, not
+# a verified release or C6 update permission. Never include credentials here.
+ifeq ($(P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED),1)
+USER_CPPFLAGS += -DP4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=1
+endif
 ifeq ($(P4_WIFI_SDIO_RESET_QUERY),1)
 USER_CPPFLAGS += -DP4_WIFI_SDIO_RESET_QUERY=1
 endif

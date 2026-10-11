@@ -1,5 +1,13 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Explicit WLAN test exception (2026-10-11): Fabian requested an association
+test after the unknown installed C6 password-logging risk was explained,
+postponing the C6 update. `P4_WIFI_ASSOCIATION_TEST_RISK_ACCEPTED=1` now permits
+diagnostic association with the persistent owner without setting any privacy/
+recovery verification assertion. It defaults0, contains no credentials and
+does not enable OTA. This is accepted test risk, not production qualification;
+hardware association/DHCP/traffic remains untested. Release assertions stay0.
+
 C6 bootstrap sequencing (2026-10-11): the
 [first-install runbook](../../docs/plans/esp32-c6-first-install.md) separates
 independent CN5 ROM recovery/app-only installation from the later AROS OTA
