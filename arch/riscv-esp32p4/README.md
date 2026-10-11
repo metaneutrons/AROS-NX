@@ -1,5 +1,14 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Station lifecycle codec (2026-10-11): existing Hosted EVENT773 START/STOP
+metadata is now decoded with bounded, owned scalar output. Literal289 and
+pinned protobuf-c711 checks each O0/O2 sanitized pass; RV32 and complete
+resource345840B builds pass, undeployed. Stop/Start events drain callbacks
+ordered before them, but the inspected sources do not establish a complete
+producer/attempt barrier. No observed peer failure or need for a C6 update
+follows from that documentation gap. Owner lifecycle integration, typed
+admission and real association/IP/data qualification remain open.
+
 Typed initial-link event gate (2026-10-11): FullMAC owner completion now
 requires a fresh matching STA_CONNECTED observation after the local pre-Connect
 baseline, a stable correlated current-AP snapshot and exact connection authmode.

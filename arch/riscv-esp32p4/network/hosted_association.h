@@ -60,6 +60,19 @@ struct p4_hosted_sta_disconnected_event {
     int32_t rssi;
 };
 
+struct p4_hosted_wifi_event {
+    int32_t status;
+    int32_t event_id;
+};
+
+/* IDs pinned from the local ESP-IDF 5.4.3 wifi_event_t enum. Compatibility
+ * with the installed C6 peer is unqualified; these values imply no lifecycle
+ * barrier. */
+enum p4_hosted_wifi_event_id {
+    P4_HOSTED_WIFI_EVENT_STA_START = 2,
+    P4_HOSTED_WIFI_EVENT_STA_STOP = 3
+};
+
 /* Encode WifiSetConfig(STA), request ID 284. All schema fields are supported;
  * proto3 scalar defaults are omitted, while threshold field 9 and PMF field 10
  * are always emitted (the pinned slave dereferences both messages). Byte
@@ -107,5 +120,13 @@ int p4_hosted_association_connected_event(
 int p4_hosted_association_disconnected_event(
     const struct p4_hosted_rpc *rpc,
     struct p4_hosted_sta_disconnected_event *result);
+
+/* Decode EVENT 773 (Rpc_Event_WifiEventNoArgs), UID zero. The pinned schema
+ * has direct int32 resp=1 and event_id=2 fields, not a nested event message.
+ * Proto3 defaults are accepted, including an empty body; signed and unknown
+ * event IDs are preserved. A remote error retains status and clears event_id.
+ * Decoding does not establish a station lifecycle barrier. */
+int p4_hosted_association_wifi_event(
+    const struct p4_hosted_rpc *rpc, struct p4_hosted_wifi_event *result);
 
 #endif

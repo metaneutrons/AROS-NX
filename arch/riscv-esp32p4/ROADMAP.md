@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy builds verified; typed initial-link event+snapshot gate native built and owner36842 checks each O0/O2 sanitized; typed provider not wired/advertised, ongoing lifecycle and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and initial-event gate builds verified; lifecycle773 codec native built, literal289/reference711 checks each O0/O2 sanitized; typed provider not wired/advertised, producer/attempt barrier, ongoing lifecycle and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1929,6 +1929,12 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   Pinned Hosted queue-order audit confirms that RPC replies do not drain
   pending WiFi event-loop callbacks. A producer-side barrier or equivalent
   attempt correlation remains required before repeatable typed admission.
+  The existing EVENT773 station START/STOP decoder is now native built and
+  independently compared with pinned generated protobuf-c. It is not yet
+  connected to the owner ledger. FIFO lifecycle markers fence earlier queued
+  callbacks only; source inspection does not establish producer quiescence
+  or exclude stale lifecycle markers. Resolve this admission assumption with
+  a qualified peer/lifecycle contract, not an arbitrary settle delay.
 - SAE-M4 qualification (depends on M3): fresh synchronized native target scan,
   explicit SAE/required-PMF association, DHCP/routes/DNS and real bidirectional
   traffic; disconnect/reconnect and SD/graphics/two-hart load. Preserve original
@@ -39876,3 +39882,50 @@ remain open. No partial stage is a complete A/B update system.
   capability/BeginIO remain unwired. Next: qualify the new event gate, then
   implement ongoing typed link maintenance and opener/cookie publication
   before advertisement/deployment and the full native N2T acceptance gate.
+
+### 2026-10-11 - N2-SAE station lifecycle codec and barrier audit
+
+- Scope: decode existing Hosted EVENT773/UID0 with direct signed int32
+  status1/event_id2 fields. Output owns both scalars; proto3 omitted fields
+  default to0. Error status clears event identity; unknown signed IDs remain
+  metadata, never an inferred station transition. Bounds, duplicate fields,
+  wire types, truncation, overflow and aliasing are checked before publication.
+  START2/STOP3 values are pinned IDF5.4.3 constants, not installed-peer proof.
+  No ABI change or owner/capability activation.
+- Primary verification: literal codec289 checks each O0/O2 ASan/UBSan and
+  freestanding import guard exit0. Independent generated protobuf-c oracle711
+  checks each O0/O2 exit0, including IDs0/2/3/127/INT32_MIN/MAX crossed with
+  statuses0/7/-19. Primary review confirms failure output is unchanged and
+  remote error cannot masquerade as STOP. RV32 -Werror object26316B SHA256
+  `cf85d3d68293a92746600d1cb66fd4e64473dc2dfbb713f7e4a53938bdf5d14b`.
+- Native build: all exact generated esp32p4wifi resource objects invalidated;
+  sequential quick target exits0, complete module link, no error/warning
+  diagnostics. JC-v2/setup/init/reply/owner1, ownerCPU1, accepted-risk1;
+  C6 privacy/host privacy/C6 update recovery remain0. Resource345840B SHA256
+  `5139079bb5cbf7267ea4eb845484b67f46728b68a00f85fcf9af6cc29b5f8c9d`.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/sae-lifecycle-codec.ePeGsE/`.
+  Codec log SHA256
+  `24ce40f97adb522e20bf8ddce91421210d8754ad2df4b324853742d002f1ce23`;
+  reference log SHA256
+  `6ae5753876a4ec88d525c6299661419ced7ea696411bb7d6a7e71b5072ef3c96`.
+  Complete native build log SHA256
+  `078ee5d9e833f7b54d4f2c6c30b3192acdcf0c1aecf04c494baab3cd68f60ec0`.
+- Independent source audit: pinned Hosted slave_control.c753-794 ACKs
+  Start/Stop API return; generic event branch683-695 forwards their actual
+  lifecycle events, serialized at2557-2581. IDF esp_event.c644/955-966 uses
+  FIFO dequeue/post-to-back: receipt of STOP fences callbacks already queued
+  ahead of it. esp_wifi.h407-418 documents station stop/control-block release;
+  wifi.rst245-260 documents resulting STOP/CONNECTED events, not a complete
+  producer-ordering guarantee. The driver implementation is binary-only here.
+  No inspected RPC adds an event-loop fence. A late old callback must not be
+  stamped with a new attempt ID merely because it arrives during that attempt.
+  This is an unresolved guarantee, not evidence that the installed peer
+  violates ordering, and does not itself justify or authorize a C6 update.
+- Safety/status: source/native build verified, undeployed. Installed
+  core/BSP/card unchanged; no serial opening, reset, flash, SD write or
+  credential transmission. C6 upgrade remains postponed. Next: integrate
+  station lifecycle observation with bounded owner teardown/attempt handling,
+  explicitly resolve the ordering assumption and ongoing authenticated-link
+  publication before typed admission; then native WPA3/DHCP/DNS/traffic,
+  reconnect and original N2T load/privacy/reset acceptance, not codec-only PASS.

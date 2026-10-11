@@ -952,6 +952,37 @@ static void test_event_refusals(void)
     CHECK(memcmp(&connected, &connected_before, sizeof connected) == 0);
 }
 
+/* Use the pinned generated producer, not a second hand-written encoder. */
+static void test_wifi_lifecycle_event(void)
+{
+    static const int32_t ids[] = {0, 2, 3, 127, INT32_MIN, INT32_MAX};
+    static const int32_t statuses[] = {0, 7, -19};
+    size_t i, j;
+    for (i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i) {
+        for (j = 0; j < sizeof(statuses) / sizeof(statuses[0]); ++j) {
+            Rpc rpc = RPC__INIT;
+            RpcEventWifiEventNoArgs event = RPC__EVENT__WIFI_EVENT_NO_ARGS__INIT;
+            struct p4_hosted_rpc envelope;
+            struct p4_hosted_wifi_event decoded;
+            uint8_t bytes[TEST_WIRE_CAPACITY];
+            size_t size;
+            event.resp = statuses[j];
+            event.event_id = ids[i];
+            rpc.msg_type = RPC_TYPE__Event;
+            rpc.msg_id = RPC_ID__Event_WifiEventNoArgs;
+            rpc.uid = 0;
+            rpc.payload_case = RPC__PAYLOAD_EVENT_WIFI_EVENT_NO_ARGS;
+            rpc.event_wifi_event_no_args = &event;
+            size = pack_rpc(&rpc, bytes, sizeof(bytes));
+            CHECK(size != 0);
+            CHECK(p4_hosted_rpc_decode(bytes, size, &envelope));
+            CHECK(p4_hosted_association_wifi_event(&envelope, &decoded));
+            CHECK(decoded.status == statuses[j]);
+            CHECK(decoded.event_id == (statuses[j] ? 0 : ids[i]));
+        }
+    }
+}
+
 int main(void)
 {
     test_set_config_requests();
@@ -960,6 +991,7 @@ int main(void)
     test_connected_event();
     test_disconnected_event();
     test_event_refusals();
+    test_wifi_lifecycle_event();
     printf("hosted_association_reference: %u semantic checks passed\n", checks);
     return 0;
 }

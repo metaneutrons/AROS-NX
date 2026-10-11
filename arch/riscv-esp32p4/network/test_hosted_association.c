@@ -108,6 +108,17 @@ static void expect_disconnected_refusal(const struct p4_hosted_rpc *rpc)
     CHECK(memcmp(&result, &before, sizeof result) == 0);
 }
 
+static void expect_wifi_event_refusal(const struct p4_hosted_rpc *rpc)
+{
+    struct p4_hosted_wifi_event result;
+    struct p4_hosted_wifi_event before;
+
+    memset(&result, 0x3c, sizeof result);
+    memcpy(&before, &result, sizeof before);
+    CHECK(!p4_hosted_association_wifi_event(rpc, &result));
+    CHECK(memcmp(&result, &before, sizeof result) == 0);
+}
+
 static void test_literal_requests(void)
 {
     static const uint8_t empty_set_config[] = {
@@ -660,6 +671,168 @@ static void test_event_refusals(void)
     }
 }
 
+static void test_wifi_event_no_args(void)
+{
+    static const uint8_t station_start[] = { 0x10, 0x02 };
+    static const uint8_t event_id_min[] = {
+        0x10, 0x80, 0x80, 0x80, 0x80, 0xf8, 0xff, 0xff, 0xff, 0xff, 0x01
+    };
+    static const uint8_t event_id_max[] = {
+        0x10, 0xff, 0xff, 0xff, 0xff, 0x07
+    };
+    static const uint8_t unknown_fields[] = {
+        0x19, 1, 2, 3, 4, 5, 6, 7, 8,
+        0x22, 0x02, 0xaa, 0xbb,
+        0x2d, 1, 2, 3, 4,
+        0x30, 0x07,
+        0x10, 0x7f
+    };
+    static const uint8_t remote_error_with_stop[] = {
+        0x08, 0x01, 0x10, 0x03
+    };
+    static const uint8_t duplicate_status[] = {
+        0x08, 0x00, 0x08, 0x01
+    };
+    static const uint8_t duplicate_event_id[] = {
+        0x10, 0x02, 0x10, 0x03
+    };
+    static const uint8_t bad_status_wire[] = { 0x0a, 0x00 };
+    static const uint8_t bad_event_id_wire[] = { 0x12, 0x00 };
+    static const uint8_t int32_overflow[] = {
+        0x10, 0x80, 0x80, 0x80, 0x80, 0x08
+    };
+    static const uint8_t varint_overflow[] = {
+        0x10, 0x80, 0x80, 0x80, 0x80, 0x80,
+        0x80, 0x80, 0x80, 0x80, 0x02
+    };
+    static const uint8_t truncated_varint[] = { 0x10, 0x80 };
+    static const uint8_t truncated_unknown_bytes[] = {
+        0x1a, 0x02, 0xaa
+    };
+    static const uint8_t group_field[] = { 0x1b, 0x1c };
+    static const uint8_t reserved_wire[] = { 0x1e };
+    struct p4_hosted_rpc rpc;
+    struct p4_hosted_wifi_event result;
+
+    /* Empty is a valid proto3 message: both scalar fields default to zero. */
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u, NULL, 0u);
+    memset(&result, 0xa5, sizeof result);
+    CHECK(p4_hosted_association_wifi_event(&rpc, &result));
+    CHECK(result.status == 0 && result.event_id == 0);
+
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            station_start, sizeof station_start);
+    CHECK(p4_hosted_association_wifi_event(&rpc, &result));
+    CHECK(result.status == 0);
+    CHECK(result.event_id == P4_HOSTED_WIFI_EVENT_STA_START);
+
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            event_id_min, sizeof event_id_min);
+    CHECK(p4_hosted_association_wifi_event(&rpc, &result));
+    CHECK(result.event_id == INT32_MIN);
+
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            event_id_max, sizeof event_id_max);
+    CHECK(p4_hosted_association_wifi_event(&rpc, &result));
+    CHECK(result.event_id == INT32_MAX);
+
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            unknown_fields, sizeof unknown_fields);
+    CHECK(p4_hosted_association_wifi_event(&rpc, &result));
+    CHECK(result.status == 0 && result.event_id == 127);
+
+    /* A failed remote operation must never surface its event_id as STOP. */
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            remote_error_with_stop, sizeof remote_error_with_stop);
+    CHECK(p4_hosted_association_wifi_event(&rpc, &result));
+    CHECK(result.status == 1 && result.event_id == 0);
+
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            duplicate_status, sizeof duplicate_status);
+    expect_wifi_event_refusal(&rpc);
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            duplicate_event_id, sizeof duplicate_event_id);
+    expect_wifi_event_refusal(&rpc);
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            bad_status_wire, sizeof bad_status_wire);
+    expect_wifi_event_refusal(&rpc);
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            bad_event_id_wire, sizeof bad_event_id_wire);
+    expect_wifi_event_refusal(&rpc);
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            int32_overflow, sizeof int32_overflow);
+    expect_wifi_event_refusal(&rpc);
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            varint_overflow, sizeof varint_overflow);
+    expect_wifi_event_refusal(&rpc);
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            truncated_varint, sizeof truncated_varint);
+    expect_wifi_event_refusal(&rpc);
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            truncated_unknown_bytes, sizeof truncated_unknown_bytes);
+    expect_wifi_event_refusal(&rpc);
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            group_field, sizeof group_field);
+    expect_wifi_event_refusal(&rpc);
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            reserved_wire, sizeof reserved_wire);
+    expect_wifi_event_refusal(&rpc);
+
+    /* Exact class, ID, and UID are mandatory for this event. */
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_RESPONSE, 773u, 0u,
+            station_start, sizeof station_start);
+    expect_wifi_event_refusal(&rpc);
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 772u, 0u,
+            station_start, sizeof station_start);
+    expect_wifi_event_refusal(&rpc);
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 774u, 0u,
+            station_start, sizeof station_start);
+    expect_wifi_event_refusal(&rpc);
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 1u,
+            station_start, sizeof station_start);
+    expect_wifi_event_refusal(&rpc);
+
+    {
+        uint8_t exact_limit[P4_HOSTED_ASSOCIATION_MAX_BODY_SIZE] = {
+            0x82, 0x01, 0xfc, 0x01
+        };
+        uint8_t too_large[P4_HOSTED_ASSOCIATION_MAX_BODY_SIZE + 1u] = { 0 };
+
+        memset(exact_limit + 4u, 0xa5, sizeof exact_limit - 4u);
+        set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+                exact_limit, sizeof exact_limit);
+        CHECK(p4_hosted_association_wifi_event(&rpc, &result));
+        CHECK(result.status == 0 && result.event_id == 0);
+
+        set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+                too_large, sizeof too_large);
+        expect_wifi_event_refusal(&rpc);
+    }
+
+    set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+            NULL, sizeof station_start);
+    expect_wifi_event_refusal(&rpc);
+
+    {
+        uint8_t payload[sizeof(struct p4_hosted_wifi_event)];
+        struct p4_hosted_wifi_event before;
+
+        memcpy(payload, station_start, sizeof station_start);
+        memset(payload + sizeof station_start, 0,
+               sizeof payload - sizeof station_start);
+        set_rpc(&rpc, P4_HOSTED_RPC_TYPE_EVENT, 773u, 0u,
+                payload, sizeof payload);
+        memset(payload, 0x6d, sizeof payload);
+        memcpy(&before, payload, sizeof before);
+        CHECK(!p4_hosted_association_wifi_event(
+            &rpc, (struct p4_hosted_wifi_event *)(void *)payload));
+        CHECK(memcmp(payload, &before, sizeof before) == 0);
+    }
+
+    CHECK(!p4_hosted_association_wifi_event(
+        &rpc, (struct p4_hosted_wifi_event *)(void *)&rpc));
+}
+
 int main(void)
 {
     test_literal_requests();
@@ -668,6 +841,7 @@ int main(void)
     test_status_responses();
     test_owned_events();
     test_event_refusals();
+    test_wifi_event_no_args();
     printf("hosted association: %lu checks\n", checks);
     return 0;
 }

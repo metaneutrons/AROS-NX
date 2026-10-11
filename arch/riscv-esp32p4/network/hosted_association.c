@@ -7,6 +7,7 @@
 #define ASSOCIATION_REQ_SET_CONFIG 284u
 #define ASSOCIATION_EVENT_CONNECTED 775u
 #define ASSOCIATION_EVENT_DISCONNECTED 776u
+#define ASSOCIATION_EVENT_WIFI_EVENT_NO_ARGS 773u
 #define ASSOCIATION_SCRATCH_SIZE \
     (4u * P4_HOSTED_ASSOCIATION_MAX_REQUEST_SIZE)
 
@@ -760,6 +761,42 @@ static int parse_disconnected_body(
     return seen_ssid && seen_bssid;
 }
 
+static int parse_wifi_event_no_args(
+    const uint8_t *bytes, size_t size,
+    struct p4_hosted_wifi_event *result)
+{
+    struct reader reader = { bytes, size, 0u };
+    int seen_status = 0, seen_event_id = 0;
+
+    while (reader.offset < reader.size) {
+        uint32_t field;
+        unsigned int wire_type;
+
+        if (!reader_key(&reader, &field, &wire_type))
+            return 0;
+        switch (field) {
+        case 1u:
+            if (wire_type != 0u || seen_status ||
+                !reader_int32(&reader, &result->status))
+                return 0;
+            seen_status = 1;
+            break;
+        case 2u:
+            if (wire_type != 0u || seen_event_id ||
+                !reader_int32(&reader, &result->event_id))
+                return 0;
+            seen_event_id = 1;
+            break;
+        default:
+            if (!reader_skip(&reader, wire_type))
+                return 0;
+            break;
+        }
+    }
+
+    return 1;
+}
+
 int p4_hosted_association_connected_event(
     const struct p4_hosted_rpc *rpc,
     struct p4_hosted_sta_connected_event *result)
@@ -808,6 +845,23 @@ int p4_hosted_association_disconnected_event(
         decoded = (struct p4_hosted_sta_disconnected_event){ 0 };
         decoded.status = status;
     }
+    *result = decoded;
+    return 1;
+}
+
+int p4_hosted_association_wifi_event(
+    const struct p4_hosted_rpc *rpc, struct p4_hosted_wifi_event *result)
+{
+    struct p4_hosted_wifi_event decoded = { 0 };
+
+    if (!rpc_input_is_valid(rpc, result, sizeof *result) ||
+        rpc->msg_type != P4_HOSTED_RPC_TYPE_EVENT ||
+        rpc->msg_id != ASSOCIATION_EVENT_WIFI_EVENT_NO_ARGS || rpc->uid != 0u ||
+        !parse_wifi_event_no_args(rpc->payload, rpc->payload_size, &decoded))
+        return 0;
+
+    if (decoded.status != 0)
+        decoded.event_id = 0;
     *result = decoded;
     return 1;
 }
