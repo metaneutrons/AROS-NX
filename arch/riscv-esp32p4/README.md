@@ -1,5 +1,22 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+OTA requester drainage (2026-10-11): ESP32Board now links a shared metadata
+client and a private native prepared-job adapter. Submission is once-only;
+caller cancellation/CTRL-C is sticky, not task termination. Invalid or
+foreign observations remain pending; only a correlated DONE result followed
+by successful discard permits requester exit. Metadata contention retries no
+transport, and an owner stall deliberately keeps the requester alive. A drained
+WAIT_REBOOT/commit-unknown/incomplete result is not installation or recovery.
+This adapter is not invoked by CLI/GUI operation dispatch: authenticated source,
+live target/layout, independent restore and a qualified full-image budget still
+must be supplied. UPDATE-C6 remains disabled and both release assertions0.
+Nine actual-client scenarios/448 checks pass at O0/O2, with and without
+ASan/UBSan, including a primary repeat. Native ESP32Board builds126464B;
+independent review closed terminal-validation and fixture-baseline gaps.
+Hooks are mocked in host tests; abstract progress values are not native queue
+or SDIO evidence. No hardware or credential action accompanied this change;
+artifact hashes and limitations are recorded in roadmap N2M's dated entry.
+
 Current OTA bridge (2026-10-11): ABI10 appends typed owned-job submit/poll/
 cancel/discard hooks. Every hook is NULL unless the persistent owner and both
 privacy/recovery release assertions are enabled; the current build keeps both

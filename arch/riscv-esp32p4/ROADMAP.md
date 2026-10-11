@@ -115,15 +115,15 @@ gate: compensated output is not the native display contract.
 
 ## Master progress
 
-Current source radio/device pairing is private ABI9 (N2M terminal fencing).
+Current source radio/device pairing is private ABI10 (N2M optional OTA queue).
 ABI6 counts/artifacts in N1A/N2A/N2/N2L remain historical lifecycle evidence,
 not the current deployment pair. The historical ABI8 candidate package passes
-all42 loader audits; ABI9 standalone modules/tool are not repackaged or installed.
+all42 loader audits; ABI10 standalone modules/tool are not repackaged or installed.
 No ABI7/ABI8/ABI9/ABI10 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check host/build verified, seven mutations rejected; ABI10 optional hooks,80-check registration matrix and1057-check SANA consumer host/build verified; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Shared CLI/GUI worker dispatch and qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check host/build verified, seven mutations rejected; ABI10 optional hooks,80-check registration matrix and1057-check SANA consumer host/build verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1422,6 +1422,18 @@ registration/consumer tests pass:80 hook checks across eight gate combinations
 at O0/O2 and1057 SANA checks each O0/O2 with ASan/UBSan. An actual-init source
 guard rejects a missing registration call; whole-init runtime is not tested.
 No frontend update action is enabled.
+The shared requester metadata client and private native prepared-job adapter
+now link into ESP32Board. One submit is followed by task-bound polling; caller
+cancellation is sticky and retains the task until correlated DONE and
+confirmed discard. Malformed/foreign metadata remains pending, never successful
+cleanup. Contention retries metadata only; no reset, replay, renewed budget or
+automatic postboot confirmation occurs. A persistent owner fault can retain
+the requester indefinitely; task-kill/orphan recovery remains unsupported.
+Actual CLI/GUI admission/progress messaging is not connected to this adapter.
+Nine actual-client scenarios/448 checks pass per O0/O2 configuration, both
+plain and ASan/UBSan, including primary repeat; native tool builds126464B.
+Independent code/fixture review is complete. Mock hooks and abstract progress
+values do not execute the real queue, Exec lifecycle or SDIO transport.
 No enabled hook/frontend write action or qualified full-image lease is
 provided; release flags remain0 and UPDATE-C6 stays unavailable.
 Actual-source host tests and fresh Core1 module builds pass; Exec locks,
@@ -37829,3 +37841,82 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   recovery before any C6 write. Real association/DHCP/bidirectional traffic,
   reconnect/combined1800s, installed privacy and HTTPS/P4 updates remain open.
   The full Wi-Fi objective remains active.
+
+### 2026-10-11 - N2M shared OTA requester drainage, no frontend admission
+
+- Change: `boardtool/ota_client` submits once, keeps the task/token alive through
+  sticky cancellation, polls copied observations and accepts only correlated
+  DONE followed by successful discard. BUSY retries metadata, never OTA.
+  Token/generation/state, monotonic bounded progress and terminal enum/boolean/
+  chunk/byte/BEGIN/END relations are checked. Malformed observations request
+  cancellation and remain pending; later drainage retains the unconfirmed flag.
+  Queue-only empty LEASE_FAILED/CANCELLED_BEFORE_BEGIN/INVALID_INPUT results
+  are distinct from full engine results. INSTALLED/POSTBOOT_FAILED cannot be
+  supplied by this transfer queue. No source pointer survives submission.
+- Native integration: ESP32Board links a private prepared-job adapter with
+  exact ABI10/full-size/all-four-hook checks, pre-submit CTRL-C refusal and
+  same-task poll/cancel/discard. No CLI/GUI operation dispatch calls it yet;
+  authenticated prepared-job admission and GUI progress messaging remain open.
+  Persistent owner failure keeps the requester pending indefinitely; no task
+  kill, reset, automatic replay, deadline renewal or installation claim follows.
+- Native evidence: exact tool object directory invalidated before every build;
+  `workbench-tools-esp32board-quick`, JC1060-v2, owner CPU1, SDIO/INIT/reply/
+  owner switches1 and both privacy/recovery release assertions0. Initial
+  processes3055/46837 and enum-validation process34638 exit0; later count
+  validation final process71863 exits0. Earlier successful artifacts/logs are
+  retained, not substituted for the final source. Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/ota-client.uTdzW1/`.
+  Final `ESP32Board-final-counts`126464B SHA256
+  3e4c623f659137de548e89754c4d92c73580e89e1a1e85e74b2fc2e1fbb6bc8e;
+  `native-build-final-counts.log` SHA256
+  77ed0c5cb0a40ca4035c397302482681af2658aa654cf1ccd46d3ccc706404b8.
+  All three client functions and the native adapter are linked definitions,
+  not merely headers; this is a DOS executable build, not a boot-module
+  loader audit or native runtime acceptance.
+- Review: independent read-only review identified weak DONE field validation;
+  enum/flag and exact chunk/byte/attempt constraints were added. Compatibility
+  against the actual queue's early shapes and engine's accounting was checked.
+  Scoped host fixture verification is recorded below; no Exec/SDIO/C6 runtime
+  qualification follows from those mocks.
+- Regression: frontend parity and actual generated architecture/CPU target
+  selection tests exit0. Three parity counterprobes are rejected. Logs
+  `frontend-parity.log` SHA256
+  d56edd2c5b25245debae1373b198f7e69a87f81de4b7ff378dad045cb4bf9bd5;
+  `frontend-target.log` SHA256
+  07c57e09d879c65bcb7d2af84aacbdf42f1af307c21140ec7dfdf7f91a31d862.
+- Client tests: actual `ota_client.c`, not a copied model, compiled with fake
+  callbacks: nine scenarios/448 checks per O0/O2, with and without ASan/UBSan,
+  warnings-as-errors. Worker final directory `board-ota-client.Kzwxx2xx`,
+  primary repeated directory `board-ota-client.JSUgBG6T`, beside the native
+  evidence directory; actual primary process42590 exit0. The two sanitized
+  O0 run logs match SHA256
+  1007f1cdcf2c5b657fcc698ec44095f40a18e29538a5eaaed0334ef79f08df66;
+  `client-primary.log` SHA256
+  03583f3a4d1894f704518eb78feba2f2baf79ff97699ee384177be3fe4eac20c.
+  Coverage includes BUSY/cancel/discard contention without replay, refusal,
+  foreign/stale/malformed metadata, monotonicity, forbidden state regression,
+  terminal snapshot preservation, the three actual empty early-result shapes
+  and canonical WAIT_REBOOT without installation promotion. Independent
+  fixture review found an already-invalid negative DONE baseline; corrected
+  tests start from otherwise valid full-byte DONE and exact early dispositions.
+  Abstract2/4-byte progress for an8-byte image tests client monotonicity only;
+  actual engine progress for that image would be0/8. Real runtime queue,
+  native adapter calls, scheduling, GUI and hardware are not executed here.
+- Preserved failed fixture runs: `board-ota-client.cmvkkJcG/O0.run.log`
+  records a wrong expected cancellation count (the fixture had already
+  requested cancellation before its malformed-input sequence); SHA256
+  50fd03fd2369ec8285040a408ad38fe25aeda2d55d93987afb2524427ec0d7cf.
+  The runner additionally used zsh's reserved read-only `status` parameter;
+  its top-level exit was not captured and is not claimed. The fixture count
+  and parameter name were corrected. `board-ota-client.LMcxYYx9` plain
+  O0/O2 passed445 checks, but O0 sanitizer aborted on unsupported macOS leak
+  detection; worker reported exit134, and its retained run log SHA256 is
+  31d9fb932fc4db22a3864e4771665270c26b6a119871f6c347c7895837c3b09f.
+  O2 sanitizer was not reached there. Final portable ASan/UBSan runs omit
+  the unsupported leak option; no leak-detector qualification is claimed.
+- Safety/next: no hardware, serial, flash, SD write, credentials, package/image
+  or release-flag change. UPDATE-C6 stays unavailable. Complete trusted live
+  target/source admission, GUI progress/cancel messaging and qualified full-
+  image budget, plus independently secured first-install restore. Installed
+  C6 privacy/identity, association/DHCP/bidirectional frames/reconnect/combined
+  1800s and HTTPS/P4 updates remain open; the Wi-Fi goal is not complete.

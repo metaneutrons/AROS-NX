@@ -2,7 +2,8 @@
 
 include $(SRCDIR)/config/aros.cfg
 
-FILES := main worker check_file image hash layout layout_file layout_gui discovery_native \
+FILES := main worker check_file image hash layout layout_file layout_gui discovery_native ota_native \
+    ../../../arch/riscv-esp32p4/boardtool/ota_client \
     ../../../arch/riscv-esp32p4/boardtool/discovery_client \
     ../../../arch/riscv-esp32p4/boardtool/discovery_wire \
     ../../../arch/riscv-esp32p4/boardtool/discovery

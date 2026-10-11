@@ -124,6 +124,15 @@ secured recovery path; source development and read-only file checks do not.
 
 ## Delivery and normative acceptance
 
+Requester drainage foundation (2026-10-11): the tool links the shared
+`boardtool/ota_client` and private `boardtool_ota_prepared` native adapter.
+Accepted submission is never replayed; cancellation remains pending through
+correlated DONE and confirmed discard. Invalid metadata is not safe completion.
+An owner stall retains the submitting task, not a fabricated timeout success.
+No current operation dispatch calls the adapter. Authenticated prepared-job
+admission, GUI progress/cancellation messaging, full-image lease qualification,
+device proofs and independent first-install restore remain acceptance gates.
+
 ### Proposed C6 read-only discovery extension
 
 The pinned schema has only OTA_BEGIN/WRITE/END; none returns capacity,

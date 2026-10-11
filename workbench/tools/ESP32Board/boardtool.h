@@ -10,6 +10,7 @@
 
 #include "layout.h"
 #include "../../../arch/riscv-esp32p4/boardtool/discovery_client.h"
+#include "../../../arch/riscv-esp32p4/boardtool/ota_client.h"
 
 #define BOARDTOOL_PATH_MAX   512
 #define BOARDTOOL_SHA256_LEN 64
@@ -103,5 +104,10 @@ LONG boardtool_dispatch(ULONG operation, struct BoardToolMessage *message);
 int boardtool_check_c6(const char *path, const char *sha256,
                        char *status, size_t capacity);
 int boardtool_discover_c6(struct board_client_observation *, char *, size_t);
+/* Internal prepared-job drainage only; not wired to UPDATE-C6. Caller storage
+ * must be disjoint and live throughout the call. Success means drained, not
+ * installed. Persistent owner failure intentionally keeps the worker alive. */
+int boardtool_ota_prepared(const struct p4_wifi_ota_request *,
+    struct p4_wifi_ota_observation *, int *);
 
 #endif
