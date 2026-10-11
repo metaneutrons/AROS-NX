@@ -147,7 +147,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; corrected SSID decoder yields GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and one-file-delta64-MiB image host verified, not SD deployed; initial watchdog continuity unresolved; privacy/recovery assertions0 | Synchronize native Prefs deployment/security display; existing WirelessManager temporary RAM association/DHCP/traffic/reconnect/load; no C6 write or privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; corrected SSID decoder yields GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and one-file-delta64-MiB image SD deployed/readback verified, visual result pending; initial watchdog continuity unresolved; privacy/recovery assertions0 | Return card and synchronize native security display; existing WirelessManager temporary RAM association/DHCP/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1740,10 +1740,10 @@ Corrected device run now shows the GUI network list, with remote6/decoded6/
 nonempty6/workaround0. Prefs displays '?' because its legacy IE-only label
 does not consume explicit security summaries. A strict negotiated summary label
 is host tested77 checks each O0/O2 and native Prefs153004B build verified,
-and one-file-delta64-MiB image host verified, not SD deployed;
+and one-file-delta64-MiB image SD deployed/readback verified, visual result pending;
 missing/malformed/unsupported data must never say open.
-Continuation is blocked on freshly confirmed physical SD transfer; repeated
-read-only host inventories show no external physical medium. No automatic write.
+Physical SD-transfer blocker is resolved by fresh confirmation and verified
+deployment. Card return and native sight-test readiness remain required.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -39390,3 +39390,31 @@ remain open. No partial stage is a complete A/B update system.
   association/DHCP/routes/DNS/bidirectional/reconnect/shared-load gates remain
   unproven. Resume on fresh card-in-reader confirmation, identify medium anew,
   backup and readback-verify before synchronized device acceptance.
+
+### 2026-10-11 - N2T security-display image SD deployment and readback
+
+- Fabian confirms card in Mac reader and requests continuation, resolving the
+  prior physical-transfer blocker. New inventory identifies sole external
+  physical /dev/disk21, USB MassStorageClass/removable/127865454592B/512-byte
+  sectors, AROSP4TEST FAT32. No cached disk number trusted. Image rehash matches
+  5a1db5e225da8d742d381a3e097b795904d6bed076b044389307c160f7585f2e.
+- Evidence security-image.wfrXgw under the documented wifi-2026-10-11 root.
+  Unmount succeeds; raw prefix read twice (session63457 exit0), each67108864B;
+  independent cmp0 and SHA256
+  9e8edc1a6ea6cab1699eff60021e61bba2697165af4a38efda3fb625c39b8f1a.
+  sd-before-security-read1.bin/read2.bin preserve the full overwritten range,
+  not the entire127.9GB card. Backup read-only mounted as virtual disk24;
+  check-manifest confirms332/332 old entries exactly, excluding only known
+  macOS mount noise. This explains bytehash differing from pristine baseline
+  without accepting unknown runtime-file changes. Virtual disk24 detached0;
+  actual disk21s1 confirmed unmounted before write.
+- Fail-fast session2684 actual exit0: write exactly offset0/67108864B to
+  /dev/rdisk21, sync, independent full-range readback, cmp0 and same candidate
+  SHA2565a1db5e...; eject disk21 succeeds. All bytes beyond64MiB untouched.
+  Only Prefs/WiFi153004B/hash8f00ba8f... differs among332 runtime entries;
+  matched ABI11 WLAN device and all other331 records unchanged.
+- No serial/board flash/reset, C6/bootloader/table or credential action. No
+  boot/security-label sight PASS from storage verification. Return card to
+  JC1060, fresh native-test readiness, then scan/security display before
+  existing AROS association/DHCP/routes/DNS/bidirectional/reconnect/load gates.
+  Privacy/recovery assertions remain0; watchdog continuity remains unresolved.

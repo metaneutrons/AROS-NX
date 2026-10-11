@@ -1,8 +1,9 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
-WLAN continuation currently blocked on physical SD transfer (2026-10-11):
-the verified security-display image is ready, but no card-in-reader confirmation
-or external physical medium is present. No write/retest is started automatically.
+WLAN security-display SD deployment (2026-10-11): after fresh card-transfer
+confirmation the64-MiB image is written and independently byte-exact readback
+verified, with double-read affected-prefix backup. Card ejected; native label
+sight test and actual association/DHCP/traffic remain pending.
 
 Native GUI scan observed (2026-10-11): after the SSID terminator correction,
 Fabian confirms the network list is shown. The correlated native scan reports
@@ -11,7 +12,7 @@ Security displays '?' because installed Prefs reads only authentic IEs, not
 the driver's explicit security summary. Strict capability-gated display is now
 host tested77 cases each O0/O2 sanitized and native Prefs153004B build verified,
 and a one-file-delta64-MiB image is independently filesystem/manifest verified,
-but not yet installed on SD;
+now SD deployed/readback verified, not yet visually verified;
 association/DHCP/traffic and reset continuity remain open. No credentials sent.
 
 Native scan projection correction (2026-10-11): a synchronized scan reports
