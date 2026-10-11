@@ -198,7 +198,9 @@ static void wpa_supplicant_timeout(void *eloop_ctx, void *timeout_ctx)
 		bssid = wpa_s->pending_bssid;
 	wpa_msg(wpa_s, MSG_INFO, "Authentication with " MACSTR " timed out.",
 		MAC2STR(bssid));
-	wpa_blacklist_add(wpa_s, bssid);
+	/* A bounded local FullMAC timeout does not prove an AP rejection. */
+	if (!wpa_s->fullmac_profile)
+		wpa_blacklist_add(wpa_s, bssid);
 	wpa_sm_notify_disassoc(wpa_s->wpa);
 	wpa_supplicant_disassociate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
 	wpa_s->reassociate = 1;
@@ -644,6 +646,9 @@ int wpa_supplicant_reload_configuration(struct wpa_supplicant *wpa_s)
 	}
 
 	eapol_sm_invalidate_cached_session(wpa_s->eapol);
+	/* Retire borrowed configuration identity before freeing/replacing it. */
+	if (wpa_s->fullmac_profile)
+		wpa_supplicant_disassociate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
 	old_ssid = wpa_s->current_ssid;
 	wpa_s->current_ssid = NULL;
 	if (old_ssid != wpa_s->current_ssid)
@@ -796,6 +801,90 @@ static int wpa_supplicant_summary_has_data(
 {
 	return summary->flags || summary->proto || summary->key_mgmt ||
 		summary->pairwise_cipher || summary->group_cipher;
+}
+
+
+/* Whole-profile selection, separate from legacy FOURWAY/PSK semantics.
+ * PMF/PWE are required client policy, not inferred scan observations. */
+int wpa_supplicant_fullmac_config_match(struct wpa_supplicant *wpa_s,
+	struct wpa_ssid *ssid, const struct wpa_driver_capa *capa,
+	const struct wpa_security_summary *summary,
+	unsigned int *profile, unsigned int *pwe)
+{
+	const unsigned int required = WPA_DRIVER_FLAGS_SECURITY_SUMMARY |
+		WPA_DRIVER_FLAGS_FULLMAC_ASSOCIATION | WPA_DRIVER_FLAGS_CANCEL_PENDING;
+	const unsigned int profiles = WPA_FULLMAC_PROFILE_OPEN |
+		WPA_FULLMAC_PROFILE_WPA2_CCMP | WPA_FULLMAC_PROFILE_SAE_CCMP_PMF;
+	const unsigned int modes = WPA_FULLMAC_SAE_PWE_HNP |
+		WPA_FULLMAC_SAE_PWE_H2E | WPA_FULLMAC_SAE_PWE_BOTH;
+	size_t i, len;
+	unsigned int selected, method = 0;
+
+	if (profile) *profile = 0;
+	if (pwe) *pwe = 0;
+	if (!wpa_s || !ssid || !capa || !summary || !profile || !pwe ||
+	    (wpa_s->drv_flags & required) != required ||
+	    (capa->flags & required) != required ||
+	    (wpa_s->drv_flags & (WPA_DRIVER_FLAGS_SME |
+				WPA_DRIVER_FLAGS_USER_SPACE_MLME)) ||
+	    (capa->flags & (WPA_DRIVER_FLAGS_SME |
+			   WPA_DRIVER_FLAGS_USER_SPACE_MLME)) ||
+	    (capa->fullmac_profiles & ~profiles) || !capa->fullmac_profiles ||
+	    (capa->fullmac_sae_pwe_modes & ~modes) ||
+	    (!!(capa->fullmac_profiles & WPA_FULLMAC_PROFILE_SAE_CCMP_PMF) !=
+	     !!capa->fullmac_sae_pwe_modes) ||
+	    capa->fullmac_diagnostic_risk > 1 ||
+	    ssid->fullmac_allow_diagnostic < 0 ||
+	    ssid->fullmac_allow_diagnostic > 1 ||
+	    (capa->fullmac_diagnostic_risk && !ssid->fullmac_allow_diagnostic) ||
+	    ssid->disabled || ssid->mode != WPAS_MODE_INFRA || ssid->mixed_cell ||
+	    (ssid->auth_alg && ssid->auth_alg != WPA_AUTH_ALG_OPEN) ||
+	    ssid->proto != WPA_PROTO_RSN ||
+	    ssid->pairwise_cipher != WPA_CIPHER_CCMP ||
+	    ssid->group_cipher != WPA_CIPHER_CCMP ||
+	    !ssid->ssid || !ssid->ssid_len || ssid->ssid_len > 32)
+		return 0;
+	for (i = 0; i < ssid->ssid_len; ++i)
+		if (!ssid->ssid[i]) return 0;
+	for (i = 0; i < NUM_WEP_KEYS; ++i)
+		if (ssid->wep_key_len[i]) return 0;
+	if (ssid->key_mgmt == WPA_KEY_MGMT_SAE) {
+		if (!wpa_security_summary_sae(summary) || ssid->passphrase ||
+		    ssid->psk_set || !ssid->sae_password ||
+		    !ssid->sae_password_len || ssid->sae_password_len > 63)
+			return 0;
+		for (i = 0; i < ssid->sae_password_len; ++i)
+			if (!ssid->sae_password[i]) return 0;
+		selected = WPA_FULLMAC_PROFILE_SAE_CCMP_PMF;
+		if (capa->fullmac_sae_pwe_modes & WPA_FULLMAC_SAE_PWE_BOTH)
+			method = WPA_FULLMAC_SAE_PWE_BOTH;
+		else if (capa->fullmac_sae_pwe_modes & WPA_FULLMAC_SAE_PWE_H2E)
+			method = WPA_FULLMAC_SAE_PWE_H2E;
+		else if (capa->fullmac_sae_pwe_modes & WPA_FULLMAC_SAE_PWE_HNP)
+			method = WPA_FULLMAC_SAE_PWE_HNP;
+		else return 0;
+	} else if (ssid->key_mgmt == WPA_KEY_MGMT_PSK) {
+		if (!wpa_security_summary_protected(summary) ||
+		    summary->proto != WPA_PROTO_RSN ||
+		    summary->pairwise_cipher != WPA_CIPHER_CCMP ||
+		    summary->group_cipher != WPA_CIPHER_CCMP ||
+		    ssid->sae_password || ssid->sae_password_len)
+			return 0;
+#ifdef CONFIG_IEEE80211W
+		if (ssid->ieee80211w != NO_MGMT_FRAME_PROTECTION) return 0;
+#endif
+		if (ssid->passphrase) {
+			for (len = 0; len < 64 && ssid->passphrase[len]; ++len)
+				if ((unsigned char)ssid->passphrase[len] < 32 ||
+				    (unsigned char)ssid->passphrase[len] > 126) return 0;
+			if (len < 8 || len > 63) return 0;
+		} else if (!ssid->psk_set) return 0;
+		selected = WPA_FULLMAC_PROFILE_WPA2_CCMP;
+	} else return 0;
+	if (!(capa->fullmac_profiles & selected)) return 0;
+	*profile = selected;
+	*pwe = method;
+	return 1;
 }
 
 
@@ -1160,6 +1249,96 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
  *
  * This function is used to request %wpa_supplicant to associate with a BSS.
  */
+static int wpa_supplicant_associate_fullmac(struct wpa_supplicant *wpa_s,
+	struct wpa_bss *bss, struct wpa_ssid *ssid)
+{
+	struct wpa_driver_capa capa;
+	struct wpa_driver_associate_params params;
+	struct wpa_ssid *old_ssid;
+	unsigned int profile, pwe;
+	int changed, ret;
+
+	/* No configuration-only or genuine-IE fallback: this path consumes the
+	 * explicit, exact singleton summary qualified by the opened device. */
+	if (!bss || is_zero_ether_addr(bss->bssid) || (bss->bssid[0] & 1) ||
+	    bss->ssid_len != ssid->ssid_len || bss->ssid_len > 32 ||
+	    !ssid->ssid || os_memcmp(bss->ssid, ssid->ssid, bss->ssid_len) ||
+	    (ssid->bssid_set && os_memcmp(bss->bssid, ssid->bssid, ETH_ALEN)) ||
+	    wpa_bss_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE) ||
+	    wpa_bss_get_ie(bss, WLAN_EID_RSN) ||
+	    wpa_drv_get_capa(wpa_s, &capa) < 0 ||
+	    !wpa_supplicant_fullmac_config_match(wpa_s, ssid, &capa,
+		&bss->security_summary, &profile, &pwe))
+		return -1;
+	/* Retire a previous attempt/link first, including a same-network retry. */
+	if (wpa_s->fullmac_profile || wpa_s->wpa_state >= WPA_ASSOCIATING)
+		wpa_supplicant_disassociate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
+	wpa_supplicant_cancel_scan(wpa_s);
+	wpa_supplicant_cancel_auth_timeout_no_blacklist(wpa_s);
+	wpabuf_free(wpa_s->pending_eapol_rx);
+	wpa_s->pending_eapol_rx = NULL;
+	wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, NULL, 0);
+	wpa_sm_set_ap_wpa_ie(wpa_s->wpa, NULL, 0);
+	wpa_sm_set_ap_rsn_ie(wpa_s->wpa, NULL, 0);
+	wpa_sm_set_config(wpa_s->wpa, NULL);
+	eapol_sm_notify_config(wpa_s->eapol, NULL, NULL);
+	eapol_sm_notify_portEnabled(wpa_s->eapol, FALSE);
+	eapol_sm_notify_portValid(wpa_s->eapol, FALSE);
+	eapol_sm_notify_eap_success(wpa_s->eapol, FALSE);
+	old_ssid = wpa_s->current_ssid;
+	wpa_s->current_ssid = ssid;
+	wpa_s->current_bss = bss;
+	wpa_s->fullmac_ssid = ssid;
+	wpa_s->fullmac_profile = profile;
+	wpa_s->fullmac_pwe = pwe;
+	wpa_s->fullmac_summary = bss->security_summary;
+	wpa_s->fullmac_ssid_len = bss->ssid_len;
+	os_memcpy(wpa_s->fullmac_ssid_bytes, bss->ssid, bss->ssid_len);
+	os_memcpy(wpa_s->fullmac_bssid, bss->bssid, ETH_ALEN);
+	changed = !is_zero_ether_addr(wpa_s->bssid);
+	os_memset(wpa_s->bssid, 0, ETH_ALEN);
+	os_memcpy(wpa_s->pending_bssid, bss->bssid, ETH_ALEN);
+	if (changed) wpas_notify_bssid_changed(wpa_s);
+	wpa_s->key_mgmt = ssid->key_mgmt;
+	wpa_s->pairwise_cipher = wpa_s->group_cipher = WPA_CIPHER_CCMP;
+	wpa_s->mgmt_group_cipher = 0; /* no fabricated AP management suite */
+	wpa_s->ap_ies_from_associnfo = 0;
+	wpa_s->reassociate = 0;
+	wpa_supplicant_set_state(wpa_s, WPA_ASSOCIATING);
+	if (old_ssid != ssid) wpas_notify_network_changed(wpa_s);
+	os_memset(&params, 0, sizeof(params));
+	params.bssid = bss->bssid;
+	params.ssid = bss->ssid;
+	params.ssid_len = bss->ssid_len;
+	params.freq = bss->freq;
+	params.pairwise_suite = params.group_suite = CIPHER_CCMP;
+	params.key_mgmt_suite = key_mgmt2driver(ssid->key_mgmt);
+	params.auth_alg = WPA_AUTH_ALG_OPEN;
+	params.mode = IEEE80211_MODE_INFRA;
+	params.drop_unencrypted = 1;
+	params.fullmac_profile = profile;
+	params.fullmac_allow_diagnostic = ssid->fullmac_allow_diagnostic;
+	params.fullmac_sae_pwe_mode = pwe;
+	if (profile == WPA_FULLMAC_PROFILE_SAE_CCMP_PMF) {
+		params.sae_password = ssid->sae_password;
+		params.sae_password_len = ssid->sae_password_len;
+	} else if (ssid->passphrase)
+		params.passphrase = ssid->passphrase;
+	else params.psk = ssid->psk;
+	ret = wpa_drv_associate(wpa_s, &params);
+	/* Params only borrow the selected network's secret for the call. ACK is
+	 * pending, never port authorization or a synthetic link event. */
+	os_memset(&params, 0, sizeof(params));
+	if (ret < 0) {
+		wpa_supplicant_event(wpa_s, EVENT_ASSOC_FAILED, NULL);
+		return -1;
+	}
+	if (wpa_s->fullmac_profile && wpa_s->wpa_state == WPA_ASSOCIATING)
+		wpa_supplicant_req_auth_timeout(wpa_s, 20, 0);
+	return 0;
+}
+
+
 void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 			      struct wpa_bss *bss, struct wpa_ssid *ssid)
 {
@@ -1175,14 +1354,20 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 	int assoc_failed = 0;
 	struct wpa_ssid *old_ssid;
 
-	/* The typed driver transport is staged separately from selection and
-	 * authenticated-link integration. Until that caller is wired, fail SAE
-	 * explicitly rather than falling through legacy PSK/plaintext paths. */
-	if (ssid->key_mgmt & WPA_KEY_MGMT_SAE) {
-		wpa_msg(wpa_s, MSG_WARNING,
-			"WPA: SAE FullMAC selection is not yet integrated");
+	if ((ssid->key_mgmt & WPA_KEY_MGMT_SAE) ||
+	    (bss && ssid->key_mgmt == WPA_KEY_MGMT_PSK &&
+	     (wpa_s->drv_flags & WPA_DRIVER_FLAGS_FULLMAC_ASSOCIATION) &&
+	     !wpa_bss_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE) &&
+	     !wpa_bss_get_ie(bss, WLAN_EID_RSN) &&
+	     wpa_security_summary_protected(&bss->security_summary))) {
+		if (wpa_supplicant_associate_fullmac(wpa_s, bss, ssid) < 0)
+			wpa_msg(wpa_s, MSG_WARNING,
+				"WPA: Refused or failed typed FullMAC association");
 		return;
 	}
+	/* A change back to a legacy profile retires any typed attempt first. */
+	if (wpa_s->fullmac_profile)
+		wpa_supplicant_disassociate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
 
 	if (ssid->mode == WPAS_MODE_AP) {
 #ifdef CONFIG_AP
@@ -1931,6 +2116,10 @@ void wpa_supplicant_rx_eapol(void *ctx, const u8 *src_addr,
 			     const u8 *buf, size_t len)
 {
 	struct wpa_supplicant *wpa_s = ctx;
+	/* Firmware owns both SAE and its subsequent 4-way/keying operation.
+	 * Never queue or replay uncorrelated frames into the host RSN machine. */
+	if (wpa_s->fullmac_profile || wpa_s->key_mgmt == WPA_KEY_MGMT_SAE)
+		return;
 
 	wpa_printf(MSG_DEBUG, "RX EAPOL from " MACSTR, MAC2STR(src_addr));
 	wpa_hexdump(MSG_MSGDUMP, "RX EAPOL", buf, len);

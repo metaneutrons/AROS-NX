@@ -7,6 +7,7 @@
 
 #define BIT(n) (1U << (n))
 #include "common/defs.h"
+#include "common/security_summary.h"
 
 #include "sana2-assoc-failed-state-constants.inc"
 
@@ -15,12 +16,16 @@
 #define MSG_DEBUG 0
 typedef unsigned char u8;
 
+struct wpa_ssid { int key_mgmt; };
+static struct wpa_ssid fixture_ssid;
+static void wpabuf_free(void *buffer) { free(buffer); }
+
 struct wpa_supplicant {
 	enum wpa_states wpa_state;
 	u8 bssid[ETH_ALEN];
 	u8 pending_bssid[ETH_ALEN];
 	void *current_bss;
-	void *current_ssid;
+	struct wpa_ssid *current_ssid;
 	void *eapol;
 	void *wpa;
 	int key_mgmt;
@@ -28,6 +33,14 @@ struct wpa_supplicant {
 	int ap_ies_from_associnfo;
 	int interface_removed;
 	int disconnected;
+	unsigned int fullmac_profile, fullmac_pwe;
+	struct wpa_ssid *fullmac_ssid;
+	struct wpa_security_summary fullmac_summary;
+	u8 fullmac_bssid[ETH_ALEN], fullmac_ssid_bytes[32];
+	size_t fullmac_ssid_len;
+	void *pending_eapol_rx;
+	struct { long sec, usec; } pending_eapol_rx_time;
+	u8 pending_eapol_rx_src[ETH_ALEN];
 };
 
 typedef void (*eloop_timeout_handler)(void *, void *);
@@ -317,7 +330,7 @@ static void init_supplicant(struct wpa_supplicant *wpa_s,
 	wpa_s->pending_bssid[4] = 0xee;
 	wpa_s->pending_bssid[5] = 0xff;
 	wpa_s->current_bss = (void *) (uintptr_t) 0x1234;
-	wpa_s->current_ssid = (void *) (uintptr_t) 0x4567;
+	wpa_s->current_ssid = &fixture_ssid;
 	wpa_s->eapol = (void *) (uintptr_t) 0x2345;
 	wpa_s->wpa = (void *) (uintptr_t) 0x3456;
 	wpa_s->key_mgmt = WPA_KEY_MGMT_PSK;

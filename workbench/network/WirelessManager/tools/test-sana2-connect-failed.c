@@ -55,6 +55,7 @@ struct wpa_driver_sana2_data {
 	int fullmac_caps_valid;
 	struct Sana2FullMACCapabilities fullmac_caps;
 	ULONG active_association_cookie;
+	ULONG active_fullmac_profile;
 };
 
 static unsigned int scenario_count;

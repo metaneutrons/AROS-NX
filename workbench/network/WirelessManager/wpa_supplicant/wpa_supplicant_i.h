@@ -17,6 +17,7 @@
 
 #include "utils/list.h"
 #include "common/defs.h"
+#include "common/security_summary.h"
 
 extern const char *wpa_supplicant_version;
 extern const char *wpa_supplicant_license;
@@ -328,6 +329,13 @@ struct wpa_supplicant {
 			   * before this has been cleared */
 	struct wpa_ssid *current_ssid;
 	struct wpa_bss *current_bss;
+	/* Typed firmware-authenticated attempt/link, never software SAE state.
+	 * Snapshots contain identity/policy only, not credentials. */
+	unsigned int fullmac_profile, fullmac_pwe;
+	struct wpa_ssid *fullmac_ssid;
+	struct wpa_security_summary fullmac_summary;
+	u8 fullmac_bssid[6], fullmac_ssid_bytes[32];
+	size_t fullmac_ssid_len;
 	int ap_ies_from_associnfo;
 	unsigned int assoc_freq;
 
@@ -450,6 +458,11 @@ int wpa_supplicant_driver_init(struct wpa_supplicant *wpa_s);
 int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 			      struct wpa_bss *bss, struct wpa_ssid *ssid,
 			      u8 *wpa_ie, size_t *wpa_ie_len);
+struct wpa_driver_capa;
+int wpa_supplicant_fullmac_config_match(struct wpa_supplicant *wpa_s,
+	struct wpa_ssid *ssid, const struct wpa_driver_capa *capa,
+	const struct wpa_security_summary *summary,
+	unsigned int *profile, unsigned int *pwe);
 void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 			      struct wpa_bss *bss,
 			      struct wpa_ssid *ssid);

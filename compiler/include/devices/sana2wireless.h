@@ -225,6 +225,12 @@ struct Sana2FullMACAssociation
  * Association acknowledgment is not link-up. CONNECT requires current-target
  * authentication/keying/port authorization and the live attempt/epoch fence;
  * matching AP-info or successful SetConfig alone cannot establish success.
+ * For a negotiated typed operation, CONNECT is opener-scoped and carries its
+ * acknowledged AssociationCookie in ios2_DataLength. A subsequent DISCONNECT
+ * carries that same committed-link cookie, never an older attempt's cookie.
+ * Deliver each as an exact terminal event, not a combined terminal mask. This
+ * additional identity rule applies only to FullMAC operations; legacy v1
+ * CONNECT/DISCONNECT behavior and failure-event layouts are unchanged.
  * The v1 S2WIRELESS_CAPF_CONNECT_FAILED is the sole failure-event authority:
  * query v1 capabilities too and arm its existing opener/cookie ONEVENT before
  * the attempt. FullMAC does not imply that flag or alter Disassociate support.

@@ -106,6 +106,9 @@ struct wpa_driver_sana2_data {
 	struct Sana2FullMACCapabilities fullmac_caps;
 	ULONG next_association_cookie;
 	ULONG active_association_cookie;
+	ULONG active_fullmac_profile;
+	ULONG fullmac_link_cookie, fullmac_link_profile;
+	int fullmac_terminal_fenced;
 };
 
 static int b_rates[] = {
@@ -585,6 +588,10 @@ static int wpa_driver_sana2_associate_fullmac(
 		{TAG_END, 0}
 	};
 	request = drv->request;
+	drv->active_association_cookie = 0;
+	drv->active_fullmac_profile = 0;
+	drv->fullmac_link_cookie = drv->fullmac_link_profile = 0;
+	drv->fullmac_terminal_fenced = 1;
 	request->ios2_Req.io_Command = S2_SETOPTIONS;
 	request->ios2_StatData = NULL;
 	request->ios2_Data = tags;
@@ -599,6 +606,7 @@ static int wpa_driver_sana2_associate_fullmac(
 	if (!err) {
 		strcpy(drv->ssid, ssid);
 		drv->active_association_cookie = cookie;
+		drv->active_fullmac_profile = selection.Profile;
 	}
 	return err ? -1 : 0;
 }
@@ -713,6 +721,10 @@ static int wpa_driver_sana2_associate(
 
 	/* Legacy host-handshake devices still set/clear WEP slots. Firmware
 	 * offload owns its key state and does not imply S2_SETKEY support. */
+	/* A validated legacy attempt replaces the typed event contract. The
+	 * provider must quiesce canceled work before acknowledging new options. */
+	drv->active_association_cookie = drv->active_fullmac_profile = 0;
+	drv->fullmac_link_cookie = drv->fullmac_link_profile = 0;
 	for (i = 0; !offload && i < 4; i++) {
 		if (params->wep_key_len[i] > 0)
 			alg = WPA_ALG_WEP;
@@ -751,6 +763,7 @@ static int wpa_driver_sana2_associate(
 	if (err == 0) {
 		strcpy(drv->ssid, ssid);
 		drv->active_association_cookie = cookie;
+		drv->fullmac_terminal_fenced = 0;
 	}
 
 	return err == 0 ? 0 : -1;
@@ -781,6 +794,8 @@ static int wpa_driver_sana2_disassociate(void *priv, const u8 *addr,
 	 * not reach the supplicant as a failure of an active attempt. Do not
 	 * fabricate DISCONNECT or claim confirmed radio teardown on Reply. */
 	drv->active_association_cookie = 0;
+	drv->active_fullmac_profile = 0;
+	drv->fullmac_link_cookie = drv->fullmac_link_profile = 0;
 	eloop_cancel_timeout(wpa_driver_sana2_stay_alive, drv->ctx, drv);
 	request = drv->request;
 	request->ios2_Req.io_Command = S2_SETOPTIONS;
@@ -1278,15 +1293,56 @@ static void wpa_driver_sana2_connect_failed(
 	    request->ios2_DataLength != drv->active_association_cookie)
 		return;
 	drv->active_association_cookie = 0;
+	drv->active_fullmac_profile = 0;
 	eloop_cancel_timeout(wpa_driver_sana2_stay_alive, drv->ctx, drv);
 	wpa_supplicant_event(drv->ctx, EVENT_ASSOC_FAILED, NULL);
+}
+
+
+/* The negotiated typed path requires exact opener-scoped terminal cookies.
+ * Network-info contents can refine identity later; they are not success. */
+static int wpa_driver_sana2_fullmac_terminal_event(
+	struct wpa_driver_sana2_data *drv, const struct IOSana2Req *request)
+{
+	union wpa_event_data data;
+	ULONG event = request->ios2_WireError;
+	if (!drv->fullmac_terminal_fenced && !drv->active_fullmac_profile &&
+	    !drv->fullmac_link_profile)
+		return 0;
+	if (request->ios2_Req.io_Error)
+		return 1;
+	if (event & S2EVENT_OFFLINE) {
+		drv->active_association_cookie = drv->active_fullmac_profile = 0;
+		drv->fullmac_link_cookie = drv->fullmac_link_profile = 0;
+		wpa_supplicant_event(drv->ctx, EVENT_DISASSOC, NULL);
+		return 1;
+	}
+	if (event == S2EVENT_CONNECT && drv->active_fullmac_profile &&
+	    drv->active_association_cookie &&
+	    request->ios2_DataLength == drv->active_association_cookie) {
+		os_memset(&data, 0, sizeof(data));
+		data.assoc_info.fullmac_profile = drv->active_fullmac_profile;
+		data.assoc_info.fullmac_cookie = drv->active_association_cookie;
+		drv->fullmac_link_profile = drv->active_fullmac_profile;
+		drv->fullmac_link_cookie = drv->active_association_cookie;
+		drv->active_association_cookie = drv->active_fullmac_profile = 0;
+		wpa_supplicant_event(drv->ctx, EVENT_ASSOC, &data);
+	} else if (event == S2EVENT_DISCONNECT && drv->fullmac_link_profile &&
+		   drv->fullmac_link_cookie &&
+		   request->ios2_DataLength == drv->fullmac_link_cookie) {
+		drv->fullmac_link_cookie = drv->fullmac_link_profile = 0;
+		wpa_supplicant_event(drv->ctx, EVENT_DISASSOC, NULL);
+	} else if (event == S2EVENT_CONNECT_FAILED)
+		wpa_driver_sana2_connect_failed(drv, request);
+	/* Mixed/stale/duplicate events are consumed without a fabricated edge. */
+	return 1;
 }
 
 
 static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 {
 	struct wpa_driver_sana2_data *drv = sig_ctx;
-	int i;
+	int i, typed_terminal;
 	ULONG events;
 	struct IOSana2Req *request;
 	union wpa_event_data event_data;
@@ -1334,10 +1390,12 @@ static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 			break;
 
 		case S2_ONEVENT:
+			os_memset(&event_data, 0, sizeof(event_data));
 			events = request->ios2_WireError;
 			if (request->ios2_Req.io_Error != 0)
 				events = 0;
-			if ((events & S2EVENT_CONNECT) &&
+			typed_terminal = wpa_driver_sana2_fullmac_terminal_event(drv, request);
+			if (!typed_terminal && (events & S2EVENT_CONNECT) &&
 			    (!(drv->wireless_caps_valid &&
 			       (drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED)) ||
 			     drv->active_association_cookie != 0))
@@ -1374,7 +1432,7 @@ static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 					drv->ctx, drv);
 			}
 
-			if (events & S2EVENT_DISCONNECT) {
+			if (!typed_terminal && (events & S2EVENT_DISCONNECT)) {
 				drv->active_association_cookie = 0;
 				wpa_supplicant_event(drv->ctx, EVENT_DISASSOC,
 					NULL);
@@ -1385,7 +1443,7 @@ static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 					drv->ctx, drv);
 			}
 
-			if (events & S2EVENT_CONNECT_FAILED)
+			if (!typed_terminal && (events & S2EVENT_CONNECT_FAILED))
 				wpa_driver_sana2_connect_failed(drv, request);
 
 			if (events & S2EVENT_ONLINE) {
@@ -1402,6 +1460,8 @@ static void wpa_driver_sana2_event_handler(int sig, void *sig_ctx)
 
 			if (events & S2EVENT_OFFLINE) {
 				drv->active_association_cookie = 0;
+				drv->active_fullmac_profile = 0;
+				drv->fullmac_link_cookie = drv->fullmac_link_profile = 0;
 				drv->event_mask &= ~S2EVENT_OFFLINE;
 				drv->event_mask |= S2EVENT_ONLINE;
 			}

@@ -60,6 +60,10 @@ struct wpa_driver_sana2_data {
 	int wep_key_attempted;
 	ULONG next_association_cookie;
 	ULONG active_association_cookie;
+	ULONG active_fullmac_profile;
+	ULONG fullmac_link_cookie;
+	ULONG fullmac_link_profile;
+	int fullmac_terminal_fenced;
 	char ssid[MAX_SSID_LEN + 1];
 };
 
@@ -905,13 +909,45 @@ static void test_association_cookie_contract(void)
 		CHECK(scenario, "association reports failure", result, -1);
 		CHECK(scenario, "attempt cookie remains consumed",
 		      f.drv.next_association_cookie, 3 + kind);
-		CHECK(scenario, "previous acknowledged cookie remains active",
-		      f.drv.active_association_cookie, 2);
+		CHECK(scenario, "validated replacement retires prior cookie",
+		      f.drv.active_association_cookie, 0);
+		CHECK(scenario, "legacy replacement keeps typed fence state",
+		      f.drv.fullmac_terminal_fenced, 0);
 		cookie_index = option_index(&io.doio[4], S2INFO_AssociationCookie);
 		CHECK(scenario, "failed attempt supplied its fresh cookie",
 		      cookie_index >= 0 ? io.doio[4].option_data[cookie_index] : 0,
 		      3 + kind);
 	}
+
+	/* A failed legacy replacement after typed cancellation must keep the
+	 * FullMAC event fence. The source-extracted terminal-event test separately
+	 * verifies that the retained fence consumes stale CONNECT/failure events
+	 * after their active and link cookies have been retired. */
+	init_fixture(&f, "typed-cancel-legacy-failure");
+	f.drv.hard_mac = 1;
+	f.drv.wireless_caps_valid = 1;
+	f.drv.wireless_caps.Flags = S2WIRELESS_CAPF_CONNECT_FAILED;
+	f.drv.fullmac_terminal_fenced = 1;
+	f.drv.active_association_cookie = 0;
+	f.drv.active_fullmac_profile = 0;
+	f.drv.fullmac_link_cookie = 0;
+	f.drv.fullmac_link_profile = 0;
+	io.fault_index = 4;
+	io.fault_return = 5;
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("canceled typed then failed legacy", "legacy request fails", result, -1);
+	CHECK("canceled typed then failed legacy", "no active cookie restored",
+	      f.drv.active_association_cookie, 0);
+	CHECK("canceled typed then failed legacy", "typed event fence retained",
+	      f.drv.fullmac_terminal_fenced, 1);
+	reset_io();
+	SCENARIO();
+	result = wpa_driver_sana2_associate(&f.drv, &f.params);
+	CHECK("canceled typed then successful legacy", "legacy request succeeds",
+	      result, 0);
+	CHECK("canceled typed then successful legacy", "typed fence retires on ACK",
+	      f.drv.fullmac_terminal_fenced, 0);
 
 	init_fixture(&f, "cookie-unnegotiated");
 	f.drv.hard_mac = 1;

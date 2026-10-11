@@ -1,5 +1,15 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Native SAE caller integration (2026-10-11): capability-aware summary-only
+selection and typed SAE dispatch now bypass the legacy host RSN/EAPOL path.
+An ACK remains pending; completion requires an exact opener/cookie CONNECT,
+unchanged selected policy and a successful matching BSSID query. Cancellation
+retains the stale-event fence. RV32-SMP WirelessManager699060B build verified;
+caller467, terminal-driver77/468 and legacy association86/643 tests each O0/O2 sanitized
+pass. Undeployed: the P4 provider still does not advertise this contract, and
+its authenticated-link lifecycle/installed C6 qualification remain open.
+No WPA3 connection, DHCP or working traffic is claimed.
+
 Native SAE caller groundwork (2026-10-11): WirelessManager configuration now
 keeps SAE passwords separate from WPA2 PSK/PBKDF2, and its SANA-II adapter
 negotiates the additive FullMAC API and validates typed requests before I/O.
@@ -8,16 +18,16 @@ without converting the password into a PSK. Unknown profiles are refused;
 SAE currently asks for a fresh password rather than reusing a remembered PSK.
 Native RV32-SMP WirelessManager688980B and Prefs164548B build verified after
 object invalidation; configuration, typed-driver and preference sanitizer
-tests pass at O0/O2. This is undeployed groundwork: automatic SAE network selection and the P4/C6
-provider's authenticated-link lifecycle are still open. The supplicant
-explicitly refuses SAE until those are wired; no WPA3 connection is claimed.
+tests pass at O0/O2. This groundwork is superseded by the caller integration
+above; the P4/C6 provider's authenticated-link lifecycle remains open.
+No WPA3 connection is claimed.
 
 Native FullMAC contract (2026-10-11): an additive, separately negotiated
 profile/typed-credential API preserves v1 layouts and separates SAE password
 from WPA2 PSK/PBKDF2. Required PMF is client policy, not observed AP metadata;
 diagnostic risk needs explicit per-attempt permission. Predicate tests121 each
 O0/O2 sanitized and actual RV32 ABI compile/negative control pass. No provider
-advertisement, complete WirelessManager caller integration or deployment yet; this is
+advertisement, complete caller/provider integration or deployment yet; this is
 contract verification only, not WPA3 association or working IP connectivity.
 
 WPA3 development (2026-10-11): pure SAE/CCMP metadata now maps to a truthful

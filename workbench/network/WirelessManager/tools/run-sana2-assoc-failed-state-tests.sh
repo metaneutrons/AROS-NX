@@ -96,6 +96,7 @@ if len(re.findall(r"(?m)^\s*EVENT_ASSOC_FAILED\s*,?\s*$", driver)) != 1:
 flag_names = (
 	"WPA_DRIVER_FLAGS_USER_SPACE_MLME",
 	"WPA_DRIVER_FLAGS_CANCEL_PENDING",
+	"WPA_FULLMAC_PROFILE_SAE_CCMP_PMF",
 )
 flag_lines = []
 for name in flag_names:

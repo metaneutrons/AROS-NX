@@ -228,14 +228,16 @@ for name, filename in (
 
 handler = extract_function(source, "wpa_driver_sana2_event_handler")
 for event in ("S2EVENT_DISCONNECT", "S2EVENT_OFFLINE"):
-	match = re.search(r"if\s*\(\s*events\s*&\s*" + event + r"\s*\)\s*\{", handler)
+	condition = (r"!typed_terminal\s*&&\s*\(\s*events\s*&\s*" + event + r"\s*\)"
+		     if event == "S2EVENT_DISCONNECT" else r"events\s*&\s*" + event)
+	match = re.search(r"if\s*\(\s*" + condition + r"\s*\)\s*\{", handler)
 	if match is None:
 		raise SystemExit(f"error: event handler has no {event} branch")
 	body = extract_braced_body(handler, handler.find("{", match.start()))
 	if "drv->active_association_cookie = 0;" not in body:
 		raise SystemExit(f"error: {event} branch does not clear the active association cookie")
 connect_match = re.search(
-	r"if\s*\(\s*\(\s*events\s*&\s*S2EVENT_CONNECT\s*\)\s*&&\s*"
+	r"if\s*\(\s*!typed_terminal\s*&&\s*\(\s*events\s*&\s*S2EVENT_CONNECT\s*\)\s*&&\s*"
 	r"\((?P<guard>.*?)\)\s*\)\s*\{",
 	handler,
 	re.S,
@@ -258,7 +260,7 @@ connect_body = extract_braced_body(handler, handler.find("{", connect_match.star
 if "drv->active_association_cookie = 0;" not in connect_body:
 	raise SystemExit("error: accepted CONNECT does not clear the active association cookie")
 if re.search(
-	r"if\s*\(\s*events\s*&\s*S2EVENT_CONNECT_FAILED\s*\)\s*"
+	r"if\s*\(\s*!typed_terminal\s*&&\s*\(\s*events\s*&\s*S2EVENT_CONNECT_FAILED\s*\)\s*\)\s*"
 	r"wpa_driver_sana2_connect_failed\s*\(\s*drv\s*,\s*request\s*\)",
 	handler,
 ) is None:

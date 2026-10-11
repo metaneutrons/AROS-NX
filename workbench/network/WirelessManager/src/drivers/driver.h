@@ -2202,6 +2202,10 @@ union wpa_event_data {
 		 * addr - Station address (for AP mode)
 		 */
 		const u8 *addr;
+		/* Only after a negotiated typed FullMAC CONNECT with the current
+		 * opener/cookie fence. Zero is the unchanged legacy event. */
+		unsigned int fullmac_profile;
+		unsigned int fullmac_cookie;
 	} assoc_info;
 
 	/**

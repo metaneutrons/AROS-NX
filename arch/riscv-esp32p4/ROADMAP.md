@@ -147,7 +147,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: pure SAE/CCMP metadata/display338/93 each O0/O2; additive FullMAC contract121 checks each and RV32 ABI compile verified; SAE config/typed transport/Prefs host tests and native WM688980B/Prefs164548B build verified; automatic selection/provider lifecycle open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: pure SAE/CCMP metadata/display338/93 each O0/O2; additive FullMAC contract121 checks each and RV32 ABI compile verified; native SAE selection/typed dispatch/correlated terminal handling and WM699060B build verified; caller467, driver77/468 and legacy association86/643 each sanitized; provider lifecycle open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1892,11 +1892,14 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   the new capability and validates typed transport; no P4 provider advertises
   it yet. Native configuration and preference profile handling are implemented
   and RV32-SMP build verified (WM688980B/Prefs164548B), not deployed;
-  legacy supplicant association explicitly refuses SAE until selection and
-  authenticated-link integration are wired. v1 failure-event negotiation
+  capability-aware automatic summary-only SAE selection, typed dispatch and
+  authenticated-link caller handling are now implemented and RV32-SMP build
+  verified (WM699060B). No provider advertises the profile yet. Typed CONNECT
+  and DISCONNECT require exact opener-scoped attempt/link cookies; pending
+  ACK, canceled, mixed or stale events cannot claim completion. v1 failure-event negotiation
   remains the sole authority; PWE modes are
-  selectable client policies, never observed AP facts. Caller and provider
-  integration, preference configuration and actual link lifecycle remain open.
+  selectable client policies, never observed AP facts. Provider integration,
+  explicit diagnostic deployment configuration and actual link lifecycle remain open.
 - SAE-M3 owner/peer (depends on M2): use existing Hosted STA config fields
   for PMF capable/required, SAE PWE and optional identifier; verify exact
   encoder/caller values, credential ownership/wiping, timeout/cancellation,
@@ -39673,3 +39676,66 @@ remain open. No partial stage is a complete A/B update system.
   association, IP or RF claim. Next: capability-aware automatic SAE selection,
   native event completion and P4 provider/owner admission before fresh
   synchronized device tests and all original SAE-M3/M4/N2T acceptance gates.
+
+### 2026-10-11 - N2-SAE native selection and correlated completion caller
+
+- Scope: existing WirelessManager only, not a parallel network UI. Pure SAE
+  summary/config selection requires separately negotiated SUMMARY, FullMAC
+  and cancellation support; fresh capabilities must agree with cached flags.
+  Dispatch uses the owned SAE password, required-PMF profile and selected PWE
+  policy without a host RSN IE, PSK/PBKDF2 or software handshake. Genuine-IE
+  WPA2 keeps its legacy route; genuine-IE SAE remains unsupported here.
+- Completion: synchronous SETOPTIONS ACK leaves ASSOCIATING with a20s timer.
+  The additive, as-yet-unadvertised FullMAC contract now explicitly requires
+  exact opener-scoped CONNECT attempt cookies and DISCONNECT committed-link
+  cookies. Mixed/stale/duplicate events are consumed. A current typed event
+  must also match network/SSID/policy and an explicitly successful BSSID query
+  before caller authorization/completion. EAPOL frames are not replayed into
+  firmware-owned authentication. Disassociation/reload retire snapshots.
+- Review corrections: retain the typed event fence through cancellation and
+  failed legacy replacement I/O; retire it only on acknowledged legacy options.
+  A validated replacing attempt retires the prior active cookie even when its
+  I/O fails (two old fixture expectations were updated with that rationale).
+  The actual GET_BSSID callback returns positive1 on absent data, so the typed
+  caller now requires exactly0 and initializes its output before inspecting it.
+- Native evidence: first quick build exited2 because the copied driver header
+  lacked new internal event fields; no stale artifact was accepted. Explicit
+  setup refreshed the source copy. Reviewed build invalidated every WM object,
+  used the current RV32-SMP Developer sysroot and completed link/install exit0.
+  WirelessManager699060B SHA-256
+  `b27f7393d52b6cb3b606ed1654a323d4b18d0884296aacb9a35f1ce3efd74582`.
+  Generated driver header and events source independently compare equal to
+  source. No compiler diagnostics; the existing submake jobserver warning
+  remains. Frozen artifact and logs:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/sae-lifecycle.jPekbt/`.
+- Configuration: JC1060-v2, SDIO/setup/init/reply/owner enabled, ownerCPU1,
+  private association accepted-risk1; C6 privacy, host privacy and C6 update
+  recovery flags all0. No provider advertisement or production-safety claim.
+- Primary repeated host evidence: extracted actual typed-driver terminal
+  code77 scenarios/468 checks each O0/O2 ASan/UBSan; legacy association86/643,
+  CONNECT_FAILED23/94 plus source guards, failure-state554 and summary38/76
+  each pass. The new actual-header/source-extracted caller harness467 checks
+  each O0/O2 also passes, including ACK-pending versus completion, strict
+  config/capability matching, failure cleanup, absent BSSID (positive and
+  negative errors), stale/IE-bearing events and post-disassociation rejection.
+  Entry-point/EAPOL/reload ordering checks are source guards, not a complete
+  eloop or automatic-selector execution test. Host mocks are not native ABI
+  or peer/RF evidence.
+- Public comment refresh: compiler-includes copied both header trees; a
+  subsequently requested broad includes-copy without the board profile was
+  rejected exit2 by the profile guard. The correctly profiled compiler-includes
+  rerun and all-object-invalidated WM rebuild exited0; no definitions/layouts
+  changed, and both copied public headers compare equal to source.
+- Next-stage source audit: pinned Hosted d5184217 forwards STA config PMF/PWE
+  but connection RPC ACK is immediate; connected/disconnected events775/776
+  have UID0 and no attempt identifier or explicit negotiated-PMF/key/port
+  fields. AP-info authentication is AP-record metadata. Neither that source
+  nor the unknown installed54aafd0-dirty peer proves the required completion
+  semantics by itself. Verify the exact IDF event/policy guarantees and peer
+  behavior before provider advertisement; do not infer that every absent wire
+  field necessarily requires a protocol extension. No C6 update was attempted.
+- Safety/status: build verified, undeployed. No serial opening, reset, flash,
+  SD write or credential transmission in this change. Installed core/BSP/card
+  and unresolved C6 lineage remain unchanged. Next: truthful P4 provider/owner
+  admission and authenticated-link publication, then matched deployment with
+  fresh interactive readiness and the complete SAE-M3/M4/N2T IP/data gates.

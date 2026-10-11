@@ -81,6 +81,9 @@ struct wpabuf;
 
 static void CopyMem(const void *source, APTR destination, size_t size);
 static int DoIO(APTR request_arg);
+static void wpa_driver_sana2_stay_alive(void *eloop_ctx, void *timeout_ctx);
+int eloop_cancel_timeout(void (*handler)(void *, void *), void *eloop_data,
+    void *user_data);
 
 /* Extracted from the production source, including every negotiated field. */
 /* DRIVER_DATA */
@@ -123,6 +126,13 @@ static unsigned fullmac_queries;
 static unsigned setoptions_calls;
 static unsigned unexpected_io_calls;
 static unsigned supplicant_events;
+static unsigned timeout_cancel_calls;
+static enum wpa_event_type last_supplicant_event;
+static ULONG last_event_profile;
+static ULONG last_event_cookie;
+static int last_event_had_data;
+static void *last_timeout_eloop_data;
+static void *last_timeout_user_data;
 static int mock_v1_return;
 static int mock_v1_io_error;
 static int mock_fullmac_return;
@@ -181,6 +191,13 @@ static void reset_mocks(void)
     setoptions_calls = 0;
     unexpected_io_calls = 0;
     supplicant_events = 0;
+    timeout_cancel_calls = 0;
+    last_supplicant_event = EVENT_ASSOC;
+    last_event_profile = 0;
+    last_event_cookie = 0;
+    last_event_had_data = 0;
+    last_timeout_eloop_data = NULL;
+    last_timeout_user_data = NULL;
     mock_v1_return = 0;
     mock_v1_io_error = 0;
     mock_fullmac_return = 0;
@@ -198,6 +215,36 @@ static void reset_mocks(void)
         S2WIRELESS_CAPF_CONNECT_FAILED);
     set_fullmac_reply(S2FULLMAC_PROFILE_SAE_CCMP_PMF,
         S2FULLMAC_SAE_PWE_H2E, 0);
+}
+
+static void wpa_driver_sana2_stay_alive(void *eloop_ctx, void *timeout_ctx)
+{
+    (void)eloop_ctx;
+    (void)timeout_ctx;
+}
+
+int eloop_cancel_timeout(void (*handler)(void *, void *), void *eloop_data,
+    void *user_data)
+{
+    CHECK("matching timeout handler",
+        handler == wpa_driver_sana2_stay_alive, 1);
+    ++timeout_cancel_calls;
+    last_timeout_eloop_data = eloop_data;
+    last_timeout_user_data = user_data;
+    return 1;
+}
+
+void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+    union wpa_event_data *data)
+{
+    (void)ctx;
+    ++supplicant_events;
+    last_supplicant_event = event;
+    last_event_had_data = data != NULL;
+    if (data != NULL) {
+        last_event_profile = data->assoc_info.fullmac_profile;
+        last_event_cookie = data->assoc_info.fullmac_cookie;
+    }
 }
 
 static void CopyMem(const void *source, APTR destination, size_t size)
@@ -444,6 +491,8 @@ static void test_sae_typed_association_and_ack_boundary(void)
     CHECK("SAE request cleanup", fixture.request.ios2_StatData == NULL, 1);
     CHECK("SAE ACK is not link-up", fixture.driver.online, 0);
     CHECK("SAE ACK is not link-up", supplicant_events, 0);
+    CHECK("validated typed request arms terminal fence",
+        fixture.driver.fullmac_terminal_fenced, 1);
     CHECK("SAE ACK is not link-up", fixture.driver.active_association_cookie, 0x1021);
     CHECK("SAE prior BSSID unchanged",
         fixture.driver.bssid[0] == 0xa0 && fixture.driver.bssid[5] == 0xa5, 1);
@@ -478,6 +527,8 @@ static void test_setoptions_error_releases_borrowed_pointers(void)
         init_association_fixture(&fixture);
         mock_options_return = kind == 0 ? 7 : 0;
         mock_options_io_error = kind == 0 ? 0 : S2ERR_BAD_STATE;
+        CHECK("SETOPTIONS failure starts with prior active cookie",
+            fixture.driver.active_association_cookie, 0x55);
         SCENARIO();
         result = wpa_driver_sana2_associate_fullmac(&fixture.driver,
             &fixture.params);
@@ -488,8 +539,12 @@ static void test_setoptions_error_releases_borrowed_pointers(void)
             fixture.request.ios2_Data == NULL, 1);
         CHECK("SETOPTIONS failure clears request StatData",
             fixture.request.ios2_StatData == NULL, 1);
-        CHECK("SETOPTIONS failure preserves active cookie",
-            fixture.driver.active_association_cookie, 0x55);
+        /* A validated replacement retires the old local cookie before DoIO.
+         * Failure must not make an event from that retired attempt current. */
+        CHECK("SETOPTIONS failure retires prior active cookie",
+            fixture.driver.active_association_cookie, 0);
+        CHECK("SETOPTIONS failure retains terminal fence",
+            fixture.driver.fullmac_terminal_fenced, 1);
         CHECK("SETOPTIONS failure does not publish online",
             fixture.driver.online, 0);
         CHECK("SETOPTIONS failure does not publish a link event",
@@ -498,6 +553,14 @@ static void test_setoptions_error_releases_borrowed_pointers(void)
             strcmp(fixture.driver.ssid, "before") == 0, 1);
         CHECK("SETOPTIONS failure leaves event mask armed",
             fixture.driver.event_mask, S2EVENT_CONNECT_FAILED);
+        fixture.request.ios2_Req.io_Error = 0;
+        fixture.request.ios2_WireError = S2EVENT_CONNECT;
+        fixture.request.ios2_DataLength = 0x55;
+        CHECK("retired SETOPTIONS completion remains fenced",
+            wpa_driver_sana2_fullmac_terminal_event(&fixture.driver,
+                &fixture.request), 1);
+        CHECK("retired SETOPTIONS completion emits no event",
+            supplicant_events, 0);
     }
 }
 
@@ -786,6 +849,162 @@ static void test_unsupported_or_invalid_fullmac_query_fails_closed(void)
         &association, result);
 }
 
+static void init_terminal_fixture(struct wpa_driver_sana2_data *driver,
+    struct IOSana2Req *request)
+{
+    memset(driver, 0, sizeof(*driver));
+    memset(request, 0, sizeof(*request));
+    reset_mocks();
+    driver->ctx = (void *)(uintptr_t)0x1234;
+    driver->hard_mac = 1;
+    driver->wireless_caps_valid = 1;
+    driver->wireless_caps.Flags = S2WIRELESS_CAPF_CONNECT_FAILED;
+    driver->fullmac_terminal_fenced = 1;
+}
+
+static void test_fullmac_terminal_cookie_fence(void)
+{
+    struct wpa_driver_sana2_data driver;
+    struct IOSana2Req request;
+    const ULONG cookie = 0x87654321UL;
+    int consumed;
+
+    init_terminal_fixture(&driver, &request);
+    driver.active_association_cookie = cookie;
+    driver.active_fullmac_profile = S2FULLMAC_PROFILE_SAE_CCMP_PMF;
+
+    request.ios2_WireError = S2EVENT_CONNECT;
+    request.ios2_DataLength = cookie - 1;
+    SCENARIO();
+    consumed = wpa_driver_sana2_fullmac_terminal_event(&driver, &request);
+    CHECK("stale FullMAC CONNECT consumed", consumed, 1);
+    CHECK("stale FullMAC CONNECT ignored", supplicant_events, 0);
+    CHECK("stale FullMAC CONNECT preserves active cookie",
+        driver.active_association_cookie, cookie);
+
+    request.ios2_DataLength = cookie;
+    request.ios2_WireError = S2EVENT_CONNECT | S2EVENT_DISCONNECT;
+    SCENARIO();
+    consumed = wpa_driver_sana2_fullmac_terminal_event(&driver, &request);
+    CHECK("mixed FullMAC terminal event consumed", consumed, 1);
+    CHECK("mixed FullMAC terminal event ignored", supplicant_events, 0);
+    CHECK("mixed event preserves active profile",
+        driver.active_fullmac_profile, S2FULLMAC_PROFILE_SAE_CCMP_PMF);
+
+    request.ios2_WireError = S2EVENT_CONNECT;
+    SCENARIO();
+    consumed = wpa_driver_sana2_fullmac_terminal_event(&driver, &request);
+    CHECK("exact FullMAC CONNECT consumed", consumed, 1);
+    CHECK("exact cookie CONNECT event count", supplicant_events, 1);
+    CHECK("exact cookie CONNECT event type", last_supplicant_event, EVENT_ASSOC);
+    CHECK("exact cookie CONNECT carries data", last_event_had_data, 1);
+    CHECK("exact cookie CONNECT profile", last_event_profile,
+        S2FULLMAC_PROFILE_SAE_CCMP_PMF);
+    CHECK("exact cookie CONNECT cookie", last_event_cookie, cookie);
+    CHECK("success retires pending cookie", driver.active_association_cookie, 0);
+    CHECK("success records link cookie", driver.fullmac_link_cookie, cookie);
+
+    /* A duplicate success cannot turn a retained link into a second edge. */
+    SCENARIO();
+    consumed = wpa_driver_sana2_fullmac_terminal_event(&driver, &request);
+    CHECK("duplicate FullMAC CONNECT consumed", consumed, 1);
+    CHECK("duplicate FullMAC CONNECT ignored", supplicant_events, 1);
+    CHECK("duplicate preserves linked cookie", driver.fullmac_link_cookie, cookie);
+
+    request.ios2_WireError = S2EVENT_DISCONNECT;
+    request.ios2_DataLength = cookie - 1;
+    SCENARIO();
+    consumed = wpa_driver_sana2_fullmac_terminal_event(&driver, &request);
+    CHECK("stale FullMAC DISCONNECT consumed", consumed, 1);
+    CHECK("stale FullMAC DISCONNECT ignored", supplicant_events, 1);
+    CHECK("stale DISCONNECT preserves link cookie", driver.fullmac_link_cookie,
+        cookie);
+
+    request.ios2_DataLength = cookie;
+    SCENARIO();
+    consumed = wpa_driver_sana2_fullmac_terminal_event(&driver, &request);
+    CHECK("exact FullMAC DISCONNECT consumed", consumed, 1);
+    CHECK("exact FullMAC DISCONNECT event type", last_supplicant_event,
+        EVENT_DISASSOC);
+    CHECK("exact FullMAC DISCONNECT event count", supplicant_events, 2);
+    CHECK("exact DISCONNECT retires link cookie", driver.fullmac_link_cookie, 0);
+
+    SCENARIO();
+    consumed = wpa_driver_sana2_fullmac_terminal_event(&driver, &request);
+    CHECK("duplicate FullMAC DISCONNECT consumed", consumed, 1);
+    CHECK("duplicate FullMAC DISCONNECT ignored", supplicant_events, 2);
+}
+
+static void test_fullmac_terminal_failure_offline_and_canceled_fence(void)
+{
+    struct wpa_driver_sana2_data driver;
+    struct IOSana2Req request;
+    const ULONG cookie = 0x10203040UL;
+    int consumed;
+
+    init_terminal_fixture(&driver, &request);
+    driver.active_association_cookie = cookie;
+    driver.active_fullmac_profile = S2FULLMAC_PROFILE_SAE_CCMP_PMF;
+    driver.event_mask = S2EVENT_CONNECT_FAILED;
+    request.ios2_WireError = S2EVENT_CONNECT_FAILED;
+    request.ios2_DataLength = cookie;
+    SCENARIO();
+    consumed = wpa_driver_sana2_fullmac_terminal_event(&driver, &request);
+    CHECK("exact FullMAC failure consumed", consumed, 1);
+    CHECK("exact FullMAC failure event count", supplicant_events, 1);
+    CHECK("exact FullMAC failure event type", last_supplicant_event,
+        EVENT_ASSOC_FAILED);
+    CHECK("exact FullMAC failure cancels timeout", timeout_cancel_calls, 1);
+    CHECK("failure timeout context", last_timeout_eloop_data == driver.ctx, 1);
+    CHECK("failure timeout user data", last_timeout_user_data == &driver, 1);
+    CHECK("failure retires pending cookie", driver.active_association_cookie, 0);
+
+    init_terminal_fixture(&driver, &request);
+    driver.active_association_cookie = cookie;
+    driver.active_fullmac_profile = S2FULLMAC_PROFILE_SAE_CCMP_PMF;
+    request.ios2_Req.io_Error = S2ERR_BAD_STATE;
+    request.ios2_WireError = S2EVENT_CONNECT;
+    request.ios2_DataLength = cookie;
+    SCENARIO();
+    consumed = wpa_driver_sana2_fullmac_terminal_event(&driver, &request);
+    CHECK("negative-IO terminal event consumed", consumed, 1);
+    CHECK("negative-IO terminal event ignored", supplicant_events, 0);
+    CHECK("negative-IO retains pending cookie",
+        driver.active_association_cookie, cookie);
+
+    init_terminal_fixture(&driver, &request);
+    driver.active_association_cookie = cookie;
+    driver.active_fullmac_profile = S2FULLMAC_PROFILE_SAE_CCMP_PMF;
+    driver.fullmac_link_cookie = cookie - 1;
+    driver.fullmac_link_profile = S2FULLMAC_PROFILE_SAE_CCMP_PMF;
+    request.ios2_WireError = S2EVENT_OFFLINE;
+    request.ios2_DataLength = 0;
+    SCENARIO();
+    consumed = wpa_driver_sana2_fullmac_terminal_event(&driver, &request);
+    CHECK("FullMAC OFFLINE consumed", consumed, 1);
+    CHECK("FullMAC OFFLINE event type", last_supplicant_event, EVENT_DISASSOC);
+    CHECK("FullMAC OFFLINE event count", supplicant_events, 1);
+    CHECK("OFFLINE retires pending cookie", driver.active_association_cookie, 0);
+    CHECK("OFFLINE retires link cookie", driver.fullmac_link_cookie, 0);
+
+    /* After local cancellation the fence remains, despite no live cookies. */
+    init_terminal_fixture(&driver, &request);
+    request.ios2_WireError = S2EVENT_CONNECT;
+    request.ios2_DataLength = cookie;
+    SCENARIO();
+    consumed = wpa_driver_sana2_fullmac_terminal_event(&driver, &request);
+    CHECK("canceled typed fence consumes stale event", consumed, 1);
+    CHECK("canceled typed fence suppresses stale event", supplicant_events, 0);
+    request.ios2_WireError = S2EVENT_CONNECT_FAILED;
+    SCENARIO();
+    consumed = wpa_driver_sana2_fullmac_terminal_event(&driver, &request);
+    CHECK("canceled typed fence consumes stale failure", consumed, 1);
+    CHECK("canceled typed fence suppresses stale failure", supplicant_events, 0);
+    CHECK("canceled typed fence has no pending cookie",
+        driver.active_association_cookie, 0);
+    CHECK("canceled typed fence remains armed", driver.fullmac_terminal_fenced, 1);
+}
+
 int main(void)
 {
     test_sae_typed_association_and_ack_boundary();
@@ -796,6 +1015,8 @@ int main(void)
     test_v1_to_fullmac_query_and_event_arm();
     test_legacy_v1_responses_do_not_expand_contract();
     test_unsupported_or_invalid_fullmac_query_fails_closed();
+    test_fullmac_terminal_cookie_fence();
+    test_fullmac_terminal_failure_offline_and_canceled_fence();
     if (failures) {
         fprintf(stderr, "FAIL fullmac-driver scenarios=%u checks=%u failures=%u "
             "doio=%u fabricated_ap_facts=0\n", scenarios, checks, failures,
@@ -881,6 +1102,8 @@ def make_source() -> str:
         "static int wpa_driver_sana2_wireless_caps_valid(",
         "static int wpa_driver_sana2_query_wireless_caps(",
         "static ULONG wpa_driver_sana2_initial_event_mask(",
+        "static void wpa_driver_sana2_connect_failed(",
+        "static int wpa_driver_sana2_fullmac_terminal_event(",
     )
     extracted = []
     for signature in signatures:
