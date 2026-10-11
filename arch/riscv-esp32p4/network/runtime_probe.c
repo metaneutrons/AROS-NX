@@ -1305,7 +1305,9 @@ static BOOL wifi_association_ap_matches(
         !ap->ap.primary || ap->ap.primary > 14 ||
         ap->status || ap->ap.ssid_size != target->ssid_length ||
         (target->channel && ap->ap.primary != target->channel) ||
-        ap->ap.authmode != (LONG)target->authmode ||
+        (target->fullmac_profile == P4_WIFI_FULLMAC_SAE_CCMP_PMF ?
+            (ap->ap.authmode != 6 && ap->ap.authmode != 7) :
+            ap->ap.authmode != (LONG)target->authmode) ||
         ap->ap.pairwise_cipher != (target->authmode ? 4 : 0) ||
         ap->ap.group_cipher != (target->authmode ? 4 : 0)) return FALSE;
     for (i = 0; i < target->ssid_length; ++i)
@@ -1313,6 +1315,37 @@ static BOOL wifi_association_ap_matches(
     if (target->bssid_set)
         for (i = 0; i < 6; ++i)
             if (ap->ap.bssid[i] != target->bssid[i]) return FALSE;
+    return TRUE;
+}
+
+/* IDF STA_CONNECTED is emitted after its handshake and reports connection
+ * authmode. AP-info reports BSS mode: a transition BSS may be7 while a SAE
+ * connection is6. UID0 has no attempt ID; this local baseline rejects events
+ * already observed before CONNECT, not arbitrarily delayed peer events.
+ * Admission still requires serialized teardown/configuration and a stable
+ * correlated current-AP snapshot. Never publish a bare event as link-up. */
+static BOOL wifi_association_event_matches(
+    const struct p4_wifi_association_target *target,
+    const struct p4_hosted_sta_ap_info *ap,
+    const struct p4_hosted_link_observation *event,
+    ULONG generation, ULONG connect_revision)
+{
+    ULONG i;
+    if (!target || !ap || !event || !target->fullmac_profile ||
+        !generation || event->generation != generation ||
+        event->revision <= connect_revision ||
+        event->kind != P4_HOSTED_LINK_UP_HINT || event->status ||
+        event->authmode != (LONG)target->authmode || ap->status ||
+        !target->ssid_length || target->ssid_length > 32u ||
+        event->ssid_length != target->ssid_length ||
+        ap->ap.ssid_size != target->ssid_length ||
+        event->channel != ap->ap.primary)
+        return FALSE;
+    for (i = 0; i < target->ssid_length; ++i)
+        if (event->ssid[i] != target->ssid[i] ||
+            event->ssid[i] != ap->ap.ssid[i]) return FALSE;
+    for (i = 0; i < 6u; ++i)
+        if (event->bssid[i] != ap->ap.bssid[i]) return FALSE;
     return TRUE;
 }
 
@@ -1325,7 +1358,7 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     struct wifi_owner_control *control;
     struct p4_wifi_association_target owned;
     struct p4_wifi_association_cancel hooks;
-    ULONG started, generation, remaining, wait, revision;
+    ULONG started, generation, remaining, wait, revision, connect_revision;
     unsigned polls;
     BOOL succeeded = FALSE, mutated = FALSE;
     if (!base || !base->ready || !base->association_enabled || !base->runtime ||
@@ -1409,6 +1442,7 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
      * Close. Do not submit CONNECT for that abandoned caller. Cleanup below
      * ignores its publication hook, but keeps the original deadline. */
     if (wifi_owner_stopping(context)) goto finish;
+    connect_revision = context->link_observation.revision;
     if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
             runtime->checksum, 282u,
             wifi_owner_remaining(context, started, 8000000UL))) goto finish;
@@ -1428,6 +1462,18 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
         if (!control->ap_info.status) {
             if (!wifi_association_ap_matches(&owned, &control->ap_info) ||
                 wifi_owner_stopping(context)) goto finish;
+            if (owned.fullmac_profile &&
+                !wifi_association_event_matches(&owned, &control->ap_info,
+                    &context->link_observation, generation, connect_revision)) {
+                /* A snapshot can precede its connected event. Keep waiting
+                 * within the original deadline, never grant snapshot-only
+                 * completion. A fresh contradictory event fails closed. */
+                if (context->link_observation.generation != generation ||
+                    context->link_observation.revision > connect_revision)
+                    goto finish;
+                wifi_yield(context);
+                continue;
+            }
             remaining = wifi_owner_remaining(context, started, 8000000UL);
             wait = remaining < P4_HOSTED_OWNER_MAX_ACQUIRE_US ? remaining :
                 P4_HOSTED_OWNER_MAX_ACQUIRE_US;
@@ -1436,6 +1482,9 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
                 !runtime->owner->poisoned && !runtime->fifo->poisoned &&
                 context->link_observation.generation == generation &&
                 context->link_observation.revision == revision &&
+                (!owned.fullmac_profile ||
+                    wifi_association_event_matches(&owned, &control->ap_info,
+                        &context->link_observation, generation, connect_revision)) &&
                 wifi_owner_remaining(context, started, 8000000UL);
             wifi_owner_release(context);
             /* Cancellation hooks never execute with controller ownership. */
@@ -1446,7 +1495,8 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
                 base->confirmed_ap.ssid_length = control->ap_info.ap.ssid_size;
                 CopyMem(control->ap_info.ap.bssid, base->confirmed_ap.bssid, 6);
                 base->confirmed_ap.channel = control->ap_info.ap.primary;
-                base->confirmed_ap.authmode = control->ap_info.ap.authmode;
+                base->confirmed_ap.authmode = owned.fullmac_profile ?
+                    owned.authmode : (ULONG)control->ap_info.ap.authmode;
                 CopyMem(&base->confirmed_ap, &base->observed_ap,
                         sizeof(base->observed_ap));
                 base->link_state = P4_WIFI_LINK_UP;

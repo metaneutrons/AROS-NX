@@ -1,5 +1,15 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Typed initial-link event gate (2026-10-11): FullMAC owner completion now
+requires a fresh matching STA_CONNECTED observation after the local pre-Connect
+baseline, a stable correlated current-AP snapshot and exact connection authmode.
+SAE accepts BSS metadata6/7 only with connection mode6; missing events cannot
+complete from AP-info alone. Native build and owner36842 checks each O0/O2
+sanitized verified, undeployed. UID0 supplies
+no peer attempt identifier: the baseline rejects already-observed events, not
+arbitrarily delayed peer events. Ongoing SAE link maintenance, opener-scoped
+cookie publication, capability admission and real IP/data qualification remain open.
+
 Owned FullMAC provider policy (2026-10-11): private resource/device ABI12
 adds explicit profile, required PMF, SAE PWE and per-attempt diagnostic
 permission to the copied target. Typed parsing rejects mixed legacy tags and

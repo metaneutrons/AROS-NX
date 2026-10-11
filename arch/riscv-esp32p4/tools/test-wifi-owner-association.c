@@ -197,6 +197,16 @@ struct fixture {
     unsigned generation_change_final;
     unsigned cancel_final_snapshot;
     unsigned cancel_on_final_release;
+    unsigned event_during_config;
+    unsigned event_on_connect;
+    unsigned duplicate_event_on_connect;
+    unsigned disconnect_event_after_connect;
+    unsigned event_on_first_final_ap;
+    unsigned event_on_commit_acquire;
+    unsigned commit_event_injections;
+    unsigned event_injections;
+    int32_t attempt_authmode;
+    int32_t ap_authmode_override;
     uint32_t malformed_response_request_id;
     uint32_t timeout_request_id;
     unsigned timeout_occurrence;
@@ -213,6 +223,14 @@ struct fixture {
         AP_CHANNEL_ZERO,
         AP_CHANNEL_FIFTEEN
     } ap_fault;
+    enum {
+        EVENT_EXACT = 0,
+        EVENT_WRONG_SSID,
+        EVENT_WRONG_BSSID,
+        EVENT_WRONG_CHANNEL,
+        EVENT_AUTHMODE_3,
+        EVENT_AUTHMODE_7
+    } event_fault;
     unsigned ap_info_calls;
     unsigned final_ap_calls;
     BOOL cancel_requested;
@@ -221,6 +239,11 @@ struct fixture {
 };
 
 static struct fixture f;
+
+static int inject_connected_event(struct fixture *state,
+                                  struct wifi_probe_context *context);
+static int inject_disconnected_event(struct fixture *state,
+                                     struct wifi_probe_context *context);
 
 static void check_confirmed_ap_cleared(void)
 {
@@ -276,6 +299,12 @@ static BOOL fake_host_acquire(struct P4SDMMCHost *host, ULONG wait_us)
         return FALSE;
     host->lock.ss_Owner = current_task;
     host->lock.depth = 1u;
+    if (f.event_on_commit_acquire && f.request_count[282u] != 0u &&
+        f.final_ap_calls == 1u) {
+        f.event_on_commit_acquire = 0u;
+        ++f.commit_event_injections;
+        CHECK(inject_disconnected_event(&f, &f.context));
+    }
     return TRUE;
 }
 
@@ -400,19 +429,21 @@ static int make_down_event(struct p4_hosted_inbox_item *item)
     return 1;
 }
 
-static int make_connected_event(struct p4_hosted_inbox_item *item)
+static int make_connected_event_values(struct p4_hosted_inbox_item *item,
+    const uint8_t *ssid, uint32_t ssid_length, const uint8_t *bssid,
+    uint32_t channel, int32_t authmode)
 {
     struct wire_buffer nested, wrapper;
-    uint8_t ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE] = {0};
-    static const uint8_t bssid[6] = {0x02u, 0x11u, 0x22u,
-                                     0x33u, 0x44u, 0x55u};
-    memcpy(ssid, TEST_SSID, sizeof(TEST_SSID) - 1u);
+    if (!item || !ssid || !bssid ||
+        ssid_length > P4_HOSTED_ASSOCIATION_SSID_SIZE) return 0;
     wire_init(&nested);
-    wire_bytes_field(&nested, 1u, ssid, sizeof(ssid));
-    wire_uint_field(&nested, 2u, sizeof(TEST_SSID) - 1u);
-    wire_bytes_field(&nested, 3u, bssid, sizeof(bssid));
-    wire_uint_field(&nested, 4u, 6u);
-    wire_uint_field(&nested, 5u, 0u);
+    wire_bytes_field(&nested, 1u, ssid,
+                     P4_HOSTED_ASSOCIATION_SSID_SIZE);
+    wire_uint_field(&nested, 2u, ssid_length);
+    wire_bytes_field(&nested, 3u, bssid,
+                     P4_HOSTED_ASSOCIATION_BSSID_SIZE);
+    wire_uint_field(&nested, 4u, channel);
+    wire_uint_field(&nested, 5u, (uint32_t)authmode);
     wire_init(&wrapper);
     wire_uint_field(&wrapper, 1u, 0u);
     wire_bytes_field(&wrapper, 2u, nested.bytes, nested.size);
@@ -424,6 +455,52 @@ static int make_connected_event(struct p4_hosted_inbox_item *item)
     item->uid = 0u;
     item->payload_size = wrapper.size;
     memcpy(item->payload, wrapper.bytes, wrapper.size);
+    return 1;
+}
+
+static int make_connected_event(struct p4_hosted_inbox_item *item)
+{
+    uint8_t ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE] = {0};
+    static const uint8_t bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE] =
+        {0x02u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u};
+    memcpy(ssid, TEST_SSID, sizeof(TEST_SSID) - 1u);
+    return make_connected_event_values(item, ssid,
+        (uint32_t)(sizeof(TEST_SSID) - 1u), bssid, 6u, 0);
+}
+
+static int inject_connected_event(struct fixture *state,
+                                  struct wifi_probe_context *context)
+{
+    struct p4_hosted_inbox_item item;
+    uint8_t ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE] = {0};
+    uint8_t bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE] =
+        {0x02u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u};
+    uint32_t channel = 6u;
+    int32_t authmode = state->attempt_authmode;
+    memcpy(ssid, TEST_SSID, sizeof(TEST_SSID) - 1u);
+    switch (state->event_fault) {
+    case EVENT_WRONG_SSID: ssid[0] ^= 0x20u; break;
+    case EVENT_WRONG_BSSID: bssid[5] ^= 1u; break;
+    case EVENT_WRONG_CHANNEL: channel = 7u; break;
+    case EVENT_AUTHMODE_3: authmode = 3; break;
+    case EVENT_AUTHMODE_7: authmode = 7; break;
+    default: break;
+    }
+    if (!make_connected_event_values(&item, ssid,
+            (uint32_t)(sizeof(TEST_SSID) - 1u), bssid, channel, authmode) ||
+        wifi_owner_event(context, &item) != 1)
+        return 0;
+    ++state->event_injections;
+    return 1;
+}
+
+static int inject_disconnected_event(struct fixture *state,
+                                     struct wifi_probe_context *context)
+{
+    struct p4_hosted_inbox_item item;
+    if (!make_down_event(&item) || wifi_owner_event(context, &item) != 1)
+        return 0;
+    ++state->event_injections;
     return 1;
 }
 
@@ -439,6 +516,8 @@ static void build_ap_body(struct fixture *state, int32_t status,
     int32_t group = pairwise;
     size_t ssid_length = sizeof(TEST_SSID) - 1u;
     memcpy(ssid, TEST_SSID, ssid_length);
+    if (state->ap_authmode_override)
+        authmode = state->ap_authmode_override;
     switch (state->ap_fault) {
     case AP_WRONG_SSID: ssid[0] ^= 0x20u; break;
     case AP_WRONG_BSSID: bssid[5] ^= 0x01u; break;
@@ -684,6 +763,30 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
         }
     }
 
+    /* UID-zero link events are injected while their RPC is drained. The
+     * caller must fence observations locally; this is not attempt-ID proof. */
+    if (request.msg_id == 284u && state->event_during_config) {
+        state->event_during_config = 0u;
+        CHECK(inject_connected_event(state, context));
+    }
+    if (request.msg_id == 282u && state->event_on_connect) {
+        state->event_on_connect = 0u;
+        CHECK(inject_connected_event(state, context));
+        if (state->duplicate_event_on_connect) {
+            state->duplicate_event_on_connect = 0u;
+            CHECK(inject_connected_event(state, context));
+        }
+    }
+    if (request.msg_id == 282u && state->disconnect_event_after_connect) {
+        state->disconnect_event_after_connect = 0u;
+        CHECK(inject_disconnected_event(state, context));
+    }
+    if (request.msg_id == 294u && state->request_count[282u] != 0u &&
+        state->final_ap_calls == 1u && state->event_on_first_final_ap) {
+        state->event_on_first_final_ap = 0u;
+        CHECK(inject_connected_event(state, context));
+    }
+
     if (request.msg_id == 283u && state->break_after_initial_disconnect &&
         occurrence == 1u)
         fake_signals |= SIGBREAKF_CTRL_C;
@@ -835,6 +938,7 @@ static BOOL invoke(struct p4_wifi_association_target *target)
     cancel.context = &f;
     cancel.cancelled = fake_cancelled;
     f.caller_password = target ? target->password : NULL;
+    f.attempt_authmode = target ? (int32_t)target->authmode : -1;
     return wifi_device_associate(&f.base, target, &cancel);
 }
 
@@ -970,11 +1074,13 @@ static void test_fullmac_typed_profile_association(void)
     f.expected_pmf_capable = 0u;
     f.expected_pmf_required = 0u;
     f.expected_sae_pwe = 0;
+    f.event_on_connect = 1u;
     original = target;
     CHECK(wifi_association_target_valid(&target));
     CHECK(invoke(&target) == TRUE);
     CHECK(f.config_policy_checks == 1u);
     CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+    CHECK(f.base.associated == FALSE);
     CHECK(memcmp(&target, &original, sizeof(target)) == 0);
     check_confirmed_ap_matches(0u);
     CHECK(bytes_zero(&f.control.sta_config, sizeof(f.control.sta_config)));
@@ -987,11 +1093,13 @@ static void test_fullmac_typed_profile_association(void)
     f.expected_pmf_capable = 0u;
     f.expected_pmf_required = 0u;
     f.expected_sae_pwe = 0;
+    f.event_on_connect = 1u;
     original = target;
     CHECK(wifi_association_target_valid(&target));
     CHECK(invoke(&target) == TRUE);
     CHECK(f.config_policy_checks == 1u);
     CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+    CHECK(f.base.associated == FALSE);
     CHECK(f.secret_seen_in_rpc == 1u);
     CHECK(memcmp(&target, &original, sizeof(target)) == 0);
     check_confirmed_ap_matches(3u);
@@ -1006,17 +1114,237 @@ static void test_fullmac_typed_profile_association(void)
         f.expected_pmf_capable = 1u;
         f.expected_pmf_required = 1u;
         f.expected_sae_pwe = (int32_t)pwe;
+        f.event_on_connect = 1u;
+        if (pwe == 3u)
+            f.ap_authmode_override = 7; /* Transition BSS, SAE event remains6. */
         original = target;
         CHECK(wifi_association_target_valid(&target));
         CHECK(invoke(&target) == TRUE);
         CHECK(f.config_policy_checks == 1u);
         CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+        CHECK(f.base.associated == FALSE);
         CHECK(f.secret_seen_in_rpc == 1u);
         CHECK(memcmp(&target, &original, sizeof(target)) == 0);
         check_confirmed_ap_matches(6u);
         check_secret_wiped();
         check_restored(FALSE);
     }
+}
+
+static void init_sae_ap_info(struct p4_hosted_sta_ap_info *ap,
+                             int32_t ap_authmode)
+{
+    static const uint8_t bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE] =
+        {0x02u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u};
+    memset(ap, 0, sizeof(*ap));
+    ap->ap.ssid_size = (uint32_t)(sizeof(TEST_SSID) - 1u);
+    memcpy(ap->ap.ssid, TEST_SSID, sizeof(TEST_SSID) - 1u);
+    memcpy(ap->ap.bssid, bssid, sizeof(bssid));
+    ap->ap.primary = 6u;
+    ap->ap.authmode = ap_authmode;
+    ap->ap.pairwise_cipher = 4;
+    ap->ap.group_cipher = 4;
+}
+
+static void test_fullmac_event_matcher_strict_identity(void)
+{
+    struct p4_wifi_association_target target;
+    struct p4_hosted_sta_ap_info ap;
+    struct p4_hosted_link_observation event, baseline;
+
+    fixture_init();
+    target_init_typed_sae(&target, 2u, 16u, 1u);
+    f.attempt_authmode = 6;
+    CHECK(inject_connected_event(&f, &f.context));
+    baseline = f.context.link_observation;
+    init_sae_ap_info(&ap, 7); /* BSS transition mode; event reports SAE6. */
+    event = baseline;
+    CHECK(wifi_association_event_matches(&target, &ap, &event,
+                                         TEST_GENERATION, 0u));
+
+#define CHECK_EVENT_REJECT(mutation) do { \
+        event = baseline; \
+        ap = (struct p4_hosted_sta_ap_info){0}; \
+        init_sae_ap_info(&ap, 7); \
+        mutation; \
+        CHECK(!wifi_association_event_matches(&target, &ap, &event, \
+                                               TEST_GENERATION, 0u)); \
+    } while (0)
+    CHECK_EVENT_REJECT(event.generation = TEST_GENERATION + 1u);
+    CHECK_EVENT_REJECT(event.revision = 0u);
+    CHECK_EVENT_REJECT(event.kind = P4_HOSTED_LINK_DOWN);
+    CHECK_EVENT_REJECT(event.status = 1);
+    CHECK_EVENT_REJECT(event.authmode = 3);
+    CHECK_EVENT_REJECT(event.authmode = 7);
+    CHECK_EVENT_REJECT(event.ssid[0] ^= 0x20u);
+    CHECK_EVENT_REJECT(event.ssid_length--);
+    CHECK_EVENT_REJECT(event.bssid[5] ^= 1u);
+    CHECK_EVENT_REJECT(event.channel = 7u);
+    CHECK_EVENT_REJECT(ap.ap.ssid[0] ^= 0x20u);
+    CHECK_EVENT_REJECT(ap.ap.bssid[5] ^= 1u);
+    CHECK_EVENT_REJECT(ap.ap.primary = 7u);
+    event = baseline;
+    init_sae_ap_info(&ap, 7);
+    ap.status = 1;
+    CHECK(!wifi_association_event_matches(&target, &ap, &event,
+                                           TEST_GENERATION, 0u));
+    init_sae_ap_info(&ap, 7);
+    ap.ap.ssid_size--;
+    CHECK(!wifi_association_event_matches(&target, &ap, &event,
+                                           TEST_GENERATION, 0u));
+    init_sae_ap_info(&ap, 7);
+    CHECK(!wifi_association_event_matches(&target, &ap, &event,
+                                           TEST_GENERATION, baseline.revision));
+    target.authmode = 3u;
+    CHECK(!wifi_association_event_matches(&target, &ap, &event,
+                                           TEST_GENERATION, 0u));
+    target.authmode = 6u;
+    CHECK(!wifi_association_event_matches(NULL, &ap, &event,
+                                           TEST_GENERATION, 0u));
+    CHECK(!wifi_association_event_matches(&target, NULL, &event,
+                                           TEST_GENERATION, 0u));
+    CHECK(!wifi_association_event_matches(&target, &ap, NULL,
+                                           TEST_GENERATION, 0u));
+    CHECK(!wifi_association_event_matches(&target, &ap, &event, 0u, 0u));
+    target.fullmac_profile = 0u;
+    CHECK(!wifi_association_event_matches(&target, &ap, &event,
+                                           TEST_GENERATION, 0u));
+#undef CHECK_EVENT_REJECT
+}
+
+static void check_sae_association_failed(void)
+{
+    CHECK(f.base.associated == FALSE);
+    CHECK(f.base.link_state == P4_WIFI_LINK_UNKNOWN);
+    check_confirmed_ap_cleared();
+    CHECK(bytes_zero(&f.base.observed_ap, sizeof(f.base.observed_ap)));
+    check_secret_wiped();
+    check_restored(FALSE);
+}
+
+static void test_fullmac_event_required_and_config_baseline(void)
+{
+    struct p4_wifi_association_target target;
+    unsigned scenario;
+    for (scenario = 0u; scenario < 2u; ++scenario) {
+        fixture_init();
+        target_init_typed_sae(&target, 2u, 16u, 1u);
+        if (scenario)
+            f.event_during_config = 1u;
+        CHECK(invoke(&target) == FALSE);
+        CHECK(f.request_count[282u] == 1u);
+        CHECK(f.final_ap_calls > 1u);
+        CHECK(f.event_injections == scenario);
+        CHECK(fake_now - 100000u >= 8000000u);
+        if (scenario) {
+            CHECK(f.context.link_observation.revision == 1u);
+            CHECK(f.context.link_observation.kind == P4_HOSTED_LINK_UP_HINT);
+        } else {
+            CHECK(f.context.link_observation.revision == 0u);
+        }
+        check_sae_association_failed();
+    }
+}
+
+static void test_fullmac_event_identity_failure_matrix(void)
+{
+    struct p4_wifi_association_target target;
+    int fault;
+    for (fault = EVENT_WRONG_SSID; fault <= EVENT_AUTHMODE_7; ++fault) {
+        fixture_init();
+        target_init_typed_sae(&target, 2u, 16u, 1u);
+        f.event_fault = (int)fault;
+        f.event_on_connect = 1u;
+        CHECK(invoke(&target) == FALSE);
+        CHECK(f.request_count[282u] == 1u);
+        CHECK(f.final_ap_calls == 1u);
+        CHECK(f.event_injections == 1u);
+        CHECK(fake_now - 100000u < 8000000u);
+        check_sae_association_failed();
+    }
+
+    fixture_init();
+    target_init_typed_sae(&target, 2u, 16u, 1u);
+    f.event_on_connect = 1u;
+    f.disconnect_event_after_connect = 1u;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.final_ap_calls == 1u && f.event_injections == 2u);
+    CHECK(f.context.link_observation.kind == P4_HOSTED_LINK_DOWN);
+    check_sae_association_failed();
+
+    fixture_init();
+    target_init_typed_sae(&target, 2u, 16u, 1u);
+    f.ap_authmode_override = 3; /* SAE profile cannot accept a WPA2 BSS. */
+    f.event_on_connect = 1u;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.final_ap_calls == 1u && f.event_injections == 1u);
+    check_sae_association_failed();
+}
+
+static void test_fullmac_delayed_duplicate_and_snapshot_races(void)
+{
+    struct p4_wifi_association_target target;
+
+    fixture_init();
+    target_init_typed_sae(&target, 2u, 16u, 1u);
+    f.event_on_first_final_ap = 1u;
+    CHECK(invoke(&target) == TRUE);
+    CHECK(f.final_ap_calls == 2u); /* Retry after the event advances revision. */
+    CHECK(f.event_injections == 1u);
+    CHECK(f.context.link_observation.revision == 1u);
+    CHECK(f.base.associated == FALSE);
+    check_confirmed_ap_matches(6u);
+    check_secret_wiped();
+    check_restored(FALSE);
+
+    fixture_init();
+    target_init_typed_sae(&target, 2u, 16u, 1u);
+    f.event_on_connect = 1u;
+    f.duplicate_event_on_connect = 1u;
+    CHECK(invoke(&target) == TRUE);
+    CHECK(f.final_ap_calls == 1u);
+    CHECK(f.event_injections == 2u);
+    CHECK(f.context.link_observation.revision == 2u);
+    CHECK(f.base.associated == FALSE);
+    check_confirmed_ap_matches(6u);
+    check_secret_wiped();
+    check_restored(FALSE);
+
+    fixture_init();
+    target_init_typed_sae(&target, 2u, 16u, 1u);
+    f.event_on_connect = 1u;
+    f.event_on_commit_acquire = 1u;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.final_ap_calls == 1u);
+    CHECK(f.commit_event_injections == 1u);
+    CHECK(f.context.link_observation.kind == P4_HOSTED_LINK_DOWN);
+    check_sae_association_failed();
+}
+
+static void test_fullmac_typed_cancellation_and_late_ack(void)
+{
+    struct p4_wifi_association_target target;
+
+    fixture_init();
+    target_init_typed_sae(&target, 2u, 16u, 1u);
+    f.cancel_after_response_id = 284u;
+    f.cancel_after_response_occurrence = 1u;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.request_count[284u] == 1u);
+    CHECK(f.request_count[282u] == 0u);
+    CHECK(f.final_ap_calls == 0u);
+    check_sae_association_failed();
+
+    fixture_init();
+    target_init_typed_sae(&target, 2u, 16u, 1u);
+    f.event_on_connect = 1u;
+    f.cancel_after_response_id = 282u;
+    f.cancel_after_response_occurrence = 1u;
+    CHECK(invoke(&target) == FALSE); /* ACK is not a qualified link event. */
+    CHECK(f.request_count[282u] == 1u);
+    CHECK(f.final_ap_calls == 0u);
+    CHECK(f.event_injections == 1u);
+    check_sae_association_failed();
 }
 
 static void test_fullmac_validation_and_pre_io_refusal(void)
@@ -1586,6 +1914,11 @@ int main(void)
     test_disconnect_revision_race();
     test_success_open_and_protected();
     test_fullmac_typed_profile_association();
+    test_fullmac_event_matcher_strict_identity();
+    test_fullmac_event_required_and_config_baseline();
+    test_fullmac_event_identity_failure_matrix();
+    test_fullmac_delayed_duplicate_and_snapshot_races();
+    test_fullmac_typed_cancellation_and_late_ack();
     test_fullmac_validation_and_pre_io_refusal();
     test_final_cancellation_refuses_snapshot();
     test_default_gate_and_validation_refuse_without_rpc();
