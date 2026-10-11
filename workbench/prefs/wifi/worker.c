@@ -1441,6 +1441,27 @@ static void DoDevices(struct WifiMsg *m)
 /* ------------------------------------------------------------------------- */
 /* Commands                                                                  */
 
+/* A startup OpenDevice probe can fail transiently. A later successful scan
+ * proves this exact device/unit implements S2_GETNETWORKS; repair the chooser
+ * from that observation, not from its filename or association capabilities. */
+static void RememberScannedDevice(struct WifiMsg *m)
+{
+    LONG i;
+
+    if (m->wm_Device[0] == '\0' || m->wm_Unit < 0 ||
+        m->wm_DeviceCount < 0 || m->wm_DeviceCount > WIFI_MAX_DEVS)
+        return;
+    for (i = 0; i < m->wm_DeviceCount; i++)
+        if (Stricmp(m->wm_Devices[i], m->wm_Device) == 0 &&
+            m->wm_DeviceUnits[i] == m->wm_Unit)
+            return;
+    if (i == WIFI_MAX_DEVS)
+        return;
+    snprintf(m->wm_Devices[i], WIFI_DEV_MAX, "%s", m->wm_Device);
+    m->wm_DeviceUnits[i] = m->wm_Unit;
+    m->wm_DeviceCount++;
+}
+
 /* Fills in wm_Associated/wm_SSID. Returns FALSE only if the device is absent. */
 static BOOL DoStatus(struct WifiMsg *m)
 {
@@ -1583,6 +1604,8 @@ static void DoScan(struct WifiMsg *m)
         struct TagItem **lists = dev.wd_Req->ios2_StatData;
         ULONG count = dev.wd_Req->ios2_DataLength, i;
         LONG j;
+
+        RememberScannedDevice(m);
 
         for (i = 0; i < count && i < WIFI_MAX_NETS && lists != NULL; i++)
         {

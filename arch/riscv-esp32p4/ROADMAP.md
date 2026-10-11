@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `first warm-start observed`: matched ABI12 SD/BSP installed; one-pulse45s capture reaches owner ready CPU1/expected C6 MAC after GPIO54 reset; both harts/runtime activity observed; truncated reset suffix and two-ROM-banner ambiguity retained | Repeat continuity qualification and fresh native Scan test; reset alone is not an association-attempt fence or full WiFi pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `first warm-start observed`: matched ABI12 SD/BSP installed; one-pulse45s capture reaches owner ready CPU1/expected C6 MAC after GPIO54 reset; Fabian reports four scan results, stale Prefs WPA3 labels and empty chooser; chooser repair native-build verified, awaiting SD installation | Fresh corrected-Prefs Scan test and repeat continuity qualification; reset alone is not an association-attempt fence or full WiFi pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1880,6 +1880,12 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   the existing singleton RSN_SAE/SAE summary. Display-only tests must reject
   mixed7, TKIP, unknown suites and malformed data. No new public ABI or PMF/
   negotiated-authentication claim. Source/host/native builds cannot qualify RF.
+  Fabian now reports four scan results with WPA3 '?' and an empty device
+  selector. Installed SD Prefs153004B predates this display projection.
+  Refreshed Prefs166332B also repairs a missing startup chooser entry after
+  a successful scan of the configured device/unit, without capability or
+  association gate changes. Host/native build verified; SD deployment and
+  fresh visual acceptance pending. Mixed7 remains unknown, not silently WPA3.
 - SAE-M2 contract/caller (depends on M1): negotiate a versioned per-device SAE
   firmware-offload profile and typed association selection without fabricated
   RSN IEs. Preserve v1 layouts/legacy behavior; old callers must not silently
@@ -41508,3 +41514,51 @@ remain open. No partial stage is a complete A/B update system.
 - Next: fresh user readiness for Prefs/WiFi Scan, no automatic association.
   Repeat warm continuity and original SAE/required-PMF/DHCP/routes/DNS/
   bidirectional data/reconnect/load gates remain open; no full WiFi pass.
+
+### 2026-10-11 — Repair stale WiFi display delivery and scan/chooser divergence
+
+- Fabian reports four networks from native Scan; Schmieder24 and
+  Guests@Schmieder are identified by him as WPA3 but show '?', while Device
+  shows '(no wireless device)'. This is a user-observed scan result, not a
+  negotiated SAE/PMF, IP/data or repeat-reset acceptance result.
+- Current installed sd-renamed.manifest still identifies Prefs/WiFi153004B,
+  SHA2568f00ba8f33d0fa6779fdec6ef13a5f28a5cb2183f610467c34b070dd480d9ef9.
+  It predates the already-tested pure authmode6/CCMP4+4 WPA3 projection.
+  No new security enum/ABI/cipher relaxation is needed. Actual live AP tuples
+  have not been captured here; mode7/malformed/unknown tuples remain '?'.
+- Source audit establishes distinct startup enumeration and configured-path
+  Scan. The cycle formerly never refreshed after the first probe. Exact
+  startup failure cause remains unproved. A successful S2_GETNETWORKS now
+  appends its actual path/unit with bounded case-insensitive deduplication;
+  the main task refreshes cycle entries/selection with NoNotify, preserving
+  network results and avoiding an unintended worker dispatch. Zero-result
+  successful scans also prove scanner support; failed scans add nothing.
+  This repairs state convergence, not an assumed radio readiness root cause.
+- Fresh native build after explicit Prefs object invalidation, process5169
+  actual exit0; all four source objects compiled and full link completed,
+  no error:/warning:. Prefs166332B SHA256
+  195f45e4ed39cc28b2557af499b3829a0b9ed3634795dbce38d898ea5c3bc52d.
+  Target esp32p4-riscv-smp, WIFI_VOLATILE_DEFAULT=1 unchanged. Driver/resource
+  ABI12, peer admission gate0 and installed C6/kernel/BSP unchanged.
+- Source-extracted chooser18, production security-display93 and actual
+  SANA scan338 checks each O0/O2 ASan/UBSan exit0. Chooser harness covers
+  empty, duplicate/case variant, distinct units, full list and invalid inputs;
+  GUI invocation/NoNotify wiring is source-checked, not a live MUI test.
+  Independent Luna investigation confirms the separate paths and unguarded
+  NSD scanner advertisement; no FullMAC gate change is justified.
+  Independent follow-up review finds no blocker in shared-message ownership
+  or local MUI NoNotify/entries/active handling. Its test-regex weakness was
+  corrected to anchor on the GETNETWORKS success branch;18 checks each pass
+  again. A live cycle redraw remains unverified.
+- Evidence wifi-2026-10-11/prefs-fix.g2WA81 contains retained WiFi and
+  candidate332-entry sd-prefs-fixed.manifest (only Prefs/WiFi differs).
+  prefs-fixed-build.log SHA256
+  0bf7ec3b5c8109a851b56a4f54f74a98dc199c603e2490cb778fa348ad360ab0;
+  chooser-tests.log ead036d378be1fff4c5dea4fe1c13008983e6f85f36bd85aee8a6165e608e350;
+  display-tests.log4d86543ebd7fd729658fba7720104e78888c7428061e63b10bd05fc44a9ba446;
+  scan-tests.log36b72983f4379bd1d221298bd3122ae212af3b2d25a2f76c10d7d6ccbed85ab2.
+- Undeployed. Requested fresh SD-to-reader confirmation before exact-media
+  backup and single-file installation; no new flash, C6 update, credentials,
+  automatic connection, hardware reset or sight test in this change. Next:
+  verified installation, then fresh readiness for scan/chooser observation.
+  All original SAE/required-PMF/IP/data/reconnect/load gates remain open.

@@ -332,6 +332,33 @@ static IPTR DisconnectFunc(struct Hook *hook, Object *caller, void *data)
 }
 
 /* A reply came back from the worker. */
+static void RefreshDeviceChooser(void)
+{
+    LONG i, active = 0;
+
+    for (i = 0; i < msg->wm_DeviceCount; i++)
+    {
+        if (msg->wm_DeviceUnits[i] != 0)
+            snprintf(devlabels[i], sizeof(devlabels[i]), "%s unit %ld",
+                msg->wm_Devices[i], (long)msg->wm_DeviceUnits[i]);
+        else
+            snprintf(devlabels[i], sizeof(devlabels[i]), "%s",
+                msg->wm_Devices[i]);
+        devnames[i] = (CONST_STRPTR)devlabels[i];
+        if (Stricmp(msg->wm_Devices[i], msg->wm_Device) == 0 &&
+            msg->wm_DeviceUnits[i] == msg->wm_Unit)
+            active = i;
+    }
+    if (msg->wm_DeviceCount == 0)
+        devnames[0] = _(MSG_NO_DEVICE);
+    devnames[msg->wm_DeviceCount ? msg->wm_DeviceCount : 1] = NULL;
+    /* Updating labels must not dispatch DeviceFunc, clear the scan results or
+     * submit another worker message while this reply is being consumed. */
+    SetAttrs(devcycle, MUIA_NoNotify, TRUE,
+        MUIA_Cycle_Entries, (IPTR)devnames,
+        MUIA_Cycle_Active, active, TAG_DONE);
+}
+
 static void HandleReply(void)
 {
     struct WifiMsg *m;
@@ -343,6 +370,7 @@ static void HandleReply(void)
         switch (m->wm_Cmd)
         {
         case WCMD_SCAN:
+            RefreshDeviceChooser();
             FillList();
             SetStatus(m->wm_Status);
             break;

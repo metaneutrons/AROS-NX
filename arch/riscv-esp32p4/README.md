@@ -1,5 +1,14 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WiFi chooser correction (2026-10-11): Fabian observes four scanned networks,
+but WPA3 labels remain '?' and the device selector remains empty. The SD
+manifest still identifies the older153004B Prefs/WiFi, without the current
+pure-SAE display projection. A later successful scan now repairs the one-shot
+startup chooser from its actual device/unit, without enabling association or
+fabricating capabilities. Sanitizer tests and fresh RV32-SMP Prefs166332B
+build pass; installation and a fresh visual scan remain pending. Mixed
+WPA2/WPA3 metadata remains unknown; no PMF, authentication or IP/data pass.
+
 Canonical network driver name (2026-10-11): `esp32p4wifi.device`, built by
 `kernel-esp32p4wifi-device-quick`, replaces `esp32p4wlan.device`. The separate
 `esp32p4wifi.resource` keeps its name and private ABI12. Generated device
