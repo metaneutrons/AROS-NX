@@ -149,11 +149,11 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device; access-stage diagnostics tested, deployed/readback and headless return verified | Fresh-readiness discovery-only GUI capture before retrying association; peer admission remains0, no IP/data pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device; access-stage diagnostics tested, deployed/readback and headless return verified; directory-boundary fault/observer-on-off host tests pass | Fresh-readiness discovery-only GUI capture before retrying association; peer admission remains0, no IP/data pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | `scan/presentation partial; no native association pass`: ABI12/host ABI8, flash helpers1.3; Fabian confirms corrected WPA2/3 labels, but open association fails and latest synchronized GUI reports no wireless device; access diagnostics installed/readback/headless verified; privacy/recovery assertions and FullMAC peer admission0 | Resolve discovery, then native open and original SAE/required-PMF/no-fallback association, DHCP/routes/DNS/bidirectional traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1647,6 +1647,15 @@ secured recovery; no new hardware interaction is authorized by this status.
 
 ### N2 - native AROS WLAN device
 
+Current N2T status (2026-10-11): later ABI12/host ABI8 flash helper1.3
+evidence supersedes the older ABI11/SD-only and unknown-label state below.
+Fabian confirms WPA2/3 presentation; this is not negotiated SAE or PMF proof.
+Open association still fails, followed by a synchronized no-device GUI
+observation. Numeric discovery diagnostics are installed with exact readback
+and headless owner return; a new interactive startup gate awaits readiness.
+Directory-boundary host fixtures now pass without another hardware
+run. Earlier failures and artifact identities remain historical evidence.
+
 Helper delivery N2H (2026-10-11): `image/make-flash-helpers.py` validates
 RV32 ELF inputs, volatile WiFi and compiled flash path policy before overlaying
 a copied development stage. Seven negative/preservation tests pass. Existing
@@ -1931,6 +1940,8 @@ Follow-up source distinguishes port/request allocation, OpenDevice return,
 resident generation, NSCMD query and missing wireless command. Numeric P4
 status/opt-in observer now pass host/native tests, exact helper readback and
 headless return; GUI attribution is still pending, no readiness or link bypass.
+Dedicated directory-boundary fault/observer-on-off fixtures now pass;
+the prior access fixtures covered opening/query/cache, not enumeration.
 
 Current correction (2026-10-11): exact auth7/CCMP transition metadata is
 represented as PSK|SAE and displayed as WPA2/3, not mislabeled pure WPA3.
@@ -42262,3 +42273,53 @@ remain open. No partial stage is a complete A/B update system.
   Only helper volume was rewritten. Next obtain fresh readiness, arm a
   longer passive capture, then open FLASHDISK0P0:WiFi only and inspect startup
   cause/device chooser before any Connect. Original goal remains incomplete.
+
+### 2026-10-11 - N2-SAE-REC directory boundary verification in progress
+
+- Before another interactive gate, close a remaining source-test gap in the
+  installed discovery diagnostics. A Luna test-only task owns
+  workbench/prefs/wifi/tools/test-device-discovery.py; production code and
+  deployed bytes remain unchanged. Fixture extracts actual DoDevices,
+  cleanup/status and chooser limits, with mocked DOS/device boundaries.
+  Planned matrix: generic/flash, O0/O2, observer on/off with ASan/UBSan.
+- Primary source audit confirms Exec returns io_Error unchanged: IOERR_OPENFAIL
+  is-1 and IOERR_UNITBUSY is-6. Owner-ready is a resource startup observation,
+  not a successful device attachment/OpenDevice/query. Do not infer the cause
+  of Fabian's no-device observation from owner-ready or an uncaptured error.
+- Reconciled the N2T master row/current phase with later ABI12/helper1.3 and
+  Fabian-confirmed transition labels; earlier ABI11/SD/unknown-label entries
+  remain historical. This corrects documentation, not association acceptance.
+- Evidence directory allocated:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/discovery-tests.U2Qd2J.
+  Test completion/counts/digest are pending. No serial reader, reset, flash,
+  C6/SD or interactive test started in this slice. Fresh GUI readiness is
+  still required; the original open/SAE/PMF/IP/data/recovery goals remain open.
+
+### 2026-10-11 - N2-SAE-REC directory boundary host matrix passes
+
+- The test-only task completed; primary inspected the actual function/limit
+  extraction and mocked boundary/cleanup assertions, then reran the final
+  file. Actual process exit0 for generic/flash x O0/O2 x observer off/on,
+  all under ASan/UBSan. Each variant executes9 cases,655 checks off or745 on.
+  Extracted source digest
+  bac44713e339a0dbfbf755762c3c34e5365b59dbf5d0dcb581b6e7748e921212.
+- Tests cover Lock failure7, file-info allocation8, Examine failure9 and
+  IoErr retrieval before cleanup, empty/mixed directory filtering and
+  case-insensitive .device suffix, unit0 opening failure metadata, query
+  refusal, device/unit caps and balanced close/free/unlock. Exact observer
+  strings exclude network identities/credentials; off variants emit none.
+  TEXT is unsigned char as in AROS; native pointer-sign policy is modeled.
+- Final test-file SHA256
+  7c4d580e53639418bff84c6b2cea5f553af7817dbc1c50334da2c4f3578f1118.
+  Evidence directory discovery-tests.U2Qd2J from the preceding entry;
+  discovery-tests-final.log SHA256
+  b30e629f4ebb11cd226ca047ed3c0d30726e7e61d80f6bfd37459408451e1a0c.
+  The initial log has the same hash; final rerun follows the explicit unsigned
+  char spelling cleanup. No production bug identified or production edit.
+- Limits: directory APIs and opening/query boundaries are fakes, not a
+  running DOS/FAT/Exec/driver, native SMP or RF proof. Iterator transport
+  failures beyond the modeled EOF are not distinguished by this fixture.
+  No new native build, serial open, reset, flash, SD or C6 action. Installed
+  helper remains14e8d27c... with prior exact readback/headless evidence.
+  This closes a test-coverage gap only. Fresh GUI readiness is still pending;
+  no discovery, association, DHCP or data success is inferred.
