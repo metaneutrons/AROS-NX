@@ -106,6 +106,20 @@ actual UART privacy, native association and data-path acceptance remain open.
 
 ## Read-only discovery producer (candidate integrated, not installed)
 
+Current source is discovery version2 with40-byte header/1064-byte maximum and
+matched native ABI11 consumers. It detects C6 chip ID and MXX revision, plus
+the complete physical16-bit SECURE_VERSION field's burned-bit count through
+status-checked esp_efuse_read_field_cnt. Read errors/out-of-range counts leave
+that fact unknown while preserving independently valid chip/revision facts.
+The app-config-sized esp_efuse_read_secure_version helper is not used. Neither
+the full counter nor the app configuration attests installed bootloader policy.
+Virtual-eFuse builds publish none of these physical facts. IDF retries reads
+concurrent with an eFuse burn internally without a deadline; exclude concurrent
+burns and qualify runtime timing rather than claiming a bounded whole RPC.
+The preserved complete candidate and counts below are historical version1.
+Current v2 collector object compilation is not a complete linked firmware build
+or live discovery/recovery proof. No C6 write or release gate was enabled.
+
 `discovery.c/.h` collect a bounded normalized internal IDF partition inventory
 using the pinned IDF5.4.3 APIs, with shared `boardtool/discovery.c/.h` validation
 and the ESP32Board layout parser. This is a producer for the future negotiated
@@ -153,7 +167,7 @@ actual IDF iterator implementation, allocator or synchronization.
 The proposed wire contract is in [discovery-protocol.md](discovery-protocol.md).
 `discovery-schema.patch` applies cleanly to the pinned Hosted schema and is
 generated in the separate candidate below. Shared discovery_wire.c/.h encode/decode a
-canonical1056-byte maximum payload with echoed nonzero nonce and normalized
+canonical1064-byte maximum payload with echoed nonzero nonce and normalized
 records. Run `sh arch/riscv-esp32p4/tools/run-c6-discovery-wire-tests.sh`:
 45 cases/136 assertions pass each O0/O2 with ASan/UBSan. These byte tests do not
 exercise Protobuf framing, epoch/UID correlation, handlers or live transport.

@@ -20,7 +20,7 @@
 #define P4_HOSTED_INIT_TAG_EXTENDED_CAPABILITIES 0x16u
 #define P4_HOSTED_INIT_TAG_BOARD_DISCOVERY 0x17u
 
-#define P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1 1u
+#define P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT 2u
 
 #define P4_HOSTED_INIT_CHIP_ESP32 0x00u
 #define P4_HOSTED_INIT_CHIP_ESP32S2 0x02u
@@ -64,7 +64,7 @@ struct p4_hosted_init {
 int p4_hosted_init_parse(const uint8_t *event, size_t event_size,
                          struct p4_hosted_init *result);
 
-/* True only for version 1 discovery on an ESP32-C6 with valid WLAN-over-SDIO
+/* True only for version 2 discovery on an ESP32-C6 with valid WLAN-over-SDIO
  * capability facts. Unsupported versions remain available in the parsed
  * inventory but do not enable discovery. */
 int p4_hosted_init_has_board_discovery(const struct p4_hosted_init *init);

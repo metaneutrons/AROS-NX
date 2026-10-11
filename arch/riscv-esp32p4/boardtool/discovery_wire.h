@@ -3,14 +3,14 @@
 #define P4_BOARD_DISCOVERY_WIRE_H
 #include "discovery.h"
 
-/* Version1 byte payload for the negotiated Hosted extension. Not a raw
+/* Version2 byte payload for the negotiated Hosted extension. Not a raw
  * partition table. The enclosing RPC must correlate UID and owner/peer epoch.
  * Nonzero nonce is echoed to prevent accidental cross-request publication;
  * it is not authentication or a substitute for epoch correlation. */
-#define BOARD_DISCOVERY_WIRE_VERSION 1u
-#define BOARD_DISCOVERY_WIRE_HEADER 32u
+#define BOARD_DISCOVERY_WIRE_VERSION 2u
+#define BOARD_DISCOVERY_WIRE_HEADER 40u
 #define BOARD_DISCOVERY_WIRE_RECORD 32u
-#define BOARD_DISCOVERY_WIRE_MAX (32u + 32u * BOARD_LAYOUT_MAX_PARTITIONS)
+#define BOARD_DISCOVERY_WIRE_MAX (40u + 32u * BOARD_LAYOUT_MAX_PARTITIONS)
 
 /* Exact canonical length; little-endian integers; zero reserved/padding bytes.
  * Encoded inventory is structurally validated. Input/output/written ranges

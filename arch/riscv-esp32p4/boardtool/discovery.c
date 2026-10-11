@@ -29,6 +29,13 @@ int board_discovery_validate(const struct board_discovery_snapshot *snapshot)
         layout->md5_record_present || snapshot->running_state > 6u ||
         (snapshot->security_known & ~BOARD_DISCOVERY_SECURITY_ALL) ||
         (snapshot->security_enabled & ~snapshot->security_known)) return 0;
+    if ((snapshot->target_known & ~BOARD_DISCOVERY_TARGET_ALL) ||
+        ((snapshot->target_known & BOARD_DISCOVERY_TARGET_CHIP) ?
+            snapshot->chip_id != BOARD_DISCOVERY_CHIP_C6 : snapshot->chip_id != 0) ||
+        (!(snapshot->target_known & BOARD_DISCOVERY_TARGET_REVISION) &&
+            snapshot->chip_revision != 0) ||
+        (!(snapshot->target_known & BOARD_DISCOVERY_TARGET_SECURE_VERSION) &&
+            snapshot->secure_version != 0)) return 0;
     for (i = 0; i < layout->count; ++i) {
         const struct board_partition *part = &layout->partitions[i];
         if ((part->flags & ~(BOARD_DISCOVERY_PART_ENCRYPTED | BOARD_DISCOVERY_PART_READONLY)) ||

@@ -15,6 +15,9 @@
 #include "esp_partition.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
+#include "esp_chip_info.h"
+#include "esp_efuse.h"
+#include "esp_efuse_table.h"
 #include "c6_alloc.h"
 
 #define MAX_MOCK_PARTITIONS 40u
@@ -50,6 +53,8 @@ static size_t released_index;
 static unsigned state_calls;
 static unsigned encryption_calls;
 static unsigned secure_boot_calls;
+static unsigned chip_info_calls;
+static unsigned efuse_field_count_calls;
 static unsigned physical_size_calls;
 static unsigned effective_size_calls;
 static unsigned bad_api_arguments;
@@ -62,14 +67,24 @@ static esp_err_t effective_size_result;
 static uint32_t physical_size_bytes;
 static uint32_t effective_size_bytes;
 static esp_err_t state_result;
+static esp_err_t efuse_field_count_result;
 static esp_ota_img_states_t state_value;
 static bool encryption_enabled;
 static bool secure_boot_enabled;
+static esp_chip_model_t chip_model;
+static uint16_t chip_revision;
+static size_t efuse_field_count;
 
 static const char *active_case;
 static unsigned checks_run;
 static unsigned cases_run;
 static unsigned failures;
+
+static const esp_efuse_desc_t c6_secure_version_descriptor = { 0u, 142u, 16u };
+const esp_efuse_desc_t *ESP_EFUSE_SECURE_VERSION[] = {
+    &c6_secure_version_descriptor,
+    NULL
+};
 
 static int fail(const char *message)
 {
@@ -122,6 +137,7 @@ static void reset_mocks(void)
     find_calls = get_calls = next_calls = release_calls = 0;
     released_index = SIZE_MAX;
     state_calls = encryption_calls = secure_boot_calls = 0;
+    chip_info_calls = efuse_field_count_calls = 0;
     physical_size_calls = effective_size_calls = 0;
     bad_api_arguments = mutation_calls = allocation_calls = 0;
     monitor_allocations = 0;
@@ -130,9 +146,13 @@ static void reset_mocks(void)
     physical_size_bytes = 0x01000000u;
     effective_size_bytes = 0x00400000u;
     state_result = ESP_OK;
+    efuse_field_count_result = ESP_OK;
     state_value = ESP_OTA_IMG_VALID;
     encryption_enabled = true;
     secure_boot_enabled = false;
+    chip_model = CHIP_ESP32C6;
+    chip_revision = 204u;
+    efuse_field_count = 7u;
     esp_flash_default_chip = (esp_flash_t *)(void *)&default_flash_storage;
 }
 
@@ -246,6 +266,11 @@ static int test_positive_inventory(void)
         "virtual-eFuse build claimed security state was known");
     REQUIRE(encryption_calls == 0 && secure_boot_calls == 0,
         "virtual-eFuse build queried security APIs");
+    REQUIRE(snapshot.target_known == 0u && snapshot.chip_id == 0u &&
+        snapshot.chip_revision == 0u && snapshot.secure_version == 0u,
+        "virtual-eFuse build published target facts");
+    REQUIRE(chip_info_calls == 0 && efuse_field_count_calls == 0,
+        "virtual-eFuse build queried chip/eFuse fact APIs");
 #else
     REQUIRE(snapshot.security_known == (BOARD_DISCOVERY_SECURITY_ENCRYPTION |
         BOARD_DISCOVERY_SECURITY_SECURE_BOOT), "encryption/secure-boot known bits mismatch");
@@ -253,6 +278,12 @@ static int test_positive_inventory(void)
         "encryption/secure-boot enabled bits mismatch");
     REQUIRE(encryption_calls == 1 && secure_boot_calls == 1,
         "security query call counts mismatch");
+    REQUIRE(snapshot.target_known == BOARD_DISCOVERY_TARGET_ALL &&
+        snapshot.chip_id == BOARD_DISCOVERY_CHIP_C6 && snapshot.chip_id == 13u &&
+        snapshot.chip_revision == 204u && snapshot.secure_version == 7u,
+        "detected C6 target facts or values mismatch");
+    REQUIRE(chip_info_calls == 1 && efuse_field_count_calls == 1,
+        "chip/eFuse fact API call counts mismatch");
 #endif
     REQUIRE((snapshot.security_known & (BOARD_DISCOVERY_SECURITY_ROLLBACK |
         BOARD_DISCOVERY_SECURITY_ANTI_ROLLBACK)) == 0u,
@@ -269,6 +300,23 @@ static int test_positive_inventory(void)
     return 1;
 }
 
+static int test_wrong_chip_model_refusal(void)
+{
+#ifdef CONFIG_EFUSE_VIRTUAL
+    return 1;
+#else
+    setup_valid_inventory();
+    chip_model = CHIP_ESP32P4;
+    if (!expect_failure("wrong chip model refuses discovery")) return 0;
+    REQUIRE(chip_info_calls == 1, "wrong-model refusal did not query chip model exactly once");
+    REQUIRE(efuse_field_count_calls == 0,
+        "wrong-model refusal read the secure-version field");
+    REQUIRE(physical_size_calls == 0 && effective_size_calls == 0 && find_calls == 0,
+        "wrong-model refusal continued into flash discovery");
+    return 1;
+#endif
+}
+
 static int test_dirty_trailing_label(void)
 {
     struct board_discovery_snapshot snapshot;
@@ -279,6 +327,54 @@ static int test_dirty_trailing_label(void)
     REQUIRE(strcmp(snapshot.layout.partitions[3].label, "ota_1") == 0,
         "normalized label unexpectedly included trailing bytes");
     return 1;
+}
+
+static int test_secure_version_field_count_cases(void)
+{
+#ifdef CONFIG_EFUSE_VIRTUAL
+    return 1;
+#else
+    struct board_discovery_snapshot snapshot;
+
+    setup_valid_inventory();
+    efuse_field_count = 0u;
+    if (!expect_success("zero secure-version field count is known", &snapshot)) return 0;
+    REQUIRE(snapshot.target_known == BOARD_DISCOVERY_TARGET_ALL &&
+        snapshot.secure_version == 0u,
+        "zero secure-version count was left unknown or changed");
+    REQUIRE(efuse_field_count_calls == 1,
+        "zero secure-version count was not read exactly once");
+
+    setup_valid_inventory();
+    efuse_field_count = 16u;
+    if (!expect_success("full-width secure-version field count", &snapshot)) return 0;
+    REQUIRE(snapshot.target_known == BOARD_DISCOVERY_TARGET_ALL &&
+        snapshot.secure_version == 16u,
+        "16-bit secure-version count was rejected or changed");
+    REQUIRE(efuse_field_count_calls == 1,
+        "full-width secure-version count was not read exactly once");
+
+    setup_valid_inventory();
+    efuse_field_count = 17u;
+    if (!expect_success("out-of-range secure-version field count stays unknown", &snapshot)) return 0;
+    REQUIRE(snapshot.target_known == (BOARD_DISCOVERY_TARGET_CHIP |
+        BOARD_DISCOVERY_TARGET_REVISION) && snapshot.chip_id == BOARD_DISCOVERY_CHIP_C6 &&
+        snapshot.chip_revision == 204u && snapshot.secure_version == 0u,
+        "out-of-range count damaged independent chip facts or became known");
+    REQUIRE(efuse_field_count_calls == 1,
+        "out-of-range secure-version count was not read exactly once");
+
+    setup_valid_inventory();
+    efuse_field_count_result = ESP_FAIL;
+    if (!expect_success("secure-version field read error stays unknown", &snapshot)) return 0;
+    REQUIRE(snapshot.target_known == (BOARD_DISCOVERY_TARGET_CHIP |
+        BOARD_DISCOVERY_TARGET_REVISION) && snapshot.chip_id == BOARD_DISCOVERY_CHIP_C6 &&
+        snapshot.chip_revision == 204u && snapshot.secure_version == 0u,
+        "field read error damaged independent chip facts or became known");
+    REQUIRE(efuse_field_count_calls == 1,
+        "secure-version field API failure was not observed exactly once");
+    return 1;
+#endif
 }
 
 static int test_supported_states(void)
@@ -357,6 +453,8 @@ static int test_null_and_capacity_failures(void)
     esp_flash_default_chip = NULL;
     if (!expect_failure("missing default flash chip")) return 0;
     REQUIRE(physical_size_calls == 0, "missing default chip queried capacity");
+    REQUIRE(chip_info_calls == 0 && efuse_field_count_calls == 0,
+        "missing default chip queried C6 target facts");
 
     setup_valid_inventory();
     physical_size_result = ESP_FAIL;
@@ -701,6 +799,30 @@ bool esp_secure_boot_enabled(void)
     return secure_boot_enabled;
 }
 
+void esp_chip_info(esp_chip_info_t *out_info)
+{
+    ++chip_info_calls;
+    if (!out_info) {
+        ++bad_api_arguments;
+        return;
+    }
+    out_info->model = chip_model;
+    out_info->features = 0;
+    out_info->revision = chip_revision;
+    out_info->cores = 1;
+}
+
+esp_err_t esp_efuse_read_field_cnt(const esp_efuse_desc_t *field[], size_t *out_cnt)
+{
+    ++efuse_field_count_calls;
+    if (field != ESP_EFUSE_SECURE_VERSION || !out_cnt) {
+        ++bad_api_arguments;
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (efuse_field_count_result == ESP_OK) *out_cnt = efuse_field_count;
+    return efuse_field_count_result;
+}
+
 void esp_restart(void)
 {
     ++mutation_calls;
@@ -709,7 +831,9 @@ void esp_restart(void)
 
 int main(void)
 {
-    if (!test_positive_inventory() || !test_dirty_trailing_label() ||
+    if (!test_positive_inventory() || !test_wrong_chip_model_refusal() ||
+        !test_secure_version_field_count_cases() ||
+        !test_dirty_trailing_label() ||
         !test_supported_states() || !test_unknown_state_api_results() ||
         !test_bad_state_results() || !test_null_and_capacity_failures() ||
         !test_iterator_failures() || !test_missing_or_unmatched_roles() ||

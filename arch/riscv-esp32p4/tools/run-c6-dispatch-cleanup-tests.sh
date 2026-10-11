@@ -50,7 +50,7 @@ build_and_run() {
     # and calloc interposer. Protobuf and dispatcher stubs use the host heap.
     "$cc" $common_flags -I"$script_dir/c6-discovery-fixture" \
         -I"$proto_dir" -I"$protobuf_c_dir" -I"$common_include_dir" -I"$tmp_dir" \
-        -DC6_DISPATCH_HANDLER_SHIM=1 -DC6_BOARD_DISCOVERY_VERSION=1 \
+        -DC6_DISPATCH_HANDLER_SHIM=1 -DC6_BOARD_DISCOVERY_VERSION=2 \
         -Dcalloc=c6_dispatch_outbuf_calloc \
         -c "$handler_test" -o "$handler_object"
     "$cc" $common_flags -I"$script_dir/c6-discovery-fixture" \

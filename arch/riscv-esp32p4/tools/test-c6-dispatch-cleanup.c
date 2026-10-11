@@ -21,7 +21,7 @@
 #define TAG "dispatch_cleanup_test"
 #define ESP_LOGE(...) ((void)0)
 #define ESP_LOGI(...) ((void)0)
-#define C6_BOARD_DISCOVERY_VERSION 1
+#define C6_BOARD_DISCOVERY_VERSION 2
 
 void *c6_dispatch_outbuf_calloc(size_t count, size_t size);
 esp_err_t esp_rpc_command_dispatcher(Rpc *request, Rpc *response,

@@ -10,7 +10,7 @@
 
 #include "discovery_wire.h"
 
-_Static_assert(BOARD_DISCOVERY_WIRE_MAX == 1056u,
+_Static_assert(BOARD_DISCOVERY_WIRE_MAX == 1064u,
     "wire maximum must be one header plus 32 records");
 
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
@@ -64,6 +64,10 @@ static void make_snapshot(struct board_discovery_snapshot *snapshot,
     snapshot->security_known = BOARD_DISCOVERY_SECURITY_ALL;
     snapshot->security_enabled = BOARD_DISCOVERY_SECURITY_ENCRYPTION |
         BOARD_DISCOVERY_SECURITY_ANTI_ROLLBACK;
+    snapshot->target_known = BOARD_DISCOVERY_TARGET_ALL;
+    snapshot->chip_id = BOARD_DISCOVERY_CHIP_C6;
+    snapshot->chip_revision = 0x1234u;
+    snapshot->secure_version = 0x89abcdefu;
 
     for (i = 0; i < count; ++i) {
         struct board_partition *part = &snapshot->layout.partitions[i];
@@ -100,7 +104,11 @@ static int same_snapshot(const struct board_discovery_snapshot *a,
         a->running != b->running || a->boot != b->boot ||
         a->update != b->update || a->running_state != b->running_state ||
         a->security_known != b->security_known ||
-        a->security_enabled != b->security_enabled)
+        a->security_enabled != b->security_enabled ||
+        a->target_known != b->target_known ||
+        a->chip_id != b->chip_id ||
+        a->chip_revision != b->chip_revision ||
+        a->secure_version != b->secure_version)
         return 0;
 
     for (i = 0; i < a->layout.count; ++i) {
@@ -152,8 +160,8 @@ static int test_roundtrip_maximum(void)
         "roundtrip-32-partitions-max-nonce");
     if (!result) return 0;
     begin_case("maximum-canonical-size");
-    CHECK(BOARD_DISCOVERY_WIRE_MAX == 1056u,
-        "maximum wire size is not 1056 bytes");
+    CHECK(BOARD_DISCOVERY_WIRE_MAX == 1064u,
+        "maximum wire size is not 1064 bytes");
     return 1;
 }
 
@@ -176,15 +184,14 @@ static int test_byte_layout_and_label_boundaries(void)
         "label boundary fixture did not encode");
 
     CHECK(memcmp(bytes, "C6DI", 4) == 0, "magic bytes are not canonical");
-    CHECK(bytes[4] == 1 && bytes[5] == 32 && bytes[6] == 32 && bytes[7] == 4,
+    CHECK(bytes[4] == 2 && bytes[5] == 40 && bytes[6] == 32 && bytes[7] == 4,
         "version/header/record/count bytes are misplaced");
     CHECK(bytes[8] == source.running && bytes[9] == source.boot &&
         bytes[10] == source.update && bytes[11] == source.running_state &&
         bytes[12] == source.security_known && bytes[13] == source.security_enabled,
         "role or policy byte positions are wrong");
-    CHECK(bytes[14] == 0 && bytes[15] == 0 && bytes[28] == 0 &&
-        bytes[29] == 0 && bytes[30] == 0 && bytes[31] == 0,
-        "reserved header bytes are not zero");
+    CHECK(bytes[14] == BOARD_DISCOVERY_TARGET_ALL && bytes[15] == 0,
+        "target-known or reserved byte is misplaced");
 
     CHECK(bytes[16] == 0x00 && bytes[17] == 0x00 &&
         bytes[18] == 0x00 && bytes[19] == 0x01,
@@ -195,6 +202,15 @@ static int test_byte_layout_and_label_boundaries(void)
     CHECK(bytes[24] == 0x12 && bytes[25] == 0x34 &&
         bytes[26] == 0x56 && bytes[27] == 0x78,
         "nonce is not little-endian at offset 24");
+    CHECK(bytes[28] == 0x0d && bytes[29] == 0x00 &&
+        bytes[30] == 0x34 && bytes[31] == 0x12,
+        "chip ID or revision is not little-endian at offsets 28 and 30");
+    CHECK(bytes[32] == 0xef && bytes[33] == 0xcd &&
+        bytes[34] == 0xab && bytes[35] == 0x89,
+        "secure version is not little-endian across all four bytes");
+    CHECK(bytes[36] == 0 && bytes[37] == 0 &&
+        bytes[38] == 0 && bytes[39] == 0,
+        "reserved header bytes 36 through 39 are not zero");
 
     CHECK(bytes[first_record] == 0x00 && bytes[first_record + 1] == 0x00 &&
         bytes[first_record + 2] == 0x01 && bytes[first_record + 3] == 0x00,
@@ -265,18 +281,20 @@ static int test_decode_rejections(void)
 } while (0)
 
     REJECT_BYTE("bad-magic", 0, 'X');
-    REJECT_BYTE("bad-version", 4, 2);
-    REJECT_BYTE("bad-header-size", 5, 31);
+    REJECT_BYTE("legacy-version-1", 4, 1);
+    REJECT_BYTE("unsupported-version", 4, 3);
+    REJECT_BYTE("bad-header-size", 5, 39);
     REJECT_BYTE("bad-record-size", 6, 31);
     REJECT_BYTE("zero-record-count", 7, 0);
     REJECT_BYTE("record-count-over-maximum", 7, 33);
-    REJECT_BYTE("reserved-header-byte-14", 14, 1);
+    REJECT_BYTE("unknown-target-bit", 14, 8);
     REJECT_BYTE("reserved-header-byte-15", 15, 1);
-    REJECT_BYTE("reserved-header-byte-28", 28, 1);
-    REJECT_BYTE("reserved-header-byte-31", 31, 1);
+    REJECT_BYTE("reserved-header-byte-36", 36, 1);
+    REJECT_BYTE("reserved-header-byte-39", 39, 1);
     REJECT_BYTE("zero-wire-nonce", 24, 0);
     REJECT_BYTE("unknown-policy-bit", 12, 0x10);
     REJECT_BYTE("enabled-policy-not-known", 13, 0x80);
+    REJECT_BYTE("wrong-chip-id", 28, BOARD_DISCOVERY_CHIP_C6 - 1u);
     REJECT_BYTE("running-role-out-of-range", 8, 4);
     REJECT_BYTE("boot-role-points-to-data", 9, 3);
     REJECT_BYTE("update-role-points-to-data", 10, 3);
@@ -291,6 +309,30 @@ static int test_decode_rejections(void)
     REJECT_BYTE("unknown-partition-flag", BOARD_DISCOVERY_WIRE_HEADER + 8, 4);
 
 #undef REJECT_BYTE
+
+    memcpy(mutated, base, written);
+    mutated[4] = 1u;
+    mutated[5] = 32u;
+    if (!expect_decode_reject("truncated-version-1-payload", mutated,
+            32u + 4u * BOARD_DISCOVERY_WIRE_RECORD, 0x2468ace0u)) return 0;
+
+    memcpy(mutated, base, written);
+    mutated[14] = (uint8_t)(BOARD_DISCOVERY_TARGET_ALL &
+        (uint8_t)~BOARD_DISCOVERY_TARGET_CHIP);
+    if (!expect_decode_reject("unknown-chip-value-nonzero", mutated, written,
+            0x2468ace0u)) return 0;
+
+    memcpy(mutated, base, written);
+    mutated[14] = (uint8_t)(BOARD_DISCOVERY_TARGET_ALL &
+        (uint8_t)~BOARD_DISCOVERY_TARGET_REVISION);
+    if (!expect_decode_reject("unknown-revision-value-nonzero", mutated, written,
+            0x2468ace0u)) return 0;
+
+    memcpy(mutated, base, written);
+    mutated[14] = (uint8_t)(BOARD_DISCOVERY_TARGET_ALL &
+        (uint8_t)~BOARD_DISCOVERY_TARGET_SECURE_VERSION);
+    if (!expect_decode_reject("unknown-secure-version-nonzero", mutated, written,
+            0x2468ace0u)) return 0;
 
     memcpy(mutated, base, written);
     put32(mutated + BOARD_DISCOVERY_WIRE_HEADER + BOARD_DISCOVERY_WIRE_RECORD,
@@ -329,6 +371,50 @@ static int test_decode_rejections(void)
     return 1;
 }
 
+static int target_metadata_roundtrip(const char *name,
+    uint8_t target_known, uint16_t chip_id, uint16_t chip_revision,
+    uint32_t secure_version)
+{
+    struct board_discovery_snapshot source, decoded;
+    uint8_t bytes[BOARD_DISCOVERY_WIRE_MAX];
+    size_t written = 0;
+
+    begin_case(name);
+    make_snapshot(&source, 1u);
+    source.target_known = target_known;
+    source.chip_id = chip_id;
+    source.chip_revision = chip_revision;
+    source.secure_version = secure_version;
+    CHECK(board_discovery_validate(&source),
+        "target metadata fixture is invalid");
+    CHECK(board_discovery_encode(&source, 0x10203040u, bytes, sizeof(bytes),
+            &written), "target metadata fixture did not encode");
+    CHECK(bytes[14] == target_known, "target-known mask changed on wire");
+    CHECK(bytes[28] == (uint8_t)chip_id &&
+        bytes[29] == (uint8_t)(chip_id >> 8), "chip ID bytes changed on wire");
+    CHECK(bytes[30] == (uint8_t)chip_revision &&
+        bytes[31] == (uint8_t)(chip_revision >> 8),
+        "chip revision bytes changed on wire");
+    CHECK(bytes[32] == (uint8_t)secure_version &&
+        bytes[33] == (uint8_t)(secure_version >> 8) &&
+        bytes[34] == (uint8_t)(secure_version >> 16) &&
+        bytes[35] == (uint8_t)(secure_version >> 24),
+        "secure-version bytes changed on wire");
+    CHECK(board_discovery_decode(bytes, written, 0x10203040u, &decoded),
+        "target metadata fixture did not decode");
+    CHECK(same_snapshot(&source, &decoded),
+        "target metadata changed across wire roundtrip");
+    return 1;
+}
+
+static int test_target_metadata_unknown_and_partial(void)
+{
+    if (!target_metadata_roundtrip("all-target-fields-unknown-zero", 0u,
+            0u, 0u, 0u)) return 0;
+    return target_metadata_roundtrip("partial-target-known-fields-zero-unknown",
+        BOARD_DISCOVERY_TARGET_CHIP, BOARD_DISCOVERY_CHIP_C6, 0u, 0u);
+}
+
 static int expect_encode_reject(const char *name,
     const struct board_discovery_snapshot *snapshot, uint32_t nonce,
     uint8_t *bytes, size_t capacity, size_t extent, size_t *written)
@@ -359,6 +445,36 @@ static int test_encode_refusals(void)
     invalid = source;
     invalid.layout.partitions[0].flags = 4;
     if (!expect_encode_reject("invalid-inventory", &invalid, 0x1234u,
+            bytes, sizeof(bytes), sizeof(bytes), &written)) return 0;
+
+    invalid = source;
+    invalid.target_known = 8u;
+    written = 0x23456789u;
+    if (!expect_encode_reject("unknown-target-mask", &invalid, 0x1234u,
+            bytes, sizeof(bytes), sizeof(bytes), &written)) return 0;
+
+    invalid = source;
+    invalid.target_known &= (uint8_t)~BOARD_DISCOVERY_TARGET_CHIP;
+    written = 0x3456789au;
+    if (!expect_encode_reject("unknown-chip-value", &invalid, 0x1234u,
+            bytes, sizeof(bytes), sizeof(bytes), &written)) return 0;
+
+    invalid = source;
+    invalid.target_known &= (uint8_t)~BOARD_DISCOVERY_TARGET_REVISION;
+    written = 0x456789abu;
+    if (!expect_encode_reject("unknown-revision-value", &invalid, 0x1234u,
+            bytes, sizeof(bytes), sizeof(bytes), &written)) return 0;
+
+    invalid = source;
+    invalid.target_known &= (uint8_t)~BOARD_DISCOVERY_TARGET_SECURE_VERSION;
+    written = 0x56789abcu;
+    if (!expect_encode_reject("unknown-secure-version-value", &invalid, 0x1234u,
+            bytes, sizeof(bytes), sizeof(bytes), &written)) return 0;
+
+    invalid = source;
+    invalid.chip_id = BOARD_DISCOVERY_CHIP_C6 - 1u;
+    written = 0x6789abcdu;
+    if (!expect_encode_reject("wrong-chip-id", &invalid, 0x1234u,
             bytes, sizeof(bytes), sizeof(bytes), &written)) return 0;
 
     written = 0x87654321u;
@@ -450,6 +566,7 @@ int main(int argc, char **argv)
     if (!test_roundtrip_one()) ok = 0;
     if (!test_roundtrip_maximum()) ok = 0;
     if (!test_byte_layout_and_label_boundaries()) ok = 0;
+    if (!test_target_metadata_unknown_and_partial()) ok = 0;
     if (!test_decode_rejections()) ok = 0;
     if (!test_encode_refusals()) ok = 0;
     if (!test_encode_alias_refusals()) ok = 0;

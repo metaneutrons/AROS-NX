@@ -46,9 +46,15 @@ int board_discovery_encode(const struct board_discovery_snapshot *snapshot,
     bytes[8] = snapshot->running; bytes[9] = snapshot->boot;
     bytes[10] = snapshot->update; bytes[11] = snapshot->running_state;
     bytes[12] = snapshot->security_known; bytes[13] = snapshot->security_enabled;
+    bytes[14] = snapshot->target_known;
     put32(bytes + 16, snapshot->physical_bytes);
     put32(bytes + 20, snapshot->layout.flash_bytes);
     put32(bytes + 24, nonce);
+    bytes[28] = (uint8_t)snapshot->chip_id;
+    bytes[29] = (uint8_t)(snapshot->chip_id >> 8);
+    bytes[30] = (uint8_t)snapshot->chip_revision;
+    bytes[31] = (uint8_t)(snapshot->chip_revision >> 8);
+    put32(bytes + 32, snapshot->secure_version);
     for (i = 0; i < snapshot->layout.count; ++i) {
         const struct board_partition *part = &snapshot->layout.partitions[i];
         uint8_t *record = bytes + BOARD_DISCOVERY_WIRE_HEADER + i * BOARD_DISCOVERY_WIRE_RECORD;
@@ -72,7 +78,7 @@ int board_discovery_decode(const uint8_t *bytes, size_t size,
         !disjoint(bytes, size, snapshot, sizeof(*snapshot)) ||
         memcmp(bytes, "C6DI", 4) || bytes[4] != BOARD_DISCOVERY_WIRE_VERSION ||
         bytes[5] != BOARD_DISCOVERY_WIRE_HEADER || bytes[6] != BOARD_DISCOVERY_WIRE_RECORD ||
-        !zero(bytes + 14, 2) || !zero(bytes + 28, 4) ||
+        bytes[15] || !zero(bytes + 36, 4) ||
         get32(bytes + 24) != expected_nonce) return 0;
     count = bytes[7];
     if (!count || count > BOARD_LAYOUT_MAX_PARTITIONS ||
@@ -81,6 +87,10 @@ int board_discovery_decode(const uint8_t *bytes, size_t size,
     parsed.running = bytes[8]; parsed.boot = bytes[9]; parsed.update = bytes[10];
     parsed.running_state = bytes[11];
     parsed.security_known = bytes[12]; parsed.security_enabled = bytes[13];
+    parsed.target_known = bytes[14];
+    parsed.chip_id = (uint16_t)((uint16_t)bytes[28] | (uint16_t)bytes[29] << 8);
+    parsed.chip_revision = (uint16_t)((uint16_t)bytes[30] | (uint16_t)bytes[31] << 8);
+    parsed.secure_version = get32(bytes + 32);
     parsed.physical_bytes = get32(bytes + 16);
     parsed.layout.flash_bytes = get32(bytes + 20);
     for (i = 0; i < count; ++i) {

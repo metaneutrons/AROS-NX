@@ -38,7 +38,7 @@ static const uint8_t full_init[] = {
 static const uint8_t discovery_first_init[] = {
     P4_HOSTED_INIT_EVENT_TYPE, 9,
     P4_HOSTED_INIT_TAG_BOARD_DISCOVERY, 1,
-    P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1,
+    P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT,
     P4_HOSTED_INIT_TAG_CHIP_ID, 1, P4_HOSTED_INIT_CHIP_ESP32C6,
     P4_HOSTED_INIT_TAG_CAPABILITIES, 1, 0x0d
 };
@@ -48,7 +48,7 @@ static const uint8_t discovery_last_init[] = {
     P4_HOSTED_INIT_TAG_CAPABILITIES, 1, 0x0d,
     P4_HOSTED_INIT_TAG_CHIP_ID, 1, P4_HOSTED_INIT_CHIP_ESP32C6,
     P4_HOSTED_INIT_TAG_BOARD_DISCOVERY, 1,
-    P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1
+    P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT
 };
 
 static uint32_t random_state = UINT32_C(0x91e10da5);
@@ -96,7 +96,7 @@ static void test_board_discovery_capability(void)
     CHECK(p4_hosted_init_parse(discovery_first_init,
                                sizeof discovery_first_init, &result));
     CHECK(result.board_discovery_version ==
-          P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1);
+          P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT);
     CHECK((result.present & P4_HOSTED_INIT_HAS_BOARD_DISCOVERY) != 0);
     CHECK(p4_hosted_init_has_board_discovery(&result));
 
@@ -105,7 +105,7 @@ static void test_board_discovery_capability(void)
     CHECK(p4_hosted_init_has_board_discovery(&result));
 
     /* Preserve zero and unknown versions as inventory facts without enabling
-     * the version-1 capability. */
+     * the version-2 capability. */
     memcpy(event, discovery_last_init, sizeof event);
     event[sizeof event - 1u] = 0;
     CHECK(p4_hosted_init_parse(event, sizeof event, &result));
@@ -114,16 +114,16 @@ static void test_board_discovery_capability(void)
     CHECK(!p4_hosted_init_has_board_discovery(&result));
 
     memcpy(event, discovery_last_init, sizeof event);
-    event[sizeof event - 1u] = 2;
+    event[sizeof event - 1u] = 1;
     CHECK(p4_hosted_init_parse(event, sizeof event, &result));
-    CHECK(result.board_discovery_version == 2);
+    CHECK(result.board_discovery_version == 1);
     CHECK(!p4_hosted_init_has_board_discovery(&result));
 
     memcpy(event, discovery_last_init, sizeof event);
     event[7] = P4_HOSTED_INIT_CHIP_ESP32C3;
     CHECK(p4_hosted_init_parse(event, sizeof event, &result));
     CHECK(result.board_discovery_version ==
-          P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1);
+          P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT);
     CHECK(!p4_hosted_init_has_board_discovery(&result));
     CHECK(!p4_hosted_init_has_board_discovery(NULL));
 }

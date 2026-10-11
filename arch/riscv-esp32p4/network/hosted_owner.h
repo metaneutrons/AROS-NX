@@ -136,7 +136,7 @@ int p4_hosted_owner_exchange_ota(struct p4_hosted_owner *owner,
 
 /* Private read-only discovery exchange. Uses the same absolute deadline and
  * controller ownership as normal exchange; requires reserved350, supported
- * INIT, canonical version1/nonzero nonce and no partial SERIAL or existing RX
+ * INIT, canonical version2/nonzero nonce and no partial SERIAL or existing RX
  * arm. Arms exact606 before TX, disarms after draining success, and invalidates
  * admission on terminal failure. INIT is an additional disjoint input range.
  * Caller must keep INIT immutable until return, bind it to the live peer and

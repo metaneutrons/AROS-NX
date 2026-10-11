@@ -26,8 +26,8 @@ struct SignalSemaphore { struct Task *ss_Owner; ULONG depth; };
 
 #include "runtime_probe.h"
 
-#if P4_WIFI_DEVICE_BRIDGE_ABI != 10u
-#error "wifi OTA hooks must retain bridge ABI 10"
+#if P4_WIFI_DEVICE_BRIDGE_ABI != 11u
+#error "wifi OTA hooks must use the matched discovery-v2 bridge ABI 11"
 #endif
 
 static unsigned test_checks;
@@ -100,7 +100,7 @@ static void test_hook_initializer(BOOL association_enabled)
 
 int main(void)
 {
-    CHECK(P4_WIFI_DEVICE_BRIDGE_ABI == 10u);
+    CHECK(P4_WIFI_DEVICE_BRIDGE_ABI == 11u);
     test_hook_initializer(FALSE);
     test_hook_initializer(TRUE);
     printf("wifi OTA bridge hooks (owner=%u c6privacy=%u host=%u c6update=%u enabled=%u, both association settings): %u checks passed\n",

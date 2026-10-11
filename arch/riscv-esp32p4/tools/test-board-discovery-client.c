@@ -97,6 +97,10 @@ static void make_snapshot(struct board_discovery_snapshot *snapshot)
     snapshot->security_known = BOARD_DISCOVERY_SECURITY_ALL;
     snapshot->security_enabled = BOARD_DISCOVERY_SECURITY_ENCRYPTION |
         BOARD_DISCOVERY_SECURITY_ANTI_ROLLBACK;
+    snapshot->target_known = BOARD_DISCOVERY_TARGET_ALL;
+    snapshot->chip_id = BOARD_DISCOVERY_CHIP_C6;
+    snapshot->chip_revision = 0x1234u;
+    snapshot->secure_version = 0x89abcdefu;
 
     part = &snapshot->layout.partitions[0];
     part->offset = 0x00010000u;
@@ -118,7 +122,11 @@ static int same_snapshot(const struct board_discovery_snapshot *a,
         a->running != b->running || a->boot != b->boot ||
         a->update != b->update || a->running_state != b->running_state ||
         a->security_known != b->security_known ||
-        a->security_enabled != b->security_enabled)
+        a->security_enabled != b->security_enabled ||
+        a->target_known != b->target_known ||
+        a->chip_id != b->chip_id ||
+        a->chip_revision != b->chip_revision ||
+        a->secure_version != b->secure_version)
         return 0;
 
     for (i = 0; i < a->layout.count; ++i) {

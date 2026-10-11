@@ -5,7 +5,13 @@
 #include "esp_ota_ops.h"
 #include "esp_flash_encrypt.h"
 #include "esp_secure_boot.h"
+#include "esp_chip_info.h"
+#include "esp_efuse.h"
+#include "esp_efuse_table.h"
 #include <string.h>
+
+/* Pinned IDF 5.4.3 ESP32-C6 table: SECURE_VERSION is 16 bits at bit 142. */
+enum { C6_SECURE_VERSION_FIELD_BITS = 16u };
 
 static void le32(uint8_t *bytes, uint32_t value)
 {
@@ -52,9 +58,29 @@ int c6_board_discovery_collect(struct board_discovery_snapshot *output)
     const esp_partition_t *running, *boot, *update;
     esp_ota_img_states_t state;
     esp_err_t state_result;
+#ifndef CONFIG_EFUSE_VIRTUAL
+    esp_chip_info_t chip_info = {0};
+    size_t secure_version_count = 0;
+#endif
     size_t count = 0, i;
-    if (!output || !esp_flash_default_chip ||
-        esp_flash_get_physical_size(NULL, &snapshot.physical_bytes) != ESP_OK ||
+    if (!output || !esp_flash_default_chip) return 0;
+#ifndef CONFIG_EFUSE_VIRTUAL
+    esp_chip_info(&chip_info);
+    if (chip_info.model != CHIP_ESP32C6) return 0;
+    snapshot.target_known = BOARD_DISCOVERY_TARGET_CHIP |
+                            BOARD_DISCOVERY_TARGET_REVISION;
+    snapshot.chip_id = BOARD_DISCOVERY_CHIP_C6;
+    snapshot.chip_revision = chip_info.revision;
+    /* Read the complete physical field's set-bit count. This is not proof of
+     * the installed bootloader's anti-rollback enforcement or its policy. */
+    if (esp_efuse_read_field_cnt(ESP_EFUSE_SECURE_VERSION,
+            &secure_version_count) == ESP_OK &&
+        secure_version_count <= C6_SECURE_VERSION_FIELD_BITS) {
+        snapshot.target_known |= BOARD_DISCOVERY_TARGET_SECURE_VERSION;
+        snapshot.secure_version = (uint32_t)secure_version_count;
+    }
+#endif
+    if (esp_flash_get_physical_size(NULL, &snapshot.physical_bytes) != ESP_OK ||
         esp_flash_get_size(NULL, &snapshot.layout.flash_bytes) != ESP_OK) return 0;
     running = esp_ota_get_running_partition();
     boot = esp_ota_get_boot_partition();

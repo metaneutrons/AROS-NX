@@ -11,6 +11,11 @@
 #define BOARD_DISCOVERY_SECURITY_ALL 15u
 #define BOARD_DISCOVERY_PART_ENCRYPTED 1u
 #define BOARD_DISCOVERY_PART_READONLY 2u
+#define BOARD_DISCOVERY_TARGET_CHIP 1u
+#define BOARD_DISCOVERY_TARGET_REVISION 2u
+#define BOARD_DISCOVERY_TARGET_SECURE_VERSION 4u
+#define BOARD_DISCOVERY_TARGET_ALL 7u
+#define BOARD_DISCOVERY_CHIP_C6 13u
 
 /* Normalized internal IDF registry inventory, not raw partition-table bytes
  * or write authority. Partition flags are normalized encryption bit0 and
@@ -27,6 +32,14 @@ struct board_discovery_snapshot {
     uint32_t physical_bytes;
     uint8_t running, boot, update, running_state;
     uint8_t security_known, security_enabled;
+    /* Detected non-secret facts, not bootloader enforcement or write authority.
+     * Unknown facts have zero values; known zero revision/version is valid.
+     * chip_id uses ESP image chip IDs, revision uses IDF MXX units.
+     * secure_version is the full physical SECURE_VERSION field's burned-bit
+     * count, NOT the app-config-sized bootloader policy value. */
+    uint8_t target_known;
+    uint16_t chip_id, chip_revision;
+    uint32_t secure_version;
 };
 
 /* Structural validation only. Caller must separately establish origin,

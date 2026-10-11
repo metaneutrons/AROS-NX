@@ -32,7 +32,7 @@ typedef uintptr_t IPTR;
 #define P4_HOSTED_OWNER_MAX_SLICE_US UINT32_C(250000)
 #define P4_WIFI_HOSTED_OWNER 1
 #define P4_WIFI_SDIO_RESET_QUERY 0
-#define P4_WIFI_DISCOVERY_MAX 1056u
+#define P4_WIFI_DISCOVERY_MAX 1064u
 
 struct p4_wifi_association_target;
 struct p4_wifi_association_cancel {

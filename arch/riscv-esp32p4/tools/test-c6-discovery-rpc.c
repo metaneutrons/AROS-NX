@@ -19,7 +19,7 @@
 #define ESP_ERR_NO_MEM 0x101
 #endif
 
-_Static_assert(BOARD_DISCOVERY_WIRE_MAX == 1056u,
+_Static_assert(BOARD_DISCOVERY_WIRE_MAX == 1064u,
     "maximum C6DI payload must hold one header plus 32 records");
 _Static_assert(HOSTED_SERIAL_MESSAGE_OVERHEAD == 12u,
     "RPCRsp serial wrapper overhead changed");
@@ -164,6 +164,10 @@ static void fill_valid_snapshot(struct board_discovery_snapshot *snapshot)
     snapshot->security_known = BOARD_DISCOVERY_SECURITY_ALL;
     snapshot->security_enabled = BOARD_DISCOVERY_SECURITY_ENCRYPTION |
         BOARD_DISCOVERY_SECURITY_ANTI_ROLLBACK;
+    snapshot->target_known = BOARD_DISCOVERY_TARGET_ALL;
+    snapshot->chip_id = BOARD_DISCOVERY_CHIP_C6;
+    snapshot->chip_revision = 0x1234u;
+    snapshot->secure_version = 0x89abcdefu;
 
     for (i = 0; i < snapshot->layout.count; ++i) {
         struct board_partition *part = &snapshot->layout.partitions[i];
@@ -461,7 +465,11 @@ static int same_snapshot(const struct board_discovery_snapshot *left,
         left->update != right->update ||
         left->running_state != right->running_state ||
         left->security_known != right->security_known ||
-        left->security_enabled != right->security_enabled) return 0;
+        left->security_enabled != right->security_enabled ||
+        left->target_known != right->target_known ||
+        left->chip_id != right->chip_id ||
+        left->chip_revision != right->chip_revision ||
+        left->secure_version != right->secure_version) return 0;
     for (i = 0; i < left->layout.count; ++i) {
         const struct board_partition *a = &left->layout.partitions[i];
         const struct board_partition *b = &right->layout.partitions[i];
@@ -592,6 +600,8 @@ static int test_protobuf_roundtrip_maximum_response(void)
     CHECK(frame_size == response_size + HOSTED_SERIAL_MESSAGE_OVERHEAD +
         P4_HOSTED_HEADER_SIZE,
         "full envelope omitted a wrapper or the SDIO header");
+    CHECK(frame_size == 1106u,
+        "maximum generated RPC plus serial/SDIO wrappers is not 1106 bytes");
     CHECK(frame_size <= P4_HOSTED_FRAME_MAX,
         "maximum response exceeds the 1536-byte Hosted frame limit");
     CHECK(p4_hosted_decode(sdio_frame, frame_size, 0u, &decoded_frame),

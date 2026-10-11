@@ -427,7 +427,7 @@ static void owner_reserve_discovery_request(struct owner_fixture *fixture,
 
     CHECK(nonce != 0u);
     payload[payload_size++] = 8u;
-    payload[payload_size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1;
+    payload[payload_size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT;
     payload[payload_size++] = 16u;
     payload_size = owner_put_varint(payload, sizeof payload, payload_size,
                                     nonce);
@@ -452,7 +452,7 @@ static struct p4_hosted_init owner_supported_discovery_init(void)
         P4_HOSTED_INIT_TAG_CHIP_ID, 1u,
         P4_HOSTED_INIT_CHIP_ESP32C6,
         P4_HOSTED_INIT_TAG_BOARD_DISCOVERY, 1u,
-        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1
+        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT
     };
     struct p4_hosted_init init = {0};
 
@@ -471,7 +471,7 @@ static void owner_verify_tx_discovery_request(
     size_t expected_size = 0u;
 
     expected[expected_size++] = 8u;
-    expected[expected_size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1;
+    expected[expected_size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT;
     expected[expected_size++] = 16u;
     expected_size = owner_put_varint(expected, sizeof expected, expected_size,
                                      nonce);
@@ -1513,7 +1513,7 @@ static void test_discovery_nonce_and_init_alias_refusals(void)
     owner_expect_discovery_preflight_refusal(&fixture, &init, 0u);
     owner_expect_discovery_preflight_refusal(&fixture, &init,
                                              OWNER_TEST_DISCOVERY_NONCE + 1u);
-    init.board_discovery_version = 2u;
+    init.board_discovery_version = 1u;
     owner_expect_discovery_preflight_refusal(&fixture, &init,
                                              OWNER_TEST_DISCOVERY_NONCE);
     aliases[0] = &fixture.owner;

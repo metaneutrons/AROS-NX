@@ -5,7 +5,9 @@
 #include <exec/types.h>
 #include "hosted_scan.h"
 
-#define P4_WIFI_DEVICE_BRIDGE_ABI 10u
+#define P4_WIFI_DEVICE_BRIDGE_ABI 11u
+/* ABI11 changes the discovery snapshot shape for negotiated wire v2.
+ * Exact-version clients must rebuild even though the base size is unchanged. */
 #define P4_WIFI_DEVICE_BRIDGE_NAME "esp32p4wifi.resource"
 
 struct P4WifiBase;
@@ -49,7 +51,7 @@ struct P4WifiBase;
  * task/token can queue or copy a result. One queued job, monotonically increasing
  * nonzero nonce, no pointer retention. READY means completed RPC, not successful
  * inventory: remote_status must be zero and inventory_size nonzero. Inventory
- * is canonical negotiated version1 bytes, NOT the raw installed partition table.
+ * is canonical negotiated version2 bytes, NOT the raw installed partition table.
  * Token/generation/UID/nonce identify this observation, not peer authentication
  * or reset freshness. Requery and independently revalidate before any write.
  * Release, expiry and session retirement discard the internal result. A copied
@@ -61,7 +63,7 @@ struct P4WifiBase;
 #define P4_WIFI_DISCOVERY_UNSUPPORTED 3u
 #define P4_WIFI_DISCOVERY_FAILED 4u
 #define P4_WIFI_DISCOVERY_BUSY 5u
-#define P4_WIFI_DISCOVERY_MAX 1056u
+#define P4_WIFI_DISCOVERY_MAX 1064u
 struct p4_wifi_discovery_result {
     ULONG token, generation, uid, nonce;
     LONG remote_status;

@@ -110,7 +110,7 @@ p4_hosted_pending_correlate(struct p4_hosted_request_ids *ids,
                             const struct p4_hosted_inbox_item *item);
 
 /* Private read-only extension path, not ordinary WLAN admission. Requires
- * an exact reserved350 identity, supported C6 INIT and canonical version1/
+ * an exact reserved350 identity, supported C6 INIT and canonical version2/
  * supplied nonzero nonce body. INIT is a seventh disjoint input range. Same
  * bounds, preflight atomicity, terminal UID consumption and no-retry contract
  * as normal submit. Caller must independently bind INIT to the fresh live

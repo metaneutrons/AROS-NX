@@ -20,7 +20,7 @@ struct discovery_native {
     struct board_client_workspace *work;
 };
 
-typedef char discovery_abi_matches[(P4_WIFI_DEVICE_BRIDGE_ABI == 10u &&
+typedef char discovery_abi_matches[(P4_WIFI_DEVICE_BRIDGE_ABI == 11u &&
     P4_WIFI_MAINT_IDLE == BOARD_CLIENT_LEASE_IDLE &&
     P4_WIFI_MAINT_REQUESTED == BOARD_CLIENT_LEASE_REQUESTED &&
     P4_WIFI_MAINT_ACTIVE == BOARD_CLIENT_LEASE_ACTIVE &&
@@ -104,7 +104,7 @@ int boardtool_discover_c6(struct board_client_observation *output,
     static const char *const errors[] = {
         "ok", "invalid storage/hooks", "owner unavailable or busy",
         "deadline expired", "cancelled", "owner/query failed",
-        "installed C6 does not support discovery v1",
+        "installed C6 does not support discovery v2",
         "C6 metadata collection failed", "invalid correlated inventory",
         "release unconfirmed; session may retire; no automatic reset",
         "monotonic clock unavailable"
@@ -121,7 +121,7 @@ int boardtool_discover_c6(struct board_client_observation *output,
         !c->radio->maintenance_request || !c->radio->maintenance_poll ||
         !c->radio->maintenance_release || !c->radio->maintenance_discover ||
         !c->radio->maintenance_discovery_poll || !c->radio->maintenance_fence) {
-        setup_failure = "incompatible resource; matched ABI10 owner/device required";
+        setup_failure = "incompatible resource; matched ABI11 owner/device required";
         goto done;
     }
     c->port = CreateMsgPort();

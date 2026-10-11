@@ -126,7 +126,7 @@ static void set_supported_board_discovery_init(struct p4_hosted_init *init)
         P4_HOSTED_INIT_TAG_CHIP_ID, 1u,
         P4_HOSTED_INIT_CHIP_ESP32C6,
         P4_HOSTED_INIT_TAG_BOARD_DISCOVERY, 1u,
-        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1
+        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT
     };
 
     memset(init, 0xa7, sizeof *init);
@@ -148,7 +148,7 @@ static size_t encode_request(uint32_t request_id, uint32_t uid,
                                                          &written) ? written : 0u;
     if (request_id == TEST_DISCOVERY_REQUEST_ID)
         return encode_board_discovery_request(uid,
-            P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1,
+            P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT,
             TEST_DISCOVERY_NONCE, bytes, capacity);
     rpc.msg_type = P4_HOSTED_RPC_TYPE_REQUEST;
     rpc.msg_id = request_id;
@@ -375,10 +375,10 @@ static void verify_board_discovery_request_frame(const struct fake_tx *fake,
     uint32_t uid, uint32_t nonce, unsigned checksum_enabled)
 {
     static const uint8_t sample_body[] = {
-        0x08u, 0x01u, 0x10u, 0xf8u, 0xacu, 0xd1u, 0x91u, 0x01u
+        0x08u, 0x02u, 0x10u, 0xf8u, 0xacu, 0xd1u, 0x91u, 0x01u
     };
     static const uint8_t maximum_body[] = {
-        0x08u, 0x01u, 0x10u, 0xffu, 0xffu, 0xffu, 0xffu, 0x0fu
+        0x08u, 0x02u, 0x10u, 0xffu, 0xffu, 0xffu, 0xffu, 0x0fu
     };
     const uint8_t *expected_body;
     struct p4_hosted_frame frame;
@@ -407,7 +407,7 @@ static void verify_board_discovery_request_frame(const struct fake_tx *fake,
     CHECK(nonce == UINT32_MAX || nonce == TEST_DISCOVERY_NONCE);
     CHECK(rpc.payload_size == expected_size && expected_size == 8u);
     CHECK(memcmp(rpc.payload, expected_body, expected_size) == 0);
-    CHECK(encode_discovery_body(P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1,
+    CHECK(encode_discovery_body(P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT,
         nonce, generated_body) == expected_size);
     CHECK(memcmp(rpc.payload, generated_body, expected_size) == 0);
 }
@@ -1202,7 +1202,7 @@ static void test_board_discovery_submit_canonical_body_and_checksums(void)
         set_supported_board_discovery_init(&fixture.init);
         uid = fixture_uid(&fixture);
         fixture.request_size = encode_board_discovery_request(uid,
-            P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1, UINT32_MAX,
+            P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT, UINT32_MAX,
             fixture.request, sizeof fixture.request);
         CHECK(fixture.request_size != 0u);
         CHECK(submit_board_discovery(&fixture, TEST_GENERATION,
@@ -1231,7 +1231,7 @@ static void test_board_discovery_submit_preflight_refusals_are_atomic(void)
     uid = fixture_uid(&fixture);
 
     malformed_size = encode_board_discovery_request(uid,
-        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1,
+        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT,
         TEST_DISCOVERY_NONCE + 1u, malformed, sizeof malformed);
     CHECK(malformed_size != 0u);
     expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
@@ -1239,7 +1239,7 @@ static void test_board_discovery_submit_preflight_refusals_are_atomic(void)
         malformed_size, fixture.txbuffer, sizeof fixture.txbuffer,
         &fixture.init, TEST_DISCOVERY_NONCE);
 
-    malformed_size = encode_board_discovery_request(uid, 2u,
+    malformed_size = encode_board_discovery_request(uid, 1u,
         TEST_DISCOVERY_NONCE, malformed, sizeof malformed);
     CHECK(malformed_size != 0u);
     expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
@@ -1248,7 +1248,7 @@ static void test_board_discovery_submit_preflight_refusals_are_atomic(void)
         &fixture.init, TEST_DISCOVERY_NONCE);
 
     malformed_size = encode_board_discovery_request(uid,
-        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1, 0u, malformed,
+        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT, 0u, malformed,
         sizeof malformed);
     CHECK(malformed_size != 0u);
     expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
@@ -1257,7 +1257,7 @@ static void test_board_discovery_submit_preflight_refusals_are_atomic(void)
         &fixture.init, 0u);
 
     malformed_size = encode_board_discovery_request(uid + 1u,
-        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1, TEST_DISCOVERY_NONCE,
+        P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT, TEST_DISCOVERY_NONCE,
         malformed, sizeof malformed);
     CHECK(malformed_size != 0u);
     expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
@@ -1306,7 +1306,7 @@ static void test_board_discovery_submit_preflight_refusals_are_atomic(void)
 
     /* A parsed peer advertising version 2 is not the version-1 contract. */
     unsupported_init = fixture.init;
-    unsupported_init.board_discovery_version = 2u;
+    unsupported_init.board_discovery_version = 1u;
     expect_board_discovery_preflight_unchanged(&fixture, &fixture.fifo,
         &fixture.ids, TEST_GENERATION, &fixture.ops, 0u, fixture.request,
         fixture.request_size, fixture.txbuffer, sizeof fixture.txbuffer,

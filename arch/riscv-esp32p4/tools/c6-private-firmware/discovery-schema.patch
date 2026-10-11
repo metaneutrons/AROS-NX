@@ -24,7 +24,7 @@
  message Rpc_Req_OTABegin {
  }
  
-+// Private version1 extension. Send only after startup capability negotiation.
++// Private version2 extension. Send only after startup capability negotiation.
 +// Snapshot is a bounded C6DI normalized inventory, never raw table attestation.
 +message Rpc_Req_BoardDiscovery {
 +	uint32 version = 1;

@@ -151,13 +151,16 @@ device proofs and independent first-install restore remain acceptance gates.
 
 ### Proposed C6 read-only discovery extension
 
-Compatibility audit (2026-10-11): the current version1 inventory has no chip
+Compatibility audit (2026-10-11): the historical version1 inventory had no chip
 model/revision or eFuse secure_version. Capacity and slot roles alone cannot
 validate an image's revision limits or security version. A later explicitly
 negotiated version must carry detected facts with unknown/virtual provenance;
 do not reinterpret version1's required-zero reserved bytes. The pinned IDF
-provides read-only esp_chip_info and esp_efuse_read_secure_version APIs. The
-eFuse value does not establish the installed bootloader's anti-rollback policy,
+provides read-only esp_chip_info and full-field eFuse counting APIs. Discovery
+version2 now carries independently known chip/revision/full physical counter
+facts and requires matched private ABI11 consumers. The convenience
+esp_efuse_read_secure_version helper reads an app-config-sized prefix and is
+not used for that fact. The full counter does not establish the installed bootloader's anti-rollback policy,
 and app sdkconfig cannot establish that policy either. The extension is
 undeployed, so it cannot supply first-install proofs. Secure first-install
 recovery and actual device/layout evidence through independently verified CN5

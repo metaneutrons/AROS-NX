@@ -41,7 +41,7 @@ static void fill_valid_init(struct p4_hosted_init *init)
     memset(init, 0, sizeof(*init));
     init->chip_id = P4_HOSTED_INIT_CHIP_ESP32C6;
     init->capabilities = P4_HOSTED_INIT_CAP_WLAN_SDIO;
-    init->board_discovery_version = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1;
+    init->board_discovery_version = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT;
     init->present = P4_HOSTED_INIT_HAS_BOARD_DISCOVERY |
         P4_HOSTED_INIT_HAS_CHIP_ID | P4_HOSTED_INIT_HAS_CAPABILITIES;
 }
@@ -392,7 +392,7 @@ static void test_request_refusals_and_aliases(void)
     invalid.present &= (uint8_t)~P4_HOSTED_INIT_HAS_CAPABILITIES;
     expect_request_refusal(&invalid, TEST_UID, TEST_NONCE, sizeof(output));
     invalid = init;
-    invalid.board_discovery_version = 2;
+    invalid.board_discovery_version = 1;
     expect_request_refusal(&invalid, TEST_UID, TEST_NONCE, sizeof(output));
     invalid = init;
     invalid.chip_id = P4_HOSTED_INIT_CHIP_ESP32C3;
@@ -973,7 +973,7 @@ static void test_snapshot_validation_and_bounds(void)
     };
     static const struct mutation mutations[] = {
         { "magic", 0u, 'X' },
-        { "version", 4u, 2u },
+        { "legacy_version", 4u, 1u },
         { "header_length", 5u, 31u },
         { "record_length", 6u, 31u },
         { "empty_count", 7u, 0u },
@@ -982,15 +982,15 @@ static void test_snapshot_validation_and_bounds(void)
         { "invalid_running_state", 11u, 7u },
         { "unknown_security", 12u, 0x80u },
         { "security_not_known", 13u, 0x80u },
-        { "reserved_header", 14u, 1u },
+        { "reserved_header", 15u, 1u },
         { "physical_capacity", 19u, 0u },
         { "flash_capacity", 22u, 0u },
         { "mismatched_nonce", 24u, 0u },
-        { "reserved_tail", 28u, 1u },
-        { "zero_partition_size", 38u, 0u },
-        { "invalid_partition_flags", 40u, 0x80u },
-        { "empty_label", 46u, 0u },
-        { "record_reserved", 47u, 1u }
+        { "reserved_tail", 36u, 1u },
+        { "zero_partition_size", BOARD_DISCOVERY_WIRE_HEADER + 6u, 0u },
+        { "invalid_partition_flags", BOARD_DISCOVERY_WIRE_HEADER + 8u, 0x80u },
+        { "empty_label", BOARD_DISCOVERY_WIRE_HEADER + 14u, 0u },
+        { "record_reserved", BOARD_DISCOVERY_WIRE_HEADER + 15u, 1u }
     };
     uint8_t valid[BOARD_DISCOVERY_WIRE_MAX];
     uint8_t mutated[BOARD_DISCOVERY_WIRE_MAX + 1u];
@@ -1033,10 +1033,10 @@ static void test_snapshot_validation_and_bounds(void)
     /* Duplicate inventory labels are structurally invalid despite valid bytes. */
     memcpy(mutated, valid, valid_size);
     mutated[7] = 2u;
-    mutated[32u + BOARD_DISCOVERY_WIRE_RECORD + 14u] = 3u;
-    memcpy(mutated + 32u + BOARD_DISCOVERY_WIRE_RECORD + 16u,
-           mutated + 32u + 16u, 3u);
-    memset(mutated + 32u + BOARD_DISCOVERY_WIRE_RECORD + 19u, 0, 13u);
+    mutated[BOARD_DISCOVERY_WIRE_HEADER + BOARD_DISCOVERY_WIRE_RECORD + 14u] = 3u;
+    memcpy(mutated + BOARD_DISCOVERY_WIRE_HEADER + BOARD_DISCOVERY_WIRE_RECORD + 16u,
+           mutated + BOARD_DISCOVERY_WIRE_HEADER + 16u, 3u);
+    memset(mutated + BOARD_DISCOVERY_WIRE_HEADER + BOARD_DISCOVERY_WIRE_RECORD + 19u, 0, 13u);
     body_size = make_body(1, 0, 1, mutated, valid_size -
                           BOARD_DISCOVERY_WIRE_RECORD,
                           body, sizeof(body));

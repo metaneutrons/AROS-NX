@@ -18,7 +18,7 @@ static int discovery_body_matches(const struct p4_hosted_rpc *rpc,
     size_t size = 0, i;
     if (!nonce) return 0;
     body[size++] = 8u;
-    body[size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1;
+    body[size++] = P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT;
     body[size++] = 16u;
     while (nonce >= 128u) {
         body[size++] = (uint8_t)(nonce | 128u);

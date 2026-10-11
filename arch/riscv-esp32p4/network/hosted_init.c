@@ -135,7 +135,7 @@ int p4_hosted_init_has_board_discovery(const struct p4_hosted_init *init)
 
     return init && (init->present & required) == required &&
         init->board_discovery_version ==
-            P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_1 &&
+            P4_HOSTED_INIT_BOARD_DISCOVERY_VERSION_CURRENT &&
         init->chip_id == P4_HOSTED_INIT_CHIP_ESP32C6 &&
         (init->capabilities & P4_HOSTED_INIT_CAP_WLAN_SDIO) != 0;
 }

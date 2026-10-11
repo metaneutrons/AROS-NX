@@ -1,5 +1,17 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Discovery target facts (2026-10-11): the undeployed extension now negotiates
+version2, with a canonical40-byte header and1064-byte maximum. It adds detected
+C6 image chip ID, MXX revision and a full physical SECURE_VERSION burned-bit
+count with independent known bits. Unknown values are zero, not presumed safe.
+The IDF app-config-sized secure-version helper is unsuitable for this fact;
+the collector uses a status-checked full-field count instead. Installed
+bootloader policy, image compatibility and independent restore remain unproved.
+Private ABI11 requires matched resource/device/tool rebuilds; standalone builds
+are not repackaged or deployed. The historical complete C6 version1 candidate
+is preserved; a collector object does not establish a complete version2 image.
+UPDATE-C6 and all three release assertions remain off. No hardware action.
+
 C6 inspected-source ownership (2026-10-11): CHECK-C6 now uses a shared
 tool-private loader that opens once, retains bounded verified bytes, closes
 before publication and frees on refusal. A future admitted update can recheck
@@ -14,7 +26,7 @@ and independent review. DOS/Exec are modeled; no native file interaction or
 recovery is tested. UPDATE-C6 and all three release
 assertions remain off; no hardware, serial, flash, SD or credential action.
 Detailed evidence and limits are in roadmap N2M.
-Compatibility audit: current discovery version1 lacks chip revision and eFuse
+Historical compatibility audit: discovery version1 lacked chip revision and eFuse
 secure_version; its capacity/slot inventory is not full image compatibility.
 Installed bootloader policy and first-install recovery remain unknown. Actual
 CN5 adapter/cable availability was requested, not assumed or exercised.

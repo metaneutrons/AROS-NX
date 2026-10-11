@@ -115,15 +115,15 @@ gate: compensated output is not the native display contract.
 
 ## Master progress
 
-Current source radio/device pairing is private ABI10 (N2M optional OTA queue).
+Current source radio/device pairing is private ABI11 (N2M discovery-v2 facts).
 ABI6 counts/artifacts in N1A/N2A/N2/N2L remain historical lifecycle evidence,
 not the current deployment pair. The historical ABI8 candidate package passes
-all42 loader audits; ABI10 standalone modules/tool are not repackaged or installed.
-No ABI7/ABI8/ABI9/ABI10 hardware pass exists.
+all42 loader audits; ABI11 standalone modules/tool are not repackaged or installed.
+No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M-C | Actual C6 image-to-target compatibility | Source audit: version1 lacks chip revision/eFuse secure-version floor; no complete compatibility producer or installed extension | Explicitly negotiated detected facts; independent installed bootloader policy, actual slot/layout and secured first-install recovery; CN5 availability requested, not verified |
+| N2M-C | Actual C6 image-to-target compatibility | Discovery-v2 detected chip/revision/full physical counter producer and canonical codec host verified; matched ABI11 native modules/tool build verified; C6 collector object only, no installed extension or complete compatibility producer | Complete version2 candidate build; independent installed bootloader policy, actual slot/layout, image comparison and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
@@ -1295,11 +1295,17 @@ Recheck has no production update caller. Source retention creates no trusted
 manifest, live target/layout compatibility or device-specific recovery proof;
 the authoritative producers for all four job attestations remain open.
 UPDATE-C6 stays unavailable and all three release assertions0.
-The current version1 snapshot has no chip model/revision or eFuse secure_version;
-its capacity and slot roles cannot close image compatibility. A negotiated
-extension can add detected facts, but cannot prove installed bootloader policy
-or bootstrap first-install recovery. CN5 availability has been requested; no
-actual connector orientation, adapter access or restore is verified.
+Discovery-v2 now adds chip ID, MXX revision and a full physical SECURE_VERSION
+burned-bit count with independent known bits. It rejects legacy version1 and
+unknown nonzero facts. Chip/revision/counter are detected information, not
+installed bootloader-policy, image comparison or first-install proofs. Matched
+private ABI11 resource/device/tool rebuilds are required for the copied snapshot
+shape; no v2 deployment or complete firmware claim. The IDF convenience helper
+reads an app-config-sized prefix, so the producer uses status-checked full-field
+counting instead. Concurrent eFuse burns must be excluded: IDF internally
+retries damaged reads without an absolute deadline. No extension writes eFuses.
+CN5 availability has been requested; no actual connector orientation, adapter
+access or restore is verified. UPDATE-C6 and all three release assertions0.
 
 M1 source/host/build foundations are verified within their stated limits;
 native CLI/MUI interaction remains untested. The isolated OTA codec and gated
@@ -38165,3 +38171,69 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   actual device security/layout, permitted backups and demonstrated independent
   recovery are still required before the first C6 write. Full WLAN acceptance
   and the software updater requirements remain open; no completion claim.
+
+### 2026-10-11 - N2M discovery-v2 detected target facts and matched ABI11
+
+- Source parent0e297c5075, branch feature/esp32p4-wifi, worktree
+  `/Volumes/Dev/Build/aros-esp32p4-wifi`. Discovery-v2 changes the canonical
+  header32->40, maximum1056->1064, target-known bits and chip/revision/full
+  physical SECURE_VERSION count. Legacy wire/capability version1 is refused,
+  not reinterpreted. Private ABI11 requires matched resource/device/tool even
+  though base size348 is unchanged; copied snapshot/result extents changed.
+- Corrected during independent source review: esp_efuse_read_secure_version
+  uses the app-config-sized field prefix (default4) and ignores read status.
+  It cannot attest the full physical C6 counter. The final producer instead
+  checks esp_efuse_read_field_cnt(ESP_EFUSE_SECURE_VERSION), with count0..16;
+  pinned C6 descriptor is block0/bit142/width16. Read failure/out-of-range
+  leaves counter unknown/zero without losing independent chip/revision facts.
+  Wrong model refuses; virtual-eFuse makes no chip/counter calls and publishes
+  no physical facts. This count is NOT installed bootloader enforcement or
+  effective policy floor. IDF internally retries damaged reads without an
+  absolute deadline, so concurrent eFuse burns must be excluded and runtime
+  timing qualified; a host fixture is not a bounded real IDF call proof.
+- Primary evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/discovery-target-v2.DKTfIj/`.
+  Actual successful process exits0: collector normal40 cases/240 checks,
+  virtual35/207 each sanitized O0/O2; wire58/182; RPC10/146 with18 allocs/frees,
+  maximum1106-byte wrapped response; client41/286 with publication mutant
+  rejected; extracted dispatcher9/54. Primary repeats compile actual changed
+  production units with mocked IDF/Exec/transport. Independent review confirmed
+  executable version/ABI consistency and identified the corrected getter flaw.
+  Its independent closure review confirms the checked full-field implementation
+  and fixture error/zero/virtual handling; physical policy/timing limits remain.
+  Collector log SHA256
+  fe93847e25b76957b22379f7beaa4d1802fe91fb5fdc910d84f82469bb8eb82f;
+  wire ed9d9a889bd8d8bd86d0dbf9e9d826b582e4860c11c03ac2393f39aa31befecc;
+  RPC 5d51f219763a6dfc07347ebe5d1da41d905e75c4ab1e51502b18a6c1c3e9e501;
+  client 81b1cc3e1122878d5d7878ba23ec9a7c0f8be3b046c2fecff379042baca8df85;
+  cleanup ca64428715e1fff403c400892b9c1c4f123483ba0166a19fc377fdfcd2aefa54.
+- ABI/capability regressions actual exits0: INIT100086, owner8093,
+  pending1638, native Hosted discovery12 cases/1855, SANA1057 each O0/O2;
+  hook matrix480 checks across32 runs, frontend source parity passed. Initial
+  pending fixture still contained version1 expected bytes and failed at409;
+  corrected fixture version2 passed (both failed and final logs preserved).
+  These are scoped helper/models, not native scheduling or hardware proof.
+- Native build: explicitly invalidated resource/device/tool objects, then
+  gmake -j1 with P4_BOARD=jc1060p470c-v2, SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/
+  HOSTED_OWNER=1, OWNER_CPU=1; all three release assertions0. The first wrong
+  kernel-esp32p4wifi-quick target exited2 without compiling; corrected
+  kernel-esp32p4wifi-probe-quick, kernel-esp32p4wlan-device-quick and
+  workbench-tools-esp32board-quick completed exit0. Native build log SHA256
+  3c0115ee3d99d6c8da7c93d083a7122f9d1bcc5a705c6799ed81bf029327ecd4.
+  Archived resource337052B SHA256
+  5d715c93587cf45024eb6b67bb08fcbec08eabfdb9e16a99c70119ed96a5b646;
+  device67604B dee2397bf8be1f2ad081ad3a023f4cd70b381a12d2de66f9378a28c41422ab5e;
+  tool130280B bfcb79d62ba63faf833c74191a3d9c3b89fc4eacca7f4a6b8c98287b5d40ae36.
+- Actual C6 collector cross-compile with pinned IDF5.4.3 headers/config,
+  GCC14.2.0_20250730 and version2 succeeds exit0. Final unlinked object97152B
+  SHA256590de852cceda0223bbfe21de1e414c2d4dd13833a128728827c90654d9911b2;
+  prior convenience-getter object preserved, not qualified. Compile command
+  is archived (final output differs by c6-collector-full-field.o). No complete
+  version2 C6 firmware rebuild, package/image change or deployment occurred.
+- Safety/next: UPDATE-C6 unavailable; no authentic prepared-job admission or
+  actual image compatibility producer, no installed v2 extension, no device
+  restore proof. No serial, reset, flash, SD, credentials or actual eFuse access.
+  Next safe software work is complete matched C6 candidate build and factual
+  image/target compatibility; first-write independent CN5 recovery and full
+  transfer/privacy qualification remain mandatory. Real association, DHCP,
+  frames, reconnect and1800-second combined acceptance remain open.
