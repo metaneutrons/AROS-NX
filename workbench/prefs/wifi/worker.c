@@ -47,6 +47,7 @@
 #include "wifigui.h"
 #include "locale.h"
 #include "volatile_config.h"
+#include "security_display.h"
 
 #define WIRELESS_VAR    "AROSTCP/WirelessDevice"
 #define STACK_VAR       "SYS/Packages/AROSTCP"
@@ -1475,6 +1476,8 @@ static void DoScan(struct WifiMsg *m)
 {
     struct WifiDev dev;
     APTR pool;
+    struct Sana2WirelessCapabilities caps;
+    BOOL summary_capable;
 
     m->wm_Count = 0;
 
@@ -1497,6 +1500,18 @@ static void DoScan(struct WifiMsg *m)
         CloseWifiDev(&dev);
         return;
     }
+
+    /* Negotiate the optional per-device display metadata contract. Legacy
+     * devices keep their authentic-IE path; this grants no handshake policy. */
+    memset(&caps, 0, sizeof(caps));
+    caps.SizeAvailable = sizeof(caps);
+    caps.Version = S2WIRELESS_CAPABILITIES_VERSION;
+    dev.wd_Req->ios2_Req.io_Command = S2_GETWIRELESSCAPABILITIES;
+    dev.wd_Req->ios2_StatData = &caps;
+    dev.wd_Req->ios2_Data = NULL;
+    dev.wd_Req->ios2_DataLength = 0;
+    summary_capable = DoIO((struct IORequest *)dev.wd_Req) == 0 &&
+        dev.wd_Req->ios2_Req.io_Error == 0 && WifiSummaryCapability(&caps);
 
     dev.wd_Req->ios2_Req.io_Command = S2_GETNETWORKS;
     dev.wd_Req->ios2_Data = pool;
@@ -1546,8 +1561,11 @@ static void DoScan(struct WifiMsg *m)
             n->wn_Signal = (LONG)GetTagData(S2INFO_Signal, 0, tl);
             n->wn_Channel = (LONG)GetTagData(S2INFO_Channel, 0, tl);
             snprintf(n->wn_Protection, sizeof(n->wn_Protection), "%s",
-                IEProtection((const UBYTE *)
-                    GetTagData(S2INFO_InfoElements, (IPTR)NULL, tl)));
+                summary_capable ? WifiSummaryProtection(
+                    (const struct Sana2WirelessSecuritySummary *)
+                    GetTagData(S2INFO_SecuritySummary, (IPTR)NULL, tl)) :
+                    (const char *)IEProtection((const UBYTE *)
+                        GetTagData(S2INFO_InfoElements, (IPTR)NULL, tl)));
             n->wn_Known = PrefsHaveNetwork(n->wn_SSID);
             if (j == m->wm_Count)
                 m->wm_Count++;

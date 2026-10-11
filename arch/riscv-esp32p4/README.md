@@ -1,5 +1,14 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Native GUI scan observed (2026-10-11): after the SSID terminator correction,
+Fabian confirms the network list is shown. The correlated native scan reports
+remote6/decoded6/nonempty6/workaround0; no complete RF census is implied.
+Security displays '?' because installed Prefs reads only authentic IEs, not
+the driver's explicit security summary. Strict capability-gated display is now
+host tested77 cases each O0/O2 sanitized and native Prefs153004B build verified,
+but not yet installed on SD;
+association/DHCP/traffic and reset continuity remain open. No credentials sent.
+
 Native scan projection correction (2026-10-11): a synchronized scan reports
 stage3/ok1/remote8/decoded8/nonempty8/workaround0 while Prefs shows zero.
 The pinned Espressif producer includes one terminal NUL in short SSIDs;

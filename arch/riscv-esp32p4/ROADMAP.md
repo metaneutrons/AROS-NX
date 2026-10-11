@@ -147,7 +147,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; CPU1 owner ready; synchronized scan remote8/decoded8/nonempty8 but GUI zero; pinned-producer terminal-NUL normalization codec/reference/SANA and native build verified, hardware result pending; initial watchdog continuity unresolved; privacy/recovery assertions0 | Deploy/readback corrected resource and freshly synchronize GUI scan; existing WirelessManager temporary RAM association/DHCP/traffic; no C6 write or privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; corrected SSID decoder yields GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B build verified, not SD deployed; initial watchdog continuity unresolved; privacy/recovery assertions0 | Synchronize native Prefs deployment/security display; existing WirelessManager temporary RAM association/DHCP/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1736,6 +1736,11 @@ Binary SSID identity is unsupported by the producer's strlen-based contract;
 normalizing a final NUL cannot recover a tail it already discarded.
 Follow-up owner AP-info/association and SANA option/queue host regressions
 pass on the corrected decoder; real association and traffic remain unobserved.
+Corrected device run now shows the GUI network list, with remote6/decoded6/
+nonempty6/workaround0. Prefs displays '?' because its legacy IE-only label
+does not consume explicit security summaries. A strict negotiated summary label
+is host tested77 checks each O0/O2 and native Prefs153004B build verified,
+not SD deployed; missing/malformed/unsupported data must never say open.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -39290,3 +39295,50 @@ remain open. No partial stage is a complete A/B update system.
   readiness for coordinated USB-C-only rail-off and corrected GUI scan;
   then existing AROS association, DHCP/routes/DNS and bidirectional traffic,
   reconnect and shared SD/graphics acceptance. Watchdog continuity stays open.
+
+### 2026-10-11 - N2T GUI list observed; security-summary display gap
+
+- Fresh readiness, USB-C-only disconnect and reconnection confirmed by Fabian.
+  Port absent before dispatcher armed609969.692444791; arrival609976.7557315
+  after previous sample609976.730600541. Same verified BSP4032772B/core/SD/C6
+  identities and flags as the terminal-NUL entry; no additional write/reset.
+  Passive capture30077 exits0, full footer status=ok180.202213875s/17840bytes.
+  cold-scan.log in ssid-terminator.oUOieO SHA256
+  81873e6af4bf06db75321ac5da22f806a7ebb0cff7b2e70f798e2a929da97418.
+  Both harts and owner ready CPU1/MAC10:bd:a3:9b:bc:34 observed. Initial
+  HP_SYS_HP_WDT_RESET remains, no subsequent captured reset/trap/Guru/Alert/
+  panic/owner stop; lossy console/open disturbance still limits continuity.
+- Explicitly timed GUI scan while this same reader remained open reports
+  s3/ok1/n6/r6/h6/e0. Fabian confirms list shown, security always '?'. This
+  verifies list delivery once, not complete RF census, authentication, DHCP,
+  traffic or reconnect. Reader closed after actual completion; no credentials.
+- Independent read-only Luna audit confirms Prefs IEProtection(NULL) returns
+  '?'; P4 publishes S2INFO_SecuritySummary, no manufactured beacon IEs. Native
+  WirelessManager already consumes this explicit per-device capability.
+  Prefs now queries the same versioned capabilities before GETNETWORKS and
+  selects a strict summary label only after successful valid negotiation.
+  Missing/invalid/ambiguous data stays '?', exact open/WPA/WPA2 tuples only;
+  non-summary devices retain the legacy IE path. This affects display only,
+  not handshake policy, credentials, public ABI or driver/radio configuration.
+- Helper regressions and native Prefs build are pending. Updating the SD tool
+  needs separate synchronized deployment; no card write or firmware action has
+  been taken. Next is helper/build verification, then existing AROS workflow
+  association/DHCP/routes/DNS/actual bidirectional traffic and reconnect/load.
+- Display helper tests use real sana2wireless.h with temporary32-bit Exec
+  stubs,77 assertions each O0/O2 ASan/UBSan, actual exit0; primary rerun0.
+  Address/undefined sanitizers run, LeakSanitizer unavailable on macOS and
+  not claimed. Helper covers malformed capabilities and summaries, all8
+  supported protected singleton combinations and exact known-open only.
+  Tests do not emulate actual DoIO/GUI lifetime or supply radio evidence.
+- All Prefs objects invalidated. Regular target92871 exits2 due missing i2c
+  includes-copy generated rule; quick target98072 exits2 on signed/unsigned
+  string-pointer conditional mismatch, fixed by explicit const-char cast on
+  legacy IE label. Rerun70512 exit0, full native WiFi link and no warning/error
+  diagnostics. Prefs/WiFi153004B SHA256
+  8f00ba8f33d0fa6779fdec6ef13a5f28a5cb2183f610467c34b070dd480d9ef9;
+  retained WiFi-security candidate, not yet SD installed. Build log SHA256
+  54132816c619131b2f812613aae1ea8078ef049e8aa8b47045588a2033b826a6.
+  This portable existing-tool display change is the bounded Luna helper/test
+  integration; main owns DoIO wiring and native build. No replacement manager.
+  security-display-tests.log SHA256
+  d02eb1a065294e9a9d28a3602a658018f114c84bc5e202a8bbf9655561a65ca5.
