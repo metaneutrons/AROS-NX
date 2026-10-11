@@ -1,5 +1,15 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WLAN owner startup observed (2026-10-11): after the INIT tag correction and
+fresh coordinated USB-C rail-off, the installed persistent owner reports ready
+on CPU1 with C6 MAC10:bd:a3:9b:bc:34. Its startup RPC sequence completed once.
+The passive capture exited0 with status=ok after60.024s. An initial
+HP_SYS_HP_WDT_RESET still prevents clean cold/reset-continuity acceptance;
+there is no later captured ROM/reset or trap/Guru/Alert/panic signature.
+This is administrative radio readiness, not scan, association or IP traffic.
+Next is a freshly synchronized Prefs/WiFi scan using the existing AROS tools.
+Privacy/recovery assertions remain0, and no C6 firmware or credentials changed.
+
 WLAN INIT collision identified (2026-10-11): the coordinated rail-off capture
 reaches stage27/error14 and reports FIELD_SIZE at offset17, tag0x17/length4,
 payload23/declared21/present1f. Our one-byte private discovery advertisement

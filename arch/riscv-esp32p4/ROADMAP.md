@@ -125,7 +125,11 @@ verified; the corrected host-ABI8 BSP is installed/readback verified. Warm
 startup passes host admission but INIT still fails stage13/error6. The subsequent
 coordinated rail-off attempt reaches INIT parsing (stage27/error14,35bytes,
 preopen0); HP watchdog reset invalidates clean cold continuity.
-No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
+The corrected private-tag package subsequently reaches persistent owner ready
+on CPU1 with the expected C6 MAC after a fresh coordinated rail-off. This is
+one administrative-startup observation, not an ABI11 full WLAN gate. Initial
+HP watchdog reset still invalidates clean cold continuity. Scan/association/
+DHCP/data acceptance remains open; no full ABI7/ABI8/ABI9/ABI10/ABI11 pass exists.
 
 The2026-10-11 measured0x17/4 vendor collision supersedes every earlier
 undeployed C6 discovery candidate's startup advertisement. Current host and
@@ -135,7 +139,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed/readback verified; fresh INIT refused at offset17/tag0x17/length4 because of private discovery collision; marker relocated0xf0 with bounded vendor skip and synthetic regressions; fresh341104B resource/4032148B BSP deployed/readback verified, warm return still preopen35/13/6 before parsing; HP watchdog reset prevents clean cold pass; privacy/recovery assertions0, OTA unchanged | Fresh coordinated C6 rail-off INIT and reset continuity, then existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed/readback verified; private0xf0 correction receives one persistent CPU1 owner-ready/MAC observation after coordinated rail-off; capture exit0/status=ok60.024s; initial HP watchdog reset prevents clean cold pass; privacy/recovery assertions0, OTA unchanged | Freshly synchronized Prefs/WiFi scan, existing WirelessManager temporary RAM configuration and actual association/DHCP/traffic; independently diagnose reset continuity; no C6 write or credential-privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1700,7 +1704,9 @@ offset17, tag0x17/length4, payload23/declared21/present1f. The private discovery
 tag is relocated0xf0 in host and undeployed C6 recipe; vendor0x17 remains
 bounded opaque data, not0x16 extended capabilities or discovery. Host
 regressions pass; corrected package deployment/readback and warm return pass,
-but installed fix qualification requires a fresh C6 start. Reset continuity remains open.
+and a subsequent fresh coordinated C6 start reaches persistent owner ready on
+CPU1 with the expected MAC. This establishes startup once, not link-up or the
+full WLAN gate. Reset continuity remains open.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -1718,7 +1724,8 @@ corrected host-ABI8 BSP is also deployed/readback verified and card returned.
 Warm host admission/SDIO setup pass, but INIT stage13/error6 remains; fresh
 coordinated rail-off attempt reaches INIT parsing stage27/error14 with35bytes
 and preopen0, but HP watchdog reset invalidates clean continuity. Exact parser
-rejection and reset continuity must be diagnosed before association. The unchanged
+rejection was subsequently corrected and one persistent-owner startup observed;
+reset continuity remains a separate unresolved gate. The unchanged
 baseline USB-reset capture reports old INIT stage13/error6, not candidate
 acceptance. See the dated N2T preparation record below.
 Source audit also found the existing SANA ONEVENT mask incompatible with the
@@ -39032,3 +39039,41 @@ remain open. No partial stage is a complete A/B update system.
   the installed correction, separate watchdog continuity diagnosis, then
   native initialization/scan and existing WirelessManager association/DHCP/data.
   Public ABI and stock-peer discovery/OTA denial remain unchanged. WLAN is open.
+
+### 2026-10-11 - N2T corrected INIT reaches persistent owner once
+
+- Fabian freshly confirmed USB-C-only readiness, disconnection and reconnection.
+  Dispatcher verified absence before arming at monotonic607949.891080083;
+  arrival607956.043825166, previous sample607956.018912166. Passive reader
+  opened607956.047468583..607956.048836958, DTR/RTS true; opening may still
+  disturb hardware. First chunk arrived6.730825042s after capture start.
+  No reset/retry, flash or other serial reader was started during capture.
+- JC1060P470C-v2, P4v1.3/MAC80:f1:b2:d3:3b:a6; unchanged installed
+  bsp-init-tagfix.pkg4032148B SHA256
+  b493af07dc4ddb9629d59bf9d5f97386ea706b55184fa376f87ca5413d2053e6,
+  containing resource341104B SHA256
+  7b0afa6fe25202fd7aea0d7f7df26255b941fc246c668313b4fe76dc946bcd2a.
+  Same CPU1 owner diagnostic configuration and accepted association-test
+  exception; all three privacy/recovery/update assertions remain0.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/init-diagnostic.P6jvRd/`.
+  Dispatcher session50511 actual exit0; cold-tagfix.log complete status=ok
+  footer60.024063875s/14929 captured bytes, SHA256
+  adb1020270b2ff6b53e2bb7b5608f4cbed05e854ab95a17fc3a03c5cd72b0f99.
+  Timing sidecar and dispatcher retained. Both harts, SD enumeration,
+  graphics updates and touch polling are recorded, not a visual acceptance.
+- `[WiFi] owner ready CPU=1 MAC=10:bd:a3:9b:bc:34` appears once. The source
+  emits this only after every startup RPC in the278/260/280/257 sequence
+  succeeds and readiness is published. This is bounded native initialization
+  and administrative readiness once, not association, IP or delivered frames.
+  The one-shot check-native-wifi-log.py report schema does not match this
+  persistent-owner path; no checker PASS is claimed or its rules weakened.
+- Initial ROM banner reports HP_SYS_HP_WDT_RESET. No additional captured
+  ROM/reset or trap/Guru/Alert/panic signature. Lossy USB boot records and
+  the initial watchdog preclude clean cold/reset-continuity acceptance.
+  No C6, bootloader/table/metadata, SD or credential write; reader is closed.
+- Next: obtain fresh interactive readiness for Prefs/WiFi scan on the current
+  desktop, then use existing WirelessManager/AROSTCP for the accepted-risk
+  temporary-RAM association, DHCP/routes/DNS and actual bidirectional traffic.
+  Diagnose watchdog continuity independently; production qualification and
+  shared SD/graphics load/reconnect acceptance remain open.
