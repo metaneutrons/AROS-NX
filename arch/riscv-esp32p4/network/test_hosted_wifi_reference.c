@@ -8,6 +8,7 @@
 
 #include "hosted_wifi.h"
 #include "esp_hosted_rpc.pb-c.h"
+#include <runtime-wifi-profile.h>
 
 static unsigned checks;
 
@@ -447,6 +448,12 @@ int main(void)
     fill_mixed_config(&mixed_config);
     check_init_request(&zero_config, uid);
     check_init_request(&mixed_config, uid + 1u);
+    /* IDF5.4.3 CONFIG_FEATURE_WPA3_SAE_BIT is bit0. This proves the
+     * host requests SAE; it does not prove the installed peer compiled it. */
+    CHECK((wifi_reference_profile.feature_caps & UINT64_C(1)) != 0u);
+    CHECK(wifi_reference_profile.feature_caps == UINT64_C(129));
+    CHECK(wifi_reference_profile.nvs_enable == 0);
+    check_init_request(&wifi_reference_profile, uid + 2u);
     check_set_mode_request(uid);
     check_simple_request(279u, uid, RPC__PAYLOAD_REQ_WIFI_DEINIT);
     check_simple_request(280u, uid, RPC__PAYLOAD_REQ_WIFI_START);

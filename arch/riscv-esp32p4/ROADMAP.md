@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication build verified; complete reference protocol inventory recorded; typed BeginIO/capability admission, producer/attempt barrier, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication build verified; reference protocol inventory and actual INIT SAE-bit serialization verified; repeated peer INIT handler defect identified; typed BeginIO/capability admission, producer/attempt barrier, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1911,6 +1911,13 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   SAE; if not, qualify additional peer policy/evidence before admitting mode7.
   The installed C6 lineage/compiled SAE support remains unknown. No automatic
   firmware change, privacy assertion or access-point downgrade is implied.
+  The actual runtime INIT profile requests feature_caps129 (SAE bit0), verified
+  through the pinned protobuf decoder; a host-side missing SAE bit is excluded.
+  STOP/DEINIT followed by observed START is a candidate existing-protocol
+  producer-stop/FIFO fence, not a proven installed-peer contract. The pinned
+  Hosted source registers duplicate handlers on repeated INIT without DEINIT
+  unregistration; qualify/fix that lifecycle before assuming exactly-once
+  recovery. No automatic repeated-init workaround or C6 deployment is enabled.
   ABI12 now owns explicit profile/PMF/PWE/diagnostic policy, validates before
   RPC and copies borrowed credentials before use. Typed parser and native
   consumer builds are verified only; BeginIO/capability advertisement and
@@ -40435,3 +40442,54 @@ remain open. No partial stage is a complete A/B update system.
   a peer ordering/attempt contract, qualify installed compatibility or a
   recovery-backed C6 candidate, then finish native admission and actual
   WPA3/PMF/IP/data/load acceptance. C6 deployment remains postponed.
+
+### 2026-10-11 - N2-SAE actual INIT profile and repeated lifecycle audit
+
+- Status: source/host-test verified only; no runtime change or native rebuild.
+  Inspection of runtime_probe.c96-99 finds feature_caps129 (0x81), not zero.
+  Pinned IDF5.4.3 esp_wifi.h221-225,281 defines SAE bit0; Hosted
+  slave_control.c725 copies incoming feature_caps over WIFI_INIT_CONFIG_DEFAULT.
+  The suspected missing host SAE bit is excluded for current source. This
+  cannot identify the installed C6 binary or establish its compiled SAE support.
+- Regression: test-hosted-wifi-reference.py extracts exactly one runtime
+  initializer into a temporary header; the C oracle requires bit0/value129
+  and NVS0, then decodes the encoded actual profile with the pinned generated
+  protobuf-c implementation and compares all20 fields. A copied fixture is
+  no longer the only INIT coverage. Runtime source SHA256
+  `1025294997356135da26ab80a5b8844f18ebbae2327f853ad359764433318a14`;
+  final test C SHA256 `4e4adba20a3346337bd6e5279b1c437c455178245e7bf82eff9560c6f2279ff2`;
+  final runner SHA256 `5af94e6c0dde9fd8a756aa83d86a3f986a5561d9040579fbd4f1976483ecedc8`.
+- Procedure: python3 tools/test-hosted-wifi-reference.py against local pinned
+  Hosted d5184217; hashes of schema/generated codec/protobuf dependencies
+  enforced before compiling. Both O0/O2 ASan/UBSan pass962 checks. First
+  process10952 and captured repeat30351 both actually exit0; temporary binaries
+  removed by runner. Log:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/init-profile-audit.UTFRmB/reference.log`,
+  SHA256 `a9375fcbcdf1ef65c97c4c4a8b5f358f0bd853a13f736f6ffceddf78218a7449`.
+  Independent review found no current false pass; identified future comment
+  matching/header-shadow risks. Final runner strips comments and anchors the
+  declaration; angle-bracket generated include and temporary include directory
+  first prevent source-tree shadowing. Final process73256 exits0,962 checks
+  each O0/O2; reference-final.log in the same evidence directory SHA256
+  `23be31385a45286e5a9a818c0b94e50c9e0224a75060c0c8c96b83d4fa840c3d`.
+  This remains source-initializer extraction, not a product preprocessor or
+  installed-binary configuration proof.
+- Independent bounded peer audit, rechecked against local source: IDF
+  esp_wifi.h350-360 documents DEINIT freeing resources/stopping WiFi task;
+  wifi_init.c159-249 propagates internal deinit failure. Default event loop
+  remains live; FIFO START can delimit prior queued events only conditional
+  on producer termination. STOP/DEINIT/INIT/START is therefore a candidate
+  existing-protocol fence, stronger than Disconnect ACK, not an unconditional
+  proof or an implemented workaround. Opaque driver teardown and actual peer
+  compatibility remain qualification boundaries.
+- Concrete reference defect: Hosted slave_control.c732-736 registers another
+  any-ID handler at each INIT; DEINIT741-750 never unregisters it. IDF
+  esp_event.h229-234 explicitly permits distinct repeated instances. The
+  saved handle is overwritten while older handlers remain registered, so
+  repeated cycles duplicate notifications. Do not assume this reference
+  behavior is established for installed54aafd0-dirty or silently deploy a C6 fix.
+- Safety/next: no serial/reset/flash/SD/credential transfer or C6 update;
+  installed core/BSP/SD remain unchanged. Choose and qualify the existing-peer
+  lifecycle fence or recovery-backed peer contract, then finish typed native
+  admission and WPA3/PMF/DHCP/routes/DNS/bidirectional/reconnect/load gates.
+  Goal remains open; no hardware or negotiated-security pass claimed.

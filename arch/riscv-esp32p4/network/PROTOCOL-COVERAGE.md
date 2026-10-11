@@ -113,6 +113,33 @@ in the schema does not restore the old/new values discarded by this producer.
 
 ## Implementation gate before typed provider advertisement
 
+### INIT feature and repeated lifecycle audit (2026-10-11)
+
+The actual `runtime_probe.c:wifi_reference_profile` requests feature_caps129
+(0x81), including the pinned IDF5.4.3 SAE bit0; NVS remains disabled. Hosted
+copies this field over its default config. A missing host SAE feature bit is
+therefore excluded for this source profile, not for an unidentified installed
+binary. The pinned protobuf oracle now extracts the runtime initializer and
+validates its serialized fields rather than relying on a copied test fixture.
+Host feature requests cannot prove that the C6 binary compiled SAE support.
+
+STOP281/DEINIT279 followed by INIT278/MODE260/START280 and observed STA_START
+is a candidate existing-protocol lifecycle fence. IDF's public DEINIT contract
+stops the WiFi task; the separate default event loop persists. START marks
+earlier events already queued on that loop and forwarded through the Hosted
+FIFO. This is stronger than Disconnect/NOT_CONNECT, but requires qualification
+of producer termination and the installed peer; it is not an unconditional
+flush guarantee derived from an API ACK.
+
+The pinned Hosted implementation also registers a new any-ID handler on each
+INIT and never unregisters it in DEINIT. IDF permits distinct registrations
+of the same callback. Repeated cycles therefore leave duplicate handlers and
+overwrite the sole saved instance handle. Do not introduce automatic repeated
+INIT cycles as an assumed exactly-once recovery path. This reference defect
+does not prove that the unidentified installed C6 has the same implementation.
+Keep C6 deployment postponed; first choose/qualify a compatible lifecycle
+contract, with recovery-backed firmware work only if necessary.
+
 1. Source/build verified: typed bounded validation for every accepted RPC event; explicit dispatch
    classification, including unsupported modes and unknown future IDs.
 2. Source/build verified: invalidation on unexpected peer reinit/security change; beacon/channel events

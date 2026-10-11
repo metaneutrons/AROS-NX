@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -59,12 +60,25 @@ def main():
     environment["ASAN_OPTIONS"] = "halt_on_error=1"
     environment["UBSAN_OPTIONS"] = "halt_on_error=1"
     with tempfile.TemporaryDirectory(prefix="p4-hosted-wifi-reference-") as temporary:
+        # Use the actual owner profile, not an independently copied fixture.
+        # Refuse ambiguous/missing declarations rather than testing stale defaults.
+        runtime = PORT / "network/runtime_probe.c"
+        runtime_text = re.sub(r"/\*.*?\*/|//[^\n]*", "", runtime.read_text(),
+                              flags=re.DOTALL)
+        profiles = re.findall(
+            r"^static const struct p4_hosted_wifi_config wifi_reference_profile\s*=\s*"
+            r"\{[^{}]*\};", runtime_text, flags=re.MULTILINE)
+        if len(profiles) != 1:
+            raise SystemExit("expected exactly one runtime WiFi INIT profile")
+        print(f"SHA256 {runtime} {sha256(runtime)}", flush=True)
+        (Path(temporary) / "runtime-wifi-profile.h").write_text(profiles[0] + "\n")
         for optimization in (0, 2):
             binary = Path(temporary) / f"oracle-o{optimization}"
             command = shlex.split(os.environ.get("CC", "cc")) + [
                 "-std=c11", "-Wall", "-Wextra", "-Werror",
                 f"-O{optimization}", "-fsanitize=address,undefined",
                 "-fno-omit-frame-pointer",
+                "-I", temporary,
                 "-I", str(PORT / "network"),
                 "-I", str(reference / "common/proto"),
                 "-I", str(reference / "common/protobuf-c"),

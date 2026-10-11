@@ -1,5 +1,15 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+INIT/lifecycle audit (2026-10-11): the actual runtime INIT profile requests
+feature_caps129, including the pinned IDF SAE bit0, with NVS disabled. Its
+serialized values now pass the pinned protobuf oracle (962 checks each O0/O2
+ASan/UBSan); host-side omission of SAE is excluded for this source, not proof
+of installed C6 support. The reference registers duplicate handlers across
+DEINIT/INIT cycles. STOP/DEINIT plus observed START remains a conditional
+existing-protocol fence to qualify, not an automatic recovery workaround.
+No runtime firmware or hardware changed; typed admission and actual WiFi
+qualification remain open. See the protocol coverage matrix for source limits.
+
 Initial association teardown (2026-10-11): Disconnect ACK no longer treats
 the first still-attached AP snapshot as immediate failure. Like explicit
 teardown, it waits for correlated ESP_ERR_WIFI_NOT_CONNECT within the original
