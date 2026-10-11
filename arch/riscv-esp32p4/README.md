@@ -17,6 +17,8 @@ must be diagnosed separately; actual association/IP/data remain unverified.
 Bounded P4 access-stage errors and opt-in numeric startup records now pass
 sanitized host tests, fresh native build, exact helper readback and headless
 owner return. GUI discovery attribution remains open; no link/IP/data pass.
+Interactive diagnosis is blocked pending Fabian's fresh startup-test readiness;
+no automatic GUI, serial, reset or connection retry is running.
 
 ESP32Board interface (2026-10-11): native MUI Overview, Update, Flash & Backup
 and Diagnostics tabs implement Fabian's approved 800x600 design. Requested

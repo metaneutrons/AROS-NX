@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device; access-stage diagnostics tested, deployed/readback and headless return verified; directory-boundary fault/observer-on-off host tests pass | Fresh-readiness discovery-only GUI capture before retrying association; peer admission remains0, no IP/data pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `interactive gate blocked pending fresh readiness`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device; access-stage diagnostics tested, deployed/readback and headless return verified; directory-boundary fault/observer-on-off host tests pass | Fabian's fresh startup-test readiness, then arm discovery-only GUI capture before retrying association; peer admission remains0, no IP/data pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
@@ -1942,6 +1942,8 @@ status/opt-in observer now pass host/native tests, exact helper readback and
 headless return; GUI attribution is still pending, no readiness or link bypass.
 Dedicated directory-boundary fault/observer-on-off fixtures now pass;
 the prior access fixtures covered opening/query/cache, not enumeration.
+The next interactive gate is blocked pending fresh readiness. This is a
+coordination boundary, not proof of a hardware defect or WiFi completion.
 
 Current correction (2026-10-11): exact auth7/CCMP transition metadata is
 represented as PSK|SAE and displayed as WPA2/3, not mislabeled pure WPA3.
@@ -42323,3 +42325,21 @@ remain open. No partial stage is a complete A/B update system.
   helper remains14e8d27c... with prior exact readback/headless evidence.
   This closes a test-coverage gap only. Fresh GUI readiness is still pending;
   no discovery, association, DHCP or data success is inferred.
+
+### 2026-10-11 - N2-SAE-REC awaiting interactive startup readiness
+
+- Revalidated at23:56 CEST: worktree has no tracked pending changes, final
+  diagnostic commit8c33d92734 and directory-test commita645d376aa are present;
+  only pre-existing cache directories are untracked. All supporting workers
+  are complete. Read-only lsof reports no owner of /dev/cu.usbmodem101;
+  prior captures are terminal, not live verified waits.
+- Fresh readiness has remained absent across the diagnostic handoff and
+  subsequent continuations. Safe source/test gaps are now closed for this
+  diagnostic slice; another unrelated fixture or reset cannot attribute the
+  observed GUI failure. Do not silently launch or retry the interaction.
+- Mark the active WiFi goal blocked for this coordination condition, not
+  complete or user-paused. No production bytes, serial device, SD/C6 or
+  network state changed by this check. All earlier evidence/limits remain.
+  Resume with explicit readiness for FLASHDISK0P0:WiFi startup only: first
+  arm a new passive capture, then ask for opening the app and reporting the
+  device chooser/status. Connect requires a subsequent synchronized step.
