@@ -129,6 +129,7 @@ No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD image and shared-host ABI8 BSP deployed/readback verified; host mismatch corrected; warm INIT13/6; coordinated rail-off INIT27/14 with35bytes/preopen0, HP watchdog reset prevents clean cold pass; backups retained, privacy/recovery assertions0, OTA unchanged | Diagnose exact INIT parser rejection and watchdog/reset continuity, then existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1279,6 +1280,17 @@ bidirectional referenced frames, timeout/cancel and disconnect recovery. A
 reference firmware example building is not evidence of AROS transport.
 
 ### N2M - board maintenance and adaptive flash layouts
+
+Release contract addition (2026-10-11), N2M-R: the shared
+[release/trust contract](../../docs/plans/esp32-firmware-release-contract.md)
+defines Ed25519-signed manifests binding native C6 apps and P4 A/B core+BSP
+pairs, exact asset inventory and independent board/layout/ABI admission.
+Environment-only private-key custody and compiled public trust/origins are
+requirements, not provisioned infrastructure. Runtime ENV cannot silently
+replace official trust. Schema/native parser/signature backend, ESP32 release
+CI, replay-floor persistence and installed-device recovery are open. C6 layout
+graphics are optional diagnostics; internal layout gating remains mandatory.
+P4 keeps its proportional map. UPDATE-C6/P4 are not enabled by this design.
 
 C6 update postponed by Fabian (2026-10-11) in favor of a WLAN test on the
 installed peer. UPDATE-C6 remains disabled; this is a sequencing decision,
@@ -38828,3 +38840,41 @@ remain open. No partial stage is a complete A/B update system.
   cold-boot or WLAN pass. Next: bounded INIT rejection diagnostics against the
   installed peer format and separate watchdog/reset diagnosis; no automatic
   repeated physical interaction or credential transmission.
+
+### 2026-10-11 - N2M-R C6/P4 firmware and signed-release contracts
+
+- Fabian requested a C6 firmware-format contract, extended it to releasable
+  P4 upgrades and required a private signing key in the AROS-NX release
+  environment. This delivery is normative documentation, not updater or
+  release implementation. The existing board-tool plan is reused; no new
+  GitHub issue, environment, secret, tag or release was created.
+- Artifacts under `docs/plans/`, SHA-256 of the exact documents:
+  `esp32-firmware-release-contract.md`
+  `e73429bde651ed6b6c90fbe2bb14757bedee843354f8efa80c7405d7795295b2`;
+  `esp32-c6-firmware-contract.md`
+  `411e6c6aa890ae8d4e81d4662217f8cc7c777fa60de4ecbd70da7b6e3bcc0566`;
+  `esp32-p4-firmware-contract.md`
+  `8c06eb939a1b3f68b57c419b2b9f2465878507e70498a8fd0b718d63a1d1cda3`.
+- Procedure: primary source audit of ESP32Board image checker, current CI,
+  A/B envelope producer/tests and board layout; official Espressif/GitHub
+  reference checks; bounded independent Luna review. Review found that a
+  signature alone can authenticate a mismatched P4 pair: the explicit
+  pre-write core-to-envelope length/hash cross-check is now mandatory.
+  Document/link existence checks and staged whitespace check pass (exit0).
+  No executable test, native build, signature interoperability or hardware
+  result is claimed from this design review.
+- Requirements: unchanged C6 app and P4 paired native binaries plus a bounded,
+  exact-byte Ed25519-signed JSON release inventory. Private key only in protected
+  `release`; public keys/release origins compiled from reviewed build inputs.
+  Runtime ENV cannot silently replace trust. Native firmware signatures,
+  release signatures and pair-integrity hashes remain distinct. C6 partition
+  graphics are optional read-only diagnostics; P4 adaptive map remains required.
+- Safety: no serial, flash, SD, C6, credential or production-key action.
+  Existing caches/user changes preserved. Neither public update action is
+  enabled. Signed bytes do not prove installed compatibility, recovery,
+  freshness or power-loss safety. Current CI has no ESP32 publisher.
+- Next: schema/generator with positive/tamper/replay probes, reviewed native
+  verifier and generated trust configuration, qualified ESP32 release builds
+  and protected signing/publishing workflow. Provisioning the production key,
+  replay metadata and actual safe device updates remain separate acceptance
+  gates; N2M-R is in development, M4-AB/N2M hardware states unchanged.

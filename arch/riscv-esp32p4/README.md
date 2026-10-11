@@ -1,5 +1,18 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Firmware release contracts (2026-10-11): the
+[signed release contract](../../docs/plans/esp32-firmware-release-contract.md)
+binds native [C6 app images](../../docs/plans/esp32-c6-firmware-contract.md)
+and [P4 A/B core+BSP pairs](../../docs/plans/esp32-p4-firmware-contract.md)
+to exact bytes, board/layout/ABI requirements and build provenance. Planned
+Ed25519 manifest signatures authenticate all listed assets. The private key
+belongs only in GitHub environment `release`; reviewed public keys and release
+origins become compiled updater configuration, not replaceable runtime ENV
+trust anchors. No production key, signing workflow, JSON/native verifier or
+updater configuration generator exists yet. C6 partition graphics are optional
+diagnostics; P4 retains its adaptive live map. This is normative design, not
+release or hardware qualification; both update backends remain gated. See N2M-R.
+
 Generic kernel+BSP A/B support (2026-10-11): all supported P4 profiles
 (`d1001`, `jc1060p470c-v1`, `jc1060p470c-v2`) accept `P4_FLASH_LAYOUT=ab`.
 The default remains `legacy`; use a separate build tree for each board/layout.

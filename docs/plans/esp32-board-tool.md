@@ -30,6 +30,12 @@ enable it. Discovery code not yet installed cannot qualify its own deployment.
 
 ## Design
 
+- Candidate formats and publisher trust follow the versioned
+  [signed release contract](esp32-firmware-release-contract.md),
+  [C6 application contract](esp32-c6-firmware-contract.md) and
+  [P4 paired upgrade contract](esp32-p4-firmware-contract.md). Their JSON/
+  Ed25519/configuration producers and consumers are not implemented yet.
+  A release signature authenticates bytes, never live layout or recovery.
 - The CLI resolves actions and the MUI window dispatches the same operation
   identifiers. Capability differences must be explicit and tested, not hidden
   behind a successful command or an enabled button with no implementation.
@@ -55,11 +61,15 @@ enable it. Discovery code not yet installed cannot qualify its own deployment.
   from this object or from the current user-supplied SHA field.
 - Discover the actual P4 and C6 flash capacities and partition tables through
   their respective read-only backends. Never derive a live layout from build
-  defaults. Render proportional partition extents and gaps in the GUI, with
+  defaults. Render P4 proportional partition extents and gaps in the GUI, with
   labels, offsets, sizes, types, encryption and active/update roles. An imported
   table is a provenance-labelled preview only, not active-slot or capacity
-  evidence. Refuse writes for missing/ambiguous layout, overlap, out-of-bounds
-  targets or unknown partition policy. CLI exposes the same layout data.
+  evidence. C6 normally shows firmware identity, compatibility/recovery and
+  progress/result; its partition map is optional read-only diagnostics, not
+  a required user-managed storage view. Refuse writes for missing/ambiguous
+  layout, overlap, out-of-bounds targets or unknown partition policy. CLI
+  exposes the same underlying layout facts; both targets require internal
+  layout admission regardless of GUI presentation.
 - Reuse the pinned protobuf format and persistent UID ledger. Never replay
   an ambiguously delivered BEGIN, WRITE or END. WRITE has no offset: retrying
   can duplicate bytes. Correlation needs both UID and response ID.
@@ -139,7 +149,8 @@ enable it. Discovery code not yet installed cannot qualify its own deployment.
   the C6 used to obtain it. Transport OTA (SDIO delivery) and remote HTTPS
   acquisition are distinct capabilities and acceptance claims.
 - P4 updates need a deliberately designed privileged flash interface. The
-  current P4 layout has no inactive app slot; do not assume atomic swap or
+  installed legacy P4 layout has no inactive app slot; generic opt-in A/B
+  candidate layouts exist but have no qualified updater. Do not assume atomic swap or
   redefine an in-place write as rollback-safe OTA. Bootloader, partition table,
   NVS and storage remain separately authorized targets.
 
