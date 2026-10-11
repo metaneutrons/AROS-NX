@@ -28,7 +28,7 @@ struct WifiNet
     TEXT    wn_SSID[WIFI_SSID_MAX];
     LONG    wn_Signal;              /* dBm */
     LONG    wn_Channel;
-    TEXT    wn_Protection[8];       /* "open", "WPA", "WPA2" */
+    TEXT    wn_Protection[8];       /* "open", "WPA", "WPA2", "WPA3", "?" */
     LONG    wn_Known;               /* already in Wireless.prefs */
 };
 

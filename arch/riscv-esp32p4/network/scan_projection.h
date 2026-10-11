@@ -15,7 +15,9 @@
  *
  * This projects summary metadata only. It does not construct Beacon/Probe
  * Response IEs. Unsupported, mixed, or incomplete profiles remain unknown
- * and private; only exact singleton suite tuples are marked known.
+ * and private; only exact singleton suite tuples are marked known. Pure
+ * WPA3-Personal/CCMP reports SAE metadata, not PMF/H2E capability, negotiated
+ * authentication, firmware offload support or permission to associate.
  */
 static void p4wlan_scan_security(
     const struct p4_hosted_scan_record *record,
@@ -59,6 +61,10 @@ static void p4wlan_scan_security(
         protocol = S2WIRELESS_PROTO_WPA;
     } else if (authmode == 3) {
         protocol = S2WIRELESS_PROTO_RSN;
+    } else if (authmode == 6 && pairwise_cipher == 4 && group_cipher == 4) {
+        /* WIFI_AUTH_WPA3_PSK: pure SAE, not WPA2/WPA3 transition mode7.
+         * SAE never inherits the WPA1/WPA2 TKIP allowance below. */
+        protocol = S2WIRELESS_PROTO_RSN_SAE;
     } else {
         return;
     }
@@ -81,7 +87,8 @@ static void p4wlan_scan_security(
 
     summary->Flags = S2WIRELESS_SUMF_KNOWN | S2WIRELESS_SUMF_PRIVACY;
     summary->Protocols = protocol;
-    summary->KeyManagement = S2WIRELESS_KEY_PSK;
+    summary->KeyManagement = protocol == S2WIRELESS_PROTO_RSN_SAE ?
+        S2WIRELESS_KEY_SAE : S2WIRELESS_KEY_PSK;
     summary->PairwiseCiphers = pairwise;
     summary->GroupCiphers = group;
 }

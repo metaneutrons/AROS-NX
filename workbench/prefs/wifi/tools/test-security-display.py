@@ -212,6 +212,18 @@ static void test_capabilities(void)
     caps.Protocols = S2WIRELESS_PROTO_RSN_SAE;
     CHECK_CAPABILITY(&caps, 0);
     caps = make_caps(S2WIRELESS_CAPF_FOURWAY | summary_flag);
+    caps.Protocols = S2WIRELESS_PROTO_RSN;
+    caps.KeyManagement = S2WIRELESS_KEY_SAE;
+    caps.PairwiseCiphers = S2WIRELESS_CIPHER_CCMP;
+    caps.GroupCiphers = S2WIRELESS_CIPHER_CCMP;
+    CHECK_CAPABILITY(&caps, 0);
+    caps = make_caps(S2WIRELESS_CAPF_FOURWAY | summary_flag);
+    caps.Protocols = S2WIRELESS_PROTO_RSN_SAE;
+    caps.KeyManagement = S2WIRELESS_KEY_SAE;
+    caps.PairwiseCiphers = S2WIRELESS_CIPHER_CCMP;
+    caps.GroupCiphers = S2WIRELESS_CIPHER_CCMP;
+    CHECK_CAPABILITY(&caps, 0);
+    caps = make_caps(S2WIRELESS_CAPF_FOURWAY | summary_flag);
     set_valid_offload(&caps);
     caps.KeyManagement = S2WIRELESS_KEY_EAP;
     CHECK_CAPABILITY(&caps, 0);
@@ -318,8 +330,57 @@ static void test_summaries(void)
     summary = protected_summary(S2WIRELESS_PROTO_RSN_SAE,
         S2WIRELESS_CIPHER_TKIP, S2WIRELESS_CIPHER_TKIP);
     CHECK_PROTECTION(&summary, "?");
+    summary = make_summary(protected_flags, S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_KEY_SAE, S2WIRELESS_CIPHER_CCMP,
+        S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "WPA3");
     summary = protected_summary(S2WIRELESS_PROTO_WPA | unknown,
         S2WIRELESS_CIPHER_TKIP, S2WIRELESS_CIPHER_TKIP);
+    CHECK_PROTECTION(&summary, "?");
+
+    /* WPA3 is only the exact RSN-SAE/SAE/CCMP tuple. */
+    summary = make_summary(protected_flags, S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_KEY_PSK, S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = make_summary(protected_flags, S2WIRELESS_PROTO_RSN,
+        S2WIRELESS_KEY_SAE, S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = make_summary(protected_flags, S2WIRELESS_PROTO_WPA,
+        S2WIRELESS_KEY_SAE, S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = make_summary(protected_flags,
+        S2WIRELESS_PROTO_RSN | S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_KEY_SAE, S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = make_summary(protected_flags, S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_KEY_PSK | S2WIRELESS_KEY_SAE,
+        S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = protected_summary(S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_CIPHER_TKIP, S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = protected_summary(S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_TKIP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = protected_summary(S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_CIPHER_GCMP, S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = protected_summary(S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_CIPHER_CCMP, S2WIRELESS_CIPHER_GCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = protected_summary(S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_CIPHER_CCMP | S2WIRELESS_CIPHER_TKIP,
+        S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = protected_summary(S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_CIPHER_CCMP | S2WIRELESS_CIPHER_GCMP,
+        S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = protected_summary(S2WIRELESS_PROTO_RSN_SAE,
+        unknown, S2WIRELESS_CIPHER_CCMP);
+    CHECK_PROTECTION(&summary, "?");
+    summary = protected_summary(S2WIRELESS_PROTO_RSN_SAE,
+        S2WIRELESS_CIPHER_CCMP, unknown);
     CHECK_PROTECTION(&summary, "?");
 
     summary = make_summary(protected_flags, S2WIRELESS_PROTO_WPA, 0,

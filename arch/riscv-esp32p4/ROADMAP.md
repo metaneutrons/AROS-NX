@@ -147,6 +147,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: pure SAE/CCMP scan metadata and display host tested338/93 each O0/O2; native device67920B/Prefs153220B build verified, undeployed; caller/association contract open | Explicit negotiated SAE/PMF contract, passphrase not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1864,6 +1865,51 @@ must not silently present them as open. Any supported summary-to-security
 mapping must be explicit, conservative and tested against WirelessManager's
 actual selection logic; it is not a capture of the AP's original RSN/WPA IEs.
 Unsupported profiles must remain distinguishable/refused rather than downgraded.
+
+### N2-SAE: WPA3-Personal through existing AROS tools
+
+The measured target is reported by Fabian as WPA3; the deployed GUI displays
+'?'. N2T must not be completed by substituting a WPA2 access point. Reuse this
+roadmap as the plan/evidence authority, not a parallel updater/network UI.
+No new GitHub tracking objects or firmware writes are authorized by this plan.
+
+- SAE-M1 metadata: pure Hosted authmode6 with pairwise/group CCMP4 maps to
+  the existing singleton RSN_SAE/SAE summary. Display-only tests must reject
+  mixed7, TKIP, unknown suites and malformed data. No new public ABI or PMF/
+  negotiated-authentication claim. Source/host/native builds cannot qualify RF.
+- SAE-M2 contract/caller (depends on M1): negotiate a versioned per-device SAE
+  firmware-offload profile and typed association selection without fabricated
+  RSN IEs. Preserve v1 layouts/legacy behavior; old callers must not silently
+  interpret SAE as PSK. Separate explicit diagnostic accepted-risk permission
+  from verified production credential handling. The current SUMMARY-only
+  advertisement grants neither FOURWAY nor SAE offload, even though private
+  diagnostic association is enabled. Simply widening authmode is insufficient.
+  Existing WirelessManager configuration/selection and Prefs must use an SAE
+  password directly, never its WPA2 PBKDF2-derived PSK. PMF must be required;
+  raw PSK, unsupported PWE/identifier/profile combinations must fail closed.
+- SAE-M3 owner/peer (depends on M2): use existing Hosted STA config fields
+  for PMF capable/required, SAE PWE and optional identifier; verify exact
+  encoder/caller values, credential ownership/wiping, timeout/cancellation,
+  teardown and current-link lifecycle. The scan RPC lacks PMF/H2E information;
+  do not claim those as observed AP facts. Establish whether a threshold alone
+  forbids WPA2 fallback on transition APs and whether AP-info proves negotiated
+  SAE; if not, qualify additional peer policy/evidence before admitting mode7.
+  The installed C6 lineage/compiled SAE support remains unknown. No automatic
+  firmware change, privacy assertion or access-point downgrade is implied.
+- SAE-M4 qualification (depends on M3): fresh synchronized native target scan,
+  explicit SAE/required-PMF association, DHCP/routes/DNS and real bidirectional
+  traffic; disconnect/reconnect and SD/graphics/two-hart load. Preserve original
+  N2T duration/error/privacy/reset-continuity gates, not a scan-only substitute.
+  Invalid capability/version/extent, wrong password, downgrade attempt, cancel,
+  late failure and unsupported peer must produce bounded truthful failure.
+  Exact source/artifact/log identity and observed GUI result are required.
+
+Installed core/BSP/SD remain recoverable and unchanged during host development.
+Rolling back this slice means restoring matched native caller/device artifacts,
+not changing the access point or weakening firmware/privacy admission.
+
+### Existing N2 native integration requirements
+
 Choose and qualify a truthful summary-aware offload integration or a compatible
 peer-protocol extension for the missing security data; leaving protected network
 selection unsupported is an interim safety gate, not completion of N2.
@@ -39453,3 +39499,43 @@ remain open. No partial stage is a complete A/B update system.
   Next: audit existing Hosted SAE/PMF config transport and native AROS contract,
   implement supported WPA3 without synthetic IEs or a silent WPA2 downgrade,
   then synchronize association/DHCP/routes/DNS/traffic/reconnect/load testing.
+
+### 2026-10-11 - N2-SAE pure WPA3 scan metadata and native build
+
+- Existing N2/N2T roadmap extended with SAE-M1..M4 acceptance gates, not a
+  separate UI/TCP stack or a WPA2-only substitute. Pinned Hosted d5184217...
+  schema already transports STA PMF capable/required, SAE PWE and identifier;
+  current P4 codec supports them. Scan contains authmode/data ciphers only,
+  no PMF/H2E metadata. Installed C6 identity54aafd0-dirty remains unresolved.
+- Production scan_projection.h now maps only pure authmode6/CCMP4+4 to
+  existing v1 RSN_SAE/SAE/CCMP singleton metadata. Prefs display recognizes
+  that exact tuple as WPA3. Mixed7, TKIP, unknown/malformed tuples remain
+  private/unknown. Public layout/version, capability advertisement, offload,
+  association admission and privacy assertions unchanged. No synthetic AP IE.
+  Independent source reviewer finds no blocker; older WM rejects SAE as
+  unknown/private, never open. Display is not PMF/authentication/traffic proof.
+- Primary reruns: actual extracted SANA scan helpers338 checks each O0/O2
+  ASan/UBSan exit0; actual native-display helper93 each O0/O2 ASan/UBSan exit0.
+  Deterministic radio/Exec mocks, not scheduling or hardware. Initial helper
+  test fixture mistakenly used its PSK constructor for SAE positive input;
+  corrected before final pass, no production failure suppressed.
+  Evidence wifi-2026-10-11/wpa3-metadata.pyRFAn; scan test log SHA256
+  36b72983f4379bd1d221298bd3122ae212af3b2d25a2f76c10d7d6ccbed85ab2,
+  display test log4d86543ebd7fd729658fba7720104e78888c7428061e63b10bd05fc44a9ba446.
+- Invalidated affected device/Prefs objects before sequential RV32 quick
+  builds. Device session34153 exit0, complete module67920B SHA256
+  2225f4c5aaba8c7f32ea95c56e050224af842039de00622553c8006b6503791d;
+  Prefs session83446 exit0, complete link153220B SHA256
+  37c8f67ee296bbb0d7b0ddf274471e43d5393c534e6fbcd5087c728c08b0a09c.
+  Build logs contain the module/link completion and no error:/warning:;
+  respective SHA25648f79af88ef10e5aef36bd446ccb8881b8edac1cb1e673397a4c2535a43c4dce
+  and172435f1abd4599316760c568bd7e23c2af41f0c95e8b406e48a950675748ba2.
+  Native binaries retained alongside logs. JC-v2/Core1 accepted-risk flags
+  unchanged; privacy/recovery/update flags0. No SD image/deployment or hardware
+  test for this slice; installed core/BSP/card remain previous exact identities.
+- Source audit additionally establishes that threshold6 is scan admission,
+  not by itself a force-SAE command; AP-info authmode reports BSS mode rather
+  than negotiated AKM. Fully configured WPA3 transition behavior is documented
+  by Espressif, but cannot be imputed to the unidentified installed peer.
+  Next SAE-M2: explicit native contract/caller support and diagnostic-vs-release
+  enablement, then required-PMF/SAE owner policy and full N2T device gates.

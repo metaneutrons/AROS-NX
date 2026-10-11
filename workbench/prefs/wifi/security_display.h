@@ -85,8 +85,18 @@ static const char *WifiSummaryProtection(
 		return "?";
 	}
 
-	if (summary->Flags != known_flags ||
-	    summary->KeyManagement != S2WIRELESS_KEY_PSK ||
+	if (summary->Flags != known_flags)
+		return "?";
+
+	/* WPA3 is display-only in this v1 summary. It does not validate offload,
+	 * PMF policy, or association support. Require the exact SAE/CCMP tuple. */
+	if (summary->Protocols == S2WIRELESS_PROTO_RSN_SAE &&
+	    summary->KeyManagement == S2WIRELESS_KEY_SAE &&
+	    summary->PairwiseCiphers == S2WIRELESS_CIPHER_CCMP &&
+	    summary->GroupCiphers == S2WIRELESS_CIPHER_CCMP)
+		return "WPA3";
+
+	if (summary->KeyManagement != S2WIRELESS_KEY_PSK ||
 	    (summary->Protocols != S2WIRELESS_PROTO_WPA &&
 	     summary->Protocols != S2WIRELESS_PROTO_RSN) ||
 	    (summary->PairwiseCiphers != S2WIRELESS_CIPHER_TKIP &&

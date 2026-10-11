@@ -1,5 +1,12 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WPA3 development (2026-10-11): pure SAE/CCMP metadata now maps to a truthful
+display-only 'WPA3' label. Mixed WPA2/WPA3 remains unknown under the v1
+singleton contract. Scan338/display93 checks each O0/O2 ASan/UBSan pass;
+native device67920B and Prefs153220B build verified, not deployed. Existing
+capability/association gates remain unchanged. N2-SAE defines the remaining
+native caller, required-PMF/SAE, installed-peer and full IP/data qualification.
+
 Native security-display retest (2026-10-11): the deployed preferences image
 boots and its scan completes with remote6/decoded6/nonempty6/workaround0.
 Fabian identifies the intended network as WPA3 and observes '?'. The current
