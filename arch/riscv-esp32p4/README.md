@@ -1,5 +1,14 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+C6 bootstrap sequencing (2026-10-11): the
+[first-install runbook](../../docs/plans/esp32-c6-first-install.md) separates
+independent CN5 ROM recovery/app-only installation from the later AROS OTA
+updater. Undeployed discovery cannot qualify its own installation. Actual
+connector/adapter, installed security/layout and usable restore remain open;
+CN5 photograph requested. No device operation or release change occurred.
+UPDATE-C6 remains unavailable because public dispatch and device admission
+are incomplete, not because bootstrap must wait for the finished OTA tool.
+
 Read-only image-to-target diagnostics (2026-10-11): `COMPARE-C6` now shares
 one CLI/MUI backend. It opens/inspects an owned application once, queries the
 negotiated C6 registry, rechecks the held bytes and produces explicit rejected,

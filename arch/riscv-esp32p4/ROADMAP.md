@@ -126,7 +126,7 @@ No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
-| N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
+| N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; independent bootstrap planned; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; current discovery-v2 candidate1110928B build verified separately. CN5 ROM/app-only bootstrap runbook separates first installation from later AROS OTA; actual connector/adapter, installed layout/security, non-secret backups and usable restore remain unverified. UART privacy and identity must be qualified before credentials; no release assertion enabled. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
 | N2S | Native queued SANA scan presentation | `RV32 build verified; source review and corrected scan-helper models passed` | Single bounded owner-service scan, copied SSID filter and caller-pool-owned complete publication. Scan-helper models295 checks each O0/O2 ASan/UBSan on macOS/Linux; outer BeginIO/AbortIO/Close and runtime scheduling remain separate gates. Exact singleton metadata only; unsupported/ambiguous unknown protected. C-string binary SSIDs/invalid channels omitted; max8 local cap. SUMMARY only, no FOURWAY. No credentials/deployment/hardware acceptance. |
 | N1S-P | Persistent owner-service scan (N1S/N2 prerequisite) | `ABI2 Core1 build/model verified; reservation correction tested/reviewed` | Fresh persistent UIDs, exact blocking response correlation, one8s absolute budget and owned max8 results. N1E empty-record workaround remains. Exact no-write reservation settlement passes actual-owner boundary tests62 each O0/O2 on macOS/Linux and independent review. Scan timing/Exec/SDIO mocked. No SANA presentation or runtime acceptance; security/offload remains open. |
@@ -1271,6 +1271,14 @@ bidirectional referenced frames, timeout/cancel and disconnect recovery. A
 reference firmware example building is not evidence of AROS transport.
 
 ### N2M - board maintenance and adaptive flash layouts
+
+Bootstrap sequencing correction (2026-10-11): follow the
+[independent C6 first-install runbook](../../docs/plans/esp32-c6-first-install.md).
+CN5 ROM access, actual layout/security and secured restore precede a possible
+app-only installation. Neither undeployed discovery nor the unfinished public
+OTA frontend is a prerequisite for that independent ROM procedure. This does
+not close compatibility/admission or enable UPDATE-C6. Actual connector/adapter
+and device evidence remain absent; photograph requested, no hardware action.
 
 Current diagnostic addition: shared `COMPARE-C6 IMAGE=... SHA256=...` and MUI
 button retain checked image bytes through negotiated discovery and exact
@@ -38388,3 +38396,42 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   evidence and independently secured CN5 recovery before first write; fill
   remaining loader/policy/layout proof gaps and qualify whole-transfer timing.
   Association/DHCP/traffic/reconnect/1800s combined WLAN acceptance remains open.
+
+### 2026-10-11 - N2F/N2M independent C6 bootstrap sequencing
+
+- Source parent68843e8be3. Added `docs/plans/esp32-c6-first-install.md` with
+  ordered physical identification, independent ROM identity/security/layout,
+  scoped non-secret backups, usable restoration, app-only fit/erase-footprint
+  decision and post-install qualification checkpoints. This is a planned
+  procedure, not a recovery or hardware pass. Actual CN5 photograph/adapter
+  and installed C6 evidence remain missing; photograph requested from Fabian.
+- Separate the first installation from the product updater: undeployed
+  discovery cannot qualify itself. A qualified independent ROM operation does
+  not require the completed AROS OTA frontend or SDIO transfer timing. It still
+  requires the existing device-specific secured-recovery condition before any
+  write. Public UPDATE-C6 and its missing admission producers remain open.
+- Corrected stale current-tense claims that the native private OTA client and
+  CLI/MUI discovery bindings do not exist. Implementation is not deployment,
+  runtime qualification, image authentication or recovery. Source audit by a
+  separate Luna worker confirmed this dependency boundary and no device proof.
+- Re-read primary Espressif C6 boot-selection and esptool command guidance.
+  Writes affect complete4096B sectors; non-bootloader image incompatibility
+  may only warn and continue, so esptool cannot substitute for compatibility
+  admission. Runbook forbids generated flash_args, force/security bypass,
+  whole-flash/NVS dumps, eFuse operations and unapproved boot metadata changes.
+  Candidate app at `/Volumes/Dev/Build/c6-discovery-v2.3RE1Sf/build/network_adapter.bin`
+  rehashed1110928B SHA256
+  3583e341ea108a087a924c4320833f3cad3c3be436070c1ebf5d80f14292b2f4;
+  no rebuild or new binary. An initially guessed filename did not exist;
+  enumerated the actual build and verified this path instead.
+- Documentation-only change: no device/serial/reset/flash/SD/credential action,
+  no build, no release-flag or UPDATE-C6 change. Preserve existing untracked
+  boot/image Python caches. Next: verify actual CN5 connector/adapter with
+  fresh readiness, then gather independent C6 recovery/installed evidence.
+  Full association/DHCP/traffic/reconnect/1800s and CLI/MUI update acceptance
+  remain required; this runbook does not narrow the WLAN objective.
+- Independent read-only Luna review checked relative links, exact candidate
+  identity and write boundaries. Corrected wording from a runbook that
+  "establishes" recovery to one that requires it: no recovery was performed.
+  `git diff --check` passes; no software/hardware test is claimed for this
+  documentation-only change.

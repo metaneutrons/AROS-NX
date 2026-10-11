@@ -416,7 +416,11 @@ Primary source audit in `hosted-reproduce.6qcg7E` confirms:
   See [official C6 OTA documentation](https://docs.espressif.com/projects/esp-idf/en/release-v5.4/esp32c6/api-reference/system/ota.html).
 - The complete IDF host wrapper defaults to HTTP URL OTA (`rpc_wrap.c:45-47`),
   not the file helper. It is not a verified authenticated native AROS updater;
-  native AROS currently has no OTA client. Do not use stock OTA as recovery.
+  native AROS had no OTA client at the original audit. A private engine and
+  prepared-job client now exist, but UPDATE-C6 remains unavailable and no
+  complete authenticated public updater is qualified. Do not use stock OTA
+  as recovery. The independent bootstrap is described in the
+  [first-install runbook](../../../docs/plans/esp32-c6-first-install.md).
 
 The pinned board schematic offers a candidate direct C6 UART recovery route
 through CN5: VCC3V3/GND/U0TXD/U0RXD/IO9/CHIP_PU. This is schematic evidence,

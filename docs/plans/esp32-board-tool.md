@@ -23,6 +23,11 @@ Installed C6 identity, partition layout and rollback remain unverified. CN5
 cabling is unavailable. Conditional C6 update authority still requires a
 secured recovery path; source development and read-only file checks do not.
 
+The separate [first-install runbook](esp32-c6-first-install.md) requires
+CN5 ROM recovery before an app-only bootstrap. That procedure does not wait
+for this product's OTA frontend/full-transfer qualification and does not
+enable it. Discovery code not yet installed cannot qualify its own deployment.
+
 ## Design
 
 - The CLI resolves actions and the MUI window dispatches the same operation

@@ -136,8 +136,12 @@ No C6 write or release gate was enabled.
 using the pinned IDF5.4.3 APIs, with shared `boardtool/discovery.c/.h` validation
 and the ESP32Board layout parser. This is a producer for the future negotiated
 extension, not an existing query on stock Hosted. The candidate recipe below
-adds a dispatcher hook, startup capability and generated schema; native P4
-negotiation, GUI binding and update permission remain absent.
+adds a dispatcher hook, startup capability and generated schema. Native P4
+negotiation and CLI/MUI discovery/comparison bindings now exist in source;
+matched deployment and actual runtime qualification remain absent. Update
+permission remains disabled. The
+[independent first-install runbook](../../../../docs/plans/esp32-c6-first-install.md)
+does not rely on this undeployed extension to qualify its own installation.
 Do not send speculative discovery requests to the installed C6.
 
 Use `esp_flash_get_physical_size` for detected physical capacity and
