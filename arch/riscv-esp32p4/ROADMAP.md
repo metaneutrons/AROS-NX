@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, initial-event gate, station invalidation and accepted-identity refresh builds verified; typed provider not wired/advertised, security-change events, producer/attempt barrier, complete reconnect/cookie lifecycle and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, initial-event gate, station invalidation and accepted-identity refresh builds verified; complete reference protocol inventory recorded; event validation/reinit/security/loss/channel handling, typed admission, producer/attempt barrier, reconnect/cookie lifecycle and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1948,6 +1948,16 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   EVENT773 ID6 still needs explicit invalidation before advertisement. Native
   resource348388B is build verified only; opener/cookie and peer-ordering gates
   and complete reconnect behavior remain required.
+  The [Hosted protocol matrix](network/PROTOCOL-COVERAGE.md) now inventories
+  all82 reference RPC pairs and eight events, plus generic WiFi IDs0–45.
+  Before typed advertisement, implement explicit accepted/unsupported event
+  policies and bounded payload validation, including peer reinit, security
+  change, beacon timeout, channel reconciliation and scan/heartbeat semantics.
+  Generic773 loses event detail in the pinned C6 source; it cannot supply
+  old/new auth or channel values. Inventory is a source audit, not installed
+  peer support or hardware verification. Keep optional APIs outside the station
+  admission whitelist; regulatory/power defaults and scan cleanup still need
+  qualification, not indiscriminate implementation of every reference API.
 - SAE-M4 qualification (depends on M3): fresh synchronized native target scan,
   explicit SAE/required-PMF association, DHCP/routes/DNS and real bidirectional
   traffic; disconnect/reconnect and SD/graphics/two-hart load. Preserve original
@@ -40060,3 +40070,39 @@ remain open. No partial stage is a complete A/B update system.
   and capability/BeginIO admission with qualified ordering; then actual native
   WPA3/PMF, DHCP/routes/DNS/bidirectional traffic, reconnect and original N2T
   sustained SD/graphics/two-hart/privacy/reset-continuity acceptance.
+
+### 2026-10-11 - N2-SAE complete reference protocol inventory
+
+- Status: source audit only, N2-SAE in development. At Fabian's request,
+  replace incremental event discovery with an explicit station coverage gate.
+  Baseline source6024ecd214269ed43e820964c441a44f80c0d6a5; no executable changes.
+- Artifact: `network/PROTOCOL-COVERAGE.md`, SHA256
+  `cab408bc282a7fe983db523a3c345d8ba1461c61d2d6ba53c8d64b5c4b447325`.
+  It assigns every active reference request/paired response and RPC event,
+  identifies schema holes/sentinels and the separate discovery extension,
+  and distinguishes station admission from envelope acceptance.
+- Reference: Hosted d5184217f710d54c01f932e75b4c55e3f4933fc9 under
+  `/Volumes/Dev/Build/esp-hosted-reference.RzWnFu/`, schema SHA256
+  `bbdbc9bb69c2b1793de6441ea55051c3ceb3f7b30994227b8ff1e995b0137dec`.
+  Pinned IDF5.4.3 generic WiFi enum0–45, invalid sentinel46.
+- Procedure: inspect reference enum, payloads and C6 producers/converters;
+  independently audit event producers with Luna, then verify against source.
+  Inspect AROS request encoder whitelist, response parsers and event callback.
+  Independent awk enumeration confirms82 active requests; response pairs use
+  +256 and all eight events769–776 are inventoried. Documentation diff check
+  passes. No build/test runtime coverage is claimed by this inventory.
+- Result: current owner semantically validates773/775/776 only. START/STOP,
+  connect/disconnect observations are integrated; other RPC events are counted.
+  Peer reinit, scan/heartbeat validation and generic security/loss/channel
+  handling remain explicit gaps. C6 generic773 discards original event data;
+  authmode-change old/new values are not transmitted despite a separate schema
+  type. RPC ESPInit leaves init_data empty and differs from transport INIT TLVs.
+  Heartbeat conversion reads its counter asynchronously; generic ID conversion
+  reads one byte. Current pinned IDs fit, but future compatibility is not proven.
+- Safety: no serial opening/reset/flash/SD write, credentials or C6 modification.
+  Installed core/BSP/card remain unchanged; C6 update stays postponed. Unknown
+  installed peer lineage cannot be declared compatible from reference coverage.
+- Next: bounded event codecs and explicit classification, critical-state
+  invalidation/reconciliation and coupled owner/native cookie tests; complete
+  typed admission and qualified peer ordering, then actual WPA3/PMF, DHCP,
+  routes/DNS, bidirectional traffic, reconnect and original N2T gates.

@@ -1,5 +1,12 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Hosted protocol inventory (2026-10-11): [coverage matrix](network/PROTOCOL-COVERAGE.md)
+classifies all82 reference request/response pairs, eight RPC events and pinned
+IDF WiFi IDs0–45. Envelope acceptance is not semantic coverage. Peer reinit,
+security change, beacon timeout, channel change and scan/heartbeat validation
+remain explicit work before typed admission. This source audit changes no
+executable or installed firmware; actual WPA3/IP/data qualification remains open.
+
 Typed link maintenance groundwork (2026-10-11): the owner now retains a
 credential-free accepted profile/AP/generation/event revision after a successful
 typed association. Refresh can preserve only that exact acceptance, including
