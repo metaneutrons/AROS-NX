@@ -43,6 +43,9 @@
 #include <string.h>
 #include <stdint.h>
 #include <time.h>
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+#include <aros/debug.h>
+#endif
 
 #include "wifigui.h"
 #include "locale.h"
@@ -93,6 +96,10 @@ struct WifiDev
     struct MsgPort      *wd_Port;
     struct IOSana2Req   *wd_Req;
     BOOL                 wd_Opened;
+    LONG                 wd_Failure;
+    LONG                 wd_Error;
+    ULONG                wd_Version;
+    ULONG                wd_Revision;
 };
 
 static void CloseWifiDev(struct WifiDev *dev)
@@ -105,28 +112,62 @@ static void CloseWifiDev(struct WifiDev *dev)
     memset(dev, 0, sizeof(*dev));
 }
 
+/* Preserve the numeric cause after releasing every partially acquired object.
+ * Stages:1=port,2=request,3=OpenDevice,4=resident generation,5=query,
+ * 6=no wireless command; discovery uses7=directory,8=file-info,9=Examine.
+ * Never include network identities or credentials. */
+static BOOL WifiAccessFailure(struct WifiDev *dev, LONG stage, LONG error,
+                             ULONG version, ULONG revision)
+{
+    CloseWifiDev(dev);
+    dev->wd_Failure = stage;
+    dev->wd_Error = error;
+    dev->wd_Version = version;
+    dev->wd_Revision = revision;
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+    bug("[WiFiAccess] s=%ld e=%ld v=%lu r=%lu\n",
+        (long)stage, (long)error, (unsigned long)version,
+        (unsigned long)revision);
+#endif
+    return FALSE;
+}
+
+static void WifiAccessStatus(struct WifiMsg *m, const struct WifiDev *dev)
+{
+#ifdef WIFI_P4_FLASH_HELPERS
+    snprintf(m->wm_Status, sizeof(m->wm_Status),
+        "WiFi access: stage=%ld error=%ld version=%lu.%lu",
+        (long)dev->wd_Failure, (long)dev->wd_Error,
+        (unsigned long)dev->wd_Version, (unsigned long)dev->wd_Revision);
+#else
+    (void)dev;
+    snprintf(m->wm_Status, sizeof(m->wm_Status), (const char *)_(MSG_ST_CANNOT_OPEN),
+        m->wm_Device, (long)m->wm_Unit);
+#endif
+}
+
 static BOOL OpenWifiDev(struct WifiDev *dev, CONST_STRPTR device, LONG unit)
 {
+    LONG error;
     memset(dev, 0, sizeof(*dev));
 
     dev->wd_Port = CreateMsgPort();
     if (dev->wd_Port == NULL)
-        return FALSE;
+        return WifiAccessFailure(dev, 1, 0, 0, 0);
     dev->wd_Req = AllocVec(sizeof(struct IOSana2Req), MEMF_PUBLIC | MEMF_CLEAR);
     if (dev->wd_Req == NULL)
     {
-        CloseWifiDev(dev);
-        return FALSE;
+        return WifiAccessFailure(dev, 2, 0, 0, 0);
     }
 
     dev->wd_Req->ios2_Req.io_Message.mn_ReplyPort = dev->wd_Port;
     dev->wd_Req->ios2_Req.io_Message.mn_Length = sizeof(struct IOSana2Req);
     dev->wd_Req->ios2_BufferManagement = (APTR)buffer_tags;
 
-    if (OpenDevice(device, unit, (struct IORequest *)dev->wd_Req, 0) != 0)
+    error = OpenDevice(device, unit, (struct IORequest *)dev->wd_Req, 0);
+    if (error != 0)
     {
-        CloseWifiDev(dev);
-        return FALSE;
+        return WifiAccessFailure(dev, 3, error, 0, 0);
     }
     dev->wd_Opened = TRUE;
 #ifdef WIFI_P4_FLASH_HELPERS
@@ -136,8 +177,9 @@ static BOOL OpenWifiDev(struct WifiDev *dev, CONST_STRPTR device, LONG unit)
     if (dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Version != 1 ||
         dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Revision != 3)
     {
-        CloseWifiDev(dev);
-        return FALSE;
+        return WifiAccessFailure(dev, 4, 0,
+            dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Version,
+            dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Revision);
     }
 #endif
     return TRUE;
@@ -1384,13 +1426,15 @@ static BOOL ProbeWireless(struct WifiDev *dev)
 {
     struct NSDeviceQueryResult nsq;
     BOOL wireless = FALSE;
+    LONG error;
 
     memset(&nsq, 0, sizeof(nsq));
     ((struct IOStdReq *)dev->wd_Req)->io_Command = NSCMD_DEVICEQUERY;
     ((struct IOStdReq *)dev->wd_Req)->io_Data = &nsq;
     ((struct IOStdReq *)dev->wd_Req)->io_Length = sizeof(nsq);
 
-    if (DoIO((struct IORequest *)dev->wd_Req) == 0 &&
+    error = DoIO((struct IORequest *)dev->wd_Req);
+    if (error == 0 &&
         nsq.SupportedCommands != NULL)
     {
         const UWORD *cmd;
@@ -1405,6 +1449,15 @@ static BOOL ProbeWireless(struct WifiDev *dev)
         }
     }
 
+    if (!wireless)
+    {
+        dev->wd_Failure = error != 0 ? 5 : 6;
+        dev->wd_Error = error;
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+        bug("[WiFiAccess] s=%ld e=%ld v=0 r=0\n",
+            (long)dev->wd_Failure, (long)error);
+#endif
+    }
     return wireless;
 }
 
@@ -1414,11 +1467,21 @@ static BOOL DeviceIsWireless(struct WifiDev *dev, CONST_STRPTR name)
 {
     static TEXT probed[WIFI_DEV_MAX];
     static BOOL probedresult;
+    static LONG probedfailure;
+    static LONG probederror;
 
     if (probed[0] != '\0' && Stricmp((STRPTR)probed, (STRPTR)name) == 0)
+    {
+        /* Keep the cause with the existing cached answer; do not issue another
+         * query or present a cached refusal as a fresh transport result. */
+        dev->wd_Failure = probedfailure;
+        dev->wd_Error = probederror;
         return probedresult;
+    }
 
     probedresult = ProbeWireless(dev);
+    probedfailure = dev->wd_Failure;
+    probederror = dev->wd_Error;
     snprintf(probed, sizeof(probed), "%s", name);
     return probedresult;
 }
@@ -1432,18 +1495,53 @@ static void DoDevices(struct WifiMsg *m)
 {
     struct FileInfoBlock *fib;
     BPTR lock;
+    TEXT failure[sizeof(m->wm_Status)] = {0};
+    BOOL examined = FALSE;
 
     m->wm_DeviceCount = 0;
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+    bug("[WiFiAccess] discovery=1\n");
+#endif
 
     lock = Lock(WIFI_DEVICE_DIR, SHARED_LOCK);
     if (lock == BNULL)
     {
+        LONG error = IoErr();
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+        bug("[WiFiAccess] s=7 e=%ld v=0 r=0\n", (long)error);
+#endif
+#ifdef WIFI_P4_FLASH_HELPERS
+        snprintf(m->wm_Status, sizeof(m->wm_Status),
+            "WiFi discovery: directory error=%ld", (long)error);
+#else
+        (void)error;
         strcpy(m->wm_Status, (const char *)_(MSG_ST_NO_DEVS_NETWORKS));
+#endif
         return;
     }
 
     fib = AllocDosObject(DOS_FIB, NULL);
-    if (fib != NULL && Examine(lock, fib))
+    if (fib == NULL)
+    {
+        snprintf(failure, sizeof(failure), "WiFi discovery: no file-info memory");
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+        bug("[WiFiAccess] s=8 e=0 v=0 r=0\n");
+#endif
+    }
+    else
+    {
+        examined = Examine(lock, fib);
+        if (!examined)
+        {
+            LONG error = IoErr();
+            snprintf(failure, sizeof(failure),
+                "WiFi discovery: examine error=%ld", (long)error);
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+            bug("[WiFiAccess] s=9 e=%ld v=0 r=0\n", (long)error);
+#endif
+        }
+    }
+    if (examined)
     {
         while (ExNext(lock, fib) && m->wm_DeviceCount < WIFI_MAX_DEVS)
         {
@@ -1468,8 +1566,20 @@ static void DoDevices(struct WifiMsg *m)
                 BOOL wireless;
 
                 if (!OpenWifiDev(&dev, name, unit))
+                {
+                    if (unit == 0 && failure[0] == '\0')
+                    {
+                        WifiAccessStatus(m, &dev);
+                        snprintf(failure, sizeof(failure), "%s", m->wm_Status);
+                    }
                     break;
+                }
                 wireless = ProbeWireless(&dev);
+                if (!wireless && unit == 0 && failure[0] == '\0')
+                {
+                    WifiAccessStatus(m, &dev);
+                    snprintf(failure, sizeof(failure), "%s", m->wm_Status);
+                }
                 CloseWifiDev(&dev);
                 if (!wireless)
                     break;      /* wireless is a property of the driver */
@@ -1484,9 +1594,18 @@ static void DoDevices(struct WifiMsg *m)
     if (fib != NULL)
         FreeDosObject(DOS_FIB, fib);
     UnLock(lock);
+#ifdef WIFI_ACCESS_DIAGNOSTICS
+    bug("[WiFiAccess] devices=%ld\n", (long)m->wm_DeviceCount);
+#endif
 
     if (m->wm_DeviceCount == 0)
+#ifdef WIFI_P4_FLASH_HELPERS
+        snprintf(m->wm_Status, sizeof(m->wm_Status), "%s",
+            failure[0] != '\0' ? (const char *)failure :
+                (const char *)_(MSG_ST_NO_WIRELESS_DEVICE));
+#else
         strcpy(m->wm_Status, (const char *)_(MSG_ST_NO_WIRELESS_DEVICE));
+#endif
 }
 
 /* ------------------------------------------------------------------------- */
@@ -1518,6 +1637,7 @@ static BOOL DoStatus(struct WifiMsg *m)
 {
     struct WifiDev dev;
     APTR pool;
+    TEXT access_failure[sizeof(m->wm_Status)] = {0};
 
     m->wm_Associated = FALSE;
     m->wm_Wireless = FALSE;
@@ -1529,12 +1649,18 @@ static BOOL DoStatus(struct WifiMsg *m)
         return FALSE;
     if (!OpenWifiDev(&dev, m->wm_Device, m->wm_Unit))
     {
-        snprintf(m->wm_Status, sizeof(m->wm_Status), (const char *)_(MSG_ST_CANNOT_OPEN),
-            m->wm_Device, (long)m->wm_Unit);
+        WifiAccessStatus(m, &dev);
         return FALSE;
     }
 
     m->wm_Wireless = DeviceIsWireless(&dev, m->wm_Device);
+#ifdef WIFI_P4_FLASH_HELPERS
+    if (!m->wm_Wireless && dev.wd_Failure != 0)
+    {
+        WifiAccessStatus(m, &dev);
+        snprintf(access_failure, sizeof(access_failure), "%s", m->wm_Status);
+    }
+#endif
 
     pool = CreatePool(MEMF_PUBLIC | MEMF_CLEAR, PUDDLE_SIZE, PUDDLE_SIZE);
     if (pool != NULL)
@@ -1596,8 +1722,13 @@ static BOOL DoStatus(struct WifiMsg *m)
                                                      : _(MSG_ST_A_NETWORK)));
     }
     else if (!m->wm_Wireless)
-        snprintf(m->wm_Status, sizeof(m->wm_Status),
-            (const char *)_(MSG_ST_NOT_WIRELESS), m->wm_Device);
+    {
+        if (access_failure[0] != '\0')
+            snprintf(m->wm_Status, sizeof(m->wm_Status), "%s", access_failure);
+        else
+            snprintf(m->wm_Status, sizeof(m->wm_Status),
+                (const char *)_(MSG_ST_NOT_WIRELESS), m->wm_Device);
+    }
     else
         strcpy(m->wm_Status, (const char *)_(MSG_ST_NOT_CONNECTED));
 
@@ -1620,8 +1751,7 @@ static void DoScan(struct WifiMsg *m)
         return;
     if (!OpenWifiDev(&dev, m->wm_Device, m->wm_Unit))
     {
-        snprintf(m->wm_Status, sizeof(m->wm_Status), (const char *)_(MSG_ST_CANNOT_OPEN),
-            m->wm_Device, (long)m->wm_Unit);
+        WifiAccessStatus(m, &dev);
         return;
     }
 

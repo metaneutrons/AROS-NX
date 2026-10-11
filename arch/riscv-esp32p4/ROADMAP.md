@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device | Diagnose discovery/startup before retrying association; peer admission remains0, no IP/data pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device; access-stage diagnostics tested, deployed/readback and headless return verified | Fresh-readiness discovery-only GUI capture before retrying association; peer admission remains0, no IP/data pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
@@ -1927,6 +1927,10 @@ Both are now installed with exact BSP/helper independent readback and headless
 owner return verified. A newly synchronized GUI attempt reports no wireless
 device; discovery failure is not an association or DHCP result. See the dated
 entries below.
+Follow-up source distinguishes port/request allocation, OpenDevice return,
+resident generation, NSCMD query and missing wireless command. Numeric P4
+status/opt-in observer now pass host/native tests, exact helper readback and
+headless return; GUI attribution is still pending, no readiness or link bypass.
 
 Current correction (2026-10-11): exact auth7/CCMP transition metadata is
 represented as PSK|SAE and displayed as WPA2/3, not mislabeled pure WPA3.
@@ -42162,3 +42166,99 @@ remain open. No partial stage is a complete A/B update system.
   loss is possible. Next: diagnose discovery with bounded numeric errors,
   then a new synchronized association/IP/data gate. Original Schmieder24
   SAE/PMF/no-WPA2-fallback qualification remains open.
+
+### 2026-10-11 - N2-SAE-REC access diagnostics prepared
+
+- WiFi worker source retains numeric failure after releasing partial objects:
+  stages1=message port,2=IO request,3=OpenDevice return,4=actual resident
+  version/revision mismatch,5=NSCMD query error,6=no S2_GETNETWORKS command.
+  Discovery stages7=directory lock,8=file-info allocation,9=Examine.
+  Query errors remain on an open device until its normal caller closes it.
+  DoStatus copies the query cause before cleanup can erase it. No radio
+  transaction, timer, retry, peer gate, generation acceptance or ABI change.
+- P4 GUI receives bounded numeric access status. Other ports retain localized
+  existing messages. Serial startup/error/count records are opt-in via
+  P4_WIFI_ASSOC_DIAGNOSTICS=1 on the ESP32-only build path. Records contain
+  no device paths, SSIDs, addresses, keys or IE payloads.
+- Fresh object-invalidated native RV32 prefs build exits0, no warning/error:
+  WiFi168664B SHA256
+  9749af7396d3dbd9afa0fda5afdd2e6c76436d6f99295de203cced49e80eec7f.
+  Board jc1060p470c-v2, flash helpers and volatile config enabled, access
+  observer enabled. Initial build failed on unsigned TEXT/char conditional
+  pointer mismatch; corrected cast and fresh build pass. Intermediate
+  167724B candidate/helper image was superseded without deployment.
+- Copied previous helper stage, overlay audit passes8 files. Final helper
+  image4194304B SHA256
+  c545af3f5ce01cfa1393d7379349c19dd961f13e1b495bd71d8d3aaa4814af18;
+  only WiFi and HELPERS.sha256 differ. Read-only FAT mount passes all7 hash
+  entries and full stage/image directory comparison. Final detach exits0;
+  initial intermediate detach from a cwd inside the volume was busy, retry
+  outside the mount exits0. No SD or physical board write in preparation.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/access-stages.imDu8N.
+  Native logs prefs-build.log/prefs-build-fixed.log/prefs-build-final.log
+  retain the rejected and final outcomes. Existing chooser/launcher/security
+  host tests exit0. Dedicated access fault tests and independent review are
+  pending; no deployment or hardware acceptance claimed at this point.
+- Limits: native current discovery cause remains unknown; prior synchronized
+  no-device observation contains no association records. False wireless-probe
+  caching and MUI allocation failure are separate possible contributors, not
+  proved causes and not changed here. Next verify diagnostics, install only
+  the helper volume with identity/readback and headless return, then request
+  fresh GUI readiness. Association/IP/data and original SAE gates stay open.
+
+### 2026-10-11 - N2-SAE-REC access diagnostics tested and cache metadata retained
+
+- Independent source review found no lifetime, credential disclosure or
+  radio-policy regression. It identified a diagnostic coverage limit: the
+  existing DeviceIsWireless name-keyed Boolean cache loses the original
+  failure cause on later refreshes. Preserve failure/error alongside that
+  same answer, without extra DoIO calls, changing the key or its Boolean
+  semantics. A cached cause is historical, not a fresh transport result.
+  Name-vs-unit cache behavior remains pre-existing and unmodified.
+- Luna authored only test-device-access.py; primary reran its extracted actual
+  struct/six helper definitions. O0/O2 generic each14 cases/424 checks;
+  O0/O2 flash each14 cases/449 checks, all actual processes exit0 under
+  ASan/UBSan. Checks cover partial cleanup, allocation/open failures,
+  error/version capture, correct NSCMD extent, query success/error/absence,
+  cached failed/successful answer provenance, bounded status and numeric
+  observer whitelist without path/password sentinels. Extracted source SHA256
+  41170695328e3272dfab284cd7a27f05a1c4c5eeea2dceb235ecde2a0160cb38;
+  access-tests.log85555b14a936a3849f3dd462a8e7ee432b9b9b591f9a2d8cc8e7bbadebcdbe9c.
+  These fixtures do not execute directory enumeration or RF. Existing chooser
+  O0/O2 each18 checks, launcher each131 and security each97 pass.
+- Rebuilt after cache metadata change with all prefs objects invalidated;
+  actual native process exits0, no warning/error. Final WiFi169124B SHA256
+  c43505d81242911912bf21263c75ff6382bceaef9f3fd91eb1eae4260e0084e4.
+  prefs-build-cache.log retains final build. Prior prepared168664B helper
+  candidate is superseded, not deployed. Final helpers-cache.img4194304B
+  SHA25614e8d27cd449eea1e3eafa9ce806ed989498997868d38268b5938818b0598c2a.
+  Mounted read-only: all7 helper hashes and full stage comparison pass;
+  detach exits0. Only WiFi/hash manifest differ from the previous deployment.
+- Fresh identity confirms the expected P4 MAC/revision; fresh partition-table
+  read matches b96e4eb9... exactly. Retained previous helper1539e6a9... is
+  rehashed for recovery. Write only0xc00000..0xffffff, actual process exits0
+  with esptool hash verification. Independent complete4MiB readback and
+  headless return are pending at this record; no hardware success inferred.
+  Core/BSP/C6/SD/bootloader/table/NVS are not write targets. Original open
+  association, IP/data and Schmieder24 SAE/PMF/no-fallback gates remain open.
+
+### 2026-10-11 - N2-SAE-REC access helper readback and headless return
+
+- Independent readback of all4194304B exits0 and matches helpers-cache.img
+  byte-for-byte/SHA25614e8d27cd449eea1e3eafa9ce806ed989498997868d38268b5938818b0598c2a.
+  This completes the preceding entry's pending readback, not its GUI gate.
+- Headless reset-and-log --once process exits0 with complete=true/status=ok,
+  elapsed45.0016918s/15004B, cleanup_errors empty. boot.log SHA256
+  b789e1ce3fd54ca345afcb3905c06381fc35e1e8f847876ccb00e5a74b0ced1e;
+  journalf178cae7711a81a5ed540b96de8ab8aeb98af272c300384e1e32dc7538e9f45c.
+  Both harts (hart1/cpus2), watchdog6000ms,42 BSP members,1024x600 graphics,
+  GT911 polling and CPU1 WiFi owner with expected C6 MAC are received.
+  No captured fatal/trap/Alert/Guru after startup. Reader closes normally.
+- Limits: two USB-reset ROM prefixes, truncated console lines and boot
+  classification unclassified preclude a clean rail-off claim or treating
+  absent messages as universal fault exclusion. No WiFi GUI/access/scan/join
+  request was solicited in this headless run; no interactive or RF acceptance.
+  Only helper volume was rewritten. Next obtain fresh readiness, arm a
+  longer passive capture, then open FLASHDISK0P0:WiFi only and inspect startup
+  cause/device chooser before any Connect. Original goal remains incomplete.
