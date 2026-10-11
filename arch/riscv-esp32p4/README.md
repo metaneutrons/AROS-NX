@@ -8,6 +8,15 @@ recovery verification assertion. It defaults0, contains no credentials and
 does not enable OTA. This is accepted test risk, not production qualification;
 hardware association/DHCP/traffic remains untested. Release assertions stay0.
 
+Matched diagnostic deployment artifacts are now prepared (2026-10-11): the
+actual installed BSP was read twice identically, and only its WLAN resource
+was replaced in a 42-member audited candidate. The rebuilt ABI11 system image
+passes all 332 manifest entries and host filesystem verification. Neither
+artifact has been deployed; the SD card must first be identified in the Mac
+reader. No credentials are embedded and the C6 firmware remains unchanged.
+The unchanged baseline returned from USB reset, but its old WLAN INIT failed
+at stage13/error6; this is not a pass for the new candidate. See roadmap N2T.
+
 C6 bootstrap sequencing (2026-10-11): the
 [first-install runbook](../../docs/plans/esp32-c6-first-install.md) separates
 independent CN5 ROM recovery/app-only installation from the later AROS OTA

@@ -118,12 +118,14 @@ gate: compensated output is not the native display contract.
 Current source radio/device pairing is private ABI11 (N2M discovery-v2 facts).
 ABI6 counts/artifacts in N1A/N2A/N2/N2L remain historical lifecycle evidence,
 not the current deployment pair. The historical ABI8 candidate package passes
-all42 loader audits; ABI11 standalone modules/tool are not repackaged or installed.
+all42 loader audits. An ABI11 diagnostic candidate now replaces only the WLAN
+resource in the actual installed BSP backup, with a matched rebuilt device/tool
+system image (N2T); both are host verified, neither is installed.
 No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2T | Explicit accepted-risk WLAN association test | Default-off owner-required test exception host/native-resource build verified; privacy/recovery assertions remain0; OTA unchanged | Matched diagnostic package/deployment, existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | Matched ABI11 BSP/image host verified; actual installed BSP backed up twice identically; not deployed; privacy/recovery assertions remain0; OTA unchanged | Identify/backup SD media, deploy matched artifacts, existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
@@ -1671,7 +1673,11 @@ remain0; no fake verification or OTA permission. Existing timeout, queue,
 cancellation, link and DMA fences remain intact. Credentials must not enter
 tracked files, build flags, artifacts or logs; existing WirelessManager uses
 temporary RAM configuration for the test. Association/DHCP/data/load acceptance
-and host/C6 privacy/recovery qualification remain open.
+and host/C6 privacy/recovery qualification remain open. The matched ABI11
+diagnostic BSP and system image are now host verified against the actual
+installed BSP backup; deployment awaits identified SD media. The unchanged
+baseline USB-reset capture reports old INIT stage13/error6, not candidate
+acceptance. See the dated N2T preparation record below.
 Source audit also found the existing SANA ONEVENT mask incompatible with the
 shared driver's CONNECT/DISCONNECT/OFFLINE subscription, and successful
 CONFIGINTERFACE left the interface offline. Per-unit edge latching and
@@ -38491,3 +38497,53 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   fails127 because the script treats CC as a single executable; that second
   invocation is not a pass. New test-flag/OTA separation is source-audited,
   not claimed as a complete positive-flag runtime qualification.
+
+### 2026-10-11 - N2T matched deployment preparation from installed baseline
+
+- Source parent3538e687fb, board jc1060p470c-v2, P4 rev1.3,
+  MAC80:f1:b2:d3:3b:a6 confirmed by esptool5.5.0 read-mac (exit0).
+  Evidence directory `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/wlan-test-ready.MrpLEu/`.
+- Read the actual BSP region0x820000/0x3e0000 twice with no-reset; both
+  processes exit0,4063232B each, cmp exit0, SHA256
+  7d0d7f16fec393d29cf2a7d59fdbc94d7f63a25ce80449f5f2b9b1746a2ba5e4.
+  Backups `installed-bsp-read1.bin` and `installed-bsp-read2.bin` are preserved.
+  Neither operation writes flash; no core, bootloader, table, NVS or C6 change.
+- Replace only esp32p4wifi.resource with diagnostic337052B hash9d7e8879…
+  recorded above. Candidate `aros-bsp-test.pkg`4025608B SHA256
+  6c25ba10348848e6a879fe01efedb7b155e5ba76be367f06c6c55cd182f4f897.
+  Installed/candidate loader audits exit0:42members/0fail. Delta comparison
+  proves all41 other payloads and member order unchanged; headroom37624B.
+  First checksize attempt used a missing expected basename: the rule returned0
+  despite wc/test errors, NOT a pass. Preserved candidate as `aros-bsp.pkg`;
+  rerun reports4025608/4063232 and exits0 (`checksize.log`). Missing-file
+  fail-closed correction remains open; audits and actual sizes are independent.
+- Returned the unchanged P4 from ROM/stub with reset-and-log,20s, exit0.
+  `baseline-return.log` SHA256
+  349b68be0a35ae19b8b3f7270512ac96bfbd4b6667cdabf89f8fbc661e29cb92.
+  USB reset banner, PSRAM calibration200MHz, Exec and hart1/cpus2 appear.
+  OLD installed WLAN INIT fails stage13/error6, preopen383; cleanup reportsok1.
+  This is not new-candidate hardware evidence, association success or a proven
+  cause diagnosis. A fresh coordinated C6 cold start may be needed after deploy.
+- Luna performed bounded build/image work only, no hardware. Invalidated the
+  actual sana_device.o and built kernel-image-esp32p4-riscv-wifi with boardv2,
+  C3_GRAPHICAL_BOOT/C3_WLAN_IMAGE=1, AROSDefault, diagnostic exception1 and
+  all three verification assertions0. Actual build exit0. Resource unchanged.
+  `aros-wifi-final.img`67108864B SHA256
+  49cfc3a25d534cdb84bb04e87b53552cc249dbad68c814fc0bec7ee4c8829c77;
+  manifest SHA2565255ca7ea2055544f8d3c36d0db2083e8d0e5b14367a3256fa9a7d32bf162172.
+  Device67604B SHA256dee2397bf8be1f2ad081ad3a023f4cd70b381a12d2de66f9378a28c41422ab5e;
+  ESP32Board134864B SHA2565c65baa928ae339115a0ac77cd60bd268e78fac6c4c6f026a781a504b5c2a7ab.
+  Existing WirelessManager, WiFi/Network preferences, AROSTCP and dhclient staged;
+  Wireless.prefs is neutral10B ap_scan=1; actual WiFi ELF volatile-policy check
+  passes. No credentials or automatic association embedded.
+- verify-image.sh actual exit0: host MBR/FAT parser, clean fsck,332/332 mounted
+  manifest entries match, original image hash unchanged. Prior generated image
+  and manifest also preserved. Build log SHA256
+  158ff350615dbf2bddcfd54a366fbb5ef9d3b8c94eb3b2ba39c2964c02605b82;
+  verification log SHA256555d14ebe4fba23b3d9e6bf5d55272ea325aba4df5b95ad5de542c19979d7150.
+- No deployment, SD write, C6 update or credential transmission. External
+  physical disk inventory remains empty; Fabian asked to insert the SD into
+  the Mac reader. Next: identify and back up the exact media before writing,
+  then matched BSP deployment/readback and freshly coordinated native test.
+  Host image/package passes do not establish radio/DHCP/traffic or runtime
+  credential privacy. Existing GUI configuration needs interactive readiness.
