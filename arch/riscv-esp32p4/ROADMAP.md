@@ -1947,6 +1947,8 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   Explicitly requested repeat with deasserted DTR/RTS also yields zero bytes;
   devserial absent. Both default ROM entry and one USB-reset attempt fail.
   Manual BOOT entry/restoration now takes priority; no further diagnostic.
+  First user-confirmed BOOT/power-on entry also fails ROM sync. USB descriptor
+  identifies the expected P4, not a proved ROM download state. No write occurred.
   Typed BeginIO/capability wiring now uses the owned parser and a shared,
   default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
   permission alone cannot advertise/admit FullMAC; the resource checks that
@@ -41094,3 +41096,18 @@ remain open. No partial stage is a complete A/B update system.
   Next fresh coordinated physical BOOT/download entry, identity check and
   exact-span AROS restoration/readback/return before any new lifecycle test.
   No finite-trace or actual WiFi qualification is claimed.
+
+### 2026-10-11 — First manual BOOT entry gives no ROM response
+
+- Fabian confirmed readiness for BOOT-held USB-C power-on and then connected.
+  No serial owner; esptool no-reset/connect-attempts1 flash-id process73330
+  exits2, No serial data received. No erase/write or diagnostic retry.
+- macOS lists only one usbmodem101. USB descriptor is Espressif303a:1001,
+  serial80:F1:B2:D3:3B:A6: correct P4 USB peripheral still enumerates, but this
+  does not prove CPU execution or download mode. devserial daemon absent.
+- Evidence lifecycle-hardware.UkjyId/manual-boot-identity.log. Diagnostic
+  still installed; both complete exact-span AROS backups intact. Restore
+  remains priority. Next synchronize BOOT held during loader entry rather
+  than infer success from device presence; determine RESET availability.
+  GPIO35/BOOT download selection is supported by official esptool P4 guidance:
+  https://docs.espressif.com/projects/esptool/en/latest/esp32p4/advanced-topics/boot-mode-selection.html
