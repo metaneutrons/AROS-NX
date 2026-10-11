@@ -148,6 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `recovery pending`: first cold capture completed65s/zero firmware bytes; rollback ROM connection failed before any write; diagnostic still installed, two complete matching AROS erase-span backups intact | Priority over further N2-SAE testing: coordinated USB-C rail-off, exclusive ROM connection, exact385024B restoration/readback and AROS return; silent capture is not lifecycle qualification |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin publication implemented; foreign leave isolation, failed-teardown replacement-cookie and pre-ACK completion repairs host/native-build verified; CONNECT_FAILED shares admission gate, FOURWAY absent; reference inventory/INIT SAE-bit verified; single-handler C6 candidate retained; credential-free P4 STOP/START diagnostic deployed with two matching full-span backups and independent readback after exclusive-port correction; not run, no event-fence qualification; native admission final gate0, undeployed; installed failure/cancellation/reconnect and peer qualification open | Coordinated USB-C rail-off, single lifecycle capture and exact-span AROS rollback, then source-backed producer fence or attempt correlation and installed-peer qualification; explicit negotiated SAE/PMF, password semantics, no transition downgrade, native caller lifecycle and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1939,6 +1940,10 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   reads. Two complete matching backups now exist, and app-only diagnostic
   deployment/readback pass. Await coordinated rail-off/capture and rollback;
   no peer contract or WLAN result is inferred.
+  First coordinated cold capture completed65s but returned zero firmware bytes;
+  no lifecycle result. Subsequent rollback failed to connect before writing.
+  Diagnostic remains installed; prioritize coordinated rail-off and exact-span
+  restoration, then attribute the silent capture before another measurement.
   Typed BeginIO/capability wiring now uses the owned parser and a shared,
   default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
   permission alone cannot advertise/admit FullMAC; the resource checks that
@@ -41035,3 +41040,28 @@ remain open. No partial stage is a complete A/B update system.
   entire385024B backup after observation, independently verify before AROS
   return. Next coordinated complete rail-off and pre-armed single capture.
   Successful finite trace cannot qualify a repeated-association event fence.
+
+### 2026-10-11 — Silent lifecycle capture; rollback awaiting rail-off
+
+- Fabian confirmed complete USB-C removal; node absent and devserial list
+  shows only Bluetooth managed. Exclusive pre-armed cold dispatcher90224
+  starts at monotonic625681.53758725, observes arrival625688.257394958,
+  preceding sample625688.232313166. Single late-boot reader opens with its
+  existing DTR=True/RTS=True profile at625688.262960166; no retry/reset.
+- Capture actual exit0/footer status=ok,65.125s, ZERO firmware bytes.
+  This proves reader completion only, not firmware execution, a successful
+  lifecycle trace or a clean cold boot. No ROM/app/C6 marker or result exists.
+  Cannot distinguish stalled boot from unsuitable control-line capture state.
+- After capture release, exact385024B rollback attempted by esptool process5233;
+  actual exit2: Failed to connect / No serial data received. No write/erase
+  started. Diagnostic remains installed, both complete matching backups intact.
+  No second diagnostic, C6 update, credentials, BSP/table/SD action occurred.
+- Evidence lifecycle-hardware.UkjyId contains cold-dispatch.py/log,
+  cold-lifecycle.log/timing.jsonl and rollback-write.log. Next coordinated
+  Capture SHA2563c7b721195bd926703da3d0e6349561842019cb8b14fa0cc842f96b915ade4ac;
+  timing624f22621805480ba48f47cbb988d059a1a3ac775033f4eebf4108c3d020bf81;
+  failed rollback logc8d362d79f6cada32bf2aefac043440d51cd71bfa401894017ed2e8212f48b34.
+  Next coordinated
+  USB-C rail-off, direct exclusive ROM connection and exact-span restoration;
+  verify full readback and AROS return before another lifecycle test.
+  All peer-contract/WPA3/PMF/IP/data/reconnect gates remain open.

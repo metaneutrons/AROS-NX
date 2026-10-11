@@ -4,8 +4,10 @@ Lifecycle diagnostic deployed (2026-10-11): serial backup failures persisted
 after rail-off; lsof identified devserial holding the same port. Closing only
 that managed port allowed two complete matching385024B backups. P4 diagnostic
 written only at0x20000 and independently read back byte-identically; C6/BSP/SD
-unchanged. Waiting for coordinated rail-off and credential-free measurement,
-then exact-span AROS rollback. No lifecycle or WLAN pass yet.
+unchanged. Coordinated cold capture completed65s with zero firmware bytes;
+no lifecycle result. Rollback connection failed before writing; diagnostic
+remains installed, AROS backups intact. Coordinate rail-off and prioritize
+exact-span restoration before any further diagnostic. No WLAN pass.
 
 Credential-free lifecycle diagnostic (2026-10-11): separate opt-in official
 Hosted P4 app observes one INIT and three STOP/START cycles, with checked
