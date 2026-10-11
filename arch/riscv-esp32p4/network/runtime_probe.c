@@ -206,8 +206,8 @@ struct wifi_probe_context
     ULONG owner_events;
     ULONG owner_last_event;
     struct p4_hosted_link_observation link_observation;
-    /* Diagnostic state snapshot only: no active association target exists
-     * yet, so even a matching AP cannot publish CONNECT or enable traffic. */
+    /* A current-AP snapshot is not authorization. Only the active association
+     * workflow may combine it with policy/event/lifecycle acceptance. */
     struct p4_hosted_sta_ap_info link_snapshot;
     ULONG link_query_revision;
     ULONG link_query_started;
@@ -752,20 +752,30 @@ static int wifi_owner_event(void *opaque,
 {
     struct wifi_probe_context *context = opaque;
     struct p4_hosted_rpc rpc;
+    BOOL lifecycle = FALSE;
     if (!item)
         return 0;
-    if (item->msg_id == 775u || item->msg_id == 776u) {
+    if (item->msg_id == 773u || item->msg_id == 775u || item->msg_id == 776u) {
         rpc.msg_type = item->msg_type;
         rpc.msg_id = item->msg_id;
         rpc.uid = item->uid;
         rpc.payload = item->payload;
         rpc.payload_size = item->payload_size;
+        if (item->msg_id == 773u) {
+            struct p4_hosted_wifi_event event;
+            if (!p4_hosted_association_wifi_event(&rpc, &event) || event.status)
+                return 0;
+            lifecycle = event.event_id == P4_HOSTED_WIFI_EVENT_STA_START ||
+                        event.event_id == P4_HOSTED_WIFI_EVENT_STA_STOP;
+        }
+    }
+    if (lifecycle || item->msg_id == 775u || item->msg_id == 776u) {
         if (!p4_hosted_link_observe(&context->link_observation,
                                     context->generation, &rpc))
             return 0;
         p4host_zero(&context->link_snapshot, sizeof(context->link_snapshot));
         context->link_snapshot_matches_hint = FALSE;
-        /* Any new link hint invalidates acceptance until explicitly queried
+        /* Any link hint or station transition invalidates acceptance until queried
          * again by an active association operation. Never infer CONNECT here. */
         ObtainSemaphore(&wifi_resource_base->client_lock);
         wifi_resource_base->associated = FALSE;
@@ -777,7 +787,7 @@ static int wifi_owner_event(void *opaque,
         ReleaseSemaphore(&wifi_resource_base->client_lock);
     }
     /* Own typed metadata only. Uncorrelated UP_HINT cannot publish CONNECT;
-     * no borrowed payload outlives this callback. Malformed link events
+     * no borrowed payload outlives this callback. Malformed link/lifecycle events
      * cause the owner's existing dispatch-failure retirement. */
     ++context->owner_events;
     context->owner_last_event = item->msg_id;
@@ -1063,6 +1073,15 @@ static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context,
     if (context->link_snapshot.status == 0) {
         unsigned nonzero = 0;
         const struct p4_hosted_scan_record *ap = &context->link_snapshot.ap;
+        /* A station transition or disconnect invalidates the prior hint.
+         * An AP-only snapshot cannot reopen that link; wait for a connected
+         * observation without granting completion or extending its deadline.
+         * The snapshot can precede the callback; this is not a transport fault. */
+        if (context->link_observation.kind == P4_HOSTED_LINK_DOWN ||
+            context->link_observation.kind == P4_HOSTED_LINK_STATION_START ||
+            context->link_observation.kind == P4_HOSTED_LINK_STATION_STOP) {
+            return 1;
+        }
         for (index = 0; index < 6; ++index) nonzero |= ap->bssid[index];
         if (!nonzero || (ap->bssid[0] & 1u) || !ap->ssid_size ||
             ap->ssid_size > 32 || !ap->primary || ap->primary > 14 ||

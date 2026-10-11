@@ -132,6 +132,13 @@ static void wire_uint_field(struct wire_buffer *buffer, uint32_t field,
     wire_varint(buffer, value);
 }
 
+static void wire_int32_field(struct wire_buffer *buffer, uint32_t field,
+                             int32_t value)
+{
+    wire_key(buffer, field, 0u);
+    wire_varint(buffer, (uint64_t)(int64_t)value);
+}
+
 static void wire_bytes_field(struct wire_buffer *buffer, uint32_t field,
                              const uint8_t *bytes, size_t size)
 {
@@ -178,6 +185,34 @@ static int make_item(struct p4_hosted_inbox_item *item, uint32_t event_id,
     wire_uint_field(&envelope, 2u, event_id);
     wire_bytes_field(&envelope, event_id, wrapper.bytes, wrapper.size);
     if (!data.ok || !wrapper.ok || !envelope.ok ||
+        !p4_hosted_rpc_decode(envelope.bytes, envelope.size, &decoded) ||
+        decoded.payload_size > sizeof item->payload)
+        return 0;
+
+    memset(item, 0, sizeof *item);
+    item->msg_type = decoded.msg_type;
+    item->msg_id = decoded.msg_id;
+    item->uid = decoded.uid;
+    item->payload_size = decoded.payload_size;
+    if (decoded.payload_size != 0u)
+        memcpy(item->payload, decoded.payload, decoded.payload_size);
+    return 1;
+}
+
+static int make_wifi_event_item(struct p4_hosted_inbox_item *item,
+                                int32_t status, int32_t event_id)
+{
+    struct wire_buffer body, envelope;
+    struct p4_hosted_rpc decoded;
+
+    wire_init(&body);
+    wire_int32_field(&body, 1u, status);
+    wire_int32_field(&body, 2u, event_id);
+    wire_init(&envelope);
+    wire_uint_field(&envelope, 1u, P4_HOSTED_RPC_TYPE_EVENT);
+    wire_uint_field(&envelope, 2u, 773u);
+    wire_bytes_field(&envelope, 773u, body.bytes, body.size);
+    if (!body.ok || !envelope.ok ||
         !p4_hosted_rpc_decode(envelope.bytes, envelope.size, &decoded) ||
         decoded.payload_size > sizeof item->payload)
         return 0;
@@ -247,7 +282,10 @@ static void check_callback_refusal_unchanged(
 {
     struct p4_hosted_link_observation before;
     struct p4_wifi_link_info confirmed_before, observed_before;
+    struct p4_hosted_sta_ap_info snapshot_before;
     ULONG link_state_before;
+    ULONG query_revision_before = context->link_query_revision;
+    BOOL snapshot_matches_before = context->link_snapshot_matches_hint;
     uint32_t events_before = context->owner_events;
     uint32_t last_before = context->owner_last_event;
     memset(&test_resource, 0, sizeof test_resource);
@@ -257,6 +295,8 @@ static void check_callback_refusal_unchanged(
            sizeof confirmed_before);
     memcpy(&observed_before, &test_resource.observed_ap,
            sizeof observed_before);
+    memcpy(&snapshot_before, &context->link_snapshot,
+           sizeof snapshot_before);
     link_state_before = test_resource.link_state;
     memcpy(&before, &context->link_observation, sizeof before);
     CHECK(!wifi_owner_event(context, item));
@@ -269,6 +309,10 @@ static void check_callback_refusal_unchanged(
                  sizeof confirmed_before) == 0);
     CHECK(memcmp(&observed_before, &test_resource.observed_ap,
                  sizeof observed_before) == 0);
+    CHECK(memcmp(&snapshot_before, &context->link_snapshot,
+                 sizeof snapshot_before) == 0);
+    CHECK(context->link_query_revision == query_revision_before);
+    CHECK(context->link_snapshot_matches_hint == snapshot_matches_before);
     CHECK(test_resource.client_lock.depth == 0u);
 }
 
@@ -351,6 +395,161 @@ static void test_callback_copies_775_and_accepts_776_down(void)
     CHECK(context.owner_events == 2u && context.owner_last_event == 776u);
 }
 
+static void test_station_lifecycle_sequence_invalidates_link_state(void)
+{
+    struct wifi_probe_context context;
+    struct p4_hosted_inbox_item item;
+    uint8_t first_ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE];
+    uint8_t final_ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE];
+    uint8_t first_bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE];
+    uint8_t final_bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE];
+
+    memset(&context, 0, sizeof context);
+    memset(&test_resource, 0, sizeof test_resource);
+    wifi_resource_base = &test_resource;
+    context.generation = 62u;
+    context.link_query_revision = 91u;
+    CHECK(p4_hosted_link_init(&context.link_observation,
+                              context.generation));
+    fill_pattern(first_ssid, sizeof first_ssid, 0x29u);
+    fill_pattern(final_ssid, sizeof final_ssid, 0x79u);
+    fill_pattern(first_bssid, sizeof first_bssid, 0x39u);
+    fill_pattern(final_bssid, sizeof final_bssid, 0x89u);
+
+    CHECK(make_item(&item, 775u, 0, first_ssid, 32u, first_bssid));
+    CHECK(wifi_owner_event(&context, &item) == 1);
+    CHECK(context.link_observation.revision == 1u);
+    CHECK(context.link_observation.kind == P4_HOSTED_LINK_UP_HINT);
+    check_resource_link_invalidated();
+    CHECK(bytes_are_zero(&context.link_snapshot,
+                         sizeof context.link_snapshot));
+    CHECK(context.link_snapshot_matches_hint == FALSE);
+    CHECK(context.link_query_revision == 91u);
+
+    seed_resource_link();
+    memset(&context.link_snapshot, 0xa5, sizeof context.link_snapshot);
+    context.link_snapshot_matches_hint = TRUE;
+    CHECK(make_wifi_event_item(&item, 0, P4_HOSTED_WIFI_EVENT_STA_STOP));
+    CHECK(wifi_owner_event(&context, &item) == 1);
+    check_resource_link_invalidated();
+    CHECK(test_resource.client_lock.depth == 0u);
+    CHECK(bytes_are_zero(&context.link_snapshot,
+                         sizeof context.link_snapshot));
+    CHECK(context.link_snapshot_matches_hint == FALSE);
+    CHECK(context.link_query_revision == 91u);
+    CHECK(context.link_observation.revision == 2u);
+    CHECK(context.link_observation.kind == P4_HOSTED_LINK_STATION_STOP);
+    CHECK(context.link_observation.status == 0);
+    CHECK(bytes_are_zero(context.link_observation.ssid,
+                         sizeof context.link_observation.ssid));
+    CHECK(context.link_observation.ssid_length == 0u);
+    CHECK(bytes_are_zero(context.link_observation.bssid,
+                         sizeof context.link_observation.bssid));
+    CHECK(context.link_observation.channel == 0u);
+    CHECK(context.link_observation.authmode == 0);
+    CHECK(context.link_observation.reason == 0u);
+
+    seed_resource_link();
+    memset(&context.link_snapshot, 0x5a, sizeof context.link_snapshot);
+    context.link_snapshot_matches_hint = TRUE;
+    CHECK(make_wifi_event_item(&item, 0, P4_HOSTED_WIFI_EVENT_STA_START));
+    CHECK(wifi_owner_event(&context, &item) == 1);
+    check_resource_link_invalidated();
+    CHECK(bytes_are_zero(&context.link_snapshot,
+                         sizeof context.link_snapshot));
+    CHECK(context.link_snapshot_matches_hint == FALSE);
+    CHECK(context.link_query_revision == 91u);
+    CHECK(context.link_observation.revision == 3u);
+    CHECK(context.link_observation.kind == P4_HOSTED_LINK_STATION_START);
+    CHECK(context.link_observation.status == 0);
+    CHECK(bytes_are_zero(context.link_observation.ssid,
+                         sizeof context.link_observation.ssid));
+    CHECK(context.link_observation.ssid_length == 0u);
+    CHECK(bytes_are_zero(context.link_observation.bssid,
+                         sizeof context.link_observation.bssid));
+    CHECK(context.link_observation.channel == 0u);
+    CHECK(context.link_observation.authmode == 0);
+    CHECK(context.link_observation.reason == 0u);
+
+    seed_resource_link();
+    memset(&context.link_snapshot, 0x3c, sizeof context.link_snapshot);
+    context.link_snapshot_matches_hint = TRUE;
+    CHECK(make_item(&item, 775u, 0, final_ssid, 32u, final_bssid));
+    CHECK(wifi_owner_event(&context, &item) == 1);
+    check_resource_link_invalidated();
+    CHECK(bytes_are_zero(&context.link_snapshot,
+                         sizeof context.link_snapshot));
+    CHECK(context.link_snapshot_matches_hint == FALSE);
+    CHECK(context.link_query_revision == 91u);
+    CHECK(context.link_observation.revision == 4u);
+    CHECK(context.link_observation.kind == P4_HOSTED_LINK_UP_HINT);
+    CHECK(context.link_observation.ssid_length == 32u);
+    CHECK(memcmp(context.link_observation.ssid, final_ssid,
+                 sizeof final_ssid) == 0);
+    CHECK(memcmp(context.link_observation.bssid, final_bssid,
+                 sizeof final_bssid) == 0);
+    CHECK(context.owner_events == 4u &&
+          context.owner_last_event == 775u);
+}
+
+static void test_unknown_wifi_event_only_counts(void)
+{
+    struct wifi_probe_context context;
+    struct p4_hosted_inbox_item item;
+    struct p4_hosted_link_observation observation_before;
+    struct p4_hosted_sta_ap_info snapshot_before;
+    struct p4_wifi_link_info confirmed_before, observed_before;
+    BOOL associated_before;
+    ULONG state_before;
+    uint32_t query_revision_before;
+    uint8_t ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE];
+    uint8_t bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE];
+
+    memset(&context, 0, sizeof context);
+    memset(&test_resource, 0, sizeof test_resource);
+    wifi_resource_base = &test_resource;
+    context.generation = 63u;
+    context.link_query_revision = 44u;
+    CHECK(p4_hosted_link_init(&context.link_observation,
+                              context.generation));
+    fill_pattern(ssid, sizeof ssid, 0x35u);
+    fill_pattern(bssid, sizeof bssid, 0x55u);
+    CHECK(make_item(&item, 775u, 0, ssid, 32u, bssid));
+    CHECK(wifi_owner_event(&context, &item) == 1);
+
+    seed_resource_link();
+    memset(&context.link_snapshot, 0x6b, sizeof context.link_snapshot);
+    context.link_snapshot_matches_hint = TRUE;
+    memcpy(&observation_before, &context.link_observation,
+           sizeof observation_before);
+    memcpy(&snapshot_before, &context.link_snapshot,
+           sizeof snapshot_before);
+    memcpy(&confirmed_before, &test_resource.confirmed_ap,
+           sizeof confirmed_before);
+    memcpy(&observed_before, &test_resource.observed_ap,
+           sizeof observed_before);
+    associated_before = test_resource.associated;
+    state_before = test_resource.link_state;
+    query_revision_before = context.link_query_revision;
+
+    CHECK(make_wifi_event_item(&item, 0, 127));
+    CHECK(wifi_owner_event(&context, &item) == 1);
+    CHECK(context.owner_events == 2u && context.owner_last_event == 773u);
+    CHECK(memcmp(&observation_before, &context.link_observation,
+                 sizeof observation_before) == 0);
+    CHECK(memcmp(&snapshot_before, &context.link_snapshot,
+                 sizeof snapshot_before) == 0);
+    CHECK(context.link_snapshot_matches_hint == TRUE);
+    CHECK(context.link_query_revision == query_revision_before);
+    CHECK(test_resource.associated == associated_before);
+    CHECK(test_resource.link_state == state_before);
+    CHECK(memcmp(&confirmed_before, &test_resource.confirmed_ap,
+                 sizeof confirmed_before) == 0);
+    CHECK(memcmp(&observed_before, &test_resource.observed_ap,
+                 sizeof observed_before) == 0);
+    CHECK(test_resource.client_lock.depth == 0u);
+}
+
 static void test_malformed_and_bad_envelopes_are_transactional(void)
 {
     struct wifi_probe_context context;
@@ -376,11 +575,21 @@ static void test_malformed_and_bad_envelopes_are_transactional(void)
     check_callback_refusal_unchanged(&context, &item);
     make_malformed_item(&item, 776u);
     check_callback_refusal_unchanged(&context, &item);
+    make_malformed_item(&item, 773u);
+    check_callback_refusal_unchanged(&context, &item);
+    CHECK(make_wifi_event_item(&item, 7, P4_HOSTED_WIFI_EVENT_STA_STOP));
+    check_callback_refusal_unchanged(&context, &item);
 
     CHECK(make_item(&item, 775u, 0, ssid, 32u, bssid));
     item.msg_type = P4_HOSTED_RPC_TYPE_RESPONSE;
     check_callback_refusal_unchanged(&context, &item);
     CHECK(make_item(&item, 776u, 0, ssid, 32u, bssid));
+    item.uid = 12u;
+    check_callback_refusal_unchanged(&context, &item);
+    CHECK(make_wifi_event_item(&item, 0, P4_HOSTED_WIFI_EVENT_STA_START));
+    item.msg_type = P4_HOSTED_RPC_TYPE_RESPONSE;
+    check_callback_refusal_unchanged(&context, &item);
+    CHECK(make_wifi_event_item(&item, 0, P4_HOSTED_WIFI_EVENT_STA_STOP));
     item.uid = 12u;
     check_callback_refusal_unchanged(&context, &item);
     CHECK(!wifi_owner_event(&context, NULL));
@@ -421,6 +630,8 @@ static void test_stale_generation_and_unrelated_metadata(void)
 int main(void)
 {
     test_callback_copies_775_and_accepts_776_down();
+    test_station_lifecycle_sequence_invalidates_link_state();
+    test_unknown_wifi_event_only_counts();
     test_malformed_and_bad_envelopes_are_transactional();
     test_stale_generation_and_unrelated_metadata();
     if (failures != 0u) {

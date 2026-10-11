@@ -7,7 +7,9 @@
 enum p4_hosted_link_kind {
     P4_HOSTED_LINK_NONE = 0,
     P4_HOSTED_LINK_UP_HINT,
-    P4_HOSTED_LINK_DOWN
+    P4_HOSTED_LINK_DOWN,
+    P4_HOSTED_LINK_STATION_START,
+    P4_HOSTED_LINK_STATION_STOP
 };
 
 /* Owner-only observation ledger, not association acceptance. Event775 has
@@ -16,7 +18,9 @@ enum p4_hosted_link_kind {
  * permit Ethernet delivery. A later correlated current-AP query and active
  * target/lifecycle checks are required. Generation separates host sessions,
  * not delayed events from different attempts in the same C6 session.
- * A DOWN observation conservatively invalidates any earlier hint. */
+ * DOWN and station START/STOP observations invalidate any earlier hint.
+ * Lifecycle observations carry no authenticated AP identity and are not
+ * causal attempt barriers; later UID-zero events can still be delayed. */
 struct p4_hosted_link_observation {
     uint32_t generation;
     uint32_t revision;
@@ -38,7 +42,9 @@ struct p4_hosted_link_observation {
 int p4_hosted_link_init(struct p4_hosted_link_observation *link,
                          uint32_t generation);
 
-/* Accept only typed Event775/776, UID zero and the matching live generation.
+/* Accept typed Event775/776 and successful Event773 station START/STOP,
+ * UID zero and the matching live generation. Other valid Event773 IDs are
+ * unrelated metadata: this function refuses them without changing the ledger.
  * Decode and validate before publishing a complete owned snapshot. Nonzero
  * connected status is DOWN, never UP_HINT. Revision exhaustion fails closed
  * rather than wrapping and accidentally validating an earlier confirmation.

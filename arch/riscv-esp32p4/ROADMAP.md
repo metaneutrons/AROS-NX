@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and initial-event gate builds verified; lifecycle773 codec native built, literal289/reference711 checks each O0/O2 sanitized; typed provider not wired/advertised, producer/attempt barrier, ongoing lifecycle and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, initial-event gate and station owner invalidation builds verified; ledger135/callback247/AP-query448/association36842 checks each O0/O2 sanitized; typed provider not wired/advertised, producer/attempt barrier, ongoing SAE lifecycle and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1930,8 +1930,12 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   pending WiFi event-loop callbacks. A producer-side barrier or equivalent
   attempt correlation remains required before repeatable typed admission.
   The existing EVENT773 station START/STOP decoder is now native built and
-  independently compared with pinned generated protobuf-c. It is not yet
-  connected to the owner ledger. FIFO lifecycle markers fence earlier queued
+  independently compared with pinned generated protobuf-c. Successful markers
+  now invalidate the owner ledger and confirmed/observed AP state; AP-only
+  queries cannot reopen START/STOP or subsequent DOWN observations. Unknown
+  valid IDs remain metadata; malformed/error lifecycle messages fail closed.
+  Ledger135/callback247/AP-query448/association36842 checks each O0/O2 sanitized
+  and resource346280B are build verified only. FIFO lifecycle markers fence earlier queued
   callbacks only; source inspection does not establish producer quiescence
   or exclude stale lifecycle markers. Resolve this admission assumption with
   a qualified peer/lifecycle contract, not an arbitrary settle delay.
@@ -39929,3 +39933,56 @@ remain open. No partial stage is a complete A/B update system.
   explicitly resolve the ordering assumption and ongoing authenticated-link
   publication before typed admission; then native WPA3/DHCP/DNS/traffic,
   reconnect and original N2T load/privacy/reset acceptance, not codec-only PASS.
+
+### 2026-10-11 - N2-SAE station owner invalidation and AP-only reopen correction
+
+- Scope: connect successful EVENT773/UID0 START2/STOP3 to the generation-owned
+  observation ledger. Publication advances revision, removes AP identity,
+  closes the associated gate and clears confirmed/observed snapshots. Valid
+  unrelated event IDs remain counted metadata with no link mutation;
+  malformed/nonzero-status lifecycle callbacks fail through existing owner
+  retirement. No public/private ABI layout or capability advertisement change.
+- Review correction: the first candidate suppressed AP-only reopening for
+  START/STOP only. Independent review found a conditional path through a later
+  DOWN observation and an old successful AP snapshot into legacy maintenance.
+  Suppression now includes DOWN. Initial regression run failed six checks
+  because its former fixture expected AP-info to reopen a disconnected link;
+  that assertion is explicitly corrected to UNKNOWN, not removed. Its failed
+  log remains as evidence, not a pass. Repeated-query negatives cover all
+  three invalidating observations; absence (0x300f) can still report DOWN.
+- Primary verification: actual ledger135, callback247, AP-query448,
+  association36842 and literal codec289 checks each O0/O2 ASan/UBSan exit0.
+  Callback tests exercise decode failure transactionality, unknown metadata,
+  invalidation and subsequent connected observation. AP tests extract the real
+  refresh body with mocked RPC/locks/clock; these are not full Exec concurrency
+  or installed-peer tests. Independent follow-up finds the named reopen path
+  closed, with no new wait/deadline reset; full event causality is unqualified.
+- Build: exact generated resource object directory invalidated before native
+  quick build, process exit0, complete Module link, no error/warning diagnostics.
+  JC-v2/setup/init/reply/owner1, ownerCPU1, accepted-risk1; C6 privacy/host
+  privacy/C6 update recovery remain0. Resource346280B SHA256
+  `062d5493268238a4735261e0a89581e3842ac97c8eeebeeb15a4969888ebd58b`.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/sae-station-owner.qyQ3gi/`.
+  Frozen resource copied there. Final AP log `apinfo-corrected.log` SHA256
+  `a33a21295a55e9e3c9fa8e66ba1c65f091ebe9864e32eb05e7dda129bb549e98`;
+  association-reviewed log
+  `b41cda0a0a04c6c09e75144f8ac37726d96fa30fb1bd0ec888ea9d13296f10f2`;
+  ledger log
+  `8b03716f3d28412e8353cb67d5458b2e9b7433b5160bc2538882e84cc6e7ee75`;
+  callback log
+  `4b25dc1eb639bf280a8f12fcb3cba2f0f4c3e9cd3729efc835a1f72916233bfc`;
+  codec log
+  `24ce40f97adb522e20bf8ddce91421210d8754ad2df4b324853742d002f1ce23`;
+  final native build `resource-build-reviewed.log`
+  `cd25c6ef1016ba23d53e94f2c065a1e8044186f29318e9967c6f9440e17f0457`.
+  Failed pre-correction `apinfo-final.log`
+  `b919691196dfb3e37c4cfefc8edeeb42e06f70ba05c570b959f88148afe84a55`.
+- Safety/status: undeployed source/host/native build verification only. No
+  serial opening, reset, flash, SD write or credential transmission. Installed
+  core/BSP/card remain unchanged; C6 upgrade remains postponed. Lifecycle
+  receipt is not a complete producer/attempt barrier and does not establish
+  installed firmware semantics. Next integrate ongoing typed SAE policy and
+  opener/cookie lifecycle before capability admission, resolve the peer ordering
+  assumption, then native WPA3/DHCP/routes/DNS/bidirectional traffic, reconnect
+  and original N2T sustained SD/graphics/two-hart/privacy/reset gates.

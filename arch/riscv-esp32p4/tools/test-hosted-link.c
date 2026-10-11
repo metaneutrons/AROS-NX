@@ -138,6 +138,26 @@ static int decode_event(uint32_t event_id, int32_t status,
            p4_hosted_rpc_decode(wire, wire_size, rpc);
 }
 
+static int decode_wifi_event(int32_t status, int32_t event_id,
+                             uint8_t *output, size_t output_capacity,
+                             struct p4_hosted_rpc *rpc)
+{
+    struct wire_buffer body, envelope;
+
+    wire_init(&body);
+    wire_int32_field(&body, 1u, status);
+    wire_int32_field(&body, 2u, event_id);
+    wire_init(&envelope);
+    wire_uint_field(&envelope, 1u, P4_HOSTED_RPC_TYPE_EVENT);
+    wire_uint_field(&envelope, 2u, 773u);
+    wire_bytes_field(&envelope, 773u, body.bytes, body.size);
+    if (!body.ok || !envelope.ok || envelope.size > output_capacity ||
+        output == NULL || rpc == NULL)
+        return 0;
+    memcpy(output, envelope.bytes, envelope.size);
+    return p4_hosted_rpc_decode(output, envelope.size, rpc);
+}
+
 static void fill_pattern(uint8_t *bytes, size_t size, uint8_t seed)
 {
     size_t i;
@@ -258,6 +278,62 @@ static void test_disconnect_supersedes_hint(void)
     CHECK(link.channel == 0u && link.authmode == 0);
 }
 
+static void check_station_identity_cleared(
+    const struct p4_hosted_link_observation *link)
+{
+    CHECK(link->status == 0);
+    CHECK(all_zero(link->ssid, sizeof link->ssid));
+    CHECK(link->ssid_length == 0u);
+    CHECK(all_zero(link->bssid, sizeof link->bssid));
+    CHECK(link->channel == 0u && link->authmode == 0 && link->reason == 0u);
+}
+
+static void test_station_lifecycle_transitions(void)
+{
+    struct p4_hosted_link_observation link;
+    struct p4_hosted_rpc rpc;
+    uint8_t wire[512];
+    uint8_t before_ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE];
+    uint8_t after_ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE];
+    uint8_t before_bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE];
+    uint8_t after_bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE];
+    size_t wire_size = 0u;
+
+    fill_pattern(before_ssid, sizeof before_ssid, 0x13u);
+    fill_pattern(after_ssid, sizeof after_ssid, 0x73u);
+    fill_pattern(before_bssid, sizeof before_bssid, 0x27u);
+    fill_pattern(after_bssid, sizeof after_bssid, 0x87u);
+    CHECK(p4_hosted_link_init(&link, 25u));
+
+    CHECK(decode_event(775u, 0, before_ssid, 32u, before_bssid,
+                       wire, sizeof wire, &rpc));
+    CHECK(p4_hosted_link_observe(&link, 25u, &rpc));
+    CHECK(link.revision == 1u && link.kind == P4_HOSTED_LINK_UP_HINT);
+    CHECK(memcmp(link.ssid, before_ssid, sizeof before_ssid) == 0);
+    CHECK(memcmp(link.bssid, before_bssid, sizeof before_bssid) == 0);
+
+    CHECK(decode_wifi_event(0, P4_HOSTED_WIFI_EVENT_STA_STOP,
+                            wire, sizeof wire, &rpc));
+    CHECK(p4_hosted_link_observe(&link, 25u, &rpc));
+    CHECK(link.revision == 2u && link.kind == P4_HOSTED_LINK_STATION_STOP);
+    check_station_identity_cleared(&link);
+
+    CHECK(decode_wifi_event(0, P4_HOSTED_WIFI_EVENT_STA_START,
+                            wire, sizeof wire, &rpc));
+    CHECK(p4_hosted_link_observe(&link, 25u, &rpc));
+    CHECK(link.revision == 3u && link.kind == P4_HOSTED_LINK_STATION_START);
+    check_station_identity_cleared(&link);
+
+    CHECK(make_event_wire(775u, 0, after_ssid, sizeof after_ssid, after_bssid,
+                          wire, sizeof wire, &wire_size));
+    CHECK(p4_hosted_rpc_decode(wire, wire_size, &rpc));
+    CHECK(p4_hosted_link_observe(&link, 25u, &rpc));
+    CHECK(link.revision == 4u && link.kind == P4_HOSTED_LINK_UP_HINT);
+    CHECK(link.ssid_length == sizeof after_ssid);
+    CHECK(memcmp(link.ssid, after_ssid, sizeof after_ssid) == 0);
+    CHECK(memcmp(link.bssid, after_bssid, sizeof after_bssid) == 0);
+}
+
 static void test_nonzero_status_is_down_without_metadata(void)
 {
     struct p4_hosted_link_observation link;
@@ -350,11 +426,57 @@ static void test_transactional_exhaustion_and_invalid_state(void)
     CHECK(!p4_hosted_link_observe(&link, 8u, &rpc));
     CHECK(memcmp(&before, &link, sizeof before) == 0);
 
-    link.revision = 0u;
-    link.kind = P4_HOSTED_LINK_DOWN + 1u;
+    CHECK(decode_wifi_event(0, P4_HOSTED_WIFI_EVENT_STA_STOP,
+                            wire, sizeof wire, &rpc));
     memcpy(&before, &link, sizeof before);
     CHECK(!p4_hosted_link_observe(&link, 8u, &rpc));
     CHECK(memcmp(&before, &link, sizeof before) == 0);
+
+    link.revision = 0u;
+    link.kind = P4_HOSTED_LINK_STATION_STOP + 1u;
+    memcpy(&before, &link, sizeof before);
+    CHECK(!p4_hosted_link_observe(&link, 8u, &rpc));
+    CHECK(memcmp(&before, &link, sizeof before) == 0);
+}
+
+static void test_wifi_event_refusals_are_transactional(void)
+{
+    struct p4_hosted_link_observation link;
+    struct p4_hosted_rpc rpc, bad;
+    uint8_t wire[512];
+    uint8_t ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE];
+    uint8_t bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE];
+    static const uint8_t malformed[] = { 0x10u, 0x03u, 0x10u, 0x02u };
+
+    fill_pattern(ssid, sizeof ssid, 0x45u);
+    fill_pattern(bssid, sizeof bssid, 0x65u);
+    CHECK(p4_hosted_link_init(&link, 36u));
+    CHECK(decode_event(775u, 0, ssid, 32u, bssid,
+                       wire, sizeof wire, &rpc));
+    CHECK(p4_hosted_link_observe(&link, 36u, &rpc));
+
+    CHECK(decode_wifi_event(0, 127, wire, sizeof wire, &rpc));
+    expect_refusal_unchanged(&link, 36u, &rpc);
+    CHECK(decode_wifi_event(7, P4_HOSTED_WIFI_EVENT_STA_STOP,
+                            wire, sizeof wire, &rpc));
+    expect_refusal_unchanged(&link, 36u, &rpc);
+    CHECK(decode_wifi_event(0, P4_HOSTED_WIFI_EVENT_STA_START,
+                            wire, sizeof wire, &rpc));
+    expect_refusal_unchanged(&link, 35u, &rpc);
+
+    bad = rpc;
+    bad.msg_type = P4_HOSTED_RPC_TYPE_RESPONSE;
+    expect_refusal_unchanged(&link, 36u, &bad);
+    bad = rpc;
+    bad.uid = 1u;
+    expect_refusal_unchanged(&link, 36u, &bad);
+    bad = rpc;
+    bad.msg_id = 775u;
+    expect_refusal_unchanged(&link, 36u, &bad);
+    bad = rpc;
+    bad.payload = malformed;
+    bad.payload_size = sizeof malformed;
+    expect_refusal_unchanged(&link, 36u, &bad);
 }
 
 static void test_output_input_aliases(void)
@@ -385,16 +507,26 @@ static void test_output_input_aliases(void)
     rpc.payload_size = 1u;
     CHECK(!p4_hosted_link_observe(&link, 3u, &rpc));
     CHECK(memcmp(&before, &link, sizeof before) == 0);
+
+    CHECK(decode_wifi_event(0, P4_HOSTED_WIFI_EVENT_STA_STOP,
+                            wire, sizeof wire, &rpc));
+    memcpy(&before, &link, sizeof before);
+    rpc.payload = (const uint8_t *)&link;
+    rpc.payload_size = 1u;
+    CHECK(!p4_hosted_link_observe(&link, 3u, &rpc));
+    CHECK(memcmp(&before, &link, sizeof before) == 0);
 }
 
 int main(void)
 {
     test_init_and_success();
     test_disconnect_supersedes_hint();
+    test_station_lifecycle_transitions();
     test_nonzero_status_is_down_without_metadata();
     test_wrong_envelope_fields_and_stale_generation();
     test_malformed_nested_payload();
     test_transactional_exhaustion_and_invalid_state();
+    test_wifi_event_refusals_are_transactional();
     test_output_input_aliases();
 
     if (failures != 0u) {

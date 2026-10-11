@@ -50,7 +50,7 @@ int p4_hosted_link_observe(struct p4_hosted_link_observation *link,
         overlap(link, sizeof(*link), rpc, sizeof(*rpc)) ||
         overlap(link, sizeof(*link), rpc->payload, rpc->payload_size) ||
         link->generation != generation || link->revision == UINT32_MAX ||
-        link->kind > P4_HOSTED_LINK_DOWN)
+        link->kind > P4_HOSTED_LINK_STATION_STOP)
         return 0;
     clear_bytes(&next, sizeof(next));
     next.generation = generation;
@@ -78,6 +78,16 @@ int p4_hosted_link_observe(struct p4_hosted_link_observation *link,
         next.ssid_length = event.ssid_length;
         copy_bytes(next.bssid, event.bssid, sizeof(next.bssid));
         next.reason = event.reason;
+        clear_bytes(&event, sizeof(event));
+    } else if (rpc->msg_id == 773u) {
+        struct p4_hosted_wifi_event event;
+        if (!p4_hosted_association_wifi_event(rpc, &event) || event.status ||
+            (event.event_id != P4_HOSTED_WIFI_EVENT_STA_START &&
+             event.event_id != P4_HOSTED_WIFI_EVENT_STA_STOP))
+            return 0;
+        next.kind = event.event_id == P4_HOSTED_WIFI_EVENT_STA_START ?
+            P4_HOSTED_LINK_STATION_START : P4_HOSTED_LINK_STATION_STOP;
+        /* No AP identity or authorization survives a station transition. */
         clear_bytes(&event, sizeof(event));
     } else {
         return 0;

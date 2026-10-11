@@ -844,7 +844,10 @@ static void test_uid0_hints_and_interleaved_events(void)
                          sizeof test_resource.confirmed_ap));
     CHECK(query());
     CHECK(fixture.exchange_calls == 1u);
-    expect_observed_ap(); /* Only the correlated current-AP response says UP. */
+    /* A contradictory AP snapshot cannot reopen a disconnected link. */
+    expect_link_unknown();
+    CHECK(fixture.context.link_snapshot_matches_hint == FALSE);
+    CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
 
     fixture_init();
     CHECK(make_link_event_item(&event_item, 775u, 0x61u));
@@ -937,6 +940,34 @@ static void test_generation_change_and_deadline_wrap(void)
 
 }
 
+static void test_station_transition_cannot_reopen_from_snapshot(void)
+{
+    static const uint32_t kinds[] = {
+        P4_HOSTED_LINK_STATION_START, P4_HOSTED_LINK_STATION_STOP,
+        P4_HOSTED_LINK_DOWN
+    };
+    size_t i;
+    for (i = 0; i < sizeof(kinds) / sizeof(kinds[0]); ++i) {
+        fixture_init();
+        fixture.context.link_observation.revision = 1u;
+        fixture.context.link_observation.kind = kinds[i];
+        CHECK(query());
+        CHECK(fixture.exchange_calls == 1u);
+        CHECK(fixture.context.link_snapshot_matches_hint == FALSE);
+        expect_link_unknown();
+        CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
+        CHECK(bytes_are_zero(&fixture.control.ap_info,
+                             sizeof(fixture.control.ap_info)));
+        /* A later AP-only query still cannot authenticate this transition. */
+        fixture.now += 1000001u;
+        CHECK(query());
+        CHECK(fixture.exchange_calls == 2u);
+        expect_link_unknown();
+        CHECK(fixture.context.link_snapshot_matches_hint == FALSE);
+        CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
+    }
+}
+
 int main(void)
 {
     test_exact_request_response_and_dedup();
@@ -947,6 +978,7 @@ int main(void)
     test_invalid_correlated_ap_retires_owner();
     test_uid0_hints_and_interleaved_events();
     test_generation_change_and_deadline_wrap();
+    test_station_transition_cannot_reopen_from_snapshot();
     if (failures != 0u) {
         fprintf(stderr, "wifi-owner-apinfo: %u checks, %u failures\n",
                 checks, failures);
