@@ -1734,6 +1734,8 @@ serialization includes a terminal NUL; decoder normalization is host/build
 verified, not yet a device fix. No per-record wire bytes were captured.
 Binary SSID identity is unsupported by the producer's strlen-based contract;
 normalizing a final NUL cannot recover a tail it already discarded.
+Follow-up owner AP-info/association and SANA option/queue host regressions
+pass on the corrected decoder; real association and traffic remain unobserved.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -39260,3 +39262,31 @@ remain open. No partial stage is a complete A/B update system.
   codec6848f441c7e5f6ea8a996968698e570aded7d4504839c616ef8fa742b916357d;
   reference1944f6ae9759376c7911120a512f8ad619b8feb275724fd863be92f2e4231e42;
   SANAb195ff58578daff8813c715c72f9ef25f13d67f3c0d4af4aabaaef9aa8c8c27f.
+
+### 2026-10-11 - N2T association regression verification before device retest
+
+- Previous turn made implementation/deployment progress (28699543b7), not a
+  WLAN completion. Device remains in download mode after verified BSP-only
+  deployment; no fresh human readiness yet. No serial access, reset, flash,
+  C6/SD action or credential/configuration read during this follow-up.
+- Same committed decoder and deployed resource341728B/BSP4032772B identities
+  from the preceding entry. Existing AP-info owner, association owner and SANA
+  options/queue runners use source-extracted implementation plus mock radio
+  boundaries. All run O0/O2 with ASan/UBSan and actual exit0: AP-info393 checks
+  each (session86096), owner association26131 each (94225), SANA options275
+  checks/91 cases each, queue1057 checks/35 replies/18 paired allocations and
+  wipes each (94573). This checks regressions, not device association/DHCP or
+  GUI-to-radio end-to-end acceptance; the explicit terminal-NUL AP-info cases
+  are in the preceding codec/reference tests.
+- Logs under ssid-terminator.oUOieO: owner-apinfo-tests.log SHA256
+  8b537dbc3300168881471de8bdb627f2897ac73c727d2384fc736523ffe82b73;
+  owner-association-tests.log
+  33f9b4a17e1a5709da908f84ac54dc772297c3b764a308c040b7e8029d5f9a21;
+  sana-association-options-tests.log
+  794f979b87f5fbdb55f31e19d4272ca5c004ed224fdc7866bce872b82458f9fe;
+  sana-association-queue-tests.log
+  89b78d0961d99598512897bf345d62b28426e5d0fbb6f8e7b4d510b6cb2fb9e4.
+- No production/privacy/recovery assertions strengthened. Next remains fresh
+  readiness for coordinated USB-C-only rail-off and corrected GUI scan;
+  then existing AROS association, DHCP/routes/DNS and bidirectional traffic,
+  reconnect and shared SD/graphics acceptance. Watchdog continuity stays open.
