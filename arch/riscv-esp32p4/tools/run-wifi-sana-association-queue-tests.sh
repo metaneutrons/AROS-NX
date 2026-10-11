@@ -149,6 +149,7 @@ for macro_name in S2_SETOPTIONS S2_GETNETWORKINFO; do
     extract_define "$macro_name" "$wireless_header"
 done
 extract_define S2_OFFLINE "$sana_header"
+extract_define S2_ONEVENT "$sana_header"
 for macro_name in CMD_FLUSH CMD_NONSTD; do
     extract_define "$macro_name" "$io_header"
 done
@@ -156,7 +157,8 @@ for macro_name in IOERR_ABORTED; do
     extract_define "$macro_name" "$errors_header"
 done
 for macro_name in S2ERR_NO_RESOURCES S2ERR_BAD_ARGUMENT S2ERR_OUTOFSERVICE \
-                  S2WERR_GENERIC_ERROR S2WERR_UNIT_OFFLINE S2WERR_NULL_POINTER; do
+                  S2ERR_NOT_SUPPORTED S2WERR_GENERIC_ERROR \
+                  S2WERR_UNIT_OFFLINE S2WERR_NULL_POINTER S2WERR_BAD_EVENT; do
     extract_define "$macro_name" "$sana_header"
 done
 
@@ -179,11 +181,19 @@ extract_function p4wlan_finish_done
 extract_function p4wlan_queue_done_locked
 extract_function p4wlan_drop_pin_locked
 extract_function p4wlan_retire_association_locked
+extract_function p4wlan_drop_teardown_locked
 extract_function p4wlan_invalidate_selection_locked
+extract_function p4wlan_replace_selection_locked
 extract_function p4wlan_cancel_opener_association_locked
 extract_function p4wlan_flush_opener_locked
 extract_function p4wlan_flush_all_locked
 extract_function p4wlan_event_locked
+extract_function p4wlan_fullmac_terminal_locked
+extract_function p4wlan_event_mask_valid
+extract_function p4wlan_event_ready_locked
+extract_function p4wlan_onevent_immediate_locked
+extract_function p4wlan_begin_teardown_locked
+extract_function p4wlan_link_lost_locked
 extract_function p4wlan_set_offline_locked
 extract_function p4wlan_term_io
 extract_function p4wlan_immediate_error

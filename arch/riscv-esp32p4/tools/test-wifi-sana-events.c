@@ -554,6 +554,7 @@ static void test_fullmac_terminal_delivery(void)
                                     123u, &fixture.done);
     CHECK(fixture.opener.terminal_event == S2EVENT_DISCONNECT);
     CHECK(fixture.opener.terminal_cookie == 123u);
+    fixture.opener.fullmac_events = FALSE; /* confirmed loss retires mode */
     fixture.unit.online = FALSE;
     CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
               &request, S2EVENT_DISCONNECT | S2EVENT_OFFLINE));

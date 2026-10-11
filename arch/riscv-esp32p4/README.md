@@ -1,5 +1,19 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Typed service publication (2026-10-11): successful fenced association now
+retains its committed cookie/type and publishes typed CONNECT only to the
+originating opener. Confirmed loss publishes that cookie after invalidation;
+explicit/replacement disconnect retains a separate opener pin and generation
+until bounded completion. Cancel/close of its owner and offline revoke that
+identity; cancellation or replacement of another opener's new attempt does
+not. Old-owner cancellation suppresses delivery without retrying a successfully
+completed physical disconnect. No administrative cancellation fabricates a typed disconnect. Legacy
+admission restores legacy event mode after the old terminal completes. Native build
+verified, undeployed; typed BeginIO/capability admission and installed peer
+ordering/real WPA3/PMF/IP/data qualification remain open.
+Final service tests: queue2208, event144, lifetime1554 and datapath16507 checks
+each O0/O2 ASan/UBSan pass; independently reviewed native device72104B.
+
 Typed terminal delivery groundwork (2026-10-11): opener-local exact
 CONNECT/DISCONNECT with cookie, one-shot parked/later delivery and legacy-edge
 isolation are tested. Cancellation/supersession clear unconsumed typed edges.

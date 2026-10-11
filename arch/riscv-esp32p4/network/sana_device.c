@@ -310,9 +310,21 @@ static void p4wlan_retire_association_locked(struct p4wlan_association *attempt)
     FreeVec(attempt);
 }
 
+static void p4wlan_drop_teardown_locked(struct p4wlan_unit *unit)
+{
+    if (unit->teardown_opener) {
+        unit->teardown_opener->fullmac_events = FALSE;
+        p4wlan_drop_pin_locked(unit, unit->teardown_opener);
+        unit->teardown_opener = NULL;
+    }
+    unit->teardown_cookie = 0;
+    unit->teardown_token = 0;
+}
+
 static void p4wlan_invalidate_selection_locked(struct p4wlan_unit *unit)
 {
     struct MinNode *node;
+    p4wlan_drop_teardown_locked(unit);
     for (node = unit->openers.mlh_Head; node->mln_Succ; node = node->mln_Succ) {
         struct p4wlan_opener *opener =
             (struct p4wlan_opener *)((UBYTE *)node -
@@ -321,6 +333,7 @@ static void p4wlan_invalidate_selection_locked(struct p4wlan_unit *unit)
         opener->failed_cookie = 0;
         opener->terminal_event = 0;
         opener->terminal_cookie = 0;
+        opener->fullmac_events = FALSE;
     }
     if (unit->link_committed || unit->active_association)
         unit->teardown_pending = TRUE;
@@ -334,11 +347,33 @@ static void p4wlan_invalidate_selection_locked(struct p4wlan_unit *unit)
         unit->pending_association = NULL;
     }
     unit->link_committed = FALSE;
+    unit->link_cookie = 0;
+    unit->link_fullmac = FALSE;
     unit->pending_events &= ~S2EVENT_CONNECT;
     p4wlan_wipe_bytes((UBYTE *)&unit->link_info, sizeof(unit->link_info));
     if (unit->link_opener) {
         p4wlan_drop_pin_locked(unit, unit->link_opener);
         unit->link_opener = NULL;
+    }
+}
+
+/* A newer attempt does not own the old confirmed link's terminal identity.
+ * Keep that pin independent of selection-token changes until RPC completion. */
+static void p4wlan_replace_selection_locked(struct p4wlan_unit *unit)
+{
+    struct p4wlan_opener *opener = unit->teardown_opener;
+    ULONG cookie = unit->teardown_cookie;
+    ULONG token = unit->teardown_token;
+    BOOL notify = unit->teardown_notify;
+    unit->teardown_opener = NULL;
+    p4wlan_invalidate_selection_locked(unit);
+    if (token) {
+        unit->teardown_opener = opener;
+        unit->teardown_cookie = cookie;
+        unit->teardown_token = token;
+        unit->teardown_notify = notify;
+        unit->teardown_pending = TRUE;
+        if (opener) opener->fullmac_events = TRUE;
     }
 }
 
@@ -349,13 +384,21 @@ static void p4wlan_cancel_opener_association_locked(struct p4wlan_unit *unit,
     opener->failed_cookie = 0;
     opener->terminal_event = 0;
     opener->terminal_cookie = 0;
+    opener->fullmac_events = FALSE;
+    if (unit->teardown_opener == opener) {
+        ULONG token = unit->teardown_token;
+        p4wlan_drop_teardown_locked(unit);
+        /* Revoke delivery, not an already-running physical transaction. */
+        unit->teardown_token = token;
+        unit->teardown_notify = FALSE;
+    }
     if ((unit->pending_association &&
          unit->pending_association->opener == opener) ||
         unit->link_opener == opener ||
         (unit->active_association &&
          unit->active_association->opener == opener &&
          unit->active_association->token == unit->selection_token))
-        p4wlan_invalidate_selection_locked(unit);
+        p4wlan_replace_selection_locked(unit);
     else if (unit->active_association &&
              unit->active_association->opener == opener)
         unit->active_association->cancelled = TRUE;
@@ -460,6 +503,7 @@ static void p4wlan_association_failed_locked(struct p4wlan_opener *opener,
     if (opener->closing || !cookie || opener->active_cookie != cookie) return;
     opener->active_cookie = 0;
     opener->failed_cookie = cookie;
+    opener->fullmac_events = FALSE;
     for (node = opener->requests.mlh_Head; node->mln_Succ;
          node = node->mln_Succ) {
         struct p4wlan_request *item =
@@ -515,6 +559,55 @@ static __inline__ void p4wlan_fullmac_terminal_locked(
     }
 }
 
+/* Preserve only the confirmed typed link's credential-free identity while
+ * the owner performs a deferred disconnect. No pin is borrowed across RPC. */
+static void p4wlan_begin_teardown_locked(struct p4wlan_unit *unit)
+{
+    struct p4wlan_opener *opener = NULL;
+    ULONG cookie = 0;
+    BOOL had_link = unit->link_committed;
+    if (unit->teardown_token) {
+        p4wlan_replace_selection_locked(unit);
+        return;
+    }
+    if (had_link && unit->link_fullmac && unit->link_opener &&
+        unit->link_cookie && !unit->link_opener->closing) {
+        opener = unit->link_opener;
+        cookie = unit->link_cookie;
+        ++opener->refs;
+    }
+    p4wlan_invalidate_selection_locked(unit);
+    unit->teardown_pending = TRUE;
+    unit->teardown_notify = had_link;
+    unit->teardown_opener = opener;
+    unit->teardown_cookie = cookie;
+    unit->teardown_token = opener ? unit->selection_token : 0;
+    if (opener) opener->fullmac_events = TRUE;
+}
+
+/* A confirmed link observer, not an administrative stop or failed attempt.
+ * Publish after invalidation so its exact DISCONNECT latch is not erased. */
+static void p4wlan_link_lost_locked(struct p4wlan_unit *unit,
+                                    struct MinList *done)
+{
+    struct p4wlan_opener *opener = unit->link_opener;
+    ULONG cookie = unit->link_cookie;
+    BOOL typed = unit->link_fullmac;
+    if (typed && opener) ++opener->refs;
+    p4wlan_invalidate_selection_locked(unit);
+    if (typed) {
+        if (opener) {
+            opener->fullmac_events = TRUE;
+            p4wlan_fullmac_terminal_locked(opener, S2EVENT_DISCONNECT,
+                                           cookie, done);
+            opener->fullmac_events = FALSE;
+            p4wlan_drop_pin_locked(unit, opener);
+        }
+    } else {
+        p4wlan_event_locked(unit, S2EVENT_DISCONNECT, done);
+    }
+}
+
 static BOOL p4wlan_event_mask_valid(ULONG event_mask)
 {
     const ULONG supported = S2EVENT_ONLINE | S2EVENT_OFFLINE |
@@ -556,7 +649,9 @@ static BOOL p4wlan_onevent_immediate_locked(struct p4wlan_unit *unit,
         opener->failed_cookie = 0;
         return TRUE;
     }
-    if (opener->fullmac_events &&
+    /* A confirmed disconnect retires typed mode, but its exact cookie latch
+     * remains consumable until selection invalidation or one-shot delivery. */
+    if (opener->terminal_cookie &&
         (event_mask & opener->terminal_event) && !opener->closing) {
         request->ios2_Req.io_Error = 0;
         request->ios2_WireError = opener->terminal_event;
@@ -1155,6 +1250,7 @@ static BOOL p4wlan_associate_one(struct p4wlan_unit *unit,
     }
     unit->pending_association = NULL;
     unit->active_association = attempt;
+    attempt->opener->fullmac_events = attempt->target.fullmac_profile != 0;
     ReleaseSemaphore(&unit->lock);
     cancel.context = attempt;
     cancel.cancelled = p4wlan_association_cancelled;
@@ -1175,10 +1271,17 @@ static BOOL p4wlan_associate_one(struct p4wlan_unit *unit,
         attempt->opener->failed_cookie = 0;
         CopyMem(&radio->confirmed_ap, &unit->link_info, sizeof(unit->link_info));
         unit->link_opener = attempt->opener;
+        unit->link_cookie = attempt->cookie;
+        unit->link_fullmac = attempt->target.fullmac_profile != 0;
+        attempt->opener->fullmac_events = unit->link_fullmac;
         ++attempt->opener->refs; /* committed link has its own lifecycle pin */
         unit->link_committed = TRUE;
         radio->associated = TRUE;
-        p4wlan_event_locked(unit, S2EVENT_CONNECT, &done);
+        if (unit->link_fullmac)
+            p4wlan_fullmac_terminal_locked(attempt->opener, S2EVENT_CONNECT,
+                                           attempt->cookie, &done);
+        else
+            p4wlan_event_locked(unit, S2EVENT_CONNECT, &done);
     } else {
         radio->associated = FALSE;
         /* An acknowledged attempt's late failure is not confirmed link loss.
@@ -1217,12 +1320,13 @@ static BOOL p4wlan_maintain_link(struct p4wlan_unit *unit,
                                  struct P4WifiBase *radio)
 {
     struct MinList done;
-    ULONG token;
+    ULONG token, teardown_token;
     BOOL succeeded, notify;
     NEWLIST(&done);
     if (!AttemptSemaphore(&unit->lock)) return TRUE;
     if (unit->teardown_pending) {
         token = unit->selection_token;
+        teardown_token = unit->teardown_token;
         notify = unit->teardown_notify;
         radio->associated = FALSE;
         ReleaseSemaphore(&unit->lock);
@@ -1235,10 +1339,21 @@ static BOOL p4wlan_maintain_link(struct p4wlan_unit *unit,
             unit->teardown_pending = FALSE;
             unit->callback_fault = TRUE;
             p4wlan_event_locked(unit, S2EVENT_ERROR, &done);
-        } else if (unit->selection_token == token) {
+        } else if (teardown_token ? unit->teardown_token == teardown_token :
+                                   unit->selection_token == token) {
+            /* Close/cancel can revoke notification while RPC runs without
+             * changing the selection token. Never fall back to broadcast. */
+            notify = notify && unit->teardown_notify;
             unit->teardown_pending = FALSE;
             unit->teardown_notify = FALSE;
-            if (notify) p4wlan_event_locked(unit, S2EVENT_DISCONNECT, &done);
+            if (notify) {
+                if (unit->teardown_opener)
+                    p4wlan_fullmac_terminal_locked(unit->teardown_opener,
+                        S2EVENT_DISCONNECT, unit->teardown_cookie, &done);
+                else
+                    p4wlan_event_locked(unit, S2EVENT_DISCONNECT, &done);
+            }
+            p4wlan_drop_teardown_locked(unit);
         }
         ReleaseSemaphore(&unit->lock);
         p4wlan_finish_done(unit, &done);
@@ -1255,11 +1370,10 @@ static BOOL p4wlan_maintain_link(struct p4wlan_unit *unit,
         }
         if (radio->link_state == P4_WIFI_LINK_DOWN ||
             !p4wlan_link_info_equal(&unit->link_info, &radio->observed_ap)) {
-            p4wlan_invalidate_selection_locked(unit);
+            p4wlan_link_lost_locked(unit, &done);
             if (radio->link_state == P4_WIFI_LINK_DOWN)
                 unit->teardown_pending = FALSE; /* absence already proved */
             radio->associated = FALSE;
-            p4wlan_event_locked(unit, S2EVENT_DISCONNECT, &done);
         } else {
             radio->associated = TRUE; /* same accepted link, not a new CONNECT */
         }
@@ -1497,10 +1611,7 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
             break;
         }
         if (p4wlan_disassociate_options((const struct TagItem *)request->ios2_Data)) {
-            BOOL had_link = unit->link_committed;
-            p4wlan_invalidate_selection_locked(unit);
-            unit->teardown_pending = TRUE;
-            unit->teardown_notify = had_link;
+            p4wlan_begin_teardown_locked(unit);
             break;
         }
         if (unit->selection_token == ~(ULONG)0) {
@@ -1522,7 +1633,17 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
                                    S2WERR_GENERIC_ERROR);
             break;
         }
-        p4wlan_invalidate_selection_locked(unit);
+        /* A replacement must finish the confirmed typed link's terminal
+         * lifecycle before starting the next attempt. Administrative cancel
+         * remains distinct and deliberately revokes unconsumed events. */
+        if (unit->link_committed && unit->link_fullmac)
+            p4wlan_begin_teardown_locked(unit);
+        else
+            p4wlan_replace_selection_locked(unit);
+        /* This arm still admits legacy options only. Future typed admission
+         * must choose mode after the same invalidation fence, never at query. */
+        if (unit->teardown_opener != opener)
+            opener->fullmac_events = FALSE;
         attempt->unit = unit;
         attempt->opener = opener;
         attempt->token = unit->selection_token;

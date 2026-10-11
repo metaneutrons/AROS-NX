@@ -134,6 +134,13 @@ struct p4wlan_unit
     struct p4wlan_association *pending_association;
     struct p4wlan_association *active_association;
     struct p4wlan_opener *link_opener;
+    ULONG link_cookie;
+    BOOL link_fullmac;
+    /* Confirmed teardown owns a separate pin/generation, independent of a
+     * newer selection. Its owner's cancellation or offline revokes it. */
+    struct p4wlan_opener *teardown_opener;
+    ULONG teardown_cookie;
+    ULONG teardown_token;
     struct p4_wifi_link_info link_info;
     ULONG selection_token;
     BOOL link_committed;

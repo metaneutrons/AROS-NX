@@ -69,7 +69,7 @@ This is host/native-build coverage, not installed-peer qualification.
 |773|WifiEventNoArgs / status, event_id|Typed scalar; START/STOP invalidate ledger|Classify every generic ID below; critical security/loss events must not remain metadata.|
 |774|StaScanDone / status, nested scan status/count/id|Typed validated diagnostic|No uncorrelated event completes another scan. Blocking RPC remains completion authority until async contract exists.|
 |775|StaConnected / status, nested SSID/BSSID/channel/auth|Typed owned UP hint|Fresh event + current identity/security gate; no ACK/AP-only completion. UID0 still lacks attempt identity.|
-|776|StaDisconnected / status, nested identity/reason/RSSI|Typed owned DOWN hint|Invalidate acceptance and publish exact opener/link loss; reconnect/cookie publication still incomplete.|
+|776|StaDisconnected / status, nested identity/reason/RSSI|Typed owned DOWN hint|Invalidate acceptance; native confirmed-link loss preserves exact opener/cookie publication in service models. Typed admission and real reconnect qualification remain open.|
 
 ## Generic WiFi event IDs (EVENT773)
 
@@ -118,8 +118,11 @@ in the schema does not restore the old/new values discarded by this producer.
 2. Source/build verified: invalidation on unexpected peer reinit/security change; beacon/channel events
    reconcile conservatively without fabricating their missing payloads.
 3. Source/build verified: scan completion and optional heartbeat semantics separated from link state.
-4. Coupled owner retirement/recovery and native opener/cookie publication tests;
-   duplicate, malformed, delayed, reordered and unsolicited messages included.
+4. Owner retirement and native opener/cookie service publication are host/build
+   verified, including separate confirmed teardown identity across unrelated
+   new-attempt cancellation. Typed admission, actual recovery and end-to-end
+   duplicate, malformed, delayed, reordered and unsolicited peer qualification
+   remain open.
 5. Resolve/qualify installed peer version and attempt-ordering assumptions;
    runtime receipt revisions are not C6-generated attempt IDs.
 6. Complete BeginIO/capability integration, then native WPA3/PMF, DHCP, routes,

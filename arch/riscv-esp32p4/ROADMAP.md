@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, initial-event gate, accepted-identity refresh, all eight RPC event policies and opener-local terminal delivery groundwork build verified; complete reference protocol inventory recorded; typed admission, committed-link cookie/pin publication, producer/attempt barrier, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication build verified; complete reference protocol inventory recorded; typed BeginIO/capability admission, producer/attempt barrier, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1964,6 +1964,22 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   or selection invalidation. Admission does not opt an opener into this mode
   yet. Preserve committed-link cookie and opener pin across confirmed teardown
   before wiring service publication; current invalidation drops that identity.
+  The service integration now retains the confirmed link's cookie/type and
+  publishes exact typed CONNECT only to its opener. Confirmed loss retains a
+  temporary pin across invalidation and publishes typed DISCONNECT afterward.
+  Explicit/replacement disconnect owns a separate credential-free opener/cookie
+  pin and teardown generation until completion; its owner's close/cancel and
+  offline revoke it. Unrelated new-attempt cancellation or replacement must
+  preserve it independently of the selection token. Repeated explicit teardown
+  also preserves the existing terminal identity. Recheck current
+  notification permission after unlocked RPC, not only its entry snapshot.
+  A legacy admission restores legacy mode after the old terminal completes. Typed BeginIO
+  admission remains unwired; no capability or installed-peer claim follows.
+  Independent review found that restoring only the new request opener left
+  a previous typed opener stuck in typed mode. Invalidation now clears mode
+  for all openers; only the active typed attempt/link or its owned deferred
+  teardown enables it. Confirmed disconnect retires mode but preserves its
+  one-shot cookie latch for a later consumer. Failure/cancel retire mode too.
   Generic773 loses event detail in the pinned C6 source; it cannot supply
   old/new auth or channel values. Inventory is a source audit, not installed
   peer support or hardware verification. Keep optional APIs outside the station
@@ -40271,3 +40287,64 @@ remain open. No partial stage is a complete A/B update system.
   unchanged, C6 update postponed. FullMAC capabilities remain unadvertised;
   native cookie/pin integration, installed-peer ordering and actual WPA3/PMF/
   IP/data/reconnect/original qualification gates remain open.
+
+### 2026-10-11 - N2-SAE native terminal service and independent teardown generation
+
+- Status: native build verified, undeployed. Successful fenced association
+  retains committed profile type, opener pin and cookie. Typed CONNECT is
+  opener-local; confirmed DOWN/identity loss publishes its exact DISCONNECT
+  after invalidating acceptance, using a temporary pin. Explicit or replacement
+  teardown retains a separate credential-free pin/cookie until bounded RPC
+  success. Failed disconnect faults the unit without fabricating DISCONNECT.
+- Lifetime correction: an old typed opener must not remain in typed mode when
+  a later legacy attempt succeeds. Invalidation clears all opener modes, and
+  only the current typed attempt/link or owned teardown enables it. A latched
+  confirmed DISCONNECT remains consumable after mode retirement. Separate
+  teardown generation preserves the old link's terminal identity across a new
+  selection, including unrelated cancellation or a third selection during RPC.
+  Cancel/close of the old owner drops its notification/pin, but preserves the
+  physical generation until the already-running transaction settles. Offline
+  and failed recovery still revoke the full state. Repeated disassociate
+  preserves the current physical transaction; no canceled event is broadcast.
+- Independent review corrected three real gaps before acceptance: sticky mode
+  on a prior opener, loss of the old committed cookie on replacement/unrelated
+  cancellation, and ignoring successful physical teardown after owner cancel
+  (which would retry an operation not guaranteed idempotent). Earlier native
+  artifacts in this evidence directory are superseded, not deployable proofs.
+  An initial datapath harness compile failed because extraction omitted the
+  new teardown helper; the runner was corrected and all suites rerun.
+- Test scope: actual source-extracted service helpers and selected BeginIO arms
+  with modeled locks/RPC/replies. FullMAC OPEN is explicitly marked on an owned
+  parsed OPEN fixture because typed admission remains unwired. These tests
+  verify event provenance/pins/cancellation, not SAE authentication, Exec SMP
+  scheduling or installed C6 ordering. Typed BeginIO and capabilities remain
+  unadvertised; no private bridge ABI change in this service slice.
+- Final verification: primary queue process6604 exits0,2208 checks/86 replies/
+  48 balanced vector allocations/frees/25 association wipes each O0/O2
+  ASan/UBSan. Primary regression process67223 exits0: event144 (11 scenarios),
+  lifetime1554 and datapath16507 checks each O0/O2 sanitized. Final independent
+  read-only review found no concrete blocker in the revised replacement and
+  cancellation paths; this is not a whole-driver or hardware assurance.
+- Native build: exact generated esp32p4wlan object directory invalidated;
+  sequential gmake -j4 kernel-esp32p4wlan-device-quick process19106 exits0,
+  actual sana_device compile and complete linked module, no warning/error or
+  undefined-reference diagnostics. JC1060-v2/setup/init/reply/owner1,
+  ownerCPU1, accepted diagnostic risk1; C6/host privacy and C6 update recovery
+  assertions0. Final device72104B SHA256
+  `d9602d8027f918e4156581cd35fba37af6808810dc167e090454ad240a1f290a`;
+  frozen esp32p4wlan-final-v2.device independently hash-matches.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/fullmac-service.mdex2n/`.
+  queue-final-v2.log SHA256
+  `16d6eb89273c52c605bf9d4655f351c8f6b74b2a98243e1a62bedc5528fe4bbf`;
+  events-final-v2.log `fbf6d17f88bd8f9d22897de8c00037e1021583856424f8ce9999987fb6d8a482`;
+  lifetime-final-v2.log `e382149a52929cfb9e6f654d71bf0763e67419782b1ba53a79fce62721c9be9a`;
+  datapath-final-v2.log `10116a7d9c08c834b45ddb346126a04fbcd06d72642cc10d4a6626e57dde4214`;
+  device-build-final-v2.log
+  `5aecb5b39618f275c00ff2dd799aaae71ed72d701d674feac7af4817314023bf`.
+- Safety and next gate: no serial opening, reset, flash, SD write, credential
+  transmission or C6 change. Installed artifacts unchanged. Finish typed
+  provider admission and installed peer/attempt-order qualification, then real
+  native WPA3/required-PMF, DHCP/routes/DNS, bidirectional traffic/reconnect and
+  original sustained SD/graphics/two-hart/privacy/reset qualification. The
+  working-WiFi goal remains open.
