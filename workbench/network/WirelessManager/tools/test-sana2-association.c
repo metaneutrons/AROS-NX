@@ -647,6 +647,53 @@ static void test_legacy_open_and_wep_host_wpa(void)
 		     "legacy-host-wpa");
 }
 
+
+static void test_legacy_open_channel_frequency_edges(void)
+{
+	static const struct {
+		int freq;
+		UPINT channel;
+		const char *ssid;
+		const char *scenario;
+	} cases[] = {
+		{ 0, 0, "open-unknown-channel", "zero frequency" },
+		{ 2484, 14, "open-channel-fourteen", "channel 14 frequency" }
+	};
+	size_t i;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+		struct fixture f;
+		struct doio_record *options;
+		int result;
+
+		init_fixture(&f, cases[i].ssid);
+		f.params.freq = cases[i].freq;
+		SCENARIO();
+		result = wpa_driver_sana2_associate(&f.drv, &f.params);
+		CHECK(cases[i].scenario, "association succeeds", result, 0);
+		CHECK(cases[i].scenario, "four empty WEP clears", io.set_key_count, 4);
+		CHECK(cases[i].scenario, "five synchronous DoIO calls", io.doio_count, 5);
+
+		options = &io.doio[4];
+		CHECK(cases[i].scenario, "options list observed during DoIO",
+		      options->options_pointer != 0, 1);
+		CHECK(cases[i].scenario, "request borrows that same options list",
+		      options->data_pointer == options->options_pointer, 1);
+		CHECK(cases[i].scenario, "options still terminate in the same slot",
+		      options->option_tags[10], TAG_END);
+		CHECK(cases[i].scenario, "channel tag remains in slot 3",
+		      option_index(options, S2INFO_Channel), 3);
+		CHECK(cases[i].scenario, "frequency maps to expected channel",
+		      options->option_data[3], cases[i].channel);
+		check_string(cases[i].scenario, "borrowed SSID readable during DoIO",
+			     options->option_ssid, cases[i].ssid);
+		CHECK(cases[i].scenario, "request Data cleared after Reply",
+		      f.request.ios2_Data == NULL, 1);
+		CHECK(cases[i].scenario, "request StatData cleared after Reply",
+		      f.request.ios2_StatData == NULL, 1);
+	}
+}
+
 static void enable_offload_psk(struct fixture *f, const char *passphrase)
 {
 	f->drv.wireless_caps_valid = 1;
@@ -1750,6 +1797,7 @@ int main(void)
 	test_wpa_ie_span_validation();
 	test_ssid_32_and_borrowed_options();
 	test_legacy_open_and_wep_host_wpa();
+	test_legacy_open_channel_frequency_edges();
 	test_negotiated_ie_extent();
 	test_association_cookie_contract();
 	test_disassociate_contract();

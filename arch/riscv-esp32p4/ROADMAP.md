@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: generation1.3 host/native/readback/headless verified; labels/manager startup previously corrected; Fabian reports another open connection failure, exact attempt/stage uncaptured | Synchronized association evidence for generation1.3; peer admission remains0, no IP/data pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device | Diagnose discovery/startup before retrying association; peer admission remains0, no IP/data pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
@@ -1912,6 +1912,21 @@ actual selection logic; it is not a capture of the AP's original RSN/WPA IEs.
 Unsupported profiles must remain distinguishable/refused rather than downgraded.
 
 ### N2-SAE: WPA3-Personal through existing AROS tools
+
+Open-failure diagnostic (2026-10-11): default-off
+P4_WIFI_ASSOC_DIAGNOSTICS emits numeric SANA refusal/attempt tokens and one
+owner terminal stage/RPC/status/decoded-valid record before cleanup. It does
+not change credential policy, peer admission, RPC waits or publication fences.
+Invalid/unreceived replies report valid0/status-1, not stale previous status.
+Source-extracted sanitizer tests execute the enabled observer, including
+legacy open success/failure with peer gate0; native/deployment/RF evidence
+remains separate. WirelessManager's legacy path now preserves unspecified
+frequency0 as channel0; existing nonzero conversion semantics remain unchanged.
+Fresh native builds pass after explicitly refreshing copied manager sources.
+Both are now installed with exact BSP/helper independent readback and headless
+owner return verified. A newly synchronized GUI attempt reports no wireless
+device; discovery failure is not an association or DHCP result. See the dated
+entries below.
 
 Current correction (2026-10-11): exact auth7/CCMP transition metadata is
 represented as PSK|SAE and displayed as WPA2/3, not mislabeled pure WPA3.
@@ -42030,3 +42045,120 @@ remain open. No partial stage is a complete A/B update system.
   terminal stage/RPC result for one synchronized open attempt. Never emit
   SSIDs, BSSIDs, keys, credentials or IE payloads. Obtain fresh readiness before
   asking Fabian to click Connect; no inference from an uncorrelated attempt.
+
+### 2026-10-11 - N2-SAE-REC unspecified channel correction and join observer
+
+- Concrete source defect, not attribution of Fabian's uncaptured failure:
+  wpa_supplicant associates with frequency0 when BSS information is absent.
+  The legacy SANA path converted it to a negative quotient encoded in an
+  unsigned tag, rejected by the P4 parser. Preserve frequency0 as channel0
+  (unspecified); leave nonzero mapping/authentication/security policy intact.
+  Luna implemented the bounded manager fix/tests; primary checked the caller,
+  parser and diff and independently ran the source-extracted tests.
+- Default-off P4_WIFI_ASSOC_DIAGNOSTICS adds SANA refusal1=not-ready,
+  refusal2=options-invalid, accepted local token/channel/auth/profile and final
+  token/result. Owner terminal stages:0=preconditions,1=runtime/admission,
+  2=Disconnect283,3=absence/AP-info294,4=SetConfig284,5=Connect282,
+  6=associated/AP-info294,7=AP/event validation,8=TX/session publication fence.
+  No SSID/BSSID/password/key/IE payloads. No new waits, retry budgets, public
+  ABI or admission bypass. Console timing/byte loss remain measurement limits.
+  The explicit typed peer-gate refusal remains unlogged at the owner and is
+  not transformed into a successful legacy or SAE request.
+- Independent observer review caught stale previous-RPC status on transport
+  failure. Corrected with an opt-in private reply-valid flag reset before each
+  request and set only after association/AP-info decoding. Final record is
+  emitted before cleanup: valid0/status-1 means no decoded result, never peer
+  success. Timeout282 after successful284 regression verifies this distinction.
+- Actual host processes exit0: owner O0/O2 peer0 each427 checks (including
+  legacy open success and failure), synthetic peer1 each44441; queue O0/O2
+  disabled-default/peer-gate/no-policy each2474, diagnostic-risk/partial each
+  4571, production-qualified fixture each4552, balanced allocations/replies.
+  Both fixtures execute enabled numeric-only observer formats. Manager O0/O2
+  each88 scenarios/667 checks cover zero,2412 and2484 frequency mapping and
+  borrowed tag lifetime. Options O0/O2 each167 cases/584 checks include
+  channel0 acceptance. ASan/UBSan boundaries model Exec/transport, not RF.
+- Native objects invalidated; sequential actual resource/device/manager builds
+  exit0. Board jc1060p470c-v2, SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/HOSTED_OWNER=1,
+  OWNER_CPU=1, ASSOCIATION_TEST_RISK_ACCEPTED=1, SCAN_DIAGNOSTICS=1,
+  ASSOC_DIAGNOSTICS=1. All switches use P4_WIFI_ prefix; privacy/recovery and
+  FullMAC peer gates remain0. Final resource358064B SHA256
+  9fdbb10b0fc29e3b06a024bd2113dd2b433acbef3dd5cb1f266877523234b7c4;
+  device76080B eaed742343d1e07ede6c68a76a2afbfb5aed558974bb366d1618fef18894ed93;
+  manager699268B effd8b123d7285da32163025d51349565600ac2f3d0cdd1084651bcc72d6d896.
+- Failed procedure retained: initial manager quick build reused old copied
+  source despite object invalidation (699228B aa6d6b17... unchanged), rejected
+  as evidence. Ran workbench-network-wirelessmanager-setup, compared source
+  and generated copy byte-for-byte, invalidated objects again and rebuilt;
+  final hash differs. Added this prerequisite to port AGENTS.md. Initial
+  observer resource before reply-valid correction was also superseded, not
+  deployed. No flash/reset/SD/C6 operation in this slice.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/join-stages.3QoGoJ.
+  owner-tests-final.log SHA256
+  0ebfb20017e2716dd54b25101f0447d4696396b8c0b6d394f27d4b866b72437c;
+  queue-tests.log ea7569bca723f510027e1e606e21676354efeb31bc454a3c99b543695634671c.
+  Native logs resource-build-final.log/device-build.log/manager-build-final.log
+  retain actual compile/link output; manager-setup.log retains the copy step.
+- Remaining: exact-range package/helper preparation, identity/readback-checked
+  deployment and fresh-readiness synchronized open attempt with reader armed
+  before Connect. Then association/DHCP/bidirectional traffic and original
+  Schmieder24 SAE/PMF/no-fallback qualification; no WiFi completion claim.
+
+### 2026-10-11 - N2-SAE-REC join observer deployed; discovery failure observed
+
+- Same evidence directory as the preceding entry: join-stages.3QoGoJ.
+  Board identity checked: JC1060 ESP32-P4 v1.3, MAC80:f1:b2:d3:3b:a6,
+  16MiB. Actual partition table readback matches SHA256
+  b96e4eb9478d7b02864faa0685d10b78e0c5a321cdc0637b2d58023504c1d193.
+  Legacy layout remains installed, not the planned A/B layout.
+- Retained known-good BSP120ccb912e93425b3fbe32295496ee7d42c76324f8de241f7c4dac2548b4b16f
+  and helpera2bef08bf108be26ff074be8351d719a842dfb4f39081e6616dae22238fd2f0a
+  provide recovery; fresh targeted BSP prewrite read matches the former.
+  Only the WiFi resource changes among42 BSP members. Candidate bsp.img
+  4049108B SHA256cc8f1a3d8cae87c98aeadfd0ea4b735cc5d27bb2d044cc45622e0781081292ff
+  ends at0xbfc8d4, below the0xc00000 helper boundary.
+- Helper overlay replaces only device/manager and helper hash manifest.
+  helpers.img4194304B SHA256
+  1539e6a9b28e7725882ce099477c2d94474be1007da64f23aac9315acb7225e3.
+  Read-only mounted FAT image: all7 helper hash entries and all29 staged files
+  match. Detached successfully. An initial missing-stage preparation failed
+  without producing/deploying an image; copying the retained stage and then
+  overlaying produced the checked candidate.
+- Actual write process exits0 for BSP0x820000 and helpers0xc00000; both
+  esptool write hashes verify. Separate independent read processes exit0 and
+  byte comparisons match both complete candidates. Core, bootloader, table,
+  otadata, NVS, C6 and SD remain unchanged. Native artifact identities and
+  switches are the preceding entry's final values; peer/privacy/recovery
+  gates stay0. No default diagnostic enablement or security-policy bypass.
+- One explicit headless reset capture exits0, status=ok, complete=true,
+  45.0054955s/17803B; boot.log SHA256
+  f3df08fe56886d53a0c2352e9ced058f6a989d2ebd47d02a332e85d149f9d687,
+  boot-attempt.jsonl SHA256
+  a516d7e57f5870fc7631cb96c3c8c638c71b312818c28ca417ae814652a6c38e.
+  Observed32MiB PSRAM200MHz/timeouts0/FSM recoveries0, watchdog6000ms,
+  hart1 online/cpus2,42 BSP members,1024x600 updates and CPU1 WLAN owner
+  with expected C6 MAC10:bd:a3:9b:bc:34. One scan reports s3/ok1/n8/r8/h8/e0.
+  No captured association request or fatal/trap/Alert/Guru. Two ROM USB-reset
+  banners and truncated console prefixes limit attribution; this is not a
+  rail-off or interactive acceptance result. Fabian's later connection failure
+  is not attributable to this window.
+- After fresh readiness, started one passive180s reader before requesting
+  FLASHDISK0P0:WiFi and exactly one open-network connection. Reader open_end
+  and live process verified; initial output continues Touch heartbeat3400,
+  without a fresh captured boot banner. Fabian reports no wireless device;
+  received console also contains Application.mui object creation failure.
+  Completed process exits0, footer status=ok,180.0975305s/3838B; reader closed.
+  open-connect-synchronized.log SHA256
+  1167ba95c31f7d4902fe54ac24d77ac420b47ed89fdcc11386a36cfc4d48d47a;
+  receipt sidecar SHA256
+  4d004e54d4b077a64ba33c27bcbbd0c73c16f14523870bb00afe7b2ed89f1339.
+  No scan, WiFiReq/WiFiJoin or new ROM/reset/trap/Alert/Guru received in the
+  complete window; Touch heartbeats continue3400..6900. Absence is subject
+  to console loss, not proof of a healthy radio. No association pass.
+- Limits: discovery can fail at directory enumeration, OpenDevice, exact
+  resident generation check or NSCMD_DEVICEQUERY. Current observer starts
+  after those steps and does not distinguish them. Allocation/token failures
+  and typed FullMAC peer refusals are also not fully observed. Console byte
+  loss is possible. Next: diagnose discovery with bounded numeric errors,
+  then a new synchronized association/IP/data gate. Original Schmieder24
+  SAE/PMF/no-WPA2-fallback qualification remains open.

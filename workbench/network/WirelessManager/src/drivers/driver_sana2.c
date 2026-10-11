@@ -771,8 +771,9 @@ static int wpa_driver_sana2_associate(
 			(UPINT)params->bssid},
 		{S2INFO_PortType, (params->mode == IEEE80211_MODE_IBSS) ?
 			S2PORT_ADHOC : S2PORT_MANAGED},
-		{S2INFO_Channel, params->freq == 2484 ?
-			14 : (params->freq - 2407) / 5},
+		{S2INFO_Channel, params->freq == 0 ? 0 :
+			(params->freq == 2484 ?
+				14 : (params->freq - 2407) / 5)},
 		{S2INFO_WPAInfo, (params->wpa_ie_len > 0) ?
 			(UPINT)params->wpa_ie : (UPINT)NULL},
 		{S2INFO_AuthTypes, params->auth_alg},

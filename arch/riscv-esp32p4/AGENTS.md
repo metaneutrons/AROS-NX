@@ -92,6 +92,12 @@ and complete linked module artifacts; an architecture-object target alone is
 not a rebuilt sdcard.device. Do not run parallel top-level mmake targets in
 one build tree: they can race while regenerating shared makefiles.
 
+WirelessManager compiles copied sources from its generated tree. Before a
+documented quick build after edits under `WirelessManager/src`, run
+`gmake workbench-network-wirelessmanager-setup`, compare the affected source
+against the generated copy, then invalidate its objects and build the quick
+target. A quick target alone can skip the copy dependency and rebuild old code.
+
 ## Capture the console from the first byte
 
 Use `tools/reset-and-log.py`, not esptool followed by a reader:

@@ -1358,6 +1358,9 @@ static BOOL p4wlan_associate_one(struct p4wlan_unit *unit,
             p4wlan_association_failed_locked(attempt->opener,
                                              attempt->cookie, &done);
     }
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    bug("[WiFiReq] t=%lu done=%lu\n", attempt->token, (ULONG)succeeded);
+#endif
     unit->active_association = NULL;
     p4wlan_retire_association_locked(attempt);
     p4wlan_wipe_bytes((UBYTE *)&radio->confirmed_ap, sizeof(radio->confirmed_ap));
@@ -1718,6 +1721,9 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         }
         if (!unit->online || !unit->hardware_ready || unit->callback_fault ||
             !unit->radio || !unit->radio->association_enabled) {
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+            bug("[WiFiReq] reject=1\n");
+#endif
             p4wlan_immediate_error(request, S2ERR_OUTOFSERVICE,
                                    S2WERR_UNIT_OFFLINE);
             break;
@@ -1739,6 +1745,9 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
              !p4wlan_copy_fullmac_association_options(&attempt->target,
                 &attempt->cookie, (const struct TagItem *)request->ios2_Data,
                 &fullmac))) {
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+            bug("[WiFiReq] reject=2\n");
+#endif
             p4wlan_wipe_bytes((UBYTE *)attempt, sizeof(*attempt));
             FreeVec(attempt);
             p4wlan_immediate_error(request, S2ERR_BAD_ARGUMENT,
@@ -1763,6 +1772,11 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         ++opener->refs;
         unit->pending_association = attempt;
         acknowledged_token = attempt->token;
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        bug("[WiFiReq] t=%lu ch=%lu a=%lu f=%lu\n", attempt->token,
+            (ULONG)attempt->target.channel, (ULONG)attempt->target.authmode,
+            (ULONG)attempt->target.fullmac_profile);
+#endif
         /* Force a message acknowledgment even for quick I/O. ReplyMsg may
          * invoke a PA_CALL hook, so never hold the unit lock across it. The
          * owner skips unacknowledged work; after Reply, identify it solely by

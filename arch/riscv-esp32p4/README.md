@@ -1,5 +1,20 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Open-association diagnosis (2026-10-11): opt-in
+`P4_WIFI_ASSOC_DIAGNOSTICS=1` distinguishes SANA admission/options rejection,
+owned attempt completion and Hosted Disconnect/SetConfig/Connect/AP-info/
+publication stages. Numeric records exclude SSIDs, BSSIDs and credentials.
+The reply-valid bit distinguishes a decoded remote status from transport loss;
+cleanup cannot overwrite the recorded result. Sanitized source-extracted
+owner/queue tests pass, including legacy open under the installed peer gate0.
+WirelessManager now preserves unspecified frequency0 as channel0 instead of
+emitting a wrapped invalid channel. Source-extracted regression tests and fresh
+RV32 manager/resource/device builds pass. Exact BSP/helper deployment and
+independent readback pass; a45s headless return reaches both harts and the
+CPU1 WLAN owner. The subsequent synchronized attempt currently reports no
+wireless device, before any captured association request. Device discovery
+must be diagnosed separately; actual association/IP/data remain unverified.
+
 ESP32Board interface (2026-10-11): native MUI Overview, Update, Flash & Backup
 and Diagnostics tabs implement Fabian's approved 800x600 design. Requested
 740x500 inner sizing, bounded status lines, native file requesters and a

@@ -7,6 +7,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define P4_WIFI_ASSOC_DIAGNOSTICS 1
+
+/* Exact numeric-only formats; execute opt-in observers in every lifecycle
+ * policy fixture without sending any synthetic payload to a console. */
+static void bug(const char *format, ...)
+{
+    if (strcmp(format, "[WiFiReq] t=%lu done=%lu\n") &&
+        strcmp(format, "[WiFiReq] reject=1\n") &&
+        strcmp(format, "[WiFiReq] reject=2\n") &&
+        strcmp(format, "[WiFiReq] t=%lu ch=%lu a=%lu f=%lu\n")) {
+        fprintf(stderr, "unexpected association diagnostic format\n");
+        exit(1);
+    }
+}
 
 typedef void *APTR;
 typedef uintptr_t IPTR;

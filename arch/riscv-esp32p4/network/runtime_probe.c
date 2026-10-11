@@ -629,6 +629,9 @@ struct wifi_owner_control {
     uint8_t request[256];
     uint32_t uid;
     int32_t status;
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    unsigned association_reply_valid;
+#endif
     unsigned init_attempted, start_attempted, startup_ok, cleanup_ok;
     ULONG discovery_state, discovery_nonce, discovery_token;
     struct p4_wifi_discovery_result discovery_result;
@@ -952,6 +955,9 @@ static int wifi_owner_request(struct wifi_probe_context *context,
     struct p4_hosted_rpc rpc;
     size_t written = 0;
     int encoded, exchanged;
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    control->association_reply_valid = 0;
+#endif
     if (!remaining || !p4_hosted_request_ids_reserve(&owner->ids,
             context->generation, id, &control->uid))
         return 0;
@@ -1031,6 +1037,9 @@ static int wifi_owner_request(struct wifi_probe_context *context,
             p4_hosted_owner_cancel(owner, fifo, context->generation);
             return 0;
         }
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        control->association_reply_valid = 1;
+#endif
         return control->status == 0;
     }
     if (id == 294u) {
@@ -1041,6 +1050,9 @@ static int wifi_owner_request(struct wifi_probe_context *context,
         }
         /* A decoded remote error is a completed query, not transport loss
          * or proof of disconnection. The caller must inspect status. */
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        control->association_reply_valid = 1;
+#endif
         return 1;
     }
     if (id == 257u) {
@@ -1506,13 +1518,18 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     struct p4_wifi_association_target owned;
     struct p4_wifi_association_cancel hooks;
     ULONG started, generation, remaining, wait, revision, connect_revision;
-    unsigned polls;
+    unsigned polls, association_stage = 1, association_rpc = 0;
     BOOL succeeded = FALSE, mutated = FALSE;
     if (!base || !base->ready || !base->association_enabled || !base->runtime ||
         (base->maintenance_state != P4_WIFI_MAINT_IDLE &&
          base->maintenance_state != P4_WIFI_MAINT_RELEASED) ||
         base->owner_task != FindTask(NULL) || !cancel || !cancel->cancelled ||
-        !wifi_association_target_valid(target)) return FALSE;
+        !wifi_association_target_valid(target)) {
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        bug("[WiFiJoin] s=0 r=0 st=-1 ok=0\n");
+#endif
+        return FALSE;
+    }
 #if !P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED
     if (target->fullmac_profile) return FALSE;
 #endif
@@ -1533,7 +1550,12 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
         runtime->fifo->generation != context->generation ||
         base->client_lock.ss_Owner != FindTask(NULL) ||
         context->host->lock.ss_Owner == FindTask(NULL) ||
-        cancel->cancelled(cancel->context)) return FALSE;
+        cancel->cancelled(cancel->context)) {
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        bug("[WiFiJoin] s=1 r=0 st=-1 ok=0\n");
+#endif
+        return FALSE;
+    }
     CopyMem(target, &owned, sizeof(owned));
     CopyMem(cancel, &hooks, sizeof(hooks));
     control = runtime->control;
@@ -1556,12 +1578,16 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     p4host_zero(&control->ap_info, sizeof(control->ap_info));
     mutated = TRUE; /* Even an ambiguous Disconnect must not retain link-up. */
     control->status = -1;
+    association_stage = 2;
+    association_rpc = 283;
     if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
             runtime->checksum, 283u,
             wifi_owner_remaining(context, started, 8000000UL)) &&
         (control->status != 0x300f || runtime->owner->poisoned ||
          runtime->fifo->poisoned)) goto finish;
     if (wifi_owner_stopping(context)) goto finish;
+    association_stage = 3;
+    association_rpc = 294;
     for (polls = 0; polls < 500 && !wifi_owner_stopping(context); ++polls) {
         revision = context->link_observation.revision;
         if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
@@ -1594,6 +1620,8 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     control->sta_config.pmf_capable = owned.pmf_required;
     control->sta_config.pmf_required = owned.pmf_required;
     control->sta_config.sae_pwe_h2e = owned.sae_pwe_h2e;
+    association_stage = 4;
+    association_rpc = 284;
     if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
             runtime->checksum, 284u,
             wifi_owner_remaining(context, started, 8000000UL))) goto finish;
@@ -1604,10 +1632,15 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
      * ignores its publication hook, but keeps the original deadline. */
     if (wifi_owner_stopping(context)) goto finish;
     connect_revision = context->link_observation.revision;
+    association_stage = 5;
+    association_rpc = 282;
     if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
             runtime->checksum, 282u,
             wifi_owner_remaining(context, started, 8000000UL))) goto finish;
+    association_stage = 6;
+    association_rpc = 294;
     for (polls = 0; polls < 500 && !wifi_owner_stopping(context); ++polls) {
+        association_stage = 6;
         revision = context->link_observation.revision;
         if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
                 runtime->checksum, 294u,
@@ -1621,6 +1654,7 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
             continue;
         }
         if (!control->ap_info.status) {
+            association_stage = 7;
             if (!wifi_association_ap_matches(&owned, &control->ap_info) ||
                 wifi_owner_stopping(context)) goto finish;
             if (owned.fullmac_profile &&
@@ -1636,6 +1670,7 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
                 continue;
             }
             remaining = wifi_owner_remaining(context, started, 8000000UL);
+            association_stage = 8;
             wait = remaining < P4_HOSTED_OWNER_MAX_ACQUIRE_US ? remaining :
                 P4_HOSTED_OWNER_MAX_ACQUIRE_US;
             if (!wait || !wifi_owner_acquire(context, wait)) goto finish;
@@ -1678,6 +1713,19 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
         wifi_yield(context);
     }
 finish:
+    /* Snapshot the failed exchange before cleanup overwrites its status.
+     * Numeric stages only; never emit identities, keys or payload bytes.
+     * This opt-in observer does not extend the RPC deadline or admit a link. */
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    bug("[WiFiJoin] s=%u r=%u st=%ld v=%u ok=%u\n",
+        association_stage, association_rpc,
+        (LONG)(!control->association_reply_valid ? -1 :
+            association_rpc == 294 ? control->ap_info.status : control->status),
+        control->association_reply_valid,
+        (unsigned)succeeded);
+#endif
+    (void)association_stage;
+    (void)association_rpc;
     /* Publication cancellation is not a transport abort. Once a correlated
      * exchange has drained, clean up within the same remaining budget without
      * allowing its caller's cancel hook to abort the cleanup itself. */

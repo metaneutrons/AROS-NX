@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
+#define P4_WIFI_ASSOC_DIAGNOSTICS 1
 
 #define EXEC_TYPES_H
 #define EXEC_LIBRARIES_H
@@ -62,6 +64,32 @@ static unsigned long checks;
 } while (0)
 
 static struct Task owner_task = {1u};
+static unsigned diagnostic_count, diagnostic_stage, diagnostic_rpc, diagnostic_ok;
+static LONG diagnostic_status;
+static unsigned diagnostic_valid;
+
+/* Consume only the numeric observer's exact formats. No printf of borrowed
+ * payloads is allowed through this host boundary. */
+static void bug(const char *format, ...)
+{
+    va_list args;
+    ++diagnostic_count;
+    if (!strcmp(format, "[WiFiJoin] s=0 r=0 st=-1 ok=0\n") ||
+        !strcmp(format, "[WiFiJoin] s=1 r=0 st=-1 ok=0\n")) {
+        diagnostic_stage = format[13] == '0' ? 0u : 1u;
+        diagnostic_rpc = diagnostic_ok = 0;
+        diagnostic_status = -1;
+        return;
+    }
+    CHECK(!strcmp(format, "[WiFiJoin] s=%u r=%u st=%ld v=%u ok=%u\n"));
+    va_start(args, format);
+    diagnostic_stage = va_arg(args, unsigned);
+    diagnostic_rpc = va_arg(args, unsigned);
+    diagnostic_status = va_arg(args, LONG);
+    diagnostic_valid = va_arg(args, unsigned);
+    diagnostic_ok = va_arg(args, unsigned);
+    va_end(args);
+}
 static struct Task *current_task = &owner_task;
 static struct P4WifiBase *wifi_resource_base;
 static const struct p4_hosted_wifi_config wifi_reference_profile = {0};
@@ -2082,8 +2110,47 @@ static void test_unqualified_peer_refuses_typed_without_io(void)
     }
 }
 
+static void test_numeric_join_diagnostics(void)
+{
+    static const unsigned ids[] = {283, 284, 282, 294, 294};
+    static const unsigned stages[] = {2, 4, 5, 3, 6};
+    struct p4_wifi_association_target target;
+    unsigned i;
+    for (i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i) {
+        fixture_init();
+        target_init(&target, 0u);
+        f.fail_id = ids[i];
+        f.fail_occurrence = i == 4 ? 2u : 1u;
+        f.fail_status = 7;
+        diagnostic_count = 0;
+        CHECK(invoke(&target) == FALSE);
+        CHECK(diagnostic_count == 1);
+        CHECK(diagnostic_stage == stages[i]);
+        CHECK(diagnostic_rpc == ids[i]);
+        CHECK(diagnostic_status == 7);
+        CHECK(diagnostic_valid == 1);
+        CHECK(diagnostic_ok == 0);
+    }
+    fixture_init();
+    target_init(&target, 0u);
+    diagnostic_count = 0;
+    CHECK(invoke(&target) == TRUE);
+    CHECK(diagnostic_count == 1 && diagnostic_stage == 8);
+    CHECK(diagnostic_rpc == 294 && diagnostic_status == 0 && diagnostic_ok == 1);
+    CHECK(diagnostic_valid == 1);
+    /* CONFIG success must not become CONNECT's status after transport loss. */
+    fixture_init();
+    target_init(&target, 0u);
+    f.timeout_request_id = 282u;
+    diagnostic_count = 0;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(diagnostic_count == 1 && diagnostic_stage == 5);
+    CHECK(diagnostic_valid == 0 && diagnostic_status == -1 && diagnostic_ok == 0);
+}
+
 int main(void)
 {
+    test_numeric_join_diagnostics();
     if (!P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED) {
         test_unqualified_peer_refuses_typed_without_io();
         printf("wifi owner unqualified-peer refusal checks: %lu\n", checks);
