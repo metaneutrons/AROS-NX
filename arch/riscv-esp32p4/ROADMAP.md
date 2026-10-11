@@ -39539,3 +39539,23 @@ remain open. No partial stage is a complete A/B update system.
   by Espressif, but cannot be imputed to the unidentified installed peer.
   Next SAE-M2: explicit native contract/caller support and diagnostic-vs-release
   enablement, then required-PMF/SAE owner policy and full N2T device gates.
+
+### 2026-10-11 - N2-SAE native caller reachability audit
+
+- Read-only audit of current native caller proves a separate integration gap:
+  sana_device.c returns SUMMARY only; WirelessManager events.c requires SUMMARY
+  plus FOURWAY before selecting a protected summary. Its association caller
+  supplies passphrase/PSK only with FOURWAY, and driver_sana2.c rejects those
+  credentials without it. Private association_enabled accepted-risk permission
+  does not alter the public device response. Thus the current native WPA2 path
+  is also not reachable through the intended summary/offload caller. Earlier
+  codec/lifecycle tests prove their bounded helpers, not this full application
+  path. No failed connection was silently bypassed or counted as acceptance.
+- Existing Prefs temporary configuration writes quoted psk plus WPA-PSK;
+  WirelessManager config.c derives a WPA PSK using PBKDF2. SAE needs a distinct
+  owned password/profile path, not that derivation or an invented AP RSN IE.
+  SAE-M2 must negotiate explicit per-device full-offload selection, required
+  PMF intent and credential ownership. Keep v1 layouts/meaning and legacy
+  devices unchanged; represent diagnostic-risk enablement separately from
+  verified production privacy/recovery. Source review only; no new native
+  build, device operation, credential transmission or hardware pass.
