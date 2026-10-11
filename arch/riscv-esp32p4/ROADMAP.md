@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `flash/runtime return verified, cold continuity rejected`: exact385024B AROS backup restored/readback matched; coordinated45s return observes both harts/graphics/touch/WLAN owner, but initial HP WDT reset40001ea8; both65s lifecycle captures had zero firmware bytes | Attribute initial reset/silent diagnostic before new reference deployment; no lifecycle or peer-contract qualification from restoration |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `flash/runtime and desktop return verified, cold continuity rejected`: exact385024B AROS backup restored/readback matched; coordinated45s return observes both harts/graphics/touch/WLAN owner, Fabian confirms desktop; initial HP WDT reset40001ea8 maps exact-core DMA interrupt clear50081198, cause unproved; both65s lifecycle captures had zero firmware bytes | Attribute initial reset/silent diagnostic and compare IDF startup differences before new reference deployment; no lifecycle or peer-contract qualification from restoration |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin publication implemented; foreign leave isolation, failed-teardown replacement-cookie and pre-ACK completion repairs host/native-build verified; CONNECT_FAILED shares admission gate, FOURWAY absent; reference inventory/INIT SAE-bit verified; single-handler C6 candidate retained; credential-free P4 STOP/START diagnostic deployed with two matching full-span backups and independent readback after exclusive-port correction; not run, no event-fence qualification; native admission final gate0, undeployed; installed failure/cancellation/reconnect and peer qualification open | Coordinated USB-C rail-off, single lifecycle capture and exact-span AROS rollback, then source-backed producer fence or attempt correlation and installed-peer qualification; explicit negotiated SAE/PMF, password semantics, no transition downgrade, native caller lifecycle and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1956,6 +1956,13 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   Subsequent coordinated power-on returns AROS runtime with both harts,
   graphics/touch and WLAN owner. Initial HP WDT reset40001ea8 rejects clean
   cold continuity; attribute it and silent diagnostic before new deployment.
+  Fabian confirms desktop visibility after restoration. Exact-core ELF audit
+  maps saved PC40001ea8 to scanout DMA channel interrupt-clear50081198, not
+  WLAN/ROM code; no demonstrated stuck instruction or causal fix yet.
+  Reference/lifecycle SDK configuration is byte-identical; headers pass and
+  actual ota_0 offset0x20000 is confirmed. No demonstrated startup/config cause.
+  Reset reader discards failed attempts; improve attempt evidence before new
+  deployment rather than treating an accepted final boot as the complete trace.
   Typed BeginIO/capability wiring now uses the owned parser and a shared,
   default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
   permission alone cannot advertise/admit FullMAC; the resource checks that
@@ -41162,3 +41169,46 @@ remain open. No partial stage is a complete A/B update system.
   Next sight confirmation of baseline and offline attribution using exact-core
   Saved PC and reference startup differences before another deployment.
   No lifecycle/WPA3/PMF/IP/data/reconnect qualification.
+
+### 2026-10-11 — Desktop return confirmed and exact-core reset PC mapped
+
+- Fabian confirms restored desktop visible. This is desktop sight evidence,
+  not a new interactive touch or WLAN test. No serial/reset/flash/SD action.
+- Offline hashes revalidated: generated core190016B SHA256
+  dea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0
+  matches restored image prefix; companion core.elf SHA256
+  ff4861178f62223f69b5b4ec63ddc3b6cb62ffb31f4bd46e598ae52c28a514b9
+  matches retained exact-core binding. addr2line/objdump actual exit0.
+- Saved PC40001ea8 is krnP4ScanoutDmaInterrupt, instruction sw a4,408(a5),
+  MMIO50081198. hardware.h defines DMAC base50081000/channel1 offset100/
+  INTCLEAR098; dsi_scanout.c clears status before conditional fault-free rearm.
+  Handler contains no wait loop. Sample does not prove MMIO stall, IRQ storm,
+  recursive exception, clock fault or WLAN causation; no root fix inferred.
+- Retained lifecycle-hardware.UkjyId/aros-reset-pc-disassembly.log SHA256
+  69bbd18bea91e12c59d0de1f9e119f4a38c12a3d22570933f277975e17d455b5.
+  Baseline remains installed and running. Compare startup-relevant IDF image
+  differences offline before another reference deployment; actual WiFi gates
+  and clean cold continuity remain open.
+
+### 2026-10-11 — Reference image comparison excludes SDK-config mismatch
+
+- Bounded Luna read-only comparison, primary binary/config rechecks: working
+  MAC/scan image380256B SHA256349e8c588870d98e938055ac008dd3d5e4de5b430b298233c7bd7c94ad6ba900;
+  lifecycle382656B SHA2564e507f1acc244e88fb156dd4a3e9e0ca32a2a0c6619a5ac6ddcfbcd0ce4d6674.
+  Both checksum/validation hash pass, six segments, entry4ff00a14, P4v1.0–1.99,
+ 16MB/DIO80MHz/64KiB MMU page and IDF6.0.1-dirty. Byte-identical SDK configs
+  SHA256e6130333056e14d74c7758828ca6eaaed07d082bd9f28205393cdc2098c7afe2,
+  including USB Serial/JTAG console/INFO logging. No header/config cause proved.
+- Different app/version/ELF/build time and segment layout are expected app-build
+  differences, not causal evidence. Lifecycle mapped segment0 shifts virtual
+ 40030020 to40040020 and text crosses a64KiB boundary; runtime acceptance remains
+  unproved. Both generated app-flash_args use10000 but were never executed;
+  actual saved board partition.bin decoder and restored AROS boot table prove
+  ota_0 at20000. Do not treat generic build offset as an actual deployment error.
+- Primary retained lifecycle-image-audit.log under lifecycle-hardware.UkjyId.
+  No serial/reset/flash/build/C6/SD action. Baseline desktop remains restored.
+- Next capture-quality prerequisite: reset-and-log.py resets input and discards
+  silent/download attempts before accepting final output. Its failure string
+  cannot establish every attempt entered download mode. Preserve full attempt
+  evidence and distinguish reset/ROM/app/reader state before another diagnostic
+  deployment. Original peer event/WPA3/PMF/IP/data requirements unchanged.

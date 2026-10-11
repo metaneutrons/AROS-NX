@@ -5,6 +5,14 @@ capture verified. Both harts, graphics updates, GT911 polling and WLAN owner
 CPU1/expected C6 MAC observed. Initial HP_SYS_HP_WDT_RESET/Saved PC40001ea8
 rejects clean cold continuity; no later captured fatal/reset signature, with
 lossy console limitations. No lifecycle diagnostic or WPA3/IP/data pass.
+Fabian confirms the desktop is visible. Exact-core symbol audit maps saved
+PC40001ea8 to the scanout DMA interrupt-clear write at50081198; this is not
+ROM/WLAN code, and a sampled PC alone does not prove a stuck MMIO operation.
+Offline reference/lifecycle comparison finds byte-identical SDK configuration
+and valid matching boot-relevant header fields. Actual partition0x20000 was
+correct despite generated IDF flash arguments0x10000, which remain prohibited.
+Silent-start cause remains unproved; preserve every reset attempt in diagnostic
+capture before further deployment rather than discard unsuccessful boot output.
 
 Lifecycle diagnostic deployed (2026-10-11): serial backup failures persisted
 after rail-off; lsof identified devserial holding the same port. Closing only
