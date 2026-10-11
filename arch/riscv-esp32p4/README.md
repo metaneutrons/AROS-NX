@@ -2124,6 +2124,14 @@ journal/raw reconstruction and one explicit pulse, but two ROM banners.
 Both-hart AROS/graphics/touch polling returns; WLAN INIT rejects stale receive
 counter26378 (stage13/error6), not an observed SAE failure. Physical C6 cold
 start remains required; do not bypass the stale-counter guard.
+Reset-source audit distinguishes the acknowledged CCCR function reset from
+a C6 processor reset. Pinned Hosted also defines ESP_RESET (control0x8c/bit2)
+as a slave-driver restart candidate, not an application/association fence;
+installed-peer behavior is unqualified. OPEN/INIT regression734 checks each
+O0/O2 ASan/UBSan pass. No additional hardware test or transport reset executed.
+Independent review plus primary IDF6.0.1 recheck finds RESET invoked directly
+from the SDIO ISR into ordinary queue/semaphore operations, no completion ACK
+and no regenerated INIT. It is not enabled as a warm-recovery shortcut.
 
 E2, the two-hart primitives, is hardware verified on both boards: on the
 D1001 on 2026-10-01 (219,776-byte candidate, five captures, two epochs each)

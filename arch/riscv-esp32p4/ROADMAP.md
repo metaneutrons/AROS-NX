@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `baseline restored; one-pulse calibration observed`: 45.011s/16745B journal/raw exact, one explicit pulse yet two ROM banners; both-hart AROS returns, WLAN INIT rejects stale C6 counter26378/stage13/error6; initial earlier HP WDT cause unproved | Coordinate fresh C6 rail-off and baseline INIT observation before diagnostic redeployment; no cold-continuity or lifecycle/peer qualification |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `baseline restored; stale-counter guard revalidated`: one-pulse45s capture observed both-hart AROS, two ROM banners, INIT stale counter26378; CCCR acknowledgment is not C6 reset; Hosted transport-reset candidate source identified, unqualified | Fresh readiness for C6 rail-off/baseline INIT; independently qualify transport recovery without treating it as application/attempt fence |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1970,6 +1970,11 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   reconstruction and one pulse, yet two ROM banners. Both-hart AROS returns;
   WLAN INIT rejects stale counter26378 at stage13/error6. This is not a
   single-physical-reset or peer lifecycle pass; coordinate a C6 rail-off next.
+  Source audit separates CCCR function reset from Hosted ESP_RESET driver
+  restart. Existing-protocol control0x8c/bit2 is an unqualified recovery
+  candidate, not an application reset or association-event fence. Guard kept.
+  Independent review/primary IDF recheck finds ISR-unsafe reset work and no
+  regenerated INIT/completion ACK; do not activate this as warm recovery.
   Typed BeginIO/capability wiring now uses the owned parser and a shared,
   default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
   permission alone cannot advertise/admit FullMAC; the resource checks that
@@ -41282,3 +41287,43 @@ remain open. No partial stage is a complete A/B update system.
 - Next: fresh readiness and coordinated USB-C-only C6 rail-off, then bounded
   baseline INIT capture before re-deploying lifecycle reference. WPA3/required
   PMF, peer provenance/fence, DHCP/routes/DNS/data/reconnect gates remain open.
+
+### 2026-10-11 — Reset semantics and retained-counter guard revalidated
+
+- Read-only audit: sdio_probe.c bootstrap writes Fn0 CCCR0x06=0x08 with
+  CMD52. ack1 describes command acknowledgment, not a C6 CPU restart.
+  Board reference has WIFI_RESET_GPIO=-1; no GPIO54 reset assumption allowed.
+- Pinned Hosted d5184217f710d54c01f932e75b4c55e3f4933fc9 host sdio_drv.c
+  tracks cumulative received bytes and subtracts its local count modulo
+  ESP_RX_BYTE_MAX. A nonzero hardware count does not alone prove queued
+  unread frames. After P4 restart the local baseline is lost; accepting a
+  new count without a qualified reset/drain can skip unread events. Existing
+  AROS STALE_COUNTER rejection remains unchanged.
+- Pinned common/include/adapter.h assigns ESP_RESET=2; host interrupt helper
+  writes BIT(2) to control0x8c (offset0). Slave event_cb routes it to
+  sdio_reset: stop/reset/start SDIO driver and reclaim finished buffers.
+  This is a potential transport recovery mechanism, not a C6 processor reset,
+  WiFi STOP/START or proof of association-attempt provenance. No installed
+  54aafd0-dirty source identity or recovery guarantee inferred; no wire write.
+- Primary sh tools/test-hosted-open.sh, process64212 actual exit0:
+  734 checks each O0/O2 ASan/UBSan, including stale-counter rejection before
+  OPEN/FIFO and cleanup. Source hashes hosted_open.c
+  cf0399790d5ea7643b4aceb75c83d35f3507e67b4a3ad3b9999c6f0354bf5dd1;
+  sdio_probe.c c2e856e6b29dbe40417ab965d2cd0a33926a3c7ef1d495cf5c68fecd2e27d052;
+  test_hosted_open.c 2e9b7efaea06a164794f3f3e521301c88d798e7c4ddc215ef4348947ab34a792.
+- Safety: no serial open/reset/flash/credentials/C6/SD action this turn;
+  restored baseline unchanged. Await fresh user readiness for physical C6
+  rail-off and baseline INIT observation. Transport reset candidate needs
+  independent source review and bounded installed-peer qualification before
+  any production use; full WiFi acceptance remains open.
+- Independent Luna source audit, primary exact-source rechecks: pinned slave
+  event_cb (sdio_slave_api.c:176) is called directly from IDF6.0.1 SDIO ISR
+  (sdio_slave.c:488). Its reset reaches send_flush_data with ordinary
+  xQueueSend(...,portMAX_DELAY)/xSemaphoreGive (lines670ff), not FromISR APIs.
+  RESET has no host-completion ACK; app_main.c:917ff emits startup/ESPInit
+  only on initial datapath startup, not this driver reset. Hosted application
+  queues and host cumulative counters are outside its reset scope. No official
+  host RESET call found (initial reader sends OPEN). This rules out enabling
+  the raw reset event as a production shortcut from source audit alone.
+  No installed-peer equivalence inferred. Physical cold prerequisite retained;
+  an eventual C6 correction would require deferred firmware/recovery authority.
