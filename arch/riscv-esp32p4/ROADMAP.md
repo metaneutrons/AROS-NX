@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, default-off guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication implemented; foreign typed leave isolated and failed-teardown replacement-cookie notification repaired, including deferred pre-ACK completion without radio admission; faulted local leave revokes requester state without introducing physical teardown; CONNECT_FAILED advertisement now shares the admission gate, host/native-build verified with FOURWAY absent; reference protocol inventory and actual INIT SAE-bit serialization verified; separate single-handler C6 lifecycle candidate retained; peer-contract qualification, installed failure/cancellation, reconnect and installed peer qualification open; final gate0, undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, default-off guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication implemented; foreign typed leave isolated and failed-teardown replacement-cookie notification repaired, including deferred pre-ACK completion without radio admission; faulted local leave revokes requester state without introducing physical teardown; CONNECT_FAILED advertisement shares the admission gate, host/native-build verified with FOURWAY absent; reference inventory/INIT SAE-bit verified; single-handler C6 candidate retained and separate credential-free P4 STOP/START observation app host/native-build verified; no event-fence qualification; installed failure/cancellation, reconnect and peer qualification open; final gate0, undeployed | Fresh cold lifecycle diagnostic/rollback, then source-backed producer fence or attempt correlation and installed-peer qualification; explicit negotiated SAE/PMF, password semantics, no transition downgrade, native caller lifecycle and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1921,6 +1921,15 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   before INIT and retains it for the persistent event loop, including failed
   init/deinit retries. It does not add attempt IDs or prove producer draining.
   No automatic repeated-init workaround or C6 deployment is enabled.
+  A separate opt-in official Hosted P4 diagnostic now uses one INIT and three
+  STOP/START cycles without credentials, observing four START/three STOP
+  markers under one40s deadline and250ms per-marker quiet windows. Checked
+  host handler unregistration closes only its local observation window before
+  final counts; it cannot establish C6 producer/queue drainage. STOP/START
+  avoids repeated INIT registration in the pinned source, but the public STOP
+  contract does not prove an association-attempt fence. Host/native build
+  evidence is preparation for a fresh cold diagnostic/rollback, not permission
+  to set FULLMAC_PEER_CONTRACT_VERIFIED. Installed firmware remains unchanged.
   Typed BeginIO/capability wiring now uses the owned parser and a shared,
   default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
   permission alone cannot advertise/admit FullMAC; the resource checks that
@@ -40883,3 +40892,83 @@ remain open. No partial stage is a complete A/B update system.
   require implementing every unused AP/provisioning API. Qualify installed
   STA event/lifecycle ordering and attempt fence before enabling typed admission;
   WPA3/required PMF, DHCP/routes/DNS/data/reconnect/load remain actual gates.
+
+### 2026-10-11 — Credential-free C6 lifecycle observation candidate
+
+- Status: host/native-build verified, undeployed; no peer-contract or actual
+  WLAN qualification. Source audit narrows the next measurement to one INIT
+  and repeated STOP/START: pinned slave_control.c700–771 registers only in
+  INIT; STOP/START do not add handlers. IDF5.4.3 STOP frees the STA control
+  block but documents no producer/event-loop drain. Event-loop and pserial
+  FIFO ordering applies to already-posted events; synchronous RPC responses
+  may overtake queued callbacks. A finite trace cannot prove absence of
+  arbitrary later stale connection events. Installed54aafd0-dirty is still
+  unidentified. No reason to set FULLMAC_PEER_CONTRACT_VERIFIED was found.
+- New opt-in HOSTED_REFERENCE_LIFECYCLE=ON selects a separate official Hosted
+  P4 app. Default reference.c remains unchanged. One INIT/NVS0/STA mode,
+  initial START and three STOP/START cycles: four START2/three STOP3 events.
+  API_RETURN/RPC_ACK/OBS are separate numeric evidence, no SSIDs or credentials.
+  All setup/RPC/event waits share one40s deadline and fail-stop; per-marker
+ 250ms quiet windows reject observed duplicates/order changes. No CONFIG,
+  CONNECT, scan, repeated INIT/DEINIT, C6 update or reset GPIO is used.
+- Primary caught the initial timer setup checking an unset deadline; corrected
+  before native build. Independent review then found a final-counter race:
+  an eighth callback between validation and success could falsely report
+  observed. Checked exact-triple handler unregistration now closes the LOCAL
+  observer before final validation. Actual IDF6 event-loop mutex serializes
+  callbacks/unregistration and marks/removes the handler before returning.
+  This is not remote queue drainage. Independent final review found no blocker;
+  reviewer inspected source/tests, did not run tests or qualify hardware.
+- Primary final frozen suite exit0 (process68678 was an earlier99-check run;
+  final frozen invocation completed synchronously exit0):14 cases/94 checks
+  each O0/O2 ASan/UBSan, warnings-as-errors, actual complete app source with
+  IDF/time/dispatch mocks. Includes delayed and pre-ACK events, missing marker,
+  wrong order/duplicate/CONNECTED, API failures, timer-creation budget exhaustion,
+  unregister failure/in-flight extra callback/post-close queued delivery.
+  Reconstructed pre-close source matches original compiled source SHA256
+  `eafbafaa3d9edd399df0f141fe861ad0258b08b9cea4642c3aa46c4d03678515`;
+  negative run exit1 at O0,12 of94 checks fail, including in-flight duplicate
+  preventing success. Native concurrency comes from IDF source audit, not mocks.
+  Unchanged default app regression exit0:30 cases/184 checks each O0/O2.
+- Native environment: existing IDF6.0.1 commit
+  `8c19b156084a0753687347cca1f5355782893533` with retained prior modifications,
+  GCC15.2.0_20251204/Python v6.0.1 venv; pinned Hosted d518 and remote0.2.3,
+  component manager disabled. Build/config outside repo at
+  `/Volumes/Dev/Build/c6-lifecycle-observation.n2pb8I/`.
+  Initial fresh process83468 exit0/1090 tasks produced381856B SHA256
+  `63eb47bede5ac224ed6d2cab697e684ae3de6f0e187c726e496129376653071c`;
+  rejected for deployment after observer race review. Initial configure warned
+  that ESP_ROM_ELF_DIR was absent (debug gdbinit only, build still exit0).
+  Final reconfigure/build sets that directory, explicitly invalidates exact
+  lifecycle.c.obj, process41287 exit0/1076 tasks with actual app compile/link,
+  no error:/warning:/FAILED signatures. Final image382656B SHA256
+  `4e507f1acc244e88fb156dd4a3e9e0ca32a2a0c6619a5ac6ddcfbcd0ce4d6674`.
+- Final generated config21 checks pass: P4v1.0–1.99,360MHz,16MB DIO80MHz,
+  USB Serial/JTAG, PSRAM off, reset GPIO aliases-1, SDIO one-bit400kHz,
+  CLK18/CMD19/D0=14/D1=15. Config SHA256
+  `e6130333056e14d74c7758828ca6eaaed07d082bd9f28205393cdc2098c7afe2`.
+  esptool image-info exits0: correct P4/revision interval and valid checksum/hash.
+  Image app-version881635ec30-dirty, IDFv6.0.1-dirty; exact source/artifact
+  hashes, not a clean release identity, identify this diagnostic.
+- Evidence:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/lifecycle-observation.2rkrpx/`.
+  lifecycle.c SHA256
+  `68abd1af6d53ee579a9f1e9e31b9e3ef1b96abc19afa29eab437db7967c31c59`;
+  test-lifecycle.py
+  `4e9e22fe3055e78c35a13f595ddac802523f54200de57891d4bdc1483ffa4703`;
+  lifecycle-host-final-frozen.log
+  `4259309d4b742933f8a43d4339abc0e20eb6e2ab0d80b6bd38efed942b7e4d2a`;
+  lifecycle-no-close-final-negative.log
+  `5a5b9843427aec0dc5e11de022d8b06f5f4ff7b878ffdef27c2166e4c60b0519`;
+  native-final-build.log
+  `05cd10a08136e9aa98ea2c2cd00d28a4188092369e95e54290cdabef9e538b12`.
+- Safety/next: serial node101 exists, but no port open/reset/flash/SD write,
+  credential transfer or C6 update occurred. Installed AROS/C6/card unchanged.
+  Fresh readiness/only-power-source confirmation and coordinated rail-off
+  required for this IDF handoff. Before deployment revalidate MAC/layout,
+  fresh complete erase-span backup/rollback:0x20000..0x7dfff,385024B; app-only
+  flash/readback, continuous capture, actual process completion and exact
+  rollback. Generated bootloader/partition/flash instructions prohibited.
+  Observation failure rejects lifecycle compatibility; success only qualifies
+  the finite trace, not repeated-association ordering. Source-backed producer
+  fencing or peer attempt correlation and actual SAE/PMF/IP/data remain open.

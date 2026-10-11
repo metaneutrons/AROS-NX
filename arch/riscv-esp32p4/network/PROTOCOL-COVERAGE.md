@@ -139,6 +139,17 @@ INIT cycles as an assumed exactly-once recovery path. This reference defect
 does not prove that the unidentified installed C6 has the same implementation.
 Keep C6 deployment postponed; first choose/qualify a compatible lifecycle
 contract, with recovery-backed firmware work only if necessary.
+For a credential-free compatibility observation, prefer one INIT and repeated
+STOP/START: those two handlers do not register another callback. Waiting for
+each STA_STOP/STA_START is necessary because the synchronous RPC reply may
+overtake callback notifications queued in the slave pserial FIFO. A marker
+orders events already posted before it, not arbitrary later posts by the
+proprietary WiFi producer. The public STOP contract frees the station control
+block but does not document producer/event-loop quiescence. Even a clean
+finite lifecycle trace is therefore not a repeated-association attempt fence
+or permission to set FULLMAC_PEER_CONTRACT_VERIFIED. A fresh pinned process
+has no earlier STA lifecycle before its first host INIT/START, but unknown
+installed firmware and subsequent association attempts remain separate gates.
 The separate `tools/hosted-reference/slave-lifecycle.patch` fixes repeated
 registration for the pinned source: one handler is registered before INIT and
 retained across DEINIT. Registration errors propagate before driver init. This

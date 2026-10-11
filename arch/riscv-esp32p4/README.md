@@ -1,5 +1,13 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Credential-free lifecycle diagnostic (2026-10-11): separate opt-in official
+Hosted P4 app observes one INIT and three STOP/START cycles, with checked
+callback-window closure and one40s budget. Host tests and native IDF6.0.1
+build verified, undeployed; default reference app and installed AROS/C6 are
+unchanged. A finite trace cannot qualify a repeated-association event fence.
+Next is a freshly coordinated cold diagnostic plus exact AROS rollback;
+FullMAC peer gate remains0 and actual WPA3/PMF/IP/data remain open.
+
 Guarded failure negotiation (2026-10-11): CONNECT_FAILED is now advertised
 only under the shared peer-contract/credential-policy admission gate. FOURWAY
 and its masks remain absent. Cause-free failure permits a local deadline/RPC

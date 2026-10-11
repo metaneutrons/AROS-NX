@@ -31,6 +31,37 @@ sdkconfig.defaults. Run `python3 check-config.py --selftest`, then
 `python3 check-config.py <generated-sdkconfig>`; verify the final image header
 separately. Revision1.x requires360MHz, not the generated400MHz default.
 
+## Opt-in credential-free lifecycle observation
+
+`-D HOSTED_REFERENCE_LIFECYCLE=ON` selects `main/lifecycle.c`; the default
+remains the MAC/scan app. Use a separate external build/config directory.
+This app initializes once with NVS disabled, then observes initial START and
+three STOP/START cycles, seven ordered station markers in total. RPC_ACK and
+local OBS events are logged separately. Each marker has a250ms quiet window;
+all setup, calls and waits share one40s deadline with fail-stop, no retry.
+Unexpected/missing/duplicate markers or an API error reject the observation.
+Checked handler unregistration closes the local callback window before final
+counts. IDF's event-loop mutex waits for running callbacks and prevents further
+dispatch to that observer; it does not drain the C6 producer or peer queue.
+No CONFIG, CONNECT, credentials, scans, DEINIT/repeated INIT, OTA or reset GPIO
+is used. The diagnostic ends with the station started, without association.
+
+`REFERENCE result=observed scope=LIFECYCLE_OBSERVATION` reports only this
+finite local event trace. It is not producer drainage, a C6 attempt identity,
+SAE/PMF authentication, privacy/recovery qualification or working AROS WLAN.
+The pinned STOP/START handlers avoid the repeated-INIT handler leak, but public
+STOP documentation does not guarantee that a proprietary producer cannot post
+an old connection event later. Never enable FULLMAC_PEER_CONTRACT_VERIFIED
+from this diagnostic alone. Installed firmware lineage remains unknown.
+
+Deployment retains every existing app-only/identity/backup/readback/rollback
+gate above. Generated bootloader/table/flash commands remain prohibited.
+Fresh coordinated rail-off is required before IDF takes over active AROS
+scanout and before attributing a fresh C6 lifecycle. No C6 image is changed.
+Run `python3 test-lifecycle.py main/lifecycle.c` for the full-source mock tests.
+They model time, API returns and event dispatch, not radio/SDIO or native task
+concurrency. Native candidate and negative-test identities are in ROADMAP.md.
+
 ## Compatibility changes and limitations
 
 - Explicit IDF6 component dependencies for SDMMC, DMA, GPIO and Wi-Fi remote.
