@@ -1393,20 +1393,31 @@ static BOOL p4wlan_maintain_link(struct p4wlan_unit *unit,
             struct p4wlan_association *pending = unit->pending_association;
             struct p4wlan_opener *failed = NULL;
             ULONG failed_cookie = 0;
-            /* The old teardown failed, not an AP rejection. Retain only the
-             * still-current acknowledged replacement's terminal identity
-             * across invalidation; canceled/unacknowledged work has none. */
-            if (pending && pending->acknowledged && !pending->cancelled &&
+            BOOL current_pending = pending && !pending->cancelled &&
                 !pending->opener->closing &&
                 pending->token == unit->selection_token && pending->cookie &&
-                pending->opener->active_cookie == pending->cookie) {
-                failed = pending->opener;
-                failed_cookie = pending->cookie;
-                ++failed->refs;
+                pending->opener->active_cookie == pending->cookie;
+            /* ReplyMsg can service the owner before BeginIO's ACK fence.
+             * Keep that exact owned attempt until ACK, without restoring a
+             * token or publishing an early terminal. The fault gate prevents
+             * radio admission; associate_one then fails it once after ACK.
+             * Cancel/close/offline still retire it through their normal path. */
+            if (current_pending && !pending->acknowledged) {
+                p4wlan_drop_teardown_locked(unit);
+            } else {
+                /* The old teardown failed, not an AP rejection. Preserve
+                 * only the acknowledged replacement's terminal identity
+                 * across invalidation; canceled work has none. */
+                if (current_pending) {
+                    failed = pending->opener;
+                    failed_cookie = pending->cookie;
+                    ++failed->refs;
+                }
+                p4wlan_invalidate_selection_locked(unit);
             }
             /* Ambiguous radio state cannot be reused for a newer selection. */
-            p4wlan_invalidate_selection_locked(unit);
             unit->teardown_pending = FALSE;
+            unit->teardown_notify = FALSE;
             unit->callback_fault = TRUE;
             if (failed) {
                 /* Restore solely for the one-shot failure helper, never as

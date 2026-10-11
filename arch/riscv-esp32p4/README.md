@@ -1,5 +1,12 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Pre-ACK fault completion (2026-10-11): failed old teardown retains a valid
+owned replacement until its post-Reply acknowledgment. The fault gate blocks
+radio admission; subsequent service delivers exactly one originating-cookie
+failure and wipes the attempt. Offline/cancel still revoke it. Source-extracted
+sanitizer tests and native builds verified, undeployed; installed-peer ordering
+and actual WPA3/PMF/IP/data remain unqualified. No capability gate was enabled.
+
 Typed cancellation/failure repair (2026-10-11): foreign Disassociate no longer
 invalidates another opener's typed pending/active/committed selection or a
 new selection behind retained typed teardown. Legacy-only leave is unchanged.

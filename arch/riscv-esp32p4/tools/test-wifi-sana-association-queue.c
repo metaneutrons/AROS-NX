@@ -187,6 +187,10 @@ static unsigned disassociate_cancel_checks;
 static unsigned offline_cancel_checks;
 static unsigned disconnect_calls;
 static BOOL reuse_request_during_association_reply;
+static BOOL fail_teardown_during_association_reply;
+static BOOL offline_during_failed_teardown_reply;
+static struct IOSana2Req *failure_event_before_ack;
+static ULONG token_after_failed_teardown_reply;
 static struct TagItem *tags_to_reuse_during_reply;
 static size_t tags_to_reuse_count;
 static struct TagItem *replacement_tags_for_reply;
@@ -366,6 +370,59 @@ static void ReplyMsg(struct Message *message)
             CHECK(!pending->acknowledged);
             CHECK(associate_calls == calls_before);
             ++unacknowledged_service_skips;
+            association_reply_callback_active = FALSE;
+        }
+
+        /* Model a disconnect failure inside the unlocked Reply hook, before
+         * this SETOPTIONS frame has acknowledged its accepted typed attempt. */
+        if (!association_reply_callback_active &&
+            fail_teardown_during_association_reply) {
+            struct p4wlan_association *unacknowledged =
+                active_unit->pending_association;
+            unsigned calls_before = associate_calls;
+            unsigned disconnects_before = disconnect_calls;
+            CHECK(unacknowledged == pending);
+            CHECK(active_unit->teardown_pending);
+            CHECK(!disconnect_returns_success);
+            fail_teardown_during_association_reply = FALSE;
+            association_reply_callback_active = TRUE;
+            CHECK(p4wlan_maintain_link(active_unit, active_unit->radio));
+            CHECK(disconnect_calls == disconnects_before + 1u);
+            CHECK(active_unit->callback_fault);
+            CHECK(!active_unit->teardown_pending);
+            /* This is the missing boundary: an accepted but not yet ACKed
+             * attempt must stay pinned/current until its own Reply returns. */
+            CHECK(active_unit->pending_association == unacknowledged);
+            CHECK(unacknowledged->token == token_at_reply);
+            CHECK(!unacknowledged->acknowledged);
+            CHECK(unacknowledged->opener->active_cookie ==
+                  unacknowledged->cookie);
+            CHECK(failure_event_before_ack != NULL);
+            CHECK(failure_event_before_ack->ios2_WireError == 0u);
+            CHECK(unacknowledged->opener->failed_cookie == 0u);
+            CHECK(p4wlan_associate_one(active_unit, active_unit->radio));
+            CHECK(active_unit->pending_association == unacknowledged);
+            CHECK(!unacknowledged->acknowledged);
+            CHECK(active_unit->active_association == NULL);
+            CHECK(associate_calls == calls_before);
+            CHECK(failure_event_before_ack->ios2_WireError == 0u);
+            token_after_failed_teardown_reply = active_unit->selection_token;
+            if (offline_during_failed_teardown_reply) {
+                struct IOSana2Req offline_request;
+                struct p4wlan_opener *owner = unacknowledged->opener;
+                offline_during_failed_teardown_reply = FALSE;
+                memset(&offline_request, 0, sizeof(offline_request));
+                offline_request.ios2_Req.io_Command = S2_OFFLINE;
+                offline_request.ios2_BufferManagement = owner;
+                dispatch_case(active_unit, owner, &offline_request);
+                CHECK(!active_unit->online);
+                CHECK(active_unit->pending_association == NULL);
+                CHECK(active_unit->selection_token >
+                      token_after_failed_teardown_reply);
+                CHECK(owner->active_cookie == 0u);
+                CHECK(failure_event_before_ack->ios2_WireError !=
+                      S2EVENT_CONNECT_FAILED);
+            }
             association_reply_callback_active = FALSE;
         }
 
@@ -647,6 +704,10 @@ static void init_fixture(struct p4wlan_unit *unit,
     replace_during_disconnect = FALSE;
     disconnect_calls = 0u;
     reuse_request_during_association_reply = FALSE;
+    fail_teardown_during_association_reply = FALSE;
+    offline_during_failed_teardown_reply = FALSE;
+    failure_event_before_ack = NULL;
+    token_after_failed_teardown_reply = 0u;
     tags_to_reuse_during_reply = NULL;
     tags_to_reuse_count = 0u;
     replacement_tags_for_reply = NULL;
@@ -2543,6 +2604,176 @@ static void test_typed_teardown_failure_drops_pin_without_disconnect(void)
     CHECK(opener.refs == 1u && foreign.refs == 1u);
 }
 
+static void test_unacknowledged_typed_replacement_survives_failed_teardown(void)
+{
+#if P4_WIFI_FULLMAC_ADMISSION_ENABLED
+    struct p4wlan_unit unit;
+    struct p4wlan_opener old_owner, current_owner, foreign;
+    struct P4WifiBase radio;
+    struct Sana2FullMACCapabilities caps;
+    struct Sana2FullMACAssociation selection;
+    struct IOSana2Req old_disconnect, current_connect, current_failure;
+    struct IOSana2Req foreign_failure, associate_request, flush_request;
+    struct TagItem tags[8];
+    struct p4wlan_association *attempt;
+    struct p4wlan_request *old_waiter, *connect_waiter, *foreign_waiter;
+    UBYTE ssid[] = "unacknowledged-teardown-failure";
+    const ULONG old_cookie = 0xFA110010u;
+    const ULONG current_cookie = 0xFA110011u;
+    ULONG token;
+    unsigned prior_replies, prior_associate_calls, prior_wipes;
+
+    init_fixture(&unit, &old_owner, &radio);
+    add_opener(&unit, &current_owner);
+    add_opener(&unit, &foreign);
+    CHECK(query_fullmac_capabilities(&unit, &old_owner, &caps));
+    seed_typed_committed_link(&unit, &old_owner, &radio, old_cookie);
+    old_waiter = queue_event_waiter(&unit, &old_owner, &old_disconnect,
+                                    S2EVENT_DISCONNECT);
+    connect_waiter = queue_event_waiter(&unit, &current_owner,
+                                        &current_connect, S2EVENT_CONNECT);
+    (void)queue_event_waiter(&unit, &current_owner, &current_failure,
+                             S2EVENT_CONNECT_FAILED);
+    foreign_waiter = queue_event_waiter(&unit, &foreign, &foreign_failure,
+                                        S2EVENT_CONNECT_FAILED);
+    init_fullmac_selection(&selection, S2FULLMAC_PROFILE_OPEN,
+        (caps.Flags & S2FULLMAC_CAPF_DIAGNOSTIC_RISK) ?
+            S2FULLMAC_ASSOCF_ALLOW_DIAGNOSTIC_RISK : 0u);
+    make_fullmac_tags(tags, ssid, &selection, NULL, current_cookie);
+
+    disconnect_returns_success = FALSE;
+    failure_event_before_ack = &current_failure;
+    fail_teardown_during_association_reply = TRUE;
+    prior_replies = reply_calls;
+    prior_associate_calls = associate_calls;
+    prior_wipes = wipe_checks;
+    attempt = queue_profile(&unit, &current_owner, &associate_request, tags);
+
+    CHECK(!fail_teardown_during_association_reply);
+    CHECK(attempt != NULL && attempt->opener == &current_owner);
+    CHECK(attempt->cookie == current_cookie && attempt->acknowledged);
+    CHECK(unit.pending_association == attempt);
+    CHECK(unit.selection_token == attempt->token);
+    token = attempt->token;
+    CHECK(disconnect_calls == 1u);
+    CHECK(unit.callback_fault && !unit.teardown_pending);
+    CHECK(unit.teardown_opener == NULL && unit.teardown_cookie == 0u);
+    CHECK(current_owner.active_cookie == current_cookie);
+    CHECK(current_owner.failed_cookie == 0u);
+    CHECK(current_failure.ios2_WireError == 0u);
+    CHECK(associate_calls == prior_associate_calls);
+    CHECK(reply_calls == prior_replies + 1u); /* accepted SETOPTIONS ACK only */
+    CHECK(old_waiter->state == P4WLAN_REQUEST_QUEUED);
+    CHECK(old_disconnect.ios2_WireError == 0u);
+
+    /* The post-Reply service pass publishes one exact failure without making
+     * a radio call; it neither fabricates CONNECT/DISCONNECT nor broadcasts. */
+    prior_replies = reply_calls;
+    CHECK(p4wlan_associate_one(&unit, &radio));
+    CHECK(associate_calls == prior_associate_calls);
+    CHECK(reply_calls == prior_replies + 1u);
+    CHECK(current_failure.ios2_Req.io_Error == 0);
+    CHECK(current_failure.ios2_WireError == S2EVENT_CONNECT_FAILED);
+    CHECK(current_failure.ios2_DataLength == current_cookie);
+    CHECK(current_connect.ios2_WireError == 0u);
+    CHECK(connect_waiter->state == P4WLAN_REQUEST_QUEUED);
+    CHECK(foreign_waiter->state == P4WLAN_REQUEST_QUEUED);
+    CHECK(foreign_failure.ios2_WireError == 0u);
+    CHECK(old_waiter->state == P4WLAN_REQUEST_QUEUED);
+    CHECK(old_disconnect.ios2_WireError == 0u);
+    CHECK(unit.selection_token == token);
+    CHECK(unit.pending_association == NULL && unit.active_association == NULL);
+    CHECK(!unit.link_committed && unit.link_opener == NULL);
+    CHECK(unit.link_cookie == 0u && !unit.link_fullmac && !radio.associated);
+    CHECK(!unit.teardown_pending && unit.teardown_opener == NULL);
+    CHECK(current_owner.active_cookie == 0u && current_owner.failed_cookie == 0u);
+    CHECK(!current_owner.fullmac_events);
+    CHECK(wipe_checks == prior_wipes + 1u);
+    CHECK(old_owner.refs == 2u); /* base plus parked old DISCONNECT */
+    CHECK(current_owner.refs == 2u); /* base plus parked CONNECT */
+    CHECK(foreign.refs == 2u); /* base plus parked foreign failure waiter */
+
+    failure_event_before_ack = NULL;
+    init_request(&flush_request, CMD_FLUSH, &old_owner);
+    dispatch_case(&unit, &old_owner, &flush_request);
+    init_request(&flush_request, CMD_FLUSH, &current_owner);
+    dispatch_case(&unit, &current_owner, &flush_request);
+    init_request(&flush_request, CMD_FLUSH, &foreign);
+    dispatch_case(&unit, &foreign, &flush_request);
+    CHECK(old_owner.refs == 1u && current_owner.refs == 1u &&
+          foreign.refs == 1u);
+#endif
+}
+
+static void test_offline_cancels_unacknowledged_failed_replacement(void)
+{
+#if P4_WIFI_FULLMAC_ADMISSION_ENABLED
+    struct p4wlan_unit unit;
+    struct p4wlan_opener old_owner, current_owner;
+    struct P4WifiBase radio;
+    struct Sana2FullMACCapabilities caps;
+    struct Sana2FullMACAssociation selection;
+    struct IOSana2Req old_disconnect, current_connect, current_failure;
+    struct IOSana2Req associate_request;
+    struct TagItem tags[8];
+    struct p4wlan_association *attempt;
+    UBYTE ssid[] = "offline-unacknowledged-failure";
+    const ULONG old_cookie = 0xFA110020u;
+    const ULONG current_cookie = 0xFA110021u;
+    ULONG original_token;
+    unsigned prior_associate_calls, prior_wipes;
+
+    init_fixture(&unit, &old_owner, &radio);
+    add_opener(&unit, &current_owner);
+    CHECK(query_fullmac_capabilities(&unit, &old_owner, &caps));
+    seed_typed_committed_link(&unit, &old_owner, &radio, old_cookie);
+    (void)queue_event_waiter(&unit, &old_owner, &old_disconnect,
+                             S2EVENT_DISCONNECT);
+    (void)queue_event_waiter(&unit, &current_owner, &current_connect,
+                             S2EVENT_CONNECT);
+    (void)queue_event_waiter(&unit, &current_owner, &current_failure,
+                             S2EVENT_CONNECT_FAILED);
+    init_fullmac_selection(&selection, S2FULLMAC_PROFILE_OPEN,
+        (caps.Flags & S2FULLMAC_CAPF_DIAGNOSTIC_RISK) ?
+            S2FULLMAC_ASSOCF_ALLOW_DIAGNOSTIC_RISK : 0u);
+    make_fullmac_tags(tags, ssid, &selection, NULL, current_cookie);
+
+    original_token = unit.selection_token;
+    disconnect_returns_success = FALSE;
+    failure_event_before_ack = &current_failure;
+    fail_teardown_during_association_reply = TRUE;
+    offline_during_failed_teardown_reply = TRUE;
+    prior_associate_calls = associate_calls;
+    prior_wipes = wipe_checks;
+    attempt = queue_profile(&unit, &current_owner, &associate_request, tags);
+
+    CHECK(!fail_teardown_during_association_reply);
+    CHECK(!offline_during_failed_teardown_reply);
+    CHECK(attempt == NULL); /* accepted Reply was revoked before its ACK */
+    CHECK(associate_request.ios2_Req.io_Error == 0);
+    CHECK(disconnect_calls == 1u);
+    CHECK(associate_calls == prior_associate_calls);
+    CHECK(!unit.online && unit.callback_fault);
+    CHECK(unit.selection_token > token_after_failed_teardown_reply);
+    CHECK(unit.selection_token > original_token);
+    CHECK(unit.pending_association == NULL && unit.active_association == NULL);
+    CHECK(!unit.link_committed && unit.link_opener == NULL);
+    CHECK(!unit.teardown_pending && unit.teardown_opener == NULL);
+    CHECK(current_owner.active_cookie == 0u && current_owner.failed_cookie == 0u);
+    CHECK(!current_owner.fullmac_events);
+    CHECK(current_failure.ios2_Req.io_Error == S2ERR_OUTOFSERVICE);
+    CHECK(current_failure.ios2_WireError == S2WERR_UNIT_OFFLINE);
+    CHECK(current_failure.ios2_WireError != S2EVENT_CONNECT_FAILED);
+    CHECK(current_connect.ios2_WireError != S2EVENT_CONNECT);
+    CHECK(old_disconnect.ios2_WireError != S2EVENT_DISCONNECT);
+    CHECK((unit.pending_events & S2EVENT_DISCONNECT) == 0u);
+    CHECK(wipe_checks == prior_wipes + 1u);
+    CHECK(old_owner.refs == 1u && current_owner.refs == 1u);
+
+    failure_event_before_ack = NULL;
+#endif
+}
+
 static void test_failed_old_teardown_reports_only_current_typed_cookie(void)
 {
 #if P4_WIFI_FULLMAC_ADMISSION_ENABLED
@@ -3181,6 +3412,8 @@ int main(void)
     test_disassociate_maintains_confirmed_teardown();
     test_typed_teardown_retains_cookie_pin_until_success();
     test_typed_teardown_failure_drops_pin_without_disconnect();
+    test_unacknowledged_typed_replacement_survives_failed_teardown();
+    test_offline_cancels_unacknowledged_failed_replacement();
     test_failed_old_teardown_reports_only_current_typed_cookie();
     test_failed_old_teardown_latches_cookie_for_late_waiter();
     test_cancelled_replacement_gets_no_failed_teardown_cookie();

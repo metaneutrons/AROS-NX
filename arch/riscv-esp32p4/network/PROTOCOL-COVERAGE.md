@@ -159,6 +159,10 @@ to the installed peer and does not resolve UID0 attempt provenance by itself.
    runtime receipt revisions are not C6-generated attempt IDs.
 6. Typed leave protects a foreign current selection and failed old teardown
    retains the current acknowledged replacement's exact-cookie failure.
+   A valid pre-ACK replacement now remains owned until acknowledgment; the
+   closed fault gate forbids radio admission and service then emits its one
+   exact-cookie failure. Offline/cancellation still discard it. Host-model
+   and native-build evidence is not installed C6 event-order qualification.
    These are native-build/host-model repairs, not installed-peer behavior.
    Guarded BeginIO/capability integration is implemented, default-off until
    peer qualification; failure/cancellation advertisement remains open. Then native WPA3/PMF, DHCP, routes,
