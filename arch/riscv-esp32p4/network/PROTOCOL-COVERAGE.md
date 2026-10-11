@@ -168,7 +168,10 @@ to the installed peer and does not resolve UID0 attempt provenance by itself.
    physical teardown. Already-owed teardown and foreign selections survive.
    These are native-build/host-model repairs, not installed-peer behavior.
    Guarded BeginIO/capability integration is implemented, default-off until
-   peer qualification; failure/cancellation advertisement remains open. Then native WPA3/PMF, DHCP, routes,
+   peer qualification. CONNECT_FAILED now follows that same admission gate;
+   default-off configurations still advertise SUMMARY only, never FOURWAY.
+   Provider/caller negotiation is host/native-build verified, not an installed
+   end-to-end result. Then native WPA3/PMF, DHCP, routes,
    DNS, bidirectional data, reconnect and original sustained-load/privacy/reset
    gates. No C6 update or AP downgrade is implied by this source audit.
 

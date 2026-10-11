@@ -1026,11 +1026,20 @@ static void test_fullmac_capability_queries_follow_policy_gates(void)
     request.ios2_StatData = &legacy;
     dispatch_case(&unit, &opener, &request);
     CHECK(request.ios2_Req.io_Error == 0);
+    CHECK(legacy.SizeAvailable == sizeof(legacy));
     CHECK(legacy.SizeSupplied == sizeof(legacy));
     CHECK(legacy.Version == S2WIRELESS_CAPABILITIES_VERSION);
+#if P4_WIFI_FULLMAC_ADMISSION_ENABLED
+    CHECK(legacy.Flags == (S2WIRELESS_CAPF_SECURITY_SUMMARY |
+                           S2WIRELESS_CAPF_CONNECT_FAILED));
+#else
     CHECK(legacy.Flags == S2WIRELESS_CAPF_SECURITY_SUMMARY);
-    CHECK((legacy.Flags & (S2WIRELESS_CAPF_FOURWAY |
-                           S2WIRELESS_CAPF_CONNECT_FAILED)) == 0u);
+#endif
+    CHECK((legacy.Flags & S2WIRELESS_CAPF_FOURWAY) == 0u);
+    CHECK(legacy.Protocols == 0u);
+    CHECK(legacy.KeyManagement == 0u);
+    CHECK(legacy.PairwiseCiphers == 0u);
+    CHECK(legacy.GroupCiphers == 0u);
 }
 
 static void test_cookie_copy_and_reply_ack_fencing(void)
@@ -1185,6 +1194,81 @@ static void make_disassociate_tags(struct TagItem tags[2])
     tags[0].ti_Data = TRUE;
     tags[1].ti_Tag = TAG_DONE;
     tags[1].ti_Data = 0u;
+}
+
+static void exercise_legacy_cookie_failure_leave_latch(BOOL faulted,
+                                                        ULONG cookie)
+{
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    struct IOSana2Req associate_request, failure_event, leave_request;
+    struct IOSana2Req flush_request;
+    struct TagItem tags[10], leave_tags[2];
+    struct p4wlan_association *attempt;
+    UBYTE ssid[] = "legacy-cookie-failure";
+    ULONG latch_cookie = cookie + 1u;
+    unsigned prior_disconnect_calls;
+
+    init_fixture(&unit, &opener, &radio);
+    (void)queue_event_waiter(&unit, &opener, &failure_event,
+                             S2EVENT_CONNECT_FAILED);
+    make_tags_with_cookie(tags, ssid, NULL, cookie);
+    attempt = queue_profile(&unit, &opener, &associate_request, tags);
+    CHECK(attempt != NULL && attempt->acknowledged);
+    CHECK(attempt->target.fullmac_profile == 0u);
+    CHECK(attempt->cookie == cookie && !opener.fullmac_events);
+
+    /* A cause-free legacy-cookie failure is associated only with this
+     * acknowledged attempt's copied cookie; it says nothing about AP cause. */
+    associate_returns_success = FALSE;
+    CHECK(p4wlan_associate_one(&unit, &radio));
+    CHECK(associate_request.ios2_Req.io_Error == 0);
+    CHECK(failure_event.ios2_Req.io_Error == 0);
+    CHECK(failure_event.ios2_WireError == S2EVENT_CONNECT_FAILED);
+    CHECK(failure_event.ios2_DataLength == cookie);
+    CHECK(opener.active_cookie == 0u && opener.failed_cookie == 0u);
+    CHECK(unit.pending_association == NULL && unit.active_association == NULL);
+    CHECK(!unit.link_committed && unit.pending_events == 0u);
+
+    /* Leave also retires a failure that arrived before the caller rearmed its
+     * event request. Exercise both healthy teardown admission and faulted
+     * local cancellation through the actual S2_SETOPTIONS tag path. */
+    make_tags_with_cookie(tags, ssid, NULL, latch_cookie);
+    attempt = queue_profile(&unit, &opener, &associate_request, tags);
+    CHECK(attempt != NULL && attempt->cookie == latch_cookie);
+    CHECK(p4wlan_associate_one(&unit, &radio));
+    CHECK(opener.failed_cookie == latch_cookie);
+    CHECK(opener.active_cookie == 0u);
+
+    if (faulted) unit.callback_fault = TRUE;
+    make_disassociate_tags(leave_tags);
+    init_request(&leave_request, S2_SETOPTIONS, &opener);
+    leave_request.ios2_Data = leave_tags;
+    prior_disconnect_calls = disconnect_calls;
+    dispatch_case(&unit, &opener, &leave_request);
+    CHECK(leave_request.ios2_Req.io_Error == 0);
+    CHECK(opener.failed_cookie == 0u && opener.active_cookie == 0u);
+    CHECK(!opener.fullmac_events);
+    if (faulted) {
+        CHECK(unit.callback_fault && !unit.teardown_pending);
+        CHECK(disconnect_calls == prior_disconnect_calls);
+    } else {
+        CHECK(!unit.callback_fault && unit.teardown_pending);
+        CHECK(disconnect_calls == prior_disconnect_calls);
+        CHECK(p4wlan_maintain_link(&unit, &radio));
+        CHECK(!unit.teardown_pending);
+        CHECK(disconnect_calls == prior_disconnect_calls + 1u);
+    }
+    init_request(&flush_request, CMD_FLUSH, &opener);
+    dispatch_case(&unit, &opener, &flush_request);
+    CHECK(opener.refs == 1u);
+}
+
+static void test_legacy_cookie_failure_and_leave_clear_latch(void)
+{
+    exercise_legacy_cookie_failure_leave_latch(FALSE, 0xFA110050u);
+    exercise_legacy_cookie_failure_leave_latch(TRUE, 0xFA110060u);
 }
 
 static void test_beginio_refusals_preserve_selection_and_link(void)
@@ -3653,6 +3737,7 @@ int main(void)
     test_fullmac_admission_policy_and_owned_sae_credential();
     test_beginio_refusals_preserve_selection_and_link();
     test_cookie_copy_and_reply_ack_fencing();
+    test_legacy_cookie_failure_and_leave_clear_latch();
     test_replacement_owns_and_wipes_attempt();
     test_service_commit_and_owned_network_snapshot();
     test_typed_association_connect_is_cookie_local();

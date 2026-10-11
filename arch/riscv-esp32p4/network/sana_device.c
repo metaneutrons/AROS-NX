@@ -1789,6 +1789,12 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
             caps->SizeSupplied = sizeof(*caps);
             caps->Version = S2WIRELESS_CAPABILITIES_VERSION;
             caps->Flags = S2WIRELESS_CAPF_SECURITY_SUMMARY;
+#if P4_WIFI_FULLMAC_ADMISSION_ENABLED
+            /* The same peer/policy gate controls typed admission and its
+             * opener-scoped failure/cancellation prerequisite. This flag
+             * grants no legacy credential or FOURWAY permission. */
+            caps->Flags |= S2WIRELESS_CAPF_CONNECT_FAILED;
+#endif
             /* Never advertise handshake offload before association and the
              * verified credential-safe firmware lineage are implemented. */
         }

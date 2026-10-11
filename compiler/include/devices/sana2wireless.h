@@ -105,8 +105,10 @@
  * Older strict callers reject this new flag rather than supplying an inferred
  * span to an offload-only device. Capability structure size/version is unchanged. */
 #define S2WIRELESS_CAPF_IE_EXTENT       (1UL << 3)
-/* CONNECT_FAILED supports cause-free asynchronous association failure, not
- * link loss, AP rejection or a proved timeout. Independent of FOURWAY.
+/* CONNECT_FAILED reports that a still-current acknowledged association
+ * attempt ended unsuccessfully, without conveying its cause. It may follow
+ * a local deadline or RPC error, but does not attest AP rejection, a proved
+ * timeout or loss of a previously confirmed link. Independent of FOURWAY.
  * A caller negotiates this flag before arming S2_ONEVENT and supplies a nonzero
  * 32-bit AssociationCookie on each association SETOPTIONS. Cookies must never
  * be reused during that OpenDevice lifetime; refuse exhaustion rather than wrap.

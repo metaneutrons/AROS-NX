@@ -1,5 +1,13 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Guarded failure negotiation (2026-10-11): CONNECT_FAILED is now advertised
+only under the shared peer-contract/credential-policy admission gate. FOURWAY
+and its masks remain absent. Cause-free failure permits a local deadline/RPC
+error without claiming an AP rejection or proved timeout. Twelve sanitizer
+policy runs and native device/WirelessManager builds pass. Final build remains
+gate0; installed firmware is unchanged. Installed C6 ordering, WPA3/PMF and
+IP/data/reconnect qualification remain open.
+
 Faulted local leave (2026-10-11): standalone Disassociate now revokes its
 opener's pending/cookie state even when radio admission is unavailable.
 It does not introduce a new physical teardown or affect a foreign selection;
