@@ -25,9 +25,21 @@
 #ifndef P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED
 #define P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED 0
 #endif
+#ifndef P4_WIFI_C6_UPDATE_RECOVERY_VERIFIED
+#define P4_WIFI_C6_UPDATE_RECOVERY_VERIFIED 0
+#endif
 #if P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED && !P4_WIFI_HOSTED_OWNER
 #error "C6 verified association requires the persistent owner"
 #endif
+#if P4_WIFI_C6_UPDATE_RECOVERY_VERIFIED && !P4_WIFI_HOSTED_OWNER
+#error "C6 verified update requires the persistent owner"
+#endif
+/* Independent bootstrap-update release assertion, never credential
+ * permission. Static/resource-private; callers cannot set it via ABI10.
+ * Installing the C6 privacy fix must not require that fix already installed.
+ * Still requires verified host staging/recovery and independent C6 restore,
+ * full-transfer qualification, plus each job's source/layout/target proofs. */
+static BOOL wifi_ota_update_enabled = FALSE;
 #include "sdio_probe.h"
 #include "sdio_commands.h"
 #if P4_WIFI_HOSTED_INIT
@@ -1629,7 +1641,7 @@ enum p4_board_update_call_result p4_wifi_owner_ota_exchange(
         request_id < 272u || request_id > 274u ||
         base->owner_task != FindTask(NULL) ||
         base->client_lock.ss_Owner != FindTask(NULL) ||
-        base->association_enabled != TRUE ||
+        wifi_ota_update_enabled != TRUE ||
         base->maintenance_token != token || !base->maintenance_task ||
         base->maintenance_task == base->owner_task ||
         base->maintenance_state != P4_WIFI_MAINT_ACTIVE)
@@ -2035,7 +2047,7 @@ enum p4_board_update_status p4_wifi_owner_ota_run(struct P4WifiBase *base,
         (uintptr_t)result % __alignof__(*result) ||
         !generation || base->owner_task != FindTask(NULL) ||
         base->client_lock.ss_Owner != FindTask(NULL) ||
-        base->association_enabled != TRUE ||
+        wifi_ota_update_enabled != TRUE ||
         base->maintenance_state != P4_WIFI_MAINT_ACTIVE ||
         base->maintenance_token != token || !base->maintenance_task ||
         base->maintenance_task == base->owner_task || base->maintenance_fence_mode)
@@ -2405,7 +2417,7 @@ uint32_t p4_wifi_ota_submit(struct P4WifiBase *base,
         (uintptr_t)request % __alignof__(*request) ||
         !AttemptSemaphore(&base->client_lock)) return 0;
     runtime = base->runtime;
-    if (base->association_enabled != TRUE || base->owner_task == FindTask(NULL) ||
+    if (wifi_ota_update_enabled != TRUE || base->owner_task == FindTask(NULL) ||
         !wifi_discovery_session_valid(base, runtime) ||
         !runtime->context->host->now_us || base->maintenance_fence_mode ||
         runtime->context->host->lock.ss_Owner == FindTask(NULL) ||
@@ -3627,7 +3639,9 @@ const struct Resident wifiProbeResident =
  * unavailable in every unqualified build, independently of frontend state. */
 static void wifi_ota_hooks_init(struct P4WifiBase *base)
 {
-#if P4_WIFI_HOSTED_OWNER && P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED && P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED
+    wifi_ota_update_enabled = FALSE;
+#if P4_WIFI_HOSTED_OWNER && P4_WIFI_C6_UPDATE_RECOVERY_VERIFIED && P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED
+    wifi_ota_update_enabled = TRUE;
     base->ota_submit = p4_wifi_ota_submit;
     base->ota_poll = p4_wifi_ota_poll;
     base->ota_cancel = p4_wifi_ota_cancel;

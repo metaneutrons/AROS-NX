@@ -18,6 +18,9 @@ typedef void *APTR;
 #define TRUE 1
 #define FALSE 0
 
+/* Mirrors the private OTA-only release gate omitted from this extraction. */
+static BOOL wifi_ota_update_enabled = FALSE;
+
 #include "owner_ota.h"
 #include "owner_ota_queue.h"
 #include "wifi_maintenance_constants.inc"
@@ -1130,6 +1133,7 @@ static void reset_fixture(void)
     CHECK(wifi_ota_queue.image == NULL);
     CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_INVALID);
     memset(&wifi_ota_queue, 0, sizeof(wifi_ota_queue));
+    wifi_ota_update_enabled = FALSE;
     InitSemaphore(&wifi_ota_queue.lock);
     memset(&base, 0, sizeof(base));
     wifi_resource_base = &base;
@@ -1293,6 +1297,7 @@ static void init_ota_engine_job(struct p4_wifi_owner_ota_job *job,
 static void prepare_ota_active(void)
 {
     reset_fixture();
+    wifi_ota_update_enabled = TRUE;
     current_task = &owner_task;
     base.client_lock.held = 1u;
     base.client_lock.ss_Owner = current_task;
@@ -1487,7 +1492,9 @@ static void test_ota_admission_refusals(void)
     base.owner_task = &other_task;
     expect_default_ota_refusal(272u, NULL, 0u, 1u, &valid_ota_gates, 1000u);
     prepare_ota_active();
-    base.association_enabled = FALSE;
+    wifi_ota_update_enabled = FALSE;
+    CHECK(base.association_enabled == TRUE);
+    CHECK(wifi_ota_update_enabled == FALSE);
     expect_default_ota_refusal(272u, NULL, 0u, 1u, &valid_ota_gates, 1000u);
     prepare_ota_active();
     base.maintenance_state = P4_WIFI_MAINT_REQUESTED;
@@ -1684,6 +1691,25 @@ static void test_ota_success_order_and_acknowledged_bytes(void)
         &valid_ota_gates, 1000000u);
     expect_default_ota_refusal(274u, NULL, 0u, sizeof(image),
         &valid_ota_gates, 1000000u);
+}
+
+static void test_ota_exchange_private_gate_ignores_association_setting(void)
+{
+    int32_t status = -91;
+
+    prepare_ota_active();
+    base.association_enabled = FALSE;
+    base.associated = FALSE;
+    CHECK(wifi_ota_update_enabled == TRUE);
+    CHECK(base.association_enabled == FALSE && base.associated == FALSE);
+    CHECK(call_ota(272u, NULL, 0u, 1u, &valid_ota_gates, 1000000u,
+        &status) == P4_BOARD_UPDATE_CALL_ACKNOWLEDGED);
+    CHECK(status == 0);
+    CHECK(base.association_enabled == FALSE);
+    CHECK(base.associated == FALSE);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_ACTIVE);
+    CHECK(control.ota_begin_acknowledged == 1u);
+    CHECK(ota_exchange_calls == 1u && ota_status_calls == 1u);
 }
 
 static void test_ota_status_and_buffer_alias_refusals(void)
@@ -2561,6 +2587,29 @@ static void test_ota_engine_success_and_reentry_guard(void)
     CHECK(ota_exchange_calls == 5u && ota_status_calls == 5u);
 }
 
+static void test_ota_engine_private_gate_ignores_association_setting(void)
+{
+    uint8_t image[OTA_ENGINE_TEST_IMAGE_SIZE];
+    struct ota_engine_source_state source;
+    struct p4_wifi_owner_ota_job job;
+    struct p4_board_update_result result;
+
+    prepare_ota_engine();
+    base.association_enabled = FALSE;
+    base.associated = FALSE;
+    init_ota_engine_job(&job, &source, image, sizeof(image));
+    CHECK(wifi_ota_update_enabled == TRUE);
+    CHECK(base.association_enabled == FALSE && base.associated == FALSE);
+    CHECK(p4_wifi_owner_ota_run(&base, TEST_TOKEN, TEST_GENERATION,
+        &job, &result) == P4_BOARD_UPDATE_WAIT_REBOOT);
+    CHECK(result.status == P4_BOARD_UPDATE_WAIT_REBOOT);
+    CHECK(result.end_attempted == 1u);
+    CHECK(base.association_enabled == FALSE);
+    CHECK(base.associated == FALSE);
+    CHECK(ota_observation_count == 5u);
+    CHECK(ota_exchange_calls == 5u && ota_status_calls == 5u);
+}
+
 static void test_ota_engine_admission_alias_and_alignment(void)
 {
     uint8_t image[OTA_ENGINE_TEST_IMAGE_SIZE];
@@ -2596,10 +2645,12 @@ static void test_ota_engine_admission_alias_and_alignment(void)
     expect_ota_engine_invalid_untouched(&job, &result, TEST_TOKEN,
                                         TEST_GENERATION);
     current_task = &owner_task;
-    base.association_enabled = FALSE;
+    wifi_ota_update_enabled = FALSE;
+    CHECK(base.association_enabled == TRUE);
+    CHECK(wifi_ota_update_enabled == FALSE);
     expect_ota_engine_invalid_untouched(&job, &result, TEST_TOKEN,
                                         TEST_GENERATION);
-    base.association_enabled = TRUE;
+    wifi_ota_update_enabled = TRUE;
     base.maintenance_state = P4_WIFI_MAINT_REQUESTED;
     expect_ota_engine_invalid_untouched(&job, &result, TEST_TOKEN,
                                         TEST_GENERATION);
@@ -4093,6 +4144,7 @@ union ota_queue_test_image {
 static void prepare_ota_queue(void)
 {
     reset_fixture();
+    wifi_ota_update_enabled = TRUE;
     current_task = &requester_task;
     base.maintenance_state = P4_WIFI_MAINT_IDLE;
     base.associated = TRUE;
@@ -4289,6 +4341,37 @@ static void test_ota_queue_submit_snapshot_and_admission(void)
     CHECK(p4_wifi_ota_discard(&base, token));
 }
 
+static void test_ota_queue_private_gate_ignores_association_setting(void)
+{
+    union ota_queue_test_image image;
+    struct p4_wifi_ota_request request;
+    struct p4_wifi_ota_observation observation;
+    uint32_t token;
+
+    prepare_ota_queue();
+    memset(image.bytes, 0x37, sizeof(image.bytes));
+    base.association_enabled = FALSE;
+    base.associated = FALSE;
+    init_ota_queue_request(&request, image.bytes, sizeof(image.bytes));
+    CHECK(wifi_ota_update_enabled == TRUE);
+    CHECK(base.association_enabled == FALSE && base.associated == FALSE);
+    token = submit_ota_queue(&request);
+    CHECK(token == TEST_TOKEN + 1u);
+    CHECK(base.association_enabled == FALSE);
+    CHECK(base.associated == FALSE);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_REQUESTED);
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_QUEUED);
+    CHECK(wifi_ota_queue.request.image == wifi_ota_queue.image);
+    CHECK(request_calls == 0u && ota_observation_count == 0u);
+    CHECK(p4_wifi_ota_cancel(&base, token));
+    CHECK(service_step() == 2);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_RELEASED);
+    CHECK(p4_wifi_ota_poll(&base, token, &observation) == P4_WIFI_OTA_JOB_DONE);
+    CHECK(observation.result.status == P4_BOARD_UPDATE_CANCELLED_BEFORE_BEGIN);
+    CHECK(p4_wifi_ota_discard(&base, token));
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_INVALID);
+}
+
 static void test_ota_queue_atomic_preflight_and_allocation_failure(void)
 {
     union ota_queue_test_image image;
@@ -4319,9 +4402,10 @@ static void test_ota_queue_atomic_preflight_and_allocation_failure(void)
     current_task = &owner_task;
     expect_ota_queue_submit_refused(&base, &request);
     current_task = &requester_task;
-    base.association_enabled = FALSE;
+    wifi_ota_update_enabled = FALSE;
+    CHECK(base.association_enabled == TRUE);
     expect_ota_queue_submit_refused(&base, &request);
-    base.association_enabled = TRUE;
+    wifi_ota_update_enabled = TRUE;
     host.lock.ss_Owner = &requester_task;
     expect_ota_queue_submit_refused(&base, &request);
     host.lock.ss_Owner = NULL;
@@ -4619,6 +4703,7 @@ int main(void)
     test_ota_span_helpers();
     test_ota_admission_refusals();
     test_ota_success_order_and_acknowledged_bytes();
+    test_ota_exchange_private_gate_ignores_association_setting();
     test_ota_status_and_buffer_alias_refusals();
     test_ota_genuine_resource_instance_refusal();
     test_ota_begin_failures_are_sticky_and_closed();
@@ -4633,6 +4718,7 @@ int main(void)
     test_ota_finish_generation_change_during_acquire();
     test_ota_finish_no_begin_request_failure();
     test_ota_engine_success_and_reentry_guard();
+    test_ota_engine_private_gate_ignores_association_setting();
     test_ota_engine_admission_alias_and_alignment();
     test_ota_engine_gate_and_original_deadline();
     test_ota_engine_cancel_source_and_no_begin_finish();
@@ -4660,6 +4746,7 @@ int main(void)
     test_poll_and_release_expiry_and_wrap();
     test_service_deadline_failures();
     test_ota_queue_submit_snapshot_and_admission();
+    test_ota_queue_private_gate_ignores_association_setting();
     test_ota_queue_atomic_preflight_and_allocation_failure();
     test_ota_queue_running_cancel_contention_and_retirement();
     test_ota_queue_running_cancel_and_queued_retirement();

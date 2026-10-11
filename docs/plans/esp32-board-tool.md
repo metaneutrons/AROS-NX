@@ -106,7 +106,14 @@ secured recovery path; source development and read-only file checks do not.
   of client_lock and metadata polling. Never copy a live engine result. Keep
   the frontend worker alive across window Close until DONE/discard; requester
   task-kill recovery is not provided. ABI10 now appends typed optional hooks;
-  every hook is NULL unless the owner and both release assertions are enabled.
+  every hook is NULL unless the owner, host privacy/recovery and independent
+  C6 update/recovery assertions are enabled. Do not require installed C6
+  credential privacy merely to install its first privacy fix. Native OTA
+  admissions use the resource-private update gate; association remains gated
+  independently on both original credential privacy/recovery assertions.
+  The new update assertion defaults0 and is not a CLI bypass: independent
+  restore, full-transfer qualification and per-job source/target/layout proofs
+  remain mandatory. No release assertion is qualified by a build/test alone.
   Check exact ABI and full resource size before reading hooks, never fall back
   to raw private symbols. This is not a frontend update action or full-image
   timing qualification, and release assertions are not runtime device proofs.

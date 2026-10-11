@@ -1,5 +1,26 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Bootstrap update release separation (2026-10-11): installing the C6 privacy
+fix must not require that fix already installed. OTA hook registration and
+the three native OTA admission boundaries now use a resource-private update
+gate, not `association_enabled`. Its separate
+`P4_WIFI_C6_UPDATE_RECOVERY_VERIFIED` assertion defaults0 and requires the
+persistent owner, independently secured C6 restore/full-transfer qualification
+and host privacy/recovery release. Each job still requires source inspection,
+trusted origin, target/layout compatibility and recovery proofs. This is not a
+CLI override or runtime proof. Credential association still requires the two
+original C6/host privacy assertions; none was enabled. ABI10/structure layout
+is unchanged. All three assertions remain0, UPDATE-C6 unavailable; no hardware,
+flash or credential action occurred. Native resource/device/tool builds and
+standalone boot-module audits pass. Extracted OTA admissions/maintenance pass
+9416 checks each O0/O2 sanitized; the 16-configuration hook matrix passes480
+checks, with privacy-coupling and missing-call counterprobes rejected. Primary
+repeats and independent review cover the fully unassociated bootstrap state
+and both runtime association-enable values. These synthetic helper tests do
+not qualify recovery, a full transfer, native SMP or positive release flags.
+Tests/builds and limits are in N2M's dated evidence; full WLAN and updater
+acceptance remains open.
+
 OTA requester drainage (2026-10-11): ESP32Board now links a shared metadata
 client and a private native prepared-job adapter. Submission is once-only;
 caller cancellation/CTRL-C is sticky, not task termination. Invalid or
@@ -9,7 +30,7 @@ transport, and an owner stall deliberately keeps the requester alive. A drained
 WAIT_REBOOT/commit-unknown/incomplete result is not installation or recovery.
 This adapter is not invoked by CLI/GUI operation dispatch: authenticated source,
 live target/layout, independent restore and a qualified full-image budget still
-must be supplied. UPDATE-C6 remains disabled and both release assertions0.
+must be supplied. UPDATE-C6 remains disabled and all three release assertions0.
 Nine actual-client scenarios/448 checks pass at O0/O2, with and without
 ASan/UBSan, including a primary repeat. Native ESP32Board builds126464B;
 independent review closed terminal-validation and fixture-baseline gaps.
@@ -17,10 +38,11 @@ Hooks are mocked in host tests; abstract progress values are not native queue
 or SDIO evidence. No hardware or credential action accompanied this change;
 artifact hashes and limitations are recorded in roadmap N2M's dated entry.
 
-Current OTA bridge (2026-10-11): ABI10 appends typed owned-job submit/poll/
-cancel/discard hooks. Every hook is NULL unless the persistent owner and both
-privacy/recovery release assertions are enabled; the current build keeps both
-assertions0. Resource, SANA device and ESP32Board discovery require a matched
+Initial OTA bridge (2026-10-11, gate policy superseded above): ABI10 appends
+typed owned-job submit/poll/cancel/discard hooks. Originally every hook required
+both credential privacy/recovery assertions, which prevented privacy-fix
+bootstrap updates. The separated default-off policy above replaces that
+coupling without enabling a write. Resource, SANA device and ESP32Board discovery require a matched
 ABI10 pair/full structure size; do not mix with historical ABI9/ABI8 outputs.
 Fresh native builds and scoped registration/consumer tests pass: all eight
 registration gate combinations at O0/O2 (80 checks), plus1057 SANA checks each

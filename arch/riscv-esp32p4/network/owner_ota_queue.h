@@ -9,8 +9,10 @@ struct P4WifiBase;
  * before submission. Caller input remains immutable through submit; accepted
  * submission copies all bytes before requesting radio quiescence. No caller
  * pointer is retained. Explicit budgets still fit the unqualified30s lease.
- * Resource hooks are NULL unless the owner and both release assertions are
- * enabled. Those assertions are not runtime source/layout/recovery proofs. */
+ * Resource hooks are NULL unless the owner, host privacy/recovery and separate
+ * C6 update/recovery release assertions are enabled. Installed C6 credential
+ * privacy is required for association, not for installing its first fix.
+ * Those assertions are not runtime source/layout/recovery proofs. */
 struct p4_wifi_ota_request {
     const uint8_t *image;
     uint32_t image_size, total_budget_us, finish_reserve_us, max_call_us;
