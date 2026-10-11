@@ -1742,6 +1742,8 @@ does not consume explicit security summaries. A strict negotiated summary label
 is host tested77 checks each O0/O2 and native Prefs153004B build verified,
 and one-file-delta64-MiB image host verified, not SD deployed;
 missing/malformed/unsupported data must never say open.
+Continuation is blocked on freshly confirmed physical SD transfer; repeated
+read-only host inventories show no external physical medium. No automatic write.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -39372,3 +39374,19 @@ remain open. No partial stage is a complete A/B update system.
   independent readback/eject; no old disk number may be reused by assumption.
   Then synchronize native security-label sight test and complete existing
   AROS association/DHCP/routes/DNS/bidirectional/reconnect/shared-load gates.
+
+### 2026-10-11 - N2T continuation blocked awaiting SD transfer
+
+- Three consecutive continuation turns cannot advance the same next device
+  gate without Fabian's physical card-transfer confirmation. Read-only
+  diskutil list external physical exits0 with no medium, including the final
+  revalidation. No capture/build process remains live; no silent test restart.
+- Committed1391960f96 host-verified64-MiB image remains SHA256
+  5a1db5e225da8d742d381a3e097b795904d6bed076b044389307c160f7585f2e;
+  latest rehash matches. Repo has only preexisting untracked pycache outside
+  this documentation change. No serial/flash/C6/SD/credential action.
+- Goal execution marked blocked, not complete or voluntarily paused. Existing
+  GUI scan-list observation stays valid, security-label deployment and real
+  association/DHCP/routes/DNS/bidirectional/reconnect/shared-load gates remain
+  unproven. Resume on fresh card-in-reader confirmation, identify medium anew,
+  backup and readback-verify before synchronized device acceptance.

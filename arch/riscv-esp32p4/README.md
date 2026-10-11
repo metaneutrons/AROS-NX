@@ -1,5 +1,9 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WLAN continuation currently blocked on physical SD transfer (2026-10-11):
+the verified security-display image is ready, but no card-in-reader confirmation
+or external physical medium is present. No write/retest is started automatically.
+
 Native GUI scan observed (2026-10-11): after the SSID terminator correction,
 Fabian confirms the network list is shown. The correlated native scan reports
 remote6/decoded6/nonempty6/workaround0; no complete RF census is implied.
