@@ -1,5 +1,13 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Typed terminal delivery groundwork (2026-10-11): opener-local exact
+CONNECT/DISCONNECT with cookie, one-shot parked/later delivery and legacy-edge
+isolation are tested. Cancellation/supersession clear unconsumed typed edges.
+Events144, queue1057 and lifetime1554 checks each O0/O2 sanitized pass;
+native device68148B build verified, undeployed. Admission does not yet opt an
+opener into this mode; committed-link cookie/pin preservation across confirmed
+teardown and service publication remain open. No FullMAC advertisement yet.
+
 Hosted event coverage (2026-10-11): all eight reference RPC events now have
 bounded decoders and explicit station-owner policies. One initial ESPInit is
 allowed before ready; duplicate/later init and unsupported/unknown events

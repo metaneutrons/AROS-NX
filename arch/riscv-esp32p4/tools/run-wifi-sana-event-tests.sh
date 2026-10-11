@@ -191,6 +191,7 @@ extract_block p4_wifi_scan_result "$bridge_file"
 extract_block p4wlan_unit "$header_file"
 
 extract_function p4wlan_event_locked
+extract_function p4wlan_fullmac_terminal_locked
 extract_function p4wlan_event_mask_valid
 extract_function p4wlan_event_ready_locked
 extract_function p4wlan_onevent_immediate_locked

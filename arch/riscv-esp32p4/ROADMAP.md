@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, initial-event gate, accepted-identity refresh and all eight RPC event decoders/policies build verified; reinit/security retirement and beacon/channel query invalidation implemented; complete reference protocol inventory recorded; typed admission, producer/attempt barrier, reconnect/cookie lifecycle and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, initial-event gate, accepted-identity refresh, all eight RPC event policies and opener-local terminal delivery groundwork build verified; complete reference protocol inventory recorded; typed admission, committed-link cookie/pin publication, producer/attempt barrier, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1958,6 +1958,12 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   an in-flight pre-hint answer cannot publish. Pending association refuses
   these hints. Scan/heartbeat are validated diagnostics, not link authority.
   Source/build verified only; qualify installed ordering before advertisement.
+  Native terminal-delivery groundwork now isolates exact typed CONNECT and
+  DISCONNECT/cookie from legacy unit-wide edge latches. It supports one parked
+  waiter or a later one-shot consumer, and clears stale latches on cancellation
+  or selection invalidation. Admission does not opt an opener into this mode
+  yet. Preserve committed-link cookie and opener pin across confirmed teardown
+  before wiring service publication; current invalidation drops that identity.
   Generic773 loses event detail in the pinned C6 source; it cannot supply
   old/new auth or channel values. Inventory is a source audit, not installed
   peer support or hardware verification. Keep optional APIs outside the station
@@ -40216,3 +40222,52 @@ remain open. No partial stage is a complete A/B update system.
   opener/cookie lifecycle, installed ordering qualification, then real native
   WPA3/PMF, DHCP/routes/DNS, bidirectional traffic/reconnect and original
   sustained SD/graphics/two-hart/privacy/reset gates. Goal remains open.
+
+### 2026-10-11 - N2-SAE opener-local terminal delivery prerequisite
+
+- Status: build verified, undeployed, not provider admission. Existing native
+  success erased active_cookie and retained only link_opener; CONNECT and
+  DISCONNECT were broadcast/coalesced unit-wide without a cookie. Typed
+  service publication cannot use those legacy helpers unchanged.
+- Change: opener-owned terminal event/cookie latch and explicit typed mode.
+  Exact CONNECT or DISCONNECT is delivered to one matching parked waiter,
+  otherwise latched for a later matching request. It never combines terminal
+  masks or leaks to another opener. Typed mode excludes legacy broadcast link
+  edges and does not consume a unit-wide legacy latch; administrative events
+  and legacy behavior remain intact. Closing, zero-cookie and invalid-mask
+  input are refused. Selection invalidation and opener cancellation clear
+  unconsumed typed terminal metadata.
+- Boundary: no admission path sets typed mode and no service path calls the
+  terminal helper yet. It supplies delivery, not success authorization or
+  cookie provenance. The next integration must retain a committed-link cookie
+  and opener pin across confirmed explicit/replacement teardown, then publish
+  exactly that identity on CONNECT/DISCONNECT. Close/admin offline/stopped
+  must retire identity without inventing confirmed disconnect. Existing
+  invalidation drops the link pin too early for deferred confirmed teardown.
+  Independent Luna review raised multi-waiter behavior and mode lifetime:
+  one-consumer terminal delivery is intentional, matching the existing
+  opener-scoped CONNECT_FAILED consumption rather than legacy broadcast.
+  Future admission must select mode per current typed selection/link and
+  restore legacy mode on legacy options, not toggle it from capability query.
+- Tests: source-extracted event model11 scenarios/144 checks each O0/O2
+  ASan/UBSan, queue1057 checks/35 replies/18 balanced association allocations
+  and wipes each O0/O2, lifetime1554 checks each O0/O2. Actual final test
+  process65042 exits0; each individual log shows both complete passes.
+  These are host models, not full Exec/BeginIO or radio/hardware verification.
+- Native: invalidate exact generated esp32p4wlan object directory, sequential
+  kernel-esp32p4wlan-device-quick process30863 exits0, actual sana_device compile
+  and complete module link, no warning/error diagnostics. JC-v2, setup/init/
+  reply/owner1, ownerCPU1, accepted diagnostic risk1; both privacy and C6 update
+  recovery assertions0. Device68148B SHA256
+  `1aed172effd20dc0afe351d56c0c763b58a17c6d41de94d2d1e38215949f2f0a`;
+  frozen copy hash-matches. No private resource ABI change.
+- Evidence:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/fullmac-terminal.L4pERK/`.
+  events.log SHA256 `fbf6d17f88bd8f9d22897de8c00037e1021583856424f8ce9999987fb6d8a482`;
+  queue.log `89b78d0961d99598512897bf345d62b28426e5d0fbb6f8e7b4d510b6cb2fb9e4`;
+  lifetime.log `e382149a52929cfb9e6f654d71bf0763e67419782b1ba53a79fce62721c9be9a`;
+  device-build.log `5aecb5b39618f275c00ff2dd799aaae71ed72d701d674feac7af4817314023bf`.
+- Safety: no hardware/serial/flash/SD/credential action. Installed artifacts
+  unchanged, C6 update postponed. FullMAC capabilities remain unadvertised;
+  native cookie/pin integration, installed-peer ordering and actual WPA3/PMF/
+  IP/data/reconnect/original qualification gates remain open.

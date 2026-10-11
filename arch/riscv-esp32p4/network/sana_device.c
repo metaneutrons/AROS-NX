@@ -319,6 +319,8 @@ static void p4wlan_invalidate_selection_locked(struct p4wlan_unit *unit)
                 offsetof(struct p4wlan_opener, unit_node));
         opener->active_cookie = 0;
         opener->failed_cookie = 0;
+        opener->terminal_event = 0;
+        opener->terminal_cookie = 0;
     }
     if (unit->link_committed || unit->active_association)
         unit->teardown_pending = TRUE;
@@ -345,6 +347,8 @@ static void p4wlan_cancel_opener_association_locked(struct p4wlan_unit *unit,
 {
     opener->active_cookie = 0;
     opener->failed_cookie = 0;
+    opener->terminal_event = 0;
+    opener->terminal_cookie = 0;
     if ((unit->pending_association &&
          unit->pending_association->opener == opener) ||
         unit->link_opener == opener ||
@@ -420,6 +424,7 @@ static void p4wlan_event_locked(struct p4wlan_unit *unit, ULONG event,
             (struct p4wlan_opener *)((UBYTE *)onode -
                 offsetof(struct p4wlan_opener, unit_node));
         struct MinNode *rnode;
+        ULONG offered = opener->fullmac_events ? event & ~edge_events : event;
         for (rnode = opener->requests.mlh_Head; rnode->mln_Succ;
              rnode = rnode->mln_Succ) {
             struct p4wlan_request *item =
@@ -427,10 +432,10 @@ static void p4wlan_event_locked(struct p4wlan_unit *unit, ULONG event,
                     offsetof(struct p4wlan_request, owner_node));
             if (item->kind == P4WLAN_REQUEST_EVENT &&
                 item->state == P4WLAN_REQUEST_QUEUED &&
-                (item->event_mask & event)) {
+                (item->event_mask & offered)) {
                 item->state = P4WLAN_REQUEST_COMPLETING;
                 item->completion_error = 0;
-                item->completion_wire = item->event_mask & event;
+                item->completion_wire = item->event_mask & offered;
                 item->completion_sets_length = FALSE;
                 consumed |= item->completion_wire;
                 ADDTAIL((struct List *)done,
@@ -469,6 +474,41 @@ static void p4wlan_association_failed_locked(struct p4wlan_opener *opener,
             item->completion_sets_length = TRUE;
             item->completion_length = cookie;
             opener->failed_cookie = 0;
+            ADDTAIL((struct List *)done, (struct Node *)&item->done_node);
+            break;
+        }
+    }
+}
+
+/* Called only after the selection/committed-link fence supplies its exact
+ * cookie. This helper does not infer radio success or grant typed admission.
+ * Like opener-scoped CONNECT_FAILED, this is one terminal consumption, not
+ * legacy broadcast to every parked request. A newer terminal edge supersedes
+ * an unconsumed opposite edge. */
+static __inline__ void p4wlan_fullmac_terminal_locked(
+    struct p4wlan_opener *opener, ULONG event, ULONG cookie,
+    struct MinList *done)
+{
+    struct MinNode *node;
+    if (!opener->fullmac_events || opener->closing || !cookie ||
+        (event != S2EVENT_CONNECT && event != S2EVENT_DISCONNECT)) return;
+    opener->terminal_event = event;
+    opener->terminal_cookie = cookie;
+    for (node = opener->requests.mlh_Head; node->mln_Succ;
+         node = node->mln_Succ) {
+        struct p4wlan_request *item =
+            (struct p4wlan_request *)((UBYTE *)node -
+                offsetof(struct p4wlan_request, owner_node));
+        if (item->kind == P4WLAN_REQUEST_EVENT &&
+            item->state == P4WLAN_REQUEST_QUEUED &&
+            (item->event_mask & event)) {
+            item->state = P4WLAN_REQUEST_COMPLETING;
+            item->completion_error = 0;
+            item->completion_wire = event;
+            item->completion_sets_length = TRUE;
+            item->completion_length = cookie;
+            opener->terminal_event = 0;
+            opener->terminal_cookie = 0;
             ADDTAIL((struct List *)done, (struct Node *)&item->done_node);
             break;
         }
@@ -516,6 +556,18 @@ static BOOL p4wlan_onevent_immediate_locked(struct p4wlan_unit *unit,
         opener->failed_cookie = 0;
         return TRUE;
     }
+    if (opener->fullmac_events &&
+        (event_mask & opener->terminal_event) && !opener->closing) {
+        request->ios2_Req.io_Error = 0;
+        request->ios2_WireError = opener->terminal_event;
+        request->ios2_DataLength = opener->terminal_cookie;
+        opener->terminal_event = 0;
+        opener->terminal_cookie = 0;
+        return TRUE;
+    }
+    /* A typed caller must not consume another opener's legacy link latch. */
+    if (opener->fullmac_events)
+        event_mask &= ~(S2EVENT_CONNECT | S2EVENT_DISCONNECT);
     request->ios2_WireError = p4wlan_event_ready_locked(unit, event_mask);
     return request->ios2_WireError != 0;
 }

@@ -513,6 +513,99 @@ static void test_offline_discards_stale_connect_only(void)
     CHECK(flush_calls == 2);
 }
 
+static void test_fullmac_terminal_delivery(void)
+{
+    struct event_fixture fixture;
+    struct p4wlan_request first, second, foreign;
+    struct IOSana2Req request;
+    ++scenarios;
+    fixture_init(&fixture);
+    fixture.opener.fullmac_events = TRUE;
+    park_event(&fixture, &first, S2EVENT_CONNECT | S2EVENT_OFFLINE);
+    park_event(&fixture, &second, S2EVENT_CONNECT);
+    park_event_on(&fixture.second_opener, &foreign, S2EVENT_CONNECT);
+    p4wlan_fullmac_terminal_locked(&fixture.opener, S2EVENT_CONNECT,
+                                    123u, &fixture.done);
+    CHECK(first.state == P4WLAN_REQUEST_COMPLETING);
+    CHECK(first.completion_wire == S2EVENT_CONNECT);
+    CHECK(first.completion_sets_length && first.completion_length == 123u);
+    CHECK(second.state == P4WLAN_REQUEST_QUEUED);
+    CHECK(foreign.state == P4WLAN_REQUEST_QUEUED);
+    CHECK(!fixture.opener.terminal_event && !fixture.opener.terminal_cookie);
+
+    /* Legacy broadcast must neither complete a typed waiter nor expose a
+     * cookie. Its own independent edge semantics remain unchanged. */
+    p4wlan_event_locked(&fixture.unit, S2EVENT_CONNECT, &fixture.done);
+    CHECK(second.state == P4WLAN_REQUEST_QUEUED);
+    CHECK(foreign.state == P4WLAN_REQUEST_COMPLETING);
+    CHECK(!foreign.completion_sets_length);
+    fixture.unit.pending_events = S2EVENT_CONNECT;
+    memset(&request, 0, sizeof(request));
+    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                            &request, S2EVENT_CONNECT));
+    CHECK(fixture.unit.pending_events == S2EVENT_CONNECT);
+    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit,
+              &fixture.second_opener, &request, S2EVENT_CONNECT));
+    CHECK(request.ios2_WireError == S2EVENT_CONNECT);
+
+    /* With no matching waiter, latch exactly one edge for its opener. A
+     * later disconnect supersedes unconsumed connect, never combines masks. */
+    p4wlan_fullmac_terminal_locked(&fixture.opener, S2EVENT_DISCONNECT,
+                                    123u, &fixture.done);
+    CHECK(fixture.opener.terminal_event == S2EVENT_DISCONNECT);
+    CHECK(fixture.opener.terminal_cookie == 123u);
+    fixture.unit.online = FALSE;
+    CHECK(p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+              &request, S2EVENT_DISCONNECT | S2EVENT_OFFLINE));
+    CHECK(request.ios2_WireError == S2EVENT_DISCONNECT);
+    CHECK(request.ios2_DataLength == 123u);
+    CHECK(!fixture.opener.terminal_event && !fixture.opener.terminal_cookie);
+    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                            &request, S2EVENT_DISCONNECT));
+}
+
+static void test_fullmac_terminal_refusal_and_retirement(void)
+{
+    struct event_fixture fixture;
+    struct IOSana2Req request;
+    ULONG invalid[] = {0, S2EVENT_CONNECT | S2EVENT_DISCONNECT,
+                       S2EVENT_OFFLINE, S2EVENT_CONNECT_FAILED};
+    size_t i;
+    ++scenarios;
+    fixture_init(&fixture);
+    p4wlan_fullmac_terminal_locked(&fixture.opener, S2EVENT_CONNECT,
+                                    1u, &fixture.done);
+    CHECK(!fixture.opener.terminal_event); /* no typed admission */
+    fixture.opener.fullmac_events = TRUE;
+    for (i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+        p4wlan_fullmac_terminal_locked(&fixture.opener, invalid[i],
+                                        1u, &fixture.done);
+        CHECK(!fixture.opener.terminal_event && !fixture.opener.terminal_cookie);
+    }
+    p4wlan_fullmac_terminal_locked(&fixture.opener, S2EVENT_CONNECT,
+                                    0u, &fixture.done);
+    CHECK(!fixture.opener.terminal_event);
+    fixture.opener.closing = TRUE;
+    p4wlan_fullmac_terminal_locked(&fixture.opener, S2EVENT_CONNECT,
+                                    1u, &fixture.done);
+    CHECK(!fixture.opener.terminal_event);
+    fixture.opener.closing = FALSE;
+    p4wlan_fullmac_terminal_locked(&fixture.opener, S2EVENT_CONNECT,
+                                    1u, &fixture.done);
+    p4wlan_fullmac_terminal_locked(&fixture.opener, S2EVENT_DISCONNECT,
+                                    1u, &fixture.done);
+    CHECK(fixture.opener.terminal_event == S2EVENT_DISCONNECT);
+    p4wlan_cancel_opener_association_locked(&fixture.unit, &fixture.opener);
+    CHECK(!fixture.opener.terminal_event && !fixture.opener.terminal_cookie);
+    p4wlan_fullmac_terminal_locked(&fixture.opener, S2EVENT_CONNECT,
+                                    2u, &fixture.done);
+    p4wlan_invalidate_selection_locked(&fixture.unit);
+    CHECK(!fixture.opener.terminal_event && !fixture.opener.terminal_cookie);
+    memset(&request, 0, sizeof(request));
+    CHECK(!p4wlan_onevent_immediate_locked(&fixture.unit, &fixture.opener,
+                                            &request, S2EVENT_CONNECT));
+}
+
 int main(void)
 {
     test_supported_masks_and_error_mapping();
@@ -524,6 +617,8 @@ int main(void)
     test_stale_failure_and_lifecycle_clear();
     test_configure_admin_online_without_association();
     test_offline_discards_stale_connect_only();
+    test_fullmac_terminal_delivery();
+    test_fullmac_terminal_refusal_and_retirement();
     printf("SANA-II event model: %lu scenarios, %lu checks\n",
            (unsigned long)scenarios, (unsigned long)checks);
     return 0;

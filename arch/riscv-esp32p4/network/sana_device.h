@@ -99,6 +99,12 @@ struct p4wlan_opener
      * Cookie non-reuse is the caller's public-contract obligation. */
     ULONG active_cookie;
     ULONG failed_cookie;
+    /* Typed terminal delivery is opener-local. Future admission must set this
+     * for the current typed selection/link, not capability negotiation, and
+     * restore legacy mode when admitting legacy options on this opener. */
+    BOOL fullmac_events;
+    ULONG terminal_event;
+    ULONG terminal_cookie;
 };
 
 /* SETOPTIONS is acknowledged before radio work. This allocation owns every
