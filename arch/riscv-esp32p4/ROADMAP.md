@@ -115,7 +115,9 @@ gate: compensated output is not the native display contract.
 
 ## Master progress
 
-Current source radio/device pairing is private ABI11 (N2M discovery-v2 facts).
+Current source radio/device pairing is private ABI12 (owned FullMAC policy);
+resource, device and native ESP32Board consumers must rebuild together.
+ABI12 is build verified and undeployed; installed pairing remains ABI11.
 ABI6 counts/artifacts in N1A/N2A/N2/N2L remain historical lifecycle evidence,
 not the current deployment pair. The historical ABI8 candidate package passes
 all42 loader audits. An ABI11 diagnostic candidate now replaces only the WLAN
@@ -147,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: pure SAE/CCMP metadata/display338/93 each O0/O2; additive FullMAC contract121 checks each and RV32 ABI compile verified; native SAE selection/typed dispatch/correlated terminal handling and WM699060B build verified; caller467, driver77/468 and legacy association86/643 each sanitized; provider lifecycle open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller WM699060B and additive contract build verified; ABI12 owned provider policy/parser and Hosted PMF/PWE encoding build verified, options162/574 and owner27925 checks each sanitized; typed provider not wired/advertised, authenticated lifecycle and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1909,6 +1911,14 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   SAE; if not, qualify additional peer policy/evidence before admitting mode7.
   The installed C6 lineage/compiled SAE support remains unknown. No automatic
   firmware change, privacy assertion or access-point downgrade is implied.
+  ABI12 now owns explicit profile/PMF/PWE/diagnostic policy, validates before
+  RPC and copies borrowed credentials before use. Typed parser and native
+  consumer builds are verified only; BeginIO/capability advertisement and
+  authenticated event publication are not implemented by this slice.
+  IDF documents STA_CONNECTED after EAPOL4/4 and identifies its authmode as
+  the connection mode; AP-info authmode is BSS metadata, not negotiated SAE.
+  A fresh matching connection event plus current AP/cipher checks are needed;
+  do not infer installed-peer semantics from an unidentified firmware image.
 - SAE-M4 qualification (depends on M3): fresh synchronized native target scan,
   explicit SAE/required-PMF association, DHCP/routes/DNS and real bidirectional
   traffic; disconnect/reconnect and SD/graphics/two-hart load. Preserve original
@@ -39739,3 +39749,64 @@ remain open. No partial stage is a complete A/B update system.
   and unresolved C6 lineage remain unchanged. Next: truthful P4 provider/owner
   admission and authenticated-link publication, then matched deployment with
   fresh interactive readiness and the complete SAE-M3/M4/N2T IP/data gates.
+
+### 2026-10-11 - N2-SAE owned provider policy and matched ABI12 builds
+
+- Scope: private owned association target expands from120 to136 bytes with
+  explicit FullMAC profile, required PMF, wire SAE-PWE mode and per-attempt
+  diagnostic permission. Legacy fields/offsets are preserved, but the private
+  version becomes12; resource, device and native ESP32Board must be paired.
+  Public v1 layouts and the additive public FullMAC declarations do not change.
+- A separate bounded typed parser rejects duplicate/unknown/mixed legacy tags,
+  requires an exact profile and nonzero cookie, validates borrowed credentials
+  before copying and wipes target/cookie on failure. SAE password1..63 bytes
+  is copied directly, never PBKDF2-derived; public selectable PWE1/2/4 maps to
+  Hosted/IDF enum1/2/3. A compile-time guard binds private/public profile values.
+  The owner validates all policy before RPC and requires explicit typed risk
+  permission while either privacy/recovery assertion is0. SetConfig carries
+  the owned authmode, required PMF and PWE; no secret appears in diagnostics.
+- Procedure: invalidate all objects under this build's exact generated network
+  and ESP32Board directories, then sequential quick native targets resource,
+  device, boardtool; repeat the device after adding the profile-value guard.
+  All processes exit0 with complete linked artifacts and no compiler diagnostics.
+  Generated compiler configuration explicitly selects this build's Developer
+  sysroot, despite GCC's obsolete default sysroot; no abandoned tree was edited.
+  JC1060-v2, SDIO/setup/init/reply/owner1, ownerCPU1 and accepted-risk1 remain;
+  C6 privacy, host privacy and C6 update recovery assertions remain0.
+- Artifacts: resource343096B SHA256
+  `ceddb696cf0fe93248aef5141dad3bbd7161fdb805cce66181ec5b11d052bd5b`;
+  device67920B SHA256
+  `9a071d6fb8b46814b306e0460217af775e8937bfd8b1099f3447f12eece0983d`;
+  ESP32Board134864B SHA256
+  `4f3676e822c2ad578c7bcb68cb378686be02ebe21bc7b9e4c645ab70d0a7b2dc`.
+  Actual RV32 -Werror compile verifies136B target and offsets36/110/120/124/
+  128/132, exports the real typed helper, exits0: object11228B SHA256
+  `decd8c70197506f231c23a6750a6918e4adcc2550202ece1b399e49c16bfb301`.
+- Primary repeated host tests: options162cases/574checks, owner27925,
+  queue1057 and unchanged datapath16507 checks each O0/O2 ASan/UBSan exit0;
+  OTA bridge matrix15checks/config and mutation negatives exit0. Earlier
+  retained options runs150/539 and160/567 preceded the final test additions;
+  only options-tests-reviewed.log covers the frozen162/574 fixture. Owner
+  mocks verify encoding/ownership and existing snapshot workflow, not the
+  still-missing authenticated FullMAC completion or real transport concurrency.
+  Independent read-only review of parser/private target/owner policy reports
+  no blocking defect. Both linked native modules have no undefined symbols.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/sae-provider.7Eh8Kb/`.
+  Resource log SHA256cd25c6ef1016ba23d53e94f2c065a1e8044186f29318e9967c6f9440e17f0457;
+  final-device75fe8c0d27313e5690e27e5d410b9d220ecbd6094469f57b5ff7b409fa0c8ca2;
+  boardtool e1d84661d514e0977e4386f4af11372b85d1fa84aff4092675fc4fa70812c3ee.
+- Reference correction: IDF5.4.1 C6 documentation places STA_CONNECTED after
+  EAPOL4/4 and describes event authmode as the connection mode. AP-info is
+  BSS metadata; a transition BSS can report7 while the SAE connection event
+  reports6. PMF-required is policy, not an observed AP field. Additional
+  key-ready RPC fields are not inherently necessary, but UID0 events still
+  require fresh-attempt/drain correlation and current AP/cipher checks. The
+  unidentified installed54aafd0-dirty image is not qualified by pinned source.
+- Status/safety: build verified, undeployed. Typed parser is not connected to
+  BeginIO or capability advertisement; owner success is not yet a truthful
+  typed event lifecycle. No serial/reset/flash/SD write or credential transfer,
+  and no C6 update. Installed core/BSP/card remain unchanged. Next: implement
+  fresh SAE-event acceptance, opener/cookie CONNECT/DISCONNECT and cancellation
+  before advertisement, then native deployment and all original N2T IP/data,
+  reconnect/load/privacy/reset gates. No working-WiFi claim.

@@ -5,9 +5,9 @@
 #include <exec/types.h>
 #include "hosted_scan.h"
 
-#define P4_WIFI_DEVICE_BRIDGE_ABI 11u
-/* ABI11 changes the discovery snapshot shape for negotiated wire v2.
- * Exact-version clients must rebuild even though the base size is unchanged. */
+#define P4_WIFI_DEVICE_BRIDGE_ABI 12u
+/* ABI12 extends the owned association target with explicit FullMAC policy.
+ * Exact-version clients and resource must rebuild together. */
 #define P4_WIFI_DEVICE_BRIDGE_NAME "esp32p4wifi.resource"
 
 struct P4WifiBase;
@@ -80,10 +80,15 @@ struct p4_wifi_link_info {
     ULONG channel;
     ULONG authmode;
 };
-/* Owned input; no caller tag/string pointers survive BeginIO. This first
- * profile is open or WPA2-PSK/CCMP infrastructure, never WEP/enterprise/SAE.
- * password is printable passphrase8..63 or exactly64 hexadecimal PSK bytes.
+/* Owned input; no caller tag/string pointers survive BeginIO.
+ * Legacy profile0 is open/WPA2-PSK. Typed profiles mirror the separately
+ * negotiated public FullMAC profile values, not its structs or pointers.
+ * password is WPA2 printable8..63/exactly64 hexadecimal PSK bytes, or a
+ * distinct SAE password1..63 non-NUL bytes. Never derive a PSK from SAE.
  * The caller must volatile-wipe its copy after the bounded operation. */
+#define P4_WIFI_FULLMAC_OPEN 1u
+#define P4_WIFI_FULLMAC_WPA2_CCMP 2u
+#define P4_WIFI_FULLMAC_SAE_CCMP_PMF 4u
 struct p4_wifi_association_target {
     UBYTE ssid[32];
     ULONG ssid_length;
@@ -92,7 +97,11 @@ struct p4_wifi_association_target {
     UBYTE bssid[6];
     BOOL bssid_set;
     ULONG channel; /* zero permits automatic selection */
-    ULONG authmode; /* zero=open, three=WPA2-PSK */
+    ULONG authmode; /* zero=open, three=WPA2-PSK, six=pure WPA3-SAE */
+    ULONG fullmac_profile; /* zero retains the legacy options contract */
+    ULONG pmf_required;
+    ULONG sae_pwe_h2e; /* IDF wire enum: 1=HNP, 2=H2E, 3=BOTH; not a bitmask */
+    ULONG diagnostic_risk_accepted; /* explicit per-attempt policy, not proof */
 };
 /* Called outside controller ownership. It must be nonblocking, may take the
  * device unit lock, and must not re-enter transport or close/detach. */

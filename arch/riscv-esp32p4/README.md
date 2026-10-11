@@ -1,5 +1,14 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Owned FullMAC provider policy (2026-10-11): private resource/device ABI12
+adds explicit profile, required PMF, SAE PWE and per-attempt diagnostic
+permission to the copied target. Typed parsing rejects mixed legacy tags and
+copies SAE passwords directly; the owner validates policy before RPC and
+encodes the existing Hosted PMF/PWE fields. Native resource/device/ESP32Board
+builds and actual RV32 target layout are verified, not deployed. The typed
+entry is not wired or advertised yet; authenticated event/cookie lifecycle,
+installed-peer qualification and all association/IP/data gates remain open.
+
 Native SAE caller integration (2026-10-11): capability-aware summary-only
 selection and typed SAE dispatch now bypass the legacy host RSN/EAPOL path.
 An ACK remains pending; completion requires an exact opener/cookie CONNECT,

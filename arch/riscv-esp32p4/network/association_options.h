@@ -4,6 +4,14 @@
 
 #include "device_bridge.h"
 #include <devices/sana2wireless.h>
+#include <devices/sana2wireless_fullmac.h>
+
+/* Private owned targets and public negotiated profiles intentionally share
+ * these values. Fail compilation if either contract changes independently. */
+typedef char p4wlan_fullmac_profile_values_match[
+    P4_WIFI_FULLMAC_OPEN == S2FULLMAC_PROFILE_OPEN &&
+    P4_WIFI_FULLMAC_WPA2_CCMP == S2FULLMAC_PROFILE_WPA2_CCMP &&
+    P4_WIFI_FULLMAC_SAE_CCMP_PMF == S2FULLMAC_PROFILE_SAE_CCMP_PMF ? 1 : -1];
 #include <utility/tagitem.h>
 
 /* A leave request is a standalone command, never mixed with credentials or
@@ -209,6 +217,120 @@ static BOOL p4wlan_copy_association_options(
     struct p4_wifi_association_target *target, const struct TagItem *tags)
 {
     return p4wlan_copy_association_options_cookie(target, NULL, tags);
+}
+
+/* Separate negotiated entry: no legacy credential/IE/auth tags can enter it.
+ * Both tag objects and declared credential extents must remain readable and
+ * unchanged until Reply. Copy all accepted state into owned storage; on every
+ * refusal volatile-wipe the complete target and retire the output cookie.
+ * This helper does not advertise a profile or qualify firmware semantics. */
+static __inline__ BOOL p4wlan_copy_fullmac_association_options(
+    struct p4_wifi_association_target *target, ULONG *cookie,
+    const struct TagItem *tags, const struct Sana2FullMACCapabilities *caps)
+{
+    const struct Sana2FullMACAssociation *selection = NULL;
+    const struct Sana2WirelessCredential *credential = NULL;
+    ULONG seen = 0, visited = 0, i;
+    BOOL ended = FALSE;
+    enum { SSID = 1, BSSID = 2, PORT = 4, CHANNEL = 8,
+           PROFILE = 16, CREDENTIAL = 32, COOKIE = 64 };
+    if (cookie) *cookie = 0;
+    if (!target) return FALSE;
+    p4wlan_options_wipe(target);
+    if (!cookie || !tags || !Sana2FullMACCapabilitiesValid(caps)) return FALSE;
+    while (tags && visited < 128u) {
+        ULONG tag = tags->ti_Tag, bit;
+        IPTR data = tags->ti_Data;
+        ++tags;
+        ++visited;
+        if (tag == TAG_DONE) { ended = TRUE; break; }
+        if (tag == TAG_IGNORE) continue;
+        if (tag == TAG_MORE) {
+            tags = (const struct TagItem *)data;
+            if (!tags) ended = TRUE;
+            continue;
+        }
+        if (tag == TAG_SKIP) {
+            IPTR address = (IPTR)tags;
+            if (data > 128u - visited ||
+                data > (~(IPTR)0 - address) / sizeof(*tags)) goto refused;
+            tags = (const struct TagItem *)(address + data * sizeof(*tags));
+            visited += (ULONG)data;
+            continue;
+        }
+        switch (tag) {
+        case S2INFO_SSID: bit = SSID; break;
+        case S2INFO_BSSID: bit = BSSID; break;
+        case S2INFO_PortType: bit = PORT; break;
+        case S2INFO_Channel: bit = CHANNEL; break;
+        case S2INFO_FullMACAssociation: bit = PROFILE; break;
+        case S2INFO_WirelessCredential: bit = CREDENTIAL; break;
+        case S2INFO_AssociationCookie: bit = COOKIE; break;
+        default: goto refused;
+        }
+        if (seen & bit) goto refused;
+        seen |= bit;
+        if (bit == SSID) {
+            const UBYTE *s = (const UBYTE *)data;
+            if (!s) goto refused;
+            for (i = 0; i < 32u && s[i]; ++i) target->ssid[i] = s[i];
+            if (!i || (i == 32u && s[i])) goto refused;
+            target->ssid_length = i;
+        } else if (bit == BSSID) {
+            const UBYTE *b = (const UBYTE *)data;
+            UBYTE nonzero = 0;
+            if (!b) goto refused;
+            for (i = 0; i < 6; ++i) { target->bssid[i] = b[i]; nonzero |= b[i]; }
+            if (!nonzero || (b[0] & 1u)) goto refused;
+            target->bssid_set = TRUE;
+        } else if (bit == PORT) {
+            if (data != S2PORT_MANAGED) goto refused;
+        } else if (bit == CHANNEL) {
+            if (data > 14u) goto refused;
+            target->channel = (ULONG)data;
+        } else if (bit == PROFILE) {
+            selection = (const struct Sana2FullMACAssociation *)data;
+        } else if (bit == CREDENTIAL) {
+            credential = (const struct Sana2WirelessCredential *)data;
+            if (!credential) goto refused;
+        } else {
+            if (!data || data > (IPTR)~(ULONG)0) goto refused;
+            *cookie = (ULONG)data;
+        }
+    }
+    if (!ended || (seen & (SSID | PORT | PROFILE | COOKIE)) !=
+                             (SSID | PORT | PROFILE | COOKIE) ||
+        !Sana2FullMACAssociationValid(caps, selection, credential)) goto refused;
+    target->fullmac_profile = selection->Profile;
+    target->diagnostic_risk_accepted =
+        !!(selection->Flags & S2FULLMAC_ASSOCF_ALLOW_DIAGNOSTIC_RISK);
+    target->pmf_required = selection->PMFPolicy == S2FULLMAC_PMF_REQUIRED;
+    if (selection->Profile == S2FULLMAC_PROFILE_OPEN) return TRUE;
+    if (selection->Profile == S2FULLMAC_PROFILE_SAE_CCMP_PMF) {
+        target->authmode = 6u;
+        if (selection->SAEPweMethod == S2FULLMAC_SAE_PWE_HUNT_AND_PECK)
+            target->sae_pwe_h2e = 1u;
+        else if (selection->SAEPweMethod == S2FULLMAC_SAE_PWE_H2E)
+            target->sae_pwe_h2e = 2u;
+        else target->sae_pwe_h2e = 3u;
+    } else target->authmode = 3u;
+    if (credential->Kind == S2WIRELESS_CRED_WPA2_PSK) {
+        static const UBYTE hex[] = "0123456789abcdef";
+        for (i = 0; i < S2WIRELESS_PSK_SIZE; ++i) {
+            target->password[i * 2] = hex[credential->Data[i] >> 4];
+            target->password[i * 2 + 1] = hex[credential->Data[i] & 15];
+        }
+        target->password_length = 64u;
+    } else {
+        for (i = 0; i < credential->Length; ++i)
+            target->password[i] = credential->Data[i];
+        target->password_length = credential->Length;
+    }
+    return TRUE;
+refused:
+    *cookie = 0;
+    p4wlan_options_wipe(target);
+    return FALSE;
 }
 
 #endif

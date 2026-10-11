@@ -1,5 +1,5 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
-/* Source-extracted ABI10 hook-registration tests. The runtime bridge header
+/* Source-extracted ABI12 hook-registration tests. The runtime bridge header
  * and actual hook initializer are compiled with minimal host Exec types; the
  * owner entry points are typed identity mocks, not transport tests. */
 #include <stddef.h>
@@ -26,8 +26,8 @@ struct SignalSemaphore { struct Task *ss_Owner; ULONG depth; };
 
 #include "runtime_probe.h"
 
-#if P4_WIFI_DEVICE_BRIDGE_ABI != 11u
-#error "wifi OTA hooks must use the matched discovery-v2 bridge ABI 11"
+#if P4_WIFI_DEVICE_BRIDGE_ABI != 12u
+#error "wifi OTA hooks must use the matched FullMAC-target bridge ABI 12"
 #endif
 
 static unsigned test_checks;
@@ -100,7 +100,7 @@ static void test_hook_initializer(BOOL association_enabled)
 
 int main(void)
 {
-    CHECK(P4_WIFI_DEVICE_BRIDGE_ABI == 11u);
+    CHECK(P4_WIFI_DEVICE_BRIDGE_ABI == 12u);
     test_hook_initializer(FALSE);
     test_hook_initializer(TRUE);
     printf("wifi OTA bridge hooks (owner=%u c6privacy=%u host=%u c6update=%u enabled=%u, both association settings): %u checks passed\n",

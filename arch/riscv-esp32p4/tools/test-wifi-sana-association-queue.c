@@ -631,7 +631,7 @@ static void test_resource_valid_requires_abi10_callbacks(void)
     BOOL (*release)(struct P4WifiBase *, ULONG);
 
     init_fixture(&unit, &opener, &radio);
-    CHECK(P4_WIFI_DEVICE_BRIDGE_ABI == 11u);
+    CHECK(P4_WIFI_DEVICE_BRIDGE_ABI == 12u);
     CHECK(radio.bridge_abi == P4_WIFI_DEVICE_BRIDGE_ABI);
     CHECK(radio.bridge_size == sizeof(radio));
     /* ABI10 OTA hooks are optional when privacy/recovery release gates are

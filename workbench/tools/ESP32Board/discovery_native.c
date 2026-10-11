@@ -20,7 +20,7 @@ struct discovery_native {
     struct board_client_workspace *work;
 };
 
-typedef char discovery_abi_matches[(P4_WIFI_DEVICE_BRIDGE_ABI == 11u &&
+typedef char discovery_abi_matches[(P4_WIFI_DEVICE_BRIDGE_ABI == 12u &&
     P4_WIFI_MAINT_IDLE == BOARD_CLIENT_LEASE_IDLE &&
     P4_WIFI_MAINT_REQUESTED == BOARD_CLIENT_LEASE_REQUESTED &&
     P4_WIFI_MAINT_ACTIVE == BOARD_CLIENT_LEASE_ACTIVE &&

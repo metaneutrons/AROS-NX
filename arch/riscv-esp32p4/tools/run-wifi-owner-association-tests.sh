@@ -165,6 +165,8 @@ for optimization in 0 2; do
 	# shellcheck disable=SC2086
 	"$cc" $common_flags "-O$optimization" \
 		-DP4_BOARD_WIFI_SDIO=1 -DP4_WIFI_HOSTED_OWNER=1 -DP4_WIFI_HOSTED_REPLY=1 \
+		-DP4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED=0 \
+		-DP4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED=0 \
 		-I "$test_tmp" -I "$test_root/network" -I "$test_root/sdmmc" \
 		-I "$repo_root/compiler/include" \
 		-I "$repo_root/workbench/tools/ESP32Board" \

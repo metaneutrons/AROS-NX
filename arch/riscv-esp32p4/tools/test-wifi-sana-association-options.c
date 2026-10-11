@@ -763,6 +763,556 @@ static void test_association_cookie_metadata(void)
     CHECK(cookie == 0);
 }
 
+static void set_fullmac_caps(struct Sana2FullMACCapabilities *caps,
+                             ULONG profiles, ULONG pwe_methods, ULONG flags)
+{
+    memset(caps, 0, sizeof(*caps));
+    caps->SizeAvailable = sizeof(*caps);
+    caps->SizeSupplied = sizeof(*caps);
+    caps->Version = S2FULLMAC_VERSION;
+    caps->Flags = flags;
+    caps->Profiles = profiles;
+    caps->SAEPweMethods = pwe_methods;
+}
+
+static void set_fullmac_selection(struct Sana2FullMACAssociation *selection,
+                                  ULONG profile, ULONG pmf, ULONG pwe,
+                                  ULONG flags)
+{
+    memset(selection, 0, sizeof(*selection));
+    selection->Size = sizeof(*selection);
+    selection->Version = S2FULLMAC_VERSION;
+    selection->Profile = profile;
+    selection->Flags = flags;
+    selection->PMFPolicy = pmf;
+    selection->SAEPweMethod = pwe;
+}
+
+static void set_wireless_credential(struct Sana2WirelessCredential *credential,
+                                    ULONG kind, const UBYTE *data,
+                                    ULONG length)
+{
+    memset(credential, 0, sizeof(*credential));
+    credential->Size = sizeof(*credential);
+    credential->Version = S2WIRELESS_CREDENTIAL_VERSION;
+    credential->Kind = kind;
+    credential->Length = length;
+    credential->Data = data;
+}
+
+static size_t set_fullmac_tags(struct TagItem *tags, const UBYTE *ssid,
+                               const struct Sana2FullMACAssociation *selection,
+                               const struct Sana2WirelessCredential *credential,
+                               IPTR cookie)
+{
+    size_t count = 0;
+    set_tag(&tags[count++], S2INFO_SSID, pointer_data(ssid));
+    set_tag(&tags[count++], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&tags[count++], S2INFO_FullMACAssociation,
+            pointer_data(selection));
+    if (credential)
+        set_tag(&tags[count++], S2INFO_WirelessCredential,
+                pointer_data(credential));
+    set_tag(&tags[count++], S2INFO_AssociationCookie, cookie);
+    set_tag(&tags[count++], TAG_DONE, 0u);
+    return count;
+}
+
+static void expect_fullmac_success(const struct TagItem *tags,
+                                   const struct Sana2FullMACCapabilities *caps,
+                                   ULONG *cookie)
+{
+    BOOL accepted;
+    ++cases;
+    poison_target();
+    *cookie = 0xA5A5A5A5u;
+    accepted = p4wlan_copy_fullmac_association_options(&target, cookie,
+                                                       tags, caps);
+    if (!accepted)
+        fprintf(stderr, "unexpected FullMAC refusal in case %lu\n", cases);
+    CHECK(accepted);
+}
+
+static void expect_fullmac_refusal(const struct TagItem *tags,
+                                   const struct Sana2FullMACCapabilities *caps,
+                                   ULONG *cookie)
+{
+    ++cases;
+    poison_target();
+    *cookie = 0xA5A5A5A5u;
+    CHECK(!p4wlan_copy_fullmac_association_options(&target, cookie,
+                                                    tags, caps));
+    CHECK(*cookie == 0u);
+    CHECK(bytes_are_zero((const UBYTE *)&target, sizeof(target)));
+}
+
+static void test_fullmac_open_psk_and_owned_copy(void)
+{
+    struct Sana2FullMACCapabilities caps;
+    struct Sana2FullMACAssociation selection;
+    struct Sana2WirelessCredential credential;
+    UBYTE ssid[] = "typed-open";
+    UBYTE bssid[6] = { 0x02u, 0x12u, 0x34u, 0x56u, 0x78u, 0x9Au };
+    UBYTE passphrase[] = "password";
+    UBYTE passphrase63[64];
+    UBYTE psk[32];
+    struct TagItem tags[8];
+    ULONG cookie;
+    size_t count, index;
+    static const UBYTE hex[] = "0123456789abcdef";
+
+    set_fullmac_caps(&caps, S2FULLMAC_PROFILE_OPEN |
+                     S2FULLMAC_PROFILE_WPA2_CCMP |
+                     S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                     S2FULLMAC_SAE_PWE_HUNT_AND_PECK |
+                     S2FULLMAC_SAE_PWE_H2E |
+                     S2FULLMAC_SAE_PWE_BOTH, 0u);
+    set_fullmac_selection(&selection, S2FULLMAC_PROFILE_OPEN,
+                          S2FULLMAC_PMF_DISABLED, 0u, 0u);
+    count = set_fullmac_tags(tags, ssid, &selection, NULL, 0x10203040u);
+    set_tag(&tags[1], S2INFO_BSSID, pointer_data(bssid));
+    set_tag(&tags[2], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&tags[3], S2INFO_Channel, 11u);
+    set_tag(&tags[4], S2INFO_FullMACAssociation,
+            pointer_data(&selection));
+    set_tag(&tags[5], S2INFO_AssociationCookie, 0x10203040u);
+    set_tag(&tags[6], TAG_DONE, 0u);
+    (void)count;
+    expect_fullmac_success(tags, &caps, &cookie);
+    CHECK(cookie == 0x10203040u);
+    CHECK(target.ssid_length == 10u &&
+          memcmp(target.ssid, "typed-open", 10u) == 0);
+    CHECK(target.bssid_set && memcmp(target.bssid, bssid, sizeof(bssid)) == 0);
+    CHECK(target.channel == 11u && target.authmode == 0u);
+    CHECK(target.fullmac_profile == S2FULLMAC_PROFILE_OPEN);
+    CHECK(!target.pmf_required && target.sae_pwe_h2e == 0u);
+    CHECK(!target.diagnostic_risk_accepted && target.password_length == 0u);
+    CHECK(bytes_are_zero(target.password, sizeof(target.password)));
+    ssid[0] = (UBYTE)'X';
+    bssid[0] = 0x04u;
+    selection.Profile = S2FULLMAC_PROFILE_SAE_CCMP_PMF;
+    CHECK(target.ssid[0] == (UBYTE)'t' && target.bssid[0] == 0x02u);
+    CHECK(target.fullmac_profile == S2FULLMAC_PROFILE_OPEN);
+
+    /* WPA2 passphrase and raw binary PSK retain their legacy target encoding. */
+    set_fullmac_selection(&selection, S2FULLMAC_PROFILE_WPA2_CCMP,
+                          S2FULLMAC_PMF_DISABLED, 0u, 0u);
+    set_wireless_credential(&credential, S2WIRELESS_CRED_WPA2_PASSPHRASE,
+                            passphrase, 8u);
+    count = set_fullmac_tags(tags, (const UBYTE *)"typed-psk", &selection,
+                             &credential, 9u);
+    expect_fullmac_success(tags, &caps, &cookie);
+    CHECK(cookie == 9u && target.authmode == 3u);
+    CHECK(target.fullmac_profile == S2FULLMAC_PROFILE_WPA2_CCMP);
+    CHECK(!target.pmf_required && target.sae_pwe_h2e == 0u);
+    CHECK(target.password_length == 8u &&
+          memcmp(target.password, "password", 8u) == 0);
+    passphrase[0] = (UBYTE)'X';
+    CHECK(target.password[0] == (UBYTE)'p');
+
+    memset(passphrase63, 'q', 63u);
+    passphrase63[63] = 0u;
+    set_wireless_credential(&credential, S2WIRELESS_CRED_WPA2_PASSPHRASE,
+                            passphrase63, 63u);
+    (void)set_fullmac_tags(tags, (const UBYTE *)"typed-psk-maximum", &selection,
+                           &credential, 11u);
+    expect_fullmac_success(tags, &caps, &cookie);
+    CHECK(cookie == 11u && target.password_length == 63u);
+    CHECK(memcmp(target.password, passphrase63, 63u) == 0);
+    passphrase63[0] = (UBYTE)'X';
+    CHECK(target.password[0] == (UBYTE)'q');
+
+    for (index = 0; index < sizeof(psk); ++index)
+        psk[index] = (UBYTE)(index * 17u);
+    set_wireless_credential(&credential, S2WIRELESS_CRED_WPA2_PSK,
+                            psk, sizeof(psk));
+    (void)set_fullmac_tags(tags, (const UBYTE *)"typed-raw-psk", &selection,
+                           &credential, 10u);
+    expect_fullmac_success(tags, &caps, &cookie);
+    CHECK(cookie == 10u && target.authmode == 3u);
+    CHECK(target.password_length == 64u);
+    for (index = 0; index < sizeof(psk); ++index)
+    {
+        CHECK(target.password[index * 2u] == hex[psk[index] >> 4]);
+        CHECK(target.password[index * 2u + 1u] == hex[psk[index] & 15u]);
+    }
+}
+
+static void test_fullmac_sae_password_and_pwe_mapping(void)
+{
+    static const ULONG methods[] = {
+        S2FULLMAC_SAE_PWE_HUNT_AND_PECK,
+        S2FULLMAC_SAE_PWE_H2E,
+        S2FULLMAC_SAE_PWE_BOTH
+    };
+    static const ULONG idf_modes[] = { 1u, 2u, 3u };
+    struct Sana2FullMACCapabilities caps;
+    struct Sana2FullMACAssociation selection;
+    struct Sana2WirelessCredential credential;
+    UBYTE password63[63];
+    UBYTE password1[] = { 'x' };
+    struct TagItem tags[8];
+    ULONG cookie;
+    size_t i;
+
+    memset(password63, 's', sizeof(password63));
+    set_fullmac_caps(&caps, S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                     S2FULLMAC_SAE_PWE_HUNT_AND_PECK |
+                     S2FULLMAC_SAE_PWE_H2E |
+                     S2FULLMAC_SAE_PWE_BOTH, 0u);
+    for (i = 0; i < sizeof(methods) / sizeof(methods[0]); ++i)
+    {
+        UBYTE *password = i == 0u ? password1 : password63;
+        ULONG length = i == 0u ? sizeof(password1) : sizeof(password63);
+        UBYTE first_byte = password[0];
+        set_fullmac_selection(&selection, S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                              S2FULLMAC_PMF_REQUIRED, methods[i], 0u);
+        set_wireless_credential(&credential, S2WIRELESS_CRED_SAE_PASSWORD,
+                                password, length);
+        (void)set_fullmac_tags(tags, (const UBYTE *)"typed-sae", &selection,
+                               &credential, (IPTR)(0x20u + i));
+        expect_fullmac_success(tags, &caps, &cookie);
+        CHECK(cookie == 0x20u + i && target.authmode == 6u);
+        CHECK(target.fullmac_profile == S2FULLMAC_PROFILE_SAE_CCMP_PMF);
+        CHECK(target.pmf_required == 1u &&
+              target.sae_pwe_h2e == idf_modes[i]);
+        CHECK(!target.diagnostic_risk_accepted);
+        CHECK(target.password_length == length);
+        CHECK(memcmp(target.password, password, length) == 0);
+        password[0] = (UBYTE)'X';
+        CHECK(target.password[0] == first_byte);
+        password[0] = first_byte;
+    }
+}
+
+static void test_fullmac_diagnostic_optin_and_profile_refusals(void)
+{
+    struct Sana2FullMACCapabilities caps;
+    struct Sana2FullMACAssociation selection;
+    struct Sana2WirelessCredential credential;
+    UBYTE password[] = "sae-pass";
+    struct TagItem tags[8];
+    ULONG cookie;
+    size_t count;
+
+    set_fullmac_caps(&caps, S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                     S2FULLMAC_SAE_PWE_H2E,
+                     S2FULLMAC_CAPF_DIAGNOSTIC_RISK);
+    set_fullmac_selection(&selection, S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                          S2FULLMAC_PMF_REQUIRED, S2FULLMAC_SAE_PWE_H2E, 0u);
+    set_wireless_credential(&credential, S2WIRELESS_CRED_SAE_PASSWORD,
+                            password, sizeof(password) - 1u);
+    count = set_fullmac_tags(tags, (const UBYTE *)"diagnostic", &selection,
+                             &credential, 77u);
+    expect_fullmac_refusal(tags, &caps, &cookie); /* no implicit opt-in */
+
+    selection.Flags = S2FULLMAC_ASSOCF_ALLOW_DIAGNOSTIC_RISK;
+    expect_fullmac_success(tags, &caps, &cookie);
+    CHECK(cookie == 77u && target.diagnostic_risk_accepted == 1u);
+
+    caps.Flags = 0u;
+    selection.Flags = 0x80000000u;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    selection.Flags = 0u;
+    selection.Profile = 8u;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    selection.Profile = S2FULLMAC_PROFILE_SAE_CCMP_PMF |
+                        S2FULLMAC_PROFILE_WPA2_CCMP;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    selection.Profile = S2FULLMAC_PROFILE_SAE_CCMP_PMF;
+    selection.PMFPolicy = S2FULLMAC_PMF_DISABLED;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    selection.PMFPolicy = S2FULLMAC_PMF_REQUIRED;
+    selection.PMFPolicy = 2u;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    selection.PMFPolicy = S2FULLMAC_PMF_REQUIRED;
+    selection.SAEPweMethod = S2FULLMAC_SAE_PWE_HUNT_AND_PECK |
+                             S2FULLMAC_SAE_PWE_H2E;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    selection.SAEPweMethod = S2FULLMAC_SAE_PWE_HUNT_AND_PECK;
+    expect_fullmac_refusal(tags, &caps, &cookie); /* unadvertised PWE */
+    selection.SAEPweMethod = S2FULLMAC_SAE_PWE_H2E;
+    caps.Profiles = S2FULLMAC_PROFILE_WPA2_CCMP;
+    caps.SAEPweMethods = 0u;
+    expect_fullmac_refusal(tags, &caps, &cookie); /* profile not advertised */
+    caps.Profiles = S2FULLMAC_PROFILE_SAE_CCMP_PMF;
+    caps.SAEPweMethods = S2FULLMAC_SAE_PWE_H2E;
+    selection.Size--;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    selection.Size = sizeof(selection);
+    selection.Version++;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    selection.Version = S2FULLMAC_VERSION;
+    selection.Reserved = 1u;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+
+    (void)count;
+}
+
+static void test_fullmac_capability_and_credential_refusals(void)
+{
+    struct Sana2FullMACCapabilities caps;
+    struct Sana2FullMACAssociation selection;
+    struct Sana2WirelessCredential credential;
+    UBYTE password[64];
+    UBYTE psk[32];
+    struct TagItem tags[8];
+    ULONG cookie;
+
+    memset(password, 's', sizeof(password));
+    memset(psk, 0x5a, sizeof(psk));
+    set_fullmac_caps(&caps, S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                     S2FULLMAC_SAE_PWE_H2E, 0u);
+    set_fullmac_selection(&selection, S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                          S2FULLMAC_PMF_REQUIRED, S2FULLMAC_SAE_PWE_H2E, 0u);
+    set_wireless_credential(&credential, S2WIRELESS_CRED_SAE_PASSWORD,
+                            password, 1u);
+    (void)set_fullmac_tags(tags, (const UBYTE *)"invalid-caps", &selection,
+                           &credential, 12u);
+
+#define BAD_CAPS(change) do { \
+    set_fullmac_caps(&caps, S2FULLMAC_PROFILE_SAE_CCMP_PMF, \
+                     S2FULLMAC_SAE_PWE_H2E, 0u); \
+    change; \
+    expect_fullmac_refusal(tags, &caps, &cookie); \
+} while (0)
+    BAD_CAPS(caps.SizeAvailable--);
+    BAD_CAPS(caps.SizeSupplied--);
+    BAD_CAPS(caps.Version++);
+    BAD_CAPS(caps.Flags = 0x80000000u);
+    BAD_CAPS(caps.Profiles = 0u);
+    BAD_CAPS(caps.Profiles |= 0x80000000u);
+    BAD_CAPS(caps.SAEPweMethods = 0u);
+    BAD_CAPS(caps.SAEPweMethods |= 0x80000000u);
+    BAD_CAPS(caps.Reserved[0] = 1u);
+    BAD_CAPS(caps.Reserved[1] = 1u);
+#undef BAD_CAPS
+
+    set_fullmac_caps(&caps, S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                     S2FULLMAC_SAE_PWE_H2E, 0u);
+    set_wireless_credential(&credential, S2WIRELESS_CRED_SAE_PASSWORD,
+                            password, 0u);
+    (void)set_fullmac_tags(tags, (const UBYTE *)"bad-len", &selection,
+                           &credential, 13u);
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    (void)set_fullmac_tags(tags, (const UBYTE *)"missing-secret", &selection,
+                           NULL, 13u);
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    credential.Length = 64u;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    credential.Length = 1u;
+    password[0] = 0u;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    password[0] = 'a';
+    password[1] = 0u;
+    password[2] = 'b';
+    credential.Length = 3u;
+    expect_fullmac_refusal(tags, &caps, &cookie); /* embedded NUL */
+    password[0] = 's';
+    password[1] = 's';
+    password[2] = 's';
+    credential.Length = 1u;
+    credential.Kind = S2WIRELESS_CRED_WPA2_PASSPHRASE;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    credential.Kind = S2WIRELESS_CRED_WPA2_PSK;
+    credential.Length = sizeof(psk);
+    credential.Data = psk;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    credential.Kind = S2WIRELESS_CRED_SAE_PASSWORD;
+    credential.Length = 1u;
+    credential.Data = password;
+    credential.Size--;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    credential.Size = sizeof(credential);
+    credential.Version++;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    credential.Version = S2WIRELESS_CREDENTIAL_VERSION;
+    credential.Data = NULL;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+
+    /* OPEN rejects any credential. */
+    set_fullmac_caps(&caps, S2FULLMAC_PROFILE_OPEN |
+                     S2FULLMAC_PROFILE_WPA2_CCMP |
+                     S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                     S2FULLMAC_SAE_PWE_H2E, 0u);
+    set_fullmac_selection(&selection, S2FULLMAC_PROFILE_OPEN,
+                          S2FULLMAC_PMF_DISABLED, 0u, 0u);
+    set_wireless_credential(&credential, S2WIRELESS_CRED_SAE_PASSWORD,
+                            password, 1u);
+    (void)set_fullmac_tags(tags, (const UBYTE *)"open-with-secret", &selection,
+                           &credential, 15u);
+    expect_fullmac_refusal(tags, &caps, &cookie);
+
+    /* WPA2 accepts printable passphrases or exactly 32 raw PSK bytes only. */
+    set_fullmac_selection(&selection, S2FULLMAC_PROFILE_WPA2_CCMP,
+                          S2FULLMAC_PMF_DISABLED, 0u, 0u);
+    set_wireless_credential(&credential, S2WIRELESS_CRED_SAE_PASSWORD,
+                            password, 8u);
+    (void)set_fullmac_tags(tags, (const UBYTE *)"wpa2-wrong-kind", &selection,
+                           &credential, 14u);
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    set_wireless_credential(&credential, S2WIRELESS_CRED_WPA2_PASSPHRASE,
+                            password, 7u);
+    (void)set_fullmac_tags(tags, (const UBYTE *)"wpa2-len", &selection,
+                           &credential, 14u);
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    credential.Length = 64u;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    credential.Length = 8u;
+    password[7] = 1u;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    password[7] = 's';
+    credential.Kind = S2WIRELESS_CRED_WPA2_PSK;
+    credential.Data = psk;
+    credential.Length = 31u;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    credential.Length = 33u;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+}
+
+static void test_fullmac_tag_contract_and_failure_wipe(void)
+{
+    struct Sana2FullMACCapabilities caps;
+    struct Sana2FullMACAssociation selection;
+    struct Sana2WirelessCredential credential;
+    UBYTE password[] = "sae-pass";
+    struct TagItem tags[10];
+    struct TagItem cycle[1];
+    struct TagItem more_first[4];
+    struct TagItem more_second[4];
+    struct TagItem optional_tags[8];
+    UBYTE valid_bssid[6] = { 0x02u, 1u, 2u, 3u, 4u, 5u };
+    ULONG cookie;
+    size_t count;
+    static const ULONG legacy_tags[] = {
+        S2INFO_AuthTypes, S2INFO_WPAInfo, S2INFO_WPAInfoLength,
+        S2INFO_Passphrase, S2INFO_PSK
+    };
+    size_t i;
+
+    set_fullmac_caps(&caps, S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                     S2FULLMAC_SAE_PWE_H2E, 0u);
+    set_fullmac_selection(&selection, S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                          S2FULLMAC_PMF_REQUIRED, S2FULLMAC_SAE_PWE_H2E, 0u);
+    set_wireless_credential(&credential, S2WIRELESS_CRED_SAE_PASSWORD,
+                            password, sizeof(password) - 1u);
+    count = set_fullmac_tags(tags, (const UBYTE *)"tags", &selection,
+                             &credential, 21u);
+    expect_refusal(tags); /* legacy entry rejects typed FullMAC tags */
+    for (i = 0; i < sizeof(legacy_tags) / sizeof(legacy_tags[0]); ++i)
+    {
+        set_tag(&tags[count - 1u], legacy_tags[i], 0u);
+        set_tag(&tags[count], TAG_DONE, 0u);
+        expect_fullmac_refusal(tags, &caps, &cookie);
+        set_tag(&tags[count - 1u], TAG_DONE, 0u);
+    }
+
+    set_tag(&tags[count - 1u], S2INFO_SSID,
+            pointer_data((const UBYTE *)"duplicate"));
+    set_tag(&tags[count], TAG_DONE, 0u);
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    set_tag(&tags[count - 1u], S2INFO_WirelessCredential,
+            pointer_data(&credential));
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    set_tag(&tags[count - 1u], S2INFO_FullMACAssociation,
+            pointer_data(&selection));
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    set_tag(&tags[count - 1u], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    set_tag(&tags[count - 1u], S2INFO_AssociationCookie, 22u);
+    expect_fullmac_refusal(tags, &caps, &cookie);
+    set_tag(&tags[count - 1u], S2INFO_Disassociate, 0u);
+    expect_fullmac_refusal(tags, &caps, &cookie); /* unknown tag */
+
+    set_fullmac_caps(&caps, S2FULLMAC_PROFILE_OPEN |
+                     S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                     S2FULLMAC_SAE_PWE_H2E, 0u);
+    set_fullmac_selection(&selection, S2FULLMAC_PROFILE_OPEN,
+                          S2FULLMAC_PMF_DISABLED, 0u, 0u);
+    set_tag(&optional_tags[0], S2INFO_SSID,
+            pointer_data((const UBYTE *)"optional"));
+    set_tag(&optional_tags[1], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&optional_tags[2], S2INFO_BSSID, pointer_data(valid_bssid));
+    set_tag(&optional_tags[3], S2INFO_Channel, 6u);
+    set_tag(&optional_tags[4], S2INFO_FullMACAssociation,
+            pointer_data(&selection));
+    set_tag(&optional_tags[5], S2INFO_AssociationCookie, 31u);
+    set_tag(&optional_tags[6], S2INFO_BSSID, pointer_data(valid_bssid));
+    set_tag(&optional_tags[7], TAG_DONE, 0u);
+    expect_fullmac_refusal(optional_tags, &caps, &cookie); /* duplicate BSSID */
+    set_tag(&optional_tags[6], S2INFO_Channel, 6u);
+    expect_fullmac_refusal(optional_tags, &caps, &cookie); /* duplicate channel */
+
+    set_tag(&more_first[0], S2INFO_SSID,
+            pointer_data((const UBYTE *)"more"));
+    set_tag(&more_first[1], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&more_first[2], TAG_MORE, pointer_data(more_second));
+    set_tag(&more_second[0], S2INFO_FullMACAssociation,
+            pointer_data(&selection));
+    set_tag(&more_second[1], S2INFO_AssociationCookie, 32u);
+    set_tag(&more_second[2], TAG_DONE, 0u);
+    expect_fullmac_success(more_first, &caps, &cookie);
+    CHECK(cookie == 32u && target.ssid_length == 4u);
+
+    set_tag(&tags[0], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&tags[1], S2INFO_FullMACAssociation,
+            pointer_data(&selection));
+    set_tag(&tags[2], S2INFO_WirelessCredential,
+            pointer_data(&credential));
+    set_tag(&tags[3], S2INFO_AssociationCookie, 1u);
+    set_tag(&tags[4], TAG_DONE, 0u);
+    expect_fullmac_refusal(tags, &caps, &cookie); /* no SSID */
+    set_tag(&tags[0], S2INFO_SSID, pointer_data((const UBYTE *)"missing"));
+    set_tag(&tags[1], S2INFO_FullMACAssociation,
+            pointer_data(&selection));
+    set_tag(&tags[2], S2INFO_WirelessCredential,
+            pointer_data(&credential));
+    set_tag(&tags[3], S2INFO_AssociationCookie, 1u);
+    set_tag(&tags[4], TAG_DONE, 0u);
+    expect_fullmac_refusal(tags, &caps, &cookie); /* no managed port */
+    set_tag(&tags[1], S2INFO_PortType, (IPTR)S2PORT_MANAGED);
+    set_tag(&tags[2], S2INFO_WirelessCredential,
+            pointer_data(&credential));
+    set_tag(&tags[3], S2INFO_AssociationCookie, 1u);
+    set_tag(&tags[4], TAG_DONE, 0u);
+    expect_fullmac_refusal(tags, &caps, &cookie); /* no profile */
+    set_tag(&tags[2], S2INFO_FullMACAssociation,
+            pointer_data(&selection));
+    set_tag(&tags[3], S2INFO_WirelessCredential,
+            pointer_data(&credential));
+    set_tag(&tags[4], TAG_DONE, 0u);
+    expect_fullmac_refusal(tags, &caps, &cookie); /* no cookie */
+
+    set_fullmac_caps(&caps, S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                     S2FULLMAC_SAE_PWE_H2E, 0u);
+    set_fullmac_selection(&selection, S2FULLMAC_PROFILE_SAE_CCMP_PMF,
+                          S2FULLMAC_PMF_REQUIRED, S2FULLMAC_SAE_PWE_H2E, 0u);
+    set_wireless_credential(&credential, S2WIRELESS_CRED_SAE_PASSWORD,
+                            password, sizeof(password) - 1u);
+    count = set_fullmac_tags(tags, (const UBYTE *)"zero-cookie", &selection,
+                             &credential, 0u);
+    (void)count;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+#if UINTPTR_MAX > UINT32_MAX
+    count = set_fullmac_tags(tags, (const UBYTE *)"wide-cookie", &selection,
+                             &credential, (IPTR)UINT32_MAX + 1u);
+    (void)count;
+    expect_fullmac_refusal(tags, &caps, &cookie);
+#endif
+
+    set_tag(&cycle[0], TAG_MORE, pointer_data(cycle));
+    expect_fullmac_refusal(cycle, &caps, &cookie);
+
+    ++cases;
+    poison_target();
+    cookie = 99u;
+    CHECK(!p4wlan_copy_fullmac_association_options(&target, NULL, tags, &caps));
+    CHECK(bytes_are_zero((const UBYTE *)&target, sizeof(target)));
+    ++cases;
+    CHECK(!p4wlan_copy_fullmac_association_options(NULL, &cookie, tags, &caps));
+    CHECK(cookie == 0u);
+}
+
 int main(void)
 {
     test_open_owned_copy_and_optional_target_fields();
@@ -779,6 +1329,11 @@ int main(void)
     test_null_target_refusal();
     test_disassociate_option_contract();
     test_association_cookie_metadata();
+    test_fullmac_open_psk_and_owned_copy();
+    test_fullmac_sae_password_and_pwe_mapping();
+    test_fullmac_diagnostic_optin_and_profile_refusals();
+    test_fullmac_capability_and_credential_refusals();
+    test_fullmac_tag_contract_and_failure_wipe();
     printf("PASS: %lu cases, %lu checks\n", cases, checks);
     return 0;
 }

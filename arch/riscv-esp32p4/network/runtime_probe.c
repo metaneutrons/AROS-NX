@@ -1253,13 +1253,35 @@ static BOOL wifi_association_target_valid(
     if (!target || !target->ssid_length || target->ssid_length > 32 ||
         target->channel > 14 ||
         (target->bssid_set != FALSE && target->bssid_set != TRUE) ||
-        (target->authmode != 0 && target->authmode != 3))
+        target->diagnostic_risk_accepted > 1u)
         return FALSE;
+    if (!target->fullmac_profile) {
+        if ((target->authmode != 0 && target->authmode != 3) ||
+            target->pmf_required || target->sae_pwe_h2e ||
+            target->diagnostic_risk_accepted) return FALSE;
+    } else if (target->fullmac_profile == P4_WIFI_FULLMAC_OPEN) {
+        if (target->authmode || target->pmf_required || target->sae_pwe_h2e)
+            return FALSE;
+    } else if (target->fullmac_profile == P4_WIFI_FULLMAC_WPA2_CCMP) {
+        if (target->authmode != 3u || target->pmf_required ||
+            target->sae_pwe_h2e) return FALSE;
+    } else if (target->fullmac_profile == P4_WIFI_FULLMAC_SAE_CCMP_PMF) {
+        if (target->authmode != 6u || target->pmf_required != 1u ||
+            target->sae_pwe_h2e < 1u || target->sae_pwe_h2e > 3u)
+            return FALSE;
+    } else return FALSE;
     if (target->bssid_set) {
         for (i = 0; i < 6; ++i) nonzero |= target->bssid[i];
         if (!nonzero || (target->bssid[0] & 1)) return FALSE;
     }
     if (!target->authmode) return target->password_length == 0;
+    if (target->fullmac_profile == P4_WIFI_FULLMAC_SAE_CCMP_PMF) {
+        if (!target->password_length || target->password_length > 63u)
+            return FALSE;
+        for (i = 0; i < target->password_length; ++i)
+            if (!target->password[i]) return FALSE;
+        return TRUE;
+    }
     if (target->password_length < 8 || target->password_length > 64)
         return FALSE;
     for (i = 0; i < target->password_length; ++i) {
@@ -1311,6 +1333,12 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
          base->maintenance_state != P4_WIFI_MAINT_RELEASED) ||
         base->owner_task != FindTask(NULL) || !cancel || !cancel->cancelled ||
         !wifi_association_target_valid(target)) return FALSE;
+#if !(P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED && P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED)
+    /* The build-level diagnostic exception is not implicit per-attempt
+     * permission for a typed caller. Keep that distinction at the owner too. */
+    if (target->fullmac_profile && !target->diagnostic_risk_accepted)
+        return FALSE;
+#endif
     runtime = base->runtime;
     context = runtime->context;
     if (!context || !context->host || !runtime->owner || !runtime->fifo ||
@@ -1369,6 +1397,9 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     control->sta_config.channel = owned.channel;
     control->sta_config.threshold_rssi = -127;
     control->sta_config.threshold_authmode = owned.authmode;
+    control->sta_config.pmf_capable = owned.pmf_required;
+    control->sta_config.pmf_required = owned.pmf_required;
+    control->sta_config.sae_pwe_h2e = owned.sae_pwe_h2e;
     if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
             runtime->checksum, 284u,
             wifi_owner_remaining(context, started, 8000000UL))) goto finish;

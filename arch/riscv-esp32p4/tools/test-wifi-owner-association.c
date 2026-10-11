@@ -48,6 +48,7 @@ struct SignalSemaphore { struct Task *ss_Owner; unsigned depth; };
 #define TEST_POOL 32u
 #define TEST_SSID "p4-assoc"
 #define TEST_PASSWORD "safe-pass-123"
+#define TEST_SAE_PASSWORD "synthetic-sae-test-password"
 
 static unsigned long checks;
 #define CHECK(expression) do { \
@@ -168,6 +169,13 @@ struct fixture {
     unsigned no_response_count;
     unsigned malformed_request_count;
     unsigned secret_seen_in_rpc;
+    const UBYTE *caller_password;
+    unsigned inspect_sta_config;
+    unsigned expected_pmf_capable;
+    unsigned expected_pmf_required;
+    int32_t expected_sae_pwe;
+    int32_t expected_authmode;
+    unsigned config_policy_checks;
     ULONG last_budget;
     ULONG max_timeout;
     uint32_t fail_id;
@@ -209,6 +217,7 @@ struct fixture {
     unsigned final_ap_calls;
     BOOL cancel_requested;
     BOOL is_protected;
+    BOOL is_sae;
 };
 
 static struct fixture f;
@@ -425,7 +434,7 @@ static void build_ap_body(struct fixture *state, int32_t status,
     uint8_t bssid[6] = {0x02u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u};
     uint8_t ssid[32] = {0};
     uint32_t channel = 6u;
-    int32_t authmode = state->is_protected ? 3 : 0;
+    int32_t authmode = state->is_sae ? 6 : (state->is_protected ? 3 : 0);
     int32_t pairwise = state->is_protected ? 4 : 0;
     int32_t group = pairwise;
     size_t ssid_length = sizeof(TEST_SSID) - 1u;
@@ -548,6 +557,22 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
                 ++state->secret_seen_in_rpc;
                 break;
             }
+    }
+    if (request.msg_id == 284u && state->inspect_sta_config) {
+        const struct p4_hosted_sta_config *config =
+            &state->control.sta_config;
+        CHECK(config->threshold_authmode == state->expected_authmode);
+        CHECK(config->pmf_capable == state->expected_pmf_capable);
+        CHECK(config->pmf_required == state->expected_pmf_required);
+        CHECK(config->sae_pwe_h2e == state->expected_sae_pwe);
+        CHECK(config->password_length == watched_secret_size);
+        CHECK(config->password != NULL);
+        CHECK(config->password != state->caller_password);
+        if (config->password_length) {
+            CHECK(memcmp(config->password, watched_secret,
+                         config->password_length) == 0);
+        }
+        ++state->config_policy_checks;
     }
 
     /* This is the owner lifetime preflight before touching the controller. */
@@ -757,11 +782,59 @@ static void target_init(struct p4_wifi_association_target *target,
     }
 }
 
+static void target_init_typed_open(struct p4_wifi_association_target *target)
+{
+    target_init(target, 0u);
+    target->fullmac_profile = P4_WIFI_FULLMAC_OPEN;
+    target->diagnostic_risk_accepted = 1u;
+}
+
+static void target_init_typed_wpa2(struct p4_wifi_association_target *target,
+                                   unsigned password_length)
+{
+    unsigned i;
+    target_init(target, 1u);
+    target->fullmac_profile = P4_WIFI_FULLMAC_WPA2_CCMP;
+    target->diagnostic_risk_accepted = 1u;
+    target->password_length = password_length;
+    if (password_length == 64u) {
+        for (i = 0u; i < password_length; ++i)
+            target->password[i] = (UBYTE)((i & 1u) ? 'b' : 'a');
+    } else {
+        for (i = 0u; i < password_length; ++i)
+            target->password[i] = 'p';
+    }
+    memcpy(watched_secret, target->password, password_length);
+    watched_secret_size = password_length;
+}
+
+static void target_init_typed_sae(struct p4_wifi_association_target *target,
+                                  unsigned pwe, unsigned password_length,
+                                  unsigned diagnostic_risk_accepted)
+{
+    unsigned i;
+    target_init(target, 0u);
+    target->authmode = 6u;
+    target->fullmac_profile = P4_WIFI_FULLMAC_SAE_CCMP_PMF;
+    target->pmf_required = 1u;
+    target->sae_pwe_h2e = pwe;
+    target->diagnostic_risk_accepted = diagnostic_risk_accepted;
+    target->password_length = password_length;
+    for (i = 0u; i < password_length; ++i)
+        target->password[i] = (UBYTE)TEST_SAE_PASSWORD[i %
+            (sizeof(TEST_SAE_PASSWORD) - 1u)];
+    memcpy(watched_secret, target->password, password_length);
+    watched_secret_size = password_length;
+    f.is_protected = TRUE;
+    f.is_sae = TRUE;
+}
+
 static BOOL invoke(struct p4_wifi_association_target *target)
 {
     struct p4_wifi_association_cancel cancel;
     cancel.context = &f;
     cancel.cancelled = fake_cancelled;
+    f.caller_password = target ? target->password : NULL;
     return wifi_device_associate(&f.base, target, &cancel);
 }
 
@@ -883,6 +956,154 @@ static void test_success_open_and_protected(void)
     CHECK(f.host.lock.ss_Owner == NULL && f.host.lock.depth == 0u);
     check_secret_wiped();
     check_restored(FALSE);
+}
+
+static void test_fullmac_typed_profile_association(void)
+{
+    struct p4_wifi_association_target target, original;
+    unsigned pwe;
+
+    fixture_init();
+    target_init_typed_open(&target);
+    f.inspect_sta_config = 1u;
+    f.expected_authmode = 0;
+    f.expected_pmf_capable = 0u;
+    f.expected_pmf_required = 0u;
+    f.expected_sae_pwe = 0;
+    original = target;
+    CHECK(wifi_association_target_valid(&target));
+    CHECK(invoke(&target) == TRUE);
+    CHECK(f.config_policy_checks == 1u);
+    CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+    CHECK(memcmp(&target, &original, sizeof(target)) == 0);
+    check_confirmed_ap_matches(0u);
+    CHECK(bytes_zero(&f.control.sta_config, sizeof(f.control.sta_config)));
+    check_restored(FALSE);
+
+    fixture_init();
+    target_init_typed_wpa2(&target, 64u);
+    f.inspect_sta_config = 1u;
+    f.expected_authmode = 3;
+    f.expected_pmf_capable = 0u;
+    f.expected_pmf_required = 0u;
+    f.expected_sae_pwe = 0;
+    original = target;
+    CHECK(wifi_association_target_valid(&target));
+    CHECK(invoke(&target) == TRUE);
+    CHECK(f.config_policy_checks == 1u);
+    CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+    CHECK(f.secret_seen_in_rpc == 1u);
+    CHECK(memcmp(&target, &original, sizeof(target)) == 0);
+    check_confirmed_ap_matches(3u);
+    check_secret_wiped();
+    check_restored(FALSE);
+
+    for (pwe = 1u; pwe <= 3u; ++pwe) {
+        fixture_init();
+        target_init_typed_sae(&target, pwe, 63u, 1u);
+        f.inspect_sta_config = 1u;
+        f.expected_authmode = 6;
+        f.expected_pmf_capable = 1u;
+        f.expected_pmf_required = 1u;
+        f.expected_sae_pwe = (int32_t)pwe;
+        original = target;
+        CHECK(wifi_association_target_valid(&target));
+        CHECK(invoke(&target) == TRUE);
+        CHECK(f.config_policy_checks == 1u);
+        CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+        CHECK(f.secret_seen_in_rpc == 1u);
+        CHECK(memcmp(&target, &original, sizeof(target)) == 0);
+        check_confirmed_ap_matches(6u);
+        check_secret_wiped();
+        check_restored(FALSE);
+    }
+}
+
+static void test_fullmac_validation_and_pre_io_refusal(void)
+{
+    struct p4_wifi_association_target target;
+    unsigned invalid_case;
+    unsigned pwe;
+
+    target_init_typed_open(&target);
+    CHECK(wifi_association_target_valid(&target));
+
+    target_init_typed_wpa2(&target, 8u);
+    CHECK(wifi_association_target_valid(&target));
+    target_init_typed_wpa2(&target, 63u);
+    CHECK(wifi_association_target_valid(&target));
+    target_init_typed_wpa2(&target, 64u);
+    CHECK(wifi_association_target_valid(&target));
+
+    for (pwe = 1u; pwe <= 3u; ++pwe) {
+        target_init_typed_sae(&target, pwe, 1u, pwe & 1u);
+        CHECK(wifi_association_target_valid(&target));
+        target_init_typed_sae(&target, pwe, 63u, (pwe + 1u) & 1u);
+        CHECK(wifi_association_target_valid(&target));
+    }
+
+    target_init(&target, 0u);
+    CHECK(wifi_association_target_valid(&target));
+    target_init(&target, 1u);
+    CHECK(wifi_association_target_valid(&target));
+
+    for (invalid_case = 0u; invalid_case < 4u; ++invalid_case) {
+        fixture_init();
+        target_init(&target, invalid_case == 1u);
+        if (invalid_case == 0u) target.pmf_required = 1u;
+        if (invalid_case == 1u) target.sae_pwe_h2e = 1u;
+        if (invalid_case == 2u) target.diagnostic_risk_accepted = 1u;
+        if (invalid_case == 3u) {
+            target.pmf_required = 1u;
+            target.sae_pwe_h2e = 1u;
+        }
+        CHECK(!wifi_association_target_valid(&target));
+        CHECK(invoke(&target) == FALSE);
+        CHECK(f.exchange_calls == 0u);
+        check_restored(TRUE);
+        check_confirmed_ap_preserved();
+    }
+
+    for (invalid_case = 0u; invalid_case < 12u; ++invalid_case) {
+        fixture_init();
+        target_init_typed_sae(&target, 2u, 16u, 1u);
+        switch (invalid_case) {
+        case 0u: target.fullmac_profile = 3u; break;
+        case 1u: target.fullmac_profile = P4_WIFI_FULLMAC_OPEN; break;
+        case 2u: target.authmode = 3u; break;
+        case 3u: target.pmf_required = 0u; break;
+        case 4u: target.pmf_required = 2u; break;
+        case 5u: target.sae_pwe_h2e = 0u; break;
+        case 6u: target.sae_pwe_h2e = 4u; break;
+        case 7u: target.password_length = 0u; break;
+        case 8u: target.password_length = 64u; break;
+        case 9u: target.password[3] = 0u; break;
+        case 10u: target.diagnostic_risk_accepted = 2u; break;
+        default: target.fullmac_profile = P4_WIFI_FULLMAC_WPA2_CCMP; break;
+        }
+        CHECK(!wifi_association_target_valid(&target));
+        CHECK(invoke(&target) == FALSE);
+        CHECK(f.exchange_calls == 0u);
+        check_restored(TRUE);
+        check_confirmed_ap_preserved();
+    }
+
+    fixture_init();
+    target_init_typed_sae(&target, 2u, 16u, 0u);
+    CHECK(wifi_association_target_valid(&target));
+    CHECK(invoke(&target) == FALSE); /* Typed risk exception is per attempt. */
+    CHECK(f.exchange_calls == 0u);
+    check_restored(TRUE);
+    check_confirmed_ap_preserved();
+
+    fixture_init();
+    target_init_typed_wpa2(&target, 64u);
+    target.password[63] = 'g';
+    CHECK(!wifi_association_target_valid(&target));
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.exchange_calls == 0u);
+    check_restored(TRUE);
+    check_confirmed_ap_preserved();
 }
 
 static void test_final_cancellation_refuses_snapshot(void)
@@ -1364,6 +1585,8 @@ int main(void)
     test_disconnect_failures_never_infer_down();
     test_disconnect_revision_race();
     test_success_open_and_protected();
+    test_fullmac_typed_profile_association();
+    test_fullmac_validation_and_pre_io_refusal();
     test_final_cancellation_refuses_snapshot();
     test_default_gate_and_validation_refuse_without_rpc();
     test_remote_failures_and_absence_requirements();
