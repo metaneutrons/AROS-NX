@@ -1,11 +1,20 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Native FullMAC contract (2026-10-11): an additive, separately negotiated
+profile/typed-credential API preserves v1 layouts and separates SAE password
+from WPA2 PSK/PBKDF2. Required PMF is client policy, not observed AP metadata;
+diagnostic risk needs explicit per-attempt permission. Predicate tests121 each
+O0/O2 sanitized and actual RV32 ABI compile/negative control pass. No provider
+advertisement, WirelessManager caller integration or deployment yet; this is
+contract verification only, not WPA3 association or working IP connectivity.
+
 WPA3 development (2026-10-11): pure SAE/CCMP metadata now maps to a truthful
 display-only 'WPA3' label. Mixed WPA2/WPA3 remains unknown under the v1
 singleton contract. Scan338/display93 checks each O0/O2 ASan/UBSan pass;
 native device67920B and Prefs153220B build verified, not deployed. Existing
 capability/association gates remain unchanged. N2-SAE defines the remaining
-native caller, required-PMF/SAE, installed-peer and full IP/data qualification.
+native caller integration, required-PMF/SAE, installed-peer and full IP/data
+qualification. The separate FullMAC contract below is verified, not active.
 
 Native security-display retest (2026-10-11): the deployed preferences image
 boots and its scan completes with remote6/decoded6/nonempty6/workaround0.

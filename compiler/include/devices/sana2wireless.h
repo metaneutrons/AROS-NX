@@ -39,6 +39,8 @@
 #define S2INFO_PSK             (TAG_USER + 18) /* borrowed binary WPA PSK */
 #define S2INFO_WPAInfoLength   (TAG_USER + 19) /* readable WPAInfo extent */
 #define S2INFO_AssociationCookie (TAG_USER + 20) /* caller-owned attempt ID */
+#define S2INFO_FullMACAssociation (TAG_USER + 21) /* borrowed typed selection */
+#define S2INFO_WirelessCredential (TAG_USER + 22) /* borrowed typed credential */
 
 /* Send WPAInfoLength only when the actual device advertises IE_EXTENT with
  * FOURWAY. It is the caller's validated readable byte count, not a length
@@ -72,6 +74,7 @@
 #define S2_GETRADIOBANDS    0xc017
 #define S2_GETCRYPTTYPES    0xc018
 #define S2_GETWIRELESSCAPABILITIES 0xc019
+#define S2_GETFULLMACCAPABILITIES  0xc01a
 
 /* Optional, versioned per-device contract. S2_GETWIRELESSCAPABILITIES uses
  * ios2_StatData to point to a caller-owned structure. The caller initializes
@@ -134,6 +137,106 @@ struct Sana2WirelessCapabilities
     ULONG KeyManagement;
     ULONG PairwiseCiphers;
     ULONG GroupCiphers;
+};
+
+/* Separate optional FullMAC contract, not a reinterpretation of v1 FOURWAY.
+ * S2_GETFULLMACCAPABILITIES uses caller-owned ios2_StatData. Initialize
+ * SizeAvailable/Version; require exact SizeSupplied/Version, known bits and
+ * zero reserved fields. A failed/unsupported response grants no permission
+ * to send the new tags. Keep legacy devices' requests unchanged.
+ * Profiles name whole co-occurring suites, not Cartesian mask combinations.
+ * Implementations must refuse unsupported profiles rather than falling back.
+ * DIAGNOSTIC_RISK reports unqualified firmware/privacy/recovery: callers must
+ * explicitly opt in per association. It is never a production verification
+ * assertion. Absence of this flag requires the provider's production gates.
+ * No credential/peer firmware identity is returned by this query.
+ */
+#define S2FULLMAC_VERSION 1
+#define S2FULLMAC_CAPF_DIAGNOSTIC_RISK (1UL << 0)
+#define S2FULLMAC_PROFILE_OPEN         (1UL << 0)
+#define S2FULLMAC_PROFILE_WPA2_CCMP    (1UL << 1)
+#define S2FULLMAC_PROFILE_SAE_CCMP_PMF (1UL << 2)
+#define S2FULLMAC_SAE_PWE_HUNT_AND_PECK (1UL << 0)
+#define S2FULLMAC_SAE_PWE_H2E           (1UL << 1)
+#define S2FULLMAC_SAE_PWE_BOTH          (1UL << 2)
+
+/* SAEPweMethods advertises selectable modes, not a set of AP observations.
+ * BOTH is one selectable mode enabling HNP and H2E negotiation, not the
+ * bitwise union of the two concrete mode values. */
+
+struct Sana2FullMACCapabilities
+{
+    ULONG SizeAvailable;
+    ULONG SizeSupplied;
+    ULONG Version;
+    ULONG Flags;
+    ULONG Profiles;
+    ULONG SAEPweMethods;
+    ULONG Reserved[2];
+};
+
+/* Typed selection supplied only after successful per-device negotiation.
+ * S2_SETOPTIONS receives exactly one FullMACAssociation and, for protected
+ * profiles, exactly one WirelessCredential. Do not combine them with WPAInfo,
+ * WPAInfoLength, Passphrase, PSK or an alternative authentication tag. SSID,
+ * optional BSSID/channel and existing opener-scoped AssociationCookie retain
+ * their meaning; PortType must be managed. OPEN has no credential, disabled
+ * PMF and no SAE PWE selector. WPA2_CCMP is specifically PSK authentication:
+ * it accepts WPA2 passphrase or binary PSK, disabled PMF, no SAE PWE.
+ * SAE_CCMP_PMF uses a distinct SAE password, required PMF and one advertised
+ * PWE method. No fallback to WPA2/open, no raw PSK/PBKDF2 and no synthetic IE.
+ * This initial SAE profile does not support a password identifier or FT/EAP.
+ * Required PMF is client intent, never a claim of observed AP PMF metadata.
+ * Callers must not infer observed AP PMF/PWE from the SAE label or this
+ * selection; policies requiring those facts must refuse missing evidence.
+ * A transition BSS needs separate unambiguous suite/negotiation evidence;
+ * an AP-info authmode is not proof of the negotiated AKM.
+ * Flags permits explicit diagnostic consent, not policy inferred from a
+ * credential or from a generic FullMAC classification. Reserved must be zero.
+ */
+#define S2FULLMAC_ASSOCF_ALLOW_DIAGNOSTIC_RISK (1UL << 0)
+#define S2FULLMAC_PMF_DISABLED 0
+#define S2FULLMAC_PMF_REQUIRED 1
+
+struct Sana2FullMACAssociation
+{
+    ULONG Size;
+    ULONG Version;
+    ULONG Profile;
+    ULONG Flags;
+    ULONG PMFPolicy;
+    ULONG SAEPweMethod;
+    ULONG Reserved;
+};
+
+#define S2WIRELESS_CREDENTIAL_VERSION 1
+#define S2WIRELESS_CRED_WPA2_PASSPHRASE 1
+#define S2WIRELESS_CRED_WPA2_PSK        2
+#define S2WIRELESS_CRED_SAE_PASSWORD    3
+
+/* Explicit bytes, not NUL-terminated strings: WPA2 printable passphrase8..63,
+ * WPA2 binary PSK exactly32, SAE password1..63 non-NUL bytes. These are the
+ * bounded initial contract's limits, not all possible SAE passwords.
+ * Caller guarantees readable objects/Data for Length bytes until Reply.
+ * Provider copies to owned state before acknowledging asynchronous work;
+ * no borrowed pointer may survive Reply. Wipe owned credentials on failure,
+ * cancellation, supersession, offline/close and after the bounded operation.
+ * Never log, publish in scan/capabilities or persist credentials implicitly.
+ * Association acknowledgment is not link-up. CONNECT requires current-target
+ * authentication/keying/port authorization and the live attempt/epoch fence;
+ * matching AP-info or successful SetConfig alone cannot establish success.
+ * The v1 S2WIRELESS_CAPF_CONNECT_FAILED is the sole failure-event authority:
+ * query v1 capabilities too and arm its existing opener/cookie ONEVENT before
+ * the attempt. FullMAC does not imply that flag or alter Disassociate support.
+ * A caller requiring correlated failure/cancellation must refuse its absence.
+ */
+struct Sana2WirelessCredential
+{
+    ULONG Size;
+    ULONG Version;
+    ULONG Kind;
+    ULONG Length;
+    const UBYTE *Data;
 };
 
 /* Explicit driver-reported scan summaries, not reconstructed Beacon/Probe

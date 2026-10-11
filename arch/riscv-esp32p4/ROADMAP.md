@@ -147,7 +147,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: pure SAE/CCMP scan metadata and display host tested338/93 each O0/O2; native device67920B/Prefs153220B build verified, undeployed; caller/association contract open | Explicit negotiated SAE/PMF contract, passphrase not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: pure SAE/CCMP metadata/display338/93 each O0/O2, native device67920B/Prefs153220B undeployed; additive FullMAC contract predicates121 each O0/O2 and RV32 ABI compile verified, caller/provider integration open | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1887,6 +1887,11 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   Existing WirelessManager configuration/selection and Prefs must use an SAE
   password directly, never its WPA2 PBKDF2-derived PSK. PMF must be required;
   raw PSK, unsupported PWE/identifier/profile combinations must fail closed.
+  Additive FullMAC version1 declarations and shared strict validators are now
+  host/native-compile verified only. No caller/provider advertises or uses them
+  yet. v1 failure-event negotiation remains the sole authority; PWE modes are
+  selectable client policies, never observed AP facts. Caller and provider
+  integration, preference configuration and actual link lifecycle remain open.
 - SAE-M3 owner/peer (depends on M2): use existing Hosted STA config fields
   for PMF capable/required, SAE PWE and optional identifier; verify exact
   encoder/caller values, credential ownership/wiping, timeout/cancellation,
@@ -39559,3 +39564,45 @@ remain open. No partial stage is a complete A/B update system.
   devices unchanged; represent diagnostic-risk enablement separately from
   verified production privacy/recovery. Source review only; no new native
   build, device operation, credential transmission or hardware pass.
+
+### 2026-10-11 - N2-SAE additive FullMAC association contract
+
+- Separate S2_GETFULLMACCAPABILITIES/version1 and typed association/credential
+  tags preserve all v1 layouts/meanings. Whole profiles are OPEN, WPA2-PSK/CCMP
+  and SAE/CCMP/required-PMF; SAE never uses raw PSK or PBKDF2. Exact extents,
+  version, reserved/unknown bits, advertised singleton selection and bounded
+  credential types/bytes are checked by shared allocation-free predicates.
+  Diagnostic-risk advertisement needs explicit per-attempt opt-in; it is not
+  production privacy/recovery verification. No provider advertises the new API.
+- Independent review resolved duplicate failure-event authority by retaining
+  only the existing v1 flag/ONEVENT/cookie contract. PWE BOTH is explicitly one
+  selectable client mode enabling HNP/H2E, not a mask union or AP observation.
+  Required PMF is client intent; callers requiring positive AP PMF/PWE evidence
+  must refuse missing evidence. Transition remains unqualified. CONNECT needs
+  current-target authentication/keying/port authorization plus epoch fencing;
+  SetConfig/AP-info alone are not success. Provider copies before Reply and
+  wipes owned secrets on completion/failure/cancel/supersession/offline/close.
+- Luna tests actual headers using host types:121 checks each O0/O2 ASan/UBSan,
+  accepted14/rejected66/unexpected0. Primary independent repeat exits0;
+  poisoned-buffer checks exercise rejection before credential-byte reads.
+  v1 sizes/offsets/commands/tags are regression checked. No fabricated AP data,
+  firmware/transport, native scheduling or actual credentials in these tests.
+  Evidence wifi-2026-10-11/wpa3-metadata.pyRFAn/fullmac-contract-primary.log
+  SHA2563b4ce6bce800714dedc83a345faeed04023ea3b1c4873400881ba77c48114c03.
+- Sequential compiler-includes refresh session65182 exits0; both generated and
+  Developer copies match source. Header SHA2569f77bdae8eae6863dea1cd0804591c21f1f688193362e6e350709da0e17ed18f,
+  helper7870ac0caaeaf461d0a4340aaf78a08ef10c0370155dfec22a59d6f5b48a58e2.
+  Actual riscv-aros-gcc compiles fullmac-abi.c with explicit current RV32-SMP
+  generated/Developer include paths, gnu11/Wall/Wextra/Werror, exit0. Its old
+  sysroot still points to AROS-ESP32-v3-build/esp32p4-riscv/AROS/Developer; no
+  abandoned SDK was changed. Assertions prove ULONG/pointer4, v1 caps32/summary28,
+  FullMAC caps32/selection28/credential20/Data-offset16. Object4052B SHA256
+  bfe0ec31dbe023ba1edccdb22fd4f271a3b048525c9982dbf9f98b3ef7d45924;
+  isolated wrong credential-size24 counterprobe exits1 at its negative-control
+  assertion, not an incidental missing include. Logs/source/object retained.
+- Safety/limits: no linked firmware, SD/flash/serial action or credential
+  transmission in this slice. Installed core/BSP/card and all privacy/recovery
+  assertions unchanged. FullMAC contract verification is not WPA3 integration,
+  association, PMF negotiation, peer identity or IP/data qualification. Next:
+  existing WirelessManager/config/Prefs typed SAE caller and P4 provider/owner,
+  followed by unchanged SAE-M3/M4 and N2T acceptance gates.
