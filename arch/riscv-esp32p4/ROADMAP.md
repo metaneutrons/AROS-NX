@@ -130,6 +130,8 @@ on CPU1 with the expected C6 MAC after a fresh coordinated rail-off. This is
 one administrative-startup observation, not an ABI11 full WLAN gate. Initial
 HP watchdog reset still invalidates clean cold continuity. Scan/association/
 DHCP/data acceptance remains open; no full ABI7/ABI8/ABI9/ABI10/ABI11 pass exists.
+Exact-core Saved-PC binding locates interrupt dispatch/restoration but does not
+attribute the watchdog reset; pre-reset telemetry and open continuity are missing.
 
 The2026-10-11 measured0x17/4 vendor collision supersedes every earlier
 undeployed C6 discovery candidate's startup advertisement. Current host and
@@ -1707,6 +1709,10 @@ regressions pass; corrected package deployment/readback and warm return pass,
 and a subsequent fresh coordinated C6 start reaches persistent owner ready on
 CPU1 with the expected MAC. This establishes startup once, not link-up or the
 full WLAN gate. Reset continuity remains open.
+Offline exact-core symbol binding resolves the two captured saved PCs to the
+interrupt dispatcher and trap-entry register restoration, not a ROM address.
+No preceding mcause/mtval or retained interrupt timeline establishes causation;
+serial-open disturbance remains a confound, not an attributed cause.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -39077,3 +39083,30 @@ remain open. No partial stage is a complete A/B update system.
   temporary-RAM association, DHCP/routes/DNS and actual bidirectional traffic.
   Diagnose watchdog continuity independently; production qualification and
   shared SD/graphics load/reconnect acceptance remain open.
+
+### 2026-10-11 - N2T offline watchdog Saved-PC binding
+
+- Read-only primary and Luna investigation; no hardware/serial access, resets,
+  flash, SD writes or credential/configuration reads. Existing GUI scan still
+  awaits fresh human readiness. Both cold-diagnostic.log and cold-tagfix.log
+  begin with HP_SYS_HP_WDT_RESET and bootloader WDT warning; their saved PCs
+  differ. The passive reader's DTR/RTS=true open can disturb hardware, and ROM
+  output may be buffered. Timing alone cannot attribute the reset to opening.
+- Generated core190016B SHA256
+  dea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0
+  still matches the retained installed core-before.bin in
+  `evidence/wifi-2026-10-10/native-startup-hardware.Y8uRvH` under the documented
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build` evidence root. Companion ELF
+  SHA256ff4861178f62223f69b5b4ec63ddc3b6cb62ffb31f4bd46e598ae52c28a514b9
+  matches the earlier exact-core binding; no current device read was performed.
+- riscv-aros-addr2line and objdump actual exit0, using that generated core.elf:
+  latest0x4000a008 is krnTrapHandler's beq a6,a5,0x4000a142 (IRQ22 branch);
+  prior0x4000b3a8 is __trap_entry's lw a4,44(sp), register restoration.
+  Both addresses are inside the mapped app, not evidence of a ROM fault.
+  Source-line debug information is absent. Neither location proves a stuck
+  instruction, recursive trap, memory fault or WLAN/graphics defect.
+- No preceding mcause/mtval, retained IRQ timeline or independent rail/open
+  observation establishes causation. Do not disable watchdogs, change IRQ
+  priorities or substitute a speculative fix. Next remains synchronized native
+  scan/association/DHCP/data, with any reset-attribution experiment separately
+  scoped. Owner readiness once is unchanged; full WLAN and continuity gates open.

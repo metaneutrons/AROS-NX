@@ -9,6 +9,9 @@ there is no later captured ROM/reset or trap/Guru/Alert/panic signature.
 This is administrative radio readiness, not scan, association or IP traffic.
 Next is a freshly synchronized Prefs/WiFi scan using the existing AROS tools.
 Privacy/recovery assertions remain0, and no C6 firmware or credentials changed.
+Offline exact-core symbol binding places the two saved PCs in krnTrapHandler
+and __trap_entry register restoration. Neither identifies a fault cause;
+pre-reset IRQ/trap telemetry and capture-open attribution remain missing.
 
 WLAN INIT collision identified (2026-10-11): the coordinated rail-off capture
 reaches stage27/error14 and reports FIELD_SIZE at offset17, tag0x17/length4,
