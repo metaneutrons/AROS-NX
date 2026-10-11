@@ -12,6 +12,10 @@ with DTR/RTS both false also captured zero bytes; default and single USB-reset
 ROM connections fail with devserial absent. Manual BOOT recovery is next.
 First manual BOOT/power-on attempt also returned no ROM response. USB descriptor
 still identifies the correct P4 MAC, but download mode is unproved. No WLAN pass.
+Subsequent user-requested ROM retry succeeds; entire385024B AROS backup restored
+and independently read back byte-identically. Software-reset return fails with
+no accepted boot output; release BOOT and coordinate power-on to verify return.
+The diagnostic is no longer installed. No C6 firmware change occurred.
 
 Credential-free lifecycle diagnostic (2026-10-11): separate opt-in official
 Hosted P4 app observes one INIT and three STOP/START cycles, with checked

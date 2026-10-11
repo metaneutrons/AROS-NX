@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `recovery pending`: two coordinated cold captures, including DTR/RTS false repeat, each65s/zero firmware bytes; default and USB-reset ROM connections fail without devserial; no rollback write; diagnostic still installed, two complete matching AROS backups intact | Priority over further N2-SAE testing: coordinated manual BOOT entry, exclusive ROM identity check, exact385024B restoration/readback and AROS return; silent captures are not lifecycle qualification |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `flash restoration verified, boot return pending`: subsequent requested ROM retry succeeds; exact385024B AROS backup restored/readback matched; software-reset return fails with no accepted boot output; both65s lifecycle captures had zero firmware bytes | Release BOOT, coordinated power-on and AROS return before further N2-SAE diagnostics; silent captures are not lifecycle qualification |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin publication implemented; foreign leave isolation, failed-teardown replacement-cookie and pre-ACK completion repairs host/native-build verified; CONNECT_FAILED shares admission gate, FOURWAY absent; reference inventory/INIT SAE-bit verified; single-handler C6 candidate retained; credential-free P4 STOP/START diagnostic deployed with two matching full-span backups and independent readback after exclusive-port correction; not run, no event-fence qualification; native admission final gate0, undeployed; installed failure/cancellation/reconnect and peer qualification open | Coordinated USB-C rail-off, single lifecycle capture and exact-span AROS rollback, then source-backed producer fence or attempt correlation and installed-peer qualification; explicit negotiated SAE/PMF, password semantics, no transition downgrade, native caller lifecycle and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1949,6 +1949,10 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   Manual BOOT entry/restoration now takes priority; no further diagnostic.
   First user-confirmed BOOT/power-on entry also fails ROM sync. USB descriptor
   identifies the expected P4, not a proved ROM download state. No write occurred.
+  Subsequent user-requested retry succeeds; full385024B AROS backup restored
+  and independently read back exactly. Diagnostic removed. Software-reset
+  return fails without accepted boot output; physical BOOT release/power-on
+  and baseline return remain the immediate gate before further diagnostics.
   Typed BeginIO/capability wiring now uses the owned parser and a shared,
   default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
   permission alone cannot advertise/admit FullMAC; the resource checks that
@@ -41111,3 +41115,23 @@ remain open. No partial stage is a complete A/B update system.
   than infer success from device presence; determine RESET availability.
   GPIO35/BOOT download selection is supported by official esptool P4 guidance:
   https://docs.espressif.com/projects/esptool/en/latest/esp32p4/advanced-topics/boot-mode-selection.html
+
+### 2026-10-11 — Exact-span AROS restoration verified; boot return pending
+
+- Fabian requested another attempt. No serial owner; default-reset flash-id
+  process2434 actual exit0 verifies P4v1.3/16MB/MAC80:f1:b2:d3:3b:a6.
+  This successful ROM entry does not identify the preceding silent-boot cause.
+- Rechecked backup SHA256088edb7e57474f02bf87a8fc4122e45faf587c3e24241ca012aab40ce09852ae.
+  Exact385024B write at0x20000 process4413 actual exit0/hash verified;
+  independent full-range read process5211 actual exit0/cmp0/same SHA256.
+  Diagnostic removed, saved AROS core and every byte through0x7dfff restored.
+  No bootloader/table/BSP/SD/C6 write or credentials.
+- Baseline return reset-and-log25s process33533 exits1 after its built-in
+  six-attempt reset policy: board would not boot. Raw accepted-output log is
+  empty; no AROS boot proof and no determination of BOOT physical state.
+  Do not equate verified flash restoration with running baseline.
+- Evidence lifecycle-hardware.UkjyId/manual-retry-identity.log,
+  rollback-success-write.log, rollback-readback.bin/log, AROS return captured
+  as aros-return.log and aros-return-timing.jsonl. Next ensure BOOT released,
+  coordinate USB-C cycle and establish baseline return before another test.
+  Original WPA3/PMF/IP/data/reconnect goal remains unverified.
