@@ -14,6 +14,12 @@ Host staging/fresh RV32 builds, exact flash readback and a45s headless boot
 are verified; evidence is recorded in ROADMAP. GUI helper launch and WPA3
 acceptance remain separate gates.
 
+Post-deployment scan report (2026-10-11): Fabian sees signal/channel but
+security remains '?'. Application entry-point identity is not yet confirmed.
+A passive12.203s retrieval contains only touch heartbeats, no WiFiAP tuples;
+the earlier scan cannot be diagnosed from that capture. Request a synchronized
+flash-app scan with the reader already active, without automatic connection.
+
 WiFi chooser correction (2026-10-11): Fabian observes four scanned networks,
 but WPA3 labels remain '?' and the device selector remains empty. The SD
 pre-update manifest identifies the older153004B Prefs/WiFi, without the current
