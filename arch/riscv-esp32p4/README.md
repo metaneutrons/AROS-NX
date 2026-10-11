@@ -1,11 +1,26 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+ESP32Board interface (2026-10-11): native MUI Overview, Update, Flash & Backup
+and Diagnostics tabs implement Fabian's approved 800x600 design. Requested
+740x500 inner sizing, bounded status lines, native file requesters and a
+six-column scrollable partition list replace the wide single-page interface.
+Fresh RV32 build, sanitized host checks, exact helper readback and45s headless
+return pass; native800x600 visual acceptance remains open.
+CLI/worker semantics stay shared. Download, P4/C6 install and raw backup/write
+remain visibly unavailable. Unknown board facts, active roles and unlisted gaps
+are not fabricated as queried hardware, A/B slots or verified free space.
+
 Open-network correction (2026-10-11): the production manager sends an explicit
 NULL WPAInfo but no WPAInfoLength on its non-offload open path. The P4 parser
 now accepts that exact credential-free form; protected IEs still require an
 explicit validated extent. Sanitizer parser/queue tests and fresh RV32 device
 and Prefs builds pass. Helper generation1.3 rejects resident1.0/1.1/1.2.
-Not deployed yet; open association, DHCP and traffic remain unverified.
+Helper deployment and exact4MiB independent readback now pass; the first45s
+headless return reaches both CPUs and WLAN owner ready. Fabian reports that an
+open WLAN still cannot connect during the deployment interval; exact attempt
+and loaded helper identity were not synchronized with the capture. No
+association, DHCP or traffic pass. Next: exact flash-app attempt with an armed
+reader and stage-specific credential-free diagnosis.
 
 Transition security and manager startup (2026-10-11): exact Hosted
 auth7/CCMP4/CCMP4 now displays WPA2/3; selecting it emits only SAE/RSN/CCMP,

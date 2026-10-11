@@ -148,9 +148,10 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2H | Flash-delivered helper entry points | `deployment/readback verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi; synchronized capture has scan ok1/11 remote/8 results and auth7/CCMP transition records left unknown | Truthful transition display and target correlation; no full WiFi/SAE/PMF/IP pass |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: generation1.2 host/native/readback/headless verified; Fabian confirms transition labels and no old manager-load error, open association fails; generation1.3 NULL-WPA extent correction host/native build verified, not deployed | Deploy exact generation1.3 helpers and obtain synchronized association evidence; peer admission remains0, no IP/data pass |
+| N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: generation1.3 host/native/readback/headless verified; labels/manager startup previously corrected; Fabian reports another open connection failure, exact attempt/stage uncaptured | Synchronized association evidence for generation1.3; peer admission remains0, no IP/data pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
+| N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
@@ -1303,6 +1304,23 @@ reference firmware example building is not evidence of AROS transport.
 
 ### N2M - board maintenance and adaptive flash layouts
 
+Interface redesign (2026-10-11), N2M-U: implemented Fabian's approved four
+task-oriented MUI tabs Overview, Update, Flash & Backup and Diagnostics within
+an800x600 screen. Overview navigates the same Register; no duplicate dispatch.
+Update distinguishes paired P4 Kickstart/BSP and C6, local file and future
+GitHub releases, without enabling unfinished download/signature/update paths.
+Flash displays validated proportional extents and scrollable exact rows;
+imported active roles stay unknown and unlisted gaps are not verified free.
+Read-only C6 check/compare/discovery retain the shared backend and WLAN-offline
+warning. Close/cancellation and copied-message ownership remain unchanged.
+Backup/raw writes remain unavailable pending their actual backend gates.
+Native layout acceptance is separate from an HTML design or static tests.
+Fresh object-invalidated RV32 tool154908B builds and sanitized status-wrap
+checks pass; the shared frontend guard rejects five mutations. Six display
+columns, string-copy ownership and close/cancel paths were independently
+reviewed. Requested740x500 inner dimensions are MUI min/max-clamped, not a
+native800x600 sizing measurement. Runtime sizing/requesters remain open.
+
 Release contract addition (2026-10-11), N2M-R: the shared
 [release/trust contract](../../docs/plans/esp32-firmware-release-contract.md)
 defines Ed25519-signed manifests binding native C6 apps and P4 A/B core+BSP
@@ -1907,7 +1925,13 @@ acceptance gates remain open. Fabian subsequently confirms the corrected
 labels and absence of the old manager-load error, but open association fails.
 The open legacy options omit an extent which the P4 parser required even for
 a NULL WPA IE. Generation1.3 accepts only the credential-free explicit NULL
-form without that extent; host/native build verified, not deployed yet.
+form without that extent; host/native build, helper readback and headless
+return verified. Association/DHCP/data remain open.
+Fabian reports another open-network connection failure during deployment;
+the attempt and application/device identity are not captured together.
+Do not count the parser correction as an association fix. Next synchronize
+the exact flash helper with numeric stage/error diagnostics before attributing
+the refusal to manager, SANA-II, Hosted/C6 association or IP configuration.
 See the dated evidence appended below.
 
 The measured target is reported by Fabian as WPA3; the deployed GUI displays
@@ -41891,3 +41915,93 @@ remain open. No partial stage is a complete A/B update system.
   Retained host evidence:
   wifi-2026-10-11/board-ui-open-fix.Bzs2Qv/options.log,
   wm-integration.log and staging-tests.log. No connection result yet.
+
+### 2026-10-11 - N2M-U four-tab native interface implementation
+
+- Fabian approved the Overview, Update, Flash & Backup and Diagnostics
+  window design for an800x600 screen. Implementation uses native MUI
+  Register pages and file requesters, not an embedded HTML interface.
+- Source implementation and fresh native build pass; native sizing acceptance
+  remains open. CLI and worker operation dispatch remain shared. Imported tables and historical
+  C6 registry observations must not claim live P4 layout or update admission.
+  Unimplemented install/download/backup/raw-write controls stay disabled.
+- Recovery and hardware state are unchanged. After fresh object-invalidated
+  RV32 build, host checks and independent review, deploy only the4MiB helper
+  volume together with the build-verified generation1.3 WLAN correction.
+  Kernel, BSP, C6, boot metadata and SD remain unchanged. Exact readback and
+  headless return precede fresh coordinated GUI/open-network acceptance.
+- Fresh build after deleting every ESP32Board object exits0 and compiles/links
+  all17 sources for esp32p4-riscv-smp, jc1060p470c-v2. No public ABI headers
+  changed. ESP32Board0.2/154908B SHA256
+  6a4ff19e7f4ad5eee8efea1901fb822a7e852652021bec1516f1214129f568c1.
+  gui-tests.log contains the primary source-contract and extracted-status
+  O0/O2 ASan/UBSan repeat, exit0; parity guard passes/five mutations rejected.
+  Prior board target/layout/source/compare tests remain passing within host
+  limits. No native MUI or radio result follows from these tests.
+- Independent review found a seven-column/six-string format mismatch, fixed
+  before the accepted final build, and an unchecked bar-member attachment,
+  now guarded. Status newline expansion reserves its terminator; separate
+  visible C6/table SHA fields dispatch correctly and are disabled while busy.
+  Imported roles stay unknown, observed C6 registry roles remain historical,
+  gaps stay unlisted/reserved. All unavailable backend actions stay disabled.
+- Reproducible helper image4194304B SHA256
+  ccd83d5d3324c019c1de96408661ddf3053693cddc613914fe25e7bc79b2431b;
+  33entries/28 files read-only remounted and all file hashes verified, plus
+  seven HELPERS.sha256 records. Existing touch/qualification/S5 files retained.
+  Evidence: wifi-2026-10-11/board-ui-open-fix.Bzs2Qv, including final
+  board-build.log, gui-tests.log and mounted-manifest-check.log.
+- JC1060 identity verified: ESP32-P4v1.3 MAC80:f1:b2:d3:3b:a6. Current
+  table0x8000/0x1000 read exits0 and matches retained legacy table SHA256
+  b96e4eb9478d7b02864faa0685d10b78e0c5a321cdc0637b2d58023504c1d193.
+  Retained known-good1.2 helper image634e6ef0... is rehashed for recovery;
+  no new full backup required under Fabian's clarified development policy.
+  Write only0xc00000/0x400000 exits0 with hash verification. Independent
+  full-span read exits0 and cmp/SHA match ccd83d5d...; no kernel/BSP/C6/SD,
+  partition-table, bootloader or NVS writes. Single-pulse45s headless return
+  capture started next; its process/footer and actual boot evidence are pending.
+- Initial helper capture subsequently exits0: complete/status=ok,
+  elapsed45.005431542s,18594bytes, cleanup_errors empty. Parser classification
+  is unclassified; raw output reaches kernel, PSRAM32MiB/200MHz/timeouts0,
+  two CPUs/hart1, watchdog6000ms, framebuffer/touch activity and ownerCPU1 with
+  expected C6 MAC10:bd:a3:9b:bc:34. Two ROM banners/USB reset0x17 preserve the
+  port-open/explicit-pulse ambiguity, not a rail-off or clean-cold proof.
+  No captured trap/alert/Guru/watchdog fault follows; lossy/truncated lines
+  prevent claiming absence outside the observed stream. Raw log SHA256
+  63525952b76a66fb1d50d9f108be171a27554c872ebfce9bf0278411b27914ac;
+  journal386220bb84f91e31904195c3096543b12edb8ce446f7a7999ec9ade3033e918c.
+- Before visual acceptance, the raw log's1024x600 mode exposed a geometry
+  design mistake:92% width would be942 pixels on this panel, not the approved
+  compact window. Corrected to740x500 requested INNER pixels independent of
+  wider panel resolution. MUI min/max can still clamp; no actual800x600
+  rendering was observed. First image/capture remain retained, not silently
+  overwritten; the corrected build/deployment has separate evidence in
+  wifi-2026-10-11/board-ui-compact.LOoVD6. Independent narrow geometry review
+  finds no source blocker; native visual acceptance remains required.
+- Final compact build: all tool objects invalidated again, full17-source
+  compile/link exits0;154908B SHA256
+  2f87d7d4d999129c4b08487b6365ee394846e968a6ef8e4308c39926ff4d7e62.
+  Primary GUI source/status sanitizer repeat exits0; parity passes again.
+  Final image4194304B SHA256
+  a2bef08bf108be26ff074be8351d719a842dfb4f39081e6616dae22238fd2f0a.
+  Read-only remount verifies28 files/seven helper records again. Only the
+  ESP32Board binary and generated helper manifest differ from the first stage.
+  Fresh MAC identification and current-table comparison pass. Exact same
+  0xc00000/0x400000 write and independent full read both exit0; cmp/hash match.
+  Final45s headless return started; no additional backend capability enabled.
+- Fabian's contemporaneous report: "Could not connect" still occurs for an
+  OPEN network. This is a functional failure report, not a successful NULL-WPA
+  association gate. Neither exact loaded generation nor request/radio/IP stage
+  was synchronized with a complete capture. Preserve that uncertainty instead
+  of claiming the source repair fixed the observed connection error.
+- Final return capture exits0: complete/status=ok,45.005700250s,18379bytes,
+  cleanup_errors empty, classifier unclassified. Raw log reaches32MiB
+  PSRAM200MHz/timeouts0, kernel watchdog6000ms, hart1/two CPUs, graphic/touch
+  activity and ownerCPU1/expected C6 MAC. Two ROM USB-reset0x17 banners remain;
+  no rail-off/clean-cold claim. No captured trap/alert/Guru/nonzero fault follows,
+  with lossy console limits. A scan record appears ok1/remote9/results8/host8/e0,
+  but no requested synchronized association or UI sizing acceptance was run.
+  Raw log SHA256
+  f544daccf472ee00b6553904f62c6d102e6dbbb1b29aaaf0b188ef569291727e;
+  journal f257b031f225138386534ff89e742965aa95aeb26452f90ff8ef04f81e34f54e.
+  Reader closed. Next: fresh readiness for four-tab visual inspection and a
+  stage-correlated exact flash WiFi open-network attempt, without C6 flashing.
