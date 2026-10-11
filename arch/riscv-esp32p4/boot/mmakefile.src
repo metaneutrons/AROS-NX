@@ -163,11 +163,10 @@ PKG_RES       += c2screen
 endif
 
 #
-#   The package shares its partition with the flash development volume, which
-#   takes the last four megabytes; see P4_FLASHDISK_PART_OFFSET in
-#   kernel/kernel_intern.h.  Growing past the split would have the loader
-#   read filesystem bytes as package members, so it is a build error here
-#   instead.
+#   Legacy places the package before the flash development volume in a single
+#   BSP partition.  A/B gives each BSP slot its own package limit and places
+#   DEVELOP in a separate partition.  In either layout, a package larger
+#   than the board-provided limit would make the loader read beyond its slot.
 #
 PKG_LIMIT := $(P4_BOARD_PKG_LIMIT)
 
@@ -185,13 +184,16 @@ USER_LDFLAGS := -static
 
 #MM
 kernel-package-esp32p4-riscv-checksize : kernel-package-esp32p4-riscv
-	@size=`wc -c < $(AROSARCHDIR)/aros-bsp.pkg` ; \
-	if $(TEST) $$size -gt $(PKG_LIMIT) ; then \
-	    $(ECHO) "aros-bsp.pkg is $$size bytes, over the $(PKG_LIMIT)-byte" \
-	            "split with the flash development volume" ; \
-	    exit 1 ; \
-	else \
-	    $(ECHO) "Package     $$size of $(PKG_LIMIT) bytes before the flash volume" ; \
-	fi
+	@$(PYTHON) $(SRCDIR)/arch/riscv-esp32p4/tools/check-artifact-size.py \
+	    "$(AROSARCHDIR)/aros-bsp.pkg" $(PKG_LIMIT) --label Package
+
+# Explicit paired artifact; never reinterpret the legacy raw PKG.
+#MM kernel-package-esp32p4-ab : kernel-package-esp32p4-riscv kernel-esp32p4-riscv
+kernel-package-esp32p4-ab:
+	@if test "$(P4_FLASH_LAYOUT)" != ab; then \
+	    $(ECHO) "Paired BSP requires P4_FLASH_LAYOUT=ab"; exit 2; fi
+	@$(PYTHON) $(SRCDIR)/arch/riscv-esp32p4/tools/make-ab-bsp.py \
+	    $(OSGENDIR)/boot/aros-esp32p4.bin $(AROSARCHDIR)/aros-bsp.pkg \
+	    $(AROSARCHDIR)/aros-bsp-ab.bin --replace
 
 %common

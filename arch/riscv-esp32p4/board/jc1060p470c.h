@@ -144,7 +144,7 @@
 #define P4_BOARD_WIFI_D3_GPIO           17
 #define P4_BOARD_WIFI_RESET_GPIO        (-1)
 
-/* Last four MiB of arosbsp, at physical flash offset 0xc00000. */
+/* Legacy layout: last four MiB of arosbsp, at physical offset 0xc00000. */
 #define P4_BOARD_FLASHDISK_PART_OFFSET 0x003E0000UL
 #define P4_BOARD_FLASHDISK_SIZE        0x00400000UL
 

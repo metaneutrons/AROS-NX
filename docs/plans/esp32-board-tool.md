@@ -284,9 +284,12 @@ for the bootloader. NVS moves to0x21000/0x6000, nvs_keys to0x27000/0x1000,
 otadata to0x28000/0x2000 and PHY to0x2a000/0x1000. Preserve metadata contents
 where applicable, not their old offsets; do not blindly reuse old OTA selection
 as proof of an A/B pair. Remaining prefix gaps are reserved, not spare payload.
-The inactive `partition-table-ab.candidate.csv` records this design;
-neither the active board profile nor installed device uses it. D1001 remains
-unchanged; this decision covers JC1060's 16-MiB capacity only.
+Generic implementation now selects `P4_FLASH_LAYOUT=legacy|ab`, with legacy
+the default, for D1001 and both JC panel variants. A/B keeps all five payload
+partitions below16MiB; D1001's separate upper-flash storage stays unchanged.
+The historical candidate CSV remains evidence, while `partition-table-ab.csv`
+and `ab-sdkconfig.defaults` are the opt-in board inputs. No device uses the
+new layout yet. Board/layout changes require separate build trees.
 
 Before activation, map the selected kernel to its matching BSP, remove the
 current shared-BSP/development-volume split assumption, and derive DEVELOP
@@ -297,6 +300,22 @@ pair manifest/commit policy with bounded boot attempts and explicit successful
 boot confirmation; both components must be authenticated/validated before
 selection. A kernel slot alone is not a valid update pair.
 
+Implementation stages, tracked separately from hardware acceptance:
+
+- M4-AB1: Generic profiles, strict live-table resolution of actual XIP slot,
+  independent DEVELOP and exact artifact bounds implemented; host verification.
+- M4-AB2: Per-candidate bootloader gate and128-byte BSP envelope implemented.
+  Header: `P4ABPKG` plus version1; little-endian complete core/PKG sizes at8/12;
+  SHA-256 core at16, PKG at48, first80 header bytes at80; reserved zero16 bytes
+  at112. PKG begins at128. Full bootloader/link and both physical XIP-slot
+  qualifications remain required. Hash binding is not signature authentication.
+- M4-AB3: SMP-safe native inactive-slot writer, readback validation, OTA commit,
+  late successful-boot confirmation and power-loss tests remain unimplemented.
+  IDF rollback configuration alone cannot close this stage.
+- M4-AB4: Explicit backed-up migration, rebuilt smaller filesystem, CLI/GUI
+  partition provenance, cold boot, desktop/touch and recovery qualification
+  remain open. Standalone table writes are refused for the A/B profile.
+
 Migration relocates the current BSP and shrinks the development volume from
 4 MiB to 2.75 MiB. Preserve its files and rebuild the filesystem; truncation
 is not a migration. Back up the actual device, qualify the bootloader/XIP path
@@ -306,8 +325,8 @@ The existing table at0x8000 limits the bootloader starting at0x2000 to24KiB;
 the recorded production bootloader22544B leaves only2032B. A/B bootloader
 growth must be measured against the actual candidate120-KiB bound, not the
 256-KiB prefix. Its table relocation also requires matching bootloader config,
-board constants, table consumers and explicit migration guards; none of those
-active inputs has been switched by the inactive candidate.
+board constants, table consumers and explicit migration guards. These now have
+opt-in source support, not permission to relocate installed flash implicitly.
 Complete these gates separately from the prepared WLAN test; no current
 artifact or deployed layout is silently reinterpreted as A/B.
 

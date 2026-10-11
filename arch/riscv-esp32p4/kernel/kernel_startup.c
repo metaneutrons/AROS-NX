@@ -6639,6 +6639,25 @@ static int krnP4LoadBSPPackage(unsigned long part_off,
     IPTR pkg_size, memlow, lo = 0, hi = 0, used = 0;
     IPTR i;
     int modules;
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+    IPTR manifest_package_size;
+    /* The matching bootloader hashes this envelope, complete kernel and PKG
+     * before selecting a candidate. Never interpret a legacy PKG as A/B. */
+    flash = part_size >= 128 ? krnP4FlashMap(part_off, 128) : NULL;
+    if (!flash || flash[0] != 'P' || flash[1] != '4' || flash[2] != 'A' ||
+        flash[3] != 'B' || flash[4] != 'P' || flash[5] != 'K' ||
+        flash[6] != 'G' || flash[7] != 1)
+        return -1;
+    manifest_package_size = (IPTR)flash[12] | ((IPTR)flash[13] << 8) |
+        ((IPTR)flash[14] << 16) | ((IPTR)flash[15] << 24);
+    if (manifest_package_size < 8 || manifest_package_size > part_size - 128)
+        return -1;
+    for (i = 112; i < 128; ++i)
+        if (flash[i] != 0)
+            return -1;
+    part_off += 128;
+    part_size = manifest_package_size;
+#endif
 
 #if defined(P4_B5_CONCURRENT_STRESS) || defined(P4_B6_DOUBLE_BUFFER)
     if (psram_end > P4_FB_BASE)
@@ -6654,6 +6673,10 @@ static int krnP4LoadBSPPackage(unsigned long part_off,
     }
 
     pkg_size = krnP4ReadBE32(flash + 4);
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+    if (pkg_size != manifest_package_size)
+        return -1;
+#endif
     if (pkg_size < 8 || pkg_size > part_size ||
         pkg_size > __esp32p4_psram_size)
     {
@@ -7523,14 +7546,35 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     krnP4FlashSurvey();
     {
         unsigned long pkg_off = 0, pkg_size = 0;
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+        struct P4ABLayout layout;
+        int found = krnP4ABLayout(&layout);
+        if (found != P4_AB_LAYOUT_OK)
+        {
+            krnP4PutStr("[ab] invalid layout or running slot; refusing Exec, status ");
+            krnP4PutHex32((uint32_t)found);
+            krnP4PutStr("\n");
+            krnP4Halt();
+        }
+        pkg_off = layout.bsp[layout.active_slot].offset;
+        pkg_size = layout.bsp[layout.active_slot].size;
+        __esp32p4_flashdisk_base = layout.develop.offset;
+        krnP4PutStr(layout.active_slot ? "[ab] running KERNEL_B with BSP_B\n" :
+            "[ab] running KERNEL_A with BSP_A\n");
+#else
         int found = krnP4PartitionScan(P4_BSP_PART_TYPE, P4_BSP_PART_LABEL,
                                        &pkg_off, &pkg_size, 1);
+#endif
         int package_claimed_psram = 0;
 
         if (found > 0)
         {
             krnP4PutStr("[flash] pkg   ");
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+            krnP4PutStr(layout.active_slot ? "BSP_B" : "BSP_A");
+#else
             krnP4PutStr(P4_BSP_PART_LABEL);
+#endif
             krnP4PutStr(" at ");
             krnP4PutHex32((uint32_t)pkg_off);
             krnP4PutStr(", ");
@@ -7542,9 +7586,11 @@ void kernel_cstart(unsigned long hartid, void *fdt)
              * Only if it fits: a partition too small for the split would
              * otherwise have the device read package bytes as sectors.
              */
+#if !defined(P4_FLASH_LAYOUT_AB) || P4_FLASH_LAYOUT_AB != 1
             if (P4_FLASHDISK_PART_OFFSET + P4_FLASHDISK_SIZE <= pkg_size)
                 __esp32p4_flashdisk_base =
                     pkg_off + P4_FLASHDISK_PART_OFFSET;
+#endif
 
 #ifdef P4_FLASHDISK_PROBE
             /*
@@ -7552,7 +7598,11 @@ void kernel_cstart(unsigned long hartid, void *fdt)
              * scratch window and the loader is about to use it.  Reading the
              * volume first leaves the loader the state it expects.
              */
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+            (void)krnP4FlashDiskProbe(layout.develop.offset, layout.develop.size);
+#else
             (void)krnP4FlashDiskProbe(pkg_off, pkg_size);
+#endif
 #endif
 
             if (__esp32p4_psram_size)
@@ -7564,9 +7614,21 @@ void kernel_cstart(unsigned long hartid, void *fdt)
                    to exec as free.  A bad header was rejected before any
                    PSRAM write and can safely fall back to the full pool. */
                 package_claimed_psram = loaded != 0;
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+                if (loaded <= 0)
+                {
+                    krnP4PutStr("[ab] selected BSP failed; refusing unpaired boot\n");
+                    krnP4Halt();
+                }
+#endif
             }
             else
+            {
                 krnP4PutStr("[flash] pkg   PSRAM unavailable; cannot load\n");
+#if defined(P4_FLASH_LAYOUT_AB) && P4_FLASH_LAYOUT_AB == 1
+                krnP4Halt();
+#endif
+            }
         }
         else if (found == 0)
             krnP4PutStr("[flash] pkg   no package partition on this board yet\n");

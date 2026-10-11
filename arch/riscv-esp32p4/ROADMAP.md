@@ -126,7 +126,7 @@ No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2T | Explicit accepted-risk WLAN association test | Matched ABI11 BSP/image host verified; actual installed BSP backed up twice identically; not deployed; privacy/recovery assertions remain0; OTA unchanged | Identify/backup SD media, deploy matched artifacts, existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
-| M4-AB | JC1060 paired kernel/BSP A/B flash layout | Inactive 16-MiB candidate with256-KiB boot prefix/table0x20000 host-parser verified; active layout unchanged | Matching bootloader/table consumers, paired slot selection/confirmation/rollback, both XIP offsets, independent DEVELOP, full-image bounds and recoverable migration; no A/B hardware acceptance |
+| M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
@@ -38499,14 +38499,15 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   invocation is not a pass. New test-flag/OTA separation is source-audited,
   not claimed as a complete positive-flag runtime qualification.
 
-## M4-AB: JC1060 paired kernel/BSP slots
+## M4-AB: Generic ESP32-P4 paired kernel/BSP slots
 
 Fabian selected the JC1060 layout on 2026-10-11, then enlarged the boot prefix
 to256KiB: kernel A/B each512KiB, BSP A/B each6MiB, remaining2816KiB
 for an independent DEVELOP partition. Offsets and migration gates are in
 `docs/plans/esp32-board-tool.md`, M4. The explicit candidate is not the active
-board input. Existing WLAN artifacts and standing legacy flash offsets remain
-unchanged; D1001 has no new layout decision in this change.
+board input by default. Existing WLAN artifacts and standing legacy flash
+offsets remain unchanged. Generic opt-in profiles now cover D1001 and both JC
+panel variants, preserving D1001's separate upper-flash storage.
 
 The candidate table is at0x20000, giving the bootloader120KiB from0x2000;
 metadata relocates after the table. Acceptance requires matching bootloader
@@ -38516,7 +38517,10 @@ rollback; correct XIP execution from both kernel slots; independent DEVELOP
 discovery and host filesystem migration; validated live layout in ESP32Board;
 and recoverable hardware migration with identified backups. CSV/parser checks
 alone cannot satisfy these gates. The existing boot path cannot use the new
-table as a drop-in replacement.
+table as a drop-in replacement. M4-AB1 (profiles/resolver/bounds) and M4-AB2
+(envelope/bootloader gate) have source and host checks; M4-AB3 (native writer,
+OTA commit/boot confirmation/power-loss) and M4-AB4 (migration/hardware/GUI)
+remain open. No partial stage is a complete A/B update system.
 
 ### 2026-10-11 - M4-AB inactive layout candidate
 
@@ -38627,3 +38631,84 @@ table as a drop-in replacement.
   then matched BSP deployment/readback and freshly coordinated native test.
   Host image/package passes do not establish radio/DHCP/traffic or runtime
   credential privacy. Existing GUI configuration needs interactive readiness.
+
+### 2026-10-11 - M4-AB generic profiles and paired boot foundation
+
+- Request: apply the selected256-KiB boot prefix /512-KiB kernels /6-MiB BSPs
+  generically to supported ESP32-P4 boards. Source checkout
+  `/Volumes/Dev/Build/aros-esp32p4-wifi`, branch `feature/esp32p4-wifi`;
+  new isolated build `/Volumes/Dev/Build/aros-esp32p4-ab-build`, JC panel v2,
+  SMP, `P4_FLASH_LAYOUT=ab`, default XIP linker. No existing WLAN build was
+  switched. A persistent board/layout marker now refuses in-place changes
+  and unmarked existing kernels as A/B, preventing stale CPP-object reuse.
+- Implemented common opt-in profiles for D1001 and JC v1/v2; default legacy.
+  Table0x20000 and relocated metadata; preserved D1001 upper storage. Kernel
+  derives the actual selected slot from the first XIP MMU mapping, not desired
+  OTA metadata. Strict live-table resolver rejects duplicate, overlapping,
+  truncated, encrypted, missing, wrong-size and wrong-slot payloads. DEVELOP
+  resolves independently, not from BSP+legacy split offset. Invalid pair or
+  failed BSP refuses Exec. Non-XIP A/B linking is rejected at build time.
+- Bootloader per-candidate gate runs after normal ESP-image verification and
+  before candidate acceptance, including fallback candidates. It verifies
+  live table/MD5, complete kernel digest, PKG digest, header digest, exact lengths
+  and reserved bytes. The128-byte envelope is generated only by explicit
+  `kernel-package-esp32p4-ab`; raw PKG remains a separate artifact. Total BSP
+  capacity includes the envelope. SHA-256 is integrity binding, not publisher
+  authentication. No native flash writer or successful-boot confirmation is
+  implied by the configured IDF rollback support.
+- Exact-byte formatter emits2.75-MiB FAT16 DEVELOP with inner LBA1, rather than
+  losing1MiB to legacy LBA2048. Legacy image geometry remains unchanged. Kernel,
+  BSP and bootloader artifact-size guards fail on missing/nonregular/empty or
+  oversized files. Board/layout-specific bootloader and table outputs prevent
+  reuse of stale SDK configuration. Standalone A/B table writes are refused.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/esp32p4-ab-2026-10-11.4vOnSm`.
+  `check-profile.py`: actual exit0,184 positive checks across six combinations;
+  counter-probe actual exit1 as intended. Actual C resolver ASan/UBSan runner
+  exit0 with52 checks each at O0/O2. Capacity suite10 tests, envelope suite3
+  tests and build-profile suite3 tests each exit0. Boot gate runs four variants
+  (O0/O2 x16/32MiB) with CommonCrypto SHA-256 and standard known-answer check,
+  rejecting damaged payloads/manifests and keeping valid B when A is corrupt.
+  Mac tests use real SHA; portable fallback is explicitly a digest-flow stub.
+- ESP-IDF6.0.1 native table encode/decode/MD5 roundtrip actual exit0 for both
+  unique A/B tables. D1001 binary3072B SHA256
+  `5e98c8312201223fb062f5644c2daf66cf33b5d6130e41674f98de2badcb87a6`;
+  JC binary3072B SHA256
+  `51b5fccc980f22e92c4defe12a228ff2fadf419793d1c70515f094ca91b00e2e`.
+  Bootloader patch dry-run exit0 against the local pinned IDF. Actual GCC15.2
+  compile of the gate with the IDF6.0.1 bootloader headers exit0; object49364B
+  SHA256 `a7a03daba21acd9a6ae5d185a7ec07fedc441488a9f00e8af90393012af2df53`.
+  This is an API/object compile, not a linked bootloader or device pass.
+- Build corrections retained: first fresh-tree attempt failed because nested
+  `make` did not create GNU-Make response files; selecting GNU Make4.4.1 on PATH
+  corrected that environment. Recorded `core-build.log` failed on a missing
+  early-kernel memcmp declaration; replaced with an explicit eight-byte header
+  comparison. The retry log is separate; an unsuccessful link is never a pass.
+  Fresh-tree linking also exposed missing `kernel-timer-kobj` dependency;
+  added it instead of copying an old object. `core-build-final.log` linked
+  core.elf but image generation failed127 because esptool was absent from PATH;
+  the next invocation adds the existing Python environment's bin directory.
+- Native JC-v2 A/B core build completed with actual exit0; explicit
+  `Creating .../aros-esp32p4.bin`, SRAM residency check and esptool5.5.0 image
+  creation succeeded. Core182384B of524288B, SHA256
+  `b938ff5b7841e34e9ba777d18bc562b238c4e47468d958d04a5f8e5f9afcc014`.
+  Log `core-build-qualified.log`; flags remained unchanged in the fresh tree.
+  Native independent DEVELOP image2883584B,15 entries, SHA256
+  `9f89f6a8cfbe33fc44f8041eae9fb26fc6f425f2d57c8a9cf5259c0dac5a5371`.
+  Neither artifact was deployed. This verifies a JC-v2 build, not D1001 or
+  JC-v1 native execution, either physical XIP offset, or a linked bootloader.
+- Safety/remaining gates: no serial open/reset, flash, SD write, C6 change,
+  credentials or interactive test. Frozen WLAN candidates and actual installed
+  layout remain unchanged. M4-AB1/2 are source/host verified only until full
+  image qualification; M4-AB3 native SRAM/cache/SMP-safe writes, readback/commit,
+  late boot-health confirmation and power-loss rollback remain unimplemented.
+  M4-AB4 backed-up migration, smaller filesystem reconstruction, both physical
+  XIP slots, GUI provenance and cold boot/desktop/touch acceptance remain open.
+- Explicit `kernel-package-esp32p4-ab` build in the same isolated JC-v2 tree
+  completed with actual process exit0 (`pair-build.log`). Raw PKG2956016B,
+  SHA256 `c441333c798ca8333db36a725251fe36e0770b49f998dae828ec7cf58bb3beae`;
+  enveloped BSP2956144B of6291456B, SHA256
+  `45292beb40fce7b7484dfe342281c1eabbdfcebf0537851634c03901fce66d69`.
+  The generator audited actual package ELF members before producing the bound
+  artifact. This is a native JC-v2 core/package build, not bootloader linking,
+  device deployment or rollback qualification.

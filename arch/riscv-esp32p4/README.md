@@ -1,16 +1,30 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
-JC1060 kernel+BSP A/B target (2026-10-11): Fabian selected a 256-KiB boot
-infrastructure prefix, two512-KiB kernel slots, two6-MiB BSP slots and the
-remaining2816KiB for independent DEVELOP. The candidate table moves to0x20000,
-providing120KiB for the bootloader at0x2000; metadata moves after the table.
-The inactive
-`bootloader/boards/jc1060p470c/partition-table-ab.candidate.csv` passes the
-local ESP-IDF6.0.1 table parser/MD5 roundtrip and exact boundary checks.
-The active layout, installed firmware and WLAN preparation remain unchanged.
-Paired selection/confirmation/rollback, XIP qualification, independent volume
-support and migration are not implemented or hardware verified. See roadmap
-M4-AB and the ESP32Board plan; do not flash this candidate with the legacy boot.
+Generic kernel+BSP A/B support (2026-10-11): all supported P4 profiles
+(`d1001`, `jc1060p470c-v1`, `jc1060p470c-v2`) accept `P4_FLASH_LAYOUT=ab`.
+The default remains `legacy`; use a separate build tree for each board/layout.
+The common layout reserves 256 KiB for boot infrastructure, two512-KiB kernel
+slots, two6-MiB BSP slots and independent2816-KiB DEVELOP. The table at0x20000
+leaves120KiB for the bootloader at0x2000. D1001 retains its separate upper-flash
+storage; no upper-flash MMU support is implied.
+
+The runtime resolves the actual running XIP slot and its matching BSP from
+the live table, rejecting ambiguous/overlapping/out-of-bounds layouts. The
+patched bootloader validates each candidate pair before selection. Explicit
+target `kernel-package-esp32p4-ab` produces `aros-bsp-ab.bin`: a128-byte envelope
+binds the complete core and raw PKG with SHA-256. Hashes detect mismatch and
+corruption, not publisher authenticity. Use this artifact for A/B, never the
+raw legacy PKG. Envelope overhead counts against the6-MiB BSP capacity.
+DEVELOP images use exact bytes and an inner FAT16 partition at LBA1; legacy
+images retain LBA2048. Size checks fail for missing or oversized artifacts.
+
+The isolated JC-v2 A/B core and paired package builds passed; other profiles
+have host checks only. Bootloader API compilation is not full linking.
+Host checks and native compile checks are not hardware qualification. Native
+flash updates, successful-boot confirmation, power-loss rollback and migration
+remain open; the standalone A/B table-write target refuses activation. Installed
+firmware and frozen WLAN artifacts remain unchanged. See roadmap M4-AB and
+the [ESP32Board plan](../../docs/plans/esp32-board-tool.md).
 
 Explicit WLAN test exception (2026-10-11): Fabian requested an association
 test after the unknown installed C6 password-logging risk was explained,

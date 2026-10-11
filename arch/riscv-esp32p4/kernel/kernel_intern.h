@@ -435,7 +435,7 @@ void krnP4CacheOn(unsigned long token);
  */
 #define P4_FLASHDISK_PART_OFFSET    P4_BOARD_FLASHDISK_PART_OFFSET
 #define P4_FLASHDISK_SIZE           P4_BOARD_FLASHDISK_SIZE
-#define P4_FLASHDISK_PKG_LIMIT      P4_FLASHDISK_PART_OFFSET
+#define P4_FLASHDISK_PKG_LIMIT      P4_BOARD_PKG_LIMIT
 
 /*
  * The absolute flash offset of the volume, filled in once the partition has
@@ -446,6 +446,8 @@ extern unsigned long __esp32p4_flashdisk_base;
 
 /* Reading flash from code that executes out of it (kernel_flash.c) */
 void krnP4FlashSurvey(void);
+#include "flash_ab_layout.h"
+int krnP4ABLayout(struct P4ABLayout *layout);
 void *krnP4FlashMap(unsigned long paddr, unsigned long len);
 int krnP4FlashCopy(unsigned long paddr, void *dest, unsigned long len);
 int krnP4PartitionScan(unsigned char want_type, const char *want_label,

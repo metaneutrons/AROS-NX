@@ -54,15 +54,23 @@ IMAGE_SERIAL    ?= 0xa5051d00
 IMAGE_TIMESTAMP ?= 2026-01-01
 IMAGE_SIZE_MB   ?= 64
 
-#   The flash development volume.  Its offset and size are also in
-#   board/d1001.h, where the board-side code reads them; the two have to
-#   agree and the probe prints both so a mismatch is visible rather than
+#   The flash development volume's offset and size come from the board
+#   profile and are also compiled into the board-side code.  They have to
+#   agree; the probe prints both so a mismatch is visible rather than
 #   mysterious.
-FLASHDISK          := $(IMAGEDIR)/aros-flashdisk.img
-FLASHDISK_SIZE_MB  := $(P4_BOARD_FLASHDISK_SIZE_MB)
-FLASHDISK_OFFSET   := $(P4_BOARD_FLASHDISK_OFFSET)
-FLASHDISK_SERIAL   ?= 0xa5051d10
-FLASHDISK_LABEL    ?= AROSP4DEV
+FLASHDISK             := $(IMAGEDIR)/aros-flashdisk.img
+FLASHDISK_SIZE_BYTES  := $(P4_BOARD_FLASHDISK_SIZE_BYTES)
+FLASHDISK_PART_START  := 2048
+ifeq ($(P4_FLASH_LAYOUT),ab)
+# The independent A/B DEVELOP allocation is only 2.75 MiB. Starting its
+# inner MBR partition after the first sector preserves enough FAT16 clusters
+# while keeping the complete image inside that allocation. Legacy images
+# retain their existing 1-MiB-aligned inner partition.
+FLASHDISK_PART_START := 1
+endif
+FLASHDISK_OFFSET      := $(P4_BOARD_FLASHDISK_OFFSET)
+FLASHDISK_SERIAL     ?= 0xa5051d10
+FLASHDISK_LABEL      ?= AROSP4DEV
 
 # Optional private runtime firmware.  Supplying this absolute path stages the
 # blob only into a disposable host image; the source tree and package remain
@@ -238,12 +246,17 @@ ifeq ($(P4_C3_WLAN_IMAGE),1)
 endif
 	@$(ECHO) "Creating   $(FLASHDISK)"
 	@$(PYTHON) $(MKFAT32) --content $(STAGE) --out $(FLASHDISK) \
-	    --size-mb $(FLASHDISK_SIZE_MB) --fat-bits 16 \
+	    --size-bytes $(FLASHDISK_SIZE_BYTES) \
+	    --part-start $(FLASHDISK_PART_START) --fat-bits 16 \
 	    --serial $(FLASHDISK_SERIAL) --timestamp $(IMAGE_TIMESTAMP) \
 	    --label $(FLASHDISK_LABEL)
 	@shasum -a 256 $(FLASHDISK) > $(basename $(FLASHDISK)).sha256
+ifeq ($(P4_FLASH_LAYOUT),ab)
+	@$(ECHO) "A/B host artifact only: deployment requires qualified layout migration"
+else
 	@$(ECHO) "Write it with: esptool --chip esp32p4 --port <port> \
 write-flash $(FLASHDISK_OFFSET) $(FLASHDISK)"
+endif
 
 #
 #   A development volume with only the port's own tools, for the same flash
@@ -306,12 +319,17 @@ endif
 	fi
 	@$(ECHO) "Creating   $(DEVVOLUME)"
 	@$(PYTHON) $(MKFAT32) --content $(DEVSTAGE) --out $(DEVVOLUME) \
-	    --size-mb $(FLASHDISK_SIZE_MB) --fat-bits 16 \
+	    --size-bytes $(FLASHDISK_SIZE_BYTES) \
+	    --part-start $(FLASHDISK_PART_START) --fat-bits 16 \
 	    --serial $(FLASHDISK_SERIAL) --timestamp $(IMAGE_TIMESTAMP) \
 	    --label $(FLASHDISK_LABEL)
 	@shasum -a 256 $(DEVVOLUME) > $(basename $(DEVVOLUME)).sha256
+ifeq ($(P4_FLASH_LAYOUT),ab)
+	@$(ECHO) "A/B host artifact only: deployment requires qualified layout migration"
+else
 	@$(ECHO) "Write it with: esptool --chip esp32p4 --port <port> \
 write-flash $(FLASHDISK_OFFSET) $(DEVVOLUME)"
+endif
 
 #MM kernel-image-esp32p4-riscv
 kernel-image-esp32p4-riscv : kernel-image-esp32p4-riscv-stage

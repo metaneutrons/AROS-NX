@@ -10,6 +10,9 @@
 #error No supported ESP32-P4 board profile was selected
 #endif
 
+/* Apply the selected flash layout only after the physical board profile. */
+#include "flash_layout.h"
+
 /*
  * Optional capabilities default to absent, so a profile only names what its
  * board has. Every profile must state its panel, touch controller and SD
