@@ -76,7 +76,7 @@ class NativeSdkDeclarationTests(unittest.TestCase):
         policy = json.loads((SDK / "metamake-v1.json").read_bytes())
         self.assertEqual(contract["profile"], profile["name"])
         self.assertEqual(policy["profile"], profile["name"])
-        self.assertEqual(contract["roots"], ["includes", "linklibs"])
+        self.assertEqual(contract["roots"], ["core-linklibs", "includes", "linklibs"])
         expected = {
             "linux-x86_64": {"AROS_HOST_ARCH": "linux", "AROS_HOST_CPU": "x86_64"},
             "linux-aarch64": {"AROS_HOST_ARCH": "linux", "AROS_HOST_CPU": "aarch64"},

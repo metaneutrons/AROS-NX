@@ -1,7 +1,7 @@
 # Native ESP32-P4 GNU SDK consumer
 
-This source-owned contract selects the complete ordinary `includes` and
-`linklibs` MetaMake roots for `esp32p4-riscv-gnu`. Its separate compiler
+This source-owned contract selects the ordinary `core-linklibs`, `includes`
+and `linklibs` MetaMake roots for `esp32p4-riscv-gnu`. Its separate compiler
 package profile is `rv32-esp32p4`. It does not build a kernel, bootloader or
 boot medium, deploy to a board or run a hardware test.
 
@@ -54,6 +54,12 @@ Both declare an empty additional `libraries` list deliberately: the eventual
 probe uses the measured language driver and must retain its normal startup and
 standard-runtime defaults. The list is only for ordered, explicit extra SDK
 libraries; it does not replace driver defaults.
+
+`core-linklibs` is mandatory for this SDK: the ordinary `linklibs` aggregate
+does not select the C runtime or the public library client archives used by
+GCC's default AROS application link. The source exporter rejects an incomplete
+or changed root selection; it never repairs the selection implicitly. This
+policy stays in the source declaration, not in a tools target-specific rule.
 
 The source loader verifies the probe declarations and their input seals. That
 is not evidence that the SDK was built or that either fixture linked. Native

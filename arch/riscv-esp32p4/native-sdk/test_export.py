@@ -12,6 +12,7 @@ from pathlib import Path
 
 CONTRACT_RELATIVE = Path("arch/riscv-esp32p4/native-sdk/consumer-v2.json")
 EXPORTER_RELATIVE = Path("arch/riscv-esp32p4/native-sdk/export.py")
+EXPECTED_ROOTS = ["core-linklibs", "includes", "linklibs"]
 
 
 class ExporterTests(unittest.TestCase):
@@ -48,7 +49,7 @@ class ExporterTests(unittest.TestCase):
             },
             "profile": "esp32p4-riscv-gnu",
             "source_baseline": "fixture-baseline",
-            "roots": ["includes", "linklibs"],
+            "roots": EXPECTED_ROOTS.copy(),
             "inputs": [
                 {
                     "path": name,
@@ -125,6 +126,7 @@ class ExporterTests(unittest.TestCase):
 
     def test_update_preserves_abi_roots_and_configuration(self):
         before = json.loads(self.contract_path.read_text(encoding="utf-8"))
+        self.assertEqual(before["roots"], EXPECTED_ROOTS)
         before_metadata = {key: value for key, value in before.items() if key != "inputs"}
         before_inputs = {item["path"]: item["sha256"] for item in before["inputs"]}
         self.write_source("src/a.in", b"updated source input\n")
@@ -144,7 +146,7 @@ class ExporterTests(unittest.TestCase):
         )
         self.assertEqual(after_inputs["src/b.in"], before_inputs["src/b.in"])
 
-    def assert_invalid_contract_has_no_effect(self):
+    def assert_invalid_contract_has_no_effect(self, expected_reason=None):
         before_contract = self.contract_path.read_bytes()
         source_snapshots = {
             path.relative_to(self.root): path.read_bytes()
@@ -155,6 +157,8 @@ class ExporterTests(unittest.TestCase):
         result = self.run_exporter("--update")
 
         self.assertNotEqual(result.returncode, 0)
+        if expected_reason is not None:
+            self.assertIn("native SDK export: " + expected_reason, result.stderr)
         self.assertEqual(self.contract_path.read_bytes(), before_contract)
         for relative_path, content in source_snapshots.items():
             self.assertEqual((self.root / relative_path).read_bytes(), content)
@@ -178,6 +182,42 @@ class ExporterTests(unittest.TestCase):
         self.write_contract(contract)
 
         self.assert_invalid_contract_has_no_effect()
+
+    def test_missing_core_linklibs_root_is_rejected_without_rewriting_contract(self):
+        contract = self.make_contract()
+        contract["roots"].remove("core-linklibs")
+        self.write_contract(contract)
+
+        self.assert_invalid_contract_has_no_effect(
+            "consumer roots must be exactly the sorted SDK roots"
+        )
+
+    def test_duplicate_root_is_rejected_without_rewriting_contract(self):
+        contract = self.make_contract()
+        contract["roots"].append("linklibs")
+        self.write_contract(contract)
+
+        self.assert_invalid_contract_has_no_effect(
+            "consumer roots must be exactly the sorted SDK roots"
+        )
+
+    def test_unexpected_root_is_rejected_without_rewriting_contract(self):
+        contract = self.make_contract()
+        contract["roots"].append("linklibs-extra")
+        self.write_contract(contract)
+
+        self.assert_invalid_contract_has_no_effect(
+            "consumer roots must be exactly the sorted SDK roots"
+        )
+
+    def test_reordered_roots_are_rejected_without_rewriting_contract(self):
+        contract = self.make_contract()
+        contract["roots"] = ["includes", "core-linklibs", "linklibs"]
+        self.write_contract(contract)
+
+        self.assert_invalid_contract_has_no_effect(
+            "consumer roots must be exactly the sorted SDK roots"
+        )
 
     def test_unsealed_sdk_probe_is_rejected_without_rewriting_contract(self):
         contract = self.make_contract()

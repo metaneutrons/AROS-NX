@@ -99,6 +99,11 @@ the opt-in loader test checks both declarations and rejects a changed probe
 input or missing v2 probe metadata. This validates the declaration only: the
 durable tools gate still has to execute the links and retain relocation,
 read-back and release-admission evidence. See TC0.
+The fresh integrated replay on 2026-10-11 exposed a separate declaration gap:
+its two selected roots omitted `core-linklibs`, leaving the normal driver's
+standard libraries absent. The contract now explicitly selects that root too.
+The earlier incremental link evidence remains historical; a fresh complete
+application-link and relocation receipt on the corrected contract is pending.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`

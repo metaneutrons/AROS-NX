@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The complete native SDK build passed after canonical archive output and Popupmenu ownership corrections. Ordinary C/C++ driver links passed and remain byte-identical after full SDK relocation; invalid SDK/ABI/path counterprobes were rejected. The source-owned v2 contract seals C/C++ application fixtures; the loader and corrected source CI authoring gate have positive and counterprobe coverage, not compiler execution evidence. All 46 source CI authoring tests pass. Durable native execution, relocation receipt/read-back/admission, a new qualified tools runtime, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Earlier incremental C/C++ SDK links and relocation passed. The fresh integrated replay failed because the SDK roots omitted `core-linklibs`, leaving the normal driver's standard libraries absent; the source declaration now selects it explicitly. Fresh application-link/relocation execution remains pending. Source authoring checks do not qualify compiler execution. Durable receipt/read-back/admission, a new qualified tools runtime, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -601,6 +601,44 @@ change any board's hardware acceptance state.
 - Remaining gate: actual owning SDK execution and relocation/read-back, exact
   qualified source/runtime integration, then mixed three-host qualification
   and independent public artifact verification. TC0 remains `in development`.
+
+### 2026-10-11 - TC0 explicit standard-library SDK root
+
+- Failed replay: source `f4231ae46063c219f5f8fcca5e474bb3f32e5fee`,
+  consumer contract SHA-256
+  `18d2c40c3013c2efc6d235ce26b7453d31feacf02ae5d4d86215ae7077e481f6`,
+  local tools `7854b43966ec7e75b0bb8f869bb9cff5d6dc8da4` on macOS ARM64.
+  The native and Classic `includes`/`linklibs` stages passed, including
+  OpenURL. The first ordinary SDK C link then failed: 26 default client/runtime
+  archives, including `libposixc.a`, `libstdc.a` and `libexec.a`, were absent.
+  No complete application-link/relocation receipt was produced.
+- Cause: the SDK declaration selected only `includes` and `linklibs`.
+  The source's `core-linklibs` aggregate owns the missing runtime/client
+  archives; it is not a dependency of the ordinary `linklibs` aggregate.
+  GCC's default library specification is correct and the measured SDK `lib`
+  directory appears in its actual search paths. Both native and Classic SDK
+  outputs lack these archives; this is not a `-shared` naming discrepancy.
+- Correction: explicitly select sorted roots `core-linklibs`, `includes`,
+  `linklibs` in the source-owned contract. The invocation projection, ABI,
+  compiler defaults and empty extra-library probe lists remain unchanged.
+  No Rust fallback manufactures prerequisites, and no default library is waived.
+- Procedure: source exporter round-trip and missing/duplicate/unexpected-root
+  counterprobes; complete source CI authoring tests; bound tools loader test;
+  then a fresh complete SDK compatibility execution with all four normal
+  C/C++ original/relocated links. Record results before qualifying execution.
+- Observed authoring results: `export.py --check` passed, all 16 exporter
+  tests and all 46 source CI tests passed on macOS ARM64. The tools opt-in
+  source loader test first rejected the corrected three-root declaration
+  against its stale two-root assertion; after updating that test expectation,
+  it passed with the existing source-input, ABI and probe counterprobes.
+  Corrected consumer contract SHA-256:
+  `8ff48622ed870c376a204c99eeed19259864ec44fbc6c4b916f7b8401506fc63`.
+  These results verify declaration policy, not SDK build or application links.
+- Safety and remaining risk: no board, SMP implementation, firmware, media,
+  compiler archive, historical evidence or published artifact changed.
+  The contract correction is not a completed SDK, A/B or hardware gate.
+  TC0 remains `in development`; fresh complete SDK and mixed release evidence
+  are still required.
 
 ## Track E: ESP32-P4 / RV32 SMP
 

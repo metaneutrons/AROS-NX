@@ -3,6 +3,7 @@
   "profile": "esp32p4-riscv-gnu",
   "source_baseline": "158dc7a3b77fb4f19c5a3522649779d677a75418",
   "roots": [
+    "core-linklibs",
     "includes",
     "linklibs"
   ],
@@ -67,7 +68,7 @@
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/export.py",
-      "sha256": "a8522bc9a3e5651a80de9143486b3241fd6e11a5a23aefa15260e57edd1cf4a3"
+      "sha256": "ce2b22214abdc37a0e333500051e95a5a0d78dab79a26f751fb2cfec1169c99f"
     },
     {
       "path": "arch/riscv-esp32p4/native-sdk/metamake-v1.json",

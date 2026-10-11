@@ -9,6 +9,9 @@ import stat
 import sys
 
 
+EXPECTED_ROOTS = ["core-linklibs", "includes", "linklibs"]
+
+
 def unique_object(pairs):
     result = {}
     for key, value in pairs:
@@ -40,6 +43,11 @@ def export(root):
     contract = json.loads(original, object_pairs_hook=unique_object)
     if contract["schema"] != "aros-native-consumer-contract-v2":
         raise ValueError("unsupported consumer schema")
+    if contract["roots"] != EXPECTED_ROOTS:
+        raise ValueError(
+            "consumer roots must be exactly the sorted SDK roots: "
+            + ", ".join(EXPECTED_ROOTS)
+        )
     paths = [entry["path"] for entry in contract["inputs"]]
     if not 1 <= len(paths) <= 128 or len(set(paths)) != len(paths) or name in paths:
         raise ValueError("ambiguous, recursive or excessive source inputs")
