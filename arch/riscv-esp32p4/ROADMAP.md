@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `runtime/desktop restored; capture harness host tested`: exact385024B AROS rollback verified, desktop observed; initial HP WDT reset40001ea8 maps DMA interrupt clear50081198, cause unproved; both65s lifecycle captures empty; opt-in one-pulse full-byte journal now retains failed attempts | Calibrate one-pulse capture against restored baseline before further diagnostic deployment; no cold-continuity or lifecycle/peer qualification |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `baseline restored; one-pulse calibration observed`: 45.011s/16745B journal/raw exact, one explicit pulse yet two ROM banners; both-hart AROS returns, WLAN INIT rejects stale C6 counter26378/stage13/error6; initial earlier HP WDT cause unproved | Coordinate fresh C6 rail-off and baseline INIT observation before diagnostic redeployment; no cold-continuity or lifecycle/peer qualification |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1966,6 +1966,10 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   Opt-in one-pulse full-byte journal is now host tested: bounded pre-reset
   snapshot, full-duration silent/download retention, no automatic retry and
   terminal status. Hardware calibration remains pending; port open can reset.
+  Baseline calibration now completes45.011s/16745B with exact journal/raw
+  reconstruction and one pulse, yet two ROM banners. Both-hart AROS returns;
+  WLAN INIT rejects stale counter26378 at stage13/error6. This is not a
+  single-physical-reset or peer lifecycle pass; coordinate a C6 rail-off next.
   Typed BeginIO/capability wiring now uses the owned parser and a shared,
   default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
   permission alone cannot advertise/admit FullMAC; the resource checks that
@@ -41245,3 +41249,36 @@ remain open. No partial stage is a complete A/B update system.
 - Next: calibrate this instrument with one bounded headless baseline capture
   before new lifecycle deployment. Peer fence, SAE/required PMF, DHCP/routes/DNS,
   bidirectional data/reconnect and sustained qualification remain open.
+
+### 2026-10-11 — Baseline one-pulse calibration exposes retained C6 counter
+
+- Configuration: unchanged restored AROS core/BSP/SD/C6, tool59e4936d3d;
+  USB /dev/cu.usbmodem101 present, lsof shows no owner before capture.
+  Standing headless authorization; no user sight/physical action requested.
+  No flash, SD write, C6 upgrade or credential transmission.
+- Procedure: reset-and-log.py /dev/cu.usbmodem10145 --once --attempt-log
+  new attempt.jsonl --timing new timing.jsonl, raw stdout retained separately
+  under evidence/wifi-2026-10-11/reset-once-baseline.aIh2bo. Process57880
+  actual exit0. Footer complete/status=ok, boot=unclassified,45.010552167s,
+  16745B, no cleanup errors. Primary base64 decode/offset/length validation
+  reconstructs raw file exactly; 39 post-reset chunks, one assert/release pair.
+- Observed: two ESP-ROM banners with CHIP_USB_UART_RESET, first banner
+  interrupted by second. One explicit pulse does not imply one physical reset;
+  buffered/open-triggered output remains causally ambiguous. AROS enters,
+  watchdog6000ms armed, PSRAM32MB/200MHz, hart1 online/cpus2, graphics updates
+  through256 and touch heartbeats through800. No new visual/touch acceptance.
+- WLAN: SDIO setup succeeds but INIT attempted1/ok0/stage13/error6,
+  preopen26378, polls0. hosted_open.h/c map this to VALIDATE_PREOPEN_LENGTH /
+  STALE_COUNTER before OPEN/FIFO consumption. Reject guard is functioning;
+  not an SAE/PMF negotiation or authentication failure. Warm P4 reset does not
+  establish fresh C6 state; do not remove the stale-counter guard.
+- No captured HP-WDT, panic, Guru, Alert or trap signature (the substring
+  'trap' appears only in 'bootstrap'). Runtime console reports dropped saturated
+  bytes, so absent captured faults is limited evidence. No clean cold result.
+- SHA256 boot.log ed49d7fda16adb24e88a07169920d2275216b1971a0d210820b090e960161b51;
+  attempt.jsonl ac06a777a99daaa1cd52178bc5bd5a8cb7a292c21ca81bd6917868d902800224;
+  timing.jsonl 68a5bbce5c9d206197dfddc9ce63d6881cc18d500f58f4f720e30386cc01bfcc;
+  reader.err empty. Current baseline runtime remains installed.
+- Next: fresh readiness and coordinated USB-C-only C6 rail-off, then bounded
+  baseline INIT capture before re-deploying lifecycle reference. WPA3/required
+  PMF, peer provenance/fence, DHCP/routes/DNS/data/reconnect gates remain open.

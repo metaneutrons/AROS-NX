@@ -2119,6 +2119,11 @@ issues one explicit reset pulse and captures the full requested interval without
 retry. Silent/download observations return failure; other output is unclassified,
 not a boot pass. This mode is host tested only; opening the port can still reset
 the device. Baseline desktop remains restored; lifecycle/WPA3/IP gates stay open.
+Baseline calibration (2026-10-11) completes45.011s/16745B with byte-exact
+journal/raw reconstruction and one explicit pulse, but two ROM banners.
+Both-hart AROS/graphics/touch polling returns; WLAN INIT rejects stale receive
+counter26378 (stage13/error6), not an observed SAE failure. Physical C6 cold
+start remains required; do not bypass the stale-counter guard.
 
 E2, the two-hart primitives, is hardware verified on both boards: on the
 D1001 on 2026-10-01 (219,776-byte candidate, five captures, two epochs each)
