@@ -147,7 +147,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; corrected SSID decoder yields GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and one-file-delta64-MiB image SD deployed/readback verified, visual result pending; initial watchdog continuity unresolved; privacy/recovery assertions0 | Return card and synchronize native security display; existing WirelessManager temporary RAM association/DHCP/traffic/reconnect/load; no C6 write or privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1744,6 +1744,12 @@ and one-file-delta64-MiB image SD deployed/readback verified, visual result pend
 missing/malformed/unsupported data must never say open.
 Physical SD-transfer blocker is resolved by fresh confirmation and verified
 deployment. Card return and native sight-test readiness remain required.
+The subsequent authorized card return/rail-off/scan reaches owner ready on
+CPU1 and again reports remote6/decoded6/nonempty6/workaround0. Fabian reports
+the target is WPA3 and its label remains '?'. Current PSK-only WPA/WPA2 display
+and association admission do not support SAE. Do not relabel this as WPA2,
+fabricate security IEs or downgrade the access point as an acceptance substitute.
+WPA3/PMF caller/driver/peer contract qualification is the next gate.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -39418,3 +39424,32 @@ remain open. No partial stage is a complete A/B update system.
   JC1060, fresh native-test readiness, then scan/security display before
   existing AROS association/DHCP/routes/DNS/bidirectional/reconnect/load gates.
   Privacy/recovery assertions remain0; watchdog continuity remains unresolved.
+
+### 2026-10-11 - N2T security-display retest exposes WPA3 scope gap
+
+- Fresh card-return/readiness, USB-C-only disconnect and reconnect confirmed
+  by Fabian. One pre-armed dispatcher72197 observes absence, arrival at
+  monotonic611055.255161958 (previous sample611055.233925458), and opens one
+  passive180s reader; no second reader/reset/retry. Exact JC1060-v2 P4v1.3
+  baseline: core190016B SHA256dea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0,
+  BSP4032772B SHA25643bdf4875095a63f930064c0c33670e6c016b1f2d40e9fee4d8966805ddc802d,
+  SD67108864B SHA2565a1db5e225da8d742d381a3e097b795904d6bed076b044389307c160f7585f2e.
+  Core1 owner/accepted-risk association configuration unchanged; all three
+  privacy/recovery/update assertions0. No C6, flash/table or credential write.
+- Dispatcher actual exit0; cold-scan.log complete status=ok footer records
+  180.17778212495614s/18098 bytes. SHA256
+  11f630dbbf72fc3624d0255e754375668cc5dc8cb5a4d5b19ccb961b21daa679;
+  log and timing sidecar retained under wifi-2026-10-11/security-image.wfrXgw.
+  Hart1 online/cpus2, graphics/touch activity and owner ready CPU1 with expected
+  C6 MAC are captured. Scan stage3/ok1/remote6/decoded6/nonempty6/workaround0.
+  Initial HP_SYS_HP_WDT_RESET persists; no later captured reset/trap/Guru/Alert/
+  panic. Lossy console and possible control-line disturbance on reader open
+  prohibit clean reset-continuity or absence-of-fault claims.
+- Fabian reports the intended network is WPA3 and Prefs displays '?'. Prior
+  WPA2 expectation was incorrect. The current display admits exact PSK WPA/
+  RSN singleton tuples only; native association admission restricts authmode
+  to open0/WPA2-PSK3. This observation does not establish a WPA2 label defect,
+  SAE support, installed peer firmware lineage or association/IP success.
+  Next: audit existing Hosted SAE/PMF config transport and native AROS contract,
+  implement supported WPA3 without synthetic IEs or a silent WPA2 downgrade,
+  then synchronize association/DHCP/routes/DNS/traffic/reconnect/load testing.

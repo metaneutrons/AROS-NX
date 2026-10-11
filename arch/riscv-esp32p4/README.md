@@ -1,5 +1,14 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Native security-display retest (2026-10-11): the deployed preferences image
+boots and its scan completes with remote6/decoded6/nonempty6/workaround0.
+Fabian identifies the intended network as WPA3 and observes '?'. The current
+singleton PSK WPA/WPA2 projection and association policy do not support SAE;
+this is not a WPA2 display failure or a connection pass. WPA3/PMF negotiation,
+native caller support and installed-peer capability remain to be qualified.
+The180.178s capture exits0/status=ok; initial HP watchdog reset still prevents
+clean cold-continuity acceptance. No credentials transmitted in this test.
+
 WLAN security-display SD deployment (2026-10-11): after fresh card-transfer
 confirmation the64-MiB image is written and independently byte-exact readback
 verified, with double-read affected-prefix backup. Card ejected; native label
