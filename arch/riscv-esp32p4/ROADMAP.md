@@ -121,12 +121,13 @@ not the current deployment pair. The historical ABI8 candidate package passes
 all42 loader audits. An ABI11 diagnostic candidate now replaces only the WLAN
 resource in the actual installed BSP backup, with a matched rebuilt device/tool
 system image (N2T); both are host verified. The SD image is written/readback
-verified; the matching BSP is not yet installed.
+verified; the corrected host-ABI8 BSP is installed/readback verified. Warm
+startup passes host admission but INIT still fails stage13/error6.
 No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2T | Explicit accepted-risk WLAN association test | Matched ABI11 BSP/image host verified; actual installed BSP backed up twice identically; SD prefix backed up twice and image written/readback verified; BSP deployment pending; privacy/recovery assertions remain0; OTA unchanged | Deploy matching BSP and return SD, existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | ABI11 SD image and corrected shared-host ABI8 BSP deployed/readback verified; initial host mismatch corrected by paired host/SD refresh; warm INIT stage13/error6 remains; recoverable backups retained; privacy/recovery assertions0, OTA unchanged | Fresh coordinated C6 cold-start diagnosis, existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1678,7 +1679,9 @@ temporary RAM configuration for the test. Association/DHCP/data/load acceptance
 and host/C6 privacy/recovery qualification remain open. The matched ABI11
 diagnostic BSP and system image are now host verified against the actual
 installed BSP backup; SD image deployment is readback verified, while the
-matching BSP deployment and card return remain pending. The unchanged
+corrected host-ABI8 BSP is also deployed/readback verified and card returned.
+Warm host admission/SDIO setup pass, but INIT stage13/error6 remains; fresh
+coordinated C6 cold-start diagnosis precedes association. The unchanged
 baseline USB-reset capture reports old INIT stage13/error6, not candidate
 acceptance. See the dated N2T preparation record below.
 Source audit also found the existing SANA ONEVENT mask incompatible with the
@@ -38741,3 +38744,57 @@ remain open. No partial stage is a complete A/B update system.
   card, verified matching BSP deployment/readback and a fresh coordinated WLAN
   test with existing AROS tools. SD readback does not establish native boot,
   association, DHCP, traffic, or credential privacy.
+
+### 2026-10-11 - N2T BSP deployment exposes shared-host ABI mismatch
+
+- JC-v2 identity rechecked via esptool5.5.0, MAC80:f1:b2:d3:3b:a6,
+  revision1.3. Live table read0x8000/4096B decodes/MD5-verifies as the existing
+  legacy ota_0=0x20000/8MiB and arosbsp=0x820000/8064KiB; no layout change.
+  Evidence `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/wlan-deploy.xP4hZ5/`.
+- Fresh pre-write BSP read0x820000/4063232B exit0 and cmp exit0 against the
+  preserved baseline7d0d7f16...; recovery remains available. Candidate4025608B
+  SHA256 `6c25ba10348848e6a879fe01efedb7b155e5ba76be367f06c6c55cd182f4f897`
+  loader audit exit0,42members/0fail. Write at0x820000 exit0, then independent
+  read4025608B exit0,cmp exit0 and identical SHA256. Both writes in this entry
+  remain below the legacy DEVELOP boundary0xc00000.
+- First reset-and-log process exit0, complete sidecar30.896856625s/14569B,
+  log SHA256 `ea2ca3648f7e5ac0427af8b7abea9fd8e7576f7229245d790399cdb976cf79d0`.
+  USB reset,42 loaded modules, both Harts, SD capacity121942MB and framebuffer
+  updates appear. WLAN refuses with `compatible shared host absent`; this is
+  not association success. Initial commentary inferred a missing resource
+  from truncated resident lines; exact package audit and loader line143
+  disproved that inference. The resource is present but incompatible.
+- Actual old host disassembly (`old-host-disassembly.log`, P4SDMMC_Init)
+  stores ABI7 at offset52; rebuilt host stores ABI8 at the same offset.
+  Current WiFi checks ABI8. ABI8 changes DMA staging/cleanup semantics despite
+  unchanged224B struct size; bypassing the guard would be unsafe. Luna's
+  bounded source review confirmed only WiFi and sdcard consume this host;
+  priorities host16/SD4/WiFi0 already establish correct initialization order.
+- Invalidated actual SDMMC and sdcard objects. Parallel top-level targets
+  failed exit2 during shared makefile regeneration (`shared-sd-build.log`);
+  retained, not a pass. Serial architecture retry exit0, then complete
+  `kernel-sdcard-quick` module build exit0 (`sd-module-build.log`). Architecture
+  target alone did not relink the module. Host tests exit0:40cases/401034checks.
+  Persistent AGENTS rule now requires the actual package ABI dependency closure
+  and full linked consumer artifacts, with serial top-level mmake invocations.
+- Corrected candidate replaces only the host and sdcard in the first candidate;
+  other40 payloads and member order unchanged. All42 ELF loader audits pass.
+  Host52008B SHA256 `7d39cbacda361cebcb1b2dc8e4cda240268608ab45b36eb7d3a24e1020f6b418`;
+  SD135276B SHA256 `0e125a6d1ba8295cd50a48d851e932c1d5dfa93bca89655f321faf29557a8c4d`.
+  `bsp-shared8.pkg`4028096B,35136B headroom, SHA256
+  `7798a4941db57df431e4d2ddb8af0842c02b94fa193548a828ba03192304e030`.
+  Reidentified the same MAC before write. Corrected write0x820000/4028096B
+  actual exit0 (`shared8-write.log`), independent readback exit0,cmp exit0,
+  SHA256 identical7798a494.... No writes beyond the package erase range.
+- Corrected reset-and-log actual exit0; complete sidecar30.795478708s/16436B.
+  `shared8-boot.log` SHA256
+  `72a18b47e22c4410d74f7f4d185f08a8056648b3900e2bf4737958db5dd0110e`.
+  One ROM banner and expected USB reset; no trap/Guru/Alert/panic or watchdog
+  reset signature. Both Harts, SD enumeration and graphics updates appear.
+  Host admission now passes; SDIO setup stage11/error0 and peer ready02 pass.
+  INIT still fails stage13/error6, preopen383; cleanupok1 and restoreok1.
+  Thus ABI integration is corrected, not WLAN initialization or association.
+  Next diagnostic requires a fresh coordinated C6 rail-off start; no silent
+  power-cycle repetition or credential attempt was made.
+- No core, bootloader, partition table, metadata, C6, credentials or SD writes.
+  These headless boot checks do not establish visible desktop/touch acceptance.

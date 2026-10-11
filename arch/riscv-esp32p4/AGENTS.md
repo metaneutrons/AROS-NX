@@ -83,6 +83,15 @@ also inspect `riscv-aros-gcc -print-sysroot`: GCC may still point at the former
 Developer tree. The P4 fbgfx build explicitly selects this build's generated
 includes; do not silently update the abandoned sysroot as a workaround.
 
+When patching an installed BSP instead of rebuilding the complete package,
+verify the dependency closure of every replaced member against the actual
+backup, not current source filenames. In particular, WLAN and sdcard must use
+the same SDMMC host ABI as the bundled esp32p4sdmmc.resource. Refresh the host
+and both consumers together when that ABI changes. Confirm compiled ABI values
+and complete linked module artifacts; an architecture-object target alone is
+not a rebuilt sdcard.device. Do not run parallel top-level mmake targets in
+one build tree: they can race while regenerating shared makefiles.
+
 ## Capture the console from the first byte
 
 Use `tools/reset-and-log.py`, not esptool followed by a reader:
