@@ -613,6 +613,33 @@ static void p4wlan_begin_teardown_locked(struct p4wlan_unit *unit)
     if (opener) opener->fullmac_events = TRUE;
 }
 
+/* A typed selection or retained typed terminal has an originating opener.
+ * Foreign leave cancels only that requester's state, not another client's
+ * current selection. Preserve legacy-only interface-wide leave semantics. */
+static void p4wlan_disassociate_opener_locked(struct p4wlan_unit *unit,
+                                               struct p4wlan_opener *opener)
+{
+    struct p4wlan_opener *current = NULL;
+    BOOL typed = FALSE;
+    if (unit->pending_association) {
+        current = unit->pending_association->opener;
+        typed = unit->pending_association->target.fullmac_profile != 0;
+    } else if (unit->active_association &&
+               unit->active_association->token == unit->selection_token) {
+        current = unit->active_association->opener;
+        typed = unit->active_association->target.fullmac_profile != 0;
+    } else if (unit->link_committed) {
+        current = unit->link_opener;
+        typed = unit->link_fullmac;
+    }
+    if ((typed || unit->teardown_opener) &&
+        (current ? current != opener : unit->teardown_opener != opener)) {
+        p4wlan_cancel_opener_association_locked(unit, opener);
+        return;
+    }
+    p4wlan_begin_teardown_locked(unit);
+}
+
 /* A confirmed link observer, not an administrative stop or failed attempt.
  * Publish after invalidation so its exact DISCONNECT latch is not erased. */
 static void p4wlan_link_lost_locked(struct p4wlan_unit *unit,
@@ -1313,11 +1340,12 @@ static BOOL p4wlan_associate_one(struct p4wlan_unit *unit,
     } else {
         radio->associated = FALSE;
         /* An acknowledged attempt's late failure is not confirmed link loss.
-         * Never synthesize CONNECT or DISCONNECT from a timeout/error. */
+         * Never synthesize CONNECT or DISCONNECT from a timeout/error.
+         * A ready/callback fault defeats success, not the current attempt's
+         * cause-free terminal. Offline/cancel still revoke its token/cookie. */
         if (!attempt->cancelled && !attempt->opener->closing &&
             unit->active_association == attempt &&
-            unit->selection_token == attempt->token && unit->online &&
-            unit->hardware_ready && !unit->callback_fault)
+            unit->selection_token == attempt->token && unit->online)
             p4wlan_association_failed_locked(attempt->opener,
                                              attempt->cookie, &done);
     }
@@ -1362,10 +1390,31 @@ static BOOL p4wlan_maintain_link(struct p4wlan_unit *unit,
             radio->disconnect(radio);
         ObtainSemaphore(&unit->lock);
         if (!succeeded) {
+            struct p4wlan_association *pending = unit->pending_association;
+            struct p4wlan_opener *failed = NULL;
+            ULONG failed_cookie = 0;
+            /* The old teardown failed, not an AP rejection. Retain only the
+             * still-current acknowledged replacement's terminal identity
+             * across invalidation; canceled/unacknowledged work has none. */
+            if (pending && pending->acknowledged && !pending->cancelled &&
+                !pending->opener->closing &&
+                pending->token == unit->selection_token && pending->cookie &&
+                pending->opener->active_cookie == pending->cookie) {
+                failed = pending->opener;
+                failed_cookie = pending->cookie;
+                ++failed->refs;
+            }
             /* Ambiguous radio state cannot be reused for a newer selection. */
             p4wlan_invalidate_selection_locked(unit);
             unit->teardown_pending = FALSE;
             unit->callback_fault = TRUE;
+            if (failed) {
+                /* Restore solely for the one-shot failure helper, never as
+                 * a newly admitted selection. The fault gate is already shut. */
+                failed->active_cookie = failed_cookie;
+                p4wlan_association_failed_locked(failed, failed_cookie, &done);
+                p4wlan_drop_pin_locked(unit, failed);
+            }
             p4wlan_event_locked(unit, S2EVENT_ERROR, &done);
         } else if (teardown_token ? unit->teardown_token == teardown_token :
                                    unit->selection_token == token) {
@@ -1640,7 +1689,7 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
             break;
         }
         if (p4wlan_disassociate_options((const struct TagItem *)request->ios2_Data)) {
-            p4wlan_begin_teardown_locked(unit);
+            p4wlan_disassociate_opener_locked(unit, opener);
             break;
         }
         if (unit->selection_token == ~(ULONG)0) {

@@ -157,7 +157,10 @@ to the installed peer and does not resolve UID0 attempt provenance by itself.
    remain open.
 5. Resolve/qualify installed peer version and attempt-ordering assumptions;
    runtime receipt revisions are not C6-generated attempt IDs.
-6. Guarded BeginIO/capability integration is implemented, default-off until
+6. Typed leave protects a foreign current selection and failed old teardown
+   retains the current acknowledged replacement's exact-cookie failure.
+   These are native-build/host-model repairs, not installed-peer behavior.
+   Guarded BeginIO/capability integration is implemented, default-off until
    peer qualification; failure/cancellation advertisement remains open. Then native WPA3/PMF, DHCP, routes,
    DNS, bidirectional data, reconnect and original sustained-load/privacy/reset
    gates. No C6 update or AP downgrade is implied by this source audit.

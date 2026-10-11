@@ -1,5 +1,18 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Typed cancellation/failure repair (2026-10-11): foreign Disassociate no longer
+invalidates another opener's typed pending/active/committed selection or a
+new selection behind retained typed teardown. Legacy-only leave is unchanged.
+Failed old teardown preserves the current acknowledged replacement's exact
+cookie for one-shot CONNECT_FAILED instead of silently discarding its waiter.
+Ready/callback faults no longer suppress that terminal for a current active
+attempt. No AP cause or DISCONNECT is inferred. Native gate0 and compile-only gate1
+builds verified; final build restored to gate0. Installed firmware unchanged;
+CONNECT_FAILED advertisement and peer/hardware qualification remain open;
+failed teardown before replacement acknowledgment needs a separate closure.
+Twelve queue-policy sanitizer runs pass (disabled2148, diagnostic3551,
+synthetic qualified3532 checks per optimization); final gate0 device74288B.
+
 Typed native admission (2026-10-11): SETOPTIONS now routes negotiated FullMAC
 tags through the owned typed parser; the separate capability query uses the
 same trusted policy. A default-off peer-contract gate independently blocks
