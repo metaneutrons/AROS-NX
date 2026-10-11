@@ -37,9 +37,10 @@ hardware association/DHCP/traffic remains untested. Release assertions stay0.
 Matched diagnostic deployment artifacts are now prepared (2026-10-11): the
 actual installed BSP was read twice identically, and only its WLAN resource
 was replaced in a 42-member audited candidate. The rebuilt ABI11 system image
-passes all 332 manifest entries and host filesystem verification. Neither
-artifact has been deployed; the SD card must first be identified in the Mac
-reader. No credentials are embedded and the C6 firmware remains unchanged.
+passes all 332 manifest entries and host filesystem verification. The SD image
+is now written and fully readback verified after two identical backups of the
+overwritten 64-MiB prefix; the card is safely ejected. The matching BSP has not
+been deployed. No credentials are embedded and the C6 firmware remains unchanged.
 The unchanged baseline returned from USB reset, but its old WLAN INIT failed
 at stage13/error6; this is not a pass for the new candidate. See roadmap N2T.
 
