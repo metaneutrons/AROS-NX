@@ -126,7 +126,7 @@ No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2T | Explicit accepted-risk WLAN association test | Matched ABI11 BSP/image host verified; actual installed BSP backed up twice identically; not deployed; privacy/recovery assertions remain0; OTA unchanged | Identify/backup SD media, deploy matched artifacts, existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
-| M4-AB | JC1060 paired kernel/BSP A/B flash layout | Inactive 16-MiB candidate host-parser verified; active layout unchanged | Paired slot selection/confirmation/rollback, both XIP offsets, independent DEVELOP, full-image bounds and recoverable migration; no A/B hardware acceptance |
+| M4-AB | JC1060 paired kernel/BSP A/B flash layout | Inactive 16-MiB candidate with256-KiB boot prefix/table0x20000 host-parser verified; active layout unchanged | Matching bootloader/table consumers, paired slot selection/confirmation/rollback, both XIP offsets, independent DEVELOP, full-image bounds and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
@@ -38501,14 +38501,16 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
 
 ## M4-AB: JC1060 paired kernel/BSP slots
 
-Fabian selected the JC1060 layout on 2026-10-11: first128KiB for existing
-boot infrastructure, kernel A/B each512KiB, BSP A/B each6MiB, remaining2944KiB
+Fabian selected the JC1060 layout on 2026-10-11, then enlarged the boot prefix
+to256KiB: kernel A/B each512KiB, BSP A/B each6MiB, remaining2816KiB
 for an independent DEVELOP partition. Offsets and migration gates are in
 `docs/plans/esp32-board-tool.md`, M4. The explicit candidate is not the active
 board input. Existing WLAN artifacts and standing legacy flash offsets remain
 unchanged; D1001 has no new layout decision in this change.
 
-Acceptance requires matched kernel/BSP pair selection, complete-image limits,
+The candidate table is at0x20000, giving the bootloader120KiB from0x2000;
+metadata relocates after the table. Acceptance requires matching bootloader
+configuration and table consumers, matched kernel/BSP pair selection, complete-image limits,
 bounded boot attempts, successful-boot confirmation and power-loss-safe
 rollback; correct XIP execution from both kernel slots; independent DEVELOP
 discovery and host filesystem migration; validated live layout in ESP32Board;
@@ -38550,6 +38552,31 @@ table as a drop-in replacement.
   The128-KiB total prefix is not the available bootloader capacity. Measure the
   actual A/B bootloader; relocating table/metadata within that prefix may be
   necessary and is not implemented by this candidate. No fresh device read.
+
+### 2026-10-11 - M4-AB boot prefix increased to256KiB
+
+- Parent e026121f39. Fabian approved256KiB after the bootloader headroom
+  discussion. This supersedes the prior128-KiB candidate, not its historical
+  evidence. KernelA0x40000/0x80000, kernelB0xc0000/0x80000,
+  BSP_A0x140000/0x600000, BSP_B0x740000/0x600000,
+  DEVELOP0xd40000/0x2c0000 (2816KiB/2.75MiB), exact end0x1000000.
+- Candidate table offset0x20000 gives120KiB from the bootloader start0x2000.
+  Candidate NVS0x21000/0x6000, keys0x27000/0x1000,
+  otadata0x28000/0x2000, PHY0x2a000/0x1000. This is a proposed internal-prefix
+  migration, not a claim that the existing bootloader will find the new table.
+  Active sdkconfig, board constants, partition CSV and hardware stay unchanged.
+- Local ESP-IDF6.0.1 parser at offset0x20000/flash-size16MB exits0 for encode
+  and binary/MD5 decode. Independent decoded extents/metadata checks exit0,
+  32checks. Candidate CSV SHA256
+  54b5e015d01e3b17dd07dd197cec41d4bf13f13c61e514a07b411725d6c08085;
+  binary SHA25651b5fccc980f22e92c4defe12a228ff2fadf419793d1c70515f094ca91b00e2e.
+  Evidence binary/decoded CSV in
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/jc1060-ab-256k-2026-10-11.vSznDv/`.
+- No native build, serial/reset/flash/SD/credential operation. No delegation
+  needed for this bounded arithmetic/CSV update. Update README, phase and
+  ESP32Board plan; preserve user caches and the prepared legacy WLAN pair.
+  Next: implement matching bootloader/table consumers, kernel/BSP pair policy
+  and independent volume migration, then qualify before activating the layout.
 
 ### 2026-10-11 - N2T matched deployment preparation from installed baseline
 

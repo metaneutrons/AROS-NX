@@ -1,17 +1,19 @@
 # INACTIVE JC1060 16-MiB AROS kernel+BSP A/B layout candidate.
 # Not selected by board.mk; do not flash with the current boot path.
-# First 128 KiB includes bootloader, partition table, NVS, OTA metadata,
-# PHY data and alignment gaps. It is not a 128-KiB bootloader executable.
+# First 256 KiB includes bootloader, partition table, NVS, OTA metadata,
+# PHY data and alignment gaps. It is not a 256-KiB bootloader executable.
+# Candidate table offset is 0x20000, NOT the legacy 0x8000. Bootloader at
+# 0x2000 has 120 KiB before the table; metadata moves with this migration.
 # Application subtype selects the kernel slot; custom BSP subtype identifies
 # its matching package. Pair selection/commit/rollback is not implemented yet.
 # DEVELOP is independent of both BSP slots, not embedded in either package.
 # Name, Type, SubType, Offset, Size, Flags
-nvs,      data, nvs,      0x9000,   0x6000,
-nvs_key,  data, nvs_keys, 0xf000,   0x1000,
-otadata,  data, ota,      0x10000,  0x2000,
-phy_init, data, phy,      0x12000,  0x1000,
-KERNEL_A, app,  ota_0,    0x20000,  0x80000,
-KERNEL_B, app,  ota_1,    0xa0000,  0x80000,
-BSP_A,    0x40, 0x00,    0x120000, 0x600000,
-BSP_B,    0x40, 0x01,    0x720000, 0x600000,
-DEVELOP,  0x41, 0x00,    0xd20000, 0x2e0000,
+nvs,      data, nvs,      0x21000,  0x6000,
+nvs_key,  data, nvs_keys, 0x27000,  0x1000,
+otadata,  data, ota,      0x28000,  0x2000,
+phy_init, data, phy,      0x2a000,  0x1000,
+KERNEL_A, app,  ota_0,    0x40000,  0x80000,
+KERNEL_B, app,  ota_1,    0xc0000,  0x80000,
+BSP_A,    0x40, 0x00,    0x140000, 0x600000,
+BSP_B,    0x40, 0x01,    0x740000, 0x600000,
+DEVELOP,  0x41, 0x00,    0xd40000, 0x2c0000,

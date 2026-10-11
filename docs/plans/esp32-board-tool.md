@@ -270,16 +270,21 @@ JC1060 target layout selected by Fabian on 2026-10-11 (MiB/KiB units):
 
 | Region | Flash offset | Size |
 | --- | --- | --- |
-| Boot infrastructure, including existing metadata and alignment | 0x000000 | 128 KiB |
-| KERNEL_A (`ota_0`) | 0x020000 | 512 KiB |
-| KERNEL_B (`ota_1`) | 0x0a0000 | 512 KiB |
-| BSP_A | 0x120000 | 6 MiB |
-| BSP_B | 0x720000 | 6 MiB |
-| DEVELOP, independent data partition | 0xd20000 | 2944 KiB (2.875 MiB) |
+| Boot infrastructure, including metadata and alignment | 0x000000 | 256 KiB |
+| KERNEL_A (`ota_0`) | 0x040000 | 512 KiB |
+| KERNEL_B (`ota_1`) | 0x0c0000 | 512 KiB |
+| BSP_A | 0x140000 | 6 MiB |
+| BSP_B | 0x740000 | 6 MiB |
+| DEVELOP, independent data partition | 0xd40000 | 2816 KiB (2.75 MiB) |
 
-The last byte is 0xffffff. The 128-KiB prefix is not a bootloader binary
-size: preserve the existing bootloader/table/NVS/otadata/PHY placement within
-it. The inactive `partition-table-ab.candidate.csv` records this design;
+The last byte is 0xffffff. Fabian increased the initially128-KiB prefix to
+256 KiB on the same date. This is not a bootloader binary size. The candidate
+keeps its bootloader start0x2000 but moves the table to0x20000, leaving120KiB
+for the bootloader. NVS moves to0x21000/0x6000, nvs_keys to0x27000/0x1000,
+otadata to0x28000/0x2000 and PHY to0x2a000/0x1000. Preserve metadata contents
+where applicable, not their old offsets; do not blindly reuse old OTA selection
+as proof of an A/B pair. Remaining prefix gaps are reserved, not spare payload.
+The inactive `partition-table-ab.candidate.csv` records this design;
 neither the active board profile nor installed device uses it. D1001 remains
 unchanged; this decision covers JC1060's 16-MiB capacity only.
 
@@ -293,16 +298,16 @@ boot confirmation; both components must be authenticated/validated before
 selection. A kernel slot alone is not a valid update pair.
 
 Migration relocates the current BSP and shrinks the development volume from
-4 MiB to 2.875 MiB. Preserve its files and rebuild the filesystem; truncation
+4 MiB to 2.75 MiB. Preserve its files and rebuild the filesystem; truncation
 is not a migration. Back up the actual device, qualify the bootloader/XIP path
 for both application offsets and keep a ROM restore route before any table
 write. Do not use the current legacy partition-flash confirmation for A/B.
 The existing table at0x8000 limits the bootloader starting at0x2000 to24KiB;
 the recorded production bootloader22544B leaves only2032B. A/B bootloader
-growth must be measured against that actual bound, not the128-KiB prefix.
-Moving the table and metadata within the same prefix may be required; that
-needs a separately validated internal-prefix design and migration. The
-candidate currently preserves their historical positions, not new headroom.
+growth must be measured against the actual candidate120-KiB bound, not the
+256-KiB prefix. Its table relocation also requires matching bootloader config,
+board constants, table consumers and explicit migration guards; none of those
+active inputs has been switched by the inactive candidate.
 Complete these gates separately from the prepared WLAN test; no current
 artifact or deployed layout is silently reinterpreted as A/B.
 

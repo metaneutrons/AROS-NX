@@ -1,8 +1,10 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
-JC1060 kernel+BSP A/B target (2026-10-11): Fabian selected a 128-KiB boot
+JC1060 kernel+BSP A/B target (2026-10-11): Fabian selected a 256-KiB boot
 infrastructure prefix, two512-KiB kernel slots, two6-MiB BSP slots and the
-remaining2944KiB for independent DEVELOP. The inactive
+remaining2816KiB for independent DEVELOP. The candidate table moves to0x20000,
+providing120KiB for the bootloader at0x2000; metadata moves after the table.
+The inactive
 `bootloader/boards/jc1060p470c/partition-table-ab.candidate.csv` passes the
 local ESP-IDF6.0.1 table parser/MD5 roundtrip and exact boundary checks.
 The active layout, installed firmware and WLAN preparation remain unchanged.
