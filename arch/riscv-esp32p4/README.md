@@ -20,6 +20,17 @@ A passive12.203s retrieval contains only touch heartbeats, no WiFiAP tuples;
 the earlier scan cannot be diagnosed from that capture. Request a synchronized
 flash-app scan with the reader already active, without automatic connection.
 
+Synchronized flash-app scan (2026-10-11): Fabian confirms AROSP4DEV WiFi.
+55.053s passive capture succeeds; owner scan ok1/remote11/result8/host8/error0.
+Captured AP indices0/4/6 report auth7/pair4/group4/privacy-only flags2;
+index2 reports auth3/pair4/group4/known-private flags3. In the pinned IDF
+enum7 means WPA2/WPA3-Personal transition mode, which the current projection
+deliberately leaves unknown. This explains '?' for those records, not a pure
+SAE display failure. Console drops prevent complete AP coverage and logs omit
+SSID identity, so neither named network is individually correlated yet.
+Next: truthful transition-mode display and explicit SAE-only selection policy,
+without claiming negotiated WPA3/PMF or allowing downgrade from scan metadata.
+
 WiFi chooser correction (2026-10-11): Fabian observes four scanned networks,
 but WPA3 labels remain '?' and the device selector remains empty. The SD
 pre-update manifest identifies the older153004B Prefs/WiFi, without the current

@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2H | Flash-delivered helper entry points | `deployment/readback verified`: WiFi165496B, driver1.1/74836B with numeric scan diagnostics, WirelessManager and ESP32Board staged; 4MiB image33-entry manifest independently mounted/verified and exact readback; headless boot passes; user sees signal/channel but still '?', entry-point identity/tuples unconfirmed | Fresh synchronized FLASHDISK0P0:WiFi scan with numeric capture; no generic SYS/DEVS reassignment or full WiFi pass |
+| N2H | Flash-delivered helper entry points | `deployment/readback verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi; synchronized capture has scan ok1/11 remote/8 results and auth7/CCMP transition records left unknown | Truthful transition display and target correlation; no full WiFi/SAE/PMF/IP pass |
 | N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: matched ABI12 SD/BSP and corrected Prefs166332B installed; latest45s capture reaches owner ready CPU1/expected C6 MAC and successful Scan; Fabian still sees '?' for both named WPA3 networks; chooser observation pending | Diagnose actual scan security tuples/projection and repeat continuity; reset alone is not an association-attempt fence or full WiFi pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
@@ -1646,7 +1646,11 @@ P4_WIFI_SCAN_DIAGNOSTICS=1 prints numeric raw metadata per AP for diagnosing
 unknown labels; it does not relax projection, enable connection or prove PMF.
 Fabian's post-deployment scan shows signal/channel and still '?'; actual
 flash-app entry point remains unconfirmed. Late retrieval misses all AP
-diagnostics, so a synchronized scan is needed before changing the projection.
+diagnostics. The subsequent synchronized flash-app scan captures indices0/4/6
+as auth7/pair4/group4/privacy-only, which the current projection leaves unknown;
+index2 is auth3/CCMP/known-private. Target SSID correlation and complete AP
+coverage remain absent. Next: separate transition-mode display from SAE-only
+association admission; never infer pure WPA3 or PMF from transition metadata.
 
 C6 credential gate: source audit finds DEBUG plaintext password and VERBOSE
 RPC logging paths in the pinned slave. Installed binary remains unidentified;
@@ -41717,3 +41721,34 @@ remain open. No partial stage is a complete A/B update system.
 - Next: confirm WiFi was launched from AROSP4DEV/FLASHDISK0P0, obtain fresh
   readiness, start bounded passive capture before instructing one Scan, then
   inspect numeric auth/pair/group/flags. Do not relabel unknown metadata.
+
+### 2026-10-11 — Synchronized flash WiFi scan identifies transition metadata
+
+- Fabian explicitly confirms WiFi launched from AROSP4DEV and fresh readiness.
+  Passive55s reader starts first; open_end at host+0.001898s and lsof ownership
+  checked before the instruction to press Scan once. No explicit reset/flash,
+  connection, credentials, SD write or C6 update. Artifacts/configuration
+  remain the preceding deployed flash-helper generation1.1/ABI12/gate0.
+- Process16370 exits0 with full status=ok footer55.053s/1938B. Timing end and
+  reader close complete. Owner: s=3 ok=1 n=11 r=8 h=8 e=0. Full numeric AP
+  lines i0/i6 and prefix-truncated i4 are a7/p4/g4/f2; i2=a3/p4/g4/f3.
+  Source scan_projection.h recognizes auth6/CCMP as pure SAE but returns
+  privacy-only/zero suites for auth7. Thus '?' for the captured transition
+  records is attributable to this deliberate unsupported projection, not
+  an old application or absence of Scan results.
+- Official pinned ESP-IDFv5.4.3 esp_wifi_types_generic.h enum lines77-97
+  confirms auth7=WIFI_AUTH_WPA2_WPA3_PSK,6=WIFI_AUTH_WPA3_PSK; cipher4=CCMP.
+  Reference: https://raw.githubusercontent.com/espressif/esp-idf/v5.4.3/components/esp_wifi/include/esp_wifi_types_generic.h
+  Installed C6 source identity remains unqualified; this interprets received
+  metadata under the host's pinned wire enum, not new firmware provenance.
+  No SSID/BSSID logged, incomplete numeric lines/indices due to console drops:
+  neither named target nor all8 records individually correlated. No captured
+  ROM/reset/fault signature establishes only absence in this window, not
+  physical rail-off or guaranteed reset-free opening.
+- Evidence flash-helpers.iFanez/scan-synchronized.log SHA256
+  b4b4a4706d5acea8ddd9a0e6d7125841f12919c8fa3a63fa2bf4b549cc656e9a;
+  scan-synchronized-timing.jsonl
+  cbea3c4354b5730e0f1e86a6910a3031165f5503fff1d2ed708815516f31dbca.
+- Next: explicit transition-mode presentation and target correlation with
+  tests keeping unknown metadata private and connection selection SAE-only;
+  no PMF/association/IP/data pass or downgrade permission from a GUI label.
