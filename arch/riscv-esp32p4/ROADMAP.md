@@ -123,7 +123,7 @@ No ABI7/ABI8/ABI9 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; private canonical owner OTA entry/direct finalizer and actual synchronous engine binding7065-check host/build verified, six mutations rejected and independent review complete; ABI9 unchanged, not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Owned asynchronous maintenance OTA-job dispatch and qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; private owned native queue9121-check host/build verified, seven mutations rejected and independent review complete; ABI9 unchanged, not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Versioned frontend dispatch and qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1399,6 +1399,22 @@ a late restart. Atomic admission refusal leaves the requester's lease intact.
 No public ABI change.
 The qualified full-image lease, owned asynchronous dispatcher and actual
 frontend/update/device proof remain open; UPDATE-C6 is not enabled.
+The private native single-slot queue now copies all bytes before requesting
+quiescence, binds the non-reused token to the submitting task and invokes the
+actual engine only inside owner maintenance service. Poll/cancel/discard take
+a separate short-held lock, never client_lock; cancellation is atomic and
+progress publication is best-effort without spurious abort on lock contention.
+Only terminal engine results are copied. Source storage remains live through
+return and is freed once; resource-static terminal observations survive owner
+retirement without dereferencing stack runtime addresses. Close must retain
+its worker through cancellation/DONE/discard; task-kill orphan recovery is not
+provided. Fresh native build/loader audit and scoped queue tests pass9121 checks
+each O0/O2 ASan/UBSan, seven unsafe mutations rejected. Independent native and
+bounded fixture review are complete. Deferred publication via owner service
+and retirement preserves results without replay or double free in the fixture;
+Exec/allocator/transport remain modeled, not native SMP acceptance.
+No public ABI/hook/frontend write action or qualified full-image lease is
+provided; release flags remain0 and UPDATE-C6 stays unavailable.
 Actual-source host tests and fresh Core1 module builds pass; Exec locks,
 callbacks and RPC outcomes are mocked. The matching ABI7 resource/device must
 replace the prior ABI6 pair together in a regenerated audited package/image.
@@ -37640,3 +37656,82 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   layout/authenticity/recovery proofs, postboot health and actual updates.
   Installed C6 privacy/identity, real association/DHCP/traffic/reconnect and
   combined1800s WLAN qualification remain open; the full Wi-Fi goal is active.
+
+### 2026-10-11 - N2M private owned native OTA job queue
+
+- Scope: private single-slot dispatcher in the resource, owned full-image copy
+  before maintenance_request/quiescence, exact requester/token/generation and
+  one owner-only claim. It invokes the actual synchronous engine from native
+  maintenance service, not a second SDIO task or frontend GUI callback.
+  Poll/cancel/discard use a resource-lifetime metadata semaphore independent
+  of client_lock; source fields cannot mutate during RUNNING. Cancellation
+  uses acquire/release atomics, progress publication is best-effort, so normal
+  polling cannot spuriously abort a transfer. Only DONE copies the completed
+  engine result. Captured integer denylist spans prevent output aliases into
+  runtime/transport state without dereferencing runtime from a requester.
+- Lifetime: source storage remains owned until the actual engine returns;
+  terminal publication detaches it before one FreeVec. If publication lock is
+  busy, owner-only engine_returned prevents a second run and completion is
+  published on a later owner iteration or teardown. Queued cancellation before
+  Stop requires no RPC; ACTIVE cancellation uses actual engine finalization.
+  Owner retirement terminalizes unstarted work and retains terminal results
+  before runtime/owner storage disappears. Worker must survive Close through
+  DONE/discard; requester task-kill/orphan reclaim is not implemented.
+- Configuration/procedure: initial session65750 actually exits0 after all
+  resource-generated objects were invalidated; gmake -j4
+  kernel-esp32p4wifi-probe-quick, board jc1060p470c-v2,
+  SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/HOSTED_OWNER=1, OWNER_CPU=1,
+  both privacy/recovery assertions0. Resource335448B SHA256
+  7e52042e9bb40b2accf309dee216adfde2c523f78c83be57aee79e94d5238141,
+  resource-initial-build.log SHA256
+  a49031a607f2cefcf29c09b8694ef82bbcee73eaf83aa6d3ed675c46a4f2a6c2.
+  The initial artifact predates atomic cancellation improvement and is retained
+  as historical build evidence, not the final candidate. Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/native-ota-queue.gU9Kfi/.
+  Atomic-cancellation rebuild session97141 also actually exits0 after the same
+  object invalidation/configuration. Resource335736B SHA256
+  3dcccefcec2f29aa6bafbcbc42372f5ce957ac3bc9ec428fff3f76a7a47b1115;
+  resource-atomic-build.log SHA256
+  502f2e2dcaf84f48bfb5726a22ba3feb5f2ec1097a8e226d4054999a5e9ddc13.
+  Loader audit exits0, flags3,13 supported relocations, issues[] and no undefined
+  atomic helpers; all four private submit/poll/cancel/discard symbols are defined.
+  module-atomic-audit.log SHA256
+  4d4afd9c321401fd1659ac2f932e6b8fb404eaba69dc98d2a48a5014507d5c32.
+  Final rebuild session27315 actually exits0 after fresh object invalidation,
+  unchanged configuration, same335736B resource SHA256 as the atomic build.
+  resource-final-build.log SHA256
+  9404a4f21f9f1cd39f5af2503f6d12d997e9765b3c528490f68be1cacb442e50.
+  Final artifact esp32p4wifi-final.resource passes the same loader audit with
+  all four definitions and no atomic imports; module-final-audit.log SHA256
+  f6109d257d6722b8ec838feeda848a8119e85eb1e802a465a1bc676bb68a603c.
+- Source-linked verification: actual engine and extracted native queue pass
+  9121 checks each O0/O2 ASan/UBSan; all six previous mutation controls and
+  caller-image-pointer retention are rejected. Worker final runner session25469
+  actually exits0; queue-worker-deferred.log SHA256
+  0333178af42611a2bd4b9a6ae2a31659e0609149d5fd43ffed38022803c85b30.
+  Primary independent rerun session43401 actually exits0; queue-primary-final.log
+  is byte-identical to that final worker log, same SHA256 and9121 checks each.
+  Tests cover pre-quiescence owned copy, atomic admission/allocation failure,
+  task/token/generation/alias refusal, single flight, cancellation before Stop
+  and during WRITE, progress without live-result copying, contention without
+  false abort, exact byte counts, retained teardown result and exactly-one free.
+  Independent native review found no concrete defect. Its fixture review found
+  deferred publication untested; final END-lock injection now verifies both
+  next-service and retirement publication, no engine replay and no double free.
+  Independent follow-up confirms that bounded gap closed. Prior8544-check
+  successful runs remain queue-worker-initial.log, queue-worker-final.log and
+  queue-primary.log (primary session38841 actually exits0); they do not include
+  deferred publication coverage. The initial deferred fixture compile failed
+  from helper declaration order; queue-deferred-compile-failure.log is retained,
+  SHA25644b3d2d2d4819d7d86d176ab0c44fcaef1a1d229720348a60cbc9e68c4f2067d,
+  corrected by moving injection after source extraction. Exec, allocation,
+  clock and transport are mocked; no native SMP race or silicon timing proof.
+- Safety/limits/next: no serial/board/flash/SD/credentials/deployment. Private
+  functions supply no resource ABI hooks, authenticated source/target/layout
+  or independent recovery proof. UPDATE-C6 remains unavailable; existing30s
+  preparation lease is unchanged and not qualified for a complete image.
+  Expose versioned shared CLI/GUI
+  dispatch with a surviving worker, qualify one full-image deadline/reserve,
+  verify live device proofs and explicit first-install recovery. Actual C6
+  privacy/identity, WLAN association/DHCP/traffic/reconnect/combined1800s,
+  HTTPS and P4 update gates remain open; full Wi-Fi objective stays active.

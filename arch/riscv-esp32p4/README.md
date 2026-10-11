@@ -116,6 +116,21 @@ exits finalize the already-held lease as NO_BEGIN within the original budget;
 clock/deadline failures instead mark FAILED without a late restart. Invalid
 admission leaves the original requester responsible for its lease.
 Both release assertions remain0, no public ABI change or deployment occurred.
+Private native queue implementation now copies an entire trusted image before
+requesting quiescence. The submitting task owns a non-reused token; the owner
+alone runs the actual engine. Poll/cancel/discard use a distinct metadata lock;
+cancellation is atomic and a busy progress poll cannot cancel a valid transfer.
+RUNNING results are never copied; terminal result and acknowledged-byte counts
+survive owner teardown, with source storage freed exactly once after execution.
+Close requires the worker to survive cancellation through DONE/discard; killed
+requester recovery is not provided. Fresh native build and loader audit pass;
+queue tests pass9121 checks each O0/O2 ASan/UBSan with seven unsafe mutations
+rejected. Independent implementation and bounded fixture review are complete;
+deferred publication through later service or retirement cannot replay OTA or
+free the source twice in the fixture. Exec/allocator/transport are mocked, not
+native SMP or full-image hardware qualification. This is not a public ABI/CLI/GUI update
+entry or source/layout/recovery authorization. UPDATE-C6 remains unavailable,
+both release assertions0, full-image lease qualification still open.
 Private transport verification (2026-10-11): canonical codec11806,
 pending1638 and coupled owner8093 checks each O0/O2 ASan/UBSan pass;
 ordinary OTA-allowlist mutation is rejected. Fresh Core1 resource291220B

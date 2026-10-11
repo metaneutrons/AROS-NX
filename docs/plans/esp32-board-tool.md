@@ -15,8 +15,9 @@ transport. Subsequent backends update P4 Kickstart/core and associated modules,
 including over-the-air acquisition. Existing AROS networking tools remain
 responsible for WLAN selection, association and IP configuration.
 
-Baseline: native AROS has an opt-in serialized Core1 SDIO owner and no C6 OTA
-client. Pinned Hosted d5184217f710d54c01f932e75b4c55e3f4933fc9 has OTA_BEGIN,
+Initial baseline: native AROS had an opt-in serialized Core1 SDIO owner and no
+C6 OTA client. The private engine/queue below now exists, but no public update
+action is enabled. Pinned Hosted d5184217f710d54c01f932e75b4c55e3f4933fc9 has OTA_BEGIN,
 OTA_WRITE and OTA_END, but no transactional abort, offsets or replay protection.
 Installed C6 identity, partition layout and rollback remain unverified. CN5
 cabling is unavailable. Conditional C6 update authority still requires a
@@ -62,9 +63,9 @@ secured recovery path; source development and read-only file checks do not.
   peer automatically. Finalization succeeds only after confirmed bounded
   ownership handoff, not after queuing a release request. Its failure must
   remain visible without changing the transfer/commit classification.
-  Native ABI9 now provides that separate terminal fence queue/poll boundary,
-  but not the OTA job or engine adapter. Its sticky obligation must be set
-  by the future owner dispatcher before BEGIN, not deferred until a possibly
+  Native ABI9 provides that separate terminal fence queue/poll boundary,
+  but exposes no OTA job. The private engine/queue below sets the sticky
+  obligation before BEGIN, not deferred until a possibly
   poisoned transfer completes. Original30-second discovery leases are not a
   full-image budget. Host/module tests cannot close runtime acceptance.
 - The portable engine requires a single original aggregate deadline, a finish
@@ -98,6 +99,14 @@ secured recovery path; source development and read-only file checks do not.
   Accepted early engine exits must finalize the already-owned lease even if
   the engine has not reached acquire-validation; clock/deadline failure must
   never authorize a late restart. Atomic admission refusal remains caller-owned.
+- The private native single-slot dispatcher copies the entire source before
+  requesting maintenance, then runs the engine only in the serialized owner.
+  Its resource-lifetime result survives owner teardown. A distinct short-held
+  lock protects copied observations; an atomic cancellation flag is independent
+  of client_lock and metadata polling. Never copy a live engine result. Keep
+  the frontend worker alive across window Close until DONE/discard; requester
+  task-kill recovery is not provided. This private dispatcher is not yet a
+  public ABI or frontend update action, nor full-image timing qualification.
 - A missing recovery proof is a refused write, not a command-line override.
   Recovery evidence must refer to the actual device and layout. Do not infer
   installed rollback from the candidate's build configuration.

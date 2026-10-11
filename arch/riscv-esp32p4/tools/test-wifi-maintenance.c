@@ -1,7 +1,8 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
-/* Host model for source-extracted production maintenance/discovery/fence and
- * private OTA owner entry. Exec, OTA codecs/transport, UID reservation and
- * host ownership are modeled; actual codecs/owner have separate suites. */
+/* Host fixture for source-extracted production maintenance/discovery/fence
+ * and private OTA queue integration. The real board updater is linked; Exec,
+ * allocation, OTA codecs/transport, UID reservation and host ownership are
+ * modeled. No hardware behavior is claimed. */
 #include <stdint.h>
 #include <limits.h>
 #include <stdio.h>
@@ -18,6 +19,7 @@ typedef void *APTR;
 #define FALSE 0
 
 #include "owner_ota.h"
+#include "owner_ota_queue.h"
 #include "wifi_maintenance_constants.inc"
 
 struct Task {
@@ -27,6 +29,7 @@ struct Task {
 struct SignalSemaphore {
     unsigned held;
     struct Task *ss_Owner;
+    unsigned depth;
 };
 
 struct p4_wifi_link_info {
@@ -187,6 +190,35 @@ static unsigned ready_calls;
 static ULONG ready_advance_us;
 static unsigned test_checks;
 static struct P4WifiBase base;
+#define MEMF_PUBLIC 1u
+#define MAX_TRACKED_ALLOCATIONS 32u
+struct tracked_allocation {
+    void *pointer;
+    size_t size;
+    unsigned live;
+};
+static struct tracked_allocation tracked_allocations[MAX_TRACKED_ALLOCATIONS];
+static unsigned alloc_attempts, alloc_successes, free_calls, outstanding_allocs;
+static unsigned alloc_fail_next;
+static void *last_allocated;
+static size_t last_allocated_size;
+static unsigned queue_copy_probe, queue_copy_probe_calls;
+static unsigned queue_copy_alloc_baseline;
+static uint8_t *queue_copy_expected;
+static size_t queue_copy_expected_size;
+static unsigned queue_exchange_contention_probe;
+static unsigned queue_defer_publication_probe;
+static unsigned queue_defer_publication_triggered;
+static unsigned queue_running_cancel_probe;
+static unsigned queue_running_write_seen;
+static uint32_t queue_running_token;
+static struct p4_wifi_ota_observation queue_running_observation;
+static enum p4_wifi_ota_job_state queue_running_poll_state;
+static int queue_running_discard_result, queue_running_cancel_result;
+static unsigned queue_live_result_probe_calls;
+static unsigned queue_submit_probe;
+static unsigned queue_submit_allocation_baseline;
+static uint32_t queue_submit_token;
 static BOOL discovery_exchange_succeeds = TRUE;
 static BOOL discovery_request_succeeds = TRUE;
 static BOOL discovery_rpc_encode_succeeds = TRUE;
@@ -285,9 +317,23 @@ static unsigned ota_observation_count;
     } \
 } while (0)
 
+static int queue_lock_is_free(void);
+
 static ULONG fake_now_us(void)
 {
     ++now_calls;
+    if (queue_copy_probe) {
+        ++queue_copy_probe_calls;
+        CHECK(alloc_successes == queue_copy_alloc_baseline + 1u);
+        CHECK(last_allocated != NULL &&
+              last_allocated_size == queue_copy_expected_size);
+        CHECK(memcmp(last_allocated, queue_copy_expected,
+                     queue_copy_expected_size) == 0);
+        CHECK(request_calls == 0u);
+        CHECK(base.client_lock.ss_Owner == current_task);
+        CHECK(queue_lock_is_free());
+        queue_copy_probe = 0u;
+    }
     if (engine_clock_backwards_once) {
         engine_clock_backwards_once = 0u;
         return fake_now - 1u;
@@ -316,17 +362,40 @@ static struct Task *FindTask(APTR ignored)
 
 static BOOL AttemptSemaphore(struct SignalSemaphore *semaphore)
 {
-    if (semaphore->held)
-        return FALSE;
+    if (semaphore->held) {
+        if (semaphore->ss_Owner != current_task) return FALSE;
+        /* The fixture sometimes seeds the owner loop's outer lock directly. */
+        if (!semaphore->depth) semaphore->depth = 2u;
+        else ++semaphore->depth;
+        return TRUE;
+    }
     semaphore->held = 1u;
     semaphore->ss_Owner = current_task;
+    semaphore->depth = 1u;
     return TRUE;
 }
 
 static void ReleaseSemaphore(struct SignalSemaphore *semaphore)
 {
+    CHECK(semaphore->held && semaphore->ss_Owner == current_task);
+    if (semaphore->depth > 1u) {
+        --semaphore->depth;
+        return;
+    }
     semaphore->held = 0u;
     semaphore->ss_Owner = NULL;
+    semaphore->depth = 0u;
+}
+
+static void ObtainSemaphore(struct SignalSemaphore *semaphore)
+{
+    CHECK(!semaphore->held || semaphore->ss_Owner == current_task);
+    CHECK(AttemptSemaphore(semaphore));
+}
+
+static void InitSemaphore(struct SignalSemaphore *semaphore)
+{
+    memset(semaphore, 0, sizeof(*semaphore));
 }
 
 static void p4host_zero(void *memory, size_t size)
@@ -339,6 +408,52 @@ static BOOL bytes_are_zero(const void *memory, size_t size);
 static void CopyMem(const void *source, void *destination, ULONG size)
 {
     memmove(destination, source, size);
+}
+
+static APTR AllocVec(size_t size, ULONG flags)
+{
+    unsigned slot;
+    void *pointer;
+    CHECK(flags == MEMF_PUBLIC && size != 0u);
+    ++alloc_attempts;
+    if (alloc_fail_next) {
+        alloc_fail_next = 0u;
+        return NULL;
+    }
+    pointer = malloc(size);
+    CHECK(pointer != NULL);
+    for (slot = 0u; slot < MAX_TRACKED_ALLOCATIONS; ++slot)
+        if (!tracked_allocations[slot].live) break;
+    CHECK(slot < MAX_TRACKED_ALLOCATIONS);
+    tracked_allocations[slot].pointer = pointer;
+    tracked_allocations[slot].size = size;
+    tracked_allocations[slot].live = 1u;
+    ++alloc_successes;
+    ++outstanding_allocs;
+    last_allocated = pointer;
+    last_allocated_size = size;
+    if (queue_submit_probe) {
+        CHECK(base.client_lock.ss_Owner == current_task);
+        CHECK(base.maintenance_state == P4_WIFI_MAINT_IDLE ||
+              base.maintenance_state == P4_WIFI_MAINT_RELEASED);
+        CHECK(request_calls == 0u);
+        CHECK(queue_lock_is_free());
+    }
+    return pointer;
+}
+
+static void FreeVec(APTR pointer)
+{
+    unsigned slot;
+    CHECK(pointer != NULL);
+    for (slot = 0u; slot < MAX_TRACKED_ALLOCATIONS; ++slot)
+        if (tracked_allocations[slot].pointer == pointer &&
+            tracked_allocations[slot].live) break;
+    CHECK(slot < MAX_TRACKED_ALLOCATIONS);
+    tracked_allocations[slot].live = 0u;
+    --outstanding_allocs;
+    ++free_calls;
+    free(pointer);
 }
 
 static void mock_stopped(APTR client)
@@ -436,6 +551,9 @@ static void reset_ota_mocks(void)
     ota_observation_count = 0u;
 }
 
+static void queue_owner_exchange_probe(uint32_t request_id);
+static void queue_defer_publication_lock(void);
+
 static int ota_encode_request(uint32_t request_id, uint32_t uid,
     const uint8_t *data, size_t data_size, uint8_t *bytes, size_t capacity,
     size_t *written)
@@ -524,6 +642,13 @@ static int p4_hosted_owner_exchange_ota(struct p4_hosted_owner *request_owner,
         memcpy(observation->data, request + sizeof(encoded_id) +
                sizeof(encoded_uid), observation->data_size);
     result->submitted = ota_exchange_submitted;
+    if (queue_exchange_contention_probe && encoded_id == 272u)
+        queue_owner_exchange_probe(encoded_id);
+    if (queue_running_cancel_probe && encoded_id == 273u &&
+        ++queue_running_write_seen == 2u)
+        queue_owner_exchange_probe(encoded_id);
+    if (queue_defer_publication_probe && encoded_id == 274u)
+        queue_defer_publication_lock();
     fake_now += ota_exchange_advance_us;
     if (encoded_id == 274u)
         fake_now += engine_end_advance_us;
@@ -847,9 +972,86 @@ static int wifi_owner_stopping(void *opaque)
 #include "wifi_maintenance_engine_prearm_mutant.inc"
 #elif defined(WIFI_OTA_CLOCK_RENEWAL_MUTANT)
 #include "wifi_maintenance_clock_mutant.inc"
+#elif defined(WIFI_OTA_QUEUE_COPY_MUTANT)
+#include "wifi_maintenance_queue_copy_mutant.inc"
 #else
 #include "wifi_maintenance_extract.inc"
 #endif
+
+static void queue_defer_publication_lock(void)
+{
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_RUNNING);
+    CHECK(wifi_ota_queue.engine_returned == 0u);
+    CHECK(!wifi_ota_queue.lock.held);
+    wifi_ota_queue.lock.held = 1u;
+    wifi_ota_queue.lock.ss_Owner = &other_task;
+    wifi_ota_queue.lock.depth = 1u;
+    queue_defer_publication_probe = 0u;
+    queue_defer_publication_triggered = 1u;
+}
+
+static void queue_owner_exchange_probe(uint32_t request_id)
+{
+    struct Task *saved_task = current_task;
+    struct wifi_ota_source_context source = {&wifi_ota_queue};
+    if (queue_exchange_contention_probe && request_id == 272u) {
+        struct p4_wifi_ota_observation output, before;
+        current_task = &requester_task;
+        CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_RUNNING);
+        CHECK(wifi_ota_queue.image != NULL);
+        wifi_ota_queue.lock.held = 1u;
+        wifi_ota_queue.lock.ss_Owner = &other_task;
+        wifi_ota_queue.lock.depth = 1u;
+        CHECK(wifi_ota_queue_source(&source));
+        CHECK(!wifi_ota_queue_cancelled(&source));
+        memset(&output, 0x6b, sizeof(output));
+        memcpy(&before, &output, sizeof(before));
+        CHECK(p4_wifi_ota_poll(&base, queue_submit_token, &output) ==
+              P4_WIFI_OTA_JOB_BUSY);
+        CHECK(memcmp(&before, &output, sizeof(output)) == 0);
+        CHECK(!p4_wifi_ota_cancel(&base, queue_submit_token));
+        CHECK(!p4_wifi_ota_discard(&base, queue_submit_token));
+        CHECK(!__atomic_load_n(&wifi_ota_queue.cancelled, __ATOMIC_ACQUIRE));
+        wifi_ota_queue.lock.held = 0u;
+        wifi_ota_queue.lock.ss_Owner = NULL;
+        wifi_ota_queue.lock.depth = 0u;
+        queue_exchange_contention_probe = 0u;
+        current_task = saved_task;
+        return;
+    }
+    if (queue_running_cancel_probe && request_id == 273u) {
+        current_task = &requester_task;
+        memset(&queue_running_observation, 0xa5,
+               sizeof(queue_running_observation));
+        queue_running_poll_state = p4_wifi_ota_poll(&base,
+            queue_running_token, &queue_running_observation);
+        CHECK(queue_running_poll_state == P4_WIFI_OTA_JOB_RUNNING);
+        CHECK(queue_running_observation.token == queue_running_token);
+        CHECK(queue_running_observation.state == P4_WIFI_OTA_JOB_RUNNING);
+        CHECK(queue_running_observation.acknowledged_bytes ==
+              P4_BOARD_UPDATE_CHUNK_SIZE);
+        CHECK(queue_running_observation.result_valid == 0u);
+        CHECK(bytes_are_zero(&queue_running_observation.result,
+                             sizeof(queue_running_observation.result)));
+        queue_running_discard_result = p4_wifi_ota_discard(&base,
+                                                            queue_running_token);
+        CHECK(queue_running_discard_result == 0);
+        queue_running_cancel_result = p4_wifi_ota_cancel(&base,
+                                                         queue_running_token);
+        CHECK(queue_running_cancel_result == 1);
+        CHECK(p4_wifi_ota_poll(&base, queue_running_token,
+                &queue_running_observation) == P4_WIFI_OTA_JOB_RUNNING);
+        CHECK(queue_running_observation.cancel_requested == 1u);
+        ++queue_live_result_probe_calls;
+        queue_running_cancel_probe = 0u;
+        current_task = saved_task;
+    }
+}
+
+static int queue_lock_is_free(void)
+{
+    return !wifi_ota_queue.lock.held;
+}
 
 static void reset_discovery_mocks(void)
 {
@@ -909,19 +1111,26 @@ static int service_step(void)
     struct Task *saved_task = current_task;
     struct Task *saved_lock_owner = base.client_lock.ss_Owner;
     unsigned saved_lock_held = base.client_lock.held;
+    unsigned saved_lock_depth = base.client_lock.depth;
     int result;
     current_task = &owner_task;
     base.client_lock.held = 1u;
     base.client_lock.ss_Owner = &owner_task;
+    base.client_lock.depth = 1u;
     result = wifi_maintenance_service(&base, &runtime);
     base.client_lock.held = saved_lock_held;
     base.client_lock.ss_Owner = saved_lock_owner;
+    base.client_lock.depth = saved_lock_depth;
     current_task = saved_task;
     return result;
 }
 
 static void reset_fixture(void)
 {
+    CHECK(wifi_ota_queue.image == NULL);
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_INVALID);
+    memset(&wifi_ota_queue, 0, sizeof(wifi_ota_queue));
+    InitSemaphore(&wifi_ota_queue.lock);
     memset(&base, 0, sizeof(base));
     wifi_resource_base = &base;
     memset(&host, 0, sizeof(host));
@@ -954,6 +1163,25 @@ static void reset_fixture(void)
     engine_skip_finish_probe = 0u;
     engine_expire_after_clock_samples = 0u;
     engine_test_total_budget = 0u;
+    queue_copy_probe = 0u;
+    queue_copy_probe_calls = 0u;
+    queue_copy_alloc_baseline = 0u;
+    queue_copy_expected = NULL;
+    queue_copy_expected_size = 0u;
+    queue_exchange_contention_probe = 0u;
+    queue_defer_publication_probe = 0u;
+    queue_defer_publication_triggered = 0u;
+    queue_running_cancel_probe = 0u;
+    queue_running_write_seen = 0u;
+    queue_running_token = 0u;
+    memset(&queue_running_observation, 0, sizeof(queue_running_observation));
+    queue_running_poll_state = P4_WIFI_OTA_JOB_INVALID;
+    queue_running_discard_result = 0;
+    queue_running_cancel_result = 0;
+    queue_live_result_probe_calls = 0u;
+    queue_submit_probe = 0u;
+    queue_submit_allocation_baseline = 0u;
+    queue_submit_token = 0u;
 
     host.now_us = fake_now_us;
     context.host = &host;
@@ -3852,6 +4080,540 @@ static void test_service_deadline_failures(void)
     CHECK(base.maintenance_state == P4_WIFI_MAINT_FAILED);
 }
 
+#define OTA_QUEUE_TEST_IMAGE_SIZE 500u
+#define OTA_QUEUE_TEST_TOTAL_US 5000000u
+#define OTA_QUEUE_TEST_RESERVE_US 500000u
+#define OTA_QUEUE_TEST_MAX_CALL_US 1000000u
+
+union ota_queue_test_image {
+    uint32_t alignment;
+    uint8_t bytes[OTA_QUEUE_TEST_IMAGE_SIZE];
+};
+
+static void prepare_ota_queue(void)
+{
+    reset_fixture();
+    current_task = &requester_task;
+    base.maintenance_state = P4_WIFI_MAINT_IDLE;
+    base.associated = TRUE;
+}
+
+static void init_ota_queue_request(struct p4_wifi_ota_request *request,
+    uint8_t *image, uint32_t size)
+{
+    memset(request, 0, sizeof(*request));
+    request->image = image;
+    request->image_size = size;
+    request->total_budget_us = OTA_QUEUE_TEST_TOTAL_US;
+    request->finish_reserve_us = OTA_QUEUE_TEST_RESERVE_US;
+    request->max_call_us = OTA_QUEUE_TEST_MAX_CALL_US;
+    request->gates = valid_ota_gates;
+}
+
+static void expect_ota_queue_submit_refused(struct P4WifiBase *target,
+    const struct p4_wifi_ota_request *request)
+{
+    struct P4WifiBase base_before;
+    struct wifi_ota_native_queue queue_before;
+    unsigned successes_before = alloc_successes;
+    unsigned outstanding_before = outstanding_allocs;
+    if (target) memcpy(&base_before, target, sizeof(base_before));
+    memcpy(&queue_before, &wifi_ota_queue, sizeof(queue_before));
+    CHECK(p4_wifi_ota_submit(target, request) == 0u);
+    if (target)
+        CHECK(memcmp(&base_before, target, sizeof(base_before)) == 0);
+    CHECK(memcmp(&queue_before, &wifi_ota_queue, sizeof(queue_before)) == 0);
+    CHECK(alloc_successes == successes_before);
+    CHECK(outstanding_allocs == outstanding_before);
+    CHECK(base.client_lock.held == 0u);
+}
+
+static void expect_ota_queue_poll_alias(void *target, size_t target_size,
+    uint32_t token)
+{
+    uint8_t before[sizeof(struct wifi_ota_native_queue) +
+                   OTA_QUEUE_TEST_IMAGE_SIZE];
+    size_t count = target_size;
+    CHECK(target != NULL && count <= sizeof(before));
+    memcpy(before, target, count);
+    CHECK(p4_wifi_ota_poll(&base, token,
+        (struct p4_wifi_ota_observation *)target) == P4_WIFI_OTA_JOB_INVALID);
+    CHECK(memcmp(before, target, count) == 0);
+}
+
+static uint32_t submit_ota_queue(struct p4_wifi_ota_request *request)
+{
+    uint32_t token;
+    current_task = &requester_task;
+    token = p4_wifi_ota_submit(&base, request);
+    queue_submit_token = token;
+    return token;
+}
+
+static void activate_ota_queue(uint32_t token)
+{
+    struct p4_wifi_ota_observation observation;
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_QUEUED);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_REQUESTED);
+    CHECK(service_step() == 2);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_ACTIVE);
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_QUEUED);
+    CHECK(request_calls == 1u && request_ids[0] == 281u);
+    CHECK(ota_observation_count == 0u);
+    current_task = &requester_task;
+    CHECK(p4_wifi_ota_poll(&base, token, &observation) ==
+          P4_WIFI_OTA_JOB_QUEUED);
+    CHECK(observation.token == token && observation.generation == TEST_GENERATION);
+    CHECK(observation.result_valid == 0u && observation.acknowledged_bytes == 0u);
+}
+
+static void run_ota_queue_engine(void)
+{
+    int service_status;
+    ota_engine_probe = 1u;
+    service_status = service_step();
+    ota_engine_probe = 0u;
+    CHECK(service_status == 2);
+}
+
+static void test_ota_queue_submit_snapshot_and_admission(void)
+{
+    union ota_queue_test_image image;
+    uint8_t expected[OTA_QUEUE_TEST_IMAGE_SIZE];
+    struct p4_wifi_ota_request request;
+    struct p4_wifi_ota_request request_before;
+    struct p4_wifi_ota_observation observation, before;
+    struct P4WifiBase lookalike;
+    uint32_t token;
+    unsigned allocs_before;
+    unsigned frees_before;
+    size_t index;
+
+    prepare_ota_queue();
+    for (index = 0u; index < sizeof(image.bytes); ++index)
+        image.bytes[index] = (uint8_t)(index * 37u + 11u);
+    memcpy(expected, image.bytes, sizeof(expected));
+    init_ota_queue_request(&request, image.bytes, sizeof(image.bytes));
+    memcpy(&request_before, &request, sizeof(request_before));
+    allocs_before = alloc_successes;
+    queue_submit_probe = 1u;
+    queue_submit_allocation_baseline = alloc_successes;
+    queue_copy_probe = 1u;
+    queue_copy_alloc_baseline = alloc_successes;
+    queue_copy_expected = expected;
+    queue_copy_expected_size = sizeof(expected);
+    token = submit_ota_queue(&request);
+    queue_submit_probe = 0u;
+    CHECK(token == TEST_TOKEN + 1u);
+    CHECK(queue_submit_allocation_baseline == allocs_before);
+    CHECK(queue_copy_probe_calls == 1u);
+    CHECK(alloc_successes == allocs_before + 1u);
+    CHECK(request_calls == 0u && ota_observation_count == 0u);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_REQUESTED);
+    CHECK(base.maintenance_token == token &&
+          base.maintenance_task == &requester_task);
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_QUEUED);
+    CHECK(wifi_ota_queue.requester == &requester_task);
+    CHECK(wifi_ota_queue.base == &base && wifi_ota_queue.token == token);
+    CHECK(wifi_ota_queue.image != image.bytes);
+    CHECK(wifi_ota_queue.request.image == wifi_ota_queue.image);
+    CHECK(memcmp(wifi_ota_queue.image, expected, sizeof(expected)) == 0);
+    CHECK(memcmp(&request, &request_before, sizeof(request)) == 0);
+
+    /* A second submit is single-flight rejected without another allocation. */
+    allocs_before = alloc_successes;
+    CHECK(p4_wifi_ota_submit(&base, &request) == 0u);
+    CHECK(alloc_successes == allocs_before);
+    memset(image.bytes, 0xa6, sizeof(image.bytes));
+    request.total_budget_us = 1u;
+    CHECK(wifi_ota_queue.request.image == wifi_ota_queue.image);
+    CHECK(wifi_ota_queue.request.image != request.image);
+    CHECK(wifi_ota_queue.request.total_budget_us == OTA_QUEUE_TEST_TOTAL_US);
+    CHECK(memcmp(wifi_ota_queue.image, expected, sizeof(expected)) == 0);
+
+    current_task = &requester_task;
+    memset(&observation, 0x81, sizeof(observation));
+    CHECK(p4_wifi_ota_poll(&base, token, &observation) ==
+          P4_WIFI_OTA_JOB_QUEUED);
+    CHECK(observation.token == token && observation.state == P4_WIFI_OTA_JOB_QUEUED);
+    CHECK(observation.result_valid == 0u && observation.cancel_requested == 0u);
+    CHECK(observation.acknowledged_bytes == 0u);
+    memset(&observation, 0x42, sizeof(observation));
+    memcpy(&before, &observation, sizeof(before));
+    CHECK(p4_wifi_ota_poll(&base, token + 1u, &observation) ==
+          P4_WIFI_OTA_JOB_INVALID);
+    CHECK(memcmp(&before, &observation, sizeof(before)) == 0);
+    current_task = &other_task;
+    CHECK(p4_wifi_ota_poll(&base, token, &observation) ==
+          P4_WIFI_OTA_JOB_INVALID);
+    CHECK(!p4_wifi_ota_cancel(&base, token));
+    CHECK(!p4_wifi_ota_discard(&base, token));
+    current_task = &requester_task;
+    lookalike = base;
+    CHECK(p4_wifi_ota_poll(&lookalike, token, &observation) ==
+          P4_WIFI_OTA_JOB_INVALID);
+    CHECK(!p4_wifi_ota_cancel(&lookalike, token));
+    CHECK(!p4_wifi_ota_discard(&lookalike, token));
+
+    /* Poll outputs cannot alias the job's private or live runtime objects. */
+    expect_ota_queue_poll_alias(&base, sizeof(base), token);
+    expect_ota_queue_poll_alias(&runtime, sizeof(runtime), token);
+    expect_ota_queue_poll_alias(&wifi_ota_queue, sizeof(wifi_ota_queue), token);
+    expect_ota_queue_poll_alias(wifi_ota_queue.image,
+                                sizeof(struct p4_wifi_ota_observation), token);
+
+    frees_before = free_calls;
+    CHECK(p4_wifi_ota_cancel(&base, token));
+    CHECK(service_step() == 2);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_RELEASED);
+    CHECK(request_calls == 0u && stopped_calls == 0u);
+    CHECK(ota_observation_count == 0u);
+    CHECK(free_calls == frees_before + 1u);
+    CHECK(p4_wifi_ota_poll(&base, token, &observation) == P4_WIFI_OTA_JOB_DONE);
+    CHECK(observation.result_valid == 1u);
+    CHECK(observation.result.status == P4_BOARD_UPDATE_CANCELLED_BEFORE_BEGIN);
+    CHECK(observation.result.finish_mode == P4_BOARD_UPDATE_FINISH_NO_BEGIN);
+    CHECK(p4_wifi_ota_discard(&base, token));
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_INVALID);
+    CHECK(!p4_wifi_ota_poll(&base, token, &observation));
+
+    init_ota_queue_request(&request, image.bytes, sizeof(image.bytes));
+    token = submit_ota_queue(&request);
+    CHECK(token == TEST_TOKEN + 2u);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_REQUESTED);
+    CHECK(p4_wifi_ota_cancel(&base, token));
+    CHECK(service_step() == 2);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_RELEASED);
+    CHECK(p4_wifi_ota_poll(&base, token, &observation) == P4_WIFI_OTA_JOB_DONE);
+    CHECK(observation.result.status == P4_BOARD_UPDATE_CANCELLED_BEFORE_BEGIN);
+    CHECK(p4_wifi_ota_discard(&base, token));
+}
+
+static void test_ota_queue_atomic_preflight_and_allocation_failure(void)
+{
+    union ota_queue_test_image image;
+    struct p4_wifi_ota_request request;
+    struct p4_wifi_ota_request overlapping;
+    struct P4WifiBase lookalike;
+    unsigned alloc_attempts_before;
+    unsigned gate;
+
+    for (gate = 0u; gate < 4u; ++gate) {
+        prepare_ota_queue();
+        init_ota_queue_request(&request, image.bytes, sizeof(image.bytes));
+        if (gate == 0u) request.gates.manifest_accepted = 0u;
+        else if (gate == 1u) request.gates.inspection_passed = 0u;
+        else if (gate == 2u) request.gates.recovery_verified = 0u;
+        else request.gates.target_compatible = 0u;
+        alloc_attempts_before = alloc_attempts;
+        expect_ota_queue_submit_refused(&base, &request);
+        CHECK(alloc_attempts == alloc_attempts_before);
+        CHECK(base.maintenance_state == P4_WIFI_MAINT_IDLE);
+        CHECK(base.maintenance_token == TEST_TOKEN && request_calls == 0u);
+    }
+
+    prepare_ota_queue();
+    init_ota_queue_request(&request, image.bytes, sizeof(image.bytes));
+    lookalike = base;
+    expect_ota_queue_submit_refused(&lookalike, &request);
+    current_task = &owner_task;
+    expect_ota_queue_submit_refused(&base, &request);
+    current_task = &requester_task;
+    base.association_enabled = FALSE;
+    expect_ota_queue_submit_refused(&base, &request);
+    base.association_enabled = TRUE;
+    host.lock.ss_Owner = &requester_task;
+    expect_ota_queue_submit_refused(&base, &request);
+    host.lock.ss_Owner = NULL;
+
+    overlapping = request;
+    overlapping.image = (const uint8_t *)(const void *)&overlapping;
+    overlapping.image_size = sizeof(overlapping);
+    expect_ota_queue_submit_refused(&base, &overlapping);
+    overlapping = request;
+    overlapping.image = (const uint8_t *)(const void *)&control;
+    overlapping.image_size = 1u;
+    expect_ota_queue_submit_refused(&base, &overlapping);
+    overlapping = request;
+    overlapping.image = (const uint8_t *)(const void *)&base;
+    overlapping.image_size = 1u;
+    expect_ota_queue_submit_refused(&base, &overlapping);
+
+    /* Queue-lock contention is fail-closed before allocation/request state. */
+    wifi_ota_queue.lock.held = 1u;
+    wifi_ota_queue.lock.ss_Owner = &other_task;
+    wifi_ota_queue.lock.depth = 1u;
+    expect_ota_queue_submit_refused(&base, &request);
+    wifi_ota_queue.lock.held = 0u;
+    wifi_ota_queue.lock.ss_Owner = NULL;
+    wifi_ota_queue.lock.depth = 0u;
+
+    alloc_attempts_before = alloc_attempts;
+    alloc_fail_next = 1u;
+    expect_ota_queue_submit_refused(&base, &request);
+    CHECK(alloc_attempts == alloc_attempts_before + 1u);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_IDLE);
+    CHECK(base.maintenance_token == TEST_TOKEN && request_calls == 0u);
+    CHECK(outstanding_allocs == 0u);
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_INVALID);
+}
+
+static void test_ota_queue_running_cancel_contention_and_retirement(void)
+{
+    union ota_queue_test_image image;
+    uint8_t expected[OTA_QUEUE_TEST_IMAGE_SIZE];
+    struct p4_wifi_ota_request request;
+    struct p4_wifi_ota_observation observation;
+    uint32_t token;
+    unsigned free_before;
+    size_t index;
+
+    prepare_ota_queue();
+    for (index = 0u; index < sizeof(image.bytes); ++index)
+        image.bytes[index] = (uint8_t)(index * 19u + 5u);
+    memcpy(expected, image.bytes, sizeof(expected));
+    init_ota_queue_request(&request, image.bytes, sizeof(image.bytes));
+    free_before = free_calls;
+    token = submit_ota_queue(&request);
+    CHECK(token == TEST_TOKEN + 1u);
+    memset(image.bytes, 0xe7, sizeof(image.bytes));
+    activate_ota_queue(token);
+    queue_exchange_contention_probe = 1u;
+    run_ota_queue_engine();
+    CHECK(queue_exchange_contention_probe == 0u);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FENCED);
+    CHECK(base.maintenance_fence_mode == P4_WIFI_MAINT_FENCE_WAIT_REBOOT);
+    CHECK(ota_observation_count == 5u);
+    CHECK(ota_observations[0].request_id == 272u);
+    CHECK(ota_observations[1].request_id == 273u);
+    CHECK(ota_observations[2].request_id == 273u);
+    CHECK(ota_observations[3].request_id == 273u);
+    CHECK(ota_observations[4].request_id == 274u);
+    for (index = 0u; index < 3u; ++index) {
+        uint32_t offset = index * P4_BOARD_UPDATE_CHUNK_SIZE;
+        CHECK(memcmp(ota_observations[index + 1u].data, expected + offset,
+            ota_observations[index + 1u].data_size) == 0);
+    }
+    CHECK(discovery_acquire_calls == 1u && discovery_release_calls == 1u);
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_DONE);
+    CHECK(wifi_ota_queue.image == NULL && wifi_ota_queue.request.image == NULL);
+    CHECK(free_calls == free_before + 1u && outstanding_allocs == 0u);
+    current_task = &requester_task;
+    CHECK(p4_wifi_ota_poll(&base, token, &observation) == P4_WIFI_OTA_JOB_DONE);
+    CHECK(observation.result_valid == 1u);
+    CHECK(observation.result.status == P4_BOARD_UPDATE_WAIT_REBOOT);
+    CHECK(observation.result.acknowledged_bytes == sizeof(image.bytes));
+    CHECK(observation.acknowledged_bytes == sizeof(image.bytes));
+    CHECK(queue_live_result_probe_calls == 0u);
+    CHECK(p4_wifi_ota_cancel(&base, token));
+    CHECK(p4_wifi_ota_poll(&base, token, &observation) == P4_WIFI_OTA_JOB_DONE);
+    CHECK(observation.cancel_requested == 0u);
+    free_before = free_calls;
+    current_task = &owner_task;
+    wifi_ota_queue_retire(&base);
+    current_task = &requester_task;
+    CHECK(p4_wifi_ota_poll(&base, token, &observation) == P4_WIFI_OTA_JOB_DONE);
+    CHECK(observation.result.status == P4_BOARD_UPDATE_WAIT_REBOOT);
+    CHECK(free_calls == free_before);
+    CHECK(p4_wifi_ota_discard(&base, token));
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_INVALID);
+    CHECK(free_calls == free_before);
+}
+
+static void test_ota_queue_running_cancel_and_queued_retirement(void)
+{
+    union ota_queue_test_image image;
+    struct p4_wifi_ota_request request;
+    struct p4_wifi_ota_observation observation;
+    uint32_t token;
+    unsigned free_before;
+
+    prepare_ota_queue();
+    memset(image.bytes, 0x4c, sizeof(image.bytes));
+    init_ota_queue_request(&request, image.bytes, sizeof(image.bytes));
+    token = submit_ota_queue(&request);
+    activate_ota_queue(token);
+    queue_running_token = token;
+    queue_running_cancel_probe = 1u;
+    run_ota_queue_engine();
+    CHECK(queue_running_cancel_probe == 0u);
+    CHECK(queue_running_write_seen == 2u);
+    CHECK(queue_live_result_probe_calls == 1u);
+    CHECK(queue_running_cancel_result == 1);
+    CHECK(queue_running_discard_result == 0);
+    CHECK(queue_running_observation.acknowledged_bytes ==
+          P4_BOARD_UPDATE_CHUNK_SIZE);
+    CHECK(ota_observation_count == 3u);
+    CHECK(ota_observations[0].request_id == 272u);
+    CHECK(ota_observations[1].request_id == 273u);
+    CHECK(ota_observations[2].request_id == 273u);
+    CHECK(ota_exchange_calls == 3u && ota_status_calls == 3u);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FENCED);
+    CHECK(base.maintenance_fence_mode == P4_WIFI_MAINT_FENCE_INCOMPLETE);
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_DONE);
+    CHECK(free_calls == alloc_successes && outstanding_allocs == 0u);
+    current_task = &requester_task;
+    CHECK(p4_wifi_ota_poll(&base, token, &observation) == P4_WIFI_OTA_JOB_DONE);
+    CHECK(observation.cancel_requested == 1u);
+    CHECK(observation.result_valid == 1u);
+    CHECK(observation.result.status == P4_BOARD_UPDATE_CANCELLED_INCOMPLETE);
+    CHECK(observation.result.acknowledged_bytes == 2u * P4_BOARD_UPDATE_CHUNK_SIZE);
+    CHECK(observation.acknowledged_bytes == 2u * P4_BOARD_UPDATE_CHUNK_SIZE);
+    CHECK(!observation.result.end_attempted);
+    CHECK(p4_wifi_ota_discard(&base, token));
+
+    /* Teardown turns a still-queued job into a retained terminal observation. */
+    prepare_ota_queue();
+    init_ota_queue_request(&request, image.bytes, sizeof(image.bytes));
+    token = submit_ota_queue(&request);
+    free_before = free_calls;
+    current_task = &owner_task;
+    wifi_ota_queue_retire(&base);
+    current_task = &requester_task;
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_DONE);
+    CHECK(wifi_ota_queue.image == NULL);
+    CHECK(free_calls == free_before + 1u);
+    CHECK(p4_wifi_ota_poll(&base, token, &observation) == P4_WIFI_OTA_JOB_DONE);
+    CHECK(observation.result_valid == 1u);
+    CHECK(observation.result.status == P4_BOARD_UPDATE_LEASE_FAILED);
+    CHECK(p4_wifi_ota_discard(&base, token));
+    CHECK(free_calls == free_before + 1u);
+    CHECK(outstanding_allocs == 0u);
+}
+
+static void test_ota_queue_source_generation_refusal(void)
+{
+    union ota_queue_test_image image;
+    struct p4_wifi_ota_request request;
+    struct p4_wifi_ota_observation observation;
+    uint32_t token;
+    unsigned free_before;
+
+    prepare_ota_queue();
+    memset(image.bytes, 0x2d, sizeof(image.bytes));
+    init_ota_queue_request(&request, image.bytes, sizeof(image.bytes));
+    free_before = free_calls;
+    token = submit_ota_queue(&request);
+    CHECK(token == TEST_TOKEN + 1u);
+    ++context.generation;
+    CHECK(service_step() == 0);
+    CHECK(base.maintenance_state == P4_WIFI_MAINT_FAILED);
+    CHECK(request_calls == 0u && stopped_calls == 0u);
+    CHECK(ota_observation_count == 0u && ota_exchange_calls == 0u);
+    CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_DONE);
+    CHECK(wifi_ota_queue.image == NULL);
+    CHECK(free_calls == free_before + 1u);
+    current_task = &requester_task;
+    CHECK(p4_wifi_ota_poll(&base, token, &observation) == P4_WIFI_OTA_JOB_DONE);
+    CHECK(observation.result_valid == 1u);
+    CHECK(observation.result.status == P4_BOARD_UPDATE_LEASE_FAILED);
+    CHECK(p4_wifi_ota_discard(&base, token));
+    CHECK(outstanding_allocs == 0u);
+}
+
+static void test_ota_queue_deferred_final_publication(void)
+{
+    unsigned retirement_case;
+
+    for (retirement_case = 0u; retirement_case < 2u; ++retirement_case) {
+        union ota_queue_test_image image;
+        struct p4_wifi_ota_request request;
+        struct p4_wifi_ota_observation observation, before;
+        uint32_t token;
+        unsigned free_before, exchanges_before, statuses_before;
+
+        prepare_ota_queue();
+        memset(image.bytes, (int)(0x61u + retirement_case),
+               sizeof(image.bytes));
+        init_ota_queue_request(&request, image.bytes, sizeof(image.bytes));
+        free_before = free_calls;
+        token = submit_ota_queue(&request);
+        activate_ota_queue(token);
+        exchanges_before = ota_exchange_calls;
+        statuses_before = ota_status_calls;
+        queue_defer_publication_probe = 1u;
+        run_ota_queue_engine();
+
+        /* The successful END response is decoded, but the foreign queue lock
+         * prevents service's final nonblocking publication attempt. */
+        CHECK(queue_defer_publication_probe == 0u);
+        CHECK(queue_defer_publication_triggered == 1u);
+        CHECK(wifi_ota_queue.lock.held == 1u);
+        CHECK(wifi_ota_queue.lock.ss_Owner == &other_task);
+        CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_RUNNING);
+        CHECK(wifi_ota_queue.engine_returned == 1u);
+        CHECK(wifi_ota_queue.image != NULL);
+        CHECK(wifi_ota_queue.image == wifi_ota_queue.request.image);
+        CHECK(wifi_ota_queue.working_result.status ==
+              P4_BOARD_UPDATE_WAIT_REBOOT);
+        CHECK(wifi_ota_queue.working_result.acknowledged_bytes ==
+              sizeof(image.bytes));
+        CHECK(free_calls == free_before);
+        CHECK(outstanding_allocs == 1u);
+        CHECK(ota_exchange_calls == exchanges_before + 5u);
+        CHECK(ota_status_calls == statuses_before + 5u);
+        CHECK(ota_observation_count == 5u);
+        CHECK(ota_observations[4].request_id == 274u);
+
+        current_task = &requester_task;
+        memset(&observation, 0x9d, sizeof(observation));
+        memcpy(&before, &observation, sizeof(before));
+        CHECK(p4_wifi_ota_poll(&base, token, &observation) ==
+              P4_WIFI_OTA_JOB_BUSY);
+        CHECK(memcmp(&before, &observation, sizeof(observation)) == 0);
+        CHECK(wifi_ota_queue.image != NULL && free_calls == free_before);
+
+        /* Once contention ends, either the next owner service pass or owner
+         * retirement may publish the already-returned engine result. */
+        current_task = &other_task;
+        ReleaseSemaphore(&wifi_ota_queue.lock);
+        current_task = &requester_task;
+        if (retirement_case == 0u) {
+            CHECK(service_step() == 2);
+        } else {
+            current_task = &owner_task;
+            wifi_ota_queue_retire(&base);
+            current_task = &requester_task;
+        }
+        CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_DONE);
+        CHECK(wifi_ota_queue.engine_returned == 1u);
+        CHECK(wifi_ota_queue.image == NULL);
+        CHECK(wifi_ota_queue.request.image == NULL);
+        CHECK(free_calls == free_before + 1u);
+        CHECK(outstanding_allocs == 0u);
+        CHECK(ota_exchange_calls == exchanges_before + 5u);
+        CHECK(ota_status_calls == statuses_before + 5u);
+
+        CHECK(p4_wifi_ota_poll(&base, token, &observation) ==
+              P4_WIFI_OTA_JOB_DONE);
+        CHECK(observation.token == token);
+        CHECK(observation.generation == TEST_GENERATION);
+        CHECK(observation.state == P4_WIFI_OTA_JOB_DONE);
+        CHECK(observation.result_valid == 1u);
+        CHECK(observation.acknowledged_bytes == sizeof(image.bytes));
+        CHECK(observation.result.status == P4_BOARD_UPDATE_WAIT_REBOOT);
+        CHECK(observation.result.acknowledged_bytes == sizeof(image.bytes));
+        CHECK(observation.result.end_attempted == 1u);
+
+        /* A later normal service pass and another retirement are both
+         * idempotent: no engine replay and no second image free. */
+        CHECK(service_step() == 2);
+        current_task = &owner_task;
+        wifi_ota_queue_retire(&base);
+        current_task = &requester_task;
+        CHECK(wifi_ota_queue.state == P4_WIFI_OTA_JOB_DONE);
+        CHECK(wifi_ota_queue.image == NULL);
+        CHECK(free_calls == free_before + 1u);
+        CHECK(ota_exchange_calls == exchanges_before + 5u);
+        CHECK(ota_status_calls == statuses_before + 5u);
+        CHECK(p4_wifi_ota_poll(&base, token, &observation) ==
+              P4_WIFI_OTA_JOB_DONE);
+        CHECK(observation.result.status == P4_BOARD_UPDATE_WAIT_REBOOT);
+        CHECK(p4_wifi_ota_discard(&base, token));
+        CHECK(outstanding_allocs == 0u);
+    }
+}
+
 int main(void)
 {
     test_ota_span_helpers();
@@ -3897,6 +4659,13 @@ int main(void)
     test_terminal_fence_sticky_after_expiry();
     test_poll_and_release_expiry_and_wrap();
     test_service_deadline_failures();
+    test_ota_queue_submit_snapshot_and_admission();
+    test_ota_queue_atomic_preflight_and_allocation_failure();
+    test_ota_queue_running_cancel_contention_and_retirement();
+    test_ota_queue_running_cancel_and_queued_retirement();
+    test_ota_queue_source_generation_refusal();
+    test_ota_queue_deferred_final_publication();
+    CHECK(outstanding_allocs == 0u);
     printf("wifi maintenance source tests: %u checks passed\n", test_checks);
     return 0;
 }

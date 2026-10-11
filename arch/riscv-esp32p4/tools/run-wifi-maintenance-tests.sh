@@ -1,7 +1,7 @@
 #!/bin/sh
-# Source-extract production maintenance/discovery/private OTA owner helpers.
+# Source-extract production maintenance/discovery/private OTA queue helpers.
 # The fixture mocks Exec, codecs, UID reservation and owner transport; actual
-# codec/owner suites remain separate, and no hardware behavior is claimed.
+# board updater code is linked, and no hardware behavior is claimed.
 set -eu
 
 test_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -13,6 +13,7 @@ ota_mutant_extract="$test_tmp/wifi_maintenance_ota_mutant.inc"
 finish_mutant_extract="$test_tmp/wifi_maintenance_finish_mutant.inc"
 engine_prearm_mutant_extract="$test_tmp/wifi_maintenance_engine_prearm_mutant.inc"
 clock_mutant_extract="$test_tmp/wifi_maintenance_clock_mutant.inc"
+queue_copy_mutant_extract="$test_tmp/wifi_maintenance_queue_copy_mutant.inc"
 constants="$test_tmp/wifi_maintenance_constants.inc"
 engine_source="$test_root/boardtool/update.c"
 compiler=${CC:-cc}
@@ -32,7 +33,7 @@ init_header="$test_root/network/hosted_init.h"
 ota_header="$test_root/network/hosted_ota.h"
 owner_ota_header="$test_root/network/owner_ota.h"
 update_header="$test_root/boardtool/update.h"
-trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$test_tmp/test-mutant" "$test_tmp/test-cleanup-mutant" "$test_tmp/test-ota-mutant" "$test_tmp/test-finish-mutant" "$test_tmp/test-engine-prearm-mutant" "$test_tmp/test-clock-mutant" "$test_tmp/mutant.out" "$test_tmp/cleanup-mutant.out" "$test_tmp/ota-mutant.out" "$test_tmp/finish-mutant.out" "$test_tmp/engine-prearm-mutant.out" "$test_tmp/clock-mutant.out" "$extract" "$mutant_extract" "$cleanup_mutant_extract" "$ota_mutant_extract" "$finish_mutant_extract" "$engine_prearm_mutant_extract" "$clock_mutant_extract" "$constants"; command rm -rf "$test_tmp/test-o0.dSYM" "$test_tmp/test-o2.dSYM" "$test_tmp/test-mutant.dSYM" "$test_tmp/test-cleanup-mutant.dSYM" "$test_tmp/test-ota-mutant.dSYM" "$test_tmp/test-finish-mutant.dSYM" "$test_tmp/test-engine-prearm-mutant.dSYM" "$test_tmp/test-clock-mutant.dSYM"; command rmdir "$test_tmp"' EXIT HUP INT TERM
+trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$test_tmp/test-mutant" "$test_tmp/test-cleanup-mutant" "$test_tmp/test-ota-mutant" "$test_tmp/test-finish-mutant" "$test_tmp/test-engine-prearm-mutant" "$test_tmp/test-clock-mutant" "$test_tmp/test-queue-copy-mutant" "$test_tmp/mutant.out" "$test_tmp/cleanup-mutant.out" "$test_tmp/ota-mutant.out" "$test_tmp/finish-mutant.out" "$test_tmp/engine-prearm-mutant.out" "$test_tmp/clock-mutant.out" "$test_tmp/queue-copy-mutant.out" "$extract" "$mutant_extract" "$cleanup_mutant_extract" "$ota_mutant_extract" "$finish_mutant_extract" "$engine_prearm_mutant_extract" "$clock_mutant_extract" "$queue_copy_mutant_extract" "$constants"; command rm -rf "$test_tmp/test-o0.dSYM" "$test_tmp/test-o2.dSYM" "$test_tmp/test-mutant.dSYM" "$test_tmp/test-cleanup-mutant.dSYM" "$test_tmp/test-ota-mutant.dSYM" "$test_tmp/test-finish-mutant.dSYM" "$test_tmp/test-engine-prearm-mutant.dSYM" "$test_tmp/test-clock-mutant.dSYM" "$test_tmp/test-queue-copy-mutant.dSYM"; command rmdir "$test_tmp"' EXIT HUP INT TERM
 
 if grep -Fq 'p4_wifi_owner_ota_exchange' "$header_file" ||
 	grep -Fq 'p4_wifi_owner_ota_finish' "$header_file"; then
@@ -175,6 +176,88 @@ extract_global_int_function() {
 	}
 }
 
+extract_global_uint32_function() {
+	function_name=$1
+	awk -v name="$function_name" '
+		!candidate && $0 ~ "^[[:space:]]*uint32_t[[:space:]]+" name "[[:space:]]*\\(" {
+			candidate = 1
+			candidate_text = $0 ORS
+			next
+		}
+		candidate {
+			candidate_text = candidate_text $0 ORS
+			line = $0
+			opens = gsub(/\{/, "", line)
+			closes = gsub(/\}/, "", line)
+			if (opens != 0) {
+				copy = 1
+				depth = opens - closes
+				printf "%s", candidate_text
+				candidate = 0
+				candidate_text = ""
+				if (depth == 0) { found = 1; exit }
+			} else if (index($0, ";") != 0) {
+				candidate = 0
+				candidate_text = ""
+			}
+			next
+		}
+		copy {
+			print
+			line = $0
+			opens = gsub(/\{/, "", line)
+			closes = gsub(/\}/, "", line)
+			depth += opens - closes
+			if (depth == 0) { found = 1; exit }
+		}
+		END { if (!found) exit 1 }
+	' "$source_file" >> "$extract" || {
+		echo "could not extract runtime_probe.c uint32 function: $function_name" >&2
+		exit 1
+	}
+}
+
+extract_global_queue_state_function() {
+	function_name=$1
+	awk -v name="$function_name" '
+		!candidate && $0 ~ "^[[:space:]]*enum[[:space:]]+p4_wifi_ota_job_state[[:space:]]+" name "[[:space:]]*\\(" {
+			candidate = 1
+			candidate_text = $0 ORS
+			next
+		}
+		candidate {
+			candidate_text = candidate_text $0 ORS
+			line = $0
+			opens = gsub(/\{/, "", line)
+			closes = gsub(/\}/, "", line)
+			if (opens != 0) {
+				copy = 1
+				depth = opens - closes
+				printf "%s", candidate_text
+				candidate = 0
+				candidate_text = ""
+				if (depth == 0) { found = 1; exit }
+			} else if (index($0, ";") != 0) {
+				candidate = 0
+				candidate_text = ""
+			}
+			next
+		}
+		copy {
+			print
+			line = $0
+			opens = gsub(/\{/, "", line)
+			closes = gsub(/\}/, "", line)
+			depth += opens - closes
+			if (depth == 0) { found = 1; exit }
+		}
+		END { if (!found) exit 1 }
+	' "$source_file" >> "$extract" || {
+		echo "could not extract runtime_probe.c OTA queue state function: $function_name" >&2
+		exit 1
+	}
+}
+
 extract_global_status_function() {
 	function_name=$1
 	awk -v name="$function_name" '
@@ -255,9 +338,22 @@ extract_function wifi_ota_engine_end
 extract_function wifi_ota_engine_finish
 extract_function wifi_ota_engine_finish_unclaimed
 extract_global_status_function p4_wifi_owner_ota_run
+extract_struct wifi_ota_native_queue
+extract_struct wifi_ota_source_context
+printf '%s\n' 'static struct wifi_ota_native_queue wifi_ota_queue;' >> "$extract"
 extract_function wifi_maintenance_request
 extract_function wifi_maintenance_poll
 extract_function wifi_maintenance_release
+extract_global_uint32_function p4_wifi_ota_submit
+extract_function wifi_ota_queue_requester
+extract_global_queue_state_function p4_wifi_ota_poll
+extract_global_int_function p4_wifi_ota_cancel
+extract_global_int_function p4_wifi_ota_discard
+extract_function wifi_ota_queue_source
+extract_function wifi_ota_queue_cancelled
+extract_function wifi_ota_queue_publish
+extract_function wifi_ota_queue_service
+extract_function wifi_ota_queue_retire
 extract_function wifi_maintenance_fence
 extract_function wifi_maintenance_discover
 extract_function wifi_maintenance_discovery_poll
@@ -585,3 +681,30 @@ if ! grep -Fq '== P4_BOARD_UPDATE_BUDGET_EXPIRED' "$test_tmp/clock-mutant.out"; 
 	exit 1
 fi
 echo "wifi OTA original-deadline mutation rejected"
+
+# Retaining the caller's image pointer must fail the copy-before-quiescence
+# assertions; the engine must read only queue-owned bytes after submit returns.
+sed 's/wifi_ota_queue.request.image = image;/wifi_ota_queue.request.image = copy.image;/' \
+	"$extract" > "$queue_copy_mutant_extract"
+if ! grep -Fq 'wifi_ota_queue.request.image = copy.image;' \
+	"$queue_copy_mutant_extract"; then
+	echo "could not construct caller-image-pointer retention mutation" >&2
+	exit 1
+fi
+"$compiler" -std=c99 -Wall -Wextra -Werror -pedantic $warning_suppress -g \
+	-fsanitize=address,undefined -fno-omit-frame-pointer -O0 \
+	-DWIFI_OTA_QUEUE_COPY_MUTANT -I "$test_tmp" -I "$test_root/network" \
+	"$test_root/tools/test-wifi-maintenance.c" "$engine_source" -o "$test_tmp/test-queue-copy-mutant"
+if ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
+	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+	"$test_tmp/test-queue-copy-mutant" > "$test_tmp/queue-copy-mutant.out" 2>&1; then
+	echo "caller-image-pointer retention mutation unexpectedly passed" >&2
+	exit 1
+fi
+if ! grep -Fq 'wifi_ota_queue.request.image == wifi_ota_queue.image' \
+	"$test_tmp/queue-copy-mutant.out"; then
+	echo "queue image retention mutation failed for an unrelated reason" >&2
+	cat "$test_tmp/queue-copy-mutant.out" >&2
+	exit 1
+fi
+echo "wifi OTA caller-image-pointer retention mutation rejected"
