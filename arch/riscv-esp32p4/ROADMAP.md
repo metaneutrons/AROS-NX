@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `matched ABI12 installation verified; boot pending`: GPIO54 C6 CHIP_PU low200ms/high1s resource independently read back; renamed esp32p4wifi.device and AROSTCP references SD manifest verified; retained-counter guard unchanged | Return SD, then bounded headless warm-reset/INIT qualification; reset alone is not an association-attempt fence or full WiFi pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `first warm-start observed`: matched ABI12 SD/BSP installed; one-pulse45s capture reaches owner ready CPU1/expected C6 MAC after GPIO54 reset; both harts/runtime activity observed; truncated reset suffix and two-ROM-banner ambiguity retained | Repeat continuity qualification and fresh native Scan test; reset alone is not an association-attempt fence or full WiFi pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1912,6 +1912,9 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   Canonical SANA-II device name is now esp32p4wifi.device; matched ABI12 SD
   driver and both AROSTCP paths are installed/manifest verified. BSP deployment
   is separately recorded below; no boot or negotiated-link pass inferred.
+  First matched headless warm-start now reaches owner ready CPU1/expected
+  C6 MAC after the GPIO54 path; one45s observation, no association fence,
+  repeat/cold continuity or negotiated SAE/IP/data acceptance.
   Do not use startup reset as evidence of a runtime association event fence.
   Use existing Hosted STA config fields for PMF capable/required, SAE PWE
   and optional identifier; verify exact
@@ -41474,3 +41477,34 @@ remain open. No partial stage is a complete A/B update system.
   capture or visual/WLAN pass has occurred. Next: user-confirmed card return,
   single-pulse bounded headless capture of reset/INIT/MAC and both-hart/storage
   continuity. Full SAE/PMF, IP/data and reconnect gates remain open.
+
+### 2026-10-11 — First matched GPIO54 warm-start reaches C6 owner ready
+
+- Fabian confirms SD returned. Standing headless authorization; no visual
+  acceptance requested or inferred. Installed artifacts remain those from
+  the preceding SD/BSP records; no new flash/SD/C6/credential write.
+- reset-and-log.py /dev/cu.usbmodem10145 --once with new attempt/timing/raw
+  files; process91708 actual exit0. End complete/status=ok, elapsed
+  45.008064916s,14911B, boot=unclassified, no cleanup errors, stderr empty.
+  Primary validates every base64 chunk/length/contiguous offset and raw-byte
+  equality. Exactly one explicit assert/release; two ROM banners, first
+  interrupted, so one physical reset/cold continuity is not claimed.
+- GPIO54/active0/pulse200000 diagnostic begins but console truncates its
+  settle/ok suffix. Complete owner-ready line reports CPU1 and expected
+  MAC10:bd:a3:9b:bc:34. Source checked: failed GPIO reset returns before
+  SDIO ownership/INIT, and owner-ready requires completed startup RPCs and
+  MAC retrieval. Successful startup past reset/INIT is therefore a checked
+  control-flow inference, not a complete reset-level waveform or explicit
+  preopen counter measurement. Prior stage13/error6 guard is unchanged.
+- Observed PSRAM32MB/200MHz, watchdog6000ms, hart1 online/cpus2, loaded42
+  modules, read-only FAT activity, graphics updates through256, touch polling
+  through800. No captured HP-WDT, Guru, Alert, panic or trap signature.
+  Console lines are truncated/lossy; absence of captured faults is limited
+  evidence. Driver OpenDevice/scan completion is not yet demonstrated.
+- Evidence gpio54-startup.YghWCa: reset-boot.log SHA256
+  8943e419fa78e054d8f1fc0d21ea59207dfe71e28b68ec0fdfd1a5ab92505069;
+  reset-attempt.jsonl1c038ccef68d3c6d593a94cb6e1a3f9da8ba95ffeef71d738d464a986328b95e;
+  reset-timing.jsonl545ddb451a075d4af45093b3a672422467fc7f22e6e2754932b356e87f720183.
+- Next: fresh user readiness for Prefs/WiFi Scan, no automatic association.
+  Repeat warm continuity and original SAE/required-PMF/DHCP/routes/DNS/
+  bidirectional data/reconnect/load gates remain open; no full WiFi pass.

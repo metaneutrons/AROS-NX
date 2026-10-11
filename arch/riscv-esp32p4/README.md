@@ -8,6 +8,15 @@ records retain their old names. The JC1060 SD driver and both AROSTCP device
 references are updated and read-only remount/332-entry manifest verified.
 No hardware boot/WLAN acceptance is inferred from the media installation.
 
+First GPIO54 warm-start observation (2026-10-11): one-pulse45s headless
+capture completes successfully and reaches WLAN owner ready on CPU1 with
+C6 MAC10:bd:a3:9b:bc:34, unlike the prior stale-counter failure. Both harts,
+watchdog6000ms, PSRAM200MHz and graphics/touch activity are captured. Reset
+diagnostic suffix is truncated by the console; successful reset/INIT is
+inferred from the checked startup path, not a complete electrical trace.
+Two ROM banners preserve the port-open/reset ambiguity. No scan, negotiated
+link, IP/data, cold-boot or visual acceptance follows. Next: fresh Scan readiness.
+
 C6 startup reset (2026-10-11): the newly supplied JC1060P470C_I_W_Y
 schematic establishes P4 GPIO54 -> C6_CHIP_PU, independent of the P4 reset.
 This supersedes the earlier resetGPIO=-1 wiring assumption for the JC1060
@@ -15,7 +24,7 @@ profiles. Native startup now pulses low for200ms and releases high, waiting
 1s outside shared SDMMC ownership, with GPIO configuration/level checks.
 Profile and native builds verified; hardware reset/INIT acceptance pending.
 The ABI12 resource and matching renamed SD-based WLAN device are now installed
-with independent readback/manifest verification; the SD awaits board return.
+with independent readback/manifest verification; Fabian has returned the SD.
 C6 firmware, kernel and bootloader remain unchanged. No WPA3/PMF/IP/data result follows
 from this source correction. See N2-SAE-REC and the dated GPIO54 evidence.
 
