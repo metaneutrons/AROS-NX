@@ -1,5 +1,6 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
 #include "../network/hosted_link.h"
+#include "../network/hosted_events.h"
 #include "../network/hosted_mac.h"
 #include "../network/hosted_owner.h"
 #include "../network/hosted_association.h"
@@ -72,6 +73,9 @@ struct fake_host {
 };
 
 struct wifi_probe_context {
+    BOOL owner_started;
+    BOOL owner_init_seen;
+    BOOL association_active;
     struct fake_host *host;
     ULONG generation;
     ULONG peer_clock;
@@ -232,7 +236,9 @@ enum fake_exchange_mode {
     FAKE_INTERLEAVE_UP,
     FAKE_INTERLEAVE_SAME_UP,
     FAKE_INTERLEAVE_GENERATION,
-    FAKE_INTERLEAVE_HOST_EPOCH
+    FAKE_INTERLEAVE_HOST_EPOCH,
+    FAKE_INTERLEAVE_BEACON,
+    FAKE_INTERLEAVE_CHANNEL
 };
 
 struct ap_fixture {
@@ -491,6 +497,17 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
                 state->mode == FAKE_INTERLEAVE_DOWN ? 0x71u : 0x91u);
         if (!event_ok ||
             wifi_owner_event(&state->context, &event_item) != 1)
+            return 0;
+        ++state->event_dispatches;
+    } else if (state->mode == FAKE_INTERLEAVE_BEACON ||
+               state->mode == FAKE_INTERLEAVE_CHANNEL) {
+        memset(&event_item, 0, sizeof event_item);
+        event_item.msg_type = P4_HOSTED_RPC_TYPE_EVENT;
+        event_item.msg_id = 773u;
+        event_item.payload[0] = 0x10u;
+        event_item.payload[1] = state->mode == FAKE_INTERLEAVE_BEACON ? 21u : 43u;
+        event_item.payload_size = 2u;
+        if (wifi_owner_event(&state->context, &event_item) != 1)
             return 0;
         ++state->event_dispatches;
     } else if (state->mode == FAKE_INTERLEAVE_GENERATION) {
@@ -1225,6 +1242,31 @@ static void test_station_transition_cannot_reopen_from_snapshot(void)
     }
 }
 
+static void test_recheck_during_query_cannot_publish_stale_snapshot(void)
+{
+    const enum fake_exchange_mode modes[] = {
+        FAKE_INTERLEAVE_BEACON, FAKE_INTERLEAVE_CHANNEL
+    };
+    unsigned i;
+    for (i = 0; i < sizeof modes / sizeof modes[0]; ++i) {
+        fixture_init();
+        fixture.ap_authmode = 7;
+        prepare_typed_acceptance(P4_WIFI_FULLMAC_SAE_CCMP_PMF, 6);
+        fixture.mode = modes[i];
+        CHECK(query());
+        expect_link_unknown();
+        CHECK(!fixture.context.link_snapshot_matches_hint);
+        CHECK(fixture.context.link_query_revision !=
+              fixture.context.link_observation.revision);
+        CHECK(fixture.event_dispatches == 1u);
+        CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
+        fixture.mode = FAKE_AP_SUCCESS;
+        CHECK(query());
+        CHECK(fixture.exchange_calls == 2u);
+        expect_match();
+    }
+}
+
 int main(void)
 {
     test_exact_request_response_and_dedup();
@@ -1239,6 +1281,7 @@ int main(void)
     test_typed_profile_apinfo_acceptance();
     test_typed_profile_rejections();
     test_typed_acceptance_event_interleaving();
+    test_recheck_during_query_cannot_publish_stale_snapshot();
     if (failures != 0u) {
         fprintf(stderr, "wifi-owner-apinfo: %u checks, %u failures\n",
                 checks, failures);

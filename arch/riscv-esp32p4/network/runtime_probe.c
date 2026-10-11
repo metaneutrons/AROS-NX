@@ -69,6 +69,7 @@ static BOOL wifi_ota_update_enabled = FALSE;
 #include "hosted_wifi.h"
 #include "hosted_mac.h"
 #include "hosted_link.h"
+#include "hosted_events.h"
 #include "hosted_discovery.h"
 #include "hosted_ota.h"
 #include "owner_ota.h"
@@ -205,6 +206,8 @@ struct wifi_probe_context
 #if P4_WIFI_HOSTED_OWNER
     ULONG owner_events;
     ULONG owner_last_event;
+    BOOL owner_started;
+    BOOL owner_init_seen;
     struct p4_hosted_link_observation link_observation;
     /* A current-AP snapshot is not authorization. Only the active association
      * workflow may combine it with policy/event/lifecycle acceptance. */
@@ -760,18 +763,53 @@ static int wifi_owner_event(void *opaque,
     struct wifi_probe_context *context = opaque;
     struct p4_hosted_rpc rpc;
     BOOL lifecycle = FALSE;
+    BOOL recheck = FALSE;
     if (!item)
         return 0;
+    rpc.msg_type = item->msg_type;
+    rpc.msg_id = item->msg_id;
+    rpc.uid = item->uid;
+    rpc.payload = item->payload;
+    rpc.payload_size = item->payload_size;
+    if (item->msg_id == 769u || item->msg_id == 770u ||
+        item->msg_id == 771u || item->msg_id == 772u || item->msg_id == 774u) {
+        struct p4_hosted_aux_event event;
+        if (!p4_hosted_aux_event_decode(&rpc, &event))
+            return 0;
+        if (item->msg_id == 769u) {
+            /* Startup marker, not INIT capability TLVs or a restart proof.
+             * Once ready, or after a duplicate marker, retire the session. */
+            if (context->owner_started || context->owner_init_seen)
+                return 0;
+            context->owner_init_seen = TRUE;
+        } else if (item->msg_id == 771u || item->msg_id == 772u) {
+            /* STA-only mode: SoftAP notifications are not link authority. */
+            return 0;
+        }
+        /* Heartbeat and scan completion are validated diagnostics only.
+         * Heartbeat is not configured; blocking scan RPC completion, not
+         * an unsolicited UID0 scan_id, owns the scan operation. */
+    } else if (item->msg_id != 773u && item->msg_id != 775u &&
+               item->msg_id != 776u) {
+        return 0;
+    }
     if (item->msg_id == 773u || item->msg_id == 775u || item->msg_id == 776u) {
-        rpc.msg_type = item->msg_type;
-        rpc.msg_id = item->msg_id;
-        rpc.uid = item->uid;
-        rpc.payload = item->payload;
-        rpc.payload_size = item->payload_size;
         if (item->msg_id == 773u) {
             struct p4_hosted_wifi_event event;
             if (!p4_hosted_association_wifi_event(&rpc, &event) || event.status)
                 return 0;
+            /* Explicit STA-only policy for the pinned IDF event space.
+             * WPS/SoftAP/NAN and dedicated events in a generic wrapper are
+             * unsupported, not new authority. Future IDs must be reviewed. */
+            switch (event.event_id) {
+            case 0: case 2: case 3: case 6:
+            case 18: case 19: case 20: case 21: case 22:
+            case 28: case 29: case 30: case 31: case 32: case 33: case 34:
+            case 43: case 44:
+                break;
+            default:
+                return 0;
+            }
             /* The peer discards old/new authmode in generic EVENT773.
              * Neither the previous connected event nor AP BSS metadata can
              * preserve negotiated security after this notification. Refuse
@@ -779,14 +817,24 @@ static int wifi_owner_event(void *opaque,
              * association and accepted link; require a fresh operation. */
             if (event.event_id == P4_HOSTED_WIFI_EVENT_STA_AUTHMODE_CHANGE)
                 return 0;
+            recheck = event.event_id == P4_HOSTED_WIFI_EVENT_STA_BEACON_TIMEOUT ||
+                      event.event_id == P4_HOSTED_WIFI_EVENT_HOME_CHANNEL_CHANGE;
+            if (recheck && context->association_active)
+                return 0;
             lifecycle = event.event_id == P4_HOSTED_WIFI_EVENT_STA_START ||
                         event.event_id == P4_HOSTED_WIFI_EVENT_STA_STOP;
         }
     }
-    if (lifecycle || item->msg_id == 775u || item->msg_id == 776u) {
-        if (!p4_hosted_link_observe(&context->link_observation,
+    if (lifecycle || recheck || item->msg_id == 775u || item->msg_id == 776u) {
+        if (!recheck && !p4_hosted_link_observe(&context->link_observation,
                                     context->generation, &rpc))
             return 0;
+        /* No channel/RSSI detail survives generic773. Suspend traffic and
+         * force a current-AP query, without inventing disconnect/connected
+         * events or changing the previously negotiated security observation.
+         * Typed refresh still requires exact accepted identity and mode. */
+        if (recheck)
+            context->link_query_revision = ~context->link_observation.revision;
         p4host_zero(&context->link_snapshot, sizeof(context->link_snapshot));
         context->link_snapshot_matches_hint = FALSE;
         /* Any link hint or station transition invalidates acceptance until queried
@@ -1056,7 +1104,8 @@ static int wifi_owner_refresh_link_snapshot(struct wifi_probe_context *context,
     }
     if (context->generation != generation ||
         context->link_observation.generation != generation ||
-        context->link_observation.revision != revision) {
+        context->link_observation.revision != revision ||
+        context->link_query_revision != revision) {
         p4host_zero(&control->ap_info, sizeof(control->ap_info));
         return 1;
     }
@@ -3066,6 +3115,8 @@ static void wifi_owner_service(struct wifi_probe_context *context,
     control->ops.rx = &control->rx_ops;
     control->ops.tx = tx_ops;
     wifi_owner_release(context);
+    context->owner_started = FALSE;
+    context->owner_init_seen = FALSE;
     context->accepted_profile = 0;
     context->accepted_generation = 0;
     context->accepted_revision = 0;
@@ -3080,6 +3131,7 @@ static void wifi_owner_service(struct wifi_probe_context *context,
                 break;
         control->startup_ok = index == sizeof(startup_ids) / sizeof(startup_ids[0]);
         if (control->startup_ok) {
+            context->owner_started = TRUE;
             ObtainSemaphore(&base->client_lock);
             CopyMem(control->mac.mac, base->mac, sizeof(base->mac));
             base->owner_task = FindTask(NULL);

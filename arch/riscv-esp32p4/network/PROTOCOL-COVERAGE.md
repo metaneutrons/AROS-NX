@@ -57,17 +57,17 @@ it does not imply that a received event may safely be ignored.
 
 ## RPC events: current behavior and required disposition
 
-All eight envelopes currently reach the owner. Only773/775/776 receive typed
-payload validation there. Unknown/other event metadata is counted, not qualified.
+All eight events now have bounded payload decoders and an explicit owner policy.
+This is host/native-build coverage, not installed-peer qualification.
 
 | ID | Event / reference payload | Current owner | Required station disposition |
 | --- | --- | --- | --- |
-|769|ESPInit / init_data bytes|Count only|Validate bounded payload; unexpected peer reinitialization must invalidate session/link. Distinguish RPC event from transport INIT TLV handshake.|
-|770|Heartbeat / hb_num|Count only|Validate/count if accepted; no liveness claim while ConfigHeartbeat is not enabled.|
-|771|AP_StaConnected / status, MAC, AID, mesh flag|Count only|Explicit unexpected SoftAP policy; no station association authority.|
-|772|AP_StaDisconnected / same plus reason|Count only|Explicit unexpected SoftAP policy; no station disconnect authority.|
+|769|ESPInit / init_data bytes|Typed; one pre-ready marker allowed; duplicate or post-ready marker retires owner|Distinct from transport INIT TLVs; installed ordering still requires qualification.|
+|770|Heartbeat / hb_num|Typed validated diagnostic|No liveness claim while ConfigHeartbeat is not enabled.|
+|771|AP_StaConnected / status, MAC, AID, mesh flag|Typed then refused in STA-only owner|Unsupported mode retires session; no station association authority.|
+|772|AP_StaDisconnected / same plus reason|Typed then refused in STA-only owner|Unsupported mode retires session; no station disconnect authority.|
 |773|WifiEventNoArgs / status, event_id|Typed scalar; START/STOP invalidate ledger|Classify every generic ID below; critical security/loss events must not remain metadata.|
-|774|StaScanDone / status, nested scan status/count/id|Count only|Bounded decode and scan bookkeeping; no uncorrelated event may complete another scan. Blocking RPC remains completion authority until async contract exists.|
+|774|StaScanDone / status, nested scan status/count/id|Typed validated diagnostic|No uncorrelated event completes another scan. Blocking RPC remains completion authority until async contract exists.|
 |775|StaConnected / status, nested SSID/BSSID/channel/auth|Typed owned UP hint|Fresh event + current identity/security gate; no ACK/AP-only completion. UID0 still lacks attempt identity.|
 |776|StaDisconnected / status, nested identity/reason/RSSI|Typed owned DOWN hint|Invalidate acceptance and publish exact opener/link loss; reconnect/cookie publication still incomplete.|
 
@@ -91,33 +91,33 @@ in the schema does not restore the old/new values discarded by this producer.
 | ID(s) | IDF event(s) | Required station policy / present gap |
 | --- | --- | --- |
 |0|WIFI_READY|Validated informational event, not authenticated link|
-|1|SCAN_DONE|Normally dedicated774; generic occurrence needs explicit unexpected-event policy|
+|1|SCAN_DONE|Normally dedicated774; generic occurrence refused|
 |2–3|STA_START, STA_STOP|Already invalidate observation/confirmation; not a complete producer barrier|
-|4–5|STA_CONNECTED, STA_DISCONNECTED|Normally dedicated775/776; generic occurrence lacks identity and must not establish link|
+|4–5|STA_CONNECTED, STA_DISCONNECTED|Normally dedicated775/776; generic occurrence refused|
 |6|STA_AUTHMODE_CHANGE|Valid successful773 now refuses dispatch and retires owner; no old negotiated security survives retirement. Fresh operation required; native reconnect/cookie lifecycle remains open.|
-|7–11|STA_WPS_ER_SUCCESS/FAILED/TIMEOUT/PIN/PBC_OVERLAP|WPS not enabled; explicitly unsupported, no association authority|
-|12–13|AP_START, AP_STOP|Unexpected mode policy in STA-only session|
-|14–15|AP_STACONNECTED, AP_STADISCONNECTED|Normally771/772; explicitly unsupported|
-|16–17|AP_PROBEREQRECVED, FTM_REPORT|Out of scope; bounded informational/rejection policy|
+|7–11|STA_WPS_ER_SUCCESS/FAILED/TIMEOUT/PIN/PBC_OVERLAP|WPS not enabled; refused|
+|12–13|AP_START, AP_STOP|Refused in STA-only session|
+|14–15|AP_STACONNECTED, AP_STADISCONNECTED|Normally771/772; refused|
+|16–17|AP_PROBEREQRECVED, FTM_REPORT|Out of scope; refused|
 |18|STA_BSS_RSSI_LOW|Optional telemetry; threshold/data lost; do not infer disconnect|
 |19–20|ACTION_TX_STATUS, ROC_DONE|No corresponding operation enabled|
-|21|STA_BEACON_TIMEOUT|Critical loss suspicion: invalidate/reconcile link; currently only counted|
+|21|STA_BEACON_TIMEOUT|Suspend link publication; force fresh current AP query; refuse during pending association. No fabricated disconnect/security change.|
 |22|CONNECTIONLESS_MODULE_WAKE_INTERVAL_START|No corresponding operation enabled|
-|23–27|AP_WPS_RG_SUCCESS/FAILED/TIMEOUT/PIN/PBC_OVERLAP|SoftAP WPS, unsupported|
+|23–27|AP_WPS_RG_SUCCESS/FAILED/TIMEOUT/PIN/PBC_OVERLAP|SoftAP WPS, refused|
 |28–34|ITWT_SETUP/TEARDOWN/PROBE/SUSPEND, TWT_WAKEUP, BTWT_SETUP/TEARDOWN|Power-management notifications; no liveness/security authority|
-|35–42|NAN_STARTED/STOPPED/SVC_MATCH/REPLIED/RECEIVE, NDP_INDICATION/CONFIRM/TERMINATED|NAN/NDP unsupported|
-|43|HOME_CHANNEL_CHANGE|Reconcile current AP/channel; payload lost; currently only counted|
+|35–42|NAN_STARTED/STOPPED/SVC_MATCH/REPLIED/RECEIVE, NDP_INDICATION/CONFIRM/TERMINATED|NAN/NDP refused|
+|43|HOME_CHANNEL_CHANGE|Suspend link publication and force fresh query; actual changed channel cannot inherit exact typed acceptance. Refuse during pending association.|
 |44|STA_NEIGHBOR_REP|Roaming telemetry unsupported; cannot authorize implicit reconnect|
-|45|AP_WRONG_PASSWORD|SoftAP notification, not STA authentication failure|
-|46, negative, future IDs|Invalid/unknown|Explicit bounded refusal or diagnostic-only policy; never retain security authority by default|
+|45|AP_WRONG_PASSWORD|SoftAP notification; refused, not a STA password failure|
+|46, negative, future IDs|Invalid/unknown|Refused; no silent forward-compatible security authority|
 
 ## Implementation gate before typed provider advertisement
 
-1. Typed bounded validation for every accepted RPC event; explicit dispatch
+1. Source/build verified: typed bounded validation for every accepted RPC event; explicit dispatch
    classification, including unsupported modes and unknown future IDs.
-2. Immediate invalidation on peer reinit/security change; beacon/channel events
+2. Source/build verified: invalidation on unexpected peer reinit/security change; beacon/channel events
    reconcile conservatively without fabricating their missing payloads.
-3. Scan completion and optional heartbeat semantics separated from link state.
+3. Source/build verified: scan completion and optional heartbeat semantics separated from link state.
 4. Coupled owner retirement/recovery and native opener/cookie publication tests;
    duplicate, malformed, delayed, reordered and unsolicited messages included.
 5. Resolve/qualify installed peer version and attempt-ordering assumptions;
@@ -128,6 +128,6 @@ in the schema does not restore the old/new values discarded by this producer.
 
 This inventory deliberately precedes additional interactive association tests.
 The initial inventory involved no executable change. Subsequent security-change
-retirement passes callback313/owner8200 checks each O0/O2 sanitized and native
-resource build; this updates coverage for ID6 only. No serial opening, flash,
-SD write or credential transmission was performed.
+retirement and auxiliary event integration implement the policies above; their
+test/build identities and limitations are recorded in ROADMAP.md. No serial
+opening, flash, SD write or credential transmission was performed.

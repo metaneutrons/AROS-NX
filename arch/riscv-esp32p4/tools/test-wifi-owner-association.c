@@ -37,6 +37,7 @@ struct SignalSemaphore { struct Task *ss_Owner; unsigned depth; };
 #include "hosted_association.h"
 #include "hosted_discovery.h"
 #include "hosted_link.h"
+#include "hosted_events.h"
 #include "hosted_mac.h"
 #include "hosted_owner.h"
 #include "hosted_scan.h"

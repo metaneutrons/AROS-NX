@@ -191,6 +191,7 @@ for optimization in 0 2; do
 		"$test_root/network/hosted_wifi.c" \
 		"$test_root/network/hosted_scan.c" \
 		"$test_root/network/hosted_association.c" \
+		"$test_root/network/hosted_events.c" \
 		"$test_root/network/hosted_link.c" \
 		"$test_root/tools/test-wifi-owner-association.c" \
 		"$owner_object" -o "$test_tmp/test-o$optimization"

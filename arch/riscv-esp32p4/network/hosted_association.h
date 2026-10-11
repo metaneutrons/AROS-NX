@@ -71,7 +71,9 @@ struct p4_hosted_wifi_event {
 enum p4_hosted_wifi_event_id {
     P4_HOSTED_WIFI_EVENT_STA_START = 2,
     P4_HOSTED_WIFI_EVENT_STA_STOP = 3,
-    P4_HOSTED_WIFI_EVENT_STA_AUTHMODE_CHANGE = 6
+    P4_HOSTED_WIFI_EVENT_STA_AUTHMODE_CHANGE = 6,
+    P4_HOSTED_WIFI_EVENT_STA_BEACON_TIMEOUT = 21,
+    P4_HOSTED_WIFI_EVENT_HOME_CHANNEL_CHANGE = 43
 };
 
 /* Encode WifiSetConfig(STA), request ID 284. All schema fields are supported;

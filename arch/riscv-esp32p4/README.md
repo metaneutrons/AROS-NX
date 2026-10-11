@@ -1,5 +1,16 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Hosted event coverage (2026-10-11): all eight reference RPC events now have
+bounded decoders and explicit station-owner policies. One initial ESPInit is
+allowed before ready; duplicate/later init and unsupported/unknown events
+retire the owner. Beacon/channel notifications suspend publication and force
+a fresh AP query, including rejection of an older in-flight query result.
+Auxiliary392, callback950, AP-query1047, association36939 and owner8200 checks
+each O0/O2 sanitized pass; native resource357336B build verified, undeployed.
+The matrix classifies all82 RPC pairs, not an implementation claim for every
+optional API. Installed peer ordering, typed admission, opener/cookie lifecycle
+and actual WPA3/PMF/IP/data qualification remain open. No hardware was changed.
+
 Security-change retirement (2026-10-11): valid generic STA_AUTHMODE_CHANGE
 now refuses dispatch, retiring the owner instead of preserving old negotiated
 security from AP metadata. Callback313 and coupled owner8200 checks each O0/O2

@@ -111,6 +111,7 @@ for optimization in 0 2; do
 		-fno-omit-frame-pointer -I "$test_tmp" \
 		"$test_root/network/hosted_rpc.c" \
 		"$test_root/network/hosted_association.c" \
+		"$test_root/network/hosted_events.c" \
 		"$test_root/network/hosted_link.c" \
 		"$test_root/tools/test-wifi-owner-link.c" \
 		-o "$test_tmp/test-o$optimization"

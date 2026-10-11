@@ -2,6 +2,7 @@
 #include "../network/hosted_inbox.h"
 #include "../network/hosted_link.h"
 #include "../network/hosted_scan.h"
+#include "../network/hosted_events.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,10 +59,13 @@ struct wifi_probe_context {
     uint32_t generation;
     uint32_t owner_events;
     uint32_t owner_last_event;
+    BOOL owner_started;
+    BOOL owner_init_seen;
     struct p4_hosted_link_observation link_observation;
     struct p4_hosted_sta_ap_info link_snapshot;
     ULONG link_query_revision;
     BOOL link_snapshot_matches_hint;
+    BOOL association_active;
 };
 
 static void p4host_zero(void *memory, size_t size);
@@ -492,7 +496,7 @@ static void test_station_lifecycle_sequence_invalidates_link_state(void)
           context.owner_last_event == 775u);
 }
 
-static void test_unknown_wifi_event_only_counts(void)
+static void test_informational_wifi_event_only_counts(void)
 {
     struct wifi_probe_context context;
     struct p4_hosted_inbox_item item;
@@ -532,7 +536,7 @@ static void test_unknown_wifi_event_only_counts(void)
     state_before = test_resource.link_state;
     query_revision_before = context.link_query_revision;
 
-    CHECK(make_wifi_event_item(&item, 0, 127));
+    CHECK(make_wifi_event_item(&item, 0, 18));
     CHECK(wifi_owner_event(&context, &item) == 1);
     CHECK(context.owner_events == 2u && context.owner_last_event == 773u);
     CHECK(memcmp(&observation_before, &context.link_observation,
@@ -627,6 +631,104 @@ static void test_stale_generation_and_unrelated_metadata(void)
     CHECK(context.link_observation.kind == P4_HOSTED_LINK_NONE);
 }
 
+static void test_generic_event_policy_is_exhaustive(void)
+{
+    int32_t id;
+    for (id = -1; id <= 47; ++id) {
+        struct wifi_probe_context context;
+        struct p4_hosted_inbox_item item;
+        int accepted = id == 0 || id == 2 || id == 3 ||
+            (id >= 18 && id <= 22) || (id >= 28 && id <= 34) ||
+            id == 43 || id == 44;
+        memset(&context, 0, sizeof context);
+        context.generation = 71u;
+        CHECK(p4_hosted_link_init(&context.link_observation, context.generation));
+        CHECK(make_wifi_event_item(&item, 0, id));
+        if (accepted)
+            CHECK(wifi_owner_event(&context, &item) == 1);
+        else
+            check_callback_refusal_unchanged(&context, &item);
+    }
+}
+
+static void test_aux_events_startup_and_diagnostic_policy(void)
+{
+    struct wifi_probe_context context;
+    struct p4_hosted_inbox_item item;
+    memset(&context, 0, sizeof context);
+    memset(&item, 0, sizeof item);
+    context.generation = 71u;
+    CHECK(p4_hosted_link_init(&context.link_observation, context.generation));
+    item.msg_type = P4_HOSTED_RPC_TYPE_EVENT;
+    item.msg_id = 769u;
+    CHECK(wifi_owner_event(&context, &item) == 1);
+    CHECK(context.owner_init_seen && context.owner_events == 1u);
+    check_callback_refusal_unchanged(&context, &item);
+    context.owner_init_seen = FALSE;
+    context.owner_started = TRUE;
+    check_callback_refusal_unchanged(&context, &item);
+    context.owner_started = FALSE;
+
+    item.msg_id = 770u;
+    CHECK(wifi_owner_event(&context, &item) == 1);
+    CHECK(context.owner_events == 2u);
+    item.uid = 1u;
+    check_callback_refusal_unchanged(&context, &item);
+    item.uid = 0u;
+    item.msg_id = 774u;
+    item.payload[0] = 0x12u;
+    item.payload[1] = 0u; /* Present default-valued nested scan report. */
+    item.payload_size = 2u;
+    CHECK(wifi_owner_event(&context, &item) == 1);
+    CHECK(context.owner_events == 3u);
+    CHECK(context.link_observation.revision == 0u);
+    CHECK(test_resource.associated == TRUE); /* diagnostics are not link events */
+    item.payload_size = 1u;
+    check_callback_refusal_unchanged(&context, &item);
+    item.msg_id = 771u;
+    item.payload[0] = 0x12u;
+    item.payload[1] = 6u;
+    memset(item.payload + 2u, 2, 6u);
+    item.payload_size = 8u;
+    check_callback_refusal_unchanged(&context, &item);
+    item.msg_id = 772u;
+    check_callback_refusal_unchanged(&context, &item);
+    item.msg_id = 777u;
+    check_callback_refusal_unchanged(&context, &item);
+}
+
+static void test_loss_and_channel_hints_require_fresh_query(void)
+{
+    struct wifi_probe_context context;
+    struct p4_hosted_inbox_item item;
+    struct p4_hosted_link_observation before;
+    const int32_t ids[] = { P4_HOSTED_WIFI_EVENT_STA_BEACON_TIMEOUT,
+                           P4_HOSTED_WIFI_EVENT_HOME_CHANNEL_CHANGE };
+    unsigned i;
+    memset(&context, 0, sizeof context);
+    memset(&test_resource, 0, sizeof test_resource);
+    wifi_resource_base = &test_resource;
+    context.generation = 71u;
+    CHECK(p4_hosted_link_init(&context.link_observation, context.generation));
+    before = context.link_observation;
+    for (i = 0; i < sizeof ids / sizeof ids[0]; ++i) {
+        seed_resource_link();
+        memset(&context.link_snapshot, 0xa5, sizeof context.link_snapshot);
+        context.link_snapshot_matches_hint = TRUE;
+        context.link_query_revision = context.link_observation.revision;
+        CHECK(make_wifi_event_item(&item, 0, ids[i]));
+        CHECK(wifi_owner_event(&context, &item) == 1);
+        check_resource_link_invalidated();
+        CHECK(!context.link_snapshot_matches_hint);
+        CHECK(bytes_are_zero(&context.link_snapshot, sizeof context.link_snapshot));
+        CHECK(context.link_query_revision != context.link_observation.revision);
+        CHECK(memcmp(&before, &context.link_observation, sizeof before) == 0);
+        context.association_active = TRUE;
+        check_callback_refusal_unchanged(&context, &item);
+        context.association_active = FALSE;
+    }
+}
+
 static void test_security_change_refuses_pending_and_accepted_link(void)
 {
     struct wifi_probe_context context;
@@ -664,10 +766,13 @@ int main(void)
 {
     test_callback_copies_775_and_accepts_776_down();
     test_station_lifecycle_sequence_invalidates_link_state();
-    test_unknown_wifi_event_only_counts();
+    test_informational_wifi_event_only_counts();
     test_malformed_and_bad_envelopes_are_transactional();
     test_stale_generation_and_unrelated_metadata();
     test_security_change_refuses_pending_and_accepted_link();
+    test_loss_and_channel_hints_require_fresh_query();
+    test_aux_events_startup_and_diagnostic_policy();
+    test_generic_event_policy_is_exhaustive();
     if (failures != 0u) {
         fprintf(stderr, "wifi-owner-link: %u checks, %u failures\n",
                 checks, failures);
