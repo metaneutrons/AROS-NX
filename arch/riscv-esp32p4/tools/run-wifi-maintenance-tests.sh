@@ -11,7 +11,16 @@ mutant_extract="$test_tmp/wifi_maintenance_mutant.inc"
 cleanup_mutant_extract="$test_tmp/wifi_maintenance_cleanup_mutant.inc"
 ota_mutant_extract="$test_tmp/wifi_maintenance_ota_mutant.inc"
 finish_mutant_extract="$test_tmp/wifi_maintenance_finish_mutant.inc"
+engine_prearm_mutant_extract="$test_tmp/wifi_maintenance_engine_prearm_mutant.inc"
+clock_mutant_extract="$test_tmp/wifi_maintenance_clock_mutant.inc"
 constants="$test_tmp/wifi_maintenance_constants.inc"
+engine_source="$test_root/boardtool/update.c"
+compiler=${CC:-cc}
+compiler_diagnostics=$("$compiler" --version 2>&1 || true)
+warning_suppress=
+case "$compiler_diagnostics" in
+	*clang*) warning_suppress=-Wno-uninitialized-const-pointer ;;
+esac
 source_file="$test_root/network/runtime_probe.c"
 header_file="$test_root/network/device_bridge.h"
 discovery_header="$test_root/network/hosted_discovery.h"
@@ -23,7 +32,7 @@ init_header="$test_root/network/hosted_init.h"
 ota_header="$test_root/network/hosted_ota.h"
 owner_ota_header="$test_root/network/owner_ota.h"
 update_header="$test_root/boardtool/update.h"
-trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$test_tmp/test-mutant" "$test_tmp/test-cleanup-mutant" "$test_tmp/test-ota-mutant" "$test_tmp/test-finish-mutant" "$test_tmp/mutant.out" "$test_tmp/cleanup-mutant.out" "$test_tmp/ota-mutant.out" "$test_tmp/finish-mutant.out" "$extract" "$mutant_extract" "$cleanup_mutant_extract" "$ota_mutant_extract" "$finish_mutant_extract" "$constants"; command rm -rf "$test_tmp/test-o0.dSYM" "$test_tmp/test-o2.dSYM" "$test_tmp/test-mutant.dSYM" "$test_tmp/test-cleanup-mutant.dSYM" "$test_tmp/test-ota-mutant.dSYM" "$test_tmp/test-finish-mutant.dSYM"; command rmdir "$test_tmp"' EXIT HUP INT TERM
+trap 'command rm -f "$test_tmp/test-o0" "$test_tmp/test-o2" "$test_tmp/test-mutant" "$test_tmp/test-cleanup-mutant" "$test_tmp/test-ota-mutant" "$test_tmp/test-finish-mutant" "$test_tmp/test-engine-prearm-mutant" "$test_tmp/test-clock-mutant" "$test_tmp/mutant.out" "$test_tmp/cleanup-mutant.out" "$test_tmp/ota-mutant.out" "$test_tmp/finish-mutant.out" "$test_tmp/engine-prearm-mutant.out" "$test_tmp/clock-mutant.out" "$extract" "$mutant_extract" "$cleanup_mutant_extract" "$ota_mutant_extract" "$finish_mutant_extract" "$engine_prearm_mutant_extract" "$clock_mutant_extract" "$constants"; command rm -rf "$test_tmp/test-o0.dSYM" "$test_tmp/test-o2.dSYM" "$test_tmp/test-mutant.dSYM" "$test_tmp/test-cleanup-mutant.dSYM" "$test_tmp/test-ota-mutant.dSYM" "$test_tmp/test-finish-mutant.dSYM" "$test_tmp/test-engine-prearm-mutant.dSYM" "$test_tmp/test-clock-mutant.dSYM"; command rmdir "$test_tmp"' EXIT HUP INT TERM
 
 if grep -Fq 'p4_wifi_owner_ota_exchange' "$header_file" ||
 	grep -Fq 'p4_wifi_owner_ota_finish' "$header_file"; then
@@ -166,6 +175,62 @@ extract_global_int_function() {
 	}
 }
 
+extract_global_status_function() {
+	function_name=$1
+	awk -v name="$function_name" '
+		!candidate && $0 ~ "^[[:space:]]*enum[[:space:]]+p4_board_update_status[[:space:]]+" name "[[:space:]]*\\(" {
+			candidate = 1
+			candidate_text = $0 ORS
+			next
+		}
+		candidate {
+			candidate_text = candidate_text $0 ORS
+			line = $0
+			opens = gsub(/\{/, "", line)
+			closes = gsub(/\}/, "", line)
+			if (opens != 0) {
+				copy = 1
+				depth = opens - closes
+				printf "%s", candidate_text
+				candidate = 0
+				candidate_text = ""
+				if (depth == 0) { found = 1; exit }
+			} else if (index($0, ";") != 0) {
+				candidate = 0
+				candidate_text = ""
+			}
+			next
+		}
+		copy {
+			print
+			line = $0
+			opens = gsub(/\{/, "", line)
+			closes = gsub(/\}/, "", line)
+			depth += opens - closes
+			if (depth == 0) { found = 1; exit }
+		}
+		END { if (!found) exit 1 }
+	' "$source_file" >> "$extract" || {
+		echo "could not extract runtime_probe.c status function: $function_name" >&2
+		exit 1
+	}
+}
+
+extract_struct() {
+	struct_name=$1
+	awk -v name="$struct_name" '
+		!copy && $0 ~ "^struct[[:space:]]+" name "[[:space:]]*\\{" { copy = 1 }
+		copy {
+			print
+			if ($0 ~ /^};[[:space:]]*$/) { found = 1; exit }
+		}
+		END { if (!found) exit 1 }
+	' "$source_file" >> "$extract" || {
+		echo "could not extract runtime_probe.c structure: $struct_name" >&2
+		exit 1
+	}
+}
+
 # Exercise the production helper too, so clock wrap and expiry use the exact
 # subtraction semantics compiled into runtime_probe.c.
 extract_function wifi_owner_remaining
@@ -178,6 +243,18 @@ extract_function wifi_ota_span_valid
 extract_function wifi_ota_spans_disjoint
 extract_global_function p4_wifi_owner_ota_exchange
 extract_global_int_function p4_wifi_owner_ota_finish
+extract_struct wifi_ota_engine_context
+extract_function wifi_ota_engine_clock
+extract_function wifi_ota_engine_cancelled
+extract_function wifi_ota_engine_acquire
+extract_function wifi_ota_engine_source
+extract_function wifi_ota_engine_read
+extract_function wifi_ota_engine_begin
+extract_function wifi_ota_engine_write
+extract_function wifi_ota_engine_end
+extract_function wifi_ota_engine_finish
+extract_function wifi_ota_engine_finish_unclaimed
+extract_global_status_function p4_wifi_owner_ota_run
 extract_function wifi_maintenance_request
 extract_function wifi_maintenance_poll
 extract_function wifi_maintenance_release
@@ -338,10 +415,10 @@ awk '/^enum p4_hosted_init_present \{/ { copy = 1 }
 	copy && /^\};/ { exit }' "$init_header" >> "$constants"
 
 for optimization in 0 2; do
-	"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic -g \
+	"$compiler" -std=c99 -Wall -Wextra -Werror -pedantic $warning_suppress -g \
 		-fsanitize=address,undefined -fno-omit-frame-pointer \
 		-O"$optimization" -I "$test_tmp" -I "$test_root/network" \
-		"$test_root/tools/test-wifi-maintenance.c" \
+		"$test_root/tools/test-wifi-maintenance.c" "$engine_source" \
 		-o "$test_tmp/test-o$optimization"
 	ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
 	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
@@ -357,10 +434,10 @@ if ! grep -Fq 'state == P4_WIFI_MAINT_REQUESTED || state == P4_WIFI_MAINT_ACTIVE
 	echo "could not construct ACTIVE-allowed maintenance poll mutation" >&2
 	exit 1
 fi
-"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic -g \
+"$compiler" -std=c99 -Wall -Wextra -Werror -pedantic $warning_suppress -g \
 	-fsanitize=address,undefined -fno-omit-frame-pointer -O0 \
 	-DWIFI_MAINTENANCE_MUTANT -I "$test_tmp" -I "$test_root/network" \
-	"$test_root/tools/test-wifi-maintenance.c" -o "$test_tmp/test-mutant"
+	"$test_root/tools/test-wifi-maintenance.c" "$engine_source" -o "$test_tmp/test-mutant"
 if ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
 	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 	"$test_tmp/test-mutant" > "$test_tmp/mutant.out" 2>&1; then
@@ -384,10 +461,10 @@ if ! grep -Fq 'return base != NULL;' "$cleanup_mutant_extract" ||
 	echo "could not construct cleanup-allowed mutation" >&2
 	exit 1
 fi
-"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic -g \
+"$compiler" -std=c99 -Wall -Wextra -Werror -pedantic $warning_suppress -g \
 	-fsanitize=address,undefined -fno-omit-frame-pointer -O0 \
 	-DWIFI_MAINTENANCE_CLEANUP_MUTANT -I "$test_tmp" -I "$test_root/network" \
-	"$test_root/tools/test-wifi-maintenance.c" -o "$test_tmp/test-cleanup-mutant"
+	"$test_root/tools/test-wifi-maintenance.c" "$engine_source" -o "$test_tmp/test-cleanup-mutant"
 if ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 	"$test_tmp/test-cleanup-mutant" > "$test_tmp/cleanup-mutant.out" 2>&1; then
@@ -404,17 +481,17 @@ echo "wifi maintenance sticky-cleanup mutation rejected"
 
 # A missing pre-BEGIN sticky fence must be rejected before any native OTA call
 # can reach the owner. The mutation affects only the extracted test copy.
-sed 's/base->maintenance_fence_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;/\/\* missing pre-BEGIN fence mutant \*\//' \
+sed 's/^[[:space:]]*base->maintenance_fence_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;/    \/\* missing pre-BEGIN fence mutant \*\//' \
 	"$extract" > "$ota_mutant_extract"
-if grep -Fq 'base->maintenance_fence_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;' \
+if grep -Eq '^[[:space:]]*base->maintenance_fence_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;' \
 	"$ota_mutant_extract"; then
 	echo "could not construct missing pre-BEGIN fence mutation" >&2
 	exit 1
 fi
-"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic -g \
+"$compiler" -std=c99 -Wall -Wextra -Werror -pedantic $warning_suppress -g \
 	-fsanitize=address,undefined -fno-omit-frame-pointer -O0 \
 	-DWIFI_OTA_PREBEGIN_MUTANT -I "$test_tmp" -I "$test_root/network" \
-	"$test_root/tools/test-wifi-maintenance.c" -o "$test_tmp/test-ota-mutant"
+	"$test_root/tools/test-wifi-maintenance.c" "$engine_source" -o "$test_tmp/test-ota-mutant"
 if ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
 	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 	"$test_tmp/test-ota-mutant" > "$test_tmp/ota-mutant.out" 2>&1; then
@@ -437,10 +514,10 @@ if ! grep -Fq 'case P4_BOARD_UPDATE_FINISH_NO_BEGIN: native_mode = (ULONG)mode; 
 	echo "could not construct OTA finish enum-cast mutation" >&2
 	exit 1
 fi
-"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -pedantic -g \
+"$compiler" -std=c99 -Wall -Wextra -Werror -pedantic $warning_suppress -g \
 	-fsanitize=address,undefined -fno-omit-frame-pointer -O0 \
 	-DWIFI_OTA_FINISH_CAST_MUTANT -I "$test_tmp" -I "$test_root/network" \
-	"$test_root/tools/test-wifi-maintenance.c" -o "$test_tmp/test-finish-mutant"
+	"$test_root/tools/test-wifi-maintenance.c" "$engine_source" -o "$test_tmp/test-finish-mutant"
 if ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
 	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 	"$test_tmp/test-finish-mutant" > "$test_tmp/finish-mutant.out" 2>&1; then
@@ -456,3 +533,55 @@ fi
 grep -F 'base.maintenance_fence_mode == cases[index].native_mode' \
 	"$test_tmp/finish-mutant.out"
 echo "wifi OTA finish enum-cast mutation rejected"
+
+# The engine adapter, not the native exchange entry, must arm before entering
+# BEGIN local preflight. The source-clock assertion rejects a missing arm.
+sed '/wifi_ota_engine_begin(/,/^}/s/c->base->maintenance_fence_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;/\/\* missing engine BEGIN prearm mutant \*\//' \
+	"$extract" > "$engine_prearm_mutant_extract"
+if grep -Fq 'c->base->maintenance_fence_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;' \
+	"$engine_prearm_mutant_extract"; then
+	echo "could not construct missing engine BEGIN prearm mutation" >&2
+	exit 1
+fi
+"$compiler" -std=c99 -Wall -Wextra -Werror -pedantic $warning_suppress -g \
+	-fsanitize=address,undefined -fno-omit-frame-pointer -O0 \
+	-DWIFI_OTA_ENGINE_PREARM_MUTANT -I "$test_tmp" -I "$test_root/network" \
+	"$test_root/tools/test-wifi-maintenance.c" "$engine_source" -o "$test_tmp/test-engine-prearm-mutant"
+if ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
+	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+	"$test_tmp/test-engine-prearm-mutant" > "$test_tmp/engine-prearm-mutant.out" 2>&1; then
+	echo "missing engine BEGIN prearm mutation unexpectedly passed" >&2
+	exit 1
+fi
+if ! grep -Fq 'base.maintenance_fence_mode == P4_WIFI_MAINT_FENCE_INCOMPLETE' \
+	"$test_tmp/engine-prearm-mutant.out"; then
+	echo "engine prearm mutation failed for an unrelated reason" >&2
+	cat "$test_tmp/engine-prearm-mutant.out" >&2
+	exit 1
+fi
+echo "wifi OTA engine pre-BEGIN prearm mutation rejected"
+
+# The aggregate clock must retain maintenance_started as its first sample.
+sed 's/ : c->started;/ : c->runtime->context->host->now_us();/' \
+	"$extract" > "$clock_mutant_extract"
+if ! grep -Fq '*now = c->clock_started ? c->runtime->context->host->now_us() : c->runtime->context->host->now_us();' \
+	"$clock_mutant_extract"; then
+	echo "could not construct renewed-clock mutation" >&2
+	exit 1
+fi
+"$compiler" -std=c99 -Wall -Wextra -Werror -pedantic $warning_suppress -g \
+	-fsanitize=address,undefined -fno-omit-frame-pointer -O0 \
+	-DWIFI_OTA_CLOCK_RENEWAL_MUTANT -I "$test_tmp" -I "$test_root/network" \
+	"$test_root/tools/test-wifi-maintenance.c" "$engine_source" -o "$test_tmp/test-clock-mutant"
+if ASAN_OPTIONS=halt_on_error=1:detect_stack_use_after_return=1 \
+	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+	"$test_tmp/test-clock-mutant" > "$test_tmp/clock-mutant.out" 2>&1; then
+	echo "renewed-clock mutation unexpectedly passed" >&2
+	exit 1
+fi
+if ! grep -Fq '== P4_BOARD_UPDATE_BUDGET_EXPIRED' "$test_tmp/clock-mutant.out"; then
+	echo "renewed-clock mutation failed for an unrelated reason" >&2
+	cat "$test_tmp/clock-mutant.out" >&2
+	exit 1
+fi
+echo "wifi OTA original-deadline mutation rejected"

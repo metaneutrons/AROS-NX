@@ -34,4 +34,32 @@ int p4_wifi_owner_ota_finish(struct P4WifiBase *base, uint32_t token,
     uint32_t generation, enum p4_board_update_finish_mode mode,
     uint32_t timeout_us);
 
+/* Synchronous owner-only engine binding. The future queue must own and freeze
+ * these bytes BEFORE quiescence, and retain them through completion. These
+ * callbacks are trusted internal ownership/cancellation queries: nonblocking,
+ * no transport, no detach/Close/re-entry and no mutation of image/job/result.
+ * Inspection/authenticity/layout/recovery remain caller attestations, not
+ * properties established by this structure. No pointer is retained on return.
+ * total_budget_us is measured from the ORIGINAL maintenance request, including
+ * quiescence; it cannot exceed the existing 30s preparation lease. This binding
+ * does not provide a qualified full-image lease or an asynchronous ABI job.
+ * INVALID_INPUT admission refusals leave result/state unchanged and the
+ * requester retains its existing lease/release obligation. Accepted runs own
+ * finalization even if the engine exits before its acquire-validation callback;
+ * no clock failure or expired deadline permits a late restart. */
+struct p4_wifi_owner_ota_job {
+    const uint8_t *image;
+    uint32_t image_size;
+    uint32_t total_budget_us, finish_reserve_us, max_call_us;
+    struct p4_board_update_gates gates;
+    void *source_context;
+    size_t source_context_size;
+    int (*source_held)(void *);
+    int (*cancelled)(void *);
+};
+enum p4_board_update_status p4_wifi_owner_ota_run(struct P4WifiBase *base,
+    uint32_t token, uint32_t generation,
+    const struct p4_wifi_owner_ota_job *job,
+    struct p4_board_update_result *result);
+
 #endif

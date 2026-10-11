@@ -18,12 +18,13 @@ no BEGIN attempt, incomplete transfer, unknown commit and acknowledged END
 waiting for reboot. Only the first allows ordinary read-only lease release;
 the others require a confirmed bounded fenced handoff, without automatic
 radio restart, reset or request replay. Failed handoff blocks installation
-confirmation. The native OTA engine adapter is still absent; this contract
-alone does not enable UPDATE-C6 or prove physical recovery.
+confirmation. The queued native updater remains absent; the synchronous owner
+binding below does not enable UPDATE-C6 or prove physical recovery.
 Terminal-policy regressions pass692 checks each O0/O2 under ASan/UBSan;
 the compiled all-NO_BEGIN mutation fails at the expected assertion with exit1.
 The standalone engine compiles for the configured RV32-SMP ilp32f profile
-without undefined imports. It is not linked into the native application.
+without undefined imports. That historical standalone object was not linked;
+the synchronous owner binding now links the actual engine into the resource.
 The low-level owner now has a separate canonical OTA transport entry, without
 widening normal WLAN submission. Its native maintenance-job adapter, complete
 transaction budget, terminal handoff and hardware qualification remain open;
@@ -51,7 +52,8 @@ Total time and reserve have no production defaults: native binding and actual
 full-image timing qualification remain open. UPDATE-C6 stays unavailable.
 Aggregate-deadline host regressions pass962 checks each O0/O2 with ASan/UBSan;
 NO_BEGIN and ignored-reserve mutations are rejected. The fresh standalone
-RV32-SMP engine object has no undefined imports; it is not linked or deployed.
+RV32-SMP engine object has no undefined imports; its later resource binding
+below is not deployed.
 Native pre-BEGIN fencing prerequisite (2026-10-11): a sticky ACTIVE disposition
 now refuses new discovery, suppresses any queued discovery without an RPC and
 prevents copying a stored READY result while sticky.
@@ -98,6 +100,22 @@ passes its loader audit. Exec/host ownership and RPC callbacks are modeled;
 this is not a full engine-bound job or runtime handoff acceptance. Direct
 host-generation-change and failed pre-BEGIN restart cases also pass; neither
 may confirm handoff or replay a request.
+The resource now binds the actual engine synchronously to native BEGIN/WRITE/
+END and direct owner finalization. Input bytes must be frozen and owned by a
+trusted future dispatcher, with nonblocking ownership/cancellation queries.
+The copied descriptor and temporary context are not a persistent queued job.
+The engine clock starts at the original maintenance request, including prior
+quiescence; explicit total/reserve/call budgets cannot renew or extend its30s
+preparation lease. Callback pre-arm precedes local BEGIN/END admission, and
+skipped finalization retains sticky failure. Full-image lease qualification,
+asynchronous CLI/GUI dispatch, authenticity/live layout and secured recovery
+remain open. The corrected native build and loader audit pass; independent
+review is complete and coupled tests pass7065 checks each O0/O2 ASan/UBSan,
+with six unsafe mutations rejected. Accepted early engine
+exits finalize the already-held lease as NO_BEGIN within the original budget;
+clock/deadline failures instead mark FAILED without a late restart. Invalid
+admission leaves the original requester responsible for its lease.
+Both release assertions remain0, no public ABI change or deployment occurred.
 Private transport verification (2026-10-11): canonical codec11806,
 pending1638 and coupled owner8093 checks each O0/O2 ASan/UBSan pass;
 ordinary OTA-allowlist mutation is rejected. Fresh Core1 resource291220B

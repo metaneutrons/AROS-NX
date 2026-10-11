@@ -86,6 +86,18 @@ secured recovery path; source development and read-only file checks do not.
   the different ABI enums and confirms bounded release or a fresh host fence.
   It is a prerequisite for the engine adapter, not a queued update operation;
   post-BEGIN failure retains sticky silence and never sends cleanup RPCs.
+- The resource's synchronous engine binding validates an already ACTIVE
+  owner lease and invokes the actual transfer engine. Its first clock sample
+  is the original maintenance request, not engine entry; explicit budgets
+  cannot exceed the existing30s preparation window. Input bytes and ownership/
+  cancellation context must remain immutable/live through return. They are
+  trusted internal callbacks, not a public queued API. The future dispatcher
+  must supply owned storage, bounded cancellation independent of client_lock,
+  a qualified aggregate full-image lease and device/source proofs; do not turn
+  this synchronous entry into a GUI callback or merely increase the30s constant.
+  Accepted early engine exits must finalize the already-owned lease even if
+  the engine has not reached acquire-validation; clock/deadline failure must
+  never authorize a late restart. Atomic admission refusal remains caller-owned.
 - A missing recovery proof is a refused write, not a command-line override.
   Recovery evidence must refer to the actual device and layout. Do not infer
   installed rollback from the candidate's build configuration.

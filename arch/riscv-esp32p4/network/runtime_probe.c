@@ -585,7 +585,7 @@ struct wifi_owner_control {
     uint8_t discovery_response[P4_HOSTED_RPC_MAX_SIZE];
     /* Owner-local transaction identity/accounting, never published as ABI. */
     ULONG ota_token, ota_generation, ota_image_size, ota_acknowledged_bytes;
-    unsigned ota_begin_acknowledged, ota_closed;
+    unsigned ota_begin_acknowledged, ota_closed, ota_engine_active;
 };
 struct wifi_device_runtime {
     struct wifi_probe_context *context;
@@ -1640,13 +1640,18 @@ enum p4_board_update_call_result p4_wifi_owner_ota_exchange(
                                      P4_WIFI_MAINT_LEASE_US);
     if (!remaining) return P4_BOARD_UPDATE_CALL_AMBIGUOUS;
     if (request_id == 272u) {
-        if (data || data_size || base->maintenance_fence_mode ||
+        if (data || data_size ||
+            (base->maintenance_fence_mode &&
+             !(control->ota_engine_active == 1u &&
+               base->maintenance_fence_mode == P4_WIFI_MAINT_FENCE_INCOMPLETE)) ||
             control->ota_token || control->ota_generation ||
             control->ota_image_size || control->ota_begin_acknowledged ||
             control->ota_acknowledged_bytes)
             return P4_BOARD_UPDATE_CALL_AMBIGUOUS;
     } else {
-        if (base->maintenance_fence_mode != P4_WIFI_MAINT_FENCE_INCOMPLETE ||
+        if ((base->maintenance_fence_mode != P4_WIFI_MAINT_FENCE_INCOMPLETE &&
+             !(request_id == 274u && control->ota_engine_active == 1u &&
+               base->maintenance_fence_mode == P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN)) ||
             control->ota_token != token || control->ota_generation != generation ||
             control->ota_image_size != image_size ||
             control->ota_begin_acknowledged != 1u ||
@@ -1851,6 +1856,257 @@ failed:
     base->associated = FALSE;
     wifi_maintenance_discovery_clear(runtime, P4_WIFI_DISCOVERY_FAILED);
     return -1;
+}
+
+struct wifi_ota_engine_context {
+    struct P4WifiBase *base;
+    struct wifi_device_runtime *runtime;
+    struct p4_wifi_owner_ota_job job;
+    uint32_t token, generation, started;
+    unsigned clock_started;
+};
+
+static int wifi_ota_engine_clock(void *opaque, uint32_t *now)
+{
+    struct wifi_ota_engine_context *c = opaque;
+    if (!now || c->base->owner_task != FindTask(NULL) ||
+        c->runtime->context->generation != c->generation ||
+        !c->runtime->context->host->now_us) return 0;
+    /* Include the earlier request/quiescence; never renew time at engine entry. */
+    *now = c->clock_started ? c->runtime->context->host->now_us() : c->started;
+    c->clock_started = 1u;
+    return 1;
+}
+
+static int wifi_ota_engine_cancelled(void *opaque)
+{
+    struct wifi_ota_engine_context *c = opaque;
+    return wifi_owner_stopping(c->runtime->context) ||
+        c->job.cancelled(c->job.source_context) != 0;
+}
+
+static int wifi_ota_engine_acquire(void *opaque, uint32_t timeout)
+{
+    struct wifi_ota_engine_context *c = opaque;
+    /* The owner is already quiesced. This validates ownership, not a recursive
+     * requester queue/poll operation or another Stop/lease clock. */
+    return !timeout || c->base->maintenance_state != P4_WIFI_MAINT_ACTIVE ||
+        c->base->maintenance_token != c->token ||
+        !wifi_discovery_session_valid(c->base, c->runtime) ||
+        !wifi_owner_remaining(c->runtime->context, c->started,
+                              c->job.total_budget_us) ? -1 : 0;
+}
+
+static int wifi_ota_engine_source(void *opaque, uint32_t size, uint32_t timeout)
+{
+    struct wifi_ota_engine_context *c = opaque;
+    return !timeout || size != c->job.image_size ||
+        c->job.source_held(c->job.source_context) != 1 ? -1 : 0;
+}
+
+static int wifi_ota_engine_read(void *opaque, uint32_t offset,
+    uint8_t *destination, size_t capacity, size_t *actual, uint32_t timeout)
+{
+    struct wifi_ota_engine_context *c = opaque;
+    size_t available, i;
+    if (!timeout || !actual || !destination || offset > c->job.image_size ||
+        capacity > P4_BOARD_UPDATE_CHUNK_SIZE ||
+        c->job.source_held(c->job.source_context) != 1) return -1;
+    available = c->job.image_size - offset;
+    if (available > capacity) available = capacity;
+    for (i = 0; i < available; ++i) destination[i] = c->job.image[offset + i];
+    *actual = available;
+    return 0;
+}
+
+static enum p4_board_update_call_result wifi_ota_engine_begin(void *opaque,
+    uint32_t size, int32_t *status, uint32_t timeout)
+{
+    struct wifi_ota_engine_context *c = opaque;
+    /* Before even the native entry's local preflight: the engine has already
+     * classified BEGIN as attempted, and expiry may skip finalization. */
+    c->base->maintenance_fence_mode = P4_WIFI_MAINT_FENCE_INCOMPLETE;
+    c->base->associated = FALSE;
+    wifi_maintenance_discovery_clear(c->runtime, P4_WIFI_DISCOVERY_FAILED);
+    return p4_wifi_owner_ota_exchange(c->base, c->token, c->generation, 272u,
+        NULL, 0u, size, &c->job.gates, timeout, status);
+}
+
+static enum p4_board_update_call_result wifi_ota_engine_write(void *opaque,
+    const uint8_t *bytes, size_t count, int32_t *status, uint32_t timeout)
+{
+    struct wifi_ota_engine_context *c = opaque;
+    return p4_wifi_owner_ota_exchange(c->base, c->token, c->generation, 273u,
+        bytes, count, c->job.image_size, &c->job.gates, timeout, status);
+}
+
+static enum p4_board_update_call_result wifi_ota_engine_end(void *opaque,
+    int32_t *status, uint32_t timeout)
+{
+    struct wifi_ota_engine_context *c = opaque;
+    c->base->maintenance_fence_mode = P4_WIFI_MAINT_FENCE_COMMIT_UNKNOWN;
+    return p4_wifi_owner_ota_exchange(c->base, c->token, c->generation, 274u,
+        NULL, 0u, c->job.image_size, &c->job.gates, timeout, status);
+}
+
+static int wifi_ota_engine_finish(void *opaque,
+    enum p4_board_update_finish_mode mode, uint32_t timeout)
+{
+    struct wifi_ota_engine_context *c = opaque;
+    return p4_wifi_owner_ota_finish(c->base, c->token, c->generation, mode, timeout);
+}
+
+/* Engine acquisition validates a lease we already own. Its early gate/cancel/
+ * clock exits therefore still need a native disposition. Never issue a late
+ * restart or grant a fresh finish reserve after the original deadline. */
+static void wifi_ota_engine_finish_unclaimed(struct wifi_ota_engine_context *c,
+    struct p4_board_update_result *result)
+{
+    uint32_t elapsed, remaining;
+    result->lease_acquired = 1u;
+    result->finish_mode = P4_BOARD_UPDATE_FINISH_NO_BEGIN;
+    result->lease_release_status = -1;
+    elapsed = c->runtime->context->host->now_us() - c->started;
+    result->elapsed_us = elapsed;
+    if (result->budget_error == P4_BOARD_UPDATE_BUDGET_CLOCK || elapsed > INT32_MAX) {
+        result->budget_error = P4_BOARD_UPDATE_BUDGET_CLOCK;
+    } else if (elapsed >= c->job.total_budget_us) {
+        result->budget_error = P4_BOARD_UPDATE_BUDGET_TIMEOUT;
+    } else {
+        remaining = c->job.total_budget_us - elapsed;
+        if (remaining > c->job.max_call_us) remaining = c->job.max_call_us;
+        result->lease_release_called = 1u;
+        result->lease_release_status = wifi_ota_engine_finish(c,
+            P4_BOARD_UPDATE_FINISH_NO_BEGIN, remaining);
+        elapsed = c->runtime->context->host->now_us() - c->started;
+        result->elapsed_us = elapsed;
+        if (elapsed > INT32_MAX) result->budget_error = P4_BOARD_UPDATE_BUDGET_CLOCK;
+        else if (elapsed >= c->job.total_budget_us)
+            result->budget_error = P4_BOARD_UPDATE_BUDGET_TIMEOUT;
+        if (result->budget_error != P4_BOARD_UPDATE_BUDGET_OK)
+            result->lease_release_status = -1;
+    }
+    if (!result->lease_release_called || result->lease_release_status) {
+        c->base->maintenance_state = P4_WIFI_MAINT_FAILED;
+        c->base->associated = FALSE;
+        wifi_maintenance_discovery_clear(c->runtime, P4_WIFI_DISCOVERY_FAILED);
+    }
+}
+
+enum p4_board_update_status p4_wifi_owner_ota_run(struct P4WifiBase *base,
+    uint32_t token, uint32_t generation, const struct p4_wifi_owner_ota_job *job,
+    struct p4_board_update_result *result)
+{
+    struct wifi_device_runtime *runtime;
+    struct wifi_ota_engine_context context_storage, *c = &context_storage;
+    struct p4_board_update_plan plan;
+    uint8_t scratch[P4_BOARD_UPDATE_CHUNK_SIZE];
+    enum p4_board_update_status status;
+    unsigned span_index;
+    /* Refuse before touching caller output or owner state. No public ABI
+     * dispatch exists; release gates remain disabled in production builds. */
+    if (!base || base != wifi_resource_base || !job || !result || !token ||
+        (uintptr_t)job % __alignof__(*job) ||
+        (uintptr_t)result % __alignof__(*result) ||
+        !generation || base->owner_task != FindTask(NULL) ||
+        base->client_lock.ss_Owner != FindTask(NULL) ||
+        base->association_enabled != TRUE ||
+        base->maintenance_state != P4_WIFI_MAINT_ACTIVE ||
+        base->maintenance_token != token || !base->maintenance_task ||
+        base->maintenance_task == base->owner_task || base->maintenance_fence_mode)
+        return P4_BOARD_UPDATE_INVALID_INPUT;
+    runtime = base->runtime;
+    if (!wifi_discovery_session_valid(base, runtime) ||
+        runtime->context->generation != generation ||
+        !runtime->context->host->now_us ||
+        runtime->context->host->lock.ss_Owner == FindTask(NULL) ||
+        !wifi_ota_span_valid(base, runtime, job, sizeof(*job)) ||
+        !wifi_ota_span_valid(base, runtime, result, sizeof(*result)) ||
+        !wifi_ota_spans_disjoint(job, sizeof(*job), result, sizeof(*result)))
+        return P4_BOARD_UPDATE_INVALID_INPUT;
+    if (!job->image_size || job->image_size > P4_BOARD_UPDATE_MAX_IMAGE_SIZE ||
+        !job->total_budget_us || job->total_budget_us > P4_WIFI_MAINT_LEASE_US ||
+        !job->finish_reserve_us || job->finish_reserve_us >= job->total_budget_us ||
+        !job->max_call_us || job->max_call_us > P4_BOARD_UPDATE_MAX_CALL_US ||
+        !job->source_held || !job->cancelled ||
+        !wifi_ota_span_valid(base, runtime, job->image, job->image_size) ||
+        !wifi_ota_spans_disjoint(job->image, job->image_size, job, sizeof(*job)) ||
+        !wifi_ota_spans_disjoint(job->image, job->image_size, result, sizeof(*result)) ||
+        !job->source_context || !job->source_context_size ||
+        !wifi_ota_span_valid(base, runtime, job->source_context, job->source_context_size) ||
+        !wifi_ota_spans_disjoint(job->source_context, job->source_context_size,
+                                job, sizeof(*job)) ||
+        !wifi_ota_spans_disjoint(job->source_context, job->source_context_size,
+                                result, sizeof(*result)) ||
+        !wifi_ota_spans_disjoint(job->source_context, job->source_context_size,
+                                job->image, job->image_size) ||
+        runtime->control->ota_engine_active || runtime->control->ota_closed ||
+        runtime->control->ota_token || runtime->control->ota_generation ||
+        runtime->control->ota_image_size || runtime->control->ota_begin_acknowledged ||
+        runtime->control->ota_acknowledged_bytes ||
+        runtime->control->discovery_state == P4_WIFI_DISCOVERY_REQUESTED ||
+        runtime->scanning || runtime->owner->pending_active ||
+        runtime->owner->partial_active || runtime->owner->ids.active_uid || runtime->fifo->busy)
+        return P4_BOARD_UPDATE_INVALID_INPUT;
+    {
+        const void *spans[] = {job, result, job->image, job->source_context};
+        const size_t sizes[] = {sizeof(*job), sizeof(*result), job->image_size,
+                                job->source_context_size};
+        /* The engine must initialize result; its alias-refusal path intentionally
+         * leaves it unchanged. Exclude our mutable temporary objects first so
+         * no later code interprets an uninitialized refusal result. */
+        for (span_index = 0; span_index < sizeof(spans) / sizeof(spans[0]); ++span_index)
+            if (!wifi_ota_spans_disjoint(spans[span_index], sizes[span_index], c, sizeof(*c)) ||
+                !wifi_ota_spans_disjoint(spans[span_index], sizes[span_index], &plan, sizeof(plan)) ||
+                !wifi_ota_spans_disjoint(spans[span_index], sizes[span_index], scratch, sizeof(scratch)))
+                return P4_BOARD_UPDATE_INVALID_INPUT;
+    }
+    /* Synchronous fixed-size context: no allocation failure can strand an
+     * accepted already-ACTIVE lease. Atomic admission refusals above leave
+     * ownership with the original requester, which must release its token. */
+    p4host_zero(c, sizeof(*c));
+    c->base = base;
+    c->runtime = runtime;
+    c->job = *job;
+    c->token = token;
+    c->generation = generation;
+    c->started = base->maintenance_started;
+    p4host_zero(&plan, sizeof(plan));
+    plan.image_size = c->job.image_size;
+    plan.total_budget_us = c->job.total_budget_us;
+    plan.finish_reserve_us = c->job.finish_reserve_us;
+    plan.max_call_us = c->job.max_call_us;
+    plan.gates = c->job.gates;
+    plan.reader.context = c;
+    plan.reader.context_size = sizeof(*c);
+    plan.reader.read = wifi_ota_engine_read;
+    plan.ops.context = c;
+    plan.ops.context_size = sizeof(*c);
+    plan.ops.clock_us = wifi_ota_engine_clock;
+    plan.ops.acquire_maintenance = wifi_ota_engine_acquire;
+    plan.ops.finish_maintenance = wifi_ota_engine_finish;
+    plan.ops.revalidate_source = wifi_ota_engine_source;
+    plan.ops.is_cancelled = wifi_ota_engine_cancelled;
+    plan.ops.begin = wifi_ota_engine_begin;
+    plan.ops.write = wifi_ota_engine_write;
+    plan.ops.end = wifi_ota_engine_end;
+    plan.scratch = scratch;
+    plan.scratch_size = sizeof(scratch);
+    runtime->control->ota_engine_active = 1u;
+    status = p4_board_update_run(&plan, result);
+    if (!result->lease_acquired)
+        wifi_ota_engine_finish_unclaimed(c, result);
+    /* Budget/clock failure can deliberately skip finalization. Retain the
+     * earlier obligation without any late RPC, replay or cleanup. */
+    if (result->begin_attempted && base->maintenance_state == P4_WIFI_MAINT_ACTIVE) {
+        runtime->control->ota_closed = 1u;
+        base->maintenance_state = P4_WIFI_MAINT_FAILED;
+        base->associated = FALSE;
+    }
+    runtime->control->ota_engine_active = 0u;
+    p4host_zero(scratch, sizeof(scratch));
+    p4host_zero(c, sizeof(*c));
+    return status;
 }
 
 static BOOL wifi_maintenance_discover(struct P4WifiBase *base, ULONG token)
