@@ -243,15 +243,20 @@ static STRPTR ReadPrefs(CONST_STRPTR name, LONG *lenp)
     return ReadPrefsChecked(name, lenp, &ok);
 }
 
-/* TRUE if the stored configuration already has a key for this network. */
-static BOOL PrefsHaveNetwork(CONST_STRPTR ssid)
+/* TRUE when the legacy PSK path has a saved key for this network. SAE always
+ * prompts again until the manager's profile parser can be safely queried. */
+static BOOL PrefsHaveNetwork(CONST_STRPTR ssid,
+    enum WifiSecurityProfile profile)
 {
     LONG len;
-    STRPTR buf = ReadPrefs(WifiVolatile ? PREFS_ENV : PREFS_ENVARC, &len);
+    STRPTR buf;
     STRPTR p;
     TEXT needle[2 * WIFI_SSID_MAX + 8];
     BOOL found = FALSE;
 
+    if (profile != WIFI_SECURITY_PSK)
+        return FALSE;
+    buf = ReadPrefs(WifiVolatile ? PREFS_ENV : PREFS_ENVARC, &len);
     if (buf == NULL)
         return FALSE;
 
@@ -266,20 +271,39 @@ static BOOL PrefsHaveNetwork(CONST_STRPTR ssid)
         }
         /* Include the line delimiter: a shorter SSID must not match a prefix. */
         snprintf(needle, sizeof(needle), "ssid=%s\n", encoded);
+        if (strstr(buf, needle) == NULL)
+        {
+            WifiClearSecret(buf, (size_t)len);
+            FreeVec(buf);
+            return FALSE;
+        }
     }
-    else
-        snprintf(needle, sizeof(needle), "ssid=\"%s\"", ssid);
-    for (p = buf; (p = strstr(p, needle)) != NULL; p += 1)
-    {
-        /* A psk belongs to the same block, i.e. before the closing brace. */
-        STRPTR end = strstr(p, "}");
-        STRPTR psk = strstr(p, "psk=");
 
-        if (psk != NULL && (end == NULL || psk < end))
+    /* Walk bounded network blocks instead of associating an SSID in one
+     * block with a psk in a later one. The shared formatter emits hex SSIDs;
+     * the matcher also accepts the quoted form from older saved profiles. */
+    p = buf;
+    while ((p = strstr(p, "network")) != NULL)
+    {
+        size_t block_length;
+        STRPTR psk;
+
+        if (p[7] != '=' || p[8] != 123)
+        {
+            p += 7;
+            continue;
+        }
+        if (!WifiConfigBlockLength(p, (size_t)((buf + len) - p),
+                &block_length))
+            break;
+        psk = strstr(p, "psk=");
+        if (psk != NULL && psk < p + block_length - 1 &&
+            WifiConfigBlockMatchesSSID(p, block_length, ssid))
         {
             found = TRUE;
             break;
         }
+        p += block_length;
     }
 
     WifiClearSecret(buf, (size_t)len);
@@ -292,20 +316,38 @@ static BOOL PrefsHaveNetwork(CONST_STRPTR ssid)
  * other block byte for byte. Rewriting the whole file from a parsed view is
  * what loses the networks a user set up elsewhere.
  */
-static BOOL MergePrefs(CONST_STRPTR name, CONST_STRPTR ssid, CONST_STRPTR key)
+static BOOL MergePrefs(CONST_STRPTR name, CONST_STRPTR ssid,
+    CONST_STRPTR key, enum WifiSecurityProfile profile)
 {
     LONG len;
     STRPTR buf = ReadPrefs(name, &len);
-    TEXT needle[WIFI_SSID_MAX + 8];
+    TEXT formatted[384];
     BPTR fh;
     STRPTR p;
+    BOOL result = TRUE;
+    size_t formatted_length;
 
-    snprintf(needle, sizeof(needle), "ssid=\"%s\"", ssid);
+    if (!WifiFormatPersistentProfileBlock(formatted, sizeof(formatted),
+            ssid, key, profile))
+    {
+        if (buf != NULL)
+        {
+            WifiClearSecret(buf, (size_t)len);
+            FreeVec(buf);
+        }
+        return FALSE;
+    }
+    formatted_length = strlen((const char *)formatted);
 
     fh = Open(name, MODE_NEWFILE);
     if (fh == BNULL)
     {
-        FreeVec(buf);
+        if (buf != NULL)
+        {
+            WifiClearSecret(buf, (size_t)len);
+            FreeVec(buf);
+        }
+        WifiClearSecret(formatted, sizeof(formatted));
         return FALSE;
     }
 
@@ -313,44 +355,62 @@ static BOOL MergePrefs(CONST_STRPTR name, CONST_STRPTR ssid, CONST_STRPTR key)
     p = buf;
     while (p != NULL && *p != '\0')
     {
-        STRPTR blockstart, blockend, hit;
+        STRPTR blockstart, blockend, search;
+        size_t block_length;
 
-        blockstart = strstr(p, "network={");
+        search = p;
+        blockstart = strstr(search, "network");
+        while (blockstart != NULL &&
+               (blockstart[7] != '=' || blockstart[8] != 123))
+        {
+            search = blockstart + 7;
+            blockstart = strstr(search, "network");
+        }
         if (blockstart == NULL)
         {
-            FPuts(fh, p);
+            size_t remaining = (size_t)(len - (p - buf));
+            if (remaining != 0 &&
+                Write(fh, p, (LONG)remaining) != (LONG)remaining)
+                result = FALSE;
             break;
         }
 
         if (blockstart > p)
-            Write(fh, p, blockstart - p);
+        {
+            LONG prefix_length = blockstart - p;
+            if (Write(fh, p, prefix_length) != prefix_length)
+                result = FALSE;
+        }
 
-        blockend = strstr(blockstart, "}");
-        if (blockend == NULL)
-            break;                          /* truncated file: drop the rest */
-        blockend++;
+        if (!WifiConfigBlockLength(blockstart,
+                (size_t)((buf + len) - blockstart), &block_length))
+        {
+            result = FALSE;
+            break;
+        }
+        blockend = blockstart + block_length;
 
-        hit = (STRPTR)strstr((const char *)blockstart, (const char *)needle);
-        if (hit == NULL || hit > blockend)
-            Write(fh, blockstart, blockend - blockstart);
+        if (!WifiConfigBlockMatchesSSID((CONST_STRPTR)blockstart,
+                block_length, ssid) &&
+            Write(fh, blockstart, (LONG)block_length) != (LONG)block_length)
+            result = FALSE;
         p = blockend;
     }
 
-    /* And append ours. */
-    FPuts(fh, "network={\n");
-    FPrintf(fh, "\tssid=\"%s\"\n", (IPTR)ssid);
-    if (key != NULL && key[0] != '\0')
-    {
-        FPrintf(fh, "\tpsk=\"%s\"\n", (IPTR)key);
-        FPuts(fh, "\tkey_mgmt=WPA-PSK\n");
-    }
-    else
-        FPuts(fh, "\tkey_mgmt=NONE\n");
-    FPuts(fh, "}\n\n");
+    /* And append the one validated profile. */
+    if (result && Write(fh, formatted, (LONG)formatted_length) !=
+            (LONG)formatted_length)
+        result = FALSE;
 
-    Close(fh);
-    FreeVec(buf);
-    return TRUE;
+    if (!Close(fh))
+        result = FALSE;
+    if (buf != NULL)
+    {
+        WifiClearSecret(buf, (size_t)len);
+        FreeVec(buf);
+    }
+    WifiClearSecret(formatted, sizeof(formatted));
+    return result;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -1566,7 +1626,9 @@ static void DoScan(struct WifiMsg *m)
                     GetTagData(S2INFO_SecuritySummary, (IPTR)NULL, tl)) :
                     (const char *)IEProtection((const UBYTE *)
                         GetTagData(S2INFO_InfoElements, (IPTR)NULL, tl)));
-            n->wn_Known = PrefsHaveNetwork(n->wn_SSID);
+            n->wn_Known = PrefsHaveNetwork(n->wn_SSID,
+                WifiSecurityProfileFromLabel(
+                    (CONST_STRPTR)n->wn_Protection));
             if (j == m->wm_Count)
                 m->wm_Count++;
         }
@@ -1804,6 +1866,28 @@ static void DoConnect(struct WifiMsg *m)
 
     m->wm_Result = WRES_FAILED;
 
+    /* Fail closed before opening a device, touching credentials, or
+     * restarting WirelessManager when the scan's label was not exact. */
+    if (m->wm_SecurityProfile != WIFI_SECURITY_OPEN &&
+        m->wm_SecurityProfile != WIFI_SECURITY_PSK &&
+        m->wm_SecurityProfile != WIFI_SECURITY_SAE)
+    {
+        strcpy(m->wm_Status,
+            "Cannot connect: security type is unknown.");
+        return;
+    }
+    m->wm_Protected = m->wm_SecurityProfile != WIFI_SECURITY_OPEN;
+
+    if ((m->wm_Protected && m->wm_Key[0] != '\0' &&
+         !WifiValidateProfileCredential(m->wm_SecurityProfile,
+             (CONST_STRPTR)m->wm_Key)) ||
+        (!m->wm_Protected && m->wm_Key[0] != '\0'))
+    {
+        strcpy(m->wm_Status,
+            "Password must be printable ASCII and within the security limit.");
+        return;
+    }
+
     if (!WifiDevice(m))
         return;
     if (m->wm_SSID[0] == '\0')
@@ -1829,7 +1913,7 @@ static void DoConnect(struct WifiMsg *m)
      * separate round trip.
      */
     if (m->wm_Protected && m->wm_Key[0] == '\0' &&
-        !PrefsHaveNetwork(m->wm_SSID))
+        !PrefsHaveNetwork(m->wm_SSID, m->wm_SecurityProfile))
     {
         m->wm_Result = WRES_NEEDKEY;
         snprintf(m->wm_Status, sizeof(m->wm_Status),
@@ -1847,11 +1931,17 @@ static void DoConnect(struct WifiMsg *m)
             FreePrefsBackup(&backup);
             return;
         }
-        if ((WifiVolatile && !WifiWriteVolatilePrefs(m->wm_SSID, m->wm_Key,
-                                                  m->wm_Protected)) ||
+        if ((WifiVolatile &&
+             (m->wm_SecurityProfile == WIFI_SECURITY_SAE
+                ? !WifiWriteVolatileProfilePrefs(m->wm_SSID, m->wm_Key,
+                      m->wm_SecurityProfile)
+                : !WifiWriteVolatilePrefs(m->wm_SSID, m->wm_Key,
+                      m->wm_Protected))) ||
             (!WifiVolatile &&
-             (!MergePrefs(PREFS_ENVARC, m->wm_SSID, m->wm_Key) ||
-              !MergePrefs(PREFS_ENV, m->wm_SSID, m->wm_Key))))
+             (!MergePrefs(PREFS_ENVARC, m->wm_SSID, m->wm_Key,
+                  m->wm_SecurityProfile) ||
+              !MergePrefs(PREFS_ENV, m->wm_SSID, m->wm_Key,
+                  m->wm_SecurityProfile))))
         {
             strcpy(m->wm_Status, (const char *)_(MSG_ST_CANNOT_WRITE_PREFS));
             RestorePrefs(&backup);

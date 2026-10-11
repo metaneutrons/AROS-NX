@@ -348,6 +348,26 @@ static void test_match_gates_and_tuple_mismatches(void)
 
 int main(void)
 {
+	struct wpa_security_summary sae = protected_summary(WPA_PROTO_RSN,
+		WPA_KEY_MGMT_SAE, WPA_CIPHER_CCMP, WPA_CIPHER_CCMP);
+	check_predicate("pure SAE metadata", "sae",
+		wpa_security_summary_sae(&sae), 1);
+	check_predicate("SAE is not legacy PSK", "protected",
+		wpa_security_summary_protected(&sae), 0);
+	sae.key_mgmt |= WPA_KEY_MGMT_PSK;
+	check_predicate("mixed AKM", "sae", wpa_security_summary_sae(&sae), 0);
+	sae.key_mgmt = WPA_KEY_MGMT_SAE;
+	sae.pairwise_cipher = WPA_CIPHER_TKIP;
+	check_predicate("SAE TKIP", "sae", wpa_security_summary_sae(&sae), 0);
+	sae.pairwise_cipher = WPA_CIPHER_CCMP;
+	sae.group_cipher = WPA_CIPHER_TKIP;
+	check_predicate("SAE group TKIP", "sae", wpa_security_summary_sae(&sae), 0);
+	sae.group_cipher = WPA_CIPHER_CCMP;
+	sae.flags &= ~WPA_SECURITY_SUMMARY_KNOWN;
+	check_predicate("unknown SAE", "sae", wpa_security_summary_sae(&sae), 0);
+	sae.flags |= WPA_SECURITY_SUMMARY_KNOWN;
+	sae.proto = WPA_PROTO_WPA;
+	check_predicate("SAE WPA1", "sae", wpa_security_summary_sae(&sae), 0);
 	run_positive_singletons();
 	test_protected_flags();
 	test_protected_suite_rejections();

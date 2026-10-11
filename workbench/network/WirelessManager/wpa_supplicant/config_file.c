@@ -95,8 +95,47 @@ static char * wpa_config_get_line(char *s, int size, FILE *stream, int *line,
 static int wpa_config_validate_network(struct wpa_ssid *ssid, int line)
 {
 	int errors = 0;
+	int sae = !!(ssid->key_mgmt & WPA_KEY_MGMT_SAE);
+	int wep = 0;
+	int i;
 
-	if (ssid->passphrase) {
+	for (i = 0; i < NUM_WEP_KEYS; i++)
+		if (ssid->wep_key_len[i] != 0)
+			wep = 1;
+
+	if (ssid->sae_password && !sae) {
+		wpa_printf(MSG_ERROR,
+			   "Line %d: sae_password requires key_mgmt=SAE.", line);
+		errors++;
+	}
+
+	if (sae) {
+		int invalid = ssid->key_mgmt != WPA_KEY_MGMT_SAE ||
+			ssid->proto != WPA_PROTO_RSN ||
+			ssid->pairwise_cipher != WPA_CIPHER_CCMP ||
+			ssid->group_cipher != WPA_CIPHER_CCMP ||
+			ssid->mode != WPAS_MODE_INFRA ||
+			ssid->sae_password == NULL ||
+			ssid->sae_password_len < 1 ||
+			ssid->sae_password_len > 63 ||
+			ssid->passphrase != NULL || ssid->psk_set || wep;
+		size_t j;
+
+		if (ssid->sae_password && ssid->sae_password_len <= 63) {
+			for (j = 0; j < ssid->sae_password_len; j++)
+				if (ssid->sae_password[j] == '\0')
+					invalid = 1;
+		}
+		/* SAE selects a typed FullMAC operation whose PMF policy is always
+		 * REQUIRED. This is caller intent, not an AP capability observation.
+		 * The legacy ieee80211w option is not used to weaken that contract. */
+		if (invalid) {
+			wpa_printf(MSG_ERROR,
+				   "Line %d: SAE requires a pure RSN/CCMP managed profile, "
+				   "separate password and required PMF.", line);
+			errors++;
+		}
+	} else if (!ssid->sae_password && ssid->passphrase) {
 		if (ssid->psk_set) {
 			wpa_printf(MSG_ERROR, "Line %d: both PSK and "
 				   "passphrase configured.", line);
@@ -150,8 +189,8 @@ static struct wpa_ssid * wpa_config_read_network(FILE *f, int *line, int id)
 
 		pos2 = os_strchr(pos, '=');
 		if (pos2 == NULL) {
-			wpa_printf(MSG_ERROR, "Line %d: Invalid SSID line "
-				   "'%s'.", *line, pos);
+			wpa_printf(MSG_ERROR,
+				   "Line %d: invalid network option line.", *line);
 			errors++;
 			continue;
 		}
@@ -159,8 +198,8 @@ static struct wpa_ssid * wpa_config_read_network(FILE *f, int *line, int id)
 		*pos2++ = '\0';
 		if (*pos2 == '"') {
 			if (os_strchr(pos2 + 1, '"') == NULL) {
-				wpa_printf(MSG_ERROR, "Line %d: invalid "
-					   "quotation '%s'.", *line, pos2);
+				wpa_printf(MSG_ERROR, "Line %d: invalid quotation "
+					   "for network option '%s'.", *line, pos);
 				errors++;
 				continue;
 			}
@@ -614,6 +653,23 @@ static void write_psk(FILE *f, struct wpa_ssid *ssid)
 }
 
 
+static void write_sae_password(FILE *f, struct wpa_ssid *ssid)
+{
+	char *value = wpa_config_get(ssid, "sae_password");
+	volatile char *p;
+	size_t len, i;
+
+	if (value == NULL)
+		return;
+	fprintf(f, "\tsae_password=%s\n", value);
+	len = os_strlen(value);
+	p = (volatile char *) value;
+	for (i = 0; i < len; i++)
+		p[i] = 0;
+	os_free(value);
+}
+
+
 static void write_proto(FILE *f, struct wpa_ssid *ssid)
 {
 	char *value;
@@ -739,6 +795,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(ssid);
 	INT(scan_ssid);
 	write_bssid(f, ssid);
+	write_sae_password(f, ssid);
 	write_psk(f, ssid);
 	write_proto(f, ssid);
 	write_key_mgmt(f, ssid);
@@ -796,6 +853,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(proactive_key_caching);
 	INT(disabled);
 	INT(peerkey);
+	INT(fullmac_allow_diagnostic);
 #ifdef CONFIG_IEEE80211W
 	INT(ieee80211w);
 #endif /* CONFIG_IEEE80211W */

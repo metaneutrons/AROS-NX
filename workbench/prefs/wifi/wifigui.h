@@ -10,6 +10,7 @@
 #include <exec/types.h>
 #include <exec/ports.h>
 #include <exec/tasks.h>
+#include "volatile_config.h"
 
 #define WIFI_MAX_NETS       40
 #define WIFI_MAX_DEVS       8       /* radios offered in the chooser */
@@ -78,6 +79,7 @@ struct WifiMsg
     /* CONNECT input, STATUS output */
     TEXT            wm_SSID[WIFI_SSID_MAX];
     TEXT            wm_Key[WIFI_KEY_MAX];
+    enum WifiSecurityProfile wm_SecurityProfile;
     LONG            wm_Protected;
 
     /* STATUS output. Everything the details window shows is gathered here, so

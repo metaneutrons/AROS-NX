@@ -41,6 +41,13 @@ struct Sana2WirelessSecuritySummary {
 	ULONG GroupCiphers;
 };
 
+/* This fixture retains legacy selection coverage. Typed transport/query is
+ * exercised separately by test-wireless-fullmac-driver.py, not this mock. */
+struct Sana2FullMACCapabilities {
+	ULONG SizeAvailable, SizeSupplied, Version, Flags, Profiles, SAEPweMethods;
+	ULONG Reserved[2];
+};
+
 struct TagItem {
 	ULONG ti_Tag;
 	UPINT ti_Data;
@@ -67,6 +74,8 @@ struct wpa_driver_sana2_data {
 	int wireless_caps_queried;
 	int wireless_caps_valid;
 	struct Sana2WirelessCapabilities wireless_caps;
+	int fullmac_caps_valid;
+	struct Sana2FullMACCapabilities fullmac_caps;
 };
 
 struct wpa_driver_capa {
@@ -75,6 +84,8 @@ struct wpa_driver_capa {
 	unsigned int flags;
 	unsigned int summary_pairwise_enc;
 	unsigned int summary_group_enc;
+	unsigned int fullmac_profiles, fullmac_sae_pwe_modes;
+	unsigned int fullmac_diagnostic_risk;
 };
 
 struct wpa_supplicant {

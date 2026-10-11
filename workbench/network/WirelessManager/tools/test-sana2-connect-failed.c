@@ -22,6 +22,16 @@ struct Sana2WirelessCapabilities {
 	ULONG GroupCiphers;
 };
 
+struct Sana2FullMACCapabilities {
+	ULONG SizeAvailable;
+	ULONG SizeSupplied;
+	ULONG Version;
+	ULONG Flags;
+	ULONG Profiles;
+	ULONG SAEPweMethods;
+	ULONG Reserved[2];
+};
+
 struct IOSana2Req {
 	struct {
 		ULONG io_Command;
@@ -40,6 +50,10 @@ struct wpa_driver_sana2_data {
 	int wireless_caps_queried;
 	int wireless_caps_valid;
 	struct Sana2WirelessCapabilities wireless_caps;
+	/* This fixture keeps old v1 behavior; the new typed query path is tested
+	 * against the actual public contract in test-wireless-fullmac-driver.py. */
+	int fullmac_caps_valid;
+	struct Sana2FullMACCapabilities fullmac_caps;
 	ULONG active_association_cookie;
 };
 
@@ -48,6 +62,7 @@ static unsigned int check_count;
 static unsigned int failure_count;
 static unsigned int query_calls;
 static unsigned int unexpected_io_calls;
+static unsigned int fullmac_validator_calls;
 static int query_return;
 static int query_error;
 static ULONG reply_size_supplied;
@@ -75,6 +90,15 @@ static void eloop_cancel_timeout(void (*handler)(void *, void *),
 static void wpa_supplicant_event(void *ctx, int event, void *event_data);
 static int DoIO(APTR request_arg);
 
+/* Legacy fixtures answer only the v1 command and never validate an extension. */
+static int Sana2FullMACCapabilitiesValid(
+	const struct Sana2FullMACCapabilities *caps)
+{
+	(void) caps;
+	++fullmac_validator_calls;
+	return 0;
+}
+
 #include "sana2-caps-valid.inc"
 #include "sana2-query-caps.inc"
 #include "sana2-initial-event-mask.inc"
@@ -100,6 +124,7 @@ static void reset_observers(void)
 {
 	query_calls = 0;
 	unexpected_io_calls = 0;
+	fullmac_validator_calls = 0;
 	query_return = 0;
 	query_error = 0;
 	reply_size_supplied = sizeof(struct Sana2WirelessCapabilities);
@@ -213,6 +238,8 @@ static void test_initial_event_mask_negotiation(void)
 	      request.ios2_StatData == NULL, 1);
 	CHECK("valid independent CONNECT_FAILED capability", "no unrelated I/O",
 	      unexpected_io_calls, 0);
+	CHECK("legacy v1 fixture", "no FullMAC validation attempted",
+	      fullmac_validator_calls, 0);
 
 	mask = wpa_driver_sana2_initial_event_mask(&drv);
 	CHECK("capability query is once per open", "second mask unchanged",

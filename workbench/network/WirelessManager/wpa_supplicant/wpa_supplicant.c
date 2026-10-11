@@ -732,6 +732,8 @@ enum wpa_key_mgmt key_mgmt2driver(int key_mgmt)
 		return KEY_MGMT_802_1X_SHA256;
 	case WPA_KEY_MGMT_PSK_SHA256:
 		return KEY_MGMT_PSK_SHA256;
+	case WPA_KEY_MGMT_SAE:
+		return KEY_MGMT_SAE;
 	case WPA_KEY_MGMT_WPS:
 		return KEY_MGMT_WPS;
 	case WPA_KEY_MGMT_PSK:
@@ -1172,6 +1174,15 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 	struct wpa_driver_capa capa;
 	int assoc_failed = 0;
 	struct wpa_ssid *old_ssid;
+
+	/* The typed driver transport is staged separately from selection and
+	 * authenticated-link integration. Until that caller is wired, fail SAE
+	 * explicitly rather than falling through legacy PSK/plaintext paths. */
+	if (ssid->key_mgmt & WPA_KEY_MGMT_SAE) {
+		wpa_msg(wpa_s, MSG_WARNING,
+			"WPA: SAE FullMAC selection is not yet integrated");
+		return;
+	}
 
 	if (ssid->mode == WPAS_MODE_AP) {
 #ifdef CONFIG_AP

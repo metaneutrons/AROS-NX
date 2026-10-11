@@ -147,7 +147,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: pure SAE/CCMP metadata/display338/93 each O0/O2, native device67920B/Prefs153220B undeployed; additive FullMAC contract predicates121 each O0/O2 and RV32 ABI compile verified, caller/provider integration open | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: pure SAE/CCMP metadata/display338/93 each O0/O2; additive FullMAC contract121 checks each and RV32 ABI compile verified; SAE config/typed transport/Prefs host tests and native WM688980B/Prefs164548B build verified; automatic selection/provider lifecycle open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1888,8 +1888,13 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   password directly, never its WPA2 PBKDF2-derived PSK. PMF must be required;
   raw PSK, unsupported PWE/identifier/profile combinations must fail closed.
   Additive FullMAC version1 declarations and shared strict validators are now
-  host/native-compile verified only. No caller/provider advertises or uses them
-  yet. v1 failure-event negotiation remains the sole authority; PWE modes are
+  host/native-compile verified only. The SANA-II adapter now separately queries
+  the new capability and validates typed transport; no P4 provider advertises
+  it yet. Native configuration and preference profile handling are implemented
+  and RV32-SMP build verified (WM688980B/Prefs164548B), not deployed;
+  legacy supplicant association explicitly refuses SAE until selection and
+  authenticated-link integration are wired. v1 failure-event negotiation
+  remains the sole authority; PWE modes are
   selectable client policies, never observed AP facts. Caller and provider
   integration, preference configuration and actual link lifecycle remain open.
 - SAE-M3 owner/peer (depends on M2): use existing Hosted STA config fields
@@ -39606,3 +39611,65 @@ remain open. No partial stage is a complete A/B update system.
   association, PMF negotiation, peer identity or IP/data qualification. Next:
   existing WirelessManager/config/Prefs typed SAE caller and P4 provider/owner,
   followed by unchanged SAE-M3/M4 and N2T acceptance gates.
+
+### 2026-10-11 - N2-SAE native configuration and typed transport groundwork
+
+- Scope: existing Prefs/WiFi and WirelessManager, no parallel UI or IP stack.
+  SAE has a distinct key-management bit and owned password1..63/non-NUL,
+  separate parsing/serialization/wiping, pure RSN/CCMP validation and no
+  WPA2 PBKDF2. Per-network diagnostic permission defaults0 and accepts only0/1;
+  no implicit opt-in or privacy assertion. Required PMF is the typed profile's
+  caller policy, independent of the legacy software-PMF compile option.
+- SANA-II adapter separately negotiates FullMAC version1 only after valid v1
+  SUMMARY/CONNECT_FAILED capability. Typed association validates exact profile,
+  extent, secret kind, PWE mode, event subscription, frequency and cookie before
+  any I/O; no legacy secret tags or synthetic IE. Borrowed request objects live
+  through synchronous reply and are cleared afterward. An ACK does not publish
+  authenticated CONNECT. The automatic supplicant SAE entry deliberately
+  refuses until selection and authenticated-link integration are implemented.
+- Prefs carries open/PSK/SAE/unknown profiles, refuses unknown before I/O,
+  emits SAE passwords as hex and rejects overlong UI input before truncation.
+  SAE deliberately re-prompts rather than reusing a remembered WPA2 credential.
+  Persistent merge uses exact SSID matching and a bounded delimiter scan
+  consistent with the native parser's last-quote rule; foreign quoted braces
+  and raw quotes are covered. Existing save/rollback remains the write boundary;
+  helper tests are not an on-device filesystem/GUI qualification.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/sae-caller.ivfOhI/`.
+  Primary repeats: typed driver65 scenarios/411 checks each O0/O2; contract121
+  each; legacy association84/635 each and CONNECT_FAILED23/94 each plus source
+  assertions. Summary88 scenarios/271 checks each, legacy summary38/76 each,
+  close4/55 each, failure-state554 each. Native config extraction passes each
+  O0/O2; Prefs source10/production1703 each, legacy source20/formatter222 and
+  worker helpers1538 each, display93 each. All completed processes exit0 with
+  ASan/UBSan; macOS LeakSanitizer is unsupported, bounded allocation accounting
+  substitutes only for those test allocations. Host APTR is host-width, not
+  new RV32 ABI proof; the prior actual public ABI compile remains applicable.
+- Independent review of primary typed driver finds no predicate defect; primary
+  reviewed configuration/preference changes. Config tests exposed an overlength
+  validation OOB, fixed before final builds. Native Prefs session47494 exits2
+  because DoScan still used the old one-argument PrefsHaveNetwork call; corrected
+  with an exact-profile argument and a source regression. Failed log retained,
+  SHA2567f8d2cb6e1a4093febc32658540cdbeff08aed85e9391f913f0ef4b1d7688a1c.
+- Sequential native quick builds invalidate all objects in the exact generated
+  WirelessManager and Prefs directories. WM session15738 exits0 with actual
+  wpa_supplicant link/install and correct current RV32-SMP Developer sysroot;
+  source copies match. WM688980B SHA256
+  b5fd4fffdfd031f5b63ec9b65fcfb7d31056b80beb0fe220809d5c6d3e7ee298.
+  Repaired Prefs session35869 exits0 with final link,164548B SHA256
+  a68f8bb8453a6114dfc3e3ffddb815e618bcfdb61ddf1e4a414b563290839012.
+  No compiler errors/warnings in successful builds; WM has a make jobserver
+  warning (-j1 forced). Frozen binaries and logs retained. WM log SHA256
+  f18bf78ae1fc5a83362e4dca00b4a336ead578bbcb579a6ca9222965f2a1720f,
+  repaired Prefs log b53e6ec183aee60115c7b34baf34a426cf94b1b96a812a31efb2fe006d71c63a,
+  Prefs test56d1b74d91cdf96d48ee6dce36a16ad630f83ab2f89678f458cd08a5a6bcf2d9,
+  config test ad31b1aad97747fd961736a26584199467219de7e0f1d11754d5469c4edcb861,
+  driver test07cc0aa8f62e5d24a09b120611e5017bbc7d62112afbf71752925893534f349c.
+- Build flags remain jc1060p470c-v2, SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/
+  HOSTED_OWNER=1, OWNER_CPU=1, ASSOCIATION_TEST_RISK_ACCEPTED=1; C6/host
+  PRIVACY_RECOVERY_VERIFIED and C6_UPDATE_RECOVERY_VERIFIED all0. This slice
+  performs no serial, SD, flash, reset, credential transmission or hardware
+  test; installed core/BSP/card and peer lineage remain unchanged. No WPA3/PMF
+  association, IP or RF claim. Next: capability-aware automatic SAE selection,
+  native event completion and P4 provider/owner admission before fresh
+  synchronized device tests and all original SAE-M3/M4/N2T acceptance gates.

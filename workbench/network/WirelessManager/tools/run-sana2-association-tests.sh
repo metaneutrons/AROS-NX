@@ -193,6 +193,9 @@ for member in ("CIPHER_NONE", "CIPHER_WEP40", "CIPHER_TKIP", "CIPHER_CCMP", "CIP
 constants.append(
 	f"#define KEY_MGMT_PSK {extract_enum_value(common_defs, 'wpa_key_mgmt', 'KEY_MGMT_PSK')}"
 )
+constants.append(
+	f"#define KEY_MGMT_SAE {extract_enum_value(common_defs, 'wpa_key_mgmt', 'KEY_MGMT_SAE')}"
+)
 
 build_dir.mkdir(parents=True, exist_ok=True)
 (build_dir / "sana2-association-source-constants.inc").write_text(

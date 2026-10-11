@@ -463,7 +463,22 @@ struct wpa_driver_associate_params {
 	 * association.
 	 */
 	const u8 *prev_bssid;
+
+	/* Separately negotiated FullMAC request. Zero leaves legacy behavior
+	 * unchanged. No SAE secret is put in passphrase/psk or a synthetic IE. */
+	unsigned int fullmac_profile;
+	unsigned int fullmac_allow_diagnostic;
+	unsigned int fullmac_sae_pwe_mode;
+	const u8 *sae_password;
+	size_t sae_password_len;
 };
+
+#define WPA_FULLMAC_PROFILE_OPEN         0x01u
+#define WPA_FULLMAC_PROFILE_WPA2_CCMP    0x02u
+#define WPA_FULLMAC_PROFILE_SAE_CCMP_PMF 0x04u
+#define WPA_FULLMAC_SAE_PWE_HNP  0x01u
+#define WPA_FULLMAC_SAE_PWE_H2E  0x02u
+#define WPA_FULLMAC_SAE_PWE_BOTH 0x04u
 
 /**
  * struct wpa_driver_capa - Driver capability information
@@ -509,6 +524,7 @@ struct wpa_driver_capa {
 /* Driver accepts local cancellation even before an AP address is confirmed.
  * disassociate/deauthenticate must accept a NULL address for this operation. */
 #define WPA_DRIVER_FLAGS_CANCEL_PENDING 0x00000200
+#define WPA_DRIVER_FLAGS_FULLMAC_ASSOCIATION 0x00000400
 	unsigned int flags;
 
 	int max_scan_ssids;
@@ -533,6 +549,12 @@ struct wpa_driver_capa {
 	 * are set; otherwise zero. Uses WPA_DRIVER_CAPA_ENC_* masks.
 	 */
 	unsigned int summary_group_enc;
+
+	/* Exact negotiated whole profiles/modes. Diagnostic risk is a refusal
+	 * unless the selected network explicitly opts in for this attempt. */
+	unsigned int fullmac_profiles;
+	unsigned int fullmac_sae_pwe_modes;
+	unsigned int fullmac_diagnostic_risk;
 };
 
 

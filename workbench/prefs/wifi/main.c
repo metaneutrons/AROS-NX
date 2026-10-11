@@ -59,6 +59,7 @@ static BOOL busy;                       /* a command is in flight */
  * and the same request sent again. */
 static TEXT pending_ssid[WIFI_SSID_MAX];
 static LONG pending_protected;
+static enum WifiSecurityProfile pending_security_profile = WIFI_SECURITY_UNKNOWN;
 
 /* ------------------------------------------------------------------------- */
 
@@ -176,9 +177,28 @@ static IPTR ScanFunc(struct Hook *hook, Object *caller, void *data)
  * stored for a protected network, and then the requester opens. */
 static void StartConnect(CONST_STRPTR key)
 {
+    size_t key_length = 0;
+
+    if (pending_security_profile == WIFI_SECURITY_UNKNOWN)
+    {
+        SetStatus((CONST_STRPTR)"Cannot connect: security type is unknown.");
+        return;
+    }
+    if (key != NULL)
+    {
+        while (key_length < sizeof(msg->wm_Key) && key[key_length] != '\0')
+            key_length++;
+        if (key_length == sizeof(msg->wm_Key))
+        {
+            WifiClearSecret(msg->wm_Key, sizeof(msg->wm_Key));
+            SetStatus((CONST_STRPTR)"Password exceeds the 63-character limit.");
+            return;
+        }
+    }
     snprintf(msg->wm_SSID, sizeof(msg->wm_SSID), "%s", pending_ssid);
     snprintf(msg->wm_Key, sizeof(msg->wm_Key), "%s",
         (const char *)(key != NULL ? key : (CONST_STRPTR)""));
+    msg->wm_SecurityProfile = pending_security_profile;
     msg->wm_Protected = pending_protected;
 
     {
@@ -208,7 +228,15 @@ static IPTR ConnectFunc(struct Hook *hook, Object *caller, void *data)
         return 0;
 
     snprintf(pending_ssid, sizeof(pending_ssid), "%s", net->wn_SSID);
-    pending_protected = (strcmp(net->wn_Protection, "open") != 0);
+    pending_security_profile =
+        WifiSecurityProfileFromLabel((CONST_STRPTR)net->wn_Protection);
+    if (pending_security_profile == WIFI_SECURITY_UNKNOWN)
+    {
+        pending_protected = FALSE;
+        SetStatus((CONST_STRPTR)"Cannot connect: security type is unknown.");
+        return 0;
+    }
+    pending_protected = pending_security_profile != WIFI_SECURITY_OPEN;
     StartConnect(NULL);
     return 0;
 }

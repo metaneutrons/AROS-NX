@@ -50,6 +50,20 @@ static inline int wpa_security_summary_open(
         !summary->group_cipher;
 }
 
+/* Pure SAE/CCMP scan identity only, not proof of AP PMF/PWE support or a
+ * completed handshake. Admission also needs a negotiated typed FullMAC
+ * profile and required-PMF client policy. Mixed profiles are not widened. */
+static inline int wpa_security_summary_sae(
+    const struct wpa_security_summary *summary)
+{
+    return summary->flags == (WPA_SECURITY_SUMMARY_PRESENT |
+        WPA_SECURITY_SUMMARY_KNOWN | WPA_SECURITY_SUMMARY_PRIVACY) &&
+        summary->proto == WPA_PROTO_RSN &&
+        summary->key_mgmt == WPA_KEY_MGMT_SAE &&
+        summary->pairwise_cipher == WPA_CIPHER_CCMP &&
+        summary->group_cipher == WPA_CIPHER_CCMP;
+}
+
 static inline int wpa_security_summary_match(
     const struct wpa_security_summary *summary, int offload,
     int proto, int key_mgmt, int pairwise, int group)

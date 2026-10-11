@@ -25,6 +25,7 @@
 #include <dos/dos.h>
 #include <devices/sana2.h>
 #include <devices/sana2wireless.h>
+#include <devices/sana2wireless_fullmac.h>
 #include <devices/newstyle.h>
 
 #include <proto/exec.h>
@@ -101,6 +102,8 @@ struct wpa_driver_sana2_data {
 	int wireless_caps_queried;
 	int wireless_caps_valid;
 	struct Sana2WirelessCapabilities wireless_caps;
+	int fullmac_caps_valid;
+	struct Sana2FullMACCapabilities fullmac_caps;
 	ULONG next_association_cookie;
 	ULONG active_association_cookie;
 };
@@ -263,6 +266,19 @@ static void wpa_driver_sana2_set_security_summary(
 		summary->flags = WPA_SECURITY_SUMMARY_PRESENT |
 			WPA_SECURITY_SUMMARY_KNOWN;
 		res->caps &= ~IEEE80211_CAP_PRIVACY;
+		return;
+	}
+
+	if (source->Flags == (S2WIRELESS_SUMF_KNOWN | S2WIRELESS_SUMF_PRIVACY) &&
+	    source->Protocols == S2WIRELESS_PROTO_RSN_SAE &&
+	    source->KeyManagement == S2WIRELESS_KEY_SAE &&
+	    source->PairwiseCiphers == S2WIRELESS_CIPHER_CCMP &&
+	    source->GroupCiphers == S2WIRELESS_CIPHER_CCMP) {
+		summary->flags |= WPA_SECURITY_SUMMARY_KNOWN;
+		summary->proto = WPA_PROTO_RSN;
+		summary->key_mgmt = WPA_KEY_MGMT_SAE;
+		summary->pairwise_cipher = WPA_CIPHER_CCMP;
+		summary->group_cipher = WPA_CIPHER_CCMP;
 		return;
 	}
 
@@ -466,6 +482,128 @@ static int wpa_driver_sana2_set_key(const char *ifname, void *priv,
 }
 
 
+static int wpa_driver_sana2_associate_fullmac(
+	struct wpa_driver_sana2_data *drv,
+	struct wpa_driver_associate_params *params)
+{
+	struct Sana2FullMACAssociation selection;
+	struct Sana2WirelessCredential credential, *secret = NULL;
+	struct IOSana2Req *request;
+	char ssid[MAX_SSID_LEN + 1];
+	size_t length, i;
+	ULONG cookie, channel = 0;
+	int err;
+
+	if (!drv || !params || !drv->request || !drv->hard_mac ||
+	    !drv->fullmac_caps_valid || !drv->wireless_caps_valid ||
+	    !(drv->wireless_caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED) ||
+	    !(drv->event_mask & S2EVENT_CONNECT_FAILED) ||
+	    params->mode != IEEE80211_MODE_INFRA ||
+	    !params->ssid || !params->ssid_len ||
+	    params->ssid_len > MAX_SSID_LEN || params->wpa_ie_len ||
+	    params->wpa_ie || params->fullmac_allow_diagnostic > 1 ||
+	    params->auth_alg != WPA_AUTH_ALG_OPEN ||
+	    drv->next_association_cookie == 0xffffffffUL)
+		return -1;
+	for (i = 0; i < params->ssid_len; ++i)
+		if (!params->ssid[i])
+			return -1;
+	for (i = 0; i < 4; ++i)
+		if (params->wep_key_len[i] || params->wep_key[i])
+			return -1;
+	if (params->freq) {
+		if (params->freq == 2484)
+			channel = 14;
+		else if (params->freq >= 2412 && params->freq <= 2472 &&
+			 (params->freq - 2407) % 5 == 0)
+			channel = (params->freq - 2407) / 5;
+		else
+			return -1;
+	}
+	os_memset(&selection, 0, sizeof(selection));
+	os_memset(&credential, 0, sizeof(credential));
+	selection.Size = sizeof(selection);
+	selection.Version = S2FULLMAC_VERSION;
+	selection.Profile = params->fullmac_profile;
+	selection.Flags = params->fullmac_allow_diagnostic ?
+		S2FULLMAC_ASSOCF_ALLOW_DIAGNOSTIC_RISK : 0;
+	selection.SAEPweMethod = params->fullmac_sae_pwe_mode;
+	credential.Size = sizeof(credential);
+	credential.Version = S2WIRELESS_CREDENTIAL_VERSION;
+	if (selection.Profile == S2FULLMAC_PROFILE_OPEN) {
+		if (params->key_mgmt_suite != KEY_MGMT_NONE || params->passphrase ||
+		    params->psk || params->sae_password || params->sae_password_len ||
+		    params->pairwise_suite != CIPHER_NONE ||
+		    params->group_suite != CIPHER_NONE)
+			return -1;
+	} else {
+		if (params->pairwise_suite != CIPHER_CCMP ||
+		    params->group_suite != CIPHER_CCMP)
+			return -1;
+		secret = &credential;
+		if (selection.Profile == S2FULLMAC_PROFILE_SAE_CCMP_PMF) {
+			if (params->key_mgmt_suite != KEY_MGMT_SAE ||
+			    params->passphrase || params->psk ||
+			    params->sae_password_len > 63)
+				return -1;
+			selection.PMFPolicy = S2FULLMAC_PMF_REQUIRED;
+			credential.Kind = S2WIRELESS_CRED_SAE_PASSWORD;
+			credential.Data = params->sae_password;
+			credential.Length = params->sae_password_len;
+		} else if (selection.Profile == S2FULLMAC_PROFILE_WPA2_CCMP) {
+			if (params->key_mgmt_suite != KEY_MGMT_PSK ||
+			    params->sae_password || params->sae_password_len ||
+			    (params->passphrase && params->psk))
+				return -1;
+			if (params->passphrase) {
+				for (length = 0; length < 64 && params->passphrase[length];
+				     ++length) {}
+				credential.Kind = S2WIRELESS_CRED_WPA2_PASSPHRASE;
+				credential.Data = (const UBYTE *)params->passphrase;
+				credential.Length = length;
+			} else {
+				credential.Kind = S2WIRELESS_CRED_WPA2_PSK;
+				credential.Data = params->psk;
+				credential.Length = S2WIRELESS_PSK_SIZE;
+			}
+		} else
+			return -1;
+	}
+	if (!Sana2FullMACAssociationValid(&drv->fullmac_caps, &selection, secret))
+		return -1;
+	CopyMem(params->ssid, ssid, params->ssid_len);
+	ssid[params->ssid_len] = '\0';
+	cookie = ++drv->next_association_cookie;
+	struct TagItem tags[] = {
+		{S2INFO_SSID, (UPINT)ssid},
+		{params->bssid ? S2INFO_BSSID : TAG_IGNORE, (UPINT)params->bssid},
+		{S2INFO_PortType, S2PORT_MANAGED},
+		{S2INFO_Channel, channel},
+		{S2INFO_FullMACAssociation, (UPINT)&selection},
+		{secret ? S2INFO_WirelessCredential : TAG_IGNORE, (UPINT)secret},
+		{S2INFO_AssociationCookie, cookie},
+		{TAG_END, 0}
+	};
+	request = drv->request;
+	request->ios2_Req.io_Command = S2_SETOPTIONS;
+	request->ios2_StatData = NULL;
+	request->ios2_Data = tags;
+	request->ios2_DataLength = 0;
+	/* Borrowed objects live through synchronous Reply only. Provider copies
+	 * and owns any async secret; ACK is never a CONNECT or completion event. */
+	err = DoIO((APTR)request);
+	if (request->ios2_Req.io_Error)
+		err = -1;
+	request->ios2_Data = NULL;
+	request->ios2_StatData = NULL;
+	if (!err) {
+		strcpy(drv->ssid, ssid);
+		drv->active_association_cookie = cookie;
+	}
+	return err ? -1 : 0;
+}
+
+
 static int wpa_driver_sana2_associate(
 	void *priv, struct wpa_driver_associate_params *params)
 {
@@ -475,6 +613,13 @@ static int wpa_driver_sana2_associate(
 	size_t passphrase_len;
 	struct IOSana2Req *request;
 	char ssid[MAX_SSID_LEN + 1];
+
+	if (params && params->fullmac_profile)
+		return wpa_driver_sana2_associate_fullmac(drv, params);
+	if (params && (params->sae_password || params->sae_password_len ||
+		params->fullmac_allow_diagnostic || params->fullmac_sae_pwe_mode ||
+		params->key_mgmt_suite == KEY_MGMT_SAE))
+		return -1;
 
 	/* SANA SSID tags are C strings, not length-delimited byte strings.
 	 * Reject identities that cannot be represented before any device I/O. */
@@ -726,6 +871,24 @@ static int wpa_driver_sana2_query_wireless_caps(
 
 	drv->wireless_caps = caps;
 	drv->wireless_caps_valid = 1;
+	/* Negotiate independently; legacy FOURWAY and its masks retain v1 meaning.
+	 * Require truthful summary and correlated failure/cancel semantics before
+	 * making the optional typed path available to any native caller. */
+	if (drv->hard_mac && (caps.Flags & S2WIRELESS_CAPF_SECURITY_SUMMARY) &&
+	    (caps.Flags & S2WIRELESS_CAPF_CONNECT_FAILED)) {
+		struct Sana2FullMACCapabilities fullmac;
+		os_memset(&fullmac, 0, sizeof(fullmac));
+		fullmac.SizeAvailable = sizeof(fullmac);
+		fullmac.Version = S2FULLMAC_VERSION;
+		request->ios2_Req.io_Command = S2_GETFULLMACCAPABILITIES;
+		request->ios2_StatData = &fullmac;
+		if (DoIO((APTR)request) == 0 && !request->ios2_Req.io_Error &&
+		    Sana2FullMACCapabilitiesValid(&fullmac)) {
+			drv->fullmac_caps = fullmac;
+			drv->fullmac_caps_valid = 1;
+		}
+		request->ios2_StatData = NULL;
+	}
 	return 1;
 }
 
@@ -845,6 +1008,13 @@ static int wpa_driver_sana2_get_capa(void *priv, struct wpa_driver_capa *capa)
 		}
 	}
 
+	if (drv->fullmac_caps_valid) {
+		capa->flags |= WPA_DRIVER_FLAGS_FULLMAC_ASSOCIATION;
+		capa->fullmac_profiles = drv->fullmac_caps.Profiles;
+		capa->fullmac_sae_pwe_modes = drv->fullmac_caps.SAEPweMethods;
+		capa->fullmac_diagnostic_risk =
+			!!(drv->fullmac_caps.Flags & S2FULLMAC_CAPF_DIAGNOSTIC_RISK);
+	}
 	/* Without a valid per-device FOURWAY result, the existing host-side
 	 * handshake and S2_SETKEY path remains unchanged. */
 

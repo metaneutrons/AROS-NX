@@ -207,9 +207,11 @@ for macro in (
 	"S2WIRELESS_CIPHER_CCMP",
 	"S2WIRELESS_CIPHER_GCMP",
 	"S2_GETWIRELESSCAPABILITIES",
+	"S2_GETFULLMACCAPABILITIES",
 ):
 	constants.append(extract_define(public_wireless, macro))
 constants.append(extract_enum_value(driver_header, "wpa_event_type", "EVENT_ASSOC_FAILED"))
+constants.append(extract_define(public_wireless, "S2FULLMAC_VERSION"))
 
 build_dir = pathlib.Path(build_dir)
 build_dir.mkdir(parents=True, exist_ok=True)

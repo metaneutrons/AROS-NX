@@ -54,6 +54,9 @@ struct wpa_driver_sana2_data {
 	int hard_mac;
 	int wireless_caps_valid;
 	struct Sana2WirelessCapabilities wireless_caps;
+	/* This regression fixture is intentionally v1-only. FullMAC negotiation
+	 * and its actual source-extracted association path are tested separately. */
+	int fullmac_caps_valid;
 	int wep_key_attempted;
 	ULONG next_association_cookie;
 	ULONG active_association_cookie;
@@ -75,6 +78,11 @@ struct wpa_driver_associate_params {
 	const char *passphrase;
 	int key_mgmt_suite;
 	const u8 *psk;
+	unsigned int fullmac_profile;
+	unsigned int fullmac_allow_diagnostic;
+	unsigned int fullmac_sae_pwe_mode;
+	const u8 *sae_password;
+	size_t sae_password_len;
 };
 
 struct doio_record {
@@ -144,10 +152,14 @@ static int using_wep;
 static unsigned int scenario_count;
 static unsigned int check_count;
 static unsigned int failure_count;
+static unsigned int fullmac_helper_calls;
 
 static const u8 broadcast_addr[ETH_ALEN] = {
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff
 };
+
+static void check_value(const char *scenario, const char *predicate,
+			int actual, int expected);
 
 static void CopyMem(const void *source, APTR destination, size_t size)
 {
@@ -201,6 +213,19 @@ static int wpa_driver_sana2_set_key(const char *ifname, void *priv,
 	return wpa_driver_sana2_set_key_actual(ifname, priv, alg, addr,
 					       key_idx, set_tx, seq, seq_len,
 					       key, key_len);
+}
+
+/* Legacy association regressions never negotiate or request FullMAC. */
+static int wpa_driver_sana2_associate_fullmac(
+	struct wpa_driver_sana2_data *drv,
+	struct wpa_driver_associate_params *params)
+{
+	(void) drv;
+	(void) params;
+	++fullmac_helper_calls;
+	fprintf(stderr, "FAIL: legacy fixture dispatched to FullMAC helper\n");
+	++failure_count;
+	return -1;
 }
 
 #include "sana2-associate.inc"
@@ -360,6 +385,10 @@ static void init_fixture(struct fixture *f, const char *ssid)
 {
 	memset(f, 0, sizeof(*f));
 	reset_io();
+	/* Keep every legacy association case explicitly on the v1-only path. */
+	f->drv.fullmac_caps_valid = 0;
+	check_value("legacy fixture scope", "FullMAC capabilities unnegotiated",
+		    f->drv.fullmac_caps_valid, 0);
 	f->drv.request = &f->request;
 	f->drv.ctx = (void *) (uintptr_t) 0xcafe;
 	observed_driver = &f->drv;
@@ -1695,6 +1724,8 @@ int main(void)
 	test_setkey_faults_and_option_faults();
 	test_unsupported_empty_clear_contract();
 	test_direct_set_key_borrowed_buffer_cleanup();
+	CHECK("legacy fixture scope", "FullMAC helper was never dispatched",
+	      fullmac_helper_calls, 0);
 	if (failure_count != 0) {
 		fprintf(stderr, "FAIL: %u/%u checks failed across %u scenarios\n",
 			failure_count, check_count, scenario_count);

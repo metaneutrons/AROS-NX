@@ -93,6 +93,93 @@ static char * wpa_config_parse_string(const char *value, size_t *len)
 }
 
 
+static void wpa_config_free_sae_password_data(u8 *password, size_t len)
+{
+	volatile u8 *p = password;
+	size_t i;
+
+	if (password == NULL)
+		return;
+	/* wpa_config_parse_string() allocates one extra NUL byte. */
+	for (i = 0; i <= len; i++)
+		p[i] = 0;
+	os_free(password);
+}
+
+
+static void wpa_config_clear_sae_password(struct wpa_ssid *ssid)
+{
+	if (ssid->sae_password) {
+		wpa_config_free_sae_password_data(ssid->sae_password,
+						 ssid->sae_password_len);
+		ssid->sae_password = NULL;
+	}
+	ssid->sae_password_len = 0;
+}
+
+
+static int wpa_config_sae_hex_digit(unsigned char c)
+{
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+		(c >= 'A' && c <= 'F');
+}
+
+
+static int wpa_config_parse_sae_password(const struct parse_data *data,
+					 struct wpa_ssid *ssid, int line,
+					 const char *value)
+{
+	char *password;
+	size_t len, i;
+	(void) data;
+	(void) line;
+
+	if (value == NULL)
+		return -1;
+	if (os_strcmp(value, "NULL") == 0) {
+		wpa_config_clear_sae_password(ssid);
+		return 0;
+	}
+
+	/* Validate before the shared decoder allocates, so malformed hexadecimal
+	 * input cannot leave a partially decoded secret in an ordinary free(). */
+	if (*value == '"') {
+		const char *end = os_strrchr(value + 1, '"');
+		if (end == NULL || end[1] != '\0')
+			return -1;
+		len = end - (value + 1);
+		if (len < 1 || len > 63)
+			return -1;
+	} else {
+		size_t hex_len = os_strlen(value);
+		if (hex_len < 2 || hex_len > 126 || (hex_len & 1))
+			return -1;
+		for (i = 0; i < hex_len; i++)
+			if (!wpa_config_sae_hex_digit((unsigned char) value[i]))
+				return -1;
+	}
+
+	password = wpa_config_parse_string(value, &len);
+	if (password == NULL)
+		return -1;
+	if (len < 1 || len > 63) {
+		wpa_config_free_sae_password_data((u8 *) password, len);
+		return -1;
+	}
+	for (i = 0; i < len; i++) {
+		if (password[i] == '\0') {
+			wpa_config_free_sae_password_data((u8 *) password, len);
+			return -1;
+		}
+	}
+
+	wpa_config_clear_sae_password(ssid);
+	ssid->sae_password = (u8 *) password;
+	ssid->sae_password_len = len;
+	return 0;
+}
+
+
 static int wpa_config_parse_str(const struct parse_data *data,
 				struct wpa_ssid *ssid,
 				int line, const char *value)
@@ -206,6 +293,17 @@ static char * wpa_config_write_string(const u8 *value, size_t len)
 }
 
 
+static char * wpa_config_write_sae_password(const struct parse_data *data,
+						    struct wpa_ssid *ssid)
+{
+	(void) data;
+	if (ssid->sae_password == NULL)
+		return NULL;
+	return wpa_config_write_string(ssid->sae_password,
+				       ssid->sae_password_len);
+}
+
+
 static char * wpa_config_write_str(const struct parse_data *data,
 				   struct wpa_ssid *ssid)
 {
@@ -256,6 +354,29 @@ static int wpa_config_parse_int(const struct parse_data *data,
 }
 
 
+static int wpa_config_parse_fullmac_allow_diagnostic(
+	const struct parse_data *data, struct wpa_ssid *ssid, int line,
+	const char *value)
+{
+	(void) data;
+	if (value == NULL) {
+		wpa_printf(MSG_ERROR,
+			   "Line %d: invalid fullmac_allow_diagnostic", line);
+		return -1;
+	}
+	if (os_strcmp(value, "0") == 0)
+		ssid->fullmac_allow_diagnostic = 0;
+	else if (os_strcmp(value, "1") == 0)
+		ssid->fullmac_allow_diagnostic = 1;
+	else {
+		wpa_printf(MSG_ERROR, "Line %d: invalid fullmac_allow_diagnostic",
+			   line);
+		return -1;
+	}
+	return 0;
+}
+
+
 #ifndef NO_CONFIG_WRITE
 static char * wpa_config_write_int(const struct parse_data *data,
 				   struct wpa_ssid *ssid)
@@ -274,6 +395,25 @@ static char * wpa_config_write_int(const struct parse_data *data,
 		return NULL;
 	}
 	value[20 - 1] = '\0';
+	return value;
+}
+
+
+static char * wpa_config_write_fullmac_allow_diagnostic(
+	const struct parse_data *data, struct wpa_ssid *ssid)
+{
+	char *value;
+	int res;
+	(void) data;
+
+	value = os_malloc(20);
+	if (value == NULL)
+		return NULL;
+	res = os_snprintf(value, 20, "%d", ssid->fullmac_allow_diagnostic);
+	if (res < 0 || res >= 20) {
+		os_free(value);
+		return NULL;
+	}
 	return value;
 }
 #endif /* NO_CONFIG_WRITE */
@@ -508,6 +648,8 @@ static int wpa_config_parse_key_mgmt(const struct parse_data *data,
 			val |= WPA_KEY_MGMT_NONE;
 		else if (os_strcmp(start, "WPA-NONE") == 0)
 			val |= WPA_KEY_MGMT_WPA_NONE;
+		else if (os_strcmp(start, "SAE") == 0)
+			val |= WPA_KEY_MGMT_SAE;
 #ifdef CONFIG_IEEE80211R
 		else if (os_strcmp(start, "FT-PSK") == 0)
 			val |= WPA_KEY_MGMT_FT_PSK;
@@ -555,10 +697,10 @@ static char * wpa_config_write_key_mgmt(const struct parse_data *data,
 	char *buf, *pos, *end;
 	int ret;
 
-	pos = buf = os_zalloc(50);
+	pos = buf = os_zalloc(100);
 	if (buf == NULL)
 		return NULL;
-	end = buf + 50;
+	end = buf + 100;
 
 	if (ssid->key_mgmt & WPA_KEY_MGMT_PSK) {
 		ret = os_snprintf(pos, end - pos, "%sWPA-PSK",
@@ -602,6 +744,16 @@ static char * wpa_config_write_key_mgmt(const struct parse_data *data,
 
 	if (ssid->key_mgmt & WPA_KEY_MGMT_WPA_NONE) {
 		ret = os_snprintf(pos, end - pos, "%sWPA-NONE",
+				  pos == buf ? "" : " ");
+		if (ret < 0 || ret >= end - pos) {
+			end[-1] = '\0';
+			return buf;
+		}
+		pos += ret;
+	}
+
+	if (ssid->key_mgmt & WPA_KEY_MGMT_SAE) {
+		ret = os_snprintf(pos, end - pos, "%sSAE",
 				  pos == buf ? "" : " ");
 		if (ret < 0 || ret >= end - pos) {
 			end[-1] = '\0';
@@ -1439,6 +1591,7 @@ static const struct parse_data ssid_fields[] = {
 	{ STR_RANGE(ssid, 0, MAX_SSID_LEN) },
 	{ INT_RANGE(scan_ssid, 0, 1) },
 	{ FUNC(bssid) },
+	{ FUNC_KEY(sae_password) },
 	{ FUNC_KEY(psk) },
 	{ FUNC(proto) },
 	{ FUNC(key_mgmt) },
@@ -1500,6 +1653,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INT_RANGE(proactive_key_caching, 0, 1) },
 	{ INT_RANGE(disabled, 0, 1) },
 	{ STR(id_str) },
+	{ FUNC(fullmac_allow_diagnostic) },
 #ifdef CONFIG_IEEE80211W
 	{ INT_RANGE(ieee80211w, 0, 2) },
 #endif /* CONFIG_IEEE80211W */
@@ -1667,6 +1821,7 @@ void wpa_config_free_ssid(struct wpa_ssid *ssid)
 {
 	os_free(ssid->ssid);
 	os_free(ssid->passphrase);
+	wpa_config_clear_sae_password(ssid);
 #ifdef IEEE8021X_EAPOL
 	eap_peer_config_free(&ssid->eap);
 #endif /* IEEE8021X_EAPOL */
@@ -1824,6 +1979,7 @@ void wpa_config_set_network_defaults(struct wpa_ssid *ssid)
 	ssid->pairwise_cipher = DEFAULT_PAIRWISE;
 	ssid->group_cipher = DEFAULT_GROUP;
 	ssid->key_mgmt = DEFAULT_KEY_MGMT;
+	ssid->fullmac_allow_diagnostic = 0;
 #ifdef IEEE8021X_EAPOL
 	ssid->eapol_flags = DEFAULT_EAPOL_FLAGS;
 	ssid->eap_workaround = DEFAULT_EAP_WORKAROUND;
@@ -1861,8 +2017,9 @@ int wpa_config_set(struct wpa_ssid *ssid, const char *var, const char *value,
 
 		if (field->parser(field, ssid, line, value)) {
 			if (line) {
-				wpa_printf(MSG_ERROR, "Line %d: failed to "
-					   "parse %s '%s'.", line, var, value);
+				wpa_printf(MSG_ERROR, "Line %d: failed to parse %s '%s'.",
+					   line, var, field->key_data ?
+					   "[KEY DATA REMOVED]" : value);
 			}
 			ret = -1;
 		}
@@ -2001,11 +2158,20 @@ char * wpa_config_get_no_key(struct wpa_ssid *ssid, const char *var)
 					wpa_printf(MSG_DEBUG, "Do not allow "
 						   "key_data field to be "
 						   "exposed");
-					os_free(res);
+					if (os_strcmp(field->name, "sae_password") == 0)
+						wpa_config_free_sae_password_data(
+							(u8 *) res, os_strlen(res));
+					else
+						os_free(res);
 					return os_strdup("*");
 				}
 
-				os_free(res);
+				if (res &&
+				    os_strcmp(field->name, "sae_password") == 0)
+					wpa_config_free_sae_password_data(
+						(u8 *) res, os_strlen(res));
+				else if (res)
+					os_free(res);
 				return NULL;
 			}
 			return res;
