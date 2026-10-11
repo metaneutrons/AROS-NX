@@ -1,5 +1,22 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+WLAN INIT rejection diagnostics (2026-10-11): the unchanged admission parser
+now exposes a bounded structural reason/offset/tag/length/present mask and
+declared TLV length, copied
+into the native OPEN report without peer value bytes or credential logging.
+The Core1 diagnostic resource341080B and audited42-member BSP4032124B
+are deployed and independently readback verified. All12
+reasons/alias refusal and wrapper parity pass350198 checks each O0/O2
+ASan/UBSan; OPEN734 and OPEN-to-RX332 checks pass each configuration.
+Original-parser admission parity passes50000 cases. The first warm diagnostic
+boot still refuses stale preopen35bytes at stage13/error6, before parsing;
+it does not explain the prior fresh INIT refusal. Runtime USB output dropped
+the tail of the long report, so the final report uses two sub64-byte records.
+Both short records arrive completely in the final30-second warm capture;
+INIT still refuses preopen35/stage13/error6 before parsing. The actual35-byte
+parser rejection and cold/watchdog continuity remain
+unresolved until a fresh coordinated measurement. No C6 update is enabled.
+
 Firmware release contracts (2026-10-11): the
 [signed release contract](../../docs/plans/esp32-firmware-release-contract.md)
 binds native [C6 app images](../../docs/plans/esp32-c6-firmware-contract.md)

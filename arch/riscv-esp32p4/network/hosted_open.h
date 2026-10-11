@@ -169,6 +169,7 @@ struct p4_hosted_open_result {
     struct p4_hosted_fifo_plan fifo_plan;
     struct p4_hosted_frame frame;
     struct p4_hosted_init init;
+    struct p4_hosted_init_diagnostic init_diagnostic;
     uint8_t saved_interrupt_enable;
     uint8_t saved_block_low;
     uint8_t saved_block_high;

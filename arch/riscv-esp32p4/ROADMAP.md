@@ -130,7 +130,7 @@ No ABI7/ABI8/ABI9/ABI10/ABI11 hardware pass exists.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2T | Explicit accepted-risk WLAN association test | ABI11 SD image and shared-host ABI8 BSP deployed/readback verified; host mismatch corrected; warm INIT13/6; coordinated rail-off INIT27/14 with35bytes/preopen0, HP watchdog reset prevents clean cold pass; backups retained, privacy/recovery assertions0, OTA unchanged | Diagnose exact INIT parser rejection and watchdog/reset continuity, then existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | ABI11 SD image and shared-host ABI8 BSP deployed/readback verified; warm INIT13/6; rail-off INIT27/14 with35bytes/preopen0 and HP watchdog reset; structural rejection diagnostics deployed/readback verified341080B resource/4032124B BSP; both short records complete, final warm boot still preopen35/stage13/error6; backups retained, privacy/recovery assertions0, OTA unchanged | Fresh coordinated C6 rail-off INIT measurement, identify exact parser rejection and watchdog/reset continuity, then existing WirelessManager temporary RAM config and actual association/DHCP/traffic; no C6 write or credential-privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1680,6 +1680,18 @@ failure cleanup. Administrative online/MAC readiness are independent of the
 associated traffic gate. A successful target snapshot is not UID0 causal-event
 attribution, IP delivery or native request-lifetime acceptance. Native binding
 must own queued attempts and commit notifications under its cancellation guard.
+
+Structural INIT diagnosis (2026-10-11): a shared diagnostic parser preserves
+the existing admission rules and copies only reason, offset, TLV tag/length
+and parsed-field presence plus declared TLV length. Native OPEN reports this
+metadata and payload size in two sub64-byte records for the lossy runtime USB
+console;
+never emit raw INIT/SSID/credential bytes. New host tests cover every reason,
+alias refusal and wrapper parity; resource/BSP build and loader audits pass.
+Final diagnostic warm boot still refuses preopen35/stage13/error6 before the
+parser; both short reports arrive completely, with successful restore/cleanup
+and no watchdog reset. Deployment is independently byte-verified. This is not a
+fresh C6 measurement: the35-byte parser refusal and cold continuity remain open.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -38878,3 +38890,68 @@ remain open. No partial stage is a complete A/B update system.
   and protected signing/publishing workflow. Provisioning the production key,
   replay metadata and actual safe device updates remain separate acceptance
   gates; N2M-R is in development, M4-AB/N2M hardware states unchanged.
+
+### 2026-10-11 - N2T structural INIT diagnostics and verified warm refusal
+
+- Goal remains working native WLAN, not a parser model pass. The unchanged
+  strict INIT admission now returns bounded structural rejection metadata:
+  reason, offset, tag, TLV length, presence mask and declared TLV bytes. No
+  raw values, credentials, SSIDs or wire pointers are retained. OPEN copies
+  the detail through refusal and cleanup; public resource ABI is unchanged.
+- Independent Luna source review compared the exact pinned ESP-Hosted
+  `d5184217f710d54c01f932e75b4c55e3f4933fc9` event header/TLV length semantics
+  and reviewed diagnostic initialization/privacy. No evidence justifies
+  weakening admission. Vendor tag0x17 compatibility remains a hypothesis,
+  not a finding; the installed C6 was not modified.
+- Host checks: INIT350198 each O0/O2 ASan+UBSan; OPEN734 and OPEN-to-RX332
+  each configuration, actual exit0. A separate original HEAD parser versus
+  diagnostic parser comparison passes50000 mixed valid/mutated/truncated/random
+  cases (exit0), including identical acceptance and unchanged failure outputs.
+  Whitespace check passes. These are host models, not WLAN functionality.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/init-diagnostic.P6jvRd/`.
+  Full resource objects rebuilt and native linked, actual exit0. Configuration:
+  jc1060p470c-v2, SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/HOSTED_OWNER=1,
+  OWNER_CPU=1, ASSOCIATION_TEST_RISK_ACCEPTED=1; all three privacy/recovery/update
+  assertions0. Final `esp32p4wifi-short.resource`341080B SHA256
+  `d4a25d4bed8f7757954f55468ec17d8828da3d5873f21a56d4b53e2876524c08`;
+  native build log SHA256
+  `4037d0223d1174cb4bb1f1f150d33fc50331640884a606501deed010a827bb14`.
+- Final `bsp-init-short.pkg`4032124B SHA256
+  `f4d5d685821a66f8e0378948941bc6d612e299d55f0f3bfb7be2fdf4805673bf`.
+  Replacement starts from the previously readback-verified shared-host ABI8
+  package; only esp32p4wifi.resource changes, other41 records preserved.
+  Loader audit42 members/0 failures and exact size helper pass, exit0;
+  package stays below0x3e0000 and erase end0xbf8fff precedes DEVELOP0xc00000.
+- MAC80:f1:b2:d3:3b:a6/P4v1.3 reidentified (exit0). Two new4063232B BSP
+  reads match exactly; current4028096B prefix matches installed shared8 package.
+  Backup SHA256 `f8b174ead422f41aabb53bb578752e315f172d990261ef58360a109d079a8320`.
+  Current0x8000 partition table matches prior backup. The intermediate
+  `bsp-init-final.pkg`4032012B was written only at0x820000 and independently
+  readback/cmp verified, both exits0. No core, bootloader/table/metadata,
+  C6, SD or credential writes. Backups and failed/intermediate logs retained.
+- Intermediate warm reset-and-log actual exit0, complete timing footer
+  45.844171958s/16738B. `warm-final-boot.log` SHA256
+  `d9ac61275e460c606864b8fc529e49cd441d902be3b549acf992acc1ea4f8fea`.
+  One ROM banner, CHIP_USB_UART_RESET, hart1 online/cpus2; graphics update
+  reports and SDIO setup stage11/error0/ready02. INIT preopen35, stage13/error6,
+  consumed0; parser not reached (reason0). Restoreok1/cleanupok1; no reply
+  attempted. No trap/Guru/Alert/panic/watchdog-reset signature. This is not
+  C6 rail-off, visible desktop, association, DHCP or traffic acceptance.
+- The long runtime diagnostic lost its tail at the64-byte USB endpoint
+  boundary; runtime console intentionally drops on saturation. Short records
+  replace it, with a scheduling delay between them; no blocking console change.
+  Final short-record package was written at0x820000 (exit0); independent
+  readback4032124B/cmp matches exactly (exit0, same SHA256). Warm capture actual
+  exit0, complete footer30.824550292s/16630B; `warm-short-boot.log` SHA256
+  `cfd6f18dc72a302c6c002d0f0ec3674963b70db6758be763d1c5c1d02b403cc5`.
+  One CHIP_USB_UART_RESET banner, both harts, setup11/0/ready02; still
+  preopen35/stage13/error6/consumed0, restoreok1/cleanupok1. Both diagnostic
+  lines complete: reject0/offset0/tag00/length0 and present00/payload0/declared0,
+  because parsing was not reached. No trap/Guru/Alert/panic/watchdog-reset
+  signature; no association or reply attempted. All hardware process exits
+  checked, serial reader closed. No physical cycle or sight test conducted.
+- Next: obtain fresh physical readiness before a coordinated USB-C-only
+  rail-off measurement. Identify
+  the exact fresh INIT refusal and separately qualify reset continuity before
+  transmitting credentials or claiming native WLAN functionality.

@@ -389,8 +389,8 @@ static int open_receive_init_common(const struct p4_hosted_open_ops *ops,
                          P4_HOSTED_OPEN_ERROR_FRAME_PROFILE);
 
     result->stage = P4_HOSTED_OPEN_STAGE_PARSE_INIT;
-    if (!p4_hosted_init_parse(result->frame.payload,
-                              result->frame.payload_size, &result->init))
+    if (!p4_hosted_init_parse_diagnostic(result->frame.payload,
+            result->frame.payload_size, &result->init, &result->init_diagnostic))
         return fail_gate(result, result->stage,
                          P4_HOSTED_OPEN_ERROR_INVALID_INIT);
 

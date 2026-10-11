@@ -305,6 +305,23 @@ static int cleanup(struct mock *mock, struct p4_hosted_open_result *result)
     return p4_hosted_open_cleanup(&ops, result);
 }
 
+static void check_invalid_init_diagnostic(
+    const struct p4_hosted_open_result *result)
+{
+    const uint8_t expected_present = P4_HOSTED_INIT_HAS_CAPABILITIES |
+        P4_HOSTED_INIT_HAS_CHIP_ID | P4_HOSTED_INIT_HAS_RX_QUEUE_SIZE |
+        P4_HOSTED_INIT_HAS_TX_QUEUE_SIZE;
+
+    CHECK(result->init_diagnostic.error ==
+          P4_HOSTED_INIT_ERROR_CAPABILITIES);
+    CHECK(result->init_diagnostic.offset == result->frame.payload_size);
+    CHECK(result->init_diagnostic.tag == P4_HOSTED_INIT_TAG_CAPABILITIES);
+    CHECK(result->init_diagnostic.tag_size == 1);
+    CHECK(result->init_diagnostic.present == expected_present);
+    CHECK(result->init_diagnostic.declared_tlv_bytes ==
+          result->frame.payload[1]);
+}
+
 static void test_success(void)
 {
     struct mock mock;
@@ -327,6 +344,12 @@ static void test_success(void)
     CHECK(result.frame.interface_type == 5 && result.frame.interface_number == 0);
     CHECK(result.frame.packet_type == 0x33 && result.frame.flags == 0);
     CHECK(receive_buffer[11] == 0x33);
+    CHECK(result.init_diagnostic.error == P4_HOSTED_INIT_ERROR_NONE);
+    CHECK(result.init_diagnostic.offset == 0);
+    CHECK(result.init_diagnostic.tag == 0);
+    CHECK(result.init_diagnostic.tag_size == 0);
+    CHECK(result.init_diagnostic.present == 0);
+    CHECK(result.init_diagnostic.declared_tlv_bytes == 0);
     CHECK(result.init.chip_id == 0x0d);
     CHECK((result.init.capabilities & P4_HOSTED_INIT_CAP_WLAN_SDIO) != 0);
     CHECK(mock.fn0[0x04] == (uint8_t)(0xa0 | 3));
@@ -548,7 +571,9 @@ static void test_malformed_and_wrong_frames(void)
     /* Remove required WLAN SDIO capability. */
     CHECK(!run_gate(&mock, sizeof receive_buffer, &result));
     CHECK(result.error == P4_HOSTED_OPEN_ERROR_INVALID_INIT);
+    check_invalid_init_diagnostic(&result);
     CHECK(cleanup(&mock, &result));
+    check_invalid_init_diagnostic(&result);
 
     init_mock(&mock, 1, 0);
     mock.stream[8] ^= 1; /* Header sequence is covered by checksum. */

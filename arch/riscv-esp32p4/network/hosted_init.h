@@ -54,6 +54,35 @@ struct p4_hosted_init {
     uint8_t present;
 };
 
+/* Structural diagnostics only: never retain or log peer value bytes. */
+enum p4_hosted_init_error {
+    P4_HOSTED_INIT_ERROR_NONE,
+    P4_HOSTED_INIT_ERROR_ARGUMENT,
+    P4_HOSTED_INIT_ERROR_EVENT_SIZE,
+    P4_HOSTED_INIT_ERROR_EVENT_TYPE,
+    P4_HOSTED_INIT_ERROR_DECLARED_SIZE,
+    P4_HOSTED_INIT_ERROR_TLV_HEADER,
+    P4_HOSTED_INIT_ERROR_TLV_SIZE,
+    P4_HOSTED_INIT_ERROR_FIELD_SIZE,
+    P4_HOSTED_INIT_ERROR_DUPLICATE,
+    P4_HOSTED_INIT_ERROR_REQUIRED_FIELDS,
+    P4_HOSTED_INIT_ERROR_CHIP,
+    P4_HOSTED_INIT_ERROR_CAPABILITIES
+};
+struct p4_hosted_init_diagnostic {
+    enum p4_hosted_init_error error;
+    size_t offset;
+    uint8_t tag;
+    uint8_t tag_size;
+    uint8_t present;
+    uint8_t declared_tlv_bytes;
+};
+
+/* Same admission as parse(). Optional diagnostic must not overlap event or
+ * result; alias refusal leaves both outputs unchanged. No wire pointers. */
+int p4_hosted_init_parse_diagnostic(const uint8_t *event, size_t event_size,
+    struct p4_hosted_init *result, struct p4_hosted_init_diagnostic *diagnostic);
+
 /* Parse a complete private INIT event payload after frame decoding.
  * The payload is [event type, TLV byte count, TLVs...]. Known singleton
  * fields must have their protocol-defined lengths and occur once. The board

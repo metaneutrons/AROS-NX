@@ -74,6 +74,176 @@ static void expect_refusal(const uint8_t *event, size_t event_size)
     CHECK(memcmp(&result, before, sizeof result) == 0);
 }
 
+static void expect_diagnostic_refusal(const uint8_t *event, size_t event_size,
+    enum p4_hosted_init_error expected_error, size_t expected_offset,
+    uint8_t expected_tag, uint8_t expected_tag_size, uint8_t expected_present,
+    uint8_t expected_declared_tlv_bytes)
+{
+    struct p4_hosted_init result;
+    struct p4_hosted_init_diagnostic diagnostic;
+    uint8_t before[sizeof result];
+
+    memset(&result, 0xa7, sizeof result);
+    memcpy(before, &result, sizeof result);
+    memset(&diagnostic, 0x5c, sizeof diagnostic);
+    if (p4_hosted_init_parse_diagnostic(event, event_size, &result,
+                                        &diagnostic)) {
+        fprintf(stderr, "unexpected diagnostic parser acceptance, size=%lu\n",
+                (unsigned long)event_size);
+        exit(1);
+    }
+    CHECK(memcmp(&result, before, sizeof result) == 0);
+    CHECK(diagnostic.error == expected_error);
+    CHECK(diagnostic.offset == expected_offset);
+    CHECK(diagnostic.tag == expected_tag);
+    CHECK(diagnostic.tag_size == expected_tag_size);
+    CHECK(diagnostic.present == expected_present);
+    CHECK(diagnostic.declared_tlv_bytes == expected_declared_tlv_bytes);
+}
+
+static void test_diagnostic_reasons(void)
+{
+    uint8_t event[P4_HOSTED_INIT_MAX_EVENT_SIZE + 1u];
+    struct p4_hosted_init result;
+    struct p4_hosted_init_diagnostic diagnostic;
+
+    expect_diagnostic_refusal(NULL, sizeof observed_init,
+        P4_HOSTED_INIT_ERROR_ARGUMENT, 0, 0, 0, 0, 0);
+    memset(&result, 0xa7, sizeof result);
+    memset(&diagnostic, 0x5c, sizeof diagnostic);
+    CHECK(!p4_hosted_init_parse_diagnostic(observed_init,
+        sizeof observed_init, NULL, &diagnostic));
+    CHECK(diagnostic.error == P4_HOSTED_INIT_ERROR_ARGUMENT);
+    CHECK(diagnostic.offset == 0);
+    CHECK(diagnostic.tag == 0);
+    CHECK(diagnostic.tag_size == 0);
+    CHECK(diagnostic.present == 0);
+    CHECK(diagnostic.declared_tlv_bytes == 0);
+
+    expect_diagnostic_refusal(observed_init, 1,
+        P4_HOSTED_INIT_ERROR_EVENT_SIZE, 0, 0, 0, 0, 0);
+    memcpy(event, observed_init, sizeof observed_init);
+    expect_diagnostic_refusal(event, P4_HOSTED_INIT_MAX_EVENT_SIZE + 1u,
+        P4_HOSTED_INIT_ERROR_EVENT_SIZE, 0, 0, 0, 0, 0);
+
+    memcpy(event, observed_init, sizeof observed_init);
+    event[0] = 0x23;
+    expect_diagnostic_refusal(event, sizeof observed_init,
+        P4_HOSTED_INIT_ERROR_EVENT_TYPE, 0, 0, 0, 0, 0);
+
+    memcpy(event, observed_init, sizeof observed_init);
+    event[1]--;
+    expect_diagnostic_refusal(event, sizeof observed_init,
+        P4_HOSTED_INIT_ERROR_DECLARED_SIZE, 1, 0, 0, 0, 5);
+    memcpy(event, observed_init, sizeof observed_init);
+    event[1] = P4_HOSTED_INIT_MAX_TLV_SIZE + 1u;
+    expect_diagnostic_refusal(event, sizeof observed_init,
+        P4_HOSTED_INIT_ERROR_DECLARED_SIZE, 1, 0, 0, 0,
+        P4_HOSTED_INIT_MAX_TLV_SIZE + 1u);
+
+    event[0] = P4_HOSTED_INIT_EVENT_TYPE;
+    event[1] = 1;
+    event[2] = 0x70;
+    expect_diagnostic_refusal(event, 3,
+        P4_HOSTED_INIT_ERROR_TLV_HEADER, 2, 0, 0, 0, 1);
+
+    event[1] = 3;
+    event[2] = 0x70;
+    event[3] = 3;
+    event[4] = 0xaa;
+    expect_diagnostic_refusal(event, 5,
+        P4_HOSTED_INIT_ERROR_TLV_SIZE, 2, 0x70, 3, 0, 3);
+
+    event[1] = 2;
+    event[2] = P4_HOSTED_INIT_TAG_CHIP_ID;
+    event[3] = 0;
+    expect_diagnostic_refusal(event, 4,
+        P4_HOSTED_INIT_ERROR_FIELD_SIZE, 2,
+        P4_HOSTED_INIT_TAG_CHIP_ID, 0, 0, 2);
+
+    memcpy(event, observed_init, sizeof observed_init);
+    event[sizeof observed_init] = P4_HOSTED_INIT_TAG_CHIP_ID;
+    event[sizeof observed_init + 1u] = 1;
+    event[sizeof observed_init + 2u] = P4_HOSTED_INIT_CHIP_ESP32C6;
+    event[1] = (uint8_t)(sizeof observed_init + 1u);
+    expect_diagnostic_refusal(event, sizeof observed_init + 3u,
+        P4_HOSTED_INIT_ERROR_DUPLICATE, sizeof observed_init,
+        P4_HOSTED_INIT_TAG_CHIP_ID, 1,
+        P4_HOSTED_INIT_HAS_CAPABILITIES | P4_HOSTED_INIT_HAS_CHIP_ID, 9);
+
+    event[0] = P4_HOSTED_INIT_EVENT_TYPE;
+    event[1] = 3;
+    event[2] = P4_HOSTED_INIT_TAG_CAPABILITIES;
+    event[3] = 1;
+    event[4] = 0x0d;
+    expect_diagnostic_refusal(event, 5,
+        P4_HOSTED_INIT_ERROR_REQUIRED_FIELDS, 5, 0, 0,
+        P4_HOSTED_INIT_HAS_CAPABILITIES, 3);
+
+    memcpy(event, observed_init, sizeof observed_init);
+    event[7] = 0x03;
+    expect_diagnostic_refusal(event, sizeof observed_init,
+        P4_HOSTED_INIT_ERROR_CHIP, sizeof observed_init,
+        P4_HOSTED_INIT_TAG_CHIP_ID, 1,
+        P4_HOSTED_INIT_HAS_CAPABILITIES | P4_HOSTED_INIT_HAS_CHIP_ID, 6);
+
+    memcpy(event, observed_init, sizeof observed_init);
+    event[4] = 0x0c;
+    expect_diagnostic_refusal(event, sizeof observed_init,
+        P4_HOSTED_INIT_ERROR_CAPABILITIES, sizeof observed_init,
+        P4_HOSTED_INIT_TAG_CAPABILITIES, 1,
+        P4_HOSTED_INIT_HAS_CAPABILITIES | P4_HOSTED_INIT_HAS_CHIP_ID, 6);
+
+    CHECK(p4_hosted_init_parse_diagnostic(observed_init,
+        sizeof observed_init, &result, &diagnostic));
+    CHECK(diagnostic.error == P4_HOSTED_INIT_ERROR_NONE);
+    CHECK(diagnostic.offset == 0);
+    CHECK(diagnostic.tag == 0);
+    CHECK(diagnostic.tag_size == 0);
+    CHECK(diagnostic.present == 0);
+    CHECK(diagnostic.declared_tlv_bytes == 0);
+}
+
+static void test_diagnostic_alias_refusal(void)
+{
+    union {
+        struct p4_hosted_init_diagnostic aligned;
+        uint8_t bytes[sizeof observed_init +
+                      sizeof(struct p4_hosted_init_diagnostic)];
+    } event_alias;
+    union {
+        struct p4_hosted_init_diagnostic diagnostic;
+        struct p4_hosted_init result;
+        uint8_t bytes[sizeof(struct p4_hosted_init) +
+                      sizeof(struct p4_hosted_init_diagnostic)];
+    } result_alias;
+    struct p4_hosted_init result;
+    uint8_t event_before[sizeof event_alias.bytes];
+    uint8_t result_before[sizeof result_alias.bytes];
+    uint8_t parsed_before[sizeof result];
+
+    memset(event_alias.bytes, 0x42, sizeof event_alias.bytes);
+    memcpy(event_alias.bytes, observed_init, sizeof observed_init);
+    event_alias.aligned.declared_tlv_bytes = 0x7b;
+    memcpy(event_before, event_alias.bytes, sizeof event_before);
+    memset(&result, 0xa7, sizeof result);
+    memcpy(parsed_before, &result, sizeof result);
+    CHECK(!p4_hosted_init_parse_diagnostic(event_alias.bytes,
+        sizeof event_alias.bytes, &result, &event_alias.aligned));
+    CHECK(memcmp(event_alias.bytes, event_before, sizeof event_before) == 0);
+    CHECK(event_alias.aligned.declared_tlv_bytes == 0x7b);
+    CHECK(memcmp(&result, parsed_before, sizeof result) == 0);
+
+    memset(result_alias.bytes, 0x39, sizeof result_alias.bytes);
+    result_alias.diagnostic.declared_tlv_bytes = 0x7b;
+    memcpy(result_before, result_alias.bytes, sizeof result_before);
+    CHECK(!p4_hosted_init_parse_diagnostic(observed_init,
+        sizeof observed_init, &result_alias.result,
+        &result_alias.diagnostic));
+    CHECK(memcmp(result_alias.bytes, result_before, sizeof result_before) == 0);
+    CHECK(result_alias.diagnostic.declared_tlv_bytes == 0x7b);
+}
+
 static void test_observed_c6_event(void)
 {
     struct p4_hosted_init result;
@@ -318,27 +488,55 @@ static void test_random_inputs(void)
     unsigned iteration;
 
     for (iteration = 0; iteration < 50000u; ++iteration) {
-        struct p4_hosted_init result;
-        uint8_t before[sizeof result];
+        struct p4_hosted_init wrapper_result, diagnostic_result;
+        struct p4_hosted_init_diagnostic diagnostic;
+        uint8_t wrapper_before[sizeof wrapper_result];
+        uint8_t diagnostic_before[sizeof diagnostic_result];
+        uint8_t expected_declared_tlv_bytes = 0;
         size_t size = next_random() % (sizeof bytes + 1u);
         size_t i;
-        int accepted;
+        int wrapper_accepted, diagnostic_accepted;
 
         for (i = 0; i < sizeof bytes; ++i)
             bytes[i] = (uint8_t)next_random();
-        memset(&result, 0x6b, sizeof result);
-        memcpy(before, &result, sizeof result);
-        accepted = p4_hosted_init_parse(bytes, size, &result);
-        if (accepted) {
+        if (size >= P4_HOSTED_INIT_EVENT_HEADER_SIZE &&
+            size <= P4_HOSTED_INIT_MAX_EVENT_SIZE &&
+            bytes[0] == P4_HOSTED_INIT_EVENT_TYPE)
+            expected_declared_tlv_bytes = bytes[1];
+        memset(&wrapper_result, 0x6b, sizeof wrapper_result);
+        memset(&diagnostic_result, 0x6b, sizeof diagnostic_result);
+        memset(&diagnostic, 0x5c, sizeof diagnostic);
+        memcpy(wrapper_before, &wrapper_result, sizeof wrapper_result);
+        memcpy(diagnostic_before, &diagnostic_result, sizeof diagnostic_result);
+        wrapper_accepted = p4_hosted_init_parse(bytes, size, &wrapper_result);
+        diagnostic_accepted = p4_hosted_init_parse_diagnostic(bytes, size,
+            &diagnostic_result, &diagnostic);
+        CHECK(wrapper_accepted == diagnostic_accepted);
+        if (wrapper_accepted) {
             CHECK(size >= P4_HOSTED_INIT_EVENT_HEADER_SIZE);
             CHECK(size <= P4_HOSTED_INIT_MAX_EVENT_SIZE);
             CHECK(bytes[0] == P4_HOSTED_INIT_EVENT_TYPE);
             CHECK(bytes[1] == size - P4_HOSTED_INIT_EVENT_HEADER_SIZE);
-            CHECK(result.present & P4_HOSTED_INIT_HAS_CAPABILITIES);
-            CHECK(result.present & P4_HOSTED_INIT_HAS_CHIP_ID);
-            CHECK(result.capabilities & P4_HOSTED_INIT_CAP_WLAN_SDIO);
+            CHECK(wrapper_result.present & P4_HOSTED_INIT_HAS_CAPABILITIES);
+            CHECK(wrapper_result.present & P4_HOSTED_INIT_HAS_CHIP_ID);
+            CHECK(wrapper_result.capabilities & P4_HOSTED_INIT_CAP_WLAN_SDIO);
+            CHECK(memcmp(&wrapper_result, &diagnostic_result,
+                         sizeof wrapper_result) == 0);
+            CHECK(diagnostic.error == P4_HOSTED_INIT_ERROR_NONE);
+            CHECK(diagnostic.offset == 0);
+            CHECK(diagnostic.tag == 0);
+            CHECK(diagnostic.tag_size == 0);
+            CHECK(diagnostic.present == 0);
+            CHECK(diagnostic.declared_tlv_bytes == 0);
         } else {
-            CHECK(memcmp(&result, before, sizeof result) == 0);
+            CHECK(memcmp(&wrapper_result, wrapper_before,
+                         sizeof wrapper_result) == 0);
+            CHECK(memcmp(&diagnostic_result, diagnostic_before,
+                         sizeof diagnostic_result) == 0);
+            CHECK(diagnostic.error >= P4_HOSTED_INIT_ERROR_ARGUMENT);
+            CHECK(diagnostic.error <= P4_HOSTED_INIT_ERROR_CAPABILITIES);
+            CHECK(diagnostic.declared_tlv_bytes ==
+                  expected_declared_tlv_bytes);
         }
         ++checks;
     }
@@ -353,6 +551,8 @@ int main(void)
     test_envelope_and_truncation();
     test_malformed_tlvs();
     test_required_fields_and_values();
+    test_diagnostic_reasons();
+    test_diagnostic_alias_refusal();
     test_random_inputs();
     printf("hosted INIT parser: %lu checks passed\n", checks);
     return 0;

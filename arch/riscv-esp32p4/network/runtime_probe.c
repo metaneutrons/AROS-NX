@@ -3490,6 +3490,15 @@ static void wifi_identify(void)
     bug("[WiFi] INIT chip=%02x caps=%02x bytes=%u\n",
         opened.init.chip_id, opened.init.capabilities, opened.logical_bytes);
     Delay(5);
+    /* Keep each record below the bounded console's 64-byte chunk. */
+    bug("[WiFi] INIT reject=%u offset=%u tag=%02x length=%u\n",
+        opened.init_diagnostic.error, (unsigned)opened.init_diagnostic.offset,
+        opened.init_diagnostic.tag, opened.init_diagnostic.tag_size);
+    Delay(5);
+    bug("[WiFi] INIT shape present=%02x payload=%u declared=%u\n",
+        opened.init_diagnostic.present, (unsigned)opened.frame.payload_size,
+        opened.init_diagnostic.declared_tlv_bytes);
+    Delay(5);
     bug("[WiFi] INIT extra frames=%u bytes=%u discarded=%u\n",
         opened.additional_frame_count, opened.additional_frame_bytes,
         opened.additional_bytes_discarded);
