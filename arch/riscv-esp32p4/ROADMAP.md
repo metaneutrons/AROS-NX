@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication build verified; complete reference protocol inventory recorded; typed BeginIO/capability admission, producer/attempt barrier, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin service publication build verified; complete reference protocol inventory recorded; typed BeginIO/capability admission, producer/attempt barrier, reconnect and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1929,6 +1929,12 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   Pinned Hosted queue-order audit confirms that RPC replies do not drain
   pending WiFi event-loop callbacks. A producer-side barrier or equivalent
   attempt correlation remains required before repeatable typed admission.
+  Initial association now mirrors explicit teardown's bounded DOWN polling:
+  a still-attached AP snapshot waits within the original8s/500-poll budget;
+  only correlated ESP_ERR_WIFI_NOT_CONNECT permits CONFIG/CONNECT. A decoded
+  already-disconnected ACK is accepted only on a healthy transport and is
+  never substituted for the absence query. This reliability correction is
+  host/native-build verified only, not a producer event-ordering barrier.
   The existing EVENT773 station START/STOP decoder is now native built and
   independently compared with pinned generated protobuf-c. Successful markers
   now invalidate the owner ledger and confirmed/observed AP state; AP-only
@@ -40348,3 +40354,84 @@ remain open. No partial stage is a complete A/B update system.
   native WPA3/required-PMF, DHCP/routes/DNS, bidirectional traffic/reconnect and
   original sustained SD/graphics/two-hart/privacy/reset qualification. The
   working-WiFi goal remains open.
+
+### 2026-10-11 - N2-SAE initial teardown waits for correlated absence
+
+- Status: host/native build verified, undeployed. Inspection found a mismatch
+  between initial association and explicit teardown: the latter polls through
+  attached AP snapshots, while the former immediately failed on the first
+  status0 snapshot after a successful Disconnect ACK. ACK is not physical
+  link loss. Both paths now wait for correlated294 ESP_ERR_WIFI_NOT_CONNECT
+  within the existing8s aggregate/500-poll limit, with revision/cancellation
+  checks. No SetConfig284 or Connect282 is sent before that absence.
+- Already-disconnected283 status0x300f is accepted only if owner/FIFO remain
+  healthy, never as a substitute for the correlated294 query. Other remote
+  errors, malformed/mismatched replies, poison, cancellation or deadline
+  exhaustion retain the failure/cleanup and credential-wiping paths. No new
+  deadline or arbitrary settling delay is introduced.
+- Independent source review found no concrete blocker in this change. The
+  absence gate is not a producer event barrier: delayed UID0 callbacks and
+  unidentified installed C6 semantics remain separate admission work. No
+  FullMAC capability advertisement or privacy/recovery assertion is enabled.
+- Primary final tests: process41522 exits0;43985 source-extracted owner checks
+  each O0/O2 ASan/UBSan. Request/status traces assert no284/282 before294
+  absence, delayed-UP success, perpetual-UP bounded failure, cancellation
+  during the attached wait, wrong remote status, malformed reply and poisoned
+  timeout refusal. Credential/acceptance cleanup remains asserted. This is a
+  deterministic boundary model, not real radio or installed-peer ordering.
+- Native: exact generated esp32p4wifi object directory invalidated; sequential
+  gmake -j4 kernel-esp32p4wifi-probe-quick process40940 exits0, actual runtime
+  compilation and complete resource link. JC-v2/setup/init/reply/owner1,
+  ownerCPU1, accepted diagnostic risk1; C6/host privacy and C6 update recovery
+  assertions0. Resource357208B SHA256
+  `46168d6ff7cbda4a8c560f7213183eb1c325c9e7aa2a51a7cb541a4f375ff00b`;
+  independently hash-matching frozen copy. An initial copy used a nonexistent
+  Libs path and failed; the actual linked artifact is AROS/Devs and was then
+  copied and verified, not assumed from the failed copy.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/association-down-fence.XPA68m/`.
+  resource-build.log SHA256
+  `c1b1661dd8e4fbb524bb66980eb5c73c3cbeb480f69d6e3dde84c6db45ccbdb7`.
+  association.log SHA256
+  `edf83017ba5cc09fa5b23c83861e1704ba60cec3cb5d53421d6ad07db2dd61b7`.
+- Safety: no serial/reset/flash/SD/credentials/C6 actions; installed firmware
+  unchanged. Next: resolve the peer ordering contract and typed provider
+  admission, then native WPA3/required-PMF/IP/data/reconnect and the original
+  sustained SD/graphics/two-hart/privacy/reset gates. Goal remains open.
+
+### 2026-10-11 - N2-SAE residual peer attempt-provenance audit
+
+- Read-only audit of pinned Hosted d5184217 and its bundled IDF5.4.3 public
+  headers/event-loop implementation; no installed C6 lineage claim. Current
+  host already requires correlated DOWN before CONFIG/CONNECT. This proves
+  an AP-state observation, not which Connect produced a later callback.
+- Source evidence: slave/main/slave_control.c732-736 registers the default
+  WiFi event-loop handler;671-682 forwards station events;2435-2492 serializes
+  identity/auth or disconnect reason without attempt counters. Event RPC at
+  2583-2619 starts from zero and leaves UID0. Connect/Disconnect/Stop schema
+  requests1189-1214 have no attempt field; responses contain API status only.
+  Disconnect786-794 calls esp_wifi_disconnect directly; AP-info1262-1275
+  queries current AP separately. IDF esp_wifi.h638-653 documents current AP
+  and NOT_CONNECT, not a callback-drain guarantee. esp_event.c912-968 queues
+  posts; default_event_loop.c92-114 creates a separate sys_evt task. Hosted
+  protocomm_pserial.c221-253,269-300 queues serialization separately. FIFO
+  cannot flush WiFi callbacks not yet enqueued there.
+- Possible source-consistent trace, not hardware reproduction: old same-AP
+  connected event waits on the IDF queue; Disconnect/NOT_CONNECT complete;
+  CONFIG/CONNECT run; old callback is then forwarded with UID0 and receives
+  a new host revision. Repeated SSID/BSSID/channel/auth fields cannot identify
+  its originating attempt. A matching live AP query confirms current target
+  association but cannot establish that the event's negotiated auth belongs
+  to that attempt. Old delayed DOWN can similarly retire a newer link.
+- Missing proof: a peer guarantee that disconnect plus NOT_CONNECT drains
+  every old callback and Hosted enqueue, or a peer-generated generation
+  assigned with a genuine producer-quiescence/drain contract. Merely stamping
+  the current generation when a delayed callback runs is insufficient. Host
+  receipt revisions, ACKs and settling delays cannot substitute for it.
+  Installed54aafd0-dirty lacks qualified byte/source provenance; this source
+  audit alone proves neither an observed peer failure nor that a particular
+  firmware update is the only remedy. Typed advertisement remains withheld.
+- Safety/next: no writes/hardware/credentials in this audit. Specify and test
+  a peer ordering/attempt contract, qualify installed compatibility or a
+  recovery-backed C6 candidate, then finish native admission and actual
+  WPA3/PMF/IP/data/load acceptance. C6 deployment remains postponed.

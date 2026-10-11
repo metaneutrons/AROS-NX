@@ -1,5 +1,16 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Initial association teardown (2026-10-11): Disconnect ACK no longer treats
+the first still-attached AP snapshot as immediate failure. Like explicit
+teardown, it waits for correlated ESP_ERR_WIFI_NOT_CONNECT within the original
+8s/500-poll budget; no CONFIG/CONNECT before absence. Already-disconnected
+status is accepted only on a healthy transport and still requires that query.
+Native build verified, undeployed; this does not establish peer event ordering
+or enable FullMAC advertisement.
+Owner43985 checks each O0/O2 ASan/UBSan pass; resource357208B is undeployed.
+The pinned peer audit confirms separate callback queues and UID0 events;
+correlated DOWN/current-AP queries do not establish callback attempt provenance.
+
 Typed service publication (2026-10-11): successful fenced association now
 retains its committed cookie/type and publishes typed CONNECT only to the
 originating opener. Confirmed loss publishes that cookie after invalidation;

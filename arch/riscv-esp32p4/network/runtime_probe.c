@@ -1531,9 +1531,12 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
     p4host_zero(&base->confirmed_ap, sizeof(base->confirmed_ap));
     p4host_zero(&control->ap_info, sizeof(control->ap_info));
     mutated = TRUE; /* Even an ambiguous Disconnect must not retain link-up. */
+    control->status = -1;
     if (!wifi_owner_request(context, runtime->owner, control, runtime->fifo,
             runtime->checksum, 283u,
-            wifi_owner_remaining(context, started, 8000000UL))) goto finish;
+            wifi_owner_remaining(context, started, 8000000UL)) &&
+        (control->status != 0x300f || runtime->owner->poisoned ||
+         runtime->fifo->poisoned)) goto finish;
     if (wifi_owner_stopping(context)) goto finish;
     for (polls = 0; polls < 500 && !wifi_owner_stopping(context); ++polls) {
         revision = context->link_observation.revision;
@@ -1545,8 +1548,12 @@ static BOOL wifi_device_associate(struct P4WifiBase *base,
             wifi_yield(context);
             continue;
         }
-        if (control->ap_info.status != 0x300f) goto finish;
-        break;
+        if (control->ap_info.status == 0x300f) break;
+        /* Disconnect ACK may precede actual link loss, just as on the
+         * explicit teardown path. Wait for correlated absence within the
+         * original deadline; no CONFIG/CONNECT or traffic before that. */
+        if (control->ap_info.status != 0) goto finish;
+        wifi_yield(context);
     }
     if (polls == 500 || wifi_owner_stopping(context)) goto finish;
     /* ESP_ERR_WIFI_NOT_CONNECT is required, not inferred from any error. */

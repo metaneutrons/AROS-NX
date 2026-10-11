@@ -165,6 +165,9 @@ struct fixture {
     unsigned cancel_called_owned;
     unsigned request_count[600];
     unsigned submitted_count[600];
+    uint32_t request_sequence[512];
+    int32_t request_status_sequence[512];
+    unsigned request_sequence_count;
     ULONG first_disconnect_timeout;
     ULONG cleanup_disconnect_timeout;
     unsigned no_response_count;
@@ -240,6 +243,15 @@ struct fixture {
 };
 
 static struct fixture f;
+
+static void check_request_order(const uint32_t *expected, unsigned count)
+{
+    unsigned index;
+    CHECK(expected != NULL);
+    CHECK(f.request_sequence_count == count);
+    for (index = 0u; index < count; ++index)
+        CHECK(f.request_sequence[index] == expected[index]);
+}
 
 static int inject_connected_event(struct fixture *state,
                                   struct wifi_probe_context *context);
@@ -621,7 +633,7 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
     ULONG wait_us, slice_us;
     int32_t status = 0;
     int stop;
-    unsigned occurrence;
+    unsigned occurrence, sequence_index;
     if (!owner || !fifo || !ops || !result || !request_bytes || !context)
         return 0;
     memset(result, 0, sizeof(*result));
@@ -641,6 +653,11 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
         return 0;
     }
     occurrence = ++state->request_count[request.msg_id];
+    CHECK(state->request_sequence_count <
+          sizeof(state->request_sequence) / sizeof(state->request_sequence[0]));
+    sequence_index = state->request_sequence_count++;
+    state->request_sequence[sequence_index] = request.msg_id;
+    state->request_status_sequence[sequence_index] = -1;
     if (request.msg_id == 283u) {
         if (occurrence == 1u)
             state->first_disconnect_timeout = timeout_us;
@@ -809,6 +826,7 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
     if (request.msg_id == 283u && state->break_after_initial_disconnect &&
         occurrence == 1u)
         fake_signals |= SIGBREAKF_CTRL_C;
+    state->request_status_sequence[sequence_index] = status;
     if (!publish_response(state, owner, &request, status)) {
         result->error = P4_HOSTED_OWNER_PROTOCOL;
         result->submitted = 1u;
@@ -1537,7 +1555,7 @@ static void test_remote_failures_and_absence_requirements(void)
 {
     struct p4_wifi_association_target target;
     unsigned scenario;
-    for (scenario = 0u; scenario < 5u; ++scenario) {
+    for (scenario = 0u; scenario < 4u; ++scenario) {
         fixture_init();
         target_init(&target, 1u);
         if (scenario == 0u) {
@@ -1548,18 +1566,91 @@ static void test_remote_failures_and_absence_requirements(void)
             f.fail_id = 282u; f.fail_occurrence = 1u; f.fail_status = 7;
         } else if (scenario == 3u) {
             f.fail_id = 294u; f.fail_occurrence = 1u; f.fail_status = 5;
-        } else {
-            f.fail_id = 294u; f.fail_occurrence = 1u; f.fail_status = 0;
         }
         CHECK(invoke(&target) == FALSE);
         CHECK(f.request_count[282u] == (scenario == 2u ? 1u : 0u));
         CHECK(f.request_count[284u] == (scenario == 1u || scenario == 2u ? 1u : 0u));
-        if (scenario == 0u) CHECK(f.request_count[283u] == 2u);
+        if (scenario == 0u) {
+            CHECK(f.request_count[283u] == 2u);
+            CHECK(f.request_count[294u] == 0u);
+            CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+            CHECK(f.owner.poisoned == 0u && f.fifo.poisoned == 0u);
+        }
         if (scenario >= 3u) CHECK(f.request_count[294u] == 1u);
         check_secret_wiped();
         check_confirmed_ap_cleared();
         check_restored(FALSE);
     }
+}
+
+static void test_association_initial_not_connected_and_delayed_absence(void)
+{
+    static const uint32_t not_connected_order[] =
+        {283u, 294u, 284u, 282u, 294u};
+    static const uint32_t delayed_absence_order[] =
+        {283u, 294u, 294u, 284u, 282u, 294u};
+    struct p4_wifi_association_target target;
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.fail_id = 283u;
+    f.fail_occurrence = 1u;
+    f.fail_status = 0x300f; /* ESP_ERR_WIFI_NOT_CONNECT */
+    CHECK(invoke(&target) == TRUE);
+    check_request_order(not_connected_order,
+                        sizeof(not_connected_order) /
+                            sizeof(not_connected_order[0]));
+    CHECK(f.request_status_sequence[0] == 0x300f);
+    CHECK(f.request_status_sequence[1] == 0x300f); /* Correlated absence. */
+    CHECK(f.request_status_sequence[2] == 0u);
+    CHECK(f.request_status_sequence[3] == 0u);
+    CHECK(f.request_status_sequence[4] == 0u);
+    CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+    CHECK(f.owner.poisoned == 0u && f.fifo.poisoned == 0u);
+    check_secret_wiped();
+    check_confirmed_ap_matches(3u);
+    check_restored(FALSE);
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.fail_id = 294u;
+    f.fail_occurrence = 1u;
+    f.fail_status = 0; /* Still attached; later query confirms absence. */
+    CHECK(invoke(&target) == TRUE);
+    check_request_order(delayed_absence_order,
+                        sizeof(delayed_absence_order) /
+                            sizeof(delayed_absence_order[0]));
+    CHECK(f.request_status_sequence[1] == 0);
+    CHECK(f.request_status_sequence[2] == 0x300f);
+    CHECK(f.request_status_sequence[3] == 0u);
+    CHECK(f.request_status_sequence[4] == 0u);
+    CHECK(f.request_status_sequence[5] == 0u);
+    CHECK(f.request_count[284u] == 1u && f.request_count[282u] == 1u);
+    CHECK(f.owner.poisoned == 0u && f.fifo.poisoned == 0u);
+    check_secret_wiped();
+    check_confirmed_ap_matches(3u);
+    check_restored(FALSE);
+}
+
+static void test_association_initial_attached_wait_is_bounded(void)
+{
+    struct p4_wifi_association_target target;
+    fixture_init();
+    target_init(&target, 1u);
+    f.fail_id = 294u;
+    f.fail_status = 0; /* The old association never disappears. */
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.request_count[283u] == 1u);
+    CHECK(f.request_count[294u] > 1u && f.request_count[294u] <= 500u);
+    CHECK(fake_now - 100000u >= 8000000u);
+    CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+    CHECK(f.submitted_count[284u] == 0u && f.submitted_count[282u] == 0u);
+    CHECK(f.base.link_state == P4_WIFI_LINK_UNKNOWN);
+    CHECK(f.base.associated == FALSE);
+    check_secret_wiped();
+    check_acceptance_cleared();
+    check_confirmed_ap_cleared();
+    check_restored(FALSE);
 }
 
 static void test_ap_identity_cipher_and_channel_validation(void)
@@ -1675,6 +1766,24 @@ static void test_cancel_between_initial_rpc_steps(void)
     CHECK(f.cancel_requested == TRUE && f.cancel_calls != 0u);
     CHECK(f.last_ap_info_status == 0x300f);
     check_cancelled_association_cleanup(1u);
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.fail_id = 294u;
+    f.fail_occurrence = 1u;
+    f.fail_status = 0; /* Cancellation while the old association is present. */
+    f.cancel_after_response_id = 294u;
+    f.cancel_after_response_occurrence = 1u;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.cancel_requested == TRUE && f.cancel_calls != 0u);
+    CHECK(f.last_ap_info_status == 0);
+    CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+    {
+        static const uint32_t expected_order[] = {283u, 294u, 283u};
+        check_request_order(expected_order,
+                            sizeof(expected_order) / sizeof(expected_order[0]));
+    }
+    check_cancelled_association_cleanup(1u);
 }
 
 static void test_cancel_break_timeout_and_generation_retirement(void)
@@ -1778,6 +1887,21 @@ static void test_transport_timeout_and_malformed_correlation(void)
     f.malformed_response_request_id = 283u;
     CHECK(invoke(&target) == FALSE);
     CHECK(f.request_count[283u] == 1u && f.owner.poisoned == 1u);
+    CHECK(f.request_count[294u] == 0u);
+    CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+    check_secret_wiped();
+    check_confirmed_ap_cleared();
+    check_restored(FALSE);
+
+    fixture_init();
+    target_init(&target, 1u);
+    f.timeout_request_id = 283u;
+    f.timeout_occurrence = 1u;
+    CHECK(invoke(&target) == FALSE);
+    CHECK(f.request_count[283u] == 1u && f.submitted_count[283u] == 1u);
+    CHECK(f.request_count[294u] == 0u);
+    CHECK(f.request_count[284u] == 0u && f.request_count[282u] == 0u);
+    CHECK(f.owner.poisoned == 1u && f.fifo.poisoned == 1u);
     check_secret_wiped();
     check_confirmed_ap_cleared();
     check_restored(FALSE);
@@ -1957,6 +2081,8 @@ int main(void)
     test_final_cancellation_refuses_snapshot();
     test_default_gate_and_validation_refuse_without_rpc();
     test_remote_failures_and_absence_requirements();
+    test_association_initial_not_connected_and_delayed_absence();
+    test_association_initial_attached_wait_is_bounded();
     test_ap_identity_cipher_and_channel_validation();
     test_initial_and_final_event_races();
     test_bounded_repeated_event_races();
