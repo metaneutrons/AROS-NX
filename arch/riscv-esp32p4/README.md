@@ -1,5 +1,11 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+AROS runtime restored (2026-10-11): exact-span flash rollback and45s return
+capture verified. Both harts, graphics updates, GT911 polling and WLAN owner
+CPU1/expected C6 MAC observed. Initial HP_SYS_HP_WDT_RESET/Saved PC40001ea8
+rejects clean cold continuity; no later captured fatal/reset signature, with
+lossy console limitations. No lifecycle diagnostic or WPA3/IP/data pass.
+
 Lifecycle diagnostic deployed (2026-10-11): serial backup failures persisted
 after rail-off; lsof identified devserial holding the same port. Closing only
 that managed port allowed two complete matching385024B backups. P4 diagnostic
@@ -15,7 +21,9 @@ still identifies the correct P4 MAC, but download mode is unproved. No WLAN pass
 Subsequent user-requested ROM retry succeeds; entire385024B AROS backup restored
 and independently read back byte-identically. Software-reset return fails with
 no accepted boot output; release BOOT and coordinate power-on to verify return.
-The diagnostic is no longer installed. No C6 firmware change occurred.
+The diagnostic is no longer installed. Subsequent coordinated power-on restores
+AROS runtime, with an initial WDT reset rather than clean cold continuity.
+No C6 firmware change occurred.
 
 Credential-free lifecycle diagnostic (2026-10-11): separate opt-in official
 Hosted P4 app observes one INIT and three STOP/START cycles, with checked

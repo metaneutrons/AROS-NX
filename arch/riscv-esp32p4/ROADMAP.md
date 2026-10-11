@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `flash restoration verified, boot return pending`: subsequent requested ROM retry succeeds; exact385024B AROS backup restored/readback matched; software-reset return fails with no accepted boot output; both65s lifecycle captures had zero firmware bytes | Release BOOT, coordinated power-on and AROS return before further N2-SAE diagnostics; silent captures are not lifecycle qualification |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `flash/runtime return verified, cold continuity rejected`: exact385024B AROS backup restored/readback matched; coordinated45s return observes both harts/graphics/touch/WLAN owner, but initial HP WDT reset40001ea8; both65s lifecycle captures had zero firmware bytes | Attribute initial reset/silent diagnostic before new reference deployment; no lifecycle or peer-contract qualification from restoration |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, guarded typed BeginIO/capability wiring, bounded pre-CONFIG DOWN gate, initial-event gate, accepted-identity refresh, all eight RPC event policies and committed-link cookie/pin publication implemented; foreign leave isolation, failed-teardown replacement-cookie and pre-ACK completion repairs host/native-build verified; CONNECT_FAILED shares admission gate, FOURWAY absent; reference inventory/INIT SAE-bit verified; single-handler C6 candidate retained; credential-free P4 STOP/START diagnostic deployed with two matching full-span backups and independent readback after exclusive-port correction; not run, no event-fence qualification; native admission final gate0, undeployed; installed failure/cancellation/reconnect and peer qualification open | Coordinated USB-C rail-off, single lifecycle capture and exact-span AROS rollback, then source-backed producer fence or attempt correlation and installed-peer qualification; explicit negotiated SAE/PMF, password semantics, no transition downgrade, native caller lifecycle and all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
@@ -1953,6 +1953,9 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   and independently read back exactly. Diagnostic removed. Software-reset
   return fails without accepted boot output; physical BOOT release/power-on
   and baseline return remain the immediate gate before further diagnostics.
+  Subsequent coordinated power-on returns AROS runtime with both harts,
+  graphics/touch and WLAN owner. Initial HP WDT reset40001ea8 rejects clean
+  cold continuity; attribute it and silent diagnostic before new deployment.
   Typed BeginIO/capability wiring now uses the owned parser and a shared,
   default-off P4_WIFI_FULLMAC_PEER_CONTRACT_VERIFIED gate. Diagnostic risk
   permission alone cannot advertise/admit FullMAC; the resource checks that
@@ -41135,3 +41138,27 @@ remain open. No partial stage is a complete A/B update system.
   as aros-return.log and aros-return-timing.jsonl. Next ensure BOOT released,
   coordinate USB-C cycle and establish baseline return before another test.
   Original WPA3/PMF/IP/data/reconnect goal remains unverified.
+
+### 2026-10-11 — AROS runtime return observed; cold continuity rejected
+
+- Fabian confirmed USB-C disconnect/reconnect with BOOT released per requested
+  procedure. Node absence observed; exclusive prearmed dispatcher32605 at
+  monotonic630840.604450541, arrival630849.143589 with preceding sample
+ 630849.118453708. One passive45s late-boot retrieval, no reset/retry/flash.
+- Process32605 actual exit0, complete footer status=ok,45.041s/14771 bytes.
+  ROM first line truncated; HP_SYS_HP_WDT_RESET/rst7, Saved PC40001ea8 and
+  bootloader WDT warning precede AROS entry. Cannot claim clean cold continuity
+  or identify reset cause from this capture/open alone.
+- AROS kernel main watchdog6000ms,42 modules, hart1 online/cpus2, fbgfx
+  updates through256, GT911 configured/polling heartbeats through700,
+  SD read-only boot and WiFi owner ready CPU1/MAC10:bd:a3:9b:bc:34 observed.
+  No later captured ROM/reset/trap/panic/Guru/Alert signature. Console declares
+  saturated bytes dropped, so absence of captured faults is limited evidence.
+  No visual desktop/touch acceptance inferred from API activity.
+- Evidence lifecycle-hardware.UkjyId/aros-cold-return.log SHA256
+  d1ae7e9bd7446eab0ac1144eb849cff921d1951bece049b37991c79f775e66a8;
+  timing80cce584620bdb46dd1bf7f37beac7888728d3181f80c2f4d691a7a8b4f28c92.
+  Exact flash rollback remains verified; diagnostic removed, C6/BSP/SD unchanged.
+  Next sight confirmation of baseline and offline attribution using exact-core
+  Saved PC and reference startup differences before another deployment.
+  No lifecycle/WPA3/PMF/IP/data/reconnect qualification.
