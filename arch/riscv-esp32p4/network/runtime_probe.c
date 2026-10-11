@@ -2,8 +2,9 @@
 /* Native opt-in SDIO reset/bootstrap and setup/restoration. An additional
  * explicit diagnostic enables bounded OPEN/INIT with Fn0/CLOSE cleanup.
  * Optional one-shot Init/STA/Start/GetMAC follows the startup reply. This is not a WLAN
- * data-plane client. Separate CCCR reset/query diagnostic. The private OTA
- * owner entry has no public job/ABI dispatch; C6 writes remain release-gated. */
+ * data-plane client. Separate CCCR reset/query diagnostic. ABI10 exposes
+ * optional owned OTA-job hooks; C6 writes remain release-gated and the
+ * frontend update action is unavailable. */
 #include <aros/asmcall.h>
 #include <aros/debug.h>
 #include <aros/symbolsets.h>
@@ -3622,6 +3623,23 @@ const struct Resident wifiProbeResident =
     &wifi_afterdos
 };
 
+/* Registration does not attest device/source safety. Keep write dispatch
+ * unavailable in every unqualified build, independently of frontend state. */
+static void wifi_ota_hooks_init(struct P4WifiBase *base)
+{
+#if P4_WIFI_HOSTED_OWNER && P4_WIFI_C6_PRIVACY_RECOVERY_VERIFIED && P4_WIFI_HOST_PRIVACY_RECOVERY_VERIFIED
+    base->ota_submit = p4_wifi_ota_submit;
+    base->ota_poll = p4_wifi_ota_poll;
+    base->ota_cancel = p4_wifi_ota_cancel;
+    base->ota_discard = p4_wifi_ota_discard;
+#else
+    base->ota_submit = NULL;
+    base->ota_poll = NULL;
+    base->ota_cancel = NULL;
+    base->ota_discard = NULL;
+#endif
+}
+
 static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
 {
     SysBase = P4WifiBase->sysbase;
@@ -3664,6 +3682,7 @@ static int P4Wifi_Init(LIBBASETYPEPTR P4WifiBase)
     P4WifiBase->maintenance_token = 0;
     P4WifiBase->maintenance_state = P4_WIFI_MAINT_IDLE;
     P4WifiBase->maintenance_started = 0;
+    wifi_ota_hooks_init(P4WifiBase);
     return TRUE;
 }
 ADD2INITLIB(P4Wifi_Init, 0)

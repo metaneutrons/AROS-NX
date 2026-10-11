@@ -5,7 +5,7 @@
 #include <exec/types.h>
 #include "hosted_scan.h"
 
-#define P4_WIFI_DEVICE_BRIDGE_ABI 9u
+#define P4_WIFI_DEVICE_BRIDGE_ABI 10u
 #define P4_WIFI_DEVICE_BRIDGE_NAME "esp32p4wifi.resource"
 
 struct P4WifiBase;
@@ -18,7 +18,7 @@ struct P4WifiBase;
  * resource client_lock; only the owner task touches SDIO. A lease request
  * fences client work, then the owner drains requests and confirms WiFiStop.
  * ACTIVE is a host/peer quiescence claim, not update permission or recovery.
- * No OTA commands are exposed by this ABI. Tokens never wrap or get reused.
+ * This handshake itself exposes no OTA commands. Tokens never wrap or get reused.
  * Only the requesting task may poll/release its token. Lease expiry retires
  * the owner; it never silently restores traffic after an abandoned updater.
  * Release is asynchronous: owner confirms WiFiStart, publishes ready again,
@@ -38,8 +38,8 @@ struct P4WifiBase;
  * No radio start, protocol cleanup, CLOSE/reset or automatic recovery is
  * allowed after acceptance. A failed handoff remains failed and fenced.
  * mode is a conservative caller disposition, not proof of an OTA outcome.
- * Future OTA dispatch must mark this obligation BEFORE attempting BEGIN.
- * No BEGIN/WRITE/END job is exposed yet. Full transfer budget remains open. */
+ * OTA dispatch marks this obligation BEFORE attempting BEGIN.
+ * ABI10 adds optional owned-job hooks; full transfer budget remains open. */
 #define P4_WIFI_MAINT_FENCING 7u
 #define P4_WIFI_MAINT_FENCED 8u
 #define P4_WIFI_MAINT_FENCE_INCOMPLETE 1u

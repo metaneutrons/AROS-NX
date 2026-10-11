@@ -51,7 +51,7 @@ static Object *layout_group;
 
 static const char info_text[] =
     "Updater prototype: C6 file format/hash preflight only; compatibility "
-    "and recovery are NOT verified. DISCOVER-C6 queries an ABI9 owner and "
+    "and recovery are NOT verified. DISCOVER-C6 queries an ABI10 owner and "
     "compatible C6; WLAN goes offline. Registry observations are not raw-table "
     "attestation or write permission; updates disabled.";
 

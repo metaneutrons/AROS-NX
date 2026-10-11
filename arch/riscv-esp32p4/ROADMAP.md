@@ -119,11 +119,11 @@ Current source radio/device pairing is private ABI9 (N2M terminal fencing).
 ABI6 counts/artifacts in N1A/N2A/N2/N2L remain historical lifecycle evidence,
 not the current deployment pair. The historical ABI8 candidate package passes
 all42 loader audits; ABI9 standalone modules/tool are not repackaged or installed.
-No ABI7/ABI8/ABI9 hardware pass exists.
+No ABI7/ABI8/ABI9/ABI10 hardware pass exists.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; private owned native queue9121-check host/build verified, seven mutations rejected and independent review complete; ABI9 unchanged, not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Versioned frontend dispatch and qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
+| N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check host/build verified, seven mutations rejected; ABI10 optional hooks,80-check registration matrix and1057-check SANA consumer host/build verified; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Shared CLI/GUI worker dispatch and qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
 | N0P | Shared DMA TX staging privacy | `ABI8 model/module-build verified; hardware open` | DMA owns staging, sticky residue, volatile zero/cache writeback after proven idle; ambiguous reset retains fault/residue until successful physical recovery. TX bounce aliases refused; RX delayed publication preserved. Corrected epoch-aware privacy model7/197 and DMA23/2255476, clock27/392, command33/2001730 pass each O0/O2 sanitized on macOS/Linux; MMIO/cache/Exec modeled. Both independent C6/host privacy assertions remain0. Actual SD/WLAN recovery qualification required; no credential enablement or hardware change. |
 | N2F | C6 firmware privacy and recoverable identity | `legacy logging candidate build verified; recovery/UART privacy open` | Fresh separate patched IDF5.4.3 build1105312B; Hosted metadata/payload logs and vendor callbacks suppressed, plus C6-only Wi-Fi/coexistence/PHY legacy formatter sinks. Actual-body Mac/Linux O0/O2 sanitized tests/source guards pass. Static error puts routes remain; no whole-UART privacy or installed identity proof. Earlier candidates/reference unchanged. Actual CN5 verification, readiness, non-secret backups, UART privacy and proven restore mandatory before deployment/credentials. |
 | N2A | Association caller and native link lifecycle | `native queue/lifecycle build and scoped models verified; hardware/privacy open` | Copied SETOPTIONS attempts, one pending/active slot, opener pins, saturation-safe token, CONNECT/gate commit, actual AP snapshot and pool-owned GETNETWORKINFO bound. RX/TX fence link/token; pre-association EAPOL reads park. Generic5b2cf0b82b locally integrated; native explicit IE extent parser verified. N2L supersedes initial ABI5 queue evidence with ABI6 teardown/observer/active Close/Offline models and current artifacts. Helper/selected-arm scope, not full BeginIO/concurrency. Native SUMMARY-only; both privacy assertions0. Caller-visible late failure, C6 recovery/UART privacy and actual association/DHCP/frames/reconnect/1800s qualification remain open. No deployment or credential transmission. |
@@ -1413,7 +1413,16 @@ each O0/O2 ASan/UBSan, seven unsafe mutations rejected. Independent native and
 bounded fixture review are complete. Deferred publication via owner service
 and retirement preserves results without replay or double free in the fixture;
 Exec/allocator/transport remain modeled, not native SMP acceptance.
-No public ABI/hook/frontend write action or qualified full-image lease is
+ABI10 now appends optional typed submit/poll/cancel/discard resource hooks;
+all four remain NULL unless the owner and both release assertions are enabled.
+Current flags0 build keeps them unavailable. Exact ABI/full structure size are
+checked before access; SANA and discovery require a matched ABI10 pair, not
+historical ABI9/ABI8 artifacts. Native resource/device/tool builds and scoped
+registration/consumer tests pass:80 hook checks across eight gate combinations
+at O0/O2 and1057 SANA checks each O0/O2 with ASan/UBSan. An actual-init source
+guard rejects a missing registration call; whole-init runtime is not tested.
+No frontend update action is enabled.
+No enabled hook/frontend write action or qualified full-image lease is
 provided; release flags remain0 and UPDATE-C6 stays unavailable.
 Actual-source host tests and fresh Core1 module builds pass; Exec locks,
 callbacks and RPC outcomes are mocked. The matching ABI7 resource/device must
@@ -37735,3 +37744,88 @@ package, whole SMP core, deployment or changed on-board baseline is implied.
   verify live device proofs and explicit first-install recovery. Actual C6
   privacy/identity, WLAN association/DHCP/traffic/reconnect/combined1800s,
   HTTPS and P4 update gates remain open; full Wi-Fi objective stays active.
+
+### 2026-10-11 - N2M optional ABI10 OTA queue bridge
+
+- Scope: append four typed owned-job hooks to P4WifiBase, bump exact bridge
+  version10, keep the maintenance prefix intact, and update the SANA/discovery
+  consumers. A matched resource/device/tool set is mandatory; old ABI9/ABI8
+  members are not interchangeable. Queue header now depends only on the shared
+  updater types, not private owner entry declarations. Hook registration is
+  all-or-none: owner plus both explicit release assertions, otherwise all NULL.
+  UPDATE-C6 registry remains FALSE; no frontend update dispatch is implemented.
+- Configuration/procedure: session69658 actually exits0 for gmake -j4
+  kernel-esp32p4wifi-probe-quick kernel-esp32p4wlan-device-quick
+  workbench-tools-esp32board-quick, board jc1060p470c-v2,
+  SDIO_SETUP/HOSTED_INIT/HOSTED_REPLY/HOSTED_OWNER=1, OWNER_CPU=1 and both
+  privacy/recovery assertions0. All three exact generated object directories
+  were invalidated first. These port-local ABI headers are included directly
+  from source, not copied public compiler headers; no abandoned sysroot was
+  modified. Native compiler still reports the historical Developer sysroot.
+  native-build.log SHA256
+  0e0ed3bb755cfb9b849edda0eb5359bf08ce49437f110b6d064130364086d964.
+- Artifacts: resource335752B SHA256
+  d89edf8dc9ed6a55d4c63767af8865ff9f3b67fdb59cfaafd32cc067a73aa768;
+  device67604B SHA256
+  b9e8d21fdc871bba5e8ba2674befc5414ef3d6223e1385fc10aab7a7772f9bdf;
+  ESP32Board121816B SHA256
+  7f0aaba2eeff02ea49f3db18dd2043f6a3bc67b65f5d21da24e0e49050f06cce.
+  Resource/device pass the boot module loader audit, flags3,13 supported
+  relocation types and issues[]. Applying that module-only audit to the DOS
+  application reports two .eh_frame exclusions; that checker models the wrong
+  loader for an application. DOS internalloadseg_elf.c allocates SHF_ALLOC
+  sections, unlike the boot loader's deliberate .eh_frame exclusion. This is
+  not an application runtime pass or a claim that its module audit passed.
+  The initial assertion from combining all three module audits was rejected;
+  artifact-audit.log retains the complete per-artifact findings, SHA256
+  dd81d97ecb61bbb1f5bc0e5b3e3cce00fce0c8cc9c0a0f444c8bbfce8f94bbfe.
+- Compiled ABI: P4Wifi_Init disassembly records li10/store52, li348/store56
+  and zero stores to all four tail-hook offsets332/336/340/344. This verifies
+  compiled version/size and disabled hook registration, not just source macros.
+  resource-init-disassembly.log SHA256
+  5e8e05cf54f125c35d93f66fd5c199193aba047cfc831d8ebc1a794aaa4a6e28.
+  Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/ota-abi10.T2KH9q/.
+- Verification: existing maintenance/owned-queue regression session69094
+  actually exits0,9121 checks each O0/O2 ASan/UBSan and seven unsafe mutations
+  rejected; maintenance.log SHA256
+  0333178af42611a2bd4b9a6ae2a31659e0609149d5fd43ffed38022803c85b30.
+  Independent boundary review found no consequential ABI/admission defect;
+  stale ABI9 fixture assertion and top-level source comment were corrected.
+  Dedicated hook-registration matrix passes all eight owner/C6/host truth
+  combinations at O0/O2 ASan/UBSan,16 builds and80 identity checks. It compiles
+  the actual extracted initializer with the real bridge header and typed mocks,
+  not the complete production translation unit; the existing full-source guard
+  rejects C6 assertion1 with owner0 even though helper truth testing includes it.
+  First helper compile failed from static mock definitions conflicting with
+  extern declarations; corrected linkage, retained bridge-initial-compile-failure.log
+  SHA256d7a0047bb9b87428c6e717cffc91229eabd8707d99769e581c3e1d86ccf229ad.
+  Initial worker/primary matrix passes are bridge-worker.log/bridge-primary.log,
+  SHA2565fc3b7bfce21c779fbcbf51aa5dcb79a6de5e26b069b0e2499893a55e93c5842;
+  primary session14448 actually exits0. Independent fixture review found the
+  actual P4Wifi_Init helper invocation unguarded; final runner extracts that
+  body and requires exactly one call, with a missing-call counterprobe rejected
+  at the expected diagnostic. bridge-worker-final.log SHA256
+  9f216acde677c13cc3c45e85bdf544019f2ad1e860e063478b1353da29803147.
+  Primary final rerun session23017 actually exits0; bridge-primary-final.log
+  is byte-identical with the same SHA256. Independent follow-up confirms the
+  bounded integration-test gap closed; no whole-init execution is implied.
+  Actual SANA selected-helper regression accepts ABI10 with NULL OTA hooks,
+  refuses9/8 and undersized resources,1057 checks each O0/O2 ASan/UBSan;
+  primary session88225 actually exits0. sana-worker.log/sana-primary.log are
+  byte-identical, SHA256
+  89b78d0961d99598512897bf345d62b28426e5d0fbb6f8e7b4d510b6cb2fb9e4.
+  This models selected SANA helpers, not full BeginIO or native SMP execution.
+  Frontend parity passes with three divergent counterprobes rejected, and
+  ESP32-only direct-target guard passes; both actual processes exit0.
+  frontend-parity.log SHA256
+  d56edd2c5b25245debae1373b198f7e69a87f81de4b7ff378dad045cb4bf9bd5;
+  frontend-target.log SHA256
+  07c57e09d879c65bcb7d2af84aacbdf42f1af307c21140ec7dfdf7f91a31d862.
+- Safety/limits/next: no board, serial, flash, SD write, credentials, package or
+  image regeneration/deployment. Hooks are not source/layout/recovery proofs;
+  full-image aggregate lease remains unqualified. Complete the shared surviving
+  CLI/GUI worker, live target/source attestation and independent first-install
+  recovery before any C6 write. Real association/DHCP/bidirectional traffic,
+  reconnect/combined1800s, installed privacy and HTTPS/P4 updates remain open.
+  The full Wi-Fi objective remains active.

@@ -1,5 +1,18 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Current OTA bridge (2026-10-11): ABI10 appends typed owned-job submit/poll/
+cancel/discard hooks. Every hook is NULL unless the persistent owner and both
+privacy/recovery release assertions are enabled; the current build keeps both
+assertions0. Resource, SANA device and ESP32Board discovery require a matched
+ABI10 pair/full structure size; do not mix with historical ABI9/ABI8 outputs.
+Fresh native builds and scoped registration/consumer tests pass: all eight
+registration gate combinations at O0/O2 (80 checks), plus1057 SANA checks each
+O0/O2 with ASan/UBSan. A source guard and missing-call counterprobe protect the
+initializer hook call; this is not whole-init execution or hardware evidence.
+No frontend update action, qualified full-image budget, live device proofs or
+secured first-install recovery is supplied; UPDATE-C6 remains unavailable.
+No package/image, deployment, serial or credential action has occurred.
+
 Board maintenance foundation (2026-10-10): `Tools/ESP32Board` is restricted to
 esp32p4/riscv targets; other targets explicitly refuse direct builds. It builds for
 RV32-SMP with shared CLI/MUI read-only C6 image checks and an adaptive graphical
@@ -18,8 +31,8 @@ no BEGIN attempt, incomplete transfer, unknown commit and acknowledged END
 waiting for reboot. Only the first allows ordinary read-only lease release;
 the others require a confirmed bounded fenced handoff, without automatic
 radio restart, reset or request replay. Failed handoff blocks installation
-confirmation. The queued native updater remains absent; the synchronous owner
-binding below does not enable UPDATE-C6 or prove physical recovery.
+confirmation. The owned queue and ABI10 hooks described here do not enable
+UPDATE-C6 or prove physical recovery; frontend dispatch remains absent.
 Terminal-policy regressions pass692 checks each O0/O2 under ASan/UBSan;
 the compiled all-NO_BEGIN mutation fails at the expected assertion with exit1.
 The standalone engine compiles for the configured RV32-SMP ilp32f profile
@@ -128,8 +141,9 @@ queue tests pass9121 checks each O0/O2 ASan/UBSan with seven unsafe mutations
 rejected. Independent implementation and bounded fixture review are complete;
 deferred publication through later service or retirement cannot replay OTA or
 free the source twice in the fixture. Exec/allocator/transport are mocked, not
-native SMP or full-image hardware qualification. This is not a public ABI/CLI/GUI update
-entry or source/layout/recovery authorization. UPDATE-C6 remains unavailable,
+native SMP or full-image hardware qualification. The optional ABI10 bridge
+above supplies no CLI/GUI update action or source/layout/recovery authorization.
+UPDATE-C6 remains unavailable,
 both release assertions0, full-image lease qualification still open.
 Private transport verification (2026-10-11): canonical codec11806,
 pending1638 and coupled owner8093 checks each O0/O2 ASan/UBSan pass;

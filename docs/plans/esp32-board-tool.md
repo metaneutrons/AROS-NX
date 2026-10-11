@@ -105,8 +105,11 @@ secured recovery path; source development and read-only file checks do not.
   lock protects copied observations; an atomic cancellation flag is independent
   of client_lock and metadata polling. Never copy a live engine result. Keep
   the frontend worker alive across window Close until DONE/discard; requester
-  task-kill recovery is not provided. This private dispatcher is not yet a
-  public ABI or frontend update action, nor full-image timing qualification.
+  task-kill recovery is not provided. ABI10 now appends typed optional hooks;
+  every hook is NULL unless the owner and both release assertions are enabled.
+  Check exact ABI and full resource size before reading hooks, never fall back
+  to raw private symbols. This is not a frontend update action or full-image
+  timing qualification, and release assertions are not runtime device proofs.
 - A missing recovery proof is a refused write, not a command-line override.
   Recovery evidence must refer to the actual device and layout. Do not infer
   installed rollback from the candidate's build configuration.

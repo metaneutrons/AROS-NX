@@ -1,13 +1,16 @@
 /* Copyright (C) 2026, The AROS Development Team. All rights reserved. */
 #ifndef P4_WIFI_OWNER_OTA_QUEUE_H
 #define P4_WIFI_OWNER_OTA_QUEUE_H
-#include "owner_ota.h"
+#include "../boardtool/update.h"
+struct P4WifiBase;
 
-/* Private native dispatcher, not resource ABI/write authorization. A trusted
+/* ABI10 dispatcher contract, not write authorization. A trusted
  * future frontend worker must inspect/authenticate the source and live target
  * before submission. Caller input remains immutable through submit; accepted
  * submission copies all bytes before requesting radio quiescence. No caller
- * pointer is retained. Explicit budgets still fit the unqualified30s lease. */
+ * pointer is retained. Explicit budgets still fit the unqualified30s lease.
+ * Resource hooks are NULL unless the owner and both release assertions are
+ * enabled. Those assertions are not runtime source/layout/recovery proofs. */
 struct p4_wifi_ota_request {
     const uint8_t *image;
     uint32_t image_size, total_budget_us, finish_reserve_us, max_call_us;

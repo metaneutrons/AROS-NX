@@ -621,7 +621,7 @@ static void init_fixture(struct p4wlan_unit *unit,
     association_reply_cookie_count = 0u;
 }
 
-static void test_resource_valid_requires_abi9_callbacks(void)
+static void test_resource_valid_requires_abi10_callbacks(void)
 {
     struct p4wlan_unit unit;
     struct p4wlan_opener opener;
@@ -631,12 +631,18 @@ static void test_resource_valid_requires_abi9_callbacks(void)
     BOOL (*release)(struct P4WifiBase *, ULONG);
 
     init_fixture(&unit, &opener, &radio);
-    CHECK(P4_WIFI_DEVICE_BRIDGE_ABI == 9u);
+    CHECK(P4_WIFI_DEVICE_BRIDGE_ABI == 10u);
     CHECK(radio.bridge_abi == P4_WIFI_DEVICE_BRIDGE_ABI);
     CHECK(radio.bridge_size == sizeof(radio));
+    /* ABI10 OTA hooks are optional when privacy/recovery release gates are
+     * closed; the ordinary SANA bridge remains valid without write dispatch. */
+    CHECK(radio.ota_submit == NULL && radio.ota_poll == NULL);
+    CHECK(radio.ota_cancel == NULL && radio.ota_discard == NULL);
     CHECK(p4wlan_resource_valid(&radio));
     CHECK(!p4wlan_resource_valid(NULL));
 
+    radio.bridge_abi = 9u;
+    CHECK(!p4wlan_resource_valid(&radio));
     radio.bridge_abi = 8u;
     CHECK(!p4wlan_resource_valid(&radio));
     radio.bridge_abi = P4_WIFI_DEVICE_BRIDGE_ABI;
@@ -1487,7 +1493,7 @@ int main(void)
     test_disassociate_maintains_confirmed_teardown();
     test_teardown_failure_never_publishes_disconnect();
     test_new_selection_during_teardown_is_preserved();
-    test_resource_valid_requires_abi9_callbacks();
+    test_resource_valid_requires_abi10_callbacks();
     test_suite_cleanup();
     printf("SANA association queue: %lu checks, %u replies, %u/%u vector alloc/free, %u association wipes\n",
            checks, reply_calls, allocation_calls, free_calls, wipe_checks);

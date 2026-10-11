@@ -4,6 +4,7 @@
 #include <exec/libraries.h>
 #include <exec/semaphores.h>
 #include "device_bridge.h"
+#include "owner_ota_queue.h"
 struct P4WifiBase
 {
     struct Library library;
@@ -49,5 +50,14 @@ struct P4WifiBase
     BOOL (*maintenance_fence)(struct P4WifiBase *, ULONG, ULONG);
     /* Sticky after accepted terminal handoff; never clear on expiry/retirement. */
     ULONG maintenance_fence_mode;
+    /* ABI10 optional dispatcher hooks. Check exact bridge_abi and bridge_size
+     * before reading these fields. NULL is unavailable, never permission to
+     * fall back to raw owner symbols. They retain task-bound copied jobs;
+     * poll/cancel/discard never acquire client_lock or perform transport. */
+    uint32_t (*ota_submit)(struct P4WifiBase *, const struct p4_wifi_ota_request *);
+    enum p4_wifi_ota_job_state (*ota_poll)(struct P4WifiBase *, uint32_t,
+                                        struct p4_wifi_ota_observation *);
+    int (*ota_cancel)(struct P4WifiBase *, uint32_t);
+    int (*ota_discard)(struct P4WifiBase *, uint32_t);
 };
 #endif
