@@ -6,6 +6,7 @@ remote6/decoded6/nonempty6/workaround0; no complete RF census is implied.
 Security displays '?' because installed Prefs reads only authentic IEs, not
 the driver's explicit security summary. Strict capability-gated display is now
 host tested77 cases each O0/O2 sanitized and native Prefs153004B build verified,
+and a one-file-delta64-MiB image is independently filesystem/manifest verified,
 but not yet installed on SD;
 association/DHCP/traffic and reset continuity remain open. No credentials sent.
 

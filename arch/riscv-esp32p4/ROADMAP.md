@@ -147,7 +147,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; corrected SSID decoder yields GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B build verified, not SD deployed; initial watchdog continuity unresolved; privacy/recovery assertions0 | Synchronize native Prefs deployment/security display; existing WirelessManager temporary RAM association/DHCP/traffic/reconnect/load; no C6 write or privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; corrected SSID decoder yields GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and one-file-delta64-MiB image host verified, not SD deployed; initial watchdog continuity unresolved; privacy/recovery assertions0 | Synchronize native Prefs deployment/security display; existing WirelessManager temporary RAM association/DHCP/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1740,7 +1740,8 @@ Corrected device run now shows the GUI network list, with remote6/decoded6/
 nonempty6/workaround0. Prefs displays '?' because its legacy IE-only label
 does not consume explicit security summaries. A strict negotiated summary label
 is host tested77 checks each O0/O2 and native Prefs153004B build verified,
-not SD deployed; missing/malformed/unsupported data must never say open.
+and one-file-delta64-MiB image host verified, not SD deployed;
+missing/malformed/unsupported data must never say open.
 
 Current diagnostic exception (2026-10-11): Fabian requested WLAN testing
 after explicit explanation of possible password logging in the unknown
@@ -39342,3 +39343,32 @@ remain open. No partial stage is a complete A/B update system.
   integration; main owns DoIO wiring and native build. No replacement manager.
   security-display-tests.log SHA256
   d02eb1a065294e9a9d28a3602a658018f114c84bc5e202a8bbf9655561a65ca5.
+
+### 2026-10-11 - N2T native security-display SD image prepared offline
+
+- No fresh card-in-reader confirmation yet; no physical SD identification or
+  write, no serial/flash/reset/C6 or credential action. Existing board scan
+  list observation remains the latest device result, not association evidence.
+- Evidence /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/
+  wifi-2026-10-11/security-image.wfrXgw/. Frozen installed baseline
+  wlan-test-ready.MrpLEu/aros-wifi-final.img67108864B rehashed49cfc3a2... and
+  mounted READONLY as host disk24, not a physical card. Independent manifest
+  check0 matches all332 entries before staging. Copied this verified content
+  into isolated directory, detached disk24, replaced ONLY Prefs/WiFi with
+  retained153004B/hash8f00ba8f... candidate; no other runtime module drift.
+- mkfat32 fixed64MiB/serial0xa5051d00/timestamp2026-01-01 exits0 (40085),
+  aros-wifi-security.img67108864B
+  SHA2565a1db5e225da8d742d381a3e097b795904d6bed076b044389307c160f7585f2e.
+  Manifest diff has exactly one changed entry /Prefs/WiFi; all other331
+  entries unchanged, including ABI11 device, defaults and startup. No saved
+  configuration or access credentials imported from a live volume/build tree.
+- verify-image.sh actual session10393 exit0: independent macOS MBR/FAT32
+  parsing, fsck and mounted-copy manifest332/332 pass; original hash unchanged.
+  verify-image.log SHA256
+  e90d563103f2061696766d130ebcd447d4fb20908a47c436b215d988a7d693c2.
+  Host noise is excluded only as documented by the verifier, not new content.
+- Next fresh card-transfer confirmation, identify actual physical medium,
+  double-read recoverable affected-prefix backup, exact candidate write and
+  independent readback/eject; no old disk number may be reused by assumption.
+  Then synchronize native security-label sight test and complete existing
+  AROS association/DHCP/routes/DNS/bidirectional/reconnect/shared-load gates.
