@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Earlier incremental C/C++ SDK links and relocation passed. The fresh integrated replay failed because the SDK roots omitted `core-linklibs`, leaving the normal driver's standard libraries absent; the source declaration now selects it explicitly. Fresh application-link/relocation execution remains pending. Source authoring checks do not qualify compiler execution. Durable receipt/read-back/admission, a new qualified tools runtime, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The corrected three-root SDK contract passed fresh local macOS ARM64 SDK construction and four normal C/C++ original/relocated links with retained receipts. Generator epoch regressions passed; sealed runtime epoch propagation and fresh SDK reproducibility/packaging remain open. A new qualified tools runtime, authenticated release admission, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -639,6 +639,46 @@ change any board's hardware acceptance state.
   The contract correction is not a completed SDK, A/B or hardware gate.
   TC0 remains `in development`; fresh complete SDK and mixed release evidence
   are still required.
+
+### 2026-10-11 - TC0 fresh SDK links and reproducible generator dates
+
+- Fresh local SDK evidence: source `f0ef11bddad7484219fecc826becc995e724eb8e`,
+  tools `7854b43966ec7e75b0bb8f869bb9cff5d6dc8da4`, consumer contract
+  `8ff48622ed870c376a204c99eeed19259864ec44fbc6c4b916f7b8401506fc63`.
+  The native compatibility receipt SHA-256 is
+  `253d146b7d13ea1a9ceb4c08b0469d847754bf7d2bb455fa7c117410d0f3bf2c`;
+  the application-link receipt SHA-256 is
+  `0af96282489962cb40561b796033549b661ce07d9f848496167f97470e61046f`.
+  Six compatibility phases and four default C/C++ original/relocated links
+  passed. The SDK inventory contains 19,788 entries; both links are
+  byte-identical after relocation. This receipt explicitly qualifies local
+  links, not release admission. It remains bound to its original source.
+- Generator correction: `tools/genmodule/config.c` now uses one selected
+  `SOURCE_DATE_EPOCH` for the UTC banner year and missing module date;
+  explicitly declared module dates remain unchanged. Unset epoch retains
+  the historical UTC banner year and local default date. Invalid decimal,
+  overflow, host time representation and four-digit calendar values fail
+  before generation opens output files. The corrected file SHA-256 is
+  `b689b7309c3ac71ebadedc707067bd40c740e9add0e83a1f0a53f17d3832ad9a`.
+- Procedure and results: `python3 scripts/ci/test_genmodule_epoch.py -v`
+  builds the actual host generator in automatically cleaned temporary
+  directories; eight tests passed on macOS ARM64. Tests compare all six
+  generated files across four time zones, changed epochs, epoch zero,
+  leading zeroes, year 9999, explicit dates, unset behavior, and invalid
+  values for both output commands. The pre-fix generator countercontrol
+  ignored epoch `946684800`, emitting year 2026 and date `11.10.2026`.
+  The complete source CI authoring suite passed 54 tests.
+- Build limitation: strict whole-generator Apple Clang warning-as-error
+  compilation still encounters pre-existing warnings outside the new
+  epoch handling. The regression builds without suppressing warnings;
+  it is not a new strict-warning qualification.
+- Safety and next gate: this is a local source correction, with no push,
+  PR, native SDK regeneration, board, firmware, media or published artifact
+  mutation. The sealed native compatibility environment does not yet pass
+  `SOURCE_DATE_EPOCH`; the source patch alone does not qualify SDK
+  reproducibility. Bind and record that runtime input, regenerate and
+  package the SDK, then perform the mixed three-host release gates. TC0
+  remains `in development`.
 
 ## Track E: ESP32-P4 / RV32 SMP
 

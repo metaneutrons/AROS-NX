@@ -102,8 +102,15 @@ read-back and release-admission evidence. See TC0.
 The fresh integrated replay on 2026-10-11 exposed a separate declaration gap:
 its two selected roots omitted `core-linklibs`, leaving the normal driver's
 standard libraries absent. The contract now explicitly selects that root too.
-The earlier incremental link evidence remains historical; a fresh complete
-application-link and relocation receipt on the corrected contract is pending.
+The corrected three-root contract passed a fresh local macOS ARM64 native
+SDK build and four normal C/C++ original/relocated links. Their retained
+receipts are local execution evidence, not release admission.
+`genmodule` now honors an explicit `SOURCE_DATE_EPOCH` for the banner year
+and default module date in UTC. Eight actual-generator regressions passed;
+explicit module dates and the historical unset behavior remain unchanged.
+The sealed tools environment still needs to pass this selected epoch before
+fresh SDK reproducibility and packaging can be qualified. See TC0 for the
+exact source identities, receipts and remaining publication gates.
 
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
