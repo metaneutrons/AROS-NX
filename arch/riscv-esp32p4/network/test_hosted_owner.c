@@ -50,6 +50,7 @@ struct owner_fixture {
     unsigned now_calls;
     unsigned stopping_calls;
     unsigned dispatch_under_lock;
+    unsigned refuse_event;
     unsigned acquire_attempts_at_dispatch;
     uint32_t dispatch_advance_us;
     uint32_t rx_advance_us;
@@ -138,7 +139,7 @@ static int owner_dispatch_event(void *context,
     fixture->acquire_attempts_at_dispatch = fixture->acquire_attempts;
     fixture->last_event = *item;
     fixture->now += fixture->dispatch_advance_us;
-    return fixture->acquired == 0u ? 1 : 0;
+    return fixture->acquired == 0u && !fixture->refuse_event ? 1 : 0;
 }
 
 static int owner_dispatch_frame(void *context, const uint8_t *bytes,
@@ -1079,6 +1080,49 @@ static void test_missing_frame_dispatcher_retires_outside_host(void)
           fixture.owner.poisoned == 1u && fixture.fifo.poisoned == 1u);
 }
 
+static void test_event_refusal_retires_step_and_pending_exchange(void)
+{
+    static const uint8_t body[] = { 0x10u, 0x06u };
+    unsigned exchange;
+    for (exchange = 0; exchange < 2u; ++exchange) {
+        struct owner_fixture fixture;
+        uint8_t batch[TEST_CAPACITY];
+        uint32_t raw[] = { 0u, P4_HOSTED_OPEN_INT_PACKET };
+        size_t used = 0u;
+        owner_fixture_init(&fixture, OWNER_TEST_GENERATION, 100u);
+        fixture.refuse_event = 1u;
+        CHECK(append_owner_rpc(batch, sizeof batch, &used,
+            HOSTED_SERIAL_ENDPOINT_RPCEVT, P4_HOSTED_RPC_TYPE_EVENT,
+            773u, 0u, body, sizeof body) != 0u);
+        if (exchange) {
+            owner_reserve_empty_request(&fixture, OWNER_TEST_REQUEST_ID);
+            CHECK(append_owner_rpc(batch, sizeof batch, &used,
+                HOSTED_SERIAL_ENDPOINT_RPCRSP, P4_HOSTED_RPC_TYPE_RESPONSE,
+                OWNER_TEST_REQUEST_ID + 256u, fixture.owner.ids.active_uid,
+                NULL, 0u) != 0u);
+        }
+        CHECK(add_batch(&fixture.fake, batch, used));
+        set_raws(&fixture.fake, exchange ? raw : raw + 1, exchange ? 2u : 1u);
+        if (exchange)
+            CHECK(!p4_hosted_owner_exchange(&fixture.owner, &fixture.fifo,
+                &fixture.owner_ops, fixture.generation, 0u, fixture.request,
+                fixture.request_size, OWNER_TIMEOUT_US, &fixture.result));
+        else
+            CHECK(!p4_hosted_owner_step(&fixture.owner, &fixture.fifo,
+                &fixture.owner_ops, fixture.generation, 0u, 1000u,
+                &fixture.result));
+        CHECK(fixture.result.error == P4_HOSTED_OWNER_DISPATCH);
+        CHECK(fixture.event_calls == 1u && fixture.dispatch_under_lock == 0u);
+        CHECK(fixture.acquired == 0u &&
+              fixture.acquire_successes == fixture.releases);
+        CHECK(fixture.owner.poisoned == 1u && fixture.fifo.poisoned == 1u);
+        CHECK(fixture.result.matched == 0u);
+        CHECK(!p4_hosted_owner_step(&fixture.owner, &fixture.fifo,
+            &fixture.owner_ops, fixture.generation, 0u, 1000u,
+            &fixture.result));
+    }
+}
+
 static void test_step_drains_owned_event_without_tx_or_host_lock(void)
 {
     static const uint8_t body[] = { 0xaau };
@@ -1926,6 +1970,7 @@ int main(void)
     test_ambiguous_tx_and_rx_fail_closed();
     test_stale_generation_is_transactional();
     test_missing_frame_dispatcher_retires_outside_host();
+    test_event_refusal_retires_step_and_pending_exchange();
     test_step_drains_owned_event_without_tx_or_host_lock();
     test_ids_init_preserves_open_handoff_event();
     test_cancel_closes_uid_without_bus_or_reuse();

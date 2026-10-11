@@ -1,10 +1,18 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Security-change retirement (2026-10-11): valid generic STA_AUTHMODE_CHANGE
+now refuses dispatch, retiring the owner instead of preserving old negotiated
+security from AP metadata. Callback313 and coupled owner8200 checks each O0/O2
+sanitized pass; resource348416B native build verified, undeployed. Explicit
+reconnect/cookie publication, remaining event coverage and real WPA3/IP/data
+qualification remain open. Normal startup ESPInit is not blindly rejected.
+
 Hosted protocol inventory (2026-10-11): [coverage matrix](network/PROTOCOL-COVERAGE.md)
 classifies all82 reference request/response pairs, eight RPC events and pinned
 IDF WiFi IDs0–45. Envelope acceptance is not semantic coverage. Peer reinit,
 security change, beacon timeout, channel change and scan/heartbeat validation
-remain explicit work before typed admission. This source audit changes no
+remain explicit work before typed admission (security change is addressed by
+the retirement slice above). This source audit changes no
 executable or installed firmware; actual WPA3/IP/data qualification remains open.
 
 Typed link maintenance groundwork (2026-10-11): the owner now retains a

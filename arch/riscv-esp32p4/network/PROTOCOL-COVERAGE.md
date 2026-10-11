@@ -94,7 +94,7 @@ in the schema does not restore the old/new values discarded by this producer.
 |1|SCAN_DONE|Normally dedicated774; generic occurrence needs explicit unexpected-event policy|
 |2–3|STA_START, STA_STOP|Already invalidate observation/confirmation; not a complete producer barrier|
 |4–5|STA_CONNECTED, STA_DISCONNECTED|Normally dedicated775/776; generic occurrence lacks identity and must not establish link|
-|6|STA_AUTHMODE_CHANGE|Critical: invalidate accepted security; old/new auth values lost; currently only counted|
+|6|STA_AUTHMODE_CHANGE|Valid successful773 now refuses dispatch and retires owner; no old negotiated security survives retirement. Fresh operation required; native reconnect/cookie lifecycle remains open.|
 |7–11|STA_WPS_ER_SUCCESS/FAILED/TIMEOUT/PIN/PBC_OVERLAP|WPS not enabled; explicitly unsupported, no association authority|
 |12–13|AP_START, AP_STOP|Unexpected mode policy in STA-only session|
 |14–15|AP_STACONNECTED, AP_STADISCONNECTED|Normally771/772; explicitly unsupported|
@@ -127,5 +127,7 @@ in the schema does not restore the old/new values discarded by this producer.
    gates. No C6 update or AP downgrade is implied by this source audit.
 
 This inventory deliberately precedes additional interactive association tests.
-No executable change, build, serial opening, flash, SD write or credential
-transmission was performed to produce it.
+The initial inventory involved no executable change. Subsequent security-change
+retirement passes callback313/owner8200 checks each O0/O2 sanitized and native
+resource build; this updates coverage for ID6 only. No serial opening, flash,
+SD write or credential transmission was performed.

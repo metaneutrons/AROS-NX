@@ -627,6 +627,39 @@ static void test_stale_generation_and_unrelated_metadata(void)
     CHECK(context.link_observation.kind == P4_HOSTED_LINK_NONE);
 }
 
+static void test_security_change_refuses_pending_and_accepted_link(void)
+{
+    struct wifi_probe_context context;
+    struct p4_hosted_inbox_item item;
+    uint8_t ssid[P4_HOSTED_ASSOCIATION_SSID_SIZE];
+    uint8_t bssid[P4_HOSTED_ASSOCIATION_BSSID_SIZE];
+
+    memset(&context, 0, sizeof context);
+    memset(&test_resource, 0, sizeof test_resource);
+    wifi_resource_base = &test_resource;
+    context.generation = 71u;
+    CHECK(p4_hosted_link_init(&context.link_observation, context.generation));
+    /* Refusal is transactional; the actual owner supplies retirement. */
+    CHECK(make_wifi_event_item(&item, 0,
+                              P4_HOSTED_WIFI_EVENT_STA_AUTHMODE_CHANGE));
+    check_callback_refusal_unchanged(&context, &item);
+
+    fill_pattern(ssid, sizeof ssid, 0x35u);
+    fill_pattern(bssid, sizeof bssid, 0x55u);
+    CHECK(make_item(&item, 775u, 0, ssid, 32u, bssid));
+    CHECK(wifi_owner_event(&context, &item) == 1);
+    CHECK(make_wifi_event_item(&item, 0,
+                              P4_HOSTED_WIFI_EVENT_STA_AUTHMODE_CHANGE));
+    check_callback_refusal_unchanged(&context, &item);
+    item.uid = 1u;
+    check_callback_refusal_unchanged(&context, &item);
+    CHECK(make_wifi_event_item(&item, 7,
+                              P4_HOSTED_WIFI_EVENT_STA_AUTHMODE_CHANGE));
+    check_callback_refusal_unchanged(&context, &item);
+    make_malformed_item(&item, 773u);
+    check_callback_refusal_unchanged(&context, &item);
+}
+
 int main(void)
 {
     test_callback_copies_775_and_accepts_776_down();
@@ -634,6 +667,7 @@ int main(void)
     test_unknown_wifi_event_only_counts();
     test_malformed_and_bad_envelopes_are_transactional();
     test_stale_generation_and_unrelated_metadata();
+    test_security_change_refuses_pending_and_accepted_link();
     if (failures != 0u) {
         fprintf(stderr, "wifi-owner-link: %u checks, %u failures\n",
                 checks, failures);

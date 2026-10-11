@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
-| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, initial-event gate, station invalidation and accepted-identity refresh builds verified; complete reference protocol inventory recorded; event validation/reinit/security/loss/channel handling, typed admission, producer/attempt barrier, reconnect/cookie lifecycle and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
+| N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy, initial-event gate, station invalidation, accepted-identity refresh and security-change retirement builds verified; complete reference protocol inventory recorded; remaining event/reinit/loss/channel handling, typed admission, producer/attempt barrier, reconnect/cookie lifecycle and installed peer qualification open; undeployed | Explicit negotiated SAE/PMF profile, password not PSK semantics, no transition-mode downgrade, native WirelessManager/driver lifecycle and installed-peer qualification; all N2T IP/data gates remain required |
 | N2T | Explicit accepted-risk WLAN association test | ABI11 SD/shared-host ABI8 deployed; GUI list observed with correlated remote6/decoded6/nonempty6 scan; strict summary label77 checks each O0/O2/native Prefs153004B and single-file64-MiB image deployed/readback verified; user reports target WPA3 with '?', unsupported SAE policy not a WPA2 label failure; initial watchdog continuity unresolved; privacy/recovery assertions0 | Qualify WPA3/PMF metadata and existing WirelessManager native association path without downgrade; then DHCP/routes/DNS/traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
@@ -1945,7 +1945,9 @@ No new GitHub tracking objects or firmware writes are authorized by this plan.
   UP revision cannot inherit acceptance. Contradictions retire the owner through
   the existing failure path; DOWN/START/STOP plus AP-only success remain UNKNOWN
   until absence or a new operation, not implicit reconnect. Security-change
-  EVENT773 ID6 still needs explicit invalidation before advertisement. Native
+  EVENT773 ID6 now refuses dispatch, retiring the owner through the existing
+  failure/cleanup path; it cannot retain old negotiated security. Fresh
+  explicit reconnect and native cookie publication remain open. Native
   resource348388B is build verified only; opener/cookie and peer-ordering gates
   and complete reconnect behavior remain required.
   The [Hosted protocol matrix](network/PROTOCOL-COVERAGE.md) now inventories
@@ -40106,3 +40108,51 @@ remain open. No partial stage is a complete A/B update system.
   invalidation/reconciliation and coupled owner/native cookie tests; complete
   typed admission and qualified peer ordering, then actual WPA3/PMF, DHCP,
   routes/DNS, bidirectional traffic, reconnect and original N2T gates.
+
+### 2026-10-11 - N2-SAE security-change owner retirement
+
+- Status: build verified, undeployed. Generic EVENT773, status0 and pinned
+  STA_AUTHMODE_CHANGE ID6 now refuses dispatch. The C6 transmits neither old
+  nor new authmode here; previous connection auth and AP BSS mode cannot
+  reauthorize the link. An explicit fresh operation is required, not implicit
+  preservation of security or transparent roaming.
+- Scope: named ID in hosted_association.h and the actual runtime event callback.
+  Refusal itself is transactional. hosted_owner.c drains outside host ownership,
+  detects refusal, retires/poisons session and FIFO, and prevents processing a
+  matching reply queued after the event. The runtime failure path clears ready,
+  associated, observed/confirmed AP, accepted profile/generation/revision/AP
+  and calls client stopped. This is not yet complete opener/cookie reconnect
+  publication. Normal startup ESPInit is still accepted pending explicit
+  initial-versus-unexpected-reinit handling; blanket rejection would break
+  legitimate startup.
+- Tests: actual extracted callback313 checks each O0/O2 ASan/UBSan exit0,
+  covering ID6 before/after UP observation plus wrong UID, remote error and
+  malformed message; unchanged state on refusal is asserted. Actual coupled
+  owner8200 checks each O0/O2 ASan/UBSan exit0, with forced event-dispatch refusal
+  in idle step and pending exchange, poisoned session/FIFO, unlocked dispatch,
+  matching-reply suffix not accepted and subsequent step refused. These are
+  complementary component tests, not a full Exec/runtime end-to-end harness.
+- Independent Luna source review found no ignored runtime dispatch/step/exchange
+  failure on this path: owner drain/retirement, runtime teardown and native
+  stopped callback invalidate queued CONNECT, committed link and selection.
+  This is source evidence, not coupled Exec concurrency or hardware proof.
+  Earlier dated metadata-only observations remain preserved and are superseded
+  by this entry, not rewritten as though ID6 always had retirement semantics.
+- Native build: invalidate every exact generated resource object, run sequential
+  gmake -j4 kernel-esp32p4wifi-probe-quick; actual process55813 exits0 with
+  runtime_probe compilation and complete module link, no warning/error lines.
+  JC-v2/setup/init/reply/owner1, ownerCPU1, diagnostic accepted-risk1;
+  C6/host privacy and C6 update recovery flags0. Resource348416B SHA256
+  `d86e08a223f0e15109aefe89dbe36713a42f02cf2f1c17f98867c9763173f6d0`;
+  frozen evidence copy independently hash-matches.
+- Evidence directory:
+  `/Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-11/sae-security-event.eiFBxe/`.
+  callback.log SHA256
+  `a7fca7ec6002995cc0bbb0e14e2e1f60d313733d7d6e162295c89d4a7a8199d4`;
+  owner.log `064cba34725ffb56c977cd1f6df4b082411bc056865037f5d79a5401c9f2c13e`;
+  resource-build.log
+  `13f5dbf4372873e2b14e27a22f007fd3050949b5fa1a6ad6f5ff8b5af0d59982`.
+- Safety: no serial opening/reset/flash/SD write or credentials; installed
+  artifacts unchanged, C6 update remains postponed. Remaining protocol matrix
+  gaps, peer-ordering qualification, typed admission, reconnect/cookies and
+  actual WPA3/PMF/IP/data/sustained-load/privacy/reset gates stay open.

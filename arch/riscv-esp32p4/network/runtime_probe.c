@@ -772,6 +772,13 @@ static int wifi_owner_event(void *opaque,
             struct p4_hosted_wifi_event event;
             if (!p4_hosted_association_wifi_event(&rpc, &event) || event.status)
                 return 0;
+            /* The peer discards old/new authmode in generic EVENT773.
+             * Neither the previous connected event nor AP BSS metadata can
+             * preserve negotiated security after this notification. Refuse
+             * dispatch so the existing owner retirement clears both pending
+             * association and accepted link; require a fresh operation. */
+            if (event.event_id == P4_HOSTED_WIFI_EVENT_STA_AUTHMODE_CHANGE)
+                return 0;
             lifecycle = event.event_id == P4_HOSTED_WIFI_EVENT_STA_START ||
                         event.event_id == P4_HOSTED_WIFI_EVENT_STA_STOP;
         }
