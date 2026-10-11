@@ -57,6 +57,15 @@
 #define ETH_ALEN        6
 #define ASSOC_TIMEOUT   20          /* half-seconds to wait for an association */
 
+#ifdef WIFI_P4_FLASH_HELPERS
+/* Do not fall back to an older SYS:/DEVS: copy after a helper update. */
+#define WIFI_DEVICE_DIR "FLASHDISK0P0:Devs/Networks"
+#define WIFI_MANAGER "FLASHDISK0P0:C/WirelessManager"
+#else
+#define WIFI_DEVICE_DIR "DEVS:Networks"
+#define WIFI_MANAGER "C:WirelessManager"
+#endif
+
 struct MsgPort *WifiWorkerPort = NULL;
 struct Task *WifiMainTask = NULL;
 
@@ -120,6 +129,17 @@ static BOOL OpenWifiDev(struct WifiDev *dev, CONST_STRPTR device, LONG unit)
         return FALSE;
     }
     dev->wd_Opened = TRUE;
+#ifdef WIFI_P4_FLASH_HELPERS
+    /* LDDemon resolves a resident basename before consulting an absolute path.
+     * Reject the legacy SD resident rather than silently testing its bytes.
+     * Advance this exact pair with every incompatible helper generation. */
+    if (dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Version != 1 ||
+        dev->wd_Req->ios2_Req.io_Device->dd_Library.lib_Revision != 1)
+    {
+        CloseWifiDev(dev);
+        return FALSE;
+    }
+#endif
     return TRUE;
 }
 
@@ -150,6 +170,13 @@ static void SplitDeviceVar(STRPTR buf, STRPTR *device, LONG *unit)
 static BOOL WifiDevice(struct WifiMsg *m)
 {
     STRPTR device = NULL;
+
+#ifdef WIFI_P4_FLASH_HELPERS
+    snprintf(m->wm_Device, sizeof(m->wm_Device),
+        "%s/esp32p4wifi.device", WIFI_DEVICE_DIR);
+    m->wm_Unit = 0;
+    return TRUE;
+#endif
 
     if (m->wm_Device[0] != '\0')
         return TRUE;                    /* already resolved once */
@@ -421,14 +448,16 @@ static BOOL StopSupplicant(void)
     struct Task *task;
     int tries;
 
-    task = FindTask("C:WirelessManager");
-    if (task == NULL)
-        return TRUE;
-
-    Signal(task, SIGBREAKF_CTRL_C);
+    task = FindTask(WIFI_MANAGER);
+    if (task != NULL)
+        Signal(task, SIGBREAKF_CTRL_C);
+    task = FindTask("C:WirelessManager"); /* retire a legacy launch too */
+    if (task != NULL)
+        Signal(task, SIGBREAKF_CTRL_C);
     for (tries = 0; tries < 10; tries++)
     {
-        if (FindTask("C:WirelessManager") == NULL)
+        if (FindTask(WIFI_MANAGER) == NULL &&
+            FindTask("C:WirelessManager") == NULL)
             return TRUE;
         Delay(25);
     }
@@ -449,12 +478,12 @@ static BOOL StartSupplicant(CONST_STRPTR device, LONG unit)
     int tries;
 
     snprintf(command, sizeof(command),
-        "C:WirelessManager \"%s\" UNIT %ld NOGUI\n", device, (long)unit);
+        WIFI_MANAGER " \"%s\" UNIT %ld NOGUI\n", device, (long)unit);
     SystemTagList(command, tags);
 
     for (tries = 0; tries < 20; tries++)
     {
-        if (FindTask("C:WirelessManager") != NULL)
+        if (FindTask(WIFI_MANAGER) != NULL)
             return TRUE;
         Delay(25);
     }
@@ -1384,7 +1413,7 @@ static void DoDevices(struct WifiMsg *m)
 
     m->wm_DeviceCount = 0;
 
-    lock = Lock("DEVS:Networks", SHARED_LOCK);
+    lock = Lock(WIFI_DEVICE_DIR, SHARED_LOCK);
     if (lock == BNULL)
     {
         strcpy(m->wm_Status, (const char *)_(MSG_ST_NO_DEVS_NETWORKS));
@@ -1405,7 +1434,7 @@ static void DoDevices(struct WifiMsg *m)
             if (ext == NULL || Stricmp(ext, ".device") != 0)
                 continue;
 
-            snprintf(name, sizeof(name), "DEVS:Networks/%s", fib->fib_FileName);
+            snprintf(name, sizeof(name), "%s/%s", WIFI_DEVICE_DIR, fib->fib_FileName);
 
             /* One driver can hold more than one radio, so walk its units until
              * one refuses to open. Capped, because a driver that ignores the

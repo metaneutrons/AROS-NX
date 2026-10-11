@@ -2,6 +2,9 @@
 #include <aros/asmcall.h>
 #include <aros/io.h>
 #include <aros/macros.h>
+#ifdef P4_WIFI_SCAN_DIAGNOSTICS
+#include <aros/debug.h>
+#endif
 #include <exec/errors.h>
 #include <exec/memory.h>
 #include <exec/resident.h>
@@ -1210,6 +1213,12 @@ static BOOL p4wlan_scan_one(struct p4wlan_unit *unit, struct P4WifiBase *radio)
                 p4wlan_copy_bytes(record->ssid, ap->ssid, ap->ssid_size);
                 p4wlan_copy_bytes(record->bssid, ap->bssid, 6);
                 p4wlan_scan_security(ap, &record->security);
+#ifdef P4_WIFI_SCAN_DIAGNOSTICS
+                /* Numeric scan metadata only: never SSID, BSSID or credentials. */
+                bug("[WiFiAP] i=%lu a=%ld p=%ld g=%ld f=%lu\n",
+                    (ULONG)i, (LONG)ap->authmode, (LONG)ap->pairwise_cipher,
+                    (LONG)ap->group_cipher, record->security.Flags);
+#endif
                 record->tags[0].ti_Tag = S2INFO_SSID;
                 record->tags[0].ti_Data = (IPTR)record->ssid;
                 record->tags[1].ti_Tag = S2INFO_BSSID;

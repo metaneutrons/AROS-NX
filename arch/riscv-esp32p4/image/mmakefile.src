@@ -278,6 +278,7 @@ endif
 DEVSTAGE  := $(GENDIR)/$(CURDIR)/devstage
 P4_S5_LIST ?= $(SRCDIR)/$(CURDIR)/s5-tests
 DEVVOLUME := $(IMAGEDIR)/aros-devvolume.img
+P4_FLASH_HELPERS ?= 0
 
 #MM kernel-devvolume-esp32p4-riscv : workbench-prefs-touchscreen
 kernel-devvolume-esp32p4-riscv :
@@ -318,6 +319,10 @@ endif
 	    fi ; \
 	fi
 	@$(ECHO) "Creating   $(DEVVOLUME)"
+ifeq ($(P4_FLASH_HELPERS),1)
+	@$(PYTHON) $(SRCDIR)/$(CURDIR)/make-flash-helpers.py \
+	    --aros-root $(AROSDIR) --stage $(DEVSTAGE)
+endif
 	@$(PYTHON) $(MKFAT32) --content $(DEVSTAGE) --out $(DEVVOLUME) \
 	    --size-bytes $(FLASHDISK_SIZE_BYTES) \
 	    --part-start $(FLASHDISK_PART_START) --fat-bits 16 \

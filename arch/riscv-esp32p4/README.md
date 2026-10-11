@@ -1,5 +1,19 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Flash helpers (2026-10-11): the small development volume now has an opt-in
+`P4_FLASH_HELPERS=1` overlay for root WiFi/ESP32Board icons, WirelessManager
+and esp32p4wifi.device. Launch `FLASHDISK0P0:WiFi`, not the legacy
+`SYS:Prefs/WiFi`; the flash application selects absolute flash device/manager
+paths, without global DEVS:/LIBS: reassignment. Driver revision1.1 is required:
+an already resident legacy1.0 driver is rejected, not silently substituted.
+Reboot before first use; advance the generation check with driver updates.
+TCP/IP stack/shared libraries remain on SYS:, RAM-only configuration stays.
+No automatic manager/association startup. Numeric-only opt-in scan diagnostics
+report auth/pairwise/group values, never SSIDs, BSSIDs or credentials.
+Host staging/fresh RV32 builds, exact flash readback and a45s headless boot
+are verified; evidence is recorded in ROADMAP. GUI helper launch and WPA3
+acceptance remain separate gates.
+
 WiFi chooser correction (2026-10-11): Fabian observes four scanned networks,
 but WPA3 labels remain '?' and the device selector remains empty. The SD
 pre-update manifest identifies the older153004B Prefs/WiFi, without the current

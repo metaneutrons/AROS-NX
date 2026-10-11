@@ -148,6 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| N2H | Flash-delivered helper entry points | `deployment/readback verified`: WiFi165496B, driver1.1/74836B with numeric scan diagnostics, WirelessManager and ESP32Board staged; 4MiB image33-entry manifest independently mounted/verified and exact readback; existing qualification tools preserved | Headless boot and fresh visual launch from FLASHDISK0P0:WiFi/scan tuples; no generic SYS/DEVS reassignment or full WiFi pass |
 | N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `warm-start/scan observed`: matched ABI12 SD/BSP and corrected Prefs166332B installed; latest45s capture reaches owner ready CPU1/expected C6 MAC and successful Scan; Fabian still sees '?' for both named WPA3 networks; chooser observation pending | Diagnose actual scan security tuples/projection and repeat continuity; reset alone is not an association-attempt fence or full WiFi pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
@@ -1627,6 +1628,22 @@ module updating remain open. Conditional C6 write authority still requires
 secured recovery; no new hardware interaction is authorized by this status.
 
 ### N2 - native AROS WLAN device
+
+Helper delivery N2H (2026-10-11): `image/make-flash-helpers.py` validates
+RV32 ELF inputs, volatile WiFi and compiled flash path policy before overlaying
+a copied development stage. Seven negative/preservation tests pass. Existing
+Touchscreen/S5/qualification content must be retained from the actual backup;
+the normal `P4_FLASH_HELPERS=1` build option still requires callers to select
+their existing board firmware/qualification staging options. Do not deploy a
+fresh minimal stage over an existing richer volume without a delta audit.
+WiFi and ESP32Board have root drive icons and explicit CLI flash entry points.
+Only WiFi's worker uses the deterministic device/manager policy; legacy SD
+Prefs/WiFi and Network Prefs remain legacy entry points, not flash test tools.
+LDDemon basename residency precedes LoadSeg: exact driver revision1.1 rejects
+legacy1.0, requiring a fresh boot rather than replacing a live resident.
+Private ABI12/host ABI8 and fullmac peer admission0 remain unchanged.
+P4_WIFI_SCAN_DIAGNOSTICS=1 prints numeric raw metadata per AP for diagnosing
+unknown labels; it does not relax projection, enable connection or prove PMF.
 
 C6 credential gate: source audit finds DEBUG plaintext password and VERBOSE
 RPC logging paths in the pinned slave. Installed binary remains unidentified;
@@ -41615,3 +41632,68 @@ remain open. No partial stage is a complete A/B update system.
   54b457b150e8f992ad3ffd5a6a710fffa2b27fc764868a3809b9c8b8382383a1;
   scan-attempt.jsonl f18c8fb094abb4b19112cd8311668044bab8f901a6cd18cce0ea1cdb9a5ee034;
   scan-timing.jsonl1ee193bbe3535881316afb0916724ac8939cd2b4ee6f63f65423007a91b9b77a.
+
+### 2026-10-11 — Flash helper deployment and numeric WPA3 diagnosis prepared
+
+- Fabian authorizes helper relocation to P4 flash, then WPA3 diagnosis.
+  Existing stage is recovered from two independent exact4194304B reads at
+  0xc00000; both exit0/cmp0, SHA256
+  6a7011fd37f4b6ecc0facbadf2d109a9025a149861ee47cc0621530618602592.
+  Device reidentified P4v1.3/MAC80:f1:b2:d3:3b:a6/16MiB. Read actual table
+  0x8000/4096B confirms legacy ota_0=0x20000/8MiB and
+  arosbsp=0x820000/8064KiB; this is not an A/B migration.
+- Fresh Prefs/device object invalidation and sequential native quick builds
+  exit0, no error:/warning:. P4_BOARD=jc1060p470c-v2, SDIO/INIT/REPLY/OWNER=1,
+  ownerCPU1, association-risk1, fullmac-peer-contract0, scan-diagnostics1.
+  Private ABI12/shared-host ABI8 unchanged; C6/privacy/recovery gates remain0.
+  Compiled generated device VERSION=1/REVISION=1. Numeric WiFiAP record contains
+  index/auth/pair/group/flags only; never SSID/BSSID/credentials.
+- Root WiFi165496B SHA256
+  fb72a8bc56600cbcdeecb74d19e1450ab8c50399dc36b583b546887977b21a0d;
+  C/WirelessManager699060B b27f7393d52b6cb3b606ed1654a323d4b18d0884296aacb9a35f1ce3efd74582;
+  ESP32Board134864B 4f3676e822c2ad578c7bcb68cb378686be02ebe21bc7b9e4c645ab70d0a7b2dc;
+  Devs/Networks/esp32p4wifi.device74836B
+  69d300d033a23b2508e9d81ce4f530b24687e6d7b2296cba669550c013d07ded.
+  Existing20 files (Touchscreen, both qualification tools/icons, S5 suite)
+  preserved; no boot marker, saved configuration or autostart added.
+- Host flash staging tests7 pass, WLAN-stage tests18 pass, chooser18 and
+  security93 each O0/O2 ASan/UBSan pass, SANA scan338 each O0/O2 pass.
+  Luna independently identifies basename-residency precedence and reviews
+  corrected dual-manager stop/path policy. Revision1.1 rejects old resident
+  1.0 but noexpunge requires reboot; root flash WiFi must be opened first.
+  Future helper generations must advance the exact revision admission pair.
+  SYS:Prefs/WiFi/Network remain legacy apps; no global SYS/DEVS/LIBS redirect.
+- helpers.img4194304B, SHA256
+  565782b3bb2aed00212e097457bcaed8fef512845a382b139ac975d01ae5ba4d.
+  Independent macOS read-only FAT16 mount matches all33 manifest entries.
+  Exact write0xc00000 exits0/automatic digest verified; independent complete
+ 4194304B readback exits0/cmp0/same SHA256. Bootloader, table, core, BSP,
+  SD, C6 firmware and credentials unchanged. Recoverable original retained.
+  Evidence: wifi-2026-10-11/flash-helpers.iFanez including both originals,
+  partition-table.bin, stage, helpers.img/manifest/layout, native build logs,
+  write.log and readback.bin/log. Script now also rejects stale1.0 ELF marker
+  and documents reboot ordering; installed HELPERS.txt predates that wording
+  only, executable payload matches. No visual or association acceptance yet.
+- Next: bounded headless boot, then fresh user readiness for root flash WiFi
+  launch and Scan. Actual raw auth/cipher values must explain '?' before
+  changing projection. No connection/PMF/IP/data claim, automatic repeat,
+  SD write or C6 update is authorized by this deployment.
+
+### 2026-10-11 — Flash helper post-write headless boot
+
+- One explicit reset-and-log --once process13766 completes exit0 after
+  45.00447466596961s; journal end complete/status=ok/error=null,
+  cleanup_errors=[] and20026 received bytes. Two CHIP_USB_UART_RESET banners
+  retain port-open/explicit-pulse ambiguity, not rail-off evidence.
+  PSRAM32MiB200MHz/timeouts0, watchdog6000ms, hart1 online/cpus2, graphics and
+  touch activity, ownerreadyCPU1/expected C6 MAC are present. No captured
+  Guru/Alert/trap/panic signature; truncated console limits negative evidence.
+  No flash-app LoadSeg or scan result observed: this is boot continuity only,
+  not GUI/helper/security qualification. No further reset/test started.
+- flash-helpers.iFanez/boot.log SHA256
+  2639bc65c7f8267fe215d8fd8e29ea37f57fbea1f819fdf4fc2ddbd8e2b29601;
+  boot-attempt.jsonl
+  410f3a72815285c92699d75f5b61eac810c68d884e41cecc9d3d400b630171c5.
+  Reader closed. Next: ask fresh readiness; open AROSP4DEV root WiFi first
+  (or FLASHDISK0P0:WiFi), never legacy SYS:Prefs/WiFi, then capture one Scan's
+  numeric auth/cipher metadata with a passive reader. No automatic connect.
