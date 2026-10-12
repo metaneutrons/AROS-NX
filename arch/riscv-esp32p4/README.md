@@ -79,6 +79,10 @@ This is source-binding preparation only, not new SDK or hardware qualification.
 GNU recipes and complete SDK source inputs are being integrated on current
 AROS-NX main. Source regressions do not qualify a published compiler or SDK
 and do not change the hardware status below.
+The Linux GNU compiler A/B diagnostic found physical prefix-map paths in GCC's
+PCH checksum-option record. A source-owned release-only metadata correction has
+passed bounded recipe regressions; complete fresh A/B and SDK release qualification remain
+open. Compiler binaries and their PCH checksums are not normalized after linking.
 The separate [native SDK declaration](native-sdk/README.md) selects the full
 Developer header/link-library graph. It requires a new tools runtime with
 native-consumer support; published v0.3.19 cannot activate this preset.
