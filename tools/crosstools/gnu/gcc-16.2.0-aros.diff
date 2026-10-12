@@ -2534,7 +2534,7 @@ diff -ruN gcc-16.2.0/libstdc++-v3/configure gcc-16.2.0.aros/libstdc++-v3/configu
    ;
    return 0;
  }
-@@ -28986,6 +28990,144 @@
+@@ -28986,6 +28990,142 @@
  
  # Base decisions on target environment.
  case "${host}" in
@@ -2555,8 +2555,6 @@ diff -ruN gcc-16.2.0/libstdc++-v3/configure gcc-16.2.0.aros/libstdc++-v3/configu
 +done
 +
 +
-+    GLIBCXX_CHECK_COMPLEX_MATH_SUPPORT
-+    GLIBCXX_CHECK_WCHAR_T_SUPPORT
 +
 +    $as_echo "#define HAVE_ACOSF 1" >>confdefs.h
 +
@@ -2717,7 +2715,7 @@ diff -ruN gcc-16.2.0/libstdc++-v3/configure.host gcc-16.2.0.aros/libstdc++-v3/co
 diff -ruN gcc-16.2.0/libstdc++-v3/crossconfig.m4 gcc-16.2.0.aros/libstdc++-v3/crossconfig.m4
 --- gcc-16.2.0/libstdc++-v3/crossconfig.m4	2026-08-07 07:46:10.784761713 +0000
 +++ gcc-16.2.0.aros/libstdc++-v3/crossconfig.m4	2020-12-27 16:58:14.310000000 +0000
-@@ -5,6 +5,73 @@
+@@ -5,6 +5,71 @@
  AC_DEFUN([GLIBCXX_CROSSCONFIG],[
  # Base decisions on target environment.
  case "${host}" in
@@ -2725,8 +2723,6 @@ diff -ruN gcc-16.2.0/libstdc++-v3/crossconfig.m4 gcc-16.2.0.aros/libstdc++-v3/cr
 +    AC_CHECK_HEADERS([nan.h ieeefp.h endian.h sys/isa_defs.h machine/endian.h \
 +    machine/param.h sys/machine.h sys/types.h fp.h locale.h float.h inttypes.h])
 +
-+    GLIBCXX_CHECK_COMPLEX_MATH_SUPPORT
-+    GLIBCXX_CHECK_WCHAR_T_SUPPORT
 +
 +    AC_DEFINE(HAVE_ACOSF)
 +    AC_DEFINE(HAVE_ACOSL)
@@ -2845,3 +2841,239 @@ diff -ruN gcc-16.2.0/libstdc++-v3/src/filesystem/ops-common.h gcc-16.2.0.aros/li
    }
  #endif
  
+diff -ruN gcc-16.2.0/gcc/aros-config-record.awk gcc-16.2.0.aros/gcc/aros-config-record.awk
+--- gcc-16.2.0/gcc/aros-config-record.awk
++++ gcc-16.2.0.aros/gcc/aros-config-record.awk
+@@ -0,0 +1,52 @@
++# Replace recorded GCC configure roots literally.
++function valid_root(value) {
++  return (value != "" && value != "/" && substr(value, 1, 1) == "/" && index(value, "\n") == 0)
++}
++
++function remap(input,    output, pos, build_match, source_match, root,
++               replacement) {
++  output = ""
++  pos = 1
++  while (pos <= length(input)) {
++    build_match = (substr(input, pos, length(build_root)) == build_root)
++    source_match = (substr(input, pos, length(source_root)) == source_root)
++    if (build_match || source_match) {
++      if (build_match && source_match) {
++        if (length(build_root) >= length(source_root)) {
++          root = build_root
++          replacement = "/aros-build"
++        } else {
++          root = source_root
++          replacement = "/aros-source"
++        }
++      } else if (build_match) {
++        root = build_root
++        replacement = "/aros-build"
++      } else {
++        root = source_root
++        replacement = "/aros-source"
++      }
++      output = output replacement
++      pos += length(root)
++    } else {
++      output = output substr(input, pos, 1)
++      pos++
++    }
++  }
++  return output
++}
++
++BEGIN {
++  build_root = ENVIRON["AROS_GCC_RELEASE_BUILD_ROOT"]
++  source_root = ENVIRON["AROS_GCC_RELEASE_SOURCE_ROOT"]
++  if (!valid_root(build_root) || !valid_root(source_root)) {
++    print "AROS_GCC_RELEASE_BUILD_ROOT and AROS_GCC_RELEASE_SOURCE_ROOT must be absolute non-root paths without newlines" > "/dev/stderr"
++    exit 2
++  }
++}
++
++{
++  if (NR > 1)
++    printf "\n"
++  printf "%s", remap($0)
++}
+diff -ruN gcc-16.2.0/gcc/configure.ac gcc-16.2.0.aros/gcc/configure.ac
+--- gcc-16.2.0/gcc/configure.ac
++++ gcc-16.2.0.aros/gcc/configure.ac
+@@ -2240,15 +2240,20 @@
+ 
+ changequote(,)dnl
+ # Compile in configure arguments.
++gcc_record_arguments=$TOPLEVEL_CONFIGURE_ARGUMENTS
++if test "x$AROS_GCC_RELEASE_LAYOUT" = xyes; then
++	gcc_record_arguments=`printf '%sX' "$gcc_record_arguments" | $AWK -f "$srcdir/aros-config-record.awk"` || AC_MSG_ERROR([cannot normalize AROS release configuration arguments])
++	gcc_record_arguments=${gcc_record_arguments%X}
++fi
+ if test -f configargs.h ; then
+ 	# Being re-configured.
+ 	gcc_config_arguments=`grep configuration_arguments configargs.h | sed -e 's/.*"\([^"]*\)".*/\1/'`
+ 	gcc_reconf_arguments=`echo "$gcc_config_arguments" | sed -e 's/^.*\( : (reconfigured) .*$\)/\1/'`
+-	if [ "$gcc_reconf_arguments" != " : (reconfigured) $TOPLEVEL_CONFIGURE_ARGUMENTS" ]; then
+-		gcc_config_arguments="$gcc_config_arguments : (reconfigured) $TOPLEVEL_CONFIGURE_ARGUMENTS"
++	if [ "$gcc_reconf_arguments" != " : (reconfigured) $gcc_record_arguments" ]; then
++		gcc_config_arguments="$gcc_config_arguments : (reconfigured) $gcc_record_arguments"
+ 	fi
+ else
+-	gcc_config_arguments="$TOPLEVEL_CONFIGURE_ARGUMENTS"
++	gcc_config_arguments="$gcc_record_arguments"
+ fi
+ 
+ # Double all backslashes and backslash all quotes to turn
+@@ -2596,6 +2601,12 @@
+ else
+   target_header_dir=${native_system_header_dir}
+ fi
++
++INSTALL_SYSTEM_HEADER_DIR='$(SYSTEM_HEADER_DIR)'
++if test "x$AROS_GCC_RELEASE_LAYOUT" = xyes; then
++  INSTALL_SYSTEM_HEADER_DIR='$${sysroot_headers_suffix}$(NATIVE_SYSTEM_HEADER_DIR)'
++fi
++AC_SUBST(INSTALL_SYSTEM_HEADER_DIR)
+ 
+ # If this is a cross-compiler that does not
+ # have its own set of headers then define
+diff -ruN gcc-16.2.0/gcc/configure gcc-16.2.0.aros/gcc/configure
+--- gcc-16.2.0/gcc/configure
++++ gcc-16.2.0.aros/gcc/configure
+@@ -781,1 +781,2 @@
+-BUILD_SYSTEM_HEADER_DIR
++BUILD_SYSTEM_HEADER_DIR
++INSTALL_SYSTEM_HEADER_DIR
+@@ -13356,12 +13357,17 @@
+-# Compile in configure arguments.
+-if test -f configargs.h ; then
+-	# Being re-configured.
+-	gcc_config_arguments=`grep configuration_arguments configargs.h | sed -e 's/.*"\([^"]*\)".*/\1/'`
+-	gcc_reconf_arguments=`echo "$gcc_config_arguments" | sed -e 's/^.*\( : (reconfigured) .*$\)/\1/'`
+-	if [ "$gcc_reconf_arguments" != " : (reconfigured) $TOPLEVEL_CONFIGURE_ARGUMENTS" ]; then
+-		gcc_config_arguments="$gcc_config_arguments : (reconfigured) $TOPLEVEL_CONFIGURE_ARGUMENTS"
+-	fi
+-else
+-	gcc_config_arguments="$TOPLEVEL_CONFIGURE_ARGUMENTS"
+-fi
+-
++# Compile in configure arguments.
++gcc_record_arguments=$TOPLEVEL_CONFIGURE_ARGUMENTS
++if test "x$AROS_GCC_RELEASE_LAYOUT" = xyes; then
++	gcc_record_arguments=`printf '%sX' "$gcc_record_arguments" | $AWK -f "$srcdir/aros-config-record.awk"` || as_fn_error $? "cannot normalize AROS release configuration arguments" "$LINENO" 5
++	gcc_record_arguments=${gcc_record_arguments%X}
++fi
++if test -f configargs.h ; then
++	# Being re-configured.
++	gcc_config_arguments=`grep configuration_arguments configargs.h | sed -e 's/.*"\([^"]*\)".*/\1/'`
++	gcc_reconf_arguments=`echo "$gcc_config_arguments" | sed -e 's/^.*\( : (reconfigured) .*$\)/\1/'`
++	if [ "$gcc_reconf_arguments" != " : (reconfigured) $gcc_record_arguments" ]; then
++		gcc_config_arguments="$gcc_config_arguments : (reconfigured) $gcc_record_arguments"
++	fi
++else
++	gcc_config_arguments="$gcc_record_arguments"
++fi
++
+@@ -15310,3 +15316,8 @@
+-  target_header_dir=${native_system_header_dir}
+-fi
+-
++  target_header_dir=${native_system_header_dir}
++fi
++
++INSTALL_SYSTEM_HEADER_DIR='$(SYSTEM_HEADER_DIR)'
++if test "x$AROS_GCC_RELEASE_LAYOUT" = xyes; then
++  INSTALL_SYSTEM_HEADER_DIR='$${sysroot_headers_suffix}$(NATIVE_SYSTEM_HEADER_DIR)'
++fi
++
+diff -ruN gcc-16.2.0/gcc/Makefile.in gcc-16.2.0.aros/gcc/Makefile.in
+--- gcc-16.2.0/gcc/Makefile.in
++++ gcc-16.2.0.aros/gcc/Makefile.in
+@@ -580,1 +580,2 @@
+-SYSTEM_HEADER_DIR = `echo @SYSTEM_HEADER_DIR@ | sed -e :a -e 's,[^/]*/\.\.\/,,' -e ta`
++SYSTEM_HEADER_DIR = `echo @SYSTEM_HEADER_DIR@ | sed -e :a -e 's,[^/]*/\.\.\/,,' -e ta`
++INSTALL_SYSTEM_HEADER_DIR = @INSTALL_SYSTEM_HEADER_DIR@
+@@ -4543,1 +4544,1 @@
+-		echo 'SYSTEM_HEADER_DIR="'"$(SYSTEM_HEADER_DIR)"'"' \
++		echo 'SYSTEM_HEADER_DIR="'"$(INSTALL_SYSTEM_HEADER_DIR)"'"' \
+diff -ruN gcc-16.2.0/fixincludes/configure.ac gcc-16.2.0.aros/fixincludes/configure.ac
+--- gcc-16.2.0/fixincludes/configure.ac
++++ gcc-16.2.0.aros/fixincludes/configure.ac
+@@ -128,1 +128,8 @@
+-AC_CONFIG_HEADERS(config.h, [echo timestamp > stamp-h])
++aros_release_layout=no
++if test "x$AROS_GCC_RELEASE_LAYOUT" = xyes; then
++  aros_release_layout=yes
++  AC_DEFINE([AROS_GCC_RELEASE_LAYOUT], [1], [Use SDK-neutral fixed-header provenance.])
++fi
++AC_SUBST(aros_release_layout)
++
++AC_CONFIG_HEADERS(config.h, [echo timestamp > stamp-h])
+diff -ruN gcc-16.2.0/fixincludes/configure gcc-16.2.0.aros/fixincludes/configure
+--- gcc-16.2.0/fixincludes/configure
++++ gcc-16.2.0.aros/fixincludes/configure
+@@ -622,1 +622,2 @@
+-ac_subst_vars='LTLIBOBJS
++ac_subst_vars='aros_release_layout
++LTLIBOBJS
+@@ -5497,1 +5498,7 @@
+-ac_config_headers="$ac_config_headers config.h"
++aros_release_layout=no
++if test "x$AROS_GCC_RELEASE_LAYOUT" = xyes; then
++  aros_release_layout=yes
++  printf "%s\n" "#define AROS_GCC_RELEASE_LAYOUT 1" >>confdefs.h
++fi
++
++ac_config_headers="$ac_config_headers config.h"
+diff -ruN gcc-16.2.0/fixincludes/config.h.in gcc-16.2.0.aros/fixincludes/config.h.in
+--- gcc-16.2.0/fixincludes/config.h.in
++++ gcc-16.2.0.aros/fixincludes/config.h.in
+@@ -253,0 +254,3 @@
++
++/* Use SDK-neutral fixed-header provenance. */
++#undef AROS_GCC_RELEASE_LAYOUT
+diff -ruN gcc-16.2.0/fixincludes/fixincl.c gcc-16.2.0.aros/fixincludes/fixincl.c
+--- gcc-16.2.0/fixincludes/fixincl.c
++++ gcc-16.2.0.aros/fixincludes/fixincl.c
+@@ -526,1 +526,5 @@
+-           : pz_input_dir,
++#ifdef AROS_GCC_RELEASE_LAYOUT
++           : "/aros-sdk/include",
++#else
++           : pz_input_dir,
++#endif
+diff -ruN gcc-16.2.0/fixincludes/mkheaders.in gcc-16.2.0.aros/fixincludes/mkheaders.in
+--- gcc-16.2.0/fixincludes/mkheaders.in
++++ gcc-16.2.0.aros/fixincludes/mkheaders.in
+@@ -71,1 +71,24 @@
+-libexecdir=@libexecdir@
++libexecdir=@libexecdir@
++if test "@aros_release_layout@" = yes; then
++  case "$prefix" in
++    /) echo 'mkheaders: compiler prefix must not be the filesystem root' >&2; exit 1 ;;
++    /*) ;;
++    *) echo 'mkheaders: an absolute compiler prefix is required' >&2; exit 1 ;;
++  esac
++  case "$isysroot" in
++    /) echo 'mkheaders: SDK root must not be the filesystem root' >&2; exit 1 ;;
++    /*) ;;
++    *) echo 'mkheaders: an explicit absolute SDK root is required' >&2; exit 1 ;;
++  esac
++  prefix=`CDPATH='' cd -P "$prefix" && pwd -P` || exit 1
++  case "$prefix" in *[!/]*) ;; *) echo 'mkheaders: compiler prefix resolves to the filesystem root' >&2; exit 1 ;; esac
++  if test ! -d "$isysroot/include"; then
++    echo 'mkheaders: SDK include directory is missing' >&2
++    exit 1
++  fi
++  isysroot=`CDPATH='' cd -P "$isysroot" && pwd -P` || exit 1
++  case "$isysroot" in *[!/]*) ;; *) echo 'mkheaders: SDK root resolves to the filesystem root' >&2; exit 1 ;; esac
++  exec_prefix=$prefix
++  libdir=$prefix/lib
++  libexecdir=$prefix/libexec
++fi
+@@ -82,1 +105,1 @@
+-cd ${itoolsdir}
++cd "${itoolsdir}" || exit 1
+@@ -83,1 +106,1 @@
+-rm -rf ${incdir}/*
++rm -rf "${incdir}"/*

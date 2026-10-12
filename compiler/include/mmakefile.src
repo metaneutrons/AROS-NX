@@ -102,8 +102,11 @@ INCL_DIRS     := $(foreach dir,$(INCSUBDIRS) $(INCEMPTYDIRS),$(AROS_INCLUDES)/$(
 # need unverified source archives.  Spell out its core-only ingredients
 # instead, then add the architecture-generated headers required by linklibs.
 # The normal form deliberately retains the complete upstream SDK closure.
+# GCC's target runtime configure also preprocesses standard C headers. Select
+# their existing source-owned copy targets, not the C library build or Ports.
 #MM- sdk-includes-0 : includes includes-copy
-#MM- sdk-includes-1 : compiler-includes \
+#MM- sdk-includes-1 : compiler-includes compiler-stdc-includes-extra \
+#MM     linklibs-posixc-includes-files \
 #MM     includes-copy-$(ARCH)-$(CPU) includes-copy-$(FAMILY)-$(CPU) includes-copy-$(CPU) \
 #MM     includes-$(ARCH)-$(CPU) includes-$(FAMILY)-$(CPU) \
 #MM     compiler-boost-sdk-subset kernel-acpica-sdk-subset

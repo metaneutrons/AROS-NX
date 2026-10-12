@@ -28,7 +28,8 @@ MBEDTLS_OBJDIR := $(GENDIR)/$(CURDIR)
 
 %fetch mmake=mbedtls-fetch archive=$(MBEDTLS_ARCHBASE) \
     destination=$(PORTSDIR)/mbedtls suffixes=$(MBEDTLS_SUFFIXES) \
-    location=$(PORTSSOURCEDIR) archive_origins=$(MBEDTLS_REPOSITORIES)
+    location=$(PORTSSOURCEDIR) archive_origins=$(MBEDTLS_REPOSITORIES) \
+    checksums="$(MBEDTLS_ARCHBASE).tar.bz2=sha256:a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6"
 
 USER_INCLUDES := -I$(MBEDTLS_INCDIR) -I$(SRCDIR)/$(CURDIR)
 USER_CPPFLAGS := -DMBEDTLS_CONFIG_FILE='"mbedtls_aros_config.h"'

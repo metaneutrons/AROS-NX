@@ -17,6 +17,7 @@ ARCHSRCDIR := $(PORTSDIR)/boost/$(ARCHBASE)
 
 %fetch mmake=compiler-boost-fetch archive=$(ARCHBASE) destination=$(PORTSDIR)/boost \
     location=$(PORTSSOURCEDIR) archive_origins=$(REPOSITORIES) suffixes=$(ARCHSUFFIX) \
+    checksums="$(ARCHBASE).tar.gz=sha256:9de758db755e8330a01d995b0a24d09798048400ac25c03fc5ea9be364b13c93" \
     patches_specs=$(PATCHSPEC)
 
 %create_patch mmake=compiler-boost-create-patch \

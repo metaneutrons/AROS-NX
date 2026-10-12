@@ -71,6 +71,50 @@ of the hang fix remains open.
 
 ## Status
 
+The separate RV32 compiler/SDK release track is TC0 in
+[ROADMAP.md](ROADMAP.md#track-tc-rv32-compiler-and-sdk-publication).
+The 2026-10-12 input-seal correction keeps the RV32 contract bound to the
+shared target-profile document after adding the LLVM SDK declarations.
+This is source-binding preparation only, not new SDK or hardware qualification.
+GNU recipes and complete SDK source inputs are being integrated on current
+AROS-NX main. Source regressions do not qualify a published compiler or SDK
+and do not change the hardware status below.
+The separate [native SDK declaration](native-sdk/README.md) selects the full
+Developer header/link-library graph. It requires a new tools runtime with
+native-consumer support; published v0.3.19 cannot activate this preset.
+Its selected native graph is audit-verified locally (2,250 reachable endpoints,
+no missing producer). Complete fresh SDK construction and final C/C++ links
+remain separate acceptance gates; this does not change board verification.
+The incremental GNU SDK build completed after the OpenURL, quote-only include
+and POSIXC declaration corrections. Ordinary C application linking passes;
+C++ exposed a missing canonical SDK `libm` output. Correcting that generic
+output policy then exposed two source owners of `libpopupmenu.a`.
+Popupmenu now declares its existing varargs wrappers and version-10 initializer
+as inputs of the generated client archive, without a second archive producer.
+The native replay passed all 7,025 Ninja actions. Normal C and C++ driver links
+passed with startup and standard libraries enabled, then produced byte-identical
+programs after relocating the complete Developer tree. Empty-SDK, wrong-ABI
+and stale-SDK-path counterprobes were rejected. These are local macOS ARM64
+compiler/SDK results, not board execution or a completed release. Durable
+source-owned application gates and three-host release qualification remain open.
+The source-owned v2 contract now seals ordinary C and C++ application fixtures;
+the opt-in loader test checks both declarations and rejects a changed probe
+input or missing v2 probe metadata. This validates the declaration only: the
+durable tools gate still has to execute the links and retain relocation,
+read-back and release-admission evidence. See TC0.
+The fresh integrated replay on 2026-10-11 exposed a separate declaration gap:
+its two selected roots omitted `core-linklibs`, leaving the normal driver's
+standard libraries absent. The contract now explicitly selects that root too.
+The corrected three-root contract passed a fresh local macOS ARM64 native
+SDK build and four normal C/C++ original/relocated links. Their retained
+receipts are local execution evidence, not release admission.
+`genmodule` now honors an explicit `SOURCE_DATE_EPOCH` for the banner year
+and default module date in UTC. Eight actual-generator regressions passed;
+explicit module dates and the historical unset behavior remain unchanged.
+The sealed tools environment still needs to pass this selected epoch before
+fresh SDK reproducibility and packaging can be qualified. See TC0 for the
+exact source identities, receipts and remaining publication gates.
+
 Nothing in the table below is claimed to work until it has been observed
 working on hardware. `stub` means the file exists and compiles; `works`
 means the behaviour was verified on a board and how it was verified is
