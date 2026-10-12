@@ -20,10 +20,15 @@ asset = "clang+llvm-{version}-aarch64-linux-gnu.tar.xz"
 
 [[targets]]
 name = "pc-x86_64"
+sdk_consumer_contract = "compiler/sdk/pc-x86_64/consumer-v1.json"
 arch = "x86_64"
 platform = "pc"
 bsp = "generic"
 features = ["smp", "acpi", "hdaudio", "ahci"]
+
+[targets.bootstrap_abi]
+flavour = "standalone"
+platform_smp = true
 
 [targets.transpiler]
 family = ""
@@ -35,10 +40,15 @@ mesa_version = "26.0.0"
 
 [[targets]]
 name = "rpi-aarch64"
+sdk_consumer_contract = "compiler/sdk/rpi-aarch64/consumer-v1.json"
 arch = "aarch64"
 platform = "raspi"
 bsp = "bcm2711-bcm2712"
 features = ["smp", "genet", "rp1", "i2s", "hdmi-audio"]
+
+[targets.bootstrap_abi]
+flavour = "standalone"
+platform_smp = true
 
 [targets.transpiler]
 family = ""
@@ -50,11 +60,16 @@ mesa_version = "26.0.0"
 
 [[targets]]
 name = "arm-raspi"
+sdk_consumer_contract = "compiler/sdk/arm-raspi/consumer-v1.json"
 arch = "arm"
 platform = "raspi"
 bsp = "bcm2835"
 features = ["pwm-audio", "sdhost"]
 float_abi = "hard"
+
+[targets.bootstrap_abi]
+flavour = "standalone"
+platform_smp = true
 
 [targets.transpiler]
 family = ""
