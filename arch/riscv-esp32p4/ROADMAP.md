@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | The corrected three-root SDK contract passed fresh local macOS ARM64 SDK construction and four normal C/C++ original/relocated links with retained receipts. Generator epoch regressions passed; sealed runtime epoch propagation and fresh SDK reproducibility/packaging remain open. A new qualified tools runtime, authenticated release admission, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Local complete SDK construction and four normal C/C++ original/relocated links passed. Linux compiler A/B exposed differing GCC PCH checksums from physical prefix-map records; the source-owned metadata correction requires fresh full A/B proof. A qualified tools runtime, authenticated release admission, three-host compiler/SDK qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -169,6 +169,42 @@ byte comparisons, complete native SDK C/C++ final links and relocation,
 native P4 integration, and independent signed release/download audits.
 Recipe tests or declaration checks do not close this gate. A build does not
 change any board's hardware acceptance state.
+
+### 2026-10-12 - TC0 deterministic GCC checksum-option records
+
+- Baseline: source `a5bcf7032896c76c8ccd9f1e17682ba82b849866` and
+  nonpublishing producer run `38301163273`. Both GNU RV32 compiler builds
+  and package verification passed; exact A/B comparison failed with AX0702.
+- Measured output: each package has 1,215 entries; only `cc1` and `cc1plus`
+  differ. Each ELF has 16 differing bytes at `executable_checksum` and 20
+  at the GNU build ID; all other bytes match. Raw intermediate objects were
+  not retained, so their equality cannot be inferred from the final ELF.
+- Cause demonstrated: GCC records literal linker/CXXFLAGS in
+  `checksum-options`, including distinct producer physical prefix-map roots.
+  The actual native GCC checksum generator independently reproduced a
+  checksum change when only those roots changed. A changed logical map
+  destination remained distinct after explicit physical-root canonicalization.
+- Correction: release recipes forward the exact declared maps to
+  a source-owned record helper. Only those physical map inputs are canonicalized;
+  kinds, order, destinations, other flags and raw object/library hashing remain
+  intact. Unknown, missing, duplicate and malformed declarations are errors.
+  Classic builds retain the upstream record. No final binary is rewritten and
+  exact A/B comparison remains mandatory.
+- Procedure: `tests/test-checksum-options.sh` executes the patched GCC make
+  rule from the locked pristine archive and can use an actual native
+  `genchecksum`. `tests/test-release-layout.sh` checks configure and child-make
+  forwarding of both map declarations and helper path. These bounded tests
+  are not complete compiler or SDK qualification.
+- Observed: the patched GCC rule and semantic counterprobes passed using the
+  actual native GCC checksum generator; GenMF/child-make forwarding and the
+  existing recorded-metadata regressions passed. An initial test reused an
+  already generated record; forcing each isolated make invocation corrected
+  the harness before counting any counterprobe as evidence.
+- Safety: isolated source worktree only; no existing build, firmware, media,
+  hardware, tag or release mutation. Hardware acceptance is unchanged.
+- Remaining gate: fresh native A/B with
+  retained checksum inputs if a mismatch remains; complete three-host compiler
+  and SDK release qualification stays open. TC0 remains `in development`.
 
 ### 2026-10-12 - TC0 refresh the RV32 SDK profile-input seal
 
