@@ -148,7 +148,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
+| N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed; canonical FLASHDISK0P0 naming retained | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
 | N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `interactive gate blocked pending fresh readiness`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device; access-stage diagnostics tested, deployed/readback and headless return verified; directory-boundary fault/observer-on-off host tests pass | Fabian's fresh startup-test readiness, then arm discovery-only GUI capture before retrying association; peer admission remains0, no IP/data pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
@@ -1655,6 +1655,9 @@ observation. Numeric discovery diagnostics are installed with exact readback
 and headless owner return; a new interactive startup gate awaits readiness.
 Directory-boundary host fixtures now pass without another hardware
 run. Earlier failures and artifact identities remain historical evidence.
+
+Canonical name decision (2026-10-12): retain flashdisk.device and its generic
+MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
 
 Helper delivery N2H (2026-10-11): `image/make-flash-helpers.py` validates
 RV32 ELF inputs, volatile WiFi and compiled flash path policy before overlaying
@@ -42343,3 +42346,17 @@ remain open. No partial stage is a complete A/B update system.
   Resume with explicit readiness for FLASHDISK0P0:WiFi startup only: first
   arm a new passive capture, then ask for opening the app and reporting the
   device chooser/status. Connect requires a subsequent synchronized step.
+
+### 2026-10-12 - N2H canonical flash DOS name retained
+
+- Source audit confirms unnamed MBR/EBR names derive from the I/O driver
+  basename, unit and partition index in rom/dosboot/bootscan.c. Thus
+  flashdisk.device naturally yields FLASHDISK0P0; root fd0 alone does not
+  choose the scanned partition name. Named RDB/GPT partitions are separate.
+- Fabian rejects architecture-specific overrides and accepts the existing
+  automatic name. A local rename/prefix prototype was withdrawn completely;
+  tracked implementation files match the previous commit. No prototype
+  build, native artifact, flash, serial open or hardware test occurred.
+- Keep all current FLASHDISK0P0 helper/firmware/qualification paths and
+  flashdisk.device unchanged. Only this policy documentation changes;
+  earlier deployment hashes and pending WiFi startup gate remain valid.

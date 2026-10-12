@@ -1,5 +1,9 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Naming policy (2026-10-12): retain `flashdisk.device` and DOS name
+`FLASHDISK0P0:`. The latter is normal generic MBR discovery naming, not an
+ESP32-specific override; Fabian explicitly accepts that derivation.
+
 Open-association diagnosis (2026-10-11): opt-in
 `P4_WIFI_ASSOC_DIAGNOSTICS=1` distinguishes SANA admission/options rejection,
 owned attempt completion and Hosted Disconnect/SetConfig/Connect/AP-info/
