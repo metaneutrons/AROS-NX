@@ -170,6 +170,24 @@ native P4 integration, and independent signed release/download audits.
 Recipe tests or declaration checks do not close this gate. A build does not
 change any board's hardware acceptance state.
 
+### 2026-10-12 - TC0 refresh the RV32 SDK profile-input seal
+
+- Baseline: local source `8c7828d8d73f7ef20fbf0889dca9dde7c4592876`.
+  Adding the three LLVM SDK declarations changed `aros-targets.toml`, but
+  the RV32 consumer contract retained its earlier input hash. Native SDK
+  source verification correctly rejected that stale seal before any build.
+- Correction: refresh only this reviewed input digest to
+  `6151204a2b21f05c11440b85bc2d88c441d87605f9222dfc8462affd81286505`.
+  RV32 ISA, ABI, SMP, roots, probes and build policy remain unchanged.
+  No runtime guard is bypassed and no hash is supplied by the producer.
+- Procedure: the source exporter check and all 16 exporter regressions passed;
+  repeat
+  the native four-product source/input preparation against a clean commit.
+  Declaration validation does not qualify compiler A/B, SDK execution,
+  relocation, release admission or hardware. TC0 remains `in development`.
+- Safety: local source metadata/documentation only; no firmware, media,
+  existing build tree, tag, publication or board mutation.
+
 ### 2026-10-10 - TC0 complete SDK source-input integration
 
 - Baseline: protected main `0c15f90eb34ce6b58089847f84b2b7a763ed6106`;

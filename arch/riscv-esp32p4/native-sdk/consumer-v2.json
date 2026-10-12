@@ -84,7 +84,7 @@
     },
     {
       "path": "aros-targets.toml",
-      "sha256": "35099dc6bbb3ded56fdafbac5d2db330c8914da6261a2d6783f28eca1e0323c8"
+      "sha256": "6151204a2b21f05c11440b85bc2d88c441d87605f9222dfc8462affd81286505"
     },
     {
       "path": "compiler/crt/stdc/mmakefile.src",

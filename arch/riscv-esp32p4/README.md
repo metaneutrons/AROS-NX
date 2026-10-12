@@ -73,6 +73,9 @@ of the hang fix remains open.
 
 The separate RV32 compiler/SDK release track is TC0 in
 [ROADMAP.md](ROADMAP.md#track-tc-rv32-compiler-and-sdk-publication).
+The 2026-10-12 input-seal correction keeps the RV32 contract bound to the
+shared target-profile document after adding the LLVM SDK declarations.
+This is source-binding preparation only, not new SDK or hardware qualification.
 GNU recipes and complete SDK source inputs are being integrated on current
 AROS-NX main. Source regressions do not qualify a published compiler or SDK
 and do not change the hardware status below.
