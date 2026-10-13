@@ -21,7 +21,9 @@ FILES := \
 #MM linklibs-gsm : includes
 #MM includes-copy
 
-%copy_includes
+# This private link library exports no SDK headers. Make previously expanded
+# the unset INCLUDE_FILES to empty; state that list explicitly for all builders.
+%copy_includes includes=""
 
 USER_CFLAGS := -DHAVE_UNISTD_H
 

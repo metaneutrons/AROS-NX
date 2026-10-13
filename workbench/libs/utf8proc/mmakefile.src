@@ -13,6 +13,7 @@ EXEDIR  := $(AROS_TESTS)/utf8
 
 %fetch mmake=workbench-libs-utf8proc-fetch archive=$(UTF8PROCARCHBASE) destination=$(PORTSDIR)/utf8proc \
     location=$(PORTSSOURCEDIR)/utf8proc archive_origins=$(UTF8PROCREPOSITORIES) suffixes=$(UTF8PROCARCHSUFFIX) \
+    checksums="$(UTF8PROCARCHBASE).tar.gz=sha256:abfed50b6d4da51345713661370290f4f4747263ee73dc90356299dfc7990c78" \
     patches_specs=$(UTF8PROCATCHSPEC)
 
 %create_patch mmake=workbench-libs-utf8proc-create-patch \
