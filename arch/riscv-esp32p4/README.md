@@ -120,8 +120,12 @@ The next resource candidate adds opt-in numeric WiFiLink (correlated query UID,
 decoded status, revision/event delta and last accepted hint/reason), WiFiEvent
 (accepted lifecycle/link hint) and WiFiHint (generic event ID/status before
 rejection). No credential/identity bytes or lifecycle/security policy change.
-Source audit finds no proven stale-reply/correlation defect; the peer-reported
-status and disconnect reason still require a fresh synchronized capture.
+Source audit finds no proven stale-reply/correlation defect. The deployed
+observer's fresh open attempt now captures event776/reason8 plus correlated
+0x300f after token1, then stable AP-info0 on internal retry token3; GUI still
+reports failure. Host sends a preflight Disconnect before every join, but its
+relation to that event is unproven. A numeric RPC282/283 start/outcome observer
+is being verified; no timeout/security relaxation or IP pass.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or
 security-policy change is claimed.

@@ -170,12 +170,21 @@ void bug(const char *format, ...)
     static const char hint_format[] = "[WiFiHint] id=%u g=%u st=%ld\n";
     static const char link_format[] =
         "[WiFiLink] g=%u u=%u st=%ld rb=%u ra=%u ev=%u lastid=%u k=%u reason=%u\n";
+    static const char rpc_start_format[] =
+        "[WiFiRPC] p=1 id=%u u=%u us=%u\n";
+    static const char rpc_finish_format[] =
+        "[WiFiRPC] p=2 id=%u u=%u us=%u sub=%u v=0 st=-1\n";
+    static const char rpc_status_format[] =
+        "[WiFiRPC] p=2 id=%u u=%u us=%u sub=%u v=1 st=%ld\n";
     va_list arguments;
     int written;
 
     if (strcmp(format, event_format) != 0 &&
         strcmp(format, hint_format) != 0 &&
-        strcmp(format, link_format) != 0) {
+        strcmp(format, link_format) != 0 &&
+        strcmp(format, rpc_start_format) != 0 &&
+        strcmp(format, rpc_finish_format) != 0 &&
+        strcmp(format, rpc_status_format) != 0) {
         ++diagnostic_bad_formats;
         return;
     }
@@ -257,6 +266,13 @@ static void wire_uint_field(struct wire_buffer *buffer, uint32_t field,
     wire_varint(buffer, value);
 }
 
+static void wire_int32_field(struct wire_buffer *buffer, uint32_t field,
+                             int32_t value)
+{
+    wire_key(buffer, field, 0u);
+    wire_varint(buffer, (uint64_t)(int64_t)value);
+}
+
 static void wire_bytes_field(struct wire_buffer *buffer, uint32_t field,
                              const uint8_t *bytes, size_t size)
 {
@@ -308,7 +324,9 @@ enum fake_exchange_mode {
     FAKE_INTERLEAVE_GENERATION,
     FAKE_INTERLEAVE_HOST_EPOCH,
     FAKE_INTERLEAVE_BEACON,
-    FAKE_INTERLEAVE_CHANNEL
+    FAKE_INTERLEAVE_CHANNEL,
+    FAKE_MALFORMED_STATUS,
+    FAKE_WRONG_ASSOC_RESPONSE_ID
 };
 
 struct ap_fixture {
@@ -318,11 +336,13 @@ struct ap_fixture {
     struct p4_hosted_fifo fifo;
     struct wifi_owner_control control;
     ULONG now;
+    ULONG advance_us_after_exchange;
     ULONG request_timeout;
     ULONG last_request_uid;
     uint32_t last_request_id;
     uint32_t response_id;
     uint32_t response_uid;
+    size_t last_request_payload_size;
     int32_t response_status;
     enum fake_exchange_mode mode;
     uint8_t ap_ssid[P4_HOSTED_SCAN_SSID_MAX_SIZE];
@@ -523,8 +543,10 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
     struct ap_fixture *state = ops ? ops->context : NULL;
     struct p4_hosted_rpc request_rpc, response_rpc, decoded_response;
     struct p4_hosted_inbox_item event_item;
+    struct wire_buffer status_body;
     uint8_t response_payload[256], response_wire[512];
     size_t response_payload_size = 0u, response_wire_size = 0u;
+    uint32_t request_id;
     int request_ok;
 
     if (!state || !owner || !fifo || !request || !result)
@@ -533,17 +555,22 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
     state->request_timeout = timeout_us;
     request_ok = p4_hosted_rpc_decode(request, request_size, &request_rpc) &&
         request_rpc.msg_type == P4_HOSTED_RPC_TYPE_REQUEST &&
-        request_rpc.msg_id == 294u && request_rpc.payload_size == 0u &&
+        (request_rpc.msg_id == 282u || request_rpc.msg_id == 283u ||
+         request_rpc.msg_id == 284u || request_rpc.msg_id == 294u) &&
+        (request_rpc.msg_id == 284u ? request_rpc.payload_size != 0u :
+                                      request_rpc.payload_size == 0u) &&
         request_rpc.uid == owner->ids.active_uid &&
-        owner->ids.active_request_id == 294u &&
+        owner->ids.active_request_id == request_rpc.msg_id &&
         generation == state->context.generation && checksum_enabled == 0u;
     state->request_valid = request_ok ? 1u : 0u;
     if (!request_ok) {
         result->error = P4_HOSTED_OWNER_PREFLIGHT;
         return 0;
     }
+    request_id = request_rpc.msg_id;
     state->last_request_id = request_rpc.msg_id;
     state->last_request_uid = request_rpc.uid;
+    state->last_request_payload_size = request_rpc.payload_size;
 
     if (state->mode == FAKE_FAIL_UNSUBMITTED) {
         result->error = P4_HOSTED_OWNER_PREFLIGHT;
@@ -555,6 +582,53 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
         result->submitted = 1u;
         (void)p4_hosted_owner_cancel(owner, fifo, generation);
         return 0;
+    }
+
+    if (request_id == 282u || request_id == 283u || request_id == 284u) {
+        wire_init(&status_body);
+        if (state->mode == FAKE_MALFORMED_STATUS)
+            wire_bytes_field(&status_body, 1u, NULL, 0u);
+        else
+            wire_int32_field(&status_body, 1u, state->response_status);
+        if (!status_body.ok) {
+            result->error = P4_HOSTED_OWNER_PREFLIGHT;
+            result->submitted = 0u;
+            return 0;
+        }
+        response_rpc.msg_type = P4_HOSTED_RPC_TYPE_RESPONSE;
+        response_rpc.msg_id = request_id + 256u;
+        if (state->mode == FAKE_WRONG_ASSOC_RESPONSE_ID)
+            ++response_rpc.msg_id;
+        response_rpc.uid = state->mode == FAKE_WRONG_UID
+            ? request_rpc.uid + 1u : request_rpc.uid;
+        response_rpc.payload = status_body.bytes;
+        response_rpc.payload_size = status_body.size;
+        if (!p4_hosted_rpc_encode(response_wire, sizeof response_wire,
+                                  &response_rpc, &response_wire_size) ||
+            !p4_hosted_rpc_decode(response_wire, response_wire_size,
+                                  &decoded_response))
+            return 0;
+        state->response_encoded = 1u;
+        state->response_id = decoded_response.msg_id;
+        state->response_uid = decoded_response.uid;
+        memset(&owner->reply, 0, sizeof owner->reply);
+        owner->reply.msg_type = decoded_response.msg_type;
+        owner->reply.msg_id = decoded_response.msg_id;
+        owner->reply.uid = decoded_response.uid;
+        owner->reply.payload_size = decoded_response.payload_size;
+        if (decoded_response.payload_size != 0u)
+            memcpy(owner->reply.payload, decoded_response.payload,
+                   decoded_response.payload_size);
+        result->error = P4_HOSTED_OWNER_OK;
+        result->submitted = 1u;
+        result->matched = 1u;
+        result->uid = request_rpc.uid;
+        result->request_id = request_id;
+        if (!p4_hosted_request_ids_finish(&owner->ids, generation,
+                                          request_rpc.uid, request_id))
+            return 0;
+        state->now += state->advance_us_after_exchange;
+        return 1;
     }
 
     if (state->mode == FAKE_INTERLEAVE_DOWN ||
@@ -630,9 +704,9 @@ int p4_hosted_owner_exchange(struct p4_hosted_owner *owner,
     result->submitted = 1u;
     result->matched = 1u;
     result->uid = request_rpc.uid;
-    result->request_id = 294u;
+    result->request_id = request_id;
     if (!p4_hosted_request_ids_finish(&owner->ids, generation,
-                                      request_rpc.uid, 294u))
+                                      request_rpc.uid, request_id))
         return 0;
     return 1;
 }
@@ -739,6 +813,12 @@ static int query(void)
 {
     return wifi_owner_refresh_link_snapshot(&fixture.context,
         &fixture.owner, &fixture.control, &fixture.fifo, 0u);
+}
+
+static int request_owner_rpc(uint32_t id)
+{
+    return wifi_owner_request(&fixture.context, &fixture.owner,
+        &fixture.control, &fixture.fifo, 0u, id, 1000000u);
 }
 
 static void prepare_secret_hint(void)
@@ -1099,6 +1179,165 @@ static void test_unsubmitted_and_poisoned_timeout(void)
     expect_link_unknown();
 }
 
+static void test_wifi_rpc_diagnostics(void)
+{
+    fixture_init();
+    fixture.response_status = 0;
+    fixture.advance_us_after_exchange = 17u;
+    diagnostic_reset();
+    CHECK(request_owner_rpc(282u));
+    CHECK(fixture.request_valid == 1u);
+    CHECK(fixture.last_request_id == 282u);
+    CHECK(fixture.response_id == 538u);
+    CHECK(fixture.last_request_uid == 1u);
+    CHECK(fixture.response_uid == 1u);
+    CHECK(fixture.last_request_payload_size == 0u);
+    CHECK(fixture.control.status == 0);
+    CHECK(fixture.now == 117u);
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    CHECK(fixture.control.association_reply_valid == 1);
+#endif
+    CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
+    check_diagnostics(
+        "[WiFiRPC] p=1 id=282 u=1 us=100\n"
+        "[WiFiRPC] p=2 id=282 u=1 us=117 sub=1 v=1 st=0\n");
+    check_no_ap_identity_output();
+
+    fixture.advance_us_after_exchange = 0u;
+    fixture.response_status = -5;
+    CHECK(!request_owner_rpc(283u));
+    CHECK(fixture.last_request_id == 283u);
+    CHECK(fixture.response_id == 539u);
+    CHECK(fixture.last_request_uid == 2u);
+    CHECK(fixture.response_uid == 2u);
+    CHECK(fixture.control.status == -5);
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    CHECK(fixture.control.association_reply_valid == 1);
+#endif
+    CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
+
+    fixture.mode = FAKE_MALFORMED_STATUS;
+    CHECK(!request_owner_rpc(282u));
+    CHECK(fixture.last_request_id == 282u);
+    CHECK(fixture.last_request_uid == 3u);
+    CHECK(fixture.response_id == 538u);
+    CHECK(fixture.response_uid == 3u);
+    CHECK(fixture.control.status == -5);
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    CHECK(fixture.control.association_reply_valid == 0);
+#endif
+    CHECK(fixture.owner.poisoned == 1u && fixture.fifo.poisoned == 1u);
+    CHECK(fixture.owner.ids.retired == 1u);
+    check_diagnostics(
+        "[WiFiRPC] p=1 id=282 u=1 us=100\n"
+        "[WiFiRPC] p=2 id=282 u=1 us=117 sub=1 v=1 st=0\n"
+        "[WiFiRPC] p=1 id=283 u=2 us=117\n"
+        "[WiFiRPC] p=2 id=283 u=2 us=117 sub=1 v=1 st=-5\n"
+        "[WiFiRPC] p=1 id=282 u=3 us=117\n"
+        "[WiFiRPC] p=2 id=282 u=3 us=117 sub=1 v=0 st=-1\n");
+    check_no_ap_identity_output();
+}
+
+static void test_wifi_rpc_failures_and_suppression(void)
+{
+    static const enum fake_exchange_mode invalid_modes[] = {
+        FAKE_MALFORMED_STATUS,
+        FAKE_WRONG_ASSOC_RESPONSE_ID,
+        FAKE_WRONG_UID
+    };
+    size_t index;
+
+    fixture_init();
+    fixture.mode = FAKE_FAIL_UNSUBMITTED;
+    diagnostic_reset();
+    CHECK(!request_owner_rpc(282u));
+    CHECK(fixture.last_request_id == 282u);
+    CHECK(fixture.last_request_uid == 1u);
+    CHECK(fixture.control.result.submitted == 0u);
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    CHECK(fixture.control.association_reply_valid == 0);
+#endif
+    CHECK(!fixture.owner.poisoned && !fixture.fifo.poisoned);
+    CHECK(fixture.owner.ids.active_uid == 0u);
+    check_diagnostics(
+        "[WiFiRPC] p=1 id=282 u=1 us=100\n"
+        "[WiFiRPC] p=2 id=282 u=1 us=100 sub=0 v=0 st=-1\n");
+    check_no_ap_identity_output();
+
+    fixture_init();
+    fixture.mode = FAKE_TIMEOUT_SUBMITTED;
+    diagnostic_reset();
+    CHECK(!request_owner_rpc(283u));
+    CHECK(fixture.last_request_id == 283u);
+    CHECK(fixture.last_request_uid == 1u);
+    CHECK(fixture.control.result.submitted == 1u);
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    CHECK(fixture.control.association_reply_valid == 0);
+#endif
+    CHECK(fixture.owner.poisoned == 1u && fixture.fifo.poisoned == 1u);
+    CHECK(fixture.owner.ids.retired == 1u);
+    check_diagnostics(
+        "[WiFiRPC] p=1 id=283 u=1 us=100\n"
+        "[WiFiRPC] p=2 id=283 u=1 us=100 sub=1 v=0 st=-1\n");
+    check_no_ap_identity_output();
+
+    for (index = 0u;
+         index < sizeof invalid_modes / sizeof invalid_modes[0]; ++index) {
+        fixture_init();
+        fixture.mode = invalid_modes[index];
+        fixture.control.status = 77;
+        diagnostic_reset();
+        CHECK(!request_owner_rpc(282u));
+        CHECK(fixture.response_encoded == 1u);
+        CHECK(fixture.last_request_id == 282u);
+        CHECK(fixture.last_request_uid == 1u);
+        CHECK(fixture.response_id ==
+              (invalid_modes[index] == FAKE_WRONG_ASSOC_RESPONSE_ID ?
+               539u : 538u));
+        CHECK(fixture.response_uid ==
+              (invalid_modes[index] == FAKE_WRONG_UID ? 2u : 1u));
+        CHECK(fixture.control.status == 77);
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        CHECK(fixture.control.association_reply_valid == 0);
+#endif
+        CHECK(fixture.owner.poisoned == 1u && fixture.fifo.poisoned == 1u);
+        CHECK(fixture.owner.ids.retired == 1u);
+        check_diagnostics(
+            "[WiFiRPC] p=1 id=282 u=1 us=100\n"
+            "[WiFiRPC] p=2 id=282 u=1 us=100 sub=1 v=0 st=-1\n");
+        check_no_ap_identity_output();
+    }
+
+    {
+        static const uint8_t secret_ssid[] = "S3CR3T_SSID";
+        static const uint8_t secret_password[] = "PW_SECRET";
+        static const uint8_t secret_bssid[] = "BSSID1";
+
+        fixture_init();
+        fixture.control.sta_config.ssid = secret_ssid;
+        fixture.control.sta_config.ssid_length = sizeof secret_ssid - 1u;
+        fixture.control.sta_config.password = secret_password;
+        fixture.control.sta_config.password_length =
+            sizeof secret_password - 1u;
+        fixture.control.sta_config.bssid_set = 1u;
+        fixture.control.sta_config.bssid = secret_bssid;
+        fixture.control.sta_config.bssid_length = sizeof secret_bssid - 1u;
+        diagnostic_reset();
+        CHECK(request_owner_rpc(284u));
+        CHECK(fixture.request_valid == 1u);
+        CHECK(fixture.last_request_id == 284u);
+        CHECK(fixture.response_id == 540u);
+        CHECK(fixture.last_request_uid == 1u);
+        CHECK(fixture.response_uid == 1u);
+        CHECK(fixture.last_request_payload_size != 0u);
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        CHECK(fixture.control.association_reply_valid == 1);
+#endif
+        check_diagnostics("");
+        check_no_ap_identity_output();
+    }
+}
+
 static void test_numeric_diagnostics_preserve_query_decisions(void)
 {
     fixture_init();
@@ -1432,6 +1671,8 @@ static void test_recheck_during_query_cannot_publish_stale_snapshot(void)
 int main(void)
 {
     test_exact_request_response_and_dedup();
+    test_wifi_rpc_diagnostics();
+    test_wifi_rpc_failures_and_suppression();
     test_numeric_diagnostics_preserve_query_decisions();
     test_remote_statuses_down_or_quarantine();
     test_unsubmitted_and_poisoned_timeout();

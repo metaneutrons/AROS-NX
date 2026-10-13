@@ -1031,12 +1031,24 @@ static int wifi_owner_request(struct wifi_probe_context *context,
      * deadline. Abandoning a submitted reply would unnecessarily poison the
      * whole session and prevent the next selection from reconnecting. */
     context->association_exchanging = TRUE;
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    if (id == 282u || id == 283u)
+        bug("[WiFiRPC] p=1 id=%u u=%u us=%u\n", (unsigned)id,
+            (unsigned)control->uid, (unsigned)wifi_owner_now(context));
+#endif
     exchanged = p4_hosted_owner_exchange(owner, fifo, &control->ops,
         context->generation, checksum, control->request, written,
         remaining, &control->result);
     context->association_exchanging = FALSE;
     p4host_zero(control->request, sizeof(control->request));
     if (!exchanged) {
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        if (id == 282u || id == 283u)
+            bug("[WiFiRPC] p=2 id=%u u=%u us=%u sub=%u v=0 st=-1\n",
+                (unsigned)id, (unsigned)control->uid,
+                (unsigned)wifi_owner_now(context),
+                (unsigned)control->result.submitted);
+#endif
         (void)wifi_owner_finish_unsubmitted_reservation(owner, fifo,
             context->generation, control->uid, id,
             control->result.submitted);
@@ -1050,11 +1062,23 @@ static int wifi_owner_request(struct wifi_probe_context *context,
     if (id == 282u || id == 283u || id == 284u) {
         if (!p4_hosted_association_status_response(&rpc, id, control->uid,
                                                   &control->status)) {
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+            if (id == 282u || id == 283u)
+                bug("[WiFiRPC] p=2 id=%u u=%u us=%u sub=%u v=0 st=-1\n",
+                    (unsigned)id, (unsigned)control->uid,
+                    (unsigned)wifi_owner_now(context),
+                    (unsigned)control->result.submitted);
+#endif
             p4_hosted_owner_cancel(owner, fifo, context->generation);
             return 0;
         }
 #if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
         control->association_reply_valid = 1;
+        if (id == 282u || id == 283u)
+            bug("[WiFiRPC] p=2 id=%u u=%u us=%u sub=%u v=1 st=%ld\n",
+                (unsigned)id, (unsigned)control->uid,
+                (unsigned)wifi_owner_now(context),
+                (unsigned)control->result.submitted, (long)control->status);
 #endif
         return control->status == 0;
     }
