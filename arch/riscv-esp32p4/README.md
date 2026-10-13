@@ -77,7 +77,15 @@ GUI timeout or radio policy. Verbose WiFiIO now requires the separate default-of
 P4_WIFI_IO_DIAGNOSTICS=1; association/query outcomes stay enabled independently.
 Sparse WiFiRetire path/state/difference records are installed to attribute the
 commit removal: device424e5c9e... / helper97b9a054... have exact readback and
-headless CPU1 owner return. Fresh interactive observation is pending.
+headless CPU1 owner return. The 2026-10-14 fresh capture and photo now show an
+open WLAN connection and no WiFiIO/overflow in the scoped144-row excerpt.
+AROSTCP startup fails on generated general.config line9/col33: the absolute
+DHCLIENT path exceeds its24-byte keyword buffer; the path notifier also returns
+failure on success. Generic setter/getter/path-notifier corrections pass14
+source-extracted sanitizer regressions and native build, not yet deployed.
+The1111984-byte stack stays on SYS: and exceeds free helper space; the SD medium
+is now identified for a backed-up single-file replacement. IP/data/SAE gates
+remain open; earlier transient link removal is not closed by this one attempt.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or
 security-policy change is claimed.

@@ -185,7 +185,11 @@ getvalue(struct CSource *args, UBYTE **errstrp, struct CSource *res)
                 value = ((UBYTE **)variables[var].value)[index];
                 if(value == NULL)		/* unset string variable */
                     value = (UBYTE *)"";
-                vlen  = strnlen(value, KEYWORDLEN);
+                vlen = strnlen(value, FILENAME_MAX);
+                if(vlen >= FILENAME_MAX) {
+                    *errstrp = ERR_TOO_LONG;
+                    return RETURN_ERROR;
+                }
                 break;
             case VAR_INET: {
                 ULONG s_addr =
@@ -223,13 +227,15 @@ getvalue(struct CSource *args, UBYTE **errstrp, struct CSource *res)
             }
             break;
             }
-            /* prepend by space? */
-            if(res->CS_CurChr)
-                res->CS_Buffer[res->CS_CurChr++] = ' ';
-            if(vlen + res->CS_CurChr >= res->CS_Length) {
+            /* Reserve the separator and terminating NUL before any write. */
+            if(res->CS_CurChr < 0 || res->CS_CurChr >= res->CS_Length ||
+               vlen >= res->CS_Length - res->CS_CurChr -
+                   (res->CS_CurChr ? 1 : 0)) {
                 *errstrp = ERR_TOO_LONG;
                 return RETURN_ERROR;
             }
+            if(res->CS_CurChr)
+                res->CS_Buffer[res->CS_CurChr++] = ' ';
             bcopy(value, res->CS_Buffer + res->CS_CurChr, (WORD)vlen);
             res->CS_CurChr += vlen;
         }
@@ -312,15 +318,18 @@ setvalue(struct CSource *args, UBYTE **errstrp, struct CSource *res)
                 args->CS_CurChr += vlen;
                 break;
             case VAR_STRP:
-                if(ReadItem(Buffer, BufLen, args) <= 0)
+            {
+                /* Values can be full paths; KEYWORDLEN only bounds names. */
+                UBYTE StringValue[FILENAME_MAX];
+                if(ReadItem(StringValue, sizeof(StringValue), args) <= 0)
                     goto reterr;
-                vlen  = strnlen(Buffer, BufLen) + 1;
+                vlen  = strnlen(StringValue, sizeof(StringValue)) + 1;
                 value = bsd_malloc(vlen, M_CFGVAR, M_WAITOK);
                 if(!value) {
                     *errstrp = ERR_MEMORY;
                     return RETURN_ERROR;
                 }
-                memcpy(value, Buffer, vlen);
+                memcpy(value, StringValue, vlen);
                 if(variables[var].notify)
                     if(!(*variables[var].notify)(dp, (IPTR) value)) {
                         bsd_free(value, M_CFGVAR);
@@ -333,6 +342,7 @@ setvalue(struct CSource *args, UBYTE **errstrp, struct CSource *res)
                 *(UBYTE **)dp = value;
                 variables[var].flags |= VF_FREE;
                 break;
+            }
             case VAR_INET:
                 /* Currently, nameservice cannot be used */
                 if(ReadItem(Buffer, BufLen, args) <= 0)

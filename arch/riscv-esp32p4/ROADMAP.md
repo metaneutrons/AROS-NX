@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `radio commit partial; link invalidation unresolved`: fresh open query briefly succeeds then commit vanishes, online/ready preserved/fault clear. Sparse observer79052B424e5c9e... / helper97b9a054... deployed/readback/headless verified; WiFiIO independently default-off, overflow warning unchanged. FullMAC peer admission0 | Fresh synchronized sparse-observer attempt to attribute link invalidation; original SAE/required-PMF/no-fallback, DHCP/routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `open link partial; stack startup blocked`: Connected open WLAN shown; long DHCP-path parser/notifier defects corrected generically. Setter/getter/path regression14 PASS, native1111984Ba31b79e6... built; identified SD single-file deployment pending; FullMAC peer admission0 | Deploy/readback and test corrected stack; original SAE/required-PMF/no-fallback, DHCP/routes/DNS/bidirectional traffic/reconnect/load and earlier transient-link regression remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1690,6 +1690,10 @@ without admin offline or callback fault; GUI status/IP/data gates stay open.
 Sparse retirement observer424e5c9e... / helper97b9a054... is deployed with
 independent readback and headless return; WiFiIO tracing is independently
 default-off. Retain unconditional overflow warnings; no lifecycle fence changed.
+2026-10-14 fresh scoped capture/photo now shows open Connected. AROSTCP config
+parsing blocks the IP phase; generic long-string/notifier correction is built,
+host-regression verified, not installed. The stack binary is on SYS:, not part
+of the flash helper set. Identified SD medium is ready for one backed-up file.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
@@ -43075,3 +43079,72 @@ remain open. No partial stage is a complete A/B update system.
   retire-return.jsonl. Kernel193360B5a164de9.../BSP/SD/bootloader/table/C6 firmware
   unchanged. Recovery helper32f21b14... retained. Next fresh user readiness,
   one Scan/open Connect with sparse capture. All original WiFi gates stay open.
+
+### 2026-10-14 - N2T open connection visible; generic stack config defects
+
+- User asks fresh recording. devserial connected baseline19633; start a new
+  follow client14420/fileinteractive.jsonl in fresh evidence directory
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-link-retire-2026-10-14.JaccdP/.
+  No port/control-line/reset/history deletion. Then request exact flash WiFi,
+  one Scan/open Connect. Photo IMG_1269.jpeg shows Connected to selected open
+  network, with AROSTCP syntax error ENV:AROSTCP/db/general.config line9/col33.
+  This proves visible open association/status, not IP or traffic.
+- attempt-snapshot.jsonl144 rows IDs19634..19777 SHA256
+  402f256ca830699eb6251f4aa26f67dfe6474e2927e5ee467f4b51a6ea756547.
+  Retire k1/k5 precedes new WM association token5, consistent with retiring an
+  owning opener during manager replacement, not a proven radio mismatch.
+  Token5 Join8/AP-info294/status0/valid1/ok1, done1, Infoe0/v1/s7.
+  No WiFiIO or overflow in this scoped excerpt. No force-overflow gate implied;
+  earlier transient link-loss cause/regression remains open. Installed device
+ 424e5c9e.../helper97b9a054... unchanged, FullMAC peer admission0.
+- Root cause source: setvalue VAR_STRP reads into KEYWORDLEN24 buffer. Generated
+  line9 DHCLIENT=SYS:System/Network/AROSTCP/C/dhclient has a longer token;
+ 9-char prefix plus24-byte read boundary explains column33. Read string values
+  into a separate FILENAME_MAX buffer, leaving keyword bounds unchanged.
+  dhclient_path_changed returns0 for valid paths despite notify requiring
+  nonzero success. Correct return, reject invalid/oversized input, stage path
+  and check AddPart before committing so failed resolution preserves prior path.
+  These fixes are generic AROSTCP code, not ESP32-only syntax or an alias workaround.
+- Invalidate actual amiga_config/main objects; quick native builds exit0 and
+  compile both changed sources. Final AROSTCP1111784B SHA256
+  89697178f517cac56f2957a8594026c3fae51955bf8dc875974acade7642a74a.
+  Initial build logs retained (filenames arostcp-build.log and
+  arostcp-final-build.log). Source-extracted regression work is in progress;
+  this is native build evidence only, not parser/hardware acceptance.
+- Stack1111784B exceeds current helper932KiB free; standard strip flags did
+  not shrink its preceding1111316B build. Do not remove preserved tools or
+  silently broaden flash ranges. Request SD-reader readiness to replace only
+  SYS:System/Network/AROSTCP/C/AROSTCP with backup/identity/readback. No SD write
+  yet, no further connection requested. Kernel/BSP/bootloader/table/C6 firmware
+  unchanged. IP/DHCP/routes/DNS/bidirectional traffic and SAE still required.
+
+### 2026-10-14 - N2T stack string/path correction reviewed and tested
+
+- Independent review finds getter still truncating readable strings at24 and
+  callback relative db_path scan unbounded. Correct full getter with explicit
+  overlong rejection, reserve separator/NUL before writes, bounded db_path scan.
+  Independent re-review has no remaining finding within these changed paths.
+  No ABI/protocol or ESP32-specific parser rule. Keyword buffers remain24.
+- New source-extracted host test tests/test-dhclient-paths.py compiles current
+  setter/getter/path callback and actual DOS ReadItem/PathPart/AddPart bodies,
+  adapting allocations, declarations and library wrappers to host types with
+ 256-byte filename capacity. Primary14 ASan/UBSan tests pass: generated absolute
+  line, relative resolution, accepted/rejected bounds, malformed/NULL/empty,
+  retained state on failed joins/unterminated db_path, getter size/separator
+  boundaries. Three old-code controls fail intended assertions (setter24,
+  getter24, callbackzero success). Not complete parsefile/Exec/native runtime.
+  arostcp-tests.log retained in preceding evidence root.
+- Fresh reviewed native build exits0 after both object invalidations, compiles
+  actual sources and links AROSTCP1111984B SHA256
+  a31b79e69f1146b710673abdff16c5c4247640098781f94f58efa99290c4c581.
+  arostcp-reviewed-build.log retained; supersedes earlier candidate89697178....
+- Fabian confirms SD in Mac reader. Read-only identification: external physical
+  removableUSB disk21 127865454592B; FAT32 disk21s1 AROSP4TEST, offset1048576,
+  partition66060288B, UUID9CA4E5C4-BA41-3CE2-90D0-8C9263F13D61, mount
+  /Volumes/AROSP4TEST. Expected43-byte AROS.boot and1111316B old stack present.
+  BackupAROSTCP-before-SD independently cmp0/SHA256
+ 64563d0b6a45e248d724613f5ff0bcb930c9818c865b9dc942f248de227a45a7.
+  Initial metadata-preserving cp reported unsupported chflags; byte-only cp
+  retry/cmp verifies backup. Full file-hash manifest sd-files-before.sha256
+  retained. No write yet. Next replace only System/Network/AROSTCP/C/AROSTCP,
+  sync/remount/readback/delta audit/eject, then fresh readiness after card return.
