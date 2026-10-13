@@ -1995,7 +1995,18 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         item->event_mask = event_mask;
         p4wlan_enqueue_locked(unit, opener, item);
         item = NULL;
-        break;
+        /* The queue owns this asynchronous request until an event or abort.
+         * Replying in the common epilogue would let the caller re-submit an
+         * outstanding request and spin forever re-arming S2_ONEVENT. */
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        bug("[WiFiIO] c=%lu p=%lu\n", command, 7UL);
+#endif
+        ReleaseSemaphore(&unit->lock);
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        bug("[WiFiIO] c=%lu p=%lu\n", command, 8UL);
+#endif
+        p4wlan_finish_done(unit, &done);
+        return;
 
     case CMD_READ:
         /* WirelessManager parks EAPOL reads before association. Delivery,

@@ -223,7 +223,9 @@ static void dispatch_case(struct p4wlan_unit *unit,
                           struct IOSana2Req *request)
 {
     struct MinList done;
+    struct p4wlan_request *item = NULL;
     ULONG command = request->ios2_Req.io_Command;
+    ULONG event_mask = request->ios2_WireError;
     NEWLIST(&done);
     request->ios2_Req.io_Error = 0;
     request->ios2_WireError = 0;
@@ -236,10 +238,14 @@ static void dispatch_case(struct p4wlan_unit *unit,
                                S2WERR_GENERIC_ERROR);
         break;
     }
-    ReleaseSemaphore(&unit->lock);
     association_allocation_expected = FALSE;
-    p4wlan_finish_done(unit, &done);
-    p4wlan_term_io(request);
+#include "sana_association_queue_epilogue.inc"
+}
+
+static LONG dispatch_abort(struct esp32p4wlan_base *LIBBASE,
+                           struct IORequest *iorequest)
+{
+#include "sana_abort_io_body.inc"
 }
 
 static void ObtainSemaphore(struct SignalSemaphore *semaphore)
@@ -1188,6 +1194,146 @@ static struct p4wlan_request *queue_event_waiter(
     ++unit->request_count;
     ++unit->event_count;
     return item;
+}
+
+static void test_onevent_dispatch_event_rearm_and_abort(void)
+{
+    struct esp32p4wlan_base base;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    struct IOSana2Req request;
+    struct MinList done;
+    unsigned replies_before;
+
+    init_fixture(&base.unit, &opener, &radio);
+    base.unit.initialized = TRUE;
+
+    init_request(&request, S2_ONEVENT, &opener);
+    request.ios2_Req.io_Flags = IOF_QUICK;
+    request.ios2_WireError = S2EVENT_CONNECT;
+    replies_before = reply_calls;
+    dispatch_case(&base.unit, &opener, &request);
+
+    /* BeginIO must leave an accepted waiter owned and parked. */
+    CHECK(reply_calls == replies_before);
+    CHECK(!(request.ios2_Req.io_Flags & IOF_QUICK));
+    CHECK(request.ios2_Req.io_Message.mn_Node.ln_Type == NT_MESSAGE);
+    CHECK(request.ios2_Req.io_Error == 0);
+    CHECK(request.ios2_WireError == 0u);
+    CHECK(base.unit.request_count == 1u && opener.request_count == 1u);
+    CHECK(base.unit.event_count == 1u && opener.event_count == 1u);
+    CHECK(opener.refs == 2u);
+
+    /* A production event consumes this waiter and replies exactly once. */
+    NEWLIST(&done);
+    ObtainSemaphore(&base.unit.lock);
+    p4wlan_event_locked(&base.unit, S2EVENT_CONNECT, &done);
+    ReleaseSemaphore(&base.unit.lock);
+    p4wlan_finish_done(&base.unit, &done);
+    CHECK(reply_calls == replies_before + 1u);
+    CHECK(request.ios2_Req.io_Error == 0);
+    CHECK(request.ios2_WireError == S2EVENT_CONNECT);
+    CHECK(base.unit.pending_events == 0u);
+    CHECK(base.unit.request_count == 0u && opener.request_count == 0u);
+    CHECK(base.unit.event_count == 0u && opener.event_count == 0u);
+    CHECK(opener.refs == 1u);
+
+    /* Reusing the completed IORequest arms a fresh wait and must park again. */
+    request.ios2_Req.io_Flags = IOF_QUICK;
+    replies_before = reply_calls;
+    dispatch_case(&base.unit, &opener, &request);
+    CHECK(reply_calls == replies_before);
+    CHECK(!(request.ios2_Req.io_Flags & IOF_QUICK));
+    CHECK(base.unit.request_count == 1u && opener.request_count == 1u);
+    CHECK(base.unit.event_count == 1u && opener.event_count == 1u);
+    CHECK(opener.refs == 2u);
+
+    /* Exercise the extracted production AbortIO body on the rearmed wait. */
+    request.ios2_Req.io_Message.mn_Length = sizeof(request);
+    request.ios2_Req.io_Device = (struct Device *)&base;
+    request.ios2_Req.io_Unit = (struct Unit *)&base.unit;
+    CHECK(dispatch_abort(&base, (struct IORequest *)&request) == 0);
+    CHECK(reply_calls == replies_before + 1u);
+    CHECK(request.ios2_Req.io_Error == IOERR_ABORTED);
+    CHECK(request.ios2_WireError == S2WERR_GENERIC_ERROR);
+    CHECK(base.unit.request_count == 0u && opener.request_count == 0u);
+    CHECK(base.unit.event_count == 0u && opener.event_count == 0u);
+    CHECK(opener.refs == 1u);
+    CHECK(dispatch_abort(&base, (struct IORequest *)&request) == -1);
+    CHECK(reply_calls == replies_before + 1u);
+}
+
+static void test_onevent_rejects_invalid_mask_and_full_capacity(void)
+{
+    struct p4wlan_unit unit;
+    struct p4wlan_opener opener;
+    struct P4WifiBase radio;
+    struct IOSana2Req pending[P4WLAN_MAX_EVENTS];
+    struct IOSana2Req request;
+    struct IOSana2Req flush_request;
+    unsigned replies_before;
+    unsigned allocations_before;
+    unsigned frees_before;
+    ULONG index;
+
+    init_fixture(&unit, &opener, &radio);
+
+    init_request(&request, S2_ONEVENT, &opener);
+    request.ios2_WireError = S2EVENT_CONNECT | 0x80000000u;
+    replies_before = reply_calls;
+    allocations_before = allocation_calls;
+    dispatch_case(&unit, &opener, &request);
+    CHECK(reply_calls == replies_before + 1u);
+    CHECK(request.ios2_Req.io_Error == S2ERR_NOT_SUPPORTED);
+    CHECK(request.ios2_WireError == S2WERR_BAD_EVENT);
+    CHECK(allocation_calls == allocations_before);
+    CHECK(unit.request_count == 0u && opener.request_count == 0u);
+    CHECK(unit.event_count == 0u && opener.event_count == 0u);
+    CHECK(opener.refs == 1u);
+
+    for (index = 0; index < P4WLAN_MAX_EVENTS; ++index) {
+        init_request(&pending[index], S2_ONEVENT, &opener);
+        pending[index].ios2_Req.io_Flags = IOF_QUICK;
+        pending[index].ios2_WireError = S2EVENT_CONNECT;
+        replies_before = reply_calls;
+        dispatch_case(&unit, &opener, &pending[index]);
+        CHECK(reply_calls == replies_before);
+        CHECK(!(pending[index].ios2_Req.io_Flags & IOF_QUICK));
+    }
+    CHECK(unit.event_count == P4WLAN_MAX_EVENTS);
+    CHECK(opener.event_count == P4WLAN_MAX_EVENTS);
+    CHECK(unit.request_count == P4WLAN_MAX_EVENTS);
+    CHECK(opener.request_count == P4WLAN_MAX_EVENTS);
+    CHECK(opener.refs == 1u + P4WLAN_MAX_EVENTS);
+
+    init_request(&request, S2_ONEVENT, &opener);
+    request.ios2_WireError = S2EVENT_CONNECT;
+    replies_before = reply_calls;
+    allocations_before = allocation_calls;
+    frees_before = free_calls;
+    dispatch_case(&unit, &opener, &request);
+    CHECK(reply_calls == replies_before + 1u);
+    CHECK(request.ios2_Req.io_Error == S2ERR_NO_RESOURCES);
+    CHECK(request.ios2_WireError == S2WERR_GENERIC_ERROR);
+    CHECK(allocation_calls == allocations_before + 1u);
+    CHECK(free_calls == frees_before + 1u);
+    CHECK(unit.event_count == P4WLAN_MAX_EVENTS);
+    CHECK(opener.event_count == P4WLAN_MAX_EVENTS);
+    CHECK(unit.request_count == P4WLAN_MAX_EVENTS);
+    CHECK(opener.request_count == P4WLAN_MAX_EVENTS);
+    CHECK(opener.refs == 1u + P4WLAN_MAX_EVENTS);
+
+    init_request(&flush_request, CMD_FLUSH, &opener);
+    replies_before = reply_calls;
+    dispatch_case(&unit, &opener, &flush_request);
+    CHECK(reply_calls == replies_before + P4WLAN_MAX_EVENTS + 1u);
+    for (index = 0; index < P4WLAN_MAX_EVENTS; ++index) {
+        CHECK(pending[index].ios2_Req.io_Error == IOERR_ABORTED);
+        CHECK(pending[index].ios2_WireError == S2WERR_GENERIC_ERROR);
+    }
+    CHECK(unit.request_count == 0u && opener.request_count == 0u);
+    CHECK(unit.event_count == 0u && opener.event_count == 0u);
+    CHECK(opener.refs == 1u);
 }
 
 static void seed_typed_committed_link(struct p4wlan_unit *unit,
@@ -3792,6 +3938,8 @@ int main(void)
     test_replacement_opener_cancel_preserves_old_teardown();
     test_third_selection_preserves_old_teardown_and_new_attempt();
     test_resource_valid_requires_abi10_callbacks();
+    test_onevent_dispatch_event_rearm_and_abort();
+    test_onevent_rejects_invalid_mask_and_full_capacity();
     test_suite_cleanup();
     printf("SANA association queue: %lu checks, %u replies, %u/%u vector alloc/free, %u association wipes\n",
            checks, reply_calls, allocation_calls, free_calls, wipe_checks);

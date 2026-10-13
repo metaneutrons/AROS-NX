@@ -42,16 +42,25 @@ Naming policy (2026-10-12): retain `flashdisk.device` and DOS name
 `FLASHDISK0P0:`. The latter is normal generic MBR discovery naming, not an
 ESP32-specific override; Fabian explicitly accepts that derivation.
 
-WLAN lock-path continuation (2026-10-13, prepared only): after the queued
+WLAN lock-path continuation (2026-10-13, event-completion defect isolated): after the queued
 console passes the JC1060 headless return/reader-reattachment check, the opt-in
 WiFiIO observer now marks every BeginIO acquire/release, including early
 CMD_READ/write returns and SETOPTIONS ACK reacquisition. Only command/phase
 numbers are logged; admission, private ABI12/host ABI8, C6 policy gates and
 credentials remain unchanged. Native78116-byte device3fc20d98... and preserved
-4194304-byte helper image280623a6... are built/audited, but not yet installed.
+4194304-byte helper image280623a6... are installed with independent readback.
 Existing lifecycle and association dispatch-arm host tests pass; these are
 not full BeginIO/scheduler/hardware proof. Attribute the last command/phase
 alongside sampled busy/owner observations before changing connection policy.
+The synchronized Scan shows networks; one open Connect fails. The capture
+shows repeated command23 acquire/release, not a proven permanent semaphore
+hold. Source inspection finds queued S2_ONEVENT falling through ReplyMsg;
+WirelessManager immediately re-arms it, creating an event storm. Accepted
+event requests now return without replying until an event/abort completes
+them, like queued READ. Native78576-byte device d58d5ffd... and preserved
+4MiB helper f5e59ff2... are built, not yet hardware accepted. Existing host
+fixtures omitted the ONEVENT dispatch arm; a focused regression is required.
+No association/IP/data success, C6 update or security-policy change is claimed.
 
 Open-association diagnosis (2026-10-11): opt-in
 `P4_WIFI_ASSOC_DIAGNOSTICS=1` distinguishes SANA admission/options rejection,
