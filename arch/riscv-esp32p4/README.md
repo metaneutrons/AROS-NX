@@ -50,6 +50,16 @@ Twelve sanitized USB/UART default/0/1 host runs verify the optional format and
 unconditional overflow; the old header mutation is rejected. See CQ1 and
 dated evidence in ROADMAP.md.
 
+Touch logging (2026-10-14): generic `touchscreen.hidd` routine diagnostics now
+default off. Build `TOUCHSCREEN_DIAGNOSTICS=1` to restore heartbeat, button/
+multitouch, calibration/settings and preferences details; invalidate its
+objects on switch changes. Startup, errors, recovery and warnings remain
+unconditional, with existing error rate limits. `TOUCHSCREEN_EDGE_TRACE=1`
+remains a separate deliberate calibration trace. Native default65884B38a0a618...
+and diagnostic67708Bb2a6ef2a... modules both build; preprocessing and unchanged
+policy/prefs/calibration regressions pass. Package deployment is pending;
+this is not fresh touch interaction or D1001 acceptance.
+
 Naming policy (2026-10-12): retain `flashdisk.device` and DOS name
 `FLASHDISK0P0:`. The latter is normal generic MBR discovery naming, not an
 ESP32-specific override; Fabian explicitly accepts that derivation.

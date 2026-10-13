@@ -200,7 +200,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | D2 | Guition JC1060P470C as the active development board (J0-J5) | `J0-J5 accepted; four cold visual passes; sustained stress open` | Board IDs `jc1060p470c-v2` (new panel batch, active) and `jc1060p470c-v1` (old batch). On `80:f1:b2:d3:3b:a6`: J0 Exec/32MB PSRAM; J1 correct test card after 20MHz D-PHY reference fix; J2 GT911/I2C1/100kHz; J3/J4 Wanderer, four-edge pointer, double tap, two-finger menu and double-tap-and-drag visually accepted. J5 portable touch/brightness control panels accepted 2026-10-05. Aggregate early USB budget correction `4d998b4e…` passes host tests, a 120-second reader-attached USB-reset boot and four synchronized USB-only physical cold boots without a serial reader/reset: approximately 10, 11, 14 and 11 seconds (2026-10-09). Fresh pointer, double-tap and two-finger menu check accepted. Earlier black cold attempt remains recorded. Open: larger cold-cycle reliability campaign, sustained combined/no-reader stress and old panel batch. Previous-production thirty-minute reader-attached idle soak does not substitute for those gates. See dated D2/J0-J5 and s13-s15 evidence for exact configurations/artifacts. |
 | D2-BT | JC1060 boot latency | `deferred; production cleanup accepted` | Fabian defers optimization after channel2-off cold12s with no demonstrated gain. Original bootloader27b99e03… and entire sector range restored/readback-verified; clean normal core17249045… has BOOT_TIMING0/C1_PROFILE0, independent readback and complete60s warm regression pass. Quiet package/media unchanged. Fresh exact-pair desktop/pointer/double-tap/menu check accepted by Fabian; no claim that latency is fixed. |
 | D2-Q | JC1060 production no-reader combined qualification | `accepted on JC1060; D1001 regression next` | Cleanup step1 and qualification step2 accepted. Normal core17249045…/quiet package e0869292… unchanged. Production IDf7ed5845:1800s,4762 verified batches/hart,900 referenced SD reads,1588 window API updates, zero errors/mismatches, reason0/fixture1. Single45.182s passive capture and strict production validator exit0; no captured reset/fault signatures. Following fresh readiness, Fabian confirms post-load desktop, pointer, RAM Disk double-tap and two-finger menu-item selection without flicker/hang, no restart. Reader-free interval is procedural evidence; API counts do not prove visible frames throughout load. No D1001 acceptance implied. |
-| D3 | Portable touch and I2C stack | `hardware partial (JC1060P470C passed)` | 2026-10-04 on Fabian's direction: `touchscreen.hidd` (`rom/hidds/touchscreen`, polling, gestures, calibration, `ENV:Sys/touchscreen.prefs`), controller drivers `gt911.hidd` and `gsl3670.hidd` on AROS's `hidd.i2c` (`workbench/hidds`), the bus driver `hidd.i2c.esp32p4` (`arch/riscv-esp32p4/i2c`, transport shared with the kernel) and `esp32p4board.resource`, which builds the objects from the board profile; editor `workbench/prefs/touchscreen`. The kernel keeps no touch driver and no `KATTR_TouchScreenOps`. Fixes the I2C0 clock divider position (CTRL10 bits 9:2). JC1060P470C: GT911 through the new stack; Fabian confirms touch, calibration, editor and the tap/direct switch. D1001: builds, not hardware tested. |
+| D3 | Portable touch and I2C stack | `hardware partial (JC1060P470C passed); quiet logging build verified` | 2026-10-04 on Fabian's direction: `touchscreen.hidd` (`rom/hidds/touchscreen`, polling, gestures, calibration, `ENV:Sys/touchscreen.prefs`), controller drivers `gt911.hidd` and `gsl3670.hidd` on AROS's `hidd.i2c` (`workbench/hidds`), the bus driver `hidd.i2c.esp32p4` (`arch/riscv-esp32p4/i2c`, transport shared with the kernel) and `esp32p4board.resource`, which builds the objects from the board profile; editor `workbench/prefs/touchscreen`. The kernel keeps no touch driver and no `KATTR_TouchScreenOps`. Fixes the I2C0 clock divider position (CTRL10 bits 9:2). JC1060P470C: GT911 through the new stack; Fabian confirms touch, calibration, editor and the tap/direct switch. 2026-10-14: TOUCHSCREEN_DIAGNOSTICS defaults0, routine logs opt-in; startup/errors/recovery and independent edge trace retained. Both native variants and host regressions pass, deployment pending. D1001: builds, not hardware tested. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
 | E2 | Two-hart atomics, coherence and IPI primitives | `hardware verified; complete` | Exact219,776-byte core08 passes five ordinary headless captures/ten reset-separated epochs:650 SRAM+660 PSRAM exchanges,120 refusals,163,840 updates per AMO/CAS/lock counter with measured contention, bidirectional software IPI, remote code37/53, missing-park refusal and ten cache suspend/resume windows. Secondary reset/clock stop confirmed every exit; full221,184-byte normal range restored/verified and headless baseline boots. Atomics qualify internal SRAM only; Exec SMP/default changes wait for E3. |
@@ -4197,6 +4197,12 @@ baseline and unchanged post-run readback are hardware verified.
 - roadmap, README and evidence log are updated before claiming graphical boot.
 
 ### C4 - touch and M7 completion
+
+Generic D3 logging follow-up (2026-10-14): TOUCHSCREEN_DIAGNOSTICS defaults0,
+with opt-in1 for routine heartbeat/button/multitouch/settings/prefs/calibration
+details. Startup/errors/recovery remain unconditional, edge tracing independent.
+No input policy/callback/counter or public ABI change. Both native variants and
+host regressions pass; preserved-member deployment and fresh touch gate pending.
 
 Latest policy candidate (2026-09-30): tap-to-click is now the default;
 one-finger movement is button-free, stationary hold for 400 ms starts a left
@@ -43301,3 +43307,33 @@ remain open. No partial stage is a complete A/B update system.
   Next tests/review, preserved-member package audit and exact-range deployment,
   then fresh readiness for one scan/open attempt with capture already armed.
   AROSTCP/DHCP/IP/data/SAE/reconnect/load remain open; do not hide monitor DOWN.
+
+### 2026-10-14 - D3 quiet generic touchscreen diagnostics build verified
+
+- Fabian requests useful reduced logging. Generic TOUCHSCREEN_DIAGNOSTICS
+  defaults0 in private header/mmake, value1 restores routine settings,
+  calibration/prefs, button/multitouch, heartbeat and final statistics logs.
+  Values other than0/1 rejected by preprocessor numeric check. Startup,
+  firmware/start/timer/read failures, recovery and warnings stay unconditional
+  with existing rate limits. TOUCHSCREEN_EDGE_TRACE remains independent.
+  No counter/callback/settings/policy/controller/timer or public ABI change.
+- Independent bounded source review finds no actionable defect. New logging
+  preprocessor test3 cases passes: default/0/1/invalid2, gated diagnostics,
+  unconditional messages, separate edge trace and selected-function non-log
+  equality. Empty external-header stubs are not C compilation, and whole worker
+  runtime parity is not established by that test. Actual native builds below
+  supplement it; no fresh user-touch proof. Existing pure-policy3960, prefs25,
+  calibration105825 O2 ASan/UBSan checks pass unchanged in primary repeat.
+- Sequential native kernel-hidd-touchscreen-quick builds after full module
+  object invalidation both exit0, EDGE_TRACE0. Diagnostic1 artifact67708B SHA256
+  b2a6ef2a5f3cc197442fc82877a06a5dc0b9494ba0514fdfb5ed1e3ef94a2bb9;
+  final default0 artifact65884B SHA256
+  38a0a618d4b1569db0a1d5e0020428219527c277589fc5d3d6905d21bb5cf840.
+  Linked quiet strings omit routine diagnostics but retain startup/errors/
+  recovery. No hardware write yet; only candidate is intended for replacement.
+- Evidence console-prefix-2026-10-14.Cu8SYY: touch-native-on/default.log,
+  touchscreen-diagnostics/quiet.hidd, touch-logging-primary.log and
+  touch-pure.oKClNm logs/artifacts. Next preserve42-member BSP, replace only
+  touchscreen.hidd and tested WiFi observer resource, audit/range/readback,
+  passive headless return, then fresh readiness for interaction. Kernela68ca519...
+  stays unchanged; helper/SD/C6/boot metadata untouched. D1001 gate stays open.
