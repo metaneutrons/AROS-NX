@@ -125,7 +125,10 @@ observer's fresh open attempt now captures event776/reason8 plus correlated
 0x300f after token1, then stable AP-info0 on internal retry token3; GUI still
 reports failure. Host sends a preflight Disconnect before every join, but its
 relation to that event is unproven. A numeric RPC282/283 start/outcome observer
-is being verified; no timeout/security relaxation or IP pass.
+is now installed in BSP4049060Bde813a9a... with independent byte-exact readback
+and a 51.23-second headless return. The request regression passes all four
+diagnostic/off-on and O0/O2 configurations. No new interactive attempt has
+yet exercised this attribution; no timeout/security relaxation or IP pass.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or
 security-policy change is claimed.

@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `transient link; C6 disconnect reason8 observed, origin open`: Native observer358556B84afccce... and quiet touch deployed in BSP4047776B2212f70a.../independent readback/headless return. One fresh open attempt commits then event776/reason8 and correlated0x300f trigger retirement; internal retry later stays UP, GUI still reports failure. RPC attribution candidate359840B8036006e.../four sanitized request runs pass; deployment pending. Corrected SYS stacka31b79e6... remains startup/IP untested; FullMAC peer admission0 | Attribute host/peer origin and ordering of disconnect8; no blind timeout extension. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `transient link; C6 disconnect reason8 observed, origin open`: One fresh open attempt commits then event776/reason8 and correlated0x300f trigger retirement; internal retry later stays UP, GUI still reports failure. RPC attribution359840B8036006e.../four sanitized request runs pass; BSP4049060Bde813a9a... deployed with independent exact readback and headless return; quiet touch preserved. Fresh interactive readiness required. Corrected SYS stacka31b79e6... remains startup/IP untested; FullMAC peer admission0 | Attribute host/peer origin and ordering of disconnect8; no blind timeout extension. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1709,7 +1709,8 @@ revision-stale query discarded and next correlated0x300f retires the link.
 Internal token3 later stays UP, after the GUI timeout; this is not IP success.
 Attribute disconnect origin/order before changing timeout or policy.
 Native RPC282/283 start/outcome observer359840B8036006e... and four sanitized
-request configurations pass; deployment pending. Record UID, clock and submitted/valid/
+request configurations pass; BSP4049060Bde813a9a... is deployed with exact independent
+readback and headless return. Fresh interactive readiness remains required. Record UID, clock and submitted/valid/
 status outcome to identify any host Disconnect after Connect. UID0 event
 provenance cannot be reconstructed from a host timestamp alone.
 
@@ -43435,3 +43436,33 @@ remain open. No partial stage is a complete A/B update system.
   readiness for one open attempt. Do not skip the absence fence or extend GUI
   timeout to hide the initial disconnect. Visual beep origin remains open;
   Prefs/WiFi HandleReply only updates/redraws status, no direct DisplayBeep.
+
+### 2026-10-14 - N2T RPC attribution deployed; interactive gate open
+
+- Source9d8f7d3e44 resource359840B SHA256
+  8036006e48ace46a1d55a1faf781ee7d04b94453c58e04a58efe95636242e668
+  replaces only the WiFi resource in the retained BSP2212f70a... . All41 other
+  records remain byte-identical, including quiet touchscreen and SD drivers.
+  Loader audit has zero failures. Package4049060B SHA256
+  de813a9aafaebb0004f274565d8ad2a6e5d77e7a228634e6da06f2e21df115cc
+  occupies0x820000..0xbfc8a4, below helpers0xc00000.
+- Target-only devserial bootloader/release and esptool fallback: identity
+  confirms P4 MAC80:f1:b2:d3:3b:a6/16MiB. Writer session90097 exits0 with hash
+  verification; independent reader45352 exits0 and comparison/hash match.
+  Previous exact BSP readback remains recoverable; no new full backup needed.
+  Corea68ca519..., helpers97b9a054..., SYS stacka31b79e6..., C6 firmware and
+  bootloader/partition metadata are unchanged.
+- Fixed headless export22325..22570 contains246 rows spanning51.232781s;
+  SHA256 fdc6e8b6833dfb1a7ce63b3f19317a6e56ca8df67eba13543db0796ed7df875d.
+  It captures hart1/cpus2, queued console sender, one GT911 startup, GPIO54
+  C6 resetok1 and CPU1 WLAN owner ready. No matched normal prefix, routine
+  touch heartbeat, overflow or fatal signature. Zero WiFiRPC rows are expected
+  without a requested association; this is not hardware branch coverage or
+  visual/touch/IP acceptance. Evidence console-prefix-2026-10-14.Cu8SYY:
+  rpc-package-audit.log, rpc-package-delta.log, rpc-identity.log, rpc-write.log,
+  rpc-readback.log/bin, rpc-headless.jsonl and rpc-headless-report.txt.
+- Fabian identifies the previous brief flash as typical Amiga error blinking.
+  No reset/Guru is captured in that scoped attempt; its exact beep caller is
+  still unproven. Fresh readiness and capture are required before one new
+  Scan/open Connect. Disconnect provenance, stack startup, DHCP, SAE/PMF,
+  routes/DNS/data/reconnect/load remain open; no additional test started here.
