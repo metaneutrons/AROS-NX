@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `radio commit partial; GUI status unresolved`: ABI12/host ABI8, helpers1.3; ONEVENT correction gives passive two open commits done1, GUI still Could not connect. Numeric query-result observer device79080B6ce1b5d7... / helper32f21b14... deployed/readback/headless verified; fresh status observation pending; FullMAC peer admission0 | Fresh readiness and single open query-result test; original SAE/required-PMF/no-fallback, DHCP/routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `radio commit partial; link invalidation unresolved`: ABI12/host ABI8, helpers1.3; observer device79080B6ce1b5d7... / helper32f21b14... deployed/readback. Fresh synchronized open attempt fails: query e0/v1/state7 briefly then e10/v0/state3; online/ready preserved, fault clear. FullMAC peer admission0 | Attribute link invalidation, not just extend GUI timeout; original SAE/required-PMF/no-fallback, DHCP/routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1684,8 +1684,9 @@ regression now passes and helper f5e59ff2... is deployed/readback verified.
 Headless return reaches CPU1 WLAN owner and touch heartbeats. Later passive
 capture has two driver-committed open associations, but Fabian still reports
 Could not connect. Query error/publication/state observer6ce1b5d7... /
-helper32f21b14... is deployed/readback/headless verified; GUI status/IP/data
-gates stay open.
+helper32f21b14... is deployed/readback/headless verified. A fresh synchronized
+attempt shows briefly successful status publication then link commit removal
+without admin offline or callback fault; GUI status/IP/data gates stay open.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
@@ -42996,3 +42997,27 @@ remain open. No partial stage is a complete A/B update system.
   info-device-build.log retained. Kernel/BSP/bootloader/table/SD/C6 firmware
   untouched, helperf5e59ff2... recovery retained. Next fresh readiness, explicitly
   FLASHDISK0P0:WiFi, one Scan and one open Connect with passive devserial capture.
+
+### 2026-10-13 - N2T synchronized query identifies transient committed link
+
+- Fabian confirms ready; devserial connected/live baseline14988. Request exact
+  FLASHDISK0P0:WiFi, one Scan and one open Connect, no manual retry. He reports
+  Could not connect. No reset/flash/test request during that interaction.
+  Installed6ce1b5d7... device/32f21b14... helper as above; no artifact change.
+- info-attempt.jsonl IDs14989..15506,518 rows SHA256
+  db119bd490c4219777cb895bfa6fbba2d7fdabedb45df0486bbe2f06784cb248.
+  Initial query e10/v0/state2 (ready/offline). WM startup reaches101; association
+  token1 done1 with Join s8/r294/st0/v1/ok1. Queries15302/15308 succeed e0/v1/s7
+  (online/ready/committed/no fault). Query15339 and subsequent polls fail e10/
+  v0/s3 (online/ready/no commit/no fault). A later manager-owned association
+  token3 also commits and publishes e0/v1/s7; one GUI attempt can trigger internal
+  supplicant retries, so tokens1/3 are not two manually requested tests.
+- This disproves a permanently missing status-publication path, but does not
+  identify why the link was invalidated. Caller leave/replacement and confirmed
+  radio loss/identity mismatch remain distinct hypotheses. Capture has overflow
+  counter26 plus sequence gaps, including six absent records near the first
+  link transition; absence of a leave command is not proof it did not execute.
+  No credentials/names in diagnostic fields. Next source-chain attribution
+  and only the minimum causal observer if needed; do not turn failure into a
+  timeout workaround or disable lifecycle/security fences. All original SAE,
+  IP/data/reconnect/load gates remain open. GUI must not retry until requested.
