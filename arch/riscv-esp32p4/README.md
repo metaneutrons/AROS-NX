@@ -84,7 +84,7 @@ PCH checksum-option record. A source-owned release-only metadata correction has
 passed bounded recipe regressions; complete fresh A/B and SDK release qualification remain
 open. A subsequent retained-input comparison isolated the remaining mismatch
 to libcody's physical `SRCDIR` diagnostic macro. Its release-only mapping now
-passes bounded native object, checksum and real `__FILE__` assertion probes;
+passes bounded native complete-library A/B, checksum and real `__FILE__` assertion probes;
 full compiler A/B and SDK qualification remain open. Compiler binaries and
 their PCH checksums are not normalized after linking.
 The separate [native SDK declaration](native-sdk/README.md) selects the full

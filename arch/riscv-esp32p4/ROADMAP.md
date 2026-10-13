@@ -205,8 +205,18 @@ change any board's hardware acceptance state.
   independent static review found no blocker.
 - Safety: isolated local source changes only; no existing build, firmware,
   media, hardware, tag, release or published asset mutation.
-- Remaining risk and next step: full libcody/compiler A/B is not proven by
-  this object probe. Qualify a clean pinned source through fresh native GNU
+- Extended observed evidence: the locked-archive regression now also builds
+  complete libcody archives under both roots. Retained probe
+  `aros-gcc-cody-srcdir.OxXiYL` has two 257,184-byte release archives with SHA-256
+  `d51a7729fc1c1eb756b241b8df51d843f3a0c189486fc8d9813160ec6783b2c2`.
+  Native checksum output files agree with SHA-256
+  `23ae0ff5b20cea25177238e69503ef982a03bf7bd80ec58f3e79fbbaea80c8b4`.
+  Classic archive comparison returns 1 as expected; preserved release archives
+  remain unchanged. Darwin deterministic archive timestamps are explicit.
+  The complete bounded regression passes on Bash 3.2; this is macOS host-library
+  evidence, not a replay of the original Linux compiler build.
+- Remaining risk and next step: complete compiler A/B is not proven by
+  this library probe. Qualify a clean pinned source through fresh native GNU
   A/B, then all three-host compiler/SDK execution, relocation and authenticated
   release gates. TC0 remains `in development`; no hardware status changes.
 

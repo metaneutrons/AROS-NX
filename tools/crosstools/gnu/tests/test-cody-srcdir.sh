@@ -142,11 +142,30 @@ wc -c "$probe/fatal-a.release.o" "$probe/fatal-b.release.o" >"$probe/fatal-objec
 strings -a "$probe/fatal-a.release.o" | grep -F '/cody/mapped/libcody' >/dev/null ||
 	fail 'fatal.o does not contain its mapped source prefix'
 
+# Compare the actual checksum input library, not only its corrected object.
+# ZERO_AR_DATE makes Darwin ar deterministic; GNU ar already defaults to D.
+for copy in a b; do
+	if [ "$copy" = a ]; then maps=$maps_a; build=$build_a; else maps=$maps_b; build=$build_b; fi
+	env AROS_GCC_RELEASE_LAYOUT=yes ZERO_AR_DATE=1 \
+		AROS_GCC_RELEASE_PREFIX_MAPS="$maps" \
+		AROS_GCC_RELEASE_CODY_SRCDIR_HELPER="$helper" \
+		"$make_program" --no-print-directory -C "$build" libcody.a >"$probe/library-$copy.log" 2>&1
+	cp "$build/libcody.a" "$probe/libcody-$copy.release.a"
+done
+cmp "$probe/libcody-a.release.a" "$probe/libcody-b.release.a" ||
+	fail 'mapped complete libcody archives differ across physical source roots'
+shasum -a 256 "$probe/libcody-a.release.a" "$probe/libcody-b.release.a" >"$probe/library.sha256"
+wc -c "$probe/libcody-a.release.a" "$probe/libcody-b.release.a" >"$probe/library.sizes"
+
 if [ -n "$generator" ]; then
 	"$generator" "$probe/fatal-a.release.o" >"$probe/fatal-a.checksum"
 	"$generator" "$probe/fatal-b.release.o" >"$probe/fatal-b.checksum"
 	cmp "$probe/fatal-a.checksum" "$probe/fatal-b.checksum" ||
 		fail 'native genchecksum differs for byte-identical mapped fatal.o objects'
+	"$generator" "$probe/libcody-a.release.a" >"$probe/library-a.checksum"
+	"$generator" "$probe/libcody-b.release.a" >"$probe/library-b.checksum"
+	cmp "$probe/library-a.checksum" "$probe/library-b.checksum" ||
+		fail 'native genchecksum differs for byte-identical complete libcody archives'
 fi
 
 printf '%s\n' \
@@ -240,4 +259,19 @@ grep -F -- "$physical_define" "$probe/classic.log" >/dev/null || {
 	exit 1
 }
 
-printf '%s\n' 'Patched libcody SRCDIR rule and mapped fatal.o counterprobes passed.'
+# Preserve release archives above, then prove the comparison detects the old
+# physical macro rather than passing regardless of diagnostic-path contents.
+rm -f "$build_b/fatal.o"
+for copy in a b; do
+	if [ "$copy" = a ]; then build=$build_a; else build=$build_b; fi
+	env AROS_GCC_RELEASE_LAYOUT=no ZERO_AR_DATE=1 \
+		"$make_program" --no-print-directory -C "$build" libcody.a >"$probe/classic-library-$copy.log" 2>&1
+	cp "$build/libcody.a" "$probe/libcody-$copy.classic.a"
+done
+set +e
+cmp "$probe/libcody-a.classic.a" "$probe/libcody-b.classic.a" >"$probe/classic-library-comparison.log" 2>&1
+classic_comparison_status=$?
+set -e
+assert_equal 'Classic complete archives retain physical-root differences' 1 "$classic_comparison_status"
+
+printf '%s\n' 'Patched libcody SRCDIR object/library/checksum and Classic counterprobes passed.'
