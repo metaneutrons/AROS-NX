@@ -42629,3 +42629,24 @@ remain open. No partial stage is a complete A/B update system.
   Read-only mounted7-hash/full-stage check passes; detach exits0. Expected
   P4v1.3/MAC80:f1:b2:d3:3b:a6 reidentified after reader closure. Retained
   helpers-open4ae4bef6... provides recovery; deployment/readback pending.
+
+### 2026-10-13 - sampled owner diagnostic deployed; new attempt armed
+
+- Independent source review confirms numeric-only, no task dereference or
+  address/name output, no admission/ABI change. Semaphore fields and resource
+  owner_task use different locks; sampled values may be internally stale,
+  especially owner0 or role mismatch, and are never an atomic ownership proof.
+- Exact helper4194304B at0xc00000 write exits0/hash verified; full independent
+  readback exits0 and cmp matches helpers-owner.img3232e5b3... . Only device
+  and manifest change from previous helper; all other flash/media untouched.
+- Headless reset-and-log --once exits0, complete=true/status=ok,
+  45.005598s,19001B (total19051B including receipt classification prefixes),
+  cleanup_errors empty, boot unclassified. owner-boot.log SHA256
+  2cfc06740977279ae5fc19a53d932e25410596735d90d7f3a590bde8cc24c9f0.
+  Both harts/cpus2, watchdog6000ms, graphics/GT911, explicit C6 GPIO54 reset
+  prefix and expected CPU1 owner received. ROM/truncation limits remain;
+  no rail-off or actual association result inferred.
+- Fabian gives fresh display readiness. New600s owner-attempt.log/receipt
+  sidecar is armed, session85614; open_end verified before requesting only
+  flash WiFi, one Scan, exactly one open Connect. Result/hash/completion
+  pending; no second attempt or power separation requested.

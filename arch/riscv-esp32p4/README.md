@@ -59,7 +59,9 @@ the branch-attributed attempt is pending; no functional fix claimed.
 The subsequent GUI again reports WirelessManager will not stop. The fresh
 reader is intentionally interrupted for further diagnosis, not accepted as a
 completed600s run. A sampled numeric semaphore-owner/nest/queue extension
-builds natively; deployment and actual owner attribution remain pending.
+builds natively and is now deployed/readback verified. Headless return passes
+with explicit C6 reset/CPU1 owner. Fresh-readiness owner-attempt capture is
+armed; actual owner attribution and a functional fix remain pending.
 
 ESP32Board interface (2026-10-11): native MUI Overview, Update, Flash & Backup
 and Diagnostics tabs implement Fabian's approved 800x600 design. Requested
