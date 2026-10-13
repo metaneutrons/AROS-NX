@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Local complete SDK construction and four normal C/C++ original/relocated links passed. Retained Linux A/B inputs isolated the remaining PCH checksum mismatch to libcody's physical diagnostic prefix. Release-only source mapping passed bounded native object/checksum/assertion probes; fresh full compiler A/B remains required. A qualified tools runtime, authenticated release admission, three-host compiler/SDK qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipes, sealed SDK source inputs and SoftFloat integration are included in the current source. Local complete SDK construction and four normal C/C++ original/relocated links passed. Retained Linux A/B inputs isolated a PCH checksum mismatch to libcody's physical diagnostic prefix; release-only mapping passed bounded native object/checksum/assertion probes. Generator epoch regressions passed. A qualified tools runtime, fresh reproducible SDK packaging, authenticated release admission, complete three-host compiler A/B and SDK qualification, signed publication and public consumer verification remain required. These local results do not qualify a published compiler or SDK or change board status. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -385,7 +385,6 @@ change any board's hardware acceptance state.
   evidence or hardware qualification. TC0 remains `in development`.
 - Next: final independent review and required product CI, followed by a clean
   source/runtime-bound compiler/SDK replay and full mixed release gates.
-
 ### 2026-10-10 - TC0 source-owned native SDK declaration
 
 - Starting point: local integration commit
