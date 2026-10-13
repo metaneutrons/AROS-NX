@@ -33,15 +33,22 @@ promised. Emergency direct reports may interrupt a partially framed record.
 Disconnect retention is finite, not unlimited lossless logging. Host USB/UART
 and concurrent ring tests pass. The initial184352-byte build omitted normal
 C3/C4 boot selectors and was never flashed. A clean normal C3/C4/PSRAM200/XIP
-193360-byte core5a164de9... is installed at0x20000 and independently readback
-verified. devserial0.2.11 captures both harts:108 consecutive records0..107,
+193360-byte core5a164de9... was installed at0x20000 and independently readback
+verified. Its devserial0.2.11 capture covers both harts:108 consecutive records0..107,
 correct lengths, no overflow,48 touch heartbeats and18 graphics-update reports
 over241.984s of host receipts. At least35.006s with the userspace serial port
 closed passes reattachment without a ROM banner or sequence gap; this is not
 a physical USB disconnect or proof of forced endpoint saturation. No observed
 fault/WDT-reset signature. Native overload, physical disconnect, D1001 and
 fresh interactive regression remain pending. Bootloader/table/BSP/helpers/SD
-and C6 firmware are unchanged. See CQ1 and dated evidence in ROADMAP.md.
+and C6 firmware are unchanged. On2026-10-14,193024-byte plain-default core
+a68ca519... replaces it with independent exact readback. The fresh218-row
+devserial0.2.12 export spans111.929s: no normal metadata prefix,22 touch
+heartbeats, sender ready and CPU1 WLAN owner. No observed overflow/fault marker;
+this is not forced-overflow or sequence-continuity proof in plain mode.
+Twelve sanitized USB/UART default/0/1 host runs verify the optional format and
+unconditional overflow; the old header mutation is rejected. See CQ1 and
+dated evidence in ROADMAP.md.
 
 Naming policy (2026-10-12): retain `flashdisk.device` and DOS name
 `FLASHDISK0P0:`. The latter is normal generic MBR discovery naming, not an
@@ -2226,7 +2233,7 @@ its evidence entry in the same change.
 
 | Area | State | Notes |
 | :--- | :--- | :--- |
-| debug console queue | hardware partial (JC1060); D1001 open | CQ1: exact193360-byte core/readback, both harts,108 consecutive framed records and userspace-reader absence/reattachment pass headlessly. Native overload/physical disconnect/interactive acceptance remain open. Early/fatal direct output and sender-failure backlog loss remain explicit limits. |
+| debug console queue | hardware partial (JC1060); D1001 open | CQ1: plain-default193024Ba68ca519... core/readback and111.929s fresh headless capture pass without metadata prefix. Optional P4_CONSOLE_RECORD_PREFIX=1 and unconditional overflow tested in twelve sanitized host runs. Earlier framed core showed both harts/108 consecutive records and reader recovery. Native overload/physical disconnect/interactive acceptance remain open. Early/fatal direct output and sender-failure backlog loss remain explicit limits. |
 | graphics performance | hardware partial | C1P tiled rotation, CPU360 and framebuffer v2 coalescing reduce the measured first full update from 2.776 s synchronous/CPU90 to 0.296 s queued/CPU360. Initial visual speedup confirmed, then slowdown/hang reported. Console-only nonblocking fix is sanitizer-tested, flashed and independently verified; causality and fresh visual/touch/no-reader acceptance remain open. See C1P and dated evidence. |
 | configure target | done | `--target=esp32p4-riscv`, configure completes and selects the `smp` variant, the only esp32p4 build (S6); any other variant is refused |
 | board selection | hardware partial | `P4_BOARD=d1001`, `jc1060p470c-v1` and `jc1060p470c-v2` select wiring and drivers and reject unknown boards; the D1001 core is byte-identical after the 2026-10-03 driver split. The JC1060P470C-v2 boots from SD to Wanderer with correct picture and working GT911 touch (J0-J4, 2026-10-04); backlight control, cold boot and stress are open |
