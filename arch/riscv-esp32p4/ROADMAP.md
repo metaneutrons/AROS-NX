@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipe and SDK source-input corrections are being integrated on current AROS-NX main without changing SMP or board runtime. Source-owned pins, normalized cache contracts and explicit header prerequisites have fixture coverage. Clean source/runtime-bound compiler and complete SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipe and SDK source-input corrections are being integrated on current AROS-NX main without changing SMP or board runtime. Source-owned pins, normalized cache contracts and explicit header prerequisites have fixture coverage. Release object paths and applicable GCC/GDB markers distinguish Classic and SDK-selector state. Clean source/runtime-bound compiler and complete SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -169,6 +169,86 @@ byte comparisons, complete native SDK C/C++ final links and relocation,
 native P4 integration, and independent signed release/download audits.
 Recipe tests or declaration checks do not close this gate. A build does not
 change any board's hardware acceptance state.
+
+### 2026-10-10 - TC0 GNU recipes integrated on current SMP source
+
+- Baseline: protected AROS-NX main
+  `0c15f90eb34ce6b58089847f84b2b7a763ed6106`; integration branch
+  `fix/gnu-release-integration`. The current SMP/board files are unchanged.
+- Source selection: preserve the functional GNU release-layout fixes from
+  the locally tested series through `6eb0719aeb`, including the corrected
+  GCC 16.2 libstdc++ configure macros. Omit the RV64 OpenSBI GNU preset and
+  do not import the source branch's older board/SMP documentation.
+- Policy: `AROS_TOOLCHAIN_RELEASE=1` requires relocatable neutral-prefix
+  staging and private build-only host dependencies. Classic selector `0`
+  retains its default layout and header prerequisites. Consumers must supply
+  a target SDK explicitly; the compiler's sysroot marker is not an SDK.
+- Procedure: run `tools/crosstools/gnu/tests/test-release-layout.sh` with
+  GNU make, `test-header-closure.sh`, `test-zstd-closure.sh`,
+  `test-libstdcxx-configure.sh` against the locked GCC 16.2 archive, and
+  `test-script-relocation.sh` against the retained native Binutils libiberty.
+- Result: all five tests passed on macOS ARM64, including their classic
+  defaults, release-selector rejection and relocation counter-probes. These
+  are source-generation/fixture proofs, not new complete compiler binaries.
+- The recorded-metadata regression also passed against eight pristine files
+  extracted from the locked GCC archive. It applies the metadata patch with
+  zero fuzz and exercises actual configure/install code plus malformed-root
+  refusals. Lightweight header/layout/zstd tests now run in the required
+  product CI planning gate; archive-dependent tests remain separate.
+- Safety: no flash, media write, SMP/runtime change, tag or publication.
+  Existing compiler/SDK evidence remains tied to its original source commit.
+- Remaining gate: independent source review, normal product CI, clean
+  source/runtime binding and fresh mixed compiler/SDK release qualification.
+
+### 2026-10-10 - TC0 sealed Unicode generation replay
+
+- State: compiler/SDK source preparation remains `in development`; no
+  compiler release or board acceptance is inferred.
+- Configuration: Unicode 16.0.0 archive SHA-256
+  `c86dd81f2b14a43b0cc064aa5f89aa7241386801e35c59c7984e579832634eb2`.
+  The ordinary source Makefiles use this checked archive rather than loose
+  text files from a moving `latest` endpoint.
+- Procedure: `tools/genctbl/test-locked-sources.sh` with the existing native
+  CLI, reviewed GNU source lock and verified UCD archive. The test denies
+  curl, invokes the actual generator and stdc rules, removes one generated
+  input in its isolated fixture, and corrupts a separate archive copy.
+- Result: real locale generation and incremental recovery passed; both
+  direct and stdc routes refused corrupted input before output or usage
+  receipt. Recovered `en_GB_ISO8859-1.c` SHA-256:
+  `7906b7ca6d758463ee1788febca54b7e0a5d864f63a6c5bb070b5f1300830209`.
+  No loose Unicode text cache was used. Existing CI contract tests: 34 passed.
+- Safety: tests used disposable host fixtures only. The two changed
+  Makefiles' copyright marks were normalized to UTF-8 without changing
+  copyright ownership. No hardware, existing build tree or package modified.
+- Next: qualify the complete clean native SDK and P4 source contract against
+  the newly integrated source, then the three-host mixed release baseline.
+
+### 2026-10-10 - TC0 classic-state reuse counter-probes
+
+- Independent review of source integration `de4a4e0e21` found that an old
+  classic GCC/GDB install marker could skip the release build/install guard.
+  Generated libatomic configure/install state also did not encode its changed
+  SDK prerequisite selector. A fresh compiler build had not exposed reuse.
+- Correction: layout-versioned GCC/GDB install markers; separate release host
+  object directories for GNU packages, including private zstd scratch state;
+  object paths and GCC markers select the compiler-only or complete SDK context.
+  Libatomic state is isolated too. Classic paths and marker
+  names remain unchanged. Candidate install layouts must not be alternated.
+- Procedure: `MAKE=gmake sh tools/crosstools/gnu/tests/test-release-layout.sh`.
+  A test-only configure executable and child makefiles run through the actual
+  GenMF-expanded guards. Seeded classic install markers cannot skip release
+  GCC/GDB; seeded classic `.configured` cannot skip release GCC/libatomic.
+  Selector-0 release GCC markers and configured GCC/libatomic state likewise
+  cannot skip selector-1 producer commands.
+  Valid classic state still avoids redundant configure/debugger installation.
+- Result: regression passed on macOS ARM64; the pre-fix release-marker
+  assertion failed for the expected reason. Header and native zstd fixture
+  regressions also passed. Fixtures are removed by the test's exit trap.
+- Safety: no existing compiler tree, SDK, firmware, board or media changed.
+  These are recipe/state-transition probes, not new compiler binaries, A/B
+  evidence or hardware qualification. TC0 remains `in development`.
+- Next: final independent review and required product CI, followed by a clean
+  source/runtime-bound compiler/SDK replay and full mixed release gates.
 
 ### 2026-10-10 - TC0 complete SDK source-input integration
 

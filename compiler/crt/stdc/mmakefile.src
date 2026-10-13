@@ -732,9 +732,19 @@ $(GENDIR)/$(CURDIR)/defaults:
 $(GENDIR)/ucd:
     %mkdirs_q $@
 
-# The Unicode character database files come from the ports sources
-$(GENDIR)/ucd/%.txt: $(PORTSSOURCEDIR)/%.txt | $(GENDIR)/ucd
-	@$(CP) $< $@
+# genctbl owns the checked UCD archive and extracts into the generated tree.
+# Do not consume unverified loose text files from the shared download cache.
+$(GENDIR)/ucd/UnicodeData.txt: $(GENCTBL) | $(GENDIR)/ucd
+	@$(MAKE) $(MKARGS) -C $(SRCDIR)/tools/genctbl SRCDIR=$(SRCDIR) TOP=$(TOP) all
+	@test -s "$@"
+
+# Serialize recovery of the two files; parallel submakes must not extract the
+# same archive into the same directory concurrently.
+$(GENDIR)/ucd/SpecialCasing.txt: $(GENDIR)/ucd/UnicodeData.txt
+	@if ! test -s "$@"; then \
+	    $(MAKE) $(MKARGS) -C $(SRCDIR)/tools/genctbl SRCDIR=$(SRCDIR) TOP=$(TOP) all; \
+	fi
+	@test -s "$@"
 
 $(GENDIR)/$(CURDIR)/defaults/%.c: $(GENCTBL) $(GENDIR)/ucd/UnicodeData.txt $(GENDIR)/ucd/SpecialCasing.txt | $(GENDIR)/$(CURDIR)/defaults
 	@$(ECHO) "Generating $*.c";

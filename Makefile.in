@@ -1,4 +1,4 @@
-# Copyright © 2000-2026, The AROS Development Team. All rights reserved.
+# Copyright Â© 2000-2026, The AROS Development Team. All rights reserved.
 # $Id$
 #
 # Main makefile for AROS
@@ -229,7 +229,7 @@ $(ARCHTOOL): $(SRCDIR)/tools/archtools/archtool.c
 	@$(ECHO) Building $(notdir $@)...
 	@$(CALL) $(MAKE) $(MKARGS) -C $(SRCDIR)/tools/archtools SRCDIR=$(SRCDIR) TOP=$(TOP)
 
-$(GENCTBL): $(SRCDIR)/tools/genctbl/genctbl.c
+$(GENCTBL): $(SRCDIR)/tools/genctbl/genctbl.c $(SRCDIR)/tools/genctbl/Makefile
 	@$(ECHO) Building $(notdir $@)...
 	@$(CALL) $(MAKE) $(MKARGS) -C $(SRCDIR)/tools/genctbl SRCDIR=$(SRCDIR) TOP=$(TOP)
 
