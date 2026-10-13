@@ -117,7 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
-| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Local complete SDK construction and four normal C/C++ original/relocated links passed. Linux compiler A/B exposed differing GCC PCH checksums from physical prefix-map records; the source-owned metadata correction requires fresh full A/B proof. A qualified tools runtime, authenticated release admission, three-host compiler/SDK qualification, signed publication and public consumer verification remain required. No hardware claim. |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | Local complete SDK construction and four normal C/C++ original/relocated links passed. Retained Linux A/B inputs isolated the remaining PCH checksum mismatch to libcody's physical diagnostic prefix. Release-only source mapping passed bounded native object/checksum/assertion probes; fresh full compiler A/B remains required. A qualified tools runtime, authenticated release admission, three-host compiler/SDK qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -169,6 +169,46 @@ byte comparisons, complete native SDK C/C++ final links and relocation,
 native P4 integration, and independent signed release/download audits.
 Recipe tests or declaration checks do not close this gate. A build does not
 change any board's hardware acceptance state.
+
+### 2026-10-13 - TC0 isolate and map libcody's diagnostic prefix
+
+- Baseline: clean source `8343d370db0d8feefe1e794fa06688e02f54155b`
+  and nonpublishing producer run `38324809550`. Compiler comparison failed
+  with AX0702; no SDK or release acceptance follows from that run.
+- Measured cause: of 80 ordered retained checksum inputs, only input 73,
+  `../libcody/libcody.a`, differs. Both archives are 388,244 bytes; their
+  SHA-256 values are
+  `7d5202caec89a53bd7dc4af6dabd4fb163985e14487bf6d9a85efcb40c70d8dd`
+  and `00227748ecaa28b79ee4910c945fd2c47a41d1c680a14d7506151a213c50ee5d`.
+  All 79 other raw inputs, including checksum-options bytes, match. Libcody's
+  `fatal.cc` receives a literal physical `SRCDIR` not remapped by compiler flags.
+- Correction: source-owned release recipes map that diagnostic prefix through
+  declared file/macro maps. Every matching map must yield the same directory;
+  ambiguous mappings fail instead of assuming host compiler precedence.
+  Debug-only maps are ignored. Classic retains the upstream macro assignment;
+  compiler flags, raw library hashing and final byte-comparison gates are unchanged.
+- Procedure: run `tools/crosstools/gnu/tests/test-cody-srcdir.sh` against the
+  locked GCC 16.2.0 source archive and native GCC `genchecksum`, using macOS
+  Bash 3.2. Apply the actual Makefile patch with zero fuzz and build `fatal.o`
+  under two physical source roots. Compile identical callers using actual
+  `__FILE__`, verify both SIGABRT statuses and shortened diagnostics, and run
+  malformed, missing, ambiguous and Classic counterprobes. GenMF/child-make
+  forwarding regressions also pass.
+- Observed: retained probe `aros-gcc-cody-srcdir.6Nd3bp` has separately preserved
+  release objects, each 1,856 bytes and SHA-256
+  `c92075a607992248cea87f82ab91143a49e60d9ae923c0ac0d50623aac3c19fe`.
+  Direct comparison passes. Native checksum output files match with SHA-256
+  `a8f36ec0b9c386419cf1b06ee58acb3886483ceb6afc2f149bd0611445c8a277`.
+  Both real callers return 134 and report `assertion.cc:271`. Release objects
+  are preserved before Classic rebuilds its working object; that Classic
+  object is not represented as release evidence. Bounded test exits zero;
+  independent static review found no blocker.
+- Safety: isolated local source changes only; no existing build, firmware,
+  media, hardware, tag, release or published asset mutation.
+- Remaining risk and next step: full libcody/compiler A/B is not proven by
+  this object probe. Qualify a clean pinned source through fresh native GNU
+  A/B, then all three-host compiler/SDK execution, relocation and authenticated
+  release gates. TC0 remains `in development`; no hardware status changes.
 
 ### 2026-10-12 - TC0 deterministic GCC checksum-option records
 

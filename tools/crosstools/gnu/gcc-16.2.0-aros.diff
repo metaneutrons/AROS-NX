@@ -3006,6 +3006,23 @@ diff -ruN gcc-16.2.0/gcc/Makefile.in gcc-16.2.0.aros/gcc/Makefile.in
 @@ -4543,1 +4549,1 @@
 -		echo 'SYSTEM_HEADER_DIR="'"$(SYSTEM_HEADER_DIR)"'"' \
 +		echo 'SYSTEM_HEADER_DIR="'"$(INSTALL_SYSTEM_HEADER_DIR)"'"' \
+diff -ruN gcc-16.2.0/libcody/Makefile.in gcc-16.2.0.aros/libcody/Makefile.in
+--- gcc-16.2.0/libcody/Makefile.in
++++ gcc-16.2.0.aros/libcody/Makefile.in
+@@ -138,1 +138,12 @@
+-CXXFLAGS/fatal.cc = -DSRCDIR='"$(srcdir)"'
++ifeq ($(AROS_GCC_RELEASE_LAYOUT),yes)
++aros_cody_shell_quote = '$(subst ','\'',$(1))'
++AROS_CODY_MAPPED_SRCDIR := $(shell test -n "$$AROS_GCC_RELEASE_CODY_SRCDIR_HELPER" \
++  && test -r "$$AROS_GCC_RELEASE_CODY_SRCDIR_HELPER" \
++  && env AROS_GCC_RELEASE_CODY_SRCDIR=$(call aros_cody_shell_quote,$(srcdir)) awk -f "$$AROS_GCC_RELEASE_CODY_SRCDIR_HELPER" </dev/null)
++ifeq ($(strip $(AROS_CODY_MAPPED_SRCDIR)),)
++$(error unable to map libcody SRCDIR for release layout)
++endif
++CXXFLAGS/fatal.cc = -DSRCDIR='"$(AROS_CODY_MAPPED_SRCDIR)"'
++else
++CXXFLAGS/fatal.cc = -DSRCDIR='"$(srcdir)"'
++endif
 diff -ruN gcc-16.2.0/fixincludes/configure.ac gcc-16.2.0.aros/fixincludes/configure.ac
 --- gcc-16.2.0/fixincludes/configure.ac
 +++ gcc-16.2.0.aros/fixincludes/configure.ac

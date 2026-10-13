@@ -82,7 +82,11 @@ and do not change the hardware status below.
 The Linux GNU compiler A/B diagnostic found physical prefix-map paths in GCC's
 PCH checksum-option record. A source-owned release-only metadata correction has
 passed bounded recipe regressions; complete fresh A/B and SDK release qualification remain
-open. Compiler binaries and their PCH checksums are not normalized after linking.
+open. A subsequent retained-input comparison isolated the remaining mismatch
+to libcody's physical `SRCDIR` diagnostic macro. Its release-only mapping now
+passes bounded native object, checksum and real `__FILE__` assertion probes;
+full compiler A/B and SDK qualification remain open. Compiler binaries and
+their PCH checksums are not normalized after linking.
 The separate [native SDK declaration](native-sdk/README.md) selects the full
 Developer header/link-library graph. It requires a new tools runtime with
 native-consumer support; published v0.3.19 cannot activate this preset.
