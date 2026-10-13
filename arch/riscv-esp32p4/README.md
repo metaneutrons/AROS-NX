@@ -42,6 +42,17 @@ Naming policy (2026-10-12): retain `flashdisk.device` and DOS name
 `FLASHDISK0P0:`. The latter is normal generic MBR discovery naming, not an
 ESP32-specific override; Fabian explicitly accepts that derivation.
 
+WLAN lock-path continuation (2026-10-13, prepared only): after the queued
+console passes the JC1060 headless return/reader-reattachment check, the opt-in
+WiFiIO observer now marks every BeginIO acquire/release, including early
+CMD_READ/write returns and SETOPTIONS ACK reacquisition. Only command/phase
+numbers are logged; admission, private ABI12/host ABI8, C6 policy gates and
+credentials remain unchanged. Native78116-byte device3fc20d98... and preserved
+4194304-byte helper image280623a6... are built/audited, but not yet installed.
+Existing lifecycle and association dispatch-arm host tests pass; these are
+not full BeginIO/scheduler/hardware proof. Attribute the last command/phase
+alongside sampled busy/owner observations before changing connection policy.
+
 Open-association diagnosis (2026-10-11): opt-in
 `P4_WIFI_ASSOC_DIAGNOSTICS=1` distinguishes SANA admission/options rejection,
 owned attempt completion and Hosted Disconnect/SetConfig/Connect/AP-info/

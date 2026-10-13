@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `scan/presentation partial; manager lifecycle diagnosis`: ABI12/host ABI8, flash helpers1.3; discovery and Scan recur successfully on2026-10-13, but open attempt fails and repeat reports WirelessManager will not stop; opt-in lifecycle diagnostic host/native-built, helper deployed/readback/headless verified; privacy/recovery assertions and FullMAC peer admission0 | Attribute manager initialization/stop before new open and original SAE/required-PMF/no-fallback association, DHCP/routes/DNS/bidirectional traffic/reconnect/load; no C6 write or privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | `scan/presentation partial; unit-lock diagnosis`: ABI12/host ABI8, flash helpers1.3; OpenDevice busy1/owner3/nest1/queue0 follows WM stage101, not an identified lock holder or association failure. Queued console is installed/headless checked. Complete numeric BeginIO release/ACK trace device78116B3fc20d98... and preserved helper280623a6... are host/native-build verified, prepared only; privacy/recovery assertions and FullMAC peer admission0 | Attribute exact held command/phase before new open and original SAE/required-PMF/no-fallback association, DHCP/routes/DNS/bidirectional traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1664,6 +1664,17 @@ manager lifecycle instrumentation is now host/native-build verified and
 deployed/readback/headless verified in an otherwise preserved helper image.
 The actual manager boundary and association remain unqualified.
 Resolve that manager boundary before attributing a new radio/IP attempt.
+
+2026-10-13 continuation: CQ1 console core/readback and headless record
+continuity now pass on JC1060. Sampled owner3/nest1/queue0 still does not
+identify WM or a permanently unbalanced lock. A guarded BeginIO command/phase
+trace covers all seven releases (six p7/p8, ACK's final p11/p12), p0/p1 initial
+acquire, p9/p10 ACK reacquire, scan allocation/enqueue p3..6. Commands2/23/49169/
+49170 mean READ/ONEVENT/GETNETWORKS/SETOPTIONS. Query/invalid-unit prologues,
+Close/finalizer and callback locks are not covered; neither a last line nor a
+sampled tuple alone proves ownership. New device78116B3fc20d98... and helper
+280623a6... remain prepared only. Native attribution waits for deployment and
+a fresh, synchronized single open-network attempt; no connection retry yet.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
@@ -42805,3 +42816,50 @@ remain open. No partial stage is a complete A/B update system.
   exists; no lifecycle102 means no observed return from eloop. Prepared numeric
   BeginIO traces are completed for early-release and SETOPTIONS ACK-reacquire
   paths before the next native test; no association/credentials/retry issued.
+
+### 2026-10-13 - N2T complete numeric BeginIO lock-path trace prepared
+
+- Primary and Luna read-only review find no established unmatched semaphore
+  hold; do not replace the driver/radio state machine from sampled owner3.
+  Repeated nest1/queue0 is consistent with one holder and no Obtain waiter,
+  but fields are not an atomic snapshot. Open uses AttemptSemaphore because
+  Exec invokes it under Forbid; an existing nonexclusive WM open is not alone
+  an exclusive-open rejection. Stage101 is before eloop; Ctrl-C handler exists.
+- Complete the prepared guarded WiFiIO c/phase prints:0/1 initial acquire,
+ 2 opener lookup,3..6 scan allocation/enqueue,7/8 six release sites,
+ 9/10 SETOPTIONS ACK reacquire and11/12 its second release. No-opener, READ
+  and write early exits now have release records. After ReplyMsg only saved
+  local command/literal phases are logged, not possibly freed request/opener
+  or attempt. No pointer/name/SSID/credential content. All observations gated
+  by P4_WIFI_ASSOC_DIAGNOSTICS1, numeric format exact. No locks, admission,
+  event semantics or ABI/privacy/peer/credential gates changed. Timing remains
+  perturbed by observers under the metadata lock; separate native reproduction
+  from a production/no-observer qualification. Queries return before p0.
+- Independent source review accepts the scope and post-Reply lifetime; primary
+  verifies six7/8 and one11/12 release sites. Invalidate all actual sana-device
+  object descendants, quick native build exits0 and compiles sana_device.c.
+  Boardjc1060p470c-v2, SDIO_SETUP/INIT/REPLY/OWNER1, OWNER_CPU1, diagnostic
+  association risk1, SCAN_DIAGNOSTICS1/ASSOC_DIAGNOSTICS1; public/private ABI
+  and compiled generation1.3 unchanged. Native78116B SHA256
+  3fc20d98b082b1599072068b1baea64d8d76dccb13e493bdb8bd368bfa4283a2.
+- Lifetime O0/O2 sanitized fixtures each1554 checks pass. Initial association
+  queue fixture rejects the new exact log format before assertions; extend
+  its existing numeric-format allowlist with only WiFiIO c/phase. Final O0/O2
+  ASan/UBSan policy variants pass: disabled2474, diagnostic4571 and qualified
+ 4552 checks each. Scope remains selected dispatch arms/helper bodies, not full
+  BeginIO prologue/service/Exec/SMP/hardware; no diagnostic hardware pass.
+- Copy actual retained stage-owner; prepare input root from its exact WiFi,
+  ESP32Board, WirelessManager and icons, replacing only the device. Existing
+  helper builder verifies volatile/absolute flash paths, ELF loader/generation
+  and preserves other stage data. Full tree diff changes ONLY device and
+  HELPERS.sha256. Deterministic FAT16 image4194304B,33 entries, SHA256
+  280623a6d17bb95b37460957c1aad0b4609537670308946f023542d958a994b3.
+  Read-only hdiutil disk21s1, fsck_msdos -n shows33 files/933KiB free; seven
+  mounted manifest hashes pass and full stage/image tree diff is empty.
+  Detach exits0. No real SD medium or current helper flashed in preparation.
+- Evidence root:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-lock-trace-2026-10-13.zzWo9l/.
+  Retained installed helper3232e5b3... is recovery. Next exact helper-only write
+  at0xc00000, independent readback and devserial headless reset/capture; core
+ 5a164de9... and all other flash/SD/C6 content stay unchanged. Then ask for
+  fresh display readiness before exactly one Scan/open Connect; no silent retry.
