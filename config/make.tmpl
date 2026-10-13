@@ -3641,6 +3641,7 @@ DEPS := $(DEPS) $(STUBS_DEP)
 #                         The patch_subdir and patch_opt fields are optional.
 
 %define fetch mmake=/A archive_origins=. archive=/A suffixes= checksums= location= base= destination=. \
+    normalization= normalized_size= \
     patches_origins="$(SRCDIR)/$(CURDIR)" patches_specs=::
 
 .PHONY: %(mmake)
@@ -3658,13 +3659,14 @@ else
 endif
 
 %(mmake)-fetchedflag := $(%(mmake)-location)/.%(archive)-fetched
+%(mmake)-normalization-flags := $(if $(strip %(normalization) %(normalized_size)),--normalization "%(normalization)" --normalized-size "%(normalized_size)")
 
 #MM
 %(mmake) :
 	$(Q)$(ECHO) "Fetching   %(archive) ..."
 	$(Q)$(FETCH) -ao "%(archive_origins)" -a %(archive) -s "%(suffixes)" -l $(%(mmake)-location) \
 	-d %(destination) $(%(mmake)-baseflag) -po "%(patches_origins)" -p "%(patches_specs)" \
-	-cs "%(checksums)"
+	-cs "%(checksums)" $(%(mmake)-normalization-flags)
 	$(Q)$(IF) ! $(TEST) -f $(%(mmake)-fetchedflag) ; then \
 		 $(TOUCH) $(%(mmake)-fetchedflag) ; \
 	fi

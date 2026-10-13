@@ -21,7 +21,10 @@ REPOSITORIES =  \
     ftp://ftp.embeddedarm.com/mirror/yocto/
 ARCHBASE := glu-9.0.2
 PATCHSPEC := $(ARCHBASE)-aros.diff:$(ARCHBASE):-p1
-GLU_SUFFIXES := tar.xz tar.bz2 tar.gz
+GLU_SUFFIXES := tar.xz tar.gz
+GLU_CHECKSUMS := \
+    $(ARCHBASE).tar.xz=sha256:6e7280ff585c6a1d9dfcdf2fca489251634b3377bfc33c29e4002466a38d02d4 \
+    $(ARCHBASE).tar.gz=sha256:24effdfb952453cc00e275e1c82ca9787506aba0282145fff054498e60e19a65
 
 top_srcdir = $(PORTSDIR)/glu/$(ARCHBASE)
 
@@ -153,6 +156,7 @@ CC_SOURCES := \
 
 %fetch mmake=workbench-libs-glu-fetch archive=$(ARCHBASE) destination=$(PORTSDIR)/glu \
     location=$(PORTSSOURCEDIR) archive_origins=$(REPOSITORIES) suffixes="$(GLU_SUFFIXES)" \
+    checksums="$(GLU_CHECKSUMS)" \
     patches_specs=$(PATCHSPEC)
 
 %create_patch mmake=workbench-libs-glu-create-patch suffixes="$(GLU_SUFFIXES)" \

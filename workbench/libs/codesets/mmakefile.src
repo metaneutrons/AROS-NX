@@ -14,6 +14,7 @@ CODESETSARCHSRCDIR := $(PORTSDIR)/codesets/libcodesets-$(CODESETSARCHBASE)
 
 %fetch mmake=workbench-libs-codesets-fetch archive=$(CODESETSARCHBASE) destination=$(PORTSDIR)/codesets \
     location=$(PORTSSOURCEDIR)/codesets archive_origins=$(CODESETSREPOSITORIES) suffixes=$(CODESETSARCHSUFFIX) \
+    checksums="$(CODESETSARCHBASE).tar.gz=sha256:c4b11066b9c51c5670f69122efbdb1c58ddd69c4dbe1dcd480aac74577250cc1" \
     patches_specs=$(CODESETSATCHSPEC)
 
 %create_patch mmake=workbench-libs-codesets-create-patch \
