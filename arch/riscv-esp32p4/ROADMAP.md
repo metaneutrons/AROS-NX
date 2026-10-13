@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `radio commit partial; link invalidation unresolved`: fresh open query briefly succeeds then commit vanishes, online/ready preserved/fault clear. Sparse retirement observer79052B424e5c9e... / helper97b9a054... built; WiFiIO independently default-off, overflow warning unchanged. FullMAC peer admission0 | Deploy/readback sparse observer and attribute link invalidation; original SAE/required-PMF/no-fallback, DHCP/routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `radio commit partial; link invalidation unresolved`: fresh open query briefly succeeds then commit vanishes, online/ready preserved/fault clear. Sparse observer79052B424e5c9e... / helper97b9a054... deployed/readback/headless verified; WiFiIO independently default-off, overflow warning unchanged. FullMAC peer admission0 | Fresh synchronized sparse-observer attempt to attribute link invalidation; original SAE/required-PMF/no-fallback, DHCP/routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1687,7 +1687,8 @@ Could not connect. Query error/publication/state observer6ce1b5d7... /
 helper32f21b14... is deployed/readback/headless verified. A fresh synchronized
 attempt shows briefly successful status publication then link commit removal
 without admin offline or callback fault; GUI status/IP/data gates stay open.
-Sparse retirement observer is now build verified; WiFiIO tracing is independently
+Sparse retirement observer424e5c9e... / helper97b9a054... is deployed with
+independent readback and headless return; WiFiIO tracing is independently
 default-off. Retain unconditional overflow warnings; no lifecycle fence changed.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
@@ -43054,3 +43055,23 @@ remain open. No partial stage is a complete A/B update system.
   conflicts with caller treating nonnegative as success. Record this separate
   defect for a tested generic correction; it is not established as this link
   loss cause (expected ap_scan1/current_ssid avoids local leave branch).
+
+### 2026-10-13 - N2T sparse retirement diagnosis deployed
+
+- Commit7a44315094; independent source review finds no lifecycle/unsafe-index
+  or credential-output defect. Identity again P4v1.3 MAC80:f1:b2:d3:3b:a6,
+  flash16MiB. Only helper0xc00000..0xffffff written. Write process exit0/hash
+  verified, subsequent independent4MiB read exit0/cmp0/SHA256
+  97b9a054297d01054c45e28168dc11fc69ac4e6b0a1a1f8d69fbde6ff4c14e19.
+  Read-only FAT16 fsck33 files/932KiB free/detach exit0. Source console unchanged:
+  overflow frame construction remains unconditional, independent of WLAN flags.
+- devserial reopened before explicit RTS pulse/DTR-high release. Final captured
+  range15708..15925,218 rows in retire-return.jsonl SHA256
+  9ca3dbd51872cee57c10e1b87afc0bd06e6cc17496675f7e04a020b0dc8e2317.
+  Queued console ready, C6 GPIO54 reset ok1, CPU1 owner ready and touch
+  heartbeats. This does not test suppression under association load, force an
+  overflow or establish exactly-one electrical reset. No interactive retry yet.
+- Evidence in previous root: retire-write.log, retire-readback.log/bin and
+  retire-return.jsonl. Kernel193360B5a164de9.../BSP/SD/bootloader/table/C6 firmware
+  unchanged. Recovery helper32f21b14... retained. Next fresh user readiness,
+  one Scan/open Connect with sparse capture. All original WiFi gates stay open.

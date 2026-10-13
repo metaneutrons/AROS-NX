@@ -75,8 +75,10 @@ single open attempt still reports Could not connect: the query briefly succeeds
 remain set and fault remains clear. Attribute link invalidation before changing
 GUI timeout or radio policy. Verbose WiFiIO now requires the separate default-off
 P4_WIFI_IO_DIAGNOSTICS=1; association/query outcomes stay enabled independently.
-Sparse WiFiRetire path/state/difference records are prepared to attribute the
-commit removal. Console overflow reporting stays unconditional and unchanged.
+Sparse WiFiRetire path/state/difference records are installed to attribute the
+commit removal: device424e5c9e... / helper97b9a054... have exact readback and
+headless CPU1 owner return. Fresh interactive observation is pending.
+Console overflow reporting stays unconditional and unchanged.
 No C6 update or
 security-policy change is claimed.
 
