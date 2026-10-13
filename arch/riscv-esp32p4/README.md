@@ -68,7 +68,9 @@ Join stage8/AP-info status0); Fabian still reports Could not connect. This is
 radio/device commit evidence, not GUI/IP/data acceptance. The status-query
 result is absent from earlier logs. A guarded numeric WiFiInfo observer now
 records query error, publication presence and online/ready/commit/fault bits;
-79080-byte device6ce1b5d7... is built, deployment pending. No C6 update or
+79080-byte device6ce1b5d7... / helper32f21b14... are deployed/readback verified;
+headless return shows CPU1 owner ready and touch heartbeats. Fresh query-result
+observation is pending. No C6 update or
 security-policy change is claimed.
 
 Open-association diagnosis (2026-10-11): opt-in

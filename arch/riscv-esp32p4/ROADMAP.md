@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `radio commit partial; GUI status unresolved`: ABI12/host ABI8, helpers1.3; ONEVENT correction d58d5ffd... / helper f5e59ff2... deployed/readback/headless verified. Passive two open commits done1, GUI still Could not connect. Numeric query-result observer device79080B6ce1b5d7... / helper32f21b14... built, deployment pending; FullMAC peer admission0 | Attribute query result after exact deployment and fresh single open test; original SAE/required-PMF/no-fallback, DHCP/routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `radio commit partial; GUI status unresolved`: ABI12/host ABI8, helpers1.3; ONEVENT correction gives passive two open commits done1, GUI still Could not connect. Numeric query-result observer device79080B6ce1b5d7... / helper32f21b14... deployed/readback/headless verified; fresh status observation pending; FullMAC peer admission0 | Fresh readiness and single open query-result test; original SAE/required-PMF/no-fallback, DHCP/routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1683,8 +1683,9 @@ request. Native correction78576B d58d5ffd... is built; actual dispatch
 regression now passes and helper f5e59ff2... is deployed/readback verified.
 Headless return reaches CPU1 WLAN owner and touch heartbeats. Later passive
 capture has two driver-committed open associations, but Fabian still reports
-Could not connect. Query error/publication/state observer is built, not yet
-deployed; GUI status/IP/data gates stay open.
+Could not connect. Query error/publication/state observer6ce1b5d7... /
+helper32f21b14... is deployed/readback/headless verified; GUI status/IP/data
+gates stay open.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
@@ -42975,3 +42976,23 @@ remain open. No partial stage is a complete A/B update system.
   retain f5e59ff2... recovery. Next helper-only exact write/readback/headless
   return, then fresh synchronized readiness for one open attempt. No radio
   policy relaxation or C6 flash; all original IP/data/SAE/load gates remain open.
+
+### 2026-10-13 - N2T query observer installed; fresh interaction required
+
+- Diagnostic source/test/docs2f56af1989. Identify expected P4v1.3 MAC
+ 80:f1:b2:d3:3b:a6/16MiB. devserial target-port release plus esptool fallback
+  as before; no other port/daemon change. Write helper32f21b14... only at
+ 0xc00000, process exit0/hash verified; subsequent independent4MiB read
+  exits0, cmp0, SHA256
+  32f21b14909d88a9c2378ef6ed4102e0abc62631b90c6e009d35d0b07facb216.
+  Read-only FAT16 fsck33 files/932KiB free and detach exit0 before deployment.
+- Reopen devserial, RTS pulse with DTR high on release; headless final received
+  boot range14729..14952,224 rows in info-return.jsonl SHA256
+  722e9bda87309e35bb4f719d0e0482e6ee13a66233f8d5cd0ff854c391870c03.
+  GPIO54 C6 reset ok1, CPU1 owner ready, graphics updates and touch heartbeats.
+  This is boot evidence, not a query or association acceptance; control-line
+  capture/reset-count limitations remain. No Connect/Scan sent by agent.
+- Same evidence root; info-write.log, info-readback.log/bin, info-tests.log,
+  info-device-build.log retained. Kernel/BSP/bootloader/table/SD/C6 firmware
+  untouched, helperf5e59ff2... recovery retained. Next fresh readiness, explicitly
+  FLASHDISK0P0:WiFi, one Scan and one open Connect with passive devserial capture.
