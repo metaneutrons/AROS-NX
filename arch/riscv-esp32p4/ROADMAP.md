@@ -117,6 +117,7 @@ gate: compensated output is not the native display contract.
 
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
+| TC0 | Relocatable GNU RV32 compiler and complete target SDK release | `in development` | GNU recipe and SDK source-input corrections are being integrated on current AROS-NX main without changing SMP or board runtime. Source-owned pins, normalized cache contracts and explicit header prerequisites have fixture coverage. Clean source/runtime-bound compiler and complete SDK replay, three-host A/B qualification, signed publication and public consumer verification remain required. No hardware claim. |
 | F0 | Core, Exec, PSRAM, flash PKG and one-sector SD reads | `hardware verified` | Evidence entry 2026-08-21 |
 | A1 | Bounded CMD18 reads, CMD12 stop and complete recovery | `hardware verified` | Evidence entry 2026-08-22: 59 card-referenced cells, 1,000 repetitions, three injected fault modes with CMD12/CMD13 recovery, invalid-request rejection, heartbeat.  Two gate points met differently and documented: card-end comparison via the 32-bit boundary addresses, over-cap rejection unreachable through the device |
 | A2 | Hardened, bounded MBR/GPT/EBR discovery | `hardware verified` | Evidence entry 2026-08-23: the card reports exactly its one partition, and eleven malformed tables served from `ramtest.device` are all refused within 4 to 36 sector reads with a working read after each |
@@ -154,6 +155,52 @@ gate: compensated output is not the native display contract.
 | S6 | SMP default decision | `decided and done (2026-10-05)` | Evidence entry 2026-10-05: Fabian's decision, SMP is the only esp32p4 build. Configure selects the `smp` variant without being asked and refuses any other; the port's single-hart branches are gone, and a tree configured without the variant is refused. No Giant and no single-hart build; the Giant (`ff3395ba7f`) and E3 (`14f0290e21`) stay as history commits. Replaces the former E4 row. |
 | S7 | Hardware watchdog | `hardware verified (JC1060P470C); D1001 open` | Evidence entry 2026-10-09: timer group 0's main watchdog (6 s, reset system), fed from hart 0's tick only while hart 1's forwarded tick and one canary task per hart show life; fatal traps and the first alert stop the hart with interrupts masked. Ten failure cases (`P4_WDT_TEST=1..10`: `Disable()`, fatal trap, system alert, a starving task, `Forbid()`, each on hart 0 and 1) all end in a reset with cause `0x07`, which the next boot prints; the ten upstream SMP tests pass under it (longest tick gap 44 ms). |
 | S8 | Free migration of ordinary tasks | `stages 1 and 2 hardware verified (JC1060P470C); corrected closing suite, production headless soak and visual/touch passed` | Decision (Fabian, 2026-10-09): pinned by default, migration opt-in with `C:Affinity`. Fabian confirms Wanderer/touch on previous production `a4179c1e…`. Closing runner `f77784aa…` failed with an ISR-stack task context and later watchdog reset. The trap-exit MIE correction passes actual-body O0/O2 regressions with failing old-code controls; corrected runner `3415a01a…` passes all 240 programs in twenty rounds with no fault signature. Plain `0e1fa444…` passes its 360-second headless soak and synchronized visual/touch check. Open: #70 merge, DOS segment lists/late assigns and D1001. SMP.md, "S8". |
+
+## Track TC: RV32 compiler and SDK publication
+
+TC0 separates the host compiler package from the target/ABI SDK. Both use
+generic aros-tools infrastructure; the SDK contract remains source-owned.
+The first GNU release profile is RV32/ESP32-P4, not RV64. Existing LLVM
+profiles remain part of the mixed release baseline.
+
+Acceptance requires a published V2-capable aros-tools runtime, the exact
+clean source/producer/runtime identities, three-host compiler A/B builds,
+byte comparisons, complete native SDK C/C++ final links and relocation,
+native P4 integration, and independent signed release/download audits.
+Recipe tests or declaration checks do not close this gate. A build does not
+change any board's hardware acceptance state.
+
+### 2026-10-10 - TC0 complete SDK source-input integration
+
+- Baseline: protected main `0c15f90eb34ce6b58089847f84b2b7a763ed6106`;
+  branch `fix/native-sdk-source-inputs`. Only source fetch/header-context
+  fixes are selected from the retained native SDK proof, not its old board
+  history, RV64 profile or SDK feature declaration. GNU recipe integration
+  remains a separate checked change.
+- Changes: pin the 14 fetch recipes in the complete SDK source closure;
+  preserve verified FreeType/GLU suffix candidates; select TIFF's HTTPS
+  origin. Codesets explicitly depends on its headers; GSM explicitly
+  declares its empty private header list rather than an undefined variable.
+- Normalization: zlib selects canonical-tar-gzip-v1, 2,337,668 bytes, SHA-256
+  `883d22e0b9aefc31a383c462adacdbd7941e6862559c5b27e59599db8114e783`.
+  GenMF forwards the representation fields. The shell fetch helper accepts
+  only an existing regular local canonical cache entry verified before locks,
+  extraction or network access, and rechecks it before extraction. It does
+  not canonicalize a remote response. Ordinary exact-byte fetches keep their
+  prior path. Product CI's existing locked zlib staging mapping is unchanged.
+- Procedure: the CI authoring regressions expand all 14 real recipes through
+  GenMF and GNU make, require an exact pin for every selected archive format,
+  and reject missing pins or unpinned fallbacks. The normalization regression
+  exercises actual local extraction and rejects corrupted hash, wrong size,
+  absent cache, incomplete/unknown metadata and multiple suffix candidates.
+  GSM generation is checked independently of a complete SDK build.
+- Evidence: 13 recipe inputs were rehashed against the retained prepared SDK
+  cache on macOS ARM64; zlib uses the independently verified repository seed.
+  This is input/fixture evidence, not fresh compiler/SDK qualification. No
+  hardware, media, existing build tree, tag or release was changed.
+- Next: required source CI and independent review, integrate the separate
+  GNU fixes, then bind the native SDK contract to the final exact source and
+  qualified runtime before clean mixed-host release qualification.
 
 ## Track E: ESP32-P4 / RV32 SMP
 

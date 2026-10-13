@@ -8,6 +8,10 @@ SPOOFED_USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 ALWAYSUNPACK="no"
 LOCATION="./"
 BASE="./"
+normalization=""
+normalized_size=""
+canonical_mode="no"
+canonical_candidate=""
 
 error()
 {    
@@ -17,7 +21,7 @@ error()
 
 usage()
 {
-    error "Usage: $1 -a archive [-s suffixes] [-ao archive_origins...] [-cs filename=sha256:digest...] [-l location to download to] [-d dir to unpack to] [-po patches_origins...] [-p patch[:subdir][:patch options]...]"
+    error "Usage: $1 -a archive [-s suffixes] [-ao archive_origins...] [-cs filename=sha256:digest...] [--normalization policy --normalized-size bytes] [-l location to download to] [-d dir to unpack to] [-po patches_origins...] [-p patch[:subdir][:patch options]...]"
 }
 
 is_enabled()
@@ -114,6 +118,59 @@ validate_checksum_contract()
     fi
 }
 
+validate_normalization_contract()
+{
+    local suffix suffix_count=0
+
+    if test -z "$normalization" && test -z "$normalized_size"; then
+        return 0
+    fi
+
+    if test -z "$normalization" || test -z "$normalized_size"; then
+        echo "fetch: normalization and normalized-size must be supplied together." >&2
+        return 1
+    fi
+
+    case "$normalization" in
+        canonical-tar-gzip-v1) ;;
+        *)
+            echo "fetch: unsupported normalization policy '$normalization'." >&2
+            return 1 ;;
+    esac
+
+    if [[ ! "$normalized_size" =~ ^[1-9][0-9]*$ ]]; then
+        echo "fetch: normalized-size must be a positive decimal byte count." >&2
+        return 1
+    fi
+
+    if test -z "$checksums"; then
+        echo "fetch: normalized archives require an explicit checksum." >&2
+        return 1
+    fi
+
+    for suffix in $suffixes; do
+        suffix_count=$((suffix_count + 1))
+        case "$suffix" in
+            tar.gz|tgz) canonical_candidate="$archive.$suffix" ;;
+            *)
+                echo "fetch: normalization '$normalization' only supports .tar.gz or .tgz candidates." >&2
+                return 1 ;;
+        esac
+    done
+
+    if test "$suffix_count" -ne 1; then
+        echo "fetch: normalization '$normalization' requires exactly one archive suffix candidate." >&2
+        return 1
+    fi
+
+    if ! checksum_for "$canonical_candidate" >/dev/null; then
+        echo "fetch: normalization '$normalization' requires a checksum for '$canonical_candidate'." >&2
+        return 1
+    fi
+
+    canonical_mode="yes"
+}
+
 sha256_file()
 {
     local path="$1"
@@ -146,6 +203,40 @@ verify_checksum()
         return 1
     fi
     echo "Verified   $file (SHA-256)"
+}
+
+verify_normalized_size()
+{
+    local file="$1" path="$LOCATION/$1" actual_size
+
+    if test ! -f "$path" || test -L "$path"; then
+        echo "fetch: normalized cache candidate is not a regular file: $path" >&2
+        return 1
+    fi
+
+    actual_size=$(wc -c < "$path" | tr -d '[:space:]') || return 1
+    if test "$actual_size" != "$normalized_size"; then
+        echo "fetch: normalized-size mismatch for '$file'." >&2
+        echo "fetch: expected: $normalized_size" >&2
+        echo "fetch: actual:   $actual_size" >&2
+        echo "fetch: cached file: $path" >&2
+        return 1
+    fi
+    echo "Verified   $file (size)"
+}
+
+preflight_normalized_cache()
+{
+    local path="$LOCATION/$canonical_candidate"
+
+    if test ! -f "$path" || test -L "$path"; then
+        echo "fetch: normalization '$normalization' requires a pre-existing regular local cache candidate: $path" >&2
+        echo "fetch: scripts/fetch.sh does not normalize remote archives; use the explicit aros-fetch path for remote normalization." >&2
+        return 1
+    fi
+
+    verify_normalized_size "$canonical_candidate" || return 1
+    verify_checksum "$canonical_candidate" || return 1
 }
 
 fetch_mirrored()
@@ -659,7 +750,7 @@ fetchunlock()
 
 while test "x$1" != "x"; do
     case "$1" in
-        -ao|-a|-s|-d|-po|-p|-b|-l|-rn|-cs)
+        -ao|-a|-s|-d|-po|-p|-b|-l|-rn|-cs|--normalization|--normalized-size)
             # Ensure there *is* a $2 (even if it's an empty string)
             if test $# -lt 2; then
                 echo "Option $1 requires an argument."
@@ -681,6 +772,8 @@ while test "x$1" != "x"; do
                 -l)  newlocation="$2";;
                 -rn) renamedir="$2";;
                 -cs) checksums="$2";;
+                --normalization) normalization="$2";;
+                --normalized-size) normalized_size="$2";;
             esac
             shift 2;;
         -f)
@@ -700,16 +793,28 @@ BASE=${newbase:-${destination}}
 patches_origins=${patches_origins:-.}
 
 validate_checksum_contract || exit 1
+validate_normalization_contract || exit 1
 
 # Ensure LOCATION, destination, and BASE are absolute paths.
 [[ "$LOCATION" != /* ]] && LOCATION="$PWD/$LOCATION"
 [[ "$destination" != /* ]] && destination="$PWD/$destination"
 [[ "$BASE" != /* ]] && BASE="$PWD/$BASE"
 
+if test "$canonical_mode" = yes; then
+    # The legacy fetcher verifies archive bytes but has no canonicalizer. For
+    # normalized inputs, accept only a pre-seeded local cache candidate and
+    # reject a cache miss before locks, directory creation, or network access.
+    preflight_normalized_cache || exit 1
+fi
+
 fetchlockfile="$archive"
 fetchlock "$LOCATION" "$fetchlockfile"
 
-fetch_cached "$archive_origins" "$archive" "$suffixes" "$LOCATION" archive2
+if test "$canonical_mode" = yes; then
+    fetch_cached "$LOCATION" "$archive" "$suffixes" "$LOCATION" archive2
+else
+    fetch_cached "$archive_origins" "$archive" "$suffixes" "$LOCATION" archive2
+fi
 
 if test -z "$archive2"; then
     fetchunlock "$LOCATION" "$fetchlockfile"
@@ -726,6 +831,11 @@ if test -n "$checksums" || is_enabled "${AROS_FETCH_REQUIRE_CHECKSUMS:-0}"; then
         fetchunlock "$LOCATION" "$fetchlockfile"
         error "fetch: refusing to unpack unverified archive \`$archive'."
     fi
+fi
+
+if test "$canonical_mode" = yes && ! verify_normalized_size "$archive"; then
+    fetchunlock "$LOCATION" "$fetchlockfile"
+    error "fetch: refusing to unpack an archive with the wrong normalized size."
 fi
 
 for patch in $patches; do

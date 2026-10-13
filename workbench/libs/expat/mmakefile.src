@@ -14,6 +14,7 @@ EXPATARCHSRCDIR := $(PORTSDIR)/expat/$(EXPATARCHBASE)
 
 %fetch mmake=workbench-libs-expat-fetch archive=$(EXPATARCHBASE) destination=$(PORTSDIR)/expat \
     location=$(PORTSSOURCEDIR) archive_origins=$(EXPATREPOSITORIES) suffixes=$(EXPATARCHSUFFIX) \
+    checksums="$(EXPATARCHBASE).tar.bz2=sha256:69e7f52417d85b1c2b7fe855e176eec55d0b2d7d92d691372d833a1c7df7923b" \
     patches_specs=$(EXPATATCHSPEC)
 
 %create_patch mmake=workbench-libs-expat-create-patch \

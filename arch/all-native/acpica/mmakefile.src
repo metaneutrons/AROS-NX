@@ -22,7 +22,9 @@ ACPICA_INCLUDES     := $(ACPICASRCDIR)/source/include
     destination=$(PORTSDIR)/acpica \
     location=$(PORTSSOURCEDIR) \
     archive_origins=$(ACPICAREPOSITORIES) \
-    suffixes="tar.gz" patches_specs=$(ACPICAPSPECS)
+    suffixes="tar.gz" \
+    checksums="$(ACPICAARCHBASE).tar.gz=sha256:e66ceb26d6d514ce164fe22f5a4f7ca165cc38349d7a97f41a21f19b364647a2" \
+    patches_specs=$(ACPICAPSPECS)
 
 %create_patch mmake=acpica-create-patch \
     archive=$(ACPICAARCHBASE) \
