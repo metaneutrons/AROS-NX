@@ -19,7 +19,7 @@
 #define str_BSVESA "bootstrap:vesa"
 #endif
 
-void setupVESA(char *vesa)
+BOOL setupVESA(char *vesa)
 {
     BOOL prioritise_depth = FALSE, set_refresh = FALSE;
     long x = 0, y = 0, d = 0, vfreq = 0;
@@ -51,7 +51,7 @@ void setupVESA(char *vesa)
     else
         vfreq = 60;
 
-    setupVESAMode(x, y, d, vfreq, prioritise_depth, set_refresh);
+    return setupVESAMode(x, y, d, vfreq, prioritise_depth, set_refresh);
 }
 
 /*

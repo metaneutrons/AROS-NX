@@ -425,8 +425,12 @@ int ParseCmdLine(const char *cmdline)
 
         if (vesa)
         {
-            setupVESA(&vesa[5]);
-            return 0;
+            if (setupVESA(&vesa[5]))
+                return 0;
+
+            /* Preserve the loader's framebuffer when the BIOS cannot set
+             * the explicitly requested VESA mode. */
+            kprintf("[bootstrap] requested VESA mode failed; using bootloader video info\n");
         }
     }
     return 1;

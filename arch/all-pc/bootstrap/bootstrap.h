@@ -82,7 +82,7 @@ void bootstrap_halt(void) __attribute__((noreturn));
     } while (0)
 unsigned long mb1_parse(struct multiboot *mb, struct mb_mmap **mmap_addr, unsigned long *mmap_len);
 unsigned long mb2_parse(void *mb, struct mb_mmap **mmap_addr, unsigned long *mmap_len);
-void setupVESA(char *str);
+BOOL setupVESA(char *str);
 BOOL setupVESAMode(long x, long y, long d, long vfreq, BOOL prioritise_depth, BOOL set_refresh);
 
 #if defined(__i386__) || defined(__x86_64__)
