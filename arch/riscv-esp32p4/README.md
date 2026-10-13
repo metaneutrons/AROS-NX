@@ -41,7 +41,9 @@ WirelessManager will not stop, before a new association. This means its
 task remains visible for the existing5s stop budget, not proof of a permanent
 deadlock. Opt-in numeric-only WM lifecycle boundaries now build natively and
 pass existing close tests; only the manager/hash manifest differ in the
-prepared helper image. Deployment/native stall attribution remain pending.
+prepared helper image. Exact helper deployment/readback and45s headless return
+now pass; GPIO54 C6 reset and CPU1 owner are captured. A fresh-readiness
+manager lifecycle capture is armed; native stall attribution remains pending.
 
 ESP32Board interface (2026-10-11): native MUI Overview, Update, Flash & Backup
 and Diagnostics tabs implement Fabian's approved 800x600 design. Requested
