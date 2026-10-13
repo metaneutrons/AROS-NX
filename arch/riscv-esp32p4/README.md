@@ -48,6 +48,12 @@ its event loop (stage101), followed by repeated Prefs OpenDevice unit-busy
 errors(-6); no association request is captured yet. Permanent deadlock or
 radio cause is not established; native stall attribution remains pending.
 
+Open-busy discriminator (2026-10-13): numeric opt-in branches distinguish
+first/second unit-lock acquisition from the existing initialized/attaching/
+opener-cap/exclusive predicate. Native device build and independent source
+review pass; lifetime fixtures do not exercise Open and are not claimed as
+proof of these branches. Helper replacement/readback is in progress.
+
 ESP32Board interface (2026-10-11): native MUI Overview, Update, Flash & Backup
 and Diagnostics tabs implement Fabian's approved 800x600 design. Requested
 740x500 inner sizing, bounded status lines, native file requesters and a

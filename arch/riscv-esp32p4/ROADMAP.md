@@ -42526,3 +42526,38 @@ remain open. No partial stage is a complete A/B update system.
   the AP or changing radio admission. A snapshot/prefix is not a completed
   capture or a permanent-deadlock proof. Completion, hash and GUI result
   remain pending; no further hardware action or second Connect requested.
+
+### 2026-10-13 - manager attempt completes; Open busy branches instrumented
+
+- Fabian confirms Could not connect on the first post-reset open attempt.
+  manager-lifecycle.log completes exit0/status=ok,600.026s/8984B,
+  SHA2561c704cc33cb32eebb22d0a30a03ce77219dadea895fd0d972cbfa33c085e9b9d.
+  It records successful Scan, manager run entry and repeated stage3/-6 status
+  opens; no received WiFiReq/WiFiJoin or new fatal/reset banner. This is a
+  failed native attempt, not a radio association or IP result.
+- Read-only source review finds no steady-state immediate event/read loop
+  proving starvation. Reviewer alleged missing initial EAPOL SendIO;
+  primary checked the actual init SendIO and rejected that false finding.
+  Do not change event policy or EAPOL startup from that hypothesis.
+- Add three default-off numeric WiFiOpen busy observations without changing
+  predicates/state/locks/errors:1=first AttemptSemaphore refusal,
+  2=locked predicate with bits1=!initialized,2=attaching,4=opener cap,
+  8=existing exclusive,16=requested exclusive with openers;3=second
+  AttemptSemaphore refusal. Reason captured under lock, printed after release.
+  No task addresses, identities or secrets. Debug include now also covers
+  the independent association diagnostic define. Logging under Forbid can
+  perturb timing; it does not introduce waiting or unblock admission.
+- Native device objects invalidated; sequential quick build exits0 with no
+  error:/warning:, board jc1060p470c-v2 and previous diagnostic/risk flags,
+  private ABI12/hostABI8 and all peer/privacy gates unchanged.
+  Device76464B SHA2560455fbebba95e957c92a359eb2a07701911b73a1a7344125c5d0ecd50b80d3f0;
+  numeric marker strings verified. Independent review finds no semantic/ABI
+  change. Existing lifetime O0/O2 each1554 checks exits0, but does not test
+  Open; branch evidence remains native-only and pending.
+- Copy prior helper stage, overlay device/manifest only, preserve manager
+  lifecycle artifact. Helpers-open.img4194304B SHA256
+  4ae4bef679788c63b29e9e862114304e3a3a28c5097c83fee9694e1de2c16483.
+  Read-only mount verifies7 hashes/full stage equality; detach exits0.
+  Fresh P4v1.3/MAC80:f1:b2:d3:3b:a6 identity before exact0xc00000 write;
+  write session30726 running, completion/readback/return pending. Retained
+  previous helpera8245c90... provides recovery. No core/BSP/C6/SD/table write.

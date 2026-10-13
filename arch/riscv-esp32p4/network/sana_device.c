@@ -2,7 +2,7 @@
 #include <aros/asmcall.h>
 #include <aros/io.h>
 #include <aros/macros.h>
-#ifdef P4_WIFI_SCAN_DIAGNOSTICS
+#if defined(P4_WIFI_SCAN_DIAGNOSTICS) || defined(P4_WIFI_ASSOC_DIAGNOSTICS)
 #include <aros/debug.h>
 #endif
 #include <exec/errors.h>
@@ -2145,6 +2145,9 @@ static BOOL GM_UNIQUENAME(Open)(LIBBASETYPEPTR LIBBASE,
     /* OpenDevice runs under Forbid.  AttemptSemaphore is deliberate: Open
      * never waits for another task or begins radio/transport work under it. */
     if (!AttemptSemaphore(&unit->lock)) {
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        bug("[WiFiOpen] busy=1\n");
+#endif
         FreeVec(opener);
         request->ios2_Req.io_Error = IOERR_UNITBUSY;
         return FALSE;
@@ -2152,7 +2155,17 @@ static BOOL GM_UNIQUENAME(Open)(LIBBASETYPEPTR LIBBASE,
     if (!unit->initialized || unit->attaching ||
         unit->open_count >= P4WLAN_MAX_OPENERS ||
         (unit->exclusive_open || (opener->exclusive && unit->open_count))) {
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        ULONG reason = (!unit->initialized ? 1u : 0u) |
+            (unit->attaching ? 2u : 0u) |
+            (unit->open_count >= P4WLAN_MAX_OPENERS ? 4u : 0u) |
+            (unit->exclusive_open ? 8u : 0u) |
+            (opener->exclusive && unit->open_count ? 16u : 0u);
+#endif
         ReleaseSemaphore(&unit->lock);
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        bug("[WiFiOpen] busy=2 reason=%lu\n", reason);
+#endif
         FreeVec(opener);
         request->ios2_Req.io_Error = IOERR_UNITBUSY;
         return FALSE;
@@ -2197,6 +2210,9 @@ static BOOL GM_UNIQUENAME(Open)(LIBBASETYPEPTR LIBBASE,
     }
 
     if (!AttemptSemaphore(&unit->lock)) {
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        bug("[WiFiOpen] busy=3\n");
+#endif
         FreeVec(opener);
         request->ios2_Req.io_Error = IOERR_UNITBUSY;
         return FALSE;
