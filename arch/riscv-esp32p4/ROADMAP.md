@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `transient link; monitor DOWN isolated, cause open`: Connected open WLAN shown; generic parser/notifier correction14 regression PASS. Native1111984Ba31b79e6... SD file replaced/readback verified. Fresh attempt publishes link twice then WiFiRetire k3/s2/d27 without scoped sequence gaps/overflow. Numeric query/event-reason observer native358556B84afccce... and eight sanitized host runs pass, deployment pending; FullMAC peer admission0 | Attribute AP-info DOWN before another interactive attempt; corrected-stack startup/DHCP and original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `transient link; C6 disconnect reason8 observed, origin open`: Native observer358556B84afccce... and quiet touch deployed in BSP4047776B2212f70a.../independent readback/headless return. One fresh open attempt commits then event776/reason8 and correlated0x300f trigger retirement; internal retry later stays UP, GUI still reports failure. Eight sanitized observer runs pass. Corrected SYS stacka31b79e6... remains startup/IP untested; FullMAC peer admission0 | Attribute host/peer origin and ordering of disconnect8; no blind timeout extension. Corrected-stack/DHCP, original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -200,7 +200,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | D2 | Guition JC1060P470C as the active development board (J0-J5) | `J0-J5 accepted; four cold visual passes; sustained stress open` | Board IDs `jc1060p470c-v2` (new panel batch, active) and `jc1060p470c-v1` (old batch). On `80:f1:b2:d3:3b:a6`: J0 Exec/32MB PSRAM; J1 correct test card after 20MHz D-PHY reference fix; J2 GT911/I2C1/100kHz; J3/J4 Wanderer, four-edge pointer, double tap, two-finger menu and double-tap-and-drag visually accepted. J5 portable touch/brightness control panels accepted 2026-10-05. Aggregate early USB budget correction `4d998b4e…` passes host tests, a 120-second reader-attached USB-reset boot and four synchronized USB-only physical cold boots without a serial reader/reset: approximately 10, 11, 14 and 11 seconds (2026-10-09). Fresh pointer, double-tap and two-finger menu check accepted. Earlier black cold attempt remains recorded. Open: larger cold-cycle reliability campaign, sustained combined/no-reader stress and old panel batch. Previous-production thirty-minute reader-attached idle soak does not substitute for those gates. See dated D2/J0-J5 and s13-s15 evidence for exact configurations/artifacts. |
 | D2-BT | JC1060 boot latency | `deferred; production cleanup accepted` | Fabian defers optimization after channel2-off cold12s with no demonstrated gain. Original bootloader27b99e03… and entire sector range restored/readback-verified; clean normal core17249045… has BOOT_TIMING0/C1_PROFILE0, independent readback and complete60s warm regression pass. Quiet package/media unchanged. Fresh exact-pair desktop/pointer/double-tap/menu check accepted by Fabian; no claim that latency is fixed. |
 | D2-Q | JC1060 production no-reader combined qualification | `accepted on JC1060; D1001 regression next` | Cleanup step1 and qualification step2 accepted. Normal core17249045…/quiet package e0869292… unchanged. Production IDf7ed5845:1800s,4762 verified batches/hart,900 referenced SD reads,1588 window API updates, zero errors/mismatches, reason0/fixture1. Single45.182s passive capture and strict production validator exit0; no captured reset/fault signatures. Following fresh readiness, Fabian confirms post-load desktop, pointer, RAM Disk double-tap and two-finger menu-item selection without flicker/hang, no restart. Reader-free interval is procedural evidence; API counts do not prove visible frames throughout load. No D1001 acceptance implied. |
-| D3 | Portable touch and I2C stack | `hardware partial (JC1060P470C passed); quiet logging build verified` | 2026-10-04 on Fabian's direction: `touchscreen.hidd` (`rom/hidds/touchscreen`, polling, gestures, calibration, `ENV:Sys/touchscreen.prefs`), controller drivers `gt911.hidd` and `gsl3670.hidd` on AROS's `hidd.i2c` (`workbench/hidds`), the bus driver `hidd.i2c.esp32p4` (`arch/riscv-esp32p4/i2c`, transport shared with the kernel) and `esp32p4board.resource`, which builds the objects from the board profile; editor `workbench/prefs/touchscreen`. The kernel keeps no touch driver and no `KATTR_TouchScreenOps`. Fixes the I2C0 clock divider position (CTRL10 bits 9:2). JC1060P470C: GT911 through the new stack; Fabian confirms touch, calibration, editor and the tap/direct switch. 2026-10-14: TOUCHSCREEN_DIAGNOSTICS defaults0, routine logs opt-in; startup/errors/recovery and independent edge trace retained. Both native variants and host regressions pass, deployment pending. D1001: builds, not hardware tested. |
+| D3 | Portable touch and I2C stack | `hardware partial (JC1060P470C passed); quiet logging deployed/readback/headless` | 2026-10-04 on Fabian's direction: `touchscreen.hidd` (`rom/hidds/touchscreen`, polling, gestures, calibration, `ENV:Sys/touchscreen.prefs`), controller drivers `gt911.hidd` and `gsl3670.hidd` on AROS's `hidd.i2c` (`workbench/hidds`), the bus driver `hidd.i2c.esp32p4` (`arch/riscv-esp32p4/i2c`, transport shared with the kernel) and `esp32p4board.resource`, which builds the objects from the board profile; editor `workbench/prefs/touchscreen`. The kernel keeps no touch driver and no `KATTR_TouchScreenOps`. Fixes the I2C0 clock divider position (CTRL10 bits 9:2). JC1060P470C: GT911 through the new stack; Fabian confirms touch, calibration, editor and the tap/direct switch. 2026-10-14: TOUCHSCREEN_DIAGNOSTICS defaults0; startup/errors/recovery and independent edge trace retained. Both native variants and host regressions pass; quiet65884B38a0a618... deployed/readback,73.391s headless excerpt has only startup/no routine Touch rows. Fresh touch regression pending. D1001: builds, not hardware tested. |
 | E0 | Second HP-hart entry foundation | `core build/residency verified; baseline soak open` | Private SRAM entry/stack/report/trap verified in the linked 203,776-byte diagnostic core and isolated fixtures; XIP counter-probe rejects. Aggregate image packaging still fails on the oversized 4-MB flashdisk dependency; exact core is linked separately. Prior delayed-hang qualification remains open. See [SMP.md](SMP.md). |
 | E1 | Bounded second HP-hart release/park | `hardware verified` | Fresh campaign02 passes seed+20 consecutive one-pulse warm transitions, no retries, with core1 reset clear/clock on at every successor's AROS entry. Early isolation, PSRAM recovery and private hart1 report/guards pass. Intermediate diagnostic confirms hart1 stopped; complete204,800-byte baseline range restored and independently verified. Following explicit readiness, normal60-second boot and Fabian's "läuft" confirm the requested desktop/pointer/two-finger-menu regression. This verifies bounded release/park only, not Exec SMP or the earlier delayed-hang soak. |
 | E2 | Two-hart atomics, coherence and IPI primitives | `hardware verified; complete` | Exact219,776-byte core08 passes five ordinary headless captures/ten reset-separated epochs:650 SRAM+660 PSRAM exchanges,120 refusals,163,840 updates per AMO/CAS/lock counter with measured contention, bidirectional software IPI, remote code37/53, missing-park refusal and ten cache suspend/resume windows. Secondary reset/clock stop confirmed every exit; full221,184-byte normal range restored/verified and headless baseline boots. Atomics qualify internal SRAM only; Exec SMP/default changes wait for E3. |
@@ -1702,8 +1702,12 @@ The opt-in resource query/event-reason observer is native-build verified:
 WiFiLink logs the UID-correlated AP-info status/revisions/event delta; WiFiEvent
 logs accepted lifecycle/link hints; WiFiHint logs generic event ID/status before
 existing rejection. No stale-UP adoption, timeout extension or new authority.
-Eight diagnostic-off/on O0/O2 sanitized callback/AP-info runs pass; deployment
-and a fresh synchronized capture remain pending.
+Eight diagnostic-off/on O0/O2 sanitized callback/AP-info runs pass; observer
+and quiet touch deployed/readback in preserved BSP2212f70a... . Fresh authorized
+attempt reports Could not connect: token1 commits, event776/reason8 follows,
+revision-stale query discarded and next correlated0x300f retires the link.
+Internal token3 later stays UP, after the GUI timeout; this is not IP success.
+Attribute disconnect origin/order before changing timeout or policy.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
@@ -4202,7 +4206,8 @@ Generic D3 logging follow-up (2026-10-14): TOUCHSCREEN_DIAGNOSTICS defaults0,
 with opt-in1 for routine heartbeat/button/multitouch/settings/prefs/calibration
 details. Startup/errors/recovery remain unconditional, edge tracing independent.
 No input policy/callback/counter or public ABI change. Both native variants and
-host regressions pass; preserved-member deployment and fresh touch gate pending.
+host regressions pass; preserved-member deployment/readback and73.391s headless
+quiet startup pass. Fresh touch functional gate remains pending.
 
 Latest policy candidate (2026-09-30): tap-to-click is now the default;
 one-finger movement is button-free, stationary hold for 400 ms starts a left
@@ -43337,3 +43342,56 @@ remain open. No partial stage is a complete A/B update system.
   touchscreen.hidd and tested WiFi observer resource, audit/range/readback,
   passive headless return, then fresh readiness for interaction. Kernela68ca519...
   stays unchanged; helper/SD/C6/boot metadata untouched. D1001 gate stays open.
+
+### 2026-10-14 - D3/N2T quiet touch and link observer deployed
+
+- Commits73cd5000f1/e39885a7aa. Preserve known installed42-member BSPcc8f1a3d...;
+  replace only touchscreen.hidd and esp32p4wifi.resource. All40 other complete
+  records byte-identical, including SDMMC host/sdcard dependency closure; no
+  ABI header change. Candidate4047776B SHA256
+  2212f70a7b2289b2c328add9c7574e20e81f334d08cb47ee8fd81db76e5e8852,
+  end0xbfc3a0 below0xc00000. Loader audit0 failed members. Source/toggle values
+  and artifact identities are preceding reviewed entries; WiFi IO0/assoc1,
+  FullMAC peer admission0, Touch diagnostics/edge0, console prefix0.
+- devserial target-only bootloader macro/release; no daemon/other-port/history
+  change. esptool identity exits0, P4v1.3/16MiB/MAC80:f1:b2:d3:3b:a6. Targeted
+  prewrite4049108B read exits0/cmp0 to retained installed BSPcc8f1a3d... .
+  Exact0x820000 write exits0/hash verified; erased0x820000..0xbfcfff. Subsequent
+  independent4047776B read exits0/cmp0/SHA2562212f70a... . No kernel/helper/SD/
+  C6/bootloader/table/NVS write. Recovery old package retained.
+- Reopen capture before explicit RTS pulse/DTR-high release; fresh ROM20982.
+  bsp-headless.jsonl20982..21248,267 rows/73.391218s, SHA256
+  e99f497a7b125cd5a60bcb943f1b19a202556afd3500a722f5c2118a4379fea5.
+  PSRAM32MB200MHz, watchdog6000ms, hart1 online/cpus2, queued sender ready,
+  GT911 started, CPU1 WLAN owner/C6 GPIO54 reset and graphics updates observed.
+  Only one Touch row (startup), no routine Touch or normal p4log prefix rows;
+  no matched fault/overflow signature.70 WiFiLink rows deliberately record
+  each existing refresh under opt-in assoc diagnostics; initial0x300f without
+  selection is expected not-connected, not a failed Connect test. No sequence
+  continuity proof in plain mode, forced-error/overflow or fresh touch pass.
+- package-audit/delta.log, bsp-identity/prewrite/write/readback logs and exact
+  artifacts retained in console-prefix-2026-10-14.Cu8SYY. Next fresh synchronized
+  open attempt for disconnect attribution, not a WiFi completion claim.
+
+### 2026-10-14 - N2T fresh open attempt captures C6 disconnect reason8
+
+- Fabian confirms ready (breit); connected devserial baseline21329, start
+  follow client81540/wifi-open-after-21329.jsonl before authorizing exact flash
+  WiFi, one Scan/open Connect. No reset/flash during interaction. User reports
+  Could not connect and describes typical Amiga error-beep flash, not a Guru.
+  Origin of visual beep remains unproven; no reset/fault signature in scoped log.
+- Fixed export wifi-open-snapshot-21330-21619.jsonl290 rows/192.462943s,
+  SHA2569904b1fa4bd2259ed4e5d6b36900fa067a166457e06d31a9a4b78323db5bdb7d.
+  Token1 Join8/AP-info0/valid1/done1, Info e0/v1/s7 twice; event776/g2/rev3/
+  DOWN/status0/reason8. Refresh UID228 returns0x300f with revision2->3/ev1,
+  discarded by existing revision fence. UID229/rev3/ev0 again returns0x300f;
+  WiFiRetire k3/s2/d27 follows. No overflow/reset/Guru/fatal marker in excerpt;
+  omitted sequence metadata prevents gap proof.
+- Later manager-owned token3 commits; connected event775/rev4 and successive
+  correlated AP-info status0 remain present through the snapshot. This is an
+  internal retry, not another manual test or a DHCP/IP pass. RunConnect's
+  finite polling can miss the first short-lived commit and finish before this
+  retry. Do not mask the initial disconnect with a longer GUI timeout. Reason8
+  alone does not prove whether host or peer/AP caused departure; audit native
+  Disconnect/caller paths and event ordering, adding only missing RPC attribution
+  if required. SYS stack startup, IP/data/SAE/reconnect/load remain open.

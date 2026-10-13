@@ -57,8 +57,11 @@ objects on switch changes. Startup, errors, recovery and warnings remain
 unconditional, with existing error rate limits. `TOUCHSCREEN_EDGE_TRACE=1`
 remains a separate deliberate calibration trace. Native default65884B38a0a618...
 and diagnostic67708Bb2a6ef2a... modules both build; preprocessing and unchanged
-policy/prefs/calibration regressions pass. Package deployment is pending;
-this is not fresh touch interaction or D1001 acceptance.
+policy/prefs/calibration regressions pass. Quiet touch and numeric WiFi observer
+are installed in a preserved42-member BSP4047776B2212f70a..., with independent
+readback. Fresh73.391s headless capture shows only touch startup, no routine
+touch or normal console-prefix rows. This is not forced-error-path or D1001
+acceptance; fresh touch functional regression remains open.
 
 Naming policy (2026-10-12): retain `flashdisk.device` and DOS name
 `FLASHDISK0P0:`. The latter is normal generic MBR discovery naming, not an
