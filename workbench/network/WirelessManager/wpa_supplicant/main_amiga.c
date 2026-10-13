@@ -23,6 +23,10 @@
 
 #include <proto/dos.h>
 
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+#include <aros/debug.h>
+#endif
+
 #ifdef MUI_GUI
 #include <proto/exec.h>
 int start_gui(struct wpa_global *global);
@@ -71,6 +75,10 @@ int main(int argc, char *argv[])
 
 	if (os_program_init())
 		return -1;
+
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	bug("[WiFiWM] s=100\n");
+#endif
 
 	os_memset(&params, 0, sizeof(params));
 	params.wpa_debug_level = MSG_INFO;
@@ -131,10 +139,22 @@ int main(int argc, char *argv[])
 		exitcode = start_gui(global);
 #endif
 
-	if (exitcode == 0)
+	if (exitcode == 0) {
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		bug("[WiFiWM] s=101\n");
+#endif
 		exitcode = wpa_supplicant_run(global);
+	}
+
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	bug("[WiFiWM] s=102\n");
+#endif
 
 	wpa_supplicant_deinit(global);
+
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	bug("[WiFiWM] s=103\n");
+#endif
 
 out:
 	os_free(ifaces);

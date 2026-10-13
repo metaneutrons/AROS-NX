@@ -6,6 +6,13 @@ include $(SRCDIR)/config/aros.cfg
 
 workbench-network-wirelessmanager-touchfileflag := $(GENDIR)/$(CURDIR)/.files-touched
 
+WM_DIAGNOSTIC_CFLAGS :=
+ifeq ($(AROS_TARGET_ARCH),esp32p4)
+ifeq ($(P4_WIFI_ASSOC_DIAGNOSTICS),1)
+WM_DIAGNOSTIC_CFLAGS := -DWM_LIFECYCLE_DIAGNOSTICS=1
+endif
+endif
+
 # -MD is not decoration. wpa_supplicant's Makefile sets its own CFLAGS (with
 # -MMD) only under "ifndef CFLAGS", and use_build_env passes CFLAGS in from the
 # outside - so the default, and with it the dependency generation feeding its
@@ -17,7 +24,7 @@ workbench-network-wirelessmanager-touchfileflag := $(GENDIR)/$(CURDIR)/.files-to
 # the AROS headers arrive through the sysroot, which -MMD leaves out.
 %build_with_configure mmake=workbench-network-wirelessmanager\
     	install_env="BINDIR=$(AROS_C)" use_build_env=yes \
-    	extracflags="$(OPTIMIZATION_CFLAGS) -MD"
+        extracflags="$(OPTIMIZATION_CFLAGS) -MD $(WM_DIAGNOSTIC_CFLAGS)"
 
 # The install stamp gates on .configured alone, so once the port is installed
 # its recipe - and the "make -q" inside it that consults the depfiles - never

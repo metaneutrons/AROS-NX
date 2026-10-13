@@ -32,6 +32,15 @@
 #include <proto/utility.h>
 #include <proto/dos.h>
 
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+#include <aros/debug.h>
+/* Numeric boundaries only: no network identity, address or credential data. */
+static void sana2_lifecycle_trace(unsigned stage)
+{
+	bug("[WiFiWM] s=%u\n", stage);
+}
+#endif
+
 #ifndef UPINT
 #ifdef __AROS__
 typedef IPTR UPINT;
@@ -1559,6 +1568,10 @@ static void wpa_driver_sana2_deinit(void *priv)
 	struct wpa_driver_sana2_data *drv = priv;
 	int i;
 
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	sana2_lifecycle_trace(20);
+#endif
+
 	/* Retire callbacks before destroying anything they may reference. */
 	eloop_cancel_timeout(wpa_driver_sana2_stay_alive, drv->ctx, drv);
 	if (drv->signal_registered) {
@@ -1570,7 +1583,13 @@ static void wpa_driver_sana2_deinit(void *priv)
 	/* Abort outstanding I/O requests */
 	if (drv->eapol_request != NULL) {
 		AbortIO((APTR)drv->eapol_request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(21);
+#endif
 		WaitIO((APTR)drv->eapol_request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(22);
+#endif
 		FreeVec(drv->eapol_request);
 	}
 
@@ -1584,15 +1603,30 @@ static void wpa_driver_sana2_deinit(void *priv)
 
 	if (drv->event_request != NULL) {
 		AbortIO((APTR)drv->event_request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(23);
+#endif
 		WaitIO((APTR)drv->event_request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(24);
+#endif
 		FreeVec(drv->event_request);
 	}
 
 	/* Close device */
 	if (drv->device_opened) {
 		AbortIO((APTR)drv->request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(25);
+#endif
 		WaitIO((APTR)drv->request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(26);
+#endif
 		CloseDevice((APTR)drv->request);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(27);
+#endif
 	}
 	if (drv->request != NULL)
 		DeleteIORequest((APTR)drv->request);
@@ -1617,6 +1651,10 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 	struct IOSana2Req *request, *eapol_request, *mlme_request;
 	struct NSDeviceQueryResult device_info =
 		{0, sizeof(struct NSDeviceQueryResult)};
+
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	sana2_lifecycle_trace(1);
+#endif
 
 	drv = os_zalloc(sizeof(*drv));
 	if (drv == NULL)
@@ -1650,6 +1688,9 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 
 	if (err == 0) {
 		/* Open device */
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(2);
+#endif
 		drv->request->ios2_BufferManagement = (APTR)buffer_tags;
 		if (OpenDevice((TEXT *)drv->device_name, unit_no,
 			(APTR)drv->request, 0) != 0)
@@ -1657,6 +1698,9 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 	}
 
 	/* Register a handler for the port's signal */
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	sana2_lifecycle_trace(3);
+#endif
 	if (err == 0) {
 		drv->device_opened = 1;
 
@@ -1674,6 +1718,9 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 
 		request = drv->request;
 		wpa_driver_sana2_prepare_device_query(std_request, &device_info);
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(4);
+#endif
 		if (DoIO((APTR)request) != 0 ||
 			!wpa_driver_sana2_device_query_result_valid(&device_info,
 				std_request->io_Actual, std_request->io_Error, &hard_mac))
@@ -1683,9 +1730,15 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 	}
 
 	/* Put device online */
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	sana2_lifecycle_trace(5);
+#endif
 	if (err == 0) {
 		request = drv->request;
 		request->ios2_Req.io_Command = S2_GETSTATIONADDRESS;
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(6);
+#endif
 		if (DoIO((APTR)request) != 0)
 			err = 1;
 	}
@@ -1695,6 +1748,10 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 
 		request->ios2_Req.io_Command = S2_CONFIGINTERFACE;
 		CopyMem(drv->addr, request->ios2_SrcAddr, ETH_ALEN);
+
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+		sana2_lifecycle_trace(7);
+#endif
 
 		if (DoIO((APTR)request) != 0) {
 			if (request->ios2_WireError == S2WERR_IS_CONFIGURED) {
@@ -1714,6 +1771,9 @@ static void * wpa_driver_sana2_init(void *ctx, const char *ifname)
 	}
 
 	/* Create and queue up EAPOL frame read request */
+#if defined(__AROS__) && defined(WM_LIFECYCLE_DIAGNOSTICS)
+	sana2_lifecycle_trace(8);
+#endif
 	if (err == 0) {
 		request = drv->request;
 		request->ios2_Req.io_Command = CMD_READ;

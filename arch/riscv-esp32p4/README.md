@@ -23,8 +23,25 @@ sanitized host tests, fresh native build, exact helper readback and headless
 owner return. GUI discovery attribution remains open; no link/IP/data pass.
 Interactive diagnosis is blocked pending Fabian's fresh startup-test readiness;
 no automatic GUI, serial, reset or connection retry is running.
-Host revalidation (2026-10-13) finds no USB-modem port; reconnect the JC1060
-before the coordinated startup capture. This is not an AROS driver diagnosis.
+Earlier host revalidation (2026-10-13) found no USB-modem port; this was not
+an AROS driver diagnosis. Later the JC1060 endpoint returns as
+/dev/cu.usbmodem2101 with the expected USB serial identity. A passive45s
+baseline completes with touch heartbeats and no received reset/fault banner.
+Fabian confirms fresh display readiness; a new180s startup-only capture is
+armed before requesting FLASHDISK0P0:WiFi. The complete capture subsequently
+reports devices1 and successful Scan; Fabian confirms the network list.
+Fabian reports an open-network Connection/Could not connect timeout; the
+completed180s window contains only touch heartbeats, so attempt attribution
+is unproved. A new600s passive window is armed for an explicitly requested
+single repeat, without reset or firmware changes.
+Association/IP/data remain pending; no firmware or media changed.
+
+Manager lifecycle diagnosis (2026-10-13): the next open attempt reports
+WirelessManager will not stop, before a new association. This means its
+task remains visible for the existing5s stop budget, not proof of a permanent
+deadlock. Opt-in numeric-only WM lifecycle boundaries now build natively and
+pass existing close tests; only the manager/hash manifest differ in the
+prepared helper image. Deployment/native stall attribution remain pending.
 
 ESP32Board interface (2026-10-11): native MUI Overview, Update, Flash & Backup
 and Diagnostics tabs implement Fabian's approved 800x600 design. Requested

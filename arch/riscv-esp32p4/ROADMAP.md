@@ -149,11 +149,11 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed; canonical FLASHDISK0P0 naming retained | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `blocked pending board connection/readiness`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device; access-stage diagnostics tested, deployed/readback and headless return verified; directory-boundary fault/observer-on-off host tests pass; host sees no USB modem on2026-10-13 | Reconnect JC1060 and confirm fresh startup-test readiness, then arm discovery-only GUI capture before retrying association; peer admission remains0, no IP/data pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `startup diagnosis resumed`: generation1.3 deployed; previous GUI reports no wireless device; access diagnostics deployed/readback/headless verified and host fixtures pass; JC1060 USB identity returns on2026-10-13, passive45s baseline complete and fresh display readiness received; startup-only180s capture running | Attribute discovery from FLASHDISK0P0:WiFi startup before association; peer admission remains0, no IP/data pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `scan/presentation partial; no native association pass`: ABI12/host ABI8, flash helpers1.3; Fabian confirms corrected WPA2/3 labels, but open association fails and latest synchronized GUI reports no wireless device; access diagnostics installed/readback/headless verified; privacy/recovery assertions and FullMAC peer admission0 | Resolve discovery, then native open and original SAE/required-PMF/no-fallback association, DHCP/routes/DNS/bidirectional traffic/reconnect/load; no C6 write or privacy qualification inferred |
+| N2T | Explicit accepted-risk WLAN association test | `scan/presentation partial; manager lifecycle diagnosis`: ABI12/host ABI8, flash helpers1.3; discovery and Scan recur successfully on2026-10-13, but open attempt fails and repeat reports WirelessManager will not stop; opt-in lifecycle diagnostic host/native-built and helper image prepared, undeployed; privacy/recovery assertions and FullMAC peer admission0 | Attribute manager initialization/stop before new open and original SAE/required-PMF/no-fallback association, DHCP/routes/DNS/bidirectional traffic/reconnect/load; no C6 write or privacy qualification inferred |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1656,6 +1656,13 @@ and headless owner return; a new interactive startup gate awaits readiness.
 Directory-boundary host fixtures now pass without another hardware
 run. Earlier failures and artifact identities remain historical evidence.
 
+Resumed2026-10-13 gate reaches devices1 and a successful GUI Scan; the
+previous no-device result is not reproduced. An open attempt still fails,
+followed by WirelessManager will not stop on the next attempt. Numeric-only
+manager lifecycle instrumentation is now host/native-build verified and
+prepared in an otherwise preserved helper image, not deployed/qualified.
+Resolve that manager boundary before attributing a new radio/IP attempt.
+
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
 
@@ -1947,8 +1954,11 @@ Dedicated directory-boundary fault/observer-on-off fixtures now pass;
 the prior access fixtures covered opening/query/cache, not enumeration.
 The next interactive gate is blocked pending fresh readiness. This is a
 coordination boundary, not proof of a hardware defect or WiFi completion.
-On2026-10-13 the host also has no USB-modem endpoint; connection must be
-restored before port identity/capture can be checked. No new boot was tested.
+Earlier on2026-10-13 the host had no USB-modem endpoint. Later the expected
+JC1060 identity returns onusbmodem2101; a45s passive baseline completes and
+fresh display readiness is received. A180s startup-only capture is armed
+before requesting the flash helper; discovery attribution remains pending.
+No reset, flash or connection retry is performed by this resumed gate.
 
 Current correction (2026-10-11): exact auth7/CCMP transition metadata is
 represented as PSK|SAE and displayed as WPA2/3, not mislabeled pure WPA3.
@@ -42387,3 +42397,91 @@ remain open. No partial stage is a complete A/B update system.
   attribution is possible without the board. Mark goal blocked, not complete
   or user-paused. No serial open or hardware mutation occurred. Resume after
   connection and fresh startup-test readiness; original WiFi scope unchanged.
+
+### 2026-10-13 - JC1060 discovery gate resumed with fresh readiness
+
+- Worktree starts atadb8672707, no tracked implementation edits; existing
+  Python cache directories preserved. Read-only USB inventory identifies
+  Espressif USB Serial/JTAG serial80:F1:B2:D3:3B:A6 onusbmodem2101;
+  lsof finds no current owner. No ROM/reset operation used for identification.
+- Evidence directory:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/wifi-2026-10-13-resume.UU4m6W.
+  One passive45s baseline exits0, footer status=ok,45.049s/576B;
+  baseline.log SHA25613a3de191e91ede80a811891882d4e85b044f2816ce6e2591e4dc7598b634501.
+  Touch heartbeats36800..37600 are received, with truncated line endings;
+  no received WiFi access/join, ROM/reset/trap/Alert/Guru signature. This
+  limited lossy window does not prove WLAN health or clean cold continuity.
+- Fabian explicitly confirms display readiness. A separate passive180s
+  startup.log capture with receipt sidecar is opened before requesting only
+  FLASHDISK0P0:WiFi startup and device/status reporting. Open_end is verified;
+  terminal session60104 completes exit0/status=ok,180.005s/5546B;
+  startup.log SHA2566556d46e6792ed937c687b1e2a1434c529098cf8737008b4b7619ceb80d13691.
+  No Scan/Connect requested, no new firmware, C6 or SD write, no explicit
+  reset. Discovery result remains open; original SAE/PMF/IP/data gates unchanged.
+
+- In that same coordinated window Fabian reports Not connected, then confirms
+  the network list after one requested Scan. Logs show discovery=1/devices=1;
+  s3/error-1 is consistent with the deliberate next-unit refusal after unit0,
+  not an absent device. Scan s3/ok1/n10/r8/h8/error0 is received with numeric
+  open and transition metadata; console loss prevents a complete AP inventory.
+  The previous no-device observation is not reproduced; no source fix is
+  attributed from this successful run. No received join/fatal/reset banner.
+- After that reader exits, separate passive open-connect.log with receipt
+  sidecar is armed for180s, terminal session36521; open_end verified before
+  requesting exactly one open-network Connect. Completion, hash and actual
+  association result initially remained pending. No power separation or explicit reset.
+
+### 2026-10-13 - open attempt remains uncorrelated; longer capture armed
+
+- Fabian reports Connection followed by Could not connect, without a detail.
+  The separate180s open-connect.log completes exit0/status=ok,
+  180.077s/2304B, SHA256
+  3dbcd001934d9a2ae4ad38600b61c2c6f9fa6be5db33fbc89f87b32cd87e3e76.
+  It contains only touch heartbeats41700..45200, no captured window update,
+  WiFiReq/WiFiJoin or new ROM/reset/trap/Alert/Guru. The click's exact receipt
+  time is unavailable; neither a driver rejection nor absent radio request
+  can be concluded from this lossy/unattributed window.
+- A new600s passive open-connect-long.log and receipt sidecar are armed;
+  terminal session33112, verified open_end precedes the next explicit single
+  repeat request. No automatic connection, reset, flash, SD or C6 mutation.
+  Completion/hash remain pending. Native association/IP/data remain open.
+- Routine WLAN development uses the verified C6 GPIO reset path when needed;
+  USB-C separation is not a routine synchronization prerequisite. Rail-off
+  remains a distinct cold/power-loss gate and is not claimed by a GPIO reset.
+
+### 2026-10-13 - WirelessManager stop failure and lifecycle diagnostic prepared
+
+- Fabian's repeat reports WirelessManager will not stop. Prefs returns from
+  StopSupplicant before starting a new manager/association; existing timeout
+  is10*25 DOS ticks =5s at50Hz. Task existence during startup is not readiness.
+  Ctrl-C is registered only after interface initialization; registration
+  failure is not checked. SANA deinit waits for outstanding requests, and
+  P4 Close waits for pinned active work. An owner association can consume8s;
+  these are bounded source hypotheses, not attribution of the running stall.
+- Add default-off WM_LIFECYCLE_DIAGNOSTICS, selected only for ESP32 builds
+  with P4_WIFI_ASSOC_DIAGNOSTICS=1. Numeric stages100=main entry,
+  101=before run,102=after run/before deinit,103=after deinit;
+  driver1=init,2=before open,3=after open,4=before query,5=after query,
+  6=before address query,7=before config,8=after config;
+  20=driver deinit,21/22=EAPOL WaitIO boundaries,23/24=event WaitIO,
+  25/26=main request WaitIO,27=after CloseDevice. No identifiers/credentials,
+  extra radio commands, altered wait budgets or admission changes.
+- Independent Luna read-only review finds no behavior/privacy regression;
+  initial review identified missing final-close boundaries, added25..27.
+  Primary corrects an initial reviewer tick-conversion error; no millisecond
+  timeout inference retained. Existing source-extracted close suite executes
+  O0/O2 each4 scenarios/55 checks, exit0. Native copied sources refreshed,
+  all manager objects invalidated, sequential setup/quick build exits0;
+  final build log has no error:/warning:. Actual RV32 WirelessManager701280B
+  SHA2568cb6490f51885e00634278cccc27eadd7c4b32a2efccc11e723090ee508da963;
+  all numeric marker strings verified in the artifact.
+- Evidence directory wifi-2026-10-13-resume.UU4m6W above retains setup/build/
+  test logs. First701028B/bb2a773b... candidate is superseded undeployed.
+  Copy the last retained helper stage, overlay verified helpers; only
+  C/WirelessManager and HELPERS.sha256 differ. Final FAT16 helper4194304B
+  SHA256a8245c9073d84e768c97d5be017e68dbdf1fbb9dda4a73bb0d8617dbbd3a6f5c.
+  Read-only mount validates all7 helper hashes and complete stage comparison;
+  detach exits0. Intermediate700cb9a3... image is superseded undeployed.
+- No physical flash/SD/C6 mutation yet. Existing600s capture remains active;
+  preserve its completion before taking the port for checked exact-range
+  helper deployment. No native lifecycle or association/IP/data pass claimed.
