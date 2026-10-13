@@ -191,7 +191,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | B5R | Remove the native-scanout row-phase workaround | `hardware partial (picture correct without the workaround)` | Root cause found 2026-10-04 on the JC1060P470C: the D-PHY PLL dividers were computed for a 40 MHz reference that is really PLL_F20M (20 MHz), so every lane ran at half its stated rate and the host line timing did not match the DPI line. The D1001 profile now uses the 20 MHz reference, its vendor's 1000 Mbit/s and burst video, and no board sets the +525 mapping; Fabian confirms the picture sits correctly (core `153405e7…`, Giant SMP). The asymmetric geometry gate itself has not been rerun on the new profile. |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
-| CQ1 | Bounded queued SMP debug console | `build verified; not deployed` | 2026-10-13: P4 USB/UART backend gains 64x128-byte records, single-try producer admission and one timer TX task, retaining accepted suffixes across endpoint saturation. Sequence IDs and cumulative whole-record overflow markers expose loss; early/fatal output remains bounded direct. Sanitized actual-source queue/backend and concurrent ring tests pass, native XIP image links and passes SRAM residency. Hardware disconnect/recovery, overload and watchdog/touch gates remain open. |
+| CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); D1001 open` | 2026-10-13: normal193360-byte C3/C4/XIP core5a164de9... installed/readback verified. devserial captures both harts and108 consecutive correctly framed records0..107 over241.984s. Userspace-reader closure/reattachment passes without reset/gaps; no fault/WDT-reset observed. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -3932,7 +3932,7 @@ native hardware contract and blocks a production release.
 
 #### C1P - performance follow-up (2026-09-30)
 
-CQ1 follow-up (2026-10-13, build verified only): runtime byte dropping is
+CQ1 follow-up (2026-10-13, JC1060 headless hardware partial): runtime byte dropping is
 replaced by a fixed internal-SRAM record ring after the dedicated sender is
 ready. This does not close C1P's historical hang or qualify WLAN association.
 See the dated CQ1 evidence for the new framing contract and failure limits.
@@ -3941,7 +3941,9 @@ logging, a reader absent then reattached (accepted suffixes delivered once),
 explicit whole-record loss under overflow, bounded no-reader boot/runtime and
 no reset/trap/watchdog failure. Fresh consent is required for the final desktop
 and touch check. Task/timer failures and early/fatal direct output are degraded
-paths, not lossless transport claims. No hardware test has started.
+  paths, not lossless transport claims. The normal C3/C4 core is now installed
+  and headless both-hart/framing/userspace-reader reattachment tests pass.
+  These do not constitute native overload, physical unplug or visual acceptance.
 
 The original C1 acceptance remains historical evidence for the synchronous v1
 contract, not acceptance of this performance candidate. Graphical builds now
@@ -42732,3 +42734,74 @@ remain open. No partial stage is a complete A/B update system.
   absence/reattachment and two-hart saturation/WDT checks. Request fresh
   readiness before desktop/touch acceptance or another interactive WiFi test.
   CQ1 remains build verified/not deployed; WLAN connection/IP/data stays open.
+
+### 2026-10-13 - CQ1 normal core deployed and headless reader recovery
+
+- Fabian requests flash/headless testing, then continued WLAN diagnosis, and
+  explicitly selects devserial. Read the named devserial skill and CLI/MCP
+  references. Fabian grants closing/reopening only the JC1060 port for the
+  no-reader test. Upgrade observed0.2.7 to0.2.11; no daemon stop/restart or
+  history deletion. Bluetooth/other ports and GUI daemon remain untouched.
+- Preflight correction: prior184352B857e71ab... candidate compiled without
+  the normal C3 graphical/C4 touch selectors. It is a build-only candidate,
+  not an interchangeable production artifact, and was never written. Clean
+  kernel/Exec/task/debug rebuild through build-core.sh with LC_ALL=C (initial
+  invocation fails sed locale before compilation), board jc1060p470c-v2,
+  C3_GRAPHICAL_BOOT1/C4_TOUCH_HIDD1, PSRAM200, CPU360, XIP, FLASH_HELPERS1,
+  C1_PROFILE0/BOOT_TIMING0/FAT_DEBUG0/DOS_DEBUG0/DOSBOOT_DEBUG0. Script exits0;
+  fresh objects include kernel_consoletask and kernel_resource.o recombination.
+  SRAM residency passes; existing prototype and RWX link warnings remain.
+- Final core193360B SHA256
+  5a164de92ccc3646c705cc0585bf34b4b33fa502576bab6b320d54a6bdf5d941.
+  Source console commitf97e7fdd24; uncommitted WiFiIO device observer is not
+  part of this core. Retained190016B known-good core-before.bin hashes to
+  dea08a121687a9b7f6f55758761dea0cd10033d030cc2585ccce716750de59a0
+  in wifi-2026-10-10/native-startup-hardware.Y8uRvH; no new whole-flash backup.
+- devserial MCP serial_esp_info positively identifies P4v1.3/16MB/MAC
+  80:f1:b2:d3:3b:a6. First attempt with skip-update env1 is rejected before
+  hardware; correct booleantrue succeeds. Later GUI-owned daemon cannot find
+  espflash in PATH: serial_esp_write_bin returns isError=true before writing.
+  Do not count the successful MCP transport exit as a flash success. Explicitly
+  report this tool failure; authorized devserial close frees only this port.
+  Exclusive esptool5.5.0 identity is checked again. Exact0x20000 core write
+  exits0/hash verified; independent193360B readback exits0/cmp0 and SHA256
+  matches5a164de9... . No bootloader/table/metadata/BSP/helper/SD/C6 write.
+- Resume devserial capture and perform its reset macro, then explicit
+  DTRfalse/RTStrue -> DTRfalse/RTSfalse sequence. Two host-triggered boots
+  occur, not one: first epoch IDs4..221 and second epoch begins222. The first
+  macro did work; the explicit later pulse is another deliberate reset.
+  Initial rows1..2 contain buffered old/truncated data and are excluded.
+  Preserve both epochs, do not report an unexplained reboot or single-pulse
+  reset continuity. Second epoch includes ROM CHIP_USB_UART_RESET, original
+  bootloader/partition layout, kernel entry, WDT6000ms, PSRAM32MB200MHz,
+  managed graphics updates, sender readiness and expected WLAN ownerCPU1.
+- Headless second-epoch validation spans241.983717s of host receipt times,
+  IDs222..485,108 framed records seq0..107, both harts, no sequence gaps or
+  bad original payload lengths and no overflow marker. Reassemble128-byte
+  chunks by len, not by synthetic framing newline.48 touch heartbeat records
+  and18 graphics-update records are complete; both-hart publication is native
+  evidence, not visual frames or actual user-touch acceptance. One initial
+  ROM banner and no subsequent ROM/HP-WDT/Guru/software-failure/fatal-trap or
+  failed-sender signature in this scoped export.
+- No-reader test: close only JC1060 after row453/seq0x4b, lsof shows no owner;
+  wait35.0064s explicitly with the port closed, then reopen without reset.
+  Rows454 onward deliver delayed heartbeats1700..2800 with seq0x4c..0x57
+  in a burst, and subsequent live heartbeats continue. No new boot banner,
+  sequence reset/gap, truncated payload or fault signature. This demonstrates
+  finite retention/recovery with no userspace reader; not physical USB removal,
+  rail-off, proven endpoint saturation, overflow-under-load or long-soak proof.
+  The GUI daemon keeps the reopened port capturing after these snapshots.
+- Evidence root:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/console-deploy-2026-10-13.cT1yyP/.
+  headless-final.jsonl SHA256
+  e6adf18fba25dc4cdd97f7c9e3dbfd93663a02b436f038cc90eea6ecd4ee94aa.
+  build flags/dispatch/link artifacts, devserial MCP replies including failed
+  operations, exclusive write/readback, both boot exports, no-reader resume
+  and numeric validation reports retained. CQ1 hardware partial on JC1060;
+  overload/physical disconnect/D1001/fresh visual acceptance remain open.
+- WLAN continuation: independent read-only audit finds no proven unmatched
+  unit semaphore acquisition. Repeated owner3/nest1/queue0 describes a sampled
+  other-task hold, not identified WM ownership or a C6 error. WM Ctrl-C handler
+  exists; no lifecycle102 means no observed return from eloop. Prepared numeric
+  BeginIO traces are completed for early-release and SETOPTIONS ACK-reacquire
+  paths before the next native test; no association/credentials/retry issued.
