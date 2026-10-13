@@ -21,6 +21,9 @@ include $(SRCDIR)/config/aros.cfg
 #MM      kernel-usb-shellapps \
 #MM      kernel-usb-trident
 
+# PC Workbench selects its USB producer through the architecture root.
+#MM- kernel-usb-pc-x86_64 : kernel-usb
+
 #MM- kernel-usb-amiga-m68k : kernel-usb-amiga-m68k-$(AROS_TARGET_VARIANT)
 
 #MM- kernel-usb-amiga-m68k- : kernel-usb-nopci usb-poseidon-deneb
