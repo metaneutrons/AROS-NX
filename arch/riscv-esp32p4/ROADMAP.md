@@ -191,6 +191,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | B5R | Remove the native-scanout row-phase workaround | `hardware partial (picture correct without the workaround)` | Root cause found 2026-10-04 on the JC1060P470C: the D-PHY PLL dividers were computed for a 40 MHz reference that is really PLL_F20M (20 MHz), so every lane ran at half its stated rate and the host line timing did not match the DPI line. The D1001 profile now uses the 20 MHz reference, its vendor's 1000 Mbit/s and burst video, and no board sets the +525 mapping; Fabian confirms the picture sits correctly (core `153405e7…`, Giant SMP). The asymmetric geometry gate itself has not been rerun on the new profile. |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
+| CQ1 | Bounded queued SMP debug console | `build verified; not deployed` | 2026-10-13: P4 USB/UART backend gains 64x128-byte records, single-try producer admission and one timer TX task, retaining accepted suffixes across endpoint saturation. Sequence IDs and cumulative whole-record overflow markers expose loss; early/fatal output remains bounded direct. Sanitized actual-source queue/backend and concurrent ring tests pass, native XIP image links and passes SRAM residency. Hardware disconnect/recovery, overload and watchdog/touch gates remain open. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -3930,6 +3931,17 @@ native hardware contract and blocks a production release.
 ### C1 - ESP32-P4 framebuffer graphics HIDD
 
 #### C1P - performance follow-up (2026-09-30)
+
+CQ1 follow-up (2026-10-13, build verified only): runtime byte dropping is
+replaced by a fixed internal-SRAM record ring after the dedicated sender is
+ready. This does not close C1P's historical hang or qualify WLAN association.
+See the dated CQ1 evidence for the new framing contract and failure limits.
+Acceptance requires exact-core/readback identification, two-hart concurrent
+logging, a reader absent then reattached (accepted suffixes delivered once),
+explicit whole-record loss under overflow, bounded no-reader boot/runtime and
+no reset/trap/watchdog failure. Fresh consent is required for the final desktop
+and touch check. Task/timer failures and early/fatal direct output are degraded
+paths, not lossless transport claims. No hardware test has started.
 
 The original C1 acceptance remains historical evidence for the synchronous v1
 contract, not acceptance of this performance candidate. Graphical builds now
@@ -42650,3 +42662,73 @@ remain open. No partial stage is a complete A/B update system.
   sidecar is armed, session85614; open_end verified before requesting only
   flash WiFi, one Scan, exactly one open Connect. Result/hash/completion
   pending; no second attempt or power separation requested.
+
+### 2026-10-13 - CQ1 queued console candidate, native and host verified only
+
+- Fabian requests the new console and a functionally grouped commit. The
+  hardware backend is ESP32-P4-specific; generic AROS krnPutC/RawPutChar API
+  and other architecture drivers are unchanged. WLAN code changes remain
+  separate. No reset, serial reopen, flash, SD write or C6 action occurs.
+- A zero-initialized8728-byte internal-SRAM ring holds64 records of up to128
+  bytes. Producers mask only local interrupts and attempt the ring lock once;
+  a whole record is accepted or dropped, never a partially admitted payload.
+  Successful FIFO order agrees with sequence order; every rejected attempt
+  consumes a sequence ID and increments the cumulative32-bit loss counter.
+  One sender task starts after timer.device at cold resident priority40,
+  opens UNIT_VBLANK, then publishes readiness. Priority0,8192-byte stack,
+ 256 single-probe byte writes per20ms wake. No allocation, Signal or scheduler
+  wait occurs in a producer. Hardware serialization is IRQ-masked and bounded
+  per drain, including a concurrent emergency mode switch.
+- Accepted records use an explicit fixed-width hexadecimal sequence/hart/len
+  prefix, preserve the original payload length, and add a framing newline
+  for an unterminated chunk/prompt. The224-byte frame retains unsent suffixes
+  across full USB64-byte packets/UART FIFO. Synthetic cumulative overflow
+  markers also appear without later producer output; markers alternate with
+  available records to avoid starving the queue under sustained overload.
+  This changes runtime debug framing, not generic console.device or GUI text.
+  Prefix-aware readers should extract by len and concatenate128-byte chunks.
+- Limits: per-hart character assembly is not a task/message transaction.
+  Early boot, explicit Blocking/fatal mode, P4_CONSOLE_WAIT and sender startup
+  failure retain bounded direct output and may lose bytes. Emergency direct
+  output can interrupt a frame. Timer failure after readiness explicitly
+  reports an undeliverable backlog, stops the consumer and uses bounded direct
+  output; no replay promise. Queue loss counters describe rejected records,
+  not early/fatal byte losses, transport resets or timer-failure backlog loss.
+- Host verification: console_nonblocking_test.py and the actual-source
+  console_queue_test.py pass USB/UART at O0/O2 with ASan/UBSan. Tests cover
+  aggregate early poll bounds, no-reader recovery, single-probe runtime,
+  exact partial-framed output, whole-record overflow, input prompt enqueue,
+  hardware-lock contention,256-byte budget cap, sender-failure fallback and
+  emergency mode change during a USB write. Ring tests pass O0/O2 ASan/UBSan
+  and TSan concurrent producers/consumer, boundary lengths, counters/wrap,
+  damaged indices, contention and exact successful-record integrity/order.
+  These mocks do not qualify AROS resident/task/timer execution on hardware.
+- Independent source review finds mixed atomic/volatile runtime mode reads
+  and misleading timer-failure retention wording; both corrected and reviewed
+  again. Native platform objects compile, then kernel-kernel-kobj-quick
+  recombines kernel_resource.o; source/map verify the new sender resident and
+  krnP4ConsoleDrain are actually linked. Initial full Make wrapper is stopped
+  during unrelated features preparation; nonexistent image-quick alias and
+  incomplete direct invocation fail before qualification. The all-SRAM link
+  fails its SRAM ceiling: it is not a valid build. The intended flash-XIP
+  link subsequently succeeds; no SRAM ceiling was raised or assertion bypassed.
+- Actual final builds exit0: board jc1060p470c-v2, smp, P4_FLASH_HELPERS=1,
+  P4_LDSCRIPT=ldscript-xip.lds; no new test define or P4_CONSOLE_WAIT. esptool5.5.0
+  successfully creates184352-byte aros-esp32p4.bin, SHA256
+  857e71ab7ea08b32dcabb5b292a49770f2f84a309f356cc08627312b6eea2764.
+  SRAM residency check passes; map bss_end4ff0ee0c below4ff2cbd0.
+  Linker still warns about an RWX LOAD segment; this build is not warning-free.
+  Candidate and persistent test/build/map evidence:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/console-queue-2026-10-13.MlhH3o/.
+  console_queue-final.log SHA256
+  ce6173fca497fa3a9f7151abf81b35413d74f089eb50560d5fb508723cf74ac8.
+- Previous WLAN owner-attempt reader session85614 has now exited0:
+  actual footer status=ok,600.128027s,9517B; log SHA256
+  bd5339da603b5583bddb63fc1b17d9aca4657f1bb9bbadcbad944c50ae932cf9
+  under wifi-2026-10-13-resume.UU4m6W. Fabian reports Could not connect;
+  received owner3/nest1/queue0 remains a sampled other-task lock observation,
+  not association/root-cause proof. No new connection attempt is requested.
+- Next safe step: review/deploy this exact console core, then headless reader
+  absence/reattachment and two-hart saturation/WDT checks. Request fresh
+  readiness before desktop/touch acceptance or another interactive WiFi test.
+  CQ1 remains build verified/not deployed; WLAN connection/IP/data stays open.

@@ -1,5 +1,35 @@
 # AROS on the Espressif ESP32-P4 (riscv-esp32p4)
 
+Queued debug console (2026-10-13, build verified; not deployed): the P4
+USB-Serial/JTAG/UART hardware backend now has a 64-record SMP ring and one
+timer-backed TX task. The generic AROS debug API is unchanged. Once the task
+opens timer.device, producers only enqueue complete lines/chunks (128 bytes
+maximum) using one lock attempt; endpoint backpressure retains the unsent
+suffix instead of dropping individual bytes. Runtime output is framed as
+`[p4log seq=00000000 hart=00000000 len=00000000] payload`: all fields are
+eight hexadecimal digits, sequence starts at zero and wraps modulo32 bits.
+`len` is the original payload length; an additional framing newline terminates
+chunks/prompts lacking one. Concatenate original payloads by length when raw
+stream semantics matter. Sequence gaps and `[p4log overflow records=...]`
+report whole-record queue rejection, including contention, cumulatively modulo
+32 bits. These are debug transport records, not task-level message boundaries.
+Per-hart character assembly can still join unfinished output from tasks on the
+same hart; a generic RawPutChar caller does not identify a logical message.
+
+The sender starts cold at resident priority40, after timer.device50, with
+priority0/8192-byte task stack; it sends at most256 bytes every20ms (~12.8KB/s
+before scheduling delays). Static ring storage is8728 bytes plus one224-byte
+frame and existing per-hart line buffers. No reader, allocation or scheduler
+call is required by producers. Early boot, explicit emergency/blocking mode,
+P4_CONSOLE_WAIT and task/timer startup failure retain the old bounded direct
+path, which can still lose bytes. A timer failure after readiness explicitly
+reports an undeliverable backlog and falls back to direct output; no replay is
+promised. Emergency direct reports may interrupt a partially framed record.
+Disconnect retention is finite, not unlimited lossless logging. Host USB/UART
+and concurrent ring tests pass; JC1060 reader-disconnect/recovery, load,
+watchdog and fresh interactive regression remain pending. No flash, reset,
+SD or C6 change was made for this candidate. See CQ1 in ROADMAP.md.
+
 Naming policy (2026-10-12): retain `flashdisk.device` and DOS name
 `FLASHDISK0P0:`. The latter is normal generic MBR discovery naming, not an
 ESP32-specific override; Fabian explicitly accepts that derivation.
@@ -2130,6 +2160,7 @@ its evidence entry in the same change.
 
 | Area | State | Notes |
 | :--- | :--- | :--- |
+| debug console queue | build verified; not deployed | CQ1: P4-specific hardware backend, generic AROS API unchanged; bounded 64-record ring, resumable USB/UART sender, sequence/overflow records. Early/fatal direct output and sender-failure backlog loss remain explicit limits. |
 | graphics performance | hardware partial | C1P tiled rotation, CPU360 and framebuffer v2 coalescing reduce the measured first full update from 2.776 s synchronous/CPU90 to 0.296 s queued/CPU360. Initial visual speedup confirmed, then slowdown/hang reported. Console-only nonblocking fix is sanitizer-tested, flashed and independently verified; causality and fresh visual/touch/no-reader acceptance remain open. See C1P and dated evidence. |
 | configure target | done | `--target=esp32p4-riscv`, configure completes and selects the `smp` variant, the only esp32p4 build (S6); any other variant is refused |
 | board selection | hardware partial | `P4_BOARD=d1001`, `jc1060p470c-v1` and `jc1060p470c-v2` select wiring and drivers and reject unknown boards; the D1001 core is byte-identical after the 2026-10-03 driver split. The JC1060P470C-v2 boots from SD to Wanderer with correct picture and working GT911 touch (J0-J4, 2026-10-04); backlight control, cold boot and stress are open |

@@ -480,6 +480,9 @@ void krnP4Halt(void) __attribute__((noreturn));
 /* Early UART0 debug console (kernel_console.c) */
 /* Switch to nonblocking, lossy output before runtime tasks can print. */
 void krnP4ConsoleRuntime(void);
+void krnP4ConsoleSenderReady(void);
+void krnP4ConsoleSenderFailed(void);
+unsigned int krnP4ConsoleDrain(unsigned int budget);
 void krnP4ConsoleBlocking(void);
 
 /*

@@ -7672,7 +7672,7 @@ void kernel_cstart(unsigned long hartid, void *fdt)
     krnP4BootTimingMark(P4_BOOT_PACKAGE);
 #endif
     krnP4SMPInitPrimary();
-    krnP4PutStr("[console] runtime output nonblocking; saturated bytes dropped\n");
+    krnP4PutStr("[console] bounded runtime output; queued sender starts after timer.device\n");
     krnP4ConsoleRuntime();
 #ifdef P4_BOOT_TIMING
     krnP4BootTimingMark(P4_BOOT_EXEC);

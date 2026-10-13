@@ -1065,6 +1065,7 @@ CFILES := \
         kernel_ram \
         _displayalert \
         kernel_console \
+        kernel_consoletask \
         kernel_debug \
         kernel_traps \
         maygetchar \
