@@ -63,7 +63,13 @@ headless return reaches CPU1 owner ready and touch heartbeats. Fresh interactive
 association is pending. Existing host fixtures omitted the ONEVENT dispatch
 arm; the actual-arm/epilogue/AbortIO regression passes six policies O0/O2 under
 ASan/UBSan and rejects the old-break mutation.
-No association/IP/data success, C6 update or security-policy change is claimed.
+Later passive capture reports two driver-committed open associations (tokens1/3,
+Join stage8/AP-info status0); Fabian still reports Could not connect. This is
+radio/device commit evidence, not GUI/IP/data acceptance. The status-query
+result is absent from earlier logs. A guarded numeric WiFiInfo observer now
+records query error, publication presence and online/ready/commit/fault bits;
+79080-byte device6ce1b5d7... is built, deployment pending. No C6 update or
+security-policy change is claimed.
 
 Open-association diagnosis (2026-10-11): opt-in
 `P4_WIFI_ASSOC_DIAGNOSTICS=1` distinguishes SANA admission/options rejection,

@@ -1829,6 +1829,15 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
 
     case S2_GETNETWORKINFO:
         p4wlan_network_info_locked(unit, request);
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        bug("[WiFiInfo] e=%ld v=%lu s=%lu\n",
+            (LONG)request->ios2_Req.io_Error,
+            (ULONG)(request->ios2_StatData != NULL),
+            (ULONG)(unit->online ? 1u : 0u) |
+                (unit->hardware_ready ? 2u : 0u) |
+                (unit->link_committed ? 4u : 0u) |
+                (unit->callback_fault ? 8u : 0u));
+#endif
         break;
 
     case S2_GETWIRELESSCAPABILITIES:

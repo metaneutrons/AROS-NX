@@ -17,6 +17,7 @@ static void bug(const char *format, ...)
         strcmp(format, "[WiFiReq] reject=1\n") &&
         strcmp(format, "[WiFiReq] reject=2\n") &&
         strcmp(format, "[WiFiIO] c=%lu p=%lu\n") &&
+        strcmp(format, "[WiFiInfo] e=%ld v=%lu s=%lu\n") &&
         strcmp(format, "[WiFiReq] t=%lu ch=%lu a=%lu f=%lu\n")) {
         fprintf(stderr, "unexpected association diagnostic format\n");
         exit(1);
