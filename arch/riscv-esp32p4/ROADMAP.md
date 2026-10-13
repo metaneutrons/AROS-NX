@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `scan/presentation partial; event-completion defect isolated`: ABI12/host ABI8, helpers1.3; trace device78116B3fc20d98... / helper280623a6... deployed/readback verified. Synchronized Scan succeeds, open Connect fails with repeated ONEVENT acquire/release and record overflow. Queued ONEVENT prematurely replied in common epilogue; native78576B d58d5ffd... correction built, regression/deployment pending; FullMAC peer admission0 | Verify asynchronous completion regression and deploy helper-only fix before fresh single open test; original SAE/required-PMF/no-fallback association, DHCP/routes/DNS/bidirectional traffic/reconnect/load remain open |
+| N2T | Explicit accepted-risk WLAN association test | `scan/presentation partial; event-completion correction deployed`: ABI12/host ABI8, helpers1.3; prior synchronized open Connect fails with ONEVENT storm. Corrected78576B device d58d5ffd... / helper f5e59ff2... pass host regression, native build, exact write/readback and headless CPU1 owner return; fresh interactive association pending; FullMAC peer admission0 | Fresh readiness and single open test; original SAE/required-PMF/no-fallback association, DHCP/routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -1680,7 +1680,9 @@ the queued event request falls through the common ReplyMsg epilogue and the
 manager immediately re-arms it. The accepted asynchronous path now unlocks,
 finishes other completed requests and returns without replying to the queued
 request. Native correction78576B d58d5ffd... is built; actual dispatch
-regression and deployment are pending. Connection/IP/data gates stay open.
+regression now passes and helper f5e59ff2... is deployed/readback verified.
+Headless return reaches CPU1 WLAN owner and touch heartbeats; fresh interactive
+association is pending. Connection/IP/data gates stay open.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
@@ -42916,3 +42918,25 @@ remain open. No partial stage is a complete A/B update system.
   Next headless return, fresh readiness and single open association test.
   All original SAE/required-PMF/no-fallback, IP/data/reconnect/load gates remain
   open. Compact/optional p4log formatting is postponed until this diagnosis.
+
+### 2026-10-13 - N2T ONEVENT correction installed, interactive retest pending
+
+- Source/test/docs commit34e85d2888. Primary six-policy O0/O2 ASan/UBSan run
+  exits0: disabled2991, diagnostic5088, qualified5069 checks per optimization.
+- Identify P4v1.3 MAC80:f1:b2:d3:3b:a6 flash16MiB after releasing only JC1060
+  devserial port. Existing daemon espflash-PATH limitation requires esptool
+  fallback. Write only0xc00000..0xffffff, process exit0/hash verified; then
+  independent4MiB read process exit0, cmp0 and SHA256 f5e59ff267e87e8dc7b3c67718505be2c2642e7a522e26b32ad60a6141d2c953.
+  No overlapping reader/writer. Reopen devserial and explicitly pulse RTS;
+  opening/control-line changes can themselves reset, so no exact-one-reset
+  assertion. Final ROM epoch IDs13883..14101 contains219 rows, SHA256
+  a10b156c4bb7bb97d4fd23b38bad0a91b84fefea28e713e634b2b6a9c5fdff97.
+  Main watchdog armed6000ms, CPU1 GPIO54 C6 reset ok1/owner ready, graphics
+  updates and touch heartbeats. No received trap/Guru/fatal/reset recurrence
+  or overflow warning within this final epoch; not a lossless electrical proof.
+- All evidence files under the preceding root: onevent-helper-write.log,
+  onevent-readback.log/bin, onevent-tests.log and onevent-boot-epoch.jsonl.
+  Kernel/BSP/bootloader/table/SD/C6 firmware unchanged; recovery280623a6...
+  retained. Next fresh user readiness for exactly one Scan/open Connect.
+  No new connection attempted; association/IP/data not accepted. Overflow
+  warnings must remain unconditional if normal p4log metadata becomes optional.

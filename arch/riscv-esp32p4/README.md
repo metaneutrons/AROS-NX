@@ -58,8 +58,11 @@ hold. Source inspection finds queued S2_ONEVENT falling through ReplyMsg;
 WirelessManager immediately re-arms it, creating an event storm. Accepted
 event requests now return without replying until an event/abort completes
 them, like queued READ. Native78576-byte device d58d5ffd... and preserved
-4MiB helper f5e59ff2... are built, not yet hardware accepted. Existing host
-fixtures omitted the ONEVENT dispatch arm; a focused regression is required.
+4MiB helper f5e59ff2... are installed and independently readback verified;
+headless return reaches CPU1 owner ready and touch heartbeats. Fresh interactive
+association is pending. Existing host fixtures omitted the ONEVENT dispatch
+arm; the actual-arm/epilogue/AbortIO regression passes six policies O0/O2 under
+ASan/UBSan and rejects the old-break mutation.
 No association/IP/data success, C6 update or security-policy change is claimed.
 
 Open-association diagnosis (2026-10-11): opt-in
