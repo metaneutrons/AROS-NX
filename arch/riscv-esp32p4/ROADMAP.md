@@ -42512,3 +42512,17 @@ remain open. No partial stage is a complete A/B update system.
   sidecar are armed (session50373), verified open_end before asking flash WiFi,
   one Scan and exactly one open Connect. Completion/hash/result pending.
   No second attempt requested. Diagnose boundaries before choosing a fix.
+
+### 2026-10-13 - lifecycle trace reaches run; status opener reports busy
+
+- While session50373 is still capturing, received manager stages100,1,2,3,
+  4,5,7,8,101 establish arrival at the main event-loop entry. Stage6 may be
+  lost; do not infer a skipped command from an absent console record.
+  Prefs then emits repeated WiFiAccess stage3/error-6 (IOERR_UNITBUSY).
+  The source has separate busy causes: AttemptSemaphore, provisional attach,
+  opener capacity or exclusive-open conflict. This does not identify which.
+- No WiFiReq/Join is received in the current prefix. Check native driver
+  event/cancellation service and unit-lock/opener lifetimes before attributing
+  the AP or changing radio admission. A snapshot/prefix is not a completed
+  capture or a permanent-deadlock proof. Completion, hash and GUI result
+  remain pending; no further hardware action or second Connect requested.
