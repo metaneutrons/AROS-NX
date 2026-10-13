@@ -2146,7 +2146,16 @@ static BOOL GM_UNIQUENAME(Open)(LIBBASETYPEPTR LIBBASE,
      * never waits for another task or begins radio/transport work under it. */
     if (!AttemptSemaphore(&unit->lock)) {
 #if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
-        bug("[WiFiOpen] busy=1\n");
+        /* This is a sampled, non-atomic diagnostic, never admission state.
+         * Do not dereference the owner task or print its address/name. The
+         * registered resource and unit persist for this device lifetime. */
+        struct Task *held_by = unit->lock.ss_Owner;
+        LONG owner_role = !held_by ? 0 : held_by == FindTask(NULL) ? 1 :
+            unit->radio && held_by == unit->radio->owner_task ? 2 : 3;
+        LONG nest = unit->lock.ss_NestCount;
+        LONG queued = unit->lock.ss_QueueCount;
+        bug("[WiFiOpen] busy=1 owner=%ld nest=%ld queue=%ld\n",
+            owner_role, nest, queued);
 #endif
         FreeVec(opener);
         request->ios2_Req.io_Error = IOERR_UNITBUSY;

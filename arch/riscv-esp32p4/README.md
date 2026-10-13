@@ -56,6 +56,11 @@ proof of these branches. Helper replacement and full readback now pass;
 headless return reaches both CPUs/C6-reset/owner. Fresh GUI readiness for
 the branch-attributed attempt is pending; no functional fix claimed.
 
+The subsequent GUI again reports WirelessManager will not stop. The fresh
+reader is intentionally interrupted for further diagnosis, not accepted as a
+completed600s run. A sampled numeric semaphore-owner/nest/queue extension
+builds natively; deployment and actual owner attribution remain pending.
+
 ESP32Board interface (2026-10-11): native MUI Overview, Update, Flash & Backup
 and Diagnostics tabs implement Fabian's approved 800x600 design. Requested
 740x500 inner sizing, bounded status lines, native file requesters and a

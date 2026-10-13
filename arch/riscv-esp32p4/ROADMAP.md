@@ -42602,3 +42602,30 @@ remain open. No partial stage is a complete A/B update system.
   No reset/flash/C6/SD mutation. Request initial flash-app status first;
   do not repeat Connect blindly while an old manager may still hold work.
   Fresh completion/hash and GUI result remain pending.
+
+### 2026-10-13 - persistent stop refusal; sampled semaphore ownership prepared
+
+- Fabian again reports WirelessManager will not stop. No fresh association
+  requested after that refusal. Announce intentional reader termination,
+  resolve the exact Python child71294 from its full capture command, send
+  SIGINT only to that reader. Session41018 exits130; footer/receipt end
+  status=error,403.666851s/6779B. Raw bytes retained, reader closed/lsof empty.
+  open-busy-fresh.log SHA256
+  5a8c93b35f9ee510bdc642591c0ef1ecc745f33cf8ee17f2d636451c96ae2ab0.
+  This interrupted window is not a completed600s pass or hardware recovery.
+- Existing busy1 proves first unit-lock AttemptSemaphore refusal for the
+  observed opener, not its holder or a root cause. Extend only that opt-in
+  numeric record with sampled owner role0=none,1=caller,2=radio owner,3=other,
+  signed nest/queue counts. No owner dereference/name/address or lock repair.
+  Reads are not an atomic semaphore snapshot; role/counts may be stale and
+  must not become admission logic. Unit/registered resource lifetime persists.
+- Fresh invalidated native device build exits0, no error:/warning:;
+  artifact76660B SHA256bf3c9b3d7f42e9c6743dfd231741dd3235d292011b79d8c9b92fcb7cc471a413.
+  Private ABI/gates unchanged. Prior branch host/independent-review limits
+  still apply; new sampled observer native attribution is pending.
+- Preserved stage copy changes only device and helper manifest.
+  Helpers-owner.img4194304B SHA256
+  3232e5b338eb6de4760957fa47a15abcc5643f1d6d1850609e3e36d46ecdf02b.
+  Read-only mounted7-hash/full-stage check passes; detach exits0. Expected
+  P4v1.3/MAC80:f1:b2:d3:3b:a6 reidentified after reader closure. Retained
+  helpers-open4ae4bef6... provides recovery; deployment/readback pending.
