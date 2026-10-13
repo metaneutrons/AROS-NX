@@ -149,7 +149,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | ID | Deliverable | State | Required next gate |
 | :--- | :--- | :--- | :--- |
 | N2H | Flash-delivered helper entry points | `deployment/readback/headless verified; JC1060 GUI scan observed`: Fabian confirms AROSP4DEV WiFi and corrected transition labels; generation1.3 and compact ESP32Board are installed; canonical FLASHDISK0P0 naming retained | Synchronized native GUI/open association; no full WiFi/SAE/PMF/IP pass |
-| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `interactive gate awaiting board connection/readiness`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device; access-stage diagnostics tested, deployed/readback and headless return verified; directory-boundary fault/observer-on-off host tests pass; host sees no USB modem on2026-10-13 | Reconnect JC1060 and confirm fresh startup-test readiness, then arm discovery-only GUI capture before retrying association; peer admission remains0, no IP/data pass |
+| N2-SAE-REC | Current lifecycle diagnostic recovery prerequisite | `blocked pending board connection/readiness`: generation1.3 deployed; zero-frequency fix/observer host/native tested, exact deployment/readback and headless owner return verified; synchronized GUI reports no wireless device; access-stage diagnostics tested, deployed/readback and headless return verified; directory-boundary fault/observer-on-off host tests pass; host sees no USB modem on2026-10-13 | Reconnect JC1060 and confirm fresh startup-test readiness, then arm discovery-only GUI capture before retrying association; peer admission remains0, no IP/data pass |
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
@@ -42378,3 +42378,12 @@ remain open. No partial stage is a complete A/B update system.
   a new passive capture before asking to open FLASHDISK0P0:WiFi. No Connect
   until startup/device discovery is observed. Earlier artifact identities
   and qualification limits remain unchanged; no new hardware pass claimed.
+
+### 2026-10-13 - resumed availability gate blocked
+
+- Three consecutive resumed goal turns find no cu.usbmodem endpoint; no
+  connection/readiness confirmation received. Last read-only inventory again
+  has no result. Captures/workers are not running; no meaningful native
+  attribution is possible without the board. Mark goal blocked, not complete
+  or user-paused. No serial open or hardware mutation occurred. Resume after
+  connection and fresh startup-test readiness; original WiFi scope unchanged.
