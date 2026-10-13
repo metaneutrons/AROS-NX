@@ -13,6 +13,11 @@ endif
 ifeq ($(P4_WIFI_ASSOC_DIAGNOSTICS),1)
 USER_CPPFLAGS += -DP4_WIFI_ASSOC_DIAGNOSTICS=1
 endif
+# Verbose semaphore/dispatch phases are independent of outcome diagnostics.
+# Leave off for normal association diagnosis to avoid flooding the console.
+ifeq ($(P4_WIFI_IO_DIAGNOSTICS),1)
+USER_CPPFLAGS += -DP4_WIFI_IO_DIAGNOSTICS=1
+endif
 ifeq ($(P4_WIFI_SDIO_SETUP),1)
 USER_CPPFLAGS += -DP4_WIFI_SDIO_SETUP=1
 endif

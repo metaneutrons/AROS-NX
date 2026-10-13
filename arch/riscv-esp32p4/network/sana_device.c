@@ -2,7 +2,7 @@
 #include <aros/asmcall.h>
 #include <aros/io.h>
 #include <aros/macros.h>
-#if defined(P4_WIFI_SCAN_DIAGNOSTICS) || defined(P4_WIFI_ASSOC_DIAGNOSTICS)
+#if defined(P4_WIFI_SCAN_DIAGNOSTICS) || defined(P4_WIFI_ASSOC_DIAGNOSTICS) || defined(P4_WIFI_IO_DIAGNOSTICS)
 #include <aros/debug.h>
 #endif
 #include <exec/errors.h>
@@ -392,6 +392,10 @@ static void p4wlan_invalidate_selection_locked(struct p4wlan_unit *unit)
  * Keep that pin independent of selection-token changes until RPC completion. */
 static void p4wlan_replace_selection_locked(struct p4wlan_unit *unit)
 {
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    if (unit->link_committed)
+        bug("[WiFiRetire] k=%lu s=%lu d=%lu\n", 5UL, 0UL, 0UL);
+#endif
     struct p4wlan_opener *opener = unit->teardown_opener;
     ULONG cookie = unit->teardown_cookie;
     ULONG token = unit->teardown_token;
@@ -429,7 +433,13 @@ static void p4wlan_cancel_opener_association_locked(struct p4wlan_unit *unit,
         (unit->active_association &&
          unit->active_association->opener == opener &&
          unit->active_association->token == unit->selection_token))
+    {
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+        if (unit->link_committed && unit->link_opener == opener)
+            bug("[WiFiRetire] k=%lu s=%lu d=%lu\n", 1UL, 0UL, 0UL);
+#endif
         p4wlan_replace_selection_locked(unit);
+    }
     else if (unit->active_association &&
              unit->active_association->opener == opener)
         unit->active_association->cancelled = TRUE;
@@ -597,6 +607,10 @@ static void p4wlan_begin_teardown_locked(struct p4wlan_unit *unit)
     struct p4wlan_opener *opener = NULL;
     ULONG cookie = 0;
     BOOL had_link = unit->link_committed;
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    if (had_link)
+        bug("[WiFiRetire] k=%lu s=%lu d=%lu\n", 2UL, 0UL, 0UL);
+#endif
     if (unit->teardown_token) {
         p4wlan_replace_selection_locked(unit);
         return;
@@ -746,6 +760,10 @@ static void p4wlan_set_offline_locked(struct p4wlan_unit *unit,
                                       BOOL hardware_stopped)
 {
     BOOL changed = unit->online;
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+    if (unit->link_committed)
+        bug("[WiFiRetire] k=%lu s=%lu d=%lu\n", 4UL, 0UL, 0UL);
+#endif
     unit->online = FALSE;
     p4wlan_invalidate_selection_locked(unit);
     /* Administrative shutdown is not proof of link loss, but an old CONNECT
@@ -1470,6 +1488,22 @@ static BOOL p4wlan_maintain_link(struct p4wlan_unit *unit,
         }
         if (radio->link_state == P4_WIFI_LINK_DOWN ||
             !p4wlan_link_info_equal(&unit->link_info, &radio->observed_ap)) {
+#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+            ULONG difference = 0, index;
+            if (unit->link_info.ssid_length != radio->observed_ap.ssid_length)
+                difference |= 1;
+            if (unit->link_info.channel != radio->observed_ap.channel)
+                difference |= 2;
+            if (unit->link_info.authmode != radio->observed_ap.authmode)
+                difference |= 4;
+            if (!p4wlan_mac_equal(unit->link_info.bssid, radio->observed_ap.bssid))
+                difference |= 8;
+            for (index = 0; index < unit->link_info.ssid_length && index < 32; ++index)
+                if (unit->link_info.ssid[index] != radio->observed_ap.ssid[index])
+                    difference |= 16;
+            bug("[WiFiRetire] k=%lu s=%lu d=%lu\n", 3UL,
+                (ULONG)radio->link_state, difference);
+#endif
             p4wlan_link_lost_locked(unit, &done);
             if (radio->link_state == P4_WIFI_LINK_DOWN)
                 unit->teardown_pending = FALSE; /* absence already proved */
@@ -1687,21 +1721,21 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         return;
     }
 
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
     bug("[WiFiIO] c=%lu p=%lu\n", command, 0UL);
 #endif
     ObtainSemaphore(&unit->lock);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
     bug("[WiFiIO] c=%lu p=%lu\n", command, 1UL);
 #endif
     opener = p4wlan_find_opener_locked(unit,
                                        request->ios2_BufferManagement);
     if (!opener) {
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 7UL);
 #endif
         ReleaseSemaphore(&unit->lock);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 8UL);
 #endif
         p4wlan_finish_done(unit, &done);
@@ -1711,7 +1745,7 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         return;
     }
 
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
     bug("[WiFiIO] c=%lu p=%lu\n", command, 2UL);
 #endif
     switch (command) {
@@ -1798,29 +1832,29 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
          * the non-reused selection token, not a possibly freed attempt/opener
          * or a request that the callback may already have reused. */
         request->ios2_Req.io_Flags &= (UBYTE)~IOF_QUICK;
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 7UL);
 #endif
         ReleaseSemaphore(&unit->lock);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 8UL);
 #endif
         p4wlan_term_io(request);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 9UL);
 #endif
         ObtainSemaphore(&unit->lock);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 10UL);
 #endif
         if (unit->pending_association &&
             unit->pending_association->token == acknowledged_token)
             unit->pending_association->acknowledged = TRUE;
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 11UL);
 #endif
         ReleaseSemaphore(&unit->lock);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 12UL);
 #endif
         p4wlan_finish_done(unit, &done);
@@ -1901,11 +1935,11 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
                                    S2WERR_GENERIC_ERROR);
             break;
         }
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 3UL);
 #endif
         item = p4wlan_alloc_request(opener, request, P4WLAN_REQUEST_SCAN);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 4UL);
 #endif
         if (!item) {
@@ -1919,18 +1953,18 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
             break;
         }
         item->data = request->ios2_Data; /* caller pool lives through Reply */
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 5UL);
 #endif
         p4wlan_enqueue_locked(unit, opener, item);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 6UL);
 #endif
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 7UL);
 #endif
         ReleaseSemaphore(&unit->lock);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 8UL);
 #endif
         p4wlan_finish_done(unit, &done);
@@ -2007,11 +2041,11 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         /* The queue owns this asynchronous request until an event or abort.
          * Replying in the common epilogue would let the caller re-submit an
          * outstanding request and spin forever re-arming S2_ONEVENT. */
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 7UL);
 #endif
         ReleaseSemaphore(&unit->lock);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 8UL);
 #endif
         p4wlan_finish_done(unit, &done);
@@ -2057,11 +2091,11 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         item->data = request->ios2_Data;
         p4wlan_enqueue_locked(unit, opener, item);
         item = NULL;
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 7UL);
 #endif
         ReleaseSemaphore(&unit->lock);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 8UL);
 #endif
         p4wlan_finish_done(unit, &done);
@@ -2126,11 +2160,11 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         p4wlan_copy_bytes(item->destination, destination, 6);
         p4wlan_enqueue_locked(unit, opener, item);
         item = NULL;
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 7UL);
 #endif
         ReleaseSemaphore(&unit->lock);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
         bug("[WiFiIO] c=%lu p=%lu\n", command, 8UL);
 #endif
         p4wlan_finish_done(unit, &done);
@@ -2158,11 +2192,11 @@ static void p4wlan_begin_sana(struct p4wlan_unit *unit,
         break;
     }
 
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
     bug("[WiFiIO] c=%lu p=%lu\n", command, 7UL);
 #endif
     ReleaseSemaphore(&unit->lock);
-#if defined(P4_WIFI_ASSOC_DIAGNOSTICS) && P4_WIFI_ASSOC_DIAGNOSTICS
+#if defined(P4_WIFI_IO_DIAGNOSTICS) && P4_WIFI_IO_DIAGNOSTICS
     bug("[WiFiIO] c=%lu p=%lu\n", command, 8UL);
 #endif
     p4wlan_finish_done(unit, &done);

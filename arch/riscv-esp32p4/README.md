@@ -73,7 +73,11 @@ headless return shows CPU1 owner ready and touch heartbeats. A fresh synchronize
 single open attempt still reports Could not connect: the query briefly succeeds
 (e0/v1/state7), then loses the commit (e10/v0/state3), while online/hardware-ready
 remain set and fault remains clear. Attribute link invalidation before changing
-GUI timeout or radio policy. No C6 update or
+GUI timeout or radio policy. Verbose WiFiIO now requires the separate default-off
+P4_WIFI_IO_DIAGNOSTICS=1; association/query outcomes stay enabled independently.
+Sparse WiFiRetire path/state/difference records are prepared to attribute the
+commit removal. Console overflow reporting stays unconditional and unchanged.
+No C6 update or
 security-policy change is claimed.
 
 Open-association diagnosis (2026-10-11): opt-in
