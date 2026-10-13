@@ -5,14 +5,19 @@ USB-Serial/JTAG/UART hardware backend now has a 64-record SMP ring and one
 timer-backed TX task. The generic AROS debug API is unchanged. Once the task
 opens timer.device, producers only enqueue complete lines/chunks (128 bytes
 maximum) using one lock attempt; endpoint backpressure retains the unsent
-suffix instead of dropping individual bytes. Runtime output is framed as
+suffix instead of dropping individual bytes. Since2026-10-14 the default runtime
+output is plain original payload bytes, without per-record metadata or synthetic
+chunk newlines. Build with `P4_CONSOLE_RECORD_PREFIX=1` for diagnostic framing;
+invalidate kernel objects when changing this switch. Diagnostic output is framed as
 `[p4log seq=00000000 hart=00000000 len=00000000] payload`: all fields are
 eight hexadecimal digits, sequence starts at zero and wraps modulo32 bits.
 `len` is the original payload length; an additional framing newline terminates
 chunks/prompts lacking one. Concatenate original payloads by length when raw
 stream semantics matter. Sequence gaps and `[p4log overflow records=...]`
 report whole-record queue rejection, including contention, cumulatively modulo
-32 bits. These are debug transport records, not task-level message boundaries.
+32 bits. Overflow warnings remain unconditional in both modes. Plain output
+does not expose sequence/hart/length or allow host sequence-gap validation.
+These are debug transport records, not task-level message boundaries.
 Per-hart character assembly can still join unfinished output from tasks on the
 same hart; a generic RawPutChar caller does not identify a logical message.
 
@@ -82,10 +87,14 @@ open WLAN connection and no WiFiIO/overflow in the scoped144-row excerpt.
 AROSTCP startup fails on generated general.config line9/col33: the absolute
 DHCLIENT path exceeds its24-byte keyword buffer; the path notifier also returns
 failure on success. Generic setter/getter/path-notifier corrections pass14
-source-extracted sanitizer regressions and native build, not yet deployed.
+source-extracted sanitizer regressions and native build.
 The1111984-byte stack stays on SYS: and exceeds free helper space; its single
 SD-file replacement is backed up, remount/readback verified and ejected.
-Native stack startup and DHCP must still be tested. IP/data/SAE gates
+The fresh card-return attempt again fails before stack startup: two successful
+network-info publications are followed by WiFiRetire k3/s2/d27, meaning the
+radio link monitor reports DOWN. The189-row scoped capture has no sequence
+gap or overflow; source attribution of the correlated AP-info query remains
+open. Native stack startup and DHCP must still be tested. IP/data/SAE gates
 remain open; earlier transient link removal is not closed by this one attempt.
 Console overflow reporting stays unconditional and unchanged.
 No C6 update or

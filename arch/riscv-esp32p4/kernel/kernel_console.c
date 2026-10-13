@@ -34,6 +34,16 @@
 
 #define SPIN_LIMIT      100000
 
+/* Record metadata is a diagnostic transport format, not ordinary console
+ * output. Keep payload bytes unchanged by default; overflow reports below
+ * remain unconditional in either mode. */
+#ifndef P4_CONSOLE_RECORD_PREFIX
+#define P4_CONSOLE_RECORD_PREFIX 0
+#endif
+#if P4_CONSOLE_RECORD_PREFIX != 0 && P4_CONSOLE_RECORD_PREFIX != 1
+#error P4_CONSOLE_RECORD_PREFIX must be 0 or 1
+#endif
+
 /* Runtime mode starts before Exec can schedule callers. Debug must never wait
  * for a USB reader: callers include input publication and locked redraws.
  * Before the sender is ready, saturated output is deliberately lossy.
@@ -278,8 +288,8 @@ static unsigned int console_last_overflow;
 static inline unsigned int console_hart(void);
 
 /* Fixed hexadecimal fields require no formatting library, allocation or
- * recursive console calls. len describes the original payload; chunks and
- * prompts without a newline receive a framing newline, not a payload byte. */
+ * recursive console calls. In diagnostic mode len describes the original
+ * payload; its synthetic framing newline is omitted in ordinary mode. */
 static void console_frame_text(const char *s)
 {
     while (*s)
@@ -348,6 +358,7 @@ unsigned int krnP4ConsoleDrain(unsigned int budget)
             {
                 unsigned int i;
                 console_last_overflow = 0;
+#if P4_CONSOLE_RECORD_PREFIX
                 console_frame_text("[p4log seq=");
                 console_frame_hex(record.sequence);
                 console_frame_text(" hart=");
@@ -355,10 +366,13 @@ unsigned int krnP4ConsoleDrain(unsigned int budget)
                 console_frame_text(" len=");
                 console_frame_hex(record.length);
                 console_frame_text("] ");
+#endif
                 for (i = 0; i < record.length; i++)
                     console_frame[console_frame_len++] = record.data[i];
+#if P4_CONSOLE_RECORD_PREFIX
                 if (record.data[record.length - 1] != '\n')
                     console_frame[console_frame_len++] = '\n';
+#endif
             }
             else
             {

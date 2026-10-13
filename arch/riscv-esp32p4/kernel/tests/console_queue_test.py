@@ -14,6 +14,10 @@ CC = shlex.split(os.environ.get("CC", "cc"))
 
 
 def extract_console_source():
+    prefix_config_start = SOURCE.index("#ifndef P4_CONSOLE_RECORD_PREFIX")
+    prefix_config_end = SOURCE.index("/* Runtime mode", prefix_config_start)
+    prefix_config = SOURCE[prefix_config_start:prefix_config_end]
+
     marker = "#define SPIN_LIMIT"
     start = SOURCE.index(marker)
     source = SOURCE[start:]
@@ -32,7 +36,7 @@ def extract_console_source():
               + "static inline unsigned int console_hart(void)\n{\n"
                 "    return p4_test_hart;\n}"
               + source[hart_end:])
-    return source
+    return prefix_config + "\n\n" + source
 
 
 CONSOLE_SOURCE = extract_console_source()
@@ -73,6 +77,13 @@ static void mmio_wr(uint32_t base, uint32_t off, uint32_t value);
 '''
 
 MOCKS_AND_TESTS = r'''
+#ifndef P4_CONSOLE_RECORD_PREFIX
+#error The actual source default was not included in this host fixture
+#endif
+#if defined(P4_CONSOLE_TEST_DEFAULT) && P4_CONSOLE_RECORD_PREFIX != 0
+#error P4_CONSOLE_RECORD_PREFIX must default to zero
+#endif
+
 #define MAX_USB_PACKETS 512u
 #define MAX_USB_PACKET_BYTES 64u
 #define MAX_CAPTURE_BYTES 32768u
@@ -555,6 +566,161 @@ static void run_uart_tests(void)
 }
 #endif
 
+static size_t drain_and_collect(unsigned char *output, size_t capacity)
+{
+#if P4_CONSOLE_USB
+    (void)drain_usb_until_idle();
+    return collect_usb(output, capacity);
+#else
+    unsigned int i;
+    unsigned int sent;
+
+    for (i = 0; i < 1024u; ++i)
+    {
+        sent = krnP4ConsoleDrain(256u);
+        if (sent == 0u)
+            break;
+    }
+    assert(i < 1024u);
+    assert(uart_output_length <= capacity);
+    memcpy(output, uart_output, uart_output_length);
+    return uart_output_length;
+#endif
+}
+
+static void test_unprefixed_short_prompt(void)
+{
+    const char *payload = "ready>";
+    unsigned char actual[256];
+    size_t actual_length;
+
+    reset_console();
+    reset_mmio();
+    sender_ready_runtime();
+    krnP4PutStr(payload);
+    assert(console_queue.count == 0u && console_len[0] == strlen(payload));
+    assert(krnP4GetC() == -1);
+    assert(console_queue.count == 1u && console_len[0] == 0u);
+    assert(mmio_write_count == 0u);
+
+    actual_length = drain_and_collect(actual, sizeof(actual));
+    assert(actual_length == strlen(payload));
+    assert(memcmp(actual, payload, actual_length) == 0);
+    assert_tls_balanced();
+}
+
+static void test_unprefixed_chunked_record(void)
+{
+    char payload[2u * P4_CONSOLE_RECORD_BYTES + 2u];
+    unsigned char actual[MAX_CAPTURE_BYTES];
+    size_t actual_length;
+    unsigned int i;
+
+    reset_console();
+    reset_mmio();
+    sender_ready_runtime();
+    for (i = 0; i < 2u * P4_CONSOLE_RECORD_BYTES; ++i)
+        payload[i] = (char)('a' + i % 26u);
+    payload[2u * P4_CONSOLE_RECORD_BYTES] = '\n';
+    payload[2u * P4_CONSOLE_RECORD_BYTES + 1u] = '\0';
+    krnP4PutStr(payload);
+    assert(console_queue.count == 3u);
+    assert(mmio_write_count == 0u);
+
+    actual_length = drain_and_collect(actual, sizeof(actual));
+    assert(actual_length == strlen(payload));
+    assert(memcmp(actual, payload, actual_length) == 0);
+    assert(console_queue.count == 0u);
+    assert_tls_balanced();
+}
+
+static void test_unprefixed_record_resumes_without_added_bytes(void)
+{
+    char payload[P4_CONSOLE_RECORD_BYTES + 1u];
+    unsigned char actual[MAX_CAPTURE_BYTES];
+    size_t actual_length;
+    unsigned int i;
+
+    reset_console();
+    reset_mmio();
+    sender_ready_runtime();
+    for (i = 0; i < P4_CONSOLE_RECORD_BYTES; ++i)
+        payload[i] = 'R';
+    payload[P4_CONSOLE_RECORD_BYTES] = '\0';
+    krnP4PutStr(payload);
+    assert(console_queue.count == 1u);
+
+#if P4_CONSOLE_USB
+    assert(krnP4ConsoleDrain(256u) == MAX_USB_PACKET_BYTES);
+    assert(console_frame_pos == MAX_USB_PACKET_BYTES);
+    assert(console_frame_len == P4_CONSOLE_RECORD_BYTES);
+    assert(usb_packet_count == 1u && usb_packet_lengths[0] == 64u);
+    assert(krnP4ConsoleDrain(256u) == 0u);
+    assert(console_frame_pos == MAX_USB_PACKET_BYTES);
+    usb_conf |= P4_USJ_IN_EP_DATA_FREE;
+    assert(drain_usb_until_idle() == P4_CONSOLE_RECORD_BYTES - 64u);
+#else
+    assert(krnP4ConsoleDrain(64u) == 64u);
+    assert(console_frame_pos == 64u);
+    assert(console_frame_len == P4_CONSOLE_RECORD_BYTES);
+    assert(krnP4ConsoleDrain(64u) == 64u);
+#endif
+
+    actual_length = drain_and_collect(actual, sizeof(actual));
+    assert(actual_length == P4_CONSOLE_RECORD_BYTES);
+    assert(memcmp(actual, payload, actual_length) == 0);
+    assert(console_queue.count == 0u);
+    assert(console_frame_pos == 0u && console_frame_len == 0u);
+    assert_tls_balanced();
+}
+
+static void test_overflow_marker_stays_unconditional(void)
+{
+    char line[16];
+    char expected[MAX_CAPTURE_BYTES];
+    unsigned char actual[MAX_CAPTURE_BYTES];
+    size_t expected_length = 0, actual_length;
+    unsigned int i;
+
+    reset_console();
+    reset_mmio();
+    sender_ready_runtime();
+    for (i = 0; i < P4_CONSOLE_RING_SLOTS + 1u; ++i)
+    {
+        (void)snprintf(line, sizeof(line), "L%02u\n", i);
+        krnP4PutStr(line);
+    }
+    assert(console_queue.count == P4_CONSOLE_RING_SLOTS);
+    assert(p4_console_ring_dropped(&console_queue) == 1u);
+
+    expected_length += (size_t)snprintf(expected + expected_length,
+        sizeof(expected) - expected_length,
+        "[p4log overflow records=00000001]\n");
+    for (i = 0; i < P4_CONSOLE_RING_SLOTS; ++i)
+    {
+        expected_length += (size_t)snprintf(expected + expected_length,
+            sizeof(expected) - expected_length, "L%02u\n", i);
+    }
+
+    actual_length = drain_and_collect(actual, sizeof(actual));
+    assert(actual_length == expected_length);
+    assert(memcmp(actual, expected, expected_length) == 0);
+    assert(actual_length >= sizeof("[p4log overflow records=00000001]\n") - 1u);
+    assert(memcmp(actual, "[p4log overflow records=00000001]\n",
+                  sizeof("[p4log overflow records=00000001]\n") - 1u) == 0);
+    assert(console_reported_drops == 1u);
+    assert(p4_console_ring_dropped(&console_queue) == 1u);
+    assert_tls_balanced();
+}
+
+static void run_unprefixed_tests(void)
+{
+    test_unprefixed_short_prompt();
+    test_unprefixed_chunked_record();
+    test_unprefixed_record_resumes_without_added_bytes();
+    test_overflow_marker_stays_unconditional();
+}
+
 static void test_drain_lock_contention(void)
 {
     const char *expected = "[p4log seq=00000000 hart=00000000 len=00000007] locked\n";
@@ -684,27 +850,42 @@ static void test_caller_budget_is_capped_at_256(void)
 
 int main(void)
 {
+    if (P4_CONSOLE_RECORD_PREFIX)
+    {
 #if P4_CONSOLE_USB
-    run_usb_tests();
+        run_usb_tests();
 #else
-    run_uart_tests();
+        run_uart_tests();
 #endif
-    test_drain_lock_contention();
-    test_sender_failure_uses_bounded_direct_fallback();
-    test_caller_budget_is_capped_at_256();
+        test_drain_lock_contention();
+        test_sender_failure_uses_bounded_direct_fallback();
+        test_caller_budget_is_capped_at_256();
+    }
+    else
+        run_unprefixed_tests();
+
 #if P4_CONSOLE_USB
-    puts("USB console queue integration passed");
+    puts(P4_CONSOLE_RECORD_PREFIX
+         ? "USB framed console queue integration passed"
+         : "USB unprefixed console queue integration passed");
 #else
-    puts("UART console queue integration passed");
+    puts(P4_CONSOLE_RECORD_PREFIX
+         ? "UART framed console queue integration passed"
+         : "UART unprefixed console queue integration passed");
 #endif
     return 0;
 }
 '''
 
 
-def compile_and_run(tmpdir, backend, optimization):
-    source = pathlib.Path(tmpdir) / f"console_queue_{backend}_o{optimization}.c"
-    executable = pathlib.Path(tmpdir) / f"console_queue_{backend}_o{optimization}"
+def compile_and_run(tmpdir, backend, optimization, prefix_mode):
+    mode_name = "default" if prefix_mode is None else str(prefix_mode)
+    source = pathlib.Path(tmpdir) / (
+        f"console_queue_{backend}_o{optimization}_prefix{mode_name}.c"
+    )
+    executable = pathlib.Path(tmpdir) / (
+        f"console_queue_{backend}_o{optimization}_prefix{mode_name}"
+    )
     source.write_text(PREAMBLE + CONSOLE_SOURCE + MOCKS_AND_TESTS)
     command = [
         *CC,
@@ -723,6 +904,11 @@ def compile_and_run(tmpdir, backend, optimization):
         "-o",
         str(executable),
     ]
+    if prefix_mode is not None:
+        command.insert(command.index("-I"),
+                       "-DP4_CONSOLE_RECORD_PREFIX=" + str(prefix_mode))
+    else:
+        command.insert(command.index("-I"), "-DP4_CONSOLE_TEST_DEFAULT=1")
     if backend == "uart":
         # The normal source keeps console_flush_self in this build even
         # though krnP4GetC only uses it in the USB backend.
@@ -734,9 +920,10 @@ def compile_and_run(tmpdir, backend, optimization):
 
 def main():
     with tempfile.TemporaryDirectory(prefix="p4-console-queue-") as tmpdir:
-        for backend in ("usb", "uart"):
-            for optimization in (0, 2):
-                compile_and_run(tmpdir, backend, optimization)
+        for prefix_mode in (None, 0, 1):
+            for backend in ("usb", "uart"):
+                for optimization in (0, 2):
+                    compile_and_run(tmpdir, backend, optimization, prefix_mode)
 
 
 if __name__ == "__main__":

@@ -153,7 +153,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | N2M-R | Versioned C6/P4 release formats and signed assets | `in development`: normative v1 C6 app/P4 paired upgrade/signed release contracts documented; no publisher, keys or native signature/manifest consumer | Schema/generator and interoperability/negative tests; compiled trust configuration and native verifier; qualified ESP32 builds and protected release signing workflow; live admission/replay persistence and recovery remain independent |
 | N2M-U | Compact four-tab ESP32Board interface | `build/readback/headless verified`: native MUI tabs, fixed740x500 inner request, ASL paths, six-column partition list and bounded status; fresh154908B RV32 build/host checks/review pass | Coordinated native800x600 GUI sizing/interaction; unavailable backends remain disabled |
 | N2-SAE | Existing AROS WPA3-Personal path | `in development`: native caller/ABI12 policy and guarded typed provider host/native-build verified, final admission gate0 undeployed; all eight RPC event policies inventoried; C6 single-handler candidate retained; lifecycle reference run unobserved and exact-span AROS rollback verified; one-pulse capture harness host tested only | Qualify capture and installed-peer lifecycle/producer fence or attempt correlation; explicit negotiated SAE/required PMF, native cancellation/reconnect and all N2T IP/data gates remain required |
-| N2T | Explicit accepted-risk WLAN association test | `open link partial; corrected stack installed, retest pending`: Connected open WLAN shown; generic parser/notifier correction14 regression PASS. Native1111984Ba31b79e6... SD file replaced/backed up/remount-readback verified/ejected; FullMAC peer admission0 | Card return and fresh corrected-stack/DHCP test; original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load and earlier transient-link regression remain open |
+| N2T | Explicit accepted-risk WLAN association test | `transient link; monitor DOWN isolated, cause open`: Connected open WLAN shown; generic parser/notifier correction14 regression PASS. Native1111984Ba31b79e6... SD file replaced/readback verified. Fresh attempt publishes link twice then WiFiRetire k3/s2/d27 without scoped sequence gaps/overflow; FullMAC peer admission0 | Attribute AP-info DOWN before another interactive attempt; corrected-stack startup/DHCP and original SAE/required-PMF/no-fallback, routes/DNS/bidirectional traffic/reconnect/load remain open |
 | M4-AB | Generic ESP32-P4 paired kernel/BSP A/B flash layout | Opt-in profiles for D1001 and both JC variants; live paired-slot resolver, independent DEVELOP, size guards and manifest boot gate implemented; host checked, installed layout unchanged | Full bootloader/link qualification, both physical XIP slots, SMP-safe update writer, boot confirmation/power-loss rollback, CLI/GUI provenance and recoverable migration; no A/B hardware acceptance |
 | N2M-C | Actual C6 image-to-target compatibility | Read-only COMPARE-C6 CLI/MUI diagnostic and extended image metadata host verified; fresh native tool build verified134864B; discovery-v2 candidate build verified1110928B; no installed extension or complete compatibility producer | Independent installed bootloader policy, block revision/MMU and flash operation support, actual slot/layout provenance, runtime stack/UART/transport qualification and secured first-install recovery; CN5 availability requested, not verified |
 | N2M | Shared ESP32Board CLI/MUI maintenance and adaptive partition view | ESP32/RISC-V-only read-only build verified; owned inspected-source loader/recheck tool build verified, no update caller; OTA oracle/discovery/client and terminal contract host/build verified; aggregate engine deadline962-check host verified; actual synchronous engine binding7065-check host/build verified with six mutations; owned native queue9121-check historical host/build verified, seven mutations rejected; separate default-off bootstrap OTA gate9416-check maintenance and480-check registration host/build verified from fully unassociated state; ABI10 unchanged and1057-check SANA consumer verified; shared requester drainage448-check host verified/native prepared-job adapter tool build verified, independent review complete; not repackaged; prior ABI8 matched42-member discovery BSP/image candidate; C6 candidate undeployed; no hardware acceptance | Trusted prepared-job admission and CLI/GUI progress/cancellation dispatch, qualified full-transfer deadline/lease; runtime fenced handoff, actual discovery/layout/slot provenance, secured independent recovery, CLI/GUI updates and HTTPS acquisition; candidate deployment requires installed baseline/backup checks; see board-tool plan |
@@ -191,7 +191,7 @@ Historical image hashes/build evidence remain historical, not deployable proof.
 | B5R | Remove the native-scanout row-phase workaround | `hardware partial (picture correct without the workaround)` | Root cause found 2026-10-04 on the JC1060P470C: the D-PHY PLL dividers were computed for a 40 MHz reference that is really PLL_F20M (20 MHz), so every lane ran at half its stated rate and the host line timing did not match the DPI line. The D1001 profile now uses the 20 MHz reference, its vendor's 1000 Mbit/s and burst video, and no board sets the +525 mapping; Fabian confirms the picture sits correctly (core `153405e7…`, Giant SMP). The asymmetric geometry gate itself has not been rerun on the new profile. |
 | C1 | ESP32-P4 boot framebuffer graphics HIDD | `hardware verified` | One logical `1280 x 800` RGB565 mode is registered through the shared `fbgfx` family.  Three explicitly mode-bound bitmap allocations, Show/fill/line/real-text/full-update and the normal read-only SD boot pass.  Direct observation confirms correct landscape orientation, colours, centred geometry and six readable white text rows; instrumentation counts 1686 text pixels, 14 swaps, zero faults, zero rejects and no pending surface.  The port-level `MEMF_CHIP` pool fixes the `AllocRaster()` blocker rather than bypassing `Text()` |
 | C1P | Graphical boot/update performance | `hardware partial; runtime hang gate open` | Rotation/mirror: 140 sanitizer cases; actual producer: 400 submissions/1,677 guarded IRQs. CPU90 synchronous full update 2.776 s; CPU360 synchronous 0.617 s; v2 coalesced submission 0.296 s. Paired v2 core/HIDD initially passes headless Wanderer and flash checks. Fabian observes speedup then slowdown/hang. Console-only nonblocking runtime fix now sanitizer-tested, flashed and verified; explanation of the observed hang remains unconfirmed. On 2026-10-01 Fabian reports drawing is fine so far after requester-free RAM Disk opening; duration unspecified. Sustained no-reader/stress and complete interactive regression gates remain open. |
-| CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); D1001 open` | 2026-10-13: normal193360-byte C3/C4/XIP core5a164de9... installed/readback verified. devserial captures both harts and108 consecutive correctly framed records0..107 over241.984s. Userspace-reader closure/reattachment passes without reset/gaps; no fault/WDT-reset observed. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
+| CQ1 | Bounded queued SMP debug console | `hardware partial (JC1060); default-plain build verified, deployment pending; D1001 open` | 2026-10-13: normal193360-byte C3/C4/XIP core5a164de9... installed/readback verified. devserial captures both harts and108 consecutive correctly framed records0..107 over241.984s. Userspace-reader closure/reattachment passes without reset/gaps; no fault/WDT-reset observed. 2026-10-14: P4_CONSOLE_RECORD_PREFIX defaults0, optional1 keeps diagnostic framing; overflow warnings independent/always active. Clean native193024Ba68ca519... and twelve sanitized USB/UART default/0/1 host runs pass; old-header mutation rejected. Deployment pending. Native overload/physical disconnect and fresh interactive gates remain open. Early/fatal direct output and timer-failure backlog loss remain explicit limits. |
 | C2 | Graphics, input skeleton, Layers and Intuition screen | `hardware verified` | The 30-member package and explicit 15 -> 9 -> 8 -> -50 ordering are D1001-proven.  A post-multitasking worker completes two real simple-refresh damage/IDCMP redraws before the final scroll.  Direct observation confirms readable text, clipping/overlap/scroll, four corner marks and a stable red pointer with the original grey damage area gone.  The final unchanged package passes its complete marker sequence, read-only SD discovery and Shell on 20/20 EN-reset boots with one normalized marker hash; see the 2026-08-28 entries |
 | C3 | Read-only SD boot to correctly oriented Wanderer (`GB0`) | `hardware verified` | Complete GB0 evidence: correctly oriented persistent Wanderer with title/icons/four edges, bounded graphical recovery without SD, 20/20 controlled EN-reset boots, a 30-minute desktop soak explicitly composed with B5's active concurrent SD/scanout stress, and an exact raw-card gate.  The latter used hardware-locked first host insertions around one normal D1001 boot; prepared image, pre-run readback and post-run readback are byte-identical at SHA-256 `7012189035197c3ccfcee84c95a53bd39fc7b5d4d43c9ee26a6962f370859758`.  Two earlier comparisons remain documented as macOS `.fseventsd` contamination, not hidden as passes |
 | C4 | Touch as an absolute mouse HIDD | `hardware partial` | Since 2026-10-04 the touch path is the portable stack of D3 (`touchscreen.hidd`, `gsl3670.hidd`, `esp32p4board.resource`); the D1001 has not run it yet, so everything below describes the former kernel GSL driver and `p4touch.hidd`. D1001 identification, bounded firmware load/status and contact transport are hardware verified. The absolute mouse HIDD and nearest-contact continuity pass synchronized one-/two-contact tests; hardware IDs are not stable. A stationary pointer recovered after USB reset; its prior cause remains unknown. The tap policy defaults to button-free motion, tap-to-click and 400-ms hold-drag, preserving selectable direct mode and the right-button latch. Fabian confirms movement, tap and hold-drag with zero errors and clean release. A consented perimeter trace measures X=16..1638/Y=15..874; board-specific calibration now maps that range to the full surface. Its 3,863 host checks, build and package audit pass. A fresh synchronized run confirms four-edge reachability and menu-dropdown opening, with zero I2C errors and clean release at Y=5. Rapid double-tap reliability is reported poor; first-empty short-tap release (50-ms idle gap restored after renewed graphics slowdown) now pass 3,892 sanitizer checks and are a flashed candidate, not interactive acceptance; a volume requester precedes successful RAM Disk opening (name reported as TENEME, possibly THEME; unconfirmed). Theme assignments, Ice assets and PNG registration now pass a 167-entry host image verification; SD image now written/readback-verified/ejected; visible gate fails with missing png.library>=52; 171-entry runtime-library closure correction is now SD written/readback-verified/ejected (2026-10-01); synchronized 55-second boot reaches Wanderer and attempts the new runtime libraries; Fabian confirms requester-free RAM Disk opening and one visible toolbar symbol; complete toolbar and sustained performance are not yet accepted. Menu-item execution, bounded recovery, intermittent startup reliability and the 1,000-cycle gates remain open |
@@ -1694,7 +1694,10 @@ default-off. Retain unconditional overflow warnings; no lifecycle fence changed.
 parsing blocks the IP phase; generic long-string/notifier correction is built,
 host-regression verified and SD-file installed/remount-readback verified/ejected.
 The stack binary is on SYS:, not part of the flash helper set. Native stack
-startup/IP gate awaits card return and fresh interaction.
+startup/IP gate remains open: the fresh card-return attempt fails earlier,
+after two successful network-info publications then WiFiRetire k3/s2/d27
+(radio monitor DOWN). No overflow or sequence gap in the189-row scoped capture.
+Audit correlated AP-info status before changing lifecycle/security fences.
 
 Canonical name decision (2026-10-12): retain flashdisk.device and its generic
 MBR-derived FLASHDISK0P0 DOS name; no architecture-specific rename policy.
@@ -3967,6 +3970,11 @@ CQ1 follow-up (2026-10-13, JC1060 headless hardware partial): runtime byte dropp
 replaced by a fixed internal-SRAM record ring after the dedicated sender is
 ready. This does not close C1P's historical hang or qualify WLAN association.
 See the dated CQ1 evidence for the new framing contract and failure limits.
+2026-10-14 ordinary output now defaults to exact payload bytes; optional
+P4_CONSOLE_RECORD_PREFIX=1 restores diagnostic metadata/synthetic newline.
+Overflow warnings stay unconditional. Native193024Ba68ca519... and twelve
+sanitized host configurations pass; deployment is pending.
+plain-mode captures cannot prove sequence continuity from omitted metadata.
 Acceptance requires exact-core/readback identification, two-hart concurrent
 logging, a reader absent then reattached (accepted suffixes delivered once),
 explicit whole-record loss under overflow, bounded no-reader boot/runtime and
@@ -43175,3 +43183,51 @@ remain open. No partial stage is a complete A/B update system.
   BSP/bootloader/table/C6 modification in this deployment. Test stack startup
   and DHCP only after Fabian confirms card return and readiness; no acceptance
   from host parse tests or successful file copy. Original WiFi gates stay open.
+
+### 2026-10-14 - N2T corrected-stack retest isolates radio monitor DOWN
+
+- Fabian returns card and confirms ready. devserial captures the authorized
+  headless reset; fresh ROM begins20414, CPU1 WLAN owner20424, C6 GPIO54 reset
+  ok20423 and touch heartbeat20430. Then request one Scan/open Connect using
+  FLASHDISK0P0:WiFi. User reports Could not connect; no manual retry requested.
+- Export corrected-stack-full-attempt.jsonl IDs20431..20619,189 rows, SHA256
+  5cf83d51a997d7c6915a623d1fdbba55ba269b856007a2d257913861fbd34838,
+  under wifi-link-retire-2026-10-14.JaccdP in the existing evidence root.
+  No sequence gap/overflow marker in this scoped export. Token1 AP-info294
+  status0/valid1/ok1 and done1, then network-info e0/v1/s7 twice. Row20540
+  WiFiRetire k3/s2/d27 on hart1 identifies monitor DOWN, not merely a GUI
+  timeout or absent publication. Later manager-owned token3 commits again;
+  this is an internal retry, not a second user-authorized test.
+- Source refresh publishes DOWN for AP-info status0x300f; the captured device
+  retirement does not itself prove that decoded RPC status or its origin.
+  Audit refresh/correlation/events before changing fences. New AROSTCP startup
+  and DHCP remain untested because this attempt fails before stack launch.
+  Installed device424e5c9e.../helper97b9a054.../core5a164de9.../SYS stacka31b79e6...
+  unchanged during interaction. No security relaxation, C6 update or IP pass.
+
+### 2026-10-14 - CQ1 default-plain console candidate
+
+- Fabian requests prefix default-off, opt-in metadata and unconditional
+  overflow warnings, with kernel deployment before continued WLAN diagnosis.
+  P4_CONSOLE_RECORD_PREFIX defaults0; value1 keeps prior fixed seq/hart/len
+  framing. Reject other compile-time values. Plain mode emits exact payload
+  bytes, without synthetic chunk/prompt newlines. Ring accounting, suffix
+  retention, locks, backend/task timing and unconditional cumulative overflow
+  reports unchanged; sequence/hart/length are not recoverable from plain logs.
+- mmake forwards explicit0/1; kernel objects must be invalidated on flag
+  changes. Independent bounded source review finds no actionable buffer,
+  suffix, locking or propagation defect. Both-mode sanitized host tests and
+  clean native normal C3/C4/PSRAM200/XIP build pass. Twelve USB/UART default/
+  explicit0/1 O0/O2 ASan/UBSan runs pass; old header/newline mutation fails
+  the plain prompt assertion (negative-control exit-6). Ring and bounded
+  backend regressions also pass. Native build-core.sh --clean exits0,
+  SRAM residency passes and Creating aros-esp32p4.bin is present. Existing
+  prototype/RWX LOAD warnings remain. New core193024B SHA256
+  a68ca519531b9588e03976a322d3534fa9d4cb4795bb20bdc8b056883f490a43;
+  normal header literal absent, overflow literal present in linked image.
+  No hardware write yet; old193360B5a164de9... stays installed/recoverable. Evidence:
+  /Volumes/Dev/Source/Amiga/AROS-ESP32-build/evidence/console-prefix-2026-10-14.Cu8SYY/.
+- Next verify new image/test outcomes, exact core-only0x20000 write and
+  independent readback, then passive headless return. No bootloader/table/BSP/
+  helper/SD/C6 change authorized by this console update. Overflow-under-load,
+  physical unplug/D1001 and fresh interactive gates remain open.

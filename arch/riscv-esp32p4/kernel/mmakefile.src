@@ -1026,6 +1026,12 @@ ifdef P4_CONSOLE_WAIT
 P4_DEBUG_CPPFLAGS += -DP4_CONSOLE_WAIT
 endif
 
+# Optional queued-console record metadata; default0 preserves plain payload
+# bytes. Overflow warnings are emitted independently of this switch.
+ifdef P4_CONSOLE_RECORD_PREFIX
+P4_DEBUG_CPPFLAGS += -DP4_CONSOLE_RECORD_PREFIX=$(P4_CONSOLE_RECORD_PREFIX)
+endif
+
 ifdef P4_HEARTBEAT_SECS
 P4_DEBUG_CPPFLAGS += -DP4_HEARTBEAT_SECS=$(P4_HEARTBEAT_SECS)
 endif
